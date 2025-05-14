@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Lobby Setup</title>
+  <title>Lobby Setup with Firebase</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,6 +32,11 @@
       margin-right: 10px;
     }
   </style>
+  
+  <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <!-- Firebase Realtime Database -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
   <div class="container">
@@ -41,15 +46,22 @@
       <input type="text" id="playerName" placeholder="Your name">
       <button id="setNameButton">Set Name</button>
     </div>
-
+    
     <!-- Section for choosing to create or join a lobby -->
     <div id="lobbySelectDiv" class="hidden">
       <h2>Select an Option</h2>
       <button id="createButton">Create Lobby</button>
       <button id="joinButton">Join Lobby</button>
     </div>
-
-    <!-- Lobby interface. In this demo the same lobby screen is shown for host or joiner -->
+    
+    <!-- Section for entering a Lobby ID when joining -->
+    <div id="joinLobbyDiv" class="hidden">
+      <h2>Enter Lobby ID</h2>
+      <input type="text" id="lobbyIdInput" placeholder="Lobby ID">
+      <button id="joinLobbySubmit">Join Lobby</button>
+    </div>
+    
+    <!-- Lobby interface. Displays lobby details and a Start Game button for hosts -->
     <div id="lobbyDiv" class="hidden">
       <h2>Lobby</h2>
       <p id="lobbyInfo"></p>
@@ -59,12 +71,29 @@
       </div>
     </div>
   </div>
-
+  
   <script>
+    // Firebase configuration (For Firebase JS SDK v7.20.0 and later)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
+      authDomain: "truth-b65cd.firebaseapp.com",
+      databaseURL: "https://truth-b65cd-default-rtdb.firebaseio.com",
+      projectId: "truth-b65cd",
+      storageBucket: "truth-b65cd.firebasestorage.app",
+      messagingSenderId: "11180463959",
+      appId: "1:11180463959:web:e860d37bdbf8e245e25012",
+      measurementId: "G-HPYS4F4MYJ"
+    };
+  
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    var database = firebase.database();
+  
     let playerName = "";
     let role = "";
-
-    // When the user clicks "Set Name", verify input and then show lobby options.
+    let lobbyId = "";
+  
+    // When the user clicks "Set Name", validate the name and move to lobby options.
     document.getElementById("setNameButton").addEventListener("click", () => {
       const nameInput = document.getElementById("playerName").value.trim();
       if (nameInput === "") {
@@ -72,40 +101,88 @@
         return;
       }
       playerName = nameInput;
-      // Hide the name input and show the create/join options.
+      // Hide the name setup and show lobby selection.
       document.getElementById("setNameDiv").classList.add("hidden");
       document.getElementById("lobbySelectDiv").classList.remove("hidden");
     });
-
-    // If user creates a lobby, assign the role as host and display the lobby
+  
+    // "Create Lobby": If pressed, the player becomes the host and a new lobby is created.
     document.getElementById("createButton").addEventListener("click", () => {
       role = "host";
-      showLobby();
+      // Create a new lobby in Firebase under the "lobbies" node.
+      let newLobbyRef = database.ref("lobbies").push();
+      lobbyId = newLobbyRef.key;
+      newLobbyRef.set({
+        host: playerName,
+        created: firebase.database.ServerValue.TIMESTAMP,
+        players: {
+          [playerName]: true
+        }
+      }, function(error) {
+        if (error) {
+          alert("Error creating lobby: " + error);
+        } else {
+          showLobby();
+        }
+      });
     });
-
-    // If user joins a lobby, assign the role as client and display the lobby
+  
+    // "Join Lobby": Show the input field for lobby ID to allow the client to join an existing lobby.
     document.getElementById("joinButton").addEventListener("click", () => {
       role = "client";
-      showLobby();
+      document.getElementById("lobbySelectDiv").classList.add("hidden");
+      document.getElementById("joinLobbyDiv").classList.remove("hidden");
     });
-
-    // Function to show lobby UI.
+  
+    // When a client submits a lobby ID, verify it in Firebase and add the player.
+    document.getElementById("joinLobbySubmit").addEventListener("click", () => {
+      lobbyId = document.getElementById("lobbyIdInput").value.trim();
+      if (lobbyId === "") {
+        alert("Please enter a Lobby ID!");
+        return;
+      }
+      // Check if the lobby exists.
+      database.ref("lobbies/" + lobbyId).once("value", function(snapshot) {
+        if (snapshot.exists()) {
+          // Add the player to the lobby's players list.
+          database.ref("lobbies/" + lobbyId + "/players").update({
+            [playerName]: true
+          }, function(error) {
+            if (error) {
+              alert("Error joining lobby: " + error);
+            } else {
+              showLobby();
+            }
+          });
+        } else {
+          alert("Lobby ID not found. Please check the Lobby ID and try again.");
+        }
+      });
+    });
+  
+    // Function to display the lobby UI with details.
     function showLobby() {
       document.getElementById("lobbySelectDiv").classList.add("hidden");
+      document.getElementById("joinLobbyDiv").classList.add("hidden");
       document.getElementById("lobbyDiv").classList.remove("hidden");
-      // Display information about the player
-      document.getElementById("lobbyInfo").innerText = "Logged in as: " + playerName + "\nRole: " + role;
+  
+      // Display lobby details.
+      document.getElementById("lobbyInfo").innerText =
+        "Lobby ID: " + lobbyId +
+        "\nLogged in as: " + playerName +
+        "\nRole: " + role;
+  
       // Only the host sees the Start Game button.
       if (role === "host") {
         document.getElementById("hostOptions").classList.remove("hidden");
       }
     }
-
-    // The host starts the game by clicking the start button.
-    // Here, we redirect to the game page with query parameters that include the name and role.
+  
+    // The host’s "Start Game" button will redirect to the game page.
+    // The URL carries lobbyId, playerName, and role parameters so your game file can pick them up.
     document.getElementById("startGame").addEventListener("click", () => {
-      window.location.href = "game.html?name=" + encodeURIComponent(playerName) + "&role=" + role;
-      // In a real-world scenario, you might also send a start signal to all connected clients.
+      // You could update a status field or alert the clients via Firebase here as well.
+      window.location.href = "game.html?lobbyId=" + lobbyId + "&name=" + encodeURIComponent(playerName) + "&role=" + role;
     });
   </script>
 </body>
