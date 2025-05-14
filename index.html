@@ -78,7 +78,7 @@
   </div>
 
   <script>
-    // Firebase configuration (adjust with your project details)
+    // Firebase configuration (ensure these values match your Firebase project settings)
     const firebaseConfig = {
       apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
       authDomain: "truth-b65cd.firebaseapp.com",
@@ -89,15 +89,15 @@
       appId: "1:11180463959:web:e860d37bdbf8e245e25012",
       measurementId: "G-HPYS4F4MYJ"
     };
-    
+
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-    
+
     let playerName = "";
     let role = "";
     let lobbyId = "";
-    
+
     // When the player sets their name.
     document.getElementById("setNameButton").addEventListener("click", () => {
       const nameInput = document.getElementById("playerName").value.trim();
@@ -110,7 +110,7 @@
       document.getElementById("setNameDiv").classList.add("hidden");
       document.getElementById("lobbySelectDiv").classList.remove("hidden");
     });
-    
+
     // Create Lobby – player becomes host.
     document.getElementById("createButton").addEventListener("click", () => {
       role = "host";
@@ -129,14 +129,14 @@
         }
       });
     });
-    
+
     // Join Lobby – show input for Lobby ID.
     document.getElementById("joinButton").addEventListener("click", () => {
       role = "client";
       document.getElementById("lobbySelectDiv").classList.add("hidden");
       document.getElementById("joinLobbyDiv").classList.remove("hidden");
     });
-    
+
     // Submit Lobby ID for joining.
     document.getElementById("joinLobbySubmit").addEventListener("click", () => {
       lobbyId = document.getElementById("lobbyIdInput").value.trim();
@@ -162,7 +162,7 @@
         }
       });
     });
-    
+
     function showLobby() {
       document.getElementById("lobbySelectDiv").classList.add("hidden");
       document.getElementById("joinLobbyDiv").classList.add("hidden");
@@ -175,10 +175,11 @@
         document.getElementById("hostOptions").classList.remove("hidden");
       }
     }
-    
-    // Start Game: Redirect both players to the game file in GitHub.
+
+    // Start Game: Redirect both players to the game file.
     document.getElementById("startGame").addEventListener("click", () => {
-      window.location.href = "Magic/game/game.html?lobbyId=" + lobbyId +
+      // Update the relative URL below so that it correctly points to your game page.
+      window.location.href = "./game/game.html?lobbyId=" + lobbyId +
                              "&name=" + encodeURIComponent(playerName) +
                              "&role=" + role;
     });
