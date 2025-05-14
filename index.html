@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lobby Setup</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .hidden {
+      display: none;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 1em;
+    }
+    input {
+      padding: 8px;
+      font-size: 1em;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Section for setting the player name -->
+    <div id="setNameDiv">
+      <h2>Enter Your Name</h2>
+      <input type="text" id="playerName" placeholder="Your name">
+      <button id="setNameButton">Set Name</button>
+    </div>
+
+    <!-- Section for choosing to create or join a lobby -->
+    <div id="lobbySelectDiv" class="hidden">
+      <h2>Select an Option</h2>
+      <button id="createButton">Create Lobby</button>
+      <button id="joinButton">Join Lobby</button>
+    </div>
+
+    <!-- Lobby interface. In this demo the same lobby screen is shown for host or joiner -->
+    <div id="lobbyDiv" class="hidden">
+      <h2>Lobby</h2>
+      <p id="lobbyInfo"></p>
+      <!-- This section is only visible to the host -->
+      <div id="hostOptions" class="hidden">
+        <button id="startGame">Start Game</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let playerName = "";
+    let role = "";
+
+    // When the user clicks "Set Name", verify input and then show lobby options.
+    document.getElementById("setNameButton").addEventListener("click", () => {
+      const nameInput = document.getElementById("playerName").value.trim();
+      if (nameInput === "") {
+        alert("Please enter a valid name!");
+        return;
+      }
+      playerName = nameInput;
+      // Hide the name input and show the create/join options.
+      document.getElementById("setNameDiv").classList.add("hidden");
+      document.getElementById("lobbySelectDiv").classList.remove("hidden");
+    });
+
+    // If user creates a lobby, assign the role as host and display the lobby
+    document.getElementById("createButton").addEventListener("click", () => {
+      role = "host";
+      showLobby();
+    });
+
+    // If user joins a lobby, assign the role as client and display the lobby
+    document.getElementById("joinButton").addEventListener("click", () => {
+      role = "client";
+      showLobby();
+    });
+
+    // Function to show lobby UI.
+    function showLobby() {
+      document.getElementById("lobbySelectDiv").classList.add("hidden");
+      document.getElementById("lobbyDiv").classList.remove("hidden");
+      // Display information about the player
+      document.getElementById("lobbyInfo").innerText = "Logged in as: " + playerName + "\nRole: " + role;
+      // Only the host sees the Start Game button.
+      if (role === "host") {
+        document.getElementById("hostOptions").classList.remove("hidden");
+      }
+    }
+
+    // The host starts the game by clicking the start button.
+    // Here, we redirect to the game page with query parameters that include the name and role.
+    document.getElementById("startGame").addEventListener("click", () => {
+      window.location.href = "game.html?name=" + encodeURIComponent(playerName) + "&role=" + role;
+      // In a real-world scenario, you might also send a start signal to all connected clients.
+    });
+  </script>
+</body>
+</html>
