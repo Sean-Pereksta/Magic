@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>2-Player Card Game Framework</title>
+  <style>
+    /* Global Styles */
+    body {
+      font-family: Arial, sans-serif;
+      background: #e8e8e8;
+      margin: 0;
+      padding: 20px;
+    }
+    #gameContainer {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    }
+    .hidden { display: none; }
+    .phase { margin-bottom: 20px; }
+    
+    /* Waiting overlay: Shown until two players join */
+    #waitingForPlayers {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 100;
+      border-radius: 8px;
+    }
+    
+    /* Card appearance in the hand or for draft options */
+    .card {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #f8f8f8;
+      padding: 10px;
+      width: 150px;
+      height: 120px;
+      margin: 5px;
+      display: inline-block;
+      cursor: pointer;
+      vertical-align: top;
+      overflow: auto;
+    }
+    .card.selected {
+      border: 2px solid red;
+    }
+    
+    /* Hand, status, and log areas */
+    #handSection {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #f9f9f9;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    #handCards { margin-bottom: 10px; }
+    #playerStatus, #opponentStatus {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #f9f9f9;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    #gameLog {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #f9f9f9;
+      padding: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    button { 
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 1em;
+    }
+    
+    /* Modal Styles for targeting and reaction countdown */
+    #targetModal, #reactionModal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 101;
+    }
+    #targetModalContent, #reactionContent {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+  </style>
+  
+  <!-- Firebase: Firebase App and Realtime Database -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+  <div id="gameContainer">
+  
+    <!-- Waiting Overlay (visible until two players are in the lobby) -->
+    <div id="waitingForPlayers" class="hidden">
+      <h2>Waiting for second player...</h2>
+      <p>Please wait until another player joins the lobby.</p>
+    </div>
+    
+    <!-- Phase: Class Selection -->
+    <div id="classSelection" class="phase">
+      <h2>Select Your Class</h2>
+      <button class="classButton" data-class="Ranger">Ranger<br><small>(Dex: 5, Def: 2, Mag: 2)</small></button>
+      <button class="classButton" data-class="Knight">Knight<br><small>(Dex: 3, Def: 4, Mag: 3)</small></button>
+      <button class="classButton" data-class="Sorcerer">Sorcerer<br><small>(Dex: 2, Def: 2, Mag: 5)</small></button>
+    </div>
+    
+    <!-- Phase: Card Draft (for Player 1) -->
+    <div id="cardDraft" class="phase hidden">
+      <h2>Card Draft</h2>
+      <div id="draftOptions"></div>
+    </div>
+    
+    <!-- Phase: Main Game -->
+    <div id="mainGame" class="phase hidden">
+      <h2>Main Game</h2>
+      <p id="turnDisplay"></p>
+      
+      <div id="playerStatus">
+        <p><strong>You:</strong> <span id="playerNameDisplay"></span> (Player <span id="playerNumber"></span>)</p>
+        <p><strong>Class:</strong> <span id="playerClassDisplay"></span></p>
+        <p><strong>Health:</strong> <span id="playerHealth">50</span></p>
+        <p><strong>Actions Left:</strong> <span id="actionsLeft">3</span></p>
+      </div>
+      
+      <div id="opponentStatus">
+        <p><strong>Opponent:</strong> <span id="opponentNameDisplay"></span> (Player <span id="opponentNumber"></span>)</p>
+        <p><strong>Health:</strong> <span id="opponentHealth">50</span></p>
+      </div>
+      
+      <div id="handSection">
+        <h3>Your Hand</h3>
+        <div id="handCards"></div>
+        <button id="playSelectedButton" class="hidden">Play Selected Card</button>
+      </div>
+      
+      <div id="gameLog">
+        <h3>Game Log</h3>
+        <div id="logMessages"></div>
+      </div>
+      
+      <button id="endTurnButton">End Turn</button>
+    </div>
+    
+    <!-- Modal: Target Selection (if card requires a target) -->
+    <div id="targetModal" class="hidden">
+      <div id="targetModalContent">
+        <p>Select a target:</p>
+        <button class="targetButton" data-target="self">Self</button>
+        <button class="targetButton" data-target="opponent">Opponent</button>
+      </div>
+    </div>
+    
+    <!-- Modal: Reaction Countdown -->
+    <div id="reactionModal" class="hidden">
+      <div id="reactionContent">
+        <p>React! Time left: <span id="reactionTimer">5</span> seconds</p>
+      </div>
+    </div>
+    
+  </div>
+  
+  <script>
+    /*************************************
+     * Firebase Initialization & Lobby   *
+     *************************************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
+      authDomain: "truth-b65cd.firebaseapp.com",
+      databaseURL: "https://truth-b65cd-default-rtdb.firebaseio.com",
+      projectId: "truth-b65cd",
+      storageBucket: "truth-b65cd.firebasestorage.app",
+      messagingSenderId: "11180463959",
+      appId: "1:11180463959:web:e860d37bdbf8e245e25012",
+      measurementId: "G-HPYS4F4MYJ"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    /*************************************
+     * URL Parameters & Player Assignment*
+     *************************************/
+    const urlParams = new URLSearchParams(window.location.search);
+    const lobbyId = urlParams.get('lobbyId') || "local_lobby";
+    const playerNameParam = urlParams.get('name') || "Player";
+    const playerRole = urlParams.get('role') || "host";
+    
+    // Assign player numbers: host → Player 1; client → Player 2.
+    const playerNumber = (playerRole === "host") ? 1 : 2;
+    const opponentNumber = (playerRole === "host") ? 2 : 1;
+    
+    /*************************************
+     * Game State Definition             *
+     *************************************/
+    const game = {
+      lobbyId: lobbyId,
+      player: {
+        name: playerNameParam,
+        number: playerNumber,
+        class: null,
+        stats: {},  // Will be set on class selection.
+        health: 50,
+        actionsLeft: 3,
+        hand: [],
+        cardsInPlay: []
+      },
+      opponent: {
+        name: (playerRole === "host") ? "Player 2" : "Player 1",
+        number: opponentNumber,
+        health: 50,
+        hand: [],
+        cardsInPlay: []
+      },
+      turn: 1, // Start with Player 1’s turn.
+      phase: "waiting", // Initial phase until lobby is ready.
+      deck: [],
+      cardsLibrary: [
+        {
+          id: 1,
+          name: "Fire Burst",
+          type: "spell",
+          description: "Roll d6 + Magic. If total < 8 then deal 5 damage; if 9 or more, deal 10 damage to target.",
+          requiresTarget: true,
+          action: function(player, target, callback) {
+            const roll = rollDice(6);
+            const total = roll + player.stats.magic;
+            const damage = (total < 8) ? 5 : 10;
+            logMessage(`${player.name} rolled ${roll} + Magic (${player.stats.magic}) = ${total}. Dealing ${damage} damage to ${target.name}.`);
+            target.health = Math.max(0, target.health - damage);
+            updateHealthDisplay();
+            callback();
+          }
+        },
+        {
+          id: 2,
+          name: "Healing Potion",
+          type: "potion",
+          description: "Gain 8 life.",
+          requiresTarget: false,
+          action: function(player, target, callback) {
+            player.health += 8;
+            logMessage(`${player.name} gains 8 life.`);
+            updateHealthDisplay();
+            callback();
+          }
+        },
+        {
+          id: 3,
+          name: "Mystic Draw",
+          type: "spell",
+          description: "Roll d6 + Magic. If total ≥ 9, draw 2 cards; else, draw 1 card.",
+          requiresTarget: false,
+          action: function(player, target, callback) {
+            const roll = rollDice(6);
+            const total = roll + player.stats.magic;
+            const numDraw = (total >= 9) ? 2 : 1;
+            logMessage(`${player.name} rolled ${roll} + Magic (${player.stats.magic}) = ${total}. Drawing ${numDraw} card(s).`);
+            drawCards(player, numDraw);
+            callback();
+          }
+        }
+      ]
+    };
+    
+    // Pre-defined class stats.
+    const classStats = {
+      Ranger: { dexterity: 5, defense: 2, magic: 2 },
+      Knight: { dexterity: 3, defense: 4, magic: 3 },
+      Sorcerer: { dexterity: 2, defense: 2, magic: 5 }
+    };
+    
+    let selectedCardIndex = null;
+    
+    /*************************************
+     * Firebase: Register Current Player *
+     *************************************/
+    const playersRef = database.ref("lobbies/" + lobbyId + "/players");
+    // Save current player's info under "p1" or "p2" based on their role.
+    const playerKey = (playerRole === "host") ? "p1" : "p2";
+    playersRef.child(playerKey).set({
+      name: playerNameParam,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      playerNumber: playerNumber
+    });
+    
+    /*************************************
+     * Firebase: Wait for Two Players      *
+     *************************************/
+    playersRef.on("value", snapshot => {
+      const players = snapshot.val();
+      if (players && Object.keys(players).length >= 2) {
+        // Two players present: hide waiting overlay and start game.
+        document.getElementById("waitingForPlayers").classList.add("hidden");
+        if (game.phase === "waiting") {
+          game.phase = "classSelection";
+          document.getElementById("classSelection").classList.remove("hidden");
+        }
+        // Update opponent name.
+        if (playerRole === "host" && players["p2"]) {
+          game.opponent.name = players["p2"].name;
+        } else if (playerRole === "client" && players["p1"]) {
+          game.opponent.name = players["p1"].name;
+        }
+        updatePlayerDisplays();
+      } else {
+        // Fewer than 2 players: show waiting overlay.
+        document.getElementById("waitingForPlayers").classList.remove("hidden");
+      }
+    });
+    
+    /*************************************
+     * Utility Functions                 *
+     *************************************/
+    // Shuffle an array using Fisher-Yates algorithm.
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+    
+    // Initialize game deck with multiple copies of each card.
+    function initDeck() {
+      game.deck = [];
+      game.cardsLibrary.forEach(card => {
+        for (let i = 0; i < 4; i++) {
+          game.deck.push(Object.assign({}, card));
+        }
+      });
+      shuffle(game.deck);
+    }
+    
+    // Draw one card into the given player's hand.
+    function drawCard(playerObj) {
+      if (game.deck.length === 0) {
+        logMessage("The deck is empty!");
+        return;
+      }
+      const card = game.deck.pop();
+      playerObj.hand.push(card);
+      updateHandDisplay();
+      logMessage(`${playerObj.name} drew "${card.name}".`);
+    }
+    
+    // Draw multiple cards.
+    function drawCards(playerObj, count) {
+      for (let i = 0; i < count; i++) {
+        drawCard(playerObj);
+      }
+    }
+    
+    // Rolls a dice and returns a random number between 1 and the number of sides.
+    function rollDice(sides) {
+      return Math.floor(Math.random() * sides) + 1;
+    }
+    
+    // Log a message in the game log.
+    function logMessage(msg) {
+      const logDiv = document.getElementById("logMessages");
+      const p = document.createElement("p");
+      p.innerText = msg;
+      logDiv.appendChild(p);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    
+    // Update the health displays.
+    function updateHealthDisplay() {
+      document.getElementById("playerHealth").innerText = game.player.health;
+      document.getElementById("opponentHealth").innerText = game.opponent.health;
+    }
+    
+    // Update the hand display with clickable card boxes.
+    function updateHandDisplay() {
+      const handDiv = document.getElementById("handCards");
+      handDiv.innerHTML = "";
+      game.player.hand.forEach((card, index) => {
+        const cardDiv = document.createElement("div");
+        cardDiv.className = "card";
+        cardDiv.innerHTML = `<strong>${card.name}</strong><br>${card.description}`;
+        cardDiv.onclick = () => selectCard(index, cardDiv);
+        handDiv.appendChild(cardDiv);
+      });
+    }
+    
+    // Update the player and opponent name/status displays.
+    function updatePlayerDisplays() {
+      document.getElementById("playerNameDisplay").innerText = game.player.name;
+      document.getElementById("playerNumber").innerText = game.player.number;
+      document.getElementById("opponentNameDisplay").innerText = game.opponent.name;
+      document.getElementById("opponentNumber").innerText = game.opponent.number;
+    }
+    
+    // Update the actions left.
+    function updateActionsDisplay() {
+      document.getElementById("actionsLeft").innerText = game.player.actionsLeft;
+    }
+    
+    // Update which player’s turn is displayed.
+    function updateTurnDisplay() {
+      document.getElementById("turnDisplay").innerText = "Turn: Player " + game.turn;
+    }
+    
+    /*************************************
+     * Card Selection & Playing          *
+     *************************************/
+    // When a card in the hand is clicked, highlight it and mark as selected.
+    function selectCard(index, cardDiv) {
+      [...document.querySelectorAll("#handCards .card")].forEach(c => c.classList.remove("selected"));
+      cardDiv.classList.add("selected");
+      selectedCardIndex = index;
+      document.getElementById("playSelectedButton").classList.remove("hidden");
+    }
+    
+    // When "Play Selected Card" is clicked.
+    document.getElementById("playSelectedButton").addEventListener("click", function() {
+      if (selectedCardIndex === null) {
+        logMessage("No card selected.");
+        return;
+      }
+      const card = game.player.hand[selectedCardIndex];
+      if (card.requiresTarget) {
+        showTargetModal(card, selectedCardIndex);
+      } else {
+        executeCard(card, null, selectedCardIndex);
+      }
+      selectedCardIndex = null;
+      this.classList.add("hidden");
+    });
+    
+    // Display the target selection modal.
+    function showTargetModal(card, cardIndex) {
+      document.getElementById("targetModal").classList.remove("hidden");
+      document.querySelectorAll(".targetButton").forEach(button => {
+        button.onclick = () => {
+          const targetType = button.getAttribute("data-target");
+          const target = (targetType === "self") ? game.player : game.opponent;
+          document.getElementById("targetModal").classList.add("hidden");
+          executeCard(card, target, cardIndex);
+        };
+      });
+    }
+    
+    // Execute the card’s action, remove it from hand, and deduct an action.
+    function executeCard(card, target, cardIndex) {
+      game.player.hand.splice(cardIndex, 1);
+      updateHandDisplay();
+      game.player.actionsLeft--;
+      updateActionsDisplay();
+      if (card.requiresTarget) {
+        startReactionCountdown(() => {
+          card.action(game.player, target, postCardAction);
+        });
+      } else {
+        card.action(game.player, target, postCardAction);
+      }
+    }
+    
+    // Called after a card has finished its action.
+    function postCardAction() {
+      if (game.player.actionsLeft <= 0) {
+        logMessage("No actions left. Please end your turn.");
+      }
+    }
+    
+    // Starts the reaction countdown modal (5 seconds).
+    function startReactionCountdown(callback) {
+      document.getElementById("reactionModal").classList.remove("hidden");
+      let timeLeft = 5;
+      document.getElementById("reactionTimer").innerText = timeLeft;
+      const countdown = setInterval(() => {
+        timeLeft--;
+        document.getElementById("reactionTimer").innerText = timeLeft;
+        if (timeLeft <= 0) {
+          clearInterval(countdown);
+          document.getElementById("reactionModal").classList.add("hidden");
+          callback();
+        }
+      }, 1000);
+    }
+    
+    /*************************************
+     * Turn Handling & Opponent Simulation*
+     *************************************/
+    document.getElementById("endTurnButton").addEventListener("click", () => {
+      logMessage("Ending your turn...");
+      if (game.turn === game.player.number) {
+        game.turn = (game.player.number === 1) ? 2 : 1;
+        updateTurnDisplay();
+        if (game.turn === game.player.number) {
+          game.player.actionsLeft = 3;
+          updateActionsDisplay();
+          drawCard(game.player);
+        } else {
+          simulateOpponentTurn();
+        }
+      }
+    });
+    
+    // Simple simulation of the opponent’s turn.
+    function simulateOpponentTurn() {
+      logMessage(`${game.opponent.name}'s turn...`);
+      setTimeout(() => {
+        if (game.opponent.hand.length > 0) {
+          const oppCard = game.opponent.hand.shift();
+          logMessage(`${game.opponent.name} played "${oppCard.name}" targeting you.`);
+          if (oppCard.requiresTarget) {
+            oppCard.action(game.opponent, game.player, () => {
+              logMessage(`${game.opponent.name} finished their action.`);
+            });
+          } else {
+            oppCard.action(game.opponent, null, () => {
+              logMessage(`${game.opponent.name} finished their action.`);
+            });
+          }
+        } else {
+          logMessage(`${game.opponent.name} has no cards to play.`);
+        }
+        game.turn = game.player.number;
+        logMessage("Your turn begins!");
+        updateTurnDisplay();
+        game.player.actionsLeft = 3;
+        updateActionsDisplay();
+        drawCard(game.player);
+      }, 3000);
+    }
+    
+    /*************************************
+     * Game Initialization & Phases      *
+     *************************************/
+    // Class Selection: When a class is selected, hide this phase and initialize the deck.
+    document.querySelectorAll(".classButton").forEach(button => {
+      button.addEventListener("click", function() {
+        const selectedClass = this.getAttribute("data-class");
+        game.player.class = selectedClass;
+        game.player.stats = classStats[selectedClass];
+        logMessage(`${game.player.name} selected the ${selectedClass} class. Stats – Dex: ${game.player.stats.dexterity}, Def: ${game.player.stats.defense}, Mag: ${game.player.stats.magic}.`);
+        document.getElementById("classSelection").classList.add("hidden");
+        initDeck();
+        // If Player 1, initiate card draft.
+        if (game.player.number === 1) {
+          startCardDraft();
+        } else {
+          logMessage("Waiting for card draft from Player 1...");
+          setTimeout(() => {
+            const randomCard = Object.assign({}, game.cardsLibrary[Math.floor(Math.random() * game.cardsLibrary.length)]);
+            game.player.hand.push(randomCard);
+            logMessage(`You received drafted card: "${randomCard.name}".`);
+            startMainGame();
+          }, 2000);
+        }
+      });
+    });
+    
+    // Card Draft Phase for Player 1.
+    function startCardDraft() {
+      game.phase = "draft";
+      document.getElementById("cardDraft").classList.remove("hidden");
+      const draftCards = [game.deck.pop(), game.deck.pop()];
+      displayDraftOptions(draftCards);
+    }
+    
+    // Display two draft card options.
+    function displayDraftOptions(cards) {
+      const draftDiv = document.getElementById("draftOptions");
+      draftDiv.innerHTML = "";
+      cards.forEach((card, index) => {
+        const cardOption = document.createElement("div");
+        cardOption.className = "card";
+        cardOption.innerHTML = `<strong>${card.name}</strong><br>${card.description}<br>`;
+        const chooseButton = document.createElement("button");
+        chooseButton.innerText = "Select";
+        chooseButton.onclick = () => selectDraftCard(index, cards);
+        cardOption.appendChild(document.createElement("br"));
+        cardOption.appendChild(chooseButton);
+        draftDiv.appendChild(cardOption);
+      });
+    }
+    
+    // When Player 1 selects a draft card, add it to their hand and give the other to the opponent.
+    function selectDraftCard(selectedIndex, cards) {
+      const selectedCard = cards[selectedIndex];
+      game.player.hand.push(selectedCard);
+      logMessage(`You selected drafted card: "${selectedCard.name}".`);
+      const unselectedCard = cards[1 - selectedIndex];
+      game.opponent.hand.push(unselectedCard);
+      logMessage(`Opponent receives drafted card: "${unselectedCard.name}".`);
+      drawCard(game.opponent);
+      document.getElementById("cardDraft").classList.add("hidden");
+      startMainGame();
+    }
+    
+    // Transition to the Main Game phase.
+    function startMainGame() {
+      game.phase = "game";
+      document.getElementById("mainGame").classList.remove("hidden");
+      updatePlayerDisplays();
+      updateHealthDisplay();
+      updateTurnDisplay();
+      if (game.player.hand.length === 0) {
+        drawCards(game.player, 3);
+      }
+      logMessage("Game has started. It is " + (game.turn === game.player.number ? "your" : "opponent's") + " turn.");
+    }
+  </script>
+</body>
+</html>
