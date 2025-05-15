@@ -6,9 +6,24 @@
     body { font-family: sans-serif; background: #f2f2f2; padding: 20px; }
     #game { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
     .hidden { display: none; }
-    .card { display: inline-block; background: #e0e0e0; padding: 10px; border-radius: 5px; margin: 5px; width: 150px; cursor: pointer; }
+    .card { display: inline-block; background: #e0e0e0; padding: 10px; border-radius: 5px; margin: 5px; width: 150px; cursor: pointer; position: relative; }
+    .card-type { font-size: 0.85em; color: #555; margin-top: 5px; text-align: center; }
+    .card:hover::after {
+      content: attr(data-effect);
+      position: absolute;
+      background: #333;
+      color: white;
+      padding: 5px;
+      border-radius: 5px;
+      top: -30px;
+      left: 0;
+      width: 100%;
+      font-size: 0.85em;
+      z-index: 10;
+    }
     .zone { margin-top: 10px; padding: 10px; border: 1px solid #ccc; min-height: 60px; }
     button { padding: 10px; margin: 10px; }
+    .turn-banner { font-weight: bold; font-size: 1.2em; margin-bottom: 10px; color: #007700; }
   </style>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -22,40 +37,39 @@
     <button onclick="selectClass('Knight')">Knight</button>
     <p id="classCountdown"></p>
   </div>  <div id="mainGame" class="hidden">
+    <div class="turn-banner" id="turnStatus"></div>
     <h2 id="playerLabel"></h2>
     <p>Health: <span id="healthDisplay"></span></p>
     <p>Actions Remaining: <span id="actionDisplay">3</span></p><div>
-  <h3>Hand</h3>
+  <h3>Your Hand</h3>
   <div id="handZone" class="zone"></div>
 </div>
 
 <div>
-  <h3>Items in Play</h3>
+  <h3>Your Items in Play</h3>
   <div id="itemZone" class="zone"></div>
 </div>
 
 <div>
-  <h3>Spells in Play</h3>
+  <h3>Your Spells in Play</h3>
   <div id="spellZone" class="zone"></div>
 </div>
 
 <button onclick="drawCard()">Draw Card</button>
 <button onclick="endTurn()">End Turn</button>
 
+<hr>
+<h3>Opponent Health: <span id="opponentHealth">???</span></h3>
+<h4>Opponent's Items:</h4>
+<div id="opponentItems" class="zone"></div>
+<h4>Opponent's Spells:</h4>
+<div id="opponentSpells" class="zone"></div>
+
   </div>
 </div><script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
-  authDomain: "truth-b65cd.firebaseapp.com",
-  databaseURL: "https://truth-b65cd-default-rtdb.firebaseio.com",
-  projectId: "truth-b65cd",
-  storageBucket: "truth-b65cd.appspot.com",
-  messagingSenderId: "11180463959",
-  appId: "1:11180463959:web:e860d37bdbf8e245e25012"
-};
+const firebaseConfig = { /* your Firebase config */ };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-
 const urlParams = new URLSearchParams(window.location.search);
 const lobbyId = urlParams.get("lobbyId");
 const playerName = urlParams.get("name");
@@ -63,7 +77,6 @@ const playerRole = urlParams.get("role");
 const playerPath = `lobbies/${lobbyId}/players/${playerName}`;
 
 let opponent = null;
-
 let player = {
   name: playerName,
   class: null,
@@ -84,120 +97,112 @@ const classStats = {
 
 const cardPool = [
   { name: "Dex Strike", type: "item", effect: "deal", target: "opponent", value: "dexterity + d6" },
-  { name: "Magic Drain", type: "spell", effect: "discard", target: "target", value: "roll d6 + magic < 5 ? 1 : 2" },
+  { name: "Magic Drain", type: "spell", effect: "discard", target: "self", value: "roll d6 + magic < 5 ? 1 : 2" },
   { name: "Healing Potion", type: "potion", effect: "heal", target: "self", value: 5 },
   { name: "Steal Card", type: "item", effect: "steal", target: "target", value: 1 },
-  { name: "Arrow Volley", type: "item", effect: "deal", target: "all", value: "dexterity + d6" },
-  { name: "Mana Surge", type: "spell", effect: "heal", target: "self", value: "magic + d6" },
-  { name: "Shield Bash", type: "item", effect: "deal", target: "opponent", value: "defense + d6" },
-  { name: "Burning Words", type: "spell", effect: "deal", target: "opponent", value: "magic + d6" },
-  { name: "Barrier Ward", type: "spell", effect: "heal", target: "self", value: "defense" },
-  { name: "Reckless Swing", type: "item", effect: "deal", target: "opponent", value: "dexterity + d6 - 2" }
+  { name: "Sacrifice Blade", type: "item", effect: "sacrifice", target: "item", value: 1 },
+  { name: "Memory Fog", type: "spell", effect: "discard", target: "self", value: 2 }
 ];
 
-let turnTimer = 20;
-const classTimer = setInterval(() => {
-  document.getElementById("classCountdown").textContent = `Auto-assigning class in ${turnTimer--} seconds...`;
-  if (turnTimer < 0) {
+let classTimer = setInterval(() => {
+  const el = document.getElementById("classCountdown");
+  if (!el.dataset.count) el.dataset.count = 20;
+  el.textContent = `Auto-assigning class in ${el.dataset.count--} seconds...`;
+  if (el.dataset.count < 0) {
     selectClass("Knight");
     clearInterval(classTimer);
   }
 }, 1000);
 
-function selectClass(selected) {
-  player.class = selected;
-  player.stats = classStats[selected];
+function selectClass(c) {
+  player.class = c;
+  player.stats = classStats[c];
   document.getElementById("setupPhase").classList.add("hidden");
   document.getElementById("mainGame").classList.remove("hidden");
-  document.getElementById("playerLabel").textContent = `Class: ${selected}`;
-  document.getElementById("healthDisplay").textContent = player.health;
+  document.getElementById("playerLabel").textContent = `Class: ${c}`;
   drawCard(playerRole === "host" ? 1 : 2);
   syncPlayer();
   listenForChanges();
 }
 
-function syncPlayer() {
-  db.ref(playerPath).set(player);
-}
+function syncPlayer() { db.ref(playerPath).set(player); }
 
 function listenForChanges() {
-  db.ref(`lobbies/${lobbyId}/players`).on("value", snapshot => {
-    const players = snapshot.val();
-    const opponentName = Object.keys(players).find(n => n !== player.name);
-    if (!opponentName) return;
-    opponent = players[opponentName];
+  db.ref(`lobbies/${lobbyId}/players`).on("value", snap => {
+    const players = snap.val();
+    const oppName = Object.keys(players).find(n => n !== player.name);
+    if (!oppName) return;
+    opponent = players[oppName];
     if (!player.isTurn && opponent.isTurn) {
-      alert("Your turn!");
       player.isTurn = true;
       player.actions = 3;
-      updateUI();
+      alert("Your turn!");
     }
+    updateUI();
   });
 }
 
 function drawCard(n = 1) {
   if (!player.isTurn || player.actions <= 0) return;
   for (let i = 0; i < n; i++) {
-    const card = JSON.parse(JSON.stringify(cardPool[Math.floor(Math.random() * cardPool.length)]));
-    player.hand.push(card);
+    const c = JSON.parse(JSON.stringify(cardPool[Math.floor(Math.random() * cardPool.length)]));
+    player.hand.push(c);
   }
   player.actions--;
   syncPlayer();
   updateUI();
 }
 
-function playCard(index) {
-  if (!player.isTurn || player.actions <= 0) return;
-  const card = player.hand.splice(index, 1)[0];
-  const zone = card.type === "spell" ? player.spells : player.items;
-  if (card.type !== "potion" && zone.length >= 3) {
-    const removeIndex = prompt(`You have 3 ${card.type}s. Enter index (0-2) of a card to replace:`);
-    if (removeIndex === null || isNaN(removeIndex) || removeIndex < 0 || removeIndex > 2) return;
-    zone.splice(removeIndex, 1);
+function discardCards(n) {
+  for (let i = 0; i < n && player.hand.length > 0; i++) {
+    const d = prompt(`Choose card to discard (0-${player.hand.length - 1})`);
+    if (d !== null) player.hand.splice(Number(d), 1);
   }
-  if (card.type === "potion") applyEffect(card);
-  else zone.push(card);
-  applyEffect(card);
-  player.actions--;
-  syncPlayer();
-  updateUI();
+}
+
+function sacrificeCard(zoneName) {
+  const zone = zoneName === "item" ? player.items : player.spells;
+  if (zone.length === 0) return;
+  const index = prompt(`Choose ${zoneName} to sacrifice (0-${zone.length - 1})`);
+  if (index !== null) zone.splice(Number(index), 1);
 }
 
 function applyEffect(card) {
   let d6 = Math.ceil(Math.random() * 6);
   let raw = 0;
-  switch(card.value) {
+  switch (card.value) {
     case "dexterity + d6": raw = player.stats.dexterity + d6; break;
     case "magic + d6": raw = player.stats.magic + d6; break;
-    case "defense + d6": raw = player.stats.defense + d6; break;
-    case "dexterity + d6 - 2": raw = player.stats.dexterity + d6 - 2; break;
-    case "roll d6 + magic < 5 ? 1 : 2":
-      raw = player.stats.magic + d6;
-      alert(`Rolled ${d6} + Magic (${player.stats.magic}) = ${raw}`);
-      raw = raw < 5 ? 1 : 2;
-      break;
-    default:
-      raw = typeof card.value === "number" ? card.value : 0;
+    case "roll d6 + magic < 5 ? 1 : 2": raw = player.stats.magic + d6 < 5 ? 1 : 2; break;
+    default: raw = Number(card.value);
   }
-
-  let adjusted = raw;
   if (card.effect === "deal" && opponent) {
-    const def = classStats[opponent.class]?.defense || 0;
-    adjusted = Math.max(0, raw - def);
-    alert(`${card.name} dealt ${adjusted} damage after reducing ${def} defense.`);
-    opponent.health -= adjusted;
+    let def = classStats[opponent.class]?.defense || 0;
+    const dmg = Math.max(0, raw - def);
+    opponent.health -= dmg;
     db.ref(`lobbies/${lobbyId}/players/${opponent.name}`).update({ health: opponent.health });
-  }
-  else if (card.effect === "heal") {
-    player.health += adjusted;
-  }
-  else if (card.effect === "discard") {
-    alert(`Target discards ${adjusted} card(s).`);
-  }
-  else if (card.effect === "steal") {
-    alert(`You steal ${adjusted} card(s).`);
-  }
+    alert(`${card.name} dealt ${dmg} damage.`);
+  } else if (card.effect === "heal") player.health += raw;
+  else if (card.effect === "discard") discardCards(raw);
+  else if (card.effect === "sacrifice") sacrificeCard(card.target);
   syncPlayer();
+}
+
+function playCard(index) {
+  const card = player.hand[index];
+  if (!player.isTurn && card.type !== "potion") return;
+  if (player.actions <= 0) return;
+  const played = player.hand.splice(index, 1)[0];
+  const zone = played.type === "spell" ? player.spells : player.items;
+  if (played.type !== "potion" && zone.length >= 3) {
+    const r = prompt(`Replace which ${played.type}? (0-2)`);
+    if (r !== null) zone.splice(Number(r), 1);
+  }
+  if (played.type !== "potion") zone.push(played);
+  applyEffect(played);
+  player.actions--;
+  syncPlayer();
+  updateUI();
 }
 
 function endTurn() {
@@ -208,11 +213,19 @@ function endTurn() {
 }
 
 function updateUI() {
-  document.getElementById("handZone").innerHTML = player.hand.map((card, i) => `<div class='card' onclick='playCard(${i})'>${card.name}</div>`).join('');
-  document.getElementById("itemZone").innerHTML = player.items.map(card => `<div class='card'>${card.name}</div>`).join('');
-  document.getElementById("spellZone").innerHTML = player.spells.map(card => `<div class='card'>${card.name}</div>`).join('');
+  document.getElementById("turnStatus").textContent = player.isTurn ? "Your Turn" : "Opponent's Turn";
   document.getElementById("actionDisplay").textContent = player.actions;
   document.getElementById("healthDisplay").textContent = player.health;
+  document.getElementById("handZone").innerHTML = player.hand.map((c, i) => `
+    <div class='card' onclick='${player.isTurn || c.type === "potion" ? `playCard(${i})` : ``}' data-effect='${c.effect} ${c.target} ${c.value}'>
+      ${c.name}<div class='card-type'>${c.type}</div></div>`).join('');
+  document.getElementById("itemZone").innerHTML = player.items.map(c => `<div class='card' data-effect='${c.effect}'>${c.name}<div class='card-type'>${c.type}</div></div>`).join('');
+  document.getElementById("spellZone").innerHTML = player.spells.map(c => `<div class='card' data-effect='${c.effect}'>${c.name}<div class='card-type'>${c.type}</div></div>`).join('');
+  if (opponent) {
+    document.getElementById("opponentHealth").textContent = opponent.health;
+    document.getElementById("opponentItems").innerHTML = (opponent.items || []).map(c => `<div class='card'>${c.name}<div class='card-type'>${c.type}</div></div>`).join('');
+    document.getElementById("opponentSpells").innerHTML = (opponent.spells || []).map(c => `<div class='card'>${c.name}<div class='card-type'>${c.type}</div></div>`).join('');
+  }
 }
 </script></body>
 </html>
