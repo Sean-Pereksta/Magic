@@ -1,17 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Lobby Setup</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #e8e8e8;
-      margin: 0;
       padding: 20px;
     }
     .container {
-      max-width: 600px;
+      max-width: 700px;
       margin: auto;
       background: #fff;
       padding: 20px;
@@ -21,15 +20,17 @@
     .hidden {
       display: none;
     }
-    input {
+    input, button {
       padding: 8px;
       font-size: 1em;
-      margin-right: 10px;
-    }
-    button {
       margin: 5px;
-      padding: 10px 20px;
-      font-size: 1em;
+    }
+    .lobby-item {
+      padding: 10px;
+      background: #f4f4f4;
+      border-radius: 5px;
+      margin: 5px 0;
+      cursor: pointer;
     }
     pre {
       background: #f4f4f4;
@@ -38,39 +39,26 @@
       overflow-x: auto;
     }
   </style>
-  <!-- Firebase App (the core Firebase SDK) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <!-- Firebase Realtime Database -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
   <div class="container">
-    <!-- Set Name Section -->
     <div id="setNameDiv">
       <h2>Enter Your Name</h2>
       <input type="text" id="playerName" placeholder="Your name">
       <button id="setNameButton">Set Name</button>
     </div>
 
-    <!-- Lobby Options: Create or Join -->
     <div id="lobbySelectDiv" class="hidden">
-      <h2>Select an Option</h2>
-      <button id="createButton">Create Lobby</button>
-      <button id="joinButton">Join Lobby</button>
+      <h2>Available Lobbies</h2>
+      <button id="createButton">Create New Lobby</button>
+      <div id="lobbyList"></div>
     </div>
 
-    <!-- Join Lobby Input -->
-    <div id="joinLobbyDiv" class="hidden">
-      <h2>Enter Lobby ID</h2>
-      <input type="text" id="lobbyIdInput" placeholder="Lobby ID">
-      <button id="joinLobbySubmit">Join Lobby</button>
-    </div>
-
-    <!-- Lobby View -->
     <div id="lobbyDiv" class="hidden">
       <h2>Lobby</h2>
       <pre id="lobbyInfo"></pre>
-      <!-- Only Host sees the Start Game button -->
       <div id="hostOptions" class="hidden">
         <button id="startGame">Start Game</button>
       </div>
@@ -78,111 +66,108 @@
   </div>
 
   <script>
-    // Firebase configuration (ensure these values match your Firebase project settings)
     const firebaseConfig = {
       apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
       authDomain: "truth-b65cd.firebaseapp.com",
       databaseURL: "https://truth-b65cd-default-rtdb.firebaseio.com",
       projectId: "truth-b65cd",
-      storageBucket: "truth-b65cd.firebasestorage.app",
+      storageBucket: "truth-b65cd.appspot.com",
       messagingSenderId: "11180463959",
-      appId: "1:11180463959:web:e860d37bdbf8e245e25012",
-      measurementId: "G-HPYS4F4MYJ"
+      appId: "1:11180463959:web:e860d37bdbf8e245e25012"
     };
-
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    const db = firebase.database();
 
     let playerName = "";
     let role = "";
     let lobbyId = "";
 
-    // When the player sets their name.
-    document.getElementById("setNameButton").addEventListener("click", () => {
-      const nameInput = document.getElementById("playerName").value.trim();
-      if (nameInput === "") {
-        alert("Please enter a valid name!");
-        return;
-      }
-      playerName = nameInput;
-      // Proceed to lobby options.
+    const setNameButton = document.getElementById("setNameButton");
+    const createButton = document.getElementById("createButton");
+    const startGameButton = document.getElementById("startGame");
+    const lobbyInfo = document.getElementById("lobbyInfo");
+    const lobbyList = document.getElementById("lobbyList");
+
+    setNameButton.onclick = () => {
+      const name = document.getElementById("playerName").value.trim();
+      if (!name) return alert("Please enter a name");
+      playerName = name;
       document.getElementById("setNameDiv").classList.add("hidden");
       document.getElementById("lobbySelectDiv").classList.remove("hidden");
-    });
+      loadAvailableLobbies();
+    };
 
-    // Create Lobby – player becomes host.
-    document.getElementById("createButton").addEventListener("click", () => {
+    createButton.onclick = () => {
       role = "host";
-      // Create a new lobby in Firebase.
-      let newLobbyRef = database.ref("lobbies").push();
-      lobbyId = newLobbyRef.key;
-      newLobbyRef.set({
+      const newLobby = db.ref("lobbies").push();
+      lobbyId = newLobby.key;
+      newLobby.set({
         host: playerName,
         created: firebase.database.ServerValue.TIMESTAMP,
+        gameStarted: false,
         players: { [playerName]: true }
-      }, function(error) {
-        if (error) {
-          alert("Error creating lobby: " + error);
-        } else {
-          showLobby();
-        }
       });
-    });
+      enterLobby();
+    };
 
-    // Join Lobby – show input for Lobby ID.
-    document.getElementById("joinButton").addEventListener("click", () => {
+    function loadAvailableLobbies() {
+      db.ref("lobbies").on("value", snapshot => {
+        lobbyList.innerHTML = "";
+        snapshot.forEach(lobbySnap => {
+          const lobby = lobbySnap.val();
+          if (!lobby.gameStarted) {
+            const li = document.createElement("div");
+            li.className = "lobby-item";
+            const playerCount = lobby.players ? Object.keys(lobby.players).length : 0;
+            li.textContent = `Lobby: ${lobbySnap.key} | Host: ${lobby.host} | Players: ${playerCount}`;
+            li.onclick = () => joinLobby(lobbySnap.key);
+            lobbyList.appendChild(li);
+          }
+        });
+      });
+    }
+
+    function joinLobby(id) {
       role = "client";
-      document.getElementById("lobbySelectDiv").classList.add("hidden");
-      document.getElementById("joinLobbyDiv").classList.remove("hidden");
-    });
-
-    // Submit Lobby ID for joining.
-    document.getElementById("joinLobbySubmit").addEventListener("click", () => {
-      lobbyId = document.getElementById("lobbyIdInput").value.trim();
-      if (lobbyId === "") {
-        alert("Please enter a Lobby ID!");
-        return;
-      }
-      // Verify that the lobby exists.
-      database.ref("lobbies/" + lobbyId).once("value", function(snapshot) {
-        if (snapshot.exists()) {
-          // Add the player to the lobby in Firebase.
-          database.ref("lobbies/" + lobbyId + "/players").update({
-            [playerName]: true
-          }, function(error) {
-            if (error) {
-              alert("Error joining lobby: " + error);
-            } else {
-              showLobby();
-            }
-          });
+      lobbyId = id;
+      const lobbyRef = db.ref(`lobbies/${lobbyId}`);
+      lobbyRef.child("players").once("value", snap => {
+        const count = snap.numChildren();
+        if (count >= 2) {
+          alert("Lobby full!");
         } else {
-          alert("Lobby ID not found. Please check and try again.");
+          lobbyRef.child("players").update({ [playerName]: true });
+          enterLobby();
         }
       });
-    });
+    }
 
-    function showLobby() {
+    function enterLobby() {
       document.getElementById("lobbySelectDiv").classList.add("hidden");
-      document.getElementById("joinLobbyDiv").classList.add("hidden");
       document.getElementById("lobbyDiv").classList.remove("hidden");
-      // Display the lobby info.
-      document.getElementById("lobbyInfo").innerText =
-        "Lobby ID: " + lobbyId + "\nName: " + playerName + "\nRole: " + role;
-      // Only Host should see the Start Game button.
+
+      const playersRef = db.ref(`lobbies/${lobbyId}/players`);
+      playersRef.on("value", snap => {
+        const players = Object.keys(snap.val() || {}).join(", ");
+        lobbyInfo.innerText = `Lobby ID: ${lobbyId}\nPlayers: ${players}\nRole: ${role}`;
+      });
+
+      // Listen for game start if client
+      db.ref(`lobbies/${lobbyId}/gameStarted`).on("value", snap => {
+        if (snap.val() === true) {
+          window.location.href = `./game/game.html?lobbyId=${lobbyId}&name=${encodeURIComponent(playerName)}&role=${role}`;
+        }
+      });
+
+      // Show Start Game if host
       if (role === "host") {
         document.getElementById("hostOptions").classList.remove("hidden");
       }
     }
 
-    // Start Game: Redirect both players to the game file.
-    document.getElementById("startGame").addEventListener("click", () => {
-      // Update the relative URL below so that it correctly points to your game page.
-      window.location.href = "./game/game.html?lobbyId=" + lobbyId +
-                             "&name=" + encodeURIComponent(playerName) +
-                             "&role=" + role;
-    });
+    startGameButton.onclick = () => {
+      db.ref(`lobbies/${lobbyId}`).update({ gameStarted: true });
+    };
   </script>
 </body>
 </html>
