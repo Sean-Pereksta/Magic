@@ -2,33 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
- <title>🕹️ Multiplayer Lobby</title>
+  <title>🕹️ Multiplayer Lobby</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; margin: 0; padding: 20px; }
     .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
-    input, button, select { margin: 10px; padding: 10px; font-size: 1em; }
-    #lobbyList { margin-top: 20px; }
-    #lobbyPlayers { margin-top: 20px; }
+    input, button { margin: 10px; padding: 10px; font-size: 1em; }
+    #lobbyList, #lobbyPlayers { margin-top: 20px; }
     #startBtn { margin-top: 10px; display: none; }
   </style>
-  
 </head>
 <body>
   <div class="container">
     <div id="loginForm">
-      <title>🕹️ Multiplayer Lobby</title>
       <input type="text" id="username" placeholder="Username" /><br>
       <input type="password" id="password" placeholder="Password" /><br>
       <button onclick="login()">Login</button>
       <p id="error"></p>
     </div>
+
     <div id="lobbyInterface" style="display:none">
       <div>
         <h2>Start Lobby</h2>
         <input type="text" id="lobbyName" placeholder="Lobby Name" />
-        <select id="gameType">
-       <option value="cat">Cat n Mouse</option>
-      </select>
         <button onclick="startLobby()">Start Lobby</button>
       </div>
       <div id="lobbyList"></div>
@@ -36,209 +31,195 @@
       <button id="startBtn" onclick="startGame()">🚀 Start Game</button>
       <button onclick="leaveLobby()">❌ Leave Lobby</button>
     </div>
+
     <div id="winsLeaderboard">
-  <h3>🏆 Top Players</h3>
-  <div id="leaderboardEntries"></div>
+      <h3>🏆 Top Players</h3>
+      <div id="leaderboardEntries"></div>
     </div>
   </div>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, query, where, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-    authDomain: "bible-game-246c0.firebaseapp.com",
-    projectId: "bible-game-246c0",
-    storageBucket: "bible-game-246c0.appspot.com",
-    messagingSenderId: "959619818996",
-    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-  };
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, query, where, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
 
-const urlParams = new URLSearchParams(window.location.search);
-const autoUsername = urlParams.get("username");
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-let username = autoUsername ? autoUsername.trim() : "";
-let currentLobbyId = null;
-let isHost = false;
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoUsername = urlParams.get("username");
 
-if (username) {
-  autoLogin(username);
-}
+    let username = autoUsername ? autoUsername.trim() : "";
+    let currentLobbyId = null;
+    let isHost = false;
 
-
-  async function login() {
-    username = document.getElementById("username").value.trim();
-    const password = document.getElementById("password").value.trim();
-    const userRef = doc(db, "users", username);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists() || userSnap.data().password !== password) {
-      showError("❌ Invalid login.");
-      return;
+    if (username) {
+      autoLogin(username);
     }
-    document.getElementById("loginForm").style.display = "none";
-    document.getElementById("lobbyInterface").style.display = "block";
-    loadLobbies();
-    loadLeaderboard();
-    setInterval(loadLobbies, 5000);
-  }
 
-  async function startLobby() {
-    const name = document.getElementById("lobbyName").value.trim();
-    const gameType = document.getElementById("gameType").value;
-    if (!name || !gameType) {
-      showError("Please fill out all lobby fields.");
-      return;
-    }
-    const lobby = await addDoc(collection(db, "lobbies"), {
-      name, gameType, status: "waiting", players: [username], host: username
-    });
-    currentLobbyId = lobby.id;
-    isHost = true;
-    listenToLobby();
-  }
-
-  async function loadLobbies() {
-    const q = query(collection(db, "lobbies"), where("status", "==", "waiting"));
-    const snap = await getDocs(q);
-    const list = document.getElementById("lobbyList");
-    list.innerHTML = "<h3>Available Lobbies</h3>";
-    snap.forEach(docSnap => {
-      const data = docSnap.data();
-      const div = document.createElement("div");
-     let modeLabel = {
-        "7rounds": "7 Rounds",
-        "rapid": "Rapid",
-        "draft": "Draft"
-      }[data.gameType] || data.gameType;
-      
-      div.innerHTML = `<strong>${data.name}</strong> — <em>${modeLabel}</em> (${data.players.length} players)
-        <button onclick="joinLobby('${docSnap.id}')">Join</button>`;
-      list.appendChild(div);
-    });
-  }
-
-  async function joinLobby(id) {
-    const ref = doc(db, "lobbies", id);
-    const snap = await getDoc(ref);
-    const data = snap.data();
-    if (!data.players.includes(username)) {
-      await updateDoc(ref, { players: [...data.players, username] });
-    }
-    currentLobbyId = id;
-    isHost = false;
-    listenToLobby();
-  }
-async function loadLeaderboard() {
-  const q = query(collection(db, "users"));
-  const snapshot = await getDocs(q);
-  const leaderboard = [];
-
-  snapshot.forEach(docSnap => {
-    const data = docSnap.data();
-    leaderboard.push({
-      name: docSnap.id,
-      wins: data.wins || 0
-    });
-  });
-
-  // Sort by wins descending
-  leaderboard.sort((a, b) => b.wins - a.wins);
-
-  const leaderboardDiv = document.getElementById("leaderboardEntries");
-  leaderboardDiv.innerHTML = "";
-
-  leaderboard.slice(0, 5).forEach((entry, index) => {
-    const div = document.createElement("div");
-    div.innerHTML = `${index + 1}. <strong>${entry.name}</strong> — 🏆 ${entry.wins} wins`;
-    leaderboardDiv.appendChild(div);
-  });
-}
-  async function autoLogin(name) {
-    console.log("🔐 Attempting auto-login with username:", name);
-  const userRef = doc(db, "users", name);
-  const userSnap = await getDoc(userRef);
-
-  if (!userSnap.exists()) {
-    document.getElementById("error").innerText = "❌ Username not found in system.";
-    return;
-  }
-
-  document.getElementById("loginForm").style.display = "none";
-  document.getElementById("lobbyInterface").style.display = "block";
-  loadLobbies();
-  loadLeaderboard();
-  setInterval(loadLobbies, 5000);
-}
-
- function listenToLobby() {
-  const ref = doc(db, "lobbies", currentLobbyId);
-  onSnapshot(ref, async (docSnap) => {
-    const data = docSnap.data();
-    document.getElementById("lobbyPlayers").innerHTML = `<h3>Lobby: ${data.name}</h3>`;
-
-    // Show each player with their rank color
-    for (const player of data.players) {
-      const userRef = doc(db, "users", player);
+    async function login() {
+      username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const userRef = doc(db, "users", username);
       const userSnap = await getDoc(userRef);
-      let wins = 0;
-      if (userSnap.exists()) wins = userSnap.data().wins || 0;
-
-      let color = "#cd7f32"; // bronze default
-      if (wins >= 5 && wins < 10) color = "#c0c0c0";     // silver
-      else if (wins >= 10 && wins < 15) color = "#ffd700"; // gold
-      else if (wins >= 15 && wins < 25) color = "#007bff"; // blue
-      else if (wins >= 25) color = "#dc3545";             // red
-
-      const div = document.createElement("div");
-      div.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${color};border-radius:50%;margin-right:8px;"></span>${player}`;
-      document.getElementById("lobbyPlayers").appendChild(div);
+      if (!userSnap.exists() || userSnap.data().password !== password) {
+        showError("❌ Invalid login.");
+        return;
+      }
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("lobbyInterface").style.display = "block";
+      loadLobbies();
+      loadLeaderboard();
+      setInterval(loadLobbies, 5000);
     }
 
-    if (data.host === username) {
-      document.getElementById("startBtn").style.display = "inline-block";
+    async function autoLogin(name) {
+      console.log("🔐 Attempting auto-login with username:", name);
+      const userRef = doc(db, "users", name);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        showError("❌ Username not found in system.");
+        return;
+      }
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("lobbyInterface").style.display = "block";
+      loadLobbies();
+      loadLeaderboard();
+      setInterval(loadLobbies, 5000);
     }
 
-    if (data.status === "started") {
-      let gameFile = "game-7rounds.html";
-      if (data.gameType === "rapid") gameFile = "rapid.html";
-      else if (data.gameType === "draft") gameFile = "draft.html";
-      else if (data.gameType === "10rounds") gameFile = "game-10rounds.html"; // fallback
-       else if (data.gameType === "cat") gameFile = "catandmouse.html"; // fallback
-      document.getElementById("contentFrame").src = `/game/${gameFile}?gameId=${currentLobbyId}&username=${username}`;
-
+    async function startLobby() {
+      const name = document.getElementById("lobbyName").value.trim();
+      if (!name) {
+        showError("Please enter a lobby name.");
+        return;
+      }
+      const lobby = await addDoc(collection(db, "lobbies"), {
+        name,
+        gameType: "cat", // hardcoded
+        status: "waiting",
+        players: [username],
+        host: username
+      });
+      currentLobbyId = lobby.id;
+      isHost = true;
+      listenToLobby();
     }
-  });
-}
 
-  async function startGame() {
-    const ref = doc(db, "lobbies", currentLobbyId);
-    await updateDoc(ref, { status: "started" });
-  }
+    async function loadLobbies() {
+      const q = query(collection(db, "lobbies"), where("status", "==", "waiting"));
+      const snap = await getDocs(q);
+      const list = document.getElementById("lobbyList");
+      list.innerHTML = "<h3>Available Lobbies</h3>";
+      snap.forEach(docSnap => {
+        const data = docSnap.data();
+        const div = document.createElement("div");
+        div.innerHTML = `<strong>${data.name}</strong> — (${data.players.length} players)
+          <button onclick="joinLobby('${docSnap.id}')">Join</button>`;
+        list.appendChild(div);
+      });
+    }
 
-  async function leaveLobby() {
-    const ref = doc(db, "lobbies", currentLobbyId);
-    const snap = await getDoc(ref);
-    const players = snap.data().players.filter(p => p !== username);
-    await updateDoc(ref, { players });
-    currentLobbyId = null;
-    isHost = false;
-    document.getElementById("lobbyPlayers").innerHTML = "";
-  }
+    async function joinLobby(id) {
+      const ref = doc(db, "lobbies", id);
+      const snap = await getDoc(ref);
+      const data = snap.data();
+      if (!data.players.includes(username)) {
+        await updateDoc(ref, { players: [...data.players, username] });
+      }
+      currentLobbyId = id;
+      isHost = false;
+      listenToLobby();
+    }
 
-  function showError(msg) {
-    const e = document.getElementById("error");
-    e.innerText = msg;
-    e.style.color = "red";
-  }
+    function listenToLobby() {
+      const ref = doc(db, "lobbies", currentLobbyId);
+      onSnapshot(ref, async (docSnap) => {
+        const data = docSnap.data();
+        document.getElementById("lobbyPlayers").innerHTML = `<h3>Lobby: ${data.name}</h3>`;
 
-  window.login = login;
-  window.startLobby = startLobby;
-  window.joinLobby = joinLobby;
-  window.startGame = startGame;
-  window.leaveLobby = leaveLobby;
-</script>
+        for (const player of data.players) {
+          const userRef = doc(db, "users", player);
+          const userSnap = await getDoc(userRef);
+          let wins = userSnap.exists() ? userSnap.data().wins || 0 : 0;
+
+          let color = "#cd7f32"; // bronze
+          if (wins >= 5 && wins < 10) color = "#c0c0c0";
+          else if (wins >= 10 && wins < 15) color = "#ffd700";
+          else if (wins >= 15 && wins < 25) color = "#007bff";
+          else if (wins >= 25) color = "#dc3545";
+
+          const div = document.createElement("div");
+          div.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${color};border-radius:50%;margin-right:8px;"></span>${player}`;
+          document.getElementById("lobbyPlayers").appendChild(div);
+        }
+
+        if (data.host === username) {
+          document.getElementById("startBtn").style.display = "inline-block";
+        }
+
+        if (data.status === "started") {
+          window.location.href = `/game/catandmouse.html?gameId=${currentLobbyId}&username=${username}`;
+        }
+      });
+    }
+
+    async function startGame() {
+      const ref = doc(db, "lobbies", currentLobbyId);
+      await updateDoc(ref, { status: "started" });
+    }
+
+    async function leaveLobby() {
+      const ref = doc(db, "lobbies", currentLobbyId);
+      const snap = await getDoc(ref);
+      const players = snap.data().players.filter(p => p !== username);
+      await updateDoc(ref, { players });
+      currentLobbyId = null;
+      isHost = false;
+      document.getElementById("lobbyPlayers").innerHTML = "";
+    }
+
+    async function loadLeaderboard() {
+      const q = query(collection(db, "users"));
+      const snapshot = await getDocs(q);
+      const leaderboard = [];
+
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        leaderboard.push({ name: docSnap.id, wins: data.wins || 0 });
+      });
+
+      leaderboard.sort((a, b) => b.wins - a.wins);
+      const leaderboardDiv = document.getElementById("leaderboardEntries");
+      leaderboardDiv.innerHTML = "";
+
+      leaderboard.slice(0, 5).forEach((entry, index) => {
+        const div = document.createElement("div");
+        div.innerHTML = `${index + 1}. <strong>${entry.name}</strong> — 🏆 ${entry.wins} wins`;
+        leaderboardDiv.appendChild(div);
+      });
+    }
+
+    function showError(msg) {
+      const e = document.getElementById("error");
+      e.innerText = msg;
+      e.style.color = "red";
+    }
+
+    window.login = login;
+    window.startLobby = startLobby;
+    window.joinLobby = joinLobby;
+    window.startGame = startGame;
+    window.leaveLobby = leaveLobby;
+  </script>
 </body>
 </html>
+
