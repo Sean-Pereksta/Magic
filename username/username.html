@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🔑 Create Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    input, button {
+      margin: 10px;
+      padding: 10px;
+      font-size: 1em;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.createAccount = async function () {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const confirm = document.getElementById("confirm").value;
+      const message = document.getElementById("message");
+
+      if (!username || !password || !confirm) {
+        message.innerText = "⚠️ Please fill in all fields.";
+        return;
+      }
+      if (password !== confirm) {
+        message.innerText = "❌ Passwords do not match.";
+        return;
+      }
+
+      try {
+        const userRef = doc(db, "users", username);
+        const existing = await getDoc(userRef);
+        if (existing.exists()) {
+          message.innerText = "❌ Username already exists.";
+          return;
+        }
+
+        await setDoc(userRef, {
+          username: username,
+          password: password,
+          wins: 0
+        });
+
+        message.innerText = `✅ Account "${username}" created!`;
+        document.getElementById("username").value = "";
+        document.getElementById("password").value = "";
+        document.getElementById("confirm").value = "";
+      } catch (e) {
+        console.error("Error creating account:", e);
+        message.innerText = "❌ Error creating account.";
+      }
+    };
+  </script>
+</head>
+<body>
+  <h1>🔑 Create an Account</h1>
+  <input type="text" id="username" placeholder="Username" /><br>
+  <input type="password" id="password" placeholder="Password" /><br>
+  <input type="password" id="confirm" placeholder="Confirm Password" /><br>
+  <button onclick="createAccount()">Create Account</button>
+  <p id="message"></p>
+</body>
+</html>
