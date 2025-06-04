@@ -34,6 +34,22 @@
     position: relative;
     z-index: 0;
   }
+  #gridWrapper {
+  width: 400px;  /* 20 columns * 20px each */
+  height: 400px; /* 20 rows * 20px each */
+  border: 3px solid black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  background: #eaeaea;
+}
+
+#grid {
+  display: grid;
+  /* These will still be set dynamically */
+}
+
 
   .cell {
     width: 20px;
@@ -179,7 +195,10 @@
 
   <!-- 🎮 Main Game Grid + Controls -->
   <div>
-    <div id="grid"></div>
+    <div id="gridWrapper">
+  <div id="grid"></div>
+</div>
+
 
   <!-- 📱 Mobile Controls -->
 <div id="mobileControls" style="margin-top: 20px; display: none;">
@@ -360,16 +379,16 @@ function renderGrid() {
   const viewport = document.getElementById("grid");
   viewport.innerHTML = ""; // Clear old cells
 
+  // Force grid to always be 20x20 visual size
+  viewport.style.gridTemplateColumns = `repeat(${viewSize}, 20px)`;
+  viewport.style.gridTemplateRows = `repeat(${viewSize}, 20px)`;
+  viewport.style.width = "400px";
+  viewport.style.height = "400px";
+
   const centerX = playerPos.x;
   const centerY = playerPos.y;
-
-  const startX = Math.max(0, centerX - halfView);
-  const endX = Math.min(gridSize, centerX + halfView + 1);
-  const startY = Math.max(0, centerY - halfView);
-  const endY = Math.min(gridSize, centerY + halfView + 1);
-
-  viewport.style.gridTemplateColumns = `repeat(${endX - startX}, 20px)`;
-  viewport.style.gridTemplateRows = `repeat(${endY - startY}, 20px)`;
+  const startX = centerX - halfView;
+  const startY = centerY - halfView;
 
   const generatorTriggers = new Set();
   for (let y = 0; y < gridSize; y++) {
@@ -388,49 +407,51 @@ function renderGrid() {
       }
     }
   }
+
   const beaconBoosted = new Set();
-for (let y = 0; y < gridSize; y++) {
-  for (let x = 0; x < gridSize; x++) {
-    if (grid[y][x] === "🗼") {
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const tx = x + dx;
-          const ty = y + dy;
-          if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
-            const tSymbol = grid[ty][tx];
-            if (tSymbol === "🔫" || tSymbol === "🏭" || tSymbol === "🪳") {
-              beaconBoosted.add(`${tx}_${ty}`);
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (grid[y][x] === "🗼") {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const tx = x + dx;
+            const ty = y + dy;
+            if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
+              const tSymbol = grid[ty][tx];
+              if (["🔫", "🏭", "🪳"].includes(tSymbol)) {
+                beaconBoosted.add(`${tx}_${ty}`);
+              }
             }
           }
         }
       }
     }
   }
-}
 
-
-  for (let y = startY; y < endY; y++) {
-    for (let x = startX; x < endX; x++) {
+  for (let row = 0; row < viewSize; row++) {
+    for (let col = 0; col < viewSize; col++) {
+      const x = startX + col;
+      const y = startY + row;
       const cell = document.createElement("div");
-      cell.id = `cell-${x}-${y}`;
       cell.className = "cell";
+      cell.id = `cell-${x}-${y}`;
 
-      const key = `${x}_${y}`;
-      const symbol = grid[y][x];
+      if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+        const key = `${x}_${y}`;
+        const symbol = grid[y][x];
 
-    if (beaconBoosted.has(key)) {
-  cell.style.background = "#ff8a8a"; // 🔴 boosted red
-} else if (generatorTriggers.has(key)) {
-  cell.style.background = "#fff977"; // 🧀 yellow
-} else {
-  cell.style.background = "#c8f7c5"; // 🌿 default green
-}
+        if (beaconBoosted.has(key)) {
+          cell.style.background = "#ff8a8a";
+        } else if (generatorTriggers.has(key)) {
+          cell.style.background = "#fff977";
+        } else {
+          cell.style.background = "#c8f7c5";
+        }
 
-      // Cheese beacon display
-      if (symbol === "🗼") {
-        cell.textContent = "🗼";
+        cell.textContent = symbol === "🗼" ? "🗼" : symbol;
       } else {
-        cell.textContent = symbol;
+        cell.style.background = "#888"; // Out-of-bounds
+        cell.textContent = "";
       }
 
       viewport.appendChild(cell);
@@ -440,57 +461,50 @@ for (let y = 0; y < gridSize; y++) {
   // 🐭 Players
   for (const name in players) {
     const p = players[name];
-    if (p.alive === false) continue;
-    if (p.x < startX || p.x >= endX || p.y < startY || p.y >= endY) continue;
-
+    if (!p.alive) continue;
     const cell = document.getElementById(`cell-${p.x}-${p.y}`);
-    cell.textContent = "🐭";
-
-    const nameTag = document.createElement("div");
-    nameTag.className = "name";
-    nameTag.textContent = name;
-    cell.appendChild(nameTag);
-  }
-
-  // 🐞 Fleas
-  for (let flea of fleas) {
-    if (flea.x < startX || flea.x >= endX || flea.y < startY || flea.y >= endY) continue;
-    const cell = document.getElementById(`cell-${flea.x}-${flea.y}`);
-    cell.textContent = "🐞";
-  }
-
-  // 🐀 Rats
-  for (let rat of rats) {
-    if (rat.health <= 0) continue;
-    if (rat.x < startX || rat.x >= endX || rat.y < startY || rat.y >= endY) continue;
-
-    const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
-    cell.textContent = "🐀";
-
-    const healthTag = document.createElement("div");
-    healthTag.className = "name";
-    healthTag.style.color = "brown";
-    healthTag.textContent = `❤️${rat.health}`;
-    cell.appendChild(healthTag);
-  }
-
-  // 🐛 Termites
-  for (let termite of termites) {
-    if (termite.x >= startX && termite.x < endX && termite.y >= startY && termite.y < endY) {
-      const cell = document.getElementById(`cell-${termite.x}-${termite.y}`);
-      cell.textContent = "🐛";
+    if (cell) {
+      cell.textContent = "🐭";
+      const nameTag = document.createElement("div");
+      nameTag.className = "name";
+      nameTag.textContent = name;
+      cell.appendChild(nameTag);
     }
   }
 
-  // 🧱 | 🪳 | 💎 structure health bars
+  // 🐞 Fleas
+  for (const flea of fleas) {
+    const cell = document.getElementById(`cell-${flea.x}-${flea.y}`);
+    if (cell) cell.textContent = "🐞";
+  }
+
+  // 🐀 Rats
+  for (const rat of rats) {
+    if (rat.health <= 0) continue;
+    const cell = document.getElementById(`cell-${rat.x}_${rat.y}`);
+    if (cell) {
+      cell.textContent = "🐀";
+      const healthTag = document.createElement("div");
+      healthTag.className = "name";
+      healthTag.style.color = "brown";
+      healthTag.textContent = `❤️${rat.health}`;
+      cell.appendChild(healthTag);
+    }
+  }
+
+  // 🐛 Termites
+  for (const termite of termites) {
+    const cell = document.getElementById(`cell-${termite.x}_${termite.y}`);
+    if (cell) cell.textContent = "🐛";
+  }
+
+  // 🧱 🪳 💎 Structure health bars
   for (let key in structureHealth) {
     const [xStr, yStr] = key.split("_");
     const x = parseInt(xStr), y = parseInt(yStr);
-    if (x < startX || x >= endX || y < startY || y >= endY) continue;
-
     const symbol = grid[y][x];
-    if (symbol === "🧱" || symbol === "🪳" || symbol === "💎") {
-      const cell = document.getElementById(`cell-${x}-${y}`);
+    const cell = document.getElementById(`cell-${x}_${y}`);
+    if (cell && ["🧱", "🪳", "💎"].includes(symbol)) {
       const bar = document.createElement("div");
       bar.className = "health-bar";
       const hp = structureHealth[key];
@@ -502,11 +516,10 @@ for (let y = 0; y < gridSize; y++) {
     }
   }
 
-  // 🐱 Cat with health bar and level
-  if (catPos.x >= startX && catPos.x < endX && catPos.y >= startY && catPos.y < endY) {
-    const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
+  // 🐱 Cat
+  const catCell = document.getElementById(`cell-${catPos.x}_${catPos.y}`);
+  if (catCell) {
     catCell.textContent = "🐱";
-
     const levelTag = document.createElement("div");
     levelTag.className = "name";
     levelTag.style.color = "red";
@@ -523,7 +536,7 @@ for (let y = 0; y < gridSize; y++) {
     catCell.appendChild(bar);
   }
 
-  // 🧍 Player status list
+  // 🧍 Player Status
   const statusDiv = document.getElementById("playerStatus");
   statusDiv.innerHTML = "";
   for (const name in players) {
@@ -531,11 +544,12 @@ for (let y = 0; y < gridSize; y++) {
     const statusSpan = document.createElement("span");
     statusSpan.style.marginRight = "10px";
     statusSpan.style.fontWeight = "bold";
-    statusSpan.style.color = (p.alive === false) ? "red" : "green";
-    statusSpan.textContent = `${name}: ${p.alive === false ? "DEAD" : "ALIVE"}`;
+    statusSpan.style.color = p.alive ? "green" : "red";
+    statusSpan.textContent = `${name}: ${p.alive ? "ALIVE" : "DEAD"}`;
     statusDiv.appendChild(statusSpan);
   }
 }
+
 
 function updateHostDisplay() {
   const hostName = gameData?.host || "Unknown";
