@@ -1,4 +1,9 @@
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🐭 Cat vs Mouse</title>
 
 <style>
   body {
@@ -174,38 +179,64 @@
   <div>
     <div id="grid"></div>
 
-    <!-- 📱 Mobile Controls -->
-    <div id="mobileControls" style="margin-top: 20px; display: none;">
-      <div>
-     <button data-move="up">⬆️</button><br>
-<button data-move="left">⬅️</button>
-<button data-move="down">⬇️</button>
-<button data-move="right">➡️</button>
-      </div>
-      <div style="margin-top: 10px;">
-  <button data-place="w">⬆️ Build</button>
-  <button data-place="a">⬅️</button>
-  <button data-place="s">⬇️</button>
-  <button data-place="d">➡️</button>
-      </div>
-      <div style="margin-top: 10px;">
-        <select onchange="selectBuild(this.value)">
-          <option value="">Select Build</option>
-          <option value="1">Wall 🧱</option>
-          <option value="2">Turret 🔫</option>
-          <option value="3">Flea Nest 🪳</option>
-          <option value="4">Generator 🏭</option>
-          <option value="5">Super Wall 💎</option>
-          <option value="6">Beacon 🗼</option>
-          <option value="7">Phoenix Cheese 🐦‍🔥</option>
-        </select>
-      </div>
-      <div style="margin-top: 10px;">
-        <button data-upgrade>🛠️ Upgrades</button>
-<button data-blink>🌀 Blink</button>
-<button data-trap>🪤 Trap</button>
-      </div>
+  <!-- 📱 Mobile Controls -->
+<div id="mobileControls" style="margin-top: 20px; display: none;">
+  <!-- Movement -->
+  <div style="margin-bottom: 12px;">
+    <div>
+      <button data-move="up" aria-label="Move Up">⬆️</button><br>
+      <button data-move="left" aria-label="Move Left">⬅️</button>
+      <button data-move="down" aria-label="Move Down">⬇️</button>
+      <button data-move="right" aria-label="Move Right">➡️</button>
     </div>
+  </div>
+
+  <!-- Build Placement -->
+  <div style="margin-bottom: 12px;">
+    <div>
+      <button data-place="w" aria-label="Build Up">⬆️ Build</button>
+      <button data-place="a" aria-label="Build Left">⬅️</button>
+      <button data-place="s" aria-label="Build Down">⬇️</button>
+      <button data-place="d" aria-label="Build Right">➡️</button>
+    </div>
+  </div>
+
+  <!-- Mode Toggle -->
+  <div style="margin-bottom: 12px;">
+    <button onclick="toggleMobileMode()">🔁 Switch to Upgrades</button>
+  </div>
+
+  <!-- Structure Buttons -->
+  <div id="structureButtons" style="margin-bottom: 12px;">
+    <strong>Select Structure:</strong><br>
+    <button onclick="selectBuild(1)">🧱</button>
+    <button onclick="selectBuild(2)">🔫</button>
+    <button onclick="selectBuild(3)">🪳</button>
+    <button onclick="selectBuild(4)">🏭</button>
+    <button onclick="selectBuild(5)">💎</button>
+    <button onclick="selectBuild(6)">🗼</button>
+    <button onclick="selectBuild(7)">🐦‍🔥</button>
+  </div>
+
+  <!-- Upgrade Buttons -->
+  <div id="upgradeButtons" style="display: none; margin-bottom: 12px;">
+    <strong>Upgrades:</strong><br>
+    <button onclick="selectUpgrade('1')">1 – Speedster</button>
+    <button onclick="selectUpgrade('2')">2 – Scavenger</button>
+    <button onclick="selectUpgrade('3')">3 – Flea Master</button>
+    <button onclick="selectUpgrade('4')">4 – Wall Master</button>
+    <button onclick="selectUpgrade('5')">5 – Trapmaster</button>
+    <button onclick="selectUpgrade('6')">6 – Blink</button>
+  </div>
+
+  <!-- Special Actions -->
+  <div>
+    <button data-upgrade>🛠️ Upgrades</button>
+    <button data-blink>🌀 Blink</button>
+    <button data-trap>🪤 Trap</button>
+  </div>
+</div>
+
 
     <!-- ❤️ Cat Health Bar -->
     <div id="catHealthContainer" style="margin-top: 10px;">
@@ -285,6 +316,7 @@ let lastTrapTime = 0;
 let blinkActive = false;
 let lastBlinkTime = 0;
 let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
+  let showingUpgrades = false;
 
 
 
@@ -566,12 +598,45 @@ function selectBuild(value) {
   };
   document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
 }
-
+function toggleMobileMode() {
+  showingUpgrades = !showingUpgrades;
+  document.getElementById("structureButtons").style.display = showingUpgrades ? "none" : "block";
+  document.getElementById("upgradeButtons").style.display = showingUpgrades ? "block" : "none";
+}
 function toggleUpgradeMenu() {
   upgradeMenuOpen = !upgradeMenuOpen;
   document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
 }
+function selectUpgrade(key) {
+  if (!upgradeMenuOpen || advancementPoints <= 0) return;
 
+  const upgradeMap = {
+    "1": "Speedster",
+    "2": "Scavenger",
+    "3": "Flea Master",
+    "4": "Wall Master",
+    "5": "Trapmaster",
+    "6": "Blink"
+  };
+
+  const upgrade = upgradeMap[key];
+  if (!selectedUpgrades.includes(upgrade)) {
+    selectedUpgrades.push(upgrade);
+    advancementPoints--;
+
+    document.getElementById("advPoints").textContent = advancementPoints;
+    document.getElementById("chosenUpgrades").textContent = selectedUpgrades.join(", ");
+    console.log(`🆙 Chose upgrade: ${upgrade}`);
+
+    // Effects
+    if (upgrade === "Speedster") moveCooldown = 50;
+    if (upgrade === "Scavenger") cheesePickupBonus = 7;
+    if (upgrade === "Flea Master") fleaMasterActive = true;
+    if (upgrade === "Wall Master") wallMasterActive = true;
+    if (upgrade === "Trapmaster") trapmasterActive = true;
+    if (upgrade === "Blink") blinkActive = true;
+  }
+}
 function tryBlink() {
   const event = new KeyboardEvent('keydown', { key: 'b' });
   window.dispatchEvent(event);
