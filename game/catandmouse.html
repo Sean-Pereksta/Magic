@@ -199,26 +199,11 @@
 
 
   <!-- 📱 Mobile Controls -->
-<div id="mobileControls" style="margin-top: 20px; display: none;">
-  <!-- Movement -->
-  <div style="margin-bottom: 12px;">
-    <div>
-      <button data-move="up" aria-label="Move Up">⬆️</button><br>
-      <button data-move="left" aria-label="Move Left">⬅️</button>
-      <button data-move="down" aria-label="Move Down">⬇️</button>
-      <button data-move="right" aria-label="Move Right">➡️</button>
-    </div>
-  </div>
+<div id="joysticks" style="display: flex; justify-content: space-between; margin-top: 20px;">
+  <div id="leftStickZone" style="width: 150px; height: 150px;"></div>
+  <div id="rightStickZone" style="width: 150px; height: 150px;"></div>
+</div>
 
-  <!-- Build Placement -->
-  <div style="margin-bottom: 12px;">
-    <div>
-      <button data-place="w" aria-label="Build Up">⬆️ Build</button>
-      <button data-place="a" aria-label="Build Left">⬅️</button>
-      <button data-place="s" aria-label="Build Down">⬇️</button>
-      <button data-place="d" aria-label="Build Right">➡️</button>
-    </div>
-  </div>
 
   <!-- Mode Toggle -->
   <div style="margin-bottom: 12px;">
@@ -592,25 +577,25 @@ function updateCatHealthBar() {
 }
 
 
-function move(dir) {
-  if (!canMove || !isAlive) return;
+function move(angle) {
+  const map = { up: 'up', down: 'down', left: 'left', right: 'right' };
+  const dir = map[angle];
+  if (!dir || !canMove || !isAlive) return;
   if (dir === 'up') movePlayer(0, -1);
-  else if (dir === 'down') movePlayer(0, 1);
-  else if (dir === 'left') movePlayer(-1, 0);
-  else if (dir === 'right') movePlayer(1, 0);
+  if (dir === 'down') movePlayer(0, 1);
+  if (dir === 'left') movePlayer(-1, 0);
+  if (dir === 'right') movePlayer(1, 0);
   triggerMoveCooldown();
 }
 
 
 
-function place(dir) {
-  if (!canMove || !isAlive || selectedBuild === null) {
-    console.log("🚫 Can't place: either dead, can't move, or no build selected.");
-    return;
-  }
-  console.log("🛠️ Building", selectedBuild, "towards", dir);
-  placeStructure(dir);
+function place(angle) {
+  const map = { up: 'w', down: 's', left: 'a', right: 'd' };
+  const dir = map[angle];
+  if (dir) placeStructure(dir);
 }
+
 
 
 function selectBuild(value) {
@@ -727,6 +712,43 @@ structureKeys.forEach(key => {
       placeTrap();
     });
   }
+}
+function setupJoysticks() {
+  const leftJoystick = nipplejs.create({
+    zone: document.getElementById('leftStickZone'),
+    mode: 'static',
+    position: { left: '50px', bottom: '50px' },
+    color: 'blue'
+  });
+
+  const rightJoystick = nipplejs.create({
+    zone: document.getElementById('rightStickZone'),
+    mode: 'static',
+    position: { right: '50px', bottom: '50px' },
+    color: 'green'
+  });
+
+  let leftInterval = null;
+  leftJoystick.on('dir', (evt, data) => {
+    if (leftInterval) clearInterval(leftInterval);
+    if (data && data.direction) {
+      leftInterval = setInterval(() => {
+        move(data.direction.angle); // calls move("up" | "down" | etc.)
+      }, moveCooldown + 25);
+    }
+  });
+  leftJoystick.on('end', () => clearInterval(leftInterval));
+
+  let rightInterval = null;
+  rightJoystick.on('dir', (evt, data) => {
+    if (rightInterval) clearInterval(rightInterval);
+    if (data && data.direction) {
+      rightInterval = setInterval(() => {
+        place(data.direction.angle); // calls place("w" | "s" | etc.)
+      }, 300);
+    }
+  });
+  rightJoystick.on('end', () => clearInterval(rightInterval));
 }
 
 
@@ -1486,11 +1508,14 @@ if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7"].includes(e.key)) {
 // After listenToGame():
 listenToGame();
 gameStarted = true;
- if (/Mobi|Android/i.test(navigator.userAgent)) {
-  document.getElementById("mobileControls").style.display = "block";
+if (/Mobi|Android/i.test(navigator.userAgent)) {
+  document.getElementById("joysticks").style.display = "flex";
+  document.getElementById("mobileControls").style.display = "block"; // ✅ still needed
   renderMobileUpgradeButtons();
-  setupMobileControls(); // 🔧 This is critical
+  setupMobileControls(); // ✅ for structure selection + special buttons
+  setupJoysticks();      // ✅ for movement + build direction
 }
+
 
 // Place initial structures
 grid[24][15] = "🧱";
