@@ -177,16 +177,16 @@
     <!-- 📱 Mobile Controls -->
     <div id="mobileControls" style="margin-top: 20px; display: none;">
       <div>
-        <button onclick="move('up')">⬆️</button><br>
-        <button onclick="move('left')">⬅️</button>
-        <button onclick="move('down')">⬇️</button>
-        <button onclick="move('right')">➡️</button>
+     <button data-move="up">⬆️</button><br>
+<button data-move="left">⬅️</button>
+<button data-move="down">⬇️</button>
+<button data-move="right">➡️</button>
       </div>
       <div style="margin-top: 10px;">
-        <button onclick="place('w')">⬆️ Build</button>
-        <button onclick="place('a')">⬅️</button>
-        <button onclick="place('s')">⬇️</button>
-        <button onclick="place('d')">➡️</button>
+  <button data-place="w">⬆️ Build</button>
+  <button data-place="a">⬅️</button>
+  <button data-place="s">⬇️</button>
+  <button data-place="d">➡️</button>
       </div>
       <div style="margin-top: 10px;">
         <select onchange="selectBuild(this.value)">
@@ -201,9 +201,9 @@
         </select>
       </div>
       <div style="margin-top: 10px;">
-        <button onclick="toggleUpgradeMenu()">🛠️ Upgrades</button>
-        <button onclick="tryBlink()">🌀 Blink</button>
-        <button onclick="placeTrap()">🪤 Trap</button>
+        <button data-upgrade>🛠️ Upgrades</button>
+<button data-blink>🌀 Blink</button>
+<button data-trap>🪤 Trap</button>
       </div>
     </div>
 
@@ -577,28 +577,50 @@ function tryBlink() {
   window.dispatchEvent(event);
 }
 function setupMobileControls() {
-  const moves = ['up', 'down', 'left', 'right'];
-  const dirs = ['w', 'a', 's', 'd'];
+  // Movement buttons
+  document.querySelectorAll('[data-move]').forEach(btn => {
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const dir = btn.getAttribute('data-move');
+      move(dir);
+    });
+  });
 
-  for (let dir of moves) {
-    document.querySelector(`button[onclick="move('${dir}')"]`)
-      ?.addEventListener('touchstart', () => move(dir));
+  // Build/place buttons
+  document.querySelectorAll('[data-place]').forEach(btn => {
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const dir = btn.getAttribute('data-place');
+      place(dir);
+    });
+  });
+
+  // Other control buttons
+  const upgradeBtn = document.querySelector('[data-upgrade]');
+  if (upgradeBtn) {
+    upgradeBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      toggleUpgradeMenu();
+    });
   }
 
-  for (let d of dirs) {
-    document.querySelector(`button[onclick="place('${d}')"]`)
-      ?.addEventListener('touchstart', () => place(d));
+  const blinkBtn = document.querySelector('[data-blink]');
+  if (blinkBtn) {
+    blinkBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      tryBlink();
+    });
   }
 
-  document.querySelector(`button[onclick="toggleUpgradeMenu()"]`)
-    ?.addEventListener('touchstart', toggleUpgradeMenu);
-
-  document.querySelector(`button[onclick="tryBlink()"]`)
-    ?.addEventListener('touchstart', tryBlink);
-
-  document.querySelector(`button[onclick="placeTrap()"]`)
-    ?.addEventListener('touchstart', placeTrap);
+  const trapBtn = document.querySelector('[data-trap]');
+  if (trapBtn) {
+    trapBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      placeTrap();
+    });
+  }
 }
+
 
   function renderMobileUpgradeButtons() {
   const container = document.getElementById("mobileUpgradeButtons");
