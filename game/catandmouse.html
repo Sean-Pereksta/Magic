@@ -871,6 +871,38 @@ function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3))) {
     renderGrid();
   }
 }
+async function syncMyFleas() {
+  const fleasRef = collection(db, `games/${gameId}/fleas`);
+  const snapshot = await getDocs(fleasRef);
+
+  const batchDeletes = [];
+  snapshot.forEach(docSnap => {
+    if (docSnap.id.startsWith(username)) {
+      batchDeletes.push(deleteDoc(docSnap.ref));
+    }
+  });
+  await Promise.all(batchDeletes);
+
+  for (let i = 0; i < fleas.length; i++) {
+    await setDoc(doc(db, `games/${gameId}/fleas/${username}_${i}`), fleas[i]);
+  }
+}
+async function syncMyRats() {
+  const ratsRef = collection(db, `games/${gameId}/rats`);
+  const snapshot = await getDocs(ratsRef);
+
+  const batchDeletes = [];
+  snapshot.forEach(docSnap => {
+    if (docSnap.id.startsWith(username)) {
+      batchDeletes.push(deleteDoc(docSnap.ref));
+    }
+  });
+  await Promise.all(batchDeletes);
+
+  for (let i = 0; i < rats.length; i++) {
+    await setDoc(doc(db, `games/${gameId}/rats/${username}_${i}`), rats[i]);
+  }
+}
 
 
 function turretAttack() {
@@ -1220,6 +1252,15 @@ async function listenToGame() {
     });
     renderGrid();
   });
+  onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
+  fleas = snap.docs.map(doc => doc.data());
+  renderGrid();
+});
+onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
+  rats = snap.docs.map(doc => doc.data());
+  renderGrid();
+});
+
 
   onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
     if (docSnap.exists()) {
@@ -1502,6 +1543,12 @@ setInterval(() => {
     }
   }
 }, 15000); // ⏲ Every 10 seconds
+  setInterval(() => {
+  if (fleaMasterActive && isAlive) {
+    syncMyFleas();
+  }
+}, 500);
+
 
 setInterval(() => {
   if (!gameStarted || !isAlive) return;
