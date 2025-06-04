@@ -70,87 +70,89 @@
     🐦‍🔥 Phoenix Cheese (7, 🧀40)
   </p>
 </div>
-  <div id="returnButton" style="display:none; margin-top: 20px;">
+
+<!-- 🔙 Return Button -->
+<div id="returnButton" style="display:none; margin-top: 20px; text-align: center;">
   <button onclick="returnToLobby()" style="padding: 10px 20px; font-size: 16px;">🔙 Return to Lobby</button>
 </div>
 
-
 <!-- 🔲 Main Game + Sidebar Layout -->
-<div style="display: flex; justify-content: center; align-items: flex-start; gap: 20px;">
+<div style="display: flex; justify-content: center; align-items: flex-start; gap: 20px; margin-top: 20px;">
 
   <!-- 📊 Left Sidebar -->
   <div style="width: 200px; font-size: 14px;">
     <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
     <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
     <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
-    <p id="advPointMessage" style="color: green; font-weight: bold; display: none; margin: 5px 0;">🟢 You gained an advancement point!</p>
+    <p id="advPointMessage" style="color: green; font-weight: bold; display: none; margin: 5px 0;">
+      🟢 You gained an advancement point!
+    </p>
     <p id="status"></p>
     <div id="playerStatus" style="margin-top: 10px;"></div>
 
-    <!-- 🔧 Upgrade Menu (Toggles on Space) -->
-  <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
-  <h3>🔧 Upgrade Menu</h3>
-
-  <!-- 📱 Mobile upgrade buttons injected here -->
-  <div id="mobileUpgradeButtons" style="margin: 10px 0;"></div>
-
-  <p><b>1</b> – 🏃 <strong>Speedster</strong><br>
-   <b>2</b> – 🧀 <strong>Scavenger</strong><br>
-   <b>3</b> – 🐞 <strong>Flea Master</strong><br>
-   <b>4</b> – 🧱 <strong>Wall Master</strong><br>
-   <b>5</b> – 🪤 <strong>Trapmaster</strong><br>
-   <b>6</b> – 🌀 <strong>Blink</strong></p>
-
-  <p>Chosen: <span id="chosenUpgrades"></span></p>
-</div>
-
-
-  <!-- 🎮 Game Grid -->
-  <div>
-    <div id="grid"></div>
-<!-- 📱 Mobile Controls -->
-<div id="mobileControls" style="margin-top: 20px; display: none;">
-  <div>
-    <button onclick="move('up')">⬆️</button><br>
-    <button onclick="move('left')">⬅️</button>
-    <button onclick="move('down')">⬇️</button>
-    <button onclick="move('right')">➡️</button>
-  </div>
-  <div style="margin-top: 10px;">
-    <button onclick="place('w')">⬆️ Build</button>
-    <button onclick="place('a')">⬅️</button>
-    <button onclick="place('s')">⬇️</button>
-    <button onclick="place('d')">➡️</button>
-  </div>
-  <div style="margin-top: 10px;">
-    <select onchange="selectBuild(this.value)">
-      <option value="">Select Build</option>
-      <option value="1">Wall 🧱</option>
-      <option value="2">Turret 🔫</option>
-      <option value="3">Flea Nest 🪳</option>
-      <option value="4">Generator 🏭</option>
-      <option value="5">Super Wall 💎</option>
-      <option value="6">Beacon 🗼</option>
-      <option value="7">Phoenix Cheese 🐦‍🔥</option>
-    </select>
-  </div>
-  <div style="margin-top: 10px;">
-    <button onclick="toggleUpgradeMenu()">🛠️ Upgrades</button>
-    <button onclick="tryBlink()">🌀 Blink</button>
-    <button onclick="placeTrap()">🪤 Trap</button>
-  </div>
-</div>
-
-    <!-- ❤️ Cat Health Bar (centered under grid) -->
-    <div id="catHealthContainer" style="margin-top: 10px;">
-      <div id="catHealthBar" style="height: 20px; width: 300px; background: lightgray; position: relative; margin: 0 auto; border-radius: 8px;">
-        <div id="catHealthFill" style="height: 100%; width: 100%; background: red; border-radius: 8px;"></div>
-        <div id="catHealthText" style="position: absolute; width: 100%; top: 0; text-align: center; font-weight: bold;">❤️ 1000 / 1000</div>
-      </div>
+    <!-- 🔧 Upgrade Menu -->
+    <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
+      <h3>🔧 Upgrade Menu</h3>
+      <div id="mobileUpgradeButtons" style="margin: 10px 0;"></div>
+      <p><b>1</b> – 🏃 <strong>Speedster</strong><br>
+         <b>2</b> – 🧀 <strong>Scavenger</strong><br>
+         <b>3</b> – 🐞 <strong>Flea Master</strong><br>
+         <b>4</b> – 🧱 <strong>Wall Master</strong><br>
+         <b>5</b> – 🪤 <strong>Trapmaster</strong><br>
+         <b>6</b> – 🌀 <strong>Blink</strong></p>
+      <p>Chosen: <span id="chosenUpgrades"></span></p>
     </div>
   </div>
 
+  <!-- 🎮 Main Game Grid + Controls -->
+  <div>
+    <div id="grid"></div>
+
+    <!-- 📱 Mobile Controls -->
+    <div id="mobileControls" style="margin-top: 20px; display: none;">
+      <div>
+        <button onclick="move('up')">⬆️</button><br>
+        <button onclick="move('left')">⬅️</button>
+        <button onclick="move('down')">⬇️</button>
+        <button onclick="move('right')">➡️</button>
+      </div>
+      <div style="margin-top: 10px;">
+        <button onclick="place('w')">⬆️ Build</button>
+        <button onclick="place('a')">⬅️</button>
+        <button onclick="place('s')">⬇️</button>
+        <button onclick="place('d')">➡️</button>
+      </div>
+      <div style="margin-top: 10px;">
+        <select onchange="selectBuild(this.value)">
+          <option value="">Select Build</option>
+          <option value="1">Wall 🧱</option>
+          <option value="2">Turret 🔫</option>
+          <option value="3">Flea Nest 🪳</option>
+          <option value="4">Generator 🏭</option>
+          <option value="5">Super Wall 💎</option>
+          <option value="6">Beacon 🗼</option>
+          <option value="7">Phoenix Cheese 🐦‍🔥</option>
+        </select>
+      </div>
+      <div style="margin-top: 10px;">
+        <button onclick="toggleUpgradeMenu()">🛠️ Upgrades</button>
+        <button onclick="tryBlink()">🌀 Blink</button>
+        <button onclick="placeTrap()">🪤 Trap</button>
+      </div>
+    </div>
+
+    <!-- ❤️ Cat Health Bar -->
+    <div id="catHealthContainer" style="margin-top: 10px;">
+      <div id="catHealthBar" style="height: 20px; width: 300px; background: lightgray; position: relative; margin: 0 auto; border-radius: 8px;">
+        <div id="catHealthFill" style="height: 100%; width: 100%; background: red; border-radius: 8px;"></div>
+        <div id="catHealthText" style="position: absolute; width: 100%; top: 0; text-align: center; font-weight: bold;">
+          ❤️ 1000 / 1000
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+
 
 
 
@@ -1224,8 +1226,6 @@ gameStarted = true;
   document.getElementById("mobileControls").style.display = "block";
   renderMobileUpgradeButtons();
 }
-
-
 // Place initial structures
 grid[24][15] = "🧱";
 grid[25][14] = "🧱";
