@@ -2,172 +2,198 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Lobby Setup</title>
+  <title>🐭 CatNMice Lobby</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #e8e8e8;
-      padding: 20px;
+      background: #f9f9f9;
+      margin: 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
-    .container {
-      max-width: 700px;
-      margin: auto;
-      background: #fff;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    h1 {
+      background: #333;
+      color: white;
+      margin: 0;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    .hidden {
-      display: none;
+    .left-link {
+      margin-left: 20px;
     }
-    input, button {
-      padding: 8px;
-      font-size: 1em;
-      margin: 5px;
+    .left-link button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      font-size: 0.9em;
+      cursor: pointer;
+      border-radius: 4px;
     }
-    .lobby-item {
+    .tabs {
+      display: flex;
+      justify-content: center;
+      background: #444;
+    }
+    .tabs button {
+      background: none;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      cursor: pointer;
+      font-size: 1.1em;
+    }
+    iframe {
+      flex-grow: 1;
+      width: 100%;
+      border: none;
+    }
+    #chatContainer {
+      background: white;
+      border-top: 1px solid #ccc;
       padding: 10px;
-      background: #f4f4f4;
-      border-radius: 5px;
-      margin: 5px 0;
+      height: 150px;
+      overflow-y: auto;
+    }
+    #chatMessages {
+      text-align: left;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    #chatInput {
+      display: flex;
+      margin-top: 5px;
+      gap: 5px;
+    }
+    #chatName {
+      width: 80px;
+      padding: 5px;
+    }
+    #chatMessage {
+      flex: 1;
+      padding: 5px;
+    }
+    #chatInput button {
+      padding: 5px 10px;
+      background: #4caf50;
+      color: white;
+      border: none;
       cursor: pointer;
     }
-    pre {
-      background: #f4f4f4;
-      padding: 10px;
-      border-radius: 5px;
-      overflow-x: auto;
+    #toggleChat {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      font-size: 1.5em;
+      cursor: pointer;
+      z-index: 1100;
     }
   </style>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
-  <div class="container">
-    <div id="setNameDiv">
-      <h2>Enter Your Name</h2>
-      <input type="text" id="playerName" placeholder="Your name">
-      <button id="setNameButton">Set Name</button>
-    </div>
+  <h1>
+    <span class="left-link">
+      <button id="createUserBtn">➕ Create User</button>
+    </span>
+    🐭 CatNMice
+    <span class="right-link"></span>
+  </h1>
 
-    <div id="lobbySelectDiv" class="hidden">
-      <h2>Available Lobbies</h2>
-      <button id="createButton">Create New Lobby</button>
-      <div id="lobbyList"></div>
-    </div>
+  <div class="tabs">
+    <button id="lobbyTab">🎮 Multiplayer Lobby</button>
+  </div>
 
-    <div id="lobbyDiv" class="hidden">
-      <h2>Lobby</h2>
-      <pre id="lobbyInfo"></pre>
-      <div id="hostOptions" class="hidden">
-        <button id="startGame">Start Game</button>
-      </div>
+  <iframe id="contentFrame" src="https://sean-pereksta.github.io/magic/lobby/lobby.html"></iframe>
+
+  <div id="chatContainer" style="display: none;">
+    <div id="chatMessages"></div>
+    <div id="chatInput">
+      <input type="text" id="chatName" placeholder="Name" />
+      <input type="text" id="chatMessage" placeholder="Type a message..." />
+      <button id="sendBtn">Send</button>
     </div>
   </div>
 
-  <script>
+  <button id="toggleChat">💬</button>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      query,
+      orderBy,
+      limit,
+      onSnapshot,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
     const firebaseConfig = {
-      apiKey: "AIzaSyCKy1KVoLdTH_nwpYVr8u_CT5e0hjBpFOc",
-      authDomain: "truth-b65cd.firebaseapp.com",
-      databaseURL: "https://truth-b65cd-default-rtdb.firebaseio.com",
-      projectId: "truth-b65cd",
-      storageBucket: "truth-b65cd.appspot.com",
-      messagingSenderId: "11180463959",
-      appId: "1:11180463959:web:e860d37bdbf8e245e25012"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-
-    let playerName = "";
-    let role = "";
-    let lobbyId = "";
-
-    const setNameButton = document.getElementById("setNameButton");
-    const createButton = document.getElementById("createButton");
-    const startGameButton = document.getElementById("startGame");
-    const lobbyInfo = document.getElementById("lobbyInfo");
-    const lobbyList = document.getElementById("lobbyList");
-
-    setNameButton.onclick = () => {
-      const name = document.getElementById("playerName").value.trim();
-      if (!name) return alert("Please enter a name");
-      playerName = name;
-      document.getElementById("setNameDiv").classList.add("hidden");
-      document.getElementById("lobbySelectDiv").classList.remove("hidden");
-      loadAvailableLobbies();
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
 
-    createButton.onclick = () => {
-      role = "host";
-      const newLobby = db.ref("lobbies").push();
-      lobbyId = newLobby.key;
-      newLobby.set({
-        host: playerName,
-        created: firebase.database.ServerValue.TIMESTAMP,
-        gameStarted: false,
-        players: { [playerName]: true }
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    async function sendMessage() {
+      const name = document.getElementById("chatName").value.trim();
+      const text = document.getElementById("chatMessage").value.trim();
+      if (!name || !text) return;
+      await addDoc(collection(db, "chat"), {
+        username: name,
+        text: text,
+        timestamp: serverTimestamp()
       });
-      enterLobby();
-    };
+      document.getElementById("chatMessage").value = "";
+    }
 
-    function loadAvailableLobbies() {
-      db.ref("lobbies").on("value", snapshot => {
-        lobbyList.innerHTML = "";
-        snapshot.forEach(lobbySnap => {
-          const lobby = lobbySnap.val();
-          if (!lobby.gameStarted) {
-            const li = document.createElement("div");
-            li.className = "lobby-item";
-            const playerCount = lobby.players ? Object.keys(lobby.players).length : 0;
-            li.textContent = `Lobby: ${lobbySnap.key} | Host: ${lobby.host} | Players: ${playerCount}`;
-            li.onclick = () => joinLobby(lobbySnap.key);
-            lobbyList.appendChild(li);
-          }
+    function loadMessages() {
+      const q = query(collection(db, "chat"), orderBy("timestamp", "desc"), limit(10));
+      onSnapshot(q, (snapshot) => {
+        const chatMessages = document.getElementById("chatMessages");
+        chatMessages.innerHTML = "";
+        snapshot.docs.reverse().forEach(doc => {
+          const data = doc.data();
+          const p = document.createElement("p");
+          p.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
+          chatMessages.appendChild(p);
         });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
       });
     }
 
-    function joinLobby(id) {
-      role = "client";
-      lobbyId = id;
-      const lobbyRef = db.ref(`lobbies/${lobbyId}`);
-      lobbyRef.child("players").once("value", snap => {
-        const count = snap.numChildren();
-        if (count >= 2) {
-          alert("Lobby full!");
-        } else {
-          lobbyRef.child("players").update({ [playerName]: true });
-          enterLobby();
-        }
-      });
+    function loadTab(path) {
+      document.getElementById("contentFrame").src = `https://sean-pereksta.github.io/magic/${path}.html`;
     }
 
-    function enterLobby() {
-      document.getElementById("lobbySelectDiv").classList.add("hidden");
-      document.getElementById("lobbyDiv").classList.remove("hidden");
-
-      const playersRef = db.ref(`lobbies/${lobbyId}/players`);
-      playersRef.on("value", snap => {
-        const players = Object.keys(snap.val() || {}).join(", ");
-        lobbyInfo.innerText = `Lobby ID: ${lobbyId}\nPlayers: ${players}\nRole: ${role}`;
+    window.addEventListener("DOMContentLoaded", () => {
+      loadMessages();
+      document.getElementById("sendBtn").addEventListener("click", sendMessage);
+      document.getElementById("createUserBtn").addEventListener("click", () => loadTab("username/username"));
+      document.getElementById("lobbyTab").addEventListener("click", () => loadTab("lobby/lobby"));
+      document.getElementById("toggleChat").addEventListener("click", () => {
+        const chatContainer = document.getElementById("chatContainer");
+        chatContainer.style.display = chatContainer.style.display === "none" ? "block" : "none";
       });
-
-      // Listen for game start if client
-      db.ref(`lobbies/${lobbyId}/gameStarted`).on("value", snap => {
-        if (snap.val() === true) {
-          window.location.href = `./game/game.html?lobbyId=${lobbyId}&name=${encodeURIComponent(playerName)}&role=${role}`;
-        }
-      });
-
-      // Show Start Game if host
-      if (role === "host") {
-        document.getElementById("hostOptions").classList.remove("hidden");
-      }
-    }
-
-    startGameButton.onclick = () => {
-      db.ref(`lobbies/${lobbyId}`).update({ gameStarted: true });
-    };
+    });
   </script>
 </body>
 </html>
+
+
