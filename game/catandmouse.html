@@ -481,7 +481,8 @@ function renderGrid() {
   // 🐀 Rats
   for (const rat of rats) {
     if (rat.health <= 0) continue;
-    const cell = document.getElementById(`cell-${rat.x}_${rat.y}`);
+const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
+
     if (cell) {
       cell.textContent = "🐀";
       const healthTag = document.createElement("div");
@@ -494,7 +495,8 @@ function renderGrid() {
 
   // 🐛 Termites
   for (const termite of termites) {
-    const cell = document.getElementById(`cell-${termite.x}_${termite.y}`);
+    const cell = document.getElementById(`cell-${termite.x}-${termite.y}`);
+
     if (cell) cell.textContent = "🐛";
   }
 
@@ -503,7 +505,7 @@ function renderGrid() {
     const [xStr, yStr] = key.split("_");
     const x = parseInt(xStr), y = parseInt(yStr);
     const symbol = grid[y][x];
-    const cell = document.getElementById(`cell-${x}_${y}`);
+    const cell = document.getElementById(`cell-${x}-${y}`);
     if (cell && ["🧱", "🪳", "💎"].includes(symbol)) {
       const bar = document.createElement("div");
       bar.className = "health-bar";
@@ -517,7 +519,7 @@ function renderGrid() {
   }
 
   // 🐱 Cat
-  const catCell = document.getElementById(`cell-${catPos.x}_${catPos.y}`);
+const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
   if (catCell) {
     catCell.textContent = "🐱";
     const levelTag = document.createElement("div");
