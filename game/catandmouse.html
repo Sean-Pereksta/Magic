@@ -92,10 +92,10 @@
     position: relative;
   }
 
-  button, select {
-    font-size: 16px;
-    padding: 8px 12px;
-    margin: 4px;
+   button, select {
+    font-size: 20px;       /* 🔍 Bigger text */
+    padding: 14px 20px;    /* 🔳 Larger tap area */
+    margin: 6px;
   }
 
   html, body {
@@ -548,8 +548,14 @@ function move(dir) {
 }
 
 function place(dir) {
+  if (!canMove || !isAlive || selectedBuild === null) {
+    console.log("🚫 Can't place: either dead, can't move, or no build selected.");
+    return;
+  }
+  console.log("🛠️ Building", selectedBuild, "towards", dir);
   placeStructure(dir);
 }
+
 
 function selectBuild(value) {
   selectedBuild = parseInt(value);
