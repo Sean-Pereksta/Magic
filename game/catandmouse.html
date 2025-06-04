@@ -1314,17 +1314,11 @@ window.addEventListener("keydown", (e) => {
   }
 
   // ✅ Structure selection (ONLY if upgrade menu is closed)
-  if (!upgradeMenuOpen) {
-    switch (e.key) {
-      case "1": selectedBuild = 1; document.getElementById("buildType").textContent = "Wall 🧱 (Cost: 1)"; break;
-      case "2": selectedBuild = 2; document.getElementById("buildType").textContent = "Turret 🔫 (Cost: 3)"; break;
-      case "3": selectedBuild = 3; document.getElementById("buildType").textContent = "Flea Nest 🪳 (Cost: 5)"; break;
-      case "4": selectedBuild = 4; document.getElementById("buildType").textContent = "Cheese Generator 🏭 (Cost: 4)"; break;
-      case "5": selectedBuild = 5; document.getElementById("buildType").textContent = "Super Wall 💎 (Cost: 6)"; break;
-      case "6": selectedBuild = 6; document.getElementById("buildType").textContent = "Cheese Beacon 🗼 (Cost: 24)"; break;
-      case "7": selectedBuild = 7; document.getElementById("buildType").textContent = "Phoenix Cheese 🐦‍🔥 (Cost: 40)"; break;
-    }
-  }
+// ✅ Structure selection (ONLY if upgrade menu is closed)
+if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7"].includes(e.key)) {
+  selectBuild(e.key); // Consistent with dropdown behavior
+}
+
 
   // ✅ Build placement (always allowed)
   if (["w", "a", "s", "d"].includes(e.key)) {
