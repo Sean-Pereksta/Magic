@@ -207,16 +207,16 @@
   </div>
 
   <!-- Structure Buttons -->
-  <div id="structureButtons" style="margin-bottom: 12px;">
-    <strong>Select Structure:</strong><br>
-    <button onclick="selectBuild(1)">🧱</button>
-    <button onclick="selectBuild(2)">🔫</button>
-    <button onclick="selectBuild(3)">🪳</button>
-    <button onclick="selectBuild(4)">🏭</button>
-    <button onclick="selectBuild(5)">💎</button>
-    <button onclick="selectBuild(6)">🗼</button>
-    <button onclick="selectBuild(7)">🐦‍🔥</button>
-  </div>
+ <div id="structureButtons" style="margin-top: 10px;">
+  <strong>Select Structure:</strong><br>
+  <button onclick="simulateBuildKey('1')">🧱</button>
+  <button onclick="simulateBuildKey('2')">🔫</button>
+  <button onclick="simulateBuildKey('3')">🪳</button>
+  <button onclick="simulateBuildKey('4')">🏭</button>
+  <button onclick="simulateBuildKey('5')">💎</button>
+  <button onclick="simulateBuildKey('6')">🗼</button>
+  <button onclick="simulateBuildKey('7')">🐦‍🔥</button>
+</div>
 
   <!-- Upgrade Buttons -->
   <div id="upgradeButtons" style="display: none; margin-bottom: 12px;">
@@ -578,6 +578,13 @@ function move(dir) {
   else if (dir === 'right') movePlayer(1, 0);
   triggerMoveCooldown();
 }
+  function simulateBuildKey(key) {
+  if (!upgradeMenuOpen) {
+    const event = new KeyboardEvent("keydown", { key });
+    window.dispatchEvent(event);
+  }
+}
+
 
 function place(dir) {
   if (!canMove || !isAlive || selectedBuild === null) {
