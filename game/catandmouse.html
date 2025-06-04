@@ -103,6 +103,38 @@
   <!-- 🎮 Game Grid -->
   <div>
     <div id="grid"></div>
+<!-- 📱 Mobile Controls -->
+<div id="mobileControls" style="margin-top: 20px; display: none;">
+  <div>
+    <button onclick="move('up')">⬆️</button><br>
+    <button onclick="move('left')">⬅️</button>
+    <button onclick="move('down')">⬇️</button>
+    <button onclick="move('right')">➡️</button>
+  </div>
+  <div style="margin-top: 10px;">
+    <button onclick="place('w')">⬆️ Build</button>
+    <button onclick="place('a')">⬅️</button>
+    <button onclick="place('s')">⬇️</button>
+    <button onclick="place('d')">➡️</button>
+  </div>
+  <div style="margin-top: 10px;">
+    <select onchange="selectBuild(this.value)">
+      <option value="">Select Build</option>
+      <option value="1">Wall 🧱</option>
+      <option value="2">Turret 🔫</option>
+      <option value="3">Flea Nest 🪳</option>
+      <option value="4">Generator 🏭</option>
+      <option value="5">Super Wall 💎</option>
+      <option value="6">Beacon 🗼</option>
+      <option value="7">Phoenix Cheese 🐦‍🔥</option>
+    </select>
+  </div>
+  <div style="margin-top: 10px;">
+    <button onclick="toggleUpgradeMenu()">🛠️ Upgrades</button>
+    <button onclick="tryBlink()">🌀 Blink</button>
+    <button onclick="placeTrap()">🪤 Trap</button>
+  </div>
+</div>
 
     <!-- ❤️ Cat Health Bar (centered under grid) -->
     <div id="catHealthContainer" style="margin-top: 10px;">
@@ -433,6 +465,38 @@ function updateCatHealthBar() {
 }
 
 
+function move(dir) {
+  if (!canMove || !isAlive) return;
+  if (dir === 'up') movePlayer(0, -1);
+  else if (dir === 'down') movePlayer(0, 1);
+  else if (dir === 'left') movePlayer(-1, 0);
+  else if (dir === 'right') movePlayer(1, 0);
+  triggerMoveCooldown();
+}
+
+function place(dir) {
+  placeStructure(dir);
+}
+
+function selectBuild(value) {
+  selectedBuild = parseInt(value);
+  const buildNames = {
+    1: "Wall 🧱 (Cost: 1)", 2: "Turret 🔫 (Cost: 3)", 3: "Flea Nest 🪳 (Cost: 5)",
+    4: "Cheese Generator 🏭 (Cost: 4)", 5: "Super Wall 💎 (Cost: 6)",
+    6: "Cheese Beacon 🗼 (Cost: 24)", 7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)"
+  };
+  document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
+}
+
+function toggleUpgradeMenu() {
+  upgradeMenuOpen = !upgradeMenuOpen;
+  document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
+}
+
+function tryBlink() {
+  const event = new KeyboardEvent('keydown', { key: 'b' });
+  window.dispatchEvent(event);
+}
 
 
 
@@ -1125,6 +1189,10 @@ window.addEventListener("keydown", (e) => {
 // After listenToGame():
 listenToGame();
 gameStarted = true;
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+  document.getElementById("mobileControls").style.display = "block";
+}
+
 
 // Place initial structures
 grid[24][15] = "🧱";
