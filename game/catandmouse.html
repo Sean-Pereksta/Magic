@@ -73,9 +73,13 @@
     border-radius: 1px;
   }
 
-  #catHealthContainer {
-    margin-top: 10px;
-  }
+ #catHealthContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 10px;
+}
+
 
   #catHealthBar {
     height: 20px;
@@ -264,14 +268,13 @@
 </div>
 
 <!-- ❤️ Cat Health Bar (Moved outside main control div) -->
-<div id="catHealthContainer" style="margin: 20px auto 10px; width: 100%; text-align: center;">
-  <div id="catHealthBar" style="height: 20px; width: 300px; background: lightgray; position: relative; margin: 0 auto; border-radius: 8px;">
-    <div id="catHealthFill" style="height: 100%; width: 100%; background: red; border-radius: 8px;"></div>
-    <div id="catHealthText" style="position: absolute; width: 100%; top: 0; text-align: center; font-weight: bold;">
-      ❤️ 1000 / 1000
-    </div>
+<div id="catHealthContainer" style="display: flex; justify-content: center; align-items: center; margin-top: 10px;">
+  <div id="catHealthBar">
+    <div id="catHealthFill"></div>
+    <div id="catHealthText">❤️ 1000 / 1000</div>
   </div>
 </div>
+
 
 
 
@@ -1527,13 +1530,16 @@ if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7"].includes(e.key)) {
 // After listenToGame():
 listenToGame();
 gameStarted = true;
-if (/Mobi|Android/i.test(navigator.userAgent)) {
-  document.getElementById("joysticks").style.display = "flex";
-  document.getElementById("mobileControls").style.display = "block"; // ✅ still needed
-  renderMobileUpgradeButtons();
-  setupMobileControls(); // ✅ for structure selection + special buttons
-  setupJoysticks();      // ✅ for movement + build direction
-}
+window.addEventListener("load", () => {
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    document.getElementById("joysticks").style.display = "flex";
+    document.getElementById("mobileControls").style.display = "block";
+    renderMobileUpgradeButtons();
+    setupMobileControls();
+    setupJoysticks();
+  }
+});
+
 
 
 // Place initial structures
