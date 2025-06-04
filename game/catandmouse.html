@@ -498,6 +498,32 @@ function tryBlink() {
   window.dispatchEvent(event);
 }
 
+  function renderMobileUpgradeButtons() {
+  const container = document.getElementById("mobileUpgradeButtons");
+  container.innerHTML = "";
+
+  const upgrades = [
+    { key: "1", name: "Speedster" },
+    { key: "2", name: "Scavenger" },
+    { key: "3", name: "Flea Master" },
+    { key: "4", name: "Wall Master" },
+    { key: "5", name: "Trapmaster" },
+    { key: "6", name: "Blink" },
+  ];
+
+  for (let u of upgrades) {
+    const btn = document.createElement("button");
+    btn.textContent = `${u.key} – ${u.name}`;
+    btn.style.margin = "4px";
+    btn.onclick = () => {
+      const event = new KeyboardEvent("keydown", { key: u.key });
+      window.dispatchEvent(event);
+    };
+    container.appendChild(btn);
+  }
+}
+
+
 
 
 function savePosition() {
@@ -1191,6 +1217,9 @@ listenToGame();
 gameStarted = true;
   if (/Mobi|Android/i.test(navigator.userAgent)) {
   document.getElementById("mobileControls").style.display = "block";
+  renderMobileUpgradeButtons();
+}
+
 }
 
 
