@@ -160,6 +160,8 @@
     </p>
     <p id="status"></p>
     <div id="playerStatus" style="margin-top: 10px;"></div>
+    <div id="hostDisplay" style="margin-top: 10px; font-weight: bold; color: #333;"></div>
+
 
     <!-- 🔧 Upgrade Menu -->
     <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
@@ -532,7 +534,10 @@ for (let y = 0; y < gridSize; y++) {
   }
 }
 
-
+function updateHostDisplay() {
+  const hostName = gameData?.host || "Unknown";
+  document.getElementById("hostDisplay").textContent = `👑 Host: ${hostName}`;
+}
 
 
 function movePlayer(dx, dy) {
@@ -1266,6 +1271,7 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
   onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
+      updateHostDisplay();
 
       if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
         const initialCat = {
