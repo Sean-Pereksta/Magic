@@ -669,7 +669,20 @@ function setupMobileControls() {
     });
   });
 
-  // Other control buttons
+  // Structure buttons (🧱 🔫 🪳 etc.)
+  const structureKeys = ["1", "2", "3", "4", "5", "6", "7"];
+  structureKeys.forEach(key => {
+    const emojiButton = document.querySelector(`#structureButtons button:nth-child(${parseInt(key) + 1})`);
+    if (emojiButton) {
+      emojiButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        console.log("📱 Selected structure:", key);
+        selectBuild(key);
+      });
+    }
+  });
+
+  // Upgrade menu toggle
   const upgradeBtn = document.querySelector('[data-upgrade]');
   if (upgradeBtn) {
     upgradeBtn.addEventListener('touchstart', (e) => {
@@ -678,6 +691,7 @@ function setupMobileControls() {
     });
   }
 
+  // Blink ability
   const blinkBtn = document.querySelector('[data-blink]');
   if (blinkBtn) {
     blinkBtn.addEventListener('touchstart', (e) => {
@@ -686,6 +700,7 @@ function setupMobileControls() {
     });
   }
 
+  // Trap placement
   const trapBtn = document.querySelector('[data-trap]');
   if (trapBtn) {
     trapBtn.addEventListener('touchstart', (e) => {
@@ -694,11 +709,7 @@ function setupMobileControls() {
     });
   }
 }
-  function simulateBuildKey(key) {
-  if (!upgradeMenuOpen) {
-    selectBuild(key);
-  }
-}
+
 
   function renderMobileUpgradeButtons() {
   const container = document.getElementById("mobileUpgradeButtons");
