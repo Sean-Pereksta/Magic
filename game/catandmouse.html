@@ -1270,10 +1270,11 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
 });
 
 
-  onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      updateHostDisplay();
+onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
+  if (docSnap.exists()) {
+    gameData = docSnap.data(); // ✅ store the data first
+    updateHostDisplay();       // ✅ now it's safe to read host
+
 
       if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
         const initialCat = {
