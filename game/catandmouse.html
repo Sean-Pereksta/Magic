@@ -670,10 +670,12 @@ function setupMobileControls() {
     });
   });
 
- const buttons = document.querySelectorAll('#structureButtons button');
+const structureKeys = ["1", "2", "3", "4", "5", "6", "7"];
 structureKeys.forEach(key => {
-  const index = parseInt(key, 10) - 1; // zero-based index
-  const emojiButton = buttons[index];
+  // Since first two children are <strong> and <br>, buttons start at 3rd child
+  const nthChildIndex = parseInt(key, 10) + 2; // Add 2 to shift past <strong> and <br>
+
+  const emojiButton = document.querySelector(`#structureButtons :nth-child(${nthChildIndex})`);
   if (emojiButton) {
     emojiButton.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -682,6 +684,7 @@ structureKeys.forEach(key => {
     });
   }
 });
+
 
 
   // Upgrade menu toggle
