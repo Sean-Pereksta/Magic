@@ -8,16 +8,19 @@
     font-family: sans-serif;
     text-align: center;
     background: #f4f4f4;
+    margin: 0;
+    padding: 0;
   }
 
   #grid {
-  display: grid;
-  justify-content: center;
-  grid-template-columns: repeat(30, 20px);
-  grid-template-rows: repeat(30, 20px);
-  margin: 20px auto;
-}
-
+    display: grid;
+    justify-content: center;
+    grid-template-columns: repeat(30, 20px);
+    grid-template-rows: repeat(30, 20px);
+    margin: 20px auto;
+    position: relative;
+    z-index: 0;
+  }
 
   .cell {
     width: 20px;
@@ -45,12 +48,40 @@
     background-color: red;
     border-radius: 1px;
   }
-  
 
   #info {
     margin-top: 10px;
   }
+
+  #mobileControls {
+    display: none;
+    margin-top: 20px;
+    z-index: 10;
+    position: relative;
+  }
+
+  @media (max-width: 768px) {
+    #mobileControls {
+      display: block;
+      margin: 10px auto 0;
+      z-index: 10;
+      position: relative;
+    }
+
+    #grid {
+      margin-top: 10px;
+      z-index: 0;
+      position: relative;
+    }
+
+    button, select {
+      font-size: 16px;
+      padding: 8px 12px;
+      margin: 4px;
+    }
+  }
 </style>
+
 
 <body>
 <h1 style="text-align: center;">🐱 Cat vs 🐭 Mouse</h1>
@@ -503,6 +534,29 @@ function toggleUpgradeMenu() {
 function tryBlink() {
   const event = new KeyboardEvent('keydown', { key: 'b' });
   window.dispatchEvent(event);
+}
+function setupMobileControls() {
+  const moves = ['up', 'down', 'left', 'right'];
+  const dirs = ['w', 'a', 's', 'd'];
+
+  for (let dir of moves) {
+    document.querySelector(`button[onclick="move('${dir}')"]`)
+      ?.addEventListener('touchstart', () => move(dir));
+  }
+
+  for (let d of dirs) {
+    document.querySelector(`button[onclick="place('${d}')"]`)
+      ?.addEventListener('touchstart', () => place(d));
+  }
+
+  document.querySelector(`button[onclick="toggleUpgradeMenu()"]`)
+    ?.addEventListener('touchstart', toggleUpgradeMenu);
+
+  document.querySelector(`button[onclick="tryBlink()"]`)
+    ?.addEventListener('touchstart', tryBlink);
+
+  document.querySelector(`button[onclick="placeTrap()"]`)
+    ?.addEventListener('touchstart', placeTrap);
 }
 
   function renderMobileUpgradeButtons() {
