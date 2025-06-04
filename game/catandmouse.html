@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>🐭 Cat vs Mouse</title>
 
- <style>
+<style>
   body {
     font-family: sans-serif;
     text-align: center;
@@ -34,17 +34,22 @@
     position: relative;
     z-index: 0;
   }
-
   #gridWrapper {
-    width: 400px;
-    height: 400px;
-    border: 3px solid black;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto;
-    background: #eaeaea;
-  }
+  width: 400px;  /* 20 columns * 20px each */
+  height: 400px; /* 20 rows * 20px each */
+  border: 3px solid black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  background: #eaeaea;
+}
+
+#grid {
+  display: grid;
+  /* These will still be set dynamically */
+}
+
 
   .cell {
     width: 20px;
@@ -73,13 +78,9 @@
     border-radius: 1px;
   }
 
- #catHealthContainer {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: 10px;
-}
-
+  #catHealthContainer {
+    margin-top: 10px;
+  }
 
   #catHealthBar {
     height: 20px;
@@ -112,38 +113,16 @@
     position: relative;
   }
 
-  button, select {
-    font-size: 20px;
-    padding: 14px 20px;
+   button, select {
+    font-size: 20px;       /* 🔍 Bigger text */
+    padding: 14px 20px;    /* 🔳 Larger tap area */
     margin: 6px;
   }
 
   html, body {
-    overscroll-behavior: none;
-    touch-action: none; /* Disables pinch-zoom + scroll on mobile */
-  }
-
-  /* 🎮 Joystick container */
-  #joysticks {
-    display: none; /* Hidden by default, shown via JS */
-    position: fixed;
-    bottom: 20px;
-    left: 0;
-    right: 0;
-    justify-content: space-between;
-    padding: 0 20px;
-    z-index: 9999; /* On top of everything */
-    pointer-events: none; /* Allows touch through except joystick areas */
-  }
-
-  #leftStickZone,
-  #rightStickZone {
-    width: 150px;
-    height: 150px;
-    touch-action: none; /* REQUIRED for NippleJS to work */
-    pointer-events: auto; /* Enable interaction inside joystick zones */
-  }
-
+  touch-action: manipulation;
+}
+  
   @media (max-width: 768px) {
     #mobileControls {
       display: block;
@@ -160,11 +139,8 @@
 </style>
 
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
-</head>
-
 <body>
-  <h1 style="text-align: center;">🐱 Cat vs 🐭 Mouse</h1>
+<h1 style="text-align: center;">🐱 Cat vs 🐭 Mouse</h1>
 
 <!-- 🧰 Build Options & Controls -->
 <div style="text-align: center; margin-bottom: 10px;">
@@ -218,37 +194,53 @@
   </div>
 
   <!-- 🎮 Main Game Grid + Controls -->
-<!-- 🎮 Main Game Grid + Controls -->
-<div>
-  <!-- 🟩 Grid Area -->
-  <div id="gridWrapper">
-    <div id="grid"></div>
+  <div>
+    <div id="gridWrapper">
+  <div id="grid"></div>
+</div>
+
+
+  <!-- 📱 Mobile Controls -->
+<div id="mobileControls" style="margin-top: 20px; display: none;">
+  <!-- Movement -->
+  <div style="margin-bottom: 12px;">
+    <div>
+      <button data-move="up" aria-label="Move Up">⬆️</button><br>
+      <button data-move="left" aria-label="Move Left">⬅️</button>
+      <button data-move="down" aria-label="Move Down">⬇️</button>
+      <button data-move="right" aria-label="Move Right">➡️</button>
+    </div>
   </div>
 
-  <!-- 📱 Mobile Joysticks -->
-  <div id="joysticks" style="display: flex; justify-content: space-between; margin-top: 20px;">
-    <div id="leftStickZone" style="width: 150px; height: 150px; touch-action: none;"></div>
-    <div id="rightStickZone" style="width: 150px; height: 150px; touch-action: none;"></div>
+  <!-- Build Placement -->
+  <div style="margin-bottom: 12px;">
+    <div>
+      <button data-place="w" aria-label="Build Up">⬆️ Build</button>
+      <button data-place="a" aria-label="Build Left">⬅️</button>
+      <button data-place="s" aria-label="Build Down">⬇️</button>
+      <button data-place="d" aria-label="Build Right">➡️</button>
+    </div>
   </div>
 
-  <!-- 🔁 Mode Toggle -->
+  <!-- Mode Toggle -->
   <div style="margin-bottom: 12px;">
     <button onclick="toggleMobileMode()">🔁 Switch to Upgrades</button>
   </div>
 
-  <!-- 🧱 Structure Buttons -->
-  <div id="structureButtons" style="margin-top: 10px;">
-    <strong>Select Structure:</strong><br>
-    <button>🧱</button>
-    <button>🔫</button>
-    <button>🪳</button>
-    <button>🏭</button>
-    <button>💎</button>
-    <button>🗼</button>
-    <button>🐦‍🔥</button>
-  </div>
+  <!-- Structure Buttons -->
+ <div id="structureButtons" style="margin-top: 10px;">
+  <strong>Select Structure:</strong><br>
+  <button>🧱</button>
+  <button>🔫</button>
+  <button>🪳</button>
+  <button>🏭</button>
+  <button>💎</button>
+  <button>🗼</button>
+  <button>🐦‍🔥</button>
+</div>
 
-  <!-- 🔧 Upgrade Buttons -->
+
+  <!-- Upgrade Buttons -->
   <div id="upgradeButtons" style="display: none; margin-bottom: 12px;">
     <strong>Upgrades:</strong><br>
     <button onclick="selectUpgrade('1')">1 – Speedster</button>
@@ -259,7 +251,7 @@
     <button onclick="selectUpgrade('6')">6 – Blink</button>
   </div>
 
-  <!-- ⚙️ Special Actions -->
+  <!-- Special Actions -->
   <div>
     <button data-upgrade>🛠️ Upgrades</button>
     <button data-blink>🌀 Blink</button>
@@ -267,15 +259,18 @@
   </div>
 </div>
 
-<!-- ❤️ Cat Health Bar (Moved outside main control div) -->
-<div id="catHealthContainer" style="display: flex; justify-content: center; align-items: center; margin-top: 10px;">
-  <div id="catHealthBar">
-    <div id="catHealthFill"></div>
-    <div id="catHealthText">❤️ 1000 / 1000</div>
+
+    <!-- ❤️ Cat Health Bar -->
+    <div id="catHealthContainer" style="margin-top: 10px;">
+      <div id="catHealthBar" style="height: 20px; width: 300px; background: lightgray; position: relative; margin: 0 auto; border-radius: 8px;">
+        <div id="catHealthFill" style="height: 100%; width: 100%; background: red; border-radius: 8px;"></div>
+        <div id="catHealthText" style="position: absolute; width: 100%; top: 0; text-align: center; font-weight: bold;">
+          ❤️ 1000 / 1000
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-
-
 
 
 
@@ -599,25 +594,25 @@ function updateCatHealthBar() {
 }
 
 
-function move(angle) {
-  const map = { up: 'up', down: 'down', left: 'left', right: 'right' };
-  const dir = map[angle];
-  if (!dir || !canMove || !isAlive) return;
+function move(dir) {
+  if (!canMove || !isAlive) return;
   if (dir === 'up') movePlayer(0, -1);
-  if (dir === 'down') movePlayer(0, 1);
-  if (dir === 'left') movePlayer(-1, 0);
-  if (dir === 'right') movePlayer(1, 0);
+  else if (dir === 'down') movePlayer(0, 1);
+  else if (dir === 'left') movePlayer(-1, 0);
+  else if (dir === 'right') movePlayer(1, 0);
   triggerMoveCooldown();
 }
 
 
 
-function place(angle) {
-  const map = { up: 'w', down: 's', left: 'a', right: 'd' };
-  const dir = map[angle];
-  if (dir) placeStructure(dir);
+function place(dir) {
+  if (!canMove || !isAlive || selectedBuild === null) {
+    console.log("🚫 Can't place: either dead, can't move, or no build selected.");
+    return;
+  }
+  console.log("🛠️ Building", selectedBuild, "towards", dir);
+  placeStructure(dir);
 }
-
 
 
 function selectBuild(value) {
@@ -734,43 +729,6 @@ structureKeys.forEach(key => {
       placeTrap();
     });
   }
-}
-function setupJoysticks() {
-  const leftJoystick = nipplejs.create({
-    zone: document.getElementById('leftStickZone'),
-    mode: 'static',
-    position: { left: '50px', bottom: '50px' },
-    color: 'blue'
-  });
-
-  const rightJoystick = nipplejs.create({
-    zone: document.getElementById('rightStickZone'),
-    mode: 'static',
-    position: { right: '50px', bottom: '50px' },
-    color: 'green'
-  });
-
-  let leftInterval = null;
-  leftJoystick.on('dir', (evt, data) => {
-    if (leftInterval) clearInterval(leftInterval);
-    if (data && data.direction) {
-      leftInterval = setInterval(() => {
-        move(data.direction.angle); // calls move("up" | "down" | etc.)
-      }, moveCooldown + 25);
-    }
-  });
-  leftJoystick.on('end', () => clearInterval(leftInterval));
-
-  let rightInterval = null;
-  rightJoystick.on('dir', (evt, data) => {
-    if (rightInterval) clearInterval(rightInterval);
-    if (data && data.direction) {
-      rightInterval = setInterval(() => {
-        place(data.direction.angle); // calls place("w" | "s" | etc.)
-      }, 300);
-    }
-  });
-  rightJoystick.on('end', () => clearInterval(rightInterval));
 }
 
 
@@ -1530,17 +1488,11 @@ if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7"].includes(e.key)) {
 // After listenToGame():
 listenToGame();
 gameStarted = true;
-window.addEventListener("load", () => {
-  if (/Mobi|Android/i.test(navigator.userAgent)) {
-    document.getElementById("joysticks").style.display = "flex";
-    document.getElementById("mobileControls").style.display = "block";
-    renderMobileUpgradeButtons();
-    setupMobileControls();
-    setupJoysticks();
-  }
-});
-
-
+ if (/Mobi|Android/i.test(navigator.userAgent)) {
+  document.getElementById("mobileControls").style.display = "block";
+  renderMobileUpgradeButtons();
+  setupMobileControls(); // 🔧 This is critical
+}
 
 // Place initial structures
 grid[24][15] = "🧱";
@@ -2135,4 +2087,3 @@ setInterval(() => {
 </script>
 </body>
 </html>
-
