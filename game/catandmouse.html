@@ -175,6 +175,7 @@
     <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
     <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
     <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
+    <div id="abilityStatus" style="margin-top: 10px;"></div>
     <p id="advPointMessage" style="color: green; font-weight: bold; display: none; margin: 5px 0;">
       🟢 You gained an advancement point!
     </p>
@@ -780,6 +781,28 @@ structureKeys.forEach(key => {
 }
 
 
+function updateAbilityStatus() {
+  const statusDiv = document.getElementById("abilityStatus");
+  let content = "";
+
+  const now = Date.now();
+
+  if (blinkActive) {
+    const cooldown = 8000;
+    const remaining = Math.max(0, cooldown - (now - lastBlinkTime));
+    const ready = remaining === 0;
+    content += `🌀 Blink [B]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining / 1000) + "s")}</span><br>`;
+  }
+
+  if (trapmasterActive) {
+    const cooldown = 20000;
+    const remaining = Math.max(0, cooldown - (now - lastTrapTime));
+    const ready = remaining === 0;
+    content += `🪤 Trap [T]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining / 1000) + "s")}</span><br>`;
+  }
+
+  statusDiv.innerHTML = content;
+}
 
 
 function savePosition() {
@@ -1638,6 +1661,7 @@ setInterval(() => {
     syncMyFleas();
   }
 }, 500);
+setInterval(updateAbilityStatus, 1000);
 
 setInterval(() => {
   if (!gameStarted) return;
