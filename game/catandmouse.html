@@ -1427,22 +1427,32 @@ async function catBehavior() {
 
 async function listenToGame() {
 
-  onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        if (grid[y][x] === "🧱" || grid[y][x] === "🔫") grid[y][x] = "";
+onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
+  // 🧹 Clear old structures from grid
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (["🧱", "🔫"].includes(grid[y][x])) {
+        grid[y][x] = "";
       }
     }
-    structureHealth = {};
-    snap.forEach((docSnap) => {
-      const { x, y, type, health } = docSnap.data();
-      if (x !== undefined && y !== undefined && type) {
-        grid[y][x] = type;
-        structureHealth[`${x}_${y}`] = health;
-      }
-    });
-    renderGrid();
+  }
+
+  structureHealth = {};
+
+  // 🧱 Re-populate grid with structure data
+  snap.forEach((docSnap) => {
+    const data = docSnap.data(); // ✅ Correct variable
+    const { x, y, type, health } = data;
+
+    if (x !== undefined && y !== undefined && type) {
+      grid[y][x] = type;
+      structureHealth[`${x}_${y}`] = health;
+    }
   });
+
+  renderGrid();
+});
+
   onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
   renderGrid();
@@ -1460,26 +1470,27 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
 
 onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
   if (docSnap.exists()) {
-    gameData = docSnap.data(); // ✅ store the data first
-    updateHostDisplay();       // ✅ now it's safe to read host
+    const data = docSnap.data();       // ✅ FIXED
+    gameData = data;                   // ✅ Optional: still store it globally
+    updateHostDisplay();
 
-
-      if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
-        const initialCat = {
-          x: gridSize - 1,
-          y: gridSize - 1,
-          health: 1000
-        };
-        updateDoc(doc(db, `games/${gameId}`), { cat: initialCat });
-      }
-
-      const cat = data.cat || {};
-      catPower = data.catPower || 0;
-      catPos = { x: cat.x || 15, y: cat.y || 15 };
-      catHealth = cat.health || 1000;
-      renderGrid();
+    if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
+      const initialCat = {
+        x: gridSize - 1,
+        y: gridSize - 1,
+        health: 1000
+      };
+      updateDoc(doc(db, `games/${gameId}`), { cat: initialCat });
     }
-  });
+
+    const cat = data.cat || {};
+    catPower = data.catPower || 0;
+    catPos = { x: cat.x || 15, y: cat.y || 15 };
+    catHealth = cat.health || 1000;
+    renderGrid();
+  }
+});
+
 
 onSnapshot(collection(db, `games/${gameId}/traps`), (snap) => {
   // 🧹 Clear all existing trap symbols from grid
