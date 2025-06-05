@@ -162,6 +162,10 @@
 <div id="returnButton" style="display:none; margin-top: 20px; text-align: center;">
   <button onclick="returnToLobby()" style="padding: 10px 20px; font-size: 16px;">🔙 Return to Lobby</button>
 </div>
+  <div id="ratCountdown" style="font-size: 16px; font-weight: bold; margin-bottom: 10px; color: darkred;">
+  🐀 Next rat wave in: <span id="ratTimer">40</span>s
+</div>
+
 
 <!-- 🔲 Main Game + Sidebar Layout -->
 <div style="display: flex; justify-content: center; align-items: flex-start; gap: 20px; margin-top: 20px;">
@@ -341,6 +345,7 @@ let blinkActive = false;
 let lastBlinkTime = 0;
 let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
   let showingUpgrades = false;
+  let localRatTimer = 40;
 
 
 
@@ -1634,7 +1639,16 @@ setInterval(() => {
   }
 }, 500);
 
+setInterval(() => {
+  if (!gameStarted) return;
 
+  localRatTimer--;
+  if (localRatTimer <= 0) {
+    localRatTimer = 40; // reset timer for next local countdown
+  }
+
+  document.getElementById("ratTimer").textContent = localRatTimer;
+}, 1000); // every second
 setInterval(() => {
   if (!gameStarted || !isAlive) return;
 
