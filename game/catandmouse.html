@@ -1076,10 +1076,27 @@ function rocketTowerAttack() {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🚀") {
+        // 🔋 Check for nearby beacon boost
+        let boosted = false;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const bx = x + dx;
+            const by = y + dy;
+            if (
+              bx >= 0 && bx < gridSize &&
+              by >= 0 && by < gridSize &&
+              grid[by][bx] === "🗼"
+            ) {
+              boosted = true;
+              break;
+            }
+          }
+          if (boosted) break;
+        }
+
         // 🔍 Find farthest rat within 8 tiles
         let target = null;
         let maxDist = -1;
-
         for (let rat of rats) {
           const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
           if (dist <= 8 && dist > maxDist && rat.health > 0) {
@@ -1089,38 +1106,41 @@ function rocketTowerAttack() {
         }
 
         if (target) {
-          // 🎯 Main target takes 15
-          target.health -= 15;
-          console.log(`🚀 Rocket hit main rat at (${target.x}, ${target.y}) for 15`);
+          const mainDamage = boosted ? 20 : 15;
+          const splashDamage = boosted ? 15 : 10;
 
-          // 💥 Splash damage to adjacent squares
+          // 🎯 Main target takes boosted or base damage
+          target.health -= mainDamage;
+          console.log(`🚀 Rocket hit main rat at (${target.x}, ${target.y}) for ${mainDamage}`);
+
+          // 💥 Splash damage to surrounding
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const sx = target.x + dx;
               const sy = target.y + dy;
               if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
-              if (dx === 0 && dy === 0) continue; // skip main tile
+              if (dx === 0 && dy === 0) continue; // skip center
 
               // 🐀 Splash rats
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
-                  rat.health -= 10;
-                  console.log(`💥 Splash hit rat at (${sx}, ${sy}) for 10`);
+                  rat.health -= splashDamage;
+                  console.log(`💥 Splash hit rat at (${sx}, ${sy}) for ${splashDamage}`);
                 }
               }
 
               // 🐂 Splash oxen
               for (let ox of oxen) {
                 if (ox.x === sx && ox.y === sy && ox.health > 0) {
-                  ox.health -= 10;
-                  console.log(`💥 Splash hit ox at (${sx}, ${sy}) for 10`);
+                  ox.health -= splashDamage;
+                  console.log(`💥 Splash hit ox at (${sx}, ${sy}) for ${splashDamage}`);
                 }
               }
 
               // 🐱 Splash cat
               if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
-                catHealth -= 10;
-                console.log(`💥 Splash hit cat at (${sx}, ${sy}) for 10`);
+                catHealth -= splashDamage;
+                console.log(`💥 Splash hit cat at (${sx}, ${sy}) for ${splashDamage}`);
                 updateDoc(doc(db, `games/${gameId}`), {
                   cat: { ...catPos, health: catHealth }
                 });
@@ -1132,12 +1152,13 @@ function rocketTowerAttack() {
     }
   }
 
-  // 🧹 Cleanup dead rats and oxen
+  // 🧹 Cleanup
   rats = rats.filter(r => r.health > 0);
   oxen = oxen.filter(o => o.health > 0);
 
   renderGrid();
 }
+
 
 
 
@@ -2079,7 +2100,7 @@ setInterval(() => {
   }
 }, 2000); // Check every 2 seconds
 setInterval(turretAttack, 1500);
-   setInterval(rocketTowerAttack, 3000);
+   setInterval(rocketTowerAttack, 3500);
 
   setInterval(() => {
   ratPower++;
