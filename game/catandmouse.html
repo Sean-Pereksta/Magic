@@ -1230,6 +1230,8 @@ function triggerMoveCooldown() {
 
 async function catBehavior() {
   console.log("🐱 Cat behavior running");
+
+  // 🪤 Check for traps
   for (let trap of traps) {
     if (trap.x === catPos.x && trap.y === catPos.y) {
       console.log("🪤 Cat stepped on a trap!");
@@ -1263,6 +1265,7 @@ async function catBehavior() {
   console.log("📌 Checking mice (any distance)...");
   let mouseBlocked = true;
 
+  // 🐭 Priority 1: Closest reachable mouse
   for (const [_, p] of aliveMice) {
     const dist = Math.abs(p.x - catPos.x) + Math.abs(p.y - catPos.y);
     console.log(`➡️ Mouse at (${p.x}, ${p.y}) is ${dist} tiles away`);
@@ -1278,13 +1281,11 @@ async function catBehavior() {
     }
   }
 
-  // 🧱 Try breaking into a trapped mouse only if no reachable ones exist
+  // 🧱 Priority 2: Break walls around blocked mice
   if (!target && mouseBlocked) {
     for (const [_, p] of aliveMice) {
       console.log(`🧱 Mouse at (${p.x}, ${p.y}) is blocked. Searching for reachable wall...`);
-      const directions = [
-        [1, 0], [-1, 0], [0, 1], [0, -1]
-      ];
+      const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (const [dx, dy] of directions) {
         const wx = p.x + dx;
         const wy = p.y + dy;
@@ -1308,7 +1309,7 @@ async function catBehavior() {
     }
   }
 
-  // 🔫 Structures
+  // 🔫 Priority 3: Attack structures
   if (!target) {
     console.log("📌 Checking structures...");
     for (let y = 0; y < gridSize; y++) {
@@ -1328,13 +1329,13 @@ async function catBehavior() {
     }
   }
 
-  // 🧱 Final fallback
+  // 🧱 Priority 4: Final fallback to any grid target
   if (!target) {
     console.log("📌 Final fallback search...");
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const symbol = grid[y][x];
-        ["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(grid[ty][tx])
+        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(symbol)) {
           const fPath = findPath(catPos.x, catPos.y, x, y, false);
           if (fPath) {
             console.log(`⬅️ Fallback target (${symbol}) at (${x}, ${y}) - ${fPath.length} steps`);
@@ -1346,7 +1347,10 @@ async function catBehavior() {
         }
       }
     }
+  }
 
+  // 🐭 Priority 5: Re-check mice just in case
+  if (!target) {
     for (const [_, p] of aliveMice) {
       const fPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
       if (fPath) {
@@ -1365,23 +1369,22 @@ async function catBehavior() {
     console.log("❌ No target found. Cat is frozen.");
   }
 
-  // 🐾 Move
-if (target && path && path.length > 1) {
-  const next = path[1];
-  const symbol = grid[next.y][next.x];
-  const isBlocked = ["🧱", "💎"].includes(symbol);
+  // 🐾 Move toward target
+  if (target && path.length > 1) {
+    const next = path[1];
+    const symbol = grid[next.y][next.x];
+    const isBlocked = ["🧱", "💎"].includes(symbol);
 
-  if (!isBlocked) {
-    catPos.x = next.x;
-    catPos.y = next.y;
-    console.log(`✅ Cat moved to (${catPos.x}, ${catPos.y}) toward ${target.type}`);
-  } else {
-    console.log(`🚫 Cat blocked at (${next.x}, ${next.y}) by ${symbol}`);
+    if (!isBlocked) {
+      catPos.x = next.x;
+      catPos.y = next.y;
+      console.log(`✅ Cat moved to (${catPos.x}, ${catPos.y}) toward ${target.type}`);
+    } else {
+      console.log(`🚫 Cat blocked at (${next.x}, ${next.y}) by ${symbol}`);
+    }
   }
-}
 
-
-  // 💥 Attack nearby
+  // 💥 Attack nearby structure
   let attacked = false;
   for (let dy = -1; dy <= 1 && !attacked; dy++) {
     for (let dx = -1; dx <= 1 && !attacked; dx++) {
@@ -1399,7 +1402,7 @@ if (target && path && path.length > 1) {
     }
   }
 
-  // 💀 Kill any players on the cat’s tile
+  // 💀 Kill players on cat’s tile
   for (const [name, p] of Object.entries(players)) {
     if ((p.alive ?? true) && catPos.x === p.x && catPos.y === p.y) {
       console.log(`💀 Cat killed ${name}`);
@@ -1412,13 +1415,14 @@ if (target && path && path.length > 1) {
     }
   }
 
-  updateDoc(doc(db, `games/${gameId}`), {
+  await updateDoc(doc(db, `games/${gameId}`), {
     cat: { x: catPos.x, y: catPos.y, health: catHealth }
   });
-updateCatHealthBar();
 
+  updateCatHealthBar();
   renderGrid();
 }
+
 
 
 async function listenToGame() {
