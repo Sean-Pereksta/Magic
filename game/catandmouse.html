@@ -2054,59 +2054,48 @@ setInterval(() => {
 setInterval(() => {
   if (!gameStarted || catPower <= 0) return;
 
-  let spawned = 0;
-  const maxRats = catPower;
-
-  const offsets = [
+  const allOffsets = [
     { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
     { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
     { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-    { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 }
+    { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
+    { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
+    { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
   ];
 
-  for (let i = 0; i < offsets.length && spawned < maxRats; i++) {
-    const ox = catPos.x + offsets[i].x;
-    const oy = catPos.y + offsets[i].y;
+  const availableSpots = allOffsets
+    .map(offset => ({
+      x: catPos.x + offset.x,
+      y: catPos.y + offset.y
+    }))
+    .filter(pos =>
+      pos.x >= 0 && pos.x < gridSize &&
+      pos.y >= 0 && pos.y < gridSize &&
+      grid[pos.y][pos.x] === "" &&
+      !rats.some(r => r.x === pos.x && r.y === pos.y) &&
+      !oxen.some(o => o.x === pos.x && o.y === pos.y)
+    );
 
-    if (
-      ox >= 0 && ox < gridSize &&
-      oy >= 0 && oy < gridSize &&
-      !rats.some(r => r.x === ox && r.y === oy) &&
-      !oxen.some(o => o.x === ox && o.y === oy)
-    ) {
-      rats.push({ x: ox, y: oy, health: ratPower * 5 });
-      spawned++;
-    }
+  // 🐂 Spawn oxen first
+  let oxSpawned = 0;
+  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
+
+  for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
+    const spot = availableSpots[i];
+    oxen.push({ x: spot.x, y: spot.y, health: ratPower * 30 });
+    oxSpawned++;
   }
 
-  // 🐂 Every 10 levels starting at 15, spawn 1 ox
-  const oxCount = Math.floor((catPower - 15) / 10) + 1;
-  if (catPower >= 15) {
-    let oxSpawned = 0;
-    for (let offset of offsets) {
-      if (oxSpawned >= oxCount) break;
-
-      const oxX = catPos.x + offset.x;
-      const oxY = catPos.y + offset.y;
-
-      if (
-        oxX >= 0 && oxX < gridSize &&
-        oxY >= 0 && oxY < gridSize &&
-        !rats.some(r => r.x === oxX && r.y === oxY) &&
-        !oxen.some(o => o.x === oxX && o.y === oxY) &&
-        grid[oxY][oxX] === ""
-      ) {
-        oxen.push({ x: oxX, y: oxY, health: ratPower * 30 });
-        oxSpawned++;
-      }
-    }
-
-    if (oxSpawned > 0) {
-      console.log(`🐂 Spawned ${oxSpawned} oxen (Cat Power: ${catPower})`);
-    }
+  // 🐀 Then spawn rats with remaining space
+  let ratsSpawned = 0;
+  const maxRats = catPower;
+  for (let i = oxSpawned; i < availableSpots.length && ratsSpawned < maxRats; i++) {
+    const spot = availableSpots[i];
+    rats.push({ x: spot.x, y: spot.y, health: ratPower * 5 });
+    ratsSpawned++;
   }
 
-  console.log(`🐀 ${spawned} rats spawned (Power Level: ${catPower})`);
+  console.log(`🐂 Spawned ${oxSpawned} oxen | 🐀 Spawned ${ratsSpawned} rats (Power: ${catPower})`);
 }, 40000);
 
    setInterval(() => {
