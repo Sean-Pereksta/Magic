@@ -364,8 +364,6 @@ let fleas = [];
   let termites = []; // 🐛
   let traps = []; // Each: {x, y, placedAt}
   let oxen = [];
-  let fireTiles = []; // Global array to track fire spots
-
 
 
 
@@ -482,10 +480,6 @@ function renderGrid() {
       cell.appendChild(nameTag);
     }
   }
-
-  if (fireTiles.some(tile => tile.x === x && tile.y === y)) {
-  cell.textContent = "🔥";
-}
 
   // 🐞 Fleas
   for (const flea of fleas) {
@@ -1078,9 +1072,7 @@ function turretAttack() {
 }
 
 
-async function rocketTowerAttack() {
-  let newFireTiles = []; // Temporary fire list to sync
-
+function rocketTowerAttack() {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🚀") {
@@ -1088,7 +1080,8 @@ async function rocketTowerAttack() {
         let boosted = false;
         for (let dy = -2; dy <= 2; dy++) {
           for (let dx = -2; dx <= 2; dx++) {
-            const bx = x + dx, by = y + dy;
+            const bx = x + dx;
+            const by = y + dy;
             if (
               bx >= 0 && bx < gridSize &&
               by >= 0 && by < gridSize &&
@@ -1116,22 +1109,19 @@ async function rocketTowerAttack() {
           const mainDamage = boosted ? 20 : 15;
           const splashDamage = boosted ? 15 : 10;
 
-          // 🎯 Main target takes damage
-          newFireTiles.push({ x: target.x, y: target.y });
+          // 🎯 Main target takes boosted or base damage
           target.health -= mainDamage;
           console.log(`🚀 Rocket hit main rat at (${target.x}, ${target.y}) for ${mainDamage}`);
 
-          // 💥 Splash damage
+          // 💥 Splash damage to surrounding
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const sx = target.x + dx;
               const sy = target.y + dy;
               if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
-              if (dx === 0 && dy === 0) continue;
+              if (dx === 0 && dy === 0) continue; // skip center
 
-              newFireTiles.push({ x: sx, y: sy }); // 🔥 record for fire animation
-
-              // 🐀 Rats
+              // 🐀 Splash rats
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
                   rat.health -= splashDamage;
@@ -1139,7 +1129,7 @@ async function rocketTowerAttack() {
                 }
               }
 
-              // 🐂 Oxen
+              // 🐂 Splash oxen
               for (let ox of oxen) {
                 if (ox.x === sx && ox.y === sy && ox.health > 0) {
                   ox.health -= splashDamage;
@@ -1147,11 +1137,11 @@ async function rocketTowerAttack() {
                 }
               }
 
-              // 🐱 Cat
+              // 🐱 Splash cat
               if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
                 catHealth -= splashDamage;
                 console.log(`💥 Splash hit cat at (${sx}, ${sy}) for ${splashDamage}`);
-                await updateDoc(doc(db, `games/${gameId}`), {
+                updateDoc(doc(db, `games/${gameId}`), {
                   cat: { ...catPos, health: catHealth }
                 });
               }
@@ -1162,24 +1152,12 @@ async function rocketTowerAttack() {
     }
   }
 
+  // 🧹 Cleanup
   rats = rats.filter(r => r.health > 0);
   oxen = oxen.filter(o => o.health > 0);
 
-  // 🔥 Sync fireTiles to all players
-  await updateDoc(doc(db, `games/${gameId}`), {
-    fireTiles: newFireTiles
-  });
-
-  // 🔥 Clear fire effect after 300ms for all players
-  setTimeout(() => {
-    updateDoc(doc(db, `games/${gameId}`), {
-      fireTiles: []
-    });
-  }, 300);
-
   renderGrid();
 }
-
 
 
 
@@ -1492,12 +1470,9 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
 
 onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
   if (docSnap.exists()) {
-    const data = docSnap.data();
-    gameData = data;
+    const data = docSnap.data();       // ✅ FIXED
+    gameData = data;                   // ✅ Optional: still store it globally
     updateHostDisplay();
-
-    // 🔥 ADD THIS LINE TO SYNC FIRE VISUALS
-    fireTiles = data.fireTiles || [];
 
     if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
       const initialCat = {
@@ -1512,11 +1487,9 @@ onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
     catPower = data.catPower || 0;
     catPos = { x: cat.x || 15, y: cat.y || 15 };
     catHealth = cat.health || 1000;
-
-    renderGrid(); // 🔥 Will now draw fireTiles for everyone
+    renderGrid();
   }
 });
-
 
 
 onSnapshot(collection(db, `games/${gameId}/traps`), (snap) => {
