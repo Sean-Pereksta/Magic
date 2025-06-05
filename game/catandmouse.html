@@ -2098,19 +2098,20 @@ setInterval(() => {
   console.log(`🐂 Spawned ${oxSpawned} oxen | 🐀 Spawned ${ratsSpawned} rats (Power: ${catPower})`);
 }, 40000);
 
-   setInterval(() => {
+ setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
 
     let bestTarget = null;
     let minDist = Infinity;
 
+    // 🎯 Find nearest wall or super wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const symbol = grid[y][x];
         if (symbol === "💎" || symbol === "🧱") {
           const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
-          const priority = symbol === "💎" ? 0 : 1; // Super walls get higher priority
+          const priority = symbol === "💎" ? 0 : 1;
 
           if (dist < minDist || (dist === minDist && priority < (bestTarget?.priority ?? 1))) {
             minDist = dist;
@@ -2121,17 +2122,21 @@ setInterval(() => {
     }
 
     if (bestTarget) {
-      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, true);
+      // 🔁 Only path through non-walls
+      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
       if (path && path.length > 0) {
         const next = path[0];
         ox.x = next.x;
         ox.y = next.y;
       }
 
-      // 💥 If standing on the wall, attack
-      if (ox.x === bestTarget.x && ox.y === bestTarget.y) {
-        damageStructure(ox.x, ox.y, ratPower * 10); // Heavy damage
+      // 💥 Attack if adjacent (not same tile)
+      const dx = Math.abs(ox.x - bestTarget.x);
+      const dy = Math.abs(ox.y - bestTarget.y);
+      if (dx + dy === 1) {
+        damageStructure(bestTarget.x, bestTarget.y, ratPower * 10); // Heavy damage
         ox.health -= 1;
+        console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
       }
     }
 
@@ -2140,6 +2145,7 @@ setInterval(() => {
 
   renderGrid();
 }, 800);
+
 
  setInterval(async () => {
   for (let rat of rats) {
