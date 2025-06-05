@@ -356,6 +356,8 @@ let fleas = [];
   let rats = []; // 🐀
   let termites = []; // 🐛
   let traps = []; // Each: {x, y, placedAt}
+  let oxen = [];
+
 
 
 
@@ -492,6 +494,20 @@ const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
       cell.appendChild(healthTag);
     }
   }
+
+  // 🐂 Oxen
+for (const ox of oxen) {
+  const cell = document.getElementById(`cell-${ox.x}-${ox.y}`);
+  if (cell) {
+    cell.textContent = "🐂";
+    const hpTag = document.createElement("div");
+    hpTag.className = "name";
+    hpTag.style.color = "orange";
+    hpTag.textContent = `❤️${ox.health}`;
+    cell.appendChild(hpTag);
+  }
+}
+
 
   // 🐛 Termites
   for (const termite of termites) {
@@ -985,7 +1001,7 @@ function turretAttack() {
           attacked = true;
         }
 
-        // 🔫 If cat not hit, try to hit one rat
+        // 🔫 If cat not hit, try to hit a rat
         if (!attacked) {
           for (let rat of rats) {
             if (rat.health <= 0) continue;
@@ -1000,6 +1016,22 @@ function turretAttack() {
             }
           }
         }
+
+        // 🔫 If still not hit, try to hit an ox
+        if (!attacked) {
+          for (let ox of oxen) {
+            if (ox.health <= 0) continue;
+
+            const dxOx = Math.abs(ox.x - x);
+            const dyOx = Math.abs(ox.y - y);
+            if (dxOx <= 5 && dyOx <= 5) {
+              ox.health -= damage;
+              console.log(`💥 Turret hit ox at (${ox.x}, ${ox.y}) → HP: ${ox.health}`);
+              attacked = true;
+              break;
+            }
+          }
+        }
       }
     }
   }
@@ -1009,8 +1041,14 @@ function turretAttack() {
     if (rats[i].health <= 0) rats.splice(i, 1);
   }
 
+  // 🧹 Clean up dead oxen
+  for (let i = oxen.length - 1; i >= 0; i--) {
+    if (oxen[i].health <= 0) oxen.splice(i, 1);
+  }
+
   renderGrid();
 }
+
 
 
 
@@ -1300,6 +1338,11 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
   rats = snap.docs.map(doc => doc.data());
   renderGrid();
 });
+  onSnapshot(collection(db, `games/${gameId}/oxen`), (snap) => {
+  oxen = snap.docs.map(doc => doc.data());
+  renderGrid();
+});
+
 
 
 onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
@@ -1733,23 +1776,33 @@ setInterval(() => {
     }
   }
 }, 4000);
-   setInterval(() => {
+  setInterval(() => {
   for (let flea of fleas) {
     let target = null;
     let minDist = Infinity;
 
-    // 🔍 Find nearest target: Cat or Rat
+    // 🔍 Cat as initial target
     const distToCat = Math.abs(catPos.x - flea.x) + Math.abs(catPos.y - flea.y);
     if (distToCat < minDist) {
       minDist = distToCat;
       target = { x: catPos.x, y: catPos.y, type: "cat" };
     }
 
+    // 🔍 Check rats
     for (let rat of rats) {
       const dist = Math.abs(rat.x - flea.x) + Math.abs(rat.y - flea.y);
       if (dist < minDist && rat.health > 0) {
         minDist = dist;
         target = { x: rat.x, y: rat.y, type: "rat", rat };
+      }
+    }
+
+    // 🔍 Check oxen
+    for (let ox of oxen) {
+      const dist = Math.abs(ox.x - flea.x) + Math.abs(ox.y - flea.y);
+      if (dist < minDist && ox.health > 0) {
+        minDist = dist;
+        target = { x: ox.x, y: ox.y, type: "ox", ox };
       }
     }
 
@@ -1784,10 +1837,16 @@ setInterval(() => {
         } else if (target.type === "rat" && target.rat) {
           target.rat.health -= 5;
           flea.lifetime = 0;
-
           if (target.rat.health <= 0) {
             const index = rats.indexOf(target.rat);
             if (index !== -1) rats.splice(index, 1);
+          }
+        } else if (target.type === "ox" && target.ox) {
+          target.ox.health -= 5;
+          flea.lifetime = 0;
+          if (target.ox.health <= 0) {
+            const index = oxen.indexOf(target.ox);
+            if (index !== -1) oxen.splice(index, 1);
           }
         }
       }
@@ -1803,6 +1862,7 @@ setInterval(() => {
 
   renderGrid();
 }, 400);
+
 
   setInterval(() => {
   if (!wallMasterActive || !isAlive) return;
@@ -1958,12 +2018,13 @@ setInterval(() => {
 
   let spawned = 0;
   const maxRats = catPower;
+
   const offsets = [
     { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
     { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
     { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
     { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 }
-  ]; // Spacing options
+  ];
 
   for (let i = 0; i < offsets.length && spawned < maxRats; i++) {
     const ox = catPos.x + offsets[i].x;
@@ -1972,16 +2033,87 @@ setInterval(() => {
     if (
       ox >= 0 && ox < gridSize &&
       oy >= 0 && oy < gridSize &&
-      !rats.some(r => r.x === ox && r.y === oy) // no overlap
+      !rats.some(r => r.x === ox && r.y === oy) &&
+      !oxen.some(o => o.x === ox && o.y === oy)
     ) {
       rats.push({ x: ox, y: oy, health: ratPower * 5 });
-
       spawned++;
     }
   }
 
+  // 🐂 Every 10 levels starting at 15, spawn 1 ox
+  const oxCount = Math.floor((catPower - 15) / 10) + 1;
+  if (catPower >= 15) {
+    let oxSpawned = 0;
+    for (let offset of offsets) {
+      if (oxSpawned >= oxCount) break;
+
+      const oxX = catPos.x + offset.x;
+      const oxY = catPos.y + offset.y;
+
+      if (
+        oxX >= 0 && oxX < gridSize &&
+        oxY >= 0 && oxY < gridSize &&
+        !rats.some(r => r.x === oxX && r.y === oxY) &&
+        !oxen.some(o => o.x === oxX && o.y === oxY) &&
+        grid[oxY][oxX] === ""
+      ) {
+        oxen.push({ x: oxX, y: oxY, health: ratPower * 30 });
+        oxSpawned++;
+      }
+    }
+
+    if (oxSpawned > 0) {
+      console.log(`🐂 Spawned ${oxSpawned} oxen (Cat Power: ${catPower})`);
+    }
+  }
+
   console.log(`🐀 ${spawned} rats spawned (Power Level: ${catPower})`);
-}, 40000); 
+}, 40000);
+
+   setInterval(() => {
+  for (let i = oxen.length - 1; i >= 0; i--) {
+    const ox = oxen[i];
+
+    let bestTarget = null;
+    let minDist = Infinity;
+
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const symbol = grid[y][x];
+        if (symbol === "💎" || symbol === "🧱") {
+          const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
+          const priority = symbol === "💎" ? 0 : 1; // Super walls get higher priority
+
+          if (dist < minDist || (dist === minDist && priority < (bestTarget?.priority ?? 1))) {
+            minDist = dist;
+            bestTarget = { x, y, symbol, priority };
+          }
+        }
+      }
+    }
+
+    if (bestTarget) {
+      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, true);
+      if (path && path.length > 0) {
+        const next = path[0];
+        ox.x = next.x;
+        ox.y = next.y;
+      }
+
+      // 💥 If standing on the wall, attack
+      if (ox.x === bestTarget.x && ox.y === bestTarget.y) {
+        damageStructure(ox.x, ox.y, 25); // Heavy damage
+        ox.health -= 1;
+      }
+    }
+
+    if (ox.health <= 0) oxen.splice(i, 1);
+  }
+
+  renderGrid();
+}, 800);
+
  setInterval(async () => {
   for (let rat of rats) {
     if (rat.health <= 0) continue;
