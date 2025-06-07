@@ -2184,84 +2184,93 @@ setInterval(async () => {
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
 
-  if (!ratSpawnIntervalStarted) {
-    ratSpawnIntervalStarted = true;
-setInterval(async () => {
-  if (!gameStarted || !isHost || catPower <= 0) return;
+if (!ratSpawnIntervalStarted) {
+  ratSpawnIntervalStarted = true;
 
-  console.log("🕒 RAT SPAWN TICK ----------------------------");
-  console.log("👑 isHost:", isHost);
-  console.log("📍 catPos at spawn:", catPos);
-  console.log("🔋 catPower:", catPower);
+  setInterval(async () => {
+    if (!gameStarted || !isHost || catPower <= 0) return;
 
-const allOffsets = [
-  { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-  { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-  { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-  { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
-  { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
-  { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
-];
+    console.log("🕒 RAT SPAWN TICK ----------------------------");
+    console.log("👑 isHost:", isHost);
+    console.log("📍 catPos inside interval:", catPos);
+    console.log("🔋 catPower:", catPower);
 
+    // 🧹 Clean up dead rats from Firestore
+    const ratsRef = collection(db, `games/${gameId}/rats`);
+    const ratDocs = await getDocs(ratsRef);
+    for (const docSnap of ratDocs.docs) {
+      const rat = docSnap.data();
+      if (rat.health <= 0) {
+        await deleteDoc(docSnap.ref);
+        console.log(`💀 Removed dead rat at (${rat.x}, ${rat.y})`);
+      }
+    }
 
-  const availableSpots = allOffsets
-    .map(offset => ({
-      x: catPos.x + offset.x,
-      y: catPos.y + offset.y
-    }))
-    .filter(pos =>
-      pos.x >= 0 && pos.x < gridSize &&
-      pos.y >= 0 && pos.y < gridSize &&
-      grid[pos.y][pos.x] === "" &&
-      !rats.some(r => r.x === pos.x && r.y === pos.y) &&
-      !oxen.some(o => o.x === pos.x && o.y === pos.y)
-    );
+    const allOffsets = [
+      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
+      { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
+      { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
+      { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
+      { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
+      { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
+    ];
 
-  console.log("📦 Available spawn spots:", availableSpots.length);
+    const availableSpots = allOffsets
+      .map(offset => ({
+        x: catPos.x + offset.x,
+        y: catPos.y + offset.y
+      }))
+      .filter(pos =>
+        pos.x >= 0 && pos.x < gridSize &&
+        pos.y >= 0 && pos.y < gridSize &&
+        grid[pos.y][pos.x] === "" &&
+        !rats.some(r => r.x === pos.x && r.y === pos.y) &&
+        !oxen.some(o => o.x === pos.x && o.y === pos.y)
+      );
 
-  // Track used spots so oxen/rats don’t overlap
-  const usedKeys = new Set();
+    console.log("📦 Available spawn spots:", availableSpots.length);
 
-  // OXEN
-  let oxSpawned = 0;
-  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
+    const usedKeys = new Set();
 
-  for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
-    const spot = availableSpots[i];
-    const key = `${spot.x}_${spot.y}`;
-    if (usedKeys.has(key)) continue;
-    usedKeys.add(key);
+    // 🐂 OXEN
+    let oxSpawned = 0;
+    const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
 
-    const id = `ox_${crypto.randomUUID()}`;
-    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
-    await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
-    oxSpawned++;
-  }
+    for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
 
-  // RATS
-  let ratsSpawned = 0;
-  const maxRats = catPower;
-  for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
-    const spot = availableSpots[i];
-    const key = `${spot.x}_${spot.y}`;
-    if (usedKeys.has(key)) continue;
-    usedKeys.add(key);
+      const id = `ox_${crypto.randomUUID()}`;
+      const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
+      await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
+      oxSpawned++;
+    }
 
-    const id = `rat_${crypto.randomUUID()}`;
-    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
-    await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
-    ratsSpawned++;
+    // 🐀 RATS
+    let ratsSpawned = 0;
+    const maxRats = catPower;
+    for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
 
-    // 👀 Log each rat’s spawn position
-    console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
-  }
+      const id = `rat_${crypto.randomUUID()}`;
+      const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
+      await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
+      ratsSpawned++;
 
-  console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
-  console.log("---------------------------------------------------");
+      console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
+    }
 
-}, 40000);
+    console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
+    console.log("---------------------------------------------------");
 
-          }
+  }, 40000);
+}
+
 
  setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
