@@ -366,6 +366,8 @@ let fleas = [];
   let termites = []; // 🐛
   let traps = []; // Each: {x, y, placedAt}
   let oxen = [];
+  let isRatSpawning = false;
+
 
 
 
@@ -2193,8 +2195,10 @@ if (!ratSpawnIntervalStarted) {
   ratSpawnIntervalStarted = true;
 
   setInterval(async () => {
-    if (!gameStarted || !isHost || catPower <= 0) return;
+  if (isRatSpawning || !gameStarted || !isHost || catPower <= 0) return;
+  isRatSpawning = true;
 
+  try {
     console.log("🕒 RAT SPAWN TICK ----------------------------");
     console.log("👑 isHost:", isHost);
     console.log("📍 catPos inside interval:", catPos);
@@ -2273,8 +2277,12 @@ if (!ratSpawnIntervalStarted) {
     console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
     console.log("---------------------------------------------------");
 
-  }, 40000);
-}
+  } catch (err) {
+    console.error("🐀 Rat spawn error:", err);
+  } finally {
+    isRatSpawning = false;
+  }
+}, 40000);
 
 
  setInterval(() => {
