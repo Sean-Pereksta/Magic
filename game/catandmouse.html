@@ -2176,7 +2176,6 @@ setInterval(async () => {
       !termites.some(t => t.x === ox && t.y === oy)
     ) {
       const termite = { x: ox, y: oy };
-      termites.push(termite);
       await setDoc(doc(db, `games/${gameId}/termites/termite_${Date.now()}_${i}`), termite);
       spawned++;
     }
@@ -2235,7 +2234,6 @@ const allOffsets = [
 
     const id = `ox_${crypto.randomUUID()}`;
     const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
-    oxen.push(ox);
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
@@ -2251,7 +2249,6 @@ const allOffsets = [
 
     const id = `rat_${crypto.randomUUID()}`;
     const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
-    rats.push(rat);
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
 
