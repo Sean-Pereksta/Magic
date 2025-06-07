@@ -939,7 +939,7 @@ function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3))) {
     if (structureHealth[key] <= 0) {
       grid[y][x] = "";
       delete structureHealth[key];
-      setDoc(doc(db, `games/${gameId}/structures/${key}`), {});
+      await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
     } else {
       updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
         health: structureHealth[key]
@@ -1058,15 +1058,20 @@ function turretAttack() {
     }
   }
 
-  // 🧹 Clean up dead rats
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) rats.splice(i, 1);
+for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
+    rats.splice(i, 1);
   }
+}
 
-  // 🧹 Clean up dead oxen
-  for (let i = oxen.length - 1; i >= 0; i--) {
-    if (oxen[i].health <= 0) oxen.splice(i, 1);
+for (let i = oxen.length - 1; i >= 0; i--) {
+  if (oxen[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
+    oxen.splice(i, 1);
   }
+}
+
 
   renderGrid();
 }
@@ -1489,6 +1494,10 @@ onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
     catHealth = cat.health || 1000;
     renderGrid();
   }
+});
+onSnapshot(collection(db, `games/${gameId}/termites`), (snap) => {
+  termites = snap.docs.map(doc => doc.data());
+  renderGrid();
 });
 
 
@@ -2021,16 +2030,15 @@ setInterval(() => {
     }
   }
 }, 1000);
-  setInterval(() => {
+  setInterval(async () => {
   for (let i = termites.length - 1; i >= 0; i--) {
     let termite = termites[i];
     let closestWall = null;
     let minDist = Infinity;
 
-    // 🔍 Find closest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-       if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
+        if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
           const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
           if (dist < minDist) {
             minDist = dist;
@@ -2051,20 +2059,21 @@ setInterval(() => {
         termite.y = next.y;
       }
 
-      // 💥 Destroy wall on impact and remove termite
       if (termite.x === closestWall.x && termite.y === closestWall.y) {
         const key = `${termite.x}_${termite.y}`;
         grid[termite.y][termite.x] = "";
         delete structureHealth[key];
-        setDoc(doc(db, `games/${gameId}/structures/${key}`), {});
-        termites.splice(i, 1); // Remove termite
+        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+        termites.splice(i, 1);
         console.log("💥 Termite destroyed a wall and died");
+        await deleteDoc(doc(db, `games/${gameId}/termites/${i}`));
       }
     }
   }
 
   renderGrid();
-}, 400); 
+}, 400);  // ✅ works now with async
+
 setInterval(() => {
   if (!gameStarted) return;
 
@@ -2098,7 +2107,7 @@ setInterval(() => {
       const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
       grid[phoenixSpot.y][phoenixSpot.x] = "";
       delete structureHealth[key];
-      setDoc(doc(db, `games/${gameId}/structures/${key}`), {}); // clear in Firestore
+      await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
 
       // Visual flash
       const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
@@ -2121,7 +2130,7 @@ setInterval(turretAttack, 1500);
   ratPower++;
   console.log(`🐀 Rat Power increased! New base health: ${ratPower}`);
 }, 120000); // 2 minutes = 120,000 ms 
-setInterval(() => {
+setInterval(async () => {
   if (!gameStarted || catPower <= 0) return;
 
   const centerX = Math.floor(gridSize / 2);
@@ -2143,14 +2152,17 @@ setInterval(() => {
       oy >= 0 && oy < gridSize &&
       !termites.some(t => t.x === ox && t.y === oy)
     ) {
-      termites.push({ x: ox, y: oy });
+      const termite = { x: ox, y: oy };
+      termites.push(termite);
+      await setDoc(doc(db, `games/${gameId}/termites/termite_${Date.now()}_${i}`), termite);
       spawned++;
     }
   }
 
   console.log(`🐛 Spawned ${spawned} termites in center`);
-}, 60000); 
-setInterval(() => {
+}, 60000);
+
+setInterval(async () => {
   if (!gameStarted || catPower <= 0) return;
 
   const allOffsets = [
@@ -2175,22 +2187,26 @@ setInterval(() => {
       !oxen.some(o => o.x === pos.x && o.y === pos.y)
     );
 
-  // 🐂 Spawn oxen first
   let oxSpawned = 0;
   const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
 
   for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
     const spot = availableSpots[i];
-    oxen.push({ x: spot.x, y: spot.y, health: ratPower * 30 });
+    const id = `ox_${Date.now()}_${i}`;
+    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
+    oxen.push(ox);
+    await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
 
-  // 🐀 Then spawn rats with remaining space
   let ratsSpawned = 0;
   const maxRats = catPower;
   for (let i = oxSpawned; i < availableSpots.length && ratsSpawned < maxRats; i++) {
     const spot = availableSpots[i];
-    rats.push({ x: spot.x, y: spot.y, health: ratPower * 5 });
+    const id = `rat_${Date.now()}_${i}`;
+    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
+    rats.push(rat);
+    await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
   }
 
