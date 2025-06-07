@@ -1486,9 +1486,14 @@ onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
   renderGrid();
 });
 onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
-  rats = snap.docs.map(doc => doc.data());
+  rats = []; // 🔄 Replace instead of merge
+  snap.forEach(doc => {
+    const data = doc.data();
+    rats.push(data);
+  });
   renderGrid();
 });
+
   onSnapshot(collection(db, `games/${gameId}/oxen`), (snap) => {
   oxen = snap.docs.map(doc => doc.data());
   renderGrid();
