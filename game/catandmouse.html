@@ -1102,7 +1102,7 @@ for (let i = oxen.length - 1; i >= 0; i--) {
 }
 
 
-function rocketTowerAttack() {
+async function rocketTowerAttack() {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🚀") {
@@ -1179,8 +1179,19 @@ function rocketTowerAttack() {
   }
 
   // 🧹 Cleanup
-  rats = rats.filter(r => r.health > 0);
-  oxen = oxen.filter(o => o.health > 0);
+for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
+    rats.splice(i, 1);
+  }
+}
+
+for (let i = oxen.length - 1; i >= 0; i--) {
+  if (oxen[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
+    oxen.splice(i, 1);
+  }
+}
 
   renderGrid();
 }
@@ -2397,8 +2408,13 @@ const allOffsets = [
   }
 
   // 🧹 Remove dead rats
-  rats = rats.filter(r => r.health > 0);
-
+   for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    const ratRef = doc(db, `games/${gameId}/rats/${rats[i].id}`);
+    await deleteDoc(ratRef);
+    rats.splice(i, 1);
+  }
+}
   renderGrid();
 }, 400);
 }
