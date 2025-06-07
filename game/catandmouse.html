@@ -593,17 +593,42 @@ function movePlayer(dx, dy) {
   renderGrid();
 }
 
-function returnToLobby() {
+async function returnToLobby() {
   const urlParams = new URLSearchParams(window.location.search);
   const username = urlParams.get("username") || "";
   console.log("🔁 Returning to lobby with username:", username);
-  const safeUsername = encodeURIComponent(username.trim()); // ✅ no toLowerCase()
+  const safeUsername = encodeURIComponent(username.trim());
+
+  // 🏆 Award win if cat is defeated
+  if (catHealth <= 0) {
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      let matched = null;
+
+      usersSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.username?.toLowerCase() === username.trim().toLowerCase()) {
+          matched = { id: docSnap.id, wins: data.wins || 0 };
+        }
+      });
+
+      if (matched) {
+        await updateDoc(doc(db, "users", matched.id), {
+          wins: matched.wins + 1
+        });
+        console.log(`🏆 Win awarded to ${matched.id}`);
+      } else {
+        console.warn("⚠️ No matching user found to award win.");
+      }
+    } catch (err) {
+      console.error("🔥 Error awarding win:", err);
+    }
+  }
+
   window.location.href = `/lobby/lobby.html?username=${safeUsername}`;
 }
 
-// ✅ Make it visible to inline HTML onclick
 window.returnToLobby = returnToLobby;
-
 
 function updateCatHealthBar() {
   const bar = document.getElementById("catHealthFill");
