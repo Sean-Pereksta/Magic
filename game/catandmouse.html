@@ -162,10 +162,7 @@
 <!-- 🔙 Return Button -->
 <div id="returnButton" style="display:none; margin-top: 20px; text-align: center;">
   <button onclick="returnToLobby()" style="padding: 10px 20px; font-size: 16px;">🔙 Return to Lobby</button>
-</div>
-  <div id="ratCountdown" style="font-size: 16px; font-weight: bold; margin-bottom: 10px; color: darkred;">
-  🐀 Next rat wave in: <span id="ratTimer">40</span>s
-</div>
+<div id="waveCountdown">🐀 Next wave: ?</div>
 
 
 <!-- 🔲 Main Game + Sidebar Layout -->
@@ -596,6 +593,65 @@ function movePlayer(dx, dy) {
   savePosition();
   checkCheese();
   renderGrid();
+}
+async function spawnRatWave() {
+  if (!isHost || catPower <= 0) return;
+
+  const waveTag = Date.now();
+  currentRatWave = waveTag;
+
+ const allOffsets = [
+  { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
+  { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
+  { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
+  { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
+  { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
+  { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
+];
+
+  const availableSpots = allOffsets
+    .map(offset => ({ x: catPos.x + offset.x, y: catPos.y + offset.y }))
+    .filter(pos =>
+      pos.x >= 0 && pos.x < gridSize &&
+      pos.y >= 0 && pos.y < gridSize &&
+      grid[pos.y][pos.x] === "" &&
+      !rats.some(r => r.x === pos.x && r.y === pos.y) &&
+      !oxen.some(o => o.x === pos.x && o.y === pos.y)
+    );
+
+  const usedKeys = new Set();
+
+  // 🐂 OXEN
+  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
+  let oxSpawned = 0;
+  for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
+    const spot = availableSpots[i];
+    const key = `${spot.x}_${spot.y}`;
+    if (usedKeys.has(key)) continue;
+    usedKeys.add(key);
+
+    const id = `ox_${crypto.randomUUID()}`;
+    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
+    await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
+    oxSpawned++;
+  }
+
+  // 🐀 RATS
+  const maxRats = catPower;
+  let ratsSpawned = 0;
+  for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
+    const spot = availableSpots[i];
+    const key = `${spot.x}_${spot.y}`;
+    if (usedKeys.has(key)) continue;
+    usedKeys.add(key);
+
+    const id = `rat_${crypto.randomUUID()}`;
+    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id, wave: waveTag };
+    await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
+    ratsSpawned++;
+  }
+
+  console.log(`✅ Wave spawned: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
 }
 
 async function returnToLobby() {
@@ -1726,6 +1782,24 @@ grid[25][16] = "🧱";
 renderGrid();
 
 // Start cheese spawn and turret attack globally
+setInterval(async () => {
+  const gameSnap = await getDoc(doc(db, `games/${gameId}`));
+  const gameData = gameSnap.data();
+
+  if (!gameData?.nextRatWave || !gameStarted) return;
+
+  const now = Date.now();
+
+  if (isHost && now >= gameData.nextRatWave) {
+    console.log("🎬 Time to spawn a new rat wave!");
+    spawnRatWave(); // your wave logic
+    const nextTime = now + 40000; // next wave in 40s
+    await updateDoc(doc(db, `games/${gameId}`), { nextRatWave: nextTime });
+  }
+
+  const secondsLeft = Math.max(0, Math.floor((gameData.nextRatWave - now) / 1000));
+  document.getElementById("waveCountdown").textContent = `🐀 Next wave: ${secondsLeft}s`;
+}, 1000);
 
   setInterval(() => {
   if (!gameStarted) return;
@@ -1888,12 +1962,24 @@ setInterval(() => {
   const updatedSnap = await getDoc(gameRef);
   const host = updatedSnap.data().host;
 
- if (host === cleanUsername && !hostInitialized) {
+if (host === cleanUsername && !hostInitialized) {
   hostInitialized = true;
   console.log("👑 Confirmed host. Starting rat/termite spawning once.");
   isHost = true;
   console.log("👑 You are host. Starting cat AI.");
   gameStarted = true;
+
+  // 👇 Wrap this in an async block
+  (async () => {
+    const nextWaveTime = Date.now() + 30000; // first wave in 30s
+    await updateDoc(doc(db, `games/${gameId}`), {
+      nextRatWave: nextWaveTime
+    });
+    console.log("🕒 Scheduled first rat wave at", new Date(nextWaveTime).toLocaleTimeString());
+  })();
+}
+
+
 
   // Start initial cat behavior loop
   startCatBehaviorLoop();
@@ -2209,113 +2295,6 @@ setInterval(async () => {
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
 
-let isRatSpawning = false;
-let currentRatWave = null;
-
-if (!ratSpawnIntervalStarted) {
-  ratSpawnIntervalStarted = true;
-
-  setInterval(async () => {
-    if (isRatSpawning || !gameStarted || !isHost || catPower <= 0) return;
-    isRatSpawning = true;
-
-    try {
-      console.log("🕒 RAT SPAWN TICK ----------------------------");
-      console.log("👑 isHost:", isHost);
-      console.log("📍 catPos inside interval:", catPos);
-      console.log("🔋 catPower:", catPower);
-
-      // 🧹 Clean up dead rats from Firestore
-      const ratsRef = collection(db, `games/${gameId}/rats`);
-      const ratDocs = await getDocs(ratsRef);
-      for (const docSnap of ratDocs.docs) {
-        const rat = docSnap.data();
-        if (rat.health <= 0) {
-          await deleteDoc(docSnap.ref);
-          console.log(`💀 Removed dead rat at (${rat.x}, ${rat.y})`);
-        }
-      }
-
-      const allOffsets = [
-        { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-        { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-        { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-        { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
-        { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
-        { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
-      ];
-
-      const availableSpots = allOffsets
-        .map(offset => ({
-          x: catPos.x + offset.x,
-          y: catPos.y + offset.y
-        }))
-        .filter(pos =>
-          pos.x >= 0 && pos.x < gridSize &&
-          pos.y >= 0 && pos.y < gridSize &&
-          grid[pos.y][pos.x] === "" &&
-          !rats.some(r => r.x === pos.x && r.y === pos.y) &&
-          !oxen.some(o => o.x === pos.x && o.y === pos.y)
-        );
-
-      console.log("📦 Available spawn spots:", availableSpots.length);
-
-      const usedKeys = new Set();
-
-      // 🐂 OXEN
-      let oxSpawned = 0;
-      const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
-
-      for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
-        const spot = availableSpots[i];
-        const key = `${spot.x}_${spot.y}`;
-        if (usedKeys.has(key)) continue;
-        usedKeys.add(key);
-
-        const id = `ox_${crypto.randomUUID()}`;
-        const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
-        await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
-        oxSpawned++;
-      }
-
-      // 🐀 RATS
-      let ratsSpawned = 0;
-      const maxRats = catPower;
-      const waveTag = Date.now();      // 🆕 Unique wave tag
-      currentRatWave = waveTag;        // 🧠 Store for filtering if needed
-
-      for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
-        const spot = availableSpots[i];
-        const key = `${spot.x}_${spot.y}`;
-        if (usedKeys.has(key)) continue;
-        usedKeys.add(key);
-
-        const id = `rat_${crypto.randomUUID()}`;
-        const rat = {
-          x: spot.x,
-          y: spot.y,
-          health: ratPower * 5,
-          id,
-          wave: waveTag
-        };
-
-        await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
-        ratsSpawned++;
-
-        console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
-      }
-
-      console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
-      console.log("---------------------------------------------------");
-
-    } catch (err) {
-      console.error("🐀 Rat spawn error:", err);
-    } finally {
-      isRatSpawning = false;
-    }
-
-  }, 40000); // 🕒 Every 40 seconds
-}
 
  setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
