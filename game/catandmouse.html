@@ -349,6 +349,8 @@ let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
   let showingUpgrades = false;
   let localRatTimer = 40;
   let ratSpawnIntervalStarted = false;
+  let currentRatWave = null;
+
 
 
 
@@ -1488,13 +1490,29 @@ onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
   renderGrid();
 });
 onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
-  rats = []; // 🔄 Replace instead of merge
+  const updatedRats = [];
+
   snap.forEach(doc => {
     const data = doc.data();
-    rats.push(data);
+
+    // 🧠 If rat already exists in local array, update it
+    const existing = rats.find(r => r.id === data.id);
+    if (existing) {
+      Object.assign(existing, data);
+    } else {
+      updatedRats.push(data); // new rat
+    }
   });
+
+  // 🔁 Add any new ones without wiping existing living rats
+  rats = [
+    ...rats.filter(r => snap.docs.some(d => d.id === r.id)), // keep only those still in Firebase
+    ...updatedRats
+  ];
+
   renderGrid();
 });
+
 
   onSnapshot(collection(db, `games/${gameId}/oxen`), (snap) => {
   oxen = snap.docs.map(doc => doc.data());
@@ -2191,99 +2209,113 @@ setInterval(async () => {
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
 
+let isRatSpawning = false;
+let currentRatWave = null;
+
 if (!ratSpawnIntervalStarted) {
   ratSpawnIntervalStarted = true;
 
   setInterval(async () => {
-  if (isRatSpawning || !gameStarted || !isHost || catPower <= 0) return;
-  isRatSpawning = true;
+    if (isRatSpawning || !gameStarted || !isHost || catPower <= 0) return;
+    isRatSpawning = true;
 
-  try {
-    console.log("🕒 RAT SPAWN TICK ----------------------------");
-    console.log("👑 isHost:", isHost);
-    console.log("📍 catPos inside interval:", catPos);
-    console.log("🔋 catPower:", catPower);
+    try {
+      console.log("🕒 RAT SPAWN TICK ----------------------------");
+      console.log("👑 isHost:", isHost);
+      console.log("📍 catPos inside interval:", catPos);
+      console.log("🔋 catPower:", catPower);
 
-    // 🧹 Clean up dead rats from Firestore
-    const ratsRef = collection(db, `games/${gameId}/rats`);
-    const ratDocs = await getDocs(ratsRef);
-    for (const docSnap of ratDocs.docs) {
-      const rat = docSnap.data();
-      if (rat.health <= 0) {
-        await deleteDoc(docSnap.ref);
-        console.log(`💀 Removed dead rat at (${rat.x}, ${rat.y})`);
+      // 🧹 Clean up dead rats from Firestore
+      const ratsRef = collection(db, `games/${gameId}/rats`);
+      const ratDocs = await getDocs(ratsRef);
+      for (const docSnap of ratDocs.docs) {
+        const rat = docSnap.data();
+        if (rat.health <= 0) {
+          await deleteDoc(docSnap.ref);
+          console.log(`💀 Removed dead rat at (${rat.x}, ${rat.y})`);
+        }
       }
+
+      const allOffsets = [
+        { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
+        { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
+        { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
+        { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
+        { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
+        { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
+      ];
+
+      const availableSpots = allOffsets
+        .map(offset => ({
+          x: catPos.x + offset.x,
+          y: catPos.y + offset.y
+        }))
+        .filter(pos =>
+          pos.x >= 0 && pos.x < gridSize &&
+          pos.y >= 0 && pos.y < gridSize &&
+          grid[pos.y][pos.x] === "" &&
+          !rats.some(r => r.x === pos.x && r.y === pos.y) &&
+          !oxen.some(o => o.x === pos.x && o.y === pos.y)
+        );
+
+      console.log("📦 Available spawn spots:", availableSpots.length);
+
+      const usedKeys = new Set();
+
+      // 🐂 OXEN
+      let oxSpawned = 0;
+      const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
+
+      for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
+        const spot = availableSpots[i];
+        const key = `${spot.x}_${spot.y}`;
+        if (usedKeys.has(key)) continue;
+        usedKeys.add(key);
+
+        const id = `ox_${crypto.randomUUID()}`;
+        const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
+        await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
+        oxSpawned++;
+      }
+
+      // 🐀 RATS
+      let ratsSpawned = 0;
+      const maxRats = catPower;
+      const waveTag = Date.now();      // 🆕 Unique wave tag
+      currentRatWave = waveTag;        // 🧠 Store for filtering if needed
+
+      for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
+        const spot = availableSpots[i];
+        const key = `${spot.x}_${spot.y}`;
+        if (usedKeys.has(key)) continue;
+        usedKeys.add(key);
+
+        const id = `rat_${crypto.randomUUID()}`;
+        const rat = {
+          x: spot.x,
+          y: spot.y,
+          health: ratPower * 5,
+          id,
+          wave: waveTag
+        };
+
+        await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
+        ratsSpawned++;
+
+        console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
+      }
+
+      console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
+      console.log("---------------------------------------------------");
+
+    } catch (err) {
+      console.error("🐀 Rat spawn error:", err);
+    } finally {
+      isRatSpawning = false;
     }
 
-    const allOffsets = [
-      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-      { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-      { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-      { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
-      { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
-      { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
-    ];
-
-    const availableSpots = allOffsets
-      .map(offset => ({
-        x: catPos.x + offset.x,
-        y: catPos.y + offset.y
-      }))
-      .filter(pos =>
-        pos.x >= 0 && pos.x < gridSize &&
-        pos.y >= 0 && pos.y < gridSize &&
-        grid[pos.y][pos.x] === "" &&
-        !rats.some(r => r.x === pos.x && r.y === pos.y) &&
-        !oxen.some(o => o.x === pos.x && o.y === pos.y)
-      );
-
-    console.log("📦 Available spawn spots:", availableSpots.length);
-
-    const usedKeys = new Set();
-
-    // 🐂 OXEN
-    let oxSpawned = 0;
-    const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
-
-    for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
-      const spot = availableSpots[i];
-      const key = `${spot.x}_${spot.y}`;
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-
-      const id = `ox_${crypto.randomUUID()}`;
-      const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
-      await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
-      oxSpawned++;
-    }
-
-    // 🐀 RATS
-    let ratsSpawned = 0;
-    const maxRats = catPower;
-    for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
-      const spot = availableSpots[i];
-      const key = `${spot.x}_${spot.y}`;
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-
-      const id = `rat_${crypto.randomUUID()}`;
-      const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
-      await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
-      ratsSpawned++;
-
-      console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
-    }
-
-    console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
-    console.log("---------------------------------------------------");
-
-  } catch (err) {
-    console.error("🐀 Rat spawn error:", err);
-  } finally {
-    isRatSpawning = false;
-  }
-}, 40000);
-
+  }, 40000); // 🕒 Every 40 seconds
+}
 
  setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
