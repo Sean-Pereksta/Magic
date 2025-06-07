@@ -2193,16 +2193,14 @@ setInterval(async () => {
   if (!ratSpawnIntervalStarted) {
     ratSpawnIntervalStarted = true;
 setInterval(async () => {
-  if (!gameStarted || catPower <= 0) return;
+  if (!gameStarted || !isHost || catPower <= 0) return;
 
-  const allOffsets = [
-    { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-    { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-    { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-    { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
-    { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
-    { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
-  ];
+  console.log("🕒 RAT SPAWN TICK ----------------------------");
+  console.log("👑 isHost:", isHost);
+  console.log("📍 catPos at spawn:", catPos);
+  console.log("🔋 catPower:", catPower);
+
+  const allOffsets = [ ... ]; // keep your current offsets
 
   const availableSpots = allOffsets
     .map(offset => ({
@@ -2217,11 +2215,21 @@ setInterval(async () => {
       !oxen.some(o => o.x === pos.x && o.y === pos.y)
     );
 
+  console.log("📦 Available spawn spots:", availableSpots.length);
+
+  // Track used spots so oxen/rats don’t overlap
+  const usedKeys = new Set();
+
+  // OXEN
   let oxSpawned = 0;
   const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
 
   for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
     const spot = availableSpots[i];
+    const key = `${spot.x}_${spot.y}`;
+    if (usedKeys.has(key)) continue;
+    usedKeys.add(key);
+
     const id = `ox_${crypto.randomUUID()}`;
     const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
     oxen.push(ox);
@@ -2229,18 +2237,30 @@ setInterval(async () => {
     oxSpawned++;
   }
 
+  // RATS
   let ratsSpawned = 0;
   const maxRats = catPower;
-  for (let i = oxSpawned; i < availableSpots.length && ratsSpawned < maxRats; i++) {
+  for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
     const spot = availableSpots[i];
+    const key = `${spot.x}_${spot.y}`;
+    if (usedKeys.has(key)) continue;
+    usedKeys.add(key);
+
     const id = `rat_${crypto.randomUUID()}`;
     const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
     rats.push(rat);
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
+
+    // 👀 Log each rat’s spawn position
+    console.log(`🐀 Spawned rat at (${rat.x}, ${rat.y})`);
   }
-  console.log("🐀 Rat spawn triggered | CatPos:", catPos, "| CatPower:", catPower);
+
+  console.log(`✅ Final count: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
+  console.log("---------------------------------------------------");
+
 }, 40000);
+
           }
 
  setInterval(() => {
