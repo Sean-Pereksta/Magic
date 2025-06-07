@@ -589,7 +589,6 @@ function movePlayer(dx, dy) {
   const newX = Math.max(0, Math.min(gridSize - 1, playerPos.x + dx));
   const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
   playerPos = { x: newX, y: newY };
-  console.log("Trying to move. isAlive =", isAlive);
   savePosition();
   checkCheese();
   renderGrid();
@@ -1060,7 +1059,6 @@ async function turretAttack() {
             const dyRat = Math.abs(rat.y - y);
             if (dxRat <= 5 && dyRat <= 5) {
               rat.health -= damage;
-              console.log(`💥 Turret hit rat at (${rat.x}, ${rat.y}) → HP: ${rat.health}`);
               attacked = true;
               break;
             }
@@ -1076,7 +1074,6 @@ async function turretAttack() {
             const dyOx = Math.abs(ox.y - y);
             if (dxOx <= 5 && dyOx <= 5) {
               ox.health -= damage;
-              console.log(`💥 Turret hit ox at (${ox.x}, ${ox.y}) → HP: ${ox.health}`);
               attacked = true;
               break;
             }
@@ -1144,7 +1141,6 @@ function rocketTowerAttack() {
 
           // 🎯 Main target takes boosted or base damage
           target.health -= mainDamage;
-          console.log(`🚀 Rocket hit main rat at (${target.x}, ${target.y}) for ${mainDamage}`);
 
           // 💥 Splash damage to surrounding
           for (let dy = -1; dy <= 1; dy++) {
@@ -1158,7 +1154,6 @@ function rocketTowerAttack() {
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
                   rat.health -= splashDamage;
-                  console.log(`💥 Splash hit rat at (${sx}, ${sy}) for ${splashDamage}`);
                 }
               }
 
@@ -1166,14 +1161,12 @@ function rocketTowerAttack() {
               for (let ox of oxen) {
                 if (ox.x === sx && ox.y === sy && ox.health > 0) {
                   ox.health -= splashDamage;
-                  console.log(`💥 Splash hit ox at (${sx}, ${sy}) for ${splashDamage}`);
                 }
               }
 
               // 🐱 Splash cat
               if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
                 catHealth -= splashDamage;
-                console.log(`💥 Splash hit cat at (${sx}, ${sy}) for ${splashDamage}`);
                 updateDoc(doc(db, `games/${gameId}`), {
                   cat: { ...catPos, health: catHealth }
                 });
@@ -1295,17 +1288,14 @@ async function catBehavior() {
   let target = null;
   let path = null;
 
-  console.log("📌 Checking mice (any distance)...");
   let mouseBlocked = true;
 
   // 🐭 Priority 1: Closest reachable mouse
   for (const [_, p] of aliveMice) {
     const dist = Math.abs(p.x - catPos.x) + Math.abs(p.y - catPos.y);
-    console.log(`➡️ Mouse at (${p.x}, ${p.y}) is ${dist} tiles away`);
 
     const pPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
     if (pPath) {
-      console.log(`✅ Found path to mouse (${pPath.length} steps)`);
       if (!path || pPath.length < path.length) {
         target = { x: p.x, y: p.y, type: "mouse" };
         path = pPath;
@@ -1317,7 +1307,6 @@ async function catBehavior() {
   // 🧱 Priority 2: Break walls around blocked mice
   if (!target && mouseBlocked) {
     for (const [_, p] of aliveMice) {
-      console.log(`🧱 Mouse at (${p.x}, ${p.y}) is blocked. Searching for reachable wall...`);
       const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (const [dx, dy] of directions) {
         const wx = p.x + dx;
@@ -1329,7 +1318,6 @@ async function catBehavior() {
         ) {
           const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
           if (wPath) {
-            console.log(`🔨 Found wall at (${wx}, ${wy}) to break through (${wPath.length} steps)`);
             if (!path || wPath.length < path.length) {
               target = { x: wx, y: wy, type: "wallToBreak" };
               path = wPath;
@@ -1344,14 +1332,12 @@ async function catBehavior() {
 
   // 🔫 Priority 3: Attack structures
   if (!target) {
-    console.log("📌 Checking structures...");
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const symbol = grid[y][x];
         if (["🔫", "🪳", "🗼", "🚀"].includes(symbol)) {
           const sPath = findPath(catPos.x, catPos.y, x, y, false);
           if (sPath) {
-            console.log(`🎯 Found structure (${symbol}) at (${x}, ${y}) - ${sPath.length} steps`);
             if (!path || sPath.length < path.length) {
               target = { x, y, type: "structure" };
               path = sPath;
@@ -1364,14 +1350,12 @@ async function catBehavior() {
 
   // 🧱 Priority 4: Final fallback to any grid target
   if (!target) {
-    console.log("📌 Final fallback search...");
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const symbol = grid[y][x];
         if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(symbol)) {
           const fPath = findPath(catPos.x, catPos.y, x, y, false);
           if (fPath) {
-            console.log(`⬅️ Fallback target (${symbol}) at (${x}, ${y}) - ${fPath.length} steps`);
             if (!path || fPath.length < path.length) {
               target = { x, y, type: "fallback" };
               path = fPath;
