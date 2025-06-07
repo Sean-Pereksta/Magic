@@ -348,6 +348,8 @@ let lastBlinkTime = 0;
 let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
   let showingUpgrades = false;
   let localRatTimer = 40;
+  let ratSpawnIntervalStarted = false;
+
 
 
 
@@ -2188,6 +2190,8 @@ setInterval(async () => {
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
 
+  if (!ratSpawnIntervalStarted) {
+    ratSpawnIntervalStarted = true;
 setInterval(async () => {
   if (!gameStarted || catPower <= 0) return;
 
@@ -2218,7 +2222,7 @@ setInterval(async () => {
 
   for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
     const spot = availableSpots[i];
-    const id = `ox_${Date.now()}_${i}`;
+    const id = `ox_${crypto.randomUUID()}`;
     const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
     oxen.push(ox);
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
@@ -2229,15 +2233,15 @@ setInterval(async () => {
   const maxRats = catPower;
   for (let i = oxSpawned; i < availableSpots.length && ratsSpawned < maxRats; i++) {
     const spot = availableSpots[i];
-    const id = `rat_${Date.now()}_${i}`;
+    const id = `rat_${crypto.randomUUID()}`;
     const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id };
     rats.push(rat);
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
   }
-
-  console.log(`🐂 Spawned ${oxSpawned} oxen | 🐀 Spawned ${ratsSpawned} rats (Power: ${catPower})`);
+  console.log("🐀 Rat spawn triggered | CatPos:", catPos, "| CatPower:", catPower);
 }, 40000);
+          }
 
  setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
