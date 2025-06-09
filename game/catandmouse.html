@@ -2402,22 +2402,30 @@ setInterval(async () => {
     }
 
     // 🧭 Pathfind toward target
-    if (closestTarget) {
-      const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-        const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
-        const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
-        const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
-        return !isBlocked && !isReviveCenter && !ratOccupied;
-      });
+if (closestTarget) {
+  const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
+    const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
+    const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
+    const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
+    return !isBlocked && !isReviveCenter && !ratOccupied;
+  });
 
-      if (path.length > 0) {
-        const next = path[0];
-        const ratInTheWay = rats.some(r => r !== rat && r.x === next.x && r.y === next.y);
-        if (!ratInTheWay) {
-          rat.x = next.x;
-          rat.y = next.y;
-        }
-      }
+  if (path && path.length > 0) {
+    const next = path[0];
+    const ratInTheWay = rats.some(r => r !== rat && r.x === next.x && r.y === next.y);
+
+    if (!ratInTheWay) {
+      rat.x = next.x;
+      rat.y = next.y;
+
+      // 🧠 Push updated rat position to Firestore
+      await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+        x: rat.x,
+        y: rat.y
+      });
+    }
+  }
+}
 
       // 💥 Attack logic
       if (rat.x === closestTarget.x && rat.y === closestTarget.y) {
