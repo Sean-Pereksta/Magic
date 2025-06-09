@@ -2348,14 +2348,17 @@ setInterval(async () => {
 
 setInterval(async () => {
   for (let rat of rats) {
-    // 🧠 Activate only current wave rats not yet ready
-    if (rat.wave === currentRatWave && !rat.ready) {
+    // 🛡️ Initialize rat only ONCE
+    if (!rat.ready) {
       rat.health = ratPower * 5;
       rat.ready = true;
+
       await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
         health: rat.health,
         ready: true
       });
+
+      continue; // ⛔ Skip behavior this cycle
     }
 
     // 🧪 Skip all rats that are not ready or dead
