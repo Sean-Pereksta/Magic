@@ -2046,19 +2046,20 @@ if (host === cleanUsername && !hostInitialized) {
     }
   }
 }, 4000);
-  setInterval(() => {
-  for (let flea of fleas) {
+  setInterval(async () => {
+  for (let i = fleas.length - 1; i >= 0; i--) {
+    const flea = fleas[i];
     let target = null;
     let minDist = Infinity;
 
-    // 🔍 Cat as initial target
+    // 🔍 Target cat
     const distToCat = Math.abs(catPos.x - flea.x) + Math.abs(catPos.y - flea.y);
     if (distToCat < minDist) {
       minDist = distToCat;
       target = { x: catPos.x, y: catPos.y, type: "cat" };
     }
 
-    // 🔍 Check rats
+    // 🔍 Target nearest rat
     for (let rat of rats) {
       const dist = Math.abs(rat.x - flea.x) + Math.abs(rat.y - flea.y);
       if (dist < minDist && rat.health > 0) {
@@ -2067,7 +2068,7 @@ if (host === cleanUsername && !hostInitialized) {
       }
     }
 
-    // 🔍 Check oxen
+    // 🔍 Target nearest ox
     for (let ox of oxen) {
       const dist = Math.abs(ox.x - flea.x) + Math.abs(ox.y - flea.y);
       if (dist < minDist && ox.health > 0) {
@@ -2076,7 +2077,7 @@ if (host === cleanUsername && !hostInitialized) {
       }
     }
 
-    // 🚶 Move toward the target
+    // 🚶 Move flea
     if (target) {
       let dx = 0, dy = 0;
       const xDiff = target.x - flea.x;
@@ -2096,42 +2097,47 @@ if (host === cleanUsername && !hostInitialized) {
         flea.y = newY;
       }
 
-      // 💥 Attack
+      // 💥 Attack if reached
       if (flea.x === target.x && flea.y === target.y) {
+        flea.lifetime = 0;
+
         if (target.type === "cat") {
           catHealth -= 1;
-          flea.lifetime = 0;
-          updateDoc(doc(db, `games/${gameId}`), {
+          await updateDoc(doc(db, `games/${gameId}`), {
             cat: { ...catPos, health: catHealth }
           });
         } else if (target.type === "rat" && target.rat) {
           target.rat.health -= 5;
-          flea.lifetime = 0;
           if (target.rat.health <= 0) {
             const index = rats.indexOf(target.rat);
             if (index !== -1) rats.splice(index, 1);
+            const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
+            await deleteDoc(ratRef);
           }
         } else if (target.type === "ox" && target.ox) {
           target.ox.health -= 5;
-          flea.lifetime = 0;
           if (target.ox.health <= 0) {
             const index = oxen.indexOf(target.ox);
             if (index !== -1) oxen.splice(index, 1);
+            const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
+            await deleteDoc(oxRef);
           }
         }
       }
     }
 
+    // 🧼 Decrease lifetime and remove dead flea
     flea.lifetime--;
-  }
-
-  // 🧹 Clean up dead fleas
-  for (let i = fleas.length - 1; i >= 0; i--) {
-    if (fleas[i].lifetime <= 0) fleas.splice(i, 1);
+    if (flea.lifetime <= 0) {
+      const fleaRef = doc(db, `games/${gameId}/fleas/${flea.id}`);
+      await deleteDoc(fleaRef);
+      fleas.splice(i, 1);
+    }
   }
 
   renderGrid();
 }, 400);
+
 
 
   setInterval(() => {
