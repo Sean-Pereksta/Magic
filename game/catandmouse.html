@@ -1846,6 +1846,16 @@ setInterval(async () => {
     gameStarted = false; // Optionally stop the game logic
   }
 }, 1000);
+if (!isHost) {
+  setInterval(async () => {
+    const gameSnap = await getDoc(doc(db, `games/${gameId}`));
+    const data = gameSnap.data();
+    if (data && data.cat && typeof data.cat.health === "number") {
+      catHealth = data.cat.health;
+      updateCatHealthBar();
+    }
+  }, 3000); // check every 3 seconds
+}
 
 setInterval(() => {
   for (let y = 0; y < gridSize; y++) {
@@ -2369,7 +2379,15 @@ setInterval(async () => {
 
   renderGrid();
 }, 800);
+ setInterval(async () => {
+    if (!gameStarted) return;
 
+    await updateDoc(doc(db, `games/${gameId}`), {
+      cat: { ...catPos, health: catHealth }
+    });
+
+    console.log("🔁 Cat health sync:", catHealth);
+  }, 3000);
 
  setInterval(async () => {
   for (let rat of rats) {
