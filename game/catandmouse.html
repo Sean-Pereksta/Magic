@@ -1582,11 +1582,15 @@ onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
 
 onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
   if (docSnap.exists()) {
-    const data = docSnap.data();       // ✅ FIXED
-    gameData = data;                   // ✅ Optional: still store it globally
+    const data = docSnap.data();
+    gameData = data;
     updateHostDisplay();
 
-    if (isHost && (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")) {
+    // 🐱 Host-only cat initialization
+    if (
+      isHost &&
+      (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")
+    ) {
       const initialCat = {
         x: gridSize - 1,
         y: gridSize - 1,
@@ -1595,13 +1599,20 @@ onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
       updateDoc(doc(db, `games/${gameId}`), { cat: initialCat });
     }
 
+    // 🐱 Sync cat state from Firebase
     const cat = data.cat || {};
     catPower = data.catPower || 0;
-    catPos = { x: cat.x || 15, y: cat.y || 15 };
-    catHealth = cat.health || 1000;
+    catPos = { x: cat.x ?? 15, y: cat.y ?? 15 };
+
+    if (typeof cat.health === "number") {
+      catHealth = cat.health; // ✅ Don't override 0
+    }
+
+    updateCatHealthBar();     // ✅ Visually reflect latest health
     renderGrid();
   }
 });
+
 onSnapshot(collection(db, `games/${gameId}/termites`), (snap) => {
   termites = snap.docs.map(doc => doc.data());
   renderGrid();
@@ -2162,12 +2173,13 @@ if (host === cleanUsername && !hostInitialized) {
     }
   }
 }, 1000);
-  setInterval(async () => {
+ setInterval(async () => {
   for (let i = termites.length - 1; i >= 0; i--) {
     let termite = termites[i];
     let closestWall = null;
     let minDist = Infinity;
 
+    // 🔍 Find nearest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
@@ -2185,26 +2197,37 @@ if (host === cleanUsername && !hostInitialized) {
         return !["🧱", "🔫", "🪳", "🏭", "💎"].includes(grid[y][x]);
       });
 
-      if (path.length > 0) {
+      if (path && path.length > 0) {
         const next = path[0];
         termite.x = next.x;
         termite.y = next.y;
+
+        // ✅ Update termite position in Firestore
+        if (termite.id) {
+          await updateDoc(doc(db, `games/${gameId}/termites/${termite.id}`), {
+            x: termite.x,
+            y: termite.y
+          });
+        }
       }
 
+      // 💥 If on wall, damage it and self-destruct
       if (termite.x === closestWall.x && termite.y === closestWall.y) {
-        const key = `${termite.x}_${termite.y}`;
-        grid[termite.y][termite.x] = "";
-        delete structureHealth[key];
-        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
-        termites.splice(i, 1);
-        console.log("💥 Termite destroyed a wall and died");
-        await deleteDoc(doc(db, `games/${gameId}/termites/${i}`));
+        await damageStructure(termite.x, termite.y, 40); // 🛠 40 damage to wall
+        console.log("💥 Termite hit wall and died");
+
+        if (termite.id) {
+          await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
+        }
+
+        termites.splice(i, 1); // remove locally
       }
     }
   }
 
   renderGrid();
-}, 400);  // ✅ works now with async
+}, 400);
+
 
  setInterval(async () => {
   if (!gameStarted) return;
@@ -2224,37 +2247,42 @@ if (host === cleanUsername && !hostInitialized) {
   if (!phoenixSpot) return; // No Phoenix Cheese exists
 
   // 🔍 Find a dead player
+  let revivedSomeone = false;
   for (const [name, p] of Object.entries(players)) {
     if (p.alive === false) {
       console.log(`🔥 Phoenix Cheese revived ${name} at (${phoenixSpot.x}, ${phoenixSpot.y})`);
 
       // Revive the player and move them to the Phoenix
-      updateDoc(doc(db, `games/${gameId}/players/${name}`), {
+      await updateDoc(doc(db, `games/${gameId}/players/${name}`), {
         alive: true,
         x: phoenixSpot.x,
         y: phoenixSpot.y
       });
 
-      // Destroy the Phoenix Cheese
-      const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
-      grid[phoenixSpot.y][phoenixSpot.x] = "";
-      delete structureHealth[key];
-      await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
-
-      // Visual flash
-      const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
-      if (cell) {
-        cell.style.backgroundColor = "#ff4d4d";
-        setTimeout(() => {
-          cell.style.backgroundColor = "#c8f7c5";
-        }, 300);
-      }
-
-      renderGrid();
+      revivedSomeone = true;
       break; // Only revive one player per check
     }
   }
-}, 2000); // Check every 2 seconds
+
+  // ✅ Always remove Phoenix Cheese after use
+  if (revivedSomeone) {
+    const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
+    grid[phoenixSpot.y][phoenixSpot.x] = "";
+    delete structureHealth[key];
+    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+
+    const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
+    if (cell) {
+      cell.style.backgroundColor = "#ff4d4d";
+      setTimeout(() => {
+        cell.style.backgroundColor = "#c8f7c5";
+      }, 300);
+    }
+
+    renderGrid();
+  }
+}, 2000);
+
 setInterval(turretAttack, 1500);
    setInterval(rocketTowerAttack, 3500);
 
@@ -2284,16 +2312,16 @@ setInterval(async () => {
       oy >= 0 && oy < gridSize &&
       !termites.some(t => t.x === ox && t.y === oy)
     ) {
-      const termite = { x: ox, y: oy };
-      await setDoc(doc(db, `games/${gameId}/termites/termite_${Date.now()}_${i}`), termite);
+      const id = `termite_${Date.now()}_${i}`;
+      const termite = { x: ox, y: oy, id };
+      await setDoc(doc(db, `games/${gameId}/termites/${id}`), termite);
+      termites.push(termite); // ✅ push with id
       spawned++;
     }
   }
 
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
-
-
  setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
