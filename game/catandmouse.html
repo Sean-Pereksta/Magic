@@ -598,20 +598,19 @@ function movePlayer(dx, dy) {
   renderGrid();
 }
 async function spawnRatWave() {
-  console.log("🧨 spawnRatWave called!")
   if (!isHost || catPower <= 0) return;
 
   const waveTag = Date.now();
   currentRatWave = waveTag;
 
-  const allOffsets = [
-    { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
-    { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
-    { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
-    { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
-    { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
-    { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
-  ];
+ const allOffsets = [
+  { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
+  { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
+  { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
+  { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
+  { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
+  { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
+];
 
   const availableSpots = allOffsets
     .map(offset => ({ x: catPos.x + offset.x, y: catPos.y + offset.y }))
@@ -650,21 +649,13 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `rat_${crypto.randomUUID()}`;
-    const rat = {
-      x: spot.x,
-      y: spot.y,
-      health: 0,            // 🧠 Inactive until ready
-      ready: false,         // 🔒 Prevents accidental healing
-      wave: waveTag,
-      id
-    };
+    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id, wave: waveTag };
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
   }
 
   console.log(`✅ Wave spawned: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
 }
-
 
 async function returnToLobby() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -2346,36 +2337,24 @@ setInterval(async () => {
 }, 800);
 
 
-setInterval(async () => {
+ setInterval(async () => {
   for (let rat of rats) {
-    // 🛡️ Initialize rat only ONCE
-    if (!rat.ready) {
-      rat.health = ratPower * 5;
-      rat.ready = true;
+    if (rat.health <= 0) continue;
 
-      await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-        health: rat.health,
-        ready: true
-      });
-
-      continue; // ⛔ Skip behavior this cycle
-    }
-
-    // 🧪 Skip all rats that are not ready or dead
-    if (!rat.ready || rat.health <= 0) continue;
-
-    // ⏱ Skip if trapped
+    // ⏱ Skip if currently trapped
     if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
 
-    // 🪤 Check for trap
+    // 🪤 Check if stepped on a trap
     for (let trap of traps) {
       if (trap.x === rat.x && trap.y === rat.y) {
         console.log("🪤 Rat trapped!");
         rat.trappedUntil = Date.now() + 3000;
 
+        // 🧹 Remove trap from Firestore
         const trapKey = `${rat.x}_${rat.y}`;
         await deleteDoc(doc(db, `games/${gameId}/traps/${trapKey}`));
 
+        // 🎨 Optional trap visual flash
         const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
         if (cell) {
           cell.style.backgroundColor = "#ffcccc";
@@ -2385,14 +2364,14 @@ setInterval(async () => {
         }
 
         renderGrid();
-        continue;
+        continue; // Skip movement this cycle
       }
     }
 
-    // 🎯 Targeting
     let closestTarget = null;
     let minDist = Infinity;
 
+    // 🔍 Find closest player
     for (const [name, p] of Object.entries(players)) {
       if (p.alive !== false) {
         const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
@@ -2403,6 +2382,7 @@ setInterval(async () => {
       }
     }
 
+    // 🔍 Find closest structure including 🗼 beacon
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(grid[y][x])) {
@@ -2415,7 +2395,7 @@ setInterval(async () => {
       }
     }
 
-    // 🧭 Move
+    // 🧭 Pathfind toward target
     if (closestTarget) {
       const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
         const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
@@ -2433,7 +2413,7 @@ setInterval(async () => {
         }
       }
 
-      // 💥 Attack
+      // 💥 Attack logic
       if (rat.x === closestTarget.x && rat.y === closestTarget.y) {
         if (closestTarget.type === "structure") {
           damageStructure(rat.x, rat.y, ratPower);
@@ -2449,15 +2429,14 @@ setInterval(async () => {
     }
   }
 
-  // 🧹 Clean up dead rats
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) {
-      const ratRef = doc(db, `games/${gameId}/rats/${rats[i].id}`);
-      await deleteDoc(ratRef);
-      rats.splice(i, 1);
-    }
+  // 🧹 Remove dead rats
+   for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    const ratRef = doc(db, `games/${gameId}/rats/${rats[i].id}`);
+    await deleteDoc(ratRef);
+    rats.splice(i, 1);
   }
-
+}
   renderGrid();
 }, 400);
 }
