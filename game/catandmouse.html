@@ -1074,10 +1074,11 @@ async function syncMyRats() {
 
 
 async function turretAttack() {
+  const hitLocations = [];
+
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🔫") {
-        // 🔋 Count nearby cheese beacons (within 2 tiles)
         let bonusDamage = 0;
         for (let dy = -2; dy <= 2; dy++) {
           for (let dx = -2; dx <= 2; dx++) {
@@ -1094,8 +1095,6 @@ async function turretAttack() {
         }
 
         const damage = 2 + bonusDamage;
-
-        // 🧠 Collect all nearby targets (cat, rats, oxen)
         const targets = [];
 
         const distToCat = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
@@ -1111,32 +1110,19 @@ async function turretAttack() {
         for (let rat of rats) {
           const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
           if (dist <= 5 && rat.health > 0) {
-            targets.push({
-              type: "rat",
-              x: rat.x,
-              y: rat.y,
-              id: rat.id,
-              health: rat.health
-            });
+            targets.push({ ...rat, type: "rat" });
           }
         }
 
         for (let ox of oxen) {
           const dist = Math.abs(ox.x - x) + Math.abs(ox.y - y);
           if (dist <= 5 && ox.health > 0) {
-            targets.push({
-              type: "ox",
-              x: ox.x,
-              y: ox.y,
-              id: ox.id,
-              health: ox.health
-            });
+            targets.push({ ...ox, type: "ox" });
           }
         }
 
         if (targets.length === 0) continue;
 
-        // 🎯 Find the closest target
         targets.sort((a, b) => {
           const da = Math.abs(a.x - x) + Math.abs(a.y - y);
           const db = Math.abs(b.x - x) + Math.abs(b.y - y);
@@ -1145,8 +1131,9 @@ async function turretAttack() {
 
         const target = targets[0];
         target.health -= damage;
+        hitLocations.push({ x: target.x, y: target.y });
 
-        // 💾 Sync updated health
+        // 🔁 Sync to Firebase
         if (target.type === "cat") {
           catHealth = target.health;
           await updateDoc(doc(db, `games/${gameId}`), {
@@ -1173,21 +1160,11 @@ async function turretAttack() {
             });
           }
         }
-
-        // 💥 Flash the hit cell
-        const hitCell = document.getElementById(`cell-${target.x}-${target.y}`);
-        if (hitCell) {
-          const originalColor = hitCell.style.backgroundColor;
-          hitCell.style.backgroundColor = "#ffaaaa";
-          setTimeout(() => {
-            hitCell.style.backgroundColor = originalColor || "#c8f7c5";
-          }, 150);
-        }
       }
     }
   }
 
-  // 🧹 Cleanup dead rats
+  // 🧹 Cleanup
   for (let i = rats.length - 1; i >= 0; i--) {
     if (rats[i].health <= 0) {
       await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
@@ -1195,7 +1172,6 @@ async function turretAttack() {
     }
   }
 
-  // 🧹 Cleanup dead oxen
   for (let i = oxen.length - 1; i >= 0; i--) {
     if (oxen[i].health <= 0) {
       await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
@@ -1203,8 +1179,23 @@ async function turretAttack() {
     }
   }
 
+  // 🧱 Re-render updated grid
   renderGrid();
+
+  // 💥 Visual bang effect AFTER grid update
+  for (const { x, y } of hitLocations) {
+    const cell = document.getElementById(`cell-${x}-${y}`);
+    if (cell) {
+      const original = cell.textContent;
+      cell.textContent = "💥";
+      setTimeout(() => {
+        cell.textContent = original;
+      }, 200);
+    }
+  }
 }
+
+
 
 
 
@@ -1254,24 +1245,6 @@ async function rocketTowerAttack() {
             });
           }
 
-          // 🔥 Fire effect: center + 8 surrounding tiles
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const fx = target.x + dx;
-              const fy = target.y + dy;
-              if (fx < 0 || fy < 0 || fx >= gridSize || fy >= gridSize) continue;
-
-              const cell = document.getElementById(`cell-${fx}-${fy}`);
-              if (cell) {
-                const originalContent = cell.textContent;
-                cell.textContent = "🔥";
-                setTimeout(() => {
-                  cell.textContent = originalContent;
-                }, 250);
-              }
-            }
-          }
-
           // 💥 Splash damage to surroundings
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
@@ -1280,7 +1253,6 @@ async function rocketTowerAttack() {
               if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
               if (dx === 0 && dy === 0) continue; // Skip center
 
-              // 🐀 Splash rats
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
                   rat.health -= splashDamage;
@@ -1292,7 +1264,6 @@ async function rocketTowerAttack() {
                 }
               }
 
-              // 🐂 Splash oxen
               for (let ox of oxen) {
                 if (ox.x === sx && ox.y === sy && ox.health > 0) {
                   ox.health -= splashDamage;
@@ -1304,7 +1275,6 @@ async function rocketTowerAttack() {
                 }
               }
 
-              // 🐱 Splash cat
               if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
                 catHealth -= splashDamage;
                 await updateDoc(doc(db, `games/${gameId}`), {
@@ -1313,29 +1283,66 @@ async function rocketTowerAttack() {
               }
             }
           }
+
+          // 🧹 Cleanup
+          for (let i = rats.length - 1; i >= 0; i--) {
+            if (rats[i].health <= 0) {
+              await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
+              rats.splice(i, 1);
+            }
+          }
+
+          for (let i = oxen.length - 1; i >= 0; i--) {
+            if (oxen[i].health <= 0) {
+              await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
+              oxen.splice(i, 1);
+            }
+          }
+
+          // 🔁 Now render grid update
+          renderGrid();
+
+          // 💨 Create smoke trail
+          const steps = Math.max(Math.abs(target.x - x), Math.abs(target.y - y));
+          const visuals = [];
+
+          for (let i = 0; i <= steps; i++) {
+            const sx = Math.round(x + (target.x - x) * (i / steps));
+            const sy = Math.round(y + (target.y - y) * (i / steps));
+            if (sx >= 0 && sy >= 0 && sx < gridSize && sy < gridSize) {
+              const cell = document.getElementById(`cell-${sx}-${sy}`);
+              if (cell) {
+                visuals.push({ cell, original: cell.textContent });
+                cell.textContent = "💨";
+              }
+            }
+          }
+
+          // 🔥 Fire effect at target and splash area
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const fx = target.x + dx;
+              const fy = target.y + dy;
+              if (fx < 0 || fy < 0 || fx >= gridSize || fy >= gridSize) continue;
+              const cell = document.getElementById(`cell-${fx}-${fy}`);
+              if (cell) {
+                visuals.push({ cell, original: cell.textContent });
+                cell.textContent = "🔥";
+              }
+            }
+          }
+
+          // ♻️ Restore after delay
+          setTimeout(() => {
+            for (const { cell, original } of visuals) {
+              cell.textContent = original;
+            }
+          }, 300);
         }
       }
     }
   }
-
-  // 🧹 Cleanup
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-      rats.splice(i, 1);
-    }
-  }
-
-  for (let i = oxen.length - 1; i >= 0; i--) {
-    if (oxen[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-      oxen.splice(i, 1);
-    }
-  }
-
-  renderGrid();
 }
-
 
 
 
