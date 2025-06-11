@@ -105,6 +105,11 @@
     text-align: center;
     font-weight: bold;
   }
+  .ox-raging {
+  box-shadow: 0 0 10px 4px red;
+  border-radius: 4px;
+}
+
 
   #mobileControls {
     display: none;
@@ -513,6 +518,15 @@ for (const ox of oxen) {
   const cell = document.getElementById(`cell-${ox.x}-${ox.y}`);
   if (cell) {
     cell.textContent = "🐂";
+
+    // 🔥 Add red aura if raging
+    if (ox.rageUntil && Date.now() < ox.rageUntil) {
+      cell.classList.add("ox-raging");
+    } else {
+      cell.classList.remove("ox-raging");
+    }
+
+    // ❤️ Health display
     const hpTag = document.createElement("div");
     hpTag.className = "name";
     hpTag.style.color = "orange";
@@ -520,6 +534,7 @@ for (const ox of oxen) {
     cell.appendChild(hpTag);
   }
 }
+
 
 
   // 🐛 Termites
@@ -2457,67 +2472,103 @@ setInterval(async () => {
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
 setInterval(async () => {
+  const now = Date.now();
+
+  // 🔁 Trigger rage mode every 60s
+  if (now % 60000 < 800) {
+    for (const ox of oxen) {
+      ox.rageUntil = now + 10000; // Rage for 10 seconds
+    }
+  }
+
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
-    let bestTarget = null;
-    let minDist = Infinity;
+    const isRaging = ox.rageUntil && Date.now() < ox.rageUntil;
 
-    // 🎯 Find nearest wall or super wall
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const symbol = grid[y][x];
-        if (symbol === "💎" || symbol === "🧱") {
-          const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
-          const priority = symbol === "💎" ? 0 : 1;
+    let target = null;
 
-          if (
-            dist < minDist ||
-            (dist === minDist && priority < (bestTarget?.priority ?? 1))
-          ) {
+    if (isRaging) {
+      // 🎯 Rage mode: chase nearest player
+      let minDist = Infinity;
+      for (const name in players) {
+        const player = players[name];
+        if (player.alive) {
+          const dist = Math.abs(ox.x - player.x) + Math.abs(ox.y - player.y);
+          if (dist < minDist) {
             minDist = dist;
-            bestTarget = { x, y, symbol, priority };
+            target = { x: player.x, y: player.y, type: "player", name };
+          }
+        }
+      }
+    } else {
+      // 🎯 Normal mode: target walls
+      let minDist = Infinity;
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          const symbol = grid[y][x];
+          if (symbol === "💎" || symbol === "🧱") {
+            const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
+            const priority = symbol === "💎" ? 0 : 1;
+            if (
+              dist < minDist ||
+              (dist === minDist && priority < (target?.priority ?? 1))
+            ) {
+              minDist = dist;
+              target = { x, y, symbol, priority, type: "structure" };
+            }
           }
         }
       }
     }
 
-    if (bestTarget) {
-      // 🔁 Custom walkable pathfinding (avoid buildings)
-      const path = findPath(
-        ox.x,
-        ox.y,
-        bestTarget.x,
-        bestTarget.y,
-        (x, y) => !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x])
-      );
+    if (target) {
+      const walkable = (x, y) => {
+        if (isRaging) return grid[y][x] === "";
+        return !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x]);
+      };
+
+      const path = findPath(ox.x, ox.y, target.x, target.y, walkable);
 
       if (path && path.length > 0) {
         const next = path[0];
-        ox.x = next.x;
-        ox.y = next.y;
+        const blockingSymbol = grid[next.y][next.x];
+        if (isRaging && ["🧱", "💎"].includes(blockingSymbol)) {
+          // 🔨 Attack blocking wall during rage
+          await damageStructure(next.x, next.y, 20);
+          console.log(`🟥 Ox smashes wall at (${next.x}, ${next.y})`);
+        } else {
+          ox.x = next.x;
+          ox.y = next.y;
+        }
 
-        // 🔄 Sync oxen position
+        // 🔄 Sync position
         if (ox.id) {
           await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
             x: ox.x,
             y: ox.y,
             health: ox.health,
+            rageUntil: ox.rageUntil || 0
           });
         }
       }
 
-      // 💥 Attack if adjacent or standing on wall
-      const dx = Math.abs(ox.x - bestTarget.x);
-      const dy = Math.abs(ox.y - bestTarget.y);
+      // 💥 Attack if at or adjacent to target
+      const dx = Math.abs(ox.x - target.x);
+      const dy = Math.abs(ox.y - target.y);
       if ((dx === 0 && dy === 0) || dx + dy === 1) {
-        const oxDamage = 20;
-        await damageStructure(bestTarget.x, bestTarget.y, oxDamage);
+        if (target.type === "structure") {
+          await damageStructure(target.x, target.y, 30);
+          console.log(`💥 Ox attacks ${target.symbol} at (${target.x}, ${target.y})`);
+        } else if (target.type === "player") {
+          const playerRef = doc(db, `games/${gameId}/players/${target.name}`);
+          await updateDoc(playerRef, { alive: false });
+          console.log(`☠️ Ox kills player ${target.name}`);
+        }
         ox.health -= 1;
-        console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
       }
     }
 
-    // ☠️ If dead, remove from Firebase and local list
+    // ☠️ Death cleanup
     if (ox.health <= 0) {
       if (ox.id) {
         await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
