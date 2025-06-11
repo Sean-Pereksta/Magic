@@ -1030,13 +1030,14 @@ async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3
       delete structureHealth[key];
       await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
     } else {
-      updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
+      await updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
         health: structureHealth[key]
       });
     }
     renderGrid();
   }
 }
+
 
 async function syncMyFleas() {
   const fleasRef = collection(db, `games/${gameId}/fleas`);
