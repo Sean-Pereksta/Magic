@@ -603,14 +603,14 @@ async function spawnRatWave() {
   const waveTag = Date.now();
   currentRatWave = waveTag;
 
- const allOffsets = [
-  { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
-  { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
-  { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
-  { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
-  { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
-  { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
-];
+  const allOffsets = [
+    { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
+    { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
+    { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
+    { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
+    { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
+    { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
+  ];
 
   const availableSpots = allOffsets
     .map(offset => ({ x: catPos.x + offset.x, y: catPos.y + offset.y }))
@@ -624,8 +624,8 @@ async function spawnRatWave() {
 
   const usedKeys = new Set();
 
-  // 🐂 OXEN
-  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
+  // 🐂 OXEN – spawn earlier at catPower >= 8
+  const oxCount = catPower >= 8 ? Math.floor((catPower - 5) / 10) + 1 : 0;
   let oxSpawned = 0;
   for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
     const spot = availableSpots[i];
@@ -634,7 +634,7 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `ox_${crypto.randomUUID()}`;
-    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
+    const ox = { x: spot.x, y: spot.y, health: ratPower * 35, id };
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
@@ -2456,10 +2456,9 @@ setInterval(async () => {
 
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
- setInterval(() => {
+setInterval(async () => {
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
-
     let bestTarget = null;
     let minDist = Infinity;
 
@@ -2480,19 +2479,32 @@ setInterval(async () => {
     }
 
     if (bestTarget) {
-      // 🔁 Only path through non-walls
-      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
+      // 🔁 Custom walkable check to path around walls
+      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, (x, y) => {
+        return !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x]);
+      });
+
       if (path && path.length > 0) {
         const next = path[0];
         ox.x = next.x;
         ox.y = next.y;
+
+        // 🔄 Sync movement
+        if (ox.id) {
+          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+            x: ox.x,
+            y: ox.y,
+            health: ox.health
+          });
+        }
       }
 
-      // 💥 Attack if adjacent (not same tile)
+      // 💥 Attack if adjacent
       const dx = Math.abs(ox.x - bestTarget.x);
       const dy = Math.abs(ox.y - bestTarget.y);
       if (dx + dy === 1) {
-        damageStructure(bestTarget.x, bestTarget.y, ratPower * 10); // Heavy damage
+        const oxDamage = 30;
+        await damageStructure(bestTarget.x, bestTarget.y, oxDamage);
         ox.health -= 1;
         console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
       }
@@ -2503,6 +2515,7 @@ setInterval(async () => {
 
   renderGrid();
 }, 800);
+
  setInterval(async () => {
     if (!gameStarted) return;
 
