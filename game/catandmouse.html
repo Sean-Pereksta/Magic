@@ -2470,7 +2470,10 @@ setInterval(async () => {
           const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
           const priority = symbol === "💎" ? 0 : 1;
 
-          if (dist < minDist || (dist === minDist && priority < (bestTarget?.priority ?? 1))) {
+          if (
+            dist < minDist ||
+            (dist === minDist && priority < (bestTarget?.priority ?? 1))
+          ) {
             minDist = dist;
             bestTarget = { x, y, symbol, priority };
           }
@@ -2479,42 +2482,53 @@ setInterval(async () => {
     }
 
     if (bestTarget) {
-      // 🔁 Custom walkable check to path around walls
-      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, (x, y) => {
-        return !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x]);
-      });
+      // 🔁 Custom walkable pathfinding (avoid buildings)
+      const path = findPath(
+        ox.x,
+        ox.y,
+        bestTarget.x,
+        bestTarget.y,
+        (x, y) => !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x])
+      );
 
       if (path && path.length > 0) {
         const next = path[0];
         ox.x = next.x;
         ox.y = next.y;
 
-        // 🔄 Sync movement
+        // 🔄 Sync oxen position
         if (ox.id) {
           await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
             x: ox.x,
             y: ox.y,
-            health: ox.health
+            health: ox.health,
           });
         }
       }
 
-      // 💥 Attack if adjacent
+      // 💥 Attack if adjacent or standing on wall
       const dx = Math.abs(ox.x - bestTarget.x);
       const dy = Math.abs(ox.y - bestTarget.y);
-      if (dx + dy === 1) {
-        const oxDamage = 30;
+      if ((dx === 0 && dy === 0) || dx + dy === 1) {
+        const oxDamage = 20;
         await damageStructure(bestTarget.x, bestTarget.y, oxDamage);
         ox.health -= 1;
         console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
       }
     }
 
-    if (ox.health <= 0) oxen.splice(i, 1);
+    // ☠️ If dead, remove from Firebase and local list
+    if (ox.health <= 0) {
+      if (ox.id) {
+        await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
+      }
+      oxen.splice(i, 1);
+    }
   }
 
   renderGrid();
 }, 800);
+
 
  setInterval(async () => {
     if (!gameStarted) return;
