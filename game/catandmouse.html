@@ -1222,14 +1222,32 @@ async function rocketTowerAttack() {
           if (boosted) break;
         }
 
-        // 🔍 Find farthest rat within 8 tiles
+        // 🔍 Find farthest valid enemy (rat, ox, cat) within 8 tiles
         let target = null;
         let maxDist = -1;
+
+        // Check cat
+        const distToCat = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
+        if (catHealth > 0 && distToCat <= 8 && distToCat > maxDist) {
+          maxDist = distToCat;
+          target = { type: "cat", x: catPos.x, y: catPos.y };
+        }
+
+        // Check rats
         for (let rat of rats) {
           const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
-          if (dist <= 8 && dist > maxDist && rat.health > 0) {
+          if (rat.health > 0 && dist <= 8 && dist > maxDist) {
             maxDist = dist;
-            target = rat;
+            target = { ...rat, type: "rat" };
+          }
+        }
+
+        // Check oxen
+        for (let ox of oxen) {
+          const dist = Math.abs(ox.x - x) + Math.abs(ox.y - y);
+          if (ox.health > 0 && dist <= 8 && dist > maxDist) {
+            maxDist = dist;
+            target = { ...ox, type: "ox" };
           }
         }
 
@@ -1238,20 +1256,36 @@ async function rocketTowerAttack() {
           const splashDamage = boosted ? 15 : 10;
 
           // 🎯 Main target takes damage
-          target.health -= mainDamage;
-          if (target.id) {
-            await updateDoc(doc(db, `games/${gameId}/rats/${target.id}`), {
-              health: target.health
+          if (target.type === "cat") {
+            catHealth -= mainDamage;
+            await updateDoc(doc(db, `games/${gameId}`), {
+              cat: { ...catPos, health: catHealth }
             });
+          } else if (target.type === "rat") {
+            target.health -= mainDamage;
+            if (target.id) {
+              await updateDoc(doc(db, `games/${gameId}/rats/${target.id}`), {
+                health: target.health
+              });
+            }
+          } else if (target.type === "ox") {
+            target.health -= mainDamage;
+            if (target.id) {
+              await updateDoc(doc(db, `games/${gameId}/oxen/${target.id}`), {
+                health: target.health
+              });
+            }
           }
 
-          // 💥 Splash damage to surroundings
+          // 💥 Splash damage to all enemies in 3x3
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const sx = target.x + dx;
               const sy = target.y + dy;
               if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
-              if (dx === 0 && dy === 0) continue; // Skip center
+
+              // Skip main target
+              if (sx === target.x && sy === target.y) continue;
 
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
@@ -1299,26 +1333,24 @@ async function rocketTowerAttack() {
             }
           }
 
-          // 🔁 Now render grid update
+          // 🎨 Visual Effects
           renderGrid();
 
-          // 💨 Create smoke trail
-          const steps = Math.max(Math.abs(target.x - x), Math.abs(target.y - y));
           const visuals = [];
 
+          // Smoke trail
+          const steps = Math.max(Math.abs(target.x - x), Math.abs(target.y - y));
           for (let i = 0; i <= steps; i++) {
             const sx = Math.round(x + (target.x - x) * (i / steps));
             const sy = Math.round(y + (target.y - y) * (i / steps));
-            if (sx >= 0 && sy >= 0 && sx < gridSize && sy < gridSize) {
-              const cell = document.getElementById(`cell-${sx}-${sy}`);
-              if (cell) {
-                visuals.push({ cell, original: cell.textContent });
-                cell.textContent = "💨";
-              }
+            const cell = document.getElementById(`cell-${sx}-${sy}`);
+            if (cell) {
+              visuals.push({ cell, original: cell.textContent });
+              cell.textContent = "💨";
             }
           }
 
-          // 🔥 Fire effect at target and splash area
+          // Explosion effect
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const fx = target.x + dx;
@@ -1327,12 +1359,12 @@ async function rocketTowerAttack() {
               const cell = document.getElementById(`cell-${fx}-${fy}`);
               if (cell) {
                 visuals.push({ cell, original: cell.textContent });
-                cell.textContent = "🔥";
+                cell.textContent = "💥";
               }
             }
           }
 
-          // ♻️ Restore after delay
+          // ♻️ Restore visuals after delay
           setTimeout(() => {
             for (const { cell, original } of visuals) {
               cell.textContent = original;
@@ -1343,6 +1375,7 @@ async function rocketTowerAttack() {
     }
   }
 }
+
 
 
 
