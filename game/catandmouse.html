@@ -2246,22 +2246,27 @@ if (host === cleanUsername && !hostInitialized) {
             cat: { ...catPos, health: catHealth }
           });
         } else if (target.type === "rat" && target.rat) {
-          target.rat.health -= 5;
-          if (target.rat.health <= 0) {
-            const index = rats.indexOf(target.rat);
-            if (index !== -1) rats.splice(index, 1);
-            const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
-            await deleteDoc(ratRef);
-          }
-        } else if (target.type === "ox" && target.ox) {
-          target.ox.health -= 5;
-          if (target.ox.health <= 0) {
-            const index = oxen.indexOf(target.ox);
-            if (index !== -1) oxen.splice(index, 1);
-            const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
-            await deleteDoc(oxRef);
-          }
-        }
+  target.rat.health -= 5;
+  const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
+  if (target.rat.health <= 0) {
+    const index = rats.indexOf(target.rat);
+    if (index !== -1) rats.splice(index, 1);
+    await deleteDoc(ratRef);
+  } else {
+    await updateDoc(ratRef, { health: target.rat.health });
+  }
+} else if (target.type === "ox" && target.ox) {
+  target.ox.health -= 5;
+  const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
+  if (target.ox.health <= 0) {
+    const index = oxen.indexOf(target.ox);
+    if (index !== -1) oxen.splice(index, 1);
+    await deleteDoc(oxRef);
+  } else {
+    await updateDoc(oxRef, { health: target.ox.health });
+  }
+}
+
       }
     }
 
