@@ -1805,10 +1805,14 @@ onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
   renderGrid();
 });
-  onSnapshot(collection(db, `games/${gameId}/squirrels`), (snapshot) => {
-  squirrels = snapshot.docs.map(doc => doc.data());
+onSnapshot(collection(db, `games/${gameId}/squirrels`), (snapshot) => {
+  squirrels = snapshot.docs.map(doc => ({
+    id: doc.id,      // ✅ Capture document ID
+    ...doc.data()
+  }));
   renderGrid();
 });
+
 onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
   const updatedRats = [];
 
