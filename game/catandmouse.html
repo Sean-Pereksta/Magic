@@ -1675,7 +1675,7 @@ async function catBehavior() {
   if (!target) {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🔫", "🪳", "🗼", "🚀"].includes(grid[y][x])) {
+        if (["🔫", "🪳", "🗼", "🚀", "🌳"].includes(grid[y][x])) {
           const sPath = findPath(catPos.x, catPos.y, x, y, false);
           if (sPath && (!path || sPath.length < path.length)) {
             target = { x, y, type: "structure" };
@@ -1703,7 +1703,7 @@ async function catBehavior() {
   if (!target) {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(grid[y][x])) {
+        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x])) {
           const fPath = findPath(catPos.x, catPos.y, x, y, false);
           if (fPath && (!path || fPath.length < path.length)) {
             target = { x, y, type: "fallback" };
@@ -1731,7 +1731,7 @@ async function catBehavior() {
       if (tx < 0 || tx >= gridSize || ty < 0 || ty >= gridSize) continue;
 
       const symbol = grid[ty][tx];
-      if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼"].includes(symbol)) {
+      if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(symbol)) {
         console.log(`💥 Cat attacked ${symbol} at (${tx}, ${ty})`);
         damageStructure(tx, ty);
         attacked = true;
@@ -2497,7 +2497,7 @@ if (host === cleanUsername && !hostInitialized) {
 
     if (closestWall) {
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-        return !["🧱", "🔫", "🪳", "🏭", "💎"].includes(grid[y][x]);
+        return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x]);
       });
 
       if (path && path.length > 0) {
@@ -2712,7 +2712,7 @@ setInterval(async () => {
     if (target) {
       const walkable = (x, y) => {
         if (isRaging) return grid[y][x] === "";
-        return !["🧱", "💎", "🔫", "🪳", "🏭", "🚀", "🗼"].includes(grid[y][x]);
+        return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x]);
       };
 
       const path = findPath(ox.x, ox.y, target.x, target.y, walkable);
