@@ -2586,7 +2586,9 @@ if (host === cleanUsername && !hostInitialized) {
   }
 }, 2000);
 
-  setInterval(() => {
+setInterval(async () => {
+  const usedKeys = new Set();
+
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🌳") {
@@ -2603,20 +2605,29 @@ if (host === cleanUsername && !hostInitialized) {
           if (
             sx >= 0 && sx < gridSize &&
             sy >= 0 && sy < gridSize &&
-            grid[sy][sx] === ""
+            grid[sy][sx] === "" &&
+            !usedKeys.has(key)
           ) {
-            setDoc(doc(db, `games/${gameId}/squirrels/${key}`), {
+            usedKeys.add(key);
+
+            const id = `squirrel_${crypto.randomUUID()}`;
+            const squirrel = {
+              id,
               x: sx,
               y: sy,
-              health: 10
-            });
-            break; // only one per tree per cycle
+              health: 10,
+              createdAt: Date.now()
+            };
+
+            await setDoc(doc(db, `games/${gameId}/squirrels/${id}`), squirrel);
+            break; // spawn only 1 squirrel per tree per cycle
           }
         }
       }
     }
   }
 }, 30000);
+
 
 
 setInterval(turretAttack, 1500);
