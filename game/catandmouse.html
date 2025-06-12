@@ -1571,6 +1571,8 @@ function triggerMoveCooldown() {
 }
 
 function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
+  if (Math.abs(sx - tx) + Math.abs(sy - ty) <= stayAway) return null;
+
   const visited = new Set();
   const queue = [{ x: sx, y: sy, path: [] }];
 
@@ -1580,10 +1582,9 @@ function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
     if (visited.has(key)) continue;
     visited.add(key);
 
-    const totalDist = Math.abs(tx - x) + Math.abs(ty - y);
-    if (totalDist <= stayAway) continue; // Don't move too close
-
-    if (x === tx && y === ty) return path[0];
+    if (Math.abs(tx - x) + Math.abs(ty - y) <= stayAway) {
+      return path[0]; // First step to closest allowed distance
+    }
 
     const dirs = [
       { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
@@ -1607,6 +1608,7 @@ function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
 
   return null;
 }
+
 
 
 async function catBehavior() {
@@ -2794,8 +2796,6 @@ setInterval(async () => {
     console.log("🔁 Cat health sync:", catHealth);
   }, 3000);
 setInterval(async () => {
-  if (!isHost) return;
-
   for (let squirrel of squirrels) {
     if (squirrel.health <= 0) continue;
 
@@ -2837,6 +2837,8 @@ setInterval(async () => {
     // 🧭 Path toward target (ignore obstacles, stay 2 away)
     const step = findSquirrelPath(sx, sy, target.x, target.y, 2);
     if (!step) continue;
+    console.log(`🐿 Moving squirrel ${squirrel.id} from (${sx}, ${sy}) to (${step.x}, ${step.y})`);
+
 
     // 🐿 Update local squirrel
     squirrel.x = step.x;
