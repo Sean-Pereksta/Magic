@@ -1058,8 +1058,11 @@ function spawnCheese() {
 
 async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3))) {
   const key = `${x}_${y}`;
+  const symbol = grid[y][x];
+
   if (structureHealth[key] !== undefined) {
     structureHealth[key] -= damageAmount;
+    console.log(`💥 Damaged ${symbol} at (${x}, ${y}) → HP: ${structureHealth[key]}`);
     if (structureHealth[key] <= 0) {
       grid[y][x] = "";
       delete structureHealth[key];
@@ -1069,8 +1072,14 @@ async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3
         health: structureHealth[key]
       });
     }
-    renderGrid();
+  } else if (["🧱", "💎"].includes(symbol)) {
+    // 💣 Untracked structure fallback
+    console.warn(`⚠️ Destroying untracked wall at (${x}, ${y})`);
+    grid[y][x] = "";
+    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
   }
+
+  renderGrid();
 }
 
 
