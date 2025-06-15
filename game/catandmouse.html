@@ -318,23 +318,36 @@ let grid = [];
 const structureClasses = {
   defender: {
     label: "🛡 Defender",
-    defense: ["🧱", "💎", "🌳"],
+    defense: ["💎", "🌳", "🌿"],
     economic: ["🗼", "🏭"],
     attack: ["🔫"]
   },
   engineer: {
     label: "🔧 Engineer",
-    defense: ["🧱"],
+    defense: ["🧱", "💎"],
     economic: ["🏭", "🗼", "🐦‍🔥"],
     attack: ["🪳", "🚀"]
   },
   striker: {
     label: "⚔ Striker",
-    defense: ["🧱"],
-    economic: ["🐦‍🔥"],
+    defense: ["🧱", "💎", "🌳", "🌿"],
+    economic: ["🐦‍🔥", "🏭"],
     attack: ["🔫", "🚀", "🪳"]
   }
 };
+  const structureInfo = {
+  "🧱": { cost: 1, health: 15 },
+  "🔫": { cost: 3, health: 5 },
+  "🪳": { cost: 5, health: 10 },
+  "🏭": { cost: 4, health: 5 },
+  "💎": { cost: 6, health: 75 },
+  "🗼": { cost: 24, health: 25 },
+  "🐦‍🔥": { cost: 40, health: 20 },
+  "🚀": { cost: 30, health: 20 },
+  "🌳": { cost: 20, health: 20 },
+  "🌿": { cost: 4, health: 12 }  // vine wall
+};
+
 
 let playerPos = { x: 1, y: 1 };
 let catPos = { x: 15, y: 15 };
@@ -624,15 +637,27 @@ function updateHostDisplay() {
 }
 
 
-function movePlayer(dx, dy) {
+async function movePlayer(dx, dy) {
   if (!gameStarted || !isAlive) return;
+
   const newX = Math.max(0, Math.min(gridSize - 1, playerPos.x + dx));
   const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
+
   playerPos = { x: newX, y: newY };
   savePosition();
+
+  // 🌿 Destroy vine on contact
+  if (grid[newY][newX] === "🌿") {
+    grid[newY][newX] = "";
+    const key = `${newX}_${newY}`;
+    delete structureHealth[key];
+    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+  }
+
   checkCheese();
   renderGrid();
 }
+
 async function spawnRatWave() {
   if (!isHost || catPower <= 0) return;
 
@@ -774,17 +799,18 @@ function selectBuild(key) {
 
   selectedBuild = key;
 
-  const buildNames = {
-    "🧱": "Wall 🧱 (Cost: 1)",
-    "🔫": "Turret 🔫 (Cost: 3)",
-    "🪳": "Flea Nest 🪳 (Cost: 5)",
-    "🏭": "Cheese Generator 🏭 (Cost: 4)",
-    "💎": "Super Wall 💎 (Cost: 6)",
-    "🗼": "Cheese Beacon 🗼 (Cost: 24)",
-    "🐦‍🔥": "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
-    "🚀": "Rocket Tower 🚀 (Cost: 30)",
-    "🌳": "Oak Tree 🌳 (Cost: 20)"
-  };
+ const buildNames = {
+  "🧱": "Wall 🧱 (Cost: 1)",
+  "🔫": "Turret 🔫 (Cost: 3)",
+  "🪳": "Flea Nest 🪳 (Cost: 5)",
+  "🏭": "Cheese Generator 🏭 (Cost: 4)",
+  "💎": "Super Wall 💎 (Cost: 6)",
+  "🗼": "Cheese Beacon 🗼 (Cost: 24)",
+  "🐦‍🔥": "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
+  "🚀": "Rocket Tower 🚀 (Cost: 30)",
+  "🌳": "Oak Tree 🌳 (Cost: 20)",
+  "🌿": "Vine Wall 🌿 (Cost: 4)"
+};
 
   document.getElementById("buildType").textContent = buildNames[symbol] || "Unknown Structure";
 }
@@ -792,17 +818,19 @@ function showBuildKeys() {
   const map = window.myBuildKeys;
   if (!map) return;
 
-  const costMap = {
-    "🧱": 1,
-    "🔫": 3,
-    "🪳": 5,
-    "🏭": 4,
-    "💎": 6,
-    "🗼": 24,
-    "🐦‍🔥": 40,
-    "🚀": 30,
-    "🌳": 20
-  };
+const costMap = {
+  "🧱": 1,
+  "🔫": 3,
+  "🪳": 5,
+  "🏭": 4,
+  "💎": 6,
+  "🗼": 24,
+  "🐦‍🔥": 40,
+  "🚀": 30,
+  "🌳": 20,
+  "🌿": 4
+};
+
 
   let html = "";
   for (let i = 1; i <= 6; i++) {
@@ -1014,20 +1042,6 @@ function checkCheese() {
 function placeStructure(dir) {
   if (!gameStarted || !isAlive || !selectedBuild) return;
 
-  // Set cost based on structure type
-  let cost = 0;
-  if (selectedBuild === 1) cost = 1;
-  else if (selectedBuild === 2) cost = 3;
-  else if (selectedBuild === 3) cost = 5;
-  else if (selectedBuild === 4) cost = 4;
-  else if (selectedBuild === 5) cost = 6;
-  else if (selectedBuild === 6) cost = 24;
-  else if (selectedBuild === 7) cost = 40;
-  else if (selectedBuild === 8) cost = 30;
-  else if (selectedBuild === 9) cost = 20; // 🌳 Oak Tree
-
-  if (cheeseCount < cost) return;
-
   let tx = playerPos.x, ty = playerPos.y;
   if (dir === 'w') ty--;
   if (dir === 'a') tx--;
@@ -1035,37 +1049,12 @@ function placeStructure(dir) {
   if (dir === 'd') tx++;
   if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
 
-  let symbol = "";
-  let health = 1;
+  const symbol = myBuildKeys[selectedBuild]; // 1–6 mapped to emoji
+  if (!symbol || !structureInfo[symbol]) return;
 
-  if (selectedBuild === 1) {
-    symbol = "🧱";
-    health = 15;
-  } else if (selectedBuild === 2) {
-    symbol = "🔫";
-    health = 5;
-  } else if (selectedBuild === 3) {
-    symbol = "🪳";
-    health = 10;
-  } else if (selectedBuild === 4) {
-    symbol = "🏭";
-    health = 5;
-  } else if (selectedBuild === 5) {
-    symbol = "💎";
-    health = 75;
-  } else if (selectedBuild === 6) {
-    symbol = "🗼";
-    health = 25;
-  } else if (selectedBuild === 7) {
-    symbol = "🐦‍🔥";
-    health = 20;
-  } else if (selectedBuild === 8) {
-    symbol = "🚀";
-    health = 20;
-  } else if (selectedBuild === 9) {
-    symbol = "🌳";
-    health = 20;
-  }
+  const { cost, health } = structureInfo[symbol];
+
+  if (cheeseCount < cost) return;
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
@@ -1079,12 +1068,13 @@ function placeStructure(dir) {
       x: tx,
       y: ty,
       type: symbol,
-      health: structureHealth[key]
+      health
     });
 
     renderGrid();
   }
 }
+
 
 
 
@@ -1591,7 +1581,7 @@ function findPath(startX, startY, targetX, targetY, allowTargetWall = false) {
         const isTarget = nx === targetX && ny === targetY;
         const cell = grid[ny][nx];
 
-        const isWall = cell === "🧱" || cell === "💎";
+        const isWall = cell === "🧱" || cell === "💎" || cell === "🌿";
         const isWalkable = !isWall || (allowTargetWall && isTarget);
 
         if (isWalkable) {
@@ -1725,7 +1715,7 @@ async function catBehavior() {
     for (const [_, p] of aliveMice) {
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const wx = p.x + dx, wy = p.y + dy;
-        if (["🧱", "🏭", "💎", "🗼"].includes(grid[wy]?.[wx])) {
+        if (["🧱", "🏭", "💎", "🗼", "🌿"].includes(grid[wy]?.[wx])) {
           const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
           if (wPath && (!path || wPath.length < path.length)) {
             target = { x: wx, y: wy, type: "wallToBreak" };
@@ -1768,7 +1758,7 @@ async function catBehavior() {
   if (!target) {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x])) {
+       if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿"].includes(grid[y][x])) {
           const fPath = findPath(catPos.x, catPos.y, x, y, false);
           if (fPath && (!path || fPath.length < path.length)) {
             target = { x, y, type: "fallback" };
@@ -1781,7 +1771,7 @@ async function catBehavior() {
 
   if (target && path) {
     const next = path[1];
-    if (next && !["🧱", "💎"].includes(grid[next.y][next.x])) {
+    if (next && !["🧱", "💎", "🌿"].includes(grid[next.y][next.x])) {
       catPos.x = next.x;
       catPos.y = next.y;
       console.log(`✅ Cat moved to (${catPos.x}, ${catPos.y}) toward ${target.type}`);
@@ -1796,7 +1786,7 @@ async function catBehavior() {
       if (tx < 0 || tx >= gridSize || ty < 0 || ty >= gridSize) continue;
 
       const symbol = grid[ty][tx];
-      if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(symbol)) {
+      if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿"].includes(symbol)) {
         console.log(`💥 Cat attacked ${symbol} at (${tx}, ${ty})`);
         damageStructure(tx, ty);
         attacked = true;
@@ -2311,7 +2301,6 @@ setInterval(() => {
 setInterval(() => {
   if (!fleaMasterActive || !isAlive) return;
 
-  // 🐞 Spawn up to 2 fleas near the player
   const offsets = [
     { dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
     { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
@@ -2328,14 +2317,20 @@ setInterval(() => {
       fy >= 0 && fy < gridSize &&
       !fleas.some(f => f.x === fx && f.y === fy)
     ) {
-      fleas.push({ x: fx, y: fy, lifetime: 15 });
+      const fleaId = `${fx}_${fy}_${Date.now()}`;
+      setDoc(doc(db, `games/${gameId}/fleas/${fleaId}`), {
+        x: fx,
+        y: fy,
+        lifetime: 15,
+        createdBy: username
+      });
+
       spawned++;
-      if (spawned >= 3) break; // 🛑 Stop after 2 fleas
+      if (spawned >= 3) break;
     }
   }
-
-  renderGrid();
 }, fleaSpawnCooldown);
+
   setInterval(spawnCheese, 10000);
 
 
@@ -2575,7 +2570,7 @@ if (host === cleanUsername && !hostInitialized) {
     // 🔍 Find nearest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
+        if (grid[y][x] === "🧱" || grid[y][x] === "💎" || grid[y][x] === "🌿") {
           const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
           if (dist < minDist) {
             minDist = dist;
@@ -2587,7 +2582,7 @@ if (host === cleanUsername && !hostInitialized) {
 
     if (closestWall) {
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-        return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x]);
+      return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿"].includes(grid[y][x]);
       });
 
       if (path && path.length > 0) {
@@ -2795,7 +2790,7 @@ setInterval(async () => {
       for (let y = 0; y < gridSize; y++) {
         for (let x = 0; x < gridSize; x++) {
           const symbol = grid[y][x];
-         if (symbol === "💎" || symbol === "🧱" || symbol === "🌳") {
+      if (symbol === "💎" || symbol === "🧱" || symbol === "🌳" || symbol === "🌿") {
             const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
             const priority = symbol === "💎" ? 0 : 1;
             if (
@@ -2813,7 +2808,7 @@ setInterval(async () => {
     if (target) {
       const walkable = (x, y) => {
         if (isRaging) return grid[y][x] === "";
-        return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x]);
+return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿"].includes(grid[y][x]);
       };
 
       const path = findPath(ox.x, ox.y, target.x, target.y, walkable);
@@ -2821,7 +2816,7 @@ setInterval(async () => {
       if (path && path.length > 0) {
         const next = path[0];
         const blockingSymbol = grid[next.y][next.x];
-        if (isRaging && ["🧱", "💎"].includes(blockingSymbol)) {
+if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
           // 🔨 Attack blocking wall during rage
           await damageStructure(next.x, next.y, 20);
           console.log(`🟥 Ox smashes wall at (${next.x}, ${next.y})`);
@@ -2947,6 +2942,44 @@ setInterval(async () => {
 
   renderGrid();
 }, 500);
+setInterval(async () => {
+  if (!isHost) return;
+
+  const newVines = [];
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (grid[y][x] === "🌿") {
+        const directions = [
+          { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+          { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+        ];
+        for (const { dx, dy } of directions) {
+          const nx = x + dx, ny = y + dy;
+          if (
+            nx >= 0 && nx < gridSize &&
+            ny >= 0 && ny < gridSize &&
+            grid[ny][nx] === ""
+          ) {
+            newVines.push({ x: nx, y: ny });
+          }
+        }
+      }
+    }
+  }
+
+  for (const { x, y } of newVines) {
+    const key = `${x}_${y}`;
+    if (grid[y][x] === "") {
+      grid[y][x] = "🌿";
+      await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+        x, y, type: "🌿"
+      });
+    }
+  }
+
+  renderGrid();
+}, 5000);
 
 setInterval(async () => {
   for (let rat of rats) {
@@ -2996,7 +3029,7 @@ setInterval(async () => {
     // 🔍 Closest structure
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳"].includes(grid[y][x])) {
+        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿"].includes(grid[y][x])) {
           const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
           if (dist < minDist) {
             minDist = dist;
@@ -3018,7 +3051,7 @@ setInterval(async () => {
     // 🧭 Pathfind
     if (closestTarget) {
       const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-        const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
+      const isBlocked = ["🧱", "🏭", "💎", "🗼", "🌿"].includes(grid[y][x]);
         const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
         const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
         return !isBlocked && !isReviveCenter && !ratOccupied;
