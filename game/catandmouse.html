@@ -345,7 +345,7 @@ const structureClasses = {
   "🐦‍🔥": { cost: 40, health: 20 },
   "🚀": { cost: 30, health: 20 },
   "🌳": { cost: 20, health: 20 },
-  "🌿": { cost: 4, health: 12 }  // vine wall
+  "🌿": { cost: 4, health: 5 }  // vine wall
 };
   const buildNames = {
   "🧱": "Wall 🧱 (Cost: 1)",
@@ -2955,10 +2955,13 @@ setInterval(async () => {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🌿") {
-        const directions = [
-          { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-          { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
-        ];
+        const directions = shuffle([
+          { dx: 1, dy: 0 },
+          { dx: -1, dy: 0 },
+          { dx: 0, dy: 1 },
+          { dx: 0, dy: -1 }
+        ]);
+
         for (const { dx, dy } of directions) {
           const nx = x + dx, ny = y + dy;
           if (
@@ -2967,6 +2970,7 @@ setInterval(async () => {
             grid[ny][nx] === ""
           ) {
             newVines.push({ x: nx, y: ny });
+            break; // ✅ Only spawn ONE vine per existing vine wall
           }
         }
       }
@@ -2985,6 +2989,7 @@ setInterval(async () => {
 
   renderGrid();
 }, 5000);
+
 
 setInterval(async () => {
   for (let rat of rats) {
