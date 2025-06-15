@@ -1029,7 +1029,7 @@ function checkCheese() {
   }
 }
 
-function placeStructure(dir) {
+async function placeStructure(dir) {
   if (!gameStarted || !isAlive || !selectedBuild) return;
 
   let tx = playerPos.x, ty = playerPos.y;
@@ -1039,11 +1039,10 @@ function placeStructure(dir) {
   if (dir === 'd') tx++;
   if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
 
-  const symbol = myBuildKeys[selectedBuild]; // 1–6 mapped to emoji
+  const symbol = myBuildKeys[selectedBuild];
   if (!symbol || !structureInfo[symbol]) return;
 
   const { cost, health } = structureInfo[symbol];
-
   if (cheeseCount < cost) return;
 
   const key = `${tx}_${ty}`;
@@ -1054,7 +1053,7 @@ function placeStructure(dir) {
     document.getElementById("cheeseCount").textContent = cheeseCount;
     savePosition();
 
-    setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
       x: tx,
       y: ty,
       type: symbol,
@@ -1103,7 +1102,7 @@ async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3
         health: structureHealth[key]
       });
     }
-  } else if (["🧱", "💎"].includes(symbol)) {
+  else if (["🧱", "💎", "🌿"].includes(symbol)) {
     // 💣 Untracked structure fallback
     console.warn(`⚠️ Destroying untracked wall at (${x}, ${y})`);
     grid[y][x] = "";
