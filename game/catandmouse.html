@@ -816,23 +816,23 @@ function selectBuild(key) {
 }
 function showBuildKeys() {
   const map = window.myBuildKeys;
-  if (!map) return;
+  if (!map || !playerClass || !structureClasses[playerClass]) return;
 
-const costMap = {
-  "🧱": 1,
-  "🔫": 3,
-  "🪳": 5,
-  "🏭": 4,
-  "💎": 6,
-  "🗼": 24,
-  "🐦‍🔥": 40,
-  "🚀": 30,
-  "🌳": 20,
-  "🌿": 4
-};
+  const costMap = {
+    "🧱": 1,
+    "🔫": 3,
+    "🪳": 5,
+    "🏭": 4,
+    "💎": 6,
+    "🗼": 24,
+    "🐦‍🔥": 40,
+    "🚀": 30,
+    "🌳": 20,
+    "🌿": 4
+  };
 
+  let html = `<strong>🎓 ${structureClasses[playerClass].label}</strong><br><br>`;
 
-  let html = "";
   for (let i = 1; i <= 6; i++) {
     const emoji = map[i];
     if (emoji) {
@@ -2021,7 +2021,7 @@ onSnapshot(playerRef, (docSnap) => {
         buildDisplay += `${i}: ${buildNames[emoji]}<br>`;
       }
     }
-    document.getElementById("buildInfo").innerHTML = buildDisplay;
+     showBuildKeys();
   }
 
   document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
