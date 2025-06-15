@@ -1984,36 +1984,50 @@ await setDoc(playerRef, {
 
 
 onSnapshot(playerRef, (docSnap) => {
-  if (docSnap.exists()) {
-    const data = docSnap.data();
-    playerPos = { x: data.x, y: data.y };
-    isAlive = data.alive !== false;
-    cheeseCount = data.cheese || 0;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
+  if (!docSnap.exists()) return;
 
-    // 🎓 Load class
-    const classKey = data.playerClass || "defender";
-    const classInfo = structureClasses[classKey];
-    document.getElementById("hostDisplay").innerHTML += `<br>🎓 Class: ${classInfo.label}`;
+  const data = docSnap.data();
+  playerPos = { x: data.x, y: data.y };
+  isAlive = data.alive !== false;
+  cheeseCount = data.cheese || 0;
+  document.getElementById("cheeseCount").textContent = cheeseCount;
 
-    // ✅ Only assign buildKeys ONCE
-    if (!window.myBuildKeys) {
-      window.myBuildKeys = {
-        1: shuffle(classInfo.defense)[0] || null,
-        2: shuffle(classInfo.defense)[1] || shuffle(classInfo.defense)[0] || null,
-        3: shuffle(classInfo.attack)[0] || null,
-        4: shuffle(classInfo.attack)[1] || shuffle(classInfo.attack)[0] || null,
-        5: shuffle(classInfo.economic)[0] || null,
-        6: shuffle(classInfo.economic)[1] || shuffle(classInfo.economic)[0] || null,
-      };
-      console.log("🎯 Key assignment:", window.myBuildKeys);
-      showBuildKeys();
+  // 🎓 Load class info
+  const classKey = data.playerClass || "defender";
+  const classInfo = structureClasses[classKey];
+
+  // ✅ Assign build keys once with no duplicates
+  if (!window.myBuildKeys) {
+    const defenseSet = shuffle(classInfo.defense).slice(0, 2);
+    const attackSet = shuffle(classInfo.attack).slice(0, 2);
+    const economicSet = shuffle(classInfo.economic).slice(0, 2);
+
+    window.myBuildKeys = {
+      1: defenseSet[0] || null,
+      2: defenseSet[1] || defenseSet[0] || null,
+      3: attackSet[0] || null,
+      4: attackSet[1] || attackSet[0] || null,
+      5: economicSet[0] || null,
+      6: economicSet[1] || economicSet[0] || null,
+    };
+
+    console.log("🎯 Key assignment:", window.myBuildKeys);
+
+    // 📋 Display build info
+    let buildDisplay = `<strong>🎓 ${classInfo.label}</strong><br>`;
+    for (let i = 1; i <= 6; i++) {
+      const emoji = window.myBuildKeys[i];
+      if (emoji && buildNames[emoji]) {
+        buildDisplay += `${i}: ${buildNames[emoji]}<br>`;
+      }
     }
-
-    document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
-    renderGrid();
+    document.getElementById("buildInfo").innerHTML = buildDisplay;
   }
+
+  document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
+  renderGrid();
 });
+
 }
 window.addEventListener("keydown", (e) => {
   if (!isAlive) return;
