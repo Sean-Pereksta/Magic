@@ -152,17 +152,8 @@
   <p style="margin: 5px 0; font-size: 14px; color: #444;">
     🎮 Arrow keys to move | A/W/S/D to build | 1–7 to select building | Space = Upgrade Menu
   </p>
-  <p style="margin: 10px 0; font-size: 13px; font-weight: bold; color: #333;">
-  🧱 Wall (1, 🧀1) &nbsp; | &nbsp;
-  🔫 Turret (2, 🧀3) &nbsp; | &nbsp;
-  🪳 Flea Nest (3, 🧀5) &nbsp; | &nbsp;
-  🏭 Generator (4, 🧀4) &nbsp; | &nbsp;
-  💎 Super Wall (5, 🧀6) &nbsp; | &nbsp;
-  🗼 Beacon (6, 🧀24) &nbsp; | &nbsp;
-  🐦‍🔥 Phoenix Cheese (7, 🧀40) &nbsp; | &nbsp;
-  🚀 Rocket Tower (8, 🧀30) &nbsp; | &nbsp;
-  🌳 Oak Tree (9, 🧀20)
-</p>
+<p id="buildInfo" style="margin: 10px 0; font-size: 13px; font-weight: bold; color: #333;"></p>
+
 
 </div>
 <!-- 🔙 Return Button -->
@@ -323,6 +314,27 @@ const gridSize = 30;
 const gridElement = document.getElementById("grid");
 let grid = [];
   let gameData = {};
+
+const structureClasses = {
+  defender: {
+    label: "🛡 Defender",
+    defense: ["🧱", "💎", "🌳"],
+    economic: ["🗼", "🏭"],
+    attack: ["🔫"]
+  },
+  engineer: {
+    label: "🔧 Engineer",
+    defense: ["🧱"],
+    economic: ["🏭", "🗼", "🐦‍🔥"],
+    attack: ["🪳", "🚀"]
+  },
+  striker: {
+    label: "⚔ Striker",
+    defense: ["🧱"],
+    economic: ["🐦‍🔥"],
+    attack: ["🔫", "🚀", "🪳"]
+  }
+};
 
 let playerPos = { x: 1, y: 1 };
 let catPos = { x: 15, y: 15 };
@@ -751,22 +763,61 @@ function place(dir) {
 }
 
 
-function selectBuild(value) {
-  selectedBuild = parseInt(value);
-  const buildNames = {
-  1: "Wall 🧱 (Cost: 1)",
-  2: "Turret 🔫 (Cost: 3)",
-  3: "Flea Nest 🪳 (Cost: 5)",
-  4: "Cheese Generator 🏭 (Cost: 4)",
-  5: "Super Wall 💎 (Cost: 6)",
-  6: "Cheese Beacon 🗼 (Cost: 24)",
-  7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
-  8: "Rocket Tower 🚀 (Cost: 30)",
-  9: "Oak Tree 🌳 (Cost: 20)"
-};
+function selectBuild(key) {
+  const symbol = window.myBuildKeys?.[key];
+  if (!symbol) {
+    console.warn("🚫 No structure assigned to this key.");
+    selectedBuild = null;
+    document.getElementById("buildType").textContent = "Unavailable";
+    return;
+  }
 
-  document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
+  selectedBuild = key;
+
+  const buildNames = {
+    "🧱": "Wall 🧱 (Cost: 1)",
+    "🔫": "Turret 🔫 (Cost: 3)",
+    "🪳": "Flea Nest 🪳 (Cost: 5)",
+    "🏭": "Cheese Generator 🏭 (Cost: 4)",
+    "💎": "Super Wall 💎 (Cost: 6)",
+    "🗼": "Cheese Beacon 🗼 (Cost: 24)",
+    "🐦‍🔥": "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
+    "🚀": "Rocket Tower 🚀 (Cost: 30)",
+    "🌳": "Oak Tree 🌳 (Cost: 20)"
+  };
+
+  document.getElementById("buildType").textContent = buildNames[symbol] || "Unknown Structure";
 }
+function showBuildKeys() {
+  const map = window.myBuildKeys;
+  if (!map) return;
+
+  const costMap = {
+    "🧱": 1,
+    "🔫": 3,
+    "🪳": 5,
+    "🏭": 4,
+    "💎": 6,
+    "🗼": 24,
+    "🐦‍🔥": 40,
+    "🚀": 30,
+    "🌳": 20
+  };
+
+  let html = "";
+  for (let i = 1; i <= 6; i++) {
+    const emoji = map[i];
+    if (emoji) {
+      html += `${emoji} (${i}, 🧀${costMap[emoji] || "?"}) &nbsp; | &nbsp; `;
+    }
+  }
+
+  // Remove final separator
+  html = html.replace(/&nbsp; \| &nbsp; $/, "");
+  document.getElementById("buildInfo").innerHTML = html;
+}
+
+
 function toggleMobileMode() {
   showingUpgrades = !showingUpgrades;
   document.getElementById("structureButtons").style.display = showingUpgrades ? "none" : "block";
@@ -1619,6 +1670,9 @@ function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
 }
 
 
+function shuffle(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
 
 async function catBehavior() {
   console.log("🐱 Cat behavior running");
@@ -1926,29 +1980,50 @@ onSnapshot(collection(db, `games/${gameId}/traps`), (snap) => {
 });
 
   const playerRef = doc(db, `games/${gameId}/players/${username}`);
-  await setDoc(playerRef, {
+const assignedClass = Object.keys(structureClasses)[Math.floor(Math.random() * 3)];
+
+await setDoc(playerRef, {
   x: playerPos.x,
   y: playerPos.y,
   cheese: 0,
   alive: true,
-  displayName: urlParams.get("username").trim()
+  displayName: urlParams.get("username").trim(),
+  playerClass: assignedClass
 }, { merge: true });
 
 
-  onSnapshot(playerRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      playerPos = { x: data.x, y: data.y };
-      isAlive = data.alive !== false;
-      cheeseCount = data.cheese || 0;
-      document.getElementById("cheeseCount").textContent = cheeseCount;
-      console.log("🔥 Player isAlive = ", isAlive);
-      document.getElementById("status").textContent = isAlive
-        ? ""
-        : "💀 You are dead!";
-      renderGrid();
+
+onSnapshot(playerRef, (docSnap) => {
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    playerPos = { x: data.x, y: data.y };
+    isAlive = data.alive !== false;
+    cheeseCount = data.cheese || 0;
+    document.getElementById("cheeseCount").textContent = cheeseCount;
+
+    // 🎓 Load class
+    const classKey = data.playerClass || "defender";
+    const classInfo = structureClasses[classKey];
+    document.getElementById("hostDisplay").innerHTML += `<br>🎓 Class: ${classInfo.label}`;
+
+    // ✅ Only assign buildKeys ONCE
+    if (!window.myBuildKeys) {
+      window.myBuildKeys = {
+        1: shuffle(classInfo.defense)[0] || null,
+        2: shuffle(classInfo.defense)[1] || shuffle(classInfo.defense)[0] || null,
+        3: shuffle(classInfo.attack)[0] || null,
+        4: shuffle(classInfo.attack)[1] || shuffle(classInfo.attack)[0] || null,
+        5: shuffle(classInfo.economic)[0] || null,
+        6: shuffle(classInfo.economic)[1] || shuffle(classInfo.economic)[0] || null,
+      };
+      console.log("🎯 Key assignment:", window.myBuildKeys);
+      showBuildKeys();
     }
-  });
+
+    document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
+    renderGrid();
+  }
+});
 }
 window.addEventListener("keydown", (e) => {
   if (!isAlive) return;
