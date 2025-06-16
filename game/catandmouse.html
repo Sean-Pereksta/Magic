@@ -325,7 +325,7 @@ const structureClasses = {
   engineer: {
     label: "🔧 Engineer",
     defense: ["🧱", "💎"],
-    economic: ["🏭", "🗼", "🐦‍🔥"],
+    economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"]
     attack: ["🪳", "🚀"]
   },
   striker: {
@@ -533,6 +533,15 @@ function renderGrid() {
   const cell = document.getElementById(`cell-${s.x}-${s.y}`);
   if (cell) cell.textContent = "🐿️";
 }
+// 🤖 Catcher Bots (colored by phase)
+for (const bot of catcherBots) {
+  const cell = document.getElementById(`cell-${bot.x}-${bot.y}`);
+  if (cell) {
+    cell.textContent = "🤖";
+    cell.style.backgroundColor = bot.phase === "toRat" ? "#ff9999" : "#99ccff"; // red or blue
+  }
+}
+
 
 
   // 🐀 Rats
@@ -808,18 +817,20 @@ function showBuildKeys() {
   const map = window.myBuildKeys;
   if (!map || !playerClass || !structureClasses[playerClass]) return;
 
-  const costMap = {
-    "🧱": 1,
-    "🔫": 3,
-    "🪳": 5,
-    "🏭": 4,
-    "💎": 6,
-    "🗼": 24,
-    "🐦‍🔥": 40,
-    "🚀": 30,
-    "🌳": 20,
-    "🌿": 4
-  };
+ const costMap = {
+  "🧱": 1,
+  "🔫": 3,
+  "🪳": 5,
+  "🏭": 4,
+  "💎": 6,
+  "🗼": 24,
+  "🐦‍🔥": 40,
+  "🚀": 30,
+  "🌳": 20,
+  "🌿": 4,
+  "⚙️": 12 
+};
+
 
   let html = `<strong>🎓 ${structureClasses[playerClass].label}</strong><br><br>`;
 
@@ -1649,6 +1660,18 @@ function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
 
   return null;
 }
+function findNearestRat(x, y) {
+  let minDist = Infinity;
+  let closest = null;
+  for (const rat of rats) {
+    const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = rat;
+    }
+  }
+  return closest;
+}
 
 
 function shuffle(arr) {
@@ -1856,6 +1879,10 @@ onSnapshot(collection(db, `games/${gameId}/squirrels`), (snapshot) => {
     id: doc.id,      // ✅ Capture document ID
     ...doc.data()
   }));
+  renderGrid();
+});
+onSnapshot(collection(db, `games/${gameId}/catcherBots`), (snap) => {
+  catcherBots = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
   renderGrid();
 });
 
@@ -2869,6 +2896,76 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
 
   renderGrid();
 }, 800);
+setInterval(async () => {
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      if (grid[y][x] === "⚙️") {
+        const homeKey = `${x}_${y}`;
+
+        // Check if bot already exists for this catcher
+        const botExists = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
+        if (!botExists) {
+          const rat = findNearestRat(x, y);
+          if (rat) {
+            const newBot = {
+              x,
+              y,
+              homeX: x,
+              homeY: y,
+              targetX: rat.x,
+              targetY: rat.y,
+              phase: "toRat"
+            };
+            const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
+            await setDoc(botRef, newBot);
+          }
+        }
+      }
+    }
+  }
+}, 20000);
+
+for (let bot of [...catcherBots]) {
+  const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
+
+  let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
+
+  const dx = Math.sign(targetX - x);
+  const dy = Math.sign(targetY - y);
+
+  if (dx !== 0) x += dx;
+  else if (dy !== 0) y += dy;
+
+  // 🐀 Rat reached
+  if (phase === "toRat" && x === targetX && y === targetY) {
+    const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
+    if (ratIndex !== -1) {
+      const ratToRemove = rats[ratIndex];
+      rats.splice(ratIndex, 1);
+      await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
+    }
+
+    await updateDoc(botRef, {
+      x,
+      y,
+      targetX: homeX,
+      targetY: homeY,
+      phase: "returning"
+    });
+  }
+
+  // 🏠 Home reached
+  else if (phase === "returning" && x === homeX && y === homeY) {
+    await deleteDoc(botRef);
+    cheeseCount++;
+    document.getElementById("cheeseCount").textContent = cheeseCount;
+  }
+
+  // 🚶 Regular move update
+  else {
+    await updateDoc(botRef, { x, y });
+  }
+}
 
 
  setInterval(async () => {
