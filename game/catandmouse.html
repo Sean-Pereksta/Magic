@@ -1879,19 +1879,49 @@ onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
   renderGrid();
 });
 
-  onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
+onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
   renderGrid();
 });
+
 onSnapshot(collection(db, `games/${gameId}/squirrels`), (snapshot) => {
   squirrels = snapshot.docs.map(doc => ({
-    id: doc.id,      // ✅ Capture document ID
+    id: doc.id,
     ...doc.data()
   }));
   renderGrid();
 });
+
 onSnapshot(collection(db, `games/${gameId}/catcherBots`), (snap) => {
-  catcherBots = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  const newBots = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const newIds = newBots.map(b => b.id);
+  const oldIds = catcherBots.map(b => b.id);
+
+  const removed = catcherBots.filter(b => !newIds.includes(b.id) && b.phase === "returning");
+
+  for (let bot of removed) {
+    const { homeX, homeY } = bot;
+
+    const directions = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    for (let { dx, dy } of directions) {
+      const cx = homeX + dx;
+      const cy = homeY + dy;
+      if (
+        cx >= 0 && cx < gridSize &&
+        cy >= 0 && cy < gridSize &&
+        grid[cy][cx] === ""
+      ) {
+        grid[cy][cx] = "🧀";
+        break;
+      }
+    }
+  }
+
+  catcherBots = newBots;
   renderGrid();
 });
 
@@ -2939,47 +2969,46 @@ setInterval(async () => {
   }
 }, 20000);
 
-for (let bot of [...catcherBots]) {
-  const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
+setInterval(async () => {
+  for (const bot of [...catcherBots]) {
+    const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
+    let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
 
-  let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
+    const dx = Math.sign(targetX - x);
+    const dy = Math.sign(targetY - y);
 
-  const dx = Math.sign(targetX - x);
-  const dy = Math.sign(targetY - y);
+    if (dx !== 0) x += dx;
+    else if (dy !== 0) y += dy;
 
-  if (dx !== 0) x += dx;
-  else if (dy !== 0) y += dy;
+    // 🐀 Arrived at Rat
+    if (phase === "toRat" && x === targetX && y === targetY) {
+      const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
+      if (ratIndex !== -1) {
+        const ratToRemove = rats[ratIndex];
+        rats.splice(ratIndex, 1);
+        await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
+      }
 
-  // 🐀 Rat reached
-  if (phase === "toRat" && x === targetX && y === targetY) {
-    const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
-    if (ratIndex !== -1) {
-      const ratToRemove = rats[ratIndex];
-      rats.splice(ratIndex, 1);
-      await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
+      await updateDoc(botRef, {
+        x, y,
+        targetX: homeX,
+        targetY: homeY,
+        phase: "returning"
+      });
     }
 
-    await updateDoc(botRef, {
-      x,
-      y,
-      targetX: homeX,
-      targetY: homeY,
-      phase: "returning"
-    });
-  }
+    // 🏠 Arrived home
+    else if (phase === "returning" && x === homeX && y === homeY) {
+      await deleteDoc(botRef); // Clients will handle cheese block spawn
+    }
 
-  // 🏠 Home reached
-  else if (phase === "returning" && x === homeX && y === homeY) {
-    await deleteDoc(botRef);
-    cheeseCount++;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
+    // 🚶‍♂️ Still moving
+    else {
+      await updateDoc(botRef, { x, y });
+    }
   }
+}, 300);
 
-  // 🚶 Regular move update
-  else {
-    await updateDoc(botRef, { x, y });
-  }
-}
 
 
  setInterval(async () => {
