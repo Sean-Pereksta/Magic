@@ -3119,14 +3119,22 @@ setInterval(async () => {
   }
 
   for (const { x, y } of newVines) {
-    const key = `${x}_${y}`;
-    if (grid[y][x] === "") {
-      grid[y][x] = "🌿";
-      await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
-        x, y, type: "🌿"
-      });
-    }
+  const key = `${x}_${y}`;
+  if (grid[y][x] === "") {
+    grid[y][x] = "🌿";
+
+    const health = structureInfo["🌿"]?.health || 10; // fallback if not defined
+
+    structureHealth[key] = health; // Update local tracking
+    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+      x,
+      y,
+      type: "🌿",
+      health
+    });
   }
+}
+
 
   renderGrid();
 }, 12000);
