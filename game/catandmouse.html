@@ -2971,7 +2971,7 @@ setInterval(async () => {
     const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
     let { x, y, targetX, targetY, homeX, homeY, phase, patrolIndex = 0 } = bot;
 
-    // 🧠 Retarget or switch mode if rat is gone
+    // 🎯 Handle missing rat if in 'toRat' mode
     if (phase === "toRat") {
       const ratStillExists = rats.some(r => r.x === targetX && r.y === targetY);
       if (!ratStillExists) {
@@ -2980,6 +2980,7 @@ setInterval(async () => {
           targetX = newRat.x;
           targetY = newRat.y;
         } else {
+          // No rats left — switch to patrol
           phase = "patrol";
           targetX = homeX + 1;
           targetY = homeY;
@@ -2988,7 +2989,7 @@ setInterval(async () => {
       }
     }
 
-    // 👀 If patrolling, check for new rats
+    // 🔁 Only patrol bots can retarget if a rat appears
     if (phase === "patrol") {
       const newRat = findNearestRat(x, y);
       if (newRat) {
@@ -2998,7 +2999,7 @@ setInterval(async () => {
       }
     }
 
-    // 🚶 Movement logic
+    // 🧭 Move 1 step toward target
     const dx = Math.sign(targetX - x);
     const dy = Math.sign(targetY - y);
     if (dx !== 0) x += dx;
@@ -3013,22 +3014,19 @@ setInterval(async () => {
         await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
       }
 
-      // ✅ Go home after catching rat
+      // 🍽 Deliver cheese — go straight home, no distractions
       targetX = homeX;
       targetY = homeY;
       phase = "returning";
     }
 
-    // 🏠 Arrived home after catching rat — stay alive
+    // 🏠 Arrived home after delivery — self destruct
     else if (phase === "returning" && x === homeX && y === homeY) {
-      // Transition to patrol instead of deleting
-      phase = "patrol";
-      patrolIndex = 0;
-      targetX = homeX + 1;
-      targetY = homeY;
+      await deleteDoc(botRef); // ✅ Bot is done
+      continue;
     }
 
-    // 🔁 Patrol movement (square pattern)
+    // 🔁 Patrol movement (square around base)
     else if (phase === "patrol" && x === targetX && y === targetY) {
       patrolIndex = (patrolIndex + 1) % 4;
       if (patrolIndex === 0) { targetX = homeX + 1; targetY = homeY; }
