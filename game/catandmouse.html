@@ -2944,43 +2944,56 @@ setInterval(async () => {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "⚙️") {
-        const homeKey = `${x}_${y}`;
-
-        // Check if bot already exists for this catcher
-        const botExists = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
-        if (!botExists) {
-          const rat = findNearestRat(x, y);
-          if (rat) {
-            const newBot = {
-              x,
-              y,
-              homeX: x,
-              homeY: y,
-              targetX: rat.x,
-              targetY: rat.y,
-              phase: "toRat"
-            };
-            const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
-            await setDoc(botRef, newBot);
-          }
+        const rat = findNearestRat(x, y);
+        if (rat) {
+          const newBot = {
+            x,
+            y,
+            homeX: x,
+            homeY: y,
+            targetX: rat.x,
+            targetY: rat.y,
+            phase: "toRat"
+          };
+          const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
+          await setDoc(botRef, newBot);
         }
       }
     }
   }
-}, 20000);
+}, 20000); // 👈 You may want to lower this interval (like 2000 ms) for faster response
+
 
 setInterval(async () => {
   for (const bot of [...catcherBots]) {
     const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
-    let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
+    let { x, y, targetX, targetY, homeX, homeY, phase, patrolIndex = 0 } = bot;
 
+    // Find new target if rat is gone
+    if (phase === "toRat") {
+      const ratStillExists = rats.some(r => r.x === targetX && r.y === targetY);
+      if (!ratStillExists) {
+        const newRat = findNearestRat(x, y);
+        if (newRat) {
+          targetX = newRat.x;
+          targetY = newRat.y;
+        } else {
+          // Switch to patrol mode if no rats found
+          phase = "patrol";
+          targetX = homeX + 1;
+          targetY = homeY;
+          patrolIndex = 0;
+        }
+      }
+    }
+
+    // Move logic
     const dx = Math.sign(targetX - x);
     const dy = Math.sign(targetY - y);
-
     if (dx !== 0) x += dx;
     else if (dy !== 0) y += dy;
 
-    // 🐀 Arrived at Rat
+    // 🐀 Arrived at rat
     if (phase === "toRat" && x === targetX && y === targetY) {
       const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
       if (ratIndex !== -1) {
@@ -2989,25 +3002,31 @@ setInterval(async () => {
         await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
       }
 
-      await updateDoc(botRef, {
-        x, y,
-        targetX: homeX,
-        targetY: homeY,
-        phase: "returning"
-      });
+      // Go home after removal
+      targetX = homeX;
+      targetY = homeY;
+      phase = "returning";
     }
 
     // 🏠 Arrived home
     else if (phase === "returning" && x === homeX && y === homeY) {
-      await deleteDoc(botRef); // Clients will handle cheese block spawn
+      await deleteDoc(botRef); // Clients handle cheese block spawn
+      continue;
     }
 
-    // 🚶‍♂️ Still moving
-    else {
-      await updateDoc(botRef, { x, y });
+    // 🌀 Patrol movement logic (square pattern)
+    else if (phase === "patrol" && x === targetX && y === targetY) {
+      patrolIndex = (patrolIndex + 1) % 4;
+      if (patrolIndex === 0) { targetX = homeX + 1; targetY = homeY; }
+      if (patrolIndex === 1) { targetX = homeX; targetY = homeY + 1; }
+      if (patrolIndex === 2) { targetX = homeX - 1; targetY = homeY; }
+      if (patrolIndex === 3) { targetX = homeX; targetY = homeY - 1; }
     }
+
+    await updateDoc(botRef, { x, y, targetX, targetY, phase, patrolIndex });
   }
 }, 300);
+
 
 
 
