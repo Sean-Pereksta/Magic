@@ -337,9 +337,10 @@ const structureClasses = {
 };
   const structureCategories = {
   defense: ["🧱", "💎", "🌿"],
-  attack: ["🔫", "🪳", "🚀", "🌳"],
+  attack: ["🔫", "🪳", "🚀", "🌳", "🔥"],
   economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"]
 };
+
 
   const structureInfo = {
   "🧱": { cost: 1, health: 15 },
@@ -352,9 +353,11 @@ const structureClasses = {
   "🚀": { cost: 30, health: 20 },
   "🌳": { cost: 20, health: 20 },
   "🌿": { cost: 6, health: 15 },
-  "⚙️": { cost: 12, health: 15 }
+  "⚙️": { cost: 12, health: 15 },
+  "🔥": { cost: 5, health: 1 } // health is 1 since it dies in 1 second
 };
-  const buildNames = {
+
+ const buildNames = {
   "🧱": "Wall 🧱 (Cost: 1)",
   "🔫": "Turret 🔫 (Cost: 3)",
   "🪳": "Flea Nest 🪳 (Cost: 5)",
@@ -365,7 +368,8 @@ const structureClasses = {
   "🚀": "Rocket Tower 🚀 (Cost: 30)",
   "🌳": "Oak Tree 🌳 (Cost: 20)",
   "🌿": "Vine Wall 🌿 (Cost: 6)",
-  "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)"
+  "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)",
+  "🔥": "Flame Strike 🔥 (Cost: 5)"
 };
 
 
@@ -655,6 +659,77 @@ const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
 function updateHostDisplay() {
   const hostName = gameData?.host || "Unknown";
   document.getElementById("hostDisplay").textContent = `👑 Host: ${hostName}`;
+}
+
+async function performFlameStrike(x, y, direction) {
+  const flameOffsets = [];
+  const dx = direction.dx;
+  const dy = direction.dy;
+
+  for (let i = 0; i < 5; i++) {
+    const fx = x + dx * i;
+    const fy = y + dy * i;
+
+    if (
+      fx >= 0 && fx < gridSize &&
+      fy >= 0 && fy < gridSize &&
+      !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🐦‍🔥"].includes(grid[fy][fx])
+    ) {
+      flameOffsets.push({ x: fx, y: fy });
+    }
+  }
+
+  for (const { x: fx, y: fy } of flameOffsets) {
+    const key = `${fx}_${fy}`;
+    grid[fy][fx] = "🔥";
+    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+      x: fx,
+      y: fy,
+      type: "🔥"
+    });
+
+    // 🔥 Damage rats
+    for (let rat of rats) {
+      if (rat.x === fx && rat.y === fy) {
+        rat.health -= 15;
+        await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+          health: rat.health
+        });
+      }
+    }
+
+    // 🔥 Damage oxen
+    for (let ox of oxen) {
+      if (ox.x === fx && ox.y === fy) {
+        ox.health -= 15;
+        await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+          health: ox.health
+        });
+      }
+    }
+
+    // 🔥 Damage cat
+    if (catPos.x === fx && catPos.y === fy) {
+      catHealth -= 15;
+      await updateDoc(doc(db, `games/${gameId}`), {
+        catHealth: catHealth
+      });
+    }
+  }
+
+  renderGrid();
+
+  // 🔥 Remove flame after 1 second
+  setTimeout(async () => {
+    for (const { x: fx, y: fy } of flameOffsets) {
+      const key = `${fx}_${fy}`;
+      if (grid[fy][fx] === "🔥") {
+        grid[fy][fx] = "";
+        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+      }
+    }
+    renderGrid();
+  }, 1000);
 }
 
 
@@ -1057,6 +1132,7 @@ async function placeStructure(dir) {
   if (dir === 'a') tx--;
   if (dir === 's') ty++;
   if (dir === 'd') tx++;
+
   if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
 
   const symbol = myBuildKeys[selectedBuild];
@@ -1064,6 +1140,14 @@ async function placeStructure(dir) {
 
   const { cost, health } = structureInfo[symbol];
   if (cheeseCount < cost) return;
+
+  // 🔥 Handle Flame Strike separately
+  if (symbol === "🔥") {
+    cheeseCount -= cost;
+    document.getElementById("cheeseCount").textContent = cheeseCount;
+    await performFlameStrike(playerPos.x, playerPos.y, lastDirection);
+    return;
+  }
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
@@ -1854,30 +1938,31 @@ async function catBehavior() {
 async function listenToGame() {
 
 onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
-  // 🧹 Clear old structures from grid
+  // 1. Clear old structure symbols from the grid — only the visual representation in memory:
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
-      if (["🧱", "🔫"].includes(grid[y][x])) {
+      if (structureInfo[grid[y][x]]) {
         grid[y][x] = "";
       }
     }
   }
 
+  // 2. Reset local health tracking
   structureHealth = {};
 
-  // 🧱 Re-populate grid with structure data
+  // 3. Rebuild current structures from Firestore snapshot
   snap.forEach((docSnap) => {
-    const data = docSnap.data(); // ✅ Correct variable
-    const { x, y, type, health } = data;
-
+    const { x, y, type, health } = docSnap.data();
     if (x !== undefined && y !== undefined && type) {
       grid[y][x] = type;
       structureHealth[`${x}_${y}`] = health;
     }
   });
 
+  // 4. Redraw the grid on screen
   renderGrid();
 });
+
 
 onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
