@@ -3014,14 +3014,17 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
       }
     }
 
-    // ☠️ Death cleanup
+        // ☠️ Death cleanup
     if (ox.health <= 0) {
       if (ox.id) {
         await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
       }
       oxen.splice(i, 1);
-    }
-  }
+    } // ✅ properly closes the `if` block here
+  } // ✅ this closes the `for` loop
+}, 500); // ✅ closes the setInterval
+
+
 
   setInterval(async () => {
   if (catcherBots.length > 0) return; // 🚫 Only spawn if no bots are active
