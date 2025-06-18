@@ -2938,9 +2938,9 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
     }
   }
 
-  renderGrid();
-}, 800);
-setInterval(async () => {
+  setInterval(async () => {
+  if (catcherBots.length > 0) return; // 🚫 Only spawn if no bots are active
+
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "⚙️") {
@@ -2952,17 +2952,18 @@ setInterval(async () => {
           homeX: x,
           homeY: y,
           phase: rat ? "toRat" : "patrol",
-          targetX: rat ? rat.x : x + 1,  // Start patrol path to the right
+          targetX: rat ? rat.x : x + 1,  // Start patrol to right
           targetY: rat ? rat.y : y,
-          patrolIndex: 0  // used in patrol logic
+          patrolIndex: 0
         };
 
         const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
         await setDoc(botRef, newBot);
+        return; // ✅ Spawn only one bot and exit early
       }
     }
   }
-}, 20000); // ⏱️ Keeps your original spawn rate
+}, 20000);
 
 
 
@@ -3155,7 +3156,7 @@ setInterval(async () => {
   if (grid[y][x] === "") {
     grid[y][x] = "🌿";
 
-    const health = structureInfo["🌿"]?.health || 3; // fallback if not defined
+    const health = structureInfo["🌿"]?.health || 4; // fallback if not defined
 
     structureHealth[key] = health; // Update local tracking
     await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
