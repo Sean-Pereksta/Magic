@@ -382,6 +382,7 @@ const buildNames = {
 
 let playerPos = { x: 1, y: 1 };
 let catPos = { x: 15, y: 15 };
+  let catFrozenUntil = 0;
 let gameStarted = false;
 let selectedBuild = null;
 let cheeseCount = 0;
@@ -883,7 +884,13 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `ox_${crypto.randomUUID()}`;
-    const ox = { x: spot.x, y: spot.y, health: ratPower * 35, id };
+    const ox = {
+      x: spot.x,
+      y: spot.y,
+      health: ratPower * 35,
+      id,
+      frozenUntil: 0 // ❄️ initialized
+    };
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
@@ -898,13 +905,21 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `rat_${crypto.randomUUID()}`;
-    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id, wave: waveTag };
+    const rat = {
+      x: spot.x,
+      y: spot.y,
+      health: ratPower * 5,
+      id,
+      wave: waveTag,
+      frozenUntil: 0 // ❄️ initialized
+    };
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
   }
 
   console.log(`✅ Wave spawned: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
 }
+
 
 async function returnToLobby() {
   const urlParams = new URLSearchParams(window.location.search);
