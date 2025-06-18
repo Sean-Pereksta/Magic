@@ -673,19 +673,17 @@ async function performFlameStrike(x, y, direction) {
   const dx = direction.dx;
   const dy = direction.dy;
 
-  for (let i = 0; i < 5; i++) {
+  // 🔥 Include 5 tiles in the direction, starting 1 tile ahead
+  for (let i = 1; i <= 5; i++) {
     const fx = x + dx * i;
     const fy = y + dy * i;
 
-    if (
-      fx >= 0 && fx < gridSize &&
-      fy >= 0 && fy < gridSize &&
-      !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🐦‍🔥"].includes(grid[fy][fx])
-    ) {
+    if (fx >= 0 && fx < gridSize && fy >= 0 && fy < gridSize) {
       flameOffsets.push({ x: fx, y: fy });
     }
   }
 
+  // 🔥 Set flames and deal initial damage
   for (const { x: fx, y: fy } of flameOffsets) {
     const key = `${fx}_${fy}`;
     grid[fy][fx] = "🔥";
@@ -695,11 +693,11 @@ async function performFlameStrike(x, y, direction) {
       type: "🔥"
     });
 
-    // 🔥 Damage rats
+    // 🐀 Damage rats
     for (let i = rats.length - 1; i >= 0; i--) {
       const rat = rats[i];
       if (rat.x === fx && rat.y === fy) {
-        rat.health -= 15;
+        rat.health -= 9;
         if (rat.health <= 0) {
           await deleteDoc(doc(db, `games/${gameId}/rats/${rat.id}`));
           rats.splice(i, 1);
@@ -711,11 +709,11 @@ async function performFlameStrike(x, y, direction) {
       }
     }
 
-    // 🔥 Damage oxen
+    // 🐂 Damage oxen
     for (let i = oxen.length - 1; i >= 0; i--) {
       const ox = oxen[i];
       if (ox.x === fx && ox.y === fy) {
-        ox.health -= 15;
+        ox.health -= 9;
         if (ox.health <= 0) {
           await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
           oxen.splice(i, 1);
@@ -727,9 +725,9 @@ async function performFlameStrike(x, y, direction) {
       }
     }
 
-    // 🔥 Damage cat
+    // 🐈 Damage cat
     if (catPos.x === fx && catPos.y === fy) {
-      catHealth -= 15;
+      catHealth -= 9;
       await updateDoc(doc(db, `games/${gameId}`), {
         cat: {
           x: catPos.x,
@@ -742,18 +740,65 @@ async function performFlameStrike(x, y, direction) {
 
   renderGrid();
 
-  // 🔥 Remove flames after 1 second
+  // 🔥 After 1 second: second damage pass and remove flames
   setTimeout(async () => {
     for (const { x: fx, y: fy } of flameOffsets) {
+      // 🐀 Damage rats again
+      for (let i = rats.length - 1; i >= 0; i--) {
+        const rat = rats[i];
+        if (rat.x === fx && rat.y === fy) {
+          rat.health -= 9;
+          if (rat.health <= 0) {
+            await deleteDoc(doc(db, `games/${gameId}/rats/${rat.id}`));
+            rats.splice(i, 1);
+          } else {
+            await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+              health: rat.health
+            });
+          }
+        }
+      }
+
+      // 🐂 Damage oxen again
+      for (let i = oxen.length - 1; i >= 0; i--) {
+        const ox = oxen[i];
+        if (ox.x === fx && ox.y === fy) {
+          ox.health -= 9;
+          if (ox.health <= 0) {
+            await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
+            oxen.splice(i, 1);
+          } else {
+            await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+              health: ox.health
+            });
+          }
+        }
+      }
+
+      // 🐈 Damage cat again
+      if (catPos.x === fx && catPos.y === fy) {
+        catHealth -= 9;
+        await updateDoc(doc(db, `games/${gameId}`), {
+          cat: {
+            x: catPos.x,
+            y: catPos.y,
+            health: catHealth
+          }
+        });
+      }
+
+      // 🔥 Remove flame from tile
       const key = `${fx}_${fy}`;
       if (grid[fy][fx] === "🔥") {
         grid[fy][fx] = "";
         await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
       }
     }
+
     renderGrid();
   }, 1000);
 }
+
 async function performIceStrike(x, y, direction) {
   const iceOffsets = [];
   const dx = direction.dx;
@@ -763,13 +808,13 @@ async function performIceStrike(x, y, direction) {
     const fx = x + dx * i;
     const fy = y + dy * i;
 
-    if (
-      fx >= 0 && fx < gridSize &&
-      fy >= 0 && fy < gridSize
-    ) {
+    if (fx >= 0 && fx < gridSize && fy >= 0 && fy < gridSize) {
       iceOffsets.push({ x: fx, y: fy });
     }
   }
+
+  const now = Date.now();
+  const freezeDuration = 5000;
 
   for (const { x: fx, y: fy } of iceOffsets) {
     const key = `${fx}_${fy}`;
@@ -783,7 +828,7 @@ async function performIceStrike(x, y, direction) {
     // ❄️ Freeze rats
     for (let rat of rats) {
       if (rat.x === fx && rat.y === fy) {
-        rat.frozenUntil = Date.now() + 5000;
+        rat.frozenUntil = now + freezeDuration;
         await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
           frozenUntil: rat.frozenUntil
         });
@@ -793,7 +838,7 @@ async function performIceStrike(x, y, direction) {
     // ❄️ Freeze oxen
     for (let ox of oxen) {
       if (ox.x === fx && ox.y === fy) {
-        ox.frozenUntil = Date.now() + 5000;
+        ox.frozenUntil = now + freezeDuration;
         await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
           frozenUntil: ox.frozenUntil
         });
@@ -802,7 +847,7 @@ async function performIceStrike(x, y, direction) {
 
     // ❄️ Freeze cat
     if (catPos.x === fx && catPos.y === fy) {
-      catFrozenUntil = Date.now() + 5000;
+      catFrozenUntil = now + freezeDuration;
       await updateDoc(doc(db, `games/${gameId}`), {
         catFrozenUntil
       });
@@ -811,18 +856,50 @@ async function performIceStrike(x, y, direction) {
 
   renderGrid();
 
-  // ❄️ Remove visual ice effect after 1 second
+  // ❄️ After 1 second: freeze again if not already frozen
   setTimeout(async () => {
+    const lateNow = Date.now();
     for (const { x: fx, y: fy } of iceOffsets) {
+      // 🐀 Freeze rats if not already frozen
+      for (let rat of rats) {
+        if (rat.x === fx && rat.y === fy && (!rat.frozenUntil || rat.frozenUntil < lateNow)) {
+          rat.frozenUntil = lateNow + freezeDuration;
+          await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+            frozenUntil: rat.frozenUntil
+          });
+        }
+      }
+
+      // 🐂 Freeze oxen if not already frozen
+      for (let ox of oxen) {
+        if (ox.x === fx && ox.y === fy && (!ox.frozenUntil || ox.frozenUntil < lateNow)) {
+          ox.frozenUntil = lateNow + freezeDuration;
+          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+            frozenUntil: ox.frozenUntil
+          });
+        }
+      }
+
+      // 🐈 Freeze cat if not already frozen
+      if (catPos.x === fx && catPos.y === fy && (!catFrozenUntil || catFrozenUntil < lateNow)) {
+        catFrozenUntil = lateNow + freezeDuration;
+        await updateDoc(doc(db, `games/${gameId}`), {
+          catFrozenUntil
+        });
+      }
+
+      // ❄️ Remove ice visual
       const key = `${fx}_${fy}`;
       if (grid[fy][fx] === "❄️") {
         grid[fy][fx] = "";
         await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
       }
     }
+
     renderGrid();
   }, 1000);
 }
+
 
 
 
