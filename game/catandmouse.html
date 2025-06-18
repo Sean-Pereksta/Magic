@@ -3228,12 +3228,13 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
 
 
 
-  setInterval(async () => {
-  if (catcherBots.length > 0) return; // 🚫 Only spawn if no bots are active
-
+ setInterval(async () => {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "⚙️") {
+        const hasBot = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
+        if (hasBot) continue;
+
         const rat = findNearestRat(x, y);
 
         const newBot = {
@@ -3242,18 +3243,18 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
           homeX: x,
           homeY: y,
           phase: rat ? "toRat" : "patrol",
-          targetX: rat ? rat.x : x + 1,  // Start patrol to right
+          targetX: rat ? rat.x : x + 1,
           targetY: rat ? rat.y : y,
           patrolIndex: 0
         };
 
         const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
         await setDoc(botRef, newBot);
-        return; // ✅ Spawn only one bot and exit early
       }
     }
   }
 }, 20000);
+
 
 
 
