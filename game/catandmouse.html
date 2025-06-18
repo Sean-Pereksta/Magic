@@ -332,14 +332,16 @@ const structureClasses = {
     label: "⚔ Striker",
     defense: ["🧱", "💎", "🌳", "🌿"],
     economic: ["🐦‍🔥", "🏭"],
-    attack: ["🔫", "🚀", "🪳","🔥"]
+    attack: ["🔫", "🚀", "🪳", "🔥", "❄️"]
   }
 };
+
   const structureCategories = {
   defense: ["🧱", "💎", "🌿"],
-  attack: ["🔫", "🪳", "🚀", "🌳", "🔥"],
+  attack: ["🔫", "🪳", "🚀", "🌳", "🔥", "❄️"],
   economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"]
 };
+
 
 
   const structureInfo = {
@@ -354,10 +356,12 @@ const structureClasses = {
   "🌳": { cost: 20, health: 20 },
   "🌿": { cost: 6, health: 15 },
   "⚙️": { cost: 12, health: 15 },
-  "🔥": { cost: 5, health: 1 } // health is 1 since it dies in 1 second
+  "🔥": { cost: 5, health: 1 },  // Flame Strike
+  "❄️": { cost: 5, health: 1 }   // Ice Strike
 };
 
- const buildNames = {
+
+const buildNames = {
   "🧱": "Wall 🧱 (Cost: 1)",
   "🔫": "Turret 🔫 (Cost: 3)",
   "🪳": "Flea Nest 🪳 (Cost: 5)",
@@ -369,8 +373,10 @@ const structureClasses = {
   "🌳": "Oak Tree 🌳 (Cost: 20)",
   "🌿": "Vine Wall 🌿 (Cost: 6)",
   "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)",
-  "🔥": "Flame Strike 🔥 (Cost: 5)"
+  "🔥": "Flame Strike 🔥 (Cost: 5)",
+  "❄️": "Ice Strike ❄️ (Cost: 5)"
 };
+
 
 
 
@@ -740,6 +746,75 @@ async function performFlameStrike(x, y, direction) {
     for (const { x: fx, y: fy } of flameOffsets) {
       const key = `${fx}_${fy}`;
       if (grid[fy][fx] === "🔥") {
+        grid[fy][fx] = "";
+        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+      }
+    }
+    renderGrid();
+  }, 1000);
+}
+async function performIceStrike(x, y, direction) {
+  const iceOffsets = [];
+  const dx = direction.dx;
+  const dy = direction.dy;
+
+  for (let i = 0; i < 6; i++) {
+    const fx = x + dx * i;
+    const fy = y + dy * i;
+
+    if (
+      fx >= 0 && fx < gridSize &&
+      fy >= 0 && fy < gridSize
+    ) {
+      iceOffsets.push({ x: fx, y: fy });
+    }
+  }
+
+  for (const { x: fx, y: fy } of iceOffsets) {
+    const key = `${fx}_${fy}`;
+    grid[fy][fx] = "❄️";
+    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+      x: fx,
+      y: fy,
+      type: "❄️"
+    });
+
+    // ❄️ Freeze rats
+    for (let rat of rats) {
+      if (rat.x === fx && rat.y === fy) {
+        rat.frozenUntil = Date.now() + 5000;
+        await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+          frozenUntil: rat.frozenUntil
+        });
+      }
+    }
+
+    // ❄️ Freeze oxen
+    for (let ox of oxen) {
+      if (ox.x === fx && ox.y === fy) {
+        ox.frozenUntil = Date.now() + 5000;
+        await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+          frozenUntil: ox.frozenUntil
+        });
+      }
+    }
+
+    // ❄️ Freeze cat
+    if (catPos.x === fx && catPos.y === fy) {
+      catFrozenUntil = Date.now() + 5000;
+      await updateDoc(doc(db, `games/${gameId}`), {
+        catFrozenUntil
+      });
+    }
+  }
+
+  renderGrid();
+
+  // ❄️ Remove visual ice effect after 1 second
+  setTimeout(async () => {
+    for (const { x: fx, y: fy } of iceOffsets) {
+      const key = `${fx}_${fy}`;
+      if (grid[fy][fx] === "❄️") {
         grid[fy][fx] = "";
         await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
       }
@@ -1125,8 +1200,14 @@ function startCatBehaviorLoop() {
 
   // 🕒 Speed = faster interval as power increases
   const speed = Math.max(200, 1300 - catPower * 40); // e.g. power 10 = 500ms
+
   catMoveInterval = setInterval(() => {
-    if (gameStarted) catBehavior();
+    if (!gameStarted) return;
+
+    // ❄️ Skip cat behavior if frozen
+    if (catFrozenUntil && Date.now() < catFrozenUntil) return;
+
+    catBehavior();
   }, speed);
 }
 
@@ -1165,6 +1246,13 @@ async function placeStructure(dir) {
     await performFlameStrike(playerPos.x, playerPos.y, lastDirection);
     return;
   }
+  if (symbol === "❄️") {
+  cheeseCount -= cost;
+  document.getElementById("cheeseCount").textContent = cheeseCount;
+  await performIceStrike(playerPos.x, playerPos.y, lastDirection);
+  return;
+}
+
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
@@ -2946,6 +3034,8 @@ setInterval(async () => {
 
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
+      // ❄️ Skip if frozen
+  if (ox.frozenUntil && Date.now() < ox.frozenUntil) continue;
     const isRaging = ox.rageUntil && Date.now() < ox.rageUntil;
 
     let target = null;
@@ -3281,7 +3371,7 @@ setInterval(async () => {
 setInterval(async () => {
   for (let rat of rats) {
     if (rat.health <= 0) continue;
-
+  if (rat.frozenUntil && Date.now() < rat.frozenUntil) continue;
     // ⏱ Skip if currently trapped
     if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
 
