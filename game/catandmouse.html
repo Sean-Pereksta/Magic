@@ -1334,20 +1334,30 @@ async function placeStructure(dir) {
   const { cost, health } = structureInfo[symbol];
   if (cheeseCount < cost) return;
 
-  // 🔥 Handle Flame Strike separately
-  if (symbol === "🔥") {
+  // 🔥 Block Flame/Ice Strike if first tile has a structure
+  if (symbol === "🔥" || symbol === "❄️") {
+    let fx = playerPos.x;
+    let fy = playerPos.y;
+    if (lastDirection === "w") fy--;
+    if (lastDirection === "a") fx--;
+    if (lastDirection === "s") fy++;
+    if (lastDirection === "d") fx++;
+
+    if (fx < 0 || fy < 0 || fx >= gridSize || fy >= gridSize) return;
+
+    // Block if a structure is on the first strike tile
+    if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "🐦‍🔥"].includes(grid[fy][fx])) return;
+
     cheeseCount -= cost;
     document.getElementById("cheeseCount").textContent = cheeseCount;
-    await performFlameStrike(playerPos.x, playerPos.y, lastDirection);
+
+    if (symbol === "🔥") {
+      await performFlameStrike(playerPos.x, playerPos.y, lastDirection);
+    } else {
+      await performIceStrike(playerPos.x, playerPos.y, lastDirection);
+    }
     return;
   }
-  if (symbol === "❄️") {
-  cheeseCount -= cost;
-  document.getElementById("cheeseCount").textContent = cheeseCount;
-  await performIceStrike(playerPos.x, playerPos.y, lastDirection);
-  return;
-}
-
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
