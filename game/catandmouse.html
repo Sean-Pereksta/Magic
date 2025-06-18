@@ -2942,7 +2942,7 @@ if (host === cleanUsername && !hostInitialized) {
     // 🔍 Find nearest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (grid[y][x] === "🧱" || grid[y][x] === "💎" || grid[y][x] === "🌿") {
+        if (["🧱", "💎", "🌿"].includes(grid[y][x])) {
           const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
           if (dist < minDist) {
             minDist = dist;
@@ -2954,7 +2954,9 @@ if (host === cleanUsername && !hostInitialized) {
 
     if (closestWall) {
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-     return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]);
+        // ⛔ Only avoid other structures — allow path to walk **onto the wall** as goal
+        return (x !== closestWall.x || y !== closestWall.y) &&
+          ["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]) === false;
       });
 
       if (path && path.length > 0) {
@@ -2962,31 +2964,31 @@ if (host === cleanUsername && !hostInitialized) {
         termite.x = next.x;
         termite.y = next.y;
 
-        // ✅ Update termite position in Firestore
         if (termite.id) {
           await updateDoc(doc(db, `games/${gameId}/termites/${termite.id}`), {
             x: termite.x,
             y: termite.y
           });
         }
-      }
 
-      // 💥 If on wall, damage it and self-destruct
-      if (termite.x === closestWall.x && termite.y === closestWall.y) {
-        await damageStructure(termite.x, termite.y, 40); // 🛠 40 damage to wall
-        console.log("💥 Termite hit wall and died");
+        // 💥 Check if termite reached wall after moving
+        if (termite.x === closestWall.x && termite.y === closestWall.y) {
+          await damageStructure(termite.x, termite.y, 40);
+          console.log("💥 Termite hit wall and died");
 
-        if (termite.id) {
-          await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
+          if (termite.id) {
+            await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
+          }
+
+          termites.splice(i, 1); // remove from array
         }
-
-        termites.splice(i, 1); // remove locally
       }
     }
   }
 
   renderGrid();
 }, 400);
+
 
 
  setInterval(async () => {
