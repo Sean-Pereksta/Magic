@@ -689,22 +689,34 @@ async function performFlameStrike(x, y, direction) {
     });
 
     // 🔥 Damage rats
-    for (let rat of rats) {
+    for (let i = rats.length - 1; i >= 0; i--) {
+      const rat = rats[i];
       if (rat.x === fx && rat.y === fy) {
         rat.health -= 15;
-        await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-          health: rat.health
-        });
+        if (rat.health <= 0) {
+          await deleteDoc(doc(db, `games/${gameId}/rats/${rat.id}`));
+          rats.splice(i, 1);
+        } else {
+          await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+            health: rat.health
+          });
+        }
       }
     }
 
     // 🔥 Damage oxen
-    for (let ox of oxen) {
+    for (let i = oxen.length - 1; i >= 0; i--) {
+      const ox = oxen[i];
       if (ox.x === fx && ox.y === fy) {
         ox.health -= 15;
-        await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-          health: ox.health
-        });
+        if (ox.health <= 0) {
+          await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
+          oxen.splice(i, 1);
+        } else {
+          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
+            health: ox.health
+          });
+        }
       }
     }
 
@@ -712,14 +724,18 @@ async function performFlameStrike(x, y, direction) {
     if (catPos.x === fx && catPos.y === fy) {
       catHealth -= 15;
       await updateDoc(doc(db, `games/${gameId}`), {
-        catHealth: catHealth
+        cat: {
+          x: catPos.x,
+          y: catPos.y,
+          health: catHealth
+        }
       });
     }
   }
 
   renderGrid();
 
-  // 🔥 Remove flame after 1 second
+  // 🔥 Remove flames after 1 second
   setTimeout(async () => {
     for (const { x: fx, y: fy } of flameOffsets) {
       const key = `${fx}_${fy}`;
@@ -731,6 +747,7 @@ async function performFlameStrike(x, y, direction) {
     renderGrid();
   }, 1000);
 }
+
 
 
 async function movePlayer(dx, dy) {
