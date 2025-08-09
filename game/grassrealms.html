@@ -60,14 +60,15 @@
       <div class="card">
         <h3>Your Turn Controls</h3>
         <div class="controls">
-          <label>Die:
-            <select id="dieSelect"><option>d6</option></select>
-          </label>
-          <button id="rollBtn">🎲 Roll</button>
-          <button id="resolveBtn">▶ Resolve Next (auto / no‑target)</button>
-          <button id="applyTargetBtn">🎯 Apply Trigger (with target)</button>
-          <button id="endTurnBtn">⏭ End Turn</button>
-        </div>
+  <label>Die:
+    <select id="dieSelect"><option>d6</option></select>
+  </label>
+  <button id="rollBtn">🎲 Roll</button>
+  <button id="resolveBtn">▶ Resolve Next (auto / no‑target)</button>
+  <button id="applyTargetBtn">🎯 Apply Trigger (with target)</button>
+  <button id="endTurnBtn">⏭ End Turn</button>
+  <span id="lastRollBadge" class="pill" style="display:none;margin-left:8px"></span> <!-- NEW -->
+</div>
 
         <div id="targetBox" class="targets"></div>
         <div id="queueBox" class="queue small"></div>
@@ -221,14 +222,26 @@
     function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
     function renderControls(){
-      const p=myPlayer(); const dieSel=$('#dieSelect');
-      if (!p){ dieSel.innerHTML='<option>d6</option>'; return; }
-      dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
-      $('#rollBtn').disabled     = !isMyTurn() || (state?.phase!=='await_roll');
-      $('#resolveBtn').disabled  = !isMyTurn() || (state?.phase!=='resolving');
-      $('#applyTargetBtn').disabled = !isMyTurn() || (state?.phase!=='resolving');
-      $('#endTurnBtn').disabled  = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
-    }
+  const p=myPlayer(); const dieSel=$('#dieSelect');
+  if (!p){ dieSel.innerHTML='<option>d6</option>'; return; }
+  dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
+
+  // Button enables
+  $('#rollBtn').disabled     = !isMyTurn() || (state?.phase!=='await_roll');
+  $('#resolveBtn').disabled  = !isMyTurn() || (state?.phase!=='resolving');
+  $('#applyTargetBtn').disabled = !isMyTurn() || (state?.phase!=='resolving');
+  $('#endTurnBtn').disabled  = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
+
+  // NEW: last roll badge
+  const lb = $('#lastRollBadge');
+  if (state?.lastRoll?.value){
+    lb.style.display = '';
+    lb.textContent = `Last roll: ${state.lastRoll.value} (${state.lastRoll.mode})`;
+  } else {
+    lb.style.display = 'none';
+  }
+}
+
 
     function renderShop(){
       const shop=$('#shop'); shop.innerHTML=''; const p=myPlayer(); if (!p) return;
@@ -594,17 +607,19 @@
           const actor = players[tIdx]; const isActor = mv.from===actor?.name;
 
           if (mv.type==='ROLL' && isActor && phase==='await_roll'){
-            const mode=mv.payload?.mode||'d6';
-            const v=rollDie(mode);
-            rd.lastRoll={mode,value:v,by:actor.name};
-            rd.resolveQueue = buildResolveQueueAfterRoll(rd, tIdx, v);
-            rd.phase = rd.resolveQueue.length? 'resolving' : 'buy';
-            rd.rollCount=(rd.rollCount||0)+1;
-            rd.locked=false;
-            tx.update(ref, { game: rd });
-            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-            return;
-          }
+          const mode=mv.payload?.mode||'d6';
+          const v=rollDie(mode);
+          rd.lastRoll={mode,value:v,by:actor.name};
+          rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;   // NEW
+          rd.resolveQueue = buildResolveQueueAfterRoll(rd, tIdx, v);
+          rd.phase = rd.resolveQueue.length? 'resolving' : 'buy';
+          rd.rollCount=(rd.rollCount||0)+1;
+          rd.locked=false;
+          tx.update(ref, { game: rd });
+          tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+          return;
+}
+
 
           if (mv.type==='RESOLVE_NEXT' && isActor && phase==='resolving'){
             const res = hostResolveOne(rd, null);
@@ -631,23 +646,26 @@
             return;
           }
 
-          if (mv.type==='BUY' && isActor && phase==='buy'){
-            const key=mv.payload?.key; const card=CARD_CATALOG[key];
-            if (card){
-              const have = actor.owned?.find(e=>e.key===key)?.count||0;
-              const max = card.max??3;
-              const okTemple = !card.requiresTemple || (actor.owned||[]).some(e=>e.key===card.requiresTemple);
-              if ((actor.gold||0) >= card.cost && have<max && okTemple){
-                actor.gold -= card.cost;
-                addOrIncOwned(actor, key);
-                actor.unlocked = computeUnlockForPlayer(actor);
-              }
-            }
-            rd.locked=false;
-            tx.update(ref, { game: rd });
-            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-            return;
+         if (mv.type==='BUY' && isActor && phase==='buy'){
+        const key=mv.payload?.key; const card=CARD_CATALOG[key];
+        if (card){
+          const have = actor.owned?.find(e=>e.key===key)?.count||0;
+          const max = card.max??3;
+          const okTemple = !card.requiresTemple || (actor.owned||[]).some(e=>e.key===card.requiresTemple);
+          if ((actor.gold||0) >= card.cost && have<max && okTemple){
+            actor.gold -= card.cost;
+            addOrIncOwned(actor, key);
+            actor.unlocked = computeUnlockForPlayer(actor);
+            rd._lastMsg = `${actor.name} bought ${card.name}.`; // NEW
           }
+        }
+        rd.phase = 'buy';                // NEW: ensure End Turn remains enabled
+        rd.locked=false;
+        tx.update(ref, { game: rd });
+        tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+        return;
+      }
+
 
           if (mv.type==='END_TURN' && isActor && (phase==='buy' || phase==='await_roll')){
             let next=(tIdx+1)%players.length;
@@ -771,4 +789,5 @@
   </script>
 </body>
 </html>
+
 
