@@ -221,45 +221,62 @@
     function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
     function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
- function renderControls(){
-  const p=myPlayer(); const dieSel=$('#dieSelect');
-  if (!p){ dieSel.innerHTML='<option>d6</option>'; return; }
-  dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
+function renderControls(){
+  const p = myPlayer();
+  const dieSel = $('#dieSelect');
 
-  // Button enables (keep these two as-is)
-  $('#rollBtn').disabled    = !isMyTurn() || (state?.phase!=='await_roll');
-  $('#endTurnBtn').disabled = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
+  // Populate die options (or fallback)
+  if (!p){
+    if (dieSel) dieSel.innerHTML = '<option>d6</option>';
+    // Disable all controls if we don't have a player yet
+    $('#rollBtn').disabled        = true;
+    $('#resolveBtn').disabled     = true;
+    $('#applyTargetBtn').disabled = true;
+    $('#endTurnBtn').disabled     = true;
 
-  // 🔽 Replace your old resolve/applyTarget enables with this block:
-  const needsT = (() => {
-    const q = state?.resolveQueue||[]; if (!q.length) return false;
-    const k = CARD_CATALOG[q[0].key]?.onTrigger?.kind;
-    return triggerNeedsTarget(k);
-  })();
+    const lb = $('#lastRollBadge');
+    if (lb){ lb.style.display = 'none'; }
+    return;
+  }
 
-  const resolving = state?.phase === 'resolving';
-const needsT = (() => {
-  if (!resolving) return false;
-  const cur = (state?.resolveQueue||[])[0];
-  if (!cur) return false;
-  const k = CARD_CATALOG[cur.key]?.onTrigger?.kind;
-  return triggerNeedsTarget(k);
-})();
+  // Allowed dice based on unlocks
+  if (dieSel){
+    dieSel.innerHTML = allowedDiceFor(p)
+      .map(o => `<option value="${o}">${o}</option>`)
+      .join('');
+  }
 
-$('#resolveBtn').disabled     = !isMyTurn() || !resolving || needsT;
-$('#applyTargetBtn').disabled = !isMyTurn() || !resolving || !needsT;;
+  const isTurn   = isMyTurn();
+  const phase    = state?.phase || 'await_roll';
+  const resolving = (phase === 'resolving');
 
-  // Last roll badge UI (keep yours)
+  // Determine if current trigger needs a target
+  let needsT = false;
+  if (resolving){
+    const cur = (state?.resolveQueue || [])[0];
+    if (cur){
+      const kind = CARD_CATALOG[cur.key]?.onTrigger?.kind;
+      needsT = triggerNeedsTarget(kind);
+    }
+  }
+
+  // Button enables
+  $('#rollBtn').disabled        = !isTurn || (phase !== 'await_roll');
+  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;
+  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;
+  $('#endTurnBtn').disabled = !isTurn;
+
+  // Last roll badge
   const lb = $('#lastRollBadge');
-  if (state?.lastRoll?.value){
-    lb.style.display = '';
-    lb.textContent = `Last roll: ${state.lastRoll.value} (${state.lastRoll.mode})`;
-  } else {
-    lb.style.display = 'none';
+  if (lb){
+    if (state?.lastRoll?.value){
+      lb.style.display = '';
+      lb.textContent = `Last roll: ${state.lastRoll.value} (${state.lastRoll.mode})`;
+    } else {
+      lb.style.display = 'none';
+    }
   }
 }
-
-
 
     function renderShop(){
       const shop=$('#shop'); shop.innerHTML=''; const p=myPlayer(); if (!p) return;
@@ -831,23 +848,32 @@ async function hostApplyIntents(){
         }
 
         // --- END TURN ---
-        if (mv.type === 'END_TURN' && isActor && (phase === 'buy' || phase === 'await_roll')){
+        // --- END TURN (allowed in any phase; can optionally forfeit remaining resolves)
+        if (mv.type === 'END_TURN' && isActor){
+          // If they chose to forfeit (e.g., clicked End Turn while resolving), wipe the queue
+          const forfeit = !!(mv.payload && mv.payload.forfeitRemaining);
+          if (forfeit) rd.resolveQueue = [];
+        
+          // Advance turn
+          const players = rd.players || [];
           let next = (tIdx + 1) % players.length;
           for (let g = 0; g < players.length; g++){
             if (!(players[next]?.eliminated)) break;
             next = (next + 1) % players.length;
           }
+        
           rd.turnIdx  = next;
           rd.phase    = 'await_roll';
           rd.lastRoll = null;
-
+        
           const alive = players.filter(p => !p.eliminated);
           if (alive.length <= 1) rd.phase = 'finished';
-
+        
           tx.update(ref, { game: rd });
           tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
           return;
         }
+
 
         // Fallback: don't let a malformed intent block the queue
         tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
@@ -873,7 +899,7 @@ async function hostApplyIntents(){
       pushIntent('RESOLVE_WITH_TARGET',{targetPlayer:tp, targetType:tt, targetEntryIdx: te===''? null : Number(te)});
     }
     function intentBuy(key){ pushIntent('BUY',{key}); }
-    function intentEndTurn(){ pushIntent('END_TURN',{}); }
+   function intentEndTurn(payload={}){ pushIntent('END_TURN', payload); }
 
     // ---------- Init helpers ----------
     function mkStarter(name){
@@ -946,7 +972,19 @@ async function hostApplyIntents(){
     });
     document.getElementById('resolveBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolve(); });
     document.getElementById('applyTargetBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolveWithTarget(); });
-    document.getElementById('endTurnBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentEndTurn(); });
+   document.getElementById('endTurnBtn').addEventListener('click', ()=>{
+  if (!isMyTurn()) return;
+
+  const hasPending = (state?.phase === 'resolving') && ((state?.resolveQueue?.length || 0) > 0);
+  if (hasPending){
+    const ok = confirm('You still have unresolved actions. End turn and forfeit the rest?');
+    if (!ok) return;
+    intentEndTurn({ forfeitRemaining: true });
+  } else {
+    intentEndTurn({ forfeitRemaining: false });
+  }
+});
+
 
     // ---------- Boot ----------
     (async function boot(){
@@ -962,6 +1000,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
