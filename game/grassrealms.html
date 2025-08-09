@@ -225,32 +225,25 @@ function renderControls(){
   const p = myPlayer();
   const dieSel = $('#dieSelect');
 
-  // Populate die options (or fallback)
   if (!p){
     if (dieSel) dieSel.innerHTML = '<option>d6</option>';
-    // Disable all controls if we don't have a player yet
-    $('#rollBtn').disabled        = true;
-    $('#resolveBtn').disabled     = true;
+    $('#rollBtn').disabled = true;
+    $('#resolveBtn').disabled = true;
     $('#applyTargetBtn').disabled = true;
-    $('#endTurnBtn').disabled     = true;
-
-    const lb = $('#lastRollBadge');
-    if (lb){ lb.style.display = 'none'; }
+    $('#endTurnBtn').disabled = true;
+    const lb = $('#lastRollBadge'); if (lb) lb.style.display='none';
     return;
   }
 
-  // Allowed dice based on unlocks
   if (dieSel){
-    dieSel.innerHTML = allowedDiceFor(p)
-      .map(o => `<option value="${o}">${o}</option>`)
-      .join('');
+    dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
   }
 
   const isTurn   = isMyTurn();
   const phase    = state?.phase || 'await_roll';
   const resolving = (phase === 'resolving');
 
-  // Determine if current trigger needs a target
+  // Look at the *current* queue item to decide if a target is needed
   let needsT = false;
   if (resolving){
     const cur = (state?.resolveQueue || [])[0];
@@ -260,11 +253,10 @@ function renderControls(){
     }
   }
 
-  // Button enables
   $('#rollBtn').disabled        = !isTurn || (phase !== 'await_roll');
-  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;
-  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;
-  $('#endTurnBtn').disabled = !isTurn;
+  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;   // disabled if a target is needed
+  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;  // enabled only when a target is needed
+  $('#endTurnBtn').disabled     = !isTurn; // always available on your turn (with forfeit logic in handler)
 
   // Last roll badge
   const lb = $('#lastRollBadge');
@@ -356,46 +348,112 @@ function renderControls(){
         qb.appendChild(ol);
       }
 
-      if (isMyTurn()){
-        const kind = card.onTrigger?.kind;
-        if (triggerNeedsTarget(kind)){
-          const box=document.createElement('div'); box.className='needTarget';
-          const opts = allowedTargetTypesFor(kind);
+     if (isMyTurn()){
+  const kind = card.onTrigger?.kind;
+  if (triggerNeedsTarget(kind)){
+    const box = document.createElement('div'); 
+    box.className = 'needTarget';
+    const opts = allowedTargetTypesFor(kind);
 
-          const selP = document.createElement('select'); selP.id='selTargetPlayer';
-          const enemies=(state.players||[]).filter(p=>!p.eliminated && p.name!==owner.name);
-          if (!enemies.length){ selP.innerHTML='<option value="">(no enemy)</option>'; }
-          else enemies.forEach(p=>{ const o=document.createElement('option'); o.value=p.name; o.textContent=p.name; selP.appendChild(o); });
+    const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
+    const selT = document.createElement('select'); selT.id = 'selTargetType';
+    const selE = document.createElement('select'); selE.id = 'selTargetEntry';
 
-          const selT = document.createElement('select'); selT.id='selTargetType';
-          opts.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; selT.appendChild(o); });
+    const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
 
-          const selE = document.createElement('select'); selE.id='selTargetEntry';
-          function refillEntries(){
-            selE.innerHTML=''; const targetName=selP.value; const typ=selT.value;
-            const target=(state.players||[]).find(p=>p.name===targetName);
-            if (!target || typ==='townhall'){ selE.disabled=true; const o=document.createElement('option'); o.value=''; o.textContent='(Town Hall)'; selE.appendChild(o); return; }
-            selE.disabled=false;
-            const items=listTargetableEntries(target, typ);
-            if (!items.length){ const o=document.createElement('option'); o.value=''; o.textContent='(none)'; selE.appendChild(o); return; }
-            items.forEach(it=>{ const o=document.createElement('option'); o.value=String(it.idx); o.textContent=`${it.c.emoji} ${it.c.name} (HP ${it.e.hp})`; selE.appendChild(o); });
-          }
-          selP.addEventListener('change', refillEntries);
-          selT.addEventListener('change', refillEntries);
-          refillEntries();
+    // helper to enable/disable the Apply button based on current selection
+    const refreshApplyButton = () => {
+      const applyBtn = document.getElementById('applyTargetBtn');
+      if (!applyBtn) return;
+      const tName = selP.value;
+      const tType = selT.value;
+      const tIdx  = selE.disabled ? null : selE.value; // '' means none
+      const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName);
+      const validTown = (tType === 'townhall') ? (((state.players||[]).find(p=>p.name===tName)?.townHp||0) > 0) : true;
+      const validEntry = (tType === 'townhall') ? true : (tIdx !== '');
+      applyBtn.disabled = !(hasTargetPlayer && validTown && validEntry);
+    };
 
-          box.appendChild(document.createTextNode('Target: '));
-          box.appendChild(selP);
-          box.appendChild(selT);
-          box.appendChild(selE);
-          tb.appendChild(box);
-        } else {
-          const note=document.createElement('div'); note.className='small';
-          note.textContent='This effect needs no target. Use "Resolve Next".';
-          tb.appendChild(note);
-        }
-      }
+    // Populate enemies
+    if (!enemies.length){
+      selP.innerHTML = '<option value="">(no enemy)</option>';
+    } else {
+      enemies.forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.name; o.textContent = p.name; selP.appendChild(o);
+      });
     }
+
+    // Populate types
+    opts.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t; selT.appendChild(o);
+    });
+
+    function refillEntries(){
+      selE.innerHTML = '';
+      const targetName = selP.value;
+      const typ = selT.value;
+      const target = (state.players||[]).find(p => p.name === targetName);
+
+      if (!target){
+        selE.disabled = true;
+        const o = document.createElement('option'); o.value=''; o.textContent='(no target)'; selE.appendChild(o);
+        refreshApplyButton();
+        return;
+      }
+
+      if (typ === 'townhall'){
+        selE.disabled = true;
+        const dead = (target.townHp||0) <= 0;
+        const o = document.createElement('option'); 
+        o.value = ''; 
+        o.textContent = dead ? '(Town Hall destroyed)' : '(Town Hall)';
+        selE.appendChild(o);
+        refreshApplyButton();
+        return;
+      }
+
+      selE.disabled = false;
+      const items = listTargetableEntries(target, typ);
+      if (!items.length){
+        const o = document.createElement('option'); o.value=''; o.textContent='(none)'; selE.appendChild(o);
+        selE.disabled = true; // nothing to pick
+        refreshApplyButton();
+        return;
+      }
+
+      items.forEach(it => {
+        const o = document.createElement('option');
+        o.value = String(it.idx);
+        o.textContent = `${it.c.emoji} ${it.c.name} (HP ${it.e.hp})`;
+        selE.appendChild(o);
+      });
+
+      refreshApplyButton();
+    }
+
+    selP.addEventListener('change', ()=>{ refillEntries(); });
+    selT.addEventListener('change', ()=>{ refillEntries(); });
+    selE.addEventListener('change', ()=>{ refreshApplyButton(); });
+
+    // Preselect first entries and fill
+    if (selP.options.length) selP.selectedIndex = 0;
+    if (selT.options.length) selT.selectedIndex = 0;
+    refillEntries();
+
+    box.appendChild(document.createTextNode('Target: '));
+    box.appendChild(selP);
+    box.appendChild(selT);
+    box.appendChild(selE);
+    tb.appendChild(box);
+  } else {
+    const note = document.createElement('div'); note.className='small';
+    note.textContent = 'This effect needs no target. Use "Resolve Next".';
+    tb.appendChild(note);
+  }
+}
+
 
     // ---------- Engine (same logic, stored under lobbies/{id}) ----------
     function computeUnlockForPlayer(p){
@@ -547,9 +605,32 @@ function hostResolveOne(rd, manual){
   }
 
   // If target needed but not provided, ask the UI to provide it
-  if (needsTarget && !manual){
+if (needsTarget && !manual){
+  const ownerPlayer = rd.players[trig.ownerIdx];
+  const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
+  const types = allowedTargetTypesFor(kind);
+
+  let possibleTargets = [];
+  enemies.forEach(ep=>{
+    types.forEach(typ=>{
+      if (typ==='townhall' && (ep.townHp||0)>0){
+        possibleTargets.push({ player:ep, type:'townhall', idx:null });
+      } else {
+        listTargetableEntries(ep, typ).forEach(it=>{
+          possibleTargets.push({ player:ep, type:typ, idx:it.idx });
+        });
+      }
+    });
+  });
+
+  if (possibleTargets.length === 1){
+    const pick = possibleTargets[0];
+    manual = { targetPlayer: pick.player.name, targetType: pick.type, targetEntryIdx: pick.idx };
+    // fall through to normal targeted handling
+  } else {
     return { changed:false, msg:'Target required.' };
   }
+}
 
   const applyAndShift = (extraMsg) => {
     stack.shift();
@@ -1000,6 +1081,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
