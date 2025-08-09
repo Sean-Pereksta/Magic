@@ -368,13 +368,13 @@
         for (const n of (c.triggers||[])){ if (n>=7 && n<=12) u='2d6'; if (n>=13) return 'd20'; } }
       return u;
     }
-    function rollDie(mode){
-      if (!rng) rng = mulberry32((state.seed||1) + (state.rollCount||0));
-      if (mode==='d6') return 1+Math.floor(rng()*6);
-      if (mode==='2d6') return (1+Math.floor(rng()*6)) + (1+Math.floor(rng()*6));
-      if (mode==='d20') return 1+Math.floor(rng()*20);
-      return 1;
-    }
+    function rollDie(mode, rdRef = state){
+  if (!rng) rng = mulberry32((rdRef.seed||1) + (rdRef.rollCount||0));
+  if (mode==='d6') return 1+Math.floor(rng()*6);
+  if (mode==='2d6') return (1+Math.floor(rng()*6)) + (1+Math.floor(rng()*6));
+  if (mode==='d20') return 1+Math.floor(rng()*20);
+  return 1;
+}
     function addOrIncOwned(p,key){
       const c=CARD_CATALOG[key]; if (!c) return;
       let hp=c.hp;
@@ -382,18 +382,21 @@
       const f=(p.owned||[]).find(e=>e.key===key);
       if (f){ f.count=(f.count||1)+1; f.hp=hp; } else { (p.owned||(p.owned=[])).push({key, count:1, hp}); }
     }
-    function damageEntry(entry, dmg, owner){
-      entry.hp = Math.max(0,(entry.hp||0)-(dmg||0));
-      if (entry.hp<=0){
-        const diedCard = CARD_CATALOG[entry.key];
-        if (diedCard?.type==='troop'){
-          for (const pl of state.players||[]){ if ((pl.owned||[]).some(e=>e.key==='black_altar')) pl.gold = (pl.gold||0)+1; }
+      function damageEntry(entry, dmg, owner, rd){
+    entry.hp = Math.max(0,(entry.hp||0)-(dmg||0));
+    if (entry.hp<=0){
+      const diedCard = CARD_CATALOG[entry.key];
+      if (diedCard?.type==='troop'){
+        for (const pl of (rd.players||[])){
+          if ((pl.owned||[]).some(e=>e.key==='black_altar')) pl.gold = (pl.gold||0)+1;
         }
-        entry.count = (entry.count||1)-1;
-        if (entry.count>0){ entry.hp = CARD_CATALOG[entry.key]?.hp || 1; }
-        else { entry._remove = true; }
       }
+      entry.count = (entry.count||1)-1;
+      if (entry.count>0){ entry.hp = CARD_CATALOG[entry.key]?.hp || 1; }
+      else { entry._remove = true; }
     }
+  }
+
     function firstOfTypeIdx(p, type){
       const owned=p.owned||[];
       if (type==='troop') return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='troop' && e.hp>0);
@@ -401,23 +404,26 @@
       if (type==='structure') return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='structure' && e.key!=='townhall' && e.hp>0);
       return -1;
     }
-    function applyAttackToSpecific(owner, target, targetType, targetIdx, rawDmg){
+    function applyAttackToSpecific(owner, target, targetType, targetIdx, rawDmg, rd){
       const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
       const dmg = rawDmg + troopBuff;
       if (targetType==='townhall'){ target.townHp = Math.max(0,(target.townHp||0)-dmg); return `hits ${target.name}'s 🏰 Town Hall for ${dmg}.`; }
       if (targetIdx==null || targetIdx<0) return 'no valid target.';
       const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
-      damageEntry(entry, dmg, target); return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`;
+      damageEntry(entry, dmg, target, rd);
+      return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`;
     }
-    function destroySpecific(target, targetType, targetIdx, allowTemple=true){
+
+    function destroySpecific(target, targetType, targetIdx, allowTemple=true, rd){
       if (targetType==='townhall') return 'cannot destroy Town Hall.';
       if (targetIdx==null || targetIdx<0) return 'no valid target.';
       const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
       const isTemple = /temple/i.test(CARD_CATALOG[entry.key]?.name||'');
       if (!allowTemple && isTemple) return 'cannot destroy Temple with this effect.';
-      damageEntry(entry, entry.hp||9999, target);
+      damageEntry(entry, entry.hp||9999, target, rd);
       return `destroys ${target.name}'s ${CARD_CATALOG[entry.key].name}.`;
     }
+
     function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
       const q=[]; const players=rd.players||[];
       players.forEach((p,i)=>{
@@ -516,50 +522,50 @@
         case 'destroy_structure_and_attack_any':
         case 'goliath_special': {
           const tName = manual?.targetPlayer; const tType = manual?.targetType; const tIdx = manual?.targetEntryIdx!=null? Number(manual.targetEntryIdx): null;
-          const target = (state.players||[]).find(p=>p.name===tName);
+        const target = (rd.players||[]).find(p=>p.name===tName);
           if (!target) return applyAndShift('no enemy.');
           const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
           const dmgVal = (base)=> base + (card.type==='troop'?troopBuff:0);
 
           switch(kind){
             case 'attack_any': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0)); return applyAndShift(out);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
             }
             case 'attack_structure': {
               if (tType==='troop') return applyAndShift('invalid target (troop).');
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0)); return applyAndShift(out);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
             }
             case 'attack_troop': {
               if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
-              const out = applyAttackToSpecific(owner, target, 'troop', tIdx, dmgVal(card.onTrigger.value||0)); return applyAndShift(out);
+              const out = applyAttackToSpecific(owner, target, 'troop', tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
             }
             case 'attack_any_and_heal': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0)); owner.townHp=(owner.townHp||0)+(card.onTrigger.heal||0); return applyAndShift(out+` Heals ${card.onTrigger.heal}.`);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0), rd); owner.townHp=(owner.townHp||0)+(card.onTrigger.heal||0); return applyAndShift(out+` Heals ${card.onTrigger.heal}.`);
             }
             case 'attack_any_per_temple': {
               const n=(owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0))); return applyAndShift(out);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0)), rd); return applyAndShift(out);
             }
             case 'damage_per_temple_and_gain': {
               const n=(owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0))); owner.gold=(owner.gold||0)+(card.onTrigger.coins||0); return applyAndShift(out+` Gains ${card.onTrigger.coins} coins.`);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0)), rd); owner.gold=(owner.gold||0)+(card.onTrigger.coins||0); return applyAndShift(out+` Gains ${card.onTrigger.coins} coins.`);
             }
             case 'lose_then_attack_any': {
               owner.townHp=Math.max(0,(owner.townHp||0)-(card.onTrigger.lose||0));
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0)); return applyAndShift(`loses ${card.onTrigger.lose}. `+out);
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0),rd); return applyAndShift(`loses ${card.onTrigger.lose}. `+out);
             }
             case 'attack_any_and_destroy_troop': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0));
+              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0), rd);
               const troopIdx = firstOfTypeIdx(target,'troop'); if (troopIdx>=0) damageEntry(target.owned[troopIdx], target.owned[troopIdx].hp||9999, target);
               return applyAndShift(out + (troopIdx>=0? ` Destroys a troop.`:' No troop to destroy.'));
             }
             case 'destroy_troop': {
               if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
-              const out = destroySpecific(target, 'troop', tIdx, true); return applyAndShift(out);
+              const out = destroySpecific(target, 'troop', tIdx, true, rd); return applyAndShift(out);
             }
             case 'destroy_structure_non_temple': {
               if (tType==='troop') return applyAndShift('invalid target.');
-              const out = destroySpecific(target, 'structure', tIdx, /*allowTemple*/false); return applyAndShift(out);
+              const out = destroySpecific(target, 'structure', tIdx, /*allowTemple*/false, rd); return applyAndShift(out);
             }
             case 'destroy_structure_and_attack_any': {
               if (tType==='troop') return applyAndShift('invalid first target.');
@@ -569,12 +575,12 @@
             }
             case 'goliath_special': {
               if (trig.roll===12){
-                const wIdx = firstOfTypeIdx(target,'wall'); if (wIdx>=0) damageEntry(target.owned[wIdx], target.owned[wIdx].hp||9999, target);
-                const trIdx = firstOfTypeIdx(target,'troop'); if (trIdx>=0) damageEntry(target.owned[trIdx], target.owned[trIdx].hp||9999, target);
-                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10));
+                const wIdx = firstOfTypeIdx(target,'wall'); if (wIdx>=0) damageEntry(target.owned[wIdx], target.owned[wIdx].hp||9999, target, rd);
+                const trIdx = firstOfTypeIdx(target,'troop'); if (trIdx>=0) damageEntry(target.owned[trIdx], target.owned[trIdx].hp||9999, target, rd);
+                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10), rd);
                 return applyAndShift(`${wIdx>=0?'destroys a wall. ':''}${trIdx>=0?'destroys a troop. ':''}${out}`);
               } else {
-                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10)); return applyAndShift(out);
+                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10), rd); return applyAndShift(out);
               }
             }
           }
@@ -587,104 +593,128 @@
       return {changed:true, msg};
     }
 
-    // ---------- Host intent loop ----------
-    async function hostApplyIntents(){
-      if (!isHost || !state) return;
-      const movesRef = collection(db,'lobbies',lobbyId,'intents');
-      const qy = query(movesRef, orderBy('ts','asc'), limit(25));
-      const snap = await getDocs(qy);
+  // Add this once (top-level, above the function)
+let _processingIntents = false;
 
-      for (const d of snap.docs){
-        const mv=d.data(); if (mv.processed) continue;
-        await runTransaction(db, async (tx)=>{
-          const ref = doc(db,'lobbies',lobbyId);
-          const rs = await tx.get(ref); if (!rs.exists()) return;
-          const rd = rs.data().game || null; if (!rd || rd.locked) return;
+async function hostApplyIntents(){
+  if (!isHost || !state) return;
+  if (_processingIntents) return;           // prevent parallel runs
+  _processingIntents = true;
+  try {
+    const movesRef = collection(db, 'lobbies', lobbyId, 'intents');
+    const qy = query(movesRef, orderBy('ts', 'asc'), limit(25));
+    const snap = await getDocs(qy);
 
-          rd.locked = true;
+    for (const d of snap.docs){
+      const mv = d.data(); 
+      if (mv.processed) continue;
 
-          const players=rd.players||[]; const tIdx=rd.turnIdx??0; const phase=rd.phase||'await_roll';
-          const actor = players[tIdx]; const isActor = mv.from===actor?.name;
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'lobbies', lobbyId);
+        const rs  = await tx.get(ref); 
+        if (!rs.exists()) return;
 
-          if (mv.type==='ROLL' && isActor && phase==='await_roll'){
-          const mode=mv.payload?.mode||'d6';
-          const v=rollDie(mode);
-          rd.lastRoll={mode,value:v,by:actor.name};
-          rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;   // NEW
+        const rd = rs.data().game || null; 
+        if (!rd) return;                   // no game yet
+
+        const players = rd.players || [];
+        const tIdx    = rd.turnIdx ?? 0;
+        const phase   = rd.phase || 'await_roll';
+        const actor   = players[tIdx];
+        const isActor = mv.from === actor?.name;
+
+        // --- ROLL ---
+        if (mv.type === 'ROLL' && isActor && phase === 'await_roll'){
+          const mode = mv.payload?.mode || 'd6';
+          const v    = rollDie(mode, rd);  // use rd for seed/rollCount
+          rd.lastRoll     = { mode, value: v, by: actor.name };
+          rd._lastMsg     = `${actor.name} rolled ${v} (${mode}).`;
           rd.resolveQueue = buildResolveQueueAfterRoll(rd, tIdx, v);
-          rd.phase = rd.resolveQueue.length? 'resolving' : 'buy';
-          rd.rollCount=(rd.rollCount||0)+1;
-          rd.locked=false;
+          rd.phase        = rd.resolveQueue.length ? 'resolving' : 'buy';
+          rd.rollCount    = (rd.rollCount || 0) + 1;
+
           tx.update(ref, { game: rd });
-          tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
           return;
+        }
+
+        // --- RESOLVE (no target) ---
+        if (mv.type === 'RESOLVE_NEXT' && isActor && phase === 'resolving'){
+          const res = hostResolveOne(rd, null);
+          rd._lastMsg = res.msg;
+          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
+
+          tx.update(ref, { game: rd });
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          return;
+        }
+
+        // --- RESOLVE (with target) ---
+        if (mv.type === 'RESOLVE_WITH_TARGET' && isActor && phase === 'resolving'){
+          const manual = {
+            targetPlayer:   mv.payload?.targetPlayer,
+            targetType:     mv.payload?.targetType,
+            targetEntryIdx: mv.payload?.targetEntryIdx
+          };
+          const res = hostResolveOne(rd, manual);
+          rd._lastMsg = res.msg;
+          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
+
+          tx.update(ref, { game: rd });
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          return;
+        }
+
+        // --- BUY ---
+        if (mv.type === 'BUY' && isActor && phase === 'buy'){
+          const key  = mv.payload?.key; 
+          const card = CARD_CATALOG[key];
+          if (card){
+            const have     = (actor.owned?.find(e => e.key === key)?.count) || 0;
+            const max      = card.max ?? 3;
+            const okTemple = !card.requiresTemple || (actor.owned || []).some(e => e.key === card.requiresTemple);
+            if ((actor.gold || 0) >= card.cost && have < max && okTemple){
+              actor.gold    -= card.cost;
+              addOrIncOwned(actor, key);
+              actor.unlocked = computeUnlockForPlayer(actor);
+              rd._lastMsg    = `${actor.name} bought ${card.name}.`;
+            }
+          }
+          rd.phase = 'buy'; // keep End Turn enabled
+
+          tx.update(ref, { game: rd });
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          return;
+        }
+
+        // --- END TURN ---
+        if (mv.type === 'END_TURN' && isActor && (phase === 'buy' || phase === 'await_roll')){
+          let next = (tIdx + 1) % players.length;
+          for (let g = 0; g < players.length; g++){
+            if (!(players[next]?.eliminated)) break;
+            next = (next + 1) % players.length;
+          }
+          rd.turnIdx  = next;
+          rd.phase    = 'await_roll';
+          rd.lastRoll = null;
+
+          const alive = players.filter(p => !p.eliminated);
+          if (alive.length <= 1) rd.phase = 'finished';
+
+          tx.update(ref, { game: rd });
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          return;
+        }
+
+        // Fallback: don't let a malformed intent block the queue
+        tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+      });
+    }
+  } finally {
+    _processingIntents = false;
+  }
 }
 
-
-          if (mv.type==='RESOLVE_NEXT' && isActor && phase==='resolving'){
-            const res = hostResolveOne(rd, null);
-            rd._lastMsg = res.msg;
-            if (!(rd.resolveQueue?.length)) rd.phase='buy';
-            rd.locked=false;
-            tx.update(ref, { game: rd });
-            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-            return;
-          }
-
-          if (mv.type==='RESOLVE_WITH_TARGET' && isActor && phase==='resolving'){
-            const manual = {
-              targetPlayer: mv.payload?.targetPlayer,
-              targetType: mv.payload?.targetType,
-              targetEntryIdx: mv.payload?.targetEntryIdx
-            };
-            const res = hostResolveOne(rd, manual);
-            rd._lastMsg = res.msg;
-            if (!(rd.resolveQueue?.length)) rd.phase='buy';
-            rd.locked=false;
-            tx.update(ref, { game: rd });
-            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-            return;
-          }
-
-         if (mv.type==='BUY' && isActor && phase==='buy'){
-        const key=mv.payload?.key; const card=CARD_CATALOG[key];
-        if (card){
-          const have = actor.owned?.find(e=>e.key===key)?.count||0;
-          const max = card.max??3;
-          const okTemple = !card.requiresTemple || (actor.owned||[]).some(e=>e.key===card.requiresTemple);
-          if ((actor.gold||0) >= card.cost && have<max && okTemple){
-            actor.gold -= card.cost;
-            addOrIncOwned(actor, key);
-            actor.unlocked = computeUnlockForPlayer(actor);
-            rd._lastMsg = `${actor.name} bought ${card.name}.`; // NEW
-          }
-        }
-        rd.phase = 'buy';                // NEW: ensure End Turn remains enabled
-        rd.locked=false;
-        tx.update(ref, { game: rd });
-        tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-        return;
-      }
-
-
-          if (mv.type==='END_TURN' && isActor && (phase==='buy' || phase==='await_roll')){
-            let next=(tIdx+1)%players.length;
-            for (let g=0; g<players.length; g++){ if (!(players[next]?.eliminated)) break; next=(next+1)%players.length; }
-            rd.turnIdx=next; rd.phase='await_roll'; rd.lastRoll=null;
-            const alive = players.filter(p=>!p.eliminated);
-            if (alive.length<=1) rd.phase='finished';
-            rd.locked=false;
-            tx.update(ref, { game: rd });
-            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-            return;
-          }
-
-          rd.locked=false;
-          tx.update(ref, { game: rd });
-          tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
-        });
-      }
-    }
 
     // ---------- Intents ----------
     async function pushIntent(type, payload={}){ if (!lobbyId||!myName) return; await addDoc(collection(db,'lobbies',lobbyId,'intents'),{type,from:myName,payload,ts:serverTimestamp(),processed:false}); }
@@ -719,16 +749,16 @@
       const players = names.slice(0,4).map(n => mkStarter(n));
 
       const seed = Math.floor(Math.random()*1e9);
-      const game = {
+     const game = {
         createdAt: serverTimestamp(),
         host: data.host || myName,
         players,
-        maxPlayers: Math.min(Math.max(players.length||2,2),4),
+        maxPlayers: Math.min(Math.max(players.length || 2, 2), 4),
         turnIdx: 0,
         phase: 'await_roll',
-        seed, rollCount: 0,
+        seed,
+        rollCount: 0,
         resolveQueue: [],
-        locked: false,
         _lastMsg: 'Game initialized.'
       };
       await updateDoc(doc(db,'lobbies',lobbyId), { game });
@@ -789,5 +819,6 @@
   </script>
 </body>
 </html>
+
 
 
