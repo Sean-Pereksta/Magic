@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🌿 Grass Realms — v1.0 (host-authoritative, manual targeting)</title>
+  <title>🌿 Grass Realms — game</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{ --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --accent:#2e7d32; }
     *{box-sizing:border-box}
     body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
     header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
-    header input, header button{padding:7px 10px;font-size:14px}
     header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:14px}
     main{padding:12px;display:grid;grid-template-columns:1fr 420px;gap:12px}
     .board{display:grid;grid-template-areas:"p0 p1" "p2 p3"; gap:12px;}
@@ -36,20 +35,17 @@
     .queue{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
     .qItem{font-size:12px;color:var(--muted);margin:2px 0}
     .needTarget{background:#fff7e6;border:1px solid #ffe0a3;padding:8px;border-radius:8px}
+    .spacer{flex:1}
   </style>
 </head>
 <body>
   <header>
     <strong>🌿 Grass Realms</strong>
-    <span id="hdrRun" class="tag" style="display:none"></span>
+    <span id="hdrLobby" class="tag" style="display:none"></span>
+    <span id="hdrUser" class="tag" style="display:none"></span>
     <span id="hdrRole" class="tag" style="display:none"></span>
-    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-      <input id="username" placeholder="Username" />
-      <input id="runId" placeholder="Run ID" />
-      <label style="font-size:12px"><input type="checkbox" id="isHostChk"> Host</label>
-      <button id="createRunBtn">Create Run</button>
-      <button id="joinRunBtn">Join Run</button>
-    </div>
+    <span class="spacer"></span>
+    <span class="small" id="statusNote"></span>
   </header>
 
   <main>
@@ -95,7 +91,7 @@
   </main>
 
   <script type="module">
-    // Firebase
+    // -------- Firebase --------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
@@ -105,23 +101,27 @@
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
       authDomain: "bible-game-246c0.firebaseapp.com",
-      databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
       projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.firebasestorage.app",
+      storageBucket: "bible-game-246c0.appspot.com",
       messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
-      measurementId: "G-8PR6LVKSH3"
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
 
-    // RNG
+    // -------- URL params from lobby redirect --------
+    const qp = new URLSearchParams(location.search);
+    const lobbyId = qp.get('gameId') || '';     // the lobby doc id
+    const myName  = qp.get('username') || '';
+    if (!lobbyId || !myName) {
+      document.getElementById('statusNote').textContent = 'Missing gameId or username in URL.';
+    }
+
+    // -------- RNG --------
     function mulberry32(seed){ return function(){ let t = seed += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
 
     // ---------- Catalog ----------
-    // timing: 'every' | 'your' | 'opponent' | 'passive'
     const RAW_CARDS = [
-      // Starters
       { key:'townhall', name:'Town Hall', emoji:'🏰', type:'structure', cost:0, hp:50, max:1, triggers:[], timing:null, immutable:true },
       { key:'farm', name:'Farm', emoji:'🌾', type:'structure', cost:1, hp:2, max:3, triggers:[1,2], timing:'every', onTrigger:{kind:'earn', value:1} },
       { key:'mill', name:'Lumber Mill', emoji:'🪵', type:'structure', cost:2, hp:3, max:3, triggers:[3], timing:'every', onTrigger:{kind:'earn', value:3} },
@@ -174,33 +174,35 @@
     const CARD_CATALOG = {}; for (const c of RAW_CARDS){ CARD_CATALOG[c.key] = { ...c }; }
     const STARTERS = ['townhall','farm','mill'];
 
-    // ---------- URL / helpers ----------
-    const qp = new URLSearchParams(location.search);
-    const urlRunId = qp.get('runId') || '';
-    const urlUsername = qp.get('username') || '';
-    const urlHost = qp.get('host') === '1';
-
+    // ---------- Helpers / UI ----------
     const $ = s=>document.querySelector(s);
     const logDiv = $('#log');
     function logLine(msg){ const d=document.createElement('div'); d.className='logLine'; d.textContent=msg; logDiv.appendChild(d); logDiv.scrollTop=logDiv.scrollHeight; }
 
-    // ---------- State ----------
-    let me = { name:'', idx:-1 };
-    let run = null, runId = '', isHost = false, rng = null, unsubRun=null, unsubMoves=null;
+    // ---------- Game State (stored in lobbies/{lobbyId}) ----------
+    let me = { name: myName, idx: -1 };
+    let state = null;
+    let isHost = false;
+    let rng = null;
+    let unsubLobby = null, unsubIntents = null;
 
     // ---------- Rendering ----------
     function emojiClumpForPlayer(p){
       const owned = p.owned||[];
-      const sorted = owned.slice().sort((a,b)=>(CARD_CATALOG[a.key]?.type||'').localeCompare(CARD_CATALOG[b.key]?.type||''));
+      const sorted = owned.slice().sort((a,b)=>(CARD_CATALOG[a.key]?.type||'').localeCompare(CARD_CATALOG[b.key]?.type||'')); 
       let s=''; for (const e of sorted){ const c=CARD_CATALOG[e.key]; if(!c) continue; const em=Array.from({length:e.count||1},()=>c.emoji).join(''); s+=`${em}${e.hp!=null?' ('+e.hp+')':''} `; }
       return s.trim();
     }
     function render(){
-      const hdrRun=$('#hdrRun'), hdrRole=$('#hdrRole'); hdrRun.style.display=runId?'':'none'; hdrRun.textContent='Run: '+runId; hdrRole.style.display=me.name?'':'none'; hdrRole.textContent=isHost?'Host':'Client';
-      const panels=[$('#p0'),$('#p1'),$('#p2'),$('#p3')]; panels.forEach(p=>{p.innerHTML=''; p.classList.remove('you','active');});
-      if (!run) return;
+      const hdrLobby=$('#hdrLobby'), hdrUser=$('#hdrUser'), hdrRole=$('#hdrRole');
+      hdrLobby.style.display=lobbyId?'':'none'; hdrLobby.textContent='Lobby: '+lobbyId;
+      hdrUser.style.display=myName?'':'none'; hdrUser.textContent=myName;
+      hdrRole.style.display=isHost?'':'none'; hdrRole.textContent='Host';
 
-      const players=run.players||[]; const turnIdx=run.turnIdx??0;
+      const panels=[$('#p0'),$('#p1'),$('#p2'),$('#p3')]; panels.forEach(p=>{p.innerHTML=''; p.classList.remove('you','active');});
+      if (!state) return;
+
+      const players=state.players||[]; const turnIdx=state.turnIdx??0;
       players.forEach((p,i)=>{
         const panel=panels[i]; if (!panel) return;
         panel.classList.toggle('you',p.name===me.name); panel.classList.toggle('active',i===turnIdx);
@@ -215,17 +217,17 @@
 
       renderControls(); renderShop(); renderQueueAndTargets();
     }
-    function myPlayer(){ if (!run) return null; return (run.players||[]).find(p=>p.name===me.name)||null; }
-    function isMyTurn(){ const p=myPlayer(); if (!p||!run) return false; return (run.players||[]).findIndex(x=>x.name===p.name)===(run.turnIdx??0); }
+    function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
+    function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
     function renderControls(){
       const p=myPlayer(); const dieSel=$('#dieSelect');
       if (!p){ dieSel.innerHTML='<option>d6</option>'; return; }
       dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
-      $('#rollBtn').disabled     = !isMyTurn() || (run?.phase!=='await_roll');
-      $('#resolveBtn').disabled  = !isMyTurn() || (run?.phase!=='resolving');
-      $('#applyTargetBtn').disabled = !isMyTurn() || (run?.phase!=='resolving');
-      $('#endTurnBtn').disabled  = !isMyTurn() || !(run?.phase==='buy' || run?.phase==='await_roll');
+      $('#rollBtn').disabled     = !isMyTurn() || (state?.phase!=='await_roll');
+      $('#resolveBtn').disabled  = !isMyTurn() || (state?.phase!=='resolving');
+      $('#applyTargetBtn').disabled = !isMyTurn() || (state?.phase!=='resolving');
+      $('#endTurnBtn').disabled  = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
     }
 
     function renderShop(){
@@ -240,10 +242,10 @@
         const max=card.max??3; if (have>=max) return;
 
         const div=document.createElement('div'); div.className='shopItem';
-        const trig = card.triggers?.length?(' | Roll: '+card.triggers.join(',')):'';
+        const trig = card.triggers?.length?(' | Roll: '+card.triggers.join(',')):''; 
         div.innerHTML=`<h4>${card.emoji} ${card.name}</h4>
           <div class="small">Cost: ${card.cost} | HP: ${card.hp ?? '—'}${trig}</div>
-          <button ${( !isMyTurn() || run?.phase!=='buy' || (p.gold||0) < card.cost )?'disabled':''} data-key="${card.key}">Buy</button>`;
+          <button ${( !isMyTurn() || state?.phase!=='buy' || (p.gold||0) < card.cost )?'disabled':''} data-key="${card.key}">Buy</button>`;
         div.querySelector('button').addEventListener('click', ()=>intentBuy(card.key));
         shop.appendChild(div);
       });
@@ -285,11 +287,11 @@
     function renderQueueAndTargets(){
       const qb=$('#queueBox'); qb.innerHTML='';
       const tb=$('#targetBox'); tb.innerHTML='';
-      if (!run) return;
-      const q=run.resolveQueue||[];
+      if (!state) return;
+      const q=state.resolveQueue||[];
       if (!(q.length)) { qb.innerHTML='<div class="small">No triggers pending.</div>'; return; }
 
-      const current=q[0]; const owner = (run.players||[])[current.ownerIdx];
+      const current=q[0]; const owner = (state.players||[])[current.ownerIdx];
       const card = CARD_CATALOG[current.key];
       const title=document.createElement('div');
       title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll?` (roll ${current.roll})`:''}</div>`;
@@ -298,7 +300,7 @@
       if (q.length>1){
         const ol=document.createElement('div'); ol.className='small';
         for (let i=1;i<q.length;i++){
-          const t=q[i], o=(run.players||[])[t.ownerIdx], c=CARD_CATALOG[t.key];
+          const t=q[i], o=(state.players||[])[t.ownerIdx], c=CARD_CATALOG[t.key];
           const line=document.createElement('div'); line.className='qItem';
           line.textContent = `${i+1}. ${o.name} — ${c.name}`;
           ol.appendChild(line);
@@ -313,7 +315,7 @@
           const opts = allowedTargetTypesFor(kind);
 
           const selP = document.createElement('select'); selP.id='selTargetPlayer';
-          const enemies=(run.players||[]).filter(p=>!p.eliminated && p.name!==owner.name);
+          const enemies=(state.players||[]).filter(p=>!p.eliminated && p.name!==owner.name);
           if (!enemies.length){ selP.innerHTML='<option value="">(no enemy)</option>'; }
           else enemies.forEach(p=>{ const o=document.createElement('option'); o.value=p.name; o.textContent=p.name; selP.appendChild(o); });
 
@@ -323,7 +325,7 @@
           const selE = document.createElement('select'); selE.id='selTargetEntry';
           function refillEntries(){
             selE.innerHTML=''; const targetName=selP.value; const typ=selT.value;
-            const target=(run.players||[]).find(p=>p.name===targetName);
+            const target=(state.players||[]).find(p=>p.name===targetName);
             if (!target || typ==='townhall'){ selE.disabled=true; const o=document.createElement('option'); o.value=''; o.textContent='(Town Hall)'; selE.appendChild(o); return; }
             selE.disabled=false;
             const items=listTargetableEntries(target, typ);
@@ -347,14 +349,14 @@
       }
     }
 
-    // ---------- Engine (host) ----------
+    // ---------- Engine (same logic, stored under lobbies/{id}) ----------
     function computeUnlockForPlayer(p){
       let u='d6'; for (const e of (p.owned||[])){ const c=CARD_CATALOG[e.key]; if (!c) continue;
         for (const n of (c.triggers||[])){ if (n>=7 && n<=12) u='2d6'; if (n>=13) return 'd20'; } }
       return u;
     }
     function rollDie(mode){
-      if (!rng) rng = mulberry32((run.seed||1) + (run.rollCount||0));
+      if (!rng) rng = mulberry32((state.seed||1) + (state.rollCount||0));
       if (mode==='d6') return 1+Math.floor(rng()*6);
       if (mode==='2d6') return (1+Math.floor(rng()*6)) + (1+Math.floor(rng()*6));
       if (mode==='d20') return 1+Math.floor(rng()*20);
@@ -372,9 +374,7 @@
       if (entry.hp<=0){
         const diedCard = CARD_CATALOG[entry.key];
         if (diedCard?.type==='troop'){
-          for (const pl of run.players||[]){
-            if ((pl.owned||[]).some(e=>e.key==='black_altar')) pl.gold = (pl.gold||0)+1;
-          }
+          for (const pl of state.players||[]){ if ((pl.owned||[]).some(e=>e.key==='black_altar')) pl.gold = (pl.gold||0)+1; }
         }
         entry.count = (entry.count||1)-1;
         if (entry.count>0){ entry.hp = CARD_CATALOG[entry.key]?.hp || 1; }
@@ -394,8 +394,6 @@
       if (targetType==='townhall'){ target.townHp = Math.max(0,(target.townHp||0)-dmg); return `hits ${target.name}'s 🏰 Town Hall for ${dmg}.`; }
       if (targetIdx==null || targetIdx<0) return 'no valid target.';
       const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
-      if (targetType==='troop') { damageEntry(entry, dmg, target); return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`; }
-      // wall/structure
       damageEntry(entry, dmg, target); return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`;
     }
     function destroySpecific(target, targetType, targetIdx, allowTemple=true){
@@ -407,10 +405,8 @@
       damageEntry(entry, entry.hp||9999, target);
       return `destroys ${target.name}'s ${CARD_CATALOG[entry.key].name}.`;
     }
-
     function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
-      const q=[];
-      const players=rd.players||[];
+      const q=[]; const players=rd.players||[];
       players.forEach((p,i)=>{
         const timing = (i===rollerIdx)? ['every','your'] : ['opponent'];
         (p.owned||[]).forEach(e=>{
@@ -422,29 +418,23 @@
       });
       return q;
     }
-
     function postResolveCleanup(rd){
       for (const pl of rd.players){ pl.owned = (pl.owned||[]).filter(e=>!e._remove); }
       for (const p of rd.players){ if (!p.eliminated && (p.townHp||0)<=0){ p.eliminated=true; p.owned=[]; p.gold=0; } }
     }
-
     function hostResolveOne(rd, manual){
       const stack=rd.resolveQueue||[]; if (!stack.length) return {changed:false,msg:'No triggers.'};
-      const trig=stack[0]; // keep until success
+      const trig=stack[0];
       const owner=rd.players[trig.ownerIdx]; const card=CARD_CATALOG[trig.key]; const kind=card.onTrigger?.kind;
       let msg=`${owner.name} triggers ${card.emoji} ${card.name}: `;
       const activeName = rd.lastRoll?.by;
       const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
 
       const needsTarget = triggerNeedsTarget(kind);
-      if (needsTarget && !manual){
-        return {changed:false, msg:'Target required.'};
-      }
+      if (needsTarget && !manual){ return {changed:false, msg:'Target required.'}; }
 
       const applyAndShift = (extraMsg) => {
-        stack.shift();
-        rd.resolveQueue = stack;
-        postResolveCleanup(rd);
+        stack.shift(); rd.resolveQueue = stack; postResolveCleanup(rd);
         return {changed:true, msg: extraMsg ? (msg + extraMsg) : msg};
       };
       const findPlayerByName = (nm)=> (rd.players||[]).find(p=>p.name===nm);
@@ -499,7 +489,7 @@
           return applyAndShift(`steals ${amt} from ${act.name}${fIdx>=0? ' and forces a Farm to be sacrificed.':'.'}`);
         }
 
-        // Targeted routes
+        // Targeted
         case 'attack_any':
         case 'attack_structure':
         case 'attack_troop':
@@ -513,7 +503,7 @@
         case 'destroy_structure_and_attack_any':
         case 'goliath_special': {
           const tName = manual?.targetPlayer; const tType = manual?.targetType; const tIdx = manual?.targetEntryIdx!=null? Number(manual.targetEntryIdx): null;
-          const target = findPlayerByName(tName);
+          const target = (state.players||[]).find(p=>p.name===tName);
           if (!target) return applyAndShift('no enemy.');
           const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
           const dmgVal = (base)=> base + (card.type==='troop'?troopBuff:0);
@@ -576,7 +566,6 @@
             }
           }
         }
-
         case 'acquire_troop_cost_leq_temples':
           return applyAndShift(`(Choose troop UI TODO)`);
       }
@@ -587,19 +576,19 @@
 
     // ---------- Host intent loop ----------
     async function hostApplyIntents(){
-      if (!isHost || !run) return;
-      const movesRef = collection(db,'runs',runId,'intents');
+      if (!isHost || !state) return;
+      const movesRef = collection(db,'lobbies',lobbyId,'intents');
       const qy = query(movesRef, orderBy('ts','asc'), limit(25));
       const snap = await getDocs(qy);
 
       for (const d of snap.docs){
         const mv=d.data(); if (mv.processed) continue;
         await runTransaction(db, async (tx)=>{
-          const ref = doc(db,'runs',runId);
+          const ref = doc(db,'lobbies',lobbyId);
           const rs = await tx.get(ref); if (!rs.exists()) return;
-          const rd = rs.data(); if (rd.locked) return;
+          const rd = rs.data().game || null; if (!rd || rd.locked) return;
 
-          rd.locked=true;
+          rd.locked = true;
 
           const players=rd.players||[]; const tIdx=rd.turnIdx??0; const phase=rd.phase||'await_roll';
           const actor = players[tIdx]; const isActor = mv.from===actor?.name;
@@ -612,15 +601,19 @@
             rd.phase = rd.resolveQueue.length? 'resolving' : 'buy';
             rd.rollCount=(rd.rollCount||0)+1;
             rd.locked=false;
-            tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true}); return;
+            tx.update(ref, { game: rd });
+            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+            return;
           }
 
           if (mv.type==='RESOLVE_NEXT' && isActor && phase==='resolving'){
-            const res = hostResolveOne(rd, /*manual*/null);
+            const res = hostResolveOne(rd, null);
             rd._lastMsg = res.msg;
             if (!(rd.resolveQueue?.length)) rd.phase='buy';
             rd.locked=false;
-            tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true}); return;
+            tx.update(ref, { game: rd });
+            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+            return;
           }
 
           if (mv.type==='RESOLVE_WITH_TARGET' && isActor && phase==='resolving'){
@@ -633,7 +626,9 @@
             rd._lastMsg = res.msg;
             if (!(rd.resolveQueue?.length)) rd.phase='buy';
             rd.locked=false;
-            tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true}); return;
+            tx.update(ref, { game: rd });
+            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+            return;
           }
 
           if (mv.type==='BUY' && isActor && phase==='buy'){
@@ -649,7 +644,9 @@
               }
             }
             rd.locked=false;
-            tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true}); return;
+            tx.update(ref, { game: rd });
+            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+            return;
           }
 
           if (mv.type==='END_TURN' && isActor && (phase==='buy' || phase==='await_roll')){
@@ -659,21 +656,24 @@
             const alive = players.filter(p=>!p.eliminated);
             if (alive.length<=1) rd.phase='finished';
             rd.locked=false;
-            tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true}); return;
+            tx.update(ref, { game: rd });
+            tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
+            return;
           }
 
           rd.locked=false;
-          tx.update(ref, rd); tx.update(doc(db,'runs',runId,'intents',d.id),{processed:true});
+          tx.update(ref, { game: rd });
+          tx.update(doc(db,'lobbies',lobbyId,'intents',d.id),{processed:true});
         });
       }
     }
 
     // ---------- Intents ----------
-    async function pushIntent(type, payload={}){ if (!runId||!me.name) return; await addDoc(collection(db,'runs',runId,'intents'),{type,from:me.name,payload,ts:serverTimestamp(),processed:false}); }
+    async function pushIntent(type, payload={}){ if (!lobbyId||!myName) return; await addDoc(collection(db,'lobbies',lobbyId,'intents'),{type,from:myName,payload,ts:serverTimestamp(),processed:false}); }
     function intentRoll(mode){ pushIntent('ROLL',{mode}); }
     function intentResolve(){ pushIntent('RESOLVE_NEXT',{}); }
     function intentResolveWithTarget(){
-      const q=run?.resolveQueue||[]; if (!q.length) return;
+      const q=state?.resolveQueue||[]; if (!q.length) return;
       const card=CARD_CATALOG[q[0].key]; const kind=card.onTrigger?.kind;
       if (!triggerNeedsTarget(kind)) return;
       const tp = $('#selTargetPlayer')?.value || '';
@@ -684,80 +684,91 @@
     function intentBuy(key){ pushIntent('BUY',{key}); }
     function intentEndTurn(){ pushIntent('END_TURN',{}); }
 
-    // ---------- Lifecycle ----------
+    // ---------- Init helpers ----------
     function mkStarter(name){
       const p={name, gold:0, townHp:50, unlocked:'d6', owned:[]};
       for (const k of STARTERS){ const c=CARD_CATALOG[k]; p.owned.push({key:k, count:1, hp:c.hp}); }
       return p;
     }
-    async function createRun(hostName, slots=4){
-      const rid = Math.random().toString(36).slice(2,8).toUpperCase();
+
+    async function hostMaybeInitializeGame(lobbySnap){
+      const data = lobbySnap.data();
+      const hasGame = !!data.game;
+      if (hasGame) return;
+
+      // Players come in as array of names from the lobby
+      const names = Array.isArray(data.players) ? data.players : [];
+      const players = names.slice(0,4).map(n => mkStarter(n));
+
       const seed = Math.floor(Math.random()*1e9);
-      const runRef = doc(db,'runs',rid);
-      const players=[mkStarter(hostName)];
-      await setDoc(runRef,{
+      const game = {
         createdAt: serverTimestamp(),
-        host: hostName,
+        host: data.host || myName,
         players,
-        maxPlayers: Math.min(Math.max(slots,2),4),
-        turnIdx:0, phase:'await_roll',
-        seed, rollCount:0,
-        resolveQueue:[], locked:false
-      });
-      return rid;
+        maxPlayers: Math.min(Math.max(players.length||2,2),4),
+        turnIdx: 0,
+        phase: 'await_roll',
+        seed, rollCount: 0,
+        resolveQueue: [],
+        locked: false,
+        _lastMsg: 'Game initialized.'
+      };
+      await updateDoc(doc(db,'lobbies',lobbyId), { game });
     }
-    async function joinRun(id, name){
-      const ref=doc(db,'runs',id); const snap=await getDoc(ref); if (!snap.exists()) throw new Error('Run not found');
-      const rd=snap.data(); if ((rd.players||[]).some(p=>p.name===name)) return;
-      if ((rd.players||[]).filter(p=>!p.eliminated).length >= (rd.maxPlayers||4)) throw new Error('Run full');
-      const p=mkStarter(name); await updateDoc(ref,{ players:[...(rd.players||[]), p] });
-    }
+
     function attachListeners(){
-      if (unsubRun) unsubRun(); if (unsubMoves) unsubMoves();
-      unsubRun = onSnapshot(doc(db,'runs',runId), snap=>{
+      if (unsubLobby) unsubLobby(); if (unsubIntents) unsubIntents();
+
+      const lobbyRef = doc(db,'lobbies',lobbyId);
+      unsubLobby = onSnapshot(lobbyRef, async (snap)=>{
         if (!snap.exists()) return;
-        run = snap.data();
-        me.idx=(run.players||[]).findIndex(p=>p.name===me.name);
-        if (run._lastMsg) logLine(run._lastMsg);
-        render();
+        const lobby = snap.data();
+        isHost = (lobby.host === myName);
+
+        // Host initializes once when status is "started" and no game yet
+        if (isHost && lobby.status === 'started' && !lobby.game) {
+          await hostMaybeInitializeGame(snap);
+          return;
+        }
+
+        state = lobby.game || null;
+        if (state){
+          me.idx = (state.players||[]).findIndex(p=>p.name===myName);
+          if (state._lastMsg) logLine(state._lastMsg);
+          render();
+          if (isHost) hostApplyIntents();
+        } else {
+          document.getElementById('statusNote').textContent = 'Waiting for host to initialize the game...';
+        }
+      });
+
+      unsubIntents = onSnapshot(collection(db,'lobbies',lobbyId,'intents'), ()=>{
         if (isHost) hostApplyIntents();
       });
-      unsubMoves = onSnapshot(collection(db,'runs',runId,'intents'), ()=>{ if (isHost) hostApplyIntents(); });
     }
 
     // ---------- UI bindings ----------
-    const $hdrRun=$('#hdrRun'), $hdrRole=$('#hdrRole');
-    $('#createRunBtn').addEventListener('click', async ()=>{
-      me.name = $('#username').value.trim()||('Player'+Math.floor(Math.random()*100));
-      isHost = $('#isHostChk').checked; if (!isHost){ alert('Check Host to create.'); return; }
-      const rid = await createRun(me.name);
-      runId=rid; $('#runId').value=rid; $hdrRun.style.display=''; $hdrRun.textContent='Run: '+rid; $hdrRole.style.display=''; $hdrRole.textContent='Host'; attachListeners();
+    document.getElementById('rollBtn').addEventListener('click', ()=>{
+      if (!isMyTurn()) return; const mode=$('#dieSelect').value;
+      const allow=allowedDiceFor(myPlayer()); if (!allow.includes(mode)) return alert('Die not unlocked');
+      intentRoll(mode);
     });
-    $('#joinRunBtn').addEventListener('click', async ()=>{
-      me.name = $('#username').value.trim()||('Player'+Math.floor(Math.random()*100));
-      runId = $('#runId').value.trim(); isHost = $('#isHostChk').checked;
-      if (!runId){ alert('Enter Run ID'); return; }
-      if (!isHost){ try{ await joinRun(runId, me.name); }catch(e){ /* ignore if already joined */ } }
-      $hdrRun.style.display=''; $hdrRun.textContent='Run: '+runId; $hdrRole.style.display=''; $hdrRole.textContent=isHost?'Host':'Client'; attachListeners();
-    });
+    document.getElementById('resolveBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolve(); });
+    document.getElementById('applyTargetBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolveWithTarget(); });
+    document.getElementById('endTurnBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentEndTurn(); });
 
-    // Buttons
-    $('#rollBtn').addEventListener('click', ()=>{ if (!isMyTurn()) return; const mode=$('#dieSelect').value; const allow=allowedDiceFor(myPlayer()); if (!allow.includes(mode)) return alert('Die not unlocked'); intentRoll(mode); });
-    $('#resolveBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolve(); });
-    $('#applyTargetBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolveWithTarget(); });
-    $('#endTurnBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentEndTurn(); });
+    // ---------- Boot ----------
+    (async function boot(){
+      if (!lobbyId || !myName) return;
+      // Header tags
+      document.getElementById('hdrLobby').style.display='';
+      document.getElementById('hdrUser').style.display='';
+      document.getElementById('hdrLobby').textContent='Lobby: '+lobbyId;
+      document.getElementById('hdrUser').textContent=myName;
 
-    // Deep-link init
-    (async function initFromURL(){
-      if (urlUsername) $('#username').value=urlUsername;
-      if (urlRunId) $('#runId').value=urlRunId;
-      if (urlHost) $('#isHostChk').checked=true;
-      if (urlRunId && urlUsername){
-        me.name=urlUsername; runId=urlRunId; isHost=urlHost;
-        if (!isHost){ try{ await joinRun(runId, me.name); }catch(e){} }
-        $hdrRun.style.display=''; $hdrRun.textContent='Run: '+runId; $hdrRole.style.display=''; $hdrRole.textContent=isHost?'Host':'Client'; attachListeners();
-      }
+      attachListeners();
     })();
   </script>
 </body>
 </html>
+
