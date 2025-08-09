@@ -5,38 +5,95 @@
   <title>🌿 Grass Realms — game</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{ --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --accent:#2e7d32; }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
-    header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
-    header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:14px}
-    main{padding:12px;display:grid;grid-template-columns:1fr 420px;gap:12px}
-    .board{display:grid;grid-template-areas:"p0 p1" "p2 p3"; gap:12px;}
-    .playerPanel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:220px;position:relative}
-    .playerPanel .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-    .playerPanel .hdr .hp{font-weight:600}
-    .playerPanel .emojiClump{font-size:22px;line-height:1.2;min-height:80px}
-    .playerPanel .meta{font-size:12px;color:var(--muted)}
-    .you{outline:2px solid #1976d2}
-    .active{box-shadow:0 0 0 3px rgba(46,125,50,.35)}
-    .rightCol{display:flex;flex-direction:column;gap:12px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-    .controls select, .controls button{padding:8px 10px;font-size:14px}
-    .shopGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-    .shopItem{border:1px solid var(--line);border-radius:10px;padding:8px}
-    .shopItem h4{margin:0 0 4px 0;font-size:14px}
-    .small{font-size:12px;color:var(--muted)}
-    .targets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-    .targets select{padding:6px 8px}
-    .log{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
-    .logLine{padding:6px 8px;border-bottom:1px dashed var(--line);font-size:13px}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef7ee;color:#1b5e20;font-size:12px}
-    .queue{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
-    .qItem{font-size:12px;color:var(--muted);margin:2px 0}
-    .needTarget{background:#fff7e6;border:1px solid #ffe0a3;padding:8px;border-radius:8px}
-    .spacer{flex:1}
-  </style>
+  :root{ --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --accent:#2e7d32; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+  header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
+  header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:14px}
+  main{padding:12px;display:grid;grid-template-columns:1fr 420px;gap:12px}
+  .board{display:grid;grid-template-areas:"p0 p1" "p2 p3"; gap:12px;}
+  .playerPanel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:220px;position:relative}
+  .playerPanel .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .playerPanel .hdr .hp{font-weight:600}
+
+  /* REPLACED: show tiles instead of one big emoji clump */
+  .playerPanel .emojiClump{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
+    gap:8px;
+    min-height:80px;
+  }
+
+  /* Per-card tiles */
+  .tile{
+    position:relative;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:10px;
+    padding:6px 6px 8px 6px;
+  }
+  .tile .label{
+    font-size:11px;
+    color:var(--muted);
+    text-align:center;
+    line-height:1.1;
+    margin-bottom:2px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .tile .emj{
+    font-size:24px;
+    line-height:1.2;
+    text-align:center;
+  }
+  .tile .meta{
+    font-size:11px;
+    color:var(--muted);
+    text-align:center;
+    margin-top:2px;
+  }
+  .tile .hp{
+    position:absolute;
+    top:4px; right:6px;
+    font-size:10px;
+    background:#eef7ee;
+    color:#1b5e20;
+    border-radius:6px;
+    padding:1px 6px;
+  }
+  .tile .cnt{
+    position:absolute;
+    top:4px; left:6px;
+    font-size:10px;
+    background:#f1f5f9;
+    color:#334155;
+    border-radius:6px;
+    padding:1px 6px;
+  }
+
+  .playerPanel .meta{font-size:12px;color:var(--muted)}
+  .you{outline:2px solid #1976d2}
+  .active{box-shadow:0 0 0 3px rgba(46,125,50,.35)}
+  .rightCol{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .controls select, .controls button{padding:8px 10px;font-size:14px}
+  .shopGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .shopItem{border:1px solid var(--line);border-radius:10px;padding:8px}
+  .shopItem h4{margin:0 0 4px 0;font-size:14px}
+  .small{font-size:12px;color:var(--muted)}
+  .targets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .targets select{padding:6px 8px}
+  .log{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .logLine{padding:6px 8px;border-bottom:1px dashed var(--line);font-size:13px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef7ee;color:#1b5e20;font-size:12px}
+  .queue{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
+  .qItem{font-size:12px;color:var(--muted);margin:2px 0}
+  .needTarget{background:#fff7e6;border:1px solid #ffe0a3;padding:8px;border-radius:8px}
+  .spacer{flex:1}
+</style>
+
 </head>
 <body>
   <header>
@@ -210,7 +267,8 @@
         const hdr=document.createElement('div'); hdr.className='hdr';
         hdr.innerHTML=`<div><strong>${p.name}</strong> ${i===turnIdx?'<span class="pill">Active</span>':''}</div>
                        <div class="hp">💰 ${p.gold||0} | 🏰 ${p.townHp||0}</div>`;
-        const cl=document.createElement('div'); cl.className='emojiClump'; cl.textContent=emojiClumpForPlayer(p);
+        const cl=document.createElement('div'); cl.className='emojiClump';
+renderOwnedTiles(cl, p);
         const mt=document.createElement('div'); mt.className='meta';
         mt.textContent=(p.unlocked==='d20'?'d20':p.unlocked==='2d6'?'2d6':'d6')+' unlocked';
         panel.appendChild(hdr); panel.appendChild(cl); panel.appendChild(mt);
@@ -221,6 +279,39 @@
     function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
     function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
+    function renderOwnedTiles(container, player){
+  container.innerHTML = '';
+  const owned = player?.owned || [];
+  for (let i=0; i<owned.length; i++){
+    const e = owned[i];
+    const c = CARD_CATALOG[e.key];
+    if (!c) continue;
+
+    const tile  = document.createElement('div'); tile.className='tile';
+    const label = document.createElement('div'); label.className='label'; label.textContent = c.name;
+    const emj   = document.createElement('div'); emj.className='emj';   emj.textContent = c.emoji;
+
+    const rolls = (c.triggers && c.triggers.length) ? c.triggers.join(',') : '—';
+    const meta  = document.createElement('div'); meta.className='meta'; meta.innerHTML = `🎲 ${rolls}`;
+
+    // badges
+    if (e.hp != null){
+      const hp = document.createElement('div'); hp.className='hp'; hp.textContent = `HP ${e.hp}`;
+      tile.appendChild(hp);
+    }
+    const count = e.count || 1;
+    if (count > 1){
+      const cnt = document.createElement('div'); cnt.className='cnt'; cnt.textContent = `x${count}`;
+      tile.appendChild(cnt);
+    }
+
+    tile.appendChild(label);
+    tile.appendChild(emj);
+    tile.appendChild(meta);
+    container.appendChild(tile);
+  }
+}
+
 function renderControls(){
   const p = myPlayer();
   const dieSel = $('#dieSelect');
@@ -1317,4 +1408,5 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
