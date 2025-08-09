@@ -95,7 +95,7 @@
     // -------- Firebase --------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
-      getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
+      getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, where,
       collection, addDoc, serverTimestamp, runTransaction, query, orderBy, limit, getDocs
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -845,26 +845,36 @@ if (needsTarget && !manual){
   // Add this once (top-level, above the function)
 let _processingIntents = false;
 
+// Requires: import { where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+
 async function hostApplyIntents(){
   if (!isHost || !state) return;
-  if (_processingIntents) return;           // prevent parallel runs
+  if (_processingIntents) return; // prevent parallel runs
   _processingIntents = true;
+
   try {
     const movesRef = collection(db, 'lobbies', lobbyId, 'intents');
-    const qy = query(movesRef, orderBy('ts', 'asc'), limit(25));
+    // Process only unprocessed intents; stable ordering even if ts collides or is null
+    const qy = query(
+      movesRef,
+      where('processed','==',false),
+      orderBy('ts','asc'),
+      orderBy('__name__','asc'),
+      limit(50)
+    );
     const snap = await getDocs(qy);
 
     for (const d of snap.docs){
-      const mv = d.data(); 
+      const mv = d.data();
       if (mv.processed) continue;
 
       await runTransaction(db, async (tx) => {
         const ref = doc(db, 'lobbies', lobbyId);
-        const rs  = await tx.get(ref); 
+        const rs  = await tx.get(ref);
         if (!rs.exists()) return;
 
-        const rd = rs.data().game || null; 
-        if (!rd) return;                   // no game yet
+        const rd = rs.data().game || null;
+        if (!rd) return; // no game yet
 
         const players = rd.players || [];
         const tIdx    = rd.turnIdx ?? 0;
@@ -873,27 +883,32 @@ async function hostApplyIntents(){
         const isActor = mv.from === actor?.name;
 
         // --- ROLL ---
-       // --- ROLL ---
-if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
-  const mode = mv.payload?.mode || 'd6';
-  const v = rollDie(mode, rd); // use rd for seed/rollCount
+        if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
+          const mode = mv.payload?.mode || 'd6';
+          const v    = rollDie(mode, rd); // deterministic RNG from state
 
-  rd.lastRoll = { mode, value: v, by: actor.name };
-  rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
+          // Always record the roll so UI shows it even if queue build fails
+          rd.lastRoll = { mode, value: v, by: actor.name };
+          rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
 
-  const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v); // <-- destructure
-  rd.resolveQueue = q;
-  rd.phase = q.length ? 'resolving' : 'buy';
+          try {
+            const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v);
+            rd.resolveQueue = Array.isArray(q) ? q : [];
+            rd.phase = rd.resolveQueue.length ? 'resolving' : 'buy';
+            if (autoNote) rd._lastMsg += ' — ' + autoNote;
+          } catch (e) {
+            console.error('Queue build failed:', e);
+            rd.resolveQueue = [];
+            rd.phase = 'buy';
+            rd._lastMsg += ' (auto-resolve disabled this roll due to an error)';
+          }
 
-  if (autoNote) rd._lastMsg += ' — ' + autoNote;
-  rd.rollCount = (rd.rollCount || 0) + 1;
+          rd.rollCount = (rd.rollCount || 0) + 1;
 
-  tx.update(ref, { game: rd });
-  tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
-  return;
-}
-
-
+          tx.update(ref, { game: rd });
+          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          return;
+        }
 
         // --- RESOLVE (no target) ---
         if (mv.type === 'RESOLVE_NEXT' && isActor && phase === 'resolving'){
@@ -924,7 +939,7 @@ if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
 
         // --- BUY ---
         if (mv.type === 'BUY' && isActor && phase === 'buy'){
-          const key  = mv.payload?.key; 
+          const key  = mv.payload?.key;
           const card = CARD_CATALOG[key];
           if (card){
             const have     = (actor.owned?.find(e => e.key === key)?.count) || 0;
@@ -937,42 +952,40 @@ if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
               rd._lastMsg    = `${actor.name} bought ${card.name}.`;
             }
           }
-          rd.phase = 'buy'; // keep End Turn enabled
+          // remain in buy so End Turn stays enabled
+          rd.phase = 'buy';
 
           tx.update(ref, { game: rd });
           tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
           return;
         }
 
-        // --- END TURN ---
         // --- END TURN (allowed in any phase; can optionally forfeit remaining resolves)
         if (mv.type === 'END_TURN' && isActor){
-          // If they chose to forfeit (e.g., clicked End Turn while resolving), wipe the queue
           const forfeit = !!(mv.payload && mv.payload.forfeitRemaining);
           if (forfeit) rd.resolveQueue = [];
-        
-          // Advance turn
+
+          // Advance to next non-eliminated player
           const players = rd.players || [];
           let next = (tIdx + 1) % players.length;
           for (let g = 0; g < players.length; g++){
             if (!(players[next]?.eliminated)) break;
             next = (next + 1) % players.length;
           }
-        
+
           rd.turnIdx  = next;
           rd.phase    = 'await_roll';
           rd.lastRoll = null;
-        
+
           const alive = players.filter(p => !p.eliminated);
           if (alive.length <= 1) rd.phase = 'finished';
-        
+
           tx.update(ref, { game: rd });
           tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
           return;
         }
 
-
-        // Fallback: don't let a malformed intent block the queue
+        // Fallback: never let a malformed intent block the queue
         tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
       });
     }
@@ -980,6 +993,7 @@ if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
     _processingIntents = false;
   }
 }
+
 
 
     // ---------- Intents ----------
@@ -1099,6 +1113,7 @@ if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
   </script>
 </body>
 </html>
+
 
 
 
