@@ -221,18 +221,27 @@
     function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
     function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
-    function renderControls(){
+ function renderControls(){
   const p=myPlayer(); const dieSel=$('#dieSelect');
   if (!p){ dieSel.innerHTML='<option>d6</option>'; return; }
   dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
 
-  // Button enables
-  $('#rollBtn').disabled     = !isMyTurn() || (state?.phase!=='await_roll');
-  $('#resolveBtn').disabled  = !isMyTurn() || (state?.phase!=='resolving');
-  $('#applyTargetBtn').disabled = !isMyTurn() || (state?.phase!=='resolving');
-  $('#endTurnBtn').disabled  = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
+  // Button enables (keep these two as-is)
+  $('#rollBtn').disabled    = !isMyTurn() || (state?.phase!=='await_roll');
+  $('#endTurnBtn').disabled = !isMyTurn() || !(state?.phase==='buy' || state?.phase==='await_roll');
 
-  // NEW: last roll badge
+  // 🔽 Replace your old resolve/applyTarget enables with this block:
+  const needsT = (() => {
+    const q = state?.resolveQueue||[]; if (!q.length) return false;
+    const k = CARD_CATALOG[q[0].key]?.onTrigger?.kind;
+    return triggerNeedsTarget(k);
+  })();
+
+  const resolving = state?.phase==='resolving';
+  $('#resolveBtn').disabled      = !isMyTurn() || !resolving || needsT;
+  $('#applyTargetBtn').disabled  = !isMyTurn() || !resolving || !needsT;
+
+  // Last roll badge UI (keep yours)
   const lb = $('#lastRollBadge');
   if (state?.lastRoll?.value){
     lb.style.display = '';
@@ -241,6 +250,7 @@
     lb.style.display = 'none';
   }
 }
+
 
 
     function renderShop(){
@@ -425,173 +435,264 @@
     }
 
     function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
-      const q=[]; const players=rd.players||[];
-      players.forEach((p,i)=>{
-        const timing = (i===rollerIdx)? ['every','your'] : ['opponent'];
-        (p.owned||[]).forEach(e=>{
-          const c=CARD_CATALOG[e.key]; if (!c) return;
-          if (!c.triggers?.includes(rollVal)) return;
-          if (!c.timing || !timing.includes(c.timing)) return;
-          q.push({ownerIdx:i, key:e.key, roll:rollVal});
-        });
-      });
-      return q;
-    }
+  const q=[]; const players=rd.players||[];
+  players.forEach((p,i)=>{
+    const timing = (i===rollerIdx)? ['every','your'] : ['opponent'];
+    (p.owned||[]).forEach(e=>{
+      const c=CARD_CATALOG[e.key]; if (!c) return;
+      if (!c.triggers?.includes(rollVal)) return;
+      if (!c.timing || !timing.includes(c.timing)) return;
+      const copies = Math.max(1, e.count||1);           // 🔧 push once per copy
+      for (let k=0;k<copies;k++){
+        q.push({ownerIdx:i, key:e.key, roll:rollVal});
+      }
+    });
+  });
+  return q;
+}
     function postResolveCleanup(rd){
       for (const pl of rd.players){ pl.owned = (pl.owned||[]).filter(e=>!e._remove); }
       for (const p of rd.players){ if (!p.eliminated && (p.townHp||0)<=0){ p.eliminated=true; p.owned=[]; p.gold=0; } }
     }
-    function hostResolveOne(rd, manual){
-      const stack=rd.resolveQueue||[]; if (!stack.length) return {changed:false,msg:'No triggers.'};
-      const trig=stack[0];
-      const owner=rd.players[trig.ownerIdx]; const card=CARD_CATALOG[trig.key]; const kind=card.onTrigger?.kind;
-      let msg=`${owner.name} triggers ${card.emoji} ${card.name}: `;
-      const activeName = rd.lastRoll?.by;
-      const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
+function hostResolveOne(rd, manual){
+  const stack = rd.resolveQueue || [];
+  if (!stack.length) return { changed:false, msg:'No triggers.' };
 
-      const needsTarget = triggerNeedsTarget(kind);
-      if (needsTarget && !manual){ return {changed:false, msg:'Target required.'}; }
+  const trig  = stack[0];
+  const owner = rd.players[trig.ownerIdx];
+  const card  = CARD_CATALOG[trig.key];
+  const kind  = card.onTrigger?.kind;
+  let msg     = `${owner.name} triggers ${card.emoji} ${card.name}: `;
+  const activeName   = rd.lastRoll?.by;
+  const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
 
-      const applyAndShift = (extraMsg) => {
-        stack.shift(); rd.resolveQueue = stack; postResolveCleanup(rd);
-        return {changed:true, msg: extraMsg ? (msg + extraMsg) : msg};
-      };
-      const findPlayerByName = (nm)=> (rd.players||[]).find(p=>p.name===nm);
+  const needsTarget = triggerNeedsTarget(kind);
+
+  // --- If this trigger needs a target but there are none, auto-skip it
+  if (needsTarget){
+    const ownerPlayer = rd.players[trig.ownerIdx];
+    const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
+    const kinds = allowedTargetTypesFor(kind);
+    const enemyHasAnyValid = enemies.some(ep=>{
+      return kinds.some(typ=>{
+        if (typ==='townhall') return (ep.townHp||0) > 0;
+        const items = listTargetableEntries(ep, typ);
+        return items.length > 0;
+      });
+    });
+    if (!enemyHasAnyValid){
+      rd.resolveQueue.shift();
+      postResolveCleanup(rd);
+      return { changed:true, msg: `${owner.name}'s ${card.name} had no valid targets (skipped).` };
+    }
+  }
+
+  // If target needed but not provided, ask the UI to provide it
+  if (needsTarget && !manual){
+    return { changed:false, msg:'Target required.' };
+  }
+
+  const applyAndShift = (extraMsg) => {
+    stack.shift();
+    rd.resolveQueue = stack;
+    postResolveCleanup(rd);
+    return { changed:true, msg: extraMsg ? (msg + extraMsg) : msg };
+  };
+
+  switch(kind){
+    // ----- Non-targeted effects -----
+    case 'earn': {
+      const v = (card.onTrigger.value||0);
+      owner.gold = (owner.gold||0) + v;
+      return applyAndShift(`+${v} coin(s).`);
+    }
+    case 'earn_per_temple': {
+      const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+      const amt = n * (card.onTrigger.per||0);
+      owner.gold = (owner.gold||0) + amt;
+      return applyAndShift(`+${amt} coin(s).`);
+    }
+    case 'heal_town': {
+      const v = (card.onTrigger.value||0);
+      owner.townHp = (owner.townHp||0) + v;
+      return applyAndShift(`heals Town Hall ${v}.`);
+    }
+    case 'heal_and_earn': {
+      const h = (card.onTrigger.heal||0);
+      const c = (card.onTrigger.coins||0);
+      owner.townHp = (owner.townHp||0) + h;
+      owner.gold   = (owner.gold||0) + c;
+      return applyAndShift(`heals ${h} & +${c} coins.`);
+    }
+    case 'each_other_lose_hp': {
+      const v = (card.onTrigger.value||0);
+      (rd.players||[]).forEach((p,i)=>{
+        if (i!==trig.ownerIdx && !p.eliminated){
+          p.townHp = Math.max(0, (p.townHp||0) - v);
+        }
+      });
+      return applyAndShift(`each other player loses ${v}.`);
+    }
+    case 'active_loses_per_temple': {
+      const t = activePlayer; if (!t) return applyAndShift('no active opponent.');
+      const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+      const loss = n * (card.onTrigger.per||0);
+      t.townHp = Math.max(0, (t.townHp||0) - loss);
+      return applyAndShift(`${t.name} loses ${loss} health.`);
+    }
+    case 'lose_hp_gain_coins': {
+      const lose = (card.onTrigger.lose||0);
+      const gain = (card.onTrigger.coins||0);
+      owner.townHp = Math.max(0, (owner.townHp||0) - lose);
+      owner.gold   = (owner.gold||0) + gain;
+      return applyAndShift(`loses ${lose}, gains ${gain} coins.`);
+    }
+    case 'others_sacrifice_cards_per_temple': {
+      const times = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+      (rd.players||[]).forEach((p,i)=>{
+        if (i===trig.ownerIdx || p.eliminated) return;
+        for (let k=0;k<times;k++){
+          let idx = firstOfTypeIdx(p,'troop');
+          if (idx<0) idx = firstOfTypeIdx(p,'structure');
+          if (idx<0) idx = firstOfTypeIdx(p,'wall');
+          if (idx>=0) damageEntry(p.owned[idx], p.owned[idx].hp||9999, p, rd);
+        }
+      });
+      return applyAndShift(`others sacrifice ${times} card(s).`);
+    }
+    case 'steal_fixed': {
+      const act = activePlayer; if (!act) return applyAndShift('no active.');
+      const amt = Math.min((act.gold||0), (card.onTrigger.value||0));
+      act.gold   = (act.gold||0) - amt;
+      owner.gold = (owner.gold||0) + amt;
+      return applyAndShift(`steals ${amt} from ${act.name}.`);
+    }
+    case 'steal_and_make_sacrifice_farm': {
+      const act = activePlayer; if (!act) return applyAndShift('no active.');
+      const amt = Math.min((act.gold||0), 1);
+      act.gold   = (act.gold||0) - amt;
+      owner.gold = (owner.gold||0) + amt;
+      const fIdx = (act.owned||[]).findIndex(e=>e.key==='farm' && e.hp>0);
+      if (fIdx>=0) damageEntry(act.owned[fIdx], act.owned[fIdx].hp||9999, act, rd);
+      return applyAndShift(`steals ${amt} from ${act.name}${fIdx>=0? ' and forces a Farm to be sacrificed.':'.'}`);
+    }
+
+    // ----- Targeted effects -----
+    case 'attack_any':
+    case 'attack_structure':
+    case 'attack_troop':
+    case 'attack_any_and_heal':
+    case 'attack_any_per_temple':
+    case 'damage_per_temple_and_gain':
+    case 'lose_then_attack_any':
+    case 'attack_any_and_destroy_troop':
+    case 'destroy_troop':
+    case 'destroy_structure_non_temple':
+    case 'destroy_structure_and_attack_any':
+    case 'goliath_special': {
+      const tName = manual?.targetPlayer;
+      const tType = manual?.targetType;
+      const tIdx  = (manual?.targetEntryIdx!=null) ? Number(manual.targetEntryIdx) : null;
+      const target = (rd.players||[]).find(p=>p.name===tName);
+      if (!target) return applyAndShift('no enemy.');
 
       switch(kind){
-        case 'earn': owner.gold=(owner.gold||0)+(card.onTrigger.value||0); return applyAndShift(`+${card.onTrigger.value} coin(s).`);
-        case 'earn_per_temple': {
-          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-          const amt = n * (card.onTrigger.per||0);
-          owner.gold=(owner.gold||0)+amt; return applyAndShift(`+${amt} coin(s).`);
+        case 'attack_any': {
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.value||0), rd);
+          return applyAndShift(out);
         }
-        case 'heal_town': owner.townHp=(owner.townHp||0)+(card.onTrigger.value||0); return applyAndShift(`heals Town Hall ${card.onTrigger.value}.`);
-        case 'heal_and_earn': owner.townHp=(owner.townHp||0)+(card.onTrigger.heal||0); owner.gold=(owner.gold||0)+(card.onTrigger.coins||0); return applyAndShift(`heals ${card.onTrigger.heal} & +${card.onTrigger.coins} coins.`);
-        case 'each_other_lose_hp': {
-          const v=card.onTrigger.value||0;
-          (rd.players||[]).forEach((p,i)=>{ if (i!==trig.ownerIdx && !p.eliminated) p.townHp=Math.max(0,(p.townHp||0)-v); });
-          return applyAndShift(`each other player loses ${v}.`);
+        case 'attack_structure': {
+          if (tType==='troop') return applyAndShift('invalid target (troop).');
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.value||0), rd);
+          return applyAndShift(out);
         }
-        case 'active_loses_per_temple': {
-          const t = activePlayer; if (!t) return applyAndShift('no active opponent.');
-          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-          const loss = n*(card.onTrigger.per||0);
-          t.townHp=Math.max(0,(t.townHp||0)-loss);
-          return applyAndShift(`${t.name} loses ${loss} health.`);
+        case 'attack_troop': {
+          if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
+          const out = applyAttackToSpecific(owner, target, 'troop', tIdx, (card.onTrigger.value||0), rd);
+          return applyAndShift(out);
         }
-        case 'lose_hp_gain_coins': owner.townHp=Math.max(0,(owner.townHp||0)-(card.onTrigger.lose||0)); owner.gold=(owner.gold||0)+(card.onTrigger.coins||0); return applyAndShift(`loses ${card.onTrigger.lose}, gains ${card.onTrigger.coins} coins.`);
-        case 'others_sacrifice_cards_per_temple': {
-          const times = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-          (rd.players||[]).forEach((p,i)=>{
-            if (i===trig.ownerIdx || p.eliminated) return;
-            for (let k=0;k<times;k++){
-              let idx = firstOfTypeIdx(p,'troop');
-              if (idx<0) idx = firstOfTypeIdx(p,'structure');
-              if (idx<0) idx = firstOfTypeIdx(p,'wall');
-              if (idx>=0) damageEntry(p.owned[idx], p.owned[idx].hp||9999, p);
-            }
-          });
-          return applyAndShift(`others sacrifice ${times} card(s).`);
+        case 'attack_any_and_heal': {
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
+          owner.townHp = (owner.townHp||0) + (card.onTrigger.heal||0);
+          return applyAndShift(out + ` Heals ${card.onTrigger.heal||0}.`);
         }
-        case 'steal_fixed': {
-          const act = activePlayer; if (!act) return applyAndShift('no active.');
-          const amt = Math.min(act.gold||0, card.onTrigger.value||0);
-          act.gold = (act.gold||0)-amt; owner.gold=(owner.gold||0)+amt;
-          return applyAndShift(`steals ${amt} from ${act.name}.`);
+        case 'attack_any_per_temple': {
+          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, n*(card.onTrigger.per||0), rd);
+          return applyAndShift(out);
         }
-        case 'steal_and_make_sacrifice_farm': {
-          const act = activePlayer; if (!act) return applyAndShift('no active.');
-          const amt = Math.min(act.gold||0, 1);
-          act.gold = (act.gold||0)-amt; owner.gold=(owner.gold||0)+amt;
-          const fIdx = (act.owned||[]).findIndex(e=>e.key==='farm' && e.hp>0);
-          if (fIdx>=0) damageEntry(act.owned[fIdx], act.owned[fIdx].hp||9999, act);
-          return applyAndShift(`steals ${amt} from ${act.name}${fIdx>=0? ' and forces a Farm to be sacrificed.':'.'}`);
+        case 'damage_per_temple_and_gain': {
+          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, n*(card.onTrigger.per||0), rd);
+          owner.gold = (owner.gold||0) + (card.onTrigger.coins||0);
+          return applyAndShift(out + ` Gains ${card.onTrigger.coins||0} coins.`);
         }
-
-        // Targeted
-        case 'attack_any':
-        case 'attack_structure':
-        case 'attack_troop':
-        case 'attack_any_and_heal':
-        case 'attack_any_per_temple':
-        case 'damage_per_temple_and_gain':
-        case 'lose_then_attack_any':
-        case 'attack_any_and_destroy_troop':
-        case 'destroy_troop':
-        case 'destroy_structure_non_temple':
-        case 'destroy_structure_and_attack_any':
+        case 'lose_then_attack_any': {
+          owner.townHp = Math.max(0, (owner.townHp||0) - (card.onTrigger.lose||0));
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
+          return applyAndShift(`loses ${card.onTrigger.lose||0}. ` + out);
+        }
+        case 'attack_any_and_destroy_troop': {
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
+          const troopIdx = firstOfTypeIdx(target,'troop');
+          if (troopIdx>=0) damageEntry(target.owned[troopIdx], target.owned[troopIdx].hp||9999, target, rd);
+          return applyAndShift(out + (troopIdx>=0 ? ` Destroys a troop.` : ` No troop to destroy.`));
+        }
+        case 'destroy_troop': {
+          if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
+          const out = destroySpecific(target, 'troop', tIdx, true, rd);
+          return applyAndShift(out);
+        }
+        case 'destroy_structure_non_temple': {
+          if (tType==='troop') return applyAndShift('invalid target.');
+          const out = destroySpecific(target, 'structure', tIdx, /*allowTemple*/false, rd);
+          return applyAndShift(out);
+        }
+        case 'destroy_structure_and_attack_any': {
+          if (tType==='troop') return applyAndShift('invalid first target.');
+          const out1 = destroySpecific(target, 'structure', tIdx, true, rd);
+          const out2 = applyAttackToSpecific(owner, target, 'structure', firstOfTypeIdx(target,'structure'), (card.onTrigger.dmg||0), rd);
+          return applyAndShift(out1 + ' ' + out2);
+        }
         case 'goliath_special': {
-          const tName = manual?.targetPlayer; const tType = manual?.targetType; const tIdx = manual?.targetEntryIdx!=null? Number(manual.targetEntryIdx): null;
-        const target = (rd.players||[]).find(p=>p.name===tName);
-          if (!target) return applyAndShift('no enemy.');
-          const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
-          const dmgVal = (base)=> base + (card.type==='troop'?troopBuff:0);
-
-          switch(kind){
-            case 'attack_any': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
-            }
-            case 'attack_structure': {
-              if (tType==='troop') return applyAndShift('invalid target (troop).');
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
-            }
-            case 'attack_troop': {
-              if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
-              const out = applyAttackToSpecific(owner, target, 'troop', tIdx, dmgVal(card.onTrigger.value||0), rd); return applyAndShift(out);
-            }
-            case 'attack_any_and_heal': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0), rd); owner.townHp=(owner.townHp||0)+(card.onTrigger.heal||0); return applyAndShift(out+` Heals ${card.onTrigger.heal}.`);
-            }
-            case 'attack_any_per_temple': {
-              const n=(owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0)), rd); return applyAndShift(out);
-            }
-            case 'damage_per_temple_and_gain': {
-              const n=(owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count||0;
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(n*(card.onTrigger.per||0)), rd); owner.gold=(owner.gold||0)+(card.onTrigger.coins||0); return applyAndShift(out+` Gains ${card.onTrigger.coins} coins.`);
-            }
-            case 'lose_then_attack_any': {
-              owner.townHp=Math.max(0,(owner.townHp||0)-(card.onTrigger.lose||0));
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0),rd); return applyAndShift(`loses ${card.onTrigger.lose}. `+out);
-            }
-            case 'attack_any_and_destroy_troop': {
-              const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(card.onTrigger.dmg||0), rd);
-              const troopIdx = firstOfTypeIdx(target,'troop'); if (troopIdx>=0) damageEntry(target.owned[troopIdx], target.owned[troopIdx].hp||9999, target);
-              return applyAndShift(out + (troopIdx>=0? ` Destroys a troop.`:' No troop to destroy.'));
-            }
-            case 'destroy_troop': {
-              if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
-              const out = destroySpecific(target, 'troop', tIdx, true, rd); return applyAndShift(out);
-            }
-            case 'destroy_structure_non_temple': {
-              if (tType==='troop') return applyAndShift('invalid target.');
-              const out = destroySpecific(target, 'structure', tIdx, /*allowTemple*/false, rd); return applyAndShift(out);
-            }
-            case 'destroy_structure_and_attack_any': {
-              if (tType==='troop') return applyAndShift('invalid first target.');
-              const out1 = destroySpecific(target, 'structure', tIdx, true);
-              const out2 = applyAttackToSpecific(owner, target, 'structure', firstOfTypeIdx(target,'structure'), dmgVal(card.onTrigger.dmg||0));
-              return applyAndShift(out1 + ' ' + out2);
-            }
-            case 'goliath_special': {
-              if (trig.roll===12){
-                const wIdx = firstOfTypeIdx(target,'wall'); if (wIdx>=0) damageEntry(target.owned[wIdx], target.owned[wIdx].hp||9999, target, rd);
-                const trIdx = firstOfTypeIdx(target,'troop'); if (trIdx>=0) damageEntry(target.owned[trIdx], target.owned[trIdx].hp||9999, target, rd);
-                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10), rd);
-                return applyAndShift(`${wIdx>=0?'destroys a wall. ':''}${trIdx>=0?'destroys a troop. ':''}${out}`);
-              } else {
-                const out = applyAttackToSpecific(owner, target, tType, tIdx, dmgVal(10), rd); return applyAndShift(out);
-              }
-            }
+          if (trig.roll===12){
+            const wIdx = firstOfTypeIdx(target,'wall');  if (wIdx>=0) damageEntry(target.owned[wIdx], target.owned[wIdx].hp||9999, target, rd);
+            const trIdx= firstOfTypeIdx(target,'troop'); if (trIdx>=0) damageEntry(target.owned[trIdx], target.owned[trIdx].hp||9999, target, rd);
+            const out  = applyAttackToSpecific(owner, target, tType, tIdx, 10, rd);
+            return applyAndShift(`${wIdx>=0?'destroys a wall. ':''}${trIdx>=0?'destroys a troop. ':''}${out}`);
+          } else {
+            const out = applyAttackToSpecific(owner, target, tType, tIdx, 10, rd);
+            return applyAndShift(out);
           }
         }
-        case 'acquire_troop_cost_leq_temples':
-          return applyAndShift(`(Choose troop UI TODO)`);
       }
-
-      stack.shift(); rd.resolveQueue=stack; postResolveCleanup(rd);
-      return {changed:true, msg};
+      break;
     }
+
+    // ----- Acquire UI (minimal auto-pick for now) -----
+    case 'acquire_troop_cost_leq_temples': {
+      const tCount = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+      const maxCost = tCount;
+      const choices = Object.values(CARD_CATALOG)
+        .filter(c => c.type==='troop' && (c.cost||0) <= maxCost);
+      if (choices.length){
+        // simple heuristic: cheapest, then highest HP
+        choices.sort((a,b)=> (a.cost-b.cost) || ((b.hp||0)-(a.hp||0)));
+        addOrIncOwned(owner, choices[0].key);
+        owner.unlocked = computeUnlockForPlayer(owner);
+        return applyAndShift(`acquires ${choices[0].name} (cost ≤ ${maxCost}).`);
+      }
+      return applyAndShift(`no troop available at cost ≤ ${maxCost}.`);
+    }
+  }
+
+  // Fallback — should rarely hit
+  stack.shift();
+  rd.resolveQueue = stack;
+  postResolveCleanup(rd);
+  return { changed:true, msg };
+}
+
 
   // Add this once (top-level, above the function)
 let _processingIntents = false;
@@ -819,6 +920,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
