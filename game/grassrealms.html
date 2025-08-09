@@ -395,24 +395,23 @@ function renderControls(){
 }
 function allowedTargetTypesFor(kind){
   switch(kind){
+    // Troop attacks can hit walls directly now
     case 'attack_any':
     case 'attack_any_and_heal':
     case 'attack_any_per_temple':
     case 'lose_then_attack_any':
     case 'damage_per_temple_and_gain':
-      return ['troop','structure','townhall'];
-
     case 'attack_any_and_destroy_troop':
-      return ['troop','structure','townhall'];
+      return ['wall','troop','structure','townhall'];
 
     case 'attack_structure':
-      return ['wall','structure']; // troops can hit walls or structures
+      return ['wall','structure']; // structure-focused attacks already allowed walls
 
     case 'destroy_structure_non_temple':
-      return ['structure']; // cannot target walls or townhall
+      return ['structure']; // keep walls out for this destroy, per earlier rule
 
     case 'destroy_structure_and_attack_any':
-      return ['structure']; // first target must be a (non-Town Hall) structure
+      return ['structure']; // first target still a structure; second hit logic respects walls
 
     case 'attack_troop':
     case 'destroy_troop':
@@ -430,6 +429,7 @@ function allowedTargetTypesFor(kind){
 }
 
 
+
     function listTargetableEntries(p, type){
       const owned=p.owned||[];
       if (type==='troop') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='troop' && x.e.hp>0);
@@ -437,7 +437,7 @@ function allowedTargetTypesFor(kind){
       if (type==='structure') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='structure' && x.e.key!=='townhall' && x.e.hp>0);
       return [];
     }
- function renderQueueAndTargets(){
+function renderQueueAndTargets(){
   const qb = $('#queueBox'); qb.innerHTML = '';
   const tb = $('#targetBox'); tb.innerHTML = '';
   if (!state) return;
@@ -449,15 +449,15 @@ function allowedTargetTypesFor(kind){
   }
 
   const current = q[0];
-const owner   = (state.players || [])[current?.ownerIdx];
-const card    = CARD_CATALOG[current?.key];
+  const owner   = (state.players || [])[current?.ownerIdx];
+  const card    = CARD_CATALOG[current?.key];
 
-if (!current || !owner || !card){
-  qb.innerHTML = '<div class="small">Waiting for next trigger…</div>';
-  return;
-}
-   
+  if (!current || !owner || !card){
+    qb.innerHTML = '<div class="small">Waiting for next trigger…</div>';
+    return;
+  }
 
+  // Header for current + a peek at the queue
   const title = document.createElement('div');
   title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll ? ` (roll ${current.roll})` : ''}</div>`;
   qb.appendChild(title);
@@ -467,201 +467,221 @@ if (!current || !owner || !card){
     for (let i = 1; i < q.length; i++){
       const t = q[i], o = (state.players||[])[t.ownerIdx], c = CARD_CATALOG[t.key];
       const line = document.createElement('div'); line.className = 'qItem';
-      line.textContent = `${i+1}. ${o.name} — ${c.name}`;
+      line.textContent = `${i+1}. ${o?.name ?? '(?)'} — ${c?.name ?? '(unknown)'}`;
       ol.appendChild(line);
     }
     qb.appendChild(ol);
   }
 
-  if (isMyTurn()){
-    const kind = card.onTrigger?.kind;
-    if (triggerNeedsTarget(kind)){
-      const box = document.createElement('div'); 
-      box.className = 'needTarget';
-      const opts = allowedTargetTypesFor(kind);
-
-      const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
-      const selT = document.createElement('select'); selT.id = 'selTargetType';
-      const selE = document.createElement('select'); selE.id = 'selTargetEntry';
-
-      const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
-
-      // helper to enable/disable the Apply button based on current selection
-     const refreshApplyButton = () => {
-  const applyBtn = document.getElementById('applyTargetBtn');
-  if (!applyBtn) return;
-
-  const tName = selP.value;
-  const tType = selT.value;
-
-  // Normalize selected entry index
-  const tIdxRaw = selE.disabled ? null : selE.value; // '' means none
-  const tIdx = (tIdxRaw === '' || tIdxRaw == null) ? null : Number(tIdxRaw);
-
-  const players = (state.players || []);
-  const target = players.find(p => p.name === tName) || null;
-
-  const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName) && !!target;
-  const validTown = (tType === 'townhall') ? ((target?.townHp || 0) > 0) : true;
-
-  // Walls shield Town Hall + structures
-  const shieldUp = target ? (typeof hasActiveWall === 'function' ? hasActiveWall(target) : false) : false;
-  const structOrTH = (tType === 'structure' || tType === 'townhall');
-  const blockedByWalls = shieldUp && structOrTH;
-
-  // Validate selected entry when not townhall
-  let validEntry = true;
-  if (tType !== 'townhall') {
-    if (tIdx === null || Number.isNaN(tIdx)) {
-      validEntry = false;
-    } else {
-      const entry = target?.owned?.[tIdx];
-      const etype = entry ? CARD_CATALOG[entry.key]?.type : null;
-      const alive = (entry?.hp || 0) > 0;
-      validEntry = !!entry && alive && (etype === tType);
-    }
+  // Only the current turn's actor chooses targets (adjust if you want owner to choose)
+  if (!isMyTurn()){
+    const note = document.createElement('div'); note.className = 'small';
+    note.textContent = 'Waiting for the active player to resolve.';
+    tb.appendChild(note);
+    return;
   }
 
-  const ok = hasTargetPlayer && validTown && validEntry && !blockedByWalls;
-  applyBtn.disabled = !ok;
-
-  // Helpful tooltip when disabled
-  if (!ok) {
-    let reason = '';
-    if (!hasTargetPlayer)          reason = 'Select a valid target player.';
-    else if (!validTown)           reason = 'Town Hall is already destroyed.';
-    else if (blockedByWalls)       reason = 'Walls are up — destroy walls first.';
-    else if (!validEntry && tType!=='townhall') reason = 'Select a valid target entry.';
-    applyBtn.title = reason || 'Not allowed.';
-  } else {
-    applyBtn.title = '';
+  const kind = card.onTrigger?.kind;
+  const needsTarget = triggerNeedsTarget(kind);
+  if (!needsTarget){
+    const note = document.createElement('div'); note.className = 'small';
+    note.textContent = 'This effect needs no target. Use "Resolve Next".';
+    tb.appendChild(note);
+    return;
   }
-};
 
+  // Build targeting UI
+  const box = document.createElement('div'); box.className = 'needTarget';
+  const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
+  const selT = document.createElement('select'); selT.id = 'selTargetType';
+  const selE = document.createElement('select'); selE.id = 'selTargetEntry';
 
-      // Populate enemies
-      if (!enemies.length){
-        selP.innerHTML = '<option value="">(no enemy)</option>';
+  const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
+  const opts    = allowedTargetTypesFor(kind);
+
+  // --- helpers (use closure vars) ---
+  const refreshApplyButton = () => {
+    const applyBtn = document.getElementById('applyTargetBtn');
+    if (!applyBtn) return;
+
+    const tName = selP.value;
+    const tType = selT.value;
+
+    // Normalize selected entry index
+    const tIdxRaw = selE.disabled ? null : selE.value; // '' means none
+    const tIdx = (tIdxRaw === '' || tIdxRaw == null) ? null : Number(tIdxRaw);
+
+    const players = (state.players || []);
+    const target = players.find(p => p.name === tName) || null;
+
+    const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName) && !!target;
+    const validTown = (tType === 'townhall') ? ((target?.townHp || 0) > 0) : true;
+
+    // Walls shield Town Hall + structures
+    const shieldUp = target ? (typeof hasActiveWall === 'function' ? hasActiveWall(target) : false) : false;
+    const structOrTH = (tType === 'structure' || tType === 'townhall');
+    const blockedByWalls = shieldUp && structOrTH;
+
+    // Validate selected entry when not townhall
+    let validEntry = true;
+    if (tType !== 'townhall') {
+      if (tIdx === null || Number.isNaN(tIdx)) {
+        validEntry = false;
       } else {
-        enemies.forEach(p => {
-          const o = document.createElement('option');
-          o.value = p.name; o.textContent = p.name; selP.appendChild(o);
-        });
+        const entry = target?.owned?.[tIdx];
+        const etype = entry ? CARD_CATALOG[entry.key]?.type : null;
+        const alive = (entry?.hp || 0) > 0;
+        validEntry = !!entry && alive && (etype === tType);
       }
+    }
 
-      // Populate types
-      opts.forEach(t => {
-        const o = document.createElement('option');
-        o.value = t; o.textContent = t; selT.appendChild(o);
-      });
+    const ok = hasTargetPlayer && validTown && validEntry && !blockedByWalls;
+    applyBtn.disabled = !ok;
 
-      function refillEntries(){
-  selE.innerHTML = '';
+    // Helpful tooltip when disabled
+    if (!ok) {
+      let reason = '';
+      if (!hasTargetPlayer)          reason = 'Select a valid target player.';
+      else if (!validTown)           reason = 'Town Hall is already destroyed.';
+      else if (blockedByWalls)       reason = 'Walls are up — destroy walls first.';
+      else if (!validEntry && tType!=='townhall') reason = 'Select a valid target entry.';
+      applyBtn.title = reason || 'Not allowed.';
+    } else {
+      applyBtn.title = '';
+    }
+  };
 
-  const targetName = selP.value;
-  const typ = selT.value;
-  const players = (state.players || []);
-  const target = players.find(p => p.name === targetName) || null;
+  function refillEntries(){
+    selE.innerHTML = '';
 
-  // Current trigger info (captured from outer scope)
-  const currentKind = card?.onTrigger?.kind || '';
+    const targetName = selP.value;
+    const typ = selT.value;
+    const players = (state.players || []);
+    const target = players.find(p => p.name === targetName) || null;
+
+    const currentKind = card?.onTrigger?.kind || '';
+    const ATTACK_KINDS = new Set([
+      'attack_any','attack_structure','attack_troop',
+      'attack_any_and_heal','attack_any_per_temple',
+      'damage_per_temple_and_gain','lose_then_attack_any',
+      'attack_any_and_destroy_troop','goliath_special'
+    ]);
+    const isAttack = ATTACK_KINDS.has(currentKind);
+    const isTempleKey = (k) => (k==='white_temple'||k==='black_temple'||k==='red_temple'||k==='green_temple');
+
+    if (!target){
+      selE.disabled = true;
+      const o = document.createElement('option'); o.value=''; o.textContent='(no target player)';
+      selE.appendChild(o);
+      refreshApplyButton();
+      return;
+    }
+
+    // Town Hall pseudo-entry
+    if (typ === 'townhall'){
+      selE.disabled = true;
+      const dead = (target.townHp || 0) <= 0;
+      const blocked = typeof hasActiveWall === 'function' ? hasActiveWall(target) : false;
+
+      const o = document.createElement('option');
+      o.value = '';
+      if (dead)        o.textContent = '(Town Hall destroyed)';
+      else if (blocked && isAttack) o.textContent = '(Town Hall — blocked by walls)';
+      else             o.textContent = '(Town Hall)';
+      selE.appendChild(o);
+
+      refreshApplyButton();
+      return;
+    }
+
+    // Structures blocked by walls only for attack-kind effects
+    if (typ === 'structure'){
+      const shieldUp = (typeof hasActiveWall === 'function') ? hasActiveWall(target) : false;
+      if (shieldUp && isAttack){
+        selE.disabled = true;
+        const o = document.createElement('option'); o.value=''; o.textContent='(structures blocked by walls)';
+        selE.appendChild(o);
+        refreshApplyButton();
+        return;
+      }
+    }
+
+    // Real entries (wall/troop/structure)
+    selE.disabled = false;
+
+    let items = listTargetableEntries(target, typ); // [{idx, e, c}]
+    // For destroy_structure_non_temple, filter temples out
+    if (typ === 'structure' && currentKind === 'destroy_structure_non_temple'){
+      items = items.filter(it => !isTempleKey(it.e.key));
+    }
+
+    if (!items.length){
+      const o = document.createElement('option'); o.value=''; o.textContent='(none)';
+      selE.appendChild(o);
+      selE.disabled = true;
+      refreshApplyButton();
+      return;
+    }
+
+    items.forEach(it => {
+      const o = document.createElement('option');
+      o.value = String(it.idx);
+      const hp = (it.e.hp ?? 0);
+      o.textContent = `${it.c.emoji} ${it.c.name} (HP ${hp})`;
+      selE.appendChild(o);
+    });
+
+    refreshApplyButton();
+  }
+
+  // --- Populate selects ---
+  // Players
+  if (!enemies.length){
+    selP.innerHTML = '<option value="">(no enemy)</option>';
+  } else {
+    enemies.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.name; o.textContent = p.name; selP.appendChild(o);
+    });
+  }
+
+  // Types
+  opts.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t; selT.appendChild(o);
+  });
+
+  // Preselect first entries…
+  if (selP.options.length) selP.selectedIndex = 0;
+  if (selT.options.length) selT.selectedIndex = 0;
+
+  // …and if this is an attack and the first enemy has walls, default to 'wall'
   const ATTACK_KINDS = new Set([
     'attack_any','attack_structure','attack_troop',
     'attack_any_and_heal','attack_any_per_temple',
     'damage_per_temple_and_gain','lose_then_attack_any',
     'attack_any_and_destroy_troop','goliath_special'
   ]);
-  const isAttack = ATTACK_KINDS.has(currentKind);
-
-  const isTempleKey = (k) => (k==='white_temple'||k==='black_temple'||k==='red_temple'||k==='green_temple');
-
-  if (!target){
-    selE.disabled = true;
-    const o = document.createElement('option'); o.value=''; o.textContent='(no target player)';
-    selE.appendChild(o);
-    refreshApplyButton();
-    return;
+  const isAttack = ATTACK_KINDS.has(kind);
+  const firstEnemy = enemies[0];
+  if (isAttack && firstEnemy && typeof hasActiveWall==='function' && hasActiveWall(firstEnemy)){
+    const wallOpt = Array.from(selT.options).find(o => o.value === 'wall');
+    if (wallOpt) selT.value = 'wall';
   }
 
-  // --- Town Hall selection (always single "entry") ---
-  if (typ === 'townhall'){
-    selE.disabled = true;
-    const dead = (target.townHp || 0) <= 0;
-    const blocked = typeof hasActiveWall === 'function' ? hasActiveWall(target) : false;
+  // Initial fill + listeners
+  refillEntries();
+  selP.addEventListener('change', refillEntries);
+  selT.addEventListener('change', refillEntries);
+  selE.addEventListener('change', refreshApplyButton);
 
-    const o = document.createElement('option');
-    o.value = '';
-    if (dead)        o.textContent = '(Town Hall destroyed)';
-    else if (blocked && isAttack) o.textContent = '(Town Hall — blocked by walls)';
-    else             o.textContent = '(Town Hall)';
-    selE.appendChild(o);
-
-    refreshApplyButton();
-    return;
-  }
-
-  // --- Structures are blocked by walls only for ATTACK kinds ---
-  if (typ === 'structure'){
-    const shieldUp = (typeof hasActiveWall === 'function') ? hasActiveWall(target) : false;
-    if (shieldUp && isAttack){
-      selE.disabled = true;
-      const o = document.createElement('option'); o.value=''; o.textContent='(structures blocked by walls)';
-      selE.appendChild(o);
-      refreshApplyButton();
-      return;
-    }
-  }
-
-  // --- Now list concrete entries for wall/troop/structure ---
-  selE.disabled = false;
-
-  let items = listTargetableEntries(target, typ); // [{idx, e, c}]
-  // For destroy_structure_non_temple, filter temples out
-  if (typ === 'structure' && currentKind === 'destroy_structure_non_temple'){
-    items = items.filter(it => !isTempleKey(it.e.key));
-  }
-
-  if (!items.length){
-    const o = document.createElement('option'); o.value=''; o.textContent='(none)';
-    selE.appendChild(o);
-    selE.disabled = true;
-    refreshApplyButton();
-    return;
-  }
-
-  items.forEach(it => {
-    const o = document.createElement('option');
-    o.value = String(it.idx);
-    const hp = (it.e.hp ?? 0);
-    o.textContent = `${it.c.emoji} ${it.c.name} (HP ${hp})`;
-    selE.appendChild(o);
-  });
-
-  refreshApplyButton();
+  box.appendChild(document.createTextNode('Target: '));
+  box.appendChild(selP);
+  box.appendChild(selT);
+  box.appendChild(selE);
+  tb.appendChild(box);
 }
 
-
-      selP.addEventListener('change', () => { refillEntries(); });
-      selT.addEventListener('change', () => { refillEntries(); });
-      selE.addEventListener('change', () => { refreshApplyButton(); });
-
-      // Preselect first entries and fill
-      if (selP.options.length) selP.selectedIndex = 0;
-      if (selT.options.length) selT.selectedIndex = 0;
-      refillEntries();
-
-      box.appendChild(document.createTextNode('Target: '));
-      box.appendChild(selP);
-      box.appendChild(selT);
-      box.appendChild(selE);
-      tb.appendChild(box);
-    } else {
-      const note = document.createElement('div'); note.className = 'small';
-      note.textContent = 'This effect needs no target. Use "Resolve Next".';
-      tb.appendChild(note);
-    }
-  }
-}
 
 
 
@@ -1408,5 +1428,6 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
