@@ -5,34 +5,56 @@
   <title>🕹️ Multiplayer Lobby</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; margin: 0; padding: 20px; }
-    .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
-    input, button { margin: 10px; padding: 10px; font-size: 1em; }
-    #lobbyList, #lobbyPlayers { margin-top: 20px; }
+    .container { max-width: 760px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+    input, select, button { margin: 10px; padding: 10px; font-size: 1em; }
+    #lobbyList, #lobbyPlayers { margin-top: 20px; text-align: left; }
     #startBtn { margin-top: 10px; display: none; }
+    .lobby-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin:6px 0; background:#fafafa; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:10px; font-size:12px; background:#e6eefc; color:#214a9a; margin-left:8px;}
+    .players-dot { display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px; }
+    .subtle { color:#666; font-size: 0.9em; }
+    .row { display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap: wrap; }
+    .section { border-top:1px solid #eee; margin-top:16px; padding-top:12px; }
   </style>
 </head>
 <body>
   <div class="container">
     <div id="loginForm">
-      <input type="text" id="username" placeholder="Username" /><br>
-      <input type="password" id="password" placeholder="Password" /><br>
-      <button onclick="login()">Login</button>
+      <h2>Welcome</h2>
+      <div class="row">
+        <input type="text" id="username" placeholder="Username" />
+        <input type="password" id="password" placeholder="Password" />
+        <button onclick="login()">Login</button>
+      </div>
       <p id="error"></p>
     </div>
 
     <div id="lobbyInterface" style="display:none">
-      <div>
+      <div class="section">
         <h2>Start Lobby</h2>
-        <input type="text" id="lobbyName" placeholder="Lobby Name" />
-        <button onclick="startLobby()">Start Lobby</button>
+        <div class="row">
+          <input type="text" id="lobbyName" placeholder="Lobby Name" />
+          <select id="gameType">
+            <option value="cat">🐭 Cat & Mouse</option>
+            <option value="grass">🌿 Grass Realms</option>
+          </select>
+          <button onclick="startLobby()">Start Lobby</button>
+        </div>
+        <div class="subtle">Choose a game, name your lobby, and start it. Others can join from the list below.</div>
       </div>
-      <div id="lobbyList"></div>
-      <div id="lobbyPlayers"></div>
+
+      <div id="lobbyList" class="section">
+        <h3>Available Lobbies</h3>
+        <!-- lobbies injected here -->
+      </div>
+
+      <div id="lobbyPlayers" class="section"><!-- lobby + players injected here --></div>
+
       <button id="startBtn" onclick="startGame()">🚀 Start Game</button>
       <button onclick="leaveLobby()">❌ Leave Lobby</button>
     </div>
 
-    <div id="winsLeaderboard">
+    <div id="winsLeaderboard" class="section">
       <h3>🏆 Top Players</h3>
       <div id="leaderboardEntries"></div>
     </div>
@@ -41,6 +63,12 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, query, where, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // --- CONFIG ---
+    const ROUTES = {
+      cat:   "/game/catandmouse.html",
+      grass: "/game/grassrealms.html"   // <-- change this if your Grass Realms file lives elsewhere
+    };
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -60,6 +88,7 @@
     let username = autoUsername ? autoUsername.trim() : "";
     let currentLobbyId = null;
     let isHost = false;
+    let lobbyUnsub = null;
 
     if (username) {
       autoLogin(username);
@@ -68,46 +97,49 @@
     async function login() {
       username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value.trim();
+      if (!username || !password) { return showError("❌ Enter username & password."); }
+
       const userRef = doc(db, "users", username);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists() || userSnap.data().password !== password) {
         showError("❌ Invalid login.");
         return;
       }
-      document.getElementById("loginForm").style.display = "none";
-      document.getElementById("lobbyInterface").style.display = "block";
-      loadLobbies();
-      loadLeaderboard();
-      setInterval(loadLobbies, 5000);
+      enterLobbyUI();
     }
 
     async function autoLogin(name) {
-      console.log("🔐 Attempting auto-login with username:", name);
       const userRef = doc(db, "users", name);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
         showError("❌ Username not found in system.");
         return;
       }
+      enterLobbyUI();
+    }
+
+    function enterLobbyUI() {
       document.getElementById("loginForm").style.display = "none";
       document.getElementById("lobbyInterface").style.display = "block";
       loadLobbies();
       loadLeaderboard();
+      // Poll lobbies occasionally in addition to real-time joins via snapshots per-lobby
       setInterval(loadLobbies, 5000);
     }
 
     async function startLobby() {
       const name = document.getElementById("lobbyName").value.trim();
-      if (!name) {
-        showError("Please enter a lobby name.");
-        return;
-      }
+      const gameType = document.getElementById("gameType").value; // 'cat' or 'grass'
+      if (!name) return showError("Please enter a lobby name.");
+      if (!['cat','grass'].includes(gameType)) return showError("Invalid game type.");
+
       const lobby = await addDoc(collection(db, "lobbies"), {
         name,
-        gameType: "cat", // hardcoded
+        gameType,
         status: "waiting",
         players: [username],
-        host: username
+        host: username,
+        createdAt: Date.now()
       });
       currentLobbyId = lobby.id;
       isHost = true;
@@ -119,37 +151,74 @@
       const snap = await getDocs(q);
       const list = document.getElementById("lobbyList");
       list.innerHTML = "<h3>Available Lobbies</h3>";
+
+      if (snap.empty) {
+        const none = document.createElement("div");
+        none.className = "subtle";
+        none.textContent = "No open lobbies. Start one above!";
+        list.appendChild(none);
+        return;
+      }
+
       snap.forEach(docSnap => {
         const data = docSnap.data();
-        const div = document.createElement("div");
-        div.innerHTML = `<strong>${data.name}</strong> — (${data.players.length} players)
-          <button onclick="joinLobby('${docSnap.id}')">Join</button>`;
-        list.appendChild(div);
+        const row = document.createElement("div");
+        row.className = "lobby-row";
+        const gameLabel = data.gameType === 'grass' ? '🌿 Grass Realms' : '🐭 Cat & Mouse';
+        row.innerHTML = `
+          <div>
+            <strong>${data.name}</strong>
+            <span class="badge">${gameLabel}</span>
+            <div class="subtle">${data.players.length} player(s) — Host: ${data.host}</div>
+          </div>
+          <div>
+            <button onclick="joinLobby('${docSnap.id}')">Join</button>
+          </div>
+        `;
+        list.appendChild(row);
       });
     }
 
     async function joinLobby(id) {
+      // Tear down previous listener if any
+      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+
       const ref = doc(db, "lobbies", id);
       const snap = await getDoc(ref);
+      if (!snap.exists()) return showError("Lobby no longer exists.");
       const data = snap.data();
+
       if (!data.players.includes(username)) {
         await updateDoc(ref, { players: [...data.players, username] });
       }
       currentLobbyId = id;
-      isHost = false;
+      isHost = data.host === username;
       listenToLobby();
     }
 
     function listenToLobby() {
-      const ref = doc(db, "lobbies", currentLobbyId);
-      onSnapshot(ref, async (docSnap) => {
-        const data = docSnap.data();
-        document.getElementById("lobbyPlayers").innerHTML = `<h3>Lobby: ${data.name}</h3>`;
+      if (!currentLobbyId) return;
 
-        for (const player of data.players) {
+      // Clean up prior
+      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+
+      const ref = doc(db, "lobbies", currentLobbyId);
+      lobbyUnsub = onSnapshot(ref, async (docSnap) => {
+        if (!docSnap.exists()) return;
+
+        const data = docSnap.data();
+        const header = document.createElement("div");
+        const gameLabel = data.gameType === 'grass' ? '🌿 Grass Realms' : '🐭 Cat & Mouse';
+        const container = document.getElementById("lobbyPlayers");
+        container.innerHTML = "";
+        header.innerHTML = `<h3>Lobby: ${data.name} <span class="badge">${gameLabel}</span></h3>`;
+        container.appendChild(header);
+
+        // Player list with color by wins tiers
+        for (const player of (data.players || [])) {
           const userRef = doc(db, "users", player);
           const userSnap = await getDoc(userRef);
-          let wins = userSnap.exists() ? userSnap.data().wins || 0 : 0;
+          let wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
 
           let color = "#cd7f32"; // bronze
           if (wins >= 5 && wins < 10) color = "#c0c0c0";
@@ -158,33 +227,46 @@
           else if (wins >= 25) color = "#dc3545";
 
           const div = document.createElement("div");
-          div.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${color};border-radius:50%;margin-right:8px;"></span>${player}`;
-          document.getElementById("lobbyPlayers").appendChild(div);
+          div.innerHTML = `<span class="players-dot" style="background:${color};"></span>${player} <span class="subtle">(${wins} wins)</span>`;
+          container.appendChild(div);
         }
 
-        if (data.host === username) {
-          document.getElementById("startBtn").style.display = "inline-block";
-        }
+        // Host controls
+        document.getElementById("startBtn").style.display = (data.host === username) ? "inline-block" : "none";
 
+        // Redirect when the game starts
         if (data.status === "started") {
-          window.location.href = `/game/catandmouse.html?gameId=${currentLobbyId}&username=${username}`;
+          const route = ROUTES[data.gameType] || ROUTES.cat; // fallback safety
+          window.location.href = `${route}?gameId=${currentLobbyId}&username=${encodeURIComponent(username)}`;
         }
       });
     }
 
     async function startGame() {
+      if (!currentLobbyId) return;
       const ref = doc(db, "lobbies", currentLobbyId);
       await updateDoc(ref, { status: "started" });
     }
 
     async function leaveLobby() {
+      if (!currentLobbyId) return;
+
       const ref = doc(db, "lobbies", currentLobbyId);
       const snap = await getDoc(ref);
-      const players = snap.data().players.filter(p => p !== username);
-      await updateDoc(ref, { players });
+      if (snap.exists()) {
+        const data = snap.data();
+        const players = (data.players || []).filter(p => p !== username);
+        await updateDoc(ref, { players });
+
+        // Optional: if host leaves and no players remain, you could auto-close the lobby.
+        // if (players.length === 0) await updateDoc(ref, { status: "closed" });
+      }
+
       currentLobbyId = null;
       isHost = false;
+      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
       document.getElementById("lobbyPlayers").innerHTML = "";
+      document.getElementById("startBtn").style.display = "none";
     }
 
     async function loadLeaderboard() {
@@ -214,6 +296,7 @@
       e.style.color = "red";
     }
 
+    // Expose to window for inline handlers
     window.login = login;
     window.startLobby = startLobby;
     window.joinLobby = joinLobby;
@@ -222,4 +305,6 @@
   </script>
 </body>
 </html>
+
+
 
