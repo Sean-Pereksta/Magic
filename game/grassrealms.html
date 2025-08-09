@@ -433,23 +433,57 @@
       damageEntry(entry, entry.hp||9999, target, rd);
       return `destroys ${target.name}'s ${CARD_CATALOG[entry.key].name}.`;
     }
+const INSTANT_EARN_KINDS = new Set(['earn', 'earn_per_temple']);
 
-    function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
-  const q=[]; const players=rd.players||[];
+function applyInstantIncome(owner, card){
+  const ot = card.onTrigger || {};
+  if (ot.kind === 'earn') {
+    const v = ot.value || 0;
+    owner.gold = (owner.gold || 0) + v;
+    return v;
+  }
+  if (ot.kind === 'earn_per_temple') {
+    const n = (owner.owned||[]).find(e=>e.key===ot.temple)?.count || 0;
+    const amt = n * (ot.per || 0);
+    owner.gold = (owner.gold || 0) + amt;
+    return amt;
+  }
+  return 0;
+}
+
+   function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
+  const q = [];
+  const players = rd.players || [];
+  const earnedBy = new Map(); // name -> coins earned this roll
+
   players.forEach((p,i)=>{
-    const timing = (i===rollerIdx)? ['every','your'] : ['opponent'];
+    const timing = (i===rollerIdx) ? ['every','your'] : ['opponent'];
     (p.owned||[]).forEach(e=>{
-      const c=CARD_CATALOG[e.key]; if (!c) return;
+      const c = CARD_CATALOG[e.key]; if (!c) return;
       if (!c.triggers?.includes(rollVal)) return;
       if (!c.timing || !timing.includes(c.timing)) return;
-      const copies = Math.max(1, e.count||1);           // 🔧 push once per copy
-      for (let k=0;k<copies;k++){
-        q.push({ownerIdx:i, key:e.key, roll:rollVal});
+
+      const copies = Math.max(1, e.count||1);
+      for (let k=0; k<copies; k++){
+        const kind = c.onTrigger?.kind;
+        if (INSTANT_EARN_KINDS.has(kind)){
+          const got = applyInstantIncome(p, c);
+          if (got>0) earnedBy.set(p.name, (earnedBy.get(p.name)||0) + got);
+        } else {
+          q.push({ ownerIdx:i, key:e.key, roll:rollVal });
+        }
       }
     });
   });
-  return q;
+
+  // Make a tiny summary like: "Auto‑income: Alice +2, Bob +1"
+  const parts = [];
+  earnedBy.forEach((amt, nm) => parts.push(`${nm} +${amt}`));
+  const autoNote = parts.length ? `Auto‑income: ${parts.join(', ')}` : '';
+
+  return { q, autoNote };
 }
+
     function postResolveCleanup(rd){
       for (const pl of rd.players){ pl.owned = (pl.owned||[]).filter(e=>!e._remove); }
       for (const p of rd.players){ if (!p.eliminated && (p.townHp||0)<=0){ p.eliminated=true; p.owned=[]; p.gold=0; } }
@@ -920,6 +954,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
