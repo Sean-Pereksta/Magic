@@ -866,28 +866,26 @@ async function hostApplyIntents(){
         const isActor = mv.from === actor?.name;
 
         // --- ROLL ---
-        if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
+       // --- ROLL ---
+if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
   const mode = mv.payload?.mode || 'd6';
   const v = rollDie(mode, rd); // use rd for seed/rollCount
 
   rd.lastRoll = { mode, value: v, by: actor.name };
   rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
 
-  // FIX: destructure so resolveQueue is actually the array, not the object
-  const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v);
+  const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v); // <-- destructure
   rd.resolveQueue = q;
   rd.phase = q.length ? 'resolving' : 'buy';
 
-  if (autoNote) {
-    rd._lastMsg += ' — ' + autoNote;
-  }
-
+  if (autoNote) rd._lastMsg += ' — ' + autoNote;
   rd.rollCount = (rd.rollCount || 0) + 1;
 
   tx.update(ref, { game: rd });
   tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
   return;
 }
+
 
 
         // --- RESOLVE (no target) ---
@@ -1092,6 +1090,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
