@@ -293,30 +293,52 @@ function renderControls(){
 
     // ---------- Target UI ----------
     function triggerNeedsTarget(kind){
-      return ['attack_any','attack_structure','attack_troop','attack_any_and_heal','attack_any_and_destroy_troop','destroy_troop','destroy_structure_non_temple','destroy_structure_and_attack_any','lose_then_attack_any','goliath_special','damage_per_temple_and_gain','attack_any_per_temple'].includes(kind);
-    }
-    function allowedTargetTypesFor(kind){
-      switch(kind){
-        case 'attack_any':
-        case 'attack_any_and_heal':
-        case 'attack_any_per_temple':
-        case 'lose_then_attack_any':
-        case 'damage_per_temple_and_gain':
-          return ['troop','structure','townhall'];
-        case 'attack_any_and_destroy_troop':
-          return ['troop','structure','townhall'];
-        case 'attack_structure':
-        case 'destroy_structure_non_temple':
-        case 'destroy_structure_and_attack_any':
-          return ['wall','structure','townhall'];
-        case 'attack_troop':
-        case 'destroy_troop':
-          return ['troop'];
-        case 'goliath_special':
-          return ['wall','troop','structure','townhall'];
-        default: return [];
-      }
-    }
+  return [
+    'attack_any','attack_structure','attack_troop',
+    'attack_any_and_heal','attack_any_and_destroy_troop',
+    'destroy_troop','destroy_structure_non_temple',
+    'destroy_structure_and_attack_any','lose_then_attack_any',
+    'goliath_special','damage_per_temple_and_gain',
+    'attack_any_per_temple','gain_and_destroy_two_walls' // NEW
+  ].includes(kind);
+}
+function allowedTargetTypesFor(kind){
+  switch(kind){
+    case 'attack_any':
+    case 'attack_any_and_heal':
+    case 'attack_any_per_temple':
+    case 'lose_then_attack_any':
+    case 'damage_per_temple_and_gain':
+      return ['troop','structure','townhall'];
+
+    case 'attack_any_and_destroy_troop':
+      return ['troop','structure','townhall'];
+
+    case 'attack_structure':
+      return ['wall','structure']; // troops can hit walls or structures
+
+    case 'destroy_structure_non_temple':
+      return ['structure']; // cannot target walls or townhall
+
+    case 'destroy_structure_and_attack_any':
+      return ['structure']; // first target must be a (non-Town Hall) structure
+
+    case 'attack_troop':
+    case 'destroy_troop':
+      return ['troop'];
+
+    case 'goliath_special':
+      return ['wall','troop','structure','townhall'];
+
+    case 'gain_and_destroy_two_walls':
+      return ['wall'];
+
+    default:
+      return [];
+  }
+}
+
+
     function listTargetableEntries(p, type){
       const owned=p.owned||[];
       if (type==='troop') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='troop' && x.e.hp>0);
@@ -374,17 +396,57 @@ if (!current || !owner || !card){
       const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
 
       // helper to enable/disable the Apply button based on current selection
-      const refreshApplyButton = () => {
-        const applyBtn = document.getElementById('applyTargetBtn');
-        if (!applyBtn) return;
-        const tName = selP.value;
-        const tType = selT.value;
-        const tIdx  = selE.disabled ? null : selE.value; // '' means none
-        const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName);
-        const validTown = (tType === 'townhall') ? (((state.players||[]).find(p=>p.name===tName)?.townHp || 0) > 0) : true;
-        const validEntry = (tType === 'townhall') ? true : (tIdx !== '');
-        applyBtn.disabled = !(hasTargetPlayer && validTown && validEntry);
-      };
+     const refreshApplyButton = () => {
+  const applyBtn = document.getElementById('applyTargetBtn');
+  if (!applyBtn) return;
+
+  const tName = selP.value;
+  const tType = selT.value;
+
+  // Normalize selected entry index
+  const tIdxRaw = selE.disabled ? null : selE.value; // '' means none
+  const tIdx = (tIdxRaw === '' || tIdxRaw == null) ? null : Number(tIdxRaw);
+
+  const players = (state.players || []);
+  const target = players.find(p => p.name === tName) || null;
+
+  const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName) && !!target;
+  const validTown = (tType === 'townhall') ? ((target?.townHp || 0) > 0) : true;
+
+  // Walls shield Town Hall + structures
+  const shieldUp = target ? (typeof hasActiveWall === 'function' ? hasActiveWall(target) : false) : false;
+  const structOrTH = (tType === 'structure' || tType === 'townhall');
+  const blockedByWalls = shieldUp && structOrTH;
+
+  // Validate selected entry when not townhall
+  let validEntry = true;
+  if (tType !== 'townhall') {
+    if (tIdx === null || Number.isNaN(tIdx)) {
+      validEntry = false;
+    } else {
+      const entry = target?.owned?.[tIdx];
+      const etype = entry ? CARD_CATALOG[entry.key]?.type : null;
+      const alive = (entry?.hp || 0) > 0;
+      validEntry = !!entry && alive && (etype === tType);
+    }
+  }
+
+  const ok = hasTargetPlayer && validTown && validEntry && !blockedByWalls;
+  applyBtn.disabled = !ok;
+
+  // Helpful tooltip when disabled
+  if (!ok) {
+    let reason = '';
+    if (!hasTargetPlayer)          reason = 'Select a valid target player.';
+    else if (!validTown)           reason = 'Town Hall is already destroyed.';
+    else if (blockedByWalls)       reason = 'Walls are up — destroy walls first.';
+    else if (!validEntry && tType!=='townhall') reason = 'Select a valid target entry.';
+    applyBtn.title = reason || 'Not allowed.';
+  } else {
+    applyBtn.title = '';
+  }
+};
+
 
       // Populate enemies
       if (!enemies.length){
@@ -403,47 +465,90 @@ if (!current || !owner || !card){
       });
 
       function refillEntries(){
-        selE.innerHTML = '';
-        const targetName = selP.value;
-        const typ = selT.value;
-        const target = (state.players||[]).find(p => p.name === targetName);
+  selE.innerHTML = '';
 
-        if (!target){
-          selE.disabled = true;
-          const o = document.createElement('option'); o.value=''; o.textContent='(no target)'; selE.appendChild(o);
-          refreshApplyButton();
-          return;
-        }
+  const targetName = selP.value;
+  const typ = selT.value;
+  const players = (state.players || []);
+  const target = players.find(p => p.name === targetName) || null;
 
-        if (typ === 'townhall'){
-          selE.disabled = true;
-          const dead = (target.townHp || 0) <= 0;
-          const o = document.createElement('option'); 
-          o.value = ''; 
-          o.textContent = dead ? '(Town Hall destroyed)' : '(Town Hall)';
-          selE.appendChild(o);
-          refreshApplyButton();
-          return;
-        }
+  // Current trigger info (captured from outer scope)
+  const currentKind = card?.onTrigger?.kind || '';
+  const ATTACK_KINDS = new Set([
+    'attack_any','attack_structure','attack_troop',
+    'attack_any_and_heal','attack_any_per_temple',
+    'damage_per_temple_and_gain','lose_then_attack_any',
+    'attack_any_and_destroy_troop','goliath_special'
+  ]);
+  const isAttack = ATTACK_KINDS.has(currentKind);
 
-        selE.disabled = false;
-        const items = listTargetableEntries(target, typ);
-        if (!items.length){
-          const o = document.createElement('option'); o.value=''; o.textContent='(none)'; selE.appendChild(o);
-          selE.disabled = true; // nothing to pick
-          refreshApplyButton();
-          return;
-        }
+  const isTempleKey = (k) => (k==='white_temple'||k==='black_temple'||k==='red_temple'||k==='green_temple');
 
-        items.forEach(it => {
-          const o = document.createElement('option');
-          o.value = String(it.idx);
-          o.textContent = `${it.c.emoji} ${it.c.name} (HP ${it.e.hp})`;
-          selE.appendChild(o);
-        });
+  if (!target){
+    selE.disabled = true;
+    const o = document.createElement('option'); o.value=''; o.textContent='(no target player)';
+    selE.appendChild(o);
+    refreshApplyButton();
+    return;
+  }
 
-        refreshApplyButton();
-      }
+  // --- Town Hall selection (always single "entry") ---
+  if (typ === 'townhall'){
+    selE.disabled = true;
+    const dead = (target.townHp || 0) <= 0;
+    const blocked = typeof hasActiveWall === 'function' ? hasActiveWall(target) : false;
+
+    const o = document.createElement('option');
+    o.value = '';
+    if (dead)        o.textContent = '(Town Hall destroyed)';
+    else if (blocked && isAttack) o.textContent = '(Town Hall — blocked by walls)';
+    else             o.textContent = '(Town Hall)';
+    selE.appendChild(o);
+
+    refreshApplyButton();
+    return;
+  }
+
+  // --- Structures are blocked by walls only for ATTACK kinds ---
+  if (typ === 'structure'){
+    const shieldUp = (typeof hasActiveWall === 'function') ? hasActiveWall(target) : false;
+    if (shieldUp && isAttack){
+      selE.disabled = true;
+      const o = document.createElement('option'); o.value=''; o.textContent='(structures blocked by walls)';
+      selE.appendChild(o);
+      refreshApplyButton();
+      return;
+    }
+  }
+
+  // --- Now list concrete entries for wall/troop/structure ---
+  selE.disabled = false;
+
+  let items = listTargetableEntries(target, typ); // [{idx, e, c}]
+  // For destroy_structure_non_temple, filter temples out
+  if (typ === 'structure' && currentKind === 'destroy_structure_non_temple'){
+    items = items.filter(it => !isTempleKey(it.e.key));
+  }
+
+  if (!items.length){
+    const o = document.createElement('option'); o.value=''; o.textContent='(none)';
+    selE.appendChild(o);
+    selE.disabled = true;
+    refreshApplyButton();
+    return;
+  }
+
+  items.forEach(it => {
+    const o = document.createElement('option');
+    o.value = String(it.idx);
+    const hp = (it.e.hp ?? 0);
+    o.textContent = `${it.c.emoji} ${it.c.name} (HP ${hp})`;
+    selE.appendChild(o);
+  });
+
+  refreshApplyButton();
+}
+
 
       selP.addEventListener('change', () => { refillEntries(); });
       selT.addEventListener('change', () => { refillEntries(); });
@@ -511,25 +616,55 @@ if (!current || !owner || !card){
       if (type==='structure') return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='structure' && e.key!=='townhall' && e.hp>0);
       return -1;
     }
-    function applyAttackToSpecific(owner, target, targetType, targetIdx, rawDmg, rd){
-      const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
-      const dmg = rawDmg + troopBuff;
-      if (targetType==='townhall'){ target.townHp = Math.max(0,(target.townHp||0)-dmg); return `hits ${target.name}'s 🏰 Town Hall for ${dmg}.`; }
-      if (targetIdx==null || targetIdx<0) return 'no valid target.';
-      const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
-      damageEntry(entry, dmg, target, rd);
-      return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`;
-    }
+  function applyAttackToSpecific(owner, target, targetType, targetIdx, rawDmg, rd){
+  const troopBuff = (owner.owned||[]).some(e=>e.key==='red_fortress') ? 1 : 0;
+  const dmg = rawDmg + troopBuff;
 
-    function destroySpecific(target, targetType, targetIdx, allowTemple=true, rd){
-      if (targetType==='townhall') return 'cannot destroy Town Hall.';
-      if (targetIdx==null || targetIdx<0) return 'no valid target.';
-      const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
-      const isTemple = /temple/i.test(CARD_CATALOG[entry.key]?.name||'');
-      if (!allowTemple && isTemple) return 'cannot destroy Temple with this effect.';
-      damageEntry(entry, entry.hp||9999, target, rd);
-      return `destroys ${target.name}'s ${CARD_CATALOG[entry.key].name}.`;
-    }
+  // walls must be destroyed before hitting structures or Town Hall
+  if ((targetType==='structure' || targetType==='townhall') && hasActiveWall(target)){
+    return `blocked by walls — destroy walls first.`;
+  }
+
+  if (targetType==='townhall'){
+    target.townHp = Math.max(0,(target.townHp||0)-dmg);
+    return `hits ${target.name}'s 🏰 Town Hall for ${dmg}.`;
+  }
+
+  if (targetIdx==null || targetIdx<0) return 'no valid target.';
+  const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
+
+  // type guard (safety against mismatched UI indices)
+  const realType = CARD_CATALOG[entry.key]?.type;
+  if (targetType==='structure' && realType!=='structure') return 'invalid target.';
+  if (targetType==='wall'      && realType!=='wall')      return 'invalid target.';
+  if (targetType==='troop'     && realType!=='troop')     return 'invalid target.';
+
+  damageEntry(entry, dmg, target, rd);
+  return `hits ${target.name}'s ${CARD_CATALOG[entry.key].name} for ${dmg}.`;
+}
+
+
+function destroySpecific(target, targetType, targetIdx, allowTemple=true, rd){
+  if (targetType==='townhall') return 'cannot destroy Town Hall.';
+  if (targetIdx==null || targetIdx<0) return 'no valid target.';
+  const entry = target.owned[targetIdx]; if (!entry) return 'no valid target.';
+
+  const card = CARD_CATALOG[entry.key];
+  const ttype = card?.type;
+
+  // enforce requested type
+  if (targetType==='structure' && ttype!=='structure') return 'invalid target.';
+  if (targetType==='wall'      && ttype!=='wall')      return 'invalid target.';
+  if (targetType==='troop'     && ttype!=='troop')     return 'invalid target.';
+
+  const isTemple = (entry.key==='white_temple'||entry.key==='black_temple'||entry.key==='red_temple'||entry.key==='green_temple');
+  if (!allowTemple && isTemple) return 'cannot destroy Temple with this effect.';
+
+  damageEntry(entry, entry.hp||9999, target, rd);
+  return `destroys ${target.name}'s ${card.name}.`;
+}
+
+
 const INSTANT_EARN_KINDS = new Set(['earn', 'earn_per_temple']);
 
 function applyInstantIncome(owner, card){
@@ -580,6 +715,10 @@ function applyInstantIncome(owner, card){
 
   return { q, autoNote };
 }
+    function hasActiveWall(p){
+  return (p?.owned||[]).some(e => CARD_CATALOG[e.key]?.type==='wall' && (e.hp||0) > 0);
+}
+
 
     function postResolveCleanup(rd){
       for (const pl of rd.players){ pl.owned = (pl.owned||[]).filter(e=>!e._remove); }
@@ -599,7 +738,7 @@ function hostResolveOne(rd, manual){
 
   const needsTarget = triggerNeedsTarget(kind);
 
-  // --- If this trigger needs a target but there are none, auto-skip it
+  // Skip if needs a target but none exist anywhere
   if (needsTarget){
     const ownerPlayer = rd.players[trig.ownerIdx];
     const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
@@ -618,33 +757,32 @@ function hostResolveOne(rd, manual){
     }
   }
 
-  // If target needed but not provided, ask the UI to provide it
-if (needsTarget && !manual){
-  const ownerPlayer = rd.players[trig.ownerIdx];
-  const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
-  const types = allowedTargetTypesFor(kind);
+  // If target needed but not provided, auto-pick if only one; else wait
+  if (needsTarget && !manual){
+    const ownerPlayer = rd.players[trig.ownerIdx];
+    const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
+    const types = allowedTargetTypesFor(kind);
 
-  let possibleTargets = [];
-  enemies.forEach(ep=>{
-    types.forEach(typ=>{
-      if (typ==='townhall' && (ep.townHp||0)>0){
-        possibleTargets.push({ player:ep, type:'townhall', idx:null });
-      } else {
-        listTargetableEntries(ep, typ).forEach(it=>{
-          possibleTargets.push({ player:ep, type:typ, idx:it.idx });
-        });
-      }
+    let possibleTargets = [];
+    enemies.forEach(ep=>{
+      types.forEach(typ=>{
+        if (typ==='townhall' && (ep.townHp||0)>0){
+          possibleTargets.push({ player:ep, type:'townhall', idx:null });
+        } else {
+          listTargetableEntries(ep, typ).forEach(it=>{
+            possibleTargets.push({ player:ep, type:typ, idx:it.idx });
+          });
+        }
+      });
     });
-  });
 
-  if (possibleTargets.length === 1){
-    const pick = possibleTargets[0];
-    manual = { targetPlayer: pick.player.name, targetType: pick.type, targetEntryIdx: pick.idx };
-    // fall through to normal targeted handling
-  } else {
-    return { changed:false, msg:'Target required.' };
+    if (possibleTargets.length === 1){
+      const pick = possibleTargets[0];
+      manual = { targetPlayer: pick.player.name, targetType: pick.type, targetEntryIdx: pick.idx };
+    } else {
+      return { changed:false, msg:'Target required.' };
+    }
   }
-}
 
   const applyAndShift = (extraMsg) => {
     stack.shift();
@@ -743,7 +881,8 @@ if (needsTarget && !manual){
     case 'destroy_troop':
     case 'destroy_structure_non_temple':
     case 'destroy_structure_and_attack_any':
-    case 'goliath_special': {
+    case 'goliath_special':
+    case 'gain_and_destroy_two_walls': { // NEW kind handled here
       const tName = manual?.targetPlayer;
       const tType = manual?.targetType;
       const tIdx  = (manual?.targetEntryIdx!=null) ? Number(manual.targetEntryIdx) : null;
@@ -798,14 +937,23 @@ if (needsTarget && !manual){
           return applyAndShift(out);
         }
         case 'destroy_structure_non_temple': {
-          if (tType==='troop') return applyAndShift('invalid target.');
+          if (tType==='troop' || tType==='townhall') return applyAndShift('invalid target.');
           const out = destroySpecific(target, 'structure', tIdx, /*allowTemple*/false, rd);
           return applyAndShift(out);
         }
         case 'destroy_structure_and_attack_any': {
-          if (tType==='troop') return applyAndShift('invalid first target.');
-          const out1 = destroySpecific(target, 'structure', tIdx, true, rd);
-          const out2 = applyAttackToSpecific(owner, target, 'structure', firstOfTypeIdx(target,'structure'), (card.onTrigger.dmg||0), rd);
+          if (tType==='troop' || tType==='townhall') return applyAndShift('invalid first target.');
+          const out1 = destroySpecific(target, tType, tIdx, /*allowTemple*/true, rd);
+        
+          // SECOND HIT: must respect wall shielding. If walls remain, hit a wall; else Town Hall.
+          let out2 = '';
+          if (hasActiveWall(target)){
+            const wIdx = firstOfTypeIdx(target,'wall');
+            if (wIdx>=0) out2 = applyAttackToSpecific(owner, target, 'wall', wIdx, (card.onTrigger.dmg||0), rd);
+            else         out2 = 'no wall to hit.';
+          } else {
+            out2 = applyAttackToSpecific(owner, target, 'townhall', null, (card.onTrigger.dmg||0), rd);
+          }
           return applyAndShift(out1 + ' ' + out2);
         }
         case 'goliath_special': {
@@ -819,18 +967,27 @@ if (needsTarget && !manual){
             return applyAndShift(out);
           }
         }
+        case 'gain_and_destroy_two_walls': { // NEW
+          if (tType!=='wall' || tIdx==null) return applyAndShift('invalid target (needs wall).');
+          owner.gold = (owner.gold||0) + (card.onTrigger.coins||0);
+          // destroy selected wall
+          destroySpecific(target, 'wall', tIdx, true, rd);
+          // destroy another wall if present
+          const w2 = firstOfTypeIdx(target,'wall');
+          if (w2>=0) destroySpecific(target, 'wall', w2, true, rd);
+          return applyAndShift(`gains ${card.onTrigger.coins||0} coins and destroys up to two walls.`);
+        }
       }
       break;
     }
 
-    // ----- Acquire UI (minimal auto-pick for now) -----
+    // ----- Acquire (non-target UI) -----
     case 'acquire_troop_cost_leq_temples': {
       const tCount = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
       const maxCost = tCount;
       const choices = Object.values(CARD_CATALOG)
         .filter(c => c.type==='troop' && (c.cost||0) <= maxCost);
       if (choices.length){
-        // simple heuristic: cheapest, then highest HP
         choices.sort((a,b)=> (a.cost-b.cost) || ((b.hp||0)-(a.hp||0)));
         addOrIncOwned(owner, choices[0].key);
         owner.unlocked = computeUnlockForPlayer(owner);
@@ -840,12 +997,13 @@ if (needsTarget && !manual){
     }
   }
 
-  // Fallback — should rarely hit
+  // Fallback
   stack.shift();
   rd.resolveQueue = stack;
   postResolveCleanup(rd);
   return { changed:true, msg };
 }
+
 
 
   // Add this once (top-level, above the function)
@@ -1159,3 +1317,4 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
