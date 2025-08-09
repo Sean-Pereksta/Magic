@@ -237,9 +237,17 @@
     return triggerNeedsTarget(k);
   })();
 
-  const resolving = state?.phase==='resolving';
-  $('#resolveBtn').disabled      = !isMyTurn() || !resolving || needsT;
-  $('#applyTargetBtn').disabled  = !isMyTurn() || !resolving || !needsT;
+  const resolving = state?.phase === 'resolving';
+const needsT = (() => {
+  if (!resolving) return false;
+  const cur = (state?.resolveQueue||[])[0];
+  if (!cur) return false;
+  const k = CARD_CATALOG[cur.key]?.onTrigger?.kind;
+  return triggerNeedsTarget(k);
+})();
+
+$('#resolveBtn').disabled     = !isMyTurn() || !resolving || needsT;
+$('#applyTargetBtn').disabled = !isMyTurn() || !resolving || !needsT;;
 
   // Last roll badge UI (keep yours)
   const lb = $('#lastRollBadge');
@@ -954,6 +962,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
