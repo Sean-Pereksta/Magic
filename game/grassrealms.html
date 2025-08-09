@@ -336,8 +336,14 @@ function renderControls(){
   }
 
   const current = q[0];
-  const owner   = (state.players || [])[current.ownerIdx];
-  const card    = CARD_CATALOG[current.key];
+const owner   = (state.players || [])[current?.ownerIdx];
+const card    = CARD_CATALOG[current?.key];
+
+if (!current || !owner || !card){
+  qb.innerHTML = '<div class="small">Waiting for next trigger…</div>';
+  return;
+}
+   
 
   const title = document.createElement('div');
   title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll ? ` (roll ${current.roll})` : ''}</div>`;
@@ -864,78 +870,91 @@ async function hostApplyIntents(){
     );
     const snap = await getDocs(qy);
 
-    for (const d of snap.docs){
-      const mv = d.data();
-      if (mv.processed) continue;
+ for (const d of snap.docs){
+  const mv = d.data();
+  if (mv.processed) continue;
 
-      await runTransaction(db, async (tx) => {
-        const ref = doc(db, 'lobbies', lobbyId);
-        const rs  = await tx.get(ref);
-        if (!rs.exists()) return;
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, 'lobbies', lobbyId);
+    const rs  = await tx.get(ref);
+    if (!rs.exists()) return;
 
-        const rd = rs.data().game || null;
-        if (!rd) return; // no game yet
+    const rd = rs.data().game || null;
+    if (!rd) return; // no game yet
 
-        const players = rd.players || [];
-        const tIdx    = rd.turnIdx ?? 0;
-        const phase   = rd.phase || 'await_roll';
-        const actor   = players[tIdx];
-        const isActor = mv.from === actor?.name;
+    const players = rd.players || [];
+    const tIdx    = rd.turnIdx ?? 0;
+    let   phase   = rd.phase || 'await_roll';           // <- make this `let`
+    const actor   = players[tIdx];
+    const isActor = mv.from === actor?.name;
 
+    // Phase auto-repair: if queue empty, don't sit in 'resolving'
+    if (phase === 'resolving' && !((rd.resolveQueue||[]).length)){
+      rd.phase = 'buy';
+      rd._lastMsg = (rd._lastMsg || '') + ' [auto-repair: no pending triggers]';
+      phase = 'buy';                                    // <- keep local in sync
+      tx.update(ref, { game: rd });
+      // no return; continue to process mv using repaired phase
+    }
         // --- ROLL ---
-        if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
-          const mode = mv.payload?.mode || 'd6';
-          const v    = rollDie(mode, rd); // deterministic RNG from state
+        // --- ROLL ---
+if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
+  const mode = mv.payload?.mode || 'd6';
+  const v    = rollDie(mode, rd); // deterministic RNG from state
 
-          // Always record the roll so UI shows it even if queue build fails
-          rd.lastRoll = { mode, value: v, by: actor.name };
-          rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
+  // Always record the roll so UI shows it even if queue build fails
+  rd.lastRoll = { mode, value: v, by: actor.name };
+  rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
 
-          try {
-            const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v);
-            rd.resolveQueue = Array.isArray(q) ? q : [];
-            rd.phase = rd.resolveQueue.length ? 'resolving' : 'buy';
-            if (autoNote) rd._lastMsg += ' — ' + autoNote;
-          } catch (e) {
-            console.error('Queue build failed:', e);
-            rd.resolveQueue = [];
-            rd.phase = 'buy';
-            rd._lastMsg += ' (auto-resolve disabled this roll due to an error)';
-          }
+  try {
+    const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v);
+    rd.resolveQueue = Array.isArray(q) ? q : [];
+    rd.phase = rd.resolveQueue.length ? 'resolving' : 'buy';
+    if (autoNote) rd._lastMsg += ' — ' + autoNote;
+  } catch (e) {
+    console.error('Queue build failed:', e);
+    rd.resolveQueue = [];
+    rd.phase = 'buy';
+    rd._lastMsg += ' (auto-resolve disabled this roll due to an error)';
+  }
 
-          rd.rollCount = (rd.rollCount || 0) + 1;
+  rd.rollCount = (rd.rollCount || 0) + 1;
 
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
-          return;
-        }
+  // Safety: if something left us in 'resolving' with an empty queue, bump to 'buy'
+  if (rd.phase === 'resolving' && !(rd.resolveQueue?.length)) rd.phase = 'buy';
 
-        // --- RESOLVE (no target) ---
-        if (mv.type === 'RESOLVE_NEXT' && isActor && phase === 'resolving'){
-          const res = hostResolveOne(rd, null);
-          rd._lastMsg = res.msg;
-          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
+  tx.update(ref, { game: rd });
+  tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+  return;
+}
 
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
-          return;
-        }
+// --- RESOLVE (no target) ---
+if (mv.type === 'RESOLVE_NEXT' && isActor && phase === 'resolving'){
+  const res = hostResolveOne(rd, null);
+  if (res?.msg) rd._lastMsg = res.msg;
+  if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
 
-        // --- RESOLVE (with target) ---
-        if (mv.type === 'RESOLVE_WITH_TARGET' && isActor && phase === 'resolving'){
-          const manual = {
-            targetPlayer:   mv.payload?.targetPlayer,
-            targetType:     mv.payload?.targetType,
-            targetEntryIdx: mv.payload?.targetEntryIdx
-          };
-          const res = hostResolveOne(rd, manual);
-          rd._lastMsg = res.msg;
-          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
+  tx.update(ref, { game: rd });
+  tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+  return;
+}
 
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
-          return;
-        }
+// --- RESOLVE (with target) ---
+if (mv.type === 'RESOLVE_WITH_TARGET' && isActor && phase === 'resolving'){
+  const manual = {
+    targetPlayer:   String(mv.payload?.targetPlayer ?? ''),
+    targetType:     String(mv.payload?.targetType ?? ''),
+    targetEntryIdx: (mv.payload?.targetEntryIdx == null ? null : Number(mv.payload.targetEntryIdx))
+  };
+  const res = hostResolveOne(rd, manual);
+  if (res?.msg) rd._lastMsg = res.msg;
+  if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
+
+  tx.update(ref, { game: rd });
+  tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+  return;
+}
+
 
         // --- BUY ---
         if (mv.type === 'BUY' && isActor && phase === 'buy'){
@@ -1113,6 +1132,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
