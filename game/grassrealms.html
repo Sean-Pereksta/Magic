@@ -324,136 +324,143 @@ function renderControls(){
       if (type==='structure') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='structure' && x.e.key!=='townhall' && x.e.hp>0);
       return [];
     }
-    function renderQueueAndTargets(){
-      const qb=$('#queueBox'); qb.innerHTML='';
-      const tb=$('#targetBox'); tb.innerHTML='';
-      if (!state) return;
-      const q=state.resolveQueue||[];
-      if (!(q.length)) { qb.innerHTML='<div class="small">No triggers pending.</div>'; return; }
+ function renderQueueAndTargets(){
+  const qb = $('#queueBox'); qb.innerHTML = '';
+  const tb = $('#targetBox'); tb.innerHTML = '';
+  if (!state) return;
 
-      const current=q[0]; const owner = (state.players||[])[current.ownerIdx];
-      const card = CARD_CATALOG[current.key];
-      const title=document.createElement('div');
-      title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll?` (roll ${current.roll})`:''}</div>`;
-      qb.appendChild(title);
+  const q = state.resolveQueue || [];
+  if (!q.length){
+    qb.innerHTML = '<div class="small">No triggers pending.</div>';
+    return;
+  }
 
-      if (q.length>1){
-        const ol=document.createElement('div'); ol.className='small';
-        for (let i=1;i<q.length;i++){
-          const t=q[i], o=(state.players||[])[t.ownerIdx], c=CARD_CATALOG[t.key];
-          const line=document.createElement('div'); line.className='qItem';
-          line.textContent = `${i+1}. ${o.name} — ${c.name}`;
-          ol.appendChild(line);
+  const current = q[0];
+  const owner   = (state.players || [])[current.ownerIdx];
+  const card    = CARD_CATALOG[current.key];
+
+  const title = document.createElement('div');
+  title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll ? ` (roll ${current.roll})` : ''}</div>`;
+  qb.appendChild(title);
+
+  if (q.length > 1){
+    const ol = document.createElement('div'); ol.className = 'small';
+    for (let i = 1; i < q.length; i++){
+      const t = q[i], o = (state.players||[])[t.ownerIdx], c = CARD_CATALOG[t.key];
+      const line = document.createElement('div'); line.className = 'qItem';
+      line.textContent = `${i+1}. ${o.name} — ${c.name}`;
+      ol.appendChild(line);
+    }
+    qb.appendChild(ol);
+  }
+
+  if (isMyTurn()){
+    const kind = card.onTrigger?.kind;
+    if (triggerNeedsTarget(kind)){
+      const box = document.createElement('div'); 
+      box.className = 'needTarget';
+      const opts = allowedTargetTypesFor(kind);
+
+      const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
+      const selT = document.createElement('select'); selT.id = 'selTargetType';
+      const selE = document.createElement('select'); selE.id = 'selTargetEntry';
+
+      const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
+
+      // helper to enable/disable the Apply button based on current selection
+      const refreshApplyButton = () => {
+        const applyBtn = document.getElementById('applyTargetBtn');
+        if (!applyBtn) return;
+        const tName = selP.value;
+        const tType = selT.value;
+        const tIdx  = selE.disabled ? null : selE.value; // '' means none
+        const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName);
+        const validTown = (tType === 'townhall') ? (((state.players||[]).find(p=>p.name===tName)?.townHp || 0) > 0) : true;
+        const validEntry = (tType === 'townhall') ? true : (tIdx !== '');
+        applyBtn.disabled = !(hasTargetPlayer && validTown && validEntry);
+      };
+
+      // Populate enemies
+      if (!enemies.length){
+        selP.innerHTML = '<option value="">(no enemy)</option>';
+      } else {
+        enemies.forEach(p => {
+          const o = document.createElement('option');
+          o.value = p.name; o.textContent = p.name; selP.appendChild(o);
+        });
+      }
+
+      // Populate types
+      opts.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t; selT.appendChild(o);
+      });
+
+      function refillEntries(){
+        selE.innerHTML = '';
+        const targetName = selP.value;
+        const typ = selT.value;
+        const target = (state.players||[]).find(p => p.name === targetName);
+
+        if (!target){
+          selE.disabled = true;
+          const o = document.createElement('option'); o.value=''; o.textContent='(no target)'; selE.appendChild(o);
+          refreshApplyButton();
+          return;
         }
-        qb.appendChild(ol);
+
+        if (typ === 'townhall'){
+          selE.disabled = true;
+          const dead = (target.townHp || 0) <= 0;
+          const o = document.createElement('option'); 
+          o.value = ''; 
+          o.textContent = dead ? '(Town Hall destroyed)' : '(Town Hall)';
+          selE.appendChild(o);
+          refreshApplyButton();
+          return;
+        }
+
+        selE.disabled = false;
+        const items = listTargetableEntries(target, typ);
+        if (!items.length){
+          const o = document.createElement('option'); o.value=''; o.textContent='(none)'; selE.appendChild(o);
+          selE.disabled = true; // nothing to pick
+          refreshApplyButton();
+          return;
+        }
+
+        items.forEach(it => {
+          const o = document.createElement('option');
+          o.value = String(it.idx);
+          o.textContent = `${it.c.emoji} ${it.c.name} (HP ${it.e.hp})`;
+          selE.appendChild(o);
+        });
+
+        refreshApplyButton();
       }
-  
 
-     if (isMyTurn()){
-  const kind = card.onTrigger?.kind;
-  if (triggerNeedsTarget(kind)){
-    const box = document.createElement('div'); 
-    box.className = 'needTarget';
-    const opts = allowedTargetTypesFor(kind);
+      selP.addEventListener('change', () => { refillEntries(); });
+      selT.addEventListener('change', () => { refillEntries(); });
+      selE.addEventListener('change', () => { refreshApplyButton(); });
 
-    const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
-    const selT = document.createElement('select'); selT.id = 'selTargetType';
-    const selE = document.createElement('select'); selE.id = 'selTargetEntry';
+      // Preselect first entries and fill
+      if (selP.options.length) selP.selectedIndex = 0;
+      if (selT.options.length) selT.selectedIndex = 0;
+      refillEntries();
 
-    const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
-
-    // helper to enable/disable the Apply button based on current selection
-    const refreshApplyButton = () => {
-      const applyBtn = document.getElementById('applyTargetBtn');
-      if (!applyBtn) return;
-      const tName = selP.value;
-      const tType = selT.value;
-      const tIdx  = selE.disabled ? null : selE.value; // '' means none
-      const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName);
-      const validTown = (tType === 'townhall') ? (((state.players||[]).find(p=>p.name===tName)?.townHp||0) > 0) : true;
-      const validEntry = (tType === 'townhall') ? true : (tIdx !== '');
-      applyBtn.disabled = !(hasTargetPlayer && validTown && validEntry);
-    };
-
-    // Populate enemies
-    if (!enemies.length){
-      selP.innerHTML = '<option value="">(no enemy)</option>';
+      box.appendChild(document.createTextNode('Target: '));
+      box.appendChild(selP);
+      box.appendChild(selT);
+      box.appendChild(selE);
+      tb.appendChild(box);
     } else {
-      enemies.forEach(p => {
-        const o = document.createElement('option');
-        o.value = p.name; o.textContent = p.name; selP.appendChild(o);
-      });
+      const note = document.createElement('div'); note.className = 'small';
+      note.textContent = 'This effect needs no target. Use "Resolve Next".';
+      tb.appendChild(note);
     }
-
-    // Populate types
-    opts.forEach(t => {
-      const o = document.createElement('option');
-      o.value = t; o.textContent = t; selT.appendChild(o);
-    });
-
-    function refillEntries(){
-      selE.innerHTML = '';
-      const targetName = selP.value;
-      const typ = selT.value;
-      const target = (state.players||[]).find(p => p.name === targetName);
-
-      if (!target){
-        selE.disabled = true;
-        const o = document.createElement('option'); o.value=''; o.textContent='(no target)'; selE.appendChild(o);
-        refreshApplyButton();
-        return;
-      }
-
-      if (typ === 'townhall'){
-        selE.disabled = true;
-        const dead = (target.townHp||0) <= 0;
-        const o = document.createElement('option'); 
-        o.value = ''; 
-        o.textContent = dead ? '(Town Hall destroyed)' : '(Town Hall)';
-        selE.appendChild(o);
-        refreshApplyButton();
-        return;
-      }
-
-      selE.disabled = false;
-      const items = listTargetableEntries(target, typ);
-      if (!items.length){
-        const o = document.createElement('option'); o.value=''; o.textContent='(none)'; selE.appendChild(o);
-        selE.disabled = true; // nothing to pick
-        refreshApplyButton();
-        return;
-      }
-
-      items.forEach(it => {
-        const o = document.createElement('option');
-        o.value = String(it.idx);
-        o.textContent = `${it.c.emoji} ${it.c.name} (HP ${it.e.hp})`;
-        selE.appendChild(o);
-      });
-
-      refreshApplyButton();
-    }
-
-    selP.addEventListener('change', ()=>{ refillEntries(); });
-    selT.addEventListener('change', ()=>{ refillEntries(); });
-    selE.addEventListener('change', ()=>{ refreshApplyButton(); });
-
-    // Preselect first entries and fill
-    if (selP.options.length) selP.selectedIndex = 0;
-    if (selT.options.length) selT.selectedIndex = 0;
-    refillEntries();
-
-    box.appendChild(document.createTextNode('Target: '));
-    box.appendChild(selP);
-    box.appendChild(selT);
-    box.appendChild(selE);
-    tb.appendChild(box);
-  } else {
-    const note = document.createElement('div'); note.className='small';
-    note.textContent = 'This effect needs no target. Use "Resolve Next".';
-    tb.appendChild(note);
   }
 }
+
 
 
     // ---------- Engine (same logic, stored under lobbies/{id}) ----------
@@ -1092,6 +1099,7 @@ if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
   </script>
 </body>
 </html>
+
 
 
 
