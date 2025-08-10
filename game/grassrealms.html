@@ -447,32 +447,41 @@ function renderControls(){
     return;
   }
 
+  // keep your die to the last chosen, clamped to what's unlocked
   if (dieSel){
-    dieSel.innerHTML = allowedDiceFor(p).map(o=>`<option value="${o}">${o}</option>`).join('');
+    const allowed = allowedDiceFor(p); // ['d6'] | ['d6','2d6'] | ['d6','2d6','d20']
+    const desired = allowed.includes(uiPrefs.die) ? uiPrefs.die : allowed[allowed.length-1]; // prefer highest allowed if previous is invalid
+    dieSel.innerHTML = allowed.map(o=>`<option value="${o}">${o}</option>`).join('');
+    dieSel.value = desired; // restore
+    if (!dieSel.dataset.bound){
+      dieSel.addEventListener('change', ()=>{
+        uiPrefs.die = dieSel.value;
+        savePrefs(uiPrefs);
+      });
+      dieSel.dataset.bound = '1';
+    }
   }
 
   const isTurn   = isMyTurn();
   const phase    = state?.phase || 'await_roll';
   const resolving = (phase === 'resolving');
 
-  // Look at the *current* queue item to decide if a target is needed
- let needsT = false;
-if (resolving){
-  const cur = (state?.resolveQueue || [])[0];
-  if (cur){
-    const card = CARD_CATALOG[cur.key];
-    const eff  = (cur.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
-    needsT = triggerNeedsTarget(eff.kind);
+  // Use effective (crazy or normal) effect to decide target need
+  let needsT = false;
+  if (resolving){
+    const cur = (state?.resolveQueue || [])[0];
+    if (cur){
+      const card = CARD_CATALOG[cur.key];
+      const eff  = (cur.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
+      needsT = triggerNeedsTarget(eff.kind);
+    }
   }
-}
-
 
   $('#rollBtn').disabled        = !isTurn || (phase !== 'await_roll');
-  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;   // disabled if a target is needed
-  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;  // enabled only when a target is needed
-  $('#endTurnBtn').disabled     = !isTurn; // always available on your turn (with forfeit logic in handler)
+  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;
+  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;
+  $('#endTurnBtn').disabled     = !isTurn;
 
-  // Last roll badge
   const lb = $('#lastRollBadge');
   if (lb){
     if (state?.lastRoll?.value){
@@ -483,6 +492,13 @@ if (resolving){
     }
   }
 }
+
+
+    // ---- UI Prefs (persisted per lobby & user) ----
+const PREFS_KEY = `gr_prefs_${lobbyId}_${myName}`;
+function loadPrefs(){ try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } }
+function savePrefs(p){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {} }
+let uiPrefs = Object.assign({ die:'d6', target:{ player:'', type:'', entry:null } }, loadPrefs());
 
     function renderShop(){
   const shop = $('#shop'); shop.innerHTML = '';
@@ -655,14 +671,18 @@ function renderQueueAndTargets(){
     return;
   }
 
-  // Header for current + a peek at the queue
-  const title = document.createElement('div');
- title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${
-  current.roll ? ` (roll ${current.roll}${current.useCrazy?' • CRAZY':''})` : ''
-}</div>`;
+  // Effective effect: prefer CRAZY when queued that way
+  const eff  = (current.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
+  const kind = eff.kind || '';
 
+  // Header for current + CRAZY badge
+  const title = document.createElement('div');
+  title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${
+    current.roll ? ` (roll ${current.roll}${current.useCrazy ? ' • CRAZY':''})` : ''
+  }</div>`;
   qb.appendChild(title);
 
+  // Peek remaining queue
   if (q.length > 1){
     const ol = document.createElement('div'); ol.className = 'small';
     for (let i = 1; i < q.length; i++){
@@ -674,7 +694,7 @@ function renderQueueAndTargets(){
     qb.appendChild(ol);
   }
 
-  // Only the current turn's actor chooses targets (adjust if you want owner to choose)
+  // Only the active player chooses targets (change if you want owner to choose)
   if (!isMyTurn()){
     const note = document.createElement('div'); note.className = 'small';
     note.textContent = 'Waiting for the active player to resolve.';
@@ -682,8 +702,6 @@ function renderQueueAndTargets(){
     return;
   }
 
-   const eff = (current.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
-  const kind = eff.kind;
   const needsTarget = triggerNeedsTarget(kind);
   if (!needsTarget){
     const note = document.createElement('div'); note.className = 'small';
@@ -692,16 +710,64 @@ function renderQueueAndTargets(){
     return;
   }
 
-  // Build targeting UI
+  // ---- Targeting UI ----
   const box = document.createElement('div'); box.className = 'needTarget';
   const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
   const selT = document.createElement('select'); selT.id = 'selTargetType';
   const selE = document.createElement('select'); selE.id = 'selTargetEntry';
 
+  // Persist prefs (guards if helpers weren’t added yet)
+  try{ if (typeof uiPrefs === 'undefined') window.uiPrefs = { die:'d6', target:{ player:'', type:'', entry:null } }; }catch{}
+  const persist = (typeof savePrefs === 'function') ? savePrefs : function(){};
+
   const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
   const opts    = allowedTargetTypesFor(kind);
 
-  // --- helpers (use closure vars) ---
+  // Players list
+  if (!enemies.length){
+    selP.innerHTML = '<option value="">(no enemy)</option>';
+  } else {
+    enemies.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.name; o.textContent = p.name; selP.appendChild(o);
+    });
+  }
+
+  // Types list
+  opts.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t; selT.appendChild(o);
+  });
+
+  // Restore previous target choices when valid; else pick sensible defaults
+  const ATTACK_KINDS = new Set([
+    'attack_any','attack_structure','attack_troop',
+    'attack_any_and_heal','attack_any_per_temple',
+    'damage_per_temple_and_gain','lose_then_attack_any',
+    'attack_any_and_destroy_troop','goliath_special'
+  ]);
+
+  // Player
+  if (uiPrefs.target?.player && enemies.some(e=>e.name===uiPrefs.target.player)){
+    selP.value = uiPrefs.target.player;
+  } else if (enemies.length){
+    selP.value = enemies[0].name;
+  }
+
+  // Type/category
+  if (uiPrefs.target?.type && opts.includes(uiPrefs.target.type)){
+    selT.value = uiPrefs.target.type;
+  } else if (opts.length){
+    const isAttack = ATTACK_KINDS.has(kind);
+    const firstEnemy = enemies[0];
+    if (isAttack && firstEnemy && typeof hasActiveWall==='function' && hasActiveWall(firstEnemy) && opts.includes('wall')){
+      selT.value = 'wall';
+    } else {
+      selT.value = opts[0];
+    }
+  }
+
+  // --- Apply button enablement helper
   const refreshApplyButton = () => {
     const applyBtn = document.getElementById('applyTargetBtn');
     if (!applyBtn) return;
@@ -719,10 +785,11 @@ function renderQueueAndTargets(){
     const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName) && !!target;
     const validTown = (tType === 'townhall') ? ((target?.townHp || 0) > 0) : true;
 
-    // Walls shield Town Hall + structures
+    // Walls shield Town Hall + structures for attack-kind effects
+    const isAttack = ATTACK_KINDS.has(kind);
     const shieldUp = target ? (typeof hasActiveWall === 'function' ? hasActiveWall(target) : false) : false;
     const structOrTH = (tType === 'structure' || tType === 'townhall');
-    const blockedByWalls = shieldUp && structOrTH;
+    const blockedByWalls = isAttack && shieldUp && structOrTH;
 
     // Validate selected entry when not townhall
     let validEntry = true;
@@ -753,21 +820,16 @@ function renderQueueAndTargets(){
     }
   };
 
+  // --- Fill the entry dropdown based on chosen player/type
   function refillEntries(){
     selE.innerHTML = '';
 
     const targetName = selP.value;
-    const typ = selT.value;
-    const players = (state.players || []);
-    const target = players.find(p => p.name === targetName) || null;
+    const typ        = selT.value;
+    const players    = (state.players || []);
+    const target     = players.find(p => p.name === targetName) || null;
 
     const currentKind = eff?.kind || '';
-    const ATTACK_KINDS = new Set([
-      'attack_any','attack_structure','attack_troop',
-      'attack_any_and_heal','attack_any_per_temple',
-      'damage_per_temple_and_gain','lose_then_attack_any',
-      'attack_any_and_destroy_troop','goliath_special'
-    ]);
     const isAttack = ATTACK_KINDS.has(currentKind);
     const isTempleKey = (k) => (k==='white_temple'||k==='black_temple'||k==='red_temple'||k==='green_temple');
 
@@ -787,16 +849,16 @@ function renderQueueAndTargets(){
 
       const o = document.createElement('option');
       o.value = '';
-      if (dead)        o.textContent = '(Town Hall destroyed)';
+      if (dead)              o.textContent = '(Town Hall destroyed)';
       else if (blocked && isAttack) o.textContent = '(Town Hall — blocked by walls)';
-      else             o.textContent = '(Town Hall)';
+      else                   o.textContent = '(Town Hall)';
       selE.appendChild(o);
 
       refreshApplyButton();
       return;
     }
 
-    // Structures blocked by walls only for attack-kind effects
+    // Structures blocked by walls for attack-kind effects
     if (typ === 'structure'){
       const shieldUp = (typeof hasActiveWall === 'function') ? hasActiveWall(target) : false;
       if (shieldUp && isAttack){
@@ -833,49 +895,33 @@ function renderQueueAndTargets(){
       selE.appendChild(o);
     });
 
+    // Try to restore previously selected entry if still valid
+    if (uiPrefs.target && uiPrefs.target.entry != null){
+      const exists = Array.from(selE.options).some(o => Number(o.value) === Number(uiPrefs.target.entry));
+      if (exists) selE.value = String(uiPrefs.target.entry);
+    }
+
     refreshApplyButton();
   }
 
-  // --- Populate selects ---
-  // Players
-  if (!enemies.length){
-    selP.innerHTML = '<option value="">(no enemy)</option>';
-  } else {
-    enemies.forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.name; o.textContent = p.name; selP.appendChild(o);
-    });
-  }
-
-  // Types
-  opts.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t; o.textContent = t; selT.appendChild(o);
-  });
-
-  // Preselect first entries…
-  if (selP.options.length) selP.selectedIndex = 0;
-  if (selT.options.length) selT.selectedIndex = 0;
-
-  // …and if this is an attack and the first enemy has walls, default to 'wall'
-  const ATTACK_KINDS = new Set([
-    'attack_any','attack_structure','attack_troop',
-    'attack_any_and_heal','attack_any_per_temple',
-    'damage_per_temple_and_gain','lose_then_attack_any',
-    'attack_any_and_destroy_troop','goliath_special'
-  ]);
-  const isAttack = ATTACK_KINDS.has(kind);
-  const firstEnemy = enemies[0];
-  if (isAttack && firstEnemy && typeof hasActiveWall==='function' && hasActiveWall(firstEnemy)){
-    const wallOpt = Array.from(selT.options).find(o => o.value === 'wall');
-    if (wallOpt) selT.value = 'wall';
-  }
-
-  // Initial fill + listeners
+  // Initial fill + listeners + persistence
   refillEntries();
-  selP.addEventListener('change', refillEntries);
-  selT.addEventListener('change', refillEntries);
-  selE.addEventListener('change', refreshApplyButton);
+
+  selP.addEventListener('change', ()=>{
+    uiPrefs.target.player = selP.value;
+    persist(uiPrefs);
+    refillEntries();
+  });
+  selT.addEventListener('change', ()=>{
+    uiPrefs.target.type = selT.value;
+    persist(uiPrefs);
+    refillEntries();
+  });
+  selE.addEventListener('change', ()=>{
+    uiPrefs.target.entry = (selE.disabled || selE.value==='') ? null : Number(selE.value);
+    persist(uiPrefs);
+    refreshApplyButton();
+  });
 
   box.appendChild(document.createTextNode('Target: '));
   box.appendChild(selP);
@@ -883,9 +929,6 @@ function renderQueueAndTargets(){
   box.appendChild(selE);
   tb.appendChild(box);
 }
-
-
-
 
     // ---------- Engine (same logic, stored under lobbies/{id}) ----------
     function computeUnlockForPlayer(p){
@@ -1703,6 +1746,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
