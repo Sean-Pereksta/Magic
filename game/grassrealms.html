@@ -388,7 +388,7 @@ renderOwnedTiles(cl, p);
     function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
     function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
     function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
-    function renderOwnedTiles(container, player){
+   function renderOwnedTiles(container, player){
   container.innerHTML = '';
   const owned = player?.owned || [];
   for (let i=0; i<owned.length; i++){
@@ -400,10 +400,14 @@ renderOwnedTiles(cl, p);
     const label = document.createElement('div'); label.className='label'; label.textContent = c.name;
     const emj   = document.createElement('div'); emj.className='emj';   emj.textContent = c.emoji;
 
+    // 🔽 Tooltip on hover (native browser tooltip)
+    const tip = buildCardTip(c);
+    emj.title  = tip;         // hover over emoji
+    tile.title = tip;         // hover anywhere on the tile
+
     const rolls = (c.triggers && c.triggers.length) ? c.triggers.join(',') : '—';
     const meta  = document.createElement('div'); meta.className='meta'; meta.innerHTML = `🎲 ${rolls}`;
 
-    // badges
     if (e.hp != null){
       const hp = document.createElement('div'); hp.className='hp'; hp.textContent = `HP ${e.hp}`;
       tile.appendChild(hp);
@@ -420,6 +424,14 @@ renderOwnedTiles(cl, p);
     container.appendChild(tile);
   }
 }
+
+    function buildCardTip(card){
+  const rolls  = card.triggers?.length ? card.triggers.join(',') : '—';
+  const timing = card.timing || '—';
+  const hpTxt  = (card.hp ?? card.hpDynamic) ? ` | HP: ${card.hp ?? 'dynamic'}` : '';
+  return `${card.emoji} ${card.name}\n${card.details || ''}\nRolls: ${rolls} | Timing: ${timing}${hpTxt}`;
+}
+
 
 function renderControls(){
   const p = myPlayer();
@@ -473,25 +485,95 @@ if (resolving){
 }
 
     function renderShop(){
-      const shop=$('#shop'); shop.innerHTML=''; const p=myPlayer(); if (!p) return;
-      Object.values(CARD_CATALOG).forEach(card=>{
-        if (card.immutable) return;
-        if (card.requiresTemple){
-          const hasTemple=(p.owned||[]).some(e=>e.key===card.requiresTemple);
-          if (!hasTemple) return;
-        }
-        const have=(p.owned||[]).find(e=>e.key===card.key)?.count||0;
-        const max=card.max??3; if (have>=max) return;
+  const shop = $('#shop'); shop.innerHTML = '';
+  const p = myPlayer(); if (!p) return;
 
-        const div=document.createElement('div'); div.className='shopItem';
-        const trig = card.triggers?.length?(' | Roll: '+card.triggers.join(',')):''; 
-        div.innerHTML=`<h4>${card.emoji} ${card.name}</h4>
-          <div class="small">Cost: ${card.cost} | HP: ${card.hp ?? '—'}${trig}</div>
-          <button ${( !isMyTurn() || state?.phase!=='buy' || (p.gold||0) < card.cost )?'disabled':''} data-key="${card.key}">Buy</button>`;
-        div.querySelector('button').addEventListener('click', ()=>intentBuy(card.key));
-        shop.appendChild(div);
-      });
+  const canBuyNow = isMyTurn() && (state?.phase === 'buy');
+
+  // Helper to compute current HP for dynamic-HP cards
+  function computeHpNow(card){
+    if (!card.hpDynamic) return (card.hp ?? '—');
+    const perTemple = card.hpDynamic.perTemple;
+    const perHP     = card.hpDynamic.perHP || 1;
+    const temples = (p.owned||[]).find(e=>e.key===perTemple)?.count || 0;
+    const hpNow = Math.max(1, temples * perHP);
+    return `${hpNow} (scales)`;
+  }
+
+  // Sort by cost then name for a nicer shop
+  const cards = Object.values(CARD_CATALOG)
+    .filter(card => {
+      if (card.immutable) return false;
+      if (card.requiresTemple){
+        const hasTemple = (p.owned||[]).some(e=>e.key===card.requiresTemple);
+        if (!hasTemple) return false;
+      }
+      const have = (p.owned||[]).find(e=>e.key===card.key)?.count || 0;
+      const max  = card.max ?? 3;
+      return have < max;
+    })
+    .sort((a,b)=> (a.cost - b.cost) || a.name.localeCompare(b.name));
+
+  cards.forEach(card=>{
+    const have = (p.owned||[]).find(e=>e.key===card.key)?.count || 0;
+    const max  = card.max ?? 3;
+    const rolls = (card.triggers?.length ? card.triggers.join(',') : '—');
+    const hpLabel = computeHpNow(card);
+    const timing = card.timing || '—';
+
+    // Build a nice hover tooltip (uses your `details`)
+    const reqTxt = card.requiresTemple ? `\nRequires: ${CARD_CATALOG[card.requiresTemple]?.emoji || ''} ${CARD_CATALOG[card.requiresTemple]?.name || 'Temple'}` : '';
+    const tip = `${card.emoji} ${card.name}
+${card.details || ''}
+Cost: ${card.cost} | HP: ${hpLabel}
+Rolls: ${rolls} | Timing: ${timing}${reqTxt}`.trim();
+
+    const div = document.createElement('div');
+    div.className = 'shopItem';
+    div.title = tip;
+
+    // Header
+    const h4 = document.createElement('h4');
+    const emj = document.createElement('span');
+    emj.className = 'emj';
+    emj.textContent = card.emoji;
+    emj.title = tip; // emoji-specific tooltip too
+    h4.appendChild(emj);
+    h4.appendChild(document.createTextNode(' ' + card.name));
+    div.appendChild(h4);
+
+    // Meta line
+    const meta = document.createElement('div');
+    meta.className = 'small';
+    const parts = [
+      `Cost: ${card.cost}`,
+      `HP: ${hpLabel}`,
+      (rolls !== '—' ? `Roll: ${rolls}` : null),
+      (card.requiresTemple ? `Req: ${CARD_CATALOG[card.requiresTemple]?.emoji || ''} ${CARD_CATALOG[card.requiresTemple]?.name || ''}` : null),
+      `${have}/${max}`
+    ].filter(Boolean);
+    meta.textContent = parts.join(' | ');
+    div.appendChild(meta);
+
+    // Buy button
+    const btn = document.createElement('button');
+    btn.textContent = 'Buy';
+    const afford = (p.gold || 0) >= card.cost;
+    btn.disabled = !(canBuyNow && afford);
+    if (btn.disabled){
+      if (!isMyTurn())          btn.title = 'Not your turn';
+      else if (state?.phase!=='buy') btn.title = 'Not in buy phase';
+      else if (!afford)         btn.title = `Need ${card.cost} gold`;
+    } else {
+      btn.title = '';
     }
+    btn.addEventListener('click', ()=>intentBuy(card.key));
+    div.appendChild(btn);
+
+    shop.appendChild(div);
+  });
+}
+
 
     // ---------- Target UI ----------
     function triggerNeedsTarget(kind){
@@ -1621,6 +1703,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
