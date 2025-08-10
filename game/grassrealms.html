@@ -180,66 +180,163 @@
 
     // ---------- Catalog ----------
     const RAW_CARDS = [
-      { 
-  key:'townhall',
-  name:'Town Hall',
-  emoji:'🏰',
-  type:'structure',
-  cost:0,
-  hp:50,
-  max:1,
-  triggers:[1,2,3,4,5,6],
-  timing:'every',                 // fires on every roll (see timing fix below)
-  onTrigger:{ kind:'earn', value:1 }, // instant income; no queue item
-  immutable:true
+    // ---- Core / Economy ---- 
+{ 
+  key:'townhall', name:'Town Hall', emoji:'🏰', type:'structure',
+  cost:0, hp:20, max:1,
+  triggers:[1,2,3,4,5,6], timing:'every',
+  onTrigger:{ kind:'earn', value:1 }, // +1 coin on any 1–6
+  immutable:true,
+  details:'Your base. Triggers on any roll; gain +1 coin every turn. Max 1 and cannot be removed by standard effects.'
 },
-      { key:'farm', name:'Farm', emoji:'🌾', type:'structure', cost:1, hp:2, max:3, triggers:[1,2], timing:'every', onTrigger:{kind:'earn', value:1} },
-      { key:'mill', name:'Lumber Mill', emoji:'🪵', type:'structure', cost:2, hp:3, max:3, triggers:[3], timing:'every', onTrigger:{kind:'earn', value:3} },
-      { key:'mine', name:'Mine', emoji:'⛏️', type:'structure', cost:3, hp:3, max:3, triggers:[4], timing:'every', onTrigger:{kind:'earn', value:3} },
 
-      // Gray
-      { key:'footman', name:'Footman', emoji:'🗡️', type:'troop', cost:2, hp:4, max:3, triggers:[3,4], timing:'every', onTrigger:{kind:'attack_any', value:1} },
-      { key:'spy', name:'Spy', emoji:'🕵️', type:'troop', cost:2, hp:3, max:3, triggers:[5], timing:'opponent', onTrigger:{kind:'steal_fixed', value:2} },
-      { key:'knight', name:'Knight', emoji:'🐴', type:'troop', cost:3, hp:6, max:3, triggers:[5], timing:'your', onTrigger:{kind:'attack_any', value:4} },
-      { key:'wall_stone', name:'Stone Wall', emoji:'🧱', type:'wall', cost:3, hp:5, max:3, triggers:[], timing:null },
-      { key:'archtwrX', name:'Archer Tower', emoji:'🏹', type:'structure', cost:5, hp:6, max:3, triggers:[3], timing:'your', onTrigger:{kind:'destroy_troop'} },
-      { key:'trebuchet', name:'Trebuchet', emoji:'🏗️', type:'structure', cost:5, hp:7, max:3, triggers:[2], timing:'your', onTrigger:{kind:'destroy_structure_non_temple'} },
+{ key:'farm', name:'Farm', emoji:'🌾', type:'structure', cost:1, hp:2, max:3, triggers:[1,2], timing:'every', onTrigger:{kind:'earn', value:1},
+  details:'Early economy. On 1–2 every turn, gain +1 coin.'
+},
+{ key:'mill', name:'Lumber Mill', emoji:'🪵', type:'structure', cost:2, hp:3, max:3, triggers:[3], timing:'every', onTrigger:{kind:'earn', value:3},
+  details:'Solid income. On 3 every turn, gain +3 coins.'
+},
+{ key:'mine', name:'Mine', emoji:'⛏️', type:'structure', cost:3, hp:3, max:3, triggers:[4], timing:'every', onTrigger:{kind:'earn', value:3},
+  details:'Riskier income spike. On 4 every turn, gain +3 coins.'
+},
 
-      // White
-      { key:'white_temple', name:'White Temple', emoji:'🤍⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'heal_town', value:3} },
-      { key:'white_devotee', name:'Devotee', emoji:'🕯️', type:'troop', cost:3, hp:4, max:3, triggers:[4], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'earn_per_temple', temple:'white_temple', per:1} },
-      { key:'white_recruiter', name:'Recruiter', emoji:'📜', type:'troop', cost:4, hp:5, max:3, triggers:[7], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'acquire_troop_cost_leq_temples', temple:'white_temple'} },
-      { key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[9], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3} },
-      { key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'attack_any_and_heal', dmg:7, heal:3} },
-      { key:'white_highpriest', name:'High Priest', emoji:'🙏', type:'troop', cost:7, hp:8, max:3, triggers:[11], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'attack_any_and_destroy_troop', dmg:5} },
-      { key:'white_pylon', name:'Temple Pylon', emoji:'🗼', type:'wall', cost:4, hpDynamic:{perTemple:'white_temple', perHP:1}, max:3, triggers:[], timing:null },
+// ---- Gray ----
+{ key:'footman', name:'Footman', emoji:'🗡️', type:'troop', cost:2, hp:4, max:3, triggers:[3,4,7], timing:'every', onTrigger:{kind:'attack_any', value:1},
+  details:'Reliably chips away. On 3, 4, or 7 every turn, deal 1 damage to any target.'
+},
+{ key:'spy', name:'Spy', emoji:'🕵️', type:'troop', cost:2, hp:3, max:3, triggers:[5,7], timing:'opponent', onTrigger:{kind:'steal_fixed', value:2},
+  details:'Sneak economy denial. On an opponent’s 5 or 7, steal 2 coins from the active player.'
+},
+{ key:'knight', name:'Knight', emoji:'🐴', type:'troop', cost:3, hp:6, max:3, triggers:[5,7,9], timing:'your', onTrigger:{kind:'attack_any', value:4},
+  details:'Heavy hitter on your turn. On 5, 7, or 9, deal 4 damage to any target.'
+},
+{ key:'wall_stone', name:'Stone Wall', emoji:'🧱', type:'wall', cost:3, hp:5, max:3, triggers:[], timing:null,
+  details:'Sturdy barrier (wall). Priority target for siege/targeting rules; soaks damage to protect backline.'
+},
+{ key:'archtwrX', name:'Archer Tower', emoji:'🏹', type:'structure', cost:5, hp:6, max:3, triggers:[3], timing:'your', onTrigger:{kind:'destroy_troop'},
+  details:'Precision removal. On your 3, destroy one enemy troop.'
+},
+{ key:'trebuchet', name:'Trebuchet', emoji:'🏗️', type:'structure', cost:5, hp:7, max:3, triggers:[2], timing:'your', onTrigger:{kind:'destroy_structure_non_temple'},
+  details:'Siege engine. On your 2, destroy one enemy non-Temple structure.'
+},
 
-      // Black
-      { key:'black_temple', name:'Black Temple', emoji:'🖤⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'each_other_lose_hp', value:1} },
-      { key:'black_acolyte', name:'Acolyte', emoji:'🩸', type:'troop', cost:3, hp:4, max:3, triggers:[8], timing:'opponent', requiresTemple:'black_temple', onTrigger:{kind:'active_loses_per_temple', temple:'black_temple', per:2} },
-      { key:'black_tithetaker', name:'Tithe Taker', emoji:'🧾', type:'troop', cost:4, hp:5, max:3, triggers:[5], timing:'every', requiresTemple:'black_temple', onTrigger:{kind:'lose_hp_gain_coins', lose:2, coins:3} },
-      { key:'black_falseprophet', name:'False Prophet', emoji:'🗿', type:'troop', cost:5, hp:6, max:3, triggers:[11], timing:'every', requiresTemple:'black_temple', onTrigger:{kind:'others_sacrifice_cards_per_temple', temple:'black_temple'} },
-      { key:'black_oathbreaker', name:'Oathbreaker', emoji:'🗡️🩸', type:'troop', cost:6, hp:7, max:3, triggers:[7], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'lose_then_attack_any', lose:1, dmg:8} },
-      { key:'black_necromancer', name:'Necromancer', emoji:'💀', type:'troop', cost:8, hp:9, max:3, triggers:[9], timing:'every', requiresTemple:'black_temple', onTrigger:{kind:'destroy_troop'} },
-      { key:'black_altar', name:'Altar', emoji:'⛓️', type:'structure', cost:5, hp:6, max:3, triggers:[], timing:'passive', passive:{altar:true} },
+// ---- White ----
+{ key:'white_temple', name:'White Temple', emoji:'🤍⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'heal_town', value:3},
+  details:'Sanctuary. On your 6, heal your Town Hall for 3.'
+},
+{ key:'white_devotee', name:'Devotee', emoji:'🕯️', type:'troop', cost:3, hp:4, max:3, triggers:[4,7], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'earn_per_temple', temple:'white_temple', per:1},
+  details:'Tithes scale with faith. On 4 or 7 every turn, gain +1 coin per White Temple you control (requires White Temple).'
+},
+{ key:'white_recruiter', name:'Recruiter', emoji:'📜', type:'troop', cost:4, hp:5, max:3, triggers:[7,9], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'acquire_troop_cost_leq_temples', temple:'white_temple'},
+  details:'Free enlistment. On your 7 or 9, acquire a troop with cost ≤ your number of White Temples (requires White Temple).'
+},
+{ key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3},
+  details:'Sustain and economy. On 7, 9, or 11 every turn, heal 3 and gain 3 coins (requires White Temple).'
+},
+{ key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8,10,12], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'attack_any_and_heal', dmg:7, heal:3},
+  details:'Smite and restore. On 8, 10, or 12 every turn, deal 7 to any target and heal 3 (requires White Temple).'
+},
+{
+  key:'white_highpriest', name:'High Priest', emoji:'🙏', type:'troop', cost:7, hp:8, max:3,
+  triggers:[11,13,17], timing:'every', requiresTemple:'white_temple',
+  onTrigger:{kind:'attack_any_and_destroy_troop', dmg:5},
+  // NEW: d20 crazy tier
+  onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:3 }, // hits all enemy troops
+  details:'Judgment. On 11, 13, or 17 every turn, deal 5 to any target and destroy an enemy troop. Crazy (d20): smite all enemy troops for 3 (AOE).'
+},
+{ key:'white_pylon', name:'Temple Pylon', emoji:'🗼', type:'wall', cost:4, hpDynamic:{perTemple:'white_temple', perHP:1}, max:3, requiresTemple:'white_temple', triggers:[], timing:null,
+  details:'Scaling wall. Gains +1 HP for each White Temple you control (requires White Temple).'
+},
 
-      // Red
-      { key:'red_temple', name:'Red Temple', emoji:'🔴⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'attack_any', value:2} },
-      { key:'red_warrior', name:'Warrior', emoji:'🗡️', type:'troop', cost:3, hp:5, max:3, triggers:[7], timing:'your', requiresTemple:'red_temple', onTrigger:{kind:'attack_any', value:4} },
-      { key:'red_raider', name:'Raider', emoji:'🏴‍☠️', type:'troop', cost:4, hp:5, max:3, triggers:[6], timing:'opponent', requiresTemple:'red_temple', onTrigger:{kind:'steal_and_make_sacrifice_farm', steal:1} },
-      { key:'red_barbarian', name:'Barbarian', emoji:'🪓', type:'troop', cost:5, hp:7, max:3, triggers:[9], timing:'your', requiresTemple:'red_temple', onTrigger:{kind:'destroy_farm_and_damage_per_temple', temple:'red_temple', per:2} },
-      { key:'red_ranger', name:'Ranger', emoji:'🏹', type:'troop', cost:6, hp:7, max:3, triggers:[7], timing:'every', requiresTemple:'red_temple', onTrigger:{kind:'damage_per_temple_and_gain', temple:'red_temple', per:1, coins:2} },
-      { key:'red_warlord', name:'Warlord', emoji:'⚔️', type:'troop', cost:8, hp:10, max:3, triggers:[11,12], timing:'your', requiresTemple:'red_temple', onTrigger:{kind:'destroy_structure_and_attack_any', dmg:5} },
-      { key:'red_fortress', name:'Fortress', emoji:'🏯', type:'structure', cost:7, hp:9, max:2, triggers:[], timing:'passive', passive:{fortress:true} },
+// ---- Black ----
+{ key:'black_temple', name:'Black Temple', emoji:'🖤⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'each_other_lose_hp', value:1},
+  details:'Dread aura. On your 6, each other player loses 1 Town Hall HP.'
+},
+{ key:'black_acolyte', name:'Acolyte', emoji:'🩸', type:'troop', cost:3, hp:4, max:3, triggers:[8,10], timing:'opponent', requiresTemple:'black_temple', onTrigger:{kind:'active_loses_per_temple', temple:'black_temple', per:2},
+  details:'Bleed the active. On an opponent’s 8 or 10, the active player loses 2 HP per Black Temple you control (requires Black Temple).'
+},
+{ key:'black_tithetaker', name:'Tithe Taker', emoji:'🧾', type:'troop', cost:4, hp:5, max:3, triggers:[5,7,9], timing:'every', requiresTemple:'black_temple', onTrigger:{kind:'lose_hp_gain_coins', lose:2, coins:3},
+  details:'Profit at a price. On 5, 7, or 9 every turn, you lose 2 HP and gain 3 coins (requires Black Temple).'
+},
+{
+  key:'black_falseprophet', name:'False Prophet', emoji:'🗿', type:'troop', cost:5, hp:6, max:3,
+  triggers:[11,13,17], timing:'every', requiresTemple:'black_temple',
+  onTrigger:{kind:'others_sacrifice_cards_per_temple', temple:'black_temple'},
+  onTriggerCrazy:{ kind:'steal_from_each_enemy', coins:1 }, // steal 1 from each enemy
+  details:'Corrupt influence. On 11, 13, or 17 every turn, others must sacrifice cards per your Black Temples. Crazy (d20): steal 1 coin from each enemy.'
+},
+{ key:'black_oathbreaker', name:'Oathbreaker', emoji:'🗡️🩸', type:'troop', cost:6, hp:7, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'lose_then_attack_any', lose:1, dmg:8},
+  details:'Blood for power. On your 7, 9, or 11, you lose 1 HP then deal 8 to any target (requires Black Temple).'
+},
+{
+  key:'black_necromancer', name:'Necromancer', emoji:'💀', type:'troop', cost:8, hp:9, max:3,
+  triggers:[9,13,17], timing:'every', requiresTemple:'black_temple',
+  onTrigger:{kind:'destroy_troop'},
+  onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:2 }, // AOE ping to all enemy troops
+  details:'End the living. On 9, 13, or 17 every turn, destroy an enemy troop. Crazy (d20): deal 2 AOE to all enemy troops.'
+},
+{ key:'black_altar', name:'Altar', emoji:'⛓️', type:'structure', cost:5, hp:6, max:3, triggers:[], timing:'passive', passive:{altar:true},
+  details:'Passive focus (Altar). No trigger; counts as an Altar for effects that reference it.'
+},
 
-      // Green
-      { key:'green_temple', name:'Green Temple', emoji:'🟢⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'earn', value:1} },
-      { key:'green_shaman', name:'Shaman', emoji:'🌀', type:'troop', cost:3, hp:5, max:3, triggers:[5], timing:'every', requiresTemple:'green_temple', onTrigger:{kind:'earn', value:2} },
-      { key:'green_sage', name:'Sage', emoji:'🌿', type:'troop', cost:4, hp:6, max:3, triggers:[7], timing:'every', requiresTemple:'green_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3} },
-      { key:'green_druid', name:'Druidic Warrior', emoji:'🧙‍♂️', type:'troop', cost:5, hp:8, max:3, triggers:[9], timing:'your', requiresTemple:'green_temple', onTrigger:{kind:'attack_any_per_temple', temple:'green_temple', per:2} },
-      { key:'green_goliath', name:'Goliath', emoji:'🗿', type:'troop', cost:7, hp:12, max:2, triggers:[11,12], timing:'your', requiresTemple:'green_temple', onTrigger:{kind:'goliath_special'} },
-      { key:'green_elemental', name:'Elemental', emoji:'🌪️', type:'troop', cost:8, hp:10, max:2, triggers:[9,10], timing:'your', requiresTemple:'green_temple', onTrigger:{kind:'gain_and_destroy_two_walls', coins:4} },
-      { key:'green_livingwall', name:'Living Wall', emoji:'🌳', type:'wall', cost:6, hpDynamic:{perTemple:'green_temple', perHP:2}, max:3, triggers:[], timing:null },
+// ---- Red ----
+{ key:'red_temple', name:'Red Temple', emoji:'🔴⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'attack_any', value:2},
+  details:'Battle shrine. On your 6, deal 2 damage to any target.'
+},
+{ key:'red_warrior', name:'Warrior', emoji:'🗡️', type:'troop', cost:3, hp:5, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'red_temple', onTrigger:{kind:'attack_any', value:4},
+  details:'Frontline bruiser. On your 7, 9, or 11, deal 4 damage to any target (requires Red Temple).'
+},
+{ key:'red_raider', name:'Raider', emoji:'🏴‍☠️', type:'troop', cost:4, hp:5, max:3, triggers:[6,8,10], timing:'opponent', requiresTemple:'red_temple', onTrigger:{kind:'steal_and_make_sacrifice_farm', steal:1},
+  details:'Pillage on their turn. On an opponent’s 6, 8, or 10, steal 1 coin and make the active player sacrifice a Farm (requires Red Temple).'
+},
+{ key:'red_barbarian', name:'Barbarian', emoji:'🪓', type:'troop', cost:5, hp:7, max:3, triggers:[9,11,13], timing:'your', requiresTemple:'red_temple', onTrigger:{kind:'destroy_farm_and_damage_per_temple', temple:'red_temple', per:2},
+  details:'Ravage the fields. On your 9, 11, or 13, destroy a Farm and deal 2 damage per Red Temple you control (requires Red Temple).'
+},
+{ key:'red_ranger', name:'Ranger', emoji:'🏹', type:'troop', cost:6, hp:7, max:3, triggers:[7,9,11], timing:'every', requiresTemple:'red_temple', onTrigger:{kind:'damage_per_temple_and_gain', temple:'red_temple', per:1, coins:2},
+  details:'Skirmish and loot. On 7, 9, or 11 every turn, deal 1 damage per Red Temple you control and gain 2 coins (requires Red Temple).'
+},
+{
+  key:'red_warlord', name:'Warlord', emoji:'⚔️', type:'troop', cost:8, hp:10, max:3,
+  triggers:[11,12,13,15,19], timing:'your', requiresTemple:'red_temple',
+  onTrigger:{kind:'destroy_structure_and_attack_any', dmg:5},
+  onTriggerCrazy:{ kind:'destroy_all_enemy_walls' }, // devastates fortifications
+  details:'Total war. On your 11/12/13/15/19, destroy a structure then deal 5 to any target. Crazy (d20): destroy all enemy walls.'
+},
+{ key:'red_fortress', name:'Fortress', emoji:'🏯', type:'structure', cost:7, hp:9, max:2, triggers:[], timing:'passive', passive:{fortress:true},
+  details:'Passive fortification (Fortress). No trigger; counts as a Fortress for rules/effects.'
+},
+
+// ---- Green ----
+{ key:'green_temple', name:'Green Temple', emoji:'🟢⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'earn', value:1},
+  details:'Growth shrine. On your 6, gain +1 coin.'
+},
+{ key:'green_shaman', name:'Shaman', emoji:'🌀', type:'troop', cost:3, hp:5, max:3, triggers:[5,7,9], timing:'every', requiresTemple:'green_temple', onTrigger:{kind:'earn', value:2},
+  details:'Channel abundance. On 5, 7, or 9 every turn, gain +2 coins (requires Green Temple).'
+},
+{ key:'green_sage', name:'Sage', emoji:'🌿', type:'troop', cost:4, hp:6, max:3, triggers:[7,9,11], timing:'every', requiresTemple:'green_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3},
+  details:'Balanced growth. On 7, 9, or 11 every turn, heal 3 and gain 3 coins (requires Green Temple).'
+},
+{ key:'green_druid', name:'Druidic Warrior', emoji:'🧙‍♂️', type:'troop', cost:5, hp:8, max:3, triggers:[9,11], timing:'your', requiresTemple:'green_temple', onTrigger:{kind:'attack_any_per_temple', temple:'green_temple', per:2},
+  details:'Nature’s strike. On your 9 or 11, deal 2 damage per Green Temple you control to any target (requires Green Temple).'
+},
+{
+  key:'green_goliath', name:'Goliath', emoji:'🗿', type:'troop', cost:7, hp:12, max:2,
+  triggers:[11,12,13,17], timing:'your', requiresTemple:'green_temple',
+  onTrigger:{kind:'goliath_special'},
+  onTriggerCrazy:{ kind:'destroy_all_enemy_walls' }, // smash every wall
+  details:'Colossal presence. On your 11/12/13/17, trigger Goliath’s special (see rules). Crazy (d20): destroy all enemy walls.'
+},
+{
+  key:'green_elemental', name:'Elemental', emoji:'🌪️', type:'troop', cost:8, hp:10, max:2,
+  triggers:[9,10,13,16], timing:'your', requiresTemple:'green_temple',
+  onTrigger:{kind:'gain_and_destroy_two_walls', coins:4},
+  onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:2 },
+  details:'Storm surge. On your 9/10/13/16, gain 4 coins and destroy up to two enemy walls. Crazy (d20): deal 2 AOE to all enemy troops.'
+},
+{ key:'green_livingwall', name:'Living Wall', emoji:'🌳', type:'wall', cost:6, hpDynamic:{perTemple:'green_temple', perHP:2}, max:3, requiresTemple:'green_temple', triggers:[], timing:null,
+  details:'Vine-bound rampart. Gains +2 HP for each Green Temple you control (requires Green Temple).'
+},
+
     ];
     const CARD_CATALOG = {}; for (const c of RAW_CARDS){ CARD_CATALOG[c.key] = { ...c }; }
     const STARTERS = ['townhall','farm','mill'];
@@ -347,14 +444,16 @@ function renderControls(){
   const resolving = (phase === 'resolving');
 
   // Look at the *current* queue item to decide if a target is needed
-  let needsT = false;
-  if (resolving){
-    const cur = (state?.resolveQueue || [])[0];
-    if (cur){
-      const kind = CARD_CATALOG[cur.key]?.onTrigger?.kind;
-      needsT = triggerNeedsTarget(kind);
-    }
+ let needsT = false;
+if (resolving){
+  const cur = (state?.resolveQueue || [])[0];
+  if (cur){
+    const card = CARD_CATALOG[cur.key];
+    const eff  = (cur.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
+    needsT = triggerNeedsTarget(eff.kind);
   }
+}
+
 
   $('#rollBtn').disabled        = !isTurn || (phase !== 'await_roll');
   $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;   // disabled if a target is needed
@@ -397,17 +496,25 @@ function renderControls(){
     // ---------- Target UI ----------
     function triggerNeedsTarget(kind){
   return [
-    'attack_any','attack_structure','attack_troop',
-    'attack_any_and_heal','attack_any_and_destroy_troop',
-    'destroy_troop','destroy_structure_non_temple',
-    'destroy_structure_and_attack_any','lose_then_attack_any',
-    'goliath_special','damage_per_temple_and_gain',
-    'attack_any_per_temple','gain_and_destroy_two_walls' // NEW
+    'attack_any',
+    'attack_structure',
+    'attack_troop',
+    'attack_any_and_heal',
+    'attack_any_per_temple',
+    'damage_per_temple_and_gain',
+    'lose_then_attack_any',
+    'attack_any_and_destroy_troop',
+    'destroy_troop',
+    'destroy_structure_non_temple',
+    'destroy_structure_and_attack_any',
+    'goliath_special',
+    'gain_and_destroy_two_walls'
+    // note: crazy kinds (smite_all_enemy_troops, destroy_all_enemy_walls, steal_from_each_enemy) are targetless
   ].includes(kind);
 }
 function allowedTargetTypesFor(kind){
   switch(kind){
-    // Troop attacks can hit walls directly now
+    // Troop/attack effects can hit walls directly now
     case 'attack_any':
     case 'attack_any_and_heal':
     case 'attack_any_per_temple':
@@ -417,17 +524,17 @@ function allowedTargetTypesFor(kind){
       return ['wall','troop','structure','townhall'];
 
     case 'attack_structure':
-      return ['wall','structure']; // structure-focused attacks already allowed walls
-
-    case 'destroy_structure_non_temple':
-      return ['structure']; // keep walls out for this destroy, per earlier rule
-
-    case 'destroy_structure_and_attack_any':
-      return ['structure']; // first target still a structure; second hit logic respects walls
+      return ['wall','structure']; // structures or walls (not Town Hall)
 
     case 'attack_troop':
     case 'destroy_troop':
       return ['troop'];
+
+    case 'destroy_structure_non_temple':
+      return ['structure']; // cannot pick walls or Town Hall
+
+    case 'destroy_structure_and_attack_any':
+      return ['structure']; // first target is a structure only; second hit is auto-chosen
 
     case 'goliath_special':
       return ['wall','troop','structure','townhall'];
@@ -439,9 +546,6 @@ function allowedTargetTypesFor(kind){
       return [];
   }
 }
-
-
-
     function listTargetableEntries(p, type){
       const owned=p.owned||[];
       if (type==='troop') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='troop' && x.e.hp>0);
@@ -471,7 +575,10 @@ function renderQueueAndTargets(){
 
   // Header for current + a peek at the queue
   const title = document.createElement('div');
-  title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${current.roll ? ` (roll ${current.roll})` : ''}</div>`;
+ title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${
+  current.roll ? ` (roll ${current.roll}${current.useCrazy?' • CRAZY':''})` : ''
+}</div>`;
+
   qb.appendChild(title);
 
   if (q.length > 1){
@@ -493,7 +600,8 @@ function renderQueueAndTargets(){
     return;
   }
 
-  const kind = card.onTrigger?.kind;
+   const eff = (current.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
+  const kind = eff.kind;
   const needsTarget = triggerNeedsTarget(kind);
   if (!needsTarget){
     const note = document.createElement('div'); note.className = 'small';
@@ -571,7 +679,7 @@ function renderQueueAndTargets(){
     const players = (state.players || []);
     const target = players.find(p => p.name === targetName) || null;
 
-    const currentKind = card?.onTrigger?.kind || '';
+    const currentKind = eff?.kind || '';
     const ATTACK_KINDS = new Set([
       'attack_any','attack_structure','attack_troop',
       'attack_any_and_heal','attack_any_per_temple',
@@ -789,6 +897,10 @@ function destroySpecific(target, targetType, targetIdx, allowTemple=true, rd){
 
 
 const INSTANT_EARN_KINDS = new Set(['earn', 'earn_per_temple']);
+    const HIGH_ROLL_EDGE = 7;
+const HIGH_ROLL_DMG_BONUS  = 2;
+const HIGH_ROLL_COIN_BONUS = 1;
+const HIGH_ROLL_HEAL_BONUS = 1;
 
 function applyInstantIncome(owner, card){
   const ot = card.onTrigger || {};
@@ -806,38 +918,62 @@ function applyInstantIncome(owner, card){
   return 0;
 }
 
-   function buildResolveQueueAfterRoll(rd, rollerIdx, rollVal){
+  function buildResolveQueueAfterRoll(rd, actorIdx, rollValue, modeOpt){
+  const mode  = modeOpt || rd.lastRoll?.mode || 'd6';
+  const isD20 = (mode === 'd20');
+
   const q = [];
-  const players = rd.players || [];
+  const players  = rd.players || [];
   const earnedBy = new Map(); // name -> coins earned this roll
 
-  players.forEach((p,i)=>{
-    const timing = (i===rollerIdx) ? ['every','your'] : ['opponent'];
-    (p.owned||[]).forEach(e=>{
-      const c = CARD_CATALOG[e.key]; if (!c) return;
-      if (!c.triggers?.includes(rollVal)) return;
-      if (!c.timing || !timing.includes(c.timing)) return;
+  function timingMatches(ownerIdx, timing){
+    if (!timing || timing === 'every')   return true;
+    if (timing === 'your')               return ownerIdx === actorIdx;
+    if (timing === 'opponent')           return ownerIdx !== actorIdx;
+    return false;
+  }
 
-      const copies = Math.max(1, e.count||1);
-      for (let k=0; k<copies; k++){
-        const kind = c.onTrigger?.kind;
+  players.forEach((p, ownerIdx) => {
+    (p.owned || []).forEach(e => {
+      const card = CARD_CATALOG[e.key];
+      if (!card) return;
+
+      if (!card.triggers?.includes(rollValue)) return;
+      if (!timingMatches(ownerIdx, card.timing)) return;
+
+      const copies = Math.max(1, e.count || 1);
+      for (let k = 0; k < copies; k++){
+        // In d20 mode, prefer the crazy effect if present; otherwise use normal
+        const crazy = (isD20 && card.onTriggerCrazy) ? card.onTriggerCrazy : null;
+        const action = crazy || card.onTrigger;
+        if (!action) continue;
+
+        // Instant earn effects resolve immediately; others go to queue
+        const kind = action.kind;
         if (INSTANT_EARN_KINDS.has(kind)){
-          const got = applyInstantIncome(p, c);
-          if (got>0) earnedBy.set(p.name, (earnedBy.get(p.name)||0) + got);
+          // Reuse existing helper (uses card.onTrigger), but we want the
+          // 'action' semantics; for earn kinds they’re identical here.
+          const got = applyInstantIncome(p, { onTrigger: action });
+          if (got > 0) earnedBy.set(p.name, (earnedBy.get(p.name) || 0) + got);
         } else {
-          q.push({ ownerIdx:i, key:e.key, roll:rollVal });
+          q.push({
+            ownerIdx,
+            key: e.key,
+            roll: rollValue,
+            useCrazy: !!crazy
+          });
         }
       }
     });
   });
 
-  // Make a tiny summary like: "Auto‑income: Alice +2, Bob +1"
   const parts = [];
   earnedBy.forEach((amt, nm) => parts.push(`${nm} +${amt}`));
-  const autoNote = parts.length ? `Auto‑income: ${parts.join(', ')}` : '';
+  const autoNote = parts.length ? `Auto-income: ${parts.join(', ')}` : '';
 
   return { q, autoNote };
 }
+
     function hasActiveWall(p){
   return (p?.owned||[]).some(e => CARD_CATALOG[e.key]?.type==='wall' && (e.hp||0) > 0);
 }
@@ -851,17 +987,34 @@ function hostResolveOne(rd, manual){
   const stack = rd.resolveQueue || [];
   if (!stack.length) return { changed:false, msg:'No triggers.' };
 
-  const trig  = stack[0];
-  const owner = rd.players[trig.ownerIdx];
-  const card  = CARD_CATALOG[trig.key];
-  const kind  = card.onTrigger?.kind;
-  let msg     = `${owner.name} triggers ${card.emoji} ${card.name}: `;
+  const trig   = stack[0];
+  const owner  = rd.players[trig.ownerIdx];
+  const card   = CARD_CATALOG[trig.key];
+  const roll   = trig.roll || 0;
+  const mode   = rd.lastRoll?.mode || 'd6';
+
+  // Prefer the queued flag from buildResolveQueueAfterRoll; also fall back to d20 check
+  const useCrazy = (trig.useCrazy && !!card.onTriggerCrazy) || (mode === 'd20' && !!card.onTriggerCrazy);
+
+  const eff   = useCrazy ? (card.onTriggerCrazy || {}) : (card.onTrigger || {});
+  const kind  = eff.kind;
+
+  const isTroop   = (CARD_CATALOG[trig.key]?.type === 'troop');
+  const highTroop = isTroop && (roll >= HIGH_ROLL_EDGE); // 7+ bonus
+
+  // Bonus helpers: only apply for troop triggers on 7+
+  const bonusDmg   = (x)=> x + (highTroop ? HIGH_ROLL_DMG_BONUS  : 0);
+  const bonusCoins = (x)=> x + (highTroop ? HIGH_ROLL_COIN_BONUS : 0);
+  const bonusHeal  = (x)=> x + (highTroop ? HIGH_ROLL_HEAL_BONUS : 0);
+
+  let msg = `${owner.name} triggers ${card.emoji} ${card.name}${useCrazy ? ' [CRAZY]' : ''}: `;
+
   const activeName   = rd.lastRoll?.by;
   const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
 
   const needsTarget = triggerNeedsTarget(kind);
 
-  // Skip if needs a target but none exist anywhere
+  // --- If this trigger needs a target but there are none, auto-skip it
   if (needsTarget){
     const ownerPlayer = rd.players[trig.ownerIdx];
     const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
@@ -874,13 +1027,14 @@ function hostResolveOne(rd, manual){
       });
     });
     if (!enemyHasAnyValid){
-      rd.resolveQueue.shift();
+      stack.shift();
+      rd.resolveQueue = stack;
       postResolveCleanup(rd);
       return { changed:true, msg: `${owner.name}'s ${card.name} had no valid targets (skipped).` };
     }
   }
 
-  // If target needed but not provided, auto-pick if only one; else wait
+  // If target needed but not provided, auto-pick if exactly one exists
   if (needsTarget && !manual){
     const ownerPlayer = rd.players[trig.ownerIdx];
     const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
@@ -915,32 +1069,32 @@ function hostResolveOne(rd, manual){
   };
 
   switch(kind){
-    // ----- Non-targeted effects -----
+    // ===== Non-targeted effects =====
     case 'earn': {
-      const v = (card.onTrigger.value||0);
+      const v = bonusCoins(eff.value||0);
       owner.gold = (owner.gold||0) + v;
       return applyAndShift(`+${v} coin(s).`);
     }
     case 'earn_per_temple': {
-      const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
-      const amt = n * (card.onTrigger.per||0);
+      const n = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
+      const amt = bonusCoins(n * (eff.per||0));
       owner.gold = (owner.gold||0) + amt;
       return applyAndShift(`+${amt} coin(s).`);
     }
     case 'heal_town': {
-      const v = (card.onTrigger.value||0);
+      const v = bonusHeal(eff.value||0);
       owner.townHp = (owner.townHp||0) + v;
       return applyAndShift(`heals Town Hall ${v}.`);
     }
     case 'heal_and_earn': {
-      const h = (card.onTrigger.heal||0);
-      const c = (card.onTrigger.coins||0);
+      const h = bonusHeal(eff.heal||0);
+      const c = bonusCoins(eff.coins||0);
       owner.townHp = (owner.townHp||0) + h;
       owner.gold   = (owner.gold||0) + c;
       return applyAndShift(`heals ${h} & +${c} coins.`);
     }
     case 'each_other_lose_hp': {
-      const v = (card.onTrigger.value||0);
+      const v = eff.value||0; // structure, no troop bonus
       (rd.players||[]).forEach((p,i)=>{
         if (i!==trig.ownerIdx && !p.eliminated){
           p.townHp = Math.max(0, (p.townHp||0) - v);
@@ -950,20 +1104,20 @@ function hostResolveOne(rd, manual){
     }
     case 'active_loses_per_temple': {
       const t = activePlayer; if (!t) return applyAndShift('no active opponent.');
-      const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
-      const loss = n * (card.onTrigger.per||0);
+      const n = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
+      const loss = (n * (eff.per||0)) + (highTroop ? HIGH_ROLL_DMG_BONUS : 0);
       t.townHp = Math.max(0, (t.townHp||0) - loss);
       return applyAndShift(`${t.name} loses ${loss} health.`);
     }
     case 'lose_hp_gain_coins': {
-      const lose = (card.onTrigger.lose||0);
-      const gain = (card.onTrigger.coins||0);
+      const lose = eff.lose||0; // self-loss unaffected
+      const gain = bonusCoins(eff.coins||0);
       owner.townHp = Math.max(0, (owner.townHp||0) - lose);
       owner.gold   = (owner.gold||0) + gain;
       return applyAndShift(`loses ${lose}, gains ${gain} coins.`);
     }
     case 'others_sacrifice_cards_per_temple': {
-      const times = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
+      const times = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
       (rd.players||[]).forEach((p,i)=>{
         if (i===trig.ownerIdx || p.eliminated) return;
         for (let k=0;k<times;k++){
@@ -977,14 +1131,16 @@ function hostResolveOne(rd, manual){
     }
     case 'steal_fixed': {
       const act = activePlayer; if (!act) return applyAndShift('no active.');
-      const amt = Math.min((act.gold||0), (card.onTrigger.value||0));
+      const take = (eff.value||0) + (highTroop ? HIGH_ROLL_COIN_BONUS : 0);
+      const amt = Math.min((act.gold||0), take);
       act.gold   = (act.gold||0) - amt;
       owner.gold = (owner.gold||0) + amt;
       return applyAndShift(`steals ${amt} from ${act.name}.`);
     }
     case 'steal_and_make_sacrifice_farm': {
       const act = activePlayer; if (!act) return applyAndShift('no active.');
-      const amt = Math.min((act.gold||0), 1);
+      const steal = 1 + (highTroop?HIGH_ROLL_COIN_BONUS:0);
+      const amt = Math.min((act.gold||0), steal);
       act.gold   = (act.gold||0) - amt;
       owner.gold = (owner.gold||0) + amt;
       const fIdx = (act.owned||[]).findIndex(e=>e.key==='farm' && e.hp>0);
@@ -992,7 +1148,46 @@ function hostResolveOne(rd, manual){
       return applyAndShift(`steals ${amt} from ${act.name}${fIdx>=0? ' and forces a Farm to be sacrificed.':'.'}`);
     }
 
-    // ----- Targeted effects -----
+    // ===== CRAZY (d20) non-targeted effects =====
+    case 'smite_all_enemy_troops': {
+      const dmg = eff.dmg || 0; // no extra highTroop bonus on AOE unless desired
+      (rd.players||[]).forEach((p,i)=>{
+        if (i===trig.ownerIdx || p.eliminated) return;
+        (p.owned||[]).forEach(en=>{
+          const cc = CARD_CATALOG[en.key];
+          if (cc?.type==='troop' && (en.hp||0) > 0){
+            damageEntry(en, dmg, p, rd);
+          }
+        });
+      });
+      return applyAndShift(`smite hits all enemy troops for ${dmg}.`);
+    }
+    case 'destroy_all_enemy_walls': {
+      (rd.players||[]).forEach((p,i)=>{
+        if (i===trig.ownerIdx || p.eliminated) return;
+        (p.owned||[]).forEach(en=>{
+          const cc = CARD_CATALOG[en.key];
+          if (cc?.type==='wall' && (en.hp||0) > 0){
+            damageEntry(en, en.hp||9999, p, rd);
+          }
+        });
+      });
+      return applyAndShift(`destroys all enemy walls.`);
+    }
+    case 'steal_from_each_enemy': {
+      const take = eff.coins || 0;
+      let total = 0;
+      (rd.players||[]).forEach((p,i)=>{
+        if (i===trig.ownerIdx || p.eliminated) return;
+        const amt = Math.min((p.gold||0), take);
+        p.gold = (p.gold||0) - amt;
+        total += amt;
+      });
+      owner.gold = (owner.gold||0) + total;
+      return applyAndShift(`steals ${take} from each enemy (${total} total).`);
+    }
+
+    // ===== Targeted effects =====
     case 'attack_any':
     case 'attack_structure':
     case 'attack_troop':
@@ -1005,7 +1200,7 @@ function hostResolveOne(rd, manual){
     case 'destroy_structure_non_temple':
     case 'destroy_structure_and_attack_any':
     case 'goliath_special':
-    case 'gain_and_destroy_two_walls': { // NEW kind handled here
+    case 'gain_and_destroy_two_walls': {
       const tName = manual?.targetPlayer;
       const tType = manual?.targetType;
       const tIdx  = (manual?.targetEntryIdx!=null) ? Number(manual.targetEntryIdx) : null;
@@ -1014,42 +1209,44 @@ function hostResolveOne(rd, manual){
 
       switch(kind){
         case 'attack_any': {
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.value||0), rd);
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.value||0), rd);
           return applyAndShift(out);
         }
         case 'attack_structure': {
           if (tType==='troop') return applyAndShift('invalid target (troop).');
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.value||0), rd);
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.value||0), rd);
           return applyAndShift(out);
         }
         case 'attack_troop': {
           if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
-          const out = applyAttackToSpecific(owner, target, 'troop', tIdx, (card.onTrigger.value||0), rd);
+          const out = applyAttackToSpecific(owner, target, 'troop', tIdx, bonusDmg(eff.value||0), rd);
           return applyAndShift(out);
         }
         case 'attack_any_and_heal': {
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
-          owner.townHp = (owner.townHp||0) + (card.onTrigger.heal||0);
-          return applyAndShift(out + ` Heals ${card.onTrigger.heal||0}.`);
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.dmg||0), rd);
+          const healAmt = bonusHeal(eff.heal||0);
+          owner.townHp = (owner.townHp||0) + healAmt;
+          return applyAndShift(out + ` Heals ${healAmt}.`);
         }
         case 'attack_any_per_temple': {
-          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, n*(card.onTrigger.per||0), rd);
+          const n = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(n*(eff.per||0)), rd);
           return applyAndShift(out);
         }
         case 'damage_per_temple_and_gain': {
-          const n = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, n*(card.onTrigger.per||0), rd);
-          owner.gold = (owner.gold||0) + (card.onTrigger.coins||0);
-          return applyAndShift(out + ` Gains ${card.onTrigger.coins||0} coins.`);
+          const n = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(n*(eff.per||0)), rd);
+          const coins = bonusCoins(eff.coins||0);
+          owner.gold = (owner.gold||0) + coins;
+          return applyAndShift(out + ` Gains ${coins} coins.`);
         }
         case 'lose_then_attack_any': {
-          owner.townHp = Math.max(0, (owner.townHp||0) - (card.onTrigger.lose||0));
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
-          return applyAndShift(`loses ${card.onTrigger.lose||0}. ` + out);
+          owner.townHp = Math.max(0, (owner.townHp||0) - (eff.lose||0));
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.dmg||0), rd);
+          return applyAndShift(`loses ${eff.lose||0}. ` + out);
         }
         case 'attack_any_and_destroy_troop': {
-          const out = applyAttackToSpecific(owner, target, tType, tIdx, (card.onTrigger.dmg||0), rd);
+          const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.dmg||0), rd);
           const troopIdx = firstOfTypeIdx(target,'troop');
           if (troopIdx>=0) damageEntry(target.owned[troopIdx], target.owned[troopIdx].hp||9999, target, rd);
           return applyAndShift(out + (troopIdx>=0 ? ` Destroys a troop.` : ` No troop to destroy.`));
@@ -1057,7 +1254,8 @@ function hostResolveOne(rd, manual){
         case 'destroy_troop': {
           if (tType!=='troop') return applyAndShift('invalid target (needs troop).');
           const out = destroySpecific(target, 'troop', tIdx, true, rd);
-          return applyAndShift(out);
+          if (highTroop) owner.gold = (owner.gold||0) + HIGH_ROLL_COIN_BONUS;
+          return applyAndShift(out + (highTroop ? ` (+${HIGH_ROLL_COIN_BONUS} bonus coin)` : ''));
         }
         case 'destroy_structure_non_temple': {
           if (tType==='troop' || tType==='townhall') return applyAndShift('invalid target.');
@@ -1067,15 +1265,14 @@ function hostResolveOne(rd, manual){
         case 'destroy_structure_and_attack_any': {
           if (tType==='troop' || tType==='townhall') return applyAndShift('invalid first target.');
           const out1 = destroySpecific(target, tType, tIdx, /*allowTemple*/true, rd);
-        
-          // SECOND HIT: must respect wall shielding. If walls remain, hit a wall; else Town Hall.
+          // Second hit respects wall shielding: hit a wall if any, else Town Hall
           let out2 = '';
           if (hasActiveWall(target)){
             const wIdx = firstOfTypeIdx(target,'wall');
-            if (wIdx>=0) out2 = applyAttackToSpecific(owner, target, 'wall', wIdx, (card.onTrigger.dmg||0), rd);
+            if (wIdx>=0) out2 = applyAttackToSpecific(owner, target, 'wall', wIdx, bonusDmg(eff.dmg||0), rd);
             else         out2 = 'no wall to hit.';
           } else {
-            out2 = applyAttackToSpecific(owner, target, 'townhall', null, (card.onTrigger.dmg||0), rd);
+            out2 = applyAttackToSpecific(owner, target, 'townhall', null, bonusDmg(eff.dmg||0), rd);
           }
           return applyAndShift(out1 + ' ' + out2);
         }
@@ -1083,51 +1280,35 @@ function hostResolveOne(rd, manual){
           if (trig.roll===12){
             const wIdx = firstOfTypeIdx(target,'wall');  if (wIdx>=0) damageEntry(target.owned[wIdx], target.owned[wIdx].hp||9999, target, rd);
             const trIdx= firstOfTypeIdx(target,'troop'); if (trIdx>=0) damageEntry(target.owned[trIdx], target.owned[trIdx].hp||9999, target, rd);
-            const out  = applyAttackToSpecific(owner, target, tType, tIdx, 10, rd);
+            const out  = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(10), rd);
             return applyAndShift(`${wIdx>=0?'destroys a wall. ':''}${trIdx>=0?'destroys a troop. ':''}${out}`);
           } else {
-            const out = applyAttackToSpecific(owner, target, tType, tIdx, 10, rd);
+            const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(10), rd);
             return applyAndShift(out);
           }
         }
-        case 'gain_and_destroy_two_walls': { // NEW
+        case 'gain_and_destroy_two_walls': {
           if (tType!=='wall' || tIdx==null) return applyAndShift('invalid target (needs wall).');
-          owner.gold = (owner.gold||0) + (card.onTrigger.coins||0);
+          const coins = bonusCoins(eff.coins||0);
+          owner.gold = (owner.gold||0) + coins;
           // destroy selected wall
           destroySpecific(target, 'wall', tIdx, true, rd);
           // destroy another wall if present
           const w2 = firstOfTypeIdx(target,'wall');
           if (w2>=0) destroySpecific(target, 'wall', w2, true, rd);
-          return applyAndShift(`gains ${card.onTrigger.coins||0} coins and destroys up to two walls.`);
+          return applyAndShift(`gains ${coins} coins and destroys up to two walls.`);
         }
       }
       break;
     }
-
-    // ----- Acquire (non-target UI) -----
-    case 'acquire_troop_cost_leq_temples': {
-      const tCount = (owner.owned||[]).find(e=>e.key===card.onTrigger.temple)?.count || 0;
-      const maxCost = tCount;
-      const choices = Object.values(CARD_CATALOG)
-        .filter(c => c.type==='troop' && (c.cost||0) <= maxCost);
-      if (choices.length){
-        choices.sort((a,b)=> (a.cost-b.cost) || ((b.hp||0)-(a.hp||0)));
-        addOrIncOwned(owner, choices[0].key);
-        owner.unlocked = computeUnlockForPlayer(owner);
-        return applyAndShift(`acquires ${choices[0].name} (cost ≤ ${maxCost}).`);
-      }
-      return applyAndShift(`no troop available at cost ≤ ${maxCost}.`);
-    }
   }
 
-  // Fallback
+  // Fallback — should rarely hit
   stack.shift();
   rd.resolveQueue = stack;
   postResolveCleanup(rd);
   return { changed:true, msg };
 }
-
-
 
   // Add this once (top-level, above the function)
 let _processingIntents = false;
@@ -1208,7 +1389,7 @@ async function hostApplyIntents(){
           rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
 
           try {
-            const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v);
+            const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v, mode);
             rd.resolveQueue = Array.isArray(q) ? q : [];
             rd.phase = rd.resolveQueue.length ? 'resolving' : 'buy';
             if (autoNote) rd._lastMsg += ' — ' + autoNote;
@@ -1440,6 +1621,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
