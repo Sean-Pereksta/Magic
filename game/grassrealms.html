@@ -201,7 +201,7 @@
 },
 
 // ---- Gray ----
-{ key:'footman', name:'Footman', emoji:'🗡️', type:'troop', cost:2, hp:4, max:3, triggers:[3,4,7], timing:'every', onTrigger:{kind:'attack_any', value:1},
+{ key:'footman', name:'Footman', emoji:'🗡️', type:'troop', cost:2, hp:4, max:3, triggers:[3,4,7], timing:'your', onTrigger:{kind:'attack_any', value:1},
   details:'Reliably chips away. On 3, 4, or 7 every turn, deal 1 damage to any target.'
 },
 { key:'spy', name:'Spy', emoji:'🕵️', type:'troop', cost:2, hp:3, max:3, triggers:[5,7], timing:'opponent', onTrigger:{kind:'steal_fixed', value:2},
@@ -230,22 +230,22 @@
 { key:'white_recruiter', name:'Recruiter', emoji:'📜', type:'troop', cost:4, hp:5, max:3, triggers:[7,9], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'acquire_troop_cost_leq_temples', temple:'white_temple'},
   details:'Free enlistment. On your 7 or 9, acquire a troop with cost ≤ your number of White Temples (requires White Temple).'
 },
-{ key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3},
+{ key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3},
   details:'Sustain and economy. On 7, 9, or 11 every turn, heal 3 and gain 3 coins (requires White Temple).'
 },
-{ key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8,10,12], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'attack_any_and_heal', dmg:7, heal:3},
+{ key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8,10,12], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'attack_any_and_heal', dmg:7, heal:3},
   details:'Smite and restore. On 8, 10, or 12 every turn, deal 7 to any target and heal 3 (requires White Temple).'
 },
 {
   key:'white_highpriest', name:'High Priest', emoji:'🙏', type:'troop', cost:7, hp:8, max:3,
-  triggers:[11,13,17], timing:'every', requiresTemple:'white_temple',
+  triggers:[11,13,17], timing:'your', requiresTemple:'white_temple',
   onTrigger:{kind:'attack_any_and_destroy_troop', dmg:5},
   // NEW: d20 crazy tier
   onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:3 }, // hits all enemy troops
   details:'Judgment. On 11, 13, or 17 every turn, deal 5 to any target and destroy an enemy troop. Crazy (d20): smite all enemy troops for 3 (AOE).'
 },
-{ key:'white_pylon', name:'Temple Pylon', emoji:'🗼', type:'wall', cost:4, hpDynamic:{perTemple:'white_temple', perHP:1}, max:3, requiresTemple:'white_temple', triggers:[], timing:null,
-  details:'Scaling wall. Gains +1 HP for each White Temple you control (requires White Temple).'
+{ key:'white_pylon', name:'Temple Pylon', emoji:'🗼', type:'wall', cost:4, hpDynamic:{perTemple:'white_temple', perHP:3}, max:3, requiresTemple:'white_temple', triggers:[], timing:null,
+  details:'Scaling wall. Gains +3 HP for each White Temple you control (requires White Temple).'
 },
 
 // ---- Black ----
@@ -260,7 +260,7 @@
 },
 {
   key:'black_falseprophet', name:'False Prophet', emoji:'🗿', type:'troop', cost:5, hp:6, max:3,
-  triggers:[11,13,17], timing:'every', requiresTemple:'black_temple',
+  triggers:[11,13,17], timing:'your', requiresTemple:'black_temple',
   onTrigger:{kind:'others_sacrifice_cards_per_temple', temple:'black_temple'},
   onTriggerCrazy:{ kind:'steal_from_each_enemy', coins:1 }, // steal 1 from each enemy
   details:'Corrupt influence. On 11, 13, or 17 every turn, others must sacrifice cards per your Black Temples. Crazy (d20): steal 1 coin from each enemy.'
@@ -270,7 +270,7 @@
 },
 {
   key:'black_necromancer', name:'Necromancer', emoji:'💀', type:'troop', cost:8, hp:9, max:3,
-  triggers:[9,13,17], timing:'every', requiresTemple:'black_temple',
+  triggers:[9,13,17], timing:'your', requiresTemple:'black_temple',
   onTrigger:{kind:'destroy_troop'},
   onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:2 }, // AOE ping to all enemy troops
   details:'End the living. On 9, 13, or 17 every turn, destroy an enemy troop. Crazy (d20): deal 2 AOE to all enemy troops.'
@@ -1703,6 +1703,7 @@ async function hostApplyIntents(){
   </script>
 </body>
 </html>
+
 
 
 
