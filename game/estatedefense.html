@@ -545,26 +545,40 @@
       g.lastTick = now();
 
       // spawn enemies per level pacing
-      if (now() >= (g.nextSpawnAt||0)){
-        const count = 3 + Math.floor(g.level*0.6);
-        for (let i=0;i<count;i++){
-          const base = ENEMY_TYPES[Math.floor(Math.random()*Math.min(ENEMY_TYPES.length, 1+Math.floor(g.level/3)))];
-          const mult = Math.pow(1.25, g.level-1);
-          const y = 0;
-          const x = Math.floor(rnd(2, COLS-3));
-          g.enemies.push({
-            id:'e'+Math.random().toString(36).slice(2),
-            x, y, el:base.el, type:base.key,
-            hp: Math.round(base.hp*mult),
-            dmg: Math.round(base.dmg*mult),
-            spd: base.spd,
-            range: base.range,
-            target: base.target,
-            cd: 0
-          });
-        }
-        g.nextSpawnAt = now() + Math.max(600, 1600 - g.level*40);
-      }
+      if (now() >= (g.nextSpawnAt || 0)) {
+  const tier  = Math.min(ENEMY_TYPES.length, 1 + Math.floor(g.level / 3));
+  const count = 3 + Math.floor(g.level * 0.6);
+
+  for (let i = 0; i < count; i++) {
+    const base = ENEMY_TYPES[Math.floor(Math.random() * tier)];
+    const mult = Math.pow(1.25, g.level - 1);
+
+    const HP  = Math.round(base.hp  * mult);
+    const DMG = Math.round(base.dmg * mult);
+
+    const x = Math.floor(rnd(2, COLS - 3));
+    const y = 0;
+
+    g.enemies.push({
+      id: 'e' + Math.random().toString(36).slice(2),
+      x, y,
+      el: base.el,
+      type: base.key,
+      hp: HP,
+      maxHp: HP,        // <-- needed for the HP bar render
+      dmg: DMG,
+      spd: base.spd,
+      range: base.range,
+      target: base.target,
+      cd: 0
+    });
+  }
+
+  // Faster spawns at higher levels, but never below ~0.6s
+  const baseDelay = 1600 - g.level * 40;
+  g.nextSpawnAt = now() + Math.max(600, baseDelay);
+}
+
 
       // enemies move/attack
       for (const e of g.enemies){
@@ -800,18 +814,33 @@
         ctx.fillStyle = "#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
       }
 
-      // enemies
-      for (const e of (state.enemies||[])){
-        const x = e.x*TILE + TILE/2;
-        const y = e.y*TILE - offY + TILE/2;
-        ctx.fillStyle = "#111";
-        ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
-        // small element tint
-        ctx.globalAlpha=0.7;
-        const col = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"}[e.el] || "#999";
-        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha=1;
-      }
+      // --- enemies (replace your current loop) ---
+for (const e of (state.enemies || [])) {
+  const x = e.x * TILE + TILE/2;
+  const y = e.y * TILE - offY + TILE/2;
+
+  const col = { fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e" }[e.el] || "#999";
+
+  // element ring
+  ctx.strokeStyle = col; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI*2); ctx.stroke();
+
+  // body
+  ctx.fillStyle = "#111";
+  ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+
+  // type emoji
+  const EMO = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" }[e.type] || "⚫";
+  ctx.font = "16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(EMO, x, y);
+
+  // HP bar (needs e.maxHp on spawn)
+  const w = 22, h = 4, pct = Math.max(0, Math.min(1, (e.hp || 0) / (e.maxHp || e.hp || 1)));
+  ctx.fillStyle="#111"; ctx.fillRect(x - w/2, y + 14, w, h);
+  ctx.fillStyle = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#f59e0b" : "#ef4444";
+  ctx.fillRect(x - w/2, y + 14, w * pct, h);
+}
+
 
       // projectiles
       for (const p of (state.projectiles||[])){
@@ -830,4 +859,5 @@
   </script>
 </body>
 </html>
+
 
