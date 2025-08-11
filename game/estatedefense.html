@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🏡 Estate Defense</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb;
+      --accent:#2e7d32; --danger:#c62828; --gold:#cda434;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink);display:flex;gap:10px;height:100vh;overflow:hidden}
+    #left{flex:0 0 280px;background:var(--card);border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+    #center{flex:1;display:flex;flex-direction:column;gap:8px}
+    header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+    header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:999px}
+    header .host{font-weight:600}
+    #stats{display:flex;gap:16px;font-size:14px;color:var(--muted)}
+    #canvasWrap{position:relative;flex:1;background:#eef3f7;border:1px solid var(--line)}
+    canvas{display:block;width:100%;height:100%}
+    #right{flex:0 0 300px;background:var(--card);border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+    .panel h3{margin:0 0 6px 0;font-size:16px}
+    .players{display:flex;flex-direction:column;gap:6px;max-height:35vh;overflow:auto}
+    .playerRow{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+    .shop{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .card{border:1px solid var(--line);border-radius:10px;padding:8px;cursor:pointer}
+    .card .emoji{font-size:20px}
+    .btn{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center}
+    .small{font-size:12px;color:var(--muted)}
+    .toast{position:absolute;left:50%;transform:translateX(-50%);top:10px;background:#111;color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;opacity:.95}
+    #hud{position:absolute;top:8px;left:8px;display:flex;gap:12px;align-items:center}
+    .chip{background:#fff;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font-size:12px}
+    #leaveBtn{color:#fff;background:var(--danger);border:none}
+  </style>
+</head>
+<body>
+  <div id="left">
+    <div class="panel">
+      <h3>Session</h3>
+      <div class="row small"><span id="hostLbl" class="host">Host: …</span><span id="leaseLbl" class="chip">lease …</span></div>
+      <div class="row small">Lobby: <span id="lobbyId">…</span></div>
+      <div class="row small">You: <b id="youName">…</b></div>
+      <div class="row"><button id="leaveBtn" class="btn">Leave</button></div>
+    </div>
+
+    <div class="panel">
+      <h3>Players</h3>
+      <div id="playersBox" class="players"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Level</h3>
+      <div class="row"><div>Level:</div><b id="levelLbl">1</b></div>
+      <div class="row"><div>Kills to next:</div><b id="killsLbl">—</b></div>
+      <div class="row"><div>Core HP:</div><b id="coreHpLbl">—</b></div>
+    </div>
+  </div>
+
+  <div id="center">
+    <header>
+      <div class="row">
+        <span class="tag">🏡 Estate Defense</span>
+        <div id="stats" class="row">
+          <div>Funds: <b id="fundsLbl">0</b></div>
+          <div>Base income: <b id="baseLbl">0</b> /30s</div>
+        </div>
+      </div>
+      <div class="small">Move mouse near top/bottom to scroll the tall map</div>
+    </header>
+    <div id="canvasWrap">
+      <canvas id="game" width="900" height="720"></canvas>
+      <div id="hud"></div>
+      <div id="toast" class="toast" style="display:none"></div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="panel">
+      <h3>Build</h3>
+      <div class="shop" id="shop"></div>
+      <div class="small">Click a card to buy. Towers place at nearest free tile from the crystal. Select your tower to upgrade (owner only).</div>
+    </div>
+    <div class="panel">
+      <h3>Selected</h3>
+      <div id="selInfo" class="small">None</div>
+      <div class="row">
+        <button id="upgradeBtn" class="btn" disabled>Upgrade</button>
+        <button id="sellBtn" class="btn" disabled>Sell</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // --------- Firebase ----------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
+      collection, addDoc, query, where, orderBy, limit, getDocs, onSnapshot, deleteDoc
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --------- Routing / Params ----------
+    const LOBBY_ROUTE = "/lobby.html"; // change if your lobby page has a different path
+    const params = new URLSearchParams(location.search);
+    const lobbyId = params.get("gameId");
+    const me = params.get("username") || "anon";
+    document.getElementById('youName').textContent = me;
+    document.getElementById('lobbyId').textContent = lobbyId || "—";
+
+    // --------- Canvas / Map ----------
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    const TILE = 32;
+    const COLS = 20;
+    const ROWS = 300; // tall map
+    const MAP_W = COLS * TILE;
+    const MAP_H = ROWS * TILE;
+    let camY = MAP_H - H; // start near bottom
+
+    // --------- UI ----------
+    const fundsLbl = document.getElementById('fundsLbl');
+    const baseLbl  = document.getElementById('baseLbl');
+    const hostLbl  = document.getElementById('hostLbl');
+    const leaseLbl = document.getElementById('leaseLbl');
+    const levelLbl = document.getElementById('levelLbl');
+    const killsLbl = document.getElementById('killsLbl');
+    const coreHpLbl= document.getElementById('coreHpLbl');
+    const playersBox = document.getElementById('playersBox');
+    const shopBox = document.getElementById('shop');
+    const selInfo = document.getElementById('selInfo');
+    const upgradeBtn = document.getElementById('upgradeBtn');
+    const sellBtn = document.getElementById('sellBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+
+    const toast = (msg, ms=1500) => {
+      const t=document.getElementById('toast');
+      t.textContent=msg; t.style.display='block';
+      setTimeout(()=>t.style.display='none', ms);
+    };
+
+    // --------- Game Data ----------
+    const palette = ["#ef4444","#3b82f6","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16"];
+    const elements = ["fire","frost","volt","nature"];
+    const EMOJI = { fire:"🔥", frost:"❄️", volt:"⚡", nature:"🌿" };
+
+    const TOWER_TYPES = [
+      { key:"ember",  name:"Ember",  emoji:"🔥", el:"fire",  cost:20, dmg:5,  range:4, rate:1.2, hp:30 },
+      { key:"frost",  name:"Frost",  emoji:"❄️", el:"frost", cost:22, dmg:4,  range:5, rate:1.0, hp:32 },
+      { key:"volt",   name:"Volt",   emoji:"⚡", el:"volt",  cost:24, dmg:6,  range:3, rate:0.9, hp:28 },
+      { key:"nature", name:"Thorn",  emoji:"🌿", el:"nature",cost:18, dmg:4,  range:4, rate:1.3, hp:34 },
+    ];
+
+    const ELEM_MULT = {
+      fire:   { nature:1.5, frost:0.8, volt:1.0, fire:1.0 },
+      nature: { volt:1.5, fire:0.8, frost:1.0, nature:1.0 },
+      volt:   { frost:1.5, nature:0.8, fire:1.0, volt:1.0 },
+      frost:  { fire:1.5, nature:0.8, volt:1.0, frost:1.0 }
+    };
+
+    const ENEMY_TYPES = [
+      { key:"slime",  el:"nature", hp:20, dmg:2, spd:0.8, range:0, target:"core" },
+      { key:"gob",    el:"fire",   hp:28, dmg:3, spd:1.0, range:0, target:"core" },
+      { key:"arch",   el:"frost",  hp:22, dmg:2, spd:0.9, range:5, target:"tower" },
+      { key:"brute",  el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower" },
+    ];
+
+    // --------- State Cache ----------
+    let state = null;       // authoritative game state from Firestore
+    let myColor = palette[Math.floor(Math.random()*palette.length)];
+    let myFunds = 0;
+    let myBaseIncome = 0;
+    let mySelectedTowerId = null;
+
+    // --------- Host Lease / Failover ----------
+    const LEASE_MS = 5000;
+    let isHost = false;
+    let leaseInt = null;
+    let simInt = null;
+    let renderInt = null;
+    let incomeTickAt = 0;
+
+    const lobbyRef = doc(db, "lobbies", lobbyId);
+    const intentsCol = collection(db, "lobbies", lobbyId, "intents");
+
+    // --------- Helpers ----------
+    const now = () => Date.now();
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+    const dist2 = (x1,y1,x2,y2)=>((x1-x2)**2+(y1-y2)**2);
+    const rnd = (a,b)=>a+Math.random()*(b-a);
+    const round2=(n)=>Math.round(n*100)/100;
+
+    // nearest free tile search (spiral expand)
+    function nearestFreeTile(fromX, fromY, occ){
+      const maxR = Math.max(COLS, ROWS);
+      for(let r=0; r<maxR; r++){
+        for(let dy=-r; dy<=r; dy++){
+          for(let dx=-r; dx<=r; dx++){
+            if (Math.abs(dx)!==r && Math.abs(dy)!==r) continue; // ring
+            const x=fromX+dx, y=fromY+dy;
+            if (x<0||x>=COLS||y<0||y>=ROWS) continue;
+            if (!occ[y*COLS+x]) return {x,y};
+          }
+        }
+      }
+      return null;
+    }
+
+    function playerColor(name, list){
+      const idx = (list||[]).indexOf(name);
+      return palette[idx % palette.length];
+    }
+
+    // --------- Shop UI ----------
+    function renderShop(){
+      shopBox.innerHTML = "";
+      TOWER_TYPES.forEach(t=>{
+        const div=document.createElement('div');
+        div.className="card";
+        div.innerHTML = `
+          <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
+          <div class="small">Element: ${t.el}</div>
+          <div class="small">Cost: ${t.cost}</div>
+          <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+        `;
+        div.onclick = ()=> tryBuy(t.key);
+        shopBox.appendChild(div);
+      });
+    }
+
+    async function tryBuy(tKey){
+      if (!state) return;
+      const tDef = TOWER_TYPES.find(x=>x.key===tKey);
+      if (!tDef) return;
+      if (myFunds < tDef.cost){ toast("Not enough funds"); return; }
+      await addDoc(intentsCol, {
+        ts: now(),
+        actor: me,
+        type: "BUY",
+        payload: { tKey }
+      });
+    }
+
+    upgradeBtn.onclick = async ()=>{
+      if (!mySelectedTowerId) return;
+      await addDoc(intentsCol, { ts: now(), actor: me, type:"UPGRADE", payload:{ id: mySelectedTowerId } });
+    };
+    sellBtn.onclick = async ()=>{
+      if (!mySelectedTowerId) return;
+      await addDoc(intentsCol, { ts: now(), actor: me, type:"SELL", payload:{ id: mySelectedTowerId } });
+    };
+
+    leaveBtn.onclick = async ()=>{
+      // remove me from players; delete lobby only if empty
+      const snap = await getDoc(lobbyRef);
+      if (snap.exists()){
+        const d = snap.data();
+        const rest = (d.players||[]).filter(p=>p!==me);
+        if (rest.length===0){
+          try{ await deleteDoc(lobbyRef); }catch(e){}
+        }else{
+          await updateDoc(lobbyRef, { players: rest });
+        }
+      }
+      location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+    };
+
+    // --------- Load / Listen ----------
+    // 1) Ensure user baseIncome exists, fetch into memory
+    async function ensureUserIncome(){
+      const uref = doc(db, 'users', me);
+      const us = await getDoc(uref);
+      if (!us.exists()){
+        await setDoc(uref, { estate: { baseIncome: 1 } }, { merge:true });
+        myBaseIncome = 1;
+      }else{
+        myBaseIncome = (us.data().estate && typeof us.data().estate.baseIncome==='number') ? us.data().estate.baseIncome : 1;
+        if (!us.data().estate) await updateDoc(uref, { estate:{ baseIncome: myBaseIncome } });
+      }
+      baseLbl.textContent = round2(myBaseIncome);
+      // announce join so host can seed funds
+      await addDoc(intentsCol, { ts: now(), actor: me, type:"JOINED", payload:{ baseIncome: myBaseIncome } });
+    }
+
+    // 2) Subscribe to lobby + game
+    onSnapshot(lobbyRef, async (docSnap)=>{
+      if (!docSnap.exists()) {
+        // lobby deleted (likely last one left) -> go back
+        location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+        return;
+      }
+      const d = docSnap.data();
+      hostLbl.textContent = `Host: ${d.host||'—'}`;
+
+      // delete protection: only delete when no players
+      const players = d.players || [];
+      // update my color
+      myColor = playerColor(me, players);
+
+      // setup or update state
+      state = d.game || state;
+      if (!state){
+        // first-time bootstrap on host
+        if (shouldClaimHost(docSnap)) await tryClaimHost();
+        return;
+      }
+
+      // UI from state
+      levelLbl.textContent = state.level || 1;
+      killsLbl.textContent = `${(state.killsToAdvance||10) - (state.killsThisLevel||0)}`;
+      coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp||0))}/${Math.round(state.crystal?.maxHp||0)}`;
+
+      // funds and base (from player entry)
+      const meP = (state.players||[]).find(p=>p.name===me);
+      if (meP){
+        myFunds = meP.funds||0;
+        myBaseIncome = meP.baseIncome||myBaseIncome;
+        fundsLbl.textContent = Math.floor(myFunds);
+        baseLbl.textContent = round2(myBaseIncome);
+      }
+
+      // players panel
+      playersBox.innerHTML = "";
+      (state.players||[]).forEach(p=>{
+        const row=document.createElement('div'); row.className='playerRow';
+        row.innerHTML = `
+          <div><span class="dot" style="background:${playerColor(p.name, players)}"></span>${p.name}</div>
+          <div class="small">Base: ${round2(p.baseIncome)} | $${Math.floor(p.funds||0)}</div>
+        `;
+        playersBox.appendChild(row);
+      });
+
+      // defeat -> redirect
+      if (state.status === 'defeat'){
+        toast("💥 Core destroyed! Saving and returning to lobby…", 1500);
+        setTimeout(()=>{ location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; }, 1500);
+      }
+    });
+
+    // 3) Host lease heartbeat + claim on expiry
+    function shouldClaimHost(docSnap){
+      const d = docSnap.data();
+      const leaseUntil = d.leaseUntil||0;
+      const players = d.players||[];
+      if (!players.includes(me)) return false;
+      if (!d.host) return true;
+      const expired = (now() > leaseUntil);
+      // pick deterministic next host: lowest name
+      const next = [...players].sort()[0];
+      const iAmNext = (next === me);
+      return expired && iAmNext;
+    }
+
+    async function tryClaimHost(){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const s = await tx.get(lobbyRef);
+          if (!s.exists()) return;
+          const d = s.data();
+          const leaseUntil = d.leaseUntil||0;
+          const players = d.players||[];
+          if (!players.includes(me)) return;
+
+          if (!d.host || now()>leaseUntil){
+            // init game if none
+            let game = d.game;
+            if (!game){
+              const cx = Math.floor(COLS/2);
+              const cy = ROWS-3;
+              game = {
+                status: 'active',
+                level: 1,
+                killsThisLevel: 0,
+                killsToAdvance: 20,
+                lastTick: now(),
+                nextSpawnAt: now()+1000,
+                crystal: { x:cx, y:cy, hp:1000, maxHp:1000 },
+                players: players.map((n,i)=>({ name:n, color:palette[i%palette.length], funds:0, baseIncome:1, baseIncomeDelta:0 })),
+                towers: [],
+                enemies: [],
+                projectiles: []
+              };
+            }
+            tx.update(lobbyRef, { host: me, leaseUntil: now()+LEASE_MS, game });
+          }
+        });
+        isHost = true;
+        leaseLbl.textContent = "lease: host";
+        startHostLoops();
+      }catch(e){/* another client won; ignore */}
+    }
+
+    function startHostLoops(){
+      if (leaseInt) clearInterval(leaseInt);
+      if (simInt) clearInterval(simInt);
+      leaseInt = setInterval(async ()=>{
+        try{
+          await runTransaction(db, async (tx)=>{
+            const s = await tx.get(lobbyRef);
+            if (!s.exists()) return;
+            const d = s.data();
+            // if I'm still host, extend lease
+            if (d.host === me){
+              tx.update(lobbyRef, { leaseUntil: now()+LEASE_MS });
+            }
+          });
+          leaseLbl.textContent = "lease: host";
+        }catch(e){}
+      }, 2000);
+
+      simInt = setInterval(simulateStepAsHost, 200); // ~5 fps logic
+    }
+
+    // non-host monitors lease; attempt claim if expired
+    setInterval(async ()=>{
+      if (isHost) return;
+      const s = await getDoc(lobbyRef);
+      if (!s.exists()) return;
+      if (shouldClaimHost(s)) await tryClaimHost();
+      leaseLbl.textContent = "lease: client";
+    }, 2500);
+
+    // --------- Intents processing (host) ----------
+    async function simulateStepAsHost(){
+      const s = await getDoc(lobbyRef);
+      if (!s.exists()) return;
+      const d = s.data();
+      if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
+      let g = d.game;
+      if (!g || g.status!=='active') return;
+
+      // 1) process a small batch of intents
+      const Q = query(intentsCol, orderBy('ts','asc'), limit(20));
+      const snap = await getDocs(Q);
+      for (const docu of snap.docs){
+        const mv = docu.data();
+        try{ g = applyIntent(g, mv); }catch(e){}
+        // mark processed by deleting
+        try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
+      }
+
+      // 2) simulate
+      g = simulate(g);
+
+      // 3) delete lobby if no players
+      const playersList = d.players||[];
+      if (playersList.length===0){
+        try{ await deleteDoc(lobbyRef); }catch(e){}
+        return;
+      }
+
+      // 4) publish
+      await updateDoc(lobbyRef, { game: g });
+    }
+
+    function applyIntent(g, mv){
+      const actor = mv.actor;
+      if (!g.players.some(p=>p.name===actor)) return g;
+
+      if (mv.type === 'JOINED'){
+        // seed funds = baseIncome * 10 on first join (once)
+        const p = g.players.find(p=>p.name===actor);
+        if (p && !(p._seeded)){
+          p.funds += (mv.payload?.baseIncome||1) * 10;
+          p.baseIncome = mv.payload?.baseIncome||p.baseIncome||1;
+          p._seeded = true;
+        }
+        return g;
+      }
+
+      if (mv.type === 'BUY'){
+        const tKey = mv.payload?.tKey;
+        const def = TOWER_TYPES.find(x=>x.key===tKey);
+        if (!def) return g;
+        const p = g.players.find(p=>p.name===actor);
+        if (!p || p.funds < def.cost) return g;
+
+        // build occupancy grid
+        const occ = new Array(COLS*ROWS).fill(false);
+        // crystal occupies spot
+        occ[g.crystal.y*COLS + g.crystal.x] = true;
+        g.towers.forEach(t=>{ occ[t.y*COLS+t.x] = true; });
+        const spot = nearestFreeTile(g.crystal.x, g.crystal.y-1, occ);
+        if (!spot) return g;
+
+        const id = 't'+Math.random().toString(36).slice(2);
+        g.towers.push({
+          id, x:spot.x, y:spot.y, owner:actor, emoji:def.emoji, el:def.el,
+          hp:def.hp, maxHp:def.hp, level:1, dmg:def.dmg, range:def.range, rate:def.rate, cd:0
+        });
+        p.funds -= def.cost;
+        return g;
+      }
+
+      if (mv.type === 'UPGRADE'){
+        const id = mv.payload?.id;
+        const t = g.towers.find(z=>z.id===id);
+        if (!t || t.owner!==actor) return g;
+        const cost = 15 + t.level*10;
+        const p = g.players.find(p=>p.name===actor);
+        if (!p || p.funds < cost) return g;
+        p.funds -= cost;
+        t.level += 1;
+        t.dmg = Math.round(t.dmg * 1.25);
+        t.range += (t.level%2===0?1:0);
+        t.rate = +(t.rate*1.05).toFixed(2);
+        t.maxHp += 6;
+        t.hp = Math.min(t.maxHp, t.hp+6);
+        return g;
+      }
+
+      if (mv.type === 'SELL'){
+        const id = mv.payload?.id;
+        const idx = g.towers.findIndex(z=>z.id===id);
+        if (idx<0) return g;
+        const t = g.towers[idx];
+        if (t.owner!==actor) return g;
+        const refund = 10 + (t.level-1)*6;
+        const p = g.players.find(p=>p.name===actor);
+        if (p) p.funds += refund;
+        g.towers.splice(idx,1);
+        return g;
+      }
+
+      return g;
+    }
+
+    function simulate(g){
+      const dt = (now() - (g.lastTick||now()))/1000;
+      g.lastTick = now();
+
+      // spawn enemies per level pacing
+      if (now() >= (g.nextSpawnAt||0)){
+        const count = 3 + Math.floor(g.level*0.6);
+        for (let i=0;i<count;i++){
+          const base = ENEMY_TYPES[Math.floor(Math.random()*Math.min(ENEMY_TYPES.length, 1+Math.floor(g.level/3)))];
+          const mult = Math.pow(1.25, g.level-1);
+          const y = 0;
+          const x = Math.floor(rnd(2, COLS-3));
+          g.enemies.push({
+            id:'e'+Math.random().toString(36).slice(2),
+            x, y, el:base.el, type:base.key,
+            hp: Math.round(base.hp*mult),
+            dmg: Math.round(base.dmg*mult),
+            spd: base.spd,
+            range: base.range,
+            target: base.target,
+            cd: 0
+          });
+        }
+        g.nextSpawnAt = now() + Math.max(600, 1600 - g.level*40);
+      }
+
+      // enemies move/attack
+      for (const e of g.enemies){
+        // choose behavior
+        if (e.target === 'tower'){
+          // ranged attackers prefer towers within range, else march downward
+          const tgt = nearestTowerInRange(g, e, e.range);
+          if (tgt){
+            e.cd -= dt;
+            if (e.cd<=0){
+              // damage the tower directly
+              tgt.hp -= e.dmg;
+              e.cd = 1.2;
+              if (tgt.hp<=0){
+                // remove tower
+                const idx = g.towers.findIndex(t=>t.id===tgt.id);
+                if (idx>=0) g.towers.splice(idx,1);
+              }
+            }
+          }else{
+            e.y += e.spd; // march
+          }
+        }else{
+          // rush the core
+          e.y += e.spd;
+        }
+
+        // if reached crystal row
+        if (Math.floor(e.y) >= g.crystal.y){
+          g.crystal.hp -= e.dmg;
+          e.hp = 0;
+        }
+      }
+
+      // towers fire
+      for (const t of g.towers){
+        t.cd -= dt;
+        const tgt = nearestEnemyInRange(g, t, t.range);
+        if (tgt && t.cd<=0){
+          const spd = 8;
+          const sx = t.x+0.5, sy = t.y+0.5;
+          const dx = (tgt.x+0.5)-sx, dy=(tgt.y+0.5)-sy;
+          const m = Math.hypot(dx,dy)||1;
+          g.projectiles.push({
+            id:'p'+Math.random().toString(36).slice(2),
+            x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd,
+            dmg:t.dmg, el:t.el, owner:t.owner
+          });
+          t.cd = 1/Math.max(0.2, t.rate);
+        }
+      }
+
+      // projectiles move and hit
+      for (const p of g.projectiles){
+        p.x += p.vx*dt;
+        p.y += p.vy*dt;
+        // out of bounds
+        if (p.x<0 || p.x>COLS || p.y<0 || p.y>ROWS) p._dead = true;
+
+        // collision with nearest enemy at tile resolution
+        const ex = Math.floor(p.x), ey=Math.floor(p.y);
+        const hit = g.enemies.find(e=>Math.floor(e.x)===ex && Math.floor(e.y)===ey && e.hp>0);
+        if (hit){
+          const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
+          hit.hp -= Math.round(p.dmg * mult);
+          p._dead = true;
+          if (hit.hp<=0){
+            // kill -> owner reward
+            const lvlGain = Math.pow(1.1, (g.level-1));
+            const pOwner = g.players.find(z=>z.name===p.owner);
+            if (pOwner){
+              pOwner.funds += 2 + g.level;                      // small funds on kill
+              pOwner.baseIncomeDelta = (pOwner.baseIncomeDelta||0) + (0.05 * lvlGain);
+            }
+            g.killsThisLevel = (g.killsThisLevel||0)+1;
+            if (g.killsThisLevel >= (g.killsToAdvance||20)){
+              g.level = (g.level||1)+1;
+              g.killsThisLevel = 0;
+              g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
+            }
+          }
+        }
+      }
+      g.projectiles = g.projectiles.filter(p=>!p._dead);
+      g.enemies = g.enemies.filter(e=>e.hp>0);
+
+      // income tick each 30s
+      if (!incomeTickAt) incomeTickAt = now()+30000;
+      if (now()>=incomeTickAt){
+        for (const p of g.players){
+          p.funds += p.baseIncome;
+        }
+        incomeTickAt = now()+30000;
+      }
+
+      // defeat check
+      if (g.crystal.hp <= 0 && g.status==='active'){
+        g.crystal.hp = 0;
+        g.status = 'defeat';
+        // persist player base income increases, then mark defeat
+        finalizeAndMarkDefeat(g).catch(()=>{});
+      }
+
+      return g;
+    }
+
+    function nearestEnemyInRange(g, t, range){
+      let best=null, bd=1e9;
+      for (const e of g.enemies){
+        const d = dist2(t.x,t.y, e.x,e.y);
+        if (d <= (range+0.5)**2 && d<bd){ bd=d; best=e; }
+      }
+      return best;
+    }
+    function nearestTowerInRange(g, e, range){
+      let best=null, bd=1e9;
+      for (const t of g.towers){
+        const d = dist2(t.x,t.y, e.x,e.y);
+        if (d <= (range+0.5)**2 && d<bd){ bd=d; best=t; }
+      }
+      return best;
+    }
+
+    async function finalizeAndMarkDefeat(g){
+      // only host does this
+      try{
+        await runTransaction(db, async (tx)=>{
+          const s = await tx.get(lobbyRef);
+          if (!s.exists()) return;
+          const d = s.data();
+          if (d.host !== me) return; // only host finalizes
+          const cur = d.game || g;
+          if (cur._finalized) return;
+
+          // write each user's new baseIncome
+          for (const p of (cur.players||[])){
+            const delta = round2(p.baseIncomeDelta||0);
+            if (delta>0){
+              const uref = doc(db, 'users', p.name);
+              const us = await tx.get(uref);
+              let curBase = 1;
+              if (us.exists()){
+                const estate = us.data().estate || {};
+                curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1;
+              }
+              const next = round2(curBase + delta);
+              tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
+            }
+          }
+
+          // mark defeat & finalized
+          cur.status = 'defeat';
+          cur._finalized = true;
+          tx.update(lobbyRef, { game: cur });
+        });
+      }catch(e){/* ignore */}
+    }
+
+    // --------- Render loop (all clients) ----------
+    canvas.addEventListener('mousemove', (ev)=>{
+      const rect = canvas.getBoundingClientRect();
+      const y = ev.clientY - rect.top;
+      const edge = 60;
+      if (y < edge) camY -= 12;
+      else if (y > H-edge) camY += 12;
+      camY = clamp(camY, 0, MAP_H - H);
+    });
+
+    canvas.addEventListener('click', (ev)=>{
+      if (!state) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((ev.clientX - rect.left)/ (rect.width) * W / TILE);
+      const y = Math.floor(((ev.clientY - rect.top)/ (rect.height) * H + camY) / TILE);
+      // select tower if mine
+      const t = (state.towers||[]).find(z=>z.x===x && z.y===y);
+      if (t){
+        mySelectedTowerId = t.id;
+        selInfo.textContent = `${t.emoji} ${t.el} Lv${t.level} HP:${t.hp}/${t.maxHp} Owner:${t.owner}`;
+        const mine = (t.owner===me);
+        upgradeBtn.disabled = !mine;
+        sellBtn.disabled = !mine;
+      }else{
+        mySelectedTowerId = null;
+        selInfo.textContent = "None";
+        upgradeBtn.disabled = true;
+        sellBtn.disabled = true;
+      }
+    });
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      // grid bg
+      const offY = camY;
+      ctx.fillStyle = "#e9eef3";
+      ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle = "#d7dee6";
+      ctx.lineWidth = 1;
+      for (let y=0;y<=H;y+=TILE){
+        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+      }
+      for (let x=0;x<=W;x+=TILE){
+        ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+      }
+
+      if (!state) return;
+
+      // crystal
+      const cx = state.crystal.x * TILE + TILE/2;
+      const cy = state.crystal.y * TILE - offY + TILE/2;
+      ctx.fillStyle = "#7c3aed";
+      ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI*2); ctx.fill();
+      // hp bar
+      const hpw = 80, hpx = cx - hpw/2, hpy = cy - 24;
+      ctx.fillStyle="#222"; ctx.fillRect(hpx, hpy, hpw, 6);
+      const pct = (state.crystal.hp/state.crystal.maxHp);
+      ctx.fillStyle = pct>0.5? "#22c55e" : pct>0.25? "#f59e0b" : "#ef4444";
+      ctx.fillRect(hpx, hpy, hpw*pct, 6);
+
+      // towers
+      for (const t of (state.towers||[])){
+        const x = t.x*TILE + TILE/2;
+        const y = t.y*TILE - offY + TILE/2;
+        // tile bg by owner
+        ctx.fillStyle = playerColor(t.owner, (state.players||[]).map(p=>p.name));
+        ctx.globalAlpha = 0.18; ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE); ctx.globalAlpha=1;
+
+        ctx.font = "20px Segoe UI Emoji";
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText(t.emoji, x, y);
+
+        // hp bar
+        ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
+        ctx.fillStyle = "#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
+      }
+
+      // enemies
+      for (const e of (state.enemies||[])){
+        const x = e.x*TILE + TILE/2;
+        const y = e.y*TILE - offY + TILE/2;
+        ctx.fillStyle = "#111";
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+        // small element tint
+        ctx.globalAlpha=0.7;
+        const col = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"}[e.el] || "#999";
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha=1;
+      }
+
+      // projectiles
+      for (const p of (state.projectiles||[])){
+        const x = p.x*TILE + TILE/2;
+        const y = p.y*TILE - offY + TILE/2;
+        ctx.fillStyle = ({fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"}[p.el] || "#111");
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+      }
+    }
+
+    renderShop();
+    renderInt = setInterval(draw, 1000/30); // ~30 fps draw
+
+    // boot
+    await ensureUserIncome();
+  </script>
+</body>
+</html>
