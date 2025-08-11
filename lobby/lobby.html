@@ -277,13 +277,14 @@
       const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
 
       // First try to find an active estate lobby
-      const qActive = query(
-        collection(db, "lobbies"),
-        where("gameType", "==", "estate"),
-        where("status", "==", "active"),
-        orderBy("createdAt", "asc"),
-        limit(1)
-      );
+      // Replace your qActive with this:
+const qActive = query(
+  collection(db, "lobbies"),
+  where("gameType", "==", "estate"),
+  where("status", "==", "active"),
+  limit(1) // arbitrary active session (no index needed)
+);
+
       const snap = await getDocs(qActive);
 
       // Try to merge into an existing active lobby
@@ -411,4 +412,5 @@
   </script>
 </body>
 </html>
+
 
