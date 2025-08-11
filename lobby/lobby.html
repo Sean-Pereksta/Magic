@@ -37,6 +37,7 @@
           <select id="gameType">
             <option value="cat">🐭 Cat & Mouse</option>
             <option value="grass">🌿 Grass Realms</option>
+            <option value="estate">🏡 Estate Defense</option>
           </select>
           <button onclick="startLobby()">Start Lobby</button>
         </div>
@@ -64,13 +65,14 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
-      query, where, getDoc, getDocs, deleteDoc // NEW
+      query, where, getDoc, getDocs, deleteDoc, orderBy, limit, runTransaction
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // --- CONFIG ---
     const ROUTES = {
-      cat:   "/game/catandmouse.html",
-      grass: "/game/grassrealms.html"
+      cat:     "/game/catandmouse.html",
+      grass:   "/game/grassrealms.html",
+      estate:  "/game/estatedefense.html"   // NEW
     };
 
     const firebaseConfig = {
@@ -118,6 +120,7 @@
         showError("❌ Username not found in system.");
         return;
       }
+      username = name;
       enterLobbyUI();
     }
 
@@ -133,7 +136,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       const gameType = document.getElementById("gameType").value;
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass'].includes(gameType)) return showError("Invalid game type.");
+      if (!['cat','grass','estate'].includes(gameType)) return showError("Invalid game type.");
 
       const lobby = await addDoc(collection(db, "lobbies"), {
         name,
@@ -149,8 +152,8 @@
     }
 
     async function loadLobbies() {
-      const q = query(collection(db, "lobbies"), where("status", "==", "waiting"));
-      const snap = await getDocs(q);
+      const qy = query(collection(db, "lobbies"), where("status", "==", "waiting"));
+      const snap = await getDocs(qy);
       const list = document.getElementById("lobbyList");
       list.innerHTML = "<h3>Available Lobbies</h3>";
 
@@ -166,15 +169,20 @@
         const data = docSnap.data();
 
         // --- AUTO-CLOSE if empty ---
-        if (!data.players || data.players.length === 0) {          // NEW
-          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); }  // NEW
+        if (!data.players || data.players.length === 0) {
+          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); }
           catch(e){ /* ignore */ }
-          return;                                                  // NEW
+          return;
         }
 
         const row = document.createElement("div");
         row.className = "lobby-row";
-        const gameLabel = data.gameType === 'grass' ? '🌿 Grass Realms' : '🐭 Cat & Mouse';
+
+        const gameLabel =
+          data.gameType === 'grass'  ? '🌿 Grass Realms' :
+          data.gameType === 'estate' ? '🏡 Estate Defense' :
+                                       '🐭 Cat & Mouse';
+
         row.innerHTML = `
           <div>
             <strong>${data.name}</strong>
@@ -216,18 +224,21 @@
         const data = docSnap.data();
 
         // --- AUTO-CLOSE if empty at runtime ---
-        if (!data.players || data.players.length === 0) {          // NEW
-          try { await deleteDoc(ref); } catch(e){ /* ignore */ }    // NEW
-          currentLobbyId = null;                                    // NEW
-          document.getElementById("lobbyPlayers").innerHTML = "";   // NEW
-          document.getElementById("startBtn").style.display = "none";// NEW
-          if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }      // NEW
-          loadLobbies();                                            // NEW
-          return;                                                   // NEW
+        if (!data.players || data.players.length === 0) {
+          try { await deleteDoc(ref); } catch(e){ /* ignore */ }
+          currentLobbyId = null;
+          document.getElementById("lobbyPlayers").innerHTML = "";
+          document.getElementById("startBtn").style.display = "none";
+          if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+          loadLobbies();
+          return;
         }
 
         const header = document.createElement("div");
-        const gameLabel = data.gameType === 'grass' ? '🌿 Grass Realms' : '🐭 Cat & Mouse';
+        const gameLabel =
+          data.gameType === 'grass'  ? '🌿 Grass Realms' :
+          data.gameType === 'estate' ? '🏡 Estate Defense' :
+                                       '🐭 Cat & Mouse';
         const container = document.getElementById("lobbyPlayers");
         container.innerHTML = "";
         header.innerHTML = `<h3>Lobby: ${data.name} <span class="badge">${gameLabel}</span></h3>`;
@@ -251,16 +262,91 @@
 
         document.getElementById("startBtn").style.display = (data.host === username) ? "inline-block" : "none";
 
-        if (data.status === "started") {
+        // Standard redirection for cat & grass only.
+        if ((data.gameType === 'cat' || data.gameType === 'grass') && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
           window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
+        // Estate Defense does not auto-redirect here; host's Start Game will handle it.
       });
+    }
+
+    // ---- Estate Defense: join existing active session or create it (atomic) ----
+    async function joinOrCreateActiveEstate(extraPlayers) {
+      // normalize players and remove dups
+      const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
+
+      // First try to find an active estate lobby
+      const qActive = query(
+        collection(db, "lobbies"),
+        where("gameType", "==", "estate"),
+        where("status", "==", "active"),
+        orderBy("createdAt", "asc"),
+        limit(1)
+      );
+      const snap = await getDocs(qActive);
+
+      // Try to merge into an existing active lobby
+      if (!snap.empty) {
+        const targetRef = doc(db, "lobbies", snap.docs[0].id);
+        try {
+          const activeId = await runTransaction(db, async (tx) => {
+            const cur = await tx.get(targetRef);
+            if (!cur.exists()) throw new Error("gone");
+            const d = cur.data();
+            if (d.status !== "active" || d.gameType !== "estate") throw new Error("not_active");
+            const merged = unique([...(d.players || []), ...extraPlayers]);
+            tx.update(targetRef, { players: merged });
+            return targetRef.id;
+          });
+          return activeId;
+        } catch (e) {
+          // fall through to create a new one
+        }
+      }
+
+      // Create a new active estate lobby
+      const newRef = doc(collection(db, "lobbies"));
+      const payload = {
+        name: `Estate Defense — ${new Date().toLocaleTimeString()}`,
+        gameType: "estate",
+        category: "estate-defense",     // << requested category
+        status: "active",               // use 'active' for ongoing shared session
+        players: unique(extraPlayers),
+        host: username,
+        createdAt: Date.now()
+      };
+      await runTransaction(db, async (tx) => {
+        tx.set(newRef, payload);
+      });
+      return newRef.id;
     }
 
     async function startGame() {
       if (!currentLobbyId) return;
+
       const ref = doc(db, "lobbies", currentLobbyId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      // Special Estate Defense behavior:
+      if (data.gameType === "estate") {
+        // Merge into an active Estate session or create one, then delete this waiting lobby
+        const playersFromThisLobby = data.players || [username];
+        const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
+
+        // Best-effort cleanup of the temporary waiting lobby
+        try { await deleteDoc(ref); } catch(e) { /* ignore */ }
+
+        // Redirect to the active Estate Defense session
+        const route = ROUTES.estate;
+        window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
+        return;
+      }
+
+      // Normal behavior for Cat & Mouse / Grass Realms
       await updateDoc(ref, { status: "started" });
     }
 
@@ -277,7 +363,7 @@
           await updateDoc(ref, { players });
         } else {
           // --- AUTO-CLOSE when last person leaves ---
-          try { await deleteDoc(ref); } catch(e){ /* ignore */ }  // NEW
+          try { await deleteDoc(ref); } catch(e){ /* ignore */ }
         }
       }
 
@@ -290,8 +376,8 @@
     }
 
     async function loadLeaderboard() {
-      const q = query(collection(db, "users"));
-      const snapshot = await getDocs(q);
+      const qy = query(collection(db, "users"));
+      const snapshot = await getDocs(qy);
       const leaderboard = [];
 
       snapshot.forEach(docSnap => {
@@ -325,5 +411,4 @@
   </script>
 </body>
 </html>
-
 
