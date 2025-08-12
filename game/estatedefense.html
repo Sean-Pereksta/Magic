@@ -32,10 +32,51 @@
     .small{font-size:12px;color:var(--muted)}
     .toast{position:absolute;left:50%;transform:translateX(-50%);top:10px;background:#111;color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;opacity:.95}
     .chip{background:#fff;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font-size:12px}
-    #vScroll { position:absolute; right:8px; top:12px; height:calc(100% - 24px); width:18px;
-               writing-mode: bt-lr; -webkit-appearance: slider-vertical; }
-    #vScroll::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--violet); }
-    #vScroll::-webkit-slider-runnable-track { background:#dbe5ff; border-radius:12px; }
+    #vScroll {
+  position: absolute;
+  right: 8px;
+  top: 12px;
+  height: calc(100% - 24px);
+  width: 18px;
+
+  /* modern vertical orientation */
+  writing-mode: vertical-lr;
+  direction: rtl;            /* up = smaller value; remove if you want up = bigger */
+
+  appearance: none;          /* reset default UA style */
+  background: transparent;
+}
+
+/* Track */
+#vScroll::-webkit-slider-runnable-track {
+  background: #dbe5ff;
+  border-radius: 12px;
+  width: 100%;
+  height: 100%;
+}
+#vScroll::-moz-range-track {
+  background: #dbe5ff;
+  border-radius: 12px;
+  width: 100%;
+  height: 100%;
+}
+
+/* Thumb */
+#vScroll::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--violet);
+  border: none;
+}
+#vScroll::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--violet);
+  border: none;
+}
     #centerBtn{ position:absolute; left:12px; bottom:12px; }
     #leaveBtn{color:#fff;background:var(--danger);border:none}
     /* Responsive: collapse sidebars under 1200px */
@@ -127,9 +168,8 @@
     const params = new URLSearchParams(location.search);
     const lobbyId = params.get("gameId");
     const me = params.get("username") || "anon";
-    youName.textContent = me; // using element IDs directly via global mapping
-    lobbyId.textContent = lobbyId || "—";
-
+    document.getElementById('youName').textContent = me;
+    document.getElementById('lobbyId').textContent = lobbyId || '—';
     // ----- Canvas / Map -----
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
@@ -608,6 +648,7 @@
   </script>
 </body>
 </html>
+
 
 
 
