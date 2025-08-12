@@ -433,6 +433,32 @@ leaveBtn.onclick = async ()=>{
 };
 
 
+let _markingInactive = false;
+async function ensureLobbyInactive(){
+  if (_markingInactive) return;
+  _markingInactive = true;
+  try{
+    await runTransaction(db, async (tx)=>{
+      const s = await tx.get(lobbyRef); if (!s.exists()) return;
+      const d = s.data() || {};
+      // Only host sets the terminal flags
+      if (d.host !== me) return;
+
+      // Already inactive? nothing to do
+      if (d.active === false && d.status === 'defeat') return;
+
+      const game = d.game || {};
+      tx.update(lobbyRef, {
+        active: false,
+        status: 'defeat',
+        endedAt: serverTimestamp(),
+        game: { ...game, status: 'defeat', _finalized: true }
+      });
+    });
+  } finally {
+    _markingInactive = false;
+  }
+}
 
     // Ensure user income, emit JOINED
    // --- Ensure user income, then announce JOINED with baseIncome ---
@@ -485,14 +511,16 @@ onSnapshot(lobbyRef, async (docSnap) => {
 
   const d = docSnap.data() || {};
 
-  // If lobby marked ended at root, bounce to lobby
-  if (d.status === 'defeat' || d.active === false) {
-    toast("💥 Core destroyed! Returning to lobby…", 1200);
-    setTimeout(() => {
-      location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-    }, 1200);
-    return;
-  }
+if (d.status === 'defeat' || d.active === false || crystalDead) {
+  // Host authoritatively flips the switch
+  if (d.host === me) await ensureLobbyInactive();
+
+  toast("💥 Core destroyed! Returning to lobby…", 1200);
+  setTimeout(() => {
+    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+  }, 1200);
+  return;
+}
 
   hostLbl.textContent = `Host: ${d.host || '—'}`;
 
@@ -921,6 +949,7 @@ onSnapshot(lobbyRef, async (docSnap) => {
   </script>
 </body>
 </html>
+
 
 
 
