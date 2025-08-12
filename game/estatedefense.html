@@ -199,9 +199,9 @@
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
 
-    let amSeeded = false;
+ let amSeeded = false;
 let _buyBusy = false;
-
+let _actionBusy = false; 
 
     const toast = (msg, ms=1500) => {
       const t=document.getElementById('toast');
@@ -414,62 +414,126 @@ leaveBtn.onclick = async ()=>{
 
 
     // Ensure user income, emit JOINED
-    async function ensureUserIncome(){
-      const uref = doc(db, 'users', me);
-      const us = await getDoc(uref);
-      if (!us.exists()){
-        await setDoc(uref, { estate: { baseIncome: 1 } }, { merge:true });
-        myBaseIncome = 1;
-      }else{
-        myBaseIncome = (us.data().estate && typeof us.data().estate.baseIncome==='number') ? us.data().estate.baseIncome : 1;
-        if (!us.data().estate) await updateDoc(uref, { estate:{ baseIncome: myBaseIncome } });
+   // --- Ensure user income, then announce JOINED with baseIncome ---
+async function ensureUserIncome(){
+  try{
+    const uref = doc(db, 'users', me);
+    const us   = await getDoc(uref);
+
+    if (!us.exists()){
+      myBaseIncome = 1;
+      await setDoc(uref, { estate: { baseIncome: myBaseIncome } }, { merge: true });
+    } else {
+      const estate = us.data()?.estate || {};
+      myBaseIncome = (typeof estate.baseIncome === 'number') ? estate.baseIncome : 1;
+
+      // If estate missing, backfill so future reads are clean
+      if (!us.data().estate){
+        await updateDoc(uref, { estate: { baseIncome: myBaseIncome } }).catch(()=>{});
       }
-      baseLbl.textContent = round2(myBaseIncome);
-      await addDoc(intentsCol, { ts: now(), actor: me, type:"JOINED", payload:{ baseIncome: myBaseIncome } });
     }
 
-    onSnapshot(lobbyRef, async (docSnap)=>{
-      if (!docSnap.exists()) { location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; return; }
-      const d = docSnap.data();
-      if (d.status === 'defeat' || d.active === false){
-        toast("💥 Core destroyed! Returning to lobby…", 1200);
-        setTimeout(()=>{ location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; }, 1200);
-        return;
-      }
+    baseLbl.textContent = round2(myBaseIncome);
 
-      hostLbl.textContent = `Host: ${d.host||'—'}`;
-      state = d.game || state;
-
-      if (state && state.crystal && !initialCentered) { initialCentered = true; centerOnCore(); }
-
-      if (state){
-        levelLbl.textContent = state.level || 1;
-        killsLbl.textContent = `${(state.killsToAdvance||10) - (state.killsThisLevel||0)}`;
-        coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp||0))}/${Math.round(state.crystal?.maxHp||0)}`;
-
-        const meP = (state.players||[]).find(p=>p.name===me);
-        if (meP){ myFunds = meP.funds||0; myBaseIncome = meP.baseIncome||myBaseIncome; fundsLbl.textContent = Math.floor(myFunds); baseLbl.textContent = round2(myBaseIncome); }
-
-        const wasSeeded = amSeeded;
-      amSeeded = !!(meP && meP._seeded);
-      if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
-
-        playersBox.innerHTML = "";
-        (state.players||[]).forEach((p,i)=>{
-          const row=document.createElement('div'); row.className='playerRow';
-          row.innerHTML = `<div><span class="dot" style="background:${palette[i%palette.length]}"></span>${p.name}</div>
-                           <div class="small">Base: ${round2(p.baseIncome)} | $${Math.floor(p.funds||0)}</div>`;
-          playersBox.appendChild(row);
-        });
-
-        if (state.status === 'defeat'){
-          toast("💥 Core destroyed! Saving and returning to lobby…", 1500);
-          setTimeout(()=>{ location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; }, 1500);
-        }
-      }
-
-      if (shouldClaimHost(docSnap)) await tryClaimHost();
+    // Tell host we joined with our current baseIncome (used for seeding)
+    await addDoc(intentsCol, {
+      ts: now(),
+      actor: me,
+      type: "JOINED",
+      payload: { baseIncome: myBaseIncome }
     });
+  } catch(e){
+    // Fallback so player can still play
+    myBaseIncome = 1;
+    baseLbl.textContent = round2(myBaseIncome);
+    await addDoc(intentsCol, {
+      ts: now(),
+      actor: me,
+      type: "JOINED",
+      payload: { baseIncome: myBaseIncome }
+    }).catch(()=>{});
+  }
+}
+
+// --- Live lobby updates ---
+onSnapshot(lobbyRef, async (docSnap) => {
+  if (!docSnap.exists()) {
+    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+    return;
+  }
+
+  const d = docSnap.data() || {};
+
+  // If lobby marked ended at root, bounce to lobby
+  if (d.status === 'defeat' || d.active === false) {
+    toast("💥 Core destroyed! Returning to lobby…", 1200);
+    setTimeout(() => {
+      location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+    }, 1200);
+    return;
+  }
+
+  hostLbl.textContent = `Host: ${d.host || '—'}`;
+
+  // Keep our last good game state if field missing briefly
+  state = d.game || state;
+
+  // First-time centering on the core
+  if (state && state.crystal && !initialCentered) {
+    initialCentered = true;
+    centerOnCore();
+  }
+
+  if (state) {
+    // Top-level labels
+    levelLbl.textContent = state.level || 1;
+    const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
+    killsLbl.textContent = `${killsLeft}`;
+    coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
+
+    // Me / funds / base income
+    const meP = (state.players || []).find(p => p.name === me) || null;
+    if (meP) {
+      myFunds = meP.funds || 0;
+      if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
+    }
+    fundsLbl.textContent = Math.floor(myFunds);
+    baseLbl.textContent  = round2(myBaseIncome);
+
+    // Seed gate -> unlock shop once the host has seeded us
+    const wasSeeded = amSeeded;
+    amSeeded = !!(meP && meP._seeded);
+    if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+
+    // Refresh shop whenever funds/seed/status change
+    renderShop();
+
+    // Players list
+    playersBox.innerHTML = "";
+    (state.players || []).forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'playerRow';
+      row.innerHTML = `
+        <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
+        <div class="small">Base: ${round2(p.baseIncome || 1)} | $${Math.floor(p.funds || 0)}</div>
+      `;
+      playersBox.appendChild(row);
+    });
+
+    // Defensive: if game state itself says defeat, exit
+    if (state.status === 'defeat') {
+      toast("💥 Core destroyed! Returning to lobby…", 1200);
+      setTimeout(() => {
+        location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+      }, 1200);
+      return;
+    }
+  }
+
+  // Host election check (uses presence-filtered list in shouldClaimHost)
+  if (shouldClaimHost(docSnap)) await tryClaimHost();
+});
+
 
   function shouldClaimHost(docSnap){
   const d = docSnap.data() || {};
@@ -836,6 +900,7 @@ leaveBtn.onclick = async ()=>{
   </script>
 </body>
 </html>
+
 
 
 
