@@ -26,6 +26,7 @@
     .shop{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .card{border:1px solid var(--line);border-radius:10px;padding:8px;cursor:pointer;background:#fff}
     .card .emoji{font-size:20px}
+    .card.disabled{ opacity:.55; pointer-events:none }
     .btn{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
     .btn:disabled{opacity:.5;cursor:not-allowed}
     .row{display:flex;gap:8px;align-items:center}
@@ -147,10 +148,11 @@
   <script type="module">
     // ----- Firebase -----
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-      collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+   import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
+  collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc,
+  serverTimestamp, arrayUnion, arrayRemove
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -197,6 +199,10 @@
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
 
+    let amSeeded = false;
+let _buyBusy = false;
+
+
     const toast = (msg, ms=1500) => {
       const t=document.getElementById('toast');
       t.textContent=msg; t.style.display='block';
@@ -232,11 +238,53 @@
     let mySelectedTowerId = null;
 
     // ----- Host & Firestore -----
-    const LEASE_MS = 5000;
-    let isHost = false;
-    let simInt = null;
-    const lobbyRef = doc(db, "lobbies", lobbyId);
-    const intentsCol = collection(db, "lobbies", lobbyId, "intents");
+   // ----- Host & Firestore -----
+const LEASE_MS = 5000;
+let isHost = false;
+let simInt = null;
+const lobbyRef  = doc(db, "lobbies", lobbyId);
+const intentsCol = collection(db, "lobbies", lobbyId, "intents");
+
+// ---- Presence (fast, reliable player list) ----
+if (!lobbyId) throw new Error("Missing gameId in URL");
+
+const presenceCol = collection(db, "lobbies", lobbyId, "presence");
+let presentNames = [];
+const STALE_MS = 45_000; // anything older than 45s is considered offline
+
+onSnapshot(presenceCol, snap => {
+  const nowMs = Date.now();
+  presentNames = snap.docs
+    .filter(d => {
+      const ts = d.data()?.lastSeen;
+      const ms = ts?.toMillis ? ts.toMillis() : 0;
+      return nowMs - ms < STALE_MS;
+    })
+    .map(d => d.id)
+    .sort();
+});
+
+// Announce presence immediately and keep it fresh
+await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp() }, { merge: true });
+const _presenceBeat = setInterval(() => {
+  updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp() }).catch(()=>{});
+}, 15000);
+
+// Also mirror to root `players` (for compatibility with existing code)
+await setDoc(lobbyRef, { players: arrayUnion(me), active: true }, { merge: true });
+
+// Clean-up helpers
+function cleanupPresence(){
+  try { clearInterval(_presenceBeat); } catch {}
+  // fire-and-forget; may not complete on all browsers
+  deleteDoc(doc(presenceCol, me)).catch(()=>{});
+  updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
+}
+
+// Clean-up on tab close / navigate
+window.addEventListener('beforeunload', cleanupPresence);
+window.addEventListener('pagehide', cleanupPresence); // iOS/Safari fallback
+
 
     // Helpers
     const now = () => Date.now();
@@ -262,40 +310,108 @@
     }
 
     // Shop
-    function renderShop(){
-      shopBox.innerHTML = "";
-      TOWER_TYPES.forEach(t=>{
-        const div=document.createElement('div');
-        div.className="card";
-        div.innerHTML = `
-          <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
-          <div class="small">Element: ${t.el}</div>
-          <div class="small">Cost: ${t.cost}</div>
-          <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
-        `;
-        div.onclick = ()=> tryBuy(t.key);
-        shopBox.appendChild(div);
-      });
-    }
-    async function tryBuy(tKey){
-      if (!state) return;
-      const def = TOWER_TYPES.find(x=>x.key===tKey); if (!def) return;
-      if (myFunds < def.cost){ toast("Not enough funds"); return; }
-      await addDoc(intentsCol, { ts: now(), actor: me, type: "BUY", payload: { tKey } });
-    }
-    upgradeBtn.onclick = async ()=>{ if (!mySelectedTowerId) return; await addDoc(intentsCol, { ts: now(), actor: me, type:"UPGRADE", payload:{ id: mySelectedTowerId } }); };
-    sellBtn.onclick    = async ()=>{ if (!mySelectedTowerId) return; await addDoc(intentsCol, { ts: now(), actor: me, type:"SELL",    payload:{ id: mySelectedTowerId } }); };
-
-    leaveBtn.onclick = async ()=>{
-      const snap = await getDoc(lobbyRef);
-      if (snap.exists()){
-        const d = snap.data();
-        const rest = (d.players||[]).filter(p=>p!==me);
-        if (rest.length===0){ try{ await deleteDoc(lobbyRef); }catch(e){} }
-        else { await updateDoc(lobbyRef, { players: rest }); }
-      }
-      location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+   function renderShop(){
+  shopBox.innerHTML = "";
+  const gameActive = !state || state.status === 'active';
+  TOWER_TYPES.forEach(t=>{
+    const div=document.createElement('div');
+    const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
+    div.className = "card" + (disabled ? " disabled" : "");
+    div.innerHTML = `
+      <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
+      <div class="small">Element: ${t.el}</div>
+      <div class="small">Cost: ${t.cost}</div>
+      <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+    `;
+    div.onclick = async ()=>{
+      if (disabled || _buyBusy) return;
+      _buyBusy = true;
+      try{ await tryBuy(t.key); } finally { setTimeout(()=>_buyBusy=false, 350); }
     };
+    shopBox.appendChild(div);
+  });
+}
+
+   // Small helper to throttle intent spam and always include baseIncome
+async function enqueueIntent(type, payload = {}){
+  if (_actionBusy) return;
+  _actionBusy = true;
+  try{
+    await addDoc(intentsCol, {
+      ts: now(),
+      actor: me,
+      type,
+      payload: { ...payload, baseIncome: myBaseIncome }
+    });
+  } finally {
+    // brief cooldown so the UI feels responsive but de-dupes double clicks
+    setTimeout(() => { _actionBusy = false; }, 250);
+  }
+}
+
+async function tryBuy(tKey){
+  if (!state || state.status !== 'active') return;
+  const def = TOWER_TYPES.find(x => x.key === tKey); if (!def) return;
+
+  // If host hasn't seeded us yet, show a friendly nudge
+  if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
+
+  // UI check is still useful so players get instant feedback
+  if (myFunds < def.cost){ toast("Not enough funds"); return; }
+
+  await enqueueIntent("BUY", { tKey });
+}
+
+// Buttons — include baseIncome for implicit seeding fallback
+upgradeBtn.onclick = async () => {
+  if (!state || state.status !== 'active') return;
+  if (!mySelectedTowerId) return;
+  await enqueueIntent("UPGRADE", { id: mySelectedTowerId });
+};
+
+sellBtn.onclick = async () => {
+  if (!state || state.status !== 'active') return;
+  if (!mySelectedTowerId) return;
+  await enqueueIntent("SELL", { id: mySelectedTowerId });
+};
+
+// (Optional but nice): disable buttons while busy so the user sees it
+const btns = [upgradeBtn, sellBtn];
+const _origEnqueue = enqueueIntent;
+enqueueIntent = async function(type, payload){
+  btns.forEach(b => b.disabled = true);
+  try { return await _origEnqueue(type, payload); }
+  finally { btns.forEach(b => b.disabled = false); }
+};
+
+// ---- Leave: use the cleanup helper and guard against double-clicks ----
+let _leaving = false;
+leaveBtn.onclick = async ()=>{
+  if (_leaving) return;
+  _leaving = true;
+  leaveBtn.disabled = true;
+
+  try{
+    // Prefer the same cleanup function you wired to beforeunload/pagehide
+    if (typeof cleanupPresence === 'function') {
+      cleanupPresence();
+    } else {
+      // Fallback if you didn't include cleanupPresence()
+      await deleteDoc(doc(presenceCol, me)).catch(()=>{});
+      await updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
+    }
+
+    // Only delete the lobby if nobody is present anymore
+    const pres = await getDocs(presenceCol);
+    if (pres.empty){
+      try{ await deleteDoc(lobbyRef); }catch(e){}
+    }
+  } finally {
+    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+  }
+};
+
+
 
     // Ensure user income, emit JOINED
     async function ensureUserIncome(){
@@ -315,6 +431,12 @@
     onSnapshot(lobbyRef, async (docSnap)=>{
       if (!docSnap.exists()) { location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; return; }
       const d = docSnap.data();
+      if (d.status === 'defeat' || d.active === false){
+        toast("💥 Core destroyed! Returning to lobby…", 1200);
+        setTimeout(()=>{ location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; }, 1200);
+        return;
+      }
+
       hostLbl.textContent = `Host: ${d.host||'—'}`;
       state = d.game || state;
 
@@ -327,6 +449,10 @@
 
         const meP = (state.players||[]).find(p=>p.name===me);
         if (meP){ myFunds = meP.funds||0; myBaseIncome = meP.baseIncome||myBaseIncome; fundsLbl.textContent = Math.floor(myFunds); baseLbl.textContent = round2(myBaseIncome); }
+
+        const wasSeeded = amSeeded;
+      amSeeded = !!(meP && meP._seeded);
+      if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
 
         playersBox.innerHTML = "";
         (state.players||[]).forEach((p,i)=>{
@@ -345,14 +471,22 @@
       if (shouldClaimHost(docSnap)) await tryClaimHost();
     });
 
-    function shouldClaimHost(docSnap){
-      const d = docSnap.data(); const leaseUntil = d.leaseUntil||0; const players = d.players||[];
-      if (!players.includes(me)) return false;
-      if (!d.host) return true;
-      const expired = (now() > leaseUntil);
-      const next = [...players].sort()[0];
-      return expired && (next === me);
-    }
+  function shouldClaimHost(docSnap){
+  const d = docSnap.data() || {};
+  const leaseUntil = d.leaseUntil || 0;
+
+  // Only live players can claim host
+  if (!presentNames.includes(me)) return false;
+
+  // If no host, lowest name claims
+  if (!d.host) return true;
+
+  // If lease expired, lowest present name preempts
+  const expired = (now() > leaseUntil);
+  const next = (presentNames[0] || '');
+  return expired && (next === me);
+}
+
 
     async function tryClaimHost(){
       try{
@@ -393,87 +527,131 @@
     }, 2500);
 
     // ----- Intents + Sim (host) -----
-    async function simulateStepAsHost(){
-      const s = await getDoc(lobbyRef); if (!s.exists()) return;
-      const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
-      let g = d.game; if (!g || g.status!=='active') return;
+   async function simulateStepAsHost(){
+  const s = await getDoc(lobbyRef); if (!s.exists()) return;
+  const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
 
-      const Q = query(intentsCol, orderBy('ts','asc'), limit(20));
-      const snap = await getDocs(Q);
-      for (const docu of snap.docs){
-        const mv = docu.data();
-        try{ g = await applyIntent(g, mv); }catch(e){}
-        try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
-      }
+  // If no one present anymore, tear down the lobby
+  const presSnap = await getDocs(presenceCol);
+  if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
 
-      g = simulate(g);
+  let g = d.game;
+  if (!g || g.status !== 'active') {
+    // Keep lease fresh so clients see who the "owner" is, but don't tick the sim
+    await updateDoc(lobbyRef, { leaseUntil: now()+LEASE_MS });
+    return;
+  }
 
-      const playersList = d.players||[];
-      if (playersList.length===0){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
+  // Process more intents to avoid backlog at join time
+  const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
+  const snap = await getDocs(Q);
+  for (const docu of snap.docs){
+    const mv = docu.data();
+    try{ g = await applyIntent(g, mv); }catch(e){}
+    try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
+  }
 
-      await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
+  g = simulate(g);
+  await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
+}
+
+
+   async function applyIntent(g, mv){
+  const actor = mv.actor;
+
+  // --- Explicit join: seed or finish seeding if needed ---
+  if (mv.type === 'JOINED'){
+    const base = mv.payload?.baseIncome ?? 1;
+    let p = g.players.find(p => p.name === actor);
+    if (!p){
+      const color = palette[g.players.length % palette.length];
+      p = { name: actor, color, funds: base * 10, baseIncome: base, baseIncomeDelta: 0, _seeded: true };
+      g.players.push(p);
+    } else if (!p._seeded){
+      p.funds += base * 10;
+      p.baseIncome = base;
+      p._seeded = true;
     }
+    return g;
+  }
 
-    async function applyIntent(g, mv){
-      const actor = mv.actor;
-
-      if (mv.type === 'JOINED'){
-        // Add player if missing, seed immediately (covers "no account" case)
-        let p = g.players.find(p=>p.name===actor);
-        const base = mv.payload?.baseIncome ?? 1;
-        if (!p){
-          const color = palette[g.players.length % palette.length];
-          p = { name: actor, color, funds: base*10, baseIncome: base, baseIncomeDelta:0, _seeded:true };
-          g.players.push(p);
-        } else if (!p._seeded){
-          p.funds += base * 10;
-          p.baseIncome = base;
-          p._seeded = true;
-        }
-        return g;
-      }
-
-      // ignore other intents from non-players
-      if (!g.players.some(p=>p.name===actor)) return g;
-
-      if (mv.type === 'BUY'){
-        const def = TOWER_TYPES.find(x=>x.key===mv.payload?.tKey); if (!def) return g;
-        const p = g.players.find(p=>p.name===actor); if (!p || p.funds < def.cost) return g;
-
-        const occ = new Array(COLS*ROWS).fill(false);
-        occ[g.crystal.y*COLS + g.crystal.x] = true;
-        g.towers.forEach(t=>{ occ[t.y*COLS+t.x] = true; });
-        const spot = nearestFreeTile(g.crystal.x, g.crystal.y-1, occ); if (!spot) return g;
-
-        const id = 't'+Math.random().toString(36).slice(2);
-        g.towers.push({ id, x:spot.x, y:spot.y, owner:actor, emoji:def.emoji, el:def.el,
-                        hp:def.hp, maxHp:def.hp, level:1, dmg:def.dmg, range:def.range, rate:def.rate, cd:0 });
-        p.funds -= def.cost;
-        return g;
-      }
-
-      if (mv.type === 'UPGRADE'){
-        const t = g.towers.find(z=>z.id===mv.payload?.id); if (!t || t.owner!==actor) return g;
-        const p = g.players.find(p=>p.name===actor); const cost = 15 + t.level*10;
-        if (!p || p.funds < cost) return g;
-        p.funds -= cost; t.level += 1;
-        t.dmg = Math.round(t.dmg * 1.25);
-        t.range += (t.level%2===0?1:0);
-        t.rate = +(t.rate*1.05).toFixed(2);
-        t.maxHp += 6; t.hp = Math.min(t.maxHp, t.hp+6);
-        return g;
-      }
-
-      if (mv.type === 'SELL'){
-        const idx = g.towers.findIndex(z=>z.id===mv.payload?.id); if (idx<0) return g;
-        const t = g.towers[idx]; if (t.owner!==actor) return g;
-        const p = g.players.find(p=>p.name===actor); if (p) p.funds += 10 + (t.level-1)*6;
-        g.towers.splice(idx,1);
-        return g;
-      }
-
-      return g;
+  // --- Implicit join: if a gameplay intent arrives before JOINED is processed, seed now ---
+  if (mv.type === 'BUY' || mv.type === 'UPGRADE' || mv.type === 'SELL'){
+    if (!g.players.some(p => p.name === actor)){
+      const base = mv.payload?.baseIncome ?? 1;
+      g.players.push({
+        name: actor,
+        color: palette[g.players.length % palette.length],
+        funds: base * 10,
+        baseIncome: base,
+        baseIncomeDelta: 0,
+        _seeded: true
+      });
     }
+  }
+
+  // --- BUY ---
+  if (mv.type === 'BUY'){
+    // Optional: ignore if game ended
+    if (g.status !== 'active') return g;
+
+    const def = TOWER_TYPES.find(x => x.key === mv.payload?.tKey); if (!def) return g;
+    const p = g.players.find(p => p.name === actor);               if (!p || p.funds < def.cost) return g;
+
+    const occ = new Array(COLS * ROWS).fill(false);
+    occ[g.crystal.y * COLS + g.crystal.x] = true;
+    g.towers.forEach(t => { occ[t.y * COLS + t.x] = true; });
+
+    const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
+
+    const id = 't' + Math.random().toString(36).slice(2);
+    g.towers.push({
+      id, x: spot.x, y: spot.y, owner: actor,
+      emoji: def.emoji, el: def.el,
+      hp: def.hp, maxHp: def.hp, level: 1,
+      dmg: def.dmg, range: def.range, rate: def.rate, cd: 0
+    });
+    p.funds -= def.cost;
+    return g;
+  }
+
+  // --- UPGRADE ---
+  if (mv.type === 'UPGRADE'){
+    if (g.status !== 'active') return g;
+
+    const t = g.towers.find(z => z.id === mv.payload?.id); if (!t || t.owner !== actor) return g;
+    const p = g.players.find(p => p.name === actor);
+    const cost = 15 + t.level * 10;
+    if (!p || p.funds < cost) return g;
+
+    p.funds -= cost;
+    t.level += 1;
+    t.dmg = Math.round(t.dmg * 1.25);
+    t.range += (t.level % 2 === 0 ? 1 : 0);
+    t.rate = +(t.rate * 1.05).toFixed(2);
+    t.maxHp += 6;
+    t.hp = Math.min(t.maxHp, t.hp + 6);
+    return g;
+  }
+
+  // --- SELL ---
+  if (mv.type === 'SELL'){
+    if (g.status !== 'active') return g;
+
+    const idx = g.towers.findIndex(z => z.id === mv.payload?.id); if (idx < 0) return g;
+    const t = g.towers[idx]; if (t.owner !== actor) return g;
+
+    const p = g.players.find(p => p.name === actor);
+    if (p) p.funds += 10 + Math.max(0, (t.level - 1)) * 6;
+
+    g.towers.splice(idx, 1);
+    return g;
+  }
+
+  // Unknown / non-mutating intents
+  return g;
+}
+
 
     let incomeTickAt = 0;
     function simulate(g){
@@ -561,28 +739,38 @@
       return best;
     }
 
-    async function finalizeAndMarkDefeat(g){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const s = await tx.get(lobbyRef); if (!s.exists()) return;
-          const d = s.data(); if (d.host !== me) return;
-          const cur = d.game || g; if (cur._finalized) return;
-          for (const p of (cur.players||[])){
-            const delta = round2(p.baseIncomeDelta||0);
-            if (delta>0){
-              const uref = doc(db, 'users', p.name);
-              const us = await tx.get(uref);
-              let curBase = 1;
-              if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
-              const next = round2(curBase + delta);
-              tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
-            }
-          }
-          cur.status = 'defeat'; cur._finalized = true;
-          tx.update(lobbyRef, { game: cur });
-        });
-      }catch(e){}
-    }
+   async function finalizeAndMarkDefeat(g){
+  try{
+    await runTransaction(db, async (tx)=>{
+      const s = await tx.get(lobbyRef); if (!s.exists()) return;
+      const d = s.data(); if (d.host !== me) return;
+      const cur = d.game || g; if (cur._finalized) return;
+
+      // Persist baseIncome gains
+      for (const p of (cur.players||[])){
+        const delta = round2(p.baseIncomeDelta||0);
+        if (delta>0){
+          const uref = doc(db, 'users', p.name);
+          const us = await tx.get(uref);
+          let curBase = 1;
+          if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
+          const next = round2(curBase + delta);
+          tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
+        }
+      }
+
+      cur.status = 'defeat';
+      cur._finalized = true;
+      tx.update(lobbyRef, {
+        game: cur,
+        active: false,
+        status: 'defeat',
+        endedAt: serverTimestamp()
+      });
+    });
+  }catch(e){}
+}
+
 
     // ----- Scrolling -----
     function syncSlider(){ vScroll.value = Math.round(camY); }
@@ -648,6 +836,7 @@
   </script>
 </body>
 </html>
+
 
 
 
