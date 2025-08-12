@@ -7,19 +7,18 @@
   <style>
     :root{
       --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb;
-      --accent:#2e7d32; --danger:#c62828; --gold:#cda434; --violet:#7c3aed;
+      --accent:#2e7d32; --danger:#c62828; --violet:#7c3aed;
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink);display:flex;gap:10px;height:100vh;overflow:hidden}
-    #left{flex:0 0 280px;background:var(--card);border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
-    #center{flex:1;display:flex;flex-direction:column;gap:8px}
+    #left{flex:0 0 250px;background:var(--card);border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+    #center{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
     header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
     header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:999px}
-    header .host{font-weight:600}
     #stats{display:flex;gap:16px;font-size:14px;color:var(--muted)}
-    #canvasWrap{position:relative;flex:1;background:#eef3f7;border:1px solid var(--line)}
-    canvas{display:block;width:100%;height:100%}
-    #right{flex:0 0 300px;background:var(--card);border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+    #canvasWrap{position:relative;flex:1;background:#eef3f7;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+    canvas{display:block;width:720px;height:560px;max-width:100%;max-height:100%}
+    #right{flex:0 0 260px;background:var(--card);border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
     .panel h3{margin:0 0 6px 0;font-size:16px}
     .players{display:flex;flex-direction:column;gap:6px;max-height:35vh;overflow:auto}
     .playerRow{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
@@ -32,32 +31,35 @@
     .row{display:flex;gap:8px;align-items:center}
     .small{font-size:12px;color:var(--muted)}
     .toast{position:absolute;left:50%;transform:translateX(-50%);top:10px;background:#111;color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;opacity:.95}
-    #hud{position:absolute;top:8px;left:8px;display:flex;gap:12px;align-items:center}
     .chip{background:#fff;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font-size:12px}
-    #leaveBtn{color:#fff;background:var(--danger);border:none}
-    /* Scrollbar styling */
     #vScroll { position:absolute; right:8px; top:12px; height:calc(100% - 24px); width:18px;
                writing-mode: bt-lr; -webkit-appearance: slider-vertical; }
     #vScroll::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--violet); }
     #vScroll::-webkit-slider-runnable-track { background:#dbe5ff; border-radius:12px; }
     #centerBtn{ position:absolute; left:12px; bottom:12px; }
+    #leaveBtn{color:#fff;background:var(--danger);border:none}
+    /* Responsive: collapse sidebars under 1200px */
+    @media (max-width: 1200px){
+      #left{display:none}
+      #right{display:none}
+      #center{gap:0}
+      header{flex-wrap:wrap;gap:6px}
+    }
   </style>
 </head>
 <body>
   <div id="left">
     <div class="panel">
       <h3>Session</h3>
-      <div class="row small"><span id="hostLbl" class="host">Host: …</span><span id="leaseLbl" class="chip">lease …</span></div>
+      <div class="row small"><span id="hostLbl">Host: …</span><span id="leaseLbl" class="chip">lease …</span></div>
       <div class="row small">Lobby: <span id="lobbyId">…</span></div>
       <div class="row small">You: <b id="youName">…</b></div>
       <div class="row"><button id="leaveBtn" class="btn">Leave</button></div>
     </div>
-
     <div class="panel">
       <h3>Players</h3>
       <div id="playersBox" class="players"></div>
     </div>
-
     <div class="panel">
       <h3>Level</h3>
       <div class="row"><div>Level:</div><b id="levelLbl">1</b></div>
@@ -75,11 +77,10 @@
           <div>Base income: <b id="baseLbl">0</b> /30s</div>
         </div>
       </div>
-      <div class="small">Scroll: mouse wheel / ↑↓ / W–S, or use the vertical slider. “Center on Core” jumps to the crystal.</div>
+      <div class="small">Scroll: wheel / ↑↓ / W–S or use the slider. “Center on Core” jumps to the crystal.</div>
     </header>
     <div id="canvasWrap">
-      <canvas id="game" width="900" height="720"></canvas>
-      <div id="hud"></div>
+      <canvas id="game" width="720" height="560"></canvas>
       <div id="toast" class="toast" style="display:none"></div>
       <input id="vScroll" type="range" min="0" value="0" step="1">
       <button id="centerBtn" class="chip">Center on Core</button>
@@ -90,7 +91,7 @@
     <div class="panel">
       <h3>Build</h3>
       <div class="shop" id="shop"></div>
-      <div class="small">Click a card to buy. Towers place at nearest free tile from the crystal. Select your tower to upgrade (owner only).</div>
+      <div class="small">Click a card to buy. Towers place near the crystal. Upgrades are owner-only.</div>
     </div>
     <div class="panel">
       <h3>Selected</h3>
@@ -103,7 +104,7 @@
   </div>
 
   <script type="module">
-    // --------- Firebase ----------
+    // ----- Firebase -----
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
@@ -121,28 +122,25 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // --------- Routing / Params ----------
-    const LOBBY_ROUTE = "/lobby.html"; // change if your lobby page has a different path
+    // ----- Params -----
+    const LOBBY_ROUTE = "/lobby.html";
     const params = new URLSearchParams(location.search);
     const lobbyId = params.get("gameId");
     const me = params.get("username") || "anon";
-    document.getElementById('youName').textContent = me;
-    document.getElementById('lobbyId').textContent = lobbyId || "—";
+    youName.textContent = me; // using element IDs directly via global mapping
+    lobbyId.textContent = lobbyId || "—";
 
-    // --------- Canvas / Map ----------
+    // ----- Canvas / Map -----
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
 
-    const TILE = 32;
-    const COLS = 20;
-    const ROWS = 300; // tall map
-    const MAP_W = COLS * TILE;
-    const MAP_H = ROWS * TILE;
-    let camY = MAP_H - H; // start near bottom so the core is closer
+    const TILE = 32, COLS = 20, ROWS = 300;
+    const MAP_W = COLS * TILE, MAP_H = ROWS * TILE;
+    let camY = MAP_H - H; // start near bottom
     let initialCentered = false;
 
-    // --------- UI ----------
+    // ----- UI -----
     const fundsLbl = document.getElementById('fundsLbl');
     const baseLbl  = document.getElementById('baseLbl');
     const hostLbl  = document.getElementById('hostLbl');
@@ -165,14 +163,14 @@
       setTimeout(()=>t.style.display='none', ms);
     };
 
-    // --------- Game Data ----------
+    // ----- Data -----
     const palette = ["#ef4444","#3b82f6","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16"];
     const ELEM_COL = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"};
     const TOWER_TYPES = [
-      { key:"ember",  name:"Ember",  emoji:"🔥", el:"fire",  cost:20, dmg:5,  range:4, rate:1.2, hp:30 },
-      { key:"frost",  name:"Frost",  emoji:"❄️", el:"frost", cost:22, dmg:4,  range:5, rate:1.0, hp:32 },
-      { key:"volt",   name:"Volt",   emoji:"⚡", el:"volt",  cost:24, dmg:6,  range:3, rate:0.9, hp:28 },
-      { key:"nature", name:"Thorn",  emoji:"🌿", el:"nature",cost:18, dmg:4,  range:4, rate:1.3, hp:34 },
+      { key:"ember",  name:"Ember",  emoji:"🔥", el:"fire",  cost:3, dmg:5,  range:40, rate:1.2, hp:30 },
+      { key:"frost",  name:"Frost",  emoji:"❄️", el:"frost", cost:4, dmg:4,  range:50, rate:1.0, hp:32 },
+      { key:"volt",   name:"Volt",   emoji:"⚡", el:"volt",  cost:5, dmg:6,  range:30, rate:0.9, hp:28 },
+      { key:"nature", name:"Thorn",  emoji:"🌿", el:"nature",cost:4, dmg:4,  range:40, rate:1.3, hp:34 },
     ];
     const ELEM_MULT = {
       fire:   { nature:1.5, frost:0.8, volt:1.0, fire:1.0 },
@@ -187,26 +185,26 @@
       { key:"brute",  el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower" },
     ];
 
-    // --------- State Cache ----------
-    let state = null;       // authoritative game state from Firestore
+    // ----- State -----
+    let state = null;
     let myFunds = 0;
     let myBaseIncome = 0;
     let mySelectedTowerId = null;
 
-    // --------- Host Lease / Failover ----------
+    // ----- Host & Firestore -----
     const LEASE_MS = 5000;
     let isHost = false;
     let simInt = null;
-
     const lobbyRef = doc(db, "lobbies", lobbyId);
     const intentsCol = collection(db, "lobbies", lobbyId, "intents");
 
-    // --------- Helpers ----------
+    // Helpers
     const now = () => Date.now();
     const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
     const dist2 = (x1,y1,x2,y2)=>((x1-x2)**2+(y1-y2)**2);
     const rnd = (a,b)=>a+Math.random()*(b-a);
     const round2=(n)=>Math.round(n*100)/100;
+    const playerColor=(name,list)=>palette[Math.max(0,(list||[]).indexOf(name))%palette.length];
 
     function nearestFreeTile(fromX, fromY, occ){
       const maxR = Math.max(COLS, ROWS);
@@ -222,9 +220,8 @@
       }
       return null;
     }
-    function playerColor(name, list){ const idx=(list||[]).indexOf(name); return palette[Math.max(0, idx)%palette.length]; }
 
-    // --------- Shop UI ----------
+    // Shop
     function renderShop(){
       shopBox.innerHTML = "";
       TOWER_TYPES.forEach(t=>{
@@ -242,19 +239,13 @@
     }
     async function tryBuy(tKey){
       if (!state) return;
-      const tDef = TOWER_TYPES.find(x=>x.key===tKey);
-      if (!tDef) return;
-      if (myFunds < tDef.cost){ toast("Not enough funds"); return; }
+      const def = TOWER_TYPES.find(x=>x.key===tKey); if (!def) return;
+      if (myFunds < def.cost){ toast("Not enough funds"); return; }
       await addDoc(intentsCol, { ts: now(), actor: me, type: "BUY", payload: { tKey } });
     }
-    upgradeBtn.onclick = async ()=>{
-      if (!mySelectedTowerId) return;
-      await addDoc(intentsCol, { ts: now(), actor: me, type:"UPGRADE", payload:{ id: mySelectedTowerId } });
-    };
-    sellBtn.onclick = async ()=>{
-      if (!mySelectedTowerId) return;
-      await addDoc(intentsCol, { ts: now(), actor: me, type:"SELL", payload:{ id: mySelectedTowerId } });
-    };
+    upgradeBtn.onclick = async ()=>{ if (!mySelectedTowerId) return; await addDoc(intentsCol, { ts: now(), actor: me, type:"UPGRADE", payload:{ id: mySelectedTowerId } }); };
+    sellBtn.onclick    = async ()=>{ if (!mySelectedTowerId) return; await addDoc(intentsCol, { ts: now(), actor: me, type:"SELL",    payload:{ id: mySelectedTowerId } }); };
+
     leaveBtn.onclick = async ()=>{
       const snap = await getDoc(lobbyRef);
       if (snap.exists()){
@@ -266,7 +257,7 @@
       location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
     };
 
-    // --------- Load / Listen ----------
+    // Ensure user income, emit JOINED
     async function ensureUserIncome(){
       const uref = doc(db, 'users', me);
       const us = await getDoc(uref);
@@ -284,37 +275,23 @@
     onSnapshot(lobbyRef, async (docSnap)=>{
       if (!docSnap.exists()) { location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`; return; }
       const d = docSnap.data();
-      const players = d.players || [];
       hostLbl.textContent = `Host: ${d.host||'—'}`;
-
-      // set slider bounds
-      vScroll.max = Math.max(0, MAP_H - H);
-
-      // set / update state
       state = d.game || state;
 
-      // auto-center once when state shows up
-      if (state && state.crystal && !initialCentered) {
-        initialCentered = true; centerOnCore();
-      }
+      if (state && state.crystal && !initialCentered) { initialCentered = true; centerOnCore(); }
 
-      // UI
       if (state){
         levelLbl.textContent = state.level || 1;
         killsLbl.textContent = `${(state.killsToAdvance||10) - (state.killsThisLevel||0)}`;
         coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp||0))}/${Math.round(state.crystal?.maxHp||0)}`;
 
         const meP = (state.players||[]).find(p=>p.name===me);
-        if (meP){
-          myFunds = meP.funds||0;
-          myBaseIncome = meP.baseIncome||myBaseIncome;
-          fundsLbl.textContent = Math.floor(myFunds);
-          baseLbl.textContent = round2(myBaseIncome);
-        }
+        if (meP){ myFunds = meP.funds||0; myBaseIncome = meP.baseIncome||myBaseIncome; fundsLbl.textContent = Math.floor(myFunds); baseLbl.textContent = round2(myBaseIncome); }
+
         playersBox.innerHTML = "";
-        (state.players||[]).forEach(p=>{
+        (state.players||[]).forEach((p,i)=>{
           const row=document.createElement('div'); row.className='playerRow';
-          row.innerHTML = `<div><span class="dot" style="background:${playerColor(p.name, players)}"></span>${p.name}</div>
+          row.innerHTML = `<div><span class="dot" style="background:${palette[i%palette.length]}"></span>${p.name}</div>
                            <div class="small">Base: ${round2(p.baseIncome)} | $${Math.floor(p.funds||0)}</div>`;
           playersBox.appendChild(row);
         });
@@ -325,7 +302,6 @@
         }
       }
 
-      // host claim if needed
       if (shouldClaimHost(docSnap)) await tryClaimHost();
     });
 
@@ -335,8 +311,7 @@
       if (!d.host) return true;
       const expired = (now() > leaseUntil);
       const next = [...players].sort()[0];
-      const iAmNext = (next === me);
-      return expired && iAmNext;
+      return expired && (next === me);
     }
 
     async function tryClaimHost(){
@@ -347,53 +322,29 @@
           if (!players.includes(me)) return;
 
           if (!d.host || now()>leaseUntil){
-            // init game if none — seed funds immediately from user baseIncome
             let game = d.game;
             if (!game){
-              const cx = Math.floor(COLS/2);
-              const cy = ROWS-3;
-
+              const cx = Math.floor(COLS/2), cy = ROWS-3;
               const seededPlayers = [];
               for (const [i, n] of players.entries()) {
                 const uref = doc(db, 'users', n);
                 const us = await tx.get(uref);
-                const base = (us.exists() && us.data().estate && typeof us.data().estate.baseIncome === 'number')
-                              ? us.data().estate.baseIncome : 1;
-                seededPlayers.push({
-                  name: n, color: palette[i % palette.length],
-                  funds: base * 10, baseIncome: base, baseIncomeDelta: 0, _seeded: true
-                });
+                const base = (us.exists() && us.data().estate && typeof us.data().estate.baseIncome === 'number') ? us.data().estate.baseIncome : 1;
+                seededPlayers.push({ name:n, color:palette[i%palette.length], funds: base*10, baseIncome: base, baseIncomeDelta:0, _seeded:true });
               }
-
-              game = {
-                status: 'active',
-                level: 1,
-                killsThisLevel: 0,
-                killsToAdvance: 20,
-                lastTick: now(),
-                nextSpawnAt: now()+1000,
-                crystal: { x:cx, y:cy, hp:1000, maxHp:1000 },
-                players: seededPlayers,
-                towers: [],
-                enemies: [],
-                projectiles: []
-              };
+              game = { status:'active', level:1, killsThisLevel:0, killsToAdvance:20, lastTick:now(), nextSpawnAt:now()+1000,
+                       crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 }, players: seededPlayers, towers:[], enemies:[], projectiles:[] };
             }
             tx.update(lobbyRef, { host: me, leaseUntil: now()+LEASE_MS, game });
           }
         });
-        isHost = true;
-        leaseLbl.textContent = "lease: host";
+        isHost = true; leaseLbl.textContent = "lease: host";
         startHostLoop();
-      }catch(e){/* another client won; ignore */}
+      }catch(e){}
     }
 
-    function startHostLoop(){
-      if (simInt) clearInterval(simInt);
-      simInt = setInterval(simulateStepAsHost, 200); // ~5 fps logic
-    }
+    function startHostLoop(){ if (simInt) clearInterval(simInt); simInt = setInterval(simulateStepAsHost, 200); }
 
-    // non-host keeps an eye on lease
     setInterval(async ()=>{
       if (isHost) return;
       const s = await getDoc(lobbyRef); if (!s.exists()) return;
@@ -401,19 +352,17 @@
       leaseLbl.textContent = "lease: client";
     }, 2500);
 
-    // --------- Intents + Sim (host) ----------
+    // ----- Intents + Sim (host) -----
     async function simulateStepAsHost(){
       const s = await getDoc(lobbyRef); if (!s.exists()) return;
-      const d = s.data();
-      if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
-      let g = d.game;
-      if (!g || g.status!=='active') return;
+      const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
+      let g = d.game; if (!g || g.status!=='active') return;
 
       const Q = query(intentsCol, orderBy('ts','asc'), limit(20));
       const snap = await getDocs(Q);
       for (const docu of snap.docs){
         const mv = docu.data();
-        try{ g = applyIntent(g, mv); }catch(e){}
+        try{ g = await applyIntent(g, mv); }catch(e){}
         try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
       }
 
@@ -422,18 +371,21 @@
       const playersList = d.players||[];
       if (playersList.length===0){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
 
-      // publish game + bump lease in same write (no separate heartbeat)
       await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
     }
 
-    function applyIntent(g, mv){
+    async function applyIntent(g, mv){
       const actor = mv.actor;
-      if (!g.players.some(p=>p.name===actor)) return g;
 
       if (mv.type === 'JOINED'){
-        const p = g.players.find(p=>p.name===actor);
-        if (p && !(p._seeded)){
-          const base = mv.payload?.baseIncome ?? p.baseIncome ?? 1;
+        // Add player if missing, seed immediately (covers "no account" case)
+        let p = g.players.find(p=>p.name===actor);
+        const base = mv.payload?.baseIncome ?? 1;
+        if (!p){
+          const color = palette[g.players.length % palette.length];
+          p = { name: actor, color, funds: base*10, baseIncome: base, baseIncomeDelta:0, _seeded:true };
+          g.players.push(p);
+        } else if (!p._seeded){
           p.funds += base * 10;
           p.baseIncome = base;
           p._seeded = true;
@@ -441,17 +393,17 @@
         return g;
       }
 
+      // ignore other intents from non-players
+      if (!g.players.some(p=>p.name===actor)) return g;
+
       if (mv.type === 'BUY'){
-        const tKey = mv.payload?.tKey;
-        const def = TOWER_TYPES.find(x=>x.key===tKey); if (!def) return g;
-        const p = g.players.find(p=>p.name===actor);
-        if (!p || p.funds < def.cost) return g;
+        const def = TOWER_TYPES.find(x=>x.key===mv.payload?.tKey); if (!def) return g;
+        const p = g.players.find(p=>p.name===actor); if (!p || p.funds < def.cost) return g;
 
         const occ = new Array(COLS*ROWS).fill(false);
         occ[g.crystal.y*COLS + g.crystal.x] = true;
         g.towers.forEach(t=>{ occ[t.y*COLS+t.x] = true; });
-        const spot = nearestFreeTile(g.crystal.x, g.crystal.y-1, occ);
-        if (!spot) return g;
+        const spot = nearestFreeTile(g.crystal.x, g.crystal.y-1, occ); if (!spot) return g;
 
         const id = 't'+Math.random().toString(36).slice(2);
         g.towers.push({ id, x:spot.x, y:spot.y, owner:actor, emoji:def.emoji, el:def.el,
@@ -461,10 +413,9 @@
       }
 
       if (mv.type === 'UPGRADE'){
-        const id = mv.payload?.id;
-        const t = g.towers.find(z=>z.id===id); if (!t || t.owner!==actor) return g;
-        const cost = 15 + t.level*10;
-        const p = g.players.find(p=>p.name===actor); if (!p || p.funds < cost) return g;
+        const t = g.towers.find(z=>z.id===mv.payload?.id); if (!t || t.owner!==actor) return g;
+        const p = g.players.find(p=>p.name===actor); const cost = 15 + t.level*10;
+        if (!p || p.funds < cost) return g;
         p.funds -= cost; t.level += 1;
         t.dmg = Math.round(t.dmg * 1.25);
         t.range += (t.level%2===0?1:0);
@@ -474,11 +425,9 @@
       }
 
       if (mv.type === 'SELL'){
-        const id = mv.payload?.id;
-        const idx = g.towers.findIndex(z=>z.id===id); if (idx<0) return g;
+        const idx = g.towers.findIndex(z=>z.id===mv.payload?.id); if (idx<0) return g;
         const t = g.towers[idx]; if (t.owner!==actor) return g;
-        const refund = 10 + (t.level-1)*6;
-        const p = g.players.find(p=>p.name===actor); if (p) p.funds += refund;
+        const p = g.players.find(p=>p.name===actor); if (p) p.funds += 10 + (t.level-1)*6;
         g.towers.splice(idx,1);
         return g;
       }
@@ -491,60 +440,45 @@
       const dt = (now() - (g.lastTick||now()))/1000;
       g.lastTick = now();
 
-      // spawn enemies
+      // spawn
       if (now() >= (g.nextSpawnAt || 0)) {
         const tier  = Math.min(ENEMY_TYPES.length, 1 + Math.floor(g.level / 3));
         const count = 3 + Math.floor(g.level * 0.6);
-
         for (let i = 0; i < count; i++) {
           const base = ENEMY_TYPES[Math.floor(Math.random() * tier)];
           const mult = Math.pow(1.25, g.level - 1);
-
           const HP  = Math.round(base.hp  * mult);
           const DMG = Math.round(base.dmg * mult);
-
-          const x = Math.floor(rnd(2, COLS - 3));
-          const y = 0;
-
+          const x = Math.floor(rnd(2, COLS - 3)), y = 0;
           g.enemies.push({ id:'e'+Math.random().toString(36).slice(2), x, y,
             el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG, spd: base.spd, range: base.range, target: base.target, cd: 0 });
         }
-        const baseDelay = 1600 - g.level * 40;
-        g.nextSpawnAt = now() + Math.max(600, baseDelay);
+        g.nextSpawnAt = now() + Math.max(600, 1600 - g.level * 40);
       }
 
-      // enemies move/attack
+      // enemies
       for (const e of g.enemies){
         if (e.target === 'tower'){
           const tgt = nearestTowerInRange(g, e, e.range);
-          if (tgt){
-            e.cd -= dt;
-            if (e.cd<=0){
-              tgt.hp -= e.dmg; e.cd = 1.2;
-              if (tgt.hp<=0){ const idx=g.towers.findIndex(t=>t.id===tgt.id); if (idx>=0) g.towers.splice(idx,1); }
-            }
-          } else { e.y += e.spd; }
+          if (tgt){ e.cd -= dt; if (e.cd<=0){ tgt.hp -= e.dmg; e.cd = 1.2; if (tgt.hp<=0){ const i=g.towers.findIndex(t=>t.id===tgt.id); if (i>=0) g.towers.splice(i,1); } } }
+          else { e.y += e.spd; }
         } else { e.y += e.spd; }
-
         if (Math.floor(e.y) >= g.crystal.y){ g.crystal.hp -= e.dmg; e.hp = 0; }
       }
 
-      // towers fire
+      // towers
       for (const t of g.towers){
         t.cd -= dt;
         const tgt = nearestEnemyInRange(g, t, t.range);
         if (tgt && t.cd<=0){
-          const spd = 8;
-          const sx = t.x+0.5, sy = t.y+0.5;
-          const dx = (tgt.x+0.5)-sx, dy=(tgt.y+0.5)-sy;
-          const m = Math.hypot(dx,dy)||1;
-          g.projectiles.push({ id:'p'+Math.random().toString(36).slice(2),
-            x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd, dmg:t.dmg, el:t.el, owner:t.owner });
+          const spd = 8, sx = t.x+0.5, sy = t.y+0.5;
+          const dx = (tgt.x+0.5)-sx, dy=(tgt.y+0.5)-sy, m = Math.hypot(dx,dy)||1;
+          g.projectiles.push({ id:'p'+Math.random().toString(36).slice(2), x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd, dmg:t.dmg, el:t.el, owner:t.owner });
           t.cd = 1/Math.max(0.2, t.rate);
         }
       }
 
-      // projectiles hit
+      // projectiles
       for (const p of g.projectiles){
         p.x += p.vx*dt; p.y += p.vy*dt;
         if (p.x<0 || p.x>COLS || p.y<0 || p.y>ROWS) p._dead = true;
@@ -552,17 +486,14 @@
         const hit = g.enemies.find(e=>Math.floor(e.x)===ex && Math.floor(e.y)===ey && e.hp>0);
         if (hit){
           const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
-          hit.hp -= Math.round(p.dmg * mult);
-          p._dead = true;
+          hit.hp -= Math.round(p.dmg * mult); p._dead = true;
           if (hit.hp<=0){
             const lvlGain = Math.pow(1.1, (g.level-1));
-            const pOwner = g.players.find(z=>z.name===p.owner);
-            if (pOwner){ pOwner.funds += 2 + g.level; pOwner.baseIncomeDelta = (pOwner.baseIncomeDelta||0) + (0.05 * lvlGain); }
+            const owner = g.players.find(z=>z.name===p.owner);
+            if (owner){ owner.funds += 2 + g.level; owner.baseIncomeDelta = (owner.baseIncomeDelta||0) + (0.05 * lvlGain); }
             g.killsThisLevel = (g.killsThisLevel||0)+1;
             if (g.killsThisLevel >= (g.killsToAdvance||20)){
-              g.level = (g.level||1)+1;
-              g.killsThisLevel = 0;
-              g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
+              g.level = (g.level||1)+1; g.killsThisLevel = 0; g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
             }
           }
         }
@@ -570,35 +501,23 @@
       g.projectiles = g.projectiles.filter(p=>!p._dead);
       g.enemies = g.enemies.filter(e=>e.hp>0);
 
-      // income tick each 30s
+      // income tick
       if (!incomeTickAt) incomeTickAt = now()+30000;
-      if (now()>=incomeTickAt){
-        for (const p of g.players){ p.funds += p.baseIncome; }
-        incomeTickAt = now()+30000;
-      }
+      if (now()>=incomeTickAt){ for (const p of g.players){ p.funds += p.baseIncome; } incomeTickAt = now()+30000; }
 
-      // defeat check
-      if (g.crystal.hp <= 0 && g.status==='active'){
-        g.crystal.hp = 0; g.status = 'defeat';
-        finalizeAndMarkDefeat(g).catch(()=>{});
-      }
+      // defeat
+      if (g.crystal.hp <= 0 && g.status==='active'){ g.crystal.hp = 0; g.status = 'defeat'; finalizeAndMarkDefeat(g).catch(()=>{}); }
       return g;
     }
 
     function nearestEnemyInRange(g, t, range){
       let best=null, bd=1e9;
-      for (const e of g.enemies){
-        const d = dist2(t.x,t.y, e.x,e.y);
-        if (d <= (range+0.5)**2 && d<bd){ bd=d; best=e; }
-      }
+      for (const e of g.enemies){ const d = dist2(t.x,t.y, e.x,e.y); if (d <= (range+0.5)**2 && d<bd){ bd=d; best=e; } }
       return best;
     }
     function nearestTowerInRange(g, e, range){
       let best=null, bd=1e9;
-      for (const t of g.towers){
-        const d = dist2(t.x,t.y, e.x,e.y);
-        if (d <= (range+0.5)**2 && d<bd){ bd=d; best=t; }
-      }
+      for (const t of g.towers){ const d = dist2(t.x,t.y, e.x,e.y); if (d <= (range+0.5)**2 && d<bd){ bd=d; best=t; } }
       return best;
     }
 
@@ -608,17 +527,13 @@
           const s = await tx.get(lobbyRef); if (!s.exists()) return;
           const d = s.data(); if (d.host !== me) return;
           const cur = d.game || g; if (cur._finalized) return;
-
           for (const p of (cur.players||[])){
             const delta = round2(p.baseIncomeDelta||0);
             if (delta>0){
               const uref = doc(db, 'users', p.name);
               const us = await tx.get(uref);
               let curBase = 1;
-              if (us.exists()){
-                const estate = us.data().estate || {};
-                curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1;
-              }
+              if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
               const next = round2(curBase + delta);
               tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
             }
@@ -629,108 +544,71 @@
       }catch(e){}
     }
 
-    // --------- Scrolling controls ----------
+    // ----- Scrolling -----
     function syncSlider(){ vScroll.value = Math.round(camY); }
-    function centerOnCore(){
-      if (!state || !state.crystal) return;
-      camY = clamp(state.crystal.y * TILE - H/2, 0, MAP_H - H);
-      syncSlider();
-    }
-    vScroll.max = Math.max(0, MAP_H - H);
-    vScroll.value = camY;
-    vScroll.addEventListener('input', () => {
-      camY = clamp(parseInt(vScroll.value, 10) || 0, 0, MAP_H - H);
-    });
+    function centerOnCore(){ if (!state || !state.crystal) return; camY = clamp(state.crystal.y * TILE - H/2, 0, MAP_H - H); syncSlider(); }
+    vScroll.max = Math.max(0, MAP_H - H); vScroll.value = camY;
+    vScroll.addEventListener('input', ()=>{ camY = clamp(parseInt(vScroll.value,10)||0, 0, MAP_H - H); });
     centerBtn.onclick = centerOnCore;
+    canvas.addEventListener('wheel', (ev)=>{ ev.preventDefault(); camY = clamp(camY + ev.deltaY, 0, MAP_H - H); syncSlider(); }, { passive:false });
+    window.addEventListener('keydown', (e)=>{ if (e.key==='ArrowUp'||e.key==='w'||e.key==='W') camY=clamp(camY-50,0,MAP_H-H); if (e.key==='ArrowDown'||e.key==='s'||e.key==='S') camY=clamp(camY+50,0,MAP_H-H); if (e.key==='c'||e.key==='C') centerOnCore(); syncSlider(); });
 
-    canvas.addEventListener('wheel', (ev) => {
-      ev.preventDefault();
-      camY = clamp(camY + ev.deltaY, 0, MAP_H - H);
-      syncSlider();
-    }, { passive: false });
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') camY = clamp(camY - 50, 0, MAP_H - H);
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') camY = clamp(camY + 50, 0, MAP_H - H);
-      if (e.key === 'c' || e.key === 'C') centerOnCore();
-      syncSlider();
-    });
-
-    canvas.addEventListener('mousemove', (ev)=>{
-      // keep your edge scroll too
-      const rect = canvas.getBoundingClientRect(); const y = ev.clientY - rect.top; const edge = 60;
-      if (y < edge) camY = clamp(camY - 12, 0, MAP_H - H);
-      else if (y > H-edge) camY = clamp(camY + 12, 0, MAP_H - H);
-      syncSlider();
-    });
-
-    // --------- Render ----------
+    // ----- Render -----
     function draw(){
       ctx.clearRect(0,0,W,H);
       const offY = camY;
-
-      // grid bg
-      ctx.fillStyle = "#e9eef3"; ctx.fillRect(0,0,W,H);
-      ctx.strokeStyle = "#d7dee6"; ctx.lineWidth = 1;
+      // grid
+      ctx.fillStyle="#e9eef3"; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle="#d7dee6"; ctx.lineWidth=1;
       for (let y=0;y<=H;y+=TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
       for (let x=0;x<=W;x+=TILE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-
       if (!state) return;
 
-      // crystal (bigger + glow + label)
-      const cx = state.crystal.x * TILE + TILE/2;
-      const cy = state.crystal.y * TILE - offY + TILE/2;
-      ctx.strokeStyle = "#a78bfa"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI*2); ctx.stroke();
-      ctx.fillStyle = "#7c3aed"; ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = "#111"; ctx.font = "12px Segoe UI"; ctx.textAlign="center"; ctx.fillText("CRYSTAL", cx, cy - 28);
-      const hpw = 80, hpx = cx - hpw/2, hpy = cy - 24;
-      const pct = Math.max(0, (state.crystal.hp/state.crystal.maxHp));
-      ctx.fillStyle="#222"; ctx.fillRect(hpx, hpy, hpw, 6);
-      ctx.fillStyle = pct>0.5? "#22c55e" : pct>0.25? "#f59e0b" : "#ef4444";
-      ctx.fillRect(hpx, hpy, hpw*pct, 6);
+      // crystal
+      const cx = state.crystal.x*TILE + TILE/2, cy = state.crystal.y*TILE - offY + TILE/2;
+      ctx.strokeStyle="#a78bfa"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,16,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="#7c3aed"; ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#111"; ctx.font="12px Segoe UI"; ctx.textAlign="center"; ctx.fillText("CRYSTAL", cx, cy-28);
+      const hpw=80, hpx=cx-hpw/2, hpy=cy-24, pct=Math.max(0,(state.crystal.hp/state.crystal.maxHp));
+      ctx.fillStyle="#222"; ctx.fillRect(hpx,hpy,hpw,6);
+      ctx.fillStyle=pct>0.5?"#22c55e":pct>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(hpx,hpy,hpw*pct,6);
 
       // towers
       for (const t of (state.towers||[])){
-        const x = t.x*TILE + TILE/2;
-        const y = t.y*TILE - offY + TILE/2;
-        ctx.fillStyle = "#00000020"; ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
-        ctx.font = "20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(t.emoji, x, y);
+        const x=t.x*TILE+TILE/2, y=t.y*TILE - offY + TILE/2;
+        ctx.fillStyle="#00000020"; ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
+        ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(t.emoji, x, y);
         ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
-        ctx.fillStyle = "#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
+        ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
       }
 
-      // enemies (emoji + ring + HP)
-      for (const e of (state.enemies || [])) {
-        const x = e.x * TILE + TILE/2;
-        const y = e.y * TILE - offY + TILE/2;
-        const col = ELEM_COL[e.el] || "#999";
-        ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI*2); ctx.stroke();
-        ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+      // enemies
+      for (const e of (state.enemies||[])){
+        const x=e.x*TILE+TILE/2, y=e.y*TILE - offY + TILE/2;
+        const col=ELEM_COL[e.el]||"#999";
+        ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill();
         const EMO = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" }[e.type] || "⚫";
-        ctx.font = "16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, x, y);
-        const w = 22, h = 4, p = Math.max(0, Math.min(1, (e.hp||0) / (e.maxHp||e.hp||1)));
-        ctx.fillStyle="#111"; ctx.fillRect(x - w/2, y + 14, w, h);
-        ctx.fillStyle = p > 0.5 ? "#22c55e" : p > 0.25 ? "#f59e0b" : "#ef4444";
-        ctx.fillRect(x - w/2, y + 14, w * p, h);
+        ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, x, y);
+        const w=22, h=4, p = Math.max(0, Math.min(1, (e.hp||0) / (e.maxHp||e.hp||1)));
+        ctx.fillStyle="#111"; ctx.fillRect(x-w/2, y+14, w, h);
+        ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(x-w/2, y+14, w*p, h);
       }
 
       // projectiles
       for (const p of (state.projectiles||[])){
-        const x = p.x*TILE + TILE/2;
-        const y = p.y*TILE - offY + TILE/2;
-        ctx.fillStyle = ELEM_COL[p.el] || "#111";
-        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+        const x=p.x*TILE+TILE/2, y=p.y*TILE - offY + TILE/2;
+        ctx.fillStyle=ELEM_COL[p.el]||"#111"; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
       }
     }
 
     renderShop();
     setInterval(draw, 1000/30);
-
-    // boot
     await ensureUserIncome();
   </script>
 </body>
 </html>
+
 
 
 
