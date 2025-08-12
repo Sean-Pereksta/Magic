@@ -202,6 +202,7 @@
  let amSeeded = false;
 let _buyBusy = false;
 let _actionBusy = false; 
+    let lastShop = { funds:-1, seeded:false, active:true }; // for diffed re-render
 
     const toast = (msg, ms=1500) => {
       const t=document.getElementById('toast');
@@ -310,27 +311,47 @@ window.addEventListener('pagehide', cleanupPresence); // iOS/Safari fallback
     }
 
     // Shop
-   function renderShop(){
-  shopBox.innerHTML = "";
+  function renderShop(){
   const gameActive = !state || state.status === 'active';
-  TOWER_TYPES.forEach(t=>{
-    const div=document.createElement('div');
+  shopBox.innerHTML = TOWER_TYPES.map(t=>{
     const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
-    div.className = "card" + (disabled ? " disabled" : "");
-    div.innerHTML = `
-      <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
-      <div class="small">Element: ${t.el}</div>
-      <div class="small">Cost: ${t.cost}</div>
-      <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+    return `
+      <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
+        <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
+        <div class="small">Element: ${t.el}</div>
+        <div class="small">Cost: ${t.cost}</div>
+        <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+      </div>
     `;
-    div.onclick = async ()=>{
-      if (disabled || _buyBusy) return;
-      _buyBusy = true;
-      try{ await tryBuy(t.key); } finally { setTimeout(()=>_buyBusy=false, 350); }
-    };
-    shopBox.appendChild(div);
-  });
+  }).join('');
 }
+    (function bindShopDelegation(){
+  shopBox.addEventListener('pointerdown', async (e)=>{
+    const card = e.target.closest('.card[data-key]');
+    if (!card) return;
+    if (card.classList.contains('disabled')) return;
+    if (!state || state.status !== 'active') return;
+    if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
+    if (_actionBusy) return;
+
+    const key = card.dataset.key;
+    _actionBusy = true;
+    try{
+      await tryBuy(key);         // this still checks funds + enqueues intent
+    } finally {
+      setTimeout(()=>{ _actionBusy = false; }, 150);
+    }
+    e.preventDefault(); // prevent text selection on long-press
+  });
+})();
+function maybeRenderShop(){
+  const active = !state || state.status === 'active';
+  if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
+    lastShop = { funds: myFunds, seeded: amSeeded, active };
+    renderShop();
+  }
+}
+
 
    // Small helper to throttle intent spam and always include baseIncome
 async function enqueueIntent(type, payload = {}){
@@ -506,7 +527,7 @@ onSnapshot(lobbyRef, async (docSnap) => {
     if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
 
     // Refresh shop whenever funds/seed/status change
-    renderShop();
+    maybeRenderShop();
 
     // Players list
     playersBox.innerHTML = "";
@@ -900,6 +921,7 @@ onSnapshot(lobbyRef, async (docSnap) => {
   </script>
 </body>
 </html>
+
 
 
 
