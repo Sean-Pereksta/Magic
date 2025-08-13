@@ -167,6 +167,29 @@
     const leaveBtn = document.getElementById('leaveBtn');
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
+    // --- Intents (single, self-contained) ---
+const enqueueIntent = (() => {
+  const btnsLocal = [upgradeBtn, sellBtn].filter(Boolean);
+  let _intentBusy = false;
+
+  return async function(type, payload = {}) {
+    if (_intentBusy) return;
+    _intentBusy = true;
+    btnsLocal.forEach(b => b.disabled = true);
+    try {
+      await addDoc(intentsCol, {
+        ts: Date.now(),
+        actor: me,
+        type,
+        payload: { ...payload, baseIncome: myBaseIncome }
+      });
+    } finally {
+      setTimeout(() => { _intentBusy = false; }, 250);
+      btnsLocal.forEach(b => b.disabled = false);
+    }
+  };
+})();
+
 
     let amSeeded = false;
     let _buyBusy = false;
@@ -321,23 +344,6 @@ function maybeRenderShop(){
   if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
     lastShop = { funds: myFunds, seeded: amSeeded, active };
     renderShop();
-  }
-}
-
-// --- Intents ---
-let _intentBusy = false;
-async function enqueueIntent(type, payload = {}){
-  if (_intentBusy) return;         // lock is for intents only
-  _intentBusy = true;
-  try{
-    await addDoc(intentsCol, {
-      ts: now(),
-      actor: me,
-      type,
-      payload: { ...payload, baseIncome: myBaseIncome }
-    });
-  } finally {
-    setTimeout(()=>{ _intentBusy = false; }, 250); // short cooldown
   }
 }
 
@@ -894,6 +900,7 @@ if (now() >= incomeTickAt) {
   </script>
 </body>
 </html>
+
 
 
 
