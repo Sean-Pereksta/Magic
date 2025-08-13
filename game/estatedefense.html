@@ -786,28 +786,25 @@ function maybeRenderShop(){
       }
 
       // projectiles
-              for (const p of g.projectiles){
-          p.x += p.vx*dt; p.y += p.vy*dt;
-          if (p.x<0 || p.x>COLS || p.y<0 || p.y>ROWS) p._dead = true;
-          const ex = Math.floor(p.x), ey=Math.floor(p.y);
-          const hit = g.enemies.find(e=>Math.floor(e.x)===ex && Math.floor(e.y)===ey && e.hp>0);
-          if (hit){
-            const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
-            hit.hp -= Math.round(p.dmg * mult); p._dead = true;
-            if (hit.hp<=0){
-              const lvlGain = Math.pow(1.1, (g.level-1));
-              const owner = g.players.find(z=>z.name===p.owner);
-              // ⬇️ Removed the bounty line; keep only passive income growth (optional)
-              if (owner){ owner.baseIncomeDelta = (owner.baseIncomeDelta||0) + (0.05 * lvlGain); }
-        
-              g.killsThisLevel = (g.killsThisLevel||0)+1;
-              if (g.killsThisLevel >= (g.killsToAdvance||20)){
-                g.level = (g.level||1)+1; g.killsThisLevel = 0;
-                g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
-              }
+                for (const p of g.projectiles){
+        p.x += p.vx*dt; p.y += p.vy*dt;
+        if (p.x<0 || p.x>COLS || p.y<0 || p.y>ROWS) p._dead = true;
+        const ex = Math.floor(p.x), ey=Math.floor(p.y);
+        const hit = g.enemies.find(e=>Math.floor(e.x)===ex && Math.floor(e.y)===ey && e.hp>0);
+        if (hit){
+          const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
+          hit.hp -= Math.round(p.dmg * mult); p._dead = true;
+          if (hit.hp<=0){
+            const lvlGain = Math.pow(1.1, (g.level-1));
+            const owner = g.players.find(z=>z.name===p.owner);
+            if (owner){ owner.funds += 0; owner.baseIncomeDelta = (owner.baseIncomeDelta||0) + (0.05 * lvlGain); }
+            g.killsThisLevel = (g.killsThisLevel||0)+1;
+            if (g.killsThisLevel >= (g.killsToAdvance||20)){
+              g.level = (g.level||1)+1; g.killsThisLevel = 0; g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
             }
           }
         }
+      }
       g.projectiles = g.projectiles.filter(p=>!p._dead);
       g.enemies = g.enemies.filter(e=>e.hp>0);
 
@@ -934,6 +931,7 @@ if (now() >= incomeTickAt) {
   </script>
 </body>
 </html>
+
 
 
 
