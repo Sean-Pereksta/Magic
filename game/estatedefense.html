@@ -34,53 +34,22 @@
     .toast{position:absolute;left:50%;transform:translateX(-50%);top:10px;background:#111;color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;opacity:.95}
     .chip{background:#fff;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font-size:12px}
     #vScroll {
-  position: absolute;
-  right: 8px;
-  top: 12px;
-  height: calc(100% - 24px);
-  width: 18px;
-
-  /* modern vertical orientation */
-  writing-mode: vertical-lr;
-  direction: rtl;            /* up = smaller value; remove if you want up = bigger */
-
-  appearance: none;          /* reset default UA style */
-  background: transparent;
-}
-
-/* Track */
-#vScroll::-webkit-slider-runnable-track {
-  background: #dbe5ff;
-  border-radius: 12px;
-  width: 100%;
-  height: 100%;
-}
-#vScroll::-moz-range-track {
-  background: #dbe5ff;
-  border-radius: 12px;
-  width: 100%;
-  height: 100%;
-}
-
-/* Thumb */
-#vScroll::-webkit-slider-thumb {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--violet);
-  border: none;
-}
-#vScroll::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--violet);
-  border: none;
-}
+      position: absolute;
+      right: 8px;
+      top: 12px;
+      height: calc(100% - 24px);
+      width: 18px;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      appearance: none;
+      background: transparent;
+    }
+    #vScroll::-webkit-slider-runnable-track { background: #dbe5ff; border-radius: 12px; width: 100%; height: 100%; }
+    #vScroll::-moz-range-track { background: #dbe5ff; border-radius: 12px; width: 100%; height: 100%; }
+    #vScroll::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--violet); border: none; }
+    #vScroll::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--violet); border: none; }
     #centerBtn{ position:absolute; left:12px; bottom:12px; }
     #leaveBtn{color:#fff;background:var(--danger);border:none}
-    /* Responsive: collapse sidebars under 1200px */
     @media (max-width: 1200px){
       #left{display:none}
       #right{display:none}
@@ -148,11 +117,11 @@
   <script type="module">
     // ----- Firebase -----
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-   import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-  collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc,
-  serverTimestamp, arrayUnion, arrayRemove
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
+      collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc,
+      serverTimestamp, arrayUnion, arrayRemove
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -172,11 +141,11 @@
     const me = params.get("username") || "anon";
     document.getElementById('youName').textContent = me;
     document.getElementById('lobbyId').textContent = lobbyId || '—';
+
     // ----- Canvas / Map -----
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-
     const TILE = 32, COLS = 20, ROWS = 300;
     const MAP_W = COLS * TILE, MAP_H = ROWS * TILE;
     let camY = MAP_H - H; // start near bottom
@@ -199,10 +168,10 @@
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
 
- let amSeeded = false;
-let _buyBusy = false;
-let _actionBusy = false; 
-    let lastShop = { funds:-1, seeded:false, active:true }; // for diffed re-render
+    let amSeeded = false;
+    let _buyBusy = false;
+    let _actionBusy = false;
+    let lastShop = { funds:-1, seeded:false, active:true };
 
     const toast = (msg, ms=1500) => {
       const t=document.getElementById('toast');
@@ -238,54 +207,51 @@ let _actionBusy = false;
     let myBaseIncome = 0;
     let mySelectedTowerId = null;
 
+    // Track status/epoch for UI transitions
+    let _lastStatus = null;
+    let _lastEpoch = -1;
+
     // ----- Host & Firestore -----
-   // ----- Host & Firestore -----
-const LEASE_MS = 5000;
-let isHost = false;
-let simInt = null;
-const lobbyRef  = doc(db, "lobbies", lobbyId);
-const intentsCol = collection(db, "lobbies", lobbyId, "intents");
+    const LEASE_MS = 5000;
+    let isHost = false;
+    let simInt = null;
+    const lobbyRef  = doc(db, "lobbies", lobbyId);
+    const intentsCol = collection(db, "lobbies", lobbyId, "intents");
 
-// ---- Presence (fast, reliable player list) ----
-if (!lobbyId) throw new Error("Missing gameId in URL");
+    if (!lobbyId) throw new Error("Missing gameId in URL");
 
-const presenceCol = collection(db, "lobbies", lobbyId, "presence");
-let presentNames = [];
-const STALE_MS = 45_000; // anything older than 45s is considered offline
+    // Presence
+    const presenceCol = collection(db, "lobbies", lobbyId, "presence");
+    let presentNames = [];
+    const STALE_MS = 45_000;
 
-onSnapshot(presenceCol, snap => {
-  const nowMs = Date.now();
-  presentNames = snap.docs
-    .filter(d => {
-      const ts = d.data()?.lastSeen;
-      const ms = ts?.toMillis ? ts.toMillis() : 0;
-      return nowMs - ms < STALE_MS;
-    })
-    .map(d => d.id)
-    .sort();
-});
+    onSnapshot(presenceCol, snap => {
+      const nowMs = Date.now();
+      presentNames = snap.docs
+        .filter(d => {
+          const ts = d.data()?.lastSeen;
+          const ms = ts?.toMillis ? ts.toMillis() : 0;
+          return nowMs - ms < STALE_MS;
+        })
+        .map(d => d.id)
+        .sort();
+    });
 
-// Announce presence immediately and keep it fresh
-await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp() }, { merge: true });
-const _presenceBeat = setInterval(() => {
-  updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp() }).catch(()=>{});
-}, 15000);
+    await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp() }, { merge: true });
+    const _presenceBeat = setInterval(() => {
+      updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp() }).catch(()=>{});
+    }, 15000);
 
-// Also mirror to root `players` (for compatibility with existing code)
-await setDoc(lobbyRef, { players: arrayUnion(me), active: true }, { merge: true });
+    // Also mirror to root `players`
+    await setDoc(lobbyRef, { players: arrayUnion(me) }, { merge: true });
 
-// Clean-up helpers
-function cleanupPresence(){
-  try { clearInterval(_presenceBeat); } catch {}
-  // fire-and-forget; may not complete on all browsers
-  deleteDoc(doc(presenceCol, me)).catch(()=>{});
-  updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
-}
-
-// Clean-up on tab close / navigate
-window.addEventListener('beforeunload', cleanupPresence);
-window.addEventListener('pagehide', cleanupPresence); // iOS/Safari fallback
-
+    function cleanupPresence(){
+      try { clearInterval(_presenceBeat); } catch {}
+      deleteDoc(doc(presenceCol, me)).catch(()=>{});
+      updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
+    }
+    window.addEventListener('beforeunload', cleanupPresence);
+    window.addEventListener('pagehide', cleanupPresence);
 
     // Helpers
     const now = () => Date.now();
@@ -311,295 +277,218 @@ window.addEventListener('pagehide', cleanupPresence); // iOS/Safari fallback
     }
 
     // Shop
-  function renderShop(){
-  const gameActive = !state || state.status === 'active';
-  shopBox.innerHTML = TOWER_TYPES.map(t=>{
-    const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
-    return `
-      <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
-        <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
-        <div class="small">Element: ${t.el}</div>
-        <div class="small">Cost: ${t.cost}</div>
-        <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
-      </div>
-    `;
-  }).join('');
-}
+    function renderShop(){
+      const gameActive = !state || state.status === 'active';
+      shopBox.innerHTML = TOWER_TYPES.map(t=>{
+        const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
+        return `
+          <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
+            <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
+            <div class="small">Element: ${t.el}</div>
+            <div class="small">Cost: ${t.cost}</div>
+            <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+          </div>
+        `;
+      }).join('');
+    }
     (function bindShopDelegation(){
-  shopBox.addEventListener('pointerdown', async (e)=>{
-    const card = e.target.closest('.card[data-key]');
-    if (!card) return;
-    if (card.classList.contains('disabled')) return;
-    if (!state || state.status !== 'active') return;
-    if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
-    if (_actionBusy) return;
+      shopBox.addEventListener('pointerdown', async (e)=>{
+        const card = e.target.closest('.card[data-key]');
+        if (!card) return;
+        if (card.classList.contains('disabled')) return;
+        if (!state || state.status !== 'active') return;
+        if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
+        if (_actionBusy) return;
 
-    const key = card.dataset.key;
-    _actionBusy = true;
-    try{
-      await tryBuy(key);         // this still checks funds + enqueues intent
-    } finally {
-      setTimeout(()=>{ _actionBusy = false; }, 150);
-    }
-    e.preventDefault(); // prevent text selection on long-press
-  });
-})();
-function maybeRenderShop(){
-  const active = !state || state.status === 'active';
-  if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
-    lastShop = { funds: myFunds, seeded: amSeeded, active };
-    renderShop();
-  }
-}
-
-
-   // Small helper to throttle intent spam and always include baseIncome
-async function enqueueIntent(type, payload = {}){
-  if (_actionBusy) return;
-  _actionBusy = true;
-  try{
-    await addDoc(intentsCol, {
-      ts: now(),
-      actor: me,
-      type,
-      payload: { ...payload, baseIncome: myBaseIncome }
-    });
-  } finally {
-    // brief cooldown so the UI feels responsive but de-dupes double clicks
-    setTimeout(() => { _actionBusy = false; }, 250);
-  }
-}
-
-async function tryBuy(tKey){
-  if (!state || state.status !== 'active') return;
-  const def = TOWER_TYPES.find(x => x.key === tKey); if (!def) return;
-
-  // If host hasn't seeded us yet, show a friendly nudge
-  if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
-
-  // UI check is still useful so players get instant feedback
-  if (myFunds < def.cost){ toast("Not enough funds"); return; }
-
-  await enqueueIntent("BUY", { tKey });
-}
-
-// Buttons — include baseIncome for implicit seeding fallback
-upgradeBtn.onclick = async () => {
-  if (!state || state.status !== 'active') return;
-  if (!mySelectedTowerId) return;
-  await enqueueIntent("UPGRADE", { id: mySelectedTowerId });
-};
-
-sellBtn.onclick = async () => {
-  if (!state || state.status !== 'active') return;
-  if (!mySelectedTowerId) return;
-  await enqueueIntent("SELL", { id: mySelectedTowerId });
-};
-
-// (Optional but nice): disable buttons while busy so the user sees it
-const btns = [upgradeBtn, sellBtn];
-const _origEnqueue = enqueueIntent;
-enqueueIntent = async function(type, payload){
-  btns.forEach(b => b.disabled = true);
-  try { return await _origEnqueue(type, payload); }
-  finally { btns.forEach(b => b.disabled = false); }
-};
-
-// ---- Leave: use the cleanup helper and guard against double-clicks ----
-let _leaving = false;
-leaveBtn.onclick = async ()=>{
-  if (_leaving) return;
-  _leaving = true;
-  leaveBtn.disabled = true;
-
-  try{
-    // Prefer the same cleanup function you wired to beforeunload/pagehide
-    if (typeof cleanupPresence === 'function') {
-      cleanupPresence();
-    } else {
-      // Fallback if you didn't include cleanupPresence()
-      await deleteDoc(doc(presenceCol, me)).catch(()=>{});
-      await updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
-    }
-
-    // Only delete the lobby if nobody is present anymore
-    const pres = await getDocs(presenceCol);
-    if (pres.empty){
-      try{ await deleteDoc(lobbyRef); }catch(e){}
-    }
-  } finally {
-    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-  }
-};
-
-
-let _markingInactive = false;
-async function ensureLobbyInactive(){
-  if (_markingInactive) return;
-  _markingInactive = true;
-  try{
-    await runTransaction(db, async (tx)=>{
-      const s = await tx.get(lobbyRef); if (!s.exists()) return;
-      const d = s.data() || {};
-      // Only host sets the terminal flags
-      if (d.host !== me) return;
-
-      // Already inactive? nothing to do
-      if (d.active === false && d.status === 'defeat') return;
-
-      const game = d.game || {};
-      tx.update(lobbyRef, {
-        active: false,
-        status: 'defeat',
-        endedAt: serverTimestamp(),
-        game: { ...game, status: 'defeat', _finalized: true }
+        const key = card.dataset.key;
+        _actionBusy = true;
+        try{
+          await tryBuy(key);
+        } finally {
+          setTimeout(()=>{ _actionBusy = false; }, 150);
+        }
+        e.preventDefault();
       });
-    });
-  } finally {
-    _markingInactive = false;
-  }
-}
-
-    // Ensure user income, emit JOINED
-   // --- Ensure user income, then announce JOINED with baseIncome ---
-async function ensureUserIncome(){
-  try{
-    const uref = doc(db, 'users', me);
-    const us   = await getDoc(uref);
-
-    if (!us.exists()){
-      myBaseIncome = 1;
-      await setDoc(uref, { estate: { baseIncome: myBaseIncome } }, { merge: true });
-    } else {
-      const estate = us.data()?.estate || {};
-      myBaseIncome = (typeof estate.baseIncome === 'number') ? estate.baseIncome : 1;
-
-      // If estate missing, backfill so future reads are clean
-      if (!us.data().estate){
-        await updateDoc(uref, { estate: { baseIncome: myBaseIncome } }).catch(()=>{});
+    })();
+    function maybeRenderShop(){
+      const active = !state || state.status === 'active';
+      if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
+        lastShop = { funds: myFunds, seeded: amSeeded, active };
+        renderShop();
       }
     }
 
-    baseLbl.textContent = round2(myBaseIncome);
-
-    // Tell host we joined with our current baseIncome (used for seeding)
-    await addDoc(intentsCol, {
-      ts: now(),
-      actor: me,
-      type: "JOINED",
-      payload: { baseIncome: myBaseIncome }
-    });
-  } catch(e){
-    // Fallback so player can still play
-    myBaseIncome = 1;
-    baseLbl.textContent = round2(myBaseIncome);
-    await addDoc(intentsCol, {
-      ts: now(),
-      actor: me,
-      type: "JOINED",
-      payload: { baseIncome: myBaseIncome }
-    }).catch(()=>{});
-  }
-}
-
-// --- Live lobby updates ---
-onSnapshot(lobbyRef, async (docSnap) => {
-  if (!docSnap.exists()) {
-    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-    return;
-  }
-
-  const d = docSnap.data() || {};
-
-if (d.status === 'defeat' || d.active === false || crystalDead) {
-  // Host authoritatively flips the switch
-  if (d.host === me) await ensureLobbyInactive();
-
-  toast("💥 Core destroyed! Returning to lobby…", 1200);
-  setTimeout(() => {
-    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-  }, 1200);
-  return;
-}
-
-  hostLbl.textContent = `Host: ${d.host || '—'}`;
-
-  // Keep our last good game state if field missing briefly
-  state = d.game || state;
-
-  // First-time centering on the core
-  if (state && state.crystal && !initialCentered) {
-    initialCentered = true;
-    centerOnCore();
-  }
-
-  if (state) {
-    // Top-level labels
-    levelLbl.textContent = state.level || 1;
-    const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
-    killsLbl.textContent = `${killsLeft}`;
-    coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
-
-    // Me / funds / base income
-    const meP = (state.players || []).find(p => p.name === me) || null;
-    if (meP) {
-      myFunds = meP.funds || 0;
-      if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
+    // Intent enqueue (always piggyback baseIncome)
+    async function enqueueIntent(type, payload = {}){
+      if (_actionBusy) return;
+      _actionBusy = true;
+      try{
+        await addDoc(intentsCol, {
+          ts: now(),
+          actor: me,
+          type,
+          payload: { ...payload, baseIncome: myBaseIncome }
+        });
+      } finally {
+        setTimeout(() => { _actionBusy = false; }, 250);
+      }
     }
-    fundsLbl.textContent = Math.floor(myFunds);
-    baseLbl.textContent  = round2(myBaseIncome);
 
-    // Seed gate -> unlock shop once the host has seeded us
-    const wasSeeded = amSeeded;
-    amSeeded = !!(meP && meP._seeded);
-    if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+    async function tryBuy(tKey){
+      if (!state || state.status !== 'active') return;
+      const def = TOWER_TYPES.find(x => x.key === tKey); if (!def) return;
+      if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
+      if (myFunds < def.cost){ toast("Not enough funds"); return; }
+      await enqueueIntent("BUY", { tKey });
+    }
 
-    // Refresh shop whenever funds/seed/status change
-    maybeRenderShop();
+    // Buttons
+    upgradeBtn.onclick = async () => {
+      if (!state || state.status !== 'active') return;
+      if (!mySelectedTowerId) return;
+      await enqueueIntent("UPGRADE", { id: mySelectedTowerId });
+    };
+    sellBtn.onclick = async () => {
+      if (!state || state.status !== 'active') return;
+      if (!mySelectedTowerId) return;
+      await enqueueIntent("SELL", { id: mySelectedTowerId });
+    };
+    const btns = [upgradeBtn, sellBtn];
+    const _origEnqueue = enqueueIntent;
+    enqueueIntent = async function(type, payload){
+      btns.forEach(b => b.disabled = true);
+      try { return await _origEnqueue(type, payload); }
+      finally { btns.forEach(b => b.disabled = false); }
+    };
 
-    // Players list
-    playersBox.innerHTML = "";
-    (state.players || []).forEach((p, i) => {
-      const row = document.createElement('div');
-      row.className = 'playerRow';
-      row.innerHTML = `
-        <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
-        <div class="small">Base: ${round2(p.baseIncome || 1)} | $${Math.floor(p.funds || 0)}</div>
-      `;
-      playersBox.appendChild(row);
-    });
-
-    // Defensive: if game state itself says defeat, exit
-    if (state.status === 'defeat') {
-      toast("💥 Core destroyed! Returning to lobby…", 1200);
-      setTimeout(() => {
+    // Leave (manual)
+    let _leaving = false;
+    leaveBtn.onclick = async ()=>{
+      if (_leaving) return;
+      _leaving = true;
+      leaveBtn.disabled = true;
+      try{
+        if (typeof cleanupPresence === 'function') {
+          cleanupPresence();
+        } else {
+          await deleteDoc(doc(presenceCol, me)).catch(()=>{});
+          await updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
+        }
+        const pres = await getDocs(presenceCol);
+        if (pres.empty){
+          try{ await deleteDoc(lobbyRef); }catch(e){}
+        }
+      } finally {
         location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-      }, 1200);
-      return;
+      }
+    };
+
+    // Ensure income & announce JOINED
+    async function ensureUserIncome(){
+      try{
+        const uref = doc(db, 'users', me);
+        const us   = await getDoc(uref);
+        if (!us.exists()){
+          myBaseIncome = 1;
+          await setDoc(uref, { estate: { baseIncome: myBaseIncome } }, { merge: true });
+        } else {
+          const estate = us.data()?.estate || {};
+          myBaseIncome = (typeof estate.baseIncome === 'number') ? estate.baseIncome : 1;
+          if (!us.data().estate){
+            await updateDoc(uref, { estate: { baseIncome: myBaseIncome } }).catch(()=>{});
+          }
+        }
+        baseLbl.textContent = round2(myBaseIncome);
+        await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } });
+      } catch(e){
+        myBaseIncome = 1;
+        baseLbl.textContent = round2(myBaseIncome);
+        await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } }).catch(()=>{});
+      }
     }
-  }
 
-  // Host election check (uses presence-filtered list in shouldClaimHost)
-  if (shouldClaimHost(docSnap)) await tryClaimHost();
-});
+    // --- Live lobby updates (NO redirect on defeat; we restart in place) ---
+    onSnapshot(lobbyRef, async (docSnap) => {
+      if (!docSnap.exists()) {
+        location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+        return;
+      }
 
+      const d = docSnap.data() || {};
+      hostLbl.textContent = `Host: ${d.host || '—'}`;
 
-  function shouldClaimHost(docSnap){
-  const d = docSnap.data() || {};
-  const leaseUntil = d.leaseUntil || 0;
+      // Keep our last good game state if field missing briefly
+      state = d.game || state;
 
-  // Only live players can claim host
-  if (!presentNames.includes(me)) return false;
+      // Re-center once per epoch
+      if (state && typeof state._epoch === 'number' && state._epoch !== _lastEpoch){
+        _lastEpoch = state._epoch;
+        initialCentered = false;
+        toast("🔁 New run!");
+      }
 
-  // If no host, lowest name claims
-  if (!d.host) return true;
+      // First-time centering on the core
+      if (state && state.crystal && !initialCentered) {
+        initialCentered = true;
+        centerOnCore();
+      }
 
-  // If lease expired, lowest present name preempts
-  const expired = (now() > leaseUntil);
-  const next = (presentNames[0] || '');
-  return expired && (next === me);
-}
+      if (state) {
+        // Top-level labels
+        levelLbl.textContent = state.level || 1;
+        const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
+        killsLbl.textContent = `${killsLeft}`;
+        coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
 
+        // Me / funds / base income
+        const meP = (state.players || []).find(p => p.name === me) || null;
+        if (meP) {
+          myFunds = meP.funds || 0;
+          if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
+        }
+        fundsLbl.textContent = Math.floor(myFunds);
+        baseLbl.textContent  = round2(myBaseIncome);
+
+        // Seed gate
+        const wasSeeded = amSeeded;
+        amSeeded = !!(meP && meP._seeded);
+        if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+
+        // Refresh shop when relevant changes
+        maybeRenderShop();
+
+        // Players list
+        playersBox.innerHTML = "";
+        (state.players || []).forEach((p, i) => {
+          const row = document.createElement('div');
+          row.className = 'playerRow';
+          row.innerHTML = `
+            <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
+            <div class="small">Base: ${round2(p.baseIncome || 1)} | $${Math.floor(p.funds || 0)}</div>
+          `;
+          playersBox.appendChild(row);
+        });
+
+        // Status toast (no redirect)
+        if (_lastStatus !== state.status){
+          if (state.status === 'defeat') toast("💥 Core destroyed! Restarting…", 1500);
+          _lastStatus = state.status;
+        }
+      }
+
+      // Host election check
+      if (shouldClaimHost(docSnap)) await tryClaimHost();
+    });
+
+    function shouldClaimHost(docSnap){
+      const d = docSnap.data() || {};
+      const leaseUntil = d.leaseUntil || 0;
+      if (!presentNames.includes(me)) return false;
+      if (!d.host) return true;
+      const expired = (now() > leaseUntil);
+      const next = (presentNames[0] || '');
+      return expired && (next === me);
+    }
 
     async function tryClaimHost(){
       try{
@@ -611,16 +500,7 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
           if (!d.host || now()>leaseUntil){
             let game = d.game;
             if (!game){
-              const cx = Math.floor(COLS/2), cy = ROWS-3;
-              const seededPlayers = [];
-              for (const [i, n] of players.entries()) {
-                const uref = doc(db, 'users', n);
-                const us = await tx.get(uref);
-                const base = (us.exists() && us.data().estate && typeof us.data().estate.baseIncome === 'number') ? us.data().estate.baseIncome : 1;
-                seededPlayers.push({ name:n, color:palette[i%palette.length], funds: base*10, baseIncome: base, baseIncomeDelta:0, _seeded:true });
-              }
-              game = { status:'active', level:1, killsThisLevel:0, killsToAdvance:20, lastTick:now(), nextSpawnAt:now()+1000,
-                       crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 }, players: seededPlayers, towers:[], enemies:[], projectiles:[] };
+              game = buildFreshGameFromPlayers(players);
             }
             tx.update(lobbyRef, { host: me, leaseUntil: now()+LEASE_MS, game });
           }
@@ -630,8 +510,27 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
       }catch(e){}
     }
 
-    function startHostLoop(){ if (simInt) clearInterval(simInt); simInt = setInterval(simulateStepAsHost, 200); }
+    function buildFreshGameFromPlayers(players){
+      const cx = Math.floor(COLS/2), cy = ROWS-3;
+      const seededPlayers = [];
+      for (const [i, n] of players.entries()) {
+        // Base income is loaded by seeding; default 1 if missing
+        seededPlayers.push({ name:n, color:palette[i%palette.length], funds: 0, baseIncome: 1, baseIncomeDelta:0, _seeded:false });
+      }
+      // The host loop will immediately seed on JOINED/implicit intents; for a brand-new lobby, we'll pre-seed with stored baseIncome:
+      // We uplift baseIncome from /users on first JOINED per player; OK to start funds at 0 here.
+      return {
+        _epoch: 0,
+        status:'active',
+        level:1, killsThisLevel:0, killsToAdvance:20,
+        lastTick:now(), nextSpawnAt:now()+1000,
+        crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 },
+        players: seededPlayers,
+        towers:[], enemies:[], projectiles:[]
+      };
+    }
 
+    function startHostLoop(){ if (simInt) clearInterval(simInt); simInt = setInterval(simulateStepAsHost, 200); }
     setInterval(async ()=>{
       if (isHost) return;
       const s = await getDoc(lobbyRef); if (!s.exists()) return;
@@ -640,131 +539,154 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
     }, 2500);
 
     // ----- Intents + Sim (host) -----
-   async function simulateStepAsHost(){
-  const s = await getDoc(lobbyRef); if (!s.exists()) return;
-  const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
+    async function simulateStepAsHost(){
+      const s = await getDoc(lobbyRef); if (!s.exists()) return;
+      const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
 
-  // If no one present anymore, tear down the lobby
-  const presSnap = await getDocs(presenceCol);
-  if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
+      // If no one present anymore, clean up lobby doc
+      const presSnap = await getDocs(presenceCol);
+      if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
 
-  let g = d.game;
-  if (!g || g.status !== 'active') {
-    // Keep lease fresh so clients see who the "owner" is, but don't tick the sim
-    await updateDoc(lobbyRef, { leaseUntil: now()+LEASE_MS });
-    return;
-  }
+      let g = d.game;
+      if (!g){
+        g = buildFreshGameFromPlayers(d.players || []);
+      }
 
-  // Process more intents to avoid backlog at join time
-  const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
-  const snap = await getDocs(Q);
-  for (const docu of snap.docs){
-    const mv = docu.data();
-    try{ g = await applyIntent(g, mv); }catch(e){}
-    try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
-  }
+      // --- Auto-restart window ---
+      if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
+        g = restartGameInPlace(g, d.players || []);
+        // Reset local income cadence; keep server authoritative
+        incomeTickAt = 0;
+      }
 
-  g = simulate(g);
-  await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
-}
+      // Process intents quickly to avoid backlog
+      const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
+      const snap = await getDocs(Q);
+      for (const docu of snap.docs){
+        const mv = docu.data();
+        try{ g = await applyIntent(g, mv); }catch(e){}
+        try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
+      }
 
+      if (g.status === 'active'){
+        g = simulate(g);
+      }
 
-   async function applyIntent(g, mv){
-  const actor = mv.actor;
-
-  // --- Explicit join: seed or finish seeding if needed ---
-  if (mv.type === 'JOINED'){
-    const base = mv.payload?.baseIncome ?? 1;
-    let p = g.players.find(p => p.name === actor);
-    if (!p){
-      const color = palette[g.players.length % palette.length];
-      p = { name: actor, color, funds: base * 10, baseIncome: base, baseIncomeDelta: 0, _seeded: true };
-      g.players.push(p);
-    } else if (!p._seeded){
-      p.funds += base * 10;
-      p.baseIncome = base;
-      p._seeded = true;
+      await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
     }
-    return g;
-  }
 
-  // --- Implicit join: if a gameplay intent arrives before JOINED is processed, seed now ---
-  if (mv.type === 'BUY' || mv.type === 'UPGRADE' || mv.type === 'SELL'){
-    if (!g.players.some(p => p.name === actor)){
-      const base = mv.payload?.baseIncome ?? 1;
-      g.players.push({
-        name: actor,
-        color: palette[g.players.length % palette.length],
-        funds: base * 10,
-        baseIncome: base,
-        baseIncomeDelta: 0,
-        _seeded: true
-      });
+    // Restart builder: keep same players + baseIncome, reset everything else
+    function restartGameInPlace(g, rootPlayers){
+      // Build a set of current/known players (prefer those already in g.players to preserve colors)
+      const presentSet = new Set(rootPlayers || []);
+      const nextPlayers = (g.players || [])
+        .filter(p => presentSet.has(p.name))
+        .map((p,i) => ({
+          name: p.name,
+          color: p.color || palette[i%palette.length],
+          baseIncome: (typeof p.baseIncome==='number') ? p.baseIncome : 1,
+          baseIncomeDelta: 0,
+          funds: ( (typeof p.baseIncome==='number') ? p.baseIncome : 1 ) * 10, // starting cash = baseIncome * 10
+          _seeded: true
+        }));
+
+      const cx = Math.floor(COLS/2), cy = ROWS-3;
+      return {
+        _epoch: (typeof g._epoch==='number'? g._epoch : 0) + 1, // bump epoch so clients re-center
+        status:'active',
+        level:1, killsThisLevel:0, killsToAdvance:20,
+        lastTick:now(), nextSpawnAt:now()+1000,
+        crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 },
+        players: nextPlayers,
+        towers:[], enemies:[], projectiles:[]
+      };
     }
-  }
 
-  // --- BUY ---
-  if (mv.type === 'BUY'){
-    // Optional: ignore if game ended
-    if (g.status !== 'active') return g;
+    async function applyIntent(g, mv){
+      const actor = mv.actor;
 
-    const def = TOWER_TYPES.find(x => x.key === mv.payload?.tKey); if (!def) return g;
-    const p = g.players.find(p => p.name === actor);               if (!p || p.funds < def.cost) return g;
+      // Explicit join → seed funds on first time
+      if (mv.type === 'JOINED'){
+        const base = mv.payload?.baseIncome ?? 1;
+        let p = g.players.find(p => p.name === actor);
+        if (!p){
+          const color = palette[g.players.length % palette.length];
+          p = { name: actor, color, funds: base * 10, baseIncome: base, baseIncomeDelta: 0, _seeded: true };
+          g.players.push(p);
+        } else if (!p._seeded){
+          p.funds += base * 10;
+          p.baseIncome = base;
+          p._seeded = true;
+        }
+        return g;
+      }
 
-    const occ = new Array(COLS * ROWS).fill(false);
-    occ[g.crystal.y * COLS + g.crystal.x] = true;
-    g.towers.forEach(t => { occ[t.y * COLS + t.x] = true; });
+      // Implicit join from gameplay intent
+      if (mv.type === 'BUY' || mv.type === 'UPGRADE' || mv.type === 'SELL'){
+        if (!g.players.some(p => p.name === actor)){
+          const base = mv.payload?.baseIncome ?? 1;
+          g.players.push({
+            name: actor,
+            color: palette[g.players.length % palette.length],
+            funds: base * 10,
+            baseIncome: base,
+            baseIncomeDelta: 0,
+            _seeded: true
+          });
+        }
+      }
 
-    const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
+      if (mv.type === 'BUY'){
+        if (g.status !== 'active') return g;
+        const def = TOWER_TYPES.find(x => x.key === mv.payload?.tKey); if (!def) return g;
+        const p = g.players.find(p => p.name === actor);               if (!p || p.funds < def.cost) return g;
 
-    const id = 't' + Math.random().toString(36).slice(2);
-    g.towers.push({
-      id, x: spot.x, y: spot.y, owner: actor,
-      emoji: def.emoji, el: def.el,
-      hp: def.hp, maxHp: def.hp, level: 1,
-      dmg: def.dmg, range: def.range, rate: def.rate, cd: 0
-    });
-    p.funds -= def.cost;
-    return g;
-  }
+        const occ = new Array(COLS * ROWS).fill(false);
+        occ[g.crystal.y * COLS + g.crystal.x] = true;
+        g.towers.forEach(t => { occ[t.y * COLS + t.x] = true; });
 
-  // --- UPGRADE ---
-  if (mv.type === 'UPGRADE'){
-    if (g.status !== 'active') return g;
+        const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
 
-    const t = g.towers.find(z => z.id === mv.payload?.id); if (!t || t.owner !== actor) return g;
-    const p = g.players.find(p => p.name === actor);
-    const cost = 15 + t.level * 10;
-    if (!p || p.funds < cost) return g;
+        const id = 't' + Math.random().toString(36).slice(2);
+        g.towers.push({
+          id, x: spot.x, y: spot.y, owner: actor,
+          emoji: def.emoji, el: def.el,
+          hp: def.hp, maxHp: def.hp, level: 1,
+          dmg: def.dmg, range: def.range, rate: def.rate, cd: 0
+        });
+        p.funds -= def.cost;
+        return g;
+      }
 
-    p.funds -= cost;
-    t.level += 1;
-    t.dmg = Math.round(t.dmg * 1.25);
-    t.range += (t.level % 2 === 0 ? 1 : 0);
-    t.rate = +(t.rate * 1.05).toFixed(2);
-    t.maxHp += 6;
-    t.hp = Math.min(t.maxHp, t.hp + 6);
-    return g;
-  }
+      if (mv.type === 'UPGRADE'){
+        if (g.status !== 'active') return g;
+        const t = g.towers.find(z => z.id === mv.payload?.id); if (!t || t.owner !== actor) return g;
+        const p = g.players.find(p => p.name === actor);
+        const cost = 15 + t.level * 10;
+        if (!p || p.funds < cost) return g;
 
-  // --- SELL ---
-  if (mv.type === 'SELL'){
-    if (g.status !== 'active') return g;
+        p.funds -= cost;
+        t.level += 1;
+        t.dmg = Math.round(t.dmg * 1.25);
+        t.range += (t.level % 2 === 0 ? 1 : 0);
+        t.rate = +(t.rate * 1.05).toFixed(2);
+        t.maxHp += 6;
+        t.hp = Math.min(t.maxHp, t.hp + 6);
+        return g;
+      }
 
-    const idx = g.towers.findIndex(z => z.id === mv.payload?.id); if (idx < 0) return g;
-    const t = g.towers[idx]; if (t.owner !== actor) return g;
+      if (mv.type === 'SELL'){
+        if (g.status !== 'active') return g;
+        const idx = g.towers.findIndex(z => z.id === mv.payload?.id); if (idx < 0) return g;
+        const t = g.towers[idx]; if (t.owner !== actor) return g;
+        const p = g.players.find(p => p.name === actor);
+        if (p) p.funds += 10 + Math.max(0, (t.level - 1)) * 6;
+        g.towers.splice(idx, 1);
+        return g;
+      }
 
-    const p = g.players.find(p => p.name === actor);
-    if (p) p.funds += 10 + Math.max(0, (t.level - 1)) * 6;
-
-    g.towers.splice(idx, 1);
-    return g;
-  }
-
-  // Unknown / non-mutating intents
-  return g;
-}
-
+      return g;
+    }
 
     let incomeTickAt = 0;
     function simulate(g){
@@ -836,8 +758,12 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
       if (!incomeTickAt) incomeTickAt = now()+30000;
       if (now()>=incomeTickAt){ for (const p of g.players){ p.funds += p.baseIncome; } incomeTickAt = now()+30000; }
 
-      // defeat
-      if (g.crystal.hp <= 0 && g.status==='active'){ g.crystal.hp = 0; g.status = 'defeat'; finalizeAndMarkDefeat(g).catch(()=>{}); }
+      // defeat → schedule restart, no redirect
+      if (g.crystal.hp <= 0 && g.status==='active'){
+        g.crystal.hp = 0;
+        g.status = 'defeat';
+        finalizeAndMarkDefeat(g).catch(()=>{});
+      }
       return g;
     }
 
@@ -852,38 +778,35 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
       return best;
     }
 
-   async function finalizeAndMarkDefeat(g){
-  try{
-    await runTransaction(db, async (tx)=>{
-      const s = await tx.get(lobbyRef); if (!s.exists()) return;
-      const d = s.data(); if (d.host !== me) return;
-      const cur = d.game || g; if (cur._finalized) return;
+    // Persist baseIncome deltas and schedule restart (no lobby deactivation)
+    async function finalizeAndMarkDefeat(g){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const s = await tx.get(lobbyRef); if (!s.exists()) return;
+          const d = s.data(); if (d.host !== me) return;
+          const cur = d.game || g; if (cur._finalized) return;
 
-      // Persist baseIncome gains
-      for (const p of (cur.players||[])){
-        const delta = round2(p.baseIncomeDelta||0);
-        if (delta>0){
-          const uref = doc(db, 'users', p.name);
-          const us = await tx.get(uref);
-          let curBase = 1;
-          if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
-          const next = round2(curBase + delta);
-          tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
-        }
-      }
+          // Persist baseIncome gains
+          for (const p of (cur.players||[])){
+            const delta = round2(p.baseIncomeDelta||0);
+            if (delta>0){
+              const uref = doc(db, 'users', p.name);
+              const us = await tx.get(uref);
+              let curBase = 1;
+              if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
+              const next = round2(curBase + delta);
+              tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
+            }
+          }
 
-      cur.status = 'defeat';
-      cur._finalized = true;
-      tx.update(lobbyRef, {
-        game: cur,
-        active: false,
-        status: 'defeat',
-        endedAt: serverTimestamp()
-      });
-    });
-  }catch(e){}
-}
-
+          // Mark finalized + set restart time; DO NOT flip root active/status
+          cur.status = 'defeat';
+          cur._finalized = true;
+          cur._restartAt = now() + 2500; // ~2.5s pause before restart
+          tx.update(lobbyRef, { game: cur });
+        });
+      }catch(e){}
+    }
 
     // ----- Scrolling -----
     function syncSlider(){ vScroll.value = Math.round(camY); }
@@ -898,7 +821,6 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
     function draw(){
       ctx.clearRect(0,0,W,H);
       const offY = camY;
-      // grid
       ctx.fillStyle="#e9eef3"; ctx.fillRect(0,0,W,H);
       ctx.strokeStyle="#d7dee6"; ctx.lineWidth=1;
       for (let y=0;y<=H;y+=TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
@@ -949,7 +871,6 @@ if (d.status === 'defeat' || d.active === false || crystalDead) {
   </script>
 </body>
 </html>
-
 
 
 
