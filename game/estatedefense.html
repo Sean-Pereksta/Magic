@@ -501,24 +501,27 @@ function maybeRenderShop(){
     }
 
     async function tryClaimHost(){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const s = await tx.get(lobbyRef); if (!s.exists()) return;
-          const d = s.data(); const leaseUntil = d.leaseUntil||0; const players = d.players||[];
-          if (!players.includes(me)) return;
-
-          if (!d.host || now()>leaseUntil){
-            let game = d.game;
-            if (!game){
-              game = buildFreshGameFromPlayers(players);
-            }
-            tx.update(lobbyRef, { host: me, leaseUntil: now()+LEASE_MS, game });
-          }
-        });
-        isHost = true; leaseLbl.textContent = "lease: host";
-        startHostLoop();
-      }catch(e){}
+      const s0 = await getDoc(lobbyRef);
+      if (!s0.exists()) return;
+      const d0 = s0.data() || {};
+      if (!presentNames.includes(me)) return;
+      const expired = Date.now() > (d0.leaseUntil || 0);
+      if (d0.host && !expired) return;   // nothing to do → skip txn
+    
+      await runTransaction(db, async (tx)=>{
+        const s = await tx.get(lobbyRef); if (!s.exists()) return;
+        const d = s.data() || {};
+        const leaseUntil = d.leaseUntil || 0;
+        const players = d.players || [];
+        if (!players.includes(me)) return;
+        if (!d.host || Date.now() > leaseUntil){
+          let game = d.game;
+          if (!game) game = buildFreshGameFromPlayers(players);
+          tx.update(lobbyRef, { host: me, leaseUntil: Date.now()+LEASE_MS, game });
+        }
+      });
     }
+
 
     function buildFreshGameFromPlayers(players){
       const cx = Math.floor(COLS/2), cy = ROWS-3;
@@ -743,90 +746,137 @@ function maybeRenderShop(){
     }
 
     let incomeTickAt = 0;
-    function simulate(g){
-      const dt = (now() - (g.lastTick||now()))/1000;
-      g.lastTick = now();
+    let _finalizeOnce = false;
 
-      // spawn
-      if (now() >= (g.nextSpawnAt || 0)) {
-        const tier  = Math.min(ENEMY_TYPES.length, 1 + Math.floor(g.level / 3));
-        const count = 2 + Math.floor(g.level * 0.6);
-        for (let i = 0; i < count; i++) {
-          const base = ENEMY_TYPES[Math.floor(Math.random() * tier)];
-          const mult = Math.pow(1.25, g.level - 1);
-          const HP  = Math.round(base.hp  * mult);
-          const DMG = Math.round(base.dmg * mult);
-          const x = Math.floor(rnd(2, COLS - 3)), y = 0;
-          g.enemies.push({ id:'e'+Math.random().toString(36).slice(2), x, y,
-            el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG, spd: base.spd, range: base.range, target: base.target, cd: 0 });
-        }
-        g.nextSpawnAt = now() + Math.max(600, 1600 - g.level * 40);
-      }
+  function simulate(g){
+  const tNow = now();
+  const dt   = (tNow - (g.lastTick ?? tNow)) / 1000;
+  g.lastTick = tNow;
 
-      // enemies
-      for (const e of g.enemies){
-        if (e.target === 'tower'){
-          const tgt = nearestTowerInRange(g, e, e.range);
-          if (tgt){ e.cd -= dt; if (e.cd<=0){ tgt.hp -= e.dmg; e.cd = 1.2; if (tgt.hp<=0){ const i=g.towers.findIndex(t=>t.id===tgt.id); if (i>=0) g.towers.splice(i,1); } } }
-          else { e.y += e.spd; }
-        } else { e.y += e.spd; }
-        if (Math.floor(e.y) >= g.crystal.y){ g.crystal.hp -= e.dmg; e.hp = 0; }
-      }
+  // ---- Spawns ----
+  if (tNow >= (g.nextSpawnAt ?? 0)) {
+    const lvl   = g.level || 1;
+    const tier  = Math.min(ENEMY_TYPES.length, 1 + Math.floor(lvl / 3));
+    const count = 2 + Math.floor(lvl * 0.6);
 
-      // towers
-      for (const t of g.towers){
-        t.cd -= dt;
-        const tgt = nearestEnemyInRange(g, t, t.range);
-        if (tgt && t.cd<=0){
-          const spd = 14, sx = t.x+0.5, sy = t.y+0.5;
-          const dx = (tgt.x+0.5)-sx, dy=(tgt.y+0.5)-sy, m = Math.hypot(dx,dy)||1;
-          g.projectiles.push({ id:'p'+Math.random().toString(36).slice(2), x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd, dmg:t.dmg, el:t.el, owner:t.owner });
-          t.cd = 1/Math.max(0.2, t.rate);
-        }
-      }
+    for (let i = 0; i < count; i++) {
+      const base = ENEMY_TYPES[Math.floor(Math.random() * tier)];
+      const mult = Math.pow(1.25, lvl - 1);
+      const HP   = Math.round(base.hp  * mult);
+      const DMG  = Math.round(base.dmg * mult);
+      const x = Math.floor(rnd(2, COLS - 3)), y = 0;
 
-      // projectiles
-                for (const p of g.projectiles){
-        p.x += p.vx*dt; p.y += p.vy*dt;
-        if (p.x<0 || p.x>COLS || p.y<0 || p.y>ROWS) p._dead = true;
-        const ex = Math.floor(p.x), ey=Math.floor(p.y);
-        const hit = g.enemies.find(e=>Math.floor(e.x)===ex && Math.floor(e.y)===ey && e.hp>0);
-        if (hit){
-          const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
-          hit.hp -= Math.round(p.dmg * mult); p._dead = true;
-          if (hit.hp<=0){
-            const lvlGain = Math.pow(1.1, (g.level-1));
-            const owner = g.players.find(z=>z.name===p.owner);
-            if (owner){ owner.funds += 0; owner.baseIncomeDelta = (owner.baseIncomeDelta||0) + (0.05 * lvlGain); }
-            g.killsThisLevel = (g.killsThisLevel||0)+1;
-            if (g.killsThisLevel >= (g.killsToAdvance||20)){
-              g.level = (g.level||1)+1; g.killsThisLevel = 0; g.killsToAdvance = Math.round((g.killsToAdvance||20) * 1.25);
-            }
+      g.enemies.push({
+        id:'e'+Math.random().toString(36).slice(2),
+        x, y,
+        el: base.el, type: base.key,
+        hp: HP, maxHp: HP, dmg: DMG,
+        spd: base.spd, range: base.range,
+        target: base.target, cd: 0
+      });
+    }
+    g.nextSpawnAt = tNow + Math.max(600, 1600 - (g.level || 1) * 40);
+  }
+
+  // ---- Enemies ----
+  for (const e of g.enemies){
+    if (e.target === 'tower'){
+      const tgt = nearestTowerInRange(g, e, e.range);
+      if (tgt){
+        e.cd -= dt;
+        if (e.cd <= 0){
+          tgt.hp -= e.dmg;
+          e.cd = 1.2;
+          if (tgt.hp <= 0){
+            const i = g.towers.findIndex(t => t.id === tgt.id);
+            if (i >= 0) g.towers.splice(i, 1);
           }
         }
+      } else {
+        e.y += e.spd;
       }
-      g.projectiles = g.projectiles.filter(p=>!p._dead);
-      g.enemies = g.enemies.filter(e=>e.hp>0);
-
-      // income tick
-     if (!incomeTickAt) incomeTickAt = now()+30000;
-if (now() >= incomeTickAt) {
-  for (const p of g.players) {
-    const inc = (typeof p.baseIncome === 'number' ? p.baseIncome : 1) + (p.baseIncomeDelta || 0);
-    p.funds += inc;
-  }
-  incomeTickAt = now()+30000;
-}
-
-      // defeat → schedule restart, no redirect
-      if (g.crystal.hp <= 0 && g.status==='active'){
-        g.crystal.hp = 0;
-        g.status = 'defeat';
-        finalizeAndMarkDefeat(g).catch(()=>{});
-      }
-      return g;
+    } else {
+      e.y += e.spd;
     }
+    if (Math.floor(e.y) >= g.crystal.y){
+      g.crystal.hp -= e.dmg;
+      e.hp = 0;
+    }
+  }
 
+  // ---- Towers (fire projectiles) ----
+  for (const t of g.towers){
+    t.cd -= dt;
+    const tgt = nearestEnemyInRange(g, t, t.range);
+    if (tgt && t.cd <= 0){
+      const spd = 14;
+      const sx = t.x + 0.5, sy = t.y + 0.5;
+      const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
+      const m  = Math.hypot(dx, dy) || 1;
+      g.projectiles.push({
+        id:'p'+Math.random().toString(36).slice(2),
+        x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd,
+        dmg:t.dmg, el:t.el, owner:t.owner
+      });
+      t.cd = 1 / Math.max(0.2, t.rate);
+    }
+  }
+
+  // ---- Projectiles ----
+  for (const p of g.projectiles){
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    if (p.x < 0 || p.x > COLS || p.y < 0 || p.y > ROWS) { p._dead = true; continue; }
+
+    const ex = Math.floor(p.x), ey = Math.floor(p.y);
+    const hit = g.enemies.find(e => Math.floor(e.x) === ex && Math.floor(e.y) === ey && e.hp > 0);
+    if (!hit) continue;
+
+    const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
+    hit.hp -= Math.round(p.dmg * mult);
+    p._dead = true;
+
+    if (hit.hp <= 0){
+      // ❌ no funds on kill
+      const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
+      const owner = g.players.find(z => z.name === p.owner);
+      if (owner){
+        // keep long-term growth
+        owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
+      }
+      g.killsThisLevel = (g.killsThisLevel || 0) + 1;
+      if (g.killsThisLevel >= (g.killsToAdvance || 20)){
+        g.level = (g.level || 1) + 1;
+        g.killsThisLevel = 0;
+        g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
+      }
+    }
+  }
+  g.projectiles = g.projectiles.filter(p => !p._dead);
+  g.enemies     = g.enemies.filter(e => e.hp > 0);
+
+  // ---- Periodic income (every 30s) ----
+  if (!incomeTickAt) incomeTickAt = tNow + 30000;
+  if (tNow >= incomeTickAt){
+    for (const p of g.players){
+      const base = (typeof p.baseIncome === 'number' ? p.baseIncome : 1);
+      const inc  = base + (p.baseIncomeDelta || 0);
+      p.funds += inc;
+    }
+    incomeTickAt = tNow + 30000;
+  }
+
+  // ---- Defeat handling (call finalizer once) ----
+  if (g.crystal.hp <= 0 && g.status === 'active' && !_finalizeOnce){
+    g.crystal.hp = 0;
+    g.status = 'defeat';
+    _finalizeOnce = true;                // prevent duplicate finalize calls
+    finalizeAndMarkDefeat(g).catch(()=>{});
+  }
+
+  return g;
+}
     function nearestEnemyInRange(g, t, range){
       let best=null, bd=1e9;
       for (const e of g.enemies){ const d = dist2(t.x,t.y, e.x,e.y); if (d <= (range+0.5)**2 && d<bd){ bd=d; best=e; } }
@@ -931,6 +981,7 @@ if (now() >= incomeTickAt) {
   </script>
 </body>
 </html>
+
 
 
 
