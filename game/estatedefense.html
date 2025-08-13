@@ -414,7 +414,6 @@ async function enqueueIntent(type, payload = {}){
         await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } });
       } catch(e){
         myBaseIncome = 1;
-        baseLbl.textContent = round2(myBaseIncome);
         await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } }).catch(()=>{});
       }
     }
@@ -773,8 +772,14 @@ async function enqueueIntent(type, payload = {}){
       g.enemies = g.enemies.filter(e=>e.hp>0);
 
       // income tick
-      if (!incomeTickAt) incomeTickAt = now()+30000;
-      if (now()>=incomeTickAt){ for (const p of g.players){ p.funds += p.baseIncome; } incomeTickAt = now()+30000; }
+     if (!incomeTickAt) incomeTickAt = now()+30000;
+if (now() >= incomeTickAt) {
+  for (const p of g.players) {
+    const inc = (typeof p.baseIncome === 'number' ? p.baseIncome : 1) + (p.baseIncomeDelta || 0);
+    p.funds += inc;
+  }
+  incomeTickAt = now()+30000;
+}
 
       // defeat → schedule restart, no redirect
       if (g.crystal.hp <= 0 && g.status==='active'){
@@ -889,6 +894,7 @@ async function enqueueIntent(type, payload = {}){
   </script>
 </body>
 </html>
+
 
 
 
