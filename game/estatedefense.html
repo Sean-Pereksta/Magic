@@ -336,13 +336,25 @@ async function enqueueIntent(type, payload = {}){
     setTimeout(()=>{ _intentBusy = false; }, 250); // short cooldown
   }
 }
-    const btns = [upgradeBtn, sellBtn];
 const _origEnqueue = enqueueIntent;
 enqueueIntent = async function(type, payload){
   btns.forEach(b => b.disabled = true);
   try { return await _origEnqueue(type, payload); }
   finally { btns.forEach(b => b.disabled = false); }
 };
+    // ---- Disable upgrade/sell while sending (idempotent) ----
+(function setupIntentButtonDisable(){
+  if (enqueueIntent.__wrapped) return; // already wrapped once
+  const btns = [upgradeBtn, sellBtn];
+  const _orig = enqueueIntent;
+  enqueueIntent = async function(type, payload){
+    btns.forEach(b => b.disabled = true);
+    try { return await _orig(type, payload); }
+    finally { btns.forEach(b => b.disabled = false); }
+  };
+  enqueueIntent.__wrapped = true;
+})();
+
 
 
     async function tryBuy(tKey){
@@ -888,6 +900,7 @@ enqueueIntent = async function(type, payload){
   </script>
 </body>
 </html>
+
 
 
 
