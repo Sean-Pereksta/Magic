@@ -291,25 +291,26 @@
         `;
       }).join('');
     }
-    (function bindShopDelegation(){
-      shopBox.addEventListener('pointerdown', async (e)=>{
-        const card = e.target.closest('.card[data-key]');
-        if (!card) return;
-        if (card.classList.contains('disabled')) return;
-        if (!state || state.status !== 'active') return;
-        if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
-        if (_actionBusy) return;
+   (function bindShopDelegation(){
+  let _shopTapLock = false; // local to the shop, not shared with intents
 
-        const key = card.dataset.key;
-        _actionBusy = true;
-        try{
-          await tryBuy(key);
-        } finally {
-          setTimeout(()=>{ _actionBusy = false; }, 150);
-        }
-        e.preventDefault();
-      });
-    })();
+  shopBox.addEventListener('pointerdown', async (e)=>{
+    const card = e.target.closest('.card[data-key]');
+    if (!card) return;
+    if (card.classList.contains('disabled')) return;
+    if (!state || state.status !== 'active') return;
+    if (!amSeeded){ toast("Joining… one moment ⏳"); return; }
+    if (_shopTapLock) return;
+
+    _shopTapLock = true;
+    try{
+      await tryBuy(card.dataset.key); // this will call enqueueIntent
+    } finally {
+      setTimeout(()=>{ _shopTapLock = false; }, 150); // light de-dupe
+    }
+    e.preventDefault(); // prevent long-press selection on mobile
+  });
+})();
     function maybeRenderShop(){
       const active = !state || state.status === 'active';
       if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
@@ -318,21 +319,29 @@
       }
     }
 
-    // Intent enqueue (always piggyback baseIncome)
-    async function enqueueIntent(type, payload = {}){
-      if (_actionBusy) return;
-      _actionBusy = true;
-      try{
-        await addDoc(intentsCol, {
-          ts: now(),
-          actor: me,
-          type,
-          payload: { ...payload, baseIncome: myBaseIncome }
-        });
-      } finally {
-        setTimeout(() => { _actionBusy = false; }, 250);
-      }
-    }
+  let _intentBusy = false;
+async function enqueueIntent(type, payload = {}){
+  if (_intentBusy) return;            // lock is for intents only
+  _intentBusy = true;
+  try{
+    await addDoc(intentsCol, {
+      ts: now(),
+      actor: me,
+      type,
+      payload: { ...payload, baseIncome: myBaseIncome }
+    });
+  } finally {
+    setTimeout(()=>{ _intentBusy = false; }, 250); // short cooldown
+  }
+}
+    const btns = [upgradeBtn, sellBtn];
+const _origEnqueue = enqueueIntent;
+enqueueIntent = async function(type, payload){
+  btns.forEach(b => b.disabled = true);
+  try { return await _origEnqueue(type, payload); }
+  finally { btns.forEach(b => b.disabled = false); }
+};
+
 
     async function tryBuy(tKey){
       if (!state || state.status !== 'active') return;
@@ -871,6 +880,7 @@
   </script>
 </body>
 </html>
+
 
 
 
