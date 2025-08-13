@@ -278,25 +278,27 @@
       return null;
     }
 
-    // Shop
-    function renderShop(){
-      const gameActive = !state || state.status === 'active';
-      shopBox.innerHTML = TOWER_TYPES.map(t=>{
-        const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
-        return `
-          <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
-            <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
-            <div class="small">Element: ${t.el}</div>
-            <div class="small">Cost: ${t.cost}</div>
-            <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
-          </div>
-        `;
-      }).join('');
-    }
-   (function bindShopDelegation(){
-  let _shopTapLock = false; // local to the shop, not shared with intents
+ // --- Shop ---
+function renderShop(){
+  const gameActive = state?.status === 'active'; // only active when state exists & is active
+  shopBox.innerHTML = TOWER_TYPES.map(t=>{
+    const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
+    return `
+      <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
+        <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
+        <div class="small">Element: ${t.el}</div>
+        <div class="small">Cost: ${t.cost}</div>
+        <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+      </div>
+    `;
+  }).join('');
+}
+
+(function bindShopDelegation(){
+  let _shopTapLock = false; // local, not shared with intents
 
   shopBox.addEventListener('pointerdown', async (e)=>{
+    if (e.button != null && e.button !== 0) return; // ignore right/middle clicks
     const card = e.target.closest('.card[data-key]');
     if (!card) return;
     if (card.classList.contains('disabled')) return;
@@ -305,25 +307,27 @@
     if (_shopTapLock) return;
 
     _shopTapLock = true;
+    e.preventDefault(); // do this before awaiting; needs {passive:false} below
     try{
-      await tryBuy(card.dataset.key); // this will call enqueueIntent
+      await tryBuy(card.dataset.key); // will call enqueueIntent
     } finally {
-      setTimeout(()=>{ _shopTapLock = false; }, 150); // light de-dupe
+      setTimeout(()=>{ _shopTapLock = false; }, 200); // light de-dupe
     }
-    e.preventDefault(); // prevent long-press selection on mobile
-  });
+  }, { passive:false }); // allow preventDefault on touch
 })();
-    function maybeRenderShop(){
-      const active = !state || state.status === 'active';
-      if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
-        lastShop = { funds: myFunds, seeded: amSeeded, active };
-        renderShop();
-      }
-    }
 
-  let _intentBusy = false;
+function maybeRenderShop(){
+  const active = state?.status === 'active';
+  if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
+    lastShop = { funds: myFunds, seeded: amSeeded, active };
+    renderShop();
+  }
+}
+
+// --- Intents ---
+let _intentBusy = false;
 async function enqueueIntent(type, payload = {}){
-  if (_intentBusy) return;            // lock is for intents only
+  if (_intentBusy) return;         // lock is for intents only
   _intentBusy = true;
   try{
     await addDoc(intentsCol, {
@@ -336,27 +340,19 @@ async function enqueueIntent(type, payload = {}){
     setTimeout(()=>{ _intentBusy = false; }, 250); // short cooldown
   }
 }
-const _origEnqueue = enqueueIntent;
-enqueueIntent = async function(type, payload){
-  btns.forEach(b => b.disabled = true);
-  try { return await _origEnqueue(type, payload); }
-  finally { btns.forEach(b => b.disabled = false); }
-};
-    // ---- Disable upgrade/sell while sending (idempotent) ----
+
+// ---- Disable upgrade/sell while sending (idempotent, no globals) ----
 (function setupIntentButtonDisable(){
   if (enqueueIntent.__wrapped) return; // already wrapped once
-  const btns = [upgradeBtn, sellBtn];
+  const btnsLocal = [upgradeBtn, sellBtn].filter(Boolean);
   const _orig = enqueueIntent;
   enqueueIntent = async function(type, payload){
-    btns.forEach(b => b.disabled = true);
+    btnsLocal.forEach(b => b.disabled = true);
     try { return await _orig(type, payload); }
-    finally { btns.forEach(b => b.disabled = false); }
+    finally { btnsLocal.forEach(b => b.disabled = false); }
   };
   enqueueIntent.__wrapped = true;
 })();
-
-
-
     async function tryBuy(tKey){
       if (!state || state.status !== 'active') return;
       const def = TOWER_TYPES.find(x => x.key === tKey); if (!def) return;
@@ -893,6 +889,7 @@ enqueueIntent = async function(type, payload){
   </script>
 </body>
 </html>
+
 
 
 
