@@ -122,6 +122,8 @@
       collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc,
       serverTimestamp, arrayUnion, arrayRemove
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -529,6 +531,7 @@ function maybeRenderShop(){
       // We uplift baseIncome from /users on first JOINED per player; OK to start funds at 0 here.
       return {
         _epoch: 0,
+           ver: 0,
         status:'active',
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
@@ -548,40 +551,82 @@ function maybeRenderShop(){
 
     // ----- Intents + Sim (host) -----
     async function simulateStepAsHost(){
-      const s = await getDoc(lobbyRef); if (!s.exists()) return;
-      const d = s.data(); if (d.host !== me){ isHost=false; if (simInt) clearInterval(simInt); return; }
+  // Ensure I'm still host
+  const s = await getDoc(lobbyRef); if (!s.exists()) return;
+  const d = s.data() || {};
+  if (d.host !== me){ isHost = false; if (simInt) clearInterval(simInt); return; }
 
-      // If no one present anymore, clean up lobby doc
-      const presSnap = await getDocs(presenceCol);
-      if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
+  // If no one present anymore, tear down the lobby
+  const presSnap = await getDocs(presenceCol);
+  if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
 
-      let g = d.game;
-      if (!g){
-        g = buildFreshGameFromPlayers(d.players || []);
+  // Load or bootstrap game
+  let g = d.game;
+  if (!g){
+    g = buildFreshGameFromPlayers(d.players || []);
+  }
+
+  // Auto-restart window
+  if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
+    g = restartGameInPlace(g, d.players || []);
+    incomeTickAt = 0; // reset local income cadence
+  }
+
+  // ---- Read & apply intents (do NOT delete yet) ----
+  const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
+  const snap = await getDocs(Q);
+  const processedIds = [];
+  for (const docu of snap.docs){
+    const mv = docu.data();
+    try { g = await applyIntent(g, mv); } catch {}
+    processedIds.push(docu.id);
+  }
+
+  // Tick the sim
+  if (g.status === 'active'){
+    g = simulate(g);
+  }
+
+  // ---- Compare-and-set write with version + host check ----
+  const verStart = (typeof g.ver === 'number') ? g.ver : 0;
+  const gNext = { ...g, ver: verStart + 1 };
+
+  let wrote = false;
+  try{
+    await runTransaction(db, async (tx) => {
+      const curSnap = await tx.get(lobbyRef); if (!curSnap.exists()) return;
+      const cur = curSnap.data() || {};
+
+      // Only current host writes
+      if (cur.host !== me) return;
+
+      const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
+      if (curVer !== verStart) return; // someone else advanced; abort
+
+      tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
+      wrote = true;
+    });
+  } catch {
+    wrote = false;
+  }
+
+  // Keep lease fresh even if we lost the race
+  if (!wrote){
+    try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
+  }
+
+  // ---- Only delete intents AFTER a successful write ----
+  if (wrote && processedIds.length){
+    try{
+      const batch = writeBatch(db);
+      for (const id of processedIds){
+        batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
       }
+      await batch.commit();
+    } catch {}
+  }
+}
 
-      // --- Auto-restart window ---
-      if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
-        g = restartGameInPlace(g, d.players || []);
-        // Reset local income cadence; keep server authoritative
-        incomeTickAt = 0;
-      }
-
-      // Process intents quickly to avoid backlog
-      const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
-      const snap = await getDocs(Q);
-      for (const docu of snap.docs){
-        const mv = docu.data();
-        try{ g = await applyIntent(g, mv); }catch(e){}
-        try{ await deleteDoc(doc(db,'lobbies',lobbyId,'intents',docu.id)); }catch(e){}
-      }
-
-      if (g.status === 'active'){
-        g = simulate(g);
-      }
-
-      await updateDoc(lobbyRef, { game: g, leaseUntil: now()+LEASE_MS });
-    }
 
     // Restart builder: keep same players + baseIncome, reset everything else
     function restartGameInPlace(g, rootPlayers){
@@ -601,6 +646,7 @@ function maybeRenderShop(){
       const cx = Math.floor(COLS/2), cy = ROWS-3;
       return {
         _epoch: (typeof g._epoch==='number'? g._epoch : 0) + 1, // bump epoch so clients re-center
+        ver: 0,
         status:'active',
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
@@ -885,6 +931,7 @@ if (now() >= incomeTickAt) {
   </script>
 </body>
 </html>
+
 
 
 
