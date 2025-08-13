@@ -376,13 +376,6 @@ enqueueIntent = async function(type, payload){
       if (!mySelectedTowerId) return;
       await enqueueIntent("SELL", { id: mySelectedTowerId });
     };
-    const btns = [upgradeBtn, sellBtn];
-    const _origEnqueue = enqueueIntent;
-    enqueueIntent = async function(type, payload){
-      btns.forEach(b => b.disabled = true);
-      try { return await _origEnqueue(type, payload); }
-      finally { btns.forEach(b => b.disabled = false); }
-    };
 
     // Leave (manual)
     let _leaving = false;
@@ -900,6 +893,7 @@ enqueueIntent = async function(type, payload){
   </script>
 </body>
 </html>
+
 
 
 
