@@ -346,19 +346,6 @@ function maybeRenderShop(){
     renderShop();
   }
 }
-
-// ---- Disable upgrade/sell while sending (idempotent, no globals) ----
-(function setupIntentButtonDisable(){
-  if (enqueueIntent.__wrapped) return; // already wrapped once
-  const btnsLocal = [upgradeBtn, sellBtn].filter(Boolean);
-  const _orig = enqueueIntent;
-  enqueueIntent = async function(type, payload){
-    btnsLocal.forEach(b => b.disabled = true);
-    try { return await _orig(type, payload); }
-    finally { btnsLocal.forEach(b => b.disabled = false); }
-  };
-  enqueueIntent.__wrapped = true;
-})();
     async function tryBuy(tKey){
       if (!state || state.status !== 'active') return;
       const def = TOWER_TYPES.find(x => x.key === tKey); if (!def) return;
@@ -467,8 +454,6 @@ function maybeRenderShop(){
 }
 
         fundsLbl.textContent = Math.floor(myFunds);
-        baseLbl.textContent  = round2(myBaseIncome);
-
         // Seed gate
         const wasSeeded = amSeeded;
         amSeeded = !!(meP && meP._seeded);
@@ -900,6 +885,7 @@ if (now() >= incomeTickAt) {
   </script>
 </body>
 </html>
+
 
 
 
