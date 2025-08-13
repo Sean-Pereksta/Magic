@@ -200,6 +200,8 @@
       { key:"arch",   el:"frost",  hp:22, dmg:2, spd:0.9, range:5, target:"tower" },
       { key:"brute",  el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower" },
     ];
+    const fmt3 = (n)=> (Math.round((+n||0)*1000)/1000).toFixed(3);
+
 
     // ----- State -----
     let state = null;
@@ -454,7 +456,10 @@ enqueueIntent = async function(type, payload){
         if (meP) {
           myFunds = meP.funds || 0;
           if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
-        }
+          const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
+          baseLbl.textContent = fmt3(myInc);  // shows 0.000 format
+}
+
         fundsLbl.textContent = Math.floor(myFunds);
         baseLbl.textContent  = round2(myBaseIncome);
 
@@ -468,15 +473,18 @@ enqueueIntent = async function(type, payload){
 
         // Players list
         playersBox.innerHTML = "";
-        (state.players || []).forEach((p, i) => {
-          const row = document.createElement('div');
-          row.className = 'playerRow';
-          row.innerHTML = `
-            <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
-            <div class="small">Base: ${round2(p.baseIncome || 1)} | $${Math.floor(p.funds || 0)}</div>
-          `;
-          playersBox.appendChild(row);
-        });
+            (state.players || []).forEach((p, i) => {
+              const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+              const inc  = base + (p.baseIncomeDelta || 0);   // live, grows during the run
+              const row = document.createElement('div');
+              row.className = 'playerRow';
+              row.innerHTML = `
+                <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
+                <div class="small">Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}</div>
+              `;
+              playersBox.appendChild(row);
+            });
+
 
         // Status toast (no redirect)
         if (_lastStatus !== state.status){
@@ -880,6 +888,7 @@ enqueueIntent = async function(type, payload){
   </script>
 </body>
 </html>
+
 
 
 
