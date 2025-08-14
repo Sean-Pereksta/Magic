@@ -443,15 +443,21 @@ const enqueueIntent = (() => {
       return null;
     }
 
-    function makeWritableGame(g){
-  // Option 1 (best): don’t publish projectiles at all; clients render locally from caches
-  // return { ...g, projectiles: [] };
-
-  // Option 2 (safe now): cap projectile count to keep doc light
-  const proj = g.projectiles || [];
-  const trimmed = proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj;
-  return { ...g, projectiles: trimmed };
+   function makeWritableGame(g){
+  // Leanest: don't publish projectiles at all
+  return {
+    ...g,
+    projectiles: [],                             // 👈 no bullets in network payload
+    enemies: Array.isArray(g.enemies) ? g.enemies : [],
+    towers:  Array.isArray(g.towers)  ? g.towers  : []
+  };
 }
+    // Cosmetic tracers: [{x1,y1,x2,y2, until}]
+const _tracers = [];
+function addTracer(x1,y1,x2,y2, durMs=90){
+  _tracers.push({ x1, y1, x2, y2, until: Date.now() + durMs });
+}
+
 
 
  // --- Shop ---
@@ -1832,6 +1838,70 @@ function simulate(g){
     ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
     ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*tpct, 4);
   }
+    // Local visual fire — per tower, fake a cooldown and draw a short tracer
+if (!window._vizCd) window._vizCd = new Map(); // t.id -> {cd, rate}
+
+const nowMs = Date.now();
+for (const t of (state.towers || [])){
+  const key = t.id;
+  // Initialize a visual cooldown storage
+  const cur = window._vizCd.get(key) || { cd: 0, rate: Math.max(0.2, t.rate || 1) };
+  // Adjust visual rate when slowed/stunned if you track those flags in state
+  const effectiveRate = Math.max(0.05, (t.rate || 1)); // purely visual
+
+  // Advance local cooldown
+  cur.cd -= 1/30; // your draw() is 30 FPS
+  if (cur.cd <= 0){
+    // Find a target using interpolated enemies if we have a/b; fallback to raw state
+    let pick = null;
+    const enMap = (typeof b !== 'undefined' && b && b.enemies) ? b.enemies : null;
+    if (enMap && enMap.size){
+      // nearest enemy to this tower (simple)
+      let best=null, bd=1e9;
+      for (const e of enMap.values()){
+        const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-(e.y);
+        const d2=dx*dx+dy*dy;
+        if (d2 < bd && d2 <= (t.range*t.range)) { bd=d2; best=e; }
+      }
+      pick = best;
+    } else {
+      // fallback to raw state enemies
+      pick = (state.enemies||[]).reduce((best,e)=>{
+        const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-e.y;
+        const d2=dx*dx+dy*dy; 
+        return (d2 <= (t.range*t.range) && (!best || d2 < best.d2)) ? {e,d2} : best;
+      }, null)?.e || null;
+    }
+
+    if (pick){
+      // Create a short tracer beam from tower to target (in world coords, tiles)
+      addTracer(t.x+0.5, t.y+0.5, pick.x, pick.y, 90);
+      cur.cd = 1 / effectiveRate; // reset visual cadence
+    } else {
+      // no target; try again soon
+      cur.cd = 0.1;
+    }
+  }
+  window._vizCd.set(key, cur);
+}
+
+// Draw and prune tracers (after you draw towers/enemies)
+for (let i=_tracers.length-1; i>=0; i--){
+  const tr=_tracers[i];
+  if (nowMs > tr.until){ _tracers.splice(i,1); continue; }
+
+  // Convert tile coords to pixels with vertical offset
+  const x1 = tr.x1 * TILE, y1 = tr.y1 * TILE - camY;
+  const x2 = tr.x2 * TILE, y2 = tr.y2 * TILE - camY;
+
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.restore();
+}
+
 
   // ===== Buffered rendering (no snap-backs) =====
   // Use a small fixed delay so we interpolate between two real snapshots.
@@ -1987,4 +2057,5 @@ function simulate(g){
   </script>
 </body>
 </html>
+
 
