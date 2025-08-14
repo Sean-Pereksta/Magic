@@ -237,11 +237,55 @@ const enqueueIntent = (() => {
     const palette = ["#ef4444","#3b82f6","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16"];
     const ELEM_COL = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"};
     const TOWER_TYPES = [
-      { key:"ember",  name:"Ember",  emoji:"🔥", el:"fire",  cost:1, dmg:5,  range:40, rate:1.2, hp:5 },
-      { key:"frost",  name:"Frost",  emoji:"❄️", el:"frost", cost:4, dmg:4,  range:50, rate:1.0, hp:5 },
-      { key:"volt",   name:"Volt",   emoji:"⚡", el:"volt",  cost:5, dmg:6,  range:30, rate:0.9, hp:5 },
-      { key:"nature", name:"Thorn",  emoji:"🌿", el:"nature",cost:4, dmg:4,  range:40, rate:1.3, hp:5 },
-    ];
+  // --- Early tier (cheap) ---
+  { key:"ember",   name:"Ember",        emoji:"🔥", el:"fire",   cost:1,  dmg:5,  range:40, rate:1.2,  hp:5 },
+  { key:"cinder",  name:"Cinder",       emoji:"🔥", el:"fire",   cost:3,  dmg:7,  range:42, rate:1.15, hp:6 },
+  { key:"frost",   name:"Frost",        emoji:"❄️", el:"frost",  cost:4,  dmg:4,  range:50, rate:1.0,  hp:5 },
+  { key:"nature",  name:"Thorn",        emoji:"🌿", el:"nature", cost:4,  dmg:4,  range:40, rate:1.3,  hp:5 },
+  { key:"volt",    name:"Volt",         emoji:"⚡", el:"volt",   cost:4,  dmg:6,  range:30, rate:0.9,  hp:5 },
+
+  // --- Low-mid tier ---
+  { key:"flame",   name:"Flame",        emoji:"🔥", el:"fire",   cost:15,  dmg:10, range:44, rate:1.05, hp:12 },
+  { key:"shard",   name:"Shard",        emoji:"🧊", el:"frost",  cost:15,  dmg:6,  range:55, rate:0.95, hp:12 },
+  { key:"bramble", name:"Bramble",      emoji:"🌿", el:"nature", cost:15,  dmg:6,  range:45, rate:1.2,  hp:12 },
+  { key:"arc",     name:"Arc",          emoji:"⚡", el:"volt",   cost:15,  dmg:8,  range:35, rate:0.8,  hp:12 },
+
+  // --- Mid tier ---
+  { key:"blaze",   name:"Blaze",        emoji:"🔥", el:"fire",   cost:25, dmg:14, range:46, rate:0.95, hp:18 },
+  { key:"glacier", name:"Glacier",      emoji:"🧊", el:"frost",  cost:25, dmg:8,  range:60, rate:0.9,  hp:24 },
+  { key:"grove",   name:"Grove",        emoji:"🌳", el:"nature", cost:25, dmg:9,  range:50, rate:1.1,  hp:22 },
+  { key:"tesla",   name:"Tesla",        emoji:"⚡", el:"volt",   cost:25, dmg:11, range:40, rate:0.7,  hp:15 },
+
+  // --- Upper mid ---
+  { key:"inferno", name:"Inferno",      emoji:"🌋", el:"fire",   cost:50, dmg:19, range:48, rate:0.9,  hp:30 },
+  { key:"blizzard",name:"Blizzard",     emoji:"🌨️", el:"frost",  cost:50, dmg:10, range:65, rate:0.85, hp:35 },
+  { key:"wrathwood",name:"Wrathwood",   emoji:"🌲", el:"nature", cost:50, dmg:12, range:55, rate:1.0,  hp:30 },
+  { key:"tempest", name:"Tempest",      emoji:"🌩️", el:"volt",   cost:50, dmg:15, range:45, rate:0.65, hp:25 },
+
+  // --- High tier ---
+  { key:"phoenix", name:"Phoenix",      emoji:"🔥", el:"fire",   cost:100, dmg:25, range:52, rate:0.85, hp:50 },
+  { key:"absolutezero", name:"Absolute Zero", emoji:"❄️", el:"frost", cost:100, dmg:13, range:70, rate:0.8, hp:55 },
+  { key:"verdant", name:"Verdant",      emoji:"🍃", el:"nature", cost:100, dmg:16, range:60, rate:0.95, hp:50 },
+  { key:"stormcaller", name:"Stormcaller", emoji:"⛈️", el:"volt", cost:100, dmg:20, range:50, rate:0.6, hp:35 },
+
+  // --- Late game ---
+  { key:"solarflare", name:"Solar Flare", emoji:"☀️", el:"fire", cost:150, dmg:26, range:56, rate:0.8,  hp:80 },
+  { key:"permafrost", name:"Permafrost",   emoji:"❄️", el:"frost",cost:150, dmg:27, range:75, rate:0.75, hp:80 },
+  { key:"worldroot",  name:"Worldroot",    emoji:"🌱", el:"nature",cost:150, dmg:30, range:65, rate:0.9,  hp:80 },
+  { key:"thunderlord",name:"Thunderlord",  emoji:"🌩️", el:"volt",  cost:150, dmg:26, range:55, rate:0.55, hp:80 },
+
+  // --- Endgame ---
+  { key:"supernova",  name:"Supernova",     emoji:"💥", el:"fire",  cost:200, dmg:55, range:60, rate:0.75, hp:120 },
+  { key:"cryostorm",  name:"Cryostorm",     emoji:"🌬️", el:"frost", cost:200, dmg:55, range:80, rate:0.7,  hp:120 },
+  { key:"wildheart",  name:"Wildheart",     emoji:"🍀", el:"nature", cost:200, dmg:60, range:70, rate:0.85, hp:120 },
+  { key:"ionstorm",   name:"Ion Storm",     emoji:"⚡",  el:"volt",  cost:200, dmg:45, range:60, rate:0.5,  hp:120 },
+
+  // --- Legendary ---
+  { key:"aurora",     name:"Aurora",        emoji:"🌌", el:"frost",  cost:300, dmg:100, range:85, rate:0.65, hp:200 },
+  { key:"worldtree",  name:"World Tree",    emoji:"🌳", el:"nature", cost:300, dmg:100, range:75, rate:0.8,  hp:200 },
+  { key:"overcharge", name:"Overcharge",    emoji:"🔋", el:"volt",   cost:300, dmg:100, range:65, rate:0.45, hp:200 }
+];
+
     const ELEM_MULT = {
       fire:   { nature:1.5, frost:0.8, volt:1.0, fire:1.0 },
       nature: { volt:1.5, fire:0.8, frost:1.0, nature:1.0 },
@@ -249,11 +293,77 @@ const enqueueIntent = (() => {
       frost:  { fire:1.5, nature:0.8, volt:1.0, frost:1.0 }
     };
     const ENEMY_TYPES = [
-      { key:"slime", el:"nature", hp:20, dmg:2, spd:0.8, range:0, target:"core",  minLevel:1 },
-      { key:"gob",   el:"fire",   hp:28, dmg:3, spd:1.0, range:0, target:"core",  minLevel:2 },
-      { key:"arch",  el:"frost",  hp:22, dmg:2, spd:0.9, range:5, target:"tower", minLevel:3 },
-      { key:"brute", el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower", minLevel:5 },
-    ];
+  // --- Early game (Lv 1–5) ---
+  { key:"slime",   el:"nature", hp:20, dmg:2, spd:0.8, range:0,  target:"core",  minLevel:1, tags:["swarm"] },
+  { key:"sprout",  el:"nature", hp:16, dmg:1, spd:1.15,range:0,  target:"core",  minLevel:1, tags:["swarm"] },
+  { key:"gob",     el:"fire",   hp:28, dmg:3, spd:1.0, range:0,  target:"core",  minLevel:2 },
+  { key:"imp",     el:"fire",   hp:18, dmg:3, spd:1.25,range:0,  target:"core",  minLevel:2, tags:["swift"] },
+  { key:"bat",     el:"volt",   hp:14, dmg:2, spd:1.5, range:0,  target:"core",  minLevel:2, tags:["flying","fragile"] },
+
+  { key:"arch",    el:"frost",  hp:22, dmg:2, spd:0.9, range:55, target:"tower", minLevel:3 },
+  { key:"ashling", el:"fire",   hp:10, dmg:1, spd:1.3, range:0,  target:"core",  minLevel:3, tags:["swarm"] },
+  { key:"bomber",  el:"fire",   hp:24, dmg:4, spd:0.9, range:0,  target:"tower", minLevel:3, tags:["explodes"], deathExplosion:{dmg:10, radius:40} },
+
+  { key:"sapper",  el:"volt",   hp:22, dmg:5, spd:1.1, range:0,  target:"tower", minLevel:4, tags:["siege"] },
+  { key:"shaman",  el:"nature", hp:26, dmg:1, spd:0.85,range:40, target:"core",  minLevel:4, tags:["healer"], healRate:1.5, healRange:70 },
+  { key:"sniper",  el:"frost",  hp:20, dmg:5, spd:0.8, range:75, target:"tower", minLevel:4, tags:["pierce"] },
+
+  { key:"brute",   el:"volt",   hp:45, dmg:5, spd:0.6, range:0,  target:"tower", minLevel:5 },
+  { key:"shield",  el:"frost",  hp:32, dmg:3, spd:0.75,range:0,  target:"core",  minLevel:5, tags:["shielded"], shield:14 },
+
+  // --- Mid game (Lv 6–12) ---
+  { key:"witch",   el:"fire",   hp:24, dmg:4, spd:0.9, range:50, target:"tower", minLevel:6, tags:["curse"] },
+  { key:"crawler", el:"volt",   hp:15, dmg:2, spd:1.6, range:0,  target:"core",  minLevel:6, tags:["swarm"] },
+  { key:"druid",   el:"nature", hp:30, dmg:2, spd:0.95,range:0,  target:"core",  minLevel:6, tags:["healer","regen"], healRate:1.0, healRange:55 },
+
+  { key:"cata",    el:"fire",   hp:34, dmg:7, spd:0.6, range:85, target:"tower", minLevel:7, tags:["siege"] },
+  { key:"wolf",    el:"nature", hp:18, dmg:3, spd:1.35,range:0,  target:"core",  minLevel:7, tags:["swift"] },
+
+  { key:"golem",   el:"frost",  hp:72, dmg:7, spd:0.5, range:0,  target:"core",  minLevel:8, tags:["armored"], armor:2 },
+  { key:"specter", el:"frost",  hp:22, dmg:3, spd:1.1, range:0,  target:"core",  minLevel:8, tags:["stealth"] },
+
+  { key:"pyro",    el:"fire",   hp:26, dmg:5, spd:0.9, range:60, target:"tower", minLevel:9 },
+  { key:"cryo",    el:"frost",  hp:26, dmg:3, spd:0.9, range:60, target:"tower", minLevel:9, tags:["slow"] },
+
+  { key:"runner",  el:"volt",   hp:28, dmg:4, spd:1.3, range:0,  target:"tower", minLevel:10, tags:["stun"] },
+  { key:"thornlr", el:"nature", hp:48, dmg:5, spd:0.7, range:0,  target:"core",  minLevel:10, tags:["regen"], healRate:1.2 },
+
+  { key:"assassin",el:"volt",   hp:24, dmg:9, spd:1.35,range:0,  target:"tower", minLevel:11, tags:["stealth","backstab"] },
+
+  { key:"warlock", el:"fire",   hp:36, dmg:6, spd:0.8, range:70, target:"tower", minLevel:12 },
+  { key:"dryad",   el:"nature", hp:28, dmg:2, spd:0.95,range:55, target:"core",  minLevel:12, tags:["healer"], healRate:1.2, healRange:65 },
+
+  // --- Upper mid (Lv 13–18) ---
+  { key:"icebrk",  el:"frost",  hp:84, dmg:8, spd:0.55,range:0,  target:"tower", minLevel:13, tags:["armored"], armor:3 },
+  { key:"thunder", el:"volt",   hp:40, dmg:7, spd:1.0, range:65, target:"tower", minLevel:14, tags:["chain"] },
+  { key:"basilisk",el:"nature", hp:62, dmg:6, spd:0.65,range:0,  target:"core",  minLevel:15, tags:["poison"] },
+
+  { key:"demo",    el:"fire",   hp:58, dmg:10,spd:0.7, range:0,  target:"tower", minLevel:16, tags:["siege"] },
+  { key:"tempest", el:"volt",   hp:36, dmg:5, spd:1.15,range:55, target:"tower", minLevel:16, tags:["chain"] },
+
+  { key:"banshee", el:"frost",  hp:32, dmg:4, spd:1.2, range:40, target:"tower", minLevel:17, tags:["armorShred"] },
+  { key:"jugger",  el:"volt",   hp:110,dmg:12,spd:0.45,range:0,  target:"core",  minLevel:18, tags:["armored","shielded"], armor:4, shield:18 },
+
+  // --- Late game (Lv 19–26) ---
+  { key:"lich",    el:"frost",  hp:42, dmg:7, spd:0.85,range:80, target:"tower", minLevel:19, tags:["summoner"], summon:{key:"slime", count:2, cd:12} },
+  { key:"behemoth",el:"nature", hp:95, dmg:11,spd:0.55,range:0,  target:"core",  minLevel:20, tags:["regen","armored"], healRate:1.0, armor:2 },
+  { key:"phoenix", el:"fire",   hp:60, dmg:8, spd:1.0, range:0,  target:"core",  minLevel:20, tags:["rebirth"], splitInto:"ashling", splitCount:2 },
+
+  { key:"warden",  el:"frost",  hp:70, dmg:8, spd:0.9, range:75, target:"tower", minLevel:21, tags:["slow"] },
+  { key:"ancient", el:"nature", hp:120,dmg:14,spd:0.4, range:0,  target:"core",  minLevel:22, tags:["armored","regen"], armor:3, healRate:1.5 },
+
+  { key:"stormwyrm",el:"volt",  hp:82, dmg:9, spd:0.85,range:95, target:"tower", minLevel:23, tags:["aoe","chain"] },
+  { key:"frostqn", el:"frost",  hp:72, dmg:8, spd:0.9, range:85, target:"tower", minLevel:24, tags:["slow","aura"] },
+
+  { key:"infernal",el:"fire",   hp:140,dmg:15,spd:0.5, range:0,  target:"core",  minLevel:25, tags:["explodes","armored"], armor:2, deathExplosion:{dmg:18, radius:55} },
+  { key:"treant",  el:"nature", hp:90, dmg:10,spd:0.6, range:30, target:"tower", minLevel:26, tags:["siege"] },
+
+  // --- Endgame (Lv 27+) ---
+  { key:"overseer",el:"volt",   hp:100,dmg:12,spd:0.8, range:90, target:"tower", minLevel:27, tags:["summoner"], summon:{key:"bat", count:3, cd:10} },
+  { key:"glacier", el:"frost",  hp:130,dmg:13,spd:0.55,range:0,  target:"core",  minLevel:28, tags:["armored","slowAura"] },
+  { key:"hellkite",el:"fire",   hp:85, dmg:10,spd:1.05,range:70, target:"tower", minLevel:29, tags:["flying","burn"] },
+  { key:"titan",   el:"volt",   hp:180,dmg:20,spd:0.45,range:0,  target:"core",  minLevel:30, tags:["armored","shielded","boss"], armor:5, shield:30 }
+];
 
     const fmt3 = (n)=> (Math.round((+n||0)*1000)/1000).toFixed(3);
 
@@ -999,189 +1109,499 @@ function findEnemyHitAlongSegment(g, x1,y1,x2,y2, radius){
   return null;
 }
 
-  function simulate(g){
-    const tNow = now();
-    let dt = (tNow - (g.lastTick ?? tNow)) / 1000;
-    if (!isFinite(dt) || dt < 0) dt = 0;
-    dt = Math.min(dt, PHYS_MAX_DT);   // <- add this line
-    g.lastTick = tNow;
+  // Drop-in replacement: slower spawning + enemy abilities (heals, summons, shields, armor, explode-on-death, chain shots, slow/stun auras, stealth reveal, regen, DoTs)
 
-      // ---- Spawns ----
-      if (now() >= (g.nextSpawnAt || 0)) {
-        const lvl   = g.level || 1;
-        const count = 2 + Math.floor(lvl * 0.6);
-      
-        const pair = getOrMakePair(g); // or getLevelEnemyPair(lvl) if you skipped caching
-      
-        for (let i = 0; i < count; i++) {
-          // Alternate to keep a 50/50 split; you could also use Math.random()<0.5
-          const base = pair[i & 1];
-      
-          const mult = Math.pow(1.25, lvl - 1);
-          const HP  = Math.round(base.hp  * mult);
-          const DMG = Math.round(base.dmg * mult);
-          const x = Math.floor(rnd(2, COLS - 3)), y = 0;
-      
-          g.enemies.push({
-            id:'e'+Math.random().toString(36).slice(2),
-            x, y,
-            el: base.el, type: base.key,
-            hp: HP, maxHp: HP, dmg: DMG,
-            spd: base.spd, range: base.range,
-            target: base.target, cd: 0
-          });
-        }
-      
-        g.nextSpawnAt = now() + Math.max(600, 1600 - lvl * 40);
-      }
+function simulate(g){
+  const tNow = now();
+  let dt = (tNow - (g.lastTick ?? tNow)) / 1000;
+  if (!isFinite(dt) || dt < 0) dt = 0;
+  dt = Math.min(dt, PHYS_MAX_DT);
+  g.lastTick = tNow;
 
- // ---- Enemies ----
-// ---- Enemies ----
-for (const e of g.enemies){
-  const cx = g.crystal.x, cy = g.crystal.y;
-
-  // Remember where the enemy was (for swept contact)
-  const bx = e.x, by = e.y;
-
-  if (e.target === 'tower'){
-    // If a tower is within attack range, attack; else move toward nearest tower (or crystal if none)
-    const inRangeTgt = nearestTowerInRange(g, e, e.range);
-    if (inRangeTgt){
-      e.cd -= dt;
-      if (e.cd <= 0){
-        inRangeTgt.hp -= e.dmg;
-        e.cd = 1.2;
-        if (inRangeTgt.hp <= 0){
-          const i = g.towers.findIndex(t => t.id === inRangeTgt.id);
-          if (i >= 0) g.towers.splice(i, 1);
-        }
-      }
-    } else {
-      const chase = (typeof nearestTower === 'function' ? nearestTower(g, e) : null) || { x: cx, y: cy };
-      stepToward(e, chase.x, chase.y, dt);
-    }
-  } else {
-    // "core" enemies: beeline to the crystal
-    stepToward(e, cx, cy, dt);
-  }
-
-  // After movement, resolve collisions in priority order:
-
-  // 1) Tower tile collision (tile match): enemy dies, tower takes damage
-  const ex = Math.floor(e.x), ey = Math.floor(e.y);
-  const tIdx = g.towers.findIndex(t => t.x === ex && t.y === ey);
-  if (tIdx >= 0){
-    const t = g.towers[tIdx];
-    t.hp -= e.dmg;
-    if (t.hp <= 0) g.towers.splice(tIdx, 1);
-    e.hp = 0;
-    continue;
-  }
-
-  // 2) Crystal swept collision: if the path (bx,by)→(e.x,e.y) crosses the crystal radius, deal damage
-  const hitCrystal =
-    segmentHitsCircle(bx+0.5, by+0.5, e.x+0.5, e.y+0.5, cx+0.5, cy+0.5, CRYSTAL_HIT_R_T)
-    // fallback: also accept exact tile match as before
-    || (ex === cx && ey === cy);
-
-  if (hitCrystal){
-    g.crystal.hp -= e.dmg;
-    e.hp = 0;
-
-    // tiny flash for feedback (draw uses this)
-    g.crystal._flashUntil = now() + 200;
-    continue;
-  }
-}
-
-
-
-  // ---- Towers (fire projectiles) ----
-  for (const t of g.towers){
-  t.cd -= dt;
-  const tgt = nearestEnemyInRange(g, t, t.range);
-  if (tgt && t.cd <= 0){
-    const spd = PROJECTILE_SPEED_TPS;
-    const sx = t.x + 0.5, sy = t.y + 0.5;
-    const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
-    const m  = Math.hypot(dx, dy) || 1;
-    g.projectiles.push({
-      id:'p'+Math.random().toString(36).slice(2),
-      // current position
-      x:sx, y:sy,
-      // previous position (used for swept tests)
-      px:sx, py:sy,
-      // velocity in tiles/sec
-      vx:dx/m*spd, vy:dy/m*spd,
-      dmg:t.dmg, el:t.el, owner:t.owner
-    });
-    t.cd = 1 / Math.max(0.2, t.rate);
-  }
-}
- // ---- Projectiles (swept micro-steps; no tunneling) ----
-{
-  const killEnemy = (g, enemy, ownerName) => {
-    enemy.hp = 0;
-    const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
-    const owner = g.players.find(z => z.name === ownerName);
-    if (owner){
-      owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
-    }
-    g.killsThisLevel = (g.killsThisLevel || 0) + 1;
-    if (g.killsThisLevel >= (g.killsToAdvance || 20)){
-      g.level = (g.level || 1) + 1;
-      g.killsThisLevel = 0;
-      g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
-    }
+  // -----------------------------
+  // Tunables
+  // -----------------------------
+  const SPAWN = {
+    BASE_MS: 6000,        // much slower
+    MIN_MS:  2500,
+    DECAY_MS_PER_LVL: 30, // gentle ramp
+    PACK_BASE: 1,
+    PACK_PER_LVL: 0.35,
+    PACK_CAP:  8
   };
 
-  for (const p of g.projectiles){
-    // Clamp dt so we never take a huge jump on a stutter
-    let remaining = Math.min(dt, PHYS_MAX_DT);
-    let dead = false;
+  const AURAS = {
+    slowAuraFactor: 0.7,     // towers fire 30% slower under slow aura
+    slowAuraRangeT:  4.5,    // tiles
+    slowAuraTickMs:  250     // refresh rate, not strict—implemented as "extend until"
+  };
 
-    while (remaining > 1e-6 && !dead){
-      // bound per-iteration time AND distance
-      const nominal = Math.min(remaining, 0.05);
-      const stepDist = Math.hypot(p.vx, p.vy) * nominal;          // tiles advanced if we took 'nominal'
-      const microSteps = Math.max(1, Math.ceil(stepDist / PHYS_MAX_ADVANCE_T));
-      const subDt = nominal / microSteps;
+  const SUMMON = {
+    scatterRadiusT: 1.25
+  };
 
-      for (let m = 0; m < microSteps && !dead; m++){
-        const x1 = p.x,      y1 = p.y;
-        const x2 = p.x + p.vx * subDt;
-        const y2 = p.y + p.vy * subDt;
+  const CHAIN = {
+    bounces: 2,           // primary + 2 bounces
+    radiusT: 3.5,
+    falloff: 0.6          // 40% reduction each bounce
+  };
 
-        // swept segment-vs-circle against enemies
-        const hit = findEnemyHitAlongSegment(g, x1,y1,x2,y2, ENEMY_RADIUS_T + PROJECTILE_RADIUS_T);
-        if (hit){
-          const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
-          hit.hp -= Math.round(p.dmg * mult);
-          if (hit.hp <= 0) killEnemy(g, hit, p.owner);
-          dead = true; // projectile consumed on hit
-          break;
-        }
+  const DOTS = {
+    burnDps: 1.5,         // generic burn DoT for 'burn' attackers
+    poisonDpsCrystal: 2.0 // example DoT against crystal for 'poison' enemies
+  };
 
-        // advance (and keep previous for next sweep)
-        p.px = p.x; p.py = p.y;
-        p.x = x2;  p.y = y2;
+  const COOLDOWNS = {
+    enemyMelee: 1.2,
+    enemyRanged: 1.4,
+    revealSecsOnHit: 3.0   // stealth reveal duration when damaged
+  };
 
-        // out of bounds? kill it
-        if (p.x < -1 || p.x > COLS+1 || p.y < -1 || p.y > ROWS+1){
-          dead = true;
-        }
-      }
-      remaining -= nominal;
+  // -----------------------------
+  // Helpers (inline to avoid external deps)
+  // -----------------------------
+
+  const dist2 = (x1,y1,x2,y2)=> {
+    const dx=x1-x2, dy=y1-y2; return dx*dx+dy*dy;
+  };
+
+  function applyEnemyDamage(g, e, rawDmg, elem){
+    // Element multiplier
+    const mult = (typeof elem !== 'undefined' && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
+    let dmg = Math.max(0, Math.round(rawDmg * mult));
+
+    // Armor (flat reduction, not below 1 if any damage remains)
+    const armor = e.armor || 0;
+    if (armor > 0) dmg = Math.max(0, dmg - armor);
+
+    // Shield (absorbs before HP)
+    if (e.shield && e.shield > 0){
+      const use = Math.min(e.shield, dmg);
+      e.shield -= use;
+      dmg -= use;
     }
 
-    if (dead) p._dead = true;
+    if (dmg > 0){
+      e.hp -= dmg;
+      // Reveal stealth on taking damage
+      if (e.tags && e.tags.includes('stealth')){
+        e.revealedUntil = Math.max(e.revealedUntil || 0, now() + COOLDOWNS.revealSecsOnHit*1000);
+      }
+    }
+
+    if (e.hp <= 0){
+      onEnemyDeath(g, e);
+      return true;
+    }
+    return false;
   }
 
-  // cleanup
-  g.projectiles = g.projectiles.filter(p => !p._dead);
-  g.enemies     = g.enemies.filter(e => e.hp > 0);
-}
-  // ---- Periodic income (every 30s) ----
+  function onEnemyDeath(g, e){
+    // Death explosion
+    if (e.deathExplosion){
+      const { dmg, radius } = e.deathExplosion;
+      // damage towers in radius
+      for (const t of g.towers){
+        if (Math.hypot((t.x+0.5)-(e.x+0.5),(t.y+0.5)-(e.y+0.5)) <= (radius/ TILE_PX)){ // assume TILE_PX px per tile; if unknown, treat radius as tiles already
+          t.hp -= dmg;
+        }
+      }
+    }
+    // Split / Rebirth (generic)
+    if (e.splitInto && e.splitCount){
+      for (let i=0;i<e.splitCount;i++){
+        const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
+        const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
+        const base = ENEMY_TYPES.find(z => z.key === e.splitInto);
+        if (base){
+          const lvl = g.level || 1;
+          const mult = Math.pow(1.25, lvl - 1);
+          const HP  = Math.round((base.hp||10) * mult);
+          const DMG = Math.round((base.dmg||2) * mult);
+          g.enemies.push({
+            id:'e'+Math.random().toString(36).slice(2),
+            x:nx, y:ny, el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG,
+            spd: base.spd, range: base.range, target: base.target, cd: 0,
+            tags: base.tags||[], armor: base.armor||0, shield: base.shield||0,
+            healRate: base.healRate, healRange: base.healRange, summon: base.summon
+          });
+        }
+      }
+    }
+    // mark for cleanup happens later by hp<=0 filter
+  }
+
+  function canTowerTargetEnemy(tNow, e){
+    if (e.tags && e.tags.includes('stealth')){
+      return (e.revealedUntil || 0) > tNow;
+    }
+    return true;
+  }
+
+  function nearestEnemyInRangeVisible(g, t, range){
+    let best = null, bestD2 = Infinity;
+    for (const e of g.enemies){
+      if (!canTowerTargetEnemy(tNow, e)) continue;
+      const d2 = dist2(t.x+0.5,t.y+0.5, e.x+0.5,e.y+0.5);
+      if (d2 <= (range*range) && d2 < bestD2){
+        best = e; bestD2 = d2;
+      }
+    }
+    return best;
+  }
+
+  function enemyRangedTargets(g, e, primary, baseDmg){
+    // Returns [{target, dmg}, ...] including chain bounces if any
+    const results = [];
+    if (!primary) return results;
+    results.push({ target: primary, dmg: baseDmg });
+
+    if (e.tags && e.tags.includes('chain')){
+      let prev = primary;
+      let dmg = baseDmg * CHAIN.falloff;
+      for (let b=0; b<CHAIN.bounces; b++){
+        let best=null, bestD2=Infinity;
+        for (const other of g.towers){
+          if (other === prev) continue;
+          const d2=dist2(prev.x+0.5,prev.y+0.5, other.x+0.5,other.y+0.5);
+          if (d2 <= CHAIN.radiusT*CHAIN.radiusT && d2<bestD2){
+            best=other; bestD2=d2;
+          }
+        }
+        if (!best) break;
+        results.push({ target: best, dmg: Math.max(1, Math.round(dmg)) });
+        prev = best;
+        dmg = Math.max(1, Math.round(dmg * CHAIN.falloff));
+      }
+    }
+    return results;
+  }
+
+  // -----------------------------
+  // Spawns (slower)
+  // -----------------------------
+  if (tNow >= (g.nextSpawnAt || 0)) {
+    const lvl = g.level || 1;
+
+    const count = Math.min(
+      SPAWN.PACK_CAP,
+      Math.max(1, SPAWN.PACK_BASE + Math.floor(lvl * SPAWN.PACK_PER_LVL))
+    );
+
+    const pair = getOrMakePair(g); // cache-friendly pair for current level
+
+    for (let i = 0; i < count; i++) {
+      const base = pair[i & 1];
+
+      const mult = Math.pow(1.25, lvl - 1);
+      const HP  = Math.round(base.hp  * mult);
+      const DMG = Math.round(base.dmg * mult);
+      const x = Math.floor(rnd(2, COLS - 3)), y = 0;
+
+      g.enemies.push({
+        id:'e'+Math.random().toString(36).slice(2),
+        x, y,
+        el: base.el, type: base.key,
+        hp: HP, maxHp: HP, dmg: DMG,
+        spd: base.spd, range: base.range,
+        target: base.target, cd: 0,
+        tags: base.tags||[],
+        armor: base.armor||0,
+        shield: base.shield||0,
+        healRate: base.healRate,
+        healRange: base.healRange,
+        summon: base.summon
+      });
+    }
+
+    const interval = Math.max(SPAWN.MIN_MS, SPAWN.BASE_MS - lvl * SPAWN.DECAY_MS_PER_LVL);
+    g.nextSpawnAt = tNow + interval;
+  }
+
+  // -----------------------------
+  // Enemy passives (regen, healer aura, slow aura, summoners)
+  // -----------------------------
+  for (const e of g.enemies){
+    // Self-regen
+    if (e.tags && e.tags.includes('regen') && e.healRate){
+      e.hp = Math.min(e.maxHp || e.hp, e.hp + e.healRate * dt);
+    }
+
+    // Healer aura
+    if (e.tags && e.tags.includes('healer') && e.healRate && e.healRange){
+      const r2 = e.healRange * e.healRange;
+      for (const ally of g.enemies){
+        if (ally === e) continue;
+        if (ally.hp <= 0) continue;
+        if (dist2(e.x+0.5,e.y+0.5, ally.x+0.5,ally.y+0.5) <= r2){
+          ally.hp = Math.min(ally.maxHp || ally.hp, ally.hp + e.healRate * dt);
+        }
+      }
+    }
+
+    // Slow aura vs towers
+    if (e.tags && e.tags.includes('slowAura')){
+      const r2 = AURAS.slowAuraRangeT * AURAS.slowAuraRangeT;
+      for (const t of g.towers){
+        if (dist2(e.x+0.5,e.y+0.5, t.x+0.5,t.y+0.5) <= r2){
+          t._slowedUntil = Math.max(t._slowedUntil || 0, tNow + AURAS.slowAuraTickMs);
+          t._slowFactor = Math.min(t._slowFactor ?? 1, AURAS.slowAuraFactor);
+        }
+      }
+    }
+
+    // Summoners
+    if (e.summon){
+      e._sumCd = (typeof e._sumCd === 'number') ? e._sumCd - dt : 0;
+      if (e._sumCd <= 0){
+        const base = ENEMY_TYPES.find(z => z.key === e.summon.key);
+        if (base){
+          const lvl = g.level || 1;
+          for (let i=0;i<e.summon.count;i++){
+            const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
+            const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
+            const mult = Math.pow(1.25, lvl - 1);
+            const HP  = Math.round((base.hp||10) * mult);
+            const DMG = Math.round((base.dmg||2) * mult);
+            g.enemies.push({
+              id:'e'+Math.random().toString(36).slice(2),
+              x:nx, y:ny, el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG,
+              spd: base.spd, range: base.range, target: base.target, cd: 0,
+              tags: base.tags||[], armor: base.armor||0, shield: base.shield||0,
+              healRate: base.healRate, healRange: base.healRange, summon: base.summon
+            });
+          }
+        }
+        e._sumCd = (e.summon.cd ?? 10); // seconds
+      }
+    }
+  }
+
+  // -----------------------------
+  // Enemies (movement & attacks)
+  // -----------------------------
+  for (const e of g.enemies){
+    if (e.hp <= 0) continue;
+
+    const cx = g.crystal.x, cy = g.crystal.y;
+    const bx = e.x, by = e.y;
+
+    // Movement or attack
+    if (e.target === 'tower'){
+      // Find tower to attack (ranged or melee)
+      const inRangeTgt = nearestTowerInRange(g, e, e.range);
+      if (inRangeTgt){
+        e.cd -= dt;
+        if (e.cd <= 0){
+          const ranged = e.range && e.range > 0;
+          const baseDmg = e.dmg;
+          const siegeMult = (e.tags && e.tags.includes('siege')) ? 1.4 : 1.0;
+          const shots = ranged ? enemyRangedTargets(g, e, inRangeTgt, Math.round(baseDmg * siegeMult))
+                               : [{ target: inRangeTgt, dmg: Math.round(baseDmg * siegeMult) }];
+
+          for (const s of shots){
+            s.target.hp -= s.dmg;
+
+            // On-hit effects to towers
+            if (e.tags){
+              if (e.tags.includes('slow')){ // e.g., cryo/warden
+                s.target._slowedUntil = Math.max(s.target._slowedUntil || 0, tNow + 900);
+                s.target._slowFactor = Math.min(s.target._slowFactor ?? 1, 0.8);
+              }
+              if (e.tags.includes('stun')){ // e.g., runner
+                s.target._stunnedUntil = Math.max(s.target._stunnedUntil || 0, tNow + 600);
+              }
+              if (e.tags.includes('burn')){ // e.g., hellkite
+                s.target._burnUntil = Math.max(s.target._burnUntil || 0, tNow + 1500);
+                s.target._burnDps = DOTS.burnDps;
+              }
+              if (e.tags.includes('armorShred')){
+                // Represent as extra damage next hits: temporary vulnerability
+                s.target._vulnUntil = Math.max(s.target._vulnUntil || 0, tNow + 1200);
+                s.target._vulnMult = Math.max(s.target._vulnMult || 1, 1.15);
+              }
+            }
+
+            if (s.target.hp <= 0){
+              const idx = g.towers.findIndex(t => t.id === s.target.id);
+              if (idx >= 0) g.towers.splice(idx, 1);
+            }
+          }
+
+          e.cd = ranged ? COOLDOWNS.enemyRanged : COOLDOWNS.enemyMelee;
+        }
+      } else {
+        const chase = (typeof nearestTower === 'function' ? nearestTower(g, e) : null) || { x: cx, y: cy };
+        stepToward(e, chase.x, chase.y, dt);
+      }
+    } else {
+      // "core" enemies: beeline to the crystal
+      stepToward(e, cx, cy, dt);
+    }
+
+    // After movement, resolve collisions
+
+    // 1) Tower tile collision
+    const ex = Math.floor(e.x), ey = Math.floor(e.y);
+    const tIdx = g.towers.findIndex(t => t.x === ex && t.y === ey);
+    if (tIdx >= 0){
+      const t = g.towers[tIdx];
+      const siegeMult = (e.tags && e.tags.includes('siege')) ? 1.4 : 1.0;
+      t.hp -= Math.round(e.dmg * siegeMult);
+      if (t.hp <= 0) g.towers.splice(tIdx, 1);
+      e.hp = 0;
+      continue;
+    }
+
+    // 2) Crystal swept collision
+    const hitCrystal =
+      segmentHitsCircle(bx+0.5, by+0.5, e.x+0.5, e.y+0.5, cx+0.5, cy+0.5, CRYSTAL_HIT_R_T)
+      || (ex === cx && ey === cy);
+
+    if (hitCrystal){
+      let dmg = e.dmg;
+      // Poison style enemies damage crystal over time
+      if (e.tags && e.tags.includes('poison')){
+        g.crystal._poisonUntil = Math.max(g.crystal._poisonUntil||0, tNow + 2000);
+        g.crystal._poisonDps = DOTS.poisonDpsCrystal;
+      }
+      g.crystal.hp -= dmg;
+      e.hp = 0;
+      g.crystal._flashUntil = now() + 200;
+      continue;
+    }
+  }
+
+  // -----------------------------
+  // Tower status upkeep (DoTs, slow/stun handling)
+  // -----------------------------
+  for (const t of g.towers){
+    // Reset per-tick multipliers; status re-applies them with max()
+    t._rateMult = 1;
+
+    // Apply slows
+    if ((t._slowedUntil||0) > tNow){
+      t._rateMult = Math.min(t._rateMult, t._slowFactor ?? 0.8);
+    } else {
+      t._slowFactor = 1;
+    }
+
+    // Apply stun (prevents firing)
+    if ((t._stunnedUntil||0) > tNow){
+      t._stunned = true;
+    } else {
+      t._stunned = false;
+    }
+
+    // Apply burn DoT
+    if ((t._burnUntil||0) > tNow){
+      const d = (t._burnDps || DOTS.burnDps) * dt;
+      t.hp -= d;
+    }
+
+    // Clamp HP
+    if (t.hp <= 0){
+      const i = g.towers.findIndex(z => z.id === t.id);
+      if (i >= 0) g.towers.splice(i, 1);
+    }
+  }
+
+  // Crystal DoT upkeep
+  if ((g.crystal._poisonUntil||0) > tNow){
+    g.crystal.hp -= (g.crystal._poisonDps || DOTS.poisonDpsCrystal) * dt;
+  }
+
+  // -----------------------------
+  // Towers (fire projectiles)
+  // -----------------------------
+  for (const t of g.towers){
+    // Debuffed fire rate
+    const effectiveRate = Math.max(0.05, (t.rate || 1) * (t._rateMult || 1));
+    t.cd = (typeof t.cd === 'number') ? t.cd - dt : 0;
+
+    if (t._stunned) continue; // can't fire
+
+    const tgt = nearestEnemyInRangeVisible(g, t, t.range);
+    if (tgt && t.cd <= 0){
+      const spd = PROJECTILE_SPEED_TPS;
+      const sx = t.x + 0.5, sy = t.y + 0.5;
+      const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
+      const m  = Math.hypot(dx, dy) || 1;
+      g.projectiles.push({
+        id:'p'+Math.random().toString(36).slice(2),
+        x:sx, y:sy, px:sx, py:sy,
+        vx:dx/m*spd, vy:dy/m*spd,
+        dmg:t.dmg, el:t.el, owner:t.owner
+      });
+      t.cd = 1 / Math.max(0.2, effectiveRate);
+    }
+  }
+
+  // -----------------------------
+  // Projectiles (swept micro-steps; no tunneling)
+  // -----------------------------
+  {
+    const killEnemy = (g, enemy, ownerName) => {
+      // already handled in applyEnemyDamage/onEnemyDeath, but keep level/eco here
+      const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
+      const owner = g.players.find(z => z.name === ownerName);
+      if (owner){
+        owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
+      }
+      g.killsThisLevel = (g.killsThisLevel || 0) + 1;
+      if (g.killsThisLevel >= (g.killsToAdvance || 20)){
+        g.level = (g.level || 1) + 1;
+        g.killsThisLevel = 0;
+        g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
+      }
+    };
+
+    for (const p of g.projectiles){
+      let remaining = Math.min(dt, PHYS_MAX_DT);
+      let dead = false;
+
+      while (remaining > 1e-6 && !dead){
+        const nominal = Math.min(remaining, 0.05);
+        const stepDist = Math.hypot(p.vx, p.vy) * nominal;
+        const microSteps = Math.max(1, Math.ceil(stepDist / PHYS_MAX_ADVANCE_T));
+        const subDt = nominal / microSteps;
+
+        for (let m = 0; m < microSteps && !dead; m++){
+          const x1 = p.x,      y1 = p.y;
+          const x2 = p.x + p.vx * subDt;
+          const y2 = p.y + p.vy * subDt;
+
+          const hit = findEnemyHitAlongSegment(g, x1,y1,x2,y2, ENEMY_RADIUS_T + PROJECTILE_RADIUS_T);
+          if (hit){
+            const died = applyEnemyDamage(g, hit, p.dmg, p.el);
+            if (died) killEnemy(g, hit, p.owner);
+            dead = true; // projectile consumed on hit
+            break;
+          }
+
+          // advance
+          p.px = p.x; p.py = p.y;
+          p.x = x2;  p.y = y2;
+
+          // out of bounds? kill it
+          if (p.x < -1 || p.x > COLS+1 || p.y < -1 || p.y > ROWS+1){
+            dead = true;
+          }
+        }
+        remaining -= nominal;
+      }
+
+      if (dead) p._dead = true;
+    }
+
+    // cleanup
+    g.projectiles = g.projectiles.filter(p => !p._dead);
+    g.enemies     = g.enemies.filter(e => e.hp > 0);
+  }
+
+  // -----------------------------
+  // Periodic income (every 30s)
+  // -----------------------------
   if (!incomeTickAt) incomeTickAt = tNow + 30000;
   if (tNow >= incomeTickAt){
     for (const p of g.players){
@@ -1192,16 +1612,19 @@ for (const e of g.enemies){
     incomeTickAt = tNow + 30000;
   }
 
-  // ---- Defeat handling (call finalizer once) ----
+  // -----------------------------
+  // Defeat handling
+  // -----------------------------
   if (g.crystal.hp <= 0 && g.status === 'active' && !_finalizeOnce){
     g.crystal.hp = 0;
     g.status = 'defeat';
-    _finalizeOnce = true;                // prevent duplicate finalize calls
+    _finalizeOnce = true;
     finalizeAndMarkDefeat(g).catch(()=>{});
   }
 
   return g;
 }
+
     function nearestEnemyInRange(g, t, range){
       let best=null, bd=1e9;
       for (const e of g.enemies){ const d = dist2(t.x,t.y, e.x,e.y); if (d <= (range+0.5)**2 && d<bd){ bd=d; best=e; } }
@@ -1383,7 +1806,56 @@ for (const e of g.enemies){
   }
 
   // Glyph map for enemies
-  const ENOJI = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" };
+ const ENOJI = {
+  slime:"🟢",
+  sprout:"🌱",
+  gob:"👺",
+  imp:"😈",
+  bat:"🦇",
+  arch:"🏹",
+  ashling:"🟤",
+  bomber:"💣",
+  sapper:"🧨",
+  shaman:"🧙‍♂️",
+  sniper:"🎯",
+  brute:"💢",
+  shield:"🛡️",
+  witch:"🧙‍♀️",
+  crawler:"🐛",
+  druid:"🍃",
+  cata:"🪨",
+  wolf:"🐺",
+  golem:"🗿",
+  specter:"👻",
+  pyro:"🔥",
+  cryo:"🧊",
+  runner:"🏃‍♂️",
+  thornlr:"🌵",
+  assassin:"🗡️",
+  warlock:"🪄",
+  dryad:"🧝‍♀️",
+  icebrk:"🧊",
+  thunder:"🌩️",
+  basilisk:"🐍",
+  demo:"🛠️",
+  tempest:"🌪️",
+  banshee:"😱",
+  jugger:"🧱",
+  lich:"💀",
+  behemoth:"🐘",
+  phoenix:"🦅",
+  warden:"🗝️",
+  ancient:"🏺",
+  stormwyrm:"🐉",
+  frostqn:"👑",
+  infernal:"🔥",
+  treant:"🌲",
+  overseer:"👁️",
+  glacier:"🏔️",
+  hellkite:"🐲",
+  titan:"🗼"
+};
+
 
   if (a && b){
     // ----- Enemies (buffered) -----
@@ -1445,5 +1917,6 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
