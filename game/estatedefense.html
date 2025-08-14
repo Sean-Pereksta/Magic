@@ -422,6 +422,7 @@ function maybeRenderShop(){
 
       const d = docSnap.data() || {};
       hostLbl.textContent = `Host: ${d.host || '—'}`;
+      if (d.host === me && !isHost) beginHosting();
 
       // Keep our last good game state if field missing briefly
       state = d.game || state;
@@ -499,28 +500,51 @@ function maybeRenderShop(){
       const next = (presentNames[0] || '');
       return expired && (next === me);
     }
-
+function beginHosting(){
+  if (isHost) return;
+  isHost = true;
+  leaseLbl.textContent = "lease: host";
+  startHostLoop();
+}
     async function tryClaimHost(){
-      const s0 = await getDoc(lobbyRef);
-      if (!s0.exists()) return;
-      const d0 = s0.data() || {};
-      if (!presentNames.includes(me)) return;
-      const expired = Date.now() > (d0.leaseUntil || 0);
-      if (d0.host && !expired) return;   // nothing to do → skip txn
-    
-      await runTransaction(db, async (tx)=>{
-        const s = await tx.get(lobbyRef); if (!s.exists()) return;
-        const d = s.data() || {};
-        const leaseUntil = d.leaseUntil || 0;
-        const players = d.players || [];
-        if (!players.includes(me)) return;
-        if (!d.host || Date.now() > leaseUntil){
-          let game = d.game;
-          if (!game) game = buildFreshGameFromPlayers(players);
-          tx.update(lobbyRef, { host: me, leaseUntil: Date.now()+LEASE_MS, game });
-        }
-      });
+  // quick read: if I already hold a valid lease, just start the loop
+  const s0 = await getDoc(lobbyRef);
+  if (!s0.exists()) return;
+  const d0 = s0.data() || {};
+  if (!presentNames.includes(me)) return;
+
+  const leaseUntil0 = d0.leaseUntil || 0;
+  const leaseAlive0 = Date.now() <= leaseUntil0;
+
+  if (d0.host === me && leaseAlive0){
+    beginHosting();               // ← start loop on fresh load
+    return;
+  }
+  if (d0.host && leaseAlive0){
+    isHost = false;
+    leaseLbl.textContent = "lease: client";
+    return;                       // someone else is host
+  }
+
+  // take over via txn
+  let took = false;
+  await runTransaction(db, async (tx)=>{
+    const s = await tx.get(lobbyRef); if (!s.exists()) return;
+    const d = s.data() || {};
+    const players = d.players || [];
+    if (!players.includes(me)) return;
+
+    const leaseAlive = Date.now() <= (d.leaseUntil || 0);
+    if (!d.host || !leaseAlive){
+      let game = d.game;
+      if (!game) game = buildFreshGameFromPlayers(players);
+      tx.update(lobbyRef, { host: me, leaseUntil: Date.now() + LEASE_MS, game });
+      took = true;
     }
+  }).catch(()=>{});
+
+  if (took) beginHosting();       // ← start loop after successful claim
+}
 
 
     function buildFreshGameFromPlayers(players){
@@ -981,6 +1005,7 @@ function maybeRenderShop(){
   </script>
 </body>
 </html>
+
 
 
 
