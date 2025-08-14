@@ -839,13 +839,18 @@ function nearestTower(g, e){
 }
 
 
+// ----- Intents + Sim (host) -----
+// Same behavior as before, but sanitizer NO LONGER removes underscore-prefixed fields.
+// This preserves flags like _epoch / _seeded / etc. that your store logic depends on.
+
 async function simulateStepAsHost(){
   // --- publish throttling + payload trim (local to this fn) ---
-  const PUBLISH_MIN_MS = 280;          // write to Firestore at ~3.5 Hz (unchanged)
-  const MAX_PROJECTILES_PUBLISH = 120; // cap bullets in the doc (unchanged)
+  const PUBLISH_MIN_MS = 280;          // ~3.5 Hz
+  const MAX_PROJECTILES_PUBLISH = 120; // cap bullets
   if (typeof window._lastPublishAt !== 'number') window._lastPublishAt = 0;
 
   // ---- Helpers: sanitize for Firestore (no undefined/NaN/Infinity/functions/cycles)
+  // IMPORTANT: we KEEP underscore keys now.
   function sanitizeForFirestore(input){
     const seen = new WeakSet();
     const walk = (v) => {
@@ -853,13 +858,13 @@ async function simulateStepAsHost(){
       const t = typeof v;
 
       if (t === 'number'){
-        // Firestore rejects Infinity/-Infinity
-        if (!Number.isFinite(v)) return 0;
+        if (!Number.isFinite(v)) return 0;          // clamp ±Infinity/NaN
         return Object.is(v, -0) ? 0 : v;
       }
       if (t === 'string' || t === 'boolean') return v;
 
       if (Array.isArray(v)){
+        // Replace holes/undefined with null to keep array shape Firestore-safe
         const out = [];
         for (let i=0;i<v.length;i++){
           const item = v[i];
@@ -870,14 +875,13 @@ async function simulateStepAsHost(){
       }
 
       if (t === 'object'){
-        if (seen.has(v)) return null; // break cycles
+        if (seen.has(v)) return null;  // break cycles
         seen.add(v);
         const out = {};
         for (const [k,val] of Object.entries(v)){
-          if (val === undefined || typeof val === 'function') continue; // drop
-          if (k.startsWith('_')) continue; // strip transient/visual fields anywhere
+          if (val === undefined || typeof val === 'function') continue; // drop only truly unsafe values
           const w = walk(val);
-          if (w !== undefined) out[k] = w;
+          if (w !== undefined) out[k] = w;  // keep underscore keys intact
         }
         return out;
       }
@@ -889,21 +893,19 @@ async function simulateStepAsHost(){
 
   // Make a copy of the game that's safe to send to Firestore
   function makeWritableGame(g){
-    // Option B (safe): cap projectile count to keep doc small
     const proj = Array.isArray(g.projectiles) ? g.projectiles : [];
     const trimmedProj = proj.length > MAX_PROJECTILES_PUBLISH
       ? proj.slice(0, MAX_PROJECTILES_PUBLISH)
       : proj;
 
-    // Ensure arrays exist and strip top-level transient fields
     const clone = {
       ...g,
       projectiles: trimmedProj,
       enemies: Array.isArray(g.enemies) ? g.enemies : [],
       towers:  Array.isArray(g.towers)  ? g.towers  : []
+      // NOTE: we do NOT strip underscore keys anymore
     };
 
-    // Deep sanitize EVERYTHING (objects inside enemies/towers/crystal included)
     return sanitizeForFirestore(clone);
   }
 
@@ -924,7 +926,6 @@ async function simulateStepAsHost(){
     });
 
     if (!anyFresh){
-      // Optional: keep the lease warm so host doesn't churn while idle
       try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
       return; // pause sim; lobby remains intact
     }
@@ -942,8 +943,8 @@ async function simulateStepAsHost(){
       ? presentNames
       : (d.players || []);
     g = restartGameInPlace(g, rootPlayers);
-    incomeTickAt = 0;      // reset local income cadence
-    _finalizeOnce = false; // allow next defeat to finalize again
+    incomeTickAt = 0;
+    _finalizeOnce = false;
   }
 
   // --- Read & apply intents (do NOT delete yet) ---
@@ -958,7 +959,7 @@ async function simulateStepAsHost(){
 
   // --- Tick the sim ---
   if (g.status === 'active'){
-    g = simulate(g);   // your simulate() already contains abilities + slower spawns
+    g = simulate(g); // your simulate() with abilities & slower spawns
   }
 
   // --- Throttled publish to Firestore (CAS with throw-to-abort) ---
@@ -967,8 +968,6 @@ async function simulateStepAsHost(){
   if (!shouldPublish) return;
 
   const verStart = (typeof g.ver === 'number') ? g.ver : 0;
-
-  // IMPORTANT: increment ver BEFORE sanitize so CAS compares the same value we persist
   const gForWrite = { ...g, ver: verStart + 1 };
   const gNext = makeWritableGame(gForWrite);
 
@@ -982,9 +981,8 @@ async function simulateStepAsHost(){
       if (cur.host !== me) throw new Error('ABORT_NOT_HOST');
 
       const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
-      if (curVer !== verStart) throw new Error('ABORT_STALE'); // someone else advanced
+      if (curVer !== verStart) throw new Error('ABORT_STALE');
 
-      // ✅ Only if still current do we write
       tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
       wrote = true;
     });
@@ -1010,6 +1008,7 @@ async function simulateStepAsHost(){
     }
   }
 }
+
 
 
     // Restart builder: keep same players + baseIncome, reset everything else
@@ -1972,6 +1971,7 @@ function simulate(g){
   </script>
 </body>
 </html>
+
 
 
 
