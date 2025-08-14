@@ -211,6 +211,7 @@ const enqueueIntent = (() => {
     let _projPrev = new Map();   // id -> {x,y}
     let _projCurr = new Map();   // id -> {x,y}
     let _lastSnapAt = Date.now();
+    let _lastVer = -1;
 
 
     const toast = (msg, ms=1500) => {
@@ -487,28 +488,36 @@ function maybeRenderShop(){
   hostLbl.textContent = `Host: ${d.host || '—'}`;
   if (d.host === me && !isHost) beginHosting();
 
-  // Adopt latest game, but keep last good one if field briefly missing
-  const nextState = d.game || state;
+  // Adopt latest game (keep last good one if missing briefly)
+  const nextState = d.game || state || null;
 
-  // Detect epoch change (for re-centering + toast)
+  // Change detection
   const epochChanged = !!(nextState && typeof nextState._epoch === 'number' && nextState._epoch !== _lastEpoch);
-
-  // Detect level change (to refresh the "Enemies this level" panel)
   const levelChanged = !!(nextState && (nextState.level || 1) !== (_lastLevelShown || -1));
+  const verChanged   = !!(nextState && typeof nextState.ver === 'number' && nextState.ver !== _lastVer);
 
+  // Commit state
   state = nextState;
-  const nextMap = new Map();
-    for (const p of (state.projectiles || [])){
+
+  // Interpolation caches (only when sim version advances)
+  if (verChanged && state) {
+    const nextMap = new Map();
+    for (const p of (state.projectiles ?? [])) {
       nextMap.set(p.id, { x: p.x, y: p.y, el: p.el });
     }
-    _projPrev = _projCurr;
-    _projCurr = nextMap;
+    _projPrev   = _projCurr;
+    _projCurr   = nextMap;
     _lastSnapAt = Date.now();
+    _lastVer    = state.ver;
+  }
 
-  // Re-center once per epoch
+  // Re-center once per epoch & reset interp so we don't lerp across runs
   if (epochChanged) {
-    _lastEpoch = nextState._epoch;
+    _lastEpoch     = state._epoch;
     initialCentered = false;
+    _projPrev = new Map();
+    _projCurr = new Map();
+    _lastSnapAt = Date.now();
     toast("🔁 New run!");
   }
 
@@ -541,7 +550,7 @@ function maybeRenderShop(){
     if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
     maybeRenderShop();
 
-    // Players list (unchanged)
+    // Players list
     playersBox.innerHTML = "";
     (state.players || []).forEach((p, i) => {
       const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
@@ -561,16 +570,17 @@ function maybeRenderShop(){
       _lastStatus = state.status;
     }
 
-    // 🔸 Refresh the "Enemies this level" panel when level changes
+    // Level panel
     if (levelChanged) {
       _lastLevelShown = state.level || 1;
-      renderLevelEnemies(state); // <- uses your helper from earlier
+      renderLevelEnemies(state);
     }
   }
 
   // Host election check
   if (shouldClaimHost(docSnap)) await tryClaimHost();
 });
+
 
     function shouldClaimHost(docSnap){
       const d = docSnap.data() || {};
@@ -1232,6 +1242,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
