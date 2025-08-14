@@ -532,137 +532,6 @@ function makeWritableGame(g){
     // underscore fields are preserved elsewhere
   });
 }
-
-// Wrap the host logic so `return` is legal.
-async function simulateStepAsHost(){
-  // --- Ensure I'm still host (cheap path most ticks) ---
-  const nowMs0 = now();
-  let d;
-
-  // Only re-read the lobby root occasionally; otherwise reuse cached root.
-  if (!_cachedRoot || nowMs0 >= _nextRootReadAt) {
-    const s = await getDoc(lobbyRef);
-    if (!s.exists()) return;
-    _cachedRoot = s.data() || {};
-    _nextRootReadAt = now() + HOST_READ_MS;
-  }
-  d = _cachedRoot;
-
-  if (d.host !== me){ 
-    isHost = false; 
-    if (simInt) clearInterval(simInt); 
-    return; 
-  }
-
-  // --- Presence freshness: NEVER delete the lobby; just pause when empty/stale ---
-  let anyFresh = true; // optimistic default between polls
-  if (nowMs0 >= _nextPresenceReadAt){
-    anyFresh = false;
-    try {
-      const presSnap = await getDocs(presenceCol);
-      const nowMs = Date.now();
-      presSnap.forEach(docu => {
-        const ts = docu.data()?.lastSeen;
-        const ms = ts?.toMillis ? ts.toMillis() : 0;
-        if (nowMs - ms < STALE_MS) anyFresh = true;
-      });
-    } catch {}
-    _nextPresenceReadAt = now() + PRESENCE_READ_MS;
-  }
-
-  if (!anyFresh){
-    try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
-    return; // pause sim; lobby remains intact
-  }
-
-  // --- Load or bootstrap game (prefer the in-memory authoritative copy) ---
-  let g = _hostGame || d.game;
-  if (!g){
-    g = buildFreshGameFromPlayers(d.players || []);
-  }
-
-  // --- Auto-restart window ---
-  if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
-    const rootPlayers = (typeof presentNames !== 'undefined' && presentNames && presentNames.length)
-      ? presentNames
-      : (d.players || []);
-    g = restartGameInPlace(g, rootPlayers);
-    incomeTickAt = 0;
-    _finalizeOnce = false;
-  }
-
-  // --- Read & apply intents (poll at a controlled cadence) ---
-  const processedIds = [];
-  if (now() >= _nextIntentPollAt){
-    try{
-      const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
-      const snap = await getDocs(Q);
-      for (const docu of snap.docs){
-        const mv = docu.data();
-        try { g = await applyIntent(g, mv); } catch {}
-        processedIds.push(docu.id);
-      }
-    } finally {
-      _nextIntentPollAt = now() + INTENT_POLL_MS;
-    }
-  }
-
-  // --- Tick the sim ---
-  if (g.status === 'active'){
-    g = simulate(g); // your simulate() with abilities & slower spawns
-  }
-
-  // --- Throttled publish to Firestore (CAS with throw-to-abort) ---
-  const shouldPublish = (now() - window._lastPublishAt) >= PUBLISH_MIN_MS;
-  if (!shouldPublish){ 
-    _hostGame = g; 
-    return; 
-  }
-
-  const verStart = (typeof g.ver === 'number') ? g.ver : 0;
-  const gForWrite = { ...g, ver: verStart + 1 };
-  const gNext = makeWritableGame(gForWrite);
-
-  let wrote = false;
-  try {
-    await runTransaction(db, async (tx) => {
-      const curSnap = await tx.get(lobbyRef);
-      if (!curSnap.exists()) throw new Error('ABORT_NO_DOC');
-
-      const cur = curSnap.data() || {};
-      if (cur.host !== me) throw new Error('ABORT_NOT_HOST');
-
-      const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
-      if (curVer !== verStart) throw new Error('ABORT_STALE');
-
-      tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
-      wrote = true;
-    });
-  } catch (e) {
-    const msg = String((e && e.message) || e);
-    if (!msg.startsWith('ABORT_')) {
-      console.warn('simulateStepAsHost txn error:', e);
-    }
-  }
-
-  if (wrote){
-    window._lastPublishAt = now();
-    _hostGame = gForWrite;           // keep full working copy locally (not trimmed)
-    _cachedRoot.leaseUntil = window._lastPublishAt + LEASE_MS; // keep cache fresh
-
-    // Delete intents ONLY after a successful write
-    if (processedIds.length){
-      try{
-        const batch = writeBatch(db);
-        for (const id of processedIds){
-          batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
-        }
-        await batch.commit();
-      } catch {}
-    }
-  }
-}
-
  // --- Shop ---
 function renderShop(){
   const gameActive = state?.status === 'active'; // only active when state exists & is active
@@ -2239,6 +2108,7 @@ await ensureUserIncome();
   </script>
 </body>
 </html>
+
 
 
 
