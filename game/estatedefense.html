@@ -220,11 +220,12 @@ const enqueueIntent = (() => {
       frost:  { fire:1.5, nature:0.8, volt:1.0, frost:1.0 }
     };
     const ENEMY_TYPES = [
-      { key:"slime",  el:"nature", hp:20, dmg:2, spd:0.8, range:0, target:"core" },
-      { key:"gob",    el:"fire",   hp:28, dmg:3, spd:1.0, range:0, target:"core" },
-      { key:"arch",   el:"frost",  hp:22, dmg:2, spd:0.9, range:5, target:"tower" },
-      { key:"brute",  el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower" },
+      { key:"slime", el:"nature", hp:20, dmg:2, spd:0.8, range:0, target:"core",  minLevel:1 },
+      { key:"gob",   el:"fire",   hp:28, dmg:3, spd:1.0, range:0, target:"core",  minLevel:2 },
+      { key:"arch",  el:"frost",  hp:22, dmg:2, spd:0.9, range:5, target:"tower", minLevel:3 },
+      { key:"brute", el:"volt",   hp:45, dmg:5, spd:0.6, range:0, target:"tower", minLevel:5 },
     ];
+
     const fmt3 = (n)=> (Math.round((+n||0)*1000)/1000).toFixed(3);
 
 
@@ -802,36 +803,61 @@ function nearestTower(g, e){
 
     let incomeTickAt = 0;
     let _finalizeOnce = false;
+    
+function getLevelEnemyPair(lvl){
+  const unlocked = ENEMY_TYPES.filter(t => lvl >= (t.minLevel || 1));
+  if (unlocked.length === 0) return [ENEMY_TYPES[0], ENEMY_TYPES[0]];
+  if (unlocked.length === 1) return [unlocked[0], unlocked[0]];
 
+  // Deterministic, level-based selection so it’s consistent all level long
+  const i1 = lvl % unlocked.length;
+  const offset = Math.max(1, Math.floor(unlocked.length / 2));
+  const i2 = (i1 + offset) % unlocked.length;
+
+  return [unlocked[i1], unlocked[i2]];
+}
+    function getOrMakePair(g){
+      const lvl = g.level || 1;
+      if (g._pairLevel !== lvl){
+        g._pair = getLevelEnemyPair(lvl);
+        g._pairLevel = lvl;
+      }
+      return g._pair;
+    }
+    
   function simulate(g){
   const tNow = now();
   const dt   = (tNow - (g.lastTick ?? tNow)) / 1000;
   g.lastTick = tNow;
 
-  // ---- Spawns ----
-  if (tNow >= (g.nextSpawnAt ?? 0)) {
-    const lvl   = g.level || 1;
-    const tier  = Math.min(ENEMY_TYPES.length, 1 + Math.floor(lvl / 3));
-    const count = 2 + Math.floor(lvl * 0.6);
-
-    for (let i = 0; i < count; i++) {
-      const base = ENEMY_TYPES[Math.floor(Math.random() * tier)];
-      const mult = Math.pow(1.25, lvl - 1);
-      const HP   = Math.round(base.hp  * mult);
-      const DMG  = Math.round(base.dmg * mult);
-      const x = Math.floor(rnd(2, COLS - 3)), y = 0;
-
-      g.enemies.push({
-        id:'e'+Math.random().toString(36).slice(2),
-        x, y,
-        el: base.el, type: base.key,
-        hp: HP, maxHp: HP, dmg: DMG,
-        spd: base.spd, range: base.range,
-        target: base.target, cd: 0
-      });
-    }
-    g.nextSpawnAt = tNow + Math.max(600, 1600 - (g.level || 1) * 40);
-  }
+      // ---- Spawns ----
+      if (now() >= (g.nextSpawnAt || 0)) {
+        const lvl   = g.level || 1;
+        const count = 2 + Math.floor(lvl * 0.6);
+      
+        const pair = getOrMakePair(g); // or getLevelEnemyPair(lvl) if you skipped caching
+      
+        for (let i = 0; i < count; i++) {
+          // Alternate to keep a 50/50 split; you could also use Math.random()<0.5
+          const base = pair[i & 1];
+      
+          const mult = Math.pow(1.25, lvl - 1);
+          const HP  = Math.round(base.hp  * mult);
+          const DMG = Math.round(base.dmg * mult);
+          const x = Math.floor(rnd(2, COLS - 3)), y = 0;
+      
+          g.enemies.push({
+            id:'e'+Math.random().toString(36).slice(2),
+            x, y,
+            el: base.el, type: base.key,
+            hp: HP, maxHp: HP, dmg: DMG,
+            spd: base.spd, range: base.range,
+            target: base.target, cd: 0
+          });
+        }
+      
+        g.nextSpawnAt = now() + Math.max(600, 1600 - lvl * 40);
+      }
 
  // ---- Enemies ----
 for (const e of g.enemies){
@@ -1071,6 +1097,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
