@@ -89,7 +89,7 @@
         <span class="tag">🏡 Estate Defense</span>
         <div id="stats" class="row">
           <div>Funds: <b id="fundsLbl">0</b></div>
-          <div>Base income: <b id="baseLbl">0</b> /15s</div>
+          <div>Base income: <b id="baseLbl">0</b> /30s</div>
         </div>
       </div>
       <div class="small">Scroll: wheel / ↑↓ / W–S or use the slider. “Center on Core” jumps to the crystal.</div>
@@ -188,19 +188,6 @@ const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
 const PUBLISH_MIN_MS = 280;  // publish at ~3.5 Hz (sim still runs every 200ms)
 const MAX_PROJECTILES_PUBLISH = 120; // cap transmitted bullets to keep doc small
 let _lastPublishAt = 0;
-    // ---- Host-side perf knobs ----
-const PUBLISH_PROJECTILES = true;   // ← make sure this is true
-const HOST_READ_MS        = 1000;           // how often to re-read lobby root (host check)
-const PRESENCE_READ_MS    = 2000;           // how often to re-scan presence
-const INTENT_POLL_MS      = 280;            // align with publish cadence
-
-// ---- Host-side cached state ----
-let _hostGame = null;            // authoritative working copy
-let _cachedRoot = null;          // last lobby root (host, players etc.)
-let _nextRootReadAt = 0;
-let _nextPresenceReadAt = 0;
-let _nextIntentPollAt = 0;
-
 
     let _snapPrev = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
 let _snapCurr = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
@@ -440,69 +427,6 @@ const enqueueIntent = (() => {
     const rnd = (a,b)=>a+Math.random()*(b-a);
     const round2=(n)=>Math.round(n*100)/100;
     const playerColor=(name,list)=>palette[Math.max(0,(list||[]).indexOf(name))%palette.length];
-    // ---- Snapshot pooling (reuse objects to avoid GC spikes) ----
-const _enemyPool = new Map();      // id -> reusable enemy view object
-const _projPool  = new Map();      // id -> reusable proj view object
-const UI_FPS = 8;
-let _uiTimer = 0;
-let _uiPending = false;
-
-function markUIDirty(){
-  _uiPending = true;
-  if (_uiTimer) return;
-  _uiTimer = setTimeout(() => {
-    _uiTimer = 0;
-    if (_uiPending) {
-      _uiPending = false;
-      refreshUI();
-    }
-  }, Math.floor(1000 / UI_FPS));
-}
-
-function poolUpdate(pool, id, src, fields) {
-  let obj = pool.get(id);
-  if (!obj) { obj = {}; pool.set(id, obj); }
-  for (const k of fields) obj[k] = src[k];
-  return obj;
-}
-
-// We keep one pair of Maps and mutate them, instead of allocating every time:
-const _snapEnemies = new Map();    // id -> pooled enemy view
-const _snapProjectiles = new Map();// id -> pooled proj view
-
-function pushSnapshotFromState(st) {
-  const nowMs = Date.now();
-
-  // Mark existing as unseen; we’ll delete after update
-  for (const v of _snapEnemies.values()) v._seen = false;
-  for (const v of _snapProjectiles.values()) v._seen = false;
-
-  // Enemies
-  for (const e of (st.enemies || [])) {
-    const obj = poolUpdate(_enemyPool, e.id, e, ["id","x","y","el","type","hp","maxHp"]);
-    obj._seen = true;
-    _snapEnemies.set(e.id, obj);
-  }
-  // Projectiles
-  for (const p of (st.projectiles || [])) {
-    const obj = poolUpdate(_projPool, p.id, p, ["id","x","y","el","owner"]);
-    obj._seen = true;
-    _snapProjectiles.set(p.id, obj);
-  }
-
-  // Remove any not seen in this snapshot (no memory growth)
-  for (const [id, v] of [..._snapEnemies]) if (!v._seen) _snapEnemies.delete(id);
-  for (const [id, v] of [..._snapProjectiles]) if (!v._seen) _snapProjectiles.delete(id);
-
-  // Append to buffer using the *same* Maps (they’re stable references),
-  // just record the timestamp & sim version.
-  const ver = typeof st.ver === "number" ? st.ver : -1;
-  if (!_snapBuf.length || ver > _snapBuf[_snapBuf.length - 1].ver) {
-    _snapBuf.push({ at: nowMs, ver, enemies: _snapEnemies, projectiles: _snapProjectiles });
-    if (_snapBuf.length > SNAPBUF_MAX) _snapBuf.shift();
-  }
-}
-
 
     function nearestFreeTile(fromX, fromY, occ){
       const maxR = Math.max(COLS, ROWS);
@@ -518,20 +442,18 @@ function pushSnapshotFromState(st) {
       }
       return null;
     }
-function makeWritableGame(g){
-  const proj = Array.isArray(g.projectiles) ? g.projectiles : [];
-  const trimmedProj = PUBLISH_PROJECTILES
-    ? (proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj)
-    : [];
 
-  return sanitizeForFirestore({
-    ...g,
-    projectiles: trimmedProj,
-    enemies: Array.isArray(g.enemies) ? g.enemies : [],
-    towers:  Array.isArray(g.towers)  ? g.towers  : []
-    // underscore fields are preserved elsewhere
-  });
+    function makeWritableGame(g){
+  // Option 1 (best): don’t publish projectiles at all; clients render locally from caches
+  // return { ...g, projectiles: [] };
+
+  // Option 2 (safe now): cap projectile count to keep doc light
+  const proj = g.projectiles || [];
+  const trimmed = proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj;
+  return { ...g, projectiles: trimmed };
 }
+
+
  // --- Shop ---
 function renderShop(){
   const gameActive = state?.status === 'active'; // only active when state exists & is active
@@ -688,71 +610,6 @@ function maybeRenderShop(){
         await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } }).catch(()=>{});
       }
     }
-    function refreshUI(){
-  if (!state) return;
-
-  // Top stats (lightweight textContent sets)
-  levelLbl.textContent = state.level || 1;
-  const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
-  killsLbl.textContent = `${killsLeft}`;
-  coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
-
-  // Funds/base income for me
-  const meP = (state.players || []).find(p => p.name === me);
-  if (meP) {
-    myFunds = meP.funds || 0;
-    if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
-    const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
-    baseLbl.textContent = fmt3(myInc);
-  }
-  fundsLbl.textContent = Math.floor(myFunds);
-
-  // Seed gate + shop refresh (keep your existing logic)
-  const wasSeeded = amSeeded;
-  amSeeded = !!(meP && meP._seeded);
-  if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
-  maybeRenderShop();
-
-  // Players list: diff instead of innerHTML reset
-  const cur = Array.from(playersBox.querySelectorAll('.playerRow'))
-    .map(row => row.dataset.name);
-  const want = (state.players || []).map(p => p.name);
-
-  // Remove missing
-  for (const existing of cur) {
-    if (!want.includes(existing)) {
-      const node = playersBox.querySelector(`.playerRow[data-name="${existing}"]`);
-      if (node) node.remove();
-    }
-  }
-  // Add/update
-  (state.players || []).forEach((p, i) => {
-    let row = playersBox.querySelector(`.playerRow[data-name="${p.name}"]`);
-    if (!row) {
-      row = document.createElement('div');
-      row.className = 'playerRow';
-      row.dataset.name = p.name;
-      row.innerHTML = `
-        <div class="left"></div>
-        <div class="right small"></div>
-      `;
-      playersBox.appendChild(row);
-    }
-    const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
-    const inc  = base + (p.baseIncomeDelta || 0);
-    row.querySelector('.left').innerHTML =
-      `<span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}`;
-    row.querySelector('.right').textContent = `Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}`;
-  });
-
-  // Level panel refresh, only when level changed
-  const lvl = state.level || 1;
-  if (lvl !== _lastLevelShown) {
-    _lastLevelShown = lvl;
-    renderLevelEnemies(state);
-  }
-}
-
 
  onSnapshot(lobbyRef, async (docSnap) => {
   if (!docSnap.exists()) {
@@ -785,13 +642,27 @@ function maybeRenderShop(){
   }
 
   // Push a visual snapshot into the buffer when the sim version advances
- if (verChanged && state) {
-  // Do not build new Maps/objects; update pooled view & buffer.
-  pushSnapshotFromState(state);
-  // Mark UI "dirty" so a throttled refresh happens (see Section 3)
-  markUIDirty();
-}
+  if (verChanged && state) {
+    const nowMs = Date.now();
+    const enemies = new Map();
+    const projectiles = new Map();
 
+    for (const e of (state.enemies || [])) {
+      enemies.set(e.id, {
+        id: e.id, x: e.x, y: e.y, el: e.el, type: e.type,
+        hp: e.hp, maxHp: e.maxHp
+      });
+    }
+    for (const p of (state.projectiles || [])) {
+      projectiles.set(p.id, { id: p.id, x: p.x, y: p.y, el: p.el, owner: p.owner });
+    }
+
+    // Append in order (ignore out-of-order repeats)
+    if (!_snapBuf.length || state.ver > _snapBuf[_snapBuf.length - 1].ver) {
+      _snapBuf.push({ at: nowMs, ver: state.ver, enemies, projectiles });
+      if (_snapBuf.length > SNAPBUF_MAX) _snapBuf.shift();
+    }
+  }
 
   // First-time centering for this epoch
   if (state && state.crystal && !initialCentered) {
@@ -974,6 +845,8 @@ function nearestTower(g, e){
 
 async function simulateStepAsHost(){
   // --- publish throttling + payload trim (local to this fn) ---
+  const PUBLISH_MIN_MS = 280;          // write to Firestore at ~3.5 Hz (unchanged)
+  const MAX_PROJECTILES_PUBLISH = 120; // cap bullets in the doc (unchanged)
   const PUBLISH_MIN_MS = 280;          // ~3.5 Hz
   const MAX_PROJECTILES_PUBLISH = 120; // cap bullets
   if (typeof window._lastPublishAt !== 'number') window._lastPublishAt = 0;
@@ -987,6 +860,8 @@ async function simulateStepAsHost(){
       const t = typeof v;
 
       if (t === 'number'){
+        // Firestore rejects Infinity/-Infinity
+        if (!Number.isFinite(v)) return 0;
         if (!Number.isFinite(v)) return 0;          // clamp ±Infinity/NaN
         return Object.is(v, -0) ? 0 : v;
       }
@@ -1004,12 +879,16 @@ async function simulateStepAsHost(){
       }
 
       if (t === 'object'){
+        if (seen.has(v)) return null; // break cycles
         if (seen.has(v)) return null;  // break cycles
         seen.add(v);
         const out = {};
         for (const [k,val] of Object.entries(v)){
+          if (val === undefined || typeof val === 'function') continue; // drop
+          if (k.startsWith('_')) continue; // strip transient/visual fields anywhere
           if (val === undefined || typeof val === 'function') continue; // drop only truly unsafe values
           const w = walk(val);
+          if (w !== undefined) out[k] = w;
           if (w !== undefined) out[k] = w;  // keep underscore keys intact
         }
         return out;
@@ -1022,11 +901,13 @@ async function simulateStepAsHost(){
 
   // Make a copy of the game that's safe to send to Firestore
   function makeWritableGame(g){
+    // Option B (safe): cap projectile count to keep doc small
     const proj = Array.isArray(g.projectiles) ? g.projectiles : [];
     const trimmedProj = proj.length > MAX_PROJECTILES_PUBLISH
       ? proj.slice(0, MAX_PROJECTILES_PUBLISH)
       : proj;
 
+    // Ensure arrays exist and strip top-level transient fields
     const clone = {
       ...g,
       projectiles: trimmedProj,
@@ -1035,6 +916,7 @@ async function simulateStepAsHost(){
       // NOTE: we do NOT strip underscore keys anymore
     };
 
+    // Deep sanitize EVERYTHING (objects inside enemies/towers/crystal included)
     return sanitizeForFirestore(clone);
   }
 
@@ -1055,6 +937,7 @@ async function simulateStepAsHost(){
     });
 
     if (!anyFresh){
+      // Optional: keep the lease warm so host doesn't churn while idle
       try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
       return; // pause sim; lobby remains intact
     }
@@ -1072,6 +955,8 @@ async function simulateStepAsHost(){
       ? presentNames
       : (d.players || []);
     g = restartGameInPlace(g, rootPlayers);
+    incomeTickAt = 0;      // reset local income cadence
+    _finalizeOnce = false; // allow next defeat to finalize again
     incomeTickAt = 0;
     _finalizeOnce = false;
   }
@@ -1088,6 +973,7 @@ async function simulateStepAsHost(){
 
   // --- Tick the sim ---
   if (g.status === 'active'){
+    g = simulate(g);   // your simulate() already contains abilities + slower spawns
     g = simulate(g); // your simulate() with abilities & slower spawns
   }
 
@@ -1097,6 +983,8 @@ async function simulateStepAsHost(){
   if (!shouldPublish) return;
 
   const verStart = (typeof g.ver === 'number') ? g.ver : 0;
+
+  // IMPORTANT: increment ver BEFORE sanitize so CAS compares the same value we persist
   const gForWrite = { ...g, ver: verStart + 1 };
   const gNext = makeWritableGame(gForWrite);
 
@@ -1110,8 +998,10 @@ async function simulateStepAsHost(){
       if (cur.host !== me) throw new Error('ABORT_NOT_HOST');
 
       const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
+      if (curVer !== verStart) throw new Error('ABORT_STALE'); // someone else advanced
       if (curVer !== verStart) throw new Error('ABORT_STALE');
 
+      // ✅ Only if still current do we write
       tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
       wrote = true;
     });
@@ -1206,13 +1096,13 @@ async function simulateStepAsHost(){
         if (g.status !== 'active') return g;
         const def = TOWER_TYPES.find(x => x.key === mv.payload?.tKey); if (!def) return g;
         const p = g.players.find(p => p.name === actor); if (!p || p.funds < def.cost) return g;
-      
+
         const occ = new Array(COLS * ROWS).fill(false);
         occ[g.crystal.y * COLS + g.crystal.x] = true;
         g.towers.forEach(t => { occ[t.y * COLS + t.x] = true; });
-      
+
         const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
-      
+
         const id = 't' + Math.random().toString(36).slice(2);
         g.towers.push({
           id, x: spot.x, y: spot.y, owner: actor,
@@ -1258,7 +1148,7 @@ async function simulateStepAsHost(){
 
     let incomeTickAt = 0;
     let _finalizeOnce = false;
-    
+
 
     function getOrMakePair(g){
       const lvl = g.level || 1;
@@ -1785,14 +1675,14 @@ function simulate(g){
   // -----------------------------
   // Periodic income (every 30s)
   // -----------------------------
-  if (!incomeTickAt) incomeTickAt = tNow + 15000;
+  if (!incomeTickAt) incomeTickAt = tNow + 30000;
   if (tNow >= incomeTickAt){
     for (const p of g.players){
       const base = (typeof p.baseIncome === 'number' ? p.baseIncome : 1);
       const inc  = base + (p.baseIncomeDelta || 0);
       p.funds += inc;
     }
-    incomeTickAt = tNow + 15000;
+    incomeTickAt = tNow + 30000;
   }
 
   // -----------------------------
@@ -2095,25 +1985,8 @@ function simulate(g){
 
 
     renderShop();
-
-let _rafHandle = 0;
-function rafLoop(){
-  draw();
-  _rafHandle = requestAnimationFrame(rafLoop);
-}
-_rafHandle = requestAnimationFrame(rafLoop);
-
-await ensureUserIncome();
-
+    setInterval(draw, 1000/30);
+    await ensureUserIncome();
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
