@@ -713,29 +713,48 @@ function nearestTower(g, e){
 
 
     // ----- Intents + Sim (host) -----
-    async function simulateStepAsHost(){
+   async function simulateStepAsHost(){
   // Ensure I'm still host
   const s = await getDoc(lobbyRef); if (!s.exists()) return;
   const d = s.data() || {};
   if (d.host !== me){ isHost = false; if (simInt) clearInterval(simInt); return; }
 
-  // If no one present anymore, tear down the lobby
+  // ----- Presence freshness: tear down lobby if no FRESH presence -----
   const presSnap = await getDocs(presenceCol);
-  if (presSnap.empty){ try{ await deleteDoc(lobbyRef); }catch(e){} return; }
+  {
+    const nowMs = Date.now();
+    let anyFresh = false;
+    presSnap.forEach(docu => {
+      const ts = docu.data()?.lastSeen;
+      const ms = ts?.toMillis ? ts.toMillis() : 0;
+      if (nowMs - ms < STALE_MS) anyFresh = true;
+    });
 
-  // Load or bootstrap game
+    if (!anyFresh){
+      // purge stale presence docs, then delete lobby
+      try {
+        const batch = writeBatch(db);
+        presSnap.forEach(docu => batch.delete(docu.ref));
+        await batch.commit();
+      } catch {}
+      try { await deleteDoc(lobbyRef); } catch {}
+      return;
+    }
+  }
+
+  // ----- Load or bootstrap game -----
   let g = d.game;
   if (!g){
     g = buildFreshGameFromPlayers(d.players || []);
   }
 
-  // Auto-restart window
+  // ----- Auto-restart window -----
   if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
     g = restartGameInPlace(g, d.players || []);
     incomeTickAt = 0; // reset local income cadence
   }
 
-  // ---- Read & apply intents (do NOT delete yet) ----
+  // ----- Read & apply intents (do NOT delete yet) -----
   const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
   const snap = await getDocs(Q);
   const processedIds = [];
@@ -745,40 +764,41 @@ function nearestTower(g, e){
     processedIds.push(docu.id);
   }
 
-  // Tick the sim
+  // ----- Tick the sim -----
   if (g.status === 'active'){
     g = simulate(g);
   }
 
-  // ---- Compare-and-set write with version + host check ----
+  // ----- Compare-and-set write with version + host check -----
   const verStart = (typeof g.ver === 'number') ? g.ver : 0;
   const gNext = { ...g, ver: verStart + 1 };
 
   let wrote = false;
-  try{
+  try {
     await runTransaction(db, async (tx) => {
-      const curSnap = await tx.get(lobbyRef); if (!curSnap.exists()) return;
-      const cur = curSnap.data() || {};
+      const curSnap = await tx.get(lobbyRef);
+      if (!curSnap.exists()) throw new Error('ABORT_NO_DOC');
 
-      // Only current host writes
-      if (cur.host !== me) return;
+      const cur = curSnap.data() || {};
+      if (cur.host !== me) throw new Error('ABORT_NOT_HOST');
 
       const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
-      if (curVer !== verStart) return; // someone else advanced; abort
+      if (curVer !== verStart) throw new Error('ABORT_STALE'); // someone else advanced
 
+      // ✅ Only if we’re still current do we write
       tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
       wrote = true;
     });
-  } catch {
-    wrote = false;
+  } catch (e) {
+    // Silence expected aborts; log unexpected errors
+    if (!String((e && e.message) || e).startsWith('ABORT_')) {
+      console.warn('simulateStepAsHost txn error:', e);
+    }
   }
 
-  // Keep lease fresh even if we lost the race
-  if (!wrote){
-    try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
-  }
+  // (No separate lease refresh here; we only extend lease on successful state write)
 
-  // ---- Only delete intents AFTER a successful write ----
+  // ----- Only delete intents AFTER a successful write -----
   if (wrote && processedIds.length){
     try{
       const batch = writeBatch(db);
@@ -1158,34 +1178,57 @@ for (const e of g.enemies){
     }
 
     // Persist baseIncome deltas and schedule restart (no lobby deactivation)
-    async function finalizeAndMarkDefeat(g){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const s = await tx.get(lobbyRef); if (!s.exists()) return;
-          const d = s.data(); if (d.host !== me) return;
-          const cur = d.game || g; if (cur._finalized) return;
+  async function finalizeAndMarkDefeat(g){
+  try{
+    await runTransaction(db, async (tx)=>{
+      // Read lobby doc inside the txn
+      const s = await tx.get(lobbyRef);
+      if (!s.exists()) throw new Error('ABORT_NO_DOC');
 
-          // Persist baseIncome gains
-          for (const p of (cur.players||[])){
-            const delta = round2(p.baseIncomeDelta||0);
-            if (delta>0){
-              const uref = doc(db, 'users', p.name);
-              const us = await tx.get(uref);
-              let curBase = 1;
-              if (us.exists()){ const estate = us.data().estate || {}; curBase = (typeof estate.baseIncome==='number') ? estate.baseIncome : 1; }
-              const next = round2(curBase + delta);
-              tx.set(uref, { estate:{ baseIncome: next } }, { merge:true });
-            }
+      const d = s.data() || {};
+      if (d.host !== me) throw new Error('ABORT_NOT_HOST');
+
+      // Use the server copy if present; otherwise the passed-in snapshot
+      const cur = d.game || g;
+      if (cur && cur._finalized) throw new Error('ABORT_ALREADY_FINALIZED');
+
+      // ---- Persist baseIncome gains (idempotent per run) ----
+      const players = Array.isArray(cur?.players) ? cur.players : [];
+      for (const p of players){
+        const delta = round2(p.baseIncomeDelta || 0);
+        if (delta > 0){
+          const uref = doc(db, 'users', p.name);
+          const us   = await tx.get(uref);
+
+          let curBase = 1;
+          if (us.exists()){
+            const estate = us.data().estate || {};
+            curBase = (typeof estate.baseIncome === 'number') ? estate.baseIncome : 1;
           }
+          const next = round2(curBase + delta);
+          tx.set(uref, { estate: { baseIncome: next } }, { merge: true });
+        }
+      }
 
-          // Mark finalized + set restart time; DO NOT flip root active/status
-          cur.status = 'defeat';
-          cur._finalized = true;
-          cur._restartAt = now() + 2500; // ~2.5s pause before restart
-          tx.update(lobbyRef, { game: cur });
-        });
-      }catch(e){}
+      // ---- Mark defeat + schedule restart (do not deactivate lobby) ----
+      const updated = {
+        ...cur,
+        status: 'defeat',
+        _finalized: true,
+        _restartAt: now() + 2500, // ~2.5s pause before restart
+      };
+
+      tx.update(lobbyRef, { game: updated });
+    });
+  } catch(e){
+    // Only log unexpected issues; "ABORT_*" are normal control-flow exits
+    const msg = String((e && e.message) || e);
+    if (!msg.startsWith('ABORT_')){
+      console.warn('finalizeAndMarkDefeat txn error:', e);
     }
+  }
+}
+
 
     // ----- Scrolling -----
     function syncSlider(){ vScroll.value = Math.round(camY); }
@@ -1348,6 +1391,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
