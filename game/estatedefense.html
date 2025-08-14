@@ -179,6 +179,8 @@ const PROJECTILE_RADIUS_T    = 0.28; // projectile "size" in tiles
 const ENEMY_RADIUS_T         = 0.48; // enemy "size" in tiles
 const PHYS_MAX_ADVANCE_T     = 0.40; // max tiles advanced per micro-step (prevents tunneling)
 const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
+    let _snapPrev = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
+let _snapCurr = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
 
     // --- Intents (single, self-contained) ---
 const enqueueIntent = (() => {
@@ -478,7 +480,7 @@ function maybeRenderShop(){
       }
     }
 
-  onSnapshot(lobbyRef, async (docSnap) => {
+ onSnapshot(lobbyRef, async (docSnap) => {
   if (!docSnap.exists()) {
     location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
     return;
@@ -488,36 +490,53 @@ function maybeRenderShop(){
   hostLbl.textContent = `Host: ${d.host || '—'}`;
   if (d.host === me && !isHost) beginHosting();
 
-  // Adopt latest game (keep last good one if missing briefly)
   const nextState = d.game || state || null;
 
-  // Change detection
   const epochChanged = !!(nextState && typeof nextState._epoch === 'number' && nextState._epoch !== _lastEpoch);
   const levelChanged = !!(nextState && (nextState.level || 1) !== (_lastLevelShown || -1));
-  const verChanged   = !!(nextState && typeof nextState.ver === 'number' && nextState.ver !== _lastVer);
+  const verChanged   = !!(nextState && typeof nextState.ver === 'number' && nextState.ver !== _snapCurr.ver);
 
-  // Commit state
   state = nextState;
 
-  // Interpolation caches (only when sim version advances)
+  // ----- VISUAL CACHES -----
   if (verChanged && state) {
-    const nextMap = new Map();
-    for (const p of (state.projectiles ?? [])) {
-      nextMap.set(p.id, { x: p.x, y: p.y, el: p.el });
+    // roll current to prev
+    _snapPrev = _snapCurr;
+
+    // build fresh current
+    const nowMs = Date.now();
+    const currEnemies = new Map();
+    const currProjectiles = new Map();
+
+    const dtSnap = Math.max(0.08, Math.min(0.8, (nowMs - _snapPrev.at) / 1000 || 0.2)); // seconds
+
+    // Enemies
+    for (const e of (state.enemies || [])) {
+      const k = e.id;
+      const prev = _snapPrev.enemies.get(k);
+      const vx = prev ? (e.x - prev.x) / dtSnap : 0;
+      const vy = prev ? (e.y - prev.y) / dtSnap : 0;
+      currEnemies.set(k, { id:k, x:e.x, y:e.y, vx, vy, el:e.el, type:e.type, hp:e.hp, maxHp:e.maxHp });
     }
-    _projPrev   = _projCurr;
-    _projCurr   = nextMap;
-    _lastSnapAt = Date.now();
-    _lastVer    = state.ver;
+
+    // Projectiles
+    for (const p of (state.projectiles || [])) {
+      const k = p.id;
+      const prev = _snapPrev.projectiles.get(k);
+      const vx = prev ? (p.x - prev.x) / dtSnap : 0;
+      const vy = prev ? (p.y - prev.y) / dtSnap : 0;
+      currProjectiles.set(k, { id:k, x:p.x, y:p.y, vx, vy, el:p.el, owner:p.owner });
+    }
+
+    _snapCurr = { at: nowMs, ver: state.ver, enemies: currEnemies, projectiles: currProjectiles };
   }
 
-  // Re-center once per epoch & reset interp so we don't lerp across runs
+  // Epoch reset: recentre and clear caches so we don't lerp across runs
   if (epochChanged) {
-    _lastEpoch     = state._epoch;
+    _lastEpoch = state._epoch;
     initialCentered = false;
-    _projPrev = new Map();
-    _projCurr = new Map();
-    _lastSnapAt = Date.now();
+    _snapPrev = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
+    _snapCurr = { at: Date.now(), ver: state.ver ?? -1, enemies: new Map(), projectiles: new Map() };
     toast("🔁 New run!");
   }
 
@@ -570,16 +589,15 @@ function maybeRenderShop(){
       _lastStatus = state.status;
     }
 
-    // Level panel
     if (levelChanged) {
       _lastLevelShown = state.level || 1;
       renderLevelEnemies(state);
     }
   }
 
-  // Host election check
   if (shouldClaimHost(docSnap)) await tryClaimHost();
 });
+
 
 
     function shouldClaimHost(docSnap){
@@ -1166,75 +1184,140 @@ for (const e of g.enemies){
 
     // ----- Render -----
     function draw(){
-      ctx.clearRect(0,0,W,H);
-      const offY = camY;
-      ctx.fillStyle="#e9eef3"; ctx.fillRect(0,0,W,H);
-      ctx.strokeStyle="#d7dee6"; ctx.lineWidth=1;
-      for (let y=0;y<=H;y+=TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-      for (let x=0;x<=W;x+=TILE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-      if (!state) return;
+  ctx.clearRect(0,0,W,H);
+  const offY = camY;
 
-      // crystal
-      const cx = state.crystal.x*TILE + TILE/2, cy = state.crystal.y*TILE - offY + TILE/2;
-      ctx.strokeStyle="#a78bfa"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,16,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle="#7c3aed"; ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle="#111"; ctx.font="12px Segoe UI"; ctx.textAlign="center"; ctx.fillText("CRYSTAL", cx, cy-28);
-      const hpw=80, hpx=cx-hpw/2, hpy=cy-24, pct=Math.max(0,(state.crystal.hp/state.crystal.maxHp));
-      ctx.fillStyle="#222"; ctx.fillRect(hpx,hpy,hpw,6);
-      ctx.fillStyle=pct>0.5?"#22c55e":pct>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(hpx,hpy,hpw*pct,6);
+  // background + grid
+  ctx.fillStyle = "#e9eef3";
+  ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = "#d7dee6";
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= H; y += TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  for (let x = 0; x <= W; x += TILE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
 
-      // towers
-      for (const t of (state.towers||[])){
-        const x = t.x*TILE+TILE/2, y = t.y*TILE - offY + TILE/2;
-      
-        // colored base square (owner color)
-        const col = t.ownerColor || (state.players||[]).find(p=>p.name===t.owner)?.color || '#000';
-        ctx.save();
-        ctx.globalAlpha = 0.25;         // nice translucent pad
-        ctx.fillStyle = col;
-        ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
-        ctx.restore();
-      
-        // the tower itself
-        ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText(t.emoji, x, y);
-      
-        // hp bar
-        ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
-        ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
-      }
+  if (!state) return;
+  if (!state.crystal) return;
 
+  // ---------- Crystal ----------
+  {
+    const cx = state.crystal.x*TILE + TILE/2;
+    const cy = state.crystal.y*TILE - offY + TILE/2;
+    ctx.strokeStyle="#a78bfa"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,16,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle="#7c3aed"; ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#111"; ctx.font="12px Segoe UI"; ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+    ctx.fillText("CRYSTAL", cx, cy-28);
+    const hpw=80, hpx=cx-hpw/2, hpy=cy-24;
+    const pct=Math.max(0, Math.min(1, (state.crystal.hp/state.crystal.maxHp)));
+    ctx.fillStyle="#222"; ctx.fillRect(hpx,hpy,hpw,6);
+    ctx.fillStyle = pct>0.5 ? "#22c55e" : pct>0.25 ? "#f59e0b" : "#ef4444";
+    ctx.fillRect(hpx,hpy,hpw*pct,6);
+  }
 
-      // enemies
-      for (const e of (state.enemies||[])){
-        const x=e.x*TILE+TILE/2, y=e.y*TILE - offY + TILE/2;
-        const col=ELEM_COL[e.el]||"#999";
-        ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
-        ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill();
-        const EMO = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" }[e.type] || "⚫";
-        ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, x, y);
-        const w=22, h=4, p = Math.max(0, Math.min(1, (e.hp||0) / (e.maxHp||e.hp||1)));
-        ctx.fillStyle="#111"; ctx.fillRect(x-w/2, y+14, w, h);
-        ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(x-w/2, y+14, w*p, h);
-      }
+  // ---------- Towers ----------
+  for (const t of (state.towers||[])){
+    const x = t.x*TILE+TILE/2, y = t.y*TILE - offY + TILE/2;
 
-      // projectiles (interpolated between snapshots)
-        const snapGapMs = 200; // host writes ~ every 200ms
-        const alpha = Math.max(0, Math.min(1, (Date.now() - _lastSnapAt) / snapGapMs));
-        
-        for (const p of (state.projectiles||[])){
-          const prev = _projPrev.get(p.id);
-          const cx = prev ? (prev.x + (p.x - prev.x) * alpha) : p.x;
-          const cy = prev ? (prev.y + (p.y - prev.y) * alpha) : p.y;
-          const x = cx*TILE+TILE/2, y = cy*TILE - camY + TILE/2;
-          const col = ELEM_COL[p.el] || "#111";
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.arc(x,y,4,0,Math.PI*2);
-          ctx.fill();
-        }
+    // owner-color tile pad
+    const col = t.ownerColor || (state.players||[]).find(p=>p.name===t.owner)?.color || '#000';
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = col;
+    ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
+    ctx.restore();
 
+    // tower emoji
+    ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(t.emoji, x, y);
+
+    // hp bar
+    const pct = Math.max(0, Math.min(1, (t.hp / t.maxHp)));
+    ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
+    ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*pct, 4);
+  }
+
+  // ---------- Visual smoothing helpers ----------
+  function smoothPos(prev, curr, nowMs){
+    // time since latest snapshot
+    const dtSince = Math.max(0, (nowMs - _snapCurr.at) / 1000);
+    // snapshot spacing (used as our lerp window)
+    const snapGap = Math.max(0.08, Math.min(0.6, (_snapCurr.at - _snapPrev.at) / 1000 || 0.2));
+    const t = Math.min(dtSince, snapGap);
+    const alpha = snapGap > 0 ? (t / snapGap) : 1;
+
+    // interpolate from prev->curr
+    const x0 = prev ? prev.x : curr.x;
+    const y0 = prev ? prev.y : curr.y;
+    const xi = x0 + ((curr.x - x0) * alpha);
+    const yi = y0 + ((curr.y - y0) * alpha);
+
+    // gentle extrapolation after the lerp window using measured velocity
+    const extra = Math.max(0, dtSince - snapGap);
+    const extraClamp = Math.min(extra, 0.35); // cap extrapolation to 350ms
+    const xe = xi + (curr.vx || 0) * extraClamp;
+    const ye = yi + (curr.vy || 0) * extraClamp;
+
+    return { x: xe, y: ye };
+  }
+
+  const nowMs = Date.now();
+
+  // ---------- Enemies (smooth with fallback) ----------
+  if (_snapCurr.enemies && _snapCurr.enemies.size){
+    for (const [id, curr] of _snapCurr.enemies){
+      const prev = _snapPrev.enemies.get(id);
+      const pos = smoothPos(prev, curr, nowMs);
+      const x = pos.x*TILE + TILE/2;
+      const y = pos.y*TILE - offY + TILE/2;
+
+      const col = ELEM_COL[curr.el] || "#999";
+      ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill();
+      const EMO = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" }[curr.type] || "⚫";
+      ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, x, y);
+
+      const hpNow = (typeof curr.hp === 'number') ? curr.hp : 1;
+      const hpMax = (typeof curr.maxHp === 'number') ? curr.maxHp : Math.max(1, hpNow);
+      const p = Math.max(0, Math.min(1, hpNow / hpMax));
+      const w=22, h=4;
+      ctx.fillStyle="#111"; ctx.fillRect(x-w/2, y+14, w, h);
+      ctx.fillStyle = p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444";
+      ctx.fillRect(x-w/2, y+14, w*p, h);
     }
+  } else {
+    // Fallback: raw state (no smoothing)
+    for (const e of (state.enemies||[])){
+      const x=e.x*TILE+TILE/2, y=e.y*TILE - offY + TILE/2;
+      const col=ELEM_COL[e.el]||"#999";
+      ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill();
+      const EMO = { slime:"🟢", gob:"👺", arch:"🏹", brute:"💢" }[e.type] || "⚫";
+      ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, x, y);
+      const w=22, h=4, p = Math.max(0, Math.min(1, (e.hp||0) / (e.maxHp||e.hp||1)));
+      ctx.fillStyle="#111"; ctx.fillRect(x-w/2, y+14, w, h);
+      ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(x-w/2, y+14, w*p, h);
+    }
+  }
+
+  // ---------- Projectiles (smooth with fallback) ----------
+  if (_snapCurr.projectiles && _snapCurr.projectiles.size){
+    for (const [id, curr] of _snapCurr.projectiles){
+      const prev = _snapPrev.projectiles.get(id);
+      const pos = smoothPos(prev, curr, nowMs);
+      const x = pos.x*TILE + TILE/2;
+      const y = pos.y*TILE - offY + TILE/2;
+      const col = ELEM_COL[curr.el] || "#111";
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    }
+  } else {
+    // Fallback: raw state (no smoothing)
+    for (const p of (state.projectiles||[])){
+      const x=p.x*TILE+TILE/2, y=p.y*TILE - offY + TILE/2;
+      const col = ELEM_COL[p.el] || "#111";
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
 
     renderShop();
     setInterval(draw, 1000/30);
@@ -1242,6 +1325,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
