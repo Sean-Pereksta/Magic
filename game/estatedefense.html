@@ -173,6 +173,7 @@
     const leaveBtn = document.getElementById('leaveBtn');
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
+    const CRYSTAL_HIT_R_T = 0.65;
     // --- Physics / collision tuning ---
 const PROJECTILE_SPEED_TPS   = 14;   // tiles per second (was 14 inline)
 const PROJECTILE_RADIUS_T    = 0.28; // projectile "size" in tiles
@@ -979,8 +980,12 @@ function findEnemyHitAlongSegment(g, x1,y1,x2,y2, radius){
       }
 
  // ---- Enemies ----
+// ---- Enemies ----
 for (const e of g.enemies){
   const cx = g.crystal.x, cy = g.crystal.y;
+
+  // Remember where the enemy was (for swept contact)
+  const bx = e.x, by = e.y;
 
   if (e.target === 'tower'){
     // If a tower is within attack range, attack; else move toward nearest tower (or crystal if none)
@@ -1004,9 +1009,9 @@ for (const e of g.enemies){
     stepToward(e, cx, cy, dt);
   }
 
-  // After movement, resolve collisions:
+  // After movement, resolve collisions in priority order:
 
-  // 1) Tower collision first (tile match): enemy dies, tower takes damage
+  // 1) Tower tile collision (tile match): enemy dies, tower takes damage
   const ex = Math.floor(e.x), ey = Math.floor(e.y);
   const tIdx = g.towers.findIndex(t => t.x === ex && t.y === ey);
   if (tIdx >= 0){
@@ -1014,13 +1019,22 @@ for (const e of g.enemies){
     t.hp -= e.dmg;
     if (t.hp <= 0) g.towers.splice(tIdx, 1);
     e.hp = 0;
-    continue; // don't also hit the crystal this frame
+    continue;
   }
 
-  // 2) Crystal collision next (tile match): enemy dies, crystal takes damage
-  if (ex === cx && ey === cy){
+  // 2) Crystal swept collision: if the path (bx,by)→(e.x,e.y) crosses the crystal radius, deal damage
+  const hitCrystal =
+    segmentHitsCircle(bx+0.5, by+0.5, e.x+0.5, e.y+0.5, cx+0.5, cy+0.5, CRYSTAL_HIT_R_T)
+    // fallback: also accept exact tile match as before
+    || (ex === cx && ey === cy);
+
+  if (hitCrystal){
     g.crystal.hp -= e.dmg;
     e.hp = 0;
+
+    // tiny flash for feedback (draw uses this)
+    g.crystal._flashUntil = now() + 200;
+    continue;
   }
 }
 
@@ -1325,6 +1339,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
