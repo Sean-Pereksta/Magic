@@ -856,51 +856,48 @@ async function simulateStepAsHost(){
 
   // ---- Helpers: sanitize for Firestore (no undefined/NaN/Infinity/functions/cycles)
   // IMPORTANT: we KEEP underscore keys now.
-  function sanitizeForFirestore(input){
-    const seen = new WeakSet();
-    const walk = (v) => {
-      if (v === null) return null;
-      const t = typeof v;
+  // ---- Helpers: sanitize for Firestore (no undefined/NaN/Infinity/functions/cycles)
+// IMPORTANT: KEEP underscore-prefixed keys (e.g., _seeded, _epoch)
+function sanitizeForFirestore(input){
+  const seen = new WeakSet();
+  const walk = (v) => {
+    if (v === null) return null;
+    const t = typeof v;
 
-      if (t === 'number'){
-        // Firestore rejects Infinity/-Infinity
-        if (!Number.isFinite(v)) return 0;
-        if (!Number.isFinite(v)) return 0;          // clamp ±Infinity/NaN
-        return Object.is(v, -0) ? 0 : v;
-      }
-      if (t === 'string' || t === 'boolean') return v;
+    if (t === 'number'){
+      if (!Number.isFinite(v)) return 0;     // clamp NaN/±Infinity
+      return Object.is(v, -0) ? 0 : v;
+    }
+    if (t === 'string' || t === 'boolean') return v;
 
-      if (Array.isArray(v)){
-        // Replace holes/undefined with null to keep array shape Firestore-safe
-        const out = [];
-        for (let i=0;i<v.length;i++){
-          const item = v[i];
-          if (item === undefined || typeof item === 'function') { out.push(null); continue; }
-          out.push(walk(item));
-        }
-        return out;
+    if (Array.isArray(v)){
+      const out = [];
+      for (let i=0;i<v.length;i++){
+        const item = v[i];
+        if (item === undefined || typeof item === 'function') { out.push(null); continue; }
+        out.push(walk(item));
       }
+      return out;
+    }
 
-      if (t === 'object'){
-        if (seen.has(v)) return null; // break cycles
-        if (seen.has(v)) return null;  // break cycles
-        seen.add(v);
-        const out = {};
-        for (const [k,val] of Object.entries(v)){
-          if (val === undefined || typeof val === 'function') continue; // drop
-          if (k.startsWith('_')) continue; // strip transient/visual fields anywhere
-          if (val === undefined || typeof val === 'function') continue; // drop only truly unsafe values
-          const w = walk(val);
-          if (w !== undefined) out[k] = w;
-          if (w !== undefined) out[k] = w;  // keep underscore keys intact
-        }
-        return out;
+    if (t === 'object'){
+      if (seen.has(v)) return null; // break cycles
+      seen.add(v);
+      const out = {};
+      for (const [k,val] of Object.entries(v)){
+        if (val === undefined || typeof val === 'function') continue; // drop only truly unsafe values
+        // NOTE: DO NOT strip underscore keys
+        const w = walk(val);
+        if (w !== undefined) out[k] = w;
       }
-      // symbol/bigint/function -> drop
-      return undefined;
-    };
-    return walk(input);
-  }
+      return out;
+    }
+    // symbol/bigint/function -> drop
+    return undefined;
+  };
+  return walk(input);
+}
+
 
   // Make a copy of the game that's safe to send to Firestore
   function makeWritableGame(g){
@@ -1983,6 +1980,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
