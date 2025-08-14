@@ -77,6 +77,10 @@
       <div class="row"><div>Kills to next:</div><b id="killsLbl">—</b></div>
       <div class="row"><div>Core HP:</div><b id="coreHpLbl">—</b></div>
     </div>
+    <div class="panel">
+      <h3>Enemies this level</h3>
+      <div id="levelEnemies" class="shop"></div>
+    </div>
   </div>
 
   <div id="center">
@@ -203,6 +207,7 @@ const enqueueIntent = (() => {
       t.textContent=msg; t.style.display='block';
       setTimeout(()=>t.style.display='none', ms);
     };
+    const ELEMENT_EMOJI = { fire:"🔥", frost:"❄️", volt:"⚡", nature:"🌿" };
 
     // ----- Data -----
     const palette = ["#ef4444","#3b82f6","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16"];
@@ -342,6 +347,53 @@ function renderShop(){
   }, { passive:false }); // allow preventDefault on touch
 })();
 
+    // Which two enemy types spawn this level (deterministic, honors minLevel)
+function getLevelEnemyPair(lvl){
+  const unlocked = ENEMY_TYPES.filter(t => lvl >= (t.minLevel || 1));
+  if (unlocked.length === 0) return [ENEMY_TYPES[0], ENEMY_TYPES[0]];
+  if (unlocked.length === 1) return [unlocked[0], unlocked[0]];
+  const i1 = lvl % unlocked.length;
+  const offset = Math.max(1, Math.floor(unlocked.length / 2));
+  const i2 = (i1 + offset) % unlocked.length;
+  return [unlocked[i1], unlocked[i2]];
+}
+
+// For a defender element, list attacker elements that are >1 (weak) or <1 (resist)
+function getWeakResFor(defEl){
+  const out = { weakTo: [], resists: [] };
+  for (const atkEl of Object.keys(ELEM_MULT)){
+    const mult = (ELEM_MULT[atkEl] && ELEM_MULT[atkEl][defEl]) || 1;
+    if (mult > 1) out.weakTo.push(atkEl);
+    else if (mult < 1) out.resists.push(atkEl);
+  }
+  return out;
+}
+
+const levelEnemiesBox = document.getElementById('levelEnemies');
+let _lastLevelShown = -1;
+
+function renderLevelEnemies(g){
+  if (!g || !levelEnemiesBox) return;
+  const lvl = g.level || 1;
+  const pair = getLevelEnemyPair(lvl);
+  const fmtList = arr => arr.map(el => `${ELEMENT_EMOJI[el]||''} ${el}`).join(', ') || '—';
+
+  levelEnemiesBox.innerHTML = pair.map(t => {
+    const wr = getWeakResFor(t.el);
+    return `
+      <div class="card">
+        <div class="row">
+          <span class="emoji">${ELEMENT_EMOJI[t.el]||''}</span>
+          <b>${t.name}</b>
+        </div>
+        <div class="small">Element: ${t.el}</div>
+        <div class="small">Weak to: ${fmtList(wr.weakTo)}</div>
+        <div class="small">Resists: ${fmtList(wr.resists)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function maybeRenderShop(){
   const active = state?.status === 'active';
   if (lastShop.funds !== myFunds || lastShop.seeded !== amSeeded || lastShop.active !== active){
@@ -414,86 +466,93 @@ function maybeRenderShop(){
       }
     }
 
-    // --- Live lobby updates (NO redirect on defeat; we restart in place) ---
-    onSnapshot(lobbyRef, async (docSnap) => {
-      if (!docSnap.exists()) {
-        location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
-        return;
-      }
+  onSnapshot(lobbyRef, async (docSnap) => {
+  if (!docSnap.exists()) {
+    location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
+    return;
+  }
 
-      const d = docSnap.data() || {};
-      hostLbl.textContent = `Host: ${d.host || '—'}`;
-      if (d.host === me && !isHost) beginHosting();
+  const d = docSnap.data() || {};
+  hostLbl.textContent = `Host: ${d.host || '—'}`;
+  if (d.host === me && !isHost) beginHosting();
 
-      // Keep our last good game state if field missing briefly
-      state = d.game || state;
+  // Adopt latest game, but keep last good one if field briefly missing
+  const nextState = d.game || state;
 
-      // Re-center once per epoch
-      if (state && typeof state._epoch === 'number' && state._epoch !== _lastEpoch){
-        _lastEpoch = state._epoch;
-        initialCentered = false;
-        toast("🔁 New run!");
-      }
+  // Detect epoch change (for re-centering + toast)
+  const epochChanged = !!(nextState && typeof nextState._epoch === 'number' && nextState._epoch !== _lastEpoch);
 
-      // First-time centering on the core
-      if (state && state.crystal && !initialCentered) {
-        initialCentered = true;
-        centerOnCore();
-      }
+  // Detect level change (to refresh the "Enemies this level" panel)
+  const levelChanged = !!(nextState && (nextState.level || 1) !== (_lastLevelShown || -1));
 
-      if (state) {
-        // Top-level labels
-        levelLbl.textContent = state.level || 1;
-        const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
-        killsLbl.textContent = `${killsLeft}`;
-        coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
+  state = nextState;
 
-        // Me / funds / base income
-        const meP = (state.players || []).find(p => p.name === me) || null;
-        if (meP) {
-          myFunds = meP.funds || 0;
-          if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
-          const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
-          baseLbl.textContent = fmt3(myInc);  // shows 0.000 format
-}
+  // Re-center once per epoch
+  if (epochChanged) {
+    _lastEpoch = nextState._epoch;
+    initialCentered = false;
+    toast("🔁 New run!");
+  }
 
-        fundsLbl.textContent = Math.floor(myFunds);
-        // Seed gate
-        const wasSeeded = amSeeded;
-        amSeeded = !!(meP && meP._seeded);
-        if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+  // First-time centering on the core for this epoch
+  if (state && state.crystal && !initialCentered) {
+    initialCentered = true;
+    centerOnCore();
+  }
 
-        // Refresh shop when relevant changes
-        maybeRenderShop();
+  if (state) {
+    // Top-level labels
+    levelLbl.textContent = state.level || 1;
+    const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
+    killsLbl.textContent = `${killsLeft}`;
+    coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
 
-        // Players list
-        playersBox.innerHTML = "";
-          (state.players || []).forEach((p) => {
-            const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
-            const inc  = base + (p.baseIncomeDelta || 0);
-            const color = p.color || '#888';
-          
-            const row = document.createElement('div');
-            row.className = 'playerRow';
-            row.innerHTML = `
-              <div><span class="dot" style="background:${color}"></span>${p.name}</div>
-              <div class="small">Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}</div>
-            `;
-            playersBox.appendChild(row);
-          });
+    // Me / funds / base income
+    const meP = (state.players || []).find(p => p.name === me) || null;
+    if (meP) {
+      myFunds = meP.funds || 0;
+      if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
+      const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
+      baseLbl.textContent = fmt3(myInc);
+    }
+    fundsLbl.textContent = Math.floor(myFunds);
 
+    // Seed gate + shop refresh
+    const wasSeeded = amSeeded;
+    amSeeded = !!(meP && meP._seeded);
+    if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+    maybeRenderShop();
 
-
-        // Status toast (no redirect)
-        if (_lastStatus !== state.status){
-          if (state.status === 'defeat') toast("💥 Core destroyed! Restarting…", 1500);
-          _lastStatus = state.status;
-        }
-      }
-
-      // Host election check
-      if (shouldClaimHost(docSnap)) await tryClaimHost();
+    // Players list (unchanged)
+    playersBox.innerHTML = "";
+    (state.players || []).forEach((p, i) => {
+      const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+      const inc  = base + (p.baseIncomeDelta || 0);
+      const row = document.createElement('div');
+      row.className = 'playerRow';
+      row.innerHTML = `
+        <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
+        <div class="small">Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}</div>
+      `;
+      playersBox.appendChild(row);
     });
+
+    // Status toast
+    if (_lastStatus !== state.status) {
+      if (state.status === 'defeat') toast("💥 Core destroyed! Restarting…", 1500);
+      _lastStatus = state.status;
+    }
+
+    // 🔸 Refresh the "Enemies this level" panel when level changes
+    if (levelChanged) {
+      _lastLevelShown = state.level || 1;
+      renderLevelEnemies(state); // <- uses your helper from earlier
+    }
+  }
+
+  // Host election check
+  if (shouldClaimHost(docSnap)) await tryClaimHost();
+});
 
     function shouldClaimHost(docSnap){
       const d = docSnap.data() || {};
@@ -1097,6 +1156,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
