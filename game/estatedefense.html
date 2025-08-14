@@ -89,7 +89,7 @@
         <span class="tag">🏡 Estate Defense</span>
         <div id="stats" class="row">
           <div>Funds: <b id="fundsLbl">0</b></div>
-          <div>Base income: <b id="baseLbl">0</b> /30s</div>
+          <div>Base income: <b id="baseLbl">0</b> /15s</div>
         </div>
       </div>
       <div class="small">Scroll: wheel / ↑↓ / W–S or use the slider. “Center on Core” jumps to the crystal.</div>
@@ -188,6 +188,19 @@ const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
 const PUBLISH_MIN_MS = 280;  // publish at ~3.5 Hz (sim still runs every 200ms)
 const MAX_PROJECTILES_PUBLISH = 120; // cap transmitted bullets to keep doc small
 let _lastPublishAt = 0;
+    // ---- Host-side perf knobs ----
+const PUBLISH_PROJECTILES = false;          // best perf: don't publish bullets
+const HOST_READ_MS        = 1000;           // how often to re-read lobby root (host check)
+const PRESENCE_READ_MS    = 2000;           // how often to re-scan presence
+const INTENT_POLL_MS      = 280;            // align with publish cadence
+
+// ---- Host-side cached state ----
+let _hostGame = null;            // authoritative working copy
+let _cachedRoot = null;          // last lobby root (host, players etc.)
+let _nextRootReadAt = 0;
+let _nextPresenceReadAt = 0;
+let _nextIntentPollAt = 0;
+
 
     let _snapPrev = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
 let _snapCurr = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
@@ -427,6 +440,69 @@ const enqueueIntent = (() => {
     const rnd = (a,b)=>a+Math.random()*(b-a);
     const round2=(n)=>Math.round(n*100)/100;
     const playerColor=(name,list)=>palette[Math.max(0,(list||[]).indexOf(name))%palette.length];
+    // ---- Snapshot pooling (reuse objects to avoid GC spikes) ----
+const _enemyPool = new Map();      // id -> reusable enemy view object
+const _projPool  = new Map();      // id -> reusable proj view object
+const UI_FPS = 8;
+let _uiTimer = 0;
+let _uiPending = false;
+
+function markUIDirty(){
+  _uiPending = true;
+  if (_uiTimer) return;
+  _uiTimer = setTimeout(() => {
+    _uiTimer = 0;
+    if (_uiPending) {
+      _uiPending = false;
+      refreshUI();
+    }
+  }, Math.floor(1000 / UI_FPS));
+}
+
+function poolUpdate(pool, id, src, fields) {
+  let obj = pool.get(id);
+  if (!obj) { obj = {}; pool.set(id, obj); }
+  for (const k of fields) obj[k] = src[k];
+  return obj;
+}
+
+// We keep one pair of Maps and mutate them, instead of allocating every time:
+const _snapEnemies = new Map();    // id -> pooled enemy view
+const _snapProjectiles = new Map();// id -> pooled proj view
+
+function pushSnapshotFromState(st) {
+  const nowMs = Date.now();
+
+  // Mark existing as unseen; we’ll delete after update
+  for (const v of _snapEnemies.values()) v._seen = false;
+  for (const v of _snapProjectiles.values()) v._seen = false;
+
+  // Enemies
+  for (const e of (st.enemies || [])) {
+    const obj = poolUpdate(_enemyPool, e.id, e, ["id","x","y","el","type","hp","maxHp"]);
+    obj._seen = true;
+    _snapEnemies.set(e.id, obj);
+  }
+  // Projectiles
+  for (const p of (st.projectiles || [])) {
+    const obj = poolUpdate(_projPool, p.id, p, ["id","x","y","el","owner"]);
+    obj._seen = true;
+    _snapProjectiles.set(p.id, obj);
+  }
+
+  // Remove any not seen in this snapshot (no memory growth)
+  for (const [id, v] of [..._snapEnemies]) if (!v._seen) _snapEnemies.delete(id);
+  for (const [id, v] of [..._snapProjectiles]) if (!v._seen) _snapProjectiles.delete(id);
+
+  // Append to buffer using the *same* Maps (they’re stable references),
+  // just record the timestamp & sim version.
+  const ver = typeof st.ver === "number" ? st.ver : -1;
+  if (!_snapBuf.length || ver > _snapBuf[_snapBuf.length - 1].ver) {
+    _snapBuf.push({ at: nowMs, ver, enemies: _snapEnemies, projectiles: _snapProjectiles });
+    if (_snapBuf.length > SNAPBUF_MAX) _snapBuf.shift();
+  }
+}
+
 
     function nearestFreeTile(fromX, fromY, occ){
       const maxR = Math.max(COLS, ROWS);
@@ -443,14 +519,152 @@ const enqueueIntent = (() => {
       return null;
     }
 
-    function makeWritableGame(g){
-  // Option 1 (best): don’t publish projectiles at all; clients render locally from caches
-  // return { ...g, projectiles: [] };
+   function makeWritableGame(g){
+  // Projectiles are the noisiest payload; omit entirely for smoothest clients.
+  // Flip PUBLISH_PROJECTILES to true if you really want to send a small subset.
+  const proj = Array.isArray(g.projectiles) ? g.projectiles : [];
+  const trimmedProj = (!PUBLISH_PROJECTILES)
+    ? []
+    : (proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj);
 
-  // Option 2 (safe now): cap projectile count to keep doc light
-  const proj = g.projectiles || [];
-  const trimmed = proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj;
-  return { ...g, projectiles: trimmed };
+  const clone = {
+    ...g,
+    projectiles: trimmedProj,
+    enemies: Array.isArray(g.enemies) ? g.enemies : [],
+    towers:  Array.isArray(g.towers)  ? g.towers  : []
+    // NOTE: we do NOT strip underscore keys anymore
+  };
+
+  return sanitizeForFirestore(clone);
+}
+
+// --- Ensure I'm still host (cheap path most ticks) ---
+const nowMs0 = now();
+let d;
+
+// Only re-read the lobby root occasionally; otherwise reuse cached root.
+// As host, we own the game loop, so we can keep _hostGame in memory between ticks.
+if (!_cachedRoot || nowMs0 >= _nextRootReadAt) {
+  const s = await getDoc(lobbyRef);
+  if (!s.exists()) return;
+  _cachedRoot = s.data() || {};
+  _nextRootReadAt = now() + HOST_READ_MS;
+}
+d = _cachedRoot;
+
+if (d.host !== me){ 
+  isHost = false; 
+  if (simInt) clearInterval(simInt); 
+  return; 
+}
+
+// --- Presence freshness: NEVER delete the lobby; just pause when empty/stale ---
+let anyFresh = true; // optimistic default between polls
+if (nowMs0 >= _nextPresenceReadAt){
+  anyFresh = false;
+  try {
+    const presSnap = await getDocs(presenceCol);
+    const nowMs = Date.now();
+    presSnap.forEach(docu => {
+      const ts = docu.data()?.lastSeen;
+      const ms = ts?.toMillis ? ts.toMillis() : 0;
+      if (nowMs - ms < STALE_MS) anyFresh = true;
+    });
+  } catch {}
+  _nextPresenceReadAt = now() + PRESENCE_READ_MS;
+}
+
+if (!anyFresh){
+  try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
+  return; // pause sim; lobby remains intact
+}
+
+// --- Load or bootstrap game (prefer the in-memory authoritative copy) ---
+let g = _hostGame || d.game;
+if (!g){
+  g = buildFreshGameFromPlayers(d.players || []);
+}
+
+// --- Auto-restart window ---
+if (g.status === 'defeat' && g._finalized && g._restartAt && now() >= g._restartAt){
+  const rootPlayers = (typeof presentNames !== 'undefined' && presentNames && presentNames.length)
+    ? presentNames
+    : (d.players || []);
+  g = restartGameInPlace(g, rootPlayers);
+  incomeTickAt = 0;
+  _finalizeOnce = false;
+}
+
+// --- Read & apply intents (poll at a controlled cadence) ---
+const processedIds = [];
+if (now() >= _nextIntentPollAt){
+  try{
+    const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
+    const snap = await getDocs(Q);
+    for (const docu of snap.docs){
+      const mv = docu.data();
+      try { g = await applyIntent(g, mv); } catch {}
+      processedIds.push(docu.id);
+    }
+  } finally {
+    _nextIntentPollAt = now() + INTENT_POLL_MS;
+  }
+}
+
+// --- Tick the sim ---
+if (g.status === 'active'){
+  g = simulate(g); // your simulate() with abilities & slower spawns
+}
+
+// --- Throttled publish to Firestore (CAS with throw-to-abort) ---
+const shouldPublish = (now() - window._lastPublishAt) >= PUBLISH_MIN_MS;
+if (!shouldPublish){ 
+  // Keep our authoritative working copy even if we didn't publish
+  _hostGame = g; 
+  return; 
+}
+
+const verStart = (typeof g.ver === 'number') ? g.ver : 0;
+const gForWrite = { ...g, ver: verStart + 1 };
+const gNext = makeWritableGame(gForWrite);
+
+let wrote = false;
+try {
+  await runTransaction(db, async (tx) => {
+    const curSnap = await tx.get(lobbyRef);
+    if (!curSnap.exists()) throw new Error('ABORT_NO_DOC');
+
+    const cur = curSnap.data() || {};
+    if (cur.host !== me) throw new Error('ABORT_NOT_HOST');
+
+    const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
+    if (curVer !== verStart) throw new Error('ABORT_STALE');
+
+    tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
+    wrote = true;
+  });
+} catch (e) {
+  const msg = String((e && e.message) || e);
+  if (!msg.startsWith('ABORT_')) {
+    console.warn('simulateStepAsHost txn error:', e);
+  }
+}
+
+if (wrote){
+  window._lastPublishAt = now();
+  _hostGame = gForWrite;           // keep full working copy locally (not trimmed)
+  _cachedRoot.leaseUntil = window._lastPublishAt + LEASE_MS; // keep cache fresh
+
+  // Delete intents ONLY after a successful write
+  if (processedIds.length){
+    try{
+      const batch = writeBatch(db);
+      for (const id of processedIds){
+        batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
+      }
+      await batch.commit();
+    } catch {}
+  }
 }
 
 
@@ -610,6 +824,71 @@ function maybeRenderShop(){
         await addDoc(intentsCol, { ts: now(), actor: me, type: "JOINED", payload: { baseIncome: myBaseIncome } }).catch(()=>{});
       }
     }
+    function refreshUI(){
+  if (!state) return;
+
+  // Top stats (lightweight textContent sets)
+  levelLbl.textContent = state.level || 1;
+  const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
+  killsLbl.textContent = `${killsLeft}`;
+  coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
+
+  // Funds/base income for me
+  const meP = (state.players || []).find(p => p.name === me);
+  if (meP) {
+    myFunds = meP.funds || 0;
+    if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
+    const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
+    baseLbl.textContent = fmt3(myInc);
+  }
+  fundsLbl.textContent = Math.floor(myFunds);
+
+  // Seed gate + shop refresh (keep your existing logic)
+  const wasSeeded = amSeeded;
+  amSeeded = !!(meP && meP._seeded);
+  if (!wasSeeded && amSeeded) toast("Joined! Shop unlocked.");
+  maybeRenderShop();
+
+  // Players list: diff instead of innerHTML reset
+  const cur = Array.from(playersBox.querySelectorAll('.playerRow'))
+    .map(row => row.dataset.name);
+  const want = (state.players || []).map(p => p.name);
+
+  // Remove missing
+  for (const existing of cur) {
+    if (!want.includes(existing)) {
+      const node = playersBox.querySelector(`.playerRow[data-name="${existing}"]`);
+      if (node) node.remove();
+    }
+  }
+  // Add/update
+  (state.players || []).forEach((p, i) => {
+    let row = playersBox.querySelector(`.playerRow[data-name="${p.name}"]`);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'playerRow';
+      row.dataset.name = p.name;
+      row.innerHTML = `
+        <div class="left"></div>
+        <div class="right small"></div>
+      `;
+      playersBox.appendChild(row);
+    }
+    const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+    const inc  = base + (p.baseIncomeDelta || 0);
+    row.querySelector('.left').innerHTML =
+      `<span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}`;
+    row.querySelector('.right').textContent = `Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}`;
+  });
+
+  // Level panel refresh, only when level changed
+  const lvl = state.level || 1;
+  if (lvl !== _lastLevelShown) {
+    _lastLevelShown = lvl;
+    renderLevelEnemies(state);
+  }
+}
+
 
  onSnapshot(lobbyRef, async (docSnap) => {
   if (!docSnap.exists()) {
@@ -642,27 +921,13 @@ function maybeRenderShop(){
   }
 
   // Push a visual snapshot into the buffer when the sim version advances
-  if (verChanged && state) {
-    const nowMs = Date.now();
-    const enemies = new Map();
-    const projectiles = new Map();
+ if (verChanged && state) {
+  // Do not build new Maps/objects; update pooled view & buffer.
+  pushSnapshotFromState(state);
+  // Mark UI "dirty" so a throttled refresh happens (see Section 3)
+  markUIDirty();
+}
 
-    for (const e of (state.enemies || [])) {
-      enemies.set(e.id, {
-        id: e.id, x: e.x, y: e.y, el: e.el, type: e.type,
-        hp: e.hp, maxHp: e.maxHp
-      });
-    }
-    for (const p of (state.projectiles || [])) {
-      projectiles.set(p.id, { id: p.id, x: p.x, y: p.y, el: p.el, owner: p.owner });
-    }
-
-    // Append in order (ignore out-of-order repeats)
-    if (!_snapBuf.length || state.ver > _snapBuf[_snapBuf.length - 1].ver) {
-      _snapBuf.push({ at: nowMs, ver: state.ver, enemies, projectiles });
-      if (_snapBuf.length > SNAPBUF_MAX) _snapBuf.shift();
-    }
-  }
 
   // First-time centering for this epoch
   if (state && state.crystal && !initialCentered) {
@@ -1656,14 +1921,14 @@ function simulate(g){
   // -----------------------------
   // Periodic income (every 30s)
   // -----------------------------
-  if (!incomeTickAt) incomeTickAt = tNow + 30000;
+  if (!incomeTickAt) incomeTickAt = tNow + 15000;
   if (tNow >= incomeTickAt){
     for (const p of g.players){
       const base = (typeof p.baseIncome === 'number' ? p.baseIncome : 1);
       const inc  = base + (p.baseIncomeDelta || 0);
       p.funds += inc;
     }
-    incomeTickAt = tNow + 30000;
+    incomeTickAt = tNow + 15000;
   }
 
   // -----------------------------
@@ -1966,11 +2231,20 @@ function simulate(g){
 
 
     renderShop();
-    setInterval(draw, 1000/30);
-    await ensureUserIncome();
+
+let _rafHandle = 0;
+function rafLoop(){
+  draw();
+  _rafHandle = requestAnimationFrame(rafLoop);
+}
+_rafHandle = requestAnimationFrame(rafLoop);
+
+await ensureUserIncome();
+
   </script>
 </body>
 </html>
+
 
 
 
