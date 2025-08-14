@@ -863,18 +863,7 @@ function nearestTower(g, e){
     let incomeTickAt = 0;
     let _finalizeOnce = false;
     
-function getLevelEnemyPair(lvl){
-  const unlocked = ENEMY_TYPES.filter(t => lvl >= (t.minLevel || 1));
-  if (unlocked.length === 0) return [ENEMY_TYPES[0], ENEMY_TYPES[0]];
-  if (unlocked.length === 1) return [unlocked[0], unlocked[0]];
 
-  // Deterministic, level-based selection so it’s consistent all level long
-  const i1 = lvl % unlocked.length;
-  const offset = Math.max(1, Math.floor(unlocked.length / 2));
-  const i2 = (i1 + offset) % unlocked.length;
-
-  return [unlocked[i1], unlocked[i2]];
-}
     function getOrMakePair(g){
       const lvl = g.level || 1;
       if (g._pairLevel !== lvl){
@@ -1156,6 +1145,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
