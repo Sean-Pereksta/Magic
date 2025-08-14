@@ -729,19 +729,18 @@ function nearestTower(g, e){
 }
 
 
-    // ----- Intents + Sim (host) -----
+// ----- Intents + Sim (host) -----
 async function simulateStepAsHost(){
   // --- publish throttling + payload trim (local to this fn) ---
   const PUBLISH_MIN_MS = 280;          // write to Firestore at ~3.5 Hz
   const MAX_PROJECTILES_PUBLISH = 120; // cap bullets in the doc
-  // _lastPublishAt should be module-scope; initialize here if missing:
   if (typeof _lastPublishAt !== 'number') window._lastPublishAt = 0;
 
   function makeWritableGame(g){
-    // Option A (biggest win): do not publish projectiles at all
+    // Option A (leanest): don't publish projectiles at all
     // return { ...g, projectiles: [] };
 
-    // Option B (safer for now): cap projectile count to keep doc small
+    // Option B (safe): cap projectile count to keep doc small
     const proj = Array.isArray(g.projectiles) ? g.projectiles : [];
     const trimmed = proj.length > MAX_PROJECTILES_PUBLISH ? proj.slice(0, MAX_PROJECTILES_PUBLISH) : proj;
     return { ...g, projectiles: trimmed };
@@ -752,7 +751,7 @@ async function simulateStepAsHost(){
   const d = s.data() || {};
   if (d.host !== me){ isHost = false; if (simInt) clearInterval(simInt); return; }
 
-  // --- Presence freshness: tear down lobby if no FRESH presence remains ---
+  // --- Presence freshness: NEVER delete the lobby; just pause when empty/stale ---
   const presSnap = await getDocs(presenceCol);
   {
     const nowMs = Date.now();
@@ -764,14 +763,9 @@ async function simulateStepAsHost(){
     });
 
     if (!anyFresh){
-      // purge stale presence docs, then delete the lobby
-      try {
-        const batch = writeBatch(db);
-        presSnap.forEach(docu => batch.delete(docu.ref));
-        await batch.commit();
-      } catch {}
-      try { await deleteDoc(lobbyRef); } catch {}
-      return;
+      // Optional: keep the lease warm so host doesn't churn while idle
+      try { await updateDoc(lobbyRef, { leaseUntil: now() + LEASE_MS }); } catch {}
+      return; // pause sim; lobby remains intact
     }
   }
 
@@ -807,10 +801,7 @@ async function simulateStepAsHost(){
   // --- Throttled publish to Firestore (CAS with throw-to-abort) ---
   const nowMs = now();
   const shouldPublish = (nowMs - _lastPublishAt) >= PUBLISH_MIN_MS;
-
-  if (!shouldPublish){
-    return; // skip write this loop; we'll try next tick
-  }
+  if (!shouldPublish) return;
 
   const verStart = (typeof g.ver === 'number') ? g.ver : 0;
   const gNext = makeWritableGame({ ...g, ver: verStart + 1 });
@@ -832,7 +823,6 @@ async function simulateStepAsHost(){
       wrote = true;
     });
   } catch (e) {
-    // Silence expected aborts; log unexpected errors
     const msg = String((e && e.message) || e);
     if (!msg.startsWith('ABORT_')) {
       console.warn('simulateStepAsHost txn error:', e);
@@ -1455,4 +1445,5 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
