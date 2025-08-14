@@ -148,7 +148,7 @@
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    const TILE = 32, COLS = 20, ROWS = 300;
+    const TILE = 32, COLS = 20, ROWS = 75;
     const MAP_W = COLS * TILE, MAP_H = ROWS * TILE;
     let camY = MAP_H - H; // start near bottom
     let initialCentered = false;
@@ -467,17 +467,20 @@ function maybeRenderShop(){
 
         // Players list
         playersBox.innerHTML = "";
-            (state.players || []).forEach((p, i) => {
-              const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
-              const inc  = base + (p.baseIncomeDelta || 0);   // live, grows during the run
-              const row = document.createElement('div');
-              row.className = 'playerRow';
-              row.innerHTML = `
-                <div><span class="dot" style="background:${palette[i % palette.length]}"></span>${p.name}</div>
-                <div class="small">Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}</div>
-              `;
-              playersBox.appendChild(row);
-            });
+          (state.players || []).forEach((p) => {
+            const base = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+            const inc  = base + (p.baseIncomeDelta || 0);
+            const color = p.color || '#888';
+          
+            const row = document.createElement('div');
+            row.className = 'playerRow';
+            row.innerHTML = `
+              <div><span class="dot" style="background:${color}"></span>${p.name}</div>
+              <div class="small">Inc: ${fmt3(inc)} | $${Math.floor(p.funds || 0)}</div>
+            `;
+            playersBox.appendChild(row);
+          });
+
 
 
         // Status toast (no redirect)
@@ -575,6 +578,32 @@ function beginHosting(){
       if (shouldClaimHost(s)) await tryClaimHost();
       leaseLbl.textContent = "lease: client";
     }, 2500);
+
+    // Make enemy movement tick-rate independent but similar speed to before.
+// You were doing e.y += e.spd every ~0.2s ⇒ ~5 tiles/sec at spd=1.
+// SCALE keeps that feel while using dt-based motion.
+const ENEMY_MOVE_SCALE = 5;
+
+function stepToward(e, tx, ty, dt){
+  // center-to-center vector (tiles are unit grid)
+  const dx = (tx + 0.5) - (e.x + 0.5);
+  const dy = (ty + 0.5) - (e.y + 0.5);
+  const m  = Math.hypot(dx, dy) || 1;
+  const v  = e.spd * ENEMY_MOVE_SCALE; // tiles/sec
+  e.x += (dx / m) * v * dt;
+  e.y += (dy / m) * v * dt;
+}
+
+// "Nearest tower anywhere" (no range gate)
+function nearestTower(g, e){
+  let best = null, bd = Infinity;
+  for (const t of g.towers){
+    const d = dist2(e.x, e.y, t.x, t.y);
+    if (d < bd){ bd = d; best = t; }
+  }
+  return best;
+}
+
 
     // ----- Intents + Sim (host) -----
     async function simulateStepAsHost(){
@@ -720,17 +749,18 @@ function beginHosting(){
       if (mv.type === 'BUY'){
         if (g.status !== 'active') return g;
         const def = TOWER_TYPES.find(x => x.key === mv.payload?.tKey); if (!def) return g;
-        const p = g.players.find(p => p.name === actor);               if (!p || p.funds < def.cost) return g;
-
+        const p = g.players.find(p => p.name === actor); if (!p || p.funds < def.cost) return g;
+      
         const occ = new Array(COLS * ROWS).fill(false);
         occ[g.crystal.y * COLS + g.crystal.x] = true;
         g.towers.forEach(t => { occ[t.y * COLS + t.x] = true; });
-
+      
         const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
-
+      
         const id = 't' + Math.random().toString(36).slice(2);
         g.towers.push({
           id, x: spot.x, y: spot.y, owner: actor,
+          ownerColor: p.color || '#888',            // <-- store owner color
           emoji: def.emoji, el: def.el,
           hp: def.hp, maxHp: def.hp, level: 1,
           dmg: def.dmg, range: def.range, rate: def.rate, cd: 0
@@ -738,6 +768,7 @@ function beginHosting(){
         p.funds -= def.cost;
         return g;
       }
+
 
       if (mv.type === 'UPGRADE'){
         if (g.status !== 'active') return g;
@@ -802,31 +833,53 @@ function beginHosting(){
     g.nextSpawnAt = tNow + Math.max(600, 1600 - (g.level || 1) * 40);
   }
 
-  // ---- Enemies ----
-  for (const e of g.enemies){
-    if (e.target === 'tower'){
-      const tgt = nearestTowerInRange(g, e, e.range);
-      if (tgt){
-        e.cd -= dt;
-        if (e.cd <= 0){
-          tgt.hp -= e.dmg;
-          e.cd = 1.2;
-          if (tgt.hp <= 0){
-            const i = g.towers.findIndex(t => t.id === tgt.id);
-            if (i >= 0) g.towers.splice(i, 1);
-          }
+ // ---- Enemies ----
+for (const e of g.enemies){
+  const cx = g.crystal.x, cy = g.crystal.y;
+
+  if (e.target === 'tower'){
+    // If a tower is within attack range, attack; else move toward nearest tower (or crystal if none)
+    const inRangeTgt = nearestTowerInRange(g, e, e.range);
+    if (inRangeTgt){
+      e.cd -= dt;
+      if (e.cd <= 0){
+        inRangeTgt.hp -= e.dmg;
+        e.cd = 1.2;
+        if (inRangeTgt.hp <= 0){
+          const i = g.towers.findIndex(t => t.id === inRangeTgt.id);
+          if (i >= 0) g.towers.splice(i, 1);
         }
-      } else {
-        e.y += e.spd;
       }
     } else {
-      e.y += e.spd;
+      const chase = (typeof nearestTower === 'function' ? nearestTower(g, e) : null) || { x: cx, y: cy };
+      stepToward(e, chase.x, chase.y, dt);
     }
-    if (Math.floor(e.y) >= g.crystal.y){
-      g.crystal.hp -= e.dmg;
-      e.hp = 0;
-    }
+  } else {
+    // "core" enemies: beeline to the crystal
+    stepToward(e, cx, cy, dt);
   }
+
+  // After movement, resolve collisions:
+
+  // 1) Tower collision first (tile match): enemy dies, tower takes damage
+  const ex = Math.floor(e.x), ey = Math.floor(e.y);
+  const tIdx = g.towers.findIndex(t => t.x === ex && t.y === ey);
+  if (tIdx >= 0){
+    const t = g.towers[tIdx];
+    t.hp -= e.dmg;
+    if (t.hp <= 0) g.towers.splice(tIdx, 1);
+    e.hp = 0;
+    continue; // don't also hit the crystal this frame
+  }
+
+  // 2) Crystal collision next (tile match): enemy dies, crystal takes damage
+  if (ex === cx && ey === cy){
+    g.crystal.hp -= e.dmg;
+    e.hp = 0;
+  }
+}
+
+
 
   // ---- Towers (fire projectiles) ----
   for (const t of g.towers){
@@ -972,12 +1025,25 @@ function beginHosting(){
 
       // towers
       for (const t of (state.towers||[])){
-        const x=t.x*TILE+TILE/2, y=t.y*TILE - offY + TILE/2;
-        ctx.fillStyle="#00000020"; ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
-        ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(t.emoji, x, y);
+        const x = t.x*TILE+TILE/2, y = t.y*TILE - offY + TILE/2;
+      
+        // colored base square (owner color)
+        const col = t.ownerColor || (state.players||[]).find(p=>p.name===t.owner)?.color || '#000';
+        ctx.save();
+        ctx.globalAlpha = 0.25;         // nice translucent pad
+        ctx.fillStyle = col;
+        ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
+        ctx.restore();
+      
+        // the tower itself
+        ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText(t.emoji, x, y);
+      
+        // hp bar
         ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
         ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*(t.hp/t.maxHp), 4);
       }
+
 
       // enemies
       for (const e of (state.enemies||[])){
@@ -1005,6 +1071,7 @@ function beginHosting(){
   </script>
 </body>
 </html>
+
 
 
 
