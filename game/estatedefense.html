@@ -173,6 +173,13 @@
     const leaveBtn = document.getElementById('leaveBtn');
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
+    // --- Physics / collision tuning ---
+const PROJECTILE_SPEED_TPS   = 14;   // tiles per second (was 14 inline)
+const PROJECTILE_RADIUS_T    = 0.28; // projectile "size" in tiles
+const ENEMY_RADIUS_T         = 0.48; // enemy "size" in tiles
+const PHYS_MAX_ADVANCE_T     = 0.40; // max tiles advanced per micro-step (prevents tunneling)
+const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
+
     // --- Intents (single, self-contained) ---
 const enqueueIntent = (() => {
   const btnsLocal = [upgradeBtn, sellBtn].filter(Boolean);
@@ -201,6 +208,10 @@ const enqueueIntent = (() => {
     let _buyBusy = false;
     let _actionBusy = false;
     let lastShop = { funds:-1, seeded:false, active:true };
+    let _projPrev = new Map();   // id -> {x,y}
+    let _projCurr = new Map();   // id -> {x,y}
+    let _lastSnapAt = Date.now();
+
 
     const toast = (msg, ms=1500) => {
       const t=document.getElementById('toast');
@@ -486,6 +497,13 @@ function maybeRenderShop(){
   const levelChanged = !!(nextState && (nextState.level || 1) !== (_lastLevelShown || -1));
 
   state = nextState;
+  const nextMap = new Map();
+    for (const p of (state.projectiles || [])){
+      nextMap.set(p.id, { x: p.x, y: p.y, el: p.el });
+    }
+    _projPrev = _projCurr;
+    _projCurr = nextMap;
+    _lastSnapAt = Date.now();
 
   // Re-center once per epoch
   if (epochChanged) {
@@ -872,11 +890,36 @@ function nearestTower(g, e){
       }
       return g._pair;
     }
-    
+    function clamp01(v){ return v<0?0:v>1?1:v; }
+
+// Distance from segment (x1,y1)-(x2,y2) to point (cx,cy) <= r ?
+function segmentHitsCircle(x1,y1,x2,y2, cx,cy, r){
+  const dx = x2 - x1, dy = y2 - y1;
+  const L2 = dx*dx + dy*dy;
+  let t = 0;
+  if (L2 > 0) t = ((cx - x1)*dx + (cy - y1)*dy) / L2;
+  t = clamp01(t);
+  const nx = x1 + t*dx, ny = y1 + t*dy;
+  const dd = (nx - cx)*(nx - cx) + (ny - cy)*(ny - cy);
+  return dd <= r*r;
+}
+
+// Find the first enemy a segment will hit (returns enemy or null)
+function findEnemyHitAlongSegment(g, x1,y1,x2,y2, radius){
+  // Simple linear scan; if this grows, consider spatial hashing/buckets.
+  for (const e of g.enemies){
+    if (e.hp <= 0) continue;
+    if (segmentHitsCircle(x1,y1,x2,y2, e.x+0.5, e.y+0.5, radius)) return e;
+  }
+  return null;
+}
+
   function simulate(g){
-  const tNow = now();
-  const dt   = (tNow - (g.lastTick ?? tNow)) / 1000;
-  g.lastTick = tNow;
+    const tNow = now();
+    let dt = (tNow - (g.lastTick ?? tNow)) / 1000;
+    if (!isFinite(dt) || dt < 0) dt = 0;
+    dt = Math.min(dt, PHYS_MAX_DT);   // <- add this line
+    g.lastTick = tNow;
 
       // ---- Spawns ----
       if (now() >= (g.nextSpawnAt || 0)) {
@@ -957,56 +1000,89 @@ for (const e of g.enemies){
 
   // ---- Towers (fire projectiles) ----
   for (const t of g.towers){
-    t.cd -= dt;
-    const tgt = nearestEnemyInRange(g, t, t.range);
-    if (tgt && t.cd <= 0){
-      const spd = 14;
-      const sx = t.x + 0.5, sy = t.y + 0.5;
-      const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
-      const m  = Math.hypot(dx, dy) || 1;
-      g.projectiles.push({
-        id:'p'+Math.random().toString(36).slice(2),
-        x:sx, y:sy, vx:dx/m*spd, vy:dy/m*spd,
-        dmg:t.dmg, el:t.el, owner:t.owner
-      });
-      t.cd = 1 / Math.max(0.2, t.rate);
-    }
+  t.cd -= dt;
+  const tgt = nearestEnemyInRange(g, t, t.range);
+  if (tgt && t.cd <= 0){
+    const spd = PROJECTILE_SPEED_TPS;
+    const sx = t.x + 0.5, sy = t.y + 0.5;
+    const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
+    const m  = Math.hypot(dx, dy) || 1;
+    g.projectiles.push({
+      id:'p'+Math.random().toString(36).slice(2),
+      // current position
+      x:sx, y:sy,
+      // previous position (used for swept tests)
+      px:sx, py:sy,
+      // velocity in tiles/sec
+      vx:dx/m*spd, vy:dy/m*spd,
+      dmg:t.dmg, el:t.el, owner:t.owner
+    });
+    t.cd = 1 / Math.max(0.2, t.rate);
   }
+}
+ // ---- Projectiles (swept micro-steps; no tunneling) ----
+{
+  const killEnemy = (g, enemy, ownerName) => {
+    enemy.hp = 0;
+    const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
+    const owner = g.players.find(z => z.name === ownerName);
+    if (owner){
+      owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
+    }
+    g.killsThisLevel = (g.killsThisLevel || 0) + 1;
+    if (g.killsThisLevel >= (g.killsToAdvance || 20)){
+      g.level = (g.level || 1) + 1;
+      g.killsThisLevel = 0;
+      g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
+    }
+  };
 
-  // ---- Projectiles ----
   for (const p of g.projectiles){
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    // Clamp dt so we never take a huge jump on a stutter
+    let remaining = Math.min(dt, PHYS_MAX_DT);
+    let dead = false;
 
-    if (p.x < 0 || p.x > COLS || p.y < 0 || p.y > ROWS) { p._dead = true; continue; }
+    while (remaining > 1e-6 && !dead){
+      // bound per-iteration time AND distance
+      const nominal = Math.min(remaining, 0.05);
+      const stepDist = Math.hypot(p.vx, p.vy) * nominal;          // tiles advanced if we took 'nominal'
+      const microSteps = Math.max(1, Math.ceil(stepDist / PHYS_MAX_ADVANCE_T));
+      const subDt = nominal / microSteps;
 
-    const ex = Math.floor(p.x), ey = Math.floor(p.y);
-    const hit = g.enemies.find(e => Math.floor(e.x) === ex && Math.floor(e.y) === ey && e.hp > 0);
-    if (!hit) continue;
+      for (let m = 0; m < microSteps && !dead; m++){
+        const x1 = p.x,      y1 = p.y;
+        const x2 = p.x + p.vx * subDt;
+        const y2 = p.y + p.vy * subDt;
 
-    const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
-    hit.hp -= Math.round(p.dmg * mult);
-    p._dead = true;
+        // swept segment-vs-circle against enemies
+        const hit = findEnemyHitAlongSegment(g, x1,y1,x2,y2, ENEMY_RADIUS_T + PROJECTILE_RADIUS_T);
+        if (hit){
+          const mult = (ELEM_MULT[p.el] && ELEM_MULT[p.el][hit.el]) || 1.0;
+          hit.hp -= Math.round(p.dmg * mult);
+          if (hit.hp <= 0) killEnemy(g, hit, p.owner);
+          dead = true; // projectile consumed on hit
+          break;
+        }
 
-    if (hit.hp <= 0){
-      // ❌ no funds on kill
-      const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
-      const owner = g.players.find(z => z.name === p.owner);
-      if (owner){
-        // keep long-term growth
-        owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
+        // advance (and keep previous for next sweep)
+        p.px = p.x; p.py = p.y;
+        p.x = x2;  p.y = y2;
+
+        // out of bounds? kill it
+        if (p.x < -1 || p.x > COLS+1 || p.y < -1 || p.y > ROWS+1){
+          dead = true;
+        }
       }
-      g.killsThisLevel = (g.killsThisLevel || 0) + 1;
-      if (g.killsThisLevel >= (g.killsToAdvance || 20)){
-        g.level = (g.level || 1) + 1;
-        g.killsThisLevel = 0;
-        g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
-      }
+      remaining -= nominal;
     }
+
+    if (dead) p._dead = true;
   }
+
+  // cleanup
   g.projectiles = g.projectiles.filter(p => !p._dead);
   g.enemies     = g.enemies.filter(e => e.hp > 0);
-
+}
   // ---- Periodic income (every 30s) ----
   if (!incomeTickAt) incomeTickAt = tNow + 30000;
   if (tNow >= incomeTickAt){
@@ -1132,11 +1208,22 @@ for (const e of g.enemies){
         ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(x-w/2, y+14, w*p, h);
       }
 
-      // projectiles
-      for (const p of (state.projectiles||[])){
-        const x=p.x*TILE+TILE/2, y=p.y*TILE - offY + TILE/2;
-        ctx.fillStyle=ELEM_COL[p.el]||"#111"; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
-      }
+      // projectiles (interpolated between snapshots)
+        const snapGapMs = 200; // host writes ~ every 200ms
+        const alpha = Math.max(0, Math.min(1, (Date.now() - _lastSnapAt) / snapGapMs));
+        
+        for (const p of (state.projectiles||[])){
+          const prev = _projPrev.get(p.id);
+          const cx = prev ? (prev.x + (p.x - prev.x) * alpha) : p.x;
+          const cy = prev ? (prev.y + (p.y - prev.y) * alpha) : p.y;
+          const x = cx*TILE+TILE/2, y = cy*TILE - camY + TILE/2;
+          const col = ELEM_COL[p.el] || "#111";
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(x,y,4,0,Math.PI*2);
+          ctx.fill();
+        }
+
     }
 
     renderShop();
@@ -1145,6 +1232,7 @@ for (const e of g.enemies){
   </script>
 </body>
 </html>
+
 
 
 
