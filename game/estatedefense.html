@@ -1197,11 +1197,11 @@ for (const e of g.enemies){
     window.addEventListener('keydown', (e)=>{ if (e.key==='ArrowUp'||e.key==='w'||e.key==='W') camY=clamp(camY-50,0,MAP_H-H); if (e.key==='ArrowDown'||e.key==='s'||e.key==='S') camY=clamp(camY+50,0,MAP_H-H); if (e.key==='c'||e.key==='C') centerOnCore(); syncSlider(); });
 
     // ----- Render -----
-    function draw(){
+   function draw(){
   ctx.clearRect(0,0,W,H);
   const offY = camY;
 
-  // background + grid
+  // ----- Background + grid -----
   ctx.fillStyle = "#e9eef3";
   ctx.fillRect(0,0,W,H);
   ctx.strokeStyle = "#d7dee6";
@@ -1209,17 +1209,29 @@ for (const e of g.enemies){
   for (let y = 0; y <= H; y += TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
   for (let x = 0; x <= W; x += TILE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
 
-  if (!state) return;
-  if (!state.crystal) return;
+  if (!state || !state.crystal) return;
 
-  // ---------- Crystal ----------
+  // ----- Crystal (with hit flash) -----
   {
     const cx = state.crystal.x*TILE + TILE/2;
     const cy = state.crystal.y*TILE - offY + TILE/2;
+
+    // subtle flash if recently hit (set in simulate via crystal._flashUntil)
+    if (state.crystal._flashUntil && Date.now() < state.crystal._flashUntil){
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(cx, cy, 28, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    // crystal body
     ctx.strokeStyle="#a78bfa"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,16,0,Math.PI*2); ctx.stroke();
     ctx.fillStyle="#7c3aed"; ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2); ctx.fill();
     ctx.fillStyle="#111"; ctx.font="12px Segoe UI"; ctx.textAlign="center"; ctx.textBaseline="alphabetic";
     ctx.fillText("CRYSTAL", cx, cy-28);
+
+    // crystal HP
     const hpw=80, hpx=cx-hpw/2, hpy=cy-24;
     const pct=Math.max(0, Math.min(1, (state.crystal.hp/state.crystal.maxHp)));
     ctx.fillStyle="#222"; ctx.fillRect(hpx,hpy,hpw,6);
@@ -1227,11 +1239,11 @@ for (const e of g.enemies){
     ctx.fillRect(hpx,hpy,hpw*pct,6);
   }
 
-  // ---------- Towers ----------
+  // ----- Towers -----
   for (const t of (state.towers||[])){
     const x = t.x*TILE+TILE/2, y = t.y*TILE - offY + TILE/2;
 
-    // owner-color tile pad
+    // owner-color pad
     const col = t.ownerColor || (state.players||[]).find(p=>p.name===t.owner)?.color || '#000';
     ctx.save();
     ctx.globalAlpha = 0.25;
@@ -1239,34 +1251,32 @@ for (const e of g.enemies){
     ctx.fillRect(t.x*TILE, t.y*TILE - offY, TILE, TILE);
     ctx.restore();
 
-    // tower emoji
+    // emoji
     ctx.font="20px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(t.emoji, x, y);
 
     // hp bar
-    const pct = Math.max(0, Math.min(1, (t.hp / t.maxHp)));
+    const tpct = Math.max(0, Math.min(1, (t.hp / t.maxHp)));
     ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
-    ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*pct, 4);
+    ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*tpct, 4);
   }
 
-  // ---------- Visual smoothing helpers ----------
+  // ----- Visual smoothing helpers (enemies/projectiles) -----
   function smoothPos(prev, curr, nowMs){
-    // time since latest snapshot
-    const dtSince = Math.max(0, (nowMs - _snapCurr.at) / 1000);
-    // snapshot spacing (used as our lerp window)
-    const snapGap = Math.max(0.08, Math.min(0.6, (_snapCurr.at - _snapPrev.at) / 1000 || 0.2));
+    const dtSince = Math.max(0, (nowMs - (_snapCurr.at || nowMs)) / 1000);
+    const snapGap = Math.max(0.08, Math.min(0.6, ((_snapCurr.at || nowMs) - (_snapPrev.at || nowMs)) / 1000 || 0.2));
     const t = Math.min(dtSince, snapGap);
     const alpha = snapGap > 0 ? (t / snapGap) : 1;
 
-    // interpolate from prev->curr
+    // interpolate
     const x0 = prev ? prev.x : curr.x;
     const y0 = prev ? prev.y : curr.y;
     const xi = x0 + ((curr.x - x0) * alpha);
     const yi = y0 + ((curr.y - y0) * alpha);
 
-    // gentle extrapolation after the lerp window using measured velocity
+    // gentle extrapolation (cap 350ms)
     const extra = Math.max(0, dtSince - snapGap);
-    const extraClamp = Math.min(extra, 0.35); // cap extrapolation to 350ms
+    const extraClamp = Math.min(extra, 0.35);
     const xe = xi + (curr.vx || 0) * extraClamp;
     const ye = yi + (curr.vy || 0) * extraClamp;
 
@@ -1275,8 +1285,8 @@ for (const e of g.enemies){
 
   const nowMs = Date.now();
 
-  // ---------- Enemies (smooth with fallback) ----------
-  if (_snapCurr.enemies && _snapCurr.enemies.size){
+  // ----- Enemies (smooth with fallback) -----
+  if (_snapCurr?.enemies && _snapCurr.enemies.size){
     for (const [id, curr] of _snapCurr.enemies){
       const prev = _snapPrev.enemies.get(id);
       const pos = smoothPos(prev, curr, nowMs);
@@ -1298,7 +1308,6 @@ for (const e of g.enemies){
       ctx.fillRect(x-w/2, y+14, w*p, h);
     }
   } else {
-    // Fallback: raw state (no smoothing)
     for (const e of (state.enemies||[])){
       const x=e.x*TILE+TILE/2, y=e.y*TILE - offY + TILE/2;
       const col=ELEM_COL[e.el]||"#999";
@@ -1312,8 +1321,8 @@ for (const e of g.enemies){
     }
   }
 
-  // ---------- Projectiles (smooth with fallback) ----------
-  if (_snapCurr.projectiles && _snapCurr.projectiles.size){
+  // ----- Projectiles (smooth with fallback) -----
+  if (_snapCurr?.projectiles && _snapCurr.projectiles.size){
     for (const [id, curr] of _snapCurr.projectiles){
       const prev = _snapPrev.projectiles.get(id);
       const pos = smoothPos(prev, curr, nowMs);
@@ -1323,7 +1332,6 @@ for (const e of g.enemies){
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
     }
   } else {
-    // Fallback: raw state (no smoothing)
     for (const p of (state.projectiles||[])){
       const x=p.x*TILE+TILE/2, y=p.y*TILE - offY + TILE/2;
       const col = ELEM_COL[p.el] || "#111";
@@ -1333,12 +1341,14 @@ for (const e of g.enemies){
 }
 
 
+
     renderShop();
     setInterval(draw, 1000/30);
     await ensureUserIncome();
   </script>
 </body>
 </html>
+
 
 
 
