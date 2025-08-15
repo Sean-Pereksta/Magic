@@ -110,7 +110,7 @@
         <span class="tag">🏡 Estate Defense</span>
         <div id="stats" class="row">
           <div>Funds: <b id="fundsLbl">0</b></div>
-          <div>Base income: <b id="baseLbl">0</b> /30s</div>
+          <div>Base income: <b id="baseLbl">0</b> /15s</div>
         </div>
       </div>
       <div class="small">Scroll: wheel / ↑↓ / W–S or use the slider. “Center on Core” jumps to the crystal.</div>
@@ -836,6 +836,7 @@ function beginHosting(){
       return {
         _epoch: 0,
            ver: 0,
+        nextIncomeAt: now() + 15000,
         status:'active',
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
@@ -989,6 +990,7 @@ function sanitizeForFirestore(input){
       ? presentNames
       : (d.players || []);
     g = restartGameInPlace(g, rootPlayers);
+    nextIncomeAt: now() + 15000,
     incomeTickAt = 0;      // reset local income cadence
     _finalizeOnce = false; // allow next defeat to finalize again
     incomeTickAt = 0;
@@ -1008,7 +1010,6 @@ function sanitizeForFirestore(input){
   // --- Tick the sim ---
   if (g.status === 'active'){
     g = simulate(g);   // your simulate() already contains abilities + slower spawns
-    g = simulate(g); // your simulate() with abilities & slower spawns
   }
 
   // --- Throttled publish to Firestore (CAS with throw-to-abort) ---
@@ -1119,6 +1120,7 @@ function sanitizeForFirestore(input){
         _epoch: (typeof g._epoch==='number'? g._epoch : 0) + 1, // bump epoch so clients re-center
         ver: 0,
         status:'active',
+        nextIncomeAt: now() + 15000,
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
         crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 },
@@ -1249,6 +1251,40 @@ function findEnemyHitAlongSegment(g, x1,y1,x2,y2, radius){
     if (segmentHitsCircle(x1,y1,x2,y2, e.x+0.5, e.y+0.5, radius)) return e;
   }
   return null;
+}
+function hardResetRun(g){
+  const tNow = now();
+  const cx = Math.floor(COLS/2), cy = ROWS - 3;
+
+  // Rebuild players with funds = (baseIncome + delta) * 10
+  const nextPlayers = (g.players || []).map((p, i) => {
+    const base  = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+    const delta = +p.baseIncomeDelta || 0;
+    const inc   = base + delta;
+    return {
+      name: p.name,
+      color: p.color || palette[i % palette.length],
+      baseIncome: base,
+      baseIncomeDelta: delta,   // keep delta as-is so growth continues
+      funds: Math.floor(inc * 10),
+      _seeded: true
+    };
+  });
+
+  return {
+    _epoch: (typeof g._epoch === 'number' ? g._epoch : 0) + 1, // triggers client re-center
+    ver: (typeof g.ver === 'number' ? g.ver : 0),              // txn will bump this
+    status: 'active',
+    level: 1, killsThisLevel: 0, killsToAdvance: 20,
+    lastTick: tNow,
+    nextSpawnAt: tNow + 1000,
+    nextIncomeAt: tNow + 30000,
+    crystal: { x: cx, y: cy, hp: 1000, maxHp: 1000 },
+    players: nextPlayers,
+    towers: [],           // 🔥 wipe towers
+    enemies: [],          // 🔥 wipe enemies
+    projectiles: []
+  };
 }
 
   // Drop-in replacement: slower spawning + enemy abilities (heals, summons, shields, armor, explode-on-death, chain shots, slow/stun auras, stealth reveal, regen, DoTs)
@@ -1666,26 +1702,23 @@ function simulate(g){
   // -----------------------------
   // Periodic income (every 30s)
   // -----------------------------
-  if (!incomeTickAt) incomeTickAt = tNow + 30000;
-  if (tNow >= incomeTickAt){
-    for (const p of g.players){
-      const base = (typeof p.baseIncome === 'number' ? p.baseIncome : 1);
-      const inc  = base + (p.baseIncomeDelta || 0);
-      p.funds += inc;
-    }
-    incomeTickAt = tNow + 30000;
-  }
+ // Periodic income (every 30s) — persisted and catch-up safe
+if (!g.nextIncomeAt) g.nextIncomeAt = tNow + 15000;
 
-  // -----------------------------
-  // Defeat handling
-  // -----------------------------
-  if (g.crystal.hp <= 0 && g.status === 'active' && !_finalizeOnce){
-    g.crystal.hp = 0;
-    g.status = 'defeat';
-    _finalizeOnce = true;
-    finalizeAndMarkDefeat(g).catch(()=>{});
+let safety = 0;
+while (tNow >= g.nextIncomeAt && safety < 10) { // catch up if host stalled
+  for (const p of g.players){
+    const base = (typeof p.baseIncome === 'number' ? p.baseIncome : 1);
+    const inc  = base + (p.baseIncomeDelta || 0);
+    p.funds += inc;
   }
-
+  g.nextIncomeAt += 15000;
+  safety++;
+}
+// Instant hard reset when crystal drops below 1 HP
+if (g.crystal.hp < 1) {
+  return hardResetRun(g);
+}
   return g;
 }
 
@@ -1962,6 +1995,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
