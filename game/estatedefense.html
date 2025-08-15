@@ -783,6 +783,12 @@ function renderLevelEnemies(g){
     `;
   }).join('');
 }
+    function canTowerTargetEnemy(nowMs, e){
+  if (!e) return false;
+  const stealth = Array.isArray(e.tags) && e.tags.includes('stealth');
+  return stealth ? ((e.revealedUntil || 0) > nowMs) : true;
+}
+
 
 function maybeRenderShop(){
   const active = state?.status === 'active';
@@ -1756,13 +1762,6 @@ function simulate(g){
     }
   }
 
-  function canTowerTargetEnemy(tNow, e){
-    if (e.tags && e.tags.includes('stealth')){
-      return (e.revealedUntil || 0) > tNow;
-    }
-    return true;
-  }
-
   function nearestEnemyInRangeVisible(g, t, range){
     let best = null, bestD2 = Infinity;
     for (const e of g.enemies){
@@ -2554,6 +2553,7 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
+
 
 
 
