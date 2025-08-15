@@ -264,77 +264,178 @@ const enqueueIntent = (() => {
     const ELEM_COL = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"};
 const TOWER_TYPES = [
   // --- Early tier (cheap): short range, very slow rate ---
-  { key:"ember",   name:"Ember",        emoji:"🔥",  el:"fire",   cost:1,   dmg:5,   range:15, rate:0.22, hp:5 },
-  { key:"cinder",  name:"Cinder",       emoji:"🧨",  el:"fire",   cost:3,   dmg:7,   range:17, rate:0.24, hp:6 },
-  { key:"frost",   name:"Frost",        emoji:"❄️",  el:"frost",  cost:4,   dmg:4,   range:16, rate:0.26, hp:5 },
-  { key:"nature",  name:"Thorn",        emoji:"🌿",  el:"nature", cost:4,   dmg:4,   range:15, rate:0.28, hp:5 },
-  { key:"volt",    name:"Volt",         emoji:"⚡",  el:"volt",   cost:4,   dmg:6,   range:14, rate:0.30, hp:5 },
+  { key:"ember",   name:"Ember",        emoji:"🔥",  el:"fire",   cost:1,   dmg:5,   range:15, rate:0.22, hp:5,
+    beam:{ mode:"normal" }, prioritize:"closest" },
+  { key:"cinder",  name:"Cinder",       emoji:"🧨",  el:"fire",   cost:3,   dmg:7,   range:17, rate:0.24, hp:6,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"frost",   name:"Frost",        emoji:"❄️",  el:"frost",  cost:4,   dmg:4,   range:16, rate:0.26, hp:5,
+    beam:{ mode:"normal" }, prioritize:"closest" },
+  { key:"nature",  name:"Thorn",        emoji:"🌿",  el:"nature", cost:4,   dmg:4,   range:15, rate:0.28, hp:5,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"volt",    name:"Volt",         emoji:"⚡",   el:"volt",   cost:4,   dmg:6,   range:14, rate:0.30, hp:5,
+    beam:{ mode:"normal" }, prioritize:"closest" },
 
   // --- Low-mid tier ---
-  { key:"flame",   name:"Flame",        emoji:"🔥",  el:"fire",   cost:15,  dmg:10,  range:19, rate:0.32, hp:12 },
-  { key:"shard",   name:"Shard",        emoji:"🧊",  el:"frost",  cost:15,  dmg:6,   range:20, rate:0.34, hp:12 },
-  { key:"bramble", name:"Bramble",      emoji:"🌱",  el:"nature", cost:15,  dmg:6,   range:21, rate:0.36, hp:12 },
-  { key:"arc",     name:"Arc",          emoji:"🪫",  el:"volt",   cost:15,  dmg:8,   range:19, rate:0.38, hp:12 },
+  { key:"flame",   name:"Flame",        emoji:"🔥",  el:"fire",   cost:15,  dmg:10,  range:19, rate:0.32, hp:12,
+    beam:{ mode:"splash", radiusT:1.4, falloff:0.55 }, prioritize:"lowestHp" },
+  { key:"shard",   name:"Shard",        emoji:"🧊",  el:"frost",  cost:15,  dmg:6,   range:20, rate:0.34, hp:12,
+    beam:{ mode:"smart" },  prioritize:"elementWeak" },
+  { key:"bramble", name:"Bramble",      emoji:"🌱",  el:"nature", cost:15,  dmg:6,   range:21, rate:0.36, hp:12,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"arc",     name:"Arc",          emoji:"🪫",  el:"volt",   cost:15,  dmg:8,   range:19, rate:0.38, hp:12,
+    beam:{ mode:"chain", bounces:1, radiusT:2.6, falloff:0.60 }, prioritize:"furthest" },
 
   // --- Mid tier ---
-  { key:"blaze",   name:"Blaze",        emoji:"🔥",  el:"fire",   cost:25,  dmg:14,  range:24, rate:0.40, hp:18 },
-  { key:"glacier", name:"Glacier",      emoji:"🥶",  el:"frost",  cost:25,  dmg:8,   range:25, rate:0.42, hp:24 },
-  { key:"grove",   name:"Grove",        emoji:"🌳",  el:"nature", cost:25,  dmg:9,   range:24, rate:0.44, hp:22 },
-  { key:"tesla",   name:"Tesla",        emoji:"🧲",  el:"volt",   cost:25,  dmg:11,  range:26, rate:0.46, hp:15 },
+  { key:"blaze",   name:"Blaze",        emoji:"🔥",  el:"fire",   cost:25,  dmg:14,  range:24, rate:0.40, hp:18,
+    beam:{ mode:"splash", radiusT:1.6, falloff:0.60 }, prioritize:"lowestHp" },
+  { key:"glacier", name:"Glacier",      emoji:"🥶",  el:"frost",  cost:25,  dmg:8,   range:25, rate:0.42, hp:24,
+    beam:{ mode:"smart" },  prioritize:"elementWeak" },
+  { key:"grove",   name:"Grove",        emoji:"🌳",  el:"nature", cost:25,  dmg:9,   range:24, rate:0.44, hp:22,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"tesla",   name:"Tesla",        emoji:"🧲",  el:"volt",   cost:25,  dmg:11,  range:26, rate:0.46, hp:15,
+    beam:{ mode:"chain", bounces:2, radiusT:3.0, falloff:0.60 }, prioritize:"furthest" },
 
   // --- Upper mid ---
-  { key:"inferno", name:"Inferno",      emoji:"🌋",  el:"fire",   cost:50,  dmg:19,  range:30, rate:0.48, hp:30 },
-  { key:"blizzard",name:"Blizzard",     emoji:"🌨️", el:"frost",  cost:50,  dmg:10,  range:30, rate:0.50, hp:35 },
-  { key:"wrathwood",name:"Wrathwood",   emoji:"🌲",  el:"nature", cost:50,  dmg:12,  range:30, rate:0.52, hp:30 },
-  { key:"tempest", name:"Tempest",      emoji:"🌩️", el:"volt",   cost:50,  dmg:15,  range:30, rate:0.54, hp:25 },
+  { key:"inferno", name:"Inferno",      emoji:"🌋",  el:"fire",   cost:50,  dmg:19,  range:30, rate:0.48, hp:30,
+    beam:{ mode:"splash", radiusT:2.0, falloff:0.60 }, prioritize:"lowestHp" },
+  { key:"blizzard",name:"Blizzard",     emoji:"🌨️", el:"frost",  cost:50,  dmg:10,  range:30, rate:0.50, hp:35,
+    beam:{ mode:"smart" },  prioritize:"elementWeak" },
+  { key:"wrathwood",name:"Wrathwood",   emoji:"🌲",  el:"nature", cost:50,  dmg:12,  range:30, rate:0.52, hp:30,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"tempest", name:"Tempest",      emoji:"🌩️", el:"volt",   cost:50,  dmg:15,  range:30, rate:0.54, hp:25,
+    beam:{ mode:"chain", bounces:2, radiusT:3.2, falloff:0.60 }, prioritize:"furthest" },
 
   // --- High tier ---
-  { key:"phoenix", name:"Phoenix",      emoji:"🪶",  el:"fire",   cost:100, dmg:25,  range:36, rate:0.56, hp:50 },
-  { key:"absolutezero", name:"Absolute Zero", emoji:"🧊", el:"frost", cost:100, dmg:13, range:36, rate:0.58, hp:55 },
-  { key:"verdant", name:"Verdant",      emoji:"🍃",  el:"nature", cost:100, dmg:16,  range:36, rate:0.60, hp:50 },
-  { key:"stormcaller", name:"Stormcaller", emoji:"⛈️", el:"volt", cost:100, dmg:20,  range:36, rate:0.62, hp:35 },
+  { key:"phoenix", name:"Phoenix",      emoji:"🪶",  el:"fire",   cost:100, dmg:25,  range:36, rate:0.56, hp:50,
+    beam:{ mode:"pierce", max:3, radiusT:0.55, falloff:0.85 }, prioritize:"furthest" },
+  { key:"absolutezero", name:"Absolute Zero", emoji:"🧊", el:"frost", cost:100, dmg:13, range:36, rate:0.58, hp:55,
+    beam:{ mode:"smart" },  prioritize:"elementWeak" },
+  { key:"verdant", name:"Verdant",      emoji:"🍃",  el:"nature", cost:100, dmg:16,  range:36, rate:0.60, hp:50,
+    beam:{ mode:"smart" },  prioritize:"lowestHp" },
+  { key:"stormcaller", name:"Stormcaller", emoji:"⛈️", el:"volt", cost:100, dmg:20,  range:36, rate:0.62, hp:35,
+    beam:{ mode:"chain", bounces:3, radiusT:3.5, falloff:0.65 }, prioritize:"furthest" },
 
   // --- Late game ---
-  { key:"solarflare", name:"Solar Flare", emoji:"☀️", el:"fire",  cost:150, dmg:26,  range:50, rate:0.64, hp:80 },
-  { key:"permafrost", name:"Permafrost",  emoji:"🧊", el:"frost", cost:150, dmg:27,  range:68, rate:0.66, hp:80 },
-  { key:"worldroot",  name:"Worldroot",   emoji:"🍀", el:"nature",cost:150, dmg:30,  range:58, rate:0.68, hp:80 },
-  { key:"thunderlord",name:"Thunderlord", emoji:"⚡", el:"volt",  cost:150, dmg:26,  range:52, rate:0.70, hp:80 },
+  { key:"solarflare", name:"Solar Flare", emoji:"☀️", el:"fire",  cost:150, dmg:26,  range:50, rate:0.64, hp:80,
+    beam:{ mode:"splash", radiusT:2.2, falloff:0.62 }, prioritize:"lowestHp" },
+  { key:"permafrost", name:"Permafrost",  emoji:"🧊", el:"frost", cost:150, dmg:27,  range:68, rate:0.66, hp:80,
+    beam:{ mode:"pierce", max:3, radiusT:0.58, falloff:0.85 }, prioritize:"elementWeak" },
+  { key:"worldroot",  name:"Worldroot",   emoji:"🍀", el:"nature",cost:150, dmg:30,  range:58, rate:0.68, hp:80,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"thunderlord",name:"Thunderlord", emoji:"⚡",  el:"volt",  cost:150, dmg:26,  range:52, rate:0.70, hp:80,
+    beam:{ mode:"chain", bounces:3, radiusT:3.6, falloff:0.65 }, prioritize:"furthest" },
 
   // --- Endgame ---
-  { key:"supernova",  name:"Supernova",   emoji:"💥", el:"fire",  cost:200, dmg:70,  range:56, rate:0.72, hp:120 },
-  { key:"cryostorm",  name:"Cryostorm",   emoji:"🌬️", el:"frost", cost:200, dmg:65,  range:74, rate:0.74, hp:120 },
-  { key:"wildheart",  name:"Wildheart",   emoji:"🪴", el:"nature", cost:200, dmg:75,  range:64, rate:0.76, hp:120 },
-  { key:"ionstorm",   name:"Ion Storm",   emoji:"🔌", el:"volt",  cost:200, dmg:90,  range:56, rate:0.78, hp:120 },
+  { key:"supernova",  name:"Supernova",   emoji:"💥", el:"fire",  cost:200, dmg:70,  range:56, rate:0.72, hp:120,
+    beam:{ mode:"pierce", max:4, radiusT:0.60, falloff:0.85 }, prioritize:"furthest" },
+  { key:"cryostorm",  name:"Cryostorm",   emoji:"🌬️", el:"frost", cost:200, dmg:65,  range:74, rate:0.74, hp:120,
+    beam:{ mode:"chain", bounces:3, radiusT:3.8, falloff:0.65 }, prioritize:"elementWeak" },
+  { key:"wildheart",  name:"Wildheart",   emoji:"🪴", el:"nature", cost:200, dmg:75,  range:64, rate:0.76, hp:120,
+    beam:{ mode:"smart" },  prioritize:"lowestHp" },
+  { key:"ionstorm",   name:"Ion Storm",   emoji:"🔌", el:"volt",  cost:200, dmg:90,  range:56, rate:0.78, hp:120,
+    beam:{ mode:"chain", bounces:4, radiusT:4.0, falloff:0.68 }, prioritize:"furthest" },
 
   // --- Legendary ---
-  { key:"aurora",     name:"Aurora",       emoji:"🌌", el:"frost",  cost:300, dmg:70,  range:78, rate:1.40, hp:200 },
-  { key:"worldtree",  name:"World Tree",   emoji:"🪵", el:"nature", cost:300, dmg:130, range:70, rate:0.82, hp:200 },
-  { key:"overcharge", name:"Overcharge",   emoji:"🔋", el:"volt",   cost:300, dmg:500, range:90, rate:0.2, hp:200 },
+  { key:"aurora",     name:"Aurora",       emoji:"🌌", el:"frost",  cost:300, dmg:70,  range:78, rate:1.40, hp:200,
+    beam:{ mode:"chain", bounces:4, radiusT:4.2, falloff:0.68 }, prioritize:"elementWeak" },
+  { key:"worldtree",  name:"World Tree",   emoji:"🪵", el:"nature", cost:300, dmg:130, range:70, rate:0.82, hp:200,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"overcharge", name:"Overcharge",   emoji:"🔋", el:"volt",   cost:300, dmg:500, range:90, rate:0.2, hp:200,
+    beam:{ mode:"chain", bounces:5, radiusT:4.0, falloff:0.70 }, prioritize:"furthest" },
 
   // Mythic-ish
-  { key:"cataclysm",  name:"Cataclysm",   emoji:"☄️", el:"fire",   cost:500, dmg:150, range:70, rate:0.86, hp:150 },
-  { key:"eventide",   name:"Eventide",    emoji:"🌒", el:"frost",  cost:500, dmg:120, range:92, rate:0.88, hp:180 },
-  { key:"evergrowth", name:"Evergrowth",  emoji:"🍀", el:"nature", cost:500, dmg:140, range:76, rate:0.90, hp:160 },
-  { key:"zeusforge",  name:"Zeusforge",   emoji:"⚡️", el:"volt",  cost:500, dmg:200, range:70, rate:0.92, hp:140 },
+  { key:"cataclysm",  name:"Cataclysm",   emoji:"☄️", el:"fire",   cost:500, dmg:150, range:70, rate:0.86, hp:150,
+    beam:{ mode:"splash", radiusT:2.6, falloff:0.65 }, prioritize:"lowestHp" },
+  { key:"eventide",   name:"Eventide",    emoji:"🌒", el:"frost",  cost:500, dmg:120, range:92, rate:0.88, hp:180,
+    beam:{ mode:"pierce", max:3, radiusT:0.62, falloff:0.85 }, prioritize:"elementWeak" },
+  { key:"evergrowth", name:"Evergrowth",  emoji:"🍀", el:"nature", cost:500, dmg:140, range:76, rate:0.90, hp:160,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"zeusforge",  name:"Zeusforge",   emoji:"⚡️", el:"volt",  cost:500, dmg:200, range:70, rate:0.92, hp:140,
+    beam:{ mode:"chain", bounces:4, radiusT:4.0, falloff:0.68 }, prioritize:"furthest" },
 
   // Relic
-  { key:"sunspike",   name:"Sunspike",    emoji:"🌞", el:"fire",   cost:800, dmg:200, range:90, rate:0.94, hp:220 },
-  { key:"cryocrown",  name:"Cryocrown",   emoji:"👑", el:"frost",  cost:800, dmg:150, range:110,rate:0.96, hp:240 },
-  { key:"worldspine", name:"Worldspine",  emoji:"🪨", el:"nature", cost:800, dmg:170, range:96, rate:0.98, hp:230 },
-  { key:"ionemperor", name:"Ion Emperor", emoji:"⚡👑", el:"volt",  cost:800, dmg:260, range:85, rate:1.00, hp:200 },
+  { key:"sunspike",   name:"Sunspike",    emoji:"🌞", el:"fire",   cost:800, dmg:200, range:90, rate:0.94, hp:220,
+    beam:{ mode:"pierce", max:4, radiusT:0.62, falloff:0.86 }, prioritize:"furthest" },
+  { key:"cryocrown",  name:"Cryocrown",   emoji:"👑", el:"frost",  cost:800, dmg:150, range:110,rate:0.96, hp:240,
+    beam:{ mode:"pierce", max:3, radiusT:0.60, falloff:0.86 }, prioritize:"elementWeak" },
+  { key:"worldspine", name:"Worldspine",  emoji:"🪨", el:"nature", cost:800, dmg:170, range:96, rate:0.98, hp:230,
+    beam:{ mode:"smart" },  prioritize:"closest" },
+  { key:"ionemperor", name:"Ion Emperor", emoji:"⚡👑", el:"volt",  cost:800, dmg:260, range:85, rate:1.00, hp:200,
+    beam:{ mode:"chain", bounces:5, radiusT:4.2, falloff:0.70 }, prioritize:"furthest" },
 
   // Eternal
-  { key:"supercritical", name:"Supercritical", emoji:"🧪", el:"fire",   cost:1200, dmg:300, range:112, rate:1.02, hp:300 },
-  { key:"absolutezero_plus", name:"Absolute Zero+", emoji:"❄️➕", el:"frost", cost:1200, dmg:220, range:120, rate:1.04, hp:320 },
-  { key:"verdantking", name:"Verdant King", emoji:"👑🌿", el:"nature", cost:1200, dmg:260, range:110, rate:1.06, hp:300 },
-  { key:"overcharge_mk2", name:"Overcharge Mk II", emoji:"🔋2", el:"volt", cost:1200, dmg:500, range:100, rate:1.08, hp:260 },
+  { key:"supercritical", name:"Supercritical", emoji:"🧪", el:"fire",   cost:1200, dmg:300, range:112, rate:1.02, hp:300,
+    beam:{ mode:"splash", radiusT:2.8, falloff:0.66 }, prioritize:"lowestHp" },
+  { key:"absolutezero_plus", name:"Absolute Zero+", emoji:"❄️➕", el:"frost", cost:1200, dmg:220, range:120, rate:1.04, hp:320,
+    beam:{ mode:"pierce", max:4, radiusT:0.64, falloff:0.86 }, prioritize:"elementWeak" },
+  { key:"verdantking", name:"Verdant King", emoji:"👑🌿", el:"nature", cost:1200, dmg:260, range:110, rate:1.06, hp:300,
+    beam:{ mode:"smart" },  prioritize:"lowestHp" },
+  { key:"overcharge_mk2", name:"Overcharge Mk II", emoji:"🔋2", el:"volt", cost:1200, dmg:500, range:100, rate:1.08, hp:260,
+    beam:{ mode:"chain", bounces:6, radiusT:4.4, falloff:0.70 }, prioritize:"furthest" },
 
   // Transcendent
-  { key:"quasar",     name:"Quasar",      emoji:"✨",  el:"fire",   cost:2000, dmg:400, range:124, rate:1.5, hp:360 },
-  { key:"cryosingularity", name:"Cryo Singularity", emoji:"🌀", el:"frost", cost:2000, dmg:300, range:136, rate:1.6, hp:360 },
-  { key:"worldheart_prime", name:"Worldheart Prime", emoji:"💚", el:"nature", cost:2000, dmg:350, range:126, rate:1.55, hp:360 },
-  { key:"ion_god",    name:"Ion God",     emoji:"⚡🕇", el:"volt",  cost:2000, dmg:700, range:116, rate:1.16, hp:320 }
+  { key:"quasar",     name:"Quasar",      emoji:"✨",  el:"fire",   cost:2000, dmg:400, range:124, rate:1.5, hp:360,
+    beam:{ mode:"splash", radiusT:3.0, falloff:0.68 }, prioritize:"lowestHp" },
+  { key:"cryosingularity", name:"Cryo Singularity", emoji:"🌀", el:"frost", cost:2000, dmg:300, range:136, rate:1.6, hp:360,
+    beam:{ mode:"chain", bounces:6, radiusT:4.6, falloff:0.70 }, prioritize:"elementWeak" },
+  { key:"worldheart_prime", name:"Worldheart Prime", emoji:"💚", el:"nature", cost:2000, dmg:350, range:126, rate:1.55, hp:360,
+    beam:{ mode:"smart" },  prioritize:"lowestHp" },
+  { key:"ion_god",    name:"Ion God",     emoji:"⚡🕇", el:"volt",  cost:2000, dmg:700, range:116, rate:1.16, hp:320,
+    beam:{ mode:"chain", bounces:7, radiusT:4.8, falloff:0.72 }, prioritize:"furthest" }
+
+    // --- Eldritch (post-Transcendent) ---
+  { key:"cinder_god",    name:"Cinder God",    emoji:"🔥🕯️", el:"fire",
+    cost:3000, dmg:520,  range:132, rate:1.62, hp:420,
+    beam:{ mode:"splash", radiusT:3.2, falloff:0.68 }, prioritize:"lowestHp" },
+
+  { key:"entropy_crown", name:"Entropy Crown", emoji:"🧊👑", el:"frost",
+    cost:3000, dmg:380,  range:144, rate:1.72, hp:420,
+    beam:{ mode:"pierce", max:5, radiusT:0.66, falloff:0.86 }, prioritize:"elementWeak" },
+
+  { key:"evergloom",     name:"Evergloom",     emoji:"🌿🌑", el:"nature",
+    cost:3000, dmg:460,  range:134, rate:1.60, hp:420,
+    beam:{ mode:"smart" }, prioritize:"lowestHp" },
+
+  { key:"arc_overlord",  name:"Arc Overlord",  emoji:"⚡👁️", el:"volt",
+    cost:3000, dmg:900,  range:122, rate:1.20, hp:380,
+    beam:{ mode:"chain", bounces:8, radiusT:4.9, falloff:0.72 }, prioritize:"furthest" },
+
+  // --- Paradox ---
+  { key:"timeflare",       name:"Timeflare",       emoji:"🔥⏳", el:"fire",
+    cost:4500, dmg:680,  range:140, rate:1.74, hp:480,
+    beam:{ mode:"splash", radiusT:3.4, falloff:0.70 }, prioritize:"lowestHp" },
+
+  { key:"chrono_glacier",  name:"Chrono Glacier",  emoji:"🧊⏱️", el:"frost",
+    cost:4500, dmg:480,  range:150, rate:1.84, hp:500,
+    beam:{ mode:"pierce", max:6, radiusT:0.68, falloff:0.86 }, prioritize:"elementWeak" },
+
+  { key:"paradox_grove",   name:"Paradox Grove",   emoji:"🌳♾️", el:"nature",
+    cost:4500, dmg:560,  range:142, rate:1.70, hp:500,
+    beam:{ mode:"smart" }, prioritize:"closest" },
+
+  { key:"omega_coil",      name:"Omega Coil",      emoji:"⚡Ω", el:"volt",
+    cost:4500, dmg:1150, range:128, rate:1.24, hp:420,
+    beam:{ mode:"chain", bounces:9, radiusT:5.1, falloff:0.73 }, prioritize:"furthest" },
+
+  // --- Omega ---
+  { key:"ragnarok_sun",   name:"Ragnarok Sun",   emoji:"🌞💀", el:"fire",
+    cost:6500, dmg:1100, range:150, rate:1.88, hp:560,
+    beam:{ mode:"pierce", max:6, radiusT:0.70, falloff:0.86 }, prioritize:"furthest" },
+
+  { key:"cold_entropy",   name:"Cold Entropy",   emoji:"🧊🌀", el:"frost",
+    cost:6500, dmg:620,  range:160, rate:1.95, hp:560,
+    beam:{ mode:"pierce", max:6, radiusT:0.70, falloff:0.86 }, prioritize:"elementWeak" },
+
+  { key:"verdant_omega",  name:"Verdant Ω",      emoji:"🌿Ω",  el:"nature",
+    cost:6500, dmg:700,  range:152, rate:1.80, hp:560,
+    beam:{ mode:"smart" }, prioritize:"lowestHp" },
+
+  { key:"ion_singularity",name:"Ion Singularity",emoji:"⚡🌀", el:"volt",
+    cost:6500, dmg:1500, range:132, rate:1.30, hp:500,
+    beam:{ mode:"chain", bounces:12, radiusT:5.6, falloff:0.75 }, prioritize:"furthest" },
+
 ];
+
 
 
 
@@ -344,6 +445,31 @@ const TOWER_TYPES = [
       volt:   { frost:1.5, nature:0.8, fire:1.0, volt:1.0 },
       frost:  { fire:1.5, nature:0.8, volt:1.0, frost:1.0 }
     };
+
+    // ---------- Beam presets & defaults ----------
+const BEAM_DEFAULTS = {
+  normal: { },
+  smart:  { },                               // avoids overkill using a per-tick focus map
+  splash: { radiusT: 1.6, falloff: 0.60 },   // 60% dmg to neighbors in radius
+  chain:  { bounces: 2, radiusT: 3.0, falloff: 0.60 }, // 2 extra jumps with falloff
+  pierce: { max: 3, radiusT: 0.48, falloff: 0.85 }     // hit up to 3 along line
+};
+
+// Optionally map certain tower keys to default modes (fallback to "normal")
+const TOWER_BEAM_PRESETS = {
+  arc: 'chain', tesla: 'chain', tempest: 'chain', stormcaller: 'chain', ionstorm: 'chain',
+  blaze: 'splash', inferno: 'splash', solarflare: 'splash',
+  phoenix: 'pierce', supernova: 'pierce'
+};
+
+// Optional per-tower prioritization (fallback to 'closest')
+const TOWER_PRIORITY_PRESETS = {
+  // examples; tweak freely
+  tesla: 'furthest',  // zap things deeper in lane
+  blaze: 'lowestHp',  // pop weaklings to proc splash
+  stormcaller: 'elementWeak' // pick enemies weak to this element multiplier
+};
+
     const ENEMY_TYPES = [
   // --- Early game (Lv 1–5) ---
   { key:"slime",   el:"nature", hp:20, dmg:2, spd:0.8, range:0,  target:"core",  minLevel:1, tags:["swarm"] },
@@ -1200,13 +1326,15 @@ function sanitizeForFirestore(input){
         const spot = nearestFreeTile(g.crystal.x, g.crystal.y - 1, occ); if (!spot) return g;
 
         const id = 't' + Math.random().toString(36).slice(2);
-        g.towers.push({
-          id, x: spot.x, y: spot.y, owner: actor,
-          ownerColor: p.color || '#888',            // <-- store owner color
-          emoji: def.emoji, el: def.el,
-          hp: def.hp, maxHp: def.hp, level: 1,
-          dmg: def.dmg, range: def.range, rate: def.rate, cd: 0
-        });
+       g.towers.push({
+        id, x: spot.x, y: spot.y, owner: actor,
+        ownerColor: p.color || '#888',
+        emoji: def.emoji, el: def.el,
+        hp: def.hp, maxHp: def.hp, level: 1,
+        dmg: def.dmg, range: def.range, rate: def.rate, cd: 0,
+        beam: def.beam || { mode:"normal" },
+        prioritize: def.prioritize || "closest"
+      });
         p.funds -= def.cost;
         return g;
       }
@@ -1311,6 +1439,156 @@ function hardResetRun(g){
     projectiles: []
   };
 }
+
+function elemMultFor(attEl, defEl){
+  return (ELEM_MULT?.[attEl]?.[defEl]) ?? 1.0;
+}
+function enemyDistance2(t, e){
+  const dx=(t.x+0.5)-(e.x+0.5), dy=(t.y+0.5)-(e.y+0.5);
+  return dx*dx+dy*dy;
+}
+function enemiesInRange(g, t, r){
+  const r2 = r*r;
+  const out=[];
+  for (const e of g.enemies){
+    if (e.hp <= 0) continue;
+    if (!canTowerTargetEnemy(now(), e)) continue; // your stealth-check
+    if (enemyDistance2(t,e) <= r2) out.push(e);
+  }
+  return out;
+}
+function priorityScore(prio, t, e){
+  switch(prio){
+    case 'furthest':   return -(e.y); // bigger y first
+    case 'lowestHp':   return e.hp;
+    case 'highestHp':  return -e.hp;
+    case 'elementWeak':return -elemMultFor(t.el, e.el); // higher multiplier -> more negative (sort asc)
+    case 'closest':
+    default:           return enemyDistance2(t,e);
+  }
+}
+function estimateHitDamage(t, e){
+  // Mirror applyEnemyDamage order: element → shield → armor
+  let dmg = Math.max(0, Math.round((t.dmg||1) * elemMultFor(t.el, e.el)));
+  if (e.shield && e.shield > 0){
+    const used = Math.min(e.shield, dmg);
+    dmg -= used;
+  }
+  if (e.armor && e.armor > 0){
+    dmg = Math.max(0, dmg - e.armor);
+  }
+  return dmg;
+}
+function sortByScoreAsc(arr, scoreFn){
+  return arr.sort((a,b)=>scoreFn(a)-scoreFn(b));
+}
+
+    function fire_normal(g, t, tNow, cand){
+  if (!cand) return false;
+  const died = applyEnemyDamage(g, cand, t.dmg, t.el);
+  addPlannedDamage(g, cand, estimateHitDamage(t, cand));
+  return died;
+}
+
+function fire_smart(g, t, tNow, candidates){
+  // Skip enemies that already have enough planned damage this tick
+  for (const e of candidates){
+    if (!isOverkilled(g, e)){
+      const died = applyEnemyDamage(g, e, t.dmg, t.el);
+      addPlannedDamage(g, e, estimateHitDamage(t, e));
+      return died;
+    }
+  }
+  // Fall back to the first if all "overkilled"
+  const e = candidates[0];
+  if (e){
+    const died = applyEnemyDamage(g, e, t.dmg, t.el);
+    addPlannedDamage(g, e, estimateHitDamage(t, e));
+    return died;
+  }
+  return false;
+}
+
+function fire_splash(g, t, tNow, main, opt){
+  if (!main) return false;
+  const { radiusT=1.6, falloff=0.6 } = opt || {};
+  let anyKill = false;
+  // primary
+  if (applyEnemyDamage(g, main, t.dmg, t.el)) anyKill = true;
+  addPlannedDamage(g, main, estimateHitDamage(t, main));
+
+  // neighbors
+  const r2 = radiusT*radiusT;
+  for (const e of g.enemies){
+    if (e === main || e.hp <= 0) continue;
+    const dx=(main.x+0.5)-(e.x+0.5), dy=(main.y+0.5)-(e.y+0.5);
+    if (dx*dx+dy*dy <= r2){
+      const d = Math.max(1, Math.round(t.dmg * falloff));
+      if (applyEnemyDamage(g, e, d, t.el)) anyKill = true;
+      addPlannedDamage(g, e, estimateHitDamage({ ...t, dmg:d }, e));
+    }
+  }
+  return anyKill;
+}
+
+function fire_chain(g, t, tNow, start, opt){
+  if (!start) return false;
+  const { bounces=2, radiusT=3.0, falloff=0.6 } = opt || {};
+  let anyKill = false;
+  let cur = start;
+  let curDmg = t.dmg;
+
+  for (let i=0; i<=bounces; i++){
+    if (!cur || cur.hp <= 0) break;
+    // hit current
+    if (applyEnemyDamage(g, cur, Math.max(1, Math.round(curDmg)), t.el)) anyKill = true;
+    addPlannedDamage(g, cur, estimateHitDamage({ ...t, dmg: curDmg }, cur));
+
+    // find next target in bounce radius around current (excluding already hit ones by ID)
+    if (i === bounces) break;
+    let best=null, bd2=Infinity;
+    for (const e of g.enemies){
+      if (e.hp <= 0 || e.id === cur.id) continue;
+      const dx=(cur.x+0.5)-(e.x+0.5), dy=(cur.y+0.5)-(e.y+0.5);
+      const d2=dx*dx+dy*dy;
+      if (d2 <= radiusT*radiusT && d2 < bd2){ best=e; bd2=d2; }
+    }
+    cur = best;
+    curDmg = Math.max(1, Math.round(curDmg * falloff));
+  }
+  return anyKill;
+}
+
+function fire_pierce(g, t, tNow, target, opt){
+  if (!target) return false;
+  const { max=3, radiusT=0.48, falloff=0.85 } = opt || {};
+  // Define line from tower to selected target and hit along path
+  const x1=t.x+0.5, y1=t.y+0.5, x2=target.x+0.5, y2=target.y+0.5;
+
+  // Collect all intersections; compute distance along beam
+  const hits=[];
+  for (const e of g.enemies){
+    if (e.hp <= 0) continue;
+    if (segmentHitsCircle(x1, y1, x2, y2, e.x+0.5, e.y+0.5, radiusT)){
+      const dx=e.x+0.5 - x1, dy=e.y+0.5 - y1;
+      const d2=dx*dx+dy*dy;
+      hits.push({ e, d2 });
+    }
+  }
+  hits.sort((a,b)=>a.d2-b.d2);
+
+  let anyKill=false, curDmg=t.dmg, count=0;
+  for (const h of hits){
+    if (count >= max) break;
+    const e = h.e;
+    if (applyEnemyDamage(g, e, Math.max(1, Math.round(curDmg)), t.el)) anyKill = true;
+    addPlannedDamage(g, e, estimateHitDamage({ ...t, dmg:curDmg }, e));
+    curDmg = Math.max(1, Math.round(curDmg * falloff));
+    count++;
+  }
+  return anyKill;
+}
+
 
   // Drop-in replacement: slower spawning + enemy abilities (heals, summons, shields, armor, explode-on-death, chain shots, slow/stun auras, stealth reveal, regen, DoTs)
 
@@ -1687,39 +1965,69 @@ function simulate(g){
   // -----------------------------
   // Towers (HITSCAN — instant damage)
   // -----------------------------
-  for (const t of g.towers){
-    const effectiveRate = Math.max(0.05, (t.rate || 1) * (t._rateMult || 1));
-    t.cd = (typeof t.cd === 'number') ? t.cd - dt : 0;
-    if (t._stunned) continue;
+ // ---------- Towers (HITSCAN with modes) ----------
+g._focusMap = new Map(); // reset planned damage each tick
 
-    const tgt = nearestEnemyInRangeVisible(g, t, t.range);
-    if (!tgt || t.cd > 0) continue;
+for (const t of g.towers){
+  const rate = Math.max(0.05, (t.rate || 1) * (t._rateMult || 1));
+  t.cd = (typeof t.cd === 'number') ? t.cd - dt : 0;
 
-    // Apply damage instantly
-    let rawDmg = Math.max(1, Math.round(t.dmg));
-    if (t._vulnMult && (t._vulnUntil||0) > tNow){
-      rawDmg = Math.round(rawDmg * t._vulnMult);
-    }
-    const died = applyEnemyDamage(g, tgt, rawDmg, t.el);
+  if (t._stunned) continue;
+  if (t.cd > 0) continue;
 
-    // Economy / level up on kill
-    if (died){
-      const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
-      const owner = g.players.find(z => z.name === t.owner);
-      if (owner){
-        owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
-      }
-      g.killsThisLevel = (g.killsThisLevel || 0) + 1;
-      if (g.killsThisLevel >= (g.killsToAdvance || 20)){
-        g.level = (g.level || 1) + 1;
-        g.killsThisLevel = 0;
-        g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
-      }
-    }
-
-    // cooldown
-    t.cd = 1 / Math.max(0.2, effectiveRate);
+  // Ensure tower has beam config (backfill for old towers)
+  if (!t.beam || !t.beam.mode){
+    const m = TOWER_BEAM_PRESETS[t._key || t.key] || 'normal';
+    t.beam = { mode: m, ...BEAM_DEFAULTS[m] };
   }
+  if (!t.prioritize) t.prioritize = TOWER_PRIORITY_PRESETS[t._key || t.key] || 'closest';
+
+  // Acquire candidates and/or primary target based on priority
+  const cand = enemiesInRange(g, t, t.range);
+  if (cand.length === 0){ t.cd = 0.1; continue; }
+
+  const sorted = cand.sort((a,b)=> priorityScore(t.prioritize, t, a) - priorityScore(t.prioritize, t, b));
+  const primary = sorted[0];
+
+  let killed = false;
+  switch(t.beam.mode){
+    case 'smart':
+      killed = fire_smart(g, t, tNow, sorted);
+      break;
+    case 'splash':
+      killed = fire_splash(g, t, tNow, primary, t.beam);
+      break;
+    case 'chain':
+      killed = fire_chain(g, t, tNow, primary, t.beam);
+      break;
+    case 'pierce':
+      killed = fire_pierce(g, t, tNow, primary, t.beam);
+      break;
+    case 'normal':
+    default:
+      killed = fire_normal(g, t, tNow, primary);
+      break;
+  }
+
+  // Economy / level-up on kill (unchanged)
+  if (killed){
+    const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
+    const owner = g.players.find(z => z.name === t.owner);
+    if (owner){
+      owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
+    }
+    g.killsThisLevel = (g.killsThisLevel || 0) + 1;
+    if (g.killsThisLevel >= (g.killsToAdvance || 20)){
+      g.level = (g.level || 1) + 1;
+      g.killsThisLevel = 0;
+      g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
+    }
+  }
+
+  // Cooldown (same cadence as you had)
+  t.cd = 1 / Math.max(0.2, rate);
+}
+
 
   // Cleanup dead enemies (in case anything went ≤0 outside applyEnemyDamage)
   g.enemies = g.enemies.filter(e => e.hp > 0);
@@ -1808,6 +2116,37 @@ if (g.crystal.hp < 1) {
     if (!msg.startsWith('ABORT_')){
       console.warn('finalizeAndMarkDefeat txn error:', e);
     }
+  }
+}
+// --- FX registries ---
+const _fxRings = [];   // expanding shockwaves
+const _fxSparks = [];  // tiny particles
+
+function addShockwaveRing(xT,yT, rT0=0.3, rT1=2.0, dur=220, color="#fff", w=2){
+  const now = Date.now();
+  _fxRings.push({x:xT,y:yT,rT0,rT1,start:now,until:now+dur,color,alpha0:0.6,alpha1:0.0,w});
+}
+
+function addSparkBurst(xT,yT, n=8, speedT=6, dur=180, color="#fff"){
+  const now = Date.now();
+  for (let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2;
+    const s = (0.4+0.6*Math.random())*speedT;
+    _fxSparks.push({x:xT,y:yT,vx:Math.cos(a)*s,vy:Math.sin(a)*s,start:now,until:now+dur,color});
+  }
+}
+
+// Lightning polyline built from little tracer segments with jitter
+function addLightningArc(x1,y1,x2,y2, segs=4, jitterT=0.25, dur=90, color="#ffd54f", w=3){
+  let px=x1, py=y1;
+  for (let i=1;i<=segs;i++){
+    const t = i/segs;
+    const bx = x1 + (x2-x1)*t;
+    const by = y1 + (y2-y1)*t;
+    const nx = bx + (Math.random()*2-1)*jitterT;
+    const ny = by + (Math.random()*2-1)*jitterT;
+    addTracer(px,py,nx,ny,dur,color,w,0.9);
+    px=nx; py=ny;
   }
 }
 
@@ -1959,44 +2298,146 @@ function draw(){
   }
 
   // ----- Local visual fire (client-only beams) -----
-  if (!window._vizCd) window._vizCd = new Map();
-  const enMap = (b && b.enemies && b.enemies.size) ? b.enemies : null;
-  for (const t of (state.towers || [])){
-    const key = t.id;
-    const cur = window._vizCd.get(key) || { cd: 0, rate: Math.max(0.2, t.rate || 1) };
-    const effectiveRate = Math.max(0.05, (t.rate || 1));
-    cur.cd -= 1/30; // ~30 FPS cadence
+ // ----- Local visual fire (client-only beams) -----
+if (!window._vizCd) window._vizCd = new Map();
+const enMap = (b && b.enemies && b.enemies.size) ? b.enemies : null;
 
-    if (cur.cd <= 0){
-      let pick = null;
-      if (enMap){
-        let best=null, bd=1e9;
-        for (const e of enMap.values()){
-          const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-e.y;
-          const d2=dx*dx+dy*dy;
-          if (d2 < bd && d2 <= (t.range*t.range)) { bd=d2; best=e; }
-        }
-        pick = best;
-      } else {
-        pick = (state.enemies||[]).reduce((best,e)=>{
-          const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-e.y;
-          const d2=dx*dx+dy*dy;
-          return (d2 <= (t.range*t.range) && (!best || d2 < best.d2)) ? {e,d2} : best;
-        }, null)?.e || null;
+// helpers scoped to draw()
+const elCol = (el)=> (ELEM_COL && ELEM_COL[el]) || "#222";
+function neighborsInRadius(ent, rT){
+  const out=[]; if (!enMap || !ent) return out;
+  const r2 = rT*rT;
+  for (const e of enMap.values()){
+    if (!e || e.id===ent.id) continue;
+    const dx = (ent.x - e.x), dy = (ent.y - e.y);
+    if (dx*dx + dy*dy <= r2) out.push(e);
+  }
+  return out;
+}
+function buildChainPath(start, bounces, rT){
+  if (!enMap || !start) return [];
+  const path=[start]; let cur=start;
+  for (let i=0;i<bounces;i++){
+    let best=null, bd=Infinity;
+    for (const e of enMap.values()){
+      if (!e || path.some(p=>p.id===e.id)) continue;
+      const dx = (cur.x - e.x), dy = (cur.y - e.y);
+      const d2 = dx*dx + dy*dy;
+      if (d2 <= rT*rT && d2 < bd){ best=e; bd=d2; }
+    }
+    if (!best) break;
+    path.push(best); cur=best;
+  }
+  return path;
+}
+function hitsAlongLine(x1,y1,x2,y2, radiusT, max=4){
+  const out=[];
+  for (const e of (enMap?.values?.() || [])){
+    if (!e) continue;
+    if (segmentHitsCircle(x1,y1,x2,y2, e.x+0.5, e.y+0.5, radiusT)){
+      const dx=(e.x+0.5)-x1, dy=(e.y+0.5)-y1;
+      out.push({ e, d2: dx*dx+dy*dy });
+    }
+  }
+  out.sort((a,b)=>a.d2-b.d2);
+  return out.slice(0,max);
+}
+
+for (const t of (state.towers || [])){
+  const key = t.id;
+  const cur = window._vizCd.get(key) || { cd: 0, rate: Math.max(0.2, t.rate || 1) };
+
+  // respect slows/stuns so we don't draw “ghost” beams
+  const rateMult = (t._rateMult || 1);
+  const effectiveRate = Math.max(0.05, (t.rate || 1) * rateMult);
+  cur.cd -= 1/30;
+  if (t._stunned) { cur.cd = 0.2; window._vizCd.set(key, cur); continue; }
+
+  // pick target roughly like the sim
+  let pick = null;
+  if (enMap){
+    let best=null, bd=1e9;
+    for (const e of enMap.values()){
+      const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-e.y; const d2=dx*dx+dy*dy;
+      if (d2 <= (t.range*t.range) && d2 < bd){ best=e; bd=d2; }
+    }
+    pick = best;
+  } else {
+    pick = (state.enemies||[]).reduce((best,e)=>{
+      const dx=(t.x+0.5)-e.x, dy=(t.y+0.5)-e.y; const d2=dx*dx+dy*dy;
+      return (d2 <= (t.range*t.range) && (!best || d2 < best.d2)) ? {e,d2} : best;
+    }, null)?.e || null;
+  }
+
+  if (cur.cd <= 0){
+    const mode = (t.beam && t.beam.mode) || "normal";
+    const col  = elCol(t.el);
+    const w    = beamWidthFromDamage(t.dmg || 5);
+    const tx = t.x+0.5, ty = t.y+0.5;
+
+    if (!pick){
+      cur.cd = 0.1;
+      window._vizCd.set(key, cur);
+      continue;
+    }
+
+    // NORMAL / SMART: single clean beam
+    if (mode === "normal" || mode === "smart"){
+      addTracer(tx,ty, (pick.x||pick.X)+0.5, (pick.y||pick.Y)+0.5, 90, col, w, 0.9);
+      // tiny muzzle flash
+      addShockwaveRing(tx,ty, 0.2, 0.55, 110, col, 1.5);
+    }
+
+    // SPLASH: impact shockwave + spokes to neighbors
+    else if (mode === "splash"){
+      const ix = (pick.x||pick.X)+0.5, iy = (pick.y||pick.Y)+0.5;
+      addTracer(tx,ty, ix,iy, 90, col, w, 0.9);
+      const rT = Math.max(1.0, (t.beam.radiusT || 1.6));
+      const neigh = neighborsInRadius(pick, rT).slice(0, 4);
+      for (const n of neigh){
+        addTracer(ix,iy, n.x+0.5, n.y+0.5, 80, col, Math.max(2, w*0.6), 0.6);
       }
+      addShockwaveRing(ix,iy, 0.4, rT, 160, col, 2.2);
+      if (t.dmg >= 150) addSparkBurst(ix,iy, 10, 7, 220, col);
+    }
 
-      if (pick){
-        // your requested snippet:
-        const col = (ELEM_COL && ELEM_COL[t.el]) || "#222";
-        const w   = beamWidthFromDamage(t.dmg || 5);
-        addTracer(t.x+0.5, t.y+0.5, (pick.x||pick.X)+0.5, (pick.y||pick.Y)+0.5, 90, col, w);
-        cur.cd = 1 / effectiveRate;
-      } else {
-        cur.cd = 0.1;
+    // CHAIN: jittery lightning that bounces
+    else if (mode === "chain"){
+      const bounces = Math.max(1, t.beam.bounces || 2);
+      const rT      = Math.max(2.4, t.beam.radiusT || 3.0);
+      const path = buildChainPath(pick, bounces, rT);
+      // draw first leg from tower
+      if (path.length){
+        addLightningArc(tx,ty, path[0].x+0.5, path[0].y+0.5, 5, 0.25, 95, col, Math.max(3, w*0.9));
+        addShockwaveRing(tx,ty, 0.2, 0.6, 110, col, 1.4);
+      }
+      // draw bounces
+      for (let i=0;i<path.length-1;i++){
+        const a = path[i], b2 = path[i+1];
+        addLightningArc(a.x+0.5,a.y+0.5, b2.x+0.5,b2.y+0.5, 5, 0.30, 95, col, Math.max(2.5, w*0.8));
+        addSparkBurst(b2.x+0.5,b2.y+0.5, 6, 5, 160, col);
       }
     }
-    window._vizCd.set(key, cur);
+
+    // PIERCE: long line through many, with rings on each hit
+    else if (mode === "pierce"){
+      const ix = (pick.x||pick.X)+0.5, iy = (pick.y||pick.Y)+0.5;
+      const max = Math.max(2, t.beam.max || 3);
+      const rT  = Math.max(0.48, t.beam.radiusT || 0.55);
+      addTracer(tx,ty, ix,iy, 95, col, w+1, 0.95);
+
+      const hits = hitsAlongLine(tx,ty, ix,iy, rT, max);
+      for (const h of hits){
+        addShockwaveRing(h.e.x+0.5, h.e.y+0.5, 0.3, 0.9, 140, col, 2.0);
+        if (t.dmg >= 200) addSparkBurst(h.e.x+0.5, h.e.y+0.5, 8, 6, 180, col);
+      }
+    }
+
+    cur.cd = 1 / effectiveRate;
   }
+
+  window._vizCd.set(key, cur);
+}
 
   // ----- Beams on top -----
   for (let i=_tracers.length-1; i>=0; i--){
@@ -2011,6 +2452,45 @@ function draw(){
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     ctx.restore();
   }
+  // ----- Shockwaves (rings) -----
+for (let i=_fxRings.length-1; i>=0; i--){
+  const f = _fxRings[i];
+  const nowMs2 = Date.now();
+  const life = f.until - f.start;
+  const t = (nowMs2 - f.start) / Math.max(1, life);
+  if (t >= 1){ _fxRings.splice(i,1); continue; }
+  const rT = f.rT0 + (f.rT1 - f.rT0) * t;
+  const alpha = f.alpha0 + (f.alpha1 - f.alpha0) * t;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = f.color;
+  ctx.lineWidth = f.w;
+  ctx.beginPath();
+  ctx.arc(f.x * TILE, f.y * TILE - camY, rT * TILE, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ----- Sparks -----
+for (let i=_fxSparks.length-1; i>=0; i--){
+  const p = _fxSparks[i];
+  const nowMs2 = Date.now();
+  const life = p.until - p.start;
+  const t = (nowMs2 - p.start) / Math.max(1, life);
+  if (t >= 1){ _fxSparks.splice(i,1); continue; }
+
+  const dt = (nowMs2 - p.start) / 1000;
+  const x = (p.x + p.vx * dt) * TILE;
+  const y = (p.y + p.vy * dt) * TILE - camY;
+
+  ctx.save();
+  ctx.globalAlpha = 1 - t;
+  ctx.fillStyle = p.color;
+  ctx.fillRect(x-1, y-1, 2, 2);
+  ctx.restore();
+}
+
 }
 
 
@@ -2020,6 +2500,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
