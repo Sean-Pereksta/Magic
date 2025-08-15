@@ -417,7 +417,7 @@ const TOWER_TYPES = [
   { key:"titan",   el:"volt",   hp:180,dmg:20,spd:0.45,range:0,  target:"core",  minLevel:30, tags:["armored","shielded","boss"], armor:5, shield:30 }
 ];
 
-    const fmt3 = (n)=> (Math.round((+n||0)*1000)/1000).toFixed(3);
+    const fmt3 = (n)=> (Math.round((+n||0)*100)/100).toFixed(3);
 
 
     // ----- State -----
@@ -865,7 +865,7 @@ function beginHosting(){
         status:'active',
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
-        crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 },
+        crystal:{ x:cx, y:cy, hp:100, maxHp:100 },
         players: seededPlayers,
         towers:[], enemies:[], projectiles:[]
       };
@@ -1148,7 +1148,7 @@ function sanitizeForFirestore(input){
         nextIncomeAt: now() + 15000,
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
-        crystal:{ x:cx, y:cy, hp:1000, maxHp:1000 },
+        crystal:{ x:cx, y:cy, hp:100, maxHp:100 },
         players: nextPlayers,
         towers:[], enemies:[], projectiles:[]
       };
@@ -1304,7 +1304,7 @@ function hardResetRun(g){
     lastTick: tNow,
     nextSpawnAt: tNow + 1000,
     nextIncomeAt: tNow + 30000,
-    crystal: { x: cx, y: cy, hp: 1000, maxHp: 1000 },
+    crystal: { x: cx, y: cy, hp: 100, maxHp: 100 },
     players: nextPlayers,
     towers: [],           // 🔥 wipe towers
     enemies: [],          // 🔥 wipe enemies
@@ -2020,6 +2020,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
