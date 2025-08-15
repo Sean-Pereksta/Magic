@@ -443,21 +443,28 @@ const enqueueIntent = (() => {
       return null;
     }
 
-   function makeWritableGame(g){
-  // Leanest: don't publish projectiles at all
-  return {
+function makeWritableGame(g){
+  const clone = {
     ...g,
-    projectiles: [],                             // 👈 no bullets in network payload
+    projectiles: [],                             // 🚫 no bullets on the wire
     enemies: Array.isArray(g.enemies) ? g.enemies : [],
     towers:  Array.isArray(g.towers)  ? g.towers  : []
+    // keep underscore keys if you previously chose to
   };
-}
-    // Cosmetic tracers: [{x1,y1,x2,y2, until}]
-const _tracers = [];
-function addTracer(x1,y1,x2,y2, durMs=90){
-  _tracers.push({ x1, y1, x2, y2, until: Date.now() + durMs });
+  return sanitizeForFirestore(clone);
 }
 
+ const _tracers = [];
+function addTracer(x1,y1,x2,y2, durMs=90, col="#222", w=2.5, alpha=0.85){
+  _tracers.push({ x1, y1, x2, y2, until: Date.now() + durMs, col, w, alpha });
+}
+
+// Nice mapping: 1.5px min up to 10px max, mostly linear to dmg
+function beamWidthFromDamage(dmg){
+  const d = Math.max(0, Number(dmg) || 0);
+  const w = 1.5 + d * 0.20;      // 5 dmg → 2.5px, 25 dmg → 6.5px, 50 dmg → 11.5px (then capped)
+  return Math.min(10, w);
+}
 
 
  // --- Shop ---
@@ -1195,59 +1202,51 @@ function simulate(g){
   // Tunables
   // -----------------------------
   const SPAWN = {
-    BASE_MS: 6000,        // much slower
+    BASE_MS: 6000,
     MIN_MS:  2500,
-    DECAY_MS_PER_LVL: 30, // gentle ramp
+    DECAY_MS_PER_LVL: 30,
     PACK_BASE: 1,
     PACK_PER_LVL: 0.35,
     PACK_CAP:  8
   };
 
   const AURAS = {
-    slowAuraFactor: 0.7,     // towers fire 30% slower under slow aura
-    slowAuraRangeT:  4.5,    // tiles
-    slowAuraTickMs:  250     // refresh rate, not strict—implemented as "extend until"
+    slowAuraFactor: 0.7,
+    slowAuraRangeT:  4.5,
+    slowAuraTickMs:  250
   };
 
-  const SUMMON = {
-    scatterRadiusT: 1.25
-  };
+  const SUMMON = { scatterRadiusT: 1.25 };
 
   const CHAIN = {
-    bounces: 2,           // primary + 2 bounces
+    bounces: 2,
     radiusT: 3.5,
-    falloff: 0.6          // 40% reduction each bounce
+    falloff: 0.6
   };
 
   const DOTS = {
-    burnDps: 1.5,         // generic burn DoT for 'burn' attackers
-    poisonDpsCrystal: 2.0 // example DoT against crystal for 'poison' enemies
+    burnDps: 1.5,
+    poisonDpsCrystal: 2.0
   };
 
   const COOLDOWNS = {
     enemyMelee: 1.2,
     enemyRanged: 1.4,
-    revealSecsOnHit: 3.0   // stealth reveal duration when damaged
+    revealSecsOnHit: 3.0
   };
 
   // -----------------------------
-  // Helpers (inline to avoid external deps)
+  // Helpers
   // -----------------------------
-
-  const dist2 = (x1,y1,x2,y2)=> {
-    const dx=x1-x2, dy=y1-y2; return dx*dx+dy*dy;
-  };
+  const dist2 = (x1,y1,x2,y2)=>{ const dx=x1-x2, dy=y1-y2; return dx*dx+dy*dy; };
 
   function applyEnemyDamage(g, e, rawDmg, elem){
-    // Element multiplier
-    const mult = (typeof elem !== 'undefined' && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
+    const mult = (elem && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
     let dmg = Math.max(0, Math.round(rawDmg * mult));
 
-    // Armor (flat reduction, not below 1 if any damage remains)
     const armor = e.armor || 0;
     if (armor > 0) dmg = Math.max(0, dmg - armor);
 
-    // Shield (absorbs before HP)
     if (e.shield && e.shield > 0){
       const use = Math.min(e.shield, dmg);
       e.shield -= use;
@@ -1256,7 +1255,6 @@ function simulate(g){
 
     if (dmg > 0){
       e.hp -= dmg;
-      // Reveal stealth on taking damage
       if (e.tags && e.tags.includes('stealth')){
         e.revealedUntil = Math.max(e.revealedUntil || 0, now() + COOLDOWNS.revealSecsOnHit*1000);
       }
@@ -1270,17 +1268,17 @@ function simulate(g){
   }
 
   function onEnemyDeath(g, e){
-    // Death explosion
+    // Death explosion: radius provided in PX in enemy defs; convert to tiles.
     if (e.deathExplosion){
       const { dmg, radius } = e.deathExplosion;
-      // damage towers in radius
+      const rT = (radius || 0) / TILE;
       for (const t of g.towers){
-        if (Math.hypot((t.x+0.5)-(e.x+0.5),(t.y+0.5)-(e.y+0.5)) <= (radius/ TILE_PX)){ // assume TILE_PX px per tile; if unknown, treat radius as tiles already
+        if (Math.hypot((t.x+0.5)-(e.x+0.5),(t.y+0.5)-(e.y+0.5)) <= rT){
           t.hp -= dmg;
         }
       }
     }
-    // Split / Rebirth (generic)
+    // Split / Rebirth
     if (e.splitInto && e.splitCount){
       for (let i=0;i<e.splitCount;i++){
         const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
@@ -1301,7 +1299,6 @@ function simulate(g){
         }
       }
     }
-    // mark for cleanup happens later by hp<=0 filter
   }
 
   function canTowerTargetEnemy(tNow, e){
@@ -1316,15 +1313,12 @@ function simulate(g){
     for (const e of g.enemies){
       if (!canTowerTargetEnemy(tNow, e)) continue;
       const d2 = dist2(t.x+0.5,t.y+0.5, e.x+0.5,e.y+0.5);
-      if (d2 <= (range*range) && d2 < bestD2){
-        best = e; bestD2 = d2;
-      }
+      if (d2 <= (range*range) && d2 < bestD2){ best = e; bestD2 = d2; }
     }
     return best;
   }
 
   function enemyRangedTargets(g, e, primary, baseDmg){
-    // Returns [{target, dmg}, ...] including chain bounces if any
     const results = [];
     if (!primary) return results;
     results.push({ target: primary, dmg: baseDmg });
@@ -1361,11 +1355,10 @@ function simulate(g){
       Math.max(1, SPAWN.PACK_BASE + Math.floor(lvl * SPAWN.PACK_PER_LVL))
     );
 
-    const pair = getOrMakePair(g); // cache-friendly pair for current level
+    const pair = getOrMakePair(g);
 
     for (let i = 0; i < count; i++) {
       const base = pair[i & 1];
-
       const mult = Math.pow(1.25, lvl - 1);
       const HP  = Math.round(base.hp  * mult);
       const DMG = Math.round(base.dmg * mult);
@@ -1373,8 +1366,7 @@ function simulate(g){
 
       g.enemies.push({
         id:'e'+Math.random().toString(36).slice(2),
-        x, y,
-        el: base.el, type: base.key,
+        x, y, el: base.el, type: base.key,
         hp: HP, maxHp: HP, dmg: DMG,
         spd: base.spd, range: base.range,
         target: base.target, cd: 0,
@@ -1395,24 +1387,20 @@ function simulate(g){
   // Enemy passives (regen, healer aura, slow aura, summoners)
   // -----------------------------
   for (const e of g.enemies){
-    // Self-regen
     if (e.tags && e.tags.includes('regen') && e.healRate){
       e.hp = Math.min(e.maxHp || e.hp, e.hp + e.healRate * dt);
     }
 
-    // Healer aura
     if (e.tags && e.tags.includes('healer') && e.healRate && e.healRange){
       const r2 = e.healRange * e.healRange;
       for (const ally of g.enemies){
-        if (ally === e) continue;
-        if (ally.hp <= 0) continue;
+        if (ally === e || ally.hp <= 0) continue;
         if (dist2(e.x+0.5,e.y+0.5, ally.x+0.5,ally.y+0.5) <= r2){
           ally.hp = Math.min(ally.maxHp || ally.hp, ally.hp + e.healRate * dt);
         }
       }
     }
 
-    // Slow aura vs towers
     if (e.tags && e.tags.includes('slowAura')){
       const r2 = AURAS.slowAuraRangeT * AURAS.slowAuraRangeT;
       for (const t of g.towers){
@@ -1423,7 +1411,6 @@ function simulate(g){
       }
     }
 
-    // Summoners
     if (e.summon){
       e._sumCd = (typeof e._sumCd === 'number') ? e._sumCd - dt : 0;
       if (e._sumCd <= 0){
@@ -1445,7 +1432,7 @@ function simulate(g){
             });
           }
         }
-        e._sumCd = (e.summon.cd ?? 10); // seconds
+        e._sumCd = (e.summon.cd ?? 10);
       }
     }
   }
@@ -1459,9 +1446,7 @@ function simulate(g){
     const cx = g.crystal.x, cy = g.crystal.y;
     const bx = e.x, by = e.y;
 
-    // Movement or attack
     if (e.target === 'tower'){
-      // Find tower to attack (ranged or melee)
       const inRangeTgt = nearestTowerInRange(g, e, e.range);
       if (inRangeTgt){
         e.cd -= dt;
@@ -1469,27 +1454,26 @@ function simulate(g){
           const ranged = e.range && e.range > 0;
           const baseDmg = e.dmg;
           const siegeMult = (e.tags && e.tags.includes('siege')) ? 1.4 : 1.0;
-          const shots = ranged ? enemyRangedTargets(g, e, inRangeTgt, Math.round(baseDmg * siegeMult))
-                               : [{ target: inRangeTgt, dmg: Math.round(baseDmg * siegeMult) }];
+          const shots = ranged
+            ? enemyRangedTargets(g, e, inRangeTgt, Math.round(baseDmg * siegeMult))
+            : [{ target: inRangeTgt, dmg: Math.round(baseDmg * siegeMult) }];
 
           for (const s of shots){
             s.target.hp -= s.dmg;
 
-            // On-hit effects to towers
             if (e.tags){
-              if (e.tags.includes('slow')){ // e.g., cryo/warden
+              if (e.tags.includes('slow')){
                 s.target._slowedUntil = Math.max(s.target._slowedUntil || 0, tNow + 900);
                 s.target._slowFactor = Math.min(s.target._slowFactor ?? 1, 0.8);
               }
-              if (e.tags.includes('stun')){ // e.g., runner
+              if (e.tags.includes('stun')){
                 s.target._stunnedUntil = Math.max(s.target._stunnedUntil || 0, tNow + 600);
               }
-              if (e.tags.includes('burn')){ // e.g., hellkite
+              if (e.tags.includes('burn')){
                 s.target._burnUntil = Math.max(s.target._burnUntil || 0, tNow + 1500);
                 s.target._burnDps = DOTS.burnDps;
               }
               if (e.tags.includes('armorShred')){
-                // Represent as extra damage next hits: temporary vulnerability
                 s.target._vulnUntil = Math.max(s.target._vulnUntil || 0, tNow + 1200);
                 s.target._vulnMult = Math.max(s.target._vulnMult || 1, 1.15);
               }
@@ -1508,13 +1492,10 @@ function simulate(g){
         stepToward(e, chase.x, chase.y, dt);
       }
     } else {
-      // "core" enemies: beeline to the crystal
       stepToward(e, cx, cy, dt);
     }
 
-    // After movement, resolve collisions
-
-    // 1) Tower tile collision
+    // Collisions after movement
     const ex = Math.floor(e.x), ey = Math.floor(e.y);
     const tIdx = g.towers.findIndex(t => t.x === ex && t.y === ey);
     if (tIdx >= 0){
@@ -1526,19 +1507,16 @@ function simulate(g){
       continue;
     }
 
-    // 2) Crystal swept collision
     const hitCrystal =
       segmentHitsCircle(bx+0.5, by+0.5, e.x+0.5, e.y+0.5, cx+0.5, cy+0.5, CRYSTAL_HIT_R_T)
       || (ex === cx && ey === cy);
 
     if (hitCrystal){
-      let dmg = e.dmg;
-      // Poison style enemies damage crystal over time
       if (e.tags && e.tags.includes('poison')){
         g.crystal._poisonUntil = Math.max(g.crystal._poisonUntil||0, tNow + 2000);
         g.crystal._poisonDps = DOTS.poisonDpsCrystal;
       }
-      g.crystal.hp -= dmg;
+      g.crystal.hp -= e.dmg;
       e.hp = 0;
       g.crystal._flashUntil = now() + 200;
       continue;
@@ -1546,33 +1524,32 @@ function simulate(g){
   }
 
   // -----------------------------
-  // Tower status upkeep (DoTs, slow/stun handling)
+  // Tower status upkeep
   // -----------------------------
   for (const t of g.towers){
-    // Reset per-tick multipliers; status re-applies them with max()
     t._rateMult = 1;
 
-    // Apply slows
     if ((t._slowedUntil||0) > tNow){
       t._rateMult = Math.min(t._rateMult, t._slowFactor ?? 0.8);
     } else {
       t._slowFactor = 1;
     }
 
-    // Apply stun (prevents firing)
     if ((t._stunnedUntil||0) > tNow){
       t._stunned = true;
     } else {
       t._stunned = false;
     }
 
-    // Apply burn DoT
     if ((t._burnUntil||0) > tNow){
       const d = (t._burnDps || DOTS.burnDps) * dt;
       t.hp -= d;
     }
 
-    // Clamp HP
+    if (t._vulnUntil && t._vulnUntil <= tNow){
+      t._vulnMult = 1;
+    }
+
     if (t.hp <= 0){
       const i = g.towers.findIndex(z => z.id === t.id);
       if (i >= 0) g.towers.splice(i, 1);
@@ -1585,39 +1562,27 @@ function simulate(g){
   }
 
   // -----------------------------
-  // Towers (fire projectiles)
+  // Towers (HITSCAN — instant damage)
   // -----------------------------
   for (const t of g.towers){
-    // Debuffed fire rate
     const effectiveRate = Math.max(0.05, (t.rate || 1) * (t._rateMult || 1));
     t.cd = (typeof t.cd === 'number') ? t.cd - dt : 0;
-
-    if (t._stunned) continue; // can't fire
+    if (t._stunned) continue;
 
     const tgt = nearestEnemyInRangeVisible(g, t, t.range);
-    if (tgt && t.cd <= 0){
-      const spd = PROJECTILE_SPEED_TPS;
-      const sx = t.x + 0.5, sy = t.y + 0.5;
-      const dx = (tgt.x + 0.5) - sx, dy = (tgt.y + 0.5) - sy;
-      const m  = Math.hypot(dx, dy) || 1;
-      g.projectiles.push({
-        id:'p'+Math.random().toString(36).slice(2),
-        x:sx, y:sy, px:sx, py:sy,
-        vx:dx/m*spd, vy:dy/m*spd,
-        dmg:t.dmg, el:t.el, owner:t.owner
-      });
-      t.cd = 1 / Math.max(0.2, effectiveRate);
-    }
-  }
+    if (!tgt || t.cd > 0) continue;
 
-  // -----------------------------
-  // Projectiles (swept micro-steps; no tunneling)
-  // -----------------------------
-  {
-    const killEnemy = (g, enemy, ownerName) => {
-      // already handled in applyEnemyDamage/onEnemyDeath, but keep level/eco here
+    // Apply damage instantly
+    let rawDmg = Math.max(1, Math.round(t.dmg));
+    if (t._vulnMult && (t._vulnUntil||0) > tNow){
+      rawDmg = Math.round(rawDmg * t._vulnMult);
+    }
+    const died = applyEnemyDamage(g, tgt, rawDmg, t.el);
+
+    // Economy / level up on kill
+    if (died){
       const lvlGain = Math.pow(1.1, (g.level || 1) - 1);
-      const owner = g.players.find(z => z.name === ownerName);
+      const owner = g.players.find(z => z.name === t.owner);
       if (owner){
         owner.baseIncomeDelta = (owner.baseIncomeDelta || 0) + (0.05 * lvlGain);
       }
@@ -1627,50 +1592,14 @@ function simulate(g){
         g.killsThisLevel = 0;
         g.killsToAdvance = Math.round((g.killsToAdvance || 20) * 1.25);
       }
-    };
-
-    for (const p of g.projectiles){
-      let remaining = Math.min(dt, PHYS_MAX_DT);
-      let dead = false;
-
-      while (remaining > 1e-6 && !dead){
-        const nominal = Math.min(remaining, 0.05);
-        const stepDist = Math.hypot(p.vx, p.vy) * nominal;
-        const microSteps = Math.max(1, Math.ceil(stepDist / PHYS_MAX_ADVANCE_T));
-        const subDt = nominal / microSteps;
-
-        for (let m = 0; m < microSteps && !dead; m++){
-          const x1 = p.x,      y1 = p.y;
-          const x2 = p.x + p.vx * subDt;
-          const y2 = p.y + p.vy * subDt;
-
-          const hit = findEnemyHitAlongSegment(g, x1,y1,x2,y2, ENEMY_RADIUS_T + PROJECTILE_RADIUS_T);
-          if (hit){
-            const died = applyEnemyDamage(g, hit, p.dmg, p.el);
-            if (died) killEnemy(g, hit, p.owner);
-            dead = true; // projectile consumed on hit
-            break;
-          }
-
-          // advance
-          p.px = p.x; p.py = p.y;
-          p.x = x2;  p.y = y2;
-
-          // out of bounds? kill it
-          if (p.x < -1 || p.x > COLS+1 || p.y < -1 || p.y > ROWS+1){
-            dead = true;
-          }
-        }
-        remaining -= nominal;
-      }
-
-      if (dead) p._dead = true;
     }
 
-    // cleanup
-    g.projectiles = g.projectiles.filter(p => !p._dead);
-    g.enemies     = g.enemies.filter(e => e.hp > 0);
+    // cooldown
+    t.cd = 1 / Math.max(0.2, effectiveRate);
   }
+
+  // Cleanup dead enemies (in case anything went ≤0 outside applyEnemyDamage)
+  g.enemies = g.enemies.filter(e => e.hp > 0);
 
   // -----------------------------
   // Periodic income (every 30s)
@@ -1697,6 +1626,7 @@ function simulate(g){
 
   return g;
 }
+
 
     function nearestEnemyInRange(g, t, range){
       let best=null, bd=1e9;
@@ -1771,12 +1701,16 @@ function simulate(g){
     canvas.addEventListener('wheel', (ev)=>{ ev.preventDefault(); camY = clamp(camY + ev.deltaY, 0, MAP_H - H); syncSlider(); }, { passive:false });
     window.addEventListener('keydown', (e)=>{ if (e.key==='ArrowUp'||e.key==='w'||e.key==='W') camY=clamp(camY-50,0,MAP_H-H); if (e.key==='ArrowDown'||e.key==='s'||e.key==='S') camY=clamp(camY+50,0,MAP_H-H); if (e.key==='c'||e.key==='C') centerOnCore(); syncSlider(); });
 
- // ----- Render -----
+// ----- Render -----
 function draw(){
   ctx.clearRect(0,0,W,H);
   const offY = camY;
+  const nowMs = Date.now();
 
-  // ----- Background + grid -----
+  // helper for beam thickness by damage (tweak to taste)
+  const beamWidthFromDamage = (dmg)=> Math.max(2, Math.sqrt(Math.max(1, dmg)) * 0.6);
+
+  // Background + grid
   ctx.fillStyle = "#e9eef3";
   ctx.fillRect(0,0,W,H);
   ctx.strokeStyle = "#d7dee6";
@@ -1786,12 +1720,12 @@ function draw(){
 
   if (!state || !state.crystal) return;
 
-  // ----- Crystal (with hit flash) -----
+  // Crystal (with hit flash)
   {
     const cx = state.crystal.x*TILE + TILE/2;
     const cy = state.crystal.y*TILE - offY + TILE/2;
 
-    if (state.crystal._flashUntil && Date.now() < state.crystal._flashUntil){
+    if (state.crystal._flashUntil && nowMs < state.crystal._flashUntil){
       ctx.save();
       ctx.globalAlpha = 0.25;
       ctx.fillStyle = "#ef4444";
@@ -1811,7 +1745,7 @@ function draw(){
     ctx.fillRect(hpx,hpy,hpw*pct,6);
   }
 
-  // ----- Towers -----
+  // Towers
   for (const t of (state.towers||[])){
     const x = t.x*TILE+TILE/2, y = t.y*TILE - offY + TILE/2;
     const col = t.ownerColor || (state.players||[]).find(p=>p.name===t.owner)?.color || '#000';
@@ -1829,9 +1763,8 @@ function draw(){
     ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*tpct, 4);
   }
 
-  // ===== Buffered rendering =====
+  // ===== Buffered rendering (enemies only) =====
   const renderDelay = (typeof RENDER_DELAY_MS === 'number') ? RENDER_DELAY_MS : 220;
-  const nowMs = Date.now();
   const targetMs = nowMs - renderDelay;
 
   let a = null, b = null;
@@ -1860,7 +1793,6 @@ function draw(){
     }
   }
 
-  // Glyph map for enemies
   const ENOJI = {
     slime:"🟢", sprout:"🌱", gob:"👺", imp:"😈", bat:"🦇",
     arch:"🏹", ashling:"🟤", bomber:"💣", sapper:"🧨", shaman:"🧙‍♂️", sniper:"🎯",
@@ -1874,7 +1806,6 @@ function draw(){
   };
 
   if (a && b){
-    // Enemies (buffered)
     interpEntity(a.enemies, b.enemies, a.at, b.at, targetMs, (id, pos) => {
       const ent = b.enemies.get(id) || a.enemies.get(id);
       const X = pos.x*TILE + TILE/2;
@@ -1893,17 +1824,7 @@ function draw(){
       ctx.fillStyle = p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444";
       ctx.fillRect(X-w/2, Y+14, w*p, h);
     });
-
-    // Projectiles (buffered, if any are published)
-    interpEntity(a.projectiles, b.projectiles, a.at, b.at, targetMs, (id, pos) => {
-      const ent = b.projectiles.get(id) || a.projectiles.get(id);
-      const X = pos.x*TILE + TILE/2;
-      const Y = pos.y*TILE - offY + TILE/2;
-      const col = ELEM_COL[ent.el] || "#111";
-      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X,Y,4,0,Math.PI*2); ctx.fill();
-    });
   } else {
-    // Fallback: raw state
     for (const e of (state.enemies||[])){
       const X=e.x*TILE+TILE/2, Y=e.y*TILE - offY + TILE/2;
       const col=ELEM_COL[e.el]||"#999";
@@ -1915,21 +1836,16 @@ function draw(){
       ctx.fillStyle="#111"; ctx.fillRect(X-w/2, Y+14, w, h);
       ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(X-w/2, Y+14, w*p, h);
     }
-    for (const p of (state.projectiles||[])){
-      const X=p.x*TILE+TILE/2, Y=p.y*TILE - offY + TILE/2;
-      const col = ELEM_COL[p.el] || "#111";
-      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X,Y,4,0,Math.PI*2); ctx.fill();
-    }
   }
 
-  // ----- Local visual fire (uses your existing addTracer/_tracers) -----
+  // ----- Local visual fire (client-only beams) -----
   if (!window._vizCd) window._vizCd = new Map();
   const enMap = (b && b.enemies && b.enemies.size) ? b.enemies : null;
   for (const t of (state.towers || [])){
     const key = t.id;
     const cur = window._vizCd.get(key) || { cd: 0, rate: Math.max(0.2, t.rate || 1) };
     const effectiveRate = Math.max(0.05, (t.rate || 1));
-    cur.cd -= 1/30; // 30 FPS
+    cur.cd -= 1/30; // ~30 FPS cadence
 
     if (cur.cd <= 0){
       let pick = null;
@@ -1950,7 +1866,10 @@ function draw(){
       }
 
       if (pick){
-        addTracer(t.x+0.5, t.y+0.5, pick.x+0.5, pick.y+0.5, 90);
+        // your requested snippet:
+        const col = (ELEM_COL && ELEM_COL[t.el]) || "#222";
+        const w   = beamWidthFromDamage(t.dmg || 5);
+        addTracer(t.x+0.5, t.y+0.5, (pick.x||pick.X)+0.5, (pick.y||pick.Y)+0.5, 90, col, w);
         cur.cd = 1 / effectiveRate;
       } else {
         cur.cd = 0.1;
@@ -1959,20 +1878,21 @@ function draw(){
     window._vizCd.set(key, cur);
   }
 
-  // ----- Draw tracers last (on top) -----
+  // ----- Beams on top -----
   for (let i=_tracers.length-1; i>=0; i--){
     const tr=_tracers[i];
     if (nowMs > tr.until){ _tracers.splice(i,1); continue; }
     const x1 = tr.x1 * TILE, y1 = tr.y1 * TILE - camY;
     const x2 = tr.x2 * TILE, y2 = tr.y2 * TILE - camY;
     ctx.save();
-    ctx.globalAlpha = 0.65;
-    ctx.strokeStyle = "#222";
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = tr.alpha ?? 0.85;
+    ctx.strokeStyle = tr.col || "#222";
+    ctx.lineWidth   = tr.w || 2.5;
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     ctx.restore();
   }
 }
+
 
     renderShop();
     setInterval(draw, 1000/30);
@@ -1980,6 +1900,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
