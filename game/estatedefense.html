@@ -212,6 +212,8 @@ const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
 const PUBLISH_MIN_MS = 280;  // publish at ~3.5 Hz (sim still runs every 200ms)
 const MAX_PROJECTILES_PUBLISH = 120; // cap transmitted bullets to keep doc small
 let _lastPublishAt = 0;
+    const USER_GROW_MS = 15000;  // every 15s
+let _nextGrowAt = 0;
 
     let _snapPrev = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
 let _snapCurr = { at: Date.now(), ver: -1, enemies: new Map(), projectiles: new Map() };
@@ -1044,20 +1046,55 @@ function sanitizeForFirestore(input){
     }
   }
 
-  if (wrote){
-    window._lastPublishAt = now();
+ if (wrote){
+  window._lastPublishAt = now();
 
-    // Delete intents ONLY after a successful write
-    if (processedIds.length){
-      try{
-        const batch = writeBatch(db);
-        for (const id of processedIds){
-          batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
+  // 🧠 LIVE, PERMANENT INCOME GROWTH (host-only, every USER_GROW_MS)
+  try {
+    const tnow = now();
+    if (!_nextGrowAt) _nextGrowAt = tnow + USER_GROW_MS;
+
+    if (tnow >= _nextGrowAt) {
+      const batch = writeBatch(db);
+
+      for (const p of g.players || []) {
+        const grow = round2(p.baseIncomeDelta || 0);
+        if (grow > 0) {
+          // fold delta into base, zero delta, then persist permanently
+          const base0 = (typeof p.baseIncome === 'number') ? p.baseIncome : 1;
+          const base1 = round2(base0 + grow);
+
+          p.baseIncome = base1;
+          p.baseIncomeDelta = 0;
+
+          const uref = doc(db, 'users', p.name);
+          batch.set(uref, {
+            estate: {
+              baseIncome: base1,            // 🔒 permanent bump
+              updatedAt: serverTimestamp()  // nice-to-have
+            }
+          }, { merge: true });
         }
-        await batch.commit();
-      } catch {}
+      }
+
+      await batch.commit();
+      _nextGrowAt = tnow + USER_GROW_MS;
     }
+  } catch (e) {
+    console.warn('live income growth error', e);
   }
+
+  // ✅ Delete processed intents ONLY after a successful write
+  if (processedIds.length){
+    try{
+      const batch = writeBatch(db);
+      for (const id of processedIds){
+        batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
+      }
+      await batch.commit();
+    } catch {}
+  }
+}
 }
 
 
@@ -1925,6 +1962,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
