@@ -238,35 +238,35 @@ const enqueueIntent = (() => {
     const ELEM_COL = {fire:"#ef4444", frost:"#60a5fa", volt:"#f59e0b", nature:"#22c55e"};
 const TOWER_TYPES = [
   // --- Early tier (cheap): short range, very slow rate ---
-  { key:"ember",   name:"Ember",        emoji:"🔥",  el:"fire",   cost:1,   dmg:5,   range:26, rate:0.22, hp:5 },
-  { key:"cinder",  name:"Cinder",       emoji:"🧨",  el:"fire",   cost:3,   dmg:7,   range:28, rate:0.24, hp:6 },
-  { key:"frost",   name:"Frost",        emoji:"❄️",  el:"frost",  cost:4,   dmg:4,   range:30, rate:0.20, hp:5 },
-  { key:"nature",  name:"Thorn",        emoji:"🌿",  el:"nature", cost:4,   dmg:4,   range:28, rate:0.26, hp:5 },
-  { key:"volt",    name:"Volt",         emoji:"⚡",  el:"volt",   cost:4,   dmg:6,   range:24, rate:0.18, hp:5 },
+  { key:"ember",   name:"Ember",        emoji:"🔥",  el:"fire",   cost:1,   dmg:5,   range:15, rate:0.22, hp:5 },
+  { key:"cinder",  name:"Cinder",       emoji:"🧨",  el:"fire",   cost:3,   dmg:7,   range:17, rate:0.24, hp:6 },
+  { key:"frost",   name:"Frost",        emoji:"❄️",  el:"frost",  cost:4,   dmg:4,   range:16, rate:0.20, hp:5 },
+  { key:"nature",  name:"Thorn",        emoji:"🌿",  el:"nature", cost:4,   dmg:4,   range:15, rate:0.26, hp:5 },
+  { key:"volt",    name:"Volt",         emoji:"⚡",  el:"volt",   cost:4,   dmg:6,   range:14, rate:0.18, hp:5 },
 
   // --- Low-mid tier: modest range, still slow ---
-  { key:"flame",   name:"Flame",        emoji:"🔥",  el:"fire",   cost:15,  dmg:10,  range:32, rate:0.28, hp:12 },
-  { key:"shard",   name:"Shard",        emoji:"🧊",  el:"frost",  cost:15,  dmg:6,   range:38, rate:0.26, hp:12 },
-  { key:"bramble", name:"Bramble",      emoji:"🌱",  el:"nature", cost:15,  dmg:6,   range:34, rate:0.30, hp:12 },
-  { key:"arc",     name:"Arc",          emoji:"🪫",  el:"volt",   cost:15,  dmg:8,   range:30, rate:0.22, hp:12 },
+  { key:"flame",   name:"Flame",        emoji:"🔥",  el:"fire",   cost:15,  dmg:10,  range:19, rate:0.28, hp:12 },
+  { key:"shard",   name:"Shard",        emoji:"🧊",  el:"frost",  cost:15,  dmg:6,   range:20, rate:0.26, hp:12 },
+  { key:"bramble", name:"Bramble",      emoji:"🌱",  el:"nature", cost:15,  dmg:6,   range:21, rate:0.30, hp:12 },
+  { key:"arc",     name:"Arc",          emoji:"🪫",  el:"volt",   cost:15,  dmg:8,   range:19, rate:0.22, hp:12 },
 
   // --- Mid tier: better reach, still conservative rate ---
-  { key:"blaze",   name:"Blaze",        emoji:"🔥",  el:"fire",   cost:25,  dmg:14,  range:36, rate:0.32, hp:18 },
-  { key:"glacier", name:"Glacier",      emoji:"🥶",  el:"frost",  cost:25,  dmg:8,   range:44, rate:0.30, hp:24 },
-  { key:"grove",   name:"Grove",        emoji:"🌳",  el:"nature", cost:25,  dmg:9,   range:40, rate:0.34, hp:22 },
-  { key:"tesla",   name:"Tesla",        emoji:"🧲",  el:"volt",   cost:25,  dmg:11,  range:34, rate:0.24, hp:15 },
+  { key:"blaze",   name:"Blaze",        emoji:"🔥",  el:"fire",   cost:25,  dmg:14,  range:24, rate:0.32, hp:18 },
+  { key:"glacier", name:"Glacier",      emoji:"🥶",  el:"frost",  cost:25,  dmg:8,   range:25, rate:0.30, hp:24 },
+  { key:"grove",   name:"Grove",        emoji:"🌳",  el:"nature", cost:25,  dmg:9,   range:24, rate:0.34, hp:22 },
+  { key:"tesla",   name:"Tesla",        emoji:"🧲",  el:"volt",   cost:25,  dmg:11,  range:26, rate:0.24, hp:15 },
 
   // --- Upper mid: good all‑rounders ---
-  { key:"inferno", name:"Inferno",      emoji:"🌋",  el:"fire",   cost:50,  dmg:19,  range:40, rate:0.36, hp:30 },
-  { key:"blizzard",name:"Blizzard",     emoji:"🌨️", el:"frost",  cost:50,  dmg:10,  range:50, rate:0.32, hp:35 },
-  { key:"wrathwood",name:"Wrathwood",   emoji:"🌲",  el:"nature", cost:50,  dmg:12,  range:44, rate:0.36, hp:30 },
-  { key:"tempest", name:"Tempest",      emoji:"🌩️", el:"volt",   cost:50,  dmg:15,  range:38, rate:0.26, hp:25 },
+  { key:"inferno", name:"Inferno",      emoji:"🌋",  el:"fire",   cost:50,  dmg:19,  range:30, rate:0.36, hp:30 },
+  { key:"blizzard",name:"Blizzard",     emoji:"🌨️", el:"frost",  cost:50,  dmg:10,  range:30, rate:0.32, hp:35 },
+  { key:"wrathwood",name:"Wrathwood",   emoji:"🌲",  el:"nature", cost:50,  dmg:12,  range:30, rate:0.36, hp:30 },
+  { key:"tempest", name:"Tempest",      emoji:"🌩️", el:"volt",   cost:50,  dmg:15,  range:30, rate:0.26, hp:25 },
 
   // --- High tier: strong, with solid reach ---
-  { key:"phoenix", name:"Phoenix",      emoji:"🪶",  el:"fire",   cost:100, dmg:25,  range:46, rate:0.42, hp:50 },
-  { key:"absolutezero", name:"Absolute Zero", emoji:"🧊", el:"frost", cost:100, dmg:13, range:60, rate:0.38, hp:55 },
-  { key:"verdant", name:"Verdant",      emoji:"🍃",  el:"nature", cost:100, dmg:16,  range:50, rate:0.40, hp:50 },
-  { key:"stormcaller", name:"Stormcaller", emoji:"⛈️", el:"volt", cost:100, dmg:20,  range:42, rate:0.30, hp:35 },
+  { key:"phoenix", name:"Phoenix",      emoji:"🪶",  el:"fire",   cost:100, dmg:25,  range:36, rate:0.42, hp:50 },
+  { key:"absolutezero", name:"Absolute Zero", emoji:"🧊", el:"frost", cost:100, dmg:13, range:36, rate:0.38, hp:55 },
+  { key:"verdant", name:"Verdant",      emoji:"🍃",  el:"nature", cost:100, dmg:16,  range:36, rate:0.40, hp:50 },
+  { key:"stormcaller", name:"Stormcaller", emoji:"⛈️", el:"volt", cost:100, dmg:20,  range:36, rate:0.30, hp:35 },
 
   // --- Late game: long reach, still slower than before ---
   { key:"solarflare", name:"Solar Flare", emoji:"☀️", el:"fire",  cost:150, dmg:26,  range:50, rate:0.46, hp:80 },
@@ -278,12 +278,12 @@ const TOWER_TYPES = [
   { key:"supernova",  name:"Supernova",    emoji:"💥", el:"fire",  cost:200, dmg:55,  range:56, rate:0.50, hp:120 },
   { key:"cryostorm",  name:"Cryostorm",    emoji:"🌬️", el:"frost", cost:200, dmg:55,  range:74, rate:0.44, hp:120 },
   { key:"wildheart",  name:"Wildheart",    emoji:"🪴", el:"nature", cost:200, dmg:60,  range:64, rate:0.48, hp:120 },
-  { key:"ionstorm",   name:"Ion Storm",    emoji:"🔌", el:"volt",  cost:200, dmg:45,  range:56, rate:0.26, hp:120 },
+  { key:"ionstorm",   name:"Ion Storm",    emoji:"🔌", el:"volt",  cost:200, dmg:80,  range:56, rate:0.26, hp:120 },
 
   // --- Legendary: huge damage/coverage but still not spammy ---
-  { key:"aurora",     name:"Aurora",       emoji:"🌌", el:"frost",  cost:300, dmg:100, range:78, rate:0.48, hp:200 },
+  { key:"aurora",     name:"Aurora",       emoji:"🌌", el:"frost",  cost:300, dmg:50, range:78, rate:1.8, hp:200 },
   { key:"worldtree",  name:"World Tree",   emoji:"🪵", el:"nature", cost:300, dmg:100, range:70, rate:0.50, hp:200 },
-  { key:"overcharge", name:"Overcharge",   emoji:"🔋", el:"volt",   cost:300, dmg:100, range:62, rate:0.34, hp:200 }
+  { key:"overcharge", name:"Overcharge",   emoji:"🔋", el:"volt",   cost:300, dmg:500, range:90, rate:0.0.1, hp:200 }
 ];
 
 
@@ -1901,6 +1901,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
