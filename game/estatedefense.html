@@ -18,7 +18,28 @@
     #stats{display:flex;gap:16px;font-size:14px;color:var(--muted)}
     #canvasWrap{position:relative;flex:1;background:#eef3f7;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
     canvas{display:block;width:720px;height:560px;max-width:100%;max-height:100%}
-    #right{flex:0 0 260px;background:var(--card);border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+    #right{flex:0 0 260px;background:var(--card);border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px; min-height: 0; overflow: hidden;}
+    .panel{
+          display:flex;
+          flex-direction:column;
+          gap:8px;
+          min-height:0;
+        }
+        
+        /* Let the Build panel claim remaining height */
+        .panel.flex1{
+          flex:1;
+          min-height:0;
+        }
+        
+        /* Scroll container just for the shop grid */
+        .shopScroller{
+          flex:1;
+          min-height:0;
+          overflow:auto;
+        }
+      /* Optional: tiny right padding so cards don't hug the scrollbar */
+      .shop{ padding-right:4px; }
     .panel h3{margin:0 0 6px 0;font-size:16px}
     .players{display:flex;flex-direction:column;gap:6px;max-height:35vh;overflow:auto}
     .playerRow{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
@@ -103,11 +124,14 @@
   </div>
 
   <div id="right">
-    <div class="panel">
-      <h3>Build</h3>
+      <div class="panel flex1">
+    <h3>Build</h3>
+    <div class="shopScroller">
       <div class="shop" id="shop"></div>
-      <div class="small">Click a card to buy. Towers place near the crystal. Upgrades are owner-only.</div>
     </div>
+    <div class="small">Click a card to buy. Towers place near the crystal. Upgrades are owner-only.</div>
+  </div>
+
     <div class="panel">
       <h3>Selected</h3>
       <div id="selInfo" class="small">None</div>
@@ -1203,7 +1227,7 @@ function simulate(g){
   // Tunables
   // -----------------------------
   const SPAWN = {
-    BASE_MS: 6000,
+    BASE_MS: 5000,
     MIN_MS:  2500,
     DECAY_MS_PER_LVL: 30,
     PACK_BASE: 1,
@@ -1901,6 +1925,7 @@ function draw(){
   </script>
 </body>
 </html>
+
 
 
 
