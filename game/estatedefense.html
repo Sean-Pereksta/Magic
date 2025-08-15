@@ -1309,6 +1309,80 @@ function sanitizeForFirestore(input){
 }
 }
 
+// ===== Enemy damage & death (GLOBAL, shared by sim + beam funcs) =====
+const REVEAL_ON_HIT_MS = 3000;       // was COOLDOWNS.revealSecsOnHit * 1000
+const SUMMON_SCATTER_T = 1.25;       // used for split/rebirth scatter
+
+function onEnemyDeath(g, e){
+  // Death explosion (radius provided in PX in defs; convert to tiles)
+  if (e.deathExplosion){
+    const rT = (e.deathExplosion.radius || 0) / TILE;
+    const dmg = e.deathExplosion.dmg || 0;
+    for (const t of g.towers){
+      const dx=(t.x+0.5)-(e.x+0.5), dy=(t.y+0.5)-(e.y+0.5);
+      if (dx*dx + dy*dy <= rT*rT) t.hp -= dmg;
+    }
+  }
+
+  // Split / Rebirth
+  if (e.splitInto && e.splitCount){
+    const baseType = ENEMY_TYPES.find(z => z.key === e.splitInto);
+    if (baseType){
+      for (let i=0;i<e.splitCount;i++){
+        const lvl  = g.level || 1;
+        const mult = Math.pow(1.25, lvl - 1);           // match your spawn scaling
+        const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON_SCATTER_T, SUMMON_SCATTER_T))));
+        const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON_SCATTER_T, SUMMON_SCATTER_T))));
+        const HP  = Math.round((baseType.hp || 10) * mult);
+        const DMG = Math.round((baseType.dmg|| 2) * mult);
+        g.enemies.push({
+          id:'e'+Math.random().toString(36).slice(2),
+          x:nx, y:ny, el: baseType.el, type: baseType.key,
+          hp: HP, maxHp: HP, dmg: DMG,
+          spd: baseType.spd, range: baseType.range,
+          target: baseType.target, cd: 0,
+          tags: baseType.tags||[],
+          armor: baseType.armor||0, shield: baseType.shield||0,
+          healRate: baseType.healRate, healRange: baseType.healRange,
+          summon: baseType.summon
+        });
+      }
+    }
+  }
+}
+
+function applyEnemyDamage(g, e, rawDmg, elem){
+  // element multiplier
+  const mult = (elem && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
+  let dmg = Math.max(0, Math.round((rawDmg||0) * mult));
+
+  // armor
+  const armor = e.armor || 0;
+  if (armor > 0) dmg = Math.max(0, dmg - armor);
+
+  // shield (soaks first)
+  if (e.shield && e.shield > 0){
+    const use = Math.min(e.shield, dmg);
+    e.shield -= use;
+    dmg -= use;
+  }
+
+  // apply
+  if (dmg > 0){
+    e.hp -= dmg;
+    // reveal stealth on hit
+    if (Array.isArray(e.tags) && e.tags.includes('stealth')){
+      e.revealedUntil = Math.max(e.revealedUntil || 0, now() + REVEAL_ON_HIT_MS);
+    }
+  }
+
+  // death
+  if (e.hp <= 0){
+    onEnemyDeath(g, e);
+    return true;
+  }
+  return false;
+}
 
 
     // Restart builder: keep same players + baseIncome, reset everything else
@@ -1701,66 +1775,8 @@ function simulate(g){
   // -----------------------------
   const dist2 = (x1,y1,x2,y2)=>{ const dx=x1-x2, dy=y1-y2; return dx*dx+dy*dy; };
 
-  function applyEnemyDamage(g, e, rawDmg, elem){
-    const mult = (elem && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
-    let dmg = Math.max(0, Math.round(rawDmg * mult));
 
-    const armor = e.armor || 0;
-    if (armor > 0) dmg = Math.max(0, dmg - armor);
 
-    if (e.shield && e.shield > 0){
-      const use = Math.min(e.shield, dmg);
-      e.shield -= use;
-      dmg -= use;
-    }
-
-    if (dmg > 0){
-      e.hp -= dmg;
-      if (e.tags && e.tags.includes('stealth')){
-        e.revealedUntil = Math.max(e.revealedUntil || 0, now() + COOLDOWNS.revealSecsOnHit*1000);
-      }
-    }
-
-    if (e.hp <= 0){
-      onEnemyDeath(g, e);
-      return true;
-    }
-    return false;
-  }
-
-  function onEnemyDeath(g, e){
-    // Death explosion: radius provided in PX in enemy defs; convert to tiles.
-    if (e.deathExplosion){
-      const { dmg, radius } = e.deathExplosion;
-      const rT = (radius || 0) / TILE;
-      for (const t of g.towers){
-        if (Math.hypot((t.x+0.5)-(e.x+0.5),(t.y+0.5)-(e.y+0.5)) <= rT){
-          t.hp -= dmg;
-        }
-      }
-    }
-    // Split / Rebirth
-    if (e.splitInto && e.splitCount){
-      for (let i=0;i<e.splitCount;i++){
-        const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
-        const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
-        const base = ENEMY_TYPES.find(z => z.key === e.splitInto);
-        if (base){
-          const lvl = g.level || 1;
-          const mult = Math.pow(1.1, lvl - 1);
-          const HP  = Math.round((base.hp||10) * mult);
-          const DMG = Math.round((base.dmg||2) * mult);
-          g.enemies.push({
-            id:'e'+Math.random().toString(36).slice(2),
-            x:nx, y:ny, el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG,
-            spd: base.spd, range: base.range, target: base.target, cd: 0,
-            tags: base.tags||[], armor: base.armor||0, shield: base.shield||0,
-            healRate: base.healRate, healRange: base.healRange, summon: base.summon
-          });
-        }
-      }
-    }
-  }
 
   function nearestEnemyInRangeVisible(g, t, range){
     let best = null, bestD2 = Infinity;
@@ -2553,6 +2569,7 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
+
 
 
 
