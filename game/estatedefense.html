@@ -676,6 +676,25 @@ function beamWidthFromDamage(dmg){
   const w = 1.5 + d * 0.20;      // 5 dmg → 2.5px, 25 dmg → 6.5px, 50 dmg → 11.5px (then capped)
   return Math.min(10, w);
 }
+// --- Planned-damage helpers (for smart/overkill avoidance) ---
+// You already reset this each tick with: g._focusMap = new Map();
+function getPlannedDamage(g, e){
+  if (!g._focusMap) g._focusMap = new Map();
+  return g._focusMap.get(e.id) || 0;
+}
+
+function addPlannedDamage(g, e, dmg){
+  if (!g._focusMap) g._focusMap = new Map();
+  const cur = g._focusMap.get(e.id) || 0;
+  const add = Math.max(0, Math.round(dmg || 0));
+  g._focusMap.set(e.id, cur + add);
+}
+
+function isOverkilled(g, e){
+  const planned = getPlannedDamage(g, e);
+  // If planned damage from other towers this tick will finish the enemy, skip it
+  return (e.hp - planned) <= 0;
+}
 
 
  // --- Shop ---
@@ -1201,7 +1220,7 @@ function sanitizeForFirestore(input){
       ? presentNames
       : (d.players || []);
     g = restartGameInPlace(g, rootPlayers);
-    nextIncomeAt: now() + 15000,
+    nextIncomeAt: now() + 15000;
     incomeTickAt = 0;      // reset local income cadence
     _finalizeOnce = false; // allow next defeat to finalize again
     incomeTickAt = 0;
@@ -2569,6 +2588,7 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
+
 
 
 
