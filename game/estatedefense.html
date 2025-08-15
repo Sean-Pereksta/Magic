@@ -48,6 +48,9 @@
     .card{border:1px solid var(--line);border-radius:10px;padding:8px;cursor:pointer;background:#fff}
     .card .emoji{font-size:20px}
     .card.disabled{ opacity:.55; pointer-events:none }
+    .card .titleRow { display:flex; align-items:center; justify-content:space-between; gap:8px }
+    .card .statRow { font-size:12px; color:var(--ink); display:flex; gap:10px; flex-wrap:wrap }
+    .card .chipRow { display:flex; gap:6px; flex-wrap:wrap }
     .btn{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
     .btn:disabled{opacity:.5;cursor:not-allowed}
     .row{display:flex;gap:8px;align-items:center}
@@ -621,6 +624,36 @@ const TOWER_PRIORITY_PRESETS = {
       return null;
     }
 
+    function fmtRate(r){ return (Math.round((+r||0)*100)/100).toFixed(2); }
+
+function abilityLabel(t){
+  const beam = t?.beam || {};
+  const mode = beam.mode || "normal";
+  switch(mode){
+    case "smart":  return "🧠 Smart (avoid overkill)";
+    case "splash": return `💫 Splash r=${(beam.radiusT??1.6).toFixed(1)} • ${Math.round((beam.falloff??0.6)*100)}% dmg`;
+    case "chain":  {
+      const b = beam.bounces ?? 2, r = (beam.radiusT??3.0).toFixed(1);
+      return `⚡ Chain x${b} • r=${r}`;
+    }
+    case "pierce": {
+      const m = beam.max ?? 3, r = (beam.radiusT??0.55).toFixed(2);
+      return `➳ Pierce x${m} • r=${r}`;
+    }
+    default:       return "— Normal";
+  }
+}
+
+function priorityLabel(p){
+  const map = {
+    closest:"🎯 Closest", furthest:"🎯 Furthest",
+    lowestHp:"🎯 Lowest HP", highestHp:"🎯 Highest HP",
+    elementWeak:"🎯 Element-weak"
+  };
+  return map[p||"closest"] || `🎯 ${p}`;
+}
+
+
 function makeWritableGame(g){
   const clone = {
     ...g,
@@ -647,19 +680,40 @@ function beamWidthFromDamage(dmg){
 
  // --- Shop ---
 function renderShop(){
-  const gameActive = state?.status === 'active'; // only active when state exists & is active
+  const gameActive = state?.status === 'active';
   shopBox.innerHTML = TOWER_TYPES.map(t=>{
     const disabled = !amSeeded || !gameActive || (myFunds < t.cost);
+    const elChip = `<span class="chip">${ELEMENT_EMOJI[t.el]||''} ${t.el}</span>`;
+    const abil   = abilityLabel(t);
+    const prio   = priorityLabel(t.prioritize);
+
     return `
       <div class="card${disabled ? ' disabled':''}" data-key="${t.key}">
-        <div class="row"><span class="emoji">${t.emoji}</span><b>${t.name}</b></div>
-        <div class="small">Element: ${t.el}</div>
-        <div class="small">Cost: ${t.cost}</div>
-        <div class="small">Dmg ${t.dmg} • Range ${t.range} • Rate ${t.rate}/s</div>
+        <div class="titleRow">
+          <div class="row">
+            <span class="emoji">${t.emoji}</span>
+            <b style="margin-left:6px">${t.name}</b>
+          </div>
+          <span class="chip">$${t.cost}</span>
+        </div>
+
+        <div class="chipRow" style="margin-top:6px">
+          ${elChip}
+          <span class="chip">${abil}</span>
+          <span class="chip">${prio}</span>
+        </div>
+
+        <div class="statRow" style="margin-top:6px">
+          <span title="HP">❤️ <b>${t.hp}</b></span>
+          <span title="Damage">💥 <b>${t.dmg}</b></span>
+          <span title="Rate (shots/sec)">⏱️ <b>${fmtRate(t.rate)}</b>/s</span>
+          <span title="Range (tiles)">📡 <b>${t.range}</b></span>
+        </div>
       </div>
     `;
   }).join('');
 }
+
 
 (function bindShopDelegation(){
   let _shopTapLock = false; // local, not shared with intents
@@ -2500,6 +2554,7 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
+
 
 
 
