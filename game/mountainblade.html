@@ -2,69 +2,78 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade (Emoji RTS)</title>
+<title>🗻 Mountain Blade — Windowed</title>
 <style>
-  html,body { margin:0; height:100%; background:#0d1117; color:#eef; font-family:system-ui,Segoe UI,Arial; }
-  #ui { position:fixed; inset:0; pointer-events:none; }
+  :root{ --win-w: 1024px; --win-h: 640px; }
+  *{ box-sizing:border-box }
+  body{ margin:0; background:#0d1117; color:#eef; font-family:system-ui,Segoe UI,Arial; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .game-wrap{ width:var(--win-w); }
+  .frame{ position:relative; width:var(--win-w); height:var(--win-h); border:1px solid #2b3b54; border-radius:12px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0f1521; }
+  .titlebar{ height:38px; display:flex; align-items:center; padding:0 10px; gap:8px; background:#101826; border-bottom:1px solid #203049; font-weight:700; }
+  .titlebar .dot{ width:10px; height:10px; border-radius:50%; }
+  .dot.red{ background:#ff5f57 } .dot.yellow{ background:#ffbd2e } .dot.green{ background:#28c840 }
+  .viewport{ position:absolute; inset:38px 0 0 0; }
+  canvas{ width:100%; height:100%; display:block; background:#112238; cursor:crosshair; }
 
-  /* Top overlays */
-  #timerBox { position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; pointer-events:auto; }
-  #leader { position:fixed; top:10px; right:10px; min-width:220px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; pointer-events:auto; }
-  #leader h3 { margin:0 0 6px 0; font-size:14px; color:#cfe; }
-  #leader .row { display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
+  /* UI overlay inside the window */
+  #ui{ pointer-events:none; position:absolute; inset:0; }
+  #timerBox{ position:absolute; top:8px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; }
+  #leader{ position:absolute; top:8px; right:8px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
+  #leader h3{ margin:0 0 6px 0; font-size:14px; color:#cfe; }
+  #leader .row{ display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
+  #hint{ position:absolute; top:44px; left:50%; transform:translateX(-50%); background:#18243acc; border:1px solid #355; border-radius:10px; padding:6px 10px; font-size:13px; display:none; }
+  #banner{ position:absolute; left:50%; top:24%; transform:translateX(-50%); font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
 
-  #banner { position:fixed; left:50%; top:16%; transform:translateX(-50%); font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
+  #cpPanel{ position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px; padding:8px; display:none; pointer-events:auto; }
+  #cpPanel h3{ margin:0 0 6px 0; font-size:14px; }
+  #cpPanel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
 
-  /* Targeting hint */
-  #targetHint { position:fixed; top:52px; left:50%; transform:translateX(-50%); background:#18243acc; border:1px solid #355; border-radius:10px; padding:6px 10px; font-size:13px; display:none; pointer-events:auto; }
-
-  /* CP spawn panel */
-  #cpPanel { position:fixed; right:12px; top:96px; background:#111a; border:1px solid #345; border-radius:12px; padding:8px; pointer-events:auto; display:none; }
-  #cpPanel h3 { margin:0 0 6px 0; font-size:14px; }
-  #cpPanel .row { display:flex; gap:6px; flex-wrap:wrap; }
-  .cpBtn { padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
-
-  /* HUD bottom */
-  #hud { position:fixed; left:0; right:0; bottom:0; height:110px; background:rgba(0,0,0,.35); backdrop-filter: blur(4px); border-top:1px solid #263042; pointer-events:auto; display:flex; align-items:center; gap:16px; padding:10px 16px; }
-  #selInfo { min-width:160px; }
-  #abilities { display:flex; gap:10px; }
-  .slot { width:72px; height:72px; border:1px solid #445; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1a2232; position:relative; }
-  .slot .key { position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
-  .slot .emoji { font-size:24px; line-height:24px; }
-  .slot .name { font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; }
+  #hud{ position:absolute; left:0; right:0; bottom:0; height:104px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
+  #selInfo{ min-width:160px; }
+  #abilities{ display:flex; gap:10px; }
+  .slot{ width:72px; height:72px; border:1px solid #445; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1a2232; position:relative; }
+  .slot .key{ position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
+  .slot .emoji{ font-size:24px; }
+  .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; }
   .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); border-radius:10px; }
-  canvas { display:block; width:100vw; height:100vh; cursor: crosshair; }
-  .cursor-target { cursor: crosshair !important; }
+  .cd-badge{ position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008; border:1px solid #345; border-radius:6px; padding:1px 5px; }
 </style>
 </head>
 <body>
-<canvas id="cv" width="1280" height="720"></canvas>
+  <div class="game-wrap">
+    <div class="frame">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span>🗻 Mountain Blade</span>
+      </div>
+      <div class="viewport">
+        <canvas id="cv" width="1024" height="602"></canvas>
+        <div id="ui">
+          <div id="timerBox">⏱️ 05:00</div>
+          <div id="leader"><h3>Units on field</h3><div id="leaderRows"></div></div>
+          <div id="hint"></div>
+          <div id="banner"></div>
 
-<div id="ui">
-  <div id="timerBox">⏱️ 05:00</div>
-  <div id="leader">
-    <h3>Units on field</h3>
-    <div id="leaderRows"></div>
-  </div>
-  <div id="targetHint"></div>
-  <div id="banner"></div>
+          <div id="cpPanel">
+            <h3>Spawn from <span id="cpName">CP</span></h3>
+            <div class="row" id="cpBtns"></div>
+          </div>
 
-  <div id="cpPanel">
-    <h3>Spawn from <span id="cpName">CP</span></h3>
-    <div class="row" id="cpBtns"></div>
+          <div id="hud">
+            <div id="selInfo">Select units</div>
+            <div id="abilities"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-
-  <div id="hud">
-    <div id="selInfo">Select units</div>
-    <div id="abilities"></div>
-  </div>
-</div>
 
 <script type="module">
-/* ------------ Firebase ------------ */
+/* ---------------- Firebase ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, onSnapshot,
+  getFirestore, doc, getDoc, setDoc, collection, addDoc, onSnapshot,
   query, orderBy, limit, getDocs, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -79,857 +88,550 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ------------ Params & routes ------------ */
+/* ---------------- Params & routes ---------------- */
 const Q = new URLSearchParams(location.search);
 const GAME_ID  = Q.get("gameId");
 const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html"; // set to your hub file
+const HUB_ROUTE = "/game/index.html"; // change to your hub
 
-/* ------------ Canvas & camera ------------ */
+/* ---------------- Canvas & windowed camera ---------------- */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
-function resize(){ cv.width = innerWidth; cv.height = innerHeight; }
+function resize(){ /* fixed window; canvas attrs define size */ }
 addEventListener("resize", resize); resize();
 
-const WORLD = { w: 5000, h: 5000 };
-const cam = { x:0, y:0, speed: 900 }; // px/s
+const WORLD = { w: 2400, h: 2400 };  // smaller map for the windowed view
+const cam = { x:0, y:0, speed: 1400 }; // edge-pan speed inside the window
 function clampCam(){
   cam.x = Math.max(0, Math.min(WORLD.w - cv.width,  cam.x));
   cam.y = Math.max(0, Math.min(WORLD.h - cv.height, cam.y));
 }
 
-/* ------------ Data defs (EMOJI TROOPS) ------------ */
-const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"]; // per-owner tint
-const AGGRO_RANGE = 280;     // pixels: begin pursuit if no explicit order
-const STOP_DIST   = 14;      // stop before exact destination
-const MATCH_MS    = 5 * 60 * 1000;
+/* ---------------- Data (emoji troops; faster) ---------------- */
+const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"];
+const AGGRO_RANGE = 260; // start pursuing when enemy within this
+const STOP_DIST   = 14;
+const MATCH_MS    = 5*60*1000;
 
 const TYPES = {
-  // name, emoji, role, stats, abilities
-  guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, range:42, atkSpd:0.9, moveSpd:120, armor:5, size:13,
-    abilities:[
-      {slot:1, key:"Q", id:"shieldwall", label:"Shield Wall", target:"self", cd:15, dur:5}
-    ]},
-  lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  range:60, atkSpd:1.0, moveSpd:125, armor:3, size:12,
-    abilities:[
-      {slot:2, key:"W", id:"brace", label:"Brace", target:"self", cd:12, dur:4}
-    ]},
-  archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:210,atkSpd:0.8, moveSpd:110, armor:1, size:11,
-    abilities:[
-      {slot:1, key:"Q", id:"volley", label:"Volley", target:"point", cd:12, radius:120}
-    ]},
-  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:42, atkSpd:0.7, moveSpd:185, armor:2, size:14,
-    abilities:[
-      {slot:1, key:"Q", id:"charge", label:"Charge", target:"pointOrUnit", cd:14}
-    ]},
-  mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:185,atkSpd:0.5, moveSpd:115, armor:0, size:11,
-    abilities:[
-      {slot:1, key:"Q", id:"fireburst", label:"Fireburst", target:"point", cd:16, radius:95}
-    ]},
-  priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:80, atkSpd:0.6, moveSpd:112, armor:1, size:11,
-    abilities:[
-      {slot:1, key:"Q", id:"mend", label:"Mend", target:"self", cd:12, dur:5}
-    ]},
+  guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, range:46, atkSpd:1.0, moveSpd:260, armor:5, size:13,
+    abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
+  lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  range:64, atkSpd:1.2, moveSpd:270, armor:3, size:12,
+    abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
+  archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:220,atkSpd:1.0, moveSpd:250, armor:1, size:11,
+    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:10,radius:110}]},
+  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:340, armor:2, size:14,
+    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
+  mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:190,atkSpd:0.7, moveSpd:255, armor:0, size:11,
+    abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
+  priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:84, atkSpd:0.7, moveSpd:252, armor:1, size:11,
+    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5}]},
 };
-
 const SPAWN_CHOICES = Object.keys(TYPES);
 
 const TEAM_SPAWNS = [
-  { x:200, y:200 }, { x: WORLD.w-200, y:200 }, { x:200, y:WORLD.h-200 }, { x:WORLD.w-200, y:WORLD.h-200 }
+  { x:160, y:160 }, { x: WORLD.w-160, y:160 }, { x:160, y:WORLD.h-160 }, { x:WORLD.w-160, y:WORLD.h-160 }
 ];
 const CMD_POINTS = [
-  { id:"P1", x: WORLD.w*0.25, y: WORLD.h*0.28, r: 160 },
-  { id:"P2", x: WORLD.w*0.70, y: WORLD.h*0.30, r: 160 },
-  { id:"P3", x: WORLD.w*0.50, y: WORLD.h*0.55, r: 160 },
+  { id:"P1", x: WORLD.w*0.25, y: WORLD.h*0.30, r: 140 },
+  { id:"P2", x: WORLD.w*0.70, y: WORLD.h*0.32, r: 140 },
+  { id:"P3", x: WORLD.w*0.50, y: WORLD.h*0.62, r: 140 },
 ];
 
-/* ------------ Spatial hash (broadphase) ------------ */
+/* ---------------- Spatial hash ---------------- */
 const SPATIAL = { cell: 64 };
 const toCell = v => (v / SPATIAL.cell) | 0;
 const cellKey = (cx, cy) => cx + "|" + cy;
-function buildHash(units) {
-  const map = new Map();
-  for (let i=0;i<units.length;i++){
-    const u = units[i];
-    const cx = toCell(u.x), cy = toCell(u.y);
-    const key = cellKey(cx, cy);
-    let arr = map.get(key);
-    if (!arr) { arr = []; map.set(key, arr); }
-    arr.push(i);
-  }
-  return { map };
-}
-function forEachNeighborIndex(hash, x, y, radius, cb) {
-  const c = SPATIAL.cell;
-  const rCells = Math.ceil(radius / c);
-  const cx = toCell(x), cy = toCell(y);
-  for (let gy = cy - rCells; gy <= cy + rCells; gy++) {
-    for (let gx = cx - rCells; gx <= cx + rCells; gx++) {
-      const arr = hash.map.get(cellKey(gx, gy));
-      if (!arr) continue;
-      for (const idx of arr) cb(idx);
-    }
-  }
-}
+function buildHash(units){ const map=new Map(); for(let i=0;i<units.length;i++){ const u=units[i], k=cellKey(toCell(u.x),toCell(u.y)); (map.get(k)||map.set(k,[]).get(k)).push(i);} return { map }; }
+function forNeighbors(hash,x,y,r,cb){ const c=SPATIAL.cell, rc=Math.ceil(r/c), cx=toCell(x), cy=toCell(y); for(let gy=cy-rc;gy<=cy+rc;gy++) for(let gx=cx-rc;gx<=cx+rc;gx++){ const a=hash.map.get(cellKey(gx,gy)); if(!a) continue; for(const i of a) cb(i); }}
 
-/* ------------ Local client state ------------ */
-let isHost = false;
-let hostName = null;
-let lobbyPlayers = [];
-let myTeamIdx = 0;
-let state = null;
-let selection = new Set();
-let drag = { active:false, x0:0, y0:0, x1:0, y1:0 };
-let targeting = null; // {slot, ability:{id,...}, label, type, forIds?}
-const groupSlots = {}; // "1".."9" -> Set(ids)
+/* ---------------- Local state ---------------- */
+let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
+let selection=new Set();
+let dragging=false, dragStart=null;
+let targeting=null; // {slot,ability,ids,type}
+const groups={}; // "1".."9" -> Set(ids)
+const visPos=new Map(); function vpos(u){ let p=visPos.get(u.id); if(!p){ p={x:u.x,y:u.y}; visPos.set(u.id,p);} const k=.22; p.x+=(u.x-p.x)*k; p.y+=(u.y-p.y)*k; return p; }
 
-/* Visual smoothing cache */
-const visPos = new Map();
-function vis(u){
-  let p = visPos.get(u.id);
-  if (!p){ p = {x:u.x, y:u.y}; visPos.set(u.id, p); }
-  const k = 0.18; p.x += (u.x - p.x) * k; p.y += (u.y - p.y) * k; return p;
-}
+/* ---------------- Firestore refs & intents ---------------- */
+const lobbyRef = doc(db,"lobbies",GAME_ID);
+const gameRef  = doc(db,"games",GAME_ID,"meta","state");
+async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
 
-/* ------------ Firestore refs ------------ */
-const lobbyRef = doc(db, "lobbies", GAME_ID);
-const gameRef  = doc(db, "games",  GAME_ID, "meta", "state");
-
-/* ------------ Intents ------------ */
-async function pushIntent(kind, payload){
-  const intentsCol = collection(db, "games", GAME_ID, "intents");
-  await addDoc(intentsCol, { ts: Date.now(), user: ME, kind, payload });
-}
-
-/* ------------ Host setup / join ------------ */
-async function init(){
-  const s = await getDoc(lobbyRef);
-  if (!s.exists()) { alert("Lobby not found"); return; }
-  const ld = s.data();
-  hostName = ld.host || null;
-  isHost = (hostName === ME);
-  lobbyPlayers = Array.isArray(ld.players) ? ld.players.slice(0,4) : [];
+/* ---------------- Init (host sets up) ---------------- */
+(async function init(){
+  const s=await getDoc(lobbyRef); if(!s.exists()){ alert("Lobby not found"); return; }
+  const L=s.data(); isHost=(L.host===ME);
+  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []); // max 4
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
+  // camera start on my spawn within the window
+  const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length]; cam.x=sp.x-cv.width/2; cam.y=sp.y-cv.height/2; clampCam();
 
-  const sp = TEAM_SPAWNS[myTeamIdx % TEAM_SPAWNS.length];
-  cam.x = sp.x - cv.width/2; cam.y = sp.y - cv.height/2; clampCam();
-
-  const g = await getDoc(gameRef);
-  if (isHost && !g.exists()){
-    const units = [];
-    lobbyPlayers.forEach((name, idx)=>{
-      const base = TEAM_SPAWNS[idx];
-      const pack = ["guardian","lancer","archer","cavalry","mage","priest"];
-      for (let i=0;i<10;i++){
-        const t = pack[i%pack.length];
-        const jitter = (n)=> (Math.random()*n - n/2);
-        const u = mkUnit(t, name, base.x + (i%5)*26 + jitter(10), base.y + Math.floor(i/5)*26 + jitter(10));
-        units.push(u);
+  const g=await getDoc(gameRef);
+  if(isHost && !g.exists()){
+    const units=[];
+    lobbyPlayers.forEach((name,idx)=>{
+      const base=TEAM_SPAWNS[idx], pack=["guardian","lancer","archer","cavalry","mage","priest"];
+      for(let i=0;i<10;i++){
+        const t=pack[i%pack.length], jit=n=>Math.random()*n-n/2;
+        units.push(mkUnit(t,name, base.x+(i%5)*24+jit(8), base.y+Math.floor(i/5)*24+jit(8)));
       }
     });
-    const points = CMD_POINTS.map(p => ({ ...p, owner:null, cap:0, spawnType:"guardian", nextSpawnAt:0 }));
-    const now = Date.now();
-    await setDoc(gameRef, {
-      tick:0, startedAt: now, endAt: now + MATCH_MS, winner: null, map:{w:WORLD.w, h:WORLD.h},
-      players: lobbyPlayers, points, units, effects:[]
-    });
+    const points=CMD_POINTS.map(p=>({...p,owner:null,cap:0,spawnType:"guardian",nextSpawnAt:0}));
+    const now=Date.now();
+    await setDoc(gameRef,{tick:0,startedAt:now,endAt:now+MATCH_MS,winner:null,map:{w:WORLD.w,h:WORLD.h},players:lobbyPlayers,points,units,effects:[]});
   }
 
-  onSnapshot(gameRef, (snap)=>{
-    if (!snap.exists()) return;
-    state = snap.data();
-    renderAbilitiesPanel();
-    renderTimer();
-    renderLeaderboard();
-    maybeShowWinner();
-  });
+  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); maybeWinner(); });
 
-  if (isHost) { hostLoop(); }
+  if(isHost) hostLoop();
+})();
+
+/* ---------------- Units & helpers ---------------- */
+function mkUnit(type,owner,x,y){
+  const b=TYPES[type], id=owner.slice(0,2).toUpperCase()+Math.random().toString(36).slice(2,7);
+  return { id, tt:type, o:owner, x:Math.round(x), y:Math.round(y), vx:0, vy:0, hp:b.hp, maxHp:b.hp, cd:0, acd:{},
+           _order:null, _aura:null, _charge:null }; // _charge: {x,y,targetId?,until}
 }
-init();
+function d2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+function clampMag(x,y,m){ const l=Math.hypot(x,y)||1; if(l>m){ x=x/l*m; y=y/l*m; } return [x,y]; }
 
-/* ------------ Units ------------ */
-function mkUnit(type, owner, x, y){
-  const b = TYPES[type];
-  const id = owner.slice(0,2).toUpperCase() + Math.random().toString(36).slice(2,7);
-  return {
-    id, tt:type, o:owner, // tt = troop type
-    x: Math.round(x), y: Math.round(y),
-    vx:0, vy:0, // inertia smoothing
-    hp: b.hp, maxHp: b.hp,
-    cd: 0,      // attack CD
-    acd:{},     // ability CDs
-    _order:null, // explicit goal (move/attackMove)
-    _aura:null,  // for shieldwall/brace/mend visuals
-    _charge:null // {x,y, power, t}
-  };
+/* ---------------- Input (inside window) ---------------- */
+let mouse={x:0,y:0,worldX:0,worldY:0,inside:false};
+function mouseInCanvas(e){ const r=cv.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
+
+cv.addEventListener("mousemove",(e)=>{ const r=mouseInCanvas(e); mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
+cv.addEventListener("mousedown",(e)=>{
+  const r=mouseInCanvas(e);
+  if(e.button===2){ // right click: order or finish targeting
+    e.preventDefault();
+    if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
+    return orderAttackMove(mouse.worldX,mouse.worldY);
+  }
+  // left: start drag OR finish targeting
+  if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
+  dragging=true; dragStart={x:mouse.x,y:mouse.y};
+});
+addEventListener("mouseup",(e)=>{
+  if(!dragging) return; dragging=false;
+  const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
+  if(tiny){
+    // precise click: only pick friendly within 18 px; otherwise keep current selection
+    const picked = pickClosestFriendly(mouse.worldX,mouse.worldY,18);
+    if(picked){ if(!e.shiftKey) selection.clear(); selection.add(picked.id); renderHUD(); }
+  }else{
+    const minx=Math.min(dragStart.x,mouse.x)+cam.x, maxx=Math.max(dragStart.x,mouse.x)+cam.x;
+    const miny=Math.min(dragStart.y,mouse.y)+cam.y, maxy=Math.max(dragStart.y,mouse.y)+cam.y;
+    const ids = pickInRect(minx,miny,maxx,maxy,ME);
+    if(!e.shiftKey) selection.clear();
+    for(const id of ids) selection.add(id);
+    renderHUD();
+  }
+});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+
+addEventListener("keydown",(e)=>{
+  const k=e.key.toLowerCase();
+  if(k==="escape"){ setTarget(null); return; }
+  if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
+  if(k>="1"&&k<="9"){
+    e.preventDefault();
+    if(e.ctrlKey){ groups[k]=new Set(Array.from(selection)); }
+    else if(e.shiftKey){ if(groups[k]) for(const id of groups[k]) selection.add(id); }
+    else { selection.clear(); if(groups[k]) for(const id of groups[k]) selection.add(id); }
+    renderHUD();
+  }
+});
+
+/* ---------------- Selection helpers ---------------- */
+function pickClosestFriendly(wx,wy,rad){
+  if(!state?.units) return null;
+  let best=null, bd=rad*rad;
+  for(const u of state.units){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  return best;
 }
-function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
-function clampMag(x,y,max){ const m=Math.hypot(x,y)||1; if (m>max){ x=x/m*max; y=y/m*max; } return [x,y]; }
-
-/* ------------ Inputs ------------ */
-let mouse = { x:0, y:0, worldX:0, worldY:0, down:false };
-cv.addEventListener("mousemove", (e)=>{
-  mouse.x = e.offsetX; mouse.y = e.offsetY;
-  mouse.worldX = cam.x + mouse.x;
-  mouse.worldY = cam.y + mouse.y;
-});
-cv.addEventListener("mousedown", (e)=>{
-  if (e.button === 2){ // right: attack-move (or finish targeting to ground)
-    e.preventDefault();
-    if (targeting && (targeting.type === "point" || targeting.type === "pointOrUnit")){
-      castTargetedAbilityAt(mouse.worldX, mouse.worldY);
-      return;
-    }
-    issueAttackMove(mouse.worldX, mouse.worldY);
-    return;
-  }
-  mouse.down = true;
-  // If awaiting a point target with left-click
-  if (targeting && (targeting.type === "point" || targeting.type === "pointOrUnit")){
-    castTargetedAbilityAt(mouse.worldX, mouse.worldY);
-    return;
-  }
-  drag.active = true; drag.x0 = mouse.x; drag.y0 = mouse.y; drag.x1 = mouse.x; drag.y1 = mouse.y;
-});
-cv.addEventListener("mouseup", (e)=>{
-  if (e.button === 2) return;
-  mouse.down = false;
-  if (!drag.active) return;
-  const minx = Math.min(drag.x0, drag.x1), maxx = Math.max(drag.x0, drag.x1);
-  const miny = Math.min(drag.y0, drag.y1), maxy = Math.max(drag.y0, drag.y1);
-  const picked = pickUnitsInRect(minx+cam.x, miny+cam.y, maxx+cam.x, maxy+cam.y, ME);
-  if (!e.shiftKey) selection.clear();
-  for (const id of picked) selection.add(id);
-  drag.active = false;
-  renderAbilitiesPanel();
-});
-cv.addEventListener("contextmenu", e=> e.preventDefault());
-
-addEventListener("keydown", (e)=>{
-  const k = e.key.toLowerCase();
-
-  // Cancel targeting
-  if (k === "escape"){ setTargeting(null); return; }
-
-  // Abilities: Q/W/E/R trigger by slot 1..4
-  if (["q","w","e","r"].includes(k)){ e.preventDefault(); abilityKeyToSlot(k); return; }
-
-  // Group binds 1..9
-  if (k>="1" && k<="9"){
-    e.preventDefault();
-    const slot = k;
-    if (e.ctrlKey){ // assign
-      groupSlots[slot] = new Set([...selection].filter(id=>{
-        const u = state?.units?.find(x=>x.id===id);
-        return u && u.o===ME;
-      }));
-    } else if (e.shiftKey){ // add
-      const set = groupSlots[slot]; if (!set) return;
-      for (const id of set){
-        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
-        if (alive) selection.add(id);
-      }
-      renderAbilitiesPanel();
-    } else { // recall
-      selection.clear();
-      const set = groupSlots[slot]; if (!set) return;
-      for (const id of set){
-        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
-        if (alive) selection.add(id);
-      }
-      renderAbilitiesPanel();
-    }
-  }
-});
-
-/* Selection helpers */
-function pickUnitsInRect(x0,y0,x1,y1, owner){
-  const out = [];
-  if (!state || !state.units) return out;
-  const tiny = Math.hypot((x1-x0),(y1-y0)) < 6;
-  if (tiny){
-    let best=null, bd=1e12;
-    for (const u of state.units){ if (u.o!==owner) continue;
-      const d = dist2(u.x,u.y, mouse.worldX, mouse.worldY);
-      if (d<bd){bd=d; best=u;}
-    }
-    return best ? [best.id] : [];
-  }
-  for (const u of state.units){
-    if (u.o !== owner) continue;
-    if (u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1) out.push(u.id);
-  }
+function pickInRect(x0,y0,x1,y1,owner){
+  const out=[]; if(!state?.units) return out;
+  for(const u of state.units){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=y0&&u.y<=y1) out.push(u.id); }
   return out;
 }
 
-/* ------------ Orders & abilities ------------ */
-async function issueAttackMove(wx,wy){
-  const ids = Array.from(selection);
-  if (!ids.length) return;
-  await pushIntent("order", { type:"attackMove", ids, x:Math.round(wx), y:Math.round(wy) });
+/* ---------------- Orders & abilities ---------------- */
+async function orderAttackMove(wx,wy){
+  const ids=Array.from(selection); if(!ids.length) return;
+  // wipe:true replaces previous command; if unit is charging, order is ignored on host (charge locks)
+  await pushIntent("order",{type:"attackMove",ids,x:Math.round(wx),y:Math.round(wy),wipe:true});
 }
-
-function abilityKeyToSlot(k){
-  const map = {q:1,w:2,e:3,r:4};
-  castAbilitySlot(map[k]);
-}
-
-function selectedAbilityForSlot(slot){
-  // find first ability present in any selected unit for that slot
-  const selected = state?.units?.filter(u=>selection.has(u.id)) || [];
-  for (const u of selected){
-    const t = TYPES[u.tt]; if (!t) continue;
-    const ab = (t.abilities||[]).find(a=>a.slot===slot);
-    if (ab) return ab;
-  }
+function slotAbility(slot){
+  const sel=state?.units?.filter(u=>selection.has(u.id))||[];
+  for(const u of sel){ const t=TYPES[u.tt]; const a=t?.abilities?.find(x=>x.slot===slot); if(a) return a; }
   return null;
 }
-
-function setTargeting(info){
-  targeting = info; // or null
-  const hint = document.getElementById("targetHint");
-  if (!info){ hint.style.display="none"; cv.classList.remove("cursor-target"); return; }
-  hint.textContent = `🎯 Targeting: ${info.label} — click to confirm (Right/Left) • Esc to cancel`;
-  hint.style.display = "block";
-  cv.classList.add("cursor-target");
+function setTarget(info){
+  targeting=info;
+  const hint=document.getElementById("hint");
+  if(!info){ hint.style.display="none"; return; }
+  hint.textContent=`🎯 ${info.label}: click a target (Esc to cancel)`;
+  hint.style.display="block";
 }
+async function castSlot(slot){
+  const ids=Array.from(selection); if(!ids.length) return;
+  const ab=slotAbility(slot); if(!ab) return;
+  if(ab.target==="self"){ await pushIntent("ability",{slot,ids,mode:"self",wipe:true}); }
+  else { setTarget({slot,ability:ab,label:ab.label,type:ab.target,ids}); }
+}
+async function finalizeTarget(x,y){
+  if(!targeting) return;
+  const {slot,ids,type}=targeting;
 
-async function castAbilitySlot(slot){
-  const ids = Array.from(selection);
-  if (!ids.length) return;
-  const ab = selectedAbilityForSlot(slot);
-  if (!ab) return;
-  if (ab.target === "self"){
-    await pushIntent("ability", { slot, ids, mode:"self" });
-  } else if (ab.target === "point" || ab.target === "pointOrUnit"){
-    setTargeting({ slot, ability: ab, label: ab.label, type: ab.target, forIds: ids });
+  // If ability supports unit targeting, choose nearest enemy under cursor first
+  if(type==="pointOrUnit"){
+    const enemy = pickClosestEnemy(x,y,24);
+    if(enemy){
+      await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true});
+      return setTarget(null);
+    }
   }
+  // Default to ground point
+  await pushIntent("ability",{slot,ids,mode:"point",x:Math.round(x),y:Math.round(y),wipe:true});
+  setTarget(null);
+}
+function pickClosestEnemy(wx,wy,rad){
+  if(!state?.units) return null;
+  let best=null, bd=rad*rad;
+  for(const u of state.units){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  return best;
 }
 
-async function castTargetedAbilityAt(x,y){
-  if (!targeting) return;
-  const { slot, forIds } = targeting;
-  await pushIntent("ability", { slot, ids:forIds, mode:"point", x:Math.round(x), y:Math.round(y) });
-  setTargeting(null);
-}
-
-/* ------------ CP panel ------------ */
-const cpPanel = document.getElementById("cpPanel");
-const cpName  = document.getElementById("cpName");
-const cpBtns  = document.getElementById("cpBtns");
-
-function showCpPanelFor(point){
-  if (!point){ cpPanel.style.display="none"; return; }
-  cpName.textContent = point.id;
-  cpBtns.innerHTML = "";
-  for (const t of SPAWN_CHOICES){
-    const b = document.createElement("button");
-    b.className="cpBtn"; b.textContent = `${TYPES[t].emoji} ${TYPES[t].name}`;
-    b.onclick = async ()=>{ await pushIntent("spawnChoice", { pointId: point.id, troop: t }); };
+/* ---------------- CP panel (click CP when owned) ---------------- */
+const cpPanel=document.getElementById("cpPanel"), cpName=document.getElementById("cpName"), cpBtns=document.getElementById("cpBtns");
+function showCP(point){
+  if(!point){ cpPanel.style.display="none"; return; }
+  cpName.textContent=point.id; cpBtns.innerHTML="";
+  for(const t of SPAWN_CHOICES){
+    const b=document.createElement("button"); b.className="cpBtn"; b.textContent=`${TYPES[t].emoji} ${TYPES[t].name}`;
+    b.onclick=()=>pushIntent("spawnChoice",{pointId:point.id,troop:t});
     cpBtns.appendChild(b);
   }
   cpPanel.style.display="block";
 }
+cv.addEventListener("click",()=>{
+  if(!state) return;
+  for(const p of state.points){
+    const dx=p.x-(cam.x+mouse.x), dy=p.y-(cam.y+mouse.y);
+    if(dx*dx+dy*dy<=p.r*p.r){ return p.owner===ME ? showCP(p) : showCP(null); }
+  }
+  showCP(null);
+});
 
-/* ------------ Edge pan camera ------------ */
-function updateCamera(dt){
-  const margin = 18;
-  let vx=0, vy=0;
-  if (mouse.x <= margin) vx -= 1;
-  else if (mouse.x >= cv.width - margin) vx += 1;
-  if (mouse.y <= margin) vy -= 1;
-  else if (mouse.y >= cv.height - margin) vy += 1;
-  cam.x += vx * cam.speed * dt;
-  cam.y += vy * cam.speed * dt;
-  clampCam();
+/* ---------------- Edge pan inside the window ---------------- */
+function edgePan(dt){
+  if(!mouse.inside) return;
+  const margin=18, w=cv.width, h=cv.height; let vx=0, vy=0;
+  if(mouse.x<=margin) vx-=1; else if(mouse.x>=w-margin) vx+=1;
+  if(mouse.y<=margin) vy-=1; else if(mouse.y>=h-margin) vy+=1;
+  cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
-/* ------------ Host loop ------------ */
+/* ---------------- Host loop ---------------- */
 async function hostLoop(){
-  let last = performance.now();
+  let last=performance.now();
   async function step(){
-    const now = performance.now();
-    const dt = Math.min(0.05, (now-last)/1000);
-    last = now;
+    const now=performance.now(), dt=Math.min(.05,(now-last)/1000); last=now;
 
-    const intentsCol = collection(db, "games", GAME_ID, "intents");
-    const intentsSnap = await getDocs(query(intentsCol, orderBy("ts","asc"), limit(60)));
-    const intents = intentsSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const intentsCol = collection(db,"games",GAME_ID,"intents");
+    const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(100)));
+    const intents=snap.docs.map(d=>({id:d.id,...d.data()}));
 
-    const snap = await getDoc(gameRef);
-    if (!snap.exists()){ requestAnimationFrame(step); return; }
-    let g = snap.data();
+    const gs=await getDoc(gameRef); if(!gs.exists()) return requestAnimationFrame(step);
+    let g=gs.data();
 
-    g = applyIntents(g, intents);
-    g = simulate(g, dt);
+    g=applyIntents(g,intents);
+    g=simulate(g,dt);
     g.tick++;
 
-    await setDoc(gameRef, g, { merge:false });
-    for (const d of intentsSnap.docs){ await deleteDoc(d.ref); }
+    await setDoc(gameRef,g,{merge:false});
+    for(const d of snap.docs) await deleteDoc(d.ref);
 
-    setTimeout(()=>requestAnimationFrame(step), 110); // ~9 Hz publish
+    setTimeout(()=>requestAnimationFrame(step),100); // ~10 Hz publish
   }
   step();
 }
 
-/* ------------ Apply intents ------------ */
-function applyIntents(g, intents){
-  const byId = new Map(g.units.map(u=>[u.id,u]));
-  for (const it of intents){
-    const { kind, user, payload } = it;
+/* ---------------- Apply intents (wipe previous; charge locks) ---------------- */
+function applyIntents(g,intents){
+  const byId=new Map(g.units.map(u=>[u.id,u]));
+  for(const it of intents){
+    const {kind,user,payload}=it;
 
-    if (kind === "order"){
-      const { type, ids, x, y } = payload;
-      if (type==="attackMove"){
-        for (const id of ids){
-          const u = byId.get(id); if (!u || u.o !== user) continue;
-          u._order = { type, x, y, ts: Date.now() };
-        }
+    if(kind==="order"){
+      const {ids,x,y,wipe}=payload;
+      for(const id of ids){
+        const u=byId.get(id); if(!u||u.o!==user) continue;
+        // if charging, ignore new orders (charge locks until done)
+        if(u._charge) continue;
+        if(wipe){ u._aura=null; u._order=null; }
+        u._order={type:"attackMove",x,y,ts:Date.now()};
       }
     }
 
-    if (kind === "ability"){
-      const { slot, ids, mode } = payload;
-      for (const id of ids){
-        const u = byId.get(id); if (!u || u.o !== user) continue;
-        const tp = TYPES[u.tt]; if (!tp) continue;
-        const abil = tp.abilities?.find(a=>a.slot===slot);
-        if (!abil) continue;
-        const ready = !(u.acd && u.acd[slot] > 0);
-        if (!ready) continue;
+    if(kind==="ability"){
+      const {slot,ids,mode,x,y,targetId,wipe}=payload;
+      for(const id of ids){
+        const u=byId.get(id); if(!u||u.o!==user) continue;
+        const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
+        const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
 
-        if (abil.id === "shieldwall" && mode==="self"){
-          u._aura = { kind:"shield", until: Date.now() + abil.dur*1000 };
-          u.acd[slot] = abil.cd;
+        if(wipe){ u._order=null; } // ability wipes any queued order
+
+        if(ab.id==="shieldwall" && mode==="self"){ u._aura={kind:"shield",until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
+        if(ab.id==="brace"      && mode==="self"){ u._aura={kind:"brace", until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
+        if((ab.id==="volley"||ab.id==="fireburst") && mode==="point"){
+          const radius=ab.radius||100, color=(ab.id==="volley"?"#aef":"#f88");
+          g.effects.push({type:"aoe",x,y,r:radius,until:Date.now()+650,color});
+          for(const v of g.units){ if(v.o===user) continue; if(d2(v.x,v.y,x,y)<=radius*radius){ const dmg=(ab.id==="volley"?14:20)-(TYPES[v.tt].armor||0); v.hp-=Math.max(1,dmg);} }
+          u.acd[slot]=ab.cd;
         }
-        if (abil.id === "brace" && mode==="self"){
-          u._aura = { kind:"brace", until: Date.now() + abil.dur*1000 };
-          u.acd[slot] = abil.cd;
+        if(ab.id==="charge" && (mode==="point" || mode==="unit")){
+          u._charge = mode==="unit" ? { targetId, until:Date.now()+1100 } : { x, y, until:Date.now()+1100 };
+          u._order=null; // clear so he doesn't snap back after charge
+          u.acd[slot]=ab.cd;
         }
-        if ((abil.id === "volley" || abil.id === "fireburst") && mode==="point"){
-          const { x, y } = payload;
-          const radius = abil.radius || 100;
-          // Add visual effect
-          g.effects.push({ type:"aoe", who:user, x, y, r:radius, until: Date.now()+650, color: (abil.id==="volley"?"#aef":"#f88") });
-          // Apply immediate AoE damage (could be DoT later)
-          for (const v of g.units){
-            if (v.o === user) continue;
-            const d2 = dist2(v.x,v.y,x,y);
-            if (d2 <= radius*radius){
-              const dmg = (abil.id==="volley") ? 14 : 20;
-              v.hp -= Math.max(1, dmg - (TYPES[v.tt].armor||0));
-            }
-          }
-          u.acd[slot] = abil.cd;
-        }
-        if (abil.id === "charge" && mode==="point"){
-          const { x, y } = payload;
-          u._charge = { x, y, power: 1.8, until: Date.now()+1200 };
-          u.acd[slot] = abil.cd;
-        }
-        if (abil.id === "mend" && mode==="self"){
-          u._aura = { kind:"mend", until: Date.now() + abil.dur*1000 };
-          u.acd[slot] = abil.cd;
-        }
+        if(ab.id==="mend" && mode==="self"){ u._aura={kind:"mend",until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
       }
     }
 
-    if (kind === "spawnChoice"){
-      const { pointId, troop } = payload;
-      const p = g.points.find(p=>p.id===pointId);
-      if (p && p.owner === user && TYPES[troop]) p.spawnType = troop;
+    if(kind==="spawnChoice"){
+      const {pointId,troop}=payload; const p=g.points.find(p=>p.id===pointId);
+      if(p && p.owner===user && TYPES[troop]) p.spawnType=troop;
     }
   }
   return g;
 }
 
-/* ------------ Simulation (smooth + aggro + separation) ------------ */
-function simulate(g, dt){
-  const nowMs = Date.now();
-  const endAt = g.endAt || (g.startedAt + MATCH_MS);
-
-  // Decay CDs & auras
-  for (const u of g.units){
-    if (u.cd>0) u.cd = Math.max(0, u.cd - dt);
-    for (const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k] - dt);
-    if (u._aura && u._aura.until <= nowMs) u._aura = null;
-    if (u._charge && u._charge.until <= nowMs) u._charge = null;
+/* ---------------- Simulation (fast; smooth; aggro; collisions) ---------------- */
+function simulate(g,dt){
+  const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
+  // decay
+  for(const u of g.units){
+    if(u.cd>0) u.cd=Math.max(0,u.cd-dt);
+    for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
+    if(u._aura && u._aura.until<=now) u._aura=null;
+    if(u._charge && u._charge.until<=now) u._charge=null;
   }
+  g.effects=(g.effects||[]).filter(e=>e.until>now);
 
-  // Effects cleanup
-  g.effects = (g.effects||[]).filter(e=>e.until > nowMs);
+  // spatial hash
+  let hash=buildHash(g.units);
 
-  // Build hash
-  let hash = buildHash(g.units);
+  // capture + spawn
+  for(const p of g.points){
+    const teams=new Map();
+    forNeighbors(hash,p.x,p.y,p.r,(i)=>{ const u=g.units[i]; const dx=u.x-p.x,dy=u.y-p.y; if(dx*dx+dy*dy<=p.r*p.r) teams.set(u.o,(teams.get(u.o)||0)+1); });
+    const present=[...teams.keys()];
+    if(present.length===1){ const owner=present[0]; if(p.owner===owner) p.cap=Math.min(1,p.cap+dt*.25); else { p.cap+=dt*.25; if(p.cap>=1){ p.owner=owner; p.cap=1; p.nextSpawnAt=0; }}}
+    else if(present.length>1){ p.cap=Math.max(0,p.cap-dt*.08); if(p.cap===0) p.owner=null; }
+    else { p.cap=Math.max(0,p.cap-dt*.02); }
 
-  // Capture & spawn
-  for (const p of g.points){
-    const teams = new Map();
-    forEachNeighborIndex(hash, p.x, p.y, p.r, (idx)=>{
-      const u = g.units[idx];
-      const dx = u.x - p.x, dy = u.y - p.y;
-      if (dx*dx + dy*dy <= p.r*p.r) teams.set(u.o, (teams.get(u.o)||0)+1);
-    });
-
-    const present = Array.from(teams.keys());
-    if (present.length === 1){
-      const owner = present[0];
-      if (p.owner === owner){ p.cap = Math.min(1, p.cap + dt*0.2); }
-      else { p.cap += dt*0.2; if (p.cap>=1){ p.owner=owner; p.cap=1; p.nextSpawnAt=0; } }
-    } else if (present.length > 1){
-      p.cap = Math.max(0, p.cap - dt*0.08);
-      if (p.cap === 0 && present.length>1) p.owner = null;
-    } else {
-      p.cap = Math.max(0, p.cap - dt*0.02);
-    }
-
-    if (p.owner){
-      const period = 15000;
-      if (!p.nextSpawnAt) p.nextSpawnAt = nowMs + period;
-      if (nowMs >= p.nextSpawnAt){
-        const spawnType = p.spawnType || "guardian";
-        const jitter = (n)=> (Math.random()*n - n/2);
-        g.units.push(mkUnit(spawnType, p.owner, p.x + jitter(24), p.y + jitter(24)));
-        p.nextSpawnAt = nowMs + period;
+    if(p.owner){
+      const period=12000;
+      if(!p.nextSpawnAt) p.nextSpawnAt=now+period;
+      if(now>=p.nextSpawnAt){
+        const t=p.spawnType||"guardian", j=n=>Math.random()*n-n/2;
+        g.units.push(mkUnit(t,p.owner, p.x+j(20), p.y+j(20)));
+        p.nextSpawnAt=now+period;
       }
     }
   }
 
-  // Orders/AI & combat
-  for (const u of g.units){
-    const tp = TYPES[u.tt];
-    const baseMS = tp.moveSpd + (u._aura?.kind==="brace" ? 0 : 0);
-    const chargeMul = u._charge ? 1.6 : 1.0;
-    const ms = baseMS * chargeMul;
+  // orders/AI/combat
+  for(const u of g.units){
+    const t=TYPES[u.tt], range=t.range;
 
-    // Nearest enemy (search up to aggro range or more if charged)
-    const searchR = Math.max(AGGRO_RANGE, tp.range + 60);
-    let enemy=null, bestD2= Number.POSITIVE_INFINITY;
-    forEachNeighborIndex(hash, u.x, u.y, searchR, (idx)=>{
-      const v = g.units[idx];
-      if (!v || v.o === u.o) return;
-      const d2 = dist2(u.x,u.y,v.x,v.y);
-      if (d2 < bestD2){ bestD2 = d2; enemy = v; }
-    });
+    // charge target tracking
+    if(u._charge && u._charge.targetId){
+      const target=g.units.find(x=>x.id===u._charge.targetId);
+      if(target){ u._charge.x = target.x; u._charge.y = target.y; }
+    }
 
-    // Attack if in range
-    const range = tp.range;
-    if (enemy && u.cd<=0 && bestD2 <= range*range){
-      // Base damage with armor reduction; shieldwall gives extra armor; brace increases effective range vs chargers is omitted for brevity
-      const enemyArmor = (TYPES[enemy.tt].armor||0) + (enemy._aura?.kind==="shield" ? 3 : 0);
-      const dmg = Math.max(1, tp.dmg - enemyArmor);
+    // nearest enemy
+    const lookR=Math.max(AGGRO_RANGE, range+60);
+    let enemy=null, bd=Infinity;
+    forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v || v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<bd){ bd=d; enemy=v; } });
+
+    // attack
+    if(enemy && u.cd<=0 && bd<=range*range){
+      const eArmor=(TYPES[enemy.tt].armor||0) + (enemy._aura?.kind==="shield" ? 3 : 0);
+      const dmg=Math.max(1,t.dmg - eArmor);
       enemy.hp -= dmg;
-      u.cd = Math.max(0.05, 1/tp.atkSpd);
+      u.cd = Math.max(.05, 1/t.atkSpd);
     }
 
-    // Goal: explicit order overrides; otherwise pursue if enemy within AGGRO_RANGE
-    let goal = null;
-    if (u._order){ goal = {x:u._order.x, y:u._order.y}; }
-    else if (enemy && bestD2 <= AGGRO_RANGE*AGGRO_RANGE){
-      goal = {x:enemy.x, y:enemy.y};
-    }
+    // goal: charge > explicit order > aggro
+    let goal=null;
+    if(u._charge){ const cx=u._charge.x ?? u.x, cy=u._charge.y ?? u.y; goal={x:cx,y:cy}; }
+    else if(u._order){ goal={x:u._order.x,y:u._order.y}; }
+    else if(enemy && bd<=AGGRO_RANGE*AGGRO_RANGE){ goal={x:enemy.x,y:enemy.y}; }
 
-    // Steering (smoothed): desired = goalDir + separation; then lerp velocity to desired*ms
-    let vx = u.vx, vy = u.vy;
-    let dx=0, dy=0;
-    if (goal){
-      dx = goal.x - u.x; dy = goal.y - u.y;
-      const d = Math.hypot(dx,dy);
-      if (d > STOP_DIST){ dx/=d; dy/=d; }
-      else { dx=0; dy=0; }
-    }
-    // Separation (lower weight to prevent bobble)
-    let sx=0, sy=0;
-    const sepRad = 26;
-    forEachNeighborIndex(hash, u.x, u.y, sepRad, (idx)=>{
-      const v = g.units[idx]; if (!v || v===u) return;
-      const ddx = u.x - v.x, ddy = u.y - v.y;
-      const d2 = ddx*ddx + ddy*ddy; if (d2===0 || d2>sepRad*sepRad) return;
-      const d = Math.sqrt(d2);
-      const push = (sepRad - d)/sepRad; // 0..1
-      sx += (ddx/d) * push; sy += (ddy/d) * push;
-    });
+    // steering (smooth, less bobble)
+    let dx=0,dy=0;
+    if(goal){ const gx=goal.x-u.x, gy=goal.y-u.y, d=Math.hypot(gx,gy); if(d>STOP_DIST){ dx=gx/d; dy=gy/d; } }
+    // separation
+    let sx=0,sy=0; const sep=24;
+    forNeighbors(hash,u.x,u.y,sep,(i)=>{ const v=g.units[i]; if(!v||v===u) return; const rx=u.x-v.x, ry=u.y-v.y, d2v=rx*rx+ry*ry; if(d2v===0||d2v>sep*sep) return; const d=Math.sqrt(d2v), push=(sep-d)/sep; sx+=(rx/d)*push; sy+=(ry/d)*push; });
 
-    const wSep = 0.6; // softer than before
-    let desX = dx + wSep*sx, desY = dy + wSep*sy;
-    [desX, desY] = clampMag(desX, desY, 1);
-
-    // Charge adds forward boost toward its target
-    if (u._charge){
-      const cx = u._charge.x - u.x, cy = u._charge.y - u.y;
-      const cd = Math.hypot(cx,cy)||1;
-      desX += (cx/cd) * 0.6; desY += (cy/cd) * 0.6;
-      [desX, desY] = clampMag(desX, desY, 1.2);
-    }
-
-    // Inertia smoothing (less bobble): lerp velocity toward desired*ms
-    const targetVX = desX * ms, targetVY = desY * ms;
-    const lerp = 0.18; // smoothness
-    vx += (targetVX - vx) * lerp;
-    vy += (targetVY - vy) * lerp;
-
-    u.vx = vx; u.vy = vy;
-    u.x += vx * dt; u.y += vy * dt;
+    let desX=dx + 0.5*sx, desY=dy + 0.5*sy; [desX,desY]=clampMag(desX,desY,1);
+    const speed = t.moveSpd * (u._charge ? 1.7 : 1.0);
+    const targetVX=desX*speed, targetVY=desY*speed;
+    const lerp=0.25; u.vx += (targetVX-u.vx)*lerp; u.vy += (targetVY-u.vy)*lerp;
+    u.x += u.vx*dt; u.y += u.vy*dt;
   }
 
-  // Rebuild & resolve collisions quickly (hash neighbors)
-  hash = buildHash(g.units);
-  resolveCollisionsHash(g.units, hash);
+  // collisions
+  hash=buildHash(g.units); resolveCollisionsHash(g.units,hash);
+  g.units=g.units.filter(u=>u.hp>0);
 
-  // Cleanup dead
-  g.units = g.units.filter(u=>u.hp>0);
+  // victory
+  const alive=countByOwner(g.units), owners=Object.keys(alive).filter(o=>alive[o]>0);
+  if(!g.winner && owners.length===1) g.winner=owners[0];
+  if(!g.winner && now>=endAt){ const w=decideWinner(g,alive); g.winner=w||owners.sort()[0]||(g.players?.[0]??null); }
 
-  // Time-based victory → most troops (with tie breakers)
-  const aliveByOwner = countByOwner(g.units);
-  const livingOwners = Object.keys(aliveByOwner).filter(o=>aliveByOwner[o]>0);
-  if (!g.winner && livingOwners.length === 1){
-    g.winner = livingOwners[0];
-  }
-  if (!g.winner && nowMs >= endAt){
-    const winner = decideWinnerByCounts(g, aliveByOwner);
-    g.winner = winner || livingOwners.sort()[0] || (g.players?.[0] ?? null);
-  }
   return g;
 }
-
-/* Collisions */
-function resolveCollisionsHash(units, hash){
-  for (let pass=0; pass<2; pass++){
-    for (let i=0;i<units.length;i++){
-      const u = units[i];
-      const ru = (TYPES[u.tt].size || 12);
-      const rad = ru + 18;
-      forEachNeighborIndex(hash, u.x, u.y, rad, (j)=>{
-        if (j===i) return;
-        const v = units[j];
-        const rv = (TYPES[v.tt].size || 12);
-        const minDist = ru + rv + 2;
-        const dx = v.x - u.x, dy = v.y - u.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 === 0){
-          const ang = Math.random()*6.283; const off = minDist/2;
-          u.x -= Math.cos(ang)*off; u.y -= Math.sin(ang)*off;
-          v.x += Math.cos(ang)*off; v.y += Math.sin(ang)*off;
-          return;
-        }
-        if (d2 < minDist*minDist){
-          const d = Math.sqrt(d2), overlap = minDist - d;
-          const nx = dx/d, ny = dy/d;
-          u.x -= nx * overlap * 0.5; u.y -= ny * overlap * 0.5;
-          v.x += nx * overlap * 0.5; v.y += ny * overlap * 0.5;
-        }
-      });
+function resolveCollisionsHash(units,hash){
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<units.length;i++){
+      const u=units[i], ru=(TYPES[u.tt].size||12), rad=ru+18;
+      forNeighbors(hash,u.x,u.y,rad,(j)=>{ if(j===i) return; const v=units[j], rv=(TYPES[v.tt].size||12), min=ru+rv+2; const dx=v.x-u.x, dy=v.y-u.y, d2=dx*dx+dy*dy; if(d2===0){ const ang=Math.random()*6.283, off=min/2; u.x-=Math.cos(ang)*off; u.y-=Math.sin(ang)*off; v.x+=Math.cos(ang)*off; v.y+=Math.sin(ang)*off; return;} if(d2<min*min){ const d=Math.sqrt(d2), o=min-d, nx=dx/d, ny=dy/d; u.x-=nx*o*.5; u.y-=ny*o*.5; v.x+=nx*o*.5; v.y+=ny*o*.5; }});
     }
-    hash = buildHash(units);
+    hash=buildHash(units);
   }
 }
 
-/* Winner helpers */
-function countByOwner(units){ const m={}; for (const u of units){ m[u.o]=(m[u.o]||0)+1; } return m; }
-function totalHpByOwner(units){ const m={}; for (const u of units){ m[u.o]=(m[u.o]||0)+u.hp; } return m; }
-function cpsOwned(g){ const m={}; for (const p of g.points){ if (p.owner){ m[p.owner]=(m[p.owner]||0)+1; } } return m; }
-function decideWinnerByCounts(g, counts){
-  const owners = Object.keys(counts); if (!owners.length) return null;
-  let max = Math.max(...owners.map(o=>counts[o]));
-  let tied = owners.filter(o=>counts[o]===max);
-  if (tied.length===1) return tied[0];
-  const hp = totalHpByOwner(g.units);
-  let bestHp = Math.max(...tied.map(o=>hp[o]||0));
-  tied = tied.filter(o=>(hp[o]||0)===bestHp);
-  if (tied.length===1) return tied[0];
-  const cp = cpsOwned(g);
-  let bestCp = Math.max(...tied.map(o=>cp[o]||0));
-  tied = tied.filter(o=>(cp[o]||0)===bestCp);
-  if (tied.length===1) return tied[0];
-  return tied.sort()[0];
+/* ---------------- Small helpers ---------------- */
+function countByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+1; return m; }
+function hpByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+u.hp; return m; }
+function cps(g){ const m={}; for(const p of g.points) if(p.owner) m[p.owner]=(m[p.owner]||0)+1; return m; }
+function decideWinner(g,cnt){
+  const owners=Object.keys(cnt); if(!owners.length) return null;
+  let max=Math.max(...owners.map(o=>cnt[o])), tied=owners.filter(o=>cnt[o]===max);
+  if(tied.length===1) return tied[0];
+  const hp=hpByOwner(g.units); let best=Math.max(...tied.map(o=>hp[o]||0)); tied=tied.filter(o=>(hp[o]||0)===best); if(tied.length===1) return tied[0];
+  const cp=cps(g); best=Math.max(...tied.map(o=>cp[o]||0)); tied=tied.filter(o=>(cp[o]||0)===best); return tied.length===1?tied[0]:tied.sort()[0];
 }
+function tint(owner){ return COLORS[(hash(owner)%COLORS.length)]; }
+function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
+function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
 
-/* ------------ Rendering ------------ */
+/* ---------------- Render ---------------- */
 function draw(){
-  const dt = 16/1000;
-  updateCamera(dt);
-
+  const dt=16/1000; edgePan(dt);
   ctx.clearRect(0,0,cv.width,cv.height);
 
-  // Background
-  ctx.fillStyle = "#132235";
-  ctx.fillRect(0,0,cv.width,cv.height);
-  // Grid
-  ctx.strokeStyle = "#1a2b40"; ctx.lineWidth = 1;
-  const grid = 100;
-  for (let x = -cam.x % grid; x < cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for (let y = -cam.y % grid; y < cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+  // background + grid
+  ctx.fillStyle="#122238"; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.strokeStyle="#1a2b40"; ctx.lineWidth=1; const grid=100;
+  for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
+  for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  if (state){
-    // Command points
-    for (const p of state.points){
-      const sx = p.x - cam.x, sy = p.y - cam.y;
-      ctx.beginPath(); ctx.arc(sx, sy, p.r, 0, Math.PI*2);
-      ctx.strokeStyle = "#556f9a"; ctx.lineWidth = 2; ctx.stroke();
-
-      if (p.owner){
-        const color = tintForOwner(p.owner);
-        ctx.beginPath(); ctx.arc(sx, sy, p.r * Math.max(0.12, p.cap), 0, Math.PI*2);
-        ctx.fillStyle = color+"66"; ctx.fill();
-      }
-
-      // spawn timer ring
-      if (p.owner && p.nextSpawnAt){
-        const period = 15000;
-        const remain = Math.max(0, p.nextSpawnAt - Date.now());
-        const prog = 1 - (remain/period);
-        ctx.beginPath(); ctx.arc(sx, sy, 28, -Math.PI/2, -Math.PI/2 + prog*2*Math.PI);
-        ctx.strokeStyle = "#aef"; ctx.lineWidth = 4; ctx.stroke();
-      }
-
-      ctx.fillStyle="#cde";
-      ctx.fillText(p.id + (p.owner? ` (${shortName(p.owner)})`:""), sx-18, sy- (p.r+6));
+  if(state){
+    // CPs
+    for(const p of state.points){
+      const sx=p.x-cam.x, sy=p.y-cam.y;
+      ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2); ctx.strokeStyle="#556f9a"; ctx.lineWidth=2; ctx.stroke();
+      if(p.owner){ ctx.beginPath(); ctx.arc(sx,sy,p.r*Math.max(.12,p.cap),0,Math.PI*2); ctx.fillStyle=tint(p.owner)+"55"; ctx.fill(); }
+      // spawn ring
+      if(p.owner && p.nextSpawnAt){ const period=12000, rem=Math.max(0,p.nextSpawnAt-Date.now()), prog=1-(rem/period);
+        ctx.beginPath(); ctx.arc(sx,sy,24,-Math.PI/2,-Math.PI/2+prog*2*Math.PI); ctx.strokeStyle="#aef"; ctx.lineWidth=4; ctx.stroke(); }
+      ctx.fillStyle="#cde"; ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx-18, sy-(p.r+6));
     }
+    // effects (AOE)
+    for(const e of (state.effects||[])){ if(e.type==="aoe"){ const sx=e.x-cam.x, sy=e.y-cam.y; ctx.beginPath(); ctx.arc(sx,sy,e.r,0,Math.PI*2); ctx.strokeStyle=e.color||"#fff"; ctx.lineWidth=3; ctx.stroke(); } }
 
-    // Effects (AOE rings)
-    for (const e of (state.effects||[])){
-      if (e.type === "aoe"){
-        const sx = e.x - cam.x, sy = e.y - cam.y;
-        ctx.beginPath(); ctx.arc(sx, sy, e.r, 0, Math.PI*2);
-        ctx.strokeStyle = e.color || "#fff";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-    }
-
-    // Units (emoji)
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    for (const u of state.units){
-      const tp = TYPES[u.tt];
-      const p = vis(u);
-      const sx = p.x - cam.x, sy = p.y - cam.y;
-
-      // aura visuals
-      if (u._aura){
-        ctx.beginPath(); ctx.arc(sx, sy, tp.size+8, 0, Math.PI*2);
-        ctx.strokeStyle = (u._aura.kind==="shield" ? "#6cf" : u._aura.kind==="mend" ? "#7f7" : "#ccf");
-        ctx.lineWidth = 3; ctx.stroke();
-      }
-      // charge direction arrow
-      if (u._charge){
-        ctx.beginPath();
-        const tx = u._charge.x - cam.x, ty = u._charge.y - cam.y;
-        ctx.moveTo(sx, sy); ctx.lineTo(tx, ty);
-        ctx.strokeStyle = "#fbb"; ctx.lineWidth = 2; ctx.stroke();
-      }
-
+    // units
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    for(const u of state.units){
+      const t=TYPES[u.tt]; const p=vpos(u); const sx=p.x-cam.x, sy=p.y-cam.y;
+      // auras
+      if(u._aura){ ctx.beginPath(); ctx.arc(sx,sy,t.size+8,0,Math.PI*2);
+        ctx.strokeStyle=(u._aura.kind==="shield"?"#6cf":u._aura.kind==="mend"?"#7f7":"#ccf"); ctx.lineWidth=3; ctx.stroke(); }
+      // charge arrow
+      if(u._charge){ ctx.beginPath(); const tx=(u._charge.x ?? u.x)-cam.x, ty=(u._charge.y ?? u.y)-cam.y; ctx.moveTo(sx,sy); ctx.lineTo(tx,ty); ctx.strokeStyle="#fbb"; ctx.lineWidth=2; ctx.stroke(); }
       // emoji body
-      ctx.font = `${Math.max(18, tp.size*2)}px system-ui`;
-      ctx.fillText(tp.emoji, sx, sy);
-
+      ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
       // selection ring
-      if (selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx, sy, tp.size+6, 0, Math.PI*2); ctx.stroke(); }
-
-      // HP bar
+      if(selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+6,0,Math.PI*2); ctx.stroke(); }
+      // hp bar
       ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
-      const hpw = Math.max(0, 36*(u.hp/u.maxHp));
-      ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
+      const hpw=Math.max(0,36*(u.hp/u.maxHp)); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
     }
   }
 
-  // Drag box
-  if (drag.active){
-    drag.x1 = mouse.x; drag.y1 = mouse.y;
-    const x = Math.min(drag.x0, drag.x1), y=Math.min(drag.y0, drag.y1);
-    const w = Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
-    ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
-  }
+  // drag box
+  if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
   requestAnimationFrame(draw);
 }
 draw();
 
-function tintForOwner(owner){
-  const idx = hash(owner) % COLORS.length;
-  return COLORS[idx];
-}
-function hash(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-function shortName(n){ return n.length>8? n.slice(0,8)+"…" : n; }
-
-/* ------------ Timer & leaderboard UI ------------ */
+/* ---------------- Timer & leaderboard & winner ---------------- */
 function renderTimer(){
-  if (!state) return;
-  const box = document.getElementById("timerBox");
-  const endAt = state.endAt || (state.startedAt + MATCH_MS);
-  let remain = Math.max(0, Math.floor((endAt - Date.now())/1000));
-  const m = String(Math.floor(remain/60)).padStart(2,"0");
-  const s = String(remain%60).padStart(2,"0");
-  box.textContent = `⏱️ ${m}:${s}`;
+  if(!state) return;
+  const box=document.getElementById("timerBox");
+  const end=state.endAt || (state.startedAt+MATCH_MS);
+  let sec=Math.max(0,Math.floor((end-Date.now())/1000));
+  const m=String(Math.floor(sec/60)).padStart(2,"0"), s=String(sec%60).padStart(2,"0");
+  box.textContent=`⏱️ ${m}:${s}`;
 }
-function renderLeaderboard(){
-  if (!state) return;
-  const rows = document.getElementById("leaderRows");
-  const counts = {};
-  for (const name of (state.players || [])) counts[name]=0;
-  for (const u of state.units){ counts[u.o] = (counts[u.o]||0)+1; }
-  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
-  rows.innerHTML = "";
-  for (const [name, c] of sorted){
-    const d = document.createElement("div");
-    d.className = "row";
-    d.innerHTML = `<span>${shortName(name)}</span><span>${c}</span>`;
-    rows.appendChild(d);
-  }
+function renderBoard(){
+  if(!state) return;
+  const rows=document.getElementById("leaderRows");
+  const counts={}; for(const n of (state.players||[])) counts[n]=0; for(const u of state.units) counts[u.o]=(counts[u.o]||0)+1;
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+  rows.innerHTML=""; for(const [n,c] of sorted){ const d=document.createElement("div"); d.className="row"; d.innerHTML=`<span>${short(n)}</span><span>${c}</span>`; rows.appendChild(d); }
 }
-
-/* ------------ Winner banner & return ------------ */
-function maybeShowWinner(){
-  if (!state || !state.winner) return;
-  const b = document.getElementById("banner");
-  b.textContent = `🏆 ${state.winner} wins! Returning to lobby…`;
+function maybeWinner(){
+  if(!state?.winner) return;
+  const b=document.getElementById("banner");
+  b.textContent=`🏆 ${state.winner} wins! Returning to lobby…`;
   b.style.display="block";
-  setTimeout(()=>{ location.href = `${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 5000);
+  setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
 }
 
-/* ------------ Click CP to open panel (must own) ------------ */
-cv.addEventListener("click", ()=>{
-  if (!state) return;
-  for (const p of state.points){
-    const dx = (p.x - cam.x) - mouse.x, dy = (p.y - cam.y) - mouse.y;
-    if (dx*dx + dy*dy <= p.r*p.r){
-      if (p.owner === ME) showCpPanelFor(p); else cpPanel.style.display="none";
-      return;
-    }
-  }
-  cpPanel.style.display="none";
-});
+/* ---------------- Abilities HUD (with cooldown overlay) ---------------- */
+function renderHUD(){
+  if(!state) return;
+  const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
+  const sel=state.units?.filter(u=>selection.has(u.id))||[];
+  selInfo.textContent = sel.length? `${sel.length} unit(s) selected` : "Select units";
 
-/* ------------ Abilities HUD ------------ */
-function renderAbilitiesPanel(){
-  const abil = document.getElementById("abilities");
-  const selInfo = document.getElementById("selInfo");
-  if (!state) return;
-  const mySelUnits = state.units?.filter(u=>selection.has(u.id)) ?? [];
-  selInfo.textContent = mySelUnits.length ? `${mySelUnits.length} unit(s) selected` : "Select units";
-
-  // Aggregate slots across selection
-  const slotMap = new Map(); // slot -> {name, emoji, key}
-  for (const u of mySelUnits){
-    const t = TYPES[u.tt];
+  // Build slot map + min remaining CD across selected
+  const slotMap = new Map(); // slot -> {name,emoji,key}
+  const slotCd  = new Map(); // slot -> seconds remaining (min)
+  for(const u of sel){
+    const t=TYPES[u.tt];
     (t.abilities||[]).forEach(a=>{
-      slotMap.set(a.slot, { name:a.label, key:a.key, emoji:t.emoji });
+      slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
+      const rem = u.acd?.[a.slot] ?? 0;
+      const cur = slotCd.get(a.slot);
+      if(cur==null || rem<cur) slotCd.set(a.slot, rem);
     });
   }
-  const keys = {1:"Q",2:"W",3:"E",4:"R"};
-  abil.innerHTML = "";
-  for (let s=1;s<=4;s++){
-    const spec = slotMap.get(s);
-    const div = document.createElement("div");
-    div.className = "slot";
+  const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
+  for(let s=1;s<=4;s++){
+    const spec=slotMap.get(s);
+    const div=document.createElement("div"); div.className="slot";
     div.innerHTML = spec
       ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>`
       : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
-    if (spec) div.onclick = ()=> castAbilitySlot(s);
+    if(spec){
+      const rem = slotCd.get(s) || 0;
+      if(rem>0){ div.classList.add("oncd"); const b=document.createElement("div"); b.className="cd-badge"; b.textContent=String(Math.ceil(rem)); div.appendChild(b); }
+      div.onclick=()=>castSlot(s);
+    }
     abil.appendChild(div);
   }
 }
 </script>
 </body>
 </html>
-
