@@ -2,62 +2,109 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🕹️ Multiplayer Lobby</title>
+  <title>🕹️ Game Hub & Multiplayer Lobby</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; margin: 0; padding: 20px; }
-    .container { max-width: 760px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+    :root{
+      --bg:#f0f0f0; --card:#fff; --ink:#111; --muted:#666; --br:#e5e5e5;
+      --accent:#214a9a; --accent-soft:#e6eefc;
+    }
+    *{box-sizing:border-box}
+    body { font-family: Arial, sans-serif; text-align: center; background: var(--bg); margin: 0; padding: 20px; color:var(--ink);}
+    .container { max-width: 900px; margin: auto; background: var(--card); padding: 20px; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.06); }
+
+    /* Tabs */
+    .tabs {
+      display:flex; gap:8px; justify-content:center; margin-bottom:16px; flex-wrap:wrap;
+    }
+    .tab-btn {
+      appearance:none; border:1px solid var(--br); background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer;
+      font-weight:600; min-width:140px;
+    }
+    .tab-btn[aria-selected="true"]{
+      border-color:var(--accent); color:#fff; background:var(--accent);
+    }
+    .tab-panel{ display:none; text-align:left; }
+    .tab-panel.active{ display:block; }
+
     input, select, button { margin: 10px; padding: 10px; font-size: 1em; }
     #lobbyList, #lobbyPlayers { margin-top: 20px; text-align: left; }
     #startBtn { margin-top: 10px; display: none; }
     .lobby-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin:6px 0; background:#fafafa; }
-    .badge { display:inline-block; padding:3px 8px; border-radius:10px; font-size:12px; background:#e6eefc; color:#214a9a; margin-left:8px;}
+    .badge { display:inline-block; padding:3px 8px; border-radius:10px; font-size:12px; background:var(--accent-soft); color:var(--accent); margin-left:8px;}
     .players-dot { display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px; }
-    .subtle { color:#666; font-size: 0.9em; }
+    .subtle { color:var(--muted); font-size: 0.9em; }
     .row { display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap: wrap; }
     .section { border-top:1px solid #eee; margin-top:16px; padding-top:12px; }
+
+    /* Singleplayer Catalog */
+    .catalog { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap:14px; margin-top:10px; }
+    .game-card{ border:1px solid var(--br); border-radius:12px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px; }
+    .game-title{ font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:8px; }
+    .game-desc{ color:var(--muted); line-height:1.4; }
+    .play-row{ display:flex; justify-content:flex-end; }
+    .play-btn{ padding:10px 14px; border-radius:10px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; font-weight:700;}
+    .play-btn:hover{ filter:brightness(.95); }
   </style>
 </head>
 <body>
   <div class="container">
-    <div id="loginForm">
-      <h2>Welcome</h2>
-      <div class="row">
-        <input type="text" id="username" placeholder="Username" />
-        <input type="password" id="password" placeholder="Password" />
-        <button onclick="login()">Login</button>
-      </div>
-      <p id="error"></p>
+    <!-- Tabs header -->
+    <div class="tabs" role="tablist" aria-label="Game Modes">
+      <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
+      <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
     </div>
 
-    <div id="lobbyInterface" style="display:none">
-      <div class="section">
-        <h2>Start Lobby</h2>
+    <!-- MULTIPLAYER TAB -->
+    <div id="panel-multi" class="tab-panel active" role="tabpanel" aria-labelledby="tabbtn-multi">
+      <div id="loginForm">
+        <h2>Welcome</h2>
         <div class="row">
-          <input type="text" id="lobbyName" placeholder="Lobby Name" />
-          <select id="gameType">
-            <option value="cat">🐭 Cat & Mouse</option>
-            <option value="grass">🌿 Grass Realms</option>
-            <option value="estate">🏡 Estate Defense</option>
-          </select>
-          <button onclick="startLobby()">Start Lobby</button>
+          <input type="text" id="username" placeholder="Username" />
+          <input type="password" id="password" placeholder="Password" />
+          <button onclick="login()">Login</button>
         </div>
-        <div class="subtle">Choose a game, name your lobby, and start it. Others can join from the list below.</div>
+        <p id="error"></p>
       </div>
 
-      <div id="lobbyList" class="section">
-        <h3>Available Lobbies</h3>
-        <!-- lobbies injected here -->
+      <div id="lobbyInterface" style="display:none">
+        <div class="section">
+          <h2>Start Lobby</h2>
+          <div class="row">
+            <input type="text" id="lobbyName" placeholder="Lobby Name" />
+            <select id="gameType">
+              <option value="cat">🐭 Cat & Mouse</option>
+              <option value="grass">🌿 Grass Realms</option>
+              <option value="estate">🏡 Estate Defense</option>
+            </select>
+            <button onclick="startLobby()">Start Lobby</button>
+          </div>
+          <div class="subtle">Choose a game, name your lobby, and start it. Others can join from the list below.</div>
+        </div>
+
+        <div id="lobbyList" class="section">
+          <h3>Available Lobbies</h3>
+          <!-- lobbies injected here -->
+        </div>
+
+        <div id="lobbyPlayers" class="section"></div>
+
+        <button id="startBtn" onclick="startGame()">🚀 Start Game</button>
+        <button onclick="leaveLobby()">❌ Leave Lobby</button>
       </div>
 
-      <div id="lobbyPlayers" class="section"></div>
-
-      <button id="startBtn" onclick="startGame()">🚀 Start Game</button>
-      <button onclick="leaveLobby()">❌ Leave Lobby</button>
+      <div id="winsLeaderboard" class="section">
+        <h3>🏆 Top Players</h3>
+        <div id="leaderboardEntries"></div>
+      </div>
     </div>
 
-    <div id="winsLeaderboard" class="section">
-      <h3>🏆 Top Players</h3>
-      <div id="leaderboardEntries"></div>
+    <!-- SINGLEPLAYER TAB -->
+    <div id="panel-single" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-single">
+      <h2>Singleplayer</h2>
+      <p class="subtle">Pick a game to play solo.</p>
+      <div id="catalog" class="catalog">
+        <!-- Singleplayer games injected -->
+      </div>
     </div>
   </div>
 
@@ -72,8 +119,19 @@
     const ROUTES = {
       cat:     "/game/catandmouse.html",
       grass:   "/game/grassrealms.html",
-      estate:  "/game/estatedefense.html"   // NEW
+      estate:  "/game/estatedefense.html",
+      matchwars: "/game/matchwars.html"  // Singleplayer title
     };
+
+    const SINGLEPLAYER_GAMES = [
+      {
+        key: "matchwars",
+        title: "MatchWars",
+        emoji: "🧩⚔️",
+        desc: "Match tiles to recruit units, bolster your army, and overrun the enemy stronghold. Fast, punchy, and strategic.",
+        route: ROUTES.matchwars
+      }
+    ];
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -87,6 +145,39 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // --- TABS ---
+    window.showTab = function(which){
+      const isMulti = which === 'multi';
+      document.getElementById('panel-multi').classList.toggle('active', isMulti);
+      document.getElementById('panel-single').classList.toggle('active', !isMulti);
+      document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
+      document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
+    };
+
+    // Render Singleplayer catalog
+    function renderSingleplayer(){
+      const el = document.getElementById('catalog');
+      el.innerHTML = '';
+      for(const g of SINGLEPLAYER_GAMES){
+        const card = document.createElement('div');
+        card.className = 'game-card';
+        card.innerHTML = `
+          <div class="game-title">${g.emoji} ${g.title}</div>
+          <div class="game-desc">${g.desc}</div>
+          <div class="play-row">
+            <button class="play-btn" data-key="${g.key}">Play</button>
+          </div>
+        `;
+        card.querySelector('.play-btn').addEventListener('click', () => {
+          // Go straight to the singleplayer game
+          window.location.href = g.route;
+        });
+        el.appendChild(card);
+      }
+    }
+    renderSingleplayer();
+
+    // --- EXISTING LOBBY LOGIC (unchanged behavior) ---
     const urlParams = new URLSearchParams(window.location.search);
     const autoUsername = urlParams.get("username");
 
@@ -190,9 +281,10 @@
             <div class="subtle">${data.players.length} player(s) — Host: ${data.host}</div>
           </div>
           <div>
-            <button onclick="joinLobby('${docSnap.id}')">Join</button>
+            <button>Join</button>
           </div>
         `;
+        row.querySelector('button').addEventListener('click', () => joinLobby(docSnap.id));
         list.appendChild(row);
       });
     }
@@ -276,14 +368,13 @@
       // normalize players and remove dups
       const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
 
-      // First try to find an active estate lobby
-      // Replace your qActive with this:
-const qActive = query(
-  collection(db, "lobbies"),
-  where("gameType", "==", "estate"),
-  where("status", "==", "active"),
-  limit(1) // arbitrary active session (no index needed)
-);
+      // Try to find an active estate lobby
+      const qActive = query(
+        collection(db, "lobbies"),
+        where("gameType", "==", "estate"),
+        where("status", "==", "active"),
+        limit(1)
+      );
 
       const snap = await getDocs(qActive);
 
@@ -311,8 +402,8 @@ const qActive = query(
       const payload = {
         name: `Estate Defense — ${new Date().toLocaleTimeString()}`,
         gameType: "estate",
-        category: "estate-defense",     // << requested category
-        status: "active",               // use 'active' for ongoing shared session
+        category: "estate-defense",
+        status: "active",
         players: unique(extraPlayers),
         host: username,
         createdAt: Date.now()
@@ -334,7 +425,6 @@ const qActive = query(
 
       // Special Estate Defense behavior:
       if (data.gameType === "estate") {
-        // Merge into an active Estate session or create one, then delete this waiting lobby
         const playersFromThisLobby = data.players || [username];
         const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
 
@@ -403,7 +493,7 @@ const qActive = query(
       e.style.color = "red";
     }
 
-    // Expose to window
+    // Expose to window (existing)
     window.login = login;
     window.startLobby = startLobby;
     window.joinLobby = joinLobby;
@@ -412,5 +502,3 @@ const qActive = query(
   </script>
 </body>
 </html>
-
-
