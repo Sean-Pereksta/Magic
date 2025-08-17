@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — Windowed</title>
+<title>🗻 Mountain Blade — Volley Channel + Team Rings</title>
 <style>
   :root{ --win-w: 1024px; --win-h: 640px; }
   *{ box-sizing:border-box }
@@ -92,24 +92,20 @@ const db  = getFirestore(app);
 const Q = new URLSearchParams(location.search);
 const GAME_ID  = Q.get("gameId");
 const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html"; // change to your hub
+const HUB_ROUTE = "/game/index.html"; // change if needed
 
 /* ---------------- Canvas & windowed camera ---------------- */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
-function resize(){ /* fixed window; canvas attrs define size */ }
-addEventListener("resize", resize); resize();
+const viewportEl = document.querySelector(".viewport");
 
-const WORLD = { w: 2400, h: 2400 };  // smaller map for the windowed view
-const cam = { x:0, y:0, speed: 1400 }; // edge-pan speed inside the window
-function clampCam(){
-  cam.x = Math.max(0, Math.min(WORLD.w - cv.width,  cam.x));
-  cam.y = Math.max(0, Math.min(WORLD.h - cv.height, cam.y));
-}
+const WORLD = { w: 2400, h: 2400 };
+const cam = { x:0, y:0, speed: 1400 };
+function clampCam(){ cam.x=Math.max(0,Math.min(WORLD.w-cv.width,cam.x)); cam.y=Math.max(0,Math.min(WORLD.h-cv.height,cam.y)); }
 
-/* ---------------- Data (emoji troops; faster) ---------------- */
+/* ---------------- Data (emoji troops; faster cav) ---------------- */
 const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"];
-const AGGRO_RANGE = 260; // start pursuing when enemy within this
+const AGGRO_RANGE = 260; // auto-engage radius
 const STOP_DIST   = 14;
 const MATCH_MS    = 5*60*1000;
 
@@ -119,13 +115,13 @@ const TYPES = {
   lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  range:64, atkSpd:1.2, moveSpd:270, armor:3, size:12,
     abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
   archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:220,atkSpd:1.0, moveSpd:250, armor:1, size:11,
-    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:10,radius:110}]},
-  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:340, armor:2, size:14,
+    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120, channel:6000}]},
+  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:440, armor:2, size:14,
     abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
   mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:190,atkSpd:0.7, moveSpd:255, armor:0, size:11,
     abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
   priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:84, atkSpd:0.7, moveSpd:252, armor:1, size:11,
-    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5}]},
+    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5,healPerSec:8}]},
 };
 const SPAWN_CHOICES = Object.keys(TYPES);
 
@@ -164,6 +160,7 @@ async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID
   const L=s.data(); isHost=(L.host===ME);
   lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []); // max 4
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
+
   // camera start on my spawn within the window
   const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length]; cam.x=sp.x-cv.width/2; cam.y=sp.y-cv.height/2; clampCam();
 
@@ -191,32 +188,48 @@ async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID
 function mkUnit(type,owner,x,y){
   const b=TYPES[type], id=owner.slice(0,2).toUpperCase()+Math.random().toString(36).slice(2,7);
   return { id, tt:type, o:owner, x:Math.round(x), y:Math.round(y), vx:0, vy:0, hp:b.hp, maxHp:b.hp, cd:0, acd:{},
-           _order:null, _aura:null, _charge:null }; // _charge: {x,y,targetId?,until}
+           _order:null, _aura:null, _charge:null, _channel:null }; // _channel for volley root, etc.
 }
 function d2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
 function clampMag(x,y,m){ const l=Math.hypot(x,y)||1; if(l>m){ x=x/l*m; y=y/l*m; } return [x,y]; }
 
-/* ---------------- Input (inside window) ---------------- */
-let mouse={x:0,y:0,worldX:0,worldY:0,inside:false};
-function mouseInCanvas(e){ const r=cv.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
+/* ---------------- Input (canvas + global for edge-pan) ---------------- */
+const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, clientX:0, clientY:0, inViewport:false};
+function relTo(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
 
-cv.addEventListener("mousemove",(e)=>{ const r=mouseInCanvas(e); mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
+window.addEventListener("mousemove",(e)=>{
+  mouse.clientX=e.clientX; mouse.clientY=e.clientY;
+  const vr=viewportEl.getBoundingClientRect();
+  mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY>=vr.top && e.clientY<=vr.bottom;
+});
+cv.addEventListener("mousemove",(e)=>{
+  const r=relTo(cv,e);
+  mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h;
+  mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y;
+});
+
 cv.addEventListener("mousedown",(e)=>{
-  const r=mouseInCanvas(e);
-  if(e.button===2){ // right click: order or finish targeting
+  // Right click: if over an enemy, hard-target it. Otherwise attack-move to ground.
+  if(e.button===2){
     e.preventDefault();
     if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
-    return orderAttackMove(mouse.worldX,mouse.worldY);
+    const ids=Array.from(selection);
+    if(ids.length){
+      const enemy=pickClosestEnemy(mouse.worldX,mouse.worldY,28);
+      if(enemy){ pushIntent("order",{type:"attackUnit",ids,targetId:enemy.id,wipe:true}); return; }
+      pushIntent("order",{type:"attackMove",ids,x:Math.round(mouse.worldX),y:Math.round(mouse.worldY),wipe:true});
+    }
+    return;
   }
-  // left: start drag OR finish targeting
+  // Left: finish targeting or begin drag
   if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
 });
+
 addEventListener("mouseup",(e)=>{
   if(!dragging) return; dragging=false;
   const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
   if(tiny){
-    // precise click: only pick friendly within 18 px; otherwise keep current selection
     const picked = pickClosestFriendly(mouse.worldX,mouse.worldY,18);
     if(picked){ if(!e.shiftKey) selection.clear(); selection.add(picked.id); renderHUD(); }
   }else{
@@ -234,6 +247,12 @@ addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ setTarget(null); return; }
   if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
+  if(k==="a"){ // Attack Nearest
+    e.preventDefault();
+    const ids=Array.from(selection); if(!ids.length) return;
+    pushIntent("orderNearest",{ids});
+    return;
+  }
   if(k>="1"&&k<="9"){
     e.preventDefault();
     if(e.ctrlKey){ groups[k]=new Set(Array.from(selection)); }
@@ -250,6 +269,12 @@ function pickClosestFriendly(wx,wy,rad){
   for(const u of state.units){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
   return best;
 }
+function pickClosestEnemy(wx,wy,rad){
+  if(!state?.units) return null;
+  let best=null, bd=rad*rad;
+  for(const u of state.units){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  return best;
+}
 function pickInRect(x0,y0,x1,y1,owner){
   const out=[]; if(!state?.units) return out;
   for(const u of state.units){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=y0&&u.y<=y1) out.push(u.id); }
@@ -259,7 +284,6 @@ function pickInRect(x0,y0,x1,y1,owner){
 /* ---------------- Orders & abilities ---------------- */
 async function orderAttackMove(wx,wy){
   const ids=Array.from(selection); if(!ids.length) return;
-  // wipe:true replaces previous command; if unit is charging, order is ignored on host (charge locks)
   await pushIntent("order",{type:"attackMove",ids,x:Math.round(wx),y:Math.round(wy),wipe:true});
 }
 function slotAbility(slot){
@@ -283,25 +307,38 @@ async function castSlot(slot){
 async function finalizeTarget(x,y){
   if(!targeting) return;
   const {slot,ids,type}=targeting;
-
-  // If ability supports unit targeting, choose nearest enemy under cursor first
   if(type==="pointOrUnit"){
     const enemy = pickClosestEnemy(x,y,24);
-    if(enemy){
-      await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true});
-      return setTarget(null);
-    }
+    if(enemy){ await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true}); setTarget(null); return; }
   }
-  // Default to ground point
   await pushIntent("ability",{slot,ids,mode:"point",x:Math.round(x),y:Math.round(y),wipe:true});
   setTarget(null);
 }
-function pickClosestEnemy(wx,wy,rad){
-  if(!state?.units) return null;
-  let best=null, bd=rad*rad;
-  for(const u of state.units){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
-  return best;
-}
+
+/* ---------------- Ability engine ---------------- */
+const AbilityHandlers = {
+  shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"shield", until: now + ab.dur*1000}; return true; } },
+  brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
+  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
+
+  // NEW: Volley is a 6s channel with 3 pulses (1s, 3s, 5s). Archer is rooted while channeling.
+  volley:     { cast(g,u,ab,{mode,x,y},now){
+                  if(mode!=="point") return false;
+                  const until = now + (ab.channel || 6000);
+                  u._channel = { kind:"volley", until };
+                  // Visual zone + scheduled pulses held in effects (host-robust)
+                  g.effects.push({
+                    type:"volleyZone", who:u.o, casterId:u.id,
+                    x, y, r:ab.radius||120,
+                    pulses:[now+1000, now+3000, now+5000], next:0,
+                    until, color:"#aef"
+                  });
+                  return true;
+                } },
+
+  fireburst:  { cast(g,u,ab,{mode,x,y},now){ if(mode!=="point") return false; g.effects.push({type:"fireburst", who:u.o, x,y, r:ab.radius||90, when:now+120, did:false, until:now+500, color:"#f88"}); return true; } },
+  charge:     { cast(g,u,ab,{mode,x,y,targetId},now){ if(mode!=="point"&&mode!=="unit") return false; u._order=null; u._charge = mode==="unit" ? {targetId, until:now+1100, impacted:false} : {x,y, until:now+1100, impacted:false}; return true; } },
+};
 
 /* ---------------- CP panel (click CP when owned) ---------------- */
 const cpPanel=document.getElementById("cpPanel"), cpName=document.getElementById("cpName"), cpBtns=document.getElementById("cpBtns");
@@ -324,12 +361,19 @@ cv.addEventListener("click",()=>{
   showCP(null);
 });
 
-/* ---------------- Edge pan inside the window ---------------- */
+/* ---------------- Edge pan (whole viewport; bigger vertical margins) ---------------- */
 function edgePan(dt){
-  if(!mouse.inside) return;
-  const margin=18, w=cv.width, h=cv.height; let vx=0, vy=0;
-  if(mouse.x<=margin) vx-=1; else if(mouse.x>=w-margin) vx+=1;
-  if(mouse.y<=margin) vy-=1; else if(mouse.y>=h-margin) vy+=1;
+  if(!mouse.inViewport) return;
+  const r=viewportEl.getBoundingClientRect();
+  const mx=mouse.clientX, my=mouse.clientY;
+  const marginX = 18;
+  const marginTop = 60;
+  const marginBot = 120;
+
+  let vx=0, vy=0;
+  if(mx<=r.left+marginX) vx-=1; else if(mx>=r.right-marginX) vx+=1;
+  if(my<=r.top+marginTop) vy-=1; else if(my>=r.bottom-marginBot) vy+=1;
+
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
@@ -340,7 +384,7 @@ async function hostLoop(){
     const now=performance.now(), dt=Math.min(.05,(now-last)/1000); last=now;
 
     const intentsCol = collection(db,"games",GAME_ID,"intents");
-    const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(100)));
+    const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(140)));
     const intents=snap.docs.map(d=>({id:d.id,...d.data()}));
 
     const gs=await getDoc(gameRef); if(!gs.exists()) return requestAnimationFrame(step);
@@ -358,20 +402,36 @@ async function hostLoop(){
   step();
 }
 
-/* ---------------- Apply intents (wipe previous; charge locks) ---------------- */
+/* ---------------- Apply intents (respect channel root) ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
     const {kind,user,payload}=it;
 
     if(kind==="order"){
-      const {ids,x,y,wipe}=payload;
+      const {ids,wipe}=payload;
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
-        // if charging, ignore new orders (charge locks until done)
-        if(u._charge) continue;
+        if(u._charge || u._channel) continue;            // charge or channel locks orders
         if(wipe){ u._aura=null; u._order=null; }
-        u._order={type:"attackMove",x,y,ts:Date.now()};
+      }
+      if(payload.type==="attackMove"){
+        const {x,y}=payload;
+        for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; if(u._channel) continue; u._order={type:"attackMove",x,y,ts:Date.now()}; }
+      }
+      if(payload.type==="attackUnit"){
+        const {targetId}=payload;
+        for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; if(u._channel) continue; u._order={type:"attackUnit",targetId,ts:Date.now()}; }
+      }
+    }
+
+    if(kind==="orderNearest"){
+      const {ids}=payload;
+      for(const id of ids){
+        const u=byId.get(id); if(!u||u.o!==user) continue; if(u._channel) continue;
+        let best=null, bd=Infinity;
+        for(const v of g.units){ if(v.o===u.o) continue; const d=d2(u.x,u.y,v.x,v.y); if(d<bd){ bd=d; best=v; } }
+        if(best){ u._order={type:"attackUnit",targetId:best.id,ts:Date.now()}; }
       }
     }
 
@@ -379,25 +439,13 @@ function applyIntents(g,intents){
       const {slot,ids,mode,x,y,targetId,wipe}=payload;
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
+        if(u._channel) continue; // cannot cast while channeling
         const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
         const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
-
-        if(wipe){ u._order=null; } // ability wipes any queued order
-
-        if(ab.id==="shieldwall" && mode==="self"){ u._aura={kind:"shield",until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
-        if(ab.id==="brace"      && mode==="self"){ u._aura={kind:"brace", until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
-        if((ab.id==="volley"||ab.id==="fireburst") && mode==="point"){
-          const radius=ab.radius||100, color=(ab.id==="volley"?"#aef":"#f88");
-          g.effects.push({type:"aoe",x,y,r:radius,until:Date.now()+650,color});
-          for(const v of g.units){ if(v.o===user) continue; if(d2(v.x,v.y,x,y)<=radius*radius){ const dmg=(ab.id==="volley"?14:20)-(TYPES[v.tt].armor||0); v.hp-=Math.max(1,dmg);} }
-          u.acd[slot]=ab.cd;
-        }
-        if(ab.id==="charge" && (mode==="point" || mode==="unit")){
-          u._charge = mode==="unit" ? { targetId, until:Date.now()+1100 } : { x, y, until:Date.now()+1100 };
-          u._order=null; // clear so he doesn't snap back after charge
-          u.acd[slot]=ab.cd;
-        }
-        if(ab.id==="mend" && mode==="self"){ u._aura={kind:"mend",until:Date.now()+ab.dur*1000}; u.acd[slot]=ab.cd; }
+        if(wipe){ u._order=null; }
+        const handler = AbilityHandlers[ab.id];
+        const ok = handler && handler.cast(g,u,ab,{mode,x,y,targetId},Date.now());
+        if(ok){ u.acd[slot]=ab.cd; }
       }
     }
 
@@ -409,17 +457,54 @@ function applyIntents(g,intents){
   return g;
 }
 
-/* ---------------- Simulation (fast; smooth; aggro; collisions) ---------------- */
+/* ---------------- Effects (AoE including Volley channel pulses) ---------------- */
+function processEffects(g, now){
+  for(const e of (g.effects||[])){
+    if(e.type==="volleyZone"){
+      // pulse 3 times over the channel
+      while(e.next < e.pulses.length && now >= e.pulses[e.next]){
+        const DMG = 7; // slight AoE
+        for(const v of g.units){
+          if(v.o === e.who) continue;
+          if(d2(v.x,v.y,e.x,e.y) <= e.r*e.r){
+            const armor = (TYPES[v.tt].armor||0);
+            v.hp -= Math.max(1, DMG - armor);
+          }
+        }
+        e.next++;
+      }
+    } else if (e.type==="fireburst"){
+      if(!e.did && now >= e.when){
+        const DMG = 20;
+        for(const v of g.units){
+          if(v.o === e.who) continue;
+          if(d2(v.x,v.y,e.x,e.y) <= e.r*e.r){
+            const armor = (TYPES[v.tt].armor||0);
+            v.hp -= Math.max(1, DMG - armor);
+          }
+        }
+        e.did = true;
+      }
+    }
+  }
+  g.effects = g.effects.filter(e=>e.until > now);
+}
+
+/* ---------------- Simulation (aggro, targeting, less swirl) ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
-  // decay
+
+  // cooldowns & auras/channels
   for(const u of g.units){
     if(u.cd>0) u.cd=Math.max(0,u.cd-dt);
     for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
     if(u._aura && u._aura.until<=now) u._aura=null;
+    if(u._aura?.kind==="mend"){ u.hp = Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt); }
     if(u._charge && u._charge.until<=now) u._charge=null;
+    if(u._channel && u._channel.until<=now) u._channel=null; // end volley root
   }
-  g.effects=(g.effects||[]).filter(e=>e.until>now);
+
+  processEffects(g, now);
 
   // spatial hash
   let hash=buildHash(g.units);
@@ -446,45 +531,88 @@ function simulate(g,dt){
 
   // orders/AI/combat
   for(const u of g.units){
-    const t=TYPES[u.tt], range=t.range;
+    const t=TYPES[u.tt], baseRange=t.range;
 
-    // charge target tracking
-    if(u._charge && u._charge.targetId){
-      const target=g.units.find(x=>x.id===u._charge.targetId);
-      if(target){ u._charge.x = target.x; u._charge.y = target.y; }
+    // if channeling volley: rooted, no normal attacks or new movement
+    if(u._channel?.kind==="volley"){
+      u.vx = 0; u.vy = 0; // hard root
+      continue;           // skip normal AI/attack/move while channeling
     }
 
-    // nearest enemy
-    const lookR=Math.max(AGGRO_RANGE, range+60);
-    let enemy=null, bd=Infinity;
-    forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v || v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<bd){ bd=d; enemy=v; } });
+    // charge tracking
+    if(u._charge && u._charge.targetId){
+      const tgt=g.units.find(x=>x.id===u._charge.targetId);
+      if(tgt){ u._charge.x=tgt.x; u._charge.y=tgt.y; }
+    }
 
-    // attack
-    if(enemy && u.cd<=0 && bd<=range*range){
-      const eArmor=(TYPES[enemy.tt].armor||0) + (enemy._aura?.kind==="shield" ? 3 : 0);
-      const dmg=Math.max(1,t.dmg - eArmor);
-      enemy.hp -= dmg;
+    // Choose target (explicit > aggro)
+    let target=null, targetD2=Infinity;
+    if(u._order?.type==="attackUnit"){
+      const tgt=g.units.find(x=>x.id===u._order.targetId);
+      if(tgt){ target=tgt; targetD2=d2(u.x,u.y,tgt.x,tgt.y); }
+      else { u._order=null; } // dead -> clear, fall back to aggro
+    }
+    if(!target){
+      // nearest enemy for aggro
+      const lookR=Math.max(AGGRO_RANGE, baseRange+60);
+      forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v||v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<targetD2){ targetD2=d; target=v; } });
+    }
+
+    // Attack
+    const inRange = target && targetD2 <= baseRange*baseRange;
+    if(inRange && u.cd<=0){
+      const armor=(TYPES[target.tt].armor||0) + (target._aura?.kind==="shield" ? 3 : 0);
+      const dmg=Math.max(1,t.dmg - armor);
+      target.hp -= dmg;
       u.cd = Math.max(.05, 1/t.atkSpd);
     }
 
-    // goal: charge > explicit order > aggro
+    // Goal: charge > explicit waypoint > chase target
     let goal=null;
-    if(u._charge){ const cx=u._charge.x ?? u.x, cy=u._charge.y ?? u.y; goal={x:cx,y:cy}; }
-    else if(u._order){ goal={x:u._order.x,y:u._order.y}; }
-    else if(enemy && bd<=AGGRO_RANGE*AGGRO_RANGE){ goal={x:enemy.x,y:enemy.y}; }
+    if(u._charge){ goal={x:u._charge.x ?? u.x, y:u._charge.y ?? u.y}; }
+    else if(u._order?.type==="attackMove"){ goal={x:u._order.x,y:u._order.y}; }
+    else if(target && !inRange){ goal={x:target.x, y:target.y}; }
 
-    // steering (smooth, less bobble)
+    // Steering
     let dx=0,dy=0;
-    if(goal){ const gx=goal.x-u.x, gy=goal.y-u.y, d=Math.hypot(gx,gy); if(d>STOP_DIST){ dx=gx/d; dy=gy/d; } }
-    // separation
-    let sx=0,sy=0; const sep=24;
+    if(goal){ const gx=goal.x-u.x, gy=goal.y-u.y, dist=Math.hypot(gx,gy); if(dist>STOP_DIST){ dx=gx/dist; dy=gy/dist; } }
+    let sx=0,sy=0; const sep=24, sepWeight= inRange ? 0.25 : 0.5;
     forNeighbors(hash,u.x,u.y,sep,(i)=>{ const v=g.units[i]; if(!v||v===u) return; const rx=u.x-v.x, ry=u.y-v.y, d2v=rx*rx+ry*ry; if(d2v===0||d2v>sep*sep) return; const d=Math.sqrt(d2v), push=(sep-d)/sep; sx+=(rx/d)*push; sy+=(ry/d)*push; });
 
-    let desX=dx + 0.5*sx, desY=dy + 0.5*sy; [desX,desY]=clampMag(desX,desY,1);
-    const speed = t.moveSpd * (u._charge ? 1.7 : 1.0);
+    let desX=dx + sepWeight*sx, desY=dy + sepWeight*sy; [desX,desY]=clampMag(desX,desY,1);
+    const auraSlow = (u._aura?.kind==="brace") ? 0.75 : 1.0;
+    const speed = t.moveSpd * (u._charge ? 1.7 : 1.0) * auraSlow;
+
     const targetVX=desX*speed, targetVY=desY*speed;
     const lerp=0.25; u.vx += (targetVX-u.vx)*lerp; u.vy += (targetVY-u.vy)*lerp;
+
+    if(!goal || (Math.abs(targetVX)<1 && Math.abs(targetVY)<1)){ u.vx*=0.85; u.vy*=0.85; }
+
     u.x += u.vx*dt; u.y += u.vy*dt;
+
+    // CHARGE impact (one-time)
+    if(u._charge && !u._charge.impacted){
+      let impact=false, ix=u.x, iy=u.y;
+      if(target && Math.sqrt(targetD2)<=28){ impact=true; ix=target.x; iy=target.y; }
+      if(!impact){
+        const tx=u._charge.x ?? u.x, ty=u._charge.y ?? u.y;
+        if(Math.hypot(tx-u.x,ty-u.y) <= 20) { impact=true; ix=tx; iy=ty; }
+      }
+      if(impact){
+        u._charge.impacted=true;
+        const R=42, DMG=14;
+        forNeighbors(hash,ix,iy,R,(i)=>{
+          const v=g.units[i]; if(!v || v.o===u.o) return;
+          const dist=Math.hypot(v.x-ix, v.y-iy);
+          if(dist<=R){
+            const armor=(TYPES[v.tt].armor||0);
+            v.hp -= Math.max(1, DMG - armor);
+            const nx=(v.x-ix)/(dist||1), ny=(v.y-iy)/(dist||1);
+            v.x += nx*12; v.y += ny*12;
+          }
+        });
+      }
+    }
   }
 
   // collisions
@@ -545,22 +673,46 @@ function draw(){
         ctx.beginPath(); ctx.arc(sx,sy,24,-Math.PI/2,-Math.PI/2+prog*2*Math.PI); ctx.strokeStyle="#aef"; ctx.lineWidth=4; ctx.stroke(); }
       ctx.fillStyle="#cde"; ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx-18, sy-(p.r+6));
     }
-    // effects (AOE)
-    for(const e of (state.effects||[])){ if(e.type==="aoe"){ const sx=e.x-cam.x, sy=e.y-cam.y; ctx.beginPath(); ctx.arc(sx,sy,e.r,0,Math.PI*2); ctx.strokeStyle=e.color||"#fff"; ctx.lineWidth=3; ctx.stroke(); } }
+    // effects (AOE rings)
+    for(const e of (state.effects||[])){
+      if(e.type==="volleyZone" || e.type==="fireburst"){
+        const sx=e.x-cam.x, sy=e.y-cam.y;
+        ctx.beginPath(); ctx.arc(sx,sy,e.r,0,Math.PI*2);
+        ctx.strokeStyle=e.color||"#fff"; ctx.lineWidth=3; ctx.stroke();
+      }
+    }
 
     // units
     ctx.textAlign="center"; ctx.textBaseline="middle";
     for(const u of state.units){
       const t=TYPES[u.tt]; const p=vpos(u); const sx=p.x-cam.x, sy=p.y-cam.y;
-      // auras
-      if(u._aura){ ctx.beginPath(); ctx.arc(sx,sy,t.size+8,0,Math.PI*2);
-        ctx.strokeStyle=(u._aura.kind==="shield"?"#6cf":u._aura.kind==="mend"?"#7f7":"#ccf"); ctx.lineWidth=3; ctx.stroke(); }
+      const color=tint(u.o);
+
+      // TEAM SIGNIFIER: base disc + colored ring
+      ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
+      ctx.fillStyle = color + "22"; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+
+      // auras (draw above team ring)
+      if(u._aura){
+        ctx.beginPath(); ctx.arc(sx,sy,t.size+8,0,Math.PI*2);
+        ctx.strokeStyle=(u._aura.kind==="shield"?"#6cf":u._aura.kind==="mend"?"#7f7":"#ccf");
+        ctx.lineWidth=3; ctx.stroke();
+      }
+      // channel visual (volley root)
+      if(u._channel?.kind==="volley"){
+        ctx.beginPath(); ctx.arc(sx,sy,t.size+14,0,Math.PI*2);
+        ctx.setLineDash([6,4]); ctx.strokeStyle="#aef"; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]);
+      }
       // charge arrow
       if(u._charge){ ctx.beginPath(); const tx=(u._charge.x ?? u.x)-cam.x, ty=(u._charge.y ?? u.y)-cam.y; ctx.moveTo(sx,sy); ctx.lineTo(tx,ty); ctx.strokeStyle="#fbb"; ctx.lineWidth=2; ctx.stroke(); }
+
       // emoji body
       ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
-      // selection ring
-      if(selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+6,0,Math.PI*2); ctx.stroke(); }
+
+      // selection ring (outermost)
+      if(selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+18,0,Math.PI*2); ctx.stroke(); }
+
       // hp bar
       ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
       const hpw=Math.max(0,36*(u.hp/u.maxHp)); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
@@ -598,14 +750,13 @@ function maybeWinner(){
   setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
 }
 
-/* ---------------- Abilities HUD (with cooldown overlay) ---------------- */
+/* ---------------- Abilities HUD (cooldown overlay) ---------------- */
 function renderHUD(){
   if(!state) return;
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
   const sel=state.units?.filter(u=>selection.has(u.id))||[];
-  selInfo.textContent = sel.length? `${sel.length} unit(s) selected` : "Select units";
+  selInfo.textContent = sel.length? `${sel.length} unit(s) selected (A: attack nearest, RMB: target enemy)` : "Select units";
 
-  // Build slot map + min remaining CD across selected
   const slotMap = new Map(); // slot -> {name,emoji,key}
   const slotCd  = new Map(); // slot -> seconds remaining (min)
   for(const u of sel){
