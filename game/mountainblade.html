@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>🗻 Mountain Blade (Prototype)</title>
+<style>
+  html,body { margin:0; height:100%; background:#0d1117; color:#eef; font-family:system-ui,Segoe UI,Arial; }
+  #ui { position:fixed; inset:0; pointer-events:none; }
+
+  /* Top overlays */
+  #timerBox { position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; pointer-events:auto; }
+  #leader { position:fixed; top:10px; right:10px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; pointer-events:auto; }
+  #leader h3 { margin:0 0 6px 0; font-size:14px; color:#cfe; }
+  #leader .row { display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
+
+  #hud { position:fixed; left:0; right:0; bottom:0; height:110px; background:rgba(0,0,0,.35); backdrop-filter: blur(4px); border-top:1px solid #263042; pointer-events:auto; display:flex; align-items:center; gap:10px; padding:10px 16px; }
+  #abilities { display:flex; gap:8px; }
+  .slot { width:64px; height:64px; border:1px solid #445; border-radius:8px; display:flex; align-items:center; justify-content:center; background:#1a2232; position:relative; }
+  .slot .key { position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
+  .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); }
+  #banner { position:fixed; left:50%; top:16%; transform:translateX(-50%); font-size:32px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
+  #cpPanel { position:fixed; right:12px; top:56px; background:#111a; border:1px solid #345; border-radius:12px; padding:8px; pointer-events:auto; display:none; }
+  #cpPanel h3 { margin:0 0 6px 0; font-size:14px; }
+  #cpPanel .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .cpBtn { padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
+  canvas { display:block; width:100vw; height:100vh; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="1280" height="720"></canvas>
+
+<div id="ui">
+  <div id="timerBox">⏱️ 05:00</div>
+  <div id="leader">
+    <h3>Units on field</h3>
+    <div id="leaderRows"></div>
+  </div>
+  <div id="banner"></div>
+
+  <div id="cpPanel">
+    <h3>Spawn from <span id="cpName">CP</span></h3>
+    <div class="row" id="cpBtns"></div>
+  </div>
+
+  <div id="hud">
+    <div id="selInfo"></div>
+    <div id="abilities"></div>
+  </div>
+</div>
+
+<script type="module">
+/* ------------ Firebase ------------ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, onSnapshot,
+  query, orderBy, limit, getDocs, deleteDoc, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+/* ------------ Params & routes ------------ */
+const Q = new URLSearchParams(location.search);
+const GAME_ID  = Q.get("gameId");
+const ME       = Q.get("username") || "anon";
+const HUB_ROUTE = "/game/index.html"; // set to your hub
+
+/* ------------ Canvas & camera ------------ */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+function resize(){ cv.width = innerWidth; cv.height = innerHeight; }
+addEventListener("resize", resize); resize();
+
+const WORLD = { w: 5000, h: 5000 };
+const cam = { x:0, y:0, speed: 850 }; // px/s
+function clampCam(){
+  cam.x = Math.max(0, Math.min(WORLD.w - cv.width,  cam.x));
+  cam.y = Math.max(0, Math.min(WORLD.h - cv.height, cam.y));
+}
+
+/* ------------ Data defs ------------ */
+const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"]; // owner tint
+const UNIT_TYPES = {
+  swordsman:{ hp:100, dmg:10, range:40, atkSpd:0.9, moveSpd:120, armor:4,  size:12, class:"melee",
+    abilities:[{slot:1, key:"Q", name:"Shield Wall", cd:15, apply:(u)=>{ u._buff={armor:+6, ms:-40, t:5}; }}] },
+  spearman: { hp:85,  dmg:8,  range:60, atkSpd:1.0, moveSpd:120, armor:3,  size:12, class:"melee",
+    abilities:[{slot:2, key:"W", name:"Brace", cd:12, apply:(u)=>{ u._buff={range:+30, t:4}; }}] },
+  archer:   { hp:65,  dmg:7,  range:200,atkSpd:0.8, moveSpd:110, armor:1,  size:10, class:"ranged",
+    abilities:[{slot:1, key:"Q", name:"Volley", cd:12, apply:(u)=>{ u._burst=3; }}] },
+  cavalry:  { hp:95,  dmg:12, range:40, atkSpd:0.7, moveSpd:180, armor:2,  size:14, class:"charge",
+    abilities:[{slot:1, key:"Q", name:"Charge", cd:14, apply:(u)=>{ u._charge=1.8; }}] },
+  mage:     { hp:55,  dmg:15, range:180,atkSpd:0.5, moveSpd:115, armor:0,  size:10, class:"caster",
+    abilities:[{slot:1, key:"Q", name:"Fireburst", cd:16, apply:(u)=>{ u._aoe=3; }}] },
+  priest:   { hp:70,  dmg:3,  range:80, atkSpd:0.6, moveSpd:110, armor:1,  size:10, class:"support",
+    abilities:[{slot:1, key:"Q", name:"Mend", cd:12, apply:(u)=>{ u._hot=6; }}] }
+};
+const SPAWN_CHOICES = Object.keys(UNIT_TYPES);
+const MATCH_MS = 5 * 60 * 1000; // 5 minutes
+
+const TEAM_SPAWNS = [
+  { x:200, y:200 }, { x: WORLD.w-200, y:200 }, { x:200, y:WORLD.h-200 }, { x:WORLD.w-200, y:WORLD.h-200 }
+];
+const CMD_POINTS = [
+  { id:"P1", x: WORLD.w*0.25, y: WORLD.h*0.28, r: 160 },
+  { id:"P2", x: WORLD.w*0.70, y: WORLD.h*0.30, r: 160 },
+  { id:"P3", x: WORLD.w*0.50, y: WORLD.h*0.55, r: 160 },
+];
+
+/* ------------ Local client state ------------ */
+let isHost = false;
+let hostName = null;
+let lobbyPlayers = [];
+let myTeamIdx = 0;
+let state = null;
+let selection = new Set();
+let drag = { active:false, x0:0, y0:0, x1:0, y1:0 };
+let cpPanelFor = null;
+const groupSlots = {}; // "1".."9" -> Set(ids)
+
+/* ------------ Firestore refs ------------ */
+const lobbyRef = doc(db, "lobbies", GAME_ID);
+const gameRef  = doc(db, "games",  GAME_ID, "meta", "state");
+
+/* ------------ Intents ------------ */
+async function pushIntent(kind, payload){
+  const intentsCol = collection(db, "games", GAME_ID, "intents");
+  await addDoc(intentsCol, { ts: Date.now(), user: ME, kind, payload });
+}
+
+/* ------------ Host setup / join ------------ */
+async function init(){
+  const s = await getDoc(lobbyRef);
+  if (!s.exists()) { alert("Lobby not found"); return; }
+  const ld = s.data();
+  hostName = ld.host || null;
+  isHost = (hostName === ME);
+  lobbyPlayers = Array.isArray(ld.players) ? ld.players.slice(0,4) : [];
+  myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
+
+  // center camera on my spawn
+  const sp = TEAM_SPAWNS[myTeamIdx % TEAM_SPAWNS.length];
+  cam.x = sp.x - cv.width/2; cam.y = sp.y - cv.height/2; clampCam();
+
+  // Host: create/reset state if absent
+  const g = await getDoc(gameRef);
+  if (isHost && !g.exists()){
+    const units = [];
+    lobbyPlayers.forEach((name, idx)=>{
+      const base = TEAM_SPAWNS[idx];
+      const pack = ["swordsman","spearman","archer","cavalry"];
+      for (let i=0;i<8;i++){
+        const t = pack[i%pack.length];
+        const jitter = (n)=> (Math.random()*n - n/2);
+        units.push(mkUnit(t, name, base.x + (i%4)*24 + jitter(10), base.y + Math.floor(i/4)*24 + jitter(10)));
+      }
+    });
+    const points = CMD_POINTS.map(p => ({ ...p, owner:null, cap:0, spawnType:"swordsman", nextSpawnAt:0 }));
+    const now = Date.now();
+    await setDoc(gameRef, {
+      tick:0, startedAt: now, endAt: now + MATCH_MS, winner: null, map:{w:WORLD.w, h:WORLD.h},
+      players: lobbyPlayers, points, units
+    });
+  }
+
+  // Live state
+  onSnapshot(gameRef, (snap)=>{
+    if (!snap.exists()) return;
+    state = snap.data();
+    renderAbilitiesPanel();
+    renderTimer();
+    renderLeaderboard();
+    maybeShowWinner();
+  });
+
+  // Host loop
+  if (isHost) { hostLoop(); }
+}
+init();
+
+/* ------------ Unit helpers ------------ */
+function mkUnit(type, owner, x, y){
+  const base = UNIT_TYPES[type];
+  const id = owner.slice(0,2).toUpperCase() + Math.random().toString(36).slice(2,7);
+  return {
+    id, t:type, o:owner,
+    x: Math.round(x), y: Math.round(y),
+    hp: base.hp, maxHp: base.hp,
+    cd: 0, // attack cooldown
+    acd:{}, // ability cooldowns
+    _order:null
+  };
+}
+function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+function len(x,y){ return Math.hypot(x,y); }
+
+/* ------------ Inputs ------------ */
+let mouse = { x:0, y:0, worldX:0, worldY:0, down:false };
+cv.addEventListener("mousemove", (e)=>{
+  mouse.x = e.offsetX; mouse.y = e.offsetY;
+  mouse.worldX = cam.x + mouse.x;
+  mouse.worldY = cam.y + mouse.y;
+});
+cv.addEventListener("mousedown", (e)=>{
+  if (e.button === 2){ // right: attack-move
+    e.preventDefault();
+    issueAttackMove(mouse.worldX, mouse.worldY);
+    return;
+  }
+  mouse.down = true;
+  drag.active = true; drag.x0 = mouse.x; drag.y0 = mouse.y; drag.x1 = mouse.x; drag.y1 = mouse.y;
+});
+cv.addEventListener("mouseup", (e)=>{
+  if (e.button === 2) return;
+  mouse.down = false;
+  if (!drag.active) return;
+  const minx = Math.min(drag.x0, drag.x1), maxx = Math.max(drag.x0, drag.x1);
+  const miny = Math.min(drag.y0, drag.y1), maxy = Math.max(drag.y0, drag.y1);
+  const picked = pickUnitsInRect(minx+cam.x, miny+cam.y, maxx+cam.x, maxy+cam.y, ME);
+  if (!e.shiftKey) selection.clear();
+  for (const id of picked) selection.add(id);
+  drag.active = false;
+  renderAbilitiesPanel();
+});
+cv.addEventListener("contextmenu", e=> e.preventDefault());
+
+function pickUnitsInRect(x0,y0,x1,y1, owner){
+  const out = [];
+  if (!state || !state.units) return out;
+  const tiny = Math.hypot((x1-x0),(y1-y0)) < 6;
+  if (tiny){
+    let best=null, bd=1e12;
+    for (const u of state.units){ if (u.o!==owner) continue;
+      const d = dist2(u.x,u.y, mouse.worldX, mouse.worldY);
+      if (d<bd){bd=d; best=u;}
+    }
+    return best ? [best.id] : [];
+  }
+  for (const u of state.units){
+    if (u.o !== owner) continue;
+    const s = UNIT_TYPES[u.t];
+    if (u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1) out.push(u.id);
+  }
+  return out;
+}
+
+async function issueAttackMove(wx,wy){
+  const ids = Array.from(selection);
+  if (ids.length === 0) return;
+  await pushIntent("order", { type:"attackMove", ids, x:Math.round(wx), y:Math.round(wy) });
+}
+
+/* ------------ Abilities UI (Q/W/E/R) ------------ */
+function renderAbilitiesPanel(){
+  const abil = document.getElementById("abilities");
+  const selInfo = document.getElementById("selInfo");
+  if (!state) return;
+  const mySelUnits = state.units?.filter(u=>selection.has(u.id)) ?? [];
+  selInfo.textContent = mySelUnits.length ? `${mySelUnits.length} unit(s) selected` : "Select units";
+
+  // Aggregate up to 4 slots → map to Q/W/E/R display
+  const slotMap = new Map(); // slot -> name
+  for (const u of mySelUnits){
+    (UNIT_TYPES[u.t].abilities||[]).forEach(a=>{
+      slotMap.set(a.slot, a.name);
+    });
+  }
+  const keyLabels = {1:"Q",2:"W",3:"E",4:"R"};
+  abil.innerHTML = "";
+  for (let s=1;s<=4;s++){
+    const div = document.createElement("div");
+    div.className = "slot";
+    const name = slotMap.get(s) || "—";
+    div.innerHTML = `<span>${name}</span><span class="key">${keyLabels[s]}</span>`;
+    div.onclick = ()=> castAbilitySlot(s);
+    abil.appendChild(div);
+  }
+}
+async function castAbilitySlot(slot){
+  const ids = Array.from(selection);
+  if (!ids.length) return;
+  await pushIntent("ability", { slot, ids });
+}
+
+/* ------------ Group binds (Ctrl+1..9 assign, 1..9 recall, Shift+1..9 add) ------------ */
+addEventListener("keydown", (e)=>{
+  const k = e.key.toLowerCase();
+
+  // Abilities Q/W/E/R
+  if (["q","w","e","r"].includes(k)){ e.preventDefault(); castAbilitySlot({q:1,w:2,e:3,r:4}[k]); return; }
+
+  // Group binds 1..9
+  if (k>="1" && k<="9"){
+    e.preventDefault();
+    const slot = k;
+    if (e.ctrlKey){ // assign
+      groupSlots[slot] = new Set([...selection].filter(id=>{
+        const u = state?.units?.find(x=>x.id===id);
+        return u && u.o===ME;
+      }));
+    } else if (e.shiftKey){ // add
+      const set = groupSlots[slot];
+      if (!set) return;
+      for (const id of set){
+        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
+        if (alive) selection.add(id);
+      }
+      renderAbilitiesPanel();
+    } else { // recall
+      selection.clear();
+      const set = groupSlots[slot];
+      if (!set) return;
+      for (const id of set){
+        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
+        if (alive) selection.add(id);
+      }
+      renderAbilitiesPanel();
+    }
+  }
+});
+
+/* ------------ CP panel ------------ */
+const cpPanel = document.getElementById("cpPanel");
+const cpName  = document.getElementById("cpName");
+const cpBtns  = document.getElementById("cpBtns");
+
+function showCpPanelFor(point){
+  if (!point){ cpPanel.style.display="none"; return; }
+  cpName.textContent = point.id;
+  cpBtns.innerHTML = "";
+  for (const t of SPAWN_CHOICES){
+    const b = document.createElement("button");
+    b.className="cpBtn"; b.textContent = t;
+    b.onclick = async ()=>{ await pushIntent("spawnChoice", { pointId: point.id, troop: t }); };
+    cpBtns.appendChild(b);
+  }
+  cpPanel.style.display="block";
+}
+
+/* ------------ Camera edge pan ------------ */
+function updateCamera(dt){
+  const margin = 18;
+  let vx=0, vy=0;
+  if (mouse.x <= margin) vx -= 1;
+  else if (mouse.x >= cv.width - margin) vx += 1;
+  if (mouse.y <= margin) vy -= 1;
+  else if (mouse.y >= cv.height - margin) vy += 1;
+  cam.x += vx * cam.speed * dt;
+  cam.y += vy * cam.speed * dt;
+  clampCam();
+}
+
+/* ------------ Host simulation ------------ */
+async function hostLoop(){
+  let last = performance.now();
+  async function step(){
+    const now = performance.now();
+    const dt = Math.min(0.05, (now-last)/1000);
+    last = now;
+
+    const intentsCol = collection(db, "games", GAME_ID, "intents");
+    const intentsSnap = await getDocs(query(intentsCol, orderBy("ts","asc"), limit(60)));
+    const intents = intentsSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    const snap = await getDoc(gameRef);
+    if (!snap.exists()){ requestAnimationFrame(step); return; }
+    let g = snap.data();
+
+    g = applyIntents(g, intents);
+    g = simulate(g, dt);
+    g.tick++;
+
+    await setDoc(gameRef, g, { merge:false });
+    for (const d of intentsSnap.docs){ await deleteDoc(d.ref); }
+
+    setTimeout(()=>requestAnimationFrame(step), 110); // ~9 Hz publish
+  }
+  step();
+}
+
+function applyIntents(g, intents){
+  const byId = new Map(g.units.map(u=>[u.id,u]));
+  for (const it of intents){
+    const { kind, user, payload } = it;
+    if (kind === "order"){
+      const { type, ids, x, y } = payload;
+      if (type==="attackMove"){
+        for (const id of ids){
+          const u = byId.get(id); if (!u || u.o !== user) continue;
+          u._order = { type, x, y, ts: Date.now() };
+        }
+      }
+    }
+    if (kind === "ability"){
+      const { slot, ids } = payload;
+      for (const id of ids){
+        const u = byId.get(id); if (!u || u.o !== user) continue;
+        const def = UNIT_TYPES[u.t];
+        const abil = (def.abilities||[]).find(a=>a.slot===slot);
+        if (!abil) continue;
+        const ready = !(u.acd && u.acd[slot] > 0);
+        if (ready){
+          abil.apply(u);
+          u.acd[slot] = abil.cd;
+        }
+      }
+    }
+    if (kind === "spawnChoice"){
+      const { pointId, troop } = payload;
+      const p = g.points.find(p=>p.id===pointId);
+      if (p && p.owner === user && UNIT_TYPES[troop]) p.spawnType = troop;
+    }
+  }
+  return g;
+}
+
+/* ---- Core sim with autopilot, separation, collisions, timer & victory ---- */
+function simulate(g, dt){
+  const nowMs = Date.now();
+  const endAt = g.endAt || (g.startedAt + MATCH_MS);
+
+  // Cooldowns / buffs decay
+  for (const u of g.units){
+    if (u.cd>0) u.cd = Math.max(0, u.cd - dt);
+    for (const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k] - dt);
+    if (u._buff){ u._buff.t -= dt; if (u._buff.t<=0) delete u._buff; }
+  }
+
+  // Capture logic + spawning
+  for (const p of g.points){
+    const R2 = p.r*p.r;
+    const teams = new Map();
+    for (const u of g.units){
+      const d2 = dist2(u.x,u.y,p.x,p.y);
+      if (d2 <= R2) teams.set(u.o, (teams.get(u.o)||0)+1);
+    }
+    const present = Array.from(teams.keys());
+    if (present.length === 1){
+      const owner = present[0];
+      if (p.owner === owner){ p.cap = Math.min(1, p.cap + dt*0.2); }
+      else { p.cap += dt*0.2; if (p.cap>=1){ p.owner=owner; p.cap=1; p.nextSpawnAt=0; } }
+    } else if (present.length > 1){
+      p.cap = Math.max(0, p.cap - dt*0.08);
+      if (p.cap === 0 && present.length>1) p.owner = null;
+    } else {
+      p.cap = Math.max(0, p.cap - dt*0.02);
+    }
+
+    if (p.owner){
+      const period = 15000;
+      if (!p.nextSpawnAt) p.nextSpawnAt = nowMs + period;
+      if (nowMs >= p.nextSpawnAt){
+        const spawnType = p.spawnType || "swordsman";
+        const jitter = (n)=> (Math.random()*n - n/2);
+        g.units.push(mkUnit(spawnType, p.owner, p.x + jitter(24), p.y + jitter(24)));
+        p.nextSpawnAt = nowMs + period;
+      }
+    }
+  }
+
+  // Movement / autopilot / attacks
+  // Precompute nearest enemy per unit (naive)
+  for (const u of g.units){
+    const def = UNIT_TYPES[u.t];
+    const ms = (def.moveSpd + (u._buff?.ms||0));
+    const range = (def.range + (u._buff?.range||0));
+
+    // Find nearest enemy
+    let enemy=null, ed2= 1e12;
+    for (const v of g.units){
+      if (v.o===u.o) continue;
+      const d2 = dist2(u.x,u.y,v.x,v.y);
+      if (d2 < ed2){ ed2 = d2; enemy = v; }
+    }
+
+    // Attack if in range
+    if (enemy && u.cd<=0 && ed2 <= range*range){
+      const dmg = Math.max(1, def.dmg - (UNIT_TYPES[enemy.t].armor + 0));
+      enemy.hp -= dmg;
+      u.cd = Math.max(0.05, 1/def.atkSpd);
+    }
+
+    // Decide goal: explicit order has precedence; else autopilot toward nearest enemy
+    let goal = null;
+    if (u._order){ goal = {x:u._order.x, y:u._order.y}; }
+    else if (enemy){ goal = {x:enemy.x, y:enemy.y}; }
+
+    if (goal){
+      // Steering: goal vector + separation from nearby units
+      let gx = goal.x - u.x, gy = goal.y - u.y;
+      const gLen = Math.hypot(gx,gy) || 1;
+      gx /= gLen; gy /= gLen;
+
+      // Separation
+      let sx=0, sy=0;
+      const sepRad = 28;
+      for (const v of g.units){
+        if (v===u) continue;
+        const dx = u.x - v.x, dy = u.y - v.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 > sepRad*sepRad || d2===0) continue;
+        const d = Math.sqrt(d2);
+        const push = (sepRad - d)/sepRad; // 0..1
+        sx += (dx/d) * push;
+        sy += (dy/d) * push;
+      }
+
+      const wSep = 0.9; // weight of separation
+      let vx = gx + wSep*sx, vy = gy + wSep*sy;
+      const vLen = Math.hypot(vx,vy) || 1;
+      vx /= vLen; vy /= vLen;
+
+      const step = ms * dt;
+      u.x += vx * step; u.y += vy * step;
+    }
+  }
+
+  // Collision resolution (no overlaps)
+  resolveCollisions(g.units);
+
+  // Cleanup dead
+  g.units = g.units.filter(u=>u.hp>0);
+
+  // Victory: last alive OR time up → most troops
+  const aliveByOwner = countByOwner(g.units);
+  const livingOwners = Object.keys(aliveByOwner).filter(o=>aliveByOwner[o]>0);
+
+  if (!g.winner && livingOwners.length === 1){
+    g.winner = livingOwners[0];
+  }
+
+  if (!g.winner && nowMs >= endAt){
+    const winner = decideWinnerByCounts(g, aliveByOwner);
+    if (winner) g.winner = winner;
+    else g.winner = livingOwners.sort()[0] || (g.players?.[0] ?? null); // fallback
+  }
+
+  return g;
+}
+
+/* --- Collisions: push overlapping circles apart (2 passes) --- */
+function resolveCollisions(units){
+  for (let pass=0; pass<2; pass++){
+    for (let i=0;i<units.length;i++){
+      for (let j=i+1;j<units.length;j++){
+        const u = units[i], v = units[j];
+        const ru = UNIT_TYPES[u.t].size, rv = UNIT_TYPES[v.t].size;
+        const minDist = ru + rv + 2;
+        const dx = v.x - u.x, dy = v.y - u.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 === 0){
+          // exact overlap → random tiny nudge
+          const ang = Math.random()*Math.PI*2;
+          const off = minDist/2;
+          u.x -= Math.cos(ang)*off; u.y -= Math.sin(ang)*off;
+          v.x += Math.cos(ang)*off; v.y += Math.sin(ang)*off;
+          continue;
+        }
+        if (d2 < minDist*minDist){
+          const d = Math.sqrt(d2);
+          const overlap = minDist - d;
+          const nx = dx/d, ny = dy/d;
+          u.x -= nx * overlap * 0.5;
+          u.y -= ny * overlap * 0.5;
+          v.x += nx * overlap * 0.5;
+          v.y += ny * overlap * 0.5;
+        }
+      }
+    }
+  }
+}
+
+/* --- Winner helpers --- */
+function countByOwner(units){
+  const m = {};
+  for (const u of units){ m[u.o] = (m[u.o]||0)+1; }
+  return m;
+}
+function totalHpByOwner(units){
+  const m = {};
+  for (const u of units){ m[u.o] = (m[u.o]||0)+u.hp; }
+  return m;
+}
+function cpsOwned(g){
+  const m = {};
+  for (const p of g.points){ if (p.owner){ m[p.owner]=(m[p.owner]||0)+1; } }
+  return m;
+}
+function decideWinnerByCounts(g, counts){
+  const owners = Object.keys(counts);
+  if (owners.length===0) return null;
+  let max = -1;
+  for (const o of owners) max = Math.max(max, counts[o]);
+  let tied = owners.filter(o=>counts[o]===max);
+  if (tied.length===1) return tied[0];
+
+  // tie-breaker 1: total HP
+  const hp = totalHpByOwner(g.units);
+  let bestHp = -1;
+  for (const o of tied) bestHp = Math.max(bestHp, hp[o]||0);
+  tied = tied.filter(o => (hp[o]||0) === bestHp);
+  if (tied.length===1) return tied[0];
+
+  // tie-breaker 2: CPs owned
+  const cp = cpsOwned(g);
+  let bestCp = -1;
+  for (const o of tied) bestCp = Math.max(bestCp, cp[o]||0);
+  tied = tied.filter(o => (cp[o]||0) === bestCp);
+  if (tied.length===1) return tied[0];
+
+  // final: name
+  return tied.sort()[0];
+}
+
+/* ------------ Rendering ------------ */
+function draw(){
+  const dt = 16/1000;
+  updateCamera(dt);
+
+  ctx.clearRect(0,0,cv.width,cv.height);
+
+  // BG
+  ctx.fillStyle = "#132235";
+  ctx.fillRect(0,0,cv.width,cv.height);
+  // Grid
+  ctx.strokeStyle = "#1a2b40"; ctx.lineWidth = 1;
+  const grid = 100;
+  for (let x = -cam.x % grid; x < cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
+  for (let y = -cam.y % grid; y < cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+
+  if (state){
+    // Command points
+    for (const p of state.points){
+      const sx = p.x - cam.x, sy = p.y - cam.y;
+      ctx.beginPath(); ctx.arc(sx, sy, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = "#556f9a"; ctx.lineWidth = 2; ctx.stroke();
+
+      if (p.owner){
+        const color = tintForOwner(p.owner);
+        ctx.beginPath(); ctx.arc(sx, sy, p.r * Math.max(0.12, p.cap), 0, Math.PI*2);
+        ctx.fillStyle = color+"88"; ctx.fill();
+      }
+
+      // spawn timer ring
+      if (p.owner && p.nextSpawnAt){
+        const period = 15000;
+        const remain = Math.max(0, p.nextSpawnAt - Date.now());
+        const prog = 1 - (remain/period);
+        ctx.beginPath(); ctx.arc(sx, sy, 28, -Math.PI/2, -Math.PI/2 + prog*2*Math.PI);
+        ctx.strokeStyle = "#aef"; ctx.lineWidth = 4; ctx.stroke();
+      }
+
+      ctx.fillStyle="#cde";
+      ctx.fillText(p.id + (p.owner? ` (${shortName(p.owner)})`:""), sx-18, sy- (p.r+6));
+    }
+
+    // Units
+    for (const u of state.units){
+      const def = UNIT_TYPES[u.t];
+      const sx = u.x - cam.x, sy = u.y - cam.y;
+      ctx.beginPath(); ctx.arc(sx, sy, def.size, 0, Math.PI*2);
+      ctx.fillStyle = tintForOwner(u.o); ctx.fill();
+      if (selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx, sy, def.size+3, 0, Math.PI*2); ctx.stroke(); }
+      // HP
+      ctx.fillStyle="#111"; ctx.fillRect(sx-16, sy-22, 32, 6);
+      const hpw = Math.max(0, 32*(u.hp/u.maxHp));
+      ctx.fillStyle="#4f8"; ctx.fillRect(sx-16, sy-22, hpw, 6);
+    }
+  }
+
+  // Drag box
+  if (drag.active){
+    drag.x1 = mouse.x; drag.y1 = mouse.y;
+    const x = Math.min(drag.x0, drag.x1), y=Math.min(drag.y0, drag.y1);
+    const w = Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
+    ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+function tintForOwner(owner){
+  const idx = hash(owner) % COLORS.length;
+  return COLORS[idx];
+}
+function hash(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
+function shortName(n){ return n.length>8? n.slice(0,8)+"…" : n; }
+
+/* ------------ Timer & leaderboard UI ------------ */
+function renderTimer(){
+  if (!state) return;
+  const box = document.getElementById("timerBox");
+  const endAt = state.endAt || (state.startedAt + MATCH_MS);
+  let remain = Math.max(0, Math.floor((endAt - Date.now())/1000));
+  const m = String(Math.floor(remain/60)).padStart(2,"0");
+  const s = String(remain%60).padStart(2,"0");
+  box.textContent = `⏱️ ${m}:${s}`;
+}
+function renderLeaderboard(){
+  if (!state) return;
+  const rows = document.getElementById("leaderRows");
+  const counts = {};
+  for (const name of (state.players || [])) counts[name]=0;
+  for (const u of state.units){ counts[u.o] = (counts[u.o]||0)+1; }
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+  rows.innerHTML = "";
+  for (const [name, c] of sorted){
+    const d = document.createElement("div");
+    d.className = "row";
+    d.innerHTML = `<span>${shortName(name)}</span><span>${c}</span>`;
+    rows.appendChild(d);
+  }
+}
+
+/* ------------ Winner banner & return ------------ */
+function maybeShowWinner(){
+  if (!state || !state.winner) return;
+  const b = document.getElementById("banner");
+  b.textContent = `🏆 ${state.winner} wins! Returning to lobby…`;
+  b.style.display="block";
+  setTimeout(()=>{ location.href = `${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 5000);
+}
+
+/* ------------ Click CP to open panel (must own) ------------ */
+cv.addEventListener("click", ()=>{
+  if (!state) return;
+  for (const p of state.points){
+    const dx = (p.x - cam.x) - mouse.x, dy = (p.y - cam.y) - mouse.y;
+    if (dx*dx + dy*dy <= p.r*p.r){
+      if (p.owner === ME) showCpPanelFor(p); else cpPanel.style.display="none";
+      return;
+    }
+  }
+  cpPanel.style.display="none";
+});
+</script>
+</body>
+</html>
