@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Color Clash — Match-3 Lane Battle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --ui-bg: rgba(0,0,0,.65);
+    --ui-fg: #fff;
+    --accent: #ffd54f;
+  }
+
+  html,body{
+    margin:0;
+    height:100%;
+    overflow-y:auto;
+    overflow-x:hidden;
+    font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:#fff;
+  }
+
+  /* Background sky->grass */
+  body{ background:linear-gradient(#87ceeb 0 70%, #2e7d32 70% 100%); }
+
+  /* Stage wraps canvas + overlays */
+  #stage{
+    position:relative;
+    width:min(1200px, 100vw);
+    margin:0 auto 24px;
+  }
+  #game{ display:block; margin:0 auto; background:transparent; }
+
+  /* Grid outline positioned over canvas */
+  #gridFrame{
+    position:absolute; left:0; top:0; z-index:5;
+    border:2px dashed rgba(255,255,255,.35);
+    border-radius:12px; pointer-events:none;
+  }
+
+  /* Optional mini sidebar counters */
+  #sidebar{
+    position:absolute; z-index:6;
+    width:240px; padding:10px 12px;
+    background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15);
+    border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.35);
+    backdrop-filter: blur(4px);
+  }
+  #sidebar h3{ margin:0 0 8px; font-size:16px }
+  .counters{ width:100%; border-collapse:collapse; font-size:13px }
+  .counters th{ text-align:left; opacity:.85; padding:4px 6px 4px 0 }
+  .counters td{ text-align:right; font-variant-numeric: tabular-nums; padding:4px 0 }
+
+  @media (max-width: 980px){
+    #sidebar{ position:static; width:auto; margin:12px auto 0; }
+  }
+
+  /* ===== Bottom Bar ===== */
+  #bottombar{
+    position:sticky; bottom:0; top:auto; z-index:30;
+    background:var(--ui-bg); color:var(--ui-fg);
+    box-shadow:0 -6px 30px rgba(0,0,0,.35);
+    backdrop-filter: blur(4px);
+  }
+  .bottombar-inner{
+    max-width:min(1200px,95vw);
+    margin:0 auto; padding:10px 12px;
+  }
+  #row1{ display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  .pill{ background:#222; border:1px solid #444; padding:6px 10px; border-radius:999px; font-weight:600 }
+  .btn{
+    background:#2b2b2b; color:#fff; border:1px solid #555; padding:6px 10px; border-radius:8px;
+    cursor:pointer; font-weight:600;
+  }
+  .btn:hover{ filter:brightness(1.12) }
+  .tip{ margin-top:6px; font-size:12px; opacity:.9 }
+
+  /* ===== Shop Overlay ===== */
+  #shop{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:40;
+    background:rgba(0,0,0,.55);
+  }
+  #shopInner{
+    width:min(920px,95vw); max-height:85vh; overflow:auto;
+    background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:16px; padding:16px;
+    box-shadow: 0 12px 60px rgba(0,0,0,.6);
+  }
+  #shopInner h2{ margin:0 0 8px }
+  .shop-sections{ display:grid; grid-template-columns:1fr 1fr; gap:14px }
+  .shop-card{ background:#181818; border:1px solid #2e2e2e; border-radius:12px; padding:10px }
+  .shop-grid{ display:grid; grid-template-columns:repeat(2,minmax(170px,1fr)); gap:8px }
+  .shop-btn{
+    background:#242424; color:#fff; border:1px solid #3a3a3a; border-radius:10px; padding:8px;
+    display:flex; gap:8px; align-items:center; justify-content:space-between; cursor:pointer; text-align:left;
+  }
+  .shop-btn small{ opacity:.85 }
+  .shop-btn:hover{ filter:brightness(1.08) }
+  .close-row{ display:flex; justify-content:flex-end; margin-top:10px }
+</style>
+</head>
+<body>
+
+  <!-- PLAYFIELD -->
+  <div id="stage">
+    <canvas id="game" width="1200" height="720"></canvas>
+    <div id="gridFrame"></div>
+
+    <!-- (Optional) live counters -->
+    <aside id="sidebar">
+      <h3>Live</h3>
+      <table class="counters">
+        <tbody>
+          <tr><th>Level</th><td id="ct-level">1</td></tr>
+          <tr><th>Gold</th><td id="ct-gold">0</td></tr>
+          <tr><th>Your Base</th><td id="ct-hpyou">5</td></tr>
+          <tr><th>Enemy Base</th><td id="ct-hpenemy">5</td></tr>
+          <tr><th>Units (You)</th><td id="ct-units-you">0</td></tr>
+          <tr><th>Units (Enemy)</th><td id="ct-units-enemy">0</td></tr>
+          <tr><th>Projectiles</th><td id="ct-proj">0</td></tr>
+          <tr><th>Matches</th><td id="ct-matches">0</td></tr>
+		  <tr><th>Moves</th><td id="ct-moves">10</td></tr>
+          <tr><th>Kills</th><td id="ct-kills">0</td></tr>
+        </tbody>
+      </table>
+    </aside>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottombar">
+    <div class="bottombar-inner">
+      <div id="row1">
+        <span class="pill">🪙 Gold: <b id="goldTxt">0</b></span>
+        <span class="pill">🗡️ Level: <b id="levelTxt">1</b></span>
+        <span class="pill">🏰 You: <b id="hpYouTxt">5</b></span>
+        <span class="pill">🛡️ Enemy: <b id="hpEnemyTxt">5</b></span>
+		<span class="pill">🎯 Moves: <b id="movesTxt">10</b></span>
+        <button class="btn" id="openShopBtn">🛍️ Shop</button>
+      </div>
+      <div class="tip">Match 3+ tiles to summon your troops. Ranged units stop to fire; melee clash on contact.</div>
+    </div>
+  </div>
+
+  <!-- SHOP -->
+  <div id="shop">
+    <div id="shopInner">
+      <h2>🛍️ Battle Shop</h2>
+      <p style="opacity:.9;margin:4px 0 12px">Spend gold earned from kills & victories. Unlocking a color lets that color spawn in the board.</p>
+      <div class="shop-sections">
+        <div class="shop-card">
+          <h3>Unlock Troop Colors</h3>
+          <div id="unlockList" class="shop-grid"></div>
+        </div>
+        <div class="shop-card">
+          <h3>Per-Color Upgrades</h3>
+          <div id="upgradeList" class="shop-grid"></div>
+          <div style="margin-top:8px;font-size:12px;opacity:.85">Upgrade Attack, Speed, Health, or Ability. Cost scales with current level.</div>
+        </div>
+      </div>
+      <div class="close-row">
+        <button class="btn" id="closeShopBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ===== Canvas & Layout =====
+  const cv = document.getElementById('game');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+
+  // Battlefield zones
+  const GRASS_Y = 320;
+  const LANE_Y  = 300;
+  const PLAYER_BASE_X = W - 70;
+  const ENEMY_BASE_X  = 70;
+  
+  let moves = 10; // total moves this round
+const movesTxt = document.getElementById('movesTxt');
+
+
+  // Match grid
+  const GRID_ROWS = 7, GRID_COLS = 7, TILE = 70;
+  const GRID_W = GRID_COLS*TILE, GRID_H = GRID_ROWS*TILE;
+  const GRID_X = Math.round((W - GRID_W)/2), GRID_Y = GRASS_Y + 20;
+
+  // Grid frame
+  const gridFrame = document.getElementById('gridFrame');
+  gridFrame.style.width  = GRID_W + 'px';
+  gridFrame.style.height = GRID_H + 'px';
+  gridFrame.style.top    = (GRID_Y - 8) + 'px';
+  gridFrame.style.left   = GRID_X + 'px';
+
+  // Sidebar placement
+  const sidebar = document.getElementById('sidebar');
+  function positionSidebar(){
+    if (!sidebar) return;
+    const w = 240;
+    let left = GRID_X + GRID_W + 16;
+    if (left + w > cv.width - 8) left = Math.max(8, GRID_X - w - 16);
+    sidebar.style.left = left + 'px';
+    sidebar.style.top  = GRID_Y + 'px';
+  }
+  positionSidebar();
+  addEventListener('resize', positionSidebar);
+
+  // ===== UI refs =====
+  const goldTxt   = document.getElementById('goldTxt');
+  const levelTxt  = document.getElementById('levelTxt');
+  const hpYouTxt  = document.getElementById('hpYouTxt');
+  const hpEnemyTxt= document.getElementById('hpEnemyTxt');
+
+	const ct = {
+	  level:   document.getElementById('ct-level'),
+	  gold:    document.getElementById('ct-gold'),
+	  hpyou:   document.getElementById('ct-hpyou'),
+	  hpenemy: document.getElementById('ct-hpenemy'),
+	  uYou:    document.getElementById('ct-units-you'),
+	  uEn:     document.getElementById('ct-units-enemy'),
+	  proj:    document.getElementById('ct-proj'),
+	  matches: document.getElementById('ct-matches'),
+	  kills:   document.getElementById('ct-kills'),
+	  moves:   document.getElementById('ct-moves'),
+	};
+
+
+  // ===== Game state =====
+  let gold = 0;
+  let level = 1;
+  let playerBase = 5, enemyBase = 5;
+  let kills = 0;
+  let paused = false;
+
+  // ===== Troops & Colors =====
+  const COLORS = {
+    red:    { emoji:'🔴', name:'Red',    power:'melee',   cost:  0, unlocked:true  },
+    blue:   { emoji:'🔵', name:'Blue',   power:'ranged',  cost:  0, unlocked:true  },
+    green:  { emoji:'🟢', name:'Green',  power:'poison',  cost:  0, unlocked:true  },
+    pink:   { emoji:'💗', name:'Pink',   power:'heal',    cost:  0, unlocked:true  },
+    gold:   { emoji:'⭐',  name:'Gold',   power:'pierce',  cost: 60, unlocked:false },
+    purple: { emoji:'🟣', name:'Purple', power:'necro',   cost: 80, unlocked:false },
+    orange: { emoji:'🟠', name:'Orange', power:'crit',    cost: 50, unlocked:false },
+    aqua:   { emoji:'🌊', name:'Aqua',   power:'slow',    cost: 50, unlocked:false },
+    black:  { emoji:'⚫',  name:'Black',  power:'stun',    cost: 70, unlocked:false },
+    yellow: { emoji:'🟡', name:'Yellow', power:'volley',  cost: 70, unlocked:false },
+  };
+
+  // Per-color upgrades
+  const upgrades = {};
+  for (const k in COLORS) upgrades[k] = { attack:1, speed:1, health:1, ability:1 };
+
+// Enemy uses its own (neutral) upgrade table so your upgrades don't buff them
+const enemyUpgrades = {};
+for (const k in COLORS) enemyUpgrades[k] = { attack:1, speed:1, health:1, ability:1 };
+// (Optional difficulty: you can bump these per level if you want)
+
+  // Helpers
+  function unlockedKeys(){
+    return Object.entries(COLORS).filter(([k,v])=>v.unlocked).map(([k])=>k);
+  }
+
+  // ===== Bottom bar sync =====
+  function syncBar(){
+  goldTxt.textContent   = gold;
+  levelTxt.textContent  = level;
+  hpYouTxt.textContent  = playerBase;
+  hpEnemyTxt.textContent= enemyBase;
+  if (movesTxt) movesTxt.textContent = moves;   // ← add this
+}
+
+
+  // ===== Sidebar counters =====
+  const stats = { matches:0 };
+  function syncCounters(){
+  if (ct.level)   ct.level.textContent = level;
+  if (ct.gold)    ct.gold.textContent  = gold;
+  if (ct.hpyou)   ct.hpyou.textContent = playerBase;
+  if (ct.hpenemy) ct.hpenemy.textContent = enemyBase;
+  if (ct.uYou)    ct.uYou.textContent  = playerUnits.length;
+  if (ct.uEn)     ct.uEn.textContent   = enemyUnits.length;
+  if (ct.proj)    ct.proj.textContent  = projectiles.length;
+  if (ct.matches) ct.matches.textContent= stats.matches;
+  if (ct.kills)   ct.kills.textContent = kills;
+  if (ct.moves)   ct.moves.textContent = moves; // ← add this
+}
+
+
+  // ===== Clouds & battlefield paint =====
+  const clouds = Array.from({length:7}, () => ({
+    x: Math.random()*W, y: 40+Math.random()*160,
+    w: 90+Math.random()*140, h: 30+Math.random()*24,
+    spd: .15 + Math.random()*.25
+  }));
+
+  function drawSkyAndGrass(){
+    const skyGrad = ctx.createLinearGradient(0,0,0,GRASS_Y);
+    skyGrad.addColorStop(0,'#84c9f2');
+    skyGrad.addColorStop(1,'#a5ddff');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0,0,W,GRASS_Y);
+
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    for (const c of clouds){
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, c.w, c.h, 0, 0, Math.PI*2);
+      ctx.fill();
+      c.x += c.spd; if (c.x - c.w > W) c.x = -c.w;
+    }
+
+    const grassGrad = ctx.createLinearGradient(0,GRASS_Y,0,H);
+    grassGrad.addColorStop(0, '#3fae53');
+    grassGrad.addColorStop(.5,'#2f8a3d');
+    grassGrad.addColorStop(1, '#266f31');
+    ctx.fillStyle = grassGrad;
+    ctx.fillRect(0, GRASS_Y, W, H-GRASS_Y);
+
+    ctx.fillStyle = 'rgba(255,255,255,.2)';
+    ctx.fillRect(0, LANE_Y+18, W, 2);
+
+    // Bases
+    ctx.font = '28px serif';
+    ctx.fillText('🛡️', ENEMY_BASE_X-14, LANE_Y-10);
+    ctx.fillText('🏰', PLAYER_BASE_X-14, LANE_Y-10);
+  }
+
+  // ===== Match grid =====
+  const grid = [];
+  function randomColorKey(){
+    const arr = unlockedKeys();
+    return arr[(Math.random()*arr.length)|0];
+  }
+  function createsImmediateMatch(r,c,key){
+    if (c>=2 && grid[r][c-1]?.key===key && grid[r][c-2]?.key===key) return true;
+    if (r>=2 && grid[r-1]?.[c]?.key===key && grid[r-2]?.[c]?.key===key) return true;
+    return false;
+  }
+  function genTile(r,c){
+    let tries=0;
+    while(tries++<25){
+      const k = randomColorKey();
+      if (!createsImmediateMatch(r,c,k)){
+        return { key:k, special: Math.random()<0.09 };
+      }
+    }
+    return { key: randomColorKey(), special:false };
+  }
+  function buildGrid(){
+    for (let r=0;r<GRID_ROWS;r++){
+      grid[r]=[];
+      for (let c=0;c<GRID_COLS;c++) grid[r][c]=genTile(r,c);
+    }
+  }
+  function refillGrid(){
+    for (let r=0;r<GRID_ROWS;r++)
+      for (let c=0;c<GRID_COLS;c++)
+        grid[r][c]=genTile(r,c);
+  }
+
+  // ===== Save / Load =====
+  const SAVE_KEY = 'colorclash-autosave-v1';
+
+  function snapshotGrid(){
+    return grid.map(row => row.map(t => ({ key: t.key, special: !!t.special })));
+  }
+  function restoreGrid(snap){
+    if (!Array.isArray(snap) || snap.length !== GRID_ROWS) { refillGrid(); return; }
+    for (let r=0;r<GRID_ROWS;r++){
+      for (let c=0;c<GRID_COLS;c++){
+        const t = snap[r]?.[c];
+        grid[r][c] = t ? { key: t.key, special: !!t.special } : genTile(r,c);
+      }
+    }
+  }
+  function getSaveState(){
+    return {
+      v:1,
+      gold, level, playerBase, enemyBase,
+      colors: Object.fromEntries(Object.entries(COLORS).map(([k,v]) => [k, { unlocked: !!v.unlocked }])),
+      upgrades: JSON.parse(JSON.stringify(upgrades)),
+      grid: snapshotGrid(),
+      ts: Date.now()
+    };
+  }
+  function saveGame(){
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(getSaveState())); }
+    catch(e){ console.warn('Save failed', e); }
+  }
+  function loadGame(){
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return false;
+      const s = JSON.parse(raw);
+      if (!s || s.v !== 1) return false;
+
+      gold       = s.gold ?? gold;
+      level      = s.level ?? level;
+      playerBase = s.playerBase ?? 5;
+      enemyBase  = s.enemyBase ?? 5;
+
+      if (s.colors){
+        for (const k in s.colors) if (COLORS[k]) COLORS[k].unlocked = !!s.colors[k].unlocked;
+      }
+      if (s.upgrades){
+        for (const k in s.upgrades) if (upgrades[k]) Object.assign(upgrades[k], s.upgrades[k]);
+      }
+
+      restoreGrid(s.grid);
+
+      // Clear mid-fight things
+      playerUnits.length = 0;
+      enemyUnits.length  = 0;
+      projectiles.length = 0;
+
+      syncBar(); syncCounters();
+      return true;
+    } catch(e){
+      console.warn('Load failed', e);
+      return false;
+    }
+  }
+
+  // Dragging (adjacent swaps only)
+  let dragging=null, mouseX=0, mouseY=0;
+
+cv.addEventListener('mousedown', (e)=>{
+  if (paused || moves <= 0) return; // block if out of moves
+  const {x,y} = canvasMouse(e);
+  const hit = hitGrid(x,y);
+  if (hit) dragging = { from: hit, tile: {...grid[hit.r][hit.c]} };
+});
+
+cv.addEventListener('mousemove', (e)=>{
+  const p = canvasMouse(e); mouseX=p.x; mouseY=p.y;
+});
+
+cv.addEventListener('mouseup', (e)=>{
+  if (!dragging) return;
+  const {x,y} = canvasMouse(e);
+  const to = hitGrid(x,y);
+  const from = dragging.from;
+
+  if (to && (Math.abs(to.r-from.r)+Math.abs(to.c-from.c)===1) && moves > 0){
+    // swap tiles (always keep the swap)
+    const tmp = grid[to.r][to.c];
+    grid[to.r][to.c] = grid[from.r][from.c];
+    grid[from.r][from.c] = tmp;
+
+    // resolve matches; returns number of match groups spawned
+    const groups = resolveMatches(); // integer
+
+    // spend 1 move, gain +1 per troop spawned (per group)
+    moves = Math.max(0, moves - 1 + groups);
+
+    syncBar(); syncCounters();
+  }
+  dragging=null;
+});
+
+
+
+  function canvasMouse(e){
+    const rect = cv.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  function hitGrid(x,y){
+    if (x<GRID_X || y<GRID_Y || x>GRID_X+GRID_W || y>GRID_Y+GRID_H) return null;
+    const c = Math.floor((x-GRID_X)/TILE);
+    const r = Math.floor((y-GRID_Y)/TILE);
+    return {r,c};
+  }
+
+  function drawGrid(){
+    ctx.fillStyle = 'rgba(0,0,0,.12)';
+    ctx.fillRect(GRID_X-6, GRID_Y-6, GRID_W+12, GRID_H+12);
+    ctx.textBaseline='top';
+    ctx.font='28px system-ui';
+    for (let r=0;r<GRID_ROWS;r++){
+      for (let c=0;c<GRID_COLS;c++){
+        const t = grid[r][c], col = COLORS[t.key];
+        const x = GRID_X + c*TILE, y = GRID_Y + r*TILE;
+        ctx.fillStyle = 'rgba(255,255,255,.08)';
+        ctx.fillRect(x+4,y+4,TILE-8,TILE-8);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(col.emoji, x+TILE/2-12, y+TILE/2-16);
+        if (t.special){
+          ctx.font='18px system-ui'; ctx.fillText('✨', x+TILE-28, y+8); ctx.font='28px system-ui';
+        }
+      }
+    }
+    if (dragging){
+      const fx = mouseX - TILE/2, fy = mouseY - TILE/2;
+      ctx.globalAlpha = .85;
+      ctx.fillStyle='rgba(255,255,255,.25)';
+      ctx.fillRect(fx+4, fy+4, TILE-8, TILE-8);
+      ctx.globalAlpha = 1;
+      const em = COLORS[dragging.tile.key].emoji;
+      ctx.fillText(em, fx+TILE/2-12, fy+TILE/2-16);
+    }
+  }
+
+  // Find matches, spawn units, replace
+  function resolveMatches(){
+  const mark = [...Array(GRID_ROWS)].map(()=>Array(GRID_COLS).fill(false));
+  const groups = [];
+  // horizontal
+  for (let r=0;r<GRID_ROWS;r++){
+    let run=null, start=0;
+    for (let c=0;c<=GRID_COLS;c++){
+      const k = (c<GRID_COLS)? grid[r][c].key : null;
+      if (k!==run){
+        const len = c-start;
+        if (run!==null && len>=3){
+          groups.push({dir:'h', r, c0:start, len, key:run});
+          for (let cc=start; cc<c; cc++) mark[r][cc]=true;
+        }
+        run = k; start = c;
+      }
+    }
+  }
+  // vertical
+  for (let c=0;c<GRID_COLS;c++){
+    let run=null, start=0;
+    for (let r=0;r<=GRID_ROWS;r++){
+      const k = (r<GRID_ROWS)? grid[r][c].key : null;
+      if (k!==run){
+        const len = r-start;
+        if (run!==null && len>=3){
+          groups.push({dir:'v', c, r0:start, len, key:run});
+          for (let rr=start; rr<r; rr++) mark[rr][c]=true;
+        }
+        run = k; start = r;
+      }
+    }
+  }
+  if (!groups.length) return 0;
+
+  // Spawn per group; elite if any special in group
+  for (const g of groups){
+    let elite = false;
+    if (g.dir==='h'){
+      for (let cc=0; cc<g.len; cc++) if (grid[g.r][g.c0+cc].special){ elite=true; break; }
+    } else {
+      for (let rr=0; rr<g.len; rr++) if (grid[g.r0+rr][g.c].special){ elite=true; break; }
+    }
+    spawnPlayerUnit(g.key, g.len, elite);
+  }
+  stats.matches += groups.length;
+
+  // Replace matched tiles
+  for (let r=0;r<GRID_ROWS;r++)
+    for (let c=0;c<GRID_COLS;c++)
+      if (mark[r][c]) grid[r][c]=genTile(r,c);
+
+  return groups.length; // ← number of troops spawned
+}
+
+
+  // ===== Units & Combat =====
+  const playerUnits = [];
+  const enemyUnits  = [];
+  const projectiles = [];
+
+	 function baseStats(key, matchLen, elite, upSet){
+	  const up  = (upSet && upSet[key]) ? upSet[key] : { attack:1, speed:1, health:1, ability:1 };
+	  let hp  = 14 + 4*matchLen;
+	  let atk = 2 + Math.floor(matchLen/2);
+	  let spd = 0.28;
+	  let rng = 26;
+	  const pwr = COLORS[key].power;
+
+	  if (pwr==='ranged' || pwr==='pierce' || pwr==='volley'){ rng = 220; spd = 0.22; }
+	  if (pwr==='heal'){ atk = 1; }
+	  if (pwr==='necro'){ atk += 1; }
+	  if (pwr==='crit'){  atk += 1; }
+
+	  hp  = Math.round(hp  * up.health);
+	  atk = Math.round(atk * up.attack);
+	  spd = spd * up.speed;
+
+	  if (elite){ hp = Math.round(hp*1.3); atk = Math.round(atk*1.25); }
+
+	  return {hp, atk, spd, rng, pwr};
+	}
+
+
+  function spawnPlayerUnit(key, len, elite=false){
+    if (!COLORS[key].unlocked) return;
+    const s = baseStats(key, len, elite, upgrades);
+    const size = 12 + 4*len + (elite?3:0);
+    playerUnits.push({
+      side:'player', key, emoji:COLORS[key].emoji, power:s.pwr,
+      x: PLAYER_BASE_X-5, y: LANE_Y, vx: -s.spd, range:s.rng,
+      hp:s.hp, maxHp:s.hp, atk:s.atk, cd:0, size, elite,
+      poison:0, slow:0, stun:0
+    });
+  }
+
+  function spawnEnemyUnit(){
+    // Enemy pool grows with level; slow ramp
+    const basePool = ['red','blue','green','pink'];
+    if (level>=2) basePool.push('aqua');
+    if (level>=3) basePool.push('orange');
+    if (level>=4) basePool.push('gold','yellow');
+    if (level>=5) basePool.push('purple','black');
+    const key = basePool[(Math.random()*basePool.length)|0];
+    const len = 3 + (Math.random()<.18?1:0) + (Math.random()<.06?1:0);
+    const elite = Math.random()<.08;
+    const s = baseStats(key, len, elite, enemyUpgrades);
+    const size = 12 + 4*len + (elite?3:0);
+    enemyUnits.push({
+      side:'enemy', key, emoji:COLORS[key].emoji, power:s.pwr,
+      x: ENEMY_BASE_X+5, y: LANE_Y, vx: s.spd, range:s.rng,
+      hp:s.hp, maxHp:s.hp, atk:s.atk, cd:0, size, elite,
+      poison:0, slow:0, stun:0
+    });
+  }
+
+  function drawUnit(u){
+    const icon = (
+      u.power==='heal'   ? '✨' :
+      u.power==='ranged' ? '🎯' :
+      u.power==='pierce' ? '🗡️' :
+      u.power==='poison' ? '☠️' :
+      u.power==='necro'  ? '💀' :
+      u.power==='slow'   ? '🧊' :
+      u.power==='stun'   ? '⚡' :
+      u.power==='crit'   ? '🔥' :
+      u.power==='volley' ? '🎯' : '•'
+    );
+    ctx.font='22px serif';
+    ctx.fillText(icon, u.x-10, u.y - (u.size+20));
+    ctx.beginPath(); ctx.arc(u.x, u.y-8, u.size, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fill();
+    ctx.font='26px serif';
+    ctx.fillText(u.emoji, u.x-13, u.y-22);
+
+    const bw=40, bh=5;
+    ctx.fillStyle='#571b1b'; ctx.fillRect(u.x-bw/2, u.y+4, bw, bh);
+    ctx.fillStyle='#6eff6e'; ctx.fillRect(u.x-bw/2, u.y+4, bw*(u.hp/u.maxHp), bh);
+    ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.strokeRect(u.x-bw/2, u.y+4, bw, bh);
+  }
+
+  function fireProjectile(from){
+    const dir = from.side==='player' ? -1 : 1;
+    const baseSpeed = 3;
+    const pierce = (from.power==='pierce') ? 2 : 0;
+    projectiles.push({
+      x: from.x, y: from.y-14, vx: dir*baseSpeed,
+      dmg: from.atk, side: from.side, pierce, power: from.power, key: from.key, alive:true
+    });
+    if (from.power==='volley'){
+      projectiles.push({ x: from.x, y: from.y-14, vx: dir*(baseSpeed+0.5), dmg: Math.max(1,Math.round(from.atk*0.8)), side: from.side, pierce:0, power:'ranged', key: from.key, alive:true });
+      projectiles.push({ x: from.x, y: from.y-14, vx: dir*(baseSpeed-0.5), dmg: Math.max(1,Math.round(from.atk*0.8)), side: from.side, pierce:0, power:'ranged', key: from.key, alive:true });
+    }
+  }
+
+  function onKill(attacker, victim){
+    if (attacker && attacker.power === 'necro'){
+      const sHP  = Math.round(victim.maxHp * 0.35);
+      const sATK = Math.max(1, Math.round(((attacker.atk||2)) * 0.6));
+      const size = Math.max(10, Math.round(victim.size * 0.8));
+      const skelSpeed = 0.26;
+
+      const skel = {
+        side: attacker.side, key: attacker.key || 'purple', emoji: '💀', power: 'melee',
+        x: victim.x, y: victim.y, vx: (attacker.side === 'player' ? -skelSpeed : skelSpeed), range: 26,
+        hp: sHP, maxHp: sHP, atk: sATK, cd: 0, size, elite: false, poison: 0, slow: 0, stun: 0
+      };
+      (attacker.side === 'player' ? playerUnits : enemyUnits).push(skel);
+    }
+    kills++;
+    gold += 1; // 1 gold per kill
+    syncBar(); syncCounters();
+  }
+
+  function unitTick(u, dt){
+  // Use your upgrades for player units, neutral/difficulty upgrades for enemies
+  const upSet = (u.side === 'player') ? upgrades : enemyUpgrades;
+  const up = upSet[u.key] || { attack:1, speed:1, health:1, ability:1 };
+
+  // Hard CC first
+  if (u.stun > 0){ u.stun--; return; }
+
+  // Slow affects movement this tick
+  let speedMul = (u.slow > 0) ? 0.5 : 1;
+  if (u.slow > 0) u.slow--;
+
+  const foes = (u.side === 'player') ? enemyUnits : playerUnits;
+
+  // Healing aura (Pink): small periodic heal in a radius, scales with ability
+  if (u.power === 'heal' && (Date.now() % 900) < 20){
+    const friends = (u.side === 'player') ? playerUnits : enemyUnits;
+    for (const f of friends){
+      if (Math.abs(f.x - u.x) < 64){
+        const bonus = Math.floor((up.ability - 1) * 0.25);
+        f.hp = Math.min(f.maxHp, f.hp + 1 + bonus);
+      }
+    }
+  }
+
+  // Acquire nearest foe in front
+  let target = null, dist = 1e9;
+  for (const e of foes){
+    if (e.dead) continue;
+    const d = Math.abs(e.x - u.x);
+    const inFront = (u.side === 'player') ? (e.x < u.x) : (e.x > u.x);
+    if (inFront && d < dist){ target = e; dist = d; }
+  }
+
+  // Engagement distance depends on sizes; ranged uses weapon range
+  const engageDist = target ? Math.max(24, (u.size + target.size) * 0.55) : 24;
+
+  // Move unless in ranged position or in melee contact
+  let shouldMove = true;
+  if (target){
+    const isRanged = (u.power === 'ranged' || u.power === 'pierce' || u.power === 'volley');
+    const inRange  = dist <= (isRanged ? u.range : engageDist);
+    const meleeContact = dist <= engageDist;
+    if ((isRanged && inRange) || meleeContact) shouldMove = false;
+  }
+  if (shouldMove){
+    u.x += u.vx * dt * speedMul;
+  }
+
+  // DoT tick on the unit itself
+  if (u.poison > 0 && (Date.now() % 500) < 20){
+    u.hp -= 1; u.poison--;
+  }
+
+  // Attack logic
+  if (target){
+    const isRanged = (u.power === 'ranged' || u.power === 'pierce' || u.power === 'volley');
+    const inRange  = dist <= (isRanged ? u.range : engageDist);
+
+    if (inRange){
+      if (u.cd <= 0){
+        if (isRanged){
+          // Fire projectile(s)
+          fireProjectile(u);
+          u.cd = 28;
+        } else {
+          // Melee hit
+          let dmg = u.atk;
+          target.hp -= Math.max(1, Math.round(dmg));
+
+          // On-hit effects (scale with the correct upgrade table)
+          if (u.power === 'poison' && Math.random() < 0.6) target.poison += 3 * up.ability;
+          if (u.power === 'slow'   && Math.random() < 0.7) target.slow   += 60;
+          if (u.power === 'stun'   && Math.random() < 0.18) target.stun   = 25;
+          if (u.power === 'crit'   && Math.random() < 0.2 * up.ability) {
+            // extra crit burst
+            target.hp -= Math.max(1, Math.round(dmg * 0.8));
+          }
+
+          if (target.hp <= 0){
+            target.dead = true;
+            onKill(u, target);
+          }
+          u.cd = 24;
+        }
+      } else {
+        u.cd--;
+      }
+    } else {
+      if (u.cd > 0) u.cd--;
+    }
+  } else {
+    if (u.cd > 0) u.cd--;
+  }
+}
+
+
+  function projectileTick(p, dt){
+    p.x += p.vx*dt;
+    const foes = p.side==='player'? enemyUnits : playerUnits;
+    for (const e of foes){
+      if (e.dead) continue;
+      if (Math.abs(e.x - p.x) < 10 && Math.abs((e.y-14) - p.y) < 18){
+        let dmg = p.dmg;
+        e.hp -= Math.max(1, dmg);
+        if (p.power==='ranged' && Math.random()<.12) e.poison += 1;
+        if (p.power==='slow' && Math.random()<.4) e.slow += 40;
+        if (e.hp <= 0){
+          e.dead = true;
+          onKill({ side: p.side, power: p.power, key: p.key }, e);
+        }
+        if (p.pierce > 0){ p.pierce--; } else { p.alive = false; break; }
+      }
+    }
+    if (p.x<0 || p.x>W) p.alive=false;
+  }
+
+  function cleanup(){
+    function baseTouch(u){
+      if (u.side==='player' && u.x < ENEMY_BASE_X+10){
+        enemyBase--; gold += 5; u.dead=true; syncBar();
+      }
+      if (u.side==='enemy'  && u.x > PLAYER_BASE_X-10){
+        playerBase--; u.dead=true;
+      }
+    }
+    for (const u of playerUnits){ if (!u.dead) baseTouch(u); }
+    for (const u of enemyUnits){  if (!u.dead) baseTouch(u); }
+
+    let i=playerUnits.length; while(i--) if (playerUnits[i].dead || playerUnits[i].hp<=0) playerUnits.splice(i,1);
+    i=enemyUnits.length; while(i--) if (enemyUnits[i].dead || enemyUnits[i].hp<=0) enemyUnits.splice(i,1);
+    i=projectiles.length; while(i--) if (!projectiles[i].alive) projectiles.splice(i,1);
+  }
+
+  // ===== Loop & Spawning =====
+  let last = performance.now();
+  let enemyTimer=0;
+
+  function enemyIntervalFor(lvl){
+    if (lvl <= 1) return 3600; // slow start
+    const base = 2400 - (lvl-2)*120;
+    return Math.max(900, base);
+  }
+  let enemyInterval = enemyIntervalFor(level);
+
+  function update(dt){
+    if (paused) return;
+
+    for (const u of playerUnits) unitTick(u, dt);
+    for (const u of enemyUnits)  unitTick(u, dt);
+
+    playerUnits.sort((a,b)=>b.x-a.x);
+    enemyUnits.sort((a,b)=>a.x-b.x);
+
+    for (const p of projectiles) projectileTick(p, dt);
+    cleanup();
+
+    enemyTimer += dt*16.6667;
+    if (enemyTimer >= enemyInterval){
+      enemyTimer = 0;
+      spawnEnemyUnit();
+    }
+
+    syncCounters();
+
+    if (enemyBase<=0 || playerBase<=0){
+      paused = true;
+      setTimeout(()=>{
+        if (enemyBase<=0){
+          const reward = 30 + 10*level;
+          gold += reward;
+          alert(`🎉 Level ${level} cleared!\n+${reward} gold`);
+          level++;
+          enemyInterval = enemyIntervalFor(level);
+        } else {
+          alert(`💀 Defeat at level ${level}. Back to level 1!`);
+          level = 1;
+          enemyInterval = enemyIntervalFor(level);
+        }
+        playerUnits.length = 0; enemyUnits.length = 0; projectiles.length = 0;
+        playerBase = 5; enemyBase = 5;
+		moves = 10;   
+        syncBar(); syncCounters();
+        buildShop(); openShop(); // opening shop also auto-saves
+        paused = false;
+      }, 60);
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    drawSkyAndGrass();
+
+    for (const e of enemyUnits)  drawUnit(e);
+    for (const p of playerUnits) drawUnit(p);
+
+    ctx.fillStyle='#ffd54f';
+    for (const p of projectiles){ ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); }
+
+    drawGrid();
+  }
+
+  function loop(t){
+    const dt = Math.min(2, (t - last)/16.6667);
+    last = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ===== Shop =====
+  const shop = document.getElementById('shop');
+  const unlockList = document.getElementById('unlockList');
+  const upgradeList = document.getElementById('upgradeList');
+  const openShopBtn = document.getElementById('openShopBtn');
+  const closeShopBtn = document.getElementById('closeShopBtn');
+
+  function openShop(){ shop.style.display='flex'; paused = true; saveGame(); } // ← autosave when shop opens
+  function closeShop(){ shop.style.display='none'; paused = false; }
+  openShopBtn.onclick = openShop;
+  closeShopBtn.onclick = closeShop;
+
+  function buildShop(){
+    unlockList.innerHTML = '';
+    for (const k in COLORS){
+      const c = COLORS[k];
+      if (c.unlocked || c.cost<=0) continue;
+      const btn = document.createElement('button');
+      btn.className='shop-btn';
+      btn.innerHTML = `<span>${c.emoji} Unlock <b>${c.name}</b></span><small>Cost: ${c.cost}🪙</small>`;
+      btn.onclick = ()=>{
+        if (gold >= c.cost){
+          gold -= c.cost; c.unlocked = true; syncBar();
+          refillGrid();
+          buildShop();
+        } else alert('Not enough gold!');
+      };
+      unlockList.appendChild(btn);
+    }
+
+    upgradeList.innerHTML = '';
+    for (const k in COLORS){
+      const c = COLORS[k];
+      if (!c.unlocked) continue;
+      const up = upgrades[k];
+      for (const stat of ['attack','speed','health','ability']){
+        const lvl = up[stat];
+        const cost = Math.ceil(12 * Math.pow(1.45, lvl-1));
+        const btn = document.createElement('button');
+        btn.className='shop-btn';
+        btn.innerHTML = `<span>${c.emoji} ${c.name} <b>${stat.toUpperCase()}</b> ➜ L${lvl+1}</span><small>Cost: ${cost}🪙</small>`;
+        btn.onclick = ()=>{
+          if (gold >= cost){ gold -= cost; up[stat]++; syncBar(); buildShop(); }
+          else alert('Not enough gold!');
+        };
+        upgradeList.appendChild(btn);
+      }
+    }
+  }
+
+  // ===== Init =====
+  buildGrid();
+  const didLoad = loadGame();   // ← autoload on page open (if a save exists)
+  syncBar(); syncCounters();
+  buildShop();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+
+</body>
+</html>
