@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — CP Dock + Per-Unit Spawn</title>
+<title>🗻 Mountain Blade — Crowd Arrival + Anti-Swirl</title>
+<title>🗻 Mountain Blade — Hold Position + CP Glow</title>
 <style>
   :root{ --win-w: 1024px; --win-h: 640px; }
   *{ box-sizing:border-box }
@@ -18,27 +19,20 @@
   /* UI overlay */
   #ui{ pointer-events:none; position:absolute; inset:0; }
   #timerBox{ position:absolute; top:8px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; }
+  #leader{ position:absolute; top:8px; right:8px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
   #leader{ position:absolute; top:8px; right:8px; min-width:220px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
   #leader h3{ margin:0 0 6px 0; font-size:14px; color:#cfe; }
   #leader .row{ display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
   #hint{ position:absolute; top:44px; left:50%; transform:translateX(-50%); background:#18243acc; border:1px solid #355; border-radius:10px; padding:6px 10px; font-size:13px; display:none; }
   #banner{ position:absolute; left:50%; top:24%; transform:translateX(-50%); font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
 
-  /* Command Post Panel */
-  #cpPanel{ position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px; padding:8px; display:none; pointer-events:auto; width:240px; }
-  #cpPanel h3{ margin:0 0 6px 0; font-size:14px; display:flex; align-items:center; justify-content:space-between; }
+  #cpPanel{ position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px; padding:8px; display:none; pointer-events:auto; }
+  #cpPanel h3{ margin:0 0 6px 0; font-size:14px; }
   #cpPanel .row{ display:flex; gap:6px; flex-wrap:wrap; }
   .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
-  .cpClose{ cursor:pointer; border:none; background:#15203a; color:#cde; border:1px solid #3a4a62; border-radius:8px; padding:2px 6px; font-size:12px; }
 
-  /* Dock of owned posts (minimized) */
-  #cpDock{ position:absolute; right:10px; top:64px; display:flex; flex-direction:column; gap:8px; pointer-events:auto; }
-  .cpPill{ min-width:220px; display:flex; align-items:center; justify-content:space-between;
-           padding:8px 10px; border:1px solid #3a4a62; background:#0f1828; border-radius:10px; cursor:pointer; }
-  .cpPill .id{ font-weight:700; }
-  .cpPill .type{ font-size:12px; color:#9fb2cc; }
-
-  /* HUD */
+  #hud{ position:absolute; left:0; right:0; bottom:0; height:104px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
+  #selInfo{ min-width:160px; }
   #hud{ position:absolute; left:0; right:0; bottom:0; height:108px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
   #selInfo{ min-width:280px; line-height:1.25; }
   #abilities{ display:flex; gap:10px; }
@@ -66,12 +60,8 @@
           <div id="hint"></div>
           <div id="banner"></div>
 
-          <div id="cpDock"></div>
           <div id="cpPanel">
-            <h3>
-              <span>Spawn from <span id="cpName">CP</span></span>
-              <button class="cpClose" id="cpMinBtn">Minimize</button>
-            </h3>
+            <h3>Spawn from <span id="cpName">CP</span></h3>
             <div class="row" id="cpBtns"></div>
           </div>
 
@@ -107,9 +97,9 @@ const db  = getFirestore(app);
 const Q = new URLSearchParams(location.search);
 const GAME_ID  = Q.get("gameId");
 const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html";
+const HUB_ROUTE = "/game/index.html"; // change if needed
 
-/* ---------------- Canvas & camera ---------------- */
+/* ---------------- Canvas & windowed camera ---------------- */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const viewportEl = document.querySelector(".viewport");
@@ -124,16 +114,19 @@ const AGGRO_RANGE = 260;
 const STOP_DIST   = 14;
 const MATCH_MS    = 5*60*1000;
 
-const SPAWN_MS = { guardian:10000, lancer:11000, archer:12000, priest:12000, mage:13000, cavalry:16000 };
-const spawnPeriodFor = (type) => SPAWN_MS[type] ?? 12000;
-
 const TYPES = {
-  guardian:{name:"Guardian",emoji:"🛡️",hp:110,dmg:10,range:46,atkSpd:1.0,moveSpd:400,armor:5,size:13,abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
-  lancer:  {name:"Lancer",  emoji:"🗡️",hp:85,dmg:9,range:64,atkSpd:1.2,moveSpd:500,armor:3,size:12,abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
-  archer:  {name:"Archer",  emoji:"🏹",hp:65,dmg:7,range:220,atkSpd:1.0,moveSpd:450,armor:1,size:11,abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120,channel:6000}]},
-  cavalry: {name:"Cavalry", emoji:"🐎",hp:95,dmg:12,range:46,atkSpd:0.9,moveSpd:750,armor:2,size:14,abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
-  mage:    {name:"Mage",    emoji:"🔮",hp:55,dmg:15,range:190,atkSpd:0.7,moveSpd:350,armor:0,size:11,abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
-  priest:  {name:"Priest",  emoji:"✝️",hp:70,dmg:3,range:84,atkSpd:0.7,moveSpd:400,armor:1,size:11,abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5,healPerSec:8}]},
+  guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, range:46, atkSpd:1.0, moveSpd:260, armor:5, size:13,
+    abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
+  lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  range:64, atkSpd:1.2, moveSpd:270, armor:3, size:12,
+    abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
+  archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:220,atkSpd:1.0, moveSpd:250, armor:1, size:11,
+    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120, channel:6000}]},
+  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:440, armor:2, size:14,
+    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
+  mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:190,atkSpd:0.7, moveSpd:255, armor:0, size:11,
+    abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
+  priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:84, atkSpd:0.7, moveSpd:252, armor:1, size:11,
+    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5,healPerSec:8}]},
 };
 const SPAWN_CHOICES = Object.keys(TYPES);
 
@@ -153,46 +146,24 @@ const cellKey = (cx, cy) => cx + "|" + cy;
 function buildHash(units){ const map=new Map(); for(let i=0;i<units.length;i++){ const u=units[i], k=cellKey(toCell(u.x),toCell(u.y)); (map.get(k)||map.set(k,[]).get(k)).push(i);} return { map }; }
 function forNeighbors(hash,x,y,r,cb){ const c=SPATIAL.cell, rc=Math.ceil(r/c), cx=toCell(x), cy=toCell(y); for(let gy=cy-rc;gy<=cy+rc;gy++) for(let gx=cx-rc;gx<=cx+rc;gx++){ const a=hash.map.get(cellKey(gx,gy)); if(!a) continue; for(const i of a) cb(i); }}
 
-/* ---------------- State ---------------- */
+/* ---------------- Local state ---------------- */
 let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
 let selection=new Set();
 let dragging=false, dragStart=null;
-let targeting=null;
-const groups={};
+let targeting=null; // {slot,ability,ids,type}
+const groups={}; // "1".."9" -> Set(ids)
+const visPos=new Map(); function vpos(u){ let p=visPos.get(u.id); if(!p){ p={x:u.x,y:u.y}; visPos.set(u.id,p);} const k=.22; p.x+=(u.x-p.x)*k; p.y+=(u.y-p.y)*k; return p; }
 
+/* ---------------- Firestore refs & intents ---------------- */
 const lobbyRef = doc(db,"lobbies",GAME_ID);
 const gameRef  = doc(db,"games",GAME_ID,"meta","state");
-
-/* ---- NEW: network ingest + render integrator (no timeline buffers) ---- */
-const netTargets = new Map(); // id -> {x,y,tick,updatedAt}
-const renderPos  = new Map(); // id -> {x,y}
-function ingestNetState(g){
-  const tick = g.tick|0, now = performance.now();
-  const seen = new Set();
-  for(const u of (g.units||[])){
-    let t = netTargets.get(u.id);
-    if(!t || (t.tick??-1) <= tick){ // drop out-of-order
-      netTargets.set(u.id,{x:u.x,y:u.y,tick,updatedAt:now, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp});
-    }
-    seen.add(u.id);
-  }
-  // purge removed units from both maps
-  for(const id of [...netTargets.keys()]) if(!seen.has(id)) { netTargets.delete(id); renderPos.delete(id); }
-}
-
-/* ---------------- CP UI ---------------- */
-const cpPanel = document.getElementById("cpPanel");
-const cpName  = document.getElementById("cpName");
-const cpBtns  = document.getElementById("cpBtns");
-const cpDock  = document.getElementById("cpDock");
-document.getElementById("cpMinBtn").onclick = ()=>showCP(null);
-let cpOpenId = null;
+async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
 
 /* ---------------- Init ---------------- */
 (async function init(){
   const s=await getDoc(lobbyRef); if(!s.exists()){ alert("Lobby not found"); return; }
   const L=s.data(); isHost=(L.host===ME);
-  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []);
+  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []); // max 4
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
 
   const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length]; cam.x=sp.x-cv.width/2; cam.y=sp.y-cv.height/2; clampCam();
@@ -212,12 +183,7 @@ let cpOpenId = null;
     await setDoc(gameRef,{tick:0,startedAt:now,endAt:now+MATCH_MS,winner:null,map:{w:WORLD.w,h:WORLD.h},players:lobbyPlayers,points,units,effects:[]});
   }
 
-  onSnapshot(gameRef,(snap)=>{
-    if(!snap.exists()) return;
-    state=snap.data();
-    ingestNetState(state);          // <— feed the integrator
-    renderHUD(); renderTimer(); renderBoard(); renderCPDock(); maybeWinner();
-  });
+  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); maybeWinner(); });
 
   if(isHost) hostLoop();
 })();
@@ -226,6 +192,7 @@ let cpOpenId = null;
 function mkUnit(type,owner,x,y){
   const b=TYPES[type], id=owner.slice(0,2).toUpperCase()+Math.random().toString(36).slice(2,7);
   return { id, tt:type, o:owner, x:Math.round(x), y:Math.round(y), vx:0, vy:0, hp:b.hp, maxHp:b.hp, cd:0, acd:{},
+           _order:null, _aura:null, _charge:null, _channel:null, _brake:0 }; // _brake short stop after arrival
            _order:null, _aura:null, _charge:null, _channel:null, _brake:0, _hold:false };
 }
 function d2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
@@ -240,7 +207,11 @@ window.addEventListener("mousemove",(e)=>{
   const vr=viewportEl.getBoundingClientRect();
   mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY>=vr.top && e.clientY<=vr.bottom;
 });
-cv.addEventListener("mousemove",(e)=>{ const r=relTo(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
+cv.addEventListener("mousemove",(e)=>{
+  const r=relTo(cv,e);
+  mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h;
+  mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y;
+});
 
 cv.addEventListener("mousedown",(e)=>{
   if(e.button===2){
@@ -256,8 +227,8 @@ cv.addEventListener("mousedown",(e)=>{
   }
   if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
-  showCP(null);
 });
+
 addEventListener("mouseup",(e)=>{
   if(!dragging) return; dragging=false;
   const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
@@ -272,7 +243,6 @@ addEventListener("mouseup",(e)=>{
     for(const id of ids) selection.add(id);
     renderHUD();
   }
-  showCP(null);
 });
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 
@@ -280,8 +250,19 @@ addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ setTarget(null); return; }
   if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
-  if(k==="a"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; pushIntent("orderNearest",{ids}); return; }
-  if(k==="h"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; pushIntent("hold",{ids,toggle:true}); return; }
+  if(k==="a"){ e.preventDefault(); const ids=Array.from(selection); if(ids.length) pushIntent("orderNearest",{ids}); return; }
+  if(k==="a"){ // Attack Nearest (works with hold: will not chase if out of range)
+    e.preventDefault();
+    const ids=Array.from(selection); if(!ids.length) return;
+    pushIntent("orderNearest",{ids});
+    return;
+  }
+  if(k==="h"){ // Hold toggle
+    e.preventDefault();
+    const ids=Array.from(selection); if(!ids.length) return;
+    pushIntent("hold",{ids,toggle:true});
+    return;
+  }
   if(k>="1"&&k<="9"){
     e.preventDefault();
     if(e.ctrlKey){ groups[k]=new Set(Array.from(selection)); }
@@ -291,7 +272,7 @@ addEventListener("keydown",(e)=>{
   }
 });
 
-/* ---------------- Picking (uses latest state) ---------------- */
+/* ---------------- Selection helpers ---------------- */
 function pickClosestFriendly(wx,wy,rad){
   if(!state?.units) return null;
   let best=null, bd=rad*rad;
@@ -311,7 +292,10 @@ function pickInRect(x0,y0,x1,y1,owner){
 }
 
 /* ---------------- Orders & abilities ---------------- */
-async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
+async function orderAttackMove(wx,wy){
+  const ids=Array.from(selection); if(!ids.length) return;
+  await pushIntent("order",{type:"attackMove",ids,x:Math.round(wx),y:Math.round(wy),wipe:true});
+}
 function slotAbility(slot){
   const sel=state?.units?.filter(u=>selection.has(u.id))||[];
   for(const u of sel){ const t=TYPES[u.tt]; const a=t?.abilities?.find(x=>x.slot===slot); if(a) return a; }
@@ -347,6 +331,7 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
+  // Volley: 6s channel, 3 pulses (1s,3s,5s); archer rooted during channel
   volley:     { cast(g,u,ab,{mode,x,y},now){
                   if(mode!=="point") return false;
                   const until = now + (ab.channel || 6000);
@@ -359,13 +344,13 @@ const AbilityHandlers = {
   charge:     { cast(g,u,ab,{mode,x,y,targetId},now){ if(mode!=="point"&&mode!=="unit") return false; u._order=null; u._charge = mode==="unit" ? {targetId, until:now+1100, impacted:false} : {x,y, until:now+1100, impacted:false}; return true; } },
 };
 
-/* ---------------- CP panel + dock ---------------- */
+/* ---------------- CP panel ---------------- */
+const cpPanel=document.getElementById("cpPanel"), cpName=document.getElementById("cpName"), cpBtns=document.getElementById("cpBtns");
 function showCP(point){
-  cpOpenId = point?.id || null;
   if(!point){ cpPanel.style.display="none"; return; }
   cpName.textContent=point.id; cpBtns.innerHTML="";
   for(const t of SPAWN_CHOICES){
-    const b=document.createElement("button"); b.className="cpBtn"; b.textContent=`${TYPES[t].emoji} ${TYPES[t].name} • ${(spawnPeriodFor(t)/1000)|0}s`;
+    const b=document.createElement("button"); b.className="cpBtn"; b.textContent=`${TYPES[t].emoji} ${TYPES[t].name}`;
     b.onclick=()=>pushIntent("spawnChoice",{pointId:point.id,troop:t});
     cpBtns.appendChild(b);
   }
@@ -377,29 +362,24 @@ cv.addEventListener("click",()=>{
     const dx=p.x-(cam.x+mouse.x), dy=p.y-(cam.y+mouse.y);
     if(dx*dx+dy*dy<=p.r*p.r){ return p.owner===ME ? showCP(p) : showCP(null); }
   }
+  showCP(null);
 });
-function renderCPDock(){
-  if(!state) return;
-  cpDock.innerHTML="";
-  const mine = state.points.filter(p=>p.owner===ME);
-  mine.forEach(p=>{
-    const pill=document.createElement("div"); pill.className="cpPill";
-    const color=tint(ME);
-    pill.innerHTML=`<span class="id">⚑ ${p.id}</span><span class="type" style="color:${color}">${TYPES[p.spawnType]?.emoji||"—"} ${TYPES[p.spawnType]?.name||""}</span>`;
-    pill.onclick=()=>showCP(p);
-    cpDock.appendChild(pill);
-  });
-}
 
-/* ---------------- Edge pan ---------------- */
+/* ---------------- Edge pan (whole viewport; bigger vertical margins) ---------------- */
+/* ---------------- Edge pan (larger zones) ---------------- */
 function edgePan(dt){
   if(!mouse.inViewport) return;
   const r=viewportEl.getBoundingClientRect();
   const mx=mouse.clientX, my=mouse.clientY;
-  const marginX = 60, marginTop = 80, marginBot = 160;
+  const marginX = 18, marginTop = 60, marginBot = 120;
+  const marginX = 60;  // wider left/right pan zones
+  const marginTop = 80;
+  const marginBot = 160;
+
   let vx=0, vy=0;
   if(mx<=r.left+marginX) vx-=1; else if(mx>=r.right-marginX) vx+=1;
   if(my<=r.top+marginTop) vy-=1; else if(my>=r.bottom-marginBot) vy+=1;
+
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
@@ -410,6 +390,7 @@ async function hostLoop(){
     const now=performance.now(), dt=Math.min(.05,(now-last)/1000); last=now;
 
     const intentsCol = collection(db,"games",GAME_ID,"intents");
+    const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(160)));
     const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(200)));
     const intents=snap.docs.map(d=>({id:d.id,...d.data()}));
 
@@ -428,13 +409,17 @@ async function hostLoop(){
   step();
 }
 
-/* ---------------- Apply intents / Effects / Sim (unchanged) ---------------- */
+/* ---------------- Formation helper (assign offsets for group move) ---------------- */
+/* ---------------- Formation helper ---------------- */
 function ringOffsets(n, spacing=20){
   if(n<=1) return [{x:0,y:0}];
   const r = Math.max(spacing, Math.sqrt(n)*spacing*0.5);
   const out=[]; for(let i=0;i<n;i++){ const a=(i/n)*Math.PI*2; out.push({x:Math.cos(a)*r, y:Math.sin(a)*r}); }
   return out;
 }
+
+/* ---------------- Apply intents (crowd-aware + formation) ---------------- */
+/* ---------------- Apply intents (crowd-aware + formation + hold) ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
@@ -450,9 +435,10 @@ function applyIntents(g,intents){
 
     if(kind==="order"){
       const {ids,wipe}=payload;
+      // wipe current orders when requested
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
-        if(u._charge || u._channel) continue;
+        if(u._charge || u._channel) continue; // locked
         if(wipe){ u._aura=null; u._order=null; }
       }
       if(payload.type==="attackMove"){
@@ -461,6 +447,7 @@ function applyIntents(g,intents){
         ids.forEach((id,i)=>{
           const u=byId.get(id); if(!u||u.o!==user) return;
           if(u._channel) return;
+          // keep current hold state; order is still allowed to move, then they can hold if player toggled
           u._order={type:"attackMove",x,y, offX:offs[i].x|0, offY:offs[i].y|0, ts:Date.now()};
         });
       }
@@ -488,21 +475,22 @@ function applyIntents(g,intents){
         const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
         const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
         if(wipe){ u._order=null; }
-        const ok = AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,x,y,targetId},Date.now());
+        const handler = AbilityHandlers[ab.id];
+        const ok = handler && handler.cast(g,u,ab,{mode,x,y,targetId},Date.now());
         if(ok){ u.acd[slot]=ab.cd; }
       }
     }
 
     if(kind==="spawnChoice"){
       const {pointId,troop}=payload; const p=g.points.find(p=>p.id===pointId);
-      if(p && p.owner===user && TYPES[troop]){
-        p.spawnType=troop;
-        p.nextSpawnAt = Date.now() + spawnPeriodFor(troop);
-      }
+      if(p && p.owner===user && TYPES[troop]) p.spawnType=troop;
     }
   }
   return g;
 }
+
+/* ---------------- Effects (Volley/Fireburst) ---------------- */
+/* ---------------- Effects ---------------- */
 function processEffects(g, now){
   for(const e of (g.effects||[])){
     if(e.type==="volleyZone"){
@@ -533,9 +521,13 @@ function processEffects(g, now){
   }
   g.effects = g.effects.filter(e=>e.until > now);
 }
+
+/* ---------------- Simulation (crowd arrival + anti-swirl) ---------------- */
+/* ---------------- Simulation (crowd arrival + anti-swirl + hold) ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
 
+  // cooldowns & auras/channels/brakes
   for(const u of g.units){
     if(u.cd>0) u.cd=Math.max(0,u.cd-dt);
     for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
@@ -548,8 +540,11 @@ function simulate(g,dt){
 
   processEffects(g, now);
 
+  // spatial hash
   let hash=buildHash(g.units);
 
+  // capture + spawn
+  // capture + spawn (CPs glow and spawn steadily while owned)
   for(const p of g.points){
     const teams=new Map();
     forNeighbors(hash,p.x,p.y,p.r,(i)=>{ const u=g.units[i]; const dx=u.x-p.x,dy=u.y-p.y; if(dx*dx+dy*dy<=p.r*p.r) teams.set(u.o,(teams.get(u.o)||0)+1); });
@@ -558,29 +553,34 @@ function simulate(g,dt){
     else if(present.length>1){ p.cap=Math.max(0,p.cap-dt*.08); if(p.cap===0) p.owner=null; }
     else { p.cap=Math.max(0,p.cap-dt*.02); }
 
+    // steady base-rate spawn while owned
     if(p.owner){
-      const period = spawnPeriodFor(p.spawnType||"guardian");
+      const period=12000;
+      const period=12000; // base rate
       if(!p.nextSpawnAt) p.nextSpawnAt=now+period;
       if(now>=p.nextSpawnAt){
         const t=p.spawnType||"guardian", j=n=>Math.random()*n-n/2;
         g.units.push(mkUnit(t,p.owner, p.x+j(20), p.y+j(20)));
         p.nextSpawnAt=now+period;
       }
-    } else {
-      p.nextSpawnAt = 0;
     }
   }
 
+  // orders/AI/combat
   for(const u of g.units){
     const t=TYPES[u.tt], baseRange=t.range;
 
+    // channels root movement & attacks
+    // channel root
     if(u._channel?.kind==="volley"){ u.vx=0; u.vy=0; continue; }
 
+    // charge target tracking
     if(u._charge && u._charge.targetId){
       const tgt=g.units.find(x=>x.id===u._charge.targetId);
       if(tgt){ u._charge.x=tgt.x; u._charge.y=tgt.y; }
     }
 
+    // target selection
     let target=null, targetD2=Infinity;
     if(u._order?.type==="attackUnit"){
       const tgt=g.units.find(x=>x.id===u._order.targetId);
@@ -591,6 +591,7 @@ function simulate(g,dt){
       forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v||v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<targetD2){ targetD2=d; target=v; } });
     }
 
+    // attack
     const inRange = target && targetD2 <= baseRange*baseRange;
     if(inRange && u.cd<=0){
       const armor=(TYPES[target.tt].armor||0) + (target._aura?.kind==="shield" ? 3 : 0);
@@ -599,65 +600,123 @@ function simulate(g,dt){
       u.cd = Math.max(.05, 1/t.atkSpd);
     }
 
+    // movement goal with CROWD-AWARE ARRIVAL
+    // movement goal with HOLD + crowd-aware arrival
     let goal=null, goalX=0, goalY=0;
     if(u._charge){ goal={x:u._charge.x ?? u.x, y:u._charge.y ?? u.y}; }
     else if(u._order?.type==="attackMove"){ goalX=u._order.x+(u._order.offX||0); goalY=u._order.y+(u._order.offY||0); goal={x:goalX,y:goalY}; }
-    else if(target && !inRange && !u._hold){ goal={x:target.x, y:target.y}; }
+    else if(target && !inRange){ goal={x:target.x, y:target.y}; }
+    else if(target && !inRange && !u._hold){ goal={x:target.x, y:target.y}; } // HOLD stops chase
 
+    // dynamic arrival completion
+    // dynamic arrival completion for attackMove
     if(u._order?.type==="attackMove" && goal){
+      // estimate local friend crowd around goal
       let friendCount=0; forNeighbors(hash,goalX,goalY,28,(i)=>{ const v=g.units[i]; if(v.o===u.o) friendCount++; });
+      const arrivalR = Math.min(56, STOP_DIST + (TYPES[u.tt].size||12) + friendCount*2); // grows with crowd
       const arrivalR = Math.min(56, STOP_DIST + (TYPES[u.tt].size||12) + friendCount*2);
       const distTo = Math.hypot(goalX-u.x, goalY-u.y);
-      if(distTo <= arrivalR){ u._order=null; u._brake=0.5; goal=null; }
+      if(distTo <= arrivalR){
+        u._order=null;
+        u._brake = 0.5; // short brake to stop drift
+        goal=null; // cancel movement this tick
+        u._brake = 0.5;
+        if(u._hold) { /* keep planted */ }
+        goal=null;
+      }
     }
 
+    // steering
     let dx=0,dy=0;
     if(goal && u._brake<=0){ const gx=goal.x-u.x, gy=goal.y-u.y, dist=Math.hypot(gx,gy); if(dist>STOP_DIST){ dx=gx/dist; dy=gy/dist; } }
 
+    // separation (weaker in melee)
     let sx=0,sy=0; const sep=24, sepWeight= inRange ? 0.22 : 0.45;
     forNeighbors(hash,u.x,u.y,sep,(i)=>{ const v=g.units[i]; if(!v||v===u) return; const rx=u.x-v.x, ry=u.y-v.y, d2v=rx*rx+ry*ry; if(d2v===0||d2v>sep*sep) return; const d=Math.sqrt(d2v), push=(sep-d)/sep; sx+=(rx/d)*push; sy+=(ry/d)*push; });
 
+    // desired direction
     let desX=dx + sepWeight*sx, desY=dy + sepWeight*sy; [desX,desY]=clampMag(desX,desY,1);
 
+    // speed & modifiers
     const auraSlow = (u._aura?.kind==="brace") ? 0.75 : 1.0;
     const speed = t.moveSpd * (u._charge ? 1.7 : 1.0) * auraSlow;
 
+    // velocity blending
     const targetVX=desX*speed, targetVY=desY*speed;
     const lerp=0.25; u.vx += (targetVX-u.vx)*lerp; u.vy += (targetVY-u.vy)*lerp;
 
+    // anti-swirl: damp tangential velocity around current target
+    // anti-swirl: damp tangential velocity around target
     if(target){
       const dxT = target.x - u.x, dyT = target.y - u.y, d = Math.hypot(dxT,dyT) || 1;
+      const nx = dxT/d, ny = dyT/d; const tx = -ny, ty = nx; // tangent unit
       const nx = dxT/d, ny = dyT/d; const tx = -ny, ty = nx;
       const tang = u.vx*tx + u.vy*ty;
+      const damp = inRange ? 0.80 : 0.40; // strong damping when in melee
       const damp = inRange ? 0.80 : 0.40;
-      u.vx -= tx*tang*damp; u.vy -= ty*tang*damp;
+      u.vx -= tx*tang*damp;
+      u.vy -= ty*tang*damp;
     }
 
+    // crowd friction near many neighbors to kill circling energy
+    // crowd friction
     let crowd=0; forNeighbors(hash,u.x,u.y,22,(i)=>{ if(g.units[i]!==u) crowd++; });
-    const fric = 1/(1+crowd*0.12); u.vx *= fric; u.vy *= fric;
+    const fric = 1/(1+crowd*0.12);
+    u.vx *= fric; u.vy *= fric;
 
+    // brake after arrival
     if(u._brake>0){ u.vx*=0.6; u.vy*=0.6; }
 
+    // integrate
     u.x += u.vx*dt; u.y += u.vy*dt;
-  }
 
-  let hash2=buildHash(g.units);
-  for(let pass=0;pass<2;pass++){
-    for(let i=0;i<g.units.length;i++){
-      const u=g.units[i], ru=(TYPES[u.tt].size||12), rad=ru+18;
-      forNeighbors(hash2,u.x,u.y,rad,(j)=>{ if(j===i) return; const v=g.units[j], rv=(TYPES[v.tt].size||12), min=ru+rv+2; const dx=v.x-u.x, dy=v.y-u.y, d2=dx*dx+dy*dy; if(d2===0){ const ang=Math.random()*6.283, off=min/2; u.x-=Math.cos(ang)*off; u.y-=Math.sin(ang)*off; v.x+=Math.cos(ang)*off; v.y+=Math.sin(ang)*off; return;} if(d2<min*min){ const d=Math.sqrt(d2), o=min-d, nx=dx/d, ny=dy/d; u.x-=nx*o*.5; u.y-=ny*o*.5; v.x+=nx*o*.5; v.y+=ny*o*.5; }});
+    // CHARGE impact
+    if(u._charge && !u._charge.impacted){
+      let impact=false, ix=u.x, iy=u.y;
+      if(target && Math.sqrt(targetD2)<=28){ impact=true; ix=target.x; iy=target.y; }
+      if(!impact){
+        const tx=u._charge.x ?? u.x, ty=u._charge.y ?? u.y;
+        if(Math.hypot(tx-u.x,ty-u.y) <= 20) { impact=true; ix=tx; iy=ty; }
+      }
+      if(impact){
+        u._charge.impacted=true;
+        const R=42, DMG=14;
+        forNeighbors(hash,ix,iy,R,(i)=>{
+          const v=g.units[i]; if(!v || v.o===u.o) return;
+          const dist=Math.hypot(v.x-ix, v.y-iy);
+          if(dist<=R){
+            const armor=(TYPES[v.tt].armor||0);
+            v.hp -= Math.max(1, DMG - armor);
+            const nx=(v.x-ix)/(dist||1), ny=(v.y-iy)/(dist||1);
+            v.x += nx*12; v.y += ny*12;
+          }
+        });
+      }
     }
-    hash2=buildHash(g.units);
   }
 
+  // collisions
+  hash=buildHash(g.units); resolveCollisionsHash(g.units,hash);
   g.units=g.units.filter(u=>u.hp>0);
 
+  // victory
   const alive=countByOwner(g.units), owners=Object.keys(alive).filter(o=>alive[o]>0);
   if(!g.winner && owners.length===1) g.winner=owners[0];
   if(!g.winner && now>=endAt){ const w=decideWinner(g,alive); g.winner=w||owners.sort()[0]||(g.players?.[0]??null); }
 
   return g;
 }
+function resolveCollisionsHash(units,hash){
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<units.length;i++){
+      const u=units[i], ru=(TYPES[u.tt].size||12), rad=ru+18;
+      forNeighbors(hash,u.x,u.y,rad,(j)=>{ if(j===i) return; const v=units[j], rv=(TYPES[v.tt].size||12), min=ru+rv+2; const dx=v.x-u.x, dy=v.y-u.y, d2=dx*dx+dy*dy; if(d2===0){ const ang=Math.random()*6.283, off=min/2; u.x-=Math.cos(ang)*off; u.y-=Math.sin(ang)*off; v.x+=Math.cos(ang)*off; v.y+=Math.sin(ang)*off; return;} if(d2<min*min){ const d=Math.sqrt(d2), o=min-d, nx=dx/d, ny=dy/d; u.x-=nx*o*.5; u.y-=ny*o*.5; v.x+=nx*o*.5; v.y+=ny*o*.5; }});
+    }
+    hash=buildHash(units);
+  }
+}
+
+/* ---------------- Small helpers ---------------- */
 function countByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+1; return m; }
 function hpByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+u.hp; return m; }
 function cps(g){ const m={}; for(const p of g.points) if(p.owner) m[p.owner]=(m[p.owner]||0)+1; return m; }
@@ -672,46 +731,57 @@ function tint(owner){ return COLORS[(hash(owner)%COLORS.length)]; }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
 function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
 
-/* ---------------- Render (rate-limited catch-up; no springs) ---------------- */
-let _rafLast = performance.now();
-function draw(nowTs){
-  const now = nowTs ?? performance.now();
-  const dt = Math.min(0.05,(now-_rafLast)/1000); _rafLast=now;
-
-  edgePan(dt);
+/* ---------------- Render ---------------- */
+function draw(){
+  const dt=16/1000; edgePan(dt);
   ctx.clearRect(0,0,cv.width,cv.height);
 
+  // background + grid
   ctx.fillStyle="#122238"; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.strokeStyle="#1a2b40"; ctx.lineWidth=1; const grid=100;
   for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
+  for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y); ctx.stroke(); }
   for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  // control points & effects from latest state
   if(state){
+    // CPs
+    // Control Points (glow when owned)
     for(const p of state.points){
       const sx=p.x-cam.x, sy=p.y-cam.y;
+      ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2); ctx.strokeStyle="#556f9a"; ctx.lineWidth=2; ctx.stroke();
+      if(p.owner){ ctx.beginPath(); ctx.arc(sx,sy,p.r*Math.max(.12,p.cap),0,Math.PI*2); ctx.fillStyle=tint(p.owner)+"55"; ctx.fill(); }
+      if(p.owner && p.nextSpawnAt){ const period=12000, rem=Math.max(0,p.nextSpawnAt-Date.now()), prog=1-(rem/period);
+        ctx.beginPath(); ctx.arc(sx,sy,24,-Math.PI/2,-Math.PI/2+prog*2*Math.PI); ctx.strokeStyle="#aef"; ctx.lineWidth=4; ctx.stroke(); }
+
+      // outer ring
       ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2);
       ctx.strokeStyle="#556f9a"; ctx.lineWidth=2; ctx.stroke();
 
+      // owner glow + fill
       if(p.owner){
         const color=tint(p.owner);
-        ctx.save(); ctx.shadowColor=color; ctx.shadowBlur=18;
+        ctx.save();
+        ctx.shadowColor=color; ctx.shadowBlur=18;
         ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2);
         ctx.strokeStyle=color; ctx.lineWidth=6; ctx.stroke();
         ctx.restore();
 
         ctx.beginPath(); ctx.arc(sx,sy,p.r*Math.max(.12,p.cap),0,Math.PI*2);
-        ctx.fillStyle=color+"44"; ctx.fill();
+        ctx.fillStyle=color+"44"; // brighter team fill
+        ctx.fill();
       }
 
+      // spawn timer ring
       if(p.owner && p.nextSpawnAt){
-        const period=spawnPeriodFor(p.spawnType||"guardian"), rem=Math.max(0,p.nextSpawnAt-Date.now()), prog=1-(rem/period);
+        const period=12000, rem=Math.max(0,p.nextSpawnAt-Date.now()), prog=1-(rem/period);
         ctx.beginPath(); ctx.arc(sx,sy,24,-Math.PI/2,-Math.PI/2+prog*2*Math.PI);
         ctx.strokeStyle="#aef"; ctx.lineWidth=4; ctx.stroke();
       }
 
       ctx.fillStyle="#cde"; ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx-18, sy-(p.r+6));
     }
+
+    // effects
     for(const e of (state.effects||[])){
       if(e.type==="volleyZone" || e.type==="fireburst"){
         const sx=e.x-cam.x, sy=e.y-cam.y;
@@ -719,57 +789,52 @@ function draw(nowTs){
         ctx.strokeStyle=e.color||"#fff"; ctx.lineWidth=3; ctx.stroke();
       }
     }
-  }
 
-  // integrate units toward latest targets, capped per-frame
-  const seen = new Set();
-  for(const [id,t] of netTargets){
-    const spec = TYPES[t.tt] || {size:12, moveSpd:420};
-    const cap = Math.max(220, spec.moveSpd*1.2); // px/sec catch-up limit
-    const step = cap * dt;
+    // units
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    for(const u of state.units){
+      const t=TYPES[u.tt]; const p=vpos(u); const sx=p.x-cam.x, sy=p.y-cam.y;
+      const color=tint(u.o);
 
-    let rp = renderPos.get(id);
-    if(!rp){ rp = {x:t.x, y:t.y}; renderPos.set(id,rp); } // spawn directly at first seen
+      // team signifier
+      // team-colored inner disc + ring (more visible)
+      ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
+      ctx.fillStyle = color + "22"; ctx.fill();
+      ctx.fillStyle = color + "44"; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
 
-    // move at most "step" toward target (never overshoot)
-    const dx = t.x - rp.x, dy = t.y - rp.y;
-    const dist = Math.hypot(dx,dy);
-    if(dist > step){
-      rp.x += (dx/dist)*step; rp.y += (dy/dist)*step;
-    } else {
-      rp.x = t.x; rp.y = t.y;
+      // auras
+      if(u._aura){
+        ctx.beginPath(); ctx.arc(sx,sy,t.size+8,0,Math.PI*2);
+        ctx.strokeStyle=(u._aura.kind==="shield"?"#6cf":u._aura.kind==="mend"?"#7f7":"#ccf");
+        ctx.lineWidth=3; ctx.stroke();
+      }
+      // channel ring
+      if(u._channel?.kind==="volley"){
+        ctx.beginPath(); ctx.arc(sx,sy,t.size+14,0,Math.PI*2);
+        ctx.setLineDash([6,4]); ctx.strokeStyle="#aef"; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]);
+      }
+      // charge arrow
+      if(u._charge){ ctx.beginPath(); const tx=(u._charge.x ?? u.x)-cam.x, ty=(u._charge.y ?? u.y)-cam.y; ctx.moveTo(sx,sy); ctx.lineTo(tx,ty); ctx.strokeStyle="#fbb"; ctx.lineWidth=2; ctx.stroke(); }
+
+      // emoji
+      ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
+
+      // selection ring
+      if(selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+18,0,Math.PI*2); ctx.stroke(); }
+
+      // hp
+      ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
+      const hpw=Math.max(0,36*(u.hp/u.maxHp)); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
     }
-    seen.add(id);
-  }
-  // prune render pos for deletions
-  for(const id of [...renderPos.keys()]) if(!seen.has(id)) renderPos.delete(id);
-
-  // draw units from renderPos
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  for(const [id,rp] of renderPos){
-    const t = netTargets.get(id);
-    if(!t) continue;
-    const typ=TYPES[t.tt] || {size:12,emoji:"•"};
-    const sx=rp.x-cam.x, sy=rp.y-cam.y, color=tint(t.o);
-
-    ctx.beginPath(); ctx.arc(sx,sy, typ.size+10, 0, Math.PI*2);
-    ctx.fillStyle = color + "44"; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
-
-    ctx.font=`${Math.max(18,typ.size*2)}px system-ui`; ctx.fillText(typ.emoji, sx, sy);
-
-    if(selection.has(id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,typ.size+18,0,Math.PI*2); ctx.stroke(); }
-
-    ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
-    const hpw=Math.max(0,36*((t.hp??typ.hp)/(t.maxHp||typ.hp))); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
   }
 
-  // selection marquee
+  // drag box
   if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
   requestAnimationFrame(draw);
 }
-requestAnimationFrame(draw);
+draw();
 
 /* ---------------- Timer & leaderboard & winner ---------------- */
 function renderTimer(){
@@ -795,14 +860,16 @@ function maybeWinner(){
   setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
 }
 
-/* ---------------- HUD ---------------- */
+/* ---------------- Abilities HUD ---------------- */
+/* ---------------- Abilities HUD + Hold status ---------------- */
 function renderHUD(){
   if(!state) return;
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
   const sel=state.units?.filter(u=>selection.has(u.id))||[];
+  selInfo.textContent = sel.length? `${sel.length} unit(s) selected (A: attack nearest, RMB: target enemy)` : "Select units";
   const anyHold = sel.some(u=>u._hold);
   selInfo.innerHTML = sel.length
-    ? `${sel.length} unit(s) — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
+    ? `${sel.length} unit(s) selected — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
     : "Select units";
 
   const slotMap = new Map(); const slotCd  = new Map();
@@ -833,6 +900,5 @@ function renderHUD(){
 </script>
 </body>
 </html>
-
 
 
