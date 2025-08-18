@@ -749,14 +749,20 @@ function simulate(g, dt){
       forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v||v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<targetD2){ targetD2=d; target=v; } });
     }
 
-    // attack
+   // attack
     const inRange = target && targetD2 <= baseRange*baseRange;
-    if(inRange && u.cd<=0){
-      const auraArmor = (target._aura?.kind==="shield" ? 3 : 0) + (target._aura?.kind==="brace" ? BRACE_ARMOR : 0);
-      const dmg=Math.max(1, t.dmg - armor);
+    if (inRange && u.cd <= 0) {
+      const baseArmor = (TYPES[target.tt].armor || 0);
+      const auraArmor =
+        (target._aura?.kind === "shield" ? 3 : 0) +
+        (target._aura?.kind === "brace"  ? BRACE_ARMOR : 0);
+      const armor = baseArmor + auraArmor;
+    
+      const dmg = Math.max(1, t.dmg - armor);
       target.hp -= dmg;
-      u.cd = Math.max(.05, 1/t.atkSpd);
+      u.cd = Math.max(.05, 1 / t.atkSpd);
     }
+
 
     // movement goal with HOLD + arrive hysteresis
     let goal=null;
@@ -854,8 +860,11 @@ function simulate(g, dt){
           const v=g.units[i]; if(!v || v.o===u.o) return;
           const dist=Math.hypot(v.x-ix, v.y-iy);
           if(dist<=R){
-            const armor=(TYPES[v.tt].armor||0);
-            v.hp -= Math.max(1, DMG - armor);
+            const baseArmor = (TYPES[v.tt].armor || 0);
+            const auraArmor =
+              (v._aura?.kind === "shield" ? 3 : 0) +
+              (v._aura?.kind === "brace"  ? BRACE_ARMOR : 0);
+            v.hp -= Math.max(1, DMG - (baseArmor + auraArmor));
             const nx=(v.x-ix)/(dist||1), ny=(v.y-iy)/(dist||1);
             v.x += nx*12; v.y += ny*12;
           }
@@ -890,10 +899,15 @@ function simulate(g, dt){
       });
 
       if(hit){
-        const armor = (TYPES[hit.tt].armor||0);
-        const ap = (p.ap==null) ? 0.0 : p.ap;
-        const effArmor = Math.max(0, armor - armor*ap);
-        const dmg = Math.max(1, (p.dmg||30) - effArmor);
+       const baseArmor = (TYPES[hit.tt].armor || 0);
+        const auraArmor =
+          (hit._aura?.kind === "shield" ? 3 : 0) +
+          (hit._aura?.kind === "brace"  ? BRACE_ARMOR : 0);
+        const totalArmor = baseArmor + auraArmor;
+        
+        const ap = (p.ap == null) ? 0.0 : p.ap;
+        const effArmor = Math.max(0, totalArmor - totalArmor * ap); // armor pierce applies to total
+        const dmg = Math.max(1, (p.dmg || 30) - effArmor);
         hit.hp -= dmg;
 
         // small bump/impulse
@@ -1189,6 +1203,7 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
 
 
 
