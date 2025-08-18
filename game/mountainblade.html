@@ -129,12 +129,12 @@ const MATCH_MS    = 5*60*1000;
 
 /* Per-unit spawn times (ms) */
 const SPAWN_MS = {
-  guardian: 10000, // 10s
-  lancer:   11000, // 11s
-  archer:   12000, // 12s
-  priest:   12000, // 12s
-  mage:     13000, // 13s
-  cavalry:  16000  // 16s (strong/fast -> slower spawn)
+  guardian: 10000,
+  lancer:   11000,
+  archer:   12000,
+  priest:   12000,
+  mage:     13000,
+  cavalry:  16000
 };
 const spawnPeriodFor = (type) => SPAWN_MS[type] ?? 12000;
 
@@ -175,12 +175,87 @@ let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
 let selection=new Set();
 let dragging=false, dragStart=null;
 let targeting=null; // {slot,ability,ids,type}
-const groups={}; // "1".."9" -> Set(ids)
-const visPos=new Map(); function vpos(u){ let p=visPos.get(u.id); if(!p){ p={x:u.x,y:u.y}; visPos.set(u.id,p);} const k=.22; p.x+=(u.x-p.x)*k; p.y+=(u.y-p.y)*k; return p; }
+const groups={};
 
-/* ---------------- Firestore refs & intents ---------------- */
+/* === NEW: Snapshot buffer + prediction/smoothing === */
 const lobbyRef = doc(db,"lobbies",GAME_ID);
 const gameRef  = doc(db,"games",GAME_ID,"meta","state");
+const snapRef  = doc(db,"games",GAME_ID,"snaps","current");  // compact, frequent
+
+const SNAP_HZ = 8, SNAP_MS = 1000/SNAP_HZ;   // publish rate (host)
+const BUFFER_MS = 120;                       // interpolation delay (clients)
+
+const snaps = [];                            // rolling 0.5–1.0s buffer
+onSnapshot(snapRef,(docSnap)=>{
+  const s = docSnap.data(); if(!s) return;
+  snaps.push(s);
+  // keep ~1s of history
+  while (snaps.length > 30 || (snaps[0] && Date.now() - snaps[0].ts > 1000)) snaps.shift();
+});
+
+// render cache for critically-damped smoothing
+const renderCache = new Map(); // id -> {x,y,vx,vy,o,tt,hp,maxHp,lastSeen}
+function smoothDampStep(curr, target, vel, smoothTime, dt){
+  const omega = 2 / Math.max(0.0001, smoothTime);
+  const x = omega * dt;
+  const exp = 1 / (1 + x + 0.48*x*x + 0.235*x*x*x);
+  const changeX = curr.x - target.x, changeY = curr.y - target.y;
+  const tempX = (vel.x + omega * changeX) * dt;
+  const tempY = (vel.y + omega * changeY) * dt;
+  const newVelX = (vel.x - omega * tempX) * exp;
+  const newVelY = (vel.y - omega * tempY) * exp;
+  const newX = target.x + (changeX + tempX) * exp;
+  const newY = target.y + (changeY + tempY) * exp;
+  return [{x:newX,y:newY},{x:newVelX,y:newVelY}];
+}
+
+function latestSnap(){ return snaps[snaps.length-1] || null; }
+
+function interpolatedUnits() {
+  if (!snaps.length) return (state?.units||[]).map(u=>({ id:u.id, x:u.x, y:u.y, vx:u.vx||0, vy:u.vy||0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp }));
+  const renderTime = Date.now() - BUFFER_MS;
+
+  let a=null,b=null;
+  for (let i=snaps.length-1;i>=0;i--){
+    if (snaps[i].ts <= renderTime) { a = snaps[i]; b = snaps[i+1] || snaps[i]; break; }
+  }
+  if (!a) { a = snaps[0]; b = snaps[1] || snaps[0]; }
+
+  const t0 = a.ts, t1 = b.ts, alpha = t1===t0 ? 1 : (renderTime - t0) / (t1 - t0);
+  const aById = new Map(a.units.map(u=>[u.id,u]));
+  const bById = new Map(b.units.map(u=>[u.id,u]));
+  const ids = new Set([...aById.keys(), ...bById.keys()]);
+  const out = [];
+  ids.forEach(id=>{
+    const A = aById.get(id) || bById.get(id);
+    const B = bById.get(id) || aById.get(id);
+    let x, y;
+    if (A && B && a !== b) {
+      x = A.x + (B.x - A.x) * alpha;
+      y = A.y + (B.y - A.y) * alpha;
+    } else {
+      const dt = (renderTime - t0)/1000;
+      x = A.x + (A.vx||0)*dt;
+      y = A.y + (A.vy||0)*dt;
+    }
+    out.push({ id, x, y, vx:B.vx??A.vx??0, vy:B.vy??A.vy??0,
+               o:B.o||A.o, tt:B.tt||A.tt, hp:B.hp||A.hp, maxHp:B.maxHp||A.maxHp });
+  });
+  return out;
+}
+
+// for MY units, predict to NOW (no buffer) using last velocities
+function predictedMine() {
+  const s = latestSnap(); const map = new Map();
+  if (!s) return map;
+  const dt = (Date.now() - s.ts)/1000;
+  for (const u of s.units) {
+    if (u.o === ME) map.set(u.id, { x: u.x + (u.vx||0)*dt, y: u.y + (u.vy||0)*dt });
+  }
+  return map;
+}
+
+/* ---------------- Firestore refs & intents ---------------- */
 async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
 
 /* ---------------- CP UI refs ---------------- */
@@ -216,7 +291,8 @@ let cpOpenId = null; // which CP panel is open
     await setDoc(gameRef,{tick:0,startedAt:now,endAt:now+MATCH_MS,winner:null,map:{w:WORLD.w,h:WORLD.h},players:lobbyPlayers,points,units,effects:[]});
   }
 
-  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); renderCPDock(); maybeWinner(); });
+  // NOTE: keep listening to meta/state for points/effects/timer, but NOT for rendering positions
+  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderCPDock(); maybeWinner(); });
 
   if(isHost) hostLoop();
 })();
@@ -259,7 +335,6 @@ cv.addEventListener("mousedown",(e)=>{
   }
   if(targeting && (targeting.type==="point"||targeting.type==="pointOrUnit")) return finalizeTarget(mouse.worldX,mouse.worldY);
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
-  // any selection intent begins -> minimize CP panel
   showCP(null);
 });
 
@@ -277,7 +352,6 @@ addEventListener("mouseup",(e)=>{
     for(const id of ids) selection.add(id);
     renderHUD();
   }
-  // minimize CP panel after selection completes
   showCP(null);
 });
 cv.addEventListener("contextmenu",e=>e.preventDefault());
@@ -307,22 +381,27 @@ addEventListener("keydown",(e)=>{
   }
 });
 
-/* ---------------- Selection helpers ---------------- */
+/* ---------------- Selection helpers (use snapshots when available) ---------------- */
+function unitsForPicking(){
+  const s = latestSnap();
+  if (s) return s.units;
+  return state?.units || [];
+}
 function pickClosestFriendly(wx,wy,rad){
-  if(!state?.units) return null;
+  const list = unitsForPicking();
   let best=null, bd=rad*rad;
-  for(const u of state.units){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  for(const u of list){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
   return best;
 }
 function pickClosestEnemy(wx,wy,rad){
-  if(!state?.units) return null;
+  const list = unitsForPicking();
   let best=null, bd=rad*rad;
-  for(const u of state.units){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  for(const u of list){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
   return best;
 }
 function pickInRect(x0,y0,x1,y1,owner){
-  const out=[]; if(!state?.units) return out;
-  for(const u of state.units){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=0+ y0&&u.y<=y1) out.push(u.id); }
+  const out=[]; const list=unitsForPicking();
+  for(const u of list){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=y0&&u.y<=y1) out.push(u.id); }
   return out;
 }
 
@@ -332,7 +411,7 @@ async function orderAttackMove(wx,wy){
   await pushIntent("order",{type:"attackMove",ids,x:Math.round(wx),y:Math.round(wy),wipe:true});
 }
 function slotAbility(slot){
-  const sel=state?.units?.filter(u=>selection.has(u.id))||[];
+  const sel = (unitsForPicking()).filter(u=>selection.has(u.id));
   for(const u of sel){ const t=TYPES[u.tt]; const a=t?.abilities?.find(x=>x.slot===slot); if(a) return a; }
   return null;
 }
@@ -366,7 +445,6 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
-  // Volley: 6s channel, 3 pulses (1s,3s,5s); archer rooted during channel
   volley:     { cast(g,u,ab,{mode,x,y},now){
                   if(mode!=="point") return false;
                   const until = now + (ab.channel || 6000);
@@ -393,12 +471,10 @@ function showCP(point){
 }
 cv.addEventListener("click",()=>{
   if(!state) return;
-  // Clicking a CP in-world opens if owned
   for(const p of state.points){
     const dx=p.x-(cam.x+mouse.x), dy=p.y-(cam.y+mouse.y);
     if(dx*dx+dy*dy<=p.r*p.r){ return p.owner===ME ? showCP(p) : showCP(null); }
   }
-  // click elsewhere does nothing here (selection handlers close it)
 });
 function renderCPDock(){
   if(!state) return;
@@ -418,7 +494,7 @@ function edgePan(dt){
   if(!mouse.inViewport) return;
   const r=viewportEl.getBoundingClientRect();
   const mx=mouse.clientX, my=mouse.clientY;
-  const marginX = 60;  // wider left/right pan zones
+  const marginX = 60;
   const marginTop = 80;
   const marginBot = 160;
 
@@ -429,7 +505,20 @@ function edgePan(dt){
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
-/* ---------------- Host loop ---------------- */
+/* ---------------- Host loop (authoritative) + NEW: publish snapshots ---------------- */
+let _lastSnapPub = 0;
+function hostPublishSnapshot(g){
+  const now = Date.now();
+  if (now - _lastSnapPub < SNAP_MS) return;
+  const units = g.units.map(u=>({
+    id:u.id, x:Math.round(u.x), y:Math.round(u.y),
+    vx:Number((u.vx||0).toFixed(2)), vy:Number((u.vy||0).toFixed(2)),
+    o:u.o, tt:u.tt, hp:Math.round(u.hp), maxHp:u.maxHp
+  }));
+  setDoc(snapRef, { ts: now, epoch: g.tick|0, units }, { merge:false });
+  _lastSnapPub = now;
+}
+
 async function hostLoop(){
   let last=performance.now();
   async function step(){
@@ -446,7 +535,12 @@ async function hostLoop(){
     g=simulate(g,dt);
     g.tick++;
 
+    // Keep full state for meta (spawn/points/effects/etc.)
     await setDoc(gameRef,g,{merge:false});
+
+    // NEW: publish compact snapshot for smooth clients
+    hostPublishSnapshot(g);
+
     for(const d of snap.docs) await deleteDoc(d.ref);
 
     setTimeout(()=>requestAnimationFrame(step),100);
@@ -462,7 +556,7 @@ function ringOffsets(n, spacing=20){
   return out;
 }
 
-/* ---------------- Apply intents (crowd-aware + formation + hold + spawn type resets timer) ---------------- */
+/* ---------------- Apply intents (unchanged core) ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
@@ -480,7 +574,7 @@ function applyIntents(g,intents){
       const {ids,wipe}=payload;
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
-        if(u._charge || u._channel) continue; // locked
+        if(u._charge || u._channel) continue;
         if(wipe){ u._aura=null; u._order=null; }
       }
       if(payload.type==="attackMove"){
@@ -526,7 +620,7 @@ function applyIntents(g,intents){
       const {pointId,troop}=payload; const p=g.points.find(p=>p.id===pointId);
       if(p && p.owner===user && TYPES[troop]){
         p.spawnType=troop;
-        p.nextSpawnAt = Date.now() + spawnPeriodFor(troop); // reset timer to new unit's cadence
+        p.nextSpawnAt = Date.now() + spawnPeriodFor(troop);
       }
     }
   }
@@ -565,11 +659,11 @@ function processEffects(g, now){
   g.effects = g.effects.filter(e=>e.until > now);
 }
 
-/* ---------------- Simulation (crowd arrival + anti-swirl + hold + per-unit CP spawn) ---------------- */
+/* ---------------- Simulation (unchanged core) ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
 
-  // cooldowns & auras/channels/brakes
+  // cooldowns & statuses
   for(const u of g.units){
     if(u.cd>0) u.cd=Math.max(0,u.cd-dt);
     for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
@@ -603,11 +697,11 @@ function simulate(g,dt){
         p.nextSpawnAt=now+period;
       }
     } else {
-      p.nextSpawnAt = 0; // reset when neutralized
+      p.nextSpawnAt = 0;
     }
   }
 
-  // orders/AI/combat (same as previous anti-swirl + hold + crowd arrival)
+  // orders/AI/combat
   for(const u of g.units){
     const t=TYPES[u.tt], baseRange=t.range;
 
@@ -618,7 +712,6 @@ function simulate(g,dt){
       if(tgt){ u._charge.x=tgt.x; u._charge.y=tgt.y; }
     }
 
-    // target selection
     let target=null, targetD2=Infinity;
     if(u._order?.type==="attackUnit"){
       const tgt=g.units.find(x=>x.id===u._order.targetId);
@@ -629,7 +722,6 @@ function simulate(g,dt){
       forNeighbors(hash,u.x,u.y,lookR,(i)=>{ const v=g.units[i]; if(!v||v.o===u.o) return; const d=d2(u.x,u.y,v.x,v.y); if(d<targetD2){ targetD2=d; target=v; } });
     }
 
-    // attack
     const inRange = target && targetD2 <= baseRange*baseRange;
     if(inRange && u.cd<=0){
       const armor=(TYPES[target.tt].armor||0) + (target._aura?.kind==="shield" ? 3 : 0);
@@ -638,7 +730,6 @@ function simulate(g,dt){
       u.cd = Math.max(.05, 1/t.atkSpd);
     }
 
-    // movement goal with HOLD + crowd-aware arrival
     let goal=null, goalX=0, goalY=0;
     if(u._charge){ goal={x:u._charge.x ?? u.x, y:u._charge.y ?? u.y}; }
     else if(u._order?.type==="attackMove"){ goalX=u._order.x+(u._order.offX||0); goalY=u._order.y+(u._order.offY||0); goal={x:goalX,y:goalY}; }
@@ -653,7 +744,6 @@ function simulate(g,dt){
       }
     }
 
-    // steering + anti-swirl
     let dx=0,dy=0;
     if(goal && u._brake<=0){ const gx=goal.x-u.x, gy=goal.y-u.y, dist=Math.hypot(gx,gy); if(dist>STOP_DIST){ dx=gx/dist; dy=gy/dist; } }
 
@@ -683,7 +773,6 @@ function simulate(g,dt){
 
     u.x += u.vx*dt; u.y += u.vy*dt;
 
-    // CHARGE impact
     if(u._charge && !u._charge.impacted){
       let impact=false, ix=u.x, iy=u.y;
       if(target && Math.sqrt(targetD2)<=28){ impact=true; ix=target.x; iy=target.y; }
@@ -709,24 +798,22 @@ function simulate(g,dt){
   }
 
   // collisions
-  hash=buildHash(g.units); resolveCollisionsHash(g.units,hash);
+  let hash2=buildHash(g.units);
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<g.units.length;i++){
+      const u=g.units[i], ru=(TYPES[u.tt].size||12), rad=ru+18;
+      forNeighbors(hash2,u.x,u.y,rad,(j)=>{ if(j===i) return; const v=g.units[j], rv=(TYPES[v.tt].size||12), min=ru+rv+2; const dx=v.x-u.x, dy=v.y-u.y, d2=dx*dx+dy*dy; if(d2===0){ const ang=Math.random()*6.283, off=min/2; u.x-=Math.cos(ang)*off; u.y-=Math.sin(ang)*off; v.x+=Math.cos(ang)*off; v.y+=Math.sin(ang)*off; return;} if(d2<min*min){ const d=Math.sqrt(d2), o=min-d, nx=dx/d, ny=dy/d; u.x-=nx*o*.5; u.y-=ny*o*.5; v.x+=nx*o*.5; v.y+=ny*o*.5; }});
+    }
+    hash2=buildHash(g.units);
+  }
+
   g.units=g.units.filter(u=>u.hp>0);
 
-  // victory
   const alive=countByOwner(g.units), owners=Object.keys(alive).filter(o=>alive[o]>0);
   if(!g.winner && owners.length===1) g.winner=owners[0];
   if(!g.winner && now>=endAt){ const w=decideWinner(g,alive); g.winner=w||owners.sort()[0]||(g.players?.[0]??null); }
 
   return g;
-}
-function resolveCollisionsHash(units,hash){
-  for(let pass=0;pass<2;pass++){
-    for(let i=0;i<units.length;i++){
-      const u=units[i], ru=(TYPES[u.tt].size||12), rad=ru+18;
-      forNeighbors(hash,u.x,u.y,rad,(j)=>{ if(j===i) return; const v=units[j], rv=(TYPES[v.tt].size||12), min=ru+rv+2; const dx=v.x-u.x, dy=v.y-u.y, d2=dx*dx+dy*dy; if(d2===0){ const ang=Math.random()*6.283, off=min/2; u.x-=Math.cos(ang)*off; u.y-=Math.sin(ang)*off; v.x+=Math.cos(ang)*off; v.y+=Math.sin(ang)*off; return;} if(d2<min*min){ const d=Math.sqrt(d2), o=min-d, nx=dx/d, ny=dy/d; u.x-=nx*o*.5; u.y-=ny*o*.5; v.x+=nx*o*.5; v.y+=ny*o*.5; }});
-    }
-    hash=buildHash(units);
-  }
 }
 
 /* ---------------- Small helpers ---------------- */
@@ -744,7 +831,7 @@ function tint(owner){ return COLORS[(hash(owner)%COLORS.length)]; }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
 function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
 
-/* ---------------- Render ---------------- */
+/* ---------------- Render (uses interpolation + prediction + SmoothDamp) ---------------- */
 function draw(){
   const dt=16/1000; edgePan(dt);
   ctx.clearRect(0,0,cv.width,cv.height);
@@ -755,8 +842,29 @@ function draw(){
   for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
+  // Build target positions
+  const interp = interpolatedUnits();
+  const minePred = predictedMine();
+  const now = Date.now();
+  const seen = new Set();
+
+  // SmoothDamp toward targets; use tighter smooth for mine
+  for (const u of interp){
+    const mine = (u.o === ME);
+    const pred = minePred.get(u.id);
+    const target = pred ? pred : {x:u.x, y:u.y};
+    let rc = renderCache.get(u.id);
+    if (!rc) { rc = {x:target.x, y:target.y, vx:0, vy:0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp, lastSeen:now}; renderCache.set(u.id, rc); }
+    const smoothT = mine ? 0.08 : 0.12;
+    const [p,v] = smoothDampStep({x:rc.x,y:rc.y}, target, {x:rc.vx,y:rc.vy}, smoothT, dt);
+    rc.x=p.x; rc.y=p.y; rc.vx=v.x; rc.vy=v.y; rc.o=u.o; rc.tt=u.tt; rc.hp=u.hp; rc.maxHp=u.maxHp; rc.lastSeen=now;
+    seen.add(u.id);
+  }
+  // prune old
+  for (const [id,rc] of renderCache) if (!seen.has(id) && now - rc.lastSeen > 1500) renderCache.delete(id);
+
+  // Control Points
   if(state){
-    // Control Points (glow when owned)
     for(const p of state.points){
       const sx=p.x-cam.x, sy=p.y-cam.y;
 
@@ -792,36 +900,24 @@ function draw(){
         ctx.strokeStyle=e.color||"#fff"; ctx.lineWidth=3; ctx.stroke();
       }
     }
+  }
 
-    // units
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    for(const u of state.units){
-      const t=TYPES[u.tt]; const p=vpos(u); const sx=p.x-cam.x, sy=p.y-cam.y;
-      const color=tint(u.o);
+  // units (from renderCache)
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  for (const [id,u] of renderCache){
+    const t=TYPES[u.tt]; const sx=u.x-cam.x, sy=u.y-cam.y;
+    const color=tint(u.o);
 
-      // team-colored inner disc + ring
-      ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
-      ctx.fillStyle = color + "44"; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+    ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
+    ctx.fillStyle = color + "44"; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
 
-      if(u._aura){
-        ctx.beginPath(); ctx.arc(sx,sy,t.size+8,0,Math.PI*2);
-        ctx.strokeStyle=(u._aura.kind==="shield"?"#6cf":u._aura.kind==="mend"?"#7f7":"#ccf");
-        ctx.lineWidth=3; ctx.stroke();
-      }
-      if(u._channel?.kind==="volley"){
-        ctx.beginPath(); ctx.arc(sx,sy,t.size+14,0,Math.PI*2);
-        ctx.setLineDash([6,4]); ctx.strokeStyle="#aef"; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]);
-      }
-      if(u._charge){ ctx.beginPath(); const tx=(u._charge.x ?? u.x)-cam.x, ty=(u._charge.y ?? u.y)-cam.y; ctx.moveTo(sx,sy); ctx.lineTo(tx,ty); ctx.strokeStyle="#fbb"; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
 
-      ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
+    if(selection.has(id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+18,0,Math.PI*2); ctx.stroke(); }
 
-      if(selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+18,0,Math.PI*2); ctx.stroke(); }
-
-      ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
-      const hpw=Math.max(0,36*(u.hp/u.maxHp)); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
-    }
+    ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
+    const hpw=Math.max(0,36*((u.hp??t.hp)/(u.maxHp||t.hp))); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
   }
 
   if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
@@ -840,9 +936,14 @@ function renderTimer(){
   box.textContent=`⏱️ ${m}:${s}`;
 }
 function renderBoard(){
-  if(!state) return;
+  // counts from latest snapshot so it reflects what you see
+  const s = latestSnap();
   const rows=document.getElementById("leaderRows");
-  const counts={}; for(const n of (state.players||[])) counts[n]=0; for(const u of state.units) counts[u.o]=(counts[u.o]||0)+1;
+  const counts={};
+  const players = state?.players || [];
+  players.forEach(n=>counts[n]=0);
+  const list = s ? s.units : (state?.units||[]);
+  for(const u of list) counts[u.o]=(counts[u.o]||0)+1;
   const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
   rows.innerHTML=""; for(const [n,c] of sorted){ const d=document.createElement("div"); d.className="row"; d.innerHTML=`<span>${short(n)}</span><span>${c}</span>`; rows.appendChild(d); }
 }
@@ -858,8 +959,9 @@ function maybeWinner(){
 function renderHUD(){
   if(!state) return;
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
-  const sel=state.units?.filter(u=>selection.has(u.id))||[];
-  const anyHold = sel.some(u=>u._hold);
+  const list=unitsForPicking();
+  const sel=list?.filter(u=>selection.has(u.id))||[];
+  const anyHold = sel.some(u=>u._hold); // may be undefined in snapshot; harmless
   selInfo.innerHTML = sel.length
     ? `${sel.length} unit(s) — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
     : "Select units";
@@ -869,7 +971,7 @@ function renderHUD(){
     const t=TYPES[u.tt];
     (t.abilities||[]).forEach(a=>{
       slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
-      const rem = u.acd?.[a.slot] ?? 0;
+      const rem = 0;
       const cur = slotCd.get(a.slot);
       if(cur==null || rem<cur) slotCd.set(a.slot, rem);
     });
@@ -892,3 +994,4 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
