@@ -124,7 +124,7 @@ const TYPES = {
   archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:220,atkSpd:1.0, moveSpd:250, armor:1, size:11,
     abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120, channel:6000}]},
   cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:440, armor:2, size:14,
-    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
+    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}]},
   mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:190,atkSpd:0.7, moveSpd:255, armor:0, size:11,
     abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
   priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:84, atkSpd:0.7, moveSpd:252, armor:1, size:11,
@@ -371,7 +371,7 @@ const AbilityHandlers = {
                 } },
 
   fireburst:  { cast(g,u,ab,{mode,x,y},now){ if(mode!=="point") return false; g.effects.push({type:"fireburst", who:u.o, x,y, r:ab.radius||90, when:now+120, did:false, until:now+500, color:"#f88"}); return true; } },
-  charge:     { cast(g,u,ab,{mode,x,y,targetId},now){ if(mode!=="point"&&mode!=="unit") return false; u._order=null; u._charge = mode==="unit" ? {targetId, until:now+1100, impacted:false} : {x,y, until:now+1100, impacted:false}; return true; } },
+  charge:     { cast(g,u,ab,{mode,x,y,targetId},now){ if(mode!=="point"&&mode!=="unit") return false; u._order=null; u._charge = mode==="unit" ? {targetId, until:now+2500, impacted:false} : {x,y, until:now+2500, impacted:false}; return true; } },
 };
 
 /* ---------------- CP panel ---------------- */
@@ -994,6 +994,7 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
 
 
 
