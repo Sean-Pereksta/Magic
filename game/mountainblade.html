@@ -174,26 +174,26 @@ function forNeighbors(hash,x,y,r,cb){ const c=SPATIAL.cell, rc=Math.ceil(r/c), c
 let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
 let selection=new Set();
 let dragging=false, dragStart=null;
-let targeting=null; // {slot,ability,ids,type}
+let targeting=null;
 const groups={};
 
-/* === NEW: Snapshot buffer + prediction/smoothing === */
+/* === Snapshot system (authoritative host → clients) === */
 const lobbyRef = doc(db,"lobbies",GAME_ID);
 const gameRef  = doc(db,"games",GAME_ID,"meta","state");
-const snapRef  = doc(db,"games",GAME_ID,"snaps","current");  // compact, frequent
+const snapRef  = doc(db,"games",GAME_ID,"snaps","current");
 
-const SNAP_HZ = 8, SNAP_MS = 1000/SNAP_HZ;   // publish rate (host)
-const BUFFER_MS = 120;                       // interpolation delay (clients)
+const SNAP_HZ = 8, SNAP_MS = 1000/SNAP_HZ;   // host publish rate
+const BUFFER_MS = 120;                       // client interpolation delay
+const MAX_EXTRAP_MS = 150;                   // clamp extrapolation
 
-const snaps = [];                            // rolling 0.5–1.0s buffer
+const snaps = [];
 onSnapshot(snapRef,(docSnap)=>{
   const s = docSnap.data(); if(!s) return;
   snaps.push(s);
-  // keep ~1s of history
   while (snaps.length > 30 || (snaps[0] && Date.now() - snaps[0].ts > 1000)) snaps.shift();
 });
 
-// render cache for critically-damped smoothing
+// smoothing cache
 const renderCache = new Map(); // id -> {x,y,vx,vy,o,tt,hp,maxHp,lastSeen}
 function smoothDampStep(curr, target, vel, smoothTime, dt){
   const omega = 2 / Math.max(0.0001, smoothTime);
@@ -208,12 +208,14 @@ function smoothDampStep(curr, target, vel, smoothTime, dt){
   const newY = target.y + (changeY + tempY) * exp;
   return [{x:newX,y:newY},{x:newVelX,y:newVelY}];
 }
-
 function latestSnap(){ return snaps[snaps.length-1] || null; }
 
-function interpolatedUnits() {
-  if (!snaps.length) return (state?.units||[]).map(u=>({ id:u.id, x:u.x, y:u.y, vx:u.vx||0, vy:u.vy||0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp }));
-  const renderTime = Date.now() - BUFFER_MS;
+/* Build interpolated unit list at the given render time */
+function interpolatedUnitsAt(renderTime) {
+  if (!snaps.length) {
+    // fallback to full state if snapshots not ready
+    return (state?.units||[]).map(u=>({ id:u.id, x:u.x, y:u.y, vx:u.vx||0, vy:u.vy||0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp }));
+  }
 
   let a=null,b=null;
   for (let i=snaps.length-1;i>=0;i--){
@@ -221,34 +223,42 @@ function interpolatedUnits() {
   }
   if (!a) { a = snaps[0]; b = snaps[1] || snaps[0]; }
 
-  const t0 = a.ts, t1 = b.ts, alpha = t1===t0 ? 1 : (renderTime - t0) / (t1 - t0);
+  const t0 = a.ts, t1 = b.ts;
   const aById = new Map(a.units.map(u=>[u.id,u]));
   const bById = new Map(b.units.map(u=>[u.id,u]));
   const ids = new Set([...aById.keys(), ...bById.keys()]);
   const out = [];
-  ids.forEach(id=>{
-    const A = aById.get(id) || bById.get(id);
-    const B = bById.get(id) || aById.get(id);
-    let x, y;
-    if (A && B && a !== b) {
-      x = A.x + (B.x - A.x) * alpha;
-      y = A.y + (B.y - A.y) * alpha;
-    } else {
-      const dt = (renderTime - t0)/1000;
-      x = A.x + (A.vx||0)*dt;
-      y = A.y + (A.vy||0)*dt;
-    }
-    out.push({ id, x, y, vx:B.vx??A.vx??0, vy:B.vy??A.vy??0,
-               o:B.o||A.o, tt:B.tt||A.tt, hp:B.hp||A.hp, maxHp:B.maxHp||A.maxHp });
-  });
+
+  if (a !== b) {
+    const alpha = Math.max(0, Math.min(1, (renderTime - t0) / (t1 - t0)));
+    ids.forEach(id=>{
+      const A = aById.get(id) || bById.get(id);
+      const B = bById.get(id) || aById.get(id);
+      const x = A.x + (B.x - A.x) * alpha;
+      const y = A.y + (B.y - A.y) * alpha;
+      out.push({ id, x, y, vx:B.vx??A.vx??0, vy:B.vy??A.vy??0,
+                 o:B.o||A.o, tt:B.tt||A.tt, hp:B.hp||A.hp, maxHp:B.maxHp||A.maxHp });
+    });
+  } else {
+    // single snapshot: tiny capped extrapolation up to renderTime
+    const dtMs = Math.max(0, Math.min(renderTime - t0, MAX_EXTRAP_MS));
+    const dt = dtMs / 1000;
+    ids.forEach(id=>{
+      const A = aById.get(id) || bById.get(id);
+      const x = A.x + (A.vx||0)*dt;
+      const y = A.y + (A.vy||0)*dt;
+      out.push({ id, x, y, vx:A.vx||0, vy:A.vy||0, o:A.o, tt:A.tt, hp:A.hp, maxHp:A.maxHp });
+    });
+  }
   return out;
 }
 
-// for MY units, predict to NOW (no buffer) using last velocities
-function predictedMine() {
+/* Predict my units only up to the same render time */
+function predictedMineAt(renderTimeMs) {
   const s = latestSnap(); const map = new Map();
   if (!s) return map;
-  const dt = (Date.now() - s.ts)/1000;
+  const dtMs = Math.max(0, Math.min(renderTimeMs - s.ts, MAX_EXTRAP_MS));
+  const dt = dtMs / 1000;
   for (const u of s.units) {
     if (u.o === ME) map.set(u.id, { x: u.x + (u.vx||0)*dt, y: u.y + (u.vy||0)*dt });
   }
@@ -265,7 +275,7 @@ const cpBtns  = document.getElementById("cpBtns");
 const cpDock  = document.getElementById("cpDock");
 document.getElementById("cpMinBtn").onclick = ()=>showCP(null);
 
-let cpOpenId = null; // which CP panel is open
+let cpOpenId = null;
 
 /* ---------------- Init ---------------- */
 (async function init(){
@@ -291,8 +301,7 @@ let cpOpenId = null; // which CP panel is open
     await setDoc(gameRef,{tick:0,startedAt:now,endAt:now+MATCH_MS,winner:null,map:{w:WORLD.w,h:WORLD.h},players:lobbyPlayers,points,units,effects:[]});
   }
 
-  // NOTE: keep listening to meta/state for points/effects/timer, but NOT for rendering positions
-  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderCPDock(); maybeWinner(); });
+  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); renderCPDock(); maybeWinner(); });
 
   if(isHost) hostLoop();
 })();
@@ -360,18 +369,8 @@ addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ setTarget(null); return; }
   if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
-  if(k==="a"){ // Attack Nearest
-    e.preventDefault();
-    const ids=Array.from(selection); if(!ids.length) return;
-    pushIntent("orderNearest",{ids});
-    return;
-  }
-  if(k==="h"){ // Hold toggle
-    e.preventDefault();
-    const ids=Array.from(selection); if(!ids.length) return;
-    pushIntent("hold",{ids,toggle:true});
-    return;
-  }
+  if(k==="a"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; pushIntent("orderNearest",{ids}); return; }
+  if(k==="h"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; pushIntent("hold",{ids,toggle:true}); return; }
   if(k>="1"&&k<="9"){
     e.preventDefault();
     if(e.ctrlKey){ groups[k]=new Set(Array.from(selection)); }
@@ -381,7 +380,7 @@ addEventListener("keydown",(e)=>{
   }
 });
 
-/* ---------------- Selection helpers (use snapshots when available) ---------------- */
+/* ---------------- Selection helpers (use latest snapshot when picking) ---------------- */
 function unitsForPicking(){
   const s = latestSnap();
   if (s) return s.units;
@@ -445,6 +444,7 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
+  // Volley: 6s channel, 3 pulses (1s,3s,5s)
   volley:     { cast(g,u,ab,{mode,x,y},now){
                   if(mode!=="point") return false;
                   const until = now + (ab.channel || 6000);
@@ -505,15 +505,15 @@ function edgePan(dt){
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
-/* ---------------- Host loop (authoritative) + NEW: publish snapshots ---------------- */
+/* ---------------- Host loop (authoritative) + publish snapshots ---------------- */
 let _lastSnapPub = 0;
 function hostPublishSnapshot(g){
   const now = Date.now();
   if (now - _lastSnapPub < SNAP_MS) return;
   const units = g.units.map(u=>({
-    id:u.id, x:Math.round(u.x), y:Math.round(u.y),
-    vx:Number((u.vx||0).toFixed(2)), vy:Number((u.vy||0).toFixed(2)),
-    o:u.o, tt:u.tt, hp:Math.round(u.hp), maxHp:u.maxHp
+    id:u.id, x:u.x, y:u.y,
+    vx:u.vx||0, vy:u.vy||0,
+    o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp
   }));
   setDoc(snapRef, { ts: now, epoch: g.tick|0, units }, { merge:false });
   _lastSnapPub = now;
@@ -535,10 +535,7 @@ async function hostLoop(){
     g=simulate(g,dt);
     g.tick++;
 
-    // Keep full state for meta (spawn/points/effects/etc.)
     await setDoc(gameRef,g,{merge:false});
-
-    // NEW: publish compact snapshot for smooth clients
     hostPublishSnapshot(g);
 
     for(const d of snap.docs) await deleteDoc(d.ref);
@@ -556,7 +553,7 @@ function ringOffsets(n, spacing=20){
   return out;
 }
 
-/* ---------------- Apply intents (unchanged core) ---------------- */
+/* ---------------- Apply intents ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
@@ -659,7 +656,7 @@ function processEffects(g, now){
   g.effects = g.effects.filter(e=>e.until > now);
 }
 
-/* ---------------- Simulation (unchanged core) ---------------- */
+/* ---------------- Simulation ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
 
@@ -831,9 +828,14 @@ function tint(owner){ return COLORS[(hash(owner)%COLORS.length)]; }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
 function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
 
-/* ---------------- Render (uses interpolation + prediction + SmoothDamp) ---------------- */
-function draw(){
-  const dt=16/1000; edgePan(dt);
+/* ---------------- Render (unified timeline + SmoothDamp) ---------------- */
+let _rafLast = performance.now();
+function draw(nowTs) {
+  const now = nowTs ?? performance.now();
+  const dt = Math.min(0.05, (now - _rafLast) / 1000); // cap 50ms
+  _rafLast = now;
+
+  edgePan(dt);
   ctx.clearRect(0,0,cv.width,cv.height);
 
   // background + grid
@@ -842,26 +844,37 @@ function draw(){
   for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  // Build target positions
-  const interp = interpolatedUnits();
-  const minePred = predictedMine();
-  const now = Date.now();
+  // unified render time
+  const renderTime = Date.now() - BUFFER_MS;
+  const interp = interpolatedUnitsAt(renderTime);
+  const minePred = predictedMineAt(renderTime);
   const seen = new Set();
+  const nowMs = Date.now();
 
-  // SmoothDamp toward targets; use tighter smooth for mine
+  // Smooth toward targets; tighter for mine, softer for remote
   for (const u of interp){
-    const mine = (u.o === ME);
-    const pred = minePred.get(u.id);
-    const target = pred ? pred : {x:u.x, y:u.y};
+    const isMine = (u.o === ME);
+    const pred = isMine ? minePred.get(u.id) : null;
+    const target = pred ? pred : { x: u.x, y: u.y };
+
     let rc = renderCache.get(u.id);
-    if (!rc) { rc = {x:target.x, y:target.y, vx:0, vy:0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp, lastSeen:now}; renderCache.set(u.id, rc); }
-    const smoothT = mine ? 0.08 : 0.12;
-    const [p,v] = smoothDampStep({x:rc.x,y:rc.y}, target, {x:rc.vx,y:rc.vy}, smoothT, dt);
-    rc.x=p.x; rc.y=p.y; rc.vx=v.x; rc.vy=v.y; rc.o=u.o; rc.tt=u.tt; rc.hp=u.hp; rc.maxHp=u.maxHp; rc.lastSeen=now;
+    if (!rc) {
+      rc = { x: target.x, y: target.y, vx:0, vy:0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp, lastSeen:nowMs };
+      renderCache.set(u.id, rc);
+    }
+
+    const smoothT = isMine ? 0.10 : 0.14;   // seconds
+    const dx = target.x - rc.x, dy = target.y - rc.y;
+    const err2 = dx*dx + dy*dy;
+    const tiny = err2 < 0.25;               // 0.5px deadzone
+    const _target = tiny ? {x:rc.x,y:rc.y} : target;
+
+    const [p,v] = smoothDampStep({x:rc.x,y:rc.y}, _target, {x:rc.vx,y:rc.vy}, smoothT, dt);
+    rc.x=p.x; rc.y=p.y; rc.vx=v.x; rc.vy=v.y; rc.o=u.o; rc.tt=u.tt; rc.hp=u.hp; rc.maxHp=u.maxHp; rc.lastSeen=nowMs;
     seen.add(u.id);
   }
-  // prune old
-  for (const [id,rc] of renderCache) if (!seen.has(id) && now - rc.lastSeen > 1500) renderCache.delete(id);
+  // prune unseen after grace
+  for (const [id,rc] of renderCache) if (!seen.has(id) && nowMs - rc.lastSeen > 1500) renderCache.delete(id);
 
   // Control Points
   if(state){
@@ -924,7 +937,7 @@ function draw(){
 
   requestAnimationFrame(draw);
 }
-draw();
+requestAnimationFrame(draw);
 
 /* ---------------- Timer & leaderboard & winner ---------------- */
 function renderTimer(){
@@ -936,7 +949,6 @@ function renderTimer(){
   box.textContent=`⏱️ ${m}:${s}`;
 }
 function renderBoard(){
-  // counts from latest snapshot so it reflects what you see
   const s = latestSnap();
   const rows=document.getElementById("leaderRows");
   const counts={};
@@ -961,7 +973,7 @@ function renderHUD(){
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
   const list=unitsForPicking();
   const sel=list?.filter(u=>selection.has(u.id))||[];
-  const anyHold = sel.some(u=>u._hold); // may be undefined in snapshot; harmless
+  const anyHold = sel.some(u=>u._hold);
   selInfo.innerHTML = sel.length
     ? `${sel.length} unit(s) — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
     : "Select units";
@@ -994,4 +1006,5 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
 
