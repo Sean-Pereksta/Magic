@@ -107,6 +107,7 @@ function clampCam(){ cam.x=Math.max(0,Math.min(WORLD.w-cv.width,cam.x)); cam.y=M
 /* ---------------- Data ---------------- */
 const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"];
 const AGGRO_RANGE = 260;
+const BRACE_ARMOR = 2;
 const STOP_DIST   = 14;
 const MATCH_MS    = 5*60*1000;
 
@@ -751,7 +752,7 @@ function simulate(g, dt){
     // attack
     const inRange = target && targetD2 <= baseRange*baseRange;
     if(inRange && u.cd<=0){
-      const armor=(TYPES[target.tt].armor||0) + (target._aura?.kind==="shield" ? 3 : 0);
+      const auraArmor = (target._aura?.kind==="shield" ? 3 : 0) + (target._aura?.kind==="brace" ? BRACE_ARMOR : 0);
       const dmg=Math.max(1, t.dmg - armor);
       target.hp -= dmg;
       u.cd = Math.max(.05, 1/t.atkSpd);
@@ -1188,6 +1189,7 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
 
 
 
