@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — Crowd Arrival + Anti-Swirl</title>
 <title>🗻 Mountain Blade — Hold Position + CP Glow</title>
 <style>
   :root{ --win-w: 1024px; --win-h: 640px; }
@@ -19,7 +18,6 @@
   /* UI overlay */
   #ui{ pointer-events:none; position:absolute; inset:0; }
   #timerBox{ position:absolute; top:8px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; }
-  #leader{ position:absolute; top:8px; right:8px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
   #leader{ position:absolute; top:8px; right:8px; min-width:220px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
   #leader h3{ margin:0 0 6px 0; font-size:14px; color:#cfe; }
   #leader .row{ display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
@@ -31,8 +29,6 @@
   #cpPanel .row{ display:flex; gap:6px; flex-wrap:wrap; }
   .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
 
-  #hud{ position:absolute; left:0; right:0; bottom:0; height:104px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
-  #selInfo{ min-width:160px; }
   #hud{ position:absolute; left:0; right:0; bottom:0; height:108px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
   #selInfo{ min-width:280px; line-height:1.25; }
   #abilities{ display:flex; gap:10px; }
@@ -192,7 +188,6 @@ async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID
 function mkUnit(type,owner,x,y){
   const b=TYPES[type], id=owner.slice(0,2).toUpperCase()+Math.random().toString(36).slice(2,7);
   return { id, tt:type, o:owner, x:Math.round(x), y:Math.round(y), vx:0, vy:0, hp:b.hp, maxHp:b.hp, cd:0, acd:{},
-           _order:null, _aura:null, _charge:null, _channel:null, _brake:0 }; // _brake short stop after arrival
            _order:null, _aura:null, _charge:null, _channel:null, _brake:0, _hold:false };
 }
 function d2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
@@ -250,7 +245,6 @@ addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ setTarget(null); return; }
   if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
-  if(k==="a"){ e.preventDefault(); const ids=Array.from(selection); if(ids.length) pushIntent("orderNearest",{ids}); return; }
   if(k==="a"){ // Attack Nearest (works with hold: will not chase if out of range)
     e.preventDefault();
     const ids=Array.from(selection); if(!ids.length) return;
@@ -365,13 +359,11 @@ cv.addEventListener("click",()=>{
   showCP(null);
 });
 
-/* ---------------- Edge pan (whole viewport; bigger vertical margins) ---------------- */
 /* ---------------- Edge pan (larger zones) ---------------- */
 function edgePan(dt){
   if(!mouse.inViewport) return;
   const r=viewportEl.getBoundingClientRect();
   const mx=mouse.clientX, my=mouse.clientY;
-  const marginX = 18, marginTop = 60, marginBot = 120;
   const marginX = 60;  // wider left/right pan zones
   const marginTop = 80;
   const marginBot = 160;
@@ -390,7 +382,6 @@ async function hostLoop(){
     const now=performance.now(), dt=Math.min(.05,(now-last)/1000); last=now;
 
     const intentsCol = collection(db,"games",GAME_ID,"intents");
-    const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(160)));
     const snap=await getDocs(query(intentsCol,orderBy("ts","asc"),limit(200)));
     const intents=snap.docs.map(d=>({id:d.id,...d.data()}));
 
@@ -409,7 +400,6 @@ async function hostLoop(){
   step();
 }
 
-/* ---------------- Formation helper (assign offsets for group move) ---------------- */
 /* ---------------- Formation helper ---------------- */
 function ringOffsets(n, spacing=20){
   if(n<=1) return [{x:0,y:0}];
@@ -418,7 +408,6 @@ function ringOffsets(n, spacing=20){
   return out;
 }
 
-/* ---------------- Apply intents (crowd-aware + formation) ---------------- */
 /* ---------------- Apply intents (crowd-aware + formation + hold) ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
@@ -435,7 +424,6 @@ function applyIntents(g,intents){
 
     if(kind==="order"){
       const {ids,wipe}=payload;
-      // wipe current orders when requested
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
         if(u._charge || u._channel) continue; // locked
@@ -489,7 +477,6 @@ function applyIntents(g,intents){
   return g;
 }
 
-/* ---------------- Effects (Volley/Fireburst) ---------------- */
 /* ---------------- Effects ---------------- */
 function processEffects(g, now){
   for(const e of (g.effects||[])){
@@ -522,7 +509,6 @@ function processEffects(g, now){
   g.effects = g.effects.filter(e=>e.until > now);
 }
 
-/* ---------------- Simulation (crowd arrival + anti-swirl) ---------------- */
 /* ---------------- Simulation (crowd arrival + anti-swirl + hold) ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
@@ -543,7 +529,6 @@ function simulate(g,dt){
   // spatial hash
   let hash=buildHash(g.units);
 
-  // capture + spawn
   // capture + spawn (CPs glow and spawn steadily while owned)
   for(const p of g.points){
     const teams=new Map();
@@ -555,7 +540,6 @@ function simulate(g,dt){
 
     // steady base-rate spawn while owned
     if(p.owner){
-      const period=12000;
       const period=12000; // base rate
       if(!p.nextSpawnAt) p.nextSpawnAt=now+period;
       if(now>=p.nextSpawnAt){
@@ -570,7 +554,6 @@ function simulate(g,dt){
   for(const u of g.units){
     const t=TYPES[u.tt], baseRange=t.range;
 
-    // channels root movement & attacks
     // channel root
     if(u._channel?.kind==="volley"){ u.vx=0; u.vy=0; continue; }
 
@@ -600,26 +583,19 @@ function simulate(g,dt){
       u.cd = Math.max(.05, 1/t.atkSpd);
     }
 
-    // movement goal with CROWD-AWARE ARRIVAL
     // movement goal with HOLD + crowd-aware arrival
     let goal=null, goalX=0, goalY=0;
     if(u._charge){ goal={x:u._charge.x ?? u.x, y:u._charge.y ?? u.y}; }
     else if(u._order?.type==="attackMove"){ goalX=u._order.x+(u._order.offX||0); goalY=u._order.y+(u._order.offY||0); goal={x:goalX,y:goalY}; }
-    else if(target && !inRange){ goal={x:target.x, y:target.y}; }
     else if(target && !inRange && !u._hold){ goal={x:target.x, y:target.y}; } // HOLD stops chase
 
-    // dynamic arrival completion
     // dynamic arrival completion for attackMove
     if(u._order?.type==="attackMove" && goal){
-      // estimate local friend crowd around goal
       let friendCount=0; forNeighbors(hash,goalX,goalY,28,(i)=>{ const v=g.units[i]; if(v.o===u.o) friendCount++; });
-      const arrivalR = Math.min(56, STOP_DIST + (TYPES[u.tt].size||12) + friendCount*2); // grows with crowd
       const arrivalR = Math.min(56, STOP_DIST + (TYPES[u.tt].size||12) + friendCount*2);
       const distTo = Math.hypot(goalX-u.x, goalY-u.y);
       if(distTo <= arrivalR){
         u._order=null;
-        u._brake = 0.5; // short brake to stop drift
-        goal=null; // cancel movement this tick
         u._brake = 0.5;
         if(u._hold) { /* keep planted */ }
         goal=null;
@@ -634,40 +610,31 @@ function simulate(g,dt){
     let sx=0,sy=0; const sep=24, sepWeight= inRange ? 0.22 : 0.45;
     forNeighbors(hash,u.x,u.y,sep,(i)=>{ const v=g.units[i]; if(!v||v===u) return; const rx=u.x-v.x, ry=u.y-v.y, d2v=rx*rx+ry*ry; if(d2v===0||d2v>sep*sep) return; const d=Math.sqrt(d2v), push=(sep-d)/sep; sx+=(rx/d)*push; sy+=(ry/d)*push; });
 
-    // desired direction
     let desX=dx + sepWeight*sx, desY=dy + sepWeight*sy; [desX,desY]=clampMag(desX,desY,1);
 
-    // speed & modifiers
     const auraSlow = (u._aura?.kind==="brace") ? 0.75 : 1.0;
     const speed = t.moveSpd * (u._charge ? 1.7 : 1.0) * auraSlow;
 
-    // velocity blending
     const targetVX=desX*speed, targetVY=desY*speed;
     const lerp=0.25; u.vx += (targetVX-u.vx)*lerp; u.vy += (targetVY-u.vy)*lerp;
 
-    // anti-swirl: damp tangential velocity around current target
     // anti-swirl: damp tangential velocity around target
     if(target){
       const dxT = target.x - u.x, dyT = target.y - u.y, d = Math.hypot(dxT,dyT) || 1;
-      const nx = dxT/d, ny = dyT/d; const tx = -ny, ty = nx; // tangent unit
       const nx = dxT/d, ny = dyT/d; const tx = -ny, ty = nx;
       const tang = u.vx*tx + u.vy*ty;
-      const damp = inRange ? 0.80 : 0.40; // strong damping when in melee
       const damp = inRange ? 0.80 : 0.40;
       u.vx -= tx*tang*damp;
       u.vy -= ty*tang*damp;
     }
 
-    // crowd friction near many neighbors to kill circling energy
     // crowd friction
     let crowd=0; forNeighbors(hash,u.x,u.y,22,(i)=>{ if(g.units[i]!==u) crowd++; });
     const fric = 1/(1+crowd*0.12);
     u.vx *= fric; u.vy *= fric;
 
-    // brake after arrival
     if(u._brake>0){ u.vx*=0.6; u.vy*=0.6; }
 
-    // integrate
     u.x += u.vx*dt; u.y += u.vy*dt;
 
     // CHARGE impact
@@ -740,18 +707,12 @@ function draw(){
   ctx.fillStyle="#122238"; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.strokeStyle="#1a2b40"; ctx.lineWidth=1; const grid=100;
   for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y); ctx.stroke(); }
   for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   if(state){
-    // CPs
     // Control Points (glow when owned)
     for(const p of state.points){
       const sx=p.x-cam.x, sy=p.y-cam.y;
-      ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2); ctx.strokeStyle="#556f9a"; ctx.lineWidth=2; ctx.stroke();
-      if(p.owner){ ctx.beginPath(); ctx.arc(sx,sy,p.r*Math.max(.12,p.cap),0,Math.PI*2); ctx.fillStyle=tint(p.owner)+"55"; ctx.fill(); }
-      if(p.owner && p.nextSpawnAt){ const period=12000, rem=Math.max(0,p.nextSpawnAt-Date.now()), prog=1-(rem/period);
-        ctx.beginPath(); ctx.arc(sx,sy,24,-Math.PI/2,-Math.PI/2+prog*2*Math.PI); ctx.strokeStyle="#aef"; ctx.lineWidth=4; ctx.stroke(); }
 
       // outer ring
       ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2);
@@ -796,10 +757,8 @@ function draw(){
       const t=TYPES[u.tt]; const p=vpos(u); const sx=p.x-cam.x, sy=p.y-cam.y;
       const color=tint(u.o);
 
-      // team signifier
       // team-colored inner disc + ring (more visible)
       ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
-      ctx.fillStyle = color + "22"; ctx.fill();
       ctx.fillStyle = color + "44"; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
 
@@ -860,13 +819,11 @@ function maybeWinner(){
   setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
 }
 
-/* ---------------- Abilities HUD ---------------- */
 /* ---------------- Abilities HUD + Hold status ---------------- */
 function renderHUD(){
   if(!state) return;
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
   const sel=state.units?.filter(u=>selection.has(u.id))||[];
-  selInfo.textContent = sel.length? `${sel.length} unit(s) selected (A: attack nearest, RMB: target enemy)` : "Select units";
   const anyHold = sel.some(u=>u._hold);
   selInfo.innerHTML = sel.length
     ? `${sel.length} unit(s) selected — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
@@ -900,5 +857,7 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
+
 
 
