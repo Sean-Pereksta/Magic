@@ -66,10 +66,7 @@
           <div id="hint"></div>
           <div id="banner"></div>
 
-          <!-- Minimized dock -->
           <div id="cpDock"></div>
-
-          <!-- Command post panel -->
           <div id="cpPanel">
             <h3>
               <span>Spawn from <span id="cpName">CP</span></span>
@@ -110,9 +107,9 @@ const db  = getFirestore(app);
 const Q = new URLSearchParams(location.search);
 const GAME_ID  = Q.get("gameId");
 const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html"; // change if needed
+const HUB_ROUTE = "/game/index.html";
 
-/* ---------------- Canvas & windowed camera ---------------- */
+/* ---------------- Canvas & camera ---------------- */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const viewportEl = document.querySelector(".viewport");
@@ -127,30 +124,16 @@ const AGGRO_RANGE = 260;
 const STOP_DIST   = 14;
 const MATCH_MS    = 5*60*1000;
 
-/* Per-unit spawn times (ms) */
-const SPAWN_MS = {
-  guardian: 10000,
-  lancer:   11000,
-  archer:   12000,
-  priest:   12000,
-  mage:     13000,
-  cavalry:  16000
-};
+const SPAWN_MS = { guardian:10000, lancer:11000, archer:12000, priest:12000, mage:13000, cavalry:16000 };
 const spawnPeriodFor = (type) => SPAWN_MS[type] ?? 12000;
 
 const TYPES = {
-  guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, range:46, atkSpd:1.0, moveSpd:400, armor:5, size:13,
-    abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
-  lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  range:64, atkSpd:1.2, moveSpd:500, armor:3, size:12,
-    abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
-  archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  range:220,atkSpd:1.0, moveSpd:450, armor:1, size:11,
-    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120, channel:6000}]},
-  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, range:46, atkSpd:0.9, moveSpd:750, armor:2, size:14,
-    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
-  mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, range:190,atkSpd:0.7, moveSpd:350, armor:0, size:11,
-    abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
-  priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  range:84, atkSpd:0.7, moveSpd:400, armor:1, size:11,
-    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5,healPerSec:8}]},
+  guardian:{name:"Guardian",emoji:"🛡️",hp:110,dmg:10,range:46,atkSpd:1.0,moveSpd:400,armor:5,size:13,abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
+  lancer:  {name:"Lancer",  emoji:"🗡️",hp:85,dmg:9,range:64,atkSpd:1.2,moveSpd:500,armor:3,size:12,abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
+  archer:  {name:"Archer",  emoji:"🏹",hp:65,dmg:7,range:220,atkSpd:1.0,moveSpd:450,armor:1,size:11,abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,radius:120,channel:6000}]},
+  cavalry: {name:"Cavalry", emoji:"🐎",hp:95,dmg:12,range:46,atkSpd:0.9,moveSpd:750,armor:2,size:14,abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:12}]},
+  mage:    {name:"Mage",    emoji:"🔮",hp:55,dmg:15,range:190,atkSpd:0.7,moveSpd:350,armor:0,size:11,abilities:[{slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,radius:90}]},
+  priest:  {name:"Priest",  emoji:"✝️",hp:70,dmg:3,range:84,atkSpd:0.7,moveSpd:400,armor:1,size:11,abilities:[{slot:1,key:"Q",id:"mend",label:"Mend",target:"self",cd:10,dur:5,healPerSec:8}]},
 };
 const SPAWN_CHOICES = Object.keys(TYPES);
 
@@ -170,118 +153,46 @@ const cellKey = (cx, cy) => cx + "|" + cy;
 function buildHash(units){ const map=new Map(); for(let i=0;i<units.length;i++){ const u=units[i], k=cellKey(toCell(u.x),toCell(u.y)); (map.get(k)||map.set(k,[]).get(k)).push(i);} return { map }; }
 function forNeighbors(hash,x,y,r,cb){ const c=SPATIAL.cell, rc=Math.ceil(r/c), cx=toCell(x), cy=toCell(y); for(let gy=cy-rc;gy<=cy+rc;gy++) for(let gx=cx-rc;gx<=cx+rc;gx++){ const a=hash.map.get(cellKey(gx,gy)); if(!a) continue; for(const i of a) cb(i); }}
 
-/* ---------------- Local state ---------------- */
+/* ---------------- State ---------------- */
 let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
 let selection=new Set();
 let dragging=false, dragStart=null;
 let targeting=null;
 const groups={};
 
-/* === Snapshot system (authoritative host → clients) === */
 const lobbyRef = doc(db,"lobbies",GAME_ID);
 const gameRef  = doc(db,"games",GAME_ID,"meta","state");
-const snapRef  = doc(db,"games",GAME_ID,"snaps","current");
 
-const SNAP_HZ = 8, SNAP_MS = 1000/SNAP_HZ;   // host publish rate
-const BUFFER_MS = 120;                       // client interpolation delay
-const MAX_EXTRAP_MS = 150;                   // clamp extrapolation
-
-const snaps = [];
-onSnapshot(snapRef,(docSnap)=>{
-  const s = docSnap.data(); if(!s) return;
-  snaps.push(s);
-  while (snaps.length > 30 || (snaps[0] && Date.now() - snaps[0].ts > 1000)) snaps.shift();
-});
-
-// smoothing cache
-const renderCache = new Map(); // id -> {x,y,vx,vy,o,tt,hp,maxHp,lastSeen}
-function smoothDampStep(curr, target, vel, smoothTime, dt){
-  const omega = 2 / Math.max(0.0001, smoothTime);
-  const x = omega * dt;
-  const exp = 1 / (1 + x + 0.48*x*x + 0.235*x*x*x);
-  const changeX = curr.x - target.x, changeY = curr.y - target.y;
-  const tempX = (vel.x + omega * changeX) * dt;
-  const tempY = (vel.y + omega * changeY) * dt;
-  const newVelX = (vel.x - omega * tempX) * exp;
-  const newVelY = (vel.y - omega * tempY) * exp;
-  const newX = target.x + (changeX + tempX) * exp;
-  const newY = target.y + (changeY + tempY) * exp;
-  return [{x:newX,y:newY},{x:newVelX,y:newVelY}];
-}
-function latestSnap(){ return snaps[snaps.length-1] || null; }
-
-/* Build interpolated unit list at the given render time */
-function interpolatedUnitsAt(renderTime) {
-  if (!snaps.length) {
-    // fallback to full state if snapshots not ready
-    return (state?.units||[]).map(u=>({ id:u.id, x:u.x, y:u.y, vx:u.vx||0, vy:u.vy||0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp }));
+/* ---- NEW: network ingest + render integrator (no timeline buffers) ---- */
+const netTargets = new Map(); // id -> {x,y,tick,updatedAt}
+const renderPos  = new Map(); // id -> {x,y}
+function ingestNetState(g){
+  const tick = g.tick|0, now = performance.now();
+  const seen = new Set();
+  for(const u of (g.units||[])){
+    let t = netTargets.get(u.id);
+    if(!t || (t.tick??-1) <= tick){ // drop out-of-order
+      netTargets.set(u.id,{x:u.x,y:u.y,tick,updatedAt:now, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp});
+    }
+    seen.add(u.id);
   }
-
-  let a=null,b=null;
-  for (let i=snaps.length-1;i>=0;i--){
-    if (snaps[i].ts <= renderTime) { a = snaps[i]; b = snaps[i+1] || snaps[i]; break; }
-  }
-  if (!a) { a = snaps[0]; b = snaps[1] || snaps[0]; }
-
-  const t0 = a.ts, t1 = b.ts;
-  const aById = new Map(a.units.map(u=>[u.id,u]));
-  const bById = new Map(b.units.map(u=>[u.id,u]));
-  const ids = new Set([...aById.keys(), ...bById.keys()]);
-  const out = [];
-
-  if (a !== b) {
-    const alpha = Math.max(0, Math.min(1, (renderTime - t0) / (t1 - t0)));
-    ids.forEach(id=>{
-      const A = aById.get(id) || bById.get(id);
-      const B = bById.get(id) || aById.get(id);
-      const x = A.x + (B.x - A.x) * alpha;
-      const y = A.y + (B.y - A.y) * alpha;
-      out.push({ id, x, y, vx:B.vx??A.vx??0, vy:B.vy??A.vy??0,
-                 o:B.o||A.o, tt:B.tt||A.tt, hp:B.hp||A.hp, maxHp:B.maxHp||A.maxHp });
-    });
-  } else {
-    // single snapshot: tiny capped extrapolation up to renderTime
-    const dtMs = Math.max(0, Math.min(renderTime - t0, MAX_EXTRAP_MS));
-    const dt = dtMs / 1000;
-    ids.forEach(id=>{
-      const A = aById.get(id) || bById.get(id);
-      const x = A.x + (A.vx||0)*dt;
-      const y = A.y + (A.vy||0)*dt;
-      out.push({ id, x, y, vx:A.vx||0, vy:A.vy||0, o:A.o, tt:A.tt, hp:A.hp, maxHp:A.maxHp });
-    });
-  }
-  return out;
+  // purge removed units from both maps
+  for(const id of [...netTargets.keys()]) if(!seen.has(id)) { netTargets.delete(id); renderPos.delete(id); }
 }
 
-/* Predict my units only up to the same render time */
-function predictedMineAt(renderTimeMs) {
-  const s = latestSnap(); const map = new Map();
-  if (!s) return map;
-  const dtMs = Math.max(0, Math.min(renderTimeMs - s.ts, MAX_EXTRAP_MS));
-  const dt = dtMs / 1000;
-  for (const u of s.units) {
-    if (u.o === ME) map.set(u.id, { x: u.x + (u.vx||0)*dt, y: u.y + (u.vy||0)*dt });
-  }
-  return map;
-}
-
-/* ---------------- Firestore refs & intents ---------------- */
-async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
-
-/* ---------------- CP UI refs ---------------- */
+/* ---------------- CP UI ---------------- */
 const cpPanel = document.getElementById("cpPanel");
 const cpName  = document.getElementById("cpName");
 const cpBtns  = document.getElementById("cpBtns");
 const cpDock  = document.getElementById("cpDock");
 document.getElementById("cpMinBtn").onclick = ()=>showCP(null);
-
 let cpOpenId = null;
 
 /* ---------------- Init ---------------- */
 (async function init(){
   const s=await getDoc(lobbyRef); if(!s.exists()){ alert("Lobby not found"); return; }
   const L=s.data(); isHost=(L.host===ME);
-  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []); // max 4
+  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []);
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
 
   const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length]; cam.x=sp.x-cv.width/2; cam.y=sp.y-cv.height/2; clampCam();
@@ -301,7 +212,12 @@ let cpOpenId = null;
     await setDoc(gameRef,{tick:0,startedAt:now,endAt:now+MATCH_MS,winner:null,map:{w:WORLD.w,h:WORLD.h},players:lobbyPlayers,points,units,effects:[]});
   }
 
-  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); renderCPDock(); maybeWinner(); });
+  onSnapshot(gameRef,(snap)=>{
+    if(!snap.exists()) return;
+    state=snap.data();
+    ingestNetState(state);          // <— feed the integrator
+    renderHUD(); renderTimer(); renderBoard(); renderCPDock(); maybeWinner();
+  });
 
   if(isHost) hostLoop();
 })();
@@ -324,11 +240,7 @@ window.addEventListener("mousemove",(e)=>{
   const vr=viewportEl.getBoundingClientRect();
   mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY>=vr.top && e.clientY<=vr.bottom;
 });
-cv.addEventListener("mousemove",(e)=>{
-  const r=relTo(cv,e);
-  mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h;
-  mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y;
-});
+cv.addEventListener("mousemove",(e)=>{ const r=relTo(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 
 cv.addEventListener("mousedown",(e)=>{
   if(e.button===2){
@@ -346,7 +258,6 @@ cv.addEventListener("mousedown",(e)=>{
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
   showCP(null);
 });
-
 addEventListener("mouseup",(e)=>{
   if(!dragging) return; dragging=false;
   const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
@@ -380,37 +291,29 @@ addEventListener("keydown",(e)=>{
   }
 });
 
-/* ---------------- Selection helpers (use latest snapshot when picking) ---------------- */
-function unitsForPicking(){
-  const s = latestSnap();
-  if (s) return s.units;
-  return state?.units || [];
-}
+/* ---------------- Picking (uses latest state) ---------------- */
 function pickClosestFriendly(wx,wy,rad){
-  const list = unitsForPicking();
+  if(!state?.units) return null;
   let best=null, bd=rad*rad;
-  for(const u of list){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  for(const u of state.units){ if(u.o!==ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
   return best;
 }
 function pickClosestEnemy(wx,wy,rad){
-  const list = unitsForPicking();
+  if(!state?.units) return null;
   let best=null, bd=rad*rad;
-  for(const u of list){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
+  for(const u of state.units){ if(u.o===ME) continue; const d=d2(wx,wy,u.x,u.y); if(d<=bd){ bd=d; best=u; } }
   return best;
 }
 function pickInRect(x0,y0,x1,y1,owner){
-  const out=[]; const list=unitsForPicking();
-  for(const u of list){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=y0&&u.y<=y1) out.push(u.id); }
+  const out=[]; if(!state?.units) return out;
+  for(const u of state.units){ if(u.o!==owner) continue; if(u.x>=x0&&u.x<=x1&&u.y>=y0&&u.y<=y1) out.push(u.id); }
   return out;
 }
 
 /* ---------------- Orders & abilities ---------------- */
-async function orderAttackMove(wx,wy){
-  const ids=Array.from(selection); if(!ids.length) return;
-  await pushIntent("order",{type:"attackMove",ids,x:Math.round(wx),y:Math.round(wy),wipe:true});
-}
+async function pushIntent(kind,payload){ const col=collection(db,"games",GAME_ID,"intents"); await addDoc(col,{ts:Date.now(),user:ME,kind,payload}); }
 function slotAbility(slot){
-  const sel = (unitsForPicking()).filter(u=>selection.has(u.id));
+  const sel=state?.units?.filter(u=>selection.has(u.id))||[];
   for(const u of sel){ const t=TYPES[u.tt]; const a=t?.abilities?.find(x=>x.slot===slot); if(a) return a; }
   return null;
 }
@@ -444,7 +347,6 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
-  // Volley: 6s channel, 3 pulses (1s,3s,5s)
   volley:     { cast(g,u,ab,{mode,x,y},now){
                   if(mode!=="point") return false;
                   const until = now + (ab.channel || 6000);
@@ -489,36 +391,19 @@ function renderCPDock(){
   });
 }
 
-/* ---------------- Edge pan (larger zones) ---------------- */
+/* ---------------- Edge pan ---------------- */
 function edgePan(dt){
   if(!mouse.inViewport) return;
   const r=viewportEl.getBoundingClientRect();
   const mx=mouse.clientX, my=mouse.clientY;
-  const marginX = 60;
-  const marginTop = 80;
-  const marginBot = 160;
-
+  const marginX = 60, marginTop = 80, marginBot = 160;
   let vx=0, vy=0;
   if(mx<=r.left+marginX) vx-=1; else if(mx>=r.right-marginX) vx+=1;
   if(my<=r.top+marginTop) vy-=1; else if(my>=r.bottom-marginBot) vy+=1;
-
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 }
 
-/* ---------------- Host loop (authoritative) + publish snapshots ---------------- */
-let _lastSnapPub = 0;
-function hostPublishSnapshot(g){
-  const now = Date.now();
-  if (now - _lastSnapPub < SNAP_MS) return;
-  const units = g.units.map(u=>({
-    id:u.id, x:u.x, y:u.y,
-    vx:u.vx||0, vy:u.vy||0,
-    o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp
-  }));
-  setDoc(snapRef, { ts: now, epoch: g.tick|0, units }, { merge:false });
-  _lastSnapPub = now;
-}
-
+/* ---------------- Host loop ---------------- */
 async function hostLoop(){
   let last=performance.now();
   async function step(){
@@ -536,8 +421,6 @@ async function hostLoop(){
     g.tick++;
 
     await setDoc(gameRef,g,{merge:false});
-    hostPublishSnapshot(g);
-
     for(const d of snap.docs) await deleteDoc(d.ref);
 
     setTimeout(()=>requestAnimationFrame(step),100);
@@ -545,15 +428,13 @@ async function hostLoop(){
   step();
 }
 
-/* ---------------- Formation helper ---------------- */
+/* ---------------- Apply intents / Effects / Sim (unchanged) ---------------- */
 function ringOffsets(n, spacing=20){
   if(n<=1) return [{x:0,y:0}];
   const r = Math.max(spacing, Math.sqrt(n)*spacing*0.5);
   const out=[]; for(let i=0;i<n;i++){ const a=(i/n)*Math.PI*2; out.push({x:Math.cos(a)*r, y:Math.sin(a)*r}); }
   return out;
 }
-
-/* ---------------- Apply intents ---------------- */
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
@@ -607,8 +488,7 @@ function applyIntents(g,intents){
         const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
         const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
         if(wipe){ u._order=null; }
-        const handler = AbilityHandlers[ab.id];
-        const ok = handler && handler.cast(g,u,ab,{mode,x,y,targetId},Date.now());
+        const ok = AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,x,y,targetId},Date.now());
         if(ok){ u.acd[slot]=ab.cd; }
       }
     }
@@ -623,8 +503,6 @@ function applyIntents(g,intents){
   }
   return g;
 }
-
-/* ---------------- Effects ---------------- */
 function processEffects(g, now){
   for(const e of (g.effects||[])){
     if(e.type==="volleyZone"){
@@ -655,12 +533,9 @@ function processEffects(g, now){
   }
   g.effects = g.effects.filter(e=>e.until > now);
 }
-
-/* ---------------- Simulation ---------------- */
 function simulate(g,dt){
   const now=Date.now(), endAt=g.endAt || (g.startedAt+MATCH_MS);
 
-  // cooldowns & statuses
   for(const u of g.units){
     if(u.cd>0) u.cd=Math.max(0,u.cd-dt);
     for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
@@ -673,10 +548,8 @@ function simulate(g,dt){
 
   processEffects(g, now);
 
-  // spatial hash
   let hash=buildHash(g.units);
 
-  // capture + spawn
   for(const p of g.points){
     const teams=new Map();
     forNeighbors(hash,p.x,p.y,p.r,(i)=>{ const u=g.units[i]; const dx=u.x-p.x,dy=u.y-p.y; if(dx*dx+dy*dy<=p.r*p.r) teams.set(u.o,(teams.get(u.o)||0)+1); });
@@ -698,7 +571,6 @@ function simulate(g,dt){
     }
   }
 
-  // orders/AI/combat
   for(const u of g.units){
     const t=TYPES[u.tt], baseRange=t.range;
 
@@ -736,9 +608,7 @@ function simulate(g,dt){
       let friendCount=0; forNeighbors(hash,goalX,goalY,28,(i)=>{ const v=g.units[i]; if(v.o===u.o) friendCount++; });
       const arrivalR = Math.min(56, STOP_DIST + (TYPES[u.tt].size||12) + friendCount*2);
       const distTo = Math.hypot(goalX-u.x, goalY-u.y);
-      if(distTo <= arrivalR){
-        u._order=null; u._brake=0.5; goal=null;
-      }
+      if(distTo <= arrivalR){ u._order=null; u._brake=0.5; goal=null; }
     }
 
     let dx=0,dy=0;
@@ -769,32 +639,8 @@ function simulate(g,dt){
     if(u._brake>0){ u.vx*=0.6; u.vy*=0.6; }
 
     u.x += u.vx*dt; u.y += u.vy*dt;
-
-    if(u._charge && !u._charge.impacted){
-      let impact=false, ix=u.x, iy=u.y;
-      if(target && Math.sqrt(targetD2)<=28){ impact=true; ix=target.x; iy=target.y; }
-      if(!impact){
-        const tx=u._charge.x ?? u.x, ty=u._charge.y ?? u.y;
-        if(Math.hypot(tx-u.x,ty-u.y) <= 20) { impact=true; ix=tx; iy=ty; }
-      }
-      if(impact){
-        u._charge.impacted=true;
-        const R=42, DMG=14;
-        forNeighbors(hash,ix,iy,R,(i)=>{
-          const v=g.units[i]; if(!v || v.o===u.o) return;
-          const dist=Math.hypot(v.x-ix, v.y-iy);
-          if(dist<=R){
-            const armor=(TYPES[v.tt].armor||0);
-            v.hp -= Math.max(1, DMG - armor);
-            const nx=(v.x-ix)/(dist||1), ny=(v.y-iy)/(dist||1);
-            v.x += nx*12; v.y += ny*12;
-          }
-        });
-      }
-    }
   }
 
-  // collisions
   let hash2=buildHash(g.units);
   for(let pass=0;pass<2;pass++){
     for(let i=0;i<g.units.length;i++){
@@ -812,8 +658,6 @@ function simulate(g,dt){
 
   return g;
 }
-
-/* ---------------- Small helpers ---------------- */
 function countByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+1; return m; }
 function hpByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+u.hp; return m; }
 function cps(g){ const m={}; for(const p of g.points) if(p.owner) m[p.owner]=(m[p.owner]||0)+1; return m; }
@@ -828,66 +672,30 @@ function tint(owner){ return COLORS[(hash(owner)%COLORS.length)]; }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
 function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
 
-/* ---------------- Render (unified timeline + SmoothDamp) ---------------- */
+/* ---------------- Render (rate-limited catch-up; no springs) ---------------- */
 let _rafLast = performance.now();
-function draw(nowTs) {
+function draw(nowTs){
   const now = nowTs ?? performance.now();
-  const dt = Math.min(0.05, (now - _rafLast) / 1000); // cap 50ms
-  _rafLast = now;
+  const dt = Math.min(0.05,(now-_rafLast)/1000); _rafLast=now;
 
   edgePan(dt);
   ctx.clearRect(0,0,cv.width,cv.height);
 
-  // background + grid
   ctx.fillStyle="#122238"; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.strokeStyle="#1a2b40"; ctx.lineWidth=1; const grid=100;
   for(let x=-cam.x%grid; x<cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%grid; y<cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  // unified render time
-  const renderTime = Date.now() - BUFFER_MS;
-  const interp = interpolatedUnitsAt(renderTime);
-  const minePred = predictedMineAt(renderTime);
-  const seen = new Set();
-  const nowMs = Date.now();
-
-  // Smooth toward targets; tighter for mine, softer for remote
-  for (const u of interp){
-    const isMine = (u.o === ME);
-    const pred = isMine ? minePred.get(u.id) : null;
-    const target = pred ? pred : { x: u.x, y: u.y };
-
-    let rc = renderCache.get(u.id);
-    if (!rc) {
-      rc = { x: target.x, y: target.y, vx:0, vy:0, o:u.o, tt:u.tt, hp:u.hp, maxHp:u.maxHp, lastSeen:nowMs };
-      renderCache.set(u.id, rc);
-    }
-
-    const smoothT = isMine ? 0.10 : 0.14;   // seconds
-    const dx = target.x - rc.x, dy = target.y - rc.y;
-    const err2 = dx*dx + dy*dy;
-    const tiny = err2 < 0.25;               // 0.5px deadzone
-    const _target = tiny ? {x:rc.x,y:rc.y} : target;
-
-    const [p,v] = smoothDampStep({x:rc.x,y:rc.y}, _target, {x:rc.vx,y:rc.vy}, smoothT, dt);
-    rc.x=p.x; rc.y=p.y; rc.vx=v.x; rc.vy=v.y; rc.o=u.o; rc.tt=u.tt; rc.hp=u.hp; rc.maxHp=u.maxHp; rc.lastSeen=nowMs;
-    seen.add(u.id);
-  }
-  // prune unseen after grace
-  for (const [id,rc] of renderCache) if (!seen.has(id) && nowMs - rc.lastSeen > 1500) renderCache.delete(id);
-
-  // Control Points
+  // control points & effects from latest state
   if(state){
     for(const p of state.points){
       const sx=p.x-cam.x, sy=p.y-cam.y;
-
       ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2);
       ctx.strokeStyle="#556f9a"; ctx.lineWidth=2; ctx.stroke();
 
       if(p.owner){
         const color=tint(p.owner);
-        ctx.save();
-        ctx.shadowColor=color; ctx.shadowBlur=18;
+        ctx.save(); ctx.shadowColor=color; ctx.shadowBlur=18;
         ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2);
         ctx.strokeStyle=color; ctx.lineWidth=6; ctx.stroke();
         ctx.restore();
@@ -904,8 +712,6 @@ function draw(nowTs) {
 
       ctx.fillStyle="#cde"; ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx-18, sy-(p.r+6));
     }
-
-    // effects
     for(const e of (state.effects||[])){
       if(e.type==="volleyZone" || e.type==="fireburst"){
         const sx=e.x-cam.x, sy=e.y-cam.y;
@@ -915,24 +721,50 @@ function draw(nowTs) {
     }
   }
 
-  // units (from renderCache)
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  for (const [id,u] of renderCache){
-    const t=TYPES[u.tt]; const sx=u.x-cam.x, sy=u.y-cam.y;
-    const color=tint(u.o);
+  // integrate units toward latest targets, capped per-frame
+  const seen = new Set();
+  for(const [id,t] of netTargets){
+    const spec = TYPES[t.tt] || {size:12, moveSpd:420};
+    const cap = Math.max(220, spec.moveSpd*1.2); // px/sec catch-up limit
+    const step = cap * dt;
 
-    ctx.beginPath(); ctx.arc(sx,sy, t.size+10, 0, Math.PI*2);
+    let rp = renderPos.get(id);
+    if(!rp){ rp = {x:t.x, y:t.y}; renderPos.set(id,rp); } // spawn directly at first seen
+
+    // move at most "step" toward target (never overshoot)
+    const dx = t.x - rp.x, dy = t.y - rp.y;
+    const dist = Math.hypot(dx,dy);
+    if(dist > step){
+      rp.x += (dx/dist)*step; rp.y += (dy/dist)*step;
+    } else {
+      rp.x = t.x; rp.y = t.y;
+    }
+    seen.add(id);
+  }
+  // prune render pos for deletions
+  for(const id of [...renderPos.keys()]) if(!seen.has(id)) renderPos.delete(id);
+
+  // draw units from renderPos
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(const [id,rp] of renderPos){
+    const t = netTargets.get(id);
+    if(!t) continue;
+    const typ=TYPES[t.tt] || {size:12,emoji:"•"};
+    const sx=rp.x-cam.x, sy=rp.y-cam.y, color=tint(t.o);
+
+    ctx.beginPath(); ctx.arc(sx,sy, typ.size+10, 0, Math.PI*2);
     ctx.fillStyle = color + "44"; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
 
-    ctx.font=`${Math.max(18,t.size*2)}px system-ui`; ctx.fillText(t.emoji, sx, sy);
+    ctx.font=`${Math.max(18,typ.size*2)}px system-ui`; ctx.fillText(typ.emoji, sx, sy);
 
-    if(selection.has(id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,t.size+18,0,Math.PI*2); ctx.stroke(); }
+    if(selection.has(id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy,typ.size+18,0,Math.PI*2); ctx.stroke(); }
 
     ctx.fillStyle="#111"; ctx.fillRect(sx-18, sy-24, 36, 6);
-    const hpw=Math.max(0,36*((u.hp??t.hp)/(u.maxHp||t.hp))); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
+    const hpw=Math.max(0,36*((t.hp??typ.hp)/(t.maxHp||typ.hp))); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
   }
 
+  // selection marquee
   if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
   requestAnimationFrame(draw);
@@ -949,13 +781,9 @@ function renderTimer(){
   box.textContent=`⏱️ ${m}:${s}`;
 }
 function renderBoard(){
-  const s = latestSnap();
+  if(!state) return;
   const rows=document.getElementById("leaderRows");
-  const counts={};
-  const players = state?.players || [];
-  players.forEach(n=>counts[n]=0);
-  const list = s ? s.units : (state?.units||[]);
-  for(const u of list) counts[u.o]=(counts[u.o]||0)+1;
+  const counts={}; for(const n of (state.players||[])) counts[n]=0; for(const u of state.units) counts[u.o]=(counts[u.o]||0)+1;
   const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
   rows.innerHTML=""; for(const [n,c] of sorted){ const d=document.createElement("div"); d.className="row"; d.innerHTML=`<span>${short(n)}</span><span>${c}</span>`; rows.appendChild(d); }
 }
@@ -967,12 +795,11 @@ function maybeWinner(){
   setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
 }
 
-/* ---------------- Abilities HUD + Hold status ---------------- */
+/* ---------------- HUD ---------------- */
 function renderHUD(){
   if(!state) return;
   const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
-  const list=unitsForPicking();
-  const sel=list?.filter(u=>selection.has(u.id))||[];
+  const sel=state.units?.filter(u=>selection.has(u.id))||[];
   const anyHold = sel.some(u=>u._hold);
   selInfo.innerHTML = sel.length
     ? `${sel.length} unit(s) — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD` + (anyHold? ` <span class="chip">HOLD ON</span>`:` <span class="chip">HOLD OFF</span>`)
@@ -983,7 +810,7 @@ function renderHUD(){
     const t=TYPES[u.tt];
     (t.abilities||[]).forEach(a=>{
       slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
-      const rem = 0;
+      const rem = u.acd?.[a.slot] ?? 0;
       const cur = slotCd.get(a.slot);
       if(cur==null || rem<cur) slotCd.set(a.slot, rem);
     });
@@ -1006,5 +833,6 @@ function renderHUD(){
 </script>
 </body>
 </html>
+
 
 
