@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -100,7 +100,13 @@
     </div>
     <div id="levelFlash">LEVEL 1</div>
     <div id="cornerHelp">
-      <div class="chip">Drag-select, right-click to <b>move</b> or <b>attack</b>. <span class="kbd">A</span> = attack-nearest, <span class="kbd">B</span> = Blink mode, <span class="kbd">Esc</span> cancels.</div>
+      <div class="chip">
+        Box-select with left drag. <b>Right-click = Move (always)</b>.
+        <span class="kbd">A</span> Attack-nearest,
+        <span class="kbd">B</span> Blink mode → <b>Left-click</b> to Blink,
+        <span class="kbd">S</span> Stim (Soldiers),
+        <span class="kbd">Esc</span> cancel.
+      </div>
     </div>
     <div id="over">
       <div id="overCard">
@@ -132,7 +138,7 @@
       <button id="blinkBtn" class="btn" title="Enter Blink targeting mode (click on map)">Blink (Blinkers)</button>
       <button id="attackBtn" class="btn" title="Selected attack nearest enemy in aggro range">Attack Nearest (A)</button>
     </div>
-    <div id="hint">Hold <span class="kbd">Shift</span> to add/remove from selection. Right-click an enemy to focus fire.</div>
+    <div id="hint">Hold <span class="kbd">Shift</span> to add/remove from selection.</div>
 
     <h3 style="margin-top:16px;">Units</h3>
     <div id="selList"></div>
@@ -149,9 +155,10 @@
     <h3 style="margin-top:16px;">Controls</h3>
     <div id="controls">
       • Left-drag to box-select. Click to select one.<br/>
-      • Right-click ground to move. Right-click enemy to attack that target.<br/>
+      • Right-click ground or enemy to <b>move</b> there (movement overrides attacking).<br/>
       • <span class="kbd">A</span>: Attack nearest (if any in aggro range).<br/>
-      • <span class="kbd">B</span>: Blink mode for selected Blinkers → click destination, <span class="kbd">Esc</span> to cancel.<br/>
+      • <span class="kbd">B</span>: Blink mode for selected Blinkers → <b>left-click</b> destination, <span class="kbd">Esc</span> to cancel.<br/>
+      • <span class="kbd">S</span>: Stim selected Soldiers.<br/>
       • Edge-pan the camera by pushing the mouse to canvas edges.<br/>
     </div>
   </aside>
@@ -220,27 +227,34 @@ const UNIT_TYPES = {
   STING: "sting",
 };
 
+/* ===========================
+   Tuned Stats (speeds & dmg)
+   - Lings fastest
+   - Blinkers a bit slower
+   - Stings medium
+   - Slightly lowered damage
+   =========================== */
 const UNIT_STATS = {
   soldier: {
-    emoji:"🪖", r:10, team:PLAYER, maxHp:100, speed:130, range:160, fireRate:4.0, dmg:10,
+    emoji:"🪖", r:10, team:PLAYER, maxHp:100, speed:130, range:160, fireRate:4.0, dmg:9,               // ↓ dmg
     projSpeed:520, aggro:360, canMoveShoot:false,
     stim: { speedMul:1.25, rateMul:1.25, hpPctCost:0.10, dur:6000, cd:12000 }
   },
   blinker: {
-    emoji:"🔷", r:12, team:PLAYER, maxHp:120, speed:145, range:220, fireRate:1.2, dmg:34,
+    emoji:"🔷", r:12, team:PLAYER, maxHp:120, speed:170, range:220, fireRate:1.2, dmg:30,             // faster than soldier, ↓ dmg
     projSpeed:640, aggro:380, canMoveShoot:false,
     blink: { dist:180, cd:7000 }
   },
   ling: {
-    emoji:"🐜", r:8, team:ENEMY, maxHp:40, speed:190, range:18, fireRate:1.6, dmg:7,
+    emoji:"🐜", r:8, team:ENEMY, maxHp:40, speed:220, range:18, fireRate:1.6, dmg:6,                  // fastest, ↓ dmg
     aggro:400, melee:true
   },
   bling: {
-    emoji:"🟢", r:10, team:ENEMY, maxHp:46, speed:150, range:14, fireRate:1.2, dmg:28,
-    aggro:380, melee:true, explode:{ radius:64, dmg:32 }
+    emoji:"🟢", r:10, team:ENEMY, maxHp:46, speed:140, range:14, fireRate:1.2, dmg:24,                // slower than ling, ↓ dmg
+    aggro:380, melee:true, explode:{ radius:64, dmg:28 }                                              // ↓ explosion dmg
   },
   sting: {
-    emoji:"🦟", r:9, team:ENEMY, maxHp:60, speed:120, range:140, fireRate:1.5, dmg:8,
+    emoji:"🦟", r:9, team:ENEMY, maxHp:60, speed:160, range:140, fireRate:1.5, dmg:7,                 // medium speed, ↓ dmg
     projSpeed:460, aggro:360
   }
 };
@@ -334,8 +348,6 @@ window.addEventListener("resize", resize);
    Spawning & Levels
    =========================== */
 function spawnPlayerGroup() {
-  // Determine group composition based on level rule:
-  // every 5 levels -> both; otherwise alternate soldiers/blinkers.
   const both = (state.level % 5 === 0);
   const centerX = MAP_W/2, centerY = MAP_H/2;
   const count = randi(15,20);
@@ -349,14 +361,13 @@ function spawnPlayerGroup() {
   } else {
     const k = state.altPlayerKind;
     for (let i=0;i<count;i++) kinds.push(k);
-    // flip for next time
     state.altPlayerKind = (state.altPlayerKind === UNIT_TYPES.SOLDIER) ? UNIT_TYPES.BLINKER : UNIT_TYPES.SOLDIER;
   }
 
-  // Clear any existing player units before the new round
+  // Remove previous player's units
   state.units = state.units.filter(u => u.team === ENEMY);
 
-  // Spawn around center in a disk
+  // Spawn around center
   for (let i=0;i<kinds.length;i++) {
     const a = Math.random()*TWO_PI;
     const d = rand(0, ringR);
@@ -365,43 +376,44 @@ function spawnPlayerGroup() {
   }
 }
 
-function spawnEnemiesForLevel(level) {
-  // pattern variety:
-  // 1) sometimes all of one type
-  // 2) sometimes mixed
-  // increasing numbers
-  const base = 12 + Math.floor(level * 1.5);
-  const mixRoll = level % 4;
-  let kinds = [];
+// pick enemy kind with light weights that shift by level if desired
+function pickEnemyKind(level) {
+  const r = Math.random();
+  if (r < 0.5) return UNIT_TYPES.LING;     // common
+  if (r < 0.8) return UNIT_TYPES.STING;    // medium
+  return UNIT_TYPES.BLING;                 // less common
+}
 
-  if (mixRoll === 1) { // all lings, swarm
-    for (let i=0;i<base + 6;i++) kinds.push(UNIT_TYPES.LING);
-  } else if (mixRoll === 2) { // sting focus
-    for (let i=0;i<base;i++) kinds.push(UNIT_TYPES.STING);
-  } else if (mixRoll === 3) { // bling fiesta
-    for (let i=0;i<Math.floor(base*0.7);i++) kinds.push(UNIT_TYPES.BLING);
-    for (let i=0;i<Math.floor(base*0.4);i++) kinds.push(UNIT_TYPES.LING);
-  } else {
-    // mixed
-    for (let i=0;i<base;i++) {
-      const r = Math.random();
-      if (r < 0.45) kinds.push(UNIT_TYPES.LING);
-      else if (r < 0.70) kinds.push(UNIT_TYPES.STING);
-      else kinds.push(UNIT_TYPES.BLING);
-    }
+function edgeCenter(edge, margin) {
+  switch(edge){
+    case 0: return {x: rand(margin, MAP_W-margin), y: margin};
+    case 1: return {x: MAP_W-margin, y: rand(margin, MAP_H-margin)};
+    case 2: return {x: rand(margin, MAP_W-margin), y: MAP_H-margin};
+    default:return {x: margin, y: rand(margin, MAP_H-margin)};
   }
+}
 
-  // spawn around edges
-  for (const k of kinds) {
-    let x, y;
+function spawnEnemiesForLevel(level) {
+  const total = 14 + Math.floor(level * 1.7);
+  const clusters = Math.min(1 + Math.floor(level / 3), 6);          // more clumps as level rises
+  const margin = 40;
+  const basePer = Math.max(6, Math.floor(total / clusters));
+  const remainder = total - basePer * clusters;
+
+  for (let c=0;c<clusters;c++) {
     const edge = randi(0,3);
-    const margin = 40;
-    if (edge === 0) { x = rand(margin, MAP_W-margin); y = margin; }
-    else if (edge === 1) { x = MAP_W - margin; y = rand(margin, MAP_H - margin); }
-    else if (edge === 2) { x = rand(margin, MAP_W-margin); y = MAP_H - margin; }
-    else { x = margin; y = rand(margin, MAP_H - margin); }
-    const u = makeUnit(k, x, y);
-    state.units.push(u);
+    const center = edgeCenter(edge, margin);
+    const radius = rand(90, 180);
+    const inCluster = basePer + (c < remainder ? 1 : 0);
+
+    for (let i=0;i<inCluster;i++) {
+      const kind = pickEnemyKind(level);
+      const ang = Math.random()*TWO_PI;
+      const d   = rand(0, radius);
+      const x = clamp(center.x + Math.cos(ang)*d, margin, MAP_W - margin);
+      const y = clamp(center.y + Math.sin(ang)*d, margin, MAP_H - margin);
+      state.units.push(makeUnit(kind, x, y));
+    }
   }
 }
 
@@ -433,7 +445,7 @@ function screenFromWorld(x, y) {
 
 function selectAtPoint(wx, wy, additive=false) {
   let hit = null;
-  for (let i=state.units.length-1;i>=0;i--) { // topmost first
+  for (let i=state.units.length-1;i>=0;i--) {
     const u = state.units[i];
     if (u.team !== PLAYER || !u.alive) continue;
     const rr = u.r + 4;
@@ -471,7 +483,7 @@ function commandMove(units, wx, wy) {
   state.blinkMode = false;
   for (const u of units) {
     u.order = { type:"move", x: wx, y: wy };
-    u.target = null;
+    u.target = null;          // ensure movement overrides attacking immediately
     u.attackMove = false;
   }
 }
@@ -519,7 +531,6 @@ function tryBlink(units, wx, wy) {
     if (u.kind !== UNIT_TYPES.BLINKER) continue;
     const B = UNIT_STATS.blinker.blink;
     if (now < u.buffs.blinkCdUntil) continue;
-    // Short teleport toward clicked point up to B.dist
     const dx = wx - u.x, dy = wy - u.y;
     const d = Math.hypot(dx, dy);
     const step = Math.min(B.dist, d || 0.0001);
@@ -565,19 +576,17 @@ function fireProjectile(shooter, target) {
     dmg: S.dmg,
     life: 2000,
     fromKind: S.kind,
-    targetId: target.id // for optional lead/visuals, not homing
+    targetId: target.id
   };
   state.projs.push(proj);
 }
 
 function applySplash(x, y, radius, dmg, sourceTeam) {
-  // Visual splash ring
   state.splashes.push({ x, y, r: radius, t: performance.now(), dur: 260 });
   for (const u of state.units) {
     if (!u.alive) continue;
     const d2 = dist2(u, {x,y});
     if (d2 <= radius*radius) {
-      // Splash damages both teams (dangerous!)
       u.hp -= dmg;
       if (u.hp <= 0) killUnit(u, sourceTeam);
     }
@@ -587,7 +596,6 @@ function applySplash(x, y, radius, dmg, sourceTeam) {
 function killUnit(u, killerTeam) {
   if (!u.alive) return;
   u.alive = false;
-  // Bling explosion on death too
   if (u.kind === UNIT_TYPES.BLING && u.explode) {
     applySplash(u.x,u.y, u.explode.radius, u.explode.dmg, killerTeam);
   }
@@ -597,32 +605,19 @@ function killUnit(u, killerTeam) {
    Physics & Update Loop
    =========================== */
 function steerAndCollide(dt) {
-  // Basic separation & map bounds; soft "bounce" so groups don't clump.
-  const sepStrength = 14_00; // higher = stronger push; scaled by overlap
+  const sepStrength = 14_00;
   const damp = 0.86;
   const accMul = 8.0;
 
-  // Radius grid optimization could be added later; for now O(n^2) is OK for dozens
   for (let i=0;i<state.units.length;i++) {
     const a = state.units[i];
     if (!a.alive) continue;
 
-    // Desired velocity towards goal/target
     let ax = 0, ay = 0;
     const baseSpeed = a.speed * (a.buffs.stim ? UNIT_STATS.soldier.stim.speedMul : 1);
 
-    // If has an attack target, move into range (unless already in range)
-    if (a.target && a.target.alive) {
-      const inRange = isEnemyInRange(a, a.target);
-      if (!inRange) {
-        const dx = a.target.x - a.x, dy = a.target.y - a.y, d = Math.hypot(dx,dy)||1;
-        ax += (dx/d) * baseSpeed;
-        ay += (dy/d) * baseSpeed;
-      } else {
-        // stop to shoot
-        a.vx *= 0.7; a.vy *= 0.7;
-      }
-    } else if (a.order && a.order.type==="move") {
+    // === Movement commands OVERRIDE attacking ===
+    if (a.order && a.order.type==="move") {
       const dx = a.order.x - a.x, dy = a.order.y - a.y, d = Math.hypot(dx,dy);
       if (d > 6) {
         ax += (dx/(d||1)) * baseSpeed;
@@ -631,24 +626,29 @@ function steerAndCollide(dt) {
         a.order = null;
         a.vx *= 0.6; a.vy *= 0.6;
       }
+    } else if (a.target && a.target.alive) {
+      const inRange = isEnemyInRange(a, a.target);
+      if (!inRange) {
+        const dx = a.target.x - a.x, dy = a.target.y - a.y, d = Math.hypot(dx,dy)||1;
+        ax += (dx/d) * baseSpeed;
+        ay += (dy/d) * baseSpeed;
+      } else {
+        a.vx *= 0.7; a.vy *= 0.7;
+      }
     } else if (a.team===ENEMY) {
-      // Simple enemy AI: approach nearest player unit
       const target = nearestOpposite(a);
       if (target) {
         const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx,dy)||1;
-        // melee enemies move regardless; ranged close a bit if far
         if (a.melee || d > (a.range*0.85)) {
           ax += (dx/d) * baseSpeed;
           ay += (dy/d) * baseSpeed;
         } else {
-          // slow drift to stop
           a.vx *= 0.92; a.vy *= 0.92;
         }
       } else {
         a.vx *= 0.96; a.vy *= 0.96;
       }
     } else {
-      // player idle: if enemy in aggro, pivot towards it (attack-move behavior)
       const e = nearestEnemyInAggro(a);
       if (e) {
         const inRange = isEnemyInRange(a, e);
@@ -677,18 +677,16 @@ function steerAndCollide(dt) {
         const overlap = (minDist - d);
         const ux = (dx/(d||1)), uy=(dy/(d||1));
         const push = (overlap * sepStrength) * dt/1000;
-        // push them apart equally
         a.vx -= ux * push; a.vy -= uy * push;
         b.vx += ux * push; b.vy += uy * push;
       }
     }
 
-    // Apply acceleration toward desired
+    // Apply acceleration & clamp
     a.vx += (ax - a.vx) * (accMul*dt/1000);
     a.vy += (ay - a.vy) * (accMul*dt/1000);
-
-    // Damp & cap
     a.vx *= damp; a.vy *= damp;
+
     const maxSpd = baseSpeed * 1.1;
     const spd = Math.hypot(a.vx, a.vy);
     if (spd > maxSpd) {
@@ -696,7 +694,6 @@ function steerAndCollide(dt) {
       a.vy = a.vy / spd * maxSpd;
     }
 
-    // Integrate
     a.x = clamp(a.x + a.vx * dt/1000, a.r, MAP_W - a.r);
     a.y = clamp(a.y + a.vy * dt/1000, a.r, MAP_H - a.r);
   }
@@ -717,51 +714,41 @@ function combatAndAbilities(dt) {
   for (const u of state.units) {
     if (!u.alive) continue;
 
-    // Buff timers
     if (u.buffs.stim && now >= u.buffs.stimUntil) {
       u.buffs.stim = false;
     }
 
-    // Weapon cooldown tick
     u.cd = Math.max(0, u.cd - dt);
 
-    // Acquire / maintain targets
+    // Acquire/maintain targets (players still auto-acquire, but movement overrides in steer)
     if (u.team===PLAYER) {
       if (!u.target || !u.target.alive) {
         const e = nearestEnemyInAggro(u);
         if (e) u.target = e;
       }
     } else {
-      // enemy AI picks nearest player
       if (!u.target || !u.target.alive) {
         u.target = nearestOpposite(u);
       }
     }
 
-    // Attack logic
     if (u.melee) {
-      // Melee: deal damage if in range and cooldown ready
       if (u.target && u.target.alive && isEnemyInRange(u, u.target) && u.cd <= 0) {
         u.target.hp -= u.dmg;
         u.cd = 1000 / u.fireRate;
         if (u.target.hp <= 0) {
           killUnit(u.target, u.team);
           if (u.kind === UNIT_TYPES.BLING && u.explode) {
-            // Bling triggers explode on hit (suicide)
             killUnit(u, u.team);
             applySplash(u.x, u.y, u.explode.radius, u.explode.dmg, u.team);
           }
         }
       }
     } else {
-      // Ranged: only fire if roughly stationary (can't shoot while moving)
       const moving = Math.hypot(u.vx, u.vy) > 28;
       const tgt = u.target && u.target.alive ? u.target : null;
-
-      // auto attack if target in range; otherwise, if has attack order, close in
       if (tgt && isEnemyInRange(u, tgt) && u.cd <= 0 && !moving) {
         fireProjectile(u, tgt);
-        // apply fire rate with stim for soldiers
         const rateMul = (u.kind===UNIT_TYPES.SOLDIER && u.buffs.stim) ? UNIT_STATS.soldier.stim.rateMul : 1;
         u.cd = 1000 / (u.fireRate * rateMul);
       }
@@ -776,7 +763,6 @@ function combatAndAbilities(dt) {
     p.x += p.vx * dt/1000;
     p.y += p.vy * dt/1000;
 
-    // Collide with units on opposite team
     for (const u of state.units) {
       if (!u.alive || u.team===p.team) continue;
       const rr = u.r + 4;
@@ -797,12 +783,10 @@ function combatAndAbilities(dt) {
   armyCountEl.textContent = "("+state.units.filter(u=>u.team===PLAYER && u.alive).length+")";
 
   if (!anyPlayers && !state.gameOver) {
-    // Game Over
     state.gameOver = true;
     finalLevelEl.textContent = state.level;
     over.style.display = "flex";
   } else if (!anyEnemies) {
-    // Advance level after a brief pause
     if (!state._nextLevelAt) {
       state._nextLevelAt = performance.now() + 900;
     } else if (performance.now() >= state._nextLevelAt) {
@@ -824,7 +808,6 @@ function updateCamera(dt) {
   if (my < VIEWPAD) vy = -EDGE_SCROLL;
   else if (my > canvas.height - VIEWPAD) vy = EDGE_SCROLL;
 
-  // Accelerate proportionally the closer to edge
   const fx = mx < VIEWPAD ? (1 - mx/VIEWPAD) : (mx > canvas.width - VIEWPAD ? (mx - (canvas.width - VIEWPAD))/VIEWPAD : 0);
   const fy = my < VIEWPAD ? (1 - my/VIEWPAD) : (my > canvas.height - VIEWPAD ? (my - (canvas.height - VIEWPAD))/VIEWPAD : 0);
 
@@ -889,7 +872,6 @@ function draw() {
   for (const u of state.units) {
     if (!u.alive) continue;
     const sc = screenFromWorld(u.x,u.y);
-    // selection ring
     if (u.selected) {
       ctx.beginPath();
       ctx.arc(sc.x, sc.y, u.r + 6, 0, TWO_PI);
@@ -898,16 +880,13 @@ function draw() {
       ctx.stroke();
     }
 
-    // team ring
     ctx.beginPath();
     ctx.arc(sc.x, sc.y, u.r + 2, 0, TWO_PI);
     ctx.strokeStyle = u.team===PLAYER ? COLORS.ringSelf : COLORS.ringEnemy;
     ctx.lineWidth = 4; ctx.stroke();
 
-    // emoji
     ctx.fillText(UNIT_STATS[u.kind].emoji, sc.x, sc.y + (u.kind===UNIT_TYPES.SOLDIER ? 1 : 0));
 
-    // hp bar
     const w = Math.max(28, u.r*3);
     const h = 5;
     const pct = clamp(u.hp/u.maxHp, 0, 1);
@@ -917,7 +896,6 @@ function draw() {
     ctx.fillRect(sc.x - w/2, sc.y - u.r - 16, w*pct, h);
     ctx.strokeStyle = "#00000055"; ctx.lineWidth = 1; ctx.strokeRect(sc.x - w/2, sc.y - u.r - 16, w, h);
 
-    // blink/stim CD dots
     if (u.kind===UNIT_TYPES.BLINKER && u.buffs.blinkCdUntil > now) {
       const rem = (u.buffs.blinkCdUntil - now)/1000;
       drawCooldownDot(sc.x+ w/2 + 6, sc.y - u.r - 13, rem);
@@ -960,7 +938,6 @@ function refreshSelectionUI() {
   const nBlink = sel.filter(u=>u.kind===UNIT_TYPES.BLINKER).length;
   selBreakdownEl.textContent = sel.length ? `🪖 ${nSold}  ·  🔷 ${nBlink}` : "—";
 
-  // List
   selListEl.innerHTML = "";
   for (const u of sel.slice(0,80)) {
     const row = document.createElement("div"); row.className="row";
@@ -969,7 +946,6 @@ function refreshSelectionUI() {
     selListEl.appendChild(row);
   }
 
-  // Ability buttons enabled?
   const anySold = nSold>0, anyBlink = nBlink>0;
   stimBtn.disabled = !anySold;
   blinkBtn.disabled = !anyBlink;
@@ -1004,26 +980,26 @@ canvas.addEventListener("mousemove", (e)=>{
 
 canvas.addEventListener("mousedown", (e)=>{
   const w = worldFromScreen(e.offsetX, e.offsetY);
+
   if (e.button === 0) {
-    // left = (possibly) start drag or click select
+    // Left-click: if in Blink mode, Blink immediately; else start selection
+    if (state.blinkMode) {
+      const selBlinkers = selectedUnits().filter(u=>u.kind===UNIT_TYPES.BLINKER);
+      if (selBlinkers.length) tryBlink(selBlinkers, w.x, w.y);
+      state.blinkMode = false;
+      return; // don't start drag box
+    }
     state.dragging = true;
     state.dragStart = { x: w.x, y: w.y };
     state.dragEnd = { x: w.x, y: w.y };
   } else if (e.button === 2) {
-    // right = command: attack if clicked enemy, otherwise move
+    // Right-click: MOVEMENT ALWAYS overrides attacking
     const sel = selectedUnits();
-    if (sel.length===0) return;
-    let clickedEnemy = null;
-    for (const u of state.units) {
-      if (!u.alive || u.team===PLAYER) continue;
-      const rr = u.r+6;
-      if (dist2({x:w.x,y:w.y}, u) <= rr*rr) { clickedEnemy = u; break; }
-    }
+    if (!sel.length) return;
     if (state.blinkMode) {
-      tryBlink(sel.filter(u=>u.kind===UNIT_TYPES.BLINKER), w.x, w.y);
+      const selBlinkers = sel.filter(u=>u.kind===UNIT_TYPES.BLINKER);
+      if (selBlinkers.length) tryBlink(selBlinkers, w.x, w.y);
       state.blinkMode = false;
-    } else if (clickedEnemy) {
-      commandAttackTarget(sel, clickedEnemy);
     } else {
       commandMove(sel, w.x, w.y);
     }
@@ -1055,6 +1031,10 @@ window.addEventListener("keydown", (e)=>{
     if (selectedUnits().some(u=>u.kind===UNIT_TYPES.BLINKER)) {
       state.blinkMode = true;
     }
+  } else if (e.code === "KeyS") {
+    const sel = selectedUnits();
+    if (sel.some(u=>u.kind===UNIT_TYPES.SOLDIER)) tryStim(sel);
+    e.preventDefault();
   } else if (e.code === "Escape") {
     state.blinkMode = false;
   }
@@ -1075,7 +1055,6 @@ saveScoreBtn.addEventListener("click", ()=> {
   if (!name) { saveMsgEl.textContent = "Please enter a name."; return; }
   if (!fbDb) { saveMsgEl.textContent = "Firebase not initialized."; return; }
   const entry = { game:"Micro Wars", name, level: state.level, ts: Date.now() };
-  // As requested: save "under Flag"
   fbDb.ref("Flag").push(entry)
     .then(()=> saveMsgEl.textContent = "Saved! 🎉")
     .catch(err => saveMsgEl.textContent = "Error: " + err.message);
@@ -1098,7 +1077,6 @@ function tick() {
   draw();
   updateUI();
 
-  // fps
   frames++;
   if (t - fpsS >= 500) {
     fpsEl.textContent = Math.round(frames * 1000/(t - fpsS));
@@ -1111,13 +1089,7 @@ function tick() {
 function updateUI() {
   refreshSelectionUI();
   updateArmyHud();
-
-  // Blink mode cursor hint
-  if (state.blinkMode) {
-    canvas.style.cursor = "crosshair";
-  } else {
-    canvas.style.cursor = "default";
-  }
+  canvas.style.cursor = state.blinkMode ? "crosshair" : "default";
 }
 
 /* ===========================
@@ -1126,7 +1098,6 @@ function updateUI() {
 function init() {
   resize();
   startLevel(1);
-  // center camera on middle spawn
   state.camera.x = MAP_W/2 - canvas.width/2;
   state.camera.y = MAP_H/2 - canvas.height/2;
   requestAnimationFrame(tick);
@@ -1146,12 +1117,12 @@ init();
 
 /* ===========================
    Notes:
-   - Right-click ground: move
-   - Right-click enemy: focus fire
-   - A: attack nearest (aggro)
-   - B: blink targeting mode (Blinkers)
-   - Esc: cancel blink mode
+   - Right-click: MOVE (always).
+   - A: attack nearest (aggro).
+   - B: enter Blink mode, LEFT-CLICK to Blink, Esc cancels.
+   - S: Stim Soldiers.
    =========================== */
 </script>
 </body>
 </html>
+
