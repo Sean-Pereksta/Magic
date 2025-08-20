@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>📈 Stock Kings</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <style>
+    :root{
+      --bg:#0e1116; --ink:#e9eef5; --muted:#9db0c4; --card:#121722; --br:#1e2734;
+      --accent:#4da3ff; --good:#38ef7d; --bad:#ff6b6b; --warn:#ffd166;
+      --tile:#0f141e; --tile-br:#1b2533;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+    }
+    a{color:var(--accent)}
+    .wrap{display:grid; grid-template-rows:auto 1fr; min-height:100%}
+
+    /* Top Bar */
+    .top{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:10px 12px; border-bottom:1px solid var(--br); background:#0b0f17; position:sticky; top:0; z-index:5;
+    }
+    .timer{font-weight:800; font-size:20px; letter-spacing:.5px}
+    .round{color:var(--muted); font-weight:700}
+    .wins{display:flex; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted)}
+    .wins .me{color:#fff}
+
+    /* Board */
+    .board{
+      display:grid;
+      grid-template-columns: 220px 1fr 220px;
+      gap:12px; padding:12px;
+    }
+    @media (max-width: 1080px){
+      .board{grid-template-columns: 1fr}
+    }
+
+    /* Side rails for players */
+    .rail{
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .rail.top, .rail.bottom{
+      display:flex; flex-wrap:wrap; gap:10px; justify-content:center;
+    }
+
+    /* Center stage: stocks grid */
+    .stage{
+      display:grid; gap:12px;
+      grid-template-areas:
+        "top top"
+        "grid grid"
+        "bottom bottom";
+      grid-template-rows: auto 1fr auto;
+      min-height: calc(100vh - 120px);
+    }
+    .players-top{ grid-area: top; }
+    .players-bottom{ grid-area: bottom; }
+    .stocks{
+      grid-area: grid;
+      display:grid; gap:12px;
+      grid-template-columns: repeat(3, minmax(220px,1fr));
+    }
+    @media (max-width: 850px){
+      .stocks{ grid-template-columns: repeat(2, minmax(180px,1fr)); }
+    }
+    @media (max-width: 520px){
+      .stocks{ grid-template-columns: 1fr; }
+    }
+
+    /* Player card */
+    .pbox{
+      background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
+      display:flex; flex-direction:column; align-items:center; gap:4px; min-width: 180px;
+    }
+    .pbox.me{ outline:2px solid var(--accent) }
+    .p-val{ font-weight:900; font-size:18px }
+    .p-name{ font-weight:800; color:var(--muted) }
+    .p-wins{ font-size:12px; color:var(--muted) }
+
+    /* Stock tile */
+    .tile{
+      background:var(--card); border:1px solid var(--tile-br); border-radius:16px; padding:12px; display:grid;
+      grid-template-rows: auto auto 1fr auto; gap:8px; position:relative; min-height: 180px;
+    }
+    .head{display:flex; justify-content:space-between; align-items:baseline}
+    .sym{font-weight:900; letter-spacing:.5px; font-size:18px}
+    .price{font-weight:900}
+    .spark{height:28px}
+    .barwrap{
+      border:1px solid var(--tile-br); border-radius:10px; padding:4px; height:90px; overflow:hidden; background:linear-gradient(180deg,#0c1320 0%,#0a101a 100%);
+      position:relative;
+    }
+    .bar{
+      position:absolute; left:4px; right:4px; bottom:4px; height:10px; border-radius:8px; background:var(--good);
+      transition: height .2s ease;
+    }
+    .row{display:flex; gap:8px; align-items:center; justify-content:space-between}
+    .btn{
+      appearance:none; border:1px solid var(--tile-br); background:#132033; color:#fff; padding:8px 10px; border-radius:10px; font-weight:800; cursor:pointer;
+    }
+    .btn.sell{ background:#2c1a1a; border-color:#412121 }
+    .btn:disabled{opacity:.6; cursor:not-allowed}
+    .btn:hover{filter:brightness(1.05)}
+    .cost{font-weight:700; color:var(--muted); font-size:12px}
+
+    .footnote{
+      text-align:center; color:var(--muted); font-size:12px; margin:10px 0 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="round">Round <span id="roundNo">1</span> · First to <b>3</b> wins</div>
+    <div class="timer" id="timer">01:30</div>
+    <div class="wins" id="winsBar"></div>
+  </div>
+
+  <div class="board">
+    <!-- Left rail for extra players (auto-filled) -->
+    <div class="rail" id="leftRail"></div>
+
+    <div class="stage">
+      <div class="players-top rail top" id="topRail"></div>
+
+      <div class="stocks" id="stocksGrid">
+        <!-- stock tiles injected here -->
+      </div>
+
+      <div class="players-bottom rail bottom" id="bottomRail"></div>
+    </div>
+
+    <!-- Right rail for extra players -->
+    <div class="rail" id="rightRail"></div>
+  </div>
+</div>
+
+<div class="footnote">💡 Buy raises price a bit; sell lowers it a bit. Prices also wander over time.</div>
+
+<script type="module">
+  /* ===========================
+     Firebase
+     =========================== */
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
+    runTransaction, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  /* ===========================
+     Params & Constants
+     =========================== */
+  const params = new URLSearchParams(location.search);
+  const gameId = params.get("gameId");
+  const username = params.get("username") || "Player";
+  if (!gameId) {
+    alert("Missing gameId.");
+  }
+
+  const LOBBY_REF = doc(db, "lobbies", gameId);
+  const GAME_REF  = doc(db, "stockkings", gameId);
+
+  const ROUND_MS = 90_000;         // 1.5 minutes
+  const START_CASH = 1000;
+  const N_STOCKS = 6;
+  const HISTORY_LEN = 40;
+  const IMPACT_BASE = 0.01;         // ~1% impact per 1-share trade (scaled by players)
+  const MIN_PRICE = 5;
+  const MAX_PRICE = 500;
+
+  const TICKERS = ["ALP","BEX","CRO","DYN","ECO","FYN"];
+
+  // DOM
+  const stocksGrid = document.getElementById("stocksGrid");
+  const topRail = document.getElementById("topRail");
+  const bottomRail = document.getElementById("bottomRail");
+  const leftRail = document.getElementById("leftRail");
+  const rightRail = document.getElementById("rightRail");
+  const timerEl = document.getElementById("timer");
+  const roundEl = document.getElementById("roundNo");
+  const winsBar = document.getElementById("winsBar");
+
+  // Local
+  let lobbyData = null;
+  let gameData = null;
+  let isHost = false;
+  let tickerHandle = null;
+  let timerHandle = null;
+
+  /* ===========================
+     Helpers
+     =========================== */
+  const fmt = (n)=> "$" + Number(n).toFixed(2);
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
+  const rand = (a,b)=> a + Math.random()*(b-a);
+  const pick = (arr,i)=> arr[i%arr.length];
+
+  function initStocks(){
+    const out = [];
+    for (let i=0;i<N_STOCKS;i++){
+      const base = rand(60, 140);
+      out.push({
+        sym: TICKERS[i] || ("S"+(i+1)),
+        price: Number(base.toFixed(2)),
+        min: Math.max(MIN_PRICE, base*0.4),
+        max: Math.min(MAX_PRICE, base*1.8),
+        history: Array.from({length: 10}, (_,k)=> Number((base*(1+rand(-0.01,0.01))).toFixed(2)))
+      });
+    }
+    return out;
+  }
+
+  function initPortfolios(players){
+    const p = {};
+    for (const name of players){
+      p[name] = { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) };
+    }
+    return p;
+  }
+
+  function calcPortfolioValue(name, data){
+    const pf = data.portfolios?.[name];
+    if (!pf) return 0;
+    let v = pf.cash;
+    for (let i=0;i<N_STOCKS;i++){
+      const px = data.stocks[i].price;
+      v += (pf.holdings[i]||0) * px;
+    }
+    return v;
+  }
+
+  function orderImpactFactor(data){
+    const players = (data.players || []);
+    const n = Math.max(1, players.length);
+    return IMPACT_BASE / Math.sqrt(n); // more players -> slightly smaller per-click impact
+  }
+
+  function msLeft(){
+    if (!gameData?.roundEndAt) return 0;
+    return Math.max(0, gameData.roundEndAt - Date.now());
+  }
+
+  function fmtTimer(ms){
+    const s = Math.ceil(ms/1000);
+    const mm = Math.floor(s/60).toString().padStart(2,'0');
+    const ss = (s%60).toString().padStart(2,'0');
+    return `${mm}:${ss}`;
+  }
+
+  /* ===========================
+     UI: Players & Stocks
+     =========================== */
+  function renderPlayers(){
+    const players = gameData?.players || lobbyData?.players || [];
+    const wins = gameData?.wins || {};
+    winsBar.innerHTML = "";
+    for (const p of players){
+      const span = document.createElement("span");
+      span.textContent = `${p}: ${wins[p]||0}`;
+      if (p===username) span.className="me";
+      winsBar.appendChild(span);
+    }
+
+    const boxes = players.map(p=>{
+      const div = document.createElement("div");
+      div.className = "pbox" + (p===username? " me":"");
+      const val = calcPortfolioValue(p, gameData||{ portfolios:{}, stocks:[] });
+      div.innerHTML = `
+        <div class="p-val" id="pval-${cssSafe(p)}">${fmt(val)}</div>
+        <div class="p-name">${p}</div>
+        <div class="p-wins">Wins: <b>${wins[p]||0}</b></div>
+      `;
+      return div;
+    });
+
+    // distribute players: top, bottom, left, right (roughly even)
+    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = rightRail.innerHTML = "";
+    const q = Math.ceil(boxes.length/4);
+    const groups = [
+      boxes.slice(0,q),
+      boxes.slice(q,2*q),
+      boxes.slice(2*q,3*q),
+      boxes.slice(3*q)
+    ];
+    for (const el of groups[0]) topRail.appendChild(el);
+    for (const el of groups[2]) bottomRail.appendChild(el);
+    for (const el of groups[1]) rightRail.appendChild(el);
+    for (const el of groups[3]) leftRail.appendChild(el);
+  }
+
+  function cssSafe(s){ return s.replace(/[^a-zA-Z0-9_-]/g, "_"); }
+
+  function ensureStockTiles(){
+    if (!stocksGrid.hasChildNodes()){
+      for (let i=0;i<N_STOCKS;i++){
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.innerHTML = `
+          <div class="head">
+            <div class="sym" id="sym-${i}">SYM</div>
+            <div class="price" id="price-${i}">$0.00</div>
+          </div>
+          <canvas class="spark" width="220" height="28" id="spark-${i}"></canvas>
+          <div class="barwrap">
+            <div class="bar" id="bar-${i}" style="height:12px;"></div>
+          </div>
+          <div class="row">
+            <button class="btn buy" id="buy-${i}">Buy</button>
+            <div class="cost" id="cost-${i}">$0.00</div>
+            <button class="btn sell" id="sell-${i}">Sell</button>
+          </div>
+        `;
+        stocksGrid.appendChild(tile);
+      }
+    }
+  }
+
+  function drawSpark(i, history){
+    const c = document.getElementById(`spark-${i}`);
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0,0,c.width,c.height);
+    const n = history.length;
+    const min = Math.min(...history);
+    const max = Math.max(...history);
+    const pad = 2;
+    const H = c.height - pad*2;
+    const W = c.width - pad*2;
+
+    ctx.strokeStyle = "#2a3d57";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, pad + H);
+    ctx.lineTo(pad+W, pad + H);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#6cc1ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let k=0;k<n;k++){
+      const x = pad + (W*(k/(n-1||1)));
+      const t = (history[k]-min)/Math.max(0.0001,(max-min));
+      const y = pad + H - t*H;
+      if (k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  function renderStocks(){
+    if (!gameData?.stocks) return;
+    ensureStockTiles();
+
+    for (let i=0;i<N_STOCKS;i++){
+      const s = gameData.stocks[i];
+      if (!s) continue;
+
+      const symEl = document.getElementById(`sym-${i}`);
+      const priceEl = document.getElementById(`price-${i}`);
+      const costEl = document.getElementById(`cost-${i}`);
+      const bar = document.getElementById(`bar-${i}`);
+
+      symEl.textContent = s.sym;
+      priceEl.textContent = fmt(s.price);
+      costEl.textContent = "Buy " + fmt(s.price) + " · Sell " + fmt(s.price*0.95);
+
+      // bar height bounded to 100% of wrap; map [min,max] -> [8px, (wrap-8px)]
+      const wrap = bar.parentElement.getBoundingClientRect();
+      const hMax = Math.max(12, wrap.height - 8);
+      const t = clamp((s.price - s.min) / Math.max(1,(s.max - s.min)), 0, 1);
+      bar.style.height = (8 + t*(hMax-8)) + "px";
+      bar.style.background = "linear-gradient(180deg,#5dffb3,#21a86a)";
+
+      drawSpark(i, s.history || [s.price]);
+
+      // bind buttons once
+      bindBtnOnce(`buy-${i}`, ()=> order("buy", i));
+      bindBtnOnce(`sell-${i}`, ()=> order("sell", i));
+    }
+  }
+
+  const bound = new Set();
+  function bindBtnOnce(id, fn){
+    if (bound.has(id)) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", fn);
+    bound.add(id);
+  }
+
+  function refreshPlayerValues(){
+    const players = gameData?.players || [];
+    for (const p of players){
+      const el = document.getElementById(`pval-${cssSafe(p)}`);
+      if (!el) continue;
+      const v = calcPortfolioValue(p, gameData);
+      el.textContent = fmt(v);
+    }
+  }
+
+  /* ===========================
+     Firestore Sync
+     =========================== */
+  // 1) Read lobby to know host + players
+  onSnapshot(LOBBY_REF, (snap)=>{
+    if (!snap.exists()) return;
+    lobbyData = snap.data();
+    isHost = lobbyData.host === username;
+    // try to create game doc if missing
+    ensureGameDoc();
+  });
+
+  // 2) Subscribe to game doc
+  onSnapshot(GAME_REF, (snap)=>{
+    if (!snap.exists()) return;
+    gameData = snap.data();
+    roundEl.textContent = gameData.round || 1;
+
+    renderPlayers();
+    renderStocks();
+    refreshPlayerValues();
+
+    // handle status transitions / redirects
+    if (gameData.status === "finished"){
+      // small delay -> redirect to lobby hub
+      setTimeout(()=> {
+        location.href = "https://catnmice.com/main/lobby/lobby.html";
+      }, 4000);
+    }
+  });
+
+  async function ensureGameDoc(){
+    // host-only initialize
+    const g = await getDoc(GAME_REF);
+    if (g.exists()) return;
+
+    if (!lobbyData) return;
+    if (!isHost) return;
+
+    const players = Array.isArray(lobbyData.players) ? lobbyData.players : [username];
+
+    const payload = {
+      host: lobbyData.host || username,
+      players,
+      status: "running",
+      round: 1,
+      roundEndAt: Date.now() + ROUND_MS,
+      wins: Object.fromEntries(players.map(p=>[p,0])),
+      portfolios: initPortfolios(players),
+      stocks: initStocks(),
+      createdAt: serverTimestamp()
+    };
+    await setDoc(GAME_REF, payload);
+    startHostLoops(); // start ticking
+  }
+
+  /* ===========================
+     Host loops: price ticker & round manager
+     =========================== */
+  function startHostLoops(){
+    if (!isHost) return;
+    stopHostLoops();
+
+    // Price ticker every ~1s
+    tickerHandle = setInterval(async ()=>{
+      try {
+        await runTransaction(db, async (tx)=>{
+          const snap = await tx.get(GAME_REF);
+          if (!snap.exists()) return;
+          const d = snap.data();
+          if (d.status !== "running") return;
+
+          const stocks = d.stocks.slice();
+          for (let i=0;i<stocks.length;i++){
+            const s = {...stocks[i]};
+            // Geometric-ish random walk with mild mean reversion
+            const mid = (s.min + s.max)/2;
+            const drift = (mid - s.price) / (s.max - s.min) * 0.003; // pull to center
+            const noise = rand(-0.012, 0.012);                       // +/-1.2%
+            let np = s.price * (1 + drift + noise);
+            np = clamp(np, s.min, s.max);
+            s.price = Number(np.toFixed(2));
+            const hist = (s.history || []).slice(-HISTORY_LEN+1);
+            hist.push(s.price);
+            s.history = hist;
+            stocks[i] = s;
+          }
+
+          // End round?
+          const timeLeft = (d.roundEndAt || 0) - Date.now();
+          if (timeLeft <= 0){
+            // Compute winner(s)
+            const players = d.players || [];
+            let bestV = -Infinity; let winners = [];
+            for (const p of players){
+              const val = calcPortfolioValue(p, {stocks, portfolios:d.portfolios});
+              if (val > bestV + 0.0001){ bestV = val; winners = [p]; }
+              else if (Math.abs(val - bestV) < 0.0001){ winners.push(p); }
+            }
+            const wins = {...d.wins};
+            for (const w of winners) wins[w] = (wins[w]||0) + 1;
+
+            // Check match winner: first to 3
+            const champion = Object.entries(wins).find(([name,count])=> count >= 3);
+
+            if (champion){
+              tx.update(GAME_REF, {
+                status:"finished",
+                wins,
+                stocks, // final snapshot
+              });
+              return;
+            }
+
+            // Next round: reset portfolios & stocks, keep wins
+            tx.update(GAME_REF, {
+              status:"running",
+              round: (d.round||1)+1,
+              roundEndAt: Date.now() + ROUND_MS,
+              wins,
+              portfolios: initPortfolios(players),
+              stocks: initStocks()
+            });
+          } else {
+            // Normal tick update
+            tx.update(GAME_REF, { stocks });
+          }
+        });
+      } catch(e){ /* ignore transient */ }
+    }, 1000);
+
+    // Timer display (all clients do their own display too, but host updates as well)
+  }
+
+  function stopHostLoops(){
+    if (tickerHandle){ clearInterval(tickerHandle); tickerHandle = null; }
+  }
+
+  /* ===========================
+     Buy / Sell (any player)
+     =========================== */
+  async function order(kind, idx){
+    try{
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(GAME_REF);
+        if (!snap.exists()) return;
+        const d = snap.data();
+        if (d.status !== "running") return;
+
+        const portfolios = {...d.portfolios};
+        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) })};
+        const stocks = d.stocks.slice();
+        const s = {...stocks[idx]};
+        const price = s.price;
+        if (!price || price<=0) return;
+
+        if (kind === "buy"){
+          if (me.cash < price) return; // insufficient
+          me.cash = Number((me.cash - price).toFixed(2));
+          me.holdings[idx] = (me.holdings[idx]||0) + 1;
+
+          // Market impact
+          const impact = orderImpactFactor(d);
+          s.price = Number(clamp(price * (1 + impact), s.min, s.max).toFixed(2));
+        } else {
+          const have = me.holdings[idx]||0;
+          if (have <= 0) return;
+          me.holdings[idx] = have - 1;
+          me.cash = Number((me.cash + price*0.95).toFixed(2));
+
+          const impact = orderImpactFactor(d);
+          s.price = Number(clamp(price * (1 - impact), s.min, s.max).toFixed(2));
+        }
+
+        portfolios[username] = me;
+        stocks[idx] = s;
+
+        tx.update(GAME_REF, { portfolios, stocks });
+      });
+    } catch(e){
+      console.warn("order failed", e);
+    }
+  }
+
+  // Expose for buttons (not strictly needed since we bind by id)
+  window.order = order;
+
+  /* ===========================
+     Timer (client display)
+     =========================== */
+  function startTimerUI(){
+    if (timerHandle) clearInterval(timerHandle);
+    timerHandle = setInterval(()=>{
+      if (!gameData) return;
+      const left = msLeft();
+      timerEl.textContent = fmtTimer(left);
+    }, 200);
+  }
+  startTimerUI();
+
+  // When we first become host (or on refresh), attempt to start loops if doc exists
+  (async ()=>{
+    const gl = await getDoc(GAME_REF);
+    if (gl.exists() && lobbyData){
+      if (lobbyData.host === username) startHostLoops();
+    }
+  })();
+
+  // Clean up on page hidden (host only)
+  document.addEventListener("visibilitychange", ()=>{
+    if (!isHost) return;
+    if (document.hidden){ stopHostLoops(); }
+    else { startHostLoops(); }
+  });
+</script>
+</body>
+</html>
