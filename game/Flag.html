@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ascendants vs Swarm — Three Orders (Campaign + Abilities)</title>
+<style>
+  :root{
+    --bg:#0b1320; --panel:#0f1729; --line:#1b2b4a; --muted:#9fb3c8; --text:#e6edf3;
+    --p:#67e8f9; --a:#f87171; --flag:#ffd166; --grid:#203358; --cell:#0c1527; --sel:#e9d8a6;
+    --acid:#27c93f; --acid2:#159b2b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:radial-gradient(1000px 500px at 20% 0%, #0c1a3a 0%, #0b1320 50%, #070d1b 100%); color:var(--text); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;}
+  .wrap{display:grid; grid-template-columns: 980px 380px; gap:16px; padding:16px;}
+
+  /* Viewport + big map */
+  .view{position:relative; width:980px; height:640px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 12px 36px rgba(0,0,0,.35)}
+  .world{position:absolute; left:0; top:0; will-change:transform;}
+  .grid{display:grid; gap:6px}
+  .cell{width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;}
+  .cell:hover{filter:brightness(1.05)}
+  .flag{position:absolute; inset:8px; border-radius:8px; outline:2px dashed rgba(255,255,255,.08)}
+  .flag::after{content:"🏁"; position:absolute; font-size:18px; right:6px; top:6px}
+  .banner-stack{position:absolute; left:6px; top:6px; display:flex; gap:2px}
+  .banner{width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,.35)}
+  .banner.p{background:var(--p)} .banner.a{background:var(--a)}
+
+  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:26px}
+  .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:11px; padding:2px 6px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
+  .tag{position:absolute; top:4px; left:6px; font-size:12px; padding:1px 6px; border-radius:8px; border:1px solid #1f2a44}
+  .tag.p{background:rgba(103,232,249,.14); color:#9beffb}
+  .tag.a{background:rgba(248,113,113,.14); color:#ffb1b1}
+  .armor{position:absolute; top:4px; right:6px; font-size:12px; padding:1px 6px; border-radius:8px; background:rgba(233,216,166,.15); border:1px solid #5f5630; color:#f2e9b8}
+  .status{position:absolute; top:26px; right:6px; font-size:11px; padding:1px 6px; border-radius:8px; border:1px dashed #3b4157; color:#cfd7ff; background:rgba(59,65,87,.2)}
+  .sel{outline:3px solid var(--sel);}
+  .hint-move{box-shadow: inset 0 0 0 3px rgba(122,162,247,.35); background:linear-gradient(180deg,rgba(122,162,247,.08),transparent)}
+  .hint-attack{box-shadow: inset 0 0 0 3px rgba(247,118,142,.35); background:linear-gradient(180deg,rgba(247,118,142,.08),transparent)}
+  .hint-ability{box-shadow: inset 0 0 0 3px rgba(255,209,102,.35); background:linear-gradient(180deg,rgba(255,209,102,.08),transparent)}
+
+  /* Terrain + Hazards */
+  .rock{position:absolute; inset:4px; border-radius:7px; background:repeating-linear-gradient(135deg, #1b2540, #1b2540 6px, #142039 6px, #142039 12px); opacity:.7}
+  .acid{position:absolute; inset:6px; border-radius:6px; background:repeating-linear-gradient(135deg, var(--acid), var(--acid) 6px, var(--acid2) 6px, var(--acid2) 12px); opacity:.55; box-shadow:0 0 10px rgba(39,201,63,.5) inset}
+
+  .side{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:0 10px 28px rgba(0,0,0,.28)}
+  h1{margin:0 0 8px; font-size:20px; color:#cbd6f3}
+  .row{display:flex; gap:8px; align-items:center; margin:6px 0}
+  .pill{padding:6px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-size:12px}
+  .orders{font-weight:700; color:#e2e8f8}
+  .btns{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 4px}
+  button{background:#0f1729; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer}
+  button:hover{background:#111b33}
+  .sep{height:1px; background:var(--line); margin:12px 0}
+  .legend{display:grid; grid-template-columns:auto 1fr; gap:6px 10px; font-size:13px; color:#9fb3c8}
+  .key{width:18px; height:18px; border-radius:50%; border:1px solid var(--line)}
+  .key.p{background:var(--p)} .key.a{background:var(--a)} .key.f{background:var(--flag); border-color:#a68b2a}
+  .log{max-height:280px; overflow:auto; font-size:13px; color:#aebbd6}
+  .log p{margin:.25rem 0}
+  .toast{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1729; color:#cfe3ff; border:1px solid var(--line); padding:10px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(0,0,0,.35);}  
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="view" id="view">
+      <div class="world">
+        <div id="grid" class="grid"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <h1>Ascendants vs Swarm — <span style="color:var(--flag)">Campaign</span></h1>
+      <div class="row">
+        <span class="pill">Level <b id="level">1</b></span>
+        <span class="pill">Round <b id="roundNum">1</b></span>
+        <span class="pill">Turn: <b id="turnWho">Player</b></span>
+        <span class="pill orders">Orders Left: <b id="ordersLeft">3</b></span>
+        <span class="pill">Abilities Left: <b id="abilitiesLeft">2</b></span>
+      </div>
+      <div class="btns">
+        <button id="btnMove">Move</button>
+        <button id="btnAttack">Attack</button>
+        <button id="btnAbility">Ability</button>
+        <button id="btnFortify">Fortify</button>
+        <button id="btnEnd">End Turn</button>
+        <button id="btnReset" title="Restart campaign">↺ Reset</button>
+      </div>
+      <div class="sep"></div>
+      <div class="legend" style="margin-bottom:8px">
+        <div class="key p"></div><div>Ascendants (you)</div>
+        <div class="key a"></div><div>Swarm (AI)</div>
+        <div class="key f"></div><div>Flags (gain banners at the start of your turn)</div>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" style="display:none"></div>
+
+<script>
+(function(){
+  // ===== Big Map Config =====
+  const W=24, H=16;               // larger field
+  const TILE=48, GAP=6;            // visuals
+  const FLAGS_Y = Math.floor(H/2); // central band
+  const FLAG_XS = [3, 7, 12, 17, 21]; // five flags across the middle
+
+  // ===== Camera (mouse-look / edge pan) =====
+  const view = document.getElementById('view');
+  const world = document.querySelector('.world');
+  const gridEl = document.getElementById('grid');
+  let cam = {x:0, y:0, vx:0, vy:0};
+  const VIEW_W = view.clientWidth, VIEW_H = view.clientHeight;
+  const WORLD_W = W*(TILE+GAP)+GAP, WORLD_H = H*(TILE+GAP)+GAP;
+
+  gridEl.style.gridTemplateColumns = `repeat(${W}, ${TILE}px)`;
+  gridEl.style.gridTemplateRows    = `repeat(${H}, ${TILE}px)`;
+  gridEl.style.padding = `${GAP}px`;
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
+  function updateCamera(){
+    const rect = view.getBoundingClientRect();
+    const mx = lastMouse.x - rect.left, my = lastMouse.y - rect.top;
+    const margin = 60; const maxSpeed = 18;
+    let vx=0, vy=0;
+    if(mx < margin) vx = -((margin-mx)/margin)*maxSpeed;
+    else if(mx > VIEW_W - margin) vx = ((mx-(VIEW_W-margin))/margin)*maxSpeed;
+    if(my < margin) vy = -((margin-my)/margin)*maxSpeed;
+    else if(my > VIEW_H - margin) vy = ((my-(VIEW_H-margin))/margin)*maxSpeed;
+    cam.vx = vx; cam.vy = vy;
+    cam.x = clamp(cam.x + cam.vx, 0, Math.max(0, WORLD_W - VIEW_W));
+    cam.y = clamp(cam.y + cam.vy, 0, Math.max(0, WORLD_H - VIEW_H));
+    world.style.transform = `translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    requestAnimationFrame(updateCamera);
+  }
+  const lastMouse = {x:0,y:0};
+  view.addEventListener('mousemove', (e)=>{ lastMouse.x=e.clientX; lastMouse.y=e.clientY; });
+  requestAnimationFrame(updateCamera);
+
+  // ===== Factions & Unit Databases (with abilities) =====
+  const ASCENDANT_TYPES = {
+    vanguard:  {hp:2, dmg:1, range:1, move:2, emoji:'🛡️', name:'Vanguard', ability:{key:'shieldwall', name:'Shield Wall', kind:'self', maxPerTurn:1}},
+    ranger:    {hp:1, dmg:1, range:4, move:2, emoji:'🏹', name:'Ranger', ability:{key:'snipe', name:'Snipe', kind:'unitEnemy', range:5, maxPerTurn:1, ignoreLoS:true, dmg:2}},
+    judicator: {hp:3, dmg:1, range:1, move:2, emoji:'👑', name:'Judicator', aura:+1, ability:{key:'rally', name:'Rally', kind:'unitFriendly', range:2, maxPerTurn:1, moveBonus:1}},
+    lancer:    {hp:2, dmg:1, range:1, move:3, emoji:'🗡️', name:'Lancer', ability:{key:'lunge', name:'Lunge', kind:'unitEnemy', range:2, maxPerTurn:1}},
+    stormseer: {hp:1, dmg:2, range:2, move:2, emoji:'⚡', name:'Stormseer', ability:{key:'chain', name:'Chain Lightning', kind:'unitEnemy', range:2, maxPerTurn:1, chain:2}},
+    aegis:     {hp:4, dmg:1, range:1, move:2, emoji:'🛸', name:'Aegis', ability:{key:'bulwark', name:'Bulwark', kind:'self', maxPerTurn:1}},
+    blinkblade:{hp:2, dmg:1, range:1, move:2, emoji:'🌀', name:'Blinkblade', ability:{key:'blink', name:'Blink', kind:'tile', range:3, maxPerTurn:1, ignoreBlocks:true}},
+    oracle:    {hp:1, dmg:0, range:1, move:2, emoji:'🔮', name:'Oracle', ability:{key:'haste', name:'Haste', kind:'unitFriendly', range:2, maxPerTurn:1, moveBonus:2}},
+    disruptor: {hp:1, dmg:1, range:2, move:2, emoji:'🧲', name:'Disruptor', ability:{key:'emp', name:'EMP', kind:'unitEnemy', range:2, maxPerTurn:1}},
+  };
+
+  const SWARM_TYPES = {
+    drone:   {hp:2, dmg:1, range:1, move:2, emoji:'🐛', name:'Drone'},
+    spitter: {hp:1, dmg:1, range:3, move:2, emoji:'🧪', name:'Spitter', ability:{key:'acid', name:'Acid Pool', kind:'tile', range:3, maxPerTurn:1}},
+    brute:   {hp:3, dmg:2, range:1, move:2, emoji:'🦍', name:'Brute', ability:{key:'smash', name:'Smash', kind:'self', maxPerTurn:1}},
+    stalker: {hp:2, dmg:1, range:2, move:2, emoji:'🕷️', name:'Stalker', ability:{key:'mark', name:'Mark Prey', kind:'unitEnemy', range:2, maxPerTurn:1}},
+    brooder: {hp:3, dmg:1, range:1, move:2, emoji:'🥚', name:'Brood-Queen', aura:+1, ability:{key:'spawn', name:'Spawnling', kind:'tile', range:1, maxPerTurn:1}},
+    leaper:  {hp:2, dmg:1, range:1, move:3, emoji:'🦗', name:'Leaper', ability:{key:'leap', name:'Leap', kind:'tile', range:2, maxPerTurn:1, ignoreBlocks:true}},
+    psycher: {hp:2, dmg:1, range:2, move:2, emoji:'🧠', name:'Psycher', ability:{key:'silence', name:'Silence', kind:'unitEnemy', range:3, maxPerTurn:1}},
+    burster: {hp:2, dmg:1, range:1, move:2, emoji:'💥', name:'Burster', ability:{key:'explode', name:'Explode', kind:'self', maxPerTurn:1}},
+    dronelet:{hp:1, dmg:1, range:1, move:2, emoji:'🐜', name:'Dronelet', spawnOnly:true},
+  };
+
+  const TYPES = { P: ASCENDANT_TYPES, A: SWARM_TYPES };
+
+  // ===== Game State =====
+  let state=null; let selectedId=null; let hintMode=null; let hints=new Set();
+  const turnWhoEl=document.getElementById('turnWho');
+  const roundNumEl=document.getElementById('roundNum');
+  const ordersLeftEl=document.getElementById('ordersLeft');
+  const abilitiesLeftEl=document.getElementById('abilitiesLeft');
+  const levelEl=document.getElementById('level');
+  const logEl=document.getElementById('log');
+
+  document.getElementById('btnMove').onclick = ()=>setHint('move');
+  document.getElementById('btnAttack').onclick = ()=>setHint('attack');
+  document.getElementById('btnAbility').onclick = ()=>setHint('ability');
+  document.getElementById('btnFortify').onclick = ()=>performFortify();
+  document.getElementById('btnEnd').onclick = ()=>endTurn();
+  document.getElementById('btnReset').onclick = ()=> startCampaign(1);
+
+  function id(){ return Math.random().toString(36).slice(2,9) }
+  function key(x,y){ return x+","+y }
+  function isOnBoard(x,y){ return x>=0 && y>=0 && x<W && y<H }
+
+  // Terrain (light obstacles) + Hazards with TTL
+  function genTerrain(){
+    const rocks=new Set();
+    const safeCols=new Set([Math.floor(W/2)-1, Math.floor(W/2)]);
+    const density=0.08; // sparse
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        if(safeCols.has(x)) continue;
+        if(Math.random()<density) rocks.add(key(x,y));
+      }
+    }
+    return rocks;
+  }
+
+  function flagsAtStart(){ return FLAG_XS.map(x=>({x, y:FLAGS_Y, bannersP:0, bannersA:0})); }
+
+  function rollUnits(side, level){
+    const pool = Object.keys(TYPES[side]);
+    const lineup=[];
+    const startRow = side==='P' ? 1 : H-2;
+    const xs = [2,5,8,11,14,17];
+    for(let i=0;i<6;i++){
+      const tKey = pool[Math.floor(Math.random()*pool.length)];
+      const base = TYPES[side][tKey];
+      const scaled = Object.assign({}, base);
+      if(side==='A' && level>1){
+        const mult = 1 + (level-1)*0.15; // scale enemy
+        scaled.hp = Math.max(1, Math.round(base.hp*mult));
+        scaled.dmg = Math.max(1, Math.round(base.dmg*mult));
+      }
+      lineup.push({id:id(), side, tKey, x:xs[i], y:startRow, hp:scaled.hp, maxHp:scaled.hp, armor:0, abilUses:0, silenced:0, nextAtkBonus:0, bonusMove:0, markedByA:0});
+    }
+    return lineup;
+  }
+
+  function startCampaign(level){
+    selectedId=null; hintMode=null; hints.clear();
+    state={
+      level, turn:'P', round:1, orders:3,
+      abilityLeftP:2, abilityLeftA:2,
+      flags: flagsAtStart(),
+      terrain: genTerrain(),
+      hazards: new Map(), // key -> {type:'acid', ttl}
+      units: [],
+      log:[]
+    };
+    state.units.push(...rollUnits('P', level));
+    state.units.push(...rollUnits('A', level));
+    pushLog(`Campaign started. Level ${level}. Player goes first.`);
+    startOfTurn();
+    render();
+  }
+
+  // ===== Helpers / Rules =====
+  function unitAt(x,y){ return state.units.find(u=>u.x===x&&u.y===y) }
+  function hazardAt(x,y){ return state.hazards.get(key(x,y)) }
+  function isBlocked(x,y){ return state.terrain.has(key(x,y)) || !!hazardAt(x,y) }
+  function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y) }
+  function getFlag(x,y){ return state.flags.find(f=>f.x===x && f.y===y) }
+  function isFlag(x,y){ return !!getFlag(x,y) }
+  function sideName(s){ return s==='P'?'Player':'AI' }
+  function T(u){ return TYPES[u.side][u.tKey]; }
+  function abilityOf(u){ return T(u).ability || null }
+  function sideAbilityLeft(side){ return side==='P'? state.abilityLeftP : state.abilityLeftA }
+  function decSideAbilityLeft(side){ if(side==='P') state.abilityLeftP--; else state.abilityLeftA--; }
+
+  function captainAdjacentBonus(u){
+    const caps = state.units.filter(v=>v.side===u.side && TYPES[v.side][v.tKey].aura===+1);
+    return caps.some(c=>manhattan(c,u)===1) ? 1 : 0;
+  }
+
+  function inZoC(tile, enemySide){ return state.units.some(u=>u.side===enemySide && manhattan(u,tile)===1); }
+
+  function pathfindReach(u){
+    const maxSteps = T(u).move + captainAdjacentBonus(u) + (u.bonusMove||0);
+    const visited = new Set([key(u.x,u.y)]);
+    const q=[{x:u.x,y:u.y, steps:0}];
+    const reachable = new Set();
+    while(q.length){
+      const cur=q.shift();
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [dx,dy] of dirs){
+        const nx=cur.x+dx, ny=cur.y+dy; if(!isOnBoard(nx,ny)) continue;
+        if(isBlocked(nx,ny)) continue;
+        if(unitAt(nx,ny)) continue;
+        const k=key(nx,ny); if(visited.has(k)) continue;
+        const steps = cur.steps+1; if(steps>maxSteps) continue;
+        visited.add(k); reachable.add(k);
+        const enemySide = (u.side==='P'?'A':'P');
+        const tile={x:nx,y:ny};
+        if(!inZoC(tile, enemySide)) q.push({x:nx,y:ny,steps});
+      }
+    }
+    return reachable;
+  }
+
+  function inRange(a,b,range){ return (a.x===b.x || a.y===b.y) && manhattan(a,b)<=range }
+  function clearLine(a,b){
+    if(!(a.x===b.x || a.y===b.y)) return false;
+    if(a.x===b.x){
+      const [y1,y2]= a.y<b.y ? [a.y,b.y] : [b.y,a.y];
+      for(let y=y1+1;y<y2;y++){ if(isBlocked(a.x,y) || unitAt(a.x,y)) return false; }
+      return true;
+    } else {
+      const [x1,x2]= a.x<b.x ? [a.x,b.x] : [b.x,a.x];
+      for(let x=x1+1;x<x2;x++){ if(isBlocked(x,a.y) || unitAt(x,a.y)) return false; }
+      return true;
+    }
+  }
+
+  function attackables(u){
+    const Tu=T(u);
+    const targets = state.units.filter(v=>v.side!==u.side && inRange(u,v,Tu.range));
+    return targets.filter(t=> (Tu.range===1 ? manhattan(u,t)===1 : clearLine(u,t)) );
+  }
+
+  function performMove(u, tx, ty){
+    const reach = pathfindReach(u);
+    if(!reach.has(key(tx,ty))) return toast('Not reachable');
+    u.x=tx; u.y=ty; spendOrder(`${sideName(u.side)} moved ${label(u)} to (${tx},${ty})`);
+    render();
+  }
+
+  function actualDamage(attacker, target, base){
+    let dmg = base + (attacker.nextAtkBonus||0);
+    attacker.nextAtkBonus = 0; // consume any buff
+    // Marked bonus: AI deals +1 vs marked targets
+    if(attacker.side==='A' && target.markedByA>0) dmg += 1;
+    // Armor reduction
+    if(target.armor>0){ dmg=Math.max(0,dmg-1); target.armor=0; }
+    return dmg;
+  }
+
+  function damageUnit(attacker, target, base, note){
+    const dmg = actualDamage(attacker, target, base);
+    if(dmg>0) target.hp -= dmg;
+    pushLog(`${label(attacker)} ${note||'hit'} ${label(target)} for ${dmg}.`);
+    if(target.hp<=0){
+      state.units = state.units.filter(w=>w.id!==target.id);
+      pushLog(`${label(target)} was defeated.`);
+    }
+  }
+
+  function performAttack(u, target){
+    const Tu=T(u);
+    const list = attackables(u);
+    if(!list.some(v=>v.id===target.id)) return toast('Target not in range');
+    damageUnit(u, target, Tu.dmg, 'hit');
+    spendOrder(`${label(u)} attacked.`);
+    render();
+  }
+
+  function performFortify(){
+    if(!selectedId) return toast('Select a unit first');
+    const u = state.units.find(x=>x.id===selectedId);
+    if(!u || u.side!==state.turn) return;
+    u.hp=Math.min(u.maxHp, u.hp+1);
+    u.armor=1;
+    spendOrder(`${sideName(u.side)} fortified ${label(u)} (+1 armor, +1 HP)`);
+    render();
+  }
+
+  function canUseAbility(u){
+    const A = abilityOf(u); if(!A) return {ok:false, why:'No ability'};
+    if(u.side!==state.turn) return {ok:false, why:'Not your turn'};
+    if(u.silenced>0) return {ok:false, why:'Silenced'};
+    if(sideAbilityLeft(u.side)<=0) return {ok:false, why:'No abilities left this turn'};
+    if(u.abilUses>= (A.maxPerTurn||1)) return {ok:false, why:'Used already'};
+    return {ok:true, why:''};
+  }
+
+  function abilityTargets(u){
+    const A = abilityOf(u); if(!A) return {tiles:new Set(), units:new Set(), kind:null};
+    const tiles=new Set(), units=new Set();
+    if(A.kind==='self'){ /* no targets */ }
+    else if(A.kind==='tile'){
+      // Tile range uses manhattan; if ignoreBlocks, we allow targeting over rocks/hazards
+      for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+        const d = Math.abs(u.x-x)+Math.abs(u.y-y); if(d<= (A.range||0)){
+          if(unitAt(x,y)) continue; // must be empty
+          if(!A.ignoreBlocks && isBlocked(x,y)) continue;
+          tiles.add(key(x,y));
+        }
+      }
+    }
+    else if(A.kind==='unitFriendly' || A.kind==='unitEnemy'){
+      const foes = (A.kind==='unitEnemy');
+      for(const t of state.units){
+        if((t.side!==u.side) !== foes) continue;
+        const d = Math.abs(u.x-t.x)+Math.abs(u.y-t.y); if(d<= (A.range||0)){
+          if(A.ignoreLoS){ units.add(t.id); }
+          else {
+            if(u.x===t.x || u.y===t.y){ if(clearLine(u,t)) units.add(t.id); }
+          }
+        }
+      }
+    }
+    return {tiles, units, kind:A.kind};
+  }
+
+  function useAbility(u, target){
+    const A = abilityOf(u); if(!A) return toast('No ability');
+    const check=canUseAbility(u); if(!check.ok) return toast(check.why);
+
+    // Resolve effects
+    switch(A.key){
+      case 'shieldwall':
+        u.armor = Math.min(3, (u.armor||0)+2);
+        spendAbility(u, `${label(u)} raises Shield Wall (+2 armor).`);
+        break;
+      case 'snipe':{
+        const t = target; if(!t) return toast('Pick a target');
+        damageUnit(u, t, A.dmg||2, 'sniped');
+        spendAbility(u, `${label(u)} used Snipe.`);
+        break;}
+      case 'rally':{
+        const t=target; if(!t) return toast('Pick a friendly');
+        t.bonusMove = (t.bonusMove||0) + (A.moveBonus||1);
+        t.armor = Math.max(t.armor||0, 1);
+        spendAbility(u, `${label(u)} rallied ${label(t)} (+${A.moveBonus||1} move, +1 armor).`);
+        break;}
+      case 'lunge':{
+        const t=target; if(!t) return toast('Pick an enemy');
+        // find adjacent empty tile closest to target
+        const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:t.x+dx,y:t.y+dy}))
+          .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y));
+        spots.sort((a,b)=> (Math.abs(a.x-u.x)+Math.abs(a.y-u.y)) - (Math.abs(b.x-u.x)+Math.abs(b.y-u.y)) );
+        if(!spots.length) return toast('No space to lunge');
+        const spot=spots[0]; u.x=spot.x; u.y=spot.y; damageUnit(u,t, T(u).dmg, 'lunged');
+        spendAbility(u, `${label(u)} lunged adjacent and struck.`);
+        render();
+        break;}
+      case 'chain':{
+        const t=target; if(!t) return toast('Pick an enemy');
+        damageUnit(u,t,1,'zapped');
+        const adj = state.units.filter(v=> v.side!==u.side && manhattan(v,t)===1).slice(0, A.chain||2);
+        for(const v of adj) damageUnit(u,v,1,'chained');
+        spendAbility(u, `${label(u)} unleashed Chain Lightning.`);
+        render();
+        break;}
+      case 'bulwark':
+        u.armor = Math.min(3, (u.armor||0)+2); u.hp=Math.min(u.maxHp, u.hp+1);
+        spendAbility(u, `${label(u)} enters Bulwark (+2 armor, +1 HP).`);
+        break;
+      case 'blink':{
+        const tile = target; if(!tile) return toast('Pick a tile');
+        u.x=tile.x; u.y=tile.y; spendAbility(u, `${label(u)} blinked to (${u.x},${u.y}).`); render();
+        break;}
+      case 'haste':{
+        const t=target; if(!t) return toast('Pick a friendly');
+        t.bonusMove = (t.bonusMove||0) + (A.moveBonus||2);
+        spendAbility(u, `${label(u)} cast Haste on ${label(t)} (+${A.moveBonus||2} move).`);
+        break;}
+      case 'emp':{
+        const t=target; if(!t) return toast('Pick an enemy');
+        t.armor=0; t.silenced = Math.max(t.silenced||0, 1);
+        spendAbility(u, `${label(u)} EMP'ed ${label(t)} (armor stripped, silenced).`);
+        break;}
+      // Swarm
+      case 'acid':{
+        const tile=target; if(!tile) return;
+        state.hazards.set(key(tile.x,tile.y), {type:'acid', ttl:3});
+        spendAbility(u, `${label(u)} spread acid at (${tile.x},${tile.y}).`); render();
+        break;}
+      case 'smash':
+        u.nextAtkBonus = (u.nextAtkBonus||0) + 1; spendAbility(u, `${label(u)} readies a Smash (+1 next attack).`); break;
+      case 'mark':{
+        const t=target; if(!t) return; t.markedByA=2; spendAbility(u, `${label(u)} marked ${label(t)} (takes +1 from Swarm).`); break;}
+      case 'spawn':{
+        const tile=target; if(!tile) return; const tKey='dronelet';
+        state.units.push({id:id(), side:'A', tKey, x:tile.x, y:tile.y, hp:SWARM_TYPES[tKey].hp, maxHp:SWARM_TYPES[tKey].hp, armor:0, abilUses:0, silenced:0, nextAtkBonus:0, bonusMove:0, markedByA:0});
+        spendAbility(u, `${label(u)} spawned a Dronelet.`); render(); break;}
+      case 'leap':{
+        const tile=target; if(!tile) return; u.x=tile.x; u.y=tile.y; spendAbility(u, `${label(u)} leaped to (${u.x},${u.y}).`); render(); break;}
+      case 'silence':{
+        const t=target; if(!t) return; t.silenced = Math.max(t.silenced||0,1); spendAbility(u, `${label(u)} silenced ${label(t)}.`); break;}
+      case 'explode':{
+        // deal 2 to adjacent all; then die
+        const adj = state.units.filter(v=> manhattan(v,u)===1 && !(v.id===u.id));
+        for(const v of adj){ damageUnit(u,v,2,'exploded on'); }
+        // remove self
+        state.units = state.units.filter(w=>w.id!==u.id);
+        spendAbility(u, `${label(u)} exploded!`); render(); break;}
+      default: toast('Ability not implemented'); return;
+    }
+  }
+
+  function spendAbility(u, msg){
+    u.abilUses = (u.abilUses||0) + 1; decSideAbilityLeft(u.side); pushLog(msg); state.orders--; // abilities cost an order
+    if(state.orders<=0) endTurn(); else updateHud();
+  }
+
+  function startOfTurn(){
+    // Reset per-turn counters, statuses tick down, banners, hazards decay
+    if(state.turn==='P'){ state.abilityLeftP=2; } else { state.abilityLeftA=2; }
+    for(const u of state.units){
+      if(u.side===state.turn){ u.armor=0; u.abilUses=0; u.bonusMove=0; if(u.silenced>0) u.silenced--; }
+      if(u.markedByA>0){ u.markedByA--; }
+    }
+    // Banners
+    const me = state.turn;
+    for(const f of state.flags){
+      const onMe = state.units.find(u=>u.side===me && u.x===f.x && u.y===f.y);
+      const onThem = state.units.find(u=>u.side!==me && u.x===f.x && u.y===f.y);
+      if(onMe && !onThem){ if(me==='P') f.bannersP++; else f.bannersA++; }
+    }
+    // Hazards decay every turn
+    for(const [k,h] of Array.from(state.hazards.entries())){ h.ttl--; if(h.ttl<=0) state.hazards.delete(k); }
+  }
+
+  function spendOrder(msg){ state.orders--; pushLog(msg); if(state.orders<=0){ endTurn(); } else updateHud(); }
+
+  function endTurn(){
+    if(checkVictory(state.turn)) return;
+    state.turn = (state.turn==='P'?'A':'P');
+    if(state.turn==='P') state.round++;
+    state.orders=3; selectedId=null; hintMode=null; hints.clear();
+    startOfTurn(); render();
+    if(state.turn==='A') setTimeout(aiTurn, 350);
+  }
+
+  function checkVictory(side){
+    const enemies = state.units.filter(u=>u.side!==side);
+    if(enemies.length===0){ return endLevel(side, `${sideName(side)} wins by elimination!`), true; }
+    const ctl = state.flags.filter(f=>{
+      const me = state.units.find(u=>u.side===side && u.x===f.x && u.y===f.y);
+      const them = state.units.find(u=>u.side!==side && u.x===f.x && u.y===f.y);
+      return !!me && !them;
+    });
+    const banners = (side==='P') ? (f=>f.bannersP) : (f=>f.bannersA);
+    if(ctl.filter(f=>banners(f)>0).length>=2){ return endLevel(side, `${sideName(side)} controls two bannered flags!`), true; }
+    return false;
+  }
+
+  function endLevel(winner, msg){
+    pushLog(msg); toast(msg);
+    const next = (winner==='P') ? state.level+1 : 1;
+    setTimeout(()=> startCampaign(next), 900);
+  }
+
+  function label(u){ return `${u.side==='P'?'P':'AI'} ${T(u).name}` }
+
+  // ===== Rendering =====
+  function render(){
+    world.style.width = WORLD_W + 'px';
+    world.style.height= WORLD_H + 'px';
+
+    gridEl.innerHTML='';
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const cell=document.createElement('div');
+        cell.className='cell';
+        cell.dataset.x=x; cell.dataset.y=y;
+
+        // Terrain
+        if(state.terrain.has(key(x,y))){ const r=document.createElement('div'); r.className='rock'; cell.appendChild(r); }
+        const hz = hazardAt(x,y); if(hz){ const a=document.createElement('div'); a.className='acid'; cell.appendChild(a); }
+
+        // Flags
+        const flag=getFlag(x,y);
+        if(flag){
+          const f=document.createElement('div'); f.className='flag'; f.style.background='linear-gradient(180deg, rgba(255,209,102,.18), transparent)';
+          cell.appendChild(f);
+          const bs=document.createElement('div'); bs.className='banner-stack';
+          for(let i=0;i<Math.min(flag.bannersP,3);i++){ const b=document.createElement('div'); b.className='banner p'; bs.appendChild(b); }
+          for(let i=0;i<Math.min(flag.bannersA,3);i++){ const b=document.createElement('div'); b.className='banner a'; bs.appendChild(b); }
+          cell.appendChild(bs);
+        }
+
+        // Hints
+        if(hints.has(key(x,y))){ cell.classList.add(hintMode==='move'?'hint-move':(hintMode==='attack'?'hint-attack':'hint-ability')); }
+
+        const u = state.units.find(w=>w.x===x && w.y===y);
+        if(u){
+          const wrap=document.createElement('div'); wrap.className='unit';
+          const em=document.createElement('div'); em.textContent= T(u).emoji; em.style.filter='drop-shadow(0 1px 0 rgba(0,0,0,.45))'; wrap.appendChild(em);
+          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${T(u).name} · ${u.hp}/${u.maxHp}`; wrap.appendChild(chip);
+          const tag=document.createElement('div'); tag.className='tag '+(u.side==='P'?'p':'a'); tag.textContent= u.side==='P'? 'P':'AI'; wrap.appendChild(tag);
+          if(u.armor>0){ const ar=document.createElement('div'); ar.className='armor'; ar.textContent='Armor +'+u.armor; wrap.appendChild(ar); }
+          if(u.silenced>0){ const st=document.createElement('div'); st.className='status'; st.textContent='Silenced'; wrap.appendChild(st); }
+          if(selectedId===u.id) cell.classList.add('sel');
+          cell.appendChild(wrap);
+        }
+
+        cell.onclick = onCellClick;
+        gridEl.appendChild(cell);
+      }
+    }
+    updateHud();
+  }
+
+  function updateHud(){
+    turnWhoEl.textContent = state.turn==='P'? 'Player':'AI';
+    roundNumEl.textContent = state.round;
+    ordersLeftEl.textContent = state.orders;
+    abilitiesLeftEl.textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
+    levelEl.textContent = state.level;
+  }
+
+  // ===== Player Input =====
+  function setHint(mode){
+    if(state.turn!=='P') return;
+    if(!selectedId) { toast('Select a unit first'); return; }
+    hintMode=mode; hints.clear();
+    const u=state.units.find(x=>x.id===selectedId);
+    if(!u || u.side!=='P') return;
+    if(mode==='move') pathfindReach(u).forEach(k=>hints.add(k));
+    else if(mode==='attack') for(const t of attackables(u)) hints.add(t.id);
+    else if(mode==='ability'){
+      const A = abilityOf(u); if(!A){ toast('No ability'); return; }
+      const check=canUseAbility(u); if(!check.ok){ toast(check.why); return; }
+      const tgs = abilityTargets(u);
+      if(A.kind==='tile'){ tgs.tiles.forEach(k=>hints.add(k)); }
+      else if(A.kind==='unitFriendly' || A.kind==='unitEnemy'){ for(const id of tgs.units) hints.add(id); }
+      else { /* self ability: click unit again to confirm */ hints.add(key(u.x,u.y)); }
+    }
+    render();
+  }
+
+  function onCellClick(e){
+    const x=+e.currentTarget.dataset.x, y=+e.currentTarget.dataset.y;
+    const u = unitAt(x,y);
+
+    if(hintMode==='attack' && u && hints.has(u.id)){
+      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
+      if(me.side!==state.turn) return; performAttack(me,u); hints.clear(); hintMode=null; return;
+    }
+    if(hintMode==='move' && hints.has(key(x,y))){
+      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
+      if(me.side!==state.turn) return; performMove(me,x,y); hints.clear(); hintMode=null; return;
+    }
+    if(hintMode==='ability'){
+      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
+      const A=abilityOf(me); if(!A) return;
+      if(A.kind==='tile' && hints.has(key(x,y))) { useAbility(me, {x,y}); hints.clear(); hintMode=null; return; }
+      if((A.kind==='unitFriendly' || A.kind==='unitEnemy') && u && hints.has(u.id)) { useAbility(me, u); hints.clear(); hintMode=null; return; }
+      if(A.kind==='self' && u && u.id===me.id){ useAbility(me, null); hints.clear(); hintMode=null; return; }
+    }
+
+    if(u && u.side===state.turn){ selectedId=u.id; render(); return; }
+  }
+
+  // ===== AI =====
+  function aiTurn(){
+    if(state.turn!=='A') return;
+    let orders=3;
+
+    function tryAbilityPlays(){
+      if(sideAbilityLeft('A')<=0) return false;
+      // 1) Kill with explode
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='explode')){
+        if(!canUseAbility(u).ok) continue;
+        const adjEnemies = state.units.filter(v=>v.side==='P' && manhattan(v,u)===1);
+        const wouldKill = adjEnemies.filter(v=> (v.hp <= 2));
+        if(wouldKill.length>=1){ useAbility(u,null); return true; }
+      }
+      // 2) Silence dangerous player abilities in range
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='silence')){
+        if(!canUseAbility(u).ok) continue;
+        const A=abilityOf(u); const cands = state.units.filter(v=> v.side==='P' && abilityOf(v) && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v));
+        const t = cands[0]; if(t){ useAbility(u,t); return true; }
+      }
+      // 3) Mark prey on units holding flags
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='mark')){
+        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        const cands = state.units.filter(v=> v.side==='P' && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v) && isFlag(v.x,v.y));
+        const t = cands[0]; if(t){ useAbility(u,t); return true; }
+      }
+      // 4) Spawn a dronelet next to Brood-Queen if near flags
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='spawn')){
+        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:u.x+dx,y:u.y+dy}))
+          .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y) && inRange(u,p,A.range));
+        const nearFlag = spots.find(s=>isFlag(s.x,s.y));
+        if(nearFlag){ useAbility(u, nearFlag); return true; }
+        if(spots[0]){ useAbility(u, spots[0]); return true; }
+      }
+      // 5) Acid pool to deny a neutral/foe flag
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='acid')){
+        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        const targets = state.flags
+          .filter(f=> !state.units.some(v=>v.side==='A' && v.x===f.x && v.y===f.y)) // not ours
+          .map(f=>({x:f.x,y:f.y}))
+          .filter(t=> inRange(u,t,A.range) && (u.x===t.x || u.y===t.y) && clearLine(u,t) && !unitAt(t.x,t.y));
+        if(targets[0]){ useAbility(u, targets[0]); return true; }
+      }
+      // 6) Leap to a flag
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='leap')){
+        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        const targets = state.flags.map(f=>({x:f.x,y:f.y}))
+          .filter(t=> inRange(u,t,A.range) && !unitAt(t.x,t.y));
+        if(targets[0]){ useAbility(u, targets[0]); return true; }
+      }
+      // 7) Smash to prep extra damage (adjacent to enemy)
+      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='smash')){
+        if(!canUseAbility(u).ok) continue; const adj = state.units.some(v=>v.side==='P' && manhattan(v,u)===1);
+        if(adj){ useAbility(u,null); return true; }
+      }
+      return false;
+    }
+
+    function doAttackIfPossible(){
+      const pairs=[];
+      for(const u of state.units.filter(x=>x.side==='A')){
+        const list=attackables(u);
+        for(const t of list){
+          const onFlag = !!getFlag(t.x,t.y);
+          const score=(onFlag?100:0) + (5 - t.hp) + (t.markedByA?1:0);
+          pairs.push({u,t, score});
+        }
+      }
+      if(pairs.length){ pairs.sort((a,b)=>b.score-a.score); const {u,t}=pairs[0]; performAttack(u,t); return true; }
+      return false;
+    }
+
+    function moveTowardFlags(){
+      const targets = state.flags.filter(f=> !state.units.some(u=>u.side==='P' && u.x===f.x && u.y===f.y) );
+      if(!targets.length) return false;
+      let best=null;
+      for(const u of state.units.filter(x=>x.side==='A')){
+        const reach = Array.from(pathfindReach(u)).map(s=>s.split(',').map(Number)); if(!reach.length) continue;
+        const curDist = Math.min(...targets.map(f=>Math.abs(u.x-f.x)+Math.abs(u.y-f.y)));
+        for(const [tx,ty] of reach){
+          const nd = Math.min(...targets.map(f=>Math.abs(tx-f.x)+Math.abs(ty-f.y)));
+          const gain = curDist-nd; const score = gain*10 + (isFlag(tx,ty)?3:0);
+          if(!best || score>best.score) best={u,tx,ty,score};
+        }
+      }
+      if(best){ performMove(best.u,best.tx,best.ty); return true; }
+      return false;
+    }
+
+    function fortifyOnFlags(){
+      const u = state.units.find(v=> v.side==='A' && isFlag(v.x,v.y));
+      if(u){ selectedId=u.id; performFortify(); return true; }
+      return false;
+    }
+
+    function defendWinning(){
+      const ours = state.flags.filter(f=> f.bannersA>0 && state.units.some(u=>u.side==='A' && u.x===f.x && u.y===f.y) && !state.units.some(u=>u.side==='P' && u.x===f.x && u.y===f.y));
+      if(ours.length>=2){ if(doAttackIfPossible()) return true; if(fortifyOnFlags()) return true; }
+      return false;
+    }
+
+    function step(){
+      if(orders<=0 || state.turn!=='A') { if(state.turn==='A') endTurn(); return; }
+      if(defendWinning()) { orders--; return setTimeout(step, 200); }
+      if(tryAbilityPlays()) { orders--; return setTimeout(step, 200); }
+      if(doAttackIfPossible()) { orders--; return setTimeout(step, 200); }
+      if(moveTowardFlags()) { orders--; return setTimeout(step, 200); }
+      if(fortifyOnFlags()) { orders--; return setTimeout(step, 200); }
+      const pool=state.units.filter(u=>u.side==='A'); const u=pool[Math.floor(Math.random()*pool.length)]; selectedId=u.id; performFortify(); orders--; return setTimeout(step, 200);
+    }
+    step();
+  }
+
+  // ===== Logging & HUD =====
+  function pushLog(s){ state.log.unshift(s); logEl.innerHTML = state.log.slice(0,22).map(x=>`<p>• ${escapeHtml(x)}</p>`).join(''); }
+  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 1600); }
+  function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])) }
+
+  // ===== Start =====
+  startCampaign(1);
+})();
+</script>
+</body>
+</html>
