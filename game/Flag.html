@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ascendants vs Swarm — Three Orders (Campaign + Abilities)</title>
+<title>Ascendants vs Swarm — Three Orders (Campaign + Abilities + Minimap + Zoom)</title>
 <style>
   :root{
     --bg:#0b1320; --panel:#0f1729; --line:#1b2b4a; --muted:#9fb3c8; --text:#e6edf3;
     --p:#67e8f9; --a:#f87171; --flag:#ffd166; --grid:#203358; --cell:#0c1527; --sel:#e9d8a6;
-    --acid:#27c93f; --acid2:#159b2b;
+    --acid:#27c93f; --acid2:#159b2b; --white:#ffffff;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0; background:radial-gradient(1000px 500px at 20% 0%, #0c1a3a 0%, #0b1320 50%, #070d1b 100%); color:var(--text); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;}
-  .wrap{display:grid; grid-template-columns: 980px 380px; gap:16px; padding:16px;}
+  .wrap{display:grid; grid-template-columns: 980px 440px; gap:16px; padding:16px;}
 
   /* Viewport + big map */
   .view{position:relative; width:980px; height:640px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 12px 36px rgba(0,0,0,.35)}
-  .world{position:absolute; left:0; top:0; will-change:transform;}
+  .world{position:absolute; left:0; top:0; will-change:transform; transform-origin:0 0;}
   .grid{display:grid; gap:6px}
   .cell{width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;}
   .cell:hover{filter:brightness(1.05)}
@@ -27,8 +27,8 @@
   .banner{width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,.35)}
   .banner.p{background:var(--p)} .banner.a{background:var(--a)}
 
-  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:26px}
-  .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:11px; padding:2px 6px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
+  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:28px}
+  .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:12px; padding:2px 8px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
   .tag{position:absolute; top:4px; left:6px; font-size:12px; padding:1px 6px; border-radius:8px; border:1px solid #1f2a44}
   .tag.p{background:rgba(103,232,249,.14); color:#9beffb}
   .tag.a{background:rgba(248,113,113,.14); color:#ffb1b1}
@@ -45,7 +45,7 @@
 
   .side{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:0 10px 28px rgba(0,0,0,.28)}
   h1{margin:0 0 8px; font-size:20px; color:#cbd6f3}
-  .row{display:flex; gap:8px; align-items:center; margin:6px 0}
+  .row{display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap}
   .pill{padding:6px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-size:12px}
   .orders{font-weight:700; color:#e2e8f8}
   .btns{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 4px}
@@ -55,9 +55,19 @@
   .legend{display:grid; grid-template-columns:auto 1fr; gap:6px 10px; font-size:13px; color:#9fb3c8}
   .key{width:18px; height:18px; border-radius:50%; border:1px solid var(--line)}
   .key.p{background:var(--p)} .key.a{background:var(--a)} .key.f{background:var(--flag); border-color:#a68b2a}
-  .log{max-height:280px; overflow:auto; font-size:13px; color:#aebbd6}
+  .log{max-height:210px; overflow:auto; font-size:13px; color:#aebbd6}
   .log p{margin:.25rem 0}
   .toast{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1729; color:#cfe3ff; border:1px solid var(--line); padding:10px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(0,0,0,.35);}  
+
+  /* Unit detail + minimap + highscore */
+  .unitPanel{border:1px solid var(--line); border-radius:12px; padding:10px; background:#0d1831;}
+  .unitTitle{font-weight:700; color:#eaf0ff; margin-bottom:6px; display:flex; align-items:center; gap:6px}
+  .abilityBtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
+  .ability-btn{background:#0e203d; border:1px solid #22406f; padding:8px 10px; border-radius:9px; font-size:12px}
+  .ability-btn:disabled{opacity:.5; cursor:not-allowed}
+  .miniwrap{margin-top:10px; border:1px solid var(--line); border-radius:12px; padding:8px; background:#0d1831;}
+  #minimap{display:block; width:100%; height:auto; border-radius:8px; background:#0b1326}
+  .textin{flex:1 1 auto; min-width:160px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0f1e36; color:var(--white)}
 </style>
 </head>
 <body>
@@ -76,7 +86,9 @@
         <span class="pill">Turn: <b id="turnWho">Player</b></span>
         <span class="pill orders">Orders Left: <b id="ordersLeft">3</b></span>
         <span class="pill">Abilities Left: <b id="abilitiesLeft">2</b></span>
+        <span class="pill">Best (session): <b id="bestLevel">1</b></span>
       </div>
+
       <div class="btns">
         <button id="btnMove">Move</button>
         <button id="btnAttack">Attack</button>
@@ -85,6 +97,32 @@
         <button id="btnEnd">End Turn</button>
         <button id="btnReset" title="Restart campaign">↺ Reset</button>
       </div>
+
+      <div class="row" style="justify-content:space-between">
+        <div class="pill">Zoom <b id="zoomDisp">140%</b></div>
+        <div class="btns"><button id="zoomOut">−</button><button id="zoomIn">＋</button></div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="unitPanel">
+        <div class="unitTitle"><span id="unitEmoji">⬚</span><span id="unitName">No unit selected</span></div>
+        <div class="row"><span class="pill" id="unitStats">—</span></div>
+        <div class="abilityBtns" id="abilityBtns"></div>
+      </div>
+
+      <div class="miniwrap">
+        <canvas id="minimap" width="220" height="150"></canvas>
+      </div>
+
+      <div class="miniwrap">
+        <div class="row"><span class="pill">Save Highscore (level)</span></div>
+        <div class="row">
+          <input id="playerName" class="textin" placeholder="Your name (optional)"/>
+          <button id="saveScore">Save Highscore</button>
+        </div>
+        <div id="saveStatus" class="pill" style="display:none; margin-top:8px"></div>
+      </div>
+
       <div class="sep"></div>
       <div class="legend" style="margin-bottom:8px">
         <div class="key p"></div><div>Ascendants (you)</div>
@@ -97,44 +135,74 @@
   <div id="toast" class="toast" style="display:none"></div>
 
 <script>
+// Make session highscore visible to Firebase script later
+window.maxLevelReached = 1;
+</script>
+
+<script>
 (function(){
   // ===== Big Map Config =====
   const W=24, H=16;               // larger field
   const TILE=48, GAP=6;            // visuals
+  const CELL=TILE+GAP;
   const FLAGS_Y = Math.floor(H/2); // central band
   const FLAG_XS = [3, 7, 12, 17, 21]; // five flags across the middle
 
-  // ===== Camera (mouse-look / edge pan) =====
+  // ===== Camera (zoom + mouse-look / edge pan) =====
   const view = document.getElementById('view');
   const world = document.querySelector('.world');
   const gridEl = document.getElementById('grid');
   let cam = {x:0, y:0, vx:0, vy:0};
+  let zoom = 1.4; const ZMIN=1.0, ZMAX=2.4;
   const VIEW_W = view.clientWidth, VIEW_H = view.clientHeight;
-  const WORLD_W = W*(TILE+GAP)+GAP, WORLD_H = H*(TILE+GAP)+GAP;
+  const WORLD_W = W*CELL+GAP, WORLD_H = H*CELL+GAP;
+
+  const zoomDispEl = document.getElementById('zoomDisp');
+  function setZoom(nz, anchor){
+    nz = Math.max(ZMIN, Math.min(ZMAX, nz));
+    const rect = view.getBoundingClientRect();
+    const ax = anchor? anchor[0] : rect.width/2;
+    const ay = anchor? anchor[1] : rect.height/2;
+    // keep the point under cursor stable
+    const wx = (cam.x + ax) / zoom; // world px (unscaled)
+    const wy = (cam.y + ay) / zoom;
+    zoom = nz;
+    cam.x = wx * zoom - ax;
+    cam.y = wy * zoom - ay;
+    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+    zoomDispEl.textContent = Math.round(zoom*100)+'%';
+  }
 
   gridEl.style.gridTemplateColumns = `repeat(${W}, ${TILE}px)`;
   gridEl.style.gridTemplateRows    = `repeat(${H}, ${TILE}px)`;
   gridEl.style.padding = `${GAP}px`;
 
   function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
+  const lastMouse = {x:0,y:0};
+  view.addEventListener('mousemove', (e)=>{ lastMouse.x=e.clientX; lastMouse.y=e.clientY; });
+  view.addEventListener('wheel', (e)=>{ e.preventDefault(); const rect=view.getBoundingClientRect(); setZoom( zoom * (e.deltaY<0?1.1:0.9), [e.clientX-rect.left, e.clientY-rect.top]); }, {passive:false});
+
   function updateCamera(){
     const rect = view.getBoundingClientRect();
     const mx = lastMouse.x - rect.left, my = lastMouse.y - rect.top;
-    const margin = 60; const maxSpeed = 18;
+    const margin = 100; const maxSpeed = 24;
     let vx=0, vy=0;
     if(mx < margin) vx = -((margin-mx)/margin)*maxSpeed;
     else if(mx > VIEW_W - margin) vx = ((mx-(VIEW_W-margin))/margin)*maxSpeed;
     if(my < margin) vy = -((margin-my)/margin)*maxSpeed;
     else if(my > VIEW_H - margin) vy = ((my-(VIEW_H-margin))/margin)*maxSpeed;
     cam.vx = vx; cam.vy = vy;
-    cam.x = clamp(cam.x + cam.vx, 0, Math.max(0, WORLD_W - VIEW_W));
-    cam.y = clamp(cam.y + cam.vy, 0, Math.max(0, WORLD_H - VIEW_H));
-    world.style.transform = `translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    cam.x = clamp(cam.x + cam.vx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.y = clamp(cam.y + cam.vy, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+    world.style.transform = `scale(${zoom}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    drawMinimap();
     requestAnimationFrame(updateCamera);
   }
-  const lastMouse = {x:0,y:0};
-  view.addEventListener('mousemove', (e)=>{ lastMouse.x=e.clientX; lastMouse.y=e.clientY; });
   requestAnimationFrame(updateCamera);
+
+  document.getElementById('zoomIn').onclick = ()=> setZoom(zoom*1.15);
+  document.getElementById('zoomOut').onclick= ()=> setZoom(zoom/1.15);
 
   // ===== Factions & Unit Databases (with abilities) =====
   const ASCENDANT_TYPES = {
@@ -170,7 +238,16 @@
   const ordersLeftEl=document.getElementById('ordersLeft');
   const abilitiesLeftEl=document.getElementById('abilitiesLeft');
   const levelEl=document.getElementById('level');
+  const bestLevelEl=document.getElementById('bestLevel');
   const logEl=document.getElementById('log');
+
+  const unitEmojiEl=document.getElementById('unitEmoji');
+  const unitNameEl=document.getElementById('unitName');
+  const unitStatsEl=document.getElementById('unitStats');
+  const abilityBtnsEl=document.getElementById('abilityBtns');
+
+  const minimap = document.getElementById('minimap');
+  const mctx = minimap.getContext('2d');
 
   document.getElementById('btnMove').onclick = ()=>setHint('move');
   document.getElementById('btnAttack').onclick = ()=>setHint('attack');
@@ -259,6 +336,9 @@
   function pathfindReach(u){
     const maxSteps = T(u).move + captainAdjacentBonus(u) + (u.bonusMove||0);
     const visited = new Set([key(u.x,u.y)]);
+    a: {
+      // safety if maxSteps is ridiculous
+    }
     const q=[{x:u.x,y:u.y, steps:0}];
     const reachable = new Set();
     while(q.length){
@@ -309,9 +389,7 @@
   function actualDamage(attacker, target, base){
     let dmg = base + (attacker.nextAtkBonus||0);
     attacker.nextAtkBonus = 0; // consume any buff
-    // Marked bonus: AI deals +1 vs marked targets
-    if(attacker.side==='A' && target.markedByA>0) dmg += 1;
-    // Armor reduction
+    if(attacker.side==='A' && target.markedByA>0) dmg += 1; // marked bonus
     if(target.armor>0){ dmg=Math.max(0,dmg-1); target.armor=0; }
     return dmg;
   }
@@ -359,7 +437,6 @@
     const tiles=new Set(), units=new Set();
     if(A.kind==='self'){ /* no targets */ }
     else if(A.kind==='tile'){
-      // Tile range uses manhattan; if ignoreBlocks, we allow targeting over rocks/hazards
       for(let y=0;y<H;y++) for(let x=0;x<W;x++){
         const d = Math.abs(u.x-x)+Math.abs(u.y-y); if(d<= (A.range||0)){
           if(unitAt(x,y)) continue; // must be empty
@@ -374,9 +451,7 @@
         if((t.side!==u.side) !== foes) continue;
         const d = Math.abs(u.x-t.x)+Math.abs(u.y-t.y); if(d<= (A.range||0)){
           if(A.ignoreLoS){ units.add(t.id); }
-          else {
-            if(u.x===t.x || u.y===t.y){ if(clearLine(u,t)) units.add(t.id); }
-          }
+          else { if(u.x===t.x || u.y===t.y){ if(clearLine(u,t)) units.add(t.id); } }
         }
       }
     }
@@ -387,7 +462,6 @@
     const A = abilityOf(u); if(!A) return toast('No ability');
     const check=canUseAbility(u); if(!check.ok) return toast(check.why);
 
-    // Resolve effects
     switch(A.key){
       case 'shieldwall':
         u.armor = Math.min(3, (u.armor||0)+2);
@@ -406,7 +480,6 @@
         break;}
       case 'lunge':{
         const t=target; if(!t) return toast('Pick an enemy');
-        // find adjacent empty tile closest to target
         const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:t.x+dx,y:t.y+dy}))
           .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y));
         spots.sort((a,b)=> (Math.abs(a.x-u.x)+Math.abs(a.y-u.y)) - (Math.abs(b.x-u.x)+Math.abs(b.y-u.y)) );
@@ -460,10 +533,8 @@
       case 'silence':{
         const t=target; if(!t) return; t.silenced = Math.max(t.silenced||0,1); spendAbility(u, `${label(u)} silenced ${label(t)}.`); break;}
       case 'explode':{
-        // deal 2 to adjacent all; then die
         const adj = state.units.filter(v=> manhattan(v,u)===1 && !(v.id===u.id));
         for(const v of adj){ damageUnit(u,v,2,'exploded on'); }
-        // remove self
         state.units = state.units.filter(w=>w.id!==u.id);
         spendAbility(u, `${label(u)} exploded!`); render(); break;}
       default: toast('Ability not implemented'); return;
@@ -476,20 +547,17 @@
   }
 
   function startOfTurn(){
-    // Reset per-turn counters, statuses tick down, banners, hazards decay
     if(state.turn==='P'){ state.abilityLeftP=2; } else { state.abilityLeftA=2; }
     for(const u of state.units){
       if(u.side===state.turn){ u.armor=0; u.abilUses=0; u.bonusMove=0; if(u.silenced>0) u.silenced--; }
       if(u.markedByA>0){ u.markedByA--; }
     }
-    // Banners
     const me = state.turn;
     for(const f of state.flags){
       const onMe = state.units.find(u=>u.side===me && u.x===f.x && u.y===f.y);
       const onThem = state.units.find(u=>u.side!==me && u.x===f.x && u.y===f.y);
       if(onMe && !onThem){ if(me==='P') f.bannersP++; else f.bannersA++; }
     }
-    // Hazards decay every turn
     for(const [k,h] of Array.from(state.hazards.entries())){ h.ttl--; if(h.ttl<=0) state.hazards.delete(k); }
   }
 
@@ -519,16 +587,23 @@
 
   function endLevel(winner, msg){
     pushLog(msg); toast(msg);
-    const next = (winner==='P') ? state.level+1 : 1;
-    setTimeout(()=> startCampaign(next), 900);
+    // Track session best (player's reached level)
+    if(winner==='P'){
+      window.maxLevelReached = Math.max(window.maxLevelReached || 1, state.level);
+      bestLevelEl.textContent = window.maxLevelReached;
+      const next = state.level+1;
+      setTimeout(()=> startCampaign(next), 900);
+    } else {
+      setTimeout(()=> startCampaign(1), 900);
+    }
   }
 
   function label(u){ return `${u.side==='P'?'P':'AI'} ${T(u).name}` }
 
   // ===== Rendering =====
   function render(){
-    world.style.width = WORLD_W + 'px';
-    world.style.height= WORLD_H + 'px';
+    world.style.width = (W*CELL+GAP) + 'px';
+    world.style.height= (H*CELL+GAP) + 'px';
 
     gridEl.innerHTML='';
     for(let y=0;y<H;y++){
@@ -537,11 +612,9 @@
         cell.className='cell';
         cell.dataset.x=x; cell.dataset.y=y;
 
-        // Terrain
         if(state.terrain.has(key(x,y))){ const r=document.createElement('div'); r.className='rock'; cell.appendChild(r); }
         const hz = hazardAt(x,y); if(hz){ const a=document.createElement('div'); a.className='acid'; cell.appendChild(a); }
 
-        // Flags
         const flag=getFlag(x,y);
         if(flag){
           const f=document.createElement('div'); f.className='flag'; f.style.background='linear-gradient(180deg, rgba(255,209,102,.18), transparent)';
@@ -552,7 +625,6 @@
           cell.appendChild(bs);
         }
 
-        // Hints
         if(hints.has(key(x,y))){ cell.classList.add(hintMode==='move'?'hint-move':(hintMode==='attack'?'hint-attack':'hint-ability')); }
 
         const u = state.units.find(w=>w.x===x && w.y===y);
@@ -572,6 +644,8 @@
       }
     }
     updateHud();
+    updateUnitPanel();
+    drawMinimap();
   }
 
   function updateHud(){
@@ -580,6 +654,27 @@
     ordersLeftEl.textContent = state.orders;
     abilitiesLeftEl.textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
     levelEl.textContent = state.level;
+  }
+
+  function updateUnitPanel(){
+    const u = state.units.find(x=>x.id===selectedId);
+    if(!u){ unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; return; }
+    unitEmojiEl.textContent = T(u).emoji;
+    unitNameEl.textContent = `${T(u).name} ${u.side==='P'?'(You)':'(AI)'}`;
+    unitStatsEl.textContent = `HP ${u.hp}/${u.maxHp} • Move ${T(u).move + (u.bonusMove||0)} • Range ${T(u).range}` + (u.armor? ` • Armor ${u.armor}`:'' ) + (u.silenced? ' • Silenced':'' );
+    abilityBtnsEl.innerHTML='';
+    const A = abilityOf(u);
+    if(A){
+      const btn=document.createElement('button');
+      btn.className='ability-btn'; btn.textContent = `Ability: ${A.name}`;
+      const can = canUseAbility(u);
+      if(!(u.side===state.turn)) { btn.disabled=true; }
+      else if(!can.ok){ btn.disabled=true; btn.title=can.why; }
+      btn.onclick = ()=>{ selectedId=u.id; setHint('ability'); };
+      abilityBtnsEl.appendChild(btn);
+    } else {
+      const s=document.createElement('span'); s.className='pill'; s.textContent='— No ability —'; abilityBtnsEl.appendChild(s);
+    }
   }
 
   // ===== Player Input =====
@@ -597,7 +692,7 @@
       const tgs = abilityTargets(u);
       if(A.kind==='tile'){ tgs.tiles.forEach(k=>hints.add(k)); }
       else if(A.kind==='unitFriendly' || A.kind==='unitEnemy'){ for(const id of tgs.units) hints.add(id); }
-      else { /* self ability: click unit again to confirm */ hints.add(key(u.x,u.y)); }
+      else { hints.add(key(u.x,u.y)); }
     }
     render();
   }
@@ -625,6 +720,49 @@
     if(u && u.side===state.turn){ selectedId=u.id; render(); return; }
   }
 
+  // ===== Minimap =====
+  function drawMinimap(){
+    const kx = minimap.width / (W*CELL+GAP);
+    const ky = minimap.height/ (H*CELL+GAP);
+    mctx.clearRect(0,0,minimap.width,minimap.height);
+    // terrain
+    mctx.fillStyle = '#1e2a46';
+    state.terrain.forEach(k=>{ const [x,y]=k.split(',').map(Number); mctx.fillRect(x*CELL*kx, y*CELL*ky, TILE*kx, TILE*ky); });
+    // hazards
+    mctx.fillStyle = '#2fe85a';
+    for(const [k,h] of state.hazards.entries()){ const [x,y]=k.split(',').map(Number); mctx.fillRect(x*CELL*kx, y*CELL*ky, TILE*kx, TILE*ky); }
+    // flags
+    mctx.fillStyle = '#ffd166';
+    state.flags.forEach(f=>{ mctx.fillRect(f.x*CELL*kx, f.y*CELL*ky, TILE*kx, TILE*ky); });
+    // units
+    for(const u of state.units){
+      mctx.fillStyle = (u.side==='P')? '#67e8f9' : '#f87171';
+      mctx.fillRect(u.x*CELL*kx+1, u.y*CELL*ky+1, TILE*kx-2, TILE*ky-2);
+    }
+    // selected
+    const su = state.units.find(x=>x.id===selectedId);
+    if(su){ mctx.strokeStyle='#ffffff'; mctx.lineWidth=1; mctx.strokeRect(su.x*CELL*kx+0.5, su.y*CELL*ky+0.5, TILE*kx-1, TILE*ky-1); }
+    // viewport rectangle (convert cam scaled -> unscaled)
+    const vx = (cam.x/zoom) * kx;
+    const vy = (cam.y/zoom) * ky;
+    const vw = (VIEW_W/zoom) * kx;
+    const vh = (VIEW_H/zoom) * ky;
+    mctx.strokeStyle = '#cfe3ff'; mctx.lineWidth = 2; mctx.strokeRect(vx, vy, vw, vh);
+  }
+
+  minimap.addEventListener('click', (e)=>{
+    const rect = minimap.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const kx = minimap.width / (W*CELL+GAP), ky = minimap.height/ (H*CELL+GAP);
+    const wx = mx / kx; const wy = my / ky; // world px (unscaled)
+    const vw = VIEW_W/zoom, vh = VIEW_H/zoom;
+    cam.x = wx*zoom - VIEW_W/2; cam.y = wy*zoom - VIEW_H/2;
+    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+    world.style.transform = `scale(${zoom}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    drawMinimap();
+  });
+
   // ===== AI =====
   function aiTurn(){
     if(state.turn!=='A') return;
@@ -632,7 +770,7 @@
 
     function tryAbilityPlays(){
       if(sideAbilityLeft('A')<=0) return false;
-      // 1) Kill with explode
+      // 1) Explode to secure kills
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='explode')){
         if(!canUseAbility(u).ok) continue;
         const adjEnemies = state.units.filter(v=>v.side==='P' && manhattan(v,u)===1);
@@ -747,6 +885,49 @@
   // ===== Start =====
   startCampaign(1);
 })();
+</script>
+
+<!-- Firebase (Compat SDKs for simple script usage) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script>
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.firebasestorage.app",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+  measurementId: "G-8PR6LVKSH3"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// Hook up the "Save Highscore" button
+const saveBtn = document.getElementById('saveScore');
+const nameEl  = document.getElementById('playerName');
+const saveStatusEl = document.getElementById('saveStatus');
+
+saveBtn.addEventListener('click', async () => {
+  const name = (nameEl.value || '').trim() || 'Anonymous';
+  const level = window.maxLevelReached || 1;
+  saveStatusEl.style.display='inline-block';
+  saveStatusEl.textContent = 'Saving…';
+  try {
+    await firebase.database().ref('Flag').push({
+      name,
+      level,
+      timestamp: Date.now()
+    });
+    saveStatusEl.textContent = `Saved! ${name} — Level ${level}`;
+  } catch (err) {
+    saveStatusEl.textContent = 'Error: ' + (err?.message || err);
+  }
+});
 </script>
 </body>
 </html>
