@@ -48,7 +48,7 @@
       #leftRail, #rightRail{ display:none; }
     }
 
-    /* High score card (desktop) */
+    /* High score card (desktop placeholder) */
     .hs-card{
       background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
     }
@@ -129,7 +129,7 @@
       text-align:center; color:var(--muted); font-size:12px; margin:10px 0 16px;
     }
 
-    /* Mobile high scores (visible on phones) */
+    /* Mobile high scores (placeholder) */
     .hs-mobile{ display:none; padding:0 12px 12px; }
     .hs-mobile .hs-card{ padding:8px; }
     .hs-mobile .hs-row{ font-size:13px; }
@@ -139,34 +139,33 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="round">Round <span id="roundNo">1</span> · First to <b>3</b> wins</div>
+    <div class="round">
+      <span id="modeLabel">Local Practice Mode</span> · Round <span id="roundNo">1</span> · First to <b>3</b> wins
+    </div>
     <div class="timer" id="timer">01:30</div>
     <div class="wins" id="winsBar"></div>
   </div>
 
   <div class="board">
-    <!-- Left rail for extra players (hidden on phones) -->
     <div class="rail" id="leftRail"></div>
 
-    <!-- Center -->
     <div class="stage">
       <div class="players-top" id="topRail"></div>
 
-      <div class="stocks" id="stocksGrid">
-        <!-- Placeholder tiles injected immediately for visibility -->
-      </div>
+      <div class="stocks" id="stocksGrid"><!-- tiles injected immediately --></div>
 
       <div class="players-bottom" id="bottomRail"></div>
     </div>
 
-    <!-- Right rail for High Scores + extra players (hidden on phones) -->
     <div class="rail" id="rightRail">
-      <!-- High Scores card inserted here -->
-      <!-- Player boxes (right side) inserted below -->
+      <div class="hs-card" id="hsCard">
+        <div class="hs-title">🏆 High Scores <span class="you" id="myBestLabel">Your best (local): —</span></div>
+        <ol class="hs-list" id="hsList"></ol>
+      </div>
+      <div id="rightPlayers"></div>
     </div>
   </div>
 
-  <!-- Mobile high scores -->
   <div class="hs-mobile" id="hsMobile"></div>
 </div>
 
@@ -174,12 +173,12 @@
 
 <script type="module">
 /* ===========================================================
-   Firebase
+   Firestore (optional for multiplayer)
    =========================================================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
-  runTransaction, serverTimestamp, collection, query, orderBy, limit
+  runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -197,76 +196,52 @@ const db  = getFirestore(app);
    Params & Constants
    =========================================================== */
 const params   = new URLSearchParams(location.search);
-const gameId   = params.get("gameId");
+const gameId   = params.get("gameId");              // multiplayer if present
 const username = params.get("username") || "Player";
 
-const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
-const GAME_REF  = gameId ? doc(db, "stockkings", gameId) : null;
-const HS_COLL   = collection(db, "stockkings_highscores");
-
-const ROUND_MS    = 90_000;         // 1.5 minutes
+const ROUND_MS    = 90_000;   // 1.5 minutes
 const START_CASH  = 1000;
 const N_STOCKS    = 6;
 const HISTORY_LEN = 40;
-const IMPACT_BASE = 0.01;           // ~1% per-share impact, scaled by players
+const IMPACT_BASE = 0.01;     // price impact per 1-share trade (scaled by player count)
 const MIN_PRICE   = 5;
 const MAX_PRICE   = 500;
+const TICKERS     = ["ALP","BEX","CRO","DYN","ECO","FYN"];
 
-const TICKERS = ["ALP","BEX","CRO","DYN","ECO","FYN"];
+const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
+const GAME_REF  = gameId ? doc(db, "stockkings", gameId) : null;
 
 /* ===========================================================
-   DOM helpers + refs (null-safe)
+   DOM helpers (null-safe)
    =========================================================== */
 const $id = (s)=> document.getElementById(s);
-const safeText = (el, v)=> { if (el) el.textContent = v; };
+const safeText = (el, v)=> { if (el) el.textContent = String(v); };
 const safeHTML = (el, v)=> { if (el) el.innerHTML = v; };
 
 const stocksGrid  = $id("stocksGrid");
 const topRail     = $id("topRail");
 const bottomRail  = $id("bottomRail");
 const leftRail    = $id("leftRail");
-const rightRail   = $id("rightRail");
+const rightPlayers= $id("rightPlayers");
 const timerEl     = $id("timer");
 const roundEl     = $id("roundNo");
 const winsBar     = $id("winsBar");
-const hsMobile    = $id("hsMobile");
-
-// High score card container in right rail (if present)
-const rightPlayers = document.createElement("div");
-rightPlayers.id = "rightPlayers";
-if (rightRail) {
-  const hsCard = buildHighScoreCard();
-  rightRail.appendChild(hsCard);
-  rightRail.appendChild(rightPlayers);
-}
+const modeLabel   = $id("modeLabel");
 
 /* ===========================================================
-   Local state
+   Local state + utilities
    =========================================================== */
+let gameData  = null;   // { players, portfolios, stocks, wins, status, round, roundEndAt }
 let lobbyData = null;
-let gameData  = null;
 let isHost    = false;
 let tickerHandle = null;
 let timerHandle  = null;
-
 const bound = new Set();
 
-/* ===========================================================
-   Utilities
-   =========================================================== */
 const fmt    = (n)=> "$" + Number(n).toFixed(2);
 const clamp  = (v,a,b)=> Math.max(a, Math.min(b,v));
 const rand   = (a,b)=> a + Math.random()*(b-a);
 const cssSafe = (s)=> String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
-const idForUser = (name)=> encodeURIComponent(String(name).toLowerCase());
-
-function bindBtnOnce(id, fn){
-  if (bound.has(id)) return;
-  const el = $id(id);
-  if (!el) return;
-  el.addEventListener("click", fn);
-  bound.add(id);
-}
 
 function orderImpactFactor(data){
   const players = (data?.players || []);
@@ -275,7 +250,7 @@ function orderImpactFactor(data){
 }
 
 /* ===========================================================
-   Game data builders
+   Game builders
    =========================================================== */
 function initStocks(){
   const out = [];
@@ -286,12 +261,11 @@ function initStocks(){
       price: Number(base.toFixed(2)),
       min: Math.max(MIN_PRICE, base*0.4),
       max: Math.min(MAX_PRICE, base*1.8),
-      history: Array.from({length: 10}, (_,k)=> Number((base*(1+rand(-0.01,0.01))).toFixed(2)))
+      history: Array.from({length: 10}, ()=> Number((base*(1+rand(-0.01,0.01))).toFixed(2)))
     });
   }
   return out;
 }
-
 function initPortfolios(players){
   const p = {};
   for (const name of players){
@@ -299,7 +273,6 @@ function initPortfolios(players){
   }
   return p;
 }
-
 function calcPortfolioValue(name, data){
   const pf = data?.portfolios?.[name];
   if (!pf) return 0;
@@ -312,53 +285,7 @@ function calcPortfolioValue(name, data){
 }
 
 /* ===========================================================
-   UI: High Scores
-   =========================================================== */
-function buildHighScoreCard(){
-  const card = document.createElement("div");
-  card.className = "hs-card";
-  card.id = "hsCard";
-  card.innerHTML = `
-    <div class="hs-title">🏆 High Scores <span class="you" id="myBestLabel">Your best: —</span></div>
-    <ol class="hs-list" id="hsList"></ol>
-  `;
-  return card;
-}
-
-function renderHighScores(rows){
-  const list = $id("hsList");
-  if (list) {
-    list.innerHTML = "";
-    rows.forEach((r, i)=>{
-      const li = document.createElement("li");
-      li.className = "hs-row" + (r.name === username ? " me" : "");
-      li.innerHTML = `<span>${i+1}. ${r.name}</span><span>${fmt(r.bestValue||0)}</span>`;
-      list.appendChild(li);
-    });
-  }
-  if (hsMobile){
-    hsMobile.innerHTML = `
-      <div class="hs-card">
-        <div class="hs-title">🏆 High Scores <span class="you">${username}'s best: <b id="myBestMobile">—</b></span></div>
-        <ol class="hs-list">
-          ${rows.map((r, i)=>`<li class="hs-row${r.name===username?' me':''}">
-            <span>${i+1}. ${r.name}</span><span>${fmt(r.bestValue||0)}</span>
-          </li>`).join("")}
-        </ol>
-      </div>
-    `;
-  }
-}
-
-function setMyBestLabel(v){
-  const el = $id("myBestLabel");
-  const em = $id("myBestMobile");
-  safeText(el, `Your best: ${v != null ? fmt(v) : "—"}`);
-  if (em) em.textContent = v != null ? fmt(v) : "—";
-}
-
-/* ===========================================================
-   UI: stock tiles (create immediately so grid is never empty)
+   UI: tiles (created immediately so they always show)
    =========================================================== */
 function ensureStockTiles(){
   if (!stocksGrid || stocksGrid.hasChildNodes()) return;
@@ -372,9 +299,7 @@ function ensureStockTiles(){
         <div class="price" id="price-${i}">$0.00</div>
       </div>
       <canvas class="spark" height="28" id="spark-${i}"></canvas>
-      <div class="barwrap">
-        <div class="bar" id="bar-${i}" style="height:12px;"></div>
-      </div>
+      <div class="barwrap"><div class="bar" id="bar-${i}" style="height:12px;"></div></div>
       <div class="row">
         <button class="btn buy"  id="buy-${i}">Buy</button>
         <div class="cost" id="cost-${i}">$0.00</div>
@@ -386,39 +311,29 @@ function ensureStockTiles(){
   stocksGrid.appendChild(frag);
   sizeAllSparks();
 }
-
 function sizeSparkCanvas(i){
   const c = $id(`spark-${i}`);
   if (!c) return;
   const tile = c.closest(".tile");
-  const tileWidth = tile ? tile.clientWidth : 220;
-  c.width = Math.max(160, tileWidth - 24);
+  const w = tile ? tile.clientWidth : 220;
+  c.width = Math.max(160, w - 24);
   c.height = 28;
 }
 function sizeAllSparks(){ for (let i=0;i<N_STOCKS;i++) sizeSparkCanvas(i); }
-
 function drawSpark(i, history){
   const c = $id(`spark-${i}`);
   if (!c) return;
   const ctx = c.getContext("2d");
   ctx.clearRect(0,0,c.width,c.height);
-  const n = history.length;
-  const min = Math.min(...history);
-  const max = Math.max(...history);
-  const pad = 2;
-  const H = c.height - pad*2;
-  const W = c.width - pad*2;
+  const n = history.length, min = Math.min(...history), max = Math.max(...history);
+  const pad = 2, H = c.height - pad*2, W = c.width - pad*2;
 
   ctx.strokeStyle = "#2a3d57";
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad, pad + H);
-  ctx.lineTo(pad+W, pad + H);
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, pad + H); ctx.lineTo(pad+W, pad + H); ctx.stroke();
 
   ctx.strokeStyle = "#6cc1ff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
+  ctx.lineWidth = 2; ctx.beginPath();
   for (let k=0;k<n;k++){
     const x = pad + (W*(k/(n-1||1)));
     const t = (history[k]-min)/Math.max(0.0001,(max-min));
@@ -427,18 +342,21 @@ function drawSpark(i, history){
   }
   ctx.stroke();
 }
-
+function bindBtnOnce(id, fn){
+  if (bound.has(id)) return;
+  const el = $id(id);
+  if (!el) return;
+  el.addEventListener("click", fn);
+  bound.add(id);
+}
 function renderStocks(){
   ensureStockTiles();
   if (!gameData?.stocks) return;
 
   requestAnimationFrame(()=>{
     sizeAllSparks();
-
     for (let i=0;i<N_STOCKS;i++){
-      const s = gameData.stocks[i];
-      if (!s) continue;
-
+      const s = gameData.stocks[i]; if (!s) continue;
       const symEl   = $id(`sym-${i}`);
       const priceEl = $id(`price-${i}`);
       const costEl  = $id(`cost-${i}`);
@@ -463,12 +381,11 @@ function renderStocks(){
     }
   });
 }
-
 function renderPlayers(){
-  const players = gameData?.players || lobbyData?.players || [];
+  const players = gameData?.players || [username];
+  const wins = gameData?.wins || {};
   if (winsBar){
     winsBar.innerHTML = "";
-    const wins = gameData?.wins || {};
     for (const p of players){
       const span = document.createElement("span");
       span.textContent = `${p}: ${wins[p]||0}`;
@@ -476,7 +393,6 @@ function renderPlayers(){
       winsBar.appendChild(span);
     }
   }
-
   const boxes = players.map(p=>{
     const div = document.createElement("div");
     div.className = "pbox" + (p===username? " me":"");
@@ -484,29 +400,19 @@ function renderPlayers(){
     div.innerHTML = `
       <div class="p-val" id="pval-${cssSafe(p)}">${fmt(val)}</div>
       <div class="p-name">${p}</div>
-      <div class="p-wins">Wins: <b>${(gameData?.wins?.[p]||0)}</b></div>
-    `;
+      <div class="p-wins">Wins: <b>${wins[p]||0}</b></div>`;
     return div;
   });
-
   if (topRail && bottomRail && leftRail && rightPlayers){
-    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = "";
-    rightPlayers.innerHTML = "";
-
+    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = rightPlayers.innerHTML = "";
     const q = Math.ceil(boxes.length/4);
-    const groups = [
-      boxes.slice(0,q),
-      boxes.slice(q,2*q),
-      boxes.slice(2*q,3*q),
-      boxes.slice(3*q)
-    ];
+    const groups = [ boxes.slice(0,q), boxes.slice(q,2*q), boxes.slice(2*q,3*q), boxes.slice(3*q) ];
     for (const el of groups[0]) topRail.appendChild(el);
     for (const el of groups[2]) bottomRail.appendChild(el);
     for (const el of groups[1]) rightPlayers.appendChild(el);
     for (const el of groups[3]) leftRail.appendChild(el);
   }
 }
-
 function refreshPlayerValues(){
   if (!gameData) return;
   const players = gameData.players || [];
@@ -518,55 +424,114 @@ function refreshPlayerValues(){
 }
 
 /* ===========================================================
-   Firestore Sync + Safety
+   Local Practice Mode (always starts so tiles show immediately)
    =========================================================== */
-
-// Create tiles right away so UI is never blank
-ensureStockTiles();
-
-// Subscribe to lobby (players/host)
-if (LOBBY_REF) {
-  onSnapshot(LOBBY_REF, (snap)=>{
-    if (!snap.exists()) return;
-    lobbyData = snap.data();
-    isHost = lobbyData.host === username;
-    renderPlayers();
-    ensureGameDoc();
-  });
+function startLocalGame(){
+  safeText(modeLabel, gameId ? "Multiplayer" : "Local Practice Mode");
+  const players = [username];
+  gameData = {
+    players,
+    portfolios: initPortfolios(players),
+    stocks: initStocks(),
+    wins: Object.fromEntries(players.map(p=>[p,0])),
+    status: "running",
+    round: 1,
+    roundEndAt: Date.now() + ROUND_MS
+  };
+  safeText(roundEl, gameData.round);
+  renderPlayers();
+  renderStocks();
+  startLocalLoops();
 }
-
-// Subscribe to game doc
-if (GAME_REF) {
-  onSnapshot(GAME_REF, (snap)=>{
-    if (!snap.exists()) return;
-    gameData = snap.data();
-    safeText(roundEl, gameData.round || 1);
-    renderPlayers();
+function stopLocalLoops(){
+  if (tickerHandle){ clearInterval(tickerHandle); tickerHandle=null; }
+  if (timerHandle){ clearInterval(timerHandle); timerHandle=null; }
+}
+function startLocalLoops(){
+  stopLocalLoops();
+  // price drift + round manager
+  tickerHandle = setInterval(()=>{
+    if (!gameData || gameData.status!=="running") return;
+    // drift prices
+    const stocks = gameData.stocks.slice();
+    for (let i=0;i<stocks.length;i++){
+      const s = {...stocks[i]};
+      const mid = (s.min + s.max)/2;
+      const drift = (mid - s.price) / (s.max - s.min) * 0.003;
+      const noise = (Math.random()*0.024 - 0.012);
+      let np = s.price * (1 + drift + noise);
+      np = clamp(np, s.min, s.max);
+      s.price = Number(np.toFixed(2));
+      const hist = (s.history || []).slice(-HISTORY_LEN+1);
+      hist.push(s.price);
+      s.history = hist;
+      stocks[i] = s;
+    }
+    gameData.stocks = stocks;
     renderStocks();
+
+    // round end
+    const msLeft = Math.max(0, (gameData.roundEndAt || 0) - Date.now());
+    if (msLeft <= 0){
+      // single-player => you vs market: just record your value as "win" if above starting cash
+      const youVal = calcPortfolioValue(username, gameData);
+      const won = youVal >= START_CASH; // simple local rule
+      if (won) gameData.wins[username] = (gameData.wins[username]||0) + 1;
+
+      // champion?
+      if (gameData.wins[username] >= 3){
+        alert("🏆 You reached 3 wins! Resetting match.");
+        gameData.wins[username] = 0;
+      }
+
+      // next round
+      gameData.round = (gameData.round||1) + 1;
+      gameData.roundEndAt = Date.now() + ROUND_MS;
+      gameData.portfolios = initPortfolios(gameData.players);
+      gameData.stocks = initStocks();
+      safeText(roundEl, gameData.round);
+      renderPlayers();
+      renderStocks();
+    }
+  }, 1000);
+
+  // timer UI
+  timerHandle = setInterval(()=>{
+    if (!gameData) return;
+    const ms = Math.max(0, (gameData.roundEndAt || 0) - Date.now());
+    const s = Math.ceil(ms/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    safeText(timerEl, `${mm}:${ss}`);
     refreshPlayerValues();
-  });
+  }, 200);
 }
 
-// Subscribe to High Scores (Top 10) + my best
-(function subscribeHighScores(){
-  const qTop = query(HS_COLL, orderBy("bestValue", "desc"), limit(10));
-  onSnapshot(qTop, (snap)=>{
-    const rows = snap.docs.map(d=> ({ name: d.data().name, bestValue: d.data().bestValue || 0 }));
-    renderHighScores(rows);
-  });
-  const myRef = doc(HS_COLL, idForUser(username));
-  onSnapshot(myRef, (snap)=>{
-    const best = snap.exists() ? snap.data().bestValue : null;
-    setMyBestLabel(best);
-  });
-})();
-
+/* ===========================================================
+   Multiplayer (Firestore) — optional, overrides local loops
+   =========================================================== */
+async function ensureLobbyAndRole(){
+  if (!LOBBY_REF) return false;
+  const ls = await getDoc(LOBBY_REF);
+  if (!ls.exists()){
+    // first opener becomes host
+    await setDoc(LOBBY_REF, { host: username, players:[username], createdAt: serverTimestamp() });
+    isHost = true;
+  } else {
+    const d = ls.data();
+    isHost = d.host === username;
+    const players = Array.isArray(d.players) ? d.players : [];
+    if (!players.includes(username)){
+      try{ await updateDoc(LOBBY_REF, { players: [...players, username] }); }catch(e){}
+    }
+  }
+  return true;
+}
 async function ensureGameDoc(){
   if (!GAME_REF || !lobbyData) return;
   const g = await getDoc(GAME_REF);
   if (g.exists()) return;
   if (!isHost) return;
-
   const players = Array.isArray(lobbyData.players) ? lobbyData.players : [username];
   const payload = {
     host: lobbyData.host || username,
@@ -582,39 +547,25 @@ async function ensureGameDoc(){
   await setDoc(GAME_REF, payload);
   startHostLoops();
 }
-
-/* ===========================================================
-   Host loops: price ticker & round manager
-   =========================================================== */
-function msLeft(){
-  if (!gameData?.roundEndAt) return 0;
-  return Math.max(0, gameData.roundEndAt - Date.now());
-}
-function fmtTimer(ms){
-  const s = Math.ceil(ms/1000);
-  const mm = Math.floor(s/60).toString().padStart(2,'0');
-  const ss = (s%60).toString().padStart(2,'0');
-  return `${mm}:${ss}`;
-}
-
 function startHostLoops(){
   if (!isHost || !GAME_REF) return;
-  stopHostLoops();
+  // stop local loop since host is authoritative now
+  stopLocalLoops();
   tickerHandle = setInterval(async ()=>{
-    try {
+    try{
       await runTransaction(db, async (tx)=>{
         const snap = await tx.get(GAME_REF);
         if (!snap.exists()) return;
         const d = snap.data();
         if (d.status !== "running") return;
 
-        // tick prices
+        // drift prices
         const stocks = d.stocks.slice();
         for (let i=0;i<stocks.length;i++){
           const s = {...stocks[i]};
           const mid = (s.min + s.max)/2;
           const drift = (mid - s.price) / (s.max - s.min) * 0.003;
-          const noise = (Math.random()*0.024 - 0.012); // +/-1.2%
+          const noise = (Math.random()*0.024 - 0.012);
           let np = s.price * (1 + drift + noise);
           np = clamp(np, s.min, s.max);
           s.price = Number(np.toFixed(2));
@@ -637,19 +588,6 @@ function startHostLoops(){
           const wins = {...d.wins};
           for (const w of winners) wins[w] = (wins[w]||0) + 1;
 
-          // Highscore update (per player)
-          for (const p of players){
-            const currentVal = calcPortfolioValue(p, {stocks, portfolios:d.portfolios});
-            const sRef = doc(HS_COLL, idForUser(p));
-            const sSnap = await tx.get(sRef);
-            const prev = sSnap.exists() ? (sSnap.data().bestValue || 0) : 0;
-            if (currentVal > prev + 0.0001){
-              tx.set(sRef, { name:p, bestValue: Number(currentVal.toFixed(2)), updatedAt: serverTimestamp() }, { merge:true });
-            } else if (!sSnap.exists()){
-              tx.set(sRef, { name:p, bestValue: Number(prev.toFixed ? prev.toFixed(2):0), updatedAt: serverTimestamp() }, { merge:true });
-            }
-          }
-
           // champion?
           const champion = Object.entries(wins).find(([name,count])=> count >= 3);
           if (champion){
@@ -669,95 +607,146 @@ function startHostLoops(){
           tx.update(GAME_REF, { stocks });
         }
       });
-    } catch(e){ /* ignore transient */ }
+    }catch(e){}
   }, 1000);
 }
 function stopHostLoops(){ if (tickerHandle){ clearInterval(tickerHandle); tickerHandle=null; } }
 
-// Timer display for every client (null-safe)
-function startTimerUI(){
-  if (timerHandle) clearInterval(timerHandle);
-  timerHandle = setInterval(()=>{
-    if (!gameData) return;
-    safeText(timerEl, fmtTimer(msLeft()));
-  }, 200);
+// subscribe lobby
+if (LOBBY_REF){
+  onSnapshot(LOBBY_REF, (snap)=>{
+    if (!snap.exists()) return;
+    lobbyData = snap.data();
+    isHost = lobbyData.host === username;
+    safeText(modeLabel, "Multiplayer");
+    renderPlayers();
+    ensureGameDoc();
+  });
+  // make sure doc exists and role chosen
+  ensureLobbyAndRole();
 }
-startTimerUI();
-
-// Try to start loops if we are host after load
-(async ()=>{
-  if (!GAME_REF) return;
-  const gl = await getDoc(GAME_REF);
-  if (gl.exists()) {
-    const lb = LOBBY_REF ? await getDoc(LOBBY_REF) : null;
-    const hostName = lb?.exists() ? lb.data().host : null;
-    isHost = hostName === username;
-    if (isHost) startHostLoops();
-  }
-})();
-
-document.addEventListener("visibilitychange", ()=>{
-  if (!isHost) return;
-  if (document.hidden){ stopHostLoops(); } else { startHostLoops(); }
-});
+// subscribe game
+if (GAME_REF){
+  onSnapshot(GAME_REF, (snap)=>{
+    if (!snap.exists()) return;
+    gameData = snap.data();
+    safeText(roundEl, gameData.round || 1);
+    renderPlayers();
+    renderStocks();
+    refreshPlayerValues();
+    // when a match finishes, restart a new match after 2s (host)
+    if (gameData.status === "finished" && isHost){
+      setTimeout(async ()=>{
+        const players = gameData.players || [];
+        await setDoc(GAME_REF, {
+          host: lobbyData?.host || username,
+          players,
+          status: "running",
+          round: 1,
+          roundEndAt: Date.now() + ROUND_MS,
+          wins: Object.fromEntries(players.map(p=>[p,0])),
+          portfolios: initPortfolios(players),
+          stocks: initStocks(),
+          createdAt: serverTimestamp()
+        });
+      }, 2000);
+    }
+  });
+}
 
 /* ===========================================================
-   Orders
+   Orders (works in both local & multiplayer)
    =========================================================== */
 async function order(kind, idx){
-  if (!GAME_REF) return;
-  try{
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(GAME_REF);
-      if (!snap.exists()) return;
-      const d = snap.data();
-      if (d.status !== "running") return;
+  // multiplayer: write via transaction
+  if (GAME_REF){
+    try{
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(GAME_REF);
+        if (!snap.exists()) return;
+        const d = snap.data();
+        if (d.status !== "running") return;
 
-      const portfolios = {...d.portfolios};
-      const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) })};
-      const stocks = d.stocks.slice();
-      const s = {...stocks[idx]};
-      const price = s.price;
-      if (!price || price<=0) return;
+        const portfolios = {...d.portfolios};
+        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) })};
+        const stocks = d.stocks.slice();
+        const s = {...stocks[idx]};
+        const price = s.price;
+        if (!price || price<=0) return;
 
-      if (kind === "buy"){
-        if (me.cash < price) return;
-        me.cash = Number((me.cash - price).toFixed(2));
-        me.holdings[idx] = (me.holdings[idx]||0) + 1;
-        const impact = orderImpactFactor(d);
-        s.price = Number(clamp(price * (1 + impact), s.min, s.max).toFixed(2));
-      } else {
-        const have = me.holdings[idx]||0;
-        if (have <= 0) return;
-        me.holdings[idx] = have - 1;
-        me.cash = Number((me.cash + price*0.95).toFixed(2));
-        const impact = orderImpactFactor(d);
-        s.price = Number(clamp(price * (1 - impact), s.min, s.max).toFixed(2));
-      }
+        if (kind === "buy"){
+          if (me.cash < price) return;
+          me.cash = Number((me.cash - price).toFixed(2));
+          me.holdings[idx] = (me.holdings[idx]||0) + 1;
+          const impact = orderImpactFactor(d);
+          s.price = Number(clamp(price * (1 + impact), s.min, s.max).toFixed(2));
+        } else {
+          const have = me.holdings[idx]||0;
+          if (have <= 0) return;
+          me.holdings[idx] = have - 1;
+          me.cash = Number((me.cash + price*0.95).toFixed(2));
+          const impact = orderImpactFactor(d);
+          s.price = Number(clamp(price * (1 - impact), s.min, s.max).toFixed(2));
+        }
 
-      portfolios[username] = me;
-      stocks[idx] = s;
-
-      tx.update(GAME_REF, { portfolios, stocks });
-    });
-  } catch(e){
-    console.warn("order failed", e);
+        portfolios[username] = me;
+        stocks[idx] = s;
+        tx.update(GAME_REF, { portfolios, stocks });
+      });
+    }catch(e){ console.warn("order failed", e); }
+    return;
   }
+
+  // local mode
+  if (!gameData) return;
+  const me = gameData.portfolios[username];
+  const s = gameData.stocks[idx];
+  if (!s) return;
+  if (kind === "buy"){
+    if (me.cash < s.price) return;
+    me.cash = Number((me.cash - s.price).toFixed(2));
+    me.holdings[idx] = (me.holdings[idx]||0) + 1;
+    const impact = orderImpactFactor(gameData);
+    s.price = Number(clamp(s.price * (1 + impact), s.min, s.max).toFixed(2));
+  } else {
+    const have = me.holdings[idx]||0;
+    if (have <= 0) return;
+    me.holdings[idx] = have - 1;
+    me.cash = Number((me.cash + s.price*0.95).toFixed(2));
+    const impact = orderImpactFactor(gameData);
+    s.price = Number(clamp(s.price * (1 - impact), s.min, s.max).toFixed(2));
+  }
+  refreshPlayerValues();
+  renderStocks();
 }
 window.order = order;
 
 /* ===========================================================
-   Responsive
+   Boot: always start local so tiles appear instantly
    =========================================================== */
+ensureStockTiles();
+startLocalGame();
+
+// If we're host in multiplayer, start host loops when possible
+(async ()=>{
+  if (!GAME_REF) return;
+  const lobbySnap = await getDoc(LOBBY_REF);
+  if (lobbySnap.exists()){
+    const d = lobbySnap.data();
+    isHost = d.host === username;
+    if (isHost) startHostLoops();
+  }
+})();
+
+// Responsive reflow
 let resizeDebounce = null;
 window.addEventListener("resize", ()=>{
   clearTimeout(resizeDebounce);
-  resizeDebounce = setTimeout(()=>{
-    sizeAllSparks();
-    if (gameData) renderStocks();
-  }, 80);
+  resizeDebounce = setTimeout(()=>{ sizeAllSparks(); renderStocks(); }, 80);
 });
 </script>
 </body>
 </html>
+
+
 
