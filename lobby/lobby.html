@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -76,6 +76,7 @@
               <option value="grass">🌿 Grass Realms</option>
               <option value="estate">🏡 Estate Defense</option>
               <option value="mountain">🗻 Mountain Blade (4P)</option>
+              <option value="stockkings">📈 Stock Kings</option><!-- ✅ NEW -->
             </select>
             <button onclick="startLobby()">Start Lobby</button>
           </div>
@@ -121,22 +122,22 @@
       cat:        "/game/catandmouse.html",
       grass:      "/game/grassrealms.html",
       estate:     "/game/estatedefense.html",
-      mountain:   "/game/mountainblade.html",  // Mountain Blade
-      matchwars:  "/game/matchwars.html",      // Singleplayer title
-      flag:       "/game/Flag.html",           // Singleplayer title
-      microwars:  "/game/microwars.html"       // ✅ NEW: Micro Wars (singleplayer)
+      mountain:   "/game/mountainblade.html",
+      stockkings: "/game/stockkings.html",     // ✅ NEW: Stock Kings (multiplayer)
+      matchwars:  "/game/matchwars.html",      // Singleplayer
+      flag:       "/game/Flag.html",           // Singleplayer
+      microwars:  "/game/microwars.html"       // Singleplayer
     };
 
     // Auto-redirect multiplayer games when status === "started"
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain"]);
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]); // ✅ include Stock Kings
 
-    // Per-game max players (Mountain Blade capped at 4)
-    const MAX_PLAYERS = { mountain: 4 };
+    // Per-game max players
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8 }; // ✅ cap Stock Kings at 8 (tweak as needed)
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     const SINGLEPLAYER_GAMES = [
-      // ✅ NEW: Micro Wars card
       {
         key: "microwars",
         title: "Micro Wars",
@@ -203,7 +204,7 @@
     }
     renderSingleplayer();
 
-    // --- EXISTING LOBBY LOGIC (with Mountain Blade cap + redirect) ---
+    // --- LOBBY LOGIC ---
     const urlParams = new URLSearchParams(window.location.search);
     const autoUsername = urlParams.get("username");
 
@@ -253,7 +254,11 @@
       const name = document.getElementById("lobbyName").value.trim();
       const gameType = document.getElementById("gameType").value;
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain'].includes(gameType)) return showError("Invalid game type.");
+
+      // ✅ allow Stock Kings
+      if (!['cat','grass','estate','mountain','stockkings'].includes(gameType)) {
+        return showError("Invalid game type.");
+      }
 
       const lobby = await addDoc(collection(db, "lobbies"), {
         name,
@@ -299,10 +304,11 @@
         const countTxt = isFinite(cap) ? `${(data.players||[]).length}/${cap} player(s)` : `${(data.players||[]).length} player(s)`;
 
         const gameLabel =
-          data.gameType === 'grass'   ? '🌿 Grass Realms' :
-          data.gameType === 'estate'  ? '🏡 Estate Defense' :
-          data.gameType === 'mountain'? '🗻 Mountain Blade (4P)' :
-                                        '🐭 Cat & Mouse';
+          data.gameType === 'grass'      ? '🌿 Grass Realms' :
+          data.gameType === 'estate'     ? '🏡 Estate Defense' :
+          data.gameType === 'mountain'   ? '🗻 Mountain Blade (4P)' :
+          data.gameType === 'stockkings' ? '📈 Stock Kings' :
+                                           '🐭 Cat & Mouse';
 
         row.innerHTML = `
           <div>
@@ -342,7 +348,7 @@
           tx.update(ref, { players: [...players, username] });
         });
       } catch (e) {
-        showError("❌ Lobby is full (max 4 players).");
+        showError("❌ Lobby is full.");
         return;
       }
 
@@ -378,10 +384,11 @@
 
         const header = document.createElement("div");
         const gameLabel =
-          data.gameType === 'grass'   ? '🌿 Grass Realms' :
-          data.gameType === 'estate'  ? '🏡 Estate Defense' :
-          data.gameType === 'mountain'? '🗻 Mountain Blade (4P)' :
-                                        '🐭 Cat & Mouse';
+          data.gameType === 'grass'      ? '🌿 Grass Realms' :
+          data.gameType === 'estate'     ? '🏡 Estate Defense' :
+          data.gameType === 'mountain'   ? '🗻 Mountain Blade (4P)' :
+          data.gameType === 'stockkings' ? '📈 Stock Kings' :
+                                           '🐭 Cat & Mouse';
         const container = document.getElementById("lobbyPlayers");
         container.innerHTML = "";
         header.innerHTML = `<h3>Lobby: ${data.name} <span class="badge">${gameLabel}</span></h3>`;
@@ -405,12 +412,12 @@
 
         document.getElementById("startBtn").style.display = (data.host === username) ? "inline-block" : "none";
 
-        // Redirect for auto-redirect games (cat, grass, mountain)
+        // Redirect for auto-redirect games
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
           window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
-        // Estate Defense still handled separately by startGame() (active session merge).
+        // Estate Defense remains special-cased in startGame().
       });
     }
 
@@ -477,7 +484,7 @@
         return;
       }
 
-      // Normal behavior for Cat, Grass, Mountain
+      // Normal behavior (includes Stock Kings): set started, listener redirects
       await updateDoc(ref, { status: "started" });
     }
 
@@ -541,6 +548,7 @@
   </script>
 </body>
 </html>
+
 
 
 
