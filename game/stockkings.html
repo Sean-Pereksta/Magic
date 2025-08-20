@@ -16,7 +16,9 @@
     body{
       margin:0; background:var(--bg); color:var(--ink);
       font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      -webkit-tap-highlight-color: transparent;
     }
+    button { touch-action: manipulation; }
 
     .wrap{display:grid; grid-template-rows:auto 1fr; min-height:100%}
 
@@ -28,7 +30,7 @@
     .timer{font-weight:800; font-size:20px; letter-spacing:.5px}
     .round{color:var(--muted); font-weight:700}
     .wins{display:flex; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted)}
-    .wins .me{color:#fff}
+    .wins .me{color:#fff; font-weight:800}
 
     /* Board: 3 columns on desktop, 1 on mobile */
     .board{
@@ -41,10 +43,20 @@
     }
 
     /* Side rails for extra players */
-    .rail{ display:flex; flex-direction:column; gap:10px; }
+    .rail{ display:flex; flex-direction:column; gap:12px; }
     @media (max-width:1080px){
       #leftRail, #rightRail{ display:none; }
     }
+
+    /* High score card (desktop) */
+    .hs-card{
+      background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
+    }
+    .hs-title{ font-weight:900; margin-bottom:8px; display:flex; align-items:center; gap:8px }
+    .hs-title .you{ margin-left:auto; font-size:12px; color:var(--muted) }
+    .hs-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+    .hs-row{ display:flex; justify-content:space-between; gap:10px; font-size:14px; }
+    .hs-row.me{ color:#fff; font-weight:800 }
 
     /* Center stage */
     .stage{
@@ -57,7 +69,6 @@
       grid-template-rows: auto 1fr auto;
       min-height: calc(100vh - 120px);
     }
-    /* Use svh on iOS/Android to avoid URL-bar shrinking 100vh */
     @supports (height: 100svh) {
       .stage{ min-height: calc(100svh - 120px); }
     }
@@ -108,7 +119,6 @@
     .row{display:flex; gap:8px; align-items:center; justify-content:space-between}
     .btn{
       appearance:none; border:1px solid var(--tile-br); background:#132033; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer;
-      touch-action: manipulation;
     }
     .btn.sell{ background:#2c1a1a; border-color:#412121 }
     .btn:disabled{opacity:.6; cursor:not-allowed}
@@ -118,6 +128,12 @@
     .footnote{
       text-align:center; color:var(--muted); font-size:12px; margin:10px 0 16px;
     }
+
+    /* Mobile high scores (visible on phones) */
+    .hs-mobile{ display:none; padding:0 12px 12px; }
+    .hs-mobile .hs-card{ padding:8px; }
+    .hs-mobile .hs-row{ font-size:13px; }
+    @media (max-width:1080px){ .hs-mobile{ display:block } }
   </style>
 </head>
 <body>
@@ -143,9 +159,15 @@
       <div class="players-bottom" id="bottomRail"></div>
     </div>
 
-    <!-- Right rail for extra players (hidden on phones) -->
-    <div class="rail" id="rightRail"></div>
+    <!-- Right rail for High Scores + extra players (hidden on phones) -->
+    <div class="rail" id="rightRail">
+      <!-- High Scores card inserted here -->
+      <!-- Player boxes (right side) inserted below -->
+    </div>
   </div>
+
+  <!-- Mobile high scores -->
+  <div class="hs-mobile" id="hsMobile"></div>
 </div>
 
 <div class="footnote">💡 Buy raises price a bit; sell lowers it a bit. Prices also wander over time.</div>
@@ -157,7 +179,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
-    runTransaction, serverTimestamp
+    runTransaction, serverTimestamp, collection, query, orderBy, limit, onSnapshotsInSync
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -183,6 +205,7 @@
 
   const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
   const GAME_REF  = gameId ? doc(db, "stockkings", gameId) : null;
+  const HS_COLL   = collection(db, "stockkings_highscores");
 
   const ROUND_MS = 90_000;         // 1.5 minutes
   const START_CASH = 1000;
@@ -203,12 +226,19 @@
   const timerEl = document.getElementById("timer");
   const roundEl = document.getElementById("roundNo");
   const winsBar = document.getElementById("winsBar");
+  const hsMobile = document.getElementById("hsMobile");
+
+  // We'll mount a dedicated container inside rightRail for player boxes
+  const rightPlayers = document.createElement("div");
+  rightPlayers.id = "rightPlayers";
+  rightRail.appendChild(buildHighScoreCard()); // add HS card first
+  rightRail.appendChild(rightPlayers);
 
   // Local
   let lobbyData = null;
   let gameData = null;
   let isHost = false;
-  let tickerHandle = null;
+  let tickerHandle = null;   // <-- single declaration (fixed duplication)
   let timerHandle = null;
 
   /* ===========================
@@ -218,6 +248,7 @@
   const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
   const rand = (a,b)=> a + Math.random()*(b-a);
   const cssSafe = (s)=> s.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const idForUser = (name)=> encodeURIComponent(String(name).toLowerCase());
 
   function initStocks(){
     const out = [];
@@ -264,8 +295,53 @@
     if (bound.has(id)) return;
     const el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener("click", fn, {passive:true});
+    el.addEventListener("click", fn);
     bound.add(id);
+  }
+
+  /* ===========================
+     UI: High Scores
+     =========================== */
+  function buildHighScoreCard(){
+    const card = document.createElement("div");
+    card.className = "hs-card";
+    card.id = "hsCard";
+    card.innerHTML = `
+      <div class="hs-title">🏆 High Scores <span class="you" id="myBestLabel">Your best: —</span></div>
+      <ol class="hs-list" id="hsList"></ol>
+    `;
+    return card;
+  }
+
+  function renderHighScores(rows){
+    const list = document.getElementById("hsList");
+    if (!list) return;
+    list.innerHTML = "";
+    rows.forEach((r, i)=>{
+      const li = document.createElement("li");
+      li.className = "hs-row" + (r.name === username ? " me" : "");
+      li.innerHTML = `<span>${i+1}. ${r.name}</span><span>${fmt(r.bestValue||0)}</span>`;
+      list.appendChild(li);
+    });
+
+    // Mobile mirror
+    hsMobile.innerHTML = `
+      <div class="hs-card">
+        <div class="hs-title">🏆 High Scores <span class="you">${username}'s best: <b id="myBestMobile">—</b></span></div>
+        <ol class="hs-list">
+          ${rows.map((r, i)=>`<li class="hs-row${r.name===username?' me':''}">
+            <span>${i+1}. ${r.name}</span><span>${fmt(r.bestValue||0)}</span>
+          </li>`).join("")}
+        </ol>
+      </div>
+    `;
+  }
+
+  function setMyBestLabel(v){
+    const el = document.getElementById("myBestLabel");
+    const em = document.getElementById("myBestMobile");
+    if (el) el.textContent = `Your best: ${v != null ? fmt(v) : "—"}`;
+    if (em) em.textContent = v != null ? fmt(v) : "—";
   }
 
   /* ===========================
@@ -293,7 +369,6 @@
       `;
       stocksGrid.appendChild(tile);
     }
-    // After tiles exist, size canvases
     sizeAllSparks();
   }
 
@@ -302,7 +377,6 @@
     if (!c) return;
     const tile = c.closest(".tile");
     const tileWidth = tile ? tile.clientWidth : 220;
-    // Set canvas width to current tile width for crisp lines
     c.width = Math.max(160, tileWidth - 24);
     c.height = 28;
   }
@@ -343,7 +417,6 @@
     ensureStockTiles();
     if (!gameData?.stocks) return;
 
-    // Defer measurements until after layout paints
     requestAnimationFrame(()=>{
       sizeAllSparks();
 
@@ -360,7 +433,6 @@
         priceEl.textContent = fmt(s.price);
         costEl.textContent = "Buy " + fmt(s.price) + " · Sell " + fmt(s.price*0.95);
 
-        // bar height bounded to parent
         const wrap = bar.parentElement;
         const wrapH = (wrap?.offsetHeight) || 100;
         const hMax = Math.max(12, wrapH - 8);
@@ -370,7 +442,6 @@
 
         drawSpark(i, s.history || [s.price]);
 
-        // buttons
         bindBtnOnce(`buy-${i}`, ()=> order("buy", i));
         bindBtnOnce(`sell-${i}`, ()=> order("sell", i));
       }
@@ -400,8 +471,10 @@
       return div;
     });
 
-    // distribute: top, bottom, left, right
-    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = rightRail.innerHTML = "";
+    // distribute: top, bottom, left, rightPlayers (keep HS card intact)
+    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = "";
+    rightPlayers.innerHTML = "";
+
     const q = Math.ceil(boxes.length/4);
     const groups = [
       boxes.slice(0,q),
@@ -411,7 +484,7 @@
     ];
     for (const el of groups[0]) topRail.appendChild(el);
     for (const el of groups[2]) bottomRail.appendChild(el);
-    for (const el of groups[1]) rightRail.appendChild(el);
+    for (const el of groups[1]) rightPlayers.appendChild(el);
     for (const el of groups[3]) leftRail.appendChild(el);
   }
 
@@ -431,6 +504,7 @@
   // Build tiles immediately so the center is never empty
   ensureStockTiles();
 
+  // Subscribe to lobby (players/host)
   if (LOBBY_REF) {
     onSnapshot(LOBBY_REF, (snap)=>{
       if (!snap.exists()) return;
@@ -441,6 +515,7 @@
     });
   }
 
+  // Subscribe to game doc
   if (GAME_REF) {
     onSnapshot(GAME_REF, (snap)=>{
       if (!snap.exists()) return;
@@ -449,14 +524,23 @@
       renderPlayers();
       renderStocks();
       refreshPlayerValues();
-
-      if (gameData.status === "finished"){
-        setTimeout(()=> {
-          location.href = "https://catnmice.com/main/lobby/lobby.html";
-        }, 2000);
-      }
     });
   }
+
+  // Subscribe to High Scores (Top 10)
+  (function subscribeHighScores(){
+    const qTop = query(HS_COLL, orderBy("bestValue", "desc"), limit(10));
+    onSnapshot(qTop, (snap)=>{
+      const rows = snap.docs.map(d=> ({ name: d.data().name, bestValue: d.data().bestValue || 0 }));
+      renderHighScores(rows);
+    });
+    // Also watch my best to update the "Your best" label
+    const myRef = doc(HS_COLL, idForUser(username));
+    onSnapshot(myRef, (snap)=>{
+      const best = snap.exists() ? snap.data().bestValue : null;
+      setMyBestLabel(best);
+    });
+  })();
 
   async function ensureGameDoc(){
     if (!GAME_REF || !lobbyData) return;
@@ -494,7 +578,6 @@
     return `${mm}:${ss}`;
   }
 
-  let tickerHandle = null;
   function startHostLoops(){
     if (!isHost || !GAME_REF) return;
     stopHostLoops();
@@ -535,6 +618,21 @@
             const wins = {...d.wins};
             for (const w of winners) wins[w] = (wins[w]||0) + 1;
 
+            // === Highscore update (per player) ===
+            for (const p of players){
+              const currentVal = calcPortfolioValue(p, {stocks, portfolios:d.portfolios});
+              const sRef = doc(HS_COLL, idForUser(p));
+              const sSnap = await tx.get(sRef);
+              const prev = sSnap.exists() ? (sSnap.data().bestValue || 0) : 0;
+              if (currentVal > prev + 0.0001){
+                tx.set(sRef, { name:p, bestValue: Number(currentVal.toFixed(2)), updatedAt: serverTimestamp() }, { merge:true });
+              } else if (!sSnap.exists()){
+                // initialize record so they appear when they play later
+                tx.set(sRef, { name:p, bestValue: Number(prev.toFixed ? prev.toFixed(2):0), updatedAt: serverTimestamp() }, { merge:true });
+              }
+            }
+
+            // champion?
             const champion = Object.entries(wins).find(([name,count])=> count >= 3);
             if (champion){
               tx.update(GAME_REF, { status:"finished", wins, stocks });
@@ -553,7 +651,7 @@
             tx.update(GAME_REF, { stocks });
           }
         });
-      } catch(e){ /* transient */ }
+      } catch(e){ /* ignore transient */ }
     }, 1000);
   }
   function stopHostLoops(){ if (tickerHandle){ clearInterval(tickerHandle); tickerHandle=null; } }
@@ -628,7 +726,7 @@
       console.warn("order failed", e);
     }
   }
-  window.order = order; // not required, but handy for debugging
+  window.order = order;
 
   /* ===========================
      Responsive: redraw on resize/rotation
@@ -640,9 +738,8 @@
       sizeAllSparks();
       if (gameData) renderStocks();
     }, 80);
-  }, {passive:true});
+  });
 </script>
 </body>
 </html>
-
 
