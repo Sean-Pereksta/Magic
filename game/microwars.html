@@ -678,14 +678,14 @@ function combatAndAbilities(dt) {
     if (u.buffs.stim && now >= u.buffs.stimUntil) u.buffs.stim = false;
     u.cd = Math.max(0, u.cd - dt);
 
-    if (u.team===PLAYER) {
-      if (!u.target || !u.target.alive) {
-        const e = nearestEnemyInAggro(u);
-        if (e) u.target = e;
-      }
-    } else {
-      if (!u.target || !u.target.alive) u.target = nearestOpposite(u);
-    }
+   if (u.team===PLAYER) {
+  if (!u.target || !u.target.alive) {
+    const e = nearestEnemyInAggro(u);
+    if (e) u.target = e;
+  }
+} else {
+  u.target = nearestOpposite(u); // ← this is the fix: always re-evaluate closest
+}
 
     if (u.melee) {
       if (u.target && u.target.alive && isEnemyInRange(u, u.target) && u.cd <= 0) {
@@ -1009,6 +1009,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
