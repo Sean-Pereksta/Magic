@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Micro Wars</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --panel-w: 320px;
+    --bg: #0e0f12;
+    --ink: #e7ecf2;
+    --muted: #8ba0b3;
+    --accent: #4da3ff;
+    --good: #50e3a4;
+    --bad: #ff6b6b;
+    --warn: #ffd166;
+    --grid: #1a1e25;
+    --ring-blue:#4da3ff33;
+    --ring-green:#38ef7d33;
+  }
+  html, body {
+    height: 100%; margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    user-select: none;
+    overflow: hidden;
+  }
+  #wrap {
+    display: grid; grid-template-columns: 1fr var(--panel-w); height: 100%;
+  }
+  #hudTop {
+    position: absolute; top: 10px; left: 10px; right: calc(var(--panel-w) + 10px);
+    display: flex; gap: 12px; align-items: center; pointer-events:none;
+  }
+  .chip {
+    pointer-events:auto;
+    background: #151922; border: 1px solid #2a3240; padding: 6px 10px; border-radius: 999px; font-weight: 600;
+    display: inline-flex; align-items:center; gap:8px;
+    box-shadow: 0 1px 0 #0008, inset 0 1px 0 #ffffff08;
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; display:inline-block; }
+  #canvas { display:block; background: #0b0d11; }
+  #panel {
+    background: #0f1218; border-left: 1px solid #1f2631; padding: 14px 14px 80px 14px; overflow-y: auto;
+  }
+  h2, h3 { margin: 10px 0 6px }
+  #selList { display:grid; grid-template-columns: 1fr auto; gap: 6px 8px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .btn {
+    background: #162131; border: 1px solid #2a3240; color: var(--ink);
+    padding: 8px 10px; border-radius: 10px; font-weight: 700; cursor: pointer;
+    box-shadow: inset 0 -1px 0 #0008, 0 1px 0 #0006;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn[disabled] { opacity: .55; cursor:not-allowed; }
+  #abilityTray { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#0e1420; border:1px solid #2a3240; border-bottom-color:#1a2230; padding:0 6px; border-radius:6px; font-weight:700; }
+  #hint { color: var(--muted); font-size: 12px; margin: 8px 0 0 }
+  #legend { font-size: 13px; color: var(--muted); margin-top: 10px;}
+  #legend b { color: var(--ink) }
+  #levelFlash {
+    position:absolute; inset:0 calc(var(--panel-w) + 0px) auto 0;
+    display:flex; align-items:center; justify-content:center; pointer-events:none;
+    font-weight:900; font-size:42px; letter-spacing:2px; color:#ffffffdd; text-shadow:0 2px 20px #000;
+    opacity:0; transition: opacity .4s ease;
+  }
+  #over {
+    position: absolute; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter: blur(2px);
+    background: #0009;
+  }
+  #overCard {
+    width:min(560px, 92vw); background:#0f1218; border:1px solid #2a3240; border-radius:16px; padding:18px;
+    box-shadow: 0 12px 50px #000a, inset 0 1px 0 #ffffff06;
+  }
+  #overCard h2 { margin:0 0 6px }
+  .field { display:flex; gap:10px; align-items:center; margin:10px 0; }
+  .field input {
+    flex: 1 1 auto; background:#0b0f18; border:1px solid #273142; color:var(--ink);
+    padding:10px 12px; border-radius:10px; outline:none;
+  }
+  .listy {font-size:13px; color:var(--muted)}
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#151a22; border:1px solid #253043; margin-right:6px; }
+  #controls { font-size: 12px; color: #a9b6c6; line-height:1.4; }
+  .small { font-size: 12px; color: var(--muted); }
+  #cornerHelp {
+    position:absolute; bottom:8px; left:8px; right: calc(var(--panel-w) + 8px);
+    display:flex; gap:8px; align-items:center; pointer-events:none; opacity:.9;
+  }
+  #cornerHelp .chip { pointer-events:auto; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div style="position:relative;">
+    <canvas id="canvas"></canvas>
+    <div id="hudTop">
+      <div id="levelChip" class="chip"><span class="dot" style="background:var(--accent)"></span> Level <b id="levelNum">1</b></div>
+      <div id="armyChip" class="chip"><span class="dot" style="background:var(--good)"></span> Army: <b id="armyType">Soldiers</b> <span class="small" id="armyCount"></span></div>
+      <div id="enemyChip" class="chip"><span class="dot" style="background:var(--bad)"></span> Enemies: <b id="enemyCount"></b></div>
+      <div class="chip" title="Frames per second">FPS: <b id="fps">60</b></div>
+    </div>
+    <div id="levelFlash">LEVEL 1</div>
+    <div id="cornerHelp">
+      <div class="chip">Drag-select, right-click to <b>move</b> or <b>attack</b>. <span class="kbd">A</span> = attack-nearest, <span class="kbd">B</span> = Blink mode, <span class="kbd">Esc</span> cancels.</div>
+    </div>
+    <div id="over">
+      <div id="overCard">
+        <h2>Game Over</h2>
+        <div class="listy">You reached <b>Level <span id="finalLevel">1</span></b>. Save your score?</div>
+        <div class="field">
+          <input type="text" id="playerName" placeholder="Your name" maxlength="40"/>
+          <button class="btn" id="saveScore">Save to Firebase</button>
+        </div>
+        <div class="small" id="saveMsg"></div>
+        <div class="listy" style="margin-top:12px">
+          <span class="pill">Soldier = 🪖</span>
+          <span class="pill">Blinker = 🔷</span>
+          <span class="pill">Ling = 🐜</span>
+          <span class="pill">Bling = 🟢 (AoE)</span>
+          <span class="pill">Sting = 🦟 (ranged)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside id="panel">
+    <h2>Selected <span id="selCount">0</span></h2>
+    <div class="row" style="margin-bottom:6px">
+      <div id="selBreakdown" class="small">—</div>
+      <button id="clearSel" class="btn" title="Clear selection">Clear</button>
+    </div>
+    <div id="abilityTray">
+      <button id="stimBtn" class="btn" title="Soldiers lose 10% max HP, +25% move & fire rate for 6s">Stim (Soldiers)</button>
+      <button id="blinkBtn" class="btn" title="Enter Blink targeting mode (click on map)">Blink (Blinkers)</button>
+      <button id="attackBtn" class="btn" title="Selected attack nearest enemy in aggro range">Attack Nearest (A)</button>
+    </div>
+    <div id="hint">Hold <span class="kbd">Shift</span> to add/remove from selection. Right-click an enemy to focus fire.</div>
+
+    <h3 style="margin-top:16px;">Units</h3>
+    <div id="selList"></div>
+
+    <h3 style="margin-top:16px;">Legend</h3>
+    <div id="legend">
+      <div><b>🪖 Soldier</b> — fast, rapid shots. Ability: <b>Stim</b>.</div>
+      <div><b>🔷 Blinker</b> — high-damage bolts, short-range <b>Blink</b>.</div>
+      <div><b>🐜 Ling</b> — fast melee swarmer.</div>
+      <div><b>🟢 Bling</b> — kamikaze + green splash on hit and on death.</div>
+      <div><b>🦟 Sting</b> — short-ranged green shooters.</div>
+    </div>
+
+    <h3 style="margin-top:16px;">Controls</h3>
+    <div id="controls">
+      • Left-drag to box-select. Click to select one.<br/>
+      • Right-click ground to move. Right-click enemy to attack that target.<br/>
+      • <span class="kbd">A</span>: Attack nearest (if any in aggro range).<br/>
+      • <span class="kbd">B</span>: Blink mode for selected Blinkers → click destination, <span class="kbd">Esc</span> to cancel.<br/>
+      • Edge-pan the camera by pushing the mouse to canvas edges.<br/>
+    </div>
+  </aside>
+</div>
+
+<!-- Firebase (Compat v9) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script>
+/* ===========================
+   Firebase Setup (provided)
+   =========================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.firebasestorage.app",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+  measurementId: "G-8PR6LVKSH3"
+};
+let fbApp, fbDb;
+try {
+  fbApp = firebase.initializeApp(firebaseConfig);
+  fbDb = firebase.database();
+} catch (e) {
+  console.warn("Firebase init error:", e);
+}
+
+/* ===========================
+   Game Constants & Helpers
+   =========================== */
+const TWO_PI = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a,b)=> a + Math.random()*(b-a);
+const randi = (a,b)=> Math.floor(rand(a,b+1));
+const dist2 = (a,b)=> { const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; };
+const nowMS = ()=> performance.now();
+
+const MAP_W = 3600, MAP_H = 2400;
+const VIEWPAD = 18; // edge-pan px
+const EDGE_SCROLL = 520; // px/s at edge
+const GRID = 60;
+
+const COLORS = {
+  hpGood: "#4de395",
+  hpBad: "#ff6b81",
+  ringSelf: "#4da3ff",
+  ringEnemy: "#38ef7d",
+  blueBolt: "#5fb0ff",
+  bullet: "#d9dde7",
+  stingBolt: "#31dd77",
+  splash: "#33ff88",
+  selBox: "#4da3ff88",
+  selStroke: "#4da3ff",
+};
+
+const PLAYER = 1, ENEMY = 2;
+
+const UNIT_TYPES = {
+  SOLDIER: "soldier",
+  BLINKER: "blinker",
+  LING: "ling",
+  BLING: "bling",
+  STING: "sting",
+};
+
+const UNIT_STATS = {
+  soldier: {
+    emoji:"🪖", r:10, team:PLAYER, maxHp:100, speed:130, range:160, fireRate:4.0, dmg:10,
+    projSpeed:520, aggro:360, canMoveShoot:false,
+    stim: { speedMul:1.25, rateMul:1.25, hpPctCost:0.10, dur:6000, cd:12000 }
+  },
+  blinker: {
+    emoji:"🔷", r:12, team:PLAYER, maxHp:120, speed:145, range:220, fireRate:1.2, dmg:34,
+    projSpeed:640, aggro:380, canMoveShoot:false,
+    blink: { dist:180, cd:7000 }
+  },
+  ling: {
+    emoji:"🐜", r:8, team:ENEMY, maxHp:40, speed:190, range:18, fireRate:1.6, dmg:7,
+    aggro:400, melee:true
+  },
+  bling: {
+    emoji:"🟢", r:10, team:ENEMY, maxHp:46, speed:150, range:14, fireRate:1.2, dmg:28,
+    aggro:380, melee:true, explode:{ radius:64, dmg:32 }
+  },
+  sting: {
+    emoji:"🦟", r:9, team:ENEMY, maxHp:60, speed:120, range:140, fireRate:1.5, dmg:8,
+    projSpeed:460, aggro:360
+  }
+};
+
+function makeUnit(kind, x, y) {
+  const S = UNIT_STATS[kind];
+  return {
+    id: Math.random().toString(36).slice(2),
+    kind,
+    team: S.team,
+    x, y,
+    vx:0, vy:0,
+    r: S.r,
+    maxHp: S.maxHp,
+    hp: S.maxHp,
+    speed: S.speed,
+    range: S.range || 0,
+    fireRate: S.fireRate || 0,
+    dmg: S.dmg || 0,
+    projSpeed: S.projSpeed || 0,
+    aggro: S.aggro || 0,
+    melee: !!S.melee,
+    canMoveShoot: !!S.canMoveShoot,
+    target: null, // unit target
+    order: null,  // {type:"move",x,y} | {type:"attack", targetId}
+    cd: 0,        // weapon cooldown ms
+    buffs: { stim:false, stimUntil:0, stimCdUntil:0, blinkCdUntil:0 },
+    blink: UNIT_STATS[kind].blink || null,
+    explode: UNIT_STATS[kind].explode || null,
+    alive: true,
+    selected: false,
+    attackMove: false
+  };
+}
+
+/* ===========================
+   Game State
+   =========================== */
+const state = {
+  level: 1,
+  altPlayerKind: UNIT_TYPES.SOLDIER, // alternates each round; every 5 levels: both
+  units: [],
+  projs: [],
+  splashes: [],
+  camera: { x: MAP_W/2 - 800, y: MAP_H/2 - 500, w: 0, h: 0 },
+  dragging: false, dragStart: null, dragEnd: null,
+  mouse: { x:0, y:0, worldX:0, worldY:0, overCanvas:false, right:false },
+  keys: {},
+  blinkMode: false,
+  gameOver: false,
+};
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const $ = (id)=>document.getElementById(id);
+const levelNum = $("levelNum");
+const enemyCountEl = $("enemyCount");
+const armyCountEl = $("armyCount");
+const armyTypeEl = $("armyType");
+const levelFlash = $("levelFlash");
+const selCountEl = $("selCount");
+const selBreakdownEl = $("selBreakdown");
+const selListEl = $("selList");
+const stimBtn = $("stimBtn");
+const blinkBtn = $("blinkBtn");
+const attackBtn = $("attackBtn");
+const clearSelBtn = $("clearSel");
+const fpsEl = $("fps");
+const over = $("over");
+const finalLevelEl = $("finalLevel");
+const playerNameEl = $("playerName");
+const saveScoreBtn = $("saveScore");
+const saveMsgEl = $("saveMsg");
+
+/* ===========================
+   Layout / Resize
+   =========================== */
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  const w = window.innerWidth - parseInt(getComputedStyle(document.documentElement).getPropertyValue("--panel-w"));
+  const h = window.innerHeight;
+  canvas.width = w;
+  canvas.height = h;
+  state.camera.w = w;
+  state.camera.h = h;
+}
+window.addEventListener("resize", resize);
+
+/* ===========================
+   Spawning & Levels
+   =========================== */
+function spawnPlayerGroup() {
+  // Determine group composition based on level rule:
+  // every 5 levels -> both; otherwise alternate soldiers/blinkers.
+  const both = (state.level % 5 === 0);
+  const centerX = MAP_W/2, centerY = MAP_H/2;
+  const count = randi(15,20);
+  const ringR = 120;
+
+  let kinds = [];
+  if (both) {
+    const half = Math.floor(count/2);
+    for (let i=0;i<half;i++) kinds.push(UNIT_TYPES.SOLDIER);
+    for (let i=half;i<count;i++) kinds.push(UNIT_TYPES.BLINKER);
+  } else {
+    const k = state.altPlayerKind;
+    for (let i=0;i<count;i++) kinds.push(k);
+    // flip for next time
+    state.altPlayerKind = (state.altPlayerKind === UNIT_TYPES.SOLDIER) ? UNIT_TYPES.BLINKER : UNIT_TYPES.SOLDIER;
+  }
+
+  // Clear any existing player units before the new round
+  state.units = state.units.filter(u => u.team === ENEMY);
+
+  // Spawn around center in a disk
+  for (let i=0;i<kinds.length;i++) {
+    const a = Math.random()*TWO_PI;
+    const d = rand(0, ringR);
+    const u = makeUnit(kinds[i], centerX + Math.cos(a)*d, centerY + Math.sin(a)*d);
+    state.units.push(u);
+  }
+}
+
+function spawnEnemiesForLevel(level) {
+  // pattern variety:
+  // 1) sometimes all of one type
+  // 2) sometimes mixed
+  // increasing numbers
+  const base = 12 + Math.floor(level * 1.5);
+  const mixRoll = level % 4;
+  let kinds = [];
+
+  if (mixRoll === 1) { // all lings, swarm
+    for (let i=0;i<base + 6;i++) kinds.push(UNIT_TYPES.LING);
+  } else if (mixRoll === 2) { // sting focus
+    for (let i=0;i<base;i++) kinds.push(UNIT_TYPES.STING);
+  } else if (mixRoll === 3) { // bling fiesta
+    for (let i=0;i<Math.floor(base*0.7);i++) kinds.push(UNIT_TYPES.BLING);
+    for (let i=0;i<Math.floor(base*0.4);i++) kinds.push(UNIT_TYPES.LING);
+  } else {
+    // mixed
+    for (let i=0;i<base;i++) {
+      const r = Math.random();
+      if (r < 0.45) kinds.push(UNIT_TYPES.LING);
+      else if (r < 0.70) kinds.push(UNIT_TYPES.STING);
+      else kinds.push(UNIT_TYPES.BLING);
+    }
+  }
+
+  // spawn around edges
+  for (const k of kinds) {
+    let x, y;
+    const edge = randi(0,3);
+    const margin = 40;
+    if (edge === 0) { x = rand(margin, MAP_W-margin); y = margin; }
+    else if (edge === 1) { x = MAP_W - margin; y = rand(margin, MAP_H - margin); }
+    else if (edge === 2) { x = rand(margin, MAP_W-margin); y = MAP_H - margin; }
+    else { x = margin; y = rand(margin, MAP_H - margin); }
+    const u = makeUnit(k, x, y);
+    state.units.push(u);
+  }
+}
+
+function startLevel(n) {
+  state.level = n;
+  levelNum.textContent = n;
+  showLevelFlash(n);
+  spawnPlayerGroup();
+  spawnEnemiesForLevel(n);
+  updateArmyHud();
+}
+
+function showLevelFlash(n) {
+  levelFlash.textContent = "LEVEL " + n;
+  levelFlash.style.opacity = 1;
+  setTimeout(()=> levelFlash.style.opacity = 0, 900);
+}
+
+/* ===========================
+   Selection
+   =========================== */
+function worldFromScreen(x, y) {
+  return { x: x + state.camera.x, y: y + state.camera.y };
+}
+
+function screenFromWorld(x, y) {
+  return { x: x - state.camera.x, y: y - state.camera.y };
+}
+
+function selectAtPoint(wx, wy, additive=false) {
+  let hit = null;
+  for (let i=state.units.length-1;i>=0;i--) { // topmost first
+    const u = state.units[i];
+    if (u.team !== PLAYER || !u.alive) continue;
+    const rr = u.r + 4;
+    if (dist2({x:wx,y:wy}, u) <= rr*rr) { hit = u; break; }
+  }
+  if (!additive) clearSelection();
+  if (hit) hit.selected = !additive || !hit.selected;
+  refreshSelectionUI();
+  return hit;
+}
+
+function selectRect(wx1, wy1, wx2, wy2, additive=false) {
+  const x1 = Math.min(wx1, wx2), x2 = Math.max(wx1, wx2);
+  const y1 = Math.min(wy1, wy2), y2 = Math.max(wy1, wy2);
+  if (!additive) clearSelection();
+  for (const u of state.units) {
+    if (u.team !== PLAYER || !u.alive) continue;
+    if (u.x>=x1 && u.x<=x2 && u.y>=y1 && u.y<=y2) u.selected = true;
+  }
+  refreshSelectionUI();
+}
+
+function clearSelection() {
+  for (const u of state.units) u.selected = false;
+}
+
+function selectedUnits() {
+  return state.units.filter(u => u.selected && u.alive && u.team===PLAYER);
+}
+
+/* ===========================
+   Commands
+   =========================== */
+function commandMove(units, wx, wy) {
+  state.blinkMode = false;
+  for (const u of units) {
+    u.order = { type:"move", x: wx, y: wy };
+    u.target = null;
+    u.attackMove = false;
+  }
+}
+
+function commandAttackTarget(units, target) {
+  state.blinkMode = false;
+  for (const u of units) {
+    u.order = { type:"attack", targetId: target.id };
+    u.target = target;
+    u.attackMove = false;
+  }
+}
+
+function commandAttackNearest(units) {
+  state.blinkMode = false;
+  for (const u of units) {
+    const t = nearestEnemyInAggro(u);
+    if (t) {
+      u.order = { type:"attack", targetId: t.id };
+      u.target = t;
+    }
+  }
+}
+
+/* ===========================
+   Ability Logic
+   =========================== */
+function tryStim(units) {
+  const now = performance.now();
+  for (const u of units) {
+    if (u.kind !== UNIT_TYPES.SOLDIER) continue;
+    const S = UNIT_STATS.soldier.stim;
+    if (u.hp <= u.maxHp * S.hpPctCost) continue;
+    if (now < u.buffs.stimCdUntil) continue;
+    u.hp -= u.maxHp * S.hpPctCost;
+    u.buffs.stim = true;
+    u.buffs.stimUntil = now + S.dur;
+    u.buffs.stimCdUntil = now + S.cd;
+  }
+}
+
+function tryBlink(units, wx, wy) {
+  const now = performance.now();
+  for (const u of units) {
+    if (u.kind !== UNIT_TYPES.BLINKER) continue;
+    const B = UNIT_STATS.blinker.blink;
+    if (now < u.buffs.blinkCdUntil) continue;
+    // Short teleport toward clicked point up to B.dist
+    const dx = wx - u.x, dy = wy - u.y;
+    const d = Math.hypot(dx, dy);
+    const step = Math.min(B.dist, d || 0.0001);
+    const nx = u.x + dx / (d||1) * step;
+    const ny = u.y + dy / (d||1) * step;
+    u.x = clamp(nx, u.r, MAP_W - u.r);
+    u.y = clamp(ny, u.r, MAP_H - u.r);
+    u.vx = 0; u.vy = 0;
+    u.order = null;
+    u.buffs.blinkCdUntil = now + B.cd;
+  }
+}
+
+/* ===========================
+   AI & Combat Helpers
+   =========================== */
+function nearestEnemyInAggro(u) {
+  let best=null, bestD2=Infinity;
+  for (const e of state.units) {
+    if (!e.alive || e.team===u.team) continue;
+    const d2 = dist2(u, e);
+    if (d2 < bestD2 && d2 <= u.aggro*u.aggro) { best=e; bestD2=d2; }
+  }
+  return best;
+}
+
+function isEnemyInRange(u, e) {
+  const r = u.range + (e.r||0);
+  return dist2(u, e) <= r*r;
+}
+
+function fireProjectile(shooter, target) {
+  const S = shooter;
+  if (!target || !target.alive) return;
+  const ang = Math.atan2(target.y - S.y, target.x - S.x);
+  const spd = S.projSpeed || 480;
+  const proj = {
+    id: Math.random().toString(36).slice(2),
+    team: S.team,
+    x: S.x, y: S.y,
+    vx: Math.cos(ang)*spd,
+    vy: Math.sin(ang)*spd,
+    dmg: S.dmg,
+    life: 2000,
+    fromKind: S.kind,
+    targetId: target.id // for optional lead/visuals, not homing
+  };
+  state.projs.push(proj);
+}
+
+function applySplash(x, y, radius, dmg, sourceTeam) {
+  // Visual splash ring
+  state.splashes.push({ x, y, r: radius, t: performance.now(), dur: 260 });
+  for (const u of state.units) {
+    if (!u.alive) continue;
+    const d2 = dist2(u, {x,y});
+    if (d2 <= radius*radius) {
+      // Splash damages both teams (dangerous!)
+      u.hp -= dmg;
+      if (u.hp <= 0) killUnit(u, sourceTeam);
+    }
+  }
+}
+
+function killUnit(u, killerTeam) {
+  if (!u.alive) return;
+  u.alive = false;
+  // Bling explosion on death too
+  if (u.kind === UNIT_TYPES.BLING && u.explode) {
+    applySplash(u.x,u.y, u.explode.radius, u.explode.dmg, killerTeam);
+  }
+}
+
+/* ===========================
+   Physics & Update Loop
+   =========================== */
+function steerAndCollide(dt) {
+  // Basic separation & map bounds; soft "bounce" so groups don't clump.
+  const sepStrength = 14_00; // higher = stronger push; scaled by overlap
+  const damp = 0.86;
+  const accMul = 8.0;
+
+  // Radius grid optimization could be added later; for now O(n^2) is OK for dozens
+  for (let i=0;i<state.units.length;i++) {
+    const a = state.units[i];
+    if (!a.alive) continue;
+
+    // Desired velocity towards goal/target
+    let ax = 0, ay = 0;
+    const baseSpeed = a.speed * (a.buffs.stim ? UNIT_STATS.soldier.stim.speedMul : 1);
+
+    // If has an attack target, move into range (unless already in range)
+    if (a.target && a.target.alive) {
+      const inRange = isEnemyInRange(a, a.target);
+      if (!inRange) {
+        const dx = a.target.x - a.x, dy = a.target.y - a.y, d = Math.hypot(dx,dy)||1;
+        ax += (dx/d) * baseSpeed;
+        ay += (dy/d) * baseSpeed;
+      } else {
+        // stop to shoot
+        a.vx *= 0.7; a.vy *= 0.7;
+      }
+    } else if (a.order && a.order.type==="move") {
+      const dx = a.order.x - a.x, dy = a.order.y - a.y, d = Math.hypot(dx,dy);
+      if (d > 6) {
+        ax += (dx/(d||1)) * baseSpeed;
+        ay += (dy/(d||1)) * baseSpeed;
+      } else {
+        a.order = null;
+        a.vx *= 0.6; a.vy *= 0.6;
+      }
+    } else if (a.team===ENEMY) {
+      // Simple enemy AI: approach nearest player unit
+      const target = nearestOpposite(a);
+      if (target) {
+        const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx,dy)||1;
+        // melee enemies move regardless; ranged close a bit if far
+        if (a.melee || d > (a.range*0.85)) {
+          ax += (dx/d) * baseSpeed;
+          ay += (dy/d) * baseSpeed;
+        } else {
+          // slow drift to stop
+          a.vx *= 0.92; a.vy *= 0.92;
+        }
+      } else {
+        a.vx *= 0.96; a.vy *= 0.96;
+      }
+    } else {
+      // player idle: if enemy in aggro, pivot towards it (attack-move behavior)
+      const e = nearestEnemyInAggro(a);
+      if (e) {
+        const inRange = isEnemyInRange(a, e);
+        a.target = e;
+        if (!inRange) {
+          const dx=e.x-a.x, dy=e.y-a.y, d=Math.hypot(dx,dy)||1;
+          ax += (dx/d) * baseSpeed;
+          ay += (dy/d) * baseSpeed;
+        } else {
+          a.vx *= 0.8; a.vy *= 0.8;
+        }
+      } else {
+        a.vx *= 0.95; a.vy *= 0.95;
+      }
+    }
+
+    // Separation
+    for (let j=i+1;j<state.units.length;j++) {
+      const b = state.units[j];
+      if (!b.alive) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d2 = dx*dx + dy*dy;
+      const minDist = a.r + b.r + 2;
+      if (d2 > 0 && d2 < minDist*minDist) {
+        const d = Math.sqrt(d2);
+        const overlap = (minDist - d);
+        const ux = (dx/(d||1)), uy=(dy/(d||1));
+        const push = (overlap * sepStrength) * dt/1000;
+        // push them apart equally
+        a.vx -= ux * push; a.vy -= uy * push;
+        b.vx += ux * push; b.vy += uy * push;
+      }
+    }
+
+    // Apply acceleration toward desired
+    a.vx += (ax - a.vx) * (accMul*dt/1000);
+    a.vy += (ay - a.vy) * (accMul*dt/1000);
+
+    // Damp & cap
+    a.vx *= damp; a.vy *= damp;
+    const maxSpd = baseSpeed * 1.1;
+    const spd = Math.hypot(a.vx, a.vy);
+    if (spd > maxSpd) {
+      a.vx = a.vx / spd * maxSpd;
+      a.vy = a.vy / spd * maxSpd;
+    }
+
+    // Integrate
+    a.x = clamp(a.x + a.vx * dt/1000, a.r, MAP_W - a.r);
+    a.y = clamp(a.y + a.vy * dt/1000, a.r, MAP_H - a.r);
+  }
+}
+
+function nearestOpposite(u) {
+  let best=null, bestD2=Infinity;
+  for (const v of state.units) {
+    if (!v.alive || v.team===u.team) continue;
+    const d2 = dist2(u, v);
+    if (d2 < bestD2) { best=v; bestD2=d2; }
+  }
+  return best;
+}
+
+function combatAndAbilities(dt) {
+  const now = performance.now();
+  for (const u of state.units) {
+    if (!u.alive) continue;
+
+    // Buff timers
+    if (u.buffs.stim && now >= u.buffs.stimUntil) {
+      u.buffs.stim = false;
+    }
+
+    // Weapon cooldown tick
+    u.cd = Math.max(0, u.cd - dt);
+
+    // Acquire / maintain targets
+    if (u.team===PLAYER) {
+      if (!u.target || !u.target.alive) {
+        const e = nearestEnemyInAggro(u);
+        if (e) u.target = e;
+      }
+    } else {
+      // enemy AI picks nearest player
+      if (!u.target || !u.target.alive) {
+        u.target = nearestOpposite(u);
+      }
+    }
+
+    // Attack logic
+    if (u.melee) {
+      // Melee: deal damage if in range and cooldown ready
+      if (u.target && u.target.alive && isEnemyInRange(u, u.target) && u.cd <= 0) {
+        u.target.hp -= u.dmg;
+        u.cd = 1000 / u.fireRate;
+        if (u.target.hp <= 0) {
+          killUnit(u.target, u.team);
+          if (u.kind === UNIT_TYPES.BLING && u.explode) {
+            // Bling triggers explode on hit (suicide)
+            killUnit(u, u.team);
+            applySplash(u.x, u.y, u.explode.radius, u.explode.dmg, u.team);
+          }
+        }
+      }
+    } else {
+      // Ranged: only fire if roughly stationary (can't shoot while moving)
+      const moving = Math.hypot(u.vx, u.vy) > 28;
+      const tgt = u.target && u.target.alive ? u.target : null;
+
+      // auto attack if target in range; otherwise, if has attack order, close in
+      if (tgt && isEnemyInRange(u, tgt) && u.cd <= 0 && !moving) {
+        fireProjectile(u, tgt);
+        // apply fire rate with stim for soldiers
+        const rateMul = (u.kind===UNIT_TYPES.SOLDIER && u.buffs.stim) ? UNIT_STATS.soldier.stim.rateMul : 1;
+        u.cd = 1000 / (u.fireRate * rateMul);
+      }
+    }
+  }
+
+  // Projectiles
+  for (let i=state.projs.length-1;i>=0;i--) {
+    const p = state.projs[i];
+    p.life -= dt;
+    if (p.life <= 0) { state.projs.splice(i,1); continue; }
+    p.x += p.vx * dt/1000;
+    p.y += p.vy * dt/1000;
+
+    // Collide with units on opposite team
+    for (const u of state.units) {
+      if (!u.alive || u.team===p.team) continue;
+      const rr = u.r + 4;
+      if (dist2(p, u) <= rr*rr) {
+        u.hp -= p.dmg;
+        if (u.hp <= 0) killUnit(u, p.team);
+        state.projs.splice(i,1);
+        break;
+      }
+    }
+  }
+
+  // Victory/defeat checks
+  const anyPlayers = state.units.some(u => u.alive && u.team===PLAYER);
+  const anyEnemies = state.units.some(u => u.alive && u.team===ENEMY);
+
+  enemyCountEl.textContent = state.units.filter(u=>u.team===ENEMY && u.alive).length;
+  armyCountEl.textContent = "("+state.units.filter(u=>u.team===PLAYER && u.alive).length+")";
+
+  if (!anyPlayers && !state.gameOver) {
+    // Game Over
+    state.gameOver = true;
+    finalLevelEl.textContent = state.level;
+    over.style.display = "flex";
+  } else if (!anyEnemies) {
+    // Advance level after a brief pause
+    if (!state._nextLevelAt) {
+      state._nextLevelAt = performance.now() + 900;
+    } else if (performance.now() >= state._nextLevelAt) {
+      state._nextLevelAt = null;
+      startLevel(state.level + 1);
+    }
+  }
+}
+
+/* ===========================
+   Camera Panning
+   =========================== */
+function updateCamera(dt) {
+  if (!state.mouse.overCanvas) return;
+  const mx = state.mouse.x, my = state.mouse.y;
+  let vx=0, vy=0;
+  if (mx < VIEWPAD) vx = -EDGE_SCROLL;
+  else if (mx > canvas.width - VIEWPAD) vx = EDGE_SCROLL;
+  if (my < VIEWPAD) vy = -EDGE_SCROLL;
+  else if (my > canvas.height - VIEWPAD) vy = EDGE_SCROLL;
+
+  // Accelerate proportionally the closer to edge
+  const fx = mx < VIEWPAD ? (1 - mx/VIEWPAD) : (mx > canvas.width - VIEWPAD ? (mx - (canvas.width - VIEWPAD))/VIEWPAD : 0);
+  const fy = my < VIEWPAD ? (1 - my/VIEWPAD) : (my > canvas.height - VIEWPAD ? (my - (canvas.height - VIEWPAD))/VIEWPAD : 0);
+
+  state.camera.x = clamp(state.camera.x + vx*fx*dt/1000, 0, MAP_W - canvas.width);
+  state.camera.y = clamp(state.camera.y + vy*fy*dt/1000, 0, MAP_H - canvas.height);
+}
+
+/* ===========================
+   Rendering
+   =========================== */
+function draw() {
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+
+  // Grid
+  ctx.save();
+  ctx.translate(-state.camera.x, -state.camera.y);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#151a22";
+  for (let x=0;x<=MAP_W;x+=GRID) {
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,MAP_H); ctx.stroke();
+  }
+  for (let y=0;y<=MAP_H;y+=GRID) {
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(MAP_W,y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Splashes
+  const now = performance.now();
+  for (let i=state.splashes.length-1;i>=0;i--) {
+    const s = state.splashes[i];
+    const t = (now - s.t)/s.dur;
+    if (t >= 1) { state.splashes.splice(i,1); continue; }
+    const alpha = 1 - t;
+    const sr = s.r * (0.9 + 0.2*t);
+    const sc = screenFromWorld(s.x, s.y);
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y, sr, 0, TWO_PI);
+    ctx.fillStyle = `rgba(51,255,136,${0.18*alpha})`;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = `rgba(51,255,136,${0.7*alpha})`;
+    ctx.stroke();
+  }
+
+  // Projectiles
+  for (const p of state.projs) {
+    const sc = screenFromWorld(p.x,p.y);
+    if (p.fromKind === UNIT_TYPES.BLINKER) {
+      ctx.fillStyle = COLORS.blueBolt;
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, 3, 0, TWO_PI); ctx.fill();
+    } else if (p.team===PLAYER) {
+      ctx.fillStyle = COLORS.bullet;
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, 2.2, 0, TWO_PI); ctx.fill();
+    } else {
+      ctx.fillStyle = COLORS.stingBolt;
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, 3, 0, TWO_PI); ctx.fill();
+    }
+  }
+
+  // Units
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "20px system-ui, emoji";
+  for (const u of state.units) {
+    if (!u.alive) continue;
+    const sc = screenFromWorld(u.x,u.y);
+    // selection ring
+    if (u.selected) {
+      ctx.beginPath();
+      ctx.arc(sc.x, sc.y, u.r + 6, 0, TWO_PI);
+      ctx.strokeStyle = COLORS.selStroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // team ring
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y, u.r + 2, 0, TWO_PI);
+    ctx.strokeStyle = u.team===PLAYER ? COLORS.ringSelf : COLORS.ringEnemy;
+    ctx.lineWidth = 4; ctx.stroke();
+
+    // emoji
+    ctx.fillText(UNIT_STATS[u.kind].emoji, sc.x, sc.y + (u.kind===UNIT_TYPES.SOLDIER ? 1 : 0));
+
+    // hp bar
+    const w = Math.max(28, u.r*3);
+    const h = 5;
+    const pct = clamp(u.hp/u.maxHp, 0, 1);
+    ctx.fillStyle = "#000000aa";
+    ctx.fillRect(sc.x - w/2, sc.y - u.r - 16, w, h);
+    ctx.fillStyle = pct > 0.5 ? COLORS.hpGood : COLORS.hpBad;
+    ctx.fillRect(sc.x - w/2, sc.y - u.r - 16, w*pct, h);
+    ctx.strokeStyle = "#00000055"; ctx.lineWidth = 1; ctx.strokeRect(sc.x - w/2, sc.y - u.r - 16, w, h);
+
+    // blink/stim CD dots
+    if (u.kind===UNIT_TYPES.BLINKER && u.buffs.blinkCdUntil > now) {
+      const rem = (u.buffs.blinkCdUntil - now)/1000;
+      drawCooldownDot(sc.x+ w/2 + 6, sc.y - u.r - 13, rem);
+    }
+    if (u.kind===UNIT_TYPES.SOLDIER && u.buffs.stimCdUntil > now) {
+      const rem = (u.buffs.stimCdUntil - now)/1000;
+      drawCooldownDot(sc.x+ w/2 + 6, sc.y - u.r - 13, rem, "#ffd166");
+    }
+  }
+
+  // Selection box
+  if (state.dragging && state.dragStart && state.dragEnd) {
+    const s = screenFromWorld(state.dragStart.x, state.dragStart.y);
+    const e = screenFromWorld(state.dragEnd.x, state.dragEnd.y);
+    const x = Math.min(s.x,e.x), y = Math.min(s.y,e.y);
+    const w = Math.abs(s.x - e.x), h = Math.abs(s.y - e.y);
+    ctx.fillStyle = COLORS.selBox;
+    ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle = COLORS.selStroke;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x,y,w,h);
+  }
+}
+
+function drawCooldownDot(x,y, secs, color = "#a3b1c3") {
+  const r = 6;
+  ctx.beginPath(); ctx.arc(x,y, r, 0, TWO_PI); ctx.fillStyle = "#000a"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y, r-1, 0, TWO_PI); ctx.fillStyle = color; ctx.fill();
+  ctx.fillStyle = "#000"; ctx.font = "10px ui-monospace, monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(Math.ceil(secs), x, y);
+}
+
+/* ===========================
+   UI Refresh
+   =========================== */
+function refreshSelectionUI() {
+  const sel = selectedUnits();
+  selCountEl.textContent = sel.length;
+  const nSold = sel.filter(u=>u.kind===UNIT_TYPES.SOLDIER).length;
+  const nBlink = sel.filter(u=>u.kind===UNIT_TYPES.BLINKER).length;
+  selBreakdownEl.textContent = sel.length ? `🪖 ${nSold}  ·  🔷 ${nBlink}` : "—";
+
+  // List
+  selListEl.innerHTML = "";
+  for (const u of sel.slice(0,80)) {
+    const row = document.createElement("div"); row.className="row";
+    row.innerHTML = `<div>${UNIT_STATS[u.kind].emoji} <span class="small">${u.kind}</span></div>
+                     <div class="small">${Math.ceil(u.hp)}/${u.maxHp}</div>`;
+    selListEl.appendChild(row);
+  }
+
+  // Ability buttons enabled?
+  const anySold = nSold>0, anyBlink = nBlink>0;
+  stimBtn.disabled = !anySold;
+  blinkBtn.disabled = !anyBlink;
+  attackBtn.disabled = sel.length===0;
+}
+
+function updateArmyHud() {
+  const player = state.units.filter(u=>u.team===PLAYER && u.alive);
+  const type = player.every(u=>u.kind===UNIT_TYPES.SOLDIER) ? "Soldiers"
+             : player.every(u=>u.kind===UNIT_TYPES.BLINKER) ? "Blinkers"
+             : "Mixed";
+  armyTypeEl.textContent = type;
+  armyCountEl.textContent = "("+player.length+")";
+}
+
+/* ===========================
+   Input Handling
+   =========================== */
+canvas.addEventListener("contextmenu", (e)=> e.preventDefault());
+canvas.addEventListener("mouseenter", ()=> state.mouse.overCanvas = true);
+canvas.addEventListener("mouseleave", ()=> state.mouse.overCanvas = false);
+canvas.addEventListener("mousemove", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  state.mouse.x = e.clientX - rect.left;
+  state.mouse.y = e.clientY - rect.top;
+  const w = worldFromScreen(state.mouse.x, state.mouse.y);
+  state.mouse.worldX = w.x; state.mouse.worldY = w.y;
+  if (state.dragging) {
+    state.dragEnd = { x: w.x, y: w.y };
+  }
+});
+
+canvas.addEventListener("mousedown", (e)=>{
+  const w = worldFromScreen(e.offsetX, e.offsetY);
+  if (e.button === 0) {
+    // left = (possibly) start drag or click select
+    state.dragging = true;
+    state.dragStart = { x: w.x, y: w.y };
+    state.dragEnd = { x: w.x, y: w.y };
+  } else if (e.button === 2) {
+    // right = command: attack if clicked enemy, otherwise move
+    const sel = selectedUnits();
+    if (sel.length===0) return;
+    let clickedEnemy = null;
+    for (const u of state.units) {
+      if (!u.alive || u.team===PLAYER) continue;
+      const rr = u.r+6;
+      if (dist2({x:w.x,y:w.y}, u) <= rr*rr) { clickedEnemy = u; break; }
+    }
+    if (state.blinkMode) {
+      tryBlink(sel.filter(u=>u.kind===UNIT_TYPES.BLINKER), w.x, w.y);
+      state.blinkMode = false;
+    } else if (clickedEnemy) {
+      commandAttackTarget(sel, clickedEnemy);
+    } else {
+      commandMove(sel, w.x, w.y);
+    }
+  }
+});
+
+window.addEventListener("mouseup", (e)=>{
+  if (!state.dragging) return;
+  const additive = !!state.keys["ShiftLeft"] || !!state.keys["ShiftRight"];
+  if (!state.dragStart || !state.dragEnd) return;
+  const dx = Math.abs(state.dragEnd.x - state.dragStart.x);
+  const dy = Math.abs(state.dragEnd.y - state.dragStart.y);
+  if (dx < 6 && dy < 6) {
+    selectAtPoint(state.dragEnd.x, state.dragEnd.y, additive);
+  } else {
+    selectRect(state.dragStart.x, state.dragStart.y, state.dragEnd.x, state.dragEnd.y, additive);
+  }
+  state.dragging = false;
+  state.dragStart = state.dragEnd = null;
+});
+
+window.addEventListener("keydown", (e)=>{
+  state.keys[e.code] = true;
+  if (e.code === "KeyA") {
+    const sel = selectedUnits();
+    if (sel.length) commandAttackNearest(sel);
+    e.preventDefault();
+  } else if (e.code === "KeyB") {
+    if (selectedUnits().some(u=>u.kind===UNIT_TYPES.BLINKER)) {
+      state.blinkMode = true;
+    }
+  } else if (e.code === "Escape") {
+    state.blinkMode = false;
+  }
+});
+window.addEventListener("keyup", (e)=> state.keys[e.code] = false);
+
+stimBtn.addEventListener("click", ()=> tryStim(selectedUnits()));
+blinkBtn.addEventListener("click", ()=>{
+  if (selectedUnits().some(u=>u.kind===UNIT_TYPES.BLINKER)) {
+    state.blinkMode = true;
+  }
+});
+attackBtn.addEventListener("click", ()=> commandAttackNearest(selectedUnits()));
+clearSelBtn.addEventListener("click", ()=> { clearSelection(); refreshSelectionUI(); });
+
+saveScoreBtn.addEventListener("click", ()=> {
+  const name = (playerNameEl.value||"").trim().slice(0,40);
+  if (!name) { saveMsgEl.textContent = "Please enter a name."; return; }
+  if (!fbDb) { saveMsgEl.textContent = "Firebase not initialized."; return; }
+  const entry = { game:"Micro Wars", name, level: state.level, ts: Date.now() };
+  // As requested: save "under Flag"
+  fbDb.ref("Flag").push(entry)
+    .then(()=> saveMsgEl.textContent = "Saved! 🎉")
+    .catch(err => saveMsgEl.textContent = "Error: " + err.message);
+});
+
+/* ===========================
+   Main Loop
+   =========================== */
+let last = nowMS(), fpsS=nowMS(), frames=0;
+function tick() {
+  const t = nowMS();
+  let dt = t - last; if (dt > 60) dt = 60; // clamp
+  last = t;
+
+  if (!state.gameOver) {
+    steerAndCollide(dt);
+    combatAndAbilities(dt);
+    updateCamera(dt);
+  }
+  draw();
+  updateUI();
+
+  // fps
+  frames++;
+  if (t - fpsS >= 500) {
+    fpsEl.textContent = Math.round(frames * 1000/(t - fpsS));
+    fpsS = t; frames = 0;
+  }
+
+  requestAnimationFrame(tick);
+}
+
+function updateUI() {
+  refreshSelectionUI();
+  updateArmyHud();
+
+  // Blink mode cursor hint
+  if (state.blinkMode) {
+    canvas.style.cursor = "crosshair";
+  } else {
+    canvas.style.cursor = "default";
+  }
+}
+
+/* ===========================
+   Init
+   =========================== */
+function init() {
+  resize();
+  startLevel(1);
+  // center camera on middle spawn
+  state.camera.x = MAP_W/2 - canvas.width/2;
+  state.camera.y = MAP_H/2 - canvas.height/2;
+  requestAnimationFrame(tick);
+}
+
+/* ===========================
+   Enemy & Misc Utilities
+   =========================== */
+function countAlive(team) {
+  return state.units.filter(u=>u.alive && u.team===team).length;
+}
+
+/* ===========================
+   Start!
+   =========================== */
+init();
+
+/* ===========================
+   Notes:
+   - Right-click ground: move
+   - Right-click enemy: focus fire
+   - A: attack nearest (aggro)
+   - B: blink targeting mode (Blinkers)
+   - Esc: cancel blink mode
+   =========================== */
+</script>
+</body>
+</html>
