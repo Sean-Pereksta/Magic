@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>MOBA — Move Cancels Target + Assist XP + No Shoot While Moving</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --panel-w: 320px; --bg:#0f1116; --ink:#e7ecf2; --muted:#8ba0b3; --accent:#58a6ff;
+    --good:#50e3a4; --bad:#ff6b6b; --warn:#ffd166; --grid:#171a22;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans";
+    user-select:none; overflow:hidden}
+  #wrap{display:grid;grid-template-columns:1fr var(--panel-w);height:100%}
+  #canvas{display:block;background:#0c0f15}
+  #panel{background:#0f131b;border-left:1px solid #1f2631;padding:12px 12px 96px 12px;overflow:auto}
+  h2,h3{margin:10px 0 6px}
+  .chip{background:#151a22;border:1px solid #283142;padding:6px 10px;border-radius:999px;
+    display:inline-flex;gap:8px;align-items:center;font-weight:700;box-shadow:0 1px 0 #0008,inset 0 1px 0 #ffffff08}
+  #hud{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);top:10px;display:flex;gap:10px;pointer-events:none}
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;background:#0d1420;border:1px solid #2a3240;border-bottom-color:#1a2230;padding:0 6px;border-radius:6px;font-weight:700}
+  #abilityBar{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);bottom:10px;display:flex;gap:10px}
+  .ab{background:#111725;border:1px solid #2a3240;border-radius:10px;padding:8px 10px;min-width:160px}
+  .ab h4{margin:0 0 6px;font-size:14px}
+  .cd{font-size:12px;color:var(--muted)}
+  .locked{opacity:.55}
+  .prog{height:6px;background:#0d1420;border:1px solid #2a3240;border-radius:8px;overflow:hidden;margin-top:6px}
+  .progFill{height:100%;width:0%;background:linear-gradient(90deg,#ffd166,#ff9b66)}
+  .btn{background:#162131;border:1px solid #2a3240;color:var(--ink);padding:8px 10px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:inset 0 -1px 0 #0008,0 1px 0 #0006}
+  .btn:hover{filter:brightness(1.1)}
+  #start{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0009}
+  #card{background:#0f1218;border:1px solid #2a3240;border-radius:16px;padding:18px;width:min(560px,92vw);box-shadow:0 12px 50px #000a,inset 0 1px 0 #ffffff06}
+  #fpsChip{position:absolute;top:10px;right:calc(var(--panel-w) + 10px)}
+  #msg{position:absolute;top:48px;left:10px;color:#a9b6c6;font-size:13px}
+  #banner{position:absolute;inset:0 calc(var(--panel-w) + 0px) auto 0;display:flex;align-items:center;justify-content:center;
+    font-size:42px;font-weight:900;color:#ffffffdd;text-shadow:0 2px 20px #000;opacity:0;transition:opacity .4s}
+  #corner{position:absolute;left:10px;bottom:56px;color:#a9b6c6;font-size:12px}
+
+  /* XP bar (top) */
+  #xpBarWrap{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);top:44px;height:8px;background:#101420;border:1px solid #263043;border-radius:12px;overflow:hidden}
+  #xpBar{height:100%;background:linear-gradient(90deg,#58a6ff,#8bd6ff)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div style="position:relative">
+    <canvas id="canvas"></canvas>
+    <div id="hud">
+      <div class="chip">Stage <b id="stage">1</b></div>
+      <div class="chip">Hero Lv <b id="hLevel">1</b> <span style="color:#8ba0b3;margin-left:6px">XP <span id="xp">0</span>/<span id="xpNeed">100</span></span></div>
+      <div class="chip">Allies <b id="allyCount">0</b> | Enemies <b id="enemyCount">0</b></div>
+      <div class="chip">Towers 🗼 <b id="twInfo">2 vs 2</b></div>
+      <div class="chip">Core 💠 HP <b id="myCoreHp">—</b> / <b id="enCoreHp">—</b></div>
+    </div>
+    <div id="xpBarWrap"><div id="xpBar" style="width:0%"></div></div>
+
+    <div id="abilityBar">
+      <div class="ab" id="abQ">
+        <h4>Q — <span id="qName">—</span></h4>
+        <div class="cd" id="qInfo">—</div>
+        <div class="prog"><div class="progFill" id="qProg"></div></div>
+      </div>
+      <div class="ab" id="abW">
+        <h4>W — <span id="wName">—</span></h4>
+        <div class="cd" id="wInfo">Unlock at Lv4</div>
+        <div class="prog"><div class="progFill" id="wProg"></div></div>
+      </div>
+      <div class="ab" id="abE">
+        <h4>E — <span id="eName">—</span></h4>
+        <div class="cd" id="eInfo">Unlock at Lv7</div>
+        <div class="prog"><div class="progFill" id="eProg"></div></div>
+      </div>
+    </div>
+    <div id="corner">Right-click ground: move (cancels target). Right-click <b>enemy</b>: hard-target & chase until in range. While moving, your hero <b>won’t shoot</b>. Q/W/E to aim/cast. <span class="kbd">Esc</span> cancels. Edge-pan horizontally.</div>
+    <div id="msg"></div>
+    <div id="banner">STAGE 1</div>
+
+    <div id="start">
+      <div id="card">
+        <h2 style="margin:0 0 6px">Choose your Hero</h2>
+        <div class="listy" style="color:#a9b6c6">Destroy the enemy 💠 Core. Your kills grant full XP. Nearby team kills grant a small assist XP. Abilities unlock Lv2/Lv4/Lv7.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px">
+          <button class="btn" id="pickHealer">🧑‍⚕️ Healer</button>
+          <button class="btn" id="pickTank">🛡️ Tank</button>
+          <button class="btn" id="pickMage">🧙‍♂️ Mage</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chip" id="fpsChip">FPS: <b id="fps">60</b></div>
+  </div>
+  <aside id="panel">
+    <h2>Info</h2>
+    <div>• Moving cancels your current target; you won’t fire while moving.</div>
+    <div>• Assist XP: nearby ally kills grant <b>small XP</b> (defaults to 20% of base).</div>
+    <div>• Base XP: <b>Minion 25</b>, <b>Hero 75</b>. (Towers/Core unchanged.)</div>
+    <div>• Red ring = your current attack target (hard target or in-range auto target).</div>
+  </aside>
+</div>
+
+<script>
+/* ========================= Helpers & Constants ========================= */
+const TWO_PI=Math.PI*2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randi=(a,b)=>Math.floor(rand(a,b+1));
+const dist2=(a,b)=>{const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy;};
+const nowMS=()=>performance.now();
+
+const MAP_W=2800, MAP_H=900;
+const LANE_Y = MAP_H/2;
+const LANE_HALF = 170;            // vertical limit: narrow but not tiny
+const VIEWPAD_X=100, EDGE_SCROLL_X=750;
+const GRID=60;
+
+const PLAYER=1, ENEMY=2;
+
+const COLORS={
+  hpGood:"#4de395", hpBad:"#ff6b6b",
+  ringSelf:"#58a6ff", ringEnemy:"#38ef7d",
+  area:"#8fd9ff66", areaStroke:"#8fd9ff",
+  stun:"#ffd166", heal:"#50e3a488",
+  target:"#ff4a4a"
+};
+
+const ASSIST_RADIUS = 380;
+const ASSIST_SHARE  = 0.20; // 20% of base
+
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const $=id=>document.getElementById(id);
+const fpsEl=$("fps"), stageEl=$("stage"), hLevelEl=$("hLevel"), xpEl=$("xp"), xpNeedEl=$("xpNeed"),
+      allyCountEl=$("allyCount"), enemyCountEl=$("enemyCount"), twInfoEl=$("twInfo"),
+      myCoreHpEl=$("myCoreHp"), enCoreHpEl=$("enCoreHp"), msgEl=$("msg"), banner=$("banner"),
+      xpBar=$("xpBar");
+const startEl=$("start");
+const abQ=$("abQ"), abW=$("abW"), abE=$("abE"),
+      qName=$("qName"), wName=$("wName"), eName=$("eName"),
+      qInfo=$("qInfo"), wInfo=$("wInfo"), eInfo=$("eInfo"),
+      qProg=$("qProg"), wProg=$("wProg"), eProg=$("eProg");
+
+/* ========================= Data ========================= */
+const AB_UNLOCKS={ Q:2, W:4, E:7 };
+const HERO_BASES={
+  healer:{hp:220, speed:200, range:260, dmg:10, emoji:"🧑‍⚕️"},
+  tank:{hp:360, speed:185, range:150, dmg:12, emoji:"🛡️"},
+  mage:{hp:250, speed:210, range:300, dmg:9,  emoji:"🧙‍♂️"}
+};
+const HERO_ABILITIES={
+  healer:{
+    Q:{name:"Heal Beam", target:"ally-unit", cd:4000, power:(lv)=>18+6*lv},
+    W:{name:"Sanctuary", target:"area",    cd:12000, power:(lv)=>6+3*lv, dur:3000, radius:100},
+    E:{name:"Revitalize",target:"ally-hero",cd:20000, power:(lv)=>45+10*lv, shield:(lv)=>15+4*lv}
+  },
+  tank:{
+    Q:{name:"Shield Bash",target:"enemy-unit", cd:6000, power:(lv)=>10+3*lv, stun:1200},
+    W:{name:"Fortify",    target:"self",       cd:14000, reduce:0.4, dur:5000},
+    E:{name:"Charge",     target:"point",      cd:18000, power:(lv)=>18+7*lv, radius:70}
+  },
+  mage:{
+    Q:{name:"Firebolt",   target:"enemy-unit", cd:3500, power:(lv)=>20+6*lv},
+    W:{name:"Arcane Nova",target:"area",       cd:9000,  power:(lv)=>12+5*lv, radius:90},
+    E:{name:"Meteor",     target:"area",       cd:16000, power:(lv)=>24+10*lv, radius:110}
+  }
+};
+const MINION_BASE={ hp:65, dmg:6, speed:110, range:18, aggro:260 };
+const TOWER_BASE ={ hp:380, dmg:18, range:320, firerate:1.2 };
+const CORE_BASE  ={ hp:900 };
+
+// Base XP for YOUR last-hits
+const XP_ON_KILL={ MINION:25, HERO:75, TOWER:160, CORE:300 };
+
+/* ========================= State ========================= */
+const state={
+  stage:1,
+  units:[],
+  projectiles:[],
+  effects:[],
+  camera:{x:0,y:0,w:0,h:0},
+  mouse:{x:0,y:0,worldX:0,worldY:0,over:false},
+  keys:{},
+  targeting:null,
+  playerId:null,
+  minionTimers:{player:0, enemy:0},
+  lastMsgUntil:0
+};
+
+function resize(){
+  const w = window.innerWidth - parseInt(getComputedStyle(document.documentElement).getPropertyValue("--panel-w"));
+  const h = window.innerHeight;
+  canvas.width=w; canvas.height=h;
+  state.camera.w=w; state.camera.h=h;
+}
+window.addEventListener("resize", resize);
+
+/* ========================= Units ========================= */
+function makeUnit(kind, team, x, y, opts={}){
+  const u={
+    id:Math.random().toString(36).slice(2),
+    kind, team, x,y, vx:0,vy:0, r:12, alive:true,
+    range:120, dmg:10, speed:140, fireRate:1.0, cd:0, aggro:320,
+    maxHp:120, hp:120, emoji:"❓",
+    order:null, target:null, explicitTargetId:null,
+    born:nowMS(),
+    heroClass:opts.heroClass||null, level:opts.level||1, xp:0,
+    respawnAt:0, shield:0, fortifyUntil:0, stunnedUntil:0,
+    isStructure:false, isCore:false
+  };
+  if (kind==="hero"){
+    const b=HERO_BASES[opts.heroClass]; Object.assign(u,{emoji:b.emoji,maxHp:b.hp,hp:b.hp,range:b.range,dmg:b.dmg,speed:b.speed,r:14});
+  } else if (kind==="cohero" || kind==="aihero"){
+    const roles=["healer","tank","mage"]; const role=opts.heroClass||roles[randi(0,2)];
+    const b=HERO_BASES[role]; u.heroClass=role; Object.assign(u,{emoji:b.emoji,maxHp:b.hp,hp:b.hp,range:b.range,dmg:b.dmg,speed:b.speed,r:14});
+  } else if (kind==="minion"){
+    Object.assign(u,{emoji:"⚔️",r:10,maxHp:MINION_BASE.hp,hp:MINION_BASE.hp,speed:MINION_BASE.speed,dmg:MINION_BASE.dmg,range:MINION_BASE.range,aggro:MINION_BASE.aggro,fireRate:1.4});
+  } else if (kind==="tower"){
+    Object.assign(u,{emoji:"🗼",r:16,maxHp:TOWER_BASE.hp,hp:TOWER_BASE.hp,range:TOWER_BASE.range,dmg:TOWER_BASE.dmg,fireRate:TOWER_BASE.firerate,isStructure:true});
+  } else if (kind==="core"){
+    Object.assign(u,{emoji:"💠",r:18,maxHp:CORE_BASE.hp,hp:CORE_BASE.hp,isStructure:true,isCore:true});
+  }
+  if (opts.scale){ u.maxHp=Math.round(u.maxHp*opts.scale); u.hp=u.maxHp; u.dmg=Math.round(u.dmg*opts.scale); }
+  return u;
+}
+
+/* ========================= World Setup ========================= */
+function setupWorld(stage, heroClass){
+  state.units.length=0; state.projectiles.length=0; state.effects.length=0;
+  state.minionTimers.player = nowMS()+1500;
+  state.minionTimers.enemy  = nowMS()+1500;
+
+  const leftX=180, rightX=MAP_W-180;
+  const enemyScale = 1 + 0.12*(stage-1);
+
+  // cores & towers
+  const myC = makeUnit("core", PLAYER, leftX, LANE_Y);
+  const enC = makeUnit("core", ENEMY,  rightX, LANE_Y, {scale:enemyScale});
+  state.units.push(myC,enC);
+  state.units.push(makeUnit("tower", PLAYER, 700, LANE_Y));
+  state.units.push(makeUnit("tower", PLAYER, 1200, LANE_Y));
+  state.units.push(makeUnit("tower", ENEMY,  MAP_W-1200, LANE_Y, {scale:enemyScale}));
+  state.units.push(makeUnit("tower", ENEMY,  MAP_W-700,  LANE_Y, {scale:enemyScale}));
+
+  // player hero
+  const me=makeUnit("hero", PLAYER, leftX+80, LANE_Y+40, {heroClass});
+  state.units.push(me); state.playerId=me.id;
+
+  // co-heroes
+  state.units.push(makeUnit("cohero", PLAYER, leftX+40, LANE_Y-40, {heroClass:"tank"}));
+  state.units.push(makeUnit("cohero", PLAYER, leftX+40, LANE_Y+90, {heroClass:"mage"}));
+
+  // enemy AI heroes
+  state.units.push(makeUnit("aihero", ENEMY, rightX-40, LANE_Y-40, {heroClass:"tank", scale:enemyScale}));
+  state.units.push(makeUnit("aihero", ENEMY, rightX-40, LANE_Y+90, {heroClass:"mage", scale:enemyScale}));
+
+  // camera
+  state.camera.x = clamp(me.x - 200, 0, MAP_W - canvas.width);
+  state.camera.y = 0;
+
+  stageEl.textContent = state.stage;
+  flashBanner("STAGE "+state.stage);
+  const A=HERO_ABILITIES[heroClass];
+  qName.textContent=A.Q.name; wName.textContent=A.W.name; eName.textContent=A.E.name;
+  updateAbilityUI(); updateHud();
+}
+
+/* ========================= Queries & Goals ========================= */
+function getUnit(id){ return state.units.find(u=>u.id===id); }
+function playerHero(){ return getUnit(state.playerId); }
+function myCore(){ return state.units.find(u=>u.isCore && u.team===PLAYER); }
+function enCore(){ return state.units.find(u=>u.isCore && u.team===ENEMY); }
+
+function nearestEnemyTo(u, maxR=Infinity){
+  const r2 = maxR===Infinity?Infinity:maxR*maxR;
+  let best=null, bestD2=Infinity;
+  for (const e of state.units){
+    if (!e.alive || e.team===u.team) continue;
+    const d2=dist2(u,e); if (d2<bestD2 && d2<=r2){ best=e; bestD2=d2; }
+  }
+  return best;
+}
+function nextObjective(team){
+  const enemyTowers = state.units.filter(u=>u.alive && u.kind==="tower" && u.team!==team);
+  if (team===PLAYER){
+    const t = enemyTowers.sort((a,b)=>a.x-b.x)[0];
+    return t || enCore();
+  } else {
+    const t = enemyTowers.sort((a,b)=>b.x-a.x)[0];
+    return t || myCore();
+  }
+}
+
+/* ========================= Hit Test (for right-click targeting) ========================= */
+function unitAtPoint(wx, wy, teamWanted=null){
+  let best=null, bestD2=Infinity;
+  for (const u of state.units){
+    if (!u.alive) continue;
+    if (teamWanted && u.team!==teamWanted) continue;
+    const rr = (u.r||12) + 6;
+    const d2 = (wx-u.x)*(wx-u.x) + (wy-u.y)*(wy-u.y);
+    if (d2 <= rr*rr && d2 < bestD2){ best=u; bestD2=d2; }
+  }
+  return best;
+}
+
+/* ========================= Input & Camera ========================= */
+canvas.addEventListener("contextmenu", e=>e.preventDefault());
+canvas.addEventListener("mouseenter", ()=>state.mouse.over=true);
+canvas.addEventListener("mouseleave", ()=>state.mouse.over=false);
+canvas.addEventListener("mousemove",(e)=>{
+  const rect=canvas.getBoundingClientRect();
+  state.mouse.x=e.clientX-rect.left; state.mouse.y=e.clientY-rect.top;
+  state.mouse.worldX = state.mouse.x + state.camera.x;
+  state.mouse.worldY = state.mouse.y + state.camera.y;
+});
+canvas.addEventListener("mousedown",(e)=>{
+  const w={x:state.mouse.worldX, y:clamp(state.mouse.worldY, LANE_Y-LANE_HALF, LANE_Y+LANE_HALF)};
+  if (e.button===2){ // Right-click
+    const me=playerHero(); if (!me || !me.alive) return;
+    const enemyHit = unitAtPoint(w.x, w.y, ENEMY);
+    if (enemyHit){
+      // Hard target & CHASE (allowed to keep updating toward the enemy)
+      me.explicitTargetId = enemyHit.id;
+      me.target = enemyHit;
+      me.order = { type:"move", x:enemyHit.x, y:enemyHit.y, chase:true }; // <-- tag as chase
+      say("Target set.");
+    } else {
+      // Ground move cancels targeting and becomes dominant
+      me.explicitTargetId = null;
+      me.target = null;
+      me.order = { type:"move", x:w.x, y:w.y, chase:false }; // <-- pure move: dominant
+    }
+    cancelTargeting();
+  } else if (e.button===0){
+    if (state.targeting){ tryCast(state.targeting, w); }
+  }
+});
+
+window.addEventListener("keydown",(e)=>{
+  state.keys[e.code]=true;
+  if (e.code==="KeyQ"||e.code==="KeyW"||e.code==="KeyE"){ primeAbility(e.code.slice(3).toUpperCase()); }
+  if (e.code==="Escape") cancelTargeting();
+});
+window.addEventListener("keyup", e=>state.keys[e.code]=false);
+
+function primeAbility(key){
+  const me=playerHero(); if (!me || !me.alive) return;
+  const L=me.level, A=HERO_ABILITIES[me.heroClass][key]; if (!A) return;
+  const need=AB_UNLOCKS[key]; if (L<need){ say(`${key} unlocks at Lv${need}`); return; }
+  if (me[`cd_${key}`] && nowMS()<me[`cd_${key}`]){ say(`${key} cooling down`); return; }
+  state.targeting={key, A}; say(`Target ${A.target.replace('-',' ')} for ${A.name}. Left-click to cast.`);
+}
+function cancelTargeting(){ state.targeting=null; }
+
+/* ========================= Waves ========================= */
+function spawnWave(team){
+  const core = team===PLAYER ? myCore() : enCore();
+  const n = 5;
+  for (let i=0;i<n;i++){
+    const m = makeUnit("minion", team, core.x + (team===PLAYER?60:-60), LANE_Y + randi(-20,20), {scale: (team===ENEMY? 1+0.12*(state.stage-1):1)});
+    state.units.push(m);
+    const obj = nextObjective(team);
+    m.order={type:"move", x:obj.x + (team===PLAYER? -80:80), y:LANE_Y + randi(-30,30)};
+  }
+}
+
+/* ========================= Combat ========================= */
+function fireProjectile(from,to,dmg,spd=900,pierce=0){
+  const ang=Math.atan2(to.y-from.y, to.x-from.x);
+  state.projectiles.push({
+    id:Math.random().toString(36).slice(2),
+    team:from.team, dealerId: from.id,
+    x:from.x, y:from.y,
+    vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
+    dmg, life:2000, pierce
+  });
+}
+function xpKeyFor(target){
+  if (target.kind==="minion") return "MINION";
+  if (target.kind==="hero"||target.kind==="aihero"||target.kind==="cohero") return "HERO";
+  if (target.isStructure && !target.isCore) return "TOWER";
+  if (target.isCore) return "CORE";
+  return "MINION";
+}
+function applyDamage(target, dmg, dealer){
+  if (!target.alive) return;
+  let left=dmg;
+  if (target.shield>0){ const s=Math.min(target.shield,left); target.shield-=s; left-=s; }
+  if (left>0){
+    if (target.fortifyUntil && nowMS()<target.fortifyUntil) left *= 0.6;
+    target.hp -= left;
+  }
+  if (target.hp<=0){
+    target.alive=false;
+
+    // XP awards
+    const me = playerHero();
+    const base = XP_ON_KILL[xpKeyFor(target)] || 0;
+
+    // Full XP for your own last-hits (projectiles/abilities pass dealer=you)
+    if (dealer && me && dealer.id===me.id){
+      gainXP(me, base);
+    } else {
+      // Assist XP if ANY ally (minion, co-hero, tower) got the kill and you're nearby
+      if (me && me.alive && dealer && dealer.team===PLAYER){
+        if (dist2(me, target) <= ASSIST_RADIUS*ASSIST_RADIUS){
+          const assistXp = Math.max(1, Math.round(base * ASSIST_SHARE));
+          gainXP(me, assistXp);
+        }
+      }
+    }
+
+    // Core win/lose
+    if (target.isCore){
+      if (target.team===ENEMY) winStage(); else loseStage();
+    }
+    // Hero death => respawn timer
+    if (target.kind==="hero"||target.kind==="aihero"||target.kind==="cohero"){
+      target.respawnAt = nowMS() + 6000;
+    }
+  }
+}
+
+/* ========================= XP & Levels ========================= */
+function gainXP(hero, amount){
+  if (!amount) return;
+  hero.xp += amount;
+  while (hero.xp >= xpNeed(hero.level)){
+    hero.xp -= xpNeed(hero.level);
+    hero.level++; hero.maxHp = Math.round(hero.maxHp*1.05 + 8); hero.hp=hero.maxHp; hero.dmg = Math.round(hero.dmg*1.06 + 1);
+    say(`Level Up! Lv${hero.level}`);
+  }
+  updateAbilityUI(); updateHud();
+}
+function xpNeed(lv){ return 100 + (lv-1)*40; }
+
+/* ========================= AI & Behavior ========================= */
+function aiTick(dt){
+  const now = nowMS();
+
+  for (const u of state.units){
+    // Respawn
+    if (!u.alive){
+      if ((u.kind==="hero"||u.kind==="aihero"||u.kind==="cohero") && u.respawnAt && now>=u.respawnAt){
+        const core = u.team===PLAYER ? myCore() : enCore();
+        u.x = core.x + (u.team===PLAYER ? 60 : -60);
+        u.y = LANE_Y + randi(-40,40);
+        u.hp = u.maxHp; u.alive = true; u.respawnAt = 0;
+        u.order = null; u.vx = u.vy = 0; u.target = null; u.explicitTargetId = null;
+      }
+      continue;
+    }
+
+    // Stun lock
+    if (now < (u.stunnedUntil || 0)){ u.vx = 0; u.vy = 0; continue; }
+
+    if (u.kind === "minion"){
+      // Acquire / keep target within aggro
+      if (!u.target || !u.target.alive || dist2(u,u.target) > (u.aggro*u.aggro)){
+        u.target = nearestEnemyTo(u, u.aggro);
+      }
+      if (u.target){
+        const needDist = u.range + (u.target.r||0) + 2;
+        const d = Math.hypot(u.target.x - u.x, u.target.y - u.y);
+        if (d > needDist){
+          u.order = { type:"move", x:u.target.x, y:u.target.y };
+        } else {
+          u.order = null;
+          if (u.cd <= 0){
+            applyDamage(u.target, u.dmg, u);
+            u.cd = 1000 / u.fireRate;
+          }
+        }
+      } else if (!u.order){
+        const obj = nextObjective(u.team);
+        u.order = { type:"move", x: obj.x + (u.team===PLAYER? -60:60), y: LANE_Y + randi(-35,35) };
+      }
+
+    } else if (u.kind === "tower"){
+      const t = nearestEnemyTo(u, u.range);
+      if (t && u.cd <= 0){
+        fireProjectile(u, t, u.dmg, 1000);
+        u.cd = 1000 / u.fireRate;
+      }
+
+    } else if (u.kind === "core"){
+      // no action
+
+    } else {
+      // ===== Heroes (player & AI) =====
+      const isPlayer  = (u.id === state.playerId);
+      const hasMove   = !!(u.order && u.order.type === "move");
+      const isChasing = hasMove && !!u.order.chase;
+
+      // A) Player ground-move is dominant: never auto-overwrite it
+      if (!(isPlayer && hasMove && !isChasing)){
+        // B) Maintain/refresh target
+        if (isPlayer && u.explicitTargetId){
+          const ex = getUnit(u.explicitTargetId);
+          if (ex && ex.alive) u.target = ex; else u.explicitTargetId = null;
+        }
+        if ((!u.target || !u.target.alive) && !(isPlayer && hasMove && !isChasing)){
+          u.target = nearestEnemyTo(u, Math.max(u.range + 200, 520));
+        }
+
+        // C) Chase only if allowed (doesn't override player pure-move)
+        if (u.target){
+          const needDist = u.range + (u.target.r||0) - 2;
+          const d = Math.hypot(u.target.x - u.x, u.target.y - u.y);
+          if (d > needDist){
+            if (!isPlayer || isChasing || !hasMove){
+              u.order = { type:"move", x:u.target.x, y:u.target.y, chase: (isPlayer && !!u.explicitTargetId) };
+            }
+          } else {
+            if (isChasing) u.order = null; // reached range during a chase
+          }
+        } else if (!isPlayer){
+          const obj = nextObjective(u.team);
+          u.order = { type:"move", x: obj.x + (u.team===PLAYER? -120:120), y: LANE_Y };
+        }
+      }
+
+      // D) Auto-fire (player won’t shoot while any move is active)
+      if (u.target && u.cd <= 0){
+        const inRange = dist2(u,u.target) <= (u.range + u.r + (u.target.r||0))**2;
+        const movingBlock = (isPlayer && hasMove); // player: no shooting while moving
+        if (inRange && !movingBlock){
+          fireProjectile(u, u.target, u.dmg, 900);
+          u.cd = 1000 / 1.2;
+        }
+      }
+
+      // E) AI heroes use abilities
+      if (!isPlayer) trySmartAbility(u);
+    }
+  }
+}
+
+
+function trySmartAbility(u){
+  const A=HERO_ABILITIES[u.heroClass]; if (!A) return;
+  const lv=u.level, now=nowMS();
+  const foes = state.units.filter(e=>e.alive && e.team!==u.team);
+  const allies = state.units.filter(a=>a.alive && a.team===u.team);
+  const lowAlly = allies.filter(a=>a.hp/a.maxHp < 0.6).sort((a,b)=>a.hp/a.maxHp - b.hp/b.maxHp)[0];
+  const clusterAt=(cx,cy,r,teamOpp)=>foes.filter(f=>f.team===teamOpp && dist2({x:cx,y:cy},f)<=r*r).length;
+
+  // Q
+  if (lv>=AB_UNLOCKS.Q && !(u[`cd_Q`] && now<u[`cd_Q`])){
+    if (u.heroClass==="healer" && lowAlly && dist2(u,lowAlly) <= (u.range+150)**2){
+      lowAlly.hp = clamp(lowAlly.hp + A.Q.power(lv), 0, lowAlly.maxHp);
+      state.effects.push({type:"beam", from:u, to:lowAlly, color:COLORS.heal, until:now+250});
+      u[`cd_Q`]=now + A.Q.cd;
+    }
+    else if (u.heroClass==="tank" && u.target && dist2(u,u.target) <= (u.range+80)**2){
+      applyDamage(u.target, A.Q.power(lv), u); u.target.stunnedUntil = now + A.Q.stun;
+      state.effects.push({type:"beam", from:u, to:u.target, color:COLORS.stun, until:now+200});
+      u[`cd_Q`]=now + A.Q.cd;
+    }
+    else if (u.heroClass==="mage" && u.target && dist2(u,u.target) <= (u.range+120)**2){
+      applyDamage(u.target, A.Q.power(lv), u);
+      state.effects.push({type:"beam", from:u, to:u.target, color:"#faa", until:now+200});
+      u[`cd_Q`]=now + A.Q.cd;
+    }
+  }
+
+  // W
+  if (lv>=AB_UNLOCKS.W && !(u[`cd_W`] && now<u[`cd_W`])){
+    if (u.heroClass==="healer" && lowAlly){
+      const r=A.W.radius; const center={x:lowAlly.x,y:lowAlly.y};
+      const inField = allies.filter(a=>dist2(a,center)<=r*r).length;
+      if (inField>=2 || lowAlly.hp/lowAlly.maxHp<0.35){
+        state.effects.push({type:"hot", x:center.x, y:center.y, r, power:A.W.power(lv), tickEvery:500, tickAt:now+500, until:now+A.W.dur, team:u.team});
+        u[`cd_W`]=now + A.W.cd;
+      }
+    } else if (u.heroClass==="tank"){
+      const many = foes.filter(f=>dist2(f,u)<=180*180).length>=2;
+      if (u.hp/u.maxHp < .6 || many){ u.fortifyUntil = now + A.W.dur; u[`cd_W`]=now + A.W.cd; }
+    } else if (u.heroClass==="mage" && u.target){
+      const r=A.W.radius, c={x:u.target.x,y:u.target.y};
+      const hits = clusterAt(c.x,c.y,r, (u.team===PLAYER?ENEMY:PLAYER));
+      if (hits>=2){
+        for (const e of foes){ if (dist2(e,c)<=r*r) applyDamage(e, A.W.power(lv), u); }
+        state.effects.push({type:"circle", x:c.x, y:c.y, r, color:COLORS.area, until:now+300});
+        u[`cd_W`]=now + A.W.cd;
+      }
+    }
+  }
+
+  // E
+  if (lv>=AB_UNLOCKS.E && !(u[`cd_E`] && now<u[`cd_E`])){
+    if (u.heroClass==="healer" && lowAlly && lowAlly.hp/lowAlly.maxHp<0.35 && dist2(u,lowAlly) <= (u.range+150)**2){
+      lowAlly.hp = clamp(lowAlly.hp + A.E.power(lv), 0, lowAlly.maxHp);
+      lowAlly.shield += A.E.shield(lv);
+      state.effects.push({type:"beam", from:u, to:lowAlly, color:COLORS.heal, until:now+300});
+      u[`cd_E`]=now + A.E.cd;
+    } else if (u.heroClass==="tank" && u.target){
+      const dx=u.target.x-u.x, dy=u.target.y-u.y, d=Math.hypot(dx,dy)||1;
+      const step=Math.min(260,d); u.x += dx/d*step; u.y += dy/d*step;
+      for (const e of foes){ if (dist2(e,u)<=A.E.radius*A.E.radius) applyDamage(e, A.E.power(lv), u); }
+      u[`cd_E`]=now + A.E.cd;
+    } else if (u.heroClass==="mage" && u.target){
+      const r=A.E.radius, c={x:u.target.x,y:u.target.y};
+      const hits = clusterAt(c.x,c.y,r, (u.team===PLAYER?ENEMY:PLAYER));
+      if (hits>=3){
+        for (const e of foes){ if (dist2(e,c)<=r*r) applyDamage(e, A.E.power(lv), u); }
+        state.effects.push({type:"circle", x:c.x, y:c.y, r, color:COLORS.area, until:now+450});
+        u[`cd_E`]=now + A.E.cd;
+      }
+    }
+  }
+}
+
+/* ========================= Physics & Collision ========================= */
+function physics(dt){
+  const damp=0.88;
+
+  // Movement integration
+  for (const u of state.units){
+    if (!u.alive) continue;
+    u.cd = Math.max(0, u.cd - dt);
+
+    // orders
+    if (u.order && u.order.type==="move"){
+      const tx=u.order.x, ty=clamp(u.order.y, LANE_Y-LANE_HALF, LANE_Y+LANE_HALF);
+      const dx=tx - u.x, dy=ty - u.y;
+      const d=Math.hypot(dx,dy);
+      if (d>4){ const sp=u.speed; u.vx+=(dx/(d||1))*sp - u.vx; u.vy+=(dy/(d||1))*sp - u.vy; }
+      else { u.order=null; u.vx*=0.6; u.vy*=0.6; }
+    } else { u.vx *= 0.92; u.vy *= 0.92; }
+
+    // integrate
+    u.vx *= damp; u.vy *= damp;
+    const maxSpd=(u.speed||0)*1.05;
+    const s=Math.hypot(u.vx,u.vy);
+    if (s>maxSpd){ u.vx=u.vx/s*maxSpd; u.vy=u.vy/s*maxSpd; }
+    u.x = clamp(u.x + u.vx*dt/1000, u.r, MAP_W - u.r);
+    u.y = clamp(u.y + u.vy*dt/1000, LANE_Y-LANE_HALF + u.r*0.3, LANE_Y+LANE_HALF - u.r*0.3);
+  }
+
+  // separation (no overlap)
+  for (let i=0;i<state.units.length;i++){
+    const a=state.units[i]; if (!a.alive || a.isStructure) continue;
+    for (let j=i+1;j<state.units.length;j++){
+      const b=state.units[j]; if (!b.alive || b.isStructure) continue;
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const minDist = a.r + b.r + 2;
+      const d2=dx*dx+dy*dy;
+      if (d2>0 && d2 < minDist*minDist){
+        const d=Math.sqrt(d2);
+        const overlap=(minDist - d);
+        const ux=dx/(d||1), uy=dy/(d||1);
+        a.x -= ux * overlap*0.5; a.y -= uy * overlap*0.5;
+        b.x += ux * overlap*0.5; b.y += uy * overlap*0.5;
+        a.y = clamp(a.y, LANE_Y-LANE_HALF + a.r*0.3, LANE_Y+LANE_HALF - a.r*0.3);
+        b.y = clamp(b.y, LANE_Y-LANE_HALF + b.r*0.3, LANE_Y+LANE_HALF - b.r*0.3);
+      }
+    }
+  }
+
+  // Projectiles
+  for (let i=state.projectiles.length-1;i>=0;i--){
+    const p=state.projectiles[i];
+    p.life-=dt; if (p.life<=0){ state.projectiles.splice(i,1); continue; }
+    p.x += p.vx*dt/1000; p.y += p.vy*dt/1000;
+    for (const u of state.units){
+      if (!u.alive || u.team===p.team) continue;
+      const rr=u.r+3;
+      if (dist2(p,u) <= rr*rr){
+        const dealer = getUnit(p.dealerId);
+        applyDamage(u, p.dmg, dealer);
+        state.projectiles.splice(i,1);
+        break;
+      }
+    }
+  }
+}
+
+function updateCamera(dt){
+  if (!state.mouse.over) return;
+  const mx=state.mouse.x;
+  let vx=0;
+  if (mx < VIEWPAD_X) vx = -EDGE_SCROLL_X;
+  else if (mx > canvas.width - VIEWPAD_X) vx = EDGE_SCROLL_X;
+  const fx = mx < VIEWPAD_X ? (1 - mx/VIEWPAD_X)
+           : (mx > canvas.width - VIEWPAD_X ? (mx - (canvas.width - VIEWPAD_X))/VIEWPAD_X : 0);
+  state.camera.x = clamp(state.camera.x + vx*fx*dt/1000, 0, MAP_W - canvas.width);
+}
+
+/* ========================= Abilities (Player) ========================= */
+function tryCast(tgt, w){
+  const me = playerHero(); if (!me || !me.alive) return;
+  const key = tgt.key;
+  const A   = HERO_ABILITIES[me.heroClass][key]; // A is the selected ability (Q/W/E)
+  const now = nowMS();
+
+  if (me[`cd_${key}`] && now < me[`cd_${key}`]) { say(`${key} cooling down`); return; }
+  const need = AB_UNLOCKS[key];
+  if (me.level < need) { say(`${key} unlocks at Lv${need}`); return; }
+
+  const inRangeUnit = (u) => dist2(u, me) <= (me.range + 160) * (me.range + 160);
+  let casted = false;
+
+  // --- SELF (Tank W) ---
+  if (A.target === "self" && me.heroClass === "tank" && key === "W"){
+    me.fortifyUntil = now + A.dur;
+    me[`cd_${key}`] = now + A.cd;
+    casted = true; say("Fortify on!");
+  }
+
+  // --- POINT (Tank E dash) ---
+  else if (A.target === "point" && me.heroClass === "tank" && key === "E"){
+    const dx = w.x - me.x, dy = w.y - me.y, d = Math.hypot(dx,dy) || 1;
+    const step = Math.min(260, d);
+    me.x += (dx/d) * step; me.y += (dy/d) * step;
+    for (const e of state.units){
+      if (!e.alive || e.team === me.team) continue;
+      if (dist2(e, me) <= (A.radius * A.radius)) applyDamage(e, A.power(me.level), me);
+    }
+    me[`cd_${key}`] = now + A.cd; casted = true;
+  }
+
+  // --- AREA (Mage W/E, Healer W) ---
+  else if (A.target === "area"){
+    const radius = A.radius;
+    if (me.heroClass === "mage"){
+      const dmg = A.power(me.level);
+      for (const e of state.units){
+        if (!e.alive || e.team === me.team) continue;
+        if (dist2(e, w) <= radius*radius) applyDamage(e, dmg, me);
+      }
+      state.effects.push({ type:"circle", x:w.x, y:w.y, r:radius, color:COLORS.area, until: now + 300 });
+      me[`cd_${key}`] = now + A.cd; casted = true;
+    } else if (me.heroClass === "healer" && key === "W"){
+      const power = A.power(me.level);
+      state.effects.push({
+        type:"hot", x:w.x, y:w.y, r:radius, power,
+        tickEvery:500, tickAt: now + 500, until: now + A.dur, team: me.team
+      });
+      me[`cd_${key}`] = now + A.cd; casted = true;
+    }
+  }
+
+  // --- ENEMY UNIT (Tank Q, Mage Q) ---
+  else if (A.target === "enemy-unit"){
+    let best = null, bestD2 = 1e12;
+    for (const e of state.units){
+      if (!e.alive || e.team === me.team) continue;
+      const d2 = dist2(e, w); if (d2 < bestD2){ best = e; bestD2 = d2; }
+    }
+    if (best && inRangeUnit(best)){
+      // damage from current ability
+      applyDamage(best, A.power(me.level), me);
+
+      // extra stun if Tank Q has a stun field
+      if (me.heroClass === "tank" && key === "Q" && A.stun){
+        best.stunnedUntil = now + A.stun;
+        state.effects.push({ type:"beam", from:me, to:best, color:COLORS.stun, until: now + 200 });
+      } else if (me.heroClass === "mage" && key === "Q"){
+        state.effects.push({ type:"beam", from:me, to:best, color:"#faa", until: now + 200 });
+      }
+
+      me[`cd_${key}`] = now + A.cd; casted = true;
+    } else {
+      say("Out of range or no target.");
+    }
+  }
+
+  // --- ALLY UNIT/HERO (Healer Q/E) ---
+  else if (A.target === "ally-unit" || A.target === "ally-hero"){
+    let best = null, bestD2 = 1e12;
+    for (const a of state.units){
+      if (!a.alive || a.team !== me.team) continue;
+      const d2 = dist2(a, w); if (d2 < bestD2){ best = a; bestD2 = d2; }
+    }
+    if (best && inRangeUnit(best) && me.heroClass === "healer"){
+      const healAmt = A.power ? A.power(me.level) : 0;
+      best.hp = clamp(best.hp + healAmt, 0, best.maxHp);
+
+      // If we used Healer E, add shield from the E definition
+      if (key === "E"){
+        const E = HERO_ABILITIES[me.heroClass].E;
+        if (E && E.shield) best.shield += E.shield(me.level);
+      }
+
+      state.effects.push({ type:"beam", from:me, to:best, color:COLORS.heal, until: now + 250 });
+      me[`cd_${key}`] = now + A.cd; casted = true;
+    } else {
+      say("No ally in range.");
+    }
+  }
+
+  if (casted){ cancelTargeting(); updateAbilityUI(); }
+}
+
+
+/* ========================= Rendering ========================= */
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // background + lane band
+  ctx.save(); ctx.translate(-state.camera.x, -state.camera.y);
+  ctx.fillStyle="#0e1320";
+  ctx.fillRect(0, LANE_Y-LANE_HALF, MAP_W, LANE_HALF*2);
+  ctx.strokeStyle="#151a22"; ctx.lineWidth=1;
+  for (let x=0;x<=MAP_W;x+=GRID){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,MAP_H); ctx.stroke(); }
+  for (let y=0;y<=MAP_H;y+=GRID){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(MAP_W,y); ctx.stroke(); }
+  ctx.restore();
+
+  // effects
+  const now=nowMS();
+  for (let i=state.effects.length-1;i>=0;i--){
+    const ef=state.effects[i];
+    if (ef.type==="circle"){
+      if (now>ef.until){ state.effects.splice(i,1); continue; }
+      const sc=screen(ef.x, ef.y);
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, ef.r, 0, TWO_PI);
+      ctx.fillStyle=ef.color; ctx.fill();
+    } else if (ef.type==="beam"){
+      if (now>ef.until || !ef.from.alive || !ef.to.alive){ state.effects.splice(i,1); continue; }
+      const a=screen(ef.from.x,ef.from.y), b=screen(ef.to.x,ef.to.y);
+      ctx.lineWidth=3; ctx.strokeStyle=ef.color; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    } else if (ef.type==="hot"){
+      if (now>ef.until){ state.effects.splice(i,1); continue; }
+      if (now>=ef.tickAt){
+        for (const u of state.units){
+          if (u.alive && u.team===ef.team && dist2(u,ef)<=ef.r*ef.r){
+            u.hp = clamp(u.hp + ef.power, 0, u.maxHp);
+          }
+        }
+        ef.tickAt+=ef.tickEvery;
+      }
+      const sc=screen(ef.x, ef.y);
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, ef.r, 0, TWO_PI);
+      ctx.fillStyle=COLORS.heal; ctx.fill();
+    }
+  }
+
+  // determine which enemy to highlight (player's current target logic)
+  let highlightId=null;
+  const me=playerHero();
+  if (me && me.alive){
+    let t=null;
+    if (me.explicitTargetId){
+      const ex=getUnit(me.explicitTargetId);
+      if (ex && ex.alive) t=ex;
+    }
+    if (!t && me.target){
+      const inRange = dist2(me,me.target) <= (me.range + me.r + (me.target.r||0))**2;
+      if (inRange) t=me.target;
+    }
+    highlightId = t ? t.id : null;
+  }
+
+  // projectiles
+  for (const p of state.projectiles){
+    const sc=screen(p.x,p.y);
+    ctx.fillStyle="#e7edf7"; ctx.beginPath(); ctx.arc(sc.x, sc.y, 3, 0, TWO_PI); ctx.fill();
+  }
+
+  // units
+  for (const u of state.units){
+    const sc=screen(u.x,u.y);
+
+    if (!u.alive){
+      if (u.respawnAt){
+        const sec=Math.ceil((u.respawnAt-now)/1000);
+        ctx.fillStyle="#8896a8"; ctx.font="12px ui-monospace, monospace"; ctx.textAlign="center"; ctx.fillText(`⏳${sec}`, sc.x, sc.y-22);
+      }
+      continue;
+    }
+
+    // ring
+    ctx.beginPath(); ctx.arc(sc.x, sc.y, u.r+2, 0, TWO_PI);
+    ctx.strokeStyle = u.team===PLAYER? COLORS.ringSelf : COLORS.ringEnemy;
+    ctx.lineWidth=4; ctx.stroke();
+
+    // red highlight for player's current target
+    if (highlightId && u.id===highlightId){
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, u.r+6, 0, TWO_PI);
+      ctx.lineWidth=3; ctx.strokeStyle=COLORS.target; ctx.stroke();
+    }
+
+    // emoji
+    ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="22px system-ui, emoji";
+    ctx.fillText(u.emoji, sc.x, sc.y+1);
+
+    // hero level label
+    if (u.kind==="hero"||u.kind==="aihero"||u.kind==="cohero"){
+      ctx.fillStyle="#a9b6c6"; ctx.font="12px ui-monospace, monospace";
+      ctx.fillText(`Lv${u.level}`, sc.x, sc.y - u.r - 28);
+    }
+
+    // hp bar
+    const w=Math.max(32, u.r*3), h=5, pct=clamp(u.hp/u.maxHp,0,1);
+    ctx.fillStyle="#000000aa"; ctx.fillRect(sc.x - w/2, sc.y - u.r - 18, w, h);
+    ctx.fillStyle = pct>0.5? COLORS.hpGood : COLORS.hpBad;
+    ctx.fillRect(sc.x - w/2, sc.y - u.r - 18, w*pct, h);
+    ctx.strokeStyle="#00000055"; ctx.lineWidth=1; ctx.strokeRect(sc.x - w/2, sc.y - u.r - 18, w, h);
+
+    // cooldown dots for player hero
+    if (u.id===state.playerId){
+      let dx = sc.x + 34, dy = sc.y - u.r - 16; const nowT=now;
+      for (const K of ["Q","W","E"]){
+        const cd = u[`cd_${K}`] ? Math.max(0, Math.ceil((u[`cd_${K}`]-nowT)/1000)) : 0;
+        if (cd>0){ drawCooldownDot(dx, dy, cd, "#ffd166"); dx += 14; }
+      }
+    }
+  }
+
+  // area preview while targeting
+  if (state.targeting){
+    const A=state.targeting.A;
+    if (A.target==="area"){
+      const sc=screen(state.mouse.worldX, clamp(state.mouse.worldY, LANE_Y-LANE_HALF, LANE_Y+LANE_HALF));
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, A.radius, 0, TWO_PI);
+      ctx.fillStyle=COLORS.area; ctx.fill();
+      ctx.strokeStyle=COLORS.areaStroke; ctx.lineWidth=2; ctx.stroke();
+    }
+  }
+}
+
+function drawCooldownDot(x,y,secs,color="#a3b1c3"){
+  ctx.beginPath(); ctx.arc(x,y,6,0,TWO_PI); ctx.fillStyle="#000a"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,5,0,TWO_PI); ctx.fillStyle=color; ctx.fill();
+  ctx.fillStyle="#000"; ctx.font="10px ui-monospace, monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(secs, x, y);
+}
+function screen(x,y){ return {x:x - state.camera.x, y:y - state.camera.y}; }
+
+/* ========================= HUD/Msgs ========================= */
+function updateHud(){
+  const allies=state.units.filter(u=>u.alive && u.team===PLAYER && !u.isStructure);
+  const enemies=state.units.filter(u=>u.alive && u.team===ENEMY && !u.isStructure);
+  allyCountEl.textContent=allies.length; enemyCountEl.textContent=enemies.length;
+  const myT = state.units.filter(u=>u.alive && u.team===PLAYER && u.kind==="tower").length;
+  const enT = state.units.filter(u=>u.alive && u.team===ENEMY  && u.kind==="tower").length;
+  twInfoEl.textContent=`${myT} vs ${enT}`;
+  const mc=myCore(), ec=enCore();
+  myCoreHpEl.textContent=mc?mc.hp:0; enCoreHpEl.textContent=ec?ec.hp:0;
+  const me=playerHero(); if (me){
+    hLevelEl.textContent=me.level; xpEl.textContent=me.xp; xpNeedEl.textContent=xpNeed(me.level);
+    const pct = clamp(me.xp / xpNeed(me.level), 0, 1);
+    xpBar.style.width = (pct*100).toFixed(1) + "%";
+  }
+}
+function say(text, dur=1400){ msgEl.textContent=text; state.lastMsgUntil = nowMS()+dur; }
+function flashBanner(text){ banner.textContent=text; banner.style.opacity=1; setTimeout(()=> banner.style.opacity=0, 900); }
+
+/* ========================= Stage Win/Loss ========================= */
+function winStage(){
+  say("Core destroyed! Advancing Stage...", 1800);
+  state.stage++;
+  setTimeout(()=>{
+    const heroClass = playerHero().heroClass;
+    setupWorld(state.stage, heroClass);
+    const me=playerHero(); me.level=1; me.xp=0;
+    const b=HERO_BASES[heroClass]; me.maxHp=b.hp; me.hp=b.hp; me.dmg=b.dmg;
+    updateAbilityUI(); updateHud();
+  }, 1200);
+}
+function loseStage(){
+  say("Your core fell. Resetting to Stage 1...", 1800);
+  state.stage=1;
+  setTimeout(()=>{
+    const heroClass = playerHero().heroClass;
+    setupWorld(1, heroClass);
+    const me=playerHero(); me.level=1; me.xp=0;
+    const b=HERO_BASES[heroClass]; me.maxHp=b.hp; me.hp=b.hp; me.dmg=b.dmg;
+    updateAbilityUI(); updateHud();
+  }, 1200);
+}
+
+/* ========================= Ability UI & Cooldown Bars ========================= */
+function updateAbilityUI(){
+  const me=playerHero(); if (!me) return;
+  const A=HERO_ABILITIES[me.heroClass], now=nowMS();
+
+  function setBlock(block, nameEl, infoEl, progEl, key){
+    const need=AB_UNLOCKS[key], data=A[key];
+    nameEl.textContent = data.name;
+    const total = data.cd;
+    const remMs = me[`cd_${key}`] ? Math.max(0, me[`cd_${key}`]-now) : 0;
+    const remS  = Math.ceil(remMs/1000);
+    const pct = total ? (remMs/total) : 0;
+    block.classList.toggle("locked", me.level < need);
+    infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : (remS>0 ? `CD: ${remS}s` : "Ready");
+    progEl.style.width = (remS>0 ? (pct*100) : 0).toFixed(1) + "%";
+  }
+  setBlock(abQ, qName, qInfo, qProg, "Q");
+  setBlock(abW, wName, wInfo, wProg, "W");
+  setBlock(abE, eName, eInfo, eProg, "E");
+}
+
+/* ========================= Main Loop ========================= */
+let last=nowMS(), fpsS=nowMS(), frames=0;
+function tick(){
+  const t=nowMS(); let dt=t-last; if (dt>60) dt=60; last=t;
+
+  if (t >= state.minionTimers.player){ spawnWave(PLAYER); state.minionTimers.player = t + 6500; }
+  if (t >= state.minionTimers.enemy ){ spawnWave(ENEMY);  state.minionTimers.enemy  = t + 6500; }
+
+  aiTick(dt);
+  physics(dt);
+  updateCamera(dt);
+
+  updateAbilityUI();
+  updateHud();
+
+  if (t > state.lastMsgUntil) msgEl.textContent="";
+
+  draw();
+
+  frames++; if (t - fpsS >= 500){ fpsEl.textContent=Math.round(frames * 1000/(t - fpsS)); fpsS=t; frames=0; }
+  requestAnimationFrame(tick);
+}
+
+/* ========================= Start ========================= */
+function init(){
+  resize();
+  document.getElementById("pickHealer").onclick=()=>{ startEl.style.display="none"; state.stage=1; setupWorld(1,"healer"); requestAnimationFrame(tick); };
+  document.getElementById("pickTank").onclick  =()=>{ startEl.style.display="none"; state.stage=1; setupWorld(1,"tank");   requestAnimationFrame(tick); };
+  document.getElementById("pickMage").onclick  =()=>{ startEl.style.display="none"; state.stage=1; setupWorld(1,"mage");   requestAnimationFrame(tick); };
+}
+init();
+</script>
+</body>
+</html>
