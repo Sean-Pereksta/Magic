@@ -41,7 +41,7 @@
       <canvas id="cv" width="1024" height="602"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Eliminate the raiders</div>
-        <div class="legend">Drag: select • Right-click: attack-move • Q/W/E/R: ability • A: attack nearest • H: hold position</div>
+        <div class="legend">Drag: select • <b>Double-click</b>: select all of that type • Right-click: attack-move • Q/W/E/R: ability • A: attack nearest • H: hold</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
@@ -56,9 +56,7 @@
 <script type="module">
 /* ========== Firebase boot ========== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -71,15 +69,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ========== URL params ========== */
+/* ========== URL + Firestore encounter ========== */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
-// Raiders params (accept multiple names)
-const typeParam  = Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "recruit";
-const countParam = Q.get("enemyCount")|| Q.get("raiders")    || Q.get("count")|| "12";
-const RAIDER_TYPE  = (""+typeParam).toLowerCase();
-const RAIDER_COUNT = Math.max(3, Math.min(50, parseInt(countParam,10)||12));
+// URL fallback values, if Firestore encounter doc isn't found:
+let URL_RAIDER_TYPE  = (""+(Q.get("etype")||Q.get("raiderType")||Q.get("enemyType")||Q.get("type")||"recruits")).toLowerCase();
+let URL_RAIDER_COUNT = Math.max(3, Math.min(50, parseInt(Q.get("esize")||Q.get("enemyCount")||Q.get("raiders")||Q.get("count")||"12",10)||12));
+
+async function loadEncounterForUser(user){
+  try{
+    const ref = doc(db, "mountonline_encounters", user);
+    const snap = await getDoc(ref);
+    if (snap.exists()){
+      const d = snap.data();
+      updateDoc(ref, { consumed:true, consumedAt: Date.now() }).catch(()=>{});
+      return {
+        type: (""+(d.type||"recruits")).toLowerCase(),
+        count: Math.max(3, Math.min(50, parseInt(d.size,10)||12))
+      };
+    }
+  }catch(e){}
+  return { type: URL_RAIDER_TYPE, count: URL_RAIDER_COUNT };
+}
 
 /* ========== Canvas, camera, helpers ========== */
 const cv = document.getElementById("cv");
@@ -88,16 +100,15 @@ const ctx = cv.getContext("2d", { alpha:false });
 const TILE=48, GRID_W=46, GRID_H=30;
 const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
 const cam={ x: WORLD.w/2 - cv.width/2, y: WORLD.h/2 - cv.height/2, speed:1400 };
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+const clamp=(v,a,b)=> Math.max(a,Math.min(b,v));
 function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,WORLD.h-cv.height); }
-function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
-function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
-function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-const TEAM_COLORS = ["#63b3ff","#ff8a7a","#85ff8a","#ffd56b","#d2a8ff","#ff7abf"];
-function teamTint(owner){ return TEAM_COLORS[hash(owner)%TEAM_COLORS.length]; }
-const short = s => s.length>10 ? s.slice(0,10)+"…" : s;
+const manhattan=(ax,ay,bx,by)=> Math.abs(ax-bx)+Math.abs(ay-by);
+const cheby=(ax,ay,bx,by)=> Math.max(Math.abs(ax-bx),Math.abs(ay-by));
 
-/* ========== Troop stats (same as PvP) ========== */
+/* Hard team colors: ME=blue, Raiders=red */
+const TEAM_COLOR = { player:"#3b82f6", raider:"#ef4444" };
+
+/* ========== Troop stats (same as PvP, volley tamed) ========== */
 const TYPES = {
   recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
@@ -114,10 +125,7 @@ const TYPES = {
                    ] }
 };
 /* Tiers for rewards */
-const TIER = {
-  recruit:1, footman:2, archer:2, monk:2,
-  swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3
-};
+const TIER = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3 };
 const REWARD = { 1:2, 2:5, 3:8 };
 
 /* ========== Banners → owner modifiers (apply only to ME) ========== */
@@ -141,6 +149,8 @@ function bannerMods(equipped=[]){
 let state=null; // { units, effects, projs, stats }
 const participants=[ME, "Raiders"];
 let ownerMods={};
+let ENEMY_TYPE_LABEL="recruits"; // for HUD
+
 /* Mountonline mapping */
 const MKEY = {
   recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry",
@@ -151,12 +161,11 @@ const MKEY = {
 /* ========== Input / selection ========== */
 const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false};
 const viewEl=document.querySelector(".view");
-function rect(el){ return el.getBoundingClientRect(); }
-function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
-function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
+const rect = el => el.getBoundingClientRect();
+const rel  = (el,e)=>{ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; };
+const worldToGrid=(wx,wy)=> ({ gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) });
 
 let dragging=false, dragStart=null, selection=new Set(), targeting=null;
-const uiCooldowns={1:0,2:0,3:0,4:0}; // Q/W/E/R
 const localFX=[];
 
 /* ========== Helpers ========== */
@@ -176,7 +185,7 @@ function hideHint(){ document.getElementById("hint").style.display="none"; }
 
 /* ========== Build my army + raiders, mark inBattle ========== */
 async function seedBattle(){
-  // Make me inactive & inBattle (so no one can attack during this local fight)
+  // Make me inactive & inBattle
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
   const meSnap = await getDoc(doc(db,"mountonline", ME));
@@ -184,15 +193,17 @@ async function seedBattle(){
   const me = meSnap.data();
   ownerMods[ME] = bannerMods((me.inventory?.equipped)||[]);
 
-  // Units array
+  // Encounter from Firestore (fallback to URL)
+  const enc = await loadEncounterForUser(ME);
+  ENEMY_TYPE_LABEL = enc.type;
+  const allowed = new Set(["recruit","recruits","footman","footmen","archer","archers"]);
+  const chosenType = allowed.has(enc.type) ? (enc.type==="recruits"?"recruit": enc.type==="footmen"?"footman": enc.type==="archers"?"archer":enc.type) : "recruit";
+  const chosenCount = enc.count;
+
   const units=[];
-  // Spawn my army from stored counts
-  spawnArmyForOwner(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-4}, +1);
-  // Spawn raiders
-  const rType = (RAIDER_TYPE==="recruits"?"recruit": RAIDER_TYPE);
-  const allowed = new Set(["recruit","footman","archer"]);
-  const chosen = allowed.has(rType) ? rType : "recruit";
-  spawnRaiders(units, "Raiders", chosen, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-4}, -1);
+  // Spawn blocks, tightly packed (no type gaps), far from center to avoid overlap
+  spawnArmyBlock(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-5}, +1, 10);
+  spawnRaidersBlock(units, "Raiders", chosenType, chosenCount, {gx:GRID_W-15, gy:Math.floor(GRID_H/2)-5}, -1, 10);
 
   state = {
     units, effects:[], projs:[],
@@ -200,23 +211,24 @@ async function seedBattle(){
   };
   return true;
 }
-function spawnArmyForOwner(units, owner, armyCounts, origin, dir){
+
+/* Spawn helpers (continuous block fill) */
+function spawnArmyBlock(units, owner, armyCounts, origin, dir, perRow){
   const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
-  let row=0, col=0, perRow=10;
+  let row=0, col=0;
   for(const key of order){
     const typeId = MKEY[key]; if(!typeId) continue;
-    const n = Math.max(0, parseInt(armyCounts[key]||0,10));
-    for(let i=0;i<n;i++){
+    let n = Math.max(0, parseInt(armyCounts[key]||0,10));
+    while(n-- > 0){
       const gx = origin.gx + (dir>0 ? col : -col);
       const gy = origin.gy + row;
       units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
       col++; if(col>=perRow){ col=0; row++; }
     }
-    if(col!==0){ row++; col=0; }
   }
 }
-function spawnRaiders(units, owner, typeId, count, origin, dir){
-  let row=0,col=0, perRow=10;
+function spawnRaidersBlock(units, owner, typeId, count, origin, dir, perRow){
+  let row=0,col=0;
   for(let i=0;i<count;i++){
     const gx = origin.gx + (dir>0 ? col : -col);
     const gy = origin.gy + row;
@@ -243,62 +255,85 @@ function mkUnit(type, owner, gx, gy){
     range: base.range, atkSpd: base.atkSpd, move: Math.round(base.move * moveMul),
     armor: Math.round(base.armor * armorMul),
     acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
-    goalGX:null, goalGY:null, nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y",
+    goalGX:null, goalGY:null, chaseId:null, nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y",
     priestHealMul: (type==="priest"? mod.priestHeal : 1),
     _lastBy:null
   };
 }
 
 /* ========== Intents (local) ========== */
-function orderAttackMove(ids,gx,gy){ for(const u of state.units){ if(ids.includes(u.id) && u.o===ME){ u.goalGX=gx; u.goalGY=gy; u._channel=null; } } }
+function orderAttackMove(ids,gx,gy){
+  for(const u of state.units){
+    if(ids.includes(u.id) && u.o===ME){ u.goalGX=gx; u.goalGY=gy; u.chaseId=null; u._channel=null; }
+  }
+}
 function orderNearest(ids){
-  for(const u of state.units){ if(!ids.includes(u.id) || u.o!==ME) continue;
+  for(const u of state.units){
+    if(!ids.includes(u.id) || u.o!==ME) continue;
     let best=null, bd=1e9;
     for(const v of state.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
-    if(best){ u.goalGX=best.gx; u.goalGY=best.gy; }
+    if(best){ u.goalGX=best.gx; u.goalGY=best.gy; u.chaseId=best.id; }
   }
 }
 function toggleHold(ids){ for(const u of state.units){ if(ids.includes(u.id) && u.o===ME) u._hold=!u._hold; } }
 
-/* ========== Abilities (same as PvP) ========== */
-function startCooldown(slot, secs){ uiCooldowns[slot]=Date.now()+Math.round(secs*1000); }
-function updateCooldownBadges(){
-  const abil=document.getElementById("abilities"); if(!abil) return;
-  for(let s=1;s<=4;s++){
-    const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
-    const rem=uiCooldowns[s]-Date.now(); const on=rem>0; el.classList.toggle("oncd", on);
-    let badge=el.querySelector(".cd-badge");
-    if(on){ const secs=Math.ceil(rem/1000); if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; el.appendChild(badge); } badge.textContent=`${secs}s`; }
-    else if(badge){ badge.remove(); }
-  }
-}
-setInterval(updateCooldownBadges, 200);
-
-function slotAbility(slot){
+/* ========== Abilities (per-unit cooldown; no global UI cd) ========== */
+function slotAbilityFromSelection(slot){
   const sel=getUnitsView().filter(u=>selection.has(u.id));
   for(const u of sel){ const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot); if(a) return a; }
   return null;
 }
+function anySelectedUnitCanCast(slot){
+  let found=false, ready=false;
+  for(const u of getUnitsView()){
+    if(!selection.has(u.id)) continue;
+    const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot);
+    if(a){ found=true; if((u.acd?.[slot]||0)<=0 && !u._channel) ready=true; }
+  }
+  return {found, ready};
+}
+function minCooldownOfSelected(slot){
+  let min=Infinity, has=false;
+  for(const u of getUnitsView()){
+    if(!selection.has(u.id)) continue;
+    const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot);
+    if(!a) continue;
+    has=true;
+    const rem = Math.max(0, u.acd?.[slot]||0);
+    if(rem<min) min=rem;
+  }
+  return has ? min : null;
+}
 function castSlot(slot){
   const ids=Array.from(selection); if(!ids.length) return;
-  if(Date.now()<uiCooldowns[slot]){ flash("⏳ Ability on cooldown"); return; }
-  const ab=slotAbility(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
-
+  const ab=slotAbilityFromSelection(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
+  // Point/self handling
   if(ab.target==="self"){
-    for(const u of state.units){ if(ids.includes(u.id) && u.o===ME){ AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now()); u.acd[slot]=ab.cd; } }
-    startCooldown(slot,ab.cd); fxRingOnSelection();
+    for(const u of state.units){
+      if(!ids.includes(u.id) || u.o!==ME) continue;
+      if((u.acd?.[slot]||0)>0 || u._channel) continue;
+      AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now());
+      u.acd[slot]=ab.cd;
+    }
+    fxRingOnSelection();
   }else{
     targeting={slot,ab,ids}; showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      for(const u of state.units){ if(ids.includes(u.id) && u.o===ME){ AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now()); u.acd[slot]=ab.cd; } }
-      startCooldown(slot,ab.cd);
+      for(const u of state.units){
+        if(!ids.includes(u.id) || u.o!==ME) continue;
+        if((u.acd?.[slot]||0)>0 || u._channel) continue;
+        AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now());
+        u.acd[slot]=ab.cd;
+      }
       fxTile(gx,gy); hideHint(); targeting=null;
       cv.removeEventListener("click", once);
     };
     cv.addEventListener("click", once);
   }
+  // HUD refresh to reflect individual CDs
+  updateCooldownBadges();
 }
 function fxRingOnSelection(){ for(const u of getUnitsView().filter(u=>selection.has(u.id))){ localFX.push({kind:"ring",gx:u.gx,gy:u.gy,color:"#9bf",until:Date.now()+550}); } }
 function fxTile(gx,gy){ localFX.push({kind:"tile",gx,gy,color:"#aef",until:Date.now()+600}); }
@@ -323,11 +358,13 @@ function bresenham(x0,y0,x1,y1){
 /* ========== Simulation (local) ========== */
 const PX2SQUARES = 1 / (TILE*0.9);
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
+
 function simulate(g, dt){
   const now = Date.now();
-  // Cooldowns / auras
+  // Auras / CDs
   for(const u of g.units){
-    for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
+    // per-unit cooldowns (seconds)
+    for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, (u.acd[k]||0)-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
     if(u._aura?.kind==="mend"){ u.hp=Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt); }
     if(u._channel && u._channel.until<=now) u._channel=null;
@@ -351,27 +388,30 @@ function simulate(g, dt){
     if(e.type==="squareOnce"){ if(!e.did && now>=e.when){ pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0); e.did=true; } }
   }
 
-  // Targeting & attacks
+  // Targeting & basic attack
   for(const u of g.units){
     if(u._channel) continue;
     let target=null, bd=1e9;
     for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
     const rng=u.range||1;
     const inRange = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy) <= rng : manhattan(u.gx,u.gy,target.gx,target.gy)<=rng);
+
     if(inRange && (!u._hold)){
-      // attack
       u._atkCd = (u._atkCd||0) - dt;
       if((u._atkCd||0) <= 0){
         const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
         applyDamage(g, target, baseDmg, 0, u.o);
         u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
       }
-    } else if(!u._hold && target && bd <= 20 && (u.goalGX==null || u.goalGY==null)){
-      u.goalGX=target.gx; u.goalGY=target.gy;
+      // Stop chasing if we’re in range (ranged won’t face-push)
+      u.goalGX=null; u.goalGY=null; u.chaseId=null;
+    } else if(!u._hold && target){
+      // Keep chasing this target (we’ll path to within range, not on top)
+      u.chaseId = target.id;
     }
   }
 
-  // Movement incl. charge
+  // Movement (with "go-around" seeking for a spot)
   const occ = occupancy(g.units);
   const reserved=new Set();
   for(const u of g.units){
@@ -392,20 +432,48 @@ function simulate(g, dt){
       continue;
     }
 
-    if(u.goalGX==null || u.goalGY==null) continue;
+    // No move orders? Skip.
+    if(u.chaseId==null && (u.goalGX==null || u.goalGY==null)) continue;
+
     const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
     const everyMs = Math.max(80, Math.floor(1000/speedSquares));
     if(now < u.nextStepAt) continue;
     u.nextStepAt = now + everyMs;
-    const nx = u.gx + Math.sign(u.goalGX - u.gx);
-    const ny = u.gy + Math.sign(u.goalGY - u.gy);
-    const cand=[{gx:nx,gy:u.gy},{gx:u.gx,gy:ny}];
-    for(const c of cand){
-      if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
-      const k=c.gx+"|"+c.gy;
-      if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); break; }
+
+    // Determine desired target tile
+    let tx = u.goalGX, ty = u.goalGY;
+    if(u.chaseId){
+      const tgt = g.units.find(x=>x.id===u.chaseId);
+      if (tgt){ tx=tgt.gx; ty=tgt.gy; } else { u.chaseId=null; }
     }
-    if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; }
+    if(tx==null || ty==null) continue;
+
+    // If ranged, aim to be within range ring (don’t push into melee)
+    const desiredRange = Math.max(1, u.range||1);
+    const currentDist  = cheby(u.gx,u.gy,tx,ty);
+    if(currentDist <= desiredRange){ u.goalGX=null; u.goalGY=null; u.chaseId=null; continue; }
+
+    // Generate neighbor candidates (8-way), score by how close to desiredRange we’d be
+    const candidates=[];
+    for(let dx=-1; dx<=1; dx++){
+      for(let dy=-1; dy<=1; dy++){
+        if(dx===0&&dy===0) continue;
+        const nx=u.gx+dx, ny=u.gy+dy;
+        if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
+        const k=nx+"|"+ny; if(occ.get(k) || reserved.has(k)) continue;
+        const dist = cheby(nx,ny,tx,ty);
+        const overshoot = Math.max(0, dist - desiredRange);
+        const aroundBias = (Math.abs(dx)+Math.abs(dy)===2? 0.05: 0); // tiny bias for diagonals (helps flowing)
+        const laneBias = (u.axisPref==="x" ? Math.abs(ty-ny)*0.01 : Math.abs(tx-nx)*0.01);
+        const jitter = Math.random()*0.02;
+        const score = overshoot + aroundBias + laneBias + jitter;
+        candidates.push({nx,ny,score});
+      }
+    }
+    candidates.sort((a,b)=> a.score-b.score);
+    if(candidates.length){
+      stepTo(u, candidates[0].nx, candidates[0].ny, occ, reserved);
+    }
   }
 
   // Deaths (credit to last hitter)
@@ -424,6 +492,7 @@ function simulate(g, dt){
 
   return g;
 }
+
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
@@ -432,8 +501,19 @@ function applyDamage(g, target, dmg, ap, owner){
   target.hp -= Math.max(1, Math.round(dmg - effArmor));
   target._lastBy = owner;
 }
-function stepTo(u,gx,gy,occ,res){ const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u); if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); } u.gx=gx; u.gy=gy; const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK); }
-function pulseSquare(g,cx,cy,size,owner,dmg,pierce){ const half=Math.floor(size/2); for(const v of g.units){ if(v.o===owner) continue; if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(g, v, dmg, pierce||0, owner); } } }
+function stepTo(u,gx,gy,occ,res){
+  const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
+  if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
+  u.gx=gx; u.gy=gy;
+  const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK);
+}
+function pulseSquare(g,cx,cy,size,owner,dmg,pierce){
+  const half=Math.floor(size/2);
+  for(const v of g.units){
+    if(v.o===owner) continue;
+    if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(g, v, dmg, pierce||0, owner); }
+  }
+}
 
 /* ========== Input handlers ========== */
 window.addEventListener("mousemove",(e)=>{
@@ -469,6 +549,15 @@ window.addEventListener("mouseup",(e)=>{
   }
 });
 cv.addEventListener("contextmenu", e=>e.preventDefault());
+// Double-click: select all of that type you own
+cv.addEventListener("dblclick", (e)=>{
+  const u = pickUnitAt(mouse.worldX,mouse.worldY, ME);
+  if(!u) return;
+  selection.clear();
+  for(const x of getUnitsView()){ if(x.o===ME && x.tt===u.tt) selection.add(x.id); }
+  renderHUD();
+});
+
 window.addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ targeting=null; hideHint(); }
@@ -481,8 +570,7 @@ window.addEventListener("keydown",(e)=>{
 function getUnitsView(){ return state?.units || []; }
 function pickUnitAt(wx,wy, owner){
   const {gx,gy}=worldToGrid(wx,wy);
-  const list=getUnitsView();
-  for(const u of list){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
+  for(const u of getUnitsView()){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
   return null;
 }
 function pickInRect(x0,y0,x1,y1,owner){
@@ -492,7 +580,7 @@ function pickInRect(x0,y0,x1,y1,owner){
   return out;
 }
 
-/* ========== UI: HUD & board ========== */
+/* ========== UI: HUD & board (per-unit cd display) ========== */
 function renderHUD(){
   const abil=document.getElementById("abilities"); const selInfo=document.getElementById("selInfo");
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -510,13 +598,29 @@ function renderHUD(){
   }
   updateCooldownBadges();
 }
+function updateCooldownBadges(){
+  const abil=document.getElementById("abilities"); if(!abil) return;
+  for(let s=1;s<=4;s++){
+    const box = abil.querySelector(`[data-slot="${s}"]`); if(!box) continue;
+    let badge=box.querySelector(".cd-badge");
+    const minRem=minCooldownOfSelected(s);
+    const state = anySelectedUnitCanCast(s);
+    box.classList.toggle("oncd", !!minRem && !state.ready);
+    if(minRem!=null && minRem>0 && !state.ready){
+      if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; box.appendChild(badge); }
+      badge.textContent=`${Math.ceil(minRem)}s`;
+    }else if(badge){ badge.remove(); }
+  }
+}
+setInterval(updateCooldownBadges, 200);
+
 function renderBoard(){
   const rows=document.getElementById("boardRows"); rows.innerHTML="";
   const counts={}; for(const u of getUnitsView()){ counts[u.o]=(counts[u.o]||0)+1; }
   const ents=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
   for(const [name,c] of ents){
-    const tint = name==="Raiders" ? "#ff6868" : teamTint(name);
-    const label = name==="Raiders" ? `Raiders (${RAIDER_TYPE})` : name;
+    const tint = name==="Raiders" ? TEAM_COLOR.raider : TEAM_COLOR.player;
+    const label = name==="Raiders" ? `Raiders (${ENEMY_TYPE_LABEL})` : name;
     const d=document.createElement("div"); d.className="row";
     d.innerHTML=`<span style="color:${tint}">${label}</span><span>${c}</span>`;
     rows.appendChild(d);
@@ -563,9 +667,8 @@ function draw(){
 
   // units
   ctx.textAlign="center"; ctx.textBaseline="middle";
-  const list=getUnitsView();
-  for(const u of list){
-    const team = (u.o==="Raiders") ? "#ff6868" : teamTint(u.o);
+  for(const u of getUnitsView()){
+    const team = (u.o==="Raiders") ? TEAM_COLOR.raider : TEAM_COLOR.player;
     const sx=u.gx*TILE + TILE/2 - cam.x, sy=u.gy*TILE + TILE/2 - cam.y;
     const w=TILE*.96, h=TILE*.96, x0=sx-w/2, y0=sy-h/2;
 
@@ -579,7 +682,7 @@ function draw(){
 
     if(selection.has(u.id)){ ctx.save(); ctx.shadowColor="#fff"; ctx.shadowBlur=14; roundedRectPath(ctx,x0,y0,w,h,8); ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke(); ctx.restore(); }
 
-    // HP bar
+    // HP bar (normalized to type hp)
     const maxHp=(TYPES[u.tt].hp||1);
     const hpFrac=Math.max(0,Math.min(1,u.hp / maxHp));
     const barPad=8, barW=w-barPad*2, barH=6, barX=x0+barPad, barY=y0+h-barPad-barH;
@@ -609,13 +712,13 @@ function aliveOwners(){
 }
 async function settleAndExit(){
   const stats = state?.stats || {};
-  // Rewards (my kills)
+  // Rewards for MY kills (win or lose)
   let goldGain=0;
   for(const [tKill, nKill] of Object.entries(stats[ME]?.killsByType||{})){
     const tier = TIER[tKill] || 1;
     goldGain += (REWARD[tier]||0) * (nKill||0);
   }
-  // Losses (my dead)
+  // Losses (my dead → remove 1 for each 3)
   const lost = stats[ME]?.lostByType || {};
 
   await runTransaction(db, async (tx)=>{
@@ -632,7 +735,7 @@ async function settleAndExit(){
     tx.update(pref, { army, gold: (me.gold||0) + goldGain, active:true, inBattle:false, lastSeen: Date.now() });
   });
 
-  // Back to map
+  // Back to map either way
   location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`;
 }
 
@@ -668,12 +771,9 @@ function buildHUD(){ /* dynamic per selection; handled in renderHUD */ }
 
 /* Safety: if user hard-closes, try to re-activate them */
 window.addEventListener("beforeunload", ()=>{
-  navigator.sendBeacon?.(
-    `data:text/plain,noop`,
-    "" // just to keep sendBeacon valid; Firestore can't be used here reliably
-  );
   updateDoc(doc(db,"mountonline", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
 });
 </script>
 </body>
 </html>
+
