@@ -54,11 +54,9 @@
   </div>
 
 <script type="module">
-/* ========== Firebase boot ========== */
+/* Firebase */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, updateDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -71,11 +69,77 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ========== URL params / Raiders from Firebase ========== */
+/* Params */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
 
+/* Visual colors: Player (ME) = RED, AI/Raiders = BLUE */
+const COLOR_PLAYER = "#ff5c5c";   // you
+const COLOR_AI     = "#4da3ff";   // raiders
+function teamTint(owner){ return owner==="Raiders" ? COLOR_AI : COLOR_PLAYER; }
+
+/* World */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d", { alpha:false });
+const TILE=48, GRID_W=46, GRID_H=30;
+const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
+const cam={ x: WORLD.w/2 - cv.width/2, y: WORLD.h/2 - cv.height/2, speed:1400 };
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,WORLD.h-cv.height); }
+function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
+function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
+
+/* Types */
+const TYPES = {
+  recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
+  footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
+  swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
+  cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
+  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
+  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
+  monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
+  priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
+  mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
+                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
+                    {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
+                   ] }
+};
+const TIER = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3 };
+const REWARD = { 1:2, 2:5, 3:8 };
+
+/* State */
+let state=null; // { units, effects, projs, stats }
+let ownerMods={};
+const MKEY = { recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry", archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher", monks:"monk", priests:"priest", mages:"mage" };
+
+/* Input */
+const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false};
+const viewEl=document.querySelector(".view");
+function rect(el){ return el.getBoundingClientRect(); }
+function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
+function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
+let dragging=false, dragStart=null, selection=new Set(), targeting=null;
+const localFX=[];
+let lastClickAt=0, lastClickCell=null;
+
+/* Utils */
+function roundedRectPath(ctx, x, y, w, h, r){
+  const rr=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rr);
+  ctx.arcTo(x+w,y+h,x,y+h,rr);
+  ctx.arcTo(x,y+h,x,y,rr);
+  ctx.arcTo(x,y,x+w,y,rr);
+  ctx.closePath();
+}
+function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
+function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
+function hideHint(){ document.getElementById("hint").style.display="none"; }
+
+/* Encounter */
 async function getRaidersSpec(){
   let t = (Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "").toLowerCase();
   let n = parseInt(Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
@@ -95,132 +159,34 @@ async function getRaidersSpec(){
 }
 const { type:RAIDER_TYPE, count:RAIDER_COUNT } = await getRaidersSpec();
 
-/* ========== Canvas, camera, helpers ========== */
-const cv = document.getElementById("cv");
-const ctx = cv.getContext("2d", { alpha:false });
+/* Banners → mods (kept simple for now) */
+function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1, cavDmg:1, priestHeal:1, footmanHp:1 }; }
 
-const TILE=48, GRID_W=46, GRID_H=30;
-const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
-const cam={ x: WORLD.w/2 - cv.width/2, y: WORLD.h/2 - cv.height/2, speed:1400 };
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,WORLD.h-cv.height); }
-function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
-function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
-function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-const COLOR_ME = "#4da3ff";
-const COLOR_RAIDERS = "#ff5c5c";
-const TEAM_COLORS = [COLOR_ME,"#85ff8a","#ffd56b","#d2a8ff","#ff7abf"];
-function teamTint(owner){ return owner==="Raiders" ? COLOR_RAIDERS : COLOR_ME; }
-const short = s => s.length>10 ? s.slice(0,10)+"…" : s;
-
-/* ========== Troop stats (PvP parity) ========== */
-const TYPES = {
-  recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
-  footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
-  swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
-  cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
-  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
-  monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
-  priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
-  mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
-                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
-                    {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
-                   ] }
-};
-/* Tiers for rewards */
-const TIER = {
-  recruit:1, footman:2, archer:2, monk:2,
-  swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3
-};
-const REWARD = { 1:2, 2:5, 3:8 };
-
-/* ========== Banners → owner modifiers (apply only to ME) ========== */
-function bannerMods(equipped=[]){
-  const m = { melee:1, ranged:1, speed:1, armorMul:1, magic:1, cavDmg:1, priestHeal:1, footmanHp:1 };
-  for(const b of equipped){
-    const eff=(b.effect||"").toLowerCase();
-    if(eff.includes("melee")) m.melee *= 1.10;
-    if(eff.includes("speed")) m.speed *= 1.08;
-    if(eff.includes("armor")) m.armorMul *= 1.15;
-    if(eff.includes("ranged")) m.ranged *= 1.12;
-    if(eff.includes("spell")) m.magic  *= 1.06;
-    if(eff.includes("cavalry")) m.cavDmg *= 1.09;
-    if(eff.includes("priest heal")) m.priestHeal *= 1.08;
-    if(eff.includes("footman hp")) m.footmanHp *= 1.10;
-  }
-  return m;
-}
-
-/* ========== Local state ========== */
-let state=null; // { units, effects, projs, stats }
-const participants=[ME, "Raiders"];
-let ownerMods={};
-const MKEY = {
-  recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry",
-  archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher",
-  monks:"monk", priests:"priest", mages:"mage"
-};
-
-/* ========== Input / selection ========== */
-const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false};
-const viewEl=document.querySelector(".view");
-function rect(el){ return el.getBoundingClientRect(); }
-function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
-function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
-
-let dragging=false, dragStart=null, selection=new Set(), targeting=null;
-const localFX=[];
-
-/* Double click select-all-of-type */
-let lastClickAt=0, lastClickCell=null;
-
-/* ========== Helpers ========== */
-function roundedRectPath(ctx, x, y, w, h, r){
-  const rr=Math.min(r,w/2,h/2);
-  ctx.beginPath();
-  ctx.moveTo(x+rr,y);
-  ctx.arcTo(x+w,y,x+w,y+h,rr);
-  ctx.arcTo(x+w,y+h,x,y+h,rr);
-  ctx.arcTo(x,y+h,x,y,rr);
-  ctx.arcTo(x,y,x+w,y,rr);
-  ctx.closePath();
-}
-function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
-function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
-function hideHint(){ document.getElementById("hint").style.display="none"; }
-
-/* ========== Build my army + raiders, mark inBattle ========== */
+/* Build armies */
 async function seedBattle(){
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
   const meSnap = await getDoc(doc(db,"mountonline", ME));
   if(!meSnap.exists()){ alert("Your profile was not found."); return false; }
-  const me = meSnap.data();
-  ownerMods[ME] = bannerMods((me.inventory?.equipped)||[]);
+  ownerMods[ME] = bannerMods();
 
   const units=[];
-  spawnArmyBlock(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
+  spawnArmyBlock(units, ME, meSnap.data().army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
   const rType = (RAIDER_TYPE==="recruits"?"recruit": RAIDER_TYPE);
   const allowed = new Set(["recruit","footman","archer"]);
   const chosen = allowed.has(rType) ? rType : "recruit";
   spawnRaiders(units, "Raiders", chosen, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
-  state = {
-    units, effects:[], projs:[],
-    stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } }
-  };
+  // NEW: push the AI forward (attack-move toward player side)
+  for(const u of units){ if(u.o==="Raiders"){ u._forceMoveTo = { gx: 6, gy: u.gy }; u.state="move"; } }
+
+  state = { units, effects:[], projs:[], stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } } };
   return true;
 }
 function spawnArmyBlock(units, owner, armyCounts, origin, dir){
   const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
   const pool=[];
-  for(const key of order){
-    const typeId = MKEY[key]; if(!typeId) continue;
-    const n = Math.max(0, parseInt(armyCounts[key]||0,10));
-    for(let i=0;i<n;i++) pool.push(typeId);
-  }
+  for(const key of order){ const typeId = MKEY[key]; if(!typeId) continue; const n = Math.max(0, parseInt(armyCounts[key]||0,10)); for(let i=0;i<n;i++) pool.push(typeId); }
   let row=0,col=0, perRow=12;
   for(const typeId of pool){
     const gx = origin.gx + (dir>0 ? col : -col);
@@ -238,45 +204,29 @@ function spawnRaiders(units, owner, typeId, count, origin, dir){
     col++; if(col>=perRow){ col=0; row++; }
   }
 }
-
-/* ========== Unit creation (banners on ME only) ========== */
 function mkUnit(type, owner, gx, gy){
   const base=TYPES[type];
-  const mod=(owner===ME ? (ownerMods[owner]||bannerMods([])) : { melee:1,ranged:1,speed:1,armorMul:1,magic:1,cavDmg:1,priestHeal:1,footmanHp:1 });
-  const isRanged = base.range>1;
-  const dmgMul = (isRanged?mod.ranged:mod.melee) * (type==="cavalry"?mod.cavDmg:1) * (type==="mage"?mod.magic:1);
-  const moveMul= mod.speed;
-  const armorMul= mod.armorMul;
-  const hpMul = (type==="footman"?mod.footmanHp:1);
   return {
     id: owner.slice(0,2).toUpperCase() + "-" + Math.random().toString(36).slice(2,7),
     tt:type, o:owner,
     gx, gy, x:0, y:0,
-    hp: Math.round(base.hp * hpMul), maxHp: Math.round(base.hp * hpMul),
-    dmg: Math.round(base.dmg * dmgMul),
-    range: base.range, atkSpd: base.atkSpd, move: Math.round(base.move * moveMul),
-    armor: Math.round(base.armor * armorMul),
-    acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
+    hp: base.hp, maxHp: base.hp,
+    dmg: base.dmg, range: base.range, atkSpd: base.atkSpd, move: base.move,
+    armor: base.armor, acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
     goalGX:null, goalGY:null, nextStepAt:0,
-    priestHealMul: (type==="priest"? mod.priestHeal : 1),
-    _lastBy:null,
-    _forceMoveTo: null,     // HARD OVERRIDE: ignore aggro until arrival
-    // NEW: simple movement/engagement brain
-    state:"idle",           // idle | move | chase | engage | hold
-    targetId:null,
-    lastTargetTime:0,
-    stuckTicks:0
+    priestHealMul: 1, _lastBy:null, _forceMoveTo: null,
+    state:"idle", targetId:null, lastTargetTime:0, stuckTicks:0
   };
 }
 
-/* ========== Intents (local) ========== */
+/* Orders */
 function orderAttackMove(ids,gx,gy){
   for (const u of state.units){
     if (ids.includes(u.id) && u.o===ME){
       u._forceMoveTo = { gx, gy };
       u.goalGX = gx; u.goalGY = gy;
       u.state = "move";
-      u.targetId = null; // ignore targets until arrival
+      u.targetId = null;
       u._channel = null;
     }
   }
@@ -285,42 +235,27 @@ function orderNearest(ids){
   for(const u of state.units){
     if(!ids.includes(u.id) || u.o!==ME) continue;
     const best = findNearestEnemy(u, state.units);
-    if(best){
-      u._forceMoveTo = null;
-      u.targetId = best.id;
-      u.lastTargetTime = Date.now();
-      u.state = "chase";
-    }
+    if(best){ u._forceMoveTo = null; u.targetId = best.id; u.lastTargetTime = Date.now(); u.state = "chase"; }
   }
 }
 function toggleHold(ids){
   for(const u of state.units){
     if(ids.includes(u.id) && u.o===ME){
       u._hold = !u._hold;
-      if (u._hold){
-        u._forceMoveTo = null;
-        u.goalGX = null; u.goalGY = null;
-        u.state = "hold";
-      }else{
-        u.state = "idle";
-      }
+      if (u._hold){ u._forceMoveTo = null; u.goalGX = null; u.goalGY = null; u.state = "hold"; }
+      else { u.state = "idle"; }
     }
   }
 }
 
-/* ========== Abilities (unchanged) ========== */
+/* Abilities (volley made clearer/stronger) */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
   const sel=getUnitsView().filter(u=>selection.has(u.id));
   for(let s=1;s<=4;s++){
     const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
-    let allOnCd = sel.length>0;
-    let minRem = Infinity;
-    for(const u of sel){
-      const rem = (u.acd?.[s]||0);
-      if (rem<=0) allOnCd=false;
-      if (rem>0 && rem<minRem) minRem=rem;
-    }
+    let allOnCd = sel.length>0, minRem = Infinity;
+    for(const u of sel){ const rem = (u.acd?.[s]||0); if (rem<=0) allOnCd=false; if (rem>0 && rem<minRem) minRem=rem; }
     el.classList.toggle("oncd", allOnCd);
     let badge=el.querySelector(".cd-badge");
     if(allOnCd && isFinite(minRem)){
@@ -347,8 +282,7 @@ function castSlot(slot){
       if(!ids.includes(u.id) || u.o!==ME) continue;
       if((u.acd?.[ab.slot]||0) > 0) continue;
       if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now())){
-        u.acd[ab.slot]=ab.cd;
-        casted=true;
+        u.acd[ab.slot]=ab.cd; casted=true;
       }
     }
     if(casted) fxRingOnSelection(); else flash("⏳ All selected are on cooldown");
@@ -362,8 +296,7 @@ function castSlot(slot){
         if(!ids.includes(u.id) || u.o!==ME) continue;
         if((u.acd?.[ab.slot]||0) > 0) continue;
         if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){
-          u.acd[ab.slot]=ab.cd;
-          casted=true;
+          u.acd[ab.slot]=ab.cd; casted=true;
         }
       }
       if(!casted) flash("⏳ All selected are on cooldown");
@@ -374,25 +307,41 @@ function castSlot(slot){
   }
 }
 function fxRingOnSelection(){ for(const u of getUnitsView().filter(u=>selection.has(u.id))){ localFX.push({kind:"ring",gx:u.gx,gy:u.gy,color:"#9bf",until:Date.now()+550}); } }
-function fxTile(gx,gy){ localFX.push({kind:"tile",gx,gy,color:"#aef",until:Date.now()+600}); }
+function fxTile(gx,gy){ localFX.push({kind:"tile",gx,gy,color:"#aef",until:Date.now()+700}); }
 
 const AbilityHandlers={
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"brace", until:now+ab.dur*1000}; return true; } },
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
-  focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp: (ab.dmgUp||3)}; return true; } },
-  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:(ab.healPerSec||8) * (u.priestHealMul||1)}; return true; } },
+  focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp:3}; return true; } },
+  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:8*u.priestHealMul}; return true; } },
+
+  // 👇 Volley: brighter, obvious pulses + noticeable damage
   volley:     { cast(g,u,ab,{mode,gx,gy},now){
                   if(mode!=="point")return false;
                   const size=ab.size||3; const until=now+(ab.channel||6000);
                   u._channel={kind:"volley",until};
+                  fxTile(gx,gy);
                   (g.effects=g.effects||[]).push({
                     type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
-                    pulses:[now+1000,now+3000,now+5000], next:0, until,
-                    color:"#aef", dmg:7, pierce:0
-                  }); return true; } },
-  fireburst:  { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false; (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2 }); return true; } },
-  arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){ const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||34)*(ownerMods[u.o]?.magic||1), ap=ab.ap??0.5; const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1); (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#baf" }); return true; } },
-  pierceBolt: { cast(g,u,ab,{mode,gx,gy},now){ const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||28)*(ownerMods[u.o]?.ranged||1), ap=ab.ap??0.65; const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1); (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#cde" }); return true; } },
+                    pulses:[now+700,now+2500,now+4300], next:0, until,
+                    color:"#bde3ff", dmg:10, pierce:0.15
+                  });
+                  return true;
+               } },
+
+  fireburst:  { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false;
+                  (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20), pierce:0.2 });
+                  return true; } },
+  arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){
+                  const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||34), ap=ab.ap??0.5;
+                  const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1);
+                  (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#baf" });
+                  return true; } },
+  pierceBolt: { cast(g,u,ab,{mode,gx,gy},now){
+                  const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||28), ap=ab.ap??0.65;
+                  const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1);
+                  (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#cde" });
+                  return true; } },
   charge:     { cast(g,u,ab,{mode,gx,gy},now){ const path=bresenham(u.gx,u.gy,gx,gy).slice(1,6); u._charge = { path, idx:0, until:now+2500 }; return true; } },
 };
 function bresenham(x0,y0,x1,y1){
@@ -401,51 +350,56 @@ function bresenham(x0,y0,x1,y1){
   return pts;
 }
 
-/* ========== SIMPLE COMBAT BRAIN ========== */
+/* Combat brain */
 const PX2SQUARES = 1 / (TILE*0.9);
-const AGGRO_EXTRA = 3; // melee/ranged get this extra pull beyond their range
+const AGGRO_EXTRA = 3;
 
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
 function unitMap(units){ const m=new Map(); for(const u of units) m.set(u.id,u); return m; }
+function inRange(u, v){ const r=u.range||1; return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manhattan(u.gx,u.gy,v.gx,v.gy) <= 1); }
+function findNearestEnemy(u, list){ let best=null, bd=1e9; for(const v of list){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } } return best; }
 
-function inRange(u, v){
-  const r = u.range||1;
-  return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manhattan(u.gx,u.gy,v.gx,v.gy) <= 1);
-}
-function findNearestEnemy(u, list){
-  let best=null, bd=1e9;
-  for(const v of list){ if(v.o===u.o) continue;
-    const d=manhattan(u.gx,u.gy,v.gx,v.gy);
-    if(d<bd){ bd=d; best=v; }
-  }
-  return best;
-}
-function approachStep(u, gx, gy, occ, reserved){
-  if(gx===u.gx && gy===u.gy) return false;
-  const dx = gx - u.gx, dy = gy - u.gy;
-  const sx = Math.sign(dx), sy = Math.sign(dy);
-  // primary axis = the one farther from goal to avoid zig-zag
-  const primaryX = Math.abs(dx) >= Math.abs(dy);
-  const opts = primaryX
-    ? [{gx:u.gx+sx, gy:u.gy}, {gx:u.gx, gy:u.gy+sy}]
-    : [{gx:u.gx, gy:u.gy+sy}, {gx:u.gx+sx, gy:u.gy}];
-
-  for(const c of opts){
-    if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
-    const k=c.gx+"|"+c.gy;
-    if(!occ.get(k) && !reserved.has(k)){
-      stepTo(u, c.gx, c.gy, occ, reserved);
-      return true;
+/* pick a tile around target that lets u attack (r=range ring); prefer free tiles */
+function desiredEngageTile(u, t){
+  const r=u.range||1;
+  const cand=[];
+  for(let dx=-r; dx<=r; dx++){
+    for(let dy=-r; dy<=r; dy++){
+      if(Math.max(Math.abs(dx),Math.abs(dy))>r) continue;
+      if(dx===0 && dy===0) continue;
+      const gx=t.gx+dx, gy=t.gy+dy;
+      if(gx<0||gx>=GRID_W||gy<0||gy>=GRID_H) continue;
+      cand.push({gx,gy});
     }
   }
-  return false;
+  // prefer free tiles; fallback to closest anyway
+  const occ = occupancy(state.units);
+  const free = cand.filter(c => !occ.has(c.gx+"|"+c.gy));
+  const list = (free.length?free:cand);
+  list.sort((a,b)=> manhattan(u.gx,u.gy,a.gx,a.gy) - manhattan(u.gx,u.gy,b.gx,b.gy));
+  return list[0] || {gx:t.gx,gy:t.gy};
 }
 
-/* ========== Simulation (local) ========== */
+/* limited neighbor choices that bias toward goal + gentle sidestep */
+function neighborChoices(u, gx, gy){
+  const sx = Math.sign(gx - u.gx), sy = Math.sign(gy - u.gy);
+  const cand = [
+    {gx:u.gx+sx, gy:u.gy},           // forward X
+    {gx:u.gx,    gy:u.gy+sy},        // forward Y
+    {gx:u.gx+sx, gy:u.gy+sy},        // diagonal forward
+    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep 1
+    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep 2
+  ];
+  const seen=new Set(), out=[];
+  for(const c of cand){ const k=c.gx+"|"+c.gy; if(seen.has(k)) continue; seen.add(k); out.push(c); }
+  out.sort((a,b)=> manhattan(a.gx,a.gy,gx,gy) - manhattan(b.gx,b.gy,gx,gy));
+  return out;
+}
+
 function simulate(g, dt){
   const now = Date.now();
 
-  // Cooldowns / auras
+  // cooldowns, auras
   for(const u of g.units){
     for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
@@ -454,7 +408,7 @@ function simulate(g, dt){
   }
   g.effects = (g.effects||[]).filter(e=>e.until>now);
 
-  // Projectiles
+  // projectiles
   const keep=[]; for(const pr of (g.projs||[])){
     if(pr.type==="bolt"){
       if(now >= pr.nextHopAt){ const hops=1+Math.floor((now-pr.nextHopAt)/pr.hopMs); pr.nextHopAt += hops*pr.hopMs; pr.idx = Math.min(pr.idx+hops, pr.path.length-1); }
@@ -465,38 +419,46 @@ function simulate(g, dt){
     } else keep.push(pr);
   } g.projs=keep;
 
-  // Decision phase: who to fight / move
+  // AOEs (with obvious impact bursts)
+  for(const e of (g.effects||[])){
+    if(e.type==="squarePulse"){
+      while(e.next < e.pulses.length && now>=e.pulses[e.next]){
+        pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0, true);
+        e.next++;
+      }
+    }
+    if(e.type==="squareOnce"){
+      if(!e.did && now>=e.when){
+        pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0, true);
+        e.did=true;
+      }
+    }
+  }
+
+  // target acquisition + goals
   const byId = unitMap(g.units);
   for(const u of g.units){
-    if(u._channel) { u.state = "engage"; continue; }
+    if(u._channel){ u.state = "engage"; continue; }
     if(u._hold){ u.state="hold"; u.goalGX=null; u.goalGY=null; continue; }
 
-    // Forced move overrides everything until arrival
     if(u._forceMoveTo){
-      u.state = "move";
-      u.goalGX = u._forceMoveTo.gx;
-      u.goalGY = u._forceMoveTo.gy;
+      u.state = "move"; u.goalGX = u._forceMoveTo.gx; u.goalGY = u._forceMoveTo.gy;
     } else {
-      // Validate current target
       if(u.targetId){
         const t = byId.get(u.targetId);
-        if(!t || t.o===u.o){ u.targetId=null; }
+        if(!t || t.o===u.o) u.targetId=null;
       }
-      // Acquire target if none and something is reasonably close
       if(!u.targetId){
         const candidate = findNearestEnemy(u, g.units);
         if(candidate){
           const aggro = (u.range||1) + AGGRO_EXTRA;
           if(manhattan(u.gx,u.gy,candidate.gx,candidate.gy) <= aggro){
-            u.targetId = candidate.id;
-            u.lastTargetTime = now;
+            u.targetId = candidate.id; u.lastTargetTime = now;
           }
         }
       }
-
       const target = u.targetId ? byId.get(u.targetId) : null;
       if(target){
-        // if target ran way off, drop it
         const aggro = (u.range||1) + AGGRO_EXTRA + 2;
         if(manhattan(u.gx,u.gy,target.gx,target.gy) > aggro){
           u.targetId = null; u.state="idle"; u.goalGX=null; u.goalGY=null;
@@ -504,15 +466,8 @@ function simulate(g, dt){
           u.state="engage"; u.goalGX=null; u.goalGY=null;
         }else{
           u.state="chase";
-          // Set a one-step goal toward being in range
-          const dx = Math.sign(target.gx - u.gx);
-          const dy = Math.sign(target.gy - u.gy);
-          // step towards reducing Chebyshev distance; prefer the larger axis
-          if(Math.abs(target.gx-u.gx) >= Math.abs(target.gy-u.gy)){
-            u.goalGX = u.gx + dx; u.goalGY = u.gy;
-          }else{
-            u.goalGX = u.gx; u.goalGY = u.gy + dy;
-          }
+          const want = desiredEngageTile(u, target);
+          u.goalGX = want.gx; u.goalGY = want.gy;
         }
       }else{
         u.state="idle"; u.goalGX=null; u.goalGY=null;
@@ -520,19 +475,16 @@ function simulate(g, dt){
     }
   }
 
-  // Movement / Attacks
+  // movement + attacks
   const occ = occupancy(g.units);
   const reserved=new Set();
 
   for(const u of g.units){
     if(u._channel) continue;
 
-    // Attack handling
     if(u.state==="engage"){
-      // find actual target (locked if available, else nearest in range)
       let t = u.targetId ? byId.get(u.targetId) : null;
       if(!t || t.o===u.o || !inRange(u,t)){
-        // pick anyone in range
         let best=null;
         for(const v of g.units){ if(v.o===u.o) continue; if(inRange(u,v)){ best=v; break; } }
         t = best;
@@ -545,13 +497,11 @@ function simulate(g, dt){
           u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
         }
       }else{
-        // nobody in range anymore; switch to idle and reassess next tick
         u.state="idle";
       }
       continue;
     }
 
-    // Movement ticks
     if(u.state==="move" || u.state==="chase"){
       const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
       const everyMs = Math.max(80, Math.floor(1000/speedSquares));
@@ -559,28 +509,33 @@ function simulate(g, dt){
         u.nextStepAt = now + everyMs;
 
         if(u.goalGX!=null && u.goalGY!=null){
-          const moved = approachStep(u, u.goalGX, u.goalGY, occ, reserved);
-          if(!moved) u.stuckTicks++; else u.stuckTicks=0;
-
-          // Arrival to forced destination
-          if(u._forceMoveTo && u.gx===u._forceMoveTo.gx && u.gy===u._forceMoveTo.gy){
-            u._forceMoveTo = null;
-            u.state="idle"; u.goalGX=null; u.goalGY=null;
+          // try straight step; if blocked, try limited neighbor choices to go around
+          let stepped = approachStep(u, u.goalGX, u.goalGY, occ, reserved);
+          if(!stepped){
+            const cand = neighborChoices(u, u.goalGX, u.goalGY);
+            for(const c of cand){
+              const k=c.gx+"|"+c.gy;
+              if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
+              if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); stepped=true; break; }
+            }
           }
+          if(!stepped) u.stuckTicks++; else u.stuckTicks=0;
 
-          // If chasing and now in range, stop
+          // arrival at forced destination
+          if(u._forceMoveTo && u.gx===u._forceMoveTo.gx && u.gy===u._forceMoveTo.gy){
+            u._forceMoveTo = null; u.state="idle"; u.goalGX=null; u.goalGY=null;
+          }
+          // if chasing and now in range, switch to engage
           if(u.state==="chase" && u.targetId){
             const t = byId.get(u.targetId);
-            if(t && inRange(u,t)){
-              u.state="engage"; u.goalGX=null; u.goalGY=null;
-            }
+            if(t && inRange(u,t)){ u.state="engage"; u.goalGX=null; u.goalGY=null; }
           }
         }
       }
     }
   }
 
-  // Deaths (credit to last hitter)
+  // deaths
   const survivors=[]; const deaths=[];
   for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
   if(deaths.length){
@@ -597,21 +552,95 @@ function simulate(g, dt){
   return g;
 }
 
+/* movement helpers */
+function approachStep(u, gx, gy, occ, reserved){
+  if(gx===u.gx && gy===u.gy) return false;
+  const dx = gx - u.gx, dy = gy - u.gy;
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  const primaryX = Math.abs(dx) >= Math.abs(dy);
+  const opts = primaryX ? [{gx:u.gx+sx, gy:u.gy}, {gx:u.gx, gy:u.gy+sy}]
+                        : [{gx:u.gx, gy:u.gy+sy}, {gx:u.gx+sx, gy:u.gy}];
+  for(const c of opts){
+    if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
+    const k=c.gx+"|"+c.gy;
+    if(!occ.get(k) && !reserved.has(k)){ stepTo(u, c.gx, c.gy, occ, reserved); return true; }
+  }
+  return false;
+}
+function stepTo(u,gx,gy,occ,res){
+  const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
+  if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
+  u.gx=gx; u.gy=gy;
+  const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK);
+}
+
+/* damage + AOEs */
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
   const totalArmor = baseArmor + auraArmor;
   const effArmor = Math.max(0, totalArmor - totalArmor*(ap||0));
-  target.hp -= Math.max(1, Math.round(dmg - effArmor));
+  const hit = Math.max(1, Math.round(dmg - effArmor));
+  target.hp -= hit;
   target._lastBy = owner;
 }
-function stepTo(u,gx,gy,occ,res){ const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u); if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); } u.gx=gx; u.gy=gy; const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK); }
-function pulseSquare(g,cx,cy,size,owner,dmg,pierce){ const half=Math.floor(size/2); for(const v of g.units){ if(v.o===owner) continue; if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(g, v, dmg, pierce||0, owner); } } }
+function pulseSquare(g,cx,cy,size,owner,dmg,pierce,withFX){
+  const half=Math.floor(size/2);
+  for(const v of g.units){
+    if(v.o===owner) continue;
+    if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){
+      applyDamage(g, v, dmg, pierce||0, owner);
+      if(withFX){ localFX.push({kind:"burst",gx:v.gx,gy:v.gy,until:Date.now()+280}); }
+    }
+  }
+}
 
-/* ========== Input handlers ========== */
+/* Picking / UI */
+function getUnitsView(){ return state?.units || []; }
+function pickUnitAt(wx,wy, owner){
+  const {gx,gy}=worldToGrid(wx,wy);
+  for(const u of getUnitsView()){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
+  return null;
+}
+function pickInRect(x0,y0,x1,y1,owner){
+  const out=[]; const g0=worldToGrid(x0,y0), g1=worldToGrid(x1,y1);
+  const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx), minGY=Math.min(g0.gy,g1.gy), maxGY=Math.max(g0.gy,g1.gy);
+  for(const u of getUnitsView()){ if(owner && u.o!==owner) continue; if(u.gx>=minGX&&u.gx<=maxGX&&u.gy>=minGY&&u.gy<=maxGY) out.push(u.id); }
+  return out;
+}
+function renderHUD(){
+  const abil=document.getElementById("abilities"); const selInfo=document.getElementById("selInfo");
+  const sel=getUnitsView().filter(u=>selection.has(u.id));
+  selInfo.innerHTML = sel.length ? `${sel.length} unit(s) selected — <strong>A</strong>: nearest • <strong>H</strong>: hold` : "Select units";
+  const slotMap=new Map();
+  for(const u of sel){ for(const a of (TYPES[u.tt].abilities||[])){ if(!slotMap.has(a.slot)) slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:TYPES[u.tt].emoji }); } }
+  const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
+  for(let s=1;s<=4;s++){
+    const spec=slotMap.get(s);
+    const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
+    div.innerHTML = spec ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>` : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
+    if(spec) div.onclick=()=>castSlot(s);
+    abil.appendChild(div);
+  }
+  updateCooldownBadges();
+}
+function renderBoard(){
+  const rows=document.getElementById("boardRows"); rows.innerHTML="";
+  const counts={}; for(const u of getUnitsView()){ counts[u.o]=(counts[u.o]||0)+1; }
+  const ents=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+  for(const [name,c] of ents){
+    const tint = teamTint(name);
+    const label = name==="Raiders" ? `Raiders (${RAIDER_TYPE})` : name;
+    const d=document.createElement("div"); d.className="row";
+    d.innerHTML=`<span style="color:${tint}">${label}</span><span>${c}</span>`;
+    rows.appendChild(d);
+  }
+}
+
+/* Input handlers */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
-cv.addEventListener("mousedown",(e)=>{ if(e.button===2){ // attack-move forced
+cv.addEventListener("mousedown",(e)=>{ if(e.button===2){
     e.preventDefault();
     const ids=Array.from(selection); if(!ids.length) return;
     const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
@@ -629,13 +658,8 @@ window.addEventListener("mouseup",(e)=>{
     const dbl = (lastClickCell && lastClickCell.gx===grid.gx && lastClickCell.gy===grid.gy && (now-lastClickAt)<300);
     lastClickAt=now; lastClickCell=grid;
     if(u){
-      if(dbl){
-        selection.clear();
-        for (const w of getUnitsView()){ if(w.o===ME && w.tt===u.tt) selection.add(w.id); }
-      } else {
-        if(!e.shiftKey) selection.clear();
-        selection.add(u.id);
-      }
+      if(dbl){ selection.clear(); for (const w of getUnitsView()){ if(w.o===ME && w.tt===u.tt) selection.add(w.id); } }
+      else { if(!e.shiftKey) selection.clear(); selection.add(u.id); }
       renderHUD();
     } else {
       if(!e.shiftKey) selection.clear();
@@ -659,53 +683,7 @@ window.addEventListener("keydown",(e)=>{
   if(k==="h"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; toggleHold(ids); }
 });
 
-/* Picking */
-function getUnitsView(){ return state?.units || []; }
-function pickUnitAt(wx,wy, owner){
-  const {gx,gy}=worldToGrid(wx,wy);
-  const list=getUnitsView();
-  for(const u of list){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
-  return null;
-}
-function pickInRect(x0,y0,x1,y1,owner){
-  const list=getUnitsView(), out=[]; const g0=worldToGrid(x0,y0), g1=worldToGrid(x1,y1);
-  const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx), minGY=Math.min(g0.gy,g1.gy), maxGY=Math.max(g0.gy,g1.gy);
-  for(const u of list){ if(owner && u.o!==owner) continue; if(u.gx>=minGX&&u.gx<=maxGX&&u.gy>=minGY&&u.gy<=maxGY) out.push(u.id); }
-  return out;
-}
-
-/* ========== UI: HUD & board ========== */
-function renderHUD(){
-  const abil=document.getElementById("abilities"); const selInfo=document.getElementById("selInfo");
-  const sel=getUnitsView().filter(u=>selection.has(u.id));
-  selInfo.innerHTML = sel.length ? `${sel.length} unit(s) selected — <strong>A</strong>: nearest • <strong>H</strong>: hold` : "Select units";
-
-  const slotMap=new Map();
-  for(const u of sel){ for(const a of (TYPES[u.tt].abilities||[])){ if(!slotMap.has(a.slot)) slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:TYPES[u.tt].emoji }); } }
-  const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
-  for(let s=1;s<=4;s++){
-    const spec=slotMap.get(s);
-    const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
-    div.innerHTML = spec ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>` : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
-    if(spec) div.onclick=()=>castSlot(s);
-    abil.appendChild(div);
-  }
-  updateCooldownBadges();
-}
-function renderBoard(){
-  const rows=document.getElementById("boardRows"); rows.innerHTML="";
-  const counts={}; for(const u of getUnitsView()){ counts[u.o]=(counts[u.o]||0)+1; }
-  const ents=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
-  for(const [name,c] of ents){
-    const tint = name==="Raiders" ? COLOR_RAIDERS : COLOR_ME;
-    const label = name==="Raiders" ? `Raiders (${RAIDER_TYPE})` : name;
-    const d=document.createElement("div"); d.className="row";
-    d.innerHTML=`<span style="color:${tint}">${label}</span><span>${c}</span>`;
-    rows.appendChild(d);
-  }
-}
-
-/* ========== Render loop ========== */
+/* Render */
 function draw(){
   const dt=16/1000;
 
@@ -718,7 +696,7 @@ function draw(){
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 
   ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
-  // coarse grid
+  // grid
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
@@ -730,7 +708,7 @@ function draw(){
     const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
     ctx.save();
     ctx.globalAlpha=.18; ctx.fillStyle=e.color||"#fff"; ctx.fillRect(sx,sy,size*TILE,size*TILE);
-    ctx.globalAlpha=1; const pulse=(now%1000)/1000; ctx.lineWidth=2+Math.sin(pulse*Math.PI*2)*1; ctx.strokeStyle=e.color||"#fff"; ctx.strokeRect(sx,sy,size*TILE,size*TILE);
+    ctx.globalAlpha=1; const pulse=(now%1000)/1000; ctx.lineWidth=3; ctx.strokeStyle=e.color||"#fff"; ctx.strokeRect(sx,sy,size*TILE,size*TILE);
     ctx.restore();
   }
 
@@ -745,9 +723,8 @@ function draw(){
 
   // units
   ctx.textAlign="center"; ctx.textBaseline="middle";
-  const list=getUnitsView();
-  for(const u of list){
-    const team = (u.o==="Raiders") ? COLOR_RAIDERS : COLOR_ME;
+  for(const u of getUnitsView()){
+    const team = teamTint(u.o);
     const sx=u.gx*TILE + TILE/2 - cam.x, sy=u.gy*TILE + TILE/2 - cam.y;
     const w=TILE*.96, h=TILE*.96, x0=sx-w/2, y0=sy-h/2;
 
@@ -768,6 +745,9 @@ function draw(){
     ctx.fillStyle="#e7e7e7"; roundedRectPath(ctx,barX,barY,barW,barH,3); ctx.fill();
     ctx.fillStyle = hpFrac>0.5? "#35d07f" : (hpFrac>0.25? "#ffd166" : "#ff6b6b");
     roundedRectPath(ctx,barX,barY,barW*hpFrac,barH,3); ctx.fill();
+
+    // channel ring indicator
+    if(u._channel){ ctx.save(); ctx.globalAlpha=.45; ctx.strokeStyle="#bde3ff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,TILE*.45,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
   }
 
   // local fx
@@ -775,7 +755,8 @@ function draw(){
     const fx=localFX[i]; const rem=fx.until-Date.now(); if(rem<=0){ localFX.splice(i,1); continue; }
     const a=Math.max(0, Math.min(1, rem/600));
     if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
-    if(fx.kind==="tile"){ const sx=fx.gx*TILE - cam.x, sy=fx.gy*TILE - cam.y; ctx.save(); ctx.globalAlpha=.15+.25*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
+    if(fx.kind==="tile"){ const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y; ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
+    if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
   }
 
   // drag box
@@ -785,17 +766,12 @@ function draw(){
   requestAnimationFrame(draw);
 }
 
-/* ========== Winner / settle ========== */
-function aliveOwners(){
-  const m={}; for(const u of (state?.units||[])) m[u.o]=(m[u.o]||0)+1; return Object.keys(m).filter(k=>m[k]>0);
-}
+/* Win/Lose + settle */
+function aliveOwners(){ const m={}; for(const u of (state?.units||[])) m[u.o]=(m[u.o]||0)+1; return Object.keys(m).filter(k=>m[k]>0); }
 async function settleAndExit(){
   const stats = state?.stats || {};
   let goldGain=0;
-  for(const [tKill, nKill] of Object.entries(stats[ME]?.killsByType||{})){
-    const tier = TIER[tKill] || 1;
-    goldGain += (REWARD[tier]||0) * (nKill||0);
-  }
+  for(const [tKill, nKill] of Object.entries(stats[ME]?.killsByType||{})){ const tier = TIER[tKill] || 1; goldGain += (REWARD[tier]||0) * (nKill||0); }
   const lost = stats[ME]?.lostByType || {};
 
   await runTransaction(db, async (tx)=>{
@@ -815,7 +791,7 @@ async function settleAndExit(){
   location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`;
 }
 
-/* ========== Game loop ========== */
+/* Game loop */
 let lastTime=performance.now(), acc=0;
 const FIXED = 1/20;
 function loop(){
@@ -831,10 +807,10 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
-/* ========== HUD build ========== */
+/* HUD */
 function buildHUD(){}
 
-/* ========== Init ========== */
+/* Init */
 (async function init(){
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
   const ok = await seedBattle(); if(!ok) return;
