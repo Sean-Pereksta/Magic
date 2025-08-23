@@ -9,11 +9,18 @@
     --bg:#0b1320; --panel:#0f1729; --line:#1b2b4a; --muted:#9fb3c8; --text:#e6edf3;
     --p:#67e8f9; --a:#f87171; --flag:#ffd166; --grid:#203358; --cell:#0c1527; --sel:#e9d8a6;
     --acid:#27c93f; --acid2:#159b2b; --white:#ffffff;
+    --ok:#8df2b2; --warn:#ffd166; --bad:#ff8b8b;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0; background:radial-gradient(1000px 500px at 20% 0%, #0c1a3a 0%, #0b1320 50%, #070d1b 100%); color:var(--text); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;}
-  .wrap{display:grid; grid-template-columns: 980px 440px; gap:16px; padding:16px;}
+  body{
+    margin:0; color:var(--text);
+    font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+    background:radial-gradient(1000px 500px at 20% 0%, #0c1a3a 0%, #0b1320 50%, #070d1b 100%);
+  }
+  .wrap{
+    display:grid; grid-template-columns: 980px 460px; gap:16px; padding:16px;
+  }
 
   /* Viewport + big map */
   .view{position:relative; width:980px; height:640px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 12px 36px rgba(0,0,0,.35)}
@@ -27,7 +34,7 @@
   .banner{width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,.35)}
   .banner.p{background:var(--p)} .banner.a{background:var(--a)}
 
-  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:28px}
+  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:30px}
   .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:12px; padding:2px 8px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
   .tag{position:absolute; top:4px; left:6px; font-size:12px; padding:1px 6px; border-radius:8px; border:1px solid #1f2a44}
   .tag.p{background:rgba(103,232,249,.14); color:#9beffb}
@@ -35,29 +42,37 @@
   .armor{position:absolute; top:4px; right:6px; font-size:12px; padding:1px 6px; border-radius:8px; background:rgba(233,216,166,.15); border:1px solid #5f5630; color:#f2e9b8}
   .status{position:absolute; top:26px; right:6px; font-size:11px; padding:1px 6px; border-radius:8px; border:1px dashed #3b4157; color:#cfd7ff; background:rgba(59,65,87,.2)}
   .sel{outline:3px solid var(--sel);}
+
   .hint-move{box-shadow: inset 0 0 0 3px rgba(122,162,247,.35); background:linear-gradient(180deg,rgba(122,162,247,.08),transparent)}
-  .hint-attack{box-shadow: inset 0 0 0 3px rgba(247,118,142,.35); background:linear-gradient(180deg,rgba(247,118,142,.08),transparent)}
-  .hint-ability{box-shadow: inset 0 0 0 3px rgba(255,209,102,.35); background:linear-gradient(180deg,rgba(255,209,102,.08),transparent)}
+  .hint-attack{box-shadow: inset 0 0 0 3px rgba(247,118,142,.5); background:linear-gradient(180deg,rgba(247,118,142,.15),transparent)}
+  .hint-ability{box-shadow: inset 0 0 0 3px rgba(255,209,102,.45); background:linear-gradient(180deg,rgba(255,209,102,.12),transparent)}
 
   /* Terrain + Hazards */
-  .rock{position:absolute; inset:4px; border-radius:7px; background:repeating-linear-gradient(135deg, #1b2540, #1b2540 6px, #142039 6px, #142039 12px); opacity:.7}
-  .acid{position:absolute; inset:6px; border-radius:6px; background:repeating-linear-gradient(135deg, var(--acid), var(--acid) 6px, var(--acid2) 6px, var(--acid2) 12px); opacity:.55; box-shadow:0 0 10px rgba(39,201,63,.5) inset}
+  .rock{position:absolute; inset:4px; border-radius:7px; background:repeating-linear-gradient(135deg, #1b2540 0 6px, #142039 6px 12px); opacity:.7}
+  .acid{position:absolute; inset:6px; border-radius:6px; background:repeating-linear-gradient(135deg, var(--acid) 0 6px, var(--acid2) 6px 12px); opacity:.55; box-shadow:0 0 10px rgba(39,201,63,.5) inset}
 
+  /* Right panel */
   .side{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:0 10px 28px rgba(0,0,0,.28)}
   h1{margin:0 0 8px; font-size:20px; color:#cbd6f3}
   .row{display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap}
-  .pill{padding:6px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-size:12px}
+  .pill{padding:6px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-size:12px; background:#0e1a31}
   .orders{font-weight:700; color:#e2e8f8}
   .btns{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 4px}
   button{background:#0f1729; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer}
   button:hover{background:#111b33}
   .sep{height:1px; background:var(--line); margin:12px 0}
-  .legend{display:grid; grid-template-columns:auto 1fr; gap:6px 10px; font-size:13px; color:#9fb3c8}
-  .key{width:18px; height:18px; border-radius:50%; border:1px solid var(--line)}
-  .key.p{background:var(--p)} .key.a{background:var(--a)} .key.f{background:var(--flag); border-color:#a68b2a}
-  .log{max-height:210px; overflow:auto; font-size:13px; color:#aebbd6}
-  .log p{margin:.25rem 0}
-  .toast{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1729; color:#cfe3ff; border:1px solid var(--line); padding:10px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(0,0,0,.35);}  
+
+  /* Action bar with descriptions */
+  .actionbar{display:grid; grid-template-columns:1fr; gap:8px}
+  .action{
+    display:flex; align-items:flex-start; gap:10px; padding:8px; border:1px solid var(--line);
+    border-radius:12px; background:#0e1b33;
+  }
+  .action h4{margin:0; font-size:14px; color:#eaf0ff}
+  .action p{margin:2px 0 0; font-size:12px; color:#aebbd6; line-height:1.35}
+  .hk{font-weight:700; letter-spacing:.5px; padding:1px 6px; border:1px solid #22406f; border-radius:6px; font-size:11px; color:#cfe3ff; background:#0e203d}
+  .actBtns{display:flex; gap:8px; margin-left:auto}
+  .actBtns button{padding:8px 10px}
 
   /* Unit detail + minimap + highscore */
   .unitPanel{border:1px solid var(--line); border-radius:12px; padding:10px; background:#0d1831;}
@@ -65,9 +80,23 @@
   .abilityBtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
   .ability-btn{background:#0e203d; border:1px solid #22406f; padding:8px 10px; border-radius:9px; font-size:12px}
   .ability-btn:disabled{opacity:.5; cursor:not-allowed}
+  .abilityCard{margin-top:6px; border:1px dashed #2b4474; background:#0a1a33; padding:8px 10px; border-radius:10px}
+  .abilityCard .name{color:#ffd166; font-weight:700}
+  .abilityCard .desc{color:#cfe3ff; font-size:12px; margin-top:4px}
+  .abilityMeta{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
+  .meta{font-size:11px; padding:3px 6px; border-radius:999px; border:1px solid #2b4474; color:#a9c8ff; background:#0a1931}
+
   .miniwrap{margin-top:10px; border:1px solid var(--line); border-radius:12px; padding:8px; background:#0d1831;}
   #minimap{display:block; width:100%; height:auto; border-radius:8px; background:#0b1326}
+
   .textin{flex:1 1 auto; min-width:160px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0f1e36; color:var(--white)}
+
+  /* Helper footer */
+  .helpbar{
+    margin-top:10px; border:1px solid #2b4474; background:#0a1730; border-radius:12px; padding:8px 10px; color:#cfe3ff;
+    font-size:12px;
+  }
+  .toast{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1729; color:#cfe3ff; border:1px solid var(--line); padding:10px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(0,0,0,.35);}
 </style>
 </head>
 <body>
@@ -80,6 +109,7 @@
 
     <div class="side">
       <h1>Ascendants vs Swarm — <span style="color:var(--flag)">Campaign</span></h1>
+
       <div class="row">
         <span class="pill">Level <b id="level">1</b></span>
         <span class="pill">Round <b id="roundNum">1</b></span>
@@ -89,25 +119,76 @@
         <span class="pill">Best (session): <b id="bestLevel">1</b></span>
       </div>
 
-      <div class="btns">
-        <button id="btnMove">Move</button>
-        <button id="btnAttack">Attack</button>
-        <button id="btnAbility">Ability</button>
-        <button id="btnFortify">Fortify</button>
-        <button id="btnEnd">End Turn</button>
-        <button id="btnReset" title="Restart campaign">↺ Reset</button>
-      </div>
-
       <div class="row" style="justify-content:space-between">
-        <div class="pill">Zoom <b id="zoomDisp">140%</b></div>
-        <div class="btns"><button id="zoomOut">−</button><button id="zoomIn">＋</button></div>
+        <div class="pill">Zoom <b id="zoomDisp">200%</b></div>
+        <div class="btns">
+          <button id="zoomFit" title="Center on board">Center</button>
+          <button id="zoomOut" title="[-] zoom out">−</button>
+          <button id="zoomIn" title="[=] zoom in">＋</button>
+          <button id="toggleAutoZoom">Auto-zoom: <span id="autoZoomState">On</span></button>
+        </div>
       </div>
 
       <div class="sep"></div>
+
+      <!-- Clean Action Bar with descriptions + hotkeys -->
+      <div class="actionbar" id="actionbar">
+        <div class="action">
+          <div class="hk">Q</div>
+          <div>
+            <h4>Move</h4>
+            <p>Choose a highlighted teal tile within speed. Zones of Control (adjacent enemies) stop pathing.</p>
+          </div>
+          <div class="actBtns"><button id="btnMove">Move</button></div>
+        </div>
+        <div class="action">
+          <div class="hk">W</div>
+          <div>
+            <h4>Attack</h4>
+            <p>Click a red-outlined enemy in line (melee needs adjacency; ranged requires clear line).</p>
+          </div>
+          <div class="actBtns"><button id="btnAttack">Attack</button></div>
+        </div>
+        <div class="action">
+          <div class="hk">E</div>
+          <div>
+            <h4>Ability</h4>
+            <p>Use your unit’s unique power. See details below — range, target type, and effects.</p>
+          </div>
+          <div class="actBtns"><button id="btnAbility">Ability</button></div>
+        </div>
+        <div class="action">
+          <div class="hk">R</div>
+          <div>
+            <h4>Fortify</h4>
+            <p>Gain <b>+1 Armor</b> and heal <b>+1 HP</b>. Ends one order.</p>
+          </div>
+          <div class="actBtns"><button id="btnFortify">Fortify</button></div>
+        </div>
+        <div class="action">
+          <div class="hk">Enter</div>
+          <div>
+            <h4>End Turn</h4>
+            <p>Pass remaining orders to the AI, then start your next round.</p>
+          </div>
+          <div class="actBtns">
+            <button id="btnEnd">End Turn</button>
+            <button id="btnReset" title="Restart campaign">↺ Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
       <div class="unitPanel">
         <div class="unitTitle"><span id="unitEmoji">⬚</span><span id="unitName">No unit selected</span></div>
         <div class="row"><span class="pill" id="unitStats">—</span></div>
-        <div class="abilityBtns" id="abilityBtns"></div>
+        <div id="abilityBtns" class="abilityBtns"></div>
+        <div id="abilityCard" class="abilityCard" style="display:none">
+          <div class="name" id="abilityName">—</div>
+          <div class="desc" id="abilityDesc">—</div>
+          <div class="abilityMeta" id="abilityMeta"></div>
+        </div>
       </div>
 
       <div class="miniwrap">
@@ -123,15 +204,20 @@
         <div id="saveStatus" class="pill" style="display:none; margin-top:8px"></div>
       </div>
 
+      <div class="helpbar" id="helpbar">Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.</div>
+
       <div class="sep"></div>
-      <div class="legend" style="margin-bottom:8px">
-        <div class="key p"></div><div>Ascendants (you)</div>
-        <div class="key a"></div><div>Swarm (AI)</div>
-        <div class="key f"></div><div>Flags (gain banners at the start of your turn)</div>
+      <div class="row" style="gap:12px; color:#aebbd6; font-size:13px">
+        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--p); border-radius:50%; display:inline-block"></span> Ascendants (you)</div>
+        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--a); border-radius:50%; display:inline-block"></span> Swarm (AI)</div>
+        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--flag); border-radius:50%; display:inline-block"></span> Flags (score banners)</div>
       </div>
-      <div class="log" id="log"></div>
+
+      <div class="sep"></div>
+      <div class="log" id="log" style="max-height:210px; overflow:auto; font-size:13px; color:#aebbd6"></div>
     </div>
   </div>
+
   <div id="toast" class="toast" style="display:none"></div>
 
 <script>
@@ -142,22 +228,26 @@ window.maxLevelReached = 1;
 <script>
 (function(){
   // ===== Big Map Config =====
-  const W=24, H=16;               // larger field
-  const TILE=48, GAP=6;            // visuals
+  const W=24, H=16;
+  const TILE=48, GAP=6;
   const CELL=TILE+GAP;
-  const FLAGS_Y = Math.floor(H/2); // central band
-  const FLAG_XS = [3, 7, 12, 17, 21]; // five flags across the middle
+  const FLAGS_Y = Math.floor(H/2);
+  const FLAG_XS = [3, 7, 12, 17, 21];
 
   // ===== Camera (zoom + mouse-look / edge pan) =====
   const view = document.getElementById('view');
   const world = document.querySelector('.world');
   const gridEl = document.getElementById('grid');
   let cam = {x:0, y:0, vx:0, vy:0};
-  let zoom = 1.4; const ZMIN=1.0, ZMAX=2.4;
+  // less zoomed-out feeling by default
+  let zoom = 2.0; const ZMIN=1.2, ZMAX=3.0;
   const VIEW_W = view.clientWidth, VIEW_H = view.clientHeight;
   const WORLD_W = W*CELL+GAP, WORLD_H = H*CELL+GAP;
+  let autoZoom = true;
 
   const zoomDispEl = document.getElementById('zoomDisp');
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
+
   function setZoom(nz, anchor){
     nz = Math.max(ZMIN, Math.min(ZMAX, nz));
     const rect = view.getBoundingClientRect();
@@ -173,15 +263,28 @@ window.maxLevelReached = 1;
     cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
     zoomDispEl.textContent = Math.round(zoom*100)+'%';
   }
+  function centerCamera(tx = Math.floor(W/2), ty = Math.floor(H/2), z = zoom){
+    const worldPxX = tx * CELL;
+    const worldPxY = ty * CELL;
+    cam.x = worldPxX * z - VIEW_W/2;
+    cam.y = worldPxY * z - VIEW_H/2;
+    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*z - VIEW_W));
+    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*z - VIEW_H));
+    world.style.transform = `scale(${z}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    zoomDispEl.textContent = Math.round(z*100)+'%';
+  }
 
   gridEl.style.gridTemplateColumns = `repeat(${W}, ${TILE}px)`;
   gridEl.style.gridTemplateRows    = `repeat(${H}, ${TILE}px)`;
   gridEl.style.padding = `${GAP}px`;
 
-  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
   const lastMouse = {x:0,y:0};
   view.addEventListener('mousemove', (e)=>{ lastMouse.x=e.clientX; lastMouse.y=e.clientY; });
-  view.addEventListener('wheel', (e)=>{ e.preventDefault(); const rect=view.getBoundingClientRect(); setZoom( zoom * (e.deltaY<0?1.1:0.9), [e.clientX-rect.left, e.clientY-rect.top]); }, {passive:false});
+  view.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const rect=view.getBoundingClientRect();
+    setZoom( zoom * (e.deltaY<0?1.1:0.9), [e.clientX-rect.left, e.clientY-rect.top] );
+  }, {passive:false});
 
   function updateCamera(){
     const rect = view.getBoundingClientRect();
@@ -201,8 +304,13 @@ window.maxLevelReached = 1;
   }
   requestAnimationFrame(updateCamera);
 
-  document.getElementById('zoomIn').onclick = ()=> setZoom(zoom*1.15);
-  document.getElementById('zoomOut').onclick= ()=> setZoom(zoom/1.15);
+  document.getElementById('zoomIn').onclick  = ()=> setZoom(zoom*1.15);
+  document.getElementById('zoomOut').onclick = ()=> setZoom(zoom/1.15);
+  document.getElementById('zoomFit').onclick = ()=> centerCamera(Math.floor(W/2), Math.floor(H/2), zoom);
+  document.getElementById('toggleAutoZoom').onclick = ()=>{
+    autoZoom = !autoZoom;
+    document.getElementById('autoZoomState').textContent = autoZoom ? 'On' : 'Off';
+  };
 
   // ===== Factions & Unit Databases (with abilities) =====
   const ASCENDANT_TYPES = {
@@ -231,6 +339,43 @@ window.maxLevelReached = 1;
 
   const TYPES = { P: ASCENDANT_TYPES, A: SWARM_TYPES };
 
+  // Human-readable ability descriptions
+  function abilityText(Ab, unitName){
+    if(!Ab) return {desc:'—', meta:[]};
+    const tgt = Ab.kind==='self' ? 'Self'
+              : Ab.kind==='tile' ? 'Tile'
+              : Ab.kind==='unitFriendly' ? 'Friendly unit'
+              : 'Enemy unit';
+    const meta = [
+      `Target: ${tgt}`,
+      ...(Ab.range!=null ? [`Range: ${Ab.range}`] : []),
+      ...(Ab.maxPerTurn!=null ? [`Uses/turn: ${Ab.maxPerTurn}`] : []),
+      ...(Ab.ignoreLoS ? ['Ignores line of sight'] : []),
+      ...(Ab.ignoreBlocks ? ['Ignores terrain/hazards for placement'] : []),
+    ];
+
+    switch(Ab.key){
+      case 'shieldwall': return {desc:`Raise a heavy barrier around ${unitName}, granting +2 Armor (up to 3).`, meta};
+      case 'snipe':      return {desc:`Fire a precise shot that deals ${Ab.dmg||2} damage. Ignores line of sight.`, meta};
+      case 'rally':      return {desc:`Bolster a friendly unit with +${Ab.moveBonus||1} Move and set Armor to at least 1 this turn.`, meta};
+      case 'lunge':      return {desc:`Dash to the edge of the target and immediately strike for normal weapon damage.`, meta};
+      case 'chain':      return {desc:`Zap a target for 1 damage, then chain up to ${Ab.chain||2} adjacent enemies for 1 damage each.`, meta};
+      case 'bulwark':    return {desc:`Brace for impact: +2 Armor and restore +1 HP.`, meta};
+      case 'blink':      return {desc:`Teleport to an empty tile within range. Ignores obstacles.`, meta};
+      case 'haste':      return {desc:`Imbue speed: target friendly gains +${Ab.moveBonus||2} Move this turn.`, meta};
+      case 'emp':        return {desc:`Strip defenses and silence: remove Armor and prevent ability use for 1 turn.`, meta};
+      // Swarm
+      case 'acid':       return {desc:`Create a lingering acid pool on a tile (3 turns) that blocks movement.`, meta};
+      case 'smash':      return {desc:`Power up: your next attack deals +1 damage.`, meta};
+      case 'mark':       return {desc:`Mark prey: the target takes +1 damage from Swarm attackers for 2 turns.`, meta};
+      case 'spawn':      return {desc:`Hatch a Dronelet on a nearby empty tile.`, meta};
+      case 'leap':       return {desc:`Jump to a tile within range, bypassing obstacles.`, meta};
+      case 'silence':    return {desc:`Mute a foe: prevent ability use for 1 turn.`, meta};
+      case 'explode':    return {desc:`Detonate, dealing 2 damage to adjacent units, destroying yourself.`, meta};
+      default:           return {desc:`Special ability.`, meta};
+    }
+  }
+
   // ===== Game State =====
   let state=null; let selectedId=null; let hintMode=null; let hints=new Set();
   const turnWhoEl=document.getElementById('turnWho');
@@ -240,11 +385,16 @@ window.maxLevelReached = 1;
   const levelEl=document.getElementById('level');
   const bestLevelEl=document.getElementById('bestLevel');
   const logEl=document.getElementById('log');
+  const helpbarEl=document.getElementById('helpbar');
 
   const unitEmojiEl=document.getElementById('unitEmoji');
   const unitNameEl=document.getElementById('unitName');
   const unitStatsEl=document.getElementById('unitStats');
   const abilityBtnsEl=document.getElementById('abilityBtns');
+  const abilityCard=document.getElementById('abilityCard');
+  const abilityName=document.getElementById('abilityName');
+  const abilityDesc=document.getElementById('abilityDesc');
+  const abilityMeta=document.getElementById('abilityMeta');
 
   const minimap = document.getElementById('minimap');
   const mctx = minimap.getContext('2d');
@@ -255,6 +405,18 @@ window.maxLevelReached = 1;
   document.getElementById('btnFortify').onclick = ()=>performFortify();
   document.getElementById('btnEnd').onclick = ()=>endTurn();
   document.getElementById('btnReset').onclick = ()=> startCampaign(1);
+
+  // Hotkeys
+  window.addEventListener('keydown', (e)=>{
+    if(e.repeat) return;
+    if(e.key==='q' || e.key==='Q') return document.getElementById('btnMove').click();
+    if(e.key==='w' || e.key==='W') return document.getElementById('btnAttack').click();
+    if(e.key==='e' || e.key==='E') return document.getElementById('btnAbility').click();
+    if(e.key==='r' || e.key==='R') return document.getElementById('btnFortify').click();
+    if(e.key==='Enter') return document.getElementById('btnEnd').click();
+    if(e.key==='=' || e.key==='+') return document.getElementById('zoomIn').click();
+    if(e.key==='-' || e.key==='_') return document.getElementById('zoomOut').click();
+  });
 
   function id(){ return Math.random().toString(36).slice(2,9) }
   function key(x,y){ return x+","+y }
@@ -310,6 +472,8 @@ window.maxLevelReached = 1;
     state.units.push(...rollUnits('A', level));
     pushLog(`Campaign started. Level ${level}. Player goes first.`);
     startOfTurn();
+    // start centered and nicely zoomed
+    centerCamera(Math.floor(W/2), Math.floor(H/2), zoom);
     render();
   }
 
@@ -336,9 +500,6 @@ window.maxLevelReached = 1;
   function pathfindReach(u){
     const maxSteps = T(u).move + captainAdjacentBonus(u) + (u.bonusMove||0);
     const visited = new Set([key(u.x,u.y)]);
-    a: {
-      // safety if maxSteps is ridiculous
-    }
     const q=[{x:u.x,y:u.y, steps:0}];
     const reachable = new Set();
     while(q.length){
@@ -416,7 +577,7 @@ window.maxLevelReached = 1;
   function performFortify(){
     if(!selectedId) return toast('Select a unit first');
     const u = state.units.find(x=>x.id===selectedId);
-    if(!u || u.side!==state.turn) return;
+    if(!u || u.side!==state.turn || u.side!=='P') return;
     u.hp=Math.min(u.maxHp, u.hp+1);
     u.armor=1;
     spendOrder(`${sideName(u.side)} fortified ${label(u)} (+1 armor, +1 HP)`);
@@ -425,7 +586,7 @@ window.maxLevelReached = 1;
 
   function canUseAbility(u){
     const A = abilityOf(u); if(!A) return {ok:false, why:'No ability'};
-    if(u.side!==state.turn) return {ok:false, why:'Not your turn'};
+    if(u.side!==state.turn || u.side!=='P') return {ok:false, why:'Not your turn'};
     if(u.silenced>0) return {ok:false, why:'Silenced'};
     if(sideAbilityLeft(u.side)<=0) return {ok:false, why:'No abilities left this turn'};
     if(u.abilUses>= (A.maxPerTurn||1)) return {ok:false, why:'Used already'};
@@ -567,7 +728,7 @@ window.maxLevelReached = 1;
     if(checkVictory(state.turn)) return;
     state.turn = (state.turn==='P'?'A':'P');
     if(state.turn==='P') state.round++;
-    state.orders=3; selectedId=null; hintMode=null; hints.clear();
+    state.orders=3; hintMode=null; hints.clear();
     startOfTurn(); render();
     if(state.turn==='A') setTimeout(aiTurn, 350);
   }
@@ -587,7 +748,6 @@ window.maxLevelReached = 1;
 
   function endLevel(winner, msg){
     pushLog(msg); toast(msg);
-    // Track session best (player's reached level)
     if(winner==='P'){
       window.maxLevelReached = Math.max(window.maxLevelReached || 1, state.level);
       bestLevelEl.textContent = window.maxLevelReached;
@@ -625,17 +785,23 @@ window.maxLevelReached = 1;
           cell.appendChild(bs);
         }
 
-        if(hints.has(key(x,y))){ cell.classList.add(hintMode==='move'?'hint-move':(hintMode==='attack'?'hint-attack':'hint-ability')); }
+        // Highlight hints: tiles OR unit-targets
+        const uHere = state.units.find(w=>w.x===x && w.y===y);
 
-        const u = state.units.find(w=>w.x===x && w.y===y);
-        if(u){
+        if(hintMode==='move' && hints.has(key(x,y))) cell.classList.add('hint-move');
+        if((hintMode==='attack' || hintMode==='ability') && uHere && hints.has(uHere.id)) {
+          cell.classList.add(hintMode==='attack' ? 'hint-attack' : 'hint-ability');
+        }
+        if(hintMode==='ability' && hints.has(key(x,y))) cell.classList.add('hint-ability');
+
+        if(uHere){
           const wrap=document.createElement('div'); wrap.className='unit';
-          const em=document.createElement('div'); em.textContent= T(u).emoji; em.style.filter='drop-shadow(0 1px 0 rgba(0,0,0,.45))'; wrap.appendChild(em);
-          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${T(u).name} · ${u.hp}/${u.maxHp}`; wrap.appendChild(chip);
-          const tag=document.createElement('div'); tag.className='tag '+(u.side==='P'?'p':'a'); tag.textContent= u.side==='P'? 'P':'AI'; wrap.appendChild(tag);
-          if(u.armor>0){ const ar=document.createElement('div'); ar.className='armor'; ar.textContent='Armor +'+u.armor; wrap.appendChild(ar); }
-          if(u.silenced>0){ const st=document.createElement('div'); st.className='status'; st.textContent='Silenced'; wrap.appendChild(st); }
-          if(selectedId===u.id) cell.classList.add('sel');
+          const em=document.createElement('div'); em.textContent= T(uHere).emoji; em.style.filter='drop-shadow(0 1px 0 rgba(0,0,0,.45))'; wrap.appendChild(em);
+          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${T(uHere).name} · ${uHere.hp}/${uHere.maxHp}`; wrap.appendChild(chip);
+          const tag=document.createElement('div'); tag.className='tag '+(uHere.side==='P'?'p':'a'); tag.textContent= uHere.side==='P'? 'P':'AI'; wrap.appendChild(tag);
+          if(uHere.armor>0){ const ar=document.createElement('div'); ar.className='armor'; ar.textContent='Armor +'+uHere.armor; wrap.appendChild(ar); }
+          if(uHere.silenced>0){ const st=document.createElement('div'); st.className='status'; st.textContent='Silenced'; wrap.appendChild(st); }
+          if(selectedId===uHere.id) cell.classList.add('sel');
           cell.appendChild(wrap);
         }
 
@@ -654,36 +820,87 @@ window.maxLevelReached = 1;
     ordersLeftEl.textContent = state.orders;
     abilitiesLeftEl.textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
     levelEl.textContent = state.level;
+
+    // Contextual helper
+    if(!selectedId){
+      helpbarEl.textContent = 'Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.';
+    } else if(hintMode==='move'){
+      helpbarEl.textContent = 'Move mode: click a teal tile to path there. Zones of Control (adjacent enemies) restrict chaining.';
+    } else if(hintMode==='attack'){
+      helpbarEl.textContent = 'Attack mode: click a red-outlined enemy in line. Melee needs adjacency; ranged requires clear line.';
+    } else if(hintMode==='ability'){
+      const u = state.units.find(x=>x.id===selectedId);
+      const A = u ? abilityOf(u) : null;
+      const what = A ? A.name : 'Ability';
+      helpbarEl.textContent = `Ability mode: ${what}. Click a highlighted target (${A?.kind||'target'}) within range.`;
+    } else {
+      helpbarEl.textContent = 'Select an action (Q/W/E/R) or click an option. Hover each card for a description.';
+    }
   }
 
   function updateUnitPanel(){
     const u = state.units.find(x=>x.id===selectedId);
-    if(!u){ unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; return; }
-    unitEmojiEl.textContent = T(u).emoji;
-    unitNameEl.textContent = `${T(u).name} ${u.side==='P'?'(You)':'(AI)'}`;
-    unitStatsEl.textContent = `HP ${u.hp}/${u.maxHp} • Move ${T(u).move + (u.bonusMove||0)} • Range ${T(u).range}` + (u.armor? ` • Armor ${u.armor}`:'' ) + (u.silenced? ' • Silenced':'' );
+    if(!u){
+      unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; abilityCard.style.display='none';
+      return;
+    }
+    // Auto-zoom/focus when selecting, but keep within bounds
+    if(autoZoom){
+      const targetZoom = 2.1;
+      zoom = clamp(targetZoom, ZMIN, ZMAX);
+      centerCamera(u.x, u.y, zoom);
+    }
+
+    const Tu=T(u);
+    unitEmojiEl.textContent = Tu.emoji;
+    unitNameEl.textContent = `${Tu.name} ${u.side==='P'?'(You)':'(AI)'}`;
+    unitStatsEl.textContent = `HP ${u.hp}/${u.maxHp} • Move ${Tu.move + (u.bonusMove||0)} • Range ${Tu.range}` + (u.armor? ` • Armor ${u.armor}`:'' ) + (u.silenced? ' • Silenced':'' );
+
+    // Ability button (still click E or button to go into hint)
     abilityBtnsEl.innerHTML='';
     const A = abilityOf(u);
     if(A){
       const btn=document.createElement('button');
-      btn.className='ability-btn'; btn.textContent = `Ability: ${A.name}`;
+      btn.className='ability-btn';
+      btn.textContent = `Use ${A.name} (E)`;
       const can = canUseAbility(u);
-      if(!(u.side===state.turn)) { btn.disabled=true; }
+      if(!(u.side===state.turn && u.side==='P')) { btn.disabled=true; btn.title = 'Only your units can act on your turn'; }
       else if(!can.ok){ btn.disabled=true; btn.title=can.why; }
       btn.onclick = ()=>{ selectedId=u.id; setHint('ability'); };
       abilityBtnsEl.appendChild(btn);
+
+      // Rich description card
+      const {desc, meta} = abilityText(A, Tu.name);
+      abilityCard.style.display='';
+      abilityName.textContent = A.name;
+      abilityDesc.textContent = desc;
+      abilityMeta.innerHTML = '';
+      for(const m of meta) {
+        const span = document.createElement('span');
+        span.className='meta';
+        span.textContent = m;
+        abilityMeta.appendChild(span);
+      }
     } else {
+      abilityCard.style.display='none';
       const s=document.createElement('span'); s.className='pill'; s.textContent='— No ability —'; abilityBtnsEl.appendChild(s);
     }
   }
 
   // ===== Player Input =====
   function setHint(mode){
-    if(state.turn!=='P') return;
     if(!selectedId) { toast('Select a unit first'); return; }
     hintMode=mode; hints.clear();
     const u=state.units.find(x=>x.id===selectedId);
-    if(!u || u.side!=='P') return;
+    if(!u) return;
+
+    // Only the player's units can take actions during player turn
+    if(state.turn!=='P' || u.side!=='P'){
+      helpbarEl.textContent = 'You can only act with your units during your turn.';
+      render();
+      return;
+    }
+
     if(mode==='move') pathfindReach(u).forEach(k=>hints.add(k));
     else if(mode==='attack') for(const t of attackables(u)) hints.add(t.id);
     else if(mode==='ability'){
@@ -701,13 +918,14 @@ window.maxLevelReached = 1;
     const x=+e.currentTarget.dataset.x, y=+e.currentTarget.dataset.y;
     const u = unitAt(x,y);
 
+    // Resolve current action modes first
     if(hintMode==='attack' && u && hints.has(u.id)){
       const me = state.units.find(w=>w.id===selectedId); if(!me) return;
-      if(me.side!==state.turn) return; performAttack(me,u); hints.clear(); hintMode=null; return;
+      if(me.side!==state.turn || me.side!=='P') return; performAttack(me,u); hints.clear(); hintMode=null; return;
     }
     if(hintMode==='move' && hints.has(key(x,y))){
       const me = state.units.find(w=>w.id===selectedId); if(!me) return;
-      if(me.side!==state.turn) return; performMove(me,x,y); hints.clear(); hintMode=null; return;
+      if(me.side!==state.turn || me.side!=='P') return; performMove(me,x,y); hints.clear(); hintMode=null; return;
     }
     if(hintMode==='ability'){
       const me = state.units.find(w=>w.id===selectedId); if(!me) return;
@@ -717,7 +935,8 @@ window.maxLevelReached = 1;
       if(A.kind==='self' && u && u.id===me.id){ useAbility(me, null); hints.clear(); hintMode=null; return; }
     }
 
-    if(u && u.side===state.turn){ selectedId=u.id; render(); return; }
+    // Always allow inspecting any unit (ally or enemy)
+    if(u){ selectedId=u.id; render(); return; }
   }
 
   // ===== Minimap =====
@@ -742,7 +961,7 @@ window.maxLevelReached = 1;
     // selected
     const su = state.units.find(x=>x.id===selectedId);
     if(su){ mctx.strokeStyle='#ffffff'; mctx.lineWidth=1; mctx.strokeRect(su.x*CELL*kx+0.5, su.y*CELL*ky+0.5, TILE*kx-1, TILE*ky-1); }
-    // viewport rectangle (convert cam scaled -> unscaled)
+    // viewport
     const vx = (cam.x/zoom) * kx;
     const vy = (cam.y/zoom) * ky;
     const vw = (VIEW_W/zoom) * kx;
@@ -754,12 +973,12 @@ window.maxLevelReached = 1;
     const rect = minimap.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const kx = minimap.width / (W*CELL+GAP), ky = minimap.height/ (H*CELL+GAP);
-    const wx = mx / kx; const wy = my / ky; // world px (unscaled)
-    const vw = VIEW_W/zoom, vh = VIEW_H/zoom;
-    cam.x = wx*zoom - VIEW_W/2; cam.y = wy*zoom - VIEW_H/2;
-    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
-    world.style.transform = `scale(${zoom}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
+    const wx = mx / kx; const wy = my / ky;
+    const z = zoom;
+    cam.x = wx*z - VIEW_W/2; cam.y = wy*z - VIEW_H/2;
+    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*z - VIEW_W));
+    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*z - VIEW_H));
+    world.style.transform = `scale(${z}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
     drawMinimap();
   });
 
@@ -770,53 +989,46 @@ window.maxLevelReached = 1;
 
     function tryAbilityPlays(){
       if(sideAbilityLeft('A')<=0) return false;
-      // 1) Explode to secure kills
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='explode')){
-        if(!canUseAbility(u).ok) continue;
+        if(u.silenced>0) continue;
         const adjEnemies = state.units.filter(v=>v.side==='P' && manhattan(v,u)===1);
         const wouldKill = adjEnemies.filter(v=> (v.hp <= 2));
         if(wouldKill.length>=1){ useAbility(u,null); return true; }
       }
-      // 2) Silence dangerous player abilities in range
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='silence')){
-        if(!canUseAbility(u).ok) continue;
+        if(u.silenced>0) continue;
         const A=abilityOf(u); const cands = state.units.filter(v=> v.side==='P' && abilityOf(v) && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v));
         const t = cands[0]; if(t){ useAbility(u,t); return true; }
       }
-      // 3) Mark prey on units holding flags
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='mark')){
-        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        if(u.silenced>0) continue; const A=abilityOf(u);
         const cands = state.units.filter(v=> v.side==='P' && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v) && isFlag(v.x,v.y));
         const t = cands[0]; if(t){ useAbility(u,t); return true; }
       }
-      // 4) Spawn a dronelet next to Brood-Queen if near flags
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='spawn')){
-        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        if(u.silenced>0) continue; const A=abilityOf(u);
         const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:u.x+dx,y:u.y+dy}))
           .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y) && inRange(u,p,A.range));
         const nearFlag = spots.find(s=>isFlag(s.x,s.y));
         if(nearFlag){ useAbility(u, nearFlag); return true; }
         if(spots[0]){ useAbility(u, spots[0]); return true; }
       }
-      // 5) Acid pool to deny a neutral/foe flag
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='acid')){
-        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        if(u.silenced>0) continue; const A=abilityOf(u);
         const targets = state.flags
-          .filter(f=> !state.units.some(v=>v.side==='A' && v.x===f.x && v.y===f.y)) // not ours
+          .filter(f=> !state.units.some(v=>v.side==='A' && v.x===f.x && v.y===f.y))
           .map(f=>({x:f.x,y:f.y}))
           .filter(t=> inRange(u,t,A.range) && (u.x===t.x || u.y===t.y) && clearLine(u,t) && !unitAt(t.x,t.y));
         if(targets[0]){ useAbility(u, targets[0]); return true; }
       }
-      // 6) Leap to a flag
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='leap')){
-        if(!canUseAbility(u).ok) continue; const A=abilityOf(u);
+        if(u.silenced>0) continue; const A=abilityOf(u);
         const targets = state.flags.map(f=>({x:f.x,y:f.y}))
           .filter(t=> inRange(u,t,A.range) && !unitAt(t.x,t.y));
         if(targets[0]){ useAbility(u, targets[0]); return true; }
       }
-      // 7) Smash to prep extra damage (adjacent to enemy)
       for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='smash')){
-        if(!canUseAbility(u).ok) continue; const adj = state.units.some(v=>v.side==='P' && manhattan(v,u)===1);
+        if(u.silenced>0) continue; const adj = state.units.some(v=>v.side==='P' && manhattan(v,u)===1);
         if(adj){ useAbility(u,null); return true; }
       }
       return false;
@@ -905,7 +1117,6 @@ const firebaseConfig = {
 
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
 
 // Hook up the "Save Highscore" button
 const saveBtn = document.getElementById('saveScore');
@@ -931,3 +1142,5 @@ saveBtn.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
+
