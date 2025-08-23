@@ -6,9 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{
-    --bg:#0b1014; --panel:#0e1726; --grid:#122033; --cell:#0b1424; --ink:#e6edf3; --muted:#9fb3c8;
+    --bg:#0b1014; --panel:#0e1726; --grid:#122033; --ink:#e6edf3; --muted:#9fb3c8;
     --accent:#60a5fa; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --br:#1b2b4a;
-    --ally:#22c55e; --enemy:#ef4444; --neutral:#94a3b8;
     --tile:48px; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
   }
   *{box-sizing:border-box}
@@ -22,8 +21,9 @@
   #canvas{ display:block; width:100%; height:100%; cursor:crosshair; background-image:
     linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
     background-size: calc(var(--tile)) calc(var(--tile)), calc(var(--tile)) calc(var(--tile));
-    background-position: 0 0, 0 0;
   }
+
+  /* HUD */
   .hud{
     position:absolute; left:12px; top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
     background:rgba(7,12,20,.6); backdrop-filter: blur(6px); border:1px solid var(--br); border-radius:12px; padding:8px 10px;
@@ -80,6 +80,7 @@
           <span class="small muted" id="hudXPText">0/0</span>
         </span>
       </span>
+      <span class="chip" id="chipPrep" style="display:none">🛡️ Prepared: <b id="prepLeft">10s</b></span>
       <span class="chip">⏱️ Status: <b id="hudStatus">Spawning…</b></span>
       <span class="sep"></span>
       <button class="btn" id="btnArmy">Army</button>
@@ -89,7 +90,7 @@
 
     <div class="legend">
       <div>WASD: move • Hold <b>Space</b> + drag: pan</div>
-      <div>First 10s: no interactions</div>
+      <div>First 10s: Prepared (can move/see; no battles or interactions)</div>
       <div>Villages: recruit/trade (cooldowns)</div>
       <div>Castles: trade/attack • Owners shown</div>
     </div>
@@ -106,8 +107,8 @@
         </div>
       </div>
       <div class="card-body">
-        <div id="allyList" class="list"><!-- entries --></div>
-        <div id="allyRequests" class="list" style="margin-top:8px"><!-- leader's pending requests --></div>
+        <div id="allyList" class="list"></div>
+        <div id="allyRequests" class="list" style="margin-top:8px"></div>
       </div>
     </div>
 
@@ -125,9 +126,7 @@
     <!-- World Log -->
     <div class="card" style="min-height:220px">
       <div class="card-head"><div class="card-title">World</div></div>
-      <div class="card-body">
-        <div id="log" class="list"></div>
-      </div>
+      <div class="card-body"><div id="log" class="list"></div></div>
     </div>
   </div>
 </div>
@@ -137,9 +136,7 @@
   <div class="sheet">
     <h3 id="modalTitle">Location</h3>
     <div class="inner" id="modalBody"></div>
-    <div class="actions">
-      <button class="btn" id="modalCancel">Exit</button>
-    </div>
+    <div class="actions"><button class="btn" id="modalCancel">Exit</button></div>
   </div>
 </div>
 
@@ -160,14 +157,13 @@ const firebaseConfig = {
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db  = getFirestore(app);
 
 /* =================== Constants & Helpers =================== */
-const RAIDERS_LOCAL = true; // local raiders
 const TILE = 48;
 const WORLD_W = 180; // tiles
 const WORLD_H = 120;
-const INTERACT_GRACE_MS = 10_000;
+const INTERACT_GRACE_MS = 10_000;         // Preparedness window
 const RECRUIT_COOLDOWN_MS = 60_000;
 const TRADE_COOLDOWN_MS   = 120_000;
 const HEARTBEAT_MS = 5_000;
@@ -192,10 +188,20 @@ const UPGRADE_COST = {
 const START_ARMY = { recruits:10, archers:0, footmen:0, monks:0,
   veteranArchers:0, crossbowmen:0, swordsmen:0, cavalry:0, priests:0, mages:0 };
 
+/* Emojis */
+const EMOJI = {
+  village: "🏘️",
+  castle:  "🏰",
+  player:  "🧍",
+  raider:  "🏴‍☠️"
+};
+
+/* DOM refs */
 const $ = sel => document.querySelector(sel);
 const logBox = $("#log"); const hudGold = $("#hudGold"); const hudArmy = $("#hudArmy");
 const hudName = $("#hudName"); const hudStatus = $("#hudStatus");
 const hudLvl = $("#hudLevel"); const xpFill = $("#xpFill"); const hudXPText = $("#hudXPText");
+const chipPrep = $("#chipPrep"); const prepLeft = $("#prepLeft");
 function log(line){ const d=document.createElement("div"); d.className="small muted"; d.textContent=line; logBox.prepend(d); }
 
 /* =================== URL / Player =================== */
@@ -207,7 +213,7 @@ hudName.textContent = username;
 const state = {
   player: null, youDocRef: null,
   cam:{ x:0, y:0, w:0, h:0 }, drag:false, dragStart:null,
-  canInteractAt: 0,
+  canInteractAt: 0, // timestamp when preparedness ends
   keys:{}, lastMoveAt:0, moveDelay:220,
   villages:[], castles:[],
   localRaiders: [],
@@ -229,6 +235,31 @@ function resize(){
   state.cam.w = canvas.width; state.cam.h = canvas.height;
 }
 addEventListener("resize", resize); resize();
+
+/* Draw helpers (emoji + nameplates + ally stripes) */
+function drawEmojiCentered(emoji, cx, cy, pxSize = Math.floor(TILE*0.9)) {
+  ctx.save();
+  ctx.font = `${pxSize}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(emoji, cx, cy);
+  ctx.restore();
+}
+function drawNameplate(text, cx, cy, dy=0, color="#cbd5e1") {
+  ctx.save();
+  ctx.font = "12px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy + dy);
+  ctx.restore();
+}
+function drawStripe(cx, cy, w, h, color){
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.fillRect(cx - w/2, cy - h/2, w, h);
+  ctx.restore();
+}
 
 /* =================== Seeding World (villages/castles) =================== */
 async function seedWorldOnce(){
@@ -298,14 +329,12 @@ async function gainXP(amount){
     let xpNext = d.xpNext || xpNextForLevel(level);
     let maxArmy = d.maxArmy ?? maxArmyForLevel(level);
 
-    let leveled = false;
     while (xp >= xpNext){
-      xp -= xpNext; level += 1; leveled = true;
+      xp -= xpNext; level += 1;
       xpNext = xpNextForLevel(level);
-      maxArmy = maxArmyForLevel(level); // keep cap in sync with level
+      maxArmy = maxArmyForLevel(level);
     }
-    const patch = { xp, level, xpNext, maxArmy };
-    tx.update(state.youDocRef, patch);
+    tx.update(state.youDocRef, { xp, level, xpNext, maxArmy });
   });
 }
 
@@ -356,9 +385,25 @@ async function ensurePlayer(){
     if (Object.keys(patch).length) await updateDoc(state.youDocRef, patch);
     state.player = { id:username, ...d, ...patch };
   }
+
+  // Preparedness window
+  state.canInteractAt = Date.now() + INTERACT_GRACE_MS;
+  chipPrep.style.display = "inline-flex";
+  updatePrepChip();
+  prepTicker = setInterval(updatePrepChip, 250);
+
   hudGold.textContent = state.player.gold;
   updateArmyHud(); updateLevelHud();
-  state.canInteractAt = Date.now() + INTERACT_GRACE_MS;
+}
+let prepTicker=null;
+function updatePrepChip(){
+  const rem = Math.max(0, state.canInteractAt - Date.now());
+  if (rem <= 0){
+    chipPrep.style.display = "none";
+    if (prepTicker){ clearInterval(prepTicker); prepTicker=null; }
+    return;
+  }
+  prepLeft.textContent = Math.ceil(rem/1000)+"s";
 }
 
 /* =================== Presence =================== */
@@ -390,29 +435,63 @@ async function listenWorld(){
   });
 }
 
-/* =================== Raiders (local) =================== */
-function seedRaidersOnce(){
-  state.localRaiders = [];
-  const types = ["recruits","footmen","archers"];
-  for(let i=0;i<25;i++){
-    state.localRaiders.push({
-      id: "L"+i,
-      x: Math.floor(Math.random()*WORLD_W),
-      y: Math.floor(Math.random()*WORLD_H),
-      size: Math.floor(3 + Math.random()*48),
-      type: types[Math.floor(Math.random()*types.length)],
-      speedBase: 900, engaged:false, _lastStep:0
-    });
+/* =================== Raiders (local, auto-spawn) =================== */
+const RAIDER_TYPES = ["recruits","footmen","archers"];
+const RAIDER_CAP = 60;                     // max unengaged groups visible at once
+const RAIDER_SPAWN_EVERY_MS = 10_000;      // spawn tick
+const RAIDER_SPAWN_BATCH_MAX = 4;          // up to N per spawn tick
+const RAIDER_DESPAWN_ENGAGED_MS = 90_000;  // engaged groups cleaned up
+
+function randomFreeTile() {
+  for (let i=0;i<200;i++){
+    const x = Math.floor(Math.random()*WORLD_W);
+    const y = Math.floor(Math.random()*WORLD_H);
+    const onVillage = !!state.villages.find(v=>v.x===x && v.y===y);
+    const onCastle  = !!state.castles.find(c=>c.x===x && c.y===y);
+    const onRaider  = !!state.localRaiders.find(r=>!r.engaged && r.x===x && r.y===y);
+    if (!onVillage && !onCastle && !onRaider) return {x,y};
   }
+  return { x: Math.floor(Math.random()*WORLD_W), y: Math.floor(Math.random()*WORLD_H) };
 }
+function spawnOneRaider() {
+  const pos = randomFreeTile();
+  const size = Math.floor(3 + Math.random()*48);
+  state.localRaiders.push({
+    id: "L"+crypto.randomUUID().slice(0,6),
+    x: pos.x, y: pos.y,
+    size,
+    type: RAIDER_TYPES[Math.floor(Math.random()*RAIDER_TYPES.length)],
+    speedBase: 900,
+    engaged: false,
+    engagedAt: 0,
+    createdAt: Date.now(),
+    _lastStep: 0
+  });
+}
+function seedRaidersOnce(){ state.localRaiders = []; for(let i=0;i<25;i++) spawnOneRaider(); }
+setInterval(()=>{
+  // prune engaged too long
+  const now = Date.now();
+  state.localRaiders = state.localRaiders.filter(r => !(r.engaged && now - (r.engagedAt||now) > RAIDER_DESPAWN_ENGAGED_MS));
+
+  // top up to cap
+  const available = state.localRaiders.filter(r=>!r.engaged).length;
+  const missing = Math.max(0, RAIDER_CAP - available);
+  if (missing <= 0) return;
+  const toSpawn = Math.min(missing, 1 + Math.floor(Math.random()*RAIDER_SPAWN_BATCH_MAX));
+  for (let i=0;i<toSpawn;i++) spawnOneRaider();
+}, RAIDER_SPAWN_EVERY_MS);
+
 function nearestPlayer(x,y){
   let best=null, bd=1e9;
   for(const p of state.others.values()){
     const d = Math.hypot(p.x-x, p.y-y);
     if (d<bd){ bd=d; best={ x:p.x, y:p.y, strength: armySum(p.army||{}) }; }
   }
-  const d2 = Math.hypot(state.player.x-x, state.player.y-y);
-  if (d2<bd) best = { x:state.player.x, y:state.player.y, strength: armySum(state.player.army) };
+  if (state.player){
+    const d2 = Math.hypot(state.player.x-x, state.player.y-y);
+    if (!best || d2<bd) best = { x:state.player.x, y:state.player.y, strength: armySum(state.player.army||{}) };
+  }
   return best;
 }
 function findRaiderAt(x,y){ return state.localRaiders.find(r=> r.x===x && r.y===y && !r.engaged) || null; }
@@ -421,7 +500,7 @@ setInterval(()=>{
     if (r.engaged) continue;
     const nearest = nearestPlayer(r.x, r.y);
     let dx=0, dy=0;
-    const stepDelay = Math.max(250, r.speedBase + r.size*8);
+    const stepDelay = Math.max(250, r.speedBase + r.size*8); // bigger groups are slower
     if (!r._lastStep || Date.now()-r._lastStep >= stepDelay){
       r._lastStep = Date.now();
       if (nearest){
@@ -439,7 +518,7 @@ setInterval(()=>{
   }
 }, 250);
 
-/* =================== Allegiances (unchanged core) =================== */
+/* =================== Allegiances =================== */
 function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 80% 55%)`; }
 async function loadAllegiances(){
   sub(collection(db,"mountonline_allegiances"), snap=>{
@@ -579,7 +658,7 @@ async function upgrade(fromKey, toKey, costKey){
   await updateDoc(state.youDocRef, { army, gold: (me.gold||0)-cost });
   state.player.army = army; state.player.gold = (me.gold||0)-cost; hudGold.textContent = state.player.gold;
   updateArmyHud();
-  await gainXP(XP_PER_UPGRADE); // small XP bump
+  await gainXP(XP_PER_UPGRADE);
   log(`Upgraded 1 ${fromKey} → ${toKey} (-${cost}g, +${XP_PER_UPGRADE}XP)`);
 }
 
@@ -725,7 +804,8 @@ async function openCastle(c){
     }
     const opts = document.createElement("div"); opts.className="row";
     const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
-    attack.onclick = async ()=> {
+    attack.onclick = async ()=>{
+      if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
       await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
       location.href = `/game/castlebattle.html?castleId=${c.id}&username=${encodeURIComponent(username)}`;
     };
@@ -744,7 +824,7 @@ async function openCastle(c){
 }
 async function buyBanner(b, placeId, kind){
   const snap = await getDoc(state.youDocRef); const me = snap.data();
-  const price = (kind==="castle") ? 200 : 200; // unified price here
+  const price = 200;
   if ((me.gold||0) < price){ alert("Not enough gold."); return; }
   const inv = me.inventory || { banners:[], equipped:[] };
   inv.banners = [...(inv.banners||[]), b];
@@ -761,7 +841,7 @@ async function buyBanner(b, placeId, kind){
 }
 
 /* =================== Movement & Camera =================== */
-function moveDelayFromArmy(){
+function armyMoveDelay(){
   const total = armySum(state.player?.army||START_ARMY);
   return 180 + Math.min(520, total*10); // heavier → slower
 }
@@ -798,35 +878,42 @@ function tickInput(){
   if (state.keys['a']) dx -= 1;
   if (state.keys['d']) dx += 1;
   if (dx||dy) tryMove(dx,dy);
-  state.moveDelay = moveDelayFromArmy();
+  state.moveDelay = armyMoveDelay();
 }
 
 /* =================== Interactions =================== */
 function tileAt(x,y,list){ return list.find(o=> o.x===x && o.y===y); }
 async function checkTile(){
   renderNearby();
-  if (Date.now() < state.canInteractAt) return;
+
+  // During Preparedness you can move/see but can't interact or battle
+  const inPreparedness = Date.now() < state.canInteractAt;
 
   const V = tileAt(state.player.x, state.player.y, state.villages);
-  if (V){ openVillage(V); return; }
+  if (V && !inPreparedness){ openVillage(V); return; }
 
   const C = tileAt(state.player.x, state.player.y, state.castles);
-  if (C){ openCastle(C); return; }
+  if (C && !inPreparedness){ openCastle(C); return; }
 
+  // Raiders
   const raider = findRaiderAt(state.player.x, state.player.y);
-  if (raider){
+  if (raider && !inPreparedness){
     raider.engaged = true;
+    raider.engagedAt = Date.now();
     const t = raider.type, s = raider.size;
     await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
     location.href = `/game/localbattle.html?etype=${encodeURIComponent(t)}&esize=${s}&username=${encodeURIComponent(username)}`;
     return;
   }
 
-  const playersHere = Array.from(state.others.values()).filter(p=> p.x===state.player.x && p.y===state.player.y);
-  const enemy = playersHere.find(p=> !(state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId));
-  if (enemy && !state.battleEngaged && freshActive(enemy)){
-    const low = [username, enemy.id].sort()[0];
-    if (low === username){ startPvPBattle(enemy.id); }
+  // PvP (same tile, non-ally), only if both active and not in Preparedness
+  if (!inPreparedness){
+    const playersHere = Array.from(state.others.values()).filter(p=> p.x===state.player.x && p.y===state.player.y);
+    const enemy = playersHere.find(p=> !(state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId));
+    if (enemy && !state.battleEngaged && freshActive(enemy)){
+      const low = [username, enemy.id].sort()[0];
+      if (low === username){ startPvPBattle(enemy.id); }
+    }
   }
 }
 
@@ -857,75 +944,79 @@ async function startPvPBattle(other){
 function renderNearby(){
   const el = $("#nearList"); el.innerHTML = "";
   function addRow(html){ const d=document.createElement("div"); d.className="pill"; d.innerHTML = html; el.appendChild(d); }
+
+  const inPreparedness = Date.now() < state.canInteractAt;
+  if (inPreparedness){
+    const sec = Math.ceil((state.canInteractAt - Date.now())/1000);
+    addRow(`🛡️ <b>Prepared</b> — ${sec}s left (no battles or interactions)`);
+  }
+
   const V = tileAt(state.player.x, state.player.y, state.villages);
   const C = tileAt(state.player.x, state.player.y, state.castles);
   const R = findRaiderAt(state.player.x, state.player.y);
-  if (V) addRow("You are at a <b>Village</b> (Recruit/Trade).");
-  if (C) addRow("You are at a <b>Castle</b> (Trade/Attack).");
-  if (R) addRow(`<b>Raiders</b> here: ${R.size} ${R.type}`);
+  if (V) addRow(`${EMOJI.village} You are at a <b>Village</b> ${inPreparedness?'<span class="muted">(locked)</span>':''}`);
+  if (C) addRow(`${EMOJI.castle} You are at a <b>Castle</b> ${inPreparedness?'<span class="muted">(locked)</span>':''}`);
+  if (R) addRow(`${EMOJI.raider} <b>Raiders</b> here: ${R.size} ${R.type} ${inPreparedness?'<span class="muted">(no battle during Preparedness)</span>':''}`);
+
   const players = Array.from(state.others.values()).filter(p=> Math.hypot(p.x-state.player.x, p.y-state.player.y) <= 6);
   for(const p of players){
-    const color = (state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId) ? "var(--ally)" : "var(--enemy)";
+    const isAlly = (state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId);
     const cnt = armySum(p.army||{});
-    addRow(`<div class="row"><span class="colorDot" style="background:${color}"></span> <b>${p.id}</b> (${cnt}) @ (${p.x},${p.y})</div>`);
+    addRow(`${EMOJI.player} <b>${p.id}</b> (${cnt}) @ (${p.x},${p.y}) ${isAlly?'<span class="badge">Ally</span>':''}`);
   }
-  $("#coolInfo").textContent = Date.now()<state.canInteractAt ? `Grace: ${Math.ceil((state.canInteractAt-Date.now())/1000)}s` : "Ready";
+
+  $("#coolInfo").textContent = inPreparedness
+    ? `Prepared: ${Math.ceil((state.canInteractAt-Date.now())/1000)}s`
+    : "Ready";
 }
 
-/* =================== Render Loop =================== */
+/* =================== Render Loop (emoji map) =================== */
 function draw(){
   const cam = state.cam;
   ctx.clearRect(0,0,canvas.width, canvas.height);
 
-  // Villages
+  // Villages 🏘️
   for(const v of state.villages){
-    const sx = v.x*TILE - cam.x, sy = v.y*TILE - cam.y;
-    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
-    ctx.fillStyle = "#2dd4bf";
-    ctx.fillRect(sx+8,sy+8,TILE-16,TILE-16);
-    ctx.strokeStyle="#0f766e"; ctx.strokeRect(sx+8,sy+8,TILE-16,TILE-16);
-  }
-  // Castles
-  for(const c of state.castles){
-    const sx = c.x*TILE - cam.x, sy = c.y*TILE - cam.y;
-    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
-    ctx.fillStyle = c.owner ? "#e5e7eb" : "#9ca3af";
-    ctx.fillRect(sx+6,sy+6,TILE-12,TILE-12);
-    ctx.strokeStyle="#475569"; ctx.strokeRect(sx+6,sy+6,TILE-12,TILE-12);
-    if (c.ownerColor){ ctx.fillStyle = c.ownerColor; ctx.fillRect(sx+12,sy+4,TILE-24,6); }
+    const cx = v.x*TILE + TILE/2 - cam.x, cy = v.y*TILE + TILE/2 - cam.y;
+    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
+    drawEmojiCentered(EMOJI.village, cx, cy);
   }
 
-  // Raiders
+  // Castles 🏰 (owner stripe if owned)
+  for(const c of state.castles){
+    const cx = c.x*TILE + TILE/2 - cam.x, cy = c.y*TILE + TILE/2 - cam.y;
+    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
+    drawEmojiCentered(EMOJI.castle, cx, cy);
+    if (c.ownerColor){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, c.ownerColor); }
+  }
+
+  // Raiders 🏴‍☠️ (skip engaged)
   for(const r of state.localRaiders){
     if (r.engaged) continue;
-    const sx = r.x*TILE - cam.x, sy = r.y*TILE - cam.y;
-    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
-    ctx.fillStyle = "#f97316";
-    ctx.beginPath(); ctx.arc(sx+TILE/2, sy+TILE/2, 10+Math.min(16, Math.log2(3+r.size)*4), 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle="#111827"; ctx.font="12px system-ui"; ctx.textAlign="center";
-    ctx.fillText(`${r.size} ${r.type}`, sx+TILE/2, sy+TILE-4);
+    const cx = r.x*TILE + TILE/2 - cam.x, cy = r.y*TILE + TILE/2 - cam.y;
+    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
+    drawEmojiCentered(EMOJI.raider, cx, cy);
+    drawNameplate(`${r.size} ${r.type}`, cx, cy + TILE*0.4, 0, "#eab308");
   }
 
-  // Other players (active only)
+  // Other players (active only) 🧍
   for(const p of state.others.values()){
-    const sx = p.x*TILE - cam.x, sy = p.y*TILE - cam.y;
-    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
+    const cx = p.x*TILE + TILE/2 - cam.x, cy = p.y*TILE + TILE/2 - cam.y;
+    if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
     const ally = p.allegianceId ? state.allyMap.get(p.allegianceId) : null;
-    if (ally){ ctx.fillStyle = ally.color; ctx.fillRect(sx+10,sy+6,TILE-20,6); }
-    ctx.fillStyle = "#60a5fa"; ctx.fillRect(sx+10, sy+14, TILE-20, TILE-20);
-    ctx.fillStyle="#e5e7eb"; ctx.font="12px system-ui"; ctx.textAlign="center";
+    if (ally){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, ally.color); }
+    drawEmojiCentered(EMOJI.player, cx, cy);
     const cnt = armySum(p.army||{});
-    ctx.fillText(`${p.id} (${cnt})`, sx+TILE/2, sy+TILE-6);
+    drawNameplate(`${p.id} (${cnt})`, cx, cy + TILE*0.4);
   }
 
-  // You
+  // You 🧍 (ally color stripe)
   if (state.player){
-    const sx = state.player.x*TILE - cam.x, sy = state.player.y*TILE - cam.y;
-    if (state.allegiance?.color){ ctx.fillStyle = state.allegiance.color; ctx.fillRect(sx+10,sy+6,TILE-20,6); }
-    ctx.fillStyle = "#22c55e"; ctx.fillRect(sx+10, sy+14, TILE-20, TILE-20);
-    ctx.fillStyle="#e5e7eb"; ctx.font="12px system-ui"; ctx.textAlign="center";
+    const cx = state.player.x*TILE + TILE/2 - cam.x, cy = state.player.y*TILE + TILE/2 - cam.y;
+    if (state.allegiance?.color){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, state.allegiance.color); }
+    drawEmojiCentered(EMOJI.player, cx, cy);
     const meCnt = armySum(state.player.army||{});
-    ctx.fillText(`${username} (${meCnt})`, sx+TILE/2, sy+TILE-6);
+    drawNameplate(`${username} (${meCnt})`, cx, cy + TILE*0.4, 0, "#93c5fd");
   }
 
   requestAnimationFrame(draw);
@@ -964,7 +1055,6 @@ sub(doc(db,"mountonline", username), s=>{
 
 /* Reserved */
 canvas.addEventListener("click", ()=>{});
-
 </script>
 </body>
 </html>
