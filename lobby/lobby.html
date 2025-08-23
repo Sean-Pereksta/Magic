@@ -1,113 +1,197 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>🕹️ Game Hub & Multiplayer Lobby</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root{
-      --bg:#f0f0f0; --card:#fff; --ink:#111; --muted:#666; --br:#e5e5e5;
-      --accent:#214a9a; --accent-soft:#e6eefc;
+      --bg:#f6f7fb; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#e5e7eb;
+      --accent:#214a9a; --accent-2:#1a3b7b; --accent-soft:#e6eefc; --good:#16a34a; --bad:#ef4444;
+      --shadow:0 10px 30px rgba(2,6,23,.08); --radius:16px; --radius-sm:12px;
     }
     *{box-sizing:border-box}
-    body { font-family: Arial, sans-serif; text-align: center; background: var(--bg); margin: 0; padding: 20px; color:var(--ink);}
-    .container { max-width: 900px; margin: auto; background: var(--card); padding: 20px; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.06); }
+    body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
+
+    /* Header */
+    .hero{
+      background: radial-gradient(1200px 600px at 50% -200px, #315bbd 0%, #1a2b53 55%, #0f1a35 100%);
+      color:#fff; padding:28px 16px 18px; position:relative; overflow:hidden;
+      box-shadow:var(--shadow);
+    }
+    .hero-inner{ max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .logo{ width:44px; height:44px; display:grid; place-items:center; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:14px; font-size:22px }
+    .title{ font-weight:800; letter-spacing:.3px; font-size:1.35rem }
+    .subtitle{ color:#c7d7ff; font-size:.95rem }
 
     /* Tabs */
-    .tabs {
-      display:flex; gap:8px; justify-content:center; margin-bottom:16px; flex-wrap:wrap;
+    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.1); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.18) }
+    .tab-btn{
+      appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#eaf1ff; background:transparent;
+      font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap
     }
-    .tab-btn {
-      appearance:none; border:1px solid var(--br); background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer;
-      font-weight:600; min-width:140px;
-    }
-    .tab-btn[aria-selected="true"]{
-      border-color:var(--accent); color:#fff; background:var(--accent);
-    }
-    .tab-panel{ display:none; text-align:left; }
-    .tab-panel.active{ display:block; }
+    .tab-btn:hover{ background:rgba(255,255,255,.14) }
+    .tab-btn[aria-selected="true"]{ background:#fff; color:#0f172a; box-shadow:0 2px 14px rgba(15,23,42,.25) }
 
-    input, select, button { margin: 10px; padding: 10px; font-size: 1em; }
-    #lobbyList, #lobbyPlayers { margin-top: 20px; text-align: left; }
-    #startBtn { margin-top: 10px; display: none; }
-    .lobby-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin:6px 0; background:#fafafa; }
-    .badge { display:inline-block; padding:3px 8px; border-radius:10px; font-size:12px; background:var(--accent-soft); color:var(--accent); margin-left:8px;}
-    .players-dot { display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px; }
-    .subtle { color:var(--muted); font-size: 0.9em; }
-    .row { display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap: wrap; }
-    .section { border-top:1px solid #eee; margin-top:16px; padding-top:12px; }
+    /* Layout */
+    .shell{ max-width:1200px; margin:18px auto; padding:0 12px 28px }
+    .grid{ display:grid; grid-template-columns:2fr 1fr; gap:18px }
+    @media (max-width:980px){ .grid{ grid-template-columns:1fr } }
 
-    /* Singleplayer Catalog */
-    .catalog { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap:14px; margin-top:10px; }
-    .game-card{ border:1px solid var(--br); border-radius:12px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px; }
-    .game-title{ font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:8px; }
-    .game-desc{ color:var(--muted); line-height:1.4; }
-    .play-row{ display:flex; justify-content:flex-end; }
-    .play-btn{ padding:10px 14px; border-radius:10px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; font-weight:700;}
-    .play-btn:hover{ filter:brightness(.95); }
+    /* Cards */
+    .card{ background:var(--card); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
+    .card-head{ padding:14px 16px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between; gap:12px }
+    .card-title{ font-weight:800 }
+    .card-body{ padding:14px 16px }
+
+    /* Forms */
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+    .input, .select, .btn{
+      padding:11px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:14px; outline:none;
+    }
+    .input:focus, .select:focus{ border-color:#93c5fd; box-shadow:0 0 0 4px rgba(147,197,253,.35) }
+    .btn{ cursor:pointer; font-weight:800; border-color:var(--accent); background:var(--accent); color:#fff }
+    .btn:hover{ background:var(--accent-2) }
+    .btn-ghost{ border-color:var(--br); background:#fff; color:var(--ink); font-weight:700 }
+    .btn-ghost:hover{ background:#f3f4f6 }
+
+    /* Lobby list as cards */
+    .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
+    .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
+    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #cfe0ff; font-weight:700 }
+    .subtle{ color:var(--muted); font-size:.92rem }
+    .cap{ height:8px; background:#f1f5f9; border:1px solid var(--br); border-radius:999px; overflow:hidden }
+    .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#7dd3fc,#60a5fa,#4f46e5) }
+
+    /* Players box */
+    .players{ display:flex; flex-wrap:wrap; gap:8px }
+    .chip{
+      display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--br); border-radius:999px; background:#f8fafc; font-size:13px
+    }
+    .dot{ width:10px; height:10px; border-radius:50% }
+
+    /* Leaderboard */
+    .ladder{ display:grid; gap:10px }
+    .lb-row{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--br); border-radius:12px; background:#fff }
+    .rank{ font-weight:900; width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#eef2ff; color:#3730a3 }
+
+    /* Singleplayer catalog */
+    .catalog{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:14px }
+    .game-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
+    .game-title{ font-weight:800; display:flex; align-items:center; gap:8px }
+    .game-desc{ color:var(--muted); line-height:1.45 }
+    .play-row{ display:flex; justify-content:flex-end }
+
+    /* Start/Leave buttons row */
+    .controls{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px }
+    #startBtn{ display:none }
+    #error{ margin-top:6px; color:var(--bad); font-weight:700 }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Tabs header -->
-    <div class="tabs" role="tablist" aria-label="Game Modes">
-      <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
-      <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
-    </div>
-
-    <!-- MULTIPLAYER TAB -->
-    <div id="panel-multi" class="tab-panel active" role="tabpanel" aria-labelledby="tabbtn-multi">
-      <div id="loginForm">
-        <h2>Welcome</h2>
-        <div class="row">
-          <input type="text" id="username" placeholder="Username" />
-          <input type="password" id="password" placeholder="Password" />
-          <button onclick="login()">Login</button>
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="brand">
+        <div class="logo">🎮</div>
+        <div>
+          <div class="title">Game Hub</div>
+          <div class="subtitle">Create a lobby, invite friends, or jump into solo play.</div>
         </div>
-        <p id="error"></p>
       </div>
+      <div class="tabs" role="tablist" aria-label="Game Modes">
+        <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
+        <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
+      </div>
+    </div>
+  </header>
 
-      <div id="lobbyInterface" style="display:none">
-        <div class="section">
-          <h2>Start Lobby</h2>
-          <div class="row">
-            <input type="text" id="lobbyName" placeholder="Lobby Name" />
-            <select id="gameType">
-              <option value="cat">🐭 Cat & Mouse</option>
-              <option value="grass">🌿 Grass Realms</option>
-              <option value="estate">🏡 Estate Defense</option>
-              <option value="mountain">🗻 Mountain Blade (4P)</option>
-              <option value="stockkings">📈 Stock Kings</option><!-- ✅ NEW -->
-            </select>
-            <button onclick="startLobby()">Start Lobby</button>
+  <!-- MAIN -->
+  <div class="shell">
+    <!-- MULTIPLAYER -->
+    <section id="panel-multi" class="grid" role="tabpanel" aria-labelledby="tabbtn-multi">
+      <div class="left">
+        <div id="loginForm" class="card">
+          <div class="card-head"><div class="card-title">Welcome</div></div>
+          <div class="card-body">
+            <div class="row">
+              <input type="text" id="username" class="input" placeholder="Username" />
+              <input type="password" id="password" class="input" placeholder="Password" />
+              <button class="btn" onclick="login()">Login</button>
+            </div>
+            <div id="error"></div>
           </div>
-          <div class="subtle">Choose a game, name your lobby, and start it. Others can join from the list below.</div>
         </div>
 
-        <div id="lobbyList" class="section">
-          <h3>Available Lobbies</h3>
-          <!-- lobbies injected here -->
+        <div id="lobbyInterface" class="card" style="display:none">
+          <div class="card-head">
+            <div class="card-title">Start a Lobby</div>
+          </div>
+          <div class="card-body">
+            <div class="row" style="align-items:flex-end">
+              <div style="flex:1 1 220px">
+                <label class="subtle">Lobby Name</label>
+                <input type="text" id="lobbyName" class="input" placeholder="e.g., Friday Night Squad" />
+              </div>
+              <div style="flex:1 1 220px">
+                <label class="subtle">Game</label>
+                <select id="gameType" class="select">
+                  <option value="cat">🐭 Cat & Mouse</option>
+                  <option value="grass">🌿 Grass Realms</option>
+                  <option value="estate">🏡 Estate Defense</option>
+                  <option value="mountain">🗻 Mountain Blade (4P)</option>
+                  <option value="stockkings">📈 Stock Kings</option>
+                </select>
+              </div>
+              <button class="btn" onclick="startLobby()">Start Lobby</button>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-head"><div class="card-title">Available Lobbies</div></div>
+              <div class="card-body">
+                <div id="lobbyList" class="lobbies">
+                  <!-- Lobby cards injected here -->
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-head"><div class="card-title">Lobby Players</div></div>
+              <div class="card-body">
+                <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
+                <div class="controls">
+                  <button id="startBtn" class="btn">🚀 Start Game</button>
+                  <button class="btn-ghost" onclick="leaveLobby()">❌ Leave Lobby</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div id="lobbyPlayers" class="section"></div>
-
-        <button id="startBtn" onclick="startGame()">🚀 Start Game</button>
-        <button onclick="leaveLobby()">❌ Leave Lobby</button>
       </div>
 
-      <div id="winsLeaderboard" class="section">
-        <h3>🏆 Top Players</h3>
-        <div id="leaderboardEntries"></div>
-      </div>
-    </div>
+      <!-- RIGHT SIDEBAR -->
+      <aside class="right">
+        <div id="winsLeaderboard" class="card">
+          <div class="card-head"><div class="card-title">🏆 Top Players</div></div>
+          <div class="card-body">
+            <div id="leaderboardEntries" class="ladder"><!-- rows --></div>
+          </div>
+        </div>
+      </aside>
+    </section>
 
-    <!-- SINGLEPLAYER TAB -->
-    <div id="panel-single" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-single">
-      <h2>Singleplayer</h2>
-      <p class="subtle">Pick a game to play solo.</p>
-      <div id="catalog" class="catalog">
-        <!-- Singleplayer games injected -->
+    <!-- SINGLEPLAYER -->
+    <section id="panel-single" class="card" role="tabpanel" aria-labelledby="tabbtn-single" style="display:none">
+      <div class="card-head">
+        <div class="card-title">Singleplayer</div>
       </div>
-    </div>
+      <div class="card-body">
+        <p class="subtle" style="margin-top:0">Pick a game to play solo.</p>
+        <div id="catalog" class="catalog"><!-- game cards --></div>
+      </div>
+    </section>
   </div>
 
   <script type="module">
@@ -117,82 +201,38 @@
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- CONFIG ---
+    // ---------- ROUTES ----------
     const ROUTES = {
       cat:        "/game/catandmouse.html",
       grass:      "/game/grassrealms.html",
       estate:     "/game/estatedefense.html",
       mountain:   "/game/mountainblade.html",
-      stockkings: "/game/stockkings.html",     // ✅ NEW: Stock Kings (multiplayer)
+      stockkings: "/game/stockkings.html",
 
-      // ---------- Singleplayer ----------
+      // Singleplayer
       matchwars:  "/game/matchwars.html",
       flag:       "/game/Flag.html",
       microwars:  "/game/microwars.html",
-
-      // ✅ NEW singleplayer routes
-      microwars2: "/game/microwaves2.html",   // Micro Wars Terran
-      microwars4: "/game/microwaves4.html",   // Micro Wars Nexus
-      mobamania:  "/game/CatLanes.html"       // MOBA Mania
+      microwars2: "/game/microwaves2.html",
+      microwars4: "/game/microwaves4.html",
+      mobamania:  "/game/CatLanes.html"
     };
-
-    // Auto-redirect multiplayer games when status === "started"
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]); // ✅ include Stock Kings
-
-    // Per-game max players
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8 }; // ✅ cap Stock Kings at 8 (tweak as needed)
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]);
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8 };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     // ---------- SINGLEPLAYER CATALOG ----------
     const SINGLEPLAYER_GAMES = [
-      {
-        key: "microwars",
-        title: "Micro Wars",
-        emoji: "🔬⚔️",
-        desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.",
-        route: ROUTES.microwars
-      },
-      // ✅ NEW
-      {
-        key: "microwars2",
-        title: "Micro Wars Terran",
-        emoji: "🛰️🪖",
-        desc: "A Terran-flavored Micro Wars variant. Faster recruits, tactical pressure, and tight micro to survive longer.",
-        route: ROUTES.microwars2
-      },
-      // ✅ NEW
-      {
-        key: "microwars4",
-        title: "Micro Wars Nexus",
-        emoji: "💠✨",
-        desc: "Nexus variant with altered tech flow and pacing. Hold the line while timing your power spikes.",
-        route: ROUTES.microwars4
-      },
-      // ✅ NEW
-      {
-        key: "mobamania",
-        title: "MOBA Mania",
-        emoji: "🧙‍♂️🛡️💠",
-        desc: "Single-lane hero brawler. Q/W/E abilities, towers, minions, and enemy heroes. Destroy the core to advance stages.",
-        route: ROUTES.mobamania
-      },
-      {
-        key: "matchwars",
-        title: "MatchWars",
-        emoji: "🧩⚔️",
-        desc: "Match tiles to recruit units, bolster your army, and overrun the enemy stronghold. Fast, punchy, and strategic.",
-        route: ROUTES.matchwars
-      },
-      {
-        key: "flag",
-        title: "Flag Fight",
-        emoji: "🏁⚔️",
-        desc: "command your army to take the flags and conquer the enemy!",
-        route: ROUTES.flag
-      }
+      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: ROUTES.microwars },
+      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: ROUTES.microwars2 },
+      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: ROUTES.microwars4 },
+      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler with towers, minions, and abilities. Push to destroy the core.", route: ROUTES.mobamania },
+      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match tiles to recruit, then steamroll the enemy stronghold. Quick & strategic.", route: ROUTES.matchwars },
+      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: ROUTES.flag }
     ];
 
+    // ---------- FIREBASE ----------
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
       authDomain: "bible-game-246c0.firebaseapp.com",
@@ -201,64 +241,54 @@
       messagingSenderId: "959619818996",
       appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // --- TABS ---
+    // ---------- TABS ----------
     window.showTab = function(which){
       const isMulti = which === 'multi';
-      document.getElementById('panel-multi').classList.toggle('active', isMulti);
-      document.getElementById('panel-single').classList.toggle('active', !isMulti);
+      document.getElementById('panel-multi').style.display = isMulti ? 'grid' : 'none';
+      document.getElementById('panel-single').style.display = isMulti ? 'none' : 'block';
       document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
       document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
     };
 
-    // Render Singleplayer catalog
+    // Render Singleplayer
     function renderSingleplayer(){
       const el = document.getElementById('catalog');
       el.innerHTML = '';
       for(const g of SINGLEPLAYER_GAMES){
-        const card = document.createElement('div');
-        card.className = 'game-card';
-        card.innerHTML = `
-          <div class="game-title">${g.emoji} ${g.title}</div>
-          <div class="game-desc">${g.desc}</div>
-          <div class="play-row">
-            <button class="play-btn" data-key="${g.key}">Play</button>
-          </div>
-        `;
-        card.querySelector('.play-btn').addEventListener('click', () => {
-          window.location.href = g.route;
-        });
+        const card = document.createElement('div'); card.className = 'game-card';
+        const t = document.createElement('div'); t.className = 'game-title'; t.textContent = `${g.emoji} ${g.title}`;
+        const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
+        const pr = document.createElement('div'); pr.className = 'play-row';
+        const btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = 'Play';
+        btn.addEventListener('click', ()=> window.location.href = g.route);
+        pr.appendChild(btn);
+        card.appendChild(t); card.appendChild(d); card.appendChild(pr);
         el.appendChild(card);
       }
     }
     renderSingleplayer();
 
-    // --- LOBBY LOGIC ---
+    // ---------- LOBBY LOGIC ----------
     const urlParams = new URLSearchParams(window.location.search);
     const autoUsername = urlParams.get("username");
-
     let username = autoUsername ? autoUsername.trim() : "";
     let currentLobbyId = null;
     let isHost = false;
     let lobbyUnsub = null;
 
-    if (username) {
-      autoLogin(username);
-    }
+    if (username) { autoLogin(username); }
 
     async function login() {
       username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value.trim();
       if (!username || !password) { return showError("❌ Enter username & password."); }
-
       const userRef = doc(db, "users", username);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists() || userSnap.data().password !== password) {
-        showError("❌ Invalid login.");
-        return;
+        return showError("❌ Invalid login.");
       }
       enterLobbyUI();
     }
@@ -266,10 +296,7 @@
     async function autoLogin(name) {
       const userRef = doc(db, "users", name);
       const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        showError("❌ Username not found in system.");
-        return;
-      }
+      if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
       username = name;
       enterLobbyUI();
     }
@@ -280,117 +307,107 @@
       loadLobbies();
       loadLeaderboard();
       setInterval(loadLobbies, 5000);
+      document.getElementById("startBtn").addEventListener("click", startGame);
+    }
+
+    function gameLabel(type){
+      return type==='grass' ? '🌿 Grass Realms' :
+             type==='estate'? '🏡 Estate Defense' :
+             type==='mountain'?'🗻 Mountain Blade (4P)' :
+             type==='stockkings'?'📈 Stock Kings' : '🐭 Cat & Mouse';
     }
 
     async function startLobby() {
       const name = document.getElementById("lobbyName").value.trim();
       const gameType = document.getElementById("gameType").value;
       if (!name) return showError("Please enter a lobby name.");
-
-      // ✅ allow Stock Kings
       if (!['cat','grass','estate','mountain','stockkings'].includes(gameType)) {
         return showError("Invalid game type.");
       }
-
       const lobby = await addDoc(collection(db, "lobbies"), {
-        name,
-        gameType,
-        status: "waiting",
-        players: [username],
-        host: username,
-        createdAt: Date.now()
+        name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
       });
-      currentLobbyId = lobby.id;
-      isHost = true;
-      listenToLobby();
+      currentLobbyId = lobby.id; isHost = true; listenToLobby();
     }
 
     async function loadLobbies() {
       const qy = query(collection(db, "lobbies"), where("status", "==", "waiting"));
       const snap = await getDocs(qy);
       const list = document.getElementById("lobbyList");
-      list.innerHTML = "<h3>Available Lobbies</h3>";
+      list.innerHTML = "";
 
       if (snap.empty) {
-        const none = document.createElement("div");
-        none.className = "subtle";
+        const none = document.createElement("div"); none.className = "subtle";
         none.textContent = "No open lobbies. Start one above!";
-        list.appendChild(none);
-        return;
+        list.appendChild(none); return;
       }
 
       snap.forEach(async (docSnap) => {
         const data = docSnap.data();
-
-        // --- AUTO-CLOSE if empty ---
+        // auto-clean empty
         if (!data.players || data.players.length === 0) {
-          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); }
-          catch(e){ /* ignore */ }
+          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); } catch(e){}
           return;
         }
 
-        const row = document.createElement("div");
-        row.className = "lobby-row";
+        // Build a lobby card
+        const card = document.createElement("div"); card.className = "lobby-card";
 
+        const head = document.createElement("div"); head.style.display="flex"; head.style.justifyContent="space-between"; head.style.alignItems="center"; head.style.gap="8px";
+        const titleWrap = document.createElement("div");
+        const title = document.createElement("div"); title.style.fontWeight="800"; title.textContent = data.name || "Lobby";
+        const meta = document.createElement("div"); meta.className="subtle";
         const cap = getMaxPlayers(data.gameType);
-        const countTxt = isFinite(cap) ? `${(data.players||[]).length}/${cap} player(s)` : `${(data.players||[]).length} player(s)`;
+        const countTxt = isFinite(cap) ? `${(data.players||[]).length}/${cap} players` : `${(data.players||[]).length} players`;
+        meta.textContent = `${countTxt} — Host: ${data.host||"?"}`;
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(meta);
 
-        const gameLabel =
-          data.gameType === 'grass'      ? '🌿 Grass Realms' :
-          data.gameType === 'estate'     ? '🏡 Estate Defense' :
-          data.gameType === 'mountain'   ? '🗻 Mountain Blade (4P)' :
-          data.gameType === 'stockkings' ? '📈 Stock Kings' :
-                                           '🐭 Cat & Mouse';
+        const badge = document.createElement("span"); badge.className="badge"; badge.textContent = gameLabel(data.gameType);
+        head.appendChild(titleWrap); head.appendChild(badge);
 
-        row.innerHTML = `
-          <div>
-            <strong>${data.name}</strong>
-            <span class="badge">${gameLabel}</span>
-            <div class="subtle">${countTxt} — Host: ${data.host}</div>
-          </div>
-          <div>
-            <button class="join-btn">Join</button>
-          </div>
-        `;
-        const joinBtn = row.querySelector('.join-btn');
+        const progress = document.createElement("div"); progress.className="cap";
+        const fill = document.createElement("i"); progress.appendChild(fill);
+        if (isFinite(cap)) {
+          const pct = Math.min(100, Math.round(((data.players||[]).length / cap) * 100));
+          fill.style.width = pct + "%";
+        } else { fill.style.width = "100%"; }
+
+        const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
+        const btn = document.createElement("button"); btn.className="btn"; btn.textContent = "Join";
         if (isFinite(cap) && (data.players||[]).length >= cap) {
-          joinBtn.disabled = true;
-          joinBtn.textContent = "Full";
+          btn.disabled = true; btn.className="btn-ghost"; btn.textContent="Full";
         } else {
-          joinBtn.addEventListener('click', () => joinLobby(docSnap.id));
+          btn.addEventListener("click", ()=> joinLobby(docSnap.id));
         }
-        list.appendChild(row);
+        actions.appendChild(btn);
+
+        card.appendChild(head);
+        card.appendChild(progress);
+        card.appendChild(actions);
+        list.appendChild(card);
       });
     }
 
     async function joinLobby(id) {
       if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
       const ref = doc(db, "lobbies", id);
-
-      // Enforce max players atomically
       try {
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(ref);
-          if (!snap.exists()) throw new Error("Lobby no longer exists.");
-          const d = snap.data();
-          const players = Array.isArray(d.players) ? d.players : [];
+          if (!snap.exists()) throw new Error("gone");
+          const d = snap.data(); const players = Array.isArray(d.players)? d.players : [];
           const cap = getMaxPlayers(d.gameType);
-          if (players.includes(username)) return; // already in
+          if (players.includes(username)) return;
           if (isFinite(cap) && players.length >= cap) throw new Error("Lobby is full");
           tx.update(ref, { players: [...players, username] });
         });
-      } catch (e) {
-        showError("❌ Lobby is full.");
-        return;
-      }
+      } catch (e) { return showError("❌ Lobby is full."); }
 
       const snap = await getDoc(ref);
       if (!snap.exists()) return showError("Lobby no longer exists.");
       const data = snap.data();
-
-      currentLobbyId = id;
-      isHost = data.host === username;
-      listenToLobby();
+      currentLobbyId = id; isHost = data.host === username; listenToLobby();
     }
 
     function listenToLobby() {
@@ -400,69 +417,62 @@
       const ref = doc(db, "lobbies", currentLobbyId);
       lobbyUnsub = onSnapshot(ref, async (docSnap) => {
         if (!docSnap.exists()) return;
-
         const data = docSnap.data();
 
-        // --- AUTO-CLOSE if empty at runtime ---
+        // auto-close if empty
         if (!data.players || data.players.length === 0) {
-          try { await deleteDoc(ref); } catch(e){ /* ignore */ }
-          currentLobbyId = null;
+          try { await deleteDoc(ref); } catch(e){}
+          currentLobbyId = null; isHost=false;
           document.getElementById("lobbyPlayers").innerHTML = "";
           document.getElementById("startBtn").style.display = "none";
           if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
-          loadLobbies();
-          return;
+          loadLobbies(); return;
         }
 
-        const header = document.createElement("div");
-        const gameLabel =
-          data.gameType === 'grass'      ? '🌿 Grass Realms' :
-          data.gameType === 'estate'     ? '🏡 Estate Defense' :
-          data.gameType === 'mountain'   ? '🗻 Mountain Blade (4P)' :
-          data.gameType === 'stockkings' ? '📈 Stock Kings' :
-                                           '🐭 Cat & Mouse';
+        // Render players as chips
         const container = document.getElementById("lobbyPlayers");
         container.innerHTML = "";
-        header.innerHTML = `<h3>Lobby: ${data.name} <span class="badge">${gameLabel}</span></h3>`;
-        container.appendChild(header);
+        const headerBadge = document.createElement("div");
+        headerBadge.className = "badge";
+        headerBadge.textContent = gameLabel(data.gameType);
+        container.appendChild(headerBadge);
 
         for (const player of (data.players || [])) {
           const userRef = doc(db, "users", player);
           const userSnap = await getDoc(userRef);
-          let wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
+          const wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
 
-          let color = "#cd7f32";
-          if (wins >= 5 && wins < 10) color = "#c0c0c0";
-          else if (wins >= 10 && wins < 15) color = "#ffd700";
-          else if (wins >= 15 && wins < 25) color = "#007bff";
-          else if (wins >= 25) color = "#dc3545";
+          // color tiers
+          let color = "#cd7f32";               // bronze
+          if (wins >= 5 && wins < 10) color = "#c0c0c0";      // silver
+          else if (wins >= 10 && wins < 15) color = "#ffd700"; // gold
+          else if (wins >= 15 && wins < 25) color = "#3b82f6"; // sapphire
+          else if (wins >= 25) color = "#ef4444";              // ruby
 
-          const div = document.createElement("div");
-          div.innerHTML = `<span class="players-dot" style="background:${color};"></span>${player} <span class="subtle">(${wins} wins)</span>`;
-          container.appendChild(div);
+          const chip = document.createElement("div"); chip.className="chip";
+          const dot = document.createElement("span"); dot.className="dot"; dot.style.background=color;
+          const name = document.createElement("span"); name.textContent = player;
+          const w = document.createElement("span"); w.className="subtle"; w.textContent = `(${wins} wins)`;
+          chip.appendChild(dot); chip.appendChild(name); chip.appendChild(w);
+          container.appendChild(chip);
         }
 
-        document.getElementById("startBtn").style.display = (data.host === username) ? "inline-block" : "none";
+        // Host can start
+        const startBtn = document.getElementById("startBtn");
+        startBtn.style.display = (data.host === username) ? "inline-block" : "none";
 
-        // Redirect for auto-redirect games
+        // Auto-redirect games on "started"
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
           window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
-        // Estate Defense remains special-cased in startGame().
       });
     }
 
-    // ---- Estate Defense: join existing active session or create it (atomic) ----
+    // Estate Defense special-case
     async function joinOrCreateActiveEstate(extraPlayers) {
       const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
-      const qActive = query(
-        collection(db, "lobbies"),
-        where("gameType", "==", "estate"),
-        where("status", "==", "active"),
-        limit(1)
-      );
-
+      const qActive = query(collection(db, "lobbies"), where("gameType","==","estate"), where("status","==","active"), limit(1));
       const snap = await getDocs(qActive);
 
       if (!snap.empty) {
@@ -478,67 +488,48 @@
             return targetRef.id;
           });
           return activeId;
-        } catch (e) { /* fall through */ }
+        } catch(e){ /* fall through */ }
       }
 
       const newRef = doc(collection(db, "lobbies"));
       const payload = {
-        name: `Estate Defense — ${new Date().toLocaleTimeString()}`,
-        gameType: "estate",
-        category: "estate-defense",
-        status: "active",
-        players: unique(extraPlayers),
-        host: username,
-        createdAt: Date.now()
+        name:`Estate Defense — ${new Date().toLocaleTimeString()}`,
+        gameType:"estate", category:"estate-defense", status:"active",
+        players:unique(extraPlayers), host:username, createdAt:Date.now()
       };
-      await runTransaction(db, async (tx) => {
-        tx.set(newRef, payload);
-      });
+      await runTransaction(db, async (tx)=>{ tx.set(newRef, payload); });
       return newRef.id;
     }
 
     async function startGame() {
       if (!currentLobbyId) return;
-
       const ref = doc(db, "lobbies", currentLobbyId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
-
+      const snap = await getDoc(ref); if (!snap.exists()) return;
       const data = snap.data();
 
-      // Special Estate Defense behavior:
       if (data.gameType === "estate") {
         const playersFromThisLobby = data.players || [username];
         const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
-        try { await deleteDoc(ref); } catch(e) { /* ignore */ }
+        try { await deleteDoc(ref); } catch(e){}
         const route = ROUTES.estate;
         window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
         return;
       }
-
-      // Normal behavior (includes Stock Kings): set started, listener redirects
-      await updateDoc(ref, { status: "started" });
+      await updateDoc(ref, { status: "started" }); // others redirect via listener
     }
 
     async function leaveLobby() {
       if (!currentLobbyId) return;
-
       const ref = doc(db, "lobbies", currentLobbyId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data();
         const players = (data.players || []).filter(p => p !== username);
-
-        if (players.length > 0) {
-          await updateDoc(ref, { players });
-        } else {
-          try { await deleteDoc(ref); } catch(e){ /* ignore */ }
-        }
+        if (players.length > 0) { await updateDoc(ref, { players }); }
+        else { try { await deleteDoc(ref); } catch(e){} }
       }
-
-      currentLobbyId = null;
-      isHost = false;
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+      currentLobbyId = null; isHost=false;
+      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub=null; }
       document.getElementById("lobbyPlayers").innerHTML = "";
       document.getElementById("startBtn").style.display = "none";
       loadLobbies();
@@ -547,31 +538,27 @@
     async function loadLeaderboard() {
       const qy = query(collection(db, "users"));
       const snapshot = await getDocs(qy);
-      const leaderboard = [];
-
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        leaderboard.push({ name: docSnap.id, wins: data.wins || 0 });
-      });
-
-      leaderboard.sort((a, b) => b.wins - a.wins);
-      const leaderboardDiv = document.getElementById("leaderboardEntries");
-      leaderboardDiv.innerHTML = "";
-
-      leaderboard.slice(0, 5).forEach((entry, index) => {
-        const div = document.createElement("div");
-        div.innerHTML = `${index + 1}. <strong>${entry.name}</strong> — 🏆 ${entry.wins} wins`;
-        leaderboardDiv.appendChild(div);
+      const rows = [];
+      snapshot.forEach(docSnap => rows.push({ name: docSnap.id, wins: docSnap.data().wins || 0 }));
+      rows.sort((a,b)=> b.wins - a.wins);
+      const box = document.getElementById("leaderboardEntries"); box.innerHTML = "";
+      rows.slice(0,8).forEach((r, i)=>{
+        const row = document.createElement("div"); row.className="lb-row";
+        const left = document.createElement("div"); left.style.display="flex"; left.style.alignItems="center"; left.style.gap="10px";
+        const rank = document.createElement("div"); rank.className="rank"; rank.textContent = i+1;
+        const name = document.createElement("div"); name.style.fontWeight="800"; name.textContent = r.name;
+        left.appendChild(rank); left.appendChild(name);
+        const right = document.createElement("div"); right.className="subtle"; right.textContent = `🏆 ${r.wins}`;
+        row.appendChild(left); row.appendChild(right);
+        box.appendChild(row);
       });
     }
 
-    function showError(msg) {
-      const e = document.getElementById("error");
-      e.innerText = msg;
-      e.style.color = "red";
+    function showError(msg){
+      const e = document.getElementById("error"); e.textContent = msg;
     }
 
-    // Expose to window
+    // Expose
     window.login = login;
     window.startLobby = startLobby;
     window.joinLobby = joinLobby;
@@ -580,7 +567,6 @@
   </script>
 </body>
 </html>
-
 
 
 
