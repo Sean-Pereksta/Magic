@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -26,7 +26,10 @@
   .view{position:relative; width:980px; height:640px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 12px 36px rgba(0,0,0,.35)}
   .world{position:absolute; left:0; top:0; will-change:transform; transform-origin:0 0;}
   .grid{display:grid; gap:6px}
-  .cell{width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;}
+  .cell{
+    width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;
+    overflow:visible; /* allow title pills to float above */
+  }
   .cell:hover{filter:brightness(1.05)}
   .flag{position:absolute; inset:8px; border-radius:8px; outline:2px dashed rgba(255,255,255,.08)}
   .flag::after{content:"🏁"; position:absolute; font-size:18px; right:6px; top:6px}
@@ -35,6 +38,13 @@
   .banner.p{background:var(--p)} .banner.a{background:var(--a)}
 
   .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:30px}
+  .unit-emoji{filter:drop-shadow(0 1px 0 rgba(0,0,0,.45))}
+  .unit-title{
+    position:absolute; left:50%; top:-16px; transform:translateX(-50%);
+    font-size:11px; padding:2px 6px; border-radius:999px;
+    background:rgba(14,24,49,.95); border:1px solid #223a66; color:#cfe3ff;
+    pointer-events:none; white-space:nowrap;
+  }
   .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:12px; padding:2px 8px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
   .tag{position:absolute; top:4px; left:6px; font-size:12px; padding:1px 6px; border-radius:8px; border:1px solid #1f2a44}
   .tag.p{background:rgba(103,232,249,.14); color:#9beffb}
@@ -125,7 +135,7 @@
           <button id="zoomFit" title="Center on board">Center</button>
           <button id="zoomOut" title="[-] zoom out">−</button>
           <button id="zoomIn" title="[=] zoom in">＋</button>
-          <button id="toggleAutoZoom">Auto-zoom: <span id="autoZoomState">On</span></button>
+          <button id="toggleAutoZoom">Smart focus: <span id="autoZoomState">On</span></button>
         </div>
       </div>
 
@@ -238,40 +248,60 @@ window.maxLevelReached = 1;
   const view = document.getElementById('view');
   const world = document.querySelector('.world');
   const gridEl = document.getElementById('grid');
-  let cam = {x:0, y:0, vx:0, vy:0};
-  // less zoomed-out feeling by default
+  let cam = {x:0, y:0, vx:0, vy:0, tx:null, ty:null, easing:0.12};
   let zoom = 2.0; const ZMIN=1.2, ZMAX=3.0;
   const VIEW_W = view.clientWidth, VIEW_H = view.clientHeight;
-  const WORLD_W = W*CELL+GAP, WORLD_H = H*CELL+GAP;
   let autoZoom = true;
 
+  const WORLD_W = W*CELL+GAP, WORLD_H = H*CELL+GAP;
   const zoomDispEl = document.getElementById('zoomDisp');
+
   function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
+  function within(v,a,b){ return v>=a && v<=b }
 
   function setZoom(nz, anchor){
-    nz = Math.max(ZMIN, Math.min(ZMAX, nz));
+    nz = clamp(nz, ZMIN, ZMAX);
     const rect = view.getBoundingClientRect();
     const ax = anchor? anchor[0] : rect.width/2;
     const ay = anchor? anchor[1] : rect.height/2;
-    // keep the point under cursor stable
-    const wx = (cam.x + ax) / zoom; // world px (unscaled)
+    const wx = (cam.x + ax) / zoom;
     const wy = (cam.y + ay) / zoom;
     zoom = nz;
-    cam.x = wx * zoom - ax;
-    cam.y = wy * zoom - ay;
-    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+    cam.x = clamp(wx * zoom - ax, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.y = clamp(wy * zoom - ay, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
     zoomDispEl.textContent = Math.round(zoom*100)+'%';
   }
+
   function centerCamera(tx = Math.floor(W/2), ty = Math.floor(H/2), z = zoom){
     const worldPxX = tx * CELL;
     const worldPxY = ty * CELL;
-    cam.x = worldPxX * z - VIEW_W/2;
-    cam.y = worldPxY * z - VIEW_H/2;
-    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*z - VIEW_W));
-    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*z - VIEW_H));
+    cam.x = clamp(worldPxX * z - VIEW_W/2, 0, Math.max(0, WORLD_W*z - VIEW_W));
+    cam.y = clamp(worldPxY * z - VIEW_H/2, 0, Math.max(0, WORLD_H*z - VIEW_H));
     world.style.transform = `scale(${z}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
     zoomDispEl.textContent = Math.round(z*100)+'%';
+  }
+
+  function setCamTarget(nx, ny){
+    cam.tx = clamp(nx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.ty = clamp(ny, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+  }
+
+  // Smart focus: gently pan only if unit is outside padded viewport
+  function smartFocusOn(u){
+    if(!autoZoom || !u) return;
+    const pad = 80; // px
+    const ux = u.x * CELL; const uy = u.y * CELL;
+    // screen-space position of unit's top-left of cell (scaled)
+    const sx = ux*zoom - cam.x;
+    const sy = uy*zoom - cam.y;
+    const visX = within(sx, pad, VIEW_W - pad - TILE*zoom);
+    const visY = within(sy, pad, VIEW_H - pad - TILE*zoom);
+    if(!(visX && visY)){
+      // target a centered view on the unit (without changing zoom)
+      const tx = ux*zoom - (VIEW_W - TILE*zoom)/2;
+      const ty = uy*zoom - (VIEW_H - TILE*zoom)/2;
+      setCamTarget(tx, ty);
+    }
   }
 
   gridEl.style.gridTemplateColumns = `repeat(${W}, ${TILE}px)`;
@@ -295,9 +325,20 @@ window.maxLevelReached = 1;
     else if(mx > VIEW_W - margin) vx = ((mx-(VIEW_W-margin))/margin)*maxSpeed;
     if(my < margin) vy = -((margin-my)/margin)*maxSpeed;
     else if(my > VIEW_H - margin) vy = ((my-(VIEW_H-margin))/margin)*maxSpeed;
-    cam.vx = vx; cam.vy = vy;
-    cam.x = clamp(cam.x + cam.vx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.y = clamp(cam.y + cam.vy, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+
+    // Apply smart-focus easing toward target
+    if(cam.tx!=null && cam.ty!=null){
+      cam.x += (cam.tx - cam.x)*cam.easing;
+      cam.y += (cam.ty - cam.y)*cam.easing;
+      if(Math.hypot(cam.tx - cam.x, cam.ty - cam.y) < 0.5){
+        cam.tx = cam.ty = null;
+      }
+    }
+
+    // Edge scroll override/addition
+    cam.x = clamp(cam.x + vx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
+    cam.y = clamp(cam.y + vy, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
+
     world.style.transform = `scale(${zoom}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
     drawMinimap();
     requestAnimationFrame(updateCamera);
@@ -310,6 +351,8 @@ window.maxLevelReached = 1;
   document.getElementById('toggleAutoZoom').onclick = ()=>{
     autoZoom = !autoZoom;
     document.getElementById('autoZoomState').textContent = autoZoom ? 'On' : 'Off';
+    // Cancels any in-flight easing to prevent lingering drift when toggled off
+    if(!autoZoom){ cam.tx = cam.ty = null; }
   };
 
   // ===== Factions & Unit Databases (with abilities) =====
@@ -472,8 +515,7 @@ window.maxLevelReached = 1;
     state.units.push(...rollUnits('A', level));
     pushLog(`Campaign started. Level ${level}. Player goes first.`);
     startOfTurn();
-    // start centered and nicely zoomed
-    centerCamera(Math.floor(W/2), Math.floor(H/2), zoom);
+    centerCamera(Math.floor(W/2), Math.floor(H/2), zoom); // initial position only
     render();
   }
 
@@ -646,16 +688,14 @@ window.maxLevelReached = 1;
         spots.sort((a,b)=> (Math.abs(a.x-u.x)+Math.abs(a.y-u.y)) - (Math.abs(b.x-u.x)+Math.abs(b.y-u.y)) );
         if(!spots.length) return toast('No space to lunge');
         const spot=spots[0]; u.x=spot.x; u.y=spot.y; damageUnit(u,t, T(u).dmg, 'lunged');
-        spendAbility(u, `${label(u)} lunged adjacent and struck.`);
-        render();
+        spendAbility(u, `${label(u)} lunged adjacent and struck.`); render();
         break;}
       case 'chain':{
         const t=target; if(!t) return toast('Pick an enemy');
         damageUnit(u,t,1,'zapped');
         const adj = state.units.filter(v=> v.side!==u.side && manhattan(v,t)===1).slice(0, A.chain||2);
         for(const v of adj) damageUnit(u,v,1,'chained');
-        spendAbility(u, `${label(u)} unleashed Chain Lightning.`);
-        render();
+        spendAbility(u, `${label(u)} unleashed Chain Lightning.`); render();
         break;}
       case 'bulwark':
         u.armor = Math.min(3, (u.armor||0)+2); u.hp=Math.min(u.maxHp, u.hp+1);
@@ -796,8 +836,9 @@ window.maxLevelReached = 1;
 
         if(uHere){
           const wrap=document.createElement('div'); wrap.className='unit';
-          const em=document.createElement('div'); em.textContent= T(uHere).emoji; em.style.filter='drop-shadow(0 1px 0 rgba(0,0,0,.45))'; wrap.appendChild(em);
-          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${T(uHere).name} · ${uHere.hp}/${uHere.maxHp}`; wrap.appendChild(chip);
+          const title=document.createElement('div'); title.className='unit-title'; title.textContent = T(uHere).name; wrap.appendChild(title);
+          const em=document.createElement('div'); em.className='unit-emoji'; em.textContent= T(uHere).emoji; wrap.appendChild(em);
+          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${uHere.hp}/${uHere.maxHp} HP`; wrap.appendChild(chip);
           const tag=document.createElement('div'); tag.className='tag '+(uHere.side==='P'?'p':'a'); tag.textContent= uHere.side==='P'? 'P':'AI'; wrap.appendChild(tag);
           if(uHere.armor>0){ const ar=document.createElement('div'); ar.className='armor'; ar.textContent='Armor +'+uHere.armor; wrap.appendChild(ar); }
           if(uHere.silenced>0){ const st=document.createElement('div'); st.className='status'; st.textContent='Silenced'; wrap.appendChild(st); }
@@ -821,7 +862,6 @@ window.maxLevelReached = 1;
     abilitiesLeftEl.textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
     levelEl.textContent = state.level;
 
-    // Contextual helper
     if(!selectedId){
       helpbarEl.textContent = 'Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.';
     } else if(hintMode==='move'){
@@ -844,13 +884,7 @@ window.maxLevelReached = 1;
       unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; abilityCard.style.display='none';
       return;
     }
-    // Auto-zoom/focus when selecting, but keep within bounds
-    if(autoZoom){
-      const targetZoom = 2.1;
-      zoom = clamp(targetZoom, ZMIN, ZMAX);
-      centerCamera(u.x, u.y, zoom);
-    }
-
+    // No sudden zoom/center here — smartFocus handles gentle panning only if needed
     const Tu=T(u);
     unitEmojiEl.textContent = Tu.emoji;
     unitNameEl.textContent = `${Tu.name} ${u.side==='P'?'(You)':'(AI)'}`;
@@ -869,7 +903,6 @@ window.maxLevelReached = 1;
       btn.onclick = ()=>{ selectedId=u.id; setHint('ability'); };
       abilityBtnsEl.appendChild(btn);
 
-      // Rich description card
       const {desc, meta} = abilityText(A, Tu.name);
       abilityCard.style.display='';
       abilityName.textContent = A.name;
@@ -936,7 +969,12 @@ window.maxLevelReached = 1;
     }
 
     // Always allow inspecting any unit (ally or enemy)
-    if(u){ selectedId=u.id; render(); return; }
+    if(u){
+      selectedId=u.id;
+      smartFocusOn(u); // gentle pan ONLY if off-screen
+      render();
+      return;
+    }
   }
 
   // ===== Minimap =====
@@ -975,11 +1013,7 @@ window.maxLevelReached = 1;
     const kx = minimap.width / (W*CELL+GAP), ky = minimap.height/ (H*CELL+GAP);
     const wx = mx / kx; const wy = my / ky;
     const z = zoom;
-    cam.x = wx*z - VIEW_W/2; cam.y = wy*z - VIEW_H/2;
-    cam.x = clamp(cam.x, 0, Math.max(0, WORLD_W*z - VIEW_W));
-    cam.y = clamp(cam.y, 0, Math.max(0, WORLD_H*z - VIEW_H));
-    world.style.transform = `scale(${z}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
-    drawMinimap();
+    setCamTarget(wx*z - VIEW_W/2, wy*z - VIEW_H/2); // smooth jump on minimap click
   });
 
   // ===== AI =====
@@ -1142,5 +1176,6 @@ saveBtn.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
 
 
