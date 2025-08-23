@@ -902,7 +902,7 @@ function nearestFree(gx,gy, occ){
   let qi=0;
   while(qi<q.length && q.length<GRID_W*GRID_H){
     const cur=q[qi++], neigh=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [dx,dy] of neigh{
+    for(const [dx,dy] of neigh){   /* ← FIXED PARENTHESIS HERE */
       const nx=cur.gx+dx, ny=cur.gy+dy;
       if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
       const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
@@ -1116,19 +1116,11 @@ function draw(){
   requestAnimationFrame(draw);
 }
 draw();
-
-function renderHUD(){ /* already defined above, called elsewhere */ }
-
-/* --------------- UI board already wired in --------------- */
-function maybeWinner(){ /* already defined above */ }
-
-/* --------------- Helpers used above but ensured defined --------------- */
-function renderBoard(){ /* already defined above */ }
-function renderTimer(){ /* already defined above */ }
-
 </script>
 </body>
 </html>
+
+
 
 
 
