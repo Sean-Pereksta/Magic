@@ -535,6 +535,32 @@ setInterval(()=>{
 }, 250);
 
 /* =================== Allegiances =================== */
+  // --- NEW: log a raider encounter (scoped to this user) ---
+async function logRaiderEncounter(raider){
+  try{
+    const data = {
+      user: username,
+      x: state.player?.x ?? null,
+      y: state.player?.y ?? null,
+      type: raider.type,
+      size: raider.size,
+      encounteredAt: serverTimestamp()
+    };
+    // global stream (analytics / admin views)
+    await addDoc(collection(db,"mountonline_raider_encounters"), data);
+    // per-user quick peek (your own doc)
+    await updateDoc(state.youDocRef, {
+      lastRaiderEncounter: {
+        x: data.x, y: data.y,
+        type: data.type, size: data.size,
+        at: Date.now()
+      }
+    });
+  }catch(err){
+    console.error("Failed to log raider encounter", err);
+  }
+}
+
 function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 80% 55%)`; }
 async function loadAllegiances(){
   sub(collection(db,"mountonline_allegiances"), snap=>{
@@ -742,26 +768,63 @@ async function openVillage(v){
   const level = me.level || 1;
   const maxArmy = me.maxArmy ?? maxArmyForLevel(level);
   const capLeft = Math.max(0, maxArmy - armySum(me.army||{}));
-  const perPurchaseCap = maxPurchaseForLevel(level);
-
-  const kR = "v_"+v.id, kT="v_"+v.id;
+  const kR = "v_"+v.id, kT="v_"+v.id; // (recruit / trade keys for cooldowns)
   const canRecruit = canUse(me.lastRecruitAt?.[kR], RECRUIT_COOLDOWN_MS);
   const canTrade   = canUse(me.lastTradeAt?.[kT],   TRADE_COOLDOWN_MS);
-  const recruitsAvail = Math.floor(5+Math.random()*16);
+
   const banners = rngBanners( Math.random()<0.5 ? 1 : 2 );
 
   openModal(`Village (${v.x},${v.y})`, m=>{
-    const info = document.createElement("div"); info.className="muted small";
-    info.textContent = `Capacity left: ${capLeft} • Max per purchase: ${perPurchaseCap}`;
-    const qtyRow = document.createElement("div"); qtyRow.className="row";
-    const qty = document.createElement("input"); qty.className="input"; qty.type="number"; qty.min="1";
-    const maxBuyable = Math.max(0, Math.min(recruitsAvail, capLeft, perPurchaseCap));
-    qty.max = String(maxBuyable); qty.value = String(Math.max(0, Math.min(5, maxBuyable)));
-    const buyBtn = document.createElement("button"); buyBtn.className="btn";
-    buyBtn.textContent = `Recruit (3g each, +${XP_PER_RECRUIT}XP per)`;
-    buyBtn.disabled = !canRecruit || maxBuyable<=0;
-    qtyRow.appendChild(qty); qtyRow.appendChild(buyBtn);
+    // Info line
+    const info = document.createElement("div");
+    info.className="muted small";
+    info.textContent = `Capacity left: ${capLeft}`;
+    m.appendChild(info);
 
+    // --- NEW: one-at-a-time recruit button ---
+    const buyRow = document.createElement("div");
+    buyRow.className="row";
+    const buyBtn = document.createElement("button");
+    buyBtn.className="btn";
+    buyBtn.textContent = `Recruit 1 (3g, +${XP_PER_RECRUIT}XP)`;
+    buyBtn.disabled = !canRecruit || capLeft<1 || (me.gold||0) < 3;
+    buyRow.appendChild(buyBtn);
+    m.appendChild(buyRow);
+
+    buyBtn.onclick = async ()=>{
+      // re-read to be safe
+      const s2 = await getDoc(state.youDocRef);
+      if(!s2.exists()) return;
+      const me2 = s2.data();
+
+      // guards
+      if (!canUse(me2.lastRecruitAt?.[kR], RECRUIT_COOLDOWN_MS)) { alert("Recruit cooldown active."); return; }
+      if (armySum(me2.army||{}) >= (me2.maxArmy ?? maxArmyForLevel(me2.level||1))){ alert("Army is at capacity."); return; }
+      if ((me2.gold||0) < 3) { alert("Not enough gold."); return; }
+
+      // do the recruit: +1 recruit, -3 gold, set cooldown on this village
+      const army = {...(me2.army||START_ARMY)};
+      army.recruits = (army.recruits||0) + 1;
+
+      await updateDoc(state.youDocRef, {
+        gold: (me2.gold||0) - 3,
+        army,
+        lastRecruitAt: { ...(me2.lastRecruitAt||{}), [kR]: Date.now() }
+      });
+
+      state.player.gold  = (me2.gold||0) - 3;
+      state.player.army  = army;
+      hudGold.textContent = state.player.gold;
+      updateArmyHud();
+
+      await gainXP(XP_PER_RECRUIT);
+      $("#coolInfo").textContent = "Recruit cooldown active.";
+
+      // Close after a successful recruit to reflect cooldown and avoid extra clicks
+      closeModal(true);
+    };
+
+    // --- Trading (unchanged, still has cooldown) ---
     const tWrap = document.createElement("div"); tWrap.className="list";
     for(const b of banners){
       const row = document.createElement("div"); row.className="pill";
@@ -771,28 +834,13 @@ async function openVillage(v){
       buy.onclick = ()=> buyBanner(b, v.id, "village");
       row.appendChild(buy); tWrap.appendChild(row);
     }
-    const tNote = document.createElement("div"); tNote.className="muted small"; tNote.textContent = "Trading locks this village for 2 minutes (even if you exit).";
-    m.appendChild(info); m.appendChild(qtyRow); m.appendChild(document.createElement("div")).style.height="6px";
-    m.appendChild(tWrap); m.appendChild(tNote);
+    const tNote = document.createElement("div"); tNote.className="muted small";
+    tNote.textContent = "Trading locks this village for 2 minutes (even if you exit).";
+    m.appendChild(document.createElement("div")).style.height="6px";
+    m.appendChild(tWrap);
+    m.appendChild(tNote);
 
-    buyBtn.onclick = async ()=>{
-      const q = Math.max(0, Math.min(parseInt(qty.value||"0",10), maxBuyable));
-      if (q<1){ alert("Nothing to buy."); return; }
-      const s2 = await getDoc(state.youDocRef); const me2 = s2.data();
-      const totalCost = q*3;
-      if ((me2.gold||0) < totalCost){ alert("Not enough gold."); return; }
-      const army = {...(me2.army||START_ARMY)}; army.recruits = (army.recruits||0) + q;
-      await updateDoc(state.youDocRef, {
-        gold:(me2.gold||0)-totalCost, army,
-        lastRecruitAt: {...(me2.lastRecruitAt||{}), [kR]: Date.now()}
-      });
-      state.player.gold = (me2.gold||0)-totalCost; state.player.army = army; hudGold.textContent = state.player.gold;
-      updateArmyHud();
-      await gainXP(q * XP_PER_RECRUIT);
-      $("#coolInfo").textContent = "Recruit cooldown active.";
-      closeModal(true);
-    };
-
+    // keep trade cooldown behavior on exit
     modalExitHandler = async ()=>{
       const fresh = (await getDoc(state.youDocRef)).data();
       const lt = {...(fresh.lastTradeAt||{})}; lt[kT] = Date.now();
@@ -801,6 +849,7 @@ async function openVillage(v){
     };
   });
 }
+
 async function openCastle(c){
   const ownerTxt = c.ownerName ? `Owner: ${c.ownerName}` : "Unowned";
   const banners = rngBanners(3);
@@ -920,14 +969,19 @@ async function checkTile(){
 
   // Raiders
   const raider = findRaiderAt(state.player.x, state.player.y);
-  if (raider && !inPreparedness){
-    raider.engaged = true;
-    raider.engagedAt = Date.now();
-    const t = raider.type, s = raider.size;
-    await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
-    location.href = `/game/localbattle.html?etype=${encodeURIComponent(t)}&esize=${s}&username=${encodeURIComponent(username)}`;
-    return;
-  }
+ if (raider && !inPreparedness){
+  raider.engaged = true;
+  raider.engagedAt = Date.now();
+  const t = raider.type, s = raider.size;
+
+  // NEW: record encounter for this user
+  await logRaiderEncounter(raider);
+
+  await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+  location.href = `/game/localbattle.html?etype=${encodeURIComponent(t)}&esize=${s}&username=${encodeURIComponent(username)}`;
+  return;
+}
+
 
   // PvP (same tile, non-ally), only if both active and not in Preparedness
   if (!inPreparedness){
@@ -1081,4 +1135,5 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
