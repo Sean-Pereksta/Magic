@@ -77,7 +77,6 @@ const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
 
 async function getRaidersSpec(){
-  // Priority: query params → encounter doc
   let t = (Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "").toLowerCase();
   let n = parseInt(Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
   if (!t || isNaN(n)){
@@ -158,7 +157,6 @@ function bannerMods(equipped=[]){
 let state=null; // { units, effects, projs, stats }
 const participants=[ME, "Raiders"];
 let ownerMods={};
-/* Mountonline mapping */
 const MKEY = {
   recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry",
   archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher",
@@ -195,7 +193,6 @@ function hideHint(){ document.getElementById("hint").style.display="none"; }
 
 /* ========== Build my army + raiders, mark inBattle ========== */
 async function seedBattle(){
-  // Make me inactive & inBattle (so no one can attack during this local fight)
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
   const meSnap = await getDoc(doc(db,"mountonline", ME));
@@ -203,11 +200,8 @@ async function seedBattle(){
   const me = meSnap.data();
   ownerMods[ME] = bannerMods((me.inventory?.equipped)||[]);
 
-  // Units array
   const units=[];
-  // Spawn my army from stored counts (contiguous block)
   spawnArmyBlock(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
-  // Spawn raiders from encounter
   const rType = (RAIDER_TYPE==="recruits"?"recruit": RAIDER_TYPE);
   const allowed = new Set(["recruit","footman","archer"]);
   const chosen = allowed.has(rType) ? rType : "recruit";
@@ -220,7 +214,6 @@ async function seedBattle(){
   return true;
 }
 function spawnArmyBlock(units, owner, armyCounts, origin, dir){
-  // Fill a contiguous rectangle regardless of type boundaries
   const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
   const pool=[];
   for(const key of order){
@@ -264,11 +257,15 @@ function mkUnit(type, owner, gx, gy){
     range: base.range, atkSpd: base.atkSpd, move: Math.round(base.move * moveMul),
     armor: Math.round(base.armor * armorMul),
     acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
-    goalGX:null, goalGY:null, nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y",
+    goalGX:null, goalGY:null, nextStepAt:0,
     priestHealMul: (type==="priest"? mod.priestHeal : 1),
     _lastBy:null,
-    _forceMoveTo: null,   // HARD OVERRIDE: ignore aggro until arrival
-    _order:"idle"
+    _forceMoveTo: null,     // HARD OVERRIDE: ignore aggro until arrival
+    // NEW: simple movement/engagement brain
+    state:"idle",           // idle | move | chase | engage | hold
+    targetId:null,
+    lastTargetTime:0,
+    stuckTicks:0
   };
 }
 
@@ -276,22 +273,23 @@ function mkUnit(type, owner, gx, gy){
 function orderAttackMove(ids,gx,gy){
   for (const u of state.units){
     if (ids.includes(u.id) && u.o===ME){
-      u.goalGX = gx; u.goalGY = gy;
       u._forceMoveTo = { gx, gy };
+      u.goalGX = gx; u.goalGY = gy;
+      u.state = "move";
+      u.targetId = null; // ignore targets until arrival
       u._channel = null;
-      u._order = "move";
     }
   }
 }
 function orderNearest(ids){
   for(const u of state.units){
     if(!ids.includes(u.id) || u.o!==ME) continue;
-    let best=null, bd=1e9;
-    for(const v of state.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
+    const best = findNearestEnemy(u, state.units);
     if(best){
-      u._forceMoveTo = null; // cancel forced move
-      u.goalGX = best.gx; u.goalGY = best.gy;
-      u._order = "attackmove";
+      u._forceMoveTo = null;
+      u.targetId = best.id;
+      u.lastTargetTime = Date.now();
+      u.state = "chase";
     }
   }
 }
@@ -302,14 +300,15 @@ function toggleHold(ids){
       if (u._hold){
         u._forceMoveTo = null;
         u.goalGX = null; u.goalGY = null;
-        u._order = "hold";
+        u.state = "hold";
+      }else{
+        u.state = "idle";
       }
     }
   }
 }
 
-/* ========== Abilities ========== */
-/* Per-unit cooldowns only. We DO NOT block casting globally; we cast on any selected unit that is off cooldown. */
+/* ========== Abilities (unchanged) ========== */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -342,7 +341,6 @@ function castSlot(slot){
   const ids=Array.from(selection); if(!ids.length) return;
   const ab=slotAbility(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
 
-  // Determine target mode
   if(ab.target==="self"){
     let casted=false;
     for(const u of state.units){
@@ -403,12 +401,51 @@ function bresenham(x0,y0,x1,y1){
   return pts;
 }
 
-/* ========== Simulation (local) ========== */
+/* ========== SIMPLE COMBAT BRAIN ========== */
 const PX2SQUARES = 1 / (TILE*0.9);
+const AGGRO_EXTRA = 3; // melee/ranged get this extra pull beyond their range
+
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
+function unitMap(units){ const m=new Map(); for(const u of units) m.set(u.id,u); return m; }
+
+function inRange(u, v){
+  const r = u.range||1;
+  return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manhattan(u.gx,u.gy,v.gx,v.gy) <= 1);
+}
+function findNearestEnemy(u, list){
+  let best=null, bd=1e9;
+  for(const v of list){ if(v.o===u.o) continue;
+    const d=manhattan(u.gx,u.gy,v.gx,v.gy);
+    if(d<bd){ bd=d; best=v; }
+  }
+  return best;
+}
+function approachStep(u, gx, gy, occ, reserved){
+  if(gx===u.gx && gy===u.gy) return false;
+  const dx = gx - u.gx, dy = gy - u.gy;
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  // primary axis = the one farther from goal to avoid zig-zag
+  const primaryX = Math.abs(dx) >= Math.abs(dy);
+  const opts = primaryX
+    ? [{gx:u.gx+sx, gy:u.gy}, {gx:u.gx, gy:u.gy+sy}]
+    : [{gx:u.gx, gy:u.gy+sy}, {gx:u.gx+sx, gy:u.gy}];
+
+  for(const c of opts){
+    if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
+    const k=c.gx+"|"+c.gy;
+    if(!occ.get(k) && !reserved.has(k)){
+      stepTo(u, c.gx, c.gy, occ, reserved);
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ========== Simulation (local) ========== */
 function simulate(g, dt){
   const now = Date.now();
-  // Cooldowns / auras per unit
+
+  // Cooldowns / auras
   for(const u of g.units){
     for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
@@ -428,87 +465,118 @@ function simulate(g, dt){
     } else keep.push(pr);
   } g.projs=keep;
 
-  // Effects (AOE)
-  for(const e of (g.effects||[])){
-    if(e.type==="squarePulse"){ while(e.next < e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0); e.next++; } }
-    if(e.type==="squareOnce"){ if(!e.did && now>=e.when){ pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0); e.did=true; } }
-  }
-
-  // Targeting & attacks
+  // Decision phase: who to fight / move
+  const byId = unitMap(g.units);
   for(const u of g.units){
-    if(u._channel) continue;
-    let target=null, bd=1e9;
-    for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
-    const rng=u.range||1;
-    const inRange = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy) <= rng : manhattan(u.gx,u.gy,target.gx,target.gy)<=rng);
+    if(u._channel) { u.state = "engage"; continue; }
+    if(u._hold){ u.state="hold"; u.goalGX=null; u.goalGY=null; continue; }
 
-    const forcing = !!u._forceMoveTo;
+    // Forced move overrides everything until arrival
+    if(u._forceMoveTo){
+      u.state = "move";
+      u.goalGX = u._forceMoveTo.gx;
+      u.goalGY = u._forceMoveTo.gy;
+    } else {
+      // Validate current target
+      if(u.targetId){
+        const t = byId.get(u.targetId);
+        if(!t || t.o===u.o){ u.targetId=null; }
+      }
+      // Acquire target if none and something is reasonably close
+      if(!u.targetId){
+        const candidate = findNearestEnemy(u, g.units);
+        if(candidate){
+          const aggro = (u.range||1) + AGGRO_EXTRA;
+          if(manhattan(u.gx,u.gy,candidate.gx,candidate.gy) <= aggro){
+            u.targetId = candidate.id;
+            u.lastTargetTime = now;
+          }
+        }
+      }
 
-    // if forcing, ignore combat entirely until arrival
-    if (!forcing){
-      if (inRange && (!u._hold)){
-        // attack
-        u._atkCd = (u._atkCd||0) - dt;
-        if((u._atkCd||0) <= 0){
-          const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
-          applyDamage(g, target, baseDmg, 0, u.o);
-          u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
+      const target = u.targetId ? byId.get(u.targetId) : null;
+      if(target){
+        // if target ran way off, drop it
+        const aggro = (u.range||1) + AGGRO_EXTRA + 2;
+        if(manhattan(u.gx,u.gy,target.gx,target.gy) > aggro){
+          u.targetId = null; u.state="idle"; u.goalGX=null; u.goalGY=null;
+        }else if(inRange(u,target)){
+          u.state="engage"; u.goalGX=null; u.goalGY=null;
+        }else{
+          u.state="chase";
+          // Set a one-step goal toward being in range
+          const dx = Math.sign(target.gx - u.gx);
+          const dy = Math.sign(target.gy - u.gy);
+          // step towards reducing Chebyshev distance; prefer the larger axis
+          if(Math.abs(target.gx-u.gx) >= Math.abs(target.gy-u.gy)){
+            u.goalGX = u.gx + dx; u.goalGY = u.gy;
+          }else{
+            u.goalGX = u.gx; u.goalGY = u.gy + dy;
+          }
         }
-        // if ranged and in range, stop chasing
-        if (u.range>1){ u.goalGX = null; u.goalGY = null; }
-      } else if(!u._hold && target){
-        // chase logic: ranged stop at edge of range, melee close in
-        if (u.range>1){
-          const desired = approachToRange(u, target, u.range);
-          if (desired) { u.goalGX = desired.gx; u.goalGY = desired.gy; }
-        } else if (u.goalGX==null || u.goalGY==null){
-          u.goalGX=target.gx; u.goalGY=target.gy;
-        }
+      }else{
+        u.state="idle"; u.goalGX=null; u.goalGY=null;
       }
     }
   }
 
-  // Movement incl. charge with "go-around" neighbors
+  // Movement / Attacks
   const occ = occupancy(g.units);
   const reserved=new Set();
+
   for(const u of g.units){
     if(u._channel) continue;
 
-    // Charge dash
-    if(u._charge && u._charge.until>now){
-      const step=u._charge.path[u._charge.idx];
-      if(step){
-        if(!occ.get(step.gx+"|"+step.gy) && !reserved.has(step.gx+"|"+step.gy)){
-          stepTo(u, step.gx, step.gy, occ, reserved); u._charge.idx++;
-        } else { u._charge.until = now; }
-      } else { u._charge.until=now; }
-      // impact splash when finishing
-      if(!u._charge || u._charge.idx>=(u._charge.path?.length||0)){
-        for(const v of g.units){ if(v.o===u.o) continue; if(manhattan(v.gx,v.gy,u.gx,u.gy)<=1){ applyDamage(g, v, 14, 0, u.o); } }
+    // Attack handling
+    if(u.state==="engage"){
+      // find actual target (locked if available, else nearest in range)
+      let t = u.targetId ? byId.get(u.targetId) : null;
+      if(!t || t.o===u.o || !inRange(u,t)){
+        // pick anyone in range
+        let best=null;
+        for(const v of g.units){ if(v.o===u.o) continue; if(inRange(u,v)){ best=v; break; } }
+        t = best;
+      }
+      if(t){
+        u._atkCd = (u._atkCd||0) - dt;
+        if((u._atkCd||0) <= 0){
+          const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
+          applyDamage(g, t, baseDmg, 0, u.o);
+          u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
+        }
+      }else{
+        // nobody in range anymore; switch to idle and reassess next tick
+        u.state="idle";
       }
       continue;
     }
 
-    if(u.goalGX==null || u.goalGY==null) continue;
-    const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
-    const everyMs = Math.max(80, Math.floor(1000/speedSquares));
-    if(now < u.nextStepAt) continue;
-    u.nextStepAt = now + everyMs;
+    // Movement ticks
+    if(u.state==="move" || u.state==="chase"){
+      const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
+      const everyMs = Math.max(80, Math.floor(1000/speedSquares));
+      if(now >= u.nextStepAt){
+        u.nextStepAt = now + everyMs;
 
-    // neighbor candidates (try to go around if blocked)
-    const cands = neighborChoices(u, u.goalGX, u.goalGY);
-    for(const c of cands){
-      if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
-      const k=c.gx+"|"+c.gy;
-      if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); break; }
-    }
+        if(u.goalGX!=null && u.goalGY!=null){
+          const moved = approachStep(u, u.goalGX, u.goalGY, occ, reserved);
+          if(!moved) u.stuckTicks++; else u.stuckTicks=0;
 
-    // arrival
-    if(u.gx===u.goalGX && u.gy===u.goalGY){
-      if (u._forceMoveTo && u.goalGX===u._forceMoveTo.gx && u.goalGY===u._forceMoveTo.gy){
-        u._forceMoveTo = null; // reached forced destination, aggro can resume
+          // Arrival to forced destination
+          if(u._forceMoveTo && u.gx===u._forceMoveTo.gx && u.gy===u._forceMoveTo.gy){
+            u._forceMoveTo = null;
+            u.state="idle"; u.goalGX=null; u.goalGY=null;
+          }
+
+          // If chasing and now in range, stop
+          if(u.state==="chase" && u.targetId){
+            const t = byId.get(u.targetId);
+            if(t && inRange(u,t)){
+              u.state="engage"; u.goalGX=null; u.goalGY=null;
+            }
+          }
+        }
       }
-      u.goalGX=null; u.goalGY=null; u._order="idle";
     }
   }
 
@@ -528,44 +596,7 @@ function simulate(g, dt){
 
   return g;
 }
-function approachToRange(u, target, range){
-  const dx = Math.sign(target.gx - u.gx);
-  const dy = Math.sign(target.gy - u.gy);
-  const dist = cheby(u.gx,u.gy,target.gx,target.gy);
-  if (dist <= range) return null;
-  // move one step toward the target but stop when reaching cheby distance == range
-  const nextGX = u.gx + dx;
-  const nextGY = u.gy + dy;
-  const after = cheby(nextGX,nextGY,target.gx,target.gy);
-  if (after >= range) return {gx:nextGX, gy:nextGY};
-  // try axis-aligned if diagonal would overshoot
-  if (cheby(u.gx+dx,u.gy,target.gx,target.gy) >= range) return {gx:u.gx+dx, gy:u.gy};
-  if (cheby(u.gx,u.gy+dy,target.gx,target.gy) >= range) return {gx:u.gx, gy:u.gy+dy};
-  return {gx:nextGX, gy:nextGY};
-}
-function neighborChoices(u, gx, gy){
-  const sx = Math.sign(gx - u.gx);
-  const sy = Math.sign(gy - u.gy);
-  const cand = [
-    {gx:u.gx+sx, gy:u.gy},           // forward X
-    {gx:u.gx,    gy:u.gy+sy},        // forward Y
-    {gx:u.gx+sx, gy:u.gy+sy},        // diag forward
-    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep
-    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep
-    {gx:u.gx+sy, gy:u.gy},           // lateral 1
-    {gx:u.gx-sy, gy:u.gy},           // lateral 2
-    {gx:u.gx,    gy:u.gy+sx},        // lateral 3
-    {gx:u.gx,    gy:u.gy-sx}         // lateral 4
-  ];
-  // sort by distance to goal (closer first), make unique
-  const seen=new Set(), out=[];
-  for(const c of cand){
-    const key=c.gx+"|"+c.gy;
-    if(seen.has(key)) continue; seen.add(key); out.push(c);
-  }
-  out.sort((a,b)=> manhattan(a.gx,a.gy,gx,gy) - manhattan(b.gx,b.gy,gx,gy));
-  return out;
-}
+
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
@@ -599,7 +630,6 @@ window.addEventListener("mouseup",(e)=>{
     lastClickAt=now; lastClickCell=grid;
     if(u){
       if(dbl){
-        // select all my units of that type
         selection.clear();
         for (const w of getUnitsView()){ if(w.o===ME && w.tt===u.tt) selection.add(w.id); }
       } else {
@@ -761,13 +791,11 @@ function aliveOwners(){
 }
 async function settleAndExit(){
   const stats = state?.stats || {};
-  // Rewards (my kills) — you get gold even if you lose
   let goldGain=0;
   for(const [tKill, nKill] of Object.entries(stats[ME]?.killsByType||{})){
     const tier = TIER[tKill] || 1;
     goldGain += (REWARD[tier]||0) * (nKill||0);
   }
-  // Losses (my dead)
   const lost = stats[ME]?.lostByType || {};
 
   await runTransaction(db, async (tx)=>{
@@ -784,7 +812,6 @@ async function settleAndExit(){
     tx.update(pref, { army, gold: (me.gold||0) + goldGain, active:true, inBattle:false, lastSeen: Date.now() });
   });
 
-  // Back to map
   location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`;
 }
 
@@ -794,7 +821,6 @@ const FIXED = 1/20;
 function loop(){
   const now=performance.now(); acc += Math.min(0.25,(now-lastTime)/1000); lastTime=now;
   while(acc>=FIXED){ state = simulate(state, FIXED); acc -= FIXED; }
-  // victory check
   const alive = aliveOwners();
   if(alive.length===1){
     document.getElementById("banner").textContent = (alive[0]==="Raiders") ? "💀 You were routed!" : "🏆 Raiders defeated!";
@@ -806,19 +832,16 @@ function loop(){
 }
 
 /* ========== HUD build ========== */
-function buildHUD(){ /* dynamic per selection; handled in renderHUD */ }
+function buildHUD(){}
 
 /* ========== Init ========== */
 (async function init(){
-  // center camera
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
-
   const ok = await seedBattle(); if(!ok) return;
-  // draw + sim
   draw(); loop();
 })();
 
-/* Safety: if user hard-closes, try to re-activate them */
+/* Safety */
 window.addEventListener("beforeunload", ()=>{
   updateDoc(doc(db,"mountonline", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
 });
