@@ -443,15 +443,31 @@ const RAIDER_SPAWN_BATCH_MAX = 4;          // up to N per spawn tick
 const RAIDER_DESPAWN_ENGAGED_MS = 90_000;  // engaged groups cleaned up
 
 function randomFreeTile() {
-  for (let i=0;i<200;i++){
-    const x = Math.floor(Math.random()*WORLD_W);
-    const y = Math.floor(Math.random()*WORLD_H);
-    const onVillage = !!state.villages.find(v=>v.x===x && v.y===y);
-    const onCastle  = !!state.castles.find(c=>c.x===x && c.y===y);
-    const onRaider  = !!state.localRaiders.find(r=>!r.engaged && r.x===x && r.y===y);
-    if (!onVillage && !onCastle && !onRaider) return {x,y};
+  for (let i = 0; i < 400; i++){
+    const x = Math.floor(Math.random() * WORLD_W);
+    const y = Math.floor(Math.random() * WORLD_H);
+    const onVillage = state.villages.some(v => v.x===x && v.y===y);
+    const onCastle  = state.castles.some(c => c.x===x && c.y===y);
+    const onRaider  = state.localRaiders.some(r => !r.engaged && r.x===x && r.y===y);
+    if (!onVillage && !onCastle && !onRaider && !occupiedByPlayer(x,y)) return {x,y};
   }
-  return { x: Math.floor(Math.random()*WORLD_W), y: Math.floor(Math.random()*WORLD_H) };
+  // Fallback: spiral out from the player's tile until a free one is found (still avoids players)
+  const base = state.player ? {x:state.player.x, y:state.player.y} : {x:Math.floor(WORLD_W/2), y:Math.floor(WORLD_H/2)};
+  for (let r = 1; r < 8; r++){
+    for (let dx = -r; dx <= r; dx++){
+      for (let dy = -r; dy <= r; dy++){
+        const nx = Math.max(0, Math.min(WORLD_W-1, base.x + dx));
+        const ny = Math.max(0, Math.min(WORLD_H-1, base.y + dy));
+        const blocked =
+          state.villages.some(v=>v.x===nx && v.y===ny) ||
+          state.castles.some(c=>c.x===nx && c.y===ny) ||
+          state.localRaiders.some(rr=>!rr.engaged && rr.x===nx && rr.y===ny) ||
+          occupiedByPlayer(nx,ny);
+        if (!blocked) return {x:nx, y:ny};
+      }
+    }
+  }
+  return {x:0, y:0}; // absolute last resort
 }
 function spawnOneRaider() {
   const pos = randomFreeTile();
@@ -882,6 +898,13 @@ function tickInput(){
 }
 
 /* =================== Interactions =================== */
+  function occupiedByPlayer(x, y){
+  if (state.player && state.player.x === x && state.player.y === y) return true;
+  for (const p of state.others.values()){
+    if (p.x === x && p.y === y) return true;
+  }
+  return false;
+}
 function tileAt(x,y,list){ return list.find(o=> o.x===x && o.y===y); }
 async function checkTile(){
   renderNearby();
@@ -1058,3 +1081,4 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
