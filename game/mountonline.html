@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>🗻🌐 Mountain Blade Online</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b1014; --panel:#0e1726; --grid:#122033; --cell:#0b1424; --ink:#e6edf3; --muted:#9fb3c8;
+    --accent:#60a5fa; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --br:#1b2b4a;
+    --ally:#22c55e; --enemy:#ef4444; --neutral:#94a3b8;
+    --tile:48px; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,Segoe UI,Roboto,Arial }
+  #wrap{ display:grid; grid-template-columns:1fr 360px; gap:12px; padding:12px; height:100vh }
+  @media (max-width:1100px){ #wrap{ grid-template-columns:1fr } #right{ order:-1 } }
+
+  /* Canvas area */
+  #stageWrap{ position:relative; border:1px solid var(--br); border-radius:var(--radius); background:linear-gradient(#0b1424,#0a1322); box-shadow:var(--shadow); overflow:hidden }
+  #canvas{ display:block; width:100%; height:100%; cursor:crosshair; background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: calc(var(--tile)) calc(var(--tile)), calc(var(--tile)) calc(var(--tile));
+    background-position: 0 0, 0 0;
+  }
+  .hud{
+    position:absolute; left:12px; top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    background:rgba(7,12,20,.6); backdrop-filter: blur(6px); border:1px solid var(--br); border-radius:12px; padding:8px 10px;
+  }
+  .chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#0f1b2d; border:1px solid var(--br); border-radius:999px; font-size:13px }
+  .btn{ appearance:none; border:1px solid var(--br); background:#13243d; color:var(--ink); padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:700 }
+  .btn:hover{ background:#183053 }
+  .sep{ width:1px; height:24px; background:var(--br) }
+
+  /* XP bar inside a chip */
+  .xpwrap{ display:inline-flex; align-items:center; gap:8px }
+  .xpbar{ width:120px; height:8px; background:#0f1b2d; border:1px solid var(--br); border-radius:999px; overflow:hidden }
+  .xpbar > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#a78bfa,#60a5fa) }
+
+  /* Right panels */
+  #right{ display:grid; grid-template-rows:auto auto 1fr; gap:12px }
+  .card{ background:var(--panel); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
+  .card-head{ padding:12px 14px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between }
+  .card-title{ font-weight:800 }
+  .card-body{ padding:12px 14px }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+  .input, .select{ background:#0f1b2d; color:var(--ink); border:1px solid var(--br); padding:8px 10px; border-radius:10px }
+  .list{ display:grid; gap:8px; max-height:260px; overflow:auto }
+  .pill{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:#0f1b2d; border:1px solid var(--br); border-radius:10px }
+  .muted{ color:var(--muted); font-size:.9rem }
+  .small{ font-size:.85rem }
+  .badge{ padding:3px 8px; border-radius:999px; border:1px solid var(--br); background:#12243d; font-size:12px }
+  .colorDot{ width:12px; height:12px; border-radius:50% }
+
+  /* Modal */
+  .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5) }
+  .modal .sheet{ width:min(640px,92vw); background:var(--panel); border:1px solid var(--br); border-radius:16px; box-shadow:var(--shadow); overflow:hidden }
+  .sheet h3{ margin:0; padding:12px 14px; border-bottom:1px solid var(--br) }
+  .sheet .inner{ padding:12px 14px; display:grid; gap:10px }
+  .actions{ display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid var(--br) }
+
+  .legend{ position:absolute; right:12px; bottom:12px; background:rgba(7,12,20,.6); border:1px solid var(--br); border-radius:12px; padding:6px 8px; font-size:12px }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stageWrap">
+    <canvas id="canvas"></canvas>
+
+    <!-- HUD -->
+    <div class="hud" id="hud">
+      <span class="chip">👤 <b id="hudName">player</b></span>
+      <span class="chip">💰 Gold: <b id="hudGold">0</b></span>
+      <span class="chip">🛡️ Army: <b id="hudArmy">-</b></span>
+      <span class="chip">
+        <span class="xpwrap">
+          <b>Lvl <span id="hudLevel">1</span></b>
+          <span class="xpbar"><i id="xpFill"></i></span>
+          <span class="small muted" id="hudXPText">0/0</span>
+        </span>
+      </span>
+      <span class="chip">⏱️ Status: <b id="hudStatus">Spawning…</b></span>
+      <span class="sep"></span>
+      <button class="btn" id="btnArmy">Army</button>
+      <button class="btn" id="btnInv">Inventory</button>
+      <button class="btn" id="btnAlliances">Allegiances</button>
+    </div>
+
+    <div class="legend">
+      <div>WASD: move • Hold <b>Space</b> + drag: pan</div>
+      <div>First 10s: no interactions</div>
+      <div>Villages: recruit/trade (cooldowns)</div>
+      <div>Castles: trade/attack • Owners shown</div>
+    </div>
+  </div>
+
+  <div id="right">
+    <!-- Allegiance Bar -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">Allegiances</div>
+        <div class="row">
+          <input id="newAllyName" class="input" placeholder="Create (100 gold)" />
+          <button class="btn" id="btnCreateAlly">Create</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="allyList" class="list"><!-- entries --></div>
+        <div id="allyRequests" class="list" style="margin-top:8px"><!-- leader's pending requests --></div>
+      </div>
+    </div>
+
+    <!-- Nearby & Cooldowns -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">Nearby</div>
+        <div class="muted small" id="coolInfo">Cooldowns: –</div>
+      </div>
+      <div class="card-body">
+        <div id="nearList" class="list"></div>
+      </div>
+    </div>
+
+    <!-- World Log -->
+    <div class="card" style="min-height:220px">
+      <div class="card-head"><div class="card-title">World</div></div>
+      <div class="card-body">
+        <div id="log" class="list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Village/Castle Modal -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <h3 id="modalTitle">Location</h3>
+    <div class="inner" id="modalBody"></div>
+    <div class="actions">
+      <button class="btn" id="modalCancel">Exit</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* =================== Firebase =================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
+  collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, runTransaction, limit
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* =================== Constants & Helpers =================== */
+const RAIDERS_LOCAL = true; // local raiders
+const TILE = 48;
+const WORLD_W = 180; // tiles
+const WORLD_H = 120;
+const INTERACT_GRACE_MS = 10_000;
+const RECRUIT_COOLDOWN_MS = 60_000;
+const TRADE_COOLDOWN_MS   = 120_000;
+const HEARTBEAT_MS = 5_000;
+const ACTIVE_STALE_MS = 15_000;
+const MAX_BANNERS_EQUIPPED = 3;
+
+/* Progression */
+const BASE_MAX_ARMY = 50;
+const BASE_MAX_PURCHASE = 10;
+const BASE_XP_NEXT = 100;
+const XP_GROWTH = 1.15; // xp to next scales each level
+const XP_PER_RECRUIT = 1;
+const XP_PER_UPGRADE = 3;
+const XP_PER_BANNER  = 5;
+
+const UPGRADE_COST = {
+  archer: 10, footman: 12, monk: 14,
+  veteranArcher: 35, crossbowman: 35,
+  swordsman: 45, cavalry: 60,
+  priest: 40, mage: 65
+};
+const START_ARMY = { recruits:10, archers:0, footmen:0, monks:0,
+  veteranArchers:0, crossbowmen:0, swordsmen:0, cavalry:0, priests:0, mages:0 };
+
+const $ = sel => document.querySelector(sel);
+const logBox = $("#log"); const hudGold = $("#hudGold"); const hudArmy = $("#hudArmy");
+const hudName = $("#hudName"); const hudStatus = $("#hudStatus");
+const hudLvl = $("#hudLevel"); const xpFill = $("#xpFill"); const hudXPText = $("#hudXPText");
+function log(line){ const d=document.createElement("div"); d.className="small muted"; d.textContent=line; logBox.prepend(d); }
+
+/* =================== URL / Player =================== */
+const url = new URL(location.href);
+const username = (url.searchParams.get("username") || "Guest").trim();
+hudName.textContent = username;
+
+/* =================== World State (client) =================== */
+const state = {
+  player: null, youDocRef: null,
+  cam:{ x:0, y:0, w:0, h:0 }, drag:false, dragStart:null,
+  canInteractAt: 0,
+  keys:{}, lastMoveAt:0, moveDelay:220,
+  villages:[], castles:[],
+  localRaiders: [],
+  others: new Map(),      // username -> record
+  allyMap: new Map(),     // allyId -> doc
+  allegiance: null,       // your allegiance doc (if any)
+  subscriptions: [],
+  battleEngaged: false,
+  lastSafePos: null,
+};
+
+/* =================== Canvas Setup =================== */
+const canvas = $("#canvas");
+const ctx = canvas.getContext("2d");
+function resize(){
+  const rect = $("#stageWrap").getBoundingClientRect();
+  canvas.width  = Math.floor(rect.width);
+  canvas.height = Math.floor(rect.height);
+  state.cam.w = canvas.width; state.cam.h = canvas.height;
+}
+addEventListener("resize", resize); resize();
+
+/* =================== Seeding World (villages/castles) =================== */
+async function seedWorldOnce(){
+  const metaRef = doc(db, "mountonline_meta", "world");
+  const metaSnap = await getDoc(metaRef);
+  if (metaSnap.exists()) return;
+
+  function randomFreeCoords(existing, count, margin){
+    const coords = []; let attempts = 0;
+    while(coords.length < count && attempts < 40000){
+      attempts++;
+      const x = Math.floor(Math.random()*WORLD_W);
+      const y = Math.floor(Math.random()*WORLD_H);
+      if (x<margin || y<margin || x>WORLD_W-margin || y>WORLD_H-margin) continue;
+      let ok = true;
+      for(const c of existing.concat(coords)){
+        const dx=c.x-x, dy=c.y-y;
+        if (Math.hypot(dx,dy) < 6) { ok=false; break; }
+      }
+      if (ok) coords.push({x,y});
+    }
+    return coords;
+  }
+
+  const exist = [];
+  const villages = randomFreeCoords(exist, 60, 4); exist.push(...villages);
+  const castles  = randomFreeCoords(exist, 18, 8); exist.push(...castles);
+
+  await setDoc(metaRef, { seededAt: serverTimestamp(), worldW:WORLD_W, worldH:WORLD_H });
+
+  const vcol = collection(db,"mountonline_villages");
+  for (const v of villages){ await addDoc(vcol, { x:v.x, y:v.y }); }
+
+  const ccol = collection(db,"mountonline_castles");
+  for (const c of castles){ await addDoc(ccol, { x:c.x, y:c.y, owner:null, ownerName:null, ownerAlly:null, ownerColor:null }); }
+}
+
+/* ========== Helpers for progression & counts ========== */
+function armySum(army){ return Object.values(army||START_ARMY).reduce((s,v)=>s+v,0); }
+function maxArmyForLevel(level){ return BASE_MAX_ARMY + Math.max(0, level-1)*3; }
+function maxPurchaseForLevel(level){ return BASE_MAX_PURCHASE + Math.max(0, level-1)*3; }
+function xpNextForLevel(level){ return Math.round(BASE_XP_NEXT * Math.pow(XP_GROWTH, Math.max(0, level-1))); }
+
+function updateArmyHud(){
+  const a = state.player?.army || START_ARMY;
+  const sum = armySum(a);
+  const cap = state.player?.maxArmy || maxArmyForLevel(state.player?.level||1);
+  hudArmy.textContent = `${sum} / ${cap}`;
+}
+function updateLevelHud(){
+  const lvl = state.player?.level || 1;
+  const xp  = state.player?.xp || 0;
+  const nxt = state.player?.xpNext || xpNextForLevel(lvl);
+  hudLvl.textContent = String(lvl);
+  hudXPText.textContent = `${xp} / ${nxt}`;
+  const pct = Math.max(0, Math.min(100, Math.round((xp / nxt) * 100)));
+  xpFill.style.width = pct + "%";
+}
+async function gainXP(amount){
+  if (!amount) return;
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(state.youDocRef);
+    if (!snap.exists()) return;
+    const d = snap.data();
+    let level = d.level || 1;
+    let xp = (d.xp||0) + amount;
+    let xpNext = d.xpNext || xpNextForLevel(level);
+    let maxArmy = d.maxArmy ?? maxArmyForLevel(level);
+
+    let leveled = false;
+    while (xp >= xpNext){
+      xp -= xpNext; level += 1; leveled = true;
+      xpNext = xpNextForLevel(level);
+      maxArmy = maxArmyForLevel(level); // keep cap in sync with level
+    }
+    const patch = { xp, level, xpNext, maxArmy };
+    tx.update(state.youDocRef, patch);
+  });
+}
+
+/* =================== Player Doc Setup =================== */
+async function ensurePlayer(){
+  state.youDocRef = doc(db, "mountonline", username);
+  const snap = await getDoc(state.youDocRef);
+  if (!snap.exists()){
+    // pick a random free tile not on village/castle
+    let px=0, py=0;
+    const [vSnap, cSnap] = await Promise.all([
+      getDocs(collection(db,"mountonline_villages")),
+      getDocs(collection(db,"mountonline_castles"))
+    ]);
+    state.villages = vSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    state.castles  = cSnap.docs.map(d=>({id:d.id, ...d.data()}));
+
+    function blocked(x,y){
+      for(const v of state.villages){ if(v.x===x && v.y===y) return true; }
+      for(const c of state.castles){ if(c.x===x && c.y===y) return true; }
+      return false;
+    }
+    do { px = Math.floor(Math.random()*WORLD_W); py = Math.floor(Math.random()*WORLD_H); }
+    while (blocked(px,py));
+
+    const lvl = 1;
+    const payload = {
+      user: username, x:px, y:py,
+      gold:0, army: START_ARMY,
+      level:lvl, xp:0, xpNext: xpNextForLevel(lvl),
+      maxArmy: maxArmyForLevel(lvl),
+      active: true, inBattle:false, lastSeen: Date.now(), allegianceId: null,
+      lastRecruitAt: {}, lastTradeAt: {}, inventory: { banners:[], equipped:[] }
+    };
+    await setDoc(state.youDocRef, payload);
+    state.player = { id:username, ...payload };
+    log("Spawned new character at "+px+","+py+" with 10 recruits.");
+  } else {
+    // hydrate + ensure progression fields exist
+    const d = snap.data();
+    const lvl = d.level || 1;
+    const patch = {};
+    if (d.level == null) patch.level = lvl;
+    if (d.xp == null) patch.xp = 0;
+    if (d.xpNext == null) patch.xpNext = xpNextForLevel(lvl);
+    if (d.maxArmy == null) patch.maxArmy = maxArmyForLevel(lvl);
+    patch.active = true; patch.inBattle=false; patch.lastSeen = Date.now();
+    if (Object.keys(patch).length) await updateDoc(state.youDocRef, patch);
+    state.player = { id:username, ...d, ...patch };
+  }
+  hudGold.textContent = state.player.gold;
+  updateArmyHud(); updateLevelHud();
+  state.canInteractAt = Date.now() + INTERACT_GRACE_MS;
+}
+
+/* =================== Presence =================== */
+function setActive(val){ if (!state.youDocRef) return; updateDoc(state.youDocRef, { active:val, lastSeen: Date.now() }).catch(()=>{}); }
+addEventListener("visibilitychange", ()=> setActive(!document.hidden));
+addEventListener("pagehide", ()=> setActive(false));
+addEventListener("beforeunload", ()=> setActive(false));
+setInterval(()=>{ if(state.youDocRef) updateDoc(state.youDocRef, { lastSeen: Date.now() }).catch(()=>{}); }, HEARTBEAT_MS);
+
+/* =================== Subscriptions =================== */
+function sub(ref, cb){ const u = onSnapshot(ref, cb); state.subscriptions.push(u); return u; }
+function freshActive(p){ return p.active && (Date.now() - (p.lastSeen||0)) < ACTIVE_STALE_MS; }
+async function listenPlayers(){
+  sub(collection(db,"mountonline"), snap=>{
+    state.others.clear();
+    snap.forEach(d=>{
+      if (d.id===username) return;
+      const p = {id:d.id, ...d.data()};
+      if (freshActive(p)) state.others.set(p.id, p);
+    });
+  });
+}
+async function listenWorld(){
+  sub(collection(db,"mountonline_villages"), snap=>{
+    state.villages = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  });
+  sub(collection(db,"mountonline_castles"), snap=>{
+    state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  });
+}
+
+/* =================== Raiders (local) =================== */
+function seedRaidersOnce(){
+  state.localRaiders = [];
+  const types = ["recruits","footmen","archers"];
+  for(let i=0;i<25;i++){
+    state.localRaiders.push({
+      id: "L"+i,
+      x: Math.floor(Math.random()*WORLD_W),
+      y: Math.floor(Math.random()*WORLD_H),
+      size: Math.floor(3 + Math.random()*48),
+      type: types[Math.floor(Math.random()*types.length)],
+      speedBase: 900, engaged:false, _lastStep:0
+    });
+  }
+}
+function nearestPlayer(x,y){
+  let best=null, bd=1e9;
+  for(const p of state.others.values()){
+    const d = Math.hypot(p.x-x, p.y-y);
+    if (d<bd){ bd=d; best={ x:p.x, y:p.y, strength: armySum(p.army||{}) }; }
+  }
+  const d2 = Math.hypot(state.player.x-x, state.player.y-y);
+  if (d2<bd) best = { x:state.player.x, y:state.player.y, strength: armySum(state.player.army) };
+  return best;
+}
+function findRaiderAt(x,y){ return state.localRaiders.find(r=> r.x===x && r.y===y && !r.engaged) || null; }
+setInterval(()=>{
+  for(const r of state.localRaiders){
+    if (r.engaged) continue;
+    const nearest = nearestPlayer(r.x, r.y);
+    let dx=0, dy=0;
+    const stepDelay = Math.max(250, r.speedBase + r.size*8);
+    if (!r._lastStep || Date.now()-r._lastStep >= stepDelay){
+      r._lastStep = Date.now();
+      if (nearest){
+        const raidersStronger = r.size > nearest.strength;
+        const dist = Math.hypot(nearest.x - r.x, nearest.y - r.y);
+        if (dist <= 4){
+          const toward = raidersStronger ? 1 : -1;
+          dx = Math.sign(nearest.x - r.x) * toward;
+          dy = Math.sign(nearest.y - r.y) * toward;
+        } else { dx = Math.sign(Math.random()-.5); dy = Math.sign(Math.random()-.5); }
+      } else { dx = Math.sign(Math.random()-.5); dy = Math.sign(Math.random()-.5); }
+      r.x = Math.max(0, Math.min(WORLD_W-1, r.x+dx));
+      r.y = Math.max(0, Math.min(WORLD_H-1, r.y+dy));
+    }
+  }
+}, 250);
+
+/* =================== Allegiances (unchanged core) =================== */
+function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 80% 55%)`; }
+async function loadAllegiances(){
+  sub(collection(db,"mountonline_allegiances"), snap=>{
+    state.allyMap.clear();
+    const list=[]; snap.forEach(d=>{ const A={id:d.id, ...d.data()}; state.allyMap.set(A.id,A); list.push(A); });
+    list.sort((a,b)=> (b.members?.length||0)-(a.members?.length||0));
+    renderAllyList(list);
+    if (state.player?.allegianceId){ state.allegiance = state.allyMap.get(state.player.allegianceId)||null; } else state.allegiance=null;
+  });
+}
+$("#btnCreateAlly").addEventListener("click", async ()=>{
+  const name = $("#newAllyName").value.trim(); if (!name) return;
+  const snap = await getDoc(state.youDocRef); if(!snap.exists()) return;
+  const me = snap.data(); if ((me.gold||0) < 100){ alert("Not enough gold (100 required)."); return; }
+  const col = collection(db,"mountonline_allegiances");
+  const ally = await addDoc(col, { name, color: randomColor(), leader: username, members:[username], requests:[], createdAt: serverTimestamp() });
+  await updateDoc(state.youDocRef, { gold: (me.gold||0)-100, allegianceId: ally.id });
+  state.player.gold = (me.gold||0)-100; hudGold.textContent = state.player.gold;
+});
+function renderAllyList(list){
+  const el = $("#allyList"); el.innerHTML = "";
+  for(const A of list){
+    const row = document.createElement("div"); row.className="pill";
+    const left = document.createElement("div"); left.className="row";
+    const dot = document.createElement("span"); dot.className="colorDot"; dot.style.background = A.color || "#cbd5e1";
+    const label = document.createElement("div"); label.innerHTML = `<b>${A.name}</b> <span class="muted small">(${A.members?.length||0})</span>`;
+    left.appendChild(dot); left.appendChild(label);
+
+    const right = document.createElement("div"); right.className="row";
+    if (state.player?.allegianceId === A.id){
+      const b = document.createElement("span"); b.className="badge"; b.textContent="Member";
+      right.appendChild(b);
+    } else {
+      const r = document.createElement("button"); r.className="btn"; r.textContent="Request";
+      r.onclick = ()=> requestJoinAlly(A.id);
+      right.appendChild(r);
+    }
+    row.appendChild(left); row.appendChild(right);
+    el.appendChild(row);
+  }
+
+  const rq = $("#allyRequests"); rq.innerHTML="";
+  const myA = state.allegiance;
+  if (myA && myA.leader===username && (myA.requests||[]).length){
+    const head = document.createElement("div"); head.className="muted"; head.textContent = "Join Requests";
+    rq.appendChild(head);
+    for(const u of myA.requests){
+      const r = document.createElement("div"); r.className="pill";
+      r.innerHTML = `<div><b>${u}</b></div>`;
+      const row = document.createElement("div"); row.className="row";
+      const acc = document.createElement("button"); acc.className="btn"; acc.textContent="Accept";
+      const den = document.createElement("button"); den.className="btn"; den.textContent="Deny";
+      acc.onclick = ()=> approveRequester(u, true);
+      den.onclick = ()=> approveRequester(u, false);
+      row.appendChild(acc); row.appendChild(den); r.appendChild(row); rq.appendChild(r);
+    }
+  }
+}
+async function requestJoinAlly(allyId){
+  const p = (await getDoc(state.youDocRef)).data();
+  if (p.pendingRequestId && p.pendingRequestId !== allyId){
+    alert("You already requested another allegiance. Cancel it first.");
+    return;
+  }
+  const Aref = doc(db,"mountonline_allegiances", allyId);
+  await runTransaction(db, async (tx)=>{
+    const cur = await tx.get(Aref); if(!cur.exists()) throw "gone";
+    const data = cur.data();
+    const req = new Set(data.requests||[]); req.add(username);
+    tx.update(Aref, { requests: Array.from(req) });
+    tx.update(state.youDocRef, { pendingRequestId: allyId });
+  });
+  log("Requested to join allegiance.");
+}
+async function approveRequester(u, accept){
+  const Aref = doc(db,"mountonline_allegiances", state.allegiance.id);
+  await runTransaction(db, async (tx)=>{
+    const cur = await tx.get(Aref);
+    if (!cur.exists()) throw "gone";
+    const data = cur.data();
+    const req = (data.requests||[]).filter(x=>x!==u);
+    const members = new Set(data.members||[]);
+    if (accept) members.add(u);
+    tx.update(Aref, { requests:req, members: Array.from(members) });
+    tx.update(doc(db,"mountonline", u), { allegianceId: accept?Aref.id:null, pendingRequestId: null });
+  });
+}
+
+/* =================== UI: Army & Inventory =================== */
+$("#btnArmy").onclick = ()=> openArmy();
+$("#btnInv").onclick = ()=> openInventory();
+$("#btnAlliances").onclick = ()=> { document.getElementById("wrap").scrollTo({top:0, behavior:"smooth"}); };
+
+function openArmy(){
+  const a = state.player?.army || START_ARMY;
+  openModal("Your Army", m=>{
+    const rows = Object.entries(a).map(([k,v])=> `<div class="pill"><div><b>${k}</b> — ${v}</div></div>`).join("");
+    m.innerHTML = `
+      <div class="muted">Upgrading grants XP and doesn't change total size.</div>
+      ${rows}
+      <div class="row">
+        <button class="btn" id="upg_archer">Recruit → Archer (${UPGRADE_COST.archer}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_footman">Recruit → Footman (${UPGRADE_COST.footman}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_monk">Recruit → Monk (${UPGRADE_COST.monk}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="upg_varcher">Archer → Veteran Archer (${UPGRADE_COST.veteranArcher}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_xbow">Archer → Crossbowman (${UPGRADE_COST.crossbowman}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="upg_sword">Footman → Swordsman (${UPGRADE_COST.swordsman}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_cav">Footman → Cavalry (${UPGRADE_COST.cavalry}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="upg_priest">Monk → Priest (${UPGRADE_COST.priest}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_mage">Monk → Mage (${UPGRADE_COST.mage}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+    `;
+    const bind = (id, fn)=> m.querySelector("#"+id).onclick = fn;
+    bind("upg_archer", ()=> upgrade("recruits","archers","archer"));
+    bind("upg_footman", ()=> upgrade("recruits","footmen","footman"));
+    bind("upg_monk", ()=> upgrade("recruits","monks","monk"));
+    bind("upg_varcher", ()=> upgrade("archers","veteranArchers","veteranArcher"));
+    bind("upg_xbow", ()=> upgrade("archers","crossbowmen","crossbowman"));
+    bind("upg_sword", ()=> upgrade("footmen","swordsmen","swordsman"));
+    bind("upg_cav", ()=> upgrade("footmen","cavalry","cavalry"));
+    bind("upg_priest", ()=> upgrade("monks","priests","priest"));
+    bind("upg_mage", ()=> upgrade("monks","mages","mage"));
+  });
+}
+async function upgrade(fromKey, toKey, costKey){
+  const snap = await getDoc(state.youDocRef); if (!snap.exists()) return;
+  const me = snap.data(); const cost = UPGRADE_COST[costKey]||0;
+  if ((me.army[fromKey]||0) < 1) { alert("No units available to upgrade."); return; }
+  if ((me.gold||0) < cost) { alert("Not enough gold."); return; }
+  const army = {...me.army}; army[fromKey]-=1; army[toKey]=(army[toKey]||0)+1;
+  await updateDoc(state.youDocRef, { army, gold: (me.gold||0)-cost });
+  state.player.army = army; state.player.gold = (me.gold||0)-cost; hudGold.textContent = state.player.gold;
+  updateArmyHud();
+  await gainXP(XP_PER_UPGRADE); // small XP bump
+  log(`Upgraded 1 ${fromKey} → ${toKey} (-${cost}g, +${XP_PER_UPGRADE}XP)`);
+}
+
+/* Inventory / banners */
+function openInventory(){
+  const inv = state.player?.inventory || { banners:[], equipped:[] };
+  openModal("Inventory", m=>{
+    const eq = (inv.equipped||[]).map(b=>renderBanner(b,true)).join("");
+    const all= (inv.banners || []).map(b=>renderBanner(b,false)).join("");
+    m.innerHTML = `
+      <div><b>Equipped (${(inv.equipped||[]).length}/${MAX_BANNERS_EQUIPPED})</b></div>
+      <div class="list">${eq || '<div class="muted">No banners equipped.</div>'}</div>
+      <div style="height:8px"></div>
+      <div><b>Banners</b></div>
+      <div class="list">${all || '<div class="muted">No items yet.</div>'}</div>
+    `;
+    m.querySelectorAll("[data-equip]").forEach(btn=> btn.onclick = ()=> toggleEquip(btn.getAttribute("data-id")));
+  });
+}
+function renderBanner(b, equipped){
+  return `<div class="pill">
+    <div><b>${b.title}</b> <span class="muted small">(${b.effect})</span></div>
+    <button class="btn small" data-equip data-id="${b.id}">${equipped?'Unequip':'Equip'}</button>
+  </div>`;
+}
+async function toggleEquip(id){
+  const snap = await getDoc(state.youDocRef); const me = snap.data();
+  const inv = me.inventory || {banners:[], equipped:[]};
+  const isEq = (inv.equipped||[]).some(x=>x.id===id);
+  if (isEq){ inv.equipped = (inv.equipped||[]).filter(x=>x.id!==id); }
+  else {
+    if ((inv.equipped||[]).length >= MAX_BANNERS_EQUIPPED){ alert("Max 3 banners equipped."); return; }
+    const item = (inv.banners||[]).find(x=>x.id===id); if (!item) return;
+    inv.equipped = [...(inv.equipped||[]), item];
+  }
+  await updateDoc(state.youDocRef, { inventory: inv });
+  state.player.inventory = inv;
+  openInventory();
+}
+
+/* =================== Modal with exit callback =================== */
+const modal = $("#modal"); const modalBody = $("#modalBody"); const modalTitle = $("#modalTitle");
+let modalExitHandler = null;
+$("#modalCancel").onclick = ()=> { if (typeof modalExitHandler === "function") modalExitHandler(); closeModal(true); };
+function openModal(title, renderFn){ modalTitle.textContent = title; modalBody.innerHTML = ""; modalExitHandler = null; renderFn(modalBody); modal.style.display="flex"; }
+function closeModal(pushBack){ modal.style.display="none"; if (pushBack) pushBackFromLocation(); }
+function pushBackFromLocation(){ if (!state.lastSafePos) return; state.player.x = state.lastSafePos.x; state.player.y = state.lastSafePos.y; commitPosition(); }
+
+/* =================== Trade & Recruit =================== */
+function rngBanners(n){
+  const names = [
+    ["Lion of Valor","+10% melee"], ["Falcon of the East","+8% speed"],
+    ["Tortoise Standard","+15% armor"], ["Crosswind Pennant","+12% ranged"],
+    ["Sunsear Banner","+6% spell power"], ["Stag Lord’s Mark","+9% cavalry dmg"],
+    ["Scribe’s Sigil","+8% priest heal"], ["Oakheart Cloth","+10% footman hp"]
+  ];
+  const out=[];
+  for(let i=0;i<n;i++){ const [title,effect] = names[Math.floor(Math.random()*names.length)]; out.push({ id: crypto.randomUUID(), title, effect, slot:"banner" }); }
+  return out;
+}
+function canUse(ts, cdMs){ return !ts || (Date.now()-ts) >= cdMs; }
+
+async function openVillage(v){
+  const me = (await getDoc(state.youDocRef)).data();
+  const level = me.level || 1;
+  const maxArmy = me.maxArmy ?? maxArmyForLevel(level);
+  const capLeft = Math.max(0, maxArmy - armySum(me.army||{}));
+  const perPurchaseCap = maxPurchaseForLevel(level);
+
+  const kR = "v_"+v.id, kT="v_"+v.id;
+  const canRecruit = canUse(me.lastRecruitAt?.[kR], RECRUIT_COOLDOWN_MS);
+  const canTrade   = canUse(me.lastTradeAt?.[kT],   TRADE_COOLDOWN_MS);
+  const recruitsAvail = Math.floor(5+Math.random()*16);
+  const banners = rngBanners( Math.random()<0.5 ? 1 : 2 );
+
+  openModal(`Village (${v.x},${v.y})`, m=>{
+    const info = document.createElement("div"); info.className="muted small";
+    info.textContent = `Capacity left: ${capLeft} • Max per purchase: ${perPurchaseCap}`;
+    const qtyRow = document.createElement("div"); qtyRow.className="row";
+    const qty = document.createElement("input"); qty.className="input"; qty.type="number"; qty.min="1";
+    const maxBuyable = Math.max(0, Math.min(recruitsAvail, capLeft, perPurchaseCap));
+    qty.max = String(maxBuyable); qty.value = String(Math.max(0, Math.min(5, maxBuyable)));
+    const buyBtn = document.createElement("button"); buyBtn.className="btn";
+    buyBtn.textContent = `Recruit (3g each, +${XP_PER_RECRUIT}XP per)`;
+    buyBtn.disabled = !canRecruit || maxBuyable<=0;
+    qtyRow.appendChild(qty); qtyRow.appendChild(buyBtn);
+
+    const tWrap = document.createElement("div"); tWrap.className="list";
+    for(const b of banners){
+      const row = document.createElement("div"); row.className="pill";
+      row.innerHTML = `<div><b>${b.title}</b> <span class="muted small">${b.effect}</span></div>`;
+      const buy = document.createElement("button"); buy.className="btn"; buy.textContent="Buy (200g, +5XP)";
+      buy.disabled = !canTrade;
+      buy.onclick = ()=> buyBanner(b, v.id, "village");
+      row.appendChild(buy); tWrap.appendChild(row);
+    }
+    const tNote = document.createElement("div"); tNote.className="muted small"; tNote.textContent = "Trading locks this village for 2 minutes (even if you exit).";
+    m.appendChild(info); m.appendChild(qtyRow); m.appendChild(document.createElement("div")).style.height="6px";
+    m.appendChild(tWrap); m.appendChild(tNote);
+
+    buyBtn.onclick = async ()=>{
+      const q = Math.max(0, Math.min(parseInt(qty.value||"0",10), maxBuyable));
+      if (q<1){ alert("Nothing to buy."); return; }
+      const s2 = await getDoc(state.youDocRef); const me2 = s2.data();
+      const totalCost = q*3;
+      if ((me2.gold||0) < totalCost){ alert("Not enough gold."); return; }
+      const army = {...(me2.army||START_ARMY)}; army.recruits = (army.recruits||0) + q;
+      await updateDoc(state.youDocRef, {
+        gold:(me2.gold||0)-totalCost, army,
+        lastRecruitAt: {...(me2.lastRecruitAt||{}), [kR]: Date.now()}
+      });
+      state.player.gold = (me2.gold||0)-totalCost; state.player.army = army; hudGold.textContent = state.player.gold;
+      updateArmyHud();
+      await gainXP(q * XP_PER_RECRUIT);
+      $("#coolInfo").textContent = "Recruit cooldown active.";
+      closeModal(true);
+    };
+
+    modalExitHandler = async ()=>{
+      const fresh = (await getDoc(state.youDocRef)).data();
+      const lt = {...(fresh.lastTradeAt||{})}; lt[kT] = Date.now();
+      await updateDoc(state.youDocRef, { lastTradeAt: lt });
+      $("#coolInfo").textContent = "Trade cooldown active.";
+    };
+  });
+}
+async function openCastle(c){
+  const ownerTxt = c.ownerName ? `Owner: ${c.ownerName}` : "Unowned";
+  const banners = rngBanners(3);
+  const me = (await getDoc(state.youDocRef)).data();
+  const kT="c_"+c.id;
+  const canTradeHere = canUse(me.lastTradeAt?.[kT], TRADE_COOLDOWN_MS);
+
+  openModal(`Castle (${c.x},${c.y}) — ${ownerTxt}`, m=>{
+    const list = document.createElement("div"); list.className="list";
+    for(const b of banners){
+      const row = document.createElement("div"); row.className="pill";
+      row.innerHTML = `<div><b>${b.title}</b> <span class="muted small">${b.effect}</span></div>`;
+      const buy = document.createElement("button"); buy.className="btn"; buy.textContent="Buy (200g, +5XP)";
+      buy.disabled = !canTradeHere;
+      buy.onclick = ()=> buyBanner(b, c.id, "castle");
+      row.appendChild(buy); list.appendChild(row);
+    }
+    const opts = document.createElement("div"); opts.className="row";
+    const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
+    attack.onclick = async ()=> {
+      await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+      location.href = `/game/castlebattle.html?castleId=${c.id}&username=${encodeURIComponent(username)}`;
+    };
+    opts.appendChild(attack);
+    m.appendChild(list); m.appendChild(opts);
+    const note = document.createElement("div"); note.className="muted small"; note.textContent = "Trading locks this castle for 2 minutes (even if you exit).";
+    m.appendChild(note);
+
+    modalExitHandler = async ()=>{
+      const fresh = (await getDoc(state.youDocRef)).data();
+      const lt = {...(fresh.lastTradeAt||{})}; lt[kT] = Date.now();
+      await updateDoc(state.youDocRef, { lastTradeAt: lt });
+      $("#coolInfo").textContent = "Trade cooldown active.";
+    };
+  });
+}
+async function buyBanner(b, placeId, kind){
+  const snap = await getDoc(state.youDocRef); const me = snap.data();
+  const price = (kind==="castle") ? 200 : 200; // unified price here
+  if ((me.gold||0) < price){ alert("Not enough gold."); return; }
+  const inv = me.inventory || { banners:[], equipped:[] };
+  inv.banners = [...(inv.banners||[]), b];
+  const key = (kind==="castle" ? "c_" : "v_") + placeId;
+  await updateDoc(state.youDocRef, {
+    gold:(me.gold||0)-price,
+    inventory: inv,
+    lastTradeAt: {...(me.lastTradeAt||{}), [key]: Date.now()}
+  });
+  state.player.gold = (me.gold||0)-price; state.player.inventory = inv; hudGold.textContent = state.player.gold;
+  await gainXP(XP_PER_BANNER);
+  log(`Purchased ${b.title} (-${price}g, +${XP_PER_BANNER}XP)`);
+  closeModal(true);
+}
+
+/* =================== Movement & Camera =================== */
+function moveDelayFromArmy(){
+  const total = armySum(state.player?.army||START_ARMY);
+  return 180 + Math.min(520, total*10); // heavier → slower
+}
+function tryMove(dx,dy){
+  const now = Date.now();
+  if (now - state.lastMoveAt < state.moveDelay) return;
+  state.lastMoveAt = now;
+  state.lastSafePos = {x:state.player.x, y:state.player.y};
+
+  let nx = Math.max(0, Math.min(WORLD_W-1, state.player.x + dx));
+  let ny = Math.max(0, Math.min(WORLD_H-1, state.player.y + dy));
+  state.player.x = nx; state.player.y = ny;
+  commitPosition();
+  checkTile();
+}
+function commitPosition(){ if (!state.player) return; updateDoc(state.youDocRef, { x:state.player.x, y:state.player.y }).catch(()=>{}); }
+
+/* Keyboard + camera drag */
+addEventListener("keydown", e=>{ if (e.code==="Space"){ state.drag=true; e.preventDefault(); } state.keys[e.key.toLowerCase()] = true; });
+addEventListener("keyup", e=>{ if (e.code==="Space"){ state.drag=false; } state.keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener("mousedown", e=>{ if (!state.drag) return; state.dragStart = { mx:e.clientX, my:e.clientY, cx:state.cam.x, cy:state.cam.y }; });
+addEventListener("mousemove", e=>{
+  if (!state.drag || !state.dragStart) return;
+  const dx = e.clientX - state.dragStart.mx, dy = e.clientY - state.dragStart.my;
+  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, state.dragStart.cx - dx));
+  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, state.dragStart.cy - dy));
+});
+addEventListener("mouseup", ()=> state.dragStart=null);
+function tickInput(){
+  if (state.drag) return;
+  let dx=0, dy=0;
+  if (state.keys['w']) dy -= 1;
+  if (state.keys['s']) dy += 1;
+  if (state.keys['a']) dx -= 1;
+  if (state.keys['d']) dx += 1;
+  if (dx||dy) tryMove(dx,dy);
+  state.moveDelay = moveDelayFromArmy();
+}
+
+/* =================== Interactions =================== */
+function tileAt(x,y,list){ return list.find(o=> o.x===x && o.y===y); }
+async function checkTile(){
+  renderNearby();
+  if (Date.now() < state.canInteractAt) return;
+
+  const V = tileAt(state.player.x, state.player.y, state.villages);
+  if (V){ openVillage(V); return; }
+
+  const C = tileAt(state.player.x, state.player.y, state.castles);
+  if (C){ openCastle(C); return; }
+
+  const raider = findRaiderAt(state.player.x, state.player.y);
+  if (raider){
+    raider.engaged = true;
+    const t = raider.type, s = raider.size;
+    await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+    location.href = `/game/localbattle.html?etype=${encodeURIComponent(t)}&esize=${s}&username=${encodeURIComponent(username)}`;
+    return;
+  }
+
+  const playersHere = Array.from(state.others.values()).filter(p=> p.x===state.player.x && p.y===state.player.y);
+  const enemy = playersHere.find(p=> !(state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId));
+  if (enemy && !state.battleEngaged && freshActive(enemy)){
+    const low = [username, enemy.id].sort()[0];
+    if (low === username){ startPvPBattle(enemy.id); }
+  }
+}
+
+/* Battles listen + start */
+function listenBattles(){
+  const qy = query(collection(db, "mountonline_battles"), where("participants","array-contains", username));
+  sub(qy, snap=>{
+    snap.forEach(s=>{
+      const d = s.data();
+      if (d.status==="started"){
+        state.battleEngaged = true;
+        updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+        location.href = `/game/battle.html?battleId=${s.id}&username=${encodeURIComponent(username)}`;
+      }
+    });
+  });
+}
+async function startPvPBattle(other){
+  const ref = await addDoc(collection(db,"mountonline_battles"), {
+    participants: [username, other], createdAt: serverTimestamp(), status:"started"
+  });
+  await updateDoc(state.youDocRef, { active:false, inBattle:true, battleId: ref.id, lastSeen: Date.now() }).catch(()=>{});
+  state.battleEngaged = true;
+  location.href = `/game/battle.html?battleId=${ref.id}&username=${encodeURIComponent(username)}`;
+}
+
+/* =================== Nearby Panel =================== */
+function renderNearby(){
+  const el = $("#nearList"); el.innerHTML = "";
+  function addRow(html){ const d=document.createElement("div"); d.className="pill"; d.innerHTML = html; el.appendChild(d); }
+  const V = tileAt(state.player.x, state.player.y, state.villages);
+  const C = tileAt(state.player.x, state.player.y, state.castles);
+  const R = findRaiderAt(state.player.x, state.player.y);
+  if (V) addRow("You are at a <b>Village</b> (Recruit/Trade).");
+  if (C) addRow("You are at a <b>Castle</b> (Trade/Attack).");
+  if (R) addRow(`<b>Raiders</b> here: ${R.size} ${R.type}`);
+  const players = Array.from(state.others.values()).filter(p=> Math.hypot(p.x-state.player.x, p.y-state.player.y) <= 6);
+  for(const p of players){
+    const color = (state.player.allegianceId && p.allegianceId && state.player.allegianceId===p.allegianceId) ? "var(--ally)" : "var(--enemy)";
+    const cnt = armySum(p.army||{});
+    addRow(`<div class="row"><span class="colorDot" style="background:${color}"></span> <b>${p.id}</b> (${cnt}) @ (${p.x},${p.y})</div>`);
+  }
+  $("#coolInfo").textContent = Date.now()<state.canInteractAt ? `Grace: ${Math.ceil((state.canInteractAt-Date.now())/1000)}s` : "Ready";
+}
+
+/* =================== Render Loop =================== */
+function draw(){
+  const cam = state.cam;
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+
+  // Villages
+  for(const v of state.villages){
+    const sx = v.x*TILE - cam.x, sy = v.y*TILE - cam.y;
+    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
+    ctx.fillStyle = "#2dd4bf";
+    ctx.fillRect(sx+8,sy+8,TILE-16,TILE-16);
+    ctx.strokeStyle="#0f766e"; ctx.strokeRect(sx+8,sy+8,TILE-16,TILE-16);
+  }
+  // Castles
+  for(const c of state.castles){
+    const sx = c.x*TILE - cam.x, sy = c.y*TILE - cam.y;
+    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
+    ctx.fillStyle = c.owner ? "#e5e7eb" : "#9ca3af";
+    ctx.fillRect(sx+6,sy+6,TILE-12,TILE-12);
+    ctx.strokeStyle="#475569"; ctx.strokeRect(sx+6,sy+6,TILE-12,TILE-12);
+    if (c.ownerColor){ ctx.fillStyle = c.ownerColor; ctx.fillRect(sx+12,sy+4,TILE-24,6); }
+  }
+
+  // Raiders
+  for(const r of state.localRaiders){
+    if (r.engaged) continue;
+    const sx = r.x*TILE - cam.x, sy = r.y*TILE - cam.y;
+    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath(); ctx.arc(sx+TILE/2, sy+TILE/2, 10+Math.min(16, Math.log2(3+r.size)*4), 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#111827"; ctx.font="12px system-ui"; ctx.textAlign="center";
+    ctx.fillText(`${r.size} ${r.type}`, sx+TILE/2, sy+TILE-4);
+  }
+
+  // Other players (active only)
+  for(const p of state.others.values()){
+    const sx = p.x*TILE - cam.x, sy = p.y*TILE - cam.y;
+    if (sx<-TILE||sy<-TILE||sx>canvas.width||sy>canvas.height) continue;
+    const ally = p.allegianceId ? state.allyMap.get(p.allegianceId) : null;
+    if (ally){ ctx.fillStyle = ally.color; ctx.fillRect(sx+10,sy+6,TILE-20,6); }
+    ctx.fillStyle = "#60a5fa"; ctx.fillRect(sx+10, sy+14, TILE-20, TILE-20);
+    ctx.fillStyle="#e5e7eb"; ctx.font="12px system-ui"; ctx.textAlign="center";
+    const cnt = armySum(p.army||{});
+    ctx.fillText(`${p.id} (${cnt})`, sx+TILE/2, sy+TILE-6);
+  }
+
+  // You
+  if (state.player){
+    const sx = state.player.x*TILE - cam.x, sy = state.player.y*TILE - cam.y;
+    if (state.allegiance?.color){ ctx.fillStyle = state.allegiance.color; ctx.fillRect(sx+10,sy+6,TILE-20,6); }
+    ctx.fillStyle = "#22c55e"; ctx.fillRect(sx+10, sy+14, TILE-20, TILE-20);
+    ctx.fillStyle="#e5e7eb"; ctx.font="12px system-ui"; ctx.textAlign="center";
+    const meCnt = armySum(state.player.army||{});
+    ctx.fillText(`${username} (${meCnt})`, sx+TILE/2, sy+TILE-6);
+  }
+
+  requestAnimationFrame(draw);
+}
+
+/* Center camera on you periodically */
+setInterval(()=> {
+  if (!state.player) return;
+  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, state.player.x*TILE - state.cam.w/2));
+  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, state.player.y*TILE - state.cam.h/2));
+}, 120);
+
+/* =================== Loop =================== */
+function loop(){ tickInput(); renderNearby(); requestAnimationFrame(loop); }
+
+/* =================== Init =================== */
+await seedWorldOnce();
+await ensurePlayer();
+seedRaidersOnce();
+await listenWorld();
+await listenPlayers();
+await loadAllegiances();
+listenBattles();
+draw(); loop();
+
+// Status HUD and live updates
+hudStatus.textContent = "Active";
+setInterval(()=>{ hudStatus.textContent = document.hidden ? "Inactive" : "Active"; }, 500);
+
+sub(doc(db,"mountonline", username), s=>{
+  if (!s.exists()) return;
+  const d = s.data(); state.player = {id:username, ...d};
+  if (d.allegianceId) state.allegiance = state.allyMap.get(d.allegianceId)||null; else state.allegiance=null;
+  hudGold.textContent = d.gold||0; updateArmyHud(); updateLevelHud();
+});
+
+/* Reserved */
+canvas.addEventListener("click", ()=>{});
+
+</script>
+</body>
+</html>
