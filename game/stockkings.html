@@ -204,7 +204,8 @@ const BASE_PRICE      = 15;
 const MIN_PRICE       = 3;
 const MAX_PRICE       = 60;
 const HISTORY_LEN     = 48;
-const ORDER_IMPACT    = 0.02;     // per-share impact scaled by 1/sqrt(N)
+const ORDER_IMPACT    = 0.02;     // per-share impact scaled by 1/√players
+const COOLDOWN_MS     = 8_000;    // SELL COOLDOWN after each BUY
 const STOCKS = [
   { key:"METAL",  name:"Metal"  },
   { key:"WOOL",   name:"Wool"   },
@@ -274,7 +275,12 @@ function initStocks(){
 function initPortfolios(players){
   const p = {};
   for (const name of players){
-    p[name] = { cash: START_CASH, holdings: Array(N).fill(0), avgCost: Array(N).fill(0) };
+    p[name] = {
+      cash: START_CASH,
+      holdings: Array(N).fill(0),
+      avgCost: Array(N).fill(0),
+      cooldowns: Array(N).fill(0) // per-stock sell cooldownUntil (ms epoch)
+    };
   }
   return p;
 }
@@ -352,12 +358,14 @@ function bindOnce(id, fn){
   el.addEventListener("click", fn);
   bound.add(id);
 }
+
 function renderStocks(){
   ensureTiles();
   if (!gameData?.stocks) return;
   requestAnimationFrame(()=>{
     sizeAllSparks();
     const me = gameData.portfolios?.[username];
+
     for (let i=0;i<N;i++){
       const s = gameData.stocks[i]; if (!s) continue;
       $(`s-name-${i}`).textContent  = s.name;
@@ -378,14 +386,11 @@ function renderStocks(){
       // your position: qty, avg cost, current vs avg
       const mine = $(`s-mine-${i}`);
       if (mine){
-        let txt = "You own 0";
-        mine.innerHTML = "";
+        mine.innerHTML = "You own 0";
         if (me){
           const qty = me.holdings?.[i] || 0;
           const avg = me.avgCost?.[i] || 0;
-          if (qty <= 0){
-            mine.textContent = "You own 0";
-          } else {
+          if (qty > 0){
             const diffPct = avg > 0 ? ((s.price - avg) / avg) * 100 : 0;
             const span1 = document.createElement("span");
             const span2 = document.createElement("span");
@@ -397,11 +402,31 @@ function renderStocks(){
             pl.className = "pl";
             pl.textContent = `(${diffPct>=0?'+':''}${diffPct.toFixed(1)}%)`;
             pl.style.color = diffPct>=0 ? "var(--good)" : "var(--bad)";
+            mine.innerHTML = "";
             mine.appendChild(span1); mine.appendChild(span2); mine.appendChild(span3); mine.appendChild(pl);
           }
-        } else {
-          mine.textContent = txt;
         }
+      }
+
+      // SELL COOLDOWN UI + enable/disable buy/sell
+      const buyBtn  = $(`s-buy-${i}`);
+      const sellBtn = $(`s-sell-${i}`);
+      const have    = me ? (me.holdings?.[i] || 0) : 0;
+      const cash    = me ? (me.cash ?? START_CASH) : START_CASH;
+
+      if (buyBtn){
+        buyBtn.disabled = cash < s.price;
+      }
+      if (sellBtn){
+        let leftMs = 0;
+        if (me && me.cooldowns){
+          const until = me.cooldowns[i] || 0;
+          leftMs = Math.max(0, until - Date.now());
+        }
+        const leftSec = Math.ceil(leftMs/1000);
+        const cooldownActive = leftMs > 0;
+        sellBtn.disabled = cooldownActive || have <= 0;
+        sellBtn.textContent = cooldownActive ? `Sell (${leftSec}s)` : "Sell";
       }
 
       bindOnce(`s-buy-${i}`,  ()=> order("buy", i));
@@ -409,11 +434,11 @@ function renderStocks(){
     }
   });
 }
+
 function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
 function renderPlayers(){
   const players = gameData?.players || [username];
   const wins    = gameData?.wins    || {};
-  // top bar tiny wins
   winsBar.innerHTML = "";
   for (const p of players){
     const span = document.createElement("span");
@@ -421,7 +446,6 @@ function renderPlayers(){
     if (p===username) span.className = "me";
     winsBar.appendChild(span);
   }
-  // player panels (now with cash & net)
   const boxes = players.map(p=>{
     const div = document.createElement("div");
     div.className = "pbox" + (p===username ? " me":"");
@@ -536,7 +560,7 @@ function startUiClock(){
     const ss = String(s%60).padStart(2,'0');
     timerEl.textContent = `${mm}:${ss}`;
     refreshPlayerValues();
-    renderStocks(); // keeps your per-stock “mine” row fresh
+    renderStocks(); // keeps sell cooldown countdown and buttons fresh
   }, 250);
 }
 
@@ -579,10 +603,12 @@ if (GAME_REF){
     if (!snap.exists()) return;
     gameData = snap.data();
 
-    // backward compat: if an older doc lacks avgCost, hydrate it locally
+    // compat for old docs
     for (const p of gameData.players || []){
-      if (!gameData.portfolios?.[p]?.avgCost){
-        gameData.portfolios[p].avgCost = Array(N).fill(0);
+      const pf = gameData.portfolios?.[p];
+      if (pf){
+        if (!pf.avgCost)   pf.avgCost = Array(N).fill(0);
+        if (!pf.cooldowns) pf.cooldowns = Array(N).fill(0);
       }
     }
 
@@ -615,7 +641,7 @@ if (GAME_REF){
 }
 
 /* ===========================================================
-   Orders (1 share per click) — maintains avg cost
+   Orders (1 share per click) — cash-only, avg cost, sell cooldown
    =========================================================== */
 function impactScale(data){
   const n = Math.max(1, (data?.players || []).length);
@@ -630,32 +656,37 @@ async function order(kind, idx){
         const d = snap.data(); if (d.status!=="running") return;
 
         const portfolios = {...d.portfolios};
-        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N).fill(0), avgCost: Array(N).fill(0) })};
-        if (!me.avgCost) me.avgCost = Array(N).fill(0); // compat
+        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N).fill(0), avgCost: Array(N).fill(0), cooldowns: Array(N).fill(0) })};
+        me.holdings  = Array.isArray(me.holdings)  ? me.holdings  : Array(N).fill(0);
+        me.avgCost   = Array.isArray(me.avgCost)   ? me.avgCost   : Array(N).fill(0);
+        me.cooldowns = Array.isArray(me.cooldowns) ? me.cooldowns : Array(N).fill(0);
+
         const stocks = d.stocks.map(s=> ({...s}));
         const s = stocks[idx]; if (!s) return;
         const price = s.price;
+        const now = Date.now();
 
         if (kind==="buy"){
-          if (me.cash < price) return;
+          if (me.cash < price) return;                // cash-only guard
           const qty0 = me.holdings[idx]||0;
           const avg0 = me.avgCost[idx]||0;
           me.cash = Number((me.cash - price).toFixed(2));
           me.holdings[idx] = qty0 + 1;
-          const avgNew = (qty0*avg0 + price) / (qty0 + 1);
-          me.avgCost[idx] = Number(avgNew.toFixed(2));
+          me.avgCost[idx]  = Number(((qty0*avg0 + price)/(qty0+1)).toFixed(2));
+          me.cooldowns[idx]= now + COOLDOWN_MS;       // start cooldown on this stock
           s.price = Number(clamp(price * (1 + impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
         }else{
+          const until = me.cooldowns[idx]||0;         // enforce cooldown
+          if (now < until) return;                    // too soon to sell this stock
           const qty0 = me.holdings[idx]||0;
           if (qty0 <= 0) return;
           me.holdings[idx] = qty0 - 1;
           me.cash = Number((me.cash + price).toFixed(2));
-          if (me.holdings[idx] === 0) me.avgCost[idx] = 0; // reset basis when flat
+          if (me.holdings[idx] === 0) me.avgCost[idx] = 0;
           s.price = Number(clamp(price * (1 - impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
         }
 
         const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
-
         portfolios[username] = me;
         stocks[idx] = s;
         tx.update(GAME_REF, { portfolios, stocks });
@@ -667,18 +698,23 @@ async function order(kind, idx){
   // Local practice
   if (!gameData) return;
   const me = gameData.portfolios[username];
-  if (!me.avgCost) me.avgCost = Array(N).fill(0);
+  if (!me.avgCost)   me.avgCost = Array(N).fill(0);
+  if (!me.cooldowns) me.cooldowns = Array(N).fill(0);
+
   const s  = gameData.stocks[idx]; if (!s) return;
+  const now = Date.now();
 
   if (kind==="buy"){
     if (me.cash < s.price) return;
     const qty0 = me.holdings[idx]||0, avg0 = me.avgCost[idx]||0;
     me.cash = Number((me.cash - s.price).toFixed(2));
     me.holdings[idx] = qty0 + 1;
-    const avgNew = (qty0*avg0 + s.price) / (qty0 + 1);
-    me.avgCost[idx] = Number(avgNew.toFixed(2));
+    me.avgCost[idx]  = Number(((qty0*avg0 + s.price)/(qty0+1)).toFixed(2));
+    me.cooldowns[idx]= now + COOLDOWN_MS; // start cooldown
     s.price = Number(clamp(s.price * (1 + 0.02), MIN_PRICE, MAX_PRICE).toFixed(2));
   }else{
+    const until = me.cooldowns[idx]||0;
+    if (now < until) return; // still cooling down
     const qty0 = me.holdings[idx]||0;
     if (qty0 <= 0) return;
     me.holdings[idx] = qty0 - 1;
@@ -729,7 +765,6 @@ function startLocalPractice(){
     // end round
     const left = (d.roundEndAt || 0) - Date.now();
     if (left <= 0){
-      // in practice, count it as a win if net >= start cash
       const val = netValue(username, d);
       if (val >= START_CASH) d.wins[username] = (d.wins[username]||0) + 1;
 
