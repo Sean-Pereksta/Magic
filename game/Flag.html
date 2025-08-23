@@ -28,7 +28,7 @@
   .grid{display:grid; gap:6px}
   .cell{
     width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;
-    overflow:visible; /* allow title pills to float above */
+    overflow:visible; /* allow label to float above */
   }
   .cell:hover{filter:brightness(1.05)}
   .flag{position:absolute; inset:8px; border-radius:8px; outline:2px dashed rgba(255,255,255,.08)}
@@ -37,20 +37,35 @@
   .banner{width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,.35)}
   .banner.p{background:var(--p)} .banner.a{background:var(--a)}
 
-  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:30px}
-  .unit-emoji{filter:drop-shadow(0 1px 0 rgba(0,0,0,.45))}
-  .unit-title{
-    position:absolute; left:50%; top:-16px; transform:translateX(-50%);
-    font-size:11px; padding:2px 6px; border-radius:999px;
-    background:rgba(14,24,49,.95); border:1px solid #223a66; color:#cfe3ff;
-    pointer-events:none; white-space:nowrap;
+  /* Unit in-cell content */
+  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:30px; z-index:1}
+  .unit-emoji{filter:drop-shadow(0 1px 0 rgba(0,0,0,.45)); line-height:1}
+
+  /* Floating label ABOVE the unit (never covering the emoji) */
+  .unit-label{
+    position:absolute; left:50%; bottom:calc(100% + 6px); transform:translateX(-50%);
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 8px; border-radius:999px; pointer-events:none; white-space:nowrap;
+    background:rgba(12, 24, 49, .95); border:1px solid #223a66; color:#cfe3ff; font-size:11px;
+    box-shadow:0 6px 18px rgba(0,0,0,.35);
+    z-index:2;
   }
-  .chip{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:12px; padding:2px 8px; border-radius:999px; background:#0b1220; border:1px solid #1f2a44; color:var(--muted)}
-  .tag{position:absolute; top:4px; left:6px; font-size:12px; padding:1px 6px; border-radius:8px; border:1px solid #1f2a44}
-  .tag.p{background:rgba(103,232,249,.14); color:#9beffb}
-  .tag.a{background:rgba(248,113,113,.14); color:#ffb1b1}
-  .armor{position:absolute; top:4px; right:6px; font-size:12px; padding:1px 6px; border-radius:8px; background:rgba(233,216,166,.15); border:1px solid #5f5630; color:#f2e9b8}
-  .status{position:absolute; top:26px; right:6px; font-size:11px; padding:1px 6px; border-radius:8px; border:1px dashed #3b4157; color:#cfd7ff; background:rgba(59,65,87,.2)}
+  /* If at top edge, flip label BELOW so it doesn't get clipped */
+  .unit-label.down{ bottom:auto; top:calc(100% + 6px); }
+
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block; border:1px solid rgba(255,255,255,.25)}
+  .dot.p{ background:var(--p) }
+  .dot.a{ background:var(--a) }
+
+  .label-name{font-weight:700; letter-spacing:.1px}
+  .label-slim{opacity:.9}
+
+  /* Optional extra badges shown INSIDE the label when present */
+  .badge{
+    font-size:10px; padding:1px 6px; border-radius:999px; border:1px solid #2b4474; background:#0a1931; color:#a9c8ff;
+    margin-left:4px;
+  }
+
   .sel{outline:3px solid var(--sel);}
 
   .hint-move{box-shadow: inset 0 0 0 3px rgba(122,162,247,.35); background:linear-gradient(180deg,rgba(122,162,247,.08),transparent)}
@@ -291,13 +306,11 @@ window.maxLevelReached = 1;
     if(!autoZoom || !u) return;
     const pad = 80; // px
     const ux = u.x * CELL; const uy = u.y * CELL;
-    // screen-space position of unit's top-left of cell (scaled)
     const sx = ux*zoom - cam.x;
     const sy = uy*zoom - cam.y;
     const visX = within(sx, pad, VIEW_W - pad - TILE*zoom);
     const visY = within(sy, pad, VIEW_H - pad - TILE*zoom);
     if(!(visX && visY)){
-      // target a centered view on the unit (without changing zoom)
       const tx = ux*zoom - (VIEW_W - TILE*zoom)/2;
       const ty = uy*zoom - (VIEW_H - TILE*zoom)/2;
       setCamTarget(tx, ty);
@@ -326,7 +339,7 @@ window.maxLevelReached = 1;
     if(my < margin) vy = -((margin-my)/margin)*maxSpeed;
     else if(my > VIEW_H - margin) vy = ((my-(VIEW_H-margin))/margin)*maxSpeed;
 
-    // Apply smart-focus easing toward target
+    // Ease toward target (smart focus)
     if(cam.tx!=null && cam.ty!=null){
       cam.x += (cam.tx - cam.x)*cam.easing;
       cam.y += (cam.ty - cam.y)*cam.easing;
@@ -335,7 +348,7 @@ window.maxLevelReached = 1;
       }
     }
 
-    // Edge scroll override/addition
+    // Edge scroll
     cam.x = clamp(cam.x + vx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
     cam.y = clamp(cam.y + vy, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
 
@@ -351,7 +364,6 @@ window.maxLevelReached = 1;
   document.getElementById('toggleAutoZoom').onclick = ()=>{
     autoZoom = !autoZoom;
     document.getElementById('autoZoomState').textContent = autoZoom ? 'On' : 'Off';
-    // Cancels any in-flight easing to prevent lingering drift when toggled off
     if(!autoZoom){ cam.tx = cam.ty = null; }
   };
 
@@ -382,7 +394,6 @@ window.maxLevelReached = 1;
 
   const TYPES = { P: ASCENDANT_TYPES, A: SWARM_TYPES };
 
-  // Human-readable ability descriptions
   function abilityText(Ab, unitName){
     if(!Ab) return {desc:'—', meta:[]};
     const tgt = Ab.kind==='self' ? 'Self'
@@ -825,7 +836,6 @@ window.maxLevelReached = 1;
           cell.appendChild(bs);
         }
 
-        // Highlight hints: tiles OR unit-targets
         const uHere = state.units.find(w=>w.x===x && w.y===y);
 
         if(hintMode==='move' && hints.has(key(x,y))) cell.classList.add('hint-move');
@@ -836,12 +846,34 @@ window.maxLevelReached = 1;
 
         if(uHere){
           const wrap=document.createElement('div'); wrap.className='unit';
-          const title=document.createElement('div'); title.className='unit-title'; title.textContent = T(uHere).name; wrap.appendChild(title);
+
+          /* Floating label ABOVE the unit with allegiance + name + HP (plus badges if needed) */
+          const lab=document.createElement('div'); 
+          lab.className='unit-label';
+          // Flip label below if on top row to prevent clipping
+          if (y === 0) lab.classList.add('down');
+
+          const dot=document.createElement('span'); dot.className='dot ' + (uHere.side==='P'?'p':'a'); lab.appendChild(dot);
+
+          const name=document.createElement('span'); name.className='label-name'; name.textContent=T(uHere).name; lab.appendChild(name);
+
+          const sep=document.createElement('span'); sep.className='label-slim'; sep.textContent='•'; lab.appendChild(sep);
+
+          const side=document.createElement('span'); side.className='label-slim'; side.textContent = (uHere.side==='P' ? 'Ascendants' : 'Swarm'); lab.appendChild(side);
+
+          const sep2=document.createElement('span'); sep2.className='label-slim'; sep2.style.margin='0 2px'; sep2.textContent='•'; lab.appendChild(sep2);
+
+          const hp=document.createElement('span'); hp.textContent=`${uHere.hp}/${uHere.maxHp} HP`; lab.appendChild(hp);
+
+          if(uHere.armor>0){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Armor +${uHere.armor}`; lab.appendChild(bd); }
+          if(uHere.silenced>0){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Silenced`; lab.appendChild(bd); }
+          if(uHere.markedByA>0 && uHere.side==='P'){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Marked`; lab.appendChild(bd); }
+
+          wrap.appendChild(lab);
+
+          /* Emoji sits clear and bright in the center */
           const em=document.createElement('div'); em.className='unit-emoji'; em.textContent= T(uHere).emoji; wrap.appendChild(em);
-          const chip=document.createElement('div'); chip.className='chip'; chip.textContent=`${uHere.hp}/${uHere.maxHp} HP`; wrap.appendChild(chip);
-          const tag=document.createElement('div'); tag.className='tag '+(uHere.side==='P'?'p':'a'); tag.textContent= uHere.side==='P'? 'P':'AI'; wrap.appendChild(tag);
-          if(uHere.armor>0){ const ar=document.createElement('div'); ar.className='armor'; ar.textContent='Armor +'+uHere.armor; wrap.appendChild(ar); }
-          if(uHere.silenced>0){ const st=document.createElement('div'); st.className='status'; st.textContent='Silenced'; wrap.appendChild(st); }
+
           if(selectedId===uHere.id) cell.classList.add('sel');
           cell.appendChild(wrap);
         }
@@ -856,11 +888,11 @@ window.maxLevelReached = 1;
   }
 
   function updateHud(){
-    turnWhoEl.textContent = state.turn==='P'? 'Player':'AI';
-    roundNumEl.textContent = state.round;
-    ordersLeftEl.textContent = state.orders;
-    abilitiesLeftEl.textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
-    levelEl.textContent = state.level;
+    document.getElementById('turnWho').textContent = state.turn==='P'? 'Player':'AI';
+    document.getElementById('roundNum').textContent = state.round;
+    document.getElementById('ordersLeft').textContent = state.orders;
+    document.getElementById('abilitiesLeft').textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
+    document.getElementById('level').textContent = state.level;
 
     if(!selectedId){
       helpbarEl.textContent = 'Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.';
@@ -884,13 +916,11 @@ window.maxLevelReached = 1;
       unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; abilityCard.style.display='none';
       return;
     }
-    // No sudden zoom/center here — smartFocus handles gentle panning only if needed
     const Tu=T(u);
     unitEmojiEl.textContent = Tu.emoji;
     unitNameEl.textContent = `${Tu.name} ${u.side==='P'?'(You)':'(AI)'}`;
     unitStatsEl.textContent = `HP ${u.hp}/${u.maxHp} • Move ${Tu.move + (u.bonusMove||0)} • Range ${Tu.range}` + (u.armor? ` • Armor ${u.armor}`:'' ) + (u.silenced? ' • Silenced':'' );
 
-    // Ability button (still click E or button to go into hint)
     abilityBtnsEl.innerHTML='';
     const A = abilityOf(u);
     if(A){
@@ -927,7 +957,6 @@ window.maxLevelReached = 1;
     const u=state.units.find(x=>x.id===selectedId);
     if(!u) return;
 
-    // Only the player's units can take actions during player turn
     if(state.turn!=='P' || u.side!=='P'){
       helpbarEl.textContent = 'You can only act with your units during your turn.';
       render();
@@ -971,7 +1000,7 @@ window.maxLevelReached = 1;
     // Always allow inspecting any unit (ally or enemy)
     if(u){
       selectedId=u.id;
-      smartFocusOn(u); // gentle pan ONLY if off-screen
+      smartFocusOn(u); 
       render();
       return;
     }
@@ -1013,7 +1042,7 @@ window.maxLevelReached = 1;
     const kx = minimap.width / (W*CELL+GAP), ky = minimap.height/ (H*CELL+GAP);
     const wx = mx / kx; const wy = my / ky;
     const z = zoom;
-    setCamTarget(wx*z - VIEW_W/2, wy*z - VIEW_H/2); // smooth jump on minimap click
+    setCamTarget(wx*z - VIEW_W/2, wy*z - VIEW_H/2);
   });
 
   // ===== AI =====
