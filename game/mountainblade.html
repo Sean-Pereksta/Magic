@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — Grid Tactics</title>
+<title>🗻 Mountain Blade — Grid Tactics (POP Units + Short Aggro)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{ --win-w: 1024px; --win-h: 640px; }
@@ -16,7 +16,7 @@
   .viewport{ position:absolute; inset:38px 0 0 0; }
   canvas{ width:100%; height:100%; display:block; background:#0e2a19; cursor:crosshair; }
 
-  /* Subtle grass squares */
+  /* Grass + fine grid overlay */
   .viewport::before{
     content:""; position:absolute; inset:0;
     background:
@@ -52,7 +52,6 @@
   .cd-badge{ position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008; border:1px solid #345; border-radius:6px; padding:1px 5px; }
   .chip{ display:inline-block; padding:4px 8px; border:1px solid #3a4a62; border-radius:8px; font-size:12px; margin-top:6px; background:#0f1828; }
 
-  /* Purple CP tiles pop */
   .legend{ position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px; }
 </style>
 </head>
@@ -136,8 +135,10 @@ const MATCH_MS = 5*60*1000;
 const INTERP_DELAY = 100; // intentionally low; jumpy look
 const CP_CAPTURE_SETTLE_MS = 500; // must be uncontested this long to flip
 
+// NEW: keep units from auto-chasing too far
+const AGGRO_TILES = 7;
+
 /* --------------- Units / Types (grid tuned) --------------- */
-/* moveSpd is px/s from the old version — translate to squares/s */
 const PX_PER_S_TO_SQUARES_PER_S = 1 / (TILE * 0.9); // ~52 px = 1 square (slightly slower than exact)
 const TYPES = {
   guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:260, armor:5,
@@ -269,7 +270,7 @@ function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1),
 window.addEventListener("mousemove",(e)=>{
   mouse.clientX=e.clientX; mouse.clientY=e.clientY;
   const vr=viewportElRect();
-  mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY>=vr.top && e.clientY<=vr.bottom;
+  mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY<=vr.bottom && e.clientY>=vr.top;
 });
 cv.addEventListener("mousemove",(e)=>{
   const r=relTo(cv,e);
@@ -401,7 +402,7 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
-  // Volley: 6s channel, 3 pulses at t=1s,3s,5s → affects a square (size x size tiles)
+  // Volley: 6s channel, 3 pulses at t=1s,3s,5s → affects square (size x size tiles)
   volley: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point") return false;
     const size = ab.size||3;
@@ -762,7 +763,6 @@ function simulate(g, dt){
     for(const pr of (g.projs||[])){
       if(pr.type==="bolt"){
         if(now >= pr.nextHopAt){
-          // try to advance multiple hops if lagged
           const hops = 1 + Math.floor((now - pr.nextHopAt)/pr.hopMs);
           pr.nextHopAt += hops*pr.hopMs;
           pr.idx = Math.min(pr.idx + hops, pr.path.length-1);
@@ -783,7 +783,6 @@ function simulate(g, dt){
           hit.hp -= dmg;
           continue; // consumed
         }
-        // else keep going if not at end
         if(pr.idx < pr.path.length-1){ keep.push(pr); }
       } else keep.push(pr);
     }
@@ -797,16 +796,13 @@ function simulate(g, dt){
   for(const u of g.units){
     if(u._channel) continue;
     if(u._charge && u._charge.until > now){
-      // hop 1 tile along charge path per sim step
       const step = u._charge.path[u._charge.idx];
       if(step){
-        // if target tile is free or pushable, move
         if(!occupiedOrReserved(step.gx,step.gy, occ, reserved)){
           moveTo(u, step.gx, step.gy, occ, reserved);
           u._charge.idx++;
         }else{
-          // try to impact around if blocked
-          u._charge.until = now; // end charge early
+          u._charge.until = now; // end charge early if blocked
         }
       }else{
         u._charge.until = now;
@@ -841,9 +837,11 @@ function simulate(g, dt){
       target.hp -= Math.max(1, (tSpec.dmg||5) - armor);
       u.cd = Math.max(.05, 1/tSpec.atkSpd);
     }
-    // auto-goal toward target if none and not hold
-    if(!u._hold && target && !inRange && (u.goalGX==null || u.goalGY==null)){
-      u.goalGX=target.gx; u.goalGY=target.gy;
+    // auto-goal toward target only if within aggro radius
+    const distToTarget = target ? manhattan(u.gx,u.gy,target.gx,target.gy) : 999;
+    if(!u._hold && target && !inRange && distToTarget <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
+      u.goalGX = target.gx;
+      u.goalGY = target.gy;
     }
   }
 
@@ -870,7 +868,6 @@ function simulate(g, dt){
   const occ2 = occupancyFromUnits(g.units);
   for(const [k, list] of occ2){
     if(list.length<=1) continue;
-    // keep first, push others to nearby free tiles
     const keep = list[0];
     for(let i=1;i<list.length;i++){
       const u = list[i];
@@ -895,7 +892,6 @@ function simulate(g, dt){
 }
 function occupiedOrReserved(gx,gy, occ, reserved){ return occ.has(gx+"|"+gy) || reserved.has(gx+"|"+gy); }
 function moveTo(u, gx, gy, occ, reserved){
-  // update occ/res reservations
   const fromK = u.gx+"|"+u.gy; const list = occ.get(fromK)||[];
   const idx = list.indexOf(u); if(idx>=0){ list.splice(idx,1); if(!list.length) occ.delete(fromK); }
   u.gx=gx; u.gy=gy;
@@ -906,7 +902,7 @@ function nearestFree(gx,gy, occ){
   let qi=0;
   while(qi<q.length && q.length<GRID_W*GRID_H){
     const cur=q[qi++], neigh=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [dx,dy] of neigh){
+    for(const [dx,dy] of neigh{
       const nx=cur.gx+dx, ny=cur.gy+dy;
       if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
       const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
@@ -917,6 +913,18 @@ function nearestFree(gx,gy, occ){
   return null;
 }
 function countByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+1; return m; }
+
+/* --------------- Render Helpers --------------- */
+function roundedRectPath(ctx, x, y, w, h, r){
+  const rr = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr, y);
+  ctx.arcTo(x+w, y, x+w, y+h, rr);
+  ctx.arcTo(x+w, y+h, x, y+h, rr);
+  ctx.arcTo(x, y+h, x, y, rr);
+  ctx.arcTo(x, y, x+w, y, rr);
+  ctx.closePath();
+}
 
 /* --------------- Render --------------- */
 function renderTimer(){
@@ -955,7 +963,7 @@ function renderHUD(){
     const t=TYPES[u.tt];
     (t.abilities||[]).forEach(a=>{
       slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
-      const rem = 0; // cooldowns not mirrored in snaps; purely cosmetic
+      const rem = 0;
       const cur = slotCd.get(a.slot);
       if(cur==null || rem<cur) slotCd.set(a.slot, rem);
     });
@@ -971,22 +979,23 @@ function renderHUD(){
     abil.appendChild(div);
   }
 }
+
 function draw(){
   const dt=16/1000; edgePan(dt);
 
   // base clear
   ctx.fillStyle="#0e2a19"; ctx.fillRect(0,0,cv.width,cv.height);
 
-  // grid lines (already via CSS overlay, but draw brighter major lines)
+  // major grid lines
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   if(state){
-    // Control points
+    // Control points (PURPLE)
     for(const p of state.points){
       const sx=p.gx*TILE - cam.x, sy=p.gy*TILE - cam.y;
-      ctx.fillStyle = "#7a3cff"; // purple
+      ctx.fillStyle = "#7a3cff";
       ctx.globalAlpha = .6; ctx.fillRect(sx,sy, TILE, TILE); ctx.globalAlpha=1;
       ctx.strokeStyle="#ad82ff"; ctx.lineWidth=2; ctx.strokeRect(sx+.5,sy+.5,TILE-1,TILE-1);
 
@@ -999,6 +1008,7 @@ function draw(){
       }
 
       ctx.fillStyle="#cde"; ctx.font="12px system-ui";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx+TILE/2, sy-6);
     }
 
@@ -1021,26 +1031,78 @@ function draw(){
       }
     }
 
-    // units
-    ctx.textAlign="center"; ctx.textBaseline="middle";
+    // ===== POP UNIT CARDS =====
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     const units = getUnitsView();
     for(const u of units){
-      const t=TYPES[u.tt]; const color=tint(u.o);
-      const sx=u.gx*TILE + TILE/2 - cam.x, sy=u.gy*TILE + TILE/2 - cam.y;
+      const t = TYPES[u.tt];
+      const teamColor = tint(u.o);
+      const sx = u.gx*TILE + TILE/2 - cam.x;
+      const sy = u.gy*TILE + TILE/2 - cam.y;
 
-      // team ring square
-      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(sx-TILE*0.45, sy-TILE*0.45, TILE*0.9, TILE*0.9);
-      ctx.fillStyle = color + "33"; ctx.fillRect(sx-TILE*0.45, sy-TILE*0.45, TILE*0.9, TILE*0.9);
+      const cardW = TILE * 0.96;
+      const cardH = TILE * 0.96;
+      const x0 = sx - cardW/2;
+      const y0 = sy - cardH/2;
 
-      // emoji
-      ctx.font=`24px system-ui`; ctx.fillText(t.emoji, sx, sy);
+      // Drop shadow to lift off grass
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 2;
 
-      // selection highlight
-      if(selection.has(u.id)){ ctx.strokeStyle="#fff"; ctx.lineWidth=2.5; ctx.strokeRect(sx-TILE*0.49, sy-TILE*0.49, TILE*0.98, TILE*0.98); }
+      // Base white card
+      roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
 
-      // hp bar
-      ctx.fillStyle="#0008"; ctx.fillRect(sx-18, sy-24, 36, 6);
-      const hpw=Math.max(0,36*Math.min(1,(u.hp/(TYPES[u.tt].hp||1)))); ctx.fillStyle="#4f8"; ctx.fillRect(sx-18, sy-24, hpw, 6);
+      ctx.restore();
+
+      // Team-color border + subtle inner tint band
+      roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = teamColor;
+      ctx.stroke();
+
+      // Team banner stripe (top)
+      ctx.fillStyle = teamColor + "66";
+      const stripeH = Math.max(10, Math.floor(TILE*0.18));
+      roundedRectPath(ctx, x0+4, y0+4, cardW-8, stripeH, 6);
+      ctx.fill();
+
+      // Emoji/unit icon centered
+      ctx.font = "24px system-ui";
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillText(t.emoji, sx, sy+2);
+
+      // Selection glow
+      if(selection.has(u.id)){
+        ctx.save();
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 14;
+        roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // HP bar inside the card bottom
+      const maxHp = (TYPES[u.tt].hp || 1);
+      const hpFrac = Math.max(0, Math.min(1, u.hp / maxHp));
+      const barPad = 8;
+      const barW = cardW - barPad*2;
+      const barH = 6;
+      const barX = x0 + barPad;
+      const barY = y0 + cardH - barPad - barH;
+
+      ctx.fillStyle = "#e7e7e7";
+      roundedRectPath(ctx, barX, barY, barW, barH, 3);
+      ctx.fill();
+      ctx.fillStyle = hpFrac > 0.5 ? "#35d07f" : (hpFrac > 0.25 ? "#ffd166" : "#ff6b6b");
+      roundedRectPath(ctx, barX, barY, barW*hpFrac, barH, 3);
+      ctx.fill();
     }
   }
 
@@ -1055,12 +1117,20 @@ function draw(){
 }
 draw();
 
-/* --------------- CP click helper already glued above --------------- */
+function renderHUD(){ /* already defined above, called elsewhere */ }
 
 /* --------------- UI board already wired in --------------- */
+function maybeWinner(){ /* already defined above */ }
+
+/* --------------- Helpers used above but ensured defined --------------- */
+function renderBoard(){ /* already defined above */ }
+function renderTimer(){ /* already defined above */ }
+
 </script>
 </body>
 </html>
+
+
 
 
 
