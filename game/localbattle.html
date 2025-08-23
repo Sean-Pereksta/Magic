@@ -41,7 +41,7 @@
       <canvas id="cv" width="1024" height="602"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Eliminate the raiders</div>
-        <div class="legend">Drag: select • Right-click: attack-move (disengage allowed) • Double-click: select same type • Q/W/E/R: ability • A: attack nearest • H: hold</div>
+        <div class="legend">Drag: select • Right-click: attack-move (forced) • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
@@ -57,7 +57,7 @@
 /* ========== Firebase boot ========== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, serverTimestamp
+  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -71,23 +71,30 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ========== URL params & encounter read ========== */
+/* ========== URL params / Raiders from Firebase ========== */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
 
-/* Defaults in case no Firebase encounter present */
-let RAIDER_TYPE  = "recruit";
-let RAIDER_COUNT = 12;
-
-function normalizeType(s){
-  if(!s) return "recruit";
-  const x = (""+s).toLowerCase();
-  if (x==="recruits") return "recruit";
-  if (x==="footmen")  return "footman";
-  if (x==="archers")  return "archer";
-  return ["recruit","footman","archer"].includes(x) ? x : "recruit";
+async function getRaidersSpec(){
+  // Priority: query params → encounter doc
+  let t = (Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "").toLowerCase();
+  let n = parseInt(Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
+  if (!t || isNaN(n)){
+    try{
+      const enc = await getDoc(doc(db,"mountonline_encounters", ME));
+      if (enc.exists()){
+        const d = enc.data();
+        if (!t) t = (d.raiderType||"").toLowerCase();
+        if (!n) n = d.raiderCount|0;
+      }
+    }catch(e){}
+  }
+  if (!t) t = "recruit";
+  if (!n || n<3) n = 12;
+  return { type:t, count: Math.max(3, Math.min(80, n)) };
 }
+const { type:RAIDER_TYPE, count:RAIDER_COUNT } = await getRaidersSpec();
 
 /* ========== Canvas, camera, helpers ========== */
 const cv = document.getElementById("cv");
@@ -101,12 +108,13 @@ function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,
 function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
+const COLOR_ME = "#4da3ff";
+const COLOR_RAIDERS = "#ff5c5c";
+const TEAM_COLORS = [COLOR_ME,"#85ff8a","#ffd56b","#d2a8ff","#ff7abf"];
+function teamTint(owner){ return owner==="Raiders" ? COLOR_RAIDERS : COLOR_ME; }
+const short = s => s.length>10 ? s.slice(0,10)+"…" : s;
 
-/* Team colors: You = blue, Raiders = red */
-const COLOR_ME = "#3fa3ff";
-const COLOR_RAIDERS = "#ff4d4d";
-
-/* ========== Troop stats (same as PvP with volley toned) ========== */
+/* ========== Troop stats (PvP parity) ========== */
 const TYPES = {
   recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
@@ -122,8 +130,11 @@ const TYPES = {
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] }
 };
-/* Rewards */
-const TIER = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3 };
+/* Tiers for rewards */
+const TIER = {
+  recruit:1, footman:2, archer:2, monk:2,
+  swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3
+};
 const REWARD = { 1:2, 2:5, 3:8 };
 
 /* ========== Banners → owner modifiers (apply only to ME) ========== */
@@ -162,10 +173,12 @@ function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.l
 function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 
 let dragging=false, dragStart=null, selection=new Set(), targeting=null;
-/* No global UI cooldown blocker — per-unit only */
 const localFX=[];
 
-/* ========== UI helpers ========== */
+/* Double click select-all-of-type */
+let lastClickAt=0, lastClickCell=null;
+
+/* ========== Helpers ========== */
 function roundedRectPath(ctx, x, y, w, h, r){
   const rr=Math.min(r,w/2,h/2);
   ctx.beginPath();
@@ -180,35 +193,9 @@ function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.s
 function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
 function hideHint(){ document.getElementById("hint").style.display="none"; }
 
-/* ========== Encounter loader (Firebase first, URL fallback) ========== */
-async function loadEncounter(){
-  let usedFirebase = false;
-  try{
-    const encRef = doc(db,"mountonline_encounters", ME);
-    const snap = await getDoc(encRef);
-    if (snap.exists()){
-      const d = snap.data();
-      if (!d.consumed){
-        RAIDER_TYPE  = normalizeType(d.type || d.raiderType || d.enemyType);
-        RAIDER_COUNT = Math.max(3, Math.min(60, parseInt(d.size || d.count || d.enemyCount || 12,10)));
-        usedFirebase = true;
-        // mark consumed
-        await setDoc(encRef, { ...d, consumed:true, consumedAt: serverTimestamp() }, { merge:true });
-      }
-    }
-  }catch(e){ /* ignore; will fallback */ }
-
-  if (!usedFirebase){
-    const typeParam  = Q.get("enemyType") || Q.get("raiderType") || Q.get("type");
-    const countParam = Q.get("enemyCount")|| Q.get("raiders")    || Q.get("count");
-    if (typeParam)  RAIDER_TYPE  = normalizeType(typeParam);
-    if (countParam) RAIDER_COUNT = Math.max(3, Math.min(60, parseInt(countParam,10)||12));
-  }
-}
-
 /* ========== Build my army + raiders, mark inBattle ========== */
 async function seedBattle(){
-  // Make me inactive & inBattle
+  // Make me inactive & inBattle (so no one can attack during this local fight)
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
   const meSnap = await getDoc(doc(db,"mountonline", ME));
@@ -216,13 +203,15 @@ async function seedBattle(){
   const me = meSnap.data();
   ownerMods[ME] = bannerMods((me.inventory?.equipped)||[]);
 
+  // Units array
   const units=[];
-  // Spawn my army in blocks
-  spawnArmyForOwner(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-4}, +1);
-  // Spawn raiders (blocks)
+  // Spawn my army from stored counts (contiguous block)
+  spawnArmyBlock(units, ME, me.army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
+  // Spawn raiders from encounter
+  const rType = (RAIDER_TYPE==="recruits"?"recruit": RAIDER_TYPE);
   const allowed = new Set(["recruit","footman","archer"]);
-  const rType = allowed.has(RAIDER_TYPE) ? RAIDER_TYPE : "recruit";
-  spawnRaiders(units, "Raiders", rType, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-4}, -1);
+  const chosen = allowed.has(rType) ? rType : "recruit";
+  spawnRaiders(units, "Raiders", chosen, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
   state = {
     units, effects:[], projs:[],
@@ -230,23 +219,25 @@ async function seedBattle(){
   };
   return true;
 }
-function spawnArmyForOwner(units, owner, armyCounts, origin, dir){
+function spawnArmyBlock(units, owner, armyCounts, origin, dir){
+  // Fill a contiguous rectangle regardless of type boundaries
   const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
-  let row=0, col=0, perRow=10;
+  const pool=[];
   for(const key of order){
     const typeId = MKEY[key]; if(!typeId) continue;
     const n = Math.max(0, parseInt(armyCounts[key]||0,10));
-    for(let i=0;i<n;i++){
-      const gx = origin.gx + (dir>0 ? col : -col);
-      const gy = origin.gy + row;
-      units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
-      col++; if(col>=perRow){ col=0; row++; }
-    }
-    if(col!==0){ row++; col=0; }
+    for(let i=0;i<n;i++) pool.push(typeId);
+  }
+  let row=0,col=0, perRow=12;
+  for(const typeId of pool){
+    const gx = origin.gx + (dir>0 ? col : -col);
+    const gy = origin.gy + row;
+    units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
+    col++; if(col>=perRow){ col=0; row++; }
   }
 }
 function spawnRaiders(units, owner, typeId, count, origin, dir){
-  let row=0,col=0, perRow=10;
+  let row=0,col=0, perRow=12;
   for(let i=0;i<count;i++){
     const gx = origin.gx + (dir>0 ? col : -col);
     const gy = origin.gy + row;
@@ -276,17 +267,18 @@ function mkUnit(type, owner, gx, gy){
     goalGX:null, goalGY:null, nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y",
     priestHealMul: (type==="priest"? mod.priestHeal : 1),
     _lastBy:null,
-    _disengageUntil:0, _order:"idle" // << disengage support
+    _forceMoveTo: null,   // HARD OVERRIDE: ignore aggro until arrival
+    _order:"idle"
   };
 }
 
 /* ========== Intents (local) ========== */
 function orderAttackMove(ids,gx,gy){
-  const now=Date.now();
-  for(const u of state.units){
-    if(ids.includes(u.id) && u.o===ME){
-      u.goalGX=gx; u.goalGY=gy; u._channel=null;
-      u._disengageUntil = now + 3500;  // 3.5s disengage window
+  for (const u of state.units){
+    if (ids.includes(u.id) && u.o===ME){
+      u.goalGX = gx; u.goalGY = gy;
+      u._forceMoveTo = { gx, gy };
+      u._channel = null;
       u._order = "move";
     }
   }
@@ -296,12 +288,51 @@ function orderNearest(ids){
     if(!ids.includes(u.id) || u.o!==ME) continue;
     let best=null, bd=1e9;
     for(const v of state.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
-    if(best){ u.goalGX=best.gx; u.goalGY=best.gy; u._order="attackmove"; u._disengageUntil=0; }
+    if(best){
+      u._forceMoveTo = null; // cancel forced move
+      u.goalGX = best.gx; u.goalGY = best.gy;
+      u._order = "attackmove";
+    }
   }
 }
-function toggleHold(ids){ for(const u of state.units){ if(ids.includes(u.id) && u.o===ME) u._hold=!u._hold; } }
+function toggleHold(ids){
+  for(const u of state.units){
+    if(ids.includes(u.id) && u.o===ME){
+      u._hold = !u._hold;
+      if (u._hold){
+        u._forceMoveTo = null;
+        u.goalGX = null; u.goalGY = null;
+        u._order = "hold";
+      }
+    }
+  }
+}
 
-/* ========== Abilities (per-unit cooldowns only) ========== */
+/* ========== Abilities ========== */
+/* Per-unit cooldowns only. We DO NOT block casting globally; we cast on any selected unit that is off cooldown. */
+function updateCooldownBadges(){
+  const abil=document.getElementById("abilities"); if(!abil) return;
+  const sel=getUnitsView().filter(u=>selection.has(u.id));
+  for(let s=1;s<=4;s++){
+    const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
+    let allOnCd = sel.length>0;
+    let minRem = Infinity;
+    for(const u of sel){
+      const rem = (u.acd?.[s]||0);
+      if (rem<=0) allOnCd=false;
+      if (rem>0 && rem<minRem) minRem=rem;
+    }
+    el.classList.toggle("oncd", allOnCd);
+    let badge=el.querySelector(".cd-badge");
+    if(allOnCd && isFinite(minRem)){
+      const secs=Math.ceil(minRem);
+      if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; el.appendChild(badge); }
+      badge.textContent=`${secs}s`;
+    } else if(badge){ badge.remove(); }
+  }
+}
+setInterval(updateCooldownBadges, 200);
+
 function slotAbility(slot){
   const sel=getUnitsView().filter(u=>selection.has(u.id));
   for(const u of sel){ const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot); if(a) return a; }
@@ -311,21 +342,35 @@ function castSlot(slot){
   const ids=Array.from(selection); if(!ids.length) return;
   const ab=slotAbility(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
 
-  const castable = state.units.filter(u => ids.includes(u.id) && u.o===ME && !(u.acd?.[slot]>0) && !u._channel);
-  if(!castable.length){ flash("No selected unit is ready"); return; }
-
+  // Determine target mode
   if(ab.target==="self"){
-    const now=Date.now();
-    for(const u of castable){ AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},now); u.acd[slot]=ab.cd; }
-    fxRingOnSelection();
+    let casted=false;
+    for(const u of state.units){
+      if(!ids.includes(u.id) || u.o!==ME) continue;
+      if((u.acd?.[ab.slot]||0) > 0) continue;
+      if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now())){
+        u.acd[ab.slot]=ab.cd;
+        casted=true;
+      }
+    }
+    if(casted) fxRingOnSelection(); else flash("⏳ All selected are on cooldown");
   }else{
-    targeting={slot,ab,ids: castable.map(u=>u.id)}; showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
+    targeting={slot:ab.slot,ab,ids}; showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      const now=Date.now();
-      for(const u of castable){ AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},now); u.acd[slot]=ab.cd; }
-      fxTile(gx,gy); hideHint(); targeting=null; cv.removeEventListener("click", once);
+      let casted=false;
+      for(const u of state.units){
+        if(!ids.includes(u.id) || u.o!==ME) continue;
+        if((u.acd?.[ab.slot]||0) > 0) continue;
+        if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){
+          u.acd[ab.slot]=ab.cd;
+          casted=true;
+        }
+      }
+      if(!casted) flash("⏳ All selected are on cooldown");
+      fxTile(gx,gy); hideHint(); targeting=null;
+      cv.removeEventListener("click", once);
     };
     cv.addEventListener("click", once);
   }
@@ -338,8 +383,15 @@ const AbilityHandlers={
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
   focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp: (ab.dmgUp||3)}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:(ab.healPerSec||8) * (u.priestHealMul||1)}; return true; } },
-  // Volley weakened vs army wipes: dmg 6 per pulse (3 pulses) on 3x3
-  volley:     { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false; const size=ab.size||3; const until=now+(ab.channel||6000); u._channel={kind:"volley",until}; (g.effects=g.effects||[]).push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size, pulses:[now+1000,now+3000,now+5000], next:0, until, color:"#aef", dmg:6, pierce:0 }); return true; } },
+  volley:     { cast(g,u,ab,{mode,gx,gy},now){
+                  if(mode!=="point")return false;
+                  const size=ab.size||3; const until=now+(ab.channel||6000);
+                  u._channel={kind:"volley",until};
+                  (g.effects=g.effects||[]).push({
+                    type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
+                    pulses:[now+1000,now+3000,now+5000], next:0, until,
+                    color:"#aef", dmg:7, pierce:0
+                  }); return true; } },
   fireburst:  { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false; (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2 }); return true; } },
   arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){ const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||34)*(ownerMods[u.o]?.magic||1), ap=ab.ap??0.5; const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1); (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#baf" }); return true; } },
   pierceBolt: { cast(g,u,ab,{mode,gx,gy},now){ const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||28)*(ownerMods[u.o]?.ranged||1), ap=ab.ap??0.65; const path=bresenham(u.gx,u.gy,gx,gy).slice(1, range+1); (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(40,Math.floor(1000/speed)), dmg, ap, color:"#cde" }); return true; } },
@@ -356,8 +408,7 @@ const PX2SQUARES = 1 / (TILE*0.9);
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
 function simulate(g, dt){
   const now = Date.now();
-
-  // Cooldowns / auras
+  // Cooldowns / auras per unit
   for(const u of g.units){
     for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
@@ -383,33 +434,41 @@ function simulate(g, dt){
     if(e.type==="squareOnce"){ if(!e.did && now>=e.when){ pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0); e.did=true; } }
   }
 
-  // Targeting & attacks (respect disengage)
+  // Targeting & attacks
   for(const u of g.units){
     if(u._channel) continue;
-
-    // find nearest target
     let target=null, bd=1e9;
     for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
-
     const rng=u.range||1;
     const inRange = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy) <= rng : manhattan(u.gx,u.gy,target.gx,target.gy)<=rng);
-    const wantsDisengage = now < (u._disengageUntil||0);
 
-    if(!wantsDisengage && inRange && (!u._hold)){
-      // attack
-      u._atkCd = (u._atkCd||0) - dt;
-      if((u._atkCd||0) <= 0){
-        const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
-        applyDamage(g, target, baseDmg, 0, u.o);
-        u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
+    const forcing = !!u._forceMoveTo;
+
+    // if forcing, ignore combat entirely until arrival
+    if (!forcing){
+      if (inRange && (!u._hold)){
+        // attack
+        u._atkCd = (u._atkCd||0) - dt;
+        if((u._atkCd||0) <= 0){
+          const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
+          applyDamage(g, target, baseDmg, 0, u.o);
+          u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
+        }
+        // if ranged and in range, stop chasing
+        if (u.range>1){ u.goalGX = null; u.goalGY = null; }
+      } else if(!u._hold && target){
+        // chase logic: ranged stop at edge of range, melee close in
+        if (u.range>1){
+          const desired = approachToRange(u, target, u.range);
+          if (desired) { u.goalGX = desired.gx; u.goalGY = desired.gy; }
+        } else if (u.goalGX==null || u.goalGY==null){
+          u.goalGX=target.gx; u.goalGY=target.gy;
+        }
       }
-    } else if(!u._hold && target && bd <= 20 && (u.goalGX==null || u.goalGY==null) && !wantsDisengage){
-      // chase only if we don't have a goal or we're not disengaging
-      u.goalGX=target.gx; u.goalGY=target.gy;
     }
   }
 
-  // Movement incl. charge + smarter sidestep
+  // Movement incl. charge with "go-around" neighbors
   const occ = occupancy(g.units);
   const reserved=new Set();
   for(const u of g.units){
@@ -419,8 +478,9 @@ function simulate(g, dt){
     if(u._charge && u._charge.until>now){
       const step=u._charge.path[u._charge.idx];
       if(step){
-        if(canStep(step.gx, step.gy, occ, reserved)){ stepTo(u, step.gx, step.gy, occ, reserved); u._charge.idx++; }
-        else { u._charge.until = now; }
+        if(!occ.get(step.gx+"|"+step.gy) && !reserved.has(step.gx+"|"+step.gy)){
+          stepTo(u, step.gx, step.gy, occ, reserved); u._charge.idx++;
+        } else { u._charge.until = now; }
       } else { u._charge.until=now; }
       // impact splash when finishing
       if(!u._charge || u._charge.idx>=(u._charge.path?.length||0)){
@@ -430,28 +490,26 @@ function simulate(g, dt){
     }
 
     if(u.goalGX==null || u.goalGY==null) continue;
-
     const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
     const everyMs = Math.max(80, Math.floor(1000/speedSquares));
     if(now < u.nextStepAt) continue;
     u.nextStepAt = now + everyMs;
 
-    // candidate tiles around, sorted by distance to goal (smarter go-around)
-    const dx = Math.sign(u.goalGX - u.gx), dy = Math.sign(u.goalGY - u.gy);
-    const candidates = [
-      {gx:u.gx+dx, gy:u.gy}, {gx:u.gx, gy:u.gy+dy},
-      {gx:u.gx+dx, gy:u.gy+dy},
-      {gx:u.gx+dx, gy:u.gy-dy}, {gx:u.gx-dx, gy:u.gy+dy},
-      {gx:u.gx-dx, gy:u.gy}, {gx:u.gx, gy:u.gy-dy}
-    ].filter(c=>c.gx>=0&&c.gx<GRID_W&&c.gy>=0&&c.gy<GRID_H)
-     .sort((a,b)=> manhattan(a.gx,a.gy,u.goalGX,u.goalGY) - manhattan(b.gx,b.gy,u.goalGX,u.goalGY));
-
-    for(const c of candidates){
-      if(canStep(c.gx,c.gy,occ,reserved)){ stepTo(u,c.gx,c.gy,occ,reserved); break; }
+    // neighbor candidates (try to go around if blocked)
+    const cands = neighborChoices(u, u.goalGX, u.goalGY);
+    for(const c of cands){
+      if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
+      const k=c.gx+"|"+c.gy;
+      if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); break; }
     }
 
-    // Arrived?
-    if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; u._disengageUntil=0; u._order="idle"; }
+    // arrival
+    if(u.gx===u.goalGX && u.gy===u.goalGY){
+      if (u._forceMoveTo && u.goalGX===u._forceMoveTo.gx && u.goalGY===u._forceMoveTo.gy){
+        u._forceMoveTo = null; // reached forced destination, aggro can resume
+      }
+      u.goalGX=null; u.goalGY=null; u._order="idle";
+    }
   }
 
   // Deaths (credit to last hitter)
@@ -470,8 +528,43 @@ function simulate(g, dt){
 
   return g;
 }
-function canStep(gx,gy,occ,reserved){
-  const k=gx+"|"+gy; return !occ.get(k) && !reserved.has(k);
+function approachToRange(u, target, range){
+  const dx = Math.sign(target.gx - u.gx);
+  const dy = Math.sign(target.gy - u.gy);
+  const dist = cheby(u.gx,u.gy,target.gx,target.gy);
+  if (dist <= range) return null;
+  // move one step toward the target but stop when reaching cheby distance == range
+  const nextGX = u.gx + dx;
+  const nextGY = u.gy + dy;
+  const after = cheby(nextGX,nextGY,target.gx,target.gy);
+  if (after >= range) return {gx:nextGX, gy:nextGY};
+  // try axis-aligned if diagonal would overshoot
+  if (cheby(u.gx+dx,u.gy,target.gx,target.gy) >= range) return {gx:u.gx+dx, gy:u.gy};
+  if (cheby(u.gx,u.gy+dy,target.gx,target.gy) >= range) return {gx:u.gx, gy:u.gy+dy};
+  return {gx:nextGX, gy:nextGY};
+}
+function neighborChoices(u, gx, gy){
+  const sx = Math.sign(gx - u.gx);
+  const sy = Math.sign(gy - u.gy);
+  const cand = [
+    {gx:u.gx+sx, gy:u.gy},           // forward X
+    {gx:u.gx,    gy:u.gy+sy},        // forward Y
+    {gx:u.gx+sx, gy:u.gy+sy},        // diag forward
+    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep
+    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep
+    {gx:u.gx+sy, gy:u.gy},           // lateral 1
+    {gx:u.gx-sy, gy:u.gy},           // lateral 2
+    {gx:u.gx,    gy:u.gy+sx},        // lateral 3
+    {gx:u.gx,    gy:u.gy-sx}         // lateral 4
+  ];
+  // sort by distance to goal (closer first), make unique
+  const seen=new Set(), out=[];
+  for(const c of cand){
+    const key=c.gx+"|"+c.gy;
+    if(seen.has(key)) continue; seen.add(key); out.push(c);
+  }
+  out.sort((a,b)=> manhattan(a.gx,a.gy,gx,gy) - manhattan(b.gx,b.gy,gx,gy));
+  return out;
 }
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
@@ -481,30 +574,13 @@ function applyDamage(g, target, dmg, ap, owner){
   target.hp -= Math.max(1, Math.round(dmg - effArmor));
   target._lastBy = owner;
 }
-function stepTo(u,gx,gy,occ,res){
-  const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
-  if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
-  u.gx=gx; u.gy=gy;
-  const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK);
-}
-function pulseSquare(g,cx,cy,size,owner,dmg,pierce){
-  const half=Math.floor(size/2);
-  for(const v of g.units){ if(v.o===owner) continue;
-    if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(g, v, dmg, pierce||0, owner); }
-  }
-}
+function stepTo(u,gx,gy,occ,res){ const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u); if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); } u.gx=gx; u.gy=gy; const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK); }
+function pulseSquare(g,cx,cy,size,owner,dmg,pierce){ const half=Math.floor(size/2); for(const v of g.units){ if(v.o===owner) continue; if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(g, v, dmg, pierce||0, owner); } } }
 
-/* ========== Input handlers (incl. double-click select) ========== */
-window.addEventListener("mousemove",(e)=>{
-  const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top;
-});
-cv.addEventListener("mousemove",(e)=>{
-  const r=rel(cv,e);
-  mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h;
-  mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y;
-});
-cv.addEventListener("mousedown",(e)=>{
-  if(e.button===2){ // attack-move (with disengage)
+/* ========== Input handlers ========== */
+window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
+cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
+cv.addEventListener("mousedown",(e)=>{ if(e.button===2){ // attack-move forced
     e.preventDefault();
     const ids=Array.from(selection); if(!ids.length) return;
     const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
@@ -515,9 +591,26 @@ cv.addEventListener("mousedown",(e)=>{
 window.addEventListener("mouseup",(e)=>{
   if(!dragging) return; dragging=false;
   const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
+  const now=performance.now();
   if(tiny){
+    const grid=worldToGrid(mouse.worldX,mouse.worldY);
     const u = pickUnitAt(mouse.worldX,mouse.worldY, ME);
-    if(u){ if(!e.shiftKey) selection.clear(); selection.add(u.id); renderHUD(); }
+    const dbl = (lastClickCell && lastClickCell.gx===grid.gx && lastClickCell.gy===grid.gy && (now-lastClickAt)<300);
+    lastClickAt=now; lastClickCell=grid;
+    if(u){
+      if(dbl){
+        // select all my units of that type
+        selection.clear();
+        for (const w of getUnitsView()){ if(w.o===ME && w.tt===u.tt) selection.add(w.id); }
+      } else {
+        if(!e.shiftKey) selection.clear();
+        selection.add(u.id);
+      }
+      renderHUD();
+    } else {
+      if(!e.shiftKey) selection.clear();
+      renderHUD();
+    }
   }else{
     const minx=Math.min(dragStart.x,mouse.x)+cam.x, maxx=Math.max(dragStart.x,mouse.x)+cam.x;
     const miny=Math.min(dragStart.y,mouse.y)+cam.y, maxy=Math.max(dragStart.y,mouse.y)+cam.y;
@@ -528,16 +621,6 @@ window.addEventListener("mouseup",(e)=>{
   }
 });
 cv.addEventListener("contextmenu", e=>e.preventDefault());
-
-// Double-click: select all of that troop type (yours)
-cv.addEventListener("dblclick",(e)=>{
-  const u = pickUnitAt(mouse.worldX,mouse.worldY, ME);
-  if(!u) return;
-  selection.clear();
-  for(const x of getUnitsView()){ if(x.o===ME && x.tt===u.tt) selection.add(x.id); }
-  renderHUD();
-});
-
 window.addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ targeting=null; hideHint(); }
@@ -561,7 +644,7 @@ function pickInRect(x0,y0,x1,y1,owner){
   return out;
 }
 
-/* ========== UI: HUD & board (show per-slot readiness) ========== */
+/* ========== UI: HUD & board ========== */
 function renderHUD(){
   const abil=document.getElementById("abilities"); const selInfo=document.getElementById("selInfo");
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -573,25 +656,11 @@ function renderHUD(){
   for(let s=1;s<=4;s++){
     const spec=slotMap.get(s);
     const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
-    if(spec){
-      div.innerHTML = `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>`;
-      div.onclick=()=>castSlot(s);
-      // readiness badge: show min remaining among selected
-      const having = sel.filter(u => (TYPES[u.tt].abilities||[]).some(a=>a.slot===s));
-      if(having.length){
-        const rems = having.map(u => Math.max(0, (u.acd?.[s]||0)));
-        const allOnCd = rems.every(x=>x>0);
-        if(allOnCd){
-          const badge=document.createElement("div"); badge.className="cd-badge";
-          badge.textContent = `${Math.ceil(Math.min(...rems))}s`;
-          div.classList.add("oncd"); div.appendChild(badge);
-        }
-      }
-    }else{
-      div.innerHTML = `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
-    }
+    div.innerHTML = spec ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>` : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
+    if(spec) div.onclick=()=>castSlot(s);
     abil.appendChild(div);
   }
+  updateCooldownBadges();
 }
 function renderBoard(){
   const rows=document.getElementById("boardRows"); rows.innerHTML="";
@@ -682,7 +751,7 @@ function draw(){
   // drag box
   if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
-  renderBoard();
+  renderBoard(); updateCooldownBadges();
   requestAnimationFrame(draw);
 }
 
@@ -692,7 +761,7 @@ function aliveOwners(){
 }
 async function settleAndExit(){
   const stats = state?.stats || {};
-  // Rewards (my kills)
+  // Rewards (my kills) — you get gold even if you lose
   let goldGain=0;
   for(const [tKill, nKill] of Object.entries(stats[ME]?.killsByType||{})){
     const tier = TIER[tKill] || 1;
@@ -736,11 +805,16 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
+/* ========== HUD build ========== */
+function buildHUD(){ /* dynamic per selection; handled in renderHUD */ }
+
 /* ========== Init ========== */
 (async function init(){
+  // center camera
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
-  await loadEncounter();
+
   const ok = await seedBattle(); if(!ok) return;
+  // draw + sim
   draw(); loop();
 })();
 
@@ -751,4 +825,6 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
+
 
