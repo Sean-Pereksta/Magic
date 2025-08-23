@@ -81,22 +81,26 @@
     /* Player cards */
     .pbox{
       background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
-      display:flex; flex-direction:column; align-items:center; gap:4px; min-width: 180px; box-shadow:var(--shadow);
+      display:flex; flex-direction:column; align-items:center; gap:4px; min-width: 190px; box-shadow:var(--shadow);
     }
     .pbox.me{ outline:2px solid var(--accent) }
     .p-val{ font-weight:900; font-size:18px }
     .p-name{ font-weight:800; color:var(--muted) }
     .p-wins{ font-size:12px; color:var(--muted) }
+    .p-cash,.p-net{ font-size:12px; color:var(--muted) }
 
     /* Stock tile */
     .tile{
       background:var(--card); border:1px solid var(--tile-br); border-radius:var(--radius); padding:12px; display:grid;
-      grid-template-rows: auto auto 1fr auto; gap:8px; position:relative; min-height: 190px; box-shadow:var(--shadow);
+      grid-template-rows: auto auto auto 1fr auto; gap:8px; position:relative; min-height: 210px; box-shadow:var(--shadow);
     }
     .head{display:flex; justify-content:space-between; align-items:baseline}
     .sym{font-weight:900; letter-spacing:.5px; font-size:18px}
     .price{font-weight:900}
     .spark{height:28px; width:100%;}
+    .mine{ font-size:12px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap }
+    .mine .pl{ font-weight:800 }
+
     .barwrap{
       border:1px solid var(--tile-br); border-radius:10px; padding:4px; height:100px; overflow:hidden; background:linear-gradient(180deg,#0c1320 0%,#0a101a 100%);
       position:relative;
@@ -165,7 +169,7 @@
 
 <script type="module">
 /* ===========================================================
-   Firebase (hosted multiplayer via lobby)
+   Firebase (multiplayer via lobby)
    =========================================================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
@@ -199,7 +203,7 @@ const START_CASH      = 100;
 const BASE_PRICE      = 15;
 const MIN_PRICE       = 3;
 const MAX_PRICE       = 60;
-const HISTORY_LEN     = 48;       // sparkline points
+const HISTORY_LEN     = 48;
 const ORDER_IMPACT    = 0.02;     // per-share impact scaled by 1/sqrt(N)
 const STOCKS = [
   { key:"METAL",  name:"Metal"  },
@@ -210,7 +214,7 @@ const STOCKS = [
 ];
 const N = STOCKS.length;
 
-/* small cross-impact matrix (symmetric-ish, small magnitudes) */
+/* small cross-impact matrix (gentle, symmetric-ish) */
 const X = [
   /*        M     Wl    Wh    Cf    Rk */
   /* M */ [ 0.00, -0.06, 0.08, 0.00, 0.10],
@@ -270,15 +274,19 @@ function initStocks(){
 function initPortfolios(players){
   const p = {};
   for (const name of players){
-    p[name] = { cash: START_CASH, holdings: Array(N).fill(0) };
+    p[name] = { cash: START_CASH, holdings: Array(N).fill(0), avgCost: Array(N).fill(0) };
   }
   return p;
 }
-function portfolioValue(name, d){
+function holdingsValue(name, d){
   const pf = d?.portfolios?.[name]; if (!pf) return 0;
-  let v = pf.cash;
+  let v = 0;
   for (let i=0;i<N;i++) v += (pf.holdings[i]||0) * d.stocks[i].price;
   return v;
+}
+function netValue(name, d){
+  const pf = d?.portfolios?.[name]; if (!pf) return 0;
+  return pf.cash + holdingsValue(name, d);
 }
 
 /* ===========================================================
@@ -296,6 +304,7 @@ function ensureTiles(){
         <div class="price" id="s-price-${i}">$0.00</div>
       </div>
       <canvas class="spark" height="28" id="s-spark-${i}"></canvas>
+      <div class="mine" id="s-mine-${i}">You own 0</div>
       <div class="barwrap"><div class="bar" id="s-bar-${i}" style="height:12px;"></div></div>
       <div class="row">
         <button class="btn buy"  id="s-buy-${i}">Buy</button>
@@ -348,6 +357,7 @@ function renderStocks(){
   if (!gameData?.stocks) return;
   requestAnimationFrame(()=>{
     sizeAllSparks();
+    const me = gameData.portfolios?.[username];
     for (let i=0;i<N;i++){
       const s = gameData.stocks[i]; if (!s) continue;
       $(`s-name-${i}`).textContent  = s.name;
@@ -355,6 +365,7 @@ function renderStocks(){
       $(`s-cost-${i}`).textContent  = `Buy ${fmt$(s.price)} · Sell ${fmt$(s.price)}`;
       drawSpark(i, s.history || [s.price]);
 
+      // bar
       const bar = $(`s-bar-${i}`);
       if (bar && bar.parentElement){
         const wrapH = (bar.parentElement.offsetHeight) || 100;
@@ -362,6 +373,35 @@ function renderStocks(){
         const t = clamp((s.price - MIN_PRICE) / (MAX_PRICE - MIN_PRICE), 0, 1);
         bar.style.height = (8 + t*(hMax-8)) + "px";
         bar.style.background = "linear-gradient(180deg,#5dffb3,#21a86a)";
+      }
+
+      // your position: qty, avg cost, current vs avg
+      const mine = $(`s-mine-${i}`);
+      if (mine){
+        let txt = "You own 0";
+        mine.innerHTML = "";
+        if (me){
+          const qty = me.holdings?.[i] || 0;
+          const avg = me.avgCost?.[i] || 0;
+          if (qty <= 0){
+            mine.textContent = "You own 0";
+          } else {
+            const diffPct = avg > 0 ? ((s.price - avg) / avg) * 100 : 0;
+            const span1 = document.createElement("span");
+            const span2 = document.createElement("span");
+            const span3 = document.createElement("span");
+            const pl    = document.createElement("span");
+            span1.textContent = `Own ${qty}`;
+            span2.textContent = `Avg ${fmt$(avg)}`;
+            span3.textContent = `Now ${fmt$(s.price)}`;
+            pl.className = "pl";
+            pl.textContent = `(${diffPct>=0?'+':''}${diffPct.toFixed(1)}%)`;
+            pl.style.color = diffPct>=0 ? "var(--good)" : "var(--bad)";
+            mine.appendChild(span1); mine.appendChild(span2); mine.appendChild(span3); mine.appendChild(pl);
+          }
+        } else {
+          mine.textContent = txt;
+        }
       }
 
       bindOnce(`s-buy-${i}`,  ()=> order("buy", i));
@@ -381,15 +421,18 @@ function renderPlayers(){
     if (p===username) span.className = "me";
     winsBar.appendChild(span);
   }
-  // player panels
+  // player panels (now with cash & net)
   const boxes = players.map(p=>{
     const div = document.createElement("div");
     div.className = "pbox" + (p===username ? " me":"");
-    const val = gameData ? portfolioValue(p, gameData) : START_CASH;
+    const net = gameData ? netValue(p, gameData) : START_CASH;
+    const cash = gameData?.portfolios?.[p]?.cash ?? START_CASH;
     div.innerHTML = `
-      <div class="p-val" id="pval-${cssSafe(p)}">${fmt$(val)}</div>
+      <div class="p-val" id="pval-${cssSafe(p)}">${fmt$(net)}</div>
       <div class="p-name">${p}</div>
-      <div class="p-wins"><span>Round Wins:</span> <b>${wins[p]||0}</b></div>
+      <div class="p-cash" id="pcash-${cssSafe(p)}">Cash: ${fmt$(cash)}</div>
+      <div class="p-net"  id="pnet-${cssSafe(p)}">Net: ${fmt$(net)}</div>
+      <div class="p-wins">Round Wins: <b>${wins[p]||0}</b></div>
     `;
     return div;
   });
@@ -404,8 +447,13 @@ function renderPlayers(){
 function refreshPlayerValues(){
   if (!gameData) return;
   for (const p of (gameData.players||[])){
-    const el = $(`pval-${cssSafe(p)}`); if (!el) continue;
-    el.textContent = fmt$(portfolioValue(p, gameData));
+    const cash = gameData?.portfolios?.[p]?.cash ?? START_CASH;
+    const net  = netValue(p, gameData);
+    const id = cssSafe(p);
+    const pv = $(`pval-${id}`), pc = $(`pcash-${id}`), pn = $(`pnet-${id}`);
+    if (pv) pv.textContent = fmt$(net);
+    if (pc) pc.textContent = `Cash: ${fmt$(cash)}`;
+    if (pn) pn.textContent = `Net: ${fmt$(net)}`;
   }
 }
 
@@ -424,24 +472,21 @@ function startHostLoop(){
         const d = snap.data(); if (d.status !== "running") return;
         const now = Date.now();
 
-        // price drift (gentle, mean-reverting around BASE_PRICE, plus cross-impact mix)
+        // price drift (gentle mean reversion + small cross-impacts)
         const stocks = d.stocks.map(s => ({...s}));
-        // compute base deltas
         const del = new Array(N).fill(0);
         for (let i=0;i<N;i++){
           const s = stocks[i];
-          const meanRev = (BASE_PRICE - s.price) / (MAX_PRICE - MIN_PRICE); // pulls toward base
-          const noise   = (Math.random()*0.010 - 0.005); // ±0.5%
-          del[i] = meanRev * 0.25 + noise; // blend
+          const meanRev = (BASE_PRICE - s.price) / (MAX_PRICE - MIN_PRICE);
+          const noise   = (Math.random()*0.010 - 0.005);
+          del[i] = meanRev * 0.25 + noise;
         }
-        // cross-impact mixing
         for (let i=0;i<N;i++){
           let mix = del[i];
           for (let j=0;j<N;j++){
             if (j===i) continue;
-            mix += X[i][j] * del[j] * 0.35; // small bleed-through
+            mix += X[i][j] * del[j] * 0.35;
           }
-          // apply to price
           let np = stocks[i].price * (1 + mix);
           np = clamp(np, MIN_PRICE, MAX_PRICE);
           stocks[i].price = Number(np.toFixed(2));
@@ -454,17 +499,15 @@ function startHostLoop(){
         const left = (d.roundEndAt || 0) - now;
         if (left <= 0){
           const players = d.players || [];
-          // compute values
           let best = -Infinity, winners = [];
           for (const p of players){
-            const val = portfolioValue(p, {stocks, portfolios:d.portfolios});
+            const val = netValue(p, {stocks, portfolios:d.portfolios});
             if (val > best + 1e-6){ best = val; winners = [p]; }
             else if (Math.abs(val - best) < 1e-6){ winners.push(p); }
           }
           const wins = {...d.wins};
           for (const w of winners) wins[w] = (wins[w]||0) + 1;
 
-          // next step: either next round or finish match
           if ((d.round||1) >= ROUNDS){
             tx.update(GAME_REF, { status:"finished", wins, stocks });
           } else {
@@ -477,7 +520,6 @@ function startHostLoop(){
             });
           }
         } else {
-          // normal drift update
           tx.update(GAME_REF, { stocks });
         }
       });
@@ -494,7 +536,8 @@ function startUiClock(){
     const ss = String(s%60).padStart(2,'0');
     timerEl.textContent = `${mm}:${ss}`;
     refreshPlayerValues();
-  }, 200);
+    renderStocks(); // keeps your per-stock “mine” row fresh
+  }, 250);
 }
 
 /* ===========================================================
@@ -535,12 +578,19 @@ if (GAME_REF){
   onSnapshot(GAME_REF, async (snap)=>{
     if (!snap.exists()) return;
     gameData = snap.data();
+
+    // backward compat: if an older doc lacks avgCost, hydrate it locally
+    for (const p of gameData.players || []){
+      if (!gameData.portfolios?.[p]?.avgCost){
+        gameData.portfolios[p].avgCost = Array(N).fill(0);
+      }
+    }
+
     roundEl.textContent = gameData.round || 1;
     renderPlayers();
     renderStocks();
     if (!timerId) startUiClock();
 
-    // Show match result & add user profile wins for overall champ(s)
     if (gameData.status === "finished"){
       const entries = Object.entries(gameData.wins || {});
       const topCount = Math.max(...entries.map(([,c])=>c), 0);
@@ -551,28 +601,25 @@ if (GAME_REF){
       overlayEl.classList.add("show");
 
       if (isHost){
-        // add +1 to each champion's user profile wins
         for (const c of champs){
           try{
             await updateDoc(doc(db,"users",c), { wins: increment(1) });
           }catch(e){
-            // If doc missing, create with wins=1
             try{ await setDoc(doc(db,"users",c), { wins: 1 }, { merge:true }); }catch(_){}
           }
         }
+        stopLoops();
       }
-      // stop host tick so we don't keep drifting after finish
-      if (isHost){ stopLoops(); }
     }
   });
 }
 
 /* ===========================================================
-   Orders (1 share per click, price impact up/down)
+   Orders (1 share per click) — maintains avg cost
    =========================================================== */
 function impactScale(data){
   const n = Math.max(1, (data?.players || []).length);
-  return ORDER_IMPACT / Math.sqrt(n); // smaller with more players
+  return ORDER_IMPACT / Math.sqrt(n);
 }
 
 async function order(kind, idx){
@@ -583,24 +630,30 @@ async function order(kind, idx){
         const d = snap.data(); if (d.status!=="running") return;
 
         const portfolios = {...d.portfolios};
-        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N).fill(0) })};
+        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N).fill(0), avgCost: Array(N).fill(0) })};
+        if (!me.avgCost) me.avgCost = Array(N).fill(0); // compat
         const stocks = d.stocks.map(s=> ({...s}));
         const s = stocks[idx]; if (!s) return;
         const price = s.price;
 
         if (kind==="buy"){
-          if (me.cash < price) return;            // insufficient cash
+          if (me.cash < price) return;
+          const qty0 = me.holdings[idx]||0;
+          const avg0 = me.avgCost[idx]||0;
           me.cash = Number((me.cash - price).toFixed(2));
-          me.holdings[idx] = (me.holdings[idx]||0) + 1;
+          me.holdings[idx] = qty0 + 1;
+          const avgNew = (qty0*avg0 + price) / (qty0 + 1);
+          me.avgCost[idx] = Number(avgNew.toFixed(2));
           s.price = Number(clamp(price * (1 + impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
         }else{
-          if ((me.holdings[idx]||0) <= 0) return; // nothing to sell
-          me.holdings[idx] -= 1;
+          const qty0 = me.holdings[idx]||0;
+          if (qty0 <= 0) return;
+          me.holdings[idx] = qty0 - 1;
           me.cash = Number((me.cash + price).toFixed(2));
+          if (me.holdings[idx] === 0) me.avgCost[idx] = 0; // reset basis when flat
           s.price = Number(clamp(price * (1 - impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
         }
 
-        // push new price into history to reflect trade tick
         const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
 
         portfolios[username] = me;
@@ -611,20 +664,26 @@ async function order(kind, idx){
     return;
   }
 
-  // Local practice mode
+  // Local practice
   if (!gameData) return;
   const me = gameData.portfolios[username];
+  if (!me.avgCost) me.avgCost = Array(N).fill(0);
   const s  = gameData.stocks[idx]; if (!s) return;
 
   if (kind==="buy"){
     if (me.cash < s.price) return;
+    const qty0 = me.holdings[idx]||0, avg0 = me.avgCost[idx]||0;
     me.cash = Number((me.cash - s.price).toFixed(2));
-    me.holdings[idx] = (me.holdings[idx]||0)+1;
+    me.holdings[idx] = qty0 + 1;
+    const avgNew = (qty0*avg0 + s.price) / (qty0 + 1);
+    me.avgCost[idx] = Number(avgNew.toFixed(2));
     s.price = Number(clamp(s.price * (1 + 0.02), MIN_PRICE, MAX_PRICE).toFixed(2));
   }else{
-    if ((me.holdings[idx]||0) <= 0) return;
-    me.holdings[idx] -= 1;
+    const qty0 = me.holdings[idx]||0;
+    if (qty0 <= 0) return;
+    me.holdings[idx] = qty0 - 1;
     me.cash = Number((me.cash + s.price).toFixed(2));
+    if (me.holdings[idx] === 0) me.avgCost[idx] = 0;
     s.price = Number(clamp(s.price * (1 - 0.02), MIN_PRICE, MAX_PRICE).toFixed(2));
   }
   const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
@@ -650,9 +709,9 @@ function startLocalPractice(){
   renderPlayers(); renderStocks();
 
   stopLoops();
-  // UI timer
   startUiClock();
-  // local drift + round
+
+  // drift + rounds
   tickerId = setInterval(()=>{
     const d = gameData; if (!d || d.status!=="running") return;
     // drift
@@ -670,7 +729,8 @@ function startLocalPractice(){
     // end round
     const left = (d.roundEndAt || 0) - Date.now();
     if (left <= 0){
-      const val = portfolioValue(username, d);
+      // in practice, count it as a win if net >= start cash
+      const val = netValue(username, d);
       if (val >= START_CASH) d.wins[username] = (d.wins[username]||0) + 1;
 
       if ((d.round||1) >= ROUNDS){
@@ -697,7 +757,6 @@ ensureTiles();
 overlayBtn.addEventListener("click", ()=>{
   overlayEl.classList.remove("show");
   if (GAME_REF && isHost){
-    // reset match: fresh 5 rounds with same players
     (async ()=>{
       try{
         await setDoc(GAME_REF, {
@@ -720,10 +779,8 @@ overlayBtn.addEventListener("click", ()=>{
 });
 
 if (!GAME_REF){
-  // No lobby/gameId? Run local practice so UI always works.
   startLocalPractice();
 }else{
-  // If we're host when loading, start the authoritative loop
   (async ()=>{
     const ls = await getDoc(LOBBY_REF);
     if (ls.exists()){
@@ -733,10 +790,10 @@ if (!GAME_REF){
   })();
 }
 
-/* responsive */
 let rez=null; window.addEventListener("resize", ()=>{ clearTimeout(rez); rez=setTimeout(()=>{ sizeAllSparks(); renderStocks(); }, 80); });
 </script>
 </body>
 </html>
+
 
 
