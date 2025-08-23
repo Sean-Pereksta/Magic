@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>MOBA — Talents + Ally Bulwark + Clean UI + AI Level Timer</title>
+<title>MOBA — Late Abilities (R/T) + Talent Picks</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{
@@ -20,8 +20,8 @@
     display:inline-flex;gap:8px;align-items:center;font-weight:700;box-shadow:0 1px 0 #0008,inset 0 1px 0 #ffffff08}
   #hud{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);top:10px;display:flex;gap:10px;pointer-events:none}
   .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;background:#0d1420;border:1px solid #2a3240;border-bottom-color:#1a2230;padding:0 6px;border-radius:6px;font-weight:700}
-  #abilityBar{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);bottom:10px;display:flex;gap:10px}
-  .ab{background:#111725;border:1px solid #2a3240;border-radius:10px;padding:8px 10px;min-width:170px;cursor:default}
+  #abilityBar{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);bottom:10px;display:flex;gap:10px;flex-wrap:wrap}
+  .ab{background:#111725;border:1px solid #2a3240;border-radius:10px;padding:8px 10px;min-width:162px}
   .ab h4{margin:0 0 6px;font-size:14px}
   .cd{font-size:12px;color:var(--muted)}
   .locked{opacity:.55}
@@ -35,10 +35,10 @@
   #msg{position:absolute;top:48px;left:10px;color:#a9b6c6;font-size:13px}
   #banner{position:absolute;inset:0 calc(var(--panel-w) + 0px) auto 0;display:flex;align-items:center;justify-content:center;
     font-size:42px;font-weight:900;color:#ffffffdd;text-shadow:0 2px 20px #000;opacity:0;transition:opacity .4s}
-  /* Move this helper line higher so it doesn't clash with ability bar */
+  /* Helper line is raised so it doesn’t collide with the ability bar */
   #corner{position:absolute;left:10px;bottom:120px;color:#a9b6c6;font-size:12px}
 
-  /* XP bar — lowered so it doesn't overlap HUD chips */
+  /* XP bar lowered so it doesn’t overlap chips */
   #xpBarWrap{position:absolute;left:10px;right:calc(var(--panel-w) + 10px);top:76px;height:8px;background:#101420;border:1px solid #263043;border-radius:12px;overflow:hidden}
   #xpBar{height:100%;background:linear-gradient(90deg,#58a6ff,#8bd6ff)}
 
@@ -82,9 +82,19 @@
         <div class="cd" id="eInfo">Unlock at Lv7</div>
         <div class="prog"><div class="progFill" id="eProg"></div></div>
       </div>
+      <div class="ab" id="abR" title="Press R (Lv10 Ultimate)">
+        <h4>R — <span id="rName">—</span></h4>
+        <div class="cd" id="rInfo">Unlock at Lv10</div>
+        <div class="prog"><div class="progFill" id="rProg"></div></div>
+      </div>
+      <div class="ab" id="abT" title="Press T (click to choose when unlocked)">
+        <h4>T — <span id="tName">—</span></h4>
+        <div class="cd" id="tInfo">Unlock at Lv13</div>
+        <div class="prog"><div class="progFill" id="tProg"></div></div>
+      </div>
     </div>
 
-    <div id="corner">Right-click ground: move (cancels target). Right-click <b>enemy</b>: hard-target & chase until in range. While moving, your hero <b>won’t shoot</b>. Q/W/E to aim/cast. <span class="kbd">Esc</span> cancels. Edge-pan horizontally.</div>
+    <div id="corner">Right-click ground: move (cancels target). Right-click <b>enemy</b>: hard-target & chase until in range. While moving, your hero <b>won’t shoot</b>. Q/W/E/R/T to aim/cast. <span class="kbd">Esc</span> cancels. Edge-pan horizontally.</div>
     <div id="msg"></div>
     <div id="banner">STAGE 1</div>
 
@@ -92,7 +102,7 @@
     <div id="start">
       <div id="card">
         <h2 style="margin:0 0 6px">Choose your Hero</h2>
-        <div class="listy" style="color:#a9b6c6">Destroy the enemy 💠 Core. Your kills grant full XP. Nearby team kills grant a small assist XP. Abilities unlock Lv2/Lv4/Lv7. At Lv4/Lv7, pick between two W/E talents.</div>
+        <div class="listy" style="color:#a9b6c6">Destroy the enemy 💠 Core. Your kills grant full XP. Nearby team kills grant a small assist XP. Abilities unlock Lv2/Lv4/Lv7/Lv10/Lv13 (W/E/T require a pick).</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px">
           <button class="btn" id="pickHealer">🧑‍⚕️ Healer</button>
           <button class="btn" id="pickTank">🛡️ Tank</button>
@@ -104,7 +114,7 @@
     <!-- Talent chooser -->
     <div id="talentOverlay">
       <div id="talentBox">
-        <h3 id="talentTitle">Choose W Talent (Lv4)</h3>
+        <h3 id="talentTitle">Choose Talent</h3>
         <div class="talentRow">
           <div class="talent">
             <div><b id="talentAName">—</b></div>
@@ -117,7 +127,7 @@
             <button class="btn pick" id="pickB">Choose</button>
           </div>
         </div>
-        <div class="hint">Tip: you can also open this by clicking the W/E panel after unlocking.</div>
+        <div class="hint">Tip: you can also open this by clicking W/E/T after unlocking.</div>
       </div>
     </div>
 
@@ -129,7 +139,7 @@
     <div>• Assist XP: nearby ally kills grant <b>small XP</b> (defaults to 20% of base).</div>
     <div>• Base XP: <b>Minion 25</b>, <b>Hero 75</b>. (Towers/Core unchanged.)</div>
     <div>• Red ring = your current attack target (hard target or in-range auto target).</div>
-    <div style="margin-top:8px;color:#9fb2c7">• Talents: At Lv4 choose one of 2 W abilities; at Lv7 choose one of 2 E abilities. AI picks automatically.</div>
+    <div style="margin-top:8px;color:#9fb2c7">• Talents: Lv4 (W), Lv7 (E), Lv13 (T). AI picks automatically.</div>
   </aside>
 </div>
 
@@ -159,8 +169,8 @@ const COLORS={
 };
 
 const ASSIST_RADIUS = 380;
-const ASSIST_SHARE  = 0.20; // 20% of base
-const AI_LEVEL_INTERVAL_MS = 25000; // <<< enemy & co-ally heroes level up on a timer
+const ASSIST_SHARE  = 0.20;
+const AI_LEVEL_INTERVAL_MS = 25000;
 
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
@@ -170,10 +180,10 @@ const fpsEl=$("fps"), stageEl=$("stage"), hLevelEl=$("hLevel"), xpEl=$("xp"), xp
       myCoreHpEl=$("myCoreHp"), enCoreHpEl=$("enCoreHp"), msgEl=$("msg"), banner=$("banner"),
       xpBar=$("xpBar");
 const startEl=$("start");
-const abQ=$("abQ"), abW=$("abW"), abE=$("abE"),
-      qName=$("qName"), wName=$("wName"), eName=$("eName"),
-      qInfo=$("qInfo"), wInfo=$("wInfo"), eInfo=$("eInfo"),
-      qProg=$("qProg"), wProg=$("wProg"), eProg=$("eProg");
+const abQ=$("abQ"), abW=$("abW"), abE=$("abE"), abR=$("abR"), abT=$("abT"),
+      qName=$("qName"), wName=$("wName"), eName=$("eName"), rName=$("rName"), tName=$("tName"),
+      qInfo=$("qInfo"), wInfo=$("wInfo"), eInfo=$("eInfo"), rInfo=$("rInfo"), tInfo=$("tInfo"),
+      qProg=$("qProg"), wProg=$("wProg"), eProg=$("eProg"), rProg=$("rProg"), tProg=$("tProg");
 
 const talentOverlay=$("talentOverlay"), talentTitle=$("talentTitle"),
       talentAName=$("talentAName"), talentADesc=$("talentADesc"),
@@ -181,52 +191,45 @@ const talentOverlay=$("talentOverlay"), talentTitle=$("talentTitle"),
       pickA=$("pickA"), pickB=$("pickB");
 
 /* ========================= Data ========================= */
-const AB_UNLOCKS={ Q:2, W:4, E:7 };
+const AB_UNLOCKS={ Q:2, W:4, E:7, R:10, T:13 };
 
 const HERO_BASES={
-  healer:{hp:150, speed:200, range:260, dmg:12, emoji:"🧑‍⚕️"},
-  tank:{hp:320, speed:185, range:80, dmg:15, emoji:"🛡️"},
-  mage:{hp:200, speed:210, range:300, dmg:9,  emoji:"🧙‍♂️"}
+  healer:{hp:220, speed:200, range:260, dmg:10, emoji:"🧑‍⚕️"},
+  tank:{hp:360, speed:185, range:150, dmg:12, emoji:"🛡️"},
+  mage:{hp:250, speed:210, range:300, dmg:9,  emoji:"🧙‍♂️"}
 };
 
-/* 5 abilities per hero: Q (fixed), W has W1/W2 options, E has E1/E2 options */
+/* Abilities: Q fixed; W/E pick 1 of 2; R fixed (ultimate); T pick 1 of 2 */
 const HERO_ABILITIES={
   healer:{
-    Q:{name:"Heal Beam", desc:"Heal an ally in range.",
-       target:"ally-unit", cd:4000, power:(lv)=>18+6*lv},
-    W1:{name:"Sanctuary", desc:"Area HoT field that pulses healing over time.",
-        target:"area", cd:12000, power:(lv)=>6+3*lv, dur:3000, radius:100},
-    W2:{name:"Cleanse Pulse", desc:"Cleanse CC & grant haste + shields to allies around you.",
-        target:"self-aura", cd:14000, radius:120, hasteDur:3000, hasteMul:1.25, shield:(lv)=>10+3*lv},
-    E1:{name:"Revitalize", desc:"Big heal + shield to one ally.",
-        target:"ally-hero", cd:20000, power:(lv)=>45+10*lv, shield:(lv)=>15+4*lv},
-    E2:{name:"Tranquility", desc:"Channel a large HoT around yourself.",
-        target:"self-aura-hot", cd:22000, radius:140, dur:4500, tick:700, power:(lv)=>10+3*lv}
+    Q:{name:"Heal Beam", desc:"Heal an ally in range.", target:"ally-unit", cd:4000, power:(lv)=>18+6*lv},
+    W1:{name:"Sanctuary", desc:"Area HoT field that pulses healing over time.", target:"area", cd:12000, power:(lv)=>6+3*lv, dur:3000, radius:100},
+    W2:{name:"Cleanse Pulse", desc:"Cleanse & haste allies near you, grant small shields.", target:"self-aura", cd:14000, radius:120, hasteDur:3000, hasteMul:1.25, shield:(lv)=>10+3*lv},
+    E1:{name:"Revitalize", desc:"Big heal + shield to one ally.", target:"ally-hero", cd:20000, power:(lv)=>45+10*lv, shield:(lv)=>15+4*lv},
+    E2:{name:"Tranquility", desc:"Channel a large HoT around yourself.", target:"self-aura-hot", cd:22000, radius:140, dur:4500, tick:700, power:(lv)=>10+3*lv},
+    R:{name:"Aegis Dome", desc:"Area: burst shield + steady healing over time.", target:"area", cd:24000, radius:130, shield:(lv)=>22+5*lv, hot:(lv)=>7+3*lv, dur:4000},
+    T1:{name:"Haste Beacon", desc:"Self aura: haste allies & trickle heal.", target:"self-aura", cd:16000, radius:140, hasteDur:2800, shield:(lv)=>0, hot:(lv)=>4+2*lv},
+    T2:{name:"Mass Mend", desc:"Area: instant heal burst, then short HoT.", target:"area", cd:18000, radius:120, burst:(lv)=>24+7*lv, hot:(lv)=>5+2*lv, dur:2000}
   },
   tank:{
-    Q:{name:"Shield Bash",desc:"Damage & brief stun to a nearby enemy.",
-       target:"enemy-unit", cd:6000, power:(lv)=>10+3*lv, stun:1200},
-    W1:{name:"Fortify", desc:"Reduce damage taken for a short time.",
-        target:"self", cd:14000, reduce:0.4, dur:5000},
-    /* Bulwark is now aimable on a teammate; aura is centered on the selected ally */
-    W2:{name:"Bulwark", desc:"Target a teammate; allies near them gain shields & DR.",
-        target:"ally-aura", cd:16000, radius:130, dur:3500, shield:(lv)=>12+3*lv, reduce:0.4},
-    E1:{name:"Charge", desc:"Dash toward a point, damaging in an area on arrival.",
-        target:"point", cd:18000, power:(lv)=>18+7*lv, radius:70},
-    E2:{name:"War Shout", desc:"Debuff enemies in an area: slow movement & attacks.",
-        target:"debuff-area", cd:14000, radius:140, dur:7000, slowMul:0.5, atkMul:0.5}
+    Q:{name:"Shield Bash",desc:"Damage & brief stun to a nearby enemy.", target:"enemy-unit", cd:6000, power:(lv)=>10+3*lv, stun:1200},
+    W1:{name:"Fortify", desc:"Reduce damage taken for a short time.", target:"self", cd:14000, reduce:0.4, dur:5000},
+    W2:{name:"Bulwark", desc:"Target a teammate; allies near them gain shields & DR.", target:"ally-aura", cd:16000, radius:130, dur:3500, shield:(lv)=>12+3*lv, reduce:0.4},
+    E1:{name:"Charge", desc:"Dash toward a point, damaging on arrival.", target:"point", cd:18000, power:(lv)=>18+7*lv, radius:70},
+    E2:{name:"War Shout", desc:"Debuff area: slow + attack-speed slow.", target:"debuff-area", cd:17000, radius:140, dur:4500, slowMul:0.7, atkMul:0.7},
+    R:{name:"Earthshatter", desc:"Area: heavy damage + long stun.", target:"area", cd:24000, radius:120, power:(lv)=>28+9*lv, stun:1800},
+    T1:{name:"Iron Banner", desc:"Ally aura: small shields + damage boost.", target:"ally-aura", cd:19000, radius:140, dur:3500, shield:(lv)=>8+2*lv, boostDur:2000},
+    T2:{name:"Ground Slam", desc:"Self area: slow + weaken attacks.", target:"debuff-area-self", cd:16000, radius:130, dur:3500, slowMul:0.7, atkMul:0.75}
   },
   mage:{
-    Q:{name:"Firebolt", desc:"Ranged nuke to a target.",
-       target:"enemy-unit", cd:3500, power:(lv)=>20+6*lv},
-    W1:{name:"Arcane Nova", desc:"Burst AoE damage.",
-        target:"area", cd:9000,  power:(lv)=>12+5*lv, radius:90},
-    W2:{name:"Time Warp", desc:"Zone that slows and makes foes vulnerable.",
-        target:"debuff-area", cd:12000, radius:110, dur:4000, slowMul:0.7, vulnMul:1.2},
-    E1:{name:"Meteor", desc:"Large AoE nuke.",
-        target:"area", cd:16000, power:(lv)=>24+10*lv, radius:110},
-    E2:{name:"Blink + Surge", desc:"Short blink; brief damage surge to attacks & spells.",
-        target:"blink", cd:14000, maxStep:280, boostDur:4000, dmgMul:1.3}
+    Q:{name:"Firebolt", desc:"Ranged nuke.", target:"enemy-unit", cd:3500, power:(lv)=>20+6*lv},
+    W1:{name:"Arcane Nova", desc:"Burst AoE damage.", target:"area", cd:9000,  power:(lv)=>12+5*lv, radius:90},
+    W2:{name:"Time Warp", desc:"Zone that slows & makes foes vulnerable.", target:"debuff-area", cd:12000, radius:110, dur:4000, slowMul:0.7, vulnMul:1.2},
+    E1:{name:"Meteor", desc:"Large AoE nuke.", target:"area", cd:16000, power:(lv)=>24+10*lv, radius:110},
+    E2:{name:"Blink + Surge", desc:"Blink; brief damage boost.", target:"blink", cd:14000, maxStep:280, boostDur:4000},
+    R:{name:"Thunderstorm", desc:"Area DoT that zaps enemies repeatedly.", target:"area", cd:23000, radius:130, tick:600, power:(lv)=>10+4*lv, dur:3600},
+    T1:{name:"Rune of Power", desc:"Area buff: standing in it boosts damage.", target:"ally-buff-area", cd:18000, radius:110, dur:5000, boostDur:1200},
+    T2:{name:"Ice Prison", desc:"Debuff area: heavy slow + small DoT.", target:"debuff-dot-area", cd:19000, radius:120, dur:4500, tick:700, power:(lv)=>6+2*lv, slowMul:0.55}
   }
 };
 
@@ -272,7 +275,7 @@ function makeUnit(kind, team, x, y, opts={}){
     born:nowMS(),
     heroClass:opts.heroClass||null, level:opts.level||1, xp:0,
     respawnAt:0, shield:0, fortifyUntil:0, stunnedUntil:0,
-    pickW:null, pickE:null,
+    pickW:null, pickE:null, pickT:null,
     slowUntil:0, hasteUntil:0, atkSlowUntil:0, dmgBoostUntil:0, vulnUntil:0,
     isStructure:false, isCore:false
   };
@@ -325,7 +328,7 @@ function setupWorld(stage, heroClass){
   stageEl.textContent = state.stage;
   flashBanner("STAGE "+state.stage);
   const A=abilitySetFor(me);
-  qName.textContent=A.Q.name; setWBar(me); setEBar(me);
+  qName.textContent=A.Q.name; setWBar(me); setEBar(me); setRBar(me); setTBar(me);
   updateAbilityUI(); updateHud();
 }
 
@@ -336,18 +339,26 @@ function abilitySetFor(u){
     Q: H.Q,
     W: u.pickW ? H[u.pickW] : null,
     E: u.pickE ? H[u.pickE] : null,
+    R: H.R,
+    T: u.pickT ? H[u.pickT] : null,
     raw: H
   };
 }
 function setWBar(me){
   const H=HERO_ABILITIES[me.heroClass];
-  if (me.pickW){ wName.textContent=H[me.pickW].name; }
-  else { wName.textContent=`Choose: ${H.W1.name} / ${H.W2.name}`; }
+  wName.textContent = me.pickW ? H[me.pickW].name : `Choose: ${H.W1.name} / ${H.W2.name}`;
 }
 function setEBar(me){
   const H=HERO_ABILITIES[me.heroClass];
-  if (me.pickE){ eName.textContent=H[me.pickE].name; }
-  else { eName.textContent=`Choose: ${H.E1.name} / ${H.E2.name}`; }
+  eName.textContent = me.pickE ? H[me.pickE].name : `Choose: ${H.E1.name} / ${H.E2.name}`;
+}
+function setRBar(me){
+  const H=HERO_ABILITIES[me.heroClass];
+  rName.textContent = H.R.name;
+}
+function setTBar(me){
+  const H=HERO_ABILITIES[me.heroClass];
+  tName.textContent = me.pickT ? H[me.pickT].name : `Choose: ${H.T1.name} / ${H.T2.name}`;
 }
 
 /* ========================= Queries & Goals ========================= */
@@ -365,6 +376,20 @@ function nearestEnemyTo(u, maxR=Infinity){
   }
   return best;
 }
+function nextObjective(team){
+  // Attack the closest enemy tower down the lane; if none, attack the enemy core
+  const enemyTowers = state.units.filter(u => u.alive && u.kind==="tower" && u.team!==team);
+  if (team === PLAYER){
+    // For the player side, the next tower is the one with the smallest X (left-most enemy tower)
+    const t = enemyTowers.sort((a,b)=>a.x-b.x)[0];
+    return t || enCore();
+  } else {
+    // For the enemy side, march right-to-left toward your core
+    const t = enemyTowers.sort((a,b)=>b.x-a.x)[0];
+    return t || myCore();
+  }
+}
+
 function nearestAllyToPoint(team, x, y, maxR){
   const r2=maxR*maxR; let best=null, bestD2=Infinity;
   for (const a of state.units){
@@ -373,16 +398,6 @@ function nearestAllyToPoint(team, x, y, maxR){
     if (d2<bestD2 && d2<=r2){ best=a; bestD2=d2; }
   }
   return best;
-}
-function nextObjective(team){
-  const enemyTowers = state.units.filter(u=>u.alive && u.kind==="tower" && u.team!==team);
-  if (team===PLAYER){
-    const t = enemyTowers.sort((a,b)=>a.x-b.x)[0];
-    return t || enCore();
-  } else {
-    const t = enemyTowers.sort((a,b)=>b.x-a.x)[0];
-    return t || myCore();
-  }
 }
 
 /* ========================= Hit Test ========================= */
@@ -431,7 +446,9 @@ canvas.addEventListener("mousedown",(e)=>{
 
 window.addEventListener("keydown",(e)=>{
   state.keys[e.code]=true;
-  if (e.code==="KeyQ"||e.code==="KeyW"||e.code==="KeyE"){ primeAbility(e.code.slice(3).toUpperCase()); }
+  if (["KeyQ","KeyW","KeyE","KeyR","KeyT"].includes(e.code)){
+    primeAbility(e.code.slice(3).toUpperCase());
+  }
   if (e.code==="Escape") cancelTargeting();
 });
 window.addEventListener("keyup", e=>state.keys[e.code]=false);
@@ -444,6 +461,10 @@ abE.addEventListener("click", ()=>{
   const me=playerHero(); if (!me) return;
   if (me.level>=AB_UNLOCKS.E && !me.pickE) openTalentPicker(me, "E");
 });
+abT.addEventListener("click", ()=>{
+  const me=playerHero(); if (!me) return;
+  if (me.level>=AB_UNLOCKS.T && !me.pickT) openTalentPicker(me, "T");
+});
 
 function primeAbility(key){
   const me=playerHero(); if (!me || !me.alive) return;
@@ -451,16 +472,19 @@ function primeAbility(key){
 
   if (key==="W" && L>=AB_UNLOCKS.W && !me.pickW){ openTalentPicker(me, "W"); return; }
   if (key==="E" && L>=AB_UNLOCKS.E && !me.pickE){ openTalentPicker(me, "E"); return; }
+  if (key==="T" && L>=AB_UNLOCKS.T && !me.pickT){ openTalentPicker(me, "T"); return; }
 
   const A=S[key]; if (!A) return;
   if (L<AB_UNLOCKS[key]){ say(`${key} unlocks at Lv${AB_UNLOCKS[key]}`); return; }
   if (me[`cd_${key}`] && nowMS()<me[`cd_${key}`]){ say(`${key} cooling down`); return; }
 
-  // Clear, specific targeting texts
   let targetText=A.target;
   if (A.target==="ally-aura") targetText="ally (center aura)";
   else if (A.target==="self-aura") targetText="self aura";
   else if (A.target==="self-aura-hot") targetText="self HoT aura";
+  else if (A.target==="ally-buff-area") targetText="area (ally buff zone)";
+  else if (A.target==="debuff-dot-area") targetText="area (enemy slow + DoT)";
+  else if (A.target==="debuff-area-self") targetText="self area (debuff enemies)";
   state.targeting={key, A};
   say(`Target ${targetText} for ${A.name}. Left-click to cast.`);
 }
@@ -478,7 +502,7 @@ function spawnWave(team){
   }
 }
 
-/* ========================= Combat math helpers ========================= */
+/* ========================= Combat helpers ========================= */
 function rateMul(u){
   const now=nowMS(); let m=1;
   if (now < (u.atkSlowUntil||0)) m *= 0.7;
@@ -528,7 +552,6 @@ function applyDamage(target, dmg, dealer){
   if (target.hp<=0){
     target.alive=false;
 
-    // Player XP only (assist logic too)
     const me = playerHero();
     const base = XP_ON_KILL[xpKeyFor(target)] || 0;
     if (dealer && me && dealer.id===me.id){
@@ -561,7 +584,7 @@ function gainXP(hero, amount){
     levelUpOnce(hero);
     leveled=true;
   }
-  if (leveled){ setWBar(hero); setEBar(hero); }
+  if (leveled){ setWBar(hero); setEBar(hero); setRBar(hero); setTBar(hero); }
   updateAbilityUI(); updateHud();
 }
 function levelUpOnce(u){
@@ -589,10 +612,11 @@ function aiTick(dt){
       continue;
     }
 
-    // AI auto-pick talents when reaching thresholds
+    // AI auto-pick talents
     if ((u.kind==="aihero"||u.kind==="cohero")){
       if (u.level>=AB_UNLOCKS.W && !u.pickW){ u.pickW = (Math.random()<0.5) ? "W1" : "W2"; }
       if (u.level>=AB_UNLOCKS.E && !u.pickE){ u.pickE = (Math.random()<0.5) ? "E1" : "E2"; }
+      if (u.level>=AB_UNLOCKS.T && !u.pickT){ u.pickT = (Math.random()<0.5) ? "T1" : "T2"; }
     }
 
     // Stun lock
@@ -658,7 +682,7 @@ function aiTick(dt){
         }
       }
 
-      // Auto-fire (player won’t shoot while moving)
+      // Auto-fire
       if (u.target && u.cd <= 0){
         const inRange = dist2(u,u.target) <= (u.range + u.r + (u.target.r||0))**2;
         const movingBlock = (isPlayer && hasMove);
@@ -735,7 +759,6 @@ function trySmartAbility(u){
       if (S.W.target==="self"){
         u.fortifyUntil = now + S.W.dur; u[`cd_W`]=now + S.W.cd;
       } else if (S.W.target==="ally-aura"){
-        // AI centers on lowest ally
         const center = lowAlly || u;
         for (const a of allies){
           if (dist2(a,center)<=S.W.radius*S.W.radius){
@@ -812,13 +835,86 @@ function trySmartAbility(u){
       }
     }
   }
+
+  // R (fixed ultimate)
+  if (lv>=AB_UNLOCKS.R && S.R && !(u[`cd_R`] && now<u[`cd_R`])){
+    if (u.heroClass==="healer"){
+      if (lowAlly){
+        const c={x:lowAlly.x,y:lowAlly.y};
+        // burst shield + HoT field
+        for (const a of allies){ if (dist2(a,c)<=S.R.radius*S.R.radius){ a.shield += S.R.shield(lv); } }
+        state.effects.push({type:"hot", x:c.x, y:c.y, r:S.R.radius, power:S.R.hot(lv), tickEvery:500, tickAt:now+500, until:now+S.R.dur, team:u.team});
+        state.effects.push({type:"circle", x:c.x, y:c.y, r:S.R.radius, color:"#8fe7ff44", until:now+400});
+        u[`cd_R`]=now + S.R.cd;
+      }
+    } else if (u.heroClass==="tank"){
+      const t = u.target || nearestEnemyTo(u, 200);
+      if (t){
+        const c={x:t.x,y:t.y};
+        for (const e of foes){ if (dist2(e,c)<=S.R.radius*S.R.radius){ applyDamage(e, S.R.power(lv), u); e.stunnedUntil = Math.max(e.stunnedUntil||0, now + S.R.stun); } }
+        state.effects.push({type:"circle", x:c.x, y:c.y, r:S.R.radius, color:"#ffd16655", until:now+450});
+        u[`cd_R`]=now + S.R.cd;
+      }
+    } else if (u.heroClass==="mage"){
+      const t = u.target || nearestEnemyTo(u, 300);
+      if (t){
+        const c={x:t.x,y:t.y};
+        state.effects.push({type:"dot", x:c.x, y:c.y, r:S.R.radius, power:S.R.power(lv), tickEvery:S.R.tick, tickAt:now+S.R.tick, until:now+S.R.dur, team:u.team});
+        state.effects.push({type:"circle", x:c.x, y:c.y, r:S.R.radius, color:"#a8c9ff44", until:now+350});
+        u[`cd_R`]=now + S.R.cd;
+      }
+    }
+  }
+
+  // T (chosen)
+  if (lv>=AB_UNLOCKS.T && S.T && !(u[`cd_T`] && now<u[`cd_T`])){
+    if (u.heroClass==="healer"){
+      if (S.T.target==="self-aura"){
+        for (const a of allies){ if (dist2(a,u)<=S.T.radius*S.T.radius){ a.hasteUntil = Math.max(a.hasteUntil||0, now + S.T.hasteDur); a.hp = clamp(a.hp + S.T.hot(lv), 0, a.maxHp); } }
+        state.effects.push({type:"circle", x:u.x, y:u.y, r:S.T.radius, color:COLORS.heal, until:now+350});
+        u[`cd_T`]=now + S.T.cd;
+      } else if (S.T.target==="area"){
+        const low = lowAlly || u;
+        const c={x:low.x,y:low.y};
+        for (const a of allies){ if (dist2(a,c)<=S.T.radius*S.T.radius){ a.hp = clamp(a.hp + S.T.burst(lv), 0, a.maxHp); } }
+        state.effects.push({type:"hot", x:c.x, y:c.y, r:S.T.radius, power:S.T.hot(lv), tickEvery:500, tickAt:now+500, until:now+S.T.dur, team:u.team});
+        u[`cd_T`]=now + S.T.cd;
+      }
+    } else if (u.heroClass==="tank"){
+      if (S.T.target==="ally-aura"){
+        const center = lowAlly || u;
+        for (const a of allies){ if (dist2(a,center)<=S.T.radius*S.T.radius){ a.shield += S.T.shield(lv); a.dmgBoostUntil = Math.max(a.dmgBoostUntil||0, now + S.T.boostDur); } }
+        state.effects.push({type:"circle", x:center.x, y:center.y, r:S.T.radius, color:"#8fe7ff44", until:now+350});
+        u[`cd_T`]=now + S.T.cd;
+      } else if (S.T.target==="debuff-area-self"){
+        for (const e of foes){ if (dist2(e,u)<=S.T.radius*S.T.radius){ e.slowUntil = Math.max(e.slowUntil||0, now + S.T.dur); e.atkSlowUntil = Math.max(e.atkSlowUntil||0, now + S.T.dur); } }
+        state.effects.push({type:"circle", x:u.x, y:u.y, r:S.T.radius, color:"#ffd16655", until:now+350});
+        u[`cd_T`]=now + S.T.cd;
+      }
+    } else if (u.heroClass==="mage"){
+      if (S.T.target==="ally-buff-area"){
+        const c={x:u.x,y:u.y};
+        state.effects.push({type:"buff", x:c.x, y:c.y, r:S.T.radius, boostDur:S.T.boostDur, tickEvery:400, tickAt:now+400, until:now+S.T.dur, team:u.team});
+        state.effects.push({type:"circle", x:c.x, y:c.y, r:S.T.radius, color:"#b18cff44", until:now+350});
+        u[`cd_T`]=now + S.T.cd;
+      } else if (S.T.target==="debuff-dot-area"){
+        const t=u.target || nearestEnemyTo(u, 260);
+        if (t){
+          const c={x:t.x,y:t.y};
+          for (const e of foes){ if (dist2(e,c)<=S.T.radius*S.T.radius){ e.slowUntil = Math.max(e.slowUntil||0, now + S.T.dur); } }
+          state.effects.push({type:"dot", x:c.x, y:c.y, r:S.T.radius, power:S.T.power(lv), tickEvery:S.T.tick, tickAt:now+S.T.tick, until:now+S.T.dur, team:u.team});
+          state.effects.push({type:"circle", x:c.x, y:c.y, r:S.T.radius, color:"#9ddcff44", until:now+350});
+          u[`cd_T`]=now + S.T.cd;
+        }
+      }
+    }
+  }
 }
 
 /* ========================= Physics & Collision ========================= */
 function physics(dt){
   const damp=0.88;
 
-  // Movement integration
   for (const u of state.units){
     if (!u.alive) continue;
     u.cd = Math.max(0, u.cd - dt);
@@ -914,8 +1010,9 @@ function tryCast(tgt, w){
       if (dist2(a,me)<=A.radius*A.radius){
         a.stunnedUntil = Math.min(a.stunnedUntil||0, now);
         a.slowUntil = Math.min(a.slowUntil||0, now);
-        a.hasteUntil = Math.max(a.hasteUntil||0, now + A.hasteDur);
-        a.shield += A.shield(me.level);
+        if (A.hasteDur) a.hasteUntil = Math.max(a.hasteUntil||0, now + A.hasteDur);
+        if (A.shield)   a.shield += A.shield(me.level);
+        if (A.hot)      a.hp = clamp(a.hp + A.hot(me.level), 0, a.maxHp);
       }
     }
     state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:COLORS.heal, until:now+450});
@@ -926,20 +1023,18 @@ function tryCast(tgt, w){
     me[`cd_${key}`] = now + A.cd; casted = true;
   }
   else if (A.target === "ally-aura"){
-    // NEW: Bulwark targeting — click a teammate to center the aura there
     const ally = nearestAllyToPoint(me.team, w.x, w.y, me.range + 160);
     if (ally){
       for (const a of state.units){
         if (a.alive && a.team===me.team && dist2(a,ally)<=A.radius*A.radius){
-          a.shield += A.shield(me.level);
-          a.fortifyUntil = Math.max(a.fortifyUntil||0, now + A.dur);
+          if (A.shield) a.shield += A.shield(me.level);
+          if (A.reduce) a.fortifyUntil = Math.max(a.fortifyUntil||0, now + A.dur);
+          if (A.boostDur) a.dmgBoostUntil = Math.max(a.dmgBoostUntil||0, now + A.boostDur);
         }
       }
       state.effects.push({type:"circle", x:ally.x, y:ally.y, r:A.radius, color:"#88e0ff55", until:now+450});
       me[`cd_${key}`] = now + A.cd; casted = true;
-    } else {
-      say("No teammate in range to center Bulwark on.");
-    }
+    } else { say("No teammate in range."); }
   }
   else if (A.target === "point"){
     const dx = w.x - me.x, dy = w.y - me.y, d = Math.hypot(dx,dy) || 1;
@@ -954,18 +1049,52 @@ function tryCast(tgt, w){
   else if (A.target === "area"){
     const radius = A.radius;
     if (me.heroClass === "mage"){
-      const dmg = A.power(me.level) * dmgOutMul(me);
+      const dmg = (A.power ? A.power(me.level) : 0) * dmgOutMul(me);
       for (const e of state.units){
         if (!e.alive || e.team === me.team) continue;
         if (dist2(e, w) <= radius*radius) applyDamage(e, dmg, me);
       }
       state.effects.push({ type:"circle", x:w.x, y:w.y, r:radius, color:COLORS.area, until: now + 300 });
+      if (A.tick){ // Thunderstorm — DoT zone
+        state.effects.push({type:"dot", x:w.x, y:w.y, r:radius, power:A.power(me.level), tickEvery:A.tick, tickAt:now+A.tick, until:now+A.dur, team:me.team});
+      }
       me[`cd_${key}`] = now + A.cd; casted = true;
     } else if (me.heroClass === "healer"){
-      const power = A.power(me.level);
-      state.effects.push({type:"hot", x:w.x, y:w.y, r:radius, power, tickEvery:500, tickAt: now + 500, until: now + A.dur, team: me.team});
+      // Aegis Dome / Mass Mend
+      if (A.shield){
+        for (const a of state.units){ if (a.alive && a.team===me.team && dist2(a,w)<=radius*radius){ a.shield += A.shield(me.level); } }
+      }
+      const power = (A.hot ? A.hot(me.level) : 0);
+      const dur   = A.dur || 0;
+      if (power && dur){
+        state.effects.push({type:"hot", x:w.x, y:w.y, r:radius, power, tickEvery:500, tickAt: now + 500, until: now + dur, team: me.team});
+      }
+      if (A.burst){
+        for (const a of state.units){ if (a.alive && a.team===me.team && dist2(a,w)<=radius*radius){ a.hp = clamp(a.hp + A.burst(me.level), 0, a.maxHp); } }
+      }
+      me[`cd_${key}`] = now + A.cd; casted = true;
+    } else if (me.heroClass === "tank"){
+      // Earthshatter
+      if (A.power && A.stun){
+        for (const e of state.units){
+          if (!e.alive || e.team===me.team) continue;
+          if (dist2(e, w) <= radius*radius){ applyDamage(e, A.power(me.level), me); e.stunnedUntil = Math.max(e.stunnedUntil||0, now + A.stun); }
+        }
+      }
+      state.effects.push({ type:"circle", x:w.x, y:w.y, r:radius, color:"#ffd16655", until: now + 350 });
       me[`cd_${key}`] = now + A.cd; casted = true;
     }
+  }
+  else if (A.target === "ally-buff-area"){
+    state.effects.push({type:"buff", x:w.x, y:w.y, r:A.radius, boostDur:A.boostDur, tickEvery:400, tickAt:now+400, until:now+A.dur, team:me.team});
+    state.effects.push({type:"circle", x:w.x, y:w.y, r:A.radius, color:"#b18cff44", until:now+300});
+    me[`cd_${key}`] = now + A.cd; casted = true;
+  }
+  else if (A.target === "debuff-dot-area"){
+    state.effects.push({type:"dot", x:w.x, y:w.y, r:A.radius, power:A.power(me.level), tickEvery:A.tick, tickAt:now+A.tick, until:now+A.dur, team:me.team});
+    for (const e of state.units){ if (e.alive && e.team!==me.team && dist2(e,w)<=A.radius*A.radius){ e.slowUntil = Math.max(e.slowUntil||0, now + A.dur); } }
+    state.effects.push({type:"circle", x:w.x, y:w.y, r:A.radius, color:"#9ddcff44", until:now+300});
+    me[`cd_${key}`] = now + A.cd; casted = true;
   }
   else if (A.target === "debuff-area"){
     const r=A.radius, c={x:w.x,y:w.y};
@@ -982,6 +1111,17 @@ function tryCast(tgt, w){
       }
     }
     state.effects.push({type:"circle", x:c.x, y:c.y, r:r, color: me.heroClass==="tank" ? "#ffd16655" : "#ff7e5e55", until: now+450});
+    me[`cd_${key}`] = now + A.cd; casted = true;
+  }
+  else if (A.target === "debuff-area-self"){
+    for (const e of state.units){
+      if (!e.alive || e.team===me.team) continue;
+      if (dist2(e,me)<=A.radius*A.radius){
+        e.slowUntil = Math.max(e.slowUntil||0, now + A.dur);
+        e.atkSlowUntil = Math.max(e.atkSlowUntil||0, now + A.dur);
+      }
+    }
+    state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:"#ffd16655", until:now+350});
     me[`cd_${key}`] = now + A.cd; casted = true;
   }
   else if (A.target === "blink"){
@@ -1069,6 +1209,32 @@ function draw(){
       const sc=screen(ef.x, ef.y);
       ctx.beginPath(); ctx.arc(sc.x, sc.y, ef.r, 0, TWO_PI);
       ctx.fillStyle=COLORS.heal; ctx.fill();
+    } else if (ef.type==="dot"){
+      if (now>ef.until){ state.effects.splice(i,1); continue; }
+      if (now>=ef.tickAt){
+        for (const u of state.units){
+          if (u.alive && u.team!==ef.team && dist2(u,ef)<=ef.r*ef.r){
+            applyDamage(u, ef.power, getUnit(state.playerId)); // attribute to player for visuals/XP if needed
+          }
+        }
+        ef.tickAt+=ef.tickEvery;
+      }
+      const sc=screen(ef.x, ef.y);
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, ef.r, 0, TWO_PI);
+      ctx.fillStyle="#a8c9ff44"; ctx.fill();
+    } else if (ef.type==="buff"){
+      if (now>ef.until){ state.effects.splice(i,1); continue; }
+      if (now>=ef.tickAt){
+        for (const u of state.units){
+          if (u.alive && u.team===ef.team && dist2(u,ef)<=ef.r*ef.r){
+            u.dmgBoostUntil = Math.max(u.dmgBoostUntil||0, now + ef.boostDur);
+          }
+        }
+        ef.tickAt+=ef.tickEvery;
+      }
+      const sc=screen(ef.x, ef.y);
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, ef.r, 0, TWO_PI);
+      ctx.fillStyle="#b18cff33"; ctx.fill();
     }
   }
 
@@ -1128,21 +1294,23 @@ function draw(){
 
     if (u.id===state.playerId){
       let dx = sc.x + 34, dy = sc.y - u.r - 16; const nowT=now;
-      for (const K of ["Q","W","E"]){
+      for (const K of ["Q","W","E","R","T"]){
         const cd = u[`cd_${K}`] ? Math.max(0, Math.ceil((u[`cd_${K}`]-nowT)/1000)) : 0;
         if (cd>0){ drawCooldownDot(dx, dy, cd, "#ffd166"); dx += 14; }
       }
     }
   }
 
-  // Targeting preview for area/debuff-area/ally-aura
+  // Targeting preview
   if (state.targeting){
     const A=state.targeting.A;
     const mouseY = clamp(state.mouse.worldY, LANE_Y-LANE_HALF, LANE_Y+LANE_HALF);
-    if (A.target==="area"||A.target==="debuff-area"){
+    if (A.target==="area"||A.target==="debuff-area"||A.target==="debuff-dot-area"||A.target==="ally-buff-area"){
       const sc=screen(state.mouse.worldX, mouseY);
       ctx.beginPath(); ctx.arc(sc.x, sc.y, A.radius, 0, TWO_PI);
-      ctx.fillStyle=(A.target==="debuff-area"?"#ff8c6e55":COLORS.area); ctx.fill();
+      let c = (A.target==="debuff-area"||A.target==="debuff-dot-area") ? "#ff8c6e55" : COLORS.area;
+      if (A.target==="ally-buff-area") c="#b18cff33";
+      ctx.fillStyle=c; ctx.fill();
       ctx.strokeStyle=COLORS.areaStroke; ctx.lineWidth=2; ctx.stroke();
     } else if (A.target==="ally-aura"){
       const me=playerHero();
@@ -1151,6 +1319,11 @@ function draw(){
       ctx.beginPath(); ctx.arc(sc.x, sc.y, A.radius, 0, TWO_PI);
       ctx.fillStyle="#88e0ff33"; ctx.fill();
       ctx.strokeStyle="#88e0ffbb"; ctx.lineWidth=2; ctx.stroke();
+    } else if (A.target==="debuff-area-self"){
+      const sc=screen(playerHero().x, playerHero().y);
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, A.radius, 0, TWO_PI);
+      ctx.fillStyle="#ffd16655"; ctx.fill();
+      ctx.strokeStyle=COLORS.areaStroke; ctx.lineWidth=2; ctx.stroke();
     }
   }
 }
@@ -1189,7 +1362,7 @@ function winStage(){
   setTimeout(()=>{
     const heroClass = playerHero().heroClass;
     setupWorld(state.stage, heroClass);
-    const me=playerHero(); me.level=1; me.xp=0; me.pickW=null; me.pickE=null;
+    const me=playerHero(); me.level=1; me.xp=0; me.pickW=null; me.pickE=null; me.pickT=null;
     const b=HERO_BASES[heroClass]; me.maxHp=b.hp; me.hp=b.hp; me.dmg=b.dmg;
     updateAbilityUI(); updateHud();
   }, 1200);
@@ -1200,7 +1373,7 @@ function loseStage(){
   setTimeout(()=>{
     const heroClass = playerHero().heroClass;
     setupWorld(1, heroClass);
-    const me=playerHero(); me.level=1; me.xp=0; me.pickW=null; me.pickE=null;
+    const me=playerHero(); me.level=1; me.xp=0; me.pickW=null; me.pickE=null; me.pickT=null;
     const b=HERO_BASES[heroClass]; me.maxHp=b.hp; me.hp=b.hp; me.dmg=b.dmg;
     updateAbilityUI(); updateHud();
   }, 1200);
@@ -1213,22 +1386,27 @@ function updateAbilityUI(){
 
   function setBlock(block, nameEl, infoEl, progEl, key){
     const need=AB_UNLOCKS[key];
-    let data = (key==="Q") ? S.Q : S[key]; // chosen ability for W/E (or null)
+
     if (key==="W" && !me.pickW){
       const H=S.raw; nameEl.textContent=`Choose: ${H.W1.name} / ${H.W2.name}`;
       infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click or press W)";
       progEl.style.width="0%";
-      block.classList.toggle("locked", me.level < need);
-      return;
+      block.classList.toggle("locked", me.level < need); return;
     }
     if (key==="E" && !me.pickE){
       const H=S.raw; nameEl.textContent=`Choose: ${H.E1.name} / ${H.E2.name}`;
       infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click or press E)";
       progEl.style.width="0%";
-      block.classList.toggle("locked", me.level < need);
-      return;
+      block.classList.toggle("locked", me.level < need); return;
+    }
+    if (key==="T" && !me.pickT){
+      const H=S.raw; nameEl.textContent=`Choose: ${H.T1.name} / ${H.T2.name}`;
+      infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click or press T)";
+      progEl.style.width="0%";
+      block.classList.toggle("locked", me.level < need); return;
     }
 
+    const data = (key==="Q") ? S.Q : S[key];
     nameEl.textContent = data.name;
     const total = data.cd;
     const remMs = me[`cd_${key}`] ? Math.max(0, me[`cd_${key}`]-now) : 0;
@@ -1241,6 +1419,8 @@ function updateAbilityUI(){
   setBlock(abQ, qName, qInfo, qProg, "Q");
   setBlock(abW, wName, wInfo, wProg, "W");
   setBlock(abE, eName, eInfo, eProg, "E");
+  setBlock(abR, rName, rInfo, rProg, "R");
+  setBlock(abT, tName, tInfo, tProg, "T");
 }
 
 /* ========================= Talent Picker ========================= */
@@ -1251,10 +1431,14 @@ function openTalentPicker(me, slot){
     talentTitle.textContent="Choose W Talent (Lv4)";
     talentAName.textContent=H.W1.name; talentADesc.textContent=H.W1.desc;
     talentBName.textContent=H.W2.name; talentBDesc.textContent=H.W2.desc;
-  } else {
+  } else if (slot==="E"){
     talentTitle.textContent="Choose E Talent (Lv7)";
     talentAName.textContent=H.E1.name; talentADesc.textContent=H.E1.desc;
     talentBName.textContent=H.E2.name; talentBDesc.textContent=H.E2.desc;
+  } else {
+    talentTitle.textContent="Choose T Talent (Lv13)";
+    talentAName.textContent=H.T1.name; talentADesc.textContent=H.T1.desc;
+    talentBName.textContent=H.T2.name; talentBDesc.textContent=H.T2.desc;
   }
   talentOverlay.style.display="flex";
 
@@ -1265,13 +1449,14 @@ function openTalentPicker(me, slot){
   function cleanup(){
     pickA.onclick=null; pickB.onclick=null;
     talentOverlay.style.display="none";
-    setWBar(me); setEBar(me);
+    setWBar(me); setEBar(me); setTBar(me);
     updateAbilityUI();
   }
 }
 function chooseTalent(me, slot, key){
   if (slot==="W") me.pickW = key;
-  else me.pickE = key;
+  else if (slot==="E") me.pickE = key;
+  else me.pickT = key;
   say(`${slot} talent: ${HERO_ABILITIES[me.heroClass][key].name}`);
 }
 
@@ -1287,7 +1472,6 @@ function tick(){
   physics(dt);
   updateCamera(dt);
 
-  // NEW: timed AI leveling (enemies and allied co-heroes)
   aiTimedLeveling(t);
 
   updateAbilityUI();
@@ -1314,6 +1498,8 @@ init();
 </script>
 </body>
 </html>
+
+
 
 
 
