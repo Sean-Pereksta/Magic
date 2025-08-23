@@ -126,11 +126,11 @@
 
         <div id="lobbyInterface" class="card" style="display:none">
           <div class="card-head">
-            <div class="card-title">Start a Lobby</div>
+            <div id="lobbyHeaderTitle" class="card-title">Start a Lobby</div>
           </div>
           <div class="card-body">
             <div class="row" style="align-items:flex-end">
-              <div style="flex:1 1 220px">
+              <div id="lobbyNameWrap" style="flex:1 1 220px">
                 <label class="subtle">Lobby Name</label>
                 <input type="text" id="lobbyName" class="input" placeholder="e.g., Friday Night Squad" />
               </div>
@@ -140,23 +140,22 @@
                   <option value="cat">🐭 Cat & Mouse</option>
                   <option value="grass">🌿 Grass Realms</option>
                   <option value="estate">🏡 Estate Defense</option>
-                  <option value="mountain">🗻 Mountain Blade (4P)</option>
+                  <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
+                  <option value="mountonline">🗻🌐 Mountain Blade Online</option>
                   <option value="stockkings">📈 Stock Kings</option>
                 </select>
               </div>
-              <button class="btn" onclick="startLobby()">Start Lobby</button>
+              <button id="createBtn" class="btn" onclick="startLobby()">Start Lobby</button>
             </div>
 
-            <div class="card" style="margin-top:14px">
+            <div id="availLobbiesCard" class="card" style="margin-top:14px">
               <div class="card-head"><div class="card-title">Available Lobbies</div></div>
               <div class="card-body">
-                <div id="lobbyList" class="lobbies">
-                  <!-- Lobby cards injected here -->
-                </div>
+                <div id="lobbyList" class="lobbies"><!-- Lobby cards injected here --></div>
               </div>
             </div>
 
-            <div class="card" style="margin-top:14px">
+            <div id="playersCard" class="card" style="margin-top:14px">
               <div class="card-head"><div class="card-title">Lobby Players</div></div>
               <div class="card-body">
                 <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
@@ -206,7 +205,8 @@
       cat:        "/game/catandmouse.html",
       grass:      "/game/grassrealms.html",
       estate:     "/game/estatedefense.html",
-      mountain:   "/game/mountainblade.html",
+      mountain:   "/game/mountainblade.html",       // Skirmish (lobbies)
+      mountonline:"/game/mountonline.html",         // Online (direct play)
       stockkings: "/game/stockkings.html",
 
       // Singleplayer
@@ -217,7 +217,7 @@
       microwars4: "/game/microwaves4.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]);
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]); // lobby-based autostart
     const MAX_PLAYERS = { mountain: 4, stockkings: 8 };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
@@ -308,18 +308,50 @@
       loadLeaderboard();
       setInterval(loadLobbies, 5000);
       document.getElementById("startBtn").addEventListener("click", startGame);
+
+      // React to game selection to toggle quick-play vs lobby flow
+      document.getElementById("gameType").addEventListener("change", updateStartUI);
+      updateStartUI(); // initial
     }
 
     function gameLabel(type){
       return type==='grass' ? '🌿 Grass Realms' :
              type==='estate'? '🏡 Estate Defense' :
-             type==='mountain'?'🗻 Mountain Blade (4P)' :
+             type==='mountain'?'🗻 Mountain Blade Skirmish (4P)' :
+             type==='mountonline'?'🗻🌐 Mountain Blade Online' :
              type==='stockkings'?'📈 Stock Kings' : '🐭 Cat & Mouse';
     }
 
+    function updateStartUI(){
+      const gt = document.getElementById("gameType").value;
+      const title = document.getElementById("lobbyHeaderTitle");
+      const nameWrap = document.getElementById("lobbyNameWrap");
+      const createBtn = document.getElementById("createBtn");
+      const lobbiesCard = document.getElementById("availLobbiesCard");
+      const playersCard = document.getElementById("playersCard");
+
+      const isQuickPlay = (gt === "mountonline");
+
+      title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
+      nameWrap.style.display = isQuickPlay ? "none" : "block";
+      createBtn.textContent = isQuickPlay ? "Play" : "Start Lobby";
+      lobbiesCard.style.display = isQuickPlay ? "none" : "block";
+      playersCard.style.display = isQuickPlay ? "none" : "block";
+    }
+
     async function startLobby() {
-      const name = document.getElementById("lobbyName").value.trim();
       const gameType = document.getElementById("gameType").value;
+
+      // QUICK-PLAY: Mountain Blade Online -> direct route with username
+      if (gameType === "mountonline") {
+        if (!username) return showError("❌ You must be logged in.");
+        const route = ROUTES.mountonline;
+        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        return;
+      }
+
+      // LOBBY-BASED creation path
+      const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
       if (!['cat','grass','estate','mountain','stockkings'].includes(gameType)) {
         return showError("Invalid game type.");
@@ -567,7 +599,6 @@
   </script>
 </body>
 </html>
-
 
 
 
