@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>📈 Stock Kings</title>
+  <title>📈 Stock Kings — 5 Round Showdown</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <style>
     :root{
       --bg:#0e1116; --ink:#e9eef5; --muted:#9db0c4; --card:#121722; --br:#1e2734;
       --accent:#4da3ff; --good:#38ef7d; --bad:#ff6b6b; --warn:#ffd166;
-      --tile:#0f141e; --tile-br:#1b2533;
-      --stage-max: 1100px;
+      --tile:#0f141e; --tile-br:#1b2533; --shadow:0 12px 36px rgba(0,0,0,.25);
+      --stage-max: 1100px; --radius:16px;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -18,7 +18,7 @@
       font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
       -webkit-tap-highlight-color: transparent;
     }
-    button { touch-action: manipulation; }
+    button { touch-action: manipulation; cursor:pointer }
 
     .wrap{display:grid; grid-template-rows:auto 1fr; min-height:100%}
 
@@ -27,36 +27,24 @@
       display:flex; align-items:center; justify-content:space-between; gap:12px;
       padding:10px 12px; border-bottom:1px solid var(--br); background:#0b0f17; position:sticky; top:0; z-index:5;
     }
-    .timer{font-weight:800; font-size:20px; letter-spacing:.5px}
-    .round{color:var(--muted); font-weight:700}
+    .round{font-weight:800}
+    .timer{font-weight:900; font-size:20px; letter-spacing:.5px}
     .wins{display:flex; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted)}
     .wins .me{color:#fff; font-weight:800}
 
-    /* Board: 3 columns on desktop, 1 on mobile */
+    /* Layout */
     .board{
       display:grid;
-      grid-template-columns: minmax(0,1fr) min(max(640px, 66vw), var(--stage-max)) minmax(0,1fr);
+      grid-template-columns: minmax(0,1fr) min(max(660px, 66vw), var(--stage-max)) minmax(0,1fr);
       gap:12px; padding:12px;
     }
     @media (max-width: 1080px){
       .board{grid-template-columns: 1fr}
     }
-
-    /* Side rails for extra players */
     .rail{ display:flex; flex-direction:column; gap:12px; }
     @media (max-width:1080px){
       #leftRail, #rightRail{ display:none; }
     }
-
-    /* High score card (desktop placeholder) */
-    .hs-card{
-      background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
-    }
-    .hs-title{ font-weight:900; margin-bottom:8px; display:flex; align-items:center; gap:8px }
-    .hs-title .you{ margin-left:auto; font-size:12px; color:var(--muted) }
-    .hs-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
-    .hs-row{ display:flex; justify-content:space-between; gap:10px; font-size:14px; }
-    .hs-row.me{ color:#fff; font-weight:800 }
 
     /* Center stage */
     .stage{
@@ -76,23 +64,24 @@
     .players-top{ grid-area: top; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
     .players-bottom{ grid-area: bottom; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
 
+    /* Stocks grid (always centered) */
     .stocks{
       grid-area: grid;
       display:grid; gap:12px;
       grid-template-columns: repeat(3, minmax(220px,1fr));
       justify-items:stretch; align-items:start;
     }
-    @media (max-width: 850px){
-      .stocks{ grid-template-columns: repeat(2, minmax(180px,1fr)); }
+    @media (max-width: 860px){
+      .stocks{ grid-template-columns: repeat(2, minmax(200px,1fr)); }
     }
     @media (max-width: 520px){
       .stocks{ grid-template-columns: 1fr; }
     }
 
-    /* Player card */
+    /* Player cards */
     .pbox{
       background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:10px;
-      display:flex; flex-direction:column; align-items:center; gap:4px; min-width: 180px;
+      display:flex; flex-direction:column; align-items:center; gap:4px; min-width: 180px; box-shadow:var(--shadow);
     }
     .pbox.me{ outline:2px solid var(--accent) }
     .p-val{ font-weight:900; font-size:18px }
@@ -101,8 +90,8 @@
 
     /* Stock tile */
     .tile{
-      background:var(--card); border:1px solid var(--tile-br); border-radius:16px; padding:12px; display:grid;
-      grid-template-rows: auto auto 1fr auto; gap:8px; position:relative; min-height: 180px;
+      background:var(--card); border:1px solid var(--tile-br); border-radius:var(--radius); padding:12px; display:grid;
+      grid-template-rows: auto auto 1fr auto; gap:8px; position:relative; min-height: 190px; box-shadow:var(--shadow);
     }
     .head{display:flex; justify-content:space-between; align-items:baseline}
     .sym{font-weight:900; letter-spacing:.5px; font-size:18px}
@@ -114,33 +103,37 @@
     }
     .bar{
       position:absolute; left:4px; right:4px; bottom:4px; height:10px; border-radius:8px; background:var(--good);
-      transition: height .2s ease;
+      transition: height .25s ease;
     }
     .row{display:flex; gap:8px; align-items:center; justify-content:space-between}
     .btn{
-      appearance:none; border:1px solid var(--tile-br); background:#132033; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer;
+      appearance:none; border:1px solid var(--tile-br); background:#132033; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800;
     }
     .btn.sell{ background:#2c1a1a; border-color:#412121 }
-    .btn:disabled{opacity:.6; cursor:not-allowed}
-    .btn:hover{filter:brightness(1.05)}
+    .btn:disabled{opacity:.6}
+    .btn:hover{filter:brightness(1.06)}
     .cost{font-weight:700; color:var(--muted); font-size:12px}
 
-    .footnote{
-      text-align:center; color:var(--muted); font-size:12px; margin:10px 0 16px;
+    /* Overlay for match end */
+    .overlay{
+      position:fixed; inset:0; background:rgba(0,0,0,.6);
+      display:none; align-items:center; justify-content:center; z-index:20;
     }
-
-    /* Mobile high scores (placeholder) */
-    .hs-mobile{ display:none; padding:0 12px 12px; }
-    .hs-mobile .hs-card{ padding:8px; }
-    .hs-mobile .hs-row{ font-size:13px; }
-    @media (max-width:1080px){ .hs-mobile{ display:block } }
+    .overlay.show{ display:flex }
+    .modal{
+      background:var(--card); border:1px solid var(--br); border-radius:16px; padding:18px; width:min(560px, 92vw);
+      box-shadow:0 30px 80px rgba(0,0,0,.45);
+    }
+    .modal h2{ margin:0 0 8px 0 }
+    .modal p{ color:var(--muted); margin:6px 0 12px }
+    .modal .btn{ width:100% }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
     <div class="round">
-      <span id="modeLabel">Local Practice Mode</span> · Round <span id="roundNo">1</span> · First to <b>3</b> wins
+      <span id="modeLabel">Local Practice</span> · Round <b id="roundNo">1</b>/<b>5</b>
     </div>
     <div class="timer" id="timer">01:30</div>
     <div class="wins" id="winsBar"></div>
@@ -152,33 +145,32 @@
     <div class="stage">
       <div class="players-top" id="topRail"></div>
 
-      <div class="stocks" id="stocksGrid"><!-- tiles injected immediately --></div>
+      <div class="stocks" id="stocksGrid"><!-- tiles injected --></div>
 
       <div class="players-bottom" id="bottomRail"></div>
     </div>
 
-    <div class="rail" id="rightRail">
-      <div class="hs-card" id="hsCard">
-        <div class="hs-title">🏆 High Scores <span class="you" id="myBestLabel">Your best (local): —</span></div>
-        <ol class="hs-list" id="hsList"></ol>
-      </div>
-      <div id="rightPlayers"></div>
-    </div>
+    <div class="rail" id="rightRail"></div>
   </div>
-
-  <div class="hs-mobile" id="hsMobile"></div>
 </div>
 
-<div class="footnote">💡 Buy raises price a bit; sell lowers it a bit. Prices also wander over time.</div>
+<!-- Match end overlay -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="overlayTitle">Match Over</h2>
+    <p id="overlayMsg">Great game!</p>
+    <button class="btn" id="overlayBtn">Play Again</button>
+  </div>
+</div>
 
 <script type="module">
 /* ===========================================================
-   Firestore (optional for multiplayer)
+   Firebase (hosted multiplayer via lobby)
    =========================================================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot,
-  runTransaction, serverTimestamp
+  runTransaction, serverTimestamp, increment
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -193,75 +185,84 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
 /* ===========================================================
-   Params & Constants
+   Game constants
    =========================================================== */
-const params   = new URLSearchParams(location.search);
-const gameId   = params.get("gameId");              // multiplayer if present
-const username = params.get("username") || "Player";
+const params     = new URLSearchParams(location.search);
+const gameId     = params.get("gameId");
+const username   = params.get("username") || "Player";
+const LOBBY_REF  = gameId ? doc(db, "lobbies", gameId)      : null;
+const GAME_REF   = gameId ? doc(db, "stockkings", gameId)   : null;
 
-const ROUND_MS    = 90_000;   // 1.5 minutes
-const START_CASH  = 1000;
-const N_STOCKS    = 6;
-const HISTORY_LEN = 40;
-const IMPACT_BASE = 0.01;     // price impact per 1-share trade (scaled by player count)
-const MIN_PRICE   = 5;
-const MAX_PRICE   = 500;
-const TICKERS     = ["ALP","BEX","CRO","DYN","ECO","FYN"];
+const ROUNDS          = 5;
+const ROUND_MS        = 90_000;   // 1.5 minutes
+const START_CASH      = 100;
+const BASE_PRICE      = 15;
+const MIN_PRICE       = 3;
+const MAX_PRICE       = 60;
+const HISTORY_LEN     = 48;       // sparkline points
+const ORDER_IMPACT    = 0.02;     // per-share impact scaled by 1/sqrt(N)
+const STOCKS = [
+  { key:"METAL",  name:"Metal"  },
+  { key:"WOOL",   name:"Wool"   },
+  { key:"WHEAT",  name:"Wheat"  },
+  { key:"COFFEE", name:"Coffee" },
+  { key:"ROCK",   name:"Rock"   },
+];
+const N = STOCKS.length;
 
-const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
-const GAME_REF  = gameId ? doc(db, "stockkings", gameId) : null;
+/* small cross-impact matrix (symmetric-ish, small magnitudes) */
+const X = [
+  /*        M     Wl    Wh    Cf    Rk */
+  /* M */ [ 0.00, -0.06, 0.08, 0.00, 0.10],
+  /* Wl */[-0.06, 0.00,  0.05, 0.02, 0.00],
+  /* Wh */[ 0.08, 0.05,  0.00, 0.12, 0.00],
+  /* Cf */[ 0.00, 0.02,  0.12, 0.00, 0.00],
+  /* Rk */[ 0.10, 0.00,  0.00, 0.00, 0.00],
+];
 
 /* ===========================================================
-   DOM helpers (null-safe)
+   DOM helpers
    =========================================================== */
-const $id = (s)=> document.getElementById(s);
-const safeText = (el, v)=> { if (el) el.textContent = String(v); };
-const safeHTML = (el, v)=> { if (el) el.innerHTML = v; };
-
-const stocksGrid  = $id("stocksGrid");
-const topRail     = $id("topRail");
-const bottomRail  = $id("bottomRail");
-const leftRail    = $id("leftRail");
-const rightPlayers= $id("rightPlayers");
-const timerEl     = $id("timer");
-const roundEl     = $id("roundNo");
-const winsBar     = $id("winsBar");
-const modeLabel   = $id("modeLabel");
+const $ = (id)=> document.getElementById(id);
+const stocksGrid  = $("stocksGrid");
+const topRail     = $("topRail");
+const bottomRail  = $("bottomRail");
+const leftRail    = $("leftRail");
+const rightRail   = $("rightRail");
+const timerEl     = $("timer");
+const roundEl     = $("roundNo");
+const winsBar     = $("winsBar");
+const modeLabel   = $("modeLabel");
+const overlayEl   = $("overlay");
+const overlayTitle= $("overlayTitle");
+const overlayMsg  = $("overlayMsg");
+const overlayBtn  = $("overlayBtn");
+const fmt$ = (n)=> "$" + Number(n).toFixed(2);
+const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
 
 /* ===========================================================
-   Local state + utilities
+   Local state
    =========================================================== */
-let gameData  = null;   // { players, portfolios, stocks, wins, status, round, roundEndAt }
-let lobbyData = null;
-let isHost    = false;
-let tickerHandle = null;
-let timerHandle  = null;
-const bound = new Set();
-
-const fmt    = (n)=> "$" + Number(n).toFixed(2);
-const clamp  = (v,a,b)=> Math.max(a, Math.min(b,v));
-const rand   = (a,b)=> a + Math.random()*(b-a);
-const cssSafe = (s)=> String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
-
-function orderImpactFactor(data){
-  const players = (data?.players || []);
-  const n = Math.max(1, players.length);
-  return IMPACT_BASE / Math.sqrt(n);
-}
+let lobbyData   = null;
+let isHost      = false;
+let gameData    = null;      // Firestore game doc snapshot data
+let tickerId    = null;      // host drift loop
+let timerId     = null;      // UI clock loop
+const bound     = new Set();
 
 /* ===========================================================
-   Game builders
+   Builders
    =========================================================== */
 function initStocks(){
   const out = [];
-  for (let i=0;i<N_STOCKS;i++){
-    const base = rand(60, 140);
+  for (let i=0;i<N;i++){
+    const base = BASE_PRICE * (1 + (Math.random()*0.10 - 0.05)); // ~±5%
     out.push({
-      sym: TICKERS[i] || ("S"+(i+1)),
+      key: STOCKS[i].key,
+      name: STOCKS[i].name,
       price: Number(base.toFixed(2)),
-      min: Math.max(MIN_PRICE, base*0.4),
-      max: Math.min(MAX_PRICE, base*1.8),
-      history: Array.from({length: 10}, ()=> Number((base*(1+rand(-0.01,0.01))).toFixed(2)))
+      min: MIN_PRICE, max: MAX_PRICE,
+      history: Array.from({length: 12}, ()=> Number((base*(1+ (Math.random()*0.02 - 0.01))).toFixed(2)))
     });
   }
   return out;
@@ -269,41 +270,37 @@ function initStocks(){
 function initPortfolios(players){
   const p = {};
   for (const name of players){
-    p[name] = { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) };
+    p[name] = { cash: START_CASH, holdings: Array(N).fill(0) };
   }
   return p;
 }
-function calcPortfolioValue(name, data){
-  const pf = data?.portfolios?.[name];
-  if (!pf) return 0;
+function portfolioValue(name, d){
+  const pf = d?.portfolios?.[name]; if (!pf) return 0;
   let v = pf.cash;
-  for (let i=0;i<N_STOCKS;i++){
-    const px = data.stocks[i].price;
-    v += (pf.holdings[i]||0) * px;
-  }
+  for (let i=0;i<N;i++) v += (pf.holdings[i]||0) * d.stocks[i].price;
   return v;
 }
 
 /* ===========================================================
-   UI: tiles (created immediately so they always show)
+   UI: Stock tiles and Players
    =========================================================== */
-function ensureStockTiles(){
-  if (!stocksGrid || stocksGrid.hasChildNodes()) return;
+function ensureTiles(){
+  if (stocksGrid.childElementCount) return;
   const frag = document.createDocumentFragment();
-  for (let i=0;i<N_STOCKS;i++){
+  for (let i=0;i<N;i++){
     const tile = document.createElement("div");
     tile.className = "tile";
     tile.innerHTML = `
       <div class="head">
-        <div class="sym"   id="sym-${i}">SYM</div>
-        <div class="price" id="price-${i}">$0.00</div>
+        <div class="sym"><span id="s-name-${i}">—</span></div>
+        <div class="price" id="s-price-${i}">$0.00</div>
       </div>
-      <canvas class="spark" height="28" id="spark-${i}"></canvas>
-      <div class="barwrap"><div class="bar" id="bar-${i}" style="height:12px;"></div></div>
+      <canvas class="spark" height="28" id="s-spark-${i}"></canvas>
+      <div class="barwrap"><div class="bar" id="s-bar-${i}" style="height:12px;"></div></div>
       <div class="row">
-        <button class="btn buy"  id="buy-${i}">Buy</button>
-        <div class="cost" id="cost-${i}">$0.00</div>
-        <button class="btn sell" id="sell-${i}">Sell</button>
+        <button class="btn buy"  id="s-buy-${i}">Buy</button>
+        <div class="cost" id="s-cost-${i}">$0.00</div>
+        <button class="btn sell" id="s-sell-${i}">Sell</button>
       </div>
     `;
     frag.appendChild(tile);
@@ -311,18 +308,16 @@ function ensureStockTiles(){
   stocksGrid.appendChild(frag);
   sizeAllSparks();
 }
-function sizeSparkCanvas(i){
-  const c = $id(`spark-${i}`);
-  if (!c) return;
+function sizeSpark(i){
+  const c = $(`s-spark-${i}`); if (!c) return;
   const tile = c.closest(".tile");
   const w = tile ? tile.clientWidth : 220;
   c.width = Math.max(160, w - 24);
   c.height = 28;
 }
-function sizeAllSparks(){ for (let i=0;i<N_STOCKS;i++) sizeSparkCanvas(i); }
+function sizeAllSparks(){ for(let i=0;i<N;i++) sizeSpark(i); }
 function drawSpark(i, history){
-  const c = $id(`spark-${i}`);
-  if (!c) return;
+  const c = $(`s-spark-${i}`); if (!c) return;
   const ctx = c.getContext("2d");
   ctx.clearRect(0,0,c.width,c.height);
   const n = history.length, min = Math.min(...history), max = Math.max(...history);
@@ -342,197 +337,175 @@ function drawSpark(i, history){
   }
   ctx.stroke();
 }
-function bindBtnOnce(id, fn){
+function bindOnce(id, fn){
   if (bound.has(id)) return;
-  const el = $id(id);
-  if (!el) return;
+  const el = $(id); if (!el) return;
   el.addEventListener("click", fn);
   bound.add(id);
 }
 function renderStocks(){
-  ensureStockTiles();
+  ensureTiles();
   if (!gameData?.stocks) return;
-
   requestAnimationFrame(()=>{
     sizeAllSparks();
-    for (let i=0;i<N_STOCKS;i++){
+    for (let i=0;i<N;i++){
       const s = gameData.stocks[i]; if (!s) continue;
-      const symEl   = $id(`sym-${i}`);
-      const priceEl = $id(`price-${i}`);
-      const costEl  = $id(`cost-${i}`);
-      const bar     = $id(`bar-${i}`);
+      $(`s-name-${i}`).textContent  = s.name;
+      $(`s-price-${i}`).textContent = fmt$(s.price);
+      $(`s-cost-${i}`).textContent  = `Buy ${fmt$(s.price)} · Sell ${fmt$(s.price)}`;
+      drawSpark(i, s.history || [s.price]);
 
-      if (symEl)   symEl.textContent   = s.sym;
-      if (priceEl) priceEl.textContent = fmt(s.price);
-      if (costEl)  costEl.textContent  = "Buy " + fmt(s.price) + " · Sell " + fmt(s.price*0.95);
-
+      const bar = $(`s-bar-${i}`);
       if (bar && bar.parentElement){
         const wrapH = (bar.parentElement.offsetHeight) || 100;
         const hMax = Math.max(12, wrapH - 8);
-        const t = (s.max > s.min) ? clamp((s.price - s.min) / (s.max - s.min), 0, 1) : 0.5;
+        const t = clamp((s.price - MIN_PRICE) / (MAX_PRICE - MIN_PRICE), 0, 1);
         bar.style.height = (8 + t*(hMax-8)) + "px";
         bar.style.background = "linear-gradient(180deg,#5dffb3,#21a86a)";
       }
 
-      drawSpark(i, s.history || [s.price]);
-
-      bindBtnOnce(`buy-${i}`,  ()=> order("buy", i));
-      bindBtnOnce(`sell-${i}`, ()=> order("sell", i));
+      bindOnce(`s-buy-${i}`,  ()=> order("buy", i));
+      bindOnce(`s-sell-${i}`, ()=> order("sell", i));
     }
   });
 }
+function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
 function renderPlayers(){
   const players = gameData?.players || [username];
-  const wins = gameData?.wins || {};
-  if (winsBar){
-    winsBar.innerHTML = "";
-    for (const p of players){
-      const span = document.createElement("span");
-      span.textContent = `${p}: ${wins[p]||0}`;
-      if (p===username) span.className="me";
-      winsBar.appendChild(span);
-    }
+  const wins    = gameData?.wins    || {};
+  // top bar tiny wins
+  winsBar.innerHTML = "";
+  for (const p of players){
+    const span = document.createElement("span");
+    span.textContent = `${p}: ${wins[p]||0}`;
+    if (p===username) span.className = "me";
+    winsBar.appendChild(span);
   }
+  // player panels
   const boxes = players.map(p=>{
     const div = document.createElement("div");
-    div.className = "pbox" + (p===username? " me":"");
-    const val = gameData ? calcPortfolioValue(p, gameData) : START_CASH;
+    div.className = "pbox" + (p===username ? " me":"");
+    const val = gameData ? portfolioValue(p, gameData) : START_CASH;
     div.innerHTML = `
-      <div class="p-val" id="pval-${cssSafe(p)}">${fmt(val)}</div>
+      <div class="p-val" id="pval-${cssSafe(p)}">${fmt$(val)}</div>
       <div class="p-name">${p}</div>
-      <div class="p-wins">Wins: <b>${wins[p]||0}</b></div>`;
+      <div class="p-wins"><span>Round Wins:</span> <b>${wins[p]||0}</b></div>
+    `;
     return div;
   });
-  if (topRail && bottomRail && leftRail && rightPlayers){
-    topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = rightPlayers.innerHTML = "";
-    const q = Math.ceil(boxes.length/4);
-    const groups = [ boxes.slice(0,q), boxes.slice(q,2*q), boxes.slice(2*q,3*q), boxes.slice(3*q) ];
-    for (const el of groups[0]) topRail.appendChild(el);
-    for (const el of groups[2]) bottomRail.appendChild(el);
-    for (const el of groups[1]) rightPlayers.appendChild(el);
-    for (const el of groups[3]) leftRail.appendChild(el);
-  }
+  topRail.innerHTML = bottomRail.innerHTML = leftRail.innerHTML = rightRail.innerHTML = "";
+  const q = Math.ceil(boxes.length/4);
+  const g = [ boxes.slice(0,q), boxes.slice(q,2*q), boxes.slice(2*q,3*q), boxes.slice(3*q) ];
+  g[0].forEach(el=> topRail.appendChild(el));
+  g[2].forEach(el=> bottomRail.appendChild(el));
+  g[1].forEach(el=> rightRail.appendChild(el));
+  g[3].forEach(el=> leftRail.appendChild(el));
 }
 function refreshPlayerValues(){
   if (!gameData) return;
-  const players = gameData.players || [];
-  for (const p of players){
-    const el = $id(`pval-${cssSafe(p)}`);
-    if (!el) continue;
-    el.textContent = fmt(calcPortfolioValue(p, gameData));
+  for (const p of (gameData.players||[])){
+    const el = $(`pval-${cssSafe(p)}`); if (!el) continue;
+    el.textContent = fmt$(portfolioValue(p, gameData));
   }
 }
 
 /* ===========================================================
-   Local Practice Mode (always starts so tiles show immediately)
+   Host loop: price drift + round controller
    =========================================================== */
-function startLocalGame(){
-  safeText(modeLabel, gameId ? "Multiplayer" : "Local Practice Mode");
-  const players = [username];
-  gameData = {
-    players,
-    portfolios: initPortfolios(players),
-    stocks: initStocks(),
-    wins: Object.fromEntries(players.map(p=>[p,0])),
-    status: "running",
-    round: 1,
-    roundEndAt: Date.now() + ROUND_MS
-  };
-  safeText(roundEl, gameData.round);
-  renderPlayers();
-  renderStocks();
-  startLocalLoops();
-}
-function stopLocalLoops(){
-  if (tickerHandle){ clearInterval(tickerHandle); tickerHandle=null; }
-  if (timerHandle){ clearInterval(timerHandle); timerHandle=null; }
-}
-function startLocalLoops(){
-  stopLocalLoops();
-  // price drift + round manager
-  tickerHandle = setInterval(()=>{
-    if (!gameData || gameData.status!=="running") return;
-    // drift prices
-    const stocks = gameData.stocks.slice();
-    for (let i=0;i<stocks.length;i++){
-      const s = {...stocks[i]};
-      const mid = (s.min + s.max)/2;
-      const drift = (mid - s.price) / (s.max - s.min) * 0.003;
-      const noise = (Math.random()*0.024 - 0.012);
-      let np = s.price * (1 + drift + noise);
-      np = clamp(np, s.min, s.max);
-      s.price = Number(np.toFixed(2));
-      const hist = (s.history || []).slice(-HISTORY_LEN+1);
-      hist.push(s.price);
-      s.history = hist;
-      stocks[i] = s;
-    }
-    gameData.stocks = stocks;
-    renderStocks();
+function stopLoops(){ if (tickerId){ clearInterval(tickerId); tickerId=null; } if (timerId){ clearInterval(timerId); timerId=null; } }
 
-    // round end
-    const msLeft = Math.max(0, (gameData.roundEndAt || 0) - Date.now());
-    if (msLeft <= 0){
-      // single-player => you vs market: just record your value as "win" if above starting cash
-      const youVal = calcPortfolioValue(username, gameData);
-      const won = youVal >= START_CASH; // simple local rule
-      if (won) gameData.wins[username] = (gameData.wins[username]||0) + 1;
+function startHostLoop(){
+  if (!isHost || !GAME_REF) return;
+  stopLoops();
+  tickerId = setInterval(async ()=>{
+    try{
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(GAME_REF); if (!snap.exists()) return;
+        const d = snap.data(); if (d.status !== "running") return;
+        const now = Date.now();
 
-      // champion?
-      if (gameData.wins[username] >= 3){
-        alert("🏆 You reached 3 wins! Resetting match.");
-        gameData.wins[username] = 0;
-      }
+        // price drift (gentle, mean-reverting around BASE_PRICE, plus cross-impact mix)
+        const stocks = d.stocks.map(s => ({...s}));
+        // compute base deltas
+        const del = new Array(N).fill(0);
+        for (let i=0;i<N;i++){
+          const s = stocks[i];
+          const meanRev = (BASE_PRICE - s.price) / (MAX_PRICE - MIN_PRICE); // pulls toward base
+          const noise   = (Math.random()*0.010 - 0.005); // ±0.5%
+          del[i] = meanRev * 0.25 + noise; // blend
+        }
+        // cross-impact mixing
+        for (let i=0;i<N;i++){
+          let mix = del[i];
+          for (let j=0;j<N;j++){
+            if (j===i) continue;
+            mix += X[i][j] * del[j] * 0.35; // small bleed-through
+          }
+          // apply to price
+          let np = stocks[i].price * (1 + mix);
+          np = clamp(np, MIN_PRICE, MAX_PRICE);
+          stocks[i].price = Number(np.toFixed(2));
+          const hist = (stocks[i].history || []).slice(-HISTORY_LEN+1);
+          hist.push(stocks[i].price);
+          stocks[i].history = hist;
+        }
 
-      // next round
-      gameData.round = (gameData.round||1) + 1;
-      gameData.roundEndAt = Date.now() + ROUND_MS;
-      gameData.portfolios = initPortfolios(gameData.players);
-      gameData.stocks = initStocks();
-      safeText(roundEl, gameData.round);
-      renderPlayers();
-      renderStocks();
-    }
+        // round end?
+        const left = (d.roundEndAt || 0) - now;
+        if (left <= 0){
+          const players = d.players || [];
+          // compute values
+          let best = -Infinity, winners = [];
+          for (const p of players){
+            const val = portfolioValue(p, {stocks, portfolios:d.portfolios});
+            if (val > best + 1e-6){ best = val; winners = [p]; }
+            else if (Math.abs(val - best) < 1e-6){ winners.push(p); }
+          }
+          const wins = {...d.wins};
+          for (const w of winners) wins[w] = (wins[w]||0) + 1;
+
+          // next step: either next round or finish match
+          if ((d.round||1) >= ROUNDS){
+            tx.update(GAME_REF, { status:"finished", wins, stocks });
+          } else {
+            tx.update(GAME_REF, {
+              round: (d.round||1)+1,
+              roundEndAt: Date.now() + ROUND_MS,
+              wins,
+              portfolios: initPortfolios(players),
+              stocks: initStocks()
+            });
+          }
+        } else {
+          // normal drift update
+          tx.update(GAME_REF, { stocks });
+        }
+      });
+    }catch(e){ /* ignore transient errors */ }
   }, 1000);
+}
 
-  // timer UI
-  timerHandle = setInterval(()=>{
+function startUiClock(){
+  timerId = setInterval(()=>{
     if (!gameData) return;
     const ms = Math.max(0, (gameData.roundEndAt || 0) - Date.now());
-    const s = Math.ceil(ms/1000);
+    const s  = Math.ceil(ms/1000);
     const mm = String(Math.floor(s/60)).padStart(2,'0');
     const ss = String(s%60).padStart(2,'0');
-    safeText(timerEl, `${mm}:${ss}`);
+    timerEl.textContent = `${mm}:${ss}`;
     refreshPlayerValues();
   }, 200);
 }
 
 /* ===========================================================
-   Multiplayer (Firestore) — optional, overrides local loops
+   Multiplayer bootstrapping
    =========================================================== */
-async function ensureLobbyAndRole(){
-  if (!LOBBY_REF) return false;
-  const ls = await getDoc(LOBBY_REF);
-  if (!ls.exists()){
-    // first opener becomes host
-    await setDoc(LOBBY_REF, { host: username, players:[username], createdAt: serverTimestamp() });
-    isHost = true;
-  } else {
-    const d = ls.data();
-    isHost = d.host === username;
-    const players = Array.isArray(d.players) ? d.players : [];
-    if (!players.includes(username)){
-      try{ await updateDoc(LOBBY_REF, { players: [...players, username] }); }catch(e){}
-    }
-  }
-  return true;
-}
 async function ensureGameDoc(){
   if (!GAME_REF || !lobbyData) return;
   const g = await getDoc(GAME_REF);
   if (g.exists()) return;
   if (!isHost) return;
-  const players = Array.isArray(lobbyData.players) ? lobbyData.players : [username];
+  const players = Array.isArray(lobbyData.players) && lobbyData.players.length ? lobbyData.players : [username];
   const payload = {
     host: lobbyData.host || username,
     players,
@@ -545,208 +518,225 @@ async function ensureGameDoc(){
     createdAt: serverTimestamp()
   };
   await setDoc(GAME_REF, payload);
-  startHostLoops();
+  startHostLoop();
 }
-function startHostLoops(){
-  if (!isHost || !GAME_REF) return;
-  // stop local loop since host is authoritative now
-  stopLocalLoops();
-  tickerHandle = setInterval(async ()=>{
-    try{
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(GAME_REF);
-        if (!snap.exists()) return;
-        const d = snap.data();
-        if (d.status !== "running") return;
 
-        // drift prices
-        const stocks = d.stocks.slice();
-        for (let i=0;i<stocks.length;i++){
-          const s = {...stocks[i]};
-          const mid = (s.min + s.max)/2;
-          const drift = (mid - s.price) / (s.max - s.min) * 0.003;
-          const noise = (Math.random()*0.024 - 0.012);
-          let np = s.price * (1 + drift + noise);
-          np = clamp(np, s.min, s.max);
-          s.price = Number(np.toFixed(2));
-          const hist = (s.history || []).slice(-HISTORY_LEN+1);
-          hist.push(s.price);
-          s.history = hist;
-          stocks[i] = s;
-        }
-
-        // round end?
-        const timeLeft = (d.roundEndAt || 0) - Date.now();
-        if (timeLeft <= 0){
-          const players = d.players || [];
-          let bestV = -Infinity; let winners = [];
-          for (const p of players){
-            const val = calcPortfolioValue(p, {stocks, portfolios:d.portfolios});
-            if (val > bestV + 0.0001){ bestV = val; winners = [p]; }
-            else if (Math.abs(val - bestV) < 0.0001){ winners.push(p); }
-          }
-          const wins = {...d.wins};
-          for (const w of winners) wins[w] = (wins[w]||0) + 1;
-
-          // champion?
-          const champion = Object.entries(wins).find(([name,count])=> count >= 3);
-          if (champion){
-            tx.update(GAME_REF, { status:"finished", wins, stocks });
-            return;
-          }
-
-          // next round
-          tx.update(GAME_REF, {
-            round: (d.round||1)+1,
-            roundEndAt: Date.now() + ROUND_MS,
-            wins,
-            portfolios: initPortfolios(players),
-            stocks: initStocks()
-          });
-        } else {
-          tx.update(GAME_REF, { stocks });
-        }
-      });
-    }catch(e){}
-  }, 1000);
-}
-function stopHostLoops(){ if (tickerHandle){ clearInterval(tickerHandle); tickerHandle=null; } }
-
-// subscribe lobby
 if (LOBBY_REF){
   onSnapshot(LOBBY_REF, (snap)=>{
     if (!snap.exists()) return;
     lobbyData = snap.data();
     isHost = lobbyData.host === username;
-    safeText(modeLabel, "Multiplayer");
-    renderPlayers();
+    modeLabel.textContent = "Multiplayer";
     ensureGameDoc();
   });
-  // make sure doc exists and role chosen
-  ensureLobbyAndRole();
 }
-// subscribe game
+
 if (GAME_REF){
-  onSnapshot(GAME_REF, (snap)=>{
+  onSnapshot(GAME_REF, async (snap)=>{
     if (!snap.exists()) return;
     gameData = snap.data();
-    safeText(roundEl, gameData.round || 1);
+    roundEl.textContent = gameData.round || 1;
     renderPlayers();
     renderStocks();
-    refreshPlayerValues();
-    // when a match finishes, restart a new match after 2s (host)
-    if (gameData.status === "finished" && isHost){
-      setTimeout(async ()=>{
-        const players = gameData.players || [];
-        await setDoc(GAME_REF, {
-          host: lobbyData?.host || username,
-          players,
-          status: "running",
-          round: 1,
-          roundEndAt: Date.now() + ROUND_MS,
-          wins: Object.fromEntries(players.map(p=>[p,0])),
-          portfolios: initPortfolios(players),
-          stocks: initStocks(),
-          createdAt: serverTimestamp()
-        });
-      }, 2000);
+    if (!timerId) startUiClock();
+
+    // Show match result & add user profile wins for overall champ(s)
+    if (gameData.status === "finished"){
+      const entries = Object.entries(gameData.wins || {});
+      const topCount = Math.max(...entries.map(([,c])=>c), 0);
+      const champs = entries.filter(([,c])=> c===topCount).map(([n])=>n);
+
+      overlayTitle.textContent = "Match Over";
+      overlayMsg.textContent   = `Winner${champs.length>1?'s':''}: ${champs.join(', ')}  —  ${topCount} round win${topCount===1?'':'s'}`;
+      overlayEl.classList.add("show");
+
+      if (isHost){
+        // add +1 to each champion's user profile wins
+        for (const c of champs){
+          try{
+            await updateDoc(doc(db,"users",c), { wins: increment(1) });
+          }catch(e){
+            // If doc missing, create with wins=1
+            try{ await setDoc(doc(db,"users",c), { wins: 1 }, { merge:true }); }catch(_){}
+          }
+        }
+      }
+      // stop host tick so we don't keep drifting after finish
+      if (isHost){ stopLoops(); }
     }
   });
 }
 
 /* ===========================================================
-   Orders (works in both local & multiplayer)
+   Orders (1 share per click, price impact up/down)
    =========================================================== */
+function impactScale(data){
+  const n = Math.max(1, (data?.players || []).length);
+  return ORDER_IMPACT / Math.sqrt(n); // smaller with more players
+}
+
 async function order(kind, idx){
-  // multiplayer: write via transaction
   if (GAME_REF){
     try{
       await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(GAME_REF);
-        if (!snap.exists()) return;
-        const d = snap.data();
-        if (d.status !== "running") return;
+        const snap = await tx.get(GAME_REF); if (!snap.exists()) return;
+        const d = snap.data(); if (d.status!=="running") return;
 
         const portfolios = {...d.portfolios};
-        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N_STOCKS).fill(0) })};
-        const stocks = d.stocks.slice();
-        const s = {...stocks[idx]};
+        const me = {...(portfolios[username] || { cash: START_CASH, holdings: Array(N).fill(0) })};
+        const stocks = d.stocks.map(s=> ({...s}));
+        const s = stocks[idx]; if (!s) return;
         const price = s.price;
-        if (!price || price<=0) return;
 
-        if (kind === "buy"){
-          if (me.cash < price) return;
+        if (kind==="buy"){
+          if (me.cash < price) return;            // insufficient cash
           me.cash = Number((me.cash - price).toFixed(2));
           me.holdings[idx] = (me.holdings[idx]||0) + 1;
-          const impact = orderImpactFactor(d);
-          s.price = Number(clamp(price * (1 + impact), s.min, s.max).toFixed(2));
-        } else {
-          const have = me.holdings[idx]||0;
-          if (have <= 0) return;
-          me.holdings[idx] = have - 1;
-          me.cash = Number((me.cash + price*0.95).toFixed(2));
-          const impact = orderImpactFactor(d);
-          s.price = Number(clamp(price * (1 - impact), s.min, s.max).toFixed(2));
+          s.price = Number(clamp(price * (1 + impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
+        }else{
+          if ((me.holdings[idx]||0) <= 0) return; // nothing to sell
+          me.holdings[idx] -= 1;
+          me.cash = Number((me.cash + price).toFixed(2));
+          s.price = Number(clamp(price * (1 - impactScale(d)), MIN_PRICE, MAX_PRICE).toFixed(2));
         }
+
+        // push new price into history to reflect trade tick
+        const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
 
         portfolios[username] = me;
         stocks[idx] = s;
         tx.update(GAME_REF, { portfolios, stocks });
       });
-    }catch(e){ console.warn("order failed", e); }
+    }catch(e){ /* ignore */ }
     return;
   }
 
-  // local mode
+  // Local practice mode
   if (!gameData) return;
   const me = gameData.portfolios[username];
-  const s = gameData.stocks[idx];
-  if (!s) return;
-  if (kind === "buy"){
+  const s  = gameData.stocks[idx]; if (!s) return;
+
+  if (kind==="buy"){
     if (me.cash < s.price) return;
     me.cash = Number((me.cash - s.price).toFixed(2));
-    me.holdings[idx] = (me.holdings[idx]||0) + 1;
-    const impact = orderImpactFactor(gameData);
-    s.price = Number(clamp(s.price * (1 + impact), s.min, s.max).toFixed(2));
-  } else {
-    const have = me.holdings[idx]||0;
-    if (have <= 0) return;
-    me.holdings[idx] = have - 1;
-    me.cash = Number((me.cash + s.price*0.95).toFixed(2));
-    const impact = orderImpactFactor(gameData);
-    s.price = Number(clamp(s.price * (1 - impact), s.min, s.max).toFixed(2));
+    me.holdings[idx] = (me.holdings[idx]||0)+1;
+    s.price = Number(clamp(s.price * (1 + 0.02), MIN_PRICE, MAX_PRICE).toFixed(2));
+  }else{
+    if ((me.holdings[idx]||0) <= 0) return;
+    me.holdings[idx] -= 1;
+    me.cash = Number((me.cash + s.price).toFixed(2));
+    s.price = Number(clamp(s.price * (1 - 0.02), MIN_PRICE, MAX_PRICE).toFixed(2));
   }
-  refreshPlayerValues();
-  renderStocks();
+  const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
+  renderStocks(); refreshPlayerValues();
 }
 window.order = order;
 
 /* ===========================================================
-   Boot: always start local so tiles appear instantly
+   Local practice fallback (no gameId)
    =========================================================== */
-ensureStockTiles();
-startLocalGame();
+function startLocalPractice(){
+  modeLabel.textContent = "Local Practice";
+  gameData = {
+    players: [username],
+    wins: { [username]: 0 },
+    round: 1,
+    roundEndAt: Date.now() + ROUND_MS,
+    portfolios: initPortfolios([username]),
+    stocks: initStocks(),
+    status: "running"
+  };
+  roundEl.textContent = "1";
+  renderPlayers(); renderStocks();
 
-// If we're host in multiplayer, start host loops when possible
-(async ()=>{
-  if (!GAME_REF) return;
-  const lobbySnap = await getDoc(LOBBY_REF);
-  if (lobbySnap.exists()){
-    const d = lobbySnap.data();
-    isHost = d.host === username;
-    if (isHost) startHostLoops();
+  stopLoops();
+  // UI timer
+  startUiClock();
+  // local drift + round
+  tickerId = setInterval(()=>{
+    const d = gameData; if (!d || d.status!=="running") return;
+    // drift
+    for (let i=0;i<N;i++){
+      const s = d.stocks[i];
+      const meanRev = (BASE_PRICE - s.price) / (MAX_PRICE - MIN_PRICE);
+      const noise   = (Math.random()*0.010 - 0.005);
+      let np = s.price * (1 + meanRev*0.25 + noise);
+      np = clamp(np, MIN_PRICE, MAX_PRICE);
+      s.price = Number(np.toFixed(2));
+      const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
+    }
+    renderStocks();
+
+    // end round
+    const left = (d.roundEndAt || 0) - Date.now();
+    if (left <= 0){
+      const val = portfolioValue(username, d);
+      if (val >= START_CASH) d.wins[username] = (d.wins[username]||0) + 1;
+
+      if ((d.round||1) >= ROUNDS){
+        overlayTitle.textContent = "Practice Over";
+        overlayMsg.textContent   = `Your round wins: ${d.wins[username]||0}`;
+        overlayEl.classList.add("show");
+        stopLoops();
+      }else{
+        d.round += 1;
+        d.roundEndAt = Date.now() + ROUND_MS;
+        d.portfolios = initPortfolios(d.players);
+        d.stocks     = initStocks();
+        roundEl.textContent = d.round;
+        renderPlayers(); renderStocks();
+      }
+    }
+  }, 1000);
+}
+
+/* ===========================================================
+   Boot
+   =========================================================== */
+ensureTiles();
+overlayBtn.addEventListener("click", ()=>{
+  overlayEl.classList.remove("show");
+  if (GAME_REF && isHost){
+    // reset match: fresh 5 rounds with same players
+    (async ()=>{
+      try{
+        await setDoc(GAME_REF, {
+          host: lobbyData?.host || username,
+          players: gameData?.players || [username],
+          status: "running",
+          round: 1,
+          roundEndAt: Date.now() + ROUND_MS,
+          wins: Object.fromEntries((gameData?.players||[username]).map(p=>[p,0])),
+          portfolios: initPortfolios(gameData?.players||[username]),
+          stocks: initStocks(),
+          createdAt: serverTimestamp()
+        });
+        startHostLoop();
+      }catch(e){}
+    })();
+  }else{
+    startLocalPractice();
   }
-})();
-
-// Responsive reflow
-let resizeDebounce = null;
-window.addEventListener("resize", ()=>{
-  clearTimeout(resizeDebounce);
-  resizeDebounce = setTimeout(()=>{ sizeAllSparks(); renderStocks(); }, 80);
 });
+
+if (!GAME_REF){
+  // No lobby/gameId? Run local practice so UI always works.
+  startLocalPractice();
+}else{
+  // If we're host when loading, start the authoritative loop
+  (async ()=>{
+    const ls = await getDoc(LOBBY_REF);
+    if (ls.exists()){
+      isHost = (ls.data().host === username);
+      if (isHost) startHostLoop();
+    }
+  })();
+}
+
+/* responsive */
+let rez=null; window.addEventListener("resize", ()=>{ clearTimeout(rez); rez=setTimeout(()=>{ sizeAllSparks(); renderStocks(); }, 80); });
 </script>
 </body>
 </html>
-
 
 
