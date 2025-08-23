@@ -118,6 +118,26 @@
     .btn:hover{filter:brightness(1.06)}
     .cost{font-weight:700; color:var(--muted); font-size:12px}
 
+    /* Leaderboard (desktop + mobile) */
+    .lb-card{
+      background:var(--card); border:1px solid var(--tile-br); border-radius:14px; padding:12px; box-shadow:var(--shadow);
+    }
+    .lb-title{ font-weight:900; margin-bottom:8px; display:flex; align-items:center; gap:8px }
+    .lb-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+    .lb-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:14px; }
+    .lb-row .lb-left{ display:flex; align-items:center; gap:8px; }
+    .lb-rank{
+      width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:6px; border:1px solid var(--tile-br); background:#0f1623; font-weight:800; font-size:12px; color:var(--muted);
+    }
+    .lb-name{ font-weight:800; }
+    .lb-net{ font-variant-numeric: tabular-nums; }
+    .lb-row.me .lb-name{ color:#fff; }
+    .lb-mobile{ display:none; }
+    @media (max-width:1080px){
+      .lb-mobile{ display:block; padding:0 12px 12px; }
+    }
+
     /* Overlay for match end */
     .overlay{
       position:fixed; inset:0; background:rgba(0,0,0,.6);
@@ -152,9 +172,23 @@
       <div class="stocks" id="stocksGrid"><!-- tiles injected --></div>
 
       <div class="players-bottom" id="bottomRail"></div>
+
+      <!-- Mobile leaderboard -->
+      <div class="lb-mobile" id="lbMobile">
+        <div class="lb-card">
+          <div class="lb-title">🏁 Leaderboard</div>
+          <ol class="lb-list" id="lbListMobile"></ol>
+        </div>
+      </div>
     </div>
 
-    <div class="rail" id="rightRail"></div>
+    <!-- Desktop right rail leaderboard -->
+    <div class="rail" id="rightRail">
+      <div class="lb-card">
+        <div class="lb-title">🏁 Leaderboard</div>
+        <ol class="lb-list" id="lbList"></ol>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -242,6 +276,8 @@ const overlayEl   = $("overlay");
 const overlayTitle= $("overlayTitle");
 const overlayMsg  = $("overlayMsg");
 const overlayBtn  = $("overlayBtn");
+const lbList      = $("lbList");
+const lbListMobile= $("lbListMobile");
 const fmt$ = (n)=> "$" + Number(n).toFixed(2);
 const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
 
@@ -467,6 +503,8 @@ function renderPlayers(){
   g[2].forEach(el=> bottomRail.appendChild(el));
   g[1].forEach(el=> rightRail.appendChild(el));
   g[3].forEach(el=> leftRail.appendChild(el));
+
+  renderLeaderboard(); // keep leaderboard refreshed after player reflow
 }
 function refreshPlayerValues(){
   if (!gameData) return;
@@ -479,6 +517,36 @@ function refreshPlayerValues(){
     if (pc) pc.textContent = `Cash: ${fmt$(cash)}`;
     if (pn) pn.textContent = `Net: ${fmt$(net)}`;
   }
+  renderLeaderboard(); // update ordering/numbers live
+}
+
+/* ===========================================================
+   Leaderboard
+   =========================================================== */
+function renderLeaderboard(){
+  if (!gameData) return;
+  const players = gameData.players || [username];
+  const arr = players.map(p => ({ name: p, net: netValue(p, gameData) }));
+  arr.sort((a,b)=> b.net - a.net);
+
+  function fillList(el){
+    if (!el) return;
+    el.innerHTML = "";
+    arr.forEach((it, idx)=>{
+      const li = document.createElement("li");
+      li.className = "lb-row" + (it.name===username ? " me" : "");
+      li.innerHTML = `
+        <div class="lb-left">
+          <span class="lb-rank">${idx+1}</span>
+          <span class="lb-name">${it.name}</span>
+        </div>
+        <span class="lb-net">${fmt$(it.net)}</span>
+      `;
+      el.appendChild(li);
+    });
+  }
+  fillList(lbList);
+  fillList(lbListMobile);
 }
 
 /* ===========================================================
@@ -615,6 +683,7 @@ if (GAME_REF){
     roundEl.textContent = gameData.round || 1;
     renderPlayers();
     renderStocks();
+    renderLeaderboard();
     if (!timerId) startUiClock();
 
     if (gameData.status === "finished"){
@@ -742,7 +811,7 @@ function startLocalPractice(){
     status: "running"
   };
   roundEl.textContent = "1";
-  renderPlayers(); renderStocks();
+  renderPlayers(); renderStocks(); renderLeaderboard();
 
   stopLoops();
   startUiClock();
@@ -761,6 +830,7 @@ function startLocalPractice(){
       const hist = (s.history || []).slice(-HISTORY_LEN+1); hist.push(s.price); s.history = hist;
     }
     renderStocks();
+    renderLeaderboard();
 
     // end round
     const left = (d.roundEndAt || 0) - Date.now();
@@ -779,7 +849,7 @@ function startLocalPractice(){
         d.portfolios = initPortfolios(d.players);
         d.stocks     = initStocks();
         roundEl.textContent = d.round;
-        renderPlayers(); renderStocks();
+        renderPlayers(); renderStocks(); renderLeaderboard();
       }
     }
   }, 1000);
@@ -825,10 +895,11 @@ if (!GAME_REF){
   })();
 }
 
-let rez=null; window.addEventListener("resize", ()=>{ clearTimeout(rez); rez=setTimeout(()=>{ sizeAllSparks(); renderStocks(); }, 80); });
+let rez=null; window.addEventListener("resize", ()=>{ clearTimeout(rez); rez=setTimeout(()=>{ sizeAllSparks(); renderStocks(); renderLeaderboard(); }, 80); });
 </script>
 </body>
 </html>
+
 
 
 
