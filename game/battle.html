@@ -90,19 +90,25 @@ function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,
 function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-const TEAM_COLORS = ["#63b3ff","#ff8a7a","#85ff8a","#ffd56b","#d2a8ff","#ff7abf"];
-function teamTint(owner){ return TEAM_COLORS[hash(owner)%TEAM_COLORS.length]; }
 const short = s => s.length>10 ? s.slice(0,10)+"…" : s;
 
-/* ========== Troop stats (overall slower) ========== */
+/* Strong side colors: p0 = BLUE, p1 = RED */
+const SIDE_COLORS = ["#3b82f6", "#ef4444"];
+let TEAM_COLOR_FOR = {};
+function teamTint(owner){ return TEAM_COLOR_FOR[owner] || "#9aa6b2"; }
+
+/* ========== Troop stats ========== */
 const TYPES = {
   recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
   swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
   cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
-  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
+  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:14,size:3,channel:6000}] }, // weakened
+  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:12,size:3,channel:6000}] },
   monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
   priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
   mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
@@ -149,7 +155,6 @@ function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.l
 function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 
 let dragging=false, dragStart=null, selection=new Set(), targeting=null;
-const uiCooldowns={1:0,2:0,3:0,4:0}; // Q/W/E/R
 const localFX=[];
 
 /* ========== Game state (hosted) ========== */
@@ -157,6 +162,7 @@ let isHost=false, state=null, snapBuf=[], hostClockOffset=0;
 let participants=[]; // [p1, p2]
 let ownerMods = {};  // { owner: mods }
 
+/* rounded rect helper */
 function roundedRectPath(ctx, x, y, w, h, r){
   const rr=Math.min(r,w/2,h/2);
   ctx.beginPath();
@@ -174,15 +180,21 @@ const MKEY = { // mountonline -> type ids
   archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher",
   monks:"monk", priests:"priest", mages:"mage"
 };
+
 async function loadArmiesAndSeedIfHost(){
   const b = await getDoc(battleRef); if(!b.exists()){ alert("Battle not found"); return false; }
   const d = b.data();
   participants = (d.participants || []).slice(0,2);
-  isHost = (participants[0] === ME); // lower-sorted starter created in mountonline; either side can host, we pick p0
-  // Safety: mark me inactive/inBattle in case mountonline didn't already
+
+  // Set strong side colors
+  if (participants.length >= 2) {
+    TEAM_COLOR_FOR[participants[0]] = SIDE_COLORS[0]; // Blue
+    TEAM_COLOR_FOR[participants[1]] = SIDE_COLORS[1]; // Red
+  }
+
+  isHost = (participants[0] === ME);
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true }).catch(()=>{});
 
-  // Pull both players docs
   const [p1Snap, p2Snap] = await Promise.all([
     getDoc(doc(db,"mountonline", participants[0])),
     getDoc(doc(db,"mountonline", participants[1]))
@@ -190,23 +202,21 @@ async function loadArmiesAndSeedIfHost(){
   if (!p1Snap.exists() || !p2Snap.exists()){ alert("Player docs missing"); return false; }
   const P1 = p1Snap.data(), P2 = p2Snap.data();
 
-  // Owner banner modifiers
   ownerMods[participants[0]] = bannerMods((P1.inventory?.equipped)||[]);
   ownerMods[participants[1]] = bannerMods((P2.inventory?.equipped)||[]);
 
   if(!isHost) return true;
 
-  // Build units from stored counts
+  // Build units from stored counts — spawn in compact block per side (never cross midline)
   const units=[];
-  spawnArmyForOwner(units, participants[0], P1.army||{}, /*left side*/ {gx:5, gy:Math.floor(GRID_H/2)-4}, +1);
-  spawnArmyForOwner(units, participants[1], P2.army||{}, /*right side*/{gx:GRID_W-6, gy:Math.floor(GRID_H/2)-4}, -1);
+  spawnArmyBlock(units, participants[0], P1.army||{}, "left");
+  spawnArmyBlock(units, participants[1], P2.army||{}, "right");
 
-  // Initialize game meta
   await setDoc(gameRef, {
     startedAt: Date.now(), winner:null,
     map:{ w:WORLD.w, h:WORLD.h, tile:TILE, gridW:GRID_W, gridH:GRID_H },
     players: participants, units, effects:[], projs:[],
-    stats: { // per owner tallies
+    stats: {
       [participants[0]]: { killsByType:{}, lostByType:{} },
       [participants[1]]: { killsByType:{}, lostByType:{} }
     }
@@ -214,28 +224,43 @@ async function loadArmiesAndSeedIfHost(){
 
   return true;
 }
-function spawnArmyForOwner(units, owner, armyCounts, origin, dir){
-  // Orderly rectangular formation: rows by type
-  const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
-  let row=0, col=0, perRow=10;
-  for(const key of order){
-    const typeId = MKEY[key]; if(!typeId) continue;
-    const n = Math.max(0, parseInt(armyCounts[key]||0,10));
-    for(let i=0;i<n;i++){
-      const gx = origin.gx + (dir>0 ? col : -col);
-      const gy = origin.gy + row;
-      units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
-      col++; if(col>=perRow){ col=0; row++; }
-    }
-    if(col!==0){ row++; col=0; } // gap between types
+
+/* Spawn as a mixed block within safe side zone */
+function spawnArmyBlock(units, owner, armyCounts, side){
+  // Build a shuffled pool of unit types
+  const pool=[];
+  for(const [k,v] of Object.entries(armyCounts||{})){
+    const n = Math.max(0, parseInt(v||0,10));
+    const typeId = MKEY[k]; if(!typeId) continue;
+    for(let i=0;i<n;i++) pool.push(typeId);
+  }
+  if(!pool.length) return;
+  // shuffle
+  for(let i=pool.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [pool[i],pool[j]]=[pool[j],pool[i]]; }
+
+  // Safe side bounds so we never overlap enemy
+  const mid = Math.floor(GRID_W/2);
+  const padX = 3, padY = 2;
+  const minX = side==="left" ? 2 : mid+padX;
+  const maxX = side==="left" ? mid-padX : GRID_W-3;
+  const safeW = Math.max(4, maxX - minX + 1);
+
+  const perRow = Math.min(12, safeW);                   // cap width
+  const rows   = Math.ceil(pool.length / perRow);
+  const startX = side==="left" ? minX : (maxX - perRow + 1);
+  const startY = clamp(Math.floor(GRID_H/2) - Math.floor(rows/2), padY, GRID_H - rows - padY);
+
+  for(let i=0;i<pool.length;i++){
+    const gx = startX + (i % perRow);
+    const gy = startY + Math.floor(i / perRow);
+    units.push(mkUnit(pool[i], owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
   }
 }
 
-/* ========== Unit creation w/ owner banner mods applied ========== */
+/* ========== Unit creation (apply banner mods) ========== */
 function mkUnit(type, owner, gx, gy){
   const base=TYPES[type];
   const mod=ownerMods[owner]||bannerMods([]);
-  // Derive per-type adjusted stats
   const isRanged = base.range>1;
   const dmgMul = (isRanged?mod.ranged:mod.melee) * (type==="cavalry"?mod.cavDmg:1) * (type==="mage"?mod.magic:1);
   const moveMul= mod.speed;
@@ -252,7 +277,7 @@ function mkUnit(type, owner, gx, gy){
     acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
     goalGX:null, goalGY:null, nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y",
     priestHealMul: (type==="priest"? mod.priestHeal : 1),
-    _lastBy:null // last damager owner for kill credit
+    _lastBy:null
   };
 }
 
@@ -263,6 +288,7 @@ function compactUnits(units){
     return { id:u.id, tt:u.tt, o:u.o, gx:u.gx, gy:u.gy, x:Math.round(cx), y:Math.round(u.y), hp:Math.round(u.hp) };
   });
 }
+
 async function hostLoop(){
   const s=await getDoc(gameRef); if(!s.exists()) return;
   let g = s.data();
@@ -290,7 +316,7 @@ async function hostLoop(){
   }
 
   async function settleAndExit(){
-    // Compute persistent losses & rewards
+    // persist rewards/losses for BOTH players (winner or loser)
     const stats = g.stats || {};
     const owners = g.players || participants;
     for(const owner of owners){
@@ -302,6 +328,7 @@ async function hostLoop(){
         const snap = await tx.get(pref); if(!snap.exists()) return;
         const me = snap.data();
         const army = {...(me.army||{})};
+
         // Remove 1 per 3 lost
         for(const [tLost, nLost] of Object.entries(lost)){
           const mKey = Object.keys(MKEY).find(k=>MKEY[k]===tLost);
@@ -309,7 +336,7 @@ async function hostLoop(){
           const remove = Math.floor((nLost||0)/3);
           if(remove > 0) army[mKey] = Math.max(0, (army[mKey]||0) - remove);
         }
-        // Rewards
+        // Rewards for kills (gold even on a loss)
         let goldGain=0;
         for(const [tKill, nKill] of Object.entries(kills)){
           const tier = TIER[tKill] || 1;
@@ -318,7 +345,7 @@ async function hostLoop(){
         tx.update(pref, { army, gold: (me.gold||0) + goldGain, active:true, inBattle:false, battleId:null, lastSeen: Date.now() });
       });
     }
-    // Delete battle doc (optional)
+    // Clean up battle doc; clients listen and also return home
     try{ await deleteDoc(battleRef); }catch(e){}
     location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`;
   }
@@ -352,63 +379,88 @@ async function hostLoop(){
   step();
 }
 
-/* ========== Intents & abilities ========== */
+/* ========== Intents & abilities (per-unit cooldowns) ========== */
 async function pushIntent(kind,payload){ await addDoc(intentsCol,{ ts:Date.now(), user:ME, kind, payload }); }
-function slotAbility(slot){
-  const sel=getUnitsView().filter(u=>selection.has(u.id));
-  for(const u of sel){ const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot); if(a) return a; }
-  return null;
-}
+function slotAbilityOnUnit(u, slot){ return (TYPES[u.tt].abilities||[]).find(a=>a.slot===slot); }
+
+function anySelected(){ return getUnitsView().some(u=>selection.has(u.id)); }
+
 async function castSlot(slot){
-  const ids=Array.from(selection); if(!ids.length) return;
-  if(Date.now()<uiCooldowns[slot]){ flash("⏳ Ability on cooldown"); return; }
-  const ab=slotAbility(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
+  const units=getUnitsView().filter(u=>selection.has(u.id));
+  if(!units.length) return;
+
+  // filter to units that actually have this slot & are off CD
+  const readyIds = units.filter(u=>{
+    const ab=slotAbilityOnUnit(u,slot);
+    return ab && (u.acd?.[slot]||0)<=0 && !u._channel;
+  }).map(u=>u.id);
+
+  if(!readyIds.length){ flash("⏳ No selected unit ready for this ability"); return; }
+
+  // Determine ability kind from first ready unit
+  const first = units.find(u=>readyIds.includes(u.id));
+  const ab = slotAbilityOnUnit(first, slot);
+  if(!ab){ flash("No ability on this slot for selection"); return; }
+
   if(ab.target==="self"){
-    await pushIntent("ability",{slot,ids,mode:"self",wipe:true});
-    startCooldown(slot,ab.cd); fxRingOnSelection();
+    await pushIntent("ability",{slot,ids:readyIds,mode:"self",wipe:true});
+    fxRingOnSelection();
   }else{
-    targeting={slot,ab,ids};
+    targeting={slot,ab,ids:readyIds};
     showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      pushIntent("ability",{slot,ids,mode: (ab.target==="pointOrUnit"?"point": "point"), gx,gy, wipe:true});
-      startCooldown(slot,ab.cd);
+      pushIntent("ability",{slot,ids:readyIds,mode:(ab.target==="pointOrUnit"?"point":"point"), gx,gy, wipe:true});
       fxTile(gx,gy); hideHint(); targeting=null;
       cv.removeEventListener("click", once);
     };
     cv.addEventListener("click", once);
   }
 }
-function startCooldown(slot, secs){ uiCooldowns[slot]=Date.now()+Math.round(secs*1000); }
+
+/* Per-slot badge reflects MIN remaining among selection; dims if ALL on CD */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
+  const sel = getUnitsView().filter(u=>selection.has(u.id));
   for(let s=1;s<=4;s++){
     const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
-    const rem=uiCooldowns[s]-Date.now(); const on=rem>0; el.classList.toggle("oncd", on);
+    let times=[]; let hasAny=false;
+    for(const u of sel){
+      const ab=slotAbilityOnUnit(u,s);
+      if(ab){ hasAny=true; times.push(Math.max(0, u.acd?.[s]||0)); }
+    }
+    const allCd = hasAny && times.every(t=>t>0);
+    const minRem = hasAny ? Math.min(...times) : 0;
+    el.classList.toggle("oncd", allCd);
     let badge=el.querySelector(".cd-badge");
-    if(on){ const secs=Math.ceil(rem/1000); if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; el.appendChild(badge); } badge.textContent=`${secs}s`; }
-    else if(badge){ badge.remove(); }
+    if(hasAny && minRem>0){
+      if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; el.appendChild(badge); }
+      badge.textContent = `${Math.ceil(minRem)}s`;
+    }else if(badge){ badge.remove(); }
   }
 }
-setInterval(updateCooldownBadges, 200);
+setInterval(updateCooldownBadges, 250);
 
 const AbilityHandlers={
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"brace", until:now+ab.dur*1000}; return true; } },
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
-  focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp: (ab.dmgUp||3)}; return true; } },
+  focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp:(ab.dmgUp||3)}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:(ab.healPerSec||8) * (u.priestHealMul||1)}; return true; } },
 
   volley: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
     const size=ab.size||3; const until=now+(ab.channel||6000);
     u._channel={kind:"volley",until};
-    (g.effects=g.effects||[]).push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size, pulses:[now+1000,now+3000,now+5000], next:0, until, color:"#aef", dmg:7, pierce:0, whoOwner:u.o });
+    // Weakened pulses (lower dmg)
+    (g.effects=g.effects||[]).push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
+      pulses:[now+1000,now+3000,now+5000], next:0, until, color:"#aef", dmg:3, pierce:0, whoOwner:u.o });
     return true;
   }},
   fireburst: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
-    (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2, whoOwner:u.o });
+    (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2,
+      when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2, whoOwner:u.o });
     return true;
   }},
   arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){
@@ -430,34 +482,80 @@ const AbilityHandlers={
     return true;
   }},
 };
+
 function bresenham(x0,y0,x1,y1){
   const pts=[]; let dx=Math.abs(x1-x0), sx=x0<x1?1:-1; let dy=-Math.abs(y1-y0), sy=y0<y1?1:-1; let err=dx+dy, x=x0,y=y0;
   while(true){ pts.push({gx:x,gy:y}); if(x===x1&&y===y1) break; const e2=2*err; if(e2>=dy){ err+=dy; x+=sx; } if(e2<=dx){ err+=dx; y+=sy; } }
   return pts;
 }
+
 function applyIntents(g,intents){
   const byId=new Map(g.units.map(u=>[u.id,u]));
   for(const it of intents){
     const {kind,user,payload}=it;
-    if(kind==="hold"){ const {ids,toggle,enabled}=payload; for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; u._hold = toggle ? !u._hold : !!enabled; } }
-    if(kind==="order"){ if(payload.type==="attackMove"){ const {ids,gx,gy}=payload; for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; u.goalGX=gx; u.goalGY=gy; } } }
-    if(kind==="orderNearest"){ const {ids}=payload; for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; let best=null,bd=1e9; for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){bd=d; best=v;} } if(best){ u.goalGX=best.gx; u.goalGY=best.gy; } } }
-    if(kind==="ability"){ const {slot,ids,mode,gx,gy}=payload; for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; if(u._channel) continue; const ab=(TYPES[u.tt].abilities||[]).find(a=>a.slot===slot); if(!ab) continue; if(u.acd?.[slot]>0) continue; const ok=AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,gx,gy},Date.now()); if(ok){ u.acd[u.tt+":"+slot]=ab.cd; u.acd[slot]=ab.cd; } } }
+    if(kind==="hold"){
+      const {ids,toggle,enabled}=payload;
+      for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; u._hold = toggle ? !u._hold : !!enabled; }
+    }
+    if(kind==="order"){
+      if(payload.type==="attackMove"){
+        const {ids,gx,gy}=payload;
+        for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; u.goalGX=gx; u.goalGY=gy; }
+      }
+    }
+    if(kind==="orderNearest"){
+      const {ids}=payload;
+      for(const id of ids){
+        const u=byId.get(id); if(!u||u.o!==user) continue;
+        let best=null,bd=1e9;
+        for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){bd=d; best=v;} }
+        if(best){ u.goalGX=best.gx; u.goalGY=best.gy; }
+      }
+    }
+    if(kind==="ability"){
+      const {slot,ids,mode,gx,gy}=payload;
+      for(const id of ids){
+        const u=byId.get(id); if(!u||u.o!==user) continue;
+        if(u._channel) continue;
+        const ab=(TYPES[u.tt].abilities||[]).find(a=>a.slot===slot); if(!ab) continue;
+        if(u.acd?.[slot]>0) continue;
+        const ok=AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,gx,gy},Date.now());
+        if(ok){ u.acd[slot]=ab.cd; } // per-unit cooldown per slot
+      }
+    }
   }
   return g;
 }
 
 /* ========== Simulation ========== */
-const PX2SQUARES = 1 / (TILE*0.9); // converts px/s to grid-steps per second
+const PX2SQUARES = 1 / (TILE*0.9);
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
+
+/* score candidate step to chase enemy or follow order, with "go around" */
+function scoreStep(u, nx, ny, target){
+  // block if out of bounds
+  if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) return 1e9;
+
+  if(target){
+    const rng = u.range||1;
+    const d = cheby(nx,ny,target.gx,target.gy);
+    const distToRange = Math.max(0, d - rng); // want 0
+    return distToRange;
+  }else if(u.goalGX!=null && u.goalGY!=null){
+    return manhattan(nx,ny,u.goalGX,u.goalGY);
+  }else{
+    return 0;
+  }
+}
+
 function simulate(g, dt){
   const now = Date.now();
+
   // Cooldowns / auras
   for(const u of g.units){
     for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
     if(u._aura?.kind==="mend"){ u.hp=Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt); }
-    if(u._aura?.kind==="focus"){ /* damage added in attack calc */ }
     if(u._channel && u._channel.until<=now) u._channel=null;
   }
   g.effects = (g.effects||[]).filter(e=>e.until>now);
@@ -479,29 +577,27 @@ function simulate(g, dt){
     if(e.type==="squareOnce"){ if(!e.did && now>=e.when){ pulseSquare(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0); e.did=true; } }
   }
 
-  // Targeting & attacks
+  // Targeting & attacks (ranged really stays at range)
   for(const u of g.units){
     if(u._channel) continue;
     let target=null, bd=1e9;
     for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
     const rng=u.range||1;
-    const inRange = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy) <= rng : manhattan(u.gx,u.gy,target.gx,target.gy)<=rng);
+    const inRange = target && cheby(u.gx,u.gy,target.gx,target.gy) <= rng;
     if(inRange && (!u._hold)){
-      // attack
       u._atkCd = (u._atkCd||0) - dt;
       if((u._atkCd||0) <= 0){
         const baseDmg = (u.dmg||5) + (u._aura?.dmgUp||0);
         applyDamage(target, baseDmg, 0, u.o);
         u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
       }
-    } else if(!u._hold && target && bd <= 7 && (u.goalGX==null || u.goalGY==null)){
-      u.goalGX=target.gx; u.goalGY=target.gy;
     }
   }
 
-  // Movement incl. charge
+  // Movement (includes charge + go-around micro pathing)
   const occ = occupancy(g.units);
   const reserved=new Set();
+
   for(const u of g.units){
     if(u._channel) continue;
 
@@ -509,34 +605,81 @@ function simulate(g, dt){
     if(u._charge && u._charge.until>now){
       const step=u._charge.path[u._charge.idx];
       if(step){
-        if(!occ.get(step.gx+"|"+step.gy) && !reserved.has(step.gx+"|"+step.gy)){
+        const key=step.gx+"|"+step.gy;
+        if(!occ.get(key) && !reserved.has(key)){
           stepTo(u, step.gx, step.gy, occ, reserved); u._charge.idx++;
         } else { u._charge.until = now; }
       } else { u._charge.until=now; }
-      // impact splash when finishing
       if(!u._charge || u._charge.idx>=(u._charge.path?.length||0)){
         for(const v of g.units){ if(v.o===u.o) continue; if(manhattan(v.gx,v.gy,u.gx,u.gy)<=1){ applyDamage(v, 14, 0, u.o); } }
       }
       continue;
     }
 
-    if(u.goalGX==null || u.goalGY==null) continue;
+    // Decide a move target (enemy or order). Ranged won't try to occupy the enemy tile — we score toward "within range".
+    let nearest=null, nd=1e9;
+    for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<nd){nd=d; nearest=v;} }
+    const haveOrder = (u.goalGX!=null && u.goalGY!=null);
+    const target = nearest;
+
+    // If already in range of target, don't move
+    if(target && cheby(u.gx,u.gy,target.gx,target.gy) <= (u.range||1)) continue;
+    if(!haveOrder && !target) continue;
+    if(u._hold) continue;
+
+    // movement pacing
     const speedSquares = Math.max(0.5, (u.move||180) * PX2SQUARES * (u._aura?.kind==="brace"?0.75:1));
     const everyMs = Math.max(80, Math.floor(1000/speedSquares));
     if(now < u.nextStepAt) continue;
     u.nextStepAt = now + everyMs;
-    const nx = u.gx + Math.sign(u.goalGX - u.gx);
-    const ny = u.gy + Math.sign(u.goalGY - u.gy);
-    const cand=[{gx:nx,gy:u.gy},{gx:u.gx,gy:ny}];
-    for(const c of cand){
+
+    // Evaluate four cardinal candidates + stay
+    const cand = [
+      {gx:u.gx+1, gy:u.gy},
+      {gx:u.gx-1, gy:u.gy},
+      {gx:u.gx,   gy:u.gy+1},
+      {gx:u.gx,   gy:u.gy-1},
+      {gx:u.gx,   gy:u.gy} // allow "wait" if boxed
+    ];
+
+    // Prefer axis that user randomly favors to break jams
+    const order = (u.axisPref==="x") ? [0,1,2,3,4] : [2,3,0,1,4];
+
+    let best=null, bestScore=1e9;
+    for(const idx of order){
+      const c=cand[idx];
       if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
-      const k=c.gx+"|"+c.gy;
-      if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); break; }
+      const key=c.gx+"|"+c.gy;
+      const blocked = (!!occ.get(key) || reserved.has(key)) && (c.gx!==u.gx || c.gy!==u.gy);
+      // heavy penalty for blocked tiles (still allow "stay" when boxed)
+      let s = scoreStep(u, c.gx, c.gy, target);
+      if(blocked) s += 1000;
+
+      // Light crowd penalty so units slide around long lines
+      let crowd=0;
+      const nb = [[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [dx,dy] of nb){
+        const nkey=(c.gx+dx)+"|"+(c.gy+dy);
+        const here=occ.get(nkey)||[];
+        for(const w of here){ if(w.o===u.o) crowd+=0.15; } // small
+      }
+      s += crowd;
+
+      if(s < bestScore){ bestScore=s; best=c; }
     }
-    if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; }
+
+    if(best && (best.gx!==u.gx || best.gy!==u.gy)){
+      const key=best.gx+"|"+best.gy;
+      if(!occ.get(key) && !reserved.has(key)){
+        stepTo(u,best.gx,best.gy,occ,reserved);
+      }
+    }
+
+    // Clear order if reached it
+    if(haveOrder && u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; }
   }
 
-  // Deaths (credit to last hitter)
+  // Deaths (credit)
   const survivors=[]; const deaths=[];
   for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
   if(deaths.length){
@@ -551,6 +694,7 @@ function simulate(g, dt){
   g.units = survivors;
   return g;
 }
+
 function applyDamage(target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
@@ -559,9 +703,21 @@ function applyDamage(target, dmg, ap, owner){
   target.hp -= Math.max(1, Math.round(dmg - effArmor));
   target._lastBy = owner;
 }
-function stepTo(u,gx,gy,occ,res){ const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u); if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); } u.gx=gx; u.gy=gy; const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK); }
+function stepTo(u,gx,gy,occ,res){
+  const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
+  if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
+  u.gx=gx; u.gy=gy; const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK);
+}
 function countByOwner(units){ const m={}; for(const u of units){ m[u.o]=(m[u.o]||0)+1; } return m; }
-function pulseSquare(g,cx,cy,size,owner,dmg,pierce){ const half=Math.floor(size/2); for(const v of g.units){ if(v.o===owner) continue; if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){ applyDamage(v, dmg, pierce||0, owner); } } }
+function pulseSquare(g,cx,cy,size,owner,dmg,pierce){
+  const half=Math.floor(size/2);
+  for(const v of g.units){
+    if(v.o===owner) continue;
+    if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){
+      applyDamage(v, dmg, pierce||0, owner);
+    }
+  }
+}
 
 /* ========== Input handlers ========== */
 function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
@@ -604,6 +760,16 @@ window.addEventListener("mouseup",(e)=>{
   }
 });
 cv.addEventListener("contextmenu", e=>e.preventDefault());
+
+// Double-click = select all of same type you own
+cv.addEventListener("dblclick",(e)=>{
+  const u = pickUnitAt(mouse.worldX,mouse.worldY, ME);
+  if(!u) return;
+  selection.clear();
+  for(const v of getUnitsView()){ if(v.o===ME && v.tt===u.tt) selection.add(v.id); }
+  renderHUD();
+});
+
 window.addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ targeting=null; hideHint(); }
@@ -622,7 +788,7 @@ function pickUnitAt(wx,wy, owner){
 }
 function pickInRect(x0,y0,x1,y1,owner){
   const list=getUnitsView(), out=[]; const g0=worldToGrid(x0,y0), g1=worldToGrid(x1,y1);
-  const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx), minGY=Math.min(g0.gy,g1.gy), maxGY=Math.max(g0.gy,g1.gy);
+  const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx), minGY=Math.min(g0.gy), maxGY=Math.max(g0.gy,g1.gy);
   for(const u of list){ if(owner && u.o!==owner) continue; if(u.gx>=minGX&&u.gx<=maxGX&&u.gy>=minGY&&u.gy<=maxGY) out.push(u.id); }
   return out;
 }
@@ -639,7 +805,8 @@ function renderHUD(){
   for(let s=1;s<=4;s++){
     const spec=slotMap.get(s);
     const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
-    div.innerHTML = spec ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>` : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
+    div.innerHTML = spec ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>`
+                         : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
     if(spec) div.onclick=()=>castSlot(s);
     abil.appendChild(div);
   }
@@ -649,23 +816,28 @@ function renderBoard(){
   const rows=document.getElementById("boardRows"); rows.innerHTML="";
   const counts={}; for(const u of getUnitsView()){ counts[u.o]=(counts[u.o]||0)+1; }
   const ents=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
-  for(const [name,c] of ents){ const d=document.createElement("div"); d.className="row"; d.innerHTML=`<span style="color:${teamTint(name)}">${short(name)}</span><span>${c}</span>`; rows.appendChild(d); }
+  for(const [name,c] of ents){
+    const d=document.createElement("div"); d.className="row";
+    d.innerHTML=`<span style="color:${teamTint(name)}">${short(name)}</span><span>${c}</span>`;
+    rows.appendChild(d);
+  }
 }
 
 /* ========== Render loop ========== */
 function draw(){
   const dt=16/1000;
   // edge pan
-  const r=viewEl.getBoundingClientRect(), mX=mouse.x, mY=mouse.y;
-  let vx=0,vy=0;
-  if(mouse.inViewport){ const mx=mouse.x, my=mouse.y; const marginX=60, marginTop=80, marginBot=160;
-    if(mx<=marginX) vx-=1; else if(mx>=cv.width-marginX) vx+=1;
-    if(my<=marginTop) vy-=1; else if(my>=cv.height-marginBot) vy+=1;
+  if(mouse.inViewport){
+    const mx=mouse.x, my=mouse.y; const marginX=60, marginTop=80, marginBot=160;
+    if(mx<=marginX) cam.x -= cam.speed*dt;
+    else if(mx>=cv.width-marginX) cam.x += cam.speed*dt;
+    if(my<=marginTop) cam.y -= cam.speed*dt;
+    else if(my>=cv.height-marginBot) cam.y += cam.speed*dt;
+    clampCam();
   }
-  cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 
   ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
-  // coarse grid
+  // grid
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
@@ -682,7 +854,7 @@ function draw(){
     ctx.restore();
   }
 
-  // projs
+  // projectiles
   const projs = snapBuf.length ? (snapBuf[snapBuf.length-1].projs||[]) : (state?.projs||[]);
   for(const p of projs){
     if(p.type==="bolt"){
@@ -692,7 +864,7 @@ function draw(){
     }
   }
 
-  // units (white cards w/ team border)
+  // units
   const list=getUnitsView();
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const u of list){
@@ -711,7 +883,7 @@ function draw(){
     if(selection.has(u.id)){ ctx.save(); ctx.shadowColor="#fff"; ctx.shadowBlur=14; roundedRectPath(ctx,x0,y0,w,h,8); ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke(); ctx.restore(); }
 
     // HP bar
-    const hpFrac=Math.max(0,Math.min(1,u.hp / (TYPES[u.tt].hp||1)));
+    const hpFrac=Math.max(0,Math.min(1,u.hp / Math.max(1,(TYPES[u.tt].hp||1))));
     const barPad=8, barW=w-barPad*2, barH=6, barX=x0+barPad, barY=y0+h-barPad-barH;
     ctx.fillStyle="#e7e7e7"; roundedRectPath(ctx,barX,barY,barW,barH,3); ctx.fill();
     ctx.fillStyle = hpFrac>0.5? "#35d07f" : (hpFrac>0.25? "#ffd166" : "#ff6b6b");
@@ -729,7 +901,6 @@ function draw(){
   // drag box
   if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
-  // board + cooldowns
   renderBoard(); updateCooldownBadges();
   requestAnimationFrame(draw);
 }
@@ -741,6 +912,15 @@ onSnapshot(query(snapsCol, orderBy("ts","asc"), limit(32)), (qs)=>{
   if(snapBuf.length){ const hostTs=snapBuf[snapBuf.length-1].ts; const drift=hostTs-Date.now(); hostClockOffset=hostClockOffset===0?drift:(hostClockOffset*0.9 + drift*0.1); }
 });
 
+/* Also watch the battle doc; when host deletes it after settlement, everyone returns home */
+let __sentHome=false;
+onSnapshot(battleRef,(snap)=>{
+  if(!snap.exists() && !__sentHome){
+    __sentHome=true;
+    setTimeout(()=>{ location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`; }, 1200);
+  }
+});
+
 /* ========== Winner banner ========== */
 function maybeWinnerBanner(){
   if(!state?.winner) return;
@@ -749,35 +929,22 @@ function maybeWinnerBanner(){
   b.style.display="block";
 }
 
-/* ========== Abilities HUD ========== */
-function buildHUD(){
-  // nothing to prebuild — dynamic per selection
-}
-
 /* ========== Init ========== */
 (async function init(){
-  // Load participants, armies, banners → seed
   const ok = await loadArmiesAndSeedIfHost();
   if(!ok) return;
 
-  // Host-only sim loop
   if(isHost) hostLoop();
 
-  // Listen for meta/snapshots established above
-
-  // Pre-center camera between spawns
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
-
-  // Draw loop
   draw();
-
-  // Safety: if you close, make sure you become active again later (handled by host settle)
 })();
 
 /* ========== Small helpers ========== */
-function getUnitsOwnerSet(){ const set=new Set(); for(const u of getUnitsView()) set.add(u.o); return set; }
 function flashBanner(t){ const b=document.getElementById("banner"); b.textContent=t; b.style.display="block"; setTimeout(()=>b.style.display="none", 1200); }
 
 </script>
 </body>
 </html>
+
+
