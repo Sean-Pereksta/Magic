@@ -7,52 +7,93 @@
 <style>
   :root{ --win-w: 1024px; --win-h: 640px; }
   *{ box-sizing:border-box }
-  body{ margin:0; background:#0b1014; color:#eef; font-family:system-ui,Segoe UI,Arial; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  body{
+    margin:0; background:#0b1014; color:#eef;
+    font-family:system-ui,Segoe UI,Arial;
+    display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
   .game-wrap{ width:var(--win-w); }
-  .frame{ position:relative; width:var(--win-w); height:var(--win-h); border:1px solid #21324a; border-radius:12px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726; }
-  .titlebar{ height:38px; display:flex; align-items:center; gap:8px; padding:0 10px; background:#0f1a2b; border-bottom:1px solid #203049; font-weight:700; }
+  .frame{
+    position:relative; width:var(--win-w); height:var(--win-h);
+    border:1px solid #21324a; border-radius:12px; overflow:hidden;
+    box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726;
+  }
+  .titlebar{
+    height:38px; display:flex; align-items:center; gap:8px; padding:0 10px;
+    background:#0f1a2b; border-bottom:1px solid #203049; font-weight:700;
+  }
   .titlebar .dot{ width:10px; height:10px; border-radius:50%; }
   .dot.red{ background:#ff5f57 } .dot.yellow{ background:#ffbd2e } .dot.green{ background:#28c840 }
-  .viewport{ position:absolute; inset:38px 0 0 0; }
-  canvas{ width:100%; height:100%; display:block; background:#0e2a19; cursor:crosshair; }
 
-  /* Grass + fine grid overlay */
-  .viewport::before{
-    content:""; position:absolute; inset:0;
-    background:
-      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px) 0 0/48px 48px,
-      linear-gradient(0deg,  rgba(255,255,255,.03) 1px, transparent 1px) 0 0/48px 48px,
-      radial-gradient(closest-side, #1f6a35 0, #135d2e 100%);
-    pointer-events:none;
-    opacity:.9;
+  .viewport{ position:absolute; inset:38px 0 0 0; }
+  /* ⛔ Remove the old green grass overlay completely so it never tints units */
+  .viewport::before{ display:none !important; }
+
+  /* Canvas sits ABOVE any backgrounds */
+  canvas{
+    position:relative; z-index:1;
+    width:100%; height:100%; display:block;
+    background:#0d1020; /* deep navy, no green tint */
+    cursor:crosshair;
   }
 
-  /* UI overlay */
-  #ui{ pointer-events:none; position:absolute; inset:0; }
-  #timerBox{ position:absolute; top:8px; left:50%; transform:translateX(-50%); background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; }
-  #leader{ position:absolute; top:8px; right:8px; min-width:220px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; }
+  /* UI overlay sits above canvas */
+  #ui{ pointer-events:none; position:absolute; inset:0; z-index:2; }
+  #timerBox{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px;
+    padding:6px 12px; font-weight:700;
+  }
+  #leader{
+    position:absolute; top:8px; right:8px; min-width:220px;
+    background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px;
+  }
   #leader h3{ margin:0 0 6px 0; font-size:14px; color:#cfe; }
   #leader .row{ display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
-  #hint{ position:absolute; top:44px; left:50%; transform:translateX(-50%); background:#15243dcc; border:1px solid #355; border-radius:10px; padding:6px 10px; font-size:13px; display:none; }
-  #banner{ position:absolute; left:50%; top:24%; transform:translateX(-50%); font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
+  #hint{
+    position:absolute; top:44px; left:50%; transform:translateX(-50%);
+    background:#15243dcc; border:1px solid #355; border-radius:10px; padding:6px 10px;
+    font-size:13px; display:none;
+  }
+  #banner{
+    position:absolute; left:50%; top:24%; transform:translateX(-50%);
+    font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none;
+  }
 
-  #cpPanel{ position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px; padding:8px; display:none; pointer-events:auto; }
+  #cpPanel{
+    position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px;
+    padding:8px; display:none; pointer-events:auto;
+  }
   #cpPanel h3{ margin:0 0 6px 0; font-size:14px; }
   #cpPanel .row{ display:flex; gap:6px; flex-wrap:wrap; }
-  .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
+  .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; pointer-events:auto; }
 
-  #hud{ position:absolute; left:0; right:0; bottom:0; height:108px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto; }
+  #hud{
+    position:absolute; left:0; right:0; bottom:0; height:108px;
+    background:rgba(0,0,0,.35); backdrop-filter:blur(4px);
+    border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px;
+    pointer-events:auto; z-index:3;
+  }
   #selInfo{ min-width:280px; line-height:1.25; }
   #abilities{ display:flex; gap:10px; }
-  .slot{ width:72px; height:72px; border:1px solid #445; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1a2232; position:relative; }
+  .slot{
+    width:72px; height:72px; border:1px solid #445; border-radius:10px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#1a2232; position:relative; cursor:pointer; pointer-events:auto;
+  }
   .slot .key{ position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
   .slot .emoji{ font-size:24px; }
-  .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; }
+  .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; line-height:1.1; padding:0 4px; }
   .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); border-radius:10px; }
-  .cd-badge{ position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008; border:1px solid #345; border-radius:6px; padding:1px 5px; }
+  .cd-badge{
+    position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008;
+    border:1px solid #345; border-radius:6px; padding:1px 5px;
+  }
   .chip{ display:inline-block; padding:4px 8px; border:1px solid #3a4a62; border-radius:8px; font-size:12px; margin-top:6px; background:#0f1828; }
 
-  .legend{ position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px; }
+  .legend{
+    position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px;
+  }
 </style>
 </head>
 <body>
@@ -132,14 +173,12 @@ function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 
 /* --------------- Game constants --------------- */
 const MATCH_MS = 5*60*1000;
-const INTERP_DELAY = 100; // intentionally low; jumpy look
-const CP_CAPTURE_SETTLE_MS = 500; // must be uncontested this long to flip
-
-// NEW: keep units from auto-chasing too far
+const INTERP_DELAY = 100;
+const CP_CAPTURE_SETTLE_MS = 500;
 const AGGRO_TILES = 7;
 
-/* --------------- Units / Types (grid tuned) --------------- */
-const PX_PER_S_TO_SQUARES_PER_S = 1 / (TILE * 0.9); // ~52 px = 1 square (slightly slower than exact)
+/* --------------- Units / Types --------------- */
+const PX_PER_S_TO_SQUARES_PER_S = 1 / (TILE * 0.9);
 const TYPES = {
   guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:260, armor:5,
     abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
@@ -159,11 +198,10 @@ const TYPES = {
 };
 const SPAWN_CHOICES = Object.keys(TYPES);
 
-/* --------------- Spawns & Control Points (grid coords) --------------- */
+/* --------------- Spawns & Control Points --------------- */
 const TEAM_SPAWNS = [
   { gx:2, gy:2 }, { gx: GRID_W-3, gy:2 }, { gx:2, gy:GRID_H-3 }, { gx:GRID_W-3, gy:GRID_H-3 }
 ];
-
 const CTRL_POINTS = [
   { id:"CP1", gx:12, gy:12 },
   { id:"CP2", gx:GRID_W-13, gy:12 },
@@ -192,6 +230,38 @@ async function pushIntent(kind,payload){
   await addDoc(col,{ts:Date.now(),user:ME,kind,payload});
 }
 
+/* --------------- UI Cooldowns & Local FX --------------- */
+const uiCooldowns = { 1:0, 2:0, 3:0, 4:0 }; // per slot (Q/W/E/R)
+const localFX = []; // {kind:'ring'|'tile', gx, gy, color, until}
+function startCooldown(slot, seconds){
+  uiCooldowns[slot] = Date.now() + Math.round(seconds*1000);
+  updateCooldownBadges();
+}
+function updateCooldownBadges(){
+  const abil = document.getElementById("abilities");
+  if(!abil) return;
+  for(let s=1;s<=4;s++){
+    const el = abil.querySelector(`[data-slot="${s}"]`);
+    if(!el) continue;
+    const remMs = uiCooldowns[s] - Date.now();
+    const onCd = remMs > 0;
+    el.classList.toggle("oncd", onCd);
+    let badge = el.querySelector(".cd-badge");
+    if(onCd){
+      const secs = Math.max(0, Math.ceil(remMs/1000));
+      if(!badge){
+        badge = document.createElement("div");
+        badge.className = "cd-badge";
+        el.appendChild(badge);
+      }
+      badge.textContent = secs + "s";
+    }else if(badge){
+      badge.remove();
+    }
+  }
+}
+setInterval(updateCooldownBadges, 200);
+
 /* --------------- Init --------------- */
 (async function init(){
   const s=await getDoc(lobbyRef); if(!s.exists()){ alert("Lobby not found"); return; }
@@ -199,7 +269,7 @@ async function pushIntent(kind,payload){
   lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []);
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
 
-  const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length]; // center cam on spawn
+  const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length];
   cam.x = sp.gx*TILE - cv.width/2 + TILE/2; cam.y = sp.gy*TILE - cv.height/2 + TILE/2; clampCam();
 
   const g=await getDoc(gameRef);
@@ -217,8 +287,7 @@ async function pushIntent(kind,payload){
 
     const points=CTRL_POINTS.map(p=>({
       id:p.id, gx:p.gx, gy:p.gy,
-      owner:null, // team name
-      uncontestedSince: 0,
+      owner:null, uncontestedSince: 0,
       spawnType:"guardian", nextSpawnAt:0
     }));
 
@@ -252,11 +321,11 @@ function mkUnit(type,owner,gx,gy){
   return {
     id, tt:type, o:owner,
     gx: clamp(gx,0,GRID_W-1), gy: clamp(gy,0,GRID_H-1),
-    x: 0, y: 0, // derived pixel centers during publish
+    x: 0, y: 0,
     hp:b.hp, maxHp:b.hp,
     cd:0, acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
     goalGX:null, goalGY:null,
-    nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y" // tie-breaker to reduce swirl
+    nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y"
   };
 }
 function unitCenterPx(u){ return { x: u.gx*TILE + TILE/2, y: u.gy*TILE + TILE/2 }; }
@@ -365,17 +434,27 @@ function slotAbility(slot){
 }
 async function castSlot(slot){
   const ids=Array.from(selection); if(!ids.length) return;
-  const ab=slotAbility(slot); if(!ab) return;
-  if(ab.target==="self"){ await pushIntent("ability",{slot,ids,mode:"self",wipe:true}); }
-  else {
+  // local cooldown gate
+  if(Date.now() < uiCooldowns[slot]){ flashHint("⏳ Ability on cooldown"); return; }
+  const ab=slotAbility(slot); if(!ab){ flashHint("No ability on this slot for selection"); return; }
+
+  if(ab.target==="self"){
+    await pushIntent("ability",{slot,ids,mode:"self",wipe:true});
+    startCooldown(slot, ab.cd);
+    // Local feedback: rings on selected units
+    for(const u of getUnitsView().filter(u=>selection.has(u.id))){
+      localFX.push({kind:"ring", gx:u.gx, gy:u.gy, color:"#9bf", until: Date.now()+550});
+    }
+    flashHint(`✅ ${ab.label} activated`);
+  } else {
     targeting={slot,ability:ab,ids,type:ab.target,label:ab.label};
     const hint=document.getElementById("hint");
     hint.textContent=`🎯 ${ab.label}: click a tile (Esc to cancel)`;
     hint.style.display="block";
-    const once=(e)=>{
+    const once=async (e)=>{
       if(e.button!==0){ cv.removeEventListener("click",once); document.getElementById("hint").style.display="none"; targeting=null; return; }
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      finalizeTarget(slot, ab, ids, {gx,gy});
+      await finalizeTarget(slot, ab, ids, {gx,gy});
       cv.removeEventListener("click",once);
       document.getElementById("hint").style.display="none";
       targeting=null;
@@ -386,9 +465,15 @@ async function castSlot(slot){
 async function finalizeTarget(slot,ab,ids,{gx,gy}){
   if(ab.target==="pointOrUnit"){
     const enemy = nearestEnemyAtOrNear(gx,gy, 1.5);
-    if(enemy){ await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true}); return; }
+    if(enemy){ await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true}); }
+    else     { await pushIntent("ability",{slot,ids,mode:"point",gx,gy,wipe:true}); }
+  } else {
+    await pushIntent("ability",{slot,ids,mode:"point",gx,gy,wipe:true});
   }
-  await pushIntent("ability",{slot,ids,mode:"point",gx,gy,wipe:true});
+  startCooldown(slot, ab.cd);
+  // Local target feedback
+  localFX.push({kind:"tile", gx, gy, color:"#aef", until: Date.now()+600});
+  flashHint(`✅ ${ab.label} cast`);
 }
 function nearestEnemyAtOrNear(gx,gy, rTiles){
   const units=getUnitsView(); let best=null, bd=1e9;
@@ -402,7 +487,6 @@ const AbilityHandlers = {
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
 
-  // Volley: 6s channel, 3 pulses at t=1s,3s,5s → affects square (size x size tiles)
   volley: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point") return false;
     const size = ab.size||3;
@@ -414,16 +498,12 @@ const AbilityHandlers = {
     });
     return true;
   }},
-
-  // Fireburst: quick AOE square
   fireburst: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point") return false;
     const size=ab.size||2;
     g.effects.push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size, when:now+120, did:false, until:now+500, color:"#f88", dmg:20, pierce:0 });
     return true;
   }},
-
-  // Arcane bolt: Bresenham line to tile / unit; damages first enemy hit
   arcaneBolt: { cast(g,u,ab,{mode,gx,gy,targetId},now){
     let tx=gx, ty=gy;
     if(mode==="unit"){
@@ -432,7 +512,7 @@ const AbilityHandlers = {
       tx=tgt.gx; ty=tgt.gy;
     }
     const range=ab.rangeTiles||10, speed=ab.speedTiles||10;
-    const line = bresenham(u.gx,u.gy,tx,ty).slice(1, range+1); // path of tiles
+    const line = bresenham(u.gx,u.gy,tx,ty).slice(1, range+1);
     g.projs = g.projs || [];
     g.projs.push({
       type:"bolt", who:u.o, path: line, idx:0, speedTiles:speed, nextHopAt: now, hopMs: Math.max(40, Math.floor(1000/speed)),
@@ -440,8 +520,6 @@ const AbilityHandlers = {
     });
     return true;
   }},
-
-  // Charge: dash line; small AOE when reaching target tile
   charge: { cast(g,u,ab,{mode,gx,gy,targetId},now){
     let tx=gx, ty=gy;
     if(mode==="unit"){
@@ -497,18 +575,19 @@ async function hostLoop(){
   g.projs = g.projs || [];
 
   let last = performance.now(), acc = 0;
-  const FIXED   = 1/20;   // 20 Hz grid sim (chunky on purpose)
-  const PUB_MS  = 120;    // motion publish
-  const META_MS = 250;    // meta publish
+  const FIXED   = 1/20;
+  const PUB_MS  = 120;
+  const META_MS = 250;
   let lastPub  = performance.now();
   let lastMeta = performance.now();
 
   const MAX_SNAPS = 8;
 
   function compactUnits(units){
+    // include only render-critical info
     return units.map(u => {
       const c = unitCenterPx(u);
-      return { id:u.id, tt:u.tt, o:u.o, gx:u.gx, gy:u.gy, x:Math.round(c.x), y:Math.round(c.y), hp:Math.round(u.hp) };
+      return { id:u.id, tt:u.tt, o:u.o, gx:u.gx, gy:u.gy, x:Math.round(c.x), y:Math.round(u.y), hp:Math.round(u.hp) };
     });
   }
   function compactProjs(projs){ return (projs||[]).map(p=>({ ...p })); }
@@ -562,13 +641,11 @@ async function hostLoop(){
 
 /* --------------- Intent application --------------- */
 function bresenham(x0,y0,x1,y1){
-  // integer grid line
   const pts=[]; let dx=Math.abs(x1-x0), sx=x0<x1?1:-1; let dy=-Math.abs(y1-y0), sy=y0<y1?1:-1; let err=dx+dy, x=x0,y=y0;
   while(true){ pts.push({gx:x,gy:y}); if(x===x1&&y===y1) break; const e2=2*err; if(e2>=dy){ err+=dy; x+=sx; } if(e2<=dx){ err+=dx; y+=sy; } }
   return pts;
 }
 function assignFormationTargets(g, ids, centerGX, centerGY){
-  // BFS spiral outwards: pick nearest free tiles; reserve per-unit
   const occ = occupancyFromUnits(g.units);
   const reserved = new Set();
   const result = new Map();
@@ -583,12 +660,10 @@ function assignFormationTargets(g, ids, centerGX, centerGY){
   let qi=0;
   while(result.size < ids.length && qi<q.length+GRID_W*GRID_H){
     const cur = q[qi++] || {gx:centerGX, gy:centerGY};
-    // neighbors (diamond)
     push(cur.gx+1,cur.gy); push(cur.gx-1,cur.gy); push(cur.gx,cur.gy+1); push(cur.gx,cur.gy-1);
 
     const k = cur.gx+"|"+cur.gy;
     if(occ.has(k) || reserved.has(k)) continue;
-    // assign next unassigned unit
     const nextId = ids[result.size];
     result.set(nextId, {gx:cur.gx, gy:cur.gy});
     reserved.add(k);
@@ -636,7 +711,7 @@ function applyIntents(g,intents){
         if(u._channel) continue;
         const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
         const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
-        if(wipe){ /* no-op on grid */ }
+        if(wipe){ /* no-op */ }
         const handler = AbilityHandlers[ab.id];
         const ok = handler && handler.cast(g,u,ab,{mode,gx,gy,targetId},Date.now());
         if(ok){ u.acd[slot]=ab.cd; }
@@ -698,16 +773,13 @@ function neighborStepToward(u, goalGX, goalGY, occ, reserved){
   if(u.gx===goalGX && u.gy===goalGY) return null;
   const dx = goalGX - u.gx, dy = goalGY - u.gy;
   const cand = [];
-  // four cardinal
   cand.push({gx:u.gx+Math.sign(dx), gy:u.gy});
   cand.push({gx:u.gx, gy:u.gy+Math.sign(dy)});
-  // prefer axisPref first
   cand.sort((a,b)=>{
     const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
     const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
     return pa - pb;
   });
-  // choose that reduces Manhattan the most and is free/unreserved
   let best=null, bd=1e9;
   for(const c of cand){
     if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
@@ -745,7 +817,6 @@ function simulate(g, dt){
       p.uncontestedSince = 0;
     }
 
-    // steady spawn if owned
     if(p.owner){
       const period=12000;
       if(!p.nextSpawnAt) p.nextSpawnAt=now+period;
@@ -757,7 +828,7 @@ function simulate(g, dt){
     }
   }
 
-  // Projectiles (arcane bolt): hop along path
+  // Projectiles (arcane bolt)
   {
     const keep=[];
     for(const pr of (g.projs||[])){
@@ -768,7 +839,6 @@ function simulate(g, dt){
           pr.idx = Math.min(pr.idx + hops, pr.path.length-1);
         }
         const tile = pr.path[pr.idx] || pr.path[pr.path.length-1];
-        // check hit
         let hit=null;
         for(const u of g.units){
           if(u.o===pr.who) continue;
@@ -781,7 +851,7 @@ function simulate(g, dt){
           const effArmor=Math.max(0,totalArmor-totalArmor*(pr.ap||0));
           const dmg=Math.max(1, (pr.dmg||30)-effArmor);
           hit.hp -= dmg;
-          continue; // consumed
+          continue;
         }
         if(pr.idx < pr.path.length-1){ keep.push(pr); }
       } else keep.push(pr);
@@ -789,10 +859,9 @@ function simulate(g, dt){
     g.projs = keep;
   }
 
-  // Movement reservations (avoid collisions)
   const reserved = new Set();
 
-  // Charge handling (short path)
+  // Charge
   for(const u of g.units){
     if(u._channel) continue;
     if(u._charge && u._charge.until > now){
@@ -802,12 +871,11 @@ function simulate(g, dt){
           moveTo(u, step.gx, step.gy, occ, reserved);
           u._charge.idx++;
         }else{
-          u._charge.until = now; // end charge early if blocked
+          u._charge.until = now;
         }
       }else{
         u._charge.until = now;
       }
-      // impact small AOE on landing
       if(!u._charge || u._charge.idx>= (u._charge.path?.length||0)){
         const DMG=14;
         for(const v of g.units){
@@ -822,10 +890,9 @@ function simulate(g, dt){
     }
   }
 
-  // Target selection & attacks
+  // Targeting & attacks
   for(const u of g.units){
     if(u._channel) continue;
-    // find nearest enemy
     let target=null, bd=1e9;
     for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
     const tSpec=TYPES[u.tt]; const rng=tSpec.rangeTiles||1;
@@ -837,7 +904,6 @@ function simulate(g, dt){
       target.hp -= Math.max(1, (tSpec.dmg||5) - armor);
       u.cd = Math.max(.05, 1/tSpec.atkSpd);
     }
-    // auto-goal toward target only if within aggro radius
     const distToTarget = target ? manhattan(u.gx,u.gy,target.gx,target.gy) : 999;
     if(!u._hold && target && !inRange && distToTarget <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
       u.goalGX = target.gx;
@@ -845,7 +911,7 @@ function simulate(g, dt){
     }
   }
 
-  // Move step by step (discrete)
+  // Movement
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
@@ -854,17 +920,12 @@ function simulate(g, dt){
     if(now < u.nextStepAt) continue;
     u.nextStepAt = now + stepEveryMs;
 
-    // already at goal?
     if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
-
-    // try to move one tile that reduces distance
     const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
-    if(step){
-      moveTo(u, step.gx, step.gy, occ, reserved);
-    }
+    if(step){ moveTo(u, step.gx, step.gy, occ, reserved); }
   }
 
-  // Resolve double-occupancy (push outwards)
+  // Push out overlaps
   const occ2 = occupancyFromUnits(g.units);
   for(const [k, list] of occ2){
     if(list.length<=1) continue;
@@ -902,7 +963,7 @@ function nearestFree(gx,gy, occ){
   let qi=0;
   while(qi<q.length && q.length<GRID_W*GRID_H){
     const cur=q[qi++], neigh=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [dx,dy] of neigh){   /* ← FIXED PARENTHESIS HERE */
+    for(const [dx,dy] of neigh){
       const nx=cur.gx+dx, ny=cur.gy+dy;
       if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
       const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
@@ -924,6 +985,13 @@ function roundedRectPath(ctx, x, y, w, h, r){
   ctx.arcTo(x, y+h, x, y, rr);
   ctx.arcTo(x, y, x+w, y, rr);
   ctx.closePath();
+}
+function flashHint(text){
+  const hint = document.getElementById("hint");
+  hint.textContent = text;
+  hint.style.display = "block";
+  clearTimeout(flashHint._t);
+  flashHint._t = setTimeout(()=>{ hint.style.display="none"; }, 900);
 }
 
 /* --------------- Render --------------- */
@@ -958,41 +1026,40 @@ function renderHUD(){
     ? `${sel.length} unit(s) selected — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD`
     : "Select units";
 
-  const slotMap = new Map(); const slotCd  = new Map();
+  const slotMap = new Map();
   for(const u of sel){
     const t=TYPES[u.tt];
     (t.abilities||[]).forEach(a=>{
-      slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
-      const rem = 0;
-      const cur = slotCd.get(a.slot);
-      if(cur==null || rem<cur) slotCd.set(a.slot, rem);
+      if(!slotMap.has(a.slot)) slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
     });
   }
   const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
   for(let s=1;s<=4;s++){
     const spec=slotMap.get(s);
-    const div=document.createElement("div"); div.className="slot";
+    const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
     div.innerHTML = spec
       ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>`
       : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
     if(spec){ div.onclick=()=>castSlot(s); }
     abil.appendChild(div);
   }
+  updateCooldownBadges();
 }
 
+/* --------------- Main draw --------------- */
 function draw(){
   const dt=16/1000; edgePan(dt);
 
-  // base clear
-  ctx.fillStyle="#0e2a19"; ctx.fillRect(0,0,cv.width,cv.height);
+  // Base clear
+  ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
 
-  // major grid lines
+  // Major grid lines
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   if(state){
-    // Control points (PURPLE)
+    // Control points
     for(const p of state.points){
       const sx=p.gx*TILE - cam.x, sy=p.gy*TILE - cam.y;
       ctx.fillStyle = "#7a3cff";
@@ -1012,26 +1079,40 @@ function draw(){
       ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx+TILE/2, sy-6);
     }
 
-    // effects (square outlines)
+    // Server effects — make them POP: filled alpha + stroke pulse
+    const now = Date.now();
     for(const e of (state.effects||[])){
       const size = (e.size||2), half=Math.floor(size/2);
       const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
-      ctx.strokeStyle = e.color||"#fff"; ctx.lineWidth=3; ctx.strokeRect(sx, sy, size*TILE, size*TILE);
+      // Fill
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = e.color||"#fff";
+      ctx.fillRect(sx, sy, size*TILE, size*TILE);
+      // Pulsing outline
+      ctx.globalAlpha = 1;
+      const pulse = (now % 1000) / 1000;
+      ctx.lineWidth = 2 + Math.sin(pulse*Math.PI*2)*1;
+      ctx.strokeStyle = e.color||"#fff";
+      ctx.strokeRect(sx, sy, size*TILE, size*TILE);
+      ctx.restore();
     }
 
-    // projectiles as tile-highlights
+    // Projectiles (bolt)
     const projs = snapBuf.length ? (snapBuf[snapBuf.length-1].projs||[]) : (state.projs||[]);
     for(const p of projs){
       if(p.type==="bolt"){
         const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
         const sx=step.gx*TILE - cam.x, sy=step.gy*TILE - cam.y;
-        ctx.fillStyle = p.color || "#baf"; ctx.globalAlpha=.85;
+        ctx.save();
+        ctx.globalAlpha=.9;
+        ctx.fillStyle = p.color || "#baf";
         ctx.fillRect(sx+TILE*0.25, sy+TILE*0.25, TILE*0.5, TILE*0.5);
-        ctx.globalAlpha=1;
+        ctx.restore();
       }
     }
 
-    // ===== POP UNIT CARDS =====
+    // ===== POP UNIT CARDS (bright, above everything) =====
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const units = getUnitsView();
@@ -1046,11 +1127,11 @@ function draw(){
       const x0 = sx - cardW/2;
       const y0 = sy - cardH/2;
 
-      // Drop shadow to lift off grass
+      // Strong drop shadow to separate from background
       ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,0.6)";
-      ctx.shadowBlur = 12;
-      ctx.shadowOffsetY = 2;
+      ctx.shadowColor = "rgba(0,0,0,0.7)";
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 3;
 
       // Base white card
       roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
@@ -1059,13 +1140,13 @@ function draw(){
 
       ctx.restore();
 
-      // Team-color border + subtle inner tint band
+      // Team border
       roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
       ctx.lineWidth = 3;
       ctx.strokeStyle = teamColor;
       ctx.stroke();
 
-      // Team banner stripe (top)
+      // Team banner stripe
       ctx.fillStyle = teamColor + "66";
       const stripeH = Math.max(10, Math.floor(TILE*0.18));
       roundedRectPath(ctx, x0+4, y0+4, cardW-8, stripeH, 6);
@@ -1088,7 +1169,7 @@ function draw(){
         ctx.restore();
       }
 
-      // HP bar inside the card bottom
+      // HP bar
       const maxHp = (TYPES[u.tt].hp || 1);
       const hpFrac = Math.max(0, Math.min(1, u.hp / maxHp));
       const barPad = 8;
@@ -1106,7 +1187,49 @@ function draw(){
     }
   }
 
-  // drag box (grid-aware)
+  // Local FX (instant cast feedback)
+  const now2 = Date.now();
+  for(let i=localFX.length-1;i>=0;i--){
+    const fx = localFX[i];
+    const remaining = fx.until - now2;
+    if(remaining <= 0){ localFX.splice(i,1); continue; }
+    const alpha = Math.max(0, Math.min(1, remaining/600));
+    if(fx.kind==="ring"){
+      const cx = fx.gx*TILE + TILE/2 - cam.x, cy = fx.gy*TILE + TILE/2 - cam.y;
+      ctx.save();
+      ctx.globalAlpha = 0.2 + 0.6*alpha;
+      ctx.strokeStyle = fx.color || "#9bf";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, TILE*0.45*(1+0.15*(1-alpha)), 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    } else if(fx.kind==="tile"){
+      const sx = fx.gx*TILE - cam.x, sy = fx.gy*TILE - cam.y;
+      ctx.save();
+      ctx.globalAlpha = 0.15 + 0.25*alpha;
+      ctx.fillStyle = fx.color || "#aef";
+      ctx.fillRect(sx, sy, TILE, TILE);
+      ctx.restore();
+    }
+  }
+
+  // Aim preview for targeting abilities
+  if(targeting){
+    const { gx, gy } = worldToGrid(mouse.worldX, mouse.worldY);
+    const sx = gx*TILE - cam.x, sy = gy*TILE - cam.y;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#e6f";
+    ctx.fillRect(sx, sy, TILE, TILE);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#e6f";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx+1, sy+1, TILE-2, TILE-2);
+    ctx.restore();
+  }
+
+  // Drag box
   if(dragging){
     const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y);
     ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
@@ -1119,18 +1242,3 @@ draw();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
