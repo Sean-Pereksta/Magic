@@ -170,6 +170,10 @@ const HEARTBEAT_MS = 5_000;
 const ACTIVE_STALE_MS = 15_000;
 const MAX_BANNERS_EQUIPPED = 3;
   const RECRUIT_MIN = 2, RECRUIT_MAX = 5;
+  // === GARRISON: neutral seed range
+const NEUTRAL_GARRISON_MIN = 50;
+const NEUTRAL_GARRISON_MAX = 200;
+
 const PRICE_PER_RECRUIT = 3;   // match your economy
 function rand2to5(){ return RECRUIT_MIN + Math.floor(Math.random()*(RECRUIT_MAX-RECRUIT_MIN+1)); }
 function mmss(ms){ const s=Math.ceil(ms/1000); const m=(s/60)|0; return `${m}:${(s%60+'').padStart(2,'0')}`; } // if missing
@@ -349,6 +353,22 @@ async function gainXP(amount){
     tx.update(state.youDocRef, { xp, level, xpNext, maxArmy });
   });
 }
+  // === GARRISON: seed once for unowned castles that have no garrison
+async function seedNeutralGarrison(castleId){
+  try{
+    await runTransaction(db, async (tx)=>{
+      const cref = doc(db,"mountonline_castles", castleId);
+      const snap = await tx.get(cref);
+      if (!snap.exists()) return;
+      const d = snap.data();
+      if ((d.garrison == null) && !d.owner){
+        const g = NEUTRAL_GARRISON_MIN + Math.floor(Math.random()*(NEUTRAL_GARRISON_MAX-NEUTRAL_GARRISON_MIN+1));
+        tx.update(cref, { garrison: g });
+      }
+    });
+  }catch(e){ /* ignore */ }
+}
+
 
 /* =================== Player Doc Setup =================== */
 async function ensurePlayer(){
@@ -452,8 +472,17 @@ async function listenWorld(){
     state.villages = snap.docs.map(d=>({id:d.id, ...d.data()}));
   });
   sub(collection(db,"mountonline_castles"), snap=>{
-    state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
+
+  // === GARRISON: lazily seed for any unowned castle missing a garrison
+  snap.forEach(ds=>{
+    const c = ds.data();
+    if ((c.garrison == null) && !c.owner){
+      seedNeutralGarrison(ds.id);
+    }
   });
+});
+
 }
 
 /* =================== Raiders (local, auto-spawn) =================== */
@@ -812,6 +841,51 @@ async function toggleEquip(id){
   state.player.inventory = inv;
   openInventory();
 }
+  // === GARRISON: owner-only deposit/withdraw (recruits only for simplicity)
+async function depositToGarrison(castleId, amount){
+  if (!amount || amount < 1) return;
+  await runTransaction(db, async (tx)=>{
+    const cRef = doc(db,"mountonline_castles", castleId);
+    const pRef = state.youDocRef;
+
+    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
+    if (!cSnap.exists() || !pSnap.exists()) throw "missing";
+    const c = cSnap.data(); const p = pSnap.data();
+    if ((c.ownerName||c.owner) !== username) throw "not-owner";
+
+    const army = {...(p.army||START_ARMY)};
+    if ((army.recruits||0) < amount) throw "not-enough-recruits";
+
+    army.recruits -= amount;
+    const newG = (c.garrison||0) + amount;
+
+    tx.update(pRef, { army });
+    tx.update(cRef, { garrison: newG });
+  });
+}
+
+async function withdrawFromGarrison(castleId, amount){
+  if (!amount || amount < 1) return;
+  await runTransaction(db, async (tx)=>{
+    const cRef = doc(db,"mountonline_castles", castleId);
+    const pRef = state.youDocRef;
+
+    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
+    if (!cSnap.exists() || !pSnap.exists()) throw "missing";
+    const c = cSnap.data(); const p = pSnap.data();
+    if ((c.ownerName||c.owner) !== username) throw "not-owner";
+
+    const g = c.garrison || 0;
+    if (g < amount) throw "not-enough-garrison";
+
+    const army = {...(p.army||START_ARMY)};
+    army.recruits = (army.recruits||0) + amount;
+
+    tx.update(pRef, { army });
+    tx.update(cRef, { garrison: g - amount });
+  });
+}
+
 
 /* =================== Modal with exit callback =================== */
 const modal = $("#modal"); const modalBody = $("#modalBody"); const modalTitle = $("#modalTitle");
@@ -949,13 +1023,48 @@ async function openVillage(v){
 
 
 async function openCastle(c){
+  // Make sure neutral castles get a roll
+  await seedNeutralGarrison(c.id);
+
   const ownerTxt = c.ownerName ? `Owner: ${c.ownerName}` : "Unowned";
   const banners = rngBanners(3);
   const me = (await getDoc(state.youDocRef)).data();
-  const kT="c_"+c.id;
+  const kT = "c_" + c.id;
   const canTradeHere = canUse(me.lastTradeAt?.[kT], TRADE_COOLDOWN_MS);
 
+  const youOwn = !!c.ownerName && (c.ownerName === username || c.owner === username);
+
   openModal(`Castle (${c.x},${c.y}) — ${ownerTxt}`, m=>{
+    // Garrison row
+    const gwrap = document.createElement("div");
+    gwrap.className = "pill";
+    gwrap.innerHTML = `<div>🪖 <b>Garrison:</b> <span id="gar_val">${c.garrison ?? "?"}</span></div>`;
+    m.appendChild(gwrap);
+
+    // Owner-only controls
+    if (youOwn){
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `
+        <input id="gar_amt" class="input" type="number" min="1" step="1" placeholder="Amount" style="width:120px">
+        <button class="btn" id="btnDep">Deposit</button>
+        <button class="btn" id="btnWit">Withdraw</button>
+        <span class="muted small">Uses your <b>recruits</b> for deposit.</span>
+      `;
+      m.appendChild(row);
+
+      row.querySelector("#btnDep").onclick = async ()=>{
+        const amt = Math.max(1, parseInt(row.querySelector("#gar_amt").value||"0",10));
+        try{ await depositToGarrison(c.id, amt); row.querySelector("#gar_amt").value=""; }
+        catch(e){ alert(e==="not-enough-recruits" ? "Not enough recruits." : "Deposit failed."); }
+      };
+      row.querySelector("#btnWit").onclick = async ()=>{
+        const amt = Math.max(1, parseInt(row.querySelector("#gar_amt").value||"0",10));
+        try{ await withdrawFromGarrison(c.id, amt); row.querySelector("#gar_amt").value=""; }
+        catch(e){ alert(e==="not-enough-garrison" ? "Not enough in garrison." : "Withdraw failed."); }
+      };
+    }
+
+    // Shop
     const list = document.createElement("div"); list.className="list";
     for(const b of banners){
       const row = document.createElement("div"); row.className="pill";
@@ -965,18 +1074,31 @@ async function openCastle(c){
       buy.onclick = ()=> buyBanner(b, c.id, "castle");
       row.appendChild(buy); list.appendChild(row);
     }
+    m.appendChild(list);
+
+    // Attack button (blocked if you own)
     const opts = document.createElement("div"); opts.className="row";
     const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
+    attack.disabled = youOwn; // === BLOCK self attack
+    attack.title = youOwn ? "You can't attack your own castle." : "";
     attack.onclick = async ()=>{
-      if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
-      await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
-      location.href = `/game/castlebattle.html?castleId=${c.id}&username=${encodeURIComponent(username)}`;
-    };
+  if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
+  try{
+    const siegeId = await startCastleSiege(c.id);
+    location.href = `/game/castlebattle.html?siegeId=${encodeURIComponent(siegeId)}&username=${encodeURIComponent(username)}`;
+  }catch(e){
+    alert(e==="castle-in-siege" ? "This castle is already under siege." : "Failed to start siege.");
+  }
+};
+
     opts.appendChild(attack);
-    m.appendChild(list); m.appendChild(opts);
-    const note = document.createElement("div"); note.className="muted small"; note.textContent = "Trading locks this castle for 2 minutes (even if you exit).";
+    m.appendChild(opts);
+
+    const note = document.createElement("div"); note.className="muted small";
+    note.textContent = "Trading locks this castle for 2 minutes (even if you exit).";
     m.appendChild(note);
 
+    // maintain trade cooldown on exit
     modalExitHandler = async ()=>{
       const fresh = (await getDoc(state.youDocRef)).data();
       const lt = {...(fresh.lastTradeAt||{})}; lt[kT] = Date.now();
@@ -984,7 +1106,16 @@ async function openCastle(c){
       $("#coolInfo").textContent = "Trade cooldown active.";
     };
   });
+
+  // live update garrison value in modal while open
+  sub(doc(db,"mountonline_castles", c.id), s=>{
+    if (!s.exists()) return;
+    const g = (s.data().garrison ?? "?");
+    const tag = document.getElementById("gar_val");
+    if (tag) tag.textContent = g;
+  });
 }
+
 async function buyBanner(b, placeId, kind){
   const snap = await getDoc(state.youDocRef); const me = snap.data();
   const price = 200;
@@ -1045,6 +1176,44 @@ function tickInput(){
 }
 
 /* =================== Interactions =================== */
+  // === SIEGE: create a battle seeded with castle garrison
+async function startCastleSiege(castleId){
+  const siegeId = await runTransaction(db, async (tx)=>{
+    const cRef = doc(db,"mountonline_castles", castleId);
+    const pRef = state.youDocRef;
+
+    const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
+    if (!cSnap.exists() || !pSnap.exists()) throw "castle-missing";
+    const c = cSnap.data();
+
+    // one-at-a-time lock
+    if (c.siegeId) throw "castle-in-siege";
+
+    // ensure neutral garrison exists
+    let g = c.garrison;
+    if (g == null && !c.owner){
+      g = NEUTRAL_GARRISON_MIN + Math.floor(Math.random()*(NEUTRAL_GARRISON_MAX-NEUTRAL_GARRISON_MIN+1));
+      tx.update(cRef, { garrison: g });
+    }
+
+    const sRef = doc(collection(db,"mountonline_sieges"));
+    tx.set(sRef, {
+      castleId,
+      castle: { x:c.x, y:c.y, owner: c.owner||null, ownerName: c.ownerName||null, ownerColor: c.ownerColor||null },
+      attacker: username,
+      garrisonAtStart: g || 0,
+      status: "started",
+      createdAt: serverTimestamp()
+    });
+
+    tx.update(cRef, { siegeId: sRef.id });
+    tx.update(pRef, { active:false, inBattle:true, battleId: sRef.id, lastSeen: Date.now() });
+
+    return sRef.id;
+  });
+  return siegeId;
+}
+
   function occupiedByPlayer(x, y){
   if (state.player && state.player.x === x && state.player.y === y) return true;
   for (const p of state.others.values()){
@@ -1124,7 +1293,6 @@ async function startPvPBattle(other){
 }
 
 /* =================== Nearby Panel =================== */
-// REPLACE your entire renderNearby() with this version
 function renderNearby(){
   const el = $("#nearList");
   el.innerHTML = "";
@@ -1147,7 +1315,13 @@ function renderNearby(){
   const R = findRaiderAt(state.player.x, state.player.y);
 
   if (V) addRow(`${EMOJI.village} You are at a <b>Village</b> ${inPreparedness ? '<span class="muted">(locked)</span>' : ''}`);
-  if (C) addRow(`${EMOJI.castle} You are at a <b>Castle</b> ${inPreparedness ? '<span class="muted">(locked)</span>' : ''}`);
+
+  if (C){
+    const ownerFrag = C.ownerName ? `— Owner: <b>${C.ownerName}</b>` : "— <i>Unowned</i>";
+    const gar = (C.garrison != null) ? C.garrison : "?";
+    addRow(`${EMOJI.castle} You are at a <b>Castle</b> ${ownerFrag} • 🪖 Garrison: <b>${gar}</b> ${inPreparedness ? '<span class="muted">(locked)</span>' : ''}`);
+  }
+
   if (R) addRow(`${EMOJI.raider} <b>Raiders</b> here: ${R.size} ${R.type} ${inPreparedness ? '<span class="muted">(no battle during Preparedness)</span>' : ''}`);
 
   // Nearby players
@@ -1169,7 +1343,7 @@ function renderNearby(){
     return;
   }
 
-  // NEW: show per-village recruit cooldown when standing on a village
+  // Village recruit cooldown when standing on a village
   if (V){
     const key = "v_" + V.id;
     const last = (state.player?.lastRecruitAt || {})[key] || 0;
@@ -1177,10 +1351,17 @@ function renderNearby(){
     infoEl.textContent = (rem <= 0)
       ? "Village recruit: Ready (2–5)"
       : `Village recruit: ${mmss(rem)} remaining`;
-  } else {
+  }
+  // Castle garrison quick view when standing on a castle
+  else if (C){
+    const g = (C.garrison != null) ? C.garrison : "?";
+    infoEl.textContent = `Castle garrison: ${g}`;
+  }
+  else {
     infoEl.textContent = "Ready";
   }
 }
+
 
 
 /* =================== Render Loop (emoji map) =================== */
@@ -1200,6 +1381,8 @@ function draw(){
     const cx = c.x*TILE + TILE/2 - cam.x, cy = c.y*TILE + TILE/2 - cam.y;
     if (cx<-TILE||cy<-TILE||cx>canvas.width+TILE||cy>canvas.height+TILE) continue;
     drawEmojiCentered(EMOJI.castle, cx, cy);
+    const gtxt = (c.garrison != null) ? `🪖 ${c.garrison}` : "🪖 ?";
+    drawNameplate(gtxt, cx, cy + TILE*0.55, 0, "#f8fafc");
     if (c.ownerColor){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, c.ownerColor); }
   }
 
@@ -1271,6 +1454,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
