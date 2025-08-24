@@ -7,8 +7,14 @@
 <style>
   :root{ --w:1280px; --h:720px; --tile:48px; }
   *{ box-sizing:border-box }
-  body{ margin:0; background:#0b1014; color:#eaf1ff; font-family:system-ui,Segoe UI,Arial; display:grid; place-items:center; min-height:100vh }
-  .frame{ width:var(--w); height:var(--h); border:1px solid #21324a; border-radius:12px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726; position:relative }
+  html, body { height:100%; margin:0; overflow-x:hidden; background:#0b1014; color:#eaf1ff; font-family:system-ui,Segoe UI,Arial }
+  body{ display:grid; place-items:center; }
+  .frame{
+    width:min(100vw, var(--w));
+    height:min(100dvh, var(--h));
+    border:1px solid #21324a; border-radius:12px; overflow:hidden;
+    box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726; position:relative;
+  }
   .titlebar{ height:38px; display:flex; align-items:center; gap:8px; padding:0 10px; background:#0f1a2b; border-bottom:1px solid #203049; font-weight:700 }
   .titlebar .dot{ width:10px; height:10px; border-radius:50% } .red{background:#ff5f57}.yellow{background:#ffbd2e}.green{background:#28c840}
   .view{ position:absolute; inset:38px 0 0 0 }
@@ -38,7 +44,7 @@
       <span>🏰 Mountain Blade — Castle Siege</span>
     </div>
     <div class="view">
-      <canvas id="cv" width="1280" height="682"></canvas>
+      <canvas id="cv"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Breach the wall and defeat the defenders</div>
         <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> • Q/W/E/R: ability • A: nearest • H: hold • Double-click: select same type</div>
@@ -72,7 +78,7 @@ const db  = getFirestore(app);
 /* ---------- Params ---------- */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
-const SIEGE_ID = Q.get("siegeId");  // 👈 from startCastleSiege
+const SIEGE_ID = Q.get("siegeId");  // set by startCastleSiege in overworld
 const RETURN_ROUTE = "/game/mountonline.html";
 
 /* ---------- Visuals ---------- */
@@ -84,8 +90,16 @@ function teamTint(owner){ return owner==="Defenders" ? COLOR_AI : COLOR_PLAYER; 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d", { alpha:false });
 
+function resizeCanvas(){
+  const w = Math.floor(cv.clientWidth);
+  const h = Math.floor(cv.clientHeight);
+  if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+  clampCam();
+}
+window.addEventListener("resize", resizeCanvas);
+
 const TILE=48;
-const GRID_W=160;                 // much bigger map
+const GRID_W=160;                 // big map
 const GRID_H=64;
 const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
 
@@ -156,13 +170,9 @@ const WALL_SEGMENT_POS = [
 ];
 function isWallBlocking(u, nx, ny){
   if(!WALL.alive) return false;
-  // Block stepping onto the wall column at all
-  if(nx === WALL_X) return true;
-  // Block crossing the wall from either side while alive
-  if(u.gx < WALL_X && nx > WALL_X) return true;
-  if(u.gx > WALL_X && nx < WALL_X) return true;
-  if(u.gx < WALL_X && nx >= WALL_X) return true;
-  if(u.gx > WALL_X && nx <= WALL_X-1 && nx < WALL_X) return true;
+  if(nx === WALL_X) return true;                 // cannot stand on wall column
+  if(u.gx < WALL_X && nx >= WALL_X) return true; // cannot cross from left to right
+  if(u.gx > WALL_X && nx <= WALL_X-1) return true; // cannot cross from right to left
   return false;
 }
 
@@ -208,17 +218,14 @@ function spawnPlayerArmy(units, owner, army, origin){
 }
 
 function defenderComposition(n){
-  // weights must sum ~1
   const W = { footman:.22, swordsman:.10, archer:.22, crossbowman:.08, veteranArcher:.06, monk:.10, priest:.10, mage:.12 };
   const keys = Object.keys(W);
-  // floor allocation
   const base={}, floors={}, remainders=[];
   let total=0;
   for(const k of keys){
     const raw=n * W[k]; const f=Math.floor(raw);
     floors[k]=f; base[k]=f; total+=f; remainders.push({k, frac: raw - f});
   }
-  // distribute remainder
   let rem = Math.max(0, n - total);
   remainders.sort((a,b)=>b.frac - a.frac);
   let i=0; while(rem>0){ base[remainders[i%remainders.length].k]++; rem--; i++; }
@@ -227,7 +234,6 @@ function defenderComposition(n){
 
 function spawnDefenders(units, n){
   const counts = defenderComposition(n);
-  // clump origins behind wall
   const rowsY = [
     Math.floor(GRID_H*0.18),
     Math.floor(GRID_H*0.35),
@@ -319,7 +325,7 @@ function toggleHold(ids){
   }
 }
 
-/* ---------- Abilities (same as your local battle) ---------- */
+/* ---------- Abilities ---------- */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -422,14 +428,17 @@ function applyDamage(g, target, dmg, ap, owner){
 
   if(target.tt==="wall"){
     WALL.hp = Math.max(0, WALL.hp - hit);
-    // sync all wall segments to shared HP
     for(const w of g.units){ if(w.tt==="wall") w.hp = WALL.hp; }
     if(WALL.hp<=0 && WALL.alive){
       WALL.alive=false;
-      // trigger defenders to charge!
-      for(const v of g.units){ if(v.o==="Defenders" && v.tt!=="wall"){ v._hold=false; v.goalGX = 4; v.goalGY = clamp(v.gy, 0, GRID_H-1); } }
-      // remove wall segments visually (mark dead)
-      for(const w of g.units){ if(w.tt==="wall") w.hp = 0; }
+      // 👇 NEW: defenders immediately and continuously chase nearest attackers
+      for(const v of g.units){
+        if(v.o==="Defenders" && v.tt!=="wall"){
+          v._hold=false;
+          const target = nearestEnemy(v, "Defenders", g.units);
+          if(target){ v.goalGX = target.gx; v.goalGY = target.gy; }
+        }
+      }
       localFX.push({kind:"tile",gx:WALL_X-1,gy:Math.floor(GRID_H/2),color:"#f90",until:Date.now()+900});
     }
     target._lastBy = owner;
@@ -438,6 +447,14 @@ function applyDamage(g, target, dmg, ap, owner){
 
   target.hp -= hit;
   target._lastBy = owner;
+}
+
+/* ---------- Helpers ---------- */
+function getUnitsView(){ return state?.units || []; }
+function nearestEnemy(u, ownerTag, list){
+  let best=null, bd=1e9;
+  for(const v of list){ if(v.o===ownerTag) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
+  return best;
 }
 
 /* ---------- Sim ---------- */
@@ -501,12 +518,11 @@ function simulate(g, dt){
   const occ  = occupancy(g.units);
   const reserved = new Set();
 
-  // AI targeting & attacks (incl. ballistas fire bolts)
+  // AI targeting & attacks
   for(const u of g.units){
     if(u._channel) continue;
-    // pick nearest enemy
-    let target=null, bd=1e9;
-    for(const v of g.units){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
+
+    const target = nearestEnemy(u, u.o, g.units); // always nearest
     const tSpec=TYPES[u.tt];
     const rng=tSpec.rangeTiles||1;
     const inR = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy)<=rng : manh(u.gx,u.gy,target.gx,target.gy)<=rng);
@@ -526,10 +542,17 @@ function simulate(g, dt){
 
     if(u._hold) continue;
 
-    // Attack-move auto-agro while traveling, or set goal if idle and enemy in aggro
+    // 👇 Movement goals:
+    // - Defenders: always chase nearest attacker (no aggro gating)
+    // - Attackers: classic attack-move with aggro leash
     if(target && !inR){
-      if(bd <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
+      if(u.o==="Defenders"){
         u.goalGX = target.gx; u.goalGY = target.gy;
+      } else {
+        const d = manh(u.gx,u.gy,target.gx,target.gy);
+        if(d <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
+          u.goalGX = target.gx; u.goalGY = target.gy;
+        }
       }
     }
   }
@@ -545,13 +568,11 @@ function simulate(g, dt){
 
     if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
 
-    // propose neighbor steps with axis preference
     const dx = u.goalGX - u.gx, dy = u.goalGY - u.gy;
     const cand = [
       {gx:u.gx+Math.sign(dx), gy:u.gy},
       {gx:u.gx, gy:u.gy+Math.sign(dy)},
     ];
-    // axis preference
     cand.sort((a,b)=>{
       const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
       const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
@@ -566,7 +587,6 @@ function simulate(g, dt){
       moveTo(u, step.gx, step.gy, occ, reserved); moved=true; break;
     }
     if(!moved){
-      // try find nearest free within small radius (still respecting wall)
       const free = nearestFree(u.gx,u.gy, occ);
       if(free && !isWallBlocking(u, free.gx, free.gy)) moveTo(u, free.gx, free.gy, occ, reserved);
     }
@@ -605,7 +625,6 @@ function simulate(g, dt){
 }
 
 /* ---------- Picking / HUD ---------- */
-function getUnitsView(){ return state?.units || []; }
 function pickUnitAt(wx,wy, owner){
   const {gx,gy}=worldToGrid(wx,wy);
   for(const u of getUnitsView()){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
@@ -644,9 +663,8 @@ function renderBoard(){
   const ents=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
   for(const [name,c] of ents){
     const tint = name==="Defenders" ? COLOR_AI : COLOR_PLAYER;
-    const label = name;
     const d=document.createElement("div"); d.className="row";
-    d.innerHTML=`<span style="color:${tint}">${label}</span><span>${c}</span>`;
+    d.innerHTML=`<span style="color:${tint}">${name}</span><span>${c}</span>`;
     rows.appendChild(d);
   }
 }
@@ -720,7 +738,8 @@ function draw(){
 
   // edge pan
   let vx=0,vy=0;
-  if(mouse.inViewport){ const marginX=60, marginTop=80, marginBot=160;
+  const marginX=60, marginTop=80, marginBot=160;
+  if(mouse.inViewport){
     if(mouse.x<=marginX) vx-=1; else if(mouse.x>=cv.width-marginX) vx+=1;
     if(mouse.y<=marginTop) vy-=1; else if(mouse.y>=cv.height-marginBot) vy+=1;
   }
@@ -732,23 +751,21 @@ function draw(){
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  // draw wall (vertical slab)
+  // wall
   if(WALL.alive){
     const sx=WALL_X*TILE - cam.x;
     ctx.fillStyle="#4c596b"; ctx.globalAlpha=.95; ctx.fillRect(sx, 0 - cam.y, TILE, WORLD.h);
-    // HP label
     const wx=sx + TILE/2, wy=20 - cam.y;
     const frac=Math.max(0,Math.min(1, WALL.hp/WALL.maxHp));
     ctx.globalAlpha=1;
     ctx.fillStyle="#e2e8f0"; ctx.textAlign="center"; ctx.font="12px system-ui";
     ctx.fillText(`Wall ${WALL.hp}/${WALL.maxHp}`, wx, wy);
-    // bar
     ctx.fillStyle="#111827"; ctx.fillRect(wx-40, wy+8, 80, 6);
     ctx.fillStyle=frac>0.5?"#35d07f":(frac>0.25?"#ffd166":"#ff6b6b");
     ctx.fillRect(wx-40, wy+8, 80*frac, 6);
   }
 
-  // effects (targeting areas)
+  // effects
   for(const e of (state?.effects||[])){
     const size=e.size||2, half=Math.floor(size/2);
     const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
@@ -758,7 +775,7 @@ function draw(){
     ctx.restore();
   }
 
-  // projectiles (bolts)
+  // projectiles
   for(const p of (state?.projs||[])){
     if(p.type==="bolt"){
       const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
@@ -837,7 +854,8 @@ async function tryFinalizeSiege(attackerWon){
       if(attackerWon){
         patch.owner = ME;
         patch.ownerName = ME;
-        patch.ownerColor = "#60a5fa"; // or your allegiance color if you pass it here
+        patch.ownerAlly = sSnap.data().attackerAllyId || null;
+        patch.ownerColor = sSnap.data().attackerAllyColor || "#60a5fa";
       }
       tx.update(cRef, patch);
     });
@@ -845,7 +863,6 @@ async function tryFinalizeSiege(attackerWon){
 }
 
 async function settleAndExit(attackerWon){
-  // simple loot calc from kills
   const stats = state?.stats || {};
   let goldGain=0;
   const myTag = "Attackers";
@@ -858,7 +875,6 @@ async function settleAndExit(attackerWon){
     const me = snap.data();
     const army = {...(me.army||{})};
     for(const [tLost, nLost] of Object.entries(lost)){
-      // soften losses: 1 unit removed per 3 deaths on field
       const mKey = Object.keys(MKEY).find(k=>MKEY[k]===tLost);
       if(!mKey) continue;
       const remove = Math.floor((nLost||0)/3);
@@ -890,7 +906,7 @@ function loop(){
 
 /* ---------- Init ---------- */
 (async function init(){
-  // mark player in battle
+  resizeCanvas(); // ensure canvas matches frame on load
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
   siege = await loadSiege(); if(!siege) return;
 
@@ -931,3 +947,4 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
