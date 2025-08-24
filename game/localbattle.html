@@ -41,7 +41,7 @@
       <canvas id="cv" width="1024" height="602"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Eliminate the raiders</div>
-        <div class="legend">Drag: select • Right-click: forced move • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
+        <div class="legend">Drag: select • Right-click empty: forced move • Right-click enemy: attack that unit • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
@@ -164,7 +164,7 @@ const { type:RAIDER_TYPE, count:RAIDER_COUNT } = await getRaidersSpec();
 /* ---------- Banners → mods (kept simple) ---------- */
 function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1, cavDmg:1, priestHeal:1, footmanHp:1 }; }
 
-/* ---------- Build Armies (Fix A: AI advances toward you, AI=blue, Player=red) ---------- */
+/* ---------- Build Armies ---------- */
 async function seedBattle(){
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
@@ -176,7 +176,7 @@ async function seedBattle(){
   spawnArmyBlock(units, ME, meSnap.data().army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
   spawnRaiders(units, "Raiders", RAIDER_TYPE, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
-  // AI attack-move toward you (not forced, so they will engage)
+  // AI: gentle push toward you (non-forced), so they still can aggro
   for(const u of units){ if(u.o==="Raiders"){ u._order = { kind:"move", gx: 6, gy: u.gy, forced:false }; } }
 
   state = { units, effects:[], projs:[], stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } } };
@@ -218,43 +218,59 @@ function mkUnit(type, owner, gx, gy){
   };
 }
 
-/* ---------- Orders ---------- */
-function orderAttackMove(ids,gx,gy){
+/* ---------- Orders (mutually exclusive intent) ---------- */
+function orderMoveForced(ids, gx, gy){
   for (const u of state.units){
-    if (ids.includes(u.id) && u.o===ME){
-      // RIGHT-CLICK: forced move overrides everything (ignore aggro until arrival/close-enough)
-      u._order   = { kind:"move", gx, gy, forced:true };
+    if (ids.includes(u.id) && u.o === ME){
+      u._order   = { kind: "move", gx, gy, forced: true };
       u.targetId = null;
-      u._channel = null;
-      u._goal    = null;
       u.state    = "move";
+      u._goal    = null;
+      u.stuck    = 0;
+      u._lastDist = null;
+    }
+  }
+}
+function orderAttackTarget(ids, targetId){
+  for (const u of state.units){
+    if (ids.includes(u.id) && u.o === ME){
+      u._order   = { kind: "attack", targetId };
+      u.targetId = targetId;
+      u._goal    = null;
+      u.state    = "chase";
       u.stuck    = 0;
       u._lastDist = null;
     }
   }
 }
 function orderNearest(ids){
-  for(const u of state.units){
-    if(!ids.includes(u.id) || u.o!==ME) continue;
+  for (const u of state.units){
+    if (!ids.includes(u.id) || u.o !== ME) continue;
     const best = findNearestEnemy(u, state.units);
-    if(best){
-      u._order=null;
+    if (best){
+      u._order   = { kind:"attack", targetId: best.id };
       u.targetId = best.id;
-      u.state="chase";
+      u.state    = "chase";
+      u._goal    = null;
+      u.stuck    = 0;
+      u._lastDist = null;
     }
   }
 }
 function toggleHold(ids){
-  for(const u of state.units){
-    if(ids.includes(u.id) && u.o===ME){
+  for (const u of state.units){
+    if (ids.includes(u.id) && u.o === ME){
       u._hold = !u._hold;
-      if (u._hold){ u._order=null; u._goal=null; u.state="hold"; }
-      else { u.state="idle"; }
+      if (u._hold){
+        u._order=null; u._goal=null; u.state="hold";
+      } else {
+        u.state="idle";
+      }
     }
   }
 }
 
-/* ---------- Abilities (simple, working) ---------- */
+/* ---------- Abilities ---------- */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -355,17 +371,16 @@ function bresenham(x0,y0,x1,y1){
   return pts;
 }
 
-/* ---------- Combat brain (simple, smooth) ---------- */
+/* ---------- Combat brain ---------- */
 const PX2SQUARES = 1 / (TILE*0.9);
 const AGGRO_PLAYER = 3;     // modest aggro for player
-const AGGRO_AI     = 8;     // long aggro for AI
+const AGGRO_AI     = 8;     // longer aggro for AI
 
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
 function unitMap(units){ const m=new Map(); for(const u of units) m.set(u.id,u); return m; }
 function inRange(u, v){ const r=u.range||1; return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manh(u.gx,u.gy,v.gx,v.gy) <= 1); }
 function findNearestEnemy(u, list){ let best=null, bd=1e9; for(const v of list){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } } return best; }
 
-/* choose an attack ring tile around target; prefer free; nearest */
 function desiredEngageTile(u, t, occ){
   const r=u.range||1, cand=[];
   for(let dx=-r; dx<=r; dx++){
@@ -383,7 +398,6 @@ function desiredEngageTile(u, t, occ){
   return list[0] || {gx:t.gx,gy:t.gy};
 }
 
-/* neighbor options to step toward goal, with mild sidestep */
 function neighborChoices(u, gx, gy){
   const sx = Math.sign(gx - u.gx), sy = Math.sign(gy - u.gy);
   const cand = [
@@ -406,7 +420,6 @@ function tryStepToward(u,gx,gy,occ,reserved){
     if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
     const k=c.gx+"|"+c.gy;
     if(!occ.get(k) && !reserved.has(k)){ // free
-      // move
       const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
       if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
       u.gx=c.gx; u.gy=c.gy;
@@ -422,140 +435,178 @@ function simulate(g, dt){
 
   // cooldowns/auras
   for(const u of g.units){
-    for(const k in (u.acd||{})) u.acd[k]=Math.max(0,u.acd[k]-dt);
-    if(u._aura && u._aura.until<=now) u._aura=null;
-    if(u._aura?.kind==="mend") u.hp=Math.min(u.maxHp,u.hp+(u._aura.healPerSec||8)*dt);
-    if(u._channel && u._channel.until<=now) u._channel=null;
+    for(const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k]-dt);
+    if(u._aura && u._aura.until <= now) u._aura = null;
+    if(u._aura?.kind==="mend") u.hp = Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt);
+    if(u._channel && u._channel.until <= now) u._channel = null;
   }
-  g.effects=(g.effects||[]).filter(e=>e.until?e.until>now:true);
+  g.effects = (g.effects||[]).filter(e=>e.until ? e.until > now : true);
 
   // projectiles
-  const keep=[]; for(const pr of (g.projs||[])){
+  const keep=[]; 
+  for(const pr of (g.projs||[])){
     if(pr.type==="bolt"){
-      if(now>=pr.nextHopAt){ const hops=1+Math.floor((now-pr.nextHopAt)/pr.hopMs); pr.nextHopAt+=hops*pr.hopMs; pr.idx=Math.min(pr.idx+hops,pr.path.length-1); }
+      if(now>=pr.nextHopAt){
+        const hops=1+Math.floor((now-pr.nextHopAt)/pr.hopMs);
+        pr.nextHopAt+=hops*pr.hopMs;
+        pr.idx=Math.min(pr.idx+hops, pr.path.length-1);
+      }
       const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
-      let hit=null; for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
+      let hit=null; 
+      for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
       if(hit){ applyDamage(g,hit,pr.dmg,pr.ap||0.5,pr.who); continue; }
       if(pr.idx<pr.path.length-1) keep.push(pr);
     } else keep.push(pr);
-  } g.projs=keep;
+  }
+  g.projs = keep;
 
-  // effects
+  // effects (AOE pulses)
   for(const e of (g.effects||[])){
     if(e.type==="squarePulse"){
-      while(e.next<e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++; }
+      while(e.next<e.pulses.length && now>=e.pulses[e.next]){
+        pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++;
+      }
     }
     if(e.type==="squareOnce"){
-      if(!e.did && now>=e.when){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.did=true; }
+      if(!e.did && now>=e.when){
+        pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.did=true;
+      }
     }
   }
 
-  // targeting & intent
-  const byId=unitMap(g.units);
-  const occ = occupancy(g.units);
+  // occupancy map
+  const byId = unitMap(g.units);
+  const occ  = occupancy(g.units);
 
   for(const u of g.units){
-    // Channeling units just fight-in-place if target in range
-    const forcedMove = u._order?.kind==="move" && u._order.forced===true;
+    const forcedMove = (u._order?.kind==="move" && u._order.forced===true);
+    const explicitAtk = (u._order?.kind==="attack" && u._order.targetId);
     const AGGRO = (u.o==="Raiders") ? AGGRO_AI : AGGRO_PLAYER;
 
-    // Clear invalid target
-    if(u.targetId){ const t=byId.get(u.targetId); if(!t || t.o===u.o) u.targetId=null; }
+    // Clear invalid explicit attack
+    if (explicitAtk){
+      const t = byId.get(u._order.targetId);
+      if (!t || t.o===u.o){ u._order=null; u.targetId=null; }
+    }
 
-    if(u._hold){
-      // Never reposition on HOLD. But can still attack if someone is in range (handled later).
-      u._order = forcedMove ? u._order : u._order; // keep any forced move only if user set after hold off
-    } else {
-      if(!forcedMove){
-        // Maintain gentle move orders, but allow aggro
-        if(u._order?.kind==="move"){
-          const d = manh(u.gx,u.gy,u._order.gx,u._order.gy);
-          if(d===0){ u._order=null; }
-        }
-        // acquire target if none and enemy in aggro
-        if(!u.targetId){
-          const near = findNearestEnemy(u, g.units);
-          if(near && manh(u.gx,u.gy,near.gx,near.gy) <= AGGRO) u.targetId = near.id;
+    // HOLD: never move; still fight if in range
+    if (u._hold){
+      const t = u.targetId ? byId.get(u.targetId) : (explicitAtk ? byId.get(u._order?.targetId||"") : null);
+      if (t && inRange(u,t)){ u.state="fight"; } else { u.state="hold"; }
+      continue;
+    }
+
+    // Passive aggro only if not in forced move and not on explicit attack
+    if (!forcedMove && !explicitAtk){
+      if(u.targetId){
+        const t = byId.get(u.targetId); 
+        if(!t || t.o===u.o) u.targetId=null;
+      }
+      if(!u.targetId){
+        const near = findNearestEnemy(u, g.units);
+        if(near && manh(u.gx,u.gy,near.gx,near.gy) <= AGGRO){
+          u.targetId = near.id;
         }
       }
     }
 
-    const t = u.targetId ? byId.get(u.targetId) : null;
-
-    if(forcedMove){
-      u.state="move";
-      u._goal = { gx:u._order.gx, gy:u._order.gy };
-    } else if(t && inRange(u,t)){
-      u.state="fight"; u._goal=null;
-    } else if(t && !u._hold && manh(u.gx,u.gy,t.gx,t.gy) <= AGGRO){
-      u.state="chase";
-      const want = desiredEngageTile(u, t, occ);
-      u._goal = { gx: want.gx, gy: want.gy };
-    } else if(u._order?.kind==="move"){
-      u.state="move";
-      u._goal = { gx:u._order.gx, gy:u._order.gy };
+    // Decide state
+    let t = null;
+    if (explicitAtk){
+      t = byId.get(u._order.targetId) || null;
+      if (t){
+        if (inRange(u,t)){ u.state="fight"; u._goal=null; }
+        else {
+          u.state="chase";
+          const want = desiredEngageTile(u, t, occ);
+          u._goal = { gx: want.gx, gy: want.gy };
+        }
+      } else {
+        u.state="idle"; u._goal=null; u._order=null; u.targetId=null;
+      }
+    } else if (forcedMove){
+      u.state = "move";
+      u._goal = { gx: u._order.gx, gy: u._order.gy };
+      // no aggro while moving forced
     } else {
-      u.state="idle"; u._goal=null;
+      // Passive behavior (aggro-available)
+      t = u.targetId ? byId.get(u.targetId) : null;
+      if (t && inRange(u,t)){
+        u.state="fight"; u._goal=null;
+      } else if (t && manh(u.gx,u.gy,t.gx,t.gy) <= AGGRO){
+        u.state="chase";
+        const want = desiredEngageTile(u, t, occ);
+        u._goal = { gx: want.gx, gy: want.gy };
+      } else if (u._order?.kind==="move"){
+        u.state="move"; u._goal={gx:u._order.gx, gy:u._order.gy};
+      } else {
+        u.state="idle"; u._goal=null;
+      }
     }
   }
 
-  // move & attack
-  const reserved=new Set();
+  // Move / Attack step
+  const reserved = new Set();
   for(const u of g.units){
     // Fight
     if(u.state==="fight"){
-      const t = u.targetId?byId.get(u.targetId):null;
+      const t = (u._order?.kind==="attack" ? byId.get(u._order.targetId||"") : (u.targetId ? byId.get(u.targetId) : null));
       if(t && inRange(u,t)){
-        u._atkCd-=dt; if(u._atkCd<=0){
+        u._atkCd -= dt;
+        if(u._atkCd<=0){
           const dmg=(u.dmg||5)+(u._aura?.dmgUp||0);
           applyDamage(g,t,dmg,0,u.o);
-          u._atkCd=Math.max(.05,1/(u.atkSpd||1));
+          u._atkCd = Math.max(.05,1/(u.atkSpd||1));
         }
       }
       continue;
     }
 
     // Move/Chase
-    if((u.state==="move"||u.state==="chase") && u._goal){
+    if ((u.state==="move" || u.state==="chase") && u._goal){
       const speedSquares=Math.max(0.5,(u.move||180)*PX2SQUARES*(u._aura?.kind==="brace"?0.75:1));
       const everyMs=Math.max(80,Math.floor(1000/speedSquares));
       const now2=Date.now();
       if(now2>=u.nextStepAt){
-        u.nextStepAt=now2+everyMs;
-        const {gx,gy}=u._goal;
+        u.nextStepAt = now2 + everyMs;
+        const {gx,gy} = u._goal;
 
         const before = manh(u.gx,u.gy,gx,gy);
-        const moved = tryStepToward(u,gx,gy,occ,reserved);
+        const moved  = tryStepToward(u,gx,gy,occ,reserved);
         const after  = manh(u.gx,u.gy,gx,gy);
 
-        if(!u._lastDist) u._lastDist=before;
-        if(moved && after<before) { u.stuck=0; u._lastDist=after; }
+        if(!u._lastDist) u._lastDist = before;
+        if(moved && after<before){ u.stuck=0; u._lastDist=after; }
         else if(!moved || after>=u._lastDist){ u.stuck++; }
 
-        // Arrival logic:
-        // - exact tile OR
-        // - forced order and "close enough" if can't improve after a few tries
-        const forced = u._order?.forced===true;
+        // Arrival logic
+        const forced = (u._order?.kind==="move" && u._order.forced===true);
         const closeEnough = forced && after<=1 && u.stuck>=6;
 
         if(after===0 || closeEnough){
-          if(u.state==="move"){ u._order=null; }
+          if (u.state==="move"){ u._order=null; }  // from forced move → back to aggro-available
           u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
         }
 
-        // For non-forced chase: if we couldn't progress for a while, stop (prevents jitter)
+        // Prevent jitter: for passive chase, give up if stuck; for explicit attack, keep trying.
         if(u.state==="chase" && u.stuck>=6){
-          u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
+          if (u._order?.kind==="attack"){
+            u._lastDist=null; u.stuck=0; // keep trying toward target
+          } else {
+            u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
+          }
         }
       }
     }
   }
 
-  // deaths
+  // deaths/stat keeping
   const survivors=[]; const deaths=[];
   for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
   if(deaths.length){
-    g.stats = g.stats || {}; if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}}; if(!g.stats.Raiders) g.stats.Raiders={killsByType:{}, lostByType:{}};
+    g.stats = g.stats || {}; 
+    if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}}; 
+    if(!g.stats.Raiders) g.stats.Raiders={killsByType:{}, lostByType:{}};
     for(const dead of deaths){
       const killer = dead._lastBy;
       const victim = dead.o;
@@ -596,6 +647,11 @@ function pickUnitAt(wx,wy, owner){
   for(const u of getUnitsView()){ if(owner && u.o!==owner) continue; if(u.gx===gx && u.gy===gy) return u; }
   return null;
 }
+function pickEnemyAt(wx,wy,myOwner){
+  const {gx,gy}=worldToGrid(wx,wy);
+  for(const u of getUnitsView()){ if(u.o===myOwner) continue; if(u.gx===gx && u.gy===gy) return u; }
+  return null;
+}
 function pickInRect(x0,y0,x1,y1,owner){
   const out=[]; const g0=worldToGrid(x0,y0), g1=worldToGrid(x1,y1);
   const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx), minGY=Math.min(g0.gy,g1.gy), maxGY=Math.max(g0.gy,g1.gy);
@@ -634,14 +690,26 @@ function renderBoard(){
 /* ---------- Input handlers ---------- */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
-cv.addEventListener("mousedown",(e)=>{ if(e.button===2){
+
+cv.addEventListener("mousedown",(e)=>{
+  if(e.button===2){
     e.preventDefault();
     const ids=Array.from(selection); if(!ids.length) return;
-    const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-    orderAttackMove(ids,gx,gy); return;
+
+    const enemy = pickEnemyAt(mouse.worldX, mouse.worldY, ME);
+    if (enemy){
+      // Right-click on enemy → explicit attack that enemy
+      orderAttackTarget(ids, enemy.id);
+    } else {
+      // Right-click ground → forced move (no aggro while moving)
+      const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
+      orderMoveForced(ids,gx,gy);
+    }
+    return;
   }
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
 });
+
 window.addEventListener("mouseup",(e)=>{
   if(!dragging) return; dragging=false;
   const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
@@ -669,6 +737,7 @@ window.addEventListener("mouseup",(e)=>{
   }
 });
 cv.addEventListener("contextmenu", e=>e.preventDefault());
+
 window.addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
   if(k==="escape"){ targeting=null; hideHint(); }
@@ -701,13 +770,12 @@ function draw(){
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 
   ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
-  // grid
+  // grid (light)
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   // effects
-  const now=Date.now();
   for(const e of (state?.effects||[])){
     const size=e.size||2, half=Math.floor(size/2);
     const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
@@ -717,7 +785,7 @@ function draw(){
     ctx.restore();
   }
 
-  // projs
+  // projectiles
   for(const p of (state?.projs||[])){
     if(p.type==="bolt"){
       const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
@@ -829,6 +897,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
