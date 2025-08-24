@@ -491,6 +491,17 @@ const RAIDER_CAP = 60;                     // max unengaged groups visible at on
 const RAIDER_SPAWN_EVERY_MS = 10_000;      // spawn tick
 const RAIDER_SPAWN_BATCH_MAX = 4;          // up to N per spawn tick
 const RAIDER_DESPAWN_ENGAGED_MS = 90_000;  // engaged groups cleaned up
+  const RAIDER_BASE_MIN = 3;   // base minimum size at level 1
+const RAIDER_BASE_MAX = 15;  // base maximum size at level 1
+
+function raiderSizeRangeForLevel(level){
+  const lvl = Math.max(1, level|0);
+  return {
+    min: Math.max(1, Math.floor(RAIDER_BASE_MIN * lvl)),
+    max: Math.max(1, Math.floor(RAIDER_BASE_MAX * lvl))
+  };
+}
+function randInt(min, max){ return min + Math.floor(Math.random() * (max - min + 1)); }
 
 function randomFreeTile() {
   for (let i = 0; i < 400; i++){
@@ -521,7 +532,10 @@ function randomFreeTile() {
 }
 function spawnOneRaider() {
   const pos = randomFreeTile();
-  const size = Math.floor(3 + Math.random()*48);
+  const lvl = state.player?.level || 1;               // ← use your current level
+  const { min, max } = raiderSizeRangeForLevel(lvl);  // ← level-scaled bounds
+  const size = randInt(min, max);                      // ← pick within bounds
+
   state.localRaiders.push({
     id: "L"+crypto.randomUUID().slice(0,6),
     x: pos.x, y: pos.y,
@@ -534,6 +548,7 @@ function spawnOneRaider() {
     _lastStep: 0
   });
 }
+
 function seedRaidersOnce(){ state.localRaiders = []; for(let i=0;i<25;i++) spawnOneRaider(); }
 setInterval(()=>{
   // prune engaged too long
@@ -1454,6 +1469,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
