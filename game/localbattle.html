@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — Local Battle (Raiders)</title>
+<title>🗻 Mountain Blade — Local Battle (Raiders, Grid Move/Attack)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{ --w:1024px; --h:640px; --tile:48px; }
@@ -18,6 +18,7 @@
   #board{ position:absolute; top:8px; right:8px; min-width:240px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px }
   #board h3{ margin:0 0 6px 0; font-size:14px; color:#cfe }
   .row{ display:flex; justify-content:space-between; gap:10px; font-size:13px; color:#cbd5e1 }
+  #legend{ position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px }
   #hint{ position:absolute; top:44px; left:50%; transform:translateX(-50%); background:#15243dcc; border:1px solid #355; border-radius:10px; padding:6px 10px; font-size:13px; display:none }
   #banner{ position:absolute; left:50%; top:28%; transform:translateX(-50%); font-size:26px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none }
   #hud{ position:absolute; left:0; right:0; bottom:0; height:108px; background:rgba(0,0,0,.35); backdrop-filter:blur(4px); border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px; pointer-events:auto }
@@ -28,7 +29,6 @@
   .slot .emoji{ font-size:24px } .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; line-height:1.1; padding:0 4px }
   .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); border-radius:10px }
   .cd-badge{ position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008; border:1px solid #345; border-radius:6px; padding:1px 5px }
-  .legend{ position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px }
 </style>
 </head>
 <body>
@@ -41,7 +41,7 @@
       <canvas id="cv" width="1024" height="602"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Eliminate the raiders</div>
-        <div class="legend">Drag: select • Right-click empty: forced move • Right-click enemy: attack that unit • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
+        <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> (enemy = focus) • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
@@ -54,7 +54,7 @@
   </div>
 
 <script type="module">
-/* ---------- Firebase (read/write profile + settle) ---------- */
+/* ---------- Firebase (profile settle) ---------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, updateDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -74,12 +74,12 @@ const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
 
-/* ---------- Visual colors: Player (red), AI (blue) ---------- */
+/* ---------- Visual colors ---------- */
 const COLOR_PLAYER = "#ff5c5c";
 const COLOR_AI     = "#4da3ff";
 function teamTint(owner){ return owner==="Raiders" ? COLOR_AI : COLOR_PLAYER; }
 
-/* ---------- World ---------- */
+/* ---------- Canvas / World ---------- */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d", { alpha:false });
 const TILE=48, GRID_W=96, GRID_H=56;
@@ -89,19 +89,24 @@ function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,WORLD.h-cv.height); }
 function manh(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
+function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 
-/* ---------- Unit Types ---------- */
+/* ---------- “Grid Tactics”-style constants ---------- */
+const PX_TO_SQUARES_PER_SEC = 1 / (TILE*0.9);
+const AGGRO_TILES = 7;
+
+/* ---------- Unit Types (converted to rangeTiles/moveSpd) ---------- */
 const TYPES = {
-  recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
-  footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
-  swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
-  cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
-  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
-  monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
-  priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
-  mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
+  recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  rangeTiles:1, atkSpd:1.0, moveSpd:180, armor:0, abilities:[] },
+  footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  rangeTiles:1, atkSpd:1.0, moveSpd:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
+  swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
+  cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, rangeTiles:1, atkSpd:0.9, moveSpd:440, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
+  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  rangeTiles:4, atkSpd:0.9, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
+  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, rangeTiles:4, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  rangeTiles:5, atkSpd:1.1, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
+  monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  rangeTiles:1, atkSpd:0.9, moveSpd:245, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
+  priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  rangeTiles:2, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
+  mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, rangeTiles:3, atkSpd:0.7, moveSpd:255, armor:0, abilities:[
                     {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] }
@@ -115,11 +120,10 @@ let state=null; // { units, effects, projs, stats }
 let ownerMods={};
 
 /* ---------- Input ---------- */
-const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false};
+const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false, clientX:0, clientY:0};
 const viewEl=document.querySelector(".view");
 function rect(el){ return el.getBoundingClientRect(); }
 function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
-function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 let dragging=false, dragStart=null, selection=new Set(), targeting=null;
 const localFX=[];
 let lastClickAt=0, lastClickCell=null;
@@ -138,7 +142,7 @@ function normalizeEnemyType(s){
   return t || "recruit";
 }
 
-/* ---------- Encounter (URL first, then last encounter doc with fields {type,size}) ---------- */
+/* ---------- Encounter (get Raiders spec) ---------- */
 async function getRaidersSpec(){
   let t = normalizeEnemyType(Q.get("etype") || Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "");
   let n = parseInt(Q.get("esize") || Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
@@ -161,10 +165,10 @@ async function getRaidersSpec(){
 }
 const { type:RAIDER_TYPE, count:RAIDER_COUNT } = await getRaidersSpec();
 
-/* ---------- Banners → mods (kept simple) ---------- */
+/* ---------- Mods ---------- */
 function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1, cavDmg:1, priestHeal:1, footmanHp:1 }; }
 
-/* ---------- Build Armies ---------- */
+/* ---------- Army build ---------- */
 async function seedBattle(){
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
@@ -173,24 +177,15 @@ async function seedBattle(){
   ownerMods[ME] = bannerMods();
 
   const units=[];
-  // Player on the far left block
+  // Player on left block
   spawnArmyBlock(units, ME, meSnap.data().army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
-  // Raiders on the far right block
+  // Raiders on right block
   spawnRaiders(units, "Raiders", RAIDER_TYPE, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
-  // ✔️ Start Raiders with an explicit ATTACK order (not a soft move).
-  // Each raider locks onto its nearest enemy at spawn.
-  for (const u of units){
-    if (u.o === "Raiders"){
-      const target = findNearestEnemy(u, units);
-      if (target){
-        u._order   = { kind:"attack", targetId: target.id };
-        u.targetId = target.id;
-        u.state    = "chase";
-        u.stuck    = 0;
-        u._lastDist= null;
-      }
-    }
+  // Give units grid-logic fields
+  for(const u of units){
+    u.cd=0; u.acd=u.acd||{}; u._aura=null; u._channel=null; u._charge=null; u._hold=false;
+    u.goalGX=null; u.goalGY=null; u.nextStepAt=0; u.axisPref = (Math.random()<.5)?"x":"y";
   }
 
   state = { units, effects:[], projs:[], stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } } };
@@ -203,18 +198,18 @@ function spawnArmyBlock(units, owner, armyCounts, origin, dir){
   for(const key of order){ const typeId = MKEY[key]; if(!typeId) continue; const n = Math.max(0, parseInt(armyCounts[key]||0,10)); for(let i=0;i<n;i++) pool.push(typeId); }
   let row=0,col=0, perRow=12;
   for(const typeId of pool){
-    const gx = origin.gx + (dir>0 ? col : -col);
-    const gy = origin.gy + row;
-    units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
+    const gx = clamp(origin.gx + (dir>0 ? col : -col),0,GRID_W-1);
+    const gy = clamp(origin.gy + row,0,GRID_H-1);
+    units.push(mkUnit(typeId, owner, gx, gy));
     col++; if(col>=perRow){ col=0; row++; }
   }
 }
 function spawnRaiders(units, owner, typeId, count, origin, dir){
   let row=0,col=0, perRow=12;
   for(let i=0;i<count;i++){
-    const gx = origin.gx + (dir>0 ? col : -col);
-    const gy = origin.gy + row;
-    units.push(mkUnit(typeId, owner, clamp(gx,0,GRID_W-1), clamp(gy,0,GRID_H-1)));
+    const gx = clamp(origin.gx + (dir>0 ? col : -col),0,GRID_W-1);
+    const gy = clamp(origin.gy + row,0,GRID_H-1);
+    units.push(mkUnit(typeId, owner, gx, gy));
     col++; if(col>=perRow){ col=0; row++; }
   }
 }
@@ -225,62 +220,91 @@ function mkUnit(type, owner, gx, gy){
     tt:type, o:owner,
     gx, gy,
     hp: base.hp, maxHp: base.hp,
-    dmg: base.dmg, range: base.range, atkSpd: base.atkSpd, move: base.move,
+    dmg: base.dmg, rangeTiles: base.rangeTiles, atkSpd: base.atkSpd, moveSpd: base.moveSpd,
     armor: base.armor, acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
-    _order:null, _goal:null, nextStepAt:0,
-    priestHealMul: 1, _lastBy:null,
-    state:"idle", targetId:null, _atkCd:0, stuck:0, _lastDist:null
+    goalGX:null, goalGY:null, nextStepAt:0, axisPref:(Math.random()<.5)?"x":"y",
+    priestHealMul: 1, _lastBy:null
   };
 }
 
-/* ---------- Orders (mutually exclusive intent) ---------- */
-function orderMoveForced(ids, gx, gy){
+/* ---------- Occupancy helpers ---------- */
+function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
+function occupiedOrReserved(gx,gy, occ, reserved){ return occ.has(gx+"|"+gy) || reserved.has(gx+"|"+gy); }
+function moveTo(u, gx, gy, occ, reserved){
+  const fromK = u.gx+"|"+u.gy; const list = occ.get(fromK)||[]; const idx=list.indexOf(u);
+  if(idx>=0){ list.splice(idx,1); if(!list.length) occ.delete(fromK); }
+  u.gx=gx; u.gy=gy;
+  const toK = gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); reserved.add(toK);
+}
+function nearestFree(gx,gy, occ){
+  const seen = new Set([gx+"|"+gy]); const q=[{gx,gy}]; let qi=0;
+  while(qi<q.length && q.length<GRID_W*GRID_H){
+    const cur=q[qi++], neigh=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(const [dx,dy] of neigh){
+      const nx=cur.gx+dx, ny=cur.gy+dy;
+      if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
+      const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
+      if(!occ.get(k) || occ.get(k).length===0) return {gx:nx,gy:ny};
+      q.push({gx:nx,gy:ny});
+    }
+  }
+  return null;
+}
+
+/* ---------- Pathing (neighbor step with axis preference) ---------- */
+function neighborStepToward(u, goalGX, goalGY, occ, reserved){
+  if(u.gx===goalGX && u.gy===goalGY) return null;
+  const dx = goalGX - u.gx, dy = goalGY - u.gy;
+  const cand = [];
+  cand.push({gx:u.gx+Math.sign(dx), gy:u.gy});
+  cand.push({gx:u.gx, gy:u.gy+Math.sign(dy)});
+  // prefer axis first based on axisPref
+  cand.sort((a,b)=>{
+    const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
+    const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
+    return pa - pb;
+  });
+  let best=null, bd=1e9;
+  for(const c of cand){
+    if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
+    const k=c.gx+"|"+c.gy;
+    if(occ.has(k) || reserved.has(k)) continue;
+    const d = manh(c.gx,c.gy, goalGX, goalGY);
+    if(d<bd){ bd=d; best=c; }
+  }
+  return best;
+}
+
+/* ---------- Orders (attack-move style) ---------- */
+function orderAttackMove(ids, gx, gy){
   for (const u of state.units){
     if (ids.includes(u.id) && u.o === ME){
-      u._order   = { kind: "move", gx, gy, forced: true };
-      u.targetId = null;
-      u.state    = "move";
-      u._goal    = null;
-      u.stuck    = 0;
-      u._lastDist = null;
+      u.goalGX=gx; u.goalGY=gy;
     }
   }
 }
-function orderAttackTarget(ids, targetId){
+function orderFocus(ids, targetId){
+  const t = state.units.find(x=>x.id===targetId);
+  if(!t) return;
   for (const u of state.units){
     if (ids.includes(u.id) && u.o === ME){
-      u._order   = { kind: "attack", targetId };
-      u.targetId = targetId;
-      u._goal    = null;
-      u.state    = "chase";
-      u.stuck    = 0;
-      u._lastDist = null;
+      u.goalGX=t.gx; u.goalGY=t.gy;
     }
   }
 }
 function orderNearest(ids){
   for (const u of state.units){
-    if (!ids.includes(u.id) || u.o !== ME) continue;
-    const best = findNearestEnemy(u, state.units);
-    if (best){
-      u._order   = { kind:"attack", targetId: best.id };
-      u.targetId = best.id;
-      u.state    = "chase";
-      u._goal    = null;
-      u.stuck    = 0;
-      u._lastDist = null;
-    }
+    if (!ids.includes(u.id) || u.o!==ME) continue;
+    let best=null, bd=1e9;
+    for(const v of state.units){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
+    if(best){ u.goalGX=best.gx; u.goalGY=best.gy; }
   }
 }
 function toggleHold(ids){
   for (const u of state.units){
     if (ids.includes(u.id) && u.o === ME){
       u._hold = !u._hold;
-      if (u._hold){
-        u._order=null; u._goal=null; u.state="hold";
-      } else {
-        u.state="idle";
-      }
+      if(u._hold){ u.goalGX=null; u.goalGY=null; }
     }
   }
 }
@@ -318,9 +342,7 @@ function castSlot(slot){
     for(const u of state.units){
       if(!ids.includes(u.id) || u.o!==ME) continue;
       if((u.acd?.[ab.slot]||0) > 0) continue;
-      if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now())){
-        u.acd[ab.slot]=ab.cd; casted=true;
-      }
+      if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"self"},Date.now())){ u.acd[ab.slot]=ab.cd; casted=true; }
     }
     if(casted) fxRingOnSelection(); else flash("⏳ All selected are on cooldown");
   }else{
@@ -332,9 +354,7 @@ function castSlot(slot){
       for(const u of state.units){
         if(!ids.includes(u.id) || u.o!==ME) continue;
         if((u.acd?.[ab.slot]||0) > 0) continue;
-        if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){
-          u.acd[ab.slot]=ab.cd; casted=true;
-        }
+        if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){ u.acd[ab.slot]=ab.cd; casted=true; }
       }
       if(!casted) flash("⏳ All selected are on cooldown");
       fxTile(gx,gy); hideHint(); targeting=null;
@@ -346,6 +366,7 @@ function castSlot(slot){
 function fxRingOnSelection(){ for(const u of getUnitsView().filter(u=>selection.has(u.id))){ localFX.push({kind:"ring",gx:u.gx,gy:u.gy,color:"#9bf",until:Date.now()+550}); } }
 function fxTile(gx,gy){ localFX.push({kind:"tile",gx,gy,color:"#aef",until:Date.now()+700}); }
 
+/* ---------- Ability handlers / effects / projectiles ---------- */
 const AbilityHandlers={
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"brace", until:now+ab.dur*1000}; return true; } },
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
@@ -356,17 +377,12 @@ const AbilityHandlers={
                   if(mode!=="point")return false;
                   const size=ab.size||3; const until=now+(ab.channel||6000);
                   u._channel={kind:"volley",until};
-                  fxTile(gx,gy);
-                  (g.effects=g.effects||[]).push({
-                    type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
-                    pulses:[now+700,now+2500,now+4300], next:0, until,
-                    color:"#bde3ff", dmg:10, pierce:0.15
-                  });
+                  g.effects.push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size, pulses:[now+700,now+2500,now+4300], next:0, until, color:"#bde3ff", dmg:10, pierce:0.15 });
                   return true;
                } },
 
   fireburst:  { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false;
-                  (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20), pierce:0.2 });
+                  g.effects.push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20), pierce:0.2 });
                   return true; } },
   arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){
                   const range=ab.rangeTiles||10, speed=ab.speedTiles||10, dmg=(ab.dmg||34), ap=ab.ap??0.5;
@@ -386,279 +402,7 @@ function bresenham(x0,y0,x1,y1){
   return pts;
 }
 
-/* ---------- Combat brain ---------- */
-const PX2SQUARES = 1 / (TILE*0.9);
-const AGGRO_PLAYER = 3;     // modest aggro for player
-const AGGRO_AI     = 8;     // longer aggro for AI
-
-function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
-function unitMap(units){ const m=new Map(); for(const u of units) m.set(u.id,u); return m; }
-function inRange(u, v){ const r=u.range||1; return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manh(u.gx,u.gy,v.gx,v.gy) <= 1); }
-function findNearestEnemy(u, list){ let best=null, bd=1e9; for(const v of list){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } } return best; }
-
-function desiredEngageTile(u, t, occ){
-  const r=u.range||1, cand=[];
-  for(let dx=-r; dx<=r; dx++){
-    for(let dy=-r; dy<=r; dy++){
-      if(Math.max(Math.abs(dx),Math.abs(dy))>r) continue;
-      if(dx===0 && dy===0) continue;
-      const gx=t.gx+dx, gy=t.gy+dy;
-      if(gx<0||gx>=GRID_W||gy<0||gy>=GRID_H) continue;
-      cand.push({gx,gy});
-    }
-  }
-  const free = cand.filter(c => !occ.has(c.gx+"|"+c.gy));
-  const list = free.length?free:cand;
-  list.sort((a,b)=> manh(u.gx,u.gy,a.gx,a.gy) - manh(u.gx,u.gy,b.gx,b.gy));
-  return list[0] || {gx:t.gx,gy:t.gy};
-}
-
-function neighborChoices(u, gx, gy){
-  const sx = Math.sign(gx - u.gx), sy = Math.sign(gy - u.gy);
-  const cand = [
-    {gx:u.gx+sx, gy:u.gy},           // forward X
-    {gx:u.gx,    gy:u.gy+sy},        // forward Y
-    {gx:u.gx+sx, gy:u.gy+sy},        // diag
-    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep 1
-    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep 2
-  ];
-  const seen=new Set(), out=[];
-  for(const c of cand){ const k=c.gx+"|"+c.gy; if(seen.has(k)) continue; seen.add(k); out.push(c); }
-  out.sort((a,b)=> manh(a.gx,a.gy,gx,gy) - manh(b.gx,b.gy,gx,gy));
-  return out;
-}
-
-function tryStepToward(u,gx,gy,occ,reserved){
-  if(gx===u.gx && gy===u.gy) return false;
-  const cand = neighborChoices(u,gx,gy);
-  for(const c of cand){
-    if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
-    const k=c.gx+"|"+c.gy;
-    if(!occ.get(k) && !reserved.has(k)){ // free
-      const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
-      if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
-      u.gx=c.gx; u.gy=c.gy;
-      const toK=k; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); reserved.add(toK);
-      return true;
-    }
-  }
-  return false;
-}
-
-function simulate(g, dt){
-  const now = Date.now();
-
-  // cooldowns/auras
-  for(const u of g.units){
-    for(const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k]-dt);
-    if(u._aura && u._aura.until <= now) u._aura = null;
-    if(u._aura?.kind==="mend") u.hp = Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt);
-    if(u._channel && u._channel.until <= now) u._channel = null;
-  }
-  g.effects = (g.effects||[]).filter(e=>e.until ? e.until > now : true);
-
-  // projectiles
-  const keep=[]; 
-  for(const pr of (g.projs||[])){
-    if(pr.type==="bolt"){
-      if(now>=pr.nextHopAt){
-        const hops=1+Math.floor((now-pr.nextHopAt)/pr.hopMs);
-        pr.nextHopAt+=hops*pr.hopMs;
-        pr.idx=Math.min(pr.idx+hops, pr.path.length-1);
-      }
-      const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
-      let hit=null; 
-      for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
-      if(hit){ applyDamage(g,hit,pr.dmg,pr.ap||0.5,pr.who); continue; }
-      if(pr.idx<pr.path.length-1) keep.push(pr);
-    } else keep.push(pr);
-  }
-  g.projs = keep;
-
-  // effects (AOE pulses)
-  for(const e of (g.effects||[])){
-    if(e.type==="squarePulse"){
-      while(e.next<e.pulses.length && now>=e.pulses[e.next]){
-        pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++;
-      }
-    }
-    if(e.type==="squareOnce"){
-      if(!e.did && now>=e.when){
-        pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.did=true;
-      }
-    }
-  }
-
-  const byId = unitMap(g.units);
-  const occ  = occupancy(g.units);
-
-  for(const u of g.units){
-    // Snapshot order to avoid racey reads when we modify u._order later
-    const o = u._order || null;
-    const forcedMove    = !!(o && o.kind === "move"   && o.forced === true);
-    const atkTargetId   =  (o && o.kind === "attack") ? o.targetId : null;
-    const hasExplicitAtk= !!atkTargetId;
-    const AGGRO = (u.o==="Raiders") ? AGGRO_AI : AGGRO_PLAYER;
-
-    // If explicit attack but target invalid, clear it safely
-    // If explicit attack but target invalid, clear/retarget safely
-if (hasExplicitAtk){
-  const t = byId.get(atkTargetId);
-  if (!t || t.o===u.o){
-    if (u.o === "Raiders"){
-      // Raiders stay aggressive: re-acquire nearest and keep attacking
-      const near = findNearestEnemy(u, g.units);
-      if (near){
-        u._order   = { kind:"attack", targetId: near.id };
-        u.targetId = near.id;
-        u.state    = "chase";
-      } else {
-        u._order=null; u.targetId=null;
-      }
-    } else {
-      // Player units: just clear it (your inputs decide next)
-      u._order=null; u.targetId=null;
-    }
-  }
-}
-
-
-    // HOLD: never move; still fight if in range
-    if (u._hold){
-      const t = hasExplicitAtk ? byId.get(atkTargetId)
-              : (u.targetId ? byId.get(u.targetId) : null);
-      if (t && inRange(u,t)){ u.state="fight"; } else { u.state="hold"; }
-      continue;
-    }
-
-    // Passive aggro only if not forced moving and not explicit attack
-    if (!forcedMove && !hasExplicitAtk){
-      if(u.targetId){
-        const t = byId.get(u.targetId); 
-        if(!t || t.o===u.o) u.targetId=null;
-      }
-      if(!u.targetId){
-        const near = findNearestEnemy(u, g.units);
-        if(near && manh(u.gx,u.gy,near.gx,near.gy) <= AGGRO){
-          u.targetId = near.id;
-        }
-      }
-    }
-
-    // Decide state
-    let t = null;
-    if (hasExplicitAtk){
-      t = byId.get(atkTargetId) || null;
-      if (t){
-        if (inRange(u,t)){ u.state="fight"; u._goal=null; }
-        else {
-          u.state="chase";
-          const want = desiredEngageTile(u, t, occ);
-          u._goal = { gx: want.gx, gy: want.gy };
-        }
-      } else {
-        u.state="idle"; u._goal=null; u._order=null; u.targetId=null;
-      }
-    } else if (forcedMove){
-      u.state = "move";
-      u._goal = { gx: o.gx, gy: o.gy }; // safe: o is the move order
-      // no aggro while forced moving
-    } else {
-      // Passive behavior (aggro-available)
-      t = u.targetId ? byId.get(u.targetId) : null;
-      if (t && inRange(u,t)){
-        u.state="fight"; u._goal=null;
-      } else if (t && manh(u.gx,u.gy,t.gx,t.gy) <= AGGRO){
-        u.state="chase";
-        const want = desiredEngageTile(u, t, occ);
-        u._goal = { gx: want.gx, gy: want.gy };
-      } else if (o && o.kind==="move"){
-        u.state="move"; u._goal={gx:o.gx, gy:o.gy};
-      } else {
-        u.state="idle"; u._goal=null;
-      }
-    }
-  }
-
-  // Move / Attack step
-  const reserved = new Set();
-  for(const u of g.units){
-    if(u.state==="fight"){
-      const o = u._order || null;
-      const atkTargetId = (o && o.kind==="attack") ? o.targetId : null;
-      const t = atkTargetId ? byId.get(atkTargetId)
-              : (u.targetId ? byId.get(u.targetId) : null);
-      if(t && inRange(u,t)){
-        u._atkCd -= dt;
-        if(u._atkCd<=0){
-          const dmg=(u.dmg||5)+(u._aura?.dmgUp||0);
-          applyDamage(g,t,dmg,0,u.o);
-          u._atkCd = Math.max(.05,1/(u.atkSpd||1));
-        }
-      }
-      continue;
-    }
-
-    if ((u.state==="move" || u.state==="chase") && u._goal){
-      const speedSquares=Math.max(0.5,(u.move||180)*PX2SQUARES*(u._aura?.kind==="brace"?0.75:1));
-      const everyMs=Math.max(80,Math.floor(1000/speedSquares));
-      const now2=Date.now();
-      if(now2>=u.nextStepAt){
-        u.nextStepAt = now2 + everyMs;
-        const {gx,gy} = u._goal;
-
-        const before = manh(u.gx,u.gy,gx,gy);
-        const moved  = tryStepToward(u,gx,gy,occ,reserved);
-        const after  = manh(u.gx,u.gy,gx,gy);
-
-        if(!u._lastDist) u._lastDist = before;
-        if(moved && after<before){ u.stuck=0; u._lastDist=after; }
-        else if(!moved || after>=u._lastDist){ u.stuck++; }
-
-        // Arrival logic
-        const o = u._order || null;
-        const forced = !!(o && o.kind==="move" && o.forced===true);
-        const closeEnough = forced && after<=1 && u.stuck>=6;
-
-        if(after===0 || closeEnough){
-          if (u.state==="move"){ u._order=null; }  // back to aggro-available
-          u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
-        }
-
-        // Prevent jitter: for passive chase, give up if stuck; for explicit attack, keep trying.
-        if(u.state==="chase" && u.stuck>=6){
-          const atkTargetId = (o && o.kind==="attack") ? o.targetId : null;
-          if (atkTargetId){
-            u._lastDist=null; u.stuck=0; // keep trying toward target
-          } else {
-            u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
-          }
-        }
-      }
-    }
-  }
-
-  // deaths/stat keeping
-  const survivors=[]; const deaths=[];
-  for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
-  if(deaths.length){
-    g.stats = g.stats || {}; 
-    if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}}; 
-    if(!g.stats.Raiders) g.stats.Raiders={killsByType:{}, lostByType:{}};
-    for(const dead of deaths){
-      const killer = dead._lastBy;
-      const victim = dead.o;
-      g.stats[victim].lostByType[dead.tt] = (g.stats[victim].lostByType[dead.tt]||0)+1;
-      if(killer){ g.stats[killer].killsByType[dead.tt] = (g.stats[killer].killsByType[dead.tt]||0)+1; }
-    }
-  }
-  g.units = survivors;
-
-  return g;
-}
-
-
-/* ---------- damage + AOEs ---------- */
+/* ---------- Damage / pulses ---------- */
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
@@ -727,23 +471,16 @@ function renderBoard(){
 }
 
 /* ---------- Input handlers ---------- */
-window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
+window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.clientX=e.clientX; mouse.clientY=e.clientY; mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 
 cv.addEventListener("mousedown",(e)=>{
   if(e.button===2){
     e.preventDefault();
     const ids=Array.from(selection); if(!ids.length) return;
-
     const enemy = pickEnemyAt(mouse.worldX, mouse.worldY, ME);
-    if (enemy){
-      // Right-click on enemy → explicit attack that enemy
-      orderAttackTarget(ids, enemy.id);
-    } else {
-      // Right-click ground → forced move (no aggro while moving)
-      const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      orderMoveForced(ids,gx,gy);
-    }
+    if (enemy){ orderFocus(ids, enemy.id); }
+    else { const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY); orderAttackMove(ids,gx,gy); }
     return;
   }
   dragging=true; dragStart={x:mouse.x,y:mouse.y};
@@ -785,7 +522,158 @@ window.addEventListener("keydown",(e)=>{
   if(k==="h"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; toggleHold(ids); }
 });
 
-/* ---------- Render ---------- */
+/* ---------- Sim (Grid Tactics style) ---------- */
+function inRange(u, v){
+  const r=u.rangeTiles||1;
+  return r>1 ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manh(u.gx,u.gy,v.gx,v.gy) <= 1);
+}
+
+function simulate(g, dt){
+  const now = Date.now();
+
+  // cooldowns/auras
+  for(const u of g.units){
+    if(u.cd>0) u.cd = Math.max(0, u.cd - dt);
+    for(const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k]-dt);
+    if(u._aura && u._aura.until <= now) u._aura = null;
+    if(u._aura?.kind==="mend") u.hp = Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt);
+    if(u._channel && u._channel.until <= now) u._channel = null;
+  }
+  g.effects = (g.effects||[]).filter(e=>e.until ? e.until > now : true);
+
+  // projectiles
+  {
+    const keep=[]; 
+    for(const pr of (g.projs||[])){
+      if(pr.type==="bolt"){
+        if(now>=pr.nextHopAt){
+          const hops=1+Math.floor((now-pr.nextHopAt)/pr.hopMs);
+          pr.nextHopAt+=hops*pr.hopMs;
+          pr.idx=Math.min(pr.idx+hops, pr.path.length-1);
+        }
+        const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
+        let hit=null; 
+        for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
+        if(hit){ applyDamage(g,hit,pr.dmg,pr.ap||0.5,pr.who); continue; }
+        if(pr.idx<pr.path.length-1) keep.push(pr);
+      } else keep.push(pr);
+    }
+    g.projs = keep;
+  }
+
+  // effects
+  for(const e of (g.effects||[])){
+    if(e.type==="squarePulse"){
+      while(e.next<e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++; }
+    }
+    if(e.type==="squareOnce"){
+      if(!e.did && now>=e.when){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.did=true; }
+    }
+  }
+
+  const occ  = occupancy(g.units);
+  const reserved = new Set();
+
+  // Charge movement impact pass
+  for(const u of g.units){
+    if(u._channel) continue;
+    if(u._charge && u._charge.until > now){
+      const step = u._charge.path[u._charge.idx];
+      if(step){
+        if(!occupiedOrReserved(step.gx,step.gy, occ, reserved)){
+          moveTo(u, step.gx, step.gy, occ, reserved);
+          u._charge.idx++;
+        }else{
+          u._charge.until = now;
+        }
+      }else{
+        u._charge.until = now;
+      }
+      if(!u._charge || u._charge.idx>= (u._charge.path?.length||0)){
+        const DMG=14;
+        for(const v of g.units){
+          if(v.o===u.o) continue;
+          if(manh(u.gx,u.gy,v.gx,v.gy)<=1){
+            applyDamage(g, v, DMG, 0, u.o);
+          }
+        }
+      }
+    }
+  }
+
+  // Targeting & attacks (auto-acquire nearest within AGGRO; attack if in range)
+  for(const u of g.units){
+    if(u._channel) continue;
+
+    // HOLD: only attack if target in range; no movement orders
+    let target=null, bd=1e9;
+    for(const v of g.units){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
+    const tSpec=TYPES[u.tt]; const rng=tSpec.rangeTiles||1;
+    const inR = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy)<=rng : manh(u.gx,u.gy,target.gx,target.gy)<=rng);
+
+    if(inR && u.cd<=0){
+      const baseD = (u.dmg||5) + (u._aura?.dmgUp||0);
+      applyDamage(g, target, baseD, 0, u.o);
+      u.cd = Math.max(.05, 1/(u.atkSpd||1));
+    }
+
+    if(u._hold) continue;
+
+    // Attack-move auto-agro while traveling, or set goal if idle and enemy in aggro
+    if(target && !inR){
+      if(bd <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
+        u.goalGX = target.gx; u.goalGY = target.gy;
+      }
+    }
+  }
+
+  // Movement (neighbor stepping with time slice per unit)
+  for(const u of g.units){
+    if(u._channel) continue;
+    if(u.goalGX==null || u.goalGY==null) continue;
+    const speedSquares = Math.max(0.5,(u.moveSpd||200))*PX_TO_SQUARES_PER_SEC*(u._aura?.kind==="brace"?0.75:1);
+    const stepEveryMs  = Math.max(80, Math.floor(1000/Math.max(0.5,speedSquares)));
+    if(now < u.nextStepAt) continue;
+    u.nextStepAt = now + stepEveryMs;
+
+    if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
+    const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
+    if(step){ moveTo(u, step.gx, step.gy, occ, reserved); }
+  }
+
+  // Push out overlaps gently
+  const occ2 = occupancy(g.units);
+  for(const [k, list] of occ2){
+    if(list.length<=1) continue;
+    const keep = list[0];
+    for(let i=1;i<list.length;i++){
+      const u = list[i];
+      const free = nearestFree(u.gx,u.gy, occ2);
+      if(free){ u.gx=free.gx; u.gy=free.gy; const nk=free.gx+"|"+free.gy; occ2.set(nk,(occ2.get(nk)||[]).concat(u)); }
+    }
+    occ2.set(k,[keep]);
+  }
+
+  // deaths/stat keeping
+  const survivors=[]; const deaths=[];
+  for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
+  if(deaths.length){
+    g.stats = g.stats || {}; 
+    if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}}; 
+    if(!g.stats.Raiders) g.stats.Raiders={killsByType:{}, lostByType:{}};
+    for(const dead of deaths){
+      const killer = dead._lastBy;
+      const victim = dead.o;
+      g.stats[victim].lostByType[dead.tt] = (g.stats[victim].lostByType[dead.tt]||0)+1;
+      if(killer){ g.stats[killer].killsByType[dead.tt] = (g.stats[killer].killsByType[dead.tt]||0)+1; }
+    }
+  }
+  g.units = survivors;
+
+  return g;
+}
+
+/* ---------- Render helpers ---------- */
 function roundedRectPath(ctx, x, y, w, h, r){
   const rr=Math.min(r,w/2,h/2);
   ctx.beginPath();
@@ -797,6 +685,7 @@ function roundedRectPath(ctx, x, y, w, h, r){
   ctx.closePath();
 }
 
+/* ---------- Draw ---------- */
 function draw(){
   const dt=16/1000;
 
@@ -809,7 +698,7 @@ function draw(){
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 
   ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
-  // grid (light)
+  // grid lines
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
   for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
@@ -833,7 +722,7 @@ function draw(){
     }
   }
 
-  // units
+  // units (POP cards)
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const u of getUnitsView()){
     const team = teamTint(u.o);
@@ -858,7 +747,6 @@ function draw(){
     ctx.fillStyle = hpFrac>0.5? "#35d07f" : (hpFrac>0.25? "#ffd166" : "#ff6b6b");
     roundedRectPath(ctx,barX,barY,barW*hpFrac,barH,3); ctx.fill();
 
-    // channel ring indicator
     if(u._channel){ ctx.save(); ctx.globalAlpha=.45; ctx.strokeStyle="#bde3ff"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,TILE*.45,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
   }
 
@@ -919,9 +807,6 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
-/* ---------- HUD ---------- */
-function buildHUD(){}
-
 /* ---------- Init ---------- */
 (async function init(){
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
@@ -936,6 +821,8 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
+
 
 
 
