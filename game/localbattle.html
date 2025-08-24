@@ -177,20 +177,34 @@ async function seedBattle(){
   ownerMods[ME] = bannerMods();
 
   const units=[];
-  // Player on left block
+  // Player left block
   spawnArmyBlock(units, ME, meSnap.data().army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
-  // Raiders on right block
+  // Raiders right block
   spawnRaiders(units, "Raiders", RAIDER_TYPE, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
-  // Give units grid-logic fields
+  // init per-unit grid fields
   for(const u of units){
     u.cd=0; u.acd=u.acd||{}; u._aura=null; u._channel=null; u._charge=null; u._hold=false;
     u.goalGX=null; u.goalGY=null; u.nextStepAt=0; u.axisPref = (Math.random()<.5)?"x":"y";
   }
 
+  /* 👇 NEW: Raiders begin with an attack-move across the field.
+     We aim them toward a shallow column on the player’s side (gx≈2)
+     while keeping their current row to preserve formation. */
+  const RAIDERS_ATTACK_COL = 2;
+  for(const u of units){
+    if(u.o === "Raiders"){
+      u.goalGX = RAIDERS_ATTACK_COL;
+      u.goalGY = clamp(u.gy, 0, GRID_H-1);
+      // Optional: bias horizontal movement a bit
+      if(Math.random()<0.7) u.axisPref = "x";
+    }
+  }
+
   state = { units, effects:[], projs:[], stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } } };
   return true;
 }
+
 
 function spawnArmyBlock(units, owner, armyCounts, origin, dir){
   const order = ["recruits","footmen","swordsmen","cavalry","archers","crossbowmen","veteranArchers","monks","priests","mages"];
@@ -821,6 +835,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
