@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -47,7 +47,7 @@
       <canvas id="cv"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Breach the wall and defeat the defenders</div>
-        <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> • Q/W/E/R: ability • A: nearest • H: hold • Double-click: select same type</div>
+        <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> (enemy = focus) • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
@@ -110,7 +110,7 @@ function manh(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 
-/* ---------- Tactics constants ---------- */
+/* ---------- “Grid Tactics”-style constants ---------- */
 const PX_TO_SQUARES_PER_SEC = 1 / (TILE*0.9);
 const AGGRO_TILES = 7;
 
@@ -284,6 +284,30 @@ function moveTo(u, gx, gy, occ, reserved){
   u.gx=gx; u.gy=gy;
   const toK = gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); reserved.add(toK);
 }
+/* Neighbor step w/ axis preference — includes wall blocking (matches Local Battle feel) */
+function neighborStepToward(u, goalGX, goalGY, occ, reserved){
+  if(u.gx===goalGX && u.gy===goalGY) return null;
+  const dx = goalGX - u.gx, dy = goalGY - u.gy;
+  const cand = [
+    {gx:u.gx+Math.sign(dx), gy:u.gy},
+    {gx:u.gx, gy:u.gy+Math.sign(dy)},
+  ];
+  cand.sort((a,b)=>{
+    const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
+    const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
+    return pa - pb;
+  });
+  let best=null, bd=1e9;
+  for(const c of cand){
+    if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
+    if(isWallBlocking(u, c.gx, c.gy)) continue;
+    const k=c.gx+"|"+c.gy;
+    if(occ.has(k) || reserved.has(k)) continue;
+    const d = manh(c.gx,c.gy, goalGX, goalGY);
+    if(d<bd){ bd=d; best=c; }
+  }
+  return best;
+}
 function nearestFree(gx,gy, occ){
   const seen = new Set([gx+"|"+gy]); const q=[{gx,gy}]; let qi=0;
   while(qi<q.length && q.length<GRID_W*GRID_H){
@@ -299,7 +323,7 @@ function nearestFree(gx,gy, occ){
   return null;
 }
 
-/* ---------- Orders ---------- */
+/* ---------- Orders (player = Attackers) ---------- */
 function orderAttackMove(ids, gx, gy){
   for (const u of state.units){ if (ids.includes(u.id) && u.o !== "Defenders"){ u.goalGX=gx; u.goalGY=gy; } }
 }
@@ -431,7 +455,7 @@ function applyDamage(g, target, dmg, ap, owner){
     for(const w of g.units){ if(w.tt==="wall") w.hp = WALL.hp; }
     if(WALL.hp<=0 && WALL.alive){
       WALL.alive=false;
-      // 👇 NEW: defenders immediately and continuously chase nearest attackers
+      // When wall falls, defenders immediately chase nearest attackers
       for(const v of g.units){
         if(v.o==="Defenders" && v.tt!=="wall"){
           v._hold=false;
@@ -466,6 +490,7 @@ function inRange(u, v){
 function simulate(g, dt){
   const now = Date.now();
 
+  // cooldowns/auras
   for(const u of g.units){
     if(u.cd>0) u.cd = Math.max(0, u.cd - dt);
     for(const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k]-dt);
@@ -495,7 +520,7 @@ function simulate(g, dt){
     g.projs = keep;
   }
 
-  // effects
+  // effects (volley / burst)
   for(const e of (g.effects||[])){
     if(e.type==="squarePulse"){
       while(e.next<e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++; }
@@ -515,18 +540,47 @@ function simulate(g, dt){
     }
   }
 
+  /* Occupancy for this tick (needed for charge + movement) */
   const occ  = occupancy(g.units);
   const reserved = new Set();
 
-  // AI targeting & attacks
+  /* -------- Charge movement & impact (ported from Local Battle) -------- */
+  for(const u of g.units){
+    if(u._channel) continue;
+    if(u._charge && u._charge.until > now){
+      const step = u._charge.path[u._charge.idx];
+      if(step){
+        if(!isWallBlocking(u, step.gx, step.gy) && !occupiedOrReserved(step.gx,step.gy, occ, reserved)){
+          moveTo(u, step.gx, step.gy, occ, reserved);
+          u._charge.idx++;
+        }else{
+          u._charge.until = now;
+        }
+      }else{
+        u._charge.until = now;
+      }
+      if(!u._charge || u._charge.idx>= (u._charge.path?.length||0)){
+        const DMG=14;
+        for(const v of g.units){
+          if(v.o===u.o) continue;
+          if(manh(u.gx,u.gy,v.gx,v.gy)<=1){
+            applyDamage(g, v, DMG, 0, u.o);
+          }
+        }
+      }
+    }
+  }
+
+  /* -------- Targeting & attacks (match Local Battle behavior) -------- */
   for(const u of g.units){
     if(u._channel) continue;
 
-    const target = nearestEnemy(u, u.o, g.units); // always nearest
+    const target = nearestEnemy(u, u.o, g.units); // nearest enemy
     const tSpec=TYPES[u.tt];
     const rng=tSpec.rangeTiles||1;
     const inR = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy)<=rng : manh(u.gx,u.gy,target.gx,target.gy)<=rng);
 
+    // Attack if in range
     if(inR && u.cd<=0 && target){
       if(tSpec.boltDmg){ // ballista projectile
         const range=rng, speed=tSpec.boltSpeedTiles||9, dmg=tSpec.boltDmg, ap=tSpec.boltAP||0.3;
@@ -542,12 +596,11 @@ function simulate(g, dt){
 
     if(u._hold) continue;
 
-    // 👇 Movement goals:
-    // - Defenders: always chase nearest attacker (no aggro gating)
-    // - Attackers: classic attack-move with aggro leash
+    // Move goals (Attackers: attack-move leash; Defenders: hold until wall, then chase)
     if(target && !inR){
       if(u.o==="Defenders"){
-        u.goalGX = target.gx; u.goalGY = target.gy;
+        // pre-wall: most defenders are on hold; post-wall: chase nearest (set in wall break)
+        if(!WALL.alive){ u.goalGX = target.gx; u.goalGY = target.gy; }
       } else {
         const d = manh(u.gx,u.gy,target.gx,target.gy);
         if(d <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
@@ -557,7 +610,7 @@ function simulate(g, dt){
     }
   }
 
-  // Movement (blocked by wall until destroyed)
+  /* -------- Movement (neighbor stepping w/ axisPref, wall blocking) -------- */
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
@@ -568,25 +621,9 @@ function simulate(g, dt){
 
     if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
 
-    const dx = u.goalGX - u.gx, dy = u.goalGY - u.gy;
-    const cand = [
-      {gx:u.gx+Math.sign(dx), gy:u.gy},
-      {gx:u.gx, gy:u.gy+Math.sign(dy)},
-    ];
-    cand.sort((a,b)=>{
-      const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
-      const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
-      return pa - pb;
-    });
-
-    let moved=false;
-    for(const step of cand){
-      if(step.gx<0||step.gy<0||step.gx>=GRID_W||step.gy>=GRID_H) continue;
-      if(isWallBlocking(u, step.gx, step.gy)) continue;
-      if(occupiedOrReserved(step.gx,step.gy, occ, reserved)) continue;
-      moveTo(u, step.gx, step.gy, occ, reserved); moved=true; break;
-    }
-    if(!moved){
+    const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
+    if(step){ moveTo(u, step.gx, step.gy, occ, reserved); }
+    else{
       const free = nearestFree(u.gx,u.gy, occ);
       if(free && !isWallBlocking(u, free.gx, free.gy)) moveTo(u, free.gx, free.gy, occ, reserved);
     }
@@ -669,7 +706,7 @@ function renderBoard(){
   }
 }
 
-/* ---------- Input handlers ---------- */
+/* ---------- Input handlers (mirrored from Local Battle) ---------- */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.clientX=e.clientX; mouse.clientY=e.clientY; mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 
@@ -947,4 +984,6 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
+
 
