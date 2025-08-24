@@ -610,8 +610,6 @@ $("#btnCreateAlly").addEventListener("click", async ()=>{
   await updateDoc(state.youDocRef, { gold: (me.gold||0)-100, allegianceId: ally.id });
   state.player.gold = (me.gold||0)-100; hudGold.textContent = state.player.gold;
 });
-function armySum(army){ return Object.values(army||{}).reduce((s,v)=>s+v,0); }
-
 function powerOfAllegiance(A){
   let total = 0;
   for (const uid of (A.members||[])){
@@ -1067,30 +1065,27 @@ async function checkTile(){
   const C = tileAt(state.player.x, state.player.y, state.castles);
   if (C && !inPreparedness){ openCastle(C); return; }
 
-  // Raiders
-  const raider = findRaiderAt(state.player.x, state.player.y);
- if (raider && !inPreparedness){
+// Raiders
 const raider = findRaiderAt(state.player.x, state.player.y);
 if (raider && !inPreparedness){
   raider.engaged = true;
   raider.engagedAt = Date.now();
-  const t = raider.type, s = raider.size;
 
-  // NEW: record encounter for this user
+  // Log encounter for analytics and self
   await logRaiderEncounter(raider);
-  // NEW: store this encounter for ME
   await setDoc(doc(db, "mountonline_encounters", username), {
     user: username,
-    type: t,      // "recruits" | "footmen" | "archers"
-    size: s,      // number
+    type: raider.type,   // "recruits" | "footmen" | "archers"
+    size: raider.size,   // number
     createdAt: Date.now(),
     consumed: false
   });
 
   await updateDoc(state.youDocRef, { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
-  location.href = `/game/localbattle.html?etype=${encodeURIComponent(t)}&esize=${s}&username=${encodeURIComponent(username)}`;
+  location.href = `/game/localbattle.html?etype=${encodeURIComponent(raider.type)}&esize=${raider.size}&username=${encodeURIComponent(username)}`;
   return;
 }
+
 
 
 
@@ -1276,6 +1271,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
