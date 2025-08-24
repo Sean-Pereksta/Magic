@@ -474,30 +474,35 @@ function simulate(g, dt){
     }
   }
 
-  // occupancy map
   const byId = unitMap(g.units);
   const occ  = occupancy(g.units);
 
   for(const u of g.units){
-    const forcedMove = (u._order?.kind==="move" && u._order.forced===true);
-    const explicitAtk = (u._order?.kind==="attack" && u._order.targetId);
+    // Snapshot order to avoid racey reads when we modify u._order later
+    const o = u._order || null;
+    const forcedMove    = !!(o && o.kind === "move"   && o.forced === true);
+    const atkTargetId   =  (o && o.kind === "attack") ? o.targetId : null;
+    const hasExplicitAtk= !!atkTargetId;
     const AGGRO = (u.o==="Raiders") ? AGGRO_AI : AGGRO_PLAYER;
 
-    // Clear invalid explicit attack
-    if (explicitAtk){
-      const t = byId.get(u._order.targetId);
-      if (!t || t.o===u.o){ u._order=null; u.targetId=null; }
+    // If explicit attack but target invalid, clear it safely
+    if (hasExplicitAtk){
+      const t = byId.get(atkTargetId);
+      if (!t || t.o===u.o){
+        u._order=null; u.targetId=null;
+      }
     }
 
     // HOLD: never move; still fight if in range
     if (u._hold){
-      const t = u.targetId ? byId.get(u.targetId) : (explicitAtk ? byId.get(u._order?.targetId||"") : null);
+      const t = hasExplicitAtk ? byId.get(atkTargetId)
+              : (u.targetId ? byId.get(u.targetId) : null);
       if (t && inRange(u,t)){ u.state="fight"; } else { u.state="hold"; }
       continue;
     }
 
-    // Passive aggro only if not in forced move and not on explicit attack
-    if (!forcedMove && !explicitAtk){
+    // Passive aggro only if not forced moving and not explicit attack
+    if (!forcedMove && !hasExplicitAtk){
       if(u.targetId){
         const t = byId.get(u.targetId); 
         if(!t || t.o===u.o) u.targetId=null;
@@ -512,8 +517,8 @@ function simulate(g, dt){
 
     // Decide state
     let t = null;
-    if (explicitAtk){
-      t = byId.get(u._order.targetId) || null;
+    if (hasExplicitAtk){
+      t = byId.get(atkTargetId) || null;
       if (t){
         if (inRange(u,t)){ u.state="fight"; u._goal=null; }
         else {
@@ -526,8 +531,8 @@ function simulate(g, dt){
       }
     } else if (forcedMove){
       u.state = "move";
-      u._goal = { gx: u._order.gx, gy: u._order.gy };
-      // no aggro while moving forced
+      u._goal = { gx: o.gx, gy: o.gy }; // safe: o is the move order
+      // no aggro while forced moving
     } else {
       // Passive behavior (aggro-available)
       t = u.targetId ? byId.get(u.targetId) : null;
@@ -537,8 +542,8 @@ function simulate(g, dt){
         u.state="chase";
         const want = desiredEngageTile(u, t, occ);
         u._goal = { gx: want.gx, gy: want.gy };
-      } else if (u._order?.kind==="move"){
-        u.state="move"; u._goal={gx:u._order.gx, gy:u._order.gy};
+      } else if (o && o.kind==="move"){
+        u.state="move"; u._goal={gx:o.gx, gy:o.gy};
       } else {
         u.state="idle"; u._goal=null;
       }
@@ -548,9 +553,11 @@ function simulate(g, dt){
   // Move / Attack step
   const reserved = new Set();
   for(const u of g.units){
-    // Fight
     if(u.state==="fight"){
-      const t = (u._order?.kind==="attack" ? byId.get(u._order.targetId||"") : (u.targetId ? byId.get(u.targetId) : null));
+      const o = u._order || null;
+      const atkTargetId = (o && o.kind==="attack") ? o.targetId : null;
+      const t = atkTargetId ? byId.get(atkTargetId)
+              : (u.targetId ? byId.get(u.targetId) : null);
       if(t && inRange(u,t)){
         u._atkCd -= dt;
         if(u._atkCd<=0){
@@ -562,7 +569,6 @@ function simulate(g, dt){
       continue;
     }
 
-    // Move/Chase
     if ((u.state==="move" || u.state==="chase") && u._goal){
       const speedSquares=Math.max(0.5,(u.move||180)*PX2SQUARES*(u._aura?.kind==="brace"?0.75:1));
       const everyMs=Math.max(80,Math.floor(1000/speedSquares));
@@ -580,17 +586,19 @@ function simulate(g, dt){
         else if(!moved || after>=u._lastDist){ u.stuck++; }
 
         // Arrival logic
-        const forced = (u._order?.kind==="move" && u._order.forced===true);
+        const o = u._order || null;
+        const forced = !!(o && o.kind==="move" && o.forced===true);
         const closeEnough = forced && after<=1 && u.stuck>=6;
 
         if(after===0 || closeEnough){
-          if (u.state==="move"){ u._order=null; }  // from forced move → back to aggro-available
+          if (u.state==="move"){ u._order=null; }  // back to aggro-available
           u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
         }
 
         // Prevent jitter: for passive chase, give up if stuck; for explicit attack, keep trying.
         if(u.state==="chase" && u.stuck>=6){
-          if (u._order?.kind==="attack"){
+          const atkTargetId = (o && o.kind==="attack") ? o.targetId : null;
+          if (atkTargetId){
             u._lastDist=null; u.stuck=0; // keep trying toward target
           } else {
             u._goal=null; u.state="idle"; u.stuck=0; u._lastDist=null;
@@ -618,6 +626,7 @@ function simulate(g, dt){
 
   return g;
 }
+
 
 /* ---------- damage + AOEs ---------- */
 function applyDamage(g, target, dmg, ap, owner){
@@ -897,6 +906,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
