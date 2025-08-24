@@ -54,7 +54,7 @@
   </div>
 
 <script type="module">
-/* Firebase */
+/* ================= Firebase ================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, updateDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -69,17 +69,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* Params */
+/* ================= Params ================= */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
 const RETURN_ROUTE = "/game/mountonline.html";
 
-/* Visual colors: Player (ME) = RED, AI/Raiders = BLUE */
-const COLOR_PLAYER = "#ff5c5c";   // you
+/* ================= Visual: Player RED, AI BLUE ================= */
+const COLOR_PLAYER = "#ff5c5c";   // player
 const COLOR_AI     = "#4da3ff";   // raiders
 function teamTint(owner){ return owner==="Raiders" ? COLOR_AI : COLOR_PLAYER; }
 
-/* World */
+/* ================= World ================= */
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d", { alpha:false });
 const TILE=48, GRID_W=46, GRID_H=30;
@@ -90,7 +90,7 @@ function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,
 function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 
-/* Types */
+/* ================= Types ================= */
 const TYPES = {
   recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
@@ -109,12 +109,11 @@ const TYPES = {
 const TIER = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3 };
 const REWARD = { 1:2, 2:5, 3:8 };
 
-/* State */
+/* ================= State ================= */
 let state=null; // { units, effects, projs, stats }
-let ownerMods={};
 const MKEY = { recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry", archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher", monks:"monk", priests:"priest", mages:"mage" };
 
-/* Input */
+/* ================= Input ================= */
 const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, inViewport:false};
 const viewEl=document.querySelector(".view");
 function rect(el){ return el.getBoundingClientRect(); }
@@ -124,7 +123,7 @@ let dragging=false, dragStart=null, selection=new Set(), targeting=null;
 const localFX=[];
 let lastClickAt=0, lastClickCell=null;
 
-/* Utils */
+/* ================= Utils ================= */
 function roundedRectPath(ctx, x, y, w, h, r){
   const rr=Math.min(r,w/2,h/2);
   ctx.beginPath();
@@ -139,36 +138,39 @@ function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.s
 function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
 function hideHint(){ document.getElementById("hint").style.display="none"; }
 
-/* Encounter */
+/* ================= Fix A: robust encounter seeding ================= */
 async function getRaidersSpec(){
-  let t = (Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "").toLowerCase();
-  let n = parseInt(Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
+  // URL takes priority
+  let t = (Q.get("etype") || Q.get("enemyType") || Q.get("raiderType") || Q.get("type") || "").toLowerCase();
+  let n = parseInt(Q.get("esize") || Q.get("enemyCount") || Q.get("raiders") || Q.get("count") || "",10);
+
+  // Fallback: last encounter doc (accept both legacy and newer fields)
   if (!t || isNaN(n)){
     try{
       const enc = await getDoc(doc(db,"mountonline_encounters", ME));
       if (enc.exists()){
         const d = enc.data();
-        if (!t) t = (d.raiderType||"").toLowerCase();
-        if (!n) n = d.raiderCount|0;
+        if (!t) t = (d.type || d.raiderType || "").toLowerCase();
+        if (!n) n = (d.size || d.raiderCount) | 0;
       }
     }catch(e){}
   }
-  if (!t) t = "recruit";
-  if (!n || n<3) n = 12;
+
+  if (!t) t = "recruit"; // default type
+  if (!n || n<3) n = 12; // default count / minimum
   return { type:t, count: Math.max(3, Math.min(80, n)) };
 }
 const { type:RAIDER_TYPE, count:RAIDER_COUNT } = await getRaidersSpec();
 
-/* Banners → mods (kept simple for now) */
+/* ================= Banners → mods (placeholder) ================= */
 function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1, cavDmg:1, priestHeal:1, footmanHp:1 }; }
 
-/* Build armies */
+/* ================= Build armies ================= */
 async function seedBattle(){
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
   const meSnap = await getDoc(doc(db,"mountonline", ME));
   if(!meSnap.exists()){ alert("Your profile was not found."); return false; }
-  ownerMods[ME] = bannerMods();
 
   const units=[];
   spawnArmyBlock(units, ME, meSnap.data().army||{}, {gx:5, gy:Math.floor(GRID_H/2)-6}, +1);
@@ -177,7 +179,7 @@ async function seedBattle(){
   const chosen = allowed.has(rType) ? rType : "recruit";
   spawnRaiders(units, "Raiders", chosen, RAIDER_COUNT, {gx:GRID_W-6, gy:Math.floor(GRID_H/2)-6}, -1);
 
-  // NEW: push the AI forward (attack-move toward player side)
+  // AI forward intent (attack-move toward you)
   for(const u of units){ if(u.o==="Raiders"){ u._forceMoveTo = { gx: 6, gy: u.gy }; u.state="move"; } }
 
   state = { units, effects:[], projs:[], stats: { [ME]: { killsByType:{}, lostByType:{} }, Raiders: { killsByType:{}, lostByType:{} } } };
@@ -212,14 +214,18 @@ function mkUnit(type, owner, gx, gy){
     gx, gy, x:0, y:0,
     hp: base.hp, maxHp: base.hp,
     dmg: base.dmg, range: base.range, atkSpd: base.atkSpd, move: base.move,
-    armor: base.armor, acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
-    goalGX:null, goalGY:null, nextStepAt:0,
-    priestHealMul: 1, _lastBy:null, _forceMoveTo: null,
-    state:"idle", targetId:null, lastTargetTime:0, stuckTicks:0
+    armor: base.armor, acd:{}, _aura:null, _channel:null, _charge:null,
+    _hold:false,            // player H toggle
+    _anchor:false,          // arrived / engaged anchor (prevents jitter)
+    _anchorGX:null, _anchorGY:null,
+    _forceMoveTo: null,     // attack-move order destination
+    goalGX:null, goalGY:null,
+    targetId:null, lastTargetTime:0,
+    nextStepAt:0, stuckTicks:0, pathRecalcAt:0
   };
 }
 
-/* Orders */
+/* ================= Orders ================= */
 function orderAttackMove(ids,gx,gy){
   for (const u of state.units){
     if (ids.includes(u.id) && u.o===ME){
@@ -228,6 +234,7 @@ function orderAttackMove(ids,gx,gy){
       u.state = "move";
       u.targetId = null;
       u._channel = null;
+      u._anchor = false;
     }
   }
 }
@@ -235,20 +242,22 @@ function orderNearest(ids){
   for(const u of state.units){
     if(!ids.includes(u.id) || u.o!==ME) continue;
     const best = findNearestEnemy(u, state.units);
-    if(best){ u._forceMoveTo = null; u.targetId = best.id; u.lastTargetTime = Date.now(); u.state = "chase"; }
+    if(best){ u._forceMoveTo = null; u.targetId = best.id; u.lastTargetTime = Date.now(); u.state = "chase"; u._anchor=false; }
   }
 }
 function toggleHold(ids){
   for(const u of state.units){
     if(ids.includes(u.id) && u.o===ME){
       u._hold = !u._hold;
-      if (u._hold){ u._forceMoveTo = null; u.goalGX = null; u.goalGY = null; u.state = "hold"; }
-      else { u.state = "idle"; }
+      if (u._hold){
+        u._forceMoveTo = null; u.goalGX = null; u.goalGY = null; u.state = "hold";
+        u._anchor = true; u._anchorGX=u.gx; u._anchorGY=u.gy;
+      } else { u.state = "idle"; u._anchor=false; }
     }
   }
 }
 
-/* Abilities (volley made clearer/stronger) */
+/* ================= Abilities ================= */
 function updateCooldownBadges(){
   const abil=document.getElementById("abilities"); if(!abil) return;
   const sel=getUnitsView().filter(u=>selection.has(u.id));
@@ -313,9 +322,8 @@ const AbilityHandlers={
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"brace", until:now+ab.dur*1000}; return true; } },
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
   focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp:3}; return true; } },
-  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:8*u.priestHealMul}; return true; } },
+  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:8}; return true; } },
 
-  // 👇 Volley: brighter, obvious pulses + noticeable damage
   volley:     { cast(g,u,ab,{mode,gx,gy},now){
                   if(mode!=="point")return false;
                   const size=ab.size||3; const until=now+(ab.channel||6000);
@@ -350,17 +358,20 @@ function bresenham(x0,y0,x1,y1){
   return pts;
 }
 
-/* Combat brain */
+/* ================= Combat brain ================= */
 const PX2SQUARES = 1 / (TILE*0.9);
 const AGGRO_EXTRA = 3;
+const LEASH_SOFT = 9;        // how far auto-chase can break an anchor
+const PATH_RECALC_MS = 300;  // don’t spam BFS every frame
+const BFS_MAX_NODES = 260;   // performance guard
 
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
 function unitMap(units){ const m=new Map(); for(const u of units) m.set(u.id,u); return m; }
 function inRange(u, v){ const r=u.range||1; return (r>1) ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manhattan(u.gx,u.gy,v.gx,v.gy) <= 1); }
 function findNearestEnemy(u, list){ let best=null, bd=1e9; for(const v of list){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } } return best; }
 
-/* pick a tile around target that lets u attack (r=range ring); prefer free tiles */
-function desiredEngageTile(u, t){
+/* ring tiles at the edge of range; prefer free */
+function desiredEngageTile(u, t, occ){
   const r=u.range||1;
   const cand=[];
   for(let dx=-r; dx<=r; dx++){
@@ -372,34 +383,58 @@ function desiredEngageTile(u, t){
       cand.push({gx,gy});
     }
   }
-  // prefer free tiles; fallback to closest anyway
-  const occ = occupancy(state.units);
   const free = cand.filter(c => !occ.has(c.gx+"|"+c.gy));
   const list = (free.length?free:cand);
   list.sort((a,b)=> manhattan(u.gx,u.gy,a.gx,a.gy) - manhattan(u.gx,u.gy,b.gx,b.gy));
   return list[0] || {gx:t.gx,gy:t.gy};
 }
 
-/* limited neighbor choices that bias toward goal + gentle sidestep */
-function neighborChoices(u, gx, gy){
-  const sx = Math.sign(gx - u.gx), sy = Math.sign(gy - u.gy);
-  const cand = [
-    {gx:u.gx+sx, gy:u.gy},           // forward X
-    {gx:u.gx,    gy:u.gy+sy},        // forward Y
-    {gx:u.gx+sx, gy:u.gy+sy},        // diagonal forward
-    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep 1
-    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep 2
-  ];
-  const seen=new Set(), out=[];
-  for(const c of cand){ const k=c.gx+"|"+c.gy; if(seen.has(k)) continue; seen.add(k); out.push(c); }
-  out.sort((a,b)=> manhattan(a.gx,a.gy,gx,gy) - manhattan(b.gx,b.gy,gx,gy));
-  return out;
+/* ================= Pathfinding (BFS) ================= */
+function neighbors4(gx,gy){
+  return [
+    {gx:gx+1, gy}, {gx:gx-1, gy}, {gx, gy:gy+1}, {gx, gy:gy-1}
+  ].filter(p=> p.gx>=0 && p.gx<GRID_W && p.gy>=0 && p.gy<GRID_H);
+}
+function bfsNextHop(startGX,startGY, goalGX,goalGY, occ, allowGoalOccupied=false){
+  // If goal is occupied and not allowed, try nearest free around it first
+  if(!allowGoalOccupied && occ.has(goalGX+"|"+goalGY)){
+    let best=null, bd=1e9;
+    for(const n of neighbors4(goalGX,goalGY)){
+      const k=n.gx+"|"+n.gy;
+      if(!occ.has(k)){ const d=manhattan(startGX,startGY,n.gx,n.gy); if(d<bd){bd=d; best=n;} }
+    }
+    if(best){ goalGX=best.gx; goalGY=best.gy; }
+  }
+  const q=[]; const seen=new Set(); const key=(x,y)=>x+"|"+y;
+  q.push({gx:startGX, gy:startGY}); seen.add(key(startGX,startGY));
+  const parent=new Map();
+  let visited=0, foundKey=null;
+
+  while(q.length){
+    const cur=q.shift(); visited++; if(visited>BFS_MAX_NODES) break;
+    if(cur.gx===goalGX && cur.gy===goalGY){ foundKey=key(cur.gx,cur.gy); break; }
+    for(const nb of neighbors4(cur.gx,cur.gy)){
+      const k=key(nb.gx,nb.gy);
+      if(seen.has(k)) continue;
+      // Block occupied except the goal itself if allowed; allow origin cell (we’re already there)
+      if(!(nb.gx===goalGX && nb.gy===goalGY) && occ.has(k)) continue;
+      seen.add(k); parent.set(k, key(cur.gx,cur.gy)); q.push(nb);
+    }
+  }
+  if(!foundKey) return null;
+  // Reconstruct to first step
+  let cur=foundKey, prev=parent.get(cur);
+  if(!prev) return null; // already there
+  while(parent.get(prev) && prev!==key(startGX,startGY)){ cur=prev; prev=parent.get(prev); }
+  const [nx,ny]=cur.split("|").map(Number);
+  return {gx:nx, gy:ny};
 }
 
+/* ================= Simulation ================= */
 function simulate(g, dt){
   const now = Date.now();
 
-  // cooldowns, auras
+  // auras & cooldowns
   for(const u of g.units){
     for(const k in (u.acd||{})){ u.acd[k]=Math.max(0, u.acd[k]-dt); }
     if(u._aura && u._aura.until<=now) u._aura=null;
@@ -419,7 +454,7 @@ function simulate(g, dt){
     } else keep.push(pr);
   } g.projs=keep;
 
-  // AOEs (with obvious impact bursts)
+  // AOEs
   for(const e of (g.effects||[])){
     if(e.type==="squarePulse"){
       while(e.next < e.pulses.length && now>=e.pulses[e.next]){
@@ -435,55 +470,88 @@ function simulate(g, dt){
     }
   }
 
-  // target acquisition + goals
+  // targeting + intentions
   const byId = unitMap(g.units);
+  const occ = occupancy(g.units);
   for(const u of g.units){
-    if(u._channel){ u.state = "engage"; continue; }
-    if(u._hold){ u.state="hold"; u.goalGX=null; u.goalGY=null; continue; }
+    if(u._channel){ u.state="engage"; continue; }
 
+    // Base anchor condition: if ordered to HOLD, we anchor hard.
+    if(u._hold){
+      u._anchor = true; u._anchorGX=u.gx; u._anchorGY=u.gy;
+      u.goalGX=null; u.goalGY=null;
+    }
+
+    // Clean invalid target
+    if(u.targetId){
+      const t = byId.get(u.targetId);
+      if(!t || t.o===u.o) u.targetId=null;
+    }
+
+    // Attack-move destination overrides until reached
     if(u._forceMoveTo){
-      u.state = "move"; u.goalGX = u._forceMoveTo.gx; u.goalGY = u._forceMoveTo.gy;
-    } else {
-      if(u.targetId){
-        const t = byId.get(u.targetId);
-        if(!t || t.o===u.o) u.targetId=null;
+      // If we’re at destination → anchor and clear
+      if(u.gx===u._forceMoveTo.gx && u.gy===u._forceMoveTo.gy){
+        u._anchor = true; u._anchorGX=u.gx; u._anchorGY=u.gy;
+        u.goalGX=null; u.goalGY=null; u._forceMoveTo=null; u.state="idle";
+      }else{
+        u.state="move"; u.goalGX=u._forceMoveTo.gx; u.goalGY=u._forceMoveTo.gy; u._anchor=false;
       }
+    } else {
+      // Acquire / keep targets
       if(!u.targetId){
-        const candidate = findNearestEnemy(u, g.units);
-        if(candidate){
+        // If anchored: only grab a target if in aggro AND we can path to a valid engage tile
+        const pick = findNearestEnemy(u, g.units);
+        if(pick){
           const aggro = (u.range||1) + AGGRO_EXTRA;
-          if(manhattan(u.gx,u.gy,candidate.gx,candidate.gy) <= aggro){
-            u.targetId = candidate.id; u.lastTargetTime = now;
+          const dist = manhattan(u.gx,u.gy,pick.gx,pick.gy);
+          if(dist <= aggro){
+            // See if there is a valid reachable engage tile
+            const want = desiredEngageTile(u, pick, occ);
+            const hop = bfsNextHop(u.gx,u.gy, want.gx,want.gy, occ, true);
+            if(inRange(u,pick) || hop){ u.targetId=pick.id; u.lastTargetTime=now; }
           }
         }
       }
       const target = u.targetId ? byId.get(u.targetId) : null;
       if(target){
         const aggro = (u.range||1) + AGGRO_EXTRA + 2;
-        if(manhattan(u.gx,u.gy,target.gx,target.gy) > aggro){
-          u.targetId = null; u.state="idle"; u.goalGX=null; u.goalGY=null;
+        const dist = manhattan(u.gx,u.gy,target.gx,target.gy);
+
+        // Don’t break anchor to chase beyond soft leash
+        const mayChase = !u._anchor || dist <= LEASH_SOFT;
+
+        if(dist > aggro){
+          u.targetId = null; u.state="idle"; u.goalGX=null; u.goalGY=null; // lost target
         }else if(inRange(u,target)){
+          // We’re in range → ENGAGE, anchor in place to prevent jitter
           u.state="engage"; u.goalGX=null; u.goalGY=null;
-        }else{
+          if(!u._anchor){ u._anchor=true; u._anchorGX=u.gx; u._anchorGY=u.gy; }
+        }else if(mayChase){
           u.state="chase";
-          const want = desiredEngageTile(u, target);
+          const want = desiredEngageTile(u, target, occ);
           u.goalGX = want.gx; u.goalGY = want.gy;
+          u._anchor=false;
+        }else{
+          // anchored and target too far → do nothing until it comes closer
+          u.state="idle"; u.goalGX=null; u.goalGY=null;
         }
       }else{
+        // No target: if not holding and not forced, stay anchored (don’t wander)
+        if(!u._hold){ u._anchor=true; u._anchorGX=u.gx; u._anchorGY=u.gy; }
         u.state="idle"; u.goalGX=null; u.goalGY=null;
       }
     }
   }
 
   // movement + attacks
-  const occ = occupancy(g.units);
   const reserved=new Set();
-
   for(const u of g.units){
     if(u._channel) continue;
 
     if(u.state==="engage"){
       let t = u.targetId ? byId.get(u.targetId) : null;
+      // If target slipped, try any in-range enemy instead (without moving)
       if(!t || t.o===u.o || !inRange(u,t)){
         let best=null;
         for(const v of g.units){ if(v.o===u.o) continue; if(inRange(u,v)){ best=v; break; } }
@@ -497,6 +565,7 @@ function simulate(g, dt){
           u._atkCd = Math.max(.05, 1/(u.atkSpd||1));
         }
       }else{
+        // nothing to hit → stay anchored, don’t micro-move
         u.state="idle";
       }
       continue;
@@ -509,26 +578,57 @@ function simulate(g, dt){
         u.nextStepAt = now + everyMs;
 
         if(u.goalGX!=null && u.goalGY!=null){
-          // try straight step; if blocked, try limited neighbor choices to go around
-          let stepped = approachStep(u, u.goalGX, u.goalGY, occ, reserved);
-          if(!stepped){
-            const cand = neighborChoices(u, u.goalGX, u.goalGY);
-            for(const c of cand){
-              const k=c.gx+"|"+c.gy;
-              if(c.gx<0||c.gx>=GRID_W||c.gy<0||c.gy>=GRID_H) continue;
-              if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); stepped=true; break; }
+          let stepped=false;
+
+          // BFS next hop (rate-limited)
+          if(now - (u.pathRecalcAt||0) >= PATH_RECALC_MS){
+            const hop = bfsNextHop(u.gx,u.gy, u.goalGX,u.goalGY, occ, false);
+            u._lastHop = hop || null;
+            u.pathRecalcAt = now;
+          }
+          if(u._lastHop){
+            const k=u._lastHop.gx+"|"+u._lastHop.gy;
+            if(!occ.get(k) && !reserved.has(k)){
+              stepTo(u, u._lastHop.gx, u._lastHop.gy, occ, reserved);
+              stepped=true;
             }
           }
-          if(!stepped) u.stuckTicks++; else u.stuckTicks=0;
 
-          // arrival at forced destination
-          if(u._forceMoveTo && u.gx===u._forceMoveTo.gx && u.gy===u._forceMoveTo.gy){
-            u._forceMoveTo = null; u.state="idle"; u.goalGX=null; u.goalGY=null;
+          // fallback: greedy + sidestep
+          if(!stepped){
+            stepped = approachStep(u, u.goalGX, u.goalGY, occ, reserved);
+            if(!stepped){
+              const cand = neighborChoices(u, u.goalGX, u.goalGY);
+              for(const c of cand){
+                const k=c.gx+"|"+c.gy;
+                if(!occ.get(k) && !reserved.has(k)){ stepTo(u,c.gx,c.gy,occ,reserved); stepped=true; break; }
+              }
+            }
           }
-          // if chasing and now in range, switch to engage
-          if(u.state==="chase" && u.targetId){
-            const t = byId.get(u.targetId);
-            if(t && inRange(u,t)){ u.state="engage"; u.goalGX=null; u.goalGY=null; }
+
+          if(!stepped){
+            u.stuckTicks++;
+            if(u.stuckTicks>=6){
+              // Give up: anchor to avoid jitter-pushing
+              u.state="idle"; u.goalGX=null; u.goalGY=null;
+              u._anchor=true; u._anchorGX=u.gx; u._anchorGY=u.gy;
+              u.stuckTicks=0;
+            }
+          } else {
+            u.stuckTicks=0;
+          }
+
+          // Arrival handling
+          if(u.gx===u.goalGX && u.gy===u.goalGY){
+            if(u.state==="move"){ // ordered move/attack-move target
+              u._anchor=true; u._anchorGX=u.gx; u._anchorGY=u.gy;
+              u.goalGX=null; u.goalGY=null; u._forceMoveTo=null; u.state="idle";
+            } else if(u.state==="chase"){
+              // Check if now in range → engage; else wait for next tick
+              const t = u.targetId ? byId.get(u.targetId) : null;
+              if(t && inRange(u,t)){ u.state="engage"; u.goalGX=null; u.goalGY=null; u._anchor=true; }
+              else { u.state="idle"; u._anchor=true; }
+            }
           }
         }
       }
@@ -552,7 +652,7 @@ function simulate(g, dt){
   return g;
 }
 
-/* movement helpers */
+/* ===== movement helpers (greedy & sidestep fallback) ===== */
 function approachStep(u, gx, gy, occ, reserved){
   if(gx===u.gx && gy===u.gy) return false;
   const dx = gx - u.gx, dy = gy - u.gy;
@@ -567,6 +667,20 @@ function approachStep(u, gx, gy, occ, reserved){
   }
   return false;
 }
+function neighborChoices(u, gx, gy){
+  const sx = Math.sign(gx - u.gx), sy = Math.sign(gy - u.gy);
+  const cand = [
+    {gx:u.gx+sx, gy:u.gy},           // forward X
+    {gx:u.gx,    gy:u.gy+sy},        // forward Y
+    {gx:u.gx+sx, gy:u.gy+sy},        // diagonal forward
+    {gx:u.gx+sx, gy:u.gy-sy},        // sidestep 1
+    {gx:u.gx-sx, gy:u.gy+sy},        // sidestep 2
+  ];
+  const seen=new Set(), out=[];
+  for(const c of cand){ const k=c.gx+"|"+c.gy; if(seen.has(k)) continue; seen.add(k); out.push(c); }
+  out.sort((a,b)=> manhattan(a.gx,a.gy,gx,gy) - manhattan(b.gx,b.gy,gx,gy));
+  return out;
+}
 function stepTo(u,gx,gy,occ,res){
   const fromK=u.gx+"|"+u.gy; const list=occ.get(fromK)||[]; const i=list.indexOf(u);
   if(i>=0){ list.splice(i,1); if(!list.length) occ.delete(fromK); }
@@ -574,7 +688,7 @@ function stepTo(u,gx,gy,occ,res){
   const toK=gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); res.add(toK);
 }
 
-/* damage + AOEs */
+/* ====== damage / AOEs ====== */
 function applyDamage(g, target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
@@ -595,7 +709,7 @@ function pulseSquare(g,cx,cy,size,owner,dmg,pierce,withFX){
   }
 }
 
-/* Picking / UI */
+/* ================= Picking / UI ================= */
 function getUnitsView(){ return state?.units || []; }
 function pickUnitAt(wx,wy, owner){
   const {gx,gy}=worldToGrid(wx,wy);
@@ -637,7 +751,7 @@ function renderBoard(){
   }
 }
 
-/* Input handlers */
+/* ================= Input handlers ================= */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 cv.addEventListener("mousedown",(e)=>{ if(e.button===2){
@@ -683,7 +797,7 @@ window.addEventListener("keydown",(e)=>{
   if(k==="h"){ e.preventDefault(); const ids=Array.from(selection); if(!ids.length) return; toggleHold(ids); }
 });
 
-/* Render */
+/* ================= Render ================= */
 function draw(){
   const dt=16/1000;
 
@@ -699,7 +813,7 @@ function draw(){
   // grid
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(0,y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   // effects
   const now=Date.now();
@@ -708,11 +822,11 @@ function draw(){
     const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
     ctx.save();
     ctx.globalAlpha=.18; ctx.fillStyle=e.color||"#fff"; ctx.fillRect(sx,sy,size*TILE,size*TILE);
-    ctx.globalAlpha=1; const pulse=(now%1000)/1000; ctx.lineWidth=3; ctx.strokeStyle=e.color||"#fff"; ctx.strokeRect(sx,sy,size*TILE,size*TILE);
+    ctx.globalAlpha=1; ctx.lineWidth=3; ctx.strokeStyle=e.color||"#fff"; ctx.strokeRect(sx,sy,size*TILE,size*TILE);
     ctx.restore();
   }
 
-  // projs
+  // projectiles
   for(const p of (state?.projs||[])){
     if(p.type==="bolt"){
       const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
@@ -766,7 +880,7 @@ function draw(){
   requestAnimationFrame(draw);
 }
 
-/* Win/Lose + settle */
+/* ================= Win/Lose + settle ================= */
 function aliveOwners(){ const m={}; for(const u of (state?.units||[])) m[u.o]=(m[u.o]||0)+1; return Object.keys(m).filter(k=>m[k]>0); }
 async function settleAndExit(){
   const stats = state?.stats || {};
@@ -791,7 +905,7 @@ async function settleAndExit(){
   location.href = `${RETURN_ROUTE}?username=${encodeURIComponent(ME)}`;
 }
 
-/* Game loop */
+/* ================= Game loop ================= */
 let lastTime=performance.now(), acc=0;
 const FIXED = 1/20;
 function loop(){
@@ -807,17 +921,17 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
-/* HUD */
+/* ================= HUD ================= */
 function buildHUD(){}
 
-/* Init */
+/* ================= Init ================= */
 (async function init(){
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
   const ok = await seedBattle(); if(!ok) return;
   draw(); loop();
 })();
 
-/* Safety */
+/* ================= Safety ================= */
 window.addEventListener("beforeunload", ()=>{
   updateDoc(doc(db,"mountonline", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
 });
