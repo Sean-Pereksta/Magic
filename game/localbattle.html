@@ -90,6 +90,20 @@ function clampCam(){ cam.x=clamp(cam.x,0,WORLD.w-cv.width); cam.y=clamp(cam.y,0,
 function manh(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
+  // put near your other helpers (after clampCam)
+function centerCamOnOwner(owner){
+  const my = (state?.units||[]).filter(u => u.o === owner);
+  if (!my.length) return;
+  // center on the bounding box of your army
+  const minGX = Math.min(...my.map(u=>u.gx)), maxGX = Math.max(...my.map(u=>u.gx));
+  const minGY = Math.min(...my.map(u=>u.gy)), maxGY = Math.max(...my.map(u=>u.gy));
+  const cx = ((minGX + maxGX + 1) / 2) * TILE;
+  const cy = ((minGY + maxGY + 1) / 2) * TILE;
+  cam.x = cx - cv.width  / 2;
+  cam.y = cy - cv.height / 2;
+  clampCam();
+}
+
 
 /* ---------- “Grid Tactics”-style constants ---------- */
 const PX_TO_SQUARES_PER_SEC = 1 / (TILE*0.9);
@@ -825,6 +839,7 @@ function loop(){
 (async function init(){
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
   const ok = await seedBattle(); if(!ok) return;
+    centerCamOnOwner(ME);
   draw(); loop();
 })();
 
@@ -835,6 +850,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
