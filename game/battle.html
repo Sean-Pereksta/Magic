@@ -101,27 +101,52 @@ const TYPES = {
   recruit:        { name:"Recruit",        emoji:"🧑‍🌾", hp:50,  dmg:5,  range:1, atkSpd:1.0, move:180, armor:0, abilities:[] },
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  range:1, atkSpd:1.0, move:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
   swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
+
+  /* NEW — Sergeant (ally aura) & Champion (self fury) */
+  romanSergeant:  { name:"Sergeant",       emoji:"🛡️⚔️", hp:120, dmg:12, range:1, atkSpd:1.0, move:175, armor:5, abilities:[
+                     {slot:1,key:"Q",id:"rally",label:"Rally (+25% dmg/speed)",target:"self",cd:20,dur:8, radiusTiles:3, speedMul:1.25, dmgMul:1.25}
+                   ]},
+  romanChampion:  { name:"Champion",       emoji:"🗡️🔥", hp:130, dmg:14, range:1, atkSpd:1.2, move:180, armor:5, abilities:[
+                     {slot:1,key:"Q",id:"fury",label:"Fury (+50% atk spd)",target:"self",cd:14,dur:5, atkSpdMul:1.5}
+                   ]},
+
   cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
+
+  /* NEW — Dragon Knight */
+  dragonKnight:   { name:"Dragon",         emoji:"🐲",  hp:140, dmg:18, range:1, atkSpd:1.0, move:320, armor:3, abilities:[
+                     {slot:1,key:"Q",id:"decapitate",label:"Decapitate (100 dmg)",target:"pointOrUnit",cd:10, rangeTiles:2, dmg:100, ap:1.0}
+                   ]},
+
   archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1,
-                    /* NEW: add cast range so volley can't snipe */
                     abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:14,size:3,channel:6000, rangeTiles:8}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1,
+  /* Distinct look from Archer */
+  crossbowman:    { name:"Crossbowman",    emoji:"🎯",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1,
                     abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1,
-                    /* NEW: slightly longer volley range for vets */
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹✨", hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1,
                     abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:12,size:3,channel:6000, rangeTiles:9}] },
+
   monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
   priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
+
+  /* NEW — Saint (AoE heal) */
+  venetianSaint:  { name:"Saint",          emoji:"🕊️",  hp:75,  dmg:4,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[
+                     {slot:1,key:"Q",id:"healArea",label:"Heal Area (3×3, 25)",target:"point",cd:12,size:3, heal:25, rangeTiles:6}
+                   ] },
+
   mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
-                    /* NEW: fireburst gets a cast range limit */
                     {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20, rangeTiles:6},
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] }
 };
 
 /* Tiers (rewards) */
-const TIER = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3 };
-const REWARD = { 1:2, 2:5, 3:8 };
+const TIER = {
+  recruit:1, footman:2, archer:2, monk:2,
+  swordsman:3, cavalry:3, crossbowman:3, veteranArcher:3, priest:3, mage:3,
+  romanSergeant:4, venetianSaint:4,
+  romanChampion:5, dragonKnight:5
+};
+const REWARD = { 1:2, 2:5, 3:8, 4:10, 5:12 };
 
 /* ================= Banners → owner modifiers ================= */
 function bannerMods(equipped=[]){
@@ -164,7 +189,10 @@ let ownerMods = {};
 const MKEY = { // mountonline -> type ids
   recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry",
   archers:"archer", crossbowmen:"crossbowman", veteranArchers:"veteranArcher",
-  monks:"monk", priests:"priest", mages:"mage"
+  monks:"monk", priests:"priest", mages:"mage",
+  /* NEW keys for added troops */
+  romanSergeants:"romanSergeant", romanChampions:"romanChampion",
+  dragonKnights:"dragonKnight", venetianSaints:"venetianSaint"
 };
 
 /* ================= Armies from Firestore ================= */
@@ -413,10 +441,10 @@ function applyIntents(g,intents){
         if(u._channel) continue;
         const ab=(TYPES[u.tt].abilities||[]).find(a=>a.slot===slot); if(!ab) continue;
 
-        // HOST-SIDE RANGE ENFORCEMENT for AoE spells
+        // HOST-SIDE RANGE ENFORCEMENT for targeted spells
         if(mode!=="self" && typeof ab.rangeTiles==="number"){
           const d = cheby(u.gx,u.gy,gx,gy);
-          if(d>ab.rangeTiles) continue; // out of range: ignore this cast
+          if(d>ab.rangeTiles) continue; // out of range
         }
 
         const ok=AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,gx,gy},Date.now());
@@ -437,7 +465,6 @@ async function castSlot(slot){
   const units=getUnitsView().filter(u=>selection.has(u.id));
   if(!units.length) return;
 
-  // we can't trust client cooldowns; host enforces them. we still build a list.
   const readyIds = units
     .filter(u=>slotAbilityOnUnit(u,slot))
     .map(u=>u.id);
@@ -458,7 +485,7 @@ async function castSlot(slot){
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
 
-      // CLIENT-SIDE RANGE ENFORCEMENT for AoE spells
+      // CLIENT-SIDE RANGE ENFORCEMENT
       let idsInRange = readyIds;
       if(typeof ab.rangeTiles==="number"){
         const live = getUnitsView();
@@ -490,7 +517,7 @@ function updateCooldownBadges(){
     const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
     let hasAny=false;
     for(const u of sel){ if(slotAbilityOnUnit(u,s)) hasAny=true; }
-    el.classList.toggle("oncd", false); // host enforces CD; we only style when all are on CD, which we can't know here
+    el.classList.toggle("oncd", false);
     let badge=el.querySelector(".cd-badge"); if(badge) badge.remove();
   }
 }
@@ -502,9 +529,27 @@ const AbilityHandlers={
   focus:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"focus", until:now+ab.dur*1000, dmgUp:(ab.dmgUp||3)}; return true; } },
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:(ab.healPerSec||8) * (u.priestHealMul||1)}; return true; } },
 
+  // NEW — Sergeant Rally: +25% dmg & move speed to allies in radius for 8s
+  rally:      { cast(g,u,ab,{mode},now){
+                  if(mode!=="self") return false;
+                  const until = now + (ab.dur||8)*1000;
+                  const rad = ab.radiusTiles ?? 3;
+                  for(const v of g.units){
+                    if(v.o!==u.o) continue;
+                    if(cheby(u.gx,u.gy,v.gx,v.gy) <= rad){
+                      v._aura = { kind:"rally", until, speedMul:ab.speedMul||1.25, dmgMul:ab.dmgMul||1.25 };
+                    }
+                  }
+                  (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:u.gx, xgy:u.gy, size:rad*2+1, when:now+120, did:false, until:now+600, color:"#7ccfff", dmg:0, pierce:0 });
+                  return true;
+               } },
+
+  // NEW — Champion Fury: +50% attack speed for 5s
+  fury:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"fury", until:now+(ab.dur||5)*1000, atkSpdMul:ab.atkSpdMul||1.5}; return true; } },
+
   volley: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
-    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; // host-side range check
+    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false;
     const size=ab.size||3; const until=now+(ab.channel||6000);
     u._channel={kind:"volley",until};
     (g.effects=g.effects||[]).push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
@@ -513,7 +558,7 @@ const AbilityHandlers={
   }},
   fireburst: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
-    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; // host-side range check
+    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false;
     (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2,
       when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2, whoOwner:u.o });
     return true;
@@ -533,6 +578,23 @@ const AbilityHandlers={
   charge: { cast(g,u,ab,{mode,gx,gy},now){
     const path=bresenham(u.gx,u.gy,gx,gy).slice(1,6);
     u._charge = { path, idx:0, until:now+2500 };
+    return true;
+  }},
+
+  // NEW — Dragon Decapitate: single target within 2 tiles, 100 dmg, ignores armor
+  decapitate: { cast(g,u,ab,{mode,gx,gy},now){
+    const targ = g.units.find(v=> v.o!==u.o && v.gx===gx && v.gy===gy);
+    if(!targ) return false;
+    if(cheby(u.gx,u.gy,gx,gy) > (ab.rangeTiles||2)) return false;
+    applyDamageHost(targ, ab.dmg||100, ab.ap??1.0, u.o);
+    localFX.push({kind:"burst",gx:targ.gx,gy:targ.gy,until:Date.now()+400});
+    return true;
+  }},
+
+  // NEW — Saint Heal Area: heals allies in 3x3 for 25
+  healArea:   { cast(g,u,ab,{mode,gx,gy},now){
+    if(mode!=="point") return false;
+    (g.effects=g.effects||[]).push({ type:"healSquareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||3, when:now+120, did:false, until:now+600, color:"#98f5e1", heal:ab.heal||25 });
     return true;
   }},
 };
@@ -599,7 +661,7 @@ function inRange(u, v){
 }
 
 /* ================= Simulation ================= */
-function applyDamage(target, dmg, ap, owner){
+function applyDamageHost(target, dmg, ap, owner){
   const baseArmor=(TYPES[target.tt].armor||0);
   const auraArmor = (target._aura?.kind==="shield"?3:0) + (target._aura?.kind==="brace"?2:0);
   const totalArmor = baseArmor + auraArmor;
@@ -613,8 +675,21 @@ function pulseSquare(g,cx,cy,size,owner,dmg,pierce){
   for(const v of g.units){
     if(v.o===owner) continue;
     if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){
-      applyDamage(v, dmg, pierce||0, owner);
+      applyDamageHost(v, dmg, pierce||0, owner);
       localFX.push({kind:"burst",gx:v.gx,gy:v.gy,until:Date.now()+280});
+    }
+  }
+}
+function applyHeal(target, amount){
+  target.hp = Math.min(target.maxHp, target.hp + Math.max(0, amount|0));
+}
+function healSquare(g,cx,cy,size,owner,heal){
+  const half=Math.floor(size/2);
+  for(const v of g.units){
+    if(v.o!==owner) continue;
+    if(Math.abs(v.gx-cx)<=half && Math.abs(v.gy-cy)<=half){
+      applyHeal(v, heal);
+      localFX.push({kind:"tile",gx:v.gx,gy:v.gy,color:"#a7f3d0",until:Date.now()+300});
     }
   }
 }
@@ -644,19 +719,22 @@ function simulate(g, dt){
       const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
       let hit=null; 
       for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
-      if(hit){ applyDamage(hit, pr.dmg, pr.ap||0.5, pr.who); continue; }
+      if(hit){ applyDamageHost(hit, pr.dmg, pr.ap||0.5, pr.who); continue; }
       if(pr.idx<pr.path.length-1) keep.push(pr);
     } else keep.push(pr);
   }
   g.projs=keep;
 
-  // effects (AOE pulses)
+  // effects (AOE pulses / heals)
   for(const e of (g.effects||[])){
     if(e.type==="squarePulse"){
       while(e.next<e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0); e.next++; }
     }
     if(e.type==="squareOnce"){
       if(!e.did && now>=e.when){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0); e.did=true; }
+    }
+    if(e.type==="healSquareOnce"){
+      if(!e.did && now>=e.when){ healSquare(g,e.xgx,e.xgy,e.size,e.who,e.heal||25); e.did=true; }
     }
   }
 
@@ -679,12 +757,12 @@ function simulate(g, dt){
         u._charge.until = now;
       }
       if(!u._charge || u._charge.idx>= (u._charge.path?.length||0)){
-        for(const v of g.units){ if(v.o===u.o) continue; if(manh(u.gx,u.gy,v.gx,v.gy)<=1){ applyDamage(v, 14, 0, u.o); } }
+        for(const v of g.units){ if(v.o===u.o) continue; if(manh(u.gx,u.gy,v.gx,v.gy)<=1){ applyDamageHost(v, 14, 0, u.o); } }
       }
     }
   }
 
-  // Targeting & attacks
+  // Targeting & attacks (with aura multipliers)
   for(const u of g.units){
     if(u._channel) continue;
 
@@ -694,9 +772,11 @@ function simulate(g, dt){
 
     const inR = target && inRange(u, target);
     if(inR && u.cd<=0){
-      const dmg=(u.dmg||5)+(u._aura?.dmgUp||0);
-      applyDamage(target, dmg, 0, u.o);
-      u.cd = Math.max(.05, 1/(u.atkSpd||1));
+      const baseD=(u.dmg||5)+(u._aura?.dmgUp||0);
+      const dmg=Math.round(baseD * (u._aura?.dmgMul || 1));
+      applyDamageHost(target, dmg, 0, u.o);
+      const effAtk = Math.max(0.1, (u.atkSpd||1) * (u._aura?.atkSpdMul || 1));
+      u.cd = Math.max(.05, 1/effAtk);
     }
 
     if(u._hold) continue;
@@ -709,15 +789,15 @@ function simulate(g, dt){
     }
   }
 
-  // Movement
+  // Movement (respect rally/brace)
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
-    const speedSquares = Math.max(0.5,(u.move||200))*PX_TO_SQUARES_PER_SEC*(u._aura?.kind==="brace"?0.75:1);
+    const speedSquares = Math.max(0.5,(u.move||200))*PX_TO_SQUARES_PER_SEC*(u._aura?.kind==="brace"?0.75:1)*(u._aura?.speedMul||1);
     const stepEveryMs  = Math.max(80, Math.floor(1000/Math.max(0.5,speedSquares)));
-    const now = Date.now();
-    if(now < u.nextStepAt) continue;
-    u.nextStepAt = now + stepEveryMs;
+    const now2 = Date.now();
+    if(now2 < u.nextStepAt) continue;
+    u.nextStepAt = now2 + stepEveryMs;
 
     if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
     const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
@@ -728,13 +808,13 @@ function simulate(g, dt){
   const occ2 = occupancy(g.units);
   for(const [k, list] of occ2){
     if(list.length<=1) continue;
-    const keep = list[0];
+    const keepU = list[0];
     for(let i=1;i<list.length;i++){
       const u = list[i];
       const free = nearestFree(u.gx,u.gy, occ2);
       if(free){ u.gx=free.gx; u.gy=free.gy; const nk=free.gx+"|"+free.gy; occ2.set(nk,(occ2.get(nk)||[]).concat(u)); }
     }
-    occ2.set(k,[keep]);
+    occ2.set(k,[keepU]);
   }
 
   // deaths/stat keeping
@@ -893,7 +973,7 @@ function draw(){
   // grid
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); } <!-- fixed -->
+  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); } // fixed
 
   // effects
   const eff = state?.effects || [];
@@ -998,3 +1078,5 @@ function maybeWinnerBanner(){
 </script>
 </body>
 </html>
+
+
