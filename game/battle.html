@@ -103,15 +103,18 @@ const TYPES = {
   swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, range:1, atkSpd:1.0, move:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
   cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, range:1, atkSpd:0.9, move:300, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
   archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  range:4, atkSpd:0.9, move:185, armor:1,
-                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:14,size:3,channel:6000}] },
+                    /* NEW: add cast range so volley can't snipe */
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:14,size:3,channel:6000, rangeTiles:8}] },
   crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, range:4, atkSpd:0.7, move:180, armor:1,
                     abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
   veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  range:5, atkSpd:1.1, move:185, armor:1,
-                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:12,size:3,channel:6000}] },
+                    /* NEW: slightly longer volley range for vets */
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:12,size:3,channel:6000, rangeTiles:9}] },
   monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  range:1, atkSpd:0.9, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
   priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  range:2, atkSpd:0.7, move:180, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
   mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, range:3, atkSpd:0.7, move:185, armor:0, abilities:[
-                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
+                    /* NEW: fireburst gets a cast range limit */
+                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20, rangeTiles:6},
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] }
 };
@@ -403,23 +406,19 @@ function applyIntents(g,intents){
       }
     }
 
-    if(kind==="orderNearest"){ // A key → attack nearest (set goal to nearest)
-      const {ids}=payload;
-      for(const id of ids){
-        const u=byId.get(id); if(!u||u.o!==user) continue;
-        let best=null,bd=1e9;
-        for(const v of g.units){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){bd=d; best=v;} }
-        if(best){ u.goalGX=best.gx; u.goalGY=best.gy; }
-      }
-    }
-
     if(kind==="ability"){
       const {slot,ids,mode,gx,gy}=payload;
       for(const id of ids){
         const u=byId.get(id); if(!u||u.o!==user) continue;
         if(u._channel) continue;
         const ab=(TYPES[u.tt].abilities||[]).find(a=>a.slot===slot); if(!ab) continue;
-        if(u.acd?.[slot]>0) continue;
+
+        // HOST-SIDE RANGE ENFORCEMENT for AoE spells
+        if(mode!=="self" && typeof ab.rangeTiles==="number"){
+          const d = cheby(u.gx,u.gy,gx,gy);
+          if(d>ab.rangeTiles) continue; // out of range: ignore this cast
+        }
+
         const ok=AbilityHandlers[ab.id]?.cast(g,u,ab,{mode,gx,gy},Date.now());
         if(ok){ u.acd[slot]=ab.cd; }
       }
@@ -428,15 +427,20 @@ function applyIntents(g,intents){
   return g;
 }
 
+/* ===== UI helper: show range in hint ===== */
+function rangeText(ab){
+  return (typeof ab.rangeTiles==="number") ? ` (range ${ab.rangeTiles})` : "";
+}
+
 /* Ability casting UI */
 async function castSlot(slot){
   const units=getUnitsView().filter(u=>selection.has(u.id));
   if(!units.length) return;
 
-  const readyIds = units.filter(u=>{
-    const ab=slotAbilityOnUnit(u,slot);
-    return ab && (u.acd?.[slot]||0)<=0 && !u._channel;
-  }).map(u=>u.id);
+  // we can't trust client cooldowns; host enforces them. we still build a list.
+  const readyIds = units
+    .filter(u=>slotAbilityOnUnit(u,slot))
+    .map(u=>u.id);
 
   if(!readyIds.length){ flash("⏳ No selected unit ready for this ability"); return; }
 
@@ -449,11 +453,29 @@ async function castSlot(slot){
     fxRingOnSelection();
   }else{
     targeting={slot,ab,ids:readyIds};
-    showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
+    showHint(`🎯 ${ab.label}${rangeText(ab)}: click a tile (Esc cancel)`);
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      pushIntent("ability",{slot,ids:readyIds,mode:(ab.target==="pointOrUnit"?"point":"point"), gx,gy});
+
+      // CLIENT-SIDE RANGE ENFORCEMENT for AoE spells
+      let idsInRange = readyIds;
+      if(typeof ab.rangeTiles==="number"){
+        const live = getUnitsView();
+        const byId=new Map(live.map(u=>[u.id,u]));
+        idsInRange = readyIds.filter(id=>{
+          const u = byId.get(id);
+          if(!u) return false;
+          return cheby(u.gx,u.gy,gx,gy) <= ab.rangeTiles;
+        });
+      }
+
+      if(!idsInRange.length){
+        flash(`❌ Out of range${typeof ab.rangeTiles==="number" ? ` (max ${ab.rangeTiles})` : ""}`);
+        hideHint(); targeting=null; cv.removeEventListener("click", once); return;
+      }
+
+      pushIntent("ability",{slot,ids:idsInRange,mode:(ab.target==="pointOrUnit"?"point":"point"), gx,gy});
       fxTile(gx,gy); hideHint(); targeting=null;
       cv.removeEventListener("click", once);
     };
@@ -466,22 +488,12 @@ function updateCooldownBadges(){
   const sel = getUnitsView().filter(u=>selection.has(u.id));
   for(let s=1;s<=4;s++){
     const el=abil.querySelector(`[data-slot="${s}"]`); if(!el) continue;
-    let times=[]; let hasAny=false;
-    for(const u of sel){
-      const ab=slotAbilityOnUnit(u,s);
-      if(ab){ hasAny=true; times.push(Math.max(0, u.acd?.[s]||0)); }
-    }
-    const allCd = hasAny && times.every(t=>t>0);
-    const minRem = hasAny ? Math.min(...times) : 0;
-    el.classList.toggle("oncd", allCd);
-    let badge=el.querySelector(".cd-badge");
-    if(hasAny && minRem>0){
-      if(!badge){ badge=document.createElement("div"); badge.className="cd-badge"; el.appendChild(badge); }
-      badge.textContent = `${Math.ceil(minRem)}s`;
-    }else if(badge){ badge.remove(); }
+    let hasAny=false;
+    for(const u of sel){ if(slotAbilityOnUnit(u,s)) hasAny=true; }
+    el.classList.toggle("oncd", false); // host enforces CD; we only style when all are on CD, which we can't know here
+    let badge=el.querySelector(".cd-badge"); if(badge) badge.remove();
   }
 }
-setInterval(updateCooldownBadges, 250);
 
 /* ================= Abilities / projectiles ================= */
 const AbilityHandlers={
@@ -492,6 +504,7 @@ const AbilityHandlers={
 
   volley: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
+    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; // host-side range check
     const size=ab.size||3; const until=now+(ab.channel||6000);
     u._channel={kind:"volley",until};
     (g.effects=g.effects||[]).push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size,
@@ -500,6 +513,7 @@ const AbilityHandlers={
   }},
   fireburst: { cast(g,u,ab,{mode,gx,gy},now){
     if(mode!=="point")return false;
+    if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; // host-side range check
     (g.effects=g.effects||[]).push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2,
       when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20)*(ownerMods[u.o]?.magic||1), pierce:0.2, whoOwner:u.o });
     return true;
@@ -670,7 +684,7 @@ function simulate(g, dt){
     }
   }
 
-  // Targeting & attacks (auto-acquire nearest within AGGRO; attack if in range)
+  // Targeting & attacks
   for(const u of g.units){
     if(u._channel) continue;
 
@@ -687,7 +701,7 @@ function simulate(g, dt){
 
     if(u._hold) continue;
 
-    // Attack-move auto-aggro while traveling or idle
+    // Attack-move auto-aggro
     if(target && !inR){
       if(bd <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
         u.goalGX = target.gx; u.goalGY = target.gy;
@@ -695,12 +709,13 @@ function simulate(g, dt){
     }
   }
 
-  // Movement (neighbor step with time slicing)
+  // Movement
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
     const speedSquares = Math.max(0.5,(u.move||200))*PX_TO_SQUARES_PER_SEC*(u._aura?.kind==="brace"?0.75:1);
     const stepEveryMs  = Math.max(80, Math.floor(1000/Math.max(0.5,speedSquares)));
+    const now = Date.now();
     if(now < u.nextStepAt) continue;
     u.nextStepAt = now + stepEveryMs;
 
@@ -878,7 +893,7 @@ function draw(){
   // grid
   ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
   for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(x,y); ctx.stroke(); }
+  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); } <!-- fixed -->
 
   // effects
   const eff = state?.effects || [];
@@ -897,7 +912,7 @@ function draw(){
     if(p.type==="bolt"){
       const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
       const sx=step.gx*TILE - cam.x, sy=step.gy*TILE - cam.y;
-      ctx.globalAlpha=.9; ctx.fillStyle=p.color||"#baf"; ctx.fillRect(sx+TILE*.25, sy+TILE*.25, TILE*.5, TILE*.5); ctx.globalAlpha=1;
+      ctx.globalAlpha=.9; ctx.fillStyle="#baf"; ctx.fillRect(sx+TILE*.25, sy+TILE*.25, TILE*.5, TILE*.5); ctx.globalAlpha=1;
     }
   }
 
@@ -933,8 +948,8 @@ function draw(){
   for(let i=localFX.length-1;i>=0;i--){
     const fx=localFX[i]; const rem=fx.until-Date.now(); if(rem<=0){ localFX.splice(i,1); continue; }
     const a=Math.max(0, Math.min(1, rem/600));
-    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
-    if(fx.kind==="tile"){ const sx=fx.gx*TILE - cam.x, sy=fx.gy*TILE - cam.y; ctx.save(); ctx.globalAlpha=.15+.25*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
+    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle="#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+    if(fx.kind==="tile"){ const sx=fx.gx*TILE - cam.x, sy=fx.gy*TILE - cam.y; ctx.save(); ctx.globalAlpha=.15+.25*a; ctx.fillStyle="#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
     if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
   }
 
@@ -983,9 +998,3 @@ function maybeWinnerBanner(){
 </script>
 </body>
 </html>
-
-
-
-
-
-
