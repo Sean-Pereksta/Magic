@@ -16,7 +16,7 @@
     box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726; position:relative;
   }
   .titlebar{ height:38px; display:flex; align-items:center; gap:8px; padding:0 10px; background:#0f1a2b; border-bottom:1px solid #203049; font-weight:700 }
-  .titlebar .dot{ width:10px; height:10px; border-radius:50% } .red{background:#ff5f57}.yellow{background:#ffbd2e}.green{background:#28c840}
+  .titlebar .dot{ width:10px; height:10px; border-radius:50% } .red{background:#ff5f57}.yellow{background:#ffbd2e}.green{background+#28c840}
   .view{ position:absolute; inset:38px 0 0 0 }
   canvas{ width:100%; height:100%; display:block; background:#0d1020; cursor:crosshair }
   #ui{ position:absolute; inset:0; pointer-events:none }
@@ -119,13 +119,16 @@ const TYPES = {
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  rangeTiles:1, atkSpd:1.0, moveSpd:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
   swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
   cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, rangeTiles:1, atkSpd:0.9, moveSpd:440, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
-  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  rangeTiles:4, atkSpd:0.9, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, rangeTiles:4, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  rangeTiles:5, atkSpd:1.1, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
+  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  rangeTiles:4, atkSpd:0.9, moveSpd:250, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000, rangeTiles:8}] }, <!-- NEW -->
+  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, rangeTiles:4, atkSpd:0.7, moveSpd:240, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  rangeTiles:5, atkSpd:1.1, moveSpd:250, armor:1,
+                    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000, rangeTiles:9}] }, <!-- NEW -->
   monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  rangeTiles:1, atkSpd:0.9, moveSpd:245, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
   priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  rangeTiles:2, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
   mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, rangeTiles:3, atkSpd:0.7, moveSpd:255, armor:0, abilities:[
-                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
+                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20, rangeTiles:6}, <!-- NEW -->
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] },
   /* Siege structures */
@@ -368,6 +371,9 @@ function slotAbility(slot){
   return null;
 }
 
+/* NEW: range text helper */
+function rangeText(ab){ return (typeof ab.rangeTiles==="number") ? ` (range ${ab.rangeTiles})` : ""; }
+
 const AbilityHandlers={
   brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"brace", until:now+ab.dur*1000}; return true; } },
   shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"shield",until:now+ab.dur*1000}; return true; } },
@@ -375,12 +381,15 @@ const AbilityHandlers={
   mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self")return false; u._aura={kind:"mend",  until:now+ab.dur*1000, healPerSec:8*u.priestHealMul}; return true; } },
   volley:     { cast(g,u,ab,{mode,gx,gy},now){
                   if(mode!=="point")return false;
+                  if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; /* NEW: range check */
                   const size=ab.size||3; const until=now+(ab.channel||6000);
                   u._channel={kind:"volley",until};
                   g.effects.push({ type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size, pulses:[now+700,now+2500,now+4300], next:0, until, color:"#bde3ff", dmg:10, pierce:0.15 });
                   return true;
                } },
-  fireburst:  { cast(g,u,ab,{mode,gx,gy},now){ if(mode!=="point")return false;
+  fireburst:  { cast(g,u,ab,{mode,gx,gy},now){
+                  if(mode!=="point")return false;
+                  if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) return false; /* NEW: range check */
                   g.effects.push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size:ab.size||2, when:now+120, did:false, until:now+600, color:"#f88", dmg:(ab.dmg||20), pierce:0.2 });
                   return true; } },
   arcaneBolt: { cast(g,u,ab,{mode,gx,gy},now){
@@ -409,18 +418,27 @@ function castSlot(slot){
     }
     if(casted) fxRingOnSelection(); else flash("⏳ All selected are on cooldown");
   }else{
-    targeting={slot:ab.slot,ab,ids}; showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
+    targeting={slot:ab.slot,ab,ids};
+    showHint(`🎯 ${ab.label}${rangeText(ab)}: click a tile (Esc cancel)`); /* NEW: shows range */
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      let casted=false;
+
+      // NEW: client-side range enforcement
+      let any=false;
       for(const u of state.units){
         if(!ids.includes(u.id) || u.o==="Defenders") continue;
         if((u.acd?.[ab.slot]||0) > 0) continue;
-        if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){ u.acd[ab.slot]=ab.cd; casted=true; }
+        if(typeof ab.rangeTiles==="number" && cheby(u.gx,u.gy,gx,gy) > ab.rangeTiles) continue;
+        if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){ u.acd[ab.slot]=ab.cd; any=true; }
       }
-      if(!casted) flash("⏳ All selected are on cooldown");
-      fxTile(gx,gy); hideHint(); targeting=null;
+      if(!any){
+        if(typeof ab.rangeTiles==="number") flash(`❌ Out of range (max ${ab.rangeTiles})`);
+        else flash("⏳ All selected are on cooldown");
+      } else {
+        fxTile(gx,gy);
+      }
+      hideHint(); targeting=null;
       cv.removeEventListener("click", once);
     };
     cv.addEventListener("click", once);
@@ -432,7 +450,7 @@ function fxTile(gx,gy){ localFX.push({kind:"tile",gx,gy,color:"#aef",until:Date.
 /* ---------- Geometry helpers ---------- */
 function bresenham(x0,y0,x1,y1){
   const pts=[]; let dx=Math.abs(x1-x0), sx=x0<x1?1:-1; let dy=-Math.abs(y1-y0), sy=y0<y1?1:-1; let err=dx+dy, x=x0,y=y0;
-  while(true){ pts.push({gx:x,gy:y}); if(x===x1&&y===y1) break; const e2=2*err; if(e2>=dy){ err+=dy; x+=sx; } if(e2<=dx){ err+=dx; y+=sy; } }
+  while(true){ pts.push({gx:x,gy:y}); if(x===y1&&y===y1) break; const e2=2*err; if(e2>=dy){ err+=dy; x+=sx; } if(e2<=dx){ err+=dx; y+=sy; } }
   return pts;
 }
 
@@ -531,7 +549,7 @@ function simulate(g, dt){
   const occ  = occupancy(g.units);
   const reserved = new Set();
 
-  // Charge movement + impact (same as Local Battle)
+  // Charge movement + impact
   for(const u of g.units){
     if(u._channel) continue;
     if(u._charge && u._charge.until > now){
@@ -558,7 +576,7 @@ function simulate(g, dt){
     }
   }
 
-  // Targeting & attacks (nearest; aggro-gated goal setting)
+  // Targeting & attacks
   for(const u of g.units){
     if(u._channel) continue;
 
@@ -590,7 +608,7 @@ function simulate(g, dt){
     }
   }
 
-  // Movement (single neighbor step, no scatter fallback)
+  // Movement
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
@@ -663,7 +681,7 @@ function renderHUD(){
   selInfo.innerHTML = sel.length ? `${sel.length} unit(s) selected — <strong>A</strong>: nearest • <strong>H</strong>: hold` : "Select units";
   const slotMap=new Map();
   for(const u of sel){ for(const a of (TYPES[u.tt].abilities||[])){ if(!slotMap.has(a.slot)) slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:TYPES[u.tt].emoji }); } }
-  const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
+  const keys={1:"Q",2:"W",3:"E",4:"R"}; const abil=document.getElementById("abilities"); abil.innerHTML="";
   for(let s=1;s<=4;s++){
     const spec=slotMap.get(s);
     const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
@@ -685,7 +703,7 @@ function renderBoard(){
   }
 }
 
-/* ---------- Input handlers (same feel as Local Battle) ---------- */
+/* ---------- Input handlers ---------- */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.clientX=e.clientX; mouse.clientY=e.clientY; mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 
@@ -834,7 +852,7 @@ function draw(){
   for(let i=localFX.length-1;i>=0;i--){
     const fx=localFX[i]; const rem=fx.until-Date.now(); if(rem<=0){ localFX.splice(i,1); continue; }
     const a=Math.max(0, Math.min(1, rem/600));
-    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE - cam.y + TILE/2; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(fx.kind==="tile"){ const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y; ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
     if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
   }
@@ -965,6 +983,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
