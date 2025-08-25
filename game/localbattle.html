@@ -115,13 +115,22 @@ const TYPES = {
   footman:        { name:"Footman",        emoji:"🛡️",  hp:85,  dmg:7,  rangeTiles:1, atkSpd:1.0, moveSpd:175, armor:2, abilities:[{slot:1,key:"Q",id:"brace",label:"Brace",target:"self",cd:10,dur:4}] },
   swordsman:      { name:"Swordsman",      emoji:"🗡️",  hp:100, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:170, armor:4, abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}] },
   cavalry:        { name:"Cavalry",        emoji:"🐎",  hp:115, dmg:12, rangeTiles:1, atkSpd:0.9, moveSpd:440, armor:2, abilities:[{slot:1,key:"Q",id:"charge",label:"Charge",target:"pointOrUnit",cd:6}] },
-  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  rangeTiles:4, atkSpd:0.9, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000}] },
-  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, rangeTiles:4, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}] },
-  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  rangeTiles:5, atkSpd:1.1, moveSpd:250, armor:1, abilities:[{slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000}] },
+  archer:         { name:"Archer",         emoji:"🏹",  hp:60,  dmg:7,  rangeTiles:4, atkSpd:0.9, moveSpd:250, armor:1, abilities:[
+                    // NEW: add cast range to volley so it can’t snipe across map
+                    {slot:1,key:"Q",id:"volley",label:"Volley",target:"point",cd:12,size:3,channel:6000, rangeTiles:8}
+                  ] },
+  crossbowman:    { name:"Crossbowman",    emoji:"🏹",  hp:66,  dmg:12, rangeTiles:4, atkSpd:0.7, moveSpd:240, armor:1, abilities:[
+                    {slot:1,key:"Q",id:"pierceBolt",label:"Piercing Bolt",target:"pointOrUnit",cd:8, dmg:28, ap:0.65, rangeTiles:10, speedTiles:10}
+                  ] },
+  veteranArcher:  { name:"Veteran Archer", emoji:"🏹",  hp:64,  dmg:9,  rangeTiles:5, atkSpd:1.1, moveSpd:250, armor:1, abilities:[
+                    // NEW: slightly longer volley range for veterans
+                    {slot:1,key:"Q",id:"volley",label:"Volley+",target:"point",cd:10,size:3,channel:5000, rangeTiles:9}
+                  ] },
   monk:           { name:"Monk",           emoji:"🧘",  hp:68,  dmg:6,  rangeTiles:1, atkSpd:0.9, moveSpd:245, armor:1, abilities:[{slot:1,key:"Q",id:"focus",label:"Focus (+dmg)",target:"self",cd:12,dur:5, dmgUp:3}] },
   priest:         { name:"Priest",         emoji:"✝️",  hp:70,  dmg:3,  rangeTiles:2, atkSpd:0.7, moveSpd:240, armor:1, abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (HoT)",target:"self",cd:10,dur:5, healPerSec:8}] },
   mage:           { name:"Mage",           emoji:"🔮",  hp:56,  dmg:14, rangeTiles:3, atkSpd:0.7, moveSpd:255, armor:0, abilities:[
-                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20},
+                    // NEW: fireburst gets a cast range limit
+                    {slot:1,key:"Q",id:"fireburst",label:"Fireburst",target:"point",cd:12,size:2, dmg:20, rangeTiles:6},
                     {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt",target:"pointOrUnit",cd:7,dmg:34, ap:0.5, rangeTiles:10, speedTiles:10}
                    ] }
 };
@@ -202,15 +211,12 @@ async function seedBattle(){
     u.goalGX=null; u.goalGY=null; u.nextStepAt=0; u.axisPref = (Math.random()<.5)?"x":"y";
   }
 
-  /* 👇 NEW: Raiders begin with an attack-move across the field.
-     We aim them toward a shallow column on the player’s side (gx≈2)
-     while keeping their current row to preserve formation. */
+  /* 👇 Raiders begin with an attack-move across the field. */
   const RAIDERS_ATTACK_COL = 2;
   for(const u of units){
     if(u.o === "Raiders"){
       u.goalGX = RAIDERS_ATTACK_COL;
       u.goalGY = clamp(u.gy, 0, GRID_H-1);
-      // Optional: bias horizontal movement a bit
       if(Math.random()<0.7) u.axisPref = "x";
     }
   }
@@ -361,6 +367,12 @@ function slotAbility(slot){
   for(const u of sel){ const a=(TYPES[u.tt].abilities||[]).find(x=>x.slot===slot); if(a) return a; }
   return null;
 }
+
+/* ---------- NEW: helper to pretty-range in hint ---------- */
+function rangeText(ab){
+  return (typeof ab.rangeTiles==="number") ? ` (range ${ab.rangeTiles})` : "";
+}
+
 function castSlot(slot){
   const ids=Array.from(selection); if(!ids.length) return;
   const ab=slotAbility(slot); if(!ab){ flash("No ability on this slot for selection"); return; }
@@ -374,18 +386,36 @@ function castSlot(slot){
     }
     if(casted) fxRingOnSelection(); else flash("⏳ All selected are on cooldown");
   }else{
-    targeting={slot:ab.slot,ab,ids}; showHint(`🎯 ${ab.label}: click a tile (Esc cancel)`);
+    targeting={slot:ab.slot,ab,ids}; showHint(`🎯 ${ab.label}${rangeText(ab)}: click a tile (Esc cancel)`);
     const once=(e)=>{
       if(e.button!==0){ cv.removeEventListener("click", once); hideHint(); targeting=null; return;}
       const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      let casted=false;
+
+      // NEW: enforce ability cast ranges (chebyshev distance in tiles)
+      let casted=false, anyCd=false, blockedRange=false;
       for(const u of state.units){
         if(!ids.includes(u.id) || u.o!==ME) continue;
-        if((u.acd?.[ab.slot]||0) > 0) continue;
+
+        const rem=(u.acd?.[ab.slot]||0);
+        if(rem>0){ anyCd=true; continue; }
+
+        if(typeof ab.rangeTiles==="number"){
+          const d = cheby(u.gx,u.gy,gx,gy);
+          if(d>ab.rangeTiles){ blockedRange=true; continue; }
+        }
+
         if(AbilityHandlers[ab.id]?.cast(state,u,ab,{mode:"point",gx,gy},Date.now())){ u.acd[ab.slot]=ab.cd; casted=true; }
       }
-      if(!casted) flash("⏳ All selected are on cooldown");
-      fxTile(gx,gy); hideHint(); targeting=null;
+
+      if(casted){
+        fxTile(gx,gy);
+      }else{
+        if(blockedRange) flash(`❌ Out of range${typeof ab.rangeTiles==="number" ? ` (max ${ab.rangeTiles})` : ""}`);
+        else if(anyCd)   flash("⏳ All selected are on cooldown");
+        else             flash("⚠️ Unable to cast");
+      }
+
+      hideHint(); targeting=null;
       cv.removeEventListener("click", once);
     };
     cv.addEventListener("click", once);
@@ -633,7 +663,6 @@ function simulate(g, dt){
   for(const u of g.units){
     if(u._channel) continue;
 
-    // HOLD: only attack if target in range; no movement orders
     let target=null, bd=1e9;
     for(const v of g.units){ if(v.o===u.o) continue; const d=manh(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
     const tSpec=TYPES[u.tt]; const rng=tSpec.rangeTiles||1;
@@ -647,7 +676,6 @@ function simulate(g, dt){
 
     if(u._hold) continue;
 
-    // Attack-move auto-agro while traveling, or set goal if idle and enemy in aggro
     if(target && !inR){
       if(bd <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
         u.goalGX = target.gx; u.goalGY = target.gy;
@@ -788,7 +816,7 @@ function draw(){
   }
 
   // drag box
-  if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
+  if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y); const w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
 
   renderBoard(); updateCooldownBadges();
   requestAnimationFrame(draw);
@@ -839,7 +867,7 @@ function loop(){
 (async function init(){
   cam.x = WORLD.w/2 - cv.width/2; cam.y = WORLD.h/2 - cv.height/2; clampCam();
   const ok = await seedBattle(); if(!ok) return;
-    centerCamOnOwner(ME);
+  centerCamOnOwner(ME);
   draw(); loop();
 })();
 
@@ -850,6 +878,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
