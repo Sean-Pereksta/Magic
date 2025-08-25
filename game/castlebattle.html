@@ -78,7 +78,7 @@ const db  = getFirestore(app);
 /* ---------- Params ---------- */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
-const SIEGE_ID = Q.get("siegeId");  // set by startCastleSiege in overworld
+const SIEGE_ID = Q.get("siegeId");
 const RETURN_ROUTE = "/game/mountonline.html";
 
 /* ---------- Visuals ---------- */
@@ -99,8 +99,7 @@ function resizeCanvas(){
 window.addEventListener("resize", resizeCanvas);
 
 const TILE=48;
-const GRID_W=160;                 // big map
-const GRID_H=64;
+const GRID_W=160, GRID_H=64;
 const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
 
 const cam={ x: 0, y: 0, speed:1600 };
@@ -110,7 +109,7 @@ function manh(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
 function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
 
-/* ---------- “Grid Tactics”-style constants ---------- */
+/* ---------- Grid tactics constants ---------- */
 const PX_TO_SQUARES_PER_SEC = 1 / (TILE*0.9);
 const AGGRO_TILES = 7;
 
@@ -137,7 +136,7 @@ const TIER   = { recruit:1, footman:2, archer:2, monk:2, swordsman:3, cavalry:3,
 const REWARD = { 1:2, 2:5, 3:8 };
 
 /* ---------- State ---------- */
-let state=null; // { units, effects, projs, stats }
+let state=null;
 let ownerMods={};
 let siege=null;
 
@@ -156,7 +155,7 @@ function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; 
 function hideHint(){ document.getElementById("hint").style.display="none"; }
 
 /* ---------- Siege geometry ---------- */
-const WALL_X = Math.floor(GRID_W * 0.62);  // wall column
+const WALL_X = Math.floor(GRID_W * 0.62);
 const WALL   = { hp:500, maxHp:500, alive:true };
 const BALLISTA_POS = [
   { gx: WALL_X+3, gy: Math.floor(GRID_H*0.25) },
@@ -170,9 +169,9 @@ const WALL_SEGMENT_POS = [
 ];
 function isWallBlocking(u, nx, ny){
   if(!WALL.alive) return false;
-  if(nx === WALL_X) return true;                 // cannot stand on wall column
-  if(u.gx < WALL_X && nx >= WALL_X) return true; // cannot cross from left to right
-  if(u.gx > WALL_X && nx <= WALL_X-1) return true; // cannot cross from right to left
+  if(nx === WALL_X) return true;
+  if(u.gx < WALL_X && nx >= WALL_X) return true;
+  if(u.gx > WALL_X && nx <= WALL_X-1) return true;
   return false;
 }
 
@@ -219,10 +218,8 @@ function spawnPlayerArmy(units, owner, army, origin){
 
 function defenderComposition(n){
   const W = { footman:.22, swordsman:.10, archer:.22, crossbowman:.08, veteranArcher:.06, monk:.10, priest:.10, mage:.12 };
-  const keys = Object.keys(W);
-  const base={}, floors={}, remainders=[];
-  let total=0;
-  for(const k of keys){
+  const base={}; let total=0; const floors={}, remainders=[];
+  for(const k of Object.keys(W)){
     const raw=n * W[k]; const f=Math.floor(raw);
     floors[k]=f; base[k]=f; total+=f; remainders.push({k, frac: raw - f});
   }
@@ -261,13 +258,11 @@ function spawnDefenders(units, n){
       left -= take;
     }
   }
-  // Ballistas
   for(const p of BALLISTA_POS){
     const b = mkUnit("ballista", "Defenders", p.gx, p.gy);
     b._hold = true;
     units.push(b);
   }
-  // Wall segments (shared HP)
   for(const p of WALL_SEGMENT_POS){
     const w = mkUnit("wall","Defenders", p.gx, p.gy);
     w.hp = WALL.hp; w.maxHp = WALL.maxHp; w._hold = true;
@@ -275,7 +270,7 @@ function spawnDefenders(units, n){
   }
 }
 
-/* ---------- Occupancy helpers ---------- */
+/* ---------- Occupancy / movement helpers ---------- */
 function occupancy(units){ const m=new Map(); for(const u of units){ const k=u.gx+"|"+u.gy; if(!m.has(k)) m.set(k,[]); m.get(k).push(u);} return m; }
 function occupiedOrReserved(gx,gy, occ, reserved){ return occ.has(gx+"|"+gy) || reserved.has(gx+"|"+gy); }
 function moveTo(u, gx, gy, occ, reserved){
@@ -284,7 +279,6 @@ function moveTo(u, gx, gy, occ, reserved){
   u.gx=gx; u.gy=gy;
   const toK = gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); reserved.add(toK);
 }
-/* Neighbor step w/ axis preference — includes wall blocking (matches Local Battle feel) */
 function neighborStepToward(u, goalGX, goalGY, occ, reserved){
   if(u.gx===goalGX && u.gy===goalGY) return null;
   const dx = goalGX - u.gx, dy = goalGY - u.gy;
@@ -323,7 +317,7 @@ function nearestFree(gx,gy, occ){
   return null;
 }
 
-/* ---------- Orders (player = Attackers) ---------- */
+/* ---------- Orders ---------- */
 function orderAttackMove(ids, gx, gy){
   for (const u of state.units){ if (ids.includes(u.id) && u.o !== "Defenders"){ u.goalGX=gx; u.goalGY=gy; } }
 }
@@ -455,14 +449,8 @@ function applyDamage(g, target, dmg, ap, owner){
     for(const w of g.units){ if(w.tt==="wall") w.hp = WALL.hp; }
     if(WALL.hp<=0 && WALL.alive){
       WALL.alive=false;
-      // When wall falls, defenders immediately chase nearest attackers
-      for(const v of g.units){
-        if(v.o==="Defenders" && v.tt!=="wall"){
-          v._hold=false;
-          const target = nearestEnemy(v, "Defenders", g.units);
-          if(target){ v.goalGX = target.gx; v.goalGY = target.gy; }
-        }
-      }
+      // Drop HOLD only — no forced chase; use same aggro gating as Local Battle
+      for(const v of g.units){ if(v.o==="Defenders" && v.tt!=="wall"){ v._hold=false; } }
       localFX.push({kind:"tile",gx:WALL_X-1,gy:Math.floor(GRID_H/2),color:"#f90",until:Date.now()+900});
     }
     target._lastBy = owner;
@@ -481,7 +469,7 @@ function nearestEnemy(u, ownerTag, list){
   return best;
 }
 
-/* ---------- Sim ---------- */
+/* ---------- Sim (exact Local Battle behavior) ---------- */
 function inRange(u, v){
   const r=u.rangeTiles||1;
   return r>1 ? (cheby(u.gx,u.gy,v.gx,v.gy) <= r) : (manh(u.gx,u.gy,v.gx,v.gy) <= 1);
@@ -520,7 +508,7 @@ function simulate(g, dt){
     g.projs = keep;
   }
 
-  // effects (volley / burst)
+  // effects
   for(const e of (g.effects||[])){
     if(e.type==="squarePulse"){
       while(e.next<e.pulses.length && now>=e.pulses[e.next]){ pulseSquare(g,e.xgx,e.xgy,e.size,e.who,e.dmg,e.pierce||0,true); e.next++; }
@@ -540,11 +528,10 @@ function simulate(g, dt){
     }
   }
 
-  /* Occupancy for this tick (needed for charge + movement) */
   const occ  = occupancy(g.units);
   const reserved = new Set();
 
-  /* -------- Charge movement & impact (ported from Local Battle) -------- */
+  // Charge movement + impact (same as Local Battle)
   for(const u of g.units){
     if(u._channel) continue;
     if(u._charge && u._charge.until > now){
@@ -571,18 +558,17 @@ function simulate(g, dt){
     }
   }
 
-  /* -------- Targeting & attacks (match Local Battle behavior) -------- */
+  // Targeting & attacks (nearest; aggro-gated goal setting)
   for(const u of g.units){
     if(u._channel) continue;
 
-    const target = nearestEnemy(u, u.o, g.units); // nearest enemy
+    let target = nearestEnemy(u, u.o, g.units);
     const tSpec=TYPES[u.tt];
     const rng=tSpec.rangeTiles||1;
-    const inR = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy)<=rng : manh(u.gx,u.gy,target.gx,target.gy)<=rng);
+    const inR = target && (rng>1 ? cheby(u.gx,u.gy,target.gx,target.gy)<=rng : manh(u.gx,u.gy,target.gx,target.gy)<=1);
 
-    // Attack if in range
     if(inR && u.cd<=0 && target){
-      if(tSpec.boltDmg){ // ballista projectile
+      if(tSpec.boltDmg){
         const range=rng, speed=tSpec.boltSpeedTiles||9, dmg=tSpec.boltDmg, ap=tSpec.boltAP||0.3;
         const path=bresenham(u.gx,u.gy,target.gx,target.gy).slice(1, range+1);
         (g.projs=g.projs||[]).push({ type:"bolt", who:u.o, path, idx:0, speedTiles:speed, nextHopAt:Date.now(), hopMs:Math.max(60,Math.floor(1000/speed)), dmg, ap, color:"#ffa55b" });
@@ -596,21 +582,15 @@ function simulate(g, dt){
 
     if(u._hold) continue;
 
-    // Move goals (Attackers: attack-move leash; Defenders: hold until wall, then chase)
     if(target && !inR){
-      if(u.o==="Defenders"){
-        // pre-wall: most defenders are on hold; post-wall: chase nearest (set in wall break)
-        if(!WALL.alive){ u.goalGX = target.gx; u.goalGY = target.gy; }
-      } else {
-        const d = manh(u.gx,u.gy,target.gx,target.gy);
-        if(d <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
-          u.goalGX = target.gx; u.goalGY = target.gy;
-        }
+      const bd = manh(u.gx,u.gy,target.gx,target.gy);
+      if(bd <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
+        u.goalGX = target.gx; u.goalGY = target.gy;
       }
     }
   }
 
-  /* -------- Movement (neighbor stepping w/ axisPref, wall blocking) -------- */
+  // Movement (single neighbor step, no scatter fallback)
   for(const u of g.units){
     if(u._channel) continue;
     if(u.goalGX==null || u.goalGY==null) continue;
@@ -623,13 +603,9 @@ function simulate(g, dt){
 
     const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
     if(step){ moveTo(u, step.gx, step.gy, occ, reserved); }
-    else{
-      const free = nearestFree(u.gx,u.gy, occ);
-      if(free && !isWallBlocking(u, free.gx, free.gy)) moveTo(u, free.gx, free.gy, occ, reserved);
-    }
   }
 
-  // Push out overlaps gently
+  // Push out overlaps (gentle)
   const occ2 = occupancy(g.units);
   for(const [k, list] of occ2){
     if(list.length<=1) continue;
@@ -637,7 +613,10 @@ function simulate(g, dt){
     for(let i=1;i<list.length;i++){
       const u = list[i];
       const free = nearestFree(u.gx,u.gy, occ2);
-      if(free){ u.gx=free.gx; u.gy=free.gy; const nk=free.gx+"|"+free.gy; occ2.set(nk,(occ2.get(nk)||[]).concat(u)); }
+      if(free && !isWallBlocking(u, free.gx, free.gy)){
+        u.gx=free.gx; u.gy=free.gy;
+        const nk=free.gx+"|"+free.gy; occ2.set(nk,(occ2.get(nk)||[]).concat(u));
+      }
     }
     occ2.set(k,[keep]);
   }
@@ -706,7 +685,7 @@ function renderBoard(){
   }
 }
 
-/* ---------- Input handlers (mirrored from Local Battle) ---------- */
+/* ---------- Input handlers (same feel as Local Battle) ---------- */
 window.addEventListener("mousemove",(e)=>{ const r=rect(viewEl); mouse.clientX=e.clientX; mouse.clientY=e.clientY; mouse.inViewport = e.clientX>=r.left && e.clientX<=r.right && e.clientY<=r.bottom && e.clientY>=r.top; });
 cv.addEventListener("mousemove",(e)=>{ const r=rel(cv,e); mouse.inside=r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h; mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y; });
 
@@ -855,7 +834,7 @@ function draw(){
   for(let i=localFX.length-1;i>=0;i--){
     const fx=localFX[i]; const rem=fx.until-Date.now(); if(rem<=0){ localFX.splice(i,1); continue; }
     const a=Math.max(0, Math.min(1, rem/600));
-    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE - cam.y + TILE/2; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(fx.kind==="tile"){ const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y; ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
     if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
   }
@@ -943,7 +922,7 @@ function loop(){
 
 /* ---------- Init ---------- */
 (async function init(){
-  resizeCanvas(); // ensure canvas matches frame on load
+  resizeCanvas();
   updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
   siege = await loadSiege(); if(!siege) return;
 
@@ -961,8 +940,10 @@ function loop(){
   const garrisonCount = Math.max(0, parseInt(siege.garrisonAtStart||0,10));
   spawnDefenders(units, garrisonCount);
 
-  // init fields
-  for(const u of units){ u.cd=0; u.acd=u.acd||{}; u._aura=null; u._channel=null; u._charge=null; u._hold=!!u._hold; u.goalGX=null; u.goalGY=null; u.nextStepAt=0; u.axisPref=(Math.random()<.5)?"x":"y"; }
+  for(const u of units){
+    u.cd=0; u.acd=u.acd||{}; u._aura=null; u._channel=null; u._charge=null;
+    u.goalGX=null; u.goalGY=null; u.nextStepAt=0; u.axisPref=(Math.random()<.5)?"x":"y";
+  }
 
   state = { units, effects:[], projs:[], stats: { Attackers:{killsByType:{},lostByType:{}}, Defenders:{killsByType:{},lostByType:{}} } };
 
@@ -984,6 +965,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
