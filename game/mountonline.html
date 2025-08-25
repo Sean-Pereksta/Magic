@@ -192,10 +192,14 @@ const UPGRADE_COST = {
   archer: 10, footman: 12, monk: 14,
   veteranArcher: 35, crossbowman: 35,
   swordsman: 45, cavalry: 60,
-  priest: 40, mage: 65
+  priest: 40, mage: 65, romanSergeant: 240,
+  romanChampion: 300,
+  dragonKnight: 350,
+  venetianSaint: 300
 };
 const START_ARMY = { recruits:10, archers:0, footmen:0, monks:0,
-  veteranArchers:0, crossbowmen:0, swordsmen:0, cavalry:0, priests:0, mages:0 };
+  veteranArchers:0, crossbowmen:0, swordsmen:0, cavalry:0, priests:0, mages:0,
+                    romanSergeants:0, romanChampions:0, dragonKnights:0, venetianSaints:0 };
 
 /* Emojis */
 const EMOJI = {
@@ -777,36 +781,66 @@ function openArmy(){
     m.innerHTML = `
       <div class="muted">Upgrading grants XP and doesn't change total size.</div>
       ${rows}
+
       <div class="row">
         <button class="btn" id="upg_archer">Recruit → Archer (${UPGRADE_COST.archer}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_footman">Recruit → Footman (${UPGRADE_COST.footman}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_monk">Recruit → Monk (${UPGRADE_COST.monk}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
+
       <div class="row">
         <button class="btn" id="upg_varcher">Archer → Veteran Archer (${UPGRADE_COST.veteranArcher}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_xbow">Archer → Crossbowman (${UPGRADE_COST.crossbowman}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
+
       <div class="row">
         <button class="btn" id="upg_sword">Footman → Swordsman (${UPGRADE_COST.swordsman}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_cav">Footman → Cavalry (${UPGRADE_COST.cavalry}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
+
+      <!-- New advanced infantry -->
+      <div class="row">
+        <button class="btn" id="upg_sergeant">Swordsman → Roman Sergeant (${UPGRADE_COST.romanSergeant}g, +${XP_PER_UPGRADE}XP)</button>
+        <button class="btn" id="upg_champion">Roman Sergeant → Roman Champion (${UPGRADE_COST.romanChampion}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+
+      <!-- New advanced cavalry -->
+      <div class="row">
+        <button class="btn" id="upg_dragon">Cavalry → Dragon Knight (${UPGRADE_COST.dragonKnight}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
+
       <div class="row">
         <button class="btn" id="upg_priest">Monk → Priest (${UPGRADE_COST.priest}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_mage">Monk → Mage (${UPGRADE_COST.mage}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
+
+      <!-- New advanced holy -->
+      <div class="row">
+        <button class="btn" id="upg_saint">Priest → Venetian Saint (${UPGRADE_COST.venetianSaint}g, +${XP_PER_UPGRADE}XP)</button>
+      </div>
     `;
     const bind = (id, fn)=> m.querySelector("#"+id).onclick = fn;
-    bind("upg_archer", ()=> upgrade("recruits","archers","archer"));
-    bind("upg_footman", ()=> upgrade("recruits","footmen","footman"));
-    bind("upg_monk", ()=> upgrade("recruits","monks","monk"));
-    bind("upg_varcher", ()=> upgrade("archers","veteranArchers","veteranArcher"));
-    bind("upg_xbow", ()=> upgrade("archers","crossbowmen","crossbowman"));
-    bind("upg_sword", ()=> upgrade("footmen","swordsmen","swordsman"));
-    bind("upg_cav", ()=> upgrade("footmen","cavalry","cavalry"));
-    bind("upg_priest", ()=> upgrade("monks","priests","priest"));
-    bind("upg_mage", ()=> upgrade("monks","mages","mage"));
+
+    bind("upg_archer",   ()=> upgrade("recruits","archers","archer"));
+    bind("upg_footman",  ()=> upgrade("recruits","footmen","footman"));
+    bind("upg_monk",     ()=> upgrade("recruits","monks","monk"));
+
+    bind("upg_varcher",  ()=> upgrade("archers","veteranArchers","veteranArcher"));
+    bind("upg_xbow",     ()=> upgrade("archers","crossbowmen","crossbowman"));
+
+    bind("upg_sword",    ()=> upgrade("footmen","swordsmen","swordsman"));
+    bind("upg_cav",      ()=> upgrade("footmen","cavalry","cavalry"));
+
+    // New upgrades
+    bind("upg_sergeant", ()=> upgrade("swordsmen","romanSergeants","romanSergeant"));
+    bind("upg_champion", ()=> upgrade("romanSergeants","romanChampions","romanChampion"));
+    bind("upg_dragon",   ()=> upgrade("cavalry","dragonKnights","dragonKnight"));
+    bind("upg_priest",   ()=> upgrade("monks","priests","priest"));
+    bind("upg_mage",     ()=> upgrade("monks","mages","mage"));
+    bind("upg_saint",    ()=> upgrade("priests","venetianSaints","venetianSaint"));
   });
 }
+
 async function upgrade(fromKey, toKey, costKey){
   const snap = await getDoc(state.youDocRef); if (!snap.exists()) return;
   const me = snap.data(); const cost = UPGRADE_COST[costKey]||0;
@@ -1469,6 +1503,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
