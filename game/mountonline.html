@@ -194,6 +194,30 @@ const XP_PER_UPGRADE = 3;
 const XP_PER_BANNER  = 5;
 const DAILY_PLAYER_PER_CASTLE = 300; // you
 const DAILY_ALLY_PER_CASTLE   = 100; // split across ally members
+  const GARRISON_MAX = 400;
+  const UNIT_TIER = {
+  recruits: 1,
+
+  footmen: 2, archers: 2, monks: 2,
+
+  veteranArchers: 3, crossbowmen: 3,
+  swordsmen: 3, cavalry: 3,
+  priests: 3, mages: 3,
+
+  romanSergeants: 4, romanChampions: 4,
+  dragonKnights: 4, venetianSaints: 4,
+};
+
+const TIER_YIELD = { 1:1, 2:3, 3:5, 4:8 };
+
+// Derive a castle's allegiance even if ownerAlly is missing
+function castleAllyId(c){
+  if (c.ownerAlly) return c.ownerAlly;
+  const ownerUser = c.ownerName || c.owner || null;
+  if (!ownerUser) return null;
+  const p = state.playersAll.get(ownerUser);
+  return p?.allegianceId || null;
+}
 
 const UPGRADE_COST = {
   archer: 10, footman: 12, monk: 14,
@@ -338,6 +362,56 @@ function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0
   // YYYY-MM-DD in local time (e.g., 2025-08-27)
   return new Date().toLocaleDateString('en-CA');
 }
+  async function depositUnitToGarrison(castleId, unitKey){
+  if (!UNIT_TIER[unitKey]) { alert("That unit cannot be deposited."); return; }
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const cRef = doc(db,"mountonline_castles", castleId);
+      const pRef = state.youDocRef;
+
+      const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
+      if (!cSnap.exists() || !pSnap.exists()) throw "missing";
+      const c = cSnap.data(); const p = pSnap.data();
+
+      // Must be owner
+      const ownerUser = c.ownerName || c.owner || null;
+      if (ownerUser !== username) throw "not-owner";
+
+      const army = {...(p.army||START_ARMY)};
+      const have = army[unitKey] || 0;
+      if (have < 1) throw "no-unit";
+
+      const tier = UNIT_TIER[unitKey] || 1;
+      const yieldAmt = TIER_YIELD[tier] || 1;
+
+      const currentG = Number.isFinite(c.garrison) ? c.garrison : 0;
+      if (currentG >= GARRISON_MAX) throw "garrison-full";
+
+      // Clamp to cap
+      const room = Math.max(0, GARRISON_MAX - currentG);
+      const add = Math.min(room, yieldAmt);
+      if (add <= 0) throw "garrison-full";
+
+      // Consume one of that unit
+      army[unitKey] = have - 1;
+
+      tx.update(pRef, { army });
+      tx.update(cRef, { garrison: currentG + add });
+    });
+
+    // local refresh
+    const meSnap = await getDoc(state.youDocRef);
+    state.player.army = meSnap.data().army;
+    updateArmyHud();
+  }catch(e){
+    if (e==="no-unit") alert("You don't have that unit.");
+    else if (e==="not-owner") alert("Only the owner can deposit.");
+    else if (e==="garrison-full") alert("Garrison is at maximum.");
+    else alert("Deposit failed.");
+  }
+}
+
 async function dailyTributeOnLogin(){
   const youRef = state.youDocRef || doc(db,"mountonline", username);
   const youSnap = await getDoc(youRef);
@@ -938,11 +1012,44 @@ $("#btnAlliances").onclick = ()=> { document.getElementById("wrap").scrollTo({to
 
 function openArmy(){
   const a = state.player?.army || START_ARMY;
+
+  // Display order + nice singular/plural labels
+  const ORDER = [
+    "recruits","footmen","archers","monks",
+    "swordsmen","cavalry","veteranArchers","crossbowmen",
+    "priests","mages","romanSergeants","romanChampions",
+    "dragonKnights","venetianSaints"
+  ];
+  const LABELS = {
+    recruits:         ["recruit","recruits"],
+    footmen:          ["footman","footmen"],
+    archers:          ["archer","archers"],
+    monks:            ["monk","monks"],
+    swordsmen:        ["swordsman","swordsmen"],
+    cavalry:          ["cavalry","cavalry"],            // invariant
+    veteranArchers:   ["veteran archer","veteran archers"],
+    crossbowmen:      ["crossbowman","crossbowmen"],
+    priests:          ["priest","priests"],
+    mages:            ["mage","mages"],
+    romanSergeants:   ["Roman Sergeant","Roman Sergeants"],
+    romanChampions:   ["Roman Champion","Roman Champions"],
+    dragonKnights:    ["Dragon Knight","Dragon Knights"],
+    venetianSaints:   ["Venetian Saint","Venetian Saints"]
+  };
+  const parts = ORDER.map(k=>{
+    const n = a?.[k] ?? 0;
+    const [sing, plur] = LABELS[k] || [k, k+"s"];
+    return `${n} ${n===1 ? sing : plur}`;
+  });
+
   openModal("Your Army", m=>{
-    const rows = Object.entries(a).map(([k,v])=> `<div class="pill"><div><b>${k}</b> — ${v}</div></div>`).join("");
     m.innerHTML = `
-      <div class="muted">Upgrading grants XP and doesn't change total size.</div>
-      ${rows}
+      <div class="muted small">Upgrading grants XP and doesn't change total size.</div>
+
+      <!-- Compact inline list -->
+      <div class="pill" style="white-space:normal; line-height:1.4; font-size:.95rem">
+        ${parts.join(", ")}
+      </div>
 
       <div class="row">
         <button class="btn" id="upg_archer">Recruit → Archer (${UPGRADE_COST.archer}g, +${XP_PER_UPGRADE}XP)</button>
@@ -957,7 +1064,7 @@ function openArmy(){
         <button class="btn" id="upg_cav">Footman → Cavalry (${UPGRADE_COST.cavalry}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
 
-      <!-- New advanced infantry -->
+      <!-- Advanced -->
       <div class="row">
         <button class="btn" id="upg_sergeant">Swordsman → Roman Sergeant (${UPGRADE_COST.romanSergeant}g, +${XP_PER_UPGRADE}XP)</button>
         <button class="btn" id="upg_champion">Roman Sergeant → Roman Champion (${UPGRADE_COST.romanChampion}g, +${XP_PER_UPGRADE}XP)</button>
@@ -970,6 +1077,7 @@ function openArmy(){
         <button class="btn" id="upg_saint">Priest → Venetian Saint (${UPGRADE_COST.venetianSaint}g, +${XP_PER_UPGRADE}XP)</button>
       </div>
     `;
+
     const bind = (id, fn)=> m.querySelector("#"+id).onclick = fn;
 
     bind("upg_archer",   ()=> upgrade("recruits","archers","archer"));
@@ -982,7 +1090,6 @@ function openArmy(){
     bind("upg_sword",    ()=> upgrade("footmen","swordsmen","swordsman"));
     bind("upg_cav",      ()=> upgrade("footmen","cavalry","cavalry"));
 
-    // New upgrades
     bind("upg_sergeant", ()=> upgrade("swordsmen","romanSergeants","romanSergeant"));
     bind("upg_champion", ()=> upgrade("romanSergeants","romanChampions","romanChampion"));
     bind("upg_dragon",   ()=> upgrade("cavalry","dragonKnights","dragonKnight"));
@@ -991,6 +1098,7 @@ function openArmy(){
     bind("upg_saint",    ()=> upgrade("priests","venetianSaints","venetianSaint"));
   });
 }
+
 
 async function upgrade(fromKey, toKey, costKey){
   const snap = await getDoc(state.youDocRef); if (!snap.exists()) return;
@@ -1223,40 +1331,71 @@ async function openVillage(v){
 
 
 async function openCastle(c){
-  // Make sure neutral castles get a roll
+  // Ensure neutral gets a garrison
   await seedNeutralGarrison(c.id);
 
-  const ownerTxt = c.ownerName ? `Owner: ${c.ownerName}` : "Unowned";
-  const banners = rngBanners(3);
+  // Figure owner / ally
+  const ownerUser = c.ownerName || c.owner || null;
+  const ownerTxt  = ownerUser ? `Owner: ${ownerUser}` : "Unowned";
+  const myAllyId  = state.player?.allegianceId || null;
+  const cAllyId   = castleAllyId(c);
+  const sameAlly  = myAllyId && cAllyId && myAllyId === cAllyId;
+
   const me = (await getDoc(state.youDocRef)).data();
   const kT = "c_" + c.id;
   const canTradeHere = canUse(me.lastTradeAt?.[kT], TRADE_COOLDOWN_MS);
 
-  const youOwn = !!c.ownerName && (c.ownerName === username || c.owner === username);
+  const youOwn = !!ownerUser && ownerUser === username;
+  const youAreLeader = !!state.allegiance && state.allegiance.leader === username;
 
   openModal(`Castle (${c.x},${c.y}) — ${ownerTxt}`, m=>{
-    // Garrison row
+    // Garrison row (with cap display)
+    const gNow = Number.isFinite(c.garrison) ? c.garrison : 0;
     const gwrap = document.createElement("div");
     gwrap.className = "pill";
-    gwrap.innerHTML = `<div>🪖 <b>Garrison:</b> <span id="gar_val">${c.garrison ?? "?"}</span></div>`;
+    gwrap.innerHTML = `<div>🪖 <b>Garrison:</b> <span id="gar_val">${gNow}</span> <span class="muted small">/ ${GARRISON_MAX}</span></div>`;
     m.appendChild(gwrap);
 
-    // Owner-only controls
+    // Owner-only controls: select any unit to deposit (tiered yields)
     if (youOwn){
+      const a = state.player?.army || START_ARMY;
+
+      // Build options for units you actually have
+      const unitKeys = Object.keys(UNIT_TIER).filter(k => (a?.[k]||0) > 0);
+      const optHtml = unitKeys.map(k=>{
+        const n = a[k]||0;
+        const tier = UNIT_TIER[k];
+        const yieldAmt = TIER_YIELD[tier];
+        const label = `${k} (${n}) → +${yieldAmt}`;
+        return `<option value="${k}">${label}</option>`;
+      }).join("");
+
+      const holder = document.createElement("div");
+      holder.className = "row";
+      holder.innerHTML = `
+        <select id="selUnit" class="select" style="min-width:220px">
+          ${optHtml || '<option disabled>(No units available)</option>'}
+        </select>
+        <button class="btn" id="btnDepUnit" ${optHtml ? '' : 'disabled'}>Add to Garrison</button>
+        <span class="muted small">One unit is consumed • Yields based on tier (1/3/5/8) • Max ${GARRISON_MAX}</span>
+      `;
+      m.appendChild(holder);
+
+      holder.querySelector("#btnDepUnit").onclick = async ()=>{
+        const key = holder.querySelector("#selUnit").value;
+        if (!key) return;
+        await depositUnitToGarrison(c.id, key);
+      };
+
+      // Withdraw (generic points → recruits)
       const row = document.createElement("div"); row.className = "row";
       row.innerHTML = `
-        <input id="gar_amt" class="input" type="number" min="1" step="1" placeholder="Amount" style="width:120px">
-        <button class="btn" id="btnDep">Deposit</button>
+        <input id="gar_amt" class="input" type="number" min="1" step="1" placeholder="Withdraw amount" style="width:160px">
         <button class="btn" id="btnWit">Withdraw</button>
-        <span class="muted small">Uses your <b>recruits</b> for deposit.</span>
+        <span class="muted small">Withdraw converts garrison back to <b>recruits</b>.</span>
       `;
       m.appendChild(row);
 
-      row.querySelector("#btnDep").onclick = async ()=>{
-        const amt = Math.max(1, parseInt(row.querySelector("#gar_amt").value||"0",10));
-        try{ await depositToGarrison(c.id, amt); row.querySelector("#gar_amt").value=""; }
-        catch(e){ alert(e==="not-enough-recruits" ? "Not enough recruits." : "Deposit failed."); }
-      };
       row.querySelector("#btnWit").onclick = async ()=>{
         const amt = Math.max(1, parseInt(row.querySelector("#gar_amt").value||"0",10));
         try{ await withdrawFromGarrison(c.id, amt); row.querySelector("#gar_amt").value=""; }
@@ -1265,6 +1404,7 @@ async function openCastle(c){
     }
 
     // Shop
+    const banners = rngBanners(3);
     const list = document.createElement("div"); list.className="list";
     for(const b of banners){
       const row = document.createElement("div"); row.className="pill";
@@ -1276,23 +1416,23 @@ async function openCastle(c){
     }
     m.appendChild(list);
 
-    // Attack button (blocked if you own)
-    const opts = document.createElement("div"); opts.className="row";
-    const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
-    attack.disabled = youOwn; // === BLOCK self attack
-    attack.title = youOwn ? "You can't attack your own castle." : "";
-    attack.onclick = async ()=>{
-  if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
-  try{
-    const siegeId = await startCastleSiege(c.id);
-    location.href = `/game/castlebattle.html?siegeId=${encodeURIComponent(siegeId)}&username=${encodeURIComponent(username)}`;
-  }catch(e){
-    alert(e==="castle-in-siege" ? "This castle is already under siege." : "Failed to start siege.");
-  }
-};
-
-    opts.appendChild(attack);
-    m.appendChild(opts);
+    // Attack button — hidden if youOwn, sameAlly, or you're a leader
+    const allowAttack = !(youOwn || sameAlly || youAreLeader);
+    if (allowAttack){
+      const opts = document.createElement("div"); opts.className="row";
+      const attack = document.createElement("button"); attack.className="btn"; attack.textContent="Attack Castle";
+      attack.onclick = async ()=>{
+        if (Date.now() < state.canInteractAt){ alert("You’re in Preparedness — wait a moment!"); return; }
+        try{
+          const siegeId = await startCastleSiege(c.id);
+          location.href = `/game/castlebattle.html?siegeId=${encodeURIComponent(siegeId)}&username=${encodeURIComponent(username)}`;
+        }catch(e){
+          alert(e==="castle-in-siege" ? "This castle is already under siege." : "Failed to start siege.");
+        }
+      };
+      opts.appendChild(attack);
+      m.appendChild(opts);
+    }
 
     const note = document.createElement("div"); note.className="muted small";
     note.textContent = "Trading locks this castle for 2 minutes (even if you exit).";
@@ -1307,14 +1447,15 @@ async function openCastle(c){
     };
   });
 
-  // live update garrison value in modal while open
+  // Live update garrison value in modal while open
   sub(doc(db,"mountonline_castles", c.id), s=>{
     if (!s.exists()) return;
-    const g = (s.data().garrison ?? "?");
+    const g = (s.data().garrison ?? 0);
     const tag = document.getElementById("gar_val");
     if (tag) tag.textContent = g;
   });
 }
+
 
 async function buyBanner(b, placeId, kind){
   const snap = await getDoc(state.youDocRef); const me = snap.data();
@@ -1678,6 +1819,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
