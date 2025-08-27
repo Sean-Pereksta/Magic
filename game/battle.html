@@ -185,6 +185,7 @@ const localFX=[];
 let isHost=false, state=null, snapBuf=[], hostClockOffset=0;
 let participants=[]; // [p1, p2]
 let ownerMods = {};
+  
 
 const MKEY = { // mountonline -> type ids
   recruits:"recruit", footmen:"footman", swordsmen:"swordsman", cavalry:"cavalry",
@@ -194,6 +195,22 @@ const MKEY = { // mountonline -> type ids
   romanSergeants:"romanSergeant", romanChampions:"romanChampion",
   dragonKnights:"dragonKnight", venetianSaints:"venetianSaint"
 };
+
+  // Floating damage popup (follows the unit by id if it moves)
+function popupDmgAt(unitLike, amount, color = "#ff4d4d") {
+  const now = Date.now();
+  const dur = 750; // ms
+  localFX.push({
+    kind: "dmg",
+    uid: unitLike.id,           // <- follow by id
+    gx: unitLike.gx, gy: unitLike.gy, // fallback position (e.g., if dead)
+    text: `-${amount}`,
+    color,
+    start: now,
+    dur,
+    until: now + dur
+  });
+}
 
 /* ================= Armies from Firestore ================= */
 async function loadArmiesAndSeedIfHost(){
@@ -1031,6 +1048,32 @@ function draw(){
     if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle="#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(fx.kind==="tile"){ const sx=fx.gx*TILE - cam.x, sy=fx.gy*TILE - cam.y; ctx.save(); ctx.globalAlpha=.15+.25*a; ctx.fillStyle="#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
     if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
+      if(fx.kind === "dmg"){
+    // Follow the live unit if still present
+    let gx = fx.gx, gy = fx.gy;
+    const follow = getUnitsView().find(u => u.id === fx.uid);
+    if (follow) { gx = follow.gx; gy = follow.gy; }
+
+    const life = fx.dur || 750;
+    const t = 1 - Math.max(0, Math.min(1, (fx.until - Date.now()) / life)); // 0→1
+    const baseX = gx*TILE + TILE/2 - cam.x;
+    const baseY = gy*TILE - cam.y - TILE*0.2;      // slightly above head
+    const y = baseY - t * (TILE * 0.9);            // float up
+    const alpha = 0.25 + 0.75 * (1 - t);           // fade out
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = "bold 18px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.strokeStyle = "rgba(0,0,0,0.85)";
+    ctx.lineWidth = 3;
+    ctx.fillStyle = fx.color || "#ff4d4d";
+    ctx.strokeText(fx.text, baseX, y);
+    ctx.fillText(fx.text, baseX, y);
+    ctx.restore();
+  }
+
   }
 
   // drag box
@@ -1041,11 +1084,41 @@ function draw(){
 }
 
 /* ================= Snapshots (clients) ================= */
+  // Track previous HP per unit to create damage popups on diffs from snapshots
+const __prevHP = new Map(); // id -> hp
+
 onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderBoard(); maybeWinnerBanner(); });
-onSnapshot(query(snapsCol, orderBy("ts","asc"), limit(32)), (qs)=>{
-  snapBuf = qs.docs.map(d=>d.data());
-  if(snapBuf.length){ const hostTs=snapBuf[snapBuf.length-1].ts; const drift=hostTs-Date.now(); hostClockOffset=hostClockOffset===0?drift:(hostClockOffset*0.9 + drift*0.1); }
+onSnapshot(query(snapsCol, orderBy("ts","asc"), limit(32)), (qs) => {
+  const newBuf = qs.docs.map(d => d.data());
+  const latest = newBuf[newBuf.length - 1];
+
+  // Emit damage popups by diffing HP vs previous snapshot
+  if (latest?.units?.length) {
+    const seen = new Set();
+    for (const u of latest.units) {
+      seen.add(u.id);
+      const prev = __prevHP.get(u.id);
+      if (typeof prev === "number" && u.hp < prev) {
+        popupDmgAt(u, prev - u.hp);
+      }
+      __prevHP.set(u.id, u.hp);
+    }
+    // prune ids no longer present (dead/despawned)
+    for (const id of __prevHP.keys()) {
+      if (!seen.has(id)) __prevHP.delete(id);
+    }
+  }
+
+  snapBuf = newBuf;
+
+  // host clock drift (unchanged)
+  if (snapBuf.length) {
+    const hostTs = snapBuf[snapBuf.length - 1].ts;
+    const drift = hostTs - Date.now();
+    hostClockOffset = hostClockOffset === 0 ? drift : (hostClockOffset * 0.9 + drift * 0.1);
+  }
 });
+
 
 /* Also watch the battle doc; when host deletes it after settlement, everyone returns home */
 let __sentHome=false;
@@ -1078,5 +1151,6 @@ function maybeWinnerBanner(){
 </script>
 </body>
 </html>
+
 
 
