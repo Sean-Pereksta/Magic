@@ -73,7 +73,11 @@
       <span class="chip">👤 <b id="hudName">player</b></span>
       <span class="chip">💰 Gold: <b id="hudGold">0</b></span>
       <span class="chip">🛡️ Army: <b id="hudArmy">-</b></span>
-      <span class="chip">🏰 You: <b id="hudMyCastles">0</b> • Ally: <b id="hudAllyCastles">0</b></span>
+      <span class="chip">
+        🏰 You: <b id="hudMyCastles">0</b>
+        <span class="muted small">(&nbsp;💰 <b id="hudMyIncomeVal">0</b>/day&nbsp;)</span>
+        • Ally: <b id="hudAllyCastles">0</b>
+      </span>
       <span class="chip">
         <span class="xpwrap">
           <b>Lvl <span id="hudLevel">1</span></b>
@@ -341,24 +345,21 @@ async function dailyTributeOnLogin(){
 
   const me = youSnap.data();
   const todayKey = todayKeyLocal();
-  const alreadyPaid = me.lastDailyRewardKey === todayKey;
+  if (me.lastDailyRewardKey === todayKey) return; // already paid today
 
-  if (alreadyPaid) return; // done for today
-
-  // --- Count your castles (supports ownerName or owner) ---
+  // --- Personal castles (support ownerName or owner)
   const cCol = collection(db,"mountonline_castles");
   const [mineByName, mineByOwner] = await Promise.all([
     getDocs(query(cCol, where("ownerName","==", username))),
     getDocs(query(cCol, where("owner","==", username)))
   ]);
-  // Merge ids in case both fields are set on the same doc
   const myCastleIds = new Set();
   mineByName.forEach(d=> myCastleIds.add(d.id));
   mineByOwner.forEach(d=> myCastleIds.add(d.id));
   const myCastleCount = myCastleIds.size;
   const myGold = myCastleCount * DAILY_PLAYER_PER_CASTLE;
 
-  // --- Alliance share (if any) ---
+  // --- Alliance stipend (robust to missing ownerAlly)
   let allyGoldForMe = 0;
   let allyName = null;
   let allyCastleCount = 0;
@@ -367,59 +368,67 @@ async function dailyTributeOnLogin(){
   const aid = me.allegianceId || null;
   if (aid){
     const allyRef = doc(db,"mountonline_allegiances", aid);
-    const [allySnap, allyCastlesSnap] = await Promise.all([
-      getDoc(allyRef),
-      getDocs(query(cCol, where("ownerAlly","==", aid)))
-    ]);
-
+    const allySnap = await getDoc(allyRef);
     if (allySnap.exists()){
       const A = allySnap.data();
       allyName = A.name || "Alliance";
-      allyMemberCount = (A.members || []).length || 0;
-      allyCastleCount = allyCastlesSnap.size;
+      const memberSet = new Set(A.members || []);
+      allyMemberCount = memberSet.size;
+
+      // First, quick count by ownerAlly
+      const quick = await getDocs(query(cCol, where("ownerAlly","==", aid)));
+      allyCastleCount = quick.size;
+
+      // Fallback/augment: include castles owned by any member when ownerAlly is missing
+      // (world is small, so reading all is fine)
+      if (allyCastleCount === 0 || memberSet.size){
+        const allCastles = await getDocs(cCol);
+        allyCastleCount = 0;
+        allCastles.forEach(cs=>{
+          const c = cs.data();
+          if (c.ownerAlly === aid) { allyCastleCount++; return; }
+          const ownerUser = c.ownerName || c.owner || null;
+          if (ownerUser && memberSet.has(ownerUser)) allyCastleCount++;
+        });
+      }
 
       if (allyMemberCount > 0){
         const totalAllyGold = allyCastleCount * DAILY_ALLY_PER_CASTLE;
-        allyGoldForMe = Math.floor(totalAllyGold / allyMemberCount); // even split
+        allyGoldForMe = Math.floor(totalAllyGold / allyMemberCount);
       }
     }
   }
 
   const totalGold = myGold + allyGoldForMe;
 
-  // --- Transaction: guard against double paying if multiple tabs load ---
+  // --- Transaction to avoid double-pay
   await runTransaction(db, async (tx)=>{
     const curSnap = await tx.get(youRef);
     if (!curSnap.exists()) return;
     const cur = curSnap.data();
+    if (cur.lastDailyRewardKey === todayKey) return; // another tab got it
 
-    if (cur.lastDailyRewardKey === todayKey) return; // someone else already paid today
-
-    const newGold = (cur.gold || 0) + totalGold;
     tx.update(youRef, {
-      gold: newGold,
+      gold: (cur.gold || 0) + totalGold,
       lastDailyRewardKey: todayKey
     });
   });
 
-  // Announce to the player (World log)
-  if (totalGold > 0){
-    if (myGold > 0){
-      log(`💰 Daily Tribute: +${myGold}g from ${myCastleCount} castle${myCastleCount===1?'':'s'} you own.`);
-    } else {
-      log(`💰 Daily Tribute: You own no castles today (no personal tribute).`);
-    }
-
+  // Announce
+  if (myGold > 0){
+    log(`💰 Daily Tribute: +${myGold}g from ${myCastleCount} castle${myCastleCount===1?'':'s'} you own.`);
+  } else {
+    log(`💰 Daily Tribute: You own no castles today (no personal tribute).`);
+  }
+  if (aid){
     if (allyGoldForMe > 0){
       log(`🤝 Alliance Stipend: +${allyGoldForMe}g from ${allyName} — ${allyCastleCount} castle${allyCastleCount===1?'':'s'} split among ${allyMemberCount} member${allyMemberCount===1?'':'s'}.`);
-    } else if (aid){
+    } else {
       log(`🤝 Alliance Stipend: No payout (no castles or no members to split).`);
     }
-  } else {
-    // still set lastDailyRewardKey, so call out that nothing was due
-    log(`📅 Daily check-in recorded (no tribute due).`);
   }
 }
+
 
 
 function recomputeCastleOwnership(){
@@ -427,23 +436,35 @@ function recomputeCastleOwnership(){
   const byA = new Map();
 
   for (const c of state.castles){
-    const ownerUser = c.ownerName || c.owner;   // support either field
+    const ownerUser = c.ownerName || c.owner || null;
     if (ownerUser) byP.set(ownerUser, (byP.get(ownerUser) || 0) + 1);
 
-    const ownerAlly = c.ownerAlly;              // castle doc should carry the owning ally id
-    if (ownerAlly) byA.set(ownerAlly, (byA.get(ownerAlly) || 0) + 1);
+    // Prefer the castle's ownerAlly; if missing, derive from the owner's player doc
+    let allyId = c.ownerAlly || null;
+    if (!allyId && ownerUser){
+      const p = state.playersAll.get(ownerUser);
+      if (p?.allegianceId) allyId = p.allegianceId;
+    }
+    if (allyId) byA.set(allyId, (byA.get(allyId) || 0) + 1);
   }
 
   state.castleCountByPlayer = byP;
-  state.castleCountByAlly = byA;
+  state.castleCountByAlly   = byA;
 
   const mine = byP.get(username) || 0;
-  const allyN = state.player?.allegianceId ? (byA.get(state.player.allegianceId) || 0) : 0;
+  const myIncome = mine * DAILY_PLAYER_PER_CASTLE;
+  const myAllyId = state.player?.allegianceId || null;
+  const allyCount = myAllyId ? (byA.get(myAllyId) || 0) : 0;
+
   const mc = document.getElementById("hudMyCastles");
   const ac = document.getElementById("hudAllyCastles");
-  if (mc) mc.textContent = String(mine);
-  if (ac) ac.textContent = String(allyN);
+  const inc = document.getElementById("hudMyIncomeVal");
+
+  if (mc)  mc.textContent  = String(mine);
+  if (ac)  ac.textContent  = String(allyCount);
+  if (inc) inc.textContent = String(myIncome); // e.g., 300/day for 1 castle, 0/day if none
 }
+
 
 
 function updateArmyHud(){
@@ -795,19 +816,24 @@ function renderAllyList(list){
   const reqEl  = document.getElementById("allyRequests");
   if (!listEl || !reqEl) return;
 
-  // Precompute castle counts per alliance
-  const allyCastleCounts = (() => {
-    const m = new Map();
-    for (const c of state.castles){
-      const aid = c.ownerAlly;
-      if (aid) m.set(aid, (m.get(aid) || 0) + 1);
+  // Build alliance → castle count, deriving ally when ownerAlly missing
+  const allyCastleCounts = new Map();
+  for (const c of state.castles){
+    const ownerUser = c.ownerName || c.owner || null;
+    let aid = c.ownerAlly || null;
+    if (!aid && ownerUser){
+      const p = state.playersAll.get(ownerUser);
+      if (p?.allegianceId) aid = p.allegianceId;
     }
-    return m;
-  })();
+    if (aid) allyCastleCounts.set(aid, (allyCastleCounts.get(aid) || 0) + 1);
+  }
 
-  // sort by power (desc), then by member count (desc)
-  const rows = list
-    .map(a => ({...a, power: powerOfAllegiance(a), castles: allyCastleCounts.get(a.id) || 0}))
+  // sort by power then member count
+  const rows = list.map(a => ({
+      ...a,
+      power: powerOfAllegiance(a),
+      castles: allyCastleCounts.get(a.id) || 0
+    }))
     .sort((a,b)=> (b.power - a.power) || ((b.members?.length||0)-(a.members?.length||0)));
 
   listEl.innerHTML = "";
@@ -843,7 +869,7 @@ function renderAllyList(list){
     }
   });
 
-  // Leader's join requests
+  // Leader requests (unchanged)
   reqEl.innerHTML = "";
   const my = state.allegiance;
   if (my && my.leader === state.player?.id && (my.requests||[]).length){
@@ -868,6 +894,7 @@ function renderAllyList(list){
     }
   }
 }
+
 // Player requests to join an allegiance
 async function requestJoinAlly(allyId){
   await runTransaction(db, async (tx)=>{
@@ -1651,6 +1678,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
