@@ -181,6 +181,23 @@ const localFX=[];
 let lastClickAt=0, lastClickCell=null;
 
 /* ---------- Small UI helpers ---------- */
+  // Floating damage popup (follows the unit if still alive)
+function popupDmgAt(unit, amount, color = "#ff4d4d") {
+  const now = Date.now();
+  const dur = 750; // ms
+  localFX.push({
+    kind: "dmg",
+    uid: unit.id,    // so it follows if the unit moves
+    gx: unit.gx,     // fallback if unit dies
+    gy: unit.gy,
+    text: `-${amount}`,
+    color,
+    start: now,
+    dur,
+    until: now + dur
+  });
+}
+
 function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
 function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
 function hideHint(){ document.getElementById("hint").style.display="none"; }
@@ -540,6 +557,7 @@ function applyDamage(g, target, dmg, ap, owner){
   const hit = Math.max(1, Math.round(dmg - effArmor));
   target.hp -= hit;
   target._lastBy = owner;
+  popupDmgAt(target, hit);
 }
 function applyHeal(target, amount){
   target.hp = Math.min(target.maxHp, target.hp + Math.max(0, amount|0));
@@ -899,17 +917,57 @@ function draw(){
   for(let i=localFX.length-1;i>=0;i--){
     const fx=localFX[i]; const rem=fx.until-Date.now(); if(rem<=0){ localFX.splice(i,1); continue; }
     const a=Math.max(0, Math.min(1, rem/600));
-    if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
-    if(fx.kind==="tile"){ const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y; ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
-    if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
+    if(fx.kind==="ring"){
+      const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y;
+      ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore();
+    }
+    if(fx.kind==="tile"){
+      const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y;
+      ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore();
+    }
+    if(fx.kind==="burst"){
+      const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y;
+      ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff";
+      ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore();
+    }
+    if(fx.kind==="dmg"){
+      // Follow the unit if it's still alive; otherwise use the stored tile
+      let gx = fx.gx, gy = fx.gy;
+      const follow = state?.units?.find(u=>u.id === fx.uid);
+      if(follow){ gx = follow.gx; gy = follow.gy; }
+
+      const life = fx.dur || 750;
+      const t = 1 - Math.max(0, Math.min(1, (fx.until - Date.now()) / life)); // 0→1
+      const baseX = gx*TILE + TILE/2 - cam.x;
+      const baseY = gy*TILE - cam.y - TILE*0.2;           // start just above the head
+      const y = baseY - t * (TILE * 0.9);                 // float upward
+      const alpha = 0.25 + 0.75 * (1 - t);                // fade out
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = "bold 18px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 3;
+      ctx.fillStyle = fx.color || "#ff4d4d";
+      ctx.strokeText(fx.text, baseX, y);
+      ctx.fillText(fx.text, baseX, y);
+      ctx.restore();
+    }
   }
 
   // drag box
-  if(dragging){ const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y); const w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y); ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h); }
+  if(dragging){
+    const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y);
+    const w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y);
+    ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
+  }
 
   renderBoard(); updateCooldownBadges();
   requestAnimationFrame(draw);
 }
+
 
 /* ---------- Win/Lose + settle ---------- */
 function aliveOwners(){ const m={}; for(const u of (state?.units||[])) m[u.o]=(m[u.o]||0)+1; return Object.keys(m).filter(k=>m[k]>0); }
@@ -967,6 +1025,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
