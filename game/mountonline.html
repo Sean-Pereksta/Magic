@@ -73,6 +73,7 @@
       <span class="chip">👤 <b id="hudName">player</b></span>
       <span class="chip">💰 Gold: <b id="hudGold">0</b></span>
       <span class="chip">🛡️ Army: <b id="hudArmy">-</b></span>
+      <span class="chip">🏰 You: <b id="hudMyCastles">0</b> • Ally: <b id="hudAllyCastles">0</b></span>
       <span class="chip">
         <span class="xpwrap">
           <b>Lvl <span id="hudLevel">1</span></b>
@@ -238,6 +239,9 @@ const state = {
 
   allyMap: new Map(),         // allyId -> allegiance doc
   allegiance: null,           // your allegiance doc (if any)
+  castleCountByPlayer: new Map(),
+  castleCountByAlly: new Map(),
+
 
   subscriptions: [],
   battleEngaged: false,
@@ -322,6 +326,32 @@ function armySum(army){ return Object.values(army||START_ARMY).reduce((s,v)=>s+v
 function maxArmyForLevel(level){ return BASE_MAX_ARMY + Math.max(0, level-1)*3; }
 function maxPurchaseForLevel(level){ return BASE_MAX_PURCHASE + Math.max(0, level-1)*3; }
 function xpNextForLevel(level){ return Math.round(BASE_XP_NEXT * Math.pow(XP_GROWTH, Math.max(0, level-1))); }
+  function castlesOwnedBy(userId){ return state.castleCountByPlayer.get(userId) || 0; }
+function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0; }
+
+function recomputeCastleOwnership(){
+  const byP = new Map();
+  const byA = new Map();
+
+  for (const c of state.castles){
+    const ownerUser = c.ownerName || c.owner;   // support either field
+    if (ownerUser) byP.set(ownerUser, (byP.get(ownerUser) || 0) + 1);
+
+    const ownerAlly = c.ownerAlly;              // castle doc should carry the owning ally id
+    if (ownerAlly) byA.set(ownerAlly, (byA.get(ownerAlly) || 0) + 1);
+  }
+
+  state.castleCountByPlayer = byP;
+  state.castleCountByAlly = byA;
+
+  const mine = byP.get(username) || 0;
+  const allyN = state.player?.allegianceId ? (byA.get(state.player.allegianceId) || 0) : 0;
+  const mc = document.getElementById("hudMyCastles");
+  const ac = document.getElementById("hudAllyCastles");
+  if (mc) mc.textContent = String(mine);
+  if (ac) ac.textContent = String(allyN);
+}
+
 
 function updateArmyHud(){
   const a = state.player?.army || START_ARMY;
@@ -477,7 +507,7 @@ async function listenWorld(){
   });
   sub(collection(db,"mountonline_castles"), snap=>{
   state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
-
+  recomputeCastleOwnership(); 
   // === GARRISON: lazily seed for any unowned castle missing a garrison
   snap.forEach(ds=>{
     const c = ds.data();
@@ -672,9 +702,20 @@ function renderAllyList(list){
   const reqEl  = document.getElementById("allyRequests");
   if (!listEl || !reqEl) return;
 
+  // Precompute castle counts per alliance
+  const allyCastleCounts = (() => {
+    const m = new Map();
+    for (const c of state.castles){
+      const aid = c.ownerAlly;
+      if (aid) m.set(aid, (m.get(aid) || 0) + 1);
+    }
+    return m;
+  })();
+
   // sort by power (desc), then by member count (desc)
-  const rows = list.map(a => ({...a, power: powerOfAllegiance(a)}))
-                   .sort((a,b)=> (b.power - a.power) || ((b.members?.length||0)-(a.members?.length||0)));
+  const rows = list
+    .map(a => ({...a, power: powerOfAllegiance(a), castles: allyCastleCounts.get(a.id) || 0}))
+    .sort((a,b)=> (b.power - a.power) || ((b.members?.length||0)-(a.members?.length||0)));
 
   listEl.innerHTML = "";
   rows.forEach(A=>{
@@ -687,6 +728,7 @@ function renderAllyList(list){
           <b>${A.name}</b>
           <span class="muted small">(${A.members?.length||0} members)</span>
           <span class="badge">Power: ${A.power}</span>
+          <span class="badge">🏰 ${A.castles}</span>
         </div>
       </div>
       <div class="row" id="allyRowBtns_${A.id}"></div>
@@ -1362,6 +1404,24 @@ function renderNearby(){
 
   if (R) addRow(`${EMOJI.raider} <b>Raiders</b> here: ${R.size} ${R.type} ${inPreparedness ? '<span class="muted">(no battle during Preparedness)</span>' : ''}`);
 
+  // Helpers for castle counts
+  const castlesOwnedBy = (uid)=>{
+    let n = 0;
+    for (const c of state.castles){
+      const owner = c.ownerName || c.owner;
+      if (owner === uid) n++;
+    }
+    return n;
+  };
+  const castlesForAlly = (allyId)=>{
+    if (!allyId) return 0;
+    let n = 0;
+    for (const c of state.castles){
+      if (c.ownerAlly === allyId) n++;
+    }
+    return n;
+  };
+
   // Nearby players
   const players = Array.from(state.others.values())
     .filter(p => Math.hypot(p.x - state.player.x, p.y - state.player.y) <= 6);
@@ -1369,7 +1429,10 @@ function renderNearby(){
   for (const p of players){
     const isAlly = (state.player.allegianceId && p.allegianceId && state.player.allegianceId === p.allegianceId);
     const cnt = armySum(p.army || {});
-    addRow(`${EMOJI.player} <b>${p.id}</b> (${cnt}) @ (${p.x},${p.y}) ${isAlly ? '<span class="badge">Ally</span>' : ''}`);
+    const pCastles = castlesOwnedBy(p.id);
+    const aCastles = p.allegianceId ? castlesForAlly(p.allegianceId) : 0;
+
+    addRow(`${EMOJI.player} <b>${p.id}</b> (${cnt}) • 🏰 ${pCastles}${p.allegianceId ? ` • 🏰 Ally ${aCastles}` : ''} @ (${p.x},${p.y}) ${isAlly ? '<span class="badge">Ally</span>' : ''}`);
   }
 
   // Cooldown/status banner (right panel header)
@@ -1399,6 +1462,7 @@ function renderNearby(){
     infoEl.textContent = "Ready";
   }
 }
+
 
 
 
@@ -1484,7 +1548,8 @@ sub(doc(db,"mountonline", username), s=>{
   if (!s.exists()) return;
   const d = s.data(); state.player = {id:username, ...d};
   if (d.allegianceId) state.allegiance = state.allyMap.get(d.allegianceId)||null; else state.allegiance=null;
-  hudGold.textContent = d.gold||0; updateArmyHud(); updateLevelHud();
+  hudGold.textContent = d.gold||0; updateArmyHud(); updateLevelHud(); recomputeCastleOwnership(); // update HUD ally count if allegianceId changed
+
 });
 
 /* Reserved */
@@ -1492,6 +1557,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
