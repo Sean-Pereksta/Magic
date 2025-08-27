@@ -188,6 +188,8 @@ const XP_GROWTH = 1.15; // xp to next scales each level
 const XP_PER_RECRUIT = 1;
 const XP_PER_UPGRADE = 3;
 const XP_PER_BANNER  = 5;
+const DAILY_PLAYER_PER_CASTLE = 300; // you
+const DAILY_ALLY_PER_CASTLE   = 100; // split across ally members
 
 const UPGRADE_COST = {
   archer: 10, footman: 12, monk: 14,
@@ -328,6 +330,97 @@ function maxPurchaseForLevel(level){ return BASE_MAX_PURCHASE + Math.max(0, leve
 function xpNextForLevel(level){ return Math.round(BASE_XP_NEXT * Math.pow(XP_GROWTH, Math.max(0, level-1))); }
   function castlesOwnedBy(userId){ return state.castleCountByPlayer.get(userId) || 0; }
 function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0; }
+  function todayKeyLocal(){
+  // YYYY-MM-DD in local time (e.g., 2025-08-27)
+  return new Date().toLocaleDateString('en-CA');
+}
+async function dailyTributeOnLogin(){
+  const youRef = state.youDocRef || doc(db,"mountonline", username);
+  const youSnap = await getDoc(youRef);
+  if (!youSnap.exists()) return;
+
+  const me = youSnap.data();
+  const todayKey = todayKeyLocal();
+  const alreadyPaid = me.lastDailyRewardKey === todayKey;
+
+  if (alreadyPaid) return; // done for today
+
+  // --- Count your castles (supports ownerName or owner) ---
+  const cCol = collection(db,"mountonline_castles");
+  const [mineByName, mineByOwner] = await Promise.all([
+    getDocs(query(cCol, where("ownerName","==", username))),
+    getDocs(query(cCol, where("owner","==", username)))
+  ]);
+  // Merge ids in case both fields are set on the same doc
+  const myCastleIds = new Set();
+  mineByName.forEach(d=> myCastleIds.add(d.id));
+  mineByOwner.forEach(d=> myCastleIds.add(d.id));
+  const myCastleCount = myCastleIds.size;
+  const myGold = myCastleCount * DAILY_PLAYER_PER_CASTLE;
+
+  // --- Alliance share (if any) ---
+  let allyGoldForMe = 0;
+  let allyName = null;
+  let allyCastleCount = 0;
+  let allyMemberCount = 0;
+
+  const aid = me.allegianceId || null;
+  if (aid){
+    const allyRef = doc(db,"mountonline_allegiances", aid);
+    const [allySnap, allyCastlesSnap] = await Promise.all([
+      getDoc(allyRef),
+      getDocs(query(cCol, where("ownerAlly","==", aid)))
+    ]);
+
+    if (allySnap.exists()){
+      const A = allySnap.data();
+      allyName = A.name || "Alliance";
+      allyMemberCount = (A.members || []).length || 0;
+      allyCastleCount = allyCastlesSnap.size;
+
+      if (allyMemberCount > 0){
+        const totalAllyGold = allyCastleCount * DAILY_ALLY_PER_CASTLE;
+        allyGoldForMe = Math.floor(totalAllyGold / allyMemberCount); // even split
+      }
+    }
+  }
+
+  const totalGold = myGold + allyGoldForMe;
+
+  // --- Transaction: guard against double paying if multiple tabs load ---
+  await runTransaction(db, async (tx)=>{
+    const curSnap = await tx.get(youRef);
+    if (!curSnap.exists()) return;
+    const cur = curSnap.data();
+
+    if (cur.lastDailyRewardKey === todayKey) return; // someone else already paid today
+
+    const newGold = (cur.gold || 0) + totalGold;
+    tx.update(youRef, {
+      gold: newGold,
+      lastDailyRewardKey: todayKey
+    });
+  });
+
+  // Announce to the player (World log)
+  if (totalGold > 0){
+    if (myGold > 0){
+      log(`💰 Daily Tribute: +${myGold}g from ${myCastleCount} castle${myCastleCount===1?'':'s'} you own.`);
+    } else {
+      log(`💰 Daily Tribute: You own no castles today (no personal tribute).`);
+    }
+
+    if (allyGoldForMe > 0){
+      log(`🤝 Alliance Stipend: +${allyGoldForMe}g from ${allyName} — ${allyCastleCount} castle${allyCastleCount===1?'':'s'} split among ${allyMemberCount} member${allyMemberCount===1?'':'s'}.`);
+    } else if (aid){
+      log(`🤝 Alliance Stipend: No payout (no castles or no members to split).`);
+    }
+  } else {
+    // still set lastDailyRewardKey, so call out that nothing was due
+    log(`📅 Daily check-in recorded (no tribute due).`);
+  }
+}
+
 
 function recomputeCastleOwnership(){
   const byP = new Map();
@@ -1533,6 +1626,7 @@ function loop(){ tickInput(); renderNearby(); requestAnimationFrame(loop); }
 /* =================== Init =================== */
 await seedWorldOnce();
 await ensurePlayer();
+await dailyTributeOnLogin();
 seedRaidersOnce();
 await listenWorld();
 await listenPlayers();
@@ -1557,6 +1651,7 @@ canvas.addEventListener("click", ()=>{});
 </script>
 </body>
 </html>
+
 
 
 
