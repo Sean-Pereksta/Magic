@@ -176,6 +176,20 @@ let lastClickAt=0, lastClickCell=null;
 function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
 function showHint(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; }
 function hideHint(){ document.getElementById("hint").style.display="none"; }
+  function popupDmgAt(unit, amount, color = "#ff4d4d") {
+  const dur = 800; // ms
+  localFX.push({
+    kind: "dmg",
+    gx: unit.gx,
+    gy: unit.gy,
+    text: `-${amount}`,
+    color,
+    start: Date.now(),
+    dur,
+    until: Date.now() + dur
+  });
+}
+
 
 /* ---------- Siege geometry ---------- */
 const WALL_X = Math.floor(GRID_W * 0.62);
@@ -540,6 +554,7 @@ function applyDamage(g, target, dmg, ap, owner){
 
   target.hp -= hit;
   target._lastBy = owner;
+  popupDmgAt(target, hit, "#ffb86b");
 }
 function applyHeal(target, amount){
   target.hp = Math.min(target.maxHp, target.hp + Math.max(0, amount|0));
@@ -936,6 +951,49 @@ function draw(){
     if(fx.kind==="ring"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.2+.6*a; ctx.strokeStyle=fx.color||"#9bf"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,TILE*.45*(1+0.15*(1-a)),0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(fx.kind==="tile"){ const sx=(fx.gx)*TILE - cam.x, sy=(fx.gy)*TILE - cam.y; ctx.save(); ctx.globalAlpha=.22+.3*a; ctx.fillStyle=fx.color||"#aef"; ctx.fillRect(sx,sy,TILE,TILE); ctx.restore(); }
     if(fx.kind==="burst"){ const cx=fx.gx*TILE + TILE/2 - cam.x, cy=fx.gy*TILE + TILE/2 - cam.y; ctx.save(); ctx.globalAlpha=.65*a; ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.moveTo(cx-6,cy); ctx.lineTo(cx+6,cy); ctx.moveTo(cx,cy-6); ctx.lineTo(cx,cy+6); ctx.stroke(); ctx.restore(); }
+  // local fx
+for (let i = localFX.length - 1; i >= 0; i--) {
+  const fx = localFX[i];
+  const rem = fx.until - Date.now();
+  if (rem <= 0) { localFX.splice(i, 1); continue; }
+
+  const a = Math.max(0, Math.min(1, rem / (fx.dur || 600))); // 1→0 over life
+
+  if (fx.kind === "ring") {
+    // (existing)
+  }
+  if (fx.kind === "tile") {
+    // (existing)
+  }
+  if (fx.kind === "burst") {
+    // (existing)
+  }
+
+  // NEW: damage text
+  if (fx.kind === "dmg") {
+    const t = 1 - a; // 0→1 over life
+    const cx = fx.gx * TILE + TILE / 2 - cam.x;
+    const cy = fx.gy * TILE - cam.y; // start just above the unit
+    const y  = cy - 8 - 28 * t;      // float upward
+
+    ctx.save();
+    ctx.globalAlpha = 0.9 * (1 - t * 0.7);
+    ctx.font = "bold 18px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+
+    // outline for readability
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(0,0,0,.75)";
+    ctx.strokeText(fx.text, cx, y);
+
+    // fill
+    ctx.fillStyle = fx.color || "#ff4d4d";
+    ctx.fillText(fx.text, cx, y);
+    ctx.restore();
+  }
+}
+
   }
 
   // drag box
@@ -1064,6 +1122,7 @@ window.addEventListener("beforeunload", ()=>{
 </script>
 </body>
 </html>
+
 
 
 
