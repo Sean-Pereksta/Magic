@@ -694,6 +694,52 @@ function buildRoom(){
   makeGrid();
   markWallsOnGrid();
 }
+function weightedOffersForLevel(prog, count=3){
+  // allow a little "above-level" spice (up to +3)
+  const windowAbove = 3;
+  const pool = GUNS.filter(g => g.baseLevel <= prog + windowAbove);
+
+  if (pool.length <= count) return pool.slice(0, count);
+
+  // Gaussian weight around current progress
+  const sigma = 6; // smaller = stricter to your level; larger = looser
+  const weights = pool.map(g => {
+    const d = Math.abs(g.baseLevel - prog);
+    let w = Math.exp(-(d*d)/(2*sigma*sigma));   // near = high weight
+
+    // gentle nudge: prefer <= prog (affordable now)
+    if (g.baseLevel <= prog) w *= 1.15;
+
+    // discourage way-below items from flooding the shop
+    if (prog - g.baseLevel > 10) w *= 0.5;
+
+    return w + 1e-6; // never 0
+  });
+
+  // sample without replacement via roulette wheel
+  const offers = [];
+  const taken = new Set();
+  for (let k = 0; k < count; k++){
+    let total = 0;
+    for (let i = 0; i < weights.length; i++){
+      if (!taken.has(i)) total += weights[i];
+    }
+    if (total <= 0) break;
+
+    let r = Math.random() * total;
+    for (let i = 0; i < pool.length; i++){
+      if (taken.has(i)) continue;
+      r -= weights[i];
+      if (r <= 0){
+        offers.push(pool[i]);
+        taken.add(i);
+        break;
+      }
+    }
+  }
+  return offers;
+}
+
 
 /*** ========= Spawning ========= ***/
 function spawnLevel(){
@@ -1444,9 +1490,15 @@ function openStore(){
   buyACC.onclick=()=> tryBuy(accCost,()=>{ player.accLvl++; toast('Accuracy up'); openStore(); });
 
   gunGrid.innerHTML='';
-  const prog=levelIndex();
-  const pool=GUNS.filter(g=>g.baseLevel<=prog);
-  const offers=[]; for(let i=0;i<3&&pool.length;i++){ const idx=Math.floor(Math.random()*pool.length); offers.push(pool.splice(idx,1)[0]); }
+
+  const prog = levelIndex(); // 1..∞ across stages
+  // 🔥 Weighted toward guns closest to your current progress
+  const offers = weightedOffersForLevel(prog, 3);
+
+  // (optional) remind the player what’s happening
+  const hintEl = document.getElementById('storeHint');
+  if (hintEl) hintEl.textContent = 'Offers are weighted toward your current level.';
+
   for(const g of offers){
     const el=document.createElement('div'); el.className='gun';
     el.innerHTML = `
@@ -1677,3 +1729,4 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
