@@ -968,6 +968,66 @@ function levelClear(){
   toast(`Level clear! +${bonus} gold`);
   openStore();
 }
+	const HIGH_ROLL_RANGE = [7, 12];   // levels above your progress
+let grantHighRollOffer = false;
+
+// Linear progress index so baseLevel aligns with where you are:
+// Stage 1 L1 => 1, Stage 1 L5 => 5, Stage 2 L1 => 6, etc.
+function currentProgressIndex(){
+  return (stage - 1) * STAGE_LENGTH + level;
+}
+
+// True on every stage boss (Level 5 when STAGE_LENGTH=5)
+function isStageBossLevel(){
+  return (level % STAGE_LENGTH) === 0 || level === STAGE_LENGTH;
+}
+
+// Hook levelClear so we can mark that the next shop gets a bonus 4th gun
+const _levelClear_original = levelClear;
+levelClear = function(){
+  grantHighRollOffer = isStageBossLevel(); // fire only when you beat Level 5
+  _levelClear_original();
+};
+
+// Pick a single gun from +7..+12 over your progress (with fallbacks) and mark it
+function pickHighRollGun(prog, avoidIds = []){
+  let lo = prog + HIGH_ROLL_RANGE[0];
+  let hi = prog + HIGH_ROLL_RANGE[1];
+
+  const maxBL = Math.max(...GUNS.map(g => g.baseLevel));
+  lo = Math.min(lo, maxBL);
+  hi = Math.min(hi, maxBL);
+
+  // Primary pool: strictly within the bonus range
+  let pool = GUNS.filter(g =>
+    g.baseLevel >= lo && g.baseLevel <= hi && !avoidIds.includes(g.id)
+  );
+
+  // Fallbacks (near end game, etc.)
+  if (pool.length === 0){
+    pool = GUNS.filter(g => g.baseLevel > prog && !avoidIds.includes(g.id));
+  }
+  if (pool.length === 0){
+    pool = GUNS.filter(g => !avoidIds.includes(g.id));
+  }
+
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  return { ...pick, _bonus: true };
+}
+
+// Use this instead of weightedOffersForLevel(prog, 3) when building the shop
+function shopOffersForCurrentProgress(){
+  const prog = currentProgressIndex();
+  const base = weightedOffersForLevel(prog, 3);
+
+  if (grantHighRollOffer){
+    const avoid = base.map(b => b.id);
+    base.push(pickHighRollGun(prog, avoid));
+  }
+  // consume the flag so the bonus triggers only once per Level-5 clear
+  grantHighRollOffer = false;
+  return base;
+}
 
 function killEnemyByIndex(idx){
   const e = enemies[idx];
@@ -1615,18 +1675,25 @@ function openStore(){
 
   gunGrid.innerHTML='';
 
-  const prog = levelIndex(); // 1..∞ across stages
-  // 🔥 Weighted toward guns closest to your current progress
-  const offers = weightedOffersForLevel(prog, 3);
+  const prog = levelIndex(); // 1..∞ across stages (kept if you use elsewhere)
+  // 🔥 Weighted toward guns closest to your current progress (+ bonus 4th on L5 clear)
+  const offers = shopOffersForCurrentProgress();
 
-  // (optional) remind the player what’s happening
+  // Store hint: mention the bonus when present
   const hintEl = document.getElementById('storeHint');
-  if (hintEl) hintEl.textContent = 'Offers are weighted toward your current level.';
+  if (hintEl) {
+    if (offers.some(o => o._bonus)) {
+      hintEl.textContent = 'Stage-5 clear bonus: 4th offer rolled from +7–12 levels above!';
+    } else {
+      hintEl.textContent = 'Offers are weighted toward your current level.';
+    }
+  }
 
   for(const g of offers){
-    const el=document.createElement('div'); el.className='gun';
+    const el=document.createElement('div'); 
+    el.className='gun';
     el.innerHTML = `
-      <h4 style="color:${g.color}">${g.name}</h4>
+      <h4 style="color:${g.color}">${g.name}${g._bonus ? ' <span class="kv">⭐ Bonus Drop (L+7–12)</span>' : ''}</h4>
       <div class="kv">Type: ${g.type}</div>
       <div class="kv">DMG ${g.dmg} • ROF ${g.rof}/s • MAG ${g.mag} • Reload ${g.reload}s</div>
       <div class="kv">Pierce ${g.pierce||0} • Splash ${g.splash||0} • Chain ${g.chain||0} • Frags ${g.frags||0}</div>
@@ -1636,7 +1703,13 @@ function openStore(){
         <button class="btn">Buy → Slot 1</button>
       </div>
     `;
-    el.querySelector('button').onclick=()=>{ tryBuy(g.cost, ()=>{ equipNewGunCycling(g.id); toast(`${g.name} to Slot 1 • previous active → Slot 2`); openStore(); }); };
+    el.querySelector('button').onclick = () => {
+      tryBuy(g.cost, () => {
+        equipNewGunCycling(g.id);
+        toast(`${g.name} to Slot 1 • previous active → Slot 2`);
+        openStore();
+      });
+    };
     gunGrid.appendChild(el);
   }
   ovStore.style.display='grid';
@@ -1853,6 +1926,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
