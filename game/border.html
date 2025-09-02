@@ -172,6 +172,46 @@ const WALL_THICK = 32;
 const WALL_COLORS = ['#24415f','#2a4941','#5a2747','#554429','#343459','#31564a','#5b2e2e','#284d61','#3e3e3e','#613228'];
 
 const DMG = { neutral:'neutral', piercing:'piercing', stun:'stun', poison:'poison', flame:'flame', lightning:'lightning' };
+// --- Knockback (per-second impulse) ---
+const KB_DECAY_PER_SEC = 10.5;         // higher = stops sooner
+const KB_MAX_SPEED     = 900;          // cap knockback drift speed
+const KB_WALL_BOUNCE   = 0.2;          // slight cushion if shoved into a wall
+
+function applyKnockback(e, dirX, dirY, power){
+  if (!power || power<=0) return;
+  const len = Math.hypot(dirX, dirY) || 1;
+  const nx = dirX/len, ny = dirY/len;
+  const res = (e.kbRes ?? 1.0);              // per-enemy resistance (optional)
+  e.kbVX = (e.kbVX||0) + nx*power*res;
+  e.kbVY = (e.kbVY||0) + ny*power*res;
+  // cap
+  const spd = Math.hypot(e.kbVX, e.kbVY);
+  if (spd > KB_MAX_SPEED){
+    const s = KB_MAX_SPEED/spd;
+    e.kbVX *= s; e.kbVY *= s;
+  }
+}
+
+function integrateKnockback(e, dt){
+  if ((!e.kbVX && !e.kbVY) || dt<=0) return;
+  // move
+  e.x += e.kbVX * dt;
+  e.y += e.kbVY * dt;
+
+  // bounce off room bounds a bit (light cushion)
+  if (e.x < ENEMY_R){ e.x = ENEMY_R; e.kbVX *= -KB_WALL_BOUNCE; }
+  else if (e.x > ROOM_W-ENEMY_R){ e.x = ROOM_W-ENEMY_R; e.kbVX *= -KB_WALL_BOUNCE; }
+  if (e.y < ENEMY_R){ e.y = ENEMY_R; e.kbVY *= -KB_WALL_BOUNCE; }
+  else if (e.y > ROOM_H-ENEMY_R){ e.y = ROOM_H-ENEMY_R; e.kbVY *= -KB_WALL_BOUNCE; }
+
+  // decay (exponential)
+  const decay = Math.exp(-KB_DECAY_PER_SEC * dt);
+  e.kbVX *= decay;
+  e.kbVY *= decay;
+  if (Math.abs(e.kbVX) < 0.1) e.kbVX = 0;
+  if (Math.abs(e.kbVY) < 0.1) e.kbVY = 0;
+}
+
 
 /*** ========= Guns (>=20) ========= ***/
 const GUNS = [
@@ -336,7 +376,7 @@ const GUNS = [
   {id:'hellbreath',     name:'Hellbreath',         color:'#ff7a7a', type:DMG.flame,     dmg:25,  rof:20,   spd:900,  mag:140, reload:0.5,  spread:14,  range:820,  pierce:0,  splash:90, chain:0, frags:0,  baseLevel:105, cost:7600, dot:{type:'burn',dps:60,sec:5}},
   {id:'plague_lord',    name:'Plague Lord',        color:'#6ef0ae', type:DMG.poison,    dmg:65,  rof:5.2,  spd:1450, mag:28,  reload:1.4,  spread:7,   range:1500, pierce:0,  splash:40,   chain:0, frags:6,  baseLevel:106, cost:7700, dot:{type:'poison',dps:200,sec:9.6}},
   {id:'apex_stunner',   name:'Apex Stunner',       color:'#c7eaff', type:DMG.stun,      dmg:70,  rof:8.0,  spd:1450, mag:36,  reload:1.45, spread:6,   range:1500, pierce:0,  splash:48, chain:0, frags:0,  baseLevel:107, cost:7700, stunSec:3.0},
-  {id:'tremor_gren',    name:'Tremor Grenadier',   color:'#ffe98c', type:DMG.neutral,   dmg:160, rof:2.8,  spd:950,  mag:12,  reload:1.55, spread:10,  range:1200, pierce:0,  splash:210,chain:0, frags:3,  baseLevel:108, cost:7800},
+  {id:'tremor_gren',    name:'Tremor Grenadier',   color:'#ffe98c', type:DMG.neutral,   dmg:160, rof:2.8,  spd:950,  mag:12,  reload:1.55, spread:10,  range:1200, pierce:0,  splash:210,chain:0, frags:3,  baseLevel:108, cost:7800, knock:520},
   {id:'void_rail',      name:'Void Rail',          color:'#32e6ff', type:DMG.piercing,  dmg:320, rof:2.0,  spd:1850, mag:8,   reload:1.75, spread:1.0, range:2500, pierce:13, splash:0,   chain:0, frags:0,  baseLevel:109, cost:8000},
   {id:'prism_laser',    name:'Prism Laser',        color:'#fff066', type:DMG.piercing,  dmg:78,  rof:14,   spd:1800, mag:44,  reload:1.35, spread:1.4, range:2000, pierce:8,  splash:0,   chain:0, frags:0,  baseLevel:110, cost:8200},
   {id:'hydra_prime',    name:'Hydra Prime',        color:'#a7fbe0', type:DMG.neutral,   dmg:36,  rof:4.8,  spd:1500, mag:20,  reload:1.45, spread:6.5, range:1500, pierce:0,  splash:0,   chain:0, frags:8,  baseLevel:111, cost:7900},
@@ -1221,21 +1261,52 @@ function fireLogic(dt, t){
   }
 }
 function shootBullet(g){
-  const def=g.def;
-  const baseSpread=(player.accBase - player.accLvl*1.6);
-  const totalSpread=Math.max(1, baseSpread * (def.spread/10));
-  const ang=player.ang + (rand(-totalSpread,totalSpread)*Math.PI/180);
-  const pellets=def.pellets||1;
-  for(let p=0;p<pellets;p++){
-    const pang=pellets>1 ? ang + (rand(-totalSpread,totalSpread)*Math.PI/180)*0.5 : ang;
-    const vx=Math.cos(pang)*def.spd, vy=Math.sin(pang)*def.spd;
-    bullets.push({ from:'player',
-      x:player.x+Math.cos(pang)*(PLAYER_R+6), y:player.y+Math.sin(pang)*(PLAYER_R+6),
-      vx,vy, spd:def.spd, life:0, color:def.color, dmg:def.dmg, type:def.type, pierceLeft:def.pierce||0, splash:def.splash||0,
-      chainLeft:def.chain||0, fragsLeft:def.frags||0, rangeLeft:def.range||1000, dot:def.dot||null, stunSec:def.stunSec||0 });
+  const def = g.def;
+  const baseSpread = (player.accBase - player.accLvl*1.6);
+  const totalSpread = Math.max(1, baseSpread * (def.spread/10));
+  const ang = player.ang + (rand(-totalSpread,totalSpread) * Math.PI/180);
+
+  const pellets = def.pellets || 1;
+  for (let p = 0; p < pellets; p++){
+    const pang = pellets > 1
+      ? ang + (rand(-totalSpread,totalSpread) * Math.PI/180) * 0.5
+      : ang;
+
+    const vx = Math.cos(pang) * def.spd;
+    const vy = Math.sin(pang) * def.spd;
+
+    bullets.push({
+      from: 'player',
+      x: player.x + Math.cos(pang) * (PLAYER_R + 6),
+      y: player.y + Math.sin(pang) * (PLAYER_R + 6),
+      vx, vy,
+      spd: def.spd,
+      life: 0,
+      ang: pang,                     // (new) handy if you need it on hit
+      color: def.color,
+      dmg: def.dmg,
+      type: def.type,
+      pierceLeft: def.pierce || 0,
+      splash: def.splash || 0,
+      chainLeft: def.chain || 0,
+      fragsLeft: def.frags || 0,
+      rangeLeft: def.range || 1000,
+      dot: def.dot || null,
+      stunSec: def.stunSec || 0,
+      kb: def.knock || 0             // (new) knockback strength to apply on hit
+    });
   }
-  for(let i=0;i<2;i++) particles.push({x:player.x,y:player.y,vx:rand(-40,40),vy:rand(-40,40),life:0.25,c:'rgba(255,255,255,.4)',r:2});
+
+  // Muzzle puff
+  for (let i=0; i<2; i++){
+    particles.push({
+      x: player.x, y: player.y,
+      vx: rand(-40,40), vy: rand(-40,40),
+      life: 0.25, c: 'rgba(255,255,255,.4)', r: 2
+    });
+  }
 }
+
 
 /*** ========= Damage / Bullets ========= ***/
 function damageMultiplier(enemy, dmgType){
@@ -1250,10 +1321,17 @@ function applyDamage(enemy, bullet){
   const dmg = Math.floor(bullet.dmg * damageMultiplier(enemy, bullet.type));
   enemy.hp -= dmg;
 
+  // >>> KNOCKBACK: direct-hit shove along bullet direction
+  if (bullet.kb && typeof applyKnockback === 'function'){
+    const dx = (bullet.vx !== undefined) ? bullet.vx : Math.cos(bullet.ang || 0);
+    const dy = (bullet.vy !== undefined) ? bullet.vy : Math.sin(bullet.ang || 0);
+    applyKnockback(enemy, dx, dy, bullet.kb);
+  }
+
   // apply DOT / stun
   if (bullet.dot){
     const { type, dps, sec } = bullet.dot;
-    if (type === 'burn')  enemy.burn   = { dps, t: sec };
+    if (type === 'burn')   enemy.burn   = { dps, t: sec };
     if (type === 'poison') enemy.poison = { dps, t: sec };
   }
   if (bullet.stunSec) enemy.stun = Math.max(enemy.stun, bullet.stunSec);
@@ -1283,7 +1361,22 @@ function applyDamage(enemy, bullet){
       if (e === enemy) continue;
       const d2 = dist2(e.x, e.y, bullet.x, bullet.y);
       if (d2 <= bullet.splash * bullet.splash){
-        e.hp -= Math.floor(bullet.dmg * 0.6 * damageMultiplier(e, bullet.type));
+        // deal splash damage
+        const sdmg = Math.floor(bullet.dmg * 0.6 * damageMultiplier(e, bullet.type));
+        e.hp -= sdmg;
+
+        // >>> KNOCKBACK: radial push from explosion center
+        if (typeof applyKnockback === 'function'){
+          const dx = e.x - bullet.x;
+          const dy = e.y - bullet.y;
+          const d  = Math.sqrt(d2) || 1;
+          const falloff = 1 - (d / bullet.splash);                  // 1 at center → 0 at edge
+          const basePush = (bullet.kb && bullet.kb > 0)
+            ? bullet.kb
+            : Math.max(200, Math.min(500, bullet.splash * 1.5));    // sensible default if no kb on bullet
+          applyKnockback(e, dx, dy, basePush * Math.max(0, falloff));
+        }
+
         if (e.hp <= 0){
           killEnemyByIndex(i); // awards gold, FX, increments kill tally
         }
@@ -1320,6 +1413,7 @@ function applyDamage(enemy, bullet){
     if (idx !== -1) killEnemyByIndex(idx);
   }
 }
+
 
 function findNearestEnemy(x,y, exclude){ let best=null,bestD2=Infinity; for(const e of enemies){ if(e===exclude) continue; const d2=dist2(x,y,e.x,e.y); if(d2<bestD2){best=e;bestD2=d2;} } return best; }
 function updateBullets(dt){
@@ -1742,6 +1836,12 @@ function updateEnemies(dt, t){
     e.x += e.vx * dt; e.y += e.vy * dt;
     if (!e.flying) resolveCircleWalls(e, e.tiny ? 10 : ENEMY_R);
 
+    // --- NEW: apply knockback drift after AI movement, then wall-resolve again
+    if (typeof integrateKnockback === 'function'){
+      integrateKnockback(e, dt);
+      if (!e.flying) resolveCircleWalls(e, e.tiny ? 10 : ENEMY_R);
+    }
+
     // touch damage to player
     if (dist2(e.x, e.y, player.x, player.y) <= (PLAYER_R + ENEMY_R) * (PLAYER_R + ENEMY_R)){
       player.hp -= e.dmg * dt;
@@ -2030,6 +2130,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
