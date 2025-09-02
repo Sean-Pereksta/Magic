@@ -1665,7 +1665,7 @@ function maybeStartAbility(e, t){
 
   const a = e.ability;
   e.abilKind = a.kind;
-  e.windup   = a.wind;
+  e.windup   = (typeof a.wind === 'number' ? a.wind : 0.6); // default windup to avoid undefined
 
   // Small helper: march a ray until it hits a wall or max distance
   function rayToWall(x, y, tx, ty, maxDist = 2200, step = 12){
@@ -1716,6 +1716,16 @@ function maybeStartAbility(e, t){
     // Precompute beam endpoint toward the player (used for dashed warning + beam)
     const end = rayToWall(e.x, e.y, player.x, player.y, a.maxDist || 2000);
     e.teleTarget = { x2: end.x2, y2: end.y2 }; // drawTelegraph uses x2,y2
+
+  } else if (a.kind === 'shockwave'){
+    // Telegraph a short, fat line toward the player, capped by walls
+    const end = rayToWall(e.x, e.y, player.x, player.y, a.maxRange || 1200);
+    const dx  = end.x2 - e.x, dy = end.y2 - e.y;
+    const dist= Math.hypot(dx, dy) || 1;
+    const maxHead = (a.length || 240) + 60;       // show a bit beyond body length
+    const len = Math.min(dist, maxHead);
+    const nx = dx / dist, ny = dy / dist;
+    e.teleTarget = { x: e.x + nx * len, y: e.y + ny * len };
   }
 
   e.abilCD = rand(a.cd[0], a.cd[1]);
@@ -2099,6 +2109,46 @@ function drawTelegraph(e){
       ctx.beginPath(); ctx.arc(p.x, p.y, 16, 0, Math.PI*2); ctx.stroke();
     }
 
+  } else if (kind === 'shockwave'){
+    // short, fat line in cast direction; uses teleTarget if available
+    const a = e.ability;
+    const lw = (a.width || 18) * 2;
+    let tx, ty;
+    if (e.teleTarget){
+      tx = e.teleTarget.x; ty = e.teleTarget.y;
+    } else {
+      const A = angleTo(e.x, e.y, player.x, player.y);
+      const len = (a.length || 240) + 60;
+      tx = e.x + Math.cos(A) * len;
+      ty = e.y + Math.sin(A) * len;
+    }
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // soft glow
+    ctx.globalAlpha = 0.25 + 0.35 * Math.sin(performance.now()/160);
+    ctx.lineWidth = lw + 8;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // core line
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    // head hint
+    ctx.beginPath();
+    ctx.arc(tx, ty, Math.max(6, (a.width || 18) * 0.75), 0, Math.PI*2);
+    ctx.stroke();
+
+    ctx.restore();
+
   } else if (kind === 'laser'){
     // Dashed warning line along the precomputed beam path (or toward player as fallback)
     const hasLine = e.teleTarget && typeof e.teleTarget.x2 === 'number' && typeof e.teleTarget.y2 === 'number';
@@ -2121,6 +2171,7 @@ function drawTelegraph(e){
 
   ctx.restore();
 }
+
 
 function draw(){
   ctx.fillStyle = '#061018'; ctx.fillRect(0,0,CW,CH);
@@ -2278,6 +2329,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
