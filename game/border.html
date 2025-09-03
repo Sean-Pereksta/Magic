@@ -208,6 +208,32 @@ const DMG = { neutral:'neutral', piercing:'piercing', stun:'stun', poison:'poiso
 const KB_DECAY_PER_SEC = 10.5;         // higher = stops sooner
 const KB_MAX_SPEED     = 900;          // cap knockback drift speed
 const KB_WALL_BOUNCE   = 0.2;          // slight cushion if shoved into a wall
+// === Turret aim + rate tuning ===
+const TURRET_TURN_SPEED = Math.PI * 4;   // radians per second it can turn (≈720°/s)
+const TURRET_RATE_BONUS_PER_UPG = 0.05;  // +5% ROF per (chain + frags) level
+const TURRET_RATE_CAP = 2.25;            // max 2.25x base ROF boost
+
+function normAngle(a){ // normalize to [-PI, PI]
+  a = (a + Math.PI) % (Math.PI*2);
+  return a < 0 ? a + Math.PI*2 - Math.PI : a - Math.PI;
+}
+function angleDelta(a,b){ // smallest signed delta from a -> b
+  const d = normAngle(b - a);
+  return d;
+}
+function turnTowards(a, target, maxStep){
+  const d = angleDelta(a, target);
+  if (Math.abs(d) <= maxStep) return target;
+  return a + Math.sign(d) * maxStep;
+}
+
+// ROF that gets a slight boost from (chain + frags) upgrades
+function getTurretROF(){
+  const chainLv = (turretLvls?.chain || 0);
+  const fragsLv = (turretLvls?.frags || 0);
+  const mult = Math.min(TURRET_RATE_CAP, 1 + TURRET_RATE_BONUS_PER_UPG * (chainLv + fragsLv));
+  return (TURRET_BASE?.rof || 3.5) * mult;   // shots/second
+}
 
 	/*** ========= Turret (state + prices) ========= ***/
 const TURRET_BASE = {
@@ -1596,39 +1622,56 @@ function regenPlayer(dt){ const rate=0.6 + 0.6*player.hpLvl; player.hp=Math.min(
 
 /*** ========= Guns ========= ***/
 function updateTurret(dt){
-  if (!turret.owned || turret.shots<=0) return;
+  if (!turret?.owned || turret.shots <= 0) return;
 
-  // cooldown
-  turret.cooldown -= dt;
-  if (turret.cooldown > 0) return;
-
-  // select up to N distinct nearest enemies in range
   const pos = turretPos();
-  const entries = [];
+
+  // --- Find enemies in range (for firing) and nearest overall (for idle aiming)
+  let nearestAny = null, nearestAnyD2 = Infinity;
+  const inRange = [];
   for (const e of enemies){
     if (e.dead) continue;
     const d2 = dist2(pos.x, pos.y, e.x, e.y);
-    if (d2 <= turret.range * turret.range){
-      entries.push({ e, d2 });
+    if (d2 < nearestAnyD2){ nearestAny = e; nearestAnyD2 = d2; }
+    if (d2 <= turret.range * turret.range) inRange.push({ e, d2 });
+  }
+
+  // --- Aim: face nearest in-range if present, else nearest overall (so it "seeks")
+  let aimTarget = null;
+  if (inRange.length) {
+    inRange.sort((a,b)=>a.d2 - b.d2);
+    aimTarget = inRange[0].e;
+  } else if (nearestAny) {
+    aimTarget = nearestAny;
+  }
+
+  if (aimTarget){
+    const desired = angleTo(pos.x, pos.y, aimTarget.x, aimTarget.y);
+    const maxStep = TURRET_TURN_SPEED * dt;
+    turret.lastAngle = turnTowards(turret.lastAngle || 0, desired, maxStep);
+  }
+
+  // --- Firing cadence (fixed rate, slightly faster with chain+frags)
+  turret.cooldown -= dt;
+  const rof = getTurretROF();           // shots per second
+  const fireReady = turret.cooldown <= 0;
+
+  if (fireReady && inRange.length){
+    // choose up to N distinct nearest targets
+    const shots = Math.min(turret.shots, inRange.length);
+    // inRange already sorted above if we aimed; otherwise sort now
+    if (aimTarget !== (inRange[0]?.e)) inRange.sort((a,b)=>a.d2 - b.d2);
+
+    for (let i=0; i<shots; i++){
+      const target = inRange[i].e;
+      const ang = angleTo(pos.x, pos.y, target.x, target.y);
+      spawnTurretBullet(pos.x, pos.y, ang);
+      if (i === 0) turret.lastAngle = ang; // barrel matches first shot
     }
+
+    // reset cooldown; += keeps timing stable even on big dt spikes
+    turret.cooldown += 1 / rof;
   }
-  if (!entries.length) return;
-
-  entries.sort((a,b)=> a.d2 - b.d2);
-
-  const shots = Math.min(turret.shots, entries.length);
-  if (shots <= 0) return;
-
-  // Fire a volley simultaneously at distinct targets
-  for (let i=0;i<shots;i++){
-    const target = entries[i].e;
-    const ang = angleTo(pos.x, pos.y, target.x, target.y);
-    spawnTurretBullet(pos.x, pos.y, ang);
-    if (i === 0) turret.lastAngle = ang;
-  }
-
-  // reset cooldown to 1/rof seconds
-  turret.cooldown = 1 / turret.rof;
 }
 
 function spawnTurretBullet(x,y, ang){
@@ -1636,20 +1679,16 @@ function spawnTurretBullet(x,y, ang){
   const vy = Math.sin(ang) * turret.spd;
 
   bullets.push({
-    // kinematics
     x, y, vx, vy, r: BULLET_R,
-    // damage model
+    spd: turret.spd,                 // <— required for trail calc
     dmg: turret.dmg,
     type: DMG.neutral,
-    pierce: 0,
-    splash: 0,
+    pierce: 0, splash: 0,
     chain: turret.chain,
     frags: turret.frags,
     knock: turret.knock,
-    // lifetime
     range: turret.range,
     traveled: 0,
-    // provenance (if you use it for scoring/FX)
     from: 'turret'
   });
 }
@@ -2757,6 +2796,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
