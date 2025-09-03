@@ -1638,12 +1638,13 @@ function regenPlayer(dt){ const rate=0.6 + 0.6*player.hpLvl; player.hp=Math.min(
 
 /*** ========= Guns ========= ***/
 // === UPDATE TURRET ===
+// === UPDATE TURRET ===
 function updateTurret(dt){
   if (!turret?.owned || turret.shots <= 0) return;
 
   const pos = turretPos();
 
-  // --- Find enemies in range (for firing) and nearest overall (for idle aiming)
+  // find targets
   let nearestAny = null, nearestAnyD2 = Infinity;
   const inRange = [];
   const r2 = turret.range * turret.range;
@@ -1655,47 +1656,62 @@ function updateTurret(dt){
     if (d2 <= r2) inRange.push({ e, d2 });
   }
 
-  // --- Aim: face nearest in-range if present, else nearest overall (so it "seeks")
+  // aim
   let aimTarget = null;
-  if (inRange.length) {
+  if (inRange.length){
     inRange.sort((a,b)=>a.d2 - b.d2);
     aimTarget = inRange[0].e;
-  } else if (nearestAny) {
+  } else if (nearestAny){
     aimTarget = nearestAny;
   }
-
   if (aimTarget){
     const desired = angleTo(pos.x, pos.y, aimTarget.x, aimTarget.y);
-    const maxStep = TURRET_TURN_SPEED * dt;
-    turret.lastAngle = turnTowards(turret.lastAngle || 0, desired, maxStep);
+    turret.lastAngle = turnTowards(turret.lastAngle || 0, desired, TURRET_TURN_SPEED * dt);
   }
 
-  // --- Firing cadence (fixed rate, slightly faster with chain+frags)
+  // cadence
   turret.cooldown -= dt;
-  const rof = getTurretROF();           // shots per second
-  const fireReady = turret.cooldown <= 0;
-
-  if (fireReady && inRange.length){
+  const rof = getTurretROF();
+  if (turret.cooldown <= 0 && inRange.length){
     const shots = Math.min(turret.shots, inRange.length);
-    // ensure nearest-first when selecting multiple targets
-    if (!inRange.length || aimTarget !== (inRange[0]?.e)) inRange.sort((a,b)=>a.d2 - b.d2);
-
+    if (aimTarget !== (inRange[0]?.e)) inRange.sort((a,b)=>a.d2 - b.d2);
     fireTurret(pos, inRange.slice(0, shots));
-    turret.cooldown += 1 / rof; // += keeps cadence stable across frame spikes
+    turret.cooldown += 1 / rof; // keep stable over frame spikes
   }
 }
 
-// === FIRE TURRET (spawns one bullet per provided target) ===
+// === FIRE TURRET (inline bullet spawn; no spawnTurretBullet needed) ===
 function fireTurret(pos, targets){
+  const MUZZLE = 18;
   for (let i = 0; i < targets.length; i++){
-    const t = targets[i].e || targets[i]; // accept raw enemy or {e,d2}
+    const t = targets[i].e || targets[i];
     const ang = angleTo(pos.x, pos.y, t.x, t.y);
-    spawnTurretBullet(pos.x, pos.y, ang);
-    if (i === 0) turret.lastAngle = ang; // barrel tracks first shot
+    const spd = turret.spd || 1200;
+    const vx = Math.cos(ang) * spd;
+    const vy = Math.sin(ang) * spd;
+
+    bullets.push({
+      x: pos.x + Math.cos(ang) * MUZZLE,
+      y: pos.y + Math.sin(ang) * MUZZLE,
+      vx, vy,
+      r: BULLET_R,
+      spd: spd,
+      dmg: turret.dmg,
+      type: DMG.neutral,
+      pierce: 0, splash: 0,
+      chain: turret.chain || 0,
+      frags: turret.frags || 0,
+      knock: turret.knock || 0,
+      range: turret.range || 900,
+      traveled: 0,
+      from: 'turret'
+    });
+
+    if (i === 0) turret.lastAngle = ang;
   }
 }
 
-// === UPDATE TURRET BULLETS (only bullets tagged from:'turret') ===
+// === UPDATE TURRET BULLETS ===
 function updateTurretBullets(dt){
   for (let i = bullets.length - 1; i >= 0; i--){
     const b = bullets[i];
@@ -1706,11 +1722,11 @@ function updateTurretBullets(dt){
     b.y += b.vy * dt;
     b.traveled = (b.traveled || 0) + step;
 
-    // collision vs enemies
+    // collide with enemies
     let hit = null;
     for (const e of enemies){
       if (e.dead) continue;
-      const rr = (ENEMY_R) + (b.r || BULLET_R);
+      const rr = ENEMY_R + (b.r || BULLET_R);
       const dx = e.x - b.x, dy = e.y - b.y;
       if (dx*dx + dy*dy <= rr*rr){ hit = e; break; }
     }
@@ -1729,13 +1745,14 @@ function updateTurretBullets(dt){
       continue;
     }
 
-    // life/range or bounds
+    // out of life or bounds
     if (b.traveled >= (b.range || 1000) ||
         b.x < 0 || b.y < 0 || b.x > ROOM_W || b.y > ROOM_H){
       bullets.splice(i, 1);
     }
   }
 }
+
 
 function getGun(slotIndex){
   const slot=player.slots[slotIndex];
@@ -2850,6 +2867,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
