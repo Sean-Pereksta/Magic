@@ -212,6 +212,10 @@ const KB_WALL_BOUNCE   = 0.2;          // slight cushion if shoved into a wall
 const TURRET_TURN_SPEED = Math.PI * 4;   // radians per second it can turn (≈720°/s)
 const TURRET_RATE_BONUS_PER_UPG = 0.05;  // +5% ROF per (chain + frags) level
 const TURRET_RATE_CAP = 2.25;            // max 2.25x base ROF boost
+// === TURRET BULLET PIPELINE ===
+const TURRET_MUZZLE_OFFSET = 18;
+let tBullets = [];               // turret-only bullets
+const DEBUG_TURRET = false;      // set true to see aim & range
 
 function normAngle(a){ // normalize to [-PI, PI]
   a = (a + Math.PI) % (Math.PI*2);
@@ -1232,6 +1236,18 @@ function distPointToSegment(px,py, x1,y1, x2,y2){
   const dx = px - cx, dy = py - cy;
   return Math.hypot(dx,dy);
 }
+function hurtEnemy(e, dmg, type='neutral'){
+  // Use existing game hooks if you have them; otherwise fallback.
+  if (typeof enemyHit === 'function') { enemyHit(e, dmg, type); return; }
+  if (typeof applyDamage === 'function'){ applyDamage(e, dmg, type); return; }
+  e.hp = (e.hp ?? 1) - dmg;
+  if (e.hp <= 0){ 
+    e.dead = true; 
+    if (typeof onEnemyKilled === 'function') onEnemyKilled(e);
+  } else {
+    e.hitAt = now?.() ?? performance.now();
+  }
+}
 
 
 /*** ========= A* Pathfinding ========= ***/
@@ -1621,6 +1637,7 @@ function movePlayer(dt){
 function regenPlayer(dt){ const rate=0.6 + 0.6*player.hpLvl; player.hp=Math.min(player.maxhp, player.hp + rate*dt); }
 
 /*** ========= Guns ========= ***/
+// === UPDATE TURRET ===
 function updateTurret(dt){
   if (!turret?.owned || turret.shots <= 0) return;
 
@@ -1629,11 +1646,13 @@ function updateTurret(dt){
   // --- Find enemies in range (for firing) and nearest overall (for idle aiming)
   let nearestAny = null, nearestAnyD2 = Infinity;
   const inRange = [];
+  const r2 = turret.range * turret.range;
+
   for (const e of enemies){
     if (e.dead) continue;
     const d2 = dist2(pos.x, pos.y, e.x, e.y);
     if (d2 < nearestAnyD2){ nearestAny = e; nearestAnyD2 = d2; }
-    if (d2 <= turret.range * turret.range) inRange.push({ e, d2 });
+    if (d2 <= r2) inRange.push({ e, d2 });
   }
 
   // --- Aim: face nearest in-range if present, else nearest overall (so it "seeks")
@@ -1657,40 +1676,65 @@ function updateTurret(dt){
   const fireReady = turret.cooldown <= 0;
 
   if (fireReady && inRange.length){
-    // choose up to N distinct nearest targets
     const shots = Math.min(turret.shots, inRange.length);
-    // inRange already sorted above if we aimed; otherwise sort now
-    if (aimTarget !== (inRange[0]?.e)) inRange.sort((a,b)=>a.d2 - b.d2);
+    // ensure nearest-first when selecting multiple targets
+    if (!inRange.length || aimTarget !== (inRange[0]?.e)) inRange.sort((a,b)=>a.d2 - b.d2);
 
-    for (let i=0; i<shots; i++){
-      const target = inRange[i].e;
-      const ang = angleTo(pos.x, pos.y, target.x, target.y);
-      spawnTurretBullet(pos.x, pos.y, ang);
-      if (i === 0) turret.lastAngle = ang; // barrel matches first shot
-    }
-
-    // reset cooldown; += keeps timing stable even on big dt spikes
-    turret.cooldown += 1 / rof;
+    fireTurret(pos, inRange.slice(0, shots));
+    turret.cooldown += 1 / rof; // += keeps cadence stable across frame spikes
   }
 }
 
-function spawnTurretBullet(x,y, ang){
-  const vx = Math.cos(ang) * turret.spd;
-  const vy = Math.sin(ang) * turret.spd;
+// === FIRE TURRET (spawns one bullet per provided target) ===
+function fireTurret(pos, targets){
+  for (let i = 0; i < targets.length; i++){
+    const t = targets[i].e || targets[i]; // accept raw enemy or {e,d2}
+    const ang = angleTo(pos.x, pos.y, t.x, t.y);
+    spawnTurretBullet(pos.x, pos.y, ang);
+    if (i === 0) turret.lastAngle = ang; // barrel tracks first shot
+  }
+}
 
-  bullets.push({
-    x, y, vx, vy, r: BULLET_R,
-    spd: turret.spd,                 // <— required for trail calc
-    dmg: turret.dmg,
-    type: DMG.neutral,
-    pierce: 0, splash: 0,
-    chain: turret.chain,
-    frags: turret.frags,
-    knock: turret.knock,
-    range: turret.range,
-    traveled: 0,
-    from: 'turret'
-  });
+// === UPDATE TURRET BULLETS (only bullets tagged from:'turret') ===
+function updateTurretBullets(dt){
+  for (let i = bullets.length - 1; i >= 0; i--){
+    const b = bullets[i];
+    if (b.from !== 'turret') continue;
+
+    const step = (b.spd || Math.hypot(b.vx, b.vy)) * dt;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.traveled = (b.traveled || 0) + step;
+
+    // collision vs enemies
+    let hit = null;
+    for (const e of enemies){
+      if (e.dead) continue;
+      const rr = (ENEMY_R) + (b.r || BULLET_R);
+      const dx = e.x - b.x, dy = e.y - b.y;
+      if (dx*dx + dy*dy <= rr*rr){ hit = e; break; }
+    }
+
+    if (hit){
+      if (typeof hurtEnemy === 'function') {
+        hurtEnemy(hit, b.dmg, b.type || DMG.neutral);
+      } else {
+        hit.hp = (hit.hp ?? 1) - b.dmg;
+        if (hit.hp <= 0) hit.dead = true;
+      }
+      if (typeof applyKnockback === 'function'){
+        applyKnockback(hit, b.vx, b.vy, b.knock || 0);
+      }
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    // life/range or bounds
+    if (b.traveled >= (b.range || 1000) ||
+        b.x < 0 || b.y < 0 || b.x > ROOM_W || b.y > ROOM_H){
+      bullets.splice(i, 1);
+    }
+  }
 }
 
 function getGun(slotIndex){
@@ -2490,37 +2534,42 @@ function respawnStageStart(){
 }
 
 /*** ========= Drawing ========= ***/
-function drawTurret(ctx){
-  if (!turret || !turret.owned) return;
-
-  // position slightly offset from player so it's visible
-  const px = clamp(player.x + 36, 16, ROOM_W-16);
-  const py = clamp(player.y - 28, 16, ROOM_H-16);
-
-  ctx.save();
-  ctx.translate(px, py);
+function drawTurret(ctx, camX, camY){
+  if (!turret.owned) return;
+  const p = turretPos();
 
   // body
-  ctx.fillStyle = '#0b1b2e';
-  ctx.strokeStyle = '#2b4c73';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0,0, 12, 0, Math.PI*2);
-  ctx.fill(); ctx.stroke();
-
-  // barrel points where it last fired
-  ctx.rotate(turret.lastAngle || 0);
+  ctx.save();
+  ctx.translate(p.x - camX, p.y - camY);
+  ctx.rotate(turret.lastAngle);
+  ctx.fillStyle = '#0f1c2c';
+  ctx.fillRect(-12,-8,24,16);
   ctx.fillStyle = '#60a5fa';
-  ctx.fillRect(6,-3, 16, 6); // barrel
+  ctx.fillRect(6,-3,16,6); // barrel
+  ctx.restore();
 
-  // subtle aura
-  ctx.beginPath();
-  ctx.arc(0,0, 16, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(96,165,250,.35)';
-  ctx.stroke();
+  if (DEBUG_TURRET){
+    // range ring
+    ctx.save();
+    ctx.strokeStyle = 'rgba(96,165,250,.35)';
+    ctx.beginPath(); ctx.arc(p.x - camX, p.y - camY, turret.range, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+}
 
+function drawTurretBullets(ctx, camX, camY){
+  if (!tBullets.length) return;
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  ctx.fillStyle = '#67e8f9';
+  for (const b of tBullets){
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
   ctx.restore();
 }
+
 
 function drawTelegraph(e){
   if (e.windup <= 0 || !e.ability) return;
@@ -2778,6 +2827,9 @@ function loop(){
     updateSplashFX(dt);
 	updateSpawns(dt);
  updateTurret(dt);   // <— REQUIRED
+	updateTurretBullets(dt);
+  drawTurret(ctx, camX, camY);
+  drawTurretBullets(ctx, camX, camY);
 
 	integratePlayerKnockback(dt);
 
@@ -2798,6 +2850,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
