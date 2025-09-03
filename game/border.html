@@ -692,27 +692,32 @@ async function saveProgress(){
   }
 }
 async function loadProfileList(){
-  const list = document.getElementById('profileList'); // ← get it here
+  const list = document.getElementById('profileList');
   if (!list) return;
 
-  try{
+  try {
     const snap = await db.ref('shooter/users').get();
     list.innerHTML = '';
-    if(!snap.exists()){
+
+    if (!snap.exists()) {
       list.innerHTML = '<div class="kv">No profiles yet.</div>';
       return;
     }
+
+    // FIX: use a block body so the callback returns undefined (not the truthy result of push)
     const names = [];
-    snap.forEach(ch => names.push(ch.key));
-    names.sort((a,b)=> a.localeCompare(b));
-    for(const name of names){
-      const b=document.createElement('button');
-      b.className='btn';
-      b.textContent=name;
-      b.onclick=()=> selectProfile(name);
+    snap.forEach(ch => { names.push(ch.key); });
+    names.sort((a,b) => a.localeCompare(b));
+
+    // render
+    for (const name of names) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = name;
+      b.onclick = () => selectProfile(name);
       list.appendChild(b);
     }
-  }catch(e){
+  } catch (e) {
     console.warn('Could not load profiles:', e);
     list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
   }
@@ -2369,6 +2374,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
