@@ -152,11 +152,7 @@ const firebaseConfig = {
   measurementId: "G-8PR6LVKSH3"
 };
 firebase.initializeApp(firebaseConfig);
-firebase.auth().onAuthStateChanged(async (u)=>{
-  if (!u) await firebase.auth().signInAnonymously();
-  // now you're authenticated; safe to read/write
-  loadProfileList();
-});
+loadProfileList();
 const db = firebase.database();
 
 /*** ========= Helpers ========= ***/
@@ -737,12 +733,6 @@ async function startWithUsername(){
   const u = (usernameInput.value || '').trim();
   if (!/^[A-Za-z0-9_]{2,24}$/.test(u)){
     toast('Use letters/numbers/_ (2–24 chars)');
-    return;
-  }
-
-  // Make sure we're authed (e.g., via anonymous sign-in you added earlier)
-  if (!firebase.auth().currentUser){
-    toast('Connecting… try again in a moment.');
     return;
   }
 
@@ -2376,6 +2366,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
