@@ -718,10 +718,11 @@ async function loadProfileList(){
       profileList.appendChild(b);
     }
   }catch(e){
-    console.error(e);
-    profileList.innerHTML = '<div class="kv">Could not load profiles.</div>';
+    console.warn('Could not load profiles:', e);
+    profileList.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
   }
 }
+
 async function selectProfile(name){
   currentUser = name;
   ovLogin.style.display='none';
@@ -2379,6 +2380,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
