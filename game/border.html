@@ -137,6 +137,10 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+js
+Copy code
+
 
 <!-- ALL GAME CODE IN ONE SCRIPT BLOCK -->
 <script>
@@ -152,6 +156,11 @@ const firebaseConfig = {
   measurementId: "G-8PR6LVKSH3"
 };
 firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(async (u)=>{
+  if (!u) await firebase.auth().signInAnonymously();
+  // now you're authenticated; safe to read/write
+  loadProfileList();
+});
 const db = firebase.database();
 
 /*** ========= Helpers ========= ***/
@@ -728,19 +737,60 @@ async function selectProfile(name){
   }
 }
 async function startWithUsername(){
-  let u=(usernameInput.value||'').trim();
-  if(!/^[A-Za-z0-9_]{2,24}$/.test(u)){ toast('Use letters/numbers/_ (2–24 chars)'); return; }
+  const u = (usernameInput.value || '').trim();
+  if (!/^[A-Za-z0-9_]{2,24}$/.test(u)){
+    toast('Use letters/numbers/_ (2–24 chars)');
+    return;
+  }
 
-  const exists = (await db.ref('shooter/users/'+u).get()).exists();
-  if(exists){ toast('That name already exists — select it above.'); return; }
+  // Make sure we're authed (e.g., via anonymous sign-in you added earlier)
+  if (!firebase.auth().currentUser){
+    toast('Connecting… try again in a moment.');
+    return;
+  }
 
-  currentUser=u;
+  const ref = db.ref('shooter/users/' + u);
+
+  // Prepare local defaults so packSave() has the right initial data
+  currentUser = u;
   seedNewProfile();
-  await saveProgress();             // save the fresh profile once
-  ovLogin.style.display='none';
-  player.x = ROOM_W/2; player.y = ROOM_H/2;
-  buildRoom(); spawnLevel(); updateGunHUD();
+
+  try {
+    // Wrap compat transaction in a Promise
+    const { committed } = await new Promise((resolve, reject) => {
+      ref.transaction(
+        (curr) => {
+          if (curr !== null) return;     // already taken -> abort write
+          return packSave();             // write initial save atomically
+        },
+        (err, committed, snap) => {
+          if (err) reject(err);
+          else resolve({ committed, snap });
+        },
+        /* applyLocally */ false
+      );
+    });
+
+    if (!committed){
+      toast('That name already exists — select it above.');
+      currentUser = '';
+      return;
+    }
+
+    // Created successfully — enter the game
+    ovLogin.style.display = 'none';
+    player.x = ROOM_W/2; player.y = ROOM_H/2;
+    buildRoom(); spawnLevel(); updateGunHUD();
+    toast(`New profile created for ${u}`);
+  } catch (e) {
+    console.error(e);
+    currentUser = '';
+    toast(e?.code === 'PERMISSION_DENIED'
+      ? 'Cloud save blocked by rules (auth?).'
+      : 'Could not create profile.');
+  }
 }
+
 loadProfileList();
 
 /*** ========= Game Model ========= ***/
@@ -2329,6 +2379,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
