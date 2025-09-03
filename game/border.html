@@ -84,6 +84,37 @@
           </div>
           <p class="kv">Accuracy tightens your firing cone. Speed improves movement. Health raises max & heals you.</p>
         </div>
+		<!-- === NEW: Auto Turret Column === -->
+<div class="col">
+  <h3>Auto Turret</h3>
+
+  <div class="kv" style="margin-bottom:8px">
+    Fires at the nearest enemies automatically.
+  </div>
+
+  <div class="gun">
+    <h4>Turret Status</h4>
+    <div class="kv">Owned: <b id="turOwned">No</b></div>
+    <div class="kv">Shots: <b id="turCurShots">0</b></div>
+    <div class="kv">Damage: <b id="turCurDmg">—</b></div>
+    <div class="kv">Chain: <b id="turCurChain">0</b></div>
+    <div class="kv">Frags: <b id="turCurFrags">0</b></div>
+    <div class="kv">Knockback: <b id="turCurKnock">0</b></div>
+  </div>
+
+  <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+    <button class="btn" id="buyTurret">Buy Turret (<span id="turBuyCost">—</span>)</button>
+    <button class="btn" id="upTurShots">+1 Shot (<span id="turShotsCost">—</span>)</button>
+    <button class="btn" id="upTurDmg">+ Damage (<span id="turDmgCost">—</span>)</button>
+    <button class="btn" id="upTurChain">+ Chain (<span id="turChainCost">—</span>)</button>
+    <button class="btn" id="upTurFrags">+ Frags (<span id="turFragsCost">—</span>)</button>
+    <button class="btn" id="upTurKnock">+ Knockback (<span id="turKnockCost">—</span>)</button>
+  </div>
+
+  <p class="kv" style="margin-top:8px">
+    Shots target <b>different</b> enemies. Upgrades get pricey fast.
+  </p>
+</div>
         <div class="col" style="flex:2 1 420px">
           <h3>Weapons (new → Slot 1, old active → Slot 2)</h3>
           <div class="grid3" id="gunGrid"></div>
@@ -177,6 +208,58 @@ const DMG = { neutral:'neutral', piercing:'piercing', stun:'stun', poison:'poiso
 const KB_DECAY_PER_SEC = 10.5;         // higher = stops sooner
 const KB_MAX_SPEED     = 900;          // cap knockback drift speed
 const KB_WALL_BOUNCE   = 0.2;          // slight cushion if shoved into a wall
+
+	/*** ========= Turret (state + prices) ========= ***/
+const TURRET_BASE = {
+  dmg: 30,         // base damage per bullet before upgrades
+  rof: 3.5,        // shots per second (fires a "volley" at up to N targets)
+  range: 900,      // pixels
+  spd: 1200        // bullet speed
+};
+
+const TURRET_COSTS = {
+  buy: 600,               // first purchase
+  shotsBase: 800,  shotsMult: 3.0,   // very expensive
+  dmgBase:   400,  dmgMult:   2.2,
+  chainBase: 650,  chainMult: 2.5,
+  fragsBase: 650,  fragsMult: 2.5,
+  knockBase: 500,  knockMult: 2.2
+};
+
+// runtime
+let turret = {
+  owned: false,
+  shots: 0,                // how many distinct targets per volley
+  dmg: TURRET_BASE.dmg,
+  chain: 0,
+  frags: 0,
+  knock: 0,
+  rof: TURRET_BASE.rof,
+  range: TURRET_BASE.range,
+  spd: TURRET_BASE.spd,
+  cooldown: 0,
+  lastAngle: 0
+};
+
+// track upgrade levels (for cost escalation)
+let turretLvls = { shots:0, dmg:0, chain:0, frags:0, knock:0 };
+
+// where the turret sits (attached to player)
+function turretPos(){
+  // Slight offset so you can see it
+  return { x: clamp(player.x + 36, 16, ROOM_W-16),
+           y: clamp(player.y - 28, 16, ROOM_H-16) };
+}
+
+function turretCost(kind){
+  const K = TURRET_COSTS;
+  const L = turretLvls[kind] || 0;
+  if (kind === 'buy') return K.buy;
+  const base = K[ kind + 'Base' ];
+  const mult = K[ kind + 'Mult' ];
+  return Math.round(base * Math.pow(mult, L));
+}
+
 
 function applyKnockback(e, dirX, dirY, power){
   if (!power || power<=0) return;
@@ -568,6 +651,128 @@ const spdCostEl = document.getElementById('spdCost');
 const accCostEl = document.getElementById('accCost');
 const btnContinue = document.getElementById('btnContinue');
 const killChip = document.getElementById('killChip');
+// === Turret store UI hooks ===
+const turOwnedEl   = document.getElementById('turOwned');
+const turCurShots  = document.getElementById('turCurShots');
+const turCurDmg    = document.getElementById('turCurDmg');
+const turCurChain  = document.getElementById('turCurChain');
+const turCurFrags  = document.getElementById('turCurFrags');
+const turCurKnock  = document.getElementById('turCurKnock');
+
+const btnBuyTurret = document.getElementById('buyTurret');
+const btnTurShots  = document.getElementById('upTurShots');
+const btnTurDmg    = document.getElementById('upTurDmg');
+const btnTurChain  = document.getElementById('upTurChain');
+const btnTurFrags  = document.getElementById('upTurFrags');
+const btnTurKnock  = document.getElementById('upTurKnock');
+
+const turBuyCostEl   = document.getElementById('turBuyCost');
+const turShotsCostEl = document.getElementById('turShotsCost');
+const turDmgCostEl   = document.getElementById('turDmgCost');
+const turChainCostEl = document.getElementById('turChainCost');
+const turFragsCostEl = document.getElementById('turFragsCost');
+const turKnockCostEl = document.getElementById('turKnockCost');
+
+function canAfford(cost){ return player.gold >= cost; }
+function spend(cost){
+  if (!canAfford(cost)) return false;
+  player.gold -= cost;
+  goldChip.textContent = `🪙 ${player.gold}`;
+  storeGold.textContent = player.gold;
+  return true;
+}
+
+function refreshTurretUI(){
+  if (!turOwnedEl) return; // store not visible yet
+  turOwnedEl.textContent = turret.owned ? 'Yes' : 'No';
+  turCurShots.textContent = turret.shots;
+  turCurDmg.textContent   = turret.dmg;
+  turCurChain.textContent = turret.chain;
+  turCurFrags.textContent = turret.frags;
+  turCurKnock.textContent = turret.knock;
+
+  turBuyCostEl.textContent   = turretCost('buy');
+  turShotsCostEl.textContent = turretCost('shots');
+  turDmgCostEl.textContent   = turretCost('dmg');
+  turChainCostEl.textContent = turretCost('chain');
+  turFragsCostEl.textContent = turretCost('frags');
+  turKnockCostEl.textContent = turretCost('knock');
+
+  // enabled/disabled
+  if (btnBuyTurret){
+    btnBuyTurret.disabled = turret.owned || !canAfford(turretCost('buy'));
+  }
+  const afterBuyDisabled = !turret.owned;
+  if (btnTurShots) btnTurShots.disabled = afterBuyDisabled || !canAfford(turretCost('shots'));
+  if (btnTurDmg)   btnTurDmg.disabled   = afterBuyDisabled || !canAfford(turretCost('dmg'));
+  if (btnTurChain) btnTurChain.disabled = afterBuyDisabled || !canAfford(turretCost('chain'));
+  if (btnTurFrags) btnTurFrags.disabled = afterBuyDisabled || !canAfford(turretCost('frags'));
+  if (btnTurKnock) btnTurKnock.disabled = afterBuyDisabled || !canAfford(turretCost('knock'));
+}
+
+// wire buttons
+if (btnBuyTurret) btnBuyTurret.onclick = ()=>{
+  const c = turretCost('buy');
+  if (!turret.owned && spend(c)){
+    turret.owned = true;
+    turret.shots = 1; // first shot unlocked
+    refreshTurretUI();
+    toast('Auto Turret online.');
+  }else{
+    toast('Cannot purchase turret.');
+  }
+};
+
+if (btnTurShots) btnTurShots.onclick = ()=>{
+  if (!turret.owned) return;
+  const c = turretCost('shots');
+  if (spend(c)){
+    turretLvls.shots++;
+    turret.shots++;              // increase targets per volley
+    refreshTurretUI();
+  }
+};
+
+if (btnTurDmg) btnTurDmg.onclick = ()=>{
+  if (!turret.owned) return;
+  const c = turretCost('dmg');
+  if (spend(c)){
+    turretLvls.dmg++;
+    turret.dmg += 10;            // meaningful bump
+    refreshTurretUI();
+  }
+};
+
+if (btnTurChain) btnTurChain.onclick = ()=>{
+  if (!turret.owned) return;
+  const c = turretCost('chain');
+  if (spend(c)){
+    turretLvls.chain++;
+    turret.chain += 1;
+    refreshTurretUI();
+  }
+};
+
+if (btnTurFrags) btnTurFrags.onclick = ()=>{
+  if (!turret.owned) return;
+  const c = turretCost('frags');
+  if (spend(c)){
+    turretLvls.frags++;
+    turret.frags += 1;
+    refreshTurretUI();
+  }
+};
+
+if (btnTurKnock) btnTurKnock.onclick = ()=>{
+  if (!turret.owned) return;
+  const c = turretCost('knock');
+  if (spend(c)){
+    turretLvls.knock++;
+    turret.knock += 120;         // strong shove per hit
+    refreshTurretUI();
+  }
+};
+
 function updateKillHUD(k, target){
   if (killChip) killChip.textContent = `🎯 ${k} / ${target}`;
 }
@@ -621,6 +826,10 @@ function userRef(){
 }
 
 function packSave(){
+  // safe defaults in case turret bits aren’t defined yet
+  const hasTurret = turret && turret.owned;
+  const lv = (typeof turretLvls === 'object' && turretLvls) ? turretLvls : {shots:0,dmg:0,chain:0,frags:0,knock:0};
+
   return {
     v: SAVE_VERSION,
     stage, level,
@@ -632,11 +841,34 @@ function packSave(){
     slots: player.slots.map(s=>{
       if(!s || !s.gunId) return null;
       const st = s.state || null;
-      return { gunId: s.gunId, ammo: st? st.ammo : null, reloadT: st? st.reloadT : 0 };
+      return { gunId: s.gunId, ammo: st ? st.ammo : null, reloadT: st ? st.reloadT : 0 };
     }),
+
+    // === NEW: Turret save block ===
+    turret: {
+      owned: !!hasTurret,
+      // levels drive costs and rebuild stats on load
+      lv: {
+        shots: lv.shots||0,
+        dmg:   lv.dmg||0,
+        chain: lv.chain||0,
+        frags: lv.frags||0,
+        knock: lv.knock||0
+      },
+      // snapshot of current numbers (forward-compat / UI display)
+      stats: {
+        shots: hasTurret ? (turret.shots||0) : 0,
+        dmg:   hasTurret ? (turret.dmg||TURRET_BASE.dmg) : TURRET_BASE.dmg,
+        chain: hasTurret ? (turret.chain||0) : 0,
+        frags: hasTurret ? (turret.frags||0) : 0,
+        knock: hasTurret ? (turret.knock||0) : 0
+      }
+    },
+
     savedAt: Date.now()
   };
 }
+
 function applySave(d){
   stage = d.stage||1; level = d.level||1;
   player.gold = d.gold||0;
@@ -644,11 +876,13 @@ function applySave(d){
   player.hp = (typeof d.hp === 'number') ? d.hp : player.maxhp;
   player.accLvl = d.accLvl||0; player.spdLvl = d.spdLvl||0; player.hpLvl = d.hpLvl||0;
   player.activeSlot = d.activeSlot||0;
+
   if(d.slots){
     player.slots = d.slots.map(s=> s? {gunId:s.gunId||null, state:null} : {gunId:null, state:null});
   } else {
     player.slots=[{gunId:'pistol',state:null},{gunId:null,state:null}];
   }
+
   // create states & restore ammo/reload
   for(let i=0;i<player.slots.length;i++){
     const slotData = d.slots && d.slots[i];
@@ -660,7 +894,59 @@ function applySave(d){
       }
     }
   }
+
+  // === NEW: Turret restore ===
+  // Ensure objects exist
+  if (typeof turret !== 'object' || !turret) turret = {};
+  if (typeof turretLvls !== 'object' || !turretLvls) turretLvls = {shots:0,dmg:0,chain:0,frags:0,knock:0};
+  const BASE = (typeof TURRET_BASE === 'object') ? TURRET_BASE : { dmg:30, rof:3.5, range:900, spd:1200 };
+
+  if (d.turret){
+    turret.owned = !!d.turret.owned;
+
+    // Start from saved levels (or zeros)
+    const lv = Object.assign({shots:0,dmg:0,chain:0,frags:0,knock:0}, d.turret.lv || {});
+    // Fallback: deduce levels from stats if lv missing (for older saves)
+    if (!d.turret.lv && d.turret.stats){
+      const st = d.turret.stats || {};
+      lv.dmg   = Math.max(0, Math.round(((st.dmg ?? BASE.dmg) - BASE.dmg) / 10));
+      lv.chain = Math.max(0, st.chain ?? 0);
+      lv.frags = Math.max(0, st.frags ?? 0);
+      lv.knock = Math.max(0, Math.round((st.knock ?? 0) / 120));
+      lv.shots = Math.max(0, (st.shots ?? (turret.owned ? 1 : 0)) - 1);
+    }
+    turretLvls = lv;
+
+    // Recompute current stats from levels
+    turret.dmg   = BASE.dmg + (lv.dmg * 10);
+    turret.chain = lv.chain;
+    turret.frags = lv.frags;
+    turret.knock = lv.knock * 120;
+    turret.shots = turret.owned ? Math.max(1, lv.shots + 1) : 0;
+
+    turret.rof   = BASE.rof;
+    turret.range = BASE.range;
+    turret.spd   = BASE.spd;
+    turret.cooldown = 0;
+    turret.lastAngle = 0;
+
+  } else {
+    // No turret in save -> default off
+    turret.owned = false;
+    turretLvls = {shots:0,dmg:0,chain:0,frags:0,knock:0};
+    turret.dmg = BASE.dmg;
+    turret.chain = 0;
+    turret.frags = 0;
+    turret.knock = 0;
+    turret.shots = 0;
+    turret.rof = BASE.rof;
+    turret.range = BASE.range;
+    turret.spd = BASE.spd;
+    turret.cooldown = 0;
+    turret.lastAngle = 0;
+  }
 }
+
 async function loadProgress(){
   const snap = await userRef().get();
   if(!snap.exists()){
@@ -1309,6 +1595,65 @@ function movePlayer(dt){
 function regenPlayer(dt){ const rate=0.6 + 0.6*player.hpLvl; player.hp=Math.min(player.maxhp, player.hp + rate*dt); }
 
 /*** ========= Guns ========= ***/
+function updateTurret(dt){
+  if (!turret.owned || turret.shots<=0) return;
+
+  // cooldown
+  turret.cooldown -= dt;
+  if (turret.cooldown > 0) return;
+
+  // select up to N distinct nearest enemies in range
+  const pos = turretPos();
+  const entries = [];
+  for (const e of enemies){
+    if (e.dead) continue;
+    const d2 = dist2(pos.x, pos.y, e.x, e.y);
+    if (d2 <= turret.range * turret.range){
+      entries.push({ e, d2 });
+    }
+  }
+  if (!entries.length) return;
+
+  entries.sort((a,b)=> a.d2 - b.d2);
+
+  const shots = Math.min(turret.shots, entries.length);
+  if (shots <= 0) return;
+
+  // Fire a volley simultaneously at distinct targets
+  for (let i=0;i<shots;i++){
+    const target = entries[i].e;
+    const ang = angleTo(pos.x, pos.y, target.x, target.y);
+    spawnTurretBullet(pos.x, pos.y, ang);
+    if (i === 0) turret.lastAngle = ang;
+  }
+
+  // reset cooldown to 1/rof seconds
+  turret.cooldown = 1 / turret.rof;
+}
+
+function spawnTurretBullet(x,y, ang){
+  const vx = Math.cos(ang) * turret.spd;
+  const vy = Math.sin(ang) * turret.spd;
+
+  bullets.push({
+    // kinematics
+    x, y, vx, vy, r: BULLET_R,
+    // damage model
+    dmg: turret.dmg,
+    type: DMG.neutral,
+    pierce: 0,
+    splash: 0,
+    chain: turret.chain,
+    frags: turret.frags,
+    knock: turret.knock,
+    // lifetime
+    range: turret.range,
+    traveled: 0,
+    // provenance (if you use it for scoring/FX)
+    from: 'turret'
+  });
+}
+
 function getGun(slotIndex){
   const slot=player.slots[slotIndex];
   if(!slot || !slot.gunId) return null;
@@ -2023,6 +2368,8 @@ function levelIndex(){ return (stage-1)*STAGE_LENGTH + (level-1) + 1; }
 function openStore(){
   inStore=true; betweenLevels=true;
   storeGold.textContent=player.gold;
+  refreshTurretUI();   // <— add this
+
 
   // Prices: scale by purchases (no per-level inflation)
   const base = 80;
@@ -2104,6 +2451,38 @@ function respawnStageStart(){
 }
 
 /*** ========= Drawing ========= ***/
+function drawTurret(ctx){
+  if (!turret || !turret.owned) return;
+
+  // position slightly offset from player so it's visible
+  const px = clamp(player.x + 36, 16, ROOM_W-16);
+  const py = clamp(player.y - 28, 16, ROOM_H-16);
+
+  ctx.save();
+  ctx.translate(px, py);
+
+  // body
+  ctx.fillStyle = '#0b1b2e';
+  ctx.strokeStyle = '#2b4c73';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0,0, 12, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+
+  // barrel points where it last fired
+  ctx.rotate(turret.lastAngle || 0);
+  ctx.fillStyle = '#60a5fa';
+  ctx.fillRect(6,-3, 16, 6); // barrel
+
+  // subtle aura
+  ctx.beginPath();
+  ctx.arc(0,0, 16, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(96,165,250,.35)';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 function drawTelegraph(e){
   if (e.windup <= 0 || !e.ability) return;
   const kind = e.ability.kind;
@@ -2307,7 +2686,11 @@ function draw(){
       ctx.globalAlpha = 1;
     }
   }
-  drawSplashFX();   // after hazards, before enemies
+   drawSplashFX();   // after hazards, before enemies
+
+  // === NEW: Auto Turret (attached to player) ===
+  if (typeof drawTurret === 'function') drawTurret(ctx);
+
 
   // enemies
   for(const e of enemies){
@@ -2374,6 +2757,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
