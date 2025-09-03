@@ -692,11 +692,14 @@ async function saveProgress(){
   }
 }
 async function loadProfileList(){
+  const list = document.getElementById('profileList'); // ← get it here
+  if (!list) return;
+
   try{
     const snap = await db.ref('shooter/users').get();
-    profileList.innerHTML = '';
+    list.innerHTML = '';
     if(!snap.exists()){
-      profileList.innerHTML = '<div class="kv">No profiles yet.</div>';
+      list.innerHTML = '<div class="kv">No profiles yet.</div>';
       return;
     }
     const names = [];
@@ -707,11 +710,11 @@ async function loadProfileList(){
       b.className='btn';
       b.textContent=name;
       b.onclick=()=> selectProfile(name);
-      profileList.appendChild(b);
+      list.appendChild(b);
     }
   }catch(e){
     console.warn('Could not load profiles:', e);
-    profileList.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
+    list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
   }
 }
 
@@ -2366,6 +2369,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
