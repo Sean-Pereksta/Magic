@@ -1712,23 +1712,31 @@ function fireTurret(pos, targets){
 }
 
 // === UPDATE TURRET BULLETS ===
+// === UPDATE TURRET BULLETS (robust to ms/seconds and uses actual delta) ===
 function updateTurretBullets(dt){
+  // normalize to seconds if someone passed ms
+  dt = dt > 5 ? dt / 1000 : dt;
+
   for (let i = bullets.length - 1; i >= 0; i--){
     const b = bullets[i];
     if (b.from !== 'turret') continue;
 
-    const step = (b.spd || Math.hypot(b.vx, b.vy)) * dt;
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
-    b.traveled = (b.traveled || 0) + step;
+    // integrate using actual per-frame delta
+    const dx = b.vx * dt;
+    const dy = b.vy * dt;
+    b.x += dx;
+    b.y += dy;
+
+    // accumulate true distance traveled (prevents instant-cull on bad dt)
+    b.traveled = (b.traveled || 0) + Math.hypot(dx, dy);
 
     // collide with enemies
     let hit = null;
     for (const e of enemies){
       if (e.dead) continue;
       const rr = ENEMY_R + (b.r || BULLET_R);
-      const dx = e.x - b.x, dy = e.y - b.y;
-      if (dx*dx + dy*dy <= rr*rr){ hit = e; break; }
+      const ex = e.x - b.x, ey = e.y - b.y;
+      if (ex*ex + ey*ey <= rr*rr){ hit = e; break; }
     }
 
     if (hit){
@@ -1745,14 +1753,14 @@ function updateTurretBullets(dt){
       continue;
     }
 
-    // out of life or bounds
-    if (b.traveled >= (b.range || 1000) ||
+    // cull by range/bounds
+    const maxRange = b.range || 1000;
+    if (b.traveled >= maxRange ||
         b.x < 0 || b.y < 0 || b.x > ROOM_W || b.y > ROOM_H){
       bullets.splice(i, 1);
     }
   }
 }
-
 
 function getGun(slotIndex){
   const slot=player.slots[slotIndex];
@@ -2867,6 +2875,7 @@ canvas.addEventListener('click', ()=> canvas.focus());
 <!-- Manage RTDB rules in Firebase Console. -->
 </body>
 </html>
+
 
 
 
