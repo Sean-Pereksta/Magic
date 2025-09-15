@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Dutch Blitz — Arena (Realtime, Auto-Fit + Tick + Graphs)</title>
+<title>Dutch Blitz — Arena (Realtime, Auto-Fit + Fixed Discard/Reshuffle)</title>
 <style>
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
@@ -14,7 +14,7 @@
     --radius: 12px;
 
     /* Center piles (base; then whole stage is auto-scaled) */
-    --pileSize: 64px; 
+    --pileSize: 64px;
     --pileGap: 8px;
   }
 
@@ -121,6 +121,9 @@
     color:#0b1014; background:rgba(255,255,255,.92); padding:2px 8px; border-radius:999px; font-weight:800;
     pointer-events:none;
   }
+  /* tiny owner trail dots per card in the pile (left-bottom) */
+  .trail{position:absolute; left:4px; bottom:4px; display:flex; gap:3px}
+  .trail i{display:block; width:8px; height:8px; border-radius:50%}
 
   /* ===== Card chip ===== */
   .rect{
@@ -366,7 +369,12 @@ function newGameDoc(host, players){
 }
 
 /* ========= Derived ========= */
-function handCard(G, P, who){ const pl=P[who]; if(!pl) return null; if(pl.viewIndex>=pl.deck.length) return null; return pl.deck[pl.viewIndex]||null; }
+function handCard(G, P, who){
+  const pl=P[who]; if(!pl) return null;
+  const vi = Math.max(0, Math.min(pl.viewIndex||0, pl.deck.length-1));
+  if(pl.deck.length===0) return null;
+  return pl.deck[vi]||null;
+}
 function sumsFor(G,P,who){
   let atk=0, heal=0, ward=0, gold=0;
   for(const pile of G.piles){
@@ -390,10 +398,11 @@ async function hostApplyAction(act){
     const root = snap.data();
     if(root.status !== "playing") return;
 
+    // clone
     const G = { ...root };
     const P = { ...root.P };
-    G.players = [...G.players];
-    G.piles   = G.piles.map(p=>({...p, cards:[...p.cards]}));
+    G.players   = [...G.players];
+    G.piles     = G.piles.map(p=>({...p, cards:[...p.cards]}));
     G.storeDeck = [...G.storeDeck];
     G.storeVis  = [...G.storeVis];
     for(const k of Object.keys(P)){ const pl=P[k]; P[k] = { ...pl, deck:[...pl.deck], discard:[...pl.discard] }; }
@@ -401,45 +410,69 @@ async function hostApplyAction(act){
     const who = act.by, me = P[who]; if(!me?.alive) return;
 
     if(act.type === "flip"){
-      me.viewIndex += 3;  // show-next-3 behavior
-      if(me.viewIndex > me.deck.length) me.viewIndex = me.deck.length; // clamp
+      // FIX: flip now MOVES up to 3 cards from the player's deck into THEIR discard (waste),
+      // ensuring each player has their OWN discard pile and enabling proper reshuffle.
+      const vi = me.viewIndex||0;
+      const n = Math.min(3, me.deck.length - vi);
+      for(let i=0;i<n;i++){
+        const [moved] = me.deck.splice(vi,1);
+        if(moved) me.discard.push(moved);
+      }
+      me.viewIndex = Math.min(vi, Math.max(0, me.deck.length-1)); // keep pointer sane
     }
     else if(act.type === "start"){
       const c = handCard(G,P,who); if(!c || c.id!==act.cardId || c.val!==1) return;
-      me.deck.splice(me.viewIndex,1);
+      // remove playable (top) card from deck
+      me.deck.splice(me.viewIndex||0,1);
+      // start a new pile; record who actually played this card
       G.piles.push({ id:uid(), color:c.color, topVal:c.val, owner:who, cards:[{player:who,card:c}] });
-      if(c.color==="yellow") me.gold+=c.val;
+      if(c.color==="yellow") me.gold=(me.gold||0)+c.val;
     }
     else if(act.type === "playOn"){
       const c = handCard(G,P,who); if(!c || c.id!==act.cardId) return;
       const pile = G.piles.find(p=>p.id===act.pileId); if(!pile) return;
       if(pile.color!==c.color || pile.topVal!==c.val-1) return;
-      pile.cards.push({player:who, card:c}); pile.topVal=c.val; pile.owner=who;
-      me.deck.splice(me.viewIndex,1);
-      if(c.color==="yellow") me.gold+=c.val;
+
+      // tag card with the real player (not host) for attribution
+      pile.cards.push({player:who, card:c});
+      pile.topVal=c.val; pile.owner=who;
+
+      // remove from player's deck
+      me.deck.splice(me.viewIndex||0,1);
+
+      if(c.color==="yellow") me.gold=(me.gold||0)+c.val;
 
       if(c.val===10){
-        // 10-complete blast
+        // 10-complete: resolve damage, then send ALL pile cards to EACH original player's discard.
         for(const n of G.players){
           const t=P[n]; if(!t?.alive) continue;
           const s=sumsFor(G,P,n), eff=Math.max(0, 10-(s.ward||0));
-          t.health=Math.max(0, t.health-eff); if(t.health===0) t.alive=false;
+          t.health=Math.max(0, (t.health||0)-eff); if(t.health===0) t.alive=false;
         }
-        // discard those pile cards
-        for(const entry of pile.cards){ const o=P[entry.player]; if(o) o.discard.push(entry.card); }
+        // FIX: discard attribution to the player who played each card
+        for(const entry of pile.cards){
+          const o=P[entry.player];
+          if(o) o.discard.push(entry.card);
+        }
         G.piles=G.piles.filter(p=>p.id!==pile.id);
       }
     }
     else if(act.type === "buy"){
       const card=G.storeVis.find(c=>c.id===act.cardId); if(!card) return;
-      if(me.gold<card.val) return; me.gold-=card.val; me.discard.push(card);
+      if((me.gold||0) < card.val) return;
+      me.gold -= card.val;
+      // FIX: bought card goes to that player's personal discard
+      me.discard.push(card);
       const idx = G.storeVis.findIndex(c=>c.id===card.id);
       if(idx>=0) G.storeVis.splice(idx,1);
       while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
     }
     else if(act.type === "reshuffle"){
-      // local 1s UI already shown client-side; host just finalizes
-      me.deck = shuffle(me.deck.concat(me.discard.splice(0)));
+      // FIX: reshuffle ONLY the invoking player's discard into their deck; reset viewIndex
+      const refill = me.discard.splice(0);
+      if(refill.length>0){
+        me.deck = shuffle(me.deck.concat(refill));
+      }
       me.viewIndex = 0;
     }
 
@@ -466,14 +499,14 @@ async function hostTickIfNeeded(){
     const atkBy=new Map();
     for(const n of alive){
       const p=P[n], s=sums.get(n)||{atk:0,heal:0,ward:0,gold:0};
-      p.health = clamp(p.health+(s.heal||0), 0, p.maxHealth);
+      p.health = clamp((p.health||0)+(s.heal||0), 0, (p.maxHealth||100));
       p.gold   = (p.gold||0)+(s.gold||0);
       atkBy.set(n, s.atk||0);
     }
     for(const n of alive){
       const p=P[n]; const ward=(sums.get(n)?.ward)||0;
       let sumA=0; for(const [pid,A] of atkBy){ if(pid!==n) sumA+=A; }
-      const eff=Math.max(0,sumA-ward); if(eff>0){ p.health=Math.max(0,p.health-eff); if(p.health===0) p.alive=false; }
+      const eff=Math.max(0,sumA-ward); if(eff>0){ p.health=Math.max(0,(p.health||0)-eff); if(p.health===0) p.alive=false; }
     }
 
     const aliveAfter=livingPlayers(G,P);
@@ -503,7 +536,6 @@ function startHostActionPump(){
 function logSnapshot(root){
   const t = nowMs() - L.t0;
   L.ts.push(t);
-  // limit series length
   if (L.ts.length > 300) { L.ts.shift(); }
 
   for(const name of root.players){
@@ -512,7 +544,7 @@ function logSnapshot(root){
     if(!L.hp[name])   L.hp[name]=[];
     if(!L.gold[name]) L.gold[name]=[];
     if(!L.atk[name])  L.atk[name]=[];
-    L.hp[name].push(p.health);
+    L.hp[name].push(p.health||0);
     L.gold[name].push(p.gold||0);
     L.atk[name].push(s.atk||0);
 
@@ -561,17 +593,14 @@ function startLocalReshuffle(){
     bar.style.width = (pct*100).toFixed(1) + "%";
     if (left <= 0){
       cancelAnimationFrame(L.reshufRAF);
-      // finalize: send reshuffle to host
       addDoc(actionsCol, { by:L.me, type:"reshuffle", ts: serverTimestamp() });
       L.reshuffling = false;
-      // Keep waitingReshuffle true until we see a new card (hand reappears)
       return;
     }
     L.reshufRAF = requestAnimationFrame(step);
   }
   L.reshufRAF = requestAnimationFrame(step);
 }
-
 function stopLocalReshuffleUI(){
   const wrap = $("#reshuffleWrap");
   const bar  = $("#reshuffleBar>div");
@@ -590,14 +619,14 @@ function render(){
   const s=(who)=>sumsFor(root, root.P, who);
 
   // HUD stats
-  $("#youHP").textContent   = Math.round(me.health);
-  $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
-  $("#youWard").textContent = s(L.me).ward;
-  $("#youAtk").textContent  = s(L.me).atk;
-  $("#youHeal").textContent = s(L.me).heal;
+  $("#youHP").textContent   = Math.round(me.health||0);
+  $("#youGold").textContent = me.gold||0; $("#gold2").textContent = me.gold||0;
+  $("#youWard").textContent = s(L.me).ward||0;
+  $("#youAtk").textContent  = s(L.me).atk||0;
+  $("#youHeal").textContent = s(L.me).heal||0;
 
   // Tick countdown and progress
-  const left = Math.max(0, root.tickEndsAt - nowMs());
+  const left = Math.max(0, (root.tickEndsAt||0) - nowMs());
   const prog = Math.max(0, Math.min(1, (TICK_MS - left) / TICK_MS));
   const secs = (left/1000);
   $("#tickIn").textContent   = secs.toFixed(1);
@@ -610,21 +639,31 @@ function render(){
     const p=root.P[name], m=ownerMeta(name);
     const chip=document.createElement("div");
     chip.className="chip";
-    chip.innerHTML=`<span class="dot" style="background:${m.color}"></span>${m.label}&nbsp;<b>${Math.round(p.health)}</b>`;
+    chip.innerHTML=`<span class="dot" style="background:${m.color}"></span>${m.label}&nbsp;<b>${Math.round(p.health||0)}</b>`;
     mini.appendChild(chip);
   });
 
-  // Center piles
+  // Center piles (with owner trail)
   const grid=$("#piles"); grid.innerHTML="";
   root.piles.forEach(pile=>{
     const top=pile.cards[pile.cards.length-1].card;
     const m=ownerMeta(pile.owner);
     const tile=document.createElement("div");
     tile.className=`tile ${CCLS[top.color]}`;
+
+    // selection validity (current player's hand)
     const sel=L.selectedCardId && handCard(root, root.P, L.me);
     const selected=sel && sel.id===L.selectedCardId ? sel : null;
     if(selected && selected.color===pile.color && pile.topVal===selected.val-1) tile.classList.add("valid");
-    tile.innerHTML = `<span style="font-weight:900">${top.val}</span>&nbsp;<span>${ICON[top.color]}</span><span class="own">${m.label}</span>`;
+
+    tile.innerHTML = `
+      <span style="font-weight:900">${top.val}</span>&nbsp;<span>${ICON[top.color]}</span>
+      <span class="own">${m.label}</span>
+      <div class="trail">${pile.cards.map(en=>{
+        const mm = ownerMeta(en.player);
+        return `<i style="background:${mm.color}" title="${en.player}"></i>`;
+      }).join("")}</div>
+    `;
     tile.style.borderColor = m.color;
     tile.style.boxShadow = `0 0 0 4px ${m.color}, 0 6px 16px rgba(0,0,0,.3)`;
     tile.addEventListener("pointerup",(e)=>{
@@ -648,18 +687,23 @@ function render(){
     hand.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
     hand.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
     hand.onclick = ()=>{
-      if(c.val===1){ addDoc(actionsCol, { by:L.me, type:"start", cardId:c.id, ts: serverTimestamp() }); L.selectedCardId=null; }
-      else { L.selectedCardId = (L.selectedCardId===c.id) ? null : c.id; render(); }
+      if(c.val===1){
+        addDoc(actionsCol, { by:L.me, type:"start", cardId:c.id, ts: serverTimestamp() });
+        L.selectedCardId=null;
+      } else {
+        L.selectedCardId = (L.selectedCardId===c.id) ? null : c.id;
+        render();
+      }
     };
-    // if a new card appears, stop reshuffle UI
     if (L.waitingReshuffle) stopLocalReshuffleUI();
   } else {
     hand.className="rect";
     hand.style.opacity=".4"; hand.style.pointerEvents="none";
     hand.innerHTML="—";
 
-    // If deck is empty and we have discards, auto-start local reshuffle UI once
-    if (!L.reshuffling && !L.waitingReshuffle && root.P[L.me].viewIndex >= root.P[L.me].deck.length && (root.P[L.me].discard?.length||0) > 0){
+    // FIX: trigger local reshuffle only when deck is empty AND we have personal discards
+    if (!L.reshuffling && !L.waitingReshuffle &&
+        (root.P[L.me].deck.length===0) && ((root.P[L.me].discard?.length||0) > 0)){
       startLocalReshuffle();
     }
   }
@@ -670,7 +714,7 @@ function render(){
   visibleCards.forEach((card)=>{
     const col=document.createElement("div"); col.className="storeCol";
     const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
-    if(me.gold < card.val || !me.alive) btn.disabled=true;
+    if((me.gold||0) < card.val || !me.alive) btn.disabled=true;
     btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); addDoc(actionsCol, { by:L.me, type:"buy", cardId: card.id, ts: serverTimestamp() }); });
     col.appendChild(btn);
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
@@ -681,8 +725,8 @@ function render(){
     store.appendChild(col);
   });
 
-  // Counts
-  $("#deckCount").textContent    = root.P[L.me].deck.length - root.P[L.me].viewIndex;
+  // Counts (FIX: deck = full length now; we move cards physically to discard)
+  $("#deckCount").textContent    = root.P[L.me].deck.length;
   $("#discardCount").textContent = root.P[L.me].discard.length;
 
   // Log a snapshot for graphs
@@ -701,11 +745,9 @@ function render(){
 
 /* ========= Charts (SVG sparklines) ========= */
 function makeSparklineSVG(seriesMap, title, height=120, width=720, padding=24){
-  // seriesMap: { name -> {color, values: []} } ; x = L.ts (shared)
   const t = L.ts;
   if (t.length < 2) return `<div class="chartBox"><div class="chartTitle">${title}</div><div style="opacity:.7">Not enough data.</div></div>`;
 
-  // compute global max (>=1 to avoid flat lines)
   let maxV = 1;
   for (const k in seriesMap){
     const arr = seriesMap[k].values;
@@ -751,7 +793,6 @@ function showGameOverWithCharts(root){
   title.textContent = `🏆 Winner: ${winner}`;
   msg.textContent   = "Match summary";
 
-  // Build per-metric series for all players
   const hpMap   = {};
   const goldMap = {};
   const atkMap  = {};
@@ -853,10 +894,10 @@ async function boot(){
   }
 
   // controls
-  $("#flipBtn").addEventListener("pointerup", (e)=>{ 
-    e.preventDefault(); 
+  $("#flipBtn").addEventListener("pointerup", (e)=>{
+    e.preventDefault();
     if (L.reshuffling || L.waitingReshuffle) return; // disable during local reshuffle
-    addDoc(actionsCol, { by:L.me, type:"flip", ts: serverTimestamp() }); 
+    addDoc(actionsCol, { by:L.me, type:"flip", ts: serverTimestamp() });
   });
   window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); $("#flipBtn").click(); } });
 
@@ -883,6 +924,7 @@ boot();
 </script>
 </body>
 </html>
+
 
 
 
