@@ -16,7 +16,7 @@
     /* Piles band */
     --pileSize: 74px; --pileGap: 8px; --pilesHeight: 290px;
 
-    /* Player swatches (dots only; outlines set inline) */
+    /* Player swatches (dots only; outlines are inline) */
     --own-you:#ef4444; --own-a:#22d3ee; --own-b:#f59e0b; --own-c:#8b5cf6;
   }
 
@@ -153,18 +153,18 @@
     html,body{ height:100svh; overflow:hidden; }
     #app{ min-height:100svh; }
     #board{
-      height:100%; 
-      grid-template-rows: auto 1fr auto; /* HUD in #center (auto), piles flex (1fr), you+store auto stacked below via #you and #right */
+      height:100%;
+      grid-template-rows: auto 1fr auto; /* HUD in center, piles flex, you + store auto */
     }
 
     /* hide desktop players panel */
     #left{ display:none; }
 
-    /* HUD ultra-compact: only HP, Gold, Tick + chips */
+    /* HUD compact: only HP, Gold, Tick + chips */
     .stat.hp, .stat.gold, .stat.tick{ display:flex; }
     .stat.atk, .stat.ward{ display:none; }
 
-    /* show player mini chips in HUD */
+    /* mini chips row in HUD */
     .miniRow{ display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden; }
 
     /* shrink piles & cards slightly */
@@ -196,7 +196,7 @@
     </section>
 
     <section id="center">
-      <!-- HUD lives here so it can be auto-height on mobile -->
+      <!-- HUD -->
       <div id="hud" aria-live="polite">
         <div class="hudRow">
           <div class="stat hp"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
@@ -271,7 +271,7 @@ const db  = getFirestore(app);
 const url   = new URL(window.location.href);
 const gameId   = url.searchParams.get("gameId");
 const username = (url.searchParams.get("username")||"").trim();
-const HUB_URL = "/"; // change if needed
+const HUB_URL = "/"; // change if your hub path differs
 
 if(!gameId || !username){ alert("Missing gameId or username in URL."); }
 
@@ -285,7 +285,7 @@ const nowMs=()=>Date.now();
 const isPhone = ()=> matchMedia("(max-width:700px)").matches;
 
 const $=sel=>document.querySelector(sel);
-function showError(msg){ $("#log").textContent = "Last action: " + msg; }
+function showError(msg){ const logEl = $("#log"); if(logEl) logEl.textContent = "Last action: " + msg; }
 
 /* ========= Firestore refs ========= */
 const lobbyRef = doc(db, "lobbies", gameId);
@@ -414,9 +414,11 @@ async function hostApplyAction(act){
       if(me.viewIndex>=me.deck.length) me.reshuffleAt = tnow + 3000;
     }
     else if(act.type === "buy"){
-      const idx=act.storeIndex|0; const card=G.storeVis[idx]; if(!card) return;
+      const card=G.storeVis.find(c=>c.id===act.cardId); if(!card) return;
       if(me.gold<card.val) return; me.gold-=card.val; me.discard.push(card);
-      G.storeVis.splice(idx,1); while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
+      const idx = G.storeVis.findIndex(c=>c.id===card.id);
+      if(idx>=0) G.storeVis.splice(idx,1);
+      while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
     }
 
     // resolve due reshuffles
@@ -474,7 +476,7 @@ async function hostTickIfNeeded(){
 }
 
 /* ========= Host: action queue ========= */
-let actionsUnsub=null;
+let actionsUnsub = null;
 function startHostActionPump(){
   if(actionsUnsub) actionsUnsub();
   const qy=query(actionsCol, orderBy("ts","asc"));
@@ -587,18 +589,16 @@ function render(){
     hand.appendChild(slot);
   }
 
-  // Store — cap to 3 items on phone, all on desktop
+  // Store — cap to 3 items on phone
   const store=$("#storeRow"); store.innerHTML="";
   const visibleCards = isPhone() ? root.storeVis.slice(0,3) : root.storeVis;
-  visibleCards.forEach((card, idx)=>{
-    const globalIdx = isPhone() ? idx : idx; // identical since direct vis slice
+  visibleCards.forEach((card)=>{
     const col=document.createElement("div"); col.className="storeCol";
     const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
     if(me.gold < card.val || !me.alive) btn.disabled=true;
-    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); 
-      // compute real index in storeVis when sliced
-      const realIndex = isPhone() ? root.storeVis.findIndex(c=>c.id===card.id) : globalIdx;
-      sendAction("buy", { storeIndex: realIndex }); 
+    btn.addEventListener("pointerup",(e)=>{ e.preventDefault();
+      // always use ID to find real index
+      sendAction("buy", { cardId: card.id });
     });
     col.appendChild(btn);
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
@@ -615,7 +615,7 @@ function render(){
   if(root.status === "finished"){
     const winner = root.winner;
     const title = winner ? `🏆 Winner: ${ownerMeta(winner).label}` : "Game Over";
-    showOverlay(title, "Return to the lobby below.", [
+    showOverlay(title, "Returning to lobby will keep your username.", [
       { label:"Return to Lobby", onClick: ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}` }
     ]);
   } else {
@@ -626,6 +626,7 @@ function render(){
 /* ===== Fit center to band (keeps piles in view) ===== */
 function fitPilesToBand(){
   const wrap=$("#pilesWrap"); const grid=$("#piles");
+  if(!wrap || !grid) return;
   const n=(L.game?.piles?.length)||1;
   const wrapW=wrap.clientWidth, wrapH=wrap.clientHeight;
 
@@ -673,7 +674,6 @@ async function exitFullscreen(){
 async function toggleFullscreen(){ if(isFullscreen()) await exitFullscreen(); else await enterFullscreen(document.documentElement); }
 
 /* ========= Boot ========= */
-let actionsUnsub=null;
 async function boot(){
   // lobby → players/host
   const lSnap = await getDoc(lobbyRef);
@@ -751,5 +751,6 @@ boot();
 </script>
 </body>
 </html>
+
 
 
