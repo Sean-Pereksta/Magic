@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>🏰 Castle Panic — Mobile Co-op</title>
+<style>
+  :root{
+    --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#9fb3c8; --card:#111827; --br:#1f2a44;
+    --good:#22c55e; --warn:#eab308; --bad:#ef4444; --accent:#60a5fa; --blue:#38bdf8; --green:#22c55e; --red:#fb7185;
+    --tap:64px; --rad:16px; --shadow:0 10px 30px rgba(2,6,23,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:radial-gradient(1000px 600px at 50% -150px,#162239,#0b1014);
+    color:var(--ink);
+  }
+  .wrap{
+    height:100svh; max-width:980px; margin:0 auto; display:grid; grid-template-rows:auto 1fr auto; gap:10px; padding:10px;
+  }
+
+  /* TOP: shop + status */
+  .top{
+    display:grid; gap:10px; grid-template-columns:1fr auto; align-items:stretch;
+  }
+  .shop{
+    display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch; padding:8px; background:var(--panel); border:1px solid var(--br); border-radius:var(--rad);
+  }
+  .shop .btn{
+    white-space:nowrap;
+  }
+  .status{
+    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px 10px; display:grid; gap:6px; min-width:260px;
+  }
+  .row{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .chips{display:flex; gap:6px; flex-wrap:wrap}
+  .chip{
+    background:#0f1b2e; border:1px solid var(--br); padding:6px 10px; border-radius:999px; font-weight:700; font-size:13px; display:flex; gap:8px; align-items:center
+  }
+  .chip[data-cur="true"]{outline:2px solid var(--accent); box-shadow:0 0 0 4px rgba(96,165,250,.15)}
+  .hpbar{height:10px; background:#0e1627; border:1px solid var(--br); border-radius:999px; overflow:hidden}
+  .hpbar>i{display:block; height:100%; background:linear-gradient(90deg,#22c55e,#60a5fa); width:100%}
+
+  /* MIDDLE: board */
+  .board{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:8px; background:var(--panel); border:1px solid var(--br); border-radius:var(--rad);
+    padding:10px; min-height:0;
+  }
+  .col{
+    display:grid; grid-template-rows:auto 1fr; gap:8px; background:#0e1726; border:1px solid var(--br); border-radius:12px; padding:8px;
+  }
+  .col h3{margin:0; font-size:14px; letter-spacing:.3px; display:flex; align-items:center; gap:8px}
+  .wedge-green h3{color:var(--green)}
+  .wedge-red   h3{color:var(--red)}
+  .wedge-blue  h3{color:var(--blue)}
+
+  .sectors{
+    display:grid; grid-template-rows:repeat(5,1fr); gap:6px; min-height:0;
+  }
+  .sector{
+    border:1px dashed #24314d; border-radius:10px; padding:6px; display:flex; gap:6px; align-items:flex-start; overflow:auto;
+    background:#0b1426;
+  }
+  .sector.wall{background:#141b2a; border-style:solid}
+  .badge{font-size:11px; padding:3px 7px; border-radius:999px; border:1px solid #334;
+    background:#0b1629; color:#a9c2ff; white-space:nowrap}
+  .sector-title{font-weight:800; font-size:12px; color:#a9b8d6; margin-right:auto}
+  .enemy{
+    min-width:36px; min-height:36px; border-radius:10px; padding:4px 6px; display:grid; place-items:center; text-align:center; line-height:1.05;
+    box-shadow:inset 0 0 0 1px rgba(150,170,220,.2); font-size:12px; user-select:none
+  }
+  .G{background:#14341b; color:#9afab6; border:1px solid #285d3d}
+  .O{background:#3a2a14; color:#ffdd9a; border:1px solid #6b4a1b}
+  .T{background:#2d1a1a; color:#ff9a9a; border:1px solid #5c2a2a}
+  .H{background:#281a3b; color:#d2b3ff; border:1px solid #4a2a7a}
+  .castle{
+    grid-column:1/-1; background:#0d1322; border:1px solid var(--br); border-radius:12px; padding:10px; display:flex; align-items:center; justify-content:center; gap:10px; margin-top:6px
+  }
+  .castle .ic{font-size:22px}
+  .castle .lbl{font-weight:900; letter-spacing:.5px}
+
+  /* BOTTOM: hand/actions */
+  .bottom{
+    display:grid; grid-template-columns:1fr auto; gap:10px; align-items:stretch;
+  }
+  .hand{
+    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+  }
+  .card{
+    background:linear-gradient(180deg,#0f1d33,#0a1222); border:1px solid var(--br); border-radius:12px; padding:8px; display:grid; gap:6px; min-height:88px;
+    box-shadow:var(--shadow); cursor:pointer; user-select:none
+  }
+  .card .name{font-weight:900; font-size:13px; line-height:1.1}
+  .card .desc{font-size:12px; color:var(--muted)}
+  .card[data-disabled="true"]{opacity:.45; filter:grayscale(.2); pointer-events:none}
+  .card[data-aim="true"]{outline:2px solid var(--accent); box-shadow:0 0 0 6px rgba(96,165,250,.15)}
+
+  .actions{
+    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px; display:grid; gap:8px; min-width:190px
+  }
+  .btn{
+    appearance:none; border:none; border-radius:12px; padding:12px; font-weight:900; letter-spacing:.3px; cursor:pointer; color:#081321; background:#9cc8ff;
+  }
+  .btn.secondary{background:#c3d4ee; color:#0b1322}
+  .btn.warn{background:#ffd59b}
+  .btn:disabled{opacity:.6; cursor:not-allowed}
+
+  .bar{display:flex; gap:8px; flex-wrap:wrap}
+  .pill{background:#0f1b2e; border:1px solid var(--br); padding:6px 10px; border-radius:999px; font-size:12px}
+  .log{
+    max-height:8lh; overflow:auto; font-size:12px; color:#a9b8d6
+  }
+
+  @media (max-width:720px){
+    .top{grid-template-columns:1fr}
+    .status{min-width:unset}
+    .bottom{grid-template-columns:1fr}
+    .hand{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- TOP -->
+  <div class="top">
+    <div class="shop" id="shop">
+      <!-- buttons injected -->
+    </div>
+    <div class="status">
+      <div class="row">
+        <div>🗓️ <b>Day</b></div><div id="day">1</div>
+      </div>
+      <div class="row">
+        <div>💰 <b>Gold</b></div><div id="gold">0</div>
+      </div>
+      <div class="row">
+        <div>🏰 <b>Castle</b></div>
+        <div style="flex:1; margin:0 8px" class="hpbar" aria-label="castle health"><i id="castleHPFill" style="width:100%"></i></div>
+        <div id="castleHP">5/5</div>
+      </div>
+      <div class="row">
+        <div>🔁 <b>Turn</b></div><div id="turnLabel">P1</div>
+      </div>
+      <div class="chips" id="playersBar"></div>
+    </div>
+  </div>
+
+  <!-- BOARD -->
+  <div class="board" id="board" aria-live="polite"></div>
+
+  <!-- BOTTOM -->
+  <div class="bottom">
+    <div class="hand" id="hand"><!-- cards --></div>
+    <div class="actions">
+      <button class="btn" id="endBtn">End Turn</button>
+      <button class="btn secondary" id="discardBtn">Discard All & Draw</button>
+      <div class="bar">
+        <span class="pill">🃏 Deck: <b id="deckCount">0</b></span>
+        <span class="pill">♻️ Discard: <b id="discardCount">0</b></span>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================
+   Core Model
+   ========================= */
+const WEDGES = ["green","red","blue"];
+const RINGS  = ["wall","swords","knight","archer","forest"]; // castle stored separately
+const RING_LABEL = {
+  wall:"Wall", swords:"Swordsman", knight:"Knight", archer:"Archer", forest:"Forest"
+};
+const CASTLE_MAX = 5;
+const HAND_SIZE = 4;
+const SHOP = [
+  { key:"barbarian",   name:"Barbarian (3g)",    cost:3, desc:"Damage all enemies in Swordsman (all wedges).", type:"shop_barbarian" },
+  { key:"knightscharge",name:"Knights' Charge (3g)", cost:3, desc:"Damage all enemies in Knight (all wedges).", type:"shop_knights" },
+  { key:"crossbow",    name:"Crossbowman (3g)",  cost:3, desc:"Execute all enemies with ≤5 HP (anywhere).", type:"shop_crossbow" },
+  { key:"wizard",      name:"Wizard (3g)",       cost:3, desc:"Move all enemies from one sector to another.", type:"shop_wizard" },
+];
+
+const ENEMY_DEF = {
+  Goblin:{ code:"G", hp:1,  name:"Goblin" },
+  Orc:   { code:"O", hp:3,  name:"Orc" },
+  Troll: { code:"T", hp:5,  name:"Troll" },
+  HeroRusher: { code:"H", hp:6, name:"Hero (Rush)", special:"rush" },
+  HeroSummoner:{ code:"H", hp:4, name:"Hero (Summon)", special:"summon" },
+};
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+
+/* =========================
+   Game State
+   ========================= */
+const state = {
+  day: 1,
+  castleHP: CASTLE_MAX,
+  gold: 0,
+  players: [],   // {name, deck:[], discard:[], hand:[]}
+  curP: 0,       // index of current player
+  board: null,   // { green:{ castle:[], wallUp:true, wall:[], swords:[], knight:[], archer:[], forest:[] }, ... }
+  target: null,  // targeting mode {card, mode:'sector'|'wedge'|'wizardFrom'|'wizardTo'|'wild', info:{}}
+  gameOver: false,
+};
+
+function initPlayers(n=1){
+  const arr = [];
+  for(let i=0;i<n;i++){
+    const deck = buildStarterDeck();
+    shuffle(deck);
+    arr.push({ name:`P${i+1}`, deck, discard:[], hand:[] });
+  }
+  state.players = arr;
+  for(const p of state.players){ drawUpTo(p); }
+}
+
+function initialBoard(){
+  const b = {};
+  for(const w of WEDGES){
+    b[w] = {
+      castle: [], wallUp: true,
+      wall:[], swords:[], knight:[], archer:[], forest:[]
+    };
+  }
+  return b;
+}
+
+/* Starter deck: basic color attacks + a few wild + economy + tools */
+function buildStarterDeck(){
+  const d = [];
+  // 2 each colored per ring
+  for(const w of WEDGES){
+    d.push(cardAttack("swords", w), cardAttack("swords", w));
+    d.push(cardAttack("knight",  w), cardAttack("knight",  w));
+    d.push(cardAttack("archer",  w), cardAttack("archer",  w));
+  }
+  // Wilds
+  d.push(cardWild("swords"), cardWild("knight"), cardWild("archer"));
+  // Tools
+  d.push(cardRain());   // Rain of Arrows
+  d.push(cardCatapult());// Catapult
+  d.push(cardLog());     // Log
+  // Economy
+  d.push(cardGold(), cardGold(), cardGold());
+  return d;
+}
+
+/* =========================
+   Cards
+   ========================= */
+function cardAttack(ring, wedge){ return { kind:"attack", ring, wedge, wild:false, name:`${title(ring)} — ${title(wedge)}`, desc:`Hit all enemies in ${title(ring)} (${title(wedge)})`, color:wedge }; }
+function cardWild(ring){ return { kind:"attack", ring, wild:true, name:`${title(ring)} — Wild`, desc:`Choose a wedge; hit all in ${title(ring)}.`, color:"wild" }; }
+function cardRain(){ return { kind:"rain", name:"Rain of Arrows", desc:"Choose a sector; deal 1 damage to all enemies there."}; }
+function cardCatapult(){ return { kind:"catapult", name:"Catapult", desc:"All enemies take 1 damage & are pushed back 1 (not Forest)."}; }
+function cardLog(){ return { kind:"log", name:"Rolling Log", desc:"Choose wedge; push all enemies in that wedge back 1."}; }
+function cardGold(){ return { kind:"gold", name:"Gold Pouch", desc:"Gain +1 gold."}; }
+
+function title(s){ return s[0].toUpperCase()+s.slice(1); }
+
+/* Shop cards get inserted to discard of current player upon buying */
+function shopCard(type){
+  if(type==="shop_barbarian") return { kind:"barbarian", name:"Barbarian (Shop)", desc:"Swordsman ring: damage all wedges." };
+  if(type==="shop_knights")   return { kind:"knightscharge", name:"Knights' Charge", desc:"Knight ring: damage all wedges." };
+  if(type==="shop_crossbow")  return { kind:"crossbow", name:"Crossbowman", desc:"Execute all enemies with ≤5 HP." };
+  if(type==="shop_wizard")    return { kind:"wizard", name:"Wizard", desc:"Move all enemies sector→sector." };
+  throw new Error("Unknown shop card");
+}
+
+/* =========================
+   Utilities
+   ========================= */
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){ const j=(Math.random()* (i+1))|0; [a[i],a[j]]=[a[j],a[i]]; }
+}
+function draw(p){
+  if(p.deck.length===0){
+    if(p.discard.length===0) return null;
+    // reshuffle
+    log(`🔄 ${p.name} reshuffled their discard into a new deck.`);
+    p.deck = p.discard.splice(0);
+    shuffle(p.deck);
+  }
+  return p.deck.pop();
+}
+function drawUpTo(p){
+  while(p.hand.length < HAND_SIZE){
+    const c = draw(p); if(!c) break;
+    p.hand.push(c);
+  }
+}
+function discardCard(p, idx){
+  const [c] = p.hand.splice(idx,1);
+  p.discard.push(c);
+}
+
+/* =========================
+   Enemies
+   ========================= */
+function makeEnemy(kind){
+  const def = ENEMY_DEF[kind];
+  return { id:uid(), kind, name:def.name, code:def.code, hp:def.hp, max:def.hp, special:def.special||null };
+}
+
+function spawnEnemiesForDay(){
+  // spawn count escalates with day
+  const d = state.day;
+  let count = 1;
+  if(d>=11) count = 2;
+  if(d>=26) count = 3;
+  if(d>=41) count = 4;
+
+  for(let i=0;i<count;i++){
+    const wedge = WEDGES[(Math.random()*3)|0];
+    const kind = rollEnemyKind(d);
+    const e = makeEnemy(kind);
+    state.board[wedge].forest.push(e);
+
+    // Hero spawn effects
+    if(e.special==="summon"){
+      const extra = makeEnemy("Goblin");
+      state.board[wedge].forest.push(extra);
+      log(`🧙‍♂️ A Summoner arrived in ${title(wedge)} Forest and called a Goblin!`);
+    }else if(e.special==="rush"){
+      // Push this wedge forward one (inwards) immediately
+      pushWedgeInward(wedge, 1);
+      log(`⚡ A Rusher arrived and surges the ${title(wedge)} wedge forward!`);
+    }else{
+      log(`👹 Spawned ${e.name} in ${title(wedge)} Forest.`);
+    }
+  }
+}
+
+function rollEnemyKind(day){
+  // Weighted roulette — starts mostly goblins; shifts to orcs/trolls/heroes by day
+  // Weights are coarse and simple
+  const w = {
+    Goblin: Math.max(10, 120 - day*2), // falls with time
+    Orc:    Math.max(5,  day*1.5),
+    Troll:  Math.max(0,  (day-12)*1.2),
+    HeroRusher:  Math.max(0, (day-22)*0.9),
+    HeroSummoner:Math.max(0, (day-18)*0.9),
+  };
+  const keys = Object.keys(w);
+  const sum = keys.reduce((s,k)=>s+w[k],0);
+  let r = Math.random()*sum;
+  for(const k of keys){ if((r-=w[k])<=0) return k; }
+  return "Goblin";
+}
+
+/* =========================
+   Movement / Damage
+   ========================= */
+function moveEnemiesAndDamage(){
+  // Move one step inward per wedge: forest->archer->knight->swords->wall/castle
+  for(const w of WEDGES){
+    const col = state.board[w];
+
+    // Move castle enemies first? They stay and damage; do not move further.
+    // Inwards order: handle from inner outward so we don't double-move
+    // archer -> knight
+    moveRing(col, "archer", "knight");
+    moveRing(col, "knight", "swords");
+    // swords -> wall/castle logic
+    const incoming = col.swords.splice(0);
+    for(const e of incoming){
+      if(col.wallUp){
+        // break wall and die
+        col.wallUp = false;
+        log(`🧱 ${title(w)} Wall was destroyed by a ${e.name}. The attacker perished.`);
+        // attacker removed (dies)
+      }else{
+        // move into castle
+        col.castle.push(e);
+      }
+    }
+    // forest -> archer
+    moveRing(col, "forest", "archer");
+  }
+
+  // Castle damage: each enemy present deals 1 damage this turn
+  let hits = 0;
+  for(const w of WEDGES){ hits += state.board[w].castle.length; }
+  if(hits>0){
+    state.castleHP = Math.max(0, state.castleHP - hits);
+    log(`💥 Castle takes ${hits} damage from enemies inside!`);
+  }
+}
+
+/* move from A to B (A emptied) */
+function moveRing(col, from, to){
+  const movers = col[from].splice(0);
+  for(const e of movers){ col[to].push(e); }
+}
+
+/* push outward by N (catapult/log/wizard effects). Ignores walls (just steps rings). */
+function pushWedgeOutward(wedge, steps=1){
+  const col = state.board[wedge];
+  for(let s=0;s<steps;s++){
+    // archer -> forest (forest stays put)
+    const toForest = col.archer.splice(0);
+    col.forest = [...toForest, ...col.forest];
+    // knight -> archer
+    const toArcher = col.knight.splice(0);
+    col.archer = [...toArcher, ...col.archer];
+    // swords -> knight
+    const toKnight = col.swords.splice(0);
+    col.knight = [...toKnight, ...col.knight];
+    // castle -> swords  (even if wallUp, we allow pushback)
+    const toSwords = col.castle.splice(0);
+    col.swords = [...toSwords, ...col.swords];
+  }
+}
+
+function pushWedgeInward(wedge, steps=1){
+  const col = state.board[wedge];
+  for(let s=0;s<steps;s++){
+    // forest -> archer
+    const a = col.forest.splice(0); col.archer.push(...a);
+    // archer -> knight
+    const b = col.archer.splice(0); col.knight.push(...b);
+    // knight -> swords
+    const c = col.knight.splice(0); col.swords.push(...c);
+    // swords -> wall/castle resolution
+    const d = col.swords.splice(0);
+    for(const e of d){
+      if(col.wallUp){ col.wallUp=false; log(`⚡ Surge destroyed the ${title(wedge)} Wall; attacker died.`); }
+      else { col.castle.push(e); }
+    }
+  }
+}
+
+/* =========================
+   Turn Flow
+   ========================= */
+function endTurn(){
+  if(state.gameOver) return;
+  // draw up to HAND_SIZE for current player
+  const p = curPlayer();
+  drawUpTo(p);
+
+  // increment day AFTER current player finishes → "every turn is a day"
+  state.day += 1;
+
+  // Enemies move and damage
+  moveEnemiesAndDamage();
+
+  // Check lose
+  if(state.castleHP<=0){ return finish(false); }
+
+  // Spawn new enemies
+  spawnEnemiesForDay();
+
+  // Win check
+  if(state.day>50){ return finish(true); }
+
+  // Next player
+  state.curP = (state.curP+1) % state.players.length;
+
+  // Clear targeting if any
+  state.target = null;
+
+  renderAll();
+}
+
+function finish(win){
+  state.gameOver = true;
+  log(win ? "🏆 You survived to Day 50 — VICTORY!" : "☠️ The castle fell — DEFEAT.");
+  document.getElementById("endBtn").disabled = true;
+  document.getElementById("discardBtn").disabled = true;
+  // disable hand
+  for(const el of document.querySelectorAll(".card")) el.setAttribute("data-disabled","true");
+}
+
+/* Discard all and draw fresh (consume the player's whole turn) */
+function discardAllAndDraw(){
+  if(state.gameOver) return;
+  const p = curPlayer();
+  while(p.hand.length) { discardCard(p, 0); }
+  drawUpTo(p);
+  log(`🗑️ ${p.name} discarded all and drew fresh.`);
+  endTurn();
+}
+
+/* =========================
+   Actions / Card effects
+   ========================= */
+function playCard(idx){
+  if(state.gameOver) return;
+  const p = curPlayer();
+  const c = p.hand[idx];
+
+  if(!c) return;
+
+  // Cards that need targeting
+  if(c.kind==="attack" && c.wild===true){
+    // choose wedge for this ring
+    state.target = { cardIndex: idx, mode:"wedge", ring:c.ring, label:`Choose a wedge for ${title(c.ring)} — Wild` };
+    highlightAiming(idx);
+    return;
+  }
+  if(c.kind==="rain"){
+    state.target = { cardIndex: idx, mode:"sector", label:"Choose a sector for Rain of Arrows" };
+    highlightAiming(idx); return;
+  }
+  if(c.kind==="log"){
+    state.target = { cardIndex: idx, mode:"wedgeOnly", label:"Choose a wedge for Rolling Log" };
+    highlightAiming(idx); return;
+  }
+  if(c.kind==="wizard"){
+    state.target = { cardIndex: idx, mode:"wizardFrom", label:"Wizard: choose FROM sector (not Wall/Castle)" };
+    highlightAiming(idx); return;
+  }
+
+  // Instant effects
+  if(c.kind==="gold"){
+    state.gold += 1;
+    log(`💰 ${p.name} gained +1 gold.`);
+    discardCard(p, idx); renderAll(); return;
+  }
+  if(c.kind==="catapult"){
+    catapult();
+    discardCard(p, idx); endTurn(); return;
+  }
+  if(c.kind==="barbarian"){
+    ringDamageAllWedges("swords", 1);
+    log("🗡️ Barbarian struck all Swordsman sectors.");
+    discardCard(p, idx); endTurn(); return;
+  }
+  if(c.kind==="knightscharge"){
+    ringDamageAllWedges("knight", 1);
+    log("🐎 Knights' Charge hit all Knight sectors.");
+    discardCard(p, idx); endTurn(); return;
+  }
+  if(c.kind==="crossbow"){
+    executeUnderOrEq(5);
+    log("🏹 Crossbowmen executed all enemies with ≤5 HP.");
+    discardCard(p, idx); endTurn(); return;
+  }
+
+  // Colored attack (no targeting needed)
+  if(c.kind==="attack" && !c.wild){
+    sectorDamage(c.wedge, c.ring, 1);
+    log(`🎯 ${title(c.ring)} — ${title(c.wedge)} hit all enemies in sector.`);
+    discardCard(p, idx); endTurn(); return;
+  }
+}
+
+function onSectorClick(wedge, ring){
+  const t = state.target;
+  if(!t) return;
+
+  // disallow Wall/Castle where it doesn't make sense
+  if(t.mode==="sector" && ring==="wall"){ toast("❌ Can't target Wall as a sector."); return; }
+
+  const p = curPlayer();
+  const cardIdx = t.cardIndex;
+  const card = p.hand[cardIdx];
+
+  // Wild attack → choose wedge for specified ring
+  if(t.mode==="wedge"){
+    sectorDamage(wedge, t.ring, 1);
+    log(`🎯 Wild ${title(t.ring)} hit ${title(t.ring)} — ${title(wedge)}.`);
+    discardCard(p, cardIdx); state.target=null; endTurn(); return;
+  }
+
+  // Rain of Arrows → exact sector (not wall/castle)
+  if(t.mode==="sector"){
+    sectorDamage(wedge, ring, 1);
+    log(`🌧️ Rain of Arrows hit ${title(ring)} — ${title(wedge)}.`);
+    discardCard(p, cardIdx); state.target=null; endTurn(); return;
+  }
+
+  // Log → wedge only (push all enemies in wedge back 1)
+  if(t.mode==="wedgeOnly"){
+    pushWedgeOutward(wedge, 1);
+    log(`🪵 Rolling Log pushed back enemies in ${title(wedge)}.`);
+    discardCard(p, cardIdx); state.target=null; endTurn(); return;
+  }
+
+  // Wizard FROM selection
+  if(t.mode==="wizardFrom"){
+    if(ring==="wall"){ toast("❌ Can't move from Wall."); return; }
+    if(ring==="castle"){ toast("❌ Can't teleport from Castle."); return; }
+    const hasAny = state.board[wedge][ring].length>0;
+    if(!hasAny){ toast("❌ No enemies there."); return; }
+    state.target = { cardIndex:cardIdx, mode:"wizardTo", from:{wedge, ring}, label:"Wizard: choose TO sector (not Wall)" };
+    renderAll(); highlightAiming(cardIdx); return;
+  }
+  // Wizard TO
+  if(t.mode==="wizardTo"){
+    if(ring==="wall"){ toast("❌ Can't move to Wall."); return; }
+    const from = t.from;
+    const group = state.board[from.wedge][from.ring].splice(0);
+    state.board[wedge][ring].push(...group);
+    log(`🌀 Wizard moved enemies from ${title(from.ring)} — ${title(from.wedge)} to ${title(ring)} — ${title(wedge)}.`);
+    discardCard(p, cardIdx); state.target=null; endTurn(); return;
+  }
+}
+
+function sectorDamage(wedge, ring, dmg){
+  const arr = state.board[wedge][ring];
+  for(const e of arr){ e.hp -= dmg; }
+  removeDead(wedge, ring);
+}
+function ringDamageAllWedges(ring, dmg){
+  for(const w of WEDGES){ sectorDamage(w, ring, dmg); }
+}
+function executeUnderOrEq(thresh){
+  for(const w of WEDGES){
+    for(const r of ["swords","knight","archer","forest","castle"]){
+      const arr = state.board[w][r];
+      const kept = [];
+      for(const e of arr){
+        if(e.hp<=thresh){ /* killed */ }
+        else kept.push(e);
+      }
+      state.board[w][r] = kept;
+    }
+  }
+}
+function catapult(){
+  // all enemies take 1 damage & push back 1 (not forest)
+  for(const w of WEDGES){
+    for(const r of ["swords","knight","archer","castle"]){
+      for(const e of state.board[w][r]) e.hp -= 1;
+    }
+    // push back
+    pushWedgeOutward(w, 1);
+    // cleanup deaths (do forest too: they took no damage, but others did)
+    for(const r of ["swords","knight","archer","forest","castle"]){ removeDead(w, r); }
+  }
+}
+function removeDead(wedge, ring){
+  const arr = state.board[wedge][ring];
+  let died = 0;
+  const kept = [];
+  for(const e of arr){ if(e.hp<=0) died++; else kept.push(e); }
+  state.board[wedge][ring] = kept;
+  if(died>0) log(`☠️ ${died} enemy defeated in ${title(ring)} — ${title(wedge)}.`);
+}
+
+/* =========================
+   Shop
+   ========================= */
+function renderShop(){
+  const el = document.getElementById("shop");
+  el.innerHTML = "";
+  for(const s of SHOP){
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = s.name;
+    b.title = s.desc;
+    b.onclick = ()=>buy(s);
+    if(state.gold < s.cost) b.disabled = true;
+    el.appendChild(b);
+  }
+}
+function buy(s){
+  if(state.gold < s.cost) return;
+  state.gold -= s.cost;
+  const p = curPlayer();
+  p.discard.push(shopCard(s.type));
+  log(`🛒 Bought ${s.name.split(" (")[0]} → added to ${p.name}'s discard.`);
+  renderAll();
+}
+
+/* =========================
+   Rendering
+   ========================= */
+function renderAll(){
+  renderStatus();
+  renderPlayersBar();
+  renderBoard();
+  renderHand();
+  renderShop();
+}
+function renderStatus(){
+  qs("#day").textContent = state.day;
+  qs("#gold").textContent = state.gold;
+  qs("#turnLabel").textContent = curPlayer().name;
+  qs("#deckCount").textContent = curPlayer().deck.length;
+  qs("#discardCount").textContent = curPlayer().discard.length;
+  // castle hp
+  qs("#castleHP").textContent = `${state.castleHP}/${CASTLE_MAX}`;
+  const pct = Math.max(0, Math.round(state.castleHP/CASTLE_MAX*100));
+  qs("#castleHPFill").style.width = pct + "%";
+  qs("#endBtn").disabled = !!state.target || state.gameOver;
+  qs("#discardBtn").disabled = !!state.target || state.gameOver;
+}
+function renderPlayersBar(){
+  const bar = qs("#playersBar"); bar.innerHTML = "";
+  state.players.forEach((p,i)=>{
+    const chip = document.createElement("div");
+    chip.className="chip";
+    chip.dataset.cur = (i===state.curP);
+    chip.innerHTML = `<span>👤</span><b>${p.name}</b> <span style="opacity:.7">🃏${p.hand.length}</span>`;
+    bar.appendChild(chip);
+  });
+}
+function renderBoard(){
+  const b = qs("#board");
+  b.innerHTML = "";
+
+  // Per-wedge columns
+  for(const w of WEDGES){
+    const col = state.board[w];
+    const box = document.createElement("div");
+    box.className = "col wedge-" + w;
+
+    const h = document.createElement("h3");
+    const dot = w==="green"?"🟢":w==="red"?"🔴":"🔵";
+    h.innerHTML = `${dot} <span>${title(w)}</span> <span class="badge">${col.wallUp?"Wall: UP":"Wall: DOWN"}</span>`;
+    box.appendChild(h);
+
+    const sect = document.createElement("div");
+    sect.className = "sectors";
+
+    // sectors inwards→outwards display (wall->forest); castle tile below
+    for(const r of RINGS){
+      const tile = document.createElement("div");
+      tile.className = "sector" + (r==="wall"?" wall":"");
+      tile.onclick = ()=>onSectorClick(w, r);
+      const titleEl = document.createElement("div");
+      titleEl.className = "sector-title";
+      titleEl.textContent = RING_LABEL[r];
+      tile.appendChild(titleEl);
+
+      // enemies
+      for(const e of state.board[w][r]){
+        const m = document.createElement("div");
+        m.className = "enemy " + e.code;
+        m.innerHTML = `<div style="font-weight:900">${e.code}</div><div>${e.hp}</div>`;
+        tile.appendChild(m);
+      }
+      sect.appendChild(tile);
+    }
+
+    // castle box for this wedge
+    const c = document.createElement("div");
+    c.className = "castle";
+    c.innerHTML = `<span class="ic">🏰</span><span class="lbl">Castle — ${title(w)}</span>`;
+    // show enemies in castle per wedge
+    for(const e of col.castle){
+      const m = document.createElement("div");
+      m.className = "enemy " + e.code;
+      m.innerHTML = `<div style="font-weight:900">${e.code}</div><div>${e.hp}</div>`;
+      c.appendChild(m);
+    }
+    c.onclick = ()=>toast("Castle tile isn't targetable.");
+    box.appendChild(sect);
+    box.appendChild(c);
+    b.appendChild(box);
+  }
+}
+function renderHand(){
+  const h = qs("#hand"); h.innerHTML = "";
+  const p = curPlayer();
+  p.hand.forEach((c,idx)=>{
+    const el = document.createElement("div");
+    el.className = "card";
+    el.onclick = ()=>playCard(idx);
+    const name = document.createElement("div"); name.className="name"; name.textContent = c.name;
+    const desc = document.createElement("div"); desc.className="desc"; desc.textContent = c.desc;
+    const tag  = document.createElement("div"); tag.className="badge";
+    tag.textContent = c.kind==="attack" ? (c.wild?"Wild":"Colored") : title(c.kind);
+    el.appendChild(name); el.appendChild(desc); el.appendChild(tag);
+    if(state.target && state.target.cardIndex===idx) el.setAttribute("data-aim","true");
+    h.appendChild(el);
+  });
+}
+function highlightAiming(cardIndex){
+  renderAll();
+  // Add tip to log/status
+  const t = state.target;
+  if(t?.label) toast(`🎯 ${t.label}`);
+}
+
+/* =========================
+   UI helpers / log
+   ========================= */
+function qs(s){ return document.querySelector(s); }
+function on(id, fn){ document.getElementById(id).addEventListener("click", fn); }
+function log(msg){
+  const el = qs("#log");
+  const line = document.createElement("div");
+  const ts = new Date().toLocaleTimeString();
+  line.innerHTML = `<span style="opacity:.6">[${ts}]</span> ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+let toastTimer = null;
+function toast(msg){
+  log(msg);
+  if(toastTimer){ clearTimeout(toastTimer); toastTimer=null; }
+}
+
+/* =========================
+   Boot
+   ========================= */
+function curPlayer(){ return state.players[state.curP]; }
+
+function startGame(players=1){
+  state.day = 1; state.castleHP = CASTLE_MAX; state.gold = 0; state.curP=0; state.gameOver=false; state.target=null;
+  state.board = initialBoard();
+  initPlayers(players);
+  // Day 1 spawn
+  spawnEnemiesForDay();
+  renderAll();
+}
+
+// Controls
+on("endBtn", endTurn);
+on("discardBtn", discardAllAndDraw);
+
+// Expose small API for quick debugging in console
+window._state = state;
+
+startGame(2); // ← change to 1–4 players if you want different default
+</script>
+</body>
+</html>
