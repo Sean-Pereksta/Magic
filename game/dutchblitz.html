@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Dutch Blitz — Arena (Realtime)</title>
+<title>Dutch Blitz — Arena (Realtime, One-Screen Mobile)</title>
 <style>
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
@@ -13,10 +13,10 @@
     --cardH: clamp(66px, 16vw, 98px);
     --radius: 12px; --maxw: 1200px;
 
-    /* Center piles band height tuned tighter */
+    /* Piles band */
     --pileSize: 74px; --pileGap: 8px; --pilesHeight: 290px;
 
-    /* Player color swatches (used for status dots only; outlines are inline styles) */
+    /* Player swatches (dots only; outlines set inline) */
     --own-you:#ef4444; --own-a:#22d3ee; --own-b:#f59e0b; --own-c:#8b5cf6;
   }
 
@@ -28,7 +28,7 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Layout — condensed */
+  /* ===== Base Layout ===== */
   #app{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-rows:1fr;min-height:100vh;padding:var(--gap);gap:var(--gap)}
   #board{display:grid;gap:var(--gap);align-items:start}
   @media (min-width: 920px){
@@ -37,7 +37,7 @@
       "you  center right";}
   }
   @media (max-width: 919.9px){
-    #board{grid-template-columns: 1fr; grid-template-areas:"center" "you" "left" "right";}
+    #board{grid-template-columns: 1fr; grid-template-areas:"center" "you" "right";}
   }
 
   section{background:var(--panel);border:1px solid #1a243a;border-radius:var(--radius);padding:10px}
@@ -48,9 +48,9 @@
   .legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;color:#c6d0e0;font-size:12px;margin:6px 0}
   .wrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
 
-  /* HUD — compact */
+  /* ===== HUD ===== */
   #hud{
-    position:sticky; top:4px; z-index:5;
+    position:sticky; top:0; z-index:5;
     display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center;
     margin:0 auto 6px auto; padding:10px 12px; max-width:min(100%, 920px);
     background:linear-gradient(180deg, rgba(15,23,42,.9), rgba(14,21,35,.9));
@@ -60,14 +60,14 @@
   .hudRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
   .stat{
     display:flex;align-items:center;gap:6px;
-    background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:6px 10px;min-width:108px;justify-content:center
+    background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:6px 10px;min-width:92px;justify-content:center
   }
-  .stat .val{font-weight:900;font-size:20px}
+  .stat .val{font-weight:900;font-size:18px}
   .stat .lbl{font-size:11px;color:#a9b6cc;letter-spacing:.3px;text-transform:uppercase}
-  .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:220px;width:min(760px, 94%)}
+  .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:210px;width:100%}
   .timerbar>div{height:100%;background:var(--accent);width:0%}
 
-  /* Players status — tighter cards in a grid/row */
+  /* Players (desktop left card list) */
   #playersStatus{
     display:grid; gap:8px; width:100%; margin-top:4px;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -79,7 +79,15 @@
   .hpBig{font-size:18px;font-weight:900}
   .pSmall{display:flex;gap:8px;flex-wrap:wrap;color:#b8c3d8;font-size:12px}
 
-  /* Hand card (1 visible) — owner outline applied inline */
+  /* Players Mini (mobile HUD chips) */
+  .miniRow{display:none}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 8px; border:1px solid #1d2840; border-radius:999px; background:#0c1423; font-size:12px;
+    white-space:nowrap;
+  }
+
+  /* ===== Hand card (owner outline inline) ===== */
   .rect{
     width:var(--cardW); height:var(--cardH); border-radius:12px; border:2px solid var(--edge);
     display:flex; align-items:center; justify-content:space-between; padding:0 12px;
@@ -94,11 +102,12 @@
   .c-green{background:linear-gradient(135deg,var(--g),#bbf7d0);border-color:#22c55e}
   .c-blue{background:linear-gradient(135deg,var(--b),#bae6fd);border-color:#60a5fa}
 
-  /* Center piles */
+  /* ===== Center piles ===== */
+  #center{display:flex;flex-direction:column;min-height:0}
   #pilesWrap{
-    height:var(--pilesHeight);
+    flex:1; /* TAKE remaining space */
     overflow:hidden; border:1px dashed #20304f; border-radius:10px; padding:8px;
-    background:#0e1626;
+    background:#0e1626; min-height:140px;
   }
   #piles{
     display:grid;
@@ -116,99 +125,100 @@
     position:relative; outline-offset:-5px; min-height:44px;
   }
   .tile .v, .tile .ico, .tile .own { pointer-events:none; }
-  .tile.valid{
-    outline:6px solid #84cc16;
-    box-shadow:0 0 0 6px rgba(132,204,22,.35), 0 12px 22px rgba(0,0,0,.3);
-  }
+  .tile.valid{ outline:6px solid #84cc16; box-shadow:0 0 0 6px rgba(132,204,22,.35), 0 12px 22px rgba(0,0,0,.3); }
   .own{
     position:absolute; bottom:2px; right:4px; font-size:11px;
     color:#0b1014; background:rgba(255,255,255,.92); padding:2px 8px; border-radius:999px;
     font-weight:800;
   }
 
-  /* Store / buttons */
+  /* ===== Store / buttons ===== */
   .storeCol{display:flex;flex-direction:column;align-items:center;gap:6px}
   .btn{
-    padding:10px 12px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
-    min-height:44px;
+    padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
+    min-height:38px;
   }
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  .stacks{display:flex;gap:10px;justify-content:center}
-  .stack{width:68px;height:68px;border-radius:10px;border:2px solid #1b2a44;background:#0c1423;color:#cbd5e1;display:flex;align-items:center;justify-content:center;position:relative}
-  .stack .count{position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);font-size:11px;color:#a6b4ca}
   .log{margin-top:6px;text-align:center;color:#cbd5e1;font-size:12px}
 
-  /* Overlay */
+  /* ===== Overlay ===== */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:40}
   .dialog{background:#0f172a;border:1px solid #243754;border-radius:16px;padding:16px;min-width:min(720px,95vw);max-width:95vw;max-height:92vh;overflow:auto;box-shadow:0 18px 44px rgba(0,0,0,.45)}
   .dialog .big{font-size:24px;font-weight:900;margin-bottom:6px}
   .dialog .sub{font-size:14px;color:#c2cee3;margin-bottom:10px}
   .dialog .actions{display:flex;gap:10px;justify-content:center;margin-top:8px}
 
-  /* --- Mobile/Small screens --- */
-  @media (max-width: 700px){
-    :root{
-      --pilesHeight: min(55svh, 320px);
-      --cardW: clamp(128px, 46vw, 200px);
-      --cardH: clamp(62px, 22vw, 92px);
-      --pileSize: 66px;
+  /* ===== One-screen Mobile Mode ===== */
+  @media (max-width:700px){
+    html,body{ height:100svh; overflow:hidden; }
+    #app{ min-height:100svh; }
+    #board{
+      height:100%; 
+      grid-template-rows: auto 1fr auto; /* HUD in #center (auto), piles flex (1fr), you+store auto stacked below via #you and #right */
     }
-    .timerbar{ min-width: 180px; width: 100%; }
-    #hud{ padding: 8px 10px; gap: 6px; }
-    #pilesWrap{ padding: 6px; }
-    #right .wrap{ gap: 8px; }
-    #storeRow{ overflow-x: auto; gap: 10px; padding-bottom: 6px; }
-    #storeRow .storeCol{ flex: 0 0 auto; }
-    .legend.compact-hide{ display:none; }
+
+    /* hide desktop players panel */
+    #left{ display:none; }
+
+    /* HUD ultra-compact: only HP, Gold, Tick + chips */
+    .stat.hp, .stat.gold, .stat.tick{ display:flex; }
+    .stat.atk, .stat.ward{ display:none; }
+
+    /* show player mini chips in HUD */
+    .miniRow{ display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden; }
+
+    /* shrink piles & cards slightly */
+    :root{
+      --pileSize: 62px;
+      --pilesHeight: auto;
+      --cardW: clamp(128px, 44vw, 200px);
+      --cardH: clamp(60px, 20vw, 90px);
+    }
+
+    /* hand: hide extra legends, stacks, log */
+    .legend.compact-hide, .stacks, #log{ display:none !important; }
+
+    /* store: cap to 3 items; smaller visuals */
+    #right .wrap{ gap:6px; }
+    #storeRow .storeCol{ transform: scale(.9); transform-origin: center; }
   }
+
   @supports (height: 100svh){ body{ min-height: 100svh; } }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="board">
+    <!-- Desktop-only players list -->
     <section id="left">
       <h2>Players</h2>
       <div id="playersStatus"></div>
     </section>
 
     <section id="center">
-      <!-- HUD -->
+      <!-- HUD lives here so it can be auto-height on mobile -->
       <div id="hud" aria-live="polite">
         <div class="hudRow">
-          <div class="stat"><span class="lbl">Health</span><span class="val" id="youHP">100</span></div>
-          <div class="stat"><span class="lbl">Attack</span><span class="val" id="youAtk">0</span></div>
-          <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
-          <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
-          <div class="stat"><span class="lbl">Tick</span><span class="val" id="tickIn">10.0</span></div>
+          <div class="stat hp"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
+          <div class="stat atk"><span class="lbl">Attack</span><span class="val" id="youAtk">0</span></div>
+          <div class="stat ward"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
+          <div class="stat gold"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
+          <div class="stat tick"><span class="lbl">Tick</span><span class="val" id="tickIn">10.0</span></div>
         </div>
         <div class="timerbar"><div id="tickBar"></div></div>
+        <!-- Mini chips (mobile only) -->
+        <div id="playersMini" class="miniRow"></div>
         <div class="legend compact-hide">💰 Yellow = Gold • ⚔️ Orange = Damage • ❤️ Green = Heal • 🛡️ Blue = Ward</div>
       </div>
 
-      <h3 style="text-align:center;margin-top:2px">Center Piles</h3>
+      <h3 style="text-align:center;margin:2px 0 6px 0">Center Piles</h3>
       <div id="pilesWrap"><div id="piles"></div></div>
-      <div class="wrap">
-        <span class="legend compact-hide" style="background:#0c1423;border:1px solid #17223a;border-radius:999px;padding:6px 10px">
-          Tap a <b>1</b> to start a pile. Tap any other card to select, then tap a matching color that’s <b>+1</b>.
-        </span>
-      </div>
-    </section>
-
-    <section id="right">
-      <div class="wrap" style="justify-content:space-between">
-        <h2>Store (6–10)</h2>
-        <span class="legend">Your Gold: <b id="gold2">0</b></span>
-      </div>
-      <div id="storeRow" class="wrap"></div>
     </section>
 
     <section id="you">
-      <h3 style="text-align:center">Your Card</h3>
-      <div class="wrap">
-        <button class="btn" id="flipBtn">🔁 Flip (show next, skip 2)</button>
-        <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ Fullscreen</button>
-        <span class="legend compact-hide" style="background:#0c1423;border:1px solid #17223a;border-radius:999px;padding:6px 10px">End of deck → 3s reshuffle</span>
+      <div class="wrap" style="justify-content:center">
+        <button class="btn" id="flipBtn">🔁 Flip</button>
+        <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ FS</button>
       </div>
       <div id="hand" class="wrap"></div>
       <div class="stacks" style="margin-top:6px">
@@ -216,6 +226,14 @@
         <div class="stack"><span>Discard</span><div id="discardCount" class="count">0</div></div>
       </div>
       <div id="log" class="log">Last action: —</div>
+    </section>
+
+    <section id="right">
+      <div class="wrap" style="justify-content:space-between;align-items:center">
+        <h3>Store</h3>
+        <span class="legend">Gold: <b id="gold2">0</b></span>
+      </div>
+      <div id="storeRow" class="wrap"></div>
     </section>
   </div>
 </div>
@@ -253,11 +271,9 @@ const db  = getFirestore(app);
 const url   = new URL(window.location.href);
 const gameId   = url.searchParams.get("gameId");
 const username = (url.searchParams.get("username")||"").trim();
-const HUB_URL = "/"; // change if your hub lives elsewhere
+const HUB_URL = "/"; // change if needed
 
-if(!gameId || !username){
-  alert("Missing gameId or username in URL.");
-}
+if(!gameId || !username){ alert("Missing gameId or username in URL."); }
 
 /* ========= Utils ========= */
 const COLORS=["yellow","orange","green","blue"];
@@ -266,6 +282,7 @@ const CCLS={yellow:"c-yellow",orange:"c-orange",green:"c-green",blue:"c-blue"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
+const isPhone = ()=> matchMedia("(max-width:700px)").matches;
 
 const $=sel=>document.querySelector(sel);
 function showError(msg){ $("#log").textContent = "Last action: " + msg; }
@@ -275,20 +292,18 @@ const lobbyRef = doc(db, "lobbies", gameId);
 const gameRef  = doc(db, "dutchblitz_games", gameId);
 const actionsCol = collection(db, "dutchblitz_games", gameId, "actions");
 
-/* ========= Local mirror ========= */
+/* ========= Local ========= */
 let L = {
   me: username,
   isHost: false,
   game: null,
   selectedCardId: null,
-  colorMap: new Map() // username -> {label,color, dotClass}
+  colorMap: new Map()
 };
 
-/* ========= Player color assignment ========= */
-/* Deterministic palette per join order */
+/* ========= Player colors (join-order deterministic) ========= */
 const PLAYER_PALETTE = ["#ef4444", "#22d3ee", "#f59e0b", "#8b5cf6"];
 const DOT_CLASSES = ["dot-you","dot-a","dot-b","dot-c"];
-
 function computeColorMap(players){
   L.colorMap.clear();
   players.forEach((name, idx)=>{
@@ -306,75 +321,48 @@ function ownerColor(name){ return ownerMeta(name).color; }
 /* ========= Game Builders (host) ========= */
 function makeCard(color,val){ return { id: uid(), color, val }; }
 function baseDeck(){
-  const d=[];
-  for(const c of COLORS){ for(let v=1; v<=5; v++) d.push(makeCard(c,v)); }
+  const d=[]; for(const c of COLORS){ for(let v=1; v<=5; v++) d.push(makeCard(c,v)); }
   for(let i=d.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [d[i],d[j]]=[d[j],d[i]]; }
   return d;
 }
 function buildStoreDeck(){
-  const d=[];
-  for(let copies=0; copies<4; copies++){
-    for(const c of COLORS){ for(let v=6; v<=10; v++) d.push(makeCard(c,v)); }
-  }
+  const d=[]; for(let k=0;k<4;k++){ for(const c of COLORS){ for(let v=6; v<=10; v++) d.push(makeCard(c,v)); } }
   for(let i=d.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [d[i],d[j]]=[d[j],d[i]]; }
   return d;
 }
-function refillStore(G){
-  while(G.storeVis.length < 5 && G.storeDeck.length>0){
-    G.storeVis.push(G.storeDeck.pop());
-  }
-}
+function refillStore(G){ while(G.storeVis.length < 5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop()); }
 function newGameDoc(host, players){
   const P = {};
   players.forEach(name => {
-    P[name] = {
-      name,
-      alive: true,
-      health: 100, maxHealth: 100,
-      gold: 0,
-      deck: baseDeck(),
-      discard: [],
-      viewIndex: 0,
-      reshuffleAt: 0
-    };
+    P[name] = { name, alive: true, health: 100, maxHealth: 100, gold: 0, deck: baseDeck(), discard: [], viewIndex: 0, reshuffleAt: 0 };
   });
   const G = {
-    type: "dutchblitz",
-    host, players, status:"playing", winner:null,
-    piles: [],
-    storeDeck: buildStoreDeck(),
-    storeVis: [],
-    tickEndsAt: nowMs() + 10000,
-    awarded: false,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    type:"dutchblitz", host, players, status:"playing", winner:null,
+    piles: [], storeDeck: buildStoreDeck(), storeVis: [],
+    tickEndsAt: nowMs() + 10000, awarded:false,
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
-  refillStore(G);
-  return {G,P};
+  refillStore(G); return {G,P};
 }
 
 /* ========= Derived ========= */
-function handCard(G, P, who){
-  const pl = P[who]; if(!pl) return null;
-  if(pl.viewIndex >= pl.deck.length) return null;
-  return pl.deck[pl.viewIndex] || null;
-}
-function sumsFor(G, P, who){
+function handCard(G, P, who){ const pl=P[who]; if(!pl) return null; if(pl.viewIndex>=pl.deck.length) return null; return pl.deck[pl.viewIndex]||null; }
+function sumsFor(G,P,who){
   let atk=0, heal=0, ward=0, gold=0;
   for(const pile of G.piles){
     if(pile.owner !== who) continue;
-    const v = pile.topVal;
+    const v=pile.topVal;
     if(pile.color==='orange') atk+=v;
     else if(pile.color==='green') heal+=v;
     else if(pile.color==='blue') ward+=v;
     else if(pile.color==='yellow') gold+=v;
   }
-  return {atk, heal, ward, gold};
+  return {atk,heal,ward,gold};
 }
 function livingPlayers(G,P){ return G.players.filter(n => P[n]?.alive); }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-/* ========= Host: process actions ========= */
+/* ========= Host: apply action ========= */
 async function hostApplyAction(act){
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
@@ -388,105 +376,60 @@ async function hostApplyAction(act){
     G.piles   = G.piles.map(p=>({...p, cards:[...p.cards]}));
     G.storeDeck = [...G.storeDeck];
     G.storeVis  = [...G.storeVis];
-    for(const k of Object.keys(P)){
-      const pl = P[k];
-      P[k] = { ...pl, deck:[...pl.deck], discard:[...pl.discard] };
-    }
+    for(const k of Object.keys(P)){ const pl=P[k]; P[k] = { ...pl, deck:[...pl.deck], discard:[...pl.discard] }; }
 
-    const who = act.by;
-    const me  = P[who];
-    if(!me || !me.alive) return;
-
+    const who = act.by, me = P[who]; if(!me?.alive) return;
     const tnow = nowMs();
 
     if(act.type === "flip"){
-      if(me.reshuffleAt && tnow < me.reshuffleAt) { /* ignore */ }
-      else{
+      if(!(me.reshuffleAt && tnow < me.reshuffleAt)){
         me.viewIndex += 3;
-        if(me.viewIndex >= me.deck.length){
-          me.reshuffleAt = tnow + 3000;
-        }
+        if(me.viewIndex >= me.deck.length) me.reshuffleAt = tnow + 3000;
       }
     }
-
     else if(act.type === "start"){
-      const c = handCard(G,P,who);
-      if(!c || c.id !== act.cardId) return;
-      if(c.val !== 1) return;
-      me.deck.splice(me.viewIndex, 1);
-      const pile = {
-        id: uid(), color: c.color, topVal: c.val, owner: who,
-        cards: [{player: who, card: c}]
-      };
-      G.piles.push(pile);
-      if(c.color === "yellow"){ me.gold += c.val; }
-      if(me.viewIndex >= me.deck.length){ me.reshuffleAt = tnow + 3000; }
+      const c = handCard(G,P,who); if(!c || c.id!==act.cardId || c.val!==1) return;
+      me.deck.splice(me.viewIndex,1);
+      G.piles.push({ id:uid(), color:c.color, topVal:c.val, owner:who, cards:[{player:who,card:c}] });
+      if(c.color==="yellow") me.gold+=c.val;
+      if(me.viewIndex>=me.deck.length) me.reshuffleAt = tnow + 3000;
     }
-
     else if(act.type === "playOn"){
-      const c = handCard(G,P,who);
-      if(!c || c.id !== act.cardId) return;
-      const pile = G.piles.find(p=>p.id === act.pileId); if(!pile) return;
-      if(pile.color !== c.color || pile.topVal !== c.val - 1) return;
+      const c = handCard(G,P,who); if(!c || c.id!==act.cardId) return;
+      const pile = G.piles.find(p=>p.id===act.pileId); if(!pile) return;
+      if(pile.color!==c.color || pile.topVal!==c.val-1) return;
+      pile.cards.push({player:who, card:c}); pile.topVal=c.val; pile.owner=who;
+      me.deck.splice(me.viewIndex,1);
+      if(c.color==="yellow") me.gold+=c.val;
 
-      pile.cards.push({player: who, card: c});
-      pile.topVal = c.val;
-      pile.owner  = who;
-
-      me.deck.splice(me.viewIndex, 1);
-      if(c.color === "yellow"){ me.gold += c.val; }
-
-      if(c.val === 10){
-        // neutral 10 to all (post-ward)
-        for(const name of G.players){
-          const target = P[name]; if(!target?.alive) continue;
-          const s = sumsFor(G,P,name);
-          const ward = s.ward||0;
-          const eff  = Math.max(0, 10 - ward);
-          target.health = Math.max(0, target.health - eff);
-          if(target.health === 0) target.alive = false;
+      if(c.val===10){
+        for(const n of G.players){
+          const t=P[n]; if(!t?.alive) continue;
+          const s=sumsFor(G,P,n), eff=Math.max(0, 10-(s.ward||0));
+          t.health=Math.max(0, t.health-eff); if(t.health===0) t.alive=false;
         }
-        // return cards
-        for(const entry of pile.cards){
-          const owner = P[entry.player];
-          if(owner) owner.discard.push(entry.card);
-        }
-        // remove pile
-        G.piles = G.piles.filter(p=>p.id !== pile.id);
+        for(const entry of pile.cards){ const o=P[entry.player]; if(o) o.discard.push(entry.card); }
+        G.piles=G.piles.filter(p=>p.id!==pile.id);
       }
-
-      if(me.viewIndex >= me.deck.length){ me.reshuffleAt = tnow + 3000; }
+      if(me.viewIndex>=me.deck.length) me.reshuffleAt = tnow + 3000;
     }
-
     else if(act.type === "buy"){
-      const idx = act.storeIndex|0;
-      const card = G.storeVis[idx];
-      if(!card) return;
-      if(me.gold < card.val) return;
-      me.gold -= card.val;
-      me.discard.push(card);
-      G.storeVis.splice(idx,1);
-      while(G.storeVis.length<5 && G.storeDeck.length>0){
-        G.storeVis.push(G.storeDeck.pop());
-      }
+      const idx=act.storeIndex|0; const card=G.storeVis[idx]; if(!card) return;
+      if(me.gold<card.val) return; me.gold-=card.val; me.discard.push(card);
+      G.storeVis.splice(idx,1); while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
     }
 
     // resolve due reshuffles
-    for(const name of G.players){
-      const p = P[name];
-      if(p.reshuffleAt && tnow >= p.reshuffleAt){
+    for(const n of G.players){
+      const p=P[n];
+      if(p.reshuffleAt && tnow>=p.reshuffleAt){
         p.deck = shuffle(p.deck.concat(p.discard.splice(0)));
-        p.viewIndex = 0;
-        p.reshuffleAt = 0;
+        p.viewIndex=0; p.reshuffleAt=0;
       }
     }
 
-    // victory
-    const aliveList = G.players.filter(n => P[n]?.alive);
-    if(aliveList.length <= 1){
-      G.status = "finished";
-      G.winner = aliveList[0] || null;
-    }
+    const aliveList = G.players.filter(n=>P[n]?.alive);
+    if(aliveList.length<=1){ G.status="finished"; G.winner=aliveList[0]||null; }
 
     G.updatedAt = serverTimestamp();
     await tx.update(gameRef, { ...G, P });
@@ -497,72 +440,48 @@ async function hostApplyAction(act){
 async function hostTickIfNeeded(){
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
-    if(!snap.exists()) return;
-    const root = snap.data();
-    if(root.status !== "playing") return;
-    const tnow = nowMs();
-    if(tnow < root.tickEndsAt) return;
+    if(!snap.exists()) return; const root=snap.data();
+    if(root.status!=="playing") return;
+    const tnow=nowMs(); if(tnow<root.tickEndsAt) return;
 
-    const G = { ...root };
-    const P = { ...root.P };
-    G.piles = G.piles.map(p=>({...p, cards:[...p.cards]}));
+    const G={...root}, P={...root.P}; G.piles=G.piles.map(p=>({...p, cards:[...p.cards]}));
+    const alive=livingPlayers(G,P);
+    const sums=new Map(alive.map(n=>[n, sumsFor(G,P,n)]));
 
-    const alive = livingPlayers(G,P);
-    const sumsMap = new Map(alive.map(n => [n, sumsFor(G,P,n)]));
-
-    // heal + gold; collect attack
-    const atkBy = new Map();
+    const atkBy=new Map();
     for(const n of alive){
-      const p = P[n], s = sumsMap.get(n)||{atk:0,heal:0,ward:0,gold:0};
-      p.health = clamp(p.health + (s.heal||0), 0, p.maxHealth);
-      p.gold   = (p.gold||0) + (s.gold||0);
+      const p=P[n], s=sums.get(n)||{atk:0,heal:0,ward:0,gold:0};
+      p.health = clamp(p.health+(s.heal||0), 0, p.maxHealth);
+      p.gold   = (p.gold||0)+(s.gold||0);
       atkBy.set(n, s.atk||0);
     }
-    // damage among others
     for(const n of alive){
-      const p = P[n];
-      const ward = (sumsMap.get(n)?.ward)||0;
-      let sumA = 0;
-      for(const [pid,A] of atkBy){ if(pid!==n) sumA += A; }
-      if(sumA<=0) continue;
-      const eff = Math.max(0, sumA - ward);
-      if(eff>0){
-        p.health = Math.max(0, p.health - eff);
-        if(p.health===0) p.alive=false;
-      }
+      const p=P[n]; const ward=(sums.get(n)?.ward)||0;
+      let sumA=0; for(const [pid,A] of atkBy){ if(pid!==n) sumA+=A; }
+      const eff=Math.max(0,sumA-ward); if(eff>0){ p.health=Math.max(0,p.health-eff); if(p.health===0) p.alive=false; }
     }
-
-    // due reshuffles
     for(const n of G.players){
-      const p = P[n];
-      if(p.reshuffleAt && nowMs() >= p.reshuffleAt){
-        p.deck = shuffle(p.deck.concat(p.discard.splice(0)));
-        p.viewIndex = 0;
-        p.reshuffleAt = 0;
+      const p=P[n]; if(p.reshuffleAt && nowMs()>=p.reshuffleAt){
+        p.deck=shuffle(p.deck.concat(p.discard.splice(0))); p.viewIndex=0; p.reshuffleAt=0;
       }
     }
+    const aliveAfter=livingPlayers(G,P);
+    if(aliveAfter.length<=1){ G.status="finished"; G.winner=aliveAfter[0]||null; }
 
-    const aliveAfter = livingPlayers(G,P);
-    if(aliveAfter.length <= 1){
-      G.status = "finished";
-      G.winner = aliveAfter[0] || null;
-    }
-
-    G.tickEndsAt = nowMs() + 10000;
-    G.updatedAt = serverTimestamp();
+    G.tickEndsAt = nowMs()+10000; G.updatedAt=serverTimestamp();
     await tx.update(gameRef, { ...G, P });
   });
 }
 
 /* ========= Host: action queue ========= */
-let actionsUnsub = null;
+let actionsUnsub=null;
 function startHostActionPump(){
   if(actionsUnsub) actionsUnsub();
-  const qy = query(actionsCol, orderBy("ts","asc"));
-  actionsUnsub = onSnapshot(qy, async (qs) => {
+  const qy=query(actionsCol, orderBy("ts","asc"));
+  actionsUnsub=onSnapshot(qy, async (qs)=>{
     for(const d of qs.docChanges()){
-      if(d.type !== "added") continue;
-      const act = d.doc.data();
+      if(d.type!=="added") continue;
+      const act=d.doc.data();
       await hostApplyAction(act);
       await deleteDoc(doc(db, "dutchblitz_games", gameId, "actions", d.doc.id));
     }
@@ -571,25 +490,17 @@ function startHostActionPump(){
 
 /* ========= Client: send action ========= */
 async function sendAction(type, payload={}){
-  const root = L.game;
-  if(!root || root.status!=="playing") return;
-
-  const me = root.P[L.me];
-  if(!me?.alive) return;
-
-  if(type==="flip"){
-    if(me.reshuffleAt && nowMs() < me.reshuffleAt){ showError("Reshuffling…"); return; }
-  }
-
-  await addDoc(actionsCol, { by: L.me, type, ...payload, ts: serverTimestamp() });
+  const root=L.game; if(!root || root.status!=="playing") return;
+  const me=root.P[L.me]; if(!me?.alive) return;
+  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ showError("Reshuffling…"); return; }
+  await addDoc(actionsCol, { by:L.me, type, ...payload, ts: serverTimestamp() });
 }
 
 /* ========= UI ========= */
 function render(){
-  const root = L.game; if(!root) return;
-  const me   = root.P[L.me];
+  const root=L.game; if(!root) return; const me=root.P[L.me];
 
-  const s = sumsFor(root, root.P, L.me);
+  const s=sumsFor(root, root.P, L.me);
   $("#youHP").textContent   = Math.round(me.health);
   $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
   $("#youWard").textContent = s.ward; $("#youAtk").textContent = s.atk;
@@ -598,14 +509,13 @@ function render(){
   $("#tickIn").textContent = (left/1000).toFixed(1);
   $("#tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
 
-  // players panel (condensed)
+  // Desktop players panel
   const wrap=$("#playersStatus"); wrap.innerHTML="";
   root.players.forEach(name=>{
-    const p = root.P[name];
-    const m = ownerMeta(name);
+    const p=root.P[name], m=ownerMeta(name);
     const card=document.createElement("div");
     card.className="pStatus";
-    card.innerHTML = `
+    card.innerHTML=`
       <div class="pTop">
         <div class="pName"><i class="dot ${m.dot}" style="background:${m.color}"></i> ${m.label}</div>
         <div class="hpBig">${Math.round(p.health)}${p.alive?"":" (out)"}</div>
@@ -618,57 +528,58 @@ function render(){
     wrap.appendChild(card);
   });
 
-  // center piles — owner-colored bold outlines
+  // Mobile players mini chips
+  const mini=$("#playersMini"); mini.innerHTML="";
+  if(isPhone()){
+    root.players.forEach(name=>{
+      const p=root.P[name], m=ownerMeta(name);
+      const chip=document.createElement("div");
+      chip.className="chip";
+      chip.innerHTML=`<span class="dot" style="background:${m.color};width:10px;height:10px;border-radius:50%"></span>${m.label}&nbsp;<b>${Math.round(p.health)}</b>`;
+      mini.appendChild(chip);
+    });
+  }
+
+  // Center piles with owner-colored outlines
   const grid=$("#piles"); grid.innerHTML="";
   root.piles.forEach(pile=>{
-    const top = pile.cards[pile.cards.length-1].card;
-    const m   = ownerMeta(pile.owner);
+    const top=pile.cards[pile.cards.length-1].card;
+    const m=ownerMeta(pile.owner);
     const tile=document.createElement("div");
     tile.className=`tile ${CCLS[top.color]}`;
-    const sel = L.selectedCardId && handCard(root, root.P, L.me);
-    const selected = sel && sel.id===L.selectedCardId ? sel : null;
-    if(selected && selected.color===pile.color && pile.topVal===selected.val-1){
-      tile.classList.add("valid");
-    }
+    const sel=L.selectedCardId && handCard(root, root.P, L.me);
+    const selected=sel && sel.id===L.selectedCardId ? sel : null;
+    if(selected && selected.color===pile.color && pile.topVal===selected.val-1) tile.classList.add("valid");
     tile.innerHTML = `<span class="v">${top.val}</span><span class="ico">${ICON[top.color]}</span><span class="own">${m.label}</span>`;
-    // bold owner outline + glow
     tile.style.borderColor = m.color;
     tile.style.boxShadow = `0 0 0 4px ${m.color}, 0 6px 16px rgba(0,0,0,.3)`;
-
-    tile.addEventListener("pointerup", (e)=>{
+    tile.addEventListener("pointerup",(e)=>{
       e.preventDefault();
       if(!selected){ showError("Select a card first."); return; }
-      sendAction("playOn", { pileId: pile.id, cardId: selected.id });
-      L.selectedCardId = null;
+      sendAction("playOn", { pileId:pile.id, cardId:selected.id });
+      L.selectedCardId=null;
     });
     grid.appendChild(tile);
   });
   fitPilesToBand();
 
-  // my hand — owner outline (your color)
+  // Hand (your color outline)
   const hand=$("#hand"); hand.innerHTML="";
-  const c = handCard(root, root.P, L.me);
+  const c=handCard(root, root.P, L.me);
   if(c){
-    const myColor = ownerColor(L.me);
+    const myColor=ownerColor(L.me);
     const d=document.createElement("div");
-    const isSel = (L.selectedCardId === c.id);
+    const isSel=(L.selectedCardId===c.id);
     d.className=`rect ${CCLS[c.color]}${isSel?' sel':''}`;
     d.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
-    // strong owner outline on your card
     d.style.borderColor = myColor;
     d.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
-
-    d.addEventListener("pointerup", (e)=>{
+    d.addEventListener("pointerup",(e)=>{
       e.preventDefault();
-      if(c.val===1){
-        sendAction("start", { cardId: c.id });
-        L.selectedCardId = null;
-      } else {
-        L.selectedCardId = isSel ? null : c.id;
-      }
+      if(c.val===1){ sendAction("start", { cardId:c.id }); L.selectedCardId=null; }
+      else { L.selectedCardId = isSel ? null : c.id; }
       render();
     });
-    d.addEventListener("keydown", (e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); d.click(); } });
     d.setAttribute("role","button"); d.tabIndex=0;
     hand.appendChild(d);
   } else {
@@ -676,29 +587,31 @@ function render(){
     hand.appendChild(slot);
   }
 
-  // store — neutral (no owner)
+  // Store — cap to 3 items on phone, all on desktop
   const store=$("#storeRow"); store.innerHTML="";
-  root.storeVis.forEach((card, idx)=>{
+  const visibleCards = isPhone() ? root.storeVis.slice(0,3) : root.storeVis;
+  visibleCards.forEach((card, idx)=>{
+    const globalIdx = isPhone() ? idx : idx; // identical since direct vis slice
     const col=document.createElement("div"); col.className="storeCol";
-    const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy ($${card.val})`;
+    const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
     if(me.gold < card.val || !me.alive) btn.disabled=true;
-    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); sendAction("buy", { storeIndex: idx }); });
+    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); 
+      // compute real index in storeVis when sliced
+      const realIndex = isPhone() ? root.storeVis.findIndex(c=>c.id===card.id) : globalIdx;
+      sendAction("buy", { storeIndex: realIndex }); 
+    });
     col.appendChild(btn);
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
     r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
-    // neutral outline (no owner yet)
     r.style.borderColor = "#334155";
     r.style.boxShadow = "0 0 0 3px rgba(148,163,184,.35)";
     col.appendChild(r);
-    const tag=document.createElement("div"); tag.className="legend"; tag.textContent=`Cost ${card.val}`;
-    col.appendChild(tag);
     store.appendChild(col);
   });
 
   $("#deckCount").textContent    = root.P[L.me].deck.length;
   $("#discardCount").textContent = root.P[L.me].discard.length;
 
-  // End overlay
   if(root.status === "finished"){
     const winner = root.winner;
     const title = winner ? `🏆 Winner: ${ownerMeta(winner).label}` : "Game Over";
@@ -710,16 +623,14 @@ function render(){
   }
 }
 
-/* ===== Fit center to band ===== */
+/* ===== Fit center to band (keeps piles in view) ===== */
 function fitPilesToBand(){
-  const wrap=$("#pilesWrap");
-  const grid=$("#piles");
-  const n = (L.game?.piles?.length)||1;
-  const wrapW = wrap.clientWidth;
-  const wrapH = wrap.clientHeight;
+  const wrap=$("#pilesWrap"); const grid=$("#piles");
+  const n=(L.game?.piles?.length)||1;
+  const wrapW=wrap.clientWidth, wrapH=wrap.clientHeight;
 
-  const maxSize = 96, minSize = 48, gap = 8;
-  let size = Math.min(maxSize, Math.max(minSize, Math.floor(Math.sqrt((wrapW*wrapH)/(n*1.25)) )));
+  const maxSize = isPhone()? 70 : 96, minSize = 48, gap = 8;
+  let size=Math.min(maxSize, Math.max(minSize, Math.floor(Math.sqrt((wrapW*wrapH)/(n*1.25)) )));
   function layoutFor(sz){
     const cols = Math.max(1, Math.floor((wrapW + gap) / (sz + gap)));
     const rows = Math.ceil(n / cols);
@@ -727,15 +638,13 @@ function fitPilesToBand(){
     return {cols, rows, height};
   }
   let Lp = layoutFor(size);
-  while (Lp.height > wrapH && size > minSize){
-    size -= 2; Lp = layoutFor(size);
-  }
+  while (Lp.height > wrapH && size > minSize){ size -= 2; Lp = layoutFor(size); }
   document.documentElement.style.setProperty("--pileSize", size + "px");
   document.documentElement.style.setProperty("--pileGap", gap + "px");
   grid.style.gridTemplateColumns = `repeat(${Lp.cols}, var(--pileSize))`;
 }
 
-/* ========= Overlay helpers ========= */
+/* ========= Overlay ========= */
 function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
   $("#ovTitle").textContent=title;
   $("#ovMsg").textContent=msg||"";
@@ -764,6 +673,7 @@ async function exitFullscreen(){
 async function toggleFullscreen(){ if(isFullscreen()) await exitFullscreen(); else await enterFullscreen(document.documentElement); }
 
 /* ========= Boot ========= */
+let actionsUnsub=null;
 async function boot(){
   // lobby → players/host
   const lSnap = await getDoc(lobbyRef);
@@ -784,14 +694,12 @@ async function boot(){
   // subscribe
   onSnapshot(gameRef, async (snap)=>{
     if(!snap.exists()) return;
-    const data = snap.data();
-    L.game = data;
+    const data=snap.data(); L.game=data;
 
     // award once
     if(L.isHost && data.status==="finished" && data.winner && !data.awarded){
       await runTransaction(db, async (tx)=>{
-        const cur = await tx.get(gameRef);
-        const root = cur.data();
+        const cur = await tx.get(gameRef); const root=cur.data();
         if(root.awarded) return;
         const wRef = doc(db, "users", data.winner);
         const wSnap = await tx.get(wRef);
@@ -823,7 +731,7 @@ async function boot(){
     fsBtn.addEventListener("click", toggleFullscreen);
     document.addEventListener("fullscreenchange", ()=>{
       const fs = !!isFullscreen();
-      fsBtn.textContent = fs ? "⛶ Exit Fullscreen" : "⛶ Fullscreen";
+      fsBtn.textContent = fs ? "⛶ Exit" : "⛶ FS";
       fsBtn.setAttribute("aria-pressed", String(fs));
       if(typeof fitPilesToBand === "function") fitPilesToBand();
     });
@@ -835,7 +743,9 @@ async function boot(){
     }
   }
 
+  // refit on size/orientation
   new ResizeObserver(fitPilesToBand).observe($("#pilesWrap"));
+  addEventListener("orientationchange", ()=> setTimeout(fitPilesToBand, 100));
 }
 boot();
 </script>
