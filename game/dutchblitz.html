@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Dutch Blitz — Arena (Realtime, One-Screen Mobile)</title>
+<title>Dutch Blitz — Arena (Realtime, One-Screen Auto-Fit)</title>
 <style>
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
@@ -13,40 +13,52 @@
     --cardH: clamp(58px, 18vw, 98px);
     --radius: 12px;
 
-    /* Center piles */
+    /* center piles (base; auto-resized; then whole stage is auto-scaled) */
     --pileSize: 64px; 
     --pileGap: 8px;
   }
 
   *{box-sizing:border-box}
   html,body{height:100%}
-  /* Full-screen, no scroll, safe insets respected */
   html, body{
     margin:0;background:var(--bg);color:var(--ink);
     font-family:system-ui,Segoe UI,Roboto,Arial;
     -webkit-tap-highlight-color: transparent;
-    height: 100svh;
-    min-height: 100svh;
-    overflow: hidden;
-    overscroll-behavior: none;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  @supports (height: 100dvh){
-    html, body{ height:100dvh; min-height:100dvh; }
+    overflow:hidden;             /* no page scroll */
+    overscroll-behavior:none;
   }
 
-  /* ===== Master vertical screen (mobile-first) ===== */
+  /* ===== Auto-Fit Shell =====
+     #fitRoot fills the window. #stage is measured at scale(1). We compute a scale
+     so #stage fits and apply transform to #stage. This guarantees one screen, no clipping. */
+  #fitRoot{
+    position:fixed; inset:0;       /* fill the viewport */
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  #stageWrap{
+    width:100%; height:100%;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;               /* never allow scrollbars */
+  }
+  #stage{
+    transform-origin: top center;  /* scale from top center so layout feels natural */
+    will-change: transform;
+  }
+
+  /* ===== Stage layout (natural size; then auto-scaled) ===== */
   #screen{
     display:grid;
     grid-template-rows: auto auto 1fr auto;  /* HUD, Store, Center, Bottom */
     gap: var(--gap);
-    height: 100%;
     padding: var(--gap);
-    max-width: 720px;
-    margin: 0 auto;
+    max-width: 820px;           /* natural max width; feel free to tweak */
+    min-width: 320px;           /* keeps chips/cards readable pre-scale */
+    /* natural height is whatever the sections need; we’ll scale to fit */
+    background: transparent;
   }
 
-  /* ===== HUD (timer + stats + mini players) ===== */
+  /* ===== HUD ===== */
   #hud{
     display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center;
     padding:10px 12px;
@@ -65,7 +77,6 @@
   .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:220px;width:100%}
   .timerbar>div{height:100%;background:var(--accent);width:0%}
 
-  /* Mini players row */
   #playersMini{display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden}
   .chip{
     display:inline-flex; align-items:center; gap:6px;
@@ -73,15 +84,14 @@
     white-space:nowrap;
   }
   .dot{width:10px;height:10px;border-radius:50%}
-
   .legend{color:#c6d0e0;font-size:11px;text-align:center}
 
-  /* ===== Store (always 3 items on mobile at the top) ===== */
+  /* ===== Store (always 3 items on top) ===== */
   #storeTop{
     display:flex; gap:8px; align-items:center; justify-content:space-between;
     padding:10px; background:var(--panel); border:1px solid #1a243a; border-radius:var(--radius);
   }
-  #storeItems{display:flex; gap:8px; align-items:center; justify-content:center; flex:1}
+  #storeItems{display:flex; gap:8px; align-items:center; justify-content:center; flex:1; flex-wrap:nowrap}
   .storeCol{display:flex;flex-direction:column;align-items:center;gap:6px}
   .btn{
     padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
@@ -89,7 +99,7 @@
   }
   .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* ===== Center Piles auto-fit area ===== */
+  /* ===== Center Piles (auto layout; then whole stage scales) ===== */
   #centerBand{
     border:1px dashed #20304f; border-radius:10px; padding:8px;
     background:#0e1626; min-height:140px; height:100%; overflow:hidden;
@@ -117,7 +127,7 @@
     pointer-events:none;
   }
 
-  /* Card chip */
+  /* ===== Card chip ===== */
   .rect{
     width:var(--cardW); height:var(--cardH); border-radius:12px; border:2px solid var(--edge);
     display:flex; align-items:center; justify-content:space-between; padding:0 12px;
@@ -132,7 +142,7 @@
   .c-green{background:linear-gradient(135deg,var(--g),#bbf7d0);border-color:#22c55e}
   .c-blue{background:linear-gradient(135deg,var(--b),#bae6fd);border-color:#60a5fa}
 
-  /* ===== Bottom bar: Hand + Counts (side-by-side) ===== */
+  /* ===== Bottom bar: Hand + Counts ===== */
   #bottomBar{
     display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
   }
@@ -142,27 +152,6 @@
     background:#0c1423;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:160px;
   }
   .countItem{display:flex; gap:6px; align-items:center; font-weight:800}
-  .ctlRow{display:flex; gap:8px; align-items:center}
-
-  /* Desktop extras (optional players panel) */
-  #playersPanel{display:none}
-  @media (min-width: 900px){
-    #screen{ max-width: 1200px; grid-template-columns: 1fr 2fr 1fr; grid-template-rows: auto auto 1fr auto; }
-    #playersPanel{ display:block; grid-column:1; grid-row:1 / span 4; background:var(--panel); border:1px solid #1a243a; border-radius:var(--radius); padding:10px; overflow:auto }
-    #hud{ grid-column:2; }
-    #storeTop{ grid-column:2; }
-    #centerBand{ grid-column:2; }
-    #bottomBar{ grid-column:2; }
-  }
-  #playersStatus{
-    display:grid; gap:8px; width:100%;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
-  .pStatus{ background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:8px }
-  .pTop{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-  .pName{font-weight:900; display:flex; align-items:center; gap:8px}
-  .hpBig{font-size:18px;font-weight:900}
-  .pSmall{display:flex;gap:8px;flex-wrap:wrap;color:#b8c3d8;font-size:12px}
 
   /* Overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:40}
@@ -173,56 +162,57 @@
 </style>
 </head>
 <body>
-  <!-- Optional desktop players panel -->
-  <aside id="playersPanel">
-    <h3 style="margin:0 0 6px 0">Players</h3>
-    <div id="playersStatus"></div>
-  </aside>
+  <!-- Auto-fit shell -->
+  <div id="fitRoot">
+    <div id="stageWrap">
+      <!-- Everything inside #stage is measured/scaled to fit the window -->
+      <main id="stage">
+        <section id="screen" role="application">
+          <!-- HUD -->
+          <section id="hud" aria-live="polite">
+            <div class="hudRow">
+              <div class="stat"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
+              <div class="stat"><span class="lbl">Heal</span><span class="val" id="youHeal">0</span></div>
+              <div class="stat"><span class="lbl">Damage</span><span class="val" id="youAtk">0</span></div>
+              <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
+              <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
+            </div>
+            <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
+            <div id="playersMini"></div>
+            <div class="legend">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
+          </section>
 
-  <!-- One-screen vertical layout -->
-  <main id="screen" role="application">
-    <!-- HUD -->
-    <section id="hud" aria-live="polite">
-      <div class="hudRow">
-        <div class="stat"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
-        <div class="stat"><span class="lbl">Heal</span><span class="val" id="youHeal">0</span></div>
-        <div class="stat"><span class="lbl">Damage</span><span class="val" id="youAtk">0</span></div>
-        <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
-        <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
-      </div>
-      <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
-      <div id="playersMini"></div>
-      <div class="legend">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
-    </section>
+          <!-- Store (top, exactly 3 items) -->
+          <section id="storeTop" aria-label="Store">
+            <strong>Store</strong>
+            <div id="storeItems"></div>
+            <div style="display:flex; align-items:center; gap:8px">
+              <span>Gold: <b id="gold2">0</b></span>
+            </div>
+          </section>
 
-    <!-- Store (top, 3 items on mobile) -->
-    <section id="storeTop" aria-label="Store">
-      <strong>Store</strong>
-      <div id="storeItems"></div>
-      <div style="display:flex; align-items:center; gap:8px">
-        <span>Gold: <b id="gold2">0</b></span>
-      </div>
-    </section>
+          <!-- Center piles -->
+          <section id="centerBand" aria-label="Center Piles">
+            <div id="piles"></div>
+          </section>
 
-    <!-- Center piles -->
-    <section id="centerBand" aria-label="Center Piles">
-      <div id="piles"></div>
-    </section>
-
-    <!-- Bottom bar: hand + counts -->
-    <section id="bottomBar">
-      <div id="handWrap">
-        <button class="btn" id="flipBtn">🔁 Flip</button>
-        <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ FS</button>
-        <div id="hand" class="rect" style="pointer-events:none; opacity:.4; justify-content:center">—</div>
-      </div>
-      <div id="counts">
-        <div class="countItem">Deck: <span id="deckCount">0</span></div>
-        <div class="countItem">Discard: <span id="discardCount">0</span></div>
-        <div class="countItem">Tick: <span id="tickIn">10.0</span>s</div>
-      </div>
-    </section>
-  </main>
+          <!-- Bottom bar: hand + counts -->
+          <section id="bottomBar">
+            <div id="handWrap">
+              <button class="btn" id="flipBtn">🔁 Flip</button>
+              <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ FS</button>
+              <div id="hand" class="rect" style="pointer-events:none; opacity:.4; justify-content:center">—</div>
+            </div>
+            <div id="counts">
+              <div class="countItem">Deck: <span id="deckCount">0</span></div>
+              <div class="countItem">Discard: <span id="discardCount">0</span></div>
+              <div class="countItem">Tick: <span id="tickIn">10.0</span>s</div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
 
   <!-- Overlay -->
   <div id="overlay" class="overlay" aria-hidden="true">
@@ -248,7 +238,7 @@ const firebaseConfig = {
   projectId: "bible-game-246c0",
   storageBucket: "bible-game-246c0.appspot.com",
   messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e4451"
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
@@ -267,22 +257,38 @@ const CCLS={yellow:"c-yellow",orange:"c-orange",green:"c-green",blue:"c-blue"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
-const isPhone = ()=> matchMedia("(max-width:900px)").matches;
 
 const $=sel=>document.querySelector(sel);
-function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
-  $("#ovTitle").textContent=title;
-  $("#ovMsg").textContent=msg||"";
-  const btns=$("#ovBtns"); btns.innerHTML="";
-  buttons.forEach(b=>{
-    const el=document.createElement("button");
-    el.className="btn"; el.textContent=b.label;
-    el.addEventListener("pointerup", ()=>{ b.onClick?.(); });
-    btns.appendChild(el);
-  });
-  $("#overlay").style.display="flex";
+
+/* ========= Auto-Fit (ALWAYS fits to one screen) ========= */
+function fitToViewport(){
+  const wrap  = document.getElementById('stageWrap');
+  const stage = document.getElementById('stage');
+  if(!wrap || !stage) return;
+
+  // Reset transform to measure natural size
+  stage.style.transform = 'none';
+
+  // Force layout read
+  const rect = stage.getBoundingClientRect();
+  const naturalW = rect.width  || 1;
+  const naturalH = rect.height || 1;
+
+  const vw = wrap.clientWidth  || window.innerWidth;
+  const vh = wrap.clientHeight || window.innerHeight;
+
+  // Tiny padding to avoid edge clipping
+  const padW = 8, padH = 8;
+
+  // Scale down to fit, never upscale above 1 to keep sharp
+  const scale = Math.min(vw / (naturalW + padW), vh / (naturalH + padH), 1);
+
+  stage.style.transform = `scale(${scale})`;
 }
-function hideOverlay(){ $("#overlay").style.display="none"; }
+
+/* Re-fit on window changes */
+addEventListener('resize', fitToViewport, { passive:true });
+addEventListener('orientationchange', ()=> setTimeout(fitToViewport, 150), { passive:true });
 
 /* ========= Firestore refs ========= */
 const lobbyRef = doc(db, "lobbies", gameId);
@@ -298,7 +304,7 @@ let L = {
   colorMap: new Map()
 };
 
-/* ========= Player colors (join-order deterministic) ========= */
+/* ========= Colors ========= */
 const PLAYER_PALETTE = ["#ef4444", "#22d3ee", "#f59e0b", "#8b5cf6"];
 function computeColorMap(players){
   L.colorMap.clear();
@@ -467,7 +473,7 @@ async function hostTickIfNeeded(){
   });
 }
 
-/* ========= Host action queue (guarded against double set) ========= */
+/* ========= Host action queue (guarded) ========= */
 function startHostActionPump(){
   if (window.__DB_ACTIONS_UNSUB) { return; }
   const qy=query(actionsCol, orderBy("ts","asc"));
@@ -482,21 +488,13 @@ function startHostActionPump(){
   window.__DB_ACTIONS_UNSUB = unsub;
 }
 
-/* ========= Client: send action ========= */
-async function sendAction(type, payload={}){
-  const root=L.game; if(!root || root.status!=="playing") return;
-  const me=root.P[L.me]; if(!me?.alive) return;
-  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ return; }
-  await addDoc(actionsCol, { by:L.me, type, ...payload, ts: serverTimestamp() });
-}
-
-/* ===== Fit piles to center band (no scroll) ===== */
+/* ========= UI helpers ========= */
 function fitPilesToBand(){
-  const wrap=$("#centerBand"); const grid=$("#piles");
+  const wrap=document.getElementById("centerBand"); const grid=document.getElementById("piles");
   if(!wrap || !grid || !L.game) return;
   const n=(L.game.piles?.length)||1;
   const wrapW=wrap.clientWidth, wrapH=wrap.clientHeight;
-  const maxSize = isPhone()? 70 : 96, minSize = 44, gap = 8;
+  const maxSize = 96, minSize = 44, gap = 8;
   let size=Math.min(maxSize, Math.max(minSize, Math.floor(Math.sqrt((wrapW*wrapH)/(n*1.25)) )));
   function layoutFor(sz){
     const cols = Math.max(1, Math.floor((wrapW + gap) / (sz + gap)));
@@ -511,44 +509,26 @@ function fitPilesToBand(){
   grid.style.gridTemplateColumns = `repeat(${Lp.cols}, var(--pileSize))`;
 }
 
-/* ========= Render ========= */
 function render(){
   const root=L.game; if(!root) return; const me=root.P[L.me];
-  const s=sumsFor(root, root.P, L.me);
+  const s=(who=>sumsFor(root, root.P, who));
 
-  // HUD stats
-  $("#youHP").textContent   = Math.round(me.health);
-  $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
-  $("#youWard").textContent = s.ward; $("#youAtk").textContent = s.atk; $("#youHeal").textContent = s.heal;
+  // HUD
+  document.getElementById("youHP").textContent   = Math.round(me.health);
+  document.getElementById("youGold").textContent = me.gold;
+  document.getElementById("gold2").textContent   = me.gold;
+  document.getElementById("youWard").textContent = s(L.me).ward;
+  document.getElementById("youAtk").textContent  = s(L.me).atk;
+  document.getElementById("youHeal").textContent = s(L.me).heal;
 
-  // Timer
   const left = Math.max(0, root.tickEndsAt - nowMs());
-  $("#tickIn").textContent = (left/1000).toFixed(1);
-  $("#tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
+  document.getElementById("tickIn").textContent = (left/1000).toFixed(1);
+  document.getElementById("tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
 
-  // Desktop players panel + mini chips
-  const wrap=$("#playersStatus"); if(wrap){ wrap.innerHTML=""; }
-  const mini=$("#playersMini"); mini.innerHTML="";
+  // Players mini
+  const mini=document.getElementById("playersMini"); mini.innerHTML="";
   root.players.forEach(name=>{
     const p=root.P[name], m=ownerMeta(name);
-    // desktop card
-    if(wrap){
-      const card=document.createElement("div");
-      card.className="pStatus";
-      card.innerHTML=`
-        <div class="pTop">
-          <div class="pName"><i class="dot" style="background:${m.color}"></i> ${m.label}</div>
-          <div class="hpBig">${Math.round(p.health)}${p.alive?"":" (out)"}</div>
-        </div>
-        <div class="pSmall">
-          <span>⚔️ ${sumsFor(root, root.P, name).atk}</span>
-          <span>❤️ ${sumsFor(root, root.P, name).heal}</span>
-          <span>💰 ${sumsFor(root, root.P, name).gold}</span>
-          <span>🛡️ ${sumsFor(root, root.P, name).ward}</span>
-        </div>`;
-      wrap.appendChild(card);
-    }
-    // mini chip
     const chip=document.createElement("div");
     chip.className="chip";
     chip.innerHTML=`<span class="dot" style="background:${m.color}"></span>${m.label}&nbsp;<b>${Math.round(p.health)}</b>`;
@@ -556,7 +536,7 @@ function render(){
   });
 
   // Center piles
-  const grid=$("#piles"); grid.innerHTML="";
+  const grid=document.getElementById("piles"); grid.innerHTML="";
   root.piles.forEach(pile=>{
     const top=pile.cards[pile.cards.length-1].card;
     const m=ownerMeta(pile.owner);
@@ -578,8 +558,8 @@ function render(){
   });
   fitPilesToBand();
 
-  // Hand card (left bottom)
-  const hand=$("#hand");
+  // Hand card
+  const hand=document.getElementById("hand");
   const c=handCard(root, root.P, L.me);
   if(c){
     const myColor=ownerColor(L.me);
@@ -598,8 +578,8 @@ function render(){
     hand.innerHTML="—";
   }
 
-  // Store — exactly 3 at the top on mobile (desktop can show 5 if you prefer)
-  const store=$("#storeItems"); store.innerHTML="";
+  // Store — exactly 3
+  const store=document.getElementById("storeItems"); store.innerHTML="";
   const visibleCards = root.storeVis.slice(0, 3);
   visibleCards.forEach((card)=>{
     const col=document.createElement("div"); col.className="storeCol";
@@ -616,8 +596,11 @@ function render(){
   });
 
   // Counts
-  $("#deckCount").textContent    = root.P[L.me].deck.length;
-  $("#discardCount").textContent = root.P[L.me].discard.length;
+  document.getElementById("deckCount").textContent    = root.P[L.me].deck.length;
+  document.getElementById("discardCount").textContent = root.P[L.me].discard.length;
+
+  // Fit entire stage to the viewport (final step!)
+  fitToViewport();
 
   // Game over
   if(root.status === "finished"){
@@ -627,9 +610,32 @@ function render(){
       { label:"Return to Lobby", onClick: ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}` }
     ]);
   } else {
-    hideOverlay();
+    document.getElementById("overlay").style.display="none";
   }
 }
+
+/* ========= Client actions ========= */
+async function sendAction(type, payload={}){
+  const root=L.game; if(!root || root.status!=="playing") return;
+  const me=root.P[L.me]; if(!me?.alive) return;
+  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ return; }
+  await addDoc(actionsCol, { by:L.me, type, ...payload, ts: serverTimestamp() });
+}
+
+/* ========= Overlay helpers ========= */
+function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
+  document.getElementById("ovTitle").textContent=title;
+  document.getElementById("ovMsg").textContent=msg||"";
+  const btns=document.getElementById("ovBtns"); btns.innerHTML="";
+  buttons.forEach(b=>{
+    const el=document.createElement("button");
+    el.className="btn"; el.textContent=b.label;
+    el.addEventListener("pointerup", ()=>{ b.onClick?.(); });
+    btns.appendChild(el);
+  });
+  document.getElementById("overlay").style.display="flex";
+}
+function hideOverlay(){ document.getElementById("overlay").style.display="none"; }
 
 /* ========= Fullscreen ========= */
 function isFullscreen(){ return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
@@ -693,7 +699,7 @@ async function boot(){
   }
 
   // controls
-  $("#flipBtn").addEventListener("pointerup", (e)=>{ e.preventDefault(); sendAction("flip"); });
+  document.getElementById("flipBtn").addEventListener("pointerup", (e)=>{ e.preventDefault(); sendAction("flip"); });
   window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); sendAction("flip"); } });
 
   // fullscreen
@@ -704,19 +710,16 @@ async function boot(){
       const fs = !!isFullscreen();
       fsBtn.textContent = fs ? "⛶ Exit" : "⛶ FS";
       fsBtn.setAttribute("aria-pressed", String(fs));
-      if(typeof fitPilesToBand === "function") fitPilesToBand();
+      fitToViewport();
     });
-    const supportsFS = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
-    const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if(!supportsFS && isiOS){
-      fsBtn.disabled = false;
-      fsBtn.title = "For true fullscreen on iOS: Share → Add to Home Screen";
-    }
   }
 
-  // refit on size/orientation
-  new ResizeObserver(fitPilesToBand).observe($("#centerBand"));
-  addEventListener("orientationchange", ()=> setTimeout(fitPilesToBand, 150));
+  // Refits
+  new ResizeObserver(()=>{ fitPilesToBand(); fitToViewport(); }).observe(document.getElementById("centerBand"));
+  new ResizeObserver(()=>{ fitToViewport(); }).observe(document.getElementById("stage"));
+
+  // First fit
+  fitToViewport();
 }
 boot();
 </script>
