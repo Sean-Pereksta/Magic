@@ -1,3 +1,4 @@
+<!-- LOBBY (mobile-first login polish) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -59,6 +60,8 @@
     .btn-ghost:hover{ background:#f3f4f6 }
     .btn-lg{ min-height:var(--tap); font-size:17px }
     .btn-block{ width:100% }
+    .field{ display:flex; flex-direction:column; gap:6px; flex:1 1 220px }
+    .label{ font-size:.92rem; color:var(--muted) }
 
     /* Resume banner */
     .resume{
@@ -100,8 +103,10 @@
     #startBtn{ display:none }
     #error{ margin-top:6px; color:var(--bad); font-weight:700 }
 
-    /* Mobile polish */
+    /* ===== MOBILE-FIRST LOGIN ===== */
+    /* Large, full-bleed “login sheet” that feels different on mobile */
     @media (max-width:720px){
+      .grid{ grid-template-columns:1fr }
       .row{ flex-direction:column; align-items:stretch }
       .input, .select, .btn{ width:100% }
       .btn{ min-height:var(--tap) }
@@ -111,6 +116,78 @@
       .subtitle{ font-size:.9rem }
       .card{ border-radius:20px }
       body{ padding-bottom: calc(env(safe-area-inset-bottom) + 8px) }
+
+      /* Make the login screen visually distinct */
+      #loginForm.card{
+        border:none; background:transparent; box-shadow:none; padding:0;
+      }
+      #loginForm .card-head{ display:none; }
+      #loginForm .card-body{
+        padding:0;
+      }
+
+      /* Mobile login sheet */
+      .login-sheet{
+        position:relative;
+        margin:12px 0 0;
+        background:linear-gradient(180deg,#15213e,#0f1933);
+        color:#eaf1ff;
+        border-radius:24px;
+        padding:20px 16px;
+        box-shadow:0 20px 50px rgba(2,6,23,.35);
+        overflow:hidden;
+      }
+      .login-sheet .bigbrand{
+        display:flex; align-items:center; gap:12px; margin-bottom:8px;
+      }
+      .login-sheet .bigbrand .logo{
+        width:56px; height:56px; font-size:26px; border-radius:16px;
+        background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.24);
+      }
+      .login-sheet .headline{
+        font-weight:900; font-size:1.25rem; letter-spacing:.3px;
+      }
+      .login-sheet .sub{
+        color:#bcd3ff; font-size:.98rem; margin-top:2px;
+      }
+
+      /* Bigger inputs with higher contrast for the keyboard */
+      .login-fields{ margin-top:12px; display:grid; gap:10px }
+      .login-fields .input{
+        background:#0c1226; border-color:#2b3a6a; color:#eaf1ff; font-size:18px; min-height:56px; border-radius:14px;
+      }
+      .login-fields .input::placeholder{ color:#9db4e5 }
+      .login-fields .input:focus{ border-color:#7ba3ff; box-shadow:0 0 0 4px rgba(123,163,255,.28) }
+
+      .login-actions{ margin-top:8px; display:grid; gap:10px }
+      .login-actions .btn{
+        font-size:18px; min-height:56px; border-radius:16px;
+        touch-action:manipulation;
+      }
+
+      /* Sticky bottom safe-area spacer so the button stays tappable above home bar */
+      .login-safe{
+        height: calc(env(safe-area-inset-bottom) + 6px);
+      }
+
+      /* “Resume session” banner harmonized with dark sheet */
+      .resume{
+        border-color:#7ba3ff; background:#0f1a39; color:#dbe7ff;
+      }
+      .btn-ghost{ background:#0c1226; color:#eaf1ff; border-color:#2b3a6a }
+      .btn-ghost:hover{ background:#0f1630 }
+    }
+
+    /* Extra-fat targets for coarse pointers (some tablets) */
+    @media (pointer:coarse){
+      .btn, .input{ min-height:58px }
+      .btn-lg{ min-height:64px }
+    }
+
+    /* 100dvh support so sheet can fill screen behind keyboard correctly */
+    .vh { min-height: 100vh; }
+    @supports (height: 100dvh){
+      .vh { min-height: 100dvh; }
     }
   </style>
 </head>
@@ -137,23 +214,43 @@
     <!-- MULTIPLAYER -->
     <section id="panel-multi" class="grid" role="tabpanel" aria-labelledby="tabbtn-multi">
       <div class="left">
+        <!-- DESKTOP: normal card | MOBILE: transforms into full-bleed login sheet -->
         <div id="loginForm" class="card">
           <div class="card-head"><div class="card-title">Welcome</div></div>
           <div class="card-body">
-            <div class="row" style="margin-bottom:8px">
-              <input autocomplete="username" inputmode="text" type="text" id="username" class="input" placeholder="Username" />
-              <input autocomplete="current-password" type="password" id="password" class="input" placeholder="Password" />
-              <button class="btn btn-lg" onclick="login()">Login</button>
-            </div>
-            <div class="resume" id="resumeBanner" aria-live="polite" role="region">
-              <div class="info">You have an unfinished session.</div>
-              <div class="actions">
-                <button class="btn-ghost btn-lg" id="resumeLobbyBtn">Rejoin Lobby</button>
-                <button class="btn-ghost btn-lg" id="resumeGameBtn">Reopen Game</button>
-                <button class="btn-ghost btn-lg" id="clearSessionBtn">Clear</button>
+            <!-- Mobile login sheet (same DOM, different CSS) -->
+            <div class="login-sheet vh" id="loginSheet">
+              <div class="bigbrand">
+                <div class="logo">🔐</div>
+                <div>
+                  <div class="headline">Sign in to continue</div>
+                  <div class="sub">Bigger inputs • Easier taps • Mobile-friendly</div>
+                </div>
               </div>
+
+              <div class="login-fields">
+                <label class="label" for="username">Username</label>
+                <input autocomplete="username" inputmode="text" type="text" id="username" class="input" placeholder="e.g., PixelKnight" />
+                <label class="label" for="password">Password</label>
+                <input autocomplete="current-password" type="password" id="password" class="input" placeholder="••••••••" />
+              </div>
+
+              <div class="login-actions">
+                <button class="btn btn-lg btn-block" onclick="login()">Login</button>
+              </div>
+
+              <div class="resume" id="resumeBanner" aria-live="polite" role="region" style="display:none">
+                <div class="info">You have an unfinished session.</div>
+                <div class="actions">
+                  <button class="btn-ghost btn-lg" id="resumeLobbyBtn">Rejoin Lobby</button>
+                  <button class="btn-ghost btn-lg" id="resumeGameBtn">Reopen Game</button>
+                  <button class="btn-ghost btn-lg" id="clearSessionBtn">Clear</button>
+                </div>
+              </div>
+
+              <div id="error"></div>
+              <div class="login-safe" aria-hidden="true"></div>
             </div>
-            <div id="error"></div>
           </div>
         </div>
 
@@ -163,12 +260,12 @@
           </div>
           <div class="card-body">
             <div class="row" style="align-items:flex-end">
-              <div id="lobbyNameWrap" style="flex:1 1 220px">
-                <label class="subtle">Lobby Name</label>
+              <div id="lobbyNameWrap" class="field">
+                <label class="label" for="lobbyName">Lobby Name</label>
                 <input type="text" id="lobbyName" class="input" placeholder="e.g., Friday Night Squad" />
               </div>
-              <div style="flex:1 1 220px">
-                <label class="subtle">Game</label>
+              <div class="field">
+                <label class="label" for="gameType">Game</label>
                 <select id="gameType" class="select">
                   <option value="cat">🐭 Cat & Mouse</option>
                   <option value="grass">🌿 Grass Realms</option>
@@ -234,7 +331,7 @@
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // ---------- ROUTES ----------
+    /* ---------- ROUTES / CONST (same as before) ---------- */
     const ROUTES = {
       cat:        "/game/catandmouse.html",
       grass:      "/game/grassrealms.html",
@@ -243,8 +340,6 @@
       mountonline:"/game/mountonline.html",
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
-
-      // Singleplayer
       matchwars:  "/game/matchwars.html",
       flag:       "/game/Flag.html",
       microwars:  "/game/microwars.html",
@@ -258,7 +353,17 @@
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
-    // ---------- SINGLEPLAYER CATALOG ----------
+    const app = initializeApp({
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    });
+    const db = getFirestore(app);
+
+    /* ---------- SINGLEPLAYER (unchanged) ---------- */
     const SINGLEPLAYER_GAMES = [
       { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: ROUTES.microwars },
       { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: ROUTES.microwars2 },
@@ -268,51 +373,6 @@
       { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
       { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: ROUTES.flag }
     ];
-
-    // ---------- FIREBASE ----------
-    const firebaseConfig = {
-      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-      authDomain: "bible-game-246c0.firebaseapp.com",
-      projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.appspot.com",
-      messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    // ---------- STORAGE KEYS & SESSION HELPERS ----------
-    const SK = {
-      user: "gh.username",
-      lastLobby: "gh.lastLobbyId",
-      lastGame: "gh.lastGameType",
-      lastTab: "gh.lastTab"
-    };
-    const save = (k,v)=> localStorage.setItem(k, v);
-    const read = (k)=> localStorage.getItem(k);
-    const del  = (k)=> localStorage.removeItem(k);
-
-    function persistSession() {
-      if (username) save(SK.user, username);
-      const activeTab = isMultiVisible() ? "multi" : "single";
-      save(SK.lastTab, activeTab);
-    }
-    function clearSession() {
-      del(SK.user); del(SK.lastLobby); del(SK.lastGame);
-    }
-
-    // ---------- TABS ----------
-    function isMultiVisible(){ return document.getElementById('panel-multi').style.display !== 'none'; }
-    window.showTab = function(which){
-      const isMulti = which === 'multi';
-      document.getElementById('panel-multi').style.display = isMulti ? 'grid' : 'none';
-      document.getElementById('panel-single').style.display = isMulti ? 'none' : 'block';
-      document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
-      document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
-      save(SK.lastTab, which);
-    };
-
-    // Render Singleplayer
     function renderSingleplayer(){
       const el = document.getElementById('catalog');
       el.innerHTML = '';
@@ -330,69 +390,86 @@
     }
     renderSingleplayer();
 
-    // ---------- LOBBY LOGIC ----------
+    /* ---------- KEEP-LOGGED-IN + RESUME ---------- */
+    const SK = { user:"gh.username", lastLobby:"gh.lastLobbyId", lastGame:"gh.lastGameType", lastTab:"gh.lastTab" };
+    const save = (k,v)=> localStorage.setItem(k, v);
+    const read = (k)=> localStorage.getItem(k);
+    const del  = (k)=> localStorage.removeItem(k);
+
     const urlParams = new URLSearchParams(window.location.search);
     const urlUser = urlParams.get("username");
-    let username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim(); // <-- keep logged in (URL or localStorage)
+    let username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim();
     let currentLobbyId = null;
     let isHost = false;
     let lobbyUnsub = null;
 
-    // If a game sent you back with ?username=..., auto-login and then strip the query for cleanliness
-    if (urlUser) {
-      history.replaceState({}, "", window.location.pathname); // remove username from URL
-    }
+    if (urlUser) history.replaceState({}, "", window.location.pathname);
 
-    // On first load, try to restore tab preference
     const lastTab = read(SK.lastTab);
     if (lastTab === "single") showTab("single");
 
-    // Try to auto login if we have a username
-    if (username) { autoLogin(username); } // silent login (no password) if user exists
+    if (username) { autoLogin(username); } else { showLoginUI(); maybeOfferResume(); }
 
-    async function login() {
-      username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value.trim();
-      if (!username || !password) { return showError("❌ Enter username & password."); }
-      const userRef = doc(db, "users", username);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists() || userSnap.data().password !== password) {
-        return showError("❌ Invalid login.");
-      }
-      enterLobbyUI();
-      persistSession();
-      maybeOfferResume();
+    function isMultiVisible(){ return document.getElementById('panel-multi').style.display !== 'none'; }
+    window.showTab = function(which){
+      const isMulti = which === 'multi';
+      document.getElementById('panel-multi').style.display = isMulti ? 'grid' : 'none';
+      document.getElementById('panel-single').style.display = isMulti ? 'none' : 'block';
+      document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
+      document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
+      save(SK.lastTab, which);
+    };
+
+    function persistSession(){ if (username) save(SK.user, username); save(SK.lastTab, isMultiVisible() ? "multi":"single"); }
+    function clearSession(){ del(SK.user); del(SK.lastLobby); del(SK.lastGame); }
+
+    function showLoginUI(){
+      document.getElementById("loginForm").style.display = "block";
+      document.getElementById("lobbyInterface").style.display = "none";
     }
-
-    async function autoLogin(name) {
-      try{
-        const userRef = doc(db, "users", name);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
-        username = name;
-        enterLobbyUI();
-        persistSession();
-        maybeOfferResume();
-      }catch(e){ /* ignore */ }
-    }
-
-    function enterLobbyUI() {
+    function enterLobbyUI(){
       document.getElementById("loginForm").style.display = "none";
       document.getElementById("lobbyInterface").style.display = "block";
       loadLobbies();
       loadLeaderboard();
-      if (!window.__lobbyPoll){
-        window.__lobbyPoll = setInterval(loadLobbies, 5000);
-      }
+      if (!window.__lobbyPoll) window.__lobbyPoll = setInterval(loadLobbies, 5000);
       document.getElementById("startBtn").addEventListener("click", startGame);
-
       document.getElementById("gameType").addEventListener("change", updateStartUI);
       updateStartUI();
     }
 
-    function showLoginUI() {
-      document.getElementById("loginForm").style.display = "block";
-      document.getElementById("lobbyInterface").style.display = "none";
+    async function login() {
+      username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+      if (!username || !password) return showError("❌ Enter username & password.");
+      const userRef = doc(db, "users", username);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists() || userSnap.data().password !== password) return showError("❌ Invalid login.");
+      enterLobbyUI(); persistSession(); maybeOfferResume();
+    }
+    async function autoLogin(name){
+      try{
+        const userRef = doc(db, "users", name);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) return showError("❌ Username not found in system.");
+        username = name; enterLobbyUI(); persistSession(); maybeOfferResume();
+      }catch(e){}
+    }
+
+    function updateStartUI(){
+      const gt = document.getElementById("gameType").value;
+      const title = document.getElementById("lobbyHeaderTitle");
+      const nameWrap = document.getElementById("lobbyNameWrap");
+      const createBtn = document.getElementById("createBtn");
+      const lobbiesCard = document.getElementById("availLobbiesCard");
+      const playersCard = document.getElementById("playersCard");
+
+      const isQuickPlay = (gt === "mountonline");
+      title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
+      nameWrap.style.display = isQuickPlay ? "none" : "flex";
+      createBtn.textContent = isQuickPlay ? "Play" : "Start Lobby";
+      lobbiesCard.style.display = isQuickPlay ? "none" : "block";
+      playersCard.style.display = isQuickPlay ? "none" : "block";
     }
 
     function gameLabel(type){
@@ -405,47 +482,22 @@
              '🐭 Cat & Mouse';
     }
 
-    function updateStartUI(){
-      const gt = document.getElementById("gameType").value;
-      const title = document.getElementById("lobbyHeaderTitle");
-      const nameWrap = document.getElementById("lobbyNameWrap");
-      const createBtn = document.getElementById("createBtn");
-      const lobbiesCard = document.getElementById("availLobbiesCard");
-      const playersCard = document.getElementById("playersCard");
-
-      const isQuickPlay = (gt === "mountonline");
-
-      title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
-      nameWrap.style.display = isQuickPlay ? "none" : "block";
-      createBtn.textContent = isQuickPlay ? "Play" : "Start Lobby";
-      lobbiesCard.style.display = isQuickPlay ? "none" : "block";
-      playersCard.style.display = isQuickPlay ? "none" : "block";
-    }
-
     async function startLobby() {
       const gameType = document.getElementById("gameType").value;
-
-      // QUICK-PLAY: Mountain Blade Online -> direct route with username
       if (gameType === "mountonline") {
         if (!username) return showError("❌ You must be logged in.");
-        const route = ROUTES.mountonline;
         save(SK.lastGame, "mountonline");
-        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        window.location.href = `${ROUTES.mountonline}?username=${encodeURIComponent(username)}`;
         return;
       }
-
-      // LOBBY-BASED creation path
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz'].includes(gameType)) {
-        return showError("Invalid game type.");
-      }
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz'].includes(gameType)) return showError("Invalid game type.");
       const lobby = await addDoc(collection(db, "lobbies"), {
         name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
       });
       currentLobbyId = lobby.id; isHost = true;
-      save(SK.lastLobby, currentLobbyId);
-      save(SK.lastGame, gameType);
+      save(SK.lastLobby, currentLobbyId); save(SK.lastGame, gameType);
       listenToLobby();
     }
 
@@ -463,10 +515,7 @@
 
       snap.forEach(async (docSnap) => {
         const data = docSnap.data();
-        if (!data.players || data.players.length === 0) {
-          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); } catch(e){}
-          return;
-        }
+        if (!data.players || data.players.length === 0) { try { await deleteDoc(doc(db, "lobbies", docSnap.id)); } catch(e){} return; }
 
         const card = document.createElement("div"); card.className = "lobby-card";
 
@@ -477,31 +526,22 @@
         const cap = getMaxPlayers(data.gameType);
         const countTxt = isFinite(cap) ? `${(data.players||[]).length}/${cap} players` : `${(data.players||[]).length} players`;
         meta.textContent = `${countTxt} — Host: ${data.host||"?"}`;
-        titleWrap.appendChild(title);
-        titleWrap.appendChild(meta);
+        titleWrap.appendChild(title); titleWrap.appendChild(meta);
 
         const badge = document.createElement("span"); badge.className="badge"; badge.textContent = gameLabel(data.gameType);
         head.appendChild(titleWrap); head.appendChild(badge);
 
         const progress = document.createElement("div"); progress.className="cap";
         const fill = document.createElement("i"); progress.appendChild(fill);
-        if (isFinite(cap)) {
-          const pct = Math.min(100, Math.round(((data.players||[]).length / cap) * 100));
-          fill.style.width = pct + "%";
-        } else { fill.style.width = "100%"; }
+        fill.style.width = isFinite(cap) ? Math.min(100, Math.round(((data.players||[]).length / cap) * 100)) + "%" : "100%";
 
         const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
         const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
-        if (isFinite(cap) && (data.players||[]).length >= cap) {
-          btn.disabled = true; btn.className="btn-ghost btn-lg"; btn.textContent="Full";
-        } else {
-          btn.addEventListener("click", ()=> joinLobby(docSnap.id));
-        }
+        if (isFinite(cap) && (data.players||[]).length >= cap) { btn.disabled = true; btn.className="btn-ghost btn-lg"; btn.textContent="Full"; }
+        else { btn.addEventListener("click", ()=> joinLobby(docSnap.id)); }
         actions.appendChild(btn);
 
-        card.appendChild(head);
-        card.appendChild(progress);
-        card.appendChild(actions);
+        card.appendChild(head); card.appendChild(progress); card.appendChild(actions);
         list.appendChild(card);
       });
     }
@@ -525,8 +565,7 @@
       if (!snap.exists()) return showError("Lobby no longer exists.");
       const data = snap.data();
       currentLobbyId = id; isHost = data.host === username;
-      save(SK.lastLobby, currentLobbyId);
-      save(SK.lastGame, data.gameType);
+      save(SK.lastLobby, currentLobbyId); save(SK.lastGame, data.gameType);
       listenToLobby();
     }
 
@@ -539,18 +578,15 @@
         if (!docSnap.exists()) return;
         const data = docSnap.data();
 
-        // auto-close if empty
         if (!data.players || data.players.length === 0) {
           try { await deleteDoc(ref); } catch(e){}
-          currentLobbyId = null; isHost=false;
-          save(SK.lastLobby, "");
+          currentLobbyId = null; isHost=false; save(SK.lastLobby, "");
           document.getElementById("lobbyPlayers").innerHTML = "";
           document.getElementById("startBtn").style.display = "none";
           if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
           loadLobbies(); return;
         }
 
-        // Render players as chips
         const container = document.getElementById("lobbyPlayers");
         container.innerHTML = "";
         const headerBadge = document.createElement("div");
@@ -563,7 +599,6 @@
           const userSnap = await getDoc(userRef);
           const wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
 
-          // color tiers
           let color = "#cd7f32";
           if (wins >= 5 && wins < 10) color = "#c0c0c0";
           else if (wins >= 10 && wins < 15) color = "#ffd700";
@@ -578,11 +613,9 @@
           container.appendChild(chip);
         }
 
-        // Host can start
         const startBtn = document.getElementById("startBtn");
         startBtn.style.display = (data.host === username) ? "inline-block" : "none";
 
-        // Auto-redirect games on "started"
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
           save(SK.lastGame, data.gameType);
@@ -592,38 +625,6 @@
       });
     }
 
-    // Estate Defense special-case
-    async function joinOrCreateActiveEstate(extraPlayers) {
-      const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
-      const qActive = query(collection(db, "lobbies"), where("gameType","==","estate"), where("status","==","active"), limit(1));
-      const snap = await getDocs(qActive);
-
-      if (!snap.empty) {
-        const targetRef = doc(db, "lobbies", snap.docs[0].id);
-        try {
-          const activeId = await runTransaction(db, async (tx) => {
-            const cur = await tx.get(targetRef);
-            if (!cur.exists()) throw new Error("gone");
-            const d = cur.data();
-            if (d.status !== "active" || d.gameType !== "estate") throw new Error("not_active");
-            const merged = unique([...(d.players || []), ...extraPlayers]);
-            tx.update(targetRef, { players: merged });
-            return targetRef.id;
-          });
-          return activeId;
-        } catch(e){ /* fall through */ }
-      }
-
-      const newRef = doc(collection(db, "lobbies"));
-      const payload = {
-        name:`Estate Defense — ${new Date().toLocaleTimeString()}`,
-        gameType:"estate", category:"estate-defense", status:"active",
-        players:unique(extraPlayers), host:username, createdAt:Date.now()
-      };
-      await runTransaction(db, async (tx)=>{ tx.set(newRef, payload); });
-      return newRef.id;
-    }
-
     async function startGame() {
       if (!currentLobbyId) return;
       const ref = doc(db, "lobbies", currentLobbyId);
@@ -631,34 +632,24 @@
       const data = snap.data();
 
       if (data.gameType === "estate") {
-        const playersFromThisLobby = data.players || [username];
-        const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
+        const q = query(collection(db, "lobbies"), where("gameType","==","estate"), where("status","==","active"), limit(1));
+        const active = await getDocs(q);
+        let gid = null;
+        if (!active.empty) gid = active.docs[0].id;
+        else {
+          const newRef = doc(collection(db, "lobbies"));
+          await runTransaction(db, async (tx)=>{ tx.set(newRef, {
+            name:`Estate Defense — ${new Date().toLocaleTimeString()}`, gameType:"estate",
+            status:"active", players:(data.players||[]), host:username, createdAt:Date.now()
+          }); });
+          gid = newRef.id;
+        }
         try { await deleteDoc(ref); } catch(e){}
-        const route = ROUTES.estate;
-        save(SK.lastGame, "estate");
-        save(SK.lastLobby, activeId);
-        window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
+        save(SK.lastGame, "estate"); save(SK.lastLobby, gid);
+        window.location.href = `${ROUTES.estate}?gameId=${gid}&username=${encodeURIComponent(username)}`;
         return;
       }
       await updateDoc(ref, { status: "started" });
-    }
-
-    async function leaveLobby() {
-      if (!currentLobbyId) return;
-      const ref = doc(db, "lobbies", currentLobbyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data();
-        const players = (data.players || []).filter(p => p !== username);
-        if (players.length > 0) { await updateDoc(ref, { players }); }
-        else { try { await deleteDoc(ref); } catch(e){} }
-      }
-      currentLobbyId = null; isHost=false;
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub=null; }
-      document.getElementById("lobbyPlayers").innerHTML = "";
-      document.getElementById("startBtn").style.display = "none";
-      loadLobbies();
-      save(SK.lastLobby, "");
     }
 
     async function loadLeaderboard() {
@@ -680,67 +671,44 @@
       });
     }
 
-    function showError(msg){
-      const e = document.getElementById("error"); e.textContent = msg;
-    }
+    function showError(msg){ document.getElementById("error").textContent = msg; }
 
-    // ---------- RESUME BANNER (Keep you logged in + quick resume) ----------
     function maybeOfferResume(){
       const banner = document.getElementById("resumeBanner");
-      const lastLobby = read(SK.lastLobby);
-      const lastGame = read(SK.lastGame);
-
+      const lastLobby = localStorage.getItem(SK.lastLobby);
+      const lastGame = localStorage.getItem(SK.lastGame);
       const resumeLobbyBtn = document.getElementById("resumeLobbyBtn");
       const resumeGameBtn  = document.getElementById("resumeGameBtn");
       const clearBtn       = document.getElementById("clearSessionBtn");
 
-      // default hidden
       banner.style.display = "none";
-      resumeLobbyBtn.style.display = "none";
-      resumeGameBtn.style.display = "none";
-
-      // If we are already inside lobby UI, don't show banner
       if (document.getElementById("lobbyInterface").style.display !== "none") return;
 
-      // Offer to rejoin lobby if we have an id
       if (lastLobby) {
         banner.style.display = "flex";
         resumeLobbyBtn.style.display = "inline-block";
         resumeLobbyBtn.onclick = ()=> joinLobby(lastLobby);
       }
-
-      // Offer to reopen game route if we know the last game type
       if (lastGame && ROUTES[lastGame]) {
         banner.style.display = "flex";
         resumeGameBtn.style.display = "inline-block";
         resumeGameBtn.onclick = ()=> {
           const route = ROUTES[lastGame];
-          const gid = read(SK.lastLobby) || "";
+          const gid = localStorage.getItem(SK.lastLobby) || "";
           const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
           window.location.href = route + glue;
         };
       }
-
-      clearBtn.onclick = ()=> { clearSession(); banner.style.display="none"; };
+      clearBtn.onclick = ()=> { localStorage.removeItem(SK.user); localStorage.removeItem(SK.lastLobby); localStorage.removeItem(SK.lastGame); banner.style.display="none"; };
     }
 
-    // Run resume banner in login view too
-    if (!username) { showLoginUI(); maybeOfferResume(); }
-
-    // Expose
-    window.login = login;
-    window.startLobby = startLobby;
-    window.joinLobby = joinLobby;
-    window.startGame = startGame;
-    window.leaveLobby = leaveLobby;
+    // Enter on password triggers login (handy on mobile keyboards)
+    document.getElementById("password").addEventListener("keydown", (e)=>{
+      if (e.key === "Enter") { e.preventDefault(); login(); }
+    });
   </script>
 </body>
 </html>
-
-
-
-
-
 
 
 
