@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Dutch Blitz — Arena (Realtime, One-Screen Auto-Fit)</title>
+<title>Dutch Blitz — Arena (Realtime, Auto-Fit + Tick + Graphs)</title>
 <style>
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
@@ -13,7 +13,7 @@
     --cardH: clamp(58px, 18vw, 98px);
     --radius: 12px;
 
-    /* center piles (base; auto-resized; then whole stage is auto-scaled) */
+    /* Center piles (base; then whole stage is auto-scaled) */
     --pileSize: 64px; 
     --pileGap: 8px;
   }
@@ -28,23 +28,18 @@
     overscroll-behavior:none;
   }
 
-  /* ===== Auto-Fit Shell =====
-     #fitRoot fills the window. #stage is measured at scale(1). We compute a scale
-     so #stage fits and apply transform to #stage. This guarantees one screen, no clipping. */
+  /* ===== Auto-Fit Shell ===== */
   #fitRoot{
-    position:fixed; inset:0;       /* fill the viewport */
+    position:fixed; inset:0;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden;
   }
   #stageWrap{
     width:100%; height:100%;
     display:flex; align-items:center; justify-content:center;
-    overflow:hidden;               /* never allow scrollbars */
+    overflow:hidden;
   }
-  #stage{
-    transform-origin: top center;  /* scale from top center so layout feels natural */
-    will-change: transform;
-  }
+  #stage{ transform-origin: top center; will-change: transform; }
 
   /* ===== Stage layout (natural size; then auto-scaled) ===== */
   #screen{
@@ -52,10 +47,8 @@
     grid-template-rows: auto auto 1fr auto;  /* HUD, Store, Center, Bottom */
     gap: var(--gap);
     padding: var(--gap);
-    max-width: 820px;           /* natural max width; feel free to tweak */
-    min-width: 320px;           /* keeps chips/cards readable pre-scale */
-    /* natural height is whatever the sections need; we’ll scale to fit */
-    background: transparent;
+    max-width: 820px;
+    min-width: 320px;
   }
 
   /* ===== HUD ===== */
@@ -74,8 +67,10 @@
   }
   .stat .val{font-weight:900;font-size:16px;line-height:1}
   .stat .lbl{font-size:10px;color:#a9b6cc;letter-spacing:.3px;text-transform:uppercase}
-  .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:220px;width:100%}
+  .timerRow{display:flex; gap:10px; align-items:center; width:100%; max-width:560px}
+  .timerbar{height:10px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;flex:1}
   .timerbar>div{height:100%;background:var(--accent);width:0%}
+  .tickLbl{font-weight:800; font-size:12px; opacity:.9; min-width:62px; text-align:right}
 
   #playersMini{display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden}
   .chip{
@@ -99,7 +94,7 @@
   }
   .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* ===== Center Piles (auto layout; then whole stage scales) ===== */
+  /* ===== Center Piles ===== */
   #centerBand{
     border:1px dashed #20304f; border-radius:10px; padding:8px;
     background:#0e1626; min-height:140px; height:100%; overflow:hidden;
@@ -149,16 +144,31 @@
   #handWrap{display:flex; gap:8px; align-items:center}
   #counts{
     display:flex; gap:10px; align-items:center; justify-content:flex-end;
-    background:#0c1423;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:160px;
+    background:#0c1423;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:190px;
   }
   .countItem{display:flex; gap:6px; align-items:center; font-weight:800}
 
+  /* Reshuffle bar (local 1s) */
+  #reshuffleWrap{
+    display:none; flex-direction:column; gap:4px;
+    margin-left:8px; min-width:140px;
+  }
+  #reshuffleBar{
+    height:8px; border-radius:999px; overflow:hidden; border:1px solid #334155; background:#0b1528;
+    width:140px;
+  }
+  #reshuffleBar>div{height:100%; width:0%; background:#22c55e}
+
   /* Overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:40}
-  .dialog{background:#0f172a;border:1px solid #243754;border-radius:16px;padding:16px;min-width:min(720px,95vw);max-width:95vw;max-height:92vh;overflow:auto;box-shadow:0 18px 44px rgba(0,0,0,.45)}
+  .dialog{background:#0f172a;border:1px solid #243754;border-radius:16px;padding:16px;min-width:min(780px,95vw);max-width:95vw;max-height:92vh;overflow:auto;box-shadow:0 18px 44px rgba(0,0,0,.45)}
   .dialog .big{font-size:24px;font-weight:900;margin-bottom:6px}
   .dialog .sub{font-size:14px;color:#c2cee3;margin-bottom:10px}
-  .dialog .actions{display:flex;gap:10px;justify-content:center;margin-top:8px}
+  .dialog .actions{display:flex;gap:10px;justify-content:center;margin-top:12px}
+  .chartBox{background:#0c1423;border:1px solid #26334f;border-radius:12px;padding:10px;margin-top:8px}
+  .chartTitle{font-weight:800;margin-bottom:6px}
+  .legendRow{display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:#cbd5e1; margin-top:4px}
+  .legendSwatch{width:12px;height:12px;border-radius:3px;display:inline-block;margin-right:6px}
 </style>
 </head>
 <body>
@@ -177,7 +187,10 @@
               <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
               <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
             </div>
-            <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
+            <div class="timerRow">
+              <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
+              <div class="tickLbl"><span id="tickIn">10.0</span>s</div>
+            </div>
             <div id="playersMini"></div>
             <div class="legend">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
           </section>
@@ -202,11 +215,17 @@
               <button class="btn" id="flipBtn">🔁 Flip</button>
               <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ FS</button>
               <div id="hand" class="rect" style="pointer-events:none; opacity:.4; justify-content:center">—</div>
+
+              <!-- Local reshuffle UI -->
+              <div id="reshuffleWrap" aria-hidden="true">
+                <div style="font-size:12px;color:#cbd5e1">Reshuffling…</div>
+                <div id="reshuffleBar"><div></div></div>
+              </div>
             </div>
             <div id="counts">
               <div class="countItem">Deck: <span id="deckCount">0</span></div>
               <div class="countItem">Discard: <span id="discardCount">0</span></div>
-              <div class="countItem">Tick: <span id="tickIn">10.0</span>s</div>
+              <div class="countItem">Tick: <span id="tickMini">10.0</span>s</div>
             </div>
           </section>
         </section>
@@ -214,11 +233,12 @@
     </div>
   </div>
 
-  <!-- Overlay -->
+  <!-- Overlay (also used for end-of-game graphs) -->
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="dialog">
       <div id="ovTitle" class="big"></div>
       <div id="ovMsg" class="sub"></div>
+      <div id="ovCharts"></div>
       <div id="ovBtns" class="actions"></div>
     </div>
   </div>
@@ -250,13 +270,14 @@ const username = (url.searchParams.get("username")||"").trim();
 const HUB_URL = "/"; // change if your hub path differs
 if(!gameId || !username){ alert("Missing gameId or username in URL."); }
 
-/* ========= Utils ========= */
+/* ========= Constants ========= */
 const COLORS=["yellow","orange","green","blue"];
 const ICON={yellow:"💰",orange:"⚔️",green:"❤️",blue:"🛡️"};
 const CCLS={yellow:"c-yellow",orange:"c-orange",green:"c-green",blue:"c-blue"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
+const TICK_MS = 10000; // 10s server tick
 
 const $=sel=>document.querySelector(sel);
 
@@ -266,27 +287,17 @@ function fitToViewport(){
   const stage = document.getElementById('stage');
   if(!wrap || !stage) return;
 
-  // Reset transform to measure natural size
   stage.style.transform = 'none';
-
-  // Force layout read
   const rect = stage.getBoundingClientRect();
   const naturalW = rect.width  || 1;
   const naturalH = rect.height || 1;
-
   const vw = wrap.clientWidth  || window.innerWidth;
   const vh = wrap.clientHeight || window.innerHeight;
 
-  // Tiny padding to avoid edge clipping
   const padW = 8, padH = 8;
-
-  // Scale down to fit, never upscale above 1 to keep sharp
   const scale = Math.min(vw / (naturalW + padW), vh / (naturalH + padH), 1);
-
   stage.style.transform = `scale(${scale})`;
 }
-
-/* Re-fit on window changes */
 addEventListener('resize', fitToViewport, { passive:true });
 addEventListener('orientationchange', ()=> setTimeout(fitToViewport, 150), { passive:true });
 
@@ -301,10 +312,21 @@ let L = {
   isHost: false,
   game: null,
   selectedCardId: null,
-  colorMap: new Map()
+  colorMap: new Map(),
+  // reshuffle UI
+  reshuffling: false,
+  reshuffleEnd: 0,
+  waitingReshuffle: false,
+  reshufRAF: null,
+  // timeseries
+  ts: [],       // timestamps (ms since start)
+  hp: {},       // name -> []
+  gold: {},     // name -> []
+  atk: {},      // name -> []
+  t0: nowMs()
 };
 
-/* ========= Colors ========= */
+/* ========= Colors for players ========= */
 const PLAYER_PALETTE = ["#ef4444", "#22d3ee", "#f59e0b", "#8b5cf6"];
 function computeColorMap(players){
   L.colorMap.clear();
@@ -332,12 +354,12 @@ function refillStore(G){ while(G.storeVis.length < 5 && G.storeDeck.length>0) G.
 function newGameDoc(host, players){
   const P = {};
   players.forEach(name => {
-    P[name] = { name, alive: true, health: 100, maxHealth: 100, gold: 0, deck: baseDeck(), discard: [], viewIndex: 0, reshuffleAt: 0 };
+    P[name] = { name, alive: true, health: 100, maxHealth: 100, gold: 0, deck: baseDeck(), discard: [], viewIndex: 0 };
   });
   const G = {
     type:"dutchblitz", host, players, status:"playing", winner:null,
     piles: [], storeDeck: buildStoreDeck(), storeVis: [],
-    tickEndsAt: nowMs() + 10000, awarded:false,
+    tickEndsAt: nowMs() + TICK_MS, awarded:false,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
   refillStore(G); return {G,P};
@@ -377,20 +399,16 @@ async function hostApplyAction(act){
     for(const k of Object.keys(P)){ const pl=P[k]; P[k] = { ...pl, deck:[...pl.deck], discard:[...pl.discard] }; }
 
     const who = act.by, me = P[who]; if(!me?.alive) return;
-    const tnow = nowMs();
 
     if(act.type === "flip"){
-      if(!(me.reshuffleAt && tnow < me.reshuffleAt)){
-        me.viewIndex += 3;
-        if(me.viewIndex >= me.deck.length) me.reshuffleAt = tnow + 3000;
-      }
+      me.viewIndex += 3;  // show-next-3 behavior
+      if(me.viewIndex > me.deck.length) me.viewIndex = me.deck.length; // clamp
     }
     else if(act.type === "start"){
       const c = handCard(G,P,who); if(!c || c.id!==act.cardId || c.val!==1) return;
       me.deck.splice(me.viewIndex,1);
       G.piles.push({ id:uid(), color:c.color, topVal:c.val, owner:who, cards:[{player:who,card:c}] });
       if(c.color==="yellow") me.gold+=c.val;
-      if(me.viewIndex>=me.deck.length) me.reshuffleAt = tnow + 3000;
     }
     else if(act.type === "playOn"){
       const c = handCard(G,P,who); if(!c || c.id!==act.cardId) return;
@@ -401,15 +419,16 @@ async function hostApplyAction(act){
       if(c.color==="yellow") me.gold+=c.val;
 
       if(c.val===10){
+        // 10-complete blast
         for(const n of G.players){
           const t=P[n]; if(!t?.alive) continue;
           const s=sumsFor(G,P,n), eff=Math.max(0, 10-(s.ward||0));
           t.health=Math.max(0, t.health-eff); if(t.health===0) t.alive=false;
         }
+        // discard those pile cards
         for(const entry of pile.cards){ const o=P[entry.player]; if(o) o.discard.push(entry.card); }
         G.piles=G.piles.filter(p=>p.id!==pile.id);
       }
-      if(me.viewIndex>=me.deck.length) me.reshuffleAt = tnow + 3000;
     }
     else if(act.type === "buy"){
       const card=G.storeVis.find(c=>c.id===act.cardId); if(!card) return;
@@ -418,14 +437,10 @@ async function hostApplyAction(act){
       if(idx>=0) G.storeVis.splice(idx,1);
       while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
     }
-
-    // resolve due reshuffles
-    for(const n of G.players){
-      const p=P[n];
-      if(p.reshuffleAt && tnow>=p.reshuffleAt){
-        p.deck = shuffle(p.deck.concat(p.discard.splice(0)));
-        p.viewIndex=0; p.reshuffleAt=0;
-      }
+    else if(act.type === "reshuffle"){
+      // local 1s UI already shown client-side; host just finalizes
+      me.deck = shuffle(me.deck.concat(me.discard.splice(0)));
+      me.viewIndex = 0;
     }
 
     const aliveList = G.players.filter(n=>P[n]?.alive);
@@ -436,7 +451,7 @@ async function hostApplyAction(act){
   });
 }
 
-/* ========= Host: 10s tick ========= */
+/* ========= Host: tick ========= */
 async function hostTickIfNeeded(){
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
@@ -460,15 +475,11 @@ async function hostTickIfNeeded(){
       let sumA=0; for(const [pid,A] of atkBy){ if(pid!==n) sumA+=A; }
       const eff=Math.max(0,sumA-ward); if(eff>0){ p.health=Math.max(0,p.health-eff); if(p.health===0) p.alive=false; }
     }
-    for(const n of G.players){
-      const p=P[n]; if(p.reshuffleAt && nowMs()>=p.reshuffleAt){
-        p.deck=shuffle(p.deck.concat(p.discard.splice(0))); p.viewIndex=0; p.reshuffleAt=0;
-      }
-    }
+
     const aliveAfter=livingPlayers(G,P);
     if(aliveAfter.length<=1){ G.status="finished"; G.winner=aliveAfter[0]||null; }
 
-    G.tickEndsAt = nowMs()+10000; G.updatedAt=serverTimestamp();
+    G.tickEndsAt = nowMs()+TICK_MS; G.updatedAt=serverTimestamp();
     await tx.update(gameRef, { ...G, P });
   });
 }
@@ -486,6 +497,29 @@ function startHostActionPump(){
     }
   });
   window.__DB_ACTIONS_UNSUB = unsub;
+}
+
+/* ========= Timeseries logging ========= */
+function logSnapshot(root){
+  const t = nowMs() - L.t0;
+  L.ts.push(t);
+  // limit series length
+  if (L.ts.length > 300) { L.ts.shift(); }
+
+  for(const name of root.players){
+    const p = root.P[name];
+    const s = sumsFor(root, root.P, name);
+    if(!L.hp[name])   L.hp[name]=[];
+    if(!L.gold[name]) L.gold[name]=[];
+    if(!L.atk[name])  L.atk[name]=[];
+    L.hp[name].push(p.health);
+    L.gold[name].push(p.gold||0);
+    L.atk[name].push(s.atk||0);
+
+    if (L.hp[name].length   > 300) L.hp[name].shift();
+    if (L.gold[name].length > 300) L.gold[name].shift();
+    if (L.atk[name].length  > 300) L.atk[name].shift();
+  }
 }
 
 /* ========= UI helpers ========= */
@@ -509,24 +543,69 @@ function fitPilesToBand(){
   grid.style.gridTemplateColumns = `repeat(${Lp.cols}, var(--pileSize))`;
 }
 
+/* ========= Local reshuffle ========= */
+function startLocalReshuffle(){
+  if (L.reshuffling || L.waitingReshuffle) return;
+  L.reshuffling = true;
+  L.waitingReshuffle = true;
+  L.reshuffleEnd = nowMs() + 1000;
+
+  const wrap = $("#reshuffleWrap");
+  const bar  = $("#reshuffleBar>div");
+  wrap.style.display = "flex";
+  wrap.setAttribute("aria-hidden","false");
+
+  function step(){
+    const left = L.reshuffleEnd - nowMs();
+    const pct  = Math.max(0, Math.min(1, 1 - (left/1000)));
+    bar.style.width = (pct*100).toFixed(1) + "%";
+    if (left <= 0){
+      cancelAnimationFrame(L.reshufRAF);
+      // finalize: send reshuffle to host
+      addDoc(actionsCol, { by:L.me, type:"reshuffle", ts: serverTimestamp() });
+      L.reshuffling = false;
+      // Keep waitingReshuffle true until we see a new card (hand reappears)
+      return;
+    }
+    L.reshufRAF = requestAnimationFrame(step);
+  }
+  L.reshufRAF = requestAnimationFrame(step);
+}
+
+function stopLocalReshuffleUI(){
+  const wrap = $("#reshuffleWrap");
+  const bar  = $("#reshuffleBar>div");
+  wrap.style.display = "none";
+  wrap.setAttribute("aria-hidden","true");
+  bar.style.width = "0%";
+  L.reshuffling = false;
+  L.waitingReshuffle = false;
+  if (L.reshufRAF) cancelAnimationFrame(L.reshufRAF);
+  L.reshufRAF = null;
+}
+
+/* ========= Render ========= */
 function render(){
   const root=L.game; if(!root) return; const me=root.P[L.me];
-  const s=(who=>sumsFor(root, root.P, who));
+  const s=(who)=>sumsFor(root, root.P, who);
 
-  // HUD
-  document.getElementById("youHP").textContent   = Math.round(me.health);
-  document.getElementById("youGold").textContent = me.gold;
-  document.getElementById("gold2").textContent   = me.gold;
-  document.getElementById("youWard").textContent = s(L.me).ward;
-  document.getElementById("youAtk").textContent  = s(L.me).atk;
-  document.getElementById("youHeal").textContent = s(L.me).heal;
+  // HUD stats
+  $("#youHP").textContent   = Math.round(me.health);
+  $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
+  $("#youWard").textContent = s(L.me).ward;
+  $("#youAtk").textContent  = s(L.me).atk;
+  $("#youHeal").textContent = s(L.me).heal;
 
+  // Tick countdown and progress
   const left = Math.max(0, root.tickEndsAt - nowMs());
-  document.getElementById("tickIn").textContent = (left/1000).toFixed(1);
-  document.getElementById("tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
+  const prog = Math.max(0, Math.min(1, (TICK_MS - left) / TICK_MS));
+  const secs = (left/1000);
+  $("#tickIn").textContent   = secs.toFixed(1);
+  $("#tickMini").textContent = secs.toFixed(1);
+  $("#tickBar").style.width  = (prog*100).toFixed(1) + "%";
 
   // Players mini
-  const mini=document.getElementById("playersMini"); mini.innerHTML="";
+  const mini=$("#playersMini"); mini.innerHTML="";
   root.players.forEach(name=>{
     const p=root.P[name], m=ownerMeta(name);
     const chip=document.createElement("div");
@@ -536,7 +615,7 @@ function render(){
   });
 
   // Center piles
-  const grid=document.getElementById("piles"); grid.innerHTML="";
+  const grid=$("#piles"); grid.innerHTML="";
   root.piles.forEach(pile=>{
     const top=pile.cards[pile.cards.length-1].card;
     const m=ownerMeta(pile.owner);
@@ -551,15 +630,15 @@ function render(){
     tile.addEventListener("pointerup",(e)=>{
       e.preventDefault();
       if(!selected){ return; }
-      sendAction("playOn", { pileId:pile.id, cardId:selected.id });
+      addDoc(actionsCol, { by:L.me, type:"playOn", pileId:pile.id, cardId:selected.id, ts: serverTimestamp() });
       L.selectedCardId=null;
     });
     grid.appendChild(tile);
   });
   fitPilesToBand();
 
-  // Hand card
-  const hand=document.getElementById("hand");
+  // Hand card (+ local reshuffle trigger when deck exhausted)
+  const hand=$("#hand");
   const c=handCard(root, root.P, L.me);
   if(c){
     const myColor=ownerColor(L.me);
@@ -569,23 +648,30 @@ function render(){
     hand.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
     hand.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
     hand.onclick = ()=>{
-      if(c.val===1){ sendAction("start", { cardId:c.id }); L.selectedCardId=null; }
+      if(c.val===1){ addDoc(actionsCol, { by:L.me, type:"start", cardId:c.id, ts: serverTimestamp() }); L.selectedCardId=null; }
       else { L.selectedCardId = (L.selectedCardId===c.id) ? null : c.id; render(); }
     };
+    // if a new card appears, stop reshuffle UI
+    if (L.waitingReshuffle) stopLocalReshuffleUI();
   } else {
     hand.className="rect";
     hand.style.opacity=".4"; hand.style.pointerEvents="none";
     hand.innerHTML="—";
+
+    // If deck is empty and we have discards, auto-start local reshuffle UI once
+    if (!L.reshuffling && !L.waitingReshuffle && root.P[L.me].viewIndex >= root.P[L.me].deck.length && (root.P[L.me].discard?.length||0) > 0){
+      startLocalReshuffle();
+    }
   }
 
   // Store — exactly 3
-  const store=document.getElementById("storeItems"); store.innerHTML="";
+  const store=$("#storeItems"); store.innerHTML="";
   const visibleCards = root.storeVis.slice(0, 3);
   visibleCards.forEach((card)=>{
     const col=document.createElement("div"); col.className="storeCol";
     const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
     if(me.gold < card.val || !me.alive) btn.disabled=true;
-    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); sendAction("buy", { cardId: card.id }); });
+    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); addDoc(actionsCol, { by:L.me, type:"buy", cardId: card.id, ts: serverTimestamp() }); });
     col.appendChild(btn);
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
     r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
@@ -596,46 +682,114 @@ function render(){
   });
 
   // Counts
-  document.getElementById("deckCount").textContent    = root.P[L.me].deck.length;
-  document.getElementById("discardCount").textContent = root.P[L.me].discard.length;
+  $("#deckCount").textContent    = root.P[L.me].deck.length - root.P[L.me].viewIndex;
+  $("#discardCount").textContent = root.P[L.me].discard.length;
 
-  // Fit entire stage to the viewport (final step!)
+  // Log a snapshot for graphs
+  logSnapshot(root);
+
+  // Fit stage
   fitToViewport();
 
-  // Game over
+  // End-of-game overlay with charts
   if(root.status === "finished"){
-    const winner = root.winner;
-    const title = winner ? `🏆 Winner: ${ownerMeta(winner).label}` : "Game Over";
-    showOverlay(title, "Returning to lobby will keep your username.", [
-      { label:"Return to Lobby", onClick: ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}` }
-    ]);
+    showGameOverWithCharts(root);
   } else {
-    document.getElementById("overlay").style.display="none";
+    $("#overlay").style.display="none";
   }
 }
 
-/* ========= Client actions ========= */
-async function sendAction(type, payload={}){
-  const root=L.game; if(!root || root.status!=="playing") return;
-  const me=root.P[L.me]; if(!me?.alive) return;
-  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ return; }
-  await addDoc(actionsCol, { by:L.me, type, ...payload, ts: serverTimestamp() });
+/* ========= Charts (SVG sparklines) ========= */
+function makeSparklineSVG(seriesMap, title, height=120, width=720, padding=24){
+  // seriesMap: { name -> {color, values: []} } ; x = L.ts (shared)
+  const t = L.ts;
+  if (t.length < 2) return `<div class="chartBox"><div class="chartTitle">${title}</div><div style="opacity:.7">Not enough data.</div></div>`;
+
+  // compute global max (>=1 to avoid flat lines)
+  let maxV = 1;
+  for (const k in seriesMap){
+    const arr = seriesMap[k].values;
+    for (let i=0;i<arr.length;i++) if (arr[i] > maxV) maxV = arr[i];
+  }
+
+  const W = width, H = height;
+  const x0 = padding, y0 = padding, x1 = W - padding, y1 = H - padding;
+  const spanX = x1 - x0, spanY = y1 - y0;
+  const tMin = t[0], tMax = t[t.length-1] || (t[0]+1);
+
+  const paths = [];
+  const legends = [];
+
+  for (const name in seriesMap){
+    const {color, values} = seriesMap[name];
+    if (!values || values.length !== t.length) continue;
+    let d = "";
+    for (let i=0;i<t.length;i++){
+      const x = x0 + ((t[i]-tMin)/(tMax - tMin)) * spanX;
+      const v = Math.max(0, values[i]);
+      const y = y1 - (v / maxV) * spanY;
+      d += (i===0 ? `M ${x},${y}` : ` L ${x},${y}`);
+    }
+    paths.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2"/>`);
+    legends.push(`<span><i class="legendSwatch" style="background:${color}"></i>${name}</span>`);
+  }
+
+  return `
+  <div class="chartBox">
+    <div class="chartTitle">${title}</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+      <rect x="${x0}" y="${y0}" width="${spanX}" height="${spanY}" fill="none" stroke="#334155" stroke-width="1"/>
+      ${paths.join("")}
+    </svg>
+    <div class="legendRow">${legends.join("")}</div>
+  </div>`;
+}
+
+function showGameOverWithCharts(root){
+  const ov=$("#overlay"), title=$("#ovTitle"), msg=$("#ovMsg"), btns=$("#ovBtns"), charts=$("#ovCharts");
+  const winner = root.winner ? ownerMeta(root.winner).label : "Game Over";
+  title.textContent = `🏆 Winner: ${winner}`;
+  msg.textContent   = "Match summary";
+
+  // Build per-metric series for all players
+  const hpMap   = {};
+  const goldMap = {};
+  const atkMap  = {};
+  for (const name of root.players){
+    const meta = ownerMeta(name);
+    hpMap[name]   = { color: meta.color, values: L.hp[name]   || [] };
+    goldMap[name] = { color: meta.color, values: L.gold[name] || [] };
+    atkMap[name]  = { color: meta.color, values: L.atk[name]  || [] };
+  }
+
+  charts.innerHTML =
+    makeSparklineSVG(hpMap,   "Health over time") +
+    makeSparklineSVG(goldMap, "Gold over time")   +
+    makeSparklineSVG(atkMap,  "Attack over time");
+
+  btns.innerHTML = "";
+  const back = document.createElement("button");
+  back.className="btn"; back.textContent="Return to Lobby";
+  back.addEventListener("pointerup", ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}`);
+  btns.appendChild(back);
+
+  ov.style.display="flex";
 }
 
 /* ========= Overlay helpers ========= */
 function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
-  document.getElementById("ovTitle").textContent=title;
-  document.getElementById("ovMsg").textContent=msg||"";
-  const btns=document.getElementById("ovBtns"); btns.innerHTML="";
+  $("#ovTitle").textContent=title;
+  $("#ovMsg").textContent=msg||"";
+  const btns=$("#ovBtns"); btns.innerHTML="";
   buttons.forEach(b=>{
     const el=document.createElement("button");
     el.className="btn"; el.textContent=b.label;
     el.addEventListener("pointerup", ()=>{ b.onClick?.(); });
     btns.appendChild(el);
   });
-  document.getElementById("overlay").style.display="flex";
+  $("#overlay").style.display="flex";
 }
-function hideOverlay(){ document.getElementById("overlay").style.display="none"; }
+function hideOverlay(){ $("#overlay").style.display="none"; }
 
 /* ========= Fullscreen ========= */
 function isFullscreen(){ return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
@@ -699,8 +853,12 @@ async function boot(){
   }
 
   // controls
-  document.getElementById("flipBtn").addEventListener("pointerup", (e)=>{ e.preventDefault(); sendAction("flip"); });
-  window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); sendAction("flip"); } });
+  $("#flipBtn").addEventListener("pointerup", (e)=>{ 
+    e.preventDefault(); 
+    if (L.reshuffling || L.waitingReshuffle) return; // disable during local reshuffle
+    addDoc(actionsCol, { by:L.me, type:"flip", ts: serverTimestamp() }); 
+  });
+  window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); $("#flipBtn").click(); } });
 
   // fullscreen
   const fsBtn = document.getElementById("fsBtn");
@@ -725,6 +883,8 @@ boot();
 </script>
 </body>
 </html>
+
+
 
 
 
