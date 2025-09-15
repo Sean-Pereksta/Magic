@@ -177,6 +177,7 @@
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
+                  <option value="castlepanic">🏰 Castle Panic (4P)</option><!-- NEW -->
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -243,6 +244,7 @@
       mountonline:"/game/mountonline.html",
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
+      castlepanic:"/game/castlepanic.html",   // NEW
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -253,8 +255,8 @@
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz"]);
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4 };
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","castlepanic"]); // NEW
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, castlepanic: 4 }; // NEW
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -402,6 +404,7 @@
              type==='mountonline'?'🗻🌐 Mountain Blade Online' :
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
+             type==='castlepanic'?'🏰 Castle Panic (4P)' :     // NEW
              '🐭 Cat & Mouse';
     }
 
@@ -437,7 +440,7 @@
       // LOBBY-BASED creation path
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz'].includes(gameType)) {
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','castlepanic'].includes(gameType)) { // NEW
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -736,6 +739,7 @@
   </script>
 </body>
 </html>
+
 
 
 
