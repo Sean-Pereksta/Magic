@@ -143,6 +143,7 @@
                   <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
                   <option value="stockkings">📈 Stock Kings</option>
+                  <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn" onclick="startLobby()">Start Lobby</button>
@@ -208,6 +209,7 @@
       mountain:   "/game/mountainblade.html",       // Skirmish (lobbies)
       mountonline:"/game/mountonline.html",         // Online (direct play)
       stockkings: "/game/stockkings.html",
+      dutchblitz: "dutchblitz.html",                // ← per request
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -215,11 +217,11 @@
       microwars:  "/game/microwars.html",
       microwars2: "/game/microwaves2.html",
       microwars4: "/game/microwaves4.html",
-      border: "/game/border.html",
+      border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings"]); // lobby-based autostart
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8 };
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz"]); // lobby-based autostart (+Dutch Blitz)
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4 }; // Dutch Blitz cap = 4
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -230,7 +232,7 @@
       { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: ROUTES.microwars4 },
       { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler with towers, minions, and abilities. Push to destroy the core.", route: ROUTES.mobamania },
       { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match tiles to recruit, then steamroll the enemy stronghold. Quick & strategic.", route: ROUTES.matchwars },
-      { key: "trials",  title: "Trials",         emoji: "⚔️",    desc: "Survive", route: ROUTES.border },
+      { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
       { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: ROUTES.flag }
     ];
 
@@ -321,7 +323,9 @@
              type==='estate'? '🏡 Estate Defense' :
              type==='mountain'?'🗻 Mountain Blade Skirmish (4P)' :
              type==='mountonline'?'🗻🌐 Mountain Blade Online' :
-             type==='stockkings'?'📈 Stock Kings' : '🐭 Cat & Mouse';
+             type==='stockkings'?'📈 Stock Kings' :
+             type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
+             '🐭 Cat & Mouse';
     }
 
     function updateStartUI(){
@@ -355,7 +359,7 @@
       // LOBBY-BASED creation path
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings'].includes(gameType)) {
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -601,7 +605,6 @@
   </script>
 </body>
 </html>
-
 
 
 
