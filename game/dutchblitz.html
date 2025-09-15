@@ -9,85 +9,115 @@
     --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
     --y:#facc15; --o:#fb923c; --g:#22c55e; --b:#60a5fa;
     --gap: clamp(6px, 1vw, 12px);
-    --cardW: clamp(138px, 32vw, 220px);
-    --cardH: clamp(66px, 16vw, 98px);
-    --radius: 12px; --maxw: 1200px;
+    --cardW: clamp(118px, 36vw, 220px);
+    --cardH: clamp(58px, 18vw, 98px);
+    --radius: 12px;
 
-    /* Piles band */
-    --pileSize: 74px; --pileGap: 8px; --pilesHeight: 290px;
-
-    /* Player swatches (dots only; outlines are inline) */
-    --own-you:#ef4444; --own-a:#22d3ee; --own-b:#f59e0b; --own-c:#8b5cf6;
+    /* Center piles */
+    --pileSize: 64px; 
+    --pileGap: 8px;
   }
 
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{
+  /* Full-screen, no scroll, safe insets respected */
+  html, body{
     margin:0;background:var(--bg);color:var(--ink);
     font-family:system-ui,Segoe UI,Roboto,Arial;
     -webkit-tap-highlight-color: transparent;
+    height: 100svh;
+    min-height: 100svh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @supports (height: 100dvh){
+    html, body{ height:100dvh; min-height:100dvh; }
   }
 
-  /* ===== Base Layout ===== */
-  #app{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-rows:1fr;min-height:100vh;padding:var(--gap);gap:var(--gap)}
-  #board{display:grid;gap:var(--gap);align-items:start}
-  @media (min-width: 920px){
-    #board{grid-template-columns: 1fr 1.2fr 1fr; grid-template-areas:
-      "left center right"
-      "you  center right";}
+  /* ===== Master vertical screen (mobile-first) ===== */
+  #screen{
+    display:grid;
+    grid-template-rows: auto auto 1fr auto;  /* HUD, Store, Center, Bottom */
+    gap: var(--gap);
+    height: 100%;
+    padding: var(--gap);
+    max-width: 720px;
+    margin: 0 auto;
   }
-  @media (max-width: 919.9px){
-    #board{grid-template-columns: 1fr; grid-template-areas:"center" "you" "right";}
-  }
 
-  section{background:var(--panel);border:1px solid #1a243a;border-radius:var(--radius);padding:10px}
-  #left{grid-area:left} #center{grid-area:center} #right{grid-area:right}
-  #you{grid-area:you;background:linear-gradient(180deg,#131b2c,#0e172a);border-color:#3b1116; box-shadow:0 0 0 3px rgba(239,68,68,.28) inset}
-
-  h2,h3{margin:0 0 6px 0;font-weight:800;letter-spacing:.2px}
-  .legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;color:#c6d0e0;font-size:12px;margin:6px 0}
-  .wrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-
-  /* ===== HUD ===== */
+  /* ===== HUD (timer + stats + mini players) ===== */
   #hud{
-    position:sticky; top:0; z-index:5;
     display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center;
-    margin:0 auto 6px auto; padding:10px 12px; max-width:min(100%, 920px);
+    padding:10px 12px;
     background:linear-gradient(180deg, rgba(15,23,42,.9), rgba(14,21,35,.9));
     border:1px solid #24324c; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.34);
     backdrop-filter: blur(3px);
   }
-  .hudRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+  .hudRow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center}
   .stat{
-    display:flex;align-items:center;gap:6px;
-    background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:6px 10px;min-width:92px;justify-content:center
+    display:inline-flex;align-items:center;gap:6px;
+    background:#0c1423;border:1px solid #1d2840;border-radius:999px;
+    padding:6px 10px; min-width:80px; justify-content:center;
   }
-  .stat .val{font-weight:900;font-size:18px}
-  .stat .lbl{font-size:11px;color:#a9b6cc;letter-spacing:.3px;text-transform:uppercase}
-  .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:210px;width:100%}
+  .stat .val{font-weight:900;font-size:16px;line-height:1}
+  .stat .lbl{font-size:10px;color:#a9b6cc;letter-spacing:.3px;text-transform:uppercase}
+  .timerbar{height:8px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;min-width:220px;width:100%}
   .timerbar>div{height:100%;background:var(--accent);width:0%}
 
-  /* Players (desktop left card list) */
-  #playersStatus{
-    display:grid; gap:8px; width:100%; margin-top:4px;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
-  .pStatus{ background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:8px }
-  .pTop{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-  .pName{font-weight:900; display:flex; align-items:center; gap:8px}
-  .dot{width:12px;height:12px;border-radius:50%}
-  .hpBig{font-size:18px;font-weight:900}
-  .pSmall{display:flex;gap:8px;flex-wrap:wrap;color:#b8c3d8;font-size:12px}
-
-  /* Players Mini (mobile HUD chips) */
-  .miniRow{display:none}
+  /* Mini players row */
+  #playersMini{display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden}
   .chip{
     display:inline-flex; align-items:center; gap:6px;
     padding:4px 8px; border:1px solid #1d2840; border-radius:999px; background:#0c1423; font-size:12px;
     white-space:nowrap;
   }
+  .dot{width:10px;height:10px;border-radius:50%}
 
-  /* ===== Hand card (owner outline inline) ===== */
+  .legend{color:#c6d0e0;font-size:11px;text-align:center}
+
+  /* ===== Store (always 3 items on mobile at the top) ===== */
+  #storeTop{
+    display:flex; gap:8px; align-items:center; justify-content:space-between;
+    padding:10px; background:var(--panel); border:1px solid #1a243a; border-radius:var(--radius);
+  }
+  #storeItems{display:flex; gap:8px; align-items:center; justify-content:center; flex:1}
+  .storeCol{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .btn{
+    padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
+    min-height:36px;
+  }
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ===== Center Piles auto-fit area ===== */
+  #centerBand{
+    border:1px dashed #20304f; border-radius:10px; padding:8px;
+    background:#0e1626; min-height:140px; height:100%; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #piles{
+    display:grid;
+    grid-auto-rows:var(--pileSize);
+    grid-template-columns:repeat(10, var(--pileSize));
+    gap:var(--pileGap);
+    place-content:start center;
+  }
+  .tile{
+    width:var(--pileSize); height:var(--pileSize);
+    border:2px solid var(--edge); border-radius:12px;
+    display:flex; align-items:center; justify-content:center; gap:2px;
+    font-weight:900; color:#0b0b0b; box-shadow:0 6px 16px rgba(0,0,0,.28);
+    cursor:pointer; user-select:none; touch-action:manipulation;
+    position:relative; outline-offset:-5px; min-height:44px;
+  }
+  .tile.valid{ outline:6px solid #84cc16; box-shadow:0 0 0 6px rgba(132,204,22,.35), 0 12px 22px rgba(0,0,0,.3); }
+  .own{
+    position:absolute; bottom:2px; right:4px; font-size:11px;
+    color:#0b1014; background:rgba(255,255,255,.92); padding:2px 8px; border-radius:999px; font-weight:800;
+    pointer-events:none;
+  }
+
+  /* Card chip */
   .rect{
     width:var(--cardW); height:var(--cardH); border-radius:12px; border:2px solid var(--edge);
     display:flex; align-items:center; justify-content:space-between; padding:0 12px;
@@ -102,150 +132,106 @@
   .c-green{background:linear-gradient(135deg,var(--g),#bbf7d0);border-color:#22c55e}
   .c-blue{background:linear-gradient(135deg,var(--b),#bae6fd);border-color:#60a5fa}
 
-  /* ===== Center piles ===== */
-  #center{display:flex;flex-direction:column;min-height:0}
-  #pilesWrap{
-    flex:1; /* TAKE remaining space */
-    overflow:hidden; border:1px dashed #20304f; border-radius:10px; padding:8px;
-    background:#0e1626; min-height:140px;
+  /* ===== Bottom bar: Hand + Counts (side-by-side) ===== */
+  #bottomBar{
+    display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
   }
-  #piles{
-    display:grid;
-    grid-auto-rows:var(--pileSize);
-    grid-template-columns:repeat(10, var(--pileSize));
-    gap:var(--pileGap);
-    place-content:start center;
+  #handWrap{display:flex; gap:8px; align-items:center}
+  #counts{
+    display:flex; gap:10px; align-items:center; justify-content:flex-end;
+    background:#0c1423;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:160px;
   }
-  .tile{
-    width:var(--pileSize); height:var(--pileSize);
-    border:2px solid var(--edge); border-radius:12px;
-    display:flex; align-items:center; justify-content:center; gap:2px;
-    font-weight:900; color:#0b0b0b; box-shadow:0 6px 16px rgba(0,0,0,.28);
-    cursor:pointer; touch-action:manipulation; user-select:none;
-    position:relative; outline-offset:-5px; min-height:44px;
-  }
-  .tile .v, .tile .ico, .tile .own { pointer-events:none; }
-  .tile.valid{ outline:6px solid #84cc16; box-shadow:0 0 0 6px rgba(132,204,22,.35), 0 12px 22px rgba(0,0,0,.3); }
-  .own{
-    position:absolute; bottom:2px; right:4px; font-size:11px;
-    color:#0b1014; background:rgba(255,255,255,.92); padding:2px 8px; border-radius:999px;
-    font-weight:800;
-  }
+  .countItem{display:flex; gap:6px; align-items:center; font-weight:800}
+  .ctlRow{display:flex; gap:8px; align-items:center}
 
-  /* ===== Store / buttons ===== */
-  .storeCol{display:flex;flex-direction:column;align-items:center;gap:6px}
-  .btn{
-    padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
-    min-height:38px;
+  /* Desktop extras (optional players panel) */
+  #playersPanel{display:none}
+  @media (min-width: 900px){
+    #screen{ max-width: 1200px; grid-template-columns: 1fr 2fr 1fr; grid-template-rows: auto auto 1fr auto; }
+    #playersPanel{ display:block; grid-column:1; grid-row:1 / span 4; background:var(--panel); border:1px solid #1a243a; border-radius:var(--radius); padding:10px; overflow:auto }
+    #hud{ grid-column:2; }
+    #storeTop{ grid-column:2; }
+    #centerBand{ grid-column:2; }
+    #bottomBar{ grid-column:2; }
   }
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .log{margin-top:6px;text-align:center;color:#cbd5e1;font-size:12px}
+  #playersStatus{
+    display:grid; gap:8px; width:100%;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .pStatus{ background:#0c1423;border:1px solid #1d2840;border-radius:10px;padding:8px }
+  .pTop{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .pName{font-weight:900; display:flex; align-items:center; gap:8px}
+  .hpBig{font-size:18px;font-weight:900}
+  .pSmall{display:flex;gap:8px;flex-wrap:wrap;color:#b8c3d8;font-size:12px}
 
-  /* ===== Overlay ===== */
+  /* Overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:40}
   .dialog{background:#0f172a;border:1px solid #243754;border-radius:16px;padding:16px;min-width:min(720px,95vw);max-width:95vw;max-height:92vh;overflow:auto;box-shadow:0 18px 44px rgba(0,0,0,.45)}
   .dialog .big{font-size:24px;font-weight:900;margin-bottom:6px}
   .dialog .sub{font-size:14px;color:#c2cee3;margin-bottom:10px}
   .dialog .actions{display:flex;gap:10px;justify-content:center;margin-top:8px}
-
-  /* ===== One-screen Mobile Mode ===== */
-  @media (max-width:700px){
-    html,body{ height:100svh; overflow:hidden; }
-    #app{ min-height:100svh; }
-    #board{
-      height:100%;
-      grid-template-rows: auto 1fr auto; /* HUD in center, piles flex, you + store auto */
-    }
-
-    /* hide desktop players panel */
-    #left{ display:none; }
-
-    /* HUD compact: only HP, Gold, Tick + chips */
-    .stat.hp, .stat.gold, .stat.tick{ display:flex; }
-    .stat.atk, .stat.ward{ display:none; }
-
-    /* mini chips row in HUD */
-    .miniRow{ display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden; }
-
-    /* shrink piles & cards slightly */
-    :root{
-      --pileSize: 62px;
-      --pilesHeight: auto;
-      --cardW: clamp(128px, 44vw, 200px);
-      --cardH: clamp(60px, 20vw, 90px);
-    }
-
-    /* hand: hide extra legends, stacks, log */
-    .legend.compact-hide, .stacks, #log{ display:none !important; }
-
-    /* store: cap to 3 items; smaller visuals */
-    #right .wrap{ gap:6px; }
-    #storeRow .storeCol{ transform: scale(.9); transform-origin: center; }
-  }
-
-  @supports (height: 100svh){ body{ min-height: 100svh; } }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="board">
-    <!-- Desktop-only players list -->
-    <section id="left">
-      <h2>Players</h2>
-      <div id="playersStatus"></div>
-    </section>
+  <!-- Optional desktop players panel -->
+  <aside id="playersPanel">
+    <h3 style="margin:0 0 6px 0">Players</h3>
+    <div id="playersStatus"></div>
+  </aside>
 
-    <section id="center">
-      <!-- HUD -->
-      <div id="hud" aria-live="polite">
-        <div class="hudRow">
-          <div class="stat hp"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
-          <div class="stat atk"><span class="lbl">Attack</span><span class="val" id="youAtk">0</span></div>
-          <div class="stat ward"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
-          <div class="stat gold"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
-          <div class="stat tick"><span class="lbl">Tick</span><span class="val" id="tickIn">10.0</span></div>
-        </div>
-        <div class="timerbar"><div id="tickBar"></div></div>
-        <!-- Mini chips (mobile only) -->
-        <div id="playersMini" class="miniRow"></div>
-        <div class="legend compact-hide">💰 Yellow = Gold • ⚔️ Orange = Damage • ❤️ Green = Heal • 🛡️ Blue = Ward</div>
+  <!-- One-screen vertical layout -->
+  <main id="screen" role="application">
+    <!-- HUD -->
+    <section id="hud" aria-live="polite">
+      <div class="hudRow">
+        <div class="stat"><span class="lbl">HP</span><span class="val" id="youHP">100</span></div>
+        <div class="stat"><span class="lbl">Heal</span><span class="val" id="youHeal">0</span></div>
+        <div class="stat"><span class="lbl">Damage</span><span class="val" id="youAtk">0</span></div>
+        <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
+        <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
       </div>
-
-      <h3 style="text-align:center;margin:2px 0 6px 0">Center Piles</h3>
-      <div id="pilesWrap"><div id="piles"></div></div>
+      <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
+      <div id="playersMini"></div>
+      <div class="legend">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
     </section>
 
-    <section id="you">
-      <div class="wrap" style="justify-content:center">
+    <!-- Store (top, 3 items on mobile) -->
+    <section id="storeTop" aria-label="Store">
+      <strong>Store</strong>
+      <div id="storeItems"></div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span>Gold: <b id="gold2">0</b></span>
+      </div>
+    </section>
+
+    <!-- Center piles -->
+    <section id="centerBand" aria-label="Center Piles">
+      <div id="piles"></div>
+    </section>
+
+    <!-- Bottom bar: hand + counts -->
+    <section id="bottomBar">
+      <div id="handWrap">
         <button class="btn" id="flipBtn">🔁 Flip</button>
         <button class="btn" id="fsBtn" title="Toggle Fullscreen" aria-pressed="false">⛶ FS</button>
+        <div id="hand" class="rect" style="pointer-events:none; opacity:.4; justify-content:center">—</div>
       </div>
-      <div id="hand" class="wrap"></div>
-      <div class="stacks" style="margin-top:6px">
-        <div class="stack"><span>Deck</span><div id="deckCount" class="count">0</div></div>
-        <div class="stack"><span>Discard</span><div id="discardCount" class="count">0</div></div>
+      <div id="counts">
+        <div class="countItem">Deck: <span id="deckCount">0</span></div>
+        <div class="countItem">Discard: <span id="discardCount">0</span></div>
+        <div class="countItem">Tick: <span id="tickIn">10.0</span>s</div>
       </div>
-      <div id="log" class="log">Last action: —</div>
     </section>
+  </main>
 
-    <section id="right">
-      <div class="wrap" style="justify-content:space-between;align-items:center">
-        <h3>Store</h3>
-        <span class="legend">Gold: <b id="gold2">0</b></span>
-      </div>
-      <div id="storeRow" class="wrap"></div>
-    </section>
+  <!-- Overlay -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="dialog">
+      <div id="ovTitle" class="big"></div>
+      <div id="ovMsg" class="sub"></div>
+      <div id="ovBtns" class="actions"></div>
+    </div>
   </div>
-</div>
-
-<!-- Overlay -->
-<div id="overlay" class="overlay" aria-hidden="true">
-  <div class="dialog">
-    <div id="ovTitle" class="big"></div>
-    <div id="ovMsg" class="sub"></div>
-    <div id="ovBtns" class="actions"></div>
-  </div>
-</div>
 
 <script type="module">
 /* ========= Firebase ========= */
@@ -262,7 +248,7 @@ const firebaseConfig = {
   projectId: "bible-game-246c0",
   storageBucket: "bible-game-246c0.appspot.com",
   messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  appId: "1:959619818996:web:5a9fbf492e23c765e4451"
 };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
@@ -272,7 +258,6 @@ const url   = new URL(window.location.href);
 const gameId   = url.searchParams.get("gameId");
 const username = (url.searchParams.get("username")||"").trim();
 const HUB_URL = "/"; // change if your hub path differs
-
 if(!gameId || !username){ alert("Missing gameId or username in URL."); }
 
 /* ========= Utils ========= */
@@ -282,10 +267,22 @@ const CCLS={yellow:"c-yellow",orange:"c-orange",green:"c-green",blue:"c-blue"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
-const isPhone = ()=> matchMedia("(max-width:700px)").matches;
+const isPhone = ()=> matchMedia("(max-width:900px)").matches;
 
 const $=sel=>document.querySelector(sel);
-function showError(msg){ const logEl = $("#log"); if(logEl) logEl.textContent = "Last action: " + msg; }
+function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
+  $("#ovTitle").textContent=title;
+  $("#ovMsg").textContent=msg||"";
+  const btns=$("#ovBtns"); btns.innerHTML="";
+  buttons.forEach(b=>{
+    const el=document.createElement("button");
+    el.className="btn"; el.textContent=b.label;
+    el.addEventListener("pointerup", ()=>{ b.onClick?.(); });
+    btns.appendChild(el);
+  });
+  $("#overlay").style.display="flex";
+}
+function hideOverlay(){ $("#overlay").style.display="none"; }
 
 /* ========= Firestore refs ========= */
 const lobbyRef = doc(db, "lobbies", gameId);
@@ -303,19 +300,14 @@ let L = {
 
 /* ========= Player colors (join-order deterministic) ========= */
 const PLAYER_PALETTE = ["#ef4444", "#22d3ee", "#f59e0b", "#8b5cf6"];
-const DOT_CLASSES = ["dot-you","dot-a","dot-b","dot-c"];
 function computeColorMap(players){
   L.colorMap.clear();
   players.forEach((name, idx)=>{
     const col = PLAYER_PALETTE[idx % PLAYER_PALETTE.length];
-    L.colorMap.set(name, {
-      label: name === L.me ? "You" : name,
-      color: col,
-      dot: DOT_CLASSES[idx] || DOT_CLASSES[DOT_CLASSES.length-1]
-    });
+    L.colorMap.set(name, { label: name === L.me ? "You" : name, color: col });
   });
 }
-function ownerMeta(name){ return L.colorMap.get(name) || {label:name, color:"#999", dot:""}; }
+function ownerMeta(name){ return L.colorMap.get(name) || {label:name, color:"#999"}; }
 function ownerColor(name){ return ownerMeta(name).color; }
 
 /* ========= Game Builders (host) ========= */
@@ -475,12 +467,11 @@ async function hostTickIfNeeded(){
   });
 }
 
-/* ========= Host: action queue ========= */
-let actionsUnsub = null;
+/* ========= Host action queue (guarded against double set) ========= */
 function startHostActionPump(){
-  if(actionsUnsub) actionsUnsub();
+  if (window.__DB_ACTIONS_UNSUB) { return; }
   const qy=query(actionsCol, orderBy("ts","asc"));
-  actionsUnsub=onSnapshot(qy, async (qs)=>{
+  const unsub = onSnapshot(qy, async (qs)=>{
     for(const d of qs.docChanges()){
       if(d.type!=="added") continue;
       const act=d.doc.data();
@@ -488,149 +479,24 @@ function startHostActionPump(){
       await deleteDoc(doc(db, "dutchblitz_games", gameId, "actions", d.doc.id));
     }
   });
+  window.__DB_ACTIONS_UNSUB = unsub;
 }
 
 /* ========= Client: send action ========= */
 async function sendAction(type, payload={}){
   const root=L.game; if(!root || root.status!=="playing") return;
   const me=root.P[L.me]; if(!me?.alive) return;
-  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ showError("Reshuffling…"); return; }
+  if(type==="flip" && me.reshuffleAt && nowMs()<me.reshuffleAt){ return; }
   await addDoc(actionsCol, { by:L.me, type, ...payload, ts: serverTimestamp() });
 }
 
-/* ========= UI ========= */
-function render(){
-  const root=L.game; if(!root) return; const me=root.P[L.me];
-
-  const s=sumsFor(root, root.P, L.me);
-  $("#youHP").textContent   = Math.round(me.health);
-  $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
-  $("#youWard").textContent = s.ward; $("#youAtk").textContent = s.atk;
-
-  const left = Math.max(0, root.tickEndsAt - nowMs());
-  $("#tickIn").textContent = (left/1000).toFixed(1);
-  $("#tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
-
-  // Desktop players panel
-  const wrap=$("#playersStatus"); wrap.innerHTML="";
-  root.players.forEach(name=>{
-    const p=root.P[name], m=ownerMeta(name);
-    const card=document.createElement("div");
-    card.className="pStatus";
-    card.innerHTML=`
-      <div class="pTop">
-        <div class="pName"><i class="dot ${m.dot}" style="background:${m.color}"></i> ${m.label}</div>
-        <div class="hpBig">${Math.round(p.health)}${p.alive?"":" (out)"}</div>
-      </div>
-      <div class="pSmall">
-        <span>⚔️ ${sumsFor(root, root.P, name).atk}</span>
-        <span>💰 ${sumsFor(root, root.P, name).gold}</span>
-        <span>🛡️ ${sumsFor(root, root.P, name).ward}</span>
-      </div>`;
-    wrap.appendChild(card);
-  });
-
-  // Mobile players mini chips
-  const mini=$("#playersMini"); mini.innerHTML="";
-  if(isPhone()){
-    root.players.forEach(name=>{
-      const p=root.P[name], m=ownerMeta(name);
-      const chip=document.createElement("div");
-      chip.className="chip";
-      chip.innerHTML=`<span class="dot" style="background:${m.color};width:10px;height:10px;border-radius:50%"></span>${m.label}&nbsp;<b>${Math.round(p.health)}</b>`;
-      mini.appendChild(chip);
-    });
-  }
-
-  // Center piles with owner-colored outlines
-  const grid=$("#piles"); grid.innerHTML="";
-  root.piles.forEach(pile=>{
-    const top=pile.cards[pile.cards.length-1].card;
-    const m=ownerMeta(pile.owner);
-    const tile=document.createElement("div");
-    tile.className=`tile ${CCLS[top.color]}`;
-    const sel=L.selectedCardId && handCard(root, root.P, L.me);
-    const selected=sel && sel.id===L.selectedCardId ? sel : null;
-    if(selected && selected.color===pile.color && pile.topVal===selected.val-1) tile.classList.add("valid");
-    tile.innerHTML = `<span class="v">${top.val}</span><span class="ico">${ICON[top.color]}</span><span class="own">${m.label}</span>`;
-    tile.style.borderColor = m.color;
-    tile.style.boxShadow = `0 0 0 4px ${m.color}, 0 6px 16px rgba(0,0,0,.3)`;
-    tile.addEventListener("pointerup",(e)=>{
-      e.preventDefault();
-      if(!selected){ showError("Select a card first."); return; }
-      sendAction("playOn", { pileId:pile.id, cardId:selected.id });
-      L.selectedCardId=null;
-    });
-    grid.appendChild(tile);
-  });
-  fitPilesToBand();
-
-  // Hand (your color outline)
-  const hand=$("#hand"); hand.innerHTML="";
-  const c=handCard(root, root.P, L.me);
-  if(c){
-    const myColor=ownerColor(L.me);
-    const d=document.createElement("div");
-    const isSel=(L.selectedCardId===c.id);
-    d.className=`rect ${CCLS[c.color]}${isSel?' sel':''}`;
-    d.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
-    d.style.borderColor = myColor;
-    d.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
-    d.addEventListener("pointerup",(e)=>{
-      e.preventDefault();
-      if(c.val===1){ sendAction("start", { cardId:c.id }); L.selectedCardId=null; }
-      else { L.selectedCardId = isSel ? null : c.id; }
-      render();
-    });
-    d.setAttribute("role","button"); d.tabIndex=0;
-    hand.appendChild(d);
-  } else {
-    const slot=document.createElement("div"); slot.className="rect"; slot.style.opacity=".4"; slot.innerHTML="<span>—</span><span>—</span>";
-    hand.appendChild(slot);
-  }
-
-  // Store — cap to 3 items on phone
-  const store=$("#storeRow"); store.innerHTML="";
-  const visibleCards = isPhone() ? root.storeVis.slice(0,3) : root.storeVis;
-  visibleCards.forEach((card)=>{
-    const col=document.createElement("div"); col.className="storeCol";
-    const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
-    if(me.gold < card.val || !me.alive) btn.disabled=true;
-    btn.addEventListener("pointerup",(e)=>{ e.preventDefault();
-      // always use ID to find real index
-      sendAction("buy", { cardId: card.id });
-    });
-    col.appendChild(btn);
-    const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
-    r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
-    r.style.borderColor = "#334155";
-    r.style.boxShadow = "0 0 0 3px rgba(148,163,184,.35)";
-    col.appendChild(r);
-    store.appendChild(col);
-  });
-
-  $("#deckCount").textContent    = root.P[L.me].deck.length;
-  $("#discardCount").textContent = root.P[L.me].discard.length;
-
-  if(root.status === "finished"){
-    const winner = root.winner;
-    const title = winner ? `🏆 Winner: ${ownerMeta(winner).label}` : "Game Over";
-    showOverlay(title, "Returning to lobby will keep your username.", [
-      { label:"Return to Lobby", onClick: ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}` }
-    ]);
-  } else {
-    hideOverlay();
-  }
-}
-
-/* ===== Fit center to band (keeps piles in view) ===== */
+/* ===== Fit piles to center band (no scroll) ===== */
 function fitPilesToBand(){
-  const wrap=$("#pilesWrap"); const grid=$("#piles");
-  if(!wrap || !grid) return;
-  const n=(L.game?.piles?.length)||1;
+  const wrap=$("#centerBand"); const grid=$("#piles");
+  if(!wrap || !grid || !L.game) return;
+  const n=(L.game.piles?.length)||1;
   const wrapW=wrap.clientWidth, wrapH=wrap.clientHeight;
-
-  const maxSize = isPhone()? 70 : 96, minSize = 48, gap = 8;
+  const maxSize = isPhone()? 70 : 96, minSize = 44, gap = 8;
   let size=Math.min(maxSize, Math.max(minSize, Math.floor(Math.sqrt((wrapW*wrapH)/(n*1.25)) )));
   function layoutFor(sz){
     const cols = Math.max(1, Math.floor((wrapW + gap) / (sz + gap)));
@@ -645,20 +511,125 @@ function fitPilesToBand(){
   grid.style.gridTemplateColumns = `repeat(${Lp.cols}, var(--pileSize))`;
 }
 
-/* ========= Overlay ========= */
-function showOverlay(title, msg, buttons=[{label:"OK", onClick: ()=> hideOverlay()}]){
-  $("#ovTitle").textContent=title;
-  $("#ovMsg").textContent=msg||"";
-  const btns=$("#ovBtns"); btns.innerHTML="";
-  buttons.forEach(b=>{
-    const el=document.createElement("button");
-    el.className="btn"; el.textContent=b.label;
-    el.addEventListener("pointerup", ()=>{ b.onClick?.(); });
-    btns.appendChild(el);
+/* ========= Render ========= */
+function render(){
+  const root=L.game; if(!root) return; const me=root.P[L.me];
+  const s=sumsFor(root, root.P, L.me);
+
+  // HUD stats
+  $("#youHP").textContent   = Math.round(me.health);
+  $("#youGold").textContent = me.gold; $("#gold2").textContent = me.gold;
+  $("#youWard").textContent = s.ward; $("#youAtk").textContent = s.atk; $("#youHeal").textContent = s.heal;
+
+  // Timer
+  const left = Math.max(0, root.tickEndsAt - nowMs());
+  $("#tickIn").textContent = (left/1000).toFixed(1);
+  $("#tickBar").style.width = (100 - Math.min(100, (left/100))) + "%";
+
+  // Desktop players panel + mini chips
+  const wrap=$("#playersStatus"); if(wrap){ wrap.innerHTML=""; }
+  const mini=$("#playersMini"); mini.innerHTML="";
+  root.players.forEach(name=>{
+    const p=root.P[name], m=ownerMeta(name);
+    // desktop card
+    if(wrap){
+      const card=document.createElement("div");
+      card.className="pStatus";
+      card.innerHTML=`
+        <div class="pTop">
+          <div class="pName"><i class="dot" style="background:${m.color}"></i> ${m.label}</div>
+          <div class="hpBig">${Math.round(p.health)}${p.alive?"":" (out)"}</div>
+        </div>
+        <div class="pSmall">
+          <span>⚔️ ${sumsFor(root, root.P, name).atk}</span>
+          <span>❤️ ${sumsFor(root, root.P, name).heal}</span>
+          <span>💰 ${sumsFor(root, root.P, name).gold}</span>
+          <span>🛡️ ${sumsFor(root, root.P, name).ward}</span>
+        </div>`;
+      wrap.appendChild(card);
+    }
+    // mini chip
+    const chip=document.createElement("div");
+    chip.className="chip";
+    chip.innerHTML=`<span class="dot" style="background:${m.color}"></span>${m.label}&nbsp;<b>${Math.round(p.health)}</b>`;
+    mini.appendChild(chip);
   });
-  $("#overlay").style.display="flex";
+
+  // Center piles
+  const grid=$("#piles"); grid.innerHTML="";
+  root.piles.forEach(pile=>{
+    const top=pile.cards[pile.cards.length-1].card;
+    const m=ownerMeta(pile.owner);
+    const tile=document.createElement("div");
+    tile.className=`tile ${CCLS[top.color]}`;
+    const sel=L.selectedCardId && handCard(root, root.P, L.me);
+    const selected=sel && sel.id===L.selectedCardId ? sel : null;
+    if(selected && selected.color===pile.color && pile.topVal===selected.val-1) tile.classList.add("valid");
+    tile.innerHTML = `<span style="font-weight:900">${top.val}</span>&nbsp;<span>${ICON[top.color]}</span><span class="own">${m.label}</span>`;
+    tile.style.borderColor = m.color;
+    tile.style.boxShadow = `0 0 0 4px ${m.color}, 0 6px 16px rgba(0,0,0,.3)`;
+    tile.addEventListener("pointerup",(e)=>{
+      e.preventDefault();
+      if(!selected){ return; }
+      sendAction("playOn", { pileId:pile.id, cardId:selected.id });
+      L.selectedCardId=null;
+    });
+    grid.appendChild(tile);
+  });
+  fitPilesToBand();
+
+  // Hand card (left bottom)
+  const hand=$("#hand");
+  const c=handCard(root, root.P, L.me);
+  if(c){
+    const myColor=ownerColor(L.me);
+    hand.className=`rect ${CCLS[c.color]}${L.selectedCardId===c.id?' sel':''}`;
+    hand.style.opacity = "1"; hand.style.pointerEvents="auto";
+    hand.style.borderColor = myColor;
+    hand.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
+    hand.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
+    hand.onclick = ()=>{
+      if(c.val===1){ sendAction("start", { cardId:c.id }); L.selectedCardId=null; }
+      else { L.selectedCardId = (L.selectedCardId===c.id) ? null : c.id; render(); }
+    };
+  } else {
+    hand.className="rect";
+    hand.style.opacity=".4"; hand.style.pointerEvents="none";
+    hand.innerHTML="—";
+  }
+
+  // Store — exactly 3 at the top on mobile (desktop can show 5 if you prefer)
+  const store=$("#storeItems"); store.innerHTML="";
+  const visibleCards = root.storeVis.slice(0, 3);
+  visibleCards.forEach((card)=>{
+    const col=document.createElement("div"); col.className="storeCol";
+    const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
+    if(me.gold < card.val || !me.alive) btn.disabled=true;
+    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); sendAction("buy", { cardId: card.id }); });
+    col.appendChild(btn);
+    const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
+    r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
+    r.style.borderColor = "#334155";
+    r.style.boxShadow = "0 0 0 3px rgba(148,163,184,.35)";
+    col.appendChild(r);
+    store.appendChild(col);
+  });
+
+  // Counts
+  $("#deckCount").textContent    = root.P[L.me].deck.length;
+  $("#discardCount").textContent = root.P[L.me].discard.length;
+
+  // Game over
+  if(root.status === "finished"){
+    const winner = root.winner;
+    const title = winner ? `🏆 Winner: ${ownerMeta(winner).label}` : "Game Over";
+    showOverlay(title, "Returning to lobby will keep your username.", [
+      { label:"Return to Lobby", onClick: ()=> window.location.href = `${HUB_URL}?username=${encodeURIComponent(L.me)}` }
+    ]);
+  } else {
+    hideOverlay();
+  }
 }
-function hideOverlay(){ $("#overlay").style.display="none"; }
 
 /* ========= Fullscreen ========= */
 function isFullscreen(){ return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
@@ -694,14 +665,14 @@ async function boot(){
   // subscribe
   onSnapshot(gameRef, async (snap)=>{
     if(!snap.exists()) return;
-    const data=snap.data(); L.game=data;
+    L.game=snap.data();
 
     // award once
-    if(L.isHost && data.status==="finished" && data.winner && !data.awarded){
+    if(L.isHost && L.game.status==="finished" && L.game.winner && !L.game.awarded){
       await runTransaction(db, async (tx)=>{
         const cur = await tx.get(gameRef); const root=cur.data();
         if(root.awarded) return;
-        const wRef = doc(db, "users", data.winner);
+        const wRef = doc(db, "users", L.game.winner);
         const wSnap = await tx.get(wRef);
         if(wSnap.exists()){
           const prev = wSnap.data().wins || 0;
@@ -744,13 +715,14 @@ async function boot(){
   }
 
   // refit on size/orientation
-  new ResizeObserver(fitPilesToBand).observe($("#pilesWrap"));
-  addEventListener("orientationchange", ()=> setTimeout(fitPilesToBand, 100));
+  new ResizeObserver(fitPilesToBand).observe($("#centerBand"));
+  addEventListener("orientationchange", ()=> setTimeout(fitPilesToBand, 150));
 }
 boot();
 </script>
 </body>
 </html>
+
 
 
 
