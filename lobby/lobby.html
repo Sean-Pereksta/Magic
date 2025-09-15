@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <title>🕹️ Game Hub & Multiplayer Lobby</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
     :root{
       --bg:#f6f7fb; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#e5e7eb;
       --accent:#214a9a; --accent-2:#1a3b7b; --accent-soft:#e6eefc; --good:#16a34a; --bad:#ef4444;
       --shadow:0 10px 30px rgba(2,6,23,.08); --radius:16px; --radius-sm:12px;
+      --tap:56px; /* comfortable touch target */
     }
     *{box-sizing:border-box}
     body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
@@ -18,6 +19,7 @@
       background: radial-gradient(1200px 600px at 50% -200px, #315bbd 0%, #1a2b53 55%, #0f1a35 100%);
       color:#fff; padding:28px 16px 18px; position:relative; overflow:hidden;
       box-shadow:var(--shadow);
+      padding-top: calc(28px + env(safe-area-inset-top));
     }
     .hero-inner{ max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
     .brand{ display:flex; align-items:center; gap:12px; }
@@ -26,7 +28,7 @@
     .subtitle{ color:#c7d7ff; font-size:.95rem }
 
     /* Tabs */
-    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.1); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.18) }
+    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.1); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.18); overflow:auto; -webkit-overflow-scrolling:touch }
     .tab-btn{
       appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#eaf1ff; background:transparent;
       font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap
@@ -48,26 +50,36 @@
     /* Forms */
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
     .input, .select, .btn{
-      padding:11px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:14px; outline:none;
+      padding:14px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:16px; outline:none; min-height:44px;
     }
     .input:focus, .select:focus{ border-color:#93c5fd; box-shadow:0 0 0 4px rgba(147,197,253,.35) }
-    .btn{ cursor:pointer; font-weight:800; border-color:var(--accent); background:var(--accent); color:#fff }
+    .btn{ cursor:pointer; font-weight:800; border-color:var(--accent); background:var(--accent); color:#fff; transition:background .2s }
     .btn:hover{ background:var(--accent-2) }
-    .btn-ghost{ border-color:var(--br); background:#fff; color:var(--ink); font-weight:700 }
+    .btn-ghost{ border-color:var(--br); background:#fff; color:#0f172a; font-weight:700 }
     .btn-ghost:hover{ background:#f3f4f6 }
+    .btn-lg{ min-height:var(--tap); font-size:17px }
+    .btn-block{ width:100% }
+
+    /* Resume banner */
+    .resume{
+      display:none; margin:12px 0 0; padding:12px; border:1px solid #c7d2fe; background:#eef2ff; color:#1e1b4b; border-radius:12px;
+      display:flex; align-items:center; gap:10px; justify-content:space-between;
+    }
+    .resume .info{ font-weight:700 }
+    .resume .actions{ display:flex; gap:8px; flex-wrap:wrap }
 
     /* Lobby list as cards */
     .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
     .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
     .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #cfe0ff; font-weight:700 }
-    .subtle{ color:var(--muted); font-size:.92rem }
+    .subtle{ color:var(--muted); font-size:.96rem }
     .cap{ height:8px; background:#f1f5f9; border:1px solid var(--br); border-radius:999px; overflow:hidden }
     .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#7dd3fc,#60a5fa,#4f46e5) }
 
     /* Players box */
     .players{ display:flex; flex-wrap:wrap; gap:8px }
     .chip{
-      display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--br); border-radius:999px; background:#f8fafc; font-size:13px
+      display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--br); border-radius:999px; background:#f8fafc; font-size:14px
     }
     .dot{ width:10px; height:10px; border-radius:50% }
 
@@ -87,6 +99,19 @@
     .controls{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px }
     #startBtn{ display:none }
     #error{ margin-top:6px; color:var(--bad); font-weight:700 }
+
+    /* Mobile polish */
+    @media (max-width:720px){
+      .row{ flex-direction:column; align-items:stretch }
+      .input, .select, .btn{ width:100% }
+      .btn{ min-height:var(--tap) }
+      .tab-btn{ padding:12px 16px }
+      .hero-inner{ gap:12px }
+      .lobby-card .btn{ width:100% }
+      .subtitle{ font-size:.9rem }
+      .card{ border-radius:20px }
+      body{ padding-bottom: calc(env(safe-area-inset-bottom) + 8px) }
+    }
   </style>
 </head>
 <body>
@@ -94,7 +119,7 @@
   <header class="hero">
     <div class="hero-inner">
       <div class="brand">
-        <div class="logo">🎮</div>
+        <div class="logo" aria-hidden="true">🎮</div>
         <div>
           <div class="title">Game Hub</div>
           <div class="subtitle">Create a lobby, invite friends, or jump into solo play.</div>
@@ -115,10 +140,18 @@
         <div id="loginForm" class="card">
           <div class="card-head"><div class="card-title">Welcome</div></div>
           <div class="card-body">
-            <div class="row">
-              <input type="text" id="username" class="input" placeholder="Username" />
-              <input type="password" id="password" class="input" placeholder="Password" />
-              <button class="btn" onclick="login()">Login</button>
+            <div class="row" style="margin-bottom:8px">
+              <input autocomplete="username" inputmode="text" type="text" id="username" class="input" placeholder="Username" />
+              <input autocomplete="current-password" type="password" id="password" class="input" placeholder="Password" />
+              <button class="btn btn-lg" onclick="login()">Login</button>
+            </div>
+            <div class="resume" id="resumeBanner" aria-live="polite" role="region">
+              <div class="info">You have an unfinished session.</div>
+              <div class="actions">
+                <button class="btn-ghost btn-lg" id="resumeLobbyBtn">Rejoin Lobby</button>
+                <button class="btn-ghost btn-lg" id="resumeGameBtn">Reopen Game</button>
+                <button class="btn-ghost btn-lg" id="clearSessionBtn">Clear</button>
+              </div>
             </div>
             <div id="error"></div>
           </div>
@@ -146,7 +179,7 @@
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
                 </select>
               </div>
-              <button id="createBtn" class="btn" onclick="startLobby()">Start Lobby</button>
+              <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
             </div>
 
             <div id="availLobbiesCard" class="card" style="margin-top:14px">
@@ -161,8 +194,8 @@
               <div class="card-body">
                 <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
                 <div class="controls">
-                  <button id="startBtn" class="btn">🚀 Start Game</button>
-                  <button class="btn-ghost" onclick="leaveLobby()">❌ Leave Lobby</button>
+                  <button id="startBtn" class="btn btn-lg">🚀 Start Game</button>
+                  <button class="btn-ghost btn-lg" onclick="leaveLobby()">❌ Leave Lobby</button>
                 </div>
               </div>
             </div>
@@ -206,10 +239,10 @@
       cat:        "/game/catandmouse.html",
       grass:      "/game/grassrealms.html",
       estate:     "/game/estatedefense.html",
-      mountain:   "/game/mountainblade.html",       // Skirmish (lobbies)
-      mountonline:"/game/mountonline.html",         // Online (direct play)
+      mountain:   "/game/mountainblade.html",
+      mountonline:"/game/mountonline.html",
       stockkings: "/game/stockkings.html",
-      dutchblitz: "/game/dutchblitz.html",                // ← per request
+      dutchblitz: "/game/dutchblitz.html",
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -220,8 +253,8 @@
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz"]); // lobby-based autostart (+Dutch Blitz)
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4 }; // Dutch Blitz cap = 4
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz"]);
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4 };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -248,13 +281,35 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // ---------- STORAGE KEYS & SESSION HELPERS ----------
+    const SK = {
+      user: "gh.username",
+      lastLobby: "gh.lastLobbyId",
+      lastGame: "gh.lastGameType",
+      lastTab: "gh.lastTab"
+    };
+    const save = (k,v)=> localStorage.setItem(k, v);
+    const read = (k)=> localStorage.getItem(k);
+    const del  = (k)=> localStorage.removeItem(k);
+
+    function persistSession() {
+      if (username) save(SK.user, username);
+      const activeTab = isMultiVisible() ? "multi" : "single";
+      save(SK.lastTab, activeTab);
+    }
+    function clearSession() {
+      del(SK.user); del(SK.lastLobby); del(SK.lastGame);
+    }
+
     // ---------- TABS ----------
+    function isMultiVisible(){ return document.getElementById('panel-multi').style.display !== 'none'; }
     window.showTab = function(which){
       const isMulti = which === 'multi';
       document.getElementById('panel-multi').style.display = isMulti ? 'grid' : 'none';
       document.getElementById('panel-single').style.display = isMulti ? 'none' : 'block';
       document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
       document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
+      save(SK.lastTab, which);
     };
 
     // Render Singleplayer
@@ -266,7 +321,7 @@
         const t = document.createElement('div'); t.className = 'game-title'; t.textContent = `${g.emoji} ${g.title}`;
         const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
         const pr = document.createElement('div'); pr.className = 'play-row';
-        const btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = 'Play';
+        const btn = document.createElement('button'); btn.className = 'btn btn-lg'; btn.textContent = 'Play';
         btn.addEventListener('click', ()=> window.location.href = g.route);
         pr.appendChild(btn);
         card.appendChild(t); card.appendChild(d); card.appendChild(pr);
@@ -277,13 +332,23 @@
 
     // ---------- LOBBY LOGIC ----------
     const urlParams = new URLSearchParams(window.location.search);
-    const autoUsername = urlParams.get("username");
-    let username = autoUsername ? autoUsername.trim() : "";
+    const urlUser = urlParams.get("username");
+    let username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim(); // <-- keep logged in (URL or localStorage)
     let currentLobbyId = null;
     let isHost = false;
     let lobbyUnsub = null;
 
-    if (username) { autoLogin(username); }
+    // If a game sent you back with ?username=..., auto-login and then strip the query for cleanliness
+    if (urlUser) {
+      history.replaceState({}, "", window.location.pathname); // remove username from URL
+    }
+
+    // On first load, try to restore tab preference
+    const lastTab = read(SK.lastTab);
+    if (lastTab === "single") showTab("single");
+
+    // Try to auto login if we have a username
+    if (username) { autoLogin(username); } // silent login (no password) if user exists
 
     async function login() {
       username = document.getElementById("username").value.trim();
@@ -295,14 +360,20 @@
         return showError("❌ Invalid login.");
       }
       enterLobbyUI();
+      persistSession();
+      maybeOfferResume();
     }
 
     async function autoLogin(name) {
-      const userRef = doc(db, "users", name);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
-      username = name;
-      enterLobbyUI();
+      try{
+        const userRef = doc(db, "users", name);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
+        username = name;
+        enterLobbyUI();
+        persistSession();
+        maybeOfferResume();
+      }catch(e){ /* ignore */ }
     }
 
     function enterLobbyUI() {
@@ -310,12 +381,18 @@
       document.getElementById("lobbyInterface").style.display = "block";
       loadLobbies();
       loadLeaderboard();
-      setInterval(loadLobbies, 5000);
+      if (!window.__lobbyPoll){
+        window.__lobbyPoll = setInterval(loadLobbies, 5000);
+      }
       document.getElementById("startBtn").addEventListener("click", startGame);
 
-      // React to game selection to toggle quick-play vs lobby flow
       document.getElementById("gameType").addEventListener("change", updateStartUI);
-      updateStartUI(); // initial
+      updateStartUI();
+    }
+
+    function showLoginUI() {
+      document.getElementById("loginForm").style.display = "block";
+      document.getElementById("lobbyInterface").style.display = "none";
     }
 
     function gameLabel(type){
@@ -352,6 +429,7 @@
       if (gameType === "mountonline") {
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES.mountonline;
+        save(SK.lastGame, "mountonline");
         window.location.href = `${route}?username=${encodeURIComponent(username)}`;
         return;
       }
@@ -365,7 +443,10 @@
       const lobby = await addDoc(collection(db, "lobbies"), {
         name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
       });
-      currentLobbyId = lobby.id; isHost = true; listenToLobby();
+      currentLobbyId = lobby.id; isHost = true;
+      save(SK.lastLobby, currentLobbyId);
+      save(SK.lastGame, gameType);
+      listenToLobby();
     }
 
     async function loadLobbies() {
@@ -382,13 +463,11 @@
 
       snap.forEach(async (docSnap) => {
         const data = docSnap.data();
-        // auto-clean empty
         if (!data.players || data.players.length === 0) {
           try { await deleteDoc(doc(db, "lobbies", docSnap.id)); } catch(e){}
           return;
         }
 
-        // Build a lobby card
         const card = document.createElement("div"); card.className = "lobby-card";
 
         const head = document.createElement("div"); head.style.display="flex"; head.style.justifyContent="space-between"; head.style.alignItems="center"; head.style.gap="8px";
@@ -412,9 +491,9 @@
         } else { fill.style.width = "100%"; }
 
         const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
-        const btn = document.createElement("button"); btn.className="btn"; btn.textContent = "Join";
+        const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
         if (isFinite(cap) && (data.players||[]).length >= cap) {
-          btn.disabled = true; btn.className="btn-ghost"; btn.textContent="Full";
+          btn.disabled = true; btn.className="btn-ghost btn-lg"; btn.textContent="Full";
         } else {
           btn.addEventListener("click", ()=> joinLobby(docSnap.id));
         }
@@ -445,7 +524,10 @@
       const snap = await getDoc(ref);
       if (!snap.exists()) return showError("Lobby no longer exists.");
       const data = snap.data();
-      currentLobbyId = id; isHost = data.host === username; listenToLobby();
+      currentLobbyId = id; isHost = data.host === username;
+      save(SK.lastLobby, currentLobbyId);
+      save(SK.lastGame, data.gameType);
+      listenToLobby();
     }
 
     function listenToLobby() {
@@ -461,6 +543,7 @@
         if (!data.players || data.players.length === 0) {
           try { await deleteDoc(ref); } catch(e){}
           currentLobbyId = null; isHost=false;
+          save(SK.lastLobby, "");
           document.getElementById("lobbyPlayers").innerHTML = "";
           document.getElementById("startBtn").style.display = "none";
           if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
@@ -481,11 +564,11 @@
           const wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
 
           // color tiers
-          let color = "#cd7f32";               // bronze
-          if (wins >= 5 && wins < 10) color = "#c0c0c0";      // silver
-          else if (wins >= 10 && wins < 15) color = "#ffd700"; // gold
-          else if (wins >= 15 && wins < 25) color = "#3b82f6"; // sapphire
-          else if (wins >= 25) color = "#ef4444";              // ruby
+          let color = "#cd7f32";
+          if (wins >= 5 && wins < 10) color = "#c0c0c0";
+          else if (wins >= 10 && wins < 15) color = "#ffd700";
+          else if (wins >= 15 && wins < 25) color = "#3b82f6";
+          else if (wins >= 25) color = "#ef4444";
 
           const chip = document.createElement("div"); chip.className="chip";
           const dot = document.createElement("span"); dot.className="dot"; dot.style.background=color;
@@ -502,6 +585,8 @@
         // Auto-redirect games on "started"
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
+          save(SK.lastGame, data.gameType);
+          save(SK.lastLobby, currentLobbyId);
           window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
       });
@@ -550,10 +635,12 @@
         const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
         try { await deleteDoc(ref); } catch(e){}
         const route = ROUTES.estate;
+        save(SK.lastGame, "estate");
+        save(SK.lastLobby, activeId);
         window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
         return;
       }
-      await updateDoc(ref, { status: "started" }); // others redirect via listener
+      await updateDoc(ref, { status: "started" });
     }
 
     async function leaveLobby() {
@@ -571,6 +658,7 @@
       document.getElementById("lobbyPlayers").innerHTML = "";
       document.getElementById("startBtn").style.display = "none";
       loadLobbies();
+      save(SK.lastLobby, "");
     }
 
     async function loadLeaderboard() {
@@ -596,6 +684,49 @@
       const e = document.getElementById("error"); e.textContent = msg;
     }
 
+    // ---------- RESUME BANNER (Keep you logged in + quick resume) ----------
+    function maybeOfferResume(){
+      const banner = document.getElementById("resumeBanner");
+      const lastLobby = read(SK.lastLobby);
+      const lastGame = read(SK.lastGame);
+
+      const resumeLobbyBtn = document.getElementById("resumeLobbyBtn");
+      const resumeGameBtn  = document.getElementById("resumeGameBtn");
+      const clearBtn       = document.getElementById("clearSessionBtn");
+
+      // default hidden
+      banner.style.display = "none";
+      resumeLobbyBtn.style.display = "none";
+      resumeGameBtn.style.display = "none";
+
+      // If we are already inside lobby UI, don't show banner
+      if (document.getElementById("lobbyInterface").style.display !== "none") return;
+
+      // Offer to rejoin lobby if we have an id
+      if (lastLobby) {
+        banner.style.display = "flex";
+        resumeLobbyBtn.style.display = "inline-block";
+        resumeLobbyBtn.onclick = ()=> joinLobby(lastLobby);
+      }
+
+      // Offer to reopen game route if we know the last game type
+      if (lastGame && ROUTES[lastGame]) {
+        banner.style.display = "flex";
+        resumeGameBtn.style.display = "inline-block";
+        resumeGameBtn.onclick = ()=> {
+          const route = ROUTES[lastGame];
+          const gid = read(SK.lastLobby) || "";
+          const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
+          window.location.href = route + glue;
+        };
+      }
+
+      clearBtn.onclick = ()=> { clearSession(); banner.style.display="none"; };
+    }
+
+    // Run resume banner in login view too
+    if (!username) { showLoginUI(); maybeOfferResume(); }
+
     // Expose
     window.login = login;
     window.startLobby = startLobby;
@@ -605,6 +736,7 @@
   </script>
 </body>
 </html>
+
 
 
 
