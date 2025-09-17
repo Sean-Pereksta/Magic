@@ -6,17 +6,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
     :root{
-      --bg:#f6f7fb; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#e5e7eb;
-      --accent:#214a9a; --accent-2:#1a3b7b; --accent-soft:#e6eefc; --good:#16a34a; --bad:#ef4444;
-      --shadow:0 10px 30px rgba(2,6,23,.08); --radius:16px; --radius-sm:12px;
-      --tap:56px; /* comfortable touch target */
+      --bg:#fef2f2; --ink:#111827; --muted:#6b7280; --card:#fff; --br:#f3e2e2;
+      --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2; --good:#16a34a; --bad:#ef4444;
+      --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px;
+      --tap:56px;
     }
     *{box-sizing:border-box}
     body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
 
+    /* Logout (fixed, top-left) */
+    .logout{
+      position:fixed;
+      top: calc(8px + env(safe-area-inset-top));
+      left: calc(8px + env(safe-area-inset-left));
+      z-index: 1000;
+      padding:10px 14px;
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,.08);
+      background:#fff;
+      box-shadow: var(--shadow);
+      font-weight:800;
+      cursor:pointer;
+      display:none; /* shown after login */
+    }
+    .logout:hover{ background:#fff5f5 }
+
     /* Header */
     .hero{
-      background: radial-gradient(1200px 600px at 50% -200px, #315bbd 0%, #1a2b53 55%, #0f1a35 100%);
+      background: radial-gradient(1200px 600px at 50% -200px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
       color:#fff; padding:28px 16px 18px; position:relative; overflow:hidden;
       box-shadow:var(--shadow);
       padding-top: calc(28px + env(safe-area-inset-top));
@@ -25,16 +42,16 @@
     .brand{ display:flex; align-items:center; gap:12px; }
     .logo{ width:44px; height:44px; display:grid; place-items:center; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:14px; font-size:22px }
     .title{ font-weight:800; letter-spacing:.3px; font-size:1.35rem }
-    .subtitle{ color:#c7d7ff; font-size:.95rem }
+    .subtitle{ color:#ffe2e2; font-size:.95rem }
 
     /* Tabs */
-    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.1); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.18); overflow:auto; -webkit-overflow-scrolling:touch }
+    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.12); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.22); overflow:auto; -webkit-overflow-scrolling:touch }
     .tab-btn{
-      appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#eaf1ff; background:transparent;
+      appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#fff5f5; background:transparent;
       font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap
     }
-    .tab-btn:hover{ background:rgba(255,255,255,.14) }
-    .tab-btn[aria-selected="true"]{ background:#fff; color:#0f172a; box-shadow:0 2px 14px rgba(15,23,42,.25) }
+    .tab-btn:hover{ background:rgba(255,255,255,.16) }
+    .tab-btn[aria-selected="true"]{ background:#fff; color:#111827; box-shadow:0 2px 14px rgba(15,23,42,.25) }
 
     /* Layout */
     .shell{ max-width:1200px; margin:18px auto; padding:0 12px 28px }
@@ -52,17 +69,17 @@
     .input, .select, .btn{
       padding:14px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:16px; outline:none; min-height:44px;
     }
-    .input:focus, .select:focus{ border-color:#93c5fd; box-shadow:0 0 0 4px rgba(147,197,253,.35) }
+    .input:focus, .select:focus{ border-color:#fecaca; box-shadow:0 0 0 4px rgba(239,68,68,.25) }
     .btn{ cursor:pointer; font-weight:800; border-color:var(--accent); background:var(--accent); color:#fff; transition:background .2s }
     .btn:hover{ background:var(--accent-2) }
-    .btn-ghost{ border-color:var(--br); background:#fff; color:#0f172a; font-weight:700 }
-    .btn-ghost:hover{ background:#f3f4f6 }
+    .btn-ghost{ border-color:var(--br); background:#fff; color:#111827; font-weight:700 }
+    .btn-ghost:hover{ background:#fff5f5 }
     .btn-lg{ min-height:var(--tap); font-size:17px }
     .btn-block{ width:100% }
 
     /* Resume banner */
     .resume{
-      display:none; margin:12px 0 0; padding:12px; border:1px solid #c7d2fe; background:#eef2ff; color:#1e1b4b; border-radius:12px;
+      display:none; margin:12px 0 0; padding:12px; border:1px solid #fecaca; background:#fff1f2; color:#7f1d1d; border-radius:12px;
       display:flex; align-items:center; gap:10px; justify-content:space-between;
     }
     .resume .info{ font-weight:700 }
@@ -71,22 +88,22 @@
     /* Lobby list as cards */
     .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
     .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
-    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #cfe0ff; font-weight:700 }
+    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #fecaca; font-weight:700 }
     .subtle{ color:var(--muted); font-size:.96rem }
-    .cap{ height:8px; background:#f1f5f9; border:1px solid var(--br); border-radius:999px; overflow:hidden }
-    .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#7dd3fc,#60a5fa,#4f46e5) }
+    .cap{ height:8px; background:#fff1f2; border:1px solid var(--br); border-radius:999px; overflow:hidden }
+    .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#f59e0b,#ef4444,#b91c1c) }
 
     /* Players box */
     .players{ display:flex; flex-wrap:wrap; gap:8px }
     .chip{
-      display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--br); border-radius:999px; background:#f8fafc; font-size:14px
+      display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--br); border-radius:999px; background:#fff7f7; font-size:14px
     }
     .dot{ width:10px; height:10px; border-radius:50% }
 
     /* Leaderboard */
     .ladder{ display:grid; gap:10px }
     .lb-row{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--br); border-radius:12px; background:#fff }
-    .rank{ font-weight:900; width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#eef2ff; color:#3730a3 }
+    .rank{ font-weight:900; width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#fee2e2; color:#7f1d1d }
 
     /* Singleplayer catalog */
     .catalog{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:14px }
@@ -115,6 +132,9 @@
   </style>
 </head>
 <body>
+  <!-- Fixed Logout -->
+  <button id="logoutBtn" class="logout" onclick="logout()">🚪 Logout</button>
+
   <!-- HERO -->
   <header class="hero">
     <div class="hero-inner">
@@ -177,7 +197,7 @@
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
-                  <option value="castlepanic">🏰 Castle Panic (4P)</option><!-- NEW -->
+                  <option value="splinters">🪄 Splinters (4P)</option><!-- CHANGED -->
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -244,7 +264,7 @@
       mountonline:"/game/mountonline.html",
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
-      castlepanic:"/game/castlepanic.html",   // NEW
+      splinters:  "/game/splinters.html",   // CHANGED
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -255,8 +275,8 @@
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","castlepanic"]); // NEW
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, castlepanic: 4 }; // NEW
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters"]); // CHANGED
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4 }; // CHANGED
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -300,7 +320,7 @@
       save(SK.lastTab, activeTab);
     }
     function clearSession() {
-      del(SK.user); del(SK.lastLobby); del(SK.lastGame);
+      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab);
     }
 
     // ---------- TABS ----------
@@ -335,22 +355,19 @@
     // ---------- LOBBY LOGIC ----------
     const urlParams = new URLSearchParams(window.location.search);
     const urlUser = urlParams.get("username");
-    let username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim(); // <-- keep logged in (URL or localStorage)
+    let username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim();
     let currentLobbyId = null;
     let isHost = false;
     let lobbyUnsub = null;
 
-    // If a game sent you back with ?username=..., auto-login and then strip the query for cleanliness
     if (urlUser) {
-      history.replaceState({}, "", window.location.pathname); // remove username from URL
+      history.replaceState({}, "", window.location.pathname);
     }
 
-    // On first load, try to restore tab preference
     const lastTab = read(SK.lastTab);
     if (lastTab === "single") showTab("single");
 
-    // Try to auto login if we have a username
-    if (username) { autoLogin(username); } // silent login (no password) if user exists
+    if (username) { autoLogin(username); }
 
     async function login() {
       username = document.getElementById("username").value.trim();
@@ -381,13 +398,13 @@
     function enterLobbyUI() {
       document.getElementById("loginForm").style.display = "none";
       document.getElementById("lobbyInterface").style.display = "block";
+      const lo = document.getElementById('logoutBtn'); if (lo) lo.style.display = 'inline-flex';
       loadLobbies();
       loadLeaderboard();
       if (!window.__lobbyPoll){
         window.__lobbyPoll = setInterval(loadLobbies, 5000);
       }
       document.getElementById("startBtn").addEventListener("click", startGame);
-
       document.getElementById("gameType").addEventListener("change", updateStartUI);
       updateStartUI();
     }
@@ -395,6 +412,7 @@
     function showLoginUI() {
       document.getElementById("loginForm").style.display = "block";
       document.getElementById("lobbyInterface").style.display = "none";
+      const lo = document.getElementById('logoutBtn'); if (lo) lo.style.display = 'none';
     }
 
     function gameLabel(type){
@@ -404,7 +422,7 @@
              type==='mountonline'?'🗻🌐 Mountain Blade Online' :
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
-             type==='castlepanic'?'🏰 Castle Panic (4P)' :     // NEW
+             type==='splinters'?'🪄 Splinters (4P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -428,7 +446,7 @@
     async function startLobby() {
       const gameType = document.getElementById("gameType").value;
 
-      // QUICK-PLAY: Mountain Blade Online -> direct route with username
+      // QUICK-PLAY
       if (gameType === "mountonline") {
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES.mountonline;
@@ -437,10 +455,9 @@
         return;
       }
 
-      // LOBBY-BASED creation path
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','castlepanic'].includes(gameType)) { // NEW
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters'].includes(gameType)) { // CHANGED
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -570,7 +587,7 @@
           let color = "#cd7f32";
           if (wins >= 5 && wins < 10) color = "#c0c0c0";
           else if (wins >= 10 && wins < 15) color = "#ffd700";
-          else if (wins >= 15 && wins < 25) color = "#3b82f6";
+          else if (wins >= 15 && wins < 25) color = "#f59e0b";
           else if (wins >= 25) color = "#ef4444";
 
           const chip = document.createElement("div"); chip.className="chip";
@@ -687,7 +704,7 @@
       const e = document.getElementById("error"); e.textContent = msg;
     }
 
-    // ---------- RESUME BANNER (Keep you logged in + quick resume) ----------
+    // ---------- RESUME BANNER ----------
     function maybeOfferResume(){
       const banner = document.getElementById("resumeBanner");
       const lastLobby = read(SK.lastLobby);
@@ -697,22 +714,18 @@
       const resumeGameBtn  = document.getElementById("resumeGameBtn");
       const clearBtn       = document.getElementById("clearSessionBtn");
 
-      // default hidden
       banner.style.display = "none";
       resumeLobbyBtn.style.display = "none";
       resumeGameBtn.style.display = "none";
 
-      // If we are already inside lobby UI, don't show banner
       if (document.getElementById("lobbyInterface").style.display !== "none") return;
 
-      // Offer to rejoin lobby if we have an id
       if (lastLobby) {
         banner.style.display = "flex";
         resumeLobbyBtn.style.display = "inline-block";
         resumeLobbyBtn.onclick = ()=> joinLobby(lastLobby);
       }
 
-      // Offer to reopen game route if we know the last game type
       if (lastGame && ROUTES[lastGame]) {
         banner.style.display = "flex";
         resumeGameBtn.style.display = "inline-block";
@@ -727,7 +740,21 @@
       clearBtn.onclick = ()=> { clearSession(); banner.style.display="none"; };
     }
 
-    // Run resume banner in login view too
+    // ---------- LOGOUT ----------
+    window.logout = async function(){
+      try {
+        if (currentLobbyId) { await leaveLobby(); }
+      } catch(e) { /* ignore */ }
+      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+      clearSession();
+      username = "";
+      showLoginUI();
+      document.getElementById('resumeBanner').style.display = 'none';
+      history.replaceState({}, "", window.location.pathname);
+      document.getElementById('error').textContent = "";
+    };
+
+    // Initial UI
     if (!username) { showLoginUI(); maybeOfferResume(); }
 
     // Expose
@@ -739,7 +766,6 @@
   </script>
 </body>
 </html>
-
 
 
 
