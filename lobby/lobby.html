@@ -89,7 +89,7 @@
     .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
     .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
     .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #fecaca; font-weight:700 }
-    .subtle{ color:var(--muted); font-size:.96rem }
+    .subtle{ color:#6b7280; font-size:.96rem }
     .cap{ height:8px; background:#fff1f2; border:1px solid var(--br); border-radius:999px; overflow:hidden }
     .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#f59e0b,#ef4444,#b91c1c) }
 
@@ -197,7 +197,8 @@
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
-                  <option value="splinters">🪄 Splinters (4P)</option><!-- CHANGED -->
+                  <option value="splinters">🪄 Splinters (4P)</option>
+                  <option value="biblegame">📖 Bible Game (4P)</option> <!-- ADDED -->
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -264,7 +265,8 @@
       mountonline:"/game/mountonline.html",
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
-      splinters:  "/game/Splinters.html",   // CHANGED
+      splinters:  "/game/Splinters.html",
+      biblegame:  "/game/biblegame.html",     // ADDED
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -275,8 +277,8 @@
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters"]); // CHANGED
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4 }; // CHANGED
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters","biblegame"]); // CHANGED
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4, biblegame: 4 }; // CHANGED
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -423,6 +425,7 @@
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
              type==='splinters'?'🪄 Splinters (4P)' :
+             type==='biblegame'?'📖 Bible Game (4P)' :  // ADDED
              '🐭 Cat & Mouse';
     }
 
@@ -457,7 +460,7 @@
 
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters'].includes(gameType)) { // CHANGED
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','biblegame'].includes(gameType)) { // CHANGED
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -766,6 +769,7 @@
   </script>
 </body>
 </html>
+
 
 
 
