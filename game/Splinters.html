@@ -3,23 +3,34 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Splinters — Multiplayer (10s Base Reveal, More Steal/Discard Combos)</title>
+<title>Splinters — Multiplayer (with Right Combo Panel)</title>
 <style>
   :root{
     --ink:#eaf2ff; --muted:#a7bfdc; --bg:#0a0e14; --pane:#0f1726; --edge:#1a2b46; --accent:#b91c1c; --accent-2:#7f1d1d;
-    --h:48px; --scoresH:38px; --oppsH:46px; --handH:102px; --riverW:min(96vw,720px);
+    --h:48px; --scoresH:38px; --oppsH:46px; --handH:102px;
+    --riverW:min(96vw,720px);
     --cardW: clamp(48px, 9vw, 66px); --cardH: calc(var(--cardW) * 1.33);
-    --handBottomOffset: 0px;
+    --handBottomOffset: 10vh;            /* elevated hand on mobile */
+    --sbW: 240px;                         /* side panel width */
+    --sbGap: 8px;
+    --padR: 0px;                          /* computed when panel open */
   }
-  @media (max-width: 760px){
-    :root{ --handBottomOffset: 10vh; }
-  }
+  @media (min-width: 901px){ :root{ --handBottomOffset: 8vh; } }
+  @media (max-width: 540px){ :root{ --sbW: 200px; } }
+
+  body.sb-open{ --padR: calc(var(--sbW) + var(--sbGap)); }
 
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:radial-gradient(1000px 700px at 60% -10%,#151f31 0%,#0a0e14 45%,#070a10 100%);color:var(--ink);font:600 12px/1.25 system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:radial-gradient(1000px 700px at 60% -10%,#151f31 0%,#0a0e14 45%,#070a10 100%);
+    color:var(--ink);font:600 12px/1.25 system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif;overflow:hidden;
+    -webkit-tap-highlight-color:transparent
+  }
   button{appearance:none;border:1px solid #2b3f64;background:#132139;color:#eaf3ff;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}
   button:active{transform:translateY(1px)}
+
+  /* Header bar */
   .top{position:fixed;inset:0 0 auto 0;height:var(--h);display:flex;align-items:center;justify-content:space-between;padding:6px 8px}
   .brand{display:flex;align-items:center;gap:8px}
   .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff14;border:1px solid #ffffff22;font-size:16px}
@@ -32,7 +43,7 @@
 
   /* Scoreboard medals */
   .scoresBar{position:fixed;left:0;right:0;top:var(--h);height:var(--scoresH);display:flex;align-items:center;justify-content:center;padding:0 6px}
-  .scores-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;overflow:auto;-webkit-overflow-scrolling:touch}
+  .scores-inner{width:calc(var(--riverW) + var(--padR));display:flex;gap:6px;justify-content:center;overflow:auto;-webkit-overflow-scrolling:touch}
   .sc{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid #223a5f;background:#0f1a2b;white-space:nowrap;font-size:11px}
   .sc .dot{width:10px;height:10px;border-radius:50%}
   .m1{border-color:#e6c200;background:linear-gradient(180deg,#2b2500,#0f1200);color:#ffe680}
@@ -44,7 +55,7 @@
 
   /* Opponents strip */
   .opps{position:fixed;left:0;right:0;top:calc(var(--h) + var(--scoresH));height:var(--oppsH);display:flex;align-items:center;justify-content:center;padding:0 6px}
-  .opps-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;overflow:hidden}
+  .opps-inner{width:calc(var(--riverW) + var(--padR));display:flex;gap:6px;justify-content:center;overflow:hidden}
   .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:6px}
   .opp .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mini{display:flex;gap:3px;margin-left:auto}
@@ -54,9 +65,14 @@
   .flag.sil{color:#fbbf24}
   .flag.shd{color:#60a5fa}
 
-  /* Board / river */
-  .main{position:absolute;inset:calc(var(--h) + var(--scoresH) + var(--oppsH)) 0 calc(env(safe-area-inset-bottom) + var(--handH) + var(--handBottomOffset) + 60px) 0;display:grid;place-items:center}
-  .riverWrap{width:var(--riverW)}
+  /* Board / river (centered) */
+  .main{
+    position:absolute;
+    inset:calc(var(--h) + var(--scoresH) + var(--oppsH)) 0 calc(env(safe-area-inset-bottom) + var(--handH) + var(--handBottomOffset) + 60px) 0;
+    display:grid;place-items:center;
+    padding-right: var(--padR);
+  }
+  .riverWrap{width:var(--riverW);margin:0 auto}
   .river{display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
   .slot{width:var(--cardW);height:var(--cardH);border-radius:8px;border:1px solid var(--edge);background:#0f1a2a;display:grid;place-items:center;position:relative}
   .slot.empty{border-style:dashed;opacity:.6}
@@ -67,8 +83,6 @@
   .sel{outline:3px solid var(--accent);outline-offset:2px}
   .frozen .slot{filter:grayscale(.2) contrast(.92);opacity:.88}
   .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
-
-  /* flip-back pattern */
   .back{
     background:
       linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%),
@@ -84,8 +98,8 @@
   .timer .txt{position:absolute;font-size:9px;font-weight:900;color:#ffd7d7}
 
   /* Suggestions / buttons above hand */
-  .suggest{position:fixed;left:0;right:0;bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);display:grid;place-items:center}
-  .suggest-inner{width:var(--riverW);display:grid;grid-template-rows:auto auto;gap:6px}
+  .suggest{position:fixed;left:0;right:0;bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);display:grid;place-items:center;pointer-events:none}
+  .suggest-inner{width:calc(var(--riverW) + var(--padR));display:grid;grid-template-rows:auto auto;gap:6px;pointer-events:all}
   .ready{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
   .pill{display:flex;flex-direction:column;gap:4px;border:1px solid #223a5f;background:#111e33;border-radius:12px;padding:6px 8px;font-size:11px;color:#dbe7ff;min-width:240px;max-width:calc(var(--riverW) - 12px)}
   .pill .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -96,9 +110,9 @@
   .playBtn:hover{filter:brightness(1.05)}
   .playBtn:active{background:var(--accent-2)}
 
-  /* Hand (elevated on mobile) */
+  /* Hand (elevated) */
   .handWrap{position:fixed;left:0;right:0;bottom:var(--handBottomOffset);height:calc(var(--handH) + env(safe-area-inset-bottom));padding:6px 8px env(safe-area-inset-bottom)}
-  .hand{height:100%;margin:0 auto;width:var(--riverW);border:1px solid var(--edge);background:#0f1a2a;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
+  .hand{height:100%;margin:0 auto;width:calc(var(--riverW) + var(--padR));border:1px solid var(--edge);background:#0f1a2a;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
   .hslot{width:calc(var(--cardW) * 1.02);height:calc(var(--cardH) * 1.02);border:1px solid var(--edge);background:#0d1728;border-radius:8px;display:grid;place-items:center}
   .hslot.empty{opacity:.5;border-style:dashed}
 
@@ -128,9 +142,38 @@
   @keyframes tIn{to{opacity:1;transform:translateY(0)}}
   .toast.out{animation:tOut .22s ease-in forwards}
   @keyframes tOut{to{opacity:0;transform:translateY(-6px)}}
+
+  /* ===== Right Combo Panel ===== */
+  .sidepanel{
+    position:fixed; right:6px;
+    top:calc(var(--h) + var(--scoresH) + 6px);
+    bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);
+    width:var(--sbW); background:#0f1a2a; border:1px solid var(--edge); border-radius:10px;
+    display:flex; flex-direction:column; overflow:hidden; z-index:31;
+  }
+  .sp-head{display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px; border-bottom:1px solid #1b2b48}
+  .sp-title{font-weight:900}
+  .sp-btn{padding:4px 8px; border-radius:999px; font-size:11px}
+  .sp-body{overflow:auto; padding:6px}
+  .comboRow{border:1px solid #223a5f; background:#111e33; color:#dbe7ff; border-radius:10px; padding:6px; margin-bottom:6px; display:grid; gap:2px}
+  .comboRow .r1{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .comboRow .cName{font-weight:900; font-size:11px}
+  .comboRow .cPts{opacity:.9; font-size:11px}
+  .comboRow .req{font-size:12px; opacity:.95}
+  .comboRow .eff{font-size:10px; opacity:.9}
+  .sidepanel.min{ width:40px; }
+  .sidepanel.min .sp-body{ display:none; }
+  .sidepanel.min .sp-title{ display:none; }
+  .sidepanel.min .sp-head{ justify-content:center; }
+  @media (max-width: 480px){
+    body:not(.persist-open) .sidepanel{ width:40px; }
+    body:not(.persist-open) .sidepanel .sp-body{ display:none; }
+    body:not(.persist-open) .sidepanel .sp-title{ display:none; }
+    body:not(.persist-open){ --padR: 48px; }
+  }
 </style>
 </head>
-<body>
+<body class="sb-open">
   <div class="top">
     <div class="brand">
       <div class="logo">🪄</div>
@@ -171,6 +214,15 @@
 
   <!-- Hand -->
   <div class="handWrap"><div class="hand" id="hand"></div></div>
+
+  <!-- Right Combo Panel -->
+  <aside id="comboPanel" class="sidepanel">
+    <div class="sp-head">
+      <span class="sp-title">Combos (Pairs & Sets)</span>
+      <button id="spToggle" class="sp-btn">«</button>
+    </div>
+    <div class="sp-body" id="comboList"></div>
+  </aside>
 
   <!-- Winner -->
   <div class="overlay" id="over">
@@ -266,31 +318,40 @@ const NEED = {
   fam:(fam)=>({fam,label:fam, test:c=>c.fam===fam}),
 };
 
-/* EFFECT STRING LEGEND (parsed below)
-   - stealEach:N                  -> each opponent lose N random to you
-   - stealTarget:FAM|any          -> pick card from a player (targeted UI)
-   - duplicateTarget:any          -> copy any targeted card to your hand
-   - destroyTarget:any            -> destroy targeted card (to discard)
-   - destroyRelicEach             -> each opponent loses first Relic if has
-   - freeze:MS                    -> freeze river (no swaps/takes)
-   - flip:MS                      -> reveal ALL center for MS (local UI)
-   - revealOpp:MS                 -> show opponents’ hands for MS (UI only)
-   - draw:N                       -> draw N (to hand else discard)
-   - scry:N                       -> look top N, keep highest tier
-   - refreshColumn                -> refresh a random column (2 slots)
-   - refreshRow:top|bottom        -> refresh 5 slots row
-   - swapRiver                    -> swap 2 random center cards
-   - shieldSelf:MS                -> shield your hand from targeting
-   - banFam:FAM:MS                -> taking that fam from center blocked
-   - discardEach:N                -> each opponent discards N random
-   - discardNonBeastEach:1        -> each opponent discards a non-beast (or random)
-   - tradeRandom                  -> pick a player; swap random with them
-   - silenceTarget:MS             -> pick a player to lock taking/swapping
-*/
+/* EFFECT legend */
+const ICON = {
+  steal:'🫴', destroy:'💥', freeze:'🧊', flip:'🔁', reveal:'👁️',
+  draw:'➕', duplicate:'🪞', shield:'🛡️', scry:'🔮', refresh:'♻️',
+  swap:'🔀', ban:'🚫', trade:'🔁', silence:'🤐', cull:'🪓', discard:'🗑️', points:'⭐'
+};
+function effectDescription(combo){
+  const e = combo.effect || '';
+  if (!e) return `${ICON.points} +${combo.pts}`;
+  if (e.startsWith('stealEach'))       return `${ICON.steal} Steal 1 from all`;
+  if (e.startsWith('stealTarget:'))    return `${ICON.steal} Steal a ${e.split(':')[1]}`;
+  if (e.startsWith('duplicateTarget')) return `${ICON.duplicate} Duplicate any card`;
+  if (e.startsWith('destroyTarget'))   return `${ICON.destroy} Destroy any card`;
+  if (e==='destroyRelicEach')          return `${ICON.destroy} Destroy a Relic from each foe`;
+  if (e.startsWith('freeze:'))         return `${ICON.freeze} Freeze river ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('flip:'))           return `${ICON.flip} Reveal center ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('revealOpp:'))      return `${ICON.reveal} Reveal opponents ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('draw:'))           return `${ICON.draw} Draw ${e.split(':')[1]}`;
+  if (e==='refreshColumn')             return `${ICON.refresh} Refresh a column`;
+  if (e==='swapRiver')                 return `${ICON.swap} Swap two center cards`;
+  if (e.startsWith('refreshRow:'))     return `${ICON.refresh} Refresh ${e.endsWith('top')?'top':'bottom'} row`;
+  if (e.startsWith('shieldSelf:'))     return `${ICON.shield} Shield ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('scry:'))           return `${ICON.scry} Scry top ${e.split(':')[1]}`;
+  if (e.startsWith('banFam:'))         return `${ICON.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
+  if (e.startsWith('discardEach:'))    return `${ICON.discard} All foes discard ${e.split(':')[1]}`;
+  if (e==='discardNonBeastEach:1')     return `${ICON.cull} Foes discard non-Beast`;
+  if (e.startsWith('tradeRandom'))     return `${ICON.trade} Trade a random card`;
+  if (e.startsWith('silenceTarget:'))  return `${ICON.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('legend:'))         return `🌟 Legend combo`;
+  return `${ICON.points} +${combo.pts}`;
+}
 
 /* ======= Combos ======= */
 const COMBOS = [
-  /* existing effects */
   {key:'ThunderHeist', label:'Thunder Heist', pts:6, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider')], effect:'stealEach:1'},
   {key:'MidnightAssassination', label:'Midnight Assassination', pts:7, need:[NEED.id('ShadowDagger'),NEED.id('SchDark'),NEED.id('StormCloud')], effect:'destroyTarget:any'},
   {key:'StormShatter', label:'Storm Shatter', pts:6, need:[NEED.id('StormLance'),NEED.id('Lightning'),NEED.id('SchStorm')], effect:'destroyRelicEach'},
@@ -303,20 +364,17 @@ const COMBOS = [
   {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'},
   {key:'TwilightEdict', label:'Twilight Edict', pts:5, need:[NEED.id('Eclipse'),NEED.id('SchDark')], effect:'revealOpp:3000'},
 
-  /* legends */
   {key:'AscendantTempest', label:'ASCENDANT TEMPEST', pts:42, need:[NEED.id('SchStorm'),NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider'),NEED.id('Eclipse')], effect:'legend:tempest'},
   {key:'RelicsUnleashed', label:'RELICS UNLEASHED', pts:34, need:[NEED.id('SanctumOrb'),NEED.id('MirrorStars'),NEED.id('StormLance'),NEED.id('SunCrown')], effect:'legend:relics'},
   {key:'ScholarsCouncil', label:'SCHOLARS COUNCIL', pts:28, need:[NEED.id('SchLight'),NEED.id('SchDark'),NEED.id('SchStars'),NEED.id('SchTime')], effect:'legend:council'},
   {key:'BeastDominion', label:'BEAST DOMINION', pts:30, need:[NEED.id('BeastMaster'),NEED.id('WolfTamer'),NEED.id('SkySerpent'),NEED.id('ShadowWolf')], effect:'legend:beast'},
 
-  /* more reveals / scry */
   {key:'OrbSurvey', label:'Orb Survey', pts:8, need:[NEED.id('SanctumOrb'),NEED.id('SchTime'),NEED.id('SchLight')], effect:'scry:4'},
   {key:'CelestialPeek', label:'Celestial Peek', pts:7, need:[NEED.id('SchStars'),NEED.id('MirrorStars'),NEED.id('Sun')], effect:'flip:4000'},
   {key:'TempestScout', label:'Tempest Scout', pts:6, need:[NEED.id('StormRider'),NEED.id('StormCloud'),NEED.id('Rain')], effect:'flip:3000'},
   {key:'EyeOfTheStorm', label:'Eye of the Storm', pts:7, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('SchStorm')], effect:'scry:3'},
   {key:'EclipsedRevelation', label:'Eclipsed Revelation', pts:8, need:[NEED.id('Eclipse'),NEED.id('SchDark'),NEED.id('SchTime')], effect:'flip:5000'},
 
-  /* more steal / discard */
   {key:'TempestPillage', label:'Tempest Pillage', pts:7, need:[NEED.id('StormRider'),NEED.id('ShadowDagger'),NEED.id('Lightning')], effect:'stealEach:1'},
   {key:'RelicRobbery', label:'Relic Robbery', pts:7, need:[NEED.id('StormLance'),NEED.id('ShadowDagger'),NEED.id('MirrorStars')], effect:'stealTarget:Relic'},
   {key:'EclipseTheft', label:'Eclipse Theft', pts:8, need:[NEED.id('Eclipse'),NEED.id('SchDark'),NEED.id('ShadowDagger')], effect:'stealTarget:any'},
@@ -326,7 +384,6 @@ const COMBOS = [
   {key:'ScholarsEdict', label:'Scholars’ Edict', pts:9, need:[NEED.id('SchStars'),NEED.id('SchTime'),NEED.id('SchDark')], effect:'discardEach:1'},
   {key:'BlizzardSnatch', label:'Blizzard Snatch', pts:7, need:[NEED.id('Blizzard'),NEED.id('SchStorm'),NEED.id('StormRider')], effect:'stealTarget:Weather'},
 
-  /* sets & utilities already present / tuned */
   {key:'Cloudburst', label:'Cloudburst', pts:7, need:[NEED.id('StormCloud'),NEED.id('Rain'),NEED.id('Lightning')], effect:'refreshColumn'},
   {key:'SolarCoronation', label:'Solar Coronation', pts:12, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('SchLight')], effect:'shieldSelf:4000'},
   {key:'RhinoStudy', label:'Rhino Study', pts:9, need:[NEED.id('RockRhino'),NEED.id('SchBeast'),NEED.id('BeastMaster')], effect:'draw:1'},
@@ -372,43 +429,48 @@ const el = {
   pickBody: document.getElementById('pickBody'),
   pickCancel: document.getElementById('pickCancel'),
   toasts: document.getElementById('toasts'),
+  sp: document.getElementById('comboPanel'),
+  spToggle: document.getElementById('spToggle'),
+  spList: document.getElementById('comboList')
 };
 el.gameIdBadge.textContent = `ID: ${gameId.slice(0,6)}`;
 
-/* ======= Effect text for combo buttons ======= */
-const ICON = {
-  steal:'🫴', destroy:'💥', freeze:'🧊', flip:'🔁', reveal:'👁️',
-  draw:'➕', duplicate:'🪞', shield:'🛡️', scry:'🔮', refresh:'♻️',
-  swap:'🔀', ban:'🚫', trade:'🔁', silence:'🤐', cull:'🪓', discard:'🗑️', points:'⭐'
-};
-function effectDescription(combo){
-  const e = combo.effect || '';
-  if (!e) return `${ICON.points} +${combo.pts}`;
-  if (e.startsWith('stealEach'))       return `${ICON.steal} Steal 1 from all`;
-  if (e.startsWith('stealTarget:'))    return `${ICON.steal} Steal a ${e.split(':')[1]}`;
-  if (e.startsWith('duplicateTarget')) return `${ICON.duplicate} Duplicate any card`;
-  if (e.startsWith('destroyTarget'))   return `${ICON.destroy} Destroy any card`;
-  if (e==='destroyRelicEach')          return `${ICON.destroy} Destroy a Relic from each foe`;
-  if (e.startsWith('freeze:'))         return `${ICON.freeze} Freeze river ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('flip:'))           return `${ICON.flip} Reveal center ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('revealOpp:'))      return `${ICON.reveal} Reveal opponents ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('draw:'))           return `${ICON.draw} Draw ${e.split(':')[1]}`;
-  if (e==='refreshColumn')             return `${ICON.refresh} Refresh a column`;
-  if (e==='swapRiver')                 return `${ICON.swap} Swap two center cards`;
-  if (e.startsWith('refreshRow:'))     return `${ICON.refresh} Refresh ${e.endsWith('top')?'top':'bottom'} row`;
-  if (e.startsWith('shieldSelf:'))     return `${ICON.shield} Shield ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('scry:'))           return `${ICON.scry} Scry top ${e.split(':')[1]}`;
-  if (e.startsWith('banFam:'))         return `${ICON.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
-  if (e.startsWith('discardEach:'))    return `${ICON.discard} All foes discard ${e.split(':')[1]}`;
-  if (e==='discardNonBeastEach:1')     return `${ICON.cull} Foes discard non-Beast`;
-  if (e.startsWith('tradeRandom'))     return `${ICON.trade} Trade a random card`;
-  if (e.startsWith('silenceTarget:'))  return `${ICON.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('legend:'))         return `🌟 Legend combo`;
-  return `${ICON.points} +${combo.pts}`;
+const BASE_REVEAL_MS = 10000; // 10s
+const now = ()=> Date.now();
+
+/* ======= Side panel (open/minimize) ======= */
+const SB_KEY = 'splinters.panel.open';
+function setPanel(open, persist=true){
+  document.body.classList.toggle('sb-open', open);
+  el.sp.classList.toggle('min', !open);
+  el.spToggle.textContent = open ? '«' : '»';
+  if (persist) localStorage.setItem(SB_KEY, open ? '1' : '0');
+  // also allow “persist-open” flag (keeps open on tiny screens if user forced it)
+  document.body.classList.toggle('persist-open', open && window.innerWidth <= 480);
 }
+el.spToggle.addEventListener('click', ()=> setPanel(el.sp.classList.contains('min')));
+setPanel(localStorage.getItem(SB_KEY)!=='0', false);
+
+/* Render the panel: compact, scrollable list of combos & requirements */
+function renderComboPanel(){
+  const rows = COMBOS.slice().sort((a,b)=> (b.pts + (b.effect?2:0)) - (a.pts + (a.effect?2:0)));
+  el.spList.innerHTML = '';
+  for(const c of rows){
+    const r = document.createElement('div'); r.className='comboRow';
+    const reqEmo = c.need.map(n=> n.id ? byId[n.id].emoji : famIcon(n.fam)).join(' ');
+    const row1 = document.createElement('div'); row1.className='r1';
+    const nm = document.createElement('div'); nm.className='cName'; nm.textContent = c.label;
+    const pts = document.createElement('div'); pts.className='cPts'; pts.textContent = `+${c.pts}`;
+    row1.append(nm, pts);
+    const req = document.createElement('div'); req.className='req'; req.textContent = `Need: ${reqEmo}`;
+    const eff = document.createElement('div'); eff.className='eff'; eff.textContent = `Effect: ${effectDescription(c)}`;
+    r.append(row1, req, eff);
+    el.spList.appendChild(r);
+  }
+}
+renderComboPanel();
 
 /* ======= Helpers ======= */
-const BASE_REVEAL_MS = 10000; // 10s base reveal for any newly spawned center card
 function miniHand(count){ return `<div class="mini">${Array.from({length:Math.min(5,count)},()=>'<i></i>').join('')}</div>`; }
 function buildDeck(){
   const freq = { Scholar:3, Weather:4, Beast:3, Tamer:3, Relic:3 };
@@ -418,60 +480,13 @@ function buildDeck(){
   for(let i=deck.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [deck[i],deck[j]]=[deck[j],deck[i]]; }
   return deck;
 }
-const now = ()=> Date.now();
-
-/* ======= Local reveal timers (per river slot) ======= */
 const localRevealUntil = Array(10).fill(0);
 const localRevealStart = Array(10).fill(0);
 const localRevealDur   = Array(10).fill(0);
 let   localFlipHighlightUntil = 0;
 const prevRiverUids = Array(10).fill(null);
-
-/* ======= Suggestions ======= */
-function findReadyCombos(handIds){
-  const hand = handIds.map(id=>byId[id]);
-  const out=[];
-  for(const combo of COMBOS){
-    const used = new Array(hand.length).fill(false);
-    const take = [];
-    for(const req of combo.need){
-      let idx=-1;
-      for(let i=0;i<hand.length;i++){
-        if(used[i]) continue;
-        if(req.test(hand[i])){ idx=i; break; }
-      }
-      if(idx<0){ take.length=0; break; }
-      used[idx]=true; take.push(idx);
-    }
-    if(take.length){ out.push({combo,indexes:take}); }
-  }
-  out.sort((a,b)=> (b.combo.pts + (b.combo.effect?3:0)) - (a.combo.pts + (a.combo.effect?3:0)));
-  return out.slice(0,3);
-}
-function famIcon(fam){
-  return fam==='Scholar'?'📘':fam==='Beast'?'🐾':fam==='Relic'?'🗝️':fam==='Tamer'?'⚔️':fam==='Weather'?'⛅':'❓';
-}
-function findNearCombosDetailed(handIds, limitMissing=2){
-  const hand = handIds.map(id=>byId[id]);
-  const res=[];
-  for(const combo of COMBOS){
-    const used = new Array(hand.length).fill(false);
-    const missing=[];
-    for(const req of combo.need){
-      let ok=-1;
-      for(let i=0;i<hand.length;i++){
-        if(used[i]) continue;
-        if(req.test(hand[i])){ ok=i; break; }
-      }
-      if(ok>=0) used[ok]=true; else missing.push(req);
-    }
-    if(missing.length>0 && missing.length<=limitMissing){
-      res.push({combo, missing});
-    }
-  }
-  res.sort((a,b)=> (a.missing.length - b.missing.length) || ((b.combo.pts||0) - (a.combo.pts||0)));
-  return res.slice(0,3);
-}
+const makeUID = ()=> Math.random().toString(36).slice(2);
+const famIcon = (fam)=> fam==='Scholar'?'📘':fam==='Beast'?'🐾':fam==='Relic'?'🗝️':fam==='Tamer'?'⚔️':fam==='Weather'?'⛅':'❓';
 
 /* ======= Game bootstrap ======= */
 async function ensureGameAndSeat(){
@@ -542,7 +557,6 @@ let sel = {zone:null, idx:null};
 let tapLock = 0;
 const lockShort = ()=> (tapLock = now() + 220);
 const canTap = ()=> now() > tapLock;
-const makeUID = ()=> Math.random().toString(36).slice(2);
 
 function youAreSilenced(g){ const s = g.silenced||{}; const until = s[username]||0; return now() < until; }
 function famBanned(g, cardId){ const ban = g.ban; if (!ban) return false; if (now() >= (ban.until||0)) return false; return byId[cardId].fam === ban.fam; }
@@ -594,7 +608,7 @@ async function swapHandRiver(hIdx, rIdx){
   });
 }
 
-/* ======= Effects (helpers) ======= */
+/* ======= Effects ======= */
 function pushEvent(g, e){ g.events = (g.events||[]).concat([e]).slice(-20); }
 function oppList(g, exclude){ return (g.players||[]).filter(p=>p!==exclude); }
 function pushToHandOrDiscard(g, player, cardId){
@@ -648,7 +662,7 @@ function effectNeedsTarget(effect){
 function famMatch(fam, id){ return fam==='any' ? true : byId[id].fam===fam; }
 function targetShielded(g, player){ const t=(g.shields||{})[player]||0; return now()<t; }
 
-/* Generic non-target effect applier (plus legends & a few customs) */
+/* Generic non-target effect applier + legends */
 function applyNonTargetEffect(g, who, comboKey){
   const combo = COMBO_BY_KEY[comboKey] || {effect:''};
   const e = combo.effect || '';
@@ -738,11 +752,7 @@ function applyNonTargetEffect(g, who, comboKey){
   if (e.startsWith('discardEach:')){
     let n = Number(e.split(':')[1]||'1'); if (n<1) n=1;
     for(const opp of oppList(g, who)){
-      while(n-- > 0){
-        const d = removeRandomFromHand(g, opp);
-        if (d) (g.discard||=(g.discard||[])).push(d.id);
-      }
-      n = Number(e.split(':')[1]||'1'); // reset per opp
+      for(let k=0;k<n;k++){ const d = removeRandomFromHand(g, opp); if (d) (g.discard||=(g.discard||[])).push(d.id); }
     }
     pushEvent(g, {ts:now(), text:`${who} forced discards from all foes.`});
     return;
@@ -766,7 +776,6 @@ function applyNonTargetEffect(g, who, comboKey){
     return;
   }
 
-  // fallback: just note points
   pushEvent(g, {ts:now(), text:`${who} played ${combo.label} (+${combo.pts||0}).`});
 }
 
@@ -842,6 +851,49 @@ async function playCombo(comboKey, useUids, targetInfo){
   await endIfDeckDone();
 }
 
+/* ======= Suggestions ======= */
+function findReadyCombos(handIds){
+  const hand = handIds.map(id=>byId[id]);
+  const out=[];
+  for(const combo of COMBOS){
+    const used = new Array(hand.length).fill(false);
+    const take = [];
+    for(const req of combo.need){
+      let idx=-1;
+      for(let i=0;i<hand.length;i++){
+        if(used[i]) continue;
+        if(req.test(hand[i])){ idx=i; break; }
+      }
+      if(idx<0){ take.length=0; break; }
+      used[idx]=true; take.push(idx);
+    }
+    if(take.length){ out.push({combo,indexes:take}); }
+  }
+  out.sort((a,b)=> (b.combo.pts + (b.combo.effect?3:0)) - (a.combo.pts + (a.combo.effect?3:0)));
+  return out.slice(0,3);
+}
+function findNearCombosDetailed(handIds, limitMissing=2){
+  const hand = handIds.map(id=>byId[id]);
+  const res=[];
+  for(const combo of COMBOS){
+    const used = new Array(hand.length).fill(false);
+    const missing=[];
+    for(const req of combo.need){
+      let ok=-1;
+      for(let i=0;i<hand.length;i++){
+        if(used[i]) continue;
+        if(req.test(hand[i])){ ok=i; break; }
+      }
+      if(ok>=0) used[ok]=true; else missing.push(req);
+    }
+    if(missing.length>0 && missing.length<=limitMissing){
+      res.push({combo, missing});
+    }
+  }
+  res.sort((a,b)=> (a.missing.length - b.missing.length) || ((b.combo.pts||0) - (a.combo.pts||0)));
+  return res.slice(0,3);
+}
+
 /* ======= Target pickers ======= */
 function openTargetCardPicker(game, combo, useUids, needs){
   const picker = el.pick, title = el.pickTitle, body = el.pickBody;
@@ -895,12 +947,7 @@ el.pickCancel.addEventListener('click', ()=> el.pick.classList.remove('show'));
 /* ======= Rendering ======= */
 function cardFrontHTML(id){
   const c = byId[id];
-  return `
-    <div class="front">
-      <div class="t">${c.emoji} ${c.name}</div>
-      <div class="f">${c.fam} • Tier ${c.tier}</div>
-    </div>
-  `;
+  return `<div class="front"><div class="t">${c.emoji} ${c.name}</div><div class="f">${c.fam} • Tier ${c.tier}</div></div>`;
 }
 function cardBackHTML(){ return `<div class="back"></div>`; }
 function timerHTML(){ return `
@@ -1172,7 +1219,7 @@ onSnapshot(gref, async (snap)=>{
   if (!snap.exists()) return;
   const g = snap.data();
 
-  /* Local flip-timer bootstrapping: reveal each newly spawned card for 10s */
+  // Local 10s flip when a new UID appears in a river slot
   const R = g.river||[];
   for(let i=0;i<10;i++){
     const u = R[i]?.uid || null;
@@ -1252,9 +1299,18 @@ onSnapshot(gref, (snap)=>{
 
 /* ======= Periodic end-condition check ======= */
 setInterval(endIfDeckDone, 1200);
+
+/* ======= Responsive: auto-open padding when panel open ======= */
+window.addEventListener('resize', ()=>{
+  // Keep body sb-open in sync with persistence on small screens
+  const persistedOpen = (localStorage.getItem(SB_KEY) !== '0');
+  setPanel(persistedOpen, false);
+});
 </script>
 </body>
 </html>
+
+
 
 
 
