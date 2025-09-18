@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Splinters — Multiplayer (Mobile-Elevated Hand, Medals, Flip Timers, Effect Hints)</title>
+<title>Splinters — Multiplayer (Mobile-elevated Hand, Flip Timers, Clear Combo Buttons)</title>
 <style>
   :root{
     --ink:#eaf2ff; --muted:#a7bfdc; --bg:#0a0e14; --pane:#0f1726; --edge:#1a2b46; --accent:#b91c1c; --accent-2:#7f1d1d;
@@ -83,20 +83,15 @@
   .timer .prog{fill:none;stroke:#ef4444;stroke-width:3;stroke-linecap:round}
   .timer .txt{position:absolute;font-size:9px;font-weight:900;color:#ffd7d7}
 
-  /* Effect hint chips on card faces */
-  .front .hints{margin-top:4px;display:flex;gap:4px;flex-wrap:wrap}
-  .chipHint{
-    display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:999px;
-    border:1px solid #2a426d;background:#12223d;color:#dbe7ff;font-size:10px;line-height:1;white-space:nowrap;
-    max-width:100%;overflow:hidden;text-overflow:ellipsis
-  }
-
   /* Suggestions / buttons above hand */
   .suggest{position:fixed;left:0;right:0;bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);display:grid;place-items:center}
   .suggest-inner{width:var(--riverW);display:grid;grid-template-rows:auto auto;gap:6px}
   .ready{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .pill{display:flex;align-items:center;gap:6px;border:1px solid #223a5f;background:#111e33;border-radius:999px;padding:4px 8px;font-size:11px;color:#dbe7ff}
-  .need{opacity:.9}
+  .pill{display:flex;flex-direction:column;gap:4px;border:1px solid #223a5f;background:#111e33;border-radius:12px;padding:6px 8px;font-size:11px;color:#dbe7ff;min-width:240px;max-width:calc(var(--riverW) - 12px)}
+  .pill .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pill .label{font-weight:900}
+  .pill .cards{opacity:.9}
+  .pill .desc{font-size:10px;opacity:.95}
   .playBtn{background:var(--accent);border-color:#5e1111;color:#fff;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.3px}
   .playBtn:hover{filter:brightness(1.05)}
   .playBtn:active{background:var(--accent-2)}
@@ -270,6 +265,7 @@ const NEED = {
   id:(id)=>({id,label:byId[id].name, test:c=>c.id===id}),
   fam:(fam)=>({fam,label:fam, test:c=>c.fam===fam}),
 };
+
 const COMBOS = [
   {key:'ThunderHeist', label:'Thunder Heist', pts:6, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider')], effect:'stealEach:1'},
   {key:'MidnightAssassination', label:'Midnight Assassination', pts:7, need:[NEED.id('ShadowDagger'),NEED.id('SchDark'),NEED.id('StormCloud')], effect:'destroyTarget:any'},
@@ -283,11 +279,13 @@ const COMBOS = [
   {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'},
   {key:'TwilightEdict', label:'Twilight Edict', pts:5, need:[NEED.id('Eclipse'),NEED.id('SchDark')], effect:'revealOpp:3000'},
 
+  /* legends */
   {key:'AscendantTempest', label:'ASCENDANT TEMPEST', pts:42, need:[NEED.id('SchStorm'),NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider'),NEED.id('Eclipse')], effect:'legend:tempest'},
   {key:'RelicsUnleashed', label:'RELICS UNLEASHED', pts:34, need:[NEED.id('SanctumOrb'),NEED.id('MirrorStars'),NEED.id('StormLance'),NEED.id('SunCrown')], effect:'legend:relics'},
   {key:'ScholarsCouncil', label:'SCHOLARS COUNCIL', pts:28, need:[NEED.id('SchLight'),NEED.id('SchDark'),NEED.id('SchStars'),NEED.id('SchTime')], effect:'legend:council'},
   {key:'BeastDominion', label:'BEAST DOMINION', pts:30, need:[NEED.id('BeastMaster'),NEED.id('WolfTamer'),NEED.id('SkySerpent'),NEED.id('ShadowWolf')], effect:'legend:beast'},
 
+  /* more effects */
   {key:'Cloudburst', label:'Cloudburst', pts:7, need:[NEED.id('StormCloud'),NEED.id('Rain'),NEED.id('Lightning')], effect:'refreshColumn'},
   {key:'SolarCoronation', label:'Solar Coronation', pts:12, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('SchLight')], effect:'shieldSelf:4000'},
   {key:'RhinoStudy', label:'Rhino Study', pts:9, need:[NEED.id('RockRhino'),NEED.id('SchBeast'),NEED.id('BeastMaster')], effect:'draw:1'},
@@ -295,7 +293,6 @@ const COMBOS = [
   {key:'WeatherSet', label:'Weather Set', pts:20, need:[NEED.id('Rain'),NEED.id('Sun'),NEED.id('Blizzard'),NEED.id('Lightning')], effect:'refreshRow:top'},
   {key:'Skychain', label:'Skychain', pts:17, need:[NEED.id('SkySerpent'),NEED.id('BeastMaster'),NEED.id('Lightning')], effect:'swapRiver'},
   {key:'ScholarTriad', label:'Scholar Triad', pts:18, need:[NEED.id('SchLight'),NEED.id('SchStorm'),NEED.id('SchBeast')], effect:'revealOpp:2000'},
-
   {key:'BeastTrio', label:'Beast Trio', pts:12, need:[NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast)], effect:'banFam:Weather:4000'},
   {key:'BeastHorde', label:'Beast Horde', pts:18, need:[NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast)], effect:'refreshRow:bottom'},
   {key:'ScholarAssembly', label:'Scholar Assembly', pts:16, need:[NEED.fam(F.Scholar), NEED.fam(F.Scholar), NEED.fam(F.Scholar)], effect:'pullRelics:1'},
@@ -339,63 +336,35 @@ const el = {
 };
 el.gameIdBadge.textContent = `ID: ${gameId.slice(0,6)}`;
 
-/* ======= Effect hints on cards ======= */
-const EFFECT_ICONS = {
-  steal: '🫴', destroy: '💥', freeze: '🧊', flip:'🔁', reveal:'👁️',
+/* ======= Effect text for combo buttons ======= */
+const ICON = {
+  steal:'🫴', destroy:'💥', freeze:'🧊', flip:'🔁', reveal:'👁️',
   draw:'➕', duplicate:'🪞', shield:'🛡️', scry:'🔮', refresh:'♻️',
   swap:'🔀', ban:'🚫', trade:'🔁', silence:'🤐', cull:'🪓', points:'⭐'
 };
-function shortEffectForCombo(combo){
+function effectDescription(combo){
   const e = combo.effect || '';
-  if (!e) return `${EFFECT_ICONS.points} +${combo.pts}`;
-  if (e.startsWith('stealEach'))       return `${EFFECT_ICONS.steal} Steal 1 each`;
-  if (e.startsWith('stealTarget:'))    return `${EFFECT_ICONS.steal} Steal ${e.split(':')[1]}`;
-  if (e.startsWith('duplicateTarget')) return `${EFFECT_ICONS.duplicate} Duplicate any`;
-  if (e.startsWith('destroyTarget'))   return `${EFFECT_ICONS.destroy} Destroy any`;
-  if (e.startsWith('freeze:'))         return `${EFFECT_ICONS.freeze} Freeze ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('flip:'))           return `${EFFECT_ICONS.flip} Flip ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('revealOpp:'))      return `${EFFECT_ICONS.reveal} Reveal ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e.startsWith('draw:'))           return `${EFFECT_ICONS.draw} Draw ${e.split(':')[1]}`;
-  if (e==='refreshColumn')             return `${EFFECT_ICONS.refresh} Refresh column`;
-  if (e==='swapRiver')                 return `${EFFECT_ICONS.swap} Swap two center`;
-  if (e.startsWith('refreshRow:'))     return `${EFFECT_ICONS.refresh} Refresh ${e.endsWith('top')?'top':'bottom'} row`;
-  if (e.startsWith('shieldSelf:'))     return `${EFFECT_ICONS.shield} Shield ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e==='scry3')                     return `${EFFECT_ICONS.scry} Scry 3`;
-  if (e.startsWith('banFam:'))         return `${EFFECT_ICONS.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
-  if (e.startsWith('tradeRandom'))     return `${EFFECT_ICONS.trade} Trade random`;
-  if (e.startsWith('silenceTarget:'))  return `${EFFECT_ICONS.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
-  if (e==='discardNonBeastEach:1')     return `${EFFECT_ICONS.cull} Foes discard non-Beast`;
-  if (e.startsWith('legend:'))         return `🌟 Legend`;
-  return `${EFFECT_ICONS.points} +${combo.pts}`;
-}
-/* Build per-card hint list (top 2 chips) */
-const CARD_HINTS = new Map();
-function hintScore(cmb, isIdExact){
-  const effectful = cmb.effect ? 1 : 0;
-  return (isIdExact? 200 : 0) + (effectful? 100 : 0) + (cmb.pts||0);
-}
-for (const c of CARDS){
-  const hints = [];
-  for (const cmb of COMBOS){
-    for (const need of cmb.need){
-      const exact = !!need.id && need.id===c.id;
-      const famOk = !!need.fam && need.fam===c.fam;
-      if (!exact && !famOk) continue;
-      hints.push({combo:cmb, exact, score:hintScore(cmb, exact)});
-      break;
-    }
-  }
-  hints.sort((a,b)=> b.score - a.score);
-  const out = [];
-  const seen = new Set();
-  for (const h of hints){
-    const blurb = shortEffectForCombo(h.combo);
-    if (seen.has(blurb)) continue;
-    seen.add(blurb);
-    out.push({label: blurb, title: `${h.combo.label} (+${h.combo.pts})`});
-    if (out.length>=2) break;
-  }
-  CARD_HINTS.set(c.id, out);
+  if (!e) return `${ICON.points} +${combo.pts}`;
+  if (e.startsWith('stealEach'))       return `${ICON.steal} Steal 1 from all`;
+  if (e.startsWith('stealTarget:'))    return `${ICON.steal} Steal a ${e.split(':')[1]}`;
+  if (e.startsWith('duplicateTarget')) return `${ICON.duplicate} Duplicate any card`;
+  if (e.startsWith('destroyTarget'))   return `${ICON.destroy} Destroy any card`;
+  if (e==='destroyRelicEach')          return `${ICON.destroy} Destroy a Relic from each foe`;
+  if (e.startsWith('freeze:'))         return `${ICON.freeze} Freeze river ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('flip:'))           return `${ICON.flip} Reveal center ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('revealOpp:'))      return `${ICON.reveal} Reveal opponents ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('draw:'))           return `${ICON.draw} Draw ${e.split(':')[1]}`;
+  if (e==='refreshColumn')             return `${ICON.refresh} Refresh a column`;
+  if (e==='swapRiver')                 return `${ICON.swap} Swap two center cards`;
+  if (e.startsWith('refreshRow:'))     return `${ICON.refresh} Refresh ${e.endsWith('top')?'top':'bottom'} row`;
+  if (e.startsWith('shieldSelf:'))     return `${ICON.shield} Shield ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e==='scry3')                     return `${ICON.scry} Scry top 3, keep best`;
+  if (e.startsWith('banFam:'))         return `${ICON.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
+  if (e.startsWith('tradeRandom'))     return `${ICON.trade} Trade a random card`;
+  if (e.startsWith('silenceTarget:'))  return `${ICON.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e==='discardNonBeastEach:1')     return `${ICON.cull} Foes discard non-Beast`;
+  if (e.startsWith('legend:'))         return `🌟 Legend combo`;
+  return `${ICON.points} +${combo.pts}`;
 }
 
 /* ======= Helpers ======= */
@@ -435,7 +404,7 @@ function findReadyCombos(handIds){
     }
     if(take.length){ out.push({combo,indexes:take}); }
   }
-  out.sort((a,b)=> (b.combo.pts + (b.combo.effect?2:0)) - (a.combo.pts + (a.combo.effect?2:0)));
+  out.sort((a,b)=> (b.combo.pts + (b.combo.effect?3:0)) - (a.combo.pts + (a.combo.effect?3:0)));
   return out.slice(0,3);
 }
 function famIcon(fam){
@@ -814,13 +783,10 @@ el.pickCancel.addEventListener('click', ()=> el.pick.classList.remove('show'));
 /* ======= Rendering ======= */
 function cardFrontHTML(id){
   const c = byIdMap[id];
-  const hints = CARD_HINTS.get(id) || [];
-  const chips = hints.map(h=>`<span class="chipHint" title="${h.title}">${h.label}</span>`).join('');
   return `
     <div class="front">
       <div class="t">${c.emoji} ${c.name}</div>
       <div class="f">${c.fam} • Tier ${c.tier}</div>
-      ${chips ? `<div class="hints">${chips}</div>` : ''}
     </div>
   `;
 }
@@ -930,20 +896,31 @@ function renderReady(game){
   for(const r of ready){
     const combo = r.combo;
     const emo = r.indexes.map(i => byIdMap[my[i].id].emoji).join(' ');
-    const p = document.createElement('div'); p.className='pill';
-    const label = document.createElement('span'); label.textContent = `${combo.label} (+${combo.pts})`;
-    const cards = document.createElement('span'); cards.textContent = `• ${emo}`;
-    const btn = document.createElement('button'); btn.className='playBtn'; btn.textContent='PLAY';
+    const desc = effectDescription(combo);
+
+    const pill=document.createElement('div'); pill.className='pill';
+    const top=document.createElement('div'); top.className='row';
+    const label=document.createElement('span'); label.className='label'; label.textContent = combo.label;
+    const cards=document.createElement('span'); cards.className='cards'; cards.textContent = `• ${emo}`;
+    const btn=document.createElement('button'); btn.className='playBtn'; btn.textContent = `PLAY — ${desc} (+${combo.pts})`;
+    btn.setAttribute('aria-label', `Play ${combo.label}. ${desc}. Adds ${combo.pts} points.`);
     btn.addEventListener('click', async ()=>{
       const useUids = r.indexes.map(i=>my[i].uid);
       const needs = effectNeedsTarget(combo.effect);
       if (needs){
-        if (needs.kind==='trade' || needs.kind==='silence'){ openTargetPlayerPicker(game, combo, useUids, needs.kind==='trade'?'Choose player to trade with':'Choose a player to silence'); }
-        else { openTargetCardPicker(game, combo, useUids, needs); }
-      } else { await playCombo(combo.key, useUids, null); }
+        if (needs.kind==='trade' || needs.kind==='silence'){
+          openTargetPlayerPicker(game, combo, useUids, needs.kind==='trade'?'Choose player to trade with':'Choose a player to silence');
+        } else {
+          openTargetCardPicker(game, combo, useUids, needs);
+        }
+      } else {
+        await playCombo(combo.key, useUids, null);
+      }
     });
-    p.append(label, cards, btn);
-    el.ready.appendChild(p);
+    top.append(label, cards, btn);
+    const sub=document.createElement('div'); sub.className='desc'; sub.textContent = `Effect: ${desc}`;
+    pill.append(top, sub);
+    el.ready.appendChild(pill);
   }
 }
 function renderNear(game){
@@ -955,9 +932,9 @@ function renderNear(game){
     el.near.appendChild(pill); return;
   }
   for(const n of near){
-    const pill=document.createElement('div'); pill.className='pill';
     const needsEmo = n.missing.map(m=> (m.id? byIdMap[m.id].emoji : famIcon(m.fam))).join(' ');
-    pill.innerHTML = `<span>${n.combo.label}</span> <span class="need">• need ${needsEmo}</span>`;
+    const pill=document.createElement('div'); pill.className='pill';
+    pill.innerHTML = `<div class="row"><span class="label">${n.combo.label}</span><span class="cards">• need ${needsEmo}</span></div>`;
     el.near.appendChild(pill);
   }
 }
@@ -968,7 +945,7 @@ function updateHUD(game){
   el.hostBadge.hidden = !(game.host===username);
 }
 
-/* Face/back + timer updater (local) */
+/* Face/back + timer updater (local reveal, 5s on spawn) */
 function rafFaces(){
   const slots = el.river.querySelectorAll('.slot');
   const t = now();
@@ -1166,6 +1143,8 @@ setInterval(endIfDeckDone, 1200);
 </script>
 </body>
 </html>
+
+
 
 
 
