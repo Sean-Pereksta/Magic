@@ -3,17 +3,16 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Splinters — Mobile Elevated Hand + Medal Scores</title>
+<title>Splinters — Multiplayer (Mobile-Elevated Hand, Medals, Flip Timers, Effect Hints)</title>
 <style>
   :root{
     --ink:#eaf2ff; --muted:#a7bfdc; --bg:#0a0e14; --pane:#0f1726; --edge:#1a2b46; --accent:#b91c1c; --accent-2:#7f1d1d;
     --h:48px; --scoresH:38px; --oppsH:46px; --handH:102px; --riverW:min(96vw,720px);
     --cardW: clamp(48px, 9vw, 66px); --cardH: calc(var(--cardW) * 1.33);
-    /* New: lift hand a bit on mobile via this offset */
     --handBottomOffset: 0px;
   }
   @media (max-width: 760px){
-    :root{ --handBottomOffset: 10vh; } /* elevate hand ~10% screen height */
+    :root{ --handBottomOffset: 10vh; }
   }
 
   *{box-sizing:border-box}
@@ -31,7 +30,7 @@
   .leave{background:#260c0c;border-color:#4b1a1a}
   .ghost{background:#0d1728;border-color:#1b2b48}
 
-  /* NEW: Scoreboard (medals) */
+  /* Scoreboard medals */
   .scoresBar{position:fixed;left:0;right:0;top:var(--h);height:var(--scoresH);display:flex;align-items:center;justify-content:center;padding:0 6px}
   .scores-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;overflow:auto;-webkit-overflow-scrolling:touch}
   .sc{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid #223a5f;background:#0f1a2b;white-space:nowrap;font-size:11px}
@@ -43,7 +42,7 @@
   .m3{border-color:#b2732a;background:linear-gradient(180deg,#23160a,#0f0b07);color:#ffd9b3}
   .m3 .dot{background:#cd7f32}
 
-  /* Opponents bar */
+  /* Opponents strip */
   .opps{position:fixed;left:0;right:0;top:calc(var(--h) + var(--scoresH));height:var(--oppsH);display:flex;align-items:center;justify-content:center;padding:0 6px}
   .opps-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;overflow:hidden}
   .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:6px}
@@ -55,7 +54,7 @@
   .flag.sil{color:#fbbf24}
   .flag.shd{color:#60a5fa}
 
-  /* River */
+  /* Board / river */
   .main{position:absolute;inset:calc(var(--h) + var(--scoresH) + var(--oppsH)) 0 calc(env(safe-area-inset-bottom) + var(--handH) + var(--handBottomOffset) + 60px) 0;display:grid;place-items:center}
   .riverWrap{width:var(--riverW)}
   .river{display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
@@ -65,40 +64,50 @@
   .front,.back{position:absolute;inset:0;display:grid;place-items:start;padding:5px}
   .front .t{font-weight:900;font-size:11px}
   .front .f{font-size:10px;color:#cfe1ffcc}
+  .sel{outline:3px solid var(--accent);outline-offset:2px}
+  .frozen .slot{filter:grayscale(.2) contrast(.92);opacity:.88}
+  .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
+
+  /* flip-back pattern */
   .back{
     background:
       linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%),
       linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%);
     background-size: 12px 12px; background-position: 0 0, 6px 6px; background-color:#0a1422;
   }
-  .sel{outline:3px solid var(--accent);outline-offset:2px}
-  .frozen .slot{filter:grayscale(.2) contrast(.92);opacity:.88}
-  .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
 
-  /* Flip timer on each river card */
+  /* Flip timer per river card */
   .timer{position:absolute;top:4px;right:4px;width:22px;height:22px;display:grid;place-items:center;pointer-events:none;opacity:.92;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
   .timer svg{width:22px;height:22px}
   .timer .track{fill:none;stroke:#243a5f;stroke-width:3}
   .timer .prog{fill:none;stroke:#ef4444;stroke-width:3;stroke-linecap:round}
   .timer .txt{position:absolute;font-size:9px;font-weight:900;color:#ffd7d7}
 
-  /* Ready + Near combos */
+  /* Effect hint chips on card faces */
+  .front .hints{margin-top:4px;display:flex;gap:4px;flex-wrap:wrap}
+  .chipHint{
+    display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:999px;
+    border:1px solid #2a426d;background:#12223d;color:#dbe7ff;font-size:10px;line-height:1;white-space:nowrap;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis
+  }
+
+  /* Suggestions / buttons above hand */
   .suggest{position:fixed;left:0;right:0;bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);display:grid;place-items:center}
   .suggest-inner{width:var(--riverW);display:grid;grid-template-rows:auto auto;gap:6px}
   .ready{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
   .pill{display:flex;align-items:center;gap:6px;border:1px solid #223a5f;background:#111e33;border-radius:999px;padding:4px 8px;font-size:11px;color:#dbe7ff}
   .need{opacity:.9}
-  .playBtn{background:var(--accent);border-color:#5e1111;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:900}
+  .playBtn{background:var(--accent);border-color:#5e1111;color:#fff;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.3px}
   .playBtn:hover{filter:brightness(1.05)}
   .playBtn:active{background:var(--accent-2)}
 
-  /* Hand — now elevated by --handBottomOffset on mobile */
+  /* Hand (elevated on mobile) */
   .handWrap{position:fixed;left:0;right:0;bottom:var(--handBottomOffset);height:calc(var(--handH) + env(safe-area-inset-bottom));padding:6px 8px env(safe-area-inset-bottom)}
   .hand{height:100%;margin:0 auto;width:var(--riverW);border:1px solid var(--edge);background:#0f1a2a;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
   .hslot{width:calc(var(--cardW) * 1.02);height:calc(var(--cardH) * 1.02);border:1px solid var(--edge);background:#0d1728;border-radius:8px;display:grid;place-items:center}
   .hslot.empty{opacity:.5;border-style:dashed}
 
-  /* Winner */
+  /* Winner modal */
   .overlay{position:fixed;inset:0;background:rgba(5,10,18,.86);display:none;align-items:center;justify-content:center;z-index:40}
   .overlay.show{display:flex}
   .modal{background:#0f1a2a;border:1px solid #1b2c48;border-radius:12px;width:min(92vw,420px);padding:12px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
@@ -108,7 +117,7 @@
   .table td,.table th{border-bottom:1px solid #22385d;padding:6px;text-align:left}
   .table tr:last-child td{border-bottom:none}
 
-  /* Pickers */
+  /* Target pickers */
   .pick{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,20,.84);z-index:45}
   .pick.show{display:flex}
   .pickBox{background:#0f1b2e;border:1px solid #1b2c48;border-radius:12px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px}
@@ -144,7 +153,7 @@
     </div>
   </div>
 
-  <!-- NEW: medal scoreboard -->
+  <!-- Scoreboard medals -->
   <div class="scoresBar"><div class="scores-inner" id="scores"></div></div>
 
   <!-- Opponents -->
@@ -157,7 +166,7 @@
     </div>
   </main>
 
-  <!-- Ready + Near suggestions -->
+  <!-- Suggestions -->
   <div class="suggest">
     <div class="suggest-inner">
       <div class="ready" id="ready"></div>
@@ -165,7 +174,7 @@
     </div>
   </div>
 
-  <!-- Hand (elevated on mobile) -->
+  <!-- Hand -->
   <div class="handWrap"><div class="hand" id="hand"></div></div>
 
   <!-- Winner -->
@@ -223,7 +232,7 @@ if (!gameId || !username) alert("Missing gameId or username in URL.");
 const gref = doc(db, "games", gameId);
 const uref = doc(db, "users", username);
 
-/* ======= Cards & combos (same as previous build) ======= */
+/* ======= Cards & combos ======= */
 const F = { Scholar:'Scholar', Weather:'Weather', Beast:'Beast', Tamer:'Tamer', Relic:'Relic' };
 const CARDS = [
   {id:'SchLight',name:'Scholar of Light',fam:F.Scholar,emoji:'✨',tier:2},
@@ -330,20 +339,66 @@ const el = {
 };
 el.gameIdBadge.textContent = `ID: ${gameId.slice(0,6)}`;
 
-/* ======= Helpers ======= */
-function cardFrontHTML(id){
-  const c = byIdMap[id];
-  return `<div class="front"><div class="t">${c.emoji} ${c.name}</div><div class="f">${c.fam} • Tier ${c.tier}</div></div>`;
+/* ======= Effect hints on cards ======= */
+const EFFECT_ICONS = {
+  steal: '🫴', destroy: '💥', freeze: '🧊', flip:'🔁', reveal:'👁️',
+  draw:'➕', duplicate:'🪞', shield:'🛡️', scry:'🔮', refresh:'♻️',
+  swap:'🔀', ban:'🚫', trade:'🔁', silence:'🤐', cull:'🪓', points:'⭐'
+};
+function shortEffectForCombo(combo){
+  const e = combo.effect || '';
+  if (!e) return `${EFFECT_ICONS.points} +${combo.pts}`;
+  if (e.startsWith('stealEach'))       return `${EFFECT_ICONS.steal} Steal 1 each`;
+  if (e.startsWith('stealTarget:'))    return `${EFFECT_ICONS.steal} Steal ${e.split(':')[1]}`;
+  if (e.startsWith('duplicateTarget')) return `${EFFECT_ICONS.duplicate} Duplicate any`;
+  if (e.startsWith('destroyTarget'))   return `${EFFECT_ICONS.destroy} Destroy any`;
+  if (e.startsWith('freeze:'))         return `${EFFECT_ICONS.freeze} Freeze ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('flip:'))           return `${EFFECT_ICONS.flip} Flip ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('revealOpp:'))      return `${EFFECT_ICONS.reveal} Reveal ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e.startsWith('draw:'))           return `${EFFECT_ICONS.draw} Draw ${e.split(':')[1]}`;
+  if (e==='refreshColumn')             return `${EFFECT_ICONS.refresh} Refresh column`;
+  if (e==='swapRiver')                 return `${EFFECT_ICONS.swap} Swap two center`;
+  if (e.startsWith('refreshRow:'))     return `${EFFECT_ICONS.refresh} Refresh ${e.endsWith('top')?'top':'bottom'} row`;
+  if (e.startsWith('shieldSelf:'))     return `${EFFECT_ICONS.shield} Shield ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e==='scry3')                     return `${EFFECT_ICONS.scry} Scry 3`;
+  if (e.startsWith('banFam:'))         return `${EFFECT_ICONS.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
+  if (e.startsWith('tradeRandom'))     return `${EFFECT_ICONS.trade} Trade random`;
+  if (e.startsWith('silenceTarget:'))  return `${EFFECT_ICONS.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
+  if (e==='discardNonBeastEach:1')     return `${EFFECT_ICONS.cull} Foes discard non-Beast`;
+  if (e.startsWith('legend:'))         return `🌟 Legend`;
+  return `${EFFECT_ICONS.points} +${combo.pts}`;
 }
-function cardBackHTML(){ return `<div class="back"></div>`; }
-function timerHTML(){ return `
-  <div class="timer" aria-hidden="true">
-    <svg viewBox="0 0 36 36" focusable="false">
-      <circle class="track" cx="18" cy="18" r="15"></circle>
-      <circle class="prog" cx="18" cy="18" r="15"></circle>
-    </svg>
-    <span class="txt">5</span>
-  </div>`; }
+/* Build per-card hint list (top 2 chips) */
+const CARD_HINTS = new Map();
+function hintScore(cmb, isIdExact){
+  const effectful = cmb.effect ? 1 : 0;
+  return (isIdExact? 200 : 0) + (effectful? 100 : 0) + (cmb.pts||0);
+}
+for (const c of CARDS){
+  const hints = [];
+  for (const cmb of COMBOS){
+    for (const need of cmb.need){
+      const exact = !!need.id && need.id===c.id;
+      const famOk = !!need.fam && need.fam===c.fam;
+      if (!exact && !famOk) continue;
+      hints.push({combo:cmb, exact, score:hintScore(cmb, exact)});
+      break;
+    }
+  }
+  hints.sort((a,b)=> b.score - a.score);
+  const out = [];
+  const seen = new Set();
+  for (const h of hints){
+    const blurb = shortEffectForCombo(h.combo);
+    if (seen.has(blurb)) continue;
+    seen.add(blurb);
+    out.push({label: blurb, title: `${h.combo.label} (+${h.combo.pts})`});
+    if (out.length>=2) break;
+  }
+  CARD_HINTS.set(c.id, out);
+}
+
+/* ======= Helpers ======= */
 function miniHand(count){ return `<div class="mini">${Array.from({length:Math.min(5,count)},()=>'<i></i>').join('')}</div>`; }
 function buildDeck(){
   const freq = { Scholar:3, Weather:4, Beast:3, Tamer:3, Relic:3 };
@@ -382,6 +437,9 @@ function findReadyCombos(handIds){
   }
   out.sort((a,b)=> (b.combo.pts + (b.combo.effect?2:0)) - (a.combo.pts + (a.combo.effect?2:0)));
   return out.slice(0,3);
+}
+function famIcon(fam){
+  return fam==='Scholar'?'📘':fam==='Beast'?'🐾':fam==='Relic'?'🗝️':fam==='Tamer'?'⚔️':fam==='Weather'?'⛅':'❓';
 }
 function findNearCombosDetailed(handIds, limitMissing=2){
   const hand = handIds.map(id=>byIdMap[id]);
@@ -754,6 +812,28 @@ function openTargetPlayerPicker(game, combo, useUids, titleText){
 el.pickCancel.addEventListener('click', ()=> el.pick.classList.remove('show'));
 
 /* ======= Rendering ======= */
+function cardFrontHTML(id){
+  const c = byIdMap[id];
+  const hints = CARD_HINTS.get(id) || [];
+  const chips = hints.map(h=>`<span class="chipHint" title="${h.title}">${h.label}</span>`).join('');
+  return `
+    <div class="front">
+      <div class="t">${c.emoji} ${c.name}</div>
+      <div class="f">${c.fam} • Tier ${c.tier}</div>
+      ${chips ? `<div class="hints">${chips}</div>` : ''}
+    </div>
+  `;
+}
+function cardBackHTML(){ return `<div class="back"></div>`; }
+function timerHTML(){ return `
+  <div class="timer" aria-hidden="true">
+    <svg viewBox="0 0 36 36" focusable="false">
+      <circle class="track" cx="18" cy="18" r="15"></circle>
+      <circle class="prog" cx="18" cy="18" r="15"></circle>
+    </svg>
+    <span class="txt">5</span>
+  </div>`; }
+
 function renderOpps(game){
   const reveal = now() < (game.revealOppUntil||0);
   const players = (game.players||[]).filter(p=>p!==username);
@@ -780,10 +860,8 @@ function renderOpps(game){
   }
 }
 function renderScores(game){
-  // build list including you
-  const pts = game.points||{};
+  const pts = Object.assign({}, game.points||{});
   const players = (game.players||[]).slice();
-  // ensure all players included even if missing points
   players.forEach(p=>{ if(pts[p]===undefined) pts[p]=0; });
   const rows = players.map(p=>({name:p, pts:pts[p]})).sort((a,b)=>b.pts-a.pts);
   el.scores.innerHTML = '';
@@ -878,7 +956,7 @@ function renderNear(game){
   }
   for(const n of near){
     const pill=document.createElement('div'); pill.className='pill';
-    const needsEmo = n.missing.map(m=> (m.id? byIdMap[m.id].emoji : m.fam==='Scholar'?'📘':m.fam==='Beast'?'🐾':m.fam==='Relic'?'🗝️':m.fam==='Tamer'?'⚔️':m.fam==='Weather'?'⛅':'❓')).join(' ');
+    const needsEmo = n.missing.map(m=> (m.id? byIdMap[m.id].emoji : famIcon(m.fam))).join(' ');
     pill.innerHTML = `<span>${n.combo.label}</span> <span class="need">• need ${needsEmo}</span>`;
     el.near.appendChild(pill);
   }
@@ -1005,7 +1083,7 @@ onSnapshot(gref, async (snap)=>{
   if (!snap.exists()) return;
   const g = snap.data();
 
-  /* Local flip-timer bootstrapping */
+  /* Local flip-timer bootstrapping: reveal each newly spawned card for 5s */
   const R = g.river||[];
   for(let i=0;i<10;i++){
     const u = R[i]?.uid || null;
@@ -1023,7 +1101,7 @@ onSnapshot(gref, async (snap)=>{
     }
   }
 
-  renderScores(g);     /* NEW medals row */
+  renderScores(g);
   renderOpps(g);
   renderRiver(g);
   renderHand(g);
@@ -1088,5 +1166,6 @@ setInterval(endIfDeckDone, 1200);
 </script>
 </body>
 </html>
+
 
 
