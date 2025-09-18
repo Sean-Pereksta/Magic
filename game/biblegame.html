@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>📖 Bible Game (Multiplayer)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  :root{
+    --bg:#fffaf5; --ink:#0f172a; --muted:#64748b; --panel:#ffffff; --br:#f1e7da;
+    --accent:#7c3aed; --accent-2:#6d28d9; --good:#16a34a; --bad:#ef4444; --warn:#f59e0b;
+    --chip:#f5f3ff; --shadow:0 10px 30px rgba(2,6,23,.08); --radius:16px; --radius-sm:12px;
+    --tap:56px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:1000px;margin:0 auto;padding:12px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 12px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#ede9fe;border:1px solid #ddd6fe}
+  h1{font-size:1.15rem;margin:0}
+  .badge{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #ddd6fe;background:#f5f3ff;color:#3730a3;font-weight:800}
+  .panel{background:var(--panel);border:1px solid var(--br);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px}
+  .grid{display:grid;grid-template-columns:1.3fr .7fr;gap:12px}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr; gap:12px} }
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--br);background:#fff}
+  .timer{font-weight:900;letter-spacing:.5px}
+  .title{font-weight:900}
+  .subtitle{color:var(--muted)}
+  .btn{
+    appearance:none;border:none;cursor:pointer;background:var(--accent);color:#fff;font-weight:900;
+    padding:12px 14px;border-radius:12px;min-height:44px
+  }
+  .btn:hover{background:var(--accent-2)}
+  .btn-ghost{background:#fff;border:1px solid var(--br);color:#0f172a}
+  .btn-bad{background:var(--bad)}
+  .btn-good{background:var(--good)}
+  .btn-warn{background:var(--warn);color:#111827}
+  .btn.small{padding:8px 10px;min-height:36px;border-radius:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .scoreboard .entry{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--br);border-radius:12px;background:#fff}
+  .scoreboard .name{font-weight:800}
+  .verse-box{padding:12px;border:1px solid var(--br);border-radius:14px;background:#fff}
+  .verse-text{font-size:1.05rem;line-height:1.5}
+  .inputs{display:grid;grid-template-columns:1.2fr .4fr .4fr auto;gap:8px;margin-top:10px}
+  @media (max-width:560px){ .inputs{grid-template-columns:1fr 1fr 1fr auto} }
+  select, input[type="number"], input[type="text"]{
+    width:100%;padding:11px 10px;border:1px solid var(--br);border-radius:12px;font-size:16px;outline:none;background:#fff
+  }
+  select:focus, input:focus{border-color:#e9d5ff;box-shadow:0 0 0 4px rgba(124,58,237,.15)}
+  .thin{font-weight:700;color:#334155}
+  .vote-grid{display:grid;grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:10px;margin-top:8px}
+  .card{border:1px solid var(--br);border-radius:12px;padding:10px;background:#fff;display:flex;gap:10px;align-items:center;justify-content:space-between}
+  .sm{font-size:.9rem}
+  .chat{border:1px solid var(--br);border-radius:12px;background:#fff;display:grid;gap:8px;padding:10px}
+  .chatlog{display:grid;gap:6px;min-height:32px}
+  .bubble{padding:6px 8px;border-radius:10px;background:#f8fafc;border:1px solid #eef2f7}
+  .teamA{--team:#0ea5e9} .teamB{--team:#ef4444}
+  .team-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:10px;background:rgba(0,0,0,.04);border:1px solid #e5e7eb}
+  .team-chip{width:10px;height:10px;border-radius:50%;background:var(--team)}
+  .teams-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .teams-bar .tot{font-weight:900}
+  .books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+  .book-btn{border:1px solid var(--br);background:#fff;border-radius:12px;padding:10px;cursor:pointer}
+  .book-btn[disabled]{opacity:.5;cursor:not-allowed}
+  .pickbar{display:flex;flex-wrap:wrap;gap:8px}
+  .pick{background:#f1f5f9;border:1px solid #e2e8f0;padding:6px 10px;border-radius:999px}
+  .help{font-size:.9rem;color:#475569}
+  .footer{margin-top:12px;text-align:center;color:#64748b}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="logo">📖</div>
+      <div>
+        <div class="title">Bible Game</div>
+        <div class="subtitle" id="subtitle">Connecting…</div>
+      </div>
+    </div>
+    <div class="row">
+      <span class="badge"><span id="modeLabel">Vote Phase</span> • <span class="timer" id="timer">--:--</span></span>
+      <button class="btn-ghost small" id="leaveBtn">Leave</button>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: Verse + Inputs + Voting/Draft/Chat -->
+    <section class="panel">
+      <div id="phase-vote" style="display:none">
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <div class="title">Vote: Game Type (30s)</div>
+            <div class="muted sm">Traditional • Speed • Draft • Teams</div>
+          </div>
+          <div class="pill">Your vote: <strong id="myVote">—</strong></div>
+        </div>
+        <div class="vote-grid" style="margin-top:10px">
+          <button class="card" data-mode="traditional"><span>🕰️ Traditional</span><span class="pill">Votes: <b id="v-traditional">0</b></span></button>
+          <button class="card" data-mode="speed"><span>⚡ Speed (90s)</span><span class="pill">Votes: <b id="v-speed">0</b></span></button>
+          <button class="card" data-mode="draft"><span>🧭 Draft (snake)</span><span class="pill">Votes: <b id="v-draft">0</b></span></button>
+          <button class="card" data-mode="teams"><span>👥 Teams (6r, 30s)</span><span class="pill">Votes: <b id="v-teams">0</b></span></button>
+        </div>
+        <div class="help" style="margin-top:8px">Host resolves ties automatically.</div>
+      </div>
+
+      <div id="phase-draft" style="display:none">
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <div class="title">Draft: Pick 3 Books</div>
+            <div class="muted sm">Snake order, <b>10s</b> per pick. Turn: <b id="turnName">—</b></div>
+          </div>
+          <div class="pickbar" id="myPicks"></div>
+        </div>
+        <div class="books-grid" id="booksGrid" style="margin-top:10px"></div>
+      </div>
+
+      <div id="phase-play" style="display:none">
+        <div id="teamChatWrap" style="display:none; margin-bottom:10px">
+          <div class="chat">
+            <div class="row" style="justify-content:space-between">
+              <div class="team-tag"><span class="team-chip"></span><span id="teamLabel">Team</span> chat</div>
+              <div class="muted sm">Last 3 messages</div>
+            </div>
+            <div class="chatlog" id="chatLog"></div>
+            <div class="row">
+              <input id="chatInput" type="text" placeholder="Type hint/idea…" />
+              <button class="btn small" id="sendChat">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="verse-box">
+          <div class="muted sm" id="verseHeader">Verse</div>
+          <div class="verse-text" id="verseText">Loading verses…</div>
+        </div>
+
+        <div class="inputs">
+          <select id="bookInput"></select>
+          <input id="chapInput" type="number" min="1" placeholder="Chapter" />
+          <input id="verseInput" type="number" min="1" placeholder="Verse" />
+          <button class="btn" id="submitBtn">Submit</button>
+        </div>
+
+        <div id="teamsBar" class="teams-bar" style="display:none; margin-top:10px">
+          <div class="teamA tot">Team A: <span id="teamAScore">0</span></div>
+          <div class="teamB tot">Team B: <span id="teamBScore">0</span></div>
+        </div>
+
+        <div id="playHelp" class="help" style="margin-top:8px"></div>
+      </div>
+
+      <div id="phase-end" style="display:none">
+        <div class="title">Game Over</div>
+        <div class="muted">Final standings on the right. Host can return to lobby.</div>
+        <div class="row" style="margin-top:10px; gap:8px">
+          <button class="btn" id="playAgainBtn">Play Again</button>
+          <button class="btn-ghost" id="toLobbyBtn">Back to Lobby</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Players / Scores -->
+    <aside class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div class="title">Players</div>
+        <div class="pill">Host: <span id="hostName">—</span></div>
+      </div>
+      <div id="scoreboard" class="scoreboard" style="display:grid;gap:8px;margin-top:8px"></div>
+      <div id="roundInfo" class="help" style="margin-top:6px"></div>
+    </aside>
+  </div>
+
+  <div class="footer" id="footerNote"></div>
+</div>
+
+<!-- Firebase (v10 modular) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, addDoc,
+    serverTimestamp, query, where, orderBy, limit, getDocs, runTransaction, increment
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  // ---------- CONFIG ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // ---------- DOM SHORTCUTS ----------
+  const $ = (id)=> document.getElementById(id);
+  const qs = (sel)=> document.querySelector(sel);
+
+  // ---------- QUERY PARAMS ----------
+  const url = new URL(location.href);
+  const gameId = url.searchParams.get('gameId') || '';
+  const username = url.searchParams.get('username') || '';
+
+  // ---------- GLOBAL STATE ----------
+  let LOBBY = null;
+  let GAME = null;
+  let HOST = null;
+  let isHost = false;
+  let verses = [];          // {id,book,bookNum,chapter,verse,text}
+  let books = [];           // unique book list
+  let bookSet = new Set();
+  let myTeam = null;        // 'A' or 'B'
+  let tickTimer = null;
+  let currentSharedVerse = null; // for shared modes
+  let myCurrentVerse = null;     // per-player verse (speed/draft)
+  let myDraftBooks = [];         // chosen in draft
+
+  // ---------- HELPERS ----------
+  const now = ()=> Date.now();
+  const fmtTime = (ms)=> {
+    if (ms < 0) ms = 0;
+    const s = Math.floor(ms/1000);
+    const m = Math.floor(s/60);
+    const r = s % 60;
+    return `${String(m).padStart(1,'0')}:${String(r).padStart(2,'0')}`;
+  };
+  const shuffle = (arr)=> arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+
+  // CSV parser (handles quotes & commas)
+  function parseCSV(text){
+    const rows=[]; let row=[], val=''; let inQ=false;
+    for (let i=0;i<text.length;i++){
+      const c = text[i];
+      if (inQ){
+        if (c === '"'){
+          if (text[i+1] === '"'){ val+='"'; i++; }
+          else inQ = false;
+        } else val += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ','){ row.push(val); val=''; }
+        else if (c === '\n'){ row.push(val); rows.push(row); row=[]; val=''; }
+        else if (c === '\r'){ /* skip */ }
+        else val += c;
+      }
+    }
+    if (val.length || row.length) { row.push(val); rows.push(row); }
+    return rows;
+  }
+
+  function normBook(s){
+    return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase();
+  }
+
+  function buildBooksAndVerses(rows){
+    // Header: VerseID,BookName,BookNumber,Chapter,Verse,Text
+    const H = rows[0].map(h => (h||'').toString().trim());
+    const idx = (name)=> H.findIndex(h => h.toLowerCase() === name.toLowerCase());
+    const idI = idx('VerseID'), bookI=idx('BookName'), bookNumI=idx('BookNumber'), chapI=idx('Chapter'), verseI=idx('Verse'), textI=idx('Text');
+
+    const out = [];
+    for (let i=1;i<rows.length;i++){
+      const r = rows[i];
+      if (!r || !r.length) continue;
+      const id   = parseInt(r[idI],10);
+      const book = (r[bookI]||'').toString().trim();
+      const bookNum = parseInt(r[bookNumI],10);
+      const chap = parseInt(r[chapI],10);
+      const ver  = parseInt(r[verseI],10);
+      const txt  = (r[textI]||'').toString().trim();
+      if (!id || !book || !chap || !ver || !txt) continue;
+      out.push({id, book, bookNum, chapter: chap, verse: ver, text: txt});
+      if (!bookSet.has(book)){ bookSet.add(book); books.push(book); }
+    }
+    books.sort((a,b)=> a.localeCompare(b));
+    return out;
+  }
+
+  function fillBookDropdown(selId){
+    const sel = $(selId);
+    sel.innerHTML = '';
+    const optBlank = document.createElement('option');
+    optBlank.value = ''; optBlank.textContent = 'Book';
+    sel.appendChild(optBlank);
+    for (const b of books){
+      const o = document.createElement('option');
+      o.value = b; o.textContent = b;
+      sel.appendChild(o);
+    }
+  }
+
+  function scoreAnswer(guess, correct, mode){
+    const bookOK = normBook(guess.book) === normBook(correct.book);
+    const chapOK = Number(guess.chapter) === Number(correct.chapter);
+    const verOK  = Number(guess.verse) === Number(correct.verse);
+
+    let pts = 0;
+    if (verOK && chapOK && bookOK) pts = 5;
+    else if (verOK && chapOK) pts = 3;
+    else if (verOK) pts = 1;
+
+    // Mode penalties
+    if (mode === 'speed'){
+      if (!bookOK && !chapOK && !verOK) pts -= 1;
+    } else if (mode === 'draft'){
+      if (!bookOK) pts -= 3;
+    }
+    return pts;
+  }
+
+  function pickRandomVerse(filterFn = null, excludeSet = null){
+    let pool = verses;
+    if (filterFn) pool = pool.filter(filterFn);
+    if (excludeSet) pool = pool.filter(v => !excludeSet.has(v.id));
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // ---------- FIRESTORE REFS ----------
+  const lobbyRef  = doc(db, 'lobbies', gameId);
+  const gameRef   = doc(db, 'games', gameId);            // game state doc
+  const votesCol  = collection(db, 'games', gameId, 'votes');
+  const pstateCol = collection(db, 'games', gameId, 'playerState'); // per-player current verse for speed/draft
+  const chatCol   = collection(db, 'games', gameId, 'chat');        // team chat
+
+  // ---------- UI WIRING ----------
+  $('leaveBtn').onclick = ()=> {
+    // soft leave: just navigate back to lobby (keeps game running)
+    location.href = `/index.html?username=${encodeURIComponent(username)}`;
+  };
+
+  // Vote buttons
+  for (const btn of document.querySelectorAll('#phase-vote .card')){
+    btn.addEventListener('click', ()=> submitVote(btn.dataset.mode));
+  }
+
+  $('submitBtn').onclick = onSubmitAnswer;
+  $('sendChat').onclick = sendChat;
+  $('toLobbyBtn').onclick = ()=> location.href = `/index.html?username=${encodeURIComponent(username)}`;
+  $('playAgainBtn').onclick = async ()=> {
+    if (!isHost) return;
+    await runTransaction(db, async (tx)=>{
+      const l = await tx.get(lobbyRef); if (!l.exists()) throw 'no lobby';
+      const players = l.data().players || [];
+      tx.set(gameRef, {
+        status:'voting',
+        host:l.data().host || players[0] || username,
+        players,
+        mode:null,
+        deadline: now()+30000,
+        round:0,
+        scores: Object.fromEntries(players.map(p=>[p,0])),
+        teamTotals:{A:0,B:0},
+        teamLocks:{},
+        picks: {},
+        pickOrder: players,
+        pickIndex: 0,
+        picksPerPlayer: 3,
+        chosenShared: [],
+        endAt: 0,
+        turnDeadline: 0
+      }, {merge:true});
+    });
+  };
+
+  // ---------- STARTUP ----------
+  main().catch(console.error);
+
+  async function main(){
+    if (!gameId || !username){
+      $('subtitle').textContent = 'Missing gameId/username';
+      return;
+    }
+    // Load lobby for players/host
+    const lobbySnap = await getDoc(lobbyRef);
+    if (!lobbySnap.exists()){
+      $('subtitle').textContent = 'Lobby not found.';
+      return;
+    }
+    LOBBY = lobbySnap.data();
+    HOST = LOBBY.host || (LOBBY.players && LOBBY.players[0]) || username;
+    isHost = (username === HOST);
+    $('hostName').textContent = HOST;
+
+    $('subtitle').textContent = `You are ${username} • Players: ${(LOBBY.players||[]).join(', ')}`;
+
+    // Load verses
+    const csvUrl = 'https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv';
+    const csvText = await (await fetch(csvUrl, {cache:'force-cache'})).text();
+    const rows = parseCSV(csvText);
+    verses = buildBooksAndVerses(rows);
+    fillBookDropdown('bookInput');
+
+    // Ensure game doc exists (host seeds)
+    const gSnap = await getDoc(gameRef);
+    if (!gSnap.exists() && isHost){
+      const players = LOBBY.players || [username];
+      await setDoc(gameRef, {
+        status:'voting',
+        host: HOST,
+        players,
+        mode:null,
+        deadline: now()+30000,              // 30s vote
+        round:0,
+        scores: Object.fromEntries(players.map(p=>[p,0])),
+        teamTotals:{A:0,B:0},
+        teamLocks:{},
+        picks: {},                          // username -> [books]
+        pickOrder: players,                 // will be snaked each round
+        pickIndex: 0,
+        picksPerPlayer: 3,
+        chosenShared: [],                   // used to avoid repeats in shared modes
+        endAt: 0,
+        turnDeadline: 0
+      });
+    }
+
+    // Listen to game
+    onSnapshot(gameRef, (snap)=>{
+      if (!snap.exists()) return;
+      GAME = snap.data();
+      render();
+    });
+
+    // Vote tally listener
+    onSnapshot(votesCol, (qsnap)=>{
+      const counts = {traditional:0, speed:0, draft:0, teams:0};
+      qsnap.forEach(doc=>{
+        const m = doc.data().mode;
+        if (counts[m] !== undefined) counts[m]++;
+      });
+      $('v-traditional').textContent = counts.traditional;
+      $('v-speed').textContent       = counts.speed;
+      $('v-draft').textContent       = counts.draft;
+      $('v-teams').textContent       = counts.teams;
+    });
+
+    // Chat listener (last 3, team-specific)
+    onSnapshot(query(chatCol, orderBy('ts','desc'), limit(12)), (qsnap)=>{
+      const msgs = [];
+      qsnap.forEach(d => msgs.push(d.data()));
+      msgs.reverse();
+      drawChat(msgs);
+    });
+
+    // Player state for my current verse (speed/draft)
+    onSnapshot(doc(pstateCol, username), (psnap)=>{
+      const st = psnap.exists() ? psnap.data() : null;
+      if (st && st.currentVerseId){
+        const v = verses.find(x=> x.id === st.currentVerseId);
+        if (v) { myCurrentVerse = v; maybeShowVerse(); }
+      }
+    });
+
+    // Driver loop (host advances phases/timers)
+    if (isHost){
+      if (tickTimer) clearInterval(tickTimer);
+      tickTimer = setInterval(hostDrive, 250);
+    } else {
+      if (tickTimer) clearInterval(tickTimer);
+      tickTimer = setInterval(updateCountdownUI, 250);
+    }
+  }
+
+  // ---------- RENDER ----------
+  function render(){
+    if (!GAME) return;
+
+    // Mode label + timer
+    const phase = GAME.status || 'voting';
+    const mode = GAME.mode || '—';
+    $('modeLabel').textContent = phase === 'voting' ? 'Vote' : (mode.charAt(0).toUpperCase()+mode.slice(1));
+
+    // Panels
+    $('#phase-vote').style.display  = (phase === 'voting') ? 'block' : 'none';
+    $('#phase-draft').style.display = (phase === 'drafting') ? 'block' : 'none';
+    $('#phase-play').style.display  = (phase === 'playing') ? 'block' : 'none';
+    $('#phase-end').style.display   = (phase === 'ended') ? 'block' : 'none';
+
+    // Scoreboard
+    drawScores();
+
+    // Round/help/footer
+    if (phase === 'voting'){
+      $('roundInfo').textContent = 'Select a mode. 30s vote.';
+      $('myVote').textContent = '—';
+      // Show my current vote if exists
+      // (We don’t read my vote directly here, but tally UI updates; leave as '—' until click)
+    } else if (phase === 'drafting'){
+      $('roundInfo').textContent = 'Snake draft: pick 3 books';
+      buildDraftUI();
+    } else if (phase === 'playing'){
+      // Teams bar
+      if (GAME.mode === 'teams'){
+        $('#teamsBar').style.display = 'flex';
+        $('#teamAScore').textContent = (GAME.teamTotals && GAME.teamTotals.A) || 0;
+        $('#teamBScore').textContent = (GAME.teamTotals && GAME.teamTotals.B) || 0;
+      } else {
+        $('#teamsBar').style.display = 'none';
+      }
+
+      // Chat enabled only for Teams
+      const tc = (GAME.mode === 'teams');
+      $('#teamChatWrap').style.display = tc ? 'block' : 'none';
+
+      buildPlayHelp();
+      maybeShowVerse();
+    } else if (phase === 'ended'){
+      $('roundInfo').textContent = 'Final standings below.';
+      $('#teamChatWrap').style.display = 'none';
+    }
+
+    updateCountdownUI();
+  }
+
+  function drawScores(){
+    const sb = $('scoreboard');
+    sb.innerHTML = '';
+    const players = (GAME.players || []);
+    const scores = (GAME.scores || {});
+    const order = players.slice().sort((a,b)=> (scores[b]||0) - (scores[a]||0));
+    for (const p of order){
+      const row = document.createElement('div');
+      row.className = 'entry';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = p + (p === HOST ? ' ⭐' : '');
+      const sc = document.createElement('div');
+      sc.innerHTML = `<span class="pill">🏆 <b>${scores[p]||0}</b></span>`;
+      row.appendChild(name); row.appendChild(sc);
+      sb.appendChild(row);
+    }
+  }
+
+  function updateCountdownUI(){
+    if (!GAME) return;
+    let t = 0;
+    if (GAME.status === 'voting' || GAME.status === 'drafting'){
+      t = (GAME.turnDeadline || GAME.deadline || 0) - now();
+    } else if (GAME.status === 'playing'){
+      const mode = GAME.mode;
+      if (mode === 'speed' || mode === 'draft') t = (GAME.endAt||0) - now();
+      else t = (GAME.deadline||0) - now();
+    }
+    $('timer').textContent = fmtTime(t);
+  }
+
+  // ---------- VOTE ----------
+  async function submitVote(mode){
+    $('myVote').textContent = mode[0].toUpperCase()+mode.slice(1);
+    // write my vote
+    await setDoc(doc(votesCol, username), {mode, ts: serverTimestamp()});
+  }
+
+  // ---------- HOST DRIVER ----------
+  async function hostDrive(){
+    if (!GAME) return;
+    updateCountdownUI();
+
+    const phase = GAME.status;
+    const tnow = now();
+
+    if (phase === 'voting'){
+      const deadline = GAME.deadline || 0;
+      if (tnow >= deadline){
+        // Count votes
+        const vSnap = await getDocs(votesCol);
+        const counts = {traditional:0,speed:0,draft:0,teams:0};
+        const picks = [];
+        vSnap.forEach(d=>{ const m=d.data().mode; if (counts[m]!==undefined){ counts[m]++; picks.push(m);} });
+
+        // resolve: most votes; tie => host's vote if exists; else default traditional
+        let chosen = 'traditional';
+        const max = Math.max(counts.traditional,counts.speed,counts.draft,counts.teams);
+        const top = Object.entries(counts).filter(([k,v])=>v===max).map(([k])=>k);
+        if (top.length === 1) chosen = top[0];
+        else {
+          // try host's vote
+          const hostVoteDoc = await getDoc(doc(votesCol, HOST));
+          if (hostVoteDoc.exists() && top.includes(hostVoteDoc.data().mode)){
+            chosen = hostVoteDoc.data().mode;
+          } else {
+            chosen = top.sort()[0]; // deterministic fallback
+          }
+        }
+
+        const baseUpdate = {
+          mode: chosen,
+          round: 0,
+          scores: Object.fromEntries((GAME.players||[]).map(p=>[p,0])),
+          chosenShared: [],
+        };
+
+        if (chosen === 'draft'){
+          await updateDoc(gameRef, {
+            status: 'drafting',
+            ...baseUpdate,
+            pickOrder: (GAME.players||[]),
+            pickIndex: 0,
+            picks: {},
+            turnDeadline: tnow + 10000 // first 10s
+          });
+        } else if (chosen === 'teams'){
+          // Assign teams (alternate)
+          const ps = (GAME.players||[]).slice();
+          const A=[], B=[];
+          ps.forEach((p,i)=> (i%2===0?A:B).push(p));
+          await updateDoc(gameRef, {
+            status: 'playing',
+            ...baseUpdate,
+            teamA: A, teamB: B,
+            teamTotals:{A:0,B:0},
+            teamLocks:{A:false,B:false},
+            // Start Round 1 (shared verse) 30s
+            round: 1,
+            currentSharedId: pickRandomVerse().id,
+            deadline: tnow + 30000
+          });
+        } else if (chosen === 'speed'){
+          await updateDoc(gameRef, {
+            status: 'playing',
+            ...baseUpdate,
+            endAt: tnow + 90000 // 90s
+          });
+          // seed per-player starting verses
+          await seedPerPlayerVerses();
+        } else { // traditional
+          await updateDoc(gameRef, {
+            status: 'playing',
+            ...baseUpdate,
+            round: 1,
+            currentSharedId: pickRandomVerse().id,
+            deadline: tnow + 30000
+          });
+        }
+      }
+    }
+    else if (phase === 'drafting'){
+      const turnEnds = (GAME.turnDeadline || 0);
+      if (tnow >= turnEnds){
+        await autoPickIfNeeded();
+      }
+      // Transition after all picks complete
+      const picks = GAME.picks || {};
+      const need = (GAME.players||[]).every(p => (picks[p]||[]).length >= (GAME.picksPerPlayer||3));
+      if (need){
+        await updateDoc(gameRef, {
+          status:'playing',
+          endAt: tnow + 90000 // 90s like speed
+        });
+        await seedPerPlayerVerses(true); // restrict to drafted books
+      }
+    }
+    else if (phase === 'playing'){
+      const mode = GAME.mode;
+      if (mode === 'traditional' || mode === 'teams'){
+        const deadline = GAME.deadline || 0;
+        if (tnow >= deadline){
+          // Next round or end
+          const nextRound = (GAME.round||1) + 1;
+          if (nextRound > 6){
+            await updateDoc(gameRef, {status:'ended', deadline:0});
+          } else {
+            const chosenSet = new Set(GAME.chosenShared || []);
+            let v = pickRandomVerse(null, chosenSet);
+            if (!v) v = pickRandomVerse();
+            chosenSet.add(v.id);
+            await updateDoc(gameRef, {
+              round: nextRound,
+              currentSharedId: v.id,
+              chosenShared: Array.from(chosenSet),
+              deadline: tnow + 30000,
+              teamLocks: {A:false,B:false}
+            });
+          }
+        }
+      } else if (mode === 'speed' || mode === 'draft'){
+        const endAt = GAME.endAt || 0;
+        if (tnow >= endAt){
+          await updateDoc(gameRef, {status:'ended'});
+        }
+      }
+    }
+  }
+
+  async function autoPickIfNeeded(){
+    // whose turn?
+    const order = GAME.pickOrder || [];
+    const idx = GAME.pickIndex || 0;
+    if (!order.length) return;
+    const cur = order[idx % order.length];
+    const picks = GAME.picks || {};
+    const curPicks = picks[cur] || [];
+
+    if (curPicks.length >= (GAME.picksPerPlayer||3)){
+      // advance to next eligible picker
+      const nextIdx = nextPickIndex(order, picks, GAME.picksPerPlayer||3, idx+1);
+      await updateDoc(gameRef, { pickIndex: nextIdx, turnDeadline: now()+10000 });
+      return;
+    }
+
+    // If still not picked, auto-pick random remaining
+    const taken = new Set(Object.values(picks).flat());
+    const avail = books.filter(b => !taken.has(b));
+    const auto = avail.length ? avail[Math.floor(Math.random()*avail.length)] : books[Math.floor(Math.random()*books.length)];
+    await runTransaction(db, async (tx)=>{
+      const g = await tx.get(gameRef); if (!g.exists()) return;
+      const G = g.data();
+      const P = G.picks || {};
+      const mine = P[cur] || [];
+      if (mine.length >= (G.picksPerPlayer||3)) return; // already picked
+      const T = new Set(Object.values(P).flat());
+      const pool = books.filter(b=> !T.has(b));
+      const pick = pool.length ? pool[Math.floor(Math.random()*pool.length)] : books[Math.floor(Math.random()*books.length)];
+      const updated = [...mine, pick];
+      P[cur] = updated;
+      const nIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
+      tx.update(gameRef, { picks:P, pickIndex:nIdx, turnDeadline: now()+10000 });
+    });
+  }
+
+  function nextPickIndex(order, picks, per, startIdx){
+    // snake pattern across total picks (virtual rounds)
+    // We model by linear progression; UI is simple: just advance pointer; snake effect comes from
+    // reversing visible order each "round" of picks. For simplicity in code we just advance index
+    // and allow any player who still needs picks to pick when pointer lands on them. If a player is done,
+    // we skip forward (handled in autoPickIfNeeded() transaction).
+    // This keeps logic small & robust for now.
+    let idx = startIdx;
+    for (let guard=0; guard<order.length*4; guard++){
+      const cur = order[idx % order.length];
+      if ((picks[cur]||[]).length < per) break;
+      idx++;
+    }
+    return idx % order.length;
+  }
+
+  async function seedPerPlayerVerses(restrictToDraft=false){
+    const players = (GAME.players || []);
+    for (const p of players){
+      const filterFn = restrictToDraft ? (v)=> (GAME.picks && (GAME.picks[p]||[]).includes(v.book)) : null;
+      const v = pickRandomVerse(filterFn);
+      if (!v) continue;
+      await setDoc(doc(pstateCol, p), { currentVerseId: v.id }, {merge:true});
+    }
+  }
+
+  // ---------- DRAFT UI ----------
+  function buildDraftUI(){
+    $('turnName').textContent = (GAME.pickOrder||[])[GAME.pickIndex||0] || '—';
+    const my = (GAME.picks && GAME.picks[username]) || [];
+    myDraftBooks = my;
+    const grid = $('booksGrid');
+    grid.innerHTML = '';
+
+    // taken set
+    const taken = new Set(Object.values(GAME.picks||{}).flat());
+
+    for (const b of books){
+      const btn = document.createElement('button');
+      btn.className = 'book-btn';
+      btn.textContent = b;
+      btn.disabled = taken.has(b);
+      btn.onclick = ()=> pickBook(b);
+      grid.appendChild(btn);
+    }
+
+    // my picks bar
+    const bar = $('myPicks'); bar.innerHTML='';
+    for (const b of my){ const s=document.createElement('span'); s.className='pick'; s.textContent=b; bar.appendChild(s); }
+  }
+
+  async function pickBook(book){
+    if (GAME.status !== 'drafting') return;
+    if ((GAME.pickOrder||[])[GAME.pickIndex||0] !== username) return;
+    await runTransaction(db, async (tx)=>{
+      const g = await tx.get(gameRef); if (!g.exists()) return;
+      const G = g.data();
+      const P = G.picks || {};
+      const mine = P[username] || [];
+      if (mine.includes(book)) return;
+      if (mine.length >= (G.picksPerPlayer||3)) return;
+      // ensure not taken
+      const taken = new Set(Object.values(P).flat());
+      if (taken.has(book)) return;
+      P[username] = [...mine, book];
+      const nextIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
+      tx.update(gameRef, { picks:P, pickIndex: nextIdx, turnDeadline: now()+10000 });
+    });
+  }
+
+  // ---------- PLAY PHASE ----------
+  function maybeShowVerse(){
+    if (!GAME) return;
+    const mode = GAME.mode;
+
+    if (mode === 'traditional' || mode === 'teams'){
+      const id = GAME.currentSharedId;
+      const v = verses.find(x=> x.id === id);
+      currentSharedVerse = v || null;
+      $('verseHeader').textContent = `Round ${GAME.round||1} • Everyone sees this`;
+      $('verseText').textContent = v ? v.text : '—';
+    } else if (mode === 'speed' || mode === 'draft'){
+      // per-player
+      $('verseHeader').textContent = (mode === 'draft') ? 'Your verse (from your drafted books)' : 'Your verse';
+      const v = myCurrentVerse;
+      $('verseText').textContent = v ? v.text : '—';
+    }
+
+    // Fill dropdown default (helpful for speed)
+    const sel = $('bookInput');
+    if (sel && !sel.value) sel.value = '';
+    $('chapInput').value = '';
+    $('verseInput').value = '';
+  }
+
+  function buildPlayHelp(){
+    const m = GAME.mode;
+    let txt = '';
+    if (m === 'traditional') txt = '6 rounds • 30s each • Everyone answers same verse • 1/3/5 pts for Verse / Chap+Verse / Book+Chap+Verse';
+    else if (m === 'speed') txt = '90s speed • New verse after each submit • -1 if ALL three are wrong';
+    else if (m === 'draft') txt = '90s speed • Only verses from your 3 drafted books • -3 if Book is wrong';
+    else if (m === 'teams') txt = '6 rounds • 30s each • First answer from your team locks your side • Team chat (top) • Individual scores still tracked';
+    $('playHelp').textContent = txt;
+  }
+
+  async function onSubmitAnswer(){
+    if (!GAME) return;
+    const mode = GAME.mode;
+    const book = $('bookInput').value;
+    const chapter = parseInt($('chapInput').value,10);
+    const verseNum = parseInt($('verseInput').value,10);
+    if (!chapter || !verseNum || !book){ return; }
+
+    if (mode === 'traditional' || mode === 'teams'){
+      const v = currentSharedVerse;
+      if (!v) return;
+      const pts = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
+      if (mode === 'teams'){
+        // check lock and award to individual + team
+        const team = getMyTeam();
+        if (!team) return;
+        await runTransaction(db, async (tx)=>{
+          const g = await tx.get(gameRef); if (!g.exists()) return;
+          const G = g.data();
+          const locks = G.teamLocks || {A:false,B:false};
+          if (locks[team]) return; // already submitted
+          locks[team] = true;
+          const scs = G.scores || {};
+          scs[username] = (scs[username]||0) + Math.max(0, pts); // team mode: no negatives
+          const tots = G.teamTotals || {A:0,B:0};
+          tots[team] = (tots[team]||0) + Math.max(0, pts);
+          tx.update(gameRef, { teamLocks: locks, scores: scs, teamTotals: tots });
+        });
+      } else {
+        // traditional: award to individual (no negatives)
+        const gain = Math.max(0, pts);
+        await updateDoc(gameRef, { [`scores.${username}`]: increment(gain) });
+      }
+      // clear inputs but keep current verse until round ends
+      $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
+    }
+    else if (mode === 'speed' || mode === 'draft'){
+      const v = myCurrentVerse;
+      if (!v) return;
+      const pts = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
+      await updateDoc(gameRef, { [`scores.${username}`]: increment(pts) }); // negatives allowed here per mode
+      // Next verse (respect draft pool)
+      const restrict = (mode === 'draft');
+      const filterFn = restrict ? (x)=> (GAME.picks && (GAME.picks[username]||[]).includes(x.book)) : null;
+      const next = pickRandomVerse(filterFn);
+      if (next) await setDoc(doc(pstateCol, username), { currentVerseId: next.id }, {merge:true});
+      // reset inputs
+      $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
+    }
+  }
+
+  function getMyTeam(){
+    const A = GAME.teamA || [];
+    const B = GAME.teamB || [];
+    if (A.includes(username)) { myTeam = 'A'; setTeamUI('A'); return 'A'; }
+    if (B.includes(username)) { myTeam = 'B'; setTeamUI('B'); return 'B'; }
+    return null;
+  }
+
+  function setTeamUI(team){
+    const chip = qs('.team-chip');
+    if (chip) chip.style.background = (team==='A') ? '#0ea5e9' : '#ef4444';
+    $('teamLabel').textContent = (team==='A') ? 'Team A' : 'Team B';
+  }
+
+  // ---------- TEAM CHAT ----------
+  async function sendChat(){
+    if (!GAME || GAME.mode !== 'teams') return;
+    const txt = $('chatInput').value.trim();
+    if (!txt) return;
+    const team = getMyTeam(); if (!team) return;
+    await addDoc(chatCol, { team, name: username, text: txt.slice(0,160), ts: serverTimestamp() });
+    $('chatInput').value = '';
+  }
+  function drawChat(msgs){
+    if (!GAME || GAME.mode !== 'teams') return;
+    const team = getMyTeam(); if (!team) return;
+    const mine = msgs.filter(m=> m.team === team).slice(-3);
+    const log = $('chatLog'); log.innerHTML='';
+    for (const m of mine){
+      const div = document.createElement('div');
+      div.className = 'bubble';
+      div.textContent = `${m.name}: ${m.text}`;
+      log.appendChild(div);
+    }
+  }
+</script>
+</body>
+</html>
