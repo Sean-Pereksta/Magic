@@ -3,72 +3,83 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Splinters — Multiplayer (Effects + Popups)</title>
+<title>Splinters — Multiplayer (Condensed + Effects + Local Flip + Near Combos)</title>
 <style>
   :root{
-    --bg:#0b0f14; --ink:#e5eeff; --muted:#9fb3cc; --pane:#0f1826; --edge:#1b2a44; --accent:#b91c1c;
-    --h:56px; --pad:8px; --handH:110px; --riverW:min(94vw,740px);
-    --cardW: clamp(52px, 9.4vw, 72px); --cardH: calc(var(--cardW) * 1.33);
+    --ink:#eaf2ff; --muted:#a7bfdc; --bg:#0a0e14; --pane:#0f1726; --edge:#1a2b46; --accent:#b91c1c;
+    --h:48px; --oppsH:44px; --handH:96px; --riverW:min(96vw,720px);
+    --cardW: clamp(48px, 9vw, 66px); --cardH: calc(var(--cardW) * 1.33);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:radial-gradient(1100px 740px at 60% -8%,#142033 0%,#0b0f14 44%,#070a10 100%);color:var(--ink);font:600 13px/1.25 system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif;overflow:hidden}
+  body{margin:0;background:radial-gradient(1000px 700px at 60% -10%,#151f31 0%,#0a0e14 45%,#070a10 100%);color:var(--ink);font:600 12px/1.25 system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
   button{appearance:none;border:1px solid #2b3f64;background:#132139;color:#eaf3ff;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}
   button:active{transform:translateY(1px)}
-  .top{position:fixed;left:0;right:0;top:0;height:var(--h);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px env(safe-area-inset-right) 6px env(safe-area-inset-left)}
-  .brand{display:flex;align-items:center;gap:10px;padding-left:6px}
-  .logo{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#ffffff12;border:1px solid #ffffff22}
+  .top{position:fixed;inset:0 0 auto 0;height:var(--h);display:flex;align-items:center;justify-content:space-between;padding:6px 8px}
+  .brand{display:flex;align-items:center;gap:8px}
+  .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff14;border:1px solid #ffffff22;font-size:16px}
   .title{font-weight:900;letter-spacing:.2px}
-  .controls{display:flex;align-items:center;gap:6px;padding-right:6px}
+  .controls{display:flex;align-items:center;gap:6px}
+  .badge{padding:3px 8px;border-radius:999px;background:#0f1a2b;border:1px solid #21365b;color:#cfe4ff;font-size:11px}
   .host{background:#192940;border-color:#2f4e7d}
-  .full{padding:6px 10px}
   .leave{background:#260c0c;border-color:#4b1a1a}
-  .badge{padding:4px 8px;border-radius:999px;background:#0f1a2b;border:1px solid #1e3257;color:#cfe4ff;font-size:11px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .ghost{background:#0d1728;border-color:#1b2b48}
 
   /* Opponents bar */
-  .opps{position:fixed;left:0;right:0;top:var(--h);height:52px;padding:0 8px;display:flex;align-items:center;justify-content:center}
-  .opps-inner{width:var(--riverW);display:flex;gap:8px;justify-content:center;overflow:hidden}
-  .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:10px;padding:4px 6px;display:flex;align-items:center;gap:6px}
+  .opps{position:fixed;left:0;right:0;top:var(--h);height:var(--oppsH);display:flex;align-items:center;justify-content:center;padding:0 6px}
+  .opps-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;overflow:hidden}
+  .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:6px}
   .opp .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mini{display:flex;gap:4px;margin-left:auto}
-  .mini i{width:16px;height:22px;border-radius:5px;background:#112036;border:1px solid #213a62;display:block}
-  .revealMini{display:flex;gap:6px;margin-left:auto;font-size:11px;color:#dbe8ff}
+  .mini{display:flex;gap:3px;margin-left:auto}
+  .mini i{width:14px;height:20px;border-radius:4px;background:#112036;border:1px solid #213a62;display:block}
+  .revealMini{display:flex;gap:6px;margin-left:auto;font-size:11px;color:#dbe8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   /* River */
-  .main{position:absolute;inset:calc(var(--h) + 52px + 4px) 0 calc(env(safe-area-inset-bottom) + var(--handH) + 6px) 0;display:grid;place-items:center}
-  .river{width:var(--riverW);display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
-  .slot{width:var(--cardW);height:var(--cardH);border-radius:10px;border:1px solid var(--edge);background:#0f1a2a;display:grid;place-items:center;position:relative}
+  .main{position:absolute;inset:calc(var(--h) + var(--oppsH)) 0 calc(env(safe-area-inset-bottom) + var(--handH) + 42px) 0;display:grid;place-items:center}
+  .riverWrap{width:var(--riverW)}
+  .river{display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
+  .slot{width:var(--cardW);height:var(--cardH);border-radius:8px;border:1px solid var(--edge);background:#0f1a2a;display:grid;place-items:center;position:relative}
   .slot.empty{border-style:dashed;opacity:.6}
-  .card{width:calc(100% - 6px);height:calc(100% - 6px);border-radius:8px;border:1px solid #1e2f52;background:#14243c;padding:6px;display:grid;grid-template-rows:auto 1fr;gap:2px}
-  .card .t{font-weight:900;font-size:11px}
-  .card .f{font-size:10px;color:#cfe1ffcc}
+  .card{width:calc(100% - 6px);height:calc(100% - 6px);border-radius:8px;border:1px solid #1e2f52;background:#14243c;position:relative;overflow:hidden}
+  .front,.back{position:absolute;inset:0;display:grid;place-items:start;padding:5px}
+  .front .t{font-weight:900;font-size:11px}
+  .front .f{font-size:10px;color:#cfe1ffcc}
+  .back{
+    background:
+      linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%),
+      linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%);
+    background-size: 12px 12px; background-position: 0 0, 6px 6px; background-color:#0a1422;
+  }
   .sel{outline:3px solid #b91c1c;outline-offset:2px}
-  .frozen .slot{filter:grayscale(.2) contrast(.9);opacity:.85}
+  .frozen .slot{filter:grayscale(.2) contrast(.92);opacity:.88}
   .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
+
+  /* Near combos (compact) */
+  .near{position:fixed;left:0;right:0;bottom:calc(var(--handH) + env(safe-area-inset-bottom) + 6px);display:flex;justify-content:center}
+  .near-inner{width:var(--riverW);display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+  .pill{display:flex;align-items:center;gap:6px;border:1px solid #223a5f;background:#111e33;border-radius:999px;padding:4px 8px;font-size:11px;color:#dbe7ff}
+  .need{opacity:.9}
 
   /* Hand */
   .handWrap{position:fixed;left:0;right:0;bottom:0;height:calc(var(--handH) + env(safe-area-inset-bottom));padding:6px 8px env(safe-area-inset-bottom)}
-  .hand{height:100%;margin:0 auto;width:var(--riverW);border:1px solid var(--edge);background:#0f1a2a;border-radius:12px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
-  .hslot{width:calc(var(--cardW) * 1.05);height:calc(var(--cardH) * 1.05);border:1px solid var(--edge);background:#0d1728;border-radius:10px;display:grid;place-items:center}
+  .hand{height:100%;margin:0 auto;width:var(--riverW);border:1px solid var(--edge);background:#0f1a2a;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
+  .hslot{width:calc(var(--cardW) * 1.02);height:calc(var(--cardH) * 1.02);border:1px solid var(--edge);background:#0d1728;border-radius:8px;display:grid;place-items:center}
   .hslot.empty{opacity:.5;border-style:dashed}
-  .topMsg{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--h) + 52px + 6px);font-weight:800;color:#ffe2e2}
 
   /* Winner */
   .overlay{position:fixed;inset:0;background:rgba(5,10,18,.86);display:none;align-items:center;justify-content:center;z-index:40}
   .overlay.show{display:flex}
-  .modal{background:#0f1a2a;border:1px solid #1b2c48;border-radius:14px;width:min(92vw,420px);padding:14px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
-  .modal h2{margin:0 0 8px 0}
-  .modal p{margin:0 0 8px 0;color:#cfe1ff}
-  .table{width:100%;border-collapse:collapse;font-size:13px}
+  .modal{background:#0f1a2a;border:1px solid #1b2c48;border-radius:12px;width:min(92vw,420px);padding:12px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .modal h2{margin:0 0 6px 0}
+  .modal p{margin:0 0 6px 0;color:#cfe1ff}
+  .table{width:100%;border-collapse:collapse;font-size:12px}
   .table td,.table th{border-bottom:1px solid #22385d;padding:6px;text-align:left}
   .table tr:last-child td{border-bottom:none}
 
-  /* Target selector (compact) */
+  /* Target picker */
   .pick{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,20,.84);z-index:45}
   .pick.show{display:flex}
-  .pickBox{background:#0f1b2e;border:1px solid #1b2c48;border-radius:14px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px}
+  .pickBox{background:#0f1b2e;border:1px solid #1b2c48;border-radius:12px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px}
   .pickBox h3{margin:0 0 8px 0;font-size:14px}
   .prow{border:1px solid #223a5f;background:#0d1727;border-radius:10px;padding:8px;margin:6px 0}
   .prow h4{margin:0 0 6px 0;font-size:12px;color:#cfe4ff}
@@ -77,9 +88,9 @@
 
   /* Toasts */
   .toasts{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--h) + 4px);display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
-  .toast{background:#0f1b2e;border:1px solid #203656;color:#e6efff;padding:6px 8px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);animation:tin .25s ease-out forwards}
+  .toast{background:#0f1b2e;border:1px solid #203656;color:#e6efff;padding:6px 8px;border-radius:9px;box-shadow:0 8px 20px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);animation:tin .22s ease-out forwards}
   @keyframes tin{to{opacity:1;transform:translateY(0)}}
-  .toast.out{animation:tout .25s ease-in forwards}
+  .toast.out{animation:tout .22s ease-in forwards}
   @keyframes tout{to{opacity:0;transform:translateY(-6px)}}
 </style>
 </head>
@@ -92,21 +103,26 @@
       <span class="badge" id="gameIdBadge"></span>
     </div>
     <div class="controls">
-      <button class="ghost" id="combosBtn" title="Show ready combos">✨</button>
       <span class="badge" id="deckBadge">Deck: 0</span>
       <span class="badge" id="discardBadge">Discard: 0</span>
       <button class="host" id="startBtn" hidden>Deal & Start</button>
-      <button class="full" id="fsBtn" title="Fullscreen">⛶</button>
+      <button class="ghost" id="fsBtn" title="Fullscreen">⛶</button>
       <button class="leave" id="leaveBtn">Lobby</button>
     </div>
   </div>
 
   <div class="opps"><div class="opps-inner" id="opps"></div></div>
-  <div class="topMsg" id="msg"></div>
 
   <main class="main">
-    <div class="river" id="river"></div>
+    <div class="riverWrap">
+      <div class="river" id="river"></div>
+    </div>
   </main>
+
+  <!-- Near-combo suggestions -->
+  <div class="near">
+    <div class="near-inner" id="near"></div>
+  </div>
 
   <div class="handWrap"><div class="hand" id="hand"></div></div>
 
@@ -116,7 +132,7 @@
       <h2 id="overTitle">Game Over</h2>
       <p id="overWhy"></p>
       <table class="table" id="overTable"></table>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
         <button id="toLobbyBtn">Back to Lobby</button>
       </div>
     </div>
@@ -162,7 +178,10 @@ const LOBBY_URL = "/";
 
 if (!gameId || !username) alert("Missing gameId or username in URL.");
 
-/* ======= Cards ======= */
+const gref = doc(db, "games", gameId);
+const uref = doc(db, "users", username);
+
+/* ======= Cards & Combos ======= */
 const F = { Scholar:'Scholar', Weather:'Weather', Beast:'Beast', Tamer:'Tamer', Relic:'Relic' };
 const CARDS = [
   {id:'SchLight',name:'Scholar of Light',fam:F.Scholar,emoji:'✨',tier:2},
@@ -198,9 +217,8 @@ const CARDS = [
 const byId = Object.fromEntries(CARDS.map(c=>[c.id,c]));
 const makeUID = ()=> Math.random().toString(36).slice(2);
 
-/* ======= Combos (effects + points-only) ======= */
 const NEED = {
-  id:(id)=>({label:byId[id].name, test:c=>c.id===id}),
+  id:(id)=>({id,label:byId[id].name, test:c=>c.id===id}),
 };
 const COMBOS = [
   // EFFECT COMBOS
@@ -213,7 +231,7 @@ const COMBOS = [
   {key:'CrownCommand', label:'Crown Command', pts:5, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('BeastMaster')], effect:'draw:1'},
   {key:'PackRaid', label:'Pack Raid', pts:6, need:[NEED.id('ShadowWolf'),NEED.id('BeastMaster'),NEED.id('WolfTamer')], effect:'stealTarget:Beast'},
   {key:'StarlitCopy', label:'Starlit Copy', pts:6, need:[NEED.id('SchStars'),NEED.id('MirrorStars'),NEED.id('SchTime')], effect:'duplicateTarget:any'},
-  {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'},
+  {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'}, // LOCAL reveal
   {key:'TwilightEdict', label:'Twilight Edict', pts:5, need:[NEED.id('Eclipse'),NEED.id('SchDark')], effect:'revealOpp:3000'},
   // LEGENDARY
   {key:'AscendantTempest', label:'ASCENDANT TEMPEST', pts:42, need:[NEED.id('SchStorm'),NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider'),NEED.id('Eclipse')], effect:'legend:tempest'},
@@ -236,6 +254,7 @@ const el = {
   river: document.getElementById('river'),
   hand: document.getElementById('hand'),
   opps: document.getElementById('opps'),
+  near: document.getElementById('near'),
   deckBadge: document.getElementById('deckBadge'),
   discardBadge: document.getElementById('discardBadge'),
   startBtn: document.getElementById('startBtn'),
@@ -244,12 +263,10 @@ const el = {
   fsBtn: document.getElementById('fsBtn'),
   leaveBtn: document.getElementById('leaveBtn'),
   toLobbyBtn: document.getElementById('toLobbyBtn'),
-  msg: document.getElementById('msg'),
   over: document.getElementById('over'),
   overTitle: document.getElementById('overTitle'),
   overWhy: document.getElementById('overWhy'),
   overTable: document.getElementById('overTable'),
-  combosBtn: document.getElementById('combosBtn'),
   pick: document.getElementById('pick'),
   pickTitle: document.getElementById('pickTitle'),
   pickBody: document.getElementById('pickBody'),
@@ -258,14 +275,12 @@ const el = {
 };
 el.gameIdBadge.textContent = `ID: ${gameId.slice(0,6)}`;
 
-const gref = doc(db, "games", gameId);
-const uref = doc(db, "users", username);
-
 /* ======= Helpers ======= */
-function cardHTML(id){
+function cardFrontHTML(id){
   const c = byId[id];
-  return `<div class="card"><div class="t">${c.emoji} ${c.name}</div><div class="f">${c.fam} • Tier ${c.tier}</div></div>`;
+  return `<div class="front"><div class="t">${c.emoji} ${c.name}</div><div class="f">${c.fam} • Tier ${c.tier}</div></div>`;
 }
+function cardBackHTML(){ return `<div class="back"></div>`; }
 function miniHand(count){ return `<div class="mini">${Array.from({length:Math.min(5,count)},()=>'<i></i>').join('')}</div>`; }
 function buildDeck(){
   const freq = { Scholar:3, Weather:4, Beast:3, Tamer:3, Relic:3 };
@@ -274,13 +289,18 @@ function buildDeck(){
     const n=freq[c.fam]??2;
     for(let i=0;i<n;i++) deck.push(c.id);
   }
-  for(let i=0;i<10;i++){ deck.push(CARDS[(Math.random()*CARDS.length)|0].id); }
+  for(let i=0;i<8;i++){ deck.push(CARDS[(Math.random()*CARDS.length)|0].id); }
   for(let i=deck.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [deck[i],deck[j]]=[deck[j],deck[i]]; }
   return deck;
 }
 function now(){ return Date.now(); }
 
-/* ======= Ready combos detection ======= */
+/* ======= Local reveal timers (per river slot) ======= */
+const localRevealUntil = Array(10).fill(0);      // front visible until ts (then flips)
+let localFlipHighlightUntil = 0;                 // add glow when spells reveal center
+const prevRiverUids = Array(10).fill(null);
+
+/* ======= Ready / Near combos ======= */
 function findReadyCombos(handIds){
   const hand = handIds.map(id=>byId[id]);
   const out=[];
@@ -294,13 +314,33 @@ function findReadyCombos(handIds){
         if(req.test(hand[i])){ idx=i; break; }
       }
       if(idx<0){ take.length=0; break; }
-      used[idx]=true; take.push(idx);
+      used[idx]=true; take.push(i=idx);
     }
     if(take.length){ out.push({combo,indexes:take}); }
   }
-  // prefer higher points; effects get a slight bump
   out.sort((a,b)=> (b.combo.pts + (b.combo.effect?2:0)) - (a.combo.pts + (a.combo.effect?2:0)));
   return out;
+}
+function findNearCombosDetailed(handIds, limitMissing=2){
+  const hand = handIds.map(id=>byId[id]);
+  const res=[];
+  for(const combo of COMBOS){
+    const used = new Array(hand.length).fill(false);
+    const missing=[];
+    for(const req of combo.need){
+      let ok=-1;
+      for(let i=0;i<hand.length;i++){
+        if(used[i]) continue;
+        if(req.test(hand[i])){ ok=i; break; }
+      }
+      if(ok>=0) used[ok]=true; else missing.push(req);
+    }
+    if(missing.length>0 && missing.length<=limitMissing){
+      res.push({combo, missing});
+    }
+  }
+  res.sort((a,b)=> (a.missing.length - b.missing.length) || ((b.combo.pts||0) - (a.combo.pts||0)));
+  return res.slice(0,3);
 }
 
 /* ======= Bootstrap / seat ======= */
@@ -315,15 +355,14 @@ async function ensureGameAndSeat(){
         status: "lobby",
         players: [username],
         deck, discard: [],
-        river: Array.from({length:10}, ()=>({uid:null, id:null, revealUntil:0})),
+        river: Array.from({length:10}, ()=>({uid:null, id:null})),
         hands: {[username]: []},
         points: {[username]: 0},
         combos: {[username]: 0},
         winners: [],
-        freezeUntil: 0,
-        revealOppUntil: 0,
-        flipMarkUntil: 0,
-        events: [],
+        freezeUntil: 0,           // global freeze (freeze river)
+        revealOppUntil: 0,        // global reveal opponents
+        events: [],               // [{ts,type?,ms?,text}]
         lastMoveAt: now()
       };
       tx.set(gref, base);
@@ -349,7 +388,7 @@ async function hostDealAndStart(){
     const g = snap.data();
     if (g.host !== username) return;
     const deck = buildDeck();
-    const river = Array.from({length:10}, ()=>({uid: makeUID(), id: deck.pop() || null, revealUntil: 0}));
+    const river = Array.from({length:10}, ()=>({uid: makeUID(), id: deck.pop() || null}));
     const hands = {};
     for(const p of g.players){
       hands[p] = [];
@@ -359,8 +398,8 @@ async function hostDealAndStart(){
     tx.update(gref, {
       status:"active", deck, river, hands, points, combos,
       discard: [], winners: [],
-      freezeUntil: 0, revealOppUntil: 0, flipMarkUntil: 0,
-      events: (g.events||[]).concat([{ts:now(), text:`${username} started the game.`}]).slice(-20),
+      freezeUntil: 0, revealOppUntil: 0,
+      events: (g.events||[]).concat([{ts:now(), text:`${username} started the game.`},{ts:now(), type:'revealCenter', ms:5000, text:'Cards revealed.'}]).slice(-20),
       lastMoveAt: now()
     });
   });
@@ -369,7 +408,7 @@ async function hostDealAndStart(){
 /* ======= Interactions ======= */
 let sel = {zone:null, idx:null};
 let tapLock = 0;
-function lockShort(){ tapLock = now() + 250; }
+function lockShort(){ tapLock = now() + 220; }
 function canTap(){ return now() > tapLock; }
 
 async function pickFromRiver(rIdx){
@@ -386,7 +425,7 @@ async function pickFromRiver(rIdx){
 
     my.push({uid:makeUID(), id:r.id});
     const nextId = deck.pop() || null;
-    g.river[rIdx] = {uid: nextId ? makeUID() : null, id: nextId, revealUntil: 0};
+    g.river[rIdx] = {uid: nextId ? makeUID() : null, id: nextId};
 
     const hands = Object.assign({}, g.hands, {[username]: my});
     const events = (g.events||[]).concat([{ts:now(), text:`${username} drew from center.`}]).slice(-20);
@@ -406,7 +445,7 @@ async function swapHandRiver(hIdx, rIdx){
 
     const myCard = my[hIdx], riverCard = r;
     my[hIdx] = {uid: makeUID(), id: riverCard.id};
-    g.river[rIdx] = {uid: makeUID(), id: myCard.id, revealUntil: 0};
+    g.river[rIdx] = {uid: makeUID(), id: myCard.id};
 
     const hands = Object.assign({}, g.hands, {[username]: my});
     const events = (g.events||[]).concat([{ts:now(), text:`${username} swapped with center.`}]).slice(-20);
@@ -414,10 +453,8 @@ async function swapHandRiver(hIdx, rIdx){
   });
 }
 
-/* ======= Effects engine (runs inside transaction) ======= */
-function pushEvent(g, text){
-  g.events = (g.events||[]).concat([{ts:now(), text}]).slice(-20);
-}
+/* ======= Effects ======= */
+function pushEvent(g, e){ g.events = (g.events||[]).concat([e]).slice(-20); }
 function pushToHandOrDiscard(g, player, cardId){
   const hand = (g.hands[player]||[]);
   if (hand.length < 5) hand.push({uid:makeUID(), id:cardId});
@@ -436,83 +473,7 @@ function removeFirstFam(g, player, fam){
   if (idx>=0) return h.splice(idx,1)[0];
   return null;
 }
-function applyNonTargetEffect(g, who, comboKey){
-  switch(comboKey){
-    case 'ThunderHeist': {
-      for(const opp of oppList(g, who)){
-        const got = removeRandomFromHand(g, opp);
-        if (got) pushToHandOrDiscard(g, who, got.id);
-      }
-      pushEvent(g, `${who} plucked 1 from each opponent.`);
-    } break;
-    case 'StormShatter': {
-      for(const opp of oppList(g, who)){
-        const d = removeFirstFam(g, opp, F.Relic);
-        if (d) (g.discard||=(g.discard||[])).push(d.id);
-      }
-      pushEvent(g, `${who} shattered opponents’ relics.`);
-    } break;
-    case 'FrozenOracle': {
-      g.freezeUntil = now() + 4000;
-      pushEvent(g, `${who} froze the river (4s).`);
-    } break;
-    case 'CrownCommand': {
-      // draw 1 (hand overflow goes to discard)
-      const deck = g.deck||[];
-      if (deck.length){
-        const id = deck.pop();
-        pushToHandOrDiscard(g, who, id);
-        pushEvent(g, `${who} drew a bonus card.`);
-      }
-    } break;
-    case 'ScholarsGlint': {
-      g.flipMarkUntil = now() + 2500;
-      pushEvent(g, `${who} flashed the center.`);
-    } break;
-    case 'TwilightEdict': {
-      g.revealOppUntil = now() + 3000;
-      pushEvent(g, `${who} revealed opponents’ hands (3s).`);
-    } break;
-    // LEGENDARY
-    case 'AscendantTempest': {
-      g.revealOppUntil = now()+4000;
-      for(const opp of oppList(g, who)){
-        for(let k=0;k<2;k++){
-          const got = removeRandomFromHand(g, opp);
-          if (got) pushToHandOrDiscard(g, who, got.id);
-        }
-        const d = removeRandomFromHand(g, opp);
-        if (d) (g.discard||=(g.discard||[])).push(d.id);
-      }
-      pushEvent(g, `${who} unleashed ASCENDANT TEMPEST!`);
-    } break;
-    case 'RelicsUnleashed': {
-      for(const opp of oppList(g, who)){
-        const d = removeFirstFam(g, opp, F.Relic);
-        if (d) (g.discard||=(g.discard||[])).push(d.id);
-      }
-      const deck = g.deck||[];
-      if (deck.length){ pushToHandOrDiscard(g, who, deck.pop()); }
-      pushEvent(g, `${who} unleashed RELICS!`);
-    } break;
-    case 'ScholarsCouncil': {
-      g.freezeUntil = now()+3000;
-      pushEvent(g, `${who} convened COUNCIL (river frozen 3s).`);
-    } break;
-    case 'BeastDominion': {
-      const deck = g.deck||[];
-      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
-      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
-      for(const opp of oppList(g, who)){
-        const d = removeRandomFromHand(g, opp);
-        if (d) (g.discard||=(g.discard||[])).push(d.id);
-      }
-      pushEvent(g, `${who} proclaimed BEAST DOMINION!`);
-    } break;
-  }
-}
 
-/* ======= Target picker helpers ======= */
 function effectNeedsTarget(effect){
   if (!effect) return null;
   if (effect.startsWith('stealTarget:')) return {kind:'steal', fam:effect.split(':')[1]};
@@ -526,16 +487,90 @@ function famMatch(fam, id){
   return true;
 }
 
+function applyNonTargetEffect(g, who, comboKey){
+  switch(comboKey){
+    case 'ThunderHeist': {
+      for(const opp of oppList(g, who)){
+        const got = removeRandomFromHand(g, opp);
+        if (got) pushToHandOrDiscard(g, who, got.id);
+      }
+      pushEvent(g, {ts:now(), text:`${who} plucked 1 from each opponent.`});
+    } break;
+    case 'StormShatter': {
+      for(const opp of oppList(g, who)){
+        const d = removeFirstFam(g, opp, F.Relic);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, {ts:now(), text:`${who} shattered opponents’ relics.`});
+    } break;
+    case 'FrozenOracle': {
+      g.freezeUntil = now() + 4000;
+      pushEvent(g, {ts:now(), text:`${who} froze the river (4s).`});
+    } break;
+    case 'CrownCommand': {
+      const deck = g.deck||[];
+      if (deck.length){
+        const id = deck.pop();
+        pushToHandOrDiscard(g, who, id);
+        pushEvent(g, {ts:now(), text:`${who} drew a bonus card.`});
+      }
+    } break;
+    case 'ScholarsGlint': {
+      // LOCAL reveal via structured event (each client handles)
+      pushEvent(g, {ts:now(), type:'revealCenter', ms:2500, text:`${who} flashed the center.`});
+    } break;
+    case 'TwilightEdict': {
+      g.revealOppUntil = now() + 3000;
+      pushEvent(g, {ts:now(), text:`${who} revealed opponents’ hands (3s).`});
+    } break;
+    // LEGENDARY
+    case 'AscendantTempest': {
+      g.revealOppUntil = now()+4000;
+      for(const opp of oppList(g, who)){
+        for(let k=0;k<2;k++){
+          const got = removeRandomFromHand(g, opp);
+          if (got) pushToHandOrDiscard(g, who, got.id);
+        }
+        const d = removeRandomFromHand(g, opp);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, {ts:now(), text:`${who} unleashed ASCENDANT TEMPEST!`});
+    } break;
+    case 'RelicsUnleashed': {
+      for(const opp of oppList(g, who)){
+        const d = removeFirstFam(g, opp, F.Relic);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      const deck = g.deck||[];
+      if (deck.length){ pushToHandOrDiscard(g, who, deck.pop()); }
+      pushEvent(g, {ts:now(), text:`${who} unleashed RELICS!`});
+    } break;
+    case 'ScholarsCouncil': {
+      g.freezeUntil = now()+3000;
+      pushEvent(g, {ts:now(), text:`${who} convened COUNCIL (river frozen 3s).`});
+    } break;
+    case 'BeastDominion': {
+      const deck = g.deck||[];
+      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
+      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
+      for(const opp of oppList(g, who)){
+        const d = removeRandomFromHand(g, opp);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, {ts:now(), text:`${who} proclaimed BEAST DOMINION!`});
+    } break;
+  }
+}
+
 /* ======= Play combo ======= */
 async function playCombo(comboKey, useUids, targetInfo){
   await runTransaction(db, async(tx)=>{
     const snap = await tx.get(gref); if(!snap.exists()) return;
     const g = snap.data(); if(g.status!=='active') return;
 
-    // verify my cards
     const my = (g.hands?.[username]||[]).slice();
     const haveAll = useUids.every(uid => my.some(x=>x.uid===uid));
-    if (!haveAll) return; // stale
+    if (!haveAll) return;
 
     // remove those cards
     for(const uid of useUids){
@@ -549,83 +584,43 @@ async function playCombo(comboKey, useUids, targetInfo){
     points[username] = (points[username]||0) + (combo.pts||0);
     combos[username] = (combos[username]||0) + 1;
 
-    // apply effect
     const needs = effectNeedsTarget(combo.effect);
     if (needs){
-      // validate target still exists
       const oppH = (g.hands?.[targetInfo.opp]||[]);
       const tIdx = oppH.findIndex(x=>x.uid===targetInfo.cardUid);
-      if (tIdx<0 || !famMatch(needs.fam.toString().toLowerCase()==='any'?'any':needs.fam, oppH[tIdx].id)) return; // invalid
+      if (tIdx<0 || !famMatch(needs.fam==='any'?'any':needs.fam, oppH[tIdx].id)) return;
       const picked = oppH.splice(tIdx,1)[0];
 
       if (needs.kind==='steal'){
         pushToHandOrDiscard(g, username, picked.id);
-        pushEvent(g, `${username} stole ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
+        pushEvent(g, {ts:now(), text:`${username} stole ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`});
       } else if (needs.kind==='duplicate'){
         pushToHandOrDiscard(g, username, picked.id);
-        pushEvent(g, `${username} duplicated ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
-        // original remains
-        (g.hands[targetInfo.opp] = oppH); // reattach
+        (g.hands[targetInfo.opp] = oppH); // original stays
+        pushEvent(g, {ts:now(), text:`${username} duplicated ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`});
       } else if (needs.kind==='destroy'){
         (g.discard||=(g.discard||[])).push(picked.id);
-        pushEvent(g, `${username} destroyed ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
+        pushEvent(g, {ts:now(), text:`${username} destroyed ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`});
       }
     } else {
       applyNonTargetEffect(g, username, comboKey);
-      pushEvent(g, `${username} played ${combo.label} (+${combo.pts||0}).`);
+      pushEvent(g, {ts:now(), text:`${username} played ${combo.label} (+${combo.pts||0}).`});
     }
 
-    // commit
     const hands = Object.assign({}, g.hands, {[username]: my});
     tx.update(gref, {
       hands, points, combos,
       river: g.river, deck: g.deck, discard: g.discard,
-      freezeUntil: g.freezeUntil||0, revealOppUntil: g.revealOppUntil||0, flipMarkUntil: g.flipMarkUntil||0,
+      freezeUntil: g.freezeUntil||0, revealOppUntil: g.revealOppUntil||0,
       events: g.events, lastMoveAt: now()
     });
   });
   await endIfDeckDone();
 }
 
-/* ======= UI: combos button & target picker ======= */
-function openCombosList(game){
-  const my = (game.hands?.[username]||[]);
-  const handIds = my.map(x=>x.id);
-  const ready = findReadyCombos(handIds);
-  const picker = document.getElementById('pick');
-  const title = document.getElementById('pickTitle');
-  const body = document.getElementById('pickBody');
-  title.textContent = 'Ready Combos';
-  body.innerHTML = '';
-  if (!ready.length){
-    body.innerHTML = `<div class="prow"><em>No combos ready.</em></div>`;
-  } else {
-    for (const r of ready){
-      const div = document.createElement('div'); div.className='prow';
-      const needsTarget = effectNeedsTarget(r.combo.effect);
-      const useUids = r.indexes.map(i=>my[i].uid);
-      const btn = document.createElement('button'); btn.className='pbtn';
-      btn.textContent = `Play — ${r.combo.label} (+${r.combo.pts})`;
-      btn.addEventListener('click', async ()=>{
-        if (needsTarget){
-          // switch to target UI
-          openTargetPicker(game, r.combo, useUids, needsTarget);
-        } else {
-          picker.classList.remove('show');
-          await playCombo(r.combo.key, useUids, null);
-        }
-      });
-      div.innerHTML = `<h4>${r.combo.label} <span style="opacity:.75">(+${r.combo.pts})</span></h4>`;
-      div.appendChild(btn);
-      body.appendChild(div);
-    }
-  }
-  picker.classList.add('show');
-}
-function openTargetPicker(game, combo, useUids, needs){
-  const picker = document.getElementById('pick');
-  const title = document.getElementById('pickTitle');
-  const body = document.getElementById('pickBody');
+/* ======= Target picker ======= */
+function openCombosOrTarget(game, combo, useUids, needs){
+  const picker = el.pick, title = el.pickTitle, body = el.pickBody;
   title.textContent = `Choose a target — ${combo.label}`;
   body.innerHTML = '';
   const players = (game.players||[]).filter(p=>p!==username);
@@ -634,10 +629,10 @@ function openTargetPicker(game, combo, useUids, needs){
     row.innerHTML = `<h4>${p}</h4>`;
     const cardsDiv = document.createElement('div'); cardsDiv.className='pcards';
     const hand = (game.hands?.[p]||[]);
-    let any = false;
+    let any=false;
     for(const c of hand){
-      if (!famMatch((needs.fam||'any'), c.id) && needs.fam!=='any') continue;
-      any = true;
+      if (needs.fam!=='any' && !famMatch(needs.fam, c.id)) continue;
+      any=true;
       const btn = document.createElement('button'); btn.className='pbtn';
       btn.textContent = `${byId[c.id].emoji} ${byId[c.id].name}`;
       btn.addEventListener('click', async ()=>{
@@ -646,32 +641,12 @@ function openTargetPicker(game, combo, useUids, needs){
       });
       cardsDiv.appendChild(btn);
     }
-    if (!any){
-      const none = document.createElement('div'); none.style.opacity='.75'; none.style.fontSize='12px'; none.textContent='No valid cards.';
-      cardsDiv.appendChild(none);
-    }
-    row.appendChild(cardsDiv);
-    body.appendChild(row);
+    if(!any){ const none=document.createElement('div'); none.style.opacity='.75'; none.style.fontSize='12px'; none.textContent='No valid cards.'; cardsDiv.appendChild(none); }
+    row.appendChild(cardsDiv); body.appendChild(row);
   }
   picker.classList.add('show');
 }
-el.combosBtn.addEventListener('click', async ()=>{
-  const snap = await getDoc(gref); if(!snap.exists()) return;
-  openCombosList(snap.data());
-});
 el.pickCancel.addEventListener('click', ()=> el.pick.classList.remove('show'));
-
-/* ======= Fullscreen / leave ======= */
-el.fsBtn.addEventListener('click', async ()=>{
-  const root = document.documentElement;
-  try{
-    if (!document.fullscreenElement) await (root.requestFullscreen?.() || root.webkitRequestFullscreen?.());
-    else await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
-  }catch(e){}
-});
-el.leaveBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
-el.toLobbyBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
-el.startBtn.addEventListener('click', hostDealAndStart);
 
 /* ======= Rendering ======= */
 function renderOpps(game){
@@ -697,20 +672,26 @@ function renderOpps(game){
 }
 function renderRiver(game){
   const frozen = now() < (game.freezeUntil||0);
-  const flip = now() < (game.flipMarkUntil||0);
-  el.river.parentElement.classList.toggle('frozen', frozen);
-  el.river.parentElement.classList.toggle('flipGlow', flip);
+  const wrap = document.querySelector('.riverWrap');
+  wrap.classList.toggle('frozen', frozen);
+  wrap.classList.toggle('flipGlow', now() < localFlipHighlightUntil);
 
   el.river.innerHTML='';
   const R = game.river||[];
   for(let i=0;i<10;i++){
     const s = R[i] || {id:null};
-    const wrap = document.createElement('div');
-    wrap.className = 'slot' + (s.id? '':' empty');
-    wrap.dataset.idx = String(i);
-    if (sel.zone==='river' && sel.idx===i) wrap.classList.add('sel');
-    if (s.id){ wrap.innerHTML = cardHTML(s.id); }
-    el.river.appendChild(wrap);
+    const slot = document.createElement('div');
+    slot.className = 'slot' + (s.id? '':' empty');
+    slot.dataset.idx = String(i);
+    if (sel.zone==='river' && sel.idx===i) slot.classList.add('sel');
+    if (s.id){
+      const card = document.createElement('div'); card.className='card';
+      card.innerHTML = cardFrontHTML(s.id) + cardBackHTML();
+      el.river.appendChild(Object.assign(slot,{appendChild:slot.appendChild.bind(slot)}));
+      slot.appendChild(card);
+    } else {
+      el.river.appendChild(slot);
+    }
   }
 }
 function renderHand(game){
@@ -721,8 +702,28 @@ function renderHand(game){
     slot.className = 'hslot'+(my[i]?'':' empty');
     slot.dataset.idx = String(i);
     if (sel.zone==='hand' && sel.idx===i) slot.classList.add('sel');
-    if (my[i]) slot.innerHTML = cardHTML(my[i].id);
+    if (my[i]){
+      const c = my[i].id;
+      const card = document.createElement('div'); card.className='card';
+      card.innerHTML = cardFrontHTML(c); // hand is always face-up
+      slot.appendChild(card);
+    }
     el.hand.appendChild(slot);
+  }
+}
+function renderNear(game){
+  const my = (game.hands?.[username]||[]);
+  const near = findNearCombosDetailed(my.map(x=>x.id), 2);
+  el.near.innerHTML='';
+  if (!near.length){
+    const pill=document.createElement('div'); pill.className='pill'; pill.textContent='No combo suggestions';
+    el.near.appendChild(pill); return;
+  }
+  for(const n of near){
+    const pill=document.createElement('div'); pill.className='pill';
+    const needsEmo = n.missing.map(m=> byId[m.id]?.emoji || '❓').join(' ');
+    pill.innerHTML = `<span>${n.combo.label}</span> <span class="need">• need ${needsEmo}</span>`;
+    el.near.appendChild(pill);
   }
 }
 function updateHUD(game){
@@ -730,21 +731,24 @@ function updateHUD(game){
   el.discardBadge.textContent = `Discard: ${game.discard?.length||0}`;
   el.startBtn.hidden = !(game.host===username && game.status==='lobby');
   el.hostBadge.hidden = !(game.host===username);
-  if (game.status==='lobby'){
-    el.msg.textContent = (game.host===username) ? 'You are host. Tap “Deal & Start”.' : 'Waiting for host to start…';
-  } else if (game.status==='active'){
-    el.msg.textContent = '';
-  }
 }
-function showOver(game){
-  const winners = game.winners||[];
-  el.overTitle.textContent = winners.includes(username) && winners.length===1 ? 'You win!' : `Winner: ${winners.join(', ')}`;
-  el.overWhy.textContent = game.overReason || 'Game finished';
-  const pts = game.points||{};
-  const rows = Object.entries(pts).sort((a,b)=>b[1]-a[1]);
-  el.overTable.innerHTML = `<tr><th>Player</th><th>Points</th></tr>` + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
-  el.over.classList.add('show');
+
+/* Face/back updater (local timers) */
+function rafFaces(){
+  const slots = el.river.querySelectorAll('.slot');
+  const t = now();
+  slots.forEach((slot)=>{
+    const idx = Number(slot.dataset.idx);
+    const front = slot.querySelector('.front');
+    const back  = slot.querySelector('.back');
+    if (!front || !back) return;
+    const up = t < (localRevealUntil[idx]||0);
+    front.style.display = up ? '' : 'none';
+    back.style.display  = up ? 'none' : '';
+  });
+  requestAnimationFrame(rafFaces);
 }
+requestAnimationFrame(rafFaces);
 
 /* ======= Click bindings ======= */
 el.river.addEventListener('click', async (e)=>{
@@ -762,7 +766,6 @@ el.river.addEventListener('click', async (e)=>{
     else { sel={zone:'river', idx:rIdx}; renderRiver(g); }
   }
 });
-
 el.hand.addEventListener('click', async (e)=>{
   const slot = e.target.closest('.hslot'); if(!slot) return;
   const hIdx = Number(slot.dataset.idx);
@@ -776,7 +779,7 @@ el.hand.addEventListener('click', async (e)=>{
   else { sel={zone:'hand', idx:hIdx}; renderHand(g); }
 });
 
-/* Double-tap = auto-play best ready combo (opens target picker if needed) */
+/* Double-tap hand => auto-play best combo (will open target picker if needed) */
 let lastTap=0;
 el.hand.addEventListener('pointerdown', async ()=>{
   const t = now();
@@ -789,14 +792,23 @@ el.hand.addEventListener('pointerdown', async ()=>{
     const best = ready[0];
     const needs = effectNeedsTarget(best.combo.effect);
     const useUids = best.indexes.map(i=>my[i].uid);
-    if (needs){
-      openTargetPicker(g, best.combo, useUids, needs);
-    } else {
-      await playCombo(best.combo.key, useUids, null);
-    }
+    if (needs){ openCombosOrTarget(g, best.combo, useUids, needs); }
+    else { await playCombo(best.combo.key, useUids, null); }
   }
   lastTap=t;
 });
+
+/* ======= Fullscreen / leave / start ======= */
+el.fsBtn.addEventListener('click', async ()=>{
+  const root = document.documentElement;
+  try{
+    if (!document.fullscreenElement) await (root.requestFullscreen?.() || root.webkitRequestFullscreen?.());
+    else await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+  }catch(e){}
+});
+el.leaveBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
+el.toLobbyBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
+el.startBtn.addEventListener('click', hostDealAndStart);
 
 /* ======= Game over & win bump ======= */
 async function endIfDeckDone(){
@@ -831,21 +843,40 @@ async function bumpMyWinsIfWinner(winners){
   });
 }
 
-/* ======= Live sync (UI + toasts) ======= */
+/* ======= Live sync + toasts + local reveal handling ======= */
 let lastEventTs = 0;
 onSnapshot(gref, async (snap)=>{
   if (!snap.exists()) return;
   const g = snap.data();
 
+  // Update local reveal timers if river changed (each new/changed card: 5s face-up)
+  const R = g.river||[];
+  for(let i=0;i<10;i++){
+    const u = R[i]?.uid || null;
+    if (u && u !== prevRiverUids[i]){
+      localRevealUntil[i] = now() + 5000;
+      prevRiverUids[i] = u;
+    } else if (!u) {
+      prevRiverUids[i] = null;
+      localRevealUntil[i] = 0;
+    }
+  }
+
   renderOpps(g);
   renderRiver(g);
   renderHand(g);
+  renderNear(g);
   updateHUD(g);
 
-  // toasts for new events
+  // toasts + handle structured events
   for (const ev of (g.events||[])){
     if (ev.ts > lastEventTs){
-      showToast(ev.text);
+      if (ev.type === 'revealCenter'){
+        // LOCAL: extend all slots' reveal timers
+        for(let i=0;i<10;i++) localRevealUntil[i] = Math.max(localRevealUntil[i], now() + (ev.ms||2500));
+        localFlipHighlightUntil = now() + (ev.ms||2500);
+      }
+      if (ev.text) showToast(ev.text);
       lastEventTs = Math.max(lastEventTs, ev.ts);
     }
   }
@@ -855,7 +886,7 @@ onSnapshot(gref, async (snap)=>{
     if (!localStorage.getItem(`splinters.bumped.${gameId}.${username}`)){
       await bumpMyWinsIfWinner(g.winners||[]);
       localStorage.setItem(`splinters.bumped.${gameId}.${username}`,'1');
-      setTimeout(()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; }, 1600);
+      setTimeout(()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; }, 1500);
     }
   }
 });
@@ -864,11 +895,29 @@ onSnapshot(gref, async (snap)=>{
 function showToast(text){
   const t=document.createElement('div'); t.className='toast'; t.textContent=text;
   el.toasts.appendChild(t);
-  const life = 1400 + Math.random()*600;
-  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),250); }, life);
+  const life = 1300 + Math.random()*500;
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),220); }, life);
+}
+function showOver(game){
+  const winners = game.winners||[];
+  el.overTitle.textContent = winners.includes(username) && winners.length===1 ? 'You win!' : `Winner: ${winners.join(', ')}`;
+  el.overWhy.textContent = game.overReason || 'Game finished';
+  const pts = game.points||{};
+  const rows = Object.entries(pts).sort((a,b)=>b[1]-a[1]);
+  el.overTable.innerHTML = `<tr><th>Player</th><th>Points</th></tr>` + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+  el.over.classList.add('show');
 }
 
-/* ======= Small init ======= */
+/* ======= End-condition poll (safety) ======= */
+setInterval(endIfDeckDone, 1200);
+
+/* ======= Header state ======= */
+onSnapshot(gref, (snap)=>{
+  if(!snap.exists()) return;
+  const g = snap.data();
+  el.startBtn.hidden = !(g.host===username && g.status==='lobby');
+  el.hostBadge.hidden = !(g.host===username);
+});
 </script>
 </body>
 </html>
