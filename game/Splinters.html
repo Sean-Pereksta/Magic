@@ -312,6 +312,17 @@ const CARDS = [
   {id:'ShadowDagger',name:'Shadow Dagger',fam:F.Relic,emoji:'🗡️🌑',tier:2},
   {id:'MirrorStars',name:'Mirror of Stars',fam:F.Relic,emoji:'🪞🌌',tier:3},
 ];
+
+/* Hoisted helper to avoid TDZ issues */
+function famIcon(fam){
+  if (fam === 'Scholar') return '📘';
+  if (fam === 'Beast')   return '🐾';
+  if (fam === 'Relic')   return '🗝️';
+  if (fam === 'Tamer')   return '⚔️';
+  if (fam === 'Weather') return '⛅';
+  return '❓';
+}
+
 const byId = Object.fromEntries(CARDS.map(c=>[c.id,c]));
 const NEED = {
   id:(id)=>({id,label:byId[id].name, test:c=>c.id===id}),
@@ -445,7 +456,6 @@ function setPanel(open, persist=true){
   el.sp.classList.toggle('min', !open);
   el.spToggle.textContent = open ? '«' : '»';
   if (persist) localStorage.setItem(SB_KEY, open ? '1' : '0');
-  // also allow “persist-open” flag (keeps open on tiny screens if user forced it)
   document.body.classList.toggle('persist-open', open && window.innerWidth <= 480);
 }
 el.spToggle.addEventListener('click', ()=> setPanel(el.sp.classList.contains('min')));
@@ -486,7 +496,6 @@ const localRevealDur   = Array(10).fill(0);
 let   localFlipHighlightUntil = 0;
 const prevRiverUids = Array(10).fill(null);
 const makeUID = ()=> Math.random().toString(36).slice(2);
-const famIcon = (fam)=> fam==='Scholar'?'📘':fam==='Beast'?'🐾':fam==='Relic'?'🗝️':fam==='Tamer'?'⚔️':fam==='Weather'?'⛅':'❓';
 
 /* ======= Game bootstrap ======= */
 async function ensureGameAndSeat(){
@@ -1302,7 +1311,6 @@ setInterval(endIfDeckDone, 1200);
 
 /* ======= Responsive: auto-open padding when panel open ======= */
 window.addEventListener('resize', ()=>{
-  // Keep body sb-open in sync with persistence on small screens
   const persistedOpen = (localStorage.getItem(SB_KEY) !== '0');
   setPanel(persistedOpen, false);
 });
