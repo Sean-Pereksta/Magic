@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Splinters — Multiplayer (Effects + Popups)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --ink:#e5eeff; --muted:#9fb3cc; --pane:#0f1826; --edge:#1b2a44; --accent:#b91c1c;
+    --h:56px; --pad:8px; --handH:110px; --riverW:min(94vw,740px);
+    --cardW: clamp(52px, 9.4vw, 72px); --cardH: calc(var(--cardW) * 1.33);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1100px 740px at 60% -8%,#142033 0%,#0b0f14 44%,#070a10 100%);color:var(--ink);font:600 13px/1.25 system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif;overflow:hidden}
+  button{appearance:none;border:1px solid #2b3f64;background:#132139;color:#eaf3ff;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .top{position:fixed;left:0;right:0;top:0;height:var(--h);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px env(safe-area-inset-right) 6px env(safe-area-inset-left)}
+  .brand{display:flex;align-items:center;gap:10px;padding-left:6px}
+  .logo{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#ffffff12;border:1px solid #ffffff22}
+  .title{font-weight:900;letter-spacing:.2px}
+  .controls{display:flex;align-items:center;gap:6px;padding-right:6px}
+  .host{background:#192940;border-color:#2f4e7d}
+  .full{padding:6px 10px}
+  .leave{background:#260c0c;border-color:#4b1a1a}
+  .badge{padding:4px 8px;border-radius:999px;background:#0f1a2b;border:1px solid #1e3257;color:#cfe4ff;font-size:11px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ghost{background:#0d1728;border-color:#1b2b48}
+
+  /* Opponents bar */
+  .opps{position:fixed;left:0;right:0;top:var(--h);height:52px;padding:0 8px;display:flex;align-items:center;justify-content:center}
+  .opps-inner{width:var(--riverW);display:flex;gap:8px;justify-content:center;overflow:hidden}
+  .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:10px;padding:4px 6px;display:flex;align-items:center;gap:6px}
+  .opp .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini{display:flex;gap:4px;margin-left:auto}
+  .mini i{width:16px;height:22px;border-radius:5px;background:#112036;border:1px solid #213a62;display:block}
+  .revealMini{display:flex;gap:6px;margin-left:auto;font-size:11px;color:#dbe8ff}
+
+  /* River */
+  .main{position:absolute;inset:calc(var(--h) + 52px + 4px) 0 calc(env(safe-area-inset-bottom) + var(--handH) + 6px) 0;display:grid;place-items:center}
+  .river{width:var(--riverW);display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
+  .slot{width:var(--cardW);height:var(--cardH);border-radius:10px;border:1px solid var(--edge);background:#0f1a2a;display:grid;place-items:center;position:relative}
+  .slot.empty{border-style:dashed;opacity:.6}
+  .card{width:calc(100% - 6px);height:calc(100% - 6px);border-radius:8px;border:1px solid #1e2f52;background:#14243c;padding:6px;display:grid;grid-template-rows:auto 1fr;gap:2px}
+  .card .t{font-weight:900;font-size:11px}
+  .card .f{font-size:10px;color:#cfe1ffcc}
+  .sel{outline:3px solid #b91c1c;outline-offset:2px}
+  .frozen .slot{filter:grayscale(.2) contrast(.9);opacity:.85}
+  .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
+
+  /* Hand */
+  .handWrap{position:fixed;left:0;right:0;bottom:0;height:calc(var(--handH) + env(safe-area-inset-bottom));padding:6px 8px env(safe-area-inset-bottom)}
+  .hand{height:100%;margin:0 auto;width:var(--riverW);border:1px solid var(--edge);background:#0f1a2a;border-radius:12px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
+  .hslot{width:calc(var(--cardW) * 1.05);height:calc(var(--cardH) * 1.05);border:1px solid var(--edge);background:#0d1728;border-radius:10px;display:grid;place-items:center}
+  .hslot.empty{opacity:.5;border-style:dashed}
+  .topMsg{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--h) + 52px + 6px);font-weight:800;color:#ffe2e2}
+
+  /* Winner */
+  .overlay{position:fixed;inset:0;background:rgba(5,10,18,.86);display:none;align-items:center;justify-content:center;z-index:40}
+  .overlay.show{display:flex}
+  .modal{background:#0f1a2a;border:1px solid #1b2c48;border-radius:14px;width:min(92vw,420px);padding:14px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .modal h2{margin:0 0 8px 0}
+  .modal p{margin:0 0 8px 0;color:#cfe1ff}
+  .table{width:100%;border-collapse:collapse;font-size:13px}
+  .table td,.table th{border-bottom:1px solid #22385d;padding:6px;text-align:left}
+  .table tr:last-child td{border-bottom:none}
+
+  /* Target selector (compact) */
+  .pick{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,20,.84);z-index:45}
+  .pick.show{display:flex}
+  .pickBox{background:#0f1b2e;border:1px solid #1b2c48;border-radius:14px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px}
+  .pickBox h3{margin:0 0 8px 0;font-size:14px}
+  .prow{border:1px solid #223a5f;background:#0d1727;border-radius:10px;padding:8px;margin:6px 0}
+  .prow h4{margin:0 0 6px 0;font-size:12px;color:#cfe4ff}
+  .pcards{display:flex;flex-wrap:wrap;gap:6px}
+  .pbtn{font-size:11px;padding:5px 8px;border-radius:9px;border:1px solid #2a426d;background:#132242;color:#dbeaff;cursor:pointer}
+
+  /* Toasts */
+  .toasts{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--h) + 4px);display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
+  .toast{background:#0f1b2e;border:1px solid #203656;color:#e6efff;padding:6px 8px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);animation:tin .25s ease-out forwards}
+  @keyframes tin{to{opacity:1;transform:translateY(0)}}
+  .toast.out{animation:tout .25s ease-in forwards}
+  @keyframes tout{to{opacity:0;transform:translateY(-6px)}}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">
+      <div class="logo">🪄</div>
+      <div class="title">Splinters</div>
+      <span class="badge" id="hostBadge" hidden>Host</span>
+      <span class="badge" id="gameIdBadge"></span>
+    </div>
+    <div class="controls">
+      <button class="ghost" id="combosBtn" title="Show ready combos">✨</button>
+      <span class="badge" id="deckBadge">Deck: 0</span>
+      <span class="badge" id="discardBadge">Discard: 0</span>
+      <button class="host" id="startBtn" hidden>Deal & Start</button>
+      <button class="full" id="fsBtn" title="Fullscreen">⛶</button>
+      <button class="leave" id="leaveBtn">Lobby</button>
+    </div>
+  </div>
+
+  <div class="opps"><div class="opps-inner" id="opps"></div></div>
+  <div class="topMsg" id="msg"></div>
+
+  <main class="main">
+    <div class="river" id="river"></div>
+  </main>
+
+  <div class="handWrap"><div class="hand" id="hand"></div></div>
+
+  <!-- Winner -->
+  <div class="overlay" id="over">
+    <div class="modal">
+      <h2 id="overTitle">Game Over</h2>
+      <p id="overWhy"></p>
+      <table class="table" id="overTable"></table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+        <button id="toLobbyBtn">Back to Lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target picker -->
+  <div class="pick" id="pick">
+    <div class="pickBox">
+      <h3 id="pickTitle">Pick a target</h3>
+      <div id="pickBody"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+        <button id="pickCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+<script type="module">
+/* ======= Firebase ======= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ======= URL / Lobby ======= */
+const qp = new URLSearchParams(location.search);
+const gameId = qp.get('gameId') || '';
+const username = (qp.get('username') || '').trim();
+const LOBBY_URL = "/";
+
+if (!gameId || !username) alert("Missing gameId or username in URL.");
+
+/* ======= Cards ======= */
+const F = { Scholar:'Scholar', Weather:'Weather', Beast:'Beast', Tamer:'Tamer', Relic:'Relic' };
+const CARDS = [
+  {id:'SchLight',name:'Scholar of Light',fam:F.Scholar,emoji:'✨',tier:2},
+  {id:'SchStorm',name:'Scholar of Storms',fam:F.Scholar,emoji:'🌩️',tier:2},
+  {id:'SchBeast',name:'Scholar of Beasts',fam:F.Scholar,emoji:'🐾',tier:2},
+  {id:'SchStars',name:'Scholar of Stars',fam:F.Scholar,emoji:'🌌',tier:3},
+  {id:'SchTime', name:'Scholar of Time', fam:F.Scholar,emoji:'⏳',tier:3},
+  {id:'SchDark', name:'Scholar of Darkness', fam:F.Scholar,emoji:'🌑',tier:2},
+
+  {id:'StormCloud',name:'Storm Cloud',fam:F.Weather,emoji:'☁️',tier:1},
+  {id:'Lightning',name:'Lightning',fam:F.Weather,emoji:'⚡',tier:2},
+  {id:'Sun', name:'Sun', fam:F.Weather,emoji:'☀️',tier:1},
+  {id:'Rain',name:'Rain',fam:F.Weather,emoji:'🌧️',tier:1},
+  {id:'Blizzard',name:'Blizzard',fam:F.Weather,emoji:'❄️',tier:2},
+  {id:'Eclipse',name:'Eclipse',fam:F.Weather,emoji:'🌘',tier:3},
+
+  {id:'SkySerpent',name:'Sky Serpent',fam:F.Beast,emoji:'🐍',tier:2},
+  {id:'RockRhino',name:'Rock Rhino',fam:F.Beast,emoji:'🦏',tier:2},
+  {id:'FireDrake',name:'Fire Drake',fam:F.Beast,emoji:'🐉',tier:3},
+  {id:'ShadowWolf',name:'Shadow Wolf',fam:F.Beast,emoji:'🐺',tier:2},
+
+  {id:'BeastMaster',name:'Beast Master',fam:F.Tamer,emoji:'🐾⚔️',tier:2},
+  {id:'DragonKnight',name:'Dragon Knight',fam:F.Tamer,emoji:'🐉⚔️',tier:3},
+  {id:'WolfTamer',name:'Wolf Tamer',fam:F.Tamer,emoji:'🐺⚔️',tier:2},
+  {id:'StormRider',name:'Storm Rider',fam:F.Tamer,emoji:'🌩️⚔️',tier:2},
+
+  {id:'SanctumOrb',name:'Sanctum Orb',fam:F.Relic,emoji:'🔮',tier:3},
+  {id:'StormLance',name:'Storm Lance',fam:F.Relic,emoji:'⚔️🌩️',tier:2},
+  {id:'SunCrown',name:'Sun Crown',fam:F.Relic,emoji:'👑☀️',tier:2},
+  {id:'ShadowDagger',name:'Shadow Dagger',fam:F.Relic,emoji:'🗡️🌑',tier:2},
+  {id:'MirrorStars',name:'Mirror of Stars',fam:F.Relic,emoji:'🪞🌌',tier:3},
+];
+const byId = Object.fromEntries(CARDS.map(c=>[c.id,c]));
+const makeUID = ()=> Math.random().toString(36).slice(2);
+
+/* ======= Combos (effects + points-only) ======= */
+const NEED = {
+  id:(id)=>({label:byId[id].name, test:c=>c.id===id}),
+};
+const COMBOS = [
+  // EFFECT COMBOS
+  {key:'ThunderHeist', label:'Thunder Heist', pts:6, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider')], effect:'stealEach:1'},
+  {key:'MidnightAssassination', label:'Midnight Assassination', pts:7, need:[NEED.id('ShadowDagger'),NEED.id('SchDark'),NEED.id('StormCloud')], effect:'destroyTarget:any'},
+  {key:'StormShatter', label:'Storm Shatter', pts:6, need:[NEED.id('StormLance'),NEED.id('Lightning'),NEED.id('SchStorm')], effect:'destroyRelicEach'},
+  {key:'Weatherlift', label:'Weatherlift', pts:6, need:[NEED.id('Rain'),NEED.id('StormCloud'),NEED.id('SchTime')], effect:'stealTarget:Weather'},
+  {key:'SerpentsSpoils', label:'Serpent’s Spoils', pts:6, need:[NEED.id('SkySerpent'),NEED.id('SchBeast'),NEED.id('ShadowDagger')], effect:'stealTarget:Relic'},
+  {key:'FrozenOracle', label:'Frozen Oracle', pts:6, need:[NEED.id('SanctumOrb'),NEED.id('Blizzard'),NEED.id('SchTime')], effect:'freeze:4000'},
+  {key:'CrownCommand', label:'Crown Command', pts:5, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('BeastMaster')], effect:'draw:1'},
+  {key:'PackRaid', label:'Pack Raid', pts:6, need:[NEED.id('ShadowWolf'),NEED.id('BeastMaster'),NEED.id('WolfTamer')], effect:'stealTarget:Beast'},
+  {key:'StarlitCopy', label:'Starlit Copy', pts:6, need:[NEED.id('SchStars'),NEED.id('MirrorStars'),NEED.id('SchTime')], effect:'duplicateTarget:any'},
+  {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'},
+  {key:'TwilightEdict', label:'Twilight Edict', pts:5, need:[NEED.id('Eclipse'),NEED.id('SchDark')], effect:'revealOpp:3000'},
+  // LEGENDARY
+  {key:'AscendantTempest', label:'ASCENDANT TEMPEST', pts:42, need:[NEED.id('SchStorm'),NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider'),NEED.id('Eclipse')], effect:'legend:tempest'},
+  {key:'RelicsUnleashed', label:'RELICS UNLEASHED', pts:34, need:[NEED.id('SanctumOrb'),NEED.id('MirrorStars'),NEED.id('StormLance'),NEED.id('SunCrown')], effect:'legend:relics'},
+  {key:'ScholarsCouncil', label:'SCHOLARS COUNCIL', pts:28, need:[NEED.id('SchLight'),NEED.id('SchDark'),NEED.id('SchStars'),NEED.id('SchTime')], effect:'legend:council'},
+  {key:'BeastDominion', label:'BEAST DOMINION', pts:30, need:[NEED.id('BeastMaster'),NEED.id('WolfTamer'),NEED.id('SkySerpent'),NEED.id('ShadowWolf')], effect:'legend:beast'},
+  // POINTS-ONLY
+  {key:'Cloudburst', label:'Cloudburst', pts:7, need:[NEED.id('StormCloud'),NEED.id('Rain'),NEED.id('Lightning')]},
+  {key:'SolarCoronation', label:'Solar Coronation', pts:12, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('SchLight')]},
+  {key:'RhinoStudy', label:'Rhino Study', pts:9, need:[NEED.id('RockRhino'),NEED.id('SchBeast'),NEED.id('BeastMaster')]},
+  {key:'TimeAndStars', label:'Time & Stars', pts:16, need:[NEED.id('SchTime'),NEED.id('SchStars'),NEED.id('SanctumOrb')]},
+  {key:'WeatherSet', label:'Weather Set', pts:20, need:[NEED.id('Rain'),NEED.id('Sun'),NEED.id('Blizzard'),NEED.id('Lightning')]},
+  {key:'Skychain', label:'Skychain', pts:17, need:[NEED.id('SkySerpent'),NEED.id('BeastMaster'),NEED.id('Lightning')]},
+  {key:'ScholarTriad', label:'Scholar Triad', pts:18, need:[NEED.id('SchLight'),NEED.id('SchStorm'),NEED.id('SchBeast')]},
+];
+const COMBO_BY_KEY = Object.fromEntries(COMBOS.map(c=>[c.key,c]));
+
+/* ======= DOM ======= */
+const el = {
+  river: document.getElementById('river'),
+  hand: document.getElementById('hand'),
+  opps: document.getElementById('opps'),
+  deckBadge: document.getElementById('deckBadge'),
+  discardBadge: document.getElementById('discardBadge'),
+  startBtn: document.getElementById('startBtn'),
+  hostBadge: document.getElementById('hostBadge'),
+  gameIdBadge: document.getElementById('gameIdBadge'),
+  fsBtn: document.getElementById('fsBtn'),
+  leaveBtn: document.getElementById('leaveBtn'),
+  toLobbyBtn: document.getElementById('toLobbyBtn'),
+  msg: document.getElementById('msg'),
+  over: document.getElementById('over'),
+  overTitle: document.getElementById('overTitle'),
+  overWhy: document.getElementById('overWhy'),
+  overTable: document.getElementById('overTable'),
+  combosBtn: document.getElementById('combosBtn'),
+  pick: document.getElementById('pick'),
+  pickTitle: document.getElementById('pickTitle'),
+  pickBody: document.getElementById('pickBody'),
+  pickCancel: document.getElementById('pickCancel'),
+  toasts: document.getElementById('toasts'),
+};
+el.gameIdBadge.textContent = `ID: ${gameId.slice(0,6)}`;
+
+const gref = doc(db, "games", gameId);
+const uref = doc(db, "users", username);
+
+/* ======= Helpers ======= */
+function cardHTML(id){
+  const c = byId[id];
+  return `<div class="card"><div class="t">${c.emoji} ${c.name}</div><div class="f">${c.fam} • Tier ${c.tier}</div></div>`;
+}
+function miniHand(count){ return `<div class="mini">${Array.from({length:Math.min(5,count)},()=>'<i></i>').join('')}</div>`; }
+function buildDeck(){
+  const freq = { Scholar:3, Weather:4, Beast:3, Tamer:3, Relic:3 };
+  const deck=[];
+  for(const c of CARDS){
+    const n=freq[c.fam]??2;
+    for(let i=0;i<n;i++) deck.push(c.id);
+  }
+  for(let i=0;i<10;i++){ deck.push(CARDS[(Math.random()*CARDS.length)|0].id); }
+  for(let i=deck.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [deck[i],deck[j]]=[deck[j],deck[i]]; }
+  return deck;
+}
+function now(){ return Date.now(); }
+
+/* ======= Ready combos detection ======= */
+function findReadyCombos(handIds){
+  const hand = handIds.map(id=>byId[id]);
+  const out=[];
+  for(const combo of COMBOS){
+    const used = new Array(hand.length).fill(false);
+    const take = [];
+    for(const req of combo.need){
+      let idx=-1;
+      for(let i=0;i<hand.length;i++){
+        if(used[i]) continue;
+        if(req.test(hand[i])){ idx=i; break; }
+      }
+      if(idx<0){ take.length=0; break; }
+      used[idx]=true; take.push(idx);
+    }
+    if(take.length){ out.push({combo,indexes:take}); }
+  }
+  // prefer higher points; effects get a slight bump
+  out.sort((a,b)=> (b.combo.pts + (b.combo.effect?2:0)) - (a.combo.pts + (a.combo.effect?2:0)));
+  return out;
+}
+
+/* ======= Bootstrap / seat ======= */
+async function ensureGameAndSeat(){
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref);
+    if (!snap.exists()){
+      const deck = buildDeck();
+      const base = {
+        createdAt: serverTimestamp(),
+        host: username,
+        status: "lobby",
+        players: [username],
+        deck, discard: [],
+        river: Array.from({length:10}, ()=>({uid:null, id:null, revealUntil:0})),
+        hands: {[username]: []},
+        points: {[username]: 0},
+        combos: {[username]: 0},
+        winners: [],
+        freezeUntil: 0,
+        revealOppUntil: 0,
+        flipMarkUntil: 0,
+        events: [],
+        lastMoveAt: now()
+      };
+      tx.set(gref, base);
+      return;
+    }
+    const g = snap.data();
+    const players = Array.isArray(g.players) ? g.players.slice() : [];
+    if (!players.includes(username)) players.push(username);
+    const hands = Object.assign({}, g.hands);
+    if (!hands[username]) hands[username] = [];
+    const points = Object.assign({}, g.points); if(points[username]===undefined) points[username]=0;
+    const combos = Object.assign({}, g.combos); if(combos[username]===undefined) combos[username]=0;
+    tx.update(gref, { players, hands, points, combos, host: g.host || username });
+  });
+}
+await ensureGameAndSeat();
+
+/* ======= Host: deal & start ======= */
+async function hostDealAndStart(){
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref);
+    if (!snap.exists()) throw new Error("Missing game");
+    const g = snap.data();
+    if (g.host !== username) return;
+    const deck = buildDeck();
+    const river = Array.from({length:10}, ()=>({uid: makeUID(), id: deck.pop() || null, revealUntil: 0}));
+    const hands = {};
+    for(const p of g.players){
+      hands[p] = [];
+      for(let i=0;i<5;i++){ const id = deck.pop(); if(id) hands[p].push({uid:makeUID(), id}); }
+    }
+    const points={}, combos={}; g.players.forEach(p=>{ points[p]=0; combos[p]=0; });
+    tx.update(gref, {
+      status:"active", deck, river, hands, points, combos,
+      discard: [], winners: [],
+      freezeUntil: 0, revealOppUntil: 0, flipMarkUntil: 0,
+      events: (g.events||[]).concat([{ts:now(), text:`${username} started the game.`}]).slice(-20),
+      lastMoveAt: now()
+    });
+  });
+}
+
+/* ======= Interactions ======= */
+let sel = {zone:null, idx:null};
+let tapLock = 0;
+function lockShort(){ tapLock = now() + 250; }
+function canTap(){ return now() > tapLock; }
+
+async function pickFromRiver(rIdx){
+  if (!canTap()) return; lockShort();
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref); if(!snap.exists()) return;
+    const g = snap.data(); if(g.status!=='active') return;
+    if (now() < (g.freezeUntil||0)) return;
+
+    const r = (g.river||[])[rIdx]; if(!r || !r.id) return;
+    const my = (g.hands?.[username]||[]).slice(); if(my.length>=5) return;
+
+    const deck = (g.deck||[]).slice(); const discard = (g.discard||[]).slice();
+
+    my.push({uid:makeUID(), id:r.id});
+    const nextId = deck.pop() || null;
+    g.river[rIdx] = {uid: nextId ? makeUID() : null, id: nextId, revealUntil: 0};
+
+    const hands = Object.assign({}, g.hands, {[username]: my});
+    const events = (g.events||[]).concat([{ts:now(), text:`${username} drew from center.`}]).slice(-20);
+    tx.update(gref, {hands, river:g.river, deck, discard, events, lastMoveAt: now()});
+  });
+}
+
+async function swapHandRiver(hIdx, rIdx){
+  if (!canTap()) return; lockShort();
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref); if(!snap.exists()) return;
+    const g = snap.data(); if(g.status!=='active') return;
+    if (now() < (g.freezeUntil||0)) return;
+
+    const my = (g.hands?.[username]||[]).slice(); if(!my[hIdx]) return;
+    const r = (g.river||[])[rIdx]; if(!r || !r.id) return;
+
+    const myCard = my[hIdx], riverCard = r;
+    my[hIdx] = {uid: makeUID(), id: riverCard.id};
+    g.river[rIdx] = {uid: makeUID(), id: myCard.id, revealUntil: 0};
+
+    const hands = Object.assign({}, g.hands, {[username]: my});
+    const events = (g.events||[]).concat([{ts:now(), text:`${username} swapped with center.`}]).slice(-20);
+    tx.update(gref, {hands, river:g.river, events, lastMoveAt: now()});
+  });
+}
+
+/* ======= Effects engine (runs inside transaction) ======= */
+function pushEvent(g, text){
+  g.events = (g.events||[]).concat([{ts:now(), text}]).slice(-20);
+}
+function pushToHandOrDiscard(g, player, cardId){
+  const hand = (g.hands[player]||[]);
+  if (hand.length < 5) hand.push({uid:makeUID(), id:cardId});
+  else (g.discard||=(g.discard||[])).push(cardId);
+}
+function oppList(g, exclude){ return (g.players||[]).filter(p=>p!==exclude); }
+function removeRandomFromHand(g, player){
+  const h = (g.hands[player]||[]);
+  if(!h.length) return null;
+  const i = Math.floor(Math.random()*h.length);
+  return h.splice(i,1)[0];
+}
+function removeFirstFam(g, player, fam){
+  const h = (g.hands[player]||[]);
+  const idx = h.findIndex(x=>byId[x.id].fam===fam);
+  if (idx>=0) return h.splice(idx,1)[0];
+  return null;
+}
+function applyNonTargetEffect(g, who, comboKey){
+  switch(comboKey){
+    case 'ThunderHeist': {
+      for(const opp of oppList(g, who)){
+        const got = removeRandomFromHand(g, opp);
+        if (got) pushToHandOrDiscard(g, who, got.id);
+      }
+      pushEvent(g, `${who} plucked 1 from each opponent.`);
+    } break;
+    case 'StormShatter': {
+      for(const opp of oppList(g, who)){
+        const d = removeFirstFam(g, opp, F.Relic);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, `${who} shattered opponents’ relics.`);
+    } break;
+    case 'FrozenOracle': {
+      g.freezeUntil = now() + 4000;
+      pushEvent(g, `${who} froze the river (4s).`);
+    } break;
+    case 'CrownCommand': {
+      // draw 1 (hand overflow goes to discard)
+      const deck = g.deck||[];
+      if (deck.length){
+        const id = deck.pop();
+        pushToHandOrDiscard(g, who, id);
+        pushEvent(g, `${who} drew a bonus card.`);
+      }
+    } break;
+    case 'ScholarsGlint': {
+      g.flipMarkUntil = now() + 2500;
+      pushEvent(g, `${who} flashed the center.`);
+    } break;
+    case 'TwilightEdict': {
+      g.revealOppUntil = now() + 3000;
+      pushEvent(g, `${who} revealed opponents’ hands (3s).`);
+    } break;
+    // LEGENDARY
+    case 'AscendantTempest': {
+      g.revealOppUntil = now()+4000;
+      for(const opp of oppList(g, who)){
+        for(let k=0;k<2;k++){
+          const got = removeRandomFromHand(g, opp);
+          if (got) pushToHandOrDiscard(g, who, got.id);
+        }
+        const d = removeRandomFromHand(g, opp);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, `${who} unleashed ASCENDANT TEMPEST!`);
+    } break;
+    case 'RelicsUnleashed': {
+      for(const opp of oppList(g, who)){
+        const d = removeFirstFam(g, opp, F.Relic);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      const deck = g.deck||[];
+      if (deck.length){ pushToHandOrDiscard(g, who, deck.pop()); }
+      pushEvent(g, `${who} unleashed RELICS!`);
+    } break;
+    case 'ScholarsCouncil': {
+      g.freezeUntil = now()+3000;
+      pushEvent(g, `${who} convened COUNCIL (river frozen 3s).`);
+    } break;
+    case 'BeastDominion': {
+      const deck = g.deck||[];
+      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
+      if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
+      for(const opp of oppList(g, who)){
+        const d = removeRandomFromHand(g, opp);
+        if (d) (g.discard||=(g.discard||[])).push(d.id);
+      }
+      pushEvent(g, `${who} proclaimed BEAST DOMINION!`);
+    } break;
+  }
+}
+
+/* ======= Target picker helpers ======= */
+function effectNeedsTarget(effect){
+  if (!effect) return null;
+  if (effect.startsWith('stealTarget:')) return {kind:'steal', fam:effect.split(':')[1]};
+  if (effect.startsWith('duplicateTarget:')) return {kind:'duplicate', fam:effect.split(':')[1]};
+  if (effect.startsWith('destroyTarget:')) return {kind:'destroy', fam:effect.split(':')[1]};
+  return null;
+}
+function famMatch(fam, id){
+  if (fam==='any') return true;
+  if (fam==='Weather' || fam==='Relic' || fam==='Beast') return byId[id].fam===fam;
+  return true;
+}
+
+/* ======= Play combo ======= */
+async function playCombo(comboKey, useUids, targetInfo){
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref); if(!snap.exists()) return;
+    const g = snap.data(); if(g.status!=='active') return;
+
+    // verify my cards
+    const my = (g.hands?.[username]||[]).slice();
+    const haveAll = useUids.every(uid => my.some(x=>x.uid===uid));
+    if (!haveAll) return; // stale
+
+    // remove those cards
+    for(const uid of useUids){
+      const idx = my.findIndex(x=>x.uid===uid);
+      if (idx>=0) my.splice(idx,1);
+    }
+
+    const combo = COMBO_BY_KEY[comboKey];
+    const points = Object.assign({}, g.points);
+    const combos = Object.assign({}, g.combos);
+    points[username] = (points[username]||0) + (combo.pts||0);
+    combos[username] = (combos[username]||0) + 1;
+
+    // apply effect
+    const needs = effectNeedsTarget(combo.effect);
+    if (needs){
+      // validate target still exists
+      const oppH = (g.hands?.[targetInfo.opp]||[]);
+      const tIdx = oppH.findIndex(x=>x.uid===targetInfo.cardUid);
+      if (tIdx<0 || !famMatch(needs.fam.toString().toLowerCase()==='any'?'any':needs.fam, oppH[tIdx].id)) return; // invalid
+      const picked = oppH.splice(tIdx,1)[0];
+
+      if (needs.kind==='steal'){
+        pushToHandOrDiscard(g, username, picked.id);
+        pushEvent(g, `${username} stole ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
+      } else if (needs.kind==='duplicate'){
+        pushToHandOrDiscard(g, username, picked.id);
+        pushEvent(g, `${username} duplicated ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
+        // original remains
+        (g.hands[targetInfo.opp] = oppH); // reattach
+      } else if (needs.kind==='destroy'){
+        (g.discard||=(g.discard||[])).push(picked.id);
+        pushEvent(g, `${username} destroyed ${byId[picked.id].emoji} ${byId[picked.id].name} from ${targetInfo.opp}.`);
+      }
+    } else {
+      applyNonTargetEffect(g, username, comboKey);
+      pushEvent(g, `${username} played ${combo.label} (+${combo.pts||0}).`);
+    }
+
+    // commit
+    const hands = Object.assign({}, g.hands, {[username]: my});
+    tx.update(gref, {
+      hands, points, combos,
+      river: g.river, deck: g.deck, discard: g.discard,
+      freezeUntil: g.freezeUntil||0, revealOppUntil: g.revealOppUntil||0, flipMarkUntil: g.flipMarkUntil||0,
+      events: g.events, lastMoveAt: now()
+    });
+  });
+  await endIfDeckDone();
+}
+
+/* ======= UI: combos button & target picker ======= */
+function openCombosList(game){
+  const my = (game.hands?.[username]||[]);
+  const handIds = my.map(x=>x.id);
+  const ready = findReadyCombos(handIds);
+  const picker = document.getElementById('pick');
+  const title = document.getElementById('pickTitle');
+  const body = document.getElementById('pickBody');
+  title.textContent = 'Ready Combos';
+  body.innerHTML = '';
+  if (!ready.length){
+    body.innerHTML = `<div class="prow"><em>No combos ready.</em></div>`;
+  } else {
+    for (const r of ready){
+      const div = document.createElement('div'); div.className='prow';
+      const needsTarget = effectNeedsTarget(r.combo.effect);
+      const useUids = r.indexes.map(i=>my[i].uid);
+      const btn = document.createElement('button'); btn.className='pbtn';
+      btn.textContent = `Play — ${r.combo.label} (+${r.combo.pts})`;
+      btn.addEventListener('click', async ()=>{
+        if (needsTarget){
+          // switch to target UI
+          openTargetPicker(game, r.combo, useUids, needsTarget);
+        } else {
+          picker.classList.remove('show');
+          await playCombo(r.combo.key, useUids, null);
+        }
+      });
+      div.innerHTML = `<h4>${r.combo.label} <span style="opacity:.75">(+${r.combo.pts})</span></h4>`;
+      div.appendChild(btn);
+      body.appendChild(div);
+    }
+  }
+  picker.classList.add('show');
+}
+function openTargetPicker(game, combo, useUids, needs){
+  const picker = document.getElementById('pick');
+  const title = document.getElementById('pickTitle');
+  const body = document.getElementById('pickBody');
+  title.textContent = `Choose a target — ${combo.label}`;
+  body.innerHTML = '';
+  const players = (game.players||[]).filter(p=>p!==username);
+  for (const p of players){
+    const row = document.createElement('div'); row.className='prow';
+    row.innerHTML = `<h4>${p}</h4>`;
+    const cardsDiv = document.createElement('div'); cardsDiv.className='pcards';
+    const hand = (game.hands?.[p]||[]);
+    let any = false;
+    for(const c of hand){
+      if (!famMatch((needs.fam||'any'), c.id) && needs.fam!=='any') continue;
+      any = true;
+      const btn = document.createElement('button'); btn.className='pbtn';
+      btn.textContent = `${byId[c.id].emoji} ${byId[c.id].name}`;
+      btn.addEventListener('click', async ()=>{
+        picker.classList.remove('show');
+        await playCombo(combo.key, useUids, {opp:p, cardUid:c.uid});
+      });
+      cardsDiv.appendChild(btn);
+    }
+    if (!any){
+      const none = document.createElement('div'); none.style.opacity='.75'; none.style.fontSize='12px'; none.textContent='No valid cards.';
+      cardsDiv.appendChild(none);
+    }
+    row.appendChild(cardsDiv);
+    body.appendChild(row);
+  }
+  picker.classList.add('show');
+}
+el.combosBtn.addEventListener('click', async ()=>{
+  const snap = await getDoc(gref); if(!snap.exists()) return;
+  openCombosList(snap.data());
+});
+el.pickCancel.addEventListener('click', ()=> el.pick.classList.remove('show'));
+
+/* ======= Fullscreen / leave ======= */
+el.fsBtn.addEventListener('click', async ()=>{
+  const root = document.documentElement;
+  try{
+    if (!document.fullscreenElement) await (root.requestFullscreen?.() || root.webkitRequestFullscreen?.());
+    else await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+  }catch(e){}
+});
+el.leaveBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
+el.toLobbyBtn.addEventListener('click', ()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; });
+el.startBtn.addEventListener('click', hostDealAndStart);
+
+/* ======= Rendering ======= */
+function renderOpps(game){
+  const reveal = now() < (game.revealOppUntil||0);
+  const players = (game.players||[]).filter(p=>p!==username);
+  const hands = game.hands||{};
+  const points = game.points||{};
+  el.opps.innerHTML = '';
+  for (const p of players){
+    const div = document.createElement('div'); div.className='opp';
+    const hand = (hands[p]||[]);
+    div.innerHTML = `<span class="name">${p}</span>
+                     <span class="badge">Pts: ${points[p]||0}</span>`;
+    if (reveal){
+      const rev = document.createElement('div'); rev.className='revealMini';
+      rev.innerHTML = hand.slice(0,5).map(x=>`${byId[x.id].emoji} ${byId[x.id].name}`).join(' · ');
+      div.appendChild(rev);
+    } else {
+      div.insertAdjacentHTML('beforeend', miniHand(hand.length));
+    }
+    el.opps.appendChild(div);
+  }
+}
+function renderRiver(game){
+  const frozen = now() < (game.freezeUntil||0);
+  const flip = now() < (game.flipMarkUntil||0);
+  el.river.parentElement.classList.toggle('frozen', frozen);
+  el.river.parentElement.classList.toggle('flipGlow', flip);
+
+  el.river.innerHTML='';
+  const R = game.river||[];
+  for(let i=0;i<10;i++){
+    const s = R[i] || {id:null};
+    const wrap = document.createElement('div');
+    wrap.className = 'slot' + (s.id? '':' empty');
+    wrap.dataset.idx = String(i);
+    if (sel.zone==='river' && sel.idx===i) wrap.classList.add('sel');
+    if (s.id){ wrap.innerHTML = cardHTML(s.id); }
+    el.river.appendChild(wrap);
+  }
+}
+function renderHand(game){
+  el.hand.innerHTML='';
+  const my = (game.hands?.[username]||[]);
+  for(let i=0;i<5;i++){
+    const slot = document.createElement('div');
+    slot.className = 'hslot'+(my[i]?'':' empty');
+    slot.dataset.idx = String(i);
+    if (sel.zone==='hand' && sel.idx===i) slot.classList.add('sel');
+    if (my[i]) slot.innerHTML = cardHTML(my[i].id);
+    el.hand.appendChild(slot);
+  }
+}
+function updateHUD(game){
+  el.deckBadge.textContent = `Deck: ${game.deck?.length||0}`;
+  el.discardBadge.textContent = `Discard: ${game.discard?.length||0}`;
+  el.startBtn.hidden = !(game.host===username && game.status==='lobby');
+  el.hostBadge.hidden = !(game.host===username);
+  if (game.status==='lobby'){
+    el.msg.textContent = (game.host===username) ? 'You are host. Tap “Deal & Start”.' : 'Waiting for host to start…';
+  } else if (game.status==='active'){
+    el.msg.textContent = '';
+  }
+}
+function showOver(game){
+  const winners = game.winners||[];
+  el.overTitle.textContent = winners.includes(username) && winners.length===1 ? 'You win!' : `Winner: ${winners.join(', ')}`;
+  el.overWhy.textContent = game.overReason || 'Game finished';
+  const pts = game.points||{};
+  const rows = Object.entries(pts).sort((a,b)=>b[1]-a[1]);
+  el.overTable.innerHTML = `<tr><th>Player</th><th>Points</th></tr>` + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+  el.over.classList.add('show');
+}
+
+/* ======= Click bindings ======= */
+el.river.addEventListener('click', async (e)=>{
+  const slot = e.target.closest('.slot'); if(!slot) return;
+  const rIdx = Number(slot.dataset.idx);
+  const snap = await getDoc(gref); if(!snap.exists()) return;
+  const g = snap.data(); if (g.status!=='active') return;
+
+  const my = (g.hands?.[username]||[]);
+  if (now() < (g.freezeUntil||0)) return;
+
+  if (my.length<5){ await pickFromRiver(rIdx); sel={zone:null,idx:null}; }
+  else{
+    if (sel.zone==='hand'){ await swapHandRiver(sel.idx, rIdx); sel={zone:null,idx:null}; }
+    else { sel={zone:'river', idx:rIdx}; renderRiver(g); }
+  }
+});
+
+el.hand.addEventListener('click', async (e)=>{
+  const slot = e.target.closest('.hslot'); if(!slot) return;
+  const hIdx = Number(slot.dataset.idx);
+  const snap = await getDoc(gref); if(!snap.exists()) return;
+  const g = snap.data(); if (g.status!=='active') return;
+  const my = (g.hands?.[username]||[]);
+  if (!my[hIdx]) return;
+
+  if (sel.zone==='river'){ await swapHandRiver(hIdx, sel.idx); sel={zone:null,idx:null}; }
+  else if (sel.zone==='hand' && sel.idx===hIdx){ sel={zone:null,idx:null}; }
+  else { sel={zone:'hand', idx:hIdx}; renderHand(g); }
+});
+
+/* Double-tap = auto-play best ready combo (opens target picker if needed) */
+let lastTap=0;
+el.hand.addEventListener('pointerdown', async ()=>{
+  const t = now();
+  if (t - lastTap < 260){
+    const snap = await getDoc(gref); if(!snap.exists()) return;
+    const g = snap.data(); if (g.status!=='active') return;
+    const my = (g.hands?.[username]||[]);
+    const ready = findReadyCombos(my.map(x=>x.id));
+    if (!ready.length) return;
+    const best = ready[0];
+    const needs = effectNeedsTarget(best.combo.effect);
+    const useUids = best.indexes.map(i=>my[i].uid);
+    if (needs){
+      openTargetPicker(g, best.combo, useUids, needs);
+    } else {
+      await playCombo(best.combo.key, useUids, null);
+    }
+  }
+  lastTap=t;
+});
+
+/* ======= Game over & win bump ======= */
+async function endIfDeckDone(){
+  await runTransaction(db, async(tx)=>{
+    const snap = await tx.get(gref);
+    if (!snap.exists()) return;
+    const g = snap.data();
+    if (g.status !== 'active') return;
+
+    const anyRiver = (g.river||[]).some(s=>s && s.id);
+    const deckEmpty = !g.deck || g.deck.length===0;
+    if (!deckEmpty || anyRiver) return;
+
+    const pts = g.points||{};
+    const entries = Object.entries(pts);
+    if (!entries.length) return;
+    entries.sort((a,b)=> (b[1])-(a[1]));
+    const top = entries[0][1];
+    const winners = entries.filter(e=>e[1]===top).map(e=>e[0]);
+
+    tx.update(gref, {status:'over', winners, overReason:'Deck exhausted', lastMoveAt: now(),
+      events: (g.events||[]).concat([{ts:now(), text:`Game over — winner: ${winners.join(', ')}`}]).slice(-20)
+    });
+  });
+}
+async function bumpMyWinsIfWinner(winners){
+  if (!winners.includes(username)) return;
+  await runTransaction(db, async(tx)=>{
+    const usnap = await tx.get(uref);
+    if (!usnap.exists()){ tx.set(uref, {wins:1}, {merge:true}); }
+    else { const cur = usnap.data(); tx.update(uref, {wins: (cur.wins||0)+1}); }
+  });
+}
+
+/* ======= Live sync (UI + toasts) ======= */
+let lastEventTs = 0;
+onSnapshot(gref, async (snap)=>{
+  if (!snap.exists()) return;
+  const g = snap.data();
+
+  renderOpps(g);
+  renderRiver(g);
+  renderHand(g);
+  updateHUD(g);
+
+  // toasts for new events
+  for (const ev of (g.events||[])){
+    if (ev.ts > lastEventTs){
+      showToast(ev.text);
+      lastEventTs = Math.max(lastEventTs, ev.ts);
+    }
+  }
+
+  if (g.status==='over'){
+    showOver(g);
+    if (!localStorage.getItem(`splinters.bumped.${gameId}.${username}`)){
+      await bumpMyWinsIfWinner(g.winners||[]);
+      localStorage.setItem(`splinters.bumped.${gameId}.${username}`,'1');
+      setTimeout(()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; }, 1600);
+    }
+  }
+});
+
+/* ======= UI helpers ======= */
+function showToast(text){
+  const t=document.createElement('div'); t.className='toast'; t.textContent=text;
+  el.toasts.appendChild(t);
+  const life = 1400 + Math.random()*600;
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),250); }, life);
+}
+
+/* ======= Small init ======= */
+</script>
+</body>
+</html>
