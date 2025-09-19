@@ -116,11 +116,11 @@
         <span class="pill">Votes: <b id="v-traditional">0</b></span>
       </button>
       <button class="card" data-mode="speed">
-        <div class="left"><b>⚡ Speed</b><span class="sm muted">90s, per-player verses, -1 all-wrong</span></div>
+        <div class="left"><b>⚡ Speed</b><span class="sm muted">90s, per-player verses, −1 all-wrong</span></div>
         <span class="pill">Votes: <b id="v-speed">0</b></span>
       </button>
       <button class="card" data-mode="draft">
-        <div class="left"><b>🧭 Draft</b><span class="sm muted">Snake picks • 3 books • -3 wrong book</span></div>
+        <div class="left"><b>🧭 Draft</b><span class="sm muted">Snake picks • 3 books • −3 wrong book</span></div>
         <span class="pill">Votes: <b id="v-draft">0</b></span>
       </button>
       <button class="card" data-mode="teams">
@@ -227,23 +227,21 @@
   const db = getFirestore(app);
 
   // ---------- DOM ----------
-  const $ = (id)=> document.getElementById(id);
+  const $  = (id)=> document.getElementById(id);
   const qs = (sel)=> document.querySelector(sel);
 
   // ---------- URL ----------
   const url = new URL(location.href);
-  const gameId = url.searchParams.get('gameId') || '';
+  const gameId   = url.searchParams.get('gameId') || '';
   const username = url.searchParams.get('username') || '';
 
   // ---------- STATE ----------
   let LOBBY=null, GAME=null, HOST=null, isHost=false;
   let verses=[], books=[], bookSet=new Set();
   let myCurrentVerse=null, tickTimer=null;
-  let lastMyWasCorrectFull = false; // for reveal on shared modes (teams/traditional) when you submit
+  let lastMyWasCorrectFull = false; // for shared modes reveal
   let mcSelectedId = null;
-
-  // For reveal using previous game snapshot (coop uses server fields)
-  let prevGame = null;
+  let prevGame = null; // for coop reveal
 
   // ---------- FS REFS ----------
   const lobbyRef  = doc(db, 'lobbies', gameId);
@@ -255,6 +253,7 @@
   // ---------- HELPERS ----------
   const now = ()=> Date.now();
   const fmtTime = (ms)=> { if (ms<0) ms=0; const s=Math.floor(ms/1000), m=Math.floor(s/60), r=s%60; return `${m}:${String(r).padStart(2,'0')}`; };
+
   function parseCSV(text){
     const rows=[]; let row=[], val=''; let inQ=false;
     for (let i=0;i<text.length;i++){
@@ -338,7 +337,7 @@
     return arr;
   }
 
-  // Float reveal
+  // Floating reveal
   function showRevealRef(v, ok){
     if (!v) return;
     const el = document.createElement('div');
@@ -351,12 +350,12 @@
   // ---------- UI WIRING ----------
   $('leaveBtn').onclick = ()=> { location.href = `/index.html?username=${encodeURIComponent(username)}`; };
   $('fsBtn').onclick = ()=>{
-    const d=document;
-    if (!d.fullscreenElement && !d.webkitFullscreenElement){
-      const el = d.documentElement;
+    const docEl = document;
+    if (!docEl.fullscreenElement && !docEl.webkitFullscreenElement){
+      const el = docEl.documentElement;
       (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen).call(el);
     } else {
-      (d.exitFullscreen||d.webkitExitFullscreen||d.mozCancelFullScreen||d.msExitFullscreen).call(d);
+      (docEl.exitFullscreen||docEl.webkitExitFullscreen||docEl.mozCancelFullScreen||docEl.msExitFullscreen).call(docEl);
     }
   };
   for (const btn of document.querySelectorAll('#phase-vote .card')){
@@ -379,7 +378,7 @@
         deadline: now()+30000,
         round:0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
-        lives: Object.fromEntries(players.map(p=>[p,3])), /* legacy per-player for other modes (unused in coop) */
+        lives: Object.fromEntries(players.map(p=>[p,3])), /* legacy per-player (unused in coop) */
         sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
@@ -486,10 +485,13 @@
       }
     });
 
-    // Votes listener
+    // Votes listener (FIXED: use snapDoc consistently)
     onSnapshot(votesCol, (qsnap)=>{
       const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
-      qsnap.forEach(doc=>{ const m=d.data().mode; if (counts[m]!==undefined) counts[m]++; });
+      qsnap.forEach((snapDoc)=>{
+        const m = (snapDoc.data() || {}).mode;
+        if (counts[m] !== undefined) counts[m]++;
+      });
       $('v-traditional').textContent = counts.traditional;
       $('v-speed').textContent       = counts.speed;
       $('v-draft').textContent       = counts.draft;
@@ -498,9 +500,9 @@
       highlightVoteLeader(counts);
     });
 
-    // Chat listener
+    // Chat listener (use 'snapDoc' to avoid collisions)
     onSnapshot(query(chatCol, orderBy('ts','desc'), limit(20)), (qsnap)=>{
-      const msgs=[]; qsnap.forEach(d=> msgs.push(d.data())); msgs.reverse(); drawChat(msgs);
+      const msgs=[]; qsnap.forEach((snapDoc)=> msgs.push(snapDoc.data())); msgs.reverse(); drawChat(msgs);
     });
 
     // Player state (my current verse for speed/draft)
@@ -650,7 +652,7 @@
       if (tnow >= (GAME.deadline || 0)){
         const vSnap = await getDocs(votesCol);
         const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
-        vSnap.forEach(d=>{ const m=d.data().mode; if (counts[m]!==undefined) counts[m]++; });
+        vSnap.forEach((snapDoc)=>{ const m=snapDoc.data().mode; if (counts[m]!==undefined) counts[m]++; });
 
         const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams, counts.coop);
         const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
@@ -852,8 +854,8 @@
     const m = GAME.mode;
     let txt='';
     if (m==='traditional') txt='6 rounds • 30s each • Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse (no negatives)';
-    else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 • -1 if ALL three wrong';
-    else if (m==='draft') txt='90s • Only your 3 drafted books • Scoring 1/3/5 • -3 if Book wrong';
+    else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 • −1 if ALL three wrong';
+    else if (m==='draft') txt='90s • Only your 3 drafted books • Scoring 1/3/5 • −3 if Book wrong';
     else if (m==='teams') txt='6 rounds • 30s • First team answer locks • Team chat above • Scoring 1/3/5 (no negatives)';
     else if (m==='coop')  txt='Survival • Shared lives • First answer locks • Choose 1 of 4 refs • +1 if correct, wrong costs a life';
     $('playHelp').textContent = txt;
@@ -929,7 +931,7 @@
     }
   }
 
-  // Co-Op submission (first answer locks, updates shared lives / score, schedules next verse)
+  // Co-Op submission (first answer locks; updates shared lives / score; schedules next verse)
   async function onSubmitMC(){
     if (!GAME || GAME.mode!=='coop') return;
     if (!mcSelectedId) return;
@@ -991,7 +993,7 @@
     } else if (GAME.mode==='coop'){
       show = msgs.filter(m=> (m.team==='all' || !m.team)).slice(-3);
     } else {
-      show = []; // no chat displayed for other modes
+      show = []; // no chat for other modes
     }
     const log = $('chatLog'); log.innerHTML='';
     for (const m of show){
@@ -1002,6 +1004,7 @@
 </script>
 </body>
 </html>
+
 
 
 
