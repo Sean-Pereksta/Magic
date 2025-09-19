@@ -33,13 +33,11 @@
   .dangerbar > i{background:linear-gradient(90deg,#f97316,#ef4444)}
   .tiny{font-size:.9rem; opacity:.85}
 
-  /* MAIN: board + trade + hand (stacked vertically for one-screen mobile) */
   .board-card, .trade-card, .hand-card{
     background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:10px;
     box-shadow:0 10px 25px rgba(0,0,0,.18); backdrop-filter: blur(6px);
   }
 
-  /* BOARD (top) */
   .board-wrap{display:flex; justify-content:center}
   .board{
     display:grid; grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--cell);
@@ -56,20 +54,14 @@
   .vine{ box-shadow: inset 0 0 0 2px rgba(34,197,94,.7); background:#0d2317 }
   .burn{ box-shadow: inset 0 0 0 2px rgba(239,68,68,.7); background:#2b0f12 }
 
-  /* glow effects */
   .glow-red{animation: glowRed .9s ease}
   @keyframes glowRed{ 0%{box-shadow:0 0 0 0 rgba(239,68,68,.8)} 100%{box-shadow:0 0 0 18px rgba(239,68,68,0)} }
   .flash-yellow{animation: flashY .7s ease}
   @keyframes flashY{ 0%{box-shadow:0 0 0 0 rgba(250,204,21,.85)} 100%{box-shadow:0 0 0 18px rgba(250,204,21,0)} }
-  .implode{
-    position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; animation: impl .45s ease forwards;
-  }
+  .implode{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; animation: impl .45s ease forwards; }
   @keyframes impl{ 0%{transform:scale(1); opacity:.95} 100%{transform:scale(.1); opacity:0} }
 
-  /* TRADE BAR (middle) */
-  .trade-grid{
-    display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
-  }
+  .trade-grid{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
   .trade-left{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .trade-slot{
     min-width:80px; min-height:44px; display:flex; align-items:center; justify-content:center;
@@ -82,7 +74,6 @@
   .ok{border-color:#14532d; color:#bbf7d0}
   .disabled{opacity:.6; pointer-events:none}
 
-  /* HAND (bottom) */
   .hand{display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch}
   .card{
     min-width:86px; max-width:86px; border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
@@ -96,13 +87,11 @@
   .row-split{display:flex; align-items:center; justify-content:space-between; gap:8px}
   .muted{color:var(--muted)}
 
-  /* FOOT */
   footer{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
 </style>
 </head>
 <body>
 <div class="shell">
-  <!-- HEADER -->
   <header>
     <div class="row">
       <span class="badge">🧙‍♂️ Spell Tower</span>
@@ -127,12 +116,10 @@
     </div>
   </header>
 
-  <!-- BOARD -->
   <section class="board-card">
     <div class="board-wrap"><div id="board" class="board" aria-label="Battlefield"></div></div>
   </section>
 
-  <!-- TRADE -->
   <section class="trade-card">
     <div class="trade-grid">
       <div class="trade-left">
@@ -147,16 +134,14 @@
     </div>
   </section>
 
-  <!-- HAND -->
   <section class="hand-card">
     <div class="row" style="justify-content:space-between">
       <div class="tiny">Your Hand</div>
-      <div class="tiny muted">Tip: tap a card to **Cast**, or tap another to **Combine**. Tap “Trade Block” to offer it.</div>
+      <div class="tiny muted">Tip: tap a card to <b>Cast</b>, or tap another to <b>Combine</b>. Tap “Trade Block” to offer it.</div>
     </div>
     <div id="hand" class="hand" aria-label="Your spell cards"></div>
   </section>
 
-  <!-- FOOT -->
   <footer>
     <div class="row">
       <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
@@ -168,9 +153,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // ---------- Firebase ----------
   const firebaseConfig = {
@@ -188,8 +171,8 @@
   const params = new URLSearchParams(location.search);
   const gameId = params.get("gameId") || "";
   const username = (params.get("username") || "").trim();
-  document.getElementById("gidTxt").textContent = gameId;
-  document.getElementById("unameTxt").textContent = username;
+  gidTxt.textContent = gameId;
+  unameTxt.textContent = username;
   if (!gameId || !username) { alert("Missing gameId/username (launch from lobby)."); }
 
   // ---------- Refs ----------
@@ -202,7 +185,6 @@
   const START_HP = 50;
   const TICK_MS = 900;
 
-  // Enemies
   const ENEMIES = [
     { key:"rat",   hp:1, spd:2, dmg:1, emoji:"🐀", weight: 1,  ability:null },
     { key:"imp",   hp:2, spd:1, dmg:2, emoji:"😈", weight: 2,  ability:null },
@@ -214,67 +196,44 @@
     { key:"golem", hp:10,spd:1, dmg:6, emoji:"🗿", weight: 7,  ability:null },
   ];
 
-  // Spells + combos
+  // Spells (single declaration)
   const BASE_SPELLS = {
-    fire:   { name:"Fire",   emoji:"🔥", charges:3, cost:0, effect:"fire" },
-    water:  { name:"Water",  emoji:"💧", charges:3, cost:0, effect:"water" },
-    plant:  { name:"Plant",  emoji:"🌿", charges:3, cost:0, effect:"plant" },
+    fire:   { name:"Fire",      emoji:"🔥", charges:3, cost:0, effect:"fire" },
+    water:  { name:"Water",     emoji:"💧", charges:3, cost:0, effect:"water" },
+    plant:  { name:"Plant",     emoji:"🌿", charges:3, cost:0, effect:"plant" },
     light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
   };
- // Spells + combos
-const BASE_SPELLS = {
-  fire:   { name:"Fire",   emoji:"🔥", charges:3, cost:0, effect:"fire" },
-  water:  { name:"Water",  emoji:"💧", charges:3, cost:0, effect:"water" },
-  plant:  { name:"Plant",  emoji:"🌿", charges:3, cost:0, effect:"plant" },
-  light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
-};
 
-// 22 juicy combos (you already had some; kept + expanded)
-const COMBOS = {
-  // existing “tiers”
-  "fire+fire":        { key:"pyro",     name:"Pyro",     emoji:"🔥🔥",    charges:3, effect:"pyro" },
-  "pyro+pyro":        { key:"inferno",  name:"Inferno",  emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
-  "fire+water":       { key:"steam",    name:"Steam",    emoji:"💨",       charges:3, effect:"steam" },
-  "water+plant":      { key:"vine",     name:"Vine",     emoji:"🪴",       charges:3, effect:"vine" },
-  "light+light":      { key:"chain",    name:"Chain",    emoji:"⚡⚡",     charges:3, effect:"chain" },
-
-  // NEW elemental doubles
-  "water+water":      { key:"geyser",   name:"Geyser",   emoji:"🫧",       charges:3, effect:"geyser" },   // dmg & push up column
-  "plant+plant":      { key:"wall",     name:"Wall",     emoji:"🧱",       charges:3, effect:"wall" },     // long block
-
-  // Fire × X
-  "fire+plant":       { key:"embervine",  name:"Embervine",  emoji:"🔥🪴", charges:3, effect:"embervine" }, // dmg + root tile
-  "fire+light":       { key:"overheat",   name:"Overheat",   emoji:"🔥⚡", charges:3, effect:"overheat" },  // strong cross blast
-  "fire+vine":        { key:"bramblefire",name:"Bramblefire",emoji:"🌿🔥", charges:3, effect:"bramblefire" },// 3×3 root + burn
-  "fire+chain":       { key:"arcfire",    name:"Arc Fire",   emoji:"⚡🔥", charges:3, effect:"arcfire" },    // chain that burns
-  "fire+steam":       { key:"scald",      name:"Scald",      emoji:"💨🔥", charges:3, effect:"scald" },      // hot mist 3×3 DoT
-
-  // Water × X
-  "water+light":      { key:"storm",      name:"Storm",      emoji:"⛈️",   charges:3, effect:"storm" },      // chain + freeze col
-  "water+pyro":       { key:"steamblast", name:"Steam Blast",emoji:"💨💥", charges:3, effect:"steamblast" }, // 3×3 blind burst
-  "water+inferno":    { key:"boil",       name:"Boil",       emoji:"🌋",   charges:3, effect:"boil" },       // heavy 3×3 scald
-  "water+chain":      { key:"voltaic",    name:"Voltaic",    emoji:"⚡💧", charges:3, effect:"voltaic" },     // chain + brief freeze
-  "water+plant":      { key:"marsh",      name:"Marsh",      emoji:"🪵💧", charges:3, effect:"marsh" },       // (alias) 3×3 slow
-  // (we keep your original "water+plant" => Vine too; both keys resolve—Marsh is a new, stronger craft via Steam+Plant below)
-
-  // Plant × X
-  "plant+pyro":       { key:"cinderwall", name:"Cinder Wall",emoji:"🧱🔥", charges:3, effect:"cinderwall" }, // 3-tile line block + burn
-  "plant+light":      { key:"thorns",     name:"Thorns",     emoji:"🌵",   charges:3, effect:"thorns" },     // sticky zap lane
-  "plant+steam":      { key:"marsh",      name:"Marsh",      emoji:"🪵💧", charges:3, effect:"marsh" },       // 3×3 slow/hold
-
-  // Lightning × X
-  "light+pyro":       { key:"superchain", name:"Super Chain",emoji:"⚡⚡⚡",charges:3, effect:"superchain" },  // beefy chain
-  "light+inferno":    { key:"thunderstorm",name:"Thunderstorm",emoji:"🌩️",charges:3, effect:"thunderstorm" },// chain + burn
-  "light+steam":      { key:"mistflash",  name:"Mistflash",  emoji:"💨⚡", charges:3, effect:"mistflash" },   // 3×3 blind + zap
-  "light+vine":       { key:"net",        name:"Net",        emoji:"🕸️",  charges:3, effect:"net" },         // chaining snare
-
-  // Advanced fusions
-  "steam+steam":      { key:"tsunami",    name:"Tsunami",    emoji:"🌊",   charges:3, effect:"tsunami" },     // column pair sweep
-  "pyro+vine":        { key:"wildfire",   name:"Wildfire",   emoji:"🔥🌿", charges:3, effect:"wildfire" },    // cross burn 2t
-  "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },// 5 random strikes
-  "chain+vine":       { key:"entangle",   name:"Entangle",   emoji:"⚡🪢", charges:3, effect:"entangle" },    // chain + root path
-};
-
+  // 22 combos
+  const COMBOS = {
+    "fire+fire":        { key:"pyro",     name:"Pyro",        emoji:"🔥🔥",    charges:3, effect:"pyro" },
+    "pyro+pyro":        { key:"inferno",  name:"Inferno",     emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
+    "fire+water":       { key:"steam",    name:"Steam",       emoji:"💨",      charges:3, effect:"steam" },
+    "water+plant":      { key:"vine",     name:"Vine",        emoji:"🪴",      charges:3, effect:"vine" },
+    "light+light":      { key:"chain",    name:"Chain",       emoji:"⚡⚡",     charges:3, effect:"chain" },
+    "water+water":      { key:"geyser",   name:"Geyser",      emoji:"🫧",      charges:3, effect:"geyser" },
+    "plant+plant":      { key:"wall",     name:"Wall",        emoji:"🧱",      charges:3, effect:"wall" },
+    "fire+plant":       { key:"embervine",name:"Embervine",   emoji:"🔥🪴",    charges:3, effect:"embervine" },
+    "fire+light":       { key:"overheat", name:"Overheat",    emoji:"🔥⚡",    charges:3, effect:"overheat" },
+    "fire+vine":        { key:"bramblefire",name:"Bramblefire",emoji:"🌿🔥",  charges:3, effect:"bramblefire" },
+    "fire+chain":       { key:"arcfire",  name:"Arc Fire",    emoji:"⚡🔥",    charges:3, effect:"arcfire" },
+    "fire+steam":       { key:"scald",    name:"Scald",       emoji:"💨🔥",    charges:3, effect:"scald" },
+    "water+light":      { key:"storm",    name:"Storm",       emoji:"⛈️",      charges:3, effect:"storm" },
+    "water+pyro":       { key:"steamblast",name:"Steam Blast",emoji:"💨💥",    charges:3, effect:"steamblast" },
+    "water+inferno":    { key:"boil",     name:"Boil",        emoji:"🌋",      charges:3, effect:"boil" },
+    "water+chain":      { key:"voltaic",  name:"Voltaic",     emoji:"⚡💧",    charges:3, effect:"voltaic" },
+    "plant+pyro":       { key:"cinderwall",name:"Cinder Wall",emoji:"🧱🔥",    charges:3, effect:"cinderwall" },
+    "plant+light":      { key:"thorns",   name:"Thorns",      emoji:"🌵",      charges:3, effect:"thorns" },
+    "plant+steam":      { key:"marsh",    name:"Marsh",       emoji:"🪵💧",    charges:3, effect:"marsh" },
+    "light+pyro":       { key:"superchain",name:"Super Chain",emoji:"⚡⚡⚡",    charges:3, effect:"superchain" },
+    "light+inferno":    { key:"thunderstorm",name:"Thunderstorm",emoji:"🌩️",  charges:3, effect:"thunderstorm" },
+    "light+steam":      { key:"mistflash",name:"Mistflash",   emoji:"💨⚡",    charges:3, effect:"mistflash" },
+    "light+vine":       { key:"net",      name:"Net",         emoji:"🕸️",     charges:3, effect:"net" },
+    "steam+steam":      { key:"tsunami",  name:"Tsunami",     emoji:"🌊",      charges:3, effect:"tsunami" },
+    "pyro+vine":        { key:"wildfire", name:"Wildfire",    emoji:"🔥🌿",    charges:3, effect:"wildfire" },
+    "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },
+    "chain+vine":       { key:"entangle", name:"Entangle",    emoji:"⚡🪢",    charges:3, effect:"entangle" },
+  };
 
   // ---------- DOM ----------
   const boardEl = document.getElementById("board");
@@ -299,8 +258,8 @@ const COMBOS = {
   // ---------- Local State ----------
   let isHost = false;
   let ticker = null;
-  let selectedCardId = null; // card id from hand
-  let lastPlayedTurnMarker = {}; // cardId -> turn number (limit once per turn per card)
+  let selectedCardId = null;
+  let lastPlayedTurnMarker = {};
 
   // ---------- Build Board ----------
   function buildBoard(){
@@ -310,10 +269,7 @@ const COMBOS = {
         const cell = document.createElement("div");
         cell.className = "cell";
         cell.dataset.x = c; cell.dataset.y = r;
-        if (r === TOWER_ROW) {
-          cell.classList.add("tower");
-          cell.title = "Your Tower";
-        }
+        if (r === TOWER_ROW) { cell.classList.add("tower"); cell.title = "Your Tower"; }
         cell.addEventListener("click", ()=> onCellClick(c,r));
         boardEl.appendChild(cell);
       }
@@ -328,43 +284,37 @@ const COMBOS = {
   const idx = (x,y)=> y*COLS + x;
 
   function randomEnemyCells(d, count){
-  const cells = [];
-  for (const e of d.enemies||[]) cells.push([e.x,e.y]);
-  if (!cells.length) return [];
-  const picks = [];
-  for (let i=0;i<Math.min(count, cells.length); i++){
-    const idx = Math.floor(Math.random()*cells.length);
-    picks.push(cells.splice(idx,1)[0]);
+    const cells = [];
+    for (const e of d.enemies||[]) cells.push([e.x,e.y]);
+    if (!cells.length) return [];
+    const picks = [];
+    for (let i=0;i<Math.min(count, cells.length); i++){
+      const j = Math.floor(Math.random()*cells.length);
+      picks.push(cells.splice(j,1)[0]);
+    }
+    return picks;
   }
-  return picks;
-}
 
-// upgraded chainLightning: supports bonus, optional burn and/or root on each hit
-function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
-  const inB = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
-  const neigh = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inB(a,b));
-  const baseDmg = 4 + (bonus||0);
-
-  const seen = new Set();
-  let frontier = [[sx,sy]];
-  while (frontier.length){
-    const [x,y] = frontier.shift();
-    const k = `${x},${y}`; if (seen.has(k)) continue; seen.add(k);
-
-    // damage enemies in (x,y)
-    for (const e of d.enemies||[]) if (e.x===x && e.y===y) e.hp -= baseDmg;
-    d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
-
-    if (burn){ if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]=(d.tick||0)+1; }
-    if (root){ if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]=(d.tick||0)+1; }
-
-    // expand to neighbors that have enemies
-    for (const [a,b] of neigh([x,y])){
-      const hasEnemy = (d.enemies||[]).some(e=> e.x===a && e.y===b);
-      if (hasEnemy) frontier.push([a,b]);
+  // Enhanced chainLightning (single definition)
+  function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
+    const inB = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
+    const neigh = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inB(a,b));
+    const baseDmg = 4 + (bonus||0);
+    const seen = new Set();
+    let frontier = [[sx,sy]];
+    while (frontier.length){
+      const [x,y] = frontier.shift();
+      const k = `${x},${y}`; if (seen.has(k)) continue; seen.add(k);
+      for (const e of d.enemies||[]) if (e.x===x && e.y===y) e.hp -= baseDmg;
+      d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
+      if (burn){ if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]=(d.tick||0)+1; }
+      if (root){ if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]=(d.tick||0)+1; }
+      for (const [a,b] of neigh([x,y])){
+        const hasEnemy = (d.enemies||[]).some(e=> e.x===a && e.y===b);
+        if (hasEnemy) frontier.push([a,b]);
+      }
     }
   }
-}
 
   function glowCell(x,y, cls){
     const cell = boardEl.children[idx(x,y)];
@@ -391,18 +341,14 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     if (!snap.exists()) return;
     const d = snap.data();
     const players = d.players || [];
-    const countTxt = `${players.length}/8`;
-    playersBadge.textContent = `👥 ${countTxt}`;
-    // If host missing, auto-assign first player (stable) via transaction
+    playersBadge.textContent = `👥 ${players.length}/8`;
     if (!d.host && players.length){
       try{
         await runTransaction(db, async tx=>{
           const cur = await tx.get(lobbyRef);
           if (!cur.exists()) return;
           const cd = cur.data();
-          if (!cd.host){
-            tx.update(lobbyRef, { host: players[0] });
-          }
+          if (!cd.host){ tx.update(lobbyRef, { host: players[0] }); }
         });
       }catch(e){}
     }
@@ -415,7 +361,7 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   async function ensureGameState(players, host){
     const s = await getDoc(stateRef);
     if (!s.exists()){
-      if (!isHost) return; // only host seeds
+      if (!isHost) return;
       const hands = {};
       for (const p of players) hands[p] = seedHand();
       const payload = {
@@ -429,22 +375,18 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
         towerHP: START_HP,
         towerMax: START_HP,
         mana: 0, manaMax: 12,
-        enemies: [],      // [{id,x,y,hp,key,emoji}]
-        bolts: [],        // demon lord projectiles [{id,x,y,hp,dmg}]
-        frozenCols: {},   // x: untilTick
-        vineCells: {},    // "x,y": untilTick
-        burnCells: {},    // "x,y": untilTick (inferno)
-        hands,            // p: [{id,type,name,emoji,charges,effect}]
-        playedTurn: {},   // per turn, which cardIds used
-        trade: {          // trading system
-          offers: {},     // p: cardId (from their hand)
-          proposals: {}   // p: [{from, cardId}]
-        },
+        enemies: [],
+        bolts: [],
+        frozenCols: {},
+        vineCells: {},
+        burnCells: {},
+        hands,
+        playedTurn: {},
+        trade: { offers: {}, proposals: {} },
         host: host || "",
       };
       await setDoc(stateRef, payload);
     } else {
-      // ensure late joiner has a hand
       if (players.includes(username)){
         const d = s.data();
         if (!d.hands || !d.hands[username]){
@@ -455,11 +397,9 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   }
 
   function seedHand(){
-    // 4 starter cards: fire, water, plant, lightning (random double)
-    const keys = Object.keys(BASE_SPELLS);
-    const pick = ()=> keys[Math.floor(Math.random()*keys.length)];
     const base = [ "fire", "water", "plant", "light" ];
-    const extra = pick();
+    const keys = Object.keys(BASE_SPELLS);
+    const extra = keys[Math.floor(Math.random()*keys.length)];
     return [...base, extra].map(k=> makeCardFromKey(k));
   }
   function makeCardFromKey(k){
@@ -468,46 +408,33 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   }
 
   // ---------- Render Loop ----------
-  onSnapshot(stateRef, (snap)=>{
-    if (!snap.exists()) return;
-    const s = snap.data();
-    renderAll(s);
-  });
+  onSnapshot(stateRef, (snap)=>{ if (snap.exists()) renderAll(snap.data()); });
 
   function renderAll(s){
-    // header
     hpText.textContent = `${s.towerHP}/${s.towerMax}`;
     hpFill.style.width = clamp((s.towerHP/s.towerMax)*100, 0, 100) + "%";
     manaText.textContent = `${s.mana}/${s.manaMax}`;
     manaFill.style.width = clamp((s.mana/s.manaMax)*100, 0, 100) + "%";
     tickText.textContent = s.tick || 0;
     turnText.textContent = `${(s.turn||0)+1} • ${s.currentPlayer||"?"}`;
-    // turn-interactivity
+
     const myTurn = (s.currentPlayer === username) && s.running;
     endTurnBtn.classList.toggle("disabled", !myTurn);
     tradeHereBtn.classList.toggle("disabled", !myTurn);
 
-    // board cells base
     for (let r=0; r<ROWS; r++){
       for (let c=0; c<COLS; c++){
         const cell = boardEl.children[idx(c,r)];
         cell.innerHTML = "";
         cell.classList.remove("frozen","vine","burn","glow-red","flash-yellow");
-        if (r === TOWER_ROW){
-          cell.textContent = "🏰";
-        }
+        if (r === TOWER_ROW) cell.textContent = "🏰";
       }
     }
 
-    // statuses (freeze/vine/burn)
     const now = s.tick || 0;
     for (const [xStr,until] of Object.entries(s.frozenCols || {})){
       const x = Number(xStr);
-      if (until > now){
-        for (let r=0; r<ROWS; r++){
-          boardEl.children[idx(x,r)]?.classList.add("frozen");
-        }
-      }
+      if (until > now){ for (let r=0; r<ROWS; r++){ boardEl.children[idx(x,r)]?.classList.add("frozen"); } }
     }
     for (const [key,until] of Object.entries(s.vineCells || {})){
       if (until > now){
@@ -522,7 +449,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       }
     }
 
-    // enemies
     for (const e of (s.enemies||[])){
       if (!inBoard(e.x,e.y)) continue;
       const cell = boardEl.children[idx(e.x,e.y)];
@@ -534,7 +460,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       bar.appendChild(fill); wrap.appendChild(bar);
       cell.appendChild(wrap);
     }
-    // demon lord fire bolts
     for (const b of (s.bolts||[])){
       if (!inBoard(b.x,b.y)) continue;
       const cell = boardEl.children[idx(b.x,b.y)];
@@ -546,22 +471,14 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       cell.appendChild(bolt);
     }
 
-    // hand
     const myHand = (s.hands && s.hands[username]) ? s.hands[username] : [];
     renderHand(myHand, s);
-
-    // trade
     renderTrade(s);
 
-    // start/stop ticker if host
     if (isHost && s.running && !ticker) ticker = setInterval(()=> hostTick(), TICK_MS);
     if ((!isHost || !s.running) && ticker){ clearInterval(ticker); ticker = null; }
 
-    // tower death -> send to hub
-    if (s.towerHP <= 0 && s.running){
-      // end and bounce
-      endGameAndReturn();
-    }
+    if (s.towerHP <= 0 && s.running){ endGameAndReturn(); }
   }
 
   async function endGameAndReturn(){
@@ -572,10 +489,8 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
 
   function renderHand(cards, s){
     handEl.innerHTML = "";
-    // highlight potential combo partners if a card selected
     const combosFor = (base)=> potentialPartners(base).map(p=> p.type);
     const highlightTypes = selectedCardId ? combosFor(cards.find(c=>c.id===selectedCardId)||{}) : [];
-
     for (const card of cards){
       const el = document.createElement("div");
       el.className = "card";
@@ -599,15 +514,12 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   }
 
   function renderTrade(s){
-    // my offer
     const myOfferId = (s.trade?.offers || {})[username] || null;
-    if (!myOfferId){
-      myTradeEl.textContent = "— empty —";
-    } else {
+    if (!myOfferId){ myTradeEl.textContent = "— empty —"; }
+    else {
       const card = (s.hands[username]||[]).find(c=> c.id===myOfferId);
       myTradeEl.textContent = card ? `${card.emoji} ${card.name}` : "(offered)";
     }
-    // proposals to me
     proposalsEl.innerHTML = "";
     const allProps = s.trade?.proposals || {};
     const myProps = (allProps[username] || []);
@@ -623,12 +535,9 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
 
   function toggleSelect(cardId){
     selectedCardId = (selectedCardId === cardId) ? null : cardId;
-    // re-render will show combo glow via onSnapshot
-    stateRef.get; // noop to keep linter calm
   }
 
   function potentialPartners(card){
-    // which types can combine with this card?
     if (!card || !card.type) return [];
     const res = [];
     for (const key of Object.keys(COMBOS)){
@@ -639,14 +548,11 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     return res;
   }
 
-  // ---------- Actions ----------
   tradeHereBtn.onclick = ()=> placeSelectedToTrade();
   clearTradeBtn.onclick = ()=> clearMyTrade();
   endTurnBtn.onclick = ()=> endTurn();
 
   function onCellClick(x,y){
-    // Casting chooses target cell. Only during my turn & with a selected card to cast.
-    // We just show highlight; actual damage happens in castCardFlow which passes coords.
     if (!selectedCardId) return;
   }
 
@@ -660,7 +566,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   async function clearMyTrade(){
     const patch = {}; patch[`trade.offers.${username}`] = null;
     await updateDoc(stateRef, patch);
-    // also clear proposals to others referencing me
     const s = (await getDoc(stateRef)).data();
     const propos = s.trade?.proposals || {};
     for (const to of Object.keys(propos)){
@@ -669,8 +574,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     }
   }
 
-  // Any player can propose to trade their offer with your offer
-  // (Present as buttons next to your trade slot in the UI of the recipient; we already render them as "Accept from X")
   async function acceptTrade(from, to, fromCardId){
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
@@ -692,7 +595,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       fromHand.push(toCard);
       toHand.push(fromCard);
 
-      // clear both offers and any proposals to each
       if (!d.trade) d.trade = {offers:{}, proposals:{}};
       d.trade.offers[from] = null;
       d.trade.offers[to] = null;
@@ -703,15 +605,12 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     });
   }
 
-  // Casting flow: prompt for a target cell via simple click -> we'll use center-bottom targeting:
   async function castCardFlow(card, s){
-    // Only on my turn; once per card per turn
     const isMyTurn = (s.currentPlayer === username) && s.running;
     if (!isMyTurn) return;
-    if ((lastPlayedTurnMarker[card.id] || -1) === (s.turn||0)) return; // already used this turn
+    if ((lastPlayedTurnMarker[card.id] || -1) === (s.turn||0)) return;
     if (card.charges <= 0) return;
 
-    // Simple targeting prompt: click a cell; we temporarily attach a one-shot listener
     const pick = await pickCellOnce();
     if (!pick) return;
     await runTransaction(db, async tx=>{
@@ -720,25 +619,16 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       const d = st.data();
       if (d.currentPlayer !== username || !d.running) return;
 
-      // find card in hand
       const hand = d.hands[username] || [];
       const ci = hand.findIndex(c=> c.id===card.id);
       if (ci<0) return;
 
-      // apply effect
       applyCardEffectMut(d, hand[ci], pick.x, pick.y);
 
-      // decrement charges and maybe implode
       hand[ci].charges = Math.max(0, (hand[ci].charges||0)-1);
-      if (hand[ci].charges === 0){
-        // remove card
-        hand.splice(ci,1);
-      } else {
-        // update in place
-        hand[ci] = {...hand[ci]};
-      }
+      if (hand[ci].charges === 0){ hand.splice(ci,1); }
+      else { hand[ci] = {...hand[ci]}; }
 
-      // mark once/turn for this card
       if (!d.playedTurn) d.playedTurn = {};
       if (!d.playedTurn[username]) d.playedTurn[username] = {};
       d.playedTurn[username][card.id] = d.turn||0;
@@ -746,16 +636,12 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       tx.update(stateRef, { hands: d.hands, enemies: d.enemies, bolts: d.bolts, frozenCols: d.frozenCols, vineCells: d.vineCells, burnCells: d.burnCells, playedTurn: d.playedTurn });
     });
 
-    // local implode if it broke
     if (card.charges-1 === 0){
       const cards = handEl.querySelectorAll(".card");
       cards.forEach(el=>{
-        if (el.querySelector(".name")?.textContent?.includes(card.name)){
-          tinyImplosion(el);
-        }
+        if (el.querySelector(".name")?.textContent?.includes(card.name)){ tinyImplosion(el); }
       });
     }
-
     lastPlayedTurnMarker[card.id] = (s.turn||0);
   }
 
@@ -769,229 +655,78 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
         resolve({x,y});
       };
       boardEl.addEventListener("click", handler, true);
-      setTimeout(()=>{ // timeout in case user bails
-        boardEl.removeEventListener("click", handler, true);
-        resolve(null);
-      }, 6000);
+      setTimeout(()=>{ boardEl.removeEventListener("click", handler, true); resolve(null); }, 6000);
     });
   }
 
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
 
   function applyCardEffectMut(d, card, tx, ty){
-  const eff = card.effect;
-  const now = (d.tick||0);
+    const eff = card.effect;
+    const now = (d.tick||0);
 
-  // shared helpers
-  const damageAt = (x,y,amt)=> {
-    // bolts first
-    for (const b of d.bolts||[]){
-      if (b.x===x && b.y===y){ b.hp -= amt; }
-    }
-    d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
+    const damageAt = (x,y,amt)=> {
+      for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
+      d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
+      for (const e of d.enemies||[]){ if (e.x===x && e.y===y){ e.hp -= amt; } }
+      d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
+    };
+    const area = (cx,cy,r=1)=> {
+      const pts=[]; for (let x=cx-r; x<=cx+r; x++){ for (let y=cy-r; y<=cy+r; y++){ if (inBoard(x,y)) pts.push([x,y]); } }
+      return pts;
+    };
+    const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
+    const addBurn = (x,y,ticks=1)=> { if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]= now + ticks; };
+    const addVine = (x,y,ticks=1)=> { if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + ticks; };
+    const freezeCol = (x,ticks=1)=> { if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + ticks; };
 
-    // enemies
-    for (const e of d.enemies||[]){
-      if (e.x===x && e.y===y){ e.hp -= amt; }
-    }
-    d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
-  };
-  const area = (cx,cy,r=1)=> {
-    const pts=[];
-    for (let x=cx-r; x<=cx+r; x++){
-      for (let y=cy-r; y<=cy+r; y++){
-        if (inBoard(x,y)) pts.push([x,y]);
-      }
-    }
-    return pts;
-  };
-  const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
+    switch(eff){
+      case "fire":      damageAt(tx,ty,5); glowCell(tx,ty,"glow-red"); break;
+      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5)); glowCell(tx,ty,"glow-red"); break;
+      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); }); glowCell(tx,ty,"glow-red"); break;
+      case "lightning": chainLightning(d, tx, ty, 0); glowCell(tx,ty,"flash-yellow"); break;
+      case "chain":     chainLightning(d, tx, ty, 2); glowCell(tx,ty,"flash-yellow"); break;
+      case "water":     freezeCol(tx,3); break;
+      case "plant":     addVine(tx,ty,3); break;
+      case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2); break;
+      case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
 
-  const addBurn = (x,y,ticks=1)=> {
-    if (!d.burnCells) d.burnCells={};
-    d.burnCells[`${x},${y}`]= now + ticks;
-  };
-  const addVine = (x,y,ticks=1)=> {
-    if (!d.vineCells) d.vineCells={};
-    d.vineCells[`${x},${y}`]= now + ticks;
-  };
-  const freezeCol = (x,ticks=1)=> {
-    if (!d.frozenCols) d.frozenCols={};
-    d.frozenCols[x]= now + ticks;
-  };
-
-  // effect logic
-  switch(eff){
-    // ----- originals -----
-    case "fire":
-      damageAt(tx,ty,5); markGlow(tx,ty,"glow-red"); break;
-
-    case "pyro":
-      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
-      markGlow(tx,ty,"glow-red");
-      break;
-
-    case "inferno":
-      cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
-      markGlow(tx,ty,"glow-red");
-      break;
-
-    case "lightning":
-      chainLightning(d, tx, ty, 0); markFlash(tx,ty); break;
-
-    case "chain":
-      chainLightning(d, tx, ty, 2); markFlash(tx,ty); break;
-
-    case "water":
-      freezeCol(tx,3); break;
-
-    case "plant":
-      addVine(tx,ty,3); break;
-
-    case "steam":
-      addVine(tx,ty,1); damageAt(tx,ty,2); break;
-
-    case "vine": // (your original combo)
-      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
-
-    // ----- NEW doubles / fusions -----
-    case "geyser": { // damage 3 down the column and push enemies up 1
-      for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); }
-      for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
-      break;
-    }
-    case "wall": { // strong blocker
-      addVine(tx,ty,5);
-      break;
-    }
-    case "embervine": { // fire + plant
-      damageAt(tx,ty,3); addVine(tx,ty,2);
-      markGlow(tx,ty,"glow-red");
-      break;
-    }
-    case "overheat": { // fire + lightning: strong cross hit
-      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6));
-      markGlow(tx,ty,"glow-red"); markFlash(tx,ty);
-      break;
-    }
-    case "bramblefire": { // fire + vine: 3×3 root + burn
-      area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); });
-      break;
-    }
-    case "arcfire": { // chain that burns
-      chainLightning(d, tx, ty, 1, /*burnOnHit*/true); markFlash(tx,ty);
-      break;
-    }
-    case "scald": { // steam + fire: hot mist 3×3 with DoT
-      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); });
-      markGlow(tx,ty,"glow-red");
-      break;
-    }
-    case "storm": { // water + light: chain + brief freeze column
-      chainLightning(d, tx, ty, 1); freezeCol(tx,1); markFlash(tx,ty);
-      break;
-    }
-    case "steamblast": { // water + pyro: blind/hold + burst
-      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1));
-      area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3));
-      break;
-    }
-    case "boil": { // water + inferno: heavy scald 3×3 + lingering burn
-      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); });
-      break;
-    }
-    case "voltaic": { // water + chain: small chain + freeze
-      chainLightning(d, tx, ty, 0); freezeCol(tx,1); markFlash(tx,ty);
-      break;
-    }
-    case "cinderwall": { // plant + pyro: line block of 3 + burn
-      [[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1)));
-      break;
-    }
-    case "thorns": { // plant + light: sticky zap lane (2 tiles ahead)
-      for (let dy=0; dy<=2; dy++){
-        const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); }
-      }
-      break;
-    }
-    case "mistflash": { // light + steam: blind+zap 3×3
-      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
-      damageAt(tx,ty,3); markFlash(tx,ty);
-      break;
-    }
-    case "marsh": { // steam + plant OR water+plant alt: slow area
-      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
-      break;
-    }
-    case "superchain": { // light + pyro
-      chainLightning(d, tx, ty, 3); markFlash(tx,ty);
-      break;
-    }
-    case "thunderstorm": { // light + inferno: chain plus set burning on hub
-      chainLightning(d, tx, ty, 1);
-      addBurn(tx,ty,1); markFlash(tx,ty);
-      break;
-    }
-    case "tsunami": { // steam + steam: sweep two adjacent columns
-      [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
-        for (let y=0; y<ROWS; y++) damageAt(cx,y,3);
-        for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); }
-      });
-      break;
-    }
-    case "wildfire": { // pyro + vine: cross burn lasting 2
-      cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2));
-      markGlow(tx,ty,"glow-red");
-      break;
-    }
-    case "thundercloud": { // chain + steam: 5 random strikes
-      const targets = randomEnemyCells(d, 5);
-      for (const [x,y] of targets){ damageAt(x,y,4); }
-      markFlash(tx,ty);
-      break;
-    }
-    case "entangle": { // chain + vine: chain and root along the path
-      chainLightning(d, tx, ty, 0, /*burn*/false, /*root*/true);
-      break;
+      case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); } for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); } break;
+      case "wall":      addVine(tx,ty,5); break;
+      case "embervine": damageAt(tx,ty,3); addVine(tx,ty,2); glowCell(tx,ty,"glow-red"); break;
+      case "overheat":  cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6)); glowCell(tx,ty,"glow-red"); glowCell(tx,ty,"flash-yellow"); break;
+      case "bramblefire": area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); }); break;
+      case "arcfire":   chainLightning(d, tx, ty, 1, true, false); glowCell(tx,ty,"flash-yellow"); break;
+      case "scald":     area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); }); glowCell(tx,ty,"glow-red"); break;
+      case "storm":     chainLightning(d, tx, ty, 1); freezeCol(tx,1); glowCell(tx,ty,"flash-yellow"); break;
+      case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1)); area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3)); break;
+      case "boil":      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); }); break;
+      case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1); glowCell(tx,ty,"flash-yellow"); break;
+      case "cinderwall":[[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1))); break;
+      case "thorns":    for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); } } break;
+      case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); damageAt(tx,ty,3); glowCell(tx,ty,"flash-yellow"); break;
+      case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
+      case "superchain":chainLightning(d, tx, ty, 3); glowCell(tx,ty,"flash-yellow"); break;
+      case "thunderstorm": chainLightning(d, tx, ty, 1); addBurn(tx,ty,1); glowCell(tx,ty,"flash-yellow"); break;
+      case "tsunami":   [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0; y<ROWS; y++) damageAt(cx,y,3); for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); } }); break;
+      case "wildfire":  cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2)); glowCell(tx,ty,"glow-red"); break;
+      case "thundercloud": { const targets = randomEnemyCells(d, 5); for (const [x,y] of targets){ damageAt(x,y,4); } glowCell(tx,ty,"flash-yellow"); break; }
+      case "entangle":  chainLightning(d, tx, ty, 0, false, true); break;
     }
   }
-}
-
 
   function markGlow(x,y,cls){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
   function markFlash(x,y){ requestAnimationFrame(()=> glowCell(x,y,"flash-yellow")); }
 
-  function chainLightning(d, sx, sy, bonus=0){
-    const adj = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inBoard(a,b));
-    const seen = new Set();
-    let frontier = [[sx,sy]];
-    let dmg = 4 + bonus;
-    while (frontier.length){
-      const [x,y] = frontier.shift();
-      const key = `${x},${y}`; if (seen.has(key)) continue; seen.add(key);
-      // damage here
-      for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= dmg; }
-      d.enemies = d.enemies.filter(e=> e.hp>0);
-      // expand to neighbors that have enemies
-      for (const [a,b] of adj([x,y])){
-        const hasEnemy = (d.enemies||[]).some(e=> e.x===a && e.y===b);
-        if (hasEnemy) frontier.push([a,b]);
-      }
-    }
-  }
-
-  // Combine flow
   async function combineFlow(card, s){
     const isMyTurn = (s.currentPlayer === username) && s.running;
     if (!isMyTurn) return;
-    // pick partner by tapping another card in hand (we use selectedCardId)
     if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
     const a = (s.hands[username]||[]).find(c=> c.id === selectedCardId);
     const b = card;
-    if (!a || !b) return;
-    if (a.id === b.id) return;
+    if (!a || !b || a.id === b.id) return;
     const combo = getCombo(a.type, b.type);
-    if (!combo) return; // no-op if not valid
+    if (!combo) return;
 
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
@@ -1002,30 +737,16 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       const ai = hand.findIndex(c=> c.id===a.id);
       const bi = hand.findIndex(c=> c.id===b.id);
       if (ai<0 || bi<0) return;
-
-      // remove higher index first
       const first = Math.max(ai,bi), second = Math.min(ai,bi);
       hand.splice(first,1); hand.splice(second,1);
-      hand.push({
-        id:id(),
-        type: combo.key,
-        name: combo.name,
-        emoji: combo.emoji,
-        charges: combo.charges,
-        effect: combo.effect
-      });
+      hand.push({ id:id(), type: combo.key, name: combo.name, emoji: combo.emoji, charges: combo.charges, effect: combo.effect });
       tx.update(stateRef, { hands: d.hands });
     });
-
     selectedCardId = null;
   }
 
-  function getCombo(t1,t2){
-    if (!t1 || !t2) return null;
-    return COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null;
-  }
+  function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
 
-  // End Turn
   async function endTurn(){
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
@@ -1033,11 +754,9 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       const d = st.data();
       if (!d.running || d.currentPlayer !== username) return;
 
-      // draw 2
       const hand = d.hands[username] || [];
       hand.push(makeCardFromKey(randBase()), makeCardFromKey(randBase()));
 
-      // next player
       const order = d.turnOrder || [];
       if (!order.length) return;
       let idx = d.turnIndex || 0;
@@ -1046,16 +765,11 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       d.turnIndex = idx;
       d.currentPlayer = order[idx];
 
-      // reset playedTurn marker for next player optionally (we keep history per card)
       tx.update(stateRef, { hands: d.hands, turn: d.turn, turnIndex: d.turnIndex, currentPlayer: d.currentPlayer });
     });
   }
-  function randBase(){
-    const k = Object.keys(BASE_SPELLS);
-    return k[Math.floor(Math.random()*k.length)];
-  }
+  function randBase(){ const k = Object.keys(BASE_SPELLS); return k[Math.floor(Math.random()*k.length)]; }
 
-  // ---------- Host Tick ----------
   async function hostTick(){
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
@@ -1064,10 +778,8 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       if (!d.running) return;
 
       d.tick = (d.tick||0) + 1;
-
       const now = d.tick;
 
-      // burn cells tick (damage 2 to anything there)
       for (const [key,until] of Object.entries(d.burnCells||{})){
         if (until >= now){
           const [x,y] = key.split(",").map(Number);
@@ -1076,34 +788,22 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
       }
       d.enemies = d.enemies.filter(e=> e.hp>0);
 
-      // demon fire bolts movement
       for (const b of (d.bolts||[])){ b.y += 1; }
-      // if a bolt reaches tower row
       for (const b of d.bolts||[]){
-        if (b.y >= TOWER_ROW){
-          d.towerHP -= (b.dmg||10);
-          b.hp = 0;
-        }
+        if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||10); b.hp = 0; }
       }
       d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
-      // Move enemies (respect freezes & vines)
       const frozen = d.frozenCols || {};
       const vines = d.vineCells || {};
       for (const e of d.enemies){
         if (frozen[e.x] && frozen[e.x] > now) continue;
         if (vines[`${e.x},${e.y}`] && vines[`${e.x},${e.y}`] > now) continue;
         e.y += e.spd || getEnemySpec(e.key).spd || 1;
-        if (e.y >= TOWER_ROW){
-          d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1);
-          e.hp = 0; // consumed on hit
-        }
+        if (e.y >= TOWER_ROW){ d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1); e.hp = 0; }
       }
       d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
 
-      // Enemy abilities:
-      // - summon rats (spawn 1–2 rats at row 0 random columns)
-      // - demon lord fires bolt (hp=1, dmg=10) from its cell downward
       for (const e of d.enemies){
         if (e.ability === "summon_rats" && Math.random() < 0.15){
           const n = 1 + Math.floor(Math.random()*2);
@@ -1112,12 +812,10 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
           }
         }
         if (e.ability === "fire_bolt" && Math.random() < 0.2){
-          if (!d.bolts) d.bolts=[];
-          d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:10 });
+          if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:10 });
         }
       }
 
-      // spawn new enemies (1–2 per tick)
       const wave = Math.floor((d.turn||0)/6);
       const n = 1 + Math.floor(Math.random()*2);
       for (let i=0;i<n;i++){
@@ -1125,31 +823,15 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
         d.enemies.push({ id:id(), key:pick.key, x: randCol(), y: 0, hp: pick.hp, spd: pick.spd, dmg: pick.dmg, emoji: pick.emoji, ability: pick.ability||null });
       }
 
-      // expire statuses
-      for (const [x,until] of Object.entries(d.frozenCols||{})){
-        if (until <= now) delete d.frozenCols[x];
-      }
-      for (const [k,until] of Object.entries(d.vineCells||{})){
-        if (until <= now) delete d.vineCells[k];
-      }
-      for (const [k,until] of Object.entries(d.burnCells||{})){
-        if (until <= now) delete d.burnCells[k];
-      }
+      for (const [x,until] of Object.entries(d.frozenCols||{})){ if (until <= now) delete d.frozenCols[x]; }
+      for (const [k,until] of Object.entries(d.vineCells||{})){ if (until <= now) delete d.vineCells[k]; }
+      for (const [k,until] of Object.entries(d.burnCells||{})){ if (until <= now) delete d.burnCells[k]; }
 
-      tx.update(stateRef, {
-        tick: d.tick,
-        towerHP: d.towerHP,
-        enemies: d.enemies,
-        bolts: d.bolts,
-        frozenCols: d.frozenCols,
-        vineCells: d.vineCells,
-        burnCells: d.burnCells
-      });
+      tx.update(stateRef, { tick: d.tick, towerHP: d.towerHP, enemies: d.enemies, bolts: d.bolts, frozenCols: d.frozenCols, vineCells: d.vineCells, burnCells: d.burnCells });
     });
   }
 
   function pickEnemyByWeight(wave){
-    // stronger enemies become more likely as wave increases
     const pool = [];
     for (const e of ENEMIES){
       const w = e.weight + Math.max(0, wave - 1);
@@ -1159,7 +841,6 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
   }
   function randCol(){ return Math.floor(Math.random()*COLS); }
 
-  // ---------- Visual cell feedback from casts (local only) ----------
   function castFX(effect, x, y){
     switch(effect){
       case "fire":
@@ -1170,28 +851,20 @@ function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     }
   }
 
-  // ---------- Accept trade proposals creation ----------
-  // When someone else offers a card and you want to propose exchanging your own offer with theirs,
-  // you put your card on your trade block; on their end, a button will appear to accept.
-  // (For simplicity, proposals are placed implicitly when both sides have an offer.)
+  // Keep proposals synced when you have an offer up
   onSnapshot(stateRef, (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
     const offers = d.trade?.offers || {};
     const myOffer = offers[username];
     if (!myOffer) return;
-    // find all others who also have offers; ensure proposals array for me is up to date
     const toMe = [];
     for (const [p,cardId] of Object.entries(offers)){
       if (!cardId || p===username) continue;
       toMe.push({ from:p, cardId });
     }
-    // write proposals for me (idempotent-ish)
     updateDoc(stateRef, { [`trade.proposals.${username}`]: toMe }).catch(()=>{});
   });
-
-  // ---------- Click-to-redirect on tower death is handled in renderAll ----------
-
 </script>
 </body>
 </html>
