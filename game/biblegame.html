@@ -41,19 +41,18 @@
   .chat{border:1px solid var(--br);border-radius:12px;background:#fff;display:grid;gap:6px;padding:8px}
   .chatlog{display:grid;gap:4px;min-height:24px}
   .bubble{padding:6px 8px;border-radius:9px;background:#f8fafc;border:1px solid #eef2f7;font-size:.92rem}
-  .teamA{--team:#0ea5e9} .teamB{--team:#ef4444}
   .team-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:9px;background:rgba(0,0,0,.04);border:1px solid #e5e7eb}
-  .team-chip{width:10px;height:10px;border-radius:50%;background:var(--team)}
   .teams-bar{display:flex;align-items:center;justify-content:space-between;gap:6px}
   .teams-bar .tot{font-weight:900}
-  .books-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-  @media (max-width:560px){ .books-grid{grid-template-columns:repeat(2,1fr)} }
-  .book-btn{border:1px solid var(--br);background:#fff;border-radius:10px;padding:8px;cursor:pointer}
-  .book-btn[disabled]{opacity:.5;cursor:not-allowed}
-  .pickbar{display:flex;flex-wrap:wrap;gap:6px}
-  .pick{background:#f1f5f9;border:1px solid #e2e8f0;padding:5px 9px;border-radius:999px;font-size:.92rem}
   .timer{font-weight:900;letter-spacing:.3px}
   .header-actions{display:flex;gap:6px;align-items:center}
+
+  /* Multiple-choice grid */
+  .mc-wrap{margin-top:8px}
+  .mc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .mc-btn{border:1px solid var(--br);background:#fff;border-radius:10px;padding:10px;cursor:pointer;text-align:left}
+  .mc-btn.selected{outline:3px solid #c4b5fd;border-color:#a78bfa;background:#faf5ff}
+  .mc-btn[disabled]{opacity:.5;cursor:not-allowed}
 
   /* Float-fade reveal */
   @keyframes floatFade {
@@ -70,7 +69,7 @@
     font-weight:900; z-index:9999; animation: floatFade 1800ms ease-out forwards;
   }
   .reveal.good{ color:var(--good); border-color:#bbf7d0; background:#f0fdf4 }
-  .reveal.bad{ color:var(--bad); border-color:#fecaca; background:#fff1f2 }
+  .reveal.bad{  color:var(--bad);  border-color:#fecaca; background:#fff1f2 }
 </style>
 </head>
 <body>
@@ -90,11 +89,14 @@
     </div>
   </header>
 
-  <!-- TOP: SCORES -->
+  <!-- TOP: MODE / TIMER / HOST / LIVES -->
   <section class="panel" id="scoresPanel">
     <div class="row" style="justify-content:space-between">
       <span class="badge"><span id="modeLabel">Vote</span> • <span class="timer" id="timer">--:--</span></span>
-      <span class="pill">Host: <b id="hostName">—</b></span>
+      <div class="row">
+        <span class="pill">Host: <b id="hostName">—</b></span>
+        <span class="pill" id="livesPill" style="display:none">♥ Lives: <b id="livesCount">3</b></span>
+      </div>
     </div>
     <div id="scoreboard" class="scores" style="margin-top:6px"></div>
   </section>
@@ -104,7 +106,7 @@
     <div class="row" style="justify-content:space-between;align-items:flex-end">
       <div>
         <div class="title">Vote: Game Type (30s)</div>
-        <div class="muted sm">Traditional • Speed • Draft • Teams</div>
+        <div class="muted sm">Traditional • Speed • Draft • Teams • Co-Op Survival</div>
       </div>
       <div class="pill">Your vote: <strong id="myVote">—</strong></div>
     </div>
@@ -124,6 +126,10 @@
       <button class="card" data-mode="teams">
         <div class="left"><b>👥 Teams</b><span class="sm muted">6 rounds • team chat • first answer locks</span></div>
         <span class="pill">Votes: <b id="v-teams">0</b></span>
+      </button>
+      <button class="card" data-mode="coop">
+        <div class="left"><b>🤝 Co-Op Survival</b><span class="sm muted">Shared lives • first answer locks • no timer</span></div>
+        <span class="pill">Votes: <b id="v-coop">0</b></span>
       </button>
     </div>
     <div class="sm muted" style="margin-top:6px">Highest votes wins; ties are randomly chosen.</div>
@@ -145,14 +151,15 @@
   <section class="panel" id="phase-play" style="display:none">
     <!-- Teams meta (scores + chat) -->
     <div id="teamsBar" class="teams-bar" style="display:none; margin-bottom:8px">
-      <div class="teamA tot">Team A: <span id="teamAScore">0</span></div>
-      <div class="teamB tot">Team B: <span id="teamBScore">0</span></div>
+      <div class="tot">Team A: <span id="teamAScore">0</span></div>
+      <div class="tot">Team B: <span id="teamBScore">0</span></div>
     </div>
 
-    <div id="teamChatWrap" style="display:none; margin-bottom:8px">
+    <!-- Chat: Teams (team chat) or Co-Op Survival (global chat) -->
+    <div id="chatWrap" style="display:none; margin-bottom:8px">
       <div class="chat">
         <div class="row" style="justify-content:space-between">
-          <div class="team-tag"><span class="team-chip"></span><span id="teamLabel">Team</span> chat</div>
+          <div class="team-tag" id="chatLabel">Chat</div>
           <div class="muted sm">Last 3 messages</div>
         </div>
         <div class="chatlog" id="chatLog"></div>
@@ -168,7 +175,16 @@
       <div class="verse-text" id="verseText">Loading verses…</div>
     </div>
 
-    <div class="inputs">
+    <!-- Multiple choice (Co-Op Survival) -->
+    <div id="mcWrap" class="mc-wrap" style="display:none">
+      <div id="mcGrid" class="mc-grid"></div>
+      <div class="row" style="margin-top:6px;justify-content:flex-end">
+        <button class="btn" id="mcSubmitBtn">Submit</button>
+      </div>
+    </div>
+
+    <!-- Manual inputs (other modes) -->
+    <div id="inputsWrap" class="inputs">
       <select id="bookInput"></select>
       <input id="chapInput" type="number" min="1" placeholder="Chapter" />
       <input id="verseInput" type="number" min="1" placeholder="Verse" />
@@ -223,11 +239,11 @@
   let LOBBY=null, GAME=null, HOST=null, isHost=false;
   let verses=[], books=[], bookSet=new Set();
   let myCurrentVerse=null, tickTimer=null;
+  let lastMyWasCorrectFull = false; // for reveal on shared modes (teams/traditional) when you submit
+  let mcSelectedId = null;
 
-  // for shared-mode reveals
-  let prevStatus = null;
-  let prevSharedId = null;
-  let lastMyWasCorrectFull = false;
+  // For reveal using previous game snapshot (coop uses server fields)
+  let prevGame = null;
 
   // ---------- FS REFS ----------
   const lobbyRef  = doc(db, 'lobbies', gameId);
@@ -282,7 +298,7 @@
     for (const b of books){ const o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); }
   }
 
-  // Scoring: 1 book • 3 book+chapter • 5 book+chapter+verse
+  // Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse
   function scoreAnswerBits(guess, correct){
     const bookOK = normBook(guess.book)===normBook(correct.book);
     const chapOK = Number(guess.chapter)===Number(correct.chapter);
@@ -296,11 +312,8 @@
   function scoreAnswer(guess, correct, mode){
     const {bookOK, chapOK, verOK, pts:base} = scoreAnswerBits(guess, correct);
     let pts = base;
-    if (mode==='speed'){
-      if (!bookOK && !chapOK && !verOK) pts -= 1;
-    } else if (mode==='draft'){
-      if (!bookOK) pts -= 3;
-    }
+    if (mode==='speed'){ if (!bookOK && !chapOK && !verOK) pts -= 1; }
+    else if (mode==='draft'){ if (!bookOK) pts -= 3; }
     return {pts, full: (bookOK && chapOK && verOK)};
   }
 
@@ -312,7 +325,20 @@
     return pool[Math.floor(Math.random()*pool.length)];
   }
 
-  // Floating reveal
+  // Co-Op option generator (returns array of verse IDs incl. correct)
+  function genCoopOptions(correctId){
+    const ids = new Set([correctId]);
+    while (ids.size < 4){
+      const v = verses[Math.floor(Math.random()*verses.length)];
+      if (v) ids.add(v.id);
+    }
+    // shuffle
+    const arr = Array.from(ids);
+    for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+    return arr;
+  }
+
+  // Float reveal
   function showRevealRef(v, ok){
     if (!v) return;
     const el = document.createElement('div');
@@ -337,6 +363,7 @@
     btn.addEventListener('click', ()=> submitVote(btn.dataset.mode));
   }
   $('submitBtn').onclick = onSubmitAnswer;
+  $('mcSubmitBtn').onclick = onSubmitMC;
   $('sendChat').onclick = sendChat;
   $('toLobbyBtn').onclick = ()=> location.href = `/index.html?username=${encodeURIComponent(username)}`;
   $('playAgainBtn').onclick = async ()=> {
@@ -349,9 +376,11 @@
         host:l.data().host || players[0] || username,
         players,
         mode:null,
-        deadline: Date.now()+30000,
+        deadline: now()+30000,
         round:0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
+        lives: Object.fromEntries(players.map(p=>[p,3])), /* legacy per-player for other modes (unused in coop) */
+        sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
         picks: {},
@@ -359,8 +388,14 @@
         pickIndex: 0,
         picksPerPlayer: 3,
         chosenShared: [],
+        options: [],
         endAt: 0,
-        turnDeadline: 0
+        turnDeadline: 0,
+        coopLocked: false,
+        coopNextAt: 0,
+        coopAnsweredBy: "",
+        coopWasRight: null,
+        coopStartAt: 0
       }, {merge:true});
     });
   };
@@ -374,7 +409,7 @@
     const lobbySnap = await getDoc(lobbyRef);
     if (!lobbySnap.exists()){ $('subtitle').textContent='Lobby not found.'; return; }
     LOBBY = lobbySnap.data();
-    HOST = LOBBY.host || (LOBBY.players && LOBBY.players[0]) || username;
+    HOST  = LOBBY.host || (LOBBY.players && LOBBY.players[0]) || username;
     isHost = (username === HOST);
     $('hostName').textContent = HOST;
     $('subtitle').textContent = `You are ${username} • Players: ${(LOBBY.players||[]).join(', ')}`;
@@ -395,9 +430,11 @@
         host: HOST,
         players,
         mode:null,
-        deadline: Date.now()+30000,
+        deadline: now()+30000,
         round:0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
+        lives: Object.fromEntries(players.map(p=>[p,3])),
+        sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
         picks: {},
@@ -405,53 +442,64 @@
         pickIndex: 0,
         picksPerPlayer: 3,
         chosenShared: [],
+        options: [],
         endAt: 0,
-        turnDeadline: 0
+        turnDeadline: 0,
+        coopLocked: false,
+        coopNextAt: 0,
+        coopAnsweredBy: "",
+        coopWasRight: null,
+        coopStartAt: 0
       });
     }
 
     // Game listener
     onSnapshot(gameRef, (snap)=>{
       if (!snap.exists()) return;
-      const oldStatus = prevStatus;
-      const oldShared = prevSharedId;
+      const old = prevGame;
+      const fresh = snap.data();
 
-      GAME = snap.data();
+      GAME = fresh; prevGame = fresh;
       render();
 
-      // Detect round end to show reveal in shared modes
-      if (GAME.status === 'playing' && (GAME.mode==='traditional' || GAME.mode==='teams')){
-        if (prevSharedId === null) prevSharedId = GAME.currentSharedId || null;
-        const curShared = GAME.currentSharedId || null;
-        if (oldShared !== null && curShared !== oldShared){
-          const v = verses.find(x=> x.id === oldShared);
-          showRevealRef(v, lastMyWasCorrectFull);
+      // Reveal on shared-verse change
+      if (old && old.status==='playing' && old.currentSharedId && old.currentSharedId !== (fresh.currentSharedId||null)){
+        const v = verses.find(x=> x.id === old.currentSharedId);
+        if (old.mode==='coop'){
+          const ok = (old.coopAnsweredBy === username) ? !!old.coopWasRight : false;
+          showRevealRef(v, ok);
+        } else if (old.mode==='traditional' || old.mode==='teams'){
+          showRevealRef(v, !!lastMyWasCorrectFull);
           lastMyWasCorrectFull = false;
         }
-        prevSharedId = curShared;
       }
-      // Final reveal when moving to ended (shared modes)
-      if (oldStatus==='playing' && GAME.status==='ended' && (GAME.mode==='traditional' || GAME.mode==='teams')){
-        const v = verses.find(x=> x.id === prevSharedId);
-        showRevealRef(v, lastMyWasCorrectFull);
-        lastMyWasCorrectFull = false;
+      // Final reveal on end
+      if (old && old.status==='playing' && fresh.status==='ended' && old.currentSharedId){
+        const v = verses.find(x=> x.id === old.currentSharedId);
+        if (old.mode==='coop'){
+          const ok = (old.coopAnsweredBy === username) ? !!old.coopWasRight : false;
+          showRevealRef(v, ok);
+        } else if (old.mode==='traditional' || old.mode==='teams'){
+          showRevealRef(v, !!lastMyWasCorrectFull);
+          lastMyWasCorrectFull = false;
+        }
       }
-      prevStatus = GAME.status;
     });
 
     // Votes listener
     onSnapshot(votesCol, (qsnap)=>{
-      const counts = {traditional:0, speed:0, draft:0, teams:0};
-      qsnap.forEach(doc=>{ const m=doc.data().mode; if (counts[m]!==undefined) counts[m]++; });
+      const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
+      qsnap.forEach(doc=>{ const m=d.data().mode; if (counts[m]!==undefined) counts[m]++; });
       $('v-traditional').textContent = counts.traditional;
       $('v-speed').textContent       = counts.speed;
       $('v-draft').textContent       = counts.draft;
       $('v-teams').textContent       = counts.teams;
+      $('v-coop').textContent        = counts.coop;
       highlightVoteLeader(counts);
     });
 
-    // Chat listener (buffer, show last 3 of your team)
-    onSnapshot(query(chatCol, orderBy('ts','desc'), limit(12)), (qsnap)=>{
+    // Chat listener
+    onSnapshot(query(chatCol, orderBy('ts','desc'), limit(20)), (qsnap)=>{
       const msgs=[]; qsnap.forEach(d=> msgs.push(d.data())); msgs.reverse(); drawChat(msgs);
     });
 
@@ -483,20 +531,45 @@
     $('phase-play').style.display  = (phase === 'playing')  ? 'block' : 'none';
     $('phase-end').style.display   = (phase === 'ended')    ? 'block' : 'none';
 
+    // Lives pill (Co-Op)
+    if (phase==='playing' && GAME.mode==='coop'){
+      $('livesPill').style.display='inline-flex';
+      $('livesCount').textContent = GAME.sharedLives ?? 3;
+    } else {
+      $('livesPill').style.display='none';
+    }
+
     drawScores();
 
     if (phase === 'drafting'){
       buildDraftUI();
     } else if (phase === 'playing'){
+      // Chat visibility
       if (GAME.mode === 'teams'){
         $('teamsBar').style.display = 'flex';
         $('teamAScore').textContent = (GAME.teamTotals && GAME.teamTotals.A) || 0;
         $('teamBScore').textContent = (GAME.teamTotals && GAME.teamTotals.B) || 0;
-        $('teamChatWrap').style.display = 'block';
+        $('chatWrap').style.display = 'block';
+        $('chatLabel').textContent = 'Team chat';
+      } else if (GAME.mode === 'coop'){
+        $('teamsBar').style.display = 'none';
+        $('chatWrap').style.display = 'block';
+        $('chatLabel').textContent = 'Chat';
       } else {
         $('teamsBar').style.display = 'none';
-        $('teamChatWrap').style.display = 'none';
+        $('chatWrap').style.display = 'none';
       }
+
+      // Inputs vs Multiple-choice
+      if (GAME.mode === 'coop'){
+        $('inputsWrap').style.display = 'none';
+        $('mcWrap').style.display = 'block';
+        buildMCUI();
+      } else {
+        $('mcWrap').style.display = 'none';
+        $('inputsWrap').style.display = 'grid';
+      }
+
       buildPlayHelp();
       maybeShowVerse();
     }
@@ -510,32 +583,51 @@
     const order = players.slice().sort((a,b)=> (scores[b]||0) - (scores[a]||0));
     for (const p of order){
       const row = document.createElement('div'); row.className='entry';
-      const name = document.createElement('div'); name.className='name'; name.textContent = p + (p === GAME.host ? ' ⭐' : '');
+      const name = document.createElement('div'); name.className='name';
+      const star = (p === GAME.host) ? ' ⭐' : '';
+      name.textContent = p + star;
       const sc = document.createElement('div'); sc.innerHTML = `🏆 <b>${scores[p]||0}</b>`;
       row.appendChild(name); row.appendChild(sc);
       sb.appendChild(row);
+    }
+
+    // Disable Co-Op inputs if locked or game over
+    if (GAME.mode==='coop'){
+      const dead = (GAME.sharedLives||0) <= 0;
+      const locked = !!GAME.coopLocked;
+      for (const b of document.querySelectorAll('.mc-btn')) b.disabled = dead || locked;
+      if ($('mcSubmitBtn')) $('mcSubmitBtn').disabled = dead || locked || !mcSelectedId;
     }
   }
 
   function updateCountdownUI(){
     if (!GAME) return;
-    let t=0;
+    let text='--:--';
     if (GAME.status === 'voting' || GAME.status === 'drafting'){
-      t = (GAME.turnDeadline || GAME.deadline || 0) - Date.now();
+      const t = (GAME.turnDeadline || GAME.deadline || 0) - now();
+      text = fmtTime(t);
     } else if (GAME.status === 'playing'){
-      t = (GAME.mode==='speed' || GAME.mode==='draft') ? (GAME.endAt||0) - Date.now() : (GAME.deadline||0) - Date.now();
+      if (GAME.mode==='speed' || GAME.mode==='draft'){
+        text = fmtTime((GAME.endAt||0) - now());
+      } else if (GAME.mode==='coop'){
+        const start = GAME.coopStartAt || now();
+        text = fmtTime(now() - start); // survival time (count-up)
+      } else {
+        text = fmtTime((GAME.deadline||0) - now());
+      }
     }
-    $('timer').textContent = fmtTime(t);
+    $('timer').textContent = text;
   }
 
   function highlightVoteLeader(counts){
     for (const btn of document.querySelectorAll('#phase-vote .card')) btn.classList.remove('leader');
-    const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams);
+    const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams, counts.coop);
     const leaders = [];
     if (counts.traditional===max) leaders.push('traditional');
     if (counts.speed===max)       leaders.push('speed');
     if (counts.draft===max)       leaders.push('draft');
     if (counts.teams===max)       leaders.push('teams');
+    if (counts.coop===max)        leaders.push('coop');
     for (const m of leaders){
       const el = document.querySelector(`#phase-vote .card[data-mode="${m}"]`);
       if (el) el.classList.add('leader');
@@ -552,15 +644,15 @@
   async function hostDrive(){
     if (!GAME) return;
     updateCountdownUI();
-    const tnow = Date.now();
+    const tnow = now();
 
     if (GAME.status === 'voting'){
       if (tnow >= (GAME.deadline || 0)){
         const vSnap = await getDocs(votesCol);
-        const counts = {traditional:0, speed:0, draft:0, teams:0};
+        const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
         vSnap.forEach(d=>{ const m=d.data().mode; if (counts[m]!==undefined) counts[m]++; });
 
-        const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams);
+        const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams, counts.coop);
         const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
         const chosen = top[Math.floor(Math.random()*top.length)]; // random tie-break
 
@@ -591,6 +683,19 @@
         } else if (chosen === 'speed'){
           await updateDoc(gameRef, { status:'playing', ...baseUpdate, endAt: tnow + 90000 });
           await seedPerPlayerVerses();
+        } else if (chosen === 'coop'){
+          const v = pickRandomVerse(); const opts = genCoopOptions(v.id);
+          await updateDoc(gameRef, {
+            status:'playing', ...baseUpdate,
+            sharedLives: 3,
+            coopLocked: false,
+            coopNextAt: 0,
+            coopAnsweredBy: "",
+            coopWasRight: null,
+            coopStartAt: tnow,
+            currentSharedId: v.id,
+            options: opts
+          });
         } else { // traditional
           await updateDoc(gameRef, {
             status:'playing', ...baseUpdate,
@@ -612,7 +717,24 @@
     }
     else if (GAME.status === 'playing'){
       const mode = GAME.mode;
-      if (mode === 'traditional' || mode === 'teams'){
+      if (mode === 'coop'){
+        // End if out of lives
+        if ((GAME.sharedLives||0) <= 0){ await updateDoc(gameRef, {status:'ended'}); return; }
+        // Advance to next verse after lock + reveal delay
+        if (GAME.coopLocked && tnow >= (GAME.coopNextAt || 0)){
+          const chosenSet = new Set(GAME.chosenShared || []);
+          let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
+          chosenSet.add(v.id);
+          await updateDoc(gameRef, {
+            currentSharedId: v.id,
+            options: genCoopOptions(v.id),
+            chosenShared: Array.from(chosenSet),
+            coopLocked: false,
+            coopAnsweredBy: "",
+            coopWasRight: null
+          });
+        }
+      } else if (mode === 'traditional' || mode === 'teams'){
         if (tnow >= (GAME.deadline || 0)){
           const nextRound = (GAME.round||1) + 1;
           if (nextRound > 6){ await updateDoc(gameRef, {status:'ended', deadline:0}); }
@@ -625,7 +747,7 @@
               currentSharedId: v.id,
               chosenShared: Array.from(chosenSet),
               deadline: tnow + 30000,
-              teamLocks: {A:false,B:false}
+              teamLocks: mode==='teams' ? {A:false,B:false} : (GAME.teamLocks||{})
             });
           }
         }
@@ -644,7 +766,7 @@
     const curPicks = picks[cur] || [];
     if (curPicks.length >= (GAME.picksPerPlayer||3)){
       const nextIdx = nextPickIndex(order, picks, GAME.picksPerPlayer||3, idx+1);
-      await updateDoc(gameRef, { pickIndex: nextIdx, turnDeadline: Date.now()+10000 });
+      await updateDoc(gameRef, { pickIndex: nextIdx, turnDeadline: now()+10000 });
       return;
     }
     await runTransaction(db, async (tx)=>{
@@ -658,7 +780,7 @@
       const pick = pool.length ? pool[Math.floor(Math.random()*pool.length)] : books[Math.floor(Math.random()*books.length)];
       P[cur] = [...mine, pick];
       const nIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
-      tx.update(gameRef, { picks:P, pickIndex:nIdx, turnDeadline: Date.now()+10000 });
+      tx.update(gameRef, { picks:P, pickIndex:nIdx, turnDeadline: now()+10000 });
     });
   }
   function nextPickIndex(order, picks, per, startIdx){
@@ -705,18 +827,21 @@
       const taken = new Set(Object.values(P).flat()); if (taken.has(book)) return;
       P[username] = [...mine, book];
       const nextIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
-      tx.update(gameRef, { picks:P, pickIndex: nextIdx, turnDeadline: Date.now()+10000 });
+      tx.update(gameRef, { picks:P, pickIndex: nextIdx, turnDeadline: now()+10000 });
     });
   }
 
-  // ---------- PLAY ----------
+  // ---------- PLAY VIEW ----------
   function maybeShowVerse(){
     if (!GAME) return;
     const mode = GAME.mode;
-    if (mode==='traditional' || mode==='teams'){
+    if (mode==='traditional' || mode==='teams' || mode==='coop'){
       const v = verses.find(x=> x.id === GAME.currentSharedId);
-      $('verseHeader').textContent = `Round ${GAME.round||1} • Shared`;
+      $('verseHeader').textContent = (mode==='coop')
+        ? `Co-Op Survival`
+        : `Round ${GAME.round||1} • Shared`;
       $('verseText').textContent = v ? v.text : '—';
+      if (mode==='coop') buildMCUI();
     } else {
       $('verseHeader').textContent = (mode==='draft') ? 'Your verse (drafted books)' : 'Your verse';
       $('verseText').textContent = myCurrentVerse ? myCurrentVerse.text : '—';
@@ -729,13 +854,42 @@
     if (m==='traditional') txt='6 rounds • 30s each • Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse (no negatives)';
     else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 • -1 if ALL three wrong';
     else if (m==='draft') txt='90s • Only your 3 drafted books • Scoring 1/3/5 • -3 if Book wrong';
-    else if (m==='teams') txt='6 rounds • 30s each • First team answer locks • Team chat above • Scoring 1/3/5 (no negatives)';
+    else if (m==='teams') txt='6 rounds • 30s • First team answer locks • Team chat above • Scoring 1/3/5 (no negatives)';
+    else if (m==='coop')  txt='Survival • Shared lives • First answer locks • Choose 1 of 4 refs • +1 if correct, wrong costs a life';
     $('playHelp').textContent = txt;
   }
 
+  // Co-Op UI
+  function buildMCUI(){
+    if (GAME.mode!=='coop') return;
+    const grid = $('mcGrid'); grid.innerHTML='';
+    mcSelectedId = null;
+    const opts = GAME.options || [];
+    for (const id of opts){
+      const v = verses.find(x=> x.id === id);
+      const btn = document.createElement('button');
+      btn.className='mc-btn';
+      btn.textContent = v ? `${v.book} ${v.chapter}:${v.verse}` : '—';
+      btn.onclick = ()=>{
+        if (GAME.coopLocked) return;
+        mcSelectedId = id;
+        for (const b of document.querySelectorAll('.mc-btn')) b.classList.remove('selected');
+        btn.classList.add('selected');
+        $('mcSubmitBtn').disabled = (GAME.coopLocked || (GAME.sharedLives||0)<=0 || !mcSelectedId);
+      };
+      grid.appendChild(btn);
+    }
+    const locked = !!GAME.coopLocked;
+    const dead = (GAME.sharedLives||0) <= 0;
+    for (const b of document.querySelectorAll('.mc-btn')) b.disabled = locked || dead;
+    $('mcSubmitBtn').disabled = locked || dead || !mcSelectedId;
+  }
+
+  // Manual inputs submit (Traditional/Teams/Speed/Draft)
   async function onSubmitAnswer(){
     if (!GAME) return;
     const mode = GAME.mode;
+    if (mode==='coop') return; // handled by MC flow
     const book = $('bookInput').value;
     const chapter = parseInt($('chapInput').value,10);
     const verseNum = parseInt($('verseInput').value,10);
@@ -744,7 +898,7 @@
     if (mode==='traditional' || mode==='teams'){
       const v = verses.find(x=> x.id === GAME.currentSharedId); if (!v) return;
       const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
-      lastMyWasCorrectFull = full; // used for the end-of-round reveal color
+      lastMyWasCorrectFull = full;
 
       if (mode==='teams'){
         const team = getMyTeam(); if (!team) return;
@@ -761,48 +915,86 @@
         await updateDoc(gameRef, { [`scores.${username}`]: increment(Math.max(0, pts)) });
       }
       $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
-      // Reveal happens at round end for shared modes (handled in snapshot)
-    } else { // speed/draft -> immediate reveal + next verse
+    } else { // speed/draft
       const v = myCurrentVerse; if (!v) return;
       const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
       await updateDoc(gameRef, { [`scores.${username}`]: increment(pts) });
       showRevealRef(v, full);
 
-      // Next verse (respect draft pool)
       const restrict = (mode==='draft');
       const filterFn = restrict ? (x)=> (GAME.picks && (GAME.picks[username]||[]).includes(x.book)) : null;
       const next = pickRandomVerse(filterFn);
       if (next) await setDoc(doc(pstateCol, username), { currentVerseId: next.id }, {merge:true});
-
       $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
     }
   }
 
-  function getMyTeam(){
-    const A = GAME.teamA || []; const B = GAME.teamB || [];
-    if (A.includes(username)){ setTeamUI('A'); return 'A'; }
-    if (B.includes(username)){ setTeamUI('B'); return 'B'; }
-    return null;
-  }
-  function setTeamUI(team){
-    const chip = qs('.team-chip'); if (chip) chip.style.background = (team==='A') ? '#0ea5e9' : '#ef4444';
-    $('teamLabel').textContent = (team==='A') ? 'Team A' : 'Team B';
+  // Co-Op submission (first answer locks, updates shared lives / score, schedules next verse)
+  async function onSubmitMC(){
+    if (!GAME || GAME.mode!=='coop') return;
+    if (!mcSelectedId) return;
+    await runTransaction(db, async (tx)=>{
+      const g = await tx.get(gameRef); if (!g.exists()) return;
+      const G = g.data(); if (G.mode!=='coop') return;
+      if (G.coopLocked) return; // already answered by someone
+      if ((G.sharedLives||0) <= 0) return;
+
+      const correctId = G.currentSharedId;
+      const wasRight = (mcSelectedId === correctId);
+      const scores = G.scores || {};
+      let sharedLives = G.sharedLives ?? 3;
+
+      if (wasRight){
+        scores[username] = (scores[username]||0) + 1; // +1 point to submitter
+      } else {
+        sharedLives = Math.max(0, sharedLives - 1);
+      }
+
+      const patch = {
+        scores,
+        sharedLives,
+        coopLocked: true,
+        coopAnsweredBy: username,
+        coopWasRight: wasRight,
+        coopNextAt: now() + 1500 // short reveal window
+      };
+
+      if (sharedLives <= 0){
+        patch.status = 'ended';
+      }
+      tx.update(gameRef, patch);
+    });
   }
 
-  // ---------- TEAM CHAT ----------
+  function getMyTeam(){
+    const A = GAME.teamA || []; const B = GAME.teamB || [];
+    if (A.includes(username)) return 'A';
+    if (B.includes(username)) return 'B';
+    return null;
+  }
+
+  // ---------- CHAT ----------
   async function sendChat(){
-    if (!GAME || GAME.mode!=='teams') return;
+    if (!GAME) return;
     const txt = $('chatInput').value.trim(); if (!txt) return;
-    const team = getMyTeam(); if (!team) return;
-    await addDoc(chatCol, { team, name: username, text: txt.slice(0,160), ts: serverTimestamp() });
+    const payload = { name: username, text: txt.slice(0,160), ts: serverTimestamp() };
+    if (GAME.mode==='teams'){ payload.team = getMyTeam() || 'A'; } else { payload.team = 'all'; }
+    await addDoc(chatCol, payload);
     $('chatInput').value='';
   }
   function drawChat(msgs){
-    if (!GAME || GAME.mode!=='teams') return;
-    const team = getMyTeam(); if (!team) return;
-    const mine = msgs.filter(m=> m.team===team).slice(-3);
+    if (!GAME) return;
+    let show = [];
+    if (GAME.mode==='teams'){
+      const t = getMyTeam(); if (!t) return;
+      show = msgs.filter(m=> m.team===t).slice(-3);
+    } else if (GAME.mode==='coop'){
+      show = msgs.filter(m=> (m.team==='all' || !m.team)).slice(-3);
+    } else {
+      show = []; // no chat displayed for other modes
+    }
     const log = $('chatLog'); log.innerHTML='';
-    for (const m of mine){
+    for (const m of show){
       const div = document.createElement('div'); div.className='bubble';
       div.textContent = `${m.name}: ${m.text}`; log.appendChild(div);
     }
@@ -810,6 +1002,8 @@
 </script>
 </body>
 </html>
+
+
 
 
 
