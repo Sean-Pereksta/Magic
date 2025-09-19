@@ -8,8 +8,12 @@
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
     --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
-    --radius:16px; --cell:40px; --gap:6px;
+    --radius:16px; --cell:38px; --gap:6px;
   }
+  @media (max-width: 540px){
+    :root{ --cell:34px; }
+  }
+
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -17,24 +21,30 @@
     background:radial-gradient(1200px 600px at 50% -200px, #4c1d95 0%, #312e81 55%, #0b1014 100%) fixed;
   }
   .shell{
-    height:100dvh; max-width:1100px; margin:0 auto; padding:10px;
+    height:100dvh; max-width:1100px; margin:0 auto; padding:8px;
     display:grid; grid-template-rows:auto 1fr auto; gap:8px;
   }
   header{
+    position:sticky; top:0; z-index:5;
     display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
-    padding:10px; background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08);
+    padding:8px; background:rgba(14,23,38,.72); border:1px solid rgba(255,255,255,.08);
     border-radius:14px; backdrop-filter: blur(6px);
   }
   .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .badge{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); font-weight:800}
   .stat{display:flex; gap:8px; align-items:center; padding:6px 10px; border-radius:10px; background:#111827; border:1px solid #1f2937}
-  .bar{height:8px; width:120px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid #1f2937}
+  .bar{height:8px; width:110px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid #1f2937}
   .bar > i{display:block; height:100%; background:linear-gradient(90deg,#10b981,#22c55e,#84cc16); width:0%}
   .dangerbar > i{background:linear-gradient(90deg,#f97316,#ef4444)}
   .tiny{font-size:.9rem; opacity:.85}
+  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:8px 10px; font-weight:800}
+  .btn:hover{ background:#101a2b }
+  .danger{border-color:#7f1d1d; color:#fecaca}
+  .ok{border-color:#14532d; color:#bbf7d0}
+  .disabled{opacity:.6; pointer-events:none}
 
   .board-card, .trade-card, .hand-card{
-    background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:10px;
+    background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:8px;
     box-shadow:0 10px 25px rgba(0,0,0,.18); backdrop-filter: blur(6px);
   }
 
@@ -44,7 +54,7 @@
     gap:var(--gap); padding:6px; border-radius:12px; background:#0a1220; border:1px solid #1f2a44;
   }
   .cell{
-    width:var(--cell); height:var(--cell); display:grid; place-items:center; font-size:20px; line-height:1;
+    width:var(--cell); height:var(--cell); display:grid; place-items:center; font-size:18px; line-height:1;
     background:#0b1320; border:1px solid #1f2a44; border-radius:8px; position:relative; overflow:hidden;
   }
   .tower{filter:drop-shadow(0 1px 4px rgba(0,0,0,.4))}
@@ -60,12 +70,11 @@
   @keyframes flashY{ 0%{box-shadow:0 0 0 0 rgba(250,204,21,.85)} 100%{box-shadow:0 0 0 18px rgba(250,204,21,0)} }
   .implode{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; animation: impl .45s ease forwards; }
   @keyframes impl{ 0%{transform:scale(1); opacity:.95} 100%{transform:scale(.1); opacity:0} }
+
   .glow-blue{animation: glowBlue .9s ease}
   @keyframes glowBlue{ 0%{box-shadow:0 0 0 0 rgba(59,130,246,.9)} 100%{box-shadow:0 0 0 18px rgba(59,130,246,0)} }
-
   .glow-green{animation: glowGreen .9s ease}
   @keyframes glowGreen{ 0%{box-shadow:0 0 0 0 rgba(34,197,94,.9)} 100%{box-shadow:0 0 0 18px rgba(34,197,94,0)} }
-
   .glow-orange{animation: glowOrange .9s ease}
   @keyframes glowOrange{ 0%{box-shadow:0 0 0 0 rgba(245,158,11,.9)} 100%{box-shadow:0 0 0 18px rgba(245,158,11,0)} }
 
@@ -76,11 +85,6 @@
     border:1px dashed #37517a; border-radius:10px; padding:6px 8px; background:#0b1320;
   }
   .proposal-row{display:flex; gap:6px; flex-wrap:wrap}
-  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:8px 10px; font-weight:800}
-  .btn:hover{ background:#101a2b }
-  .danger{border-color:#7f1d1d; color:#fecaca}
-  .ok{border-color:#14532d; color:#bbf7d0}
-  .disabled{opacity:.6; pointer-events:none}
 
   .hand{display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch}
   .card{
@@ -96,6 +100,7 @@
   .muted{color:var(--muted)}
 
   footer{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
+  .fsbtn{margin-left:4px}
 </style>
 </head>
 <body>
@@ -120,6 +125,7 @@
       <div class="stat tiny" title="Turn / Tick">
         🔁 Turn: <b id="turnText">?</b> • ⏱️ <b id="tickText">—</b>
       </div>
+      <button id="fsBtn" class="btn fsbtn" title="Fullscreen">⛶ Full</button>
       <button id="leaveBtn" class="btn danger">🏠 Leave</button>
     </div>
   </header>
@@ -145,7 +151,7 @@
   <section class="hand-card">
     <div class="row" style="justify-content:space-between">
       <div class="tiny">Your Hand</div>
-      <div class="tiny muted">Tip: tap a card to <b>Cast</b>, or tap another to <b>Combine</b>. Tap “Trade Block” to offer it.</div>
+      <div class="tiny muted">Tip: tap one card, then tap another to <b>Combine</b> (always on). Tap “Cast” to play on the grid.</div>
     </div>
     <div id="hand" class="hand" aria-label="Your spell cards"></div>
   </section>
@@ -260,8 +266,21 @@
   const tradeHereBtn = document.getElementById("tradeHereBtn");
   const clearTradeBtn = document.getElementById("clearTradeBtn");
   const leaveBtn = document.getElementById("leaveBtn");
+  const fsBtn = document.getElementById("fsBtn");
 
   leaveBtn.onclick = ()=> { location.href = `/?username=${encodeURIComponent(username)}`; };
+
+  // Fullscreen (with fallbacks)
+  fsBtn.onclick = async ()=>{
+    const el = document.documentElement;
+    try{
+      if (!document.fullscreenElement) { await el.requestFullscreen?.(); }
+      else { await document.exitFullscreen?.(); }
+    }catch(e){
+      // iOS fallback: force scroll + zoom-ish
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+  };
 
   // ---------- Local ----------
   let isHost = false;
@@ -276,7 +295,7 @@
         const cell = document.createElement("div");
         cell.className = "cell";
         cell.dataset.x = c; cell.dataset.y = r;
-        if (r === TOWER_ROW) { cell.classList.add("tower"); cell.title = "Your Tower"; }
+        if (r === TOWER_ROW) { cell.classList.add("tower"); cell.title = "Your Tower"; cell.textContent = "🏰"; }
         cell.addEventListener("click", ()=> onCellClick(c,r));
         boardEl.appendChild(cell);
       }
@@ -330,12 +349,6 @@
     cell.classList.add(cls);
     setTimeout(()=> cell.classList.remove(cls), 800);
   }
-  function residueMark(x,y, cls, ms=800){
-    const cell = boardEl.children[idx(x,y)];
-    if (!cell) return;
-    cell.classList.add(cls);
-    setTimeout(()=> cell.classList.remove(cls), ms);
-  }
   function tinyImplosion(el){
     const fx = document.createElement("div");
     fx.className = "implode";
@@ -378,7 +391,7 @@
       const payload = {
         createdAt: Date.now(),
         running: true,
-        tick: 0,                // kept for UI, not used for logic
+        tick: 0,
         turn: 0,
         turnOrder: players,
         turnIndex: 0,
@@ -408,10 +421,14 @@
   }
 
   function seedHand(){
-    const base = [ "fire", "water", "plant", "light" ];
-    const keys = Object.keys(BASE_SPELLS);
-    const extra = keys[Math.floor(Math.random()*keys.length)];
-    return [...base, extra].map(k=> makeCardFromKey(k));
+    // Start with exactly THREE base cards
+    const baseKeys = Object.keys(BASE_SPELLS);
+    const picks = [];
+    for (let i=0;i<3;i++){
+      const k = baseKeys[Math.floor(Math.random()*baseKeys.length)];
+      picks.push(makeCardFromKey(k));
+    }
+    return picks;
   }
   function makeCardFromKey(k){
     const spec = BASE_SPELLS[k];
@@ -438,12 +455,12 @@
       for (let c=0; c<COLS; c++){
         const cell = boardEl.children[idx(c,r)];
         cell.innerHTML = "";
-        cell.classList.remove("frozen","vine","burn","glow-red","flash-yellow");
+        cell.className = "cell" + (r===TOWER_ROW ? " tower" : "");
         if (r === TOWER_ROW) cell.textContent = "🏰";
       }
     }
 
-    // status overlays use TURN-based expiry (inclusive)
+    // status overlays (TURN-based expiry inclusive)
     const nowTurn = s.turn || 0;
     for (const [xStr,until] of Object.entries(s.frozenCols || {})){
       const x = Number(xStr);
@@ -500,6 +517,17 @@
     location.href = `/?username=${encodeURIComponent(username)}`;
   }
 
+  function potentialPartners(card){
+    if (!card || !card.type) return [];
+    const res = [];
+    for (const key of Object.keys(COMBOS)){
+      const [a,b] = key.split("+");
+      if (a===card.type) res.push({ type:b });
+      if (b===card.type) res.push({ type:a });
+    }
+    return res;
+  }
+
   function renderHand(cards, s){
     handEl.innerHTML = "";
     const combosFor = (base)=> potentialPartners(base).map(p=> p.type);
@@ -520,10 +548,18 @@
         <button class="btn" data-act="combine">Combine…</button>
       `;
       el.querySelector('[data-act="cast"]').onclick = ()=> castCardFlow(card, s);
-      el.querySelector('[data-act="select"]').onclick = ()=> toggleSelect(card.id);
-      el.querySelector('[data-act="combine"]').onclick = ()=> combineFlow(card, s);
+      el.querySelector('[data-act="select"]').onclick = ()=> onSelectTap(card, s);
+      el.querySelector('[data-act="combine"]').onclick = ()=> combineFlow(card, s); // still available
       handEl.appendChild(el);
     }
+  }
+
+  function onSelectTap(card, s){
+    if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
+    if (selectedCardId === card.id){ selectedCardId = null; renderHand(s.hands[username]||[], s); return; }
+    // If another card is tapped while one is selected, attempt immediate combine (ALWAYS receptive)
+    immediateCombineByIds(selectedCardId, card.id);
+    selectedCardId = null;
   }
 
   function renderTrade(s){
@@ -546,27 +582,12 @@
     }
   }
 
-  function toggleSelect(cardId){
-    selectedCardId = (selectedCardId === cardId) ? null : cardId;
-  }
-
-  function potentialPartners(card){
-    if (!card || !card.type) return [];
-    const res = [];
-    for (const key of Object.keys(COMBOS)){
-      const [a,b] = key.split("+");
-      if (a===card.type) res.push({ type:b });
-      if (b===card.type) res.push({ type:a });
-    }
-    return res;
-  }
-
   tradeHereBtn.onclick = ()=> placeSelectedToTrade();
   clearTradeBtn.onclick = ()=> clearMyTrade();
   endTurnBtn.onclick = ()=> endTurn();
 
   function onCellClick(x,y){
-    if (!selectedCardId) return;
+    // cell picker handled in cast flow
   }
 
   async function placeSelectedToTrade(){
@@ -618,6 +639,7 @@
     });
   }
 
+  // ---------- Casting ----------
   async function castCardFlow(card, s){
     const isMyTurn = (s.currentPlayer === username) && s.running;
     if (!isMyTurn) return;
@@ -653,7 +675,8 @@
         frozenCols: d.frozenCols,
         vineCells: d.vineCells,
         burnCells: d.burnCells,
-        playedTurn: d.playedTurn
+        playedTurn: d.playedTurn,
+        towerHP: d.towerHP
       });
     });
 
@@ -682,7 +705,7 @@
 
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
 
-  // ---------- Card Effects (TURN timers) ----------
+  // ---------- Card Effects (ensure ALL do damage) ----------
   function applyCardEffectMut(d, card, tx, ty){
     const eff = card.effect;
     const now = (d.turn||0);
@@ -704,37 +727,45 @@
     const addVine = (x,y,t=1)=> { if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + t; };
     const freezeCol = (x,t=1)=> { if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + t; };
 
+    // helper to add minimal ping damage (guarantees “weak but still damage”)
+    const ping = (cells, amt=1)=> { for (const [x,y] of cells) damageAt(x,y,amt); };
+
     switch(eff){
       /* base */
       case "fire":      damageAt(tx,ty,5);                   pulseCells([[tx,ty]], "glow-red"); break;
-      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
-                        pulseCells(cross(tx,ty), "glow-red"); break;
-      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
-                        pulseCells(cross(tx,ty), "glow-orange"); break;
+      case "lightning": chainLightning(d, tx, ty, 0);        pulseCells([[tx,ty]], "flash-yellow"); break;
 
-      case "lightning": chainLightning(d, tx, ty, 0);
-                        pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "chain":     chainLightning(d, tx, ty, 2);
-                        pulseCells([[tx,ty]], "flash-yellow"); break;
-
-      case "water":     freezeCol(tx,3);
+      case "water":     freezeCol(tx,3);                     // + minimal damage
+                        damageAt(tx,ty,1);
                         pulseCells(column(tx), "glow-blue"); break;
 
       case "plant":     addVine(tx,ty,3);
+                        damageAt(tx,ty,1);
                         pulseCells([[tx,ty]], "glow-green"); break;
 
       case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2);
                         pulseCells([[tx,ty]], "glow-orange"); break;
 
       case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+                        ping([[tx,ty]],1);
                         pulseCells(area(tx,ty,1), "glow-green"); break;
 
       /* doubles / fusions */
+      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
+                        pulseCells(cross(tx,ty), "glow-red"); break;
+
+      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
+                        pulseCells(cross(tx,ty), "glow-orange"); break;
+
+      case "chain":     chainLightning(d, tx, ty, 2);
+                        pulseCells([[tx,ty]], "flash-yellow"); break;
+
       case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); }
                         for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
                         pulseCells(column(tx), "glow-blue"); break;
 
       case "wall":      addVine(tx,ty,5);
+                        damageAt(tx,ty,1);
                         pulseCells([[tx,ty]], "glow-green"); break;
 
       case "embervine": damageAt(tx,ty,3); addVine(tx,ty,2);
@@ -753,6 +784,7 @@
                         pulseCells(area(tx,ty,1), "glow-orange"); break;
 
       case "storm":     chainLightning(d, tx, ty, 1); freezeCol(tx,1);
+                        ping([[tx,ty]],1);
                         pulseCells(column(tx).concat([[tx,ty]]), "glow-blue"); break;
 
       case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1));
@@ -763,12 +795,15 @@
                         pulseCells(area(tx,ty,1), "glow-orange"); break;
 
       case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1);
+                        ping([[tx,ty]],1);
                         pulseCells([[tx,ty]].concat(column(tx)), "flash-yellow"); break;
 
       case "cinderwall":[[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1)));
+                        ping([[tx,ty]],1);
                         pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=> inBoard(x,y)), "glow-orange"); break;
 
       case "thorns":    { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); cells.push([tx,y]); } }
+                        ping(cells.length?cells:[[tx,ty]],1);
                         pulseCells(cells, "glow-green"); break; }
 
       case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
@@ -776,6 +811,7 @@
                         pulseCells(area(tx,ty,1), "flash-yellow"); break;
 
       case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+                        ping([[tx,ty]],1);
                         pulseCells(area(tx,ty,1), "glow-green"); break;
 
       case "superchain":chainLightning(d, tx, ty, 3);
@@ -791,50 +827,52 @@
                         });
                         pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))), "glow-blue"); break;
 
-      case "wildfire":  pulseCells(cross(tx,ty), "glow-red");
-                        cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2)); break;
+      case "wildfire":  cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2));
+                        ping([[tx,ty]],1);
+                        pulseCells(cross(tx,ty), "glow-red"); break;
 
       case "thundercloud": { const targets = randomEnemyCells(d, 5);
                         for (const [x,y] of targets){ damageAt(x,y,4); }
+                        if (!targets.length) damageAt(tx,ty,2);
                         pulseCells(targets.length?targets:[[tx,ty]], "flash-yellow"); break; }
 
       case "entangle":  chainLightning(d, tx, ty, 0, false, true);
+                        ping([[tx,ty]],1);
                         pulseCells([[tx,ty]], "glow-green"); break;
 
-      /* 'net' could reuse entangle behavior */
       case "net":       chainLightning(d, tx, ty, 0, false, true);
+                        ping([[tx,ty]],1);
                         pulseCells([[tx,ty]], "glow-green"); break;
     }
   }
 
-  function markGlow(x,y,cls){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
-  function markFlash(x,y){ requestAnimationFrame(()=> glowCell(x,y,"flash-yellow")); }
-
+  // ---------- Combining (ALWAYS receptive) ----------
   async function combineFlow(card, s){
-    const isMyTurn = (s.currentPlayer === username) && s.running;
-    if (!isMyTurn) return;
+    // If nothing selected yet, select this as first; else combine
     if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
-    const a = (s.hands[username]||[]).find(c=> c.id === selectedCardId);
-    const b = card;
-    if (!a || !b || a.id === b.id) return;
-    const combo = getCombo(a.type, b.type);
-    if (!combo) return;
+    if (selectedCardId === card.id){ selectedCardId = null; renderHand(s.hands[username]||[], s); return; }
+    immediateCombineByIds(selectedCardId, card.id);
+    selectedCardId = null;
+  }
 
+  async function immediateCombineByIds(aId, bId){
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
       if (!st.exists()) return;
       const d = st.data();
-      if (d.currentPlayer !== username || !d.running) return;
-      const hand = d.hands[username] || [];
+      const hand = d.hands?.[username] || [];
+      const a = hand.find(c=> c.id===aId);
+      const b = hand.find(c=> c.id===bId);
+      if (!a || !b || a.id===b.id) return;
+      const combo = getCombo(a.type, b.type);
+      if (!combo) return;
       const ai = hand.findIndex(c=> c.id===a.id);
       const bi = hand.findIndex(c=> c.id===b.id);
-      if (ai<0 || bi<0) return;
       const first = Math.max(ai,bi), second = Math.min(ai,bi);
       hand.splice(first,1); hand.splice(second,1);
       hand.push({ id:id(), type: combo.key, name: combo.name, emoji: combo.emoji, charges: combo.charges, effect: combo.effect });
       tx.update(stateRef, { hands: d.hands });
-    });
-    selectedCardId = null;
+    }).catch(()=>{});
   }
 
   function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
@@ -856,10 +894,9 @@
   function randCol(){ return Math.floor(Math.random()*COLS); }
 
   function startOfTurnMut(d){
-    // Everything here happens ONCE at the start of each turn
     const now = d.turn || 0;
 
-    // 1) DOTs / status effects apply this turn (inclusive expiry)
+    // DOTs
     for (const [key,until] of Object.entries(d.burnCells||{})){
       if (until >= now){
         const [x,y] = key.split(",").map(Number);
@@ -868,7 +905,7 @@
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
 
-    // 2) Enemy abilities that trigger at start of turn
+    // enemy abilities
     for (const e of d.enemies || []){
       if (e.ability === "summon_rats" && Math.random() < 0.15){
         const n = 1 + Math.floor(Math.random()*2);
@@ -882,14 +919,14 @@
       }
     }
 
-    // 3) Bolts travel 1 row; hit tower if they reach it
+    // bolts travel
     for (const b of (d.bolts||[])){ b.y += 1; }
     for (const b of d.bolts||[]){
       if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||10); b.hp = 0; }
     }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
-    // 4) Enemies advance by speed unless blocked by freeze/vines
+    // enemies advance (respect freeze/vines)
     const frozen = d.frozenCols || {};
     const vines = d.vineCells || {};
     for (const e of d.enemies){
@@ -901,16 +938,16 @@
     }
     d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
 
-    // 5) Spawn new enemies based on turn
+    // spawn
     const wave = Math.floor((d.turn||0)/6);
     const maxSpawn = maxSpawnForTurn(d.turn||0);
-    const n = 1 + Math.floor(Math.random()*maxSpawn); // 1..maxSpawn
+    const n = 1 + Math.floor(Math.random()*maxSpawn);
     for (let i=0;i<n;i++){
       const pick = pickEnemyByWeight(wave);
       d.enemies.push({ id:id(), key:pick.key, x: randCol(), y: 0, hp: pick.hp, spd: pick.spd, dmg: pick.dmg, emoji: pick.emoji, ability: pick.ability||null });
     }
 
-    // 6) Expire statuses whose turn has passed
+    // expire statuses
     for (const [x,until] of Object.entries(d.frozenCols||{})){ if (until < now) delete d.frozenCols[x]; }
     for (const [k,until] of Object.entries(d.vineCells||{})){ if (until < now) delete d.vineCells[k]; }
     for (const [k,until] of Object.entries(d.burnCells||{})){ if (until < now) delete d.burnCells[k]; }
@@ -932,11 +969,11 @@
       if (!order.length) return;
       let idx = d.turnIndex || 0;
       idx = (idx+1) % order.length;
-      d.turn = (d.turn||0) + 1;               // next turn number
+      d.turn = (d.turn||0) + 1;
       d.turnIndex = idx;
       d.currentPlayer = order[idx];
 
-      // START-OF-TURN processing happens here
+      // start-of-turn processing
       startOfTurnMut(d);
 
       tx.update(stateRef, {
@@ -972,6 +1009,8 @@
 </script>
 </body>
 </html>
+
+
 
 
 
