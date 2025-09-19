@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>🧙‍♂️ Spell Tower — 8P Co-op</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  :root{
+    --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
+    --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
+    --radius:16px; --cell:40px; --gap:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
+    background:radial-gradient(1200px 600px at 50% -200px, #4c1d95 0%, #312e81 55%, #0b1014 100%) fixed;
+  }
+  .shell{
+    height:100dvh; max-width:1100px; margin:0 auto; padding:10px;
+    display:grid; grid-template-rows:auto 1fr auto; gap:8px;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+    padding:10px; background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; backdrop-filter: blur(6px);
+  }
+  .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .badge{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); font-weight:800}
+  .stat{display:flex; gap:8px; align-items:center; padding:6px 10px; border-radius:10px; background:#111827; border:1px solid #1f2937}
+  .bar{height:8px; width:120px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid #1f2937}
+  .bar > i{display:block; height:100%; background:linear-gradient(90deg,#10b981,#22c55e,#84cc16); width:0%}
+  .dangerbar > i{background:linear-gradient(90deg,#f97316,#ef4444)}
+  .tiny{font-size:.9rem; opacity:.85}
+
+  /* MAIN: board + trade + hand (stacked vertically for one-screen mobile) */
+  .board-card, .trade-card, .hand-card{
+    background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:10px;
+    box-shadow:0 10px 25px rgba(0,0,0,.18); backdrop-filter: blur(6px);
+  }
+
+  /* BOARD (top) */
+  .board-wrap{display:flex; justify-content:center}
+  .board{
+    display:grid; grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--cell);
+    gap:var(--gap); padding:6px; border-radius:12px; background:#0a1220; border:1px solid #1f2a44;
+  }
+  .cell{
+    width:var(--cell); height:var(--cell); display:grid; place-items:center; font-size:20px; line-height:1;
+    background:#0b1320; border:1px solid #1f2a44; border-radius:8px; position:relative; overflow:hidden;
+  }
+  .tower{filter:drop-shadow(0 1px 4px rgba(0,0,0,.4))}
+  .hpbar{position:absolute; top:2px; left:2px; right:2px; height:6px; background:#1f2937; border-radius:6px; overflow:hidden}
+  .hpbar > i{display:block; height:100%; width:100%; background:linear-gradient(90deg,#22c55e,#84cc16)}
+  .frozen{ box-shadow: inset 0 0 0 2px rgba(125,211,252,.7); background:#0b2333 }
+  .vine{ box-shadow: inset 0 0 0 2px rgba(34,197,94,.7); background:#0d2317 }
+  .burn{ box-shadow: inset 0 0 0 2px rgba(239,68,68,.7); background:#2b0f12 }
+
+  /* glow effects */
+  .glow-red{animation: glowRed .9s ease}
+  @keyframes glowRed{ 0%{box-shadow:0 0 0 0 rgba(239,68,68,.8)} 100%{box-shadow:0 0 0 18px rgba(239,68,68,0)} }
+  .flash-yellow{animation: flashY .7s ease}
+  @keyframes flashY{ 0%{box-shadow:0 0 0 0 rgba(250,204,21,.85)} 100%{box-shadow:0 0 0 18px rgba(250,204,21,0)} }
+  .implode{
+    position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; animation: impl .45s ease forwards;
+  }
+  @keyframes impl{ 0%{transform:scale(1); opacity:.95} 100%{transform:scale(.1); opacity:0} }
+
+  /* TRADE BAR (middle) */
+  .trade-grid{
+    display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
+  }
+  .trade-left{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .trade-slot{
+    min-width:80px; min-height:44px; display:flex; align-items:center; justify-content:center;
+    border:1px dashed #37517a; border-radius:10px; padding:6px 8px; background:#0b1320;
+  }
+  .proposal-row{display:flex; gap:6px; flex-wrap:wrap}
+  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:8px 10px; font-weight:800}
+  .btn:hover{ background:#101a2b }
+  .danger{border-color:#7f1d1d; color:#fecaca}
+  .ok{border-color:#14532d; color:#bbf7d0}
+  .disabled{opacity:.6; pointer-events:none}
+
+  /* HAND (bottom) */
+  .hand{display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch}
+  .card{
+    min-width:86px; max-width:86px; border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
+    border-radius:12px; padding:8px; display:grid; gap:6px;
+  }
+  .card .name{font-weight:800; font-size:.98rem}
+  .charges{display:flex; gap:3px}
+  .pip{width:10px; height:10px; border-radius:50%; background:#10b981}
+  .pip.off{background:#374151}
+  .combo-hint{outline:2px solid #facc15; box-shadow:0 0 0 4px rgba(250,204,21,.25)}
+  .row-split{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .muted{color:var(--muted)}
+
+  /* FOOT */
+  footer{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- HEADER -->
+  <header>
+    <div class="row">
+      <span class="badge">🧙‍♂️ Spell Tower</span>
+      <span id="hostBadge" class="badge" style="display:none">👑 Host</span>
+      <span id="playersBadge" class="badge">👥 0/8</span>
+    </div>
+    <div class="row">
+      <div class="stat" title="Tower Health">
+        🏰
+        <div class="bar dangerbar"><i id="hpFill"></i></div>
+        <b id="hpText">50/50</b>
+      </div>
+      <div class="stat" title="Shared Mana">
+        ✨
+        <div class="bar"><i id="manaFill"></i></div>
+        <b id="manaText">0/0</b>
+      </div>
+      <div class="stat tiny" title="Turn / Tick">
+        🔁 Turn: <b id="turnText">?</b> • ⏱️ <b id="tickText">0</b>
+      </div>
+      <button id="leaveBtn" class="btn danger">🏠 Leave</button>
+    </div>
+  </header>
+
+  <!-- BOARD -->
+  <section class="board-card">
+    <div class="board-wrap"><div id="board" class="board" aria-label="Battlefield"></div></div>
+  </section>
+
+  <!-- TRADE -->
+  <section class="trade-card">
+    <div class="trade-grid">
+      <div class="trade-left">
+        <div>🔄 Trade Block:</div>
+        <div id="myTrade" class="trade-slot" title="Place a card here to offer">— empty —</div>
+        <button id="clearTradeBtn" class="btn">Clear</button>
+      </div>
+      <div>
+        <div class="tiny muted">Proposals visible:</div>
+        <div id="proposals" class="proposal-row"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HAND -->
+  <section class="hand-card">
+    <div class="row" style="justify-content:space-between">
+      <div class="tiny">Your Hand</div>
+      <div class="tiny muted">Tip: tap a card to **Cast**, or tap another to **Combine**. Tap “Trade Block” to offer it.</div>
+    </div>
+    <div id="hand" class="hand" aria-label="Your spell cards"></div>
+  </section>
+
+  <!-- FOOT -->
+  <footer>
+    <div class="row">
+      <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
+      <button id="endTurnBtn" class="btn ok">End Turn (+2 cards)</button>
+    </div>
+    <div class="tiny muted">Game: <code id="gidTxt"></code> • Player: <code id="unameTxt"></code></div>
+  </footer>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  // ---------- Firebase ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // ---------- URL Params ----------
+  const params = new URLSearchParams(location.search);
+  const gameId = params.get("gameId") || "";
+  const username = (params.get("username") || "").trim();
+  document.getElementById("gidTxt").textContent = gameId;
+  document.getElementById("unameTxt").textContent = username;
+  if (!gameId || !username) { alert("Missing gameId/username (launch from lobby)."); }
+
+  // ---------- Refs ----------
+  const lobbyRef = doc(db, "lobbies", gameId);
+  const stateRef = doc(db, "spelltower", gameId);
+
+  // ---------- Constants ----------
+  const COLS = 4, ROWS = 10;
+  const TOWER_ROW = ROWS - 1;
+  const START_HP = 50;
+  const TICK_MS = 900;
+
+  // Enemies
+  const ENEMIES = [
+    { key:"rat",   hp:1, spd:2, dmg:1, emoji:"🐀", weight: 1,  ability:null },
+    { key:"imp",   hp:2, spd:1, dmg:2, emoji:"😈", weight: 2,  ability:null },
+    { key:"orc",   hp:3, spd:1, dmg:3, emoji:"👹", weight: 3,  ability:null },
+    { key:"trol",  hp:5, spd:1, dmg:4, emoji:"🧌", weight: 4,  ability:null },
+    { key:"warg",  hp:4, spd:2, dmg:2, emoji:"🐺", weight: 4,  ability:null },
+    { key:"mage",  hp:3, spd:1, dmg:3, emoji:"🪄", weight: 5,  ability:"summon_rats" },
+    { key:"dlord", hp:8, spd:1, dmg:5, emoji:"😈🔥", weight: 6,  ability:"fire_bolt" },
+    { key:"golem", hp:10,spd:1, dmg:6, emoji:"🗿", weight: 7,  ability:null },
+  ];
+
+  // Spells + combos
+  const BASE_SPELLS = {
+    fire:   { name:"Fire",   emoji:"🔥", charges:3, cost:0, effect:"fire" },
+    water:  { name:"Water",  emoji:"💧", charges:3, cost:0, effect:"water" },
+    plant:  { name:"Plant",  emoji:"🌿", charges:3, cost:0, effect:"plant" },
+    light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
+  };
+  const COMBOS = {
+    "fire+fire":        { key:"pyro",     name:"Pyro",     emoji:"🔥🔥", charges:3, effect:"pyro" },
+    "pyro+pyro":        { key:"inferno",  name:"Inferno",  emoji:"🔥🔥🔥", charges:3, effect:"inferno" },
+    "fire+water":       { key:"steam",    name:"Steam",    emoji:"💨", charges:3, effect:"steam" },
+    "water+plant":      { key:"vine",     name:"Vine",     emoji:"🪴", charges:3, effect:"vine" },
+    "light+light":      { key:"chain",    name:"Chain",    emoji:"⚡⚡", charges:3, effect:"chain" },
+  };
+
+  // ---------- DOM ----------
+  const boardEl = document.getElementById("board");
+  const handEl = document.getElementById("hand");
+  const myTradeEl = document.getElementById("myTrade");
+  const proposalsEl = document.getElementById("proposals");
+  const hostBadge = document.getElementById("hostBadge");
+  const playersBadge = document.getElementById("playersBadge");
+  const hpFill = document.getElementById("hpFill");
+  const hpText = document.getElementById("hpText");
+  const manaFill = document.getElementById("manaFill");
+  const manaText = document.getElementById("manaText");
+  const tickText = document.getElementById("tickText");
+  const turnText = document.getElementById("turnText");
+  const endTurnBtn = document.getElementById("endTurnBtn");
+  const tradeHereBtn = document.getElementById("tradeHereBtn");
+  const clearTradeBtn = document.getElementById("clearTradeBtn");
+  const leaveBtn = document.getElementById("leaveBtn");
+
+  leaveBtn.onclick = ()=> { location.href = `/?username=${encodeURIComponent(username)}`; };
+
+  // ---------- Local State ----------
+  let isHost = false;
+  let ticker = null;
+  let selectedCardId = null; // card id from hand
+  let lastPlayedTurnMarker = {}; // cardId -> turn number (limit once per turn per card)
+
+  // ---------- Build Board ----------
+  function buildBoard(){
+    boardEl.innerHTML = "";
+    for(let r=0; r<ROWS; r++){
+      for(let c=0; c<COLS; c++){
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.x = c; cell.dataset.y = r;
+        if (r === TOWER_ROW) {
+          cell.classList.add("tower");
+          cell.title = "Your Tower";
+        }
+        cell.addEventListener("click", ()=> onCellClick(c,r));
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+  buildBoard();
+
+  // ---------- Helpers ----------
+  const id = ()=> Math.random().toString(36).slice(2,9);
+  const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
+  const inBoard = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
+  const idx = (x,y)=> y*COLS + x;
+
+  function glowCell(x,y, cls){
+    const cell = boardEl.children[idx(x,y)];
+    if (!cell) return;
+    cell.classList.add(cls);
+    setTimeout(()=> cell.classList.remove(cls), 800);
+  }
+  function residueMark(x,y, cls, ms=800){
+    const cell = boardEl.children[idx(x,y)];
+    if (!cell) return;
+    cell.classList.add(cls);
+    setTimeout(()=> cell.classList.remove(cls), ms);
+  }
+  function tinyImplosion(el){
+    const fx = document.createElement("div");
+    fx.className = "implode";
+    fx.textContent = "💥";
+    el.appendChild(fx);
+    setTimeout(()=> fx.remove(), 450);
+  }
+
+  // ---------- Firestore: Lobby & Host ----------
+  onSnapshot(lobbyRef, async (snap)=>{
+    if (!snap.exists()) return;
+    const d = snap.data();
+    const players = d.players || [];
+    const countTxt = `${players.length}/8`;
+    playersBadge.textContent = `👥 ${countTxt}`;
+    // If host missing, auto-assign first player (stable) via transaction
+    if (!d.host && players.length){
+      try{
+        await runTransaction(db, async tx=>{
+          const cur = await tx.get(lobbyRef);
+          if (!cur.exists()) return;
+          const cd = cur.data();
+          if (!cd.host){
+            tx.update(lobbyRef, { host: players[0] });
+          }
+        });
+      }catch(e){}
+    }
+    isHost = (d.host === username);
+    hostBadge.style.display = isHost ? "inline-flex" : "none";
+    ensureGameState(players, d.host || players[0] || null);
+  });
+
+  // ---------- Initial Game State ----------
+  async function ensureGameState(players, host){
+    const s = await getDoc(stateRef);
+    if (!s.exists()){
+      if (!isHost) return; // only host seeds
+      const hands = {};
+      for (const p of players) hands[p] = seedHand();
+      const payload = {
+        createdAt: Date.now(),
+        running: true,
+        tick: 0,
+        turn: 0,
+        turnOrder: players,
+        turnIndex: 0,
+        currentPlayer: players[0] || "",
+        towerHP: START_HP,
+        towerMax: START_HP,
+        mana: 0, manaMax: 12,
+        enemies: [],      // [{id,x,y,hp,key,emoji}]
+        bolts: [],        // demon lord projectiles [{id,x,y,hp,dmg}]
+        frozenCols: {},   // x: untilTick
+        vineCells: {},    // "x,y": untilTick
+        burnCells: {},    // "x,y": untilTick (inferno)
+        hands,            // p: [{id,type,name,emoji,charges,effect}]
+        playedTurn: {},   // per turn, which cardIds used
+        trade: {          // trading system
+          offers: {},     // p: cardId (from their hand)
+          proposals: {}   // p: [{from, cardId}]
+        },
+        host: host || "",
+      };
+      await setDoc(stateRef, payload);
+    } else {
+      // ensure late joiner has a hand
+      if (players.includes(username)){
+        const d = s.data();
+        if (!d.hands || !d.hands[username]){
+          await updateDoc(stateRef, { [`hands.${username}`]: seedHand() });
+        }
+      }
+    }
+  }
+
+  function seedHand(){
+    // 4 starter cards: fire, water, plant, lightning (random double)
+    const keys = Object.keys(BASE_SPELLS);
+    const pick = ()=> keys[Math.floor(Math.random()*keys.length)];
+    const base = [ "fire", "water", "plant", "light" ];
+    const extra = pick();
+    return [...base, extra].map(k=> makeCardFromKey(k));
+  }
+  function makeCardFromKey(k){
+    const spec = BASE_SPELLS[k];
+    return { id:id(), type:k, name:spec.name, emoji:spec.emoji, charges:spec.charges, effect:spec.effect };
+  }
+
+  // ---------- Render Loop ----------
+  onSnapshot(stateRef, (snap)=>{
+    if (!snap.exists()) return;
+    const s = snap.data();
+    renderAll(s);
+  });
+
+  function renderAll(s){
+    // header
+    hpText.textContent = `${s.towerHP}/${s.towerMax}`;
+    hpFill.style.width = clamp((s.towerHP/s.towerMax)*100, 0, 100) + "%";
+    manaText.textContent = `${s.mana}/${s.manaMax}`;
+    manaFill.style.width = clamp((s.mana/s.manaMax)*100, 0, 100) + "%";
+    tickText.textContent = s.tick || 0;
+    turnText.textContent = `${(s.turn||0)+1} • ${s.currentPlayer||"?"}`;
+    // turn-interactivity
+    const myTurn = (s.currentPlayer === username) && s.running;
+    endTurnBtn.classList.toggle("disabled", !myTurn);
+    tradeHereBtn.classList.toggle("disabled", !myTurn);
+
+    // board cells base
+    for (let r=0; r<ROWS; r++){
+      for (let c=0; c<COLS; c++){
+        const cell = boardEl.children[idx(c,r)];
+        cell.innerHTML = "";
+        cell.classList.remove("frozen","vine","burn","glow-red","flash-yellow");
+        if (r === TOWER_ROW){
+          cell.textContent = "🏰";
+        }
+      }
+    }
+
+    // statuses (freeze/vine/burn)
+    const now = s.tick || 0;
+    for (const [xStr,until] of Object.entries(s.frozenCols || {})){
+      const x = Number(xStr);
+      if (until > now){
+        for (let r=0; r<ROWS; r++){
+          boardEl.children[idx(x,r)]?.classList.add("frozen");
+        }
+      }
+    }
+    for (const [key,until] of Object.entries(s.vineCells || {})){
+      if (until > now){
+        const [x,y] = key.split(",").map(Number);
+        if (inBoard(x,y)) boardEl.children[idx(x,y)]?.classList.add("vine");
+      }
+    }
+    for (const [key,until] of Object.entries(s.burnCells || {})){
+      if (until > now){
+        const [x,y] = key.split(",").map(Number);
+        if (inBoard(x,y)) boardEl.children[idx(x,y)]?.classList.add("burn");
+      }
+    }
+
+    // enemies
+    for (const e of (s.enemies||[])){
+      if (!inBoard(e.x,e.y)) continue;
+      const cell = boardEl.children[idx(e.x,e.y)];
+      const hpPct = clamp((e.hp / getEnemySpec(e.key).hp) * 100, 0, 100);
+      const wrap = document.createElement("div");
+      wrap.textContent = e.emoji;
+      const bar = document.createElement("div"); bar.className = "hpbar";
+      const fill = document.createElement("i"); fill.style.width = hpPct + "%";
+      bar.appendChild(fill); wrap.appendChild(bar);
+      cell.appendChild(wrap);
+    }
+    // demon lord fire bolts
+    for (const b of (s.bolts||[])){
+      if (!inBoard(b.x,b.y)) continue;
+      const cell = boardEl.children[idx(b.x,b.y)];
+      const bolt = document.createElement("div");
+      bolt.textContent = "🔥";
+      const bar = document.createElement("div"); bar.className = "hpbar"; bar.style.top = "22px";
+      const fill = document.createElement("i"); fill.style.width = clamp((b.hp/1)*100,0,100) + "%";
+      bar.appendChild(fill); bolt.appendChild(bar);
+      cell.appendChild(bolt);
+    }
+
+    // hand
+    const myHand = (s.hands && s.hands[username]) ? s.hands[username] : [];
+    renderHand(myHand, s);
+
+    // trade
+    renderTrade(s);
+
+    // start/stop ticker if host
+    if (isHost && s.running && !ticker) ticker = setInterval(()=> hostTick(), TICK_MS);
+    if ((!isHost || !s.running) && ticker){ clearInterval(ticker); ticker = null; }
+
+    // tower death -> send to hub
+    if (s.towerHP <= 0 && s.running){
+      // end and bounce
+      endGameAndReturn();
+    }
+  }
+
+  async function endGameAndReturn(){
+    try{ await updateDoc(stateRef, { running:false }); }catch(e){}
+    try{ await updateDoc(lobbyRef, { status:"waiting" }); }catch(e){}
+    location.href = `/?username=${encodeURIComponent(username)}`;
+  }
+
+  function renderHand(cards, s){
+    handEl.innerHTML = "";
+    // highlight potential combo partners if a card selected
+    const combosFor = (base)=> potentialPartners(base).map(p=> p.type);
+    const highlightTypes = selectedCardId ? combosFor(cards.find(c=>c.id===selectedCardId)||{}) : [];
+
+    for (const card of cards){
+      const el = document.createElement("div");
+      el.className = "card";
+      if (selectedCardId && card.id !== selectedCardId && highlightTypes.includes(card.type)){
+        el.classList.add("combo-hint");
+      }
+      el.innerHTML = `
+        <div class="row-split"><div class="name">${card.emoji} ${card.name}</div><div class="tiny muted">x1/turn</div></div>
+        <div class="charges">${[0,1,2].map(i=> `<i class="pip ${card.charges>i?'':'off'}"></i>`).join('')}</div>
+        <div class="row-split">
+          <button class="btn" data-act="cast">Cast</button>
+          <button class="btn" data-act="select">${selectedCardId===card.id?'Selected':'Select'}</button>
+        </div>
+        <button class="btn" data-act="combine">Combine…</button>
+      `;
+      el.querySelector('[data-act="cast"]').onclick = ()=> castCardFlow(card, s);
+      el.querySelector('[data-act="select"]').onclick = ()=> toggleSelect(card.id);
+      el.querySelector('[data-act="combine"]').onclick = ()=> combineFlow(card, s);
+      handEl.appendChild(el);
+    }
+  }
+
+  function renderTrade(s){
+    // my offer
+    const myOfferId = (s.trade?.offers || {})[username] || null;
+    if (!myOfferId){
+      myTradeEl.textContent = "— empty —";
+    } else {
+      const card = (s.hands[username]||[]).find(c=> c.id===myOfferId);
+      myTradeEl.textContent = card ? `${card.emoji} ${card.name}` : "(offered)";
+    }
+    // proposals to me
+    proposalsEl.innerHTML = "";
+    const allProps = s.trade?.proposals || {};
+    const myProps = (allProps[username] || []);
+    for (const pr of myProps){
+      const from = pr.from, cardId = pr.cardId;
+      const btn = document.createElement("button");
+      btn.className = "btn";
+      btn.textContent = `Accept ${from}`;
+      btn.onclick = ()=> acceptTrade(from, username, cardId);
+      proposalsEl.appendChild(btn);
+    }
+  }
+
+  function toggleSelect(cardId){
+    selectedCardId = (selectedCardId === cardId) ? null : cardId;
+    // re-render will show combo glow via onSnapshot
+    stateRef.get; // noop to keep linter calm
+  }
+
+  function potentialPartners(card){
+    // which types can combine with this card?
+    if (!card || !card.type) return [];
+    const res = [];
+    for (const key of Object.keys(COMBOS)){
+      const [a,b] = key.split("+");
+      if (a===card.type) res.push({ type:b });
+      if (b===card.type) res.push({ type:a });
+    }
+    return res;
+  }
+
+  // ---------- Actions ----------
+  tradeHereBtn.onclick = ()=> placeSelectedToTrade();
+  clearTradeBtn.onclick = ()=> clearMyTrade();
+  endTurnBtn.onclick = ()=> endTurn();
+
+  function onCellClick(x,y){
+    // Casting chooses target cell. Only during my turn & with a selected card to cast.
+    // We just show highlight; actual damage happens in castCardFlow which passes coords.
+    if (!selectedCardId) return;
+  }
+
+  async function placeSelectedToTrade(){
+    const s = (await getDoc(stateRef)).data();
+    const myHand = s.hands[username]||[];
+    const card = myHand.find(c=> c.id===selectedCardId);
+    if (!card) return;
+    await updateDoc(stateRef, { [`trade.offers.${username}`]: card.id });
+  }
+  async function clearMyTrade(){
+    const patch = {}; patch[`trade.offers.${username}`] = null;
+    await updateDoc(stateRef, patch);
+    // also clear proposals to others referencing me
+    const s = (await getDoc(stateRef)).data();
+    const propos = s.trade?.proposals || {};
+    for (const to of Object.keys(propos)){
+      const filtered = (propos[to]||[]).filter(p=> p.from !== username);
+      await updateDoc(stateRef, { [`trade.proposals.${to}`]: filtered });
+    }
+  }
+
+  // Any player can propose to trade their offer with your offer
+  // (Present as buttons next to your trade slot in the UI of the recipient; we already render them as "Accept from X")
+  async function acceptTrade(from, to, fromCardId){
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      const offers = d.trade?.offers || {};
+      const hands = d.hands || {};
+      const fromHand = hands[from]||[];
+      const toHand = hands[to]||[];
+      const toOfferId = offers[to];
+      if (!toOfferId) return;
+
+      const fromIdx = fromHand.findIndex(c=> c.id===fromCardId);
+      const toIdx = toHand.findIndex(c=> c.id===toOfferId);
+      if (fromIdx<0 || toIdx<0) return;
+
+      const [fromCard] = fromHand.splice(fromIdx,1);
+      const [toCard]   = toHand.splice(toIdx,1);
+      fromHand.push(toCard);
+      toHand.push(fromCard);
+
+      // clear both offers and any proposals to each
+      if (!d.trade) d.trade = {offers:{}, proposals:{}};
+      d.trade.offers[from] = null;
+      d.trade.offers[to] = null;
+      d.trade.proposals[to] = [];
+      d.trade.proposals[from] = [];
+
+      tx.update(stateRef, { hands: d.hands, trade: d.trade });
+    });
+  }
+
+  // Casting flow: prompt for a target cell via simple click -> we'll use center-bottom targeting:
+  async function castCardFlow(card, s){
+    // Only on my turn; once per card per turn
+    const isMyTurn = (s.currentPlayer === username) && s.running;
+    if (!isMyTurn) return;
+    if ((lastPlayedTurnMarker[card.id] || -1) === (s.turn||0)) return; // already used this turn
+    if (card.charges <= 0) return;
+
+    // Simple targeting prompt: click a cell; we temporarily attach a one-shot listener
+    const pick = await pickCellOnce();
+    if (!pick) return;
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      if (d.currentPlayer !== username || !d.running) return;
+
+      // find card in hand
+      const hand = d.hands[username] || [];
+      const ci = hand.findIndex(c=> c.id===card.id);
+      if (ci<0) return;
+
+      // apply effect
+      applyCardEffectMut(d, hand[ci], pick.x, pick.y);
+
+      // decrement charges and maybe implode
+      hand[ci].charges = Math.max(0, (hand[ci].charges||0)-1);
+      if (hand[ci].charges === 0){
+        // remove card
+        hand.splice(ci,1);
+      } else {
+        // update in place
+        hand[ci] = {...hand[ci]};
+      }
+
+      // mark once/turn for this card
+      if (!d.playedTurn) d.playedTurn = {};
+      if (!d.playedTurn[username]) d.playedTurn[username] = {};
+      d.playedTurn[username][card.id] = d.turn||0;
+
+      tx.update(stateRef, { hands: d.hands, enemies: d.enemies, bolts: d.bolts, frozenCols: d.frozenCols, vineCells: d.vineCells, burnCells: d.burnCells, playedTurn: d.playedTurn });
+    });
+
+    // local implode if it broke
+    if (card.charges-1 === 0){
+      const cards = handEl.querySelectorAll(".card");
+      cards.forEach(el=>{
+        if (el.querySelector(".name")?.textContent?.includes(card.name)){
+          tinyImplosion(el);
+        }
+      });
+    }
+
+    lastPlayedTurnMarker[card.id] = (s.turn||0);
+  }
+
+  function pickCellOnce(){
+    return new Promise(resolve=>{
+      const handler = (ev)=>{
+        const cell = ev.target.closest(".cell");
+        if (!cell) return;
+        const x = Number(cell.dataset.x), y = Number(cell.dataset.y);
+        boardEl.removeEventListener("click", handler, true);
+        resolve({x,y});
+      };
+      boardEl.addEventListener("click", handler, true);
+      setTimeout(()=>{ // timeout in case user bails
+        boardEl.removeEventListener("click", handler, true);
+        resolve(null);
+      }, 6000);
+    });
+  }
+
+  function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
+
+  function applyCardEffectMut(d, card, tx, ty){
+    const eff = card.effect;
+    // helper to damage
+    const damageAt = (x,y,amt)=> {
+      // first, bolts (can be destroyed)
+      for (const b of d.bolts||[]){
+        if (b.x===x && b.y===y){
+          b.hp -= amt;
+        }
+      }
+      d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
+
+      // then enemies
+      for (const e of d.enemies){
+        if (e.x===x && e.y===y){
+          e.hp -= amt;
+        }
+      }
+      d.enemies = d.enemies.filter(e=> e.hp>0);
+    };
+
+    // VISUAL marks (burn/frozen/vine) added through state flags for next render tick
+    const now = (d.tick||0);
+
+    switch(eff){
+      case "fire":
+        damageAt(tx,ty,5);
+        markGlow(tx,ty,"glow-red");
+        break;
+      case "pyro": {
+        const pts = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+        for (const [dx,dy] of pts){
+          const x=tx+dx,y=ty+dy;
+          if (inBoard(x,y)) damageAt(x,y,5);
+        }
+        markGlow(tx,ty,"glow-red");
+        break;
+      }
+      case "inferno": {
+        const pts = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+        for (const [dx,dy] of pts){
+          const x=tx+dx,y=ty+dy;
+          if (inBoard(x,y)) damageAt(x,y,6);
+          if (!d.burnCells) d.burnCells={};
+          d.burnCells[`${x},${y}`] = now+1; // burn next tick
+        }
+        markGlow(tx,ty,"glow-red");
+        break;
+      }
+      case "lightning": {
+        // hit target, then diffuse to adjacent enemies like a chain until no adjacent
+        chainLightning(d, tx, ty);
+        markFlash(tx,ty);
+        break;
+      }
+      case "chain": {
+        chainLightning(d, tx, ty, 2); // stronger chain
+        markFlash(tx,ty);
+        break;
+      }
+      case "water": {
+        // slow: freeze column 3 ticks
+        if (!d.frozenCols) d.frozenCols = {};
+        d.frozenCols[tx] = now + 3;
+        break;
+      }
+      case "plant": {
+        // block tile for 3 turns
+        if (!d.vineCells) d.vineCells = {};
+        d.vineCells[`${tx},${ty}`] = now + 3;
+        break;
+      }
+      case "steam": {
+        // blind: stop enemies here next tick (y tile); model as vine for 1 tick
+        if (!d.vineCells) d.vineCells = {};
+        d.vineCells[`${tx},${ty}`] = now + 1;
+        damageAt(tx,ty,2);
+        break;
+      }
+      case "vine": {
+        // area root (3x3) for 2 ticks
+        if (!d.vineCells) d.vineCells = {};
+        for (let x=tx-1; x<=tx+1; x++){
+          for (let y=ty-1; y<=ty+1; y++){
+            if (inBoard(x,y)) d.vineCells[`${x},${y}`] = now + 2;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  function markGlow(x,y,cls){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
+  function markFlash(x,y){ requestAnimationFrame(()=> glowCell(x,y,"flash-yellow")); }
+
+  function chainLightning(d, sx, sy, bonus=0){
+    const adj = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inBoard(a,b));
+    const seen = new Set();
+    let frontier = [[sx,sy]];
+    let dmg = 4 + bonus;
+    while (frontier.length){
+      const [x,y] = frontier.shift();
+      const key = `${x},${y}`; if (seen.has(key)) continue; seen.add(key);
+      // damage here
+      for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= dmg; }
+      d.enemies = d.enemies.filter(e=> e.hp>0);
+      // expand to neighbors that have enemies
+      for (const [a,b] of adj([x,y])){
+        const hasEnemy = (d.enemies||[]).some(e=> e.x===a && e.y===b);
+        if (hasEnemy) frontier.push([a,b]);
+      }
+    }
+  }
+
+  // Combine flow
+  async function combineFlow(card, s){
+    const isMyTurn = (s.currentPlayer === username) && s.running;
+    if (!isMyTurn) return;
+    // pick partner by tapping another card in hand (we use selectedCardId)
+    if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
+    const a = (s.hands[username]||[]).find(c=> c.id === selectedCardId);
+    const b = card;
+    if (!a || !b) return;
+    if (a.id === b.id) return;
+    const combo = getCombo(a.type, b.type);
+    if (!combo) return; // no-op if not valid
+
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      if (d.currentPlayer !== username || !d.running) return;
+      const hand = d.hands[username] || [];
+      const ai = hand.findIndex(c=> c.id===a.id);
+      const bi = hand.findIndex(c=> c.id===b.id);
+      if (ai<0 || bi<0) return;
+
+      // remove higher index first
+      const first = Math.max(ai,bi), second = Math.min(ai,bi);
+      hand.splice(first,1); hand.splice(second,1);
+      hand.push({
+        id:id(),
+        type: combo.key,
+        name: combo.name,
+        emoji: combo.emoji,
+        charges: combo.charges,
+        effect: combo.effect
+      });
+      tx.update(stateRef, { hands: d.hands });
+    });
+
+    selectedCardId = null;
+  }
+
+  function getCombo(t1,t2){
+    if (!t1 || !t2) return null;
+    return COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null;
+  }
+
+  // End Turn
+  async function endTurn(){
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      if (!d.running || d.currentPlayer !== username) return;
+
+      // draw 2
+      const hand = d.hands[username] || [];
+      hand.push(makeCardFromKey(randBase()), makeCardFromKey(randBase()));
+
+      // next player
+      const order = d.turnOrder || [];
+      if (!order.length) return;
+      let idx = d.turnIndex || 0;
+      idx = (idx+1) % order.length;
+      d.turn = (d.turn||0) + 1;
+      d.turnIndex = idx;
+      d.currentPlayer = order[idx];
+
+      // reset playedTurn marker for next player optionally (we keep history per card)
+      tx.update(stateRef, { hands: d.hands, turn: d.turn, turnIndex: d.turnIndex, currentPlayer: d.currentPlayer });
+    });
+  }
+  function randBase(){
+    const k = Object.keys(BASE_SPELLS);
+    return k[Math.floor(Math.random()*k.length)];
+  }
+
+  // ---------- Host Tick ----------
+  async function hostTick(){
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      if (!d.running) return;
+
+      d.tick = (d.tick||0) + 1;
+
+      const now = d.tick;
+
+      // burn cells tick (damage 2 to anything there)
+      for (const [key,until] of Object.entries(d.burnCells||{})){
+        if (until >= now){
+          const [x,y] = key.split(",").map(Number);
+          for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= 2; }
+        }
+      }
+      d.enemies = d.enemies.filter(e=> e.hp>0);
+
+      // demon fire bolts movement
+      for (const b of (d.bolts||[])){ b.y += 1; }
+      // if a bolt reaches tower row
+      for (const b of d.bolts||[]){
+        if (b.y >= TOWER_ROW){
+          d.towerHP -= (b.dmg||10);
+          b.hp = 0;
+        }
+      }
+      d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
+
+      // Move enemies (respect freezes & vines)
+      const frozen = d.frozenCols || {};
+      const vines = d.vineCells || {};
+      for (const e of d.enemies){
+        if (frozen[e.x] && frozen[e.x] > now) continue;
+        if (vines[`${e.x},${e.y}`] && vines[`${e.x},${e.y}`] > now) continue;
+        e.y += e.spd || getEnemySpec(e.key).spd || 1;
+        if (e.y >= TOWER_ROW){
+          d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1);
+          e.hp = 0; // consumed on hit
+        }
+      }
+      d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
+
+      // Enemy abilities:
+      // - summon rats (spawn 1–2 rats at row 0 random columns)
+      // - demon lord fires bolt (hp=1, dmg=10) from its cell downward
+      for (const e of d.enemies){
+        if (e.ability === "summon_rats" && Math.random() < 0.15){
+          const n = 1 + Math.floor(Math.random()*2);
+          for (let i=0;i<n;i++){
+            d.enemies.push({ id:id(), key:"rat", x: randCol(), y: 0, hp: getEnemySpec("rat").hp, spd:2, dmg:1, emoji:getEnemySpec("rat").emoji });
+          }
+        }
+        if (e.ability === "fire_bolt" && Math.random() < 0.2){
+          if (!d.bolts) d.bolts=[];
+          d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:10 });
+        }
+      }
+
+      // spawn new enemies (1–2 per tick)
+      const wave = Math.floor((d.turn||0)/6);
+      const n = 1 + Math.floor(Math.random()*2);
+      for (let i=0;i<n;i++){
+        const pick = pickEnemyByWeight(wave);
+        d.enemies.push({ id:id(), key:pick.key, x: randCol(), y: 0, hp: pick.hp, spd: pick.spd, dmg: pick.dmg, emoji: pick.emoji, ability: pick.ability||null });
+      }
+
+      // expire statuses
+      for (const [x,until] of Object.entries(d.frozenCols||{})){
+        if (until <= now) delete d.frozenCols[x];
+      }
+      for (const [k,until] of Object.entries(d.vineCells||{})){
+        if (until <= now) delete d.vineCells[k];
+      }
+      for (const [k,until] of Object.entries(d.burnCells||{})){
+        if (until <= now) delete d.burnCells[k];
+      }
+
+      tx.update(stateRef, {
+        tick: d.tick,
+        towerHP: d.towerHP,
+        enemies: d.enemies,
+        bolts: d.bolts,
+        frozenCols: d.frozenCols,
+        vineCells: d.vineCells,
+        burnCells: d.burnCells
+      });
+    });
+  }
+
+  function pickEnemyByWeight(wave){
+    // stronger enemies become more likely as wave increases
+    const pool = [];
+    for (const e of ENEMIES){
+      const w = e.weight + Math.max(0, wave - 1);
+      for (let i=0;i<w;i++) pool.push(e);
+    }
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+  function randCol(){ return Math.floor(Math.random()*COLS); }
+
+  // ---------- Visual cell feedback from casts (local only) ----------
+  function castFX(effect, x, y){
+    switch(effect){
+      case "fire":
+      case "pyro":
+      case "inferno": glowCell(x,y,"glow-red"); break;
+      case "lightning":
+      case "chain": glowCell(x,y,"flash-yellow"); break;
+    }
+  }
+
+  // ---------- Accept trade proposals creation ----------
+  // When someone else offers a card and you want to propose exchanging your own offer with theirs,
+  // you put your card on your trade block; on their end, a button will appear to accept.
+  // (For simplicity, proposals are placed implicitly when both sides have an offer.)
+  onSnapshot(stateRef, (snap)=>{
+    if (!snap.exists()) return;
+    const d = snap.data();
+    const offers = d.trade?.offers || {};
+    const myOffer = offers[username];
+    if (!myOffer) return;
+    // find all others who also have offers; ensure proposals array for me is up to date
+    const toMe = [];
+    for (const [p,cardId] of Object.entries(offers)){
+      if (!cardId || p===username) continue;
+      toMe.push({ from:p, cardId });
+    }
+    // write proposals for me (idempotent-ish)
+    updateDoc(stateRef, { [`trade.proposals.${username}`]: toMe }).catch(()=>{});
+  });
+
+  // ---------- Click-to-redirect on tower death is handled in renderAll ----------
+
+</script>
+</body>
+</html>
