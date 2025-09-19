@@ -198,8 +198,8 @@
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
                   <option value="splinters">🪄 Splinters (4P)</option>
+                  <option value="spelltower">🗼 Spell Tower (8P)</option> <!-- ADDED -->
                   <option value="biblegame">📖 Bible Game (12P)</option>
-                  <option value="spelltower">🧙‍♂️ Spell Tower (8P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -267,23 +267,32 @@
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
       splinters:  "/game/Splinters.html",
+      spelltower: "/game/spelltower.html",   // ADDED
       biblegame:  "/game/biblegame.html",
-      spelltower: "/game/spelltower.html"   // NEW
+
+      // Singleplayer
+      matchwars:  "/game/matchwars.html",
+      flag:       "/game/Flag.html",
+      microwars:  "/game/microwars.html",
+      microwars2: "/game/microwaves2.html",
+      microwars4: "/game/microwaves4.html",
+      border:     "/game/border.html",
+      mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters","biblegame","spelltower"]); // CHANGED
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4, biblegame: 20, spelltower: 8 }; // CHANGED
+    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","biblegame"]); // ADDED spelltower
+    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4, spelltower: 8, biblegame: 20 }; // ADDED spelltower
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     // ---------- SINGLEPLAYER CATALOG ----------
     const SINGLEPLAYER_GAMES = [
-      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: "/game/microwars.html" },
-      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: "/game/microwaves2.html" },
-      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: "/game/microwaves4.html" },
-      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler with towers, minions, and abilities. Push to destroy the core.", route: "/game/CatLanes.html" },
-      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match tiles to recruit, then steamroll the enemy stronghold. Quick & strategic.", route: "/game/matchwars.html" },
-      { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: "/game/border.html" },
-      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: "/game/Flag.html" }
+      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: ROUTES.microwars },
+      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: ROUTES.microwars2 },
+      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: ROUTES.microwars4 },
+      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler with towers, minions, and abilities. Push to destroy the core.", route: ROUTES.mobamania },
+      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match tiles to recruit, then steamroll the enemy stronghold. Quick & strategic.", route: ROUTES.matchwars },
+      { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
+      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: ROUTES.flag }
     ];
 
     // ---------- FIREBASE ----------
@@ -418,8 +427,8 @@
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
              type==='splinters'?'🪄 Splinters (4P)' :
+             type==='spelltower'?'🗼 Spell Tower (8P)' :    // ADDED
              type==='biblegame'?'📖 Bible Game (20P)' :
-             type==='spelltower'?'🧙‍♂️ Spell Tower (8P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -454,7 +463,7 @@
 
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','biblegame','spelltower'].includes(gameType)) {
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','biblegame'].includes(gameType)) { // ADDED spelltower
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -763,7 +772,6 @@
   </script>
 </body>
 </html>
-
 
 
 
