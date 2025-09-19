@@ -181,7 +181,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, addDoc,
-    serverTimestamp, query, orderBy, limit, getDocs, runTransaction, increment, where
+    serverTimestamp, query, orderBy, limit, getDocs, runTransaction, increment
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // ---------- CONFIG ----------
@@ -206,15 +206,9 @@
   const username = url.searchParams.get('username') || '';
 
   // ---------- GLOBAL STATE ----------
-  let LOBBY = null;
-  let GAME = null;
-  let HOST = null;
-  let isHost = false;
-  let verses = [];
-  let books = [];
-  let bookSet = new Set();
-  let myCurrentVerse = null;
-  let tickTimer = null;
+  let LOBBY = null, GAME = null, HOST = null, isHost = false;
+  let verses = [], books = [], bookSet = new Set();
+  let myCurrentVerse = null, tickTimer = null;
 
   // ---------- FS REFS ----------
   const lobbyRef  = doc(db, 'lobbies', gameId);
@@ -246,7 +240,7 @@
     if (val.length || row.length){ row.push(val); rows.push(row); }
     return rows;
   }
-  function normBook(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+  const normBook = (s)=> (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase();
 
   function buildBooksAndVerses(rows){
     const H = rows[0].map(h => (h||'').toString().trim());
@@ -255,10 +249,10 @@
     const out=[];
     for (let i=1;i<rows.length;i++){
       const r = rows[i]; if (!r || !r.length) continue;
-      const id=parseInt(r[idI],10), book=(r[bookI]||'').toString().trim(), bookNum=parseInt(r[bookNumI],10);
+      const id=parseInt(r[idI],10), book=(r[bookI]||'').toString().trim();
       const chap=parseInt(r[chapI],10), ver=parseInt(r[verseI],10), txt=(r[textI]||'').toString().trim();
       if (!id || !book || !chap || !ver || !txt) continue;
-      out.push({id,book,bookNum,chapter:chap,verse:ver,text:txt});
+      out.push({id,book,chapter:chap,verse:ver,text:txt});
       if (!bookSet.has(book)){ bookSet.add(book); books.push(book); }
     }
     books.sort((a,b)=> a.localeCompare(b));
@@ -270,18 +264,25 @@
     sel.appendChild(blank);
     for (const b of books){ const o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); }
   }
+
+  // NEW SCORING: 1=book, 3=book+chapter, 5=book+chapter+verse
   function scoreAnswer(guess, correct, mode){
     const bookOK = normBook(guess.book)===normBook(correct.book);
     const chapOK = Number(guess.chapter)===Number(correct.chapter);
     const verOK  = Number(guess.verse)===Number(correct.verse);
     let pts = 0;
-    if (verOK && chapOK && bookOK) pts=5;
-    else if (verOK && chapOK) pts=3;
-    else if (verOK) pts=1;
-    if (mode==='speed'){ if (!bookOK && !chapOK && !verOK) pts -= 1; }
-    else if (mode==='draft'){ if (!bookOK) pts -= 3; }
+    if (bookOK && chapOK && verOK) pts = 5;
+    else if (bookOK && chapOK) pts = 3;
+    else if (bookOK) pts = 1;
+
+    if (mode==='speed'){
+      if (!bookOK && !chapOK && !verOK) pts -= 1; // all wrong
+    } else if (mode==='draft'){
+      if (!bookOK) pts -= 3; // wrong book
+    }
     return pts;
   }
+
   function pickRandomVerse(filterFn=null, excludeSet=null){
     let pool = verses;
     if (filterFn) pool = pool.filter(filterFn);
@@ -290,7 +291,7 @@
     return pool[Math.floor(Math.random()*pool.length)];
   }
 
-  // ---------- UI ACTIONS ----------
+  // ---------- UI ----------
   $('leaveBtn').onclick = ()=> { location.href = `/index.html?username=${encodeURIComponent(username)}`; };
   $('fsBtn').onclick = toggleFullscreen;
   function toggleFullscreen(){
@@ -303,7 +304,6 @@
     }
   }
 
-  // Voting buttons
   for (const btn of document.querySelectorAll('#phase-vote .card')){
     btn.addEventListener('click', ()=> submitVote(btn.dataset.mode));
   }
@@ -384,7 +384,7 @@
     // Game listener
     onSnapshot(gameRef, (snap)=>{ if (!snap.exists()) return; GAME = snap.data(); render(); });
 
-    // Votes listener (counts + leader highlight)
+    // Votes listener
     onSnapshot(votesCol, (qsnap)=>{
       const counts = {traditional:0, speed:0, draft:0, teams:0};
       qsnap.forEach(doc=>{ const m=doc.data().mode; if (counts[m]!==undefined) counts[m]++; });
@@ -395,7 +395,7 @@
       highlightVoteLeader(counts);
     });
 
-    // Chat listener (keep small buffer; we display last 3 of your team)
+    // Chat listener (buffer, show last 3 of your team)
     onSnapshot(query(chatCol, orderBy('ts','desc'), limit(12)), (qsnap)=>{
       const msgs=[]; qsnap.forEach(d=> msgs.push(d.data())); msgs.reverse(); drawChat(msgs);
     });
@@ -418,24 +418,21 @@
   function render(){
     if (!GAME) return;
 
-    // Mode label
     const phase = GAME.status || 'voting';
     const mode  = GAME.mode || 'Vote';
     $('modeLabel').textContent = (phase==='voting') ? 'Vote' : (mode.charAt(0).toUpperCase()+mode.slice(1));
 
-    // Toggle views (FIX: use ids without '#')
+    // Toggle views (avoid nulls)
     $('phase-vote').style.display  = (phase === 'voting')   ? 'block' : 'none';
     $('phase-draft').style.display = (phase === 'drafting') ? 'block' : 'none';
     $('phase-play').style.display  = (phase === 'playing')  ? 'block' : 'none';
     $('phase-end').style.display   = (phase === 'ended')    ? 'block' : 'none';
 
-    // Scores
     drawScores();
 
     if (phase === 'drafting'){
       buildDraftUI();
     } else if (phase === 'playing'){
-      // Teams bar + chat visibility
       if (GAME.mode === 'teams'){
         $('teamsBar').style.display = 'flex';
         $('teamAScore').textContent = (GAME.teamTotals && GAME.teamTotals.A) || 0;
@@ -477,14 +474,13 @@
   }
 
   function highlightVoteLeader(counts){
-    // Clear
     for (const btn of document.querySelectorAll('#phase-vote .card')) btn.classList.remove('leader');
     const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams);
     const leaders = [];
     if (counts.traditional===max) leaders.push('traditional');
-    if (counts.speed===max) leaders.push('speed');
-    if (counts.draft===max) leaders.push('draft');
-    if (counts.teams===max) leaders.push('teams');
+    if (counts.speed===max)       leaders.push('speed');
+    if (counts.draft===max)       leaders.push('draft');
+    if (counts.teams===max)       leaders.push('teams');
     for (const m of leaders){
       const el = document.querySelector(`#phase-vote .card[data-mode="${m}"]`);
       if (el) el.classList.add('leader');
@@ -511,8 +507,7 @@
 
         const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams);
         const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
-        // RANDOM tie-break
-        let chosen = top[Math.floor(Math.random()*top.length)];
+        let chosen = top[Math.floor(Math.random()*top.length)]; // random tie-break
 
         const baseUpdate = {
           mode: chosen, round: 0,
@@ -530,8 +525,7 @@
           });
         } else if (chosen === 'teams'){
           const ps = (GAME.players||[]).slice();
-          const A=[], B=[];
-          ps.forEach((p,i)=> (i%2===0?A:B).push(p));
+          const A=[], B=[]; ps.forEach((p,i)=> (i%2===0?A:B).push(p));
           await updateDoc(gameRef, {
             status:'playing', ...baseUpdate,
             teamA:A, teamB:B, teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false},
@@ -665,8 +659,7 @@
     if (!GAME) return;
     const mode = GAME.mode;
     if (mode==='traditional' || mode==='teams'){
-      const id = GAME.currentSharedId;
-      const v = verses.find(x=> x.id === id);
+      const v = verses.find(x=> x.id === GAME.currentSharedId);
       $('verseHeader').textContent = `Round ${GAME.round||1} • Shared`;
       $('verseText').textContent = v ? v.text : '—';
     } else {
@@ -678,10 +671,10 @@
   function buildPlayHelp(){
     const m = GAME.mode;
     let txt='';
-    if (m==='traditional') txt='6 rounds • 30s each • 1/3/5 pts for Verse / Chap+Verse / Book+Chap+Verse';
-    else if (m==='speed') txt='90s • Per-player verses • -1 if ALL three are wrong';
-    else if (m==='draft') txt='90s • Only from your 3 drafted books • -3 if Book wrong';
-    else if (m==='teams') txt='6 rounds • 30s each • First answer from your team locks • Team chat above';
+    if (m==='traditional') txt='6 rounds • 30s each • Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse';
+    else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 as above • -1 if ALL three wrong';
+    else if (m==='draft') txt='90s • Only from your 3 drafted books • Scoring 1/3/5 • -3 if Book wrong';
+    else if (m==='teams') txt='6 rounds • 30s each • First team answer locks • Team chat above • Scoring 1/3/5 (no negatives)';
     $('playHelp').textContent = txt;
   }
   async function onSubmitAnswer(){
@@ -754,4 +747,5 @@
 </script>
 </body>
 </html>
+
 
