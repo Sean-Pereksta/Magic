@@ -151,7 +151,7 @@
   <section class="hand-card">
     <div class="row" style="justify-content:space-between">
       <div class="tiny">Your Hand</div>
-      <div class="tiny muted">Tip: tap one card, then tap another to <b>Combine</b> (always on). Tap “Cast” to play on the grid.</div>
+      <div class="tiny muted">Tap one card, then another to <b>Combine</b> (always on). Tap “Cast” to play on the grid.</div>
     </div>
     <div id="hand" class="hand" aria-label="Your spell cards"></div>
   </section>
@@ -159,7 +159,7 @@
   <footer>
     <div class="row">
       <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
-      <button id="endTurnBtn" class="btn ok">End Turn (+2 cards)</button>
+      <button id="endTurnBtn" class="btn ok">End Turn (+1 card)</button>
     </div>
     <div class="tiny muted">Game: <code id="gidTxt"></code> • Player: <code id="unameTxt"></code></div>
   </footer>
@@ -198,19 +198,19 @@
   const TOWER_ROW = ROWS - 1;
   const START_HP = 50;
 
-  // Enemies
+  // Enemies — HEALTH UP, DAMAGE DOWN
   const ENEMIES = [
-    { key:"rat",   hp:1, spd:2, dmg:1, emoji:"🐀", weight: 1,  ability:null },
-    { key:"imp",   hp:2, spd:1, dmg:2, emoji:"😈", weight: 2,  ability:null },
-    { key:"orc",   hp:3, spd:1, dmg:3, emoji:"👹", weight: 3,  ability:null },
-    { key:"trol",  hp:5, spd:1, dmg:4, emoji:"🧌", weight: 4,  ability:null },
-    { key:"warg",  hp:4, spd:2, dmg:2, emoji:"🐺", weight: 4,  ability:null },
-    { key:"mage",  hp:3, spd:1, dmg:3, emoji:"🪄", weight: 5,  ability:"summon_rats" },
-    { key:"dlord", hp:8, spd:1, dmg:5, emoji:"😈🔥", weight: 6,  ability:"fire_bolt" },
-    { key:"golem", hp:10,spd:1, dmg:6, emoji:"🗿", weight: 7,  ability:null },
+    { key:"rat",   hp:3,  spd:2, dmg:1, emoji:"🐀",  weight: 1, ability:null },
+    { key:"imp",   hp:5,  spd:1, dmg:1, emoji:"😈",  weight: 2, ability:null },
+    { key:"orc",   hp:8,  spd:1, dmg:2, emoji:"👹",  weight: 3, ability:null },
+    { key:"trol",  hp:14, spd:1, dmg:3, emoji:"🧌",  weight: 4, ability:null },
+    { key:"warg",  hp:10, spd:1, dmg:2, emoji:"🐺",  weight: 4, ability:null },
+    { key:"mage",  hp:8,  spd:1, dmg:2, emoji:"🪄",  weight: 5, ability:"summon_rats" },
+    { key:"dlord", hp:16, spd:1, dmg:3, emoji:"😈🔥", weight: 6, ability:"fire_bolt" },
+    { key:"golem", hp:20, spd:1, dmg:3, emoji:"🗿",  weight: 7, ability:null },
   ];
 
-  // Base spells (single declaration)
+  // Base spells
   const BASE_SPELLS = {
     fire:   { name:"Fire",      emoji:"🔥", charges:3, cost:0, effect:"fire" },
     water:  { name:"Water",     emoji:"💧", charges:3, cost:0, effect:"water" },
@@ -218,7 +218,7 @@
     light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
   };
 
-  // Combos
+  // Combos (added BIG ones)
   const COMBOS = {
     "fire+fire":        { key:"pyro",     name:"Pyro",        emoji:"🔥🔥",    charges:3, effect:"pyro" },
     "pyro+pyro":        { key:"inferno",  name:"Inferno",     emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
@@ -247,6 +247,14 @@
     "pyro+vine":        { key:"wildfire", name:"Wildfire",    emoji:"🔥🌿",    charges:3, effect:"wildfire" },
     "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },
     "chain+vine":       { key:"entangle", name:"Entangle",    emoji:"⚡🪢",    charges:3, effect:"entangle" },
+
+    /* NEW BIG IMPACTS (tier-2 combos) */
+    "inferno+tsunami":  { key:"cataclysm", name:"Cataclysm",  emoji:"🔥🌊",    charges:2, effect:"cataclysm" },
+    "superchain+inferno":{key:"supernova", name:"Supernova",  emoji:"💥⚡",    charges:2, effect:"supernova" },
+    "wall+entangle":    { key:"worldroot", name:"Worldroot",  emoji:"🌿🧱",    charges:2, effect:"worldroot" },
+    "thunderstorm+tsunami":{key:"stormfront",name:"Stormfront",emoji:"🌩️🌊",  charges:2, effect:"stormfront" },
+    "boil+geyser":      { key:"eruption",  name:"Eruption",   emoji:"🌋🫧",    charges:2, effect:"eruption" },
+    "marsh+thorns":     { key:"overgrowth",name:"Overgrowth", emoji:"🌿🌿",    charges:2, effect:"overgrowth" },
   };
 
   // ---------- DOM ----------
@@ -269,17 +277,12 @@
   const fsBtn = document.getElementById("fsBtn");
 
   leaveBtn.onclick = ()=> { location.href = `/?username=${encodeURIComponent(username)}`; };
-
-  // Fullscreen (with fallbacks)
   fsBtn.onclick = async ()=>{
     const el = document.documentElement;
     try{
       if (!document.fullscreenElement) { await el.requestFullscreen?.(); }
       else { await document.exitFullscreen?.(); }
-    }catch(e){
-      // iOS fallback: force scroll + zoom-ish
-      window.scrollTo({top:0,behavior:"smooth"});
-    }
+    }catch(e){ window.scrollTo({top:0,behavior:"smooth"}); }
   };
 
   // ---------- Local ----------
@@ -321,11 +324,10 @@
     return picks;
   }
 
-  // Chain lightning uses TURN-based timers now
   function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     const inB = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
     const neigh = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inB(a,b));
-    const baseDmg = 4 + (bonus||0);
+    const baseDmg = 3 + (bonus||0); // LOWER base lightning damage
     const seen = new Set();
     let frontier = [[sx,sy]];
     const now = (d.turn||0);
@@ -421,7 +423,6 @@
   }
 
   function seedHand(){
-    // Start with exactly THREE base cards
     const baseKeys = Object.keys(BASE_SPELLS);
     const picks = [];
     for (let i=0;i<3;i++){
@@ -460,7 +461,6 @@
       }
     }
 
-    // status overlays (TURN-based expiry inclusive)
     const nowTurn = s.turn || 0;
     for (const [xStr,until] of Object.entries(s.frozenCols || {})){
       const x = Number(xStr);
@@ -549,7 +549,7 @@
       `;
       el.querySelector('[data-act="cast"]').onclick = ()=> castCardFlow(card, s);
       el.querySelector('[data-act="select"]').onclick = ()=> onSelectTap(card, s);
-      el.querySelector('[data-act="combine"]').onclick = ()=> combineFlow(card, s); // still available
+      el.querySelector('[data-act="combine"]').onclick = ()=> combineFlow(card, s);
       handEl.appendChild(el);
     }
   }
@@ -557,7 +557,6 @@
   function onSelectTap(card, s){
     if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
     if (selectedCardId === card.id){ selectedCardId = null; renderHand(s.hands[username]||[], s); return; }
-    // If another card is tapped while one is selected, attempt immediate combine (ALWAYS receptive)
     immediateCombineByIds(selectedCardId, card.id);
     selectedCardId = null;
   }
@@ -586,9 +585,7 @@
   clearTradeBtn.onclick = ()=> clearMyTrade();
   endTurnBtn.onclick = ()=> endTurn();
 
-  function onCellClick(x,y){
-    // cell picker handled in cast flow
-  }
+  function onCellClick(x,y){}
 
   async function placeSelectedToTrade(){
     const s = (await getDoc(stateRef)).data();
@@ -639,7 +636,7 @@
     });
   }
 
-  // ---------- Casting ----------
+  // ---------- Casting & Effects (LOWER base damage; ALL cards still ping) ----------
   async function castCardFlow(card, s){
     const isMyTurn = (s.currentPlayer === username) && s.running;
     if (!isMyTurn) return;
@@ -661,8 +658,7 @@
       applyCardEffectMut(d, hand[ci], pick.x, pick.y);
 
       hand[ci].charges = Math.max(0, (hand[ci].charges||0)-1);
-      if (hand[ci].charges === 0){ hand.splice(ci,1); }
-      else { hand[ci] = {...hand[ci]}; }
+      if (hand[ci].charges === 0){ hand.splice(ci,1); } else { hand[ci] = {...hand[ci]}; }
 
       if (!d.playedTurn) d.playedTurn = {};
       if (!d.playedTurn[username]) d.playedTurn[username] = {};
@@ -705,7 +701,6 @@
 
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
 
-  // ---------- Card Effects (ensure ALL do damage) ----------
   function applyCardEffectMut(d, card, tx, ty){
     const eff = card.effect;
     const now = (d.turn||0);
@@ -727,128 +722,122 @@
     const addVine = (x,y,t=1)=> { if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + t; };
     const freezeCol = (x,t=1)=> { if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + t; };
 
-    // helper to add minimal ping damage (guarantees “weak but still damage”)
     const ping = (cells, amt=1)=> { for (const [x,y] of cells) damageAt(x,y,amt); };
 
     switch(eff){
-      /* base */
-      case "fire":      damageAt(tx,ty,5);                   pulseCells([[tx,ty]], "glow-red"); break;
-      case "lightning": chainLightning(d, tx, ty, 0);        pulseCells([[tx,ty]], "flash-yellow"); break;
+      /* BASE — reduced damage */
+      case "fire":      damageAt(tx,ty,3);                      pulseCells([[tx,ty]], "glow-red"); break;
+      case "lightning": chainLightning(d, tx, ty, 0);           pulseCells([[tx,ty]], "flash-yellow"); break;
 
-      case "water":     freezeCol(tx,3);                     // + minimal damage
+      case "water":     freezeCol(tx,2);                        // control first, tiny damage
                         damageAt(tx,ty,1);
                         pulseCells(column(tx), "glow-blue"); break;
 
-      case "plant":     addVine(tx,ty,3);
-                        damageAt(tx,ty,1);
-                        pulseCells([[tx,ty]], "glow-green"); break;
-
-      case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2);
-                        pulseCells([[tx,ty]], "glow-orange"); break;
-
+      case "plant":     addVine(tx,ty,2); damageAt(tx,ty,1);    pulseCells([[tx,ty]], "glow-green"); break;
+      case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2);    pulseCells([[tx,ty]], "glow-orange"); break;
       case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
-                        ping([[tx,ty]],1);
-                        pulseCells(area(tx,ty,1), "glow-green"); break;
+                        ping([[tx,ty]],1);                      pulseCells(area(tx,ty,1), "glow-green"); break;
 
-      /* doubles / fusions */
-      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
+      /* DOUBLES — tuned down a bit */
+      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,4));
                         pulseCells(cross(tx,ty), "glow-red"); break;
-
-      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
+      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,5); addBurn(x,y,2); });
                         pulseCells(cross(tx,ty), "glow-orange"); break;
-
-      case "chain":     chainLightning(d, tx, ty, 2);
-                        pulseCells([[tx,ty]], "flash-yellow"); break;
-
-      case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); }
+      case "chain":     chainLightning(d, tx, ty, 1);           pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,2); }
                         for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
                         pulseCells(column(tx), "glow-blue"); break;
-
-      case "wall":      addVine(tx,ty,5);
-                        damageAt(tx,ty,1);
-                        pulseCells([[tx,ty]], "glow-green"); break;
-
-      case "embervine": damageAt(tx,ty,3); addVine(tx,ty,2);
-                        pulseCells([[tx,ty]], "glow-orange"); break;
-
-      case "overheat":  cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6));
+      case "wall":      addVine(tx,ty,4); damageAt(tx,ty,1);    pulseCells([[tx,ty]], "glow-green"); break;
+      case "embervine": damageAt(tx,ty,2); addVine(tx,ty,2);    pulseCells([[tx,ty]], "glow-orange"); break;
+      case "overheat":  cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
                         pulseCells(cross(tx,ty), "glow-orange"); break;
-
       case "bramblefire": area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); });
                           pulseCells(area(tx,ty,1), "glow-orange"); break;
-
       case "arcfire":   chainLightning(d, tx, ty, 1, true, false);
                         pulseCells([[tx,ty]], "flash-yellow"); break;
-
-      case "scald":     area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); });
+      case "scald":     area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,2); addBurn(x,y,1); });
                         pulseCells(area(tx,ty,1), "glow-orange"); break;
-
       case "storm":     chainLightning(d, tx, ty, 1); freezeCol(tx,1);
-                        ping([[tx,ty]],1);
-                        pulseCells(column(tx).concat([[tx,ty]]), "glow-blue"); break;
-
-      case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1));
-                        area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3));
+                        ping([[tx,ty]],1);                       pulseCells(column(tx).concat([[tx,ty]]), "glow-blue"); break;
+      case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1)); area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,2));
                         pulseCells(area(tx,ty,1), "glow-orange"); break;
-
-      case "boil":      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); });
+      case "boil":      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,2); });
                         pulseCells(area(tx,ty,1), "glow-orange"); break;
-
-      case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1);
-                        ping([[tx,ty]],1);
+      case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1); ping([[tx,ty]],1);
                         pulseCells([[tx,ty]].concat(column(tx)), "flash-yellow"); break;
-
       case "cinderwall":[[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1)));
-                        ping([[tx,ty]],1);
-                        pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=> inBoard(x,y)), "glow-orange"); break;
-
-      case "thorns":    { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); cells.push([tx,y]); } }
-                        ping(cells.length?cells:[[tx,ty]],1);
-                        pulseCells(cells, "glow-green"); break; }
-
-      case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
-                        damageAt(tx,ty,3);
+                        ping([[tx,ty]],1);                       pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=> inBoard(x,y)), "glow-orange"); break;
+      case "thorns":    { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); cells.push([tx,y]); } }
+                        ping(cells.length?cells:[[tx,ty]],2);    pulseCells(cells, "glow-green"); break; }
+      case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); damageAt(tx,ty,2);
                         pulseCells(area(tx,ty,1), "flash-yellow"); break;
-
-      case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
-                        ping([[tx,ty]],1);
+      case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); ping([[tx,ty]],1);
                         pulseCells(area(tx,ty,1), "glow-green"); break;
-
-      case "superchain":chainLightning(d, tx, ty, 3);
+      case "superchain":chainLightning(d, tx, ty, 2);           pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "thunderstorm": chainLightning(d, tx, ty, 1); addBurn(tx,ty,1);
                         pulseCells([[tx,ty]], "flash-yellow"); break;
-
-      case "thunderstorm": chainLightning(d, tx, ty, 1);
-                        addBurn(tx,ty,1);
-                        pulseCells([[tx,ty]], "flash-yellow"); break;
-
       case "tsunami":   [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
-                          for (let y=0; y<ROWS; y++) damageAt(cx,y,3);
+                          for (let y=0; y<ROWS; y++) damageAt(cx,y,2);
                           for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); }
                         });
                         pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))), "glow-blue"); break;
-
-      case "wildfire":  cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2));
-                        ping([[tx,ty]],1);
+      case "wildfire":  cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2)); ping([[tx,ty]],1);
                         pulseCells(cross(tx,ty), "glow-red"); break;
-
       case "thundercloud": { const targets = randomEnemyCells(d, 5);
-                        for (const [x,y] of targets){ damageAt(x,y,4); }
+                        for (const [x,y] of targets){ damageAt(x,y,3); }
                         if (!targets.length) damageAt(tx,ty,2);
                         pulseCells(targets.length?targets:[[tx,ty]], "flash-yellow"); break; }
-
-      case "entangle":  chainLightning(d, tx, ty, 0, false, true);
-                        ping([[tx,ty]],1);
+      case "entangle":  chainLightning(d, tx, ty, 0, false, true); ping([[tx,ty]],1);
+                        pulseCells([[tx,ty]], "glow-green"); break;
+      case "net":       chainLightning(d, tx, ty, 0, false, true); ping([[tx,ty]],1);
                         pulseCells([[tx,ty]], "glow-green"); break;
 
-      case "net":       chainLightning(d, tx, ty, 0, false, true);
-                        ping([[tx,ty]],1);
-                        pulseCells([[tx,ty]], "glow-green"); break;
+      /* NEW BIG IMPACTS */
+      case "cataclysm": // inferno + tsunami — two columns + cross burn
+        [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
+          for (let y=0; y<ROWS; y++) damageAt(cx,y,4);
+          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
+        });
+        cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2));
+        pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat(cross(tx,ty)), "glow-orange");
+        break;
+
+      case "supernova": // superchain + inferno — heavy chain + burn along path
+        chainLightning(d, tx, ty, 4, true, false);
+        damageAt(tx,ty,2);
+        pulseCells([[tx,ty]], "flash-yellow");
+        break;
+
+      case "worldroot": // wall + entangle — root radius 2 for 3 turns & tick dmg
+        area(tx,ty,2).forEach(([x,y])=> { addVine(x,y,3); damageAt(x,y,2); });
+        pulseCells(area(tx,ty,2), "glow-green");
+        break;
+
+      case "stormfront": // thunderstorm + tsunami — pushback 2 on two cols, shock dmg
+        [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
+          for (let y=0; y<ROWS; y++) damageAt(cx,y,3);
+          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
+        });
+        chainLightning(d, tx, ty, 2);
+        pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat([[tx,ty]]), "glow-blue");
+        break;
+
+      case "eruption": // boil + geyser — tall column spike + burn
+        for (let y=0; y<ROWS; y++){ damageAt(tx,y,4); }
+        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-2); }
+        addBurn(tx,ty,2);
+        pulseCells(column(tx), "glow-orange");
+        break;
+
+      case "overgrowth": // marsh + thorns — radius 2 vines with steady tick
+        area(tx,ty,2).forEach(([x,y])=> { addVine(x,y,3); damageAt(x,y,2); });
+        pulseCells(area(tx,ty,2), "glow-green");
+        break;
     }
   }
 
   // ---------- Combining (ALWAYS receptive) ----------
   async function combineFlow(card, s){
-    // If nothing selected yet, select this as first; else combine
     if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
     if (selectedCardId === card.id){ selectedCardId = null; renderHand(s.hands[username]||[], s); return; }
     immediateCombineByIds(selectedCardId, card.id);
@@ -877,7 +866,7 @@
 
   function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
 
-  // ---------- Turn System (no realtime ticker) ----------
+  // ---------- Turn System ----------
   function maxSpawnForTurn(turn){
     if (turn >= 100) return 4;
     if (turn >= 50) return 3;
@@ -896,16 +885,16 @@
   function startOfTurnMut(d){
     const now = d.turn || 0;
 
-    // DOTs
+    // DOTs — burn now 1 dmg per turn (lower)
     for (const [key,until] of Object.entries(d.burnCells||{})){
       if (until >= now){
         const [x,y] = key.split(",").map(Number);
-        for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= 2; }
+        for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= 1; }
       }
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
 
-    // enemy abilities
+    // enemy abilities (bolt damage lowered)
     for (const e of d.enemies || []){
       if (e.ability === "summon_rats" && Math.random() < 0.15){
         const n = 1 + Math.floor(Math.random()*2);
@@ -915,14 +904,14 @@
         }
       }
       if (e.ability === "fire_bolt" && Math.random() < 0.2){
-        if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:10 });
+        if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:6 }); // down from 10
       }
     }
 
     // bolts travel
     for (const b of (d.bolts||[])){ b.y += 1; }
     for (const b of d.bolts||[]){
-      if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||10); b.hp = 0; }
+      if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||6); b.hp = 0; }
     }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
@@ -960,11 +949,11 @@
       const d = st.data();
       if (!d.running || d.currentPlayer !== username) return;
 
-      // draw (+2)
+      // draw (+1) — CHANGED
       const hand = d.hands[username] || [];
-      hand.push(makeCardFromKey(randBase()), makeCardFromKey(randBase()));
+      hand.push(makeCardFromKey(randBase()));
 
-      // advance turn pointer
+      // pass turn
       const order = d.turnOrder || [];
       if (!order.length) return;
       let idx = d.turnIndex || 0;
@@ -1009,7 +998,6 @@
 </script>
 </body>
 </html>
-
 
 
 
