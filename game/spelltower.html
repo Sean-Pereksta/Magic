@@ -221,13 +221,60 @@
     plant:  { name:"Plant",  emoji:"🌿", charges:3, cost:0, effect:"plant" },
     light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
   };
-  const COMBOS = {
-    "fire+fire":        { key:"pyro",     name:"Pyro",     emoji:"🔥🔥", charges:3, effect:"pyro" },
-    "pyro+pyro":        { key:"inferno",  name:"Inferno",  emoji:"🔥🔥🔥", charges:3, effect:"inferno" },
-    "fire+water":       { key:"steam",    name:"Steam",    emoji:"💨", charges:3, effect:"steam" },
-    "water+plant":      { key:"vine",     name:"Vine",     emoji:"🪴", charges:3, effect:"vine" },
-    "light+light":      { key:"chain",    name:"Chain",    emoji:"⚡⚡", charges:3, effect:"chain" },
-  };
+ // Spells + combos
+const BASE_SPELLS = {
+  fire:   { name:"Fire",   emoji:"🔥", charges:3, cost:0, effect:"fire" },
+  water:  { name:"Water",  emoji:"💧", charges:3, cost:0, effect:"water" },
+  plant:  { name:"Plant",  emoji:"🌿", charges:3, cost:0, effect:"plant" },
+  light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
+};
+
+// 22 juicy combos (you already had some; kept + expanded)
+const COMBOS = {
+  // existing “tiers”
+  "fire+fire":        { key:"pyro",     name:"Pyro",     emoji:"🔥🔥",    charges:3, effect:"pyro" },
+  "pyro+pyro":        { key:"inferno",  name:"Inferno",  emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
+  "fire+water":       { key:"steam",    name:"Steam",    emoji:"💨",       charges:3, effect:"steam" },
+  "water+plant":      { key:"vine",     name:"Vine",     emoji:"🪴",       charges:3, effect:"vine" },
+  "light+light":      { key:"chain",    name:"Chain",    emoji:"⚡⚡",     charges:3, effect:"chain" },
+
+  // NEW elemental doubles
+  "water+water":      { key:"geyser",   name:"Geyser",   emoji:"🫧",       charges:3, effect:"geyser" },   // dmg & push up column
+  "plant+plant":      { key:"wall",     name:"Wall",     emoji:"🧱",       charges:3, effect:"wall" },     // long block
+
+  // Fire × X
+  "fire+plant":       { key:"embervine",  name:"Embervine",  emoji:"🔥🪴", charges:3, effect:"embervine" }, // dmg + root tile
+  "fire+light":       { key:"overheat",   name:"Overheat",   emoji:"🔥⚡", charges:3, effect:"overheat" },  // strong cross blast
+  "fire+vine":        { key:"bramblefire",name:"Bramblefire",emoji:"🌿🔥", charges:3, effect:"bramblefire" },// 3×3 root + burn
+  "fire+chain":       { key:"arcfire",    name:"Arc Fire",   emoji:"⚡🔥", charges:3, effect:"arcfire" },    // chain that burns
+  "fire+steam":       { key:"scald",      name:"Scald",      emoji:"💨🔥", charges:3, effect:"scald" },      // hot mist 3×3 DoT
+
+  // Water × X
+  "water+light":      { key:"storm",      name:"Storm",      emoji:"⛈️",   charges:3, effect:"storm" },      // chain + freeze col
+  "water+pyro":       { key:"steamblast", name:"Steam Blast",emoji:"💨💥", charges:3, effect:"steamblast" }, // 3×3 blind burst
+  "water+inferno":    { key:"boil",       name:"Boil",       emoji:"🌋",   charges:3, effect:"boil" },       // heavy 3×3 scald
+  "water+chain":      { key:"voltaic",    name:"Voltaic",    emoji:"⚡💧", charges:3, effect:"voltaic" },     // chain + brief freeze
+  "water+plant":      { key:"marsh",      name:"Marsh",      emoji:"🪵💧", charges:3, effect:"marsh" },       // (alias) 3×3 slow
+  // (we keep your original "water+plant" => Vine too; both keys resolve—Marsh is a new, stronger craft via Steam+Plant below)
+
+  // Plant × X
+  "plant+pyro":       { key:"cinderwall", name:"Cinder Wall",emoji:"🧱🔥", charges:3, effect:"cinderwall" }, // 3-tile line block + burn
+  "plant+light":      { key:"thorns",     name:"Thorns",     emoji:"🌵",   charges:3, effect:"thorns" },     // sticky zap lane
+  "plant+steam":      { key:"marsh",      name:"Marsh",      emoji:"🪵💧", charges:3, effect:"marsh" },       // 3×3 slow/hold
+
+  // Lightning × X
+  "light+pyro":       { key:"superchain", name:"Super Chain",emoji:"⚡⚡⚡",charges:3, effect:"superchain" },  // beefy chain
+  "light+inferno":    { key:"thunderstorm",name:"Thunderstorm",emoji:"🌩️",charges:3, effect:"thunderstorm" },// chain + burn
+  "light+steam":      { key:"mistflash",  name:"Mistflash",  emoji:"💨⚡", charges:3, effect:"mistflash" },   // 3×3 blind + zap
+  "light+vine":       { key:"net",        name:"Net",        emoji:"🕸️",  charges:3, effect:"net" },         // chaining snare
+
+  // Advanced fusions
+  "steam+steam":      { key:"tsunami",    name:"Tsunami",    emoji:"🌊",   charges:3, effect:"tsunami" },     // column pair sweep
+  "pyro+vine":        { key:"wildfire",   name:"Wildfire",   emoji:"🔥🌿", charges:3, effect:"wildfire" },    // cross burn 2t
+  "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },// 5 random strikes
+  "chain+vine":       { key:"entangle",   name:"Entangle",   emoji:"⚡🪢", charges:3, effect:"entangle" },    // chain + root path
+};
+
 
   // ---------- DOM ----------
   const boardEl = document.getElementById("board");
@@ -279,6 +326,45 @@
   const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
   const inBoard = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
   const idx = (x,y)=> y*COLS + x;
+
+  function randomEnemyCells(d, count){
+  const cells = [];
+  for (const e of d.enemies||[]) cells.push([e.x,e.y]);
+  if (!cells.length) return [];
+  const picks = [];
+  for (let i=0;i<Math.min(count, cells.length); i++){
+    const idx = Math.floor(Math.random()*cells.length);
+    picks.push(cells.splice(idx,1)[0]);
+  }
+  return picks;
+}
+
+// upgraded chainLightning: supports bonus, optional burn and/or root on each hit
+function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
+  const inB = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
+  const neigh = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inB(a,b));
+  const baseDmg = 4 + (bonus||0);
+
+  const seen = new Set();
+  let frontier = [[sx,sy]];
+  while (frontier.length){
+    const [x,y] = frontier.shift();
+    const k = `${x},${y}`; if (seen.has(k)) continue; seen.add(k);
+
+    // damage enemies in (x,y)
+    for (const e of d.enemies||[]) if (e.x===x && e.y===y) e.hp -= baseDmg;
+    d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
+
+    if (burn){ if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]=(d.tick||0)+1; }
+    if (root){ if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]=(d.tick||0)+1; }
+
+    // expand to neighbors that have enemies
+    for (const [a,b] of neigh([x,y])){
+      const hasEnemy = (d.enemies||[]).some(e=> e.x===a && e.y===b);
+      if (hasEnemy) frontier.push([a,b]);
+    }
+  }
+}
 
   function glowCell(x,y, cls){
     const cell = boardEl.children[idx(x,y)];
@@ -693,96 +779,184 @@
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
 
   function applyCardEffectMut(d, card, tx, ty){
-    const eff = card.effect;
-    // helper to damage
-    const damageAt = (x,y,amt)=> {
-      // first, bolts (can be destroyed)
-      for (const b of d.bolts||[]){
-        if (b.x===x && b.y===y){
-          b.hp -= amt;
-        }
-      }
-      d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
+  const eff = card.effect;
+  const now = (d.tick||0);
 
-      // then enemies
-      for (const e of d.enemies){
-        if (e.x===x && e.y===y){
-          e.hp -= amt;
-        }
-      }
-      d.enemies = d.enemies.filter(e=> e.hp>0);
-    };
+  // shared helpers
+  const damageAt = (x,y,amt)=> {
+    // bolts first
+    for (const b of d.bolts||[]){
+      if (b.x===x && b.y===y){ b.hp -= amt; }
+    }
+    d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
 
-    // VISUAL marks (burn/frozen/vine) added through state flags for next render tick
-    const now = (d.tick||0);
-
-    switch(eff){
-      case "fire":
-        damageAt(tx,ty,5);
-        markGlow(tx,ty,"glow-red");
-        break;
-      case "pyro": {
-        const pts = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
-        for (const [dx,dy] of pts){
-          const x=tx+dx,y=ty+dy;
-          if (inBoard(x,y)) damageAt(x,y,5);
-        }
-        markGlow(tx,ty,"glow-red");
-        break;
-      }
-      case "inferno": {
-        const pts = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
-        for (const [dx,dy] of pts){
-          const x=tx+dx,y=ty+dy;
-          if (inBoard(x,y)) damageAt(x,y,6);
-          if (!d.burnCells) d.burnCells={};
-          d.burnCells[`${x},${y}`] = now+1; // burn next tick
-        }
-        markGlow(tx,ty,"glow-red");
-        break;
-      }
-      case "lightning": {
-        // hit target, then diffuse to adjacent enemies like a chain until no adjacent
-        chainLightning(d, tx, ty);
-        markFlash(tx,ty);
-        break;
-      }
-      case "chain": {
-        chainLightning(d, tx, ty, 2); // stronger chain
-        markFlash(tx,ty);
-        break;
-      }
-      case "water": {
-        // slow: freeze column 3 ticks
-        if (!d.frozenCols) d.frozenCols = {};
-        d.frozenCols[tx] = now + 3;
-        break;
-      }
-      case "plant": {
-        // block tile for 3 turns
-        if (!d.vineCells) d.vineCells = {};
-        d.vineCells[`${tx},${ty}`] = now + 3;
-        break;
-      }
-      case "steam": {
-        // blind: stop enemies here next tick (y tile); model as vine for 1 tick
-        if (!d.vineCells) d.vineCells = {};
-        d.vineCells[`${tx},${ty}`] = now + 1;
-        damageAt(tx,ty,2);
-        break;
-      }
-      case "vine": {
-        // area root (3x3) for 2 ticks
-        if (!d.vineCells) d.vineCells = {};
-        for (let x=tx-1; x<=tx+1; x++){
-          for (let y=ty-1; y<=ty+1; y++){
-            if (inBoard(x,y)) d.vineCells[`${x},${y}`] = now + 2;
-          }
-        }
-        break;
+    // enemies
+    for (const e of d.enemies||[]){
+      if (e.x===x && e.y===y){ e.hp -= amt; }
+    }
+    d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
+  };
+  const area = (cx,cy,r=1)=> {
+    const pts=[];
+    for (let x=cx-r; x<=cx+r; x++){
+      for (let y=cy-r; y<=cy+r; y++){
+        if (inBoard(x,y)) pts.push([x,y]);
       }
     }
+    return pts;
+  };
+  const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
+
+  const addBurn = (x,y,ticks=1)=> {
+    if (!d.burnCells) d.burnCells={};
+    d.burnCells[`${x},${y}`]= now + ticks;
+  };
+  const addVine = (x,y,ticks=1)=> {
+    if (!d.vineCells) d.vineCells={};
+    d.vineCells[`${x},${y}`]= now + ticks;
+  };
+  const freezeCol = (x,ticks=1)=> {
+    if (!d.frozenCols) d.frozenCols={};
+    d.frozenCols[x]= now + ticks;
+  };
+
+  // effect logic
+  switch(eff){
+    // ----- originals -----
+    case "fire":
+      damageAt(tx,ty,5); markGlow(tx,ty,"glow-red"); break;
+
+    case "pyro":
+      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
+      markGlow(tx,ty,"glow-red");
+      break;
+
+    case "inferno":
+      cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
+      markGlow(tx,ty,"glow-red");
+      break;
+
+    case "lightning":
+      chainLightning(d, tx, ty, 0); markFlash(tx,ty); break;
+
+    case "chain":
+      chainLightning(d, tx, ty, 2); markFlash(tx,ty); break;
+
+    case "water":
+      freezeCol(tx,3); break;
+
+    case "plant":
+      addVine(tx,ty,3); break;
+
+    case "steam":
+      addVine(tx,ty,1); damageAt(tx,ty,2); break;
+
+    case "vine": // (your original combo)
+      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
+
+    // ----- NEW doubles / fusions -----
+    case "geyser": { // damage 3 down the column and push enemies up 1
+      for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); }
+      for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
+      break;
+    }
+    case "wall": { // strong blocker
+      addVine(tx,ty,5);
+      break;
+    }
+    case "embervine": { // fire + plant
+      damageAt(tx,ty,3); addVine(tx,ty,2);
+      markGlow(tx,ty,"glow-red");
+      break;
+    }
+    case "overheat": { // fire + lightning: strong cross hit
+      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6));
+      markGlow(tx,ty,"glow-red"); markFlash(tx,ty);
+      break;
+    }
+    case "bramblefire": { // fire + vine: 3×3 root + burn
+      area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); });
+      break;
+    }
+    case "arcfire": { // chain that burns
+      chainLightning(d, tx, ty, 1, /*burnOnHit*/true); markFlash(tx,ty);
+      break;
+    }
+    case "scald": { // steam + fire: hot mist 3×3 with DoT
+      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); });
+      markGlow(tx,ty,"glow-red");
+      break;
+    }
+    case "storm": { // water + light: chain + brief freeze column
+      chainLightning(d, tx, ty, 1); freezeCol(tx,1); markFlash(tx,ty);
+      break;
+    }
+    case "steamblast": { // water + pyro: blind/hold + burst
+      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1));
+      area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3));
+      break;
+    }
+    case "boil": { // water + inferno: heavy scald 3×3 + lingering burn
+      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); });
+      break;
+    }
+    case "voltaic": { // water + chain: small chain + freeze
+      chainLightning(d, tx, ty, 0); freezeCol(tx,1); markFlash(tx,ty);
+      break;
+    }
+    case "cinderwall": { // plant + pyro: line block of 3 + burn
+      [[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1)));
+      break;
+    }
+    case "thorns": { // plant + light: sticky zap lane (2 tiles ahead)
+      for (let dy=0; dy<=2; dy++){
+        const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); }
+      }
+      break;
+    }
+    case "mistflash": { // light + steam: blind+zap 3×3
+      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+      damageAt(tx,ty,3); markFlash(tx,ty);
+      break;
+    }
+    case "marsh": { // steam + plant OR water+plant alt: slow area
+      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+      break;
+    }
+    case "superchain": { // light + pyro
+      chainLightning(d, tx, ty, 3); markFlash(tx,ty);
+      break;
+    }
+    case "thunderstorm": { // light + inferno: chain plus set burning on hub
+      chainLightning(d, tx, ty, 1);
+      addBurn(tx,ty,1); markFlash(tx,ty);
+      break;
+    }
+    case "tsunami": { // steam + steam: sweep two adjacent columns
+      [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
+        for (let y=0; y<ROWS; y++) damageAt(cx,y,3);
+        for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); }
+      });
+      break;
+    }
+    case "wildfire": { // pyro + vine: cross burn lasting 2
+      cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2));
+      markGlow(tx,ty,"glow-red");
+      break;
+    }
+    case "thundercloud": { // chain + steam: 5 random strikes
+      const targets = randomEnemyCells(d, 5);
+      for (const [x,y] of targets){ damageAt(x,y,4); }
+      markFlash(tx,ty);
+      break;
+    }
+    case "entangle": { // chain + vine: chain and root along the path
+      chainLightning(d, tx, ty, 0, /*burn*/false, /*root*/true);
+      break;
+    }
   }
+}
+
 
   function markGlow(x,y,cls){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
   function markFlash(x,y){ requestAnimationFrame(()=> glowCell(x,y,"flash-yellow")); }
@@ -1021,3 +1195,4 @@
 </script>
 </body>
 </html>
+
