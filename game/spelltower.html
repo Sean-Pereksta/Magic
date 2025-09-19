@@ -60,6 +60,14 @@
   @keyframes flashY{ 0%{box-shadow:0 0 0 0 rgba(250,204,21,.85)} 100%{box-shadow:0 0 0 18px rgba(250,204,21,0)} }
   .implode{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; animation: impl .45s ease forwards; }
   @keyframes impl{ 0%{transform:scale(1); opacity:.95} 100%{transform:scale(.1); opacity:0} }
+  .glow-blue{animation: glowBlue .9s ease}
+@keyframes glowBlue{ 0%{box-shadow:0 0 0 0 rgba(59,130,246,.9)} 100%{box-shadow:0 0 0 18px rgba(59,130,246,0)} }
+
+.glow-green{animation: glowGreen .9s ease}
+@keyframes glowGreen{ 0%{box-shadow:0 0 0 0 rgba(34,197,94,.9)} 100%{box-shadow:0 0 0 18px rgba(34,197,94,0)} }
+
+.glow-orange{animation: glowOrange .9s ease}
+@keyframes glowOrange{ 0%{box-shadow:0 0 0 0 rgba(245,158,11,.9)} 100%{box-shadow:0 0 0 18px rgba(245,158,11,0)} }
 
   .trade-grid{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
   .trade-left{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
@@ -335,6 +343,11 @@
     el.appendChild(fx);
     setTimeout(()=> fx.remove(), 450);
   }
+  function pulseCells(cells, cls){
+  for (const [x,y] of cells){
+    requestAnimationFrame(()=> glowCell(x,y,cls));
+  }
+}
 
   // ---------- Firestore: Lobby & Host ----------
   onSnapshot(lobbyRef, async (snap)=>{
@@ -661,59 +674,129 @@
 
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
 
-  function applyCardEffectMut(d, card, tx, ty){
-    const eff = card.effect;
-    const now = (d.tick||0);
+ function applyCardEffectMut(d, card, tx, ty){
+  const eff = card.effect;
+  const now = (d.tick||0);
 
-    const damageAt = (x,y,amt)=> {
-      for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
-      d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
-      for (const e of d.enemies||[]){ if (e.x===x && e.y===y){ e.hp -= amt; } }
-      d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
-    };
-    const area = (cx,cy,r=1)=> {
-      const pts=[]; for (let x=cx-r; x<=cx+r; x++){ for (let y=cy-r; y<=cy+r; y++){ if (inBoard(x,y)) pts.push([x,y]); } }
-      return pts;
-    };
-    const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
-    const addBurn = (x,y,ticks=1)=> { if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]= now + ticks; };
-    const addVine = (x,y,ticks=1)=> { if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + ticks; };
-    const freezeCol = (x,ticks=1)=> { if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + ticks; };
+  const damageAt = (x,y,amt)=> {
+    for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
+    d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
+    for (const e of d.enemies||[]){ if (e.x===x && e.y===y){ e.hp -= amt; } }
+    d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
+  };
+  const area = (cx,cy,r=1)=> {
+    const pts=[]; for (let x=cx-r; x<=cx+r; x++){ for (let y=cy-r; y<=cy+r; y++){ if (inBoard(x,y)) pts.push([x,y]); } }
+    return pts;
+  };
+  const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
+  const column = (x)=> { const pts=[]; for (let y=0;y<ROWS;y++) pts.push([x,y]); return pts; };
 
-    switch(eff){
-      case "fire":      damageAt(tx,ty,5); glowCell(tx,ty,"glow-red"); break;
-      case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5)); glowCell(tx,ty,"glow-red"); break;
-      case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); }); glowCell(tx,ty,"glow-red"); break;
-      case "lightning": chainLightning(d, tx, ty, 0); glowCell(tx,ty,"flash-yellow"); break;
-      case "chain":     chainLightning(d, tx, ty, 2); glowCell(tx,ty,"flash-yellow"); break;
-      case "water":     freezeCol(tx,3); break;
-      case "plant":     addVine(tx,ty,3); break;
-      case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2); break;
-      case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
+  const addBurn = (x,y,ticks=1)=> { if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]= now + ticks; };
+  const addVine = (x,y,ticks=1)=> { if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + ticks; };
+  const freezeCol = (x,ticks=1)=> { if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + ticks; };
 
-      case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); } for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); } break;
-      case "wall":      addVine(tx,ty,5); break;
-      case "embervine": damageAt(tx,ty,3); addVine(tx,ty,2); glowCell(tx,ty,"glow-red"); break;
-      case "overheat":  cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6)); glowCell(tx,ty,"glow-red"); glowCell(tx,ty,"flash-yellow"); break;
-      case "bramblefire": area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); }); break;
-      case "arcfire":   chainLightning(d, tx, ty, 1, true, false); glowCell(tx,ty,"flash-yellow"); break;
-      case "scald":     area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); }); glowCell(tx,ty,"glow-red"); break;
-      case "storm":     chainLightning(d, tx, ty, 1); freezeCol(tx,1); glowCell(tx,ty,"flash-yellow"); break;
-      case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1)); area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3)); break;
-      case "boil":      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); }); break;
-      case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1); glowCell(tx,ty,"flash-yellow"); break;
-      case "cinderwall":[[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1))); break;
-      case "thorns":    for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); } } break;
-      case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); damageAt(tx,ty,3); glowCell(tx,ty,"flash-yellow"); break;
-      case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2)); break;
-      case "superchain":chainLightning(d, tx, ty, 3); glowCell(tx,ty,"flash-yellow"); break;
-      case "thunderstorm": chainLightning(d, tx, ty, 1); addBurn(tx,ty,1); glowCell(tx,ty,"flash-yellow"); break;
-      case "tsunami":   [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0; y<ROWS; y++) damageAt(cx,y,3); for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); } }); break;
-      case "wildfire":  cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2)); glowCell(tx,ty,"glow-red"); break;
-      case "thundercloud": { const targets = randomEnemyCells(d, 5); for (const [x,y] of targets){ damageAt(x,y,4); } glowCell(tx,ty,"flash-yellow"); break; }
-      case "entangle":  chainLightning(d, tx, ty, 0, false, true); break;
-    }
+  switch(eff){
+    /* --- base --- */
+    case "fire":      damageAt(tx,ty,5);                   pulseCells([[tx,ty]], "glow-red"); break;
+    case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,5));
+                      pulseCells(cross(tx,ty), "glow-red"); break;
+    case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,6); addBurn(x,y,1); });
+                      pulseCells(cross(tx,ty), "glow-orange"); break;
+
+    case "lightning": chainLightning(d, tx, ty, 0);
+                      pulseCells([[tx,ty]], "flash-yellow"); break;
+    case "chain":     chainLightning(d, tx, ty, 2);
+                      pulseCells([[tx,ty]], "flash-yellow"); break;
+
+    case "water":     freezeCol(tx,3);
+                      pulseCells(column(tx), "glow-blue"); break;
+
+    case "plant":     addVine(tx,ty,3);
+                      pulseCells([[tx,ty]], "glow-green"); break;
+
+    case "steam":     addVine(tx,ty,1); damageAt(tx,ty,2);
+                      pulseCells(area(tx,ty,0), "glow-orange"); break;
+
+    case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+                      pulseCells(area(tx,ty,1), "glow-green"); break;
+
+    /* --- doubles / fusions --- */
+    case "geyser":    for (let y=0; y<ROWS; y++){ damageAt(tx,y,3); }
+                      for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
+                      pulseCells(column(tx), "glow-blue"); break;
+
+    case "wall":      addVine(tx,ty,5);
+                      pulseCells([[tx,ty]], "glow-green"); break;
+
+    case "embervine": damageAt(tx,ty,3); addVine(tx,ty,2);
+                      pulseCells([[tx,ty]], "glow-orange"); break;
+
+    case "overheat":  cross(tx,ty).forEach(([x,y])=> damageAt(x,y,6));
+                      pulseCells(cross(tx,ty), "glow-orange"); break;
+
+    case "bramblefire": area(tx,ty,1).forEach(([x,y])=> { addVine(x,y,2); addBurn(x,y,1); damageAt(x,y,2); });
+                        pulseCells(area(tx,ty,1), "glow-orange"); break;
+
+    case "arcfire":   chainLightning(d, tx, ty, 1, true, false);
+                      pulseCells([[tx,ty]], "flash-yellow"); break;
+
+    case "scald":     area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,3); addBurn(x,y,1); });
+                      pulseCells(area(tx,ty,1), "glow-orange"); break;
+
+    case "storm":     chainLightning(d, tx, ty, 1); freezeCol(tx,1);
+                      pulseCells(column(tx).concat([[tx,ty]]), "glow-blue"); break;
+
+    case "steamblast":area(tx,ty,1).forEach(([x,y])=> addVine(x,y,1));
+                      area(tx,ty,1).forEach(([x,y])=> damageAt(x,y,3));
+                      pulseCells(area(tx,ty,1), "glow-orange"); break;
+
+    case "boil":      area(tx,ty,1).forEach(([x,y])=> { damageAt(x,y,4); addBurn(x,y,2); });
+                      pulseCells(area(tx,ty,1), "glow-orange"); break;
+
+    case "voltaic":   chainLightning(d, tx, ty, 0); freezeCol(tx,1);
+                      pulseCells([[tx,ty]].concat(column(tx)), "flash-yellow"); break;
+
+    case "cinderwall":[[tx-1,ty],[tx,ty],[tx+1,ty]].forEach(([x,y])=> inBoard(x,y) && (addVine(x,y,3), addBurn(x,y,1)));
+                      pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=> inBoard(x,y)), "glow-orange"); break;
+
+    case "thorns":    { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(tx,y,1); addBurn(tx,y,1); cells.push([tx,y]); } }
+                      pulseCells(cells, "glow-green"); break; }
+
+    case "mistflash": area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+                      damageAt(tx,ty,3);
+                      pulseCells(area(tx,ty,1), "flash-yellow"); break;
+
+    case "marsh":     area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
+                      pulseCells(area(tx,ty,1), "glow-green"); break;
+
+    case "superchain":chainLightning(d, tx, ty, 3);
+                      pulseCells([[tx,ty]], "flash-yellow"); break;
+
+    case "thunderstorm": chainLightning(d, tx, ty, 1);
+                      addBurn(tx,ty,1);
+                      pulseCells([[tx,ty]], "flash-yellow"); break;
+
+    case "tsunami":   [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
+                        for (let y=0; y<ROWS; y++) damageAt(cx,y,3);
+                        for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-1); }
+                      });
+                      pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))), "glow-blue"); break;
+
+    case "wildfire":  pulseCells(cross(tx,ty), "glow-red");
+                      cross(tx,ty).forEach(([x,y])=> addBurn(x,y,2)); break;
+
+    case "thundercloud": { const targets = randomEnemyCells(d, 5);
+                      for (const [x,y] of targets){ damageAt(x,y,4); }
+                      pulseCells(targets.length?targets:[[tx,ty]], "flash-yellow"); break; }
+
+    case "entangle":  chainLightning(d, tx, ty, 0, false, true);
+                      pulseCells([[tx,ty]], "glow-green"); break;
+
+    /* optional: implement 'net' if you decide to use it later
+    case "net": chainLightning(d, tx, ty, 0, false, true); pulseCells([[tx,ty]], "glow-green"); break;
+    */
   }
+}
 
   function markGlow(x,y,cls){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
   function markFlash(x,y){ requestAnimationFrame(()=> glowCell(x,y,"flash-yellow")); }
@@ -868,4 +951,5 @@
 </script>
 </body>
 </html>
+
 
