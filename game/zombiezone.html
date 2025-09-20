@@ -63,6 +63,22 @@
   }
   .dice-banner.show{ opacity:1; transform: translateY(0) }
 
+  /* Care package banner */
+  .care-banner{
+    position:absolute; inset:auto 0 44% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
+    opacity:0; transform: translateY(10px); transition: opacity .6s, transform .6s;
+  }
+  .care-banner.show{ opacity:1; transform: translateY(0) }
+  .care-box{
+    display:inline-flex; gap:8px; align-items:center; padding:10px 14px;
+    background:rgba(20,30,48,.85); border:1px solid #263147; border-radius:14px; backdrop-filter: blur(6px);
+    font-weight:900; color:#e6edf3;
+  }
+  .care-pill{
+    display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px;
+    background:#0b1322; border:1px solid #1b2b48; font-weight:800; font-size:14px;
+  }
+
   .dead{
     position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; z-index:1000; place-items:center; text-align:center; padding:20px;
   }
@@ -86,6 +102,7 @@
     <div class="map-wrap" id="mapWrap">
       <canvas id="map"></canvas>
       <div id="diceBanner" class="dice-banner"></div>
+      <div id="careBanner" class="care-banner"></div>
     </div>
 
     <div class="stack">
@@ -173,12 +190,14 @@ const TURN_SECONDS = 60;
 /* ---------------- State ---------------- */
 let state = null;
 let myIndex = -1;
+let localCareSeenRound = 0;
 
 /* ---------------- DOM ---------------- */
 const wrap = document.getElementById('mapWrap');
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
 const diceBanner = document.getElementById('diceBanner');
+const careBanner = document.getElementById('careBanner');
 const resRow = document.getElementById('resRow');
 const tradesEl = document.getElementById('trades');
 const btnEndTurn = document.getElementById('btnEndTurn');
@@ -217,7 +236,6 @@ function ptToTile(px,py){ const [wx,wy] = screenToWorld(px,py); return [Math.flo
 
 resize();
 clampScale();
-// roughly center on middle at start
 local.camX = 32 - (wrap.clientWidth/local.scale)/2;
 local.camY = 32 - (wrap.clientHeight/local.scale)/2;
 
@@ -339,6 +357,26 @@ function showDice(n){
   setTimeout(()=>diceBanner.classList.remove('show'), 1400);
 }
 
+/* Care package banner */
+function showCare(items){
+  // items is array like [{k:'brick',n:2}, {k:'wood',n:1}]
+  careBanner.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'care-box';
+  const label = document.createElement('div');
+  label.textContent = '🎁 Care Package';
+  box.appendChild(label);
+  for(const it of items){
+    const pill = document.createElement('div');
+    pill.className='care-pill';
+    pill.textContent = `+${it.n} ${it.k}`;
+    box.appendChild(pill);
+  }
+  careBanner.appendChild(box);
+  careBanner.classList.add('show');
+  setTimeout(()=> careBanner.classList.remove('show'), 1600);
+}
+
 /* ---------------- Build System ---------------- */
 const COST = {
   wire: {ore:1}, wall:{brick:2}, uwall:{brick:4},
@@ -429,6 +467,9 @@ async function doPlace(x,y,sel){
     if(sel.kind==='base'){
       const i = g.buildings.findIndex(b=>b.x===x&&b.y===y&&b.kind==='cc'&&b.owner===myIndex);
       if(i>=0){ g.buildings[i].kind='base'; g.buildings[i].level=1; }
+      // also flip base type in player list for proper double-yield
+      const pb = g.players[myIndex].bases.find(b=>b.x===x&&b.y===y);
+      if(pb) pb.type='base';
     }else{
       g.buildings.push({kind:sel.kind, owner:myIndex, x,y, hp:hpFor(sel.kind), level:1});
       if(sel.kind==='cc'){ g.players[myIndex].bases.push({x,y,type:'cc'}); }
@@ -482,7 +523,9 @@ async function ensureGame(){
         name:n, alive:true,
         res:{brick:0,ore:0,sheep:0,wheat:0,wood:0},
         bases:[],
-        needsFirstCC:true                 // ← place on first click of first turn
+        needsFirstCC:true,
+        lastCareRound: 0,
+        careShow: []          // transient payload for UI
       }));
       await tx.set(gameRef,{
         seed, tiles,
@@ -508,6 +551,18 @@ let unsubMain = onSnapshot(gameRef, (snap)=>{
   state = snap.data();
   myIndex = (state.players||[]).findIndex(p=>p.name===username);
   renderResources(); renderTrades(); updateHud();
+
+  // Care package UI trigger (client-side, once per round)
+  if(myIndex>=0){
+    const me = state.players[myIndex];
+    if(me.lastCareRound && me.lastCareRound > localCareSeenRound){
+      localCareSeenRound = me.lastCareRound;
+      if(Array.isArray(me.careShow) && me.careShow.length){
+        showCare(me.careShow);
+      }
+    }
+  }
+
   if(myIndex>=0 && !state.players[myIndex].alive){
     deadOverlay.style.display='grid';
     btnEndTurn.disabled=true;
@@ -738,33 +793,61 @@ async function endTurn(){
     const g = snap.data();
     if(g.playerOrder[g.currentTurn]!==myIndex) return;
 
+    // End-of-turn zombie actions
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
+    // Advance turn pointer
     const cur=g.currentTurn;
     let nt=(cur+1)%g.playerOrder.length;
     for(let guard=0; guard<8; guard++){
       const pi=g.playerOrder[nt]; if(g.players[pi]?.alive) break;
       nt=(nt+1)%g.playerOrder.length;
     }
-    if(nt<=cur){
+
+    // Did we wrap to a new round?
+    const wrapped = (nt<=cur);
+    if(wrapped){
       g.round++;
       g.zombiesPerEdge = Math.min(6, g.zombiesPerEdge+1);
       if(g.round%5===0) g.zombieBaseHP+=1;
       spawnEdgeZombies(g, g.zombiesPerEdge);
     }
-    // alive flags (has CC/Base?)
+
+    // Update alive flags before care packages
     for(let i=0;i<g.players.length;i++){
       const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
       g.players[i].alive = !!still;
       if(!still) g.players[i].bases=[];
     }
+
+    // CARE PACKAGES: at the START of every 2nd round (2,4,6,…) give 3 random resources to each alive player
+    if(wrapped && (g.round % 2 === 0)){
+      for(let i=0;i<g.players.length;i++){
+        const p = g.players[i];
+        if(!p.alive) continue;
+        // draw 3 random picks with replacement
+        const picks = [pickRes(), pickRes(), pickRes()];
+        // fold into counts
+        const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
+        for(const k of picks){ counts[k]++; }
+        // add immediately
+        for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
+        // set UI payload (small and transient)
+        p.lastCareRound = g.round;
+        p.careShow = R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]}));
+      }
+    }
+
+    // Next turn setup
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
 
     await tx.update(gameRef,g);
   });
 }
+function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
+
 async function forceEndTurn(){ if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurn(); }
 
 /* ---------------- Zombies / Pathing ---------------- */
@@ -980,5 +1063,6 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
