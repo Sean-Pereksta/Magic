@@ -116,7 +116,6 @@
   .charges{display:flex; gap:4px; align-items:center}
   .pip{width:10px; height:10px; border-radius:50%; background:#10b981}
   .pip.off{background:#374151}
-  /* stronger highlight so it 'reads' as yellow on all screens */
   .combo-hint{
     outline:2px solid #facc15;
     box-shadow:0 0 0 3px rgba(250,204,21,.25), inset 0 0 0 9999px rgba(250,204,21,.06);
@@ -186,7 +185,6 @@
   <section class="hand-card">
     <div class="hand-head">
       <div class="tiny">Your Hand</div>
-      <!-- (instructions removed as requested) -->
     </div>
     <div class="hand-scroll">
       <div id="hand" class="hand" aria-label="Your spell cards"></div>
@@ -273,6 +271,9 @@
     { key:"golem",  name:"Stone Golem",  hp:20, spd:1, dmg:3, emoji:"🗿",  weight:7,  ability:null,        weak:['water','nature'], res:['earth','electric'] },
     { key:"slime",  name:"Slime",        hp:9,  spd:1, dmg:1, emoji:"🦠",  weight:4,  ability:null,        weak:['electric','ice'], res:['water','nature'] },
     { key:"specter",name:"Specter",      hp:7,  spd:2, dmg:2, emoji:"👻",  weight:5,  ability:null,        weak:['electric','fire'], res:['water','nature'] },
+
+    /* NEW: only spawns via split, not normal waves */
+    { key:"slime_baby", name:"Baby Slime", hp:4, spd:2, dmg:1, emoji:"🧫", weight:0, ability:null, weak:['electric','ice'], res:['water','nature'] },
   ];
 
   // ---------- Base spells ----------
@@ -437,6 +438,41 @@
     return picks;
   }
 
+  // --- Area helpers & dispels ---
+  const neighbors8 = (x,y)=>{
+    const pts=[];
+    for (let dx=-1; dx<=1; dx++){
+      for (let dy=-1; dy<=1; dy++){
+        if (dx===0 && dy===0) continue;
+        const a=x+dx, b=y+dy;
+        if (inBoard(a,b)) pts.push([a,b]);
+      }
+    }
+    return pts;
+  };
+  const rectArea = (cx,cy,r=1)=>{
+    const pts=[];
+    for (let dx=-r; dx<=r; dx++){
+      for (let dy=-r; dy<=r; dy++){
+        const a=cx+dx, b=cy+dy;
+        if (inBoard(a,b)) pts.push([a,b]);
+      }
+    }
+    return pts;
+  };
+  function clearWaterArea(d, cx, cy, r=1){
+    // "water/ice" persistence -> frozenCols; clear columns within area
+    const cols = new Set(rectArea(cx,cy,r).map(([x])=> x));
+    for (const x of cols){ if (d.frozenCols && d.frozenCols[x] != null) delete d.frozenCols[x]; }
+  }
+  function clearVinesArea(d, cx, cy, r=1){
+    if (!d.vineCells) return;
+    for (const [k,_until] of Object.entries({...d.vineCells})){
+      const [x,y] = k.split(",").map(Number);
+      if (Math.abs(x-cx)<=r && Math.abs(y-cy)<=r){ delete d.vineCells[k]; }
+    }
+  }
+
   function chainLightning(d, sx, sy, bonus=0, burn=false, root=false){
     const inB = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
     const neigh = ([x,y])=> [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=> inB(a,b));
@@ -450,6 +486,7 @@
       for (const e of d.enemies||[]) if (e.x===x && e.y===y){
         const t='electric';
         e.hp -= applyTypeMod(e, baseDmg, t);
+        if (e.hp <= 0){ onEnemyDeath(d, e, "kill"); }
       }
       d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
       if (burn){ if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]= now + 1; }
@@ -691,7 +728,7 @@
         }
       });
 
-      // Whole card tap = second selection for combine (convenience)
+      // Whole card tap = second selection for combine
       el.addEventListener('click', ()=>{
         if (ui.mode==='combine' && ui.selectedCardId && card.id !== ui.selectedCardId){
           immediateCombineByIds(ui.selectedCardId, card.id);
@@ -786,6 +823,38 @@
     return Math.max(1, Math.round(base * mult));
   }
 
+  // --- Knockback helpers (Golems immune) ---
+  function tryPush(e, amount){
+    if (e.key === "golem") return; // immune to knockback
+    e.y = Math.max(0, e.y - amount);
+  }
+  function pushBackColumn(d, x, amount){
+    for (const e of d.enemies||[]) if (e.x===x) tryPush(e, amount);
+  }
+
+  // --- Death triggers (Slime split) ---
+  function spawnBabySlimes(d, x, y){
+    const open = neighbors8(x,y).filter(([a,b])=>{
+      if (b >= TOWER_ROW) return false;
+      return !(d.enemies||[]).some(en=> en.x===a && en.y===b);
+    });
+    for (let i=0; i<2 && open.length; i++){
+      const j = Math.floor(Math.random()*open.length);
+      const [a,b] = open.splice(j,1)[0];
+      const baby = getEnemySpec("slime_baby");
+      const scale = (typeof healthScaleForTurn==="function") ? healthScaleForTurn(d.turn||0) : 1;
+      const maxHP = Math.max(1, Math.round(baby.hp * scale));
+      d.enemies.push({ id:id(), key:"slime_baby", x:a, y:b, hp:maxHP, maxHP, spd:baby.spd, dmg:baby.dmg, emoji:baby.emoji, ability:null });
+    }
+  }
+  function onEnemyDeath(d, e, cause="kill"){
+    if (e._deadHandled) return;
+    e._deadHandled = true;
+    if (e.key === "slime" && cause==="kill"){
+      spawnBabySlimes(d, e.x, e.y);
+    }
+  }
+
   function damageAtTyped(d, x,y,amt, type='neutral'){
     // bolts
     for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
@@ -794,6 +863,7 @@
     for (const e of d.enemies||[]){
       if (e.x===x && e.y===y){
         e.hp -= applyTypeMod(e, amt, type);
+        if (e.hp <= 0){ onEnemyDeath(d, e, "kill"); }
       }
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
@@ -920,7 +990,7 @@
         break;
       }
 
-      case "vine": { // water + plant (combo) — root splash + poke
+      case "vine": { // root splash + poke
         addVine(d,tx,ty,2,now);
         for (const [x,y] of cross(tx,ty)) addVine(d,x,y,1,now);
         DMG(tx,ty,2);
@@ -930,7 +1000,7 @@
 
       case "geyser": {
         for (let y=0;y<ROWS;y++) DMG(tx,y,4);
-        for (const e of d.enemies){ if (e.x===tx) e.y=Math.max(0,e.y-1); }
+        pushBackColumn(d, tx, 1);
         pulseCells(column(tx),"glow-blue");
         break;
       }
@@ -983,7 +1053,7 @@
       }
 
       case "thorns": {
-        const cells=[]; 
+        const cells=[];
         for (let dy=0; dy<=2; dy++){
           const y=ty-dy; if (inBoard(tx,y)){ addVine(d,tx,y,1,now); cells.push([tx,y]); }
         }
@@ -1013,7 +1083,7 @@
         const cx2 = clamp(tx+1,0,COLS-1);
         [tx, cx2].forEach(cx=>{
           for (let y=0;y<ROWS;y++) damageAtTyped(d,cx,y,5,'water');
-          for (const e of d.enemies){ if (e.x===cx) e.y=Math.max(0,e.y-1);}
+          pushBackColumn(d, cx, 1);
         });
         pulseCells(column(tx).concat(column(cx2)), "glow-blue");
         break;
@@ -1050,7 +1120,7 @@
         const cx2 = clamp(tx+1,0,COLS-1);
         [tx, cx2].forEach(cx=>{
           for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,6,'fire');
-          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
+          pushBackColumn(d, cx, 2);
         });
         for (const [x,y] of cross(tx,ty)) addBurn(d,x,y,2,now);
         pulseCells(column(tx).concat(column(cx2)).concat(cross(tx,ty)), "glow-orange");
@@ -1074,7 +1144,7 @@
         const cx2 = clamp(tx+1,0,COLS-1);
         [tx, cx2].forEach(cx=>{
           for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,5,'electric');
-          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
+          pushBackColumn(d, cx, 2);
         });
         chainLightning(d, tx, ty, 2);
         pulseCells(column(tx).concat(column(cx2)).concat([[tx,ty]]), "glow-blue");
@@ -1083,7 +1153,7 @@
 
       case "eruption": {
         for (let y=0; y<ROWS; y++){ damageAtTyped(d,tx,y,6,'fire'); }
-        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-2); }
+        pushBackColumn(d, tx, 2);
         addBurn(d,tx,ty,2,now);
         pulseCells(column(tx), "glow-orange");
         break;
@@ -1112,7 +1182,7 @@
 
       case "shockpush": { // geyser+chain — zap and push back in column
         for (let y=0;y<ROWS;y++) damageAtTyped(d,tx,y,3,'electric');
-        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
+        pushBackColumn(d, tx, 1);
         pulseCells(column(tx), "flash-yellow");
         break;
       }
@@ -1137,7 +1207,6 @@
 
       /* ==== FALLBACK ==== */
       default: {
-        // Generic safety: small ping so new/forgotten effects aren’t no-ops
         DMG(tx,ty,2);
         pulseCells([[tx,ty]], "flash-yellow");
         break;
@@ -1161,7 +1230,7 @@
   }
   function randCol(){ return Math.floor(Math.random()*COLS); }
 
-  // === NEW: gentle HP scaling & unified spawner ===
+  // === Gentle HP scaling & unified spawner ===
   function healthScaleForTurn(turn){
     // Every 6 turns is ~one "wave"; +8% max HP per wave, capped at 3x.
     const wave = Math.floor((turn||0)/6);
@@ -1188,23 +1257,37 @@
   function startOfTurnMut(d){
     const now = d.turn || 0;
 
-    // DOTs — burn
+    // DOTs — burn (can kill & trigger splits)
     for (const [key,until] of Object.entries(d.burnCells||{})){
       if (until >= now){
         const [x,y] = key.split(",").map(Number);
-        for (const e of d.enemies){ if (e.x===x && e.y===y) e.hp -= applyTypeMod(e, 1, 'fire'); }
+        for (const e of d.enemies){
+          if (e.x===x && e.y===y){
+            e.hp -= applyTypeMod(e, 1, 'fire');
+            if (e.hp <= 0){ onEnemyDeath(d, e, "kill"); }
+          }
+        }
       }
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
 
     // enemy abilities
     for (const e of d.enemies || []){
-      if (e.ability === "summon_rats" && Math.random() < 0.15){
-        const n = 1 + Math.floor(Math.random()*2);
-        for (let i=0;i<n;i++){
-          spawnEnemy(d, "rat"); // scaled HP rats
+      // Dark Mage: summon rats (existing) + Clear water/ice nearby
+      if (e.key === "mage"){
+        if (Math.random() < 0.15){
+          const n = 1 + Math.floor(Math.random()*2);
+          for (let i=0;i<n;i++){ spawnEnemy(d, "rat"); }
+        }
+        if (Math.random() < 0.20){
+          clearWaterArea(d, e.x, e.y, 1); // r=1 ⇒ 3x3
         }
       }
+      // Imp: Burn plants nearby
+      if (e.key === "imp" && Math.random() < 0.25){
+        clearVinesArea(d, e.x, e.y, 1); // r=1 ⇒ 3x3
+      }
+      // Demon Lord: fire bolt unchanged
       if (e.ability === "fire_bolt" && Math.random() < 0.2){
         if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:6 }); // bolt travels next
       }
@@ -1217,25 +1300,30 @@
     }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
-    // enemies advance (respect freeze/vines)
+    // enemies advance (respect freeze/vines; specters ignore vines)
     const frozen = d.frozenCols || {};
     const vines = d.vineCells || {};
     for (const e of d.enemies){
       const colFrozen = (frozen[e.x] && frozen[e.x] >= now);
       const vinedHere = (vines[`${e.x},${e.y}`] && vines[`${e.x},${e.y}`] >= now);
-      if (colFrozen || vinedHere) continue;
+      const isSpecter = (e.key === "specter");
+      if (colFrozen || (!isSpecter && vinedHere)) continue;
       e.y += e.spd || getEnemySpec(e.key).spd || 1;
-      if (e.y >= TOWER_ROW){ d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1); e.hp = 0; }
+      if (e.y >= TOWER_ROW){
+        d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1);
+        e._deadHandled = true; // prevent death effects on tower impact
+        e.hp = 0;
+      }
     }
     d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
 
-    // spawn
+    // spawn wave
     const wave = Math.floor((d.turn||0)/6);
     const maxSpawn = maxSpawnForTurn(d.turn||0);
     const n = 1 + Math.floor(Math.random()*maxSpawn);
     for (let i=0;i<n;i++){
       const pick = pickEnemyByWeight(wave);
-      spawnEnemy(d, pick.key); // scaled HP
+      spawnEnemy(d, pick.key);
     }
 
     // expire statuses
@@ -1312,6 +1400,7 @@
 </script>
 </body>
 </html>
+
 
 
 
