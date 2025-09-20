@@ -281,6 +281,7 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
 const TICK_MS = 10000; // 10s server tick
+const BASE_GOLD_PER_TICK = 1; // ===== BASE GOLD INCOME =====
 
 const $=sel=>document.querySelector(sel);
 
@@ -410,21 +411,17 @@ async function hostApplyAction(act){
     const who = act.by, me = P[who]; if(!me?.alive) return;
 
     if(act.type === "flip"){
-      // FIX: flip now MOVES up to 3 cards from the player's deck into THEIR discard (waste),
-      // ensuring each player has their OWN discard pile and enabling proper reshuffle.
       const vi = me.viewIndex||0;
       const n = Math.min(3, me.deck.length - vi);
       for(let i=0;i<n;i++){
         const [moved] = me.deck.splice(vi,1);
         if(moved) me.discard.push(moved);
       }
-      me.viewIndex = Math.min(vi, Math.max(0, me.deck.length-1)); // keep pointer sane
+      me.viewIndex = Math.min(vi, Math.max(0, me.deck.length-1));
     }
     else if(act.type === "start"){
       const c = handCard(G,P,who); if(!c || c.id!==act.cardId || c.val!==1) return;
-      // remove playable (top) card from deck
       me.deck.splice(me.viewIndex||0,1);
-      // start a new pile; record who actually played this card
       G.piles.push({ id:uid(), color:c.color, topVal:c.val, owner:who, cards:[{player:who,card:c}] });
       if(c.color==="yellow") me.gold=(me.gold||0)+c.val;
     }
@@ -433,23 +430,17 @@ async function hostApplyAction(act){
       const pile = G.piles.find(p=>p.id===act.pileId); if(!pile) return;
       if(pile.color!==c.color || pile.topVal!==c.val-1) return;
 
-      // tag card with the real player (not host) for attribution
       pile.cards.push({player:who, card:c});
       pile.topVal=c.val; pile.owner=who;
-
-      // remove from player's deck
       me.deck.splice(me.viewIndex||0,1);
-
       if(c.color==="yellow") me.gold=(me.gold||0)+c.val;
 
       if(c.val===10){
-        // 10-complete: resolve damage, then send ALL pile cards to EACH original player's discard.
         for(const n of G.players){
           const t=P[n]; if(!t?.alive) continue;
           const s=sumsFor(G,P,n), eff=Math.max(0, 10-(s.ward||0));
           t.health=Math.max(0, (t.health||0)-eff); if(t.health===0) t.alive=false;
         }
-        // FIX: discard attribution to the player who played each card
         for(const entry of pile.cards){
           const o=P[entry.player];
           if(o) o.discard.push(entry.card);
@@ -461,14 +452,12 @@ async function hostApplyAction(act){
       const card=G.storeVis.find(c=>c.id===act.cardId); if(!card) return;
       if((me.gold||0) < card.val) return;
       me.gold -= card.val;
-      // FIX: bought card goes to that player's personal discard
       me.discard.push(card);
       const idx = G.storeVis.findIndex(c=>c.id===card.id);
       if(idx>=0) G.storeVis.splice(idx,1);
       while(G.storeVis.length<5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop());
     }
     else if(act.type === "reshuffle"){
-      // FIX: reshuffle ONLY the invoking player's discard into their deck; reset viewIndex
       const refill = me.discard.splice(0);
       if(refill.length>0){
         me.deck = shuffle(me.deck.concat(refill));
@@ -500,7 +489,8 @@ async function hostTickIfNeeded(){
     for(const n of alive){
       const p=P[n], s=sums.get(n)||{atk:0,heal:0,ward:0,gold:0};
       p.health = clamp((p.health||0)+(s.heal||0), 0, (p.maxHealth||100));
-      p.gold   = (p.gold||0)+(s.gold||0);
+      // ===== BASE GOLD INCOME =====
+      p.gold   = (p.gold||0) + BASE_GOLD_PER_TICK + (s.gold||0);
       atkBy.set(n, s.atk||0);
     }
     for(const n of alive){
@@ -701,7 +691,6 @@ function render(){
     hand.style.opacity=".4"; hand.style.pointerEvents="none";
     hand.innerHTML="—";
 
-    // FIX: trigger local reshuffle only when deck is empty AND we have personal discards
     if (!L.reshuffling && !L.waitingReshuffle &&
         (root.P[L.me].deck.length===0) && ((root.P[L.me].discard?.length||0) > 0)){
       startLocalReshuffle();
@@ -725,17 +714,12 @@ function render(){
     store.appendChild(col);
   });
 
-  // Counts (FIX: deck = full length now; we move cards physically to discard)
   $("#deckCount").textContent    = root.P[L.me].deck.length;
   $("#discardCount").textContent = root.P[L.me].discard.length;
 
-  // Log a snapshot for graphs
   logSnapshot(root);
-
-  // Fit stage
   fitToViewport();
 
-  // End-of-game overlay with charts
   if(root.status === "finished"){
     showGameOverWithCharts(root);
   } else {
@@ -896,7 +880,7 @@ async function boot(){
   // controls
   $("#flipBtn").addEventListener("pointerup", (e)=>{
     e.preventDefault();
-    if (L.reshuffling || L.waitingReshuffle) return; // disable during local reshuffle
+    if (L.reshuffling || L.waitingReshuffle) return;
     addDoc(actionsCol, { by:L.me, type:"flip", ts: serverTimestamp() });
   });
   window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); $("#flipBtn").click(); } });
@@ -924,6 +908,7 @@ boot();
 </script>
 </body>
 </html>
+
 
 
 
