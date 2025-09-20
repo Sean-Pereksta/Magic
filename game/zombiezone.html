@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>🧟‍♂️ Zombie Zone — 4P Co-op/VS</title>
+<style>
+  :root{
+    --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
+    --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed; --accent2:#a78bfa;
+    --grid: 16px;            /* world cell px (scaled) */
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; color:var(--ink); background:radial-gradient(1200px 600px at 50% -200px,#0f172a 0%,#0b1014 55%,#070b0f 100%);
+    font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+  }
+
+  /* Top Bar */
+  .hud{
+    position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:10px; padding:10px;
+    background:rgba(8,13,20,.75); backdrop-filter: blur(8px); border-bottom:1px solid #101a2c;
+  }
+  .hud .title{font-weight:900; letter-spacing:.2px}
+  .spacer{flex:1}
+  .btn{appearance:none; border:1px solid #263147; background:#111a2b; color:#e6edf3; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800}
+  .btn:hover{background:#162238}
+  .btn[disabled]{opacity:.6; cursor:not-allowed}
+  .btn-accent{background:linear-gradient(180deg,#7c3aed,#6d28d9); border-color:#5b21b6}
+  .btn-red{background:#991b1b; border-color:#7f1d1d}
+  .pill{padding:6px 10px; border-radius:999px; border:1px solid #263147; background:#0e1726; font-weight:800}
+
+  /* Layout: map left, controls right (on desktop) */
+  .shell{ display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px; padding:12px; }
+  @media (max-width:900px){ .shell{ grid-template-columns:1fr } }
+
+  /* Map View (scales to half phone screen) */
+  .map-wrap{
+    background:#0a111c; border:1px solid #12213a; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+    position:relative; user-select:none; overflow:hidden;
+    height: min(52vh, 560px);   /* ~half phone screen */
+  }
+  @media (min-width:901px){
+    .map-wrap{ height: min(70vh, 820px); }
+  }
+  canvas{ display:block; width:100%; height:100% }
+
+  /* Right Pane */
+  .card{ background:#0e1726; border:1px solid #16243d; border-radius:16px; padding:12px }
+  .card h3{ margin:0 0 8px; font-size:16px }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+  .col{ display:grid; gap:8px }
+  .stack{ display:grid; gap:10px }
+
+  .res{ display:flex; gap:6px; flex-wrap:wrap }
+  .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
+  .dot{ width:10px; height:10px; border-radius:50% }
+
+  /* Build selector row */
+  .buildbar{ display:grid; grid-template-columns: repeat(3, 1fr); gap:8px }
+  .tool{ display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; border:1px dashed #253656; border-radius:12px; background:#0b1322; cursor:pointer; font-weight:800 }
+  .tool:hover{ background:#0f1a2e }
+  .tool.sel{ outline:2px solid #7c3aed; background:#131c30 }
+
+  /* Dice banner */
+  .dice-banner{
+    position:absolute; inset:auto 0 30% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
+    font-weight:900; font-size: clamp(28px, 7vw, 64px); color:#fff; text-shadow:0 8px 24px rgba(0,0,0,.5);
+    opacity:0; transform: translateY(10px); transition: opacity .6s, transform .6s;
+  }
+  .dice-banner.show{ opacity:1; transform: translateY(0) }
+
+  /* Build ghost highlights */
+  .hint-ok{ outline: 2px solid #22c55e80 }
+  .hint-bad{ outline: 2px solid #ef444480 }
+
+  /* Trade list */
+  .trade-item{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; border:1px solid #192e50; border-radius:12px; background:#0b1322 }
+
+  /* Fog after setup */
+  .fog{ position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply }
+
+  /* Fullscreen helper */
+  .fs-note{ font-size:12px; color:#8ea0b6 }
+
+  /* Dead overlay */
+  .dead{
+    position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; z-index:1000; place-items:center; text-align:center; padding:20px;
+  }
+  .dead .box{ background:#0e1726; border:1px solid #223456; border-radius:16px; padding:20px; max-width:520px }
+  .dead .box h2{ margin:0 0 8px }
+</style>
+</head>
+<body>
+  <div class="hud">
+    <div class="title">🧟‍♂️ Zombie Zone</div>
+    <span id="turnInfo" class="pill">Waiting…</span>
+    <span id="timer" class="pill">60s</span>
+    <div class="spacer"></div>
+    <button id="btnFullscreen" class="btn">⤢ Fullscreen</button>
+    <button id="btnEndTurn" class="btn btn-accent" disabled>End Turn</button>
+  </div>
+
+  <div class="shell">
+    <div class="map-wrap" id="mapWrap">
+      <canvas id="map"></canvas>
+      <div id="diceBanner" class="dice-banner"></div>
+      <!-- Dynamic fog canvas appended at runtime -->
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <h3>Resources</h3>
+        <div id="resRow" class="res"></div>
+      </div>
+
+      <div class="card">
+        <h3>Build</h3>
+        <div class="buildbar" id="buildbar"></div>
+        <div class="fs-note">Tip: tap a tool, then tap a tile to place. Tap empty space to cancel.</div>
+      </div>
+
+      <div class="card">
+        <h3>Trade</h3>
+        <div class="row">
+          <select id="tradeGive" class="btn">
+            <option value="brick">Brick</option>
+            <option value="ore">Ore</option>
+            <option value="sheep">Sheep</option>
+            <option value="wheat">Wheat</option>
+            <option value="wood">Wood</option>
+          </select>
+          <input id="tradeGiveAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <select id="tradeWant" class="btn">
+            <option value="brick">Brick</option>
+            <option value="ore">Ore</option>
+            <option value="sheep">Sheep</option>
+            <option value="wheat">Wheat</option>
+            <option value="wood">Wood</option>
+          </select>
+          <input id="tradeWantAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
+          <button id="btnPostTrade" class="btn">Post Trade</button>
+        </div>
+        <div id="trades" class="col" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Build Costs</h3>
+        <div style="font-size:13px; line-height:1.45; color:#9fb3cb">
+          <b>Wire</b> 1 ore • <b>Wall</b> 2 brick • <b>Ultra Wall</b> 4 brick •
+          <b>Command Ctr</b> free at start / later: 2 ore,2 brick,2 sheep (must be ≥3 tiles from others) •
+          <b>Central Base (upgrade)</b> 2 ore,2 brick,2 sheep (double yield) •
+          <b>Turret</b> 1 wood,1 sheep • <b>Catapult</b> 3 wood,2 sheep •
+          <b>Fire Beacon</b> 1 wood,2 wheat • <b>Tesla</b> 2 ore,2 wheat,2 sheep,2 wood •
+          <b>Tri-Bolt</b> 2 wood,2 ore,1 brick • <b>Drill</b> 2 ore (triples rolled tile) •
+          <b>Upgrade (tower)</b> 2 wheat,1 ore
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dead -->
+  <div id="deadOverlay" class="dead">
+    <div class="box">
+      <h2>💀 You’ve been eliminated</h2>
+      <p>You no longer control any Command Centers. You’ll spectate until the game ends.</p>
+      <div class="row" style="justify-content:center">
+        <button id="btnReturnLobby" class="btn btn-red">Return to Lobby</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+/* ---------------- Firebase ---------------- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction,
+  collection, addDoc, query, where, getDocs, serverTimestamp, deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ---------------- URL Params ---------------- */
+const params = new URLSearchParams(location.search);
+const gameId = params.get("gameId") || "local";
+const username = params.get("username") || ("Player" + Math.floor(Math.random()*999));
+
+/* ---------------- Constants ---------------- */
+const W = 64, H = 64;
+const TILE_COLORS = { // also implies resource
+  red:   "#7f1d1d",   // brick
+  gray:  "#374151",   // ore (stone)
+  white: "#cbd5e1",   // sheep
+  yellow:"#f59e0b",   // wheat
+  green: "#197141"    // wood
+};
+const RESOURCE_BY_COLOR = { red:'brick', gray:'ore', white:'sheep', yellow:'wheat', green:'wood' };
+const R_KEYS = ['brick','ore','sheep','wheat','wood'];
+
+const SPAWNS = [ [32,32], [36,32], [28,32], [32,36] ]; // >=3 apart
+const TURN_SECONDS = 60;
+
+/* ---------------- State ---------------- */
+let state = null;             // authoritative game state (from firestore)
+let isHost = false;           // host executes zombies + round steps
+let myIndex = -1;             // index in players
+let local = {                 // local-only view/pan/build aids
+  scale: 1, camX: 0, camY: 0,
+  dragging:false, dragStart:[0,0], camStart:[0,0],
+  edgePan: true,
+  build: null,         // {kind:'wire'|'wall'|..., upgrade?:true}
+  hover: [-1,-1],
+  fogOn: true
+};
+
+/* ---------------- DOM ---------------- */
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('mapWrap');
+const diceBanner = document.getElementById('diceBanner');
+const resRow = document.getElementById('resRow');
+const btnEndTurn = document.getElementById('btnEndTurn');
+const btnFullscreen = document.getElementById('btnFullscreen');
+const timerEl = document.getElementById('timer');
+const turnInfo = document.getElementById('turnInfo');
+const buildbar = document.getElementById('buildbar');
+const tradesEl = document.getElementById('trades');
+const deadOverlay = document.getElementById('deadOverlay');
+const btnReturnLobby = document.getElementById('btnReturnLobby');
+
+/* ---------------- UI Helpers ---------------- */
+function moneyChip(label, color, amt){
+  const div = document.createElement('div');
+  div.className = 'chip';
+  const dot = document.createElement('span'); dot.className='dot'; dot.style.background=color;
+  const text = document.createElement('span'); text.textContent = `${label}: ${amt|0}`;
+  div.appendChild(dot); div.appendChild(text);
+  return div;
+}
+function renderResources(){
+  resRow.innerHTML='';
+  if(!state || myIndex<0) return;
+  const r = state.players[myIndex].res;
+  resRow.append(
+    moneyChip('Brick','#b91c1c', r.brick),
+    moneyChip('Ore','#64748b', r.ore),
+    moneyChip('Sheep','#e2e8f0', r.sheep),
+    moneyChip('Wheat','#fbbf24', r.wheat),
+    moneyChip('Wood','#22c55e', r.wood),
+  );
+}
+function showDice(n){ diceBanner.textContent = n; diceBanner.classList.add('show'); setTimeout(()=>diceBanner.classList.remove('show'), 1000); }
+
+/* ---------------- Map Gen ---------------- */
+function seededRng(seed){ let s = seed>>>0; return ()=> (s = (s*1664525 + 1013904223) >>> 0) / 2**32; }
+function genMap(seed){
+  const rnd = seededRng(seed);
+  const tiles = new Array(H).fill(0).map(()=> new Array(W).fill(0));
+  const colors = Object.keys(TILE_COLORS);
+  const nums = [2,3,4,5,6,8,9,10,11,12]; // no 7
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const c = colors[Math.floor(rnd()*colors.length)];
+      const n = nums[Math.floor(rnd()*nums.length)];
+      tiles[y][x] = {color:c, num:n};
+    }
+  }
+  return tiles;
+}
+
+/* ---------------- Drawing ---------------- */
+function resize(){
+  const dpr = devicePixelRatio||1;
+  canvas.width  = wrap.clientWidth * dpr;
+  canvas.height = wrap.clientHeight * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize', resize);
+
+function worldToScreen(x,y){ return [(x - local.camX)*local.scale, (y - local.camY)*local.scale]; }
+function screenToWorld(px,py){ return [px/local.scale + local.camX, py/local.scale + local.camY]; }
+function ptToTile(px,py){ const [wx,wy] = screenToWorld(px,py); return [Math.floor(wx), Math.floor(wy)]; }
+
+function draw(){
+  if(!state) return requestAnimationFrame(draw);
+  const {tiles, buildings, zombies} = state;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // draw grid tiles
+  const vw = wrap.clientWidth / local.scale, vh = wrap.clientHeight / local.scale;
+  const x0 = Math.max(0, Math.floor(local.camX));
+  const y0 = Math.max(0, Math.floor(local.camY));
+  const x1 = Math.min(W-1, Math.ceil(local.camX + vw));
+  const y1 = Math.min(H-1, Math.ceil(local.camY + vh));
+
+  for(let y=y0;y<=y1;y++){
+    for(let x=x0;x<=x1;x++){
+      const t = tiles[y][x];
+      const [sx,sy] = worldToScreen(x,y);
+      // tile color
+      ctx.fillStyle = TILE_COLORS[t.color];
+      ctx.fillRect(sx,sy,1*local.scale,1*local.scale);
+      // number label faint
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.fillRect(sx, sy + (local.scale-12), 1*local.scale, 12);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.font = "bold 10px ui-sans-serif";
+      ctx.textAlign="center"; ctx.textBaseline="bottom";
+      ctx.fillText(String(t.num), sx + 0.5*local.scale, sy + local.scale - 2);
+    }
+  }
+
+  // wires first
+  for(const b of buildings){
+    if(b.kind!=='wire') continue;
+    const [sx,sy] = worldToScreen(b.x,b.y);
+    ctx.fillStyle = "#93c5fd"; // light blue wire
+    ctx.fillRect(sx+local.scale*0.35, sy+local.scale*0.35, local.scale*0.3, local.scale*0.3);
+  }
+
+  // buildings
+  for(const b of buildings){
+    if(b.kind==='wire') continue;
+    const [sx,sy] = worldToScreen(b.x,b.y);
+    // owner ring
+    ctx.strokeStyle = playerColor(b.owner);
+    ctx.lineWidth = 2; ctx.strokeRect(sx+1,sy+1, local.scale-2, local.scale-2);
+
+    // icon
+    const icon = buildingIcon(b);
+    ctx.fillStyle = "#0b1322aa"; ctx.fillRect(sx,sy,local.scale,local.scale);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 16px system-ui";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(icon, sx+local.scale/2, sy+local.scale/2+1);
+    // star if upgraded
+    if(b.level && b.level>1){
+      ctx.fillText("★", sx+local.scale-10, sy+10);
+    }
+  }
+
+  // zombies
+  for(const z of zombies){
+    const [sx,sy] = worldToScreen(z.x,z.y);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(sx+2,sy+2, local.scale-4, local.scale-4);
+    // hp bar
+    ctx.fillStyle="#000"; ctx.fillRect(sx+2, sy+2, local.scale-4, 4);
+    ctx.fillStyle="#22c55e"; ctx.fillRect(sx+2, sy+2, (local.scale-4)*(z.hp/z.maxhp), 4);
+  }
+
+  // hover cursor / build hint
+  if(local.build){
+    const [hx,hy]=local.hover;
+    if(inBounds(hx,hy)){
+      const [sx,sy]=worldToScreen(hx,hy);
+      ctx.save();
+      ctx.strokeStyle = placeable(hx,hy,local.build) ? "#22c55e" : "#ef4444";
+      ctx.lineWidth=3; ctx.strokeRect(sx+1,sy+1,local.scale-2,local.scale-2);
+      ctx.restore();
+    }
+  }
+
+  // fog for first turn (per spec)
+  if(local.fogOn){
+    // fade edges with gradient mask
+    // (lightweight: we just overlay semi-transparent dark)
+    ctx.fillStyle = "rgba(0,0,0,.45)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+
+  requestAnimationFrame(draw);
+}
+
+/* ---------------- Game Doc & Setup ---------------- */
+const gameRef = doc(db, "zombiezone", gameId);
+
+async function ensureGame(){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef);
+    if(!snap.exists()){
+      const seed = Math.floor(Math.random()*2**31);
+      const tiles = genMap(seed);
+      // initial players from lobby if present else just current user
+      const players = await initialPlayers();
+      const pls = players.map((name, i)=> ({
+        name, alive:true,
+        res: {brick:0, ore:0, sheep:0, wheat:0, wood:0},
+        bases: [], // command centers + central bases
+      }));
+      // place initial CCs at spawns (respecting player count)
+      for(let i=0;i<pls.length && i<SPAWNS.length;i++){
+        const [x,y] = SPAWNS[i];
+        pls[i].bases.push({x,y, type:'cc'}); // command center
+      }
+      const buildings = [];
+      // also seed an initial wire under each CC (counts as connected)
+      for(let i=0;i<pls.length && i<SPAWNS.length;i++){
+        const [x,y]=SPAWNS[i];
+        buildings.push({kind:'wire', owner:i, x,y, hp:1});
+      }
+
+      tx.set(gameRef, {
+        seed, tiles, buildings,
+        zombies: [],
+        players: pls,
+        playerOrder: pls.map((_,i)=>i),
+        currentTurn: 0,
+        round: 1,
+        turnEndsAt: Date.now() + TURN_SECONDS*1000,
+        zombiesPerEdge: 1,  // spawns per round (total 4 edges random spots)
+        zombieBaseHP: 3,
+        createdAt: serverTimestamp(),
+        fogDone:false
+      });
+    }
+  });
+}
+
+async function initialPlayers(){
+  // try reading lobby's players list
+  try{
+    const lob = await getDoc(doc(db,"lobbies",gameId));
+    if(lob.exists()){
+      const arr = lob.data().players || [];
+      if(arr.length) return arr;
+    }
+  }catch(e){}
+  // fallback: just current user
+  return [username];
+}
+
+/* ---------------- Subscriptions ---------------- */
+let unsub = onSnapshot(gameRef, (snap)=>{
+  if(!snap.exists()) return;
+  const prev = state;
+  state = snap.data();
+  myIndex = (state.players||[]).findIndex(p=>p.name===username);
+  isHost = state.playerOrder && state.playerOrder[state.currentTurn] === myIndex;
+
+  // fog clears after first full turn
+  local.fogOn = !state.fogDone;
+
+  renderResources();
+  renderTrades();
+  updateHud();
+
+  // Start draw loop after first load
+  if(!prev) { resize(); requestAnimationFrame(draw); }
+});
+
+function updateHud(){
+  if(!state) return;
+  const currentPI = state.playerOrder[state.currentTurn] ?? 0;
+  const curName = state.players[currentPI]?.name || '?';
+  const meTurn = (myIndex===currentPI);
+  btnEndTurn.disabled = !meTurn || !alive();
+
+  turnInfo.textContent = meTurn ? `Your turn` : `Waiting on ${curName}`;
+}
+
+/* ---------------- Timer ---------------- */
+let timerHandle = null;
+function startTimer(){
+  if(timerHandle) clearInterval(timerHandle);
+  timerHandle = setInterval(()=>{
+    if(!state) return;
+    const ms = Math.max(0, state.turnEndsAt - Date.now());
+    const s = Math.ceil(ms/1000);
+    timerEl.textContent = s + 's';
+    if(ms<=0) forceEndTurn();
+  }, 250);
+}
+startTimer();
+
+/* ---------------- Helpers ---------------- */
+function inBounds(x,y){ return x>=0 && y>=0 && x<W && y<H; }
+function tileAt(x,y){ return state.tiles[y][x]; }
+function playerColor(i){
+  return ['#60a5fa','#22c55e','#f59e0b','#f472b6'][i%4];
+}
+function alive(){
+  if(myIndex<0) return false;
+  return !!state.players[myIndex].alive;
+}
+
+/* ---------------- Input: pan & point ---------------- */
+resize();
+local.scale = Math.max( wrap.clientWidth / (W*1.0), wrap.clientHeight / (H*1.0) ); // auto fit; user pans
+// start centered roughly
+local.camX = 32 - (wrap.clientWidth/local.scale)/2;
+local.camY = 32 - (wrap.clientHeight/local.scale)/2;
+
+wrap.addEventListener('pointerdown', (e)=>{
+  wrap.setPointerCapture(e.pointerId);
+  local.dragging = true; local.dragStart = [e.clientX, e.clientY];
+  local.camStart = [local.camX, local.camY];
+});
+
+wrap.addEventListener('pointermove', (e)=>{
+  const rect = wrap.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const t = ptToTile(px,py); local.hover = t;
+
+  if(local.dragging){
+    const dx = (e.clientX - local.dragStart[0]) / local.scale;
+    const dy = (e.clientY - local.dragStart[1]) / local.scale;
+    local.camX = local.camStart[0] - dx;
+    local.camY = local.camStart[1] - dy;
+    local.camX = Math.max(-2, Math.min(W+2, local.camX));
+    local.camY = Math.max(-2, Math.min(H+2, local.camY));
+  }else{
+    // edge pan (desktop)
+    if(local.edgePan && e.pointerType==='mouse'){
+      const edge = 18;
+      if(px<edge) local.camX -= 0.15;
+      if(px>rect.width-edge) local.camX += 0.15;
+      if(py<edge) local.camY -= 0.15;
+      if(py>rect.height-edge) local.camY += 0.15;
+    }
+  }
+});
+wrap.addEventListener('pointerup', (e)=>{
+  wrap.releasePointerCapture(e.pointerId);
+  if(local.dragging){
+    // a tap (no drag) becomes build/place
+    const moved = Math.hypot(e.clientX - local.dragStart[0], e.clientY - local.dragStart[1]);
+    if(moved<6) handleTap(e);
+  }
+  local.dragging=false;
+});
+wrap.addEventListener('pointercancel', ()=> local.dragging=false);
+
+function handleTap(e){
+  const rect = wrap.getBoundingClientRect();
+  const [tx,ty] = ptToTile(e.clientX-rect.left, e.clientY-rect.top);
+  if(!inBounds(tx,ty)){ local.build=null; return; }
+  if(!alive()) return;
+
+  if(local.build){
+    if(placeable(tx,ty,local.build)){
+      doPlace(tx,ty,local.build);
+    }
+    local.build = null; // cancel either way (tap elsewhere to retry)
+  }else{
+    // maybe select for upgrade if it's your tower
+    const b = state.buildings.find(b=>b.x===tx && b.y===ty && b.owner===myIndex && upgradable(b));
+    if(b){ tryUpgrade(b); }
+  }
+}
+
+/* ---------------- Build UI ---------------- */
+const BUILD_TOOLS = [
+  {id:'wire', label:'Wire', icon:'🔌'},
+  {id:'wall', label:'Wall', icon:'🧱'},
+  {id:'uwall',label:'Ultra Wall', icon:'🧱★'},
+  {id:'cc',   label:'Command', icon:'🏚️'},
+  {id:'base', label:'Central Base', icon:'🏛️'},
+  {id:'turret',label:'Turret', icon:'🏹'},
+  {id:'cata', label:'Catapult', icon:'🪵'},
+  {id:'beacon',label:'Fire Beacon', icon:'🔥'},
+  {id:'tesla',label:'Tesla', icon:'⚡'},
+  {id:'tribolt',label:'Tri-Bolt', icon:'🔱'},
+  {id:'drill',label:'Drill', icon:'⛏️'}
+];
+function renderBuildbar(){
+  buildbar.innerHTML='';
+  for(const t of BUILD_TOOLS){
+    const btn = document.createElement('button');
+    btn.className='tool'; btn.textContent = `${t.icon} ${t.label}`;
+    btn.onclick = ()=>{
+      if(!alive()) return;
+      local.build = {kind:t.id};
+      // visually select
+      [...buildbar.children].forEach(c=>c.classList.remove('sel'));
+      btn.classList.add('sel');
+      // one-tap cancel if tap background (handled in pointerup)
+    };
+    buildbar.appendChild(btn);
+  }
+}
+renderBuildbar();
+
+function buildingIcon(b){
+  switch(b.kind){
+    case 'wire': return '🔌';
+    case 'wall': return '🧱';
+    case 'uwall':return '🧱';
+    case 'cc':   return '🏚️';
+    case 'base': return '🏛️';
+    case 'turret':return '🏹';
+    case 'cata': return '🪵';
+    case 'beacon':return '🔥';
+    case 'tesla':return '⚡';
+    case 'tribolt':return '🔱';
+    case 'drill':return '⛏️';
+  }
+  return '□';
+}
+
+/* ---------------- Placement Rules ---------------- */
+function hasRes(cost){
+  const r = state.players[myIndex].res;
+  for(const k of Object.keys(cost)){ if((r[k]||0) < cost[k]) return false; }
+  return true;
+}
+function spendRes(cost){
+  const p = state.players[myIndex];
+  for(const k of Object.keys(cost)){ p.res[k] = (p.res[k]||0) - cost[k]; }
+}
+const COST = {
+  wire: {ore:1},
+  wall: {brick:2},
+  uwall:{brick:4},
+  cc:   {ore:2, brick:2, sheep:2},
+  base: {ore:2, brick:2, sheep:2},
+  turret:{wood:1, sheep:1},
+  cata: {wood:3, sheep:2},
+  beacon:{wood:1, wheat:2},
+  tesla:{ore:2, wheat:2, sheep:2, wood:2},
+  tribolt:{wood:2, ore:2, brick:1},
+  drill:{ore:2}
+};
+function needsWire(kind){ return !['wall','uwall'].includes(kind); }
+
+function placeable(x,y,sel){
+  // cannot build atop zombie or another structure
+  if(state.zombies.some(z=>z.x===x&&z.y===y)) return false;
+  if(state.buildings.some(b=>b.x===x&&b.y===y)) return false;
+
+  // special CC spacing
+  if(sel.kind==='cc'){
+    for(const pl of state.players){
+      for(const b of (pl.bases||[])){
+        const d = Math.abs(b.x-x)+Math.abs(b.y-y);
+        if(d<3) return false;
+      }
+    }
+  }
+  // Base upgrades: place 'base' atop your cc (we handle via click-to-upgrade instead)
+  if(sel.kind==='base'){ // allow direct base placement only if tile has your cc
+    const there = state.buildings.find(b=>b.x===x&&b.y===y && b.kind==='cc' && b.owner===myIndex);
+    if(!there) return false;
+  }
+
+  if(needsWire(sel.kind)){
+    // must be adjacent to your wire and connected to your cc graph
+    const adj = [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{
+      const w = state.buildings.find(b=>b.x===x+dx && b.y===y+dy && b.kind==='wire' && b.owner===myIndex);
+      return !!w;
+    });
+    if(!adj) return false;
+  }
+  return true;
+}
+
+async function doPlace(x,y,sel){
+  // costs (free CC at very start already placed; later placements cost apply)
+  if(COST[sel.kind] && !hasRes(COST[sel.kind])) return;
+  // commit
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    // recheck occupancy
+    if(g.zombies.some(z=>z.x===x&&z.y===y)) return;
+    if(g.buildings.some(b=>b.x===x&&b.y===y)) return;
+
+    if(sel.kind==='base'){
+      // upgrade a cc at this spot
+      const idx = g.buildings.findIndex(b=>b.x===x&&b.y===y && b.kind==='cc' && b.owner===myIndex);
+      if(idx>=0){
+        g.buildings[idx].kind='base';
+        g.buildings[idx].level=1;
+      }
+    }else{
+      g.buildings.push({kind:sel.kind, owner:myIndex, x,y, hp: hpFor(sel.kind), level:1});
+      if(sel.kind==='cc'){
+        g.players[myIndex].bases.push({x,y, type:'cc'});
+      }
+    }
+    // spend
+    if(COST[sel.kind]){
+      for(const k of Object.keys(COST[sel.kind])){
+        g.players[myIndex].res[k] = (g.players[myIndex].res[k]||0) - COST[sel.kind][k];
+      }
+    }
+    // wire connectivity check: remove disconnected
+    pruneDisconnected(g, myIndex);
+    tx.update(gameRef, g);
+  });
+}
+
+function hpFor(kind){
+  if(kind==='wall') return 6;
+  if(kind==='uwall') return 14;
+  if(kind==='turret') return 8;
+  if(kind==='cata') return 8;
+  if(kind==='beacon') return 8;
+  if(kind==='tesla') return 10;
+  if(kind==='tribolt') return 9;
+  if(kind==='cc' || kind==='base') return 20;
+  if(kind==='drill') return 6;
+  return 1;
+}
+
+function upgradable(b){
+  return ['turret','cata','beacon','tesla','tribolt'].includes(b.kind);
+}
+async function tryUpgrade(b){
+  const cost = {wheat:2, ore:1};
+  if(!hasRes(cost)) return;
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    const i = g.buildings.findIndex(x=>x.x===b.x && x.y===b.y && x.owner===myIndex && x.kind===b.kind);
+    if(i<0) return;
+    g.buildings[i].level = (g.buildings[i].level||1)+1;
+    for(const k of Object.keys(cost)){
+      g.players[myIndex].res[k] -= cost[k];
+    }
+    tx.update(gameRef,g);
+  });
+}
+
+/* ---------------- Turn Flow ---------------- */
+btnEndTurn.onclick = ()=> endTurn();
+btnFullscreen.onclick = ()=> {
+  if(!document.fullscreenElement){ wrap.requestFullscreen?.(); }
+  else{ document.exitFullscreen?.(); }
+};
+
+async function startTurnIfMine(){
+  if(!state) return;
+  const meTurn = state.playerOrder[state.currentTurn]===myIndex;
+  if(!meTurn || !alive()) return;
+
+  // roll 2 dice (2..12) — display big, 7 triggers zombie surge
+  const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
+  showDice(roll);
+
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    // payout for each CC/base on or adjacent to rolled tiles (orthogonal + self)
+    const pl = g.players[myIndex];
+    const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+    const addRes = {brick:0, ore:0, sheep:0, wheat:0, wood:0};
+    for(const b of (pl.bases||[])){
+      for(const [dx,dy] of adj4){
+        const x = b.x+dx, y = b.y+dy; if(!inBounds(x,y)) continue;
+        const t = g.tiles[y][x];
+        if(t.num===roll){
+          const mult = (tileHasMyDrill(g, x,y) ? 3 : 1) * (b.type==='base' ? 2 : 1);
+          const rkey = RESOURCE_BY_COLOR[t.color];
+          addRes[rkey] += mult;
+        }
+      }
+    }
+    // apply
+    for(const k of R_KEYS){ pl.res[k] = (pl.res[k]||0) + (addRes[k]||0); }
+
+    // towers auto-fire at the beginning of your turn
+    fireDefenses(g, myIndex);
+
+    // if 7 rolled: zombies take an extra step immediately
+    if(roll===7){
+      zombiesAdvance(g); // one extra step
+    }
+
+    // end fog after everyone's first turn
+    if(!g.fogDone && g.round>=1){
+      // simple heuristic: when currentTurn==last index → next endTurn will advance round → clear now
+      // we clear on first dice of turn 1 for simplicity
+      g.fogDone = true;
+    }
+
+    // refresh timer
+    g.turnEndsAt = Date.now() + TURN_SECONDS*1000;
+
+    tx.update(gameRef,g);
+  });
+
+  renderResources();
+}
+function tileHasMyDrill(g,x,y){
+  return g.buildings.some(b=>b.kind==='drill' && b.x===x && b.y===y);
+}
+
+async function endTurn(){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    const cur = g.currentTurn;
+    // zombies move at end of each player's turn
+    zombiesAdvance(g);
+
+    // spawn zombie on outer ring at end of each player's turn
+    spawnEdgeZombies(g, 1);
+
+    // next turn
+    let nt = (cur+1) % g.playerOrder.length;
+    // skip dead players
+    for(let guard=0; guard<8; guard++){
+      const pi = g.playerOrder[nt];
+      if(g.players[pi]?.alive) break;
+      nt = (nt+1)%g.playerOrder.length;
+    }
+    // new round when wrapped
+    let newRound = g.round;
+    if(nt <= cur){ // wrapped
+      newRound++;
+      // every round adds +1 to total per-round spawns (distributed across turns)
+      g.zombiesPerEdge = Math.min(6, g.zombiesPerEdge + 1);
+      // every 5 rounds increase base HP of new zombies
+      if(newRound % 5 === 0) g.zombieBaseHP += 1;
+      // also spawn extra set at round end to escalate pressure
+      spawnEdgeZombies(g, g.zombiesPerEdge);
+    }
+    g.currentTurn = nt;
+    g.round = newRound;
+    g.turnEndsAt = Date.now() + TURN_SECONDS*1000;
+
+    // check elimination: if a player has no CC/base → alive=false
+    for(let i=0;i<g.players.length;i++){
+      const p = g.players[i];
+      const still = (p.bases||[]).length>0;
+      p.alive = still;
+    }
+
+    tx.update(gameRef,g);
+  });
+}
+
+async function forceEndTurn(){ if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurn(); }
+
+function zombiesAdvance(g){
+  // simple BFS path to nearest enemy command/central base; if blocked, attack adjacent wall; else move toward
+  const walkable = (x,y)=>{
+    // blocks: walls & buildings (except wire is passable? Zombies can cut wire by moving onto it, so treat wires passable but destroy when stepped)
+    const occ = g.buildings.find(b=>b.x===x&&b.y===y && b.kind!=='wire');
+    return !occ;
+  };
+
+  for(const z of g.zombies){
+    // destroy wire if on it
+    const widx = g.buildings.findIndex(b=>b.x===z.x && b.y===z.y && b.kind==='wire');
+    if(widx>=0){
+      const owner = g.buildings[widx].owner;
+      g.buildings.splice(widx,1);
+      pruneDisconnected(g, owner);
+    }
+
+    // find nearest enemy base
+    let targets=[];
+    g.players.forEach((p,pi)=>{
+      if(!p.alive) return;
+      if(p.bases) for(const b of p.bases){
+        targets.push({x:b.x,y:b.y, owner:pi});
+      }
+    });
+    if(!targets.length) continue;
+
+    const goal = nearest(targets, z.x,z.y);
+    const step = bfsStep(z.x,z.y, goal.x,goal.y, walkable, W,H);
+
+    if(!step){ // blocked: try attack adjacent wall
+      const around = [[1,0],[-1,0],[0,1],[0,-1]];
+      const walli = around.map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx && b.y===z.y+dy && (b.kind==='wall'||b.kind==='uwall')))
+                          .findIndex(ix=>ix>=0);
+      if(walli>=0){
+        const idx = around.map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx && b.y===z.y+dy && (b.kind==='wall'||b.kind==='uwall')))[walli];
+        if(idx>=0){
+          g.buildings[idx].hp -= 1;
+          if(g.buildings[idx].hp<=0){
+            const own = g.buildings[idx].owner;
+            g.buildings.splice(idx,1);
+            pruneDisconnected(g, own);
+          }
+        }
+      }
+    }else{
+      z.x = step.x; z.y = step.y;
+      // if step lands on wire: auto cut (handled next loop or next advance)
+    }
+  }
+}
+
+function nearest(targets, x,y){
+  let best=targets[0], bd=1e9;
+  for(const t of targets){
+    const d = Math.abs(t.x-x)+Math.abs(t.y-y);
+    if(d<bd){ bd=d; best=t; }
+  }
+  return best;
+}
+
+function bfsStep(sx,sy, tx,ty, pass, W,H){
+  if(sx===tx && sy===ty) return null;
+  const Q=[[sx,sy]], seen=new Set([sx+','+sy]), from=new Map();
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(Q.length){
+    const [x,y]=Q.shift();
+    for(const [dx,dy] of dirs){
+      const nx=x+dx, ny=y+dy;
+      if(nx<0||ny<0||nx>=W||ny>=H) continue;
+      const key=nx+','+ny;
+      if(seen.has(key)) continue;
+      if(!pass(nx,ny) && !(nx===tx&&ny===ty)) continue; // allow target even if building occupies
+      seen.add(key); from.set(key, [x,y]);
+      if(nx===tx && ny===ty){
+        // unwind to first step
+        let cur=[nx,ny], prev=[x,y];
+        while(prev[0]!==sx || prev[1]!==sy){
+          const pkey = prev[0]+','+prev[1];
+          cur = prev;
+          prev = from.get(pkey);
+          if(!prev) break;
+        }
+        return {x:cur[0], y:cur[1]};
+      }
+      Q.push([nx,ny]);
+    }
+  }
+  return null;
+}
+
+function spawnEdgeZombies(g, count){
+  for(let i=0;i<count;i++){
+    const edge = Math.floor(Math.random()*4);
+    let x=0,y=0;
+    if(edge===0){ x = Math.floor(Math.random()*W); y=0; }
+    if(edge===1){ x = Math.floor(Math.random()*W); y=H-1; }
+    if(edge===2){ x = 0; y=Math.floor(Math.random()*H); }
+    if(edge===3){ x = W-1; y=Math.floor(Math.random()*H); }
+    if(g.zombies.some(z=>z.x===x&&z.y===y)){ i--; continue; } // avoid overlap
+    g.zombies.push({x,y, hp:g.zombieBaseHP, maxhp:g.zombieBaseHP});
+  }
+}
+
+/* ---------------- Connectivity / Pruning ---------------- */
+function pruneDisconnected(g, owner){
+  // flood from each of owner's CC/base through wires, mark reachable buildings that require wire
+  const wires = g.buildings.filter(b=>b.owner===owner && b.kind==='wire');
+  const req = g.buildings.filter(b=>b.owner===owner && needsWire(b.kind));
+  if((g.players[owner].bases||[]).length===0) return;
+  const sources = [
+    ...g.players[owner].bases.map(b=>({x:b.x,y:b.y})),
+    ...wires.map(w=>({x:w.x,y:w.y}))
+  ];
+  const seen=new Set();
+  const Q=[...sources.map(s=>s.x+','+s.y)];
+  Q.forEach(k=>seen.add(k));
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(Q.length){
+    const k=Q.shift(); const [x,y]=k.split(',').map(Number);
+    for(const [dx,dy] of dirs){
+      const nx=x+dx, ny=y+dy; const kk=nx+','+ny;
+      if(nx<0||ny<0||nx>=W||ny>=H) continue;
+      if(seen.has(kk)) continue;
+      const isWire = g.buildings.some(b=>b.x===nx&&b.y===ny&&b.kind==='wire'&&b.owner===owner);
+      const isBase = g.players[owner].bases.some(b=>b.x===nx&&b.y===ny);
+      const isReq  = g.buildings.some(b=>b.x===nx&&b.y===ny&&needsWire(b.kind)&&b.owner===owner);
+      if(isWire || isBase || isReq){ seen.add(kk); Q.push(kk); }
+    }
+  }
+  // remove any owner building (that needs wire) not seen
+  g.buildings = g.buildings.filter(b=>{
+    if(b.owner!==owner) return true;
+    if(!needsWire(b.kind)) return true;
+    return seen.has(b.x+','+b.y);
+  });
+}
+
+/* ---------------- Defenses ---------------- */
+function fireDefenses(g, owner){
+  // each tower acts once per owner's turn
+  const towers = g.buildings.filter(b=>b.owner===owner && ['turret','cata','beacon','tesla','tribolt'].includes(b.kind));
+  for(const t of towers){
+    if(g.zombies.length===0) continue;
+    const range = (kind)=> {
+      let r= (kind==='turret')?5:
+              (kind==='cata')?6:
+              (kind==='beacon')?4:
+              (kind==='tesla')?5:
+              (kind==='tribolt')?6: 4;
+      if(t.level && t.level>1) r+=1;
+      return r;
+    };
+    const dmg = (kind)=> {
+      let d=(kind==='turret')?2:
+            (kind==='cata')?1:
+            (kind==='beacon')?1:
+            (kind==='tesla')?2:
+            (kind==='tribolt')?1:1;
+      if(t.level && t.level>1) d+=1;
+      return d;
+    };
+    const inR = (z)=> Math.abs(z.x - t.x)+Math.abs(z.y - t.y) <= range(t.kind);
+    const targets = g.zombies.filter(inR);
+    if(targets.length===0) continue;
+
+    if(t.kind==='turret'){
+      hit(targets, 1, dmg('turret'));
+    }else if(t.kind==='cata'){
+      // splash 3x3 around nearest
+      const z = nearest(targets, t.x,t.y);
+      for(const zz of g.zombies){
+        if(Math.abs(zz.x - z.x)<=1 && Math.abs(zz.y - z.y)<=1){
+          zz.hp -= dmg('cata');
+        }
+      }
+    }else if(t.kind==='beacon'){
+      // burn every zombie in 5x5 centered
+      for(const zz of g.zombies){
+        if(Math.abs(zz.x - t.x)<=2 && Math.abs(zz.y - t.y)<=2){
+          zz.hp -= dmg('beacon');
+        }
+      }
+    }else if(t.kind==='tesla'){
+      // chain up to 6 zombies that are 1 apart
+      let chain = [];
+      let cur = nearest(targets, t.x,t.y);
+      chain.push(cur);
+      for(let hops=0;hops<5;hops++){
+        // next zombie within manhattan 1 from last
+        const nxt = g.zombies.find(z=>!chain.includes(z) && (Math.abs(z.x-cur.x)+Math.abs(z.y-cur.y)===1));
+        if(!nxt) break;
+        chain.push(nxt); cur=nxt;
+      }
+      for(const zz of chain){ zz.hp -= dmg('tesla'); }
+    }else if(t.kind==='tribolt'){
+      // three separate random targets in area
+      hit(targets, Math.min(3, targets.length), dmg('tribolt'));
+    }
+  }
+  // cleanup dead
+  g.zombies = g.zombies.filter(z=>z.hp>0);
+  function hit(arr, n, dmg){
+    // pick n nearest distinct
+    arr.sort((a,b)=> (Math.abs(a.x-t.x)+Math.abs(a.y-t.y)) - (Math.abs(b.x-t.x)+Math.abs(b.y-t.y)));
+    for(let i=0;i<n;i++) if(arr[i]) arr[i].hp -= dmg;
+  }
+}
+
+/* ---------------- Dice trigger on my turn ---------------- */
+let turnWatch = null;
+turnWatch = setInterval(()=> {
+  if(!state) return;
+  const meTurn = state.playerOrder[state.currentTurn]===myIndex;
+  if(meTurn){ startTurnIfMine(); clearInterval(turnWatch); }
+}, 300);
+
+/* ---------------- Trades ---------------- */
+const tradesRef = collection(db, "zombiezone", gameId, "trades");
+const tradeGive = document.getElementById('tradeGive');
+const tradeGiveAmt = document.getElementById('tradeGiveAmt');
+const tradeWant = document.getElementById('tradeWant');
+const tradeWantAmt = document.getElementById('tradeWantAmt');
+document.getElementById('btnPostTrade').onclick = async ()=>{
+  if(!alive()) return;
+  const giveK = tradeGive.value, wantK = tradeWant.value;
+  const giveN = Math.max(1, parseInt(tradeGiveAmt.value||'1'));
+  const wantN = Math.max(1, parseInt(tradeWantAmt.value||'1'));
+  // basic balance check
+  if(state.players[myIndex].res[giveK] < giveN) return;
+  await addDoc(tradesRef, { from: username, give:{[giveK]:giveN}, want:{[wantK]:wantN}, createdAt: serverTimestamp() });
+};
+onSnapshot(tradesRef, (snap)=>{
+  const items = [];
+  snap.forEach(d=> items.push({id:d.id, ...d.data()}));
+  renderTrades(items);
+});
+function renderTrades(items){
+  tradesEl.innerHTML='';
+  (items||[]).forEach(t=>{
+    const div = document.createElement('div'); div.className='trade-item';
+    const left = document.createElement('div');
+    left.textContent = `${t.from} offers ${fmtRes(t.give)} for ${fmtRes(t.want)}`;
+    const right = document.createElement('div');
+    if(t.from!==username && alive()){
+      const b = document.createElement('button'); b.className='btn'; b.textContent='Accept';
+      b.onclick = ()=> acceptTrade(t);
+      right.appendChild(b);
+    }else{
+      const b = document.createElement('button'); b.className='btn'; b.textContent='Cancel';
+      b.onclick = ()=> deleteDoc(doc(db,"zombiezone",gameId,"trades",t.id));
+      right.appendChild(b);
+    }
+    div.append(left,right);
+    tradesEl.appendChild(div);
+  });
+}
+function fmtRes(obj){
+  const k = Object.keys(obj||{})[0]; const v = obj[k];
+  return `${v} ${k}`;
+}
+async function acceptTrade(t){
+  await runTransaction(db, async (tx)=>{
+    const gs = await tx.get(gameRef); if(!gs.exists()) return;
+    const g = gs.data();
+    const fromIdx = g.players.findIndex(p=>p.name===t.from);
+    const toIdx = myIndex;
+    const gk = Object.keys(t.give||{})[0], gv = t.give[gk];
+    const wk = Object.keys(t.want||{})[0], wv = t.want[wk];
+    if(g.players[fromIdx].res[gk] < gv) return;      // still has?
+    if(g.players[toIdx].res[wk] < wv) return;        // I can pay?
+    g.players[fromIdx].res[gk] -= gv;
+    g.players[toIdx].res[gk] = (g.players[toIdx].res[gk]||0) + gv;
+    g.players[toIdx].res[wk] -= wv;
+    g.players[fromIdx].res[wk] = (g.players[fromIdx].res[wk]||0) + wv;
+    tx.update(gameRef,g);
+  });
+  // delete trade
+  const qy = query(tradesRef, where("from","==",t.from), where("give","==",t.give), where("want","==",t.want));
+  const ss = await getDocs(qy); ss.forEach(d=> deleteDoc(d.ref));
+}
+
+/* ---------------- Turn Hook on doc update ---------------- */
+let lastTurnSeen = -1;
+onSnapshot(gameRef, (snap)=>{
+  if(!snap.exists()) return;
+  const g = snap.data();
+  if(g.currentTurn !== lastTurnSeen){
+    lastTurnSeen = g.currentTurn;
+    startTimer();
+    // reset watch so my turn rolls dice automatically
+    if(turnWatch) clearInterval(turnWatch);
+    turnWatch = setInterval(()=> {
+      if(!state) return;
+      const meTurn = state.playerOrder[state.currentTurn]===myIndex;
+      if(meTurn){ startTurnIfMine(); clearInterval(turnWatch); }
+    }, 300);
+  }
+
+  // death UI
+  if(myIndex>=0 && g.players[myIndex] && !g.players[myIndex].alive){
+    deadOverlay.style.display='grid';
+    btnEndTurn.disabled=true;
+  }else{
+    deadOverlay.style.display='none';
+  }
+});
+
+/* ---------------- Elimination: base destruction ---------------- */
+// When walls/structures fall, connections can be cut. If a CC is destroyed by zombies (hp<=0), remove base entry.
+function syncBasesFromBuildings(g){
+  // If any CC/Base building missing, trim from bases list
+  for(let i=0;i<g.players.length;i++){
+    const p = g.players[i];
+    p.bases = p.bases.filter(b=>{
+      const still = g.buildings.some(bb=>bb.x===b.x && bb.y===b.y && (bb.kind==='cc' || bb.kind==='base') && bb.owner===i);
+      return still;
+    });
+  }
+}
+
+/* ---------------- Return to Lobby ---------------- */
+btnReturnLobby.onclick = ()=>{
+  // back to hub, keep username
+  window.location.href = `/?username=${encodeURIComponent(username)}`;
+};
+
+/* ---------------- Map click cancel build ---------------- */
+document.body.addEventListener('click', (e)=>{
+  // if clicked outside buildbar and not on map placement → cancel selection highlight
+  if(!wrap.contains(e.target) && !buildbar.contains(e.target)){
+    local.build=null;
+    [...buildbar.children].forEach(c=>c.classList.remove('sel'));
+  }
+}, true);
+
+/* ---------------- Init ---------------- */
+await ensureGame();
+
+/* -------------- After-init safety pass: trim dead buildings -------------- */
+onSnapshot(gameRef, async (snap)=>{
+  if(!snap.exists()) return;
+  const g = snap.data();
+  // clean zero-hp buildings & sync bases (host authority to reduce churn)
+  if(g._cleanedOnce) return; // avoid loop; small demo guard
+  if(isHost){
+    const copy = structuredClone(g);
+    copy.buildings = copy.buildings.filter(b=> (b.hp==null || b.hp>0));
+    syncBasesFromBuildings(copy);
+    copy._cleanedOnce = true;
+    try{ await updateDoc(gameRef, copy); }catch(e){}
+  }
+});
+
+/* ---------------- END: start turn auto once loaded ---------------- */
+setTimeout(startTurnIfMine, 400);
+
+/* ---------------- Misc funcs ---------------- */
+</script>
+</body>
+</html>
