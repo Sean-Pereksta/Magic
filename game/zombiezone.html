@@ -31,9 +31,8 @@
   .btn-red{background:#991b1b; border-color:#7f1d1d}
   .pill{padding:6px 10px; border-radius:999px; border:1px solid #263147; background:#0e1726; font-weight:800}
 
-  /* PLAY AREA holds map + side controls. We fullscreen this. */
   #playArea{ padding:12px; }
-  .shell{ display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px; }
+  .shell{ display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px; align-items:start; }
   @media (max-width:900px){ .shell{ grid-template-columns:1fr } }
 
   :fullscreen #playArea, #playArea:fullscreen{ padding:8px; }
@@ -49,23 +48,37 @@
   @media (min-width:901px){ :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; } }
   canvas{ display:block; width:100%; height:100% }
 
+  .right-col{ display:grid; gap:10px; }
   .card{ background:#0e1726; border:1px solid var(--line); border-radius:16px; padding:12px }
   .card h3{ margin:0 0 8px; font-size:16px }
   .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
   .col{ display:grid; gap:8px }
-  .stack{ display:grid; gap:10px }
 
-  .right-col{ display:grid; gap:10px; }
+  /* Actions card always near top on mobile/fullscreen */
+  .actions{ display:flex; gap:8px; flex-wrap:wrap }
+  .actions .btn{ flex:1 1 auto; min-width:120px }
 
   .res{ display:flex; gap:6px; flex-wrap:wrap }
   .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
   .dot{ width:10px; height:10px; border-radius:50% }
 
-  .buildbar{ display:grid; grid-template-columns: repeat(3, 1fr); gap:8px }
-  .tool{ display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; border:1px dashed #253656; border-radius:12px; background:#0b1322; cursor:pointer; font-weight:800 }
-  .tool:hover{ background:#0f1a2e }
-  .tool.sel{ outline:2px solid #7c3aed; background:#131c30 }
+  /* Build modal */
+  .modal{ position:fixed; inset:0; display:none; place-items:center; z-index:1200; }
+  .modal.show{ display:grid; }
+  .modal::before{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.5); }
+  .modal .box{
+    position:relative; background:#0e1726; border:1px solid #233454; border-radius:16px; padding:14px;
+    width:min(720px,92vw);
+  }
+  .grid3{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px }
+  @media (max-width:560px){ .grid3{ grid-template-columns: repeat(2, 1fr); } }
+  .tool{
+    display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center;
+    min-height:74px; border:1px dashed #253656; border-radius:12px; background:#0b1322; cursor:pointer; font-weight:800; text-align:center
+  }
+  .tool small{ color:#9fb3cb; font-weight:600; font-size:12px }
 
+  /* Dice banners */
   .dice-banner{
     position:absolute; inset:auto 0 28% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
     font-weight:900; font-size: clamp(40px, 10vw, 96px); color:#fff; text-shadow:0 8px 24px rgba(0,0,0,.5);
@@ -93,6 +106,14 @@
   }
   .dead .box{ background:#0e1726; border:1px solid #223456; border-radius:16px; padding:20px; max-width:520px }
   .dead .box h2{ margin:0 0 8px }
+
+  /* Toast */
+  .toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(10px);
+    background:#17263e; color:#e6edf3; border:1px solid #2a3f66;
+    padding:10px 14px; border-radius:12px; opacity:0; transition:.25s; z-index:1500; pointer-events:none; font-weight:800
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0) }
 </style>
 </head>
 <body>
@@ -104,7 +125,6 @@
     <button id="btnZoomOut" class="btn">−</button>
     <button id="btnZoomIn" class="btn">+</button>
     <button id="btnFullscreen" class="btn">⤢ Fullscreen</button>
-    <button id="btnEndTurn" class="btn btn-accent" disabled>End Turn</button>
   </div>
 
   <!-- Fullscreen target -->
@@ -118,14 +138,18 @@
 
       <div class="right-col">
         <div class="card">
-          <h3>Resources</h3>
-          <div id="resRow" class="res"></div>
+          <div class="actions">
+            <button id="btnBuild" class="btn btn-accent">Build</button>
+            <button id="btnEndTurn" class="btn btn-accent" disabled>End Turn</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="pill">🎲 Last Roll: <b id="lastRollUi">—</b></span>
+          </div>
         </div>
 
         <div class="card">
-          <h3>Build</h3>
-          <div class="buildbar" id="buildbar"></div>
-          <div style="font-size:12px;color:#9fb3cb">Tap a tool, then tap a tile. Tap empty space to cancel.</div>
+          <h3>Resources</h3>
+          <div id="resRow" class="res"></div>
         </div>
 
         <div class="card">
@@ -168,12 +192,26 @@
     </div>
   </div>
 
+  <!-- Build modal -->
+  <div id="buildModal" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
+        <h3 style="margin:0">Select a Building</h3>
+        <button id="btnCloseBuild" class="btn">Close</button>
+      </div>
+      <div id="buildGrid" class="grid3"></div>
+      <div style="margin-top:8px; font-size:12px; color:#9fb3cb">Tap a building, then tap a tile. Tap empty space to cancel.</div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
 <script type="module">
 /* ---------------- Firebase ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction,
-  collection, addDoc, query, where, getDocs, serverTimestamp, deleteDoc
+  collection, addDoc, serverTimestamp, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -215,24 +253,29 @@ const careBanner = document.getElementById('careBanner');
 const resRow = document.getElementById('resRow');
 const tradesEl = document.getElementById('trades');
 const btnEndTurn = document.getElementById('btnEndTurn');
+const btnBuild = document.getElementById('btnBuild');
+const buildModal = document.getElementById('buildModal');
+const buildGrid = document.getElementById('buildGrid');
+const btnCloseBuild = document.getElementById('btnCloseBuild');
 const btnFullscreen = document.getElementById('btnFullscreen');
 const btnReturnLobby = document.getElementById('btnReturnLobby');
 const timerEl = document.getElementById('timer');
 const turnInfo = document.getElementById('turnInfo');
-const buildbar = document.getElementById('buildbar');
 const tradeGive = document.getElementById('tradeGive');
 const tradeGiveAmt = document.getElementById('tradeGiveAmt');
 const tradeWant = document.getElementById('tradeWant');
 const tradeWantAmt = document.getElementById('tradeWantAmt');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
+const lastRollUi = document.getElementById('lastRollUi');
+const toastEl = document.getElementById('toast');
 const deadOverlay = document.getElementById('deadOverlay');
 
 /* ---------------- Camera / Interaction ---------------- */
 let local = {
   scale:36, camX:0, camY:0,
   dragging:false, dragStart:[0,0], camStart:[0,0],
-  edgePan:true, build:null, hover:[-1,-1]
+  build:null, hover:[-1,-1]
 };
 const clampScale = ()=> { local.scale = Math.max(18, Math.min(64, local.scale)); };
 
@@ -283,7 +326,7 @@ wrap.addEventListener('pointerup',(e)=>{
 });
 wrap.addEventListener('pointercancel',()=> local.dragging=false);
 
-/* Zoom (wheel / pinch / buttons) */
+/* Zoom */
 function zoomAt(pointX, pointY, factor){
   const [wx, wy] = screenToWorld(pointX, pointY);
   local.scale *= factor; clampScale();
@@ -298,26 +341,6 @@ wrap.addEventListener('wheel',(e)=>{
   const px=e.clientX-rect.left, py=e.clientY-rect.top;
   zoomAt(px, py, (e.deltaY<0)?1.15:1/1.15);
 },{passive:false});
-
-let pinchDist=0;
-wrap.addEventListener('touchstart',(e)=>{ if(e.touches.length===2){ pinchDist = dist(e.touches[0], e.touches[1]); } }, {passive:true});
-wrap.addEventListener('touchmove',(e)=>{
-  if(e.touches.length===2){
-    e.preventDefault();
-    const nd = dist(e.touches[0], e.touches[1]);
-    if(pinchDist>0){
-      const rect = wrap.getBoundingClientRect();
-      const cx = (e.touches[0].clientX + e.touches[1].clientX)/2 - rect.left;
-      const cy = (e.touches[0].clientY + e.touches[1].clientY)/2 - rect.top;
-      const factor = Math.pow(1.015, (nd - pinchDist)/2);
-      zoomAt(cx, cy, factor);
-    }
-    pinchDist = nd;
-  }
-},{passive:false});
-wrap.addEventListener('touchend',()=>{ pinchDist=0; }, {passive:true});
-function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
-
 btnZoomIn.onclick  = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.15);
 btnZoomOut.onclick = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1/1.15);
 
@@ -348,6 +371,11 @@ function genMap(seed){
 }
 
 /* ---------------- UI bits ---------------- */
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  setTimeout(()=> toastEl.classList.remove('show'), 1300);
+}
 function moneyChip(label, color, amt){
   const div = document.createElement('div'); div.className='chip';
   const dot = document.createElement('span'); dot.className='dot'; dot.style.background=color;
@@ -367,12 +395,11 @@ function renderResources(){
   );
 }
 function showDice(n){
-  diceBanner.textContent=n;
+  lastRollUi.textContent = n;
+  diceBanner.textContent = `🎲 ${n}`;
   diceBanner.classList.add('show');
   setTimeout(()=>diceBanner.classList.remove('show'), 1600);
 }
-
-/* Care package banner */
 function showCare(items){
   careBanner.innerHTML = '';
   const box = document.createElement('div');
@@ -392,7 +419,7 @@ function showCare(items){
   setTimeout(()=> careBanner.classList.remove('show'), 1800);
 }
 
-/* ---------------- Build System ---------------- */
+/* ---------------- Costs & Build ---------------- */
 const COST = {
   wire: {ore:1}, wall:{brick:2}, uwall:{brick:4},
   cc:{ore:2,brick:2,sheep:2}, base:{ore:2,brick:2,sheep:2},
@@ -413,22 +440,6 @@ const BUILD_TOOLS = [
   {id:'tribolt',label:'Tri-Bolt',icon:'🔱'},
   {id:'drill',label:'Drill',icon:'⛏️'}
 ];
-function renderBuildbar(){
-  buildbar.innerHTML='';
-  for(const t of BUILD_TOOLS){
-    const btn = document.createElement('button');
-    btn.className='tool'; btn.textContent=`${t.icon} ${t.label}`;
-    btn.onclick=()=>{
-      if(!alive()) return;
-      local.build={kind:t.id};
-      [...buildbar.children].forEach(c=>c.classList.remove('sel'));
-      btn.classList.add('sel');
-    };
-    buildbar.appendChild(btn);
-  }
-}
-renderBuildbar();
-
 function needsWire(kind){ return !['wall','uwall'].includes(kind); }
 function hpFor(kind){
   if(kind==='wall') return 6;
@@ -445,7 +456,42 @@ function hasRes(cost){
   for(const k of Object.keys(cost)){ if((r[k]||0) < cost[k]) return false; }
   return true;
 }
+function canAfford(kind){
+  if(kind==='wire'){
+    const token = (state.players[myIndex].freeWire||0)>0;
+    return token || hasRes(COST.wire);
+  }
+  return COST[kind] ? hasRes(COST[kind]) : true;
+}
 function upgradable(b){ return ['turret','cata','beacon','tesla','tribolt'].includes(b.kind); }
+
+/* Build modal generation */
+function costText(obj){
+  return Object.entries(obj).map(([k,v])=>`${v} ${k}`).join(', ');
+}
+function renderBuildModal(){
+  buildGrid.innerHTML='';
+  for(const t of BUILD_TOOLS){
+    const div = document.createElement('button');
+    div.className='tool';
+    const c = COST[t.id] ? costText(COST[t.id]) : '—';
+    div.innerHTML = `<div style="font-size:18px">${t.icon} ${t.label}</div><small>${c}</small>`;
+    div.onclick = ()=>{
+      if(!alive()) return;
+      if(!canAfford(t.id)){
+        toast(`Not enough resources for ${t.label}`);
+        return;
+      }
+      local.build = {kind:t.id};
+      buildModal.classList.remove('show');
+    };
+    buildGrid.appendChild(div);
+  }
+}
+renderBuildModal();
+btnBuild.onclick = ()=> buildModal.classList.add('show');
+btnCloseBuild.onclick = ()=> buildModal.classList.remove('show');
+buildModal.addEventListener('click',(e)=>{ if(e.target===buildModal) buildModal.classList.remove('show'); });
 
 function placeable(x,y,sel,g=state){
   if(g.zombies.some(z=>z.x===x&&z.y===y)) return false;
@@ -473,11 +519,10 @@ function placeable(x,y,sel,g=state){
 }
 
 async function doPlace(x,y,sel){
-  // Special: allow FREE WIRE token if not enough ore
   if(sel.kind==='wire'){
     const hasToken = (state.players[myIndex].freeWire||0)>0;
     const payOre = hasRes(COST.wire);
-    if(!hasToken && !payOre) return;
+    if(!hasToken && !payOre){ toast('Not enough ore (or Free Wire)'); return; }
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(gameRef); if(!snap.exists()) return;
       const g = snap.data();
@@ -494,7 +539,7 @@ async function doPlace(x,y,sel){
     return;
   }
 
-  if(COST[sel.kind] && !hasRes(COST[sel.kind])) return;
+  if(COST[sel.kind] && !hasRes(COST[sel.kind])){ toast('Not enough resources'); return; }
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
@@ -521,7 +566,7 @@ async function doPlace(x,y,sel){
 
 async function tryUpgrade(b){
   const cost = {wheat:2, ore:1};
-  if(!hasRes(cost)) return;
+  if(!hasRes(cost)){ toast('Not enough for upgrade'); return; }
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
@@ -602,10 +647,14 @@ onSnapshot(gameRef, (snap)=>{
     }
   }
 
-  // Dice banner for everyone
+  // Dice banner/UI for everyone when updated
   if(state.lastRollTurnId != null && state.lastRollTurnId !== lastRollSeenTurnId && state.lastRoll != null){
     lastRollSeenTurnId = state.lastRollTurnId;
     showDice(state.lastRoll);
+  }else if(state.lastRoll != null){
+    lastRollUi.textContent = state.lastRoll;
+  }else{
+    lastRollUi.textContent = '—';
   }
 
   if(myIndex>=0 && !state.players[myIndex].alive){
@@ -643,7 +692,7 @@ startTimer();
 function handleTap(e){
   const rect = wrap.getBoundingClientRect();
   const [tx,ty]=ptToTile(e.clientX-rect.left,e.clientY-rect.top);
-  if(!inBounds(tx,ty)){ cancelBuild(); return; }
+  if(!inBounds(tx,ty)){ local.build=null; return; }
   if(!alive()) return;
 
   // FIRST-TURN FREE CC PLACEMENT
@@ -653,19 +702,16 @@ function handleTap(e){
   }
 
   if(local.build){
+    if(!canAfford(local.build.kind)){ toast('Not enough resources'); local.build=null; return; }
     if(placeable(tx,ty,local.build)) doPlace(tx,ty,local.build);
-    cancelBuild(); return;
+    local.build=null; return;
   }
   // try upgrade click
   const b = state.buildings.find(b=>b.x===tx&&b.y===ty&&b.owner===myIndex&&upgradable(b));
   if(b) tryUpgrade(b);
 }
-function cancelBuild(){
-  local.build=null;
-  [...buildbar.children].forEach(c=>c.classList.remove('sel'));
-}
 document.body.addEventListener('click',(e)=>{
-  if(!wrap.contains(e.target) && !buildbar.contains(e.target)) cancelBuild();
+  if(!wrap.contains(e.target) && !buildModal.contains(e.target)) local.build=null;
 }, true);
 
 /* ---------------- First turn CC placement ---------------- */
@@ -741,12 +787,15 @@ function draw(){
     if(b.level && b.level>1){ ctx.fillText("★", sx+local.scale-10, sy+10); }
   }
 
-  // zombies
+  // zombies as emojis + HP bar
   for(const z of zombies){
     const [sx,sy] = worldToScreen(z.x,z.y);
-    ctx.fillStyle="#16a34a"; ctx.fillRect(sx+2,sy+2, local.scale-4, local.scale-4);
-    ctx.fillStyle="#000"; ctx.fillRect(sx+2, sy+2, local.scale-4, 4);
-    ctx.fillStyle="#22c55e"; ctx.fillRect(sx+2, sy+2, (local.scale-4)*(z.hp/z.maxhp), 4);
+    ctx.font = "bold 20px system-ui";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("🧟", sx+local.scale/2, sy+local.scale/2);
+    // HP bar
+    ctx.fillStyle="#000"; ctx.fillRect(sx+3, sy+3, local.scale-6, 5);
+    ctx.fillStyle="#22c55e"; ctx.fillRect(sx+3, sy+3, (local.scale-6)*(z.hp/z.maxhp), 5);
   }
 
   // numbers
@@ -776,7 +825,7 @@ function draw(){
 }
 requestAnimationFrame(draw);
 
-/* ---------------- Turn Flow ---------------- */
+/* ---------------- Turn Flow (ROLL AT END) ---------------- */
 btnEndTurn.onclick = ()=> endTurn();
 btnFullscreen.onclick = ()=> {
   if(!document.fullscreenElement){ playArea.requestFullscreen?.(); }
@@ -784,119 +833,98 @@ btnFullscreen.onclick = ()=> {
 };
 btnReturnLobby.onclick = ()=>{ window.location.href='/?username='+encodeURIComponent(username); };
 
-async function startTurnIfMine(){
-  if(!state) return;
-  const meTurn = state.playerOrder[state.currentTurn]===myIndex;
-  if(!meTurn || !alive()) return;
-
-  // Roll dice once per turn and record (so all clients show the same number)
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(gameRef); if(!snap.exists()) return;
-    const g = snap.data();
-    const meIdx = g.playerOrder[g.currentTurn];
-    if(meIdx!==myIndex) return;
-    if(g.lastRollTurnId === g.turnId) return; // already rolled
-
-    const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
-
-    // payout
-    const pl = g.players[myIndex];
-    const addRes = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
-    const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
-    for(const b of (pl.bases||[])){
-      for(const [dx,dy] of adj4){
-        const x=b.x+dx,y=b.y+dy; if(!inBounds(x,y)) continue;
-        const t = getTile(g, x,y); if(!t) continue;
-        if(t.num===roll){
-          const mult = (g.buildings.some(bb=>bb.kind==='drill'&&bb.x===x&&bb.y===y)?3:1) * (b.type==='base'?2:1);
-          const rkey = RESOURCE_BY_COLOR[t.color];
-          addRes[rkey] += mult;
-        }
-      }
-    }
-    for(const k of R_KEYS){ pl.res[k]=(pl.res[k]||0)+(addRes[k]||0); }
-
-    // towers fire
-    fireDefenses(g,myIndex);
-
-    // 7 ⇒ zombies extra step
-    if(roll===7){ zombiesAdvance(g); }
-
-    g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
-    if(!g.fogDone) g.fogDone=true;
-
-    // record roll
-    g.lastRoll = roll;
-    g.lastRollTurnId = g.turnId;
-
-    await tx.update(gameRef,g);
-  });
-}
-
+/* End turn does: roll dice, pay everyone, towers fire for current player, zombie extra step on 7, zombies move/spawn, care packages on new even rounds, pass turn */
 async function endTurn(){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
     if(g.playerOrder[g.currentTurn]!==myIndex) return;
 
-    // End-of-turn zombies
+    // 1) Roll dice now (END of turn)
+    const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
+    g.lastRoll = roll;
+    g.lastRollTurnId = g.turnId;
+
+    // 2) Payout to ALL players based on the roll
+    const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+    for(let pi=0; pi<g.players.length; pi++){
+      const pl = g.players[pi];
+      if(!pl.alive) continue;
+      const addRes = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
+      for(const b of (pl.bases||[])){
+        for(const [dx,dy] of adj4){
+          const x=b.x+dx,y=b.y+dy; if(!inBounds(x,y)) continue;
+          const t = getTile(g, x,y); if(!t) continue;
+          if(t.num===roll){
+            const mult = (g.buildings.some(bb=>bb.kind==='drill'&&bb.x===x&&bb.y===y)?3:1) * (b.type==='base'?2:1);
+            const rkey = RESOURCE_BY_COLOR[t.color];
+            addRes[rkey] += mult;
+          }
+        }
+      }
+      for(const k of R_KEYS){ pl.res[k]=(pl.res[k]||0)+(addRes[k]||0); }
+    }
+
+    // 3) Current player's defenses fire (start-of-turn effect kept here at end; adjust if desired)
+    fireDefenses(g,myIndex);
+
+    // 4) If 7, zombies take an extra step now
+    if(roll===7){ zombiesAdvance(g); }
+
+    // 5) End-of-turn zombies move 1 and spawn 1
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
+    // 6) Next turn logic & round wrap
     const cur=g.currentTurn;
     let nt=(cur+1)%g.playerOrder.length;
     for(let guard=0; guard<8; guard++){
       const pi=g.playerOrder[nt]; if(g.players[pi]?.alive) break;
       nt=(nt+1)%g.playerOrder.length;
     }
-
     const wrapped = (nt<=cur);
     if(wrapped){
       g.round++;
       g.zombiesPerEdge = Math.min(6, g.zombiesPerEdge+1);
       if(g.round%5===0) g.zombieBaseHP+=1;
       spawnEdgeZombies(g, g.zombiesPerEdge);
+
+      // CARE PACKAGES at start of every even round (pre-grant here)
+      if(g.round % 2 === 0){
+        for(let i=0;i<g.players.length;i++){
+          const p = g.players[i];
+          if(!p.alive) continue;
+          const picks = [pickRes(), pickRes(), pickRes()];
+          const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
+          for(const k of picks){ counts[k]++; }
+          for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
+          p.freeWire = (p.freeWire||0) + 1; // free wire token
+          p.lastCareRound = g.round;
+          p.careShow = [
+            ...R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]})),
+            {k:'wire', n:1}
+          ];
+        }
+      }
     }
 
-    // Alive flags
+    // alive flags
     for(let i=0;i<g.players.length;i++){
       const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
       g.players[i].alive = !!still;
       if(!still) g.players[i].bases=[];
     }
 
-    // CARE PACKAGES each even round (start of new round)
-    if(wrapped && (g.round % 2 === 0)){
-      for(let i=0;i<g.players.length;i++){
-        const p = g.players[i];
-        if(!p.alive) continue;
-        const picks = [pickRes(), pickRes(), pickRes()];
-        const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
-        for(const k of picks){ counts[k]++; }
-        for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
-        p.freeWire = (p.freeWire||0) + 1; // free wire token
-        p.lastCareRound = g.round;
-        p.careShow = [
-          ...R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]})),
-          {k:'wire', n:1}
-        ];
-      }
-    }
-
-    // NEXT TURN
+    // next turn timing + new turn id
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
-
-    // bump turn id & clear roll for next player
     g.turnId = (g.turnId||0) + 1;
-    g.lastRoll = null;
-    g.lastRollTurnId = -1;
 
     await tx.update(gameRef,g);
   });
 }
-function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
 
+function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
 async function forceEndTurn(){ if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurn(); }
 
 /* ---------------- Zombies / Pathing ---------------- */
@@ -1066,7 +1094,7 @@ function renderTrades(items=[]){
     row.className='trade-item';
     row.style.display='flex';
     row.style.alignItems='center';
-    row.style.justifyContent='space-between'; /* ← fixed camelCase */
+    row.style.justifyContent='space-between';
     row.style.gap='8px';
     row.style.padding='8px';
     row.style.border='1px solid #192e50';
@@ -1114,7 +1142,6 @@ onSnapshot(gameRef,(snap)=>{
   if(g.currentTurn!==lastTurnSeen){
     lastTurnSeen=g.currentTurn;
     startTimer();
-    setTimeout(startTurnIfMine, 150); // current player records roll; everyone sees banner
   }
 });
 
@@ -1125,6 +1152,7 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
 
