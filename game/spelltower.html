@@ -8,10 +8,11 @@
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
     --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
-    --radius:16px; --cell:38px; --gap:6px;
+    --radius:14px; --cell:38px; --gap:6px;
+    --hand-h: 32vh; /* scrollable hand height on mobile */
   }
   @media (max-width: 540px){
-    :root{ --cell:34px; }
+    :root{ --cell:32px; --hand-h: 30vh; }
   }
 
   *{box-sizing:border-box}
@@ -19,39 +20,42 @@
   body{
     margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
     background:radial-gradient(1200px 600px at 50% -200px, #4c1d95 0%, #312e81 55%, #0b1014 100%) fixed;
+    overflow:hidden; /* prevent page scroll; we’ll scroll only inside dedicated boxes */
   }
   .shell{
     height:100dvh; max-width:1100px; margin:0 auto; padding:8px;
-    display:grid; grid-template-rows:auto 1fr auto; gap:8px;
+    display:grid; grid-template-rows:auto 1fr auto auto; gap:8px;
+    overflow:hidden; /* contain children */
   }
   header{
     position:sticky; top:0; z-index:5;
     display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
-    padding:8px; background:rgba(14,23,38,.72); border:1px solid rgba(255,255,255,.08);
-    border-radius:14px; backdrop-filter: blur(6px);
+    padding:6px 8px; background:rgba(14,23,38,.72); border:1px solid rgba(255,255,255,.08);
+    border-radius:12px; backdrop-filter: blur(6px);
   }
   .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
-  .badge{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); font-weight:800}
-  .stat{display:flex; gap:8px; align-items:center; padding:6px 10px; border-radius:10px; background:#111827; border:1px solid #1f2937}
-  .bar{height:8px; width:110px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid #1f2937}
+  .badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); font-weight:800}
+  .stat{display:flex; gap:6px; align-items:center; padding:4px 8px; border-radius:10px; background:#111827; border:1px solid #1f2937; font-size:.92rem}
+  .bar{height:8px; width:96px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid #1f2937}
   .bar > i{display:block; height:100%; background:linear-gradient(90deg,#10b981,#22c55e,#84cc16); width:0%}
   .dangerbar > i{background:linear-gradient(90deg,#f97316,#ef4444)}
   .tiny{font-size:.9rem; opacity:.85}
-  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:8px 10px; font-weight:800}
+  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:6px 9px; font-weight:800; font-size:.92rem}
   .btn:hover{ background:#101a2b }
   .danger{border-color:#7f1d1d; color:#fecaca}
   .ok{border-color:#14532d; color:#bbf7d0}
   .disabled{opacity:.6; pointer-events:none}
 
   .board-card, .trade-card, .hand-card{
-    background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:8px;
+    background:rgba(14,23,38,.7); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:6px;
     box-shadow:0 10px 25px rgba(0,0,0,.18); backdrop-filter: blur(6px);
   }
 
-  .board-wrap{display:flex; justify-content:center}
+  /* CENTER: board grows, others shrink */
+  .board-wrap{display:flex; justify-content:center; overflow:hidden}
   .board{
     display:grid; grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--cell);
-    gap:var(--gap); padding:6px; border-radius:12px; background:#0a1220; border:1px solid #1f2a44;
+    gap:var(--gap); padding:6px; border-radius:10px; background:#0a1220; border:1px solid #1f2a44;
   }
   .cell{
     width:var(--cell); height:var(--cell); display:grid; place-items:center; font-size:18px; line-height:1;
@@ -81,22 +85,35 @@
   .trade-grid{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
   .trade-left{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .trade-slot{
-    min-width:80px; min-height:44px; display:flex; align-items:center; justify-content:center;
-    border:1px dashed #37517a; border-radius:10px; padding:6px 8px; background:#0b1320;
+    min-width:78px; min-height:40px; display:flex; align-items:center; justify-content:center;
+    border:1px dashed #37517a; border-radius:10px; padding:4px 6px; background:#0b1320; font-size:.95rem;
   }
   .proposal-row{display:flex; gap:6px; flex-wrap:wrap}
 
-  .hand{display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch}
-  .card{
-    min-width:86px; max-width:86px; border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
-    border-radius:12px; padding:8px; display:grid; gap:6px;
+  /* HAND BOX: scroll only inside here */
+  .hand-card{ display:grid; gap:6px; }
+  .hand-head{display:flex; justify-content:space-between; align-items:center}
+  .hand-scroll{
+    max-height: var(--hand-h);
+    overflow:auto; -webkit-overflow-scrolling:touch;
+    border:1px solid #1f2a44; border-radius:10px; padding:6px; background:#0a1220;
   }
-  .card .name{font-weight:800; font-size:.98rem}
+  .hand{
+    display:flex; flex-wrap:wrap; gap:6px; /* wrap prevents overlap */
+  }
+  .card{
+    min-width:72px; max-width:72px; border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
+    border-radius:10px; padding:6px; display:grid; gap:6px; font-size:.92rem;
+  }
+  @media (max-width:540px){
+    .card{ min-width:68px; max-width:68px; padding:5px; }
+  }
+  .card .name{font-weight:800; font-size:.92rem; line-height:1.05; word-break:break-word}
   .charges{display:flex; gap:3px}
-  .pip{width:10px; height:10px; border-radius:50%; background:#10b981}
+  .pip{width:9px; height:9px; border-radius:50%; background:#10b981}
   .pip.off{background:#374151}
-  .combo-hint{outline:2px solid #facc15; box-shadow:0 0 0 4px rgba(250,204,21,.25)}
-  .row-split{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .combo-hint{outline:2px solid #facc15; box-shadow:0 0 0 3px rgba(250,204,21,.25)}
+  .row-split{display:flex; align-items:center; justify-content:space-between; gap:6px}
   .muted{color:var(--muted)}
 
   footer{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
@@ -130,7 +147,7 @@
     </div>
   </header>
 
-  <section class="board-card">
+  <section class="board-card" style="min-height:140px">
     <div class="board-wrap"><div id="board" class="board" aria-label="Battlefield"></div></div>
   </section>
 
@@ -149,11 +166,13 @@
   </section>
 
   <section class="hand-card">
-    <div class="row" style="justify-content:space-between">
+    <div class="hand-head">
       <div class="tiny">Your Hand</div>
-      <div class="tiny muted">Tap one card, then another to <b>Combine</b> (always on). Tap “Cast” to play on the grid.</div>
+      <div class="tiny muted">Tap one card, then another to <b>Combine</b>. Tap “Cast” to play on the grid.</div>
     </div>
-    <div id="hand" class="hand" aria-label="Your spell cards"></div>
+    <div class="hand-scroll">
+      <div id="hand" class="hand" aria-label="Your spell cards"></div>
+    </div>
   </section>
 
   <footer>
@@ -218,7 +237,7 @@
     light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
   };
 
-  // Combos (added BIG ones)
+  // Combos (existing + NEW ones at bottom)
   const COMBOS = {
     "fire+fire":        { key:"pyro",     name:"Pyro",        emoji:"🔥🔥",    charges:3, effect:"pyro" },
     "pyro+pyro":        { key:"inferno",  name:"Inferno",     emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
@@ -248,13 +267,20 @@
     "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },
     "chain+vine":       { key:"entangle", name:"Entangle",    emoji:"⚡🪢",    charges:3, effect:"entangle" },
 
-    /* NEW BIG IMPACTS (tier-2 combos) */
+    /* BIG IMPACTS (tier-2 combos) */
     "inferno+tsunami":  { key:"cataclysm", name:"Cataclysm",  emoji:"🔥🌊",    charges:2, effect:"cataclysm" },
     "superchain+inferno":{key:"supernova", name:"Supernova",  emoji:"💥⚡",    charges:2, effect:"supernova" },
     "wall+entangle":    { key:"worldroot", name:"Worldroot",  emoji:"🌿🧱",    charges:2, effect:"worldroot" },
     "thunderstorm+tsunami":{key:"stormfront",name:"Stormfront",emoji:"🌩️🌊",  charges:2, effect:"stormfront" },
     "boil+geyser":      { key:"eruption",  name:"Eruption",   emoji:"🌋🫧",    charges:2, effect:"eruption" },
     "marsh+thorns":     { key:"overgrowth",name:"Overgrowth", emoji:"🌿🌿",    charges:2, effect:"overgrowth" },
+
+    /* NEW VARIETY (control/utility/damage) */
+    "water+wall":       { key:"frostline", name:"Frostline",  emoji:"❄️🧱",    charges:3, effect:"frostline" },
+    "chain+wall":       { key:"battery",   name:"Battery",    emoji:"⚡🔋",     charges:3, effect:"battery" },
+    "geyser+chain":     { key:"shockpush", name:"Shockpush",  emoji:"⚡🫧",     charges:2, effect:"shockpush" },
+    "wall+pyro":        { key:"fireline",  name:"Fireline",   emoji:"🔥🧱",     charges:2, effect:"fireline" },
+    "light+marsh":      { key:"bogstorm",  name:"Bogstorm",   emoji:"⚡🌫️",     charges:2, effect:"bogstorm" },
   };
 
   // ---------- DOM ----------
@@ -636,7 +662,7 @@
     });
   }
 
-  // ---------- Casting & Effects (LOWER base damage; ALL cards still ping) ----------
+  // ---------- Casting & Effects ----------
   async function castCardFlow(card, s){
     const isMyTurn = (s.currentPlayer === username) && s.running;
     if (!isMyTurn) return;
@@ -672,7 +698,8 @@
         vineCells: d.vineCells,
         burnCells: d.burnCells,
         playedTurn: d.playedTurn,
-        towerHP: d.towerHP
+        towerHP: d.towerHP,
+        mana: d.mana
       });
     });
 
@@ -729,8 +756,7 @@
       case "fire":      damageAt(tx,ty,3);                      pulseCells([[tx,ty]], "glow-red"); break;
       case "lightning": chainLightning(d, tx, ty, 0);           pulseCells([[tx,ty]], "flash-yellow"); break;
 
-      case "water":     freezeCol(tx,2);                        // control first, tiny damage
-                        damageAt(tx,ty,1);
+      case "water":     freezeCol(tx,2);                        damageAt(tx,ty,1);
                         pulseCells(column(tx), "glow-blue"); break;
 
       case "plant":     addVine(tx,ty,2); damageAt(tx,ty,1);    pulseCells([[tx,ty]], "glow-green"); break;
@@ -738,7 +764,7 @@
       case "vine":      area(tx,ty,1).forEach(([x,y])=> addVine(x,y,2));
                         ping([[tx,ty]],1);                      pulseCells(area(tx,ty,1), "glow-green"); break;
 
-      /* DOUBLES — tuned down a bit */
+      /* DOUBLES — tuned */
       case "pyro":      cross(tx,ty).forEach(([x,y])=> damageAt(x,y,4));
                         pulseCells(cross(tx,ty), "glow-red"); break;
       case "inferno":   cross(tx,ty).forEach(([x,y])=> { damageAt(x,y,5); addBurn(x,y,2); });
@@ -792,8 +818,8 @@
       case "net":       chainLightning(d, tx, ty, 0, false, true); ping([[tx,ty]],1);
                         pulseCells([[tx,ty]], "glow-green"); break;
 
-      /* NEW BIG IMPACTS */
-      case "cataclysm": // inferno + tsunami — two columns + cross burn
+      /* BIG IMPACTS */
+      case "cataclysm":
         [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
           for (let y=0; y<ROWS; y++) damageAt(cx,y,6);
           for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
@@ -802,18 +828,18 @@
         pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat(cross(tx,ty)), "glow-orange");
         break;
 
-      case "supernova": // superchain + inferno — heavy chain + burn along path
+      case "supernova":
         chainLightning(d, tx, ty, 4, true, false);
         damageAt(tx,ty,4);
         pulseCells([[tx,ty]], "flash-yellow");
         break;
 
-      case "worldroot": // wall + entangle — root radius 2 for 3 turns & tick dmg
+      case "worldroot":
         area(tx,ty,2).forEach(([x,y])=> { addVine(x,y,3); damageAt(x,y,4); });
         pulseCells(area(tx,ty,2), "glow-green");
         break;
 
-      case "stormfront": // thunderstorm + tsunami — pushback 2 on two cols, shock dmg
+      case "stormfront":
         [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
           for (let y=0; y<ROWS; y++) damageAt(cx,y,5);
           for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
@@ -822,21 +848,63 @@
         pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat([[tx,ty]]), "glow-blue");
         break;
 
-      case "eruption": // boil + geyser — tall column spike + burn
+      case "eruption":
         for (let y=0; y<ROWS; y++){ damageAt(tx,y,6); }
         for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-2); }
         addBurn(tx,ty,2);
         pulseCells(column(tx), "glow-orange");
         break;
 
-      case "overgrowth": // marsh + thorns — radius 2 vines with steady tick
+      case "overgrowth":
         area(tx,ty,2).forEach(([x,y])=> { addVine(x,y,3); damageAt(x,y,2); });
         pulseCells(area(tx,ty,2), "glow-green");
+        break;
+
+      /* NEW VARIETY */
+      case "frostline": // water + wall: freeze column longer + chip damage
+        freezeCol(tx,3);
+        for (let y=0; y<ROWS; y++) damageAt(tx,y,2);
+        pulseCells(column(tx), "glow-blue");
+        break;
+
+      case "battery": // chain + wall: small AoE, +mana per enemy hit (cap 4)
+        { const cells = area(tx,ty,1);
+          let hits = 0;
+          for (const [x,y] of cells){
+            const before = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
+            damageAt(x,y,2);
+            const after = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
+            if (before>after) hits += (before-after);
+          }
+          d.mana = Math.min((d.mana||0) + Math.min(hits,4), d.manaMax||12);
+          pulseCells(cells, "flash-yellow");
+        }
+        break;
+
+      case "shockpush": // geyser + chain: dmg column + push back 1, light jumps
+        for (let y=0; y<ROWS; y++) damageAt(tx,y,3);
+        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
+        chainLightning(d, tx, ty, 1);
+        pulseCells(column(tx).concat([[tx,ty]]), "flash-yellow");
+        break;
+
+      case "fireline": // wall + pyro: burn across column and cross at target
+        for (let y=0; y<ROWS; y++){ addBurn(tx,y,2); damageAt(tx,y,2); }
+        for (const [x,y] of cross(tx,ty)){ addBurn(x,y,2); damageAt(x,y,3); }
+        pulseCells(column(tx).concat(cross(tx,ty)), "glow-orange");
+        break;
+
+      case "bogstorm": // light + marsh: radius 2 roots + mild chain + brief freeze
+        area(tx,ty,2).forEach(([x,y])=> addVine(x,y,2));
+        chainLightning(d, tx, ty, 1);
+        freezeCol(tx,1);
+        ping([[tx,ty]],1);
+        pulseCells(area(tx,ty,2).concat([[tx,ty]]), "glow-green");
         break;
     }
   }
 
-  // ---------- Combining (ALWAYS receptive) ----------
+  // ---------- Combining ----------
   async function combineFlow(card, s){
     if (!selectedCardId){ selectedCardId = card.id; renderHand(s.hands[username]||[], s); return; }
     if (selectedCardId === card.id){ selectedCardId = null; renderHand(s.hands[username]||[], s); return; }
@@ -949,7 +1017,7 @@
       const d = st.data();
       if (!d.running || d.currentPlayer !== username) return;
 
-      // draw (+1) — CHANGED
+      // draw (+1)
       const hand = d.hands[username] || [];
       hand.push(makeCardFromKey(randBase()));
 
@@ -975,7 +1043,8 @@
         bolts: d.bolts,
         frozenCols: d.frozenCols,
         vineCells: d.vineCells,
-        burnCells: d.burnCells
+        burnCells: d.burnCells,
+        mana: d.mana
       });
     });
   }
@@ -998,7 +1067,6 @@
 </script>
 </body>
 </html>
-
 
 
 
