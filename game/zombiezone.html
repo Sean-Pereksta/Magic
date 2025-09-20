@@ -16,6 +16,7 @@
     margin:0; color:var(--ink);
     background:radial-gradient(1200px 600px at 50% -200px,#0f172a 0%,#0b1014 55%,#070b0f 100%);
     font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+    overscroll-behavior: none;
   }
 
   .hud{
@@ -42,11 +43,13 @@
     background:#0a111c; border:1px solid #12213a; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
     position:relative; user-select:none; overflow:hidden;
     height: min(52vh, 560px);
+    overscroll-behavior: none;
+    touch-action: none; /* ← critical for responsive mobile pan/zoom */
   }
   @media (min-width:901px){ .map-wrap{ height: min(70vh, 820px); } }
   :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 52vh; }
   @media (min-width:901px){ :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; } }
-  canvas{ display:block; width:100%; height:100% }
+  canvas{ display:block; width:100%; height:100%; touch-action: none; }
 
   .right-col{ display:grid; gap:10px; }
   .card{ background:#0e1726; border:1px solid var(--line); border-radius:16px; padding:12px }
@@ -54,7 +57,6 @@
   .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
   .col{ display:grid; gap:8px }
 
-  /* Actions card always near top on mobile/fullscreen */
   .actions{ display:flex; gap:8px; flex-wrap:wrap }
   .actions .btn{ flex:1 1 auto; min-width:120px }
 
@@ -62,8 +64,8 @@
   .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
   .dot{ width:10px; height:10px; border-radius:50% }
 
-  /* Build modal */
-  .modal{ position:fixed; inset:0; display:none; place-items:center; z-index:1200; }
+  /* Build modal (inside #playArea so it appears over fullscreen) */
+  .modal{ position:fixed; inset:0; display:none; place-items:center; z-index:2147483000; }
   .modal.show{ display:grid; }
   .modal::before{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.5); }
   .modal .box{
@@ -102,16 +104,16 @@
   }
 
   .dead{
-    position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; z-index:1000; place-items:center; text-align:center; padding:20px;
+    position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; z-index:2147483000; place-items:center; text-align:center; padding:20px;
   }
   .dead .box{ background:#0e1726; border:1px solid #223456; border-radius:16px; padding:20px; max-width:520px }
   .dead .box h2{ margin:0 0 8px }
 
-  /* Toast */
+  /* Toast (also inside fullscreen root) */
   .toast{
     position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(10px);
     background:#17263e; color:#e6edf3; border:1px solid #2a3f66;
-    padding:10px 14px; border-radius:12px; opacity:0; transition:.25s; z-index:1500; pointer-events:none; font-weight:800
+    padding:10px 14px; border-radius:12px; opacity:0; transition:.25s; z-index:2147483500; pointer-events:none; font-weight:800
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0) }
 </style>
@@ -180,6 +182,20 @@
         </div>
       </div>
     </div>
+
+    <!-- Move overlays inside the fullscreen root -->
+    <div id="buildModal" class="modal" aria-hidden="true">
+      <div class="box">
+        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
+          <h3 style="margin:0">Select a Building</h3>
+          <button id="btnCloseBuild" class="btn">Close</button>
+        </div>
+        <div id="buildGrid" class="grid3"></div>
+        <div style="margin-top:8px; font-size:12px; color:#9fb3cb">Tap a building, then tap a tile. Tap empty space to cancel.</div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
   </div>
 
   <div id="deadOverlay" class="dead">
@@ -191,20 +207,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Build modal -->
-  <div id="buildModal" class="modal" aria-hidden="true">
-    <div class="box">
-      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
-        <h3 style="margin:0">Select a Building</h3>
-        <button id="btnCloseBuild" class="btn">Close</button>
-      </div>
-      <div id="buildGrid" class="grid3"></div>
-      <div style="margin-top:8px; font-size:12px; color:#9fb3cb">Tap a building, then tap a tile. Tap empty space to cancel.</div>
-    </div>
-  </div>
-
-  <div id="toast" class="toast"></div>
 
 <script type="module">
 /* ---------------- Firebase ---------------- */
@@ -296,20 +298,24 @@ clampScale();
 local.camX = 32 - (wrap.clientWidth/local.scale)/2;
 local.camY = 32 - (wrap.clientHeight/local.scale)/2;
 
-/* Drag pan */
+/* Drag pan — make events non-passive and prevent default on touch to improve responsiveness */
 wrap.addEventListener('pointerdown', (e)=>{
   wrap.setPointerCapture(e.pointerId);
   local.dragging=true; local.dragStart=[e.clientX,e.clientY]; local.camStart=[local.camX,local.camY];
-});
+  e.preventDefault();
+}, {passive:false});
+
 wrap.addEventListener('pointermove', (e)=>{
   const rect = wrap.getBoundingClientRect();
   const px=e.clientX-rect.left, py=e.clientY-rect.top;
   local.hover = ptToTile(px,py);
+
   if(local.dragging){
     const dx=(e.clientX-local.dragStart[0])/local.scale;
     const dy=(e.clientY-local.dragStart[1])/local.scale;
     local.camX = local.camStart[0]-dx;
     local.camY = local.camStart[1]-dy;
+    e.preventDefault(); /* ← keep scroll/zoom from fighting the gesture */
   }else if(e.pointerType==='mouse'){
     const edge=18;
     if(px<edge) local.camX -= 0.15;
@@ -317,16 +323,38 @@ wrap.addEventListener('pointermove', (e)=>{
     if(py<edge) local.camY -= 0.15;
     if(py>rect.height-edge) local.camY += 0.15;
   }
-});
+}, {passive:false});
+
 wrap.addEventListener('pointerup',(e)=>{
   wrap.releasePointerCapture(e.pointerId);
   const moved = Math.hypot(e.clientX-local.dragStart[0], e.clientY-local.dragStart[1]);
   if(local.dragging && moved<6){ handleTap(e); }
   local.dragging=false;
-});
+  e.preventDefault();
+}, {passive:false});
 wrap.addEventListener('pointercancel',()=> local.dragging=false);
 
-/* Zoom */
+/* Pinch zoom via touch (custom) */
+let pinchDist=0;
+wrap.addEventListener('touchstart',(e)=>{ if(e.touches.length===2){ pinchDist = dist(e.touches[0], e.touches[1]); } }, {passive:true});
+wrap.addEventListener('touchmove',(e)=>{
+  if(e.touches.length===2){
+    e.preventDefault();
+    const nd = dist(e.touches[0], e.touches[1]);
+    if(pinchDist>0){
+      const rect = wrap.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX)/2 - rect.left;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY)/2 - rect.top;
+      const factor = Math.pow(1.015, (nd - pinchDist)/2);
+      zoomAt(cx, cy, factor);
+    }
+    pinchDist = nd;
+  }
+},{passive:false});
+wrap.addEventListener('touchend',()=>{ pinchDist=0; }, {passive:true});
+function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
+
+/* Zoom helpers */
 function zoomAt(pointX, pointY, factor){
   const [wx, wy] = screenToWorld(pointX, pointY);
   local.scale *= factor; clampScale();
@@ -335,12 +363,6 @@ function zoomAt(pointX, pointY, factor){
   const dy = (pointY - sy)/local.scale;
   local.camX -= dx; local.camY -= dy;
 }
-wrap.addEventListener('wheel',(e)=>{
-  e.preventDefault();
-  const rect = wrap.getBoundingClientRect();
-  const px=e.clientX-rect.left, py=e.clientY-rect.top;
-  zoomAt(px, py, (e.deltaY<0)?1.15:1/1.15);
-},{passive:false});
 btnZoomIn.onclick  = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.15);
 btnZoomOut.onclick = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1/1.15);
 
@@ -465,7 +487,6 @@ function canAfford(kind){
 }
 function upgradable(b){ return ['turret','cata','beacon','tesla','tribolt'].includes(b.kind); }
 
-/* Build modal generation */
 function costText(obj){
   return Object.entries(obj).map(([k,v])=>`${v} ${k}`).join(', ');
 }
@@ -647,7 +668,7 @@ onSnapshot(gameRef, (snap)=>{
     }
   }
 
-  // Dice banner/UI for everyone when updated
+  // Dice banner/UI
   if(state.lastRollTurnId != null && state.lastRollTurnId !== lastRollSeenTurnId && state.lastRoll != null){
     lastRollSeenTurnId = state.lastRollTurnId;
     showDice(state.lastRoll);
@@ -833,7 +854,6 @@ btnFullscreen.onclick = ()=> {
 };
 btnReturnLobby.onclick = ()=>{ window.location.href='/?username='+encodeURIComponent(username); };
 
-/* End turn does: roll dice, pay everyone, towers fire for current player, zombie extra step on 7, zombies move/spawn, care packages on new even rounds, pass turn */
 async function endTurn(){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
@@ -865,7 +885,7 @@ async function endTurn(){
       for(const k of R_KEYS){ pl.res[k]=(pl.res[k]||0)+(addRes[k]||0); }
     }
 
-    // 3) Current player's defenses fire (start-of-turn effect kept here at end; adjust if desired)
+    // 3) Current player's defenses fire
     fireDefenses(g,myIndex);
 
     // 4) If 7, zombies take an extra step now
@@ -889,7 +909,7 @@ async function endTurn(){
       if(g.round%5===0) g.zombieBaseHP+=1;
       spawnEdgeZombies(g, g.zombiesPerEdge);
 
-      // CARE PACKAGES at start of every even round (pre-grant here)
+      // CARE PACKAGES at start of every even round
       if(g.round % 2 === 0){
         for(let i=0;i<g.players.length;i++){
           const p = g.players[i];
@@ -923,7 +943,6 @@ async function endTurn(){
     await tx.update(gameRef,g);
   });
 }
-
 function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
 async function forceEndTurn(){ if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurn(); }
 
@@ -1134,7 +1153,7 @@ async function acceptTrade(t){
   try{ await deleteDoc(doc(db,"zombiezone",gameId,"trades",t.id)); }catch(e){}
 }
 
-/* ---------------- Turn Hooks ---------------- */
+/* ---------------- Timer hooks ---------------- */
 let lastTurnSeen=-1;
 onSnapshot(gameRef,(snap)=>{
   if(!snap.exists()) return;
