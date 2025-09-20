@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -198,7 +198,8 @@
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
                   <option value="splinters">🪄 Splinters (4P)</option>
-                  <option value="spelltower">🗼 Spell Tower (8P)</option> <!-- ADDED -->
+                  <option value="spelltower">🗼 Spell Tower (8P)</option>
+                  <option value="zombiezone">🧟‍♂️ Zombie Zone (4P)</option> <!-- ADDED -->
                   <option value="biblegame">📖 Bible Game (12P)</option>
                 </select>
               </div>
@@ -267,7 +268,8 @@
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
       splinters:  "/game/Splinters.html",
-      spelltower: "/game/spelltower.html",   // ADDED
+      spelltower: "/game/spelltower.html",
+      zombiezone: "/game/zombiezone.html",     // ADDED
       biblegame:  "/game/biblegame.html",
 
       // Singleplayer
@@ -279,8 +281,22 @@
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html"
     };
-    const AUTO_REDIRECT_GAMES = new Set(["cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","biblegame"]); // ADDED spelltower
-    const MAX_PLAYERS = { mountain: 4, stockkings: 8, dutchblitz: 4, splinters: 4, spelltower: 8, biblegame: 20 }; // ADDED spelltower
+
+    // Games that should navigate to their page once lobby status becomes "started"
+    const AUTO_REDIRECT_GAMES = new Set([
+      "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","zombiezone","biblegame" // ADDED zombiezone
+    ]);
+
+    // Per-game player caps
+    const MAX_PLAYERS = {
+      mountain: 4,
+      dutchblitz: 4,
+      splinters: 4,
+      spelltower: 8,
+      zombiezone: 4, // ADDED
+      stockkings: 8,
+      biblegame: 20
+    };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
@@ -427,7 +443,8 @@
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
              type==='splinters'?'🪄 Splinters (4P)' :
-             type==='spelltower'?'🗼 Spell Tower (8P)' :    // ADDED
+             type==='spelltower'?'🗼 Spell Tower (8P)' :
+             type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' : // ADDED
              type==='biblegame'?'📖 Bible Game (20P)' :
              '🐭 Cat & Mouse';
     }
@@ -463,7 +480,7 @@
 
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','biblegame'].includes(gameType)) { // ADDED spelltower
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame'].includes(gameType)) { // ADDED
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -772,6 +789,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
