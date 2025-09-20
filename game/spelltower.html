@@ -917,6 +917,31 @@
       case "overheat":     PING(cross(tx,ty),5);                                  pulseCells(cross(tx,ty), "glow-orange"); break;
       case "bramblefire":  for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,2,now); addBurn(d,x,y,2,now); DMG(x,y,4); } pulseCells(area(tx,ty,1),"glow-orange"); break;
       case "arcfire":      chainLightning(d, tx, ty, 1, true, false);            pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "vine": {
+  // nature root + chip damage: root 2 turns on the target + neighbors, light poke
+  addVine(d,tx,ty,2,now);
+  for (const [x,y] of cross(tx,ty)) addVine(d,x,y,1,now);
+  DMG(tx,ty,2);
+  pulseCells([[tx,ty]].concat(cross(tx,ty)), "glow-green");
+  break;
+}
+        case "bogstorm": {
+  // electric + marsh synergy: random 5 zaps that also root for 1 turn
+  const picks = randomEnemyCells(d, 5);
+  if (picks.length) {
+    for (const [x,y] of picks) {
+      damageAtTyped(d,x,y,4,'electric');
+      addVine(d,x,y,1,now);
+    }
+    pulseCells(picks, "flash-yellow");
+  } else {
+    // fallback: column nudge so it always “does something”
+    chainLightning(d, tx, ty, 1);
+    addVine(d,tx,ty,1,now);
+    pulseCells([[tx,ty]], "flash-yellow");
+  }
+  break;
+}
       case "scald":        for (const [x,y] of area(tx,ty,1)){ DMG(x,y,3); addBurn(d,x,y,1,now); } pulseCells(area(tx,ty,1),"glow-orange"); break;
       case "storm":        chainLightning(d, tx, ty, 1); freezeCol(d,tx,1,now);  DMG(tx,ty,1); pulseCells(column(tx).concat([[tx,ty]]),"glow-blue"); break;
       case "steamblast":   for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,1,now); DMG(x,y,2); } pulseCells(area(tx,ty,1),"glow-orange"); break;
@@ -977,11 +1002,12 @@
         break;
 
       /* VARIETY */
-      case "frostline": // water + wall
-        freezeCol(d,tx,3,now);
-        for (let y=0; y=ROWS; y++) damageAtTyped(d,tx,y,2,'ice'); // (typo fixed below)
-        break;
-    }
+      case "frostline": { // water + wall
+  freezeCol(d,tx,3,now);
+  for (let y = 0; y < ROWS; y++) damageAtTyped(d, tx, y, 2, 'ice');
+  pulseCells(column(tx), "glow-blue");
+  break;
+}
   }
 
   // Fix minor typo in frostline loop (above)
@@ -1137,6 +1163,7 @@
 </script>
 </body>
 </html>
+
 
 
 
