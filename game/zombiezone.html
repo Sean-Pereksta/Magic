@@ -8,6 +8,7 @@
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7;
     --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
+    --line:#16243d;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -30,8 +31,21 @@
   .btn-red{background:#991b1b; border-color:#7f1d1d}
   .pill{padding:6px 10px; border-radius:999px; border:1px solid #263147; background:#0e1726; font-weight:800}
 
-  .shell{ display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px; padding:12px; }
+  /* PLAY AREA holds map + side controls. We fullscreen this. */
+  #playArea{ padding:12px; }
+  .shell{
+    display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px;
+  }
   @media (max-width:900px){ .shell{ grid-template-columns:1fr } }
+
+  /* In fullscreen on narrow screens, stack controls under map with no scroll */
+  :fullscreen #playArea, #playArea:fullscreen{
+    padding:8px;
+  }
+  :fullscreen .shell, .shell:fullscreen{
+    grid-template-columns:1fr;
+    grid-auto-rows:auto;
+  }
 
   .map-wrap{
     background:#0a111c; border:1px solid #12213a; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
@@ -39,13 +53,27 @@
     height: min(52vh, 560px);
   }
   @media (min-width:901px){ .map-wrap{ height: min(70vh, 820px); } }
+  /* Fullscreen sizing: larger on desktop, half-screen on mobile for “all on one screen” */
+  :fullscreen .map-wrap, .map-wrap:fullscreen{
+    height: 52vh;
+  }
+  @media (min-width:901px){
+    :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; }
+  }
   canvas{ display:block; width:100%; height:100% }
 
-  .card{ background:#0e1726; border:1px solid #16243d; border-radius:16px; padding:12px }
+  .card{ background:#0e1726; border:1px solid var(--line); border-radius:16px; padding:12px }
   .card h3{ margin:0 0 8px; font-size:16px }
   .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
   .col{ display:grid; gap:8px }
   .stack{ display:grid; gap:10px }
+
+  /* Right column (controls) layout tweaks for fullscreen on phones */
+  .right-col{ display:grid; gap:10px; }
+  :fullscreen .right-col, .right-col:fullscreen{
+    grid-template-columns:1fr;
+    grid-auto-flow:row;
+  }
 
   .res{ display:flex; gap:6px; flex-wrap:wrap }
   .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
@@ -98,50 +126,53 @@
     <button id="btnEndTurn" class="btn btn-accent" disabled>End Turn</button>
   </div>
 
-  <div class="shell">
-    <div class="map-wrap" id="mapWrap">
-      <canvas id="map"></canvas>
-      <div id="diceBanner" class="dice-banner"></div>
-      <div id="careBanner" class="care-banner"></div>
-    </div>
-
-    <div class="stack">
-      <div class="card">
-        <h3>Resources</h3>
-        <div id="resRow" class="res"></div>
+  <!-- Fullscreen target -->
+  <div id="playArea">
+    <div class="shell">
+      <div class="map-wrap" id="mapWrap">
+        <canvas id="map"></canvas>
+        <div id="diceBanner" class="dice-banner"></div>
+        <div id="careBanner" class="care-banner"></div>
       </div>
 
-      <div class="card">
-        <h3>Build</h3>
-        <div class="buildbar" id="buildbar"></div>
-        <div style="font-size:12px;color:#9fb3cb">Tap a tool, then tap a tile. Tap empty space to cancel.</div>
-      </div>
-
-      <div class="card">
-        <h3>Trade</h3>
-        <div class="row">
-          <select id="tradeGive" class="btn">
-            <option value="brick">Brick</option><option value="ore">Ore</option>
-            <option value="sheep">Sheep</option><option value="wheat">Wheat</option><option value="wood">Wood</option>
-          </select>
-          <input id="tradeGiveAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
+      <div class="right-col">
+        <div class="card">
+          <h3>Resources</h3>
+          <div id="resRow" class="res"></div>
         </div>
-        <div class="row" style="margin-top:6px">
-          <select id="tradeWant" class="btn">
-            <option value="brick">Brick</option><option value="ore">Ore</option>
-            <option value="sheep">Sheep</option><option value="wheat">Wheat</option><option value="wood">Wood</option>
-          </select>
-          <input id="tradeWantAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
-          <button id="btnPostTrade" class="btn">Post Trade</button>
-        </div>
-        <div id="trades" class="col" style="margin-top:10px"></div>
-      </div>
 
-      <div class="card" style="font-size:13px; line-height:1.45; color:#9fb3cb">
-        <h3>Build Costs</h3>
-        <div><b>Wire</b> 1 ore • <b>Wall</b> 2 brick • <b>Ultra Wall</b> 4 brick • <b>Command Ctr</b> 2 ore,2 brick,2 sheep • <b>Central Base</b> 2 ore,2 brick,2 sheep</div>
-        <div><b>Turret</b> 1 wood,1 sheep • <b>Catapult</b> 3 wood,2 sheep • <b>Fire Beacon</b> 1 wood,2 wheat • <b>Tesla</b> 2 ore,2 wheat,2 sheep,2 wood • <b>Tri-Bolt</b> 2 wood,2 ore,1 brick • <b>Drill</b> 2 ore • <b>Upgrade</b> (towers) 2 wheat,1 ore</div>
-        <div>Everything except walls must connect to your <b>wires</b>. If zombies cut a wire, disconnected stuff gets destroyed.</div>
+        <div class="card">
+          <h3>Build</h3>
+          <div class="buildbar" id="buildbar"></div>
+          <div style="font-size:12px;color:#9fb3cb">Tap a tool, then tap a tile. Tap empty space to cancel.</div>
+        </div>
+
+        <div class="card">
+          <h3>Trade</h3>
+          <div class="row">
+            <select id="tradeGive" class="btn">
+              <option value="brick">Brick</option><option value="ore">Ore</option>
+              <option value="sheep">Sheep</option><option value="wheat">Wheat</option><option value="wood">Wood</option>
+            </select>
+            <input id="tradeGiveAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <select id="tradeWant" class="btn">
+              <option value="brick">Brick</option><option value="ore">Ore</option>
+              <option value="sheep">Sheep</option><option value="wheat">Wheat</option><option value="wood">Wood</option>
+            </select>
+            <input id="tradeWantAmt" class="btn" type="number" min="1" value="1" style="width:90px"/>
+            <button id="btnPostTrade" class="btn">Post Trade</button>
+          </div>
+          <div id="trades" class="col" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card" style="font-size:13px; line-height:1.45; color:#9fb3cb">
+          <h3>Build Costs</h3>
+          <div><b>Wire</b> 1 ore (or Free Wire token) • <b>Wall</b> 2 brick • <b>Ultra Wall</b> 4 brick • <b>Command Ctr</b> 2 ore,2 brick,2 sheep • <b>Central Base</b> 2 ore,2 brick,2 sheep</div>
+          <div><b>Turret</b> 1 wood,1 sheep • <b>Catapult</b> 3 wood,2 sheep • <b>Fire Beacon</b> 1 wood,2 wheat • <b>Tesla</b> 2 ore,2 wheat,2 sheep,2 wood • <b>Tri-Bolt</b> 2 wood,2 ore,1 brick • <b>Drill</b> 2 ore • <b>Upgrade</b> (towers) 2 wheat,1 ore</div>
+          <div>Everything except walls must connect to your <b>wires</b>. If zombies cut a wire, disconnected stuff gets destroyed.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -191,8 +222,10 @@ const TURN_SECONDS = 60;
 let state = null;
 let myIndex = -1;
 let localCareSeenRound = 0;
+let lastRollSeenTurnId = -1;
 
 /* ---------------- DOM ---------------- */
+const playArea = document.getElementById('playArea');
 const wrap = document.getElementById('mapWrap');
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
@@ -349,17 +382,18 @@ function renderResources(){
     moneyChip('Sheep','#e2e8f0', r.sheep),
     moneyChip('Wheat','#fbbf24', r.wheat),
     moneyChip('Wood','#22c55e', r.wood),
+    moneyChip('Free Wire','#93c5fd', state.players[myIndex].freeWire||0),
   );
 }
 function showDice(n){
   diceBanner.textContent=n;
   diceBanner.classList.add('show');
-  setTimeout(()=>diceBanner.classList.remove('show'), 1400);
+  setTimeout(()=>diceBanner.classList.remove('show'), 1600);
 }
 
 /* Care package banner */
 function showCare(items){
-  // items is array like [{k:'brick',n:2}, {k:'wood',n:1}]
+  // items: array like [{k:'brick',n:2},{k:'wood',n:1},{k:'wire',n:1}]
   careBanner.innerHTML = '';
   const box = document.createElement('div');
   box.className = 'care-box';
@@ -369,12 +403,13 @@ function showCare(items){
   for(const it of items){
     const pill = document.createElement('div');
     pill.className='care-pill';
-    pill.textContent = `+${it.n} ${it.k}`;
+    const pretty = it.k==='wire' ? 'Wire' : (it.k[0].toUpperCase()+it.k.slice(1));
+    pill.textContent = `+${it.n} ${pretty}`;
     box.appendChild(pill);
   }
   careBanner.appendChild(box);
   careBanner.classList.add('show');
-  setTimeout(()=> careBanner.classList.remove('show'), 1600);
+  setTimeout(()=> careBanner.classList.remove('show'), 1800);
 }
 
 /* ---------------- Build System ---------------- */
@@ -458,6 +493,27 @@ function placeable(x,y,sel,g=state){
 }
 
 async function doPlace(x,y,sel){
+  // Special: allow FREE WIRE token if not enough ore
+  if(sel.kind==='wire'){
+    const hasToken = (state.players[myIndex].freeWire||0)>0;
+    const payOre = hasRes(COST.wire);
+    if(!hasToken && !payOre) return;
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(gameRef); if(!snap.exists()) return;
+      const g = snap.data();
+      if(!placeable(x,y,sel,g)) return;
+
+      g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:1, level:1});
+      if(hasToken){
+        g.players[myIndex].freeWire = (g.players[myIndex].freeWire||0) - 1;
+      }else{
+        g.players[myIndex].res.ore = (g.players[myIndex].res.ore||0) - 1;
+      }
+      await tx.update(gameRef,g);
+    });
+    return;
+  }
+
   if(COST[sel.kind] && !hasRes(COST[sel.kind])) return;
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
@@ -467,7 +523,6 @@ async function doPlace(x,y,sel){
     if(sel.kind==='base'){
       const i = g.buildings.findIndex(b=>b.x===x&&b.y===y&&b.kind==='cc'&&b.owner===myIndex);
       if(i>=0){ g.buildings[i].kind='base'; g.buildings[i].level=1; }
-      // also flip base type in player list for proper double-yield
       const pb = g.players[myIndex].bases.find(b=>b.x===x&&b.y===y);
       if(pb) pb.type='base';
     }else{
@@ -525,7 +580,8 @@ async function ensureGame(){
         bases:[],
         needsFirstCC:true,
         lastCareRound: 0,
-        careShow: []          // transient payload for UI
+        careShow: [],
+        freeWire: 0
       }));
       await tx.set(gameRef,{
         seed, tiles,
@@ -539,6 +595,10 @@ async function ensureGame(){
         zombiesPerEdge: 1,
         zombieBaseHP: 3,
         fogDone:false,
+        /* Turn identity + last dice roll */
+        turnId: 0,
+        lastRoll: null,
+        lastRollTurnId: -1,
         createdAt: serverTimestamp()
       });
     }
@@ -546,13 +606,13 @@ async function ensureGame(){
 }
 
 /* ---------------- Subscriptions ---------------- */
-let unsubMain = onSnapshot(gameRef, (snap)=>{
+onSnapshot(gameRef, (snap)=>{
   if(!snap.exists()) return;
   state = snap.data();
   myIndex = (state.players||[]).findIndex(p=>p.name===username);
   renderResources(); renderTrades(); updateHud();
 
-  // Care package UI trigger (client-side, once per round)
+  // Show care package if new this round for me
   if(myIndex>=0){
     const me = state.players[myIndex];
     if(me.lastCareRound && me.lastCareRound > localCareSeenRound){
@@ -561,6 +621,12 @@ let unsubMain = onSnapshot(gameRef, (snap)=>{
         showCare(me.careShow);
       }
     }
+  }
+
+  // Show dice banner to EVERYONE when a new turn's roll is recorded
+  if(state.lastRollTurnId != null && state.lastRollTurnId !== lastRollSeenTurnId && state.lastRoll != null){
+    lastRollSeenTurnId = state.lastRollTurnId;
+    showDice(state.lastRoll);
   }
 
   if(myIndex>=0 && !state.players[myIndex].alive){
@@ -733,9 +799,9 @@ function draw(){
 requestAnimationFrame(draw);
 
 /* ---------------- Turn Flow ---------------- */
-btnEndTurn.onclick = ()=> endTurn();
-btnFullscreen.onclick = ()=> {
-  if(!document.fullscreenElement){ wrap.requestFullscreen?.(); }
+document.getElementById('btnEndTurn').onclick = ()=> endTurn();
+document.getElementById('btnFullscreen').onclick = ()=> {
+  if(!document.fullscreenElement){ playArea.requestFullscreen?.(); }
   else{ document.exitFullscreen?.(); }
 };
 btnReturnLobby.onclick = ()=>{ window.location.href='/?username='+encodeURIComponent(username); };
@@ -745,17 +811,19 @@ async function startTurnIfMine(){
   const meTurn = state.playerOrder[state.currentTurn]===myIndex;
   if(!meTurn || !alive()) return;
 
-  // auto dice roll (2..12, 7 triggers zombie step)
-  const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
-  showDice(roll);
-
+  // Perform the dice roll ONCE for this turn (server-side, stored so everyone sees it)
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
     const meIdx = g.playerOrder[g.currentTurn];
     if(meIdx!==myIndex) return;
 
-    // payout for bases on/adjacent to rolled tiles
+    // Only roll if this turn hasn't recorded a roll yet
+    if(g.lastRollTurnId === g.turnId) return;
+
+    const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
+
+    // payout for bases on/adj tiles
     const pl = g.players[myIndex];
     const addRes = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
     const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
@@ -781,10 +849,12 @@ async function startTurnIfMine(){
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
     if(!g.fogDone) g.fogDone=true;
 
+    // Record roll so ALL clients display it once
+    g.lastRoll = roll;
+    g.lastRollTurnId = g.turnId;
+
     await tx.update(gameRef,g);
   });
-
-  renderResources();
 }
 
 async function endTurn(){
@@ -797,7 +867,6 @@ async function endTurn(){
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
-    // Advance turn pointer
     const cur=g.currentTurn;
     let nt=(cur+1)%g.playerOrder.length;
     for(let guard=0; guard<8; guard++){
@@ -805,7 +874,6 @@ async function endTurn(){
       nt=(nt+1)%g.playerOrder.length;
     }
 
-    // Did we wrap to a new round?
     const wrapped = (nt<=cur);
     if(wrapped){
       g.round++;
@@ -814,34 +882,44 @@ async function endTurn(){
       spawnEdgeZombies(g, g.zombiesPerEdge);
     }
 
-    // Update alive flags before care packages
+    // Update alive flags
     for(let i=0;i<g.players.length;i++){
       const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
       g.players[i].alive = !!still;
       if(!still) g.players[i].bases=[];
     }
 
-    // CARE PACKAGES: at the START of every 2nd round (2,4,6,…) give 3 random resources to each alive player
+    /* CARE PACKAGES each even round at the START of the round:
+       We detect wrap here and pre-grant for the upcoming round.
+       Give 3 random resources + 1 FREE WIRE token to each ALIVE player. */
     if(wrapped && (g.round % 2 === 0)){
       for(let i=0;i<g.players.length;i++){
         const p = g.players[i];
         if(!p.alive) continue;
-        // draw 3 random picks with replacement
         const picks = [pickRes(), pickRes(), pickRes()];
-        // fold into counts
         const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
         for(const k of picks){ counts[k]++; }
-        // add immediately
         for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
-        // set UI payload (small and transient)
+        // Free wire token
+        p.freeWire = (p.freeWire||0) + 1;
+
+        // UI payload (transient)
         p.lastCareRound = g.round;
-        p.careShow = R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]}));
+        p.careShow = [
+          ...R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]})),
+          {k:'wire', n:1}
+        ];
       }
     }
 
-    // Next turn setup
+    // NEXT TURN
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
+
+    // Bump turnId so next player will record a fresh roll
+    g.turnId = (g.turnId||0) + 1;
+    g.lastRoll = null;           // clear until next player rolls
+    g.lastRollTurnId = -1;
 
     await tx.update(gameRef,g);
   });
@@ -1013,7 +1091,7 @@ onSnapshot(tradesRef,(snap)=>{
 function renderTrades(items=[]){
   tradesEl.innerHTML='';
   items.forEach(t=>{
-    const row=document.createElement('div'); row.className='trade-item'; row.style.display='flex'; row.style.alignItems='center'; row.style.justifyContent='space-between'; row.style.gap='8px'; row.style.padding='8px'; row.style.border='1px solid #192e50'; row.style.borderRadius='12px'; row.style.background='#0b1322';
+    const row=document.createElement('div'); row.className='trade-item'; row.style.display='flex'; row.style.alignItems='center'; row.style.justify-content='space-between'; row.style.gap='8px'; row.style.padding='8px'; row.style.border='1px solid #192e50'; row.style.borderRadius='12px'; row.style.background='#0b1322';
     const left=document.createElement('div'); left.textContent=`${t.from} offers ${fmtRes(t.give)} for ${fmtRes(t.want)}`;
     const right=document.createElement('div');
     if(t.from!==username && alive()){
@@ -1052,7 +1130,7 @@ onSnapshot(gameRef,(snap)=>{
   if(g.currentTurn!==lastTurnSeen){
     lastTurnSeen=g.currentTurn;
     startTimer();
-    setTimeout(startTurnIfMine, 150); // auto dice at start of your turn
+    setTimeout(startTurnIfMine, 150); // the current player records the roll; everyone sees banner via snapshot
   }
 });
 
@@ -1063,6 +1141,8 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
+
 
 
 
