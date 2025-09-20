@@ -33,19 +33,11 @@
 
   /* PLAY AREA holds map + side controls. We fullscreen this. */
   #playArea{ padding:12px; }
-  .shell{
-    display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px;
-  }
+  .shell{ display:grid; grid-template-columns: minmax(260px,1fr) 360px; gap:12px; }
   @media (max-width:900px){ .shell{ grid-template-columns:1fr } }
 
-  /* In fullscreen on narrow screens, stack controls under map with no scroll */
-  :fullscreen #playArea, #playArea:fullscreen{
-    padding:8px;
-  }
-  :fullscreen .shell, .shell:fullscreen{
-    grid-template-columns:1fr;
-    grid-auto-rows:auto;
-  }
+  :fullscreen #playArea, #playArea:fullscreen{ padding:8px; }
+  :fullscreen .shell, .shell:fullscreen{ grid-template-columns:1fr; grid-auto-rows:auto; }
 
   .map-wrap{
     background:#0a111c; border:1px solid #12213a; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
@@ -53,13 +45,8 @@
     height: min(52vh, 560px);
   }
   @media (min-width:901px){ .map-wrap{ height: min(70vh, 820px); } }
-  /* Fullscreen sizing: larger on desktop, half-screen on mobile for “all on one screen” */
-  :fullscreen .map-wrap, .map-wrap:fullscreen{
-    height: 52vh;
-  }
-  @media (min-width:901px){
-    :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; }
-  }
+  :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 52vh; }
+  @media (min-width:901px){ :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; } }
   canvas{ display:block; width:100%; height:100% }
 
   .card{ background:#0e1726; border:1px solid var(--line); border-radius:16px; padding:12px }
@@ -68,12 +55,7 @@
   .col{ display:grid; gap:8px }
   .stack{ display:grid; gap:10px }
 
-  /* Right column (controls) layout tweaks for fullscreen on phones */
   .right-col{ display:grid; gap:10px; }
-  :fullscreen .right-col, .right-col:fullscreen{
-    grid-template-columns:1fr;
-    grid-auto-flow:row;
-  }
 
   .res{ display:flex; gap:6px; flex-wrap:wrap }
   .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
@@ -91,7 +73,6 @@
   }
   .dice-banner.show{ opacity:1; transform: translateY(0) }
 
-  /* Care package banner */
   .care-banner{
     position:absolute; inset:auto 0 44% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
     opacity:0; transform: translateY(10px); transition: opacity .6s, transform .6s;
@@ -393,7 +374,6 @@ function showDice(n){
 
 /* Care package banner */
 function showCare(items){
-  // items: array like [{k:'brick',n:2},{k:'wood',n:1},{k:'wire',n:1}]
   careBanner.innerHTML = '';
   const box = document.createElement('div');
   box.className = 'care-box';
@@ -595,7 +575,6 @@ async function ensureGame(){
         zombiesPerEdge: 1,
         zombieBaseHP: 3,
         fogDone:false,
-        /* Turn identity + last dice roll */
         turnId: 0,
         lastRoll: null,
         lastRollTurnId: -1,
@@ -612,7 +591,7 @@ onSnapshot(gameRef, (snap)=>{
   myIndex = (state.players||[]).findIndex(p=>p.name===username);
   renderResources(); renderTrades(); updateHud();
 
-  // Show care package if new this round for me
+  // Care package banner
   if(myIndex>=0){
     const me = state.players[myIndex];
     if(me.lastCareRound && me.lastCareRound > localCareSeenRound){
@@ -623,7 +602,7 @@ onSnapshot(gameRef, (snap)=>{
     }
   }
 
-  // Show dice banner to EVERYONE when a new turn's roll is recorded
+  // Dice banner for everyone
   if(state.lastRollTurnId != null && state.lastRollTurnId !== lastRollSeenTurnId && state.lastRoll != null){
     lastRollSeenTurnId = state.lastRollTurnId;
     showDice(state.lastRoll);
@@ -681,7 +660,6 @@ function handleTap(e){
   const b = state.buildings.find(b=>b.x===tx&&b.y===ty&&b.owner===myIndex&&upgradable(b));
   if(b) tryUpgrade(b);
 }
-
 function cancelBuild(){
   local.build=null;
   [...buildbar.children].forEach(c=>c.classList.remove('sel'));
@@ -771,7 +749,7 @@ function draw(){
     ctx.fillStyle="#22c55e"; ctx.fillRect(sx+2, sy+2, (local.scale-4)*(z.hp/z.maxhp), 4);
   }
 
-  // numbers on top (always readable)
+  // numbers
   ctx.fillStyle = "rgba(255,255,255,.98)";
   ctx.font = "bold 12px ui-sans-serif";
   ctx.textAlign="center"; ctx.textBaseline="bottom";
@@ -799,8 +777,8 @@ function draw(){
 requestAnimationFrame(draw);
 
 /* ---------------- Turn Flow ---------------- */
-document.getElementById('btnEndTurn').onclick = ()=> endTurn();
-document.getElementById('btnFullscreen').onclick = ()=> {
+btnEndTurn.onclick = ()=> endTurn();
+btnFullscreen.onclick = ()=> {
   if(!document.fullscreenElement){ playArea.requestFullscreen?.(); }
   else{ document.exitFullscreen?.(); }
 };
@@ -811,19 +789,17 @@ async function startTurnIfMine(){
   const meTurn = state.playerOrder[state.currentTurn]===myIndex;
   if(!meTurn || !alive()) return;
 
-  // Perform the dice roll ONCE for this turn (server-side, stored so everyone sees it)
+  // Roll dice once per turn and record (so all clients show the same number)
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
     const meIdx = g.playerOrder[g.currentTurn];
     if(meIdx!==myIndex) return;
-
-    // Only roll if this turn hasn't recorded a roll yet
-    if(g.lastRollTurnId === g.turnId) return;
+    if(g.lastRollTurnId === g.turnId) return; // already rolled
 
     const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
 
-    // payout for bases on/adj tiles
+    // payout
     const pl = g.players[myIndex];
     const addRes = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
     const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
@@ -849,7 +825,7 @@ async function startTurnIfMine(){
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
     if(!g.fogDone) g.fogDone=true;
 
-    // Record roll so ALL clients display it once
+    // record roll
     g.lastRoll = roll;
     g.lastRollTurnId = g.turnId;
 
@@ -863,7 +839,7 @@ async function endTurn(){
     const g = snap.data();
     if(g.playerOrder[g.currentTurn]!==myIndex) return;
 
-    // End-of-turn zombie actions
+    // End-of-turn zombies
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
@@ -882,16 +858,14 @@ async function endTurn(){
       spawnEdgeZombies(g, g.zombiesPerEdge);
     }
 
-    // Update alive flags
+    // Alive flags
     for(let i=0;i<g.players.length;i++){
       const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
       g.players[i].alive = !!still;
       if(!still) g.players[i].bases=[];
     }
 
-    /* CARE PACKAGES each even round at the START of the round:
-       We detect wrap here and pre-grant for the upcoming round.
-       Give 3 random resources + 1 FREE WIRE token to each ALIVE player. */
+    // CARE PACKAGES each even round (start of new round)
     if(wrapped && (g.round % 2 === 0)){
       for(let i=0;i<g.players.length;i++){
         const p = g.players[i];
@@ -900,10 +874,7 @@ async function endTurn(){
         const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
         for(const k of picks){ counts[k]++; }
         for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
-        // Free wire token
-        p.freeWire = (p.freeWire||0) + 1;
-
-        // UI payload (transient)
+        p.freeWire = (p.freeWire||0) + 1; // free wire token
         p.lastCareRound = g.round;
         p.careShow = [
           ...R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]})),
@@ -916,9 +887,9 @@ async function endTurn(){
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
 
-    // Bump turnId so next player will record a fresh roll
+    // bump turn id & clear roll for next player
     g.turnId = (g.turnId||0) + 1;
-    g.lastRoll = null;           // clear until next player rolls
+    g.lastRoll = null;
     g.lastRollTurnId = -1;
 
     await tx.update(gameRef,g);
@@ -1091,15 +1062,28 @@ onSnapshot(tradesRef,(snap)=>{
 function renderTrades(items=[]){
   tradesEl.innerHTML='';
   items.forEach(t=>{
-    const row=document.createElement('div'); row.className='trade-item'; row.style.display='flex'; row.style.alignItems='center'; row.style.justify-content='space-between'; row.style.gap='8px'; row.style.padding='8px'; row.style.border='1px solid #192e50'; row.style.borderRadius='12px'; row.style.background='#0b1322';
-    const left=document.createElement('div'); left.textContent=`${t.from} offers ${fmtRes(t.give)} for ${fmtRes(t.want)}`;
+    const row=document.createElement('div');
+    row.className='trade-item';
+    row.style.display='flex';
+    row.style.alignItems='center';
+    row.style.justifyContent='space-between'; /* ← fixed camelCase */
+    row.style.gap='8px';
+    row.style.padding='8px';
+    row.style.border='1px solid #192e50';
+    row.style.borderRadius='12px';
+    row.style.background='#0b1322';
+
+    const left=document.createElement('div');
+    left.textContent=`${t.from} offers ${fmtRes(t.give)} for ${fmtRes(t.want)}`;
+
     const right=document.createElement('div');
     if(t.from!==username && alive()){
       const b=document.createElement('button'); b.className='btn'; b.textContent='Accept'; b.onclick=()=>acceptTrade(t); right.appendChild(b);
     }else{
       const b=document.createElement('button'); b.className='btn'; b.textContent='Cancel'; b.onclick=()=>deleteDoc(doc(db,"zombiezone",gameId,"trades",t.id)); right.appendChild(b);
     }
-    row.append(left,right); tradesEl.appendChild(row);
+    row.append(left,right);
+    tradesEl.appendChild(row);
   });
 }
 function fmtRes(o){ const k=Object.keys(o||{})[0]; return `${o[k]} ${k}`; }
@@ -1130,7 +1114,7 @@ onSnapshot(gameRef,(snap)=>{
   if(g.currentTurn!==lastTurnSeen){
     lastTurnSeen=g.currentTurn;
     startTimer();
-    setTimeout(startTurnIfMine, 150); // the current player records the roll; everyone sees banner via snapshot
+    setTimeout(startTurnIfMine, 150); // current player records roll; everyone sees banner
   }
 });
 
