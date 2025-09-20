@@ -6,9 +6,8 @@
 <title>🧟‍♂️ Zombie Zone — 4P</title>
 <style>
   :root{
-    --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
+    --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7;
     --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
-    --radius:14px;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -58,8 +57,8 @@
   .tool.sel{ outline:2px solid #7c3aed; background:#131c30 }
 
   .dice-banner{
-    position:absolute; inset:auto 0 30% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
-    font-weight:900; font-size: clamp(28px, 7vw, 64px); color:#fff; text-shadow:0 8px 24px rgba(0,0,0,.5);
+    position:absolute; inset:auto 0 28% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
+    font-weight:900; font-size: clamp(40px, 10vw, 96px); color:#fff; text-shadow:0 8px 24px rgba(0,0,0,.5);
     opacity:0; transform: translateY(10px); transition: opacity .6s, transform .6s;
   }
   .dice-banner.show{ opacity:1; transform: translateY(0) }
@@ -77,6 +76,8 @@
     <span id="turnInfo" class="pill">Waiting…</span>
     <span id="timer" class="pill">60s</span>
     <div class="spacer"></div>
+    <button id="btnZoomOut" class="btn">−</button>
+    <button id="btnZoomIn" class="btn">+</button>
     <button id="btnFullscreen" class="btn">⤢ Fullscreen</button>
     <button id="btnEndTurn" class="btn btn-accent" disabled>End Turn</button>
   </div>
@@ -167,7 +168,6 @@ const W = 64, H = 64;
 const TILE_COLORS = { red:"#7f1d1d", gray:"#374151", white:"#cbd5e1", yellow:"#f59e0b", green:"#197141" };
 const RESOURCE_BY_COLOR = { red:'brick', gray:'ore', white:'sheep', yellow:'wheat', green:'wood' };
 const R_KEYS = ['brick','ore','sheep','wheat','wood'];
-const SPAWNS = [ [32,32], [36,32], [28,32], [32,36] ];
 const TURN_SECONDS = 60;
 
 /* ---------------- State ---------------- */
@@ -191,10 +191,17 @@ const tradeGive = document.getElementById('tradeGive');
 const tradeGiveAmt = document.getElementById('tradeGiveAmt');
 const tradeWant = document.getElementById('tradeWant');
 const tradeWantAmt = document.getElementById('tradeWantAmt');
+const btnZoomIn = document.getElementById('btnZoomIn');
+const btnZoomOut = document.getElementById('btnZoomOut');
 const deadOverlay = document.getElementById('deadOverlay');
 
 /* ---------------- Camera / Interaction ---------------- */
-let local = { scale:1, camX:0, camY:0, dragging:false, dragStart:[0,0], camStart:[0,0], edgePan:true, build:null, hover:[-1,-1] };
+let local = {
+  scale:36, camX:0, camY:0,
+  dragging:false, dragStart:[0,0], camStart:[0,0],
+  edgePan:true, build:null, hover:[-1,-1]
+};
+const clampScale = ()=> { local.scale = Math.max(18, Math.min(64, local.scale)); };
 
 function resize(){
   const dpr = devicePixelRatio||1;
@@ -204,6 +211,84 @@ function resize(){
 }
 window.addEventListener('resize', resize);
 
+function worldToScreen(x,y){ return [(x - local.camX)*local.scale, (y - local.camY)*local.scale]; }
+function screenToWorld(px,py){ return [px/local.scale + local.camX, py/local.scale + local.camY]; }
+function ptToTile(px,py){ const [wx,wy] = screenToWorld(px,py); return [Math.floor(wx), Math.floor(wy)]; }
+
+resize();
+clampScale();
+// roughly center on middle at start
+local.camX = 32 - (wrap.clientWidth/local.scale)/2;
+local.camY = 32 - (wrap.clientHeight/local.scale)/2;
+
+/* Drag pan */
+wrap.addEventListener('pointerdown', (e)=>{
+  wrap.setPointerCapture(e.pointerId);
+  local.dragging=true; local.dragStart=[e.clientX,e.clientY]; local.camStart=[local.camX,local.camY];
+});
+wrap.addEventListener('pointermove', (e)=>{
+  const rect = wrap.getBoundingClientRect();
+  const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  local.hover = ptToTile(px,py);
+  if(local.dragging){
+    const dx=(e.clientX-local.dragStart[0])/local.scale;
+    const dy=(e.clientY-local.dragStart[1])/local.scale;
+    local.camX = local.camStart[0]-dx;
+    local.camY = local.camStart[1]-dy;
+  }else if(e.pointerType==='mouse'){
+    const edge=18;
+    if(px<edge) local.camX -= 0.15;
+    if(px>rect.width-edge) local.camX += 0.15;
+    if(py<edge) local.camY -= 0.15;
+    if(py>rect.height-edge) local.camY += 0.15;
+  }
+});
+wrap.addEventListener('pointerup',(e)=>{
+  wrap.releasePointerCapture(e.pointerId);
+  const moved = Math.hypot(e.clientX-local.dragStart[0], e.clientY-local.dragStart[1]);
+  if(local.dragging && moved<6){ handleTap(e); }
+  local.dragging=false;
+});
+wrap.addEventListener('pointercancel',()=> local.dragging=false);
+
+/* Zoom (wheel / pinch / buttons) */
+function zoomAt(pointX, pointY, factor){
+  const [wx, wy] = screenToWorld(pointX, pointY);
+  local.scale *= factor; clampScale();
+  const [sx, sy] = worldToScreen(wx, wy);
+  const dx = (pointX - sx)/local.scale;
+  const dy = (pointY - sy)/local.scale;
+  local.camX -= dx; local.camY -= dy;
+}
+wrap.addEventListener('wheel',(e)=>{
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  zoomAt(px, py, (e.deltaY<0)?1.15:1/1.15);
+},{passive:false});
+
+let pinchDist=0;
+wrap.addEventListener('touchstart',(e)=>{ if(e.touches.length===2){ pinchDist = dist(e.touches[0], e.touches[1]); } }, {passive:true});
+wrap.addEventListener('touchmove',(e)=>{
+  if(e.touches.length===2){
+    e.preventDefault();
+    const nd = dist(e.touches[0], e.touches[1]);
+    if(pinchDist>0){
+      const rect = wrap.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX)/2 - rect.left;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY)/2 - rect.top;
+      const factor = Math.pow(1.015, (nd - pinchDist)/2);
+      zoomAt(cx, cy, factor);
+    }
+    pinchDist = nd;
+  }
+},{passive:false});
+wrap.addEventListener('touchend',()=>{ pinchDist=0; }, {passive:true});
+function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
+
+btnZoomIn.onclick  = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.15);
+btnZoomOut.onclick = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1/1.15);
+
 /* ---------------- Helpers ---------------- */
 function indexOf(x, y){ return y*W + x; }
 function inBounds(x,y){ return x>=0 && y>=0 && x<W && y<H; }
@@ -211,6 +296,7 @@ function getTile(g, x, y){ return g.tiles[indexOf(x,y)]; }
 function tileAt(x,y){ return state ? state.tiles[indexOf(x,y)] : null; }
 function playerColor(i){ return ['#60a5fa','#22c55e','#f59e0b','#f472b6'][i%4]; }
 function alive(){ return myIndex>=0 && state.players[myIndex]?.alive; }
+function isMyTurn(){ return state && myIndex>=0 && state.playerOrder[state.currentTurn]===myIndex; }
 
 function seededRng(seed){ let s = seed>>>0; return ()=> (s = (s*1664525 + 1013904223) >>> 0)/2**32; }
 function genMap(seed){
@@ -220,14 +306,16 @@ function genMap(seed){
   const tiles = new Array(W*H);
   for(let y=0;y<H;y++){
     for(let x=0;x<W;x++){
-      const c = colors[Math.floor(rnd()*colors.length)];
-      const n = nums[Math.floor(rnd()*nums.length)];
-      tiles[indexOf(x,y)] = { color:c, num:n };
+      tiles[indexOf(x,y)] = {
+        color: colors[Math.floor(rnd()*colors.length)],
+        num:   nums[Math.floor(rnd()*nums.length)]
+      };
     }
   }
   return tiles;
 }
 
+/* ---------------- UI bits ---------------- */
 function moneyChip(label, color, amt){
   const div = document.createElement('div'); div.className='chip';
   const dot = document.createElement('span'); dot.className='dot'; dot.style.background=color;
@@ -245,7 +333,11 @@ function renderResources(){
     moneyChip('Wood','#22c55e', r.wood),
   );
 }
-function showDice(n){ diceBanner.textContent=n; diceBanner.classList.add('show'); setTimeout(()=>diceBanner.classList.remove('show'), 1000); }
+function showDice(n){
+  diceBanner.textContent=n;
+  diceBanner.classList.add('show');
+  setTimeout(()=>diceBanner.classList.remove('show'), 1400);
+}
 
 /* ---------------- Build System ---------------- */
 const COST = {
@@ -288,9 +380,7 @@ function needsWire(kind){ return !['wall','uwall'].includes(kind); }
 function hpFor(kind){
   if(kind==='wall') return 6;
   if(kind==='uwall') return 14;
-  if(kind==='turret') return 8;
-  if(kind==='cata') return 8;
-  if(kind==='beacon') return 8;
+  if(kind==='turret' || kind==='cata' || kind==='beacon') return 8;
   if(kind==='tesla') return 10;
   if(kind==='tribolt') return 9;
   if(kind==='cc'||kind==='base') return 20;
@@ -388,16 +478,15 @@ async function ensureGame(){
       const seed = Math.floor(Math.random()*2**31);
       const tiles = genMap(seed);
       const players = await initialPlayers();
-      const pls = players.map(n=>({name:n, alive:true, res:{brick:0,ore:0,sheep:0,wheat:0,wood:0}, bases:[]}));
-      const buildings=[];
-      for(let i=0;i<pls.length&&i<SPAWNS.length;i++){
-        const [x,y]=SPAWNS[i];
-        pls[i].bases.push({x,y,type:'cc'});
-        buildings.push({kind:'cc',owner:i,x,y,hp:hpFor('cc'),level:1});
-        buildings.push({kind:'wire',owner:i,x,y,hp:1,level:1});
-      }
+      const pls = players.map(n=>({
+        name:n, alive:true,
+        res:{brick:0,ore:0,sheep:0,wheat:0,wood:0},
+        bases:[],
+        needsFirstCC:true                 // ← place on first click of first turn
+      }));
       await tx.set(gameRef,{
-        seed, tiles, buildings,
+        seed, tiles,
+        buildings: [],
         zombies: [],
         players: pls,
         playerOrder: pls.map((_,i)=>i),
@@ -420,10 +509,10 @@ let unsubMain = onSnapshot(gameRef, (snap)=>{
   myIndex = (state.players||[]).findIndex(p=>p.name===username);
   renderResources(); renderTrades(); updateHud();
   if(myIndex>=0 && !state.players[myIndex].alive){
-    document.getElementById('deadOverlay').style.display='grid';
+    deadOverlay.style.display='grid';
     btnEndTurn.disabled=true;
   }else{
-    document.getElementById('deadOverlay').style.display='none';
+    deadOverlay.style.display='none';
   }
 });
 
@@ -450,58 +539,28 @@ function startTimer(){
 }
 startTimer();
 
-/* ---------------- Input / Pan / Place ---------------- */
-function worldToScreen(x,y){ return [(x - local.camX)*local.scale, (y - local.camY)*local.scale]; }
-function screenToWorld(px,py){ return [px/local.scale + local.camX, py/local.scale + local.camY]; }
-function ptToTile(px,py){ const [wx,wy]=screenToWorld(px,py); return [Math.floor(wx),Math.floor(wy)]; }
-
-resize();
-local.scale = Math.max( wrap.clientWidth / (W*1.0), wrap.clientHeight / (H*1.0) );
-local.camX = 32 - (wrap.clientWidth/local.scale)/2;
-local.camY = 32 - (wrap.clientHeight/local.scale)/2;
-
-wrap.addEventListener('pointerdown',(e)=>{
-  wrap.setPointerCapture(e.pointerId);
-  local.dragging=true; local.dragStart=[e.clientX,e.clientY]; local.camStart=[local.camX,local.camY];
-});
-wrap.addEventListener('pointermove',(e)=>{
-  const rect = wrap.getBoundingClientRect();
-  const px=e.clientX-rect.left, py=e.clientY-rect.top;
-  local.hover = ptToTile(px,py);
-  if(local.dragging){
-    const dx=(e.clientX-local.dragStart[0])/local.scale;
-    const dy=(e.clientY-local.dragStart[1])/local.scale;
-    local.camX = local.camStart[0]-dx;
-    local.camY = local.camStart[1]-dy;
-  }else if(e.pointerType==='mouse'){
-    const edge=18;
-    if(px<edge) local.camX -= .15;
-    if(px>rect.width-edge) local.camX += .15;
-    if(py<edge) local.camY -= .15;
-    if(py>rect.height-edge) local.camY += .15;
-  }
-});
-wrap.addEventListener('pointerup',(e)=>{
-  wrap.releasePointerCapture(e.pointerId);
-  const moved = Math.hypot(e.clientX-local.dragStart[0], e.clientY-local.dragStart[1]);
-  if(local.dragging && moved<6){ handleTap(e); }
-  local.dragging=false;
-});
-wrap.addEventListener('pointercancel',()=> local.dragging=false);
-
+/* ---------------- Input / Tap ---------------- */
 function handleTap(e){
   const rect = wrap.getBoundingClientRect();
   const [tx,ty]=ptToTile(e.clientX-rect.left,e.clientY-rect.top);
   if(!inBounds(tx,ty)){ cancelBuild(); return; }
   if(!alive()) return;
+
+  // FIRST-TURN FREE CC PLACEMENT
+  if(isMyTurn() && state.players[myIndex]?.needsFirstCC){
+    placeFirstCC(tx,ty);
+    return;
+  }
+
   if(local.build){
     if(placeable(tx,ty,local.build)) doPlace(tx,ty,local.build);
     cancelBuild(); return;
   }
-  // try upgrade
+  // try upgrade click
   const b = state.buildings.find(b=>b.x===tx&&b.y===ty&&b.owner===myIndex&&upgradable(b));
   if(b) tryUpgrade(b);
 }
+
 function cancelBuild(){
   local.build=null;
   [...buildbar.children].forEach(c=>c.classList.remove('sel'));
@@ -509,6 +568,30 @@ function cancelBuild(){
 document.body.addEventListener('click',(e)=>{
   if(!wrap.contains(e.target) && !buildbar.contains(e.target)) cancelBuild();
 }, true);
+
+/* ---------------- First turn CC placement ---------------- */
+async function placeFirstCC(x,y){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    const me = g.players[myIndex];
+    if(!me || !me.needsFirstCC) return;
+    if(g.zombies.some(z=>z.x===x&&z.y===y)) return;
+    if(g.buildings.some(b=>b.x===x&&b.y===y)) return;
+    for(const p of g.players){
+      for(const bb of (p.bases||[])){
+        const d = Math.abs(bb.x-x)+Math.abs(bb.y-y);
+        if(d<3) return; // spacing
+      }
+    }
+    g.buildings.push({kind:'cc', owner:myIndex, x,y, hp:hpFor('cc'), level:1});
+    g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:1, level:1}); // power seed
+    me.bases.push({x,y,type:'cc'});
+    me.needsFirstCC=false;
+    g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
+    await tx.update(gameRef,g);
+  });
+}
 
 /* ---------------- Drawing ---------------- */
 function draw(){
@@ -522,28 +605,24 @@ function draw(){
   const x1 = Math.min(W-1, Math.ceil(local.camX + vw));
   const y1 = Math.min(H-1, Math.ceil(local.camY + vh));
 
+  // base tiles
   for(let y=y0;y<=y1;y++){
     for(let x=x0;x<=x1;x++){
       const t = tileAt(x,y); if(!t) continue;
       const [sx,sy] = worldToScreen(x,y);
       ctx.fillStyle = TILE_COLORS[t.color];
       ctx.fillRect(sx,sy,1*local.scale,1*local.scale);
-      ctx.fillStyle = "rgba(0,0,0,.35)";
-      ctx.fillRect(sx, sy + (local.scale-12), 1*local.scale, 12);
-      ctx.fillStyle = "rgba(255,255,255,.92)";
-      ctx.font = "bold 10px ui-sans-serif";
-      ctx.textAlign="center"; ctx.textBaseline="bottom";
-      ctx.fillText(String(t.num), sx + 0.5*local.scale, sy + local.scale - 2);
     }
   }
 
-  // wires first
+  // wires
   for(const b of buildings){
     if(b.kind!=='wire') continue;
     const [sx,sy] = worldToScreen(b.x,b.y);
     ctx.fillStyle="#93c5fd";
     ctx.fillRect(sx+local.scale*0.35, sy+local.scale*0.35, local.scale*0.3, local.scale*0.3);
   }
+
   // buildings
   for(const b of buildings){
     if(b.kind==='wire') continue;
@@ -558,16 +637,29 @@ function draw(){
       b.kind==='beacon'?'🔥': b.kind==='tesla'?'⚡':
       b.kind==='tribolt'?'🔱': b.kind==='drill'?'⛏️':'□'
     );
-    ctx.fillStyle="#fff"; ctx.font="bold 16px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle="#fff"; ctx.font="bold 18px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(icon, sx+local.scale/2, sy+local.scale/2+1);
     if(b.level && b.level>1){ ctx.fillText("★", sx+local.scale-10, sy+10); }
   }
+
   // zombies
   for(const z of zombies){
     const [sx,sy] = worldToScreen(z.x,z.y);
     ctx.fillStyle="#16a34a"; ctx.fillRect(sx+2,sy+2, local.scale-4, local.scale-4);
     ctx.fillStyle="#000"; ctx.fillRect(sx+2, sy+2, local.scale-4, 4);
     ctx.fillStyle="#22c55e"; ctx.fillRect(sx+2, sy+2, (local.scale-4)*(z.hp/z.maxhp), 4);
+  }
+
+  // numbers on top (always readable)
+  ctx.fillStyle = "rgba(255,255,255,.98)";
+  ctx.font = "bold 12px ui-sans-serif";
+  ctx.textAlign="center"; ctx.textBaseline="bottom";
+  for(let y=y0;y<=y1;y++){
+    for(let x=x0;x<=x1;x++){
+      const t = tileAt(x,y); if(!t) continue;
+      const [sx,sy] = worldToScreen(x,y);
+      ctx.fillText(String(t.num), sx + 0.5*local.scale, sy + local.scale - 2);
+    }
   }
 
   // build hint
@@ -598,6 +690,7 @@ async function startTurnIfMine(){
   const meTurn = state.playerOrder[state.currentTurn]===myIndex;
   if(!meTurn || !alive()) return;
 
+  // auto dice roll (2..12, 7 triggers zombie step)
   const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
   showDice(roll);
 
@@ -605,9 +698,9 @@ async function startTurnIfMine(){
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
     const meIdx = g.playerOrder[g.currentTurn];
-    if(meIdx!==myIndex) return; // recheck
+    if(meIdx!==myIndex) return;
 
-    // payout: each CC/Base on or orth-adjacent to rolled tiles
+    // payout for bases on/adjacent to rolled tiles
     const pl = g.players[myIndex];
     const addRes = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
     const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
@@ -627,7 +720,7 @@ async function startTurnIfMine(){
     // towers fire
     fireDefenses(g,myIndex);
 
-    // 7 = zombies extra step
+    // 7 ⇒ zombies extra step
     if(roll===7){ zombiesAdvance(g); }
 
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
@@ -638,6 +731,7 @@ async function startTurnIfMine(){
 
   renderResources();
 }
+
 async function endTurn(){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
@@ -647,7 +741,6 @@ async function endTurn(){
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
-    // next turn / round
     const cur=g.currentTurn;
     let nt=(cur+1)%g.playerOrder.length;
     for(let guard=0; guard<8; guard++){
@@ -660,12 +753,11 @@ async function endTurn(){
       if(g.round%5===0) g.zombieBaseHP+=1;
       spawnEdgeZombies(g, g.zombiesPerEdge);
     }
-    // sync alive flags
+    // alive flags (has CC/Base?)
     for(let i=0;i<g.players.length;i++){
-      const p=g.players[i];
-      const stillCC = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
-      p.alive = !!stillCC;
-      if(!stillCC) p.bases=[]; // cleanup
+      const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
+      g.players[i].alive = !!still;
+      if(!still) g.players[i].bases=[];
     }
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
@@ -692,19 +784,19 @@ function zombiesAdvance(g){
     }
     // targets: any alive base
     const targets=[];
-    g.players.forEach((p,pi)=>{ if(!p.alive) return; for(const bb of p.bases||[]) targets.push({x:bb.x,y:bb.y}); });
+    g.players.forEach((p)=>{ if(!p.alive) return; for(const bb of p.bases||[]) targets.push({x:bb.x,y:bb.y}); });
     if(!targets.length) continue;
     const goal = nearest(targets, z.x,z.y);
     const step = bfsStep(z.x,z.y, goal.x,goal.y, walkable);
 
     if(!step){
       // attack adjacent wall
-      const n = dirs.map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&(b.kind==='wall'||b.kind==='uwall'))).find(ix=>ix>=0);
-      if(n>=0){
-        g.buildings[n].hp -= 1;
-        if(g.buildings[n].hp<=0){
-          const own = g.buildings[n].owner;
-          g.buildings.splice(n,1);
+      const ni = dirs.map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&(b.kind==='wall'||b.kind==='uwall'))).find(ix=>ix>=0);
+      if(ni>=0){
+        g.buildings[ni].hp -= 1;
+        if(g.buildings[ni].hp<=0){
+          const own = g.buildings[ni].owner;
+          g.buildings.splice(ni,1);
           pruneDisconnected(g,own);
         }
       }
@@ -712,7 +804,6 @@ function zombiesAdvance(g){
       z.x=step.x; z.y=step.y;
     }
   }
-  // clean dead buildings if any reduced below 0 elsewhere
   g.buildings = g.buildings.filter(b=> b.hp==null || b.hp>0 );
 }
 function nearest(arr,x,y){
@@ -733,7 +824,11 @@ function bfsStep(sx,sy,tx,ty,pass){
       seen.add(key); from.set(key,[x,y]);
       if(nx===tx && ny===ty){
         let cur=[nx,ny], prev=[x,y];
-        while(prev[0]!==sx || prev[1]!==sy){ cur=prev; const pkey=prev[0]+','+prev[1]; prev=from.get(pkey)||[sx,sy]; if(prev[0]===sx&&prev[1]===sy) break; }
+        while(prev[0]!==sx || prev[1]!==sy){
+          cur=prev; const pkey=prev[0]+','+prev[1];
+          prev=from.get(pkey)||[sx,sy];
+          if(prev[0]===sx && prev[1]===sy) break;
+        }
         return {x:cur[0],y:cur[1]};
       }
       Q.push([nx,ny]);
@@ -788,7 +883,7 @@ function fireDefenses(g, owner){
   for(const t of towers){
     if(g.zombies.length===0) continue;
     const rangeOf = (k)=>{ let r=(k==='turret')?5:(k==='cata')?6:(k==='beacon')?4:(k==='tesla')?5:(k==='tribolt')?6:4; if(t.level>1) r++; return r; };
-    const dmgOf = (k)=>{ let d=(k==='turret')?2:(k==='cata')?1:(k==='beacon')?1:(k==='tesla')?2:(k==='tribolt')?1:1; if(t.level>1) d++; return d; };
+    const dmgOf   = (k)=>{ let d=(k==='turret')?2:(k==='cata')?1:(k==='beacon')?1:(k==='tesla')?2:(k==='tribolt')?1:1; if(t.level>1) d++; return d; };
     const inR = (z)=> Math.abs(z.x-t.x)+Math.abs(z.y-t.y) <= rangeOf(t.kind);
     const targets = g.zombies.filter(inR);
     if(targets.length===0) continue;
@@ -808,8 +903,7 @@ function fireDefenses(g, owner){
       }
       for(const zz of chain){ zz.hp -= dmgOf('tesla'); }
     }else if(t.kind==='tribolt'){
-      const n = Math.min(3,targets.length);
-      hitNearest(targets,n,dmgOf('tribolt'));
+      hitNearest(targets, Math.min(3,targets.length), dmgOf('tribolt'));
     }
   }
   g.zombies = g.zombies.filter(z=>z.hp>0);
@@ -875,15 +969,13 @@ onSnapshot(gameRef,(snap)=>{
   if(g.currentTurn!==lastTurnSeen){
     lastTurnSeen=g.currentTurn;
     startTimer();
-    setTimeout(startTurnIfMine, 150);
+    setTimeout(startTurnIfMine, 150); // auto dice at start of your turn
   }
 });
 
 /* ---------------- Init ---------------- */
 await ensureGame();
 requestAnimationFrame(draw);
-
-/* ---------------- Utilities ---------------- */
 
 </script>
 </body>
