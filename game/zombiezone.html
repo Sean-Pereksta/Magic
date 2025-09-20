@@ -25,7 +25,10 @@
   }
   .hud .title{font-weight:900}
   .spacer{flex:1}
-  .btn{appearance:none; border:1px solid #263147; background:#111a2b; color:#e6edf3; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800}
+  .btn{
+    appearance:none; border:1px solid #263147; background:#111a2b; color:#e6edf3; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800;
+    touch-action: manipulation; user-select:none;
+  }
   .btn:hover{background:#162238}
   .btn[disabled]{opacity:.6; cursor:not-allowed}
   .btn-accent{background:linear-gradient(180deg,#7c3aed,#6d28d9); border-color:#5b21b6}
@@ -244,6 +247,7 @@ let state = null;
 let myIndex = -1;
 let localCareSeenRound = 0;
 let lastRollSeenTurnId = -1;
+let endingTurn = false; // ← mobile “freeze” guard
 
 /* ---------------- DOM ---------------- */
 const playArea = document.getElementById('playArea');
@@ -373,6 +377,39 @@ function playerColor(i){ return ['#60a5fa','#22c55e','#f59e0b','#f472b6'][i%4]; 
 function alive(){ return myIndex>=0 && state.players[myIndex]?.alive; }
 function isMyTurn(){ return state && myIndex>=0 && state.playerOrder[state.currentTurn]===myIndex; }
 
+/* HP helpers */
+function hpFor(kind){
+  if(kind==='wall') return 6;
+  if(kind==='uwall') return 14;
+  if(kind==='turret' || kind==='cata' || kind==='beacon') return 8;
+  if(kind==='tesla') return 10;
+  if(kind==='tribolt') return 9;
+  if(kind==='mortar') return 8;
+  if(kind==='cc'||kind==='base') return 20;
+  if(kind==='drill') return 6;
+  if(kind==='wire') return 1;
+  return 1;
+}
+function drawHpBar(x, y, cur, max){
+  const w = Math.max(24, local.scale - 6);
+  const h = 5;
+  const px = x + (local.scale - w)/2;
+  const py = y + 3;
+  const r = Math.max(0, Math.min(1, cur/max));
+  ctx.fillStyle = "#000";
+  ctx.fillRect(px, py, w, h);
+  ctx.fillStyle = r>0.5 ? "#22c55e" : (r>0.25 ? "#f59e0b" : "#ef4444");
+  ctx.fillRect(px, py, w*r, h);
+  if(local.scale >= 28){
+    ctx.font = "bold 10px ui-sans-serif";
+    ctx.fillStyle = "#e6edf3";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`${Math.ceil(cur)}/${max}`, x + local.scale/2, py + h + 1);
+  }
+}
+
+/* ---------------- RNG + Map ---------------- */
 function seededRng(seed){ let s = seed>>>0; return ()=> (s = (s*1664525 + 1013904223) >>> 0)/2**32; }
 function genMap(seed){
   const rnd = seededRng(seed);
@@ -462,18 +499,6 @@ const BUILD_TOOLS = [
   {id:'drill',label:'Drill',icon:'⛏️'}
 ];
 function needsWire(kind){ return !['wall','uwall'].includes(kind); }
-function hpFor(kind){
-  if(kind==='wall') return 6;          // base wall HP
-  if(kind==='uwall') return 14;        // stronger wall HP
-  if(kind==='turret' || kind==='cata' || kind==='beacon') return 8;
-  if(kind==='tesla') return 10;
-  if(kind==='tribolt') return 9;
-  if(kind==='mortar') return 8;
-  if(kind==='cc'||kind==='base') return 20;
-  if(kind==='drill') return 6;
-  if(kind==='wire') return 1;
-  return 1;
-}
 function hasRes(cost){
   const r = state.players[myIndex].res;
   for(const k of Object.keys(cost)){ if((r[k]||0) < cost[k]) return false; }
@@ -487,7 +512,6 @@ function canAfford(kind){
   return COST[kind] ? hasRes(COST[kind]) : true;
 }
 function upgradable(b){ return ['turret','cata','beacon','tesla','tribolt','mortar'].includes(b.kind); }
-
 function costText(obj){ return Object.entries(obj).map(([k,v])=>`${v} ${k}`).join(', '); }
 function renderBuildModal(){
   buildGrid.innerHTML='';
@@ -690,7 +714,7 @@ function updateHud(){
   const currentPI = state.playerOrder[state.currentTurn] ?? 0;
   const curName = state.players[currentPI]?.name || '?';
   const meTurn = (myIndex===currentPI);
-  btnEndTurn.disabled = !meTurn || !alive();
+  btnEndTurn.disabled = !meTurn || !alive() || endingTurn;
   turnInfo.textContent = meTurn ? `Your turn` : `Waiting on ${curName}`;
 }
 
@@ -788,7 +812,7 @@ function draw(){
     ctx.fillRect(sx+local.scale*0.35, sy+local.scale*0.35, local.scale*0.3, local.scale*0.3);
   }
 
-  // buildings
+  // buildings + HP
   for(const b of buildings){
     if(b.kind==='wire') continue;
     const [sx,sy] = worldToScreen(b.x,b.y);
@@ -806,17 +830,19 @@ function draw(){
     ctx.fillStyle="#fff"; ctx.font="bold 18px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(icon, sx+local.scale/2, sy+local.scale/2+1);
     if(b.level && b.level>1){ ctx.fillText("★", sx+local.scale-10, sy+10); }
+
+    // HP BAR (always for non-wire)
+    const maxhp = Math.max(hpFor(b.kind), b.hp||1);
+    drawHpBar(sx, sy, b.hp ?? maxhp, maxhp);
   }
 
-  // zombies as emojis + HP bar
+  // zombies + HP bar
   for(const z of zombies){
     const [sx,sy] = worldToScreen(z.x,z.y);
     ctx.font = "bold 20px system-ui";
     ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("🧟", sx+local.scale/2, sy+local.scale/2);
-    // HP bar
-    ctx.fillStyle="#000"; ctx.fillRect(sx+3, sy+3, local.scale-6, 5);
-    ctx.fillStyle="#22c55e"; ctx.fillRect(sx+3, sy+3, (local.scale-6)*(z.hp/z.maxhp), 5);
+    drawHpBar(sx, sy, z.hp, z.maxhp);
   }
 
   // numbers
@@ -847,14 +873,37 @@ function draw(){
 requestAnimationFrame(draw);
 
 /* ---------------- Turn Flow (ROLL AT END) ---------------- */
-btnEndTurn.onclick = ()=> endTurn();
+function setEndingUI(on){
+  endingTurn = on;
+  btnEndTurn.textContent = on ? 'Ending…' : 'End Turn';
+  updateHud();
+}
+async function endTurnSafely(){
+  if(!alive()){ toast('You are eliminated.'); return; }
+  if(!isMyTurn()){ toast('Not your turn'); return; }
+  if(endingTurn) return;
+  setEndingUI(true);
+  try{
+    await applyEndTurn();
+  }catch(err){
+    console.error(err);
+    toast('End turn failed');
+  }finally{
+    // Button state will also update via snapshot; keep responsive here:
+    setEndingUI(false);
+  }
+}
+btnEndTurn.addEventListener('click', ()=> endTurnSafely(), {passive:true});
+btnEndTurn.addEventListener('touchend', (e)=>{ e.preventDefault(); endTurnSafely(); }, {passive:false});
+
 btnFullscreen.onclick = ()=> {
   if(!document.fullscreenElement){ playArea.requestFullscreen?.(); }
   else{ document.exitFullscreen?.(); }
 };
 btnReturnLobby.onclick = ()=>{ window.location.href='/?username='+encodeURIComponent(username); };
 
-async function endTurn(){
+// The actual turn logic (kept separate)
+async function applyEndTurn(){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
@@ -944,7 +993,7 @@ async function endTurn(){
   });
 }
 function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
-async function forceEndTurn(){ if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurn(); }
+async function forceEndTurn(){ if(endingTurn) return; if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurnSafely(); }
 
 /* ---------------- Zombies / Pathing & Attacks ---------------- */
 function zombiesAdvance(g){
@@ -1109,14 +1158,12 @@ function fireDefenses(g, owner){
     }else if(t.kind==='tribolt'){
       hitNearest(targets, Math.min(3,targets.length), dmgOf('tribolt'));
     }else if(t.kind==='mortar'){
-      // choose nearest, explode 3x3
-      const z = nearest(targets,t.x,t.y);
+      const z = nearest(targets,t.x,t.y); // explode 3x3
       for(const zz of g.zombies){ if(Math.abs(zz.x-z.x)<=1 && Math.abs(zz.y-z.y)<=1) zz.hp -= dmgOf('mortar'); }
     }
   }
   g.zombies = g.zombies.filter(z=>z.hp>0);
   function hitNearest(arr,n,d){
-    arr.sort((a,b)=> (Math.abs(a.x-t.x)+Math.abs(b.y-t.y)) - (Math.abs(b.x-t.x)+Math.abs(b.y-t.y)));
     arr.sort((a,b)=> (Math.abs(a.x-t.x)+Math.abs(a.y-t.y)) - (Math.abs(b.x-t.x)+Math.abs(b.y-t.y)));
     for(let i=0;i<n;i++) if(arr[i]) arr[i].hp -= d;
   }
