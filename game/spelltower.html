@@ -8,17 +8,17 @@
   :root{
     --bg:#0b1014; --panel:#0e1726; --ink:#e6edf3; --muted:#93a4b7; --edge:#1f2a44;
     --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed;
-    --radius:14px; --cell:38px; --gap:6px; --hand-h:30vh;
+    --radius:14px; --cell:38px; --gap:6px; --hand-h:30vh; --card-h:160px;
   }
   @media (max-width: 540px){
-    :root{ --cell:32px; --hand-h:30vh; }
+    :root{ --cell:32px; --hand-h:30vh; --card-h:172px; }
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
     background:radial-gradient(1200px 600px at 50% -200px, #4c1d95 0%, #312e81 55%, #0b1014 100%) fixed;
-    overflow:hidden; /* page never scrolls; hand box can scroll */
+    overflow:hidden;
   }
   .shell{
     height:100dvh; max-width:1100px; margin:0 auto; padding:8px;
@@ -37,7 +37,11 @@
   .bar > i{display:block; height:100%; background:linear-gradient(90deg,#10b981,#22c55e,#84cc16); width:0%}
   .dangerbar > i{background:linear-gradient(90deg,#f97316,#ef4444)}
   .tiny{font-size:.9rem; opacity:.85}
-  .btn{cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink); border-radius:10px; padding:6px 9px; font-weight:800; font-size:.92rem}
+  .btn{
+    cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink);
+    border-radius:10px; padding:10px 12px; font-weight:800; font-size:.95rem;
+    width:100%; min-height:44px; touch-action:manipulation;
+  }
   .btn:hover{ background:#101a2b }
   .danger{border-color:#7f1d1d; color:#fecaca}
   .ok{border-color:#14532d; color:#bbf7d0}
@@ -94,18 +98,23 @@
     border:1px solid #1f2a44; border-radius:10px; padding:6px; background:#0a1220;
   }
   .hand{ display:flex; flex-wrap:wrap; gap:6px; }
+
+  /* NEW: taller cards with top/bottom buttons */
   .card{
-    min-width:72px; max-width:72px; border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
-    border-radius:10px; padding:6px; display:grid; gap:6px; font-size:.92rem;
+    min-width:86px; max-width:120px; width:calc(50% - 9px);
+    border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
+    border-radius:12px; padding:8px; display:grid; gap:8px;
+    grid-template-rows:auto 1fr auto; min-height:var(--card-h);
   }
-  @media (max-width:540px){ .card{ min-width:68px; max-width:68px; padding:5px; } }
-  .card .name{font-weight:800; font-size:.92rem; line-height:1.05; word-break:break-word}
-  .charges{display:flex; gap:3px}
-  .pip{width:9px; height:9px; border-radius:50%; background:#10b981}
+  @media (min-width:560px){ .card{ width:110px; } }
+  .card .name{font-weight:800; font-size:1rem; line-height:1.1; word-break:break-word}
+  .charges{display:flex; gap:4px; align-items:center}
+  .pip{width:10px; height:10px; border-radius:50%; background:#10b981}
   .pip.off{background:#374151}
   .combo-hint{outline:2px solid #facc15; box-shadow:0 0 0 3px rgba(250,204,21,.25)}
-  .row-split{display:flex; align-items:center; justify-content:space-between; gap:6px}
   .muted{color:var(--muted)}
+  .btn-top{margin-bottom:2px}
+  .btn-bottom{margin-top:2px}
 
   footer{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
   .fsbtn{margin-left:4px}
@@ -142,8 +151,8 @@
       <div class="stat tiny" title="Turn / Tick">
         🔁 Turn: <b id="turnText">?</b> • ⏱️ <b id="tickText">—</b>
       </div>
-      <button id="fsBtn" class="btn fsbtn" title="Fullscreen">⛶ Full</button>
-      <button id="leaveBtn" class="btn danger">🏠 Leave</button>
+      <button id="fsBtn" class="btn fsbtn" title="Fullscreen" style="width:auto;min-height:auto;padding:6px 9px">⛶ Full</button>
+      <button id="leaveBtn" class="btn danger" style="width:auto;min-height:auto;padding:6px 9px">🏠 Leave</button>
     </div>
   </header>
 
@@ -156,7 +165,7 @@
       <div class="trade-left">
         <div>🔄 Trade Block:</div>
         <div id="myTrade" class="trade-slot" title="Place a card here to offer">— empty —</div>
-        <button id="clearTradeBtn" class="btn">Clear</button>
+        <button id="clearTradeBtn" class="btn" style="width:auto;min-height:auto;padding:6px 9px">Clear</button>
       </div>
       <div>
         <div class="tiny muted">Proposals visible:</div>
@@ -168,7 +177,7 @@
   <section class="hand-card">
     <div class="hand-head">
       <div class="tiny">Your Hand</div>
-      <div class="tiny muted">Tap <b>Cast</b> then a grid cell, or tap <b>Combine</b> then another card. You can also hit <b>Trade</b> after Cast/Combine to offer the selected card.</div>
+      <!-- (Removed the little instruction text as requested) -->
     </div>
     <div class="hand-scroll">
       <div id="hand" class="hand" aria-label="Your spell cards"></div>
@@ -178,7 +187,7 @@
   <footer>
     <div class="row">
       <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
-      <button id="endTurnBtn" class="btn ok">End Turn (+1 card)</button>
+      <button id="endTurnBtn" class="btn ok" style="width:auto">End Turn (+1 card)</button>
     </div>
     <div class="tiny muted">Game: <code id="gidTxt"></code> • Player: <code id="unameTxt"></code></div>
   </footer>
@@ -196,7 +205,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  // ---------- Firebase ----------
+  /* ---------- unchanged Firebase config, state refs, types, enemies, spells, combos, etc. ---------- */
+  /* The content below matches your last version, with the UI bits adjusted. */
+
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
@@ -208,7 +219,6 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // ---------- URL Params ----------
   const params = new URLSearchParams(location.search);
   const gameId = params.get("gameId") || "";
   const username = (params.get("username") || "").trim();
@@ -216,41 +226,23 @@
   unameTxt.textContent = username;
   if (!gameId || !username) { alert("Missing gameId/username (launch from lobby)."); }
 
-  // ---------- Refs ----------
   const lobbyRef = doc(db, "lobbies", gameId);
   const stateRef = doc(db, "spelltower", gameId);
 
-  // ---------- Damage types ----------
-  const TYPES = {
-    fire: "🔥", water: "💧", ice: "🧊", electric: "⚡",
-    nature: "🌿", earth: "🪨", arcane: "✨", shadow:"🌑", neutral:"⚔️"
-  };
-
-  // Map effect → damage type
+  const TYPES = { fire:"🔥", water:"💧", ice:"🧊", electric:"⚡", nature:"🌿", earth:"🪨", arcane:"✨", shadow:"🌑", neutral:"⚔️" };
   function effectType(effect){
     const map = {
       fire:'fire', pyro:'fire', inferno:'fire', scald:'fire', boil:'fire', wildfire:'fire', cataclysm:'fire', fireline:'fire', eruption:'fire',
-
       water:'ice', steam:'water', geyser:'water', tsunami:'water', frostline:'ice', shockpush:'electric',
-
       plant:'nature', vine:'nature', wall:'earth', cinderwall:'fire', thorns:'nature', marsh:'nature', overgrowth:'nature', worldroot:'nature',
-
       lightning:'electric', chain:'electric', superchain:'electric', thunderstorm:'electric', thundercloud:'electric', voltaic:'electric', arcfire:'electric', mistflash:'electric', storm:'electric', supernova:'electric', stormfront:'electric', battery:'electric', bogstorm:'electric',
-
-      steamblast:'water', entangle:'nature', net:'nature',
-
-      // fallback:
-      default:'neutral'
+      steamblast:'water', entangle:'nature', net:'nature', default:'neutral'
     };
     return map[effect] || map.default;
   }
 
-  // ---------- Constants ----------
-  const COLS = 4, ROWS = 10;
-  const TOWER_ROW = ROWS - 1;
-  const START_HP = 50;
+  const COLS=4, ROWS=10, TOWER_ROW=ROWS-1, START_HP=50;
 
-  // Enemies with resistances/weaknesses
   const ENEMIES = [
     { key:"rat",    name:"Cave Rat",     hp:3,  spd:2, dmg:1, emoji:"🐀",  weight:1,  ability:null,        weak:['fire'], res:[] },
     { key:"imp",    name:"Ember Imp",    hp:5,  spd:1, dmg:1, emoji:"😈",  weight:2,  ability:null,        weak:['water','ice'], res:['fire'] },
@@ -260,13 +252,10 @@
     { key:"mage",   name:"Dark Mage",    hp:8,  spd:1, dmg:2, emoji:"🪄",  weight:5,  ability:"summon_rats",weak:['nature'], res:['ice'] },
     { key:"dlord",  name:"Demon Lord",   hp:16, spd:1, dmg:3, emoji:"😈🔥",weight:6,  ability:"fire_bolt", weak:['water','ice'], res:['fire'] },
     { key:"golem",  name:"Stone Golem",  hp:20, spd:1, dmg:3, emoji:"🗿",  weight:7,  ability:null,        weak:['water','nature'], res:['earth','electric'] },
-
-    // NEW enemies
     { key:"slime",  name:"Slime",        hp:9,  spd:1, dmg:1, emoji:"🫠",  weight:4,  ability:null,        weak:['electric','ice'], res:['water','nature'] },
     { key:"specter",name:"Specter",      hp:7,  spd:2, dmg:2, emoji:"👻",  weight:5,  ability:null,        weak:['electric','fire'], res:['water','nature'] },
   ];
 
-  // Base spells
   const BASE_SPELLS = {
     fire:   { name:"Fire",      emoji:"🔥", charges:3, cost:0, effect:"fire" },
     water:  { name:"Water",     emoji:"💧", charges:3, cost:0, effect:"water" },
@@ -274,66 +263,59 @@
     light:  { name:"Lightning", emoji:"⚡", charges:3, cost:0, effect:"lightning" },
   };
 
-  // Combos (lots!)
   const COMBOS = {
-    // existing
-    "fire+fire":        { key:"pyro",     name:"Pyro",        emoji:"🔥🔥",    charges:3, effect:"pyro" },
-    "pyro+pyro":        { key:"inferno",  name:"Inferno",     emoji:"🔥🔥🔥",  charges:3, effect:"inferno" },
-    "fire+water":       { key:"steam",    name:"Steam",       emoji:"💨",      charges:3, effect:"steam" },
-    "water+plant":      { key:"vine",     name:"Vine",        emoji:"🪴",      charges:3, effect:"vine" },
-    "light+light":      { key:"chain",    name:"Chain",       emoji:"⚡⚡",     charges:3, effect:"chain" },
-    "water+water":      { key:"geyser",   name:"Geyser",      emoji:"🫧",      charges:3, effect:"geyser" },
-    "plant+plant":      { key:"wall",     name:"Wall",        emoji:"🧱",      charges:3, effect:"wall" },
-    "fire+plant":       { key:"embervine",name:"Embervine",   emoji:"🔥🪴",    charges:3, effect:"embervine" },
-    "fire+light":       { key:"overheat", name:"Overheat",    emoji:"🔥⚡",    charges:3, effect:"overheat" },
-    "fire+vine":        { key:"bramblefire",name:"Bramblefire",emoji:"🌿🔥",  charges:3, effect:"bramblefire" },
-    "fire+chain":       { key:"arcfire",  name:"Arc Fire",    emoji:"⚡🔥",    charges:3, effect:"arcfire" },
-    "fire+steam":       { key:"scald",    name:"Scald",       emoji:"💨🔥",    charges:3, effect:"scald" },
-    "water+light":      { key:"storm",    name:"Storm",       emoji:"⛈️",      charges:3, effect:"storm" },
-    "water+pyro":       { key:"steamblast",name:"Steam Blast",emoji:"💨💥",    charges:3, effect:"steamblast" },
-    "water+inferno":    { key:"boil",     name:"Boil",        emoji:"🌋",      charges:3, effect:"boil" },
-    "water+chain":      { key:"voltaic",  name:"Voltaic",     emoji:"⚡💧",    charges:3, effect:"voltaic" },
-    "plant+pyro":       { key:"cinderwall",name:"Cinder Wall",emoji:"🧱🔥",    charges:3, effect:"cinderwall" },
-    "plant+light":      { key:"thorns",   name:"Thorns",      emoji:"🌵",      charges:3, effect:"thorns" },
-    "plant+steam":      { key:"marsh",    name:"Marsh",       emoji:"🪵💧",    charges:3, effect:"marsh" },
-    "light+pyro":       { key:"superchain",name:"Super Chain",emoji:"⚡⚡⚡",    charges:3, effect:"superchain" },
-    "light+inferno":    { key:"thunderstorm",name:"Thunderstorm",emoji:"🌩️",  charges:3, effect:"thunderstorm" },
-    "light+steam":      { key:"mistflash",name:"Mistflash",   emoji:"💨⚡",    charges:3, effect:"mistflash" },
-    "light+vine":       { key:"net",      name:"Net",         emoji:"🕸️",     charges:3, effect:"net" },
-    "steam+steam":      { key:"tsunami",  name:"Tsunami",     emoji:"🌊",      charges:3, effect:"tsunami" },
-    "pyro+vine":        { key:"wildfire", name:"Wildfire",    emoji:"🔥🌿",    charges:3, effect:"wildfire" },
-    "chain+steam":      { key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3, effect:"thundercloud" },
-    "chain+vine":       { key:"entangle", name:"Entangle",    emoji:"⚡🪢",    charges:3, effect:"entangle" },
+    "fire+fire":{key:"pyro",name:"Pyro",emoji:"🔥🔥",charges:3,effect:"pyro"},
+    "pyro+pyro":{key:"inferno",name:"Inferno",emoji:"🔥🔥🔥",charges:3,effect:"inferno"},
+    "fire+water":{key:"steam",name:"Steam",emoji:"💨",charges:3,effect:"steam"},
+    "water+plant":{key:"vine",name:"Vine",emoji:"🪴",charges:3,effect:"vine"},
+    "light+light":{key:"chain",name:"Chain",emoji:"⚡⚡",charges:3,effect:"chain"},
+    "water+water":{key:"geyser",name:"Geyser",emoji:"🫧",charges:3,effect:"geyser"},
+    "plant+plant":{key:"wall",name:"Wall",emoji:"🧱",charges:3,effect:"wall"},
+    "fire+plant":{key:"embervine",name:"Embervine",emoji:"🔥🪴",charges:3,effect:"embervine"},
+    "fire+light":{key:"overheat",name:"Overheat",emoji:"🔥⚡",charges:3,effect:"overheat"},
+    "fire+vine":{key:"bramblefire",name:"Bramblefire",emoji:"🌿🔥",charges:3,effect:"bramblefire"},
+    "fire+chain":{key:"arcfire",name:"Arc Fire",emoji:"⚡🔥",charges:3,effect:"arcfire"},
+    "fire+steam":{key:"scald",name:"Scald",emoji:"💨🔥",charges:3,effect:"scald"},
+    "water+light":{key:"storm",name:"Storm",emoji:"⛈️",charges:3,effect:"storm"},
+    "water+pyro":{key:"steamblast",name:"Steam Blast",emoji:"💨💥",charges:3,effect:"steamblast"},
+    "water+inferno":{key:"boil",name:"Boil",emoji:"🌋",charges:3,effect:"boil"},
+    "water+chain":{key:"voltaic",name:"Voltaic",emoji:"⚡💧",charges:3,effect:"voltaic"},
+    "plant+pyro":{key:"cinderwall",name:"Cinder Wall",emoji:"🧱🔥",charges:3,effect:"cinderwall"},
+    "plant+light":{key:"thorns",name:"Thorns",emoji:"🌵",charges:3,effect:"thorns"},
+    "plant+steam":{key:"marsh",name:"Marsh",emoji:"🪵💧",charges:3,effect:"marsh"},
+    "light+pyro":{key:"superchain",name:"Super Chain",emoji:"⚡⚡⚡",charges:3,effect:"superchain"},
+    "light+inferno":{key:"thunderstorm",name:"Thunderstorm",emoji:"🌩️",charges:3,effect:"thunderstorm"},
+    "light+steam":{key:"mistflash",name:"Mistflash",emoji:"💨⚡",charges:3,effect:"mistflash"},
+    "light+vine":{key:"net",name:"Net",emoji:"🕸️",charges:3,effect:"net"},
+    "steam+steam":{key:"tsunami",name:"Tsunami",emoji:"🌊",charges:3,effect:"tsunami"},
+    "pyro+vine":{key:"wildfire",name:"Wildfire",emoji:"🔥🌿",charges:3,effect:"wildfire"},
+    "chain+steam":{key:"thundercloud",name:"Thundercloud",emoji:"🌧️⚡",charges:3,effect:"thundercloud"},
+    "chain+vine":{key:"entangle",name:"Entangle",emoji:"⚡🪢",charges:3,effect:"entangle"},
 
-    // big
-    "inferno+tsunami":  { key:"cataclysm", name:"Cataclysm",  emoji:"🔥🌊",    charges:2, effect:"cataclysm" },
-    "superchain+inferno":{key:"supernova", name:"Supernova",  emoji:"💥⚡",    charges:2, effect:"supernova" },
-    "wall+entangle":    { key:"worldroot", name:"Worldroot",  emoji:"🌿🧱",    charges:2, effect:"worldroot" },
-    "thunderstorm+tsunami":{key:"stormfront",name:"Stormfront",emoji:"🌩️🌊",  charges:2, effect:"stormfront" },
-    "boil+geyser":      { key:"eruption",  name:"Eruption",   emoji:"🌋🫧",    charges:2, effect:"eruption" },
-    "marsh+thorns":     { key:"overgrowth",name:"Overgrowth", emoji:"🌿🌿",    charges:2, effect:"overgrowth" },
+    "inferno+tsunami":{key:"cataclysm",name:"Cataclysm",emoji:"🔥🌊",charges:2,effect:"cataclysm"},
+    "superchain+inferno":{key:"supernova",name:"Supernova",emoji:"💥⚡",charges:2,effect:"supernova"},
+    "wall+entangle":{key:"worldroot",name:"Worldroot",emoji:"🌿🧱",charges:2,effect:"worldroot"},
+    "thunderstorm+tsunami":{key:"stormfront",name:"Stormfront",emoji:"🌩️🌊",charges:2,effect:"stormfront"},
+    "boil+geyser":{key:"eruption",name:"Eruption",emoji:"🌋🫧",charges:2,effect:"eruption"},
+    "marsh+thorns":{key:"overgrowth",name:"Overgrowth",emoji:"🌿🌿",charges:2,effect:"overgrowth"},
 
-    // new variety (earlier)
-    "water+wall":       { key:"frostline", name:"Frostline",  emoji:"❄️🧱",    charges:3, effect:"frostline" },
-    "chain+wall":       { key:"battery",   name:"Battery",    emoji:"⚡🔋",     charges:3, effect:"battery" },
-    "geyser+chain":     { key:"shockpush", name:"Shockpush",  emoji:"⚡🫧",     charges:2, effect:"shockpush" },
-    "wall+pyro":        { key:"fireline",  name:"Fireline",   emoji:"🔥🧱",     charges:2, effect:"fireline" },
-    "light+marsh":      { key:"bogstorm",  name:"Bogstorm",   emoji:"⚡🌫️",     charges:2, effect:"bogstorm" },
+    "water+wall":{key:"frostline",name:"Frostline",emoji:"❄️🧱",charges:3,effect:"frostline"},
+    "chain+wall":{key:"battery",name:"Battery",emoji:"⚡🔋",charges:3,effect:"battery"},
+    "geyser+chain":{key:"shockpush",name:"Shockpush",emoji:"⚡🫧",charges:2,effect:"shockpush"},
+    "wall+pyro":{key:"fireline",name:"Fireline",emoji:"🔥🧱",charges:2,effect:"fireline"},
+    "light+marsh":{key:"bogstorm",name:"Bogstorm",emoji:"⚡🌫️",charges:2,effect:"bogstorm"},
 
-    // EVEN MORE combos
-    "fire+geyser":      { key:"steamburst",name:"Steamburst", emoji:"💥🫧",     charges:3, effect:"steamblast" },
-    "water+wall":       { key:"glacier",   name:"Glacier",    emoji:"🧊🧱",     charges:2, effect:"frostline" },
-    "vine+wall":        { key:"hedge",     name:"Hedge",      emoji:"🌿🧱",     charges:3, effect:"wall" },
-    "chain+pyro":       { key:"ionflare",  name:"Ion Flare",  emoji:"⚡🔥",     charges:3, effect:"arcfire" },
-    "steam+vine":       { key:"sauna",     name:"Sauna",      emoji:"💨🌿",     charges:3, effect:"marsh" },
-    "steam+chain":      { key:"stormsteam",name:"Stormsteam", emoji:"💨⚡",     charges:3, effect:"mistflash" },
-    "vine+thorns":      { key:"bramble",   name:"Bramble",    emoji:"🪵🌵",     charges:3, effect:"thorns" },
-    "wall+wall":        { key:"bastion",   name:"Bastion",    emoji:"🧱🧱",     charges:3, effect:"wall" },
-    "steam+pyro":       { key:"flashboil", name:"Flashboil",  emoji:"💨🔥",     charges:3, effect:"boil" },
-    "vine+tsunami":     { key:"kelpstorm", name:"Kelpstorm",  emoji:"🌿🌊",     charges:3, effect:"marsh" }
+    "fire+geyser":{key:"steamburst",name:"Steamburst",emoji:"💥🫧",charges:3,effect:"steamblast"},
+    "vine+wall":{key:"hedge",name:"Hedge",emoji:"🌿🧱",charges:3,effect:"wall"},
+    "chain+pyro":{key:"ionflare",name:"Ion Flare",emoji:"⚡🔥",charges:3,effect:"arcfire"},
+    "steam+vine":{key:"sauna",name:"Sauna",emoji:"💨🌿",charges:3,effect:"marsh"},
+    "steam+chain":{key:"stormsteam",name:"Stormsteam",emoji:"💨⚡",charges:3,effect:"mistflash"},
+    "vine+thorns":{key:"bramble",name:"Bramble",emoji:"🪵🌵",charges:3,effect:"thorns"},
+    "wall+wall":{key:"bastion",name:"Bastion",emoji:"🧱🧱",charges:3,effect:"wall"},
+    "steam+pyro":{key:"flashboil",name:"Flashboil",emoji:"💨🔥",charges:3,effect:"boil"},
+    "vine+tsunami":{key:"kelpstorm",name:"Kelpstorm",emoji:"🌿🌊",charges:3,effect:"marsh"}
   };
 
-  // ---------- DOM ----------
   const boardEl = document.getElementById("board");
   const handEl = document.getElementById("hand");
   const myTradeEl = document.getElementById("myTrade");
@@ -351,7 +333,6 @@
   const clearTradeBtn = document.getElementById("clearTradeBtn");
   const leaveBtn = document.getElementById("leaveBtn");
   const fsBtn = document.getElementById("fsBtn");
-
   const enemyTip = document.getElementById("enemyTip");
   const tipTitle = document.getElementById("tipTitle");
   const tipHP = document.getElementById("tipHP");
@@ -361,13 +342,11 @@
   leaveBtn.onclick = ()=> { location.href = `/?username=${encodeURIComponent(username)}`; };
   fsBtn.onclick = async ()=>{ const el = document.documentElement; try{ if (!document.fullscreenElement) { await el.requestFullscreen?.(); } else { await document.exitFullscreen?.(); } }catch(e){ window.scrollTo({top:0,behavior:"smooth"}); } };
 
-  // ---------- Local UI state ----------
-  let isHost = false;
-  let ui = { mode:null, selectedCardId:null }; // mode: null | 'cast' | 'combine'
+  let isHost=false;
+  let ui = { mode:null, selectedCardId:null };
   let lastPlayedTurnMarker = {};
   let latestState = null;
 
-  // ---------- Board ----------
   function buildBoard(){
     boardEl.innerHTML = "";
     for(let r=0; r<ROWS; r++){
@@ -383,15 +362,12 @@
   }
   buildBoard();
 
-  // ---------- Helpers ----------
   const id = ()=> Math.random().toString(36).slice(2,9);
   const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
   const inBoard = (x,y)=> x>=0 && x<COLS && y>=0 && y<ROWS;
   const idx = (x,y)=> y*COLS + x;
-
   function getEnemySpec(key){ return ENEMIES.find(e=> e.key===key) || ENEMIES[0]; }
   function enemyAt(d,x,y){ return (d.enemies||[]).find(e=> e.x===x && e.y===y) || null; }
-
   function typeEmoji(t){ return TYPES[t] || '⚔️'; }
 
   function showEnemyTip(eObj, cellEl){
@@ -400,7 +376,6 @@
     tipHP.textContent = `HP ${eObj.hp}`;
     tipWeak.innerHTML = `Weak: ${ (spec.weak||[]).map(typeEmoji).join(' ') || '—' }`;
     tipRes.innerHTML  = `Resist: ${ (spec.res||[]).map(typeEmoji).join(' ') || '—' }`;
-
     const r = cellEl.getBoundingClientRect();
     const pad = 8;
     enemyTip.style.left = Math.min(window.innerWidth - 260, Math.max(8, r.left + r.width + pad)) + "px";
@@ -462,7 +437,6 @@
     for (const [x,y] of cells){ requestAnimationFrame(()=> glowCell(x,y,cls)); }
   }
 
-  // ---------- Lobby / Host ----------
   onSnapshot(lobbyRef, async (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
@@ -483,7 +457,6 @@
     ensureGameState(players, d.host || players[0] || null);
   });
 
-  // ---------- Initial Game State ----------
   async function ensureGameState(players, host){
     const s = await getDoc(stateRef);
     if (!s.exists()){
@@ -495,19 +468,12 @@
         running: true,
         tick: 0,
         turn: 0,
-        turnOrder: players,
-        turnIndex: 0,
-        currentPlayer: players[0] || "",
-        towerHP: START_HP,
-        towerMax: START_HP,
+        turnOrder: players, turnIndex: 0, currentPlayer: players[0] || "",
+        towerHP: START_HP, towerMax: START_HP,
         mana: 0, manaMax: 12,
-        enemies: [],
-        bolts: [],
-        frozenCols: {},
-        vineCells: {},
-        burnCells: {},
-        hands,
-        playedTurn: {},
+        enemies: [], bolts: [],
+        frozenCols: {}, vineCells: {}, burnCells: {},
+        hands, playedTurn: {},
         trade: { offers: {}, proposals: {} },
         host: host || "",
       };
@@ -536,15 +502,13 @@
     return { id:id(), type:k, name:spec.name, emoji:spec.emoji, charges:spec.charges, effect:spec.effect };
   }
 
-  // ---------- Render ----------
   onSnapshot(stateRef, (snap)=>{ if (snap.exists()) renderAll(snap.data()); });
 
   function renderAll(s){
     latestState = s;
     hpText.textContent = `${s.towerHP}/${s.towerMax}`;
     hpFill.style.width = clamp((s.towerHP/s.towerMax)*100, 0, 100) + "%";
-    manaText.textContent = `${s.mana}/${s.manaMax}`;
-    manaFill.style.width = clamp((s.mana/s.manaMax)*100, 0, 100) + "%";
+    manaText.textContent = `${s.mana}/${s.manaMax}`; manaFill.style.width = clamp((s.mana/s.manaMax)*100, 0, 100) + "%";
     tickText.textContent = "—";
     turnText.textContent = `${(s.turn||0)+1} • ${s.currentPlayer||"?"}`;
 
@@ -552,7 +516,6 @@
     endTurnBtn.classList.toggle("disabled", !myTurn);
     tradeHereBtn.classList.toggle("disabled", !myTurn);
 
-    // clear board
     for (let r=0; r<ROWS; r++){
       for (let c=0; c<COLS; c++){
         const cell = boardEl.children[idx(c,r)];
@@ -580,7 +543,6 @@
       }
     }
 
-    // enemies
     for (const e of (s.enemies||[])){
       if (!inBoard(e.x,e.y)) continue;
       const cell = boardEl.children[idx(e.x,e.y)];
@@ -593,7 +555,6 @@
       bar.appendChild(fill); wrap.appendChild(bar);
       cell.appendChild(wrap);
     }
-    // bolts
     for (const b of (s.bolts||[])){
       if (!inBoard(b.x,b.y)) continue;
       const cell = boardEl.children[idx(b.x,b.y)];
@@ -607,7 +568,6 @@
 
     const myHand = (s.hands && s.hands[username]) ? s.hands[username] : [];
     renderHand(myHand, s);
-
     renderTrade(s);
 
     if (s.towerHP <= 0 && s.running){ endGameAndReturn(); }
@@ -643,25 +603,28 @@
         el.classList.add("combo-hint");
       }
       el.innerHTML = `
-        <div class="row-split"><div class="name">${card.emoji} ${card.name}</div><div class="tiny muted">x1/turn</div></div>
-        <div class="charges">${[0,1,2].map(i=> `<i class="pip ${card.charges>i?'':'off'}"></i>`).join('')}</div>
-        <div class="row-split">
-          <button class="btn" data-act="cast">Cast</button>
-          <button class="btn" data-act="combine">Combine…</button>
+        <button class="btn btn-top" data-act="cast">Cast</button>
+        <div>
+          <div class="name">${card.emoji} ${card.name}</div>
+          <div class="charges" aria-label="charges">${[0,1,2].map(i=> `<i class="pip ${card.charges>i?'':'off'}"></i>`).join('')}</div>
         </div>
+        <button class="btn btn-bottom" data-act="combine">Combine…</button>
       `;
 
-      // Whole card click: second selection for combine
-      el.addEventListener('click', (ev)=>{
-        if (ev.target.closest('button')) return; // handled below
+      // Make sure button taps don’t bubble to the card-level handler
+      const castBtn = el.querySelector('[data-act="cast"]');
+      const combBtn = el.querySelector('[data-act="combine"]');
+      castBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); ui.mode='cast'; ui.selectedCardId = card.id; hideEnemyTip(); });
+      combBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); ui.mode='combine'; ui.selectedCardId = card.id; hideEnemyTip(); });
+
+      // Whole card tap = second selection when combining
+      el.addEventListener('click', ()=>{
         if (ui.mode==='combine' && ui.selectedCardId && card.id !== ui.selectedCardId){
           immediateCombineByIds(ui.selectedCardId, card.id);
           ui.mode=null; ui.selectedCardId=null;
         }
       });
 
-      el.querySelector('[data-act="cast"]').onclick = ()=> { ui.mode='cast'; ui.selectedCardId = card.id; hideEnemyTip(); };
-      el.querySelector('[data-act="combine"]').onclick = ()=> { ui.mode='combine'; ui.selectedCardId = card.id; hideEnemyTip(); };
       handEl.appendChild(el);
     }
   }
@@ -674,14 +637,12 @@
       myTradeEl.textContent = card ? `${card.emoji} ${card.name}` : "(offered)";
     }
     proposalsEl.innerHTML = "";
-    const allProps = s.trade?.proposals || {};
-    const myProps = (allProps[username] || []);
+    const myProps = (s.trade?.proposals?.[username] || []);
     for (const pr of myProps){
-      const from = pr.from, cardId = pr.cardId;
       const btn = document.createElement("button");
-      btn.className = "btn";
-      btn.textContent = `Accept ${from}`;
-      btn.onclick = ()=> acceptTrade(from, username, cardId);
+      btn.className = "btn"; btn.style.width="auto"; btn.style.minHeight="auto"; btn.style.padding="6px 9px";
+      btn.textContent = `Accept ${pr.from}`;
+      btn.onclick = ()=> acceptTrade(pr.from, username, pr.cardId);
       proposalsEl.appendChild(btn);
     }
   }
@@ -740,7 +701,6 @@
     });
   }
 
-  // ---------- Damage application with type mods ----------
   function applyTypeMod(enemy, base, type){
     const spec = getEnemySpec(enemy.key);
     let mult = 1;
@@ -748,42 +708,28 @@
     if ((spec.res||[]).includes(type)) mult *= 0.6;
     return Math.max(1, Math.round(base * mult));
   }
-
-  // mutate-in-place enemy damage
   function damageAtTyped(d, x,y,amt, type='neutral'){
-    // bolts
     for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
-    // enemies
     for (const e of d.enemies||[]){
-      if (e.x===x && e.y===y){
-        e.hp -= applyTypeMod(e, amt, type);
-      }
+      if (e.x===x && e.y===y){ e.hp -= applyTypeMod(e, amt, type); }
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
   }
   const area = (cx,cy,r=1)=> { const pts=[]; for (let x=cx-r; x<=cx+r; x++){ for (let y=cy-r; y<=cy+r; y++){ if (inBoard(x,y)) pts.push([x,y]); } } return pts; };
   const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
   const column = (x)=> { const pts=[]; for (let y=0;y<ROWS;y++) pts.push([x,y]); return pts; };
-
   function addBurn(d,x,y,t,now){ if (!d.burnCells) d.burnCells={}; d.burnCells[`${x},${y}`]= now + t; }
   function addVine(d,x,y,t,now){ if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + t; }
   function freezeCol(d,x,t,now){ if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + t; }
 
-  // ---------- Casting (selection-based) ----------
   async function castSelectedOn(x,y){
-    const cardId = ui.selectedCardId;
-    if (!cardId) return;
+    const cardId = ui.selectedCardId; if (!cardId) return;
     await runTransaction(db, async tx=>{
-      const st = await tx.get(stateRef);
-      if (!st.exists()) return;
-      const d = st.data();
-      if (!d.running || d.currentPlayer !== username) return;
-
+      const st = await tx.get(stateRef); if (!st.exists()) return;
+      const d = st.data(); if (!d.running || d.currentPlayer !== username) return;
       const hand = d.hands[username] || [];
-      const ci = hand.findIndex(c=> c.id===cardId);
-      if (ci<0) return;
-
+      const ci = hand.findIndex(c=> c.id===cardId); if (ci<0) return;
       const card = hand[ci];
       if ((lastPlayedTurnMarker[card.id] || -1) === (d.turn||0)) return;
       if (card.charges <= 0) return;
@@ -798,57 +744,37 @@
       d.playedTurn[username][card.id] = d.turn||0;
 
       tx.update(stateRef, {
-        hands: d.hands,
-        enemies: d.enemies,
-        bolts: d.bolts,
-        frozenCols: d.frozenCols,
-        vineCells: d.vineCells,
-        burnCells: d.burnCells,
-        playedTurn: d.playedTurn,
-        towerHP: d.towerHP,
-        mana: d.mana
+        hands: d.hands, enemies: d.enemies, bolts: d.bolts,
+        frozenCols: d.frozenCols, vineCells: d.vineCells, burnCells: d.burnCells,
+        playedTurn: d.playedTurn, towerHP: d.towerHP, mana: d.mana
       });
     });
 
-    // UI clear + implode if exhausted
     const s2 = (await getDoc(stateRef)).data();
     const myHand2 = s2.hands[username]||[];
-    const was = myHand2.find(c=> c.id===cardId);
-    if (!was){ // card consumed
-      handEl.querySelectorAll(".card").forEach(el=> tinyImplosion(el));
-    }
+    const stillThere = myHand2.find(c=> c.id===cardId);
+    if (!stillThere){ handEl.querySelectorAll(".card").forEach(el=> tinyImplosion(el)); }
     lastPlayedTurnMarker[cardId] = (latestState?.turn||0);
-    ui.mode=null; ui.selectedCardId=null;
-    hideEnemyTip();
+    ui.mode=null; ui.selectedCardId=null; hideEnemyTip();
   }
 
   function onCellClick(x,y, cellEl){
     hideEnemyTip();
     if (!latestState) return;
-
-    if (ui.mode==='cast' && ui.selectedCardId){
-      castSelectedOn(x,y);
-      return;
-    }
-
-    // Inspect enemy when not casting
-    const e = enemyAt(latestState, x,y);
-    if (e){ showEnemyTip(e, cellEl); }
+    if (ui.mode==='cast' && ui.selectedCardId){ castSelectedOn(x,y); return; }
+    const e = enemyAt(latestState, x,y); if (e){ showEnemyTip(e, cellEl); }
   }
 
   function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
-
   async function immediateCombineByIds(aId, bId){
     await runTransaction(db, async tx=>{
-      const st = await tx.get(stateRef);
-      if (!st.exists()) return;
+      const st = await tx.get(stateRef); if (!st.exists()) return;
       const d = st.data();
       const hand = d.hands?.[username] || [];
       const a = hand.find(c=> c.id===aId);
       const b = hand.find(c=> c.id===bId);
       if (!a || !b || a.id===b.id) return;
-      const combo = getCombo(a.type, b.type);
-      if (!combo) return;
+      const combo = getCombo(a.type, b.type); if (!combo) return;
       const ai = hand.findIndex(c=> c.id===a.id);
       const bi = hand.findIndex(c=> c.id===b.id);
       const first = Math.max(ai,bi), second = Math.min(ai,bi);
@@ -858,154 +784,77 @@
     }).catch(()=>{});
   }
 
-  // ---------- Effects (typed) ----------
   function applyCardEffectMut(d, card, tx, ty){
-    const eff = card.effect;
-    const now = (d.turn||0);
+    const eff = card.effect, now = (d.turn||0);
     const T = effectType(eff);
     const DMG = (x,y,amt)=> damageAtTyped(d,x,y,amt,T);
     const PING = (cells,amt)=> { for (const [x,y] of cells) DMG(x,y,amt); };
 
     switch(eff){
-      /* BASE (reduced) */
-      case "fire":      DMG(tx,ty,3);                         pulseCells([[tx,ty]], "glow-red"); break;
-      case "lightning": chainLightning(d, tx, ty, 0);         pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "water":     freezeCol(d,tx,2,now); DMG(tx,ty,1);  pulseCells(column(tx), "glow-blue"); break;
-      case "plant":     addVine(d,tx,ty,2,now); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
+      case "fire": DMG(tx,ty,3); pulseCells([[tx,ty]], "glow-red"); break;
+      case "lightning": chainLightning(d, tx, ty, 0); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "water": freezeCol(d,tx,2,now); DMG(tx,ty,1); pulseCells(column(tx), "glow-blue"); break;
+      case "plant": addVine(d,tx,ty,2,now); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
 
-      /* DOUBLES */
-      case "pyro":         PING(cross(tx,ty),4);                                 pulseCells(cross(tx,ty), "glow-red"); break;
-      case "inferno":      for (const [x,y] of cross(tx,ty)){ DMG(x,y,5); addBurn(d,x,y,2,now); } pulseCells(cross(tx,ty), "glow-orange"); break;
-      case "chain":        chainLightning(d, tx, ty, 1);                         pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "geyser":       for (let y=0;y<ROWS;y++) DMG(tx,y,4); for (const e of d.enemies){ if (e.x===tx) e.y=Math.max(0,e.y-1); } pulseCells(column(tx),"glow-blue"); break;
-      case "wall":         addVine(d,tx,ty,4,now); DMG(tx,ty,1);                 pulseCells([[tx,ty]], "glow-green"); break;
-      case "embervine":    DMG(tx,ty,3); addVine(d,tx,ty,2,now);                 pulseCells([[tx,ty]], "glow-orange"); break;
-      case "overheat":     PING(cross(tx,ty),5);                                  pulseCells(cross(tx,ty), "glow-orange"); break;
-      case "bramblefire":  for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,2,now); addBurn(d,x,y,2,now); DMG(x,y,4); } pulseCells(area(tx,ty,1),"glow-orange"); break;
-      case "arcfire":      chainLightning(d, tx, ty, 1, true, false);            pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "scald":        for (const [x,y] of area(tx,ty,1)){ DMG(x,y,3); addBurn(d,x,y,1,now); } pulseCells(area(tx,ty,1),"glow-orange"); break;
-      case "storm":        chainLightning(d, tx, ty, 1); freezeCol(d,tx,1,now);  DMG(tx,ty,1); pulseCells(column(tx).concat([[tx,ty]]),"glow-blue"); break;
-      case "steamblast":   for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,1,now); DMG(x,y,2); } pulseCells(area(tx,ty,1),"glow-orange"); break;
-      case "boil":         for (const [x,y] of area(tx,ty,1)){ DMG(x,y,3); addBurn(d,x,y,2,now); } pulseCells(area(tx,ty,1),"glow-orange"); break;
-      case "voltaic":      chainLightning(d, tx, ty, 0); freezeCol(d,tx,1,now);  DMG(tx,ty,1); pulseCells([[tx,ty]].concat(column(tx)),"flash-yellow"); break;
-      case "cinderwall":   for (const [x,y] of [[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=>inBoard(x,y))){ addVine(d,x,y,3,now); addBurn(d,x,y,1,now); } DMG(tx,ty,1); pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=>inBoard(x,y)),"glow-orange"); break;
-      case "thorns":       { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(d,tx,y,1,now); cells.push([tx,y]); } } if (cells.length) PING(cells,2); else DMG(tx,ty,2); pulseCells(cells,"glow-green"); break; }
-      case "mistflash":    for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,2,now); } DMG(tx,ty,3); pulseCells(area(tx,ty,1),"flash-yellow"); break;
-      case "marsh":        for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,2,now); } DMG(tx,ty,1); pulseCells(area(tx,ty,1),"glow-green"); break;
-      case "superchain":   chainLightning(d, tx, ty, 4);                          pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "thunderstorm": chainLightning(d, tx, ty, 1); addBurn(d,tx,ty,1,now);  pulseCells([[tx,ty]], "flash-yellow"); break;
-      case "tsunami":      [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0;y<ROWS;y++) damageAtTyped(d,cx,y,5,'water'); for (const e of d.enemies){ if (e.x===cx) e.y=Math.max(0,e.y-1);} }); pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))), "glow-blue"); break;
-      case "wildfire":     for (const [x,y] of cross(tx,ty)){ addBurn(d,x,y,2,now); } DMG(tx,ty,1); pulseCells(cross(tx,ty),"glow-red"); break;
+      case "pyro": PING(cross(tx,ty),4); pulseCells(cross(tx,ty), "glow-red"); break;
+      case "inferno": for (const [x,y] of cross(tx,ty)){ DMG(x,y,5); addBurn(d,x,y,2,now); } pulseCells(cross(tx,ty), "glow-orange"); break;
+      case "chain": chainLightning(d, tx, ty, 1); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "geyser": for (let y=0;y<ROWS;y++) DMG(tx,y,4); for (const e of d.enemies){ if (e.x===tx) e.y=Math.max(0,e.y-1); } pulseCells(column(tx),"glow-blue"); break;
+      case "wall": addVine(d,tx,ty,4,now); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
+      case "embervine": DMG(tx,ty,3); addVine(d,tx,ty,2,now); pulseCells([[tx,ty]], "glow-orange"); break;
+      case "overheat": PING(cross(tx,ty),5); pulseCells(cross(tx,ty), "glow-orange"); break;
+      case "bramblefire": for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,2,now); addBurn(d,x,y,2,now); DMG(x,y,4); } pulseCells(area(tx,ty,1),"glow-orange"); break;
+      case "arcfire": chainLightning(d, tx, ty, 1, true, false); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "scald": for (const [x,y] of area(tx,ty,1)){ DMG(x,y,3); addBurn(d,x,y,1,now); } pulseCells(area(tx,ty,1),"glow-orange"); break;
+      case "storm": chainLightning(d, tx, ty, 1); freezeCol(d,tx,1,now); DMG(tx,ty,1); pulseCells(column(tx).concat([[tx,ty]]),"glow-blue"); break;
+      case "steamblast": for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,1,now); DMG(x,y,2); } pulseCells(area(tx,ty,1),"glow-orange"); break;
+      case "boil": for (const [x,y] of area(tx,ty,1)){ DMG(x,y,3); addBurn(d,x,y,2,now); } pulseCells(area(tx,ty,1),"glow-orange"); break;
+      case "voltaic": chainLightning(d, tx, ty, 0); freezeCol(d,tx,1,now); DMG(tx,ty,1); pulseCells([[tx,ty]].concat(column(tx)),"flash-yellow"); break;
+      case "cinderwall": for (const [x,y] of [[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=>inBoard(x,y))){ addVine(d,x,y,3,now); addBurn(d,x,y,1,now); } DMG(tx,ty,1); pulseCells([[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=>inBoard(x,y)),"glow-orange"); break;
+      case "thorns": { const cells=[]; for (let dy=0; dy<=2; dy++){ const y=ty-dy; if (inBoard(tx,y)){ addVine(d,tx,y,1,now); cells.push([tx,y]); } } if (cells.length) PING(cells,2); else DMG(tx,ty,2); pulseCells(cells,"glow-green"); break; }
+      case "mistflash": for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,2,now); } DMG(tx,ty,3); pulseCells(area(tx,ty,1),"flash-yellow"); break;
+      case "marsh": for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,2,now); } DMG(tx,ty,1); pulseCells(area(tx,ty,1),"glow-green"); break;
+      case "superchain": chainLightning(d, tx, ty, 4); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "thunderstorm": chainLightning(d, tx, ty, 1); addBurn(d,tx,ty,1,now); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "tsunami": [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0;y<ROWS;y++) damageAtTyped(d,cx,y,5,'water'); for (const e of d.enemies){ if (e.x===cx) e.y=Math.max(0,e.y-1);} }); pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))), "glow-blue"); break;
+      case "wildfire": for (const [x,y] of cross(tx,ty)){ addBurn(d,x,y,2,now); } DMG(tx,ty,1); pulseCells(cross(tx,ty),"glow-red"); break;
       case "thundercloud": { const targets = randomEnemyCells(d, 5); if (targets.length){ for (const [x,y] of targets){ damageAtTyped(d,x,y,5,'electric'); } pulseCells(targets,"flash-yellow"); } else { DMG(tx,ty,4); pulseCells([[tx,ty]],"flash-yellow"); } break; }
-      case "entangle":     chainLightning(d, tx, ty, 0, false, true); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
-      case "net":          chainLightning(d, tx, ty, 0, false, true); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
+      case "entangle": chainLightning(d, tx, ty, 0, false, true); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
+      case "net": chainLightning(d, tx, ty, 0, false, true); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
 
-      /* BIG IMPACTS */
-      case "cataclysm":
-        [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
-          for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,6,'fire');
-          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
-        });
-        for (const [x,y] of cross(tx,ty)) addBurn(d,x,y,2,now);
-        pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat(cross(tx,ty)), "glow-orange");
-        break;
+      case "cataclysm": [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,6,'fire'); for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); } }); for (const [x,y] of cross(tx,ty)) addBurn(d,x,y,2,now); pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat(cross(tx,ty)), "glow-orange"); break;
+      case "supernova": chainLightning(d, tx, ty, 4, true, false); DMG(tx,ty,4); pulseCells([[tx,ty]], "flash-yellow"); break;
+      case "worldroot": for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,3,now); damageAtTyped(d,x,y,4,'nature'); } pulseCells(area(tx,ty,2), "glow-green"); break;
+      case "stormfront": [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{ for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,5,'electric'); for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); } }); chainLightning(d, tx, ty, 2); pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat([[tx,ty]]), "glow-blue"); break;
+      case "eruption": for (let y=0; y<ROWS; y++){ damageAtTyped(d,tx,y,6,'fire'); } for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-2); } addBurn(d,tx,ty,2,now); pulseCells(column(tx), "glow-orange"); break;
+      case "overgrowth": for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,3,now); damageAtTyped(d,x,y,2,'nature'); } pulseCells(area(tx,ty,2), "glow-green"); break;
 
-      case "supernova":
-        chainLightning(d, tx, ty, 4, true, false);
-        DMG(tx,ty,4);
-        pulseCells([[tx,ty]], "flash-yellow");
-        break;
-
-      case "worldroot":
-        for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,3,now); damageAtTyped(d,x,y,4,'nature'); }
-        pulseCells(area(tx,ty,2), "glow-green");
-        break;
-
-      case "stormfront":
-        [tx, clamp(tx+1,0,COLS-1)].forEach(cx=>{
-          for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,5,'electric');
-          for (const e of d.enemies){ if (e.x===cx) e.y = Math.max(0, e.y-2); }
-        });
-        chainLightning(d, tx, ty, 2);
-        pulseCells(column(tx).concat(column(clamp(tx+1,0,COLS-1))).concat([[tx,ty]]), "glow-blue");
-        break;
-
-      case "eruption":
-        for (let y=0; y<ROWS; y++){ damageAtTyped(d,tx,y,6,'fire'); }
-        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-2); }
-        addBurn(d,tx,ty,2,now);
-        pulseCells(column(tx), "glow-orange");
-        break;
-
-      case "overgrowth":
-        for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,3,now); damageAtTyped(d,x,y,2,'nature'); }
-        pulseCells(area(tx,ty,2), "glow-green");
-        break;
-
-      /* NEW VARIETY */
-      case "frostline": // water + wall
-        freezeCol(d,tx,3,now);
-        for (let y=0; y<ROWS; y++) damageAtTyped(d,tx,y,2,'ice');
-        pulseCells(column(tx), "glow-blue");
-        break;
-
-      case "battery": // chain + wall
-        { const cells = area(tx,ty,1);
-          let hits = 0;
-          for (const [x,y] of cells){
-            const before = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
-            damageAtTyped(d,x,y,2,'electric');
-            const after = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
-            if (before>after) hits += (before-after);
-          }
-          d.mana = Math.min((d.mana||0) + Math.min(hits,4), d.manaMax||12);
-          pulseCells(cells, "flash-yellow");
+      case "frostline": freezeCol(d,tx,3,now); for (let y=0; y<ROWS; y++) damageAtTyped(d,tx,y,2,'ice'); pulseCells(column(tx), "glow-blue"); break;
+      case "battery": { const cells = area(tx,ty,1); let hits = 0;
+        for (const [x,y] of cells){
+          const before = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
+          damageAtTyped(d,x,y,2,'electric');
+          const after = (d.enemies||[]).filter(e=> e.x===x && e.y===y).length;
+          if (before>after) hits += (before-after);
         }
-        break;
-
-      case "shockpush": // geyser + chain
-        for (let y=0; y<ROWS; y++) damageAtTyped(d,tx,y,3,'electric');
-        for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); }
-        chainLightning(d, tx, ty, 1);
-        pulseCells(column(tx).concat([[tx,ty]]), "flash-yellow");
-        break;
-
-      case "fireline": // wall + pyro
-        for (let y=0; y<ROWS; y++){ damageAtTyped(d,tx,y,2,'fire'); addBurn(d,tx,y,2,now); }
-        for (const [x,y] of cross(tx,ty)){ damageAtTyped(d,x,y,3,'fire'); addBurn(d,x,y,2,now); }
-        pulseCells(column(tx).concat(cross(tx,ty)), "glow-orange");
-        break;
-
-      case "bogstorm": // light + marsh
-        for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,2,now); }
-        chainLightning(d, tx, ty, 1);
-        freezeCol(d,tx,1,now);
-        damageAtTyped(d,tx,ty,1,'electric');
-        pulseCells(area(tx,ty,2).concat([[tx,ty]]), "glow-green");
-        break;
+        d.mana = Math.min((d.mana||0) + Math.min(hits,4), d.manaMax||12);
+        pulseCells(cells, "flash-yellow");
+      } break;
+      case "shockpush": for (let y=0; y<ROWS; y++) damageAtTyped(d,tx,y,3,'electric'); for (const e of d.enemies){ if (e.x===tx) e.y = Math.max(0, e.y-1); } chainLightning(d, tx, ty, 1); pulseCells(column(tx).concat([[tx,ty]]), "flash-yellow"); break;
+      case "fireline": for (let y=0; y<ROWS; y++){ damageAtTyped(d,tx,y,2,'fire'); addBurn(d,tx,y,2,now); } for (const [x,y] of cross(tx,ty)){ damageAtTyped(d,x,y,3,'fire'); addBurn(d,x,y,2,now); } pulseCells(column(tx).concat(cross(tx,ty)), "glow-orange"); break;
+      case "bogstorm": for (const [x,y] of area(tx,ty,2)){ addVine(d,x,y,2,now); } chainLightning(d, tx, ty, 1); freezeCol(d,tx,1,now); damageAtTyped(d,tx,ty,1,'electric'); pulseCells(area(tx,ty,2).concat([[tx,ty]]), "glow-green"); break;
     }
   }
 
-  // ---------- Turn System ----------
-  function maxSpawnForTurn(turn){
-    if (turn >= 100) return 4;
-    if (turn >= 50) return 3;
-    return 2;
-  }
+  function maxSpawnForTurn(turn){ if (turn >= 100) return 4; if (turn >= 50) return 3; return 2; }
   function pickEnemyByWeight(wave){
-    const pool = [];
-    for (const e of ENEMIES){
-      const w = e.weight + Math.max(0, wave - 1);
-      for (let i=0;i<w;i++) pool.push(e);
-    }
+    const pool = []; for (const e of ENEMIES){ const w = e.weight + Math.max(0, wave - 1); for (let i=0;i<w;i++) pool.push(e); }
     return pool[Math.floor(Math.random()*pool.length)];
   }
   function randCol(){ return Math.floor(Math.random()*COLS); }
 
   function startOfTurnMut(d){
     const now = d.turn || 0;
-
-    // DOTs
     for (const [key,until] of Object.entries(d.burnCells||{})){
       if (until >= now){
         const [x,y] = key.split(",").map(Number);
@@ -1014,7 +863,6 @@
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
 
-    // enemy abilities
     for (const e of d.enemies || []){
       if (e.ability === "summon_rats" && Math.random() < 0.15){
         const n = 1 + Math.floor(Math.random()*2);
@@ -1028,14 +876,10 @@
       }
     }
 
-    // bolts travel
     for (const b of (d.bolts||[])){ b.y += 1; }
-    for (const b of d.bolts||[]){
-      if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||6); b.hp = 0; }
-    }
+    for (const b of d.bolts||[]){ if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||6); b.hp = 0; } }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
-    // enemies advance (respect freeze/vines)
     const frozen = d.frozenCols || {};
     const vines = d.vineCells || {};
     for (const e of d.enemies){
@@ -1047,7 +891,6 @@
     }
     d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
 
-    // spawn
     const wave = Math.floor((d.turn||0)/6);
     const maxSpawn = maxSpawnForTurn(d.turn||0);
     const n = 1 + Math.floor(Math.random()*maxSpawn);
@@ -1056,13 +899,12 @@
       d.enemies.push({ id:id(), key:pick.key, x: randCol(), y: 0, hp: pick.hp, spd: pick.spd, dmg: pick.dmg, emoji: pick.emoji, ability: pick.ability||null });
     }
 
-    // expire statuses
     for (const [x,until] of Object.entries(d.frozenCols||{})){ if (until < now) delete d.frozenCols[x]; }
     for (const [k,until] of Object.entries(d.vineCells||{})){ if (until < now) delete d.vineCells[k]; }
     for (const [k,until] of Object.entries(d.burnCells||{})){ if (until < now) delete d.burnCells[k]; }
   }
 
-  async function endTurn(){
+  endTurnBtn.onclick = async ()=>{
     hideEnemyTip();
     await runTransaction(db, async tx=>{
       const st = await tx.get(stateRef);
@@ -1070,11 +912,9 @@
       const d = st.data();
       if (!d.running || d.currentPlayer !== username) return;
 
-      // draw (+1)
       const hand = d.hands[username] || [];
       hand.push(makeCardFromKey(randBase()));
 
-      // pass turn
       const order = d.turnOrder || [];
       if (!order.length) return;
       let idx = d.turnIndex || 0;
@@ -1083,28 +923,18 @@
       d.turnIndex = idx;
       d.currentPlayer = order[idx];
 
-      // start-of-turn processing
       startOfTurnMut(d);
 
       tx.update(stateRef, {
-        hands: d.hands,
-        turn: d.turn,
-        turnIndex: d.turnIndex,
-        currentPlayer: d.currentPlayer,
-        towerHP: d.towerHP,
-        enemies: d.enemies,
-        bolts: d.bolts,
-        frozenCols: d.frozenCols,
-        vineCells: d.vineCells,
-        burnCells: d.burnCells,
-        mana: d.mana
+        hands: d.hands, turn: d.turn, turnIndex: d.turnIndex, currentPlayer: d.currentPlayer,
+        towerHP: d.towerHP, enemies: d.enemies, bolts: d.bolts,
+        frozenCols: d.frozenCols, vineCells: d.vineCells, burnCells: d.burnCells, mana: d.mana
       });
     });
     ui.mode=null; ui.selectedCardId=null;
-  }
+  };
   function randBase(){ const k = Object.keys(BASE_SPELLS); return k[Math.floor(Math.random()*k.length)]; }
 
-  // ---------- Keep proposals synced ----------
   onSnapshot(stateRef, (snap)=>{
     if (!snap.exists()) return;
     const d = snap.data();
@@ -1119,7 +949,6 @@
     updateDoc(stateRef, { [`trade.proposals.${username}`]: toMe }).catch(()=>{});
   });
 
-  // Hide tooltip when clicking anywhere else
   document.addEventListener('click', (e)=>{
     const inBoard = e.target.closest('.cell');
     const inTip = e.target.closest('#enemyTip');
@@ -1129,6 +958,8 @@
 </script>
 </body>
 </html>
+
+
 
 
 
