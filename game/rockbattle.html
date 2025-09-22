@@ -45,7 +45,6 @@
   .card.small{ width:88px; height:120px; }
   .card b{ font-size:14px; text-align:center }
   .card small{ color:var(--muted); text-align:center }
-  .choose{ border-color:#111827 }
   .disabled{ opacity:.5; pointer-events:none }
 
   /* Clash sprites */
@@ -112,7 +111,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
-    getFirestore, doc, getDoc, updateDoc, setDoc, collection, addDoc, serverTimestamp
+    getFirestore, doc, getDoc, updateDoc, collection, addDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // ---------- Firebase ----------
@@ -153,7 +152,6 @@
   const handBoostPill = document.getElementById("handBoost");
 
   // ---------- Rules ----------
-  // Attack/non-attack sets
   const NON_ATTACK = new Set(["effect-reveal","effect-draw","block-rock","block-paper","block-scissors"]);
   const EMOJI = {
     rock:"🪨", paper:"📄", scissors:"✂️",
@@ -167,13 +165,10 @@
     "effect-reveal":"Reveal", "effect-draw":"Draw",
     "block-rock":"Block Rock", "block-paper":"Block Paper", "block-scissors":"Block Scissors"
   };
-  // Advanced RPS outcomes.
+
   // returns: 1 (A wins), -1 (B wins), 0 draw
   function compareTypes(a,b){
-    // identical
     if (a===b) return 0;
-    // handle blocks applied upstream (we'll map blocked to 'blocked' pseudo which loses)
-    // base triangle
     const base = { rock:{scissors:1,paper:-1}, paper:{rock:1,scissors:-1}, scissors:{paper:1,rock:-1} };
     if (base[a]?.[b]!==undefined) return base[a][b];
     if (base[b]?.[a]!==undefined) return -base[b][a];
@@ -202,11 +197,10 @@
     if (a==="dark"){ if (b==="rock") return -1; return 1; }
     if (b==="dark"){ if (a==="rock") return 1; return -1; }
 
-    return 0; // fallback draw if unspecified
+    return 0;
   }
 
   // ---------- Enemy catalogs ----------
-  // tiers: 0=base (rock/paper/scissors), 1 (green extras), 2 (yellow), 3 (red), 4 (purple)
   const ENEMY_META = {
     rock: {emoji:"🪨", tier:0, name:"Rockling"},
     paper:{emoji:"📄", tier:0, name:"Paperman"},
@@ -223,43 +217,44 @@
     const meta = ENEMY_META[kind] || ENEMY_META.wild;
     const t = meta.tier;
     const deck = [];
-    // start with 10 cards. stronger = fewer base, more advanced & utility
-    let baseCount = Math.max(0, 8 - t*2); // 8,6,4,2,0
-    let advCount  = 10 - baseCount;
+
+    // 10 cards total. Stronger = fewer base, more advanced.
+    const baseCount = Math.max(0, 8 - t*2); // 8,6,4,2,0
+    const advCount  = 10 - baseCount;
 
     // Base filler favors its archetype
     for(let i=0;i<baseCount;i++){
       if (kind==="rock") deck.push({type:"rock"});
       else if (kind==="paper") deck.push({type:"paper"});
       else if (kind==="scissors") deck.push({type:"scissors"});
-      else {
-        // mixed base
-        deck.push([{type:"rock"},{type:"paper"},{type:"scissors"}][i%3]);
-      }
+      else deck.push([{type:"rock"},{type:"paper"},{type:"scissors"}][i%3]);
     }
 
-    // Advanced pool by tier
+    // Advanced pool by tier (ensure non-empty with safe fallback)
     let pool = [];
     if (t>=1) pool.push("effect-reveal","effect-draw","block-rock");
     if (t>=2) pool.push("block-paper","crystal","water");
     if (t>=3) pool.push("block-scissors","diamond","match","slime");
     if (t>=4) pool.push("dark","diamond","crystal","slime");
 
+    const fallback = ["rock","paper","scissors"];
     for(let i=0;i<advCount;i++){
-      const pick = pool[Math.floor(Math.random()*pool.length)];
+      const bag = (pool.length>0 ? pool : fallback);
+      const pick = bag[Math.floor(Math.random()*bag.length)];
       deck.push({type: pick});
     }
+
     return shuffle(deck);
   }
 
   // ---------- Player deck from inventory ----------
   function deckFromInventory(inv){
-    // Use item.type mapping already used in world page
-    const mapped = inv.map(c=> ({type:c.type || normalizeNameToType(c.name)}));
-    return shuffle(mapped);
+    const mapped = (inv||[]).map(c=> ({type:c.type || normalizeNameToType(c.name)}))
+      .filter(c=> typeof c.type === 'string'); // guard
+    return shuffle(mapped.length ? mapped : baseInventory().map(c=>({type:normalizeNameToType(c.name)})));
   }
   function normalizeNameToType(n){
-    const m = n.toLowerCase();
+    const m = String(n||"").toLowerCase();
     if (m.includes("block") && m.includes("rock")) return "block-rock";
     if (m.includes("block") && m.includes("paper")) return "block-paper";
     if (m.includes("block") && m.includes("scissors")) return "block-scissors";
@@ -315,7 +310,7 @@
     // HPs
     myMax = 3 + (me.level||1);
     myHP = myMax;
-    enMax = 3 + Math.max(1, enemy.tier+1); // make harder tiers a bit beefier
+    enMax = 3 + Math.max(1, (enemy.tier||0) + 1);
     enHP = enMax;
 
     // UI set
@@ -393,7 +388,6 @@
       timer--; timerEl.textContent = ""+timer;
       if (timer<=0){
         clearInterval(timerId);
-        // auto play first available
         autoPlay();
       }
     }, 1000);
@@ -420,11 +414,15 @@
     const enemyIdx = chooseEnemyIndex();
     const enCard = enHand.splice(enemyIdx,1)[0];
 
+    // send selected cards to discard so reshuffle works
+    if (myCard) myDiscard.push(myCard);
+    if (enCard) enDiscard.push(enCard);
+
     // Reveal UI: sprites slide in
     await showClash(myCard, enCard);
 
-    // Resolve special / blocks
-    const result = await resolveTurn(myCard, enCard);
+    // Resolve specials / blocks / damage
+    await resolveTurn(myCard, enCard);
 
     // After resolution, refill hands
     const maxHand = (handBoostTurns>0)?4:3;
@@ -454,24 +452,24 @@
   }
 
   function chooseEnemyIndex(){
-    // Simple heuristic: if player revealed enemy hand, nothing special here.
-    // Prefer counters randomly.
-    const counters = {
-      rock:"paper", paper:"scissors", scissors:"rock",
-      crystal:"paper", diamond:"paper", match:"rock", water:"crystal", slime:"scissors", dark:"rock" // rough counters
-    };
-    // If has Reveal, 20% chance to play it early
-    const r = Math.random();
-    if (enHand.some(c=>c.type==="effect-reveal") && r<0.15){
-      return enHand.findIndex(c=>c.type==="effect-reveal");
-    }
-    // If can block and player tends to play many of a type (unknown here) → random block small chance
-    if (enHand.some(c=>c.type.startsWith("block-")) && r<0.12){
-      return enHand.findIndex(c=>c.type.startsWith("block-"));
-    }
-    // Otherwise prefer an attack card
-    const idx = enHand.findIndex(c=> !NON_ATTACK.has(c.type));
-    return idx>=0 ? idx : 0;
+    // Consider only valid cards
+    const validIdx = enHand
+      .map((c, i)=> (c && typeof c.type==='string') ? i : -1)
+      .filter(i=> i>=0);
+
+    if (validIdx.length === 0) return 0;
+
+    // chance to play Reveal early
+    const revealIdx = validIdx.find(i => enHand[i].type === "effect-reveal");
+    if (revealIdx !== undefined && Math.random() < 0.15) return revealIdx;
+
+    // chance to play any Block early
+    const blockIdx = validIdx.find(i => String(enHand[i].type).startsWith("block-"));
+    if (blockIdx !== undefined && Math.random() < 0.12) return blockIdx;
+
+    // prefer an attack card
+    const atkIdx = validIdx.find(i => !NON_ATTACK.has(enHand[i].type));
+    return (atkIdx !== undefined) ? atkIdx : validIdx[0];
   }
 
   async function showClash(myCard, enCard){
@@ -489,11 +487,10 @@
   }
 
   async function resolveTurn(myCard, enCard){
-    // Handle Utilities first (don’t attack)
     const myNonAtk = NON_ATTACK.has(myCard.type);
     const enNonAtk = NON_ATTACK.has(enCard.type);
 
-    // Apply utility effects (instant)
+    // Apply utility effects immediately
     await applyUtility(myCard, true);
     await applyUtility(enCard, false);
 
@@ -556,7 +553,7 @@
       // Show enemy hand (or player hand if AI used it)
       const list = isPlayer ? enHand : myHand;
       const side = isPlayer ? "Enemy" : "You";
-      const txt = list.map(c=> EMOJI[c.type]+" "+NAME[c.type]).join(" · ");
+      const txt = list.map(c=> (EMOJI[c.type]||"❔")+" "+(NAME[c.type]||c.type)).join(" · ");
       setCenter(`👁️ Reveal — ${side} hand: ${txt}`);
       await wait(1200);
     } else if (t==="effect-draw"){
@@ -585,7 +582,7 @@
     }
   }
   function reshuffle(deck, discard){
-    // move discard back to deck & shuffle (if any)
+    if (deck.length>0) return;
     if (discard.length>0){
       while(discard.length) deck.push(discard.pop());
       shuffle(deck);
@@ -641,7 +638,8 @@
 
   // ---------- Utils ----------
   function wait(ms){ return new Promise(r=> setTimeout(r, ms)); }
-
 </script>
 </body>
 </html>
+
+
