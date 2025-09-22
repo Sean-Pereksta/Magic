@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>  
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -195,11 +195,12 @@
                   <option value="estate">🏡 Estate Defense</option>
                   <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
+                  <option value="rock">✊📄✂️ Rock Paper Scissors MMO</option> <!-- ADDED: RPS quick-play -->
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
                   <option value="splinters">🪄 Splinters (4P)</option>
                   <option value="spelltower">🗼 Spell Tower (8P)</option>
-                  <option value="zombiezone">🧟‍♂️ Zombie Zone (4P)</option> <!-- ADDED -->
+                  <option value="zombiezone">🧟‍♂️ Zombie Zone (4P)</option>
                   <option value="biblegame">📖 Bible Game (12P)</option>
                 </select>
               </div>
@@ -265,11 +266,12 @@
       estate:     "/game/estatedefense.html",
       mountain:   "/game/mountainblade.html",
       mountonline:"/game/mountonline.html",
+      rock:       "/game/rock.html",                // ADDED: RPS quick-play route
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
       splinters:  "/game/Splinters.html",
       spelltower: "/game/spelltower.html",
-      zombiezone: "/game/zombiezone.html",     // ADDED
+      zombiezone: "/game/zombiezone.html",
       biblegame:  "/game/biblegame.html",
 
       // Singleplayer
@@ -284,7 +286,8 @@
 
     // Games that should navigate to their page once lobby status becomes "started"
     const AUTO_REDIRECT_GAMES = new Set([
-      "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","zombiezone","biblegame" // ADDED zombiezone
+      "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","zombiezone","biblegame"
+      // NOTE: 'mountonline' and 'rock' are quick-play and do not use lobbies
     ]);
 
     // Per-game player caps
@@ -293,7 +296,7 @@
       dutchblitz: 4,
       splinters: 4,
       spelltower: 8,
-      zombiezone: 4, // ADDED
+      zombiezone: 4,
       stockkings: 8,
       biblegame: 20
     };
@@ -440,11 +443,12 @@
              type==='estate'? '🏡 Estate Defense' :
              type==='mountain'?'🗻 Mountain Blade Skirmish (4P)' :
              type==='mountonline'?'🗻🌐 Mountain Blade Online' :
+             type==='rock'?'✊📄✂️ RPS MMO' :           // ADDED: label for RPS
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
              type==='splinters'?'🪄 Splinters (4P)' :
              type==='spelltower'?'🗼 Spell Tower (8P)' :
-             type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' : // ADDED
+             type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' :
              type==='biblegame'?'📖 Bible Game (20P)' :
              '🐭 Cat & Mouse';
     }
@@ -457,7 +461,7 @@
       const lobbiesCard = document.getElementById("availLobbiesCard");
       const playersCard = document.getElementById("playersCard");
 
-      const isQuickPlay = (gt === "mountonline");
+      const isQuickPlay = (gt === "mountonline" || gt === "rock"); // ADDED: RPS quick-play
 
       title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
       nameWrap.style.display = isQuickPlay ? "none" : "block";
@@ -469,18 +473,18 @@
     async function startLobby() {
       const gameType = document.getElementById("gameType").value;
 
-      // QUICK-PLAY
-      if (gameType === "mountonline") {
+      // QUICK-PLAY (no lobby): mountonline & rock
+      if (gameType === "mountonline" || gameType === "rock") { // ADDED: RPS quick-play
         if (!username) return showError("❌ You must be logged in.");
-        const route = ROUTES.mountonline;
-        save(SK.lastGame, "mountonline");
+        const route = ROUTES[gameType];
+        save(SK.lastGame, gameType);
         window.location.href = `${route}?username=${encodeURIComponent(username)}`;
         return;
       }
 
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame'].includes(gameType)) { // ADDED
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -518,8 +522,8 @@
         const title = document.createElement("div"); title.style.fontWeight="800"; title.textContent = data.name || "Lobby";
         const meta = document.createElement("div"); meta.className="subtle";
         const cap = getMaxPlayers(data.gameType);
-        const countTxt = isFinite(cap) ? `${(data.players||[]).length}/${cap} players` : `${(data.players||[]).length} players`;
-        meta.textContent = `${countTxt} — Host: ${data.host||"?"}`;
+        const countTxt = isFinite(cap) ? ${(data.players||[]).length}/${cap} : `${(data.players||[]).length}`;
+        meta.textContent = (isFinite(cap) ? `${(data.players||[]).length}/${cap} players` : `${(data.players||[]).length} players`) + ` — Host: ${data.host||"?"}`;
         titleWrap.appendChild(title);
         titleWrap.appendChild(meta);
 
