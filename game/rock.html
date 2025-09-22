@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -8,7 +8,7 @@
   :root{
     --ink:#0f172a; --muted:#6b7280; --panel:#ffffff; --br:#e5e7eb;
     --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --tap:56px;
-    --green:#d9f99d; --yellow:#fde68a; --red:#fecaca; --purple:#e9d5ff;
+    --green:#10b981; --yellow:#d97706; --red:#ef4444; --purple:#8b5cf6;
     --wall:#9ca3af; --house:#b45309; --shop:#16a34a;
     --guild:#2563eb; --chatH:140px; --hudH:64px;
   }
@@ -40,29 +40,36 @@
     touch-action:manipulation;
   }
   .coords{
-    position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br); border-radius:8px; padding:4px 8px; font-size:12px
+    position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br); border-radius:8px; padding:4px 8px; font-size:12px; z-index:4;
   }
 
-  /* Map canvas (virtual grid) */
-  .map{ position:absolute; inset:0; overflow:hidden; background:#eef2ff; image-rendering:pixelated; font-size:14px }
-  .tile{ position:absolute; width:32px; height:32px; display:grid; place-items:center; user-select:none; }
-  .t-green{ background:var(--green) }
-  .t-yellow{ background:var(--yellow) }
-  .t-red{ background:var(--red) }
-  .t-purple{ background:var(--purple) }
-  .t-wall{ background:#e5e7eb; outline:2px solid var(--wall) }
-  .t-house::after{ content:"🏠"; }
-  .t-shop::after{ content:"💰"; }
-  .t-guild::after{ content:"🏛️"; }
-  .t-village{ outline: 1px dashed #6b7280 }
+  /* Map (transparent grid with colored outlines per region) */
+  .map{ position:absolute; inset:0; overflow:hidden; background:#ffffff; image-rendering:pixelated; font-size:14px }
+  .tile{ 
+    position:absolute; width:32px; height:32px; user-select:none; 
+    background:transparent; 
+    z-index:1; /* grid behind actors */
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+  .t-green { box-shadow: inset 0 0 0 1px var(--green); }
+  .t-yellow{ box-shadow: inset 0 0 0 1px var(--yellow); }
+  .t-red   { box-shadow: inset 0 0 0 1px var(--red); }
+  .t-purple{ box-shadow: inset 0 0 0 1px var(--purple); }
 
-  /* Actors */
-  .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none }
+  /* Village overlays (walls still visible but below actors) */
+  .t-wall{ background:#f3f4f6; outline:2px solid var(--wall); }
+  .t-village { background:rgba(0,0,0,0.02); }
+  .t-house::after{ content:"🏠"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
+  .t-shop::after{ content:"💰"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
+  .t-guild::after{ content:"🏛️"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
+
+  /* Actors (always above tiles) */
+  .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none; z-index:3 }
   .label{
-    position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap
+    position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff; font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap; z-index:4;
   }
   .me::after{ content:"🧙"; font-size:22px }
-  .player::after{ content:"🧙"; opacity:.85 }
+  .player::after{ content:"🧙"; opacity:.9 }
   .npc-rock::after{ content:"🪨"; }
   .npc-paper::after{ content:"📄"; }
   .npc-scissors::after{ content:"✂️"; }
@@ -96,11 +103,10 @@
   .invGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px }
   .card{ border:1px solid var(--br); border-radius:12px; padding:10px; background:#fff; display:flex; flex-direction:column; gap:6px }
   .card b{ font-size:14px }
-  .card small{ color:var(--muted) }
+  .card small{ color:#6b7280 }
   .danger{ color:#b91c1c; font-weight:800 }
   .ok{ color:#16a34a; font-weight:800 }
 
-  /* Mobile: keep everything stacked; FS button visible */
   @media (max-width:720px){
     .xpbar{ min-width:110px }
   }
@@ -183,7 +189,7 @@
 
   // -------- Map / Regions --------
   const TILE = 32;
-  const VIEW_W = 23;  // tiles visible horizontally
+  const VIEW_W = 23;  // tiles horizontally
   const VIEW_H = 23;  // tiles vertically
   const MAP_W = 120;
   const MAP_H = 120;
@@ -223,7 +229,7 @@
     return onEdge;
   }
 
-  // Fill walls and decor
+  // Prepare village structures (still visual, no cover issues due to z-index)
   for(const v of VILLAGES){
     for(let y=v.y; y<v.y+v.h; y++){
       for(let x=v.x; x<v.x+v.w; x++){
@@ -261,7 +267,7 @@
     ]
   };
 
-  // Shop catalog (unchanged, shortened comment)
+  // Shop catalog
   const SHOP_ITEMS = [
     {name:"Rock", type:"rock", cost:10, lvlReq:1},
     {name:"Paper", type:"paper", cost:10, lvlReq:1},
@@ -301,7 +307,6 @@
     regionLbl.textContent = r[5];
     if (me.guild){ guildLbl.textContent = me.guild; guildStat.style.display="flex"; } else { guildStat.style.display="none"; }
     coordLbl.textContent = `X:${me.x} Y:${me.y}`;
-    // update my level badge
     meLabel.textContent = `Lv ${me.level}`;
   }
 
@@ -360,7 +365,8 @@
   const frame = document.getElementById("frame");
   const tilesDom = new Map(); // key->div
   const actorsDom = new Map(); // key->container
-  // self actor container with label
+
+  // self actor container with label (z-index above grid)
   const meWrap = document.createElement("div");
   meWrap.className = "actor me";
   const meLabel = document.createElement("div");
@@ -379,14 +385,17 @@
 
   function tileClassFor(x,y){
     const r = regionOf(x,y);
-    let cls = r[6];
+    let cls = r[6]; // one of t-green|t-yellow|t-red|t-purple → border color
     const v = isVillageTile(x,y);
     if (v){
-      if (isVillageWall(x,y)) return "t-wall";
-      if (shops.has(coordKey(x,y))) return "t-shop t-village";
-      if (guilds.has(coordKey(x,y))) return "t-guild t-village";
-      if (houses.has(coordKey(x,y))) return "t-house t-village";
-      return cls+" t-village";
+      // keep outlines but add overlays
+      if (isVillageWall(x,y)) return `t-wall`;
+      let extra = " t-village";
+      const key = coordKey(x,y);
+      if (shops.has(key)) extra += " t-shop";
+      else if (guilds.has(key)) extra += " t-guild";
+      else if (houses.has(key)) extra += " t-house";
+      return cls + extra;
     }
     return cls;
   }
@@ -410,6 +419,8 @@
           t.className = "tile " + tileClassFor(x,y);
           mapEl.appendChild(t);
           tilesDom.set(key,t);
+        } else {
+          tilesDom.get(key).className = "tile " + tileClassFor(x,y); // keep classes fresh
         }
         const t = tilesDom.get(key);
         const sx = (x - ox)*TILE;
@@ -417,6 +428,7 @@
         t.style.transform = `translate(${sx}px, ${sy}px)`;
       }
     }
+    // center me above the grid at all times
     meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
   }
 
@@ -483,7 +495,7 @@
   }
   setInterval(tickMove, 120);
 
-  // Click-to-move
+  // Click/tap to move (windowed center)
   frame.addEventListener("click",(e)=>{
     const rect = frame.getBoundingClientRect();
     const cx = e.clientX - rect.left;
@@ -496,31 +508,24 @@
     setDestination(tx,ty);
   });
 
-  // -------- Local NPCs (now with 5 extra types) --------
-  const npcs = []; // {type:'rock'|'paper'|'scissors'|'sprite'|'golem'|'lizard'|'dragon'|'knight', x,y, regionKey}
+  // -------- Local NPCs (with 5 extra types) --------
+  const npcs = [];
   function spawnNPCs(){
-    // caps per region
     const caps = { green:12, yellow:18, red:24, purple:24 };
     const existing = {green:0,yellow:0,red:0,purple:0};
     for(const n of npcs){ existing[n.regionKey]++; }
-
     const randInt = (a,b)=> a + Math.floor(Math.random()*(b-a+1));
-
     for(const r of REGIONS){
       const regionKey = r[4];
       const need = Math.max(0, (caps[regionKey]||0) - (existing[regionKey]||0));
       for(let i=0;i<need;i++){
-        // pool by region (adds 5 ambiguous types overall)
-        let pool=["rock"]; // base everywhere by default
+        let pool=["rock"];
         if (regionKey!=="green") pool.push("paper");
         if (regionKey==="red" || regionKey==="purple") pool.push("scissors");
-
-        // Ambiguous adds:
         if (regionKey==="green"){ pool.push("sprite","golem"); }
         if (regionKey==="yellow"){ pool.push("lizard"); }
         if (regionKey==="red"){ pool.push("dragon"); }
         if (regionKey==="purple"){ pool.push("knight"); }
-
         const type = pool[Math.floor(Math.random()*pool.length)];
         let x, y;
         for(let tries=0;tries<100;tries++){
@@ -564,9 +569,9 @@
   }
   setInterval(()=>{ moveNPCs(); renderActors(); }, 600);
 
-  // -------- Actors rendering (NPCs + Others with labels) --------
+  // -------- Actors rendering (NPCs + Others + Me) --------
   function renderActors(){
-    // remove old NPCs
+    // Clear NPC dom
     for(const [k, el] of actorsDom){
       if (k.startsWith("npc:")){ el.remove(); actorsDom.delete(k); }
     }
@@ -580,15 +585,16 @@
       mapEl.appendChild(wrap);
       actorsDom.set(`npc:${n.x},${n.y}:${n.type}`, wrap);
     }
-    // Others drawn by drawOthers()
+    // Me always centered (already placed)
+    meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
+    // Others drawn separately
   }
 
+  // -------- Encounters (PvE) --------
   function checkEnemyCollision(){
     const hit = npcs.find(n=> n.x===me.x && n.y===me.y);
     if (!hit) return;
-    runEncounter( // On ambiguous types we still supply a "type"
-      (["rock","paper","scissors"].includes(hit.type) ? hit.type : "wild")
-    );
+    runEncounter((["rock","paper","scissors"].includes(hit.type) ? hit.type : "wild"));
   }
 
   async function runEncounter(enemyType){
@@ -600,7 +606,7 @@
     }catch(e){ console.error(e); }
   }
 
-  // -------- Other Players (active only) --------
+  // -------- Other Players (active only, always visible above grid) --------
   const others = new Map();
   onSnapshot(query(othersRef, where("active","==",true)), (snap)=>{
     const present = new Set();
@@ -625,7 +631,7 @@
       wrap.className = "actor player";
       wrap.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
       wrap.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
-      // level label
+      // level label above their head
       const lab = document.createElement("div");
       lab.className = "label";
       lab.textContent = `Lv ${pl.level||1}`;
@@ -635,6 +641,26 @@
     }
   }
 
+  // ---- DUEL WIRING (PvP) ----
+  let duelRedirected = false;
+
+  // Joiner auto-redirect: listen for duels where I'm B
+  onSnapshot(
+    query(collection(db,"duels"), where("b","==",username), orderBy("createdAt","desc"), limit(5)),
+    (snap)=>{
+      if (duelRedirected) return;
+      snap.forEach(d=>{
+        const du = d.data();
+        if (!du) return;
+        const sameTile = (typeof du.x==="number" && typeof du.y==="number") ? (du.x===me.x && du.y===me.y) : true;
+        if (sameTile){
+          duelRedirected = true;
+          location.href = `/game/rockduel.html?duel=${d.id}&username=${encodeURIComponent(username)}`;
+        }
+      });
+    }
+  );
+
   async function checkPlayerCollision(){
     for(const [name,pl] of others){
       if (!pl) continue;
@@ -642,19 +668,29 @@
         if (me.guild && pl.guild && me.guild===pl.guild){
           openTrade(name, pl);
         } else {
-          try{
-            const ref = await addDoc(collection(db,"duels"), {
-              a: username, b: name, x: me.x, y: me.y, createdAt: serverTimestamp()
-            });
-            location.href = `/game/rockduel.html?duel=${ref.id}&username=${encodeURIComponent(username)}`;
-          }catch(e){ console.error(e); }
+          const iCreate = username.localeCompare(name) < 0; // only one creator
+          if (iCreate && !duelRedirected){
+            try{
+              const r = regionOf(me.x, me.y);
+              const ref = await addDoc(collection(db,"duels"), {
+                a: username, b: name,
+                x: me.x, y: me.y,
+                region: r[4], tile: coordKey(me.x,me.y),
+                state: null,
+                createdAt: serverTimestamp()
+              });
+              duelRedirected = true;
+              location.href = `/game/rockduel.html?duel=${ref.id}&username=${encodeURIComponent(username)}`;
+            }catch(e){ console.error(e); }
+          }
+          // Non-creator will be redirected by the listener above.
         }
         break;
       }
     }
   }
 
-  // -------- Chat (15-tile radius) --------
+  // -------- Chat (15 tiles radius) --------
   const msgsEl = document.getElementById("messages");
   const chatForm = document.getElementById("chatForm");
   const chatInput = document.getElementById("chatInput");
@@ -686,7 +722,7 @@
 
   const escapeHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  // -------- Shop / Guild / Inventory (same as before) --------
+  // -------- Shop / Guild / Inventory --------
   const modalBack = document.getElementById("modalBack");
   const modalTitle = document.getElementById("modalTitle");
   const modalBody = document.getElementById("modalBody");
@@ -940,7 +976,7 @@
     });
   }
 
-  // -------- Open shop/guild by stepping on them --------
+  // -------- Auto open shop/guild when standing on them, then step away on close --------
   function structureCheckOpen(){
     const key = coordKey(me.x,me.y);
     if (shops.has(key)) openShop();
@@ -950,14 +986,12 @@
 
   // -------- Boot --------
   await ensurePlayer();
-  // initial tiles and actors
   renderTiles(); renderActors(); updateHUD();
-  // redraw others periodically
+  // keep others visible & updated
   setInterval(drawOthers, 400);
-
-  // -------- Utility (optional testing) --------
-  // window.giveXP = async (n)=>{ me.xp+=n; await updateDoc(playerRef,{xp:me.xp}); updateHUD(); checkLevelUp(); };
 
 </script>
 </body>
 </html>
+
+
