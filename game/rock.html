@@ -43,12 +43,12 @@
     position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br); border-radius:8px; padding:4px 8px; font-size:12px; z-index:4;
   }
 
-  /* Map (transparent grid with colored outlines per region) */
+  /* Map */
   .map{ position:absolute; inset:0; overflow:hidden; background:#ffffff; image-rendering:pixelated; font-size:14px }
   .tile{ 
     position:absolute; width:32px; height:32px; user-select:none; 
     background:transparent; 
-    z-index:1; /* grid behind actors */
+    z-index:1;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
   }
   .t-green { box-shadow: inset 0 0 0 1px var(--green); }
@@ -56,14 +56,14 @@
   .t-red   { box-shadow: inset 0 0 0 1px var(--red); }
   .t-purple{ box-shadow: inset 0 0 0 1px var(--purple); }
 
-  /* Village overlays (walls still visible but below actors) */
+  /* Village overlays */
   .t-wall{ background:#f3f4f6; outline:2px solid var(--wall); }
   .t-village { background:rgba(0,0,0,0.02); }
   .t-house::after{ content:"🏠"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
   .t-shop::after{ content:"💰"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
   .t-guild::after{ content:"🏛️"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
 
-  /* Actors (always above tiles) */
+  /* Actors */
   .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none; z-index:3 }
   .label{
     position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff; font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap; z-index:4;
@@ -194,6 +194,7 @@
   const MAP_W = 120;
   const MAP_H = 120;
 
+  // region array: [x1,y1,x2,y2, key, name, cssClass]
   const REGIONS = [
     [0,0, 59,59, "green","Rocky Roads","t-green"],
     [60,0, 119,59,"yellow","Parchment Plateau","t-yellow"],
@@ -212,6 +213,7 @@
   const houses = new Set();
   const shops  = new Set();
   const guilds = new Set();
+  const entrances = new Set(); // ← NEW: carved openings
   const coordKey = (x,y)=> `${x},${y}`;
   const inRect = (x,y,r)=> x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3];
   const regionOf = (x,y)=> REGIONS.find(r=> inRect(x,y,r)) || REGIONS[0];
@@ -226,11 +228,33 @@
     const v = isVillageTile(x,y);
     if (!v) return false;
     const onEdge = (x===v.x || y===v.y || x===v.x+v.w-1 || y===v.y+v.h-1);
-    return onEdge;
+    if (!onEdge) return false;
+    // If this edge tile is in the carved entrance, it's NOT a wall
+    return !entrances.has(coordKey(x,y));
   }
 
-  // Prepare village structures (still visual, no cover issues due to z-index)
+  // Helper to carve a 3-tile entrance on one side (top by default)
+  function carveEntrance(v, side="top"){
+    const midX = v.x + Math.floor(v.w/2);
+    const midY = v.y + Math.floor(v.h/2);
+    const push = (x,y)=> entrances.add(coordKey(x,y));
+    if (side==="top"){
+      // open at y=v.y, x: midX-1..midX+1
+      for(let dx=-1; dx<=1; dx++) push(midX+dx, v.y);
+    } else if (side==="bottom"){
+      for(let dx=-1; dx<=1; dx++) push(midX+dx, v.y+v.h-1);
+    } else if (side==="left"){
+      for(let dy=-1; dy<=1; dy++) push(v.x, midY+dy);
+    } else if (side==="right"){
+      for(let dy=-1; dy<=1; dy++) push(v.x+v.w-1, midY+dy);
+    }
+  }
+
+  // Prepare village structures + carve entrances
   for(const v of VILLAGES){
+    // carve on one side (you can change to "left"/"right"/"bottom" if you prefer)
+    carveEntrance(v, "top");
+
     for(let y=v.y; y<v.y+v.h; y++){
       for(let x=v.x; x<v.x+v.w; x++){
         if (isVillageWall(x,y)) walls.add(coordKey(x,y));
@@ -385,10 +409,9 @@
 
   function tileClassFor(x,y){
     const r = regionOf(x,y);
-    let cls = r[6]; // one of t-green|t-yellow|t-red|t-purple → border color
+    let cls = r[6]; // region border color class
     const v = isVillageTile(x,y);
     if (v){
-      // keep outlines but add overlays
       if (isVillageWall(x,y)) return `t-wall`;
       let extra = " t-village";
       const key = coordKey(x,y);
@@ -420,7 +443,7 @@
           mapEl.appendChild(t);
           tilesDom.set(key,t);
         } else {
-          tilesDom.get(key).className = "tile " + tileClassFor(x,y); // keep classes fresh
+          tilesDom.get(key).className = "tile " + tileClassFor(x,y);
         }
         const t = tilesDom.get(key);
         const sx = (x - ox)*TILE;
@@ -430,6 +453,11 @@
     }
     // center me above the grid at all times
     meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
+
+    // IMPORTANT: re-render actors whenever the camera (tiles) renders,
+    // so NPCs/players stay anchored to world coords (no “sliding with you” effect).
+    renderActors();
+    drawOthers();
   }
 
   // -------- Pathfinding (A*) --------
@@ -495,7 +523,7 @@
   }
   setInterval(tickMove, 120);
 
-  // Click/tap to move (windowed center)
+  // Click/tap to move
   frame.addEventListener("click",(e)=>{
     const rect = frame.getBoundingClientRect();
     const cx = e.clientX - rect.left;
@@ -508,36 +536,35 @@
     setDestination(tx,ty);
   });
 
-  // -------- Local NPCs (with 5 extra types) --------
+  // -------- Local NPCs (not saved to Firebase) --------
   const npcs = [];
   function spawnNPCs(){
-  const caps = { green:12, yellow:18, red:24, purple:24 };
-  const existing = {green:0,yellow:0,red:0,purple:0};
-  for(const n of npcs){ existing[n.regionKey]++; }
-  const randInt = (a,b)=> a + Math.floor(Math.random()*(b-a+1));
-  for(const r of REGIONS){
-    const regionKey = r[4];
-    const need = Math.max(0, (caps[regionKey]||0) - (existing[regionKey]||0));
-    for(let i=0;i<need;i++){
-      let pool=["rock"];
-      if (regionKey!=="green") pool.push("paper");
-      if (regionKey==="red" || regionKey==="purple") pool.push("scissors");
-      if (regionKey==="green"){ pool.push("sprite","golem"); }
-      if (regionKey==="yellow"){ pool.push("lizard"); }
-      if (regionKey==="red"){ pool.push("dragon"); }
-      if (regionKey==="purple"){ pool.push("knight"); }
-      const type = pool[Math.floor(Math.random()*pool.length)];
-      let x, y;
-      for(let tries=0;tries<100;tries++){
-        x = randInt(r[0], r[2]); y = randInt(r[1], r[3]);
-        if (passable(x,y) && !isVillageTile(x,y)) break;
+    const caps = { green:12, yellow:18, red:24, purple:24 };
+    const existing = {green:0,yellow:0,red:0,purple:0};
+    for(const n of npcs){ existing[n.regionKey]++; }
+    const randInt = (a,b)=> a + Math.floor(Math.random()*(b-a+1));
+    for(const r of REGIONS){
+      const regionKey = r[4];
+      const need = Math.max(0, (caps[regionKey]||0) - (existing[regionKey]||0));
+      for(let i=0;i<need;i++){
+        let pool=["rock"];
+        if (regionKey!=="green") pool.push("paper");
+        if (regionKey==="red" || regionKey==="purple") pool.push("scissors");
+        if (regionKey==="green"){ pool.push("sprite","golem"); }
+        if (regionKey==="yellow"){ pool.push("lizard"); }
+        if (regionKey==="red"){ pool.push("dragon"); }
+        if (regionKey==="purple"){ pool.push("knight"); }
+        const type = pool[Math.floor(Math.random()*pool.length)];
+        let x, y;
+        for(let tries=0;tries<100;tries++){
+          x = randInt(r[0], r[2]); y = randInt(r[1], r[3]);
+          if (passable(x,y) && !isVillageTile(x,y)) break;
+        }
+        const cooldown = 1 + Math.floor(Math.random()*3); // 1–3 ticks
+        npcs.push({type, x, y, regionKey, cooldown});
       }
-      // cooldown: ticks to wait before next step (desyncs from player)
-      const cooldown = 1 + Math.floor(Math.random()*3); // 1–3 ticks
-      npcs.push({type, x, y, regionKey, cooldown});
     }
   }
-}
   spawnNPCs();
 
   function npcClass(t){
@@ -552,70 +579,58 @@
   }
 
   function moveNPCs(){
-  // If NPCs line up perfectly with your cadence, they can feel like they "stick".
-  // We give each NPC a small personal cooldown and occasional idle to break symmetry.
-  const AGGRO = 4;          // chase when <= 4 tiles
-  const IDLE_CHANCE = 0.25; // 25% of the time, they do not move this cycle
-  const COMMIT_CHANCE = 0.35; // when adjacent, chance to step into your tile
+    const AGGRO = 4;          // chase when <= 4 tiles
+    const IDLE_CHANCE = 0.25; // 25% idle chance
+    const COMMIT_CHANCE = 0.35;
 
-  for(const n of npcs){
-    // Per-NPC cooldown so they don't step every global tick
-    if (n.cooldown && n.cooldown > 0) { n.cooldown--; continue; }
-    // roll idle sometimes
-    if (Math.random() < IDLE_CHANCE) { n.cooldown = 1; continue; }
+    for(const n of npcs){
+      if (n.cooldown && n.cooldown > 0) { n.cooldown--; continue; }
+      if (Math.random() < IDLE_CHANCE) { n.cooldown = 1; continue; }
 
-    let dx = 0, dy = 0;
-    const dist = Math.abs(n.x - me.x) + Math.abs(n.y - me.y);
+      let dx = 0, dy = 0;
+      const dist = Math.abs(n.x - me.x) + Math.abs(n.y - me.y);
 
-    if (dist <= 1) {
-      // Adjacent: sometimes commit into player's tile to ensure collision
-      if (Math.random() < COMMIT_CHANCE) {
-        if (n.x < me.x) dx = 1; else if (n.x > me.x) dx = -1;
-        else if (n.y < me.y) dy = 1; else if (n.y > me.y) dy = -1;
+      if (dist <= 1) {
+        if (Math.random() < COMMIT_CHANCE) {
+          if (n.x < me.x) dx = 1; else if (n.x > me.x) dx = -1;
+          else if (n.y < me.y) dy = 1; else if (n.y > me.y) dy = -1;
+        } else {
+          n.cooldown = 1 + Math.floor(Math.random()*2);
+          continue;
+        }
+      } else if (dist <= AGGRO) {
+        if (Math.abs(n.x - me.x) >= Math.abs(n.y - me.y)) {
+          dx = (me.x > n.x) ? 1 : -1;
+        } else {
+          dy = (me.y > n.y) ? 1 : -1;
+        }
+        const altDx = (me.x > n.x) ? 1 : -1;
+        const altDy = (me.y > n.y) ? 1 : -1;
+        if (!passable(n.x+dx, n.y+dy) || isVillageTile(n.x+dx, n.y+dy)) {
+          if (Math.abs(n.x - me.x) >= Math.abs(n.y - me.y)) { dx = 0; dy = altDy; }
+          else { dy = 0; dx = altDx; }
+        }
       } else {
-        // idle right next to you this tick
-        n.cooldown = 1 + Math.floor(Math.random()*2);
-        continue;
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        const [rx,ry] = dirs[Math.floor(Math.random()*dirs.length)];
+        dx = rx; dy = ry;
       }
-    } else if (dist <= AGGRO) {
-      // Chase you (not mirror): step toward shortest axis first
-      if (Math.abs(n.x - me.x) >= Math.abs(n.y - me.y)) {
-        dx = (me.x > n.x) ? 1 : -1;
-      } else {
-        dy = (me.y > n.y) ? 1 : -1;
-      }
-      // If blocked, try the other axis
-      const altDx = (me.x > n.x) ? 1 : -1;
-      const altDy = (me.y > n.y) ? 1 : -1;
-      if (!passable(n.x+dx, n.y+dy) || isVillageTile(n.x+dx, n.y+dy)) {
-        if (Math.abs(n.x - me.x) >= Math.abs(n.y - me.y)) { dx = 0; dy = altDy; }
-        else { dy = 0; dx = altDx; }
-      }
-    } else {
-      // Wander (slowly) with slight bias inward to region center
-      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-      const [rx,ry] = dirs[Math.floor(Math.random()*dirs.length)];
-      dx = rx; dy = ry;
-    }
 
-    const nx = n.x + dx, ny = n.y + dy;
-    const r = REGIONS.find(R=>R[4]===n.regionKey);
-    if (nx>=r[0] && nx<=r[2] && ny>=r[1] && ny<=r[3] && passable(nx,ny) && !isVillageTile(nx,ny)){
-      n.x = nx; n.y = ny;
+      const nx = n.x + dx, ny = n.y + dy;
+      const r = REGIONS.find(R=>R[4]===n.regionKey);
+      if (nx>=r[0] && nx<=r[2] && ny>=r[1] && ny<=r[3] && passable(nx,ny) && !isVillageTile(nx,ny)){
+        n.x = nx; n.y = ny;
+      }
+      n.cooldown = 1 + Math.floor(Math.random()*3);
     }
-
-    // After a move, wait a bit before next step (desync + slower)
-    n.cooldown = 1 + Math.floor(Math.random()*3); // 1–3 ticks pause
   }
-}
 
-// Slow the NPC global tick a bit (less jittery, easier to collide)
-setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
-
+  // Run NPC AI and then re-render actors on a cadence
+  setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
 
   // -------- Actors rendering (NPCs + Others + Me) --------
   function renderActors(){
-    // Clear NPC dom
+    // Remove old NPC DOM
     for(const [k, el] of actorsDom){
       if (k.startsWith("npc:")){ el.remove(); actorsDom.delete(k); }
     }
@@ -631,7 +646,6 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
     }
     // Me always centered (already placed)
     meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
-    // Others drawn separately
   }
 
   // -------- Encounters (PvE) --------
@@ -650,7 +664,7 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
     }catch(e){ console.error(e); }
   }
 
-  // -------- Other Players (active only, always visible above grid) --------
+  // -------- Other Players (active only) --------
   const others = new Map();
   onSnapshot(query(othersRef, where("active","==",true)), (snap)=>{
     const present = new Set();
@@ -675,7 +689,6 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
       wrap.className = "actor player";
       wrap.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
       wrap.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
-      // level label above their head
       const lab = document.createElement("div");
       lab.className = "label";
       lab.textContent = `Lv ${pl.level||1}`;
@@ -688,7 +701,6 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
   // ---- DUEL WIRING (PvP) ----
   let duelRedirected = false;
 
-  // Joiner auto-redirect: listen for duels where I'm B
   onSnapshot(
     query(collection(db,"duels"), where("b","==",username), orderBy("createdAt","desc"), limit(5)),
     (snap)=>{
@@ -712,7 +724,7 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
         if (me.guild && pl.guild && me.guild===pl.guild){
           openTrade(name, pl);
         } else {
-          const iCreate = username.localeCompare(name) < 0; // only one creator
+          const iCreate = username.localeCompare(name) < 0;
           if (iCreate && !duelRedirected){
             try{
               const r = regionOf(me.x, me.y);
@@ -727,7 +739,6 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
               location.href = `/game/rockduel.html?duel=${ref.id}&username=${encodeURIComponent(username)}`;
             }catch(e){ console.error(e); }
           }
-          // Non-creator will be redirected by the listener above.
         }
         break;
       }
@@ -1020,7 +1031,7 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
     });
   }
 
-  // -------- Auto open shop/guild when standing on them, then step away on close --------
+  // -------- Auto open shop/guild when standing on them --------
   function structureCheckOpen(){
     const key = coordKey(me.x,me.y);
     if (shops.has(key)) openShop();
@@ -1030,8 +1041,8 @@ setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
 
   // -------- Boot --------
   await ensurePlayer();
-  renderTiles(); renderActors(); updateHUD();
-  // keep others visible & updated
+  renderTiles(); updateHUD();
+  // keep others visible & updated periodically
   setInterval(drawOthers, 400);
 
 </script>
