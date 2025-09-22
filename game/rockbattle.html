@@ -567,7 +567,7 @@
       }
     } else if (t==="block-rock" || t==="block-paper" || t==="block-scissors"){
       const typ = t.split("-")[1]; // rock/paper/scissors
-      blocks[typ] = Math.max(blocks[typ], 2);
+      blocks[typ] = Math.max(blocks[typ], 3);
       renderHand(true);
     }
   }
@@ -592,8 +592,8 @@
   // ---------- End handling ----------
   async function onWin(){
     const tier = enemy.tier || 0;
-    const xpGain = 10 + 10*tier;
-    const goldGain = 1 + tier;
+    const xpGain = 15 + 10*tier;
+    const goldGain = 3 + tier;
     try{
       const pRef = doc(db,"players",username);
       const pSnap = await getDoc(pRef);
@@ -641,5 +641,6 @@
 </script>
 </body>
 </html>
+
 
 
