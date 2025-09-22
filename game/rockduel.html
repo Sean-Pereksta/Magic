@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>⚔️ Rock Duel</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<style>
+  :root{
+    --ink:#0f172a; --muted:#6b7280; --br:#e5e7eb; --card:#fff; --shadow:0 10px 30px rgba(15,23,42,.08);
+    --good:#16a34a; --bad:#ef4444; --accent:#111827;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;color:var(--ink);background:#fafafa;}
+  button{font-family:inherit; cursor:pointer}
+
+  .wrap{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto}
+  .top{
+    position:sticky; top:0; z-index:5; background:#fff; border-bottom:1px solid var(--br);
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px;
+  }
+  .hp{display:flex;align-items:center;gap:8px;border:1px solid var(--br);background:#fff;padding:8px 12px;border-radius:12px}
+  .hpbar{position:relative;width:140px;height:10px;background:#f3f4f6;border-radius:999px;overflow:hidden;border:1px solid var(--br)}
+  .hpbar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#22c55e,#84cc16)}
+  .tag{font-weight:900}
+  .timer{font-weight:900}
+  .statusPanel{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff;font-size:12px}
+
+  .arena{ position:relative; display:grid; place-items:center; padding:12px; overflow:hidden; }
+  .row{display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap}
+  .centerText{font-weight:900; font-size:20px; text-align:center; min-height:40px}
+
+  .hand{
+    position:sticky; bottom:0; background:#fff;border-top:1px solid var(--br);
+    padding:8px; display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap
+  }
+  .card{
+    width:110px; height:150px; border:2px solid var(--br); border-radius:14px; background:#fff; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:10px;
+  }
+  .card.small{ width:88px; height:120px; }
+  .card b{ font-size:14px; text-align:center }
+  .card small{ color:var(--muted); text-align:center }
+  .choose{ border-color:#111827 }
+  .disabled{ opacity:.5; pointer-events:none }
+
+  .sprite{
+    width:120px;height:120px;border-radius:16px;border:2px solid var(--br);display:grid;place-items:center;background:#fff;box-shadow:var(--shadow);
+    position:absolute;top:50%;transform:translateY(-50%);
+  }
+  .spriteL{ left:-140px }
+  .spriteR{ right:-140px }
+  .runL{ animation:runL .9s forwards }
+  .runR{ animation:runR .9s forwards }
+  .fade{ animation:fade .7s forwards }
+
+  @keyframes runL{ to{ left:calc(50% - 130px) } }
+  @keyframes runR{ to{ right:calc(50% - 130px) } }
+  @keyframes fade{ to{ opacity:0 } }
+
+  @media (max-width:680px){
+    .hpbar{ width:110px }
+    .card{ width:92px; height:124px }
+    .card.small{ width:80px; height:110px }
+    .sprite{ width:96px;height:96px }
+    .centerText{ font-size:18px }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- TOP (Both HP, timer, statuses) -->
+  <div class="top">
+    <div class="hp">
+      <span class="tag" id="oppTag">Opponent</span>
+      <div class="hpbar"><i id="ohpFill" style="width:100%"></i></div>
+      <span id="ohpLbl">0/0</span>
+    </div>
+    <div class="statusPanel">
+      <span class="pill">⏱️ <span id="timer">15</span>s</span>
+      <span class="pill" id="blkRock" style="display:none">🚫 Rock (2)</span>
+      <span class="pill" id="blkPaper" style="display:none">🚫 Paper (2)</span>
+      <span class="pill" id="blkScissors" style="display:none">🚫 Scissors (2)</span>
+      <span class="pill" id="handBoostSelf" style="display:none">🃏 Your Hand +1 (2)</span>
+      <span class="pill" id="handBoostOpp" style="display:none">🃏 Their Hand +1 (2)</span>
+    </div>
+    <div class="hp">
+      <span class="tag">You</span>
+      <div class="hpbar"><i id="phpFill" style="width:100%"></i></div>
+      <span id="phpLbl">0/0</span>
+    </div>
+  </div>
+
+  <!-- ARENA -->
+  <div class="arena" id="arena">
+    <div id="center" class="centerText">Waiting for duel…</div>
+  </div>
+
+  <!-- BOTTOM (Your hand) -->
+  <div class="hand">
+    <div class="row" id="handRow"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction, onSnapshot, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  // ---------- Firebase ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // ---------- Params ----------
+  const qs = new URLSearchParams(location.search);
+  const duelId = qs.get("duel") || "";
+  const username = qs.get("username") || localStorage.getItem("gh.username") || "";
+  if (!duelId || !username){
+    alert("Missing duel or username.");
+    location.href = "/game/rock.html" + (username?`?username=${encodeURIComponent(username)}`:"");
+  }
+  const duelRef = doc(db,"duels",duelId);
+
+  // ---------- UI refs ----------
+  const center = document.getElementById("center");
+  const ohpLbl = document.getElementById("ohpLbl");
+  const ohpFill = document.getElementById("ohpFill");
+  const phpLbl = document.getElementById("phpLbl");
+  const phpFill = document.getElementById("phpFill");
+  const timerEl = document.getElementById("timer");
+  const handRow = document.getElementById("handRow");
+  const arena = document.getElementById("arena");
+  const oppTag = document.getElementById("oppTag");
+  const blkRock = document.getElementById("blkRock");
+  const blkPaper = document.getElementById("blkPaper");
+  const blkScissors = document.getElementById("blkScissors");
+  const handBoostSelf = document.getElementById("handBoostSelf");
+  const handBoostOpp = document.getElementById("handBoostOpp");
+
+  // ---------- Rules ----------
+  const NON_ATTACK = new Set(["effect-reveal","effect-draw","block-rock","block-paper","block-scissors"]);
+  const EMOJI = {
+    rock:"🪨", paper:"📄", scissors:"✂️",
+    crystal:"💎", diamond:"🔷", match:"🧨", water:"💧", slime:"🟢", dark:"🌑",
+    "effect-reveal":"👁️", "effect-draw":"🃏",
+    "block-rock":"⛔🪨", "block-paper":"⛔📄", "block-scissors":"⛔✂️"
+  };
+  const NAME = {
+    rock:"Rock", paper:"Paper", scissors:"Scissors",
+    crystal:"Crystal", diamond:"Diamond", match:"Match", water:"Water", slime:"Slime", dark:"Dark Matter",
+    "effect-reveal":"Reveal", "effect-draw":"Draw",
+    "block-rock":"Block Rock", "block-paper":"Block Paper", "block-scissors":"Block Scissors"
+  };
+  // Advanced matchup table (same as PvE)
+  function compareTypes(a,b){
+    if (a===b) return 0;
+    const base = { rock:{scissors:1,paper:-1}, paper:{rock:1,scissors:-1}, scissors:{paper:1,rock:-1} };
+    if (base[a]?.[b]!==undefined) return base[a][b];
+    if (base[b]?.[a]!==undefined) return -base[b][a];
+    if (a==="crystal"){ if (b==="rock"||b==="scissors") return 1; if (b==="paper") return -1; }
+    if (b==="crystal"){ if (a==="rock"||a==="scissors") return -1; if (a==="paper") return 1; }
+    if (a==="diamond"){ if (["crystal","rock","scissors"].includes(b)) return 1; if (b==="paper") return -1; }
+    if (b==="diamond"){ if (["crystal","rock","scissors"].includes(a)) return -1; if (a==="paper") return 1; }
+    if (a==="match"){ if (["paper","scissors"].includes(b)) return 1; if (["crystal","diamond","rock"].includes(b)) return -1; }
+    if (b==="match"){ if (["paper","scissors"].includes(a)) return -1; if (["crystal","diamond","rock"].includes(a)) return 1; }
+    if (a==="water"){ if (["rock","paper","match"].includes(b)) return 1; if (["crystal","diamond","scissors"].includes(b)) return -1; }
+    if (b==="water"){ if (["rock","paper","match"].includes(a)) return -1; if (["crystal","diamond","scissors"].includes(a)) return 1; }
+    if (a==="slime"){ if (["rock","crystal","diamond","match","paper"].includes(b)) return 1; if (["scissors","water"].includes(b)) return -1; }
+    if (b==="slime"){ if (["rock","crystal","diamond","match","paper"].includes(a)) return -1; if (["scissors","water"].includes(a)) return 1; }
+    if (a==="dark"){ if (b==="rock") return -1; return 1; }
+    if (b==="dark"){ if (a==="rock") return 1; return -1; }
+    return 0;
+  }
+
+  // ---------- Helper mappers ----------
+  function normalizeNameToType(n){
+    const m = n.toLowerCase();
+    if (m.includes("block") && m.includes("rock")) return "block-rock";
+    if (m.includes("block") && m.includes("paper")) return "block-paper";
+    if (m.includes("block") && m.includes("scissors")) return "block-scissors";
+    if (m.includes("reveal")) return "effect-reveal";
+    if (m.includes("draw")) return "effect-draw";
+    if (m.includes("crystal")) return "crystal";
+    if (m.includes("diamond")) return "diamond";
+    if (m.includes("match")) return "match";
+    if (m.includes("water")) return "water";
+    if (m.includes("slime")) return "slime";
+    if (m.includes("dark")) return "dark";
+    if (m.includes("rock")) return "rock";
+    if (m.includes("paper")) return "paper";
+    if (m.includes("scissors")) return "scissors";
+    return "rock";
+  }
+
+  // ---------- Local state ----------
+  let meSide = "a"; // or "b"
+  let meName = username;
+  let oppName = "";
+  let unsub = null;
+  let myPickIdx = -1; // local click
+  let revealFlash = 0; // timestamp ms until we can show opp hand due to reveal
+
+  // ---------- UI utils ----------
+  function setCenter(msg){ center.innerHTML = msg; }
+  function cardHTML(card, i, disabled=false){
+    const type = card.type;
+    const e = EMOJI[type] || "❔";
+    const n = NAME[type] || type;
+    return `<button class="card ${window.innerWidth<680?"small":""} ${disabled?"disabled":""}" data-idx="${i}">
+      <div style="font-size:26px">${e}</div>
+      <b>${n}</b>
+      <small>${NON_ATTACK.has(type)?"Utility":"Attack"}</small>
+    </button>`;
+  }
+  function wait(ms){ return new Promise(r=> setTimeout(r, ms)); }
+
+  // ---------- Time helper ----------
+  function serverNowApprox(d){ // use client time; UI-only
+    return Date.now();
+  }
+
+  // ---------- Subscribe + bootstrap ----------
+  const duelSnap = await getDoc(duelRef);
+  if (!duelSnap.exists()){
+    alert("Duel not found.");
+    backToWorld();
+  }
+  let duel = duelSnap.data();
+
+  // decide side
+  if (duel.a === username) { meSide = "a"; oppName = duel.b; }
+  else if (duel.b === username) { meSide = "b"; oppName = duel.a; }
+  else {
+    alert("You are not a participant in this duel.");
+    backToWorld();
+  }
+  oppTag.textContent = oppName || "Opponent";
+
+  // Initialize duel if needed (only side A initializes)
+  if (!duel.state){
+    if (meSide==="a"){
+      await initDuelAsA();
+    } else {
+      // wait for A to init
+    }
+  }
+
+  // Live updates
+  unsub = onSnapshot(duelRef, (snap)=>{
+    if (!snap.exists()) return;
+    duel = snap.data();
+    renderAll();
+  });
+
+  // ---------- Initialization (side A) ----------
+  async function initDuelAsA(){
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(duelRef);
+      const d = snap.data() || {};
+      if (d.state) return; // someone else did it
+      // read player docs for levels/hp and inventory
+      const aDoc = await tx.get(doc(db,"players", d.a));
+      const bDoc = await tx.get(doc(db,"players", d.b));
+      if (!aDoc.exists() || !bDoc.exists()) throw new Error("Players missing");
+
+      const a = aDoc.data(), b = bDoc.data();
+      const aMax = 3 + (a.level||1);
+      const bMax = 3 + (b.level||1);
+
+      // build decks from inventory (types only)
+      const aDeck = shuffle((a.inventory||baseInventory()).map(c=> ({type: c.type || normalizeNameToType(c.name)})));
+      const bDeck = shuffle((b.inventory||baseInventory()).map(c=> ({type: c.type || normalizeNameToType(c.name)})));
+
+      const aHand=[], bHand=[], aDiscard=[], bDiscard=[];
+      drawToHand(aHand,aDeck,3);
+      drawToHand(bHand,bDeck,3);
+
+      const init = {
+        state: "active",
+        turn: 1,
+        aHP: aMax, aMax,
+        bHP: bMax, bMax,
+        aDeck, bDeck, aHand, bHand, aDiscard, bDiscard,
+        blocks: {rock:0,paper:0,scissors:0},
+        aHandBoost: 0, bHandBoost: 0,
+        aPick: null, bPick: null,
+        timerStart: serverTimestamp(), // UI will countdown from this
+        winner: ""
+      };
+      tx.set(duelRef, {...d, ...init});
+    });
+  }
+
+  // ---------- Render ----------
+  function renderAll(){
+    if (!duel || !duel.state) return;
+
+    const meHP = meSide==="a" ? duel.aHP : duel.bHP;
+    const meMax = meSide==="a" ? duel.aMax : duel.bMax;
+    const opHP = meSide==="a" ? duel.bHP : duel.aHP;
+    const opMax = meSide==="a" ? duel.bMax : duel.aMax;
+
+    phpLbl.textContent = `${meHP}/${meMax}`;
+    phpFill.style.width = Math.max(0, Math.round((meHP/meMax)*100))+"%";
+    ohpLbl.textContent = `${opHP}/${opMax}`;
+    ohpFill.style.width = Math.max(0, Math.round((opHP/opMax)*100))+"%";
+
+    // timer (UI-only based on local clock)
+    const startMs = duel.timerStart?.toMillis ? duel.timerStart.toMillis() : Date.now();
+    const remain = Math.max(0, 15 - Math.floor((serverNowApprox() - startMs)/1000));
+    timerEl.textContent = ""+remain;
+
+    // status pills
+    blkRock.style.display = duel.blocks?.rock>0 ? "inline-flex":"none";
+    blkPaper.style.display = duel.blocks?.paper>0 ? "inline-flex":"none";
+    blkScissors.style.display = duel.blocks?.scissors>0 ? "inline-flex":"none";
+    if (duel.blocks?.rock>0) blkRock.textContent = `🚫 Rock (${duel.blocks.rock})`;
+    if (duel.blocks?.paper>0) blkPaper.textContent = `🚫 Paper (${duel.blocks.paper})`;
+    if (duel.blocks?.scissors>0) blkScissors.textContent = `🚫 Scissors (${duel.blocks.scissors})`;
+
+    handBoostSelf.style.display = (meSide==="a" ? duel.aHandBoost : duel.bHandBoost)>0 ? "inline-flex":"none";
+    handBoostOpp.style.display = (meSide==="a" ? duel.bHandBoost : duel.aHandBoost)>0 ? "inline-flex":"none";
+    if (meSide==="a"){
+      if (duel.aHandBoost>0) handBoostSelf.textContent = `🃏 Your Hand +1 (${duel.aHandBoost})`;
+      if (duel.bHandBoost>0) handBoostOpp.textContent = `🃏 Their Hand +1 (${duel.bHandBoost})`;
+    } else {
+      if (duel.bHandBoost>0) handBoostSelf.textContent = `🃏 Your Hand +1 (${duel.bHandBoost})`;
+      if (duel.aHandBoost>0) handBoostOpp.textContent = `🃏 Their Hand +1 (${duel.aHandBoost})`;
+    }
+
+    // hand
+    const myHand = meSide==="a" ? duel.aHand : duel.bHand;
+    renderHand(myHand, remain===0); // disable clicks if time up
+
+    // end?
+    if (duel.state==="over"){
+      setCenter(duel.winner === meName ? "🏆 You won!" : "💀 You lost.");
+      setTimeout(()=> backToWorld(), 1000);
+      return;
+    }
+
+    // If timer hit zero and picks missing, attempt auto-pick & resolve
+    const myPick = meSide==="a" ? duel.aPick : duel.bPick;
+    const opPick = meSide==="a" ? duel.bPick : duel.aPick;
+    if (remain===0 && (!myPick || !opPick)){
+      // try resolve turn with auto-picks
+      resolveTurnTxn();
+    }
+
+    // If both picks present and we haven't resolved, try to resolve
+    if (myPick && opPick){
+      resolveTurnTxn();
+    }
+  }
+
+  function renderHand(hand, disable){
+    const blocked = (t)=>{
+      if (t==="rock") return duel.blocks?.rock>0;
+      if (t==="paper") return duel.blocks?.paper>0;
+      if (t==="scissors") return duel.blocks?.scissors>0;
+      return false;
+    };
+    handRow.innerHTML = hand.map((c,i)=> cardHTML(c,i, disable)).join("");
+    handRow.querySelectorAll(".card").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const idx = +btn.getAttribute("data-idx");
+        submitPick(idx);
+      });
+    });
+  }
+
+  async function submitPick(idx){
+    try{
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(duelRef);
+        const d = snap.data();
+        if (d.state!=="active") return;
+        const myHand = meSide==="a" ? d.aHand : d.bHand;
+        if (!myHand || !myHand[idx]) return;
+        if (meSide==="a"){
+          if (d.aPick) return; // already picked
+          tx.update(duelRef, { aPick: { idx, type: myHand[idx].type } });
+        } else {
+          if (d.bPick) return;
+          tx.update(duelRef, { bPick: { idx, type: myHand[idx].type } });
+        }
+      });
+    }catch(e){ console.error(e); }
+  }
+
+  // ---------- Resolve turn (transaction; either client may perform) ----------
+  async function resolveTurnTxn(){
+    try{
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(duelRef);
+        const d = snap.data();
+        if (!d || d.state!=="active") return;
+
+        // time check
+        const started = d.timerStart?.toMillis ? d.timerStart.toMillis() : Date.now();
+        const expired = (Date.now() - started) >= 15000;
+
+        // Ensure picks or auto-picks
+        let aPick = d.aPick, bPick = d.bPick;
+        if (!aPick && expired){
+          const idx = Math.min((d.aHand?.length||1)-1, Math.floor(Math.random()*(d.aHand?.length||1)));
+          aPick = { idx, type: d.aHand[idx].type };
+        }
+        if (!bPick && expired){
+          const idx = Math.min((d.bHand?.length||1)-1, Math.floor(Math.random()*(d.bHand?.length||1)));
+          bPick = { idx, type: d.bHand[idx].type };
+        }
+        if (!aPick || !bPick) return; // not ready
+
+        // Copy mutable state
+        const state = JSON.parse(JSON.stringify(d));
+        const my = (side)=> side==="a" ? state.aHand : state.bHand;
+        const deck = (side)=> side==="a" ? state.aDeck : state.bDeck;
+        const disc = (side)=> side==="a" ? state.aDiscard : state.bDiscard;
+
+        // Pull picked cards from hands
+        const aCard = my("a").splice(aPick.idx,1)[0];
+        const bCard = my("b").splice(bPick.idx,1)[0];
+        if (!aCard || !bCard) return;
+
+        // Reveal / animated text flag (we store for UI hint)
+        state.lastClash = {
+          a: aCard.type, b: bCard.type, turn: state.turn, ts: Date.now()
+        };
+
+        // Apply utilities & block logic before comparing
+        await applyUtility(state, "a", aCard);
+        await applyUtility(state, "b", bCard);
+
+        // Determine effective attacks after blocks
+        const isBlocked = (t, blocks)=> (t==="rock" && blocks.rock>0) || (t==="paper" && blocks.paper>0) || (t==="scissors" && blocks.scissors>0);
+        let aAtk = !NON_ATTACK.has(aCard.type) && !isBlocked(aCard.type, state.blocks);
+        let bAtk = !NON_ATTACK.has(bCard.type) && !isBlocked(bCard.type, state.blocks);
+
+        // Damage application
+        if (!aAtk && bAtk){
+          state.aHP = Math.max(0, state.aHP - 1);
+        } else if (!bAtk && aAtk){
+          state.bHP = Math.max(0, state.bHP - 1);
+        } else if (aAtk && bAtk){
+          const cmp = compareTypes(aCard.type, bCard.type);
+          if (cmp>0) state.bHP = Math.max(0, state.bHP - 1);
+          else if (cmp<0) state.aHP = Math.max(0, state.aHP - 1);
+        } // both non-attack → no effect
+
+        // Discard the played cards
+        disc("a").push(aCard);
+        disc("b").push(bCard);
+
+        // Draw up to hand max
+        const aMaxHand = (state.aHandBoost>0) ? 4 : 3;
+        const bMaxHand = (state.bHandBoost>0) ? 4 : 3;
+        drawToHand(my("a"), deck("a"), aMaxHand - my("a").length);
+        drawToHand(my("b"), deck("b"), bMaxHand - my("b").length);
+
+        // Decay blocks and boosts
+        ["rock","paper","scissors"].forEach(k=>{ if (state.blocks[k]>0) state.blocks[k]--; });
+        if (state.aHandBoost>0) state.aHandBoost--;
+        if (state.bHandBoost>0) state.bHandBoost--;
+
+        // Win/Lose?
+        if (state.aHP<=0 || state.bHP<=0){
+          state.state = "over";
+          state.winner = state.aHP>0 ? state.a : (state.bHP>0 ? state.b : ""); // tie not expected with 1-damage steps
+          // Rewards/penalties are handled back on the world page or could be done here by clients after redirect.
+        } else {
+          // Next turn
+          state.turn = (state.turn||1) + 1;
+          state.aPick = null; state.bPick = null;
+          state.timerStart = serverTimestamp();
+        }
+
+        tx.update(duelRef, state);
+      });
+
+      // Local animation (read after txn)
+      const post = await getDoc(duelRef);
+      const st = post.data();
+      if (!st) return;
+      showClash(st.lastClash?.a, st.lastClash?.b);
+      if (st.state==="over"){
+        // If I lost, reset me in players collection per PvE death rule
+        if (st.winner && st.winner !== username){
+          await onPlayerDeath(username);
+        }
+        setCenter(st.winner===username ? "🏆 You won!" : "💀 You lost.");
+        setTimeout(()=> backToWorld(), 1200);
+      }
+    }catch(e){ console.error(e); }
+  }
+
+  async function applyUtility(state, side, card){
+    const t = card.type;
+    if (t==="effect-reveal"){
+      // mark reveal info for a brief UI window (client-side uses lastClash + reveal flags)
+      state.revealFor = side; // 'a' or 'b'
+      state.revealTurn = state.turn || 1;
+    } else if (t==="effect-draw"){
+      if (side==="a"){
+        drawToHand(state.aHand, state.aDeck, 2);
+        state.aHandBoost = Math.max(state.aHandBoost||0, 2);
+      } else {
+        drawToHand(state.bHand, state.bDeck, 2);
+        state.bHandBoost = Math.max(state.bHandBoost||0, 2);
+      }
+    } else if (t==="block-rock" || t==="block-paper" || t==="block-scissors"){
+      const typ = t.split("-")[1];
+      state.blocks[typ] = Math.max(state.blocks[typ]||0, 2);
+    }
+  }
+
+  // ---------- Hand/Deck helpers ----------
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function drawToHand(hand, deck, n){
+    for(let i=0;i<n;i++){
+      if (deck.length===0) reshuffle(deck, hand===duel?.aHand ? duel?.aDiscard : duel?.bDiscard);
+      if (deck.length===0) break;
+      hand.push(deck.pop());
+    }
+  }
+  function reshuffle(deck, discard){
+    if (!discard) return;
+    while(discard.length) deck.push(discard.pop());
+    shuffle(deck);
+  }
+  function baseInventory(){
+    return [
+      {name:"Rock"},{name:"Rock"},{name:"Rock"},
+      {name:"Paper"},{name:"Paper"},{name:"Paper"},
+      {name:"Scissors"},{name:"Scissors"},{name:"Scissors"}
+    ];
+  }
+
+  // ---------- Clash animation ----------
+  async function showClash(aType, bType){
+    if (!aType || !bType) return;
+    arena.querySelectorAll(".sprite").forEach(n=>n.remove());
+    // a is left, b is right (from doc POV). From viewer POV, swap if I'm B to keep "You" on left.
+    let leftType = (meSide==="a")? aType : bType;
+    let rightType = (meSide==="a")? bType : aType;
+
+    const left = document.createElement("div");
+    const right = document.createElement("div");
+    left.className="sprite spriteL runL";
+    right.className="sprite spriteR runR";
+    left.innerHTML = `<div style="font-size:28px">${EMOJI[leftType]||"❔"}</div><small>${NAME[leftType]||leftType}</small>`;
+    right.innerHTML= `<div style="font-size:28px">${EMOJI[rightType]||"❔"}</div><small>${NAME[rightType]||rightType}</small>`;
+    arena.appendChild(left); arena.appendChild(right);
+    setCenter(`${EMOJI[leftType]||"❔"} ${NAME[leftType]||leftType}  vs  ${EMOJI[rightType]||"❔"} ${NAME[rightType]||rightType}`);
+    await wait(900);
+  }
+
+  // ---------- Death reset (if you lose) ----------
+  async function onPlayerDeath(name){
+    try{
+      const baseInv = [
+        {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
+        {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
+      ];
+      await updateDoc(doc(db,"players",name), {
+        x:8, y:8, level:1, xp:0, guild:"", inventory: baseInv
+      });
+    }catch(e){}
+  }
+
+  function backToWorld(){
+    location.href = `/game/rock.html?username=${encodeURIComponent(username)}`;
+  }
+
+</script>
+</body>
+</html>
