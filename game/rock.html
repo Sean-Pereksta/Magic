@@ -14,17 +14,21 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;color:var(--ink);background:#fafafa;}
+  button{font-family:inherit}
+
+  /* Top HUD */
   .topbar{
-    position:fixed; top:0; left:0; right:0; height:var(--hudH);
-    background:#fff; border-bottom:1px solid var(--br); display:flex; align-items:center; gap:12px; padding:10px 12px; z-index:20;
+    position:fixed; top:0; left:0; right:0; min-height:var(--hudH);
+    background:#fff; border-bottom:1px solid var(--br); display:flex; align-items:center; gap:10px; padding:8px 10px; z-index:20; flex-wrap:wrap;
   }
   .stat{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--br);border-radius:12px;padding:8px 10px}
   .xpbar{position:relative;height:8px;background:#f3f4f6;border-radius:999px;overflow:hidden;min-width:140px;border:1px solid var(--br)}
   .xpbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#a7f3d0,#22c55e)}
   .regionTag{margin-left:auto;font-weight:800;padding:8px 12px;border-radius:999px;border:1px solid var(--br);background:#fff}
-  .logout{margin-left:6px;border:1px solid var(--br);background:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+  .logout{border:1px solid var(--br);background:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+  .fsbtn{border:1px solid var(--br);background:#111827;color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer;font-weight:800}
 
-  /* Viewport window (center, phone-friendly) */
+  /* Layout frame */
   .frameWrap{
     position:fixed; top:calc(var(--hudH) + 8px); left:0; right:0; bottom:calc(var(--chatH) + env(safe-area-inset-bottom) + 8px);
     display:grid; place-items:center;
@@ -35,16 +39,13 @@
     background:#fff; border:1px solid var(--br); border-radius:20px; box-shadow:var(--shadow); overflow:hidden; position:relative;
     touch-action:manipulation;
   }
+  .coords{
+    position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br); border-radius:8px; padding:4px 8px; font-size:12px
+  }
+
   /* Map canvas (virtual grid) */
-  .map{
-    position:absolute; inset:0; overflow:hidden; background:#eef2ff;
-    image-rendering:pixelated;
-    font-size:14px;
-  }
-  /* Tiles rendered as divs for simplicity */
-  .tile{
-    position:absolute; width:32px; height:32px; display:grid; place-items:center; user-select:none;
-  }
+  .map{ position:absolute; inset:0; overflow:hidden; background:#eef2ff; image-rendering:pixelated; font-size:14px }
+  .tile{ position:absolute; width:32px; height:32px; display:grid; place-items:center; user-select:none; }
   .t-green{ background:var(--green) }
   .t-yellow{ background:var(--yellow) }
   .t-red{ background:var(--red) }
@@ -55,13 +56,21 @@
   .t-guild::after{ content:"🏛️"; }
   .t-village{ outline: 1px dashed #6b7280 }
 
-  /* Player & NPC */
+  /* Actors */
   .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none }
+  .label{
+    position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap
+  }
   .me::after{ content:"🧙"; font-size:22px }
   .player::after{ content:"🧙"; opacity:.85 }
   .npc-rock::after{ content:"🪨"; }
   .npc-paper::after{ content:"📄"; }
   .npc-scissors::after{ content:"✂️"; }
+  .npc-sprite::after{ content:"🧚"; }
+  .npc-golem::after{ content:"🗿"; }
+  .npc-lizard::after{ content:"🦎"; }
+  .npc-dragon::after{ content:"🐉"; }
+  .npc-knight::after{ content:"🛡️"; }
   .inactive{ display:none }
 
   /* Chat panel */
@@ -84,36 +93,44 @@
   .modal-body{ padding:12px 14px; display:grid; gap:10px }
   .row{ display:flex; gap:10px; flex-wrap:wrap }
   .pill{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--br); border-radius:999px; background:#fff }
-
-  /* Shop/guild/trade content */
   .invGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px }
   .card{ border:1px solid var(--br); border-radius:12px; padding:10px; background:#fff; display:flex; flex-direction:column; gap:6px }
   .card b{ font-size:14px }
   .card small{ color:var(--muted) }
   .danger{ color:#b91c1c; font-weight:800 }
   .ok{ color:#16a34a; font-weight:800 }
+
+  /* Mobile: keep everything stacked; FS button visible */
+  @media (max-width:720px){
+    .xpbar{ min-width:110px }
+  }
 </style>
 </head>
 <body>
+  <!-- TOP HUD -->
   <div class="topbar">
     <div class="stat">🧙 <b id="usernameLbl">Player</b></div>
     <div class="stat">💰 Gold: <b id="goldLbl">0</b></div>
     <div class="stat">⭐ Lv <b id="levelLbl">1</b></div>
+    <div class="stat" id="guildStat" style="display:none">🏰 Guild: <b id="guildLbl">—</b></div>
     <div class="stat xp">
       <div class="xpbar"><i id="xpFill"></i></div>
       <small id="xpLbl" style="margin-left:6px;color:var(--muted)">0/0</small>
     </div>
     <div class="regionTag" id="regionLbl">Rocky Roads</div>
+    <button id="fsBtn" class="fsbtn" title="Fullscreen">⛶ Fullscreen</button>
     <button id="logoutBtn" class="logout">Logout</button>
   </div>
 
+  <!-- VIEWPORT / MAP -->
   <div class="frameWrap">
     <div id="frame" class="frame">
+      <div class="coords" id="coordLbl">X:0 Y:0</div>
       <div id="map" class="map" aria-label="map"></div>
     </div>
   </div>
 
-  <!-- Chat -->
+  <!-- CHAT + ACTIONS -->
   <div class="chat">
     <div id="messages" class="msgs"></div>
     <form id="chatForm" class="chatForm">
@@ -171,7 +188,6 @@
   const MAP_W = 120;
   const MAP_H = 120;
 
-  // Regions (rects): [x0,y0,x1,y1, key, title, class]
   const REGIONS = [
     [0,0, 59,59, "green","Rocky Roads","t-green"],
     [60,0, 119,59,"yellow","Parchment Plateau","t-yellow"],
@@ -179,7 +195,6 @@
     [60,60,119,119,"purple","Probabilities Plain","t-purple"]
   ];
 
-  // Villages: each with walls (perimeter), interior decor
   const VILLAGES = [
     { name:"Westhold", x:14, y:14, w:10, h:10, region:"green" },
     { name:"Sunfold", x:80, y:10, w:10, h:10, region:"yellow" },
@@ -187,18 +202,13 @@
     { name:"Mystvale", x:88, y:88, w:10, h:10, region:"purple" },
   ];
 
-  // Static walls from villages
   const walls = new Set();
-  function coordKey(x,y){ return `${x},${y}`; }
-
-  function inRect(x,y, r){
-    return x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3];
-  }
-
-  function regionOf(x,y){
-    for(const r of REGIONS){ if (inRect(x,y,r)) return r; }
-    return REGIONS[0];
-  }
+  const houses = new Set();
+  const shops  = new Set();
+  const guilds = new Set();
+  const coordKey = (x,y)=> `${x},${y}`;
+  const inRect = (x,y,r)=> x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3];
+  const regionOf = (x,y)=> REGIONS.find(r=> inRect(x,y,r)) || REGIONS[0];
 
   function isVillageTile(x,y){
     for(const v of VILLAGES){
@@ -214,34 +224,26 @@
   }
 
   // Fill walls and decor
-  const houses = new Set();
-  const shops  = new Set();
-  const guilds = new Set();
   for(const v of VILLAGES){
     for(let y=v.y; y<v.y+v.h; y++){
       for(let x=v.x; x<v.x+v.w; x++){
         if (isVillageWall(x,y)) walls.add(coordKey(x,y));
       }
     }
-    // interiors: 2 houses + 1 shop + 1 guild
     houses.add(coordKey(v.x+2, v.y+2));
     houses.add(coordKey(v.x+v.w-3, v.y+2));
     shops.add(coordKey(v.x+Math.floor(v.w/2), v.y+Math.floor(v.h/2)));
     guilds.add(coordKey(v.x+2, v.y+v.h-3));
   }
 
-  function passable(x,y){
-    if (x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
-    if (walls.has(coordKey(x,y))) return false;
-    return true;
-  }
+  const passable = (x,y)=> !(x<0||y<0||x>=MAP_W||y>=MAP_H) && !walls.has(coordKey(x,y));
 
   // -------- Player State --------
   const playerRef = doc(db, "players", username);
   const othersRef = collection(db, "players");
   let me = {
     name: username,
-    x: 8, y: 8, level:1, xp:0, gold: 30, // a little start cash
+    x: 8, y: 8, level:1, xp:0, gold: 30,
     guild: "", inventory: [],
     active: true, lastLoginDay: "", lastSeen: serverTimestamp()
   };
@@ -259,19 +261,16 @@
     ]
   };
 
-  // Card catalog
+  // Shop catalog (unchanged, shortened comment)
   const SHOP_ITEMS = [
-    // base
     {name:"Rock", type:"rock", cost:10, lvlReq:1},
     {name:"Paper", type:"paper", cost:10, lvlReq:1},
     {name:"Scissors", type:"scissors", cost:10, lvlReq:1},
-    // effects
     {name:"Draw", type:"effect-draw", cost:20, lvlReq:2, desc:"Draw an extra card"},
     {name:"Reveal", type:"effect-reveal", cost:25, lvlReq:3, desc:"Peek opponent choice"},
     {name:"Block Rock", type:"block-rock", cost:25, lvlReq:3, desc:"Rock ineffective"},
     {name:"Block Paper", type:"block-paper", cost:25, lvlReq:3, desc:"Paper ineffective"},
     {name:"Block Scissors", type:"block-scissors", cost:25, lvlReq:3, desc:"Scissors ineffective"},
-    // higher tiers
     {name:"Crystal", type:"crystal", cost:60, lvlReq:4},
     {name:"Diamond", type:"diamond", cost:80, lvlReq:5},
     {name:"Match", type:"match", cost:90, lvlReq:6},
@@ -279,16 +278,18 @@
     {name:"Slime", type:"slime", cost:130, lvlReq:8},
     {name:"Dark Matter", type:"dark", cost:160, lvlReq:9}
   ];
-  function invCap(){ return 9 + (me.level||1); }
+  const invCap = ()=> 9 + (me.level||1);
+  const xpNeededFor = level => 100 + 50*level;
 
-  function xpNeededFor(level){ return 100 + 50*level; }
-
-  // -------- UI helpers --------
+  // -------- UI refs --------
   const goldLbl = document.getElementById("goldLbl");
   const levelLbl = document.getElementById("levelLbl");
   const xpLbl = document.getElementById("xpLbl");
   const xpFill = document.getElementById("xpFill");
   const regionLbl = document.getElementById("regionLbl");
+  const guildLbl = document.getElementById("guildLbl");
+  const guildStat = document.getElementById("guildStat");
+  const coordLbl = document.getElementById("coordLbl");
 
   function updateHUD(){
     goldLbl.textContent = me.gold|0;
@@ -298,6 +299,10 @@
     xpFill.style.width = Math.max(0, Math.min(100, Math.round((me.xp/need)*100)))+"%";
     const r = regionOf(me.x, me.y);
     regionLbl.textContent = r[5];
+    if (me.guild){ guildLbl.textContent = me.guild; guildStat.style.display="flex"; } else { guildStat.style.display="none"; }
+    coordLbl.textContent = `X:${me.x} Y:${me.y}`;
+    // update my level badge
+    meLabel.textContent = `Lv ${me.level}`;
   }
 
   // -------- Presence & login bonus --------
@@ -312,18 +317,16 @@
       await updateDoc(playerRef, { gold: me.gold });
     } else {
       me = { ...me, ...snap.data() };
-      // daily login bonus
       if (me.lastLoginDay !== today){
         me.gold = (me.gold|0) + 5;
         me.lastLoginDay = today;
         await updateDoc(playerRef, { gold: me.gold, lastLoginDay: today });
-        showModal("Daily Bonus", `<div class='row'><div class='pill'>+5 gold</div><small>Thanks for logging in!</small></div>`);
+        showModal("Daily Bonus", `<div class='row'><div class='pill'>+5 gold</div><small>Welcome back!</small></div>`);
       }
-      // became active
       await updateDoc(playerRef, { active:true, lastSeen: serverTimestamp() });
     }
     updateHUD();
-    checkLevelUp(); // in case xp carried over
+    checkLevelUp();
   }
 
   window.addEventListener("beforeunload", async ()=>{
@@ -335,17 +338,38 @@
     location.href = "/"; // back to hub
   });
 
+  // -------- Fullscreen --------
+  const fsBtn = document.getElementById("fsBtn");
+  fsBtn.addEventListener("click", async ()=>{
+    try{
+      if (!document.fullscreenElement){
+        await document.documentElement.requestFullscreen();
+        fsBtn.textContent = "⤢ Exit Fullscreen";
+      } else {
+        await document.exitFullscreen();
+        fsBtn.textContent = "⛶ Fullscreen";
+      }
+    }catch(e){ /* ignore */ }
+  });
+  document.addEventListener("fullscreenchange", ()=>{
+    fsBtn.textContent = document.fullscreenElement ? "⤢ Exit Fullscreen" : "⛶ Fullscreen";
+  });
+
   // -------- Rendering viewport --------
   const mapEl = document.getElementById("map");
   const frame = document.getElementById("frame");
   const tilesDom = new Map(); // key->div
-  const actorsDom = new Map(); // key->div for others and npcs
-  const meEl = document.createElement("div");
-  meEl.className = "actor me";
-  mapEl.appendChild(meEl);
+  const actorsDom = new Map(); // key->container
+  // self actor container with label
+  const meWrap = document.createElement("div");
+  meWrap.className = "actor me";
+  const meLabel = document.createElement("div");
+  meLabel.className = "label";
+  meLabel.textContent = "Lv 1";
+  meWrap.appendChild(meLabel);
+  mapEl.appendChild(meWrap);
 
   function screenOrigin(){
-    // center me within viewport
     const halfW = Math.floor(VIEW_W/2);
     const halfH = Math.floor(VIEW_H/2);
     const ox = me.x - halfW;
@@ -354,10 +378,8 @@
   }
 
   function tileClassFor(x,y){
-    // base by region
     const r = regionOf(x,y);
     let cls = r[6];
-    // village visuals inside interior
     const v = isVillageTile(x,y);
     if (v){
       if (isVillageWall(x,y)) return "t-wall";
@@ -376,12 +398,10 @@
     const endX = Math.min(MAP_W-1, ox + VIEW_W + 1);
     const endY = Math.min(MAP_H-1, oy + VIEW_H + 1);
 
-    // prune old tiles
     for(const [k, el] of tilesDom){
       const [x,y]=k.split(',').map(Number);
       if (x<startX||y<startY||x>endX||y>endY){ el.remove(); tilesDom.delete(k); }
     }
-    // draw window
     for(let y=startY; y<=endY; y++){
       for(let x=startX; x<=endX; x++){
         const key = coordKey(x,y);
@@ -397,58 +417,41 @@
         t.style.transform = `translate(${sx}px, ${sy}px)`;
       }
     }
-    // position me
-    meEl.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
+    meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
   }
 
   // -------- Pathfinding (A*) --------
-  function neighbors(x,y){
-    const out=[];
-    [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{
-      const nx=x+dx, ny=y+dy;
-      if (passable(nx,ny)) out.push([nx,ny]);
-    });
-    return out;
-  }
-  function heuristic(a,b){ return Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]); }
+  const neighbors = (x,y)=>{
+    const out=[]; [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{
+      const nx=x+dx, ny=y+dy; if (passable(nx,ny)) out.push([nx,ny]);
+    }); return out;
+  };
+  const heuristic = (a,b)=> Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]);
   function aStar(sx,sy, tx,ty){
     if (!passable(tx,ty)) return [];
     const open = new Set([coordKey(sx,sy)]);
     const came = new Map();
     const g = new Map([[coordKey(sx,sy),0]]);
     const f = new Map([[coordKey(sx,sy), heuristic([sx,sy],[tx,ty])]]);
-
-    function lowestF(){
+    const lowestF = ()=>{
       let bestK=null, best=Infinity;
-      for(const k of open){
-        const val = f.get(k) ?? Infinity;
-        if (val<best){ best=val; bestK=k; }
-      }
+      for(const k of open){ const val = f.get(k) ?? Infinity; if (val<best){ best=val; bestK=k; } }
       return bestK;
-    }
+    };
     while(open.size){
       const curK = lowestF();
       const [cx,cy]=curK.split(',').map(Number);
       if (cx===tx && cy===ty){
-        // reconstruct
-        const path = [];
-        let k = curK;
-        while(came.has(k)){
-          const [px,py] = k.split(',').map(Number);
-          path.push([px,py]);
-          k = came.get(k);
-        }
-        path.reverse();
-        return path;
+        const path = []; let k = curK;
+        while(came.has(k)){ const [px,py] = k.split(',').map(Number); path.push([px,py]); k = came.get(k); }
+        path.reverse(); return path;
       }
       open.delete(curK);
       for(const [nx,ny] of neighbors(cx,cy)){
         const nk = coordKey(nx,ny);
         const tentative = (g.get(curK)??Infinity) + 1;
         if (tentative < (g.get(nk)??Infinity)){
-          came.set(nk, curK);
-          g.set(nk, tentative);
-          f.set(nk, tentative + heuristic([nx,ny],[tx,ty]));
+          came.set(nk, curK); g.set(nk, tentative); f.set(nk, tentative + heuristic([nx,ny],[tx,ty]));
           if (!open.has(nk)) open.add(nk);
         }
       }
@@ -461,7 +464,6 @@
   let stepping = false;
 
   function setDestination(tx,ty){
-    // blocked by village walls?
     const path = aStar(me.x, me.y, tx, ty);
     moveQueue = path;
   }
@@ -471,18 +473,15 @@
     stepping = true;
     const [nx,ny] = moveQueue.shift();
     me.x = nx; me.y = ny;
-    // Update DB position
     updateDoc(playerRef, { x: me.x, y: me.y, lastSeen: serverTimestamp() }).catch(()=>{});
-    // Render
     renderTiles(); updateHUD();
-    // Collision checks
-    if (!isVillageTile(me.x,me.y)){ // no combat inside villages
+    if (!isVillageTile(me.x,me.y)){
       checkEnemyCollision();
       checkPlayerCollision();
     }
     stepping = false;
   }
-  setInterval(tickMove, 120); // smoothish
+  setInterval(tickMove, 120);
 
   // Click-to-move
   frame.addEventListener("click",(e)=>{
@@ -497,24 +496,31 @@
     setDestination(tx,ty);
   });
 
-  // -------- Local NPCs (no Firebase writes) --------
-  const npcs = []; // {type:'rock'|'paper'|'scissors', x,y, regionKey}
+  // -------- Local NPCs (now with 5 extra types) --------
+  const npcs = []; // {type:'rock'|'paper'|'scissors'|'sprite'|'golem'|'lizard'|'dragon'|'knight', x,y, regionKey}
   function spawnNPCs(){
-    // per region caps
-    const caps = { green:12, yellow:18, red:24, purple:30 };
+    // caps per region
+    const caps = { green:12, yellow:18, red:24, purple:24 };
     const existing = {green:0,yellow:0,red:0,purple:0};
     for(const n of npcs){ existing[n.regionKey]++; }
 
-    function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+    const randInt = (a,b)=> a + Math.floor(Math.random()*(b-a+1));
 
     for(const r of REGIONS){
       const regionKey = r[4];
       const need = Math.max(0, (caps[regionKey]||0) - (existing[regionKey]||0));
       for(let i=0;i<need;i++){
-        // pick type by region
-        let pool=["rock"];
+        // pool by region (adds 5 ambiguous types overall)
+        let pool=["rock"]; // base everywhere by default
         if (regionKey!=="green") pool.push("paper");
         if (regionKey==="red" || regionKey==="purple") pool.push("scissors");
+
+        // Ambiguous adds:
+        if (regionKey==="green"){ pool.push("sprite","golem"); }
+        if (regionKey==="yellow"){ pool.push("lizard"); }
+        if (regionKey==="red"){ pool.push("dragon"); }
+        if (regionKey==="purple"){ pool.push("knight"); }
+
         const type = pool[Math.floor(Math.random()*pool.length)];
         let x, y;
         for(let tries=0;tries<100;tries++){
@@ -530,24 +536,26 @@
   function npcClass(t){
     if (t==="rock") return "npc-rock";
     if (t==="paper") return "npc-paper";
-    return "npc-scissors";
+    if (t==="scissors") return "npc-scissors";
+    if (t==="sprite") return "npc-sprite";
+    if (t==="golem") return "npc-golem";
+    if (t==="lizard") return "npc-lizard";
+    if (t==="dragon") return "npc-dragon";
+    return "npc-knight";
   }
 
   function moveNPCs(){
     for(const n of npcs){
-      // chase if within 3
       const d = Math.abs(n.x - me.x) + Math.abs(n.y - me.y);
       let dx = 0, dy = 0;
       if (d<=3){
         if (n.x < me.x) dx=1; else if (n.x > me.x) dx=-1;
         else if (n.y < me.y) dy=1; else if (n.y > me.y) dy=-1;
       } else {
-        // wander
         const dir = [[1,0],[-1,0],[0,1],[0,-1]][Math.floor(Math.random()*4)];
         dx = dir[0]; dy = dir[1];
       }
       const nx = n.x + dx, ny = n.y + dy;
-      // keep inside region and avoid walls/villages
       const r = REGIONS.find(R=>R[4]===n.regionKey);
       if (nx>=r[0] && nx<=r[2] && ny>=r[1] && ny<=r[3] && passable(nx,ny) && !isVillageTile(nx,ny)){
         n.x = nx; n.y = ny;
@@ -556,30 +564,31 @@
   }
   setInterval(()=>{ moveNPCs(); renderActors(); }, 600);
 
+  // -------- Actors rendering (NPCs + Others with labels) --------
   function renderActors(){
-    // remove previous npc dom
+    // remove old NPCs
     for(const [k, el] of actorsDom){
-      if (k.startsWith("npc:")) { el.remove(); actorsDom.delete(k); }
+      if (k.startsWith("npc:")){ el.remove(); actorsDom.delete(k); }
     }
-    // draw npcs in viewport
     const {ox,oy}=screenOrigin();
+    // NPCs
     for(const n of npcs){
       if (n.x<ox-1||n.y<oy-1||n.x>ox+VIEW_W+1||n.y>oy+VIEW_H+1) continue;
-      const el = document.createElement("div");
-      el.className = `actor ${npcClass(n.type)}`;
-      el.style.transform = `translate(${(n.x-ox)*TILE}px, ${(n.y-oy)*TILE}px)`;
-      mapEl.appendChild(el);
-      actorsDom.set(`npc:${n.x},${n.y}`, el);
+      const wrap = document.createElement("div");
+      wrap.className = `actor ${npcClass(n.type)}`;
+      wrap.style.transform = `translate(${(n.x-ox)*TILE}px, ${(n.y-oy)*TILE}px)`;
+      mapEl.appendChild(wrap);
+      actorsDom.set(`npc:${n.x},${n.y}:${n.type}`, wrap);
     }
-    // others are handled via subscription render
+    // Others drawn by drawOthers()
   }
 
   function checkEnemyCollision(){
-    // If on same tile as any npc
     const hit = npcs.find(n=> n.x===me.x && n.y===me.y);
     if (!hit) return;
-    // create encounter and redirect
-    runEncounter(hit.type);
+    runEncounter( // On ambiguous types we still supply a "type"
+      (["rock","paper","scissors"].includes(hit.type) ? hit.type : "wild")
+    );
   }
 
   async function runEncounter(enemyType){
@@ -592,20 +601,14 @@
   }
 
   // -------- Other Players (active only) --------
-  const others = new Map(); // name -> data
+  const others = new Map();
   onSnapshot(query(othersRef, where("active","==",true)), (snap)=>{
-    // rebuild
     const present = new Set();
     snap.forEach(d=>{
-      const pl = d.data();
-      if (pl.name===username) return; // skip self
-      others.set(pl.name, pl);
-      present.add(pl.name);
+      const pl = d.data(); if (pl.name===username) return;
+      others.set(pl.name, pl); present.add(pl.name);
     });
-    // remove missing
-    for(const k of Array.from(others.keys())){
-      if (!present.has(k)) others.delete(k);
-    }
+    for(const k of Array.from(others.keys())){ if (!present.has(k)) others.delete(k); }
     drawOthers();
   });
 
@@ -616,15 +619,19 @@
     }
     const {ox,oy}=screenOrigin();
     for(const [name,pl] of others){
-      if (!pl || typeof pl.x!=="number") continue;
-      if (pl.active!==true) continue;
+      if (!pl || typeof pl.x!=="number" || pl.active!==true) continue;
       if (pl.x<ox-1||pl.y<oy-1||pl.x>ox+VIEW_W+1||pl.y>oy+VIEW_H+1) continue;
-      const el = document.createElement("div");
-      el.className = "actor player";
-      el.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
-      el.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
-      mapEl.appendChild(el);
-      actorsDom.set(`p:${name}`, el);
+      const wrap = document.createElement("div");
+      wrap.className = "actor player";
+      wrap.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
+      wrap.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
+      // level label
+      const lab = document.createElement("div");
+      lab.className = "label";
+      lab.textContent = `Lv ${pl.level||1}`;
+      wrap.appendChild(lab);
+      mapEl.appendChild(wrap);
+      actorsDom.set(`p:${name}`, wrap);
     }
   }
 
@@ -633,10 +640,8 @@
       if (!pl) continue;
       if (pl.x===me.x && pl.y===me.y){
         if (me.guild && pl.guild && me.guild===pl.guild){
-          // open trade
           openTrade(name, pl);
         } else {
-          // duel
           try{
             const ref = await addDoc(collection(db,"duels"), {
               a: username, b: name, x: me.x, y: me.y, createdAt: serverTimestamp()
@@ -664,16 +669,13 @@
     chatInput.value = "";
   });
 
-  // read latest nearby messages (simple polling with onSnapshot on recent)
   onSnapshot(query(collection(db,"messages"), orderBy("createdAt","desc"), limit(60)), (snap)=>{
     const rows=[];
     snap.forEach(d=>{
       const m=d.data();
       if (typeof m.x!=="number"||typeof m.y!=="number") return;
       const dist = Math.abs(m.x - me.x) + Math.abs(m.y - me.y);
-      if (dist<=15){
-        rows.push(m);
-      }
+      if (dist<=15){ rows.push(m); }
     });
     rows.sort((a,b)=> (a.createdAt?.seconds||0)-(b.createdAt?.seconds||0));
     msgsEl.innerHTML = rows.map(r=>(
@@ -682,9 +684,9 @@
     msgsEl.scrollTop = msgsEl.scrollHeight;
   });
 
-  function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+  const escapeHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  // -------- Shop / Guild / Inventory --------
+  // -------- Shop / Guild / Inventory (same as before) --------
   const modalBack = document.getElementById("modalBack");
   const modalTitle = document.getElementById("modalTitle");
   const modalBody = document.getElementById("modalBody");
@@ -702,7 +704,6 @@
   }
   function closeModalAndStepAway(){
     closeModal();
-    // move 1 step away from where we opened
     const options = [[1,0],[-1,0],[0,1],[0,-1]];
     for(const [dx,dy] of options){
       const nx = me.x+dx, ny = me.y+dy;
@@ -745,11 +746,10 @@
       </div>
     `;
     showModal("Inventory", html);
-    // wire remove
     modalBody.querySelectorAll("[data-remove]").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
         const idx = +btn.getAttribute("data-remove");
-        const [c] = me.inventory.splice(idx,1);
+        me.inventory.splice(idx,1);
         await updateDoc(playerRef, { inventory: me.inventory });
         openInventory();
       });
@@ -813,7 +813,7 @@
         if (me.level < 5) return alert("You must be level 5 or higher.");
         me.guild = g;
         await updateDoc(playerRef, { guild: g });
-        openGuild(); // refresh
+        openGuild(); updateHUD();
       });
     });
   }
@@ -822,10 +822,9 @@
   async function checkLevelUp(){
     const need = xpNeededFor(me.level);
     if (me.xp >= need){
-      // level up: offer 2 random items with lvlReq <= newLevel
       const newLevel = me.level + 1;
       const pool = SHOP_ITEMS.filter(i=> i.lvlReq <= newLevel);
-      function pick(){ return pool[Math.floor(Math.random()*pool.length)]; }
+      const pick = ()=> pool[Math.floor(Math.random()*pool.length)];
       const a = pick(), b = pick();
       const html = `
         <div class="row"><div class="pill ok">Level Up! → ${newLevel}</div></div>
@@ -854,9 +853,8 @@
     }
   }
 
-  // -------- Trade flow (same guild collision) --------
+  // -------- Trade flow --------
   async function openTrade(otherName, otherData){
-    // simple two-party handshake in Firestore: trades/{id}
     const myOffer = { cardId:"" };
     const theirOffer = { cardId:"" };
     const html = `
@@ -886,7 +884,6 @@
     `;
     showModal("Guild Trade", html);
 
-    // Load other's inventory on demand (snapshot read)
     const otherSnap = await getDoc(doc(db,"players",otherName));
     const otherInv = (otherSnap.exists() ? (otherSnap.data().inventory || []) : []);
     const otherInvBox = document.getElementById("otherInv");
@@ -915,7 +912,6 @@
     document.getElementById("cancelBtn").addEventListener("click", closeModalAndStepAway);
     document.getElementById("acceptBtn").addEventListener("click", async ()=>{
       if (!myOffer.cardId || !theirOffer.cardId) return alert("Select offers on both sides.");
-      // Perform swap with transaction
       try{
         await runTransaction(db, async (tx)=>{
           const meSnap = await tx.get(playerRef);
@@ -938,37 +934,28 @@
         });
         alert("Trade complete!");
         closeModalAndStepAway();
-        // push each away 1 step
-        const options = [[1,0],[-1,0],[0,1],[0,-1]];
-        const nx = me.x + options[Math.floor(Math.random()*4)][0];
-        const ny = me.y + options[Math.floor(Math.random()*4)][1];
-        if (passable(nx,ny)){ me.x=nx; me.y=ny; updateDoc(playerRef,{x:me.x,y:me.y}); renderTiles(); }
       }catch(e){
         alert("Trade failed: " + e.message);
       }
     });
   }
 
-  // -------- Opening shop/guild by stepping on them --------
-  let lastStructure = "";
+  // -------- Open shop/guild by stepping on them --------
   function structureCheckOpen(){
     const key = coordKey(me.x,me.y);
     if (shops.has(key)) openShop();
     else if (guilds.has(key)) openGuild();
-    lastStructure = key;
   }
+  setInterval(structureCheckOpen, 300);
 
   // -------- Boot --------
   await ensurePlayer();
+  // initial tiles and actors
   renderTiles(); renderActors(); updateHUD();
-
-  // reflect movement to open shop/guild if stepping
-  setInterval(structureCheckOpen, 300);
-
-  // Draw others periodically centered
+  // redraw others periodically
   setInterval(drawOthers, 400);
 
-  // -------- Utility to grant XP (for testing; remove in prod) --------
+  // -------- Utility (optional testing) --------
   // window.giveXP = async (n)=>{ me.xp+=n; await updateDoc(playerRef,{xp:me.xp}); updateHUD(); checkLevelUp(); };
 
 </script>
