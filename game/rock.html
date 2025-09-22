@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -19,7 +19,8 @@
   /* Top HUD */
   .topbar{
     position:fixed; top:0; left:0; right:0; min-height:var(--hudH);
-    background:#fff; border-bottom:1px solid var(--br); display:flex; align-items:center; gap:10px; padding:8px 10px; z-index:20; flex-wrap:wrap;
+    background:#fff; border-bottom:1px solid var(--br);
+    display:flex; align-items:center; gap:10px; padding:8px 10px; z-index:20; flex-wrap:wrap;
   }
   .stat{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--br);border-radius:12px;padding:8px 10px}
   .xpbar{position:relative;height:8px;background:#f3f4f6;border-radius:999px;overflow:hidden;min-width:140px;border:1px solid var(--br)}
@@ -36,19 +37,18 @@
   .frame{
     width:min(100vw, 820px);
     height:min( calc(100vh - var(--hudH) - var(--chatH) - 24px), 820px );
-    background:#fff; border:1px solid var(--br); border-radius:20px; box-shadow:var(--shadow); overflow:hidden; position:relative;
-    touch-action:manipulation;
+    background:#fff; border:1px solid var(--br); border-radius:20px; box-shadow:var(--shadow);
+    overflow:hidden; position:relative; touch-action:manipulation;
   }
   .coords{
-    position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br); border-radius:8px; padding:4px 8px; font-size:12px; z-index:4;
+    position:absolute; top:6px; left:8px; background:rgba(255,255,255,.9); border:1px solid var(--br);
+    border-radius:8px; padding:4px 8px; font-size:12px; z-index:4;
   }
 
-  /* Map */
+  /* Map (grid outlines per region) */
   .map{ position:absolute; inset:0; overflow:hidden; background:#ffffff; image-rendering:pixelated; font-size:14px }
-  .tile{ 
-    position:absolute; width:32px; height:32px; user-select:none; 
-    background:transparent; 
-    z-index:1;
+  .tile{
+    position:absolute; width:32px; height:32px; user-select:none; background:transparent; z-index:1;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
   }
   .t-green { box-shadow: inset 0 0 0 1px var(--green); }
@@ -63,10 +63,11 @@
   .t-shop::after{ content:"💰"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
   .t-guild::after{ content:"🏛️"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
 
-  /* Actors */
+  /* Actors (above tiles) */
   .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none; z-index:3 }
   .label{
-    position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff; font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap; z-index:4;
+    position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff;
+    font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap; z-index:4;
   }
   .me::after{ content:"🧙"; font-size:22px }
   .player::after{ content:"🧙"; opacity:.9 }
@@ -84,13 +85,14 @@
   .chat{
     position:fixed; left:0; right:0; bottom:0; height:var(--chatH);
     border-top:1px solid var(--br); background:#fff; display:grid; grid-template-rows:1fr auto; z-index:15;
+    padding-bottom:max(0px, env(safe-area-inset-bottom));
   }
   .msgs{ padding:8px 10px; overflow:auto }
   .msg{ font-size:14px; margin:4px 0; }
   .msg small{ color:var(--muted) }
   .chatForm{ display:flex; gap:8px; padding:8px; border-top:1px solid var(--br) }
-  .input{ flex:1; padding:12px; border:1px solid var(--br); border-radius:12px; outline:none }
-  .btn{ padding:12px 14px; border:1px solid var(--br); background:#111827; color:#fff; border-radius:12px; cursor:pointer; font-weight:800 }
+  .input{ flex:1; padding:12px; border:1px solid var(--br); border-radius:12px; outline:none; min-width:0 }
+  .btn{ padding:12px 14px; border:1px solid var(--br); background:#111827; color:#fff; border-radius:12px; cursor:pointer; font-weight:800; min-width:0 }
   .btn.secondary{ background:#fff; color:#111827 }
 
   /* Modal */
@@ -107,8 +109,14 @@
   .danger{ color:#b91c1c; font-weight:800 }
   .ok{ color:#16a34a; font-weight:800 }
 
+  /* Mobile polish */
   @media (max-width:720px){
     .xpbar{ min-width:110px }
+  }
+  @media (max-width:520px){
+    .chatForm{ flex-wrap:wrap }
+    .chatForm .input{ flex:1 1 100% }
+    .chatForm .btn{ flex:1 1 calc(50% - 4px) }
   }
 </style>
 </head>
@@ -163,7 +171,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp,
-    collection, addDoc, query, where, limit, orderBy, getDocs, runTransaction
+    collection, addDoc, query, where, limit, orderBy, runTransaction
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // -------- Firebase --------
@@ -188,13 +196,12 @@
   document.getElementById("usernameLbl").textContent = username;
 
   // -------- Map / Regions --------
-  const TILE = 32;
-  const VIEW_W = 23;  // tiles horizontally
-  const VIEW_H = 23;  // tiles vertically
+  let TILE = 32;                // tile size in pixels
+  let viewW = 23, viewH = 23;   // visible tiles (dynamic)
   const MAP_W = 120;
   const MAP_H = 120;
 
-  // region array: [x1,y1,x2,y2, key, name, cssClass]
+  // [x1,y1,x2,y2, key, name, cssClass]
   const REGIONS = [
     [0,0, 59,59, "green","Rocky Roads","t-green"],
     [60,0, 119,59,"yellow","Parchment Plateau","t-yellow"],
@@ -204,7 +211,7 @@
 
   const VILLAGES = [
     { name:"Westhold", x:14, y:14, w:10, h:10, region:"green" },
-    { name:"Sunfold", x:80, y:10, w:10, h:10, region:"yellow" },
+    { name:"Sunfold",  x:80, y:10, w:10, h:10, region:"yellow" },
     { name:"Edgekeep", x:16, y:86, w:10, h:10, region:"red" },
     { name:"Mystvale", x:88, y:88, w:10, h:10, region:"purple" },
   ];
@@ -213,7 +220,7 @@
   const houses = new Set();
   const shops  = new Set();
   const guilds = new Set();
-  const entrances = new Set(); // ← NEW: carved openings
+  const entrances = new Set(); // carved openings
   const coordKey = (x,y)=> `${x},${y}`;
   const inRect = (x,y,r)=> x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3];
   const regionOf = (x,y)=> REGIONS.find(r=> inRect(x,y,r)) || REGIONS[0];
@@ -229,17 +236,15 @@
     if (!v) return false;
     const onEdge = (x===v.x || y===v.y || x===v.x+v.w-1 || y===v.y+v.h-1);
     if (!onEdge) return false;
-    // If this edge tile is in the carved entrance, it's NOT a wall
-    return !entrances.has(coordKey(x,y));
+    return !entrances.has(coordKey(x,y)); // entrance tiles are open
   }
 
-  // Helper to carve a 3-tile entrance on one side (top by default)
+  // Carve a 3-tile entrance on one side (top by default)
   function carveEntrance(v, side="top"){
     const midX = v.x + Math.floor(v.w/2);
     const midY = v.y + Math.floor(v.h/2);
     const push = (x,y)=> entrances.add(coordKey(x,y));
     if (side==="top"){
-      // open at y=v.y, x: midX-1..midX+1
       for(let dx=-1; dx<=1; dx++) push(midX+dx, v.y);
     } else if (side==="bottom"){
       for(let dx=-1; dx<=1; dx++) push(midX+dx, v.y+v.h-1);
@@ -252,9 +257,7 @@
 
   // Prepare village structures + carve entrances
   for(const v of VILLAGES){
-    // carve on one side (you can change to "left"/"right"/"bottom" if you prefer)
-    carveEntrance(v, "top");
-
+    carveEntrance(v, "top"); // change side if you like
     for(let y=v.y; y<v.y+v.h; y++){
       for(let x=v.x; x<v.x+v.w; x++){
         if (isVillageWall(x,y)) walls.add(coordKey(x,y));
@@ -277,7 +280,8 @@
     guild: "", inventory: [],
     active: true, lastLoginDay: "", lastSeen: serverTimestamp()
   };
-  const BASE_START = { level:1, xp:0, gold:30,
+  const BASE_START = {
+    level:1, xp:0, gold:30,
     inventory: [
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
@@ -384,13 +388,13 @@
     fsBtn.textContent = document.fullscreenElement ? "⤢ Exit Fullscreen" : "⛶ Fullscreen";
   });
 
-  // -------- Rendering viewport --------
+  // -------- Rendering viewport (dynamic) --------
   const mapEl = document.getElementById("map");
   const frame = document.getElementById("frame");
   const tilesDom = new Map(); // key->div
   const actorsDom = new Map(); // key->container
 
-  // self actor container with label (z-index above grid)
+  // self actor container with label
   const meWrap = document.createElement("div");
   meWrap.className = "actor me";
   const meLabel = document.createElement("div");
@@ -399,9 +403,18 @@
   meWrap.appendChild(meLabel);
   mapEl.appendChild(meWrap);
 
+  function recalcViewport(){
+    const tilesAcross = Math.max(7, Math.floor(frame.clientWidth  / TILE));
+    const tilesDown   = Math.max(7, Math.floor(frame.clientHeight / TILE));
+    viewW = tilesAcross % 2 ? tilesAcross : tilesAcross - 1;
+    viewH = tilesDown   % 2 ? tilesDown   : tilesDown   - 1;
+  }
+  window.addEventListener("resize", ()=>{ recalcViewport(); renderTiles(); });
+  window.addEventListener("orientationchange", ()=>{ setTimeout(()=>{ recalcViewport(); renderTiles(); }, 150); });
+
   function screenOrigin(){
-    const halfW = Math.floor(VIEW_W/2);
-    const halfH = Math.floor(VIEW_H/2);
+    const halfW = Math.floor(viewW/2);
+    const halfH = Math.floor(viewH/2);
     const ox = me.x - halfW;
     const oy = me.y - halfH;
     return {ox, oy};
@@ -409,7 +422,7 @@
 
   function tileClassFor(x,y){
     const r = regionOf(x,y);
-    let cls = r[6]; // region border color class
+    let cls = r[6]; // region outline class
     const v = isVillageTile(x,y);
     if (v){
       if (isVillageWall(x,y)) return `t-wall`;
@@ -424,11 +437,13 @@
   }
 
   function renderTiles(){
+    recalcViewport();
+
     const {ox,oy} = screenOrigin();
     const startX = Math.max(0, ox-1);
     const startY = Math.max(0, oy-1);
-    const endX = Math.min(MAP_W-1, ox + VIEW_W + 1);
-    const endY = Math.min(MAP_H-1, oy + VIEW_H + 1);
+    const endX = Math.min(MAP_W-1, ox + viewW + 1);
+    const endY = Math.min(MAP_H-1, oy + viewH + 1);
 
     for(const [k, el] of tilesDom){
       const [x,y]=k.split(',').map(Number);
@@ -451,11 +466,13 @@
         t.style.transform = `translate(${sx}px, ${sy}px)`;
       }
     }
-    // center me above the grid at all times
-    meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
 
-    // IMPORTANT: re-render actors whenever the camera (tiles) renders,
-    // so NPCs/players stay anchored to world coords (no “sliding with you” effect).
+    // Put ME at the *visual* center of the frame
+    const pxCenterX = Math.round(frame.clientWidth/2 - TILE/2);
+    const pxCenterY = Math.round(frame.clientHeight/2 - TILE/2);
+    meWrap.style.transform = `translate(${pxCenterX}px, ${pxCenterY}px)`;
+
+    // refresh actors with current camera
     renderActors();
     drawOthers();
   }
@@ -491,7 +508,8 @@
         const nk = coordKey(nx,ny);
         const tentative = (g.get(curK)??Infinity) + 1;
         if (tentative < (g.get(nk)??Infinity)){
-          came.set(nk, curK); g.set(nk, tentative); f.set(nk, tentative + heuristic([nx,ny],[tx,ty]));
+          came.set(nk, curK); g.set(nk, tentative);
+          f.set(nk, tentative + heuristic([nx,ny],[tx,ty]));
           if (!open.has(nk)) open.add(nk);
         }
       }
@@ -536,7 +554,7 @@
     setDestination(tx,ty);
   });
 
-  // -------- Local NPCs (not saved to Firebase) --------
+  // -------- Local NPCs (NOT saved to Firebase) --------
   const npcs = [];
   function spawnNPCs(){
     const caps = { green:12, yellow:18, red:24, purple:24 };
@@ -579,8 +597,8 @@
   }
 
   function moveNPCs(){
-    const AGGRO = 4;          // chase when <= 4 tiles
-    const IDLE_CHANCE = 0.25; // 25% idle chance
+    const AGGRO = 4;          // chase when close
+    const IDLE_CHANCE = 0.25; // 25% idle
     const COMMIT_CHANCE = 0.35;
 
     for(const n of npcs){
@@ -624,8 +642,7 @@
       n.cooldown = 1 + Math.floor(Math.random()*3);
     }
   }
-
-  // Run NPC AI and then re-render actors on a cadence
+  // NPC AI tick
   setInterval(()=>{ moveNPCs(); renderActors(); }, 900);
 
   // -------- Actors rendering (NPCs + Others + Me) --------
@@ -635,17 +652,21 @@
       if (k.startsWith("npc:")){ el.remove(); actorsDom.delete(k); }
     }
     const {ox,oy}=screenOrigin();
-    // NPCs
+
+    // NPCs within viewport
     for(const n of npcs){
-      if (n.x<ox-1||n.y<oy-1||n.x>ox+VIEW_W+1||n.y>oy+VIEW_H+1) continue;
+      if (n.x<ox-1||n.y<oy-1||n.x>ox+viewW+1||n.y>oy+viewH+1) continue;
       const wrap = document.createElement("div");
       wrap.className = `actor ${npcClass(n.type)}`;
       wrap.style.transform = `translate(${(n.x-ox)*TILE}px, ${(n.y-oy)*TILE}px)`;
       mapEl.appendChild(wrap);
       actorsDom.set(`npc:${n.x},${n.y}:${n.type}`, wrap);
     }
-    // Me always centered (already placed)
-    meWrap.style.transform = `translate(${Math.floor(VIEW_W/2)*TILE}px, ${Math.floor(VIEW_H/2)*TILE}px)`;
+
+    // Me centered by actual frame size
+    const pxCenterX = Math.round(frame.clientWidth/2 - TILE/2);
+    const pxCenterY = Math.round(frame.clientHeight/2 - TILE/2);
+    meWrap.style.transform = `translate(${pxCenterX}px, ${pxCenterY}px)`;
   }
 
   // -------- Encounters (PvE) --------
@@ -684,11 +705,12 @@
     const {ox,oy}=screenOrigin();
     for(const [name,pl] of others){
       if (!pl || typeof pl.x!=="number" || pl.active!==true) continue;
-      if (pl.x<ox-1||pl.y<oy-1||pl.x>ox+VIEW_W+1||pl.y>oy+VIEW_H+1) continue;
+      if (pl.x<ox-1||pl.y<oy-1||pl.x>ox+viewW+1||pl.y>oy+viewH+1) continue;
       const wrap = document.createElement("div");
       wrap.className = "actor player";
       wrap.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
       wrap.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
+      // level label
       const lab = document.createElement("div");
       lab.className = "label";
       lab.textContent = `Lv ${pl.level||1}`;
@@ -700,7 +722,6 @@
 
   // ---- DUEL WIRING (PvP) ----
   let duelRedirected = false;
-
   onSnapshot(
     query(collection(db,"duels"), where("b","==",username), orderBy("createdAt","desc"), limit(5)),
     (snap)=>{
@@ -724,7 +745,7 @@
         if (me.guild && pl.guild && me.guild===pl.guild){
           openTrade(name, pl);
         } else {
-          const iCreate = username.localeCompare(name) < 0;
+          const iCreate = username.localeCompare(name) < 0; // only one creator
           if (iCreate && !duelRedirected){
             try{
               const r = regionOf(me.x, me.y);
@@ -1041,13 +1062,14 @@
 
   // -------- Boot --------
   await ensurePlayer();
-  renderTiles(); updateHUD();
-  // keep others visible & updated periodically
-  setInterval(drawOthers, 400);
-
+  recalcViewport();      // ← compute initial viewW/viewH
+  renderTiles();         // ← draws tiles & centers avatar by pixels
+  updateHUD();
+  setInterval(drawOthers, 400); // keep others visible & updated
 </script>
 </body>
 </html>
+
 
 
 
