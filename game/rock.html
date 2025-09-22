@@ -874,21 +874,37 @@
   });
   document.getElementById("invBtn").addEventListener("click", openInventory);
 
-  function cardTile(c, idx, controls=true){
-    const lock = (me.level < (c.lvlReq||1)) ? `<span class="pill danger">Lvl ${c.lvlReq||1}</span>` : "";
-    const extra = c.desc ? `<small>${c.desc}</small>` : "";
-    aconst idLine = c.id ? `<small style="color:#94a3b8">#${c.id.slice(0,6)}</small>` : "";
-    const removeBtn = controls ? `<button class="btn secondary" data-remove="${idx}">Remove</button>` : "";
-    return `<div class="card">
-      <b>${c.name}</b>${idLine}
-      <div class="row">
-        <span class="pill">Type: ${c.type}</span>
-        ${lock}
-      </div>
-      ${extra}
-      ${controls? removeBtn:""}
-    </div>`;
-  }
+  function cardTile(c, idx, controls = true){
+  const lock = (me.level < (c.lvlReq || 1))
+    ? '<span class="pill danger">Lvl ' + (c.lvlReq || 1) + '</span>'
+    : '';
+
+  const extra = c.desc
+    ? '<small>' + escapeHtml(c.desc) + '</small>'
+    : '';
+
+  const idLine = c.id
+    ? '<small style="color:#94a3b8">#' + String(c.id).slice(0,6) + '</small>'
+    : '';
+
+  const removeBtn = controls
+    ? '<button class="btn secondary" data-remove="' + idx + '">Remove</button>'
+    : '';
+
+  return [
+    '<div class="card">',
+      '<b>' + escapeHtml(c.name) + '</b>',
+      idLine,
+      '<div class="row">',
+        '<span class="pill">Type: ' + escapeHtml(c.type) + '</span>',
+        lock,
+      '</div>',
+      extra,
+      removeBtn,
+    '</div>'
+  ].join('');
+}
+
 
   function openInventory(){
     const html = `
@@ -1109,6 +1125,7 @@
 </script>
 </body>
 </html>
+
 
 
 
