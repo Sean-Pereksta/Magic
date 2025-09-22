@@ -63,6 +63,13 @@
   .t-shop::after{ content:"💰"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
   .t-guild::after{ content:"🏛️"; position:absolute; inset:0; display:grid; place-items:center; font-size:16px }
 
+  /* Decorative emoji — non-interactive */
+  .tile[data-deco]::before{
+    content: attr(data-deco);
+    position:absolute; inset:0; display:grid; place-items:center;
+    font-size:16px; opacity:.85; pointer-events:none;
+  }
+
   /* Actors (above tiles) */
   .actor{ position:absolute; width:32px; height:32px; display:grid; place-items:center; pointer-events:none; z-index:3 }
   .label{
@@ -221,6 +228,11 @@
   const shops  = new Set();
   const guilds = new Set();
   const entrances = new Set(); // carved openings
+
+  // Decorative positions (purely visual)
+  const deco = new Map(); // key -> emoji
+  const DECO_EMOJI = { green:"🪨", red:"🪵", yellow:"💧", purple:"🌳" };
+
   const coordKey = (x,y)=> `${x},${y}`;
   const inRect = (x,y,r)=> x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3];
   const regionOf = (x,y)=> REGIONS.find(r=> inRect(x,y,r)) || REGIONS[0];
@@ -269,6 +281,28 @@
     guilds.add(coordKey(v.x+2, v.y+v.h-3));
   }
 
+  // Scatter decorative emojis in each region (no gameplay effect)
+  function scatterDeco(){
+    const density = 0.02; // 2% of tiles per region
+    for(const r of REGIONS){
+      const [x1,y1,x2,y2,key] = r;
+      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
+      const target = Math.floor(area * density);
+      let placed = 0, tries = 0;
+      while(placed < target && tries < target * 10){
+        tries++;
+        const x = x1 + Math.floor(Math.random()*(x2 - x1 + 1));
+        const y = y1 + Math.floor(Math.random()*(y2 - y1 + 1));
+        const k = coordKey(x,y);
+        // avoid walls, village walls, shops/guilds/houses, and duplicate placements
+        if (isVillageWall(x,y) || isVillageTile(x,y) || walls.has(k) || shops.has(k) || guilds.has(k) || houses.has(k) || deco.has(k)) continue;
+        deco.set(k, DECO_EMOJI[key] || "");
+        placed++;
+      }
+    }
+  }
+  scatterDeco();
+
   const passable = (x,y)=> !(x<0||y<0||x>=MAP_W||y>=MAP_H) && !walls.has(coordKey(x,y));
 
   // -------- Player State --------
@@ -313,7 +347,9 @@
     {name:"Dark Matter", type:"dark", cost:160, lvlReq:9}
   ];
   const invCap = ()=> 9 + (me.level||1);
-  const xpNeededFor = level => 100 + 50*level;
+
+  /* ▶ XP formula update: max XP to level up = 30 + 20 * level */
+  const xpNeededFor = level => 30 + 20*level;
 
   // -------- UI refs --------
   const goldLbl = document.getElementById("goldLbl");
@@ -452,13 +488,17 @@
     for(let y=startY; y<=endY; y++){
       for(let x=startX; x<=endX; x++){
         const key = coordKey(x,y);
+        const dec = deco.get(key) || "";
         if (!tilesDom.has(key)){
           const t = document.createElement("div");
           t.className = "tile " + tileClassFor(x,y);
+          if (dec) t.setAttribute("data-deco", dec); else t.removeAttribute("data-deco");
           mapEl.appendChild(t);
           tilesDom.set(key,t);
         } else {
-          tilesDom.get(key).className = "tile " + tileClassFor(x,y);
+          const el = tilesDom.get(key);
+          el.className = "tile " + tileClassFor(x,y);
+          if (dec) el.setAttribute("data-deco", dec); else el.removeAttribute("data-deco");
         }
         const t = tilesDom.get(key);
         const sx = (x - ox)*TILE;
@@ -467,7 +507,7 @@
       }
     }
 
-    // Put ME at the *visual* center of the frame
+    // Put ME at the visual center of the frame
     const pxCenterX = Math.round(frame.clientWidth/2 - TILE/2);
     const pxCenterY = Math.round(frame.clientHeight/2 - TILE/2);
     meWrap.style.transform = `translate(${pxCenterX}px, ${pxCenterY}px)`;
@@ -837,7 +877,7 @@
   function cardTile(c, idx, controls=true){
     const lock = (me.level < (c.lvlReq||1)) ? `<span class="pill danger">Lvl ${c.lvlReq||1}</span>` : "";
     const extra = c.desc ? `<small>${c.desc}</small>` : "";
-    const idLine = c.id ? `<small style="color:#94a3b8">#${c.id.slice(0,6)}</small>` : "";
+    aconst idLine = c.id ? `<small style="color:#94a3b8">#${c.id.slice(0,6)}</small>` : "";
     const removeBtn = controls ? `<button class="btn secondary" data-remove="${idx}">Remove</button>` : "";
     return `<div class="card">
       <b>${c.name}</b>${idLine}
@@ -1062,13 +1102,14 @@
 
   // -------- Boot --------
   await ensurePlayer();
-  recalcViewport();      // ← compute initial viewW/viewH
-  renderTiles();         // ← draws tiles & centers avatar by pixels
+  recalcViewport();
+  renderTiles();
   updateHUD();
   setInterval(drawOthers, 400); // keep others visible & updated
 </script>
 </body>
 </html>
+
 
 
 
