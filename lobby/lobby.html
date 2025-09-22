@@ -1,4 +1,4 @@
-<!DOCTYPE html>  
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -521,9 +521,15 @@
         const titleWrap = document.createElement("div");
         const title = document.createElement("div"); title.style.fontWeight="800"; title.textContent = data.name || "Lobby";
         const meta = document.createElement("div"); meta.className="subtle";
+
         const cap = getMaxPlayers(data.gameType);
-        const countTxt = isFinite(cap) ? ${(data.players||[]).length}/${cap} : `${(data.players||[]).length}`;
-        meta.textContent = (isFinite(cap) ? `${(data.players||[]).length}/${cap} players` : `${(data.players||[]).length} players`) + ` — Host: ${data.host||"?"}`;
+        const playerCount = (data.players || []).length;
+
+        // ✅ fixed: proper template usage and no stray ${}
+        meta.textContent =
+          (isFinite(cap) ? `${playerCount}/${cap} players` : `${playerCount} players`) +
+          ` — Host: ${data.host || "?"}`;
+
         titleWrap.appendChild(title);
         titleWrap.appendChild(meta);
 
@@ -533,13 +539,13 @@
         const progress = document.createElement("div"); progress.className="cap";
         const fill = document.createElement("i"); progress.appendChild(fill);
         if (isFinite(cap)) {
-          const pct = Math.min(100, Math.round(((data.players||[]).length / cap) * 100));
+          const pct = Math.min(100, Math.round((playerCount / cap) * 100));
           fill.style.width = pct + "%";
         } else { fill.style.width = "100%"; }
 
         const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
         const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
-        if (isFinite(cap) && (data.players||[]).length >= cap) {
+        if (isFinite(cap) && playerCount >= cap) {
           btn.disabled = true; btn.className="btn-ghost btn-lg"; btn.textContent="Full";
         } else {
           btn.addEventListener("click", ()=> joinLobby(docSnap.id));
