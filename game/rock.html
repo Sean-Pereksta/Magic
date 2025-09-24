@@ -323,7 +323,8 @@
   };
   const BASE_START = {
     level:1, xp:0, gold:30,
-    quest: null,                       // NEW
+    quest: null,
+    questOffer: null,
     inventory: [
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
@@ -391,6 +392,15 @@
     const [a,b] = QUEST_RANGE[regionKey] || [5,9];
     return { active:true, region:regionKey, target, need:randInt(a,b), progress:0, startedAt: Date.now() };
   }
+  async function ensureQuestOfferForRegion(regionKey){
+  // keep current offer if it matches this region
+  if (me.questOffer && me.questOffer.region === regionKey) return me.questOffer;
+  const offer = makeQuestFor(regionKey);
+  me.questOffer = offer;
+  try { await updateDoc(playerRef, { questOffer: offer }); } catch(e){}
+  return offer;
+}
+
 
   // -------- UI refs --------
   const goldLbl = document.getElementById("goldLbl");
@@ -438,6 +448,10 @@
       await updateDoc(playerRef, { gold: me.gold });
     } else {
       me = { ...me, ...snap.data() };
+       if (typeof me.questOffer === "undefined") {
+          me.questOffer = null;
+          try { await updateDoc(playerRef, { questOffer: null }); } catch(e){}
+        }
       if (me.lastLoginDay !== today){
         me.gold = (me.gold|0) + 5;
         me.lastLoginDay = today;
@@ -914,6 +928,8 @@
   const modalTitle = document.getElementById("modalTitle");
   const modalBody = document.getElementById("modalBody");
   const modalClose = document.getElementById("modalClose");
+  const isModalOpen = () => modalBack.style.display === "flex";
+
   modalClose.addEventListener("click", ()=> closeModalAndStepAway());
 
   function showModal(title, html){
@@ -1042,120 +1058,120 @@
     return `Defeat ${q.need} × <b>${q.target}</b> in <b>${rName}</b> (${q.progress||0}/${q.need})`;
   }
 
-  function openGuild(){
-    const inGuild = !!me.guild;
-    const rKey = regionOf(me.x, me.y)[4];
-    const nextQuest = makeQuestFor(rKey);
+async function openGuild(){
+  const inGuild = !!me.guild;
+  const rKey = regionOf(me.x, me.y)[4];
 
-    let html = `
-      <div class="row">
-        <div class="pill">Your Level: ${me.level}</div>
-        <div class="pill">Current Guild: ${inGuild ? me.guild : "—"}</div>
-      </div>`;
+  // only generate once per region (and persist it)
+  const offered = await ensureQuestOfferForRegion(rKey);
 
-    if (!inGuild){
+  let html = `
+    <div class="row">
+      <div class="pill">Your Level: ${me.level}</div>
+      <div class="pill">Current Guild: ${inGuild ? me.guild : "—"}</div>
+    </div>`;
+
+  if (!inGuild){
+    html += `
+      <div class="invGrid">
+        ${["rock","paper","scissors"].map(g=>`
+          <div class="card">
+            <b>${g[0].toUpperCase()+g.slice(1)} Guild</b>
+            <small>Requires Level 5+</small>
+            <button class="btn" data-join="${g}">Join</button>
+          </div>`).join("")}
+      </div>
+      <small style="color:#6b7280">Join a guild to unlock quests.</small>`;
+  } else {
+    if (me.quest && me.quest.active){
+      const done = (me.quest.progress||0) >= (me.quest.need||0);
       html += `
-        <div class="invGrid">
-          ${["rock","paper","scissors"].map(g=>`
-            <div class="card">
-              <b>${g[0].toUpperCase()+g.slice(1)} Guild</b>
-              <small>Requires Level 5+</small>
-              <button class="btn" data-join="${g}">Join</button>
-            </div>`).join("")}
-        </div>
-        <small style="color:#6b7280">Join a guild to unlock quests.</small>`;
-    } else {
-      // Quest section
-      if (me.quest && me.quest.active){
-        const done = (me.quest.progress||0) >= (me.quest.need||0);
-        html += `
-          <div class="card">
-            <b>Active Quest</b>
-            <div>${questDescription(me.quest)}</div>
-            <div class="row">
-              <button class="btn secondary" id="cancelQuestBtn" type="button">Cancel Quest</button>
-              <button class="btn" id="completeQuestBtn" type="button" ${done?'':'disabled'}>Complete Quest</button>
-            </div>
-          </div>`;
-      } else {
-        html += `
-          <div class="card">
-            <b>New Quest Available</b>
-            <div>${questDescription(nextQuest)}</div>
-            <div class="row">
-              <button class="btn" id="acceptQuestBtn" type="button">Accept</button>
-              <button class="btn secondary" id="declineQuestBtn" type="button">Decline</button>
-            </div>
-            <small>Quests track only encounters in this region.</small>
-          </div>`;
-      }
-    }
-
-    showModal("Guild Hall", html);
-
-    // joins
-    modalBody.querySelectorAll("[data-join]")?.forEach(btn=>{
-      btn.addEventListener("click", async ()=>{
-        const g = btn.getAttribute("data-join");
-        if (me.level < 5) return alert("You must be level 5 or higher.");
-        me.guild = g;
-        await updateDoc(playerRef, { guild: g });
-        updateHUD();
-        openGuild();
-      });
-    });
-
-    // quest actions
-    const acceptBtn = document.getElementById("acceptQuestBtn");
-    const declineBtn = document.getElementById("declineQuestBtn");
-    const cancelBtn = document.getElementById("cancelQuestBtn");
-    const completeBtn = document.getElementById("completeQuestBtn");
-
-    acceptBtn?.addEventListener("click", async ()=>{
-      me.quest = nextQuest;
-      await updateDoc(playerRef, { quest: me.quest });
-      openGuild();
-    });
-    declineBtn?.addEventListener("click", ()=>{ closeModalAndStepAway(); });
-
-    cancelBtn?.addEventListener("click", async ()=>{
-      if (!confirm("Cancel your active quest? Progress will be lost.")) return;
-      me.quest = null;
-      await updateDoc(playerRef, { quest: null });
-      openGuild();
-    });
-
-    completeBtn?.addEventListener("click", async ()=>{
-      if (!(me.quest && me.quest.active)) return;
-      if ((me.quest.progress||0) < (me.quest.need||0)) return;
-      const reward = 15 * (me.level||1);
-      me.xp = (me.xp||0) + reward;
-      me.quest = null;
-      await updateDoc(playerRef, { xp: me.xp, quest: null });
-      updateHUD();
-      // level up check after awarding XP
-      checkLevelUp();
-      // After completion, offer another
-      showModal("Quest Complete!", `
-        <div class="row"><div class="pill ok">+${reward} XP</div></div>
-        <p>Would you like another quest?</p>
         <div class="card">
-          <b>Next Quest</b>
-          <div>${questDescription(nextQuest)}</div>
+          <b>Active Quest</b>
+          <div>${questDescription(me.quest)}</div>
           <div class="row">
-            <button class="btn" id="acceptNextQuestBtn" type="button">Accept</button>
-            <button class="btn secondary" id="noThanksBtn" type="button">No thanks</button>
+            <button class="btn secondary" id="cancelQuestBtn" type="button">Cancel Quest</button>
+            <button class="btn" id="completeQuestBtn" type="button" ${done?'':'disabled'}>Complete Quest</button>
           </div>
-        </div>
-      `);
-      document.getElementById("acceptNextQuestBtn").addEventListener("click", async ()=>{
-        me.quest = nextQuest;
-        await updateDoc(playerRef, { quest: me.quest });
-        openGuild();
-      });
-      document.getElementById("noThanksBtn").addEventListener("click", ()=> closeModalAndStepAway());
-    });
+        </div>`;
+    } else {
+      // show the persisted offer (no rerolls)
+      html += `
+        <div class="card">
+          <b>New Quest Available</b>
+          <div>${questDescription(offered)}</div>
+          <div class="row">
+            <button class="btn" id="acceptQuestBtn" type="button">Accept</button>
+            <button class="btn secondary" id="declineQuestBtn" type="button">Decline</button>
+          </div>
+          <small>Quests track only encounters in this region.</small>
+        </div>`;
+    }
   }
+
+  showModal("Guild Hall", html);
+
+  // joins
+  modalBody.querySelectorAll("[data-join]")?.forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const g = btn.getAttribute("data-join");
+      if (me.level < 5) return alert("You must be level 5 or higher.");
+      me.guild = g;
+      await updateDoc(playerRef, { guild: g });
+      updateHUD();
+      openGuild();
+    });
+  });
+
+  // quest actions
+  document.getElementById("acceptQuestBtn")?.addEventListener("click", async ()=>{
+    // promote offer -> active quest, and clear the offer
+    me.quest = me.questOffer;
+    me.quest.active = true;
+    await updateDoc(playerRef, { quest: me.quest, questOffer: null });
+    me.questOffer = null;
+    openGuild();
+  });
+
+  document.getElementById("declineQuestBtn")?.addEventListener("click", ()=>{
+    // keep the same offer; just close
+    closeModalAndStepAway();
+  });
+
+  document.getElementById("cancelQuestBtn")?.addEventListener("click", async ()=>{
+    if (!confirm("Cancel your active quest? Progress will be lost.")) return;
+    me.quest = null;
+    await updateDoc(playerRef, { quest: null });
+    openGuild();
+  });
+
+  document.getElementById("completeQuestBtn")?.addEventListener("click", async ()=>{
+    if (!(me.quest && me.quest.active)) return;
+    if ((me.quest.progress||0) < (me.quest.need||0)) return;
+    const reward = 15 * (me.level||1);
+    me.xp = (me.xp||0) + reward;
+    me.quest = null;
+
+    // prepare *one* new offer for this region and persist it
+    const newOffer = makeQuestFor(rKey);
+    me.questOffer = newOffer;
+    await updateDoc(playerRef, { xp: me.xp, quest: null, questOffer: newOffer });
+    updateHUD();
+    checkLevelUp();
+
+    showModal("Quest Complete!", `
+      <div class="row"><div class="pill ok">+${reward} XP</div></div>
+      <p>A new quest has been prepared for you.</p>
+      <div class="row">
+        <button class="btn" id="viewQuestBtn" type="button">View Quest</button>
+        <button class="btn secondary" id="noThanksBtn" type="button">Close</button>
+      </div>
+    `);
+    document.getElementById("viewQuestBtn").addEventListener("click", ()=> openGuild());
+    document.getElementById("noThanksBtn").addEventListener("click", ()=> closeModalAndStepAway());
+  });
+}
+
 
   // -------- Level-up flow --------
   async function checkLevelUp(){
@@ -1281,10 +1297,12 @@
 
   // -------- Auto open shop/guild when standing on them --------
   function structureCheckOpen(){
-    const key = coordKey(me.x,me.y);
-    if (shops.has(key)) openShop();
-    else if (guilds.has(key)) openGuild();
-  }
+  if (isModalOpen()) return; // don't reopen while visible
+  const key = coordKey(me.x,me.y);
+  if (shops.has(key)) openShop();
+  else if (guilds.has(key)) openGuild();
+}
+
   setInterval(structureCheckOpen, 300);
 
   // -------- Boot --------
@@ -1296,6 +1314,7 @@
 </script>
 </body>
 </html>
+
 
 
 
