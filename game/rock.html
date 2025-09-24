@@ -76,6 +76,12 @@
     position:absolute; top:-14px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); color:#fff;
     font-size:10px; padding:2px 6px; border-radius:999px; white-space:nowrap; z-index:4;
   }
+  /* NEW: guild badge above the level label */
+  .gBadge{
+    position:absolute; top:-30px; left:50%; transform:translateX(-50%);
+    font-size:14px; filter:drop-shadow(0 1px 0 rgba(0,0,0,.25)); z-index:5;
+  }
+
   .me::after{ content:"🧙"; font-size:22px }
   .player::after{ content:"🧙"; opacity:.9 }
   .npc-rock::after{ content:"🪨"; }
@@ -312,10 +318,12 @@
     name: username,
     x: 8, y: 8, level:1, xp:0, gold: 30,
     guild: "", inventory: [],
+    quest: null,                       // NEW: active guild quest data
     active: true, lastLoginDay: "", lastSeen: serverTimestamp()
   };
   const BASE_START = {
     level:1, xp:0, gold:30,
+    quest: null,                       // NEW
     inventory: [
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
       {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
@@ -351,6 +359,39 @@
   /* ▶ XP formula update: max XP to level up = 30 + 20 * level */
   const xpNeededFor = level => 30 + 20*level;
 
+  // NEW: Guild emoji map
+  const GUILD_EMOJI = { rock:"🪨", paper:"📄", scissors:"✂️" };
+
+  // NEW: region shop cap
+  function regionItemCap(key){
+    if (key==="green") return 4;
+    if (key==="yellow") return 6;
+    if (key==="red") return 8;
+    return 99; // purple: effectively all
+  }
+
+  // NEW: quest generation helpers
+  function poolForRegion(regionKey){
+    let pool = ["rock"];
+    if (regionKey!=="green") pool.push("paper");
+    if (regionKey==="red" || regionKey==="purple") pool.push("scissors");
+    if (regionKey==="green"){ pool.push("sprite","golem"); }
+    if (regionKey==="yellow"){ pool.push("lizard"); }
+    if (regionKey==="red"){ pool.push("dragon"); }
+    if (regionKey==="purple"){ pool.push("knight"); }
+    return pool;
+  }
+  const QUEST_RANGE = {
+    green:[3,6], yellow:[4,8], red:[6,10], purple:[8,12]
+  };
+  function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+  function makeQuestFor(regionKey){
+    const pool = poolForRegion(regionKey);
+    const target = pool[Math.floor(Math.random()*pool.length)];
+    const [a,b] = QUEST_RANGE[regionKey] || [5,9];
+    return { active:true, region:regionKey, target, need:randInt(a,b), progress:0, startedAt: Date.now() };
+  }
+
   // -------- UI refs --------
   const goldLbl = document.getElementById("goldLbl");
   const levelLbl = document.getElementById("levelLbl");
@@ -368,10 +409,21 @@
     xpLbl.textContent = `${me.xp|0}/${need}`;
     xpFill.style.width = Math.max(0, Math.min(100, Math.round((me.xp/need)*100)))+"%";
     const r = regionOf(me.x, me.y);
-    regionLbl.textContent = r[5];
-    if (me.guild){ guildLbl.textContent = me.guild; guildStat.style.display="flex"; } else { guildStat.style.display="none"; }
+    const vHere = isVillageTile(me.x, me.y);                     // NEW
+    regionLbl.textContent = vHere ? vHere.name : r[5];           // NEW: show village name if inside
+    if (me.guild){ 
+      guildLbl.textContent = me.guild; 
+      guildStat.style.display="flex"; 
+    } else { 
+      guildStat.style.display="none"; 
+    }
     coordLbl.textContent = `X:${me.x} Y:${me.y}`;
     meLabel.textContent = `Lv ${me.level}`;
+    // NEW: update my guild badge
+    if (meBadge){
+      if (me.guild){ meBadge.textContent = GUILD_EMOJI[me.guild] || "🏰"; meBadge.style.display="block"; }
+      else { meBadge.style.display="none"; }
+    }
   }
 
   // -------- Presence & login bonus --------
@@ -437,6 +489,11 @@
   meLabel.className = "label";
   meLabel.textContent = "Lv 1";
   meWrap.appendChild(meLabel);
+  // NEW: my guild badge
+  const meBadge = document.createElement("div");
+  meBadge.className = "gBadge";
+  meBadge.style.display = "none";
+  meWrap.appendChild(meBadge);
   mapEl.appendChild(meWrap);
 
   function recalcViewport(){
@@ -600,7 +657,6 @@
     const caps = { green:12, yellow:18, red:24, purple:24 };
     const existing = {green:0,yellow:0,red:0,purple:0};
     for(const n of npcs){ existing[n.regionKey]++; }
-    const randInt = (a,b)=> a + Math.floor(Math.random()*(b-a+1));
     for(const r of REGIONS){
       const regionKey = r[4];
       const need = Math.max(0, (caps[regionKey]||0) - (existing[regionKey]||0));
@@ -713,6 +769,14 @@
   function checkEnemyCollision(){
     const hit = npcs.find(n=> n.x===me.x && n.y===me.y);
     if (!hit) return;
+
+    // NEW: quest progress increments on encounter if region & type match
+    const rKey = regionOf(me.x, me.y)[4];
+    if (me.quest && me.quest.active && me.quest.region===rKey && me.quest.target===hit.type){
+      me.quest.progress = (me.quest.progress||0) + 1;
+      updateDoc(playerRef, { quest: me.quest }).catch(()=>{});
+    }
+
     runEncounter((["rock","paper","scissors"].includes(hit.type) ? hit.type : "wild"));
   }
 
@@ -750,6 +814,13 @@
       wrap.className = "actor player";
       wrap.title = `${name}${pl.guild?(" · "+pl.guild):""}`;
       wrap.style.transform = `translate(${(pl.x-ox)*TILE}px, ${(pl.y-oy)*TILE}px)`;
+      // NEW: guild badge
+      if (pl.guild){
+        const gb = document.createElement("div");
+        gb.className = "gBadge";
+        gb.textContent = GUILD_EMOJI[pl.guild] || "🏰";
+        wrap.appendChild(gb);
+      }
       // level label
       const lab = document.createElement("div");
       lab.className = "label";
@@ -875,36 +946,35 @@
   document.getElementById("invBtn").addEventListener("click", openInventory);
 
   function cardTile(c, idx, controls = true){
-  const lock = (me.level < (c.lvlReq || 1))
-    ? '<span class="pill danger">Lvl ' + (c.lvlReq || 1) + '</span>'
-    : '';
+    const lock = (me.level < (c.lvlReq || 1))
+      ? '<span class="pill danger">Lvl ' + (c.lvlReq || 1) + '</span>'
+      : '';
 
-  const extra = c.desc
-    ? '<small>' + escapeHtml(c.desc) + '</small>'
-    : '';
+    const extra = c.desc
+      ? '<small>' + escapeHtml(c.desc) + '</small>'
+      : '';
 
-  const idLine = c.id
-    ? '<small style="color:#94a3b8">#' + String(c.id).slice(0,6) + '</small>'
-    : '';
+    const idLine = c.id
+      ? '<small style="color:#94a3b8">#' + String(c.id).slice(0,6) + '</small>'
+      : '';
 
-  const removeBtn = controls
-    ? '<button class="btn secondary" data-remove="' + idx + '">Remove</button>'
-    : '';
+    const removeBtn = controls
+      ? '<button class="btn secondary" data-remove="' + idx + '">Remove</button>'
+      : '';
 
-  return [
-    '<div class="card">',
-      '<b>' + escapeHtml(c.name) + '</b>',
-      idLine,
-      '<div class="row">',
-        '<span class="pill">Type: ' + escapeHtml(c.type) + '</span>',
-        lock,
-      '</div>',
-      extra,
-      removeBtn,
-    '</div>'
-  ].join('');
-}
-
+    return [
+      '<div class="card">',
+        '<b>' + escapeHtml(c.name) + '</b>',
+        idLine,
+        '<div class="row">',
+          '<span class="pill">Type: ' + escapeHtml(c.type) + '</span>',
+          lock,
+        '</div>',
+        extra,
+        removeBtn,
+      '</div>'
+    ].join('');
+  }
 
   function openInventory(){
     const html = `
@@ -925,7 +995,11 @@
   }
 
   function openShop(){
-    const items = SHOP_ITEMS.map((it, i)=>(
+    const rKey = regionOf(me.x, me.y)[4];               // NEW
+    const cap = regionItemCap(rKey);                    // NEW
+    const visItems = SHOP_ITEMS.filter(it => it.lvlReq <= cap || cap>=99); // NEW
+
+    const items = visItems.map((it, i)=>(
       `<div class="card">
         <b>${it.name}</b>
         <div class="row">
@@ -940,14 +1014,17 @@
       <div class="row">
         <div class="pill">Gold: ${me.gold}</div>
         <div class="pill">Inv: ${me.inventory.length}/${invCap()}</div>
+        <div class="pill">Region Cap: ${cap>=99?'All Levels':'≤ Lvl '+cap}</div>
       </div>
       <div class="invGrid">${items}</div>
     `;
     showModal("Shop", html);
+
+    // Important: indices refer to visItems now
     modalBody.querySelectorAll("[data-buy]").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
         const i = +btn.getAttribute("data-buy");
-        const it = SHOP_ITEMS[i];
+        const it = visItems[i];
         if (me.level < it.lvlReq) return alert("Level too low.");
         if (me.gold < it.cost) return alert("Not enough gold.");
         if (me.inventory.length >= invCap()) return alert("Inventory full.");
@@ -959,30 +1036,124 @@
     });
   }
 
+  // NEW: Guild (join + quests)
+  function questDescription(q){
+    const rName = (REGIONS.find(R=>R[4]===q.region)?.[5]) || q.region;
+    return `Defeat ${q.need} × <b>${q.target}</b> in <b>${rName}</b> (${q.progress||0}/${q.need})`;
+  }
+
   function openGuild(){
-    const html = `
+    const inGuild = !!me.guild;
+    const rKey = regionOf(me.x, me.y)[4];
+    const nextQuest = makeQuestFor(rKey);
+
+    let html = `
       <div class="row">
         <div class="pill">Your Level: ${me.level}</div>
-        <div class="pill">Current Guild: ${me.guild||"—"}</div>
-      </div>
-      <div class="invGrid">
-        ${["rock","paper","scissors"].map(g=>`
+        <div class="pill">Current Guild: ${inGuild ? me.guild : "—"}</div>
+      </div>`;
+
+    if (!inGuild){
+      html += `
+        <div class="invGrid">
+          ${["rock","paper","scissors"].map(g=>`
+            <div class="card">
+              <b>${g[0].toUpperCase()+g.slice(1)} Guild</b>
+              <small>Requires Level 5+</small>
+              <button class="btn" data-join="${g}">Join</button>
+            </div>`).join("")}
+        </div>
+        <small style="color:#6b7280">Join a guild to unlock quests.</small>`;
+    } else {
+      // Quest section
+      if (me.quest && me.quest.active){
+        const done = (me.quest.progress||0) >= (me.quest.need||0);
+        html += `
           <div class="card">
-            <b>${g[0].toUpperCase()+g.slice(1)} Guild</b>
-            <small>Requires Level 5+</small>
-            <button class="btn" data-join="${g}">Join</button>
-          </div>`).join("")}
-      </div>
-    `;
+            <b>Active Quest</b>
+            <div>${questDescription(me.quest)}</div>
+            <div class="row">
+              <button class="btn secondary" id="cancelQuestBtn" type="button">Cancel Quest</button>
+              <button class="btn" id="completeQuestBtn" type="button" ${done?'':'disabled'}>Complete Quest</button>
+            </div>
+          </div>`;
+      } else {
+        html += `
+          <div class="card">
+            <b>New Quest Available</b>
+            <div>${questDescription(nextQuest)}</div>
+            <div class="row">
+              <button class="btn" id="acceptQuestBtn" type="button">Accept</button>
+              <button class="btn secondary" id="declineQuestBtn" type="button">Decline</button>
+            </div>
+            <small>Quests track only encounters in this region.</small>
+          </div>`;
+      }
+    }
+
     showModal("Guild Hall", html);
-    modalBody.querySelectorAll("[data-join]").forEach(btn=>{
+
+    // joins
+    modalBody.querySelectorAll("[data-join]")?.forEach(btn=>{
       btn.addEventListener("click", async ()=>{
         const g = btn.getAttribute("data-join");
         if (me.level < 5) return alert("You must be level 5 or higher.");
         me.guild = g;
         await updateDoc(playerRef, { guild: g });
-        openGuild(); updateHUD();
+        updateHUD();
+        openGuild();
       });
+    });
+
+    // quest actions
+    const acceptBtn = document.getElementById("acceptQuestBtn");
+    const declineBtn = document.getElementById("declineQuestBtn");
+    const cancelBtn = document.getElementById("cancelQuestBtn");
+    const completeBtn = document.getElementById("completeQuestBtn");
+
+    acceptBtn?.addEventListener("click", async ()=>{
+      me.quest = nextQuest;
+      await updateDoc(playerRef, { quest: me.quest });
+      openGuild();
+    });
+    declineBtn?.addEventListener("click", ()=>{ closeModalAndStepAway(); });
+
+    cancelBtn?.addEventListener("click", async ()=>{
+      if (!confirm("Cancel your active quest? Progress will be lost.")) return;
+      me.quest = null;
+      await updateDoc(playerRef, { quest: null });
+      openGuild();
+    });
+
+    completeBtn?.addEventListener("click", async ()=>{
+      if (!(me.quest && me.quest.active)) return;
+      if ((me.quest.progress||0) < (me.quest.need||0)) return;
+      const reward = 15 * (me.level||1);
+      me.xp = (me.xp||0) + reward;
+      me.quest = null;
+      await updateDoc(playerRef, { xp: me.xp, quest: null });
+      updateHUD();
+      // level up check after awarding XP
+      checkLevelUp();
+      // After completion, offer another
+      showModal("Quest Complete!", `
+        <div class="row"><div class="pill ok">+${reward} XP</div></div>
+        <p>Would you like another quest?</p>
+        <div class="card">
+          <b>Next Quest</b>
+          <div>${questDescription(nextQuest)}</div>
+          <div class="row">
+            <button class="btn" id="acceptNextQuestBtn" type="button">Accept</button>
+            <button class="btn secondary" id="noThanksBtn" type="button">No thanks</button>
+          </div>
+        </div>
+      `);
+      document.getElementById("acceptNextQuestBtn").addEventListener("click", async ()=>{
+        me.quest = nextQuest;
+        await updateDoc(playerRef, { quest: me.quest });
+        openGuild();
+      });
+      document.getElementById("noThanksBtn").addEventListener("click", ()=> closeModalAndStepAway());
     });
   }
 
@@ -1125,6 +1296,7 @@
 </script>
 </body>
 </html>
+
 
 
 
