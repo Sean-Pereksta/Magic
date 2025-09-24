@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -27,11 +27,19 @@
   .statusPanel{display:flex;gap:8px;flex-wrap:wrap}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff;font-size:12px}
 
+  /* Arena */
   .arena{
     position:relative; display:grid; place-items:center; padding:12px; overflow:hidden;
+    min-height:260px; /* ensures room for sprites + text */
   }
   .row{display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap}
-  .centerText{font-weight:900; font-size:20px; text-align:center; min-height:40px}
+
+  /* Center text sits ABOVE sprites and a bit higher */
+  .centerText{
+    position:absolute; left:50%; top:32%; transform:translate(-50%,-50%);
+    font-weight:900; font-size:20px; text-align:center; min-height:40px;
+    z-index:5; pointer-events:none;
+  }
 
   /* Cards */
   .hand{
@@ -51,6 +59,7 @@
   .sprite{
     width:120px;height:120px;border-radius:16px;border:2px solid var(--br);display:grid;place-items:center;background:#fff;box-shadow:var(--shadow);
     position:absolute;top:50%;transform:translateY(-50%);
+    z-index:1; /* BELOW the center text */
   }
   .spriteL{ left:-140px }
   .spriteR{ right:-140px }
@@ -68,7 +77,7 @@
     .card{ width:92px; height:124px }
     .card.small{ width:80px; height:110px }
     .sprite{ width:96px;height:96px }
-    .centerText{ font-size:18px }
+    .centerText{ font-size:18px; top:28%; } /* a bit higher on small screens */
   }
 </style>
 </head>
@@ -438,7 +447,7 @@
 
     // Check end
     if (myHP<=0){
-      await onPlayerDeath();
+      await onPlayerDefeat(); // updated defeat logic
       return;
     }
     if (enHP<=0){
@@ -573,7 +582,7 @@
   }
 
   // ---------- Deck helpers ----------
-  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function shuffle(a){ for(let i=a.length-1;i>0;i++){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
   function drawToHand(hand, deck, n){
     for(let i=0;i<n;i++){
       if (deck.length===0) reshuffle(deck, hand===myHand?myDiscard:enDiscard);
@@ -609,25 +618,46 @@
     backToWorld();
   }
 
-  async function onPlayerDeath(){
-    // Reset player doc
-    const baseInv = [
-      {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Rock", type:"rock", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Paper", type:"paper", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
-      {id:crypto.randomUUID(), name:"Scissors", type:"scissors", lvlReq:1},
-    ];
+  // Remove N random cards (unless inventory has 2 or fewer)
+  function removeRandomCards(inv, count){
+    const res = Array.isArray(inv) ? [...inv] : [];
+    if (res.length <= 2 || count <= 0) return res; // don't remove if 2 or fewer total
+    const n = Math.min(count, res.length);
+    for (let i = 0; i < n; i++){
+      const idx = Math.floor(Math.random() * res.length);
+      res.splice(idx, 1);
+    }
+    return res;
+  }
+
+  // Updated defeat: level -1 (min 1) and lose 2 random cards (unless you have 2 or fewer)
+  async function onPlayerDefeat(){
+    let lost = 0;
+    let newLevel = 1;
     try{
-      await updateDoc(doc(db,"players",username), {
-        x:8, y:8, level:1, xp:0, guild:"", inventory: baseInv
-      });
-    }catch(e){}
-    setCenter(`💀 You were defeated. Returning to town…`);
+      const pRef = doc(db,"players",username);
+      const pSnap = await getDoc(pRef);
+      if (pSnap.exists()){
+        const cur = pSnap.data();
+        newLevel = Math.max(1, (cur.level || 1) - 1);
+
+        const currentInv = Array.isArray(cur.inventory) ? cur.inventory : [];
+        const removeCount = currentInv.length > 2 ? 2 : 0;   // only remove if >2 cards total
+        const newInv = removeRandomCards(currentInv, removeCount);
+        lost = removeCount;
+
+        await updateDoc(pRef, {
+          level: newLevel,
+          inventory: newInv,
+          x: 8, y: 8  // return to town
+          // xp, gold, guild, etc. are preserved
+        });
+      }
+    }catch(e){
+      console.warn("Defeat update failed:", e);
+    }
+
+    setCenter(`💀 Defeat — Level set to ${newLevel}${lost ? ` · lost ${lost} card${lost>1?'s':''}` : ''}. Returning to town…`);
     await wait(1200);
     backToWorld();
   }
@@ -641,6 +671,8 @@
 </script>
 </body>
 </html>
+
+
 
 
 
