@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -13,7 +13,6 @@
   body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;color:var(--ink);background:#fafafa;}
   button{font-family:inherit; cursor:pointer}
 
-  /* Layout */
   .wrap{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto}
   .top{
     position:sticky; top:0; z-index:5; background:#fff; border-bottom:1px solid var(--br);
@@ -23,25 +22,21 @@
   .hpbar{position:relative;width:140px;height:10px;background:#f3f4f6;border-radius:999px;overflow:hidden;border:1px solid var(--br)}
   .hpbar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#22c55e,#84cc16)}
   .enemyTag{font-weight:900}
-  .timer{font-weight:900}
   .statusPanel{display:flex;gap:8px;flex-wrap:wrap}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff;font-size:12px}
 
-  /* Arena */
   .arena{
     position:relative; display:grid; place-items:center; padding:12px; overflow:hidden;
-    min-height:260px; /* ensures room for sprites + text */
+    min-height:260px;
   }
   .row{display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap}
 
-  /* Center text sits ABOVE sprites and a bit higher */
   .centerText{
     position:absolute; left:50%; top:32%; transform:translate(-50%,-50%);
     font-weight:900; font-size:20px; text-align:center; min-height:40px;
     z-index:5; pointer-events:none;
   }
 
-  /* Cards */
   .hand{
     position:sticky; bottom:0; background:#fff;border-top:1px solid var(--br);
     padding:8px; display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap
@@ -55,11 +50,10 @@
   .card small{ color:var(--muted); text-align:center }
   .disabled{ opacity:.5; pointer-events:none }
 
-  /* Clash sprites */
   .sprite{
     width:120px;height:120px;border-radius:16px;border:2px solid var(--br);display:grid;place-items:center;background:#fff;box-shadow:var(--shadow);
     position:absolute;top:50%;transform:translateY(-50%);
-    z-index:1; /* BELOW the center text */
+    z-index:1;
   }
   .spriteL{ left:-140px }
   .spriteR{ right:-140px }
@@ -71,20 +65,18 @@
   @keyframes runR{ to{ right:calc(50% - 130px) } }
   @keyframes fade{ to{ opacity:0 } }
 
-  /* Mobile tweaks */
   @media (max-width:680px){
     .hpbar{ width:110px }
     .card{ width:92px; height:124px }
     .card.small{ width:80px; height:110px }
     .sprite{ width:96px;height:96px }
-    .centerText{ font-size:18px; top:28%; } /* a bit higher on small screens */
+    .centerText{ font-size:18px; top:28%; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <!-- TOP (Enemy HP + statuses + timer) -->
   <div class="top">
     <div class="hp">
       <span id="enemyEmoji">🪨</span>
@@ -101,12 +93,10 @@
     </div>
   </div>
 
-  <!-- ARENA -->
   <div class="arena" id="arena">
     <div id="center" class="centerText">Choose your card…</div>
   </div>
 
-  <!-- BOTTOM (Your HP + hand) -->
   <div class="hand" id="handBar">
     <div class="hp">
       <span>🧙 You</span>
@@ -120,7 +110,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
-    getFirestore, doc, getDoc, updateDoc, collection, addDoc, serverTimestamp
+    getFirestore, doc, getDoc, updateDoc
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // ---------- Firebase ----------
@@ -139,9 +129,15 @@
   const qs = new URLSearchParams(location.search);
   const encounterId = qs.get("encounter") || "";
   const username = qs.get("username") || localStorage.getItem("gh.username") || "";
+
+  function gotoWorldRelative(){
+    const worldURL = new URL('./rock.html', location.href).toString();
+    location.href = username ? `${worldURL}?username=${encodeURIComponent(username)}` : worldURL;
+  }
+
   if (!encounterId || !username){
     alert("Missing encounter or username.");
-    location.href = "/game/rock.html" + (username?`?username=${encodeURIComponent(username)}`:"");
+    gotoWorldRelative();
   }
 
   // ---------- UI refs ----------
@@ -175,37 +171,29 @@
     "block-rock":"Block Rock", "block-paper":"Block Paper", "block-scissors":"Block Scissors"
   };
 
-  // returns: 1 (A wins), -1 (B wins), 0 draw
   function compareTypes(a,b){
     if (a===b) return 0;
     const base = { rock:{scissors:1,paper:-1}, paper:{rock:1,scissors:-1}, scissors:{paper:1,rock:-1} };
     if (base[a]?.[b]!==undefined) return base[a][b];
     if (base[b]?.[a]!==undefined) return -base[b][a];
 
-    // crystal beats rock & scissors, loses to paper
     if (a==="crystal"){ if (b==="rock"||b==="scissors") return 1; if (b==="paper") return -1; }
     if (b==="crystal"){ if (a==="rock"||a==="scissors") return -1; if (a==="paper") return 1; }
 
-    // diamond beats crystal & rock & scissors; loses to paper
     if (a==="diamond"){ if (["crystal","rock","scissors"].includes(b)) return 1; if (b==="paper") return -1; }
     if (b==="diamond"){ if (["crystal","rock","scissors"].includes(a)) return -1; if (a==="paper") return 1; }
 
-    // match beats paper & scissors; loses to crystal, diamond, rock
     if (a==="match"){ if (["paper","scissors"].includes(b)) return 1; if (["crystal","diamond","rock"].includes(b)) return -1; }
     if (b==="match"){ if (["paper","scissors"].includes(a)) return -1; if (["crystal","diamond","rock"].includes(a)) return 1; }
 
-    // water beats rock, paper, match; loses to crystal, diamond, scissors
     if (a==="water"){ if (["rock","paper","match"].includes(b)) return 1; if (["crystal","diamond","scissors"].includes(b)) return -1; }
     if (b==="water"){ if (["rock","paper","match"].includes(a)) return -1; if (["crystal","diamond","scissors"].includes(a)) return 1; }
 
-    // slime beats rock, crystal, diamond, match, paper; loses to scissors, water
     if (a==="slime"){ if (["rock","crystal","diamond","match","paper"].includes(b)) return 1; if (["scissors","water"].includes(b)) return -1; }
     if (b==="slime"){ if (["rock","crystal","diamond","match","paper"].includes(a)) return -1; if (["scissors","water"].includes(a)) return 1; }
 
-    // dark matter beats everything except rock
     if (a==="dark"){ if (b==="rock") return -1; return 1; }
     if (b==="dark"){ if (a==="rock") return 1; return -1; }
-
     return 0;
   }
 
@@ -227,11 +215,9 @@
     const t = meta.tier;
     const deck = [];
 
-    // 10 cards total. Stronger = fewer base, more advanced.
     const baseCount = Math.max(0, 8 - t*2); // 8,6,4,2,0
     const advCount  = 10 - baseCount;
 
-    // Base filler favors its archetype
     for(let i=0;i<baseCount;i++){
       if (kind==="rock") deck.push({type:"rock"});
       else if (kind==="paper") deck.push({type:"paper"});
@@ -239,7 +225,6 @@
       else deck.push([{type:"rock"},{type:"paper"},{type:"scissors"}][i%3]);
     }
 
-    // Advanced pool by tier (ensure non-empty with safe fallback)
     let pool = [];
     if (t>=1) pool.push("effect-reveal","effect-draw","block-rock");
     if (t>=2) pool.push("block-paper","crystal","water");
@@ -249,19 +234,16 @@
     const fallback = ["rock","paper","scissors"];
     for(let i=0;i<advCount;i++){
       const bag = (pool.length>0 ? pool : fallback);
-      const pick = bag[Math.floor(Math.random()*bag.length)];
+      const pick = bag[(Math.random()*bag.length)|0];
       deck.push({type: pick});
     }
-
     return shuffle(deck);
   }
 
-  // ---------- Player deck from inventory ----------
-  function deckFromInventory(inv){
-    const mapped = (inv||[]).map(c=> ({type:c.type || normalizeNameToType(c.name)}))
-      .filter(c=> typeof c.type === 'string'); // guard
-    return shuffle(mapped.length ? mapped : baseInventory().map(c=>({type:normalizeNameToType(c.name)})));
-  }
+  // ---------- Safety-hardened deck building ----------
+  const MAX_PER_TYPE = 50;
+  const MAX_DECK_SIZE = 200;
+
   function normalizeNameToType(n){
     const m = String(n||"").toLowerCase();
     if (m.includes("block") && m.includes("rock")) return "block-rock";
@@ -281,9 +263,51 @@
     return "rock";
   }
 
+  function coerceInventory(raw){
+    const out = [];
+
+    if (!raw){
+      return baseInventory().map(c => ({ type: normalizeNameToType(c.name) }));
+    }
+    if (Array.isArray(raw)){
+      for (const c of raw){
+        const type = normalizeNameToType(c?.type || c?.name);
+        if (typeof type === 'string') out.push({ type });
+        if (out.length >= MAX_DECK_SIZE) break;
+      }
+      return out.length ? out : baseInventory().map(c => ({ type: normalizeNameToType(c.name) }));
+    }
+    if (typeof raw === 'object'){
+      for (const [key, val] of Object.entries(raw)){
+        const type = normalizeNameToType(key);
+        let n = Number(val);
+        if (!Number.isFinite(n) || n < 0) n = 0;
+        n = Math.min(n, MAX_PER_TYPE);
+        for (let i = 0; i < n && out.length < MAX_DECK_SIZE; i++){
+          out.push({ type });
+        }
+        if (out.length >= MAX_DECK_SIZE) break;
+      }
+      return out.length ? out : baseInventory().map(c => ({ type: normalizeNameToType(c.name) }));
+    }
+    return baseInventory().map(c => ({ type: normalizeNameToType(c.name) }));
+  }
+
+  function deckFromInventory(inv){
+    const normalized = coerceInventory(inv);
+    return shuffle(normalized.length ? normalized : baseInventory().map(c => ({ type: normalizeNameToType(c.name) })));
+  }
+
+  function baseInventory(){
+    return [
+      {name:"Rock"},{name:"Rock"},{name:"Rock"},
+      {name:"Paper"},{name:"Paper"},{name:"Paper"},
+      {name:"Scissors"},{name:"Scissors"},{name:"Scissors"}
+    ];
+  }
+
   // ---------- State ----------
-  let me = null;      // player doc
-  let enemy = null;   // { kind, tier, emoji, name }
+  let me = null, enemy = null;
   let myHP=0, myMax=0, enHP=0, enMax=0;
 
   let myDeck=[], myDiscard=[], myHand=[];
@@ -292,59 +316,52 @@
   let timer=15, timerId=null;
   let round=1;
   let awaitingPick=true;
-  let handBoostTurns=0; // +1 max hand for N turns
-  const blocks = { rock:0, paper:0, scissors:0 }; // remaining turns
+  let handBoostTurns=0;
+  const blocks = { rock:0, paper:0, scissors:0 };
 
   // ---------- Boot ----------
   await init();
 
   async function init(){
-    const encSnap = await getDoc(doc(db,"encounters",encounterId));
-    if (!encSnap.exists()){
-      alert("Encounter missing.");
-      return backToWorld();
+    try{
+      const encSnap = await getDoc(doc(db,"encounters",encounterId));
+      if (!encSnap.exists()){
+        alert("Encounter missing.");
+        return backToWorld();
+      }
+      const enc = encSnap.data();
+
+      const plSnap = await getDoc(doc(db,"players", username));
+      if (!plSnap.exists()){
+        alert("Player doc missing.");
+        return backToWorld();
+      }
+      me = plSnap.data();
+
+      const kind = (enc.type || "rock");
+      enemy = { kind, ...ENEMY_META[kind] };
+
+      myMax = 3 + (me.level||1);
+      myHP = myMax;
+      enMax = 3 + Math.max(1, (enemy.tier||0) + 1);
+      enHP = enMax;
+
+      enemyEmojiEl.textContent = enemy.emoji;
+      enemyNameEl.textContent = enemy.name;
+      renderHP();
+
+      myDeck = deckFromInventory(me.inventory || baseInventory());
+      enDeck = buildEnemyDeck(enemy.kind);
+      drawToHand(myHand, myDeck, 3);
+      drawToHand(enHand, enDeck, 3);
+      renderHand();
+
+      newRound();
+    }catch(err){
+      console.error("Init failed:", err);
+      alert("There was an error loading the battle.");
+      backToWorld();
     }
-    const enc = encSnap.data();
-    const plSnap = await getDoc(doc(db,"players", username));
-    if (!plSnap.exists()){
-      alert("Player doc missing.");
-      return backToWorld();
-    }
-    me = plSnap.data();
-
-    // Enemy
-    const kind = (enc.type || "rock");
-    enemy = { kind, ...ENEMY_META[kind] };
-
-    // HPs
-    myMax = 3 + (me.level||1);
-    myHP = myMax;
-    enMax = 3 + Math.max(1, (enemy.tier||0) + 1);
-    enHP = enMax;
-
-    // UI set
-    enemyEmojiEl.textContent = enemy.emoji;
-    enemyNameEl.textContent = enemy.name;
-    renderHP();
-
-    // Decks
-    myDeck = deckFromInventory(me.inventory || baseInventory());
-    enDeck = buildEnemyDeck(enemy.kind);
-    drawToHand(myHand, myDeck, 3);
-    drawToHand(enHand, enDeck, 3);
-    renderHand();
-
-    // Start round
-    newRound();
-  }
-
-  function baseInventory(){
-    // fallback base 9
-    return [
-      {name:"Rock"},{name:"Rock"},{name:"Rock"},
-      {name:"Paper"},{name:"Paper"},{name:"Paper"},
-      {name:"Scissors"},{name:"Scissors"},{name:"Scissors"}
-    ];
   }
 
   // ---------- UI helpers ----------
@@ -376,7 +393,6 @@
       });
     });
 
-    // status pills
     blkRock.style.display = blocks.rock>0 ? "inline-flex":"none";
     blkPaper.style.display = blocks.paper>0 ? "inline-flex":"none";
     blkScissors.style.display = blocks.scissors>0 ? "inline-flex":"none";
@@ -403,8 +419,7 @@
   }
   function autoPlay(){
     if (!awaitingPick) return;
-    const idx = 0;
-    pickCard(idx);
+    pickCard(0);
   }
 
   // ---------- Round flow ----------
@@ -419,70 +434,51 @@
     awaitingPick = false;
     clearInterval(timerId);
 
-    const myCard = myHand.splice(myIdx,1)[0];
+    const myCard = myHand.splice(myIdx,1)[0] || {type:"rock"};
     const enemyIdx = chooseEnemyIndex();
-    const enCard = enHand.splice(enemyIdx,1)[0];
+    const enCard = enHand.splice(enemyIdx,1)[0] || {type:"rock"};
 
-    // send selected cards to discard so reshuffle works
-    if (myCard) myDiscard.push(myCard);
-    if (enCard) enDiscard.push(enCard);
+    myDiscard.push(myCard);
+    enDiscard.push(enCard);
 
-    // Reveal UI: sprites slide in
     await showClash(myCard, enCard);
-
-    // Resolve specials / blocks / damage
     await resolveTurn(myCard, enCard);
 
-    // After resolution, refill hands
     const maxHand = (handBoostTurns>0)?4:3;
     drawToHand(myHand, myDeck, Math.max(0, maxHand - myHand.length));
     drawToHand(enHand, enDeck, Math.max(0, 3 - enHand.length));
 
-    // decay statuses
     ["rock","paper","scissors"].forEach(k=>{ if (blocks[k]>0) blocks[k]--; });
     if (handBoostTurns>0) handBoostTurns--;
 
     renderHP();
     renderHand(true);
 
-    // Check end
-    if (myHP<=0){
-      await onPlayerDefeat(); // updated defeat logic
-      return;
-    }
-    if (enHP<=0){
-      await onWin();
-      return;
-    }
+    if (myHP<=0){ await onPlayerDefeat(); return; }
+    if (enHP<=0){ await onWin(); return; }
 
-    // next round
     round++;
     setTimeout(()=>{ newRound(); }, 600);
   }
 
   function chooseEnemyIndex(){
-    // Consider only valid cards
     const validIdx = enHand
       .map((c, i)=> (c && typeof c.type==='string') ? i : -1)
       .filter(i=> i>=0);
 
     if (validIdx.length === 0) return 0;
 
-    // chance to play Reveal early
     const revealIdx = validIdx.find(i => enHand[i].type === "effect-reveal");
     if (revealIdx !== undefined && Math.random() < 0.15) return revealIdx;
 
-    // chance to play any Block early
     const blockIdx = validIdx.find(i => String(enHand[i].type).startsWith("block-"));
     if (blockIdx !== undefined && Math.random() < 0.12) return blockIdx;
 
-    // prefer an attack card
     const atkIdx = validIdx.find(i => !NON_ATTACK.has(enHand[i].type));
     return (atkIdx !== undefined) ? atkIdx : validIdx[0];
   }
 
   async function showClash(myCard, enCard){
-    // clear previous sprites
     arena.querySelectorAll(".sprite").forEach(n=>n.remove());
     const left = document.createElement("div");
     const right = document.createElement("div");
@@ -496,14 +492,9 @@
   }
 
   async function resolveTurn(myCard, enCard){
-    const myNonAtk = NON_ATTACK.has(myCard.type);
-    const enNonAtk = NON_ATTACK.has(enCard.type);
-
-    // Apply utility effects immediately
     await applyUtility(myCard, true);
     await applyUtility(enCard, false);
 
-    // Determine if either attack is blocked by status
     function blocked(t){
       if (t==="rock") return blocks.rock>0;
       if (t==="paper") return blocks.paper>0;
@@ -514,52 +505,38 @@
     let myAtk = !NON_ATTACK.has(myType);
     let enAtk = !NON_ATTACK.has(enType);
 
-    // Blocked types lose their effect (treated as "no attack")
     if (myAtk && blocked(myType)) myAtk=false;
     if (enAtk && blocked(enType)) enAtk=false;
 
-    // If one side non-attack (or blocked) and other is attack → attack deals 1
     if ((!myAtk) && enAtk){
       setCenter(`<span style="color:var(--bad);font-weight:900">${enemy.name} strikes!</span>`);
-      await wait(800);
-      myHP = Math.max(0, myHP-1);
-      return -1;
+      await wait(800); myHP = Math.max(0, myHP-1); return -1;
     }
     if ((!enAtk) && myAtk){
       setCenter(`<span style="color:var(--good);font-weight:900">You strike!</span>`);
-      await wait(800);
-      enHP = Math.max(0, enHP-1);
-      return 1;
+      await wait(800); enHP = Math.max(0, enHP-1); return 1;
     }
     if ((!myAtk) && (!enAtk)){
       setCenter(`<span style="color:#6b7280">No effect.</span>`);
-      await wait(600);
-      return 0;
+      await wait(600); return 0;
     }
 
-    // Both attacking → compare
     const cmp = compareTypes(myType, enType);
     if (cmp>0){
       setCenter(`<span style="color:var(--good);font-weight:900">You win the clash!</span>`);
-      await wait(800);
-      enHP = Math.max(0, enHP-1);
-      return 1;
+      await wait(800); enHP = Math.max(0, enHP-1); return 1;
     } else if (cmp<0){
       setCenter(`<span style="color:var(--bad);font-weight:900">${enemy.name} wins!</span>`);
-      await wait(800);
-      myHP = Math.max(0, myHP-1);
-      return -1;
+      await wait(800); myHP = Math.max(0, myHP-1); return -1;
     } else {
       setCenter(`<span style="color:#6b7280;font-weight:900">Draw.</span>`);
-      await wait(600);
-      return 0;
+      await wait(600); return 0;
     }
   }
 
   async function applyUtility(card, isPlayer){
     const t = card.type;
     if (t==="effect-reveal"){
-      // Show enemy hand (or player hand if AI used it)
       const list = isPlayer ? enHand : myHand;
       const side = isPlayer ? "Enemy" : "You";
       const txt = list.map(c=> (EMOJI[c.type]||"❔")+" "+(NAME[c.type]||c.type)).join(" · ");
@@ -567,7 +544,6 @@
       await wait(1200);
     } else if (t==="effect-draw"){
       if (isPlayer){
-        // immediate +2 and hand boost 2 turns
         drawToHand(myHand, myDeck, 2);
         handBoostTurns = Math.max(handBoostTurns, 2);
         renderHand(true);
@@ -575,24 +551,36 @@
         drawToHand(enHand, enDeck, 2);
       }
     } else if (t==="block-rock" || t==="block-paper" || t==="block-scissors"){
-      const typ = t.split("-")[1]; // rock/paper/scissors
+      const typ = t.split("-")[1];
       blocks[typ] = Math.max(blocks[typ], 3);
       renderHand(true);
     }
   }
 
   // ---------- Deck helpers ----------
-  function shuffle(a){ for(let i=a.length-1;i>0;i++){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function shuffle(arr){
+    if (!Array.isArray(arr)) return [];
+    for(let i=arr.length-1;i>0;i--){
+      const j = (Math.random()*(i+1))|0;
+      const t = arr[i]; arr[i]=arr[j]; arr[j]=t;
+    }
+    return arr;
+  }
+
   function drawToHand(hand, deck, n){
+    n = Number(n);
+    if (!Number.isFinite(n) || n <= 0) return;
     for(let i=0;i<n;i++){
       if (deck.length===0) reshuffle(deck, hand===myHand?myDiscard:enDiscard);
       if (deck.length===0) break;
-      hand.push(deck.pop());
+      const next = deck.pop();
+      if (next && typeof next.type === 'string') hand.push(next);
     }
   }
+
   function reshuffle(deck, discard){
     if (deck.length>0) return;
-    if (discard.length>0){
+    if (Array.isArray(discard) && discard.length>0){
       while(discard.length) deck.push(discard.pop());
       shuffle(deck);
     }
@@ -612,25 +600,23 @@
         const gold = (cur.gold||0) + goldGain;
         await updateDoc(pRef, { xp, gold });
       }
-    }catch(e){}
+    }catch(e){ console.warn("Win update failed:", e); }
     setCenter(`🏆 Victory! +${xpGain} XP · +${goldGain} gold`);
     await wait(1000);
     backToWorld();
   }
 
-  // Remove N random cards (unless inventory has 2 or fewer)
   function removeRandomCards(inv, count){
     const res = Array.isArray(inv) ? [...inv] : [];
-    if (res.length <= 2 || count <= 0) return res; // don't remove if 2 or fewer total
+    if (res.length <= 2 || count <= 0) return res;
     const n = Math.min(count, res.length);
     for (let i = 0; i < n; i++){
-      const idx = Math.floor(Math.random() * res.length);
+      const idx = (Math.random()*res.length)|0;
       res.splice(idx, 1);
     }
     return res;
   }
 
-  // Updated defeat: level -1 (min 1) and lose 2 random cards (unless you have 2 or fewer)
   async function onPlayerDefeat(){
     let lost = 0;
     let newLevel = 1;
@@ -642,15 +628,14 @@
         newLevel = Math.max(1, (cur.level || 1) - 1);
 
         const currentInv = Array.isArray(cur.inventory) ? cur.inventory : [];
-        const removeCount = currentInv.length > 2 ? 2 : 0;   // only remove if >2 cards total
+        const removeCount = currentInv.length > 2 ? 2 : 0;
         const newInv = removeRandomCards(currentInv, removeCount);
         lost = removeCount;
 
         await updateDoc(pRef, {
           level: newLevel,
           inventory: newInv,
-          x: 8, y: 8  // return to town
-          // xp, gold, guild, etc. are preserved
+          x: 8, y: 8
         });
       }
     }catch(e){
@@ -663,7 +648,8 @@
   }
 
   function backToWorld(){
-    location.href = `/game/rock.html?username=${encodeURIComponent(username)}`;
+    const worldURL = new URL('./rock.html', location.href).toString();
+    location.href = `${worldURL}?username=${encodeURIComponent(username)}`;
   }
 
   // ---------- Utils ----------
@@ -671,8 +657,6 @@
 </script>
 </body>
 </html>
-
-
 
 
 
