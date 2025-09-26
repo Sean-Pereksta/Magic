@@ -122,6 +122,17 @@
   .opt:hover{background:#fff5f5}
   .closebar{display:flex;justify-content:flex-end;margin-top:10px}
 
+  .voting{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:10px;
+  max-height:55vh;
+  overflow:auto;
+  padding-right:6px; /* keep scrollbar off text */
+}
+.era{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff}
+.era[aria-disabled="true"]{opacity:.5}
+
   /* Winner overlay */
   .winner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:1050}
   .win-card{background:#fff;border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:18px 16px;text-align:center}
@@ -254,9 +265,14 @@
   const stateRef = doc(db, "lobbies", gameId, "historyrush", "state");
 
   // ---------- CONSTANTS ----------
-  const ERAS = [
-    "Rome", "Ancient China", "Ancient Inca", "Ancient Aztec", "Ancient Egypt", "Ancient Mali", "Macedonia", "Greece", "Sumer", "Persia", "Assyria", "Scandinavia"
-  ];
+// Put any manual extras in BASE_ERAS (optional)
+const BASE_ERAS = [
+  "Rome","Ancient China","Ancient Inca","Ancient Aztec","Ancient Egypt","Ancient Mali",
+  "Macedonia","Greece","Sumer","Persia","Assyria","Scandinavia"
+];
+
+// Auto-pull keys from QUESTIONS and merge with BASE_ERAS (removes dupes)
+const ERAS = Array.from(new Set([ ...BASE_ERAS, ...Object.keys(QUESTIONS||{}) ]));
   // region order (top-left, top-right, bottom-left, bottom-right)
   const REGIONS = ["TL","TR","BL","BR"];
   const REGION_IDX = {TL:0, TR:1, BL:2, BR:3};
@@ -1768,6 +1784,7 @@ for (let i=0;i<64;i++){
 </script>
 </body>
 </html>
+
 
 
 
