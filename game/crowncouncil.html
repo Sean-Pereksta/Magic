@@ -19,7 +19,7 @@
 
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}
   .leftrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:900}
+  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:900;transition:background-color .25s}
   .dot{width:10px;height:10px;border-radius:50%}
   .btn{appearance:none;border:1px solid var(--br);border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer;background:var(--accent);color:#fff}
   .btn:hover{background:var(--accent-2)}
@@ -39,12 +39,12 @@
   /* Map window (pannable) */
   .mapWrap{position:relative;border:1px solid var(--br);border-radius:14px;overflow:hidden;background:#fff}
   .mapHead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--br)}
-  .mapWindow{position:relative;touch-action:none; /* we implement pan ourselves */ width:100%; height:min(70vh,580px); background:#fafafa}
+  .mapWindow{position:relative;touch-action:none;width:100%;height:min(70vh,580px);background:#fafafa}
   .mapCanvas{position:absolute; left:0; top:0; transform:translate3d(0,0,0)}
-  .tile{position:absolute; width:80px; height:80px; border:2px solid #e5e7eb; border-radius:10px; background:#f3f4f6; display:grid; place-items:center; font-weight:900; user-select:none; -webkit-user-select:none; touch-action:none}
+  .tile{position:absolute;width:80px;height:80px;border:2px solid #e5e7eb;border-radius:10px;background:#f3f4f6;display:grid;place-items:center;font-weight:900;user-select:none;-webkit-user-select:none;touch-action:none}
   .tile.owned{background:#fff}
   .tile.sel{outline:3px solid #111827}
-  .cap-icon{position:absolute; inset:auto 4px 4px auto; font-size:14px}
+  .cap-icon{position:absolute;inset:auto 4px 4px auto;font-size:14px}
   .tile .u{font-size:16px}
   .tile.p0{border-color:var(--p0)}
   .tile.p1{border-color:var(--p1)}
@@ -81,6 +81,7 @@
       <span id="statusBadge" class="badge">Loading…</span>
       <span id="roundBadge" class="badge">—</span>
       <span id="timerBadge" class="badge">⏳ —</span>
+      <span id="moveBadge" class="badge">Moves: 0/—</span>
       <span id="coalitionBadge" class="badge">Coalition: —</span>
     </div>
     <div class="leftrow">
@@ -149,6 +150,7 @@
             <li>Turns are simultaneous. Timer auto-resolves if someone stalls.</li>
             <li>⚔️ Attack: commit all units from a tile into one adjacent enemy tile.</li>
             <li>🛡️ Fortify: +1 unit on a tile you own (max +1 per tile per round).</li>
+            <li><strong>Move cap:</strong> at most <span id="ruleCapN">4</span> orders (attacks + fortifies) per round. Levy is free.</li>
             <li>Capture bonus: +1 unit on captured tile.</li>
             <li>Frontline attrition: adjacent enemy tiles each lose 1 (min 0) after battles.</li>
             <li>Coalition: if a player &gt;40% land, others gain one-round Levy (+1 to their capital) next round.</li>
@@ -189,7 +191,7 @@
 /* ===================== Firebase ===================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -210,25 +212,29 @@ const username = params.get("username");
 if (!gameId || !username) alert("Missing gameId or username.");
 const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
 
+/* ===================== Config ===================== */
+const MAX_ORDERS_DEFAULT = 4;           // 🔧 cap per player per round (attacks + fortifies)
+const ROUND_LEN_MS_DEFAULT = 45_000;    // planning time
+
 /* ===================== Helpers ===================== */
 const $ = (id)=> document.getElementById(id);
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a;}
-
 const COLORS = ["var(--p0)","var(--p1)","var(--p2)","var(--p3)"];
 const PLAYER_COLORS = {}; // name -> color index after we know players
+const getMaxOrders = ()=> (state?.maxOrdersPerTurn ?? MAX_ORDERS_DEFAULT);
 
 /* ===================== Map (square grid) ===================== */
-const W = 10, H = 8, TILE = 80, GAP = 6; // 80x80 tiles; tweak if needed
+const W = 10, H = 8, TILE = 80, GAP = 6;
 const mapWindow = $("mapWindow");
 const mapCanvas = $("mapCanvas");
 let tilesDOM = [];
-let pan = { x: 20, y: 20 }; // initial offset
+let pan = { x: 20, y: 20 };
 let panning = false, lastPt = {x:0,y:0};
 let dragStart = null, didPan=false;
 const DRAG_THRESHOLD = 6;
 
-// pointer pan with tap threshold (✅ Fixed)
+// pointer pan with tap threshold
 mapWindow.addEventListener("pointerdown", (e)=>{
   panning = true; didPan = false;
   dragStart = { x:e.clientX, y:e.clientY };
@@ -238,13 +244,9 @@ mapWindow.addEventListener("pointermove", (e)=>{
   if (!panning) return;
   const dx = e.clientX - lastPt.x, dy = e.clientY - lastPt.y;
   lastPt = { x:e.clientX, y:e.clientY };
-
   const moved = Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y);
   if (moved > DRAG_THRESHOLD) didPan = true;
-
-  if (didPan){
-    pan.x += dx; pan.y += dy; applyPan();
-  }
+  if (didPan){ pan.x += dx; pan.y += dy; applyPan(); }
 });
 mapWindow.addEventListener("pointerup", (e)=>{
   if (!panning) return;
@@ -259,18 +261,16 @@ mapWindow.addEventListener("pointerup", (e)=>{
   }
 });
 mapWindow.addEventListener("pointercancel", ()=>{ panning=false; didPan=false; });
-
-function applyPan(){
-  mapCanvas.style.transform = `translate(${pan.x}px, ${pan.y}px)`;
-}
+function applyPan(){ mapCanvas.style.transform = `translate(${pan.x}px, ${pan.y}px)`; }
 applyPan();
 
 /* ===================== UI State ===================== */
 let state = null;
-let myOrders = []; // local orders not yet submitted
+let myOrders = []; // local mirror for quick writes
 let orderMode = "attack"; // "attack" | "fortify"
 let selectedSrc = null; // for attack source selection
 let timerInterval = null;
+let lastRoundSeen = null;
 
 /* ===================== Build Map DOM ===================== */
 function buildMapDOM(){
@@ -291,7 +291,6 @@ function buildMapDOM(){
       d.innerHTML = `<span class="u" id="u_${id}">0</span><span class="cap-icon" id="c_${id}" style="display:none">⭐</span>`;
       mapCanvas.appendChild(d);
       tilesDOM[id] = d;
-      // (No per-tile click handler; we detect tap on pointerup centrally)
     }
   }
 }
@@ -301,6 +300,7 @@ buildMapDOM();
 async function ensureState(){
   const snap = await getDoc(stateRef);
   if (snap.exists()) return;
+
   // build territories graph (4-neighborhood)
   const terr = [];
   for (let i=0;i<W*H;i++){
@@ -319,13 +319,11 @@ async function ensureState(){
   const players = (lob.exists() && Array.isArray(lob.data().players))
     ? lob.data().players.slice(0,4) : [username];
 
-  // seeding: give each player a capital & 5 owned around it
+  // seeding: give each player a capital & 4 owned around it
   const seeds = shuffle([...Array(W*H).keys()]).slice(0, players.length);
-  const chosen = [];
   players.forEach((p, idx)=>{
     const c = seeds[idx];
     terr[c].owner = p; terr[c].units = 5; terr[c].isCapital = true;
-    chosen.push(c);
   });
   // expand each seed to 4 nearby
   players.forEach((p, idx)=>{
@@ -343,20 +341,19 @@ async function ensureState(){
     }
   });
 
-  // initial timer
-  const roundLenMs = 45_000; // 45s plan phase
   const now = Date.now();
   const payload = {
     status:"planning", round:1,
     players,
     territories: terr,
-    submitted:{},            // name -> true/false
-    orders:{},               // name -> [ {type:"attack", src, dst} | {type:"fortify", id} ]
-    levyNextRound: {},       // name -> true if they get +1 at capital next round
-    roundEndsAt: now + roundLenMs,
+    submitted:{},
+    orders:{},
+    levyNextRound: {},
+    roundEndsAt: now + ROUND_LEN_MS_DEFAULT,
     lastResolveAt: 0,
-    diplomacy: [],           // {t:ms, from, to, msg}
-    winner:null
+    diplomacy: [],
+    winner:null,
+    maxOrdersPerTurn: MAX_ORDERS_DEFAULT
   };
   await setDoc(stateRef, payload);
 }
@@ -366,14 +363,26 @@ ensureState();
 onSnapshot(stateRef, (snap)=>{
   if (!snap.exists()) return;
   state = snap.data();
+
+  // per-player color map
   updatePlayerColors();
+
+  // Detect new round: clear selection & local cache so you’re never “stuck”
+  if (lastRoundSeen === null || lastRoundSeen !== state.round){
+    selectedSrc = null;
+    myOrders = (state?.orders?.[username]) || [];
+    flashMoveBadge(); // quick visual reset cue
+    lastRoundSeen = state.round;
+  }
+
   renderStatus();
   renderMap();
   renderOrdersPane();
   renderDiplomacy();
+
   if (state.status === "planning") ensureTimer();
-  if (state.status !== "planning") stopTimer();
-  // victory
+  else stopTimer();
+
   if (state.winner){
     $("statusBadge").textContent = `🏆 ${state.winner} wins!`;
   }
@@ -389,8 +398,10 @@ function updatePlayerColors(){
 function renderStatus(){
   $("statusBadge").textContent = (state?.status||"—");
   $("roundBadge").textContent = `Round ${state?.round||"—"}`;
+  const maxN = getMaxOrders();
+  $("ruleCapN").textContent = maxN;
 
-  // Coalition meter
+  // Coalition meter + scoreboard
   const terr = state?.territories||[];
   const owned = {};
   (state?.players||[]).forEach(n=> owned[n]=0);
@@ -414,9 +425,13 @@ function renderStatus(){
     row.appendChild(pill);
   });
 
-  // Submit button enable
+  // Submit enabled?
   const done = !!state?.submitted?.[username];
   $("btnSubmit").disabled = done || state.status!=="planning";
+
+  // Move badge
+  const mineCount = (state?.orders?.[username]?.length) || 0;
+  $("moveBadge").textContent = `Moves: ${mineCount}/${maxN}`;
 }
 
 function renderMap(){
@@ -456,6 +471,7 @@ function renderOrdersPane(){
     row.appendChild(del);
     box.appendChild(row);
   });
+  $("moveBadge").textContent = `Moves: ${mine.length}/${getMaxOrders()}`;
 }
 
 function renderDiplomacy(){
@@ -480,27 +496,37 @@ function renderDiplomacy(){
 function setMode(m){ orderMode = m; $("orderMode").textContent = (m==="attack"?"Attack":"Fortify"); selectedSrc=null; renderMap(); }
 $("modeAttack").onclick = ()=> setMode("attack");
 $("modeFortify").onclick = ()=> setMode("fortify");
-$("modeClear").onclick = ()=> { myOrders=[]; pushMyOrders(); }
+$("modeClear").onclick = async ()=>{
+  myOrders = [];
+  await updateDoc(stateRef, { [`orders.${username}`]: [] });
+};
 
 function removeOrder(idx){
   const mine = (state?.orders?.[username]) || [];
   mine.splice(idx,1);
+  myOrders = mine;
   updateDoc(stateRef, { [`orders.${username}`]: mine });
 }
 
 function pushMyOrders(){
-  const mine = (state?.orders?.[username]) || [];
-  updateDoc(stateRef, { [`orders.${username}`]: myOrders ?? mine });
+  updateDoc(stateRef, { [`orders.${username}`]: myOrders });
+}
+
+function hitMoveCapFlash(){
+  flashMoveBadge();
 }
 
 function onTileTap(id){
   if (!state || state.status!=="planning") return;
   const t = state.territories[id]; if (!t) return;
 
+  const mine = (state.orders?.[username]) || [];
+  const maxN = getMaxOrders();
+
   if (orderMode === "fortify"){
-    if (t.owner !== username) return; // can only fortify our tile
-    // Enforce one fortify per tile per round by checking existing orders
-    const mine = (state.orders?.[username]) || [];
+    if (t.owner !== username) return; // only fortify our tile
+    if (mine.length >= maxN){ hitMoveCapFlash(); return; }
+    // one fortify per tile per round
     if (mine.some(o=>o.type==="fortify" && o.id===id)) return;
     myOrders = mine.concat([{ type:"fortify", id }]);
     pushMyOrders();
@@ -522,7 +548,7 @@ function onTileTap(id){
     const dst = state.territories[id];
     if (dst.owner === username){ selectedSrc=null; highlightOrders(); return; }
 
-    const mine = (state.orders?.[username]) || [];
+    if (mine.length >= maxN){ selectedSrc=null; hitMoveCapFlash(); highlightOrders(); return; }
     // only one attack per source per round
     if (mine.some(o=>o.type==="attack" && o.src===selectedSrc)){
       selectedSrc=null; highlightOrders(); return;
@@ -535,7 +561,6 @@ function onTileTap(id){
 }
 
 function highlightOrders(){
-  // clear sel
   tilesDOM.forEach(el=> el.classList.remove("sel"));
   if (selectedSrc!=null) tilesDOM[selectedSrc].classList.add("sel");
   const mine = (state?.orders?.[username])||[];
@@ -570,7 +595,6 @@ function tickTimer(){
 
 /* Host: resolve when time or all submitted */
 async function maybeHostResolve(){
-  // Only host can resolve. Host == lobby.host
   try{
     const lobRef = doc(db,"lobbies", gameId);
     const lob = await getDoc(lobRef);
@@ -596,36 +620,41 @@ async function maybeHostResolve(){
 async function resolveRound(d){
   // defensive copy
   const terr = (d.territories||[]).map(t=>({...t, neighbors:[...t.neighbors]}));
-
-  // read orders per player
-  const byPlayer = d.orders || {};
   const players = d.players || [];
+  const byPlayerRaw = d.orders || {};
 
-  // 1) Apply Levy to capitals if flagged from previous round
+  // Trim to move cap (server-authoritative)
+  const cap = d.maxOrdersPerTurn ?? MAX_ORDERS_DEFAULT;
+  const byPlayer = {};
+  for(const p of players){
+    const arr = (byPlayerRaw[p]||[]).filter(o=>o && (o.type==="attack" || o.type==="fortify"));
+    byPlayer[p] = arr.slice(0, cap);
+  }
+
+  // 1) Apply Levy to capitals if flagged from previous round (free; not counted)
   const levy = d.levyNextRound || {};
   for(const p of players){
     if (levy[p]){
-      const cap = terr.find(t=> t.owner===p && t.isCapital);
-      if (cap) cap.units += 1;
+      const capTile = terr.find(t=> t.owner===p && t.isCapital);
+      if (capTile) capTile.units += 1;
     }
   }
 
-  // 2) Resolve fortify (simultaneous): cap +1 per fortify order
+  // 2) Resolve fortify (simultaneous): +1 per unique tile fortified
   for(const p of players){
+    const seenFortTiles = new Set();
     for(const o of (byPlayer[p]||[])){
       if (o.type!=="fortify") continue;
+      if (seenFortTiles.has(o.id)) continue; // prevent double-fortify abuse
       const t = terr[o.id];
       if (t && t.owner===p){
         t.units += 1;
+        seenFortTiles.add(o.id);
       }
     }
   }
 
-  // 3) Resolve attacks (Risk-lite deterministic):
-  // attacker commits ALL units from src; compare vs defender units.
-  // if attacker > defender -> capture with (attacker - defender) units + capture bonus +1 on captured tile.
-  // else defender survives with (defender - attacker) units; source becomes 0.
-  // Simultaneous: if multiple attack same dst, sum attackers, but they fight each other? Simple rule: highest total wins; tie -> defender holds.
+  // 3) Resolve attacks
   const plannedAttacks = []; // {dst, attacks:[{p,src,force}]}
   const attach = (dst, item)=>{
     let bucket = plannedAttacks.find(x=>x.dst===dst);
@@ -653,25 +682,19 @@ async function resolveRound(d){
     // Sum by attacker
     const by = {};
     for(const a of bucket.attacks){ by[a.p] = (by[a.p]||0) + a.force; }
-    // If defender exists, include as own side
-    let winner = defender.p, winForce = defender.force;
-    // Compare each attacker vs defender sequentially? We’ll simplify:
-    // Total Attacker vs Defender; if multiple attackers, the largest single attacker gets the land if attackers > defender; otherwise defender holds.
+    // Decide outcome
     let topA = null, topForce = 0, sumA = 0;
     for(const [p,force] of Object.entries(by)){ sumA+=force; if (force>topForce){ topA=p; topForce=force; } }
 
     if (sumA > defender.force){
-      // capture by top attacker
       dst.owner = topA;
-      dst.units = (sumA - defender.force) + 1; // +1 capture bonus
+      dst.units = (sumA - defender.force) + 1; // capture bonus
     } else {
-      // defend holds, reduce units
-      dst.units = defender.force - sumA;
-      // owner stays the same
+      dst.units = Math.max(0, defender.force - sumA);
     }
   }
 
-  // 4) Frontline attrition: for each border edge between enemy tiles, both tiles -1 (min 0)
+  // 4) Frontline attrition
   const seen = new Set();
   for(const t of terr){
     for(const nb of t.neighbors){
@@ -686,7 +709,7 @@ async function resolveRound(d){
     }
   }
 
-  // 5) Eliminate players with zero land; victory if one ≥60% or only one left.
+  // 5) Elims / Victory
   const owned = {}; players.forEach(p=>owned[p]=0);
   terr.forEach(t=>{ if (t.owner) owned[t.owner] = (owned[t.owner]||0)+1; });
   let alive = players.filter(p=> (owned[p]||0)>0);
@@ -697,7 +720,7 @@ async function resolveRound(d){
   }
   if (!winner && alive.length===1) winner = alive[0];
 
-  // 6) Coalition: mark levyNextRound for all non-leaders if someone >40%
+  // 6) Coalition / next levy flags
   let leadP=null, leadPct=0;
   for(const [p,v] of Object.entries(owned)){
     const pct = Math.round((100*v)/total);
@@ -709,7 +732,6 @@ async function resolveRound(d){
   }
 
   // next planning window
-  const roundLenMs = 45_000;
   const next = {
     status: winner ? "finished" : "planning",
     territories: terr,
@@ -717,9 +739,11 @@ async function resolveRound(d){
     orders: {},                 // reset
     levyNextRound,
     round: d.round + 1,
-    roundEndsAt: winner ? 0 : (Date.now()+roundLenMs),
+    roundEndsAt: winner ? 0 : (Date.now()+ (d.roundLenMs || ROUND_LEN_MS_DEFAULT)),
     lastResolveAt: Date.now(),
-    winner: winner || null
+    winner: winner || null,
+    maxOrdersPerTurn: d.maxOrdersPerTurn ?? MAX_ORDERS_DEFAULT,
+    roundLenMs: d.roundLenMs || ROUND_LEN_MS_DEFAULT
   };
   await updateDoc(stateRef, next);
 }
@@ -738,7 +762,7 @@ $("btnDiplomacy").onclick = ()=>{ $("dipModal").style.display="flex"; $("dipModa
 $("dipClose").onclick = ()=>{ $("dipModal").style.display="none"; };
 function fillQuickTargets(){
   const sel = $("quickDipTarget");
-  if (sel.children.length===0) return; // already filled by renderDiplomacy
+  if (sel.children.length===0) return;
 }
 $("quickDipSend").onclick = async ()=>{
   const to = $("quickDipTarget").value || null;
@@ -766,9 +790,19 @@ window.addEventListener("keydown",(e)=>{
   if (e.key==="2") setMode("fortify");
 });
 
+/* ===================== Tiny UI helper ===================== */
+function flashMoveBadge(){
+  const m = $("moveBadge");
+  if (!m) return;
+  m.style.background = "var(--accent-soft)";
+  setTimeout(()=>{ m.style.background = ""; }, 400);
+}
+
 /* ===================== End module ===================== */
 </script>
 </body>
 </html>
+
+
 
 
