@@ -519,31 +519,48 @@ for (let i=0;i<64;i++){
 
   // ---------- VOTING ----------
   function renderVoting(){
-    if (state?.status!=="voting") return;
-    const used = new Set(Object.values(state.votes||{}));
-    const grid = $("erasGrid");
-    grid.innerHTML = "";
-    for (const era of ERAS){
-      const row = document.createElement("div");
-      row.className="era";
-      const left = document.createElement("div");
-      const name = document.createElement("div"); name.className="pick"; name.textContent = era;
-      const tiny = document.createElement("div"); tiny.className="muted"; tiny.textContent = used.has(era) ? "Taken" : "";
-      left.appendChild(name); left.appendChild(tiny);
-      const btn = document.createElement("button");
-      btn.className = "btn btn-ghost";
-      btn.textContent = (state.votes?.[username] === era) ? "Selected" : "Select";
-      if (state.votes?.[username] && state.votes[username] !== era) btn.disabled = true;
-      if (used.has(era) && state.votes?.[username] !== era) {
-        row.setAttribute("aria-disabled","true");
-      }
-      btn.onclick = ()=> castVote(era);
-      row.appendChild(left); row.appendChild(btn);
-      grid.appendChild(row);
+  if (state?.status!=="voting") return;
+
+  const ERAS = getERAS();                       // <-- build safely at runtime
+  const used = new Set(Object.values(state.votes||{}));
+  const grid = $("erasGrid");
+  grid.innerHTML = "";
+
+  for (const era of ERAS){
+    const row = document.createElement("div");
+    row.className = "era";
+
+    const left = document.createElement("div");
+    const name = document.createElement("div"); 
+    name.className = "pick"; 
+    name.textContent = era;
+
+    const tiny = document.createElement("div"); 
+    tiny.className = "muted"; 
+    tiny.textContent = used.has(era) ? "Taken" : "";
+
+    left.appendChild(name); 
+    left.appendChild(tiny);
+
+    const btn = document.createElement("button");
+    btn.className = "btn btn-ghost";
+    btn.textContent = (state.votes?.[username] === era) ? "Selected" : "Select";
+
+    if (state.votes?.[username] && state.votes[username] !== era) btn.disabled = true;
+    if (used.has(era) && state.votes?.[username] !== era) {
+      row.setAttribute("aria-disabled","true");
     }
-    const my = state.votes?.[username];
-    $("pickedBadge").textContent = my ? `Your pick: ${my}` : "None selected";
+
+    btn.onclick = ()=> castVote(era);
+
+    row.appendChild(left); 
+    row.appendChild(btn);
+    grid.appendChild(row);
   }
+
+  const my = state.votes?.[username];
+  $("pickedBadge").textContent = my ? `Your pick: ${my}` : "None selected";
+}
 
   async function castVote(era){
     try{
@@ -562,35 +579,44 @@ for (let i=0;i<64;i++){
   }
 
   async function finalizeVoting(){
-    // close voting, assign 4 eras (unique), fill with random if <4
-    try{
-      await runTransaction(db, async (tx)=>{
-        const s = await tx.get(stateRef);
-        if (!s.exists()) throw new Error("no state");
-        const d = s.data();
-        if (d.status!=="voting") return;
-        const picks = Object.values(d.votes||{});
-        const unique = uniq(picks);
-        const remain = ERAS.filter(x=> !unique.includes(x));
-        // Need 4 total
-        while (unique.length < 4 && remain.length>0){
-          unique.push(remain.splice(Math.floor(Math.random()*remain.length),1)[0]);
-        }
-        // If somehow >4 (shouldn't with uniqueness), cap at 4
-        const chosen = unique.slice(0,4);
-        const eraMap = {TL: chosen[0]||remain.pop()||"Rome",
-                        TR: chosen[1]||remain.pop()||"Ancient China",
-                        BL: chosen[2]||remain.pop()||"Ancient Egypt",
-                        BR: chosen[3]||remain.pop()||"Scandinavia"};
-        tx.update(stateRef, {
-          status:"playing",
-          eraMap,
-          // ensure timers
-          lastScoreTick: Date.now(),
-        });
+  // close voting, assign 4 eras (unique), fill with random if <4
+  try{
+    await runTransaction(db, async (tx)=>{
+      const s = await tx.get(stateRef);
+      if (!s.exists()) throw new Error("no state");
+      const d = s.data();
+      if (d.status!=="voting") return;
+
+      const ERAS = getERAS();                   // <-- build safely at runtime
+
+      const picks  = Object.values(d.votes||{});
+      const unique = Array.from(new Set(picks));          // keep unique user picks in order
+      const remain = ERAS.filter(x => !unique.includes(x));
+
+      // Need 4 total
+      while (unique.length < 4 && remain.length > 0){
+        unique.push(remain.splice(Math.floor(Math.random()*remain.length),1)[0]);
+      }
+
+      // If somehow >4 (shouldn't), cap at 4
+      const chosen = unique.slice(0,4);
+
+      const eraMap = {
+        TL: chosen[0] || remain.pop() || "Rome",
+        TR: chosen[1] || remain.pop() || "Ancient China",
+        BL: chosen[2] || remain.pop() || "Ancient Egypt",
+        BR: chosen[3] || remain.pop() || "Scandinavia"
+      };
+
+      tx.update(stateRef, {
+        status: "playing",
+        eraMap,
+        lastScoreTick: Date.now(),
       });
-    }catch(e){ console.error(e); }
-  }
+    });
+  }catch(e){ console.error(e); }
+}
+
 
   // ---------- BOARD RENDER ----------
   function renderBoard(){
@@ -1792,6 +1818,7 @@ for (let i=0;i<64;i++){
 </script>
 </body>
 </html>
+
 
 
 
