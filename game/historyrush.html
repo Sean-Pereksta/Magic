@@ -10,8 +10,9 @@
     --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
     --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
     --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px; --tap:52px;
-    --tileGap:6px;      /* tile-to-tile gap */
-    --quadGap:22px;     /* visible gutter between 4x4 quadrants */
+    --tileGap:6px;      /* regular tile gap */
+    --miniGap:12px;     /* gap between the 2x2 mini-blocks (inside a quadrant) */
+    --quadGap:22px;     /* big gutter between quadrants */
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
@@ -30,32 +31,27 @@
   .card-body{padding:14px}
   .muted{color:var(--muted)}
 
-  /* Scoreboard */
-  .scorebar{display:flex;gap:10px;flex-wrap:wrap}
-  .pill{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--br);background:#fff;font-weight:800}
-  .dot{width:12px;height:12px;border-radius:50%}
-
-  /* Voting */
-  .voting{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
-  .era{padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .era[aria-disabled="true"]{opacity:.5;pointer-events:none}
-  .era .pick{font-weight:900}
-  .vote-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
-  .timer{font-weight:900;color:#7f1d1d}
-
-  /* ===== Board (with visible quadrant gutter) ===== */
+  /* ===== Board (with visible quadrant gutter + mini gutters for 2x2 boxes) ===== */
   .board-wrap{position:relative;margin-top:12px}
 
-  /* 8x8 grid, but insert one spacer row/col (the gutter) between the 4x4 regions */
+  /* 8x8 tiles, but we insert:
+     - a mini gap between col 1↔2 and 5↔6 (to split into 2x2 inside each quadrant)
+     - a big quadrant gap between col 3↔4
+     Same idea for rows.
+  */
   .board{
     display:grid;
-    grid-template-columns:repeat(4,1fr) var(--quadGap) repeat(4,1fr);
-    grid-template-rows:repeat(4,1fr) var(--quadGap) repeat(4,1fr);
+    grid-template-columns:
+      repeat(2,1fr) var(--miniGap) repeat(2,1fr) var(--quadGap)
+      repeat(2,1fr) var(--miniGap) repeat(2,1fr);
+    grid-template-rows:
+      repeat(2,1fr) var(--miniGap) repeat(2,1fr) var(--quadGap)
+      repeat(2,1fr) var(--miniGap) repeat(2,1fr);
     gap:var(--tileGap);
     position:relative;
     max-width:100vw;
     aspect-ratio:1/1;
-    z-index:1; /* above underlays, below labels */
+    z-index:1; /* above underlays */
   }
   .tile{
     position:relative;background:#f3f4f6;border:2px solid #d1d5db;border-radius:8px;overflow:hidden;cursor:pointer;
@@ -67,35 +63,41 @@
   .stack{position:absolute;left:1px;right:1px;bottom:1px;display:flex;flex-direction:column-reverse;height:80%;gap:1px}
   .seg{width:100%}
 
-  /* Region labels (always above tiles) */
-  .mini{position:absolute;inset:0;pointer-events:none;z-index:2}
-  .mini label{
-    position:absolute;padding:3px 8px;border-radius:10px;
-    background:rgba(255,255,255,.95);border:1px solid var(--br);
-    font-size:13px;font-weight:900;letter-spacing:.2px;
-    box-shadow:0 4px 12px rgba(15,23,42,.08);
+  /* ✅ Region titles OUTSIDE the board, above each quadrant */
+  .region-labels{
+    position:absolute; left:0; right:0; top:0; bottom:0; pointer-events:none; z-index:2;
   }
-  /* corner placements inside each quadrant (readable pill over tiles) */
-  .mini .tl{top:6px;left:8px}
-  .mini .tr{top:6px;right:8px}
-  .mini .bl{bottom:6px;left:8px}
-  .mini .br{bottom:6px;right:8px}
+  .region-labels .pill{
+    position:absolute; padding:3px 8px; border-radius:10px;
+    background:rgba(255,255,255,.96); border:1px solid var(--br);
+    font-size:13px; font-weight:900; letter-spacing:.2px;
+    box-shadow:0 4px 12px rgba(15,23,42,.08);
+    transform:translateY(-36px); /* sit just above the quadrant */
+  }
+  /* widths of each quadrant (50% minus half the big gutter) */
+  .region-labels .tl{ left:0; width:calc(50% - var(--quadGap)/2); top:0; }
+  .region-labels .tr{ right:0; width:calc(50% - var(--quadGap)/2); top:0; text-align:right; }
+  .region-labels .bl{
+    left:0; width:calc(50% - var(--quadGap)/2);
+    top:calc(50% + var(--quadGap)/2); /* start of bottom row of quadrants */
+  }
+  .region-labels .br{
+    right:0; width:calc(50% - var(--quadGap)/2);
+    top:calc(50% + var(--quadGap)/2); text-align:right;
+  }
 
-  /* Region underlays (soft colors & subtle hatch, visible in the gutters before conquest) */
+  /* Region underlays (soft colors visible through gutters, before conquest) */
   .underlays{
     position:absolute;inset:0;pointer-events:none;
     display:grid;
     grid-template-columns:1fr var(--quadGap) 1fr;
     grid-template-rows:1fr var(--quadGap) 1fr;
     gap:var(--tileGap);
-    z-index:0; /* behind tiles */
+    z-index:0;
   }
   .underlays > div{
-    border-radius:12px;
-    opacity:.55;
-    outline:1px solid rgba(0,0,0,.06);
-    background-size:12px 12px, 100% 100%;
-    background-blend-mode:multiply;
+    border-radius:12px; opacity:.55; outline:1px solid rgba(0,0,0,.06);
+    background-size:12px 12px, 100% 100%; background-blend-mode:multiply;
   }
   .underlays .r0{grid-column:1;grid-row:1; background:
     repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
@@ -172,24 +174,26 @@
       <div class="muted">Tap a square to answer a question from that region.</div>
     </div>
     <div class="card-body">
-      <div class="board-wrap">
-        <!-- region labels (above tiles) -->
-        <div class="mini">
-          <label class="tl" id="labelTL">—</label>
-          <label class="tr" id="labelTR">—</label>
-          <label class="bl" id="labelBL">—</label>
-          <label class="br" id="labelBR">—</label>
-        </div>
-        <!-- region color underlays (visible through the gutter) -->
-        <div class="underlays">
-          <div class="r0"></div>
-          <div class="r1"></div>
-          <div class="r2"></div>
-          <div class="r3"></div>
-        </div>
-        <!-- 8x8 board with a spacer row/col between quadrants -->
-        <div id="board" class="board"></div>
+     <div class="board-wrap">
+      <!-- region labels OUTSIDE the tiles -->
+      <div class="region-labels">
+        <div class="pill tl" id="labelTL">—</div>
+        <div class="pill tr" id="labelTR">—</div>
+        <div class="pill bl" id="labelBL">—</div>
+        <div class="pill br" id="labelBR">—</div>
       </div>
+    
+      <!-- region color underlays -->
+      <div class="underlays">
+        <div class="r0"></div>
+        <div class="r1"></div>
+        <div class="r2"></div>
+        <div class="r3"></div>
+      </div>
+    
+      <!-- 8x8 board -->
+      <div id="board" class="board"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -364,26 +368,41 @@
   };
 
   // build board tiles (map into grid with central spacer row/col)
-  const boardEl = $("board");
-  const tiles = [];
-  for (let i=0;i<64;i++){
-    const r = Math.floor(i/8), c = i%8;
-    // Skip the spacer row/col between quadrants:
-    const gridRow = r < 4 ? (r + 1) : (r + 2);
-    const gridCol = c < 4 ? (c + 1) : (c + 2);
+// ✅ JS: replace your tile-building loop with this one so tiles snap
+// into the grid that includes the mini-gaps + quadrant gap.
+const boardEl = $("board");
+const tiles = [];
+for (let i=0;i<64;i++){
+  const r = Math.floor(i/8), c = i%8;
 
-    const div = document.createElement("div");
-    div.className="tile";
-    div.setAttribute("data-idx", i);
-    div.style.gridRow = gridRow;
-    div.style.gridColumn = gridCol;
+  // We insert extra “tracks” in the grid after row/col 1 (mini gap),
+  // after row/col 3 (big quadrant gap), and after row/col 5 (mini gap).
+  // So compute the grid position by adding +1 for each passed break.
+  const gridRow =
+    r + 1
+    + (r >= 2 ? 1 : 0)   // mini gap after row 1
+    + (r >= 4 ? 1 : 0)   // quadrant gap after row 3
+    + (r >= 6 ? 1 : 0);  // mini gap after row 5
 
-    const stack = document.createElement("div"); stack.className="stack";
-    div.appendChild(stack);
-    div.addEventListener("click", ()=> onTileClick(i));
-    boardEl.appendChild(div);
-    tiles.push(div);
-  }
+  const gridCol =
+    c + 1
+    + (c >= 2 ? 1 : 0)
+    + (c >= 4 ? 1 : 0)
+    + (c >= 6 ? 1 : 0);
+
+  const div = document.createElement("div");
+  div.className="tile";
+  div.setAttribute("data-idx", i);
+  div.style.gridRow = gridRow;
+  div.style.gridColumn = gridCol;
+
+  const stack = document.createElement("div"); stack.className="stack";
+  div.appendChild(stack);
+  div.addEventListener("click", ()=> onTileClick(i));
+  boardEl.appendChild(div);
+  tiles.push(div);
+}
+
 
   // ---------- LOBBY SNAP (players + host) ----------
   onSnapshot(lobbyRef, (snap)=>{
@@ -1102,5 +1121,6 @@
 </script>
 </body>
 </html>
+
 
 
