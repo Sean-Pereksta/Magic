@@ -10,6 +10,8 @@
     --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
     --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
     --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px; --tap:52px;
+    --tileGap:6px;      /* tile-to-tile gap */
+    --quadGap:22px;     /* visible gutter between 4x4 quadrants */
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
@@ -26,6 +28,7 @@
   .card-head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between}
   .card-title{font-weight:900}
   .card-body{padding:14px}
+  .muted{color:var(--muted)}
 
   /* Scoreboard */
   .scorebar{display:flex;gap:10px;flex-wrap:wrap}
@@ -40,11 +43,20 @@
   .vote-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
   .timer{font-weight:900;color:#7f1d1d}
 
-  /* Board */
+  /* ===== Board (with visible quadrant gutter) ===== */
   .board-wrap{position:relative;margin-top:12px}
-  .board{display:grid;grid-template-columns:repeat(8,1fr);grid-auto-rows:1fr;gap:6px;position:relative}
-  /* Phone fit: we aim to keep the 8x8 fully visible */
-  .board{max-width:100vw;aspect-ratio:1/1}
+
+  /* 8x8 grid, but insert one spacer row/col (the gutter) between the 4x4 regions */
+  .board{
+    display:grid;
+    grid-template-columns:repeat(4,1fr) var(--quadGap) repeat(4,1fr);
+    grid-template-rows:repeat(4,1fr) var(--quadGap) repeat(4,1fr);
+    gap:var(--tileGap);
+    position:relative;
+    max-width:100vw;
+    aspect-ratio:1/1;
+    z-index:1; /* above underlays, below labels */
+  }
   .tile{
     position:relative;background:#f3f4f6;border:2px solid #d1d5db;border-radius:8px;overflow:hidden;cursor:pointer;
   }
@@ -54,20 +66,49 @@
   .tile.owner-3{border-color:var(--p3)}
   .stack{position:absolute;left:1px;right:1px;bottom:1px;display:flex;flex-direction:column-reverse;height:80%;gap:1px}
   .seg{width:100%}
-  .mini{position:absolute;inset:0;pointer-events:none}
-  .mini label{position:absolute;padding:2px 6px;border-radius:8px;background:rgba(255,255,255,.85);border:1px solid var(--br);font-size:12px;font-weight:900}
-  .mini .tl{top:4px;left:6px}
-  .mini .tr{top:4px;right:6px}
-  .mini .bl{bottom:4px;left:6px}
-  .mini .br{bottom:4px;right:6px}
 
-  /* Region underlays (soft colors behind tiles) */
-  .underlays{position:absolute;inset:0;pointer-events:none;z-index:-1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px}
-  .underlays > div{border-radius:10px;opacity:.25}
-  .r0{background:var(--r0)}
-  .r1{background:var(--r1)}
-  .r2{background:var(--r2)}
-  .r3{background:var(--r3)}
+  /* Region labels (always above tiles) */
+  .mini{position:absolute;inset:0;pointer-events:none;z-index:2}
+  .mini label{
+    position:absolute;padding:3px 8px;border-radius:10px;
+    background:rgba(255,255,255,.95);border:1px solid var(--br);
+    font-size:13px;font-weight:900;letter-spacing:.2px;
+    box-shadow:0 4px 12px rgba(15,23,42,.08);
+  }
+  /* corner placements inside each quadrant (readable pill over tiles) */
+  .mini .tl{top:6px;left:8px}
+  .mini .tr{top:6px;right:8px}
+  .mini .bl{bottom:6px;left:8px}
+  .mini .br{bottom:6px;right:8px}
+
+  /* Region underlays (soft colors & subtle hatch, visible in the gutters before conquest) */
+  .underlays{
+    position:absolute;inset:0;pointer-events:none;
+    display:grid;
+    grid-template-columns:1fr var(--quadGap) 1fr;
+    grid-template-rows:1fr var(--quadGap) 1fr;
+    gap:var(--tileGap);
+    z-index:0; /* behind tiles */
+  }
+  .underlays > div{
+    border-radius:12px;
+    opacity:.55;
+    outline:1px solid rgba(0,0,0,.06);
+    background-size:12px 12px, 100% 100%;
+    background-blend-mode:multiply;
+  }
+  .underlays .r0{grid-column:1;grid-row:1; background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
+    var(--r0);}
+  .underlays .r1{grid-column:3;grid-row:1; background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
+    var(--r1);}
+  .underlays .r2{grid-column:1;grid-row:3; background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
+    var(--r2);}
+  .underlays .r3{grid-column:3;grid-row:3; background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
+    var(--r3);}
 
   /* Modal */
   .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
@@ -83,8 +124,6 @@
   .winner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:1050}
   .win-card{background:#fff;border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:18px 16px;text-align:center}
   .win-card h2{margin:8px 0}
-
-  /* Colors for players and regions (assigned at runtime) */
 </style>
 </head>
 <body>
@@ -134,21 +173,21 @@
     </div>
     <div class="card-body">
       <div class="board-wrap">
-        <!-- region labels -->
+        <!-- region labels (above tiles) -->
         <div class="mini">
           <label class="tl" id="labelTL">—</label>
           <label class="tr" id="labelTR">—</label>
           <label class="bl" id="labelBL">—</label>
           <label class="br" id="labelBR">—</label>
         </div>
-        <!-- region color underlays -->
+        <!-- region color underlays (visible through the gutter) -->
         <div class="underlays">
           <div class="r0"></div>
           <div class="r1"></div>
           <div class="r2"></div>
           <div class="r3"></div>
         </div>
-        <!-- 8x8 board -->
+        <!-- 8x8 board with a spacer row/col between quadrants -->
         <div id="board" class="board"></div>
       </div>
     </div>
@@ -218,6 +257,7 @@
   const REGIONS = ["TL","TR","BL","BR"];
   const REGION_IDX = {TL:0, TR:1, BL:2, BR:3};
   const REGION_LABEL_IDS = {TL:"labelTL", TR:"labelTR", BL:"labelBL", BR:"labelBR"};
+
   // region colors (soft underlays)
   const regionSoft = ["#a5b4fc","#86efac","#fde68a","#fca5a5"];
   document.documentElement.style.setProperty("--r0", regionSoft[0]);
@@ -267,7 +307,6 @@
     if (r >=4 && c < 4) return "BL";
     return "BR";
   }
-
   function eraForCell(cell){
     const reg = cellRegion(cell);
     const eraMap = state?.eraMap || {};
@@ -291,10 +330,8 @@
   function regionController(regionKey, cells){
     const baseR = regionKey==="TL" ? 0 : regionKey==="TR" ? 0 : regionKey==="BL" ? 4 : 4;
     const baseC = regionKey==="TL" ? 0 : regionKey==="TR" ? 4 : regionKey==="BL" ? 0 : 4;
-    const miniBases = [
-      {r:0,c:0},{r:0,c:2},{r:2,c:0},{r:2,c:2}
-    ];
-    const miniOwners = []; // owner per mini-block
+    const miniBases = [{r:0,c:0},{r:0,c:2},{r:2,c:0},{r:2,c:2}];
+    const miniOwners = [];
     for(const mb of miniBases){
       const cellsIdx = [];
       for(let dr=0; dr<2; dr++){
@@ -306,14 +343,11 @@
         }
       }
       const owners = cellsIdx.map(i => ownerOf(cells[i]?.shares||{})).filter(Boolean);
-      // count by name
       const tally = {}; owners.forEach(o=>tally[o]=(tally[o]||0)+1);
       let best=null, cnt=0;
       for(const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
-      // must own >=3 of 4
       miniOwners.push(cnt>=3 ? best : null);
     }
-    // overall region owner: someone who owns >=3 mini-blocks
     const tally={}; miniOwners.forEach(o=>{ if(o) tally[o]=(tally[o]||0)+1; });
     let best=null, cnt=0;
     for(const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
@@ -329,13 +363,21 @@
     }catch(e){}
   };
 
-  // build board tiles
+  // build board tiles (map into grid with central spacer row/col)
   const boardEl = $("board");
   const tiles = [];
   for (let i=0;i<64;i++){
+    const r = Math.floor(i/8), c = i%8;
+    // Skip the spacer row/col between quadrants:
+    const gridRow = r < 4 ? (r + 1) : (r + 2);
+    const gridCol = c < 4 ? (c + 1) : (c + 2);
+
     const div = document.createElement("div");
     div.className="tile";
     div.setAttribute("data-idx", i);
+    div.style.gridRow = gridRow;
+    div.style.gridColumn = gridCol;
+
     const stack = document.createElement("div"); stack.className="stack";
     div.appendChild(stack);
     div.addEventListener("click", ()=> onTileClick(i));
@@ -530,7 +572,6 @@
         el.classList.add(`owner-${ci}`);
       }
       // segments (stacked)
-      // order by players stable
       const order = players.slice().sort();
       for(const p of order){
         const pct = Math.round((shares[p]||0)*10)/10;
@@ -604,7 +645,6 @@
     }else{
       feedback="❌ Incorrect. You lose up to 20% of your share here.";
       await adjustCellShare(currentCellIndex, username, -20);
-      // don't force another question; user can close or try again later
       $("nextQ").style.display = "none";
     }
     $("qFeedback").textContent = feedback;
@@ -623,13 +663,11 @@
         const shares = Object.assign({}, cell.shares||{});
         const cur = shares[player] || 0;
         if (delta>0){
-          // If total < 100: just add up to 100
           const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
           if (sum < 100){
             const add = Math.min(delta, 100 - sum);
             shares[player] = clamp(cur + add, 0, 100);
           } else {
-            // total == 100 -> increase player by +delta and reduce others by -delta proportionally
             const others = Object.keys(shares).filter(k=>k!==player);
             const sumOthers = others.reduce((a,k)=>a+(shares[k]||0),0);
             shares[player] = clamp(cur + delta, 0, 100);
@@ -639,17 +677,14 @@
                 shares[k] = clamp((shares[k]||0) - cut, 0, 100);
               }
             }
-            // tidy rounding so totals ~100
             const total = Object.values(shares).reduce((a,b)=>a+(b||0),0);
             const diff = 100 - total;
             shares[player] = clamp((shares[player]||0)+diff, 0, 100);
           }
         } else {
-          // negative: lose up to 20% (abs), not below 0
           const lose = Math.min(Math.abs(delta), cur);
           shares[player] = clamp(cur - lose, 0, 100);
         }
-        // assign back
         cells[cellIdx] = {shares};
         tx.update(stateRef, { cells });
       });
@@ -659,7 +694,6 @@
   // ---------- HOST SCORING TICK ----------
   function ensureScoreTicker(){
     if (scoreTickTimer) return;
-    // host computes every 20s
     scoreTickTimer = setInterval(()=> hostTick(), 1000);
   }
   async function hostTick(){
@@ -682,8 +716,7 @@
       if (own) inc[own] = (inc[own]||0) + 1;
     }
     // 5 points per owned region
-    const regions = ["TL","TR","BL","BR"];
-    for(const rk of regions){
+    for(const rk of ["TL","TR","BL","BR"]){
       const ctrl = regionController(rk, cells);
       if (ctrl) inc[ctrl] = (inc[ctrl]||0) + 5;
     }
@@ -703,229 +736,371 @@
       status: winner ? "finished" : "playing"
     });
   }
-const QUESTIONS = {
-  "Rome": [
-    {q:"Who defeated Mark Antony at the Battle of Actium (31 BC)?", a:"Octavian", wrong:["Julius Caesar","Pompey","Brutus"]},
-    {q:"Which office was held by two leaders annually during the Republic?", a:"Consul", wrong:["Tribune","Praetor","Censor"]},
-    {q:"What was the basic silver coin of the Roman Republic and early Empire?", a:"Denarius", wrong:["Sestertius","Aureus","Solidus"]},
-    {q:"Which engineering work carried water into cities?", a:"Aqueduct", wrong:["Circus","Forum","Thermae"]},
-    {q:"Which emperor built a wall across northern Britannia c. AD 122?", a:"Hadrian", wrong:["Trajan","Nero","Claudius"]},
-    {q:"The famous dome with an oculus in Rome is the:", a:"Pantheon", wrong:["Curia","Colosseum","Basilica Julia"]},
-    {q:"Which legal code first inscribed Roman law in the Republic?", a:"Twelve Tables", wrong:["Corpus Juris Civilis","Magna Carta","Code of Hammurabi"]},
-    {q:"Who crossed the Rubicon in 49 BC?", a:"Julius Caesar", wrong:["Sulla","Crassus","Cicero"]},
-    {q:"Which battle saw three legions lost to Arminius in AD 9?", a:"Teutoburg Forest", wrong:["Pharsalus","Cannae","Zama"]},
-    {q:"Which emperor legalized Christianity in AD 313?", a:"Constantine", wrong:["Diocletian","Valens","Theodosius I"]},
-    {q:"Which Roman road linked Rome to Brundisium?", a:"Via Appia", wrong:["Via Flaminia","Via Aemilia","Via Augusta"]},
-    {q:"Which volcano buried Pompeii and Herculaneum?", a:"Vesuvius", wrong:["Etna","Stromboli","Vulcano"]},
-    {q:"What title was used for the Roman peace from Augustus to Marcus Aurelius?", a:"Pax Romana", wrong:["Pax Deorum","Pax Britannica","Pax Augusta"]},
-    {q:"Which emperor’s column commemorates the Dacian Wars?", a:"Trajan", wrong:["Tiberius","Domitian","Caracalla"]},
-    {q:"What was the large chariot-racing stadium in Rome?", a:"Circus Maximus", wrong:["Theatre of Marcellus","Stadium of Domitian","Forum Boarium"]},
-    {q:"Which general famously used war elephants against Rome?", a:"Hannibal", wrong:["Pyrrhus","Mithridates","Vercingetorix"]},
-    {q:"The year AD 69 is known as the:", a:"Year of the Four Emperors", wrong:["Great Interregnum","Late Republic","Crisis of the Third Century"]},
-    {q:"Which reform split the Empire into a Tetrarchy?", a:"Diocletian’s reforms", wrong:["Gracchan reforms","Marian reforms","Augustan settlement"]},
-    {q:"Which province contained the city of Carthage after 146 BC?", a:"Africa", wrong:["Aegyptus","Asia","Syria"]},
-    {q:"What was a Roman public bath complex called?", a:"Thermae", wrong:["Insula","Domus","Curia"]},
-    {q:"Which battle ended the Second Punic War?", a:"Zama", wrong:["Cannae","Lake Trasimene","Metaurus"]},
-    {q:"Which office could veto actions to protect plebeians?", a:"Tribune of the Plebs", wrong:["Aedile","Quaestor","Pontifex Maximus"]},
-    {q:"Which emperor built a massive defensive line in Germany called the Limes?", a:"Domitian", wrong:["Caligula","Otho","Nerva"]},
-    {q:"Which philosopher-emperor wrote the 'Meditations'?", a:"Marcus Aurelius", wrong:["Seneca","Cicero","Pliny the Younger"]},
-    {q:"Which city became capital of the Eastern Roman Empire?", a:"Constantinople", wrong:["Ravenna","Antioch","Alexandria"]},
-    {q:"Which revolt led by Spartacus troubled Rome in 73–71 BC?", a:"Third Servile War", wrong:["Catilinarian Conspiracy","Social War","Jugurthine War"]},
-    {q:"Which emperor famously 'fiddled' during the Great Fire (legend)?", a:"Nero", wrong:["Claudius","Titus","Commodus"]},
-    {q:"What was Rome’s central political and commercial area?", a:"Forum Romanum", wrong:["Campus Martius","Palatine","Velabrum"]},
-    {q:"Which calendar reform created the Julian calendar?", a:"Caesar’s reform", wrong:["Sullan reform","Flavian reform","Antonine reform"]}
-  ],
-  "Ancient China": [
-    {q:"Which concept justified dynastic change?", a:"Mandate of Heaven", wrong:["Covenant of Kings","Divine Right","Peace of Heaven"]},
-    {q:"Who unified China in 221 BC?", a:"Qin Shi Huang", wrong:["Han Wudi","Liu Bang","Zhao Kuangyin"]},
-    {q:"Which dynasty established long-distance Silk Road trade?", a:"Han", wrong:["Qin","Tang","Song"]},
-    {q:"Who wrote 'The Art of War'?", a:"Sun Tzu", wrong:["Mozi","Mencius","Xunzi"]},
-    {q:"Which philosophy emphasizes harmony with the Dao?", a:"Daoism", wrong:["Legalism","Mohism","Confucianism"]},
-    {q:"Which project linked the Yellow and Yangtze rivers?", a:"Grand Canal", wrong:["Lingqu Canal","Dujiangyan","Great Wall moat"]},
-    {q:"Movable-type printing was pioneered by:", a:"Bi Sheng", wrong:["Cai Lun","Zhang Heng","Shen Kuo"]},
-    {q:"Paper was invented during which dynasty?", a:"Han", wrong:["Tang","Song","Yuan"]},
-    {q:"Gunpowder was first formulated by:", a:"Tang alchemists", wrong:["Qin legions","Han scholars","Ming sailors"]},
-    {q:"Which compass innovation aided navigation?", a:"Magnetized needle", wrong:["Sextant","Astrolabe","Chronometer"]},
-    {q:"Which emperor sent Zheng He on maritime voyages?", a:"Yongle (Ming)", wrong:["Hongwu","Kangxi","Qianlong"]},
-    {q:"Oracle bones are associated with which dynasty?", a:"Shang", wrong:["Zhou","Qin","Han"]},
-    {q:"What did the civil service exams primarily test?", a:"Confucian classics", wrong:["Military science","Mathematics","Astronomy"]},
-    {q:"Which ideology underpinned Qin administration?", a:"Legalism", wrong:["Confucianism","Daoism","Mohism"]},
-    {q:"What is the name for fine Chinese pottery exported widely?", a:"Porcelain", wrong:["Earthenware","Faience","Stoneware"]},
-    {q:"Which dynasty saw the rise of paper money?", a:"Song", wrong:["Han","Tang","Qing"]},
-    {q:"Which city was capital under the Ming and home to the Forbidden City?", a:"Beijing", wrong:["Nanjing","Luoyang","Chang’an"]},
-    {q:"What hardy rice boosted Song agriculture?", a:"Champa rice", wrong:["Sticky rice","Basmati","Red rice"]},
-    {q:"The Great Wall we see largely reflects which dynasty’s work?", a:"Ming", wrong:["Qin","Han","Tang"]},
-    {q:"Who compiled the 'Records of the Grand Historian'?", a:"Sima Qian", wrong:["Ban Gu","Zuo Qiuming","Sima Guang"]},
-    {q:"Zhang Heng is credited with inventing a:", a:"Seismograph", wrong:["Steam engine","Gun lock","Pendulum clock"]},
-    {q:"The Warring States period preceded which unifying dynasty?", a:"Qin", wrong:["Han","Sui","Tang"]},
-    {q:"The tribute system centered on:", a:"Acknowledging Chinese supremacy", wrong:["Equal treaties","Colonial rule","Religious conversion"]},
-    {q:"Which texts codified moral conduct and filial piety?", a:"Analects", wrong:["Daodejing","Book of Changes","Zhuangzi"]},
-    {q:"The 'Four Great Inventions' include printing, paper, compass and:", a:"Gunpowder", wrong:["Steelmaking","Sails","Algebra"]},
-    {q:"Who was the only female emperor in Chinese history?", a:"Wu Zetian", wrong:["Empress Dowager Cixi","Empress Lü","Lady Hao"]},
-    {q:"Kublai Khan founded which dynasty in China?", a:"Yuan", wrong:["Liao","Song","Qing"]},
-    {q:"Which canal system improved northern grain transport?", a:"Grand Canal", wrong:["Lingqu","Baiyang","Dujiangyan"]},
-    {q:"Which spiritual system teaches the Way (Dao) and naturalness?", a:"Daoism", wrong:["Shinto","Buddhism","Zoroastrianism"]}
-  ],
-  "Ancient Inca": [
-    {q:"The Inca ruler’s title was:", a:"Sapa Inca", wrong:["Tlatoani","Shah","Pharaoh"]},
-    {q:"Inca knotted cords used for records were called:", a:"Quipu", wrong:["Codex","Runes","Script"]},
-    {q:"The high fortress above Cusco is:", a:"Sacsayhuaman", wrong:["Tiwanaku","Chan Chan","Chichen Itza"]},
-    {q:"Labor tax required of communities:", a:"Mit'a", wrong:["Corvee","Fealty","Gabella"]},
-    {q:"Sun temple at Cusco:", a:"Coricancha", wrong:["Templo Mayor","Temple of Karnak","Qal'at"]},
-    {q:"Inca relay messengers:", a:"Chasquis", wrong:["Coureurs","Heralds","Envoys"]},
-    {q:"Andean terrace farming term:", a:"Andenes", wrong:["Chinampas","Polders","Paddies"]},
-    {q:"Sacred landscape features were called:", a:"Huacas", wrong:["Stelae","Ziggurats","Kivas"]},
-    {q:"Core social unit:", a:"Ayllu", wrong:["Clan","Phratry","Castellany"]},
-    {q:"The Inca road network is known as:", a:"Qhapaq Nan", wrong:["Silk Road","Royal Road","Amber Road"]},
-    {q:"Which animals were vital pack animals?", a:"Llamas", wrong:["Oxen","Horses","Camels"]},
-    {q:"Freeze-dried potatoes were called:", a:"Chuno", wrong:["Taro","Poi","Gari"]},
-    {q:"The Inca used no:", a:"Load-bearing wheeled vehicles", wrong:["Bridges","Farming tools","Textiles"]},
-    {q:"Machu Picchu likely served as a:", a:"Royal estate", wrong:["Capital city","Fortified border","Copper mine"]},
-    {q:"Conquistador who captured Atahualpa:", a:"Francisco Pizarro", wrong:["Hernan Cortes","Diego de Almagro","Vasco Nunez"]},
-    {q:"Battle where Atahualpa was seized:", a:"Cajamarca", wrong:["Cuzco","Sacsayhuaman","Quito"]},
-    {q:"Storehouses for food and goods:", a:"Qollqas", wrong:["Tambos","Haciendas","Longhouses"]},
-    {q:"Way-stations along roads:", a:"Tambos", wrong:["Caravanserai","Mutras","Posadas"]},
-    {q:"Principal sun god:", a:"Inti", wrong:["Viracocha","Quetzalcoatl","Huitzilopochtli"]},
-    {q:"Architectural hallmark:", a:"Precisely cut ashlar masonry", wrong:["Mudbrick vaulting","Flying buttresses","Keystone arches"]},
-    {q:"Cusco’s plan is traditionally likened to a:", a:"Puma", wrong:["Condor","Snake","Llama"]},
-    {q:"Who expanded the empire dramatically in the 15th century?", a:"Pachacuti", wrong:["Moctezuma I","Huayna Capac","Tupac Yupanqui"]},
-    {q:"Inca farming elevated fields and canals aimed to:", a:"Manage altitude and microclimates", wrong:["Grow rice paddies","Breed horses","Produce olives"]},
-    {q:"Inca decimal administration grouped families by:", a:"Tens, hundreds, thousands", wrong:["Sevens","Dozens","Scores"]},
-    {q:"After conquest, a major resistance leader was:", a:"Manco Inca", wrong:["Cuauhtemoc","Atlatl Cauac","Tecumseh"]},
-    {q:"The Inca capital city:", a:"Cusco", wrong:["Tenochtitlan","Lima","La Paz"]},
-    {q:"Language widely used in the empire:", a:"Quechua", wrong:["Nahuatl","Aymara","Mapudungun"]}
-  ],
-  "Ancient Aztec": [
-    {q:"Aztec capital on Lake Texcoco:", a:"Tenochtitlan", wrong:["Texcoco","Tlaxcala","Teotihuacan"]},
-    {q:"Floating garden agriculture:", a:"Chinampas", wrong:["Terraces","Polders","Raised beds"]},
-    {q:"Aztec ruler title:", a:"Tlatoani", wrong:["Sapa Inca","Pharaoh","Shogun"]},
-    {q:"Two calendars included the 260-day sacred calendar:", a:"Tonalpohualli", wrong:["Xiuhpohualli","Haab","Long Count"]},
-    {q:"Main war/sun deity:", a:"Huitzilopochtli", wrong:["Tlaloc","Tezcatlipoca","Quetzalcoatl"]},
-    {q:"Triple Alliance members were Tenochtitlan, Texcoco, and:", a:"Tlacopan", wrong:["Tlaxcala","Cholula","Xochimilco"]},
-    {q:"Merchant class with long-distance trade:", a:"Pochteca", wrong:["Mamluks","Coureurs","Kshatriya"]},
-    {q:"Skull rack in ritual precincts:", a:"Tzompantli", wrong:["Torc","Stela","Ziggurat"]},
-    {q:"Elite warrior orders included:", a:"Jaguar and Eagle Knights", wrong:["Samurai and Ashigaru","Huscarls and Thegns","Immortals and Sparabara"]},
-    {q:"Aztec writing chiefly used:", a:"Pictographs", wrong:["Alphabetic letters","Cuneiform","Runes"]},
-    {q:"Templo Mayor’s twin shrines honored Tlaloc and:", a:"Huitzilopochtli", wrong:["Quetzalcoatl","Xipe Totec","Tezcatlipoca"]},
-    {q:"365-day solar calendar was called the:", a:"Xiuhpohualli", wrong:["Haab","Tzolk’in","Long Count"]},
-    {q:"Common money and luxury beverage ingredient:", a:"Cacao beans", wrong:["Copper ingots","Cowries","Peppercorns"]},
-    {q:"Allied city that helped Cortes against the Aztecs:", a:"Tlaxcala", wrong:["Texcoco","Cholula","Maya of Palenque"]},
-    {q:"Night of Spanish retreat from Tenochtitlan (1520):", a:"La Noche Triste", wrong:["Noche Roja","Sorrow of Cholula","Night of Broken Spears"]},
-    {q:"Causeways and aqueducts served:", a:"Tenochtitlan", wrong:["Uxmal","Coba","Tula"]},
-    {q:"Feeding blades and mirrors were often made from:", a:"Obsidian", wrong:["Bronze","Iron","Steel"]},
-    {q:"Aztec schools for nobles:", a:"Calmecac", wrong:["Telpochcalli","Yachaywasi","Gurukula"]},
-    {q:"Poet-king of Texcoco in the Triple Alliance:", a:"Nezahualcoyotl", wrong:["Moctezuma II","Ahuitzotl","Itzcoatl"]},
-    {q:"Ritual 'flower wars' were fought partly to:", a:"Capture sacrificial prisoners", wrong:["Seize farmland","Win tribute gold","Spread smallpox"]},
-    {q:"Last Aztec emperor executed in 1525:", a:"Cuauhtemoc", wrong:["Moctezuma II","Cuitlahuac","Ahuitzotl"]},
-    {q:"The great market of the capital region was in:", a:"Tlatelolco", wrong:["Texcoco","Atzcapotzalco","Itzapalapa"]},
-    {q:"Aztec empire structure is best described as:", a:"Tributary empire", wrong:["Directly administered provinces","Federal democracy","City-state league only"]},
-    {q:"Codex Mendoza records:", a:"Tribute lists and conquests", wrong:["Zodiac omens","Spanish laws","Maya astronomy"]},
-    {q:"Aztec ballgame name:", a:"Ollamaliztli", wrong:["Ulama","Pok-a-Tok","Pitz"]},
-    {q:"The deity associated with rain and fertility:", a:"Tlaloc", wrong:["Xipe Totec","Tepeyollotl","Xiuhtecuhtli"]},
-    {q:"Cortes first met the Mexica during the reign of:", a:"Moctezuma II", wrong:["Itzcoatl","Nezahualpilli","Axayacatl"]}
-  ],
-  "Ancient Egypt": [
-    {q:"Unifier traditionally credited as first pharaoh:", a:"Narmer (Menes)", wrong:["Djoser","Sneferu","Khufu"]},
-    {q:"Egyptian sacred writing system:", a:"Hieroglyphics", wrong:["Cuneiform","Linear B","Ogham"]},
-    {q:"River lifeline of Egypt:", a:"Nile", wrong:["Euphrates","Jordan","Tigris"]},
-    {q:"Old Kingdom is famed primarily for:", a:"Pyramid building", wrong:["Empire abroad","Monotheism","Sea trade"]},
-    {q:"The Great Sphinx stands at:", a:"Giza", wrong:["Saqqara","Abydos","Dashur"]},
-    {q:"Female pharaoh who built a mortuary temple at Deir el-Bahri:", a:"Hatshepsut", wrong:["Nefertiti","Cleopatra VII","Sobekneferu"]},
-    {q:"Akhenaten promoted worship of:", a:"Aten", wrong:["Amun","Ptah","Osiris"]},
-    {q:"The 'Boy King' whose intact tomb was found in 1922:", a:"Tutankhamun", wrong:["Ramesses II","Seti I","Thutmose III"]},
-    {q:"Who deciphered hieroglyphics using the Rosetta Stone?", a:"Jean-Francois Champollion", wrong:["Schliemann","Carter","Rawlinson"]},
-    {q:"Mummy organs were stored in:", a:"Canopic jars", wrong:["Amphorae","Cysts","Capids"]},
-    {q:"Weighing of the heart was judged against the feather of:", a:"Ma'at", wrong:["Isis","Nun","Sekhmet"]},
-    {q:"Pharaoh’s chief official was the:", a:"Vizier", wrong:["Nomarch","Scribe","High steward"]},
-    {q:"Temple complex with Great Hypostyle Hall:", a:"Karnak", wrong:["Luxor","Edfu","Abu Simbel"]},
-    {q:"Battle between Ramesses II and the Hittites:", a:"Kadesh", wrong:["Megiddo","Thermopylae","Issus"]},
-    {q:"The royal necropolis of the New Kingdom:", a:"Valley of the Kings", wrong:["Mastaba Field","Giza Plateau","Saqqara Ridge"]},
-    {q:"Egypt’s writing on papyrus used a cursive form called:", a:"Hieratic", wrong:["Demotic","Uncial","Runic"]},
-    {q:"Later simplified script widely used for administration:", a:"Demotic", wrong:["Hieratic","Nabataean","Kharosthi"]},
-    {q:"What natural event fertilized fields annually?", a:"Nile inundation", wrong:["Monsoon winds","Desert dew","Mediterranean tides"]},
-    {q:"The double crown (Pschent) symbolized:", a:"Upper and Lower Egypt", wrong:["Sun and Moon","Earth and Sky","Life and Death"]},
-    {q:"Egyptian funerary figurines placed in tombs:", a:"Ushabti", wrong:["Kachina","Tanagra","Pazyryk"]},
-    {q:"The capital during Akhenaten’s reign:", a:"Akhetaten (Amarna)", wrong:["Memphis","Thebes","Pi-Ramesses"]},
-    {q:"The famous rock temples relocted in modern times:", a:"Abu Simbel", wrong:["Edfu","Philae","Kom Ombo"]},
-    {q:"Foreign rulers in the Second Intermediate Period:", a:"Hyksos", wrong:["Sea Peoples","Hittites","Assyrians"]},
-    {q:"Egypt’s main building material for pyramids at Giza:", a:"Limestone", wrong:["Granite only","Basalt","Marble"]},
-    {q:"'Book of the Dead' is best described as:", a:"Funerary spells and guidance", wrong:["Dynastic annals","Epic poetry","Medical papyri only"]},
-    {q:"The god of embalming with a jackal head:", a:"Anubis", wrong:["Sobek","Thoth","Horus"]},
-    {q:"Egyptians tracked time with a calendar of:", a:"365 days", wrong:["354 days","400 days","360 days only"]},
-    {q:"Queen famous for liaisons with Roman leaders:", a:"Cleopatra VII", wrong:["Arsinoe II","Nefertari","Berenice IV"]},
-    {q:"Which pharaoh left numerous colossal statues and battled the Sea Peoples?", a:"Ramesses III", wrong:["Tutankhamun","Djoser","Amenemhat I"]}
-  ],
-  "Ancient Mali": [
-    {q:"Founder of the Mali Empire celebrated in epic tradition:", a:"Sundiata Keita", wrong:["Sunni Ali","Askia Muhammad","Osei Tutu"]},
-    {q:"Emperor famed for lavish pilgrimage in 1324:", a:"Mansa Musa", wrong:["Sundiata","Askia the Great","Idris Alooma"]},
-    {q:"Scholarly city on the Niger:", a:"Timbuktu", wrong:["Carthage","Axum","Kilwa"]},
-    {q:"University center in Timbuktu:", a:"Sankore", wrong:["Nalanda","Al-Azhar","Qarawiyyin"]},
-    {q:"Key Saharan trade goods:", a:"Gold and salt", wrong:["Tea and porcelain","Spices and silk","Furs and amber"]},
-    {q:"River integral to Malian agriculture and trade:", a:"Niger", wrong:["Congo","Zambezi","Senegal only"]},
-    {q:"Title 'Mansa' means:", a:"King or emperor", wrong:["Priest","War chief","Tax collector"]},
-    {q:"Desert salt mines crucial to trade:", a:"Taghaza", wrong:["Wadi Halfa","Zincir","Mopti"]},
-    {q:"Renowned travelers who wrote about Mali:", a:"Ibn Battuta", wrong:["Marco Polo","Ibn Khaldun only","Herodotus"]},
-    {q:"Professional oral historians and musicians:", a:"Griots", wrong:["Skalds","Bards","Gamelan"]},
-    {q:"Important trading town south of Timbuktu:", a:"Djenne", wrong:["Gao","Koumbi Saleh","Marrakesh"]},
-    {q:"Common architectural material in Mali’s mosques:", a:"Mud-brick (adobe)", wrong:["Marble","Granite","Basalt"]},
-    {q:"The empire that rose in Gao after Mali’s decline:", a:"Songhai", wrong:["Kanem-Bornu","Benin","Ashanti"]},
-    {q:"Tuareg seized Timbuktu in:", a:"1433", wrong:["1230","1324","1501"]},
-    {q:"Malian manuscripts were written primarily in:", a:"Arabic", wrong:["Ge'ez","Coptic","Berber Tifinagh"]},
-    {q:"Caravans crossed the Sahara using:", a:"Camels", wrong:["Horses","Oxen","Elephants"]},
-    {q:"The wealthy pilgrimage of Mansa Musa reportedly caused:", a:"Gold inflation in Cairo", wrong:["Famine in Fez","War in Tunis","Floods on the Nile"]},
-    {q:"Earlier West African empire that preceded Mali:", a:"Ghana (Wagadou)", wrong:["Benin","Nri","Kongo"]},
-    {q:"Ethno-linguistic group of Mali’s core elites:", a:"Mande", wrong:["Hausa","Fulani","Tuareg"]},
-    {q:"Traditional harp-lute of griots:", a:"Kora", wrong:["Balafon only","Ngoni","Xalam"]},
-    {q:"A noted mosque in Timbuktu built under Mansa Musa:", a:"Djinguereber Mosque", wrong:["Hassan II Mosque","Kutubiyya","Great Mosque of Damascus"]},
-    {q:"Mali’s political center is sometimes identified as:", a:"Niani", wrong:["Kano","Ifẹ","Timbuktu only"]},
-    {q:"Common unit for weighing gold dust:", a:"Scales with small weights", wrong:["Bronze coins","Silver drachma","Cowry standard only"]},
-    {q:"Merchants linking Maghreb and Sahel were largely:", a:"Berber and Arab traders", wrong:["Phoenicians","Portuguese","Franks"]},
-    {q:"The Sahel is a:", a:"Semi-arid zone south of the Sahara", wrong:["Dense rainforest","High mountain chain","Coastal marsh"]},
-    {q:"Islam spread in Mali primarily through:", a:"Trade and elites", wrong:["Conquest by Turks","Missionaries from India","Chinese fleets"]},
-    {q:"City on the Niger that later became Songhai’s capital:", a:"Gao", wrong:["Accra","Bamako","Agadez"]}
-  ],
-"Scandinavia": [
-    {q:"The Viking raid traditionally marking the era’s start hit:", a:"Lindisfarne (AD 793)", wrong:["Hastings","York","Paris"]},
-    {q:"Merchant/port settlement in Sweden:", a:"Birka", wrong:["York","Ribe","Kaupang"]},
-    {q:"Parliamentary assembly in Iceland:", a:"Althing", wrong:["Storting","Tingvalla","Diet"]},
-    {q:"Warriors serving Byzantine emperors:", a:"Varangian Guard", wrong:["Huscarls","Cataphracts","Immortals"]},
-    {q:"Runic alphabets are known as:", a:"Futhark", wrong:["Ogam","Cyrillic","Glagolitic"]},
-    {q:"Stone monuments with inscriptions:", a:"Runestones", wrong:["Menhirs","Stelae","Dolmens"]},
-    {q:"Which king gave name to Bluetooth technology?", a:"Harald Bluetooth", wrong:["Harald Hardrada","Sweyn Forkbeard","Cnut the Great"]},
-    {q:"Large ship burial discovered in Norway:", a:"Oseberg ship", wrong:["Mary Rose","Vasa","Cutty Sark"]},
-    {q:"Viking rule area in England:", a:"Danelaw", wrong:["Pictland","Mercia","Wessex"]},
-    {q:"Greenland was settled by:", a:"Erik the Red", wrong:["Leif Erikson","Rollo","Harald Fairhair"]},
-    {q:"Norse exploration of North America:", a:"Vinland", wrong:["Markland","Avalon","Hy-Brasil"]},
-    {q:"Leif Erikson is credited with reaching:", a:"North America", wrong:["Sicily","Africa","Persia"]},
-    {q:"Norse myth warrior maidens:", a:"Valkyries", wrong:["Naiads","Furies","Norns only"]},
-    {q:"Epic prose/poetic collections on Norse myth:", a:"Eddas", wrong:["Sagas","Chronicles","Annals"]},
-    {q:"Viking trading town in Denmark:", a:"Ribe", wrong:["York","Bergen","Novgorod only"]},
-    {q:"Which battle (1066) curtailed Viking power in England?", a:"Stamford Bridge", wrong:["Hastings","Maldon","Clontarf"]},
-    {q:"Elite household warriors of Anglo-Scandinavian kings:", a:"Huscarls", wrong:["Samurai","Cataphracts","Jinetes"]},
-    {q:"Norse poets and bards:", a:"Skalds", wrong:["Griots","Troubadours","Minstrels"]},
-    {q:"Typical Viking cargo ship:", a:"Knarr", wrong:["Caravel","Galley","Carrack"]},
-    {q:"Fierce fighters famed for battle frenzy:", a:"Berserkers", wrong:["Condottieri","Janissaries","Hoplites"]},
-    {q:"Royal stones with large runic inscriptions in Denmark:", a:"Jelling stones", wrong:["Rosetta Stone","Behistun","Moabite Stone"]},
-    {q:"Norse world tree is called:", a:"Yggdrasil", wrong:["Asphodel","Bodhi","Irminsul only"]},
-    {q:"Center of Viking trade in Russia heavily linked to Scandinavians:", a:"Novgorod", wrong:["Moscow","Kiev only","Smolensk"]},
-    {q:"Norse thunder god:", a:"Thor", wrong:["Tyr","Loki","Baldur"]},
-    {q:"The Norse term for a legal assembly:", a:"Thing", wrong:["Sejm","Diet","Witenagemot"]},
-    {q:"Vikings collected tribute from England called:", a:"Danegeld", wrong:["Ransom","Scutage","Peter’s Pence"]},
-    {q:"Common myth about helmets that is false:", a:"They had horns", wrong:["They were iron","They were conical","They had nose guards"]},
-    {q:"Later conversion of Scandinavia was mainly to:", a:"Christianity", wrong:["Islam","Buddhism","Zoroastrianism"]},
-    {q:"City captured by Vikings and known as Jorvik:", a:"York", wrong:["London","Canterbury","Winchester"]}
-  ]
-};
+
+  // ---------- QUESTIONS ----------
+  const QUESTIONS = {
+    "Rome": [
+      {q:"Who defeated Mark Antony at the Battle of Actium (31 BC)?", a:"Octavian", wrong:["Julius Caesar","Pompey","Brutus"]},
+      {q:"Which office was held by two leaders annually during the Republic?", a:"Consul", wrong:["Tribune","Praetor","Censor"]},
+      {q:"What was the basic silver coin of the Roman Republic and early Empire?", a:"Denarius", wrong:["Sestertius","Aureus","Solidus"]},
+      {q:"Which engineering work carried water into cities?", a:"Aqueduct", wrong:["Circus","Forum","Thermae"]},
+      {q:"Which emperor built a wall across northern Britannia c. AD 122?", a:"Hadrian", wrong:["Trajan","Nero","Claudius"]},
+      {q:"The famous dome with an oculus in Rome is the:", a:"Pantheon", wrong:["Curia","Colosseum","Basilica Julia"]},
+      {q:"Which legal code first inscribed Roman law in the Republic?", a:"Twelve Tables", wrong:["Corpus Juris Civilis","Magna Carta","Code of Hammurabi"]},
+      {q:"Who crossed the Rubicon in 49 BC?", a:"Julius Caesar", wrong:["Sulla","Crassus","Cicero"]},
+      {q:"Which battle saw three legions lost to Arminius in AD 9?", a:"Teutoburg Forest", wrong:["Pharsalus","Cannae","Zama"]},
+      {q:"Which emperor legalized Christianity in AD 313?", a:"Constantine", wrong:["Diocletian","Valens","Theodosius I"]},
+      {q:"Which Roman road linked Rome to Brundisium?", a:"Via Appia", wrong:["Via Flaminia","Via Aemilia","Via Augusta"]},
+      {q:"Which volcano buried Pompeii and Herculaneum?", a:"Vesuvius", wrong:["Etna","Stromboli","Vulcano"]},
+      {q:"What title was used for the Roman peace from Augustus to Marcus Aurelius?", a:"Pax Romana", wrong:["Pax Deorum","Pax Britannica","Pax Augusta"]},
+      {q:"Which emperor’s column commemorates the Dacian Wars?", a:"Trajan", wrong:["Tiberius","Domitian","Caracalla"]},
+      {q:"What was the large chariot-racing stadium in Rome?", a:"Circus Maximus", wrong:["Theatre of Marcellus","Stadium of Domitian","Forum Boarium"]},
+      {q:"Which general famously used war elephants against Rome?", a:"Hannibal", wrong:["Pyrrhus","Mithridates","Vercingetorix"]},
+      {q:"The year AD 69 is known as the:", a:"Year of the Four Emperors", wrong:["Great Interregnum","Late Republic","Crisis of the Third Century"]},
+      {q:"Which reform split the Empire into a Tetrarchy?", a:"Diocletian’s reforms", wrong:["Gracchan reforms","Marian reforms","Augustan settlement"]},
+      {q:"Which province contained the city of Carthage after 146 BC?", a:"Africa", wrong:["Aegyptus","Asia","Syria"]},
+      {q:"What was a Roman public bath complex called?", a:"Thermae", wrong:["Insula","Domus","Curia"]},
+       {q:"Which hill is traditionally associated with the foundation of Rome by Romulus?", a:"Palatine Hill", wrong:["Capitoline Hill","Aventine Hill","Esquiline Hill"]},
+  {q:"Who was Rome’s legendary last king, overthrown in 509 BC?", a:"Lucius Tarquinius Superbus", wrong:["Servius Tullius","Tarquinius Priscus","Ancus Marcius"]},
+  {q:"What term describes the head of a Roman household with legal authority over the family?", a:"Paterfamilias", wrong:["Pontifex","Praefectus","Primicerius"]},
+  {q:"Which class struggled against patricians in the Conflict of the Orders?", a:"Plebeians", wrong:["Equestrians","Freedmen","Latins"]},
+  {q:"What was the Roman assembly of soldiers by wealth called?", a:"Comitia Centuriata", wrong:["Comitia Tributa","Concilium Plebis","Senatus"]},
+  {q:"Which magistrates were responsible for public games and markets?", a:"Aediles", wrong:["Quaestors","Censors","Praetors"]},
+  {q:"What office oversaw the census and public morals?", a:"Censor", wrong:["Consul","Tribune","Dictator"]},
+  {q:"Extraordinary magistrate appointed in emergencies:", a:"Dictator", wrong:["Princeps","Rex Sacrorum","Interrex"]},
+  {q:"Which council represented only the plebeians?", a:"Concilium Plebis", wrong:["Comitia Centuriata","Comitia Curiata","Comitia Tributa"]},
+  {q:"What law code compiled under Justinian later preserved Roman law?", a:"Corpus Juris Civilis", wrong:["Lex Hortensia","Lex Canuleia","Lex Aquilia"]},
+  {q:"Latin phrase meaning 'I forbid', used by tribunes:", a:"Veto", wrong:["Edictum","Senatus Consultum","Mos Maiorum"]},
+  {q:"Traditional customs and ancestral precedent in Roman society:", a:"Mos Maiorum", wrong:["Ius Gentium","Ius Civile","Foedus"]},
+  {q:"Which reform allowed marriage between patricians and plebeians?", a:"Lex Canuleia", wrong:["Lex Hortensia","Lex Licinia Sextia","Lex Claudia"]},
+  {q:"What 287 BC law made plebiscites binding on all Romans?", a:"Lex Hortensia", wrong:["Lex Valeria","Lex Calpurnia","Lex Julia"]},
+  {q:"Who was the Carthaginian general defeated at Zama in 202 BC?", a:"Hannibal", wrong:["Hasdrubal","Hamilcar","Maharbal"]},
+  {q:"Which Roman general defeated Hannibal at Zama?", a:"Scipio Africanus", wrong:["Fabius Maximus","Marcellus","Sulla"]},
+  {q:"Battle where Hannibal annihilated a Roman army in 216 BC:", a:"Cannae", wrong:["Trebia","Lake Trasimene","Metaurus"]},
+  {q:"Which Roman tactic emphasized delay against Hannibal?", a:"Fabian strategy", wrong:["Maniple charge","Testudo","Double envelopment"]},
+  {q:"What formation protected legionaries from missiles with shields overhead?", a:"Testudo", wrong:["Phalanx","Wedge","Cantabrian circle"]},
+  {q:"Flexible tactical unit of the mid-Republican army:", a:"Maniple", wrong:["Cohort","Century","Turma"]},
+  {q:"Later imperial tactical unit replacing the maniple:", a:"Cohort", wrong:["Ala","Contubernium","Decury"]},
+  {q:"Term for a tent group of eight soldiers:", a:"Contubernium", wrong:["Manipulus","Cuneus","Decuria"]},
+  {q:"Auxiliary cavalry unit in Roman service:", a:"Ala", wrong:["Legio","Cohors Praetoria","Triarii"]},
+  {q:"Which social class formed Rome’s wealthy business and cavalry order?", a:"Equestrians", wrong:["Plebeians","Patricians","Freedmen"]},
+  {q:"Who reformed army recruitment by allowing landless citizens to enlist?", a:"Gaius Marius", wrong:["Sulla","Pompey","Cato the Elder"]},
+  {q:"Sulla posted lists of enemies to be killed and property seized, called:", a:"Proscriptions", wrong:["Confiscations","Edicts","Interdictions"]},
+  {q:"Triumvir who dominated politics with Caesar and Crassus:", a:"Pompey", wrong:["Cicero","Cato","Catiline"]},
+  {q:"Which conspiracy did Cicero suppress as consul in 63 BC?", a:"Catilinarian Conspiracy", wrong:["Social War plot","Spartacan Revolt","Batavian Revolt"]},
+  {q:"Caesar’s decisive victory over Pompey occurred at:", a:"Pharsalus", wrong:["Philippi","Actium","Carrhae"]},
+  {q:"Crassus was disastrously defeated by Parthia at:", a:"Carrhae", wrong:["Pharsalus","Alesia","Naulochus"]},
+  {q:"Vercingetorix surrendered to Caesar after the siege of:", a:"Alesia", wrong:["Gergovia","Bibracte","Massilia"]},
+  {q:"Octavian and Antony defeated Brutus and Cassius at:", a:"Philippi", wrong:["Actium","Mutina","Perusia"]},
+  {q:"Official residence and administrative center on the Palatine under emperors:", a:"Domus Augusta (Palatine palace)", wrong:["Praetorium","Curia Julia","Basilica Aemilia"]},
+  {q:"Name for the Emperor as 'first citizen' in the early Principate:", a:"Princeps", wrong:["Imperator","Augustus","Dominus"]},
+  {q:"Augustus’ program to glorify Rome through building:", a:"Res Gestae boasts of 'city of marble'", wrong:["Lex Julia","Alimenta","Annona"]},
+  {q:"Imperial household troops and bodyguard unit:", a:"Praetorian Guard", wrong:["Urban Cohorts","Legio I Italica","Vigiles"]},
+  {q:"Firefighters and night watch in Rome:", a:"Vigiles", wrong:["Praetorians","Equites","Triarii"]},
+  {q:"Grain supply to the city of Rome managed as the:", a:"Annona", wrong:["Aerarium","Curia","Alimenta"]},
+  {q:"Public welfare scheme for children under the early Empire:", a:"Alimenta", wrong:["Tesserae Nummariae","Annona","Peregrina"]},
+  {q:"Which emperor completed the Colosseum and opened it with games?", a:"Titus", wrong:["Vespasian","Domitian","Nerva"]},
+  {q:"Massive forum and markets complex built by an emperor conqueror of Dacia:", a:"Trajan’s Forum", wrong:["Forum of Caesar","Forum of Augustus","Forum of Nerva"]},
+  {q:"Which emperor reached Rome’s greatest territorial extent c. AD 117?", a:"Trajan", wrong:["Hadrian","Marcus Aurelius","Septimius Severus"]},
+  {q:"Province annexed by Trajan but abandoned by Hadrian:", a:"Mesopotamia", wrong:["Dacia","Arabia","Britannia"]},
+  {q:"Stone frontier system across northern Britain:", a:"Hadrian’s Wall", wrong:["Antonine Wall","Saxon Shore","Limes Arabicus"]},
+  {q:"Later turf wall temporarily advanced the frontier in Britain:", a:"Antonine Wall", wrong:["Hadrian’s Wall","Stanegate","Fosse Way"]},
+  {q:"Marcus Aurelius’ co-emperor and adoptive brother:", a:"Lucius Verus", wrong:["Commodus","Nerva","Caracalla"]},
+  {q:"Which emperor ended the Julio-Claudian dynasty in AD 68?", a:"Nero", wrong:["Claudius","Caligula","Tiberius"]},
+  {q:"What crisis followed Nero’s death, resolved by Vespasian’s rise?", a:"Year of the Four Emperors", wrong:["Third-Century Crisis","Social War","Second Triumvirate"]},
+  {q:"Emperor known for the massive baths on the Esquiline:", a:"Trajan (Baths of Trajan)", wrong:["Caracalla","Diocletian","Nero"]},
+  {q:"Giant bath complex south of the Aventine named for which emperor?", a:"Caracalla", wrong:["Nero","Trajan","Severus Alexander"]},
+  {q:"Largest imperial bath complex built near the Porta Maggiore:", a:"Baths of Diocletian", wrong:["Baths of Titus","Baths of Agrippa","Baths of Nero"]},
+  {q:"Which temple on the Palatine housed the eternal hearth of Rome?", a:"House/Temple of Vesta", wrong:["Temple of Janus","Temple of Saturn","Ara Pacis"]},
+  {q:"Priestesses who tended the sacred fire:", a:"Vestal Virgins", wrong:["Augurs","Haruspices","Flamines"]},
+  {q:"Priestly college that interpreted bird signs:", a:"Augurs", wrong:["Pontifices","Haruspices","Salii"]},
+  {q:"Etruscan-derived priests who examined animal entrails:", a:"Haruspices", wrong:["Augurs","Flamines","Arval Brothers"]},
+  {q:"Chief priest of the Roman state religion:", a:"Pontifex Maximus", wrong:["Rex Sacrorum","Flamen Dialis","Augur Maximus"]},
+  {q:"Altar celebrating Augustus’ peace settlement in 13–9 BC:", a:"Ara Pacis", wrong:["Arch of Titus","Arch of Septimius Severus","Column of Marcus Aurelius"]},
+  {q:"Arch commemorating the Jewish War and the sack of Jerusalem:", a:"Arch of Titus", wrong:["Arch of Constantine","Arch of Septimius Severus","Porta Nigra"]},
+  {q:"Which emperor issued the Constitutio Antoniniana granting citizenship widely in AD 212?", a:"Caracalla", wrong:["Severus Alexander","Septimius Severus","Aurelian"]},
+  {q:"Third-century emperor who restored Rome’s walls after crises:", a:"Aurelian", wrong:["Gallienus","Philip the Arab","Maximinus Thrax"]},
+  {q:"Massive circuit built to protect Rome in the 270s:", a:"Aurelian Walls", wrong:["Servian Wall","Hadrianic Rampart","Pomerial Fence"]},
+  {q:"Which battle in AD 378 saw Goths crush the Romans and kill Valens?", a:"Adrianople", wrong:["Edessa","Chalons","Milvian Bridge"]},
+  {q:"Constantine’s 312 victory that preceded his conversion experience:", a:"Milvian Bridge", wrong:["Adrianople","Ravenna","Campus Martius"]},
+  {q:"Edict ending persecution and legalizing Christianity:", a:"Edict of Milan", wrong:["Edict of Thessalonica","Edict of Caracalla","Rescript of Hadrian"]},
+  {q:"Council convened by Constantine to address Arianism:", a:"Council of Nicaea", wrong:["Council of Chalcedon","Council of Ephesus","Synod of Arles"]},
+  {q:"Which emperor divided the Empire into East and West administrative halves more formally?", a:"Diocletian", wrong:["Constantine","Theodosius I","Valentinian I"]},
+  {q:"Late Roman mobile field army units were called:", a:"Comitatenses", wrong:["Limitanei","Praetorians","Auxilia"]},
+  {q:"Frontier garrison troops along the borders were known as:", a:"Limitanei", wrong:["Comitatenses","Foederati","Palatini"]},
+  {q:"Barbarian allies settled within the Empire under treaty:", a:"Foederati", wrong:["Laeti","Socii","Contubernales"]},
+  {q:"What 380 edict made Nicene Christianity the state religion?", a:"Edict of Thessalonica", wrong:["Edict of Milan","Rescript of Toleration","Capitularies"]},
+  {q:"Which emperor famously tried to restore pagan cults in the 360s?", a:"Julian (the Apostate)", wrong:["Valens","Constantius II","Theodosius II"]},
+  {q:"Which emperor moved the capital to Constantinople in AD 330?", a:"Constantine I", wrong:["Theodosius I","Arcadius","Diocletian"]},
+  {q:"Which catastrophe destroyed much of Rome in AD 64?", a:"Great Fire of Rome", wrong:["Antonine Plague","Plague of Cyprian","Sack of 410"]},
+  {q:"Which tribe famously sacked Rome in AD 410 under Alaric?", a:"Visigoths", wrong:["Vandals","Huns","Ostrogoths"]},
+  {q:"Which people sacked Rome in AD 455 under Geiseric?", a:"Vandals", wrong:["Visigoths","Huns","Lombards"]},
+  {q:"Who deposed Romulus Augustulus in 476, ending the Western Empire?", a:"Odoacer", wrong:["Theodoric","Ricimer","Stilicho"]},
+  {q:"Eastern Roman (Byzantine) emperor who codified Roman law:", a:"Justinian I", wrong:["Heraclius","Anastasius","Leo I"]},
+  {q:"General of Justinian who reconquered parts of the West:", a:"Belisarius", wrong:["Narses","Aetius","Stilicho"]},
+  {q:"Which Roman statesman halted Attila at the Catalaunian Plains (with allies)?", a:"Aetius", wrong:["Stilicho","Ricimer","Orestes"]},
+  {q:"Which province became a key source of grain for Rome after 30 BC?", a:"Aegyptus", wrong:["Hispania","Sicilia","Asia"]},
+  {q:"Island of Sicily’s city famed for granaries and early wars with Carthage:", a:"Syracuse", wrong:["Messana","Lilybaeum","Agrigentum"]},
+  {q:"Province where Boudica led a revolt against Rome in AD 60/61:", a:"Britannia", wrong:["Gallia Narbonensis","Baetica","Pannonia"]},
+  {q:"Gaulish leader defeated by Caesar at Alesia:", a:"Vercingetorix", wrong:["Ariovistus","Ambiorix","Vindex"]},
+      {q:"Which battle ended the Second Punic War?", a:"Zama", wrong:["Cannae","Lake Trasimene","Metaurus"]},
+      {q:"Which office could veto actions to protect plebeians?", a:"Tribune of the Plebs", wrong:["Aedile","Quaestor","Pontifex Maximus"]},
+      {q:"Which emperor built a massive defensive line in Germany called the Limes?", a:"Domitian", wrong:["Caligula","Otho","Nerva"]},
+      {q:"Which philosopher-emperor wrote the 'Meditations'?", a:"Marcus Aurelius", wrong:["Seneca","Cicero","Pliny the Younger"]},
+      {q:"Which city became capital of the Eastern Roman Empire?", a:"Constantinople", wrong:["Ravenna","Antioch","Alexandria"]},
+      {q:"Which revolt led by Spartacus troubled Rome in 73–71 BC?", a:"Third Servile War", wrong:["Catilinarian Conspiracy","Social War","Jugurthine War"]},
+      {q:"Which emperor famously 'fiddled' during the Great Fire (legend)?", a:"Nero", wrong:["Claudius","Titus","Commodus"]},
+      {q:"What was Rome’s central political and commercial area?", a:"Forum Romanum", wrong:["Campus Martius","Palatine","Velabrum"]},
+      {q:"Which calendar reform created the Julian calendar?", a:"Caesar’s reform", wrong:["Sullan reform","Flavian reform","Antonine reform"]}
+    ],
+    "Ancient China": [
+      {q:"Which concept justified dynastic change?", a:"Mandate of Heaven", wrong:["Covenant of Kings","Divine Right","Peace of Heaven"]},
+      {q:"Who unified China in 221 BC?", a:"Qin Shi Huang", wrong:["Han Wudi","Liu Bang","Zhao Kuangyin"]},
+      {q:"Which dynasty established long-distance Silk Road trade?", a:"Han", wrong:["Qin","Tang","Song"]},
+      {q:"Who wrote 'The Art of War'?", a:"Sun Tzu", wrong:["Mozi","Mencius","Xunzi"]},
+      {q:"Which philosophy emphasizes harmony with the Dao?", a:"Daoism", wrong:["Legalism","Mohism","Confucianism"]},
+      {q:"Which project linked the Yellow and Yangtze rivers?", a:"Grand Canal", wrong:["Lingqu Canal","Dujiangyan","Great Wall moat"]},
+      {q:"Movable-type printing was pioneered by:", a:"Bi Sheng", wrong:["Cai Lun","Zhang Heng","Shen Kuo"]},
+      {q:"Paper was invented during which dynasty?", a:"Han", wrong:["Tang","Song","Yuan"]},
+      {q:"Gunpowder was first formulated by:", a:"Tang alchemists", wrong:["Qin legions","Han scholars","Ming sailors"]},
+      {q:"Which compass innovation aided navigation?", a:"Magnetized needle", wrong:["Sextant","Astrolabe","Chronometer"]},
+      {q:"Which emperor sent Zheng He on maritime voyages?", a:"Yongle (Ming)", wrong:["Hongwu","Kangxi","Qianlong"]},
+      {q:"Oracle bones are associated with which dynasty?", a:"Shang", wrong:["Zhou","Qin","Han"]},
+      {q:"What did the civil service exams primarily test?", a:"Confucian classics", wrong:["Military science","Mathematics","Astronomy"]},
+      {q:"Which ideology underpinned Qin administration?", a:"Legalism", wrong:["Confucianism","Daoism","Mohism"]},
+      {q:"What is the name for fine Chinese pottery exported widely?", a:"Porcelain", wrong:["Earthenware","Faience","Stoneware"]},
+      {q:"Which dynasty saw the rise of paper money?", a:"Song", wrong:["Han","Tang","Qing"]},
+      {q:"Which city was capital under the Ming and home to the Forbidden City?", a:"Beijing", wrong:["Nanjing","Luoyang","Chang’an"]},
+      {q:"What hardy rice boosted Song agriculture?", a:"Champa rice", wrong:["Sticky rice","Basmati","Red rice"]},
+      {q:"The Great Wall we see largely reflects which dynasty’s work?", a:"Ming", wrong:["Qin","Han","Tang"]},
+      {q:"Who compiled the 'Records of the Grand Historian'?", a:"Sima Qian", wrong:["Ban Gu","Zuo Qiuming","Sima Guang"]},
+      {q:"Zhang Heng is credited with inventing a:", a:"Seismograph", wrong:["Steam engine","Gun lock","Pendulum clock"]},
+      {q:"The Warring States period preceded which unifying dynasty?", a:"Qin", wrong:["Han","Sui","Tang"]},
+      {q:"The tribute system centered on:", a:"Acknowledging Chinese supremacy", wrong:["Equal treaties","Colonial rule","Religious conversion"]},
+      {q:"Which texts codified moral conduct and filial piety?", a:"Analects", wrong:["Daodejing","Book of Changes","Zhuangzi"]},
+      {q:"The 'Four Great Inventions' include printing, paper, compass and:", a:"Gunpowder", wrong:["Steelmaking","Sails","Algebra"]},
+      {q:"Who was the only female emperor in Chinese history?", a:"Wu Zetian", wrong:["Empress Dowager Cixi","Empress Lü","Lady Hao"]},
+      {q:"Kublai Khan founded which dynasty in China?", a:"Yuan", wrong:["Liao","Song","Qing"]},
+      {q:"Which canal system improved northern grain transport?", a:"Grand Canal", wrong:["Lingqu","Baiyang","Dujiangyan"]},
+      {q:"Which spiritual system teaches the Way (Dao) and naturalness?", a:"Daoism", wrong:["Shinto","Buddhism","Zoroastrianism"]}
+    ],
+    "Ancient Inca": [
+      {q:"The Inca ruler’s title was:", a:"Sapa Inca", wrong:["Tlatoani","Shah","Pharaoh"]},
+      {q:"Inca knotted cords used for records were called:", a:"Quipu", wrong:["Codex","Runes","Script"]},
+      {q:"The high fortress above Cusco is:", a:"Sacsayhuaman", wrong:["Tiwanaku","Chan Chan","Chichen Itza"]},
+      {q:"Labor tax required of communities:", a:"Mit'a", wrong:["Corvee","Fealty","Gabella"]},
+      {q:"Sun temple at Cusco:", a:"Coricancha", wrong:["Templo Mayor","Temple of Karnak","Qal'at"]},
+      {q:"Inca relay messengers:", a:"Chasquis", wrong:["Coureurs","Heralds","Envoys"]},
+      {q:"Andean terrace farming term:", a:"Andenes", wrong:["Chinampas","Polders","Paddies"]},
+      {q:"Sacred landscape features were called:", a:"Huacas", wrong:["Stelae","Ziggurats","Kivas"]},
+      {q:"Core social unit:", a:"Ayllu", wrong:["Clan","Phratry","Castellany"]},
+      {q:"The Inca road network is known as:", a:"Qhapaq Nan", wrong:["Silk Road","Royal Road","Amber Road"]},
+      {q:"Which animals were vital pack animals?", a:"Llamas", wrong:["Oxen","Horses","Camels"]},
+      {q:"Freeze-dried potatoes were called:", a:"Chuno", wrong:["Taro","Poi","Gari"]},
+      {q:"The Inca used no:", a:"Load-bearing wheeled vehicles", wrong:["Bridges","Farming tools","Textiles"]},
+      {q:"Machu Picchu likely served as a:", a:"Royal estate", wrong:["Capital city","Fortified border","Copper mine"]},
+      {q:"Conquistador who captured Atahualpa:", a:"Francisco Pizarro", wrong:["Hernan Cortes","Diego de Almagro","Vasco Nunez"]},
+      {q:"Battle where Atahualpa was seized:", a:"Cajamarca", wrong:["Cuzco","Sacsayhuaman","Quito"]},
+      {q:"Storehouses for food and goods:", a:"Qollqas", wrong:["Tambos","Haciendas","Longhouses"]},
+      {q:"Way-stations along roads:", a:"Tambos", wrong:["Caravanserai","Mutras","Posadas"]},
+      {q:"Principal sun god:", a:"Inti", wrong:["Viracocha","Quetzalcoatl","Huitzilopochtli"]},
+      {q:"Architectural hallmark:", a:"Precisely cut ashlar masonry", wrong:["Mudbrick vaulting","Flying buttresses","Keystone arches"]},
+      {q:"Cusco’s plan is traditionally likened to a:", a:"Puma", wrong:["Condor","Snake","Llama"]},
+      {q:"Who expanded the empire dramatically in the 15th century?", a:"Pachacuti", wrong:["Moctezuma I","Huayna Capac","Tupac Yupanqui"]},
+      {q:"Inca farming elevated fields and canals aimed to:", a:"Manage altitude and microclimates", wrong:["Grow rice paddies","Breed horses","Produce olives"]},
+      {q:"Inca decimal administration grouped families by:", a:"Tens, hundreds, thousands", wrong:["Sevens","Dozens","Scores"]},
+      {q:"After conquest, a major resistance leader was:", a:"Manco Inca", wrong:["Cuauhtemoc","Atlatl Cauac","Tecumseh"]},
+      {q:"The Inca capital city:", a:"Cusco", wrong:["Tenochtitlan","Lima","La Paz"]},
+      {q:"Language widely used in the empire:", a:"Quechua", wrong:["Nahuatl","Aymara","Mapudungun"]}
+    ],
+    "Ancient Aztec": [
+      {q:"Aztec capital on Lake Texcoco:", a:"Tenochtitlan", wrong:["Texcoco","Tlaxcala","Teotihuacan"]},
+      {q:"Floating garden agriculture:", a:"Chinampas", wrong:["Terraces","Polders","Raised beds"]},
+      {q:"Aztec ruler title:", a:"Tlatoani", wrong:["Sapa Inca","Pharaoh","Shogun"]},
+      {q:"Two calendars included the 260-day sacred calendar:", a:"Tonalpohualli", wrong:["Xiuhpohualli","Haab","Long Count"]},
+      {q:"Main war/sun deity:", a:"Huitzilopochtli", wrong:["Tlaloc","Tezcatlipoca","Quetzalcoatl"]},
+      {q:"Triple Alliance members were Tenochtitlan, Texcoco, and:", a:"Tlacopan", wrong:["Tlaxcala","Cholula","Xochimilco"]},
+      {q:"Merchant class with long-distance trade:", a:"Pochteca", wrong:["Mamluks","Coureurs","Kshatriya"]},
+      {q:"Skull rack in ritual precincts:", a:"Tzompantli", wrong:["Torc","Stela","Ziggurat"]},
+      {q:"Elite warrior orders included:", a:"Jaguar and Eagle Knights", wrong:["Samurai and Ashigaru","Huscarls and Thegns","Immortals and Sparabara"]},
+      {q:"Aztec writing chiefly used:", a:"Pictographs", wrong:["Alphabetic letters","Cuneiform","Runes"]},
+      {q:"Templo Mayor’s twin shrines honored Tlaloc and:", a:"Huitzilopochtli", wrong:["Quetzalcoatl","Xipe Totec","Tezcatlipoca"]},
+      {q:"365-day solar calendar was called the:", a:"Xiuhpohualli", wrong:["Haab","Tzolk’in","Long Count"]},
+      {q:"Common money and luxury beverage ingredient:", a:"Cacao beans", wrong:["Copper ingots","Cowries","Peppercorns"]},
+      {q:"Allied city that helped Cortes against the Aztecs:", a:"Tlaxcala", wrong:["Texcoco","Cholula","Maya of Palenque"]},
+      {q:"Night of Spanish retreat from Tenochtitlan (1520):", a:"La Noche Triste", wrong:["Noche Roja","Sorrow of Cholula","Night of Broken Spears"]},
+      {q:"Causeways and aqueducts served:", a:"Tenochtitlan", wrong:["Uxmal","Coba","Tula"]},
+      {q:"Feeding blades and mirrors were often made from:", a:"Obsidian", wrong:["Bronze","Iron","Steel"]},
+      {q:"Aztec schools for nobles:", a:"Calmecac", wrong:["Telpochcalli","Yachaywasi","Gurukula"]},
+      {q:"Poet-king of Texcoco in the Triple Alliance:", a:"Nezahualcoyotl", wrong:["Moctezuma II","Ahuitzotl","Itzcoatl"]},
+      {q:"Ritual 'flower wars' were fought partly to:", a:"Capture sacrificial prisoners", wrong:["Seize farmland","Win tribute gold","Spread smallpox"]},
+      {q:"Last Aztec emperor executed in 1525:", a:"Cuauhtemoc", wrong:["Moctezuma II","Cuitlahuac","Ahuitzotl"]},
+      {q:"The great market of the capital region was in:", a:"Tlatelolco", wrong:["Texcoco","Atzcapotzalco","Itzapalapa"]},
+      {q:"Aztec empire structure is best described as:", a:"Tributary empire", wrong:["Directly administered provinces","Federal democracy","City-state league only"]},
+      {q:"Codex Mendoza records:", a:"Tribute lists and conquests", wrong:["Zodiac omens","Spanish laws","Maya astronomy"]},
+      {q:"Aztec ballgame name:", a:"Ollamaliztli", wrong:["Ulama","Pok-a-Tok","Pitz"]},
+      {q:"The deity associated with rain and fertility:", a:"Tlaloc", wrong:["Xipe Totec","Tepeyollotl","Xiuhtecuhtli"]},
+      {q:"Cortes first met the Mexica during the reign of:", a:"Moctezuma II", wrong:["Itzcoatl","Nezahualpilli","Axayacatl"]}
+    ],
+    "Ancient Egypt": [
+      {q:"Unifier traditionally credited as first pharaoh:", a:"Narmer (Menes)", wrong:["Djoser","Sneferu","Khufu"]},
+      {q:"Egyptian sacred writing system:", a:"Hieroglyphics", wrong:["Cuneiform","Linear B","Ogham"]},
+      {q:"River lifeline of Egypt:", a:"Nile", wrong:["Euphrates","Jordan","Tigris"]},
+      {q:"Old Kingdom is famed primarily for:", a:"Pyramid building", wrong:["Empire abroad","Monotheism","Sea trade"]},
+      {q:"The Great Sphinx stands at:", a:"Giza", wrong:["Saqqara","Abydos","Dashur"]},
+      {q:"Female pharaoh who built a mortuary temple at Deir el-Bahri:", a:"Hatshepsut", wrong:["Nefertiti","Cleopatra VII","Sobekneferu"]},
+      {q:"Akhenaten promoted worship of:", a:"Aten", wrong:["Amun","Ptah","Osiris"]},
+      {q:"The 'Boy King' whose intact tomb was found in 1922:", a:"Tutankhamun", wrong:["Ramesses II","Seti I","Thutmose III"]},
+      {q:"Who deciphered hieroglyphics using the Rosetta Stone?", a:"Jean-Francois Champollion", wrong:["Schliemann","Carter","Rawlinson"]},
+      {q:"Mummy organs were stored in:", a:"Canopic jars", wrong:["Amphorae","Cysts","Capids"]},
+      {q:"Weighing of the heart was judged against the feather of:", a:"Ma'at", wrong:["Isis","Nun","Sekhmet"]},
+      {q:"Pharaoh’s chief official was the:", a:"Vizier", wrong:["Nomarch","Scribe","High steward"]},
+      {q:"Temple complex with Great Hypostyle Hall:", a:"Karnak", wrong:["Luxor","Edfu","Abu Simbel"]},
+      {q:"Battle between Ramesses II and the Hittites:", a:"Kadesh", wrong:["Megiddo","Thermopylae","Issus"]},
+      {q:"The royal necropolis of the New Kingdom:", a:"Valley of the Kings", wrong:["Mastaba Field","Giza Plateau","Saqqara Ridge"]},
+      {q:"Egypt’s writing on papyrus used a cursive form called:", a:"Hieratic", wrong:["Demotic","Uncial","Runic"]},
+      {q:"Later simplified script widely used for administration:", a:"Demotic", wrong:["Hieratic","Nabataean","Kharosthi"]},
+      {q:"What natural event fertilized fields annually?", a:"Nile inundation", wrong:["Monsoon winds","Desert dew","Mediterranean tides"]},
+      {q:"The double crown (Pschent) symbolized:", a:"Upper and Lower Egypt", wrong:["Sun and Moon","Earth and Sky","Life and Death"]},
+      {q:"Egyptian funerary figurines placed in tombs:", a:"Ushabti", wrong:["Kachina","Tanagra","Pazyryk"]},
+      {q:"The capital during Akhenaten’s reign:", a:"Akhetaten (Amarna)", wrong:["Memphis","Thebes","Pi-Ramesses"]},
+      {q:"The famous rock temples relocted in modern times:", a:"Abu Simbel", wrong:["Edfu","Philae","Kom Ombo"]},
+      {q:"Foreign rulers in the Second Intermediate Period:", a:"Hyksos", wrong:["Sea Peoples","Hittites","Assyrians"]},
+      {q:"Egypt’s main building material for pyramids at Giza:", a:"Limestone", wrong:["Granite only","Basalt","Marble"]},
+      {q:"'Book of the Dead' is best described as:", a:"Funerary spells and guidance", wrong:["Dynastic annals","Epic poetry","Medical papyri only"]},
+      {q:"The god of embalming with a jackal head:", a:"Anubis", wrong:["Sobek","Thoth","Horus"]},
+      {q:"Egyptians tracked time with a calendar of:", a:"365 days", wrong:["354 days","400 days","360 days only"]},
+      {q:"Queen famous for liaisons with Roman leaders:", a:"Cleopatra VII", wrong:["Arsinoe II","Nefertari","Berenice IV"]},
+      {q:"Which pharaoh left numerous colossal statues and battled the Sea Peoples?", a:"Ramesses III", wrong:["Tutankhamun","Djoser","Amenemhat I"]}
+    ],
+    "Ancient Mali": [
+      {q:"Founder of the Mali Empire celebrated in epic tradition:", a:"Sundiata Keita", wrong:["Sunni Ali","Askia Muhammad","Osei Tutu"]},
+      {q:"Emperor famed for lavish pilgrimage in 1324:", a:"Mansa Musa", wrong:["Sundiata","Askia the Great","Idris Alooma"]},
+      {q:"Scholarly city on the Niger:", a:"Timbuktu", wrong:["Carthage","Axum","Kilwa"]},
+      {q:"University center in Timbuktu:", a:"Sankore", wrong:["Nalanda","Al-Azhar","Qarawiyyin"]},
+      {q:"Key Saharan trade goods:", a:"Gold and salt", wrong:["Tea and porcelain","Spices and silk","Furs and amber"]},
+      {q:"River integral to Malian agriculture and trade:", a:"Niger", wrong:["Congo","Zambezi","Senegal only"]},
+      {q:"Title 'Mansa' means:", a:"King or emperor", wrong:["Priest","War chief","Tax collector"]},
+      {q:"Desert salt mines crucial to trade:", a:"Taghaza", wrong:["Wadi Halfa","Zincir","Mopti"]},
+      {q:"Renowned travelers who wrote about Mali:", a:"Ibn Battuta", wrong:["Marco Polo","Ibn Khaldun only","Herodotus"]},
+      {q:"Professional oral historians and musicians:", a:"Griots", wrong:["Skalds","Bards","Gamelan"]},
+      {q:"Important trading town south of Timbuktu:", a:"Djenne", wrong:["Gao","Koumbi Saleh","Marrakesh"]},
+      {q:"Common architectural material in Mali’s mosques:", a:"Mud-brick (adobe)", wrong:["Marble","Granite","Basalt"]},
+      {q:"The empire that rose in Gao after Mali’s decline:", a:"Songhai", wrong:["Kanem-Bornu","Benin","Ashanti"]},
+      {q:"Tuareg seized Timbuktu in:", a:"1433", wrong:["1230","1324","1501"]},
+      {q:"Malian manuscripts were written primarily in:", a:"Arabic", wrong:["Ge'ez","Coptic","Berber Tifinagh"]},
+      {q:"Caravans crossed the Sahara using:", a:"Camels", wrong:["Horses","Oxen","Elephants"]},
+      {q:"The wealthy pilgrimage of Mansa Musa reportedly caused:", a:"Gold inflation in Cairo", wrong:["Famine in Fez","War in Tunis","Floods on the Nile"]},
+      {q:"Earlier West African empire that preceded Mali:", a:"Ghana (Wagadou)", wrong:["Benin","Nri","Kongo"]},
+      {q:"Ethno-linguistic group of Mali’s core elites:", a:"Mande", wrong:["Hausa","Fulani","Tuareg"]},
+      {q:"Traditional harp-lute of griots:", a:"Kora", wrong:["Balafon only","Ngoni","Xalam"]},
+      {q:"A noted mosque in Timbuktu built under Mansa Musa:", a:"Djinguereber Mosque", wrong:["Hassan II Mosque","Kutubiyya","Great Mosque of Damascus"]},
+      {q:"Mali’s political center is sometimes identified as:", a:"Niani", wrong:["Kano","Ifẹ","Timbuktu only"]},
+      {q:"Common unit for weighing gold dust:", a:"Scales with small weights", wrong:["Bronze coins","Silver drachma","Cowry standard only"]},
+      {q:"Merchants linking Maghreb and Sahel were largely:", a:"Berber and Arab traders", wrong:["Phoenicians","Portuguese","Franks"]},
+      {q:"The Sahel is a:", a:"Semi-arid zone south of the Sahara", wrong:["Dense rainforest","High mountain chain","Coastal marsh"]},
+      {q:"Islam spread in Mali primarily through:", a:"Trade and elites", wrong:["Conquest by Turks","Missionaries from India","Chinese fleets"]},
+      {q:"City on the Niger that later became Songhai’s capital:", a:"Gao", wrong:["Accra","Bamako","Agadez"]}
+    ],
+    "Scandinavia": [
+      {q:"The Viking raid traditionally marking the era’s start hit:", a:"Lindisfarne (AD 793)", wrong:["Hastings","York","Paris"]},
+      {q:"Merchant/port settlement in Sweden:", a:"Birka", wrong:["York","Ribe","Kaupang"]},
+      {q:"Parliamentary assembly in Iceland:", a:"Althing", wrong:["Storting","Tingvalla","Diet"]},
+      {q:"Warriors serving Byzantine emperors:", a:"Varangian Guard", wrong:["Huscarls","Cataphracts","Immortals"]},
+      {q:"Runic alphabets are known as:", a:"Futhark", wrong:["Ogam","Cyrillic","Glagolitic"]},
+      {q:"Stone monuments with inscriptions:", a:"Runestones", wrong:["Menhirs","Stelae","Dolmens"]},
+      {q:"Which king gave name to Bluetooth technology?", a:"Harald Bluetooth", wrong:["Harald Hardrada","Sweyn Forkbeard","Cnut the Great"]},
+      {q:"Large ship burial discovered in Norway:", a:"Oseberg ship", wrong:["Mary Rose","Vasa","Cutty Sark"]},
+      {q:"Viking rule area in England:", a:"Danelaw", wrong:["Pictland","Mercia","Wessex"]},
+       {q:"Danish king credited with uniting Denmark and converting it to Christianity:", a:"Harald Bluetooth", wrong:["Harald Fairhair","Magnus the Good","Eric Bloodaxe"]},
+  {q:"Founder of a North Sea empire ruling England, Denmark, and Norway:", a:"Cnut the Great", wrong:["Sweyn Forkbeard","Harald Hardrada","Olaf Tryggvason"]},
+  {q:"Norwegian king killed at Stamford Bridge in 1066:", a:"Harald Hardrada", wrong:["Harald Fairhair","Olaf II Haraldsson","Haakon the Good"]},
+  {q:"First king traditionally credited with unifying Norway:", a:"Harald Fairhair", wrong:["Olaf Tryggvason","Harald Bluetooth","Magnus Barefoot"]},
+  {q:"Danish ruler who briefly became King of England in 1013:", a:"Sweyn Forkbeard", wrong:["Harthacnut","Harald Bluetooth","Gorm the Old"]},
+  {q:"English victory in 878 that checked Viking advances of the Great Heathen Army:", a:"Edington", wrong:["Maldon","Brunanburh","Clontarf"]},
+  {q:"Battle in 991 where Anglo-Saxons were defeated by Viking raiders:", a:"Maldon", wrong:["Clontarf","Edington","Hastings"]},
+  {q:"Irish battle in 1014 that broke Norse power in Dublin:", a:"Clontarf", wrong:["Maldon","Brunanburh","Stamford Bridge"]},
+  {q:"Battle in 937 where Athelstan defeated a Norse-Scots alliance:", a:"Brunanburh", wrong:["Maldon","Edington","Ashdown"]},
+  {q:"Sea battle around 1000 where Olaf Tryggvason was defeated:", a:"Svolder", wrong:["Hjörungavágr","Ridgeway","Largs"]},
+  {q:"Norwegian king associated with forced Christianization and later sainthood:", a:"Olaf II Haraldsson (St. Olaf)", wrong:["Olaf Tryggvason","Magnus the Good","Harald Hardrada"]},
+  {q:"Missionary known as the 'Apostle of the North':", a:"Ansgar", wrong:["Columba","Boniface","Cuthbert"]},
+  {q:"Location of Iceland’s national assembly founded in 930:", a:"Thingvellir", wrong:["Roskilde","Uppsala","Trondheim"]},
+  {q:"Term for Icelandic law code compiled in the Commonwealth era:", a:"Grágás", wrong:["Lex Frisionum","Dombók","Jutland Law"]},
+  {q:"Title for the official who recited law at the Icelandic assembly:", a:"Lawspeaker", wrong:["Jarl","Hersir","Skald"]},
+  {q:"Term for a Norse nobleman or chieftain:", a:"Jarl", wrong:["Karl","Thrall","Bondi"]},
+  {q:"Term for a free farmer in Norse society:", a:"Karl", wrong:["Jarl","Thrall","Bishop"]},
+  {q:"Term for an enslaved person in Viking Age Scandinavia:", a:"Thrall", wrong:["Karl","Jarl","Leet"]},
+  {q:"Name of the famed Viking axe used by huscarls:", a:"Dane axe", wrong:["Halberd","Bardiche","Francisca"]},
+  {q:"Tactic where warriors interlocked shields in formation:", a:"Shield wall", wrong:["Phalanx","Turtle","Testudo"]},
+  {q:"Primary one-handed sword type famed for high-quality steel inscriptions:", a:"Ulfberht sword", wrong:["Katzbalger","Gladius","Shamshir"]},
+  {q:"Ritual sacrifice and feast practiced at seasonal festivals:", a:"Blót", wrong:["Synod","Eucharist","Seder"]},
+  {q:"Word for an outlaw condemned to the wilderness in Iceland:", a:"Skóggangr", wrong:["Weregild","Thingfare","Grið"]},
+  {q:"Compensation payment for injury or death under Norse law:", a:"Wergild", wrong:["Tithe","Gablum","Weregeldir"]},
+  {q:"Norse chronicler and author of the Prose Edda and Heimskringla:", a:"Snorri Sturluson", wrong:["Saxo Grammaticus","Ari Þorgilsson","Adam of Bremen"]},
+  {q:"Danish chronicler who wrote Gesta Danorum:", a:"Saxo Grammaticus", wrong:["Snorri Sturluson","Adam of Bremen","Orderic Vitalis"]},
+  {q:"German chronicler who described the temple at Uppsala:", a:"Adam of Bremen", wrong:["William of Malmesbury","Bede","Geoffrey of Monmouth"]},
+  {q:"Temple site in Sweden associated with pagan sacrifices:", a:"Uppsala", wrong:["Thingvellir","Roskilde","Skara"]},
+  {q:"Capital of medieval Norway, also called Nidaros:", a:"Trondheim", wrong:["Bergen","Oslo","Stavanger"]},
+  {q:"Cathedral in Norway that became a major pilgrimage site:", a:"Nidaros Cathedral", wrong:["Roskilde Cathedral","Uppsala Cathedral","Lund Cathedral"]},
+  {q:"Danish royal burial church and medieval cathedral city:", a:"Roskilde", wrong:["Aarhus","Odense","Viborg"]},
+  {q:"Trading emporium in Jutland rivaling Birka and Hedeby:", a:"Ribe", wrong:["Bergen","York","Skara"]},
+  {q:"Major Viking trading emporium in Schleswig known in German as Haithabu:", a:"Hedeby", wrong:["Birka","Ribe","Kaupang"]},
+  {q:"Early Norwegian market town near Larvik:", a:"Kaupang", wrong:["Birka","Hedeby","Dublin"]},
+  {q:"Norse-Gaelic kingdom established on the east coast of Ireland:", a:"Dublin", wrong:["Waterford","Cork","Galway"]},
+  {q:"Archipelago north of Scotland ruled by Norse earls:", a:"Orkney", wrong:["Shetland","Faroe","Hebrides"]},
+  {q:"Norwegian-ruled islands north of Orkney:", a:"Shetland", wrong:["Hebrides","Faroe","Man"]},
+  {q:"North Atlantic islands settled by Norse, midway between Scotland and Iceland:", a:"Faroe Islands", wrong:["Azores","Shetland","Hebrides"]},
+  {q:"Island in the Irish Sea long ruled by Norse-Gaelic kings:", a:"Isle of Man", wrong:["Anglesey","Wight","Skye"]},
+  {q:"Settlement in Yorkshire that became a Viking royal center (Jorvik):", a:"York", wrong:["Durham","Lincoln","Norwich"]},
+  {q:"Term for mixed Norse and Gaelic culture in the British Isles:", a:"Norse-Gael", wrong:["Anglo-Norse","Hiberno-Norse","Franco-Norse"]},
+  {q:"Legendary Viking hero, father of the Great Heathen Army leaders:", a:"Ragnar Lothbrok", wrong:["Beowulf","Sigurd Ring","Starkad"]},
+  {q:"Leader of the Great Heathen Army known from Anglo-Saxon sources:", a:"Ivar the Boneless", wrong:["Rollo","Leif Erikson","Erik the Red"]},
+  {q:"Brother of Ivar who campaigned in England:", a:"Halfdan Ragnarsson", wrong:["Sweyn Forkbeard","Ubba the Dane","Guthrum"]},
+  {q:"Danish leader baptized after treaty with Alfred, ruled East Anglia:", a:"Guthrum", wrong:["Ubba","Halfdan","Rollo"]},
+  {q:"Viking who became duke of Normandy:", a:"Rollo", wrong:["Harald Hardrada","Magnus Barefoot","Sweyn Forkbeard"]},
+  {q:"Norse explorer credited with sighting America before Leif:", a:"Bjarni Herjolfsson", wrong:["Thorfinn Karlsefni","Gudrid Thorbjarnardóttir","Erik the Red"]},
+  {q:"Icelandic explorer who attempted settlement in Vinland:", a:"Thorfinn Karlsefni", wrong:["Bjarni Herjolfsson","Snorri Thorfinnsson","Flóki Vilgerðarson"]},
+  {q:"Woman famed in the sagas for travels from Iceland to Vinland and beyond:", a:"Gudrid Thorbjarnardóttir", wrong:["Freydís Eiríksdóttir","Aud the Deep-Minded","Lagertha"]},
+  {q:"Norse explorer who named Iceland after a harsh voyage:", a:"Flóki Vilgerðarson", wrong:["Ari Þorgilsson","Leif Erikson","Thorfinn Karlsefni"]},
+  {q:"Oldest known Norse settlement in North America (in Newfoundland):", a:"L'Anse aux Meadows", wrong:["Markland","Helluland","Vinland Headland"]},
+  {q:"Two ravens of Odin that fly over the world:", a:"Huginn and Muninn", wrong:["Geri and Freki","Sköll and Hati","Ask and Embla"]},
+  {q:"Norse end-of-world event involving gods’ final battle:", a:"Ragnarök", wrong:["Götterdämmerung","Fimbulvinter","Álfablót"]},
+  {q:"Heavenly hall where slain warriors feast with Odin:", a:"Valhalla", wrong:["Folkvangr","Helheim","Nidavellir"]},
+  {q:"Rainbow bridge linking Midgard and Asgard:", a:"Bifröst", wrong:["Gjallarbrú","Skíðblaðnir","Gjallarhorn"]},
+  {q:"Smith-god associated with crafting treasures in Norse myth:", a:"Völund (Wayland)", wrong:["Brokkr","Sindri","Eitri"]},
+  {q:"The hammer wielded by Thor:", a:"Mjölnir", wrong:["Gungnir","Draupnir","Skofnung"]},
+  {q:"Odin’s spear that never misses:", a:"Gungnir", wrong:["Mjölnir","Brionac","Gaebolg"]},
+  {q:"Ring of Odin that multiplies itself:", a:"Draupnir", wrong:["Andvaranaut","Brisingamen","Nibelung Ring"]},
+  {q:"Goddess associated with love and the necklace Brisingamen:", a:"Freyja", wrong:["Frigg","Sif","Skadi"]},
+      {q:"Greenland was settled by:", a:"Erik the Red", wrong:["Leif Erikson","Rollo","Harald Fairhair"]},
+      {q:"Norse exploration of North America:", a:"Vinland", wrong:["Markland","Avalon","Hy-Brasil"]},
+      {q:"Leif Erikson is credited with reaching:", a:"North America", wrong:["Sicily","Africa","Persia"]},
+      {q:"Norse myth warrior maidens:", a:"Valkyries", wrong:["Naiads","Furies","Norns only"]},
+      {q:"Epic prose/poetic collections on Norse myth:", a:"Eddas", wrong:["Sagas","Chronicles","Annals"]},
+      {q:"Viking trading town in Denmark:", a:"Ribe", wrong:["York","Bergen","Novgorod only"]},
+      {q:"Which battle (1066) curtailed Viking power in England?", a:"Stamford Bridge", wrong:["Hastings","Maldon","Clontarf"]},
+      {q:"Elite household warriors of Anglo-Scandinavian kings:", a:"Huscarls", wrong:["Samurai","Cataphracts","Jinetes"]},
+      {q:"Norse poets and bards:", a:"Skalds", wrong:["Griots","Troubadours","Minstrels"]},
+      {q:"Typical Viking cargo ship:", a:"Knarr", wrong:["Caravel","Galley","Carrack"]},
+      {q:"Fierce fighters famed for battle frenzy:", a:"Berserkers", wrong:["Condottieri","Janissaries","Hoplites"]},
+      {q:"Royal stones with large runic inscriptions in Denmark:", a:"Jelling stones", wrong:["Rosetta Stone","Behistun","Moabite Stone"]},
+      {q:"Norse world tree is called:", a:"Yggdrasil", wrong:["Asphodel","Bodhi","Irminsul only"]},
+      {q:"Center of Viking trade in Russia heavily linked to Scandinavians:", a:"Novgorod", wrong:["Moscow","Kiev only","Smolensk"]},
+      {q:"Norse thunder god:", a:"Thor", wrong:["Tyr","Loki","Baldur"]},
+      {q:"The Norse term for a legal assembly:", a:"Thing", wrong:["Sejm","Diet","Witenagemot"]},
+      {q:"Vikings collected tribute from England called:", a:"Danegeld", wrong:["Ransom","Scutage","Peter’s Pence"]},
+      {q:"Common myth about helmets that is false:", a:"They had horns", wrong:["They were iron","They were conical","They had nose guards"]},
+      {q:"Later conversion of Scandinavia was mainly to:", a:"Christianity", wrong:["Islam","Buddhism","Zoroastrianism"]},
+      {q:"City captured by Vikings and known as Jorvik:", a:"York", wrong:["London","Canterbury","Winchester"]}
+    ]
+  };
   function getRandomQuestion(era){
     const bank = QUESTIONS[era]||[];
     if (!bank.length) return null;
     return bank[Math.floor(Math.random()*bank.length)];
   }
-
-  // ---------- ERA → QUESTION ROUTING ----------
-  // already handled by eraForCell(cellIdx) which maps via region
-
 </script>
 </body>
 </html>
+
 
