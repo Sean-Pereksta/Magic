@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>🏛️ History Rush</title>
+<title>🏛️ History Rush — 2×2 Regions</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
@@ -10,14 +10,12 @@
     --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
     --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
     --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px; --tap:52px;
-    --tileGap:6px;      /* regular tile gap */
-    --miniGap:12px;     /* gap between the 2x2 mini-blocks (inside a quadrant) */
-    --quadGap:22px;     /* big gutter between quadrants */
+    --tileGap:8px;         /* gap between tiles */
+    --quadGap:24px;        /* big gutter between quadrants */
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
-
-  .shell{max-width:1100px;margin:0 auto;padding:10px 12px 28px}
+  .shell{max-width:900px;margin:0 auto;padding:10px 12px 28px}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0}
   .leftrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:800}
@@ -31,30 +29,20 @@
   .card-body{padding:14px}
   .muted{color:var(--muted)}
 
-  /* ===== Board (with visible quadrant gutter + mini gutters for 2x2 boxes) ===== */
+  /* ===== 4×4 Board with a central quadrant gap ===== */
   .board-wrap{position:relative;margin-top:12px}
-
-  /* 8x8 tiles, but we insert:
-     - a mini gap between col 1↔2 and 5↔6 (to split into 2x2 inside each quadrant)
-     - a big quadrant gap between col 3↔4
-     Same idea for rows.
-  */
   .board{
     display:grid;
-    grid-template-columns:
-      repeat(2,1fr) var(--miniGap) repeat(2,1fr) var(--quadGap)
-      repeat(2,1fr) var(--miniGap) repeat(2,1fr);
-    grid-template-rows:
-      repeat(2,1fr) var(--miniGap) repeat(2,1fr) var(--quadGap)
-      repeat(2,1fr) var(--miniGap) repeat(2,1fr);
+    grid-template-columns: repeat(2,1fr) var(--quadGap) repeat(2,1fr);
+    grid-template-rows:    repeat(2,1fr) var(--quadGap) repeat(2,1fr);
     gap:var(--tileGap);
     position:relative;
-    max-width:100vw;
+    max-width:100%;
     aspect-ratio:1/1;
-    z-index:1; /* above underlays */
+    z-index:1;
   }
   .tile{
-    position:relative;background:#f3f4f6;border:2px solid #d1d5db;border-radius:8px;overflow:hidden;cursor:pointer;
+    position:relative;background:#f3f4f6;border:2px solid #d1d5db;border-radius:10px;overflow:hidden;cursor:pointer;
   }
   .tile.owner-0{border-color:var(--p0)}
   .tile.owner-1{border-color:var(--p1)}
@@ -63,7 +51,7 @@
   .stack{position:absolute;left:1px;right:1px;bottom:1px;display:flex;flex-direction:column-reverse;height:80%;gap:1px}
   .seg{width:100%}
 
-  /* ✅ Region titles OUTSIDE the board, above each quadrant */
+  /* Region labels outside the board */
   .region-labels{
     position:absolute; left:0; right:0; top:0; bottom:0; pointer-events:none; z-index:2;
   }
@@ -72,21 +60,14 @@
     background:rgba(255,255,255,.96); border:1px solid var(--br);
     font-size:13px; font-weight:900; letter-spacing:.2px;
     box-shadow:0 4px 12px rgba(15,23,42,.08);
-    transform:translateY(-36px); /* sit just above the quadrant */
+    transform:translateY(-36px);
   }
-  /* widths of each quadrant (50% minus half the big gutter) */
   .region-labels .tl{ left:0; width:calc(50% - var(--quadGap)/2); top:0; }
   .region-labels .tr{ right:0; width:calc(50% - var(--quadGap)/2); top:0; text-align:right; }
-  .region-labels .bl{
-    left:0; width:calc(50% - var(--quadGap)/2);
-    top:calc(50% + var(--quadGap)/2); /* start of bottom row of quadrants */
-  }
-  .region-labels .br{
-    right:0; width:calc(50% - var(--quadGap)/2);
-    top:calc(50% + var(--quadGap)/2); text-align:right;
-  }
+  .region-labels .bl{ left:0; width:calc(50% - var(--quadGap)/2); top:calc(50% + var(--quadGap)/2); }
+  .region-labels .br{ right:0; width:calc(50% - var(--quadGap)/2); top:calc(50% + var(--quadGap)/2); text-align:right; }
 
-  /* Region underlays (soft colors visible through gutters, before conquest) */
+  /* Soft color underlays for quadrants */
   .underlays{
     position:absolute;inset:0;pointer-events:none;
     display:grid;
@@ -112,7 +93,17 @@
     repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
     var(--r3);}
 
-  /* Modal */
+  /* Scorebar small bits */
+  #scorebar{display:flex;flex-wrap:wrap;gap:8px}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff}
+  .dot{width:10px;height:10px;border-radius:50%}
+
+  /* Voting list */
+  .voting{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;max-height:55vh;overflow:auto;padding-right:6px}
+  .era{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff}
+  .era[aria-disabled="true"]{opacity:.5}
+
+  /* Modal + Winner */
   .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
   .modal{width:min(720px,96vw);background:#fff;border-radius:16px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
   .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center}
@@ -121,19 +112,6 @@
   .opt{padding:12px;border:1px solid var(--br);border-radius:12px;background:#fff;font-weight:800;cursor:pointer}
   .opt:hover{background:#fff5f5}
   .closebar{display:flex;justify-content:flex-end;margin-top:10px}
-
-  .voting{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
-  gap:10px;
-  max-height:55vh;
-  overflow:auto;
-  padding-right:6px; /* keep scrollbar off text */
-}
-.era{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff}
-.era[aria-disabled="true"]{opacity:.5}
-
-  /* Winner overlay */
   .winner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:1050}
   .win-card{background:#fff;border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:18px 16px;text-align:center}
   .win-card h2{margin:8px 0}
@@ -159,7 +137,7 @@
       <div id="nextTick" class="muted"></div>
     </div>
     <div class="card-body">
-      <div id="scorebar" class="scorebar"></div>
+      <div id="scorebar"></div>
     </div>
   </div>
 
@@ -171,8 +149,8 @@
     </div>
     <div class="card-body">
       <div class="voting" id="erasGrid"></div>
-      <div class="vote-row">
-        <div class="muted">Each player selects one unique era. After 20s, any remaining slots are filled randomly.</div>
+      <div class="vote-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <div class="muted">Each player selects one unique era. After 20s, remaining slots fill randomly.</div>
         <div><span class="badge" id="pickedBadge">None selected</span></div>
       </div>
     </div>
@@ -185,26 +163,26 @@
       <div class="muted">Tap a square to answer a question from that region.</div>
     </div>
     <div class="card-body">
-     <div class="board-wrap">
-      <!-- region labels OUTSIDE the tiles -->
-      <div class="region-labels">
-        <div class="pill tl" id="labelTL">—</div>
-        <div class="pill tr" id="labelTR">—</div>
-        <div class="pill bl" id="labelBL">—</div>
-        <div class="pill br" id="labelBR">—</div>
+      <div class="board-wrap">
+        <!-- region labels -->
+        <div class="region-labels">
+          <div class="pill tl" id="labelTL">—</div>
+          <div class="pill tr" id="labelTR">—</div>
+          <div class="pill bl" id="labelBL">—</div>
+          <div class="pill br" id="labelBR">—</div>
+        </div>
+
+        <!-- underlays -->
+        <div class="underlays">
+          <div class="r0"></div>
+          <div class="r1"></div>
+          <div class="r2"></div>
+          <div class="r3"></div>
+        </div>
+
+        <!-- 4×4 board -->
+        <div id="board" class="board"></div>
       </div>
-    
-      <!-- region color underlays -->
-      <div class="underlays">
-        <div class="r0"></div>
-        <div class="r1"></div>
-        <div class="r2"></div>
-        <div class="r3"></div>
-      </div>
-    
-      <!-- 8x8 board -->
-      <div id="board" class="board"></div>
-    </div>
     </div>
   </div>
 </div>
@@ -212,7 +190,8 @@
 <!-- QUESTION MODAL -->
 <div id="modalBack" class="modal-back" role="dialog" aria-modal="true">
   <div class="modal">
-    <div class="head"><div id="modalTitle" class="card-title">Question</div>
+    <div class="head">
+      <div id="modalTitle" class="card-title">Question</div>
       <button id="closeModal" class="btn btn-ghost">Close</button>
     </div>
     <div class="body">
@@ -236,9 +215,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   // ---------- CONFIG ----------
   const firebaseConfig = {
@@ -256,34 +233,28 @@
   const params = new URLSearchParams(location.search);
   const gameId = params.get("gameId");
   const username = params.get("username");
-  if (!gameId || !username) {
-    alert("Missing gameId or username. Launch from the lobby.");
-  }
+  if (!gameId || !username) alert("Missing gameId or username. Launch from the lobby.");
 
   // ---------- DOCS ----------
   const lobbyRef = doc(db, "lobbies", gameId);
   const stateRef = doc(db, "lobbies", gameId, "historyrush", "state");
 
-  // ---------- CONSTANTS ----------
-// Put any manual extras in BASE_ERAS (optional)
-const BASE_ERAS = [
-  "Rome","Ancient China","Ancient Inca","Ancient Aztec","Ancient Egypt","Ancient Mali",
-  "Macedonia","Greece","Sumer","Persia","Assyria","Scandinavia"
-];
+  // ---------- ERAS ----------
+  const BASE_ERAS = [
+    "Rome","Ancient China","Ancient Inca","Ancient Aztec","Ancient Egypt","Ancient Mali",
+    "Macedonia","Greece","Sumer","Persia","Assyria","Scandinavia"
+  ];
+  function getERAS(){
+    const qKeys = (typeof QUESTIONS === "object" && QUESTIONS) ? Object.keys(QUESTIONS) : [];
+    return Array.from(new Set([...BASE_ERAS, ...qKeys]));
+  }
 
-// Build the eras list on demand; safe even before QUESTIONS is declared
-function getERAS(){
-  const qKeys = (typeof QUESTIONS !== "undefined" && QUESTIONS && typeof QUESTIONS === "object")
-    ? Object.keys(QUESTIONS)
-    : [];
-  return Array.from(new Set([...BASE_ERAS, ...qKeys]));
-}
-  // region order (top-left, top-right, bottom-left, bottom-right)
+  // Regions (top-left, top-right, bottom-left, bottom-right)
   const REGIONS = ["TL","TR","BL","BR"];
   const REGION_IDX = {TL:0, TR:1, BL:2, BR:3};
   const REGION_LABEL_IDS = {TL:"labelTL", TR:"labelTR", BL:"labelBL", BR:"labelBR"};
 
-  // region colors (soft underlays)
+  // region underlay colors
   const regionSoft = ["#a5b4fc","#86efac","#fde68a","#fca5a5"];
   document.documentElement.style.setProperty("--r0", regionSoft[0]);
   document.documentElement.style.setProperty("--r1", regionSoft[1]);
@@ -292,27 +263,22 @@ function getERAS(){
 
   // player colors
   const PLAYER_COLORS = ["#ef4444","#3b82f6","#10b981","#f59e0b"];
-  let players = [];      // populated from lobby
-  let isHost = false;    // from lobby.host === username
+  let players = [];
+  let isHost = false;
 
   // runtime
   let state = null;
-  let myVote = null;
-  let currentCellIndex = null;
-  let currentEraForModal = null;
-  let questionQueue = []; // subsequent questions for "Next"
   let scoreTickTimer = null;
   let voteCountdownTimer = null;
+  let currentCellIndex = null;
+  let currentEraForModal = null;
+  let answeredThisModal = false;
 
   // ---------- UTIL ----------
   const $ = (id)=>document.getElementById(id);
   function setStatus(msg){ $("statusBadge").textContent = msg; }
-  function uniq(arr){ return Array.from(new Set(arr)); }
   function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
   function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
-  function nowMs(){ return Date.now(); }
-
-  // map name -> stable color index
   function colorIndex(name){
     const idx = players.slice().sort().indexOf(name);
     return Math.max(0, idx) % 4;
@@ -323,152 +289,91 @@ function getERAS(){
     document.documentElement.style.setProperty("--p2", PLAYER_COLORS[2]);
     document.documentElement.style.setProperty("--p3", PLAYER_COLORS[3]);
   }
+  applyPlayerColorVars();
 
-  // get region for a cell index (0..63)
- // 4 small regions: each is a 2x2 block in the corners
-function cellRegion(cell){
-  const r = Math.floor(cell / 8), c = cell % 8;
-  if (r < 2 && c < 2) return "TL";          // rows 0–1, cols 0–1
-  if (r < 2 && c > 5) return "TR";          // rows 0–1, cols 6–7
-  if (r > 5 && c < 2) return "BL";          // rows 6–7, cols 0–1
-  if (r > 5 && c > 5) return "BR";          // rows 6–7, cols 6–7
-  return null;                               // everything else is neutral
-}
+  $("fitBtn").onclick = async () => {
+    try{
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(e){}
+  };
 
+  // ---------- 4×4 BOARD BUILD ----------
+  const boardEl = $("board");
+  const tiles = [];
+  for (let i=0;i<16;i++){
+    const r = Math.floor(i/4), c = i%4;
+    const gridRow = r + 1 + (r >= 2 ? 1 : 0); // add 1 row after the first two (the big gap)
+    const gridCol = c + 1 + (c >= 2 ? 1 : 0); // add 1 col after the first two
+    const div = document.createElement("div");
+    div.className = "tile";
+    div.setAttribute("data-idx", i);
+    div.style.gridRow = gridRow;
+    div.style.gridColumn = gridCol;
+
+    const stack = document.createElement("div");
+    stack.className="stack";
+    div.appendChild(stack);
+
+    div.addEventListener("click", ()=> onTileClick(i));
+    boardEl.appendChild(div);
+    tiles.push(div);
+  }
+
+  // ---------- REGION / OWNERSHIP HELPERS ----------
+  function cellRegion(cell){ // 4×4 grid
+    const r = Math.floor(cell/4), c = cell%4;
+    if (r < 2 && c < 2) return "TL";
+    if (r < 2 && c > 1) return "TR";
+    if (r > 1 && c < 2) return "BL";
+    if (r > 1 && c > 1) return "BR";
+    return null;
+  }
   function eraForCell(cell){
     const reg = cellRegion(cell);
     const eraMap = state?.eraMap || {};
     return eraMap[reg] || null;
   }
-
-  // compute owner (>50%) of a cell shares map
   function ownerOf(shares){
     let winner=null, max=0;
-    for(const [k,v] of Object.entries(shares||{})){
-      if (v>max){ max=v; winner=k; }
+    for(const [k,v] of Object.entries(shares||{})){ if (v>max){max=v; winner=k;} }
+    return (max>50) ? winner : null;
+  }
+  function regionController(regionKey, cells){
+    const base = { TL:{r:0,c:0}, TR:{r:0,c:2}, BL:{r:2,c:0}, BR:{r:2,c:2} }[regionKey];
+    if (!base) return null;
+    const idxs = [];
+    for (let dr=0; dr<2; dr++){
+      for (let dc=0; dc<2; dc++){
+        const rr = base.r + dr, cc = base.c + dc;
+        idxs.push(rr*4 + cc);
+      }
     }
-    if (max>50) return winner;
-    return null;
+    const owners = idxs.map(i => ownerOf(cells[i]?.shares || {})).filter(Boolean);
+    const tally = {}; owners.forEach(o => tally[o] = (tally[o]||0) + 1);
+    let best=null, cnt=0;
+    for (const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
+    return (cnt >= 3) ? best : null; // 3+ of 4 cells
   }
 
-  // region dominance:
-  // each 4x4 region is partitioned into four 2x2 mini-blocks (the “4 boxes”).
-  // A player “owns” a mini-block if they own (>50%) at least 3 of its 4 cells.
-  // A region is controlled if a player owns at least 3 of the 4 mini-blocks.
-  // A player controls the 2x2 region if they own (>50%) at least 3 of its 4 cells.
-function regionController(regionKey, cells){
-  // figure out the 2x2 base row/col for each corner region
-  const base = {
-    TL: {r:0, c:0},
-    TR: {r:0, c:6},
-    BL: {r:6, c:0},
-    BR: {r:6, c:6}
-  }[regionKey];
-
-  if (!base) return null;
-
-  // collect the 4 cell indices in that 2x2
-  const idxs = [];
-  for (let dr=0; dr<2; dr++){
-    for (let dc=0; dc<2; dc++){
-      const rr = base.r + dr;
-      const cc = base.c + dc;
-      idxs.push(rr*8 + cc);
-    }
-  }
-
-  // who owns each cell?
-  const owners = idxs.map(i => ownerOf(cells[i]?.shares || {})).filter(Boolean);
-
-  // tally owners; control requires >=3 owned cells by the same player
-  const tally = {};
-  owners.forEach(o => tally[o] = (tally[o]||0) + 1);
-
-  let best=null, cnt=0;
-  for (const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
-  return (cnt >= 3) ? best : null;
-}
-
-
-  // ---------- INITIALIZE UI ----------
-  applyPlayerColorVars();
-  $("fitBtn").onclick = async () => {
-    try{
-      if (!document.fullscreenElement) { await document.documentElement.requestFullscreen(); }
-      else { await document.exitFullscreen(); }
-    }catch(e){}
-  };
-
-  // build board tiles (map into grid with central spacer row/col)
-// ✅ JS: replace your tile-building loop with this one so tiles snap
-// into the grid that includes the mini-gaps + quadrant gap.
-const boardEl = $("board");
-const tiles = [];
-
-function isCorner2x2(r,c){
-  return (r < 2 && c < 2)       // TL (rows 0–1, cols 0–1)
-      || (r < 2 && c > 5)       // TR (rows 0–1, cols 6–7)
-      || (r > 5 && c < 2)       // BL (rows 6–7, cols 0–1)
-      || (r > 5 && c > 5);      // BR (rows 6–7, cols 6–7)
-}
-
-for (let i=0;i<64;i++){
-  const r = Math.floor(i/8), c = i%8;
-
-  // Translate into the grid with mini/quad gutters
-  const gridRow =
-    r + 1 + (r >= 2 ? 1 : 0) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0);
-  const gridCol =
-    c + 1 + (c >= 2 ? 1 : 0) + (c >= 4 ? 1 : 0) + (c >= 6 ? 1 : 0);
-
-  const div = document.createElement("div");
-  div.className = "tile";
-  div.setAttribute("data-idx", i);
-  div.style.gridRow = gridRow;
-  div.style.gridColumn = gridCol;
-
-  const stack = document.createElement("div");
-  stack.className="stack";
-  div.appendChild(stack);
-
-  // ✨ NEW: hide everything that isn’t in a corner 2×2
-  if (!isCorner2x2(r,c)){
-    div.dataset.dead = "1";                     // mark as non-interactive
-    div.style.display = "none";                 // fully disappear
-    // (If you prefer to leave a faint placeholder: use visibility:hidden instead)
-  } else {
-    div.addEventListener("click", ()=> onTileClick(i));
-  }
-
-  boardEl.appendChild(div);
-  tiles.push(div);
-}
-
-
-
-  // ---------- LOBBY SNAP (players + host) ----------
+  // ---------- LOBBY SNAP ----------
   onSnapshot(lobbyRef, (snap)=>{
     const d = snap.data();
     if (!d) return;
     players = (d.players||[]).slice(0,4);
     isHost = (d.host === username);
-    renderScorebar(); // ensures pills exist with names
+    renderScorebar();
   });
 
   // ---------- STATE SNAP ----------
   onSnapshot(stateRef, (snap)=>{
-    if (!snap.exists()) {
-      bootstrapState();
-      return;
-    }
+    if (!snap.exists()) { bootstrapState(); return; }
     state = snap.data();
-    // status + timers
     updateStatusBadges();
     renderScorebar();
     renderVoting();
     renderBoard();
 
-    // winner?
     if (state.status === "finished" && state.winner){
       $("winText").textContent = `👑 ${state.winner} wins!`;
       $("winnerBack").style.display = "flex";
@@ -478,21 +383,19 @@ for (let i=0;i<64;i++){
 
   // ---------- BOOTSTRAP ----------
   async function bootstrapState(){
-    // read lobby first
     const lob = await getDoc(lobbyRef);
     const lp = (lob.exists() && Array.isArray(lob.data().players)) ? lob.data().players.slice(0,4) : [username];
     const init = {
       status:"voting",
-      votingEndsAt: Date.now()+20000, // 20s
+      votingEndsAt: Date.now()+20000,
       votes:{},
       players: lp,
-      eraMap:{},             // {TL:"Rome",TR:"…",BL:"…",BR:"…"}
-      scores:{},             // {name: points}
+      eraMap:{},             // TL/TR/BL/BR -> era
+      scores:{},
       lastScoreTick: Date.now(),
       winner:null,
-      // 64 cells with shares: {}
-      cells: Array.from({length:64}, ()=>({ shares:{}, creditedByQ:{} }))
-
+      // 16 cells now
+      cells: Array.from({length:16}, ()=>({ shares:{} }))
     };
     lp.forEach(n=> init.scores[n]=0);
     await setDoc(stateRef, init);
@@ -511,7 +414,8 @@ for (let i=0;i<64;i++){
       $("voteCard").style.display="none";
       $("boardCard").style.display="block";
       stopVoteCountdown();
-    } else if (st==="finished"){
+      if (isHost) ensureScoreTicker();
+    } else {
       setStatus("Finished");
       $("voteCard").style.display="none";
       $("boardCard").style.display="none";
@@ -522,7 +426,6 @@ for (let i=0;i<64;i++){
     stopVoteCountdown();
     tickVoteTimer();
     voteCountdownTimer = setInterval(tickVoteTimer, 300);
-    // host responsibility to finalize
     if (isHost) ensureScoreTicker();
   }
   function stopVoteCountdown(){
@@ -538,49 +441,31 @@ for (let i=0;i<64;i++){
 
   // ---------- VOTING ----------
   function renderVoting(){
-  if (state?.status!=="voting") return;
+    if (state?.status!=="voting") return;
+    const ERAS = getERAS();
+    const used = new Set(Object.values(state.votes||{}));
+    const grid = $("erasGrid"); grid.innerHTML = "";
 
-  const ERAS = getERAS();                       // <-- build safely at runtime
-  const used = new Set(Object.values(state.votes||{}));
-  const grid = $("erasGrid");
-  grid.innerHTML = "";
+    for (const era of ERAS){
+      const row = document.createElement("div"); row.className = "era";
+      const left = document.createElement("div");
+      const name = document.createElement("div"); name.className="pick"; name.textContent = era;
+      const tiny = document.createElement("div"); tiny.className="muted"; tiny.textContent = used.has(era) ? "Taken" : "";
+      left.appendChild(name); left.appendChild(tiny);
 
-  for (const era of ERAS){
-    const row = document.createElement("div");
-    row.className = "era";
+      const btn = document.createElement("button");
+      btn.className = "btn btn-ghost";
+      btn.textContent = (state.votes?.[username] === era) ? "Selected" : "Select";
+      if (state.votes?.[username] && state.votes[username] !== era) btn.disabled = true;
+      if (used.has(era) && state.votes?.[username] !== era) row.setAttribute("aria-disabled","true");
+      btn.onclick = ()=> castVote(era);
 
-    const left = document.createElement("div");
-    const name = document.createElement("div"); 
-    name.className = "pick"; 
-    name.textContent = era;
-
-    const tiny = document.createElement("div"); 
-    tiny.className = "muted"; 
-    tiny.textContent = used.has(era) ? "Taken" : "";
-
-    left.appendChild(name); 
-    left.appendChild(tiny);
-
-    const btn = document.createElement("button");
-    btn.className = "btn btn-ghost";
-    btn.textContent = (state.votes?.[username] === era) ? "Selected" : "Select";
-
-    if (state.votes?.[username] && state.votes[username] !== era) btn.disabled = true;
-    if (used.has(era) && state.votes?.[username] !== era) {
-      row.setAttribute("aria-disabled","true");
+      row.appendChild(left); row.appendChild(btn);
+      grid.appendChild(row);
     }
-
-    btn.onclick = ()=> castVote(era);
-
-    row.appendChild(left); 
-    row.appendChild(btn);
-    grid.appendChild(row);
+    const my = state.votes?.[username];
+    $("pickedBadge").textContent = my ? `Your pick: ${my}` : "None selected";
   }
-
-  const my = state.votes?.[username];
-  $("pickedBadge").textContent = my ? `Your pick: ${my}` : "None selected";
-}
-
   async function castVote(era){
     try{
       await runTransaction(db, async (tx)=>{
@@ -588,7 +473,6 @@ for (let i=0;i<64;i++){
         if (!s.exists()) throw new Error("no state");
         const d = s.data();
         if (d.status!=="voting") throw new Error("voting closed");
-        // uniqueness
         const used = new Set(Object.values(d.votes||{}));
         const myPrev = d.votes?.[username];
         if (used.has(era) && myPrev !== era) throw new Error("Era already taken");
@@ -596,167 +480,77 @@ for (let i=0;i<64;i++){
       });
     }catch(e){ alert(e.message||"Failed to vote"); }
   }
-
   async function finalizeVoting(){
-  // close voting, assign 4 eras (unique), fill with random if <4
-  try{
-    await runTransaction(db, async (tx)=>{
-      const s = await tx.get(stateRef);
-      if (!s.exists()) throw new Error("no state");
-      const d = s.data();
-      if (d.status!=="voting") return;
+    try{
+      await runTransaction(db, async (tx)=>{
+        const s = await tx.get(stateRef);
+        if (!s.exists()) throw new Error("no state");
+        const d = s.data();
+        if (d.status!=="voting") return;
 
-      const ERAS = getERAS();                   // <-- build safely at runtime
-
-      const picks  = Object.values(d.votes||{});
-      const unique = Array.from(new Set(picks));          // keep unique user picks in order
-      const remain = ERAS.filter(x => !unique.includes(x));
-
-      // Need 4 total
-      while (unique.length < 4 && remain.length > 0){
-        unique.push(remain.splice(Math.floor(Math.random()*remain.length),1)[0]);
-      }
-
-      // If somehow >4 (shouldn't), cap at 4
-      const chosen = unique.slice(0,4);
-
-      const eraMap = {
-        TL: chosen[0] || remain.pop() || "Rome",
-        TR: chosen[1] || remain.pop() || "Ancient China",
-        BL: chosen[2] || remain.pop() || "Ancient Egypt",
-        BR: chosen[3] || remain.pop() || "Scandinavia"
-      };
-
-      tx.update(stateRef, {
-        status: "playing",
-        eraMap,
-        lastScoreTick: Date.now(),
-      });
-    });
-  }catch(e){ console.error(e); }
-}
-async function awardCorrectForQuestion(cellIdx, player, qKey, gain=10){
-  try{
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(stateRef);
-      if (!snap.exists()) throw new Error("no state");
-      const d = snap.data();
-      if (d.status !== "playing") return;
-
-      const cells = d.cells || [];
-      const cell  = cells[cellIdx] || {shares:{}, creditedByQ:{}};
-      const shares = {...(cell.shares||{})};
-      const creditedByQ = {...(cell.creditedByQ||{})};
-      const perQ = {...(creditedByQ[qKey]||{})};
-
-      // already scored this exact question for this player?
-      if (perQ[player]) throw new Error("already_credited_this_question");
-
-      // === positive share math (same as your adjustCellShare positive branch) ===
-      const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
-      const cur = shares[player] || 0;
-      const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
-
-      if (sum < 100){
-        const add = Math.min(gain, 100 - sum);
-        shares[player] = clamp(cur + add, 0, 100);
-      } else {
-        const others = Object.keys(shares).filter(k=>k!==player);
-        const sumOthers = others.reduce((a,k)=>a+(shares[k]||0),0);
-        shares[player] = clamp(cur + gain, 0, 100);
-        if (sumOthers>0){
-          for(const k of others){
-            const cut = gain * ((shares[k]||0)/sumOthers);
-            shares[k] = clamp((shares[k]||0) - cut, 0, 100);
-          }
+        const ERAS = getERAS();
+        const picks  = Object.values(d.votes||{});
+        const unique = Array.from(new Set(picks));
+        const remain = ERAS.filter(x => !unique.includes(x));
+        while (unique.length < 4 && remain.length > 0){
+          unique.push(remain.splice(Math.floor(Math.random()*remain.length),1)[0]);
         }
-        const total = Object.values(shares).reduce((a,b)=>a+(b||0),0);
-        const diff = 100 - total;
-        shares[player] = clamp((shares[player]||0)+diff, 0, 100);
-      }
-
-      // mark once-only for this question
-      perQ[player] = true;
-      creditedByQ[qKey] = perQ;
-
-      cells[cellIdx] = {shares, creditedByQ};
-      tx.update(stateRef, { cells });
-    });
-    return {ok:true};
-  }catch(e){
-    if (e.message === "already_credited_this_question") return {ok:false, reason:"already"};
-    console.error(e);
-    return {ok:false, reason:"error"};
+        const chosen = unique.slice(0,4);
+        const eraMap = {
+          TL: chosen[0] || remain.pop() || "Rome",
+          TR: chosen[1] || remain.pop() || "Ancient China",
+          BL: chosen[2] || remain.pop() || "Ancient Egypt",
+          BR: chosen[3] || remain.pop() || "Scandinavia"
+        };
+        tx.update(stateRef, { status:"playing", eraMap, lastScoreTick: Date.now() });
+      });
+    }catch(e){ console.error(e); }
   }
-}
-
 
   // ---------- BOARD RENDER ----------
   function renderBoard(){
-  if (!state) return;
+    if (!state) return;
 
-  // 1) Region labels
-  for (const [key, id] of Object.entries(REGION_LABEL_IDS)){
-    const el = $(id);
-    if (el) el.textContent = state.eraMap?.[key] || "—";
-  }
-
-  // 2) Tiles (only visible/corner tiles)
-  const cells = state.cells || [];
-  const namesSorted = players.slice().sort();
-
-  for (let i = 0; i < 64; i++){
-    const el = tiles[i];
-    if (!el || el.dataset.dead === "1") continue;       // skip hidden tiles
-
-    const stack = el.querySelector(".stack");
-    if (!stack) continue;
-
-    const shares = (cells[i] && cells[i].shares) || {};
-    const owner = ownerOf(shares);
-
-    // ---- owner border class (avoid repeated remove/add) ----
-    // compute desired class once
-    let desired = "";
-    if (owner){
-      const ci = colorIndex(owner);
-      desired = `owner-${ci}`;
-    }
-    // clear previous owner-* class if different
-    if (el._ownerClass && el._ownerClass !== desired){
-      el.classList.remove(el._ownerClass);
-      el._ownerClass = null;
-    }
-    if (desired && el._ownerClass !== desired){
-      el.classList.add(desired);
-      el._ownerClass = desired;
-    }
-    // if no owner, ensure no lingering class
-    if (!desired && el._ownerClass){
-      el.classList.remove(el._ownerClass);
-      el._ownerClass = null;
+    // labels
+    for (const [key, id] of Object.entries(REGION_LABEL_IDS)){
+      const el = $(id);
+      if (el) el.textContent = state.eraMap?.[key] || "—";
     }
 
-    // ---- stack segments (fast clear, then rebuild for >0%) ----
-    while (stack.firstChild) stack.removeChild(stack.firstChild);
+    // tiles
+    const cells = state.cells || [];
+    const namesSorted = players.slice().sort();
 
-    for (const name of namesSorted){
-      const pct = Math.round(((shares[name] || 0) + Number.EPSILON) * 10) / 10;
-      if (pct > 0){
-        const seg = document.createElement("div");
-        seg.className = "seg";
-        seg.style.height = pct + "%";
-        seg.style.background = PLAYER_COLORS[colorIndex(name)];
-        seg.title = `${name}: ${pct}%`;
-        stack.appendChild(seg);
+    for (let i=0;i<16;i++){
+      const el = tiles[i];
+      const stack = el.querySelector(".stack");
+      const shares = (cells[i] && cells[i].shares) || {};
+      const owner = ownerOf(shares);
+
+      // border owner class
+      let desired = "";
+      if (owner){ desired = `owner-${colorIndex(owner)}`; }
+      if (el._ownerClass && el._ownerClass !== desired){ el.classList.remove(el._ownerClass); el._ownerClass = null; }
+      if (desired && el._ownerClass !== desired){ el.classList.add(desired); el._ownerClass = desired; }
+      if (!desired && el._ownerClass){ el.classList.remove(el._ownerClass); el._ownerClass = null; }
+
+      // stack
+      while (stack.firstChild) stack.removeChild(stack.firstChild);
+      for (const name of namesSorted){
+        const pct = Math.round(((shares[name] || 0) + Number.EPSILON) * 10) / 10;
+        if (pct > 0){
+          const seg = document.createElement("div");
+          seg.className = "seg";
+          seg.style.height = pct + "%";
+          seg.style.background = PLAYER_COLORS[colorIndex(name)];
+          seg.title = `${name}: ${pct}%`;
+          stack.appendChild(seg);
+        }
       }
     }
+
+    if (state.status === "playing" && isHost) ensureScoreTicker();
   }
-
-  // 3) Host scoring ticker
-  if (state.status === "playing" && isHost) ensureScoreTicker();
-}
-
 
   // ---------- SCOREBOARD ----------
   function renderScorebar(){
@@ -775,82 +569,67 @@ async function awardCorrectForQuestion(cellIdx, player, qKey, gain=10){
   }
 
   // ---------- TILE INTERACTION / QUESTIONS ----------
+  function getRandomQuestion(era){
+    const list = QUESTIONS[era] || [];
+    if (!list.length) return null;
+    return list[Math.floor(Math.random()*list.length)];
+  }
+
   function onTileClick(idx){
     if (state?.status!=="playing") return;
     currentCellIndex = idx;
     currentEraForModal = eraForCell(idx);
     if (!currentEraForModal){ alert("No era assigned here yet."); return; }
-    questionQueue = []; // reset
     openQuestion(currentEraForModal);
   }
-function questionKey(era, q){
-  return `${era}::${q.q}`; // or add an 'id' field to your question objects
-}
- let currentQKey = null;           // optional: just for debugging
-let answeredThisModal = false;    // per-question instance lock
 
-function openQuestion(era){
-  const q = getRandomQuestion(era);
-  if (!q){ alert("No questions available."); return; }
+  function openQuestion(era){
+    const q = getRandomQuestion(era);
+    if (!q){ alert("No questions available for " + era); return; }
 
-  currentQKey = `${era}::${q.q}`; // not used for scoring — just for logs
-  answeredThisModal = false;      // 🔒 reset lock for the new question
+    answeredThisModal = false;
+    $("modalTitle").textContent = `${era} — Trivia`;
+    $("qText").textContent = q.q;
 
-  $("modalTitle").textContent = `${era} — Trivia`;
-  $("qText").textContent = q.q;
+    const opts = shuffle([q.a, ...(q.wrong||[])]);
+    const box = $("qOpts"); box.innerHTML = "";
+    $("qFeedback").textContent = "";
+    $("nextQ").style.display = "none";
 
-  const opts = shuffle([q.a, ...q.wrong]);
-  const box = $("qOpts"); box.innerHTML = "";
-  $("qFeedback").textContent = "";
-  $("nextQ").style.display = "none";
+    opts.forEach(text=>{
+      const b = document.createElement("button");
+      b.className = "opt";
+      b.textContent = text;
+      b.onclick = async ()=>{
+        if (answeredThisModal) return;
+        answeredThisModal = true;
+        [...box.children].forEach(btn => btn.disabled = true);
+        await evaluateAnswer(q, text === q.a);
+      };
+      box.appendChild(b);
+    });
 
-  opts.forEach(text=>{
-    const b = document.createElement("button");
-    b.className = "opt";
-    b.textContent = text;
-    b.onclick = async ()=>{
-      if (answeredThisModal) return;          // ❌ ignore repeat clicks
-      answeredThisModal = true;               // ✅ lock this question instance
-      [...box.children].forEach(btn => btn.disabled = true);  // hard-disable UI
-      await evaluateAnswer(q, text === q.a);
-    };
-    box.appendChild(b);
-  });
-
-  $("modalBack").style.display = "flex";
-}
-
-$("nextQ").onclick = ()=> {
-  // new question => lock resets inside openQuestion
-  openQuestion(currentEraForModal);
-};
-
-
-
+    $("modalBack").style.display = "flex";
+  }
 
   $("closeModal").onclick = ()=> { $("modalBack").style.display="none"; currentCellIndex=null; };
-  $("nextQ").onclick = ()=> { openQuestion(currentEraForModal); };
+  $("nextQ").onclick  = ()=> { openQuestion(currentEraForModal); };
 
- async function evaluateAnswer(q, correct){
-  let feedback = "";
-  if (correct){
-    // award fresh points every time a *new* question is answered
-    await adjustCellShare(currentCellIndex, username, +10);
-    feedback = "✅ Correct! +10% share.";
-    $("nextQ").style.display = "inline-flex";
-  } else {
-    // wrong answers can happen infinitely
-    await adjustCellShare(currentCellIndex, username, -20);
-    feedback = "❌ Incorrect. You lose up to 20%. Try another question.";
-    $("nextQ").style.display = "inline-flex";
+  async function evaluateAnswer(q, correct){
+    let feedback = "";
+    if (correct){
+      await adjustCellShare(currentCellIndex, username, +10);
+      feedback = "✅ Correct! +10% share.";
+      $("nextQ").style.display = "inline-flex";
+    } else {
+      await adjustCellShare(currentCellIndex, username, -20);
+      feedback = "❌ Incorrect. You lost up to 20%. Try another question.";
+      $("nextQ").style.display = "inline-flex";
+    }
+    $("qFeedback").textContent = feedback;
   }
-  $("qFeedback").textContent = feedback;
-}
 
-
-
-
-  // ---------- SHARE MATH (transactional) ----------
+  // ---------- SHARE MATH ----------
   async function adjustCellShare(cellIdx, player, delta){
     try{
       await runTransaction(db, async (tx)=>{
@@ -860,8 +639,9 @@ $("nextQ").onclick = ()=> {
         if (d.status!=="playing") return;
         const cells = d.cells || [];
         const cell = cells[cellIdx] || {shares:{}};
-        const shares = Object.assign({}, cell.shares||{});
+        const shares = {...(cell.shares||{})};
         const cur = shares[player] || 0;
+
         if (delta>0){
           const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
           if (sum < 100){
@@ -891,11 +671,8 @@ $("nextQ").onclick = ()=> {
     }catch(e){ console.error(e); }
   }
 
-  // ---------- HOST SCORING TICK ----------
-  function ensureScoreTicker(){
-    if (scoreTickTimer) return;
-    scoreTickTimer = setInterval(()=> hostTick(), 1000);
-  }
+  // ---------- HOST TICK ----------
+  function ensureScoreTicker(){ if (!scoreTickTimer) scoreTickTimer = setInterval(()=> hostTick(), 1000); }
   async function hostTick(){
     const s = await getDoc(stateRef);
     if (!s.exists()) return;
@@ -907,27 +684,24 @@ $("nextQ").onclick = ()=> {
     $("nextTick").textContent = remain>0 ? `Next scoring in ${remain}s` : `Scoring…`;
     if (now - last < 20000) return;
 
-    // compute scores for this tick
+    // compute scores (16 cells; 4 regions)
     const inc = {}; (d.players||[]).forEach(n=> inc[n]=0);
     const cells = d.cells||[];
-    // 1 point per owned cell
-    for(let i=0;i<64;i++){
+    for(let i=0;i<16;i++){
       const own = ownerOf(cells[i]?.shares||{});
       if (own) inc[own] = (inc[own]||0) + 1;
     }
-    // 5 points per owned region
     for(const rk of ["TL","TR","BL","BR"]){
       const ctrl = regionController(rk, cells);
       if (ctrl) inc[ctrl] = (inc[ctrl]||0) + 5;
     }
 
-    // accumulate
-    const newScores = Object.assign({}, d.scores||{});
+    const newScores = {...(d.scores||{})};
     for(const [k,v] of Object.entries(inc)){ newScores[k] = (newScores[k]||0) + v; }
 
-    // winner?
+    // Winner at 40 points feels right with 16 cells; tweak as you like
     let winner=null; let top=0;
-    for(const [k,v] of Object.entries(newScores)){ if (v>=50 && v>top){top=v; winner=k;} }
+    for(const [k,v] of Object.entries(newScores)){ if (v>=40 && v>top){top=v; winner=k;} }
 
     await updateDoc(stateRef, {
       scores: newScores,
@@ -936,8 +710,6 @@ $("nextQ").onclick = ()=> {
       status: winner ? "finished" : "playing"
     });
   }
-
-  // ---------- QUESTIONS ----------
   const QUESTIONS = {
     "Rome": [
       {q:"Who defeated Mark Antony at the Battle of Actium (31 BC)?", a:"Octavian", wrong:["Julius Caesar","Pompey","Brutus"]},
@@ -1949,11 +1721,6 @@ $("nextQ").onclick = ()=> {
 </script>
 </body>
 </html>
-
-
-
-
-
 
 
 
