@@ -32,11 +32,9 @@
   .card-body{padding:12px 14px}
   .muted{color:var(--muted)}
 
-  /* Layout: map & controls stacked on mobile */
   .grid{display:grid;grid-template-columns:2fr 1fr;gap:12px}
   @media (max-width:960px){ .grid{grid-template-columns:1fr} }
 
-  /* Map window (pannable) */
   .mapWrap{position:relative;border:1px solid var(--br);border-radius:14px;overflow:hidden;background:#fff}
   .mapHead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--br)}
   .mapWindow{position:relative;touch-action:none;width:100%;height:min(70vh,580px);background:#fafafa}
@@ -51,26 +49,29 @@
   .tile.p2{border-color:var(--p2)}
   .tile.p3{border-color:var(--p3)}
 
-  /* Pill bars */
   .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff;font-weight:800}
 
-  /* Right controls */
   .controls{display:grid;gap:10px}
   .vlist{display:grid;gap:8px;max-height:280px;overflow:auto;padding-right:6px}
   .input, .select{padding:10px 12px;border:1px solid var(--br);border-radius:12px;min-height:44px;background:#fff;font-size:16px;outline:none}
   .input:focus,.select:focus{border-color:#fecaca;box-shadow:0 0 0 4px rgba(239,68,68,.25)}
 
-  /* Footer actions (mobile float) */
   .actionbar{position:sticky;bottom:0;left:0;right:0;background:rgba(255,255,255,.96);backdrop-filter:saturate(1.1) blur(6px);border:1px solid var(--br);border-radius:14px;padding:8px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 
-  /* Modals */
   .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:14px;z-index:1200}
   .modal{width:min(720px,96vw);background:#fff;border:1px solid var(--br);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
   .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between}
   .modal .body{padding:12px 14px}
   .opt{padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff;font-weight:800;cursor:pointer}
   .opt:hover{background:#fff5f5}
+
+  /* Amount picker (tiny modal) */
+  .picker-back{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.2);z-index:1300}
+  .picker{width:min(460px,95vw);background:#fff;border:1px solid var(--br);border-radius:16px 16px 0 0;box-shadow:var(--shadow);padding:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .chip{border:1px solid var(--br);border-radius:999px;padding:8px 12px;background:#fff;font-weight:800;cursor:pointer}
+  .chip:hover{background:#fff5f5}
 </style>
 </head>
 <body>
@@ -105,6 +106,7 @@
           <span class="badge">Order: <span id="orderMode">Attack</span></span>
           <button class="btn-ghost mini" id="modeAttack">⚔️ Attack</button>
           <button class="btn-ghost mini" id="modeFortify">🛡️ Fortify</button>
+          <button class="btn-ghost mini" id="modeMove">🚚 Move</button>
           <button class="btn-ghost mini" id="modeClear">🧼 Clear</button>
         </div>
         <div class="leftrow">
@@ -150,7 +152,8 @@
             <li>Turns are simultaneous. Timer auto-resolves if someone stalls.</li>
             <li>⚔️ Attack: commit all units from a tile into one adjacent enemy tile.</li>
             <li>🛡️ Fortify: +1 unit on a tile you own (max +1 per tile per round).</li>
-            <li><strong>Move cap:</strong> at most <span id="ruleCapN">4</span> orders (attacks + fortifies) per round. Levy is free.</li>
+            <li>🚚 <b>Move</b>: transfer units between adjacent tiles you own. Can’t reduce source below 1.</li>
+            <li><strong>Move cap:</strong> at most <span id="ruleCapN">4</span> orders (attacks + fortifies + moves) per round. Levy is free.</li>
             <li>Capture bonus: +1 unit on captured tile.</li>
             <li>Frontline attrition: adjacent enemy tiles each lose 1 (min 0) after battles.</li>
             <li>Coalition: if a player &gt;40% land, others gain one-round Levy (+1 to their capital) next round.</li>
@@ -162,7 +165,7 @@
   </div>
 </div>
 
-<!-- Diplomacy modal (history & quick proposals) -->
+<!-- Diplomacy modal -->
 <div id="dipModal" class="modal-back" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="head">
@@ -176,13 +179,29 @@
           <select id="quickDipTarget" class="select" style="flex:0 0 160px"></select>
           <select id="quickDipTemplate" class="select" style="flex:1">
             <option value="NAP">✌️ Non-Aggression for 1 round?</option>
-            <option value="TRADE">🔁 Trade: I attack X if you attack Y.</option>
+            <option value="TRADE">🔁 Trade: I’ll attack X if you attack Y.</option>
             <option value="ALLY">🛡️ Alliance for 2 rounds vs Leader.</option>
             <option value="SPARE">🕊️ I’ll spare your border if you spare mine.</option>
           </select>
           <button id="quickDipSend" class="btn">Propose</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Amount picker for Move -->
+<div id="pickerBack" class="picker-back">
+  <div class="picker">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="card-title">🚚 Move Units</div>
+      <button id="pickerClose" class="btn-ghost mini">Close</button>
+    </div>
+    <div id="pickerInfo" class="muted" style="margin-top:6px">—</div>
+    <div class="chips" id="pickerChips"></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="pickerInput" type="number" class="input" min="1" style="flex:1" placeholder="Custom amount" />
+      <button id="pickerConfirm" class="btn">Move</button>
     </div>
   </div>
 </div>
@@ -213,15 +232,15 @@ if (!gameId || !username) alert("Missing gameId or username.");
 const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
 
 /* ===================== Config ===================== */
-const MAX_ORDERS_DEFAULT = 4;           // 🔧 cap per player per round (attacks + fortifies)
-const ROUND_LEN_MS_DEFAULT = 45_000;    // planning time
+const MAX_ORDERS_DEFAULT = 4;           // cap per player per round (attacks + fortifies + moves)
+const ROUND_LEN_MS_DEFAULT = 45_000;
 
 /* ===================== Helpers ===================== */
 const $ = (id)=> document.getElementById(id);
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a;}
 const COLORS = ["var(--p0)","var(--p1)","var(--p2)","var(--p3)"];
-const PLAYER_COLORS = {}; // name -> color index after we know players
+const PLAYER_COLORS = {};
 const getMaxOrders = ()=> (state?.maxOrdersPerTurn ?? MAX_ORDERS_DEFAULT);
 
 /* ===================== Map (square grid) ===================== */
@@ -234,7 +253,6 @@ let panning = false, lastPt = {x:0,y:0};
 let dragStart = null, didPan=false;
 const DRAG_THRESHOLD = 6;
 
-// pointer pan with tap threshold
 mapWindow.addEventListener("pointerdown", (e)=>{
   panning = true; didPan = false;
   dragStart = { x:e.clientX, y:e.clientY };
@@ -266,11 +284,14 @@ applyPan();
 
 /* ===================== UI State ===================== */
 let state = null;
-let myOrders = []; // local mirror for quick writes
-let orderMode = "attack"; // "attack" | "fortify"
-let selectedSrc = null; // for attack source selection
+let myOrders = [];
+let orderMode = "attack"; // "attack" | "fortify" | "move"
+let selectedSrc = null;
 let timerInterval = null;
 let lastRoundSeen = null;
+
+// move picker temp
+let pendingMove = { src:null, dst:null, maxSend:0 };
 
 /* ===================== Build Map DOM ===================== */
 function buildMapDOM(){
@@ -301,7 +322,6 @@ async function ensureState(){
   const snap = await getDoc(stateRef);
   if (snap.exists()) return;
 
-  // build territories graph (4-neighborhood)
   const terr = [];
   for (let i=0;i<W*H;i++){
     const x = i%W, y = (i/W)|0;
@@ -313,19 +333,16 @@ async function ensureState(){
     terr.push({ id:i, owner:null, units:1, neighbors:n, isCapital:false });
   }
 
-  // Assign up to 4 players from lobby players
   const lobbyRef = doc(db, "lobbies", gameId);
   const lob = await getDoc(lobbyRef);
   const players = (lob.exists() && Array.isArray(lob.data().players))
     ? lob.data().players.slice(0,4) : [username];
 
-  // seeding: give each player a capital & 4 owned around it
   const seeds = shuffle([...Array(W*H).keys()]).slice(0, players.length);
   players.forEach((p, idx)=>{
     const c = seeds[idx];
     terr[c].owner = p; terr[c].units = 5; terr[c].isCapital = true;
   });
-  // expand each seed to 4 nearby
   players.forEach((p, idx)=>{
     const q = [seeds[idx]];
     const gave = new Set([seeds[idx]]);
@@ -353,7 +370,8 @@ async function ensureState(){
     lastResolveAt: 0,
     diplomacy: [],
     winner:null,
-    maxOrdersPerTurn: MAX_ORDERS_DEFAULT
+    maxOrdersPerTurn: MAX_ORDERS_DEFAULT,
+    roundLenMs: ROUND_LEN_MS_DEFAULT
   };
   await setDoc(stateRef, payload);
 }
@@ -363,15 +381,12 @@ ensureState();
 onSnapshot(stateRef, (snap)=>{
   if (!snap.exists()) return;
   state = snap.data();
-
-  // per-player color map
   updatePlayerColors();
 
-  // Detect new round: clear selection & local cache so you’re never “stuck”
   if (lastRoundSeen === null || lastRoundSeen !== state.round){
     selectedSrc = null;
     myOrders = (state?.orders?.[username]) || [];
-    flashMoveBadge(); // quick visual reset cue
+    flashMoveBadge();
     lastRoundSeen = state.round;
   }
 
@@ -401,7 +416,6 @@ function renderStatus(){
   const maxN = getMaxOrders();
   $("ruleCapN").textContent = maxN;
 
-  // Coalition meter + scoreboard
   const terr = state?.territories||[];
   const owned = {};
   (state?.players||[]).forEach(n=> owned[n]=0);
@@ -414,7 +428,6 @@ function renderStatus(){
   }
   $("coalitionBadge").textContent = (leader ? `${leader} ${leadPct}%` : "—");
 
-  // scoreboard pills
   const row = $("scoresRow"); row.innerHTML = "";
   (state?.players||[]).forEach(n=>{
     const pill = document.createElement("div"); pill.className="pill";
@@ -425,11 +438,9 @@ function renderStatus(){
     row.appendChild(pill);
   });
 
-  // Submit enabled?
   const done = !!state?.submitted?.[username];
   $("btnSubmit").disabled = done || state.status!=="planning";
 
-  // Move badge
   const mineCount = (state?.orders?.[username]?.length) || 0;
   $("moveBadge").textContent = `Moves: ${mineCount}/${maxN}`;
 }
@@ -456,15 +467,15 @@ function renderOrdersPane(){
   const mine = (state?.orders?.[username]) || [];
   if (mine.length===0){
     const x = document.createElement("div"); x.className="muted";
-    x.textContent = "No orders yet. Tap your tiles to Attack or Fortify.";
+    x.textContent = "No orders yet. Tap your tiles to Attack, Fortify, or Move.";
     box.appendChild(x);
     return;
   }
   mine.forEach((o,i)=>{
     const row = document.createElement("div");
     row.className = "pill"; row.style.justifyContent="space-between";
-    row.innerHTML = (o.type==="attack")
-      ? `⚔️ ${o.src} → ${o.dst}`
+    row.innerHTML = (o.type==="attack") ? `⚔️ ${o.src} → ${o.dst}`
+      : (o.type==="move") ? `🚚 ${o.src} → ${o.dst} (${o.amt})`
       : `🛡️ Fortify ${o.id}`;
     const del = document.createElement("button"); del.className="btn-ghost mini"; del.textContent="Remove";
     del.onclick = ()=> removeOrder(i);
@@ -481,7 +492,6 @@ function renderDiplomacy(){
     row.textContent = `💬 ${new Date(d.t).toLocaleTimeString()} ${d.from} → ${d.to||"All"}: ${d.msg}`;
     feed.appendChild(row);
   }
-  // targets
   const sel = $("dipTarget"); sel.innerHTML="";
   const modalSel = $("quickDipTarget"); modalSel.innerHTML="";
   for(const p of (state?.players||[])){
@@ -493,9 +503,10 @@ function renderDiplomacy(){
 }
 
 /* ===================== Orders ===================== */
-function setMode(m){ orderMode = m; $("orderMode").textContent = (m==="attack"?"Attack":"Fortify"); selectedSrc=null; renderMap(); }
+function setMode(m){ orderMode = m; $("orderMode").textContent = (m==="attack"?"Attack":m==="fortify"?"Fortify":"Move"); selectedSrc=null; renderMap(); }
 $("modeAttack").onclick = ()=> setMode("attack");
 $("modeFortify").onclick = ()=> setMode("fortify");
+$("modeMove").onclick    = ()=> setMode("move");
 $("modeClear").onclick = async ()=>{
   myOrders = [];
   await updateDoc(stateRef, { [`orders.${username}`]: [] });
@@ -512,9 +523,7 @@ function pushMyOrders(){
   updateDoc(stateRef, { [`orders.${username}`]: myOrders });
 }
 
-function hitMoveCapFlash(){
-  flashMoveBadge();
-}
+function hitMoveCapFlash(){ flashMoveBadge(); }
 
 function onTileTap(id){
   if (!state || state.status!=="planning") return;
@@ -524,39 +533,66 @@ function onTileTap(id){
   const maxN = getMaxOrders();
 
   if (orderMode === "fortify"){
-    if (t.owner !== username) return; // only fortify our tile
+    if (t.owner !== username) return;
     if (mine.length >= maxN){ hitMoveCapFlash(); return; }
-    // one fortify per tile per round
-    if (mine.some(o=>o.type==="fortify" && o.id===id)) return;
+    if (mine.some(o=>o.type==="fortify" && o.id===id)) return; // one fortify per tile
     myOrders = mine.concat([{ type:"fortify", id }]);
     pushMyOrders();
     renderOrdersPane(); highlightOrders();
     return;
   }
 
-  // attack mode: pick source then destination
-  if (!selectedSrc){
-    if (t.owner !== username) return;
-    if (t.units <= 0) return;
-    selectedSrc = id;
-    highlightOrders();
-    return;
-  }else{
-    const src = state.territories[selectedSrc];
-    if (id===selectedSrc){ selectedSrc=null; highlightOrders(); return; }
-    if (!src.neighbors.includes(id)){ selectedSrc=null; highlightOrders(); return; }
-    const dst = state.territories[id];
-    if (dst.owner === username){ selectedSrc=null; highlightOrders(); return; }
-
-    if (mine.length >= maxN){ selectedSrc=null; hitMoveCapFlash(); highlightOrders(); return; }
-    // only one attack per source per round
-    if (mine.some(o=>o.type==="attack" && o.src===selectedSrc)){
-      selectedSrc=null; highlightOrders(); return;
+  if (orderMode === "attack"){
+    // pick source then destination (enemy)
+    if (!selectedSrc){
+      if (t.owner !== username) return;
+      if (t.units <= 0) return;
+      selectedSrc = id;
+      highlightOrders();
+      return;
+    }else{
+      const src = state.territories[selectedSrc];
+      if (id===selectedSrc){ selectedSrc=null; highlightOrders(); return; }
+      if (!src.neighbors.includes(id)){ selectedSrc=null; highlightOrders(); return; }
+      const dst = state.territories[id];
+      if (dst.owner === username){ selectedSrc=null; highlightOrders(); return; }
+      if (mine.length >= maxN){ selectedSrc=null; hitMoveCapFlash(); highlightOrders(); return; }
+      if (mine.some(o=>o.type==="attack" && o.src===selectedSrc)){ selectedSrc=null; highlightOrders(); return; } // one attack per source
+      myOrders = mine.concat([{ type:"attack", src: selectedSrc, dst: id }]);
+      pushMyOrders();
+      selectedSrc=null;
+      renderOrdersPane(); highlightOrders();
+      return;
     }
-    myOrders = mine.concat([{ type:"attack", src: selectedSrc, dst: id }]);
-    pushMyOrders();
-    selectedSrc=null;
-    renderOrdersPane(); highlightOrders();
+  }
+
+  if (orderMode === "move"){
+    // pick owned source then owned neighbor dst, then choose amount
+    if (!selectedSrc){
+      if (t.owner !== username) return;
+      if (t.units <= 1) return; // cannot move if you would drop to 0
+      selectedSrc = id;
+      highlightOrders();
+      return;
+    }else{
+      const src = state.territories[selectedSrc];
+      if (id===selectedSrc){ selectedSrc=null; highlightOrders(); return; }
+      if (!src.neighbors.includes(id)){ selectedSrc=null; highlightOrders(); return; }
+      const dst = state.territories[id];
+      if (dst.owner !== username){ selectedSrc=null; highlightOrders(); return; }
+      if (mine.length >= maxN){ selectedSrc=null; hitMoveCapFlash(); highlightOrders(); return; }
+      // one move per source per round
+      if (mine.some(o=>o.type==="move" && o.src===selectedSrc)){ selectedSrc=null; highlightOrders(); return; }
+
+      const maxSend = Math.max(0, src.units - 1);
+      if (maxSend<=0){ selectedSrc=null; highlightOrders(); return; }
+      // open picker
+      pendingMove = { src:selectedSrc, dst:id, maxSend };
+      openPicker(src.id, dst.id, maxSend);
+      selectedSrc=null; // clear selection; UI will highlight via picker feedback
+      highlightOrders();
+      return;
+    }
   }
 }
 
@@ -567,8 +603,50 @@ function highlightOrders(){
   for(const o of mine){
     if (o.type==="attack"){ tilesDOM[o.src].classList.add("sel"); tilesDOM[o.dst].classList.add("sel"); }
     if (o.type==="fortify"){ tilesDOM[o.id].classList.add("sel"); }
+    if (o.type==="move"){ tilesDOM[o.src].classList.add("sel"); tilesDOM[o.dst].classList.add("sel"); }
   }
 }
+
+/* ===================== Picker (Move amount) ===================== */
+const pickerBack = $("pickerBack");
+const pickerInfo = $("pickerInfo");
+const pickerChips = $("pickerChips");
+const pickerInput = $("pickerInput");
+const pickerConfirm = $("pickerConfirm");
+$("pickerClose").onclick = ()=> closePicker();
+
+function openPicker(srcId, dstId, maxSend){
+  pickerBack.style.display = "flex";
+  pickerInfo.textContent = `From ${srcId} → ${dstId} | You can move up to ${maxSend}`;
+  pickerInput.value = "";
+  pickerChips.innerHTML = "";
+
+  const quicks = [1,2,3, Math.floor(maxSend/2), Math.max(1, maxSend-1)];
+  const labels = ["1","2","3","Half","All-1"];
+  quicks.forEach((v, i)=>{
+    const amt = clamp(v,1,maxSend);
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = `${labels[i]} (${amt})`;
+    chip.onclick = ()=> { pickerInput.value = amt; };
+    pickerChips.appendChild(chip);
+  });
+
+  pickerConfirm.onclick = ()=>{
+    const val = parseInt(pickerInput.value,10);
+    const amt = Number.isFinite(val) ? clamp(val,1,maxSend) : 0;
+    if (amt<=0) return;
+    const mine = (state?.orders?.[username]) || [];
+    // respect cap again
+    if (mine.length >= getMaxOrders()){ closePicker(); hitMoveCapFlash(); return; }
+    // respect one move per source already checked before
+    myOrders = mine.concat([{ type:"move", src: pendingMove.src, dst: pendingMove.dst, amt }]);
+    pushMyOrders();
+    closePicker();
+    renderOrdersPane(); highlightOrders();
+  };
+}
+function closePicker(){ pickerBack.style.display = "none"; pendingMove = {src:null, dst:null, maxSend:0}; }
 
 /* ===================== Submit & Timer ===================== */
 $("btnSubmit").onclick = async ()=>{
@@ -580,7 +658,6 @@ function ensureTimer(){
   stopTimer();
   tickTimer();
   timerInterval = setInterval(tickTimer, 250);
-  // host auto resolve when time is up or everyone submitted
   maybeHostResolve();
 }
 function stopTimer(){
@@ -618,20 +695,18 @@ async function maybeHostResolve(){
 
 /* ===================== Resolve ===================== */
 async function resolveRound(d){
-  // defensive copy
   const terr = (d.territories||[]).map(t=>({...t, neighbors:[...t.neighbors]}));
   const players = d.players || [];
   const byPlayerRaw = d.orders || {};
 
-  // Trim to move cap (server-authoritative)
   const cap = d.maxOrdersPerTurn ?? MAX_ORDERS_DEFAULT;
   const byPlayer = {};
   for(const p of players){
-    const arr = (byPlayerRaw[p]||[]).filter(o=>o && (o.type==="attack" || o.type==="fortify"));
-    byPlayer[p] = arr.slice(0, cap);
+    const arr = (byPlayerRaw[p]||[]).filter(o=>o && (o.type==="attack" || o.type==="fortify" || o.type==="move"));
+    byPlayer[p] = arr.slice(0, cap); // authoritative cap
   }
 
-  // 1) Apply Levy to capitals if flagged from previous round (free; not counted)
+  // 1) Levy (free)
   const levy = d.levyNextRound || {};
   for(const p of players){
     if (levy[p]){
@@ -640,12 +715,12 @@ async function resolveRound(d){
     }
   }
 
-  // 2) Resolve fortify (simultaneous): +1 per unique tile fortified
+  // 2) Fortify (+1 per unique tile)
   for(const p of players){
     const seenFortTiles = new Set();
     for(const o of (byPlayer[p]||[])){
       if (o.type!=="fortify") continue;
-      if (seenFortTiles.has(o.id)) continue; // prevent double-fortify abuse
+      if (seenFortTiles.has(o.id)) continue;
       const t = terr[o.id];
       if (t && t.owner===p){
         t.units += 1;
@@ -654,8 +729,27 @@ async function resolveRound(d){
     }
   }
 
-  // 3) Resolve attacks
-  const plannedAttacks = []; // {dst, attacks:[{p,src,force}]}
+  // 3) Move (apply transfers; cannot reduce source below 1)
+  for(const p of players){
+    const seenMoveSrc = new Set(); // one move per source (extra safety)
+    for(const o of (byPlayer[p]||[])){
+      if (o.type!=="move") continue;
+      if (seenMoveSrc.has(o.src)) continue;
+      const src = terr[o.src], dst = terr[o.dst];
+      if (!src || !dst) continue;
+      if (src.owner!==p || dst.owner!==p) continue;
+      if (!src.neighbors.includes(dst.id)) continue;
+      const maxSend = Math.max(0, src.units - 1);
+      const amt = clamp(o.amt|0, 0, maxSend);
+      if (amt<=0) { seenMoveSrc.add(o.src); continue; }
+      src.units -= amt;
+      dst.units += amt;
+      seenMoveSrc.add(o.src);
+    }
+  }
+
+  // 4) Attacks (after moves)
+  const plannedAttacks = [];
   const attach = (dst, item)=>{
     let bucket = plannedAttacks.find(x=>x.dst===dst);
     if (!bucket){ bucket = { dst, attacks:[] }; plannedAttacks.push(bucket); }
@@ -670,8 +764,8 @@ async function resolveRound(d){
       if (src.owner!==p) continue;
       if (!src.neighbors.includes(dst.id)) continue;
       if (src.units<=0) continue;
-      const force = src.units; // commit all
-      src.units = 0;           // emptied to march
+      const force = src.units; // commit all after moves
+      src.units = 0;
       attach(dst.id, { p, src:o.src, force });
     }
   }
@@ -679,13 +773,10 @@ async function resolveRound(d){
   for (const bucket of plannedAttacks){
     const dst = terr[bucket.dst];
     const defender = { p: dst.owner, force: dst.units };
-    // Sum by attacker
     const by = {};
     for(const a of bucket.attacks){ by[a.p] = (by[a.p]||0) + a.force; }
-    // Decide outcome
     let topA = null, topForce = 0, sumA = 0;
     for(const [p,force] of Object.entries(by)){ sumA+=force; if (force>topForce){ topA=p; topForce=force; } }
-
     if (sumA > defender.force){
       dst.owner = topA;
       dst.units = (sumA - defender.force) + 1; // capture bonus
@@ -694,7 +785,7 @@ async function resolveRound(d){
     }
   }
 
-  // 4) Frontline attrition
+  // 5) Frontline attrition
   const seen = new Set();
   for(const t of terr){
     for(const nb of t.neighbors){
@@ -709,7 +800,7 @@ async function resolveRound(d){
     }
   }
 
-  // 5) Elims / Victory
+  // 6) Elims / Victory
   const owned = {}; players.forEach(p=>owned[p]=0);
   terr.forEach(t=>{ if (t.owner) owned[t.owner] = (owned[t.owner]||0)+1; });
   let alive = players.filter(p=> (owned[p]||0)>0);
@@ -720,7 +811,7 @@ async function resolveRound(d){
   }
   if (!winner && alive.length===1) winner = alive[0];
 
-  // 6) Coalition / next levy flags
+  // 7) Coalition flags
   let leadP=null, leadPct=0;
   for(const [p,v] of Object.entries(owned)){
     const pct = Math.round((100*v)/total);
@@ -731,12 +822,11 @@ async function resolveRound(d){
     for(const p of players){ if (p!==leadP) levyNextRound[p]=true; }
   }
 
-  // next planning window
   const next = {
     status: winner ? "finished" : "planning",
     territories: terr,
-    submitted: {},              // reset
-    orders: {},                 // reset
+    submitted: {},
+    orders: {},
     levyNextRound,
     round: d.round + 1,
     roundEndsAt: winner ? 0 : (Date.now()+ (d.roundLenMs || ROUND_LEN_MS_DEFAULT)),
@@ -788,6 +878,7 @@ $("fsBtn").onclick = async ()=>{
 window.addEventListener("keydown",(e)=>{
   if (e.key==="1") setMode("attack");
   if (e.key==="2") setMode("fortify");
+  if (e.key==="3") setMode("move");
 });
 
 /* ===================== Tiny UI helper ===================== */
@@ -802,6 +893,7 @@ function flashMoveBadge(){
 </script>
 </body>
 </html>
+
 
 
 
