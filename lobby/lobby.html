@@ -202,8 +202,8 @@
                   <option value="spelltower">🗼 Spell Tower (8P)</option>
                   <option value="zombiezone">🧟‍♂️ Zombie Zone (4P)</option>
                   <option value="biblegame">📖 Bible Game (12P)</option>
-                  <!-- ADDED: History Rush -->
                   <option value="historyrush">🏛️ History Rush (4P)</option>
+                  <option value="crowncouncil">👑 Crown & Council (4P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -276,8 +276,10 @@
       zombiezone: "/game/zombiezone.html",
       biblegame:  "/game/biblegame.html",
 
-      // ADDED: History Rush route in the /games/ folder
+      // ADDED: History Rush
       historyrush:"/game/historyrush.html",
+      // ADDED: Crown & Council
+      crowncouncil:"/game/crowncouncil.html",
 
       // Singleplayer
       matchwars:  "/game/matchwars.html",
@@ -289,11 +291,10 @@
       mobamania:  "/game/CatLanes.html"
     };
 
-    // Games that should navigate to their page once lobby status becomes "started"
+    // Games that auto-navigate once lobby "started"
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","zombiezone","biblegame",
-      // ADDED: History Rush auto-redirect
-      "historyrush"
+      "historyrush","crowncouncil"
       // NOTE: 'mountonline' and 'rock' are quick-play and do not use lobbies
     ]);
 
@@ -306,8 +307,8 @@
       zombiezone: 4,
       stockkings: 8,
       biblegame: 20,
-      // ADDED: History Rush 4P cap
-      historyrush: 4
+      historyrush: 4,
+      crowncouncil: 4
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
@@ -459,8 +460,8 @@
              type==='spelltower'?'🗼 Spell Tower (8P)' :
              type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' :
              type==='biblegame'?'📖 Bible Game (20P)' :
-             // ADDED: History Rush label
              type==='historyrush'?'🏛️ History Rush (4P)' :
+             type==='crowncouncil'?'👑 Crown & Council (4P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -496,8 +497,8 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      // Include History Rush in allowed lobby games
-      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush'].includes(gameType)) {
+      // allow lobby games
+      if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -790,7 +791,7 @@
       try {
         if (currentLobbyId) { await leaveLobby(); }
       } catch(e) { /* ignore */ }
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
+      if (lobbyUnsub) { lobbyUnsub = null; }
       clearSession();
       username = "";
       showLoginUI();
@@ -811,11 +812,6 @@
   </script>
 </body>
 </html>
-
-
-
-
-
 
 
 
