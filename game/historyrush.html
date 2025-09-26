@@ -481,7 +481,8 @@ for (let i=0;i<64;i++){
       lastScoreTick: Date.now(),
       winner:null,
       // 64 cells with shares: {}
-      cells: Array.from({length:64}, ()=>({shares:{}}))
+      cells: Array.from({length:64}, ()=>({shares:{}, credited:{}}))
+
     };
     lp.forEach(n=> init.scores[n]=0);
     await setDoc(stateRef, init);
@@ -624,6 +625,58 @@ for (let i=0;i<64;i++){
     });
   }catch(e){ console.error(e); }
 }
+async function awardCorrectOnce(cellIdx, player, gain=10){
+  try{
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(stateRef);
+      if (!snap.exists()) throw new Error("no state");
+      const d = snap.data();
+      if (d.status !== "playing") return;
+
+      const cells = d.cells || [];
+      const cell = cells[cellIdx] || {shares:{}, credited:{}};
+      const shares = Object.assign({}, cell.shares || {});
+      const credited = Object.assign({}, cell.credited || {});
+
+      // already paid out on this cell for this player?
+      if (credited[player]) throw new Error("already_credited");
+
+      // === same share math as your adjustCellShare (positive branch) ===
+      const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
+      const cur = shares[player] || 0;
+      const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
+
+      if (sum < 100){
+        const add = Math.min(gain, 100 - sum);
+        shares[player] = clamp(cur + add, 0, 100);
+      } else {
+        const others = Object.keys(shares).filter(k=>k!==player);
+        const sumOthers = others.reduce((a,k)=>a+(shares[k]||0),0);
+        shares[player] = clamp(cur + gain, 0, 100);
+        if (sumOthers>0){
+          for(const k of others){
+            const cut = gain * ((shares[k]||0)/sumOthers);
+            shares[k] = clamp((shares[k]||0) - cut, 0, 100);
+          }
+        }
+        const total = Object.values(shares).reduce((a,b)=>a+(b||0),0);
+        const diff = 100 - total;
+        shares[player] = clamp((shares[player]||0)+diff, 0, 100);
+      }
+
+      // mark once-only credit
+      credited[player] = true;
+
+      cells[cellIdx] = {shares, credited};
+      tx.update(stateRef, { cells });
+    });
+    return {ok:true};
+  }catch(e){
+    if (e.message === "already_credited") return {ok:false, reason:"already"};
+    console.error(e);
+    return {ok:false, reason:"error"};
+  }
+}
 
 
   // ---------- BOARD RENDER ----------
@@ -693,39 +746,57 @@ for (let i=0;i<64;i++){
   }
 
   function openQuestion(era){
-    const q = getRandomQuestion(era);
-    if (!q){ alert("No questions available."); return; }
-    $("modalTitle").textContent = `${era} — Trivia`;
-    $("qText").textContent = q.q;
-    const opts = shuffle([q.a, ...q.wrong]);
-    const box = $("qOpts"); box.innerHTML = "";
-    $("qFeedback").textContent = "";
-    $("nextQ").style.display = "none";
-    opts.forEach(text=>{
-      const b = document.createElement("button");
-      b.className="opt"; b.textContent=text;
-      b.onclick = ()=> evaluateAnswer(q, text===q.a);
-      box.appendChild(b);
-    });
-    $("modalBack").style.display="flex";
-  }
+  const q = getRandomQuestion(era);
+  if (!q){ alert("No questions available."); return; }
+  $("modalTitle").textContent = `${era} — Trivia`;
+  $("qText").textContent = q.q;
+  const opts = shuffle([q.a, ...q.wrong]);
+  const box = $("qOpts"); box.innerHTML = "";
+  $("qFeedback").textContent = "";
+  $("nextQ").style.display = "none";
+
+  let answeredThisModal = false;
+
+  opts.forEach(text=>{
+    const b = document.createElement("button");
+    b.className="opt"; b.textContent=text;
+    b.onclick = async ()=>{
+      if (answeredThisModal) return;
+      answeredThisModal = true;
+      // lock buttons visually/behaviorally
+      [...box.children].forEach(btn=> btn.disabled = true);
+      await evaluateAnswer(q, text===q.a);
+    };
+    box.appendChild(b);
+  });
+
+  $("modalBack").style.display="flex";
+}
+
 
   $("closeModal").onclick = ()=> { $("modalBack").style.display="none"; currentCellIndex=null; };
   $("nextQ").onclick = ()=> { openQuestion(currentEraForModal); };
 
   async function evaluateAnswer(q, correct){
-    let feedback="";
-    if (correct){
-      feedback="✅ Correct! You gain +10% share.";
-      await adjustCellShare(currentCellIndex, username, +10);
-      $("nextQ").style.display = "inline-flex";
-    }else{
-      feedback="❌ Incorrect. You lose up to 20% of your share here.";
-      await adjustCellShare(currentCellIndex, username, -20);
-      $("nextQ").style.display = "none";
+  let feedback="";
+  if (correct){
+    const res = await awardCorrectOnce(currentCellIndex, username, 10);
+    if (res.ok){
+      feedback = "✅ Correct! You gain +10% share (once per tile).";
+    } else if (res.reason === "already"){
+      feedback = "ℹ️ You already got credit for this tile earlier — no extra points.";
+    } else {
+      feedback = "⚠️ Correct, but something went wrong saving your points.";
     }
-    $("qFeedback").textContent = feedback;
+    $("nextQ").style.display = "inline-flex";
+  }else{
+    feedback = "❌ Incorrect. You lose up to 20% of your share here.";
+    await adjustCellShare(currentCellIndex, username, -20);
+    $("nextQ").style.display = "none";
   }
+  $("qFeedback").textContent = feedback;
+}
+
 
   // ---------- SHARE MATH (transactional) ----------
   async function adjustCellShare(cellIdx, player, delta){
@@ -1826,6 +1897,7 @@ for (let i=0;i<64;i++){
 </script>
 </body>
 </html>
+
 
 
 
