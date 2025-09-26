@@ -786,13 +786,15 @@ async function awardCorrectForQuestion(cellIdx, player, qKey, gain=10){
 function questionKey(era, q){
   return `${era}::${q.q}`; // or add an 'id' field to your question objects
 }
- let currentQKey = null;
+ let currentQKey = null;           // optional: just for debugging
+let answeredThisModal = false;    // per-question instance lock
 
 function openQuestion(era){
   const q = getRandomQuestion(era);
   if (!q){ alert("No questions available."); return; }
 
-  currentQKey = questionKey(era, q);   // 👈 set key for this specific question
+  currentQKey = `${era}::${q.q}`; // not used for scoring — just for logs
+  answeredThisModal = false;      // 🔒 reset lock for the new question
 
   $("modalTitle").textContent = `${era} — Trivia`;
   $("qText").textContent = q.q;
@@ -802,53 +804,49 @@ function openQuestion(era){
   $("qFeedback").textContent = "";
   $("nextQ").style.display = "none";
 
-  let answeredThisModal = false;
-
   opts.forEach(text=>{
     const b = document.createElement("button");
-    b.className="opt"; b.textContent = text;
+    b.className = "opt";
+    b.textContent = text;
     b.onclick = async ()=>{
-      if (answeredThisModal) return;        // stop double-clicks
-      answeredThisModal = true;
-      [...box.children].forEach(btn=> btn.disabled = true);
-      await evaluateAnswer(q, text===q.a);
+      if (answeredThisModal) return;          // ❌ ignore repeat clicks
+      answeredThisModal = true;               // ✅ lock this question instance
+      [...box.children].forEach(btn => btn.disabled = true);  // hard-disable UI
+      await evaluateAnswer(q, text === q.a);
     };
     box.appendChild(b);
   });
 
-  $("modalBack").style.display="flex";
+  $("modalBack").style.display = "flex";
 }
 
 $("nextQ").onclick = ()=> {
-  // new question ⇒ new key ⇒ scoring allowed again
+  // new question => lock resets inside openQuestion
   openQuestion(currentEraForModal);
 };
+
 
 
 
   $("closeModal").onclick = ()=> { $("modalBack").style.display="none"; currentCellIndex=null; };
   $("nextQ").onclick = ()=> { openQuestion(currentEraForModal); };
 
-  async function evaluateAnswer(q, correct){
-  let feedback="";
+ async function evaluateAnswer(q, correct){
+  let feedback = "";
   if (correct){
-    const res = await awardCorrectForQuestion(currentCellIndex, username, currentQKey, 10);
-    if (res.ok){
-      feedback = "✅ Correct! +10% share (once per question).";
-    } else if (res.reason === "already"){
-      feedback = "ℹ️ You already got credit for THIS question. Try the next one!";
-    } else {
-      feedback = "⚠️ Correct, but saving your points failed.";
-    }
+    // award fresh points every time a *new* question is answered
+    await adjustCellShare(currentCellIndex, username, +10);
+    feedback = "✅ Correct! +10% share.";
     $("nextQ").style.display = "inline-flex";
   } else {
-    // Wrong answers can happen infinitely; your existing penalty can stay.
-    feedback = "❌ Incorrect. You lose up to 20% here. Try another question.";
+    // wrong answers can happen infinitely
     await adjustCellShare(currentCellIndex, username, -20);
-    $("nextQ").style.display = "inline-flex";  // allow another try (new Q)
+    feedback = "❌ Incorrect. You lose up to 20%. Try another question.";
+    $("nextQ").style.display = "inline-flex";
   }
   $("qFeedback").textContent = feedback;
 }
+
 
 
 
@@ -1951,6 +1949,7 @@ $("nextQ").onclick = ()=> {
 </script>
 </body>
 </html>
+
 
 
 
