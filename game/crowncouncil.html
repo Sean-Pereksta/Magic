@@ -3,74 +3,74 @@
 <head>
 <meta charset="utf-8" />
 <title>👑 Crown & Council (Multiplayer)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
-    --bg:#fff7f7; --ink:#0f172a; --muted:#64748b; --card:#fff; --br:#f3e2e2;
+    --bg:#fff7f7; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#f3e2e2;
     --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
     --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
-    --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --tap:52px;
+    --shadow:0 10px 30px rgba(15,23,42,.1); --radius:16px; --radius-sm:12px;
+    --tap:54px;
+    --p0:#ef4444; --p1:#3b82f6; --p2:#10b981; --p3:#f59e0b;
   }
-  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
-  html,body{height:100%}
-  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .shell{max-width:1100px;margin:0 auto;padding:10px 12px 26px}
 
-  .shell{max-width:1200px;margin:0 auto;padding:10px 12px 28px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;flex-wrap:wrap}
-  .leftrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:800}
-  .btn{appearance:none;border:1px solid var(--br);background:var(--accent);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}
+  .leftrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:900}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .btn{appearance:none;border:1px solid var(--br);border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer;background:var(--accent);color:#fff}
   .btn:hover{background:var(--accent-2)}
   .btn-ghost{background:#fff;color:var(--ink)}
   .btn-ghost:hover{background:#fff5f5}
-  .btn-sm{padding:9px 12px;border-radius:10px}
+  .mini{padding:8px 10px;border-radius:10px;font-size:.95rem}
   .card{background:var(--card);border:1px solid var(--br);border-radius:var(--radius);box-shadow:var(--shadow)}
-  .card-head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .card-head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between}
   .card-title{font-weight:900}
-  .card-body{padding:14px}
+  .card-body{padding:12px 14px}
   .muted{color:var(--muted)}
 
-  .layout{display:grid;grid-template-columns:1.2fr 2fr;gap:12px}
-  @media (max-width:980px){ .layout{grid-template-columns:1fr} }
+  /* Layout: map & controls stacked on mobile */
+  .grid{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+  @media (max-width:960px){ .grid{grid-template-columns:1fr} }
 
-  /* HUD panels */
-  .scorebar{display:flex;flex-wrap:wrap;gap:8px}
-  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 8px;border-radius:999px;border:1px solid var(--br);background:#fff}
-  .dot{width:12px;height:12px;border-radius:50%}
-
-  /* Map window */
-  .map-wrap{position:relative;height:68vh;min-height:420px;border-radius:16px;border:1px solid var(--br);overflow:hidden;background:#fff}
-  .map-toolbar{position:absolute;z-index:5;top:10px;left:10px;display:flex;gap:8px;flex-wrap:wrap}
-  .map-window{position:absolute;inset:0;overflow:hidden;touch-action:none;background:repeating-linear-gradient(0deg,#fef2f2 0,#fef2f2 20px,#fff 20px,#fff 40px)}
-  .map-canvas{position:absolute;top:0;left:0;will-change:transform}
-  .tile{position:absolute;width:48px;height:48px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;
-        display:flex;align-items:center;justify-content:center;font-weight:900;user-select:none}
-  .tile.owned{border-width:2px}
+  /* Map window (pannable) */
+  .mapWrap{position:relative;border:1px solid var(--br);border-radius:14px;overflow:hidden;background:#fff}
+  .mapHead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--br)}
+  .mapWindow{position:relative;touch-action:none; /* we implement pan ourselves */ width:100%; height:min(70vh,580px); background:#fafafa}
+  .mapCanvas{position:absolute; left:0; top:0; transform:translate3d(0,0,0)}
+  .tile{position:absolute; width:80px; height:80px; border:2px solid #e5e7eb; border-radius:10px; background:#f3f4f6; display:grid; place-items:center; font-weight:900; user-select:none; -webkit-user-select:none; touch-action:none}
+  .tile.owned{background:#fff}
   .tile.sel{outline:3px solid #111827}
-  .tile.enemy{filter:saturate(1.15)}
-  .tile .u{font-size:13px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:2px 6px}
+  .cap-icon{position:absolute; inset:auto 4px 4px auto; font-size:14px}
+  .tile .u{font-size:16px}
+  .tile.p0{border-color:var(--p0)}
+  .tile.p1{border-color:var(--p1)}
+  .tile.p2{border-color:var(--p2)}
+  .tile.p3{border-color:var(--p3)}
 
-  /* Orders */
-  .orders{display:grid;grid-template-columns:1fr;gap:8px}
-  .order{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid var(--br);border-radius:10px;background:#fff}
-  .order small{color:var(--muted)}
-  .order .del{cursor:pointer;border:none;background:#fff;color:var(--bad);font-weight:900}
+  /* Pill bars */
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff;font-weight:800}
 
-  /* Diplomacy & chat */
-  .diplomacy{display:grid;gap:8px}
-  .chat{height:180px;border:1px solid var(--br);border-radius:12px;padding:8px;overflow:auto;background:#fff}
+  /* Right controls */
+  .controls{display:grid;gap:10px}
+  .vlist{display:grid;gap:8px;max-height:280px;overflow:auto;padding-right:6px}
+  .input, .select{padding:10px 12px;border:1px solid var(--br);border-radius:12px;min-height:44px;background:#fff;font-size:16px;outline:none}
+  .input:focus,.select:focus{border-color:#fecaca;box-shadow:0 0 0 4px rgba(239,68,68,.25)}
+
+  /* Footer actions (mobile float) */
+  .actionbar{position:sticky;bottom:0;left:0;right:0;background:rgba(255,255,255,.96);backdrop-filter:saturate(1.1) blur(6px);border:1px solid var(--br);border-radius:14px;padding:8px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 
   /* Modals */
-  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
-  .modal{width:min(720px,96vw);background:#fff;border-radius:16px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
-  .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center}
-  .modal .body{padding:14px}
-
-  /* Sticky footer for mobile actions */
-  .mobile-actions{display:flex;gap:8px;position:sticky;bottom:0;padding-top:8px;background:linear-gradient(180deg, transparent, #fff);}
-
-  /* Fullscreen hints */
-  .fs-hint{font-size:12px;color:var(--muted)}
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:14px;z-index:1200}
+  .modal{width:min(720px,96vw);background:#fff;border:1px solid var(--br);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between}
+  .modal .body{padding:12px 14px}
+  .opt{padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff;font-weight:800;cursor:pointer}
+  .opt:hover{background:#fff5f5}
 </style>
 </head>
 <body>
@@ -79,672 +79,696 @@
     <div class="leftrow">
       <span class="badge">👑 Crown & Council</span>
       <span id="statusBadge" class="badge">Loading…</span>
-      <span id="roundBadge" class="badge">R0</span>
-      <span id="timerBadge" class="badge">⏱️ —</span>
-      <span id="levyBadge" class="badge" title="Anti-snowball: if someone holds >40% land, others get +1 atk this round" style="display:none">🛡️ Levy +1</span>
+      <span id="roundBadge" class="badge">—</span>
+      <span id="timerBadge" class="badge">⏳ —</span>
+      <span id="coalitionBadge" class="badge">Coalition: —</span>
     </div>
     <div class="leftrow">
-      <button id="fitBtn" class="btn btn-ghost" title="Fullscreen / Fit">⛶ Fit</button>
-      <a href="/index.html" class="btn btn-ghost">🏠 Hub</a>
+      <button id="fsBtn" class="btn btn-ghost mini" title="Fullscreen">⛶ Fullscreen</button>
+      <a class="btn btn-ghost mini" href="/index.html">🏠 Hub</a>
     </div>
   </div>
 
-  <div class="layout">
-    <!-- LEFT: HUD -->
-    <div class="col">
-      <!-- Scoreboard -->
-      <div class="card">
-        <div class="card-head">
-          <div class="card-title">Scoreboard</div>
-          <div id="coalitionMeter" class="muted">Coalition: —</div>
-        </div>
-        <div class="card-body">
-          <div id="scorebar" class="scorebar"></div>
-        </div>
+  <div class="grid">
+    <!-- MAP -->
+    <div class="mapWrap card">
+      <div class="mapHead">
+        <div class="card-title">Map</div>
+        <div class="pillrow" id="scoresRow"></div>
       </div>
-
-      <!-- Orders & Actions -->
-      <div class="card" style="margin-top:12px">
-        <div class="card-head">
-          <div class="card-title">Orders (simultaneous)</div>
-          <div class="muted fs-hint">Tap a tile to select; tap neighbor to target.</div>
-        </div>
-        <div class="card-body">
-          <div class="orders" id="ordersList"></div>
-
-          <div class="mobile-actions">
-            <button id="attackBtn" class="btn btn-sm" title="Attack from selected to target">⚔️ Attack</button>
-            <button id="fortifyBtn" class="btn btn-sm" title="Fortify selected (+1 up to cap)">🛡️ Fortify</button>
-            <button id="recruitBtn" class="btn btn-sm" title="Recruit on selected (+1 up to cap)">🧑‍🎓 Recruit</button>
-            <button id="holdBtn" class="btn btn-sm btn-ghost" title="No action">✋ Hold</button>
-            <button id="submitBtn" class="btn" style="margin-left:auto">✅ Submit</button>
-          </div>
-        </div>
+      <div id="mapWindow" class="mapWindow">
+        <div id="mapCanvas" class="mapCanvas"><!-- tiles injected --></div>
       </div>
-
-      <!-- Diplomacy -->
-      <div class="card" style="margin-top:12px">
-        <div class="card-head">
-          <div class="card-title">Diplomacy & Micro-Deals</div>
-          <button id="dealBtn" class="btn btn-ghost btn-sm">🤝 Propose Deal</button>
+      <div class="actionbar">
+        <div class="leftrow">
+          <span class="badge">Order: <span id="orderMode">Attack</span></span>
+          <button class="btn-ghost mini" id="modeAttack">⚔️ Attack</button>
+          <button class="btn-ghost mini" id="modeFortify">🛡️ Fortify</button>
+          <button class="btn-ghost mini" id="modeClear">🧼 Clear</button>
         </div>
-        <div class="card-body">
-          <div id="chatBox" class="chat" aria-live="polite"></div>
-          <div class="diplomacy">
-            <div style="display:flex;gap:8px">
-              <input id="chatInput" class="btn-ghost" style="flex:1;border:1px solid var(--br);border-radius:10px;padding:10px" placeholder="Type to chat (e.g., 'I’ll hit C5 if you spare B4')" />
-              <button id="chatSend" class="btn btn-sm">Send</button>
-            </div>
-          </div>
+        <div class="leftrow">
+          <button class="btn-ghost mini" id="btnDiplomacy">🤝 Diplomacy</button>
+          <button class="btn mini" id="btnSubmit">✅ Submit Orders</button>
         </div>
       </div>
     </div>
 
-    <!-- RIGHT: Map -->
-    <div class="col">
+    <!-- RIGHT: ORDERS + CHAT -->
+    <div class="controls">
       <div class="card">
         <div class="card-head">
-          <div class="card-title">Map</div>
-          <div class="muted">Drag to pan. Pinch/zoom via device zoom if needed.</div>
+          <div class="card-title">Your Orders</div>
+          <div class="muted">Simultaneous orders; host resolves</div>
         </div>
         <div class="card-body">
-          <div class="map-wrap">
-            <div class="map-toolbar">
-              <button id="centerBtn" class="btn btn-ghost btn-sm">🎯 Center</button>
-              <button id="clearSelBtn" class="btn btn-ghost btn-sm">🧽 Clear Sel.</button>
-            </div>
-            <div class="map-window" id="mapWindow">
-              <div class="map-canvas" id="mapCanvas"></div>
-            </div>
+          <div id="ordersList" class="vlist"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Diplomacy</div>
+          <div class="muted">Micro-deals & messages</div>
+        </div>
+        <div class="card-body">
+          <div class="vlist" id="dipFeed"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <select id="dipTarget" class="select" style="flex:0 0 120px"></select>
+            <input id="dipMsg" class="input" placeholder="e.g., I’ll hit Rome if you spare Greece…" style="flex:1 1 auto" />
+            <button id="dipSend" class="btn">Send</button>
           </div>
         </div>
       </div>
-      <div class="muted" style="margin-top:6px">Tip: Add orders quickly—everything resolves together on reveal.</div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Rules</div>
+        </div>
+        <div class="card-body">
+          <ul style="margin:0;padding-left:16px;line-height:1.45">
+            <li>Turns are simultaneous. Timer auto-resolves if someone stalls.</li>
+            <li>⚔️ Attack: commit all units from a tile into one adjacent enemy tile.</li>
+            <li>🛡️ Fortify: +1 unit on a tile you own (max +1 per tile per round).</li>
+            <li>Capture bonus: +1 unit on captured tile.</li>
+            <li>Frontline attrition: adjacent enemy tiles each lose 1 (min 0) after battles.</li>
+            <li>Coalition: if a player &gt;40% land, others gain one-round Levy (+1 to their capital) next round.</li>
+            <li>Win: eliminate all rivals or own ≥60% of the map at resolve.</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Deal Modal -->
-<div id="dealModalBack" class="modal-back">
+<!-- Diplomacy modal (history & quick proposals) -->
+<div id="dipModal" class="modal-back" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="head">
-      <div class="card-title">🤝 Propose a Deal</div>
-      <button id="closeDeal" class="btn btn-ghost btn-sm">Close</button>
+      <div class="card-title">🤝 Diplomacy</div>
+      <button class="btn btn-ghost" id="dipClose">Close</button>
     </div>
     <div class="body">
-      <div style="display:grid;gap:10px">
-        <select id="dealTo" style="padding:10px;border:1px solid var(--br);border-radius:10px">
-          <option value="">— Choose player —</option>
-        </select>
-        <select id="dealType" style="padding:10px;border:1px solid var(--br);border-radius:10px">
-          <option value="nonaggr">Non-aggression (N rounds)</option>
-          <option value="target">I’ll attack <tile> if you spare <tile></option>
-          <option value="support">Support attack on <tile></option>
-        </select>
-        <input id="dealNote" placeholder="Details (e.g., 'I’ll hit D7 this round')" style="padding:10px;border:1px solid var(--br);border-radius:10px"/>
-        <button id="sendDeal" class="btn">Send Proposal</button>
+      <div class="vlist" id="dipModalFeed"></div>
+      <div style="margin-top:10px;display:grid;gap:8px">
+        <div style="display:flex;gap:8px">
+          <select id="quickDipTarget" class="select" style="flex:0 0 160px"></select>
+          <select id="quickDipTemplate" class="select" style="flex:1">
+            <option value="NAP">✌️ Non-Aggression for 1 round?</option>
+            <option value="TRADE">🔁 Trade: I attack X if you attack Y.</option>
+            <option value="ALLY">🛡️ Alliance for 2 rounds vs Leader.</option>
+            <option value="SPARE">🕊️ I’ll spare your border if you spare mine.</option>
+          </select>
+          <button id="quickDipSend" class="btn">Propose</button>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Firebase + Game Script -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction,
-    collection, addDoc, serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+/* ===================== Firebase ===================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  // ---------- CONFIG ----------
-  const firebaseConfig = {
-    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-    authDomain: "bible-game-246c0.firebaseapp.com",
-    projectId: "bible-game-246c0",
-    storageBucket: "bible-game-246c0.appspot.com",
-    messagingSenderId: "959619818996",
-    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-  };
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-  // ---------- PARAMS ----------
-  const params = new URLSearchParams(location.search);
-  const gameId = params.get("gameId");
-  const username = params.get("username");
-  if (!gameId || !username) { alert("Missing gameId or username. Launch from the lobby."); }
+/* ===================== Params ===================== */
+const params = new URLSearchParams(location.search);
+const gameId = params.get("gameId");
+const username = params.get("username");
+if (!gameId || !username) alert("Missing gameId or username.");
+const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
 
-  // ---------- DOCS ----------
-  const lobbyRef = doc(db, "lobbies", gameId);
-  const stateRef = doc(db, "lobbies", gameId, "crown", "state");
-  const chatRef  = collection(db, "lobbies", gameId, "crown_chat");
+/* ===================== Helpers ===================== */
+const $ = (id)=> document.getElementById(id);
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a;}
 
-  // ---------- CONSTANTS / TUNABLES ----------
-  const GRID_W = 22;           // width in tiles (big enough to need panning)
-  const GRID_H = 16;           // height in tiles
-  const TILE  = 52;            // px tile spacing (size + gutters)
-  const MAX_UNITS = 6;         // cap per tile
-  const ROUND_SECONDS = 25;    // timer per planning phase
-  const CAPTURE_BONUS = 1;     // +1 on newly captured tiles
-  const ATTRITION_MIN_STACK = 5;
-  const ATTRITION_ENEMY_NEI = 2;
-  const LEADER_SHARE_FOR_LEVY = 0.40; // >40% land -> others get Levy +1 attack
+const COLORS = ["var(--p0)","var(--p1)","var(--p2)","var(--p3)"];
+const PLAYER_COLORS = {}; // name -> color index after we know players
 
-  const PLAYER_COLORS = ["#ef4444","#3b82f6","#10b981","#f59e0b"];
-  let players = [];
-  let isHost = false;
+/* ===================== Map (square grid) ===================== */
+const W = 10, H = 8, TILE = 80, GAP = 6; // 80x80 tiles; tweak if needed
+const mapWindow = $("mapWindow");
+const mapCanvas = $("mapCanvas");
+let tilesDOM = [];
+let pan = { x: 20, y: 20 }; // initial offset
+let panning = false, lastPt = {x:0,y:0};
+let dragStart = null, didPan=false;
+const DRAG_THRESHOLD = 6;
 
-  // runtime
-  let state = null;
-  let myOrdersLocal = [];       // local staging until submit
-  let selectedFrom = null;      // tile id
-  let selectedTo   = null;      // tile id (neighbor)
-  let pan = {x:0, y:0};
-  let panning = false, lastPt = null;
+// pointer pan with tap threshold (✅ Fixed)
+mapWindow.addEventListener("pointerdown", (e)=>{
+  panning = true; didPan = false;
+  dragStart = { x:e.clientX, y:e.clientY };
+  lastPt = { x:e.clientX, y:e.clientY };
+});
+mapWindow.addEventListener("pointermove", (e)=>{
+  if (!panning) return;
+  const dx = e.clientX - lastPt.x, dy = e.clientY - lastPt.y;
+  lastPt = { x:e.clientX, y:e.clientY };
 
-  const $ = id => document.getElementById(id);
-  function setStatus(t){ $("statusBadge").textContent = t; }
+  const moved = Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y);
+  if (moved > DRAG_THRESHOLD) didPan = true;
 
-  // ---------- UI: Fullscreen ----------
-  $("fitBtn").onclick = async () => {
-    try{
-      if (!document.fullscreenElement) { await document.documentElement.requestFullscreen(); }
-      else { await document.exitFullscreen(); }
-    }catch(e){}
-  };
-
-  // ---------- INIT BOARD DOM ----------
-  const mapCanvas = $("mapCanvas");
-  const mapWindow = $("mapWindow");
-  function buildBoardDOM(){
-    mapCanvas.style.width = (GRID_W * TILE) + "px";
-    mapCanvas.style.height = (GRID_H * TILE) + "px";
-    mapCanvas.innerHTML = "";
-
-    for(let r=0;r<GRID_H;r++){
-      for(let c=0;c<GRID_W;c++){
-        const id = r*GRID_W+c;
-        const d = document.createElement("div");
-        d.className = "tile";
-        d.style.left = (c*TILE+2) + "px";
-        d.style.top  = (r*TILE+2) + "px";
-        d.dataset.id = id;
-        const u = document.createElement("div");
-        u.className = "u"; u.textContent = "1";
-        d.appendChild(u);
-        d.addEventListener("click", ()=> onTileTap(id));
-        mapCanvas.appendChild(d);
-      }
-    }
-    centerMap();
-  }
-  buildBoardDOM();
-
-  function centerMap(){
-    const W = mapWindow.clientWidth, H = mapWindow.clientHeight;
-    const fullW = GRID_W * TILE, fullH = GRID_H * TILE;
-    pan.x = Math.max(0, (fullW - W)/2 * -1);
-    pan.y = Math.max(0, (fullH - H)/2 * -1);
-    applyPan();
-  }
-  $("centerBtn").onclick = centerMap;
-  $("clearSelBtn").onclick = ()=>{ selectedFrom=null; selectedTo=null; highlightSelection(); };
-
-  function applyPan(){ mapCanvas.style.transform = `translate(${pan.x}px, ${pan.y}px)`; }
-
-  // touch / mouse pan
-  mapWindow.addEventListener("pointerdown", (e)=>{ panning=true; lastPt={x:e.clientX,y:e.clientY}; mapWindow.setPointerCapture(e.pointerId); });
-  mapWindow.addEventListener("pointermove", (e)=>{
-    if (!panning) return;
-    const dx = e.clientX - lastPt.x, dy = e.clientY - lastPt.y;
-    lastPt = {x:e.clientX,y:e.clientY};
+  if (didPan){
     pan.x += dx; pan.y += dy; applyPan();
-  });
-  mapWindow.addEventListener("pointerup", ()=> panning=false);
-  mapWindow.addEventListener("pointercancel", ()=> panning=false);
-
-  // ---------- STATE HELPERS ----------
-  function colorIndex(name){ const idx = players.slice().sort().indexOf(name); return Math.max(0, idx) % 4; }
-
-  function neighborsOf(id){
-    const r = Math.floor(id/GRID_W), c = id%GRID_W;
-    const N = [];
-    if (r>0) N.push(id-GRID_W);
-    if (r<GRID_H-1) N.push(id+GRID_W);
-    if (c>0) N.push(id-1);
-    if (c<GRID_W-1) N.push(id+1);
-    return N;
   }
-
-  function tileEl(id){ return mapCanvas.querySelector(`.tile[data-id="${id}"]`); }
-
-  // ---------- FIRESTORE BOOTSTRAP ----------
-  onSnapshot(lobbyRef, (snap)=>{
-    const d = snap.data(); if (!d) return;
-    players = (d.players||[]).slice(0,4);
-    isHost = (d.host === username);
-    renderScorebar();
-  });
-
-  onSnapshot(stateRef, (snap)=>{
-    if (!snap.exists()){
-      if (isHost) bootstrapState();
-      return;
+});
+mapWindow.addEventListener("pointerup", (e)=>{
+  if (!panning) return;
+  panning=false;
+  if (!didPan){
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const tile = el?.closest?.(".tile");
+    if (tile){
+      const id = Number(tile.dataset.id);
+      onTileTap(id);
     }
-    state = snap.data();
-    renderAll();
-    // auto step to resolve if host timer ticks out happens in hostTick()
-    if (isHost) hostEnsureTimer();
-  });
-
-  async function bootstrapState(){
-    const lob = await getDoc(lobbyRef);
-    const lp = (lob.exists() && Array.isArray(lob.data().players)) ? lob.data().players.slice(0,4) : [username];
-
-    // Seed territories: assign each player a cluster; others neutral
-    const T = GRID_W*GRID_H;
-    const territories = Array.from({length:T}, (_,id)=>({
-      id, owner: null, units: 1, neighbors: neighborsOf(id)
-    }));
-
-    // four starting corners-ish
-    const seeds = [
-      1*GRID_W + 1,
-      1*GRID_W + (GRID_W-2),
-      (GRID_H-2)*GRID_W + 1,
-      (GRID_H-2)*GRID_W + (GRID_W-2)
-    ];
-    lp.forEach((name, i)=>{
-      const s = seeds[i] ?? (Math.floor(Math.random()*T));
-      territories[s].owner = name;
-      territories[s].units = 3;
-      // also paint 2 neighbors lightly
-      for (const nb of territories[s].neighbors.slice(0,2)){
-        if (!territories[nb].owner){ territories[nb].owner = name; territories[nb].units = 2; }
-      }
-    });
-
-    const init = {
-      phase: "plan",
-      round: 0,
-      players: lp,
-      orders: {},             // { [player]: Order[] }
-      territories,
-      roundEndsAt: Date.now() + ROUND_SECONDS*1000,
-      levyRound: false,       // set each round if leader >40%
-      lastResolveAt: Date.now()
-    };
-    await setDoc(stateRef, init);
   }
+});
+mapWindow.addEventListener("pointercancel", ()=>{ panning=false; didPan=false; });
 
-  // ---------- RENDER ----------
-  function renderAll(){
-    if (!state) return;
-    setStatus(state.phase==="plan" ? "Planning" : (state.phase==="reveal"?"Reveal":"Resolving"));
-    $("roundBadge").textContent = `R${state.round}`;
-    // timer
-    if (state.phase==="plan" && state.roundEndsAt){
-      const s = Math.max(0, Math.ceil((state.roundEndsAt - Date.now())/1000));
-      $("timerBadge").textContent = `⏱️ ${s}s`;
-    } else $("timerBadge").textContent = "⏱️ —";
+function applyPan(){
+  mapCanvas.style.transform = `translate(${pan.x}px, ${pan.y}px)`;
+}
+applyPan();
 
-    renderBoard();
-    renderScorebar();
-    renderOrders();
-    renderCoalition();
-    $("levyBadge").style.display = state.levyRound ? "inline-flex" : "none";
-  }
+/* ===================== UI State ===================== */
+let state = null;
+let myOrders = []; // local orders not yet submitted
+let orderMode = "attack"; // "attack" | "fortify"
+let selectedSrc = null; // for attack source selection
+let timerInterval = null;
 
-  function renderBoard(){
-    const terrs = state.territories||[];
-    for (const t of terrs){
-      const el = tileEl(t.id); if (!el) continue;
-      el.classList.remove("owned","sel","enemy");
-      const u = el.querySelector(".u"); if (u) u.textContent = t.units;
-      if (t.owner){
-        el.classList.add("owned");
-        el.style.borderColor = PLAYER_COLORS[colorIndex(t.owner)];
-        el.style.background = "#ffffff";
-      }else{
-        el.style.borderColor = "#e5e7eb";
-        el.style.background = "#f8fafc";
-      }
+/* ===================== Build Map DOM ===================== */
+function buildMapDOM(){
+  mapCanvas.innerHTML = "";
+  tilesDOM = [];
+  const width = W*TILE + (W-1)*GAP;
+  const height= H*TILE + (H-1)*GAP;
+  mapCanvas.style.width = width+"px";
+  mapCanvas.style.height= height+"px";
+  for (let y=0;y<H;y++){
+    for (let x=0;x<W;x++){
+      const id = y*W+x;
+      const d = document.createElement("div");
+      d.className = "tile";
+      d.dataset.id = id;
+      d.style.left = (x*(TILE+GAP))+"px";
+      d.style.top  = (y*(TILE+GAP))+"px";
+      d.innerHTML = `<span class="u" id="u_${id}">0</span><span class="cap-icon" id="c_${id}" style="display:none">⭐</span>`;
+      mapCanvas.appendChild(d);
+      tilesDOM[id] = d;
+      // (No per-tile click handler; we detect tap on pointerup centrally)
     }
-    highlightSelection();
+  }
+}
+buildMapDOM();
+
+/* ===================== Game Bootstrap ===================== */
+async function ensureState(){
+  const snap = await getDoc(stateRef);
+  if (snap.exists()) return;
+  // build territories graph (4-neighborhood)
+  const terr = [];
+  for (let i=0;i<W*H;i++){
+    const x = i%W, y = (i/W)|0;
+    const n = [];
+    if (x>0)   n.push(i-1);
+    if (x<W-1) n.push(i+1);
+    if (y>0)   n.push(i-W);
+    if (y<H-1) n.push(i+W);
+    terr.push({ id:i, owner:null, units:1, neighbors:n, isCapital:false });
   }
 
-  function highlightSelection(){
-    mapCanvas.querySelectorAll(".tile").forEach(el=> el.classList.remove("sel","enemy"));
-    if (selectedFrom!=null){
-      const a = tileEl(selectedFrom); if (a) a.classList.add("sel");
-      if (selectedTo!=null){
-        const b = tileEl(selectedTo); if (b) b.classList.add("sel");
-      } else {
-        // show enemies around
-        for (const nb of neighborsOf(selectedFrom)){
-          const tt = state.territories[nb];
-          if (tt?.owner && tt.owner!==username){ const e=tileEl(nb); if(e) e.classList.add("enemy"); }
+  // Assign up to 4 players from lobby players
+  const lobbyRef = doc(db, "lobbies", gameId);
+  const lob = await getDoc(lobbyRef);
+  const players = (lob.exists() && Array.isArray(lob.data().players))
+    ? lob.data().players.slice(0,4) : [username];
+
+  // seeding: give each player a capital & 5 owned around it
+  const seeds = shuffle([...Array(W*H).keys()]).slice(0, players.length);
+  const chosen = [];
+  players.forEach((p, idx)=>{
+    const c = seeds[idx];
+    terr[c].owner = p; terr[c].units = 5; terr[c].isCapital = true;
+    chosen.push(c);
+  });
+  // expand each seed to 4 nearby
+  players.forEach((p, idx)=>{
+    const q = [seeds[idx]];
+    const gave = new Set([seeds[idx]]);
+    let need = 4;
+    while(need>0 && q.length){
+      const cur = q.shift();
+      for(const nb of terr[cur].neighbors){
+        if (!gave.has(nb) && terr[nb].owner===null){
+          terr[nb].owner = p; terr[nb].units = 2;
+          gave.add(nb); q.push(nb); need--; if (need<=0) break;
         }
       }
     }
-  }
-
-  function renderScorebar(){
-    const bar = $("scorebar");
-    const terrs = state?.territories || [];
-    const counts = {};
-    players.forEach(p=>counts[p]=0);
-    for (const t of terrs){ if (t.owner) counts[t.owner]=(counts[t.owner]||0)+1; }
-
-    bar.innerHTML = "";
-    const names = players.slice().sort();
-    for (const n of names){
-      const pill = document.createElement("div"); pill.className="pill";
-      const dot = document.createElement("span"); dot.className="dot"; dot.style.background = PLAYER_COLORS[colorIndex(n)];
-      const nm = document.createElement("span"); nm.textContent = n;
-      const sc = document.createElement("span"); sc.className="muted"; sc.textContent = `— ${counts[n]||0}`;
-      pill.appendChild(dot); pill.appendChild(nm); pill.appendChild(sc);
-      bar.appendChild(pill);
-    }
-  }
-
-  function renderCoalition(){
-    const terrs = state?.territories || [];
-    const totalOwned = terrs.filter(t=>!!t.owner).length || 1;
-    const tally = {};
-    for (const t of terrs){ if (t.owner) tally[t.owner]=(tally[t.owner]||0)+1; }
-    let leader = null, top = 0;
-    for (const [k,v] of Object.entries(tally)){ if (v>top){ top=v; leader=k; } }
-    const share = top/totalOwned;
-    $("coalitionMeter").textContent =
-      leader ? `Leader: ${leader} (${Math.round(share*100)}%), Coalition ${(share>LEADER_SHARE_FOR_LEVY)?"ACTIVE":"idle"}` : "Coalition: —";
-  }
-
-  function renderOrders(){
-    const box = $("ordersList"); box.innerHTML = "";
-    (myOrdersLocal||[]).forEach((o,i)=>{
-      const row = document.createElement("div"); row.className="order";
-      const txt = document.createElement("div");
-      txt.innerHTML = `<strong>${o.type.toUpperCase()}</strong> <small>${o.from!=null?`from ${labelOf(o.from)} `:""}${o.to!=null?`→ ${labelOf(o.to)}`:""}</small>`;
-      const del = document.createElement("button"); del.className="del"; del.textContent="✖";
-      del.onclick = ()=>{ myOrdersLocal.splice(i,1); renderOrders(); };
-      row.appendChild(txt); row.appendChild(del);
-      box.appendChild(row);
-    });
-  }
-
-  function labelOf(id){
-    const r = Math.floor(id/GRID_W), c = id%GRID_W;
-    return String.fromCharCode(65+r) + (c+1);
-  }
-
-  // ---------- INPUT: ORDER BUTTONS ----------
-  $("attackBtn").onclick = ()=>{
-    if (selectedFrom==null || selectedTo==null) return alert("Select a source you own and a neighboring target.");
-    const a = state.territories[selectedFrom];
-    const b = state.territories[selectedTo];
-    if (!a || a.owner!==username) return alert("You must attack from your tile.");
-    if (!neighborsOf(selectedFrom).includes(selectedTo)) return alert("Target must be adjacent.");
-    if (a.units<=1) return alert("Need >1 unit to attack (leaves 1 behind).");
-    myOrdersLocal.push({type:"attack", from:selectedFrom, to:selectedTo});
-    renderOrders();
-  };
-  $("fortifyBtn").onclick = ()=>{
-    if (selectedFrom==null) return alert("Select one of your tiles.");
-    const a = state.territories[selectedFrom];
-    if (!a || a.owner!==username) return alert("You can only fortify your tile.");
-    myOrdersLocal.push({type:"fortify", from:selectedFrom});
-    renderOrders();
-  };
-  $("recruitBtn").onclick = ()=>{
-    if (selectedFrom==null) return alert("Select one of your tiles.");
-    const a = state.territories[selectedFrom];
-    if (!a || a.owner!==username) return alert("You can only recruit on your tile.");
-    myOrdersLocal.push({type:"recruit", from:selectedFrom});
-    renderOrders();
-  };
-  $("holdBtn").onclick = ()=>{
-    myOrdersLocal.push({type:"hold"});
-    renderOrders();
-  };
-  $("submitBtn").onclick = submitMyOrders;
-
-  async function submitMyOrders(){
-    if (!state || state.phase!=="plan") return;
-    await runTransaction(db, async (tx)=>{
-      const s = await tx.get(stateRef);
-      if (!s.exists()) throw new Error("no state");
-      const d = s.data();
-      const os = Object.assign({}, d.orders||{});
-      os[username] = (myOrdersLocal||[]).slice(0,12); // soft cap
-      tx.update(stateRef, { orders: os });
-    });
-    // keep local (so you can see), or clear if you prefer:
-    // myOrdersLocal = []; renderOrders();
-  }
-
-  // tile tap -> pick from / to
-  function onTileTap(id){
-    const t = state?.territories?.[id]; if (!t) return;
-    if (selectedFrom==null){
-      selectedFrom = id; selectedTo=null;
-    } else if (selectedFrom===id){
-      selectedFrom=null; selectedTo=null;
-    } else {
-      if (neighborsOf(selectedFrom).includes(id)) selectedTo=id; else selectedFrom=id, selectedTo=null;
-    }
-    highlightSelection();
-  }
-
-  // ---------- DIPLOMACY ----------
-  $("dealBtn").onclick = ()=> openDealModal();
-  $("closeDeal").onclick = ()=> $("dealModalBack").style.display="none";
-  $("sendDeal").onclick = sendDeal;
-  $("chatSend").onclick = sendChat;
-  $("chatInput").addEventListener("keydown", (e)=>{ if (e.key==="Enter") sendChat(); });
-
-  function openDealModal(){
-    const sel = $("dealTo"); sel.innerHTML = `<option value="">— Choose player —</option>`;
-    players.filter(p=>p!==username).forEach(p=>{
-      const opt = document.createElement("option"); opt.value=p; opt.textContent=p; sel.appendChild(opt);
-    });
-    $("dealNote").value = "";
-    $("dealModalBack").style.display = "flex";
-  }
-
-  async function sendDeal(){
-    const to = $("dealTo").value; if (!to) return;
-    const type = $("dealType").value; const note = $("dealNote").value.trim();
-    await addDoc(chatRef, { user: username, kind:"deal", to, type, note, at: serverTimestamp() });
-    $("dealModalBack").style.display = "none";
-  }
-  async function sendChat(){
-    const v = $("chatInput").value.trim(); if (!v) return;
-    await addDoc(chatRef, { user: username, kind:"chat", msg:v, at: serverTimestamp() });
-    $("chatInput").value = "";
-  }
-
-  onSnapshot(chatRef, (snap)=>{
-    const box = $("chatBox");
-    box.innerHTML = "";
-    snap.docs.sort((a,b)=> (a.data().at?.seconds||0) - (b.data().at?.seconds||0)).forEach(d=>{
-      const m = d.data();
-      const row = document.createElement("div");
-      if (m.kind==="deal"){
-        row.innerHTML = `<strong>🤝 ${m.user}</strong> → <em>${m.to}</em>: <span class="muted">${m.type}</span> — ${m.note||""}`;
-      } else {
-        row.innerHTML = `<strong>${m.user}:</strong> ${m.msg}`;
-      }
-      box.appendChild(row);
-    });
-    box.scrollTop = box.scrollHeight;
   });
 
-  // ---------- HOST: TIMER & RESOLUTION ----------
-  let _tickTimer = null;
-  function hostEnsureTimer(){
+  // initial timer
+  const roundLenMs = 45_000; // 45s plan phase
+  const now = Date.now();
+  const payload = {
+    status:"planning", round:1,
+    players,
+    territories: terr,
+    submitted:{},            // name -> true/false
+    orders:{},               // name -> [ {type:"attack", src, dst} | {type:"fortify", id} ]
+    levyNextRound: {},       // name -> true if they get +1 at capital next round
+    roundEndsAt: now + roundLenMs,
+    lastResolveAt: 0,
+    diplomacy: [],           // {t:ms, from, to, msg}
+    winner:null
+  };
+  await setDoc(stateRef, payload);
+}
+ensureState();
+
+/* ===================== Snap & Render ===================== */
+onSnapshot(stateRef, (snap)=>{
+  if (!snap.exists()) return;
+  state = snap.data();
+  updatePlayerColors();
+  renderStatus();
+  renderMap();
+  renderOrdersPane();
+  renderDiplomacy();
+  if (state.status === "planning") ensureTimer();
+  if (state.status !== "planning") stopTimer();
+  // victory
+  if (state.winner){
+    $("statusBadge").textContent = `🏆 ${state.winner} wins!`;
+  }
+});
+
+/* ===================== Colors per player ===================== */
+function updatePlayerColors(){
+  const plist = (state?.players||[]).slice(0,4);
+  plist.forEach((p,i)=> PLAYER_COLORS[p]=i%4);
+}
+
+/* ===================== Render ===================== */
+function renderStatus(){
+  $("statusBadge").textContent = (state?.status||"—");
+  $("roundBadge").textContent = `Round ${state?.round||"—"}`;
+
+  // Coalition meter
+  const terr = state?.territories||[];
+  const owned = {};
+  (state?.players||[]).forEach(n=> owned[n]=0);
+  terr.forEach(t=>{ if (t.owner) owned[t.owner] = (owned[t.owner]||0)+1; });
+  const total = terr.length || 1;
+  let leader = null, leadPct = 0;
+  for(const [k,v] of Object.entries(owned)){
+    const pct = Math.round((100*v)/total);
+    if (pct > leadPct){ leadPct = pct; leader=k; }
+  }
+  $("coalitionBadge").textContent = (leader ? `${leader} ${leadPct}%` : "—");
+
+  // scoreboard pills
+  const row = $("scoresRow"); row.innerHTML = "";
+  (state?.players||[]).forEach(n=>{
+    const pill = document.createElement("div"); pill.className="pill";
+    const dot = document.createElement("span"); dot.className="dot"; dot.style.background = COLORS[PLAYER_COLORS[n]||0];
+    const cells = owned[n]||0;
+    pill.appendChild(dot);
+    pill.appendChild(document.createTextNode(`${n} — ${cells}`));
+    row.appendChild(pill);
+  });
+
+  // Submit button enable
+  const done = !!state?.submitted?.[username];
+  $("btnSubmit").disabled = done || state.status!=="planning";
+}
+
+function renderMap(){
+  if (!state) return;
+  const terr = state.territories||[];
+  for (const t of terr){
+    const el = tilesDOM[t.id];
+    if (!el) continue;
+    el.classList.remove("p0","p1","p2","p3","owned","sel");
+    if (t.owner){
+      el.classList.add("owned", `p${PLAYER_COLORS[t.owner]||0}`);
+    }
+    el.querySelector(".u").textContent = t.units;
+    const cap = $("c_"+t.id);
+    if (cap) cap.style.display = t.isCapital ? "inline" : "none";
+  }
+  highlightOrders();
+}
+
+function renderOrdersPane(){
+  const box = $("ordersList"); box.innerHTML="";
+  const mine = (state?.orders?.[username]) || [];
+  if (mine.length===0){
+    const x = document.createElement("div"); x.className="muted";
+    x.textContent = "No orders yet. Tap your tiles to Attack or Fortify.";
+    box.appendChild(x);
+    return;
+  }
+  mine.forEach((o,i)=>{
+    const row = document.createElement("div");
+    row.className = "pill"; row.style.justifyContent="space-between";
+    row.innerHTML = (o.type==="attack")
+      ? `⚔️ ${o.src} → ${o.dst}`
+      : `🛡️ Fortify ${o.id}`;
+    const del = document.createElement("button"); del.className="btn-ghost mini"; del.textContent="Remove";
+    del.onclick = ()=> removeOrder(i);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+function renderDiplomacy(){
+  const feed = $("dipFeed"); feed.innerHTML="";
+  for (const d of (state?.diplomacy||[]).slice(-50)){
+    const row = document.createElement("div"); row.className="pill";
+    row.textContent = `💬 ${new Date(d.t).toLocaleTimeString()} ${d.from} → ${d.to||"All"}: ${d.msg}`;
+    feed.appendChild(row);
+  }
+  // targets
+  const sel = $("dipTarget"); sel.innerHTML="";
+  const modalSel = $("quickDipTarget"); modalSel.innerHTML="";
+  for(const p of (state?.players||[])){
+    if (p===username) continue;
+    const o1 = document.createElement("option"); o1.value=p; o1.textContent=p;
+    const o2 = document.createElement("option"); o2.value=p; o2.textContent=p;
+    sel.appendChild(o1); modalSel.appendChild(o2);
+  }
+}
+
+/* ===================== Orders ===================== */
+function setMode(m){ orderMode = m; $("orderMode").textContent = (m==="attack"?"Attack":"Fortify"); selectedSrc=null; renderMap(); }
+$("modeAttack").onclick = ()=> setMode("attack");
+$("modeFortify").onclick = ()=> setMode("fortify");
+$("modeClear").onclick = ()=> { myOrders=[]; pushMyOrders(); }
+
+function removeOrder(idx){
+  const mine = (state?.orders?.[username]) || [];
+  mine.splice(idx,1);
+  updateDoc(stateRef, { [`orders.${username}`]: mine });
+}
+
+function pushMyOrders(){
+  const mine = (state?.orders?.[username]) || [];
+  updateDoc(stateRef, { [`orders.${username}`]: myOrders ?? mine });
+}
+
+function onTileTap(id){
+  if (!state || state.status!=="planning") return;
+  const t = state.territories[id]; if (!t) return;
+
+  if (orderMode === "fortify"){
+    if (t.owner !== username) return; // can only fortify our tile
+    // Enforce one fortify per tile per round by checking existing orders
+    const mine = (state.orders?.[username]) || [];
+    if (mine.some(o=>o.type==="fortify" && o.id===id)) return;
+    myOrders = mine.concat([{ type:"fortify", id }]);
+    pushMyOrders();
+    renderOrdersPane(); highlightOrders();
+    return;
+  }
+
+  // attack mode: pick source then destination
+  if (!selectedSrc){
+    if (t.owner !== username) return;
+    if (t.units <= 0) return;
+    selectedSrc = id;
+    highlightOrders();
+    return;
+  }else{
+    const src = state.territories[selectedSrc];
+    if (id===selectedSrc){ selectedSrc=null; highlightOrders(); return; }
+    if (!src.neighbors.includes(id)){ selectedSrc=null; highlightOrders(); return; }
+    const dst = state.territories[id];
+    if (dst.owner === username){ selectedSrc=null; highlightOrders(); return; }
+
+    const mine = (state.orders?.[username]) || [];
+    // only one attack per source per round
+    if (mine.some(o=>o.type==="attack" && o.src===selectedSrc)){
+      selectedSrc=null; highlightOrders(); return;
+    }
+    myOrders = mine.concat([{ type:"attack", src: selectedSrc, dst: id }]);
+    pushMyOrders();
+    selectedSrc=null;
+    renderOrdersPane(); highlightOrders();
+  }
+}
+
+function highlightOrders(){
+  // clear sel
+  tilesDOM.forEach(el=> el.classList.remove("sel"));
+  if (selectedSrc!=null) tilesDOM[selectedSrc].classList.add("sel");
+  const mine = (state?.orders?.[username])||[];
+  for(const o of mine){
+    if (o.type==="attack"){ tilesDOM[o.src].classList.add("sel"); tilesDOM[o.dst].classList.add("sel"); }
+    if (o.type==="fortify"){ tilesDOM[o.id].classList.add("sel"); }
+  }
+}
+
+/* ===================== Submit & Timer ===================== */
+$("btnSubmit").onclick = async ()=>{
+  if (!state || state.status!=="planning") return;
+  await updateDoc(stateRef, { [`submitted.${username}`]: true });
+};
+
+function ensureTimer(){
+  stopTimer();
+  tickTimer();
+  timerInterval = setInterval(tickTimer, 250);
+  // host auto resolve when time is up or everyone submitted
+  maybeHostResolve();
+}
+function stopTimer(){
+  if (timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+}
+function tickTimer(){
+  if (!state?.roundEndsAt){ $("timerBadge").textContent = "⏳ —"; return; }
+  const ms = Math.max(0, state.roundEndsAt - Date.now());
+  const s = Math.ceil(ms/1000);
+  $("timerBadge").textContent = `⏳ ${s}s`;
+}
+
+/* Host: resolve when time or all submitted */
+async function maybeHostResolve(){
+  // Only host can resolve. Host == lobby.host
+  try{
+    const lobRef = doc(db,"lobbies", gameId);
+    const lob = await getDoc(lobRef);
+    const isHost = lob.exists() && (lob.data().host === username);
     if (!isHost) return;
-    clearInterval(_tickTimer);
-    _tickTimer = setInterval(checkTick, 300);
-  }
-  async function checkTick(){
-    const s = await getDoc(stateRef); if (!s.exists()) return;
-    const d = s.data();
-    if (d.phase!=="plan") return;
-    const msLeft = (d.roundEndsAt||0) - Date.now();
-    if (msLeft <= 0){
-      clearInterval(_tickTimer);
-      await autoHoldAndResolve(d);
+
+    const guard = setInterval(async ()=>{
+      const snap = await getDoc(stateRef);
+      if (!snap.exists()) return;
+      const d = snap.data();
+      if (d.status!=="planning") return;
+      const everyone = (d.players||[]).every(p=> !!d.submitted?.[p]);
+      const expired = Date.now() >= (d.roundEndsAt||0);
+      if (everyone || expired){
+        clearInterval(guard);
+        await resolveRound(d);
+      }
+    }, 800);
+  }catch(e){ /* ignore */ }
+}
+
+/* ===================== Resolve ===================== */
+async function resolveRound(d){
+  // defensive copy
+  const terr = (d.territories||[]).map(t=>({...t, neighbors:[...t.neighbors]}));
+
+  // read orders per player
+  const byPlayer = d.orders || {};
+  const players = d.players || [];
+
+  // 1) Apply Levy to capitals if flagged from previous round
+  const levy = d.levyNextRound || {};
+  for(const p of players){
+    if (levy[p]){
+      const cap = terr.find(t=> t.owner===p && t.isCapital);
+      if (cap) cap.units += 1;
     }
   }
 
-  async function autoHoldAndResolve(cur){
-    // fill HOLDs for empty players
-    const os = Object.assign({}, cur.orders||{});
-    for (const p of (cur.players||[])){
-      if (!os[p] || os[p].length===0) os[p] = [{type:"hold"}];
-    }
-    await updateDoc(stateRef, { orders: os });
-    await resolveRound();
-  }
-
-  async function resolveRound(){
-    let d = (await getDoc(stateRef)).data();
-    if (!d || d.phase!=="plan") return;
-
-    // Step 1: mark levy round
-    const lev = computeLevy(d);
-    d.levyRound = lev.active;
-
-    // Step 2: REVEAL (briefly)
-    await updateDoc(stateRef, { phase: "reveal", levyRound: d.levyRound });
-    // optional tiny pause for animation
-    await new Promise(r=>setTimeout(r, 250));
-
-    // Step 3: RESOLVE
-    d = (await getDoc(stateRef)).data();
-    if (!d) return;
-    const terrs = d.territories;
-    const orders = d.orders||{};
-
-    // Collate attacks by edge (from->to); resolve all after collecting
-    const capturedThisRound = new Set();
-
-    // Apply non-combat first: fortify/recruit (cap)
-    for (const [p, list] of Object.entries(orders)){
-      for (const o of (list||[])){
-        if (o.type==="fortify" && validOwnTile(terrs,o.from,p)){
-          terrs[o.from].units = Math.min(MAX_UNITS, terrs[o.from].units + 1);
-        }
-        if (o.type==="recruit" && validOwnTile(terrs,o.from,p)){
-          terrs[o.from].units = Math.min(MAX_UNITS, terrs[o.from].units + 1);
-        }
+  // 2) Resolve fortify (simultaneous): cap +1 per fortify order
+  for(const p of players){
+    for(const o of (byPlayer[p]||[])){
+      if (o.type!=="fortify") continue;
+      const t = terr[o.id];
+      if (t && t.owner===p){
+        t.units += 1;
       }
     }
-
-    // Build attack bundles (could be multi-attack on same target)
-    const edges = {};
-    function key(f,t){ return f+"-"+t; }
-    for (const [p, list] of Object.entries(orders)){
-      for (const o of (list||[])){
-        if (o.type!=="attack") continue;
-        if (!validOwnTile(terrs,o.from,p)) continue;
-        if (!neighborsOf(o.from).includes(o.to)) continue;
-        if (terrs[o.from].units<=1) continue;
-        const k = key(o.from,o.to);
-        (edges[k]||(edges[k]=[])).push({player:p, from:o.from, to:o.to});
-      }
-    }
-
-    // Execute each attack edge
-    for (const [k, list] of Object.entries(edges)){
-      const {from,to} = list[0];
-      const src = terrs[from], dst = terrs[to];
-      const leaving = 1; // must leave at least 1 behind
-      const attackUnitsByPlayer = {};
-
-      // multiple orders from same or diff players all push from same 'from'? (rare)
-      // We'll collapse to a single push from the tile owner at resolve time:
-      const ownerAtLaunch = src.owner;
-      if (!ownerAtLaunch) continue;
-      if (src.units<=1) continue;
-
-      // Attacker sends all but 1
-      let send = Math.max(0, src.units - leaving);
-
-      // Levy applies if active and attacker is NOT the leader
-      const levyBonus = (d.levyRound && ownerAtLaunch!==levyLeader(d)) ? 1 : 0;
-
-      // defender info
-      const defOwner = dst.owner;
-      const defBase  = dst.units;
-      if (send<=0) continue;
-
-      // Simple Risk-lite odds: jittered comparison
-      const atkPower = (send + levyBonus) * (0.9 + Math.random()*0.3);
-      const defPower = defBase * (0.9 + Math.random()*0.3);
-
-      if (atkPower > defPower){
-        // attacker wins: move survivors
-        const survivors = Math.max(1, Math.min(MAX_UNITS, Math.round(send * 0.6)));
-        src.units = leaving;
-        dst.owner = ownerAtLaunch;
-        dst.units = survivors;
-        capturedThisRound.add(to);
-      } else {
-        // defender holds: attacker loses most of what he sent
-        const loss = Math.max(1, Math.round(send * 0.7));
-        src.units = Math.max(leaving, src.units - loss);
-        // defender loses some too
-        dst.units = Math.max(1, Math.round(defBase * 0.6));
-      }
-    }
-
-    // Capture bonus
-    for (const tid of capturedThisRound){
-      terrs[tid].units = Math.min(MAX_UNITS, terrs[tid].units + CAPTURE_BONUS);
-    }
-
-    // Frontline attrition (≥5 units & ≥2 hostile neighbors)
-    for (const t of terrs){
-      if (!t.owner) continue;
-      if (t.units < ATTRITION_MIN_STACK) continue;
-      const hostile = t.neighbors.map(id=>terrs[id]).filter(n=>n && n.owner && n.owner!==t.owner).length;
-      if (hostile >= ATTRITION_ENEMY_NEI){
-        t.units = Math.max(1, t.units - 1);
-      }
-    }
-
-    // Clear orders, advance round & timer
-    const next = {
-      phase: "plan",
-      round: (d.round||0)+1,
-      territories: terrs,
-      orders: {},
-      roundEndsAt: Date.now() + ROUND_SECONDS*1000,
-      levyRound: false,
-      lastResolveAt: Date.now()
-    };
-    await updateDoc(stateRef, next);
   }
 
-  function validOwnTile(terrs, id, p){ const t=terrs[id]; return !!t && t.owner===p; }
+  // 3) Resolve attacks (Risk-lite deterministic):
+  // attacker commits ALL units from src; compare vs defender units.
+  // if attacker > defender -> capture with (attacker - defender) units + capture bonus +1 on captured tile.
+  // else defender survives with (defender - attacker) units; source becomes 0.
+  // Simultaneous: if multiple attack same dst, sum attackers, but they fight each other? Simple rule: highest total wins; tie -> defender holds.
+  const plannedAttacks = []; // {dst, attacks:[{p,src,force}]}
+  const attach = (dst, item)=>{
+    let bucket = plannedAttacks.find(x=>x.dst===dst);
+    if (!bucket){ bucket = { dst, attacks:[] }; plannedAttacks.push(bucket); }
+    bucket.attacks.push(item);
+  };
 
-  function computeLevy(d){
-    const terrs = d.territories||[];
-    const totalOwned = terrs.filter(t=>!!t.owner).length || 1;
-    const tally = {};
-    for (const t of terrs){ if (t.owner) tally[t.owner]=(tally[t.owner]||0)+1; }
-    let leader=null, top=0;
-    for (const [k,v] of Object.entries(tally)){ if (v>top){top=v; leader=k;} }
-    const share = top/totalOwned;
-    return { active: share>LEADER_SHARE_FOR_LEVY, leader, share };
+  for (const p of players){
+    for(const o of (byPlayer[p]||[])){
+      if (o.type!=="attack") continue;
+      const src = terr[o.src], dst = terr[o.dst];
+      if (!src || !dst) continue;
+      if (src.owner!==p) continue;
+      if (!src.neighbors.includes(dst.id)) continue;
+      if (src.units<=0) continue;
+      const force = src.units; // commit all
+      src.units = 0;           // emptied to march
+      attach(dst.id, { p, src:o.src, force });
+    }
   }
-  function levyLeader(d){ return computeLevy(d).leader; }
 
-  // ---------- UTIL ----------
-  // nothing – inline above
+  for (const bucket of plannedAttacks){
+    const dst = terr[bucket.dst];
+    const defender = { p: dst.owner, force: dst.units };
+    // Sum by attacker
+    const by = {};
+    for(const a of bucket.attacks){ by[a.p] = (by[a.p]||0) + a.force; }
+    // If defender exists, include as own side
+    let winner = defender.p, winForce = defender.force;
+    // Compare each attacker vs defender sequentially? We’ll simplify:
+    // Total Attacker vs Defender; if multiple attackers, the largest single attacker gets the land if attackers > defender; otherwise defender holds.
+    let topA = null, topForce = 0, sumA = 0;
+    for(const [p,force] of Object.entries(by)){ sumA+=force; if (force>topForce){ topA=p; topForce=force; } }
 
+    if (sumA > defender.force){
+      // capture by top attacker
+      dst.owner = topA;
+      dst.units = (sumA - defender.force) + 1; // +1 capture bonus
+    } else {
+      // defend holds, reduce units
+      dst.units = defender.force - sumA;
+      // owner stays the same
+    }
+  }
+
+  // 4) Frontline attrition: for each border edge between enemy tiles, both tiles -1 (min 0)
+  const seen = new Set();
+  for(const t of terr){
+    for(const nb of t.neighbors){
+      const key = t.id<nb ? (t.id+"_"+nb) : (nb+"_"+t.id);
+      if (seen.has(key)) continue; seen.add(key);
+      const a=t, b=terr[nb];
+      if (!a || !b) continue;
+      if (a.owner && b.owner && a.owner!==b.owner){
+        a.units = Math.max(0, a.units-1);
+        b.units = Math.max(0, b.units-1);
+      }
+    }
+  }
+
+  // 5) Eliminate players with zero land; victory if one ≥60% or only one left.
+  const owned = {}; players.forEach(p=>owned[p]=0);
+  terr.forEach(t=>{ if (t.owner) owned[t.owner] = (owned[t.owner]||0)+1; });
+  let alive = players.filter(p=> (owned[p]||0)>0);
+  let winner = null;
+  const total = terr.length;
+  for(const p of alive){
+    if ((owned[p]||0) >= Math.ceil(0.6*total)){ winner=p; break; }
+  }
+  if (!winner && alive.length===1) winner = alive[0];
+
+  // 6) Coalition: mark levyNextRound for all non-leaders if someone >40%
+  let leadP=null, leadPct=0;
+  for(const [p,v] of Object.entries(owned)){
+    const pct = Math.round((100*v)/total);
+    if (pct>leadPct){ leadPct=pct; leadP=p; }
+  }
+  const levyNextRound = {};
+  if (leadP && leadPct>40){
+    for(const p of players){ if (p!==leadP) levyNextRound[p]=true; }
+  }
+
+  // next planning window
+  const roundLenMs = 45_000;
+  const next = {
+    status: winner ? "finished" : "planning",
+    territories: terr,
+    submitted: {},              // reset
+    orders: {},                 // reset
+    levyNextRound,
+    round: d.round + 1,
+    roundEndsAt: winner ? 0 : (Date.now()+roundLenMs),
+    lastResolveAt: Date.now(),
+    winner: winner || null
+  };
+  await updateDoc(stateRef, next);
+}
+
+/* ===================== Diplomacy ===================== */
+$("dipSend").onclick = async ()=>{
+  const to = $("dipTarget").value || null;
+  const msg = $("dipMsg").value.trim();
+  if (!msg) return;
+  const ent = { t:Date.now(), from:username, to, msg };
+  const arr = (state?.diplomacy||[]).concat([ent]).slice(-200);
+  $("dipMsg").value="";
+  await updateDoc(stateRef, { diplomacy: arr });
+};
+$("btnDiplomacy").onclick = ()=>{ $("dipModal").style.display="flex"; $("dipModalFeed").innerHTML = $("dipFeed").innerHTML; fillQuickTargets(); };
+$("dipClose").onclick = ()=>{ $("dipModal").style.display="none"; };
+function fillQuickTargets(){
+  const sel = $("quickDipTarget");
+  if (sel.children.length===0) return; // already filled by renderDiplomacy
+}
+$("quickDipSend").onclick = async ()=>{
+  const to = $("quickDipTarget").value || null;
+  const tpl = $("quickDipTemplate").value;
+  const txt = tpl==="NAP" ? "Non-Aggression for 1 round?"
+    : tpl==="TRADE" ? "Trade: I’ll attack X if you attack Y."
+    : tpl==="ALLY" ? "Alliance for 2 rounds vs Leader."
+    : "I’ll spare your border if you spare mine.";
+  const ent = { t:Date.now(), from:username, to, msg:txt };
+  const arr = (state?.diplomacy||[]).concat([ent]).slice(-200);
+  await updateDoc(stateRef, { diplomacy: arr });
+};
+
+/* ===================== Fullscreen ===================== */
+$("fsBtn").onclick = async ()=>{
+  try{
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  }catch(e){}
+};
+
+/* ===================== Keyboard (optional) ===================== */
+window.addEventListener("keydown",(e)=>{
+  if (e.key==="1") setMode("attack");
+  if (e.key==="2") setMode("fortify");
+});
+
+/* ===================== End module ===================== */
 </script>
 </body>
 </html>
+
+
