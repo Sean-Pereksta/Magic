@@ -404,36 +404,46 @@ function regionController(regionKey, cells){
 // into the grid that includes the mini-gaps + quadrant gap.
 const boardEl = $("board");
 const tiles = [];
+
+function isCorner2x2(r,c){
+  return (r < 2 && c < 2)       // TL (rows 0–1, cols 0–1)
+      || (r < 2 && c > 5)       // TR (rows 0–1, cols 6–7)
+      || (r > 5 && c < 2)       // BL (rows 6–7, cols 0–1)
+      || (r > 5 && c > 5);      // BR (rows 6–7, cols 6–7)
+}
+
 for (let i=0;i<64;i++){
   const r = Math.floor(i/8), c = i%8;
 
-  // We insert extra “tracks” in the grid after row/col 1 (mini gap),
-  // after row/col 3 (big quadrant gap), and after row/col 5 (mini gap).
-  // So compute the grid position by adding +1 for each passed break.
+  // Translate into the grid with mini/quad gutters
   const gridRow =
-    r + 1
-    + (r >= 2 ? 1 : 0)   // mini gap after row 1
-    + (r >= 4 ? 1 : 0)   // quadrant gap after row 3
-    + (r >= 6 ? 1 : 0);  // mini gap after row 5
-
+    r + 1 + (r >= 2 ? 1 : 0) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0);
   const gridCol =
-    c + 1
-    + (c >= 2 ? 1 : 0)
-    + (c >= 4 ? 1 : 0)
-    + (c >= 6 ? 1 : 0);
+    c + 1 + (c >= 2 ? 1 : 0) + (c >= 4 ? 1 : 0) + (c >= 6 ? 1 : 0);
 
   const div = document.createElement("div");
-  div.className="tile";
+  div.className = "tile";
   div.setAttribute("data-idx", i);
   div.style.gridRow = gridRow;
   div.style.gridColumn = gridCol;
 
-  const stack = document.createElement("div"); stack.className="stack";
+  const stack = document.createElement("div");
+  stack.className="stack";
   div.appendChild(stack);
-  div.addEventListener("click", ()=> onTileClick(i));
+
+  // ✨ NEW: hide everything that isn’t in a corner 2×2
+  if (!isCorner2x2(r,c)){
+    div.dataset.dead = "1";                     // mark as non-interactive
+    div.style.display = "none";                 // fully disappear
+    // (If you prefer to leave a faint placeholder: use visibility:hidden instead)
+  } else {
+    div.addEventListener("click", ()=> onTileClick(i));
+  }
+
   boardEl.appendChild(div);
   tiles.push(div);
 }
+
 
 
   // ---------- LOBBY SNAP (players + host) ----------
@@ -481,7 +491,7 @@ for (let i=0;i<64;i++){
       lastScoreTick: Date.now(),
       winner:null,
       // 64 cells with shares: {}
-      cells: Array.from({length:64}, ()=>({shares:{}, credited:{}}))
+      cells: Array.from({length:64}, ()=>({ shares:{}, creditedByQ:{} }))
 
     };
     lp.forEach(n=> init.scores[n]=0);
@@ -625,7 +635,7 @@ for (let i=0;i<64;i++){
     });
   }catch(e){ console.error(e); }
 }
-async function awardCorrectOnce(cellIdx, player, gain=10){
+async function awardCorrectForQuestion(cellIdx, player, qKey, gain=10){
   try{
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(stateRef);
@@ -634,14 +644,15 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
       if (d.status !== "playing") return;
 
       const cells = d.cells || [];
-      const cell = cells[cellIdx] || {shares:{}, credited:{}};
-      const shares = Object.assign({}, cell.shares || {});
-      const credited = Object.assign({}, cell.credited || {});
+      const cell  = cells[cellIdx] || {shares:{}, creditedByQ:{}};
+      const shares = {...(cell.shares||{})};
+      const creditedByQ = {...(cell.creditedByQ||{})};
+      const perQ = {...(creditedByQ[qKey]||{})};
 
-      // already paid out on this cell for this player?
-      if (credited[player]) throw new Error("already_credited");
+      // already scored this exact question for this player?
+      if (perQ[player]) throw new Error("already_credited_this_question");
 
-      // === same share math as your adjustCellShare (positive branch) ===
+      // === positive share math (same as your adjustCellShare positive branch) ===
       const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
       const cur = shares[player] || 0;
       const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
@@ -664,15 +675,16 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
         shares[player] = clamp((shares[player]||0)+diff, 0, 100);
       }
 
-      // mark once-only credit
-      credited[player] = true;
+      // mark once-only for this question
+      perQ[player] = true;
+      creditedByQ[qKey] = perQ;
 
-      cells[cellIdx] = {shares, credited};
+      cells[cellIdx] = {shares, creditedByQ};
       tx.update(stateRef, { cells });
     });
     return {ok:true};
   }catch(e){
-    if (e.message === "already_credited") return {ok:false, reason:"already"};
+    if (e.message === "already_credited_this_question") return {ok:false, reason:"already"};
     console.error(e);
     return {ok:false, reason:"error"};
   }
@@ -681,43 +693,70 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
 
   // ---------- BOARD RENDER ----------
   function renderBoard(){
-    if (!state) return;
-    // region labels
-    for(const [k, id] of Object.entries(REGION_LABEL_IDS)){
-      const label = $(id);
-      label.textContent = state.eraMap?.[k] || "—";
-    }
-    // tiles
-    const cells = state.cells || [];
-    for(let i=0;i<64;i++){
-      const el = tiles[i];
-      const shares = (cells[i] && cells[i].shares) || {};
-      const stack = el.querySelector(".stack");
-      stack.innerHTML = ""; // draw stack segments representing shares
-      // compute owner
-      const own = ownerOf(shares);
-      el.classList.remove("owner-0","owner-1","owner-2","owner-3");
-      if (own){
-        const ci = colorIndex(own);
-        el.classList.add(`owner-${ci}`);
-      }
-      // segments (stacked)
-      const order = players.slice().sort();
-      for(const p of order){
-        const pct = Math.round((shares[p]||0)*10)/10;
-        if (pct>0){
-          const seg = document.createElement("div");
-          seg.className="seg";
-          seg.style.height = pct + "%";
-          seg.style.background = PLAYER_COLORS[colorIndex(p)];
-          seg.title = `${p}: ${pct}%`;
-          stack.appendChild(seg);
-        }
-      }
-    }
-    // host scoring ticker
-    if (state.status==="playing" && isHost) ensureScoreTicker();
+  if (!state) return;
+
+  // 1) Region labels
+  for (const [key, id] of Object.entries(REGION_LABEL_IDS)){
+    const el = $(id);
+    if (el) el.textContent = state.eraMap?.[key] || "—";
   }
+
+  // 2) Tiles (only visible/corner tiles)
+  const cells = state.cells || [];
+  const namesSorted = players.slice().sort();
+
+  for (let i = 0; i < 64; i++){
+    const el = tiles[i];
+    if (!el || el.dataset.dead === "1") continue;       // skip hidden tiles
+
+    const stack = el.querySelector(".stack");
+    if (!stack) continue;
+
+    const shares = (cells[i] && cells[i].shares) || {};
+    const owner = ownerOf(shares);
+
+    // ---- owner border class (avoid repeated remove/add) ----
+    // compute desired class once
+    let desired = "";
+    if (owner){
+      const ci = colorIndex(owner);
+      desired = `owner-${ci}`;
+    }
+    // clear previous owner-* class if different
+    if (el._ownerClass && el._ownerClass !== desired){
+      el.classList.remove(el._ownerClass);
+      el._ownerClass = null;
+    }
+    if (desired && el._ownerClass !== desired){
+      el.classList.add(desired);
+      el._ownerClass = desired;
+    }
+    // if no owner, ensure no lingering class
+    if (!desired && el._ownerClass){
+      el.classList.remove(el._ownerClass);
+      el._ownerClass = null;
+    }
+
+    // ---- stack segments (fast clear, then rebuild for >0%) ----
+    while (stack.firstChild) stack.removeChild(stack.firstChild);
+
+    for (const name of namesSorted){
+      const pct = Math.round(((shares[name] || 0) + Number.EPSILON) * 10) / 10;
+      if (pct > 0){
+        const seg = document.createElement("div");
+        seg.className = "seg";
+        seg.style.height = pct + "%";
+        seg.style.background = PLAYER_COLORS[colorIndex(name)];
+        seg.title = `${name}: ${pct}%`;
+        stack.appendChild(seg);
+      }
+    }
+  }
+
+  // 3) Host scoring ticker
+  if (state.status === "playing" && isHost) ensureScoreTicker();
+}
+
 
   // ---------- SCOREBOARD ----------
   function renderScorebar(){
@@ -744,12 +783,20 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
     questionQueue = []; // reset
     openQuestion(currentEraForModal);
   }
+function questionKey(era, q){
+  return `${era}::${q.q}`; // or add an 'id' field to your question objects
+}
+ let currentQKey = null;
 
-  function openQuestion(era){
+function openQuestion(era){
   const q = getRandomQuestion(era);
   if (!q){ alert("No questions available."); return; }
+
+  currentQKey = questionKey(era, q);   // 👈 set key for this specific question
+
   $("modalTitle").textContent = `${era} — Trivia`;
   $("qText").textContent = q.q;
+
   const opts = shuffle([q.a, ...q.wrong]);
   const box = $("qOpts"); box.innerHTML = "";
   $("qFeedback").textContent = "";
@@ -759,11 +806,10 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
 
   opts.forEach(text=>{
     const b = document.createElement("button");
-    b.className="opt"; b.textContent=text;
+    b.className="opt"; b.textContent = text;
     b.onclick = async ()=>{
-      if (answeredThisModal) return;
+      if (answeredThisModal) return;        // stop double-clicks
       answeredThisModal = true;
-      // lock buttons visually/behaviorally
       [...box.children].forEach(btn=> btn.disabled = true);
       await evaluateAnswer(q, text===q.a);
     };
@@ -773,6 +819,12 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
   $("modalBack").style.display="flex";
 }
 
+$("nextQ").onclick = ()=> {
+  // new question ⇒ new key ⇒ scoring allowed again
+  openQuestion(currentEraForModal);
+};
+
+
 
   $("closeModal").onclick = ()=> { $("modalBack").style.display="none"; currentCellIndex=null; };
   $("nextQ").onclick = ()=> { openQuestion(currentEraForModal); };
@@ -780,22 +832,24 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
   async function evaluateAnswer(q, correct){
   let feedback="";
   if (correct){
-    const res = await awardCorrectOnce(currentCellIndex, username, 10);
+    const res = await awardCorrectForQuestion(currentCellIndex, username, currentQKey, 10);
     if (res.ok){
-      feedback = "✅ Correct! You gain +10% share (once per tile).";
+      feedback = "✅ Correct! +10% share (once per question).";
     } else if (res.reason === "already"){
-      feedback = "ℹ️ You already got credit for this tile earlier — no extra points.";
+      feedback = "ℹ️ You already got credit for THIS question. Try the next one!";
     } else {
-      feedback = "⚠️ Correct, but something went wrong saving your points.";
+      feedback = "⚠️ Correct, but saving your points failed.";
     }
     $("nextQ").style.display = "inline-flex";
-  }else{
-    feedback = "❌ Incorrect. You lose up to 20% of your share here.";
+  } else {
+    // Wrong answers can happen infinitely; your existing penalty can stay.
+    feedback = "❌ Incorrect. You lose up to 20% here. Try another question.";
     await adjustCellShare(currentCellIndex, username, -20);
-    $("nextQ").style.display = "none";
+    $("nextQ").style.display = "inline-flex";  // allow another try (new Q)
   }
   $("qFeedback").textContent = feedback;
 }
+
 
 
   // ---------- SHARE MATH (transactional) ----------
@@ -1897,6 +1951,7 @@ async function awardCorrectOnce(cellIdx, player, gain=10){
 </script>
 </body>
 </html>
+
 
 
 
