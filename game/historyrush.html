@@ -325,13 +325,16 @@ function getERAS(){
   }
 
   // get region for a cell index (0..63)
-  function cellRegion(cell){
-    const r = Math.floor(cell / 8), c = cell % 8;
-    if (r < 4 && c < 4) return "TL";
-    if (r < 4 && c >=4) return "TR";
-    if (r >=4 && c < 4) return "BL";
-    return "BR";
-  }
+ // 4 small regions: each is a 2x2 block in the corners
+function cellRegion(cell){
+  const r = Math.floor(cell / 8), c = cell % 8;
+  if (r < 2 && c < 2) return "TL";          // rows 0–1, cols 0–1
+  if (r < 2 && c > 5) return "TR";          // rows 0–1, cols 6–7
+  if (r > 5 && c < 2) return "BL";          // rows 6–7, cols 0–1
+  if (r > 5 && c > 5) return "BR";          // rows 6–7, cols 6–7
+  return null;                               // everything else is neutral
+}
+
   function eraForCell(cell){
     const reg = cellRegion(cell);
     const eraMap = state?.eraMap || {};
@@ -352,32 +355,40 @@ function getERAS(){
   // each 4x4 region is partitioned into four 2x2 mini-blocks (the “4 boxes”).
   // A player “owns” a mini-block if they own (>50%) at least 3 of its 4 cells.
   // A region is controlled if a player owns at least 3 of the 4 mini-blocks.
-  function regionController(regionKey, cells){
-    const baseR = regionKey==="TL" ? 0 : regionKey==="TR" ? 0 : regionKey==="BL" ? 4 : 4;
-    const baseC = regionKey==="TL" ? 0 : regionKey==="TR" ? 4 : regionKey==="BL" ? 0 : 4;
-    const miniBases = [{r:0,c:0},{r:0,c:2},{r:2,c:0},{r:2,c:2}];
-    const miniOwners = [];
-    for(const mb of miniBases){
-      const cellsIdx = [];
-      for(let dr=0; dr<2; dr++){
-        for(let dc=0; dc<2; dc++){
-          const rr = baseR + mb.r + dr;
-          const cc = baseC + mb.c + dc;
-          const i = rr*8+cc;
-          cellsIdx.push(i);
-        }
-      }
-      const owners = cellsIdx.map(i => ownerOf(cells[i]?.shares||{})).filter(Boolean);
-      const tally = {}; owners.forEach(o=>tally[o]=(tally[o]||0)+1);
-      let best=null, cnt=0;
-      for(const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
-      miniOwners.push(cnt>=3 ? best : null);
+  // A player controls the 2x2 region if they own (>50%) at least 3 of its 4 cells.
+function regionController(regionKey, cells){
+  // figure out the 2x2 base row/col for each corner region
+  const base = {
+    TL: {r:0, c:0},
+    TR: {r:0, c:6},
+    BL: {r:6, c:0},
+    BR: {r:6, c:6}
+  }[regionKey];
+
+  if (!base) return null;
+
+  // collect the 4 cell indices in that 2x2
+  const idxs = [];
+  for (let dr=0; dr<2; dr++){
+    for (let dc=0; dc<2; dc++){
+      const rr = base.r + dr;
+      const cc = base.c + dc;
+      idxs.push(rr*8 + cc);
     }
-    const tally={}; miniOwners.forEach(o=>{ if(o) tally[o]=(tally[o]||0)+1; });
-    let best=null, cnt=0;
-    for(const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
-    return (cnt>=3) ? best : null;
   }
+
+  // who owns each cell?
+  const owners = idxs.map(i => ownerOf(cells[i]?.shares || {})).filter(Boolean);
+
+  // tally owners; control requires >=3 owned cells by the same player
+  const tally = {};
+  owners.forEach(o => tally[o] = (tally[o]||0) + 1);
+
+  let best=null, cnt=0;
+  for (const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
+  return (cnt >= 3) ? best : null;
+}
+
 
   // ---------- INITIALIZE UI ----------
   applyPlayerColorVars();
@@ -1815,6 +1826,7 @@ for (let i=0;i<64;i++){
 </script>
 </body>
 </html>
+
 
 
 
