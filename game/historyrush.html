@@ -271,6 +271,14 @@ const BASE_ERAS = [
   "Macedonia","Greece","Sumer","Persia","Assyria","Scandinavia"
 ];
 
+// Build the eras list on demand; safe even before QUESTIONS is declared
+function getERAS(){
+  const qKeys = (typeof QUESTIONS !== "undefined" && QUESTIONS && typeof QUESTIONS === "object")
+    ? Object.keys(QUESTIONS)
+    : [];
+  return Array.from(new Set([...BASE_ERAS, ...qKeys]));
+}
+
 // Auto-pull keys from QUESTIONS and merge with BASE_ERAS (removes dupes)
 const ERAS = Array.from(new Set([ ...BASE_ERAS, ...Object.keys(QUESTIONS||{}) ]));
   // region order (top-left, top-right, bottom-left, bottom-right)
@@ -1784,6 +1792,7 @@ for (let i=0;i<64;i++){
 </script>
 </body>
 </html>
+
 
 
 
