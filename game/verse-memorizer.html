@@ -9,65 +9,64 @@
     --bg:#fff7f7; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#f3e2e2;
     --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
     --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
-    --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px;
+    --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --tap:56px;
   }
   *{box-sizing:border-box}
   body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
+  button{ cursor:pointer }
 
   header{ background: radial-gradient(1200px 600px at 50% -200px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
-    color:#fff; padding:28px 16px 18px; box-shadow:var(--shadow) }
-  .hero{ max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
-  .title{ font-weight:900; letter-spacing:.3px; font-size:1.35rem }
+    color:#fff; padding:16px 12px; box-shadow:var(--shadow) }
+  .hero{ max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap }
+  .title{ font-weight:900; letter-spacing:.3px; font-size:1.1rem }
   .subtitle{ color:#ffe2e2; font-size:.95rem }
+  .fsbtn{ border:1px solid #fff; background:rgba(255,255,255,.15); color:#fff; border-radius:999px; padding:8px 12px; font-weight:800 }
+  .fsbtn:hover{ background:rgba(255,255,255,.25) }
+  .pill{ display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--br); background:#fff7f7; font-size:13px }
 
-  .wrap{ max-width:1100px; margin:16px auto; display:grid; grid-template-columns: 280px 1fr; gap:16px; padding:0 12px 28px }
-  @media (max-width:980px){ .wrap{ grid-template-columns:1fr } }
-
+  main{ max-width:980px; margin:10px auto; padding:0 10px 16px }
   .card{ background:var(--card); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
-  .card-head{ padding:14px 16px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between; gap:12px }
-  .card-body{ padding:14px 16px }
+  .card-head{ padding:12px 14px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between; gap:10px }
   .card-title{ font-weight:900 }
+  .card-body{ padding:12px 14px }
 
-  .nav{ display:grid; gap:10px }
-  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--br); background:#fff; cursor:pointer; font-weight:800 }
+  .grid{ display:grid; gap:12px }
+  @media (min-width:900px){ .grid{ grid-template-columns: 1fr 1fr } }
+
+  .btn{ min-height:var(--tap); border-radius:14px; border:1px solid var(--br); background:#fff; font-weight:900; font-size:16px }
   .btn:hover{ background:#fff5f5 }
   .btn-primary{ background:var(--accent); color:#fff; border-color:var(--accent) }
   .btn-primary:hover{ background:var(--accent-2) }
-  .btn-ghost{ background:#fff; border:1px solid var(--br); color:#111827 }
+  .btn-ghost{ background:#fff; border:1px solid var(--br) }
   .btn-danger{ background:#fff; border:1px solid #fecaca; color:#b91c1c }
-  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-  .input, .select, .textarea{ width:100%; padding:12px; border-radius:12px; border:1px solid var(--br); outline:none; font-size:16px; background:#fff }
-  .input:focus, .select:focus, .textarea:focus{ border-color:#fecaca; box-shadow:0 0 0 4px rgba(239,68,68,.2) }
 
-  .kpi{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px }
-  .kpi .box{ padding:14px; border:1px solid var(--br); border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:space-between }
-  .kpi .label{ color:var(--muted); font-weight:700 }
-  .kpi .value{ font-weight:900; font-size:1.1rem }
+  .biggrid{ display:grid; gap:10px; grid-template-columns:1fr 1fr }
+  @media (max-width:520px){ .biggrid{ grid-template-columns:1fr } }
 
-  .leader{ display:grid; gap:8px }
+  .kpi{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; margin-bottom:10px }
+  .box{ padding:12px; border:1px solid var(--br); border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:space-between }
+  .label{ color:var(--muted); font-weight:700 }
+  .value{ font-weight:900 }
+
+  .leader{ display:grid; gap:8px; max-height:50vh; overflow:auto; -webkit-overflow-scrolling:touch }
   .lb{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid var(--br); border-radius:12px; background:#fff }
   .rank{ width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#fee2e2; color:#7f1d1d; font-weight:900 }
+  .mini{ font-size:.9rem; color:var(--muted) }
 
-  .pill{ display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--br); background:#fff7f7; font-size:13px }
-  .muted{ color:var(--muted) }
-  .hint{ font-size:.9rem; color:#6b7280 }
+  .input,.select,.textarea{ width:100%; padding:12px; border-radius:12px; border:1px solid var(--br); background:#fff; font-size:16px; outline:none }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
 
-  .list{ display:grid; gap:10px }
-  .verse-item{ border:1px solid var(--br); border-radius:12px; background:#fff; padding:12px; display:grid; gap:8px }
-  .verse-head{ display:flex; align-items:center; justify-content:space-between; gap:10px }
-  .mini{ font-size:.92rem; color:#374151 }
+  .panel{ display:none }
+  .panel.show{ display:block }
+
+  .flash-card{ border:1px dashed #fecaca; border-radius:14px; padding:18px; background:#fff; min-height:44vh; display:flex; align-items:center; justify-content:center; text-align:center }
+  .flash-ctrls{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px }
+  .list{ display:grid; gap:10px; max-height:60vh; overflow:auto; -webkit-overflow-scrolling:touch }
+  .verse-item{ border:1px solid var(--br); border-radius:12px; background:#fff; padding:10px; display:grid; gap:6px }
+  .verse-head{ display:flex; align-items:center; justify-content:space-between; gap:8px }
   .heart{ cursor:pointer; border:none; background:#fff; border-radius:10px; padding:6px 8px; border:1px solid var(--br) }
-  .heart:hover{ background:#fff5f5 }
 
-  .flash{ display:grid; gap:12px }
-  .flash-card{ border:1px dashed #fecaca; border-radius:14px; padding:20px; background:#fff; min-height:180px; display:flex; align-items:center; justify-content:center; text-align:center }
-  .flash-ctrls{ display:flex; justify-content:space-between; align-items:center; gap:10px }
-
-  .quiz{ display:grid; gap:12px }
-  .score{ font-weight:900 }
-  .good{ color:var(--good) } .bad{ color:var(--bad) } .warn{ color:var(--warn) }
-
-  .login{ max-width:520px; margin:22px auto }
+  .timer{ font-weight:900 }
 </style>
 </head>
 <body>
@@ -75,111 +74,148 @@
     <div class="hero">
       <div>
         <div class="title">📖 Verse Memorizer</div>
-        <div class="subtitle">Build a verse list, drill with flashcards, and test by typing. 95%+ counts as memorized.</div>
+        <div class="subtitle">Flash, Quiz, Lists, Challenges, Weekly Competition — mobile-first.</div>
       </div>
-      <div class="pill" id="userPill" style="display:none">👤 <b id="who"></b></div>
+      <div class="row">
+        <div class="pill" id="userPill" style="display:none">👤 <b id="who"></b></div>
+        <button class="fsbtn" id="fsBtn">⛶ Full Screen</button>
+      </div>
     </div>
   </header>
 
-  <main class="wrap">
-    <!-- LEFT NAV -->
-    <aside>
+  <main>
+    <!-- MAIN SCREEN -->
+    <section id="mainPanel" class="panel show">
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Modes</div></div>
+          <div class="card-body">
+            <div class="biggrid">
+              <button class="btn btn-primary" id="goFlash">🃏 Flash Cards</button>
+              <button class="btn btn-primary" id="goQuiz">⌨️ Type Quiz</button>
+              <button class="btn btn-primary" id="goList">📜 Verse List</button>
+              <button class="btn btn-primary" id="goAdd">➕ New Verse(s)</button>
+              <button class="btn btn-primary" id="goChallenges">🆚 Challenges</button>
+              <button class="btn btn-primary" id="goWeekly">🏁 Weekly Competition</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="card-title">Progress</div></div>
+          <div class="card-body">
+            <div class="kpi">
+              <div class="box"><div class="label">🔥 Streak</div><div class="value" id="streakVal">0</div></div>
+              <div class="box"><div class="label">⭐ Score</div><div class="value" id="scoreVal">0</div></div>
+            </div>
+            <div class="mini" style="margin-bottom:8px">Daily bonus = your current streak (first login each day).</div>
+            <div class="leader" id="leaderWrap"><div class="mini">Loading leaderboard…</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Login panel (inline on main if not logged in) -->
+      <div class="card" id="loginCard" style="display:none; margin-top:12px">
+        <div class="card-head"><div class="card-title">Login</div></div>
+        <div class="card-body">
+          <div style="display:grid; gap:8px; max-width:520px">
+            <input id="lu" class="input" placeholder="Username" autocomplete="username" />
+            <input id="lp" class="input" placeholder="Password" autocomplete="current-password" type="password" />
+            <button id="doLogin" class="btn btn-primary">Login</button>
+            <div id="lerr" class="mini" style="color:#b91c1c"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLASH -->
+    <section id="flashPanel" class="panel">
       <div class="card">
-        <div class="card-head"><div class="card-title">Menu</div></div>
-        <div class="card-body">
-          <div class="nav">
-            <button class="btn" id="btnFlash">🃏 Flash Cards</button>
-            <button class="btn" id="btnQuiz">⌨️ Type Quiz</button>
-            <button class="btn" id="btnList">📜 Verse List</button>
-            <button class="btn" id="btnAdd">➕ New Verse(s)</button>
+        <div class="card-head">
+          <div class="card-title">🃏 Flash Cards</div>
+          <div class="row">
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
           </div>
         </div>
-      </div>
-    </aside>
-
-    <!-- RIGHT CONTENT -->
-    <section>
-      <!-- KPIs + Leaderboard -->
-      <div class="card" id="homeCard">
-        <div class="card-head"><div class="card-title">Progress</div></div>
-        <div class="card-body">
-          <div class="kpi">
-            <div class="box"><div class="label">🔥 Streak</div><div class="value" id="streakVal">0</div></div>
-            <div class="box"><div class="label">⭐ Score</div><div class="value" id="scoreVal">0</div></div>
-          </div>
-          <div class="hint" style="margin-bottom:8px">Daily bonus = your current streak (added the first time you log in each day).</div>
-          <div class="leader" id="leaderWrap">
-            <!-- Leaderboard rows inserted -->
-          </div>
-        </div>
-      </div>
-
-      <!-- Flashcards -->
-      <div class="card" id="flashCard" style="display:none">
-        <div class="card-head"><div class="card-title">🃏 Flash Cards</div></div>
         <div class="card-body">
           <div class="row" style="margin-bottom:8px">
             <select id="flashSource" class="select" style="max-width:260px">
               <option value="all">All verses</option>
             </select>
-            <div class="hint">Front = verse text • Back = reference</div>
+            <div class="mini">Front = text, Back = reference</div>
           </div>
-          <div class="flash">
-            <div class="flash-card" id="flashFront">No items yet. Add verses in “New Verse(s)”.</div>
-            <div class="flash-ctrls">
-              <button class="btn" id="prevFlash">◀ Prev</button>
-              <div class="row">
-                <button class="btn" id="flipFlash">↻ Flip</button>
-                <button class="heart" id="heartFlash">❤️ +1 Memorized</button>
-              </div>
-              <button class="btn" id="nextFlash">Next ▶</button>
+          <div class="flash-card" id="flashFront">Add verses in “New Verse(s)”.</div>
+          <div class="flash-ctrls">
+            <button class="btn" id="prevFlash">◀ Prev</button>
+            <div class="row">
+              <button class="btn" id="flipFlash">↻ Flip</button>
+              <button class="heart" id="heartFlash">❤️ +1 Memorized</button>
             </div>
-            <div class="mini" id="flashMeta"></div>
+            <button class="btn" id="nextFlash">Next ▶</button>
           </div>
+          <div class="mini" id="flashMeta"></div>
         </div>
       </div>
+    </section>
 
-      <!-- Type Quiz -->
-      <div class="card" id="quizCard" style="display:none">
-        <div class="card-head"><div class="card-title">⌨️ Type Quiz</div></div>
+    <!-- QUIZ -->
+    <section id="quizPanel" class="panel">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">⌨️ Type Quiz</div>
+          <div class="row">
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
+          </div>
+        </div>
         <div class="card-body">
           <div class="row" style="margin-bottom:8px">
             <select id="quizPick" class="select" style="max-width:320px"></select>
             <button class="btn" id="nextQuiz">Next Random</button>
           </div>
-          <div class="quiz">
-            <div class="pill" id="quizRefPill" style="display:none"></div>
-            <textarea id="quizInput" class="textarea" rows="5" placeholder="Type the verse here…"></textarea>
-            <div class="row">
-              <button class="btn-primary btn" id="gradeQuiz">Grade</button>
-              <button class="btn-ghost btn" id="showAnswer">Show Answer</button>
-            </div>
-            <div id="quizResult" class="mini"></div>
+          <div class="pill" id="quizRefPill" style="display:none"></div>
+          <textarea id="quizInput" class="textarea" rows="5" placeholder="Type the verse here…"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="btn btn-primary" id="gradeQuiz">Grade</button>
+            <button class="btn btn-ghost" id="showAnswer">Show Answer</button>
           </div>
+          <div id="quizResult" class="mini" style="margin-top:8px"></div>
         </div>
       </div>
+    </section>
 
-      <!-- Verse List -->
-      <div class="card" id="listCard" style="display:none">
+    <!-- LIST -->
+    <section id="listPanel" class="panel">
+      <div class="card">
         <div class="card-head">
-          <div class="card-title">📜 Your Verse List</div>
+          <div class="card-title">📜 Verse List</div>
           <div class="row">
-            <label class="mini">Sort:</label>
             <select id="listSort" class="select">
               <option value="canon">Bible order</option>
               <option value="mem">Most memorized</option>
               <option value="added">Recently added</option>
             </select>
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
           </div>
         </div>
         <div class="card-body">
           <div id="verseList" class="list"></div>
         </div>
       </div>
+    </section>
 
-      <!-- Add Verses -->
-      <div class="card" id="addCard" style="display:none">
-        <div class="card-head"><div class="card-title">➕ Add New Verse(s)</div></div>
+    <!-- ADD -->
+    <section id="addPanel" class="panel">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">➕ Add Verse(s)</div>
+          <div class="row">
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
+          </div>
+        </div>
         <div class="card-body">
           <div class="row">
             <select id="bookSel" class="select" style="max-width:220px"></select>
@@ -190,40 +226,81 @@
             <input id="endVerse" class="input" style="max-width:110px" type="number" min="1" placeholder="End V" />
           </div>
           <div class="row" style="margin-top:10px">
-            <button class="btn-primary btn" id="addRangeBtn">Add to My List</button>
+            <button class="btn btn-primary" id="addRangeBtn">Add to My List</button>
           </div>
-          <div class="hint" style="margin-top:8px">
+          <div class="mini" style="margin-top:8px">
             Tip: Leave “End” blank to add a single verse. Ranges like <b>1 Kings 1:4–7</b> are saved as one item.
           </div>
           <div id="addMsg" class="mini" style="margin-top:10px"></div>
         </div>
       </div>
+    </section>
 
-      <!-- Login (if opened directly without ?username=) -->
-      <div class="card login" id="loginCard" style="display:none">
-        <div class="card-head"><div class="card-title">Login</div></div>
-        <div class="card-body">
+    <!-- CHALLENGES -->
+    <section id="chPanel" class="panel">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">🆚 Challenges (7 days)</div>
           <div class="row">
-            <input id="lu" autocomplete="username" class="input" placeholder="Username" />
-            <input id="lp" autocomplete="current-password" type="password" class="input" placeholder="Password" />
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
           </div>
-          <div class="row" style="margin-top:8px">
-            <button class="btn-primary" id="doLogin">Login</button>
+        </div>
+        <div class="card-body">
+          <div class="mini" style="margin-bottom:8px">Challenge anyone. When they accept, both players’ <b>points since start</b> are tracked for 7 days. Winner +50.</div>
+          <div class="row" style="margin-bottom:8px">
+            <input id="challengeName" class="input" placeholder="Opponent username…" />
+            <button class="btn btn-primary" id="sendChallenge">Send Challenge</button>
           </div>
-          <div id="lerr" class="mini" style="color:#b91c1c; margin-top:8px"></div>
+          <div class="card" style="margin-bottom:10px">
+            <div class="card-head"><div class="card-title">Incoming Challenges</div></div>
+            <div class="card-body" id="incomingList"><div class="mini">Loading…</div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Active Challenges</div></div>
+            <div class="card-body" id="activeList"><div class="mini">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WEEKLY COMP -->
+    <section id="wkPanel" class="panel">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">🏁 Weekly Competition (Sun→Sat)</div>
+          <div class="row">
+            <button class="btn btn-ghost" data-back>← Back</button>
+            <button class="fsbtn" data-fs>⛶</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mini" style="margin-bottom:8px">
+            Join anytime Sunday. Only <b>points earned this week</b> count. After Saturday ends, the first user to log in triggers results:
+            <b>+100</b> / <b>+50</b> / <b>+25</b>.
+          </div>
+          <div class="row" style="margin-bottom:8px">
+            <button class="btn btn-primary" id="joinWeekly">Join Competition</button>
+            <div class="pill">Week: <b id="wkRange"></b></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Current Week Leaderboard</div></div>
+            <div class="card-body" id="wkBoard"><div class="mini">Loading…</div></div>
+          </div>
         </div>
       </div>
     </section>
   </main>
 
 <script type="module">
-/* ------------------ Firebase ------------------ */
+/* ---------------- Firebase ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs,
   query, where, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+/* ---- Firestore app ---- */
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -235,228 +312,217 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ------------------ Config: Bible DB hookup ------------------ */
-/** Pick ONE mode that matches your Bible DB in Firestore:
- *  "flat"   => a single collection (default name below) where each doc has {book, chapter, verse, text}
- *  "nested" => path bible/books/{Book}/chapters/{n}/verses/{m} with a field {text}
- */
-const BIBLE_MODE = "flat";                // "flat" or "nested"
-const BIBLE_COLLECTION = "bible_verses";  // if BIBLE_MODE="flat", set the collection name here
+/* ---------------- UI helpers ---------------- */
+const qs = id => document.getElementById(id);
+const show = id => qs(id).classList.add("show");
+const hide = id => qs(id).classList.remove("show");
 
-/* Canon book order for sorting */
-const BOOKS = [
-  "Genesis","Exodus","Leviticus","Numbers","Deuteronomy",
-  "Joshua","Judges","Ruth","1 Samuel","2 Samuel","1 Kings","2 Kings",
-  "1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms",
-  "Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations",
-  "Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum",
-  "Habakkuk","Zephaniah","Haggai","Zechariah","Malachi",
-  "Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians",
-  "Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians",
-  "1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter",
-  "1 John","2 John","3 John","Jude","Revelation"
-];
+function navTo(panelId){
+  ["mainPanel","flashPanel","quizPanel","listPanel","addPanel","chPanel","wkPanel"].forEach(hide);
+  show(panelId);
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function toggleFullscreen(){
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen().catch(()=>{});
+}
+qs("fsBtn").onclick = toggleFullscreen;
+document.addEventListener("click", (e)=>{
+  if (e.target && e.target.matches("[data-fs]")) toggleFullscreen();
+  if (e.target && e.target.matches("[data-back]")) navTo("mainPanel");
+});
 
-/* ------------------ State ------------------ */
-const qs = (id)=>document.getElementById(id);
-const state = {
-  user: "",
-  verses: [],       // [{id, ref, text, book, sC, sV, eC, eV, isSection, memCount, addedAt}]
-  flashIdx: 0,
-  flashBack: false,
-  quizIdx: -1,
-  score: 0,
-  streak: 0
-};
+qs("goFlash").onclick      = ()=> navTo("flashPanel");
+qs("goQuiz").onclick       = ()=> navTo("quizPanel");
+qs("goList").onclick       = ()=> navTo("listPanel");
+qs("goAdd").onclick        = ()=> navTo("addPanel");
+qs("goChallenges").onclick = ()=> { loadChallenges(); navTo("chPanel"); };
+qs("goWeekly").onclick     = ()=> { renderWeekRange(); loadWeeklyBoard(); navTo("wkPanel"); };
 
-/* ------------------ UI Wiring ------------------ */
-qs("btnFlash").onclick = ()=> showPanel("flash");
-qs("btnQuiz").onclick  = ()=> showPanel("quiz");
-qs("btnList").onclick  = ()=> showPanel("list");
-qs("btnAdd").onclick   = ()=> showPanel("add");
+/* ---------------- Auth (existing users collection) ---------------- */
+const params = new URLSearchParams(location.search);
+let username = (params.get("username")||"").trim();
 
-qs("prevFlash").onclick = ()=> { stepFlash(-1); };
-qs("nextFlash").onclick = ()=> { stepFlash(1); };
-qs("flipFlash").onclick = ()=> { state.flashBack = !state.flashBack; renderFlash(); };
-qs("heartFlash").onclick= ()=> { heartCurrentFlash(); };
-
-qs("gradeQuiz").onclick = gradeQuiz;
-qs("showAnswer").onclick= ()=> showQuizAnswer();
-qs("nextQuiz").onclick  = ()=> pickRandomQuiz();
-
-qs("addRangeBtn").onclick = addRange;
-
-qs("doLogin").onclick = doLogin;
-qs("listSort").onchange = renderVerseList;
-
-/* Fill books dropdown */
-(function fillBookSelect(){
-  const sel = qs("bookSel");
-  sel.innerHTML = "";
-  for(const b of BOOKS){
-    const opt = document.createElement("option");
-    opt.value = b; opt.textContent = b;
-    sel.appendChild(opt);
-  }
-})();
-
-/* ------------------ Auth (same users collection) ------------------ */
 async function verifyUser(name){
-  const userRef = doc(db, "users", name);
-  const snap = await getDoc(userRef);
+  const ref = doc(db, "users", name);
+  const snap = await getDoc(ref);
   return snap.exists() ? snap.data() : null;
 }
-
-async function loadUserOrLogin(){
-  const urlU = new URLSearchParams(location.search).get("username");
-  if (urlU){
-    const u = await verifyUser(urlU);
-    if (u){
-      state.user = urlU;
-      postLoginBoot();
-      return;
-    }
-  }
-  qs("loginCard").style.display = "block";
-  hideAllWork();
-}
-
-async function doLogin(){
-  const u = qs("lu").value.trim();
-  const p = qs("lp").value.trim();
-  if(!u || !p){ qs("lerr").textContent = "Enter username & password."; return; }
-  const rec = await verifyUser(u);
-  if (!rec || rec.password !== p){ qs("lerr").textContent = "Invalid login."; return; }
-  state.user = u;
-  postLoginBoot();
-}
-
-/* ------------------ Boot after login ------------------ */
-async function postLoginBoot(){
-  qs("loginCard").style.display = "none";
-  qs("userPill").style.display = "inline-flex";
-  qs("who").textContent = state.user;
-
-  await ensureUserDoc();
-  await applyDailyStreakBonus();
-  await refreshKpis();
-  await loadUserVerses();
-  renderAllLists();
-
-  showPanel("flash"); // default landing
-}
-
-/* ------------------ Namespacing (isolation) ------------------ */
-function userDocRef(){ return doc(db, "versemem_users", state.user); }
-function userVersesCol(){ return collection(db, "versemem_users", state.user, "verses"); }
-
-/* ------------------ User doc / Streak & Score ------------------ */
-async function ensureUserDoc(){
-  const ref = userDocRef();
+async function ensureVMUserDoc(){
+  const ref = doc(db, "versemem_users", username);
   const snap = await getDoc(ref);
   if (!snap.exists()){
-    await setDoc(ref, { totalScore: 0, streak: 0, lastLoginDate: "" });
+    await setDoc(ref, { totalScore:0, streak:0, lastLoginDate:"" });
   }
 }
 function ymd(d=new Date()){
-  const tz = new Date().toLocaleDateString("en-CA",{timeZone:"America/New_York"});
-  // en-CA gives YYYY-MM-DD already; fallback formatter just in case:
-  if (/^\d{4}-\d{2}-\d{2}$/.test(tz)) return tz;
-  const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); const da=String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${da}`;
+  const s = d.toLocaleDateString("en-CA", { timeZone:"America/New_York" }); // YYYY-MM-DD
+  return s;
 }
-function diffDays(a,b){ // YYYY-MM-DD
-  const p = s => new Date(s+"T00:00:00-05:00").getTime();
-  const da = Math.floor((p(a)-p(b))/86400000);
-  return da;
+function diffDays(a,b){
+  const A = new Date(a+"T00:00:00-05:00").getTime();
+  const B = new Date(b+"T00:00:00-05:00").getTime();
+  return Math.floor((A-B)/86400000);
 }
-async function applyDailyStreakBonus(){
-  const ref = userDocRef();
+async function dailyBonus(){
+  const ref = doc(db, "versemem_users", username);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
-  const data = snap.data();
-  const today = ymd();
-  if (data.lastLoginDate === today) return; // already counted today
-
+  const d = snap.data(); const today = ymd();
+  if (d.lastLoginDate === today) return;
   let newStreak = 1;
-  if (data.lastLoginDate){
-    const delta = diffDays(today, data.lastLoginDate);
-    newStreak = (delta === 1) ? (data.streak||0)+1 : 1;
+  if (d.lastLoginDate){
+    newStreak = (diffDays(today, d.lastLoginDate)===1) ? (d.streak||0)+1 : 1;
   }
-  const newScore = (data.totalScore||0) + newStreak;
-  await updateDoc(ref, { lastLoginDate: today, streak: newStreak, totalScore: newScore });
+  const newScore = (d.totalScore||0) + newStreak;
+  await updateDoc(ref, { lastLoginDate: today, streak:newStreak, totalScore:newScore });
 }
-async function refreshKpis(){
-  const snap = await getDoc(userDocRef());
+async function loadKPIs(){
+  const ref = doc(db, "versemem_users", username);
+  const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const d = snap.data();
-  state.score  = d.totalScore||0;
-  state.streak = d.streak||0;
-  qs("streakVal").textContent = state.streak;
-  qs("scoreVal").textContent  = state.score;
-  await renderLeaderboard();
+  qs("streakVal").textContent = d.streak||0;
+  qs("scoreVal").textContent  = d.totalScore||0;
 }
-async function addScore(points){
-  const ref = userDocRef();
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
-  const cur = snap.data();
-  const ns = Math.max(0, (cur.totalScore||0) + Math.round(points));
-  await updateDoc(ref, { totalScore: ns });
-  state.score = ns;
-  qs("scoreVal").textContent = ns;
-}
-
-/* ------------------ Leaderboard ------------------ */
-async function renderLeaderboard(){
-  const box = qs("leaderWrap");
-  box.innerHTML = "<div class='mini muted'>Loading leaderboard…</div>";
-  // read top 10 versemem_users by totalScore
+async function loadLeaderboard(){
   const col = collection(db, "versemem_users");
-  // orderBy requires an index; if needed, create it in console
   const qy = query(col, orderBy("totalScore","desc"), limit(10));
   const snap = await getDocs(qy);
-  box.innerHTML = "";
+  const box = qs("leaderWrap"); box.innerHTML="";
   let i=1;
-  snap.forEach(docSnap=>{
-    const d = docSnap.data();
+  snap.forEach(s=>{
+    const d = s.data();
     const row = document.createElement("div"); row.className="lb";
-    const L = document.createElement("div"); L.style.display="flex"; L.style.alignItems="center"; L.style.gap="10px";
-    const rk = document.createElement("div"); rk.className="rank"; rk.textContent = i++;
-    const nm = document.createElement("div"); nm.style.fontWeight="800"; nm.textContent = docSnap.id;
+    const L = document.createElement("div"); L.style.display="flex"; L.style.alignItems="center"; L.style.gap="8px";
+    const rk = document.createElement("div"); rk.className="rank"; rk.textContent=i++;
+    const nm = document.createElement("div"); nm.style.fontWeight="900"; nm.textContent=s.id;
     L.appendChild(rk); L.appendChild(nm);
-    const R = document.createElement("div"); R.className="muted"; R.textContent = "⭐ "+(d.totalScore||0);
+    const R = document.createElement("div"); R.className="mini"; R.textContent="⭐ "+(d.totalScore||0);
     row.appendChild(L); row.appendChild(R);
     box.appendChild(row);
   });
 }
 
-/* ------------------ Bible fetch helpers ------------------ */
-async function getVerseText(book, chapter, verse){
-  if (BIBLE_MODE === "flat"){
-    // Expect collection with docs having fields {book, chapter:number, verse:number, text}
-    // Equality filters across multiple fields may require a composite index — if prompted, create it.
-    const col = collection(db, BIBLE_COLLECTION);
-    const qy = query(col, where("book","==",book), where("chapter","==",Number(chapter)), where("verse","==",Number(verse)), limit(1));
-    const snap = await getDocs(qy);
-    if (!snap.empty) return snap.docs[0].data().text || "";
-  } else {
-    // nested: bible/books/{Book}/chapters/{n}/verses/{m}
-    const vref = doc(db, "bible", "books", book, "chapters", String(chapter), "verses", String(verse));
-    const vs = await getDoc(vref);
-    if (vs.exists()) return vs.data().text || "";
+/* ---------------- Bible CSV (primary source) ---------------- */
+// Your CSV source
+const CSV_URL = 'https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv';
+// In-memory index: booksMap[BookName][Chapter][Verse] = Text
+let booksMap = Object.create(null);
+let booksOrder = [];
+
+// Canon list used for sorting (replaced by CSV order after load)
+let BOOKS = ["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth",
+"1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms",
+"Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah",
+"Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi","Matthew","Mark","Luke","John","Acts","Romans",
+"1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy",
+"Titus","Philemon","Hebrews","James","1 Peter","2 Peter","1 John","2 John","3 John","Jude","Revelation"];
+
+/** Minimal RFC4180 CSV parser */
+function parseCSV(text){
+  const rows = [];
+  let i=0, f=text.length, cur=[], cell="", inQ=false;
+  while(i<f){
+    const c = text[i++];
+    if (inQ){
+      if (c === '"'){
+        if (i<f && text[i] === '"'){ cell += '"'; i++; }
+        else { inQ = false; }
+      } else { cell += c; }
+      continue;
+    }
+    if (c === '"'){ inQ = true; continue; }
+    if (c === ','){ cur.push(cell); cell=""; continue; }
+    if (c === '\n'){ cur.push(cell); rows.push(cur); cur=[]; cell=""; continue; }
+    if (c === '\r'){ continue; }
+    cell += c;
   }
-  return ""; // not found (fallback: you can add a manual entry flow later, if needed)
+  if (cell.length || cur.length) { cur.push(cell); rows.push(cur); }
+  return rows;
+}
+function buildBooksAndVerses(rows){
+  // Header: VerseID,BookName,BookNumber,Chapter,Verse,Text
+  const hdr = rows[0].map(h => h.trim());
+  const idx = {
+    BookName: hdr.indexOf("BookName"),
+    BookNumber: hdr.indexOf("BookNumber"),
+    Chapter: hdr.indexOf("Chapter"),
+    Verse: hdr.indexOf("Verse"),
+    Text: hdr.indexOf("Text")
+  };
+  const booksSet = new Map(); // BookName -> BookNumber
+  const map = Object.create(null);
+
+  for (let r=1; r<rows.length; r++){
+    const row = rows[r];
+    if (!row || row.length < 6) continue;
+    const book = row[idx.BookName];
+    const bookNum = Number(row[idx.BookNumber]);
+    const chap = Number(row[idx.Chapter]);
+    const vr   = Number(row[idx.Verse]);
+    const txt  = row[idx.Text] || "";
+    if (!book || !chap || !vr) continue;
+
+    if (!map[book]) map[book] = Object.create(null);
+    if (!map[book][chap]) map[book][chap] = Object.create(null);
+    map[book][chap][vr] = txt;
+    if (!booksSet.has(book)) booksSet.set(book, bookNum || 999);
+  }
+
+  const ordered = [...booksSet.entries()].sort((a,b)=> a[1]-b[1]).map(([name])=>name);
+  return { map, ordered };
+}
+function fillBookDropdown(){
+  const sel = qs("bookSel");
+  if (!sel) return;
+  sel.innerHTML = "";
+  for (const b of booksOrder){
+    const o = document.createElement("option");
+    o.value = b; o.textContent = b;
+    sel.appendChild(o);
+  }
+}
+async function loadBibleCSV(){
+  const resp = await fetch(CSV_URL, { cache: 'force-cache' });
+  if (!resp.ok) throw new Error("CSV fetch failed");
+  const csvText = await resp.text();
+  const rows = parseCSV(csvText);
+  const built = buildBooksAndVerses(rows);
+  booksMap = built.map;
+  booksOrder = built.ordered;
+  if (booksOrder.length){ BOOKS = booksOrder.slice(); }
+  fillBookDropdown();
 }
 
-/* fetch range inclusive */
+/** CSV-first getters; Firestore fallback if missing */
+async function getVerseText(book, chapter, verse){
+  const chapMap = booksMap?.[book]?.[Number(chapter)];
+  const txt = chapMap ? chapMap[Number(verse)] : undefined;
+  if (typeof txt === "string") return txt;
+
+  // Fallback to Firestore (optional)
+  try {
+    const col = collection(db, "bible_verses");
+    const qy = query(
+      col,
+      where("book","==",book),
+      where("chapter","==",Number(chapter)),
+      where("verse","==",Number(verse)),
+      limit(1)
+    );
+    const snap = await getDocs(qy);
+    if (!snap.empty) return snap.docs[0].data().text || "";
+  } catch(e){ /* ignore */ }
+  return "";
+}
 async function getRangeText(book, sC, sV, eC, eV){
   let out = [];
   const sc = Number(sC), sv = Number(sV), ec = Number(eC||sC), ev = Number(eV||sV);
   if (ec < sc || (ec===sc && ev < sv)) return "";
   for (let ch=sc; ch<=ec; ch++){
     const vStart = (ch===sc)? sv : 1;
-    const vEnd   = (ch===ec)? ev : (sv+500); // generous
+    const vEnd   = (ch===ec)? ev : (sv+500);
     for (let v = vStart; v <= vEnd; v++){
       const t = await getVerseText(book, ch, v);
       if (!t){ if (ch===ec && v>ev) break; else continue; }
@@ -467,20 +533,32 @@ async function getRangeText(book, sC, sV, eC, eV){
   return out.join(" ");
 }
 
-/* ------------------ Verse List CRUD ------------------ */
+/* ---------------- User verses & scoring ---------------- */
+function userDocRef(){ return doc(db, "versemem_users", username); }
+function versesCol(){ return collection(db, "versemem_users", username, "verses"); }
+
+let VERSES = [];     // [{id,ref,text,book,sC,sV,eC,eV,isSection,memCount,addedAt}]
+let flashIdx = 0, flashBack=false;
+let quizIdx = -1;
+
+function canonOrder(a,b){
+  const ai = BOOKS.indexOf(a.book), bi = BOOKS.indexOf(b.book);
+  if (ai!==bi) return ai-bi;
+  if ((a.sC||0)!==(b.sC||0)) return (a.sC||0)-(b.sC||0);
+  return (a.sV||0)-(b.sV||0);
+}
 async function loadUserVerses(){
-  state.verses = [];
-  const snap = await getDocs(userVersesCol());
-  snap.forEach(docSnap=>{
-    const d = docSnap.data();
-    state.verses.push({
-      id: docSnap.id, ref: d.ref, text: d.text, book: d.book,
-      sC:d.sC, sV:d.sV, eC:d.eC, eV:d.eV, isSection: !!d.isSection,
-      memCount: d.memCount||0, addedAt: d.addedAt||0
+  VERSES = [];
+  const snap = await getDocs(versesCol());
+  snap.forEach(d=>{
+    const v = d.data();
+    if (v.deleted) return;
+    VERSES.push({
+      id:d.id, ref:v.ref, text:v.text, book:v.book, sC:v.sC, sV:v.sV, eC:v.eC, eV:v.eV,
+      isSection: !!v.isSection, memCount:v.memCount||0, addedAt:v.addedAt||0
     });
   });
 }
-
 async function addRange(){
   const book = qs("bookSel").value;
   const sC = Number(qs("startChap").value);
@@ -488,86 +566,65 @@ async function addRange(){
   const eC = Number(qs("endChap").value || sC);
   const eV = Number(qs("endVerse").value || sV);
   const msg = qs("addMsg");
-
-  if (!book || !sC || !sV){ msg.textContent = "Please fill at least Book, Start Chapter, Start Verse."; return; }
-
-  msg.textContent = "Fetching verses…";
-  const text = await getRangeText(book, sC, sV, eC, eV);
-  if (!text){ msg.textContent = "Could not fetch verse text. Check Bible DB config at top of file."; return; }
-
+  if (!book || !sC || !sV){ msg.textContent="Please fill at least Book, Start Chapter & Start Verse."; return; }
+  msg.textContent="Fetching…";
+  const text = await getRangeText(book,sC,sV,eC,eV);
+  if (!text){ msg.textContent="Could not fetch verse text (CSV)."; return; }
   const isSection = (eC!==sC || eV!==sV);
   const refStr = isSection ? `${book} ${sC}:${sV}–${eC}:${eV}` : `${book} ${sC}:${sV}`;
   const now = Date.now();
-
-  const docRef = await addDoc(userVersesCol(), {
-    ref: refStr, text, book, sC, sV, eC, eV, isSection, memCount: 0, addedAt: now
-  });
-
-  state.verses.push({ id: docRef.id, ref: refStr, text, book, sC, sV, eC, eV, isSection, memCount:0, addedAt: now });
-  msg.textContent = "Added!";
-  renderAllLists();
+  const docRef = await addDoc(versesCol(), {ref:refStr,text,book,sC,sV,eC,eV,isSection,memCount:0,addedAt:now});
+  VERSES.push({id:docRef.id,ref:refStr,text,book,sC,sV,eC,eV,isSection,memCount:0,addedAt:now});
+  msg.textContent="Added!";
+  renderVerseList(); buildPickers(); prepareFlash(); prepareQuiz();
 }
-
-/* Remove verse/section */
 async function removeVerse(id){
-  if (!confirm("Are you sure you want to remove this item from your list?")) return;
-  const dr = doc(db, "versemem_users", state.user, "verses", id);
-  await updateDoc(dr, { deleted:true }); // soft-delete to avoid security rules surprises
-  // optionally actually delete: await deleteDoc(dr);
-  state.verses = state.verses.filter(v=> v.id !== id);
-  renderAllLists();
+  if (!confirm("Are you sure you want to remove this from your list?")) return;
+  const dr = doc(db, "versemem_users", username, "verses", id);
+  await updateDoc(dr, { deleted:true });
+  VERSES = VERSES.filter(v=> v.id!==id);
+  renderVerseList(); buildPickers(); prepareFlash(); prepareQuiz();
 }
-
-/* +1 memorized for a verse/section */
-async function incrementMem(id){
-  const it = state.verses.find(v=> v.id===id);
+async function incMem(id){
+  const it = VERSES.find(v=> v.id===id);
   if (!it) return;
-  const newVal = (it.memCount||0)+1;
-  const dr = doc(db, "versemem_users", state.user, "verses", id);
-  await updateDoc(dr, { memCount: newVal });
-  it.memCount = newVal;
-  renderAllLists();
+  const n = (it.memCount||0)+1;
+  const dr = doc(db, "versemem_users", username, "verses", id);
+  await updateDoc(dr, { memCount:n });
+  it.memCount = n;
+  renderVerseList(); buildPickers(); prepareFlash(); prepareQuiz();
+}
+async function addScore(points){
+  const ref = userDocRef();
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const cur = snap.data();
+  const ns = Math.max(0, (cur.totalScore||0) + Math.round(points));
+  await updateDoc(ref, { totalScore: ns });
+  qs("scoreVal").textContent = ns;
 }
 
-/* ------------------ Panels ------------------ */
-function hideAllWork(){
-  qs("homeCard").style.display = "none";
-  qs("flashCard").style.display= "none";
-  qs("quizCard").style.display = "none";
-  qs("listCard").style.display = "none";
-  qs("addCard").style.display  = "none";
-}
-function showPanel(which){
-  hideAllWork();
-  if (!state.user){ qs("loginCard").style.display = "block"; return; }
-  qs("homeCard").style.display = "block"; // KPIs & leaderboard always on top
-  if (which==="flash"){ qs("flashCard").style.display = "block"; prepareFlash(); }
-  if (which==="quiz"){  qs("quizCard").style.display  = "block"; prepareQuiz(); }
-  if (which==="list"){  qs("listCard").style.display  = "block"; renderVerseList(); }
-  if (which==="add"){   qs("addCard").style.display   = "block"; }
-}
-
-/* ------------------ Sorting & Rendering ------------------ */
-function canonOrder(a,b){
-  const ai = BOOKS.indexOf(a.book), bi = BOOKS.indexOf(b.book);
-  if (ai!==bi) return ai-bi;
-  if ((a.sC||0)!==(b.sC||0)) return (a.sC||0)-(b.sC||0);
-  return (a.sV||0)-(b.sV||0);
+/* ---------------- Flashcards ---------------- */
+function buildPickers(){
+  const fs = qs("flashSource");
+  const qp = qs("quizPick");
+  fs.innerHTML = "<option value='all'>All verses</option>";
+  qp.innerHTML = "";
+  for(const it of VERSES){
+    const o = document.createElement("option");
+    o.value = it.id; o.textContent = it.ref + ` (${it.memCount||0}❤️)`;
+    qp.appendChild(o);
+  }
+  if (VERSES.length && quizIdx<0) quizIdx = 0;
 }
 function renderVerseList(){
   const sort = qs("listSort").value;
-  let items = state.verses.slice();
-
+  let items = VERSES.slice();
   if (sort==="canon") items.sort(canonOrder);
   if (sort==="mem")   items.sort((a,b)=> (b.memCount||0)-(a.memCount||0));
   if (sort==="added") items.sort((a,b)=> (b.addedAt||0)-(a.addedAt||0));
-
-  const box = qs("verseList");
-  box.innerHTML = "";
-  if (!items.length){
-    box.innerHTML = "<div class='mini muted'>Your list is empty. Add some in “New Verse(s)”.</div>";
-    return;
-  }
+  const box = qs("verseList"); box.innerHTML = "";
+  if (!items.length){ box.innerHTML="<div class='mini'>Your list is empty. Add some in “New Verse(s)”.</div>"; return; }
   for(const it of items){
     const row = document.createElement("div"); row.className="verse-item";
     const top = document.createElement("div"); top.className="verse-head";
@@ -575,179 +632,343 @@ function renderVerseList(){
     const ref = document.createElement("div"); ref.style.fontWeight="900"; ref.textContent = it.ref;
     const text = document.createElement("div"); text.className="mini"; text.textContent = it.text;
     L.appendChild(ref); L.appendChild(text);
-
     const R = document.createElement("div"); R.className="row";
     const count = document.createElement("div"); count.className="pill"; count.textContent = `❤️ ${it.memCount||0}`;
-    const heart = document.createElement("button"); heart.className="heart"; heart.textContent = "❤️ +1";
-    heart.onclick = ()=> incrementMem(it.id);
-    const del = document.createElement("button"); del.className="btn-danger"; del.textContent = "✖";
+    const heart = document.createElement("button"); heart.className="heart"; heart.textContent="❤️ +1";
+    heart.onclick = ()=> incMem(it.id);
+    const del = document.createElement("button"); del.className="btn-danger"; del.textContent="✖";
     del.onclick = ()=> removeVerse(it.id);
     R.appendChild(count); R.appendChild(heart); R.appendChild(del);
-
     top.appendChild(L); top.appendChild(R);
     row.appendChild(top);
     box.appendChild(row);
   }
-
-  // update flash & quiz pickers
-  buildPickers();
-}
-
-/* ------------------ Flashcards ------------------ */
-function buildPickers(){
-  const fs = qs("flashSource");
-  const qp = qs("quizPick");
-  // Flash: only "All verses" for now
-  fs.innerHTML = "<option value='all'>All verses</option>";
-
-  // Quiz: list all items
-  qp.innerHTML = "";
-  for(const it of state.verses){
-    const o = document.createElement("option");
-    o.value = it.id; o.textContent = it.ref + ` (${Math.max(0,it.memCount||0)}❤️)`;
-    qp.appendChild(o);
-  }
-  if (state.verses.length && state.quizIdx<0) state.quizIdx = 0;
 }
 function prepareFlash(){
-  if (!state.verses.length){
-    qs("flashFront").textContent = "No items yet. Add verses in “New Verse(s)”.";
-    qs("flashMeta").textContent = "";
+  if (!VERSES.length){
+    qs("flashFront").textContent="Add verses in “New Verse(s)”.";
+    qs("flashMeta").textContent="";
     return;
   }
-  if (state.flashIdx >= state.verses.length) state.flashIdx = 0;
-  if (state.flashIdx < 0) state.flashIdx = state.verses.length-1;
+  if (flashIdx>=VERSES.length) flashIdx=0;
+  if (flashIdx<0) flashIdx=VERSES.length-1;
   renderFlash();
 }
 function renderFlash(){
-  if (!state.verses.length) return;
-  const it = state.verses[state.flashIdx];
-  qs("flashFront").textContent = state.flashBack ? it.ref : it.text;
-  qs("flashMeta").textContent = `Card ${state.flashIdx+1} / ${state.verses.length} • ${state.flashBack? "Back (Reference)" : "Front (Text)"}`;
+  if (!VERSES.length) return;
+  const it=VERSES[flashIdx];
+  qs("flashFront").textContent = flashBack ? it.ref : it.text;
+  qs("flashMeta").textContent = `Card ${flashIdx+1}/${VERSES.length} • ${flashBack? "Back (Reference)":"Front (Text)"}`;
 }
-function stepFlash(dir){
-  if (!state.verses.length) return;
-  state.flashIdx = (state.flashIdx + dir + state.verses.length) % state.verses.length;
-  state.flashBack = false;
-  renderFlash();
-}
-async function heartCurrentFlash(){
-  if (!state.verses.length) return;
-  const it = state.verses[state.flashIdx];
-  await incrementMem(it.id);
-}
+function stepFlash(d){ if (!VERSES.length) return; flashIdx=(flashIdx+d+VERSES.length)%VERSES.length; flashBack=false; renderFlash(); }
+qs("prevFlash").onclick = ()=> stepFlash(-1);
+qs("nextFlash").onclick = ()=> stepFlash(1);
+qs("flipFlash").onclick = ()=> { flashBack=!flashBack; renderFlash(); };
+qs("heartFlash").onclick= ()=> { if (!VERSES.length) return; incMem(VERSES[flashIdx].id); };
 
-/* ------------------ Type Quiz ------------------ */
-function prepareQuiz(){
-  if (!state.verses.length){
-    qs("quizRefPill").style.display = "none";
-    qs("quizRefPill").textContent = "";
-    qs("quizInput").value = "";
-    qs("quizResult").innerHTML = "<span class='muted mini'>Your list is empty.</span>";
-    return;
-  }
-  if (state.quizIdx<0 || state.quizIdx>=state.verses.length) state.quizIdx = 0;
-  const it = state.verses[state.quizIdx];
-  qs("quizRefPill").style.display = "inline-flex";
-  qs("quizRefPill").textContent = it.ref;
-  qs("quizInput").value = "";
-  qs("quizResult").textContent = "";
-  buildPickers(); // ensure dropdown populated
-  qs("quizPick").value = it.id;
-}
-function pickRandomQuiz(){
-  if (!state.verses.length) return;
-  state.quizIdx = Math.floor(Math.random()*state.verses.length);
-  prepareQuiz();
-}
-qs("quizPick").onchange = ()=>{
-  const id = qs("quizPick").value;
-  const idx = state.verses.findIndex(v=>v.id===id);
-  if (idx>=0){ state.quizIdx = idx; prepareQuiz(); }
-};
-
-/* Normalize to tokens: lowercase, strip punctuation/apostrophes/quotes, collapse spaces */
+/* ---------------- Quiz ---------------- */
 function normTokens(s){
   if (!s) return [];
   let t = s.toLowerCase();
-  // remove punctuation/quotes (keep letters/numbers/spaces)
   t = t.normalize("NFKD").replace(/[\u0300-\u036f]/g,"");
-  t = t.replace(/[^a-z0-9\s]/g, " ");
-  t = t.replace(/\s+/g, " ").trim();
+  t = t.replace(/[^a-z0-9\s]/g," ");
+  t = t.replace(/\s+/g," ").trim();
   return t ? t.split(" ") : [];
 }
-/* LCS (token-level) length */
 function lcsLen(a,b){
-  const m=a.length, n=b.length;
-  const dp = Array.from({length:m+1}, ()=> new Array(n+1).fill(0));
+  const m=a.length,n=b.length;
+  const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
   for(let i=1;i<=m;i++){
     for(let j=1;j<=n;j++){
       if (a[i-1]===b[j-1]) dp[i][j]=dp[i-1][j-1]+1;
-      else dp[i][j]=Math.max(dp[i-1][j], dp[i][j-1]);
+      else dp[i][j]=Math.max(dp[i-1][j],dp[i][j-1]);
     }
   }
   return dp[m][n];
 }
-/* Score 0–100; order-sensitive via LCS. We weight by target length. */
 function scorePercent(userText, targetText){
-  const u = normTokens(userText);
-  const t = normTokens(targetText);
+  const u = normTokens(userText), t = normTokens(targetText);
   if (!t.length) return 0;
   const match = lcsLen(u,t);
-  const pct = Math.round(100 * (match / t.length));
-  return Math.max(0, Math.min(100, pct));
+  return Math.max(0,Math.min(100, Math.round(100*match/t.length)));
 }
-
-async function gradeQuiz(){
-  if (state.quizIdx<0 || !state.verses.length) return;
-  const it = state.verses[state.quizIdx];
-  const user = qs("quizInput").value;
-  const pct = scorePercent(user, it.text);
-
-  // > =95% counts as memorized +1
-  let line = `Score: <b class="score">${pct}%</b> — `;
-  if (pct>=95){
-    await incrementMem(it.id);
-    line += `<span class="good">Memorized! (+1 ❤️)</span>`;
-  } else if (pct>=70){
-    line += `<span class="warn">Close — keep going!</span>`;
-  } else {
-    line += `<span class="bad">Needs work.</span>`;
+function prepareQuiz(){
+  if (!VERSES.length){
+    qs("quizRefPill").style.display="none";
+    qs("quizPick").innerHTML="";
+    qs("quizInput").value="";
+    qs("quizResult").innerHTML="<span class='mini'>Your list is empty.</span>";
+    return;
   }
-
-  // add score
+  if (quizIdx<0 || quizIdx>=VERSES.length) quizIdx=0;
+  buildPickers();
+  const it = VERSES[quizIdx];
+  qs("quizRefPill").style.display="inline-flex";
+  qs("quizRefPill").textContent = it.ref;
+  qs("quizPick").value = it.id;
+  qs("quizInput").value = "";
+  qs("quizResult").textContent = "";
+}
+qs("quizPick").onchange = ()=>{ const id=qs("quizPick").value; const i=VERSES.findIndex(v=>v.id===id); if (i>=0){ quizIdx=i; prepareQuiz(); } };
+qs("nextQuiz").onclick = ()=> { if (!VERSES.length) return; quizIdx = Math.floor(Math.random()*VERSES.length); prepareQuiz(); };
+qs("showAnswer").onclick = ()=> { if (quizIdx<0) return; const it=VERSES[quizIdx]; qs("quizResult").innerHTML=`<div class="mini"><b>${it.ref}</b><br>${it.text}</div>`; };
+qs("gradeQuiz").onclick = async ()=> {
+  if (quizIdx<0) return;
+  const it=VERSES[quizIdx];
+  const pct = scorePercent(qs("quizInput").value, it.text);
+  let line = `Score: <b>${pct}%</b> — `;
+  if (pct>=95){ await incMem(it.id); line += `<span style="color:var(--good)">Memorized! (+1 ❤️)</span>`; }
+  else if (pct>=70){ line += `<span style="color:var(--warn)">Close — keep going!</span>`; }
+  else { line += `<span style="color:var(--bad)">Needs work.</span>`; }
   await addScore(pct);
-
   qs("quizResult").innerHTML = line;
+};
+
+/* ---------------- Add panel wiring ---------------- */
+qs("addRangeBtn").onclick = ()=> addRange();
+qs("listSort").onchange = ()=> renderVerseList();
+
+/* ---------------- Challenges ---------------- */
+const CH_COL = collection(db, "versemem_challenges");
+// doc: { a, b, status:"pending"|"active"|"completed", createdAt, startAt?, endAt?, acceptedBy?, aBaselineScore?, bBaselineScore?, winner?: "a"|"b"|"draw" }
+
+qs("sendChallenge").onclick = async ()=>{
+  const to = qs("challengeName").value.trim();
+  if (!to || to===username){ alert("Enter another username."); return; }
+  const userSnap = await getDoc(doc(db,"users",to));
+  if (!userSnap.exists()){ alert("User not found."); return; }
+  await addDoc(CH_COL, { a:username, b:to, status:"pending", createdAt: Date.now() });
+  qs("challengeName").value="";
+  await loadChallenges();
+};
+
+async function loadChallenges(){
+  const incomingBox = qs("incomingList"); incomingBox.innerHTML="";
+  const activeBox = qs("activeList"); activeBox.innerHTML="";
+
+  // Incoming pending
+  const qIn = query(CH_COL, where("b","==",username), where("status","==","pending"));
+  const sIn = await getDocs(qIn);
+  if (sIn.empty){ incomingBox.innerHTML = "<div class='mini'>None.</div>"; }
+  sIn.forEach(d=>{
+    const ch = d.data();
+    const row = document.createElement("div"); row.className="lb";
+    const L = document.createElement("div"); L.textContent = `${ch.a} → you`;
+    const R = document.createElement("div");
+    const acc = document.createElement("button"); acc.className="btn btn-primary"; acc.textContent="Accept";
+    acc.onclick = ()=> acceptChallenge(d.id, ch);
+    R.appendChild(acc);
+    row.appendChild(L); row.appendChild(R);
+    incomingBox.appendChild(row);
+  });
+
+  // Active (either side)
+  const qA1 = query(CH_COL, where("a","==",username), where("status","==","active"));
+  const qA2 = query(CH_COL, where("b","==",username), where("status","==","active"));
+  const [sA1, sA2] = await Promise.all([getDocs(qA1), getDocs(qA2)]);
+  const rows = [...sA1.docs, ...sA2.docs];
+  if (!rows.length){ activeBox.innerHTML = "<div class='mini'>None.</div>"; }
+  for (const d of rows){
+    const ch = d.data();
+    const row = document.createElement("div"); row.className="lb";
+    const opp = (ch.a===username)? ch.b : ch.a;
+    const meta = document.createElement("div"); meta.className="mini timer";
+    row.appendChild(document.createTextNode(`${opp} vs you — `));
+    row.appendChild(meta);
+    activeBox.appendChild(row);
+
+    const tick = async ()=>{
+      const now = Date.now();
+      const end = ch.endAt;
+      if (!end){ meta.textContent = "starting…"; return; }
+      const ms = Math.max(0, end-now);
+      const hh = Math.floor(ms/3600000);
+      const mm = Math.floor((ms%3600000)/60000);
+      let txt = `ends in ${hh}h ${mm}m`;
+
+      // live deltas
+      const aDoc = await getDoc(doc(db,"versemem_users", ch.a));
+      const bDoc = await getDoc(doc(db,"versemem_users", ch.b));
+      const aNow = (aDoc.data()?.totalScore||0) - (ch.aBaselineScore||0);
+      const bNow = (bDoc.data()?.totalScore||0) - (ch.bBaselineScore||0);
+      txt += ` • ${ch.a}: ${aNow} | ${ch.b}: ${bNow}`;
+      meta.textContent = txt;
+
+      if (ms<=0){
+        await finalizeChallenge(d.id, ch);
+        await loadChallenges();
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 60000);
+    const obs = new MutationObserver(()=>{ if (!qs("chPanel").classList.contains("show")){ clearInterval(iv); obs.disconnect(); } });
+    obs.observe(qs("chPanel"), { attributes:true, attributeFilter:["class"] });
+  }
+}
+async function acceptChallenge(id, ch){
+  const aBase = (await getDoc(doc(db,"versemem_users", ch.a))).data()?.totalScore||0;
+  const bBase = (await getDoc(doc(db,"versemem_users", ch.b))).data()?.totalScore||0;
+  const start = Date.now();
+  const end = start + 7*24*3600*1000;
+  await updateDoc(doc(db,"versemem_challenges", id), {
+    status:"active", acceptedBy: username, startAt:start, endAt:end,
+    aBaselineScore:aBase, bBaselineScore:bBase
+  });
+  await loadChallenges();
+}
+async function finalizeChallenge(id, ch){
+  const ref = doc(db,"versemem_challenges", id);
+  const snap = await getDoc(ref); if (!snap.exists()) return;
+  const cur = snap.data(); if (cur.status!=="active") return;
+
+  const aNow = (await getDoc(doc(db,"versemem_users", ch.a))).data()?.totalScore||0;
+  const bNow = (await getDoc(doc(db,"versemem_users", ch.b))).data()?.totalScore||0;
+  const aPts = aNow - (ch.aBaselineScore||0);
+  const bPts = bNow - (ch.bBaselineScore||0);
+  let winner = "draw";
+  if (aPts>bPts) winner="a"; else if (bPts>aPts) winner="b";
+  await updateDoc(ref, { status:"completed", winner, endedAt: Date.now() });
+  if (winner==="a") await updateDoc(doc(db,"versemem_users", ch.a), { totalScore: aNow + 50 });
+  if (winner==="b") await updateDoc(doc(db,"versemem_users", ch.b), { totalScore: bNow + 50 });
 }
 
-/* Reveal answer */
-function showQuizAnswer(){
-  if (state.quizIdx<0 || !state.verses.length) return;
-  const it = state.verses[state.quizIdx];
-  qs("quizResult").innerHTML = `<div class="mini"><b>${it.ref}</b><br>${it.text}</div>`;
+/* ---------------- Weekly competition ---------------- */
+function weekStart(date=new Date()){
+  const tz = "America/New_York";
+  const now = new Date(date.toLocaleString("en-US",{timeZone:tz}));
+  const day = now.getDay(); // 0=Sun
+  const start = new Date(now); start.setHours(0,0,0,0); start.setDate(now.getDate()-day);
+  const iso = start.toLocaleDateString("en-CA",{timeZone:tz});
+  return { startDate:start, startISO:iso };
+}
+function weekEnd(date=new Date()){
+  const {startDate} = weekStart(date);
+  const end = new Date(startDate); end.setDate(end.getDate()+7); // next Sunday 00:00
+  return end;
+}
+function renderWeekRange(){
+  const {startDate} = weekStart();
+  const end = weekEnd();
+  const opts = { month:"short", day:"numeric" };
+  const tz = "America/New_York";
+  const sTxt = startDate.toLocaleDateString("en-US",{...opts,timeZone:tz});
+  const eTxt = new Date(end-1).toLocaleDateString("en-US",{...opts,timeZone:tz});
+  qs("wkRange").textContent = `${sTxt} – ${eTxt}`;
+}
+const COMP_COL = collection(db,"versemem_competitions");
+// versemem_competitions/{weekStartISO}: { active:true, endedBy?, endedAt? }
+// participants subcollection: {username}: { baselineScore, joinedAt }
+
+qs("joinWeekly").onclick = async ()=>{
+  const {startISO} = weekStart();
+  const compRef = doc(db,"versemem_competitions", startISO);
+  const snap = await getDoc(compRef);
+  if (!snap.exists()) await setDoc(compRef, { active:true });
+  const youRef = doc(db,"versemem_competitions", startISO, "participants", username);
+  const youSnap = await getDoc(youRef);
+  if (youSnap.exists()){ alert("You’re already in this week."); return; }
+  const base = (await getDoc(userDocRef())).data()?.totalScore||0;
+  await setDoc(youRef, { baselineScore: base, joinedAt: Date.now() });
+  await loadWeeklyBoard();
+};
+async function loadWeeklyBoard(){
+  const {startISO} = weekStart();
+  const compRef = doc(db,"versemem_competitions", startISO);
+  const compSnap = await getDoc(compRef);
+  if (!compSnap.exists()) await setDoc(compRef,{active:true});
+  const partCol = collection(db,"versemem_competitions", startISO, "participants");
+  const parts = await getDocs(partCol);
+  const list = [];
+  for (const p of parts.docs){
+    const base = p.data().baselineScore||0;
+    const usrSnap = await getDoc(doc(db,"versemem_users", p.id));
+    const cur = usrSnap.exists()? (usrSnap.data().totalScore||0) : base;
+    list.push({ name:p.id, pts: cur - base });
+  }
+  list.sort((a,b)=> b.pts - a.pts);
+  const box = qs("wkBoard"); box.innerHTML="";
+  if (!list.length){ box.innerHTML="<div class='mini'>No participants yet. Join to compete!</div>"; return; }
+  let i=1;
+  for (const r of list.slice(0,50)){
+    const row = document.createElement("div"); row.className="lb";
+    const L = document.createElement("div"); L.style.display="flex"; L.style.alignItems="center"; L.style.gap="8px";
+    const rk = document.createElement("div"); rk.className="rank"; rk.textContent=i++;
+    const nm = document.createElement("div"); nm.style.fontWeight="900"; nm.textContent=r.name;
+    L.appendChild(rk); L.appendChild(nm);
+    const R = document.createElement("div"); R.className="mini"; R.textContent = `${r.pts} pts`;
+    row.appendChild(L); row.appendChild(R);
+    box.appendChild(row);
+  }
+}
+async function maybeEndWeeklyOnLogin(){
+  const now = new Date();
+  const end = weekEnd(now);
+  if (now < end) return; // not over yet
+  const {startISO} = weekStart(now);
+  const compRef = doc(db,"versemem_competitions", startISO);
+  const snap = await getDoc(compRef);
+  if (!snap.exists()) return;
+  const c = snap.data();
+  if (c.active===false) return; // already ended
+
+  const partCol = collection(db,"versemem_competitions", startISO, "participants");
+  const parts = await getDocs(partCol);
+  const rows=[];
+  for (const p of parts.docs){
+    const base = p.data().baselineScore||0;
+    const usrSnap = await getDoc(doc(db,"versemem_users", p.id));
+    const cur = usrSnap.exists()? (usrSnap.data().totalScore||0) : base;
+    rows.push({ name:p.id, pts: cur - base, cur });
+  }
+  rows.sort((a,b)=> b.pts - a.pts);
+  const podium = rows.slice(0,3);
+  if (podium[0]) await updateDoc(doc(db,"versemem_users", podium[0].name), { totalScore: (podium[0].cur||0)+100 });
+  if (podium[1]) await updateDoc(doc(db,"versemem_users", podium[1].name), { totalScore: (podium[1].cur||0)+50 });
+  if (podium[2]) await updateDoc(doc(db,"versemem_users", podium[2].name), { totalScore: (podium[2].cur||0)+25 });
+  await updateDoc(compRef, { active:false, endedBy: username, endedAt: Date.now() });
 }
 
-/* ------------------ Rendering helpers ------------------ */
-function renderAllLists(){
-  renderVerseList();
-  prepareFlash();
-  prepareQuiz();
-}
+/* ---------------- Boot ---------------- */
+qs("doLogin").onclick = async ()=>{
+  const u = qs("lu").value.trim(), p = qs("lp").value.trim();
+  if (!u || !p){ qs("lerr").textContent="Enter username & password."; return; }
+  const rec = await verifyUser(u);
+  if (!rec || rec.password !== p){ qs("lerr").textContent="Invalid login."; return; }
+  username = u; qs("loginCard").style.display="none";
+  await boot();
+};
 
-/* ------------------ Init ------------------ */
-function showOnlyLogin(){
-  qs("homeCard").style.display = "none";
-  qs("flashCard").style.display= "none";
-  qs("quizCard").style.display = "none";
-  qs("listCard").style.display = "none";
-  qs("addCard").style.display  = "none";
-  qs("loginCard").style.display= "block";
+async function boot(){
+  if (username){
+    const ok = await verifyUser(username);
+    if (!ok) username = "";
+  }
+  if (!username){
+    qs("loginCard").style.display = "block";
+    return;
+  }
+  qs("userPill").style.display="inline-flex"; qs("who").textContent = username;
+
+  // Load CSV Bible first
+  try { await loadBibleCSV(); } catch(e){ console.warn("CSV load failed; Firestore fallback only.", e); }
+
+  await ensureVMUserDoc();
+  await dailyBonus();
+  await maybeEndWeeklyOnLogin();
+  await loadKPIs();
+  await loadLeaderboard();
+  await loadUserVerses();
+  renderVerseList(); buildPickers(); prepareFlash(); prepareQuiz();
+
+  // Wire basic nav (in case login just happened)
+  renderWeekRange();
 }
-loadUserOrLogin().catch(err=>{
-  console.error(err);
-  showOnlyLogin();
-});
+const paramsU = (new URLSearchParams(location.search)).get("username");
+if (paramsU){ /* auto-login display pill handled in boot */ }
+else { qs("loginCard").style.display = "block"; }
+
+boot();
 </script>
 </body>
 </html>
+
