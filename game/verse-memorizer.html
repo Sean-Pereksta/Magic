@@ -370,20 +370,23 @@ async function dailyBonus(){
   if (!snap.exists()) return;
   const d = snap.data(); const today = ymd();
   if (d.lastLoginDate === today) return;
-  let newStreak = 1;
-  if (d.lastLoginDate){
-    newStreak = (diffDays(today, d.lastLoginDate)===1) ? (d.streak||0)+1 : 1;
-  }
-  const newScore = (d.totalScore||0) + newStreak;
+
+  const prevStreak = Number(d.streak) || 0;
+  const prevScore  = Number(d.totalScore) || 0;
+
+  const newStreak = d.lastLoginDate && diffDays(today, d.lastLoginDate)===1 ? prevStreak + 1 : 1;
+  const newScore  = prevScore + newStreak;
+
   await updateDoc(ref, { lastLoginDate: today, streak:newStreak, totalScore:newScore });
 }
+
 async function loadKPIs(){
   const ref = doc(db, "versemem_users", username);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const d = snap.data();
-  qs("streakVal").textContent = d.streak||0;
-  qs("scoreVal").textContent  = d.totalScore||0;
+  qs("streakVal").textContent = Number(d.streak) || 0;
+  qs("scoreVal").textContent  = Number(d.totalScore) || 0;
 }
 async function loadLeaderboard(){
   const col = collection(db, "versemem_users");
@@ -599,7 +602,9 @@ async function addScore(points){
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const cur = snap.data();
-  const ns = Math.max(0, (cur.totalScore||0) + Math.round(points));
+  const base = Number(cur.totalScore) || 0;
+  const inc  = Number(points) || 0;
+  const ns   = Math.max(0, base + inc);
   await updateDoc(ref, { totalScore: ns });
   qs("scoreVal").textContent = ns;
 }
@@ -821,8 +826,8 @@ async function finalizeChallenge(id, ch){
   const snap = await getDoc(ref); if (!snap.exists()) return;
   const cur = snap.data(); if (cur.status!=="active") return;
 
-  const aNow = (await getDoc(doc(db,"versemem_users", ch.a))).data()?.totalScore||0;
-  const bNow = (await getDoc(doc(db,"versemem_users", ch.b))).data()?.totalScore||0;
+ const aNow = Number((await getDoc(doc(db,"versemem_users", ch.a))).data()?.totalScore) || 0;
+const bNow = Number((await getDoc(doc(db,"versemem_users", ch.b))).data()?.totalScore) || 0;
   const aPts = aNow - (ch.aBaselineScore||0);
   const bPts = bNow - (ch.bBaselineScore||0);
   let winner = "draw";
@@ -880,9 +885,9 @@ async function loadWeeklyBoard(){
   const parts = await getDocs(partCol);
   const list = [];
   for (const p of parts.docs){
-    const base = p.data().baselineScore||0;
+    const base = Number(p.data().baselineScore) || 0;
     const usrSnap = await getDoc(doc(db,"versemem_users", p.id));
-    const cur = usrSnap.exists()? (usrSnap.data().totalScore||0) : base;
+    const cur  = Number(usrSnap.data()?.totalScore) || base;
     list.push({ name:p.id, pts: cur - base });
   }
   list.sort((a,b)=> b.pts - a.pts);
@@ -971,4 +976,5 @@ boot();
 </script>
 </body>
 </html>
+
 
