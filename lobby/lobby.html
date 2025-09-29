@@ -288,7 +288,10 @@
       microwars2: "/game/microwaves2.html",
       microwars4: "/game/microwaves4.html",
       border:     "/game/border.html",
-      mobamania:  "/game/CatLanes.html"
+      mobamania:  "/game/CatLanes.html",
+
+      // ADDED: Verse Memorizer route (change if your filename differs)
+      versemem:   "/game/verse-memorizer.html" // ADDED
     };
 
     // Games that auto-navigate once lobby "started"
@@ -315,6 +318,8 @@
 
     // ---------- SINGLEPLAYER CATALOG ----------
     const SINGLEPLAYER_GAMES = [
+      // ADDED: Verse Memorizer at the top for visibility
+      { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true }, // ADDED
       { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: ROUTES.microwars },
       { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: ROUTES.microwars2 },
       { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: ROUTES.microwars4 },
@@ -341,7 +346,8 @@
       user: "gh.username",
       lastLobby: "gh.lastLobbyId",
       lastGame: "gh.lastGameType",
-      lastTab: "gh.lastTab"
+      lastTab: "gh.lastTab",
+      nextRoute: "gh.nextRoute" // ADDED: where to go post-login (singleplayer launch)
     };
     const save = (k,v)=> localStorage.setItem(k, v);
     const read = (k)=> localStorage.getItem(k);
@@ -353,7 +359,7 @@
       save(SK.lastTab, activeTab);
     }
     function clearSession() {
-      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab);
+      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab); del(SK.nextRoute); // ADDED
     }
 
     // ---------- TABS ----------
@@ -367,6 +373,24 @@
       save(SK.lastTab, which);
     };
 
+    // ADDED: helper to launch singleplayer items (handles login requirement + ?username)
+    function playSingle(g){
+      if (g.requiresUser && !username){
+        // remember where to go post-login
+        save(SK.nextRoute, g.key);
+        showTab('multi');
+        showError("🔒 Please log in to play Verse Memorizer.");
+        const u = document.getElementById('username'); if (u) u.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      let url = g.route;
+      if (g.autoUsername && username){
+        url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
+      }
+      window.location.href = url;
+    }
+
     // Render Singleplayer
     function renderSingleplayer(){
       const el = document.getElementById('catalog');
@@ -377,7 +401,8 @@
         const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
         const pr = document.createElement('div'); pr.className = 'play-row';
         const btn = document.createElement('button'); btn.className = 'btn btn-lg'; btn.textContent = 'Play';
-        btn.addEventListener('click', ()=> window.location.href = g.route);
+        // ADDED: launch logic with username + login requirement
+        btn.addEventListener('click', ()=> playSingle(g)); // ADDED
         pr.appendChild(btn);
         card.appendChild(t); card.appendChild(d); card.appendChild(pr);
         el.appendChild(card);
@@ -402,6 +427,20 @@
 
     if (username) { autoLogin(username); }
 
+    // ADDED: open pending singleplayer route (e.g., Verse Memorizer) right after login
+    function openPendingRouteIfAny(){
+      const key = read(SK.nextRoute);
+      if (!key) return;
+      const g = SINGLEPLAYER_GAMES.find(x => x.key === key);
+      del(SK.nextRoute);
+      if (!g) return;
+      let url = g.route;
+      if (g.autoUsername && username){
+        url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
+      }
+      window.location.href = url;
+    }
+
     async function login() {
       username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value.trim();
@@ -414,6 +453,7 @@
       enterLobbyUI();
       persistSession();
       maybeOfferResume();
+      openPendingRouteIfAny(); // ADDED
     }
 
     async function autoLogin(name) {
@@ -425,6 +465,7 @@
         enterLobbyUI();
         persistSession();
         maybeOfferResume();
+        openPendingRouteIfAny(); // ADDED
       }catch(e){ /* ignore */ }
     }
 
@@ -812,6 +853,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
