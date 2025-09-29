@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>📖 Verse Memorizer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<style>
+  :root{
+    --bg:#fff7f7; --ink:#0f172a; --muted:#6b7280; --card:#fff; --br:#f3e2e2;
+    --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
+    --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
+    --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
+
+  header{ background: radial-gradient(1200px 600px at 50% -200px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
+    color:#fff; padding:28px 16px 18px; box-shadow:var(--shadow) }
+  .hero{ max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
+  .title{ font-weight:900; letter-spacing:.3px; font-size:1.35rem }
+  .subtitle{ color:#ffe2e2; font-size:.95rem }
+
+  .wrap{ max-width:1100px; margin:16px auto; display:grid; grid-template-columns: 280px 1fr; gap:16px; padding:0 12px 28px }
+  @media (max-width:980px){ .wrap{ grid-template-columns:1fr } }
+
+  .card{ background:var(--card); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
+  .card-head{ padding:14px 16px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between; gap:12px }
+  .card-body{ padding:14px 16px }
+  .card-title{ font-weight:900 }
+
+  .nav{ display:grid; gap:10px }
+  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--br); background:#fff; cursor:pointer; font-weight:800 }
+  .btn:hover{ background:#fff5f5 }
+  .btn-primary{ background:var(--accent); color:#fff; border-color:var(--accent) }
+  .btn-primary:hover{ background:var(--accent-2) }
+  .btn-ghost{ background:#fff; border:1px solid var(--br); color:#111827 }
+  .btn-danger{ background:#fff; border:1px solid #fecaca; color:#b91c1c }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .input, .select, .textarea{ width:100%; padding:12px; border-radius:12px; border:1px solid var(--br); outline:none; font-size:16px; background:#fff }
+  .input:focus, .select:focus, .textarea:focus{ border-color:#fecaca; box-shadow:0 0 0 4px rgba(239,68,68,.2) }
+
+  .kpi{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px }
+  .kpi .box{ padding:14px; border:1px solid var(--br); border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:space-between }
+  .kpi .label{ color:var(--muted); font-weight:700 }
+  .kpi .value{ font-weight:900; font-size:1.1rem }
+
+  .leader{ display:grid; gap:8px }
+  .lb{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid var(--br); border-radius:12px; background:#fff }
+  .rank{ width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#fee2e2; color:#7f1d1d; font-weight:900 }
+
+  .pill{ display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--br); background:#fff7f7; font-size:13px }
+  .muted{ color:var(--muted) }
+  .hint{ font-size:.9rem; color:#6b7280 }
+
+  .list{ display:grid; gap:10px }
+  .verse-item{ border:1px solid var(--br); border-radius:12px; background:#fff; padding:12px; display:grid; gap:8px }
+  .verse-head{ display:flex; align-items:center; justify-content:space-between; gap:10px }
+  .mini{ font-size:.92rem; color:#374151 }
+  .heart{ cursor:pointer; border:none; background:#fff; border-radius:10px; padding:6px 8px; border:1px solid var(--br) }
+  .heart:hover{ background:#fff5f5 }
+
+  .flash{ display:grid; gap:12px }
+  .flash-card{ border:1px dashed #fecaca; border-radius:14px; padding:20px; background:#fff; min-height:180px; display:flex; align-items:center; justify-content:center; text-align:center }
+  .flash-ctrls{ display:flex; justify-content:space-between; align-items:center; gap:10px }
+
+  .quiz{ display:grid; gap:12px }
+  .score{ font-weight:900 }
+  .good{ color:var(--good) } .bad{ color:var(--bad) } .warn{ color:var(--warn) }
+
+  .login{ max-width:520px; margin:22px auto }
+</style>
+</head>
+<body>
+  <header>
+    <div class="hero">
+      <div>
+        <div class="title">📖 Verse Memorizer</div>
+        <div class="subtitle">Build a verse list, drill with flashcards, and test by typing. 95%+ counts as memorized.</div>
+      </div>
+      <div class="pill" id="userPill" style="display:none">👤 <b id="who"></b></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- LEFT NAV -->
+    <aside>
+      <div class="card">
+        <div class="card-head"><div class="card-title">Menu</div></div>
+        <div class="card-body">
+          <div class="nav">
+            <button class="btn" id="btnFlash">🃏 Flash Cards</button>
+            <button class="btn" id="btnQuiz">⌨️ Type Quiz</button>
+            <button class="btn" id="btnList">📜 Verse List</button>
+            <button class="btn" id="btnAdd">➕ New Verse(s)</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT CONTENT -->
+    <section>
+      <!-- KPIs + Leaderboard -->
+      <div class="card" id="homeCard">
+        <div class="card-head"><div class="card-title">Progress</div></div>
+        <div class="card-body">
+          <div class="kpi">
+            <div class="box"><div class="label">🔥 Streak</div><div class="value" id="streakVal">0</div></div>
+            <div class="box"><div class="label">⭐ Score</div><div class="value" id="scoreVal">0</div></div>
+          </div>
+          <div class="hint" style="margin-bottom:8px">Daily bonus = your current streak (added the first time you log in each day).</div>
+          <div class="leader" id="leaderWrap">
+            <!-- Leaderboard rows inserted -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Flashcards -->
+      <div class="card" id="flashCard" style="display:none">
+        <div class="card-head"><div class="card-title">🃏 Flash Cards</div></div>
+        <div class="card-body">
+          <div class="row" style="margin-bottom:8px">
+            <select id="flashSource" class="select" style="max-width:260px">
+              <option value="all">All verses</option>
+            </select>
+            <div class="hint">Front = verse text • Back = reference</div>
+          </div>
+          <div class="flash">
+            <div class="flash-card" id="flashFront">No items yet. Add verses in “New Verse(s)”.</div>
+            <div class="flash-ctrls">
+              <button class="btn" id="prevFlash">◀ Prev</button>
+              <div class="row">
+                <button class="btn" id="flipFlash">↻ Flip</button>
+                <button class="heart" id="heartFlash">❤️ +1 Memorized</button>
+              </div>
+              <button class="btn" id="nextFlash">Next ▶</button>
+            </div>
+            <div class="mini" id="flashMeta"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Type Quiz -->
+      <div class="card" id="quizCard" style="display:none">
+        <div class="card-head"><div class="card-title">⌨️ Type Quiz</div></div>
+        <div class="card-body">
+          <div class="row" style="margin-bottom:8px">
+            <select id="quizPick" class="select" style="max-width:320px"></select>
+            <button class="btn" id="nextQuiz">Next Random</button>
+          </div>
+          <div class="quiz">
+            <div class="pill" id="quizRefPill" style="display:none"></div>
+            <textarea id="quizInput" class="textarea" rows="5" placeholder="Type the verse here…"></textarea>
+            <div class="row">
+              <button class="btn-primary btn" id="gradeQuiz">Grade</button>
+              <button class="btn-ghost btn" id="showAnswer">Show Answer</button>
+            </div>
+            <div id="quizResult" class="mini"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Verse List -->
+      <div class="card" id="listCard" style="display:none">
+        <div class="card-head">
+          <div class="card-title">📜 Your Verse List</div>
+          <div class="row">
+            <label class="mini">Sort:</label>
+            <select id="listSort" class="select">
+              <option value="canon">Bible order</option>
+              <option value="mem">Most memorized</option>
+              <option value="added">Recently added</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="verseList" class="list"></div>
+        </div>
+      </div>
+
+      <!-- Add Verses -->
+      <div class="card" id="addCard" style="display:none">
+        <div class="card-head"><div class="card-title">➕ Add New Verse(s)</div></div>
+        <div class="card-body">
+          <div class="row">
+            <select id="bookSel" class="select" style="max-width:220px"></select>
+            <input id="startChap" class="input" style="max-width:110px" type="number" min="1" placeholder="Start Ch" />
+            <input id="startVerse" class="input" style="max-width:110px" type="number" min="1" placeholder="Start V" />
+            <span class="mini">to</span>
+            <input id="endChap" class="input" style="max-width:110px" type="number" min="1" placeholder="End Ch" />
+            <input id="endVerse" class="input" style="max-width:110px" type="number" min="1" placeholder="End V" />
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn-primary btn" id="addRangeBtn">Add to My List</button>
+          </div>
+          <div class="hint" style="margin-top:8px">
+            Tip: Leave “End” blank to add a single verse. Ranges like <b>1 Kings 1:4–7</b> are saved as one item.
+          </div>
+          <div id="addMsg" class="mini" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <!-- Login (if opened directly without ?username=) -->
+      <div class="card login" id="loginCard" style="display:none">
+        <div class="card-head"><div class="card-title">Login</div></div>
+        <div class="card-body">
+          <div class="row">
+            <input id="lu" autocomplete="username" class="input" placeholder="Username" />
+            <input id="lp" autocomplete="current-password" type="password" class="input" placeholder="Password" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn-primary" id="doLogin">Login</button>
+          </div>
+          <div id="lerr" class="mini" style="color:#b91c1c; margin-top:8px"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script type="module">
+/* ------------------ Firebase ------------------ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs,
+  query, where, orderBy, limit
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+/* ------------------ Config: Bible DB hookup ------------------ */
+/** Pick ONE mode that matches your Bible DB in Firestore:
+ *  "flat"   => a single collection (default name below) where each doc has {book, chapter, verse, text}
+ *  "nested" => path bible/books/{Book}/chapters/{n}/verses/{m} with a field {text}
+ */
+const BIBLE_MODE = "flat";                // "flat" or "nested"
+const BIBLE_COLLECTION = "bible_verses";  // if BIBLE_MODE="flat", set the collection name here
+
+/* Canon book order for sorting */
+const BOOKS = [
+  "Genesis","Exodus","Leviticus","Numbers","Deuteronomy",
+  "Joshua","Judges","Ruth","1 Samuel","2 Samuel","1 Kings","2 Kings",
+  "1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms",
+  "Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations",
+  "Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum",
+  "Habakkuk","Zephaniah","Haggai","Zechariah","Malachi",
+  "Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians",
+  "Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians",
+  "1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter",
+  "1 John","2 John","3 John","Jude","Revelation"
+];
+
+/* ------------------ State ------------------ */
+const qs = (id)=>document.getElementById(id);
+const state = {
+  user: "",
+  verses: [],       // [{id, ref, text, book, sC, sV, eC, eV, isSection, memCount, addedAt}]
+  flashIdx: 0,
+  flashBack: false,
+  quizIdx: -1,
+  score: 0,
+  streak: 0
+};
+
+/* ------------------ UI Wiring ------------------ */
+qs("btnFlash").onclick = ()=> showPanel("flash");
+qs("btnQuiz").onclick  = ()=> showPanel("quiz");
+qs("btnList").onclick  = ()=> showPanel("list");
+qs("btnAdd").onclick   = ()=> showPanel("add");
+
+qs("prevFlash").onclick = ()=> { stepFlash(-1); };
+qs("nextFlash").onclick = ()=> { stepFlash(1); };
+qs("flipFlash").onclick = ()=> { state.flashBack = !state.flashBack; renderFlash(); };
+qs("heartFlash").onclick= ()=> { heartCurrentFlash(); };
+
+qs("gradeQuiz").onclick = gradeQuiz;
+qs("showAnswer").onclick= ()=> showQuizAnswer();
+qs("nextQuiz").onclick  = ()=> pickRandomQuiz();
+
+qs("addRangeBtn").onclick = addRange;
+
+qs("doLogin").onclick = doLogin;
+qs("listSort").onchange = renderVerseList;
+
+/* Fill books dropdown */
+(function fillBookSelect(){
+  const sel = qs("bookSel");
+  sel.innerHTML = "";
+  for(const b of BOOKS){
+    const opt = document.createElement("option");
+    opt.value = b; opt.textContent = b;
+    sel.appendChild(opt);
+  }
+})();
+
+/* ------------------ Auth (same users collection) ------------------ */
+async function verifyUser(name){
+  const userRef = doc(db, "users", name);
+  const snap = await getDoc(userRef);
+  return snap.exists() ? snap.data() : null;
+}
+
+async function loadUserOrLogin(){
+  const urlU = new URLSearchParams(location.search).get("username");
+  if (urlU){
+    const u = await verifyUser(urlU);
+    if (u){
+      state.user = urlU;
+      postLoginBoot();
+      return;
+    }
+  }
+  qs("loginCard").style.display = "block";
+  hideAllWork();
+}
+
+async function doLogin(){
+  const u = qs("lu").value.trim();
+  const p = qs("lp").value.trim();
+  if(!u || !p){ qs("lerr").textContent = "Enter username & password."; return; }
+  const rec = await verifyUser(u);
+  if (!rec || rec.password !== p){ qs("lerr").textContent = "Invalid login."; return; }
+  state.user = u;
+  postLoginBoot();
+}
+
+/* ------------------ Boot after login ------------------ */
+async function postLoginBoot(){
+  qs("loginCard").style.display = "none";
+  qs("userPill").style.display = "inline-flex";
+  qs("who").textContent = state.user;
+
+  await ensureUserDoc();
+  await applyDailyStreakBonus();
+  await refreshKpis();
+  await loadUserVerses();
+  renderAllLists();
+
+  showPanel("flash"); // default landing
+}
+
+/* ------------------ Namespacing (isolation) ------------------ */
+function userDocRef(){ return doc(db, "versemem_users", state.user); }
+function userVersesCol(){ return collection(db, "versemem_users", state.user, "verses"); }
+
+/* ------------------ User doc / Streak & Score ------------------ */
+async function ensureUserDoc(){
+  const ref = userDocRef();
+  const snap = await getDoc(ref);
+  if (!snap.exists()){
+    await setDoc(ref, { totalScore: 0, streak: 0, lastLoginDate: "" });
+  }
+}
+function ymd(d=new Date()){
+  const tz = new Date().toLocaleDateString("en-CA",{timeZone:"America/New_York"});
+  // en-CA gives YYYY-MM-DD already; fallback formatter just in case:
+  if (/^\d{4}-\d{2}-\d{2}$/.test(tz)) return tz;
+  const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); const da=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${da}`;
+}
+function diffDays(a,b){ // YYYY-MM-DD
+  const p = s => new Date(s+"T00:00:00-05:00").getTime();
+  const da = Math.floor((p(a)-p(b))/86400000);
+  return da;
+}
+async function applyDailyStreakBonus(){
+  const ref = userDocRef();
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const today = ymd();
+  if (data.lastLoginDate === today) return; // already counted today
+
+  let newStreak = 1;
+  if (data.lastLoginDate){
+    const delta = diffDays(today, data.lastLoginDate);
+    newStreak = (delta === 1) ? (data.streak||0)+1 : 1;
+  }
+  const newScore = (data.totalScore||0) + newStreak;
+  await updateDoc(ref, { lastLoginDate: today, streak: newStreak, totalScore: newScore });
+}
+async function refreshKpis(){
+  const snap = await getDoc(userDocRef());
+  if (!snap.exists()) return;
+  const d = snap.data();
+  state.score  = d.totalScore||0;
+  state.streak = d.streak||0;
+  qs("streakVal").textContent = state.streak;
+  qs("scoreVal").textContent  = state.score;
+  await renderLeaderboard();
+}
+async function addScore(points){
+  const ref = userDocRef();
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const cur = snap.data();
+  const ns = Math.max(0, (cur.totalScore||0) + Math.round(points));
+  await updateDoc(ref, { totalScore: ns });
+  state.score = ns;
+  qs("scoreVal").textContent = ns;
+}
+
+/* ------------------ Leaderboard ------------------ */
+async function renderLeaderboard(){
+  const box = qs("leaderWrap");
+  box.innerHTML = "<div class='mini muted'>Loading leaderboard…</div>";
+  // read top 10 versemem_users by totalScore
+  const col = collection(db, "versemem_users");
+  // orderBy requires an index; if needed, create it in console
+  const qy = query(col, orderBy("totalScore","desc"), limit(10));
+  const snap = await getDocs(qy);
+  box.innerHTML = "";
+  let i=1;
+  snap.forEach(docSnap=>{
+    const d = docSnap.data();
+    const row = document.createElement("div"); row.className="lb";
+    const L = document.createElement("div"); L.style.display="flex"; L.style.alignItems="center"; L.style.gap="10px";
+    const rk = document.createElement("div"); rk.className="rank"; rk.textContent = i++;
+    const nm = document.createElement("div"); nm.style.fontWeight="800"; nm.textContent = docSnap.id;
+    L.appendChild(rk); L.appendChild(nm);
+    const R = document.createElement("div"); R.className="muted"; R.textContent = "⭐ "+(d.totalScore||0);
+    row.appendChild(L); row.appendChild(R);
+    box.appendChild(row);
+  });
+}
+
+/* ------------------ Bible fetch helpers ------------------ */
+async function getVerseText(book, chapter, verse){
+  if (BIBLE_MODE === "flat"){
+    // Expect collection with docs having fields {book, chapter:number, verse:number, text}
+    // Equality filters across multiple fields may require a composite index — if prompted, create it.
+    const col = collection(db, BIBLE_COLLECTION);
+    const qy = query(col, where("book","==",book), where("chapter","==",Number(chapter)), where("verse","==",Number(verse)), limit(1));
+    const snap = await getDocs(qy);
+    if (!snap.empty) return snap.docs[0].data().text || "";
+  } else {
+    // nested: bible/books/{Book}/chapters/{n}/verses/{m}
+    const vref = doc(db, "bible", "books", book, "chapters", String(chapter), "verses", String(verse));
+    const vs = await getDoc(vref);
+    if (vs.exists()) return vs.data().text || "";
+  }
+  return ""; // not found (fallback: you can add a manual entry flow later, if needed)
+}
+
+/* fetch range inclusive */
+async function getRangeText(book, sC, sV, eC, eV){
+  let out = [];
+  const sc = Number(sC), sv = Number(sV), ec = Number(eC||sC), ev = Number(eV||sV);
+  if (ec < sc || (ec===sc && ev < sv)) return "";
+  for (let ch=sc; ch<=ec; ch++){
+    const vStart = (ch===sc)? sv : 1;
+    const vEnd   = (ch===ec)? ev : (sv+500); // generous
+    for (let v = vStart; v <= vEnd; v++){
+      const t = await getVerseText(book, ch, v);
+      if (!t){ if (ch===ec && v>ev) break; else continue; }
+      out.push(t);
+      if (ch===ec && v===ev) break;
+    }
+  }
+  return out.join(" ");
+}
+
+/* ------------------ Verse List CRUD ------------------ */
+async function loadUserVerses(){
+  state.verses = [];
+  const snap = await getDocs(userVersesCol());
+  snap.forEach(docSnap=>{
+    const d = docSnap.data();
+    state.verses.push({
+      id: docSnap.id, ref: d.ref, text: d.text, book: d.book,
+      sC:d.sC, sV:d.sV, eC:d.eC, eV:d.eV, isSection: !!d.isSection,
+      memCount: d.memCount||0, addedAt: d.addedAt||0
+    });
+  });
+}
+
+async function addRange(){
+  const book = qs("bookSel").value;
+  const sC = Number(qs("startChap").value);
+  const sV = Number(qs("startVerse").value);
+  const eC = Number(qs("endChap").value || sC);
+  const eV = Number(qs("endVerse").value || sV);
+  const msg = qs("addMsg");
+
+  if (!book || !sC || !sV){ msg.textContent = "Please fill at least Book, Start Chapter, Start Verse."; return; }
+
+  msg.textContent = "Fetching verses…";
+  const text = await getRangeText(book, sC, sV, eC, eV);
+  if (!text){ msg.textContent = "Could not fetch verse text. Check Bible DB config at top of file."; return; }
+
+  const isSection = (eC!==sC || eV!==sV);
+  const refStr = isSection ? `${book} ${sC}:${sV}–${eC}:${eV}` : `${book} ${sC}:${sV}`;
+  const now = Date.now();
+
+  const docRef = await addDoc(userVersesCol(), {
+    ref: refStr, text, book, sC, sV, eC, eV, isSection, memCount: 0, addedAt: now
+  });
+
+  state.verses.push({ id: docRef.id, ref: refStr, text, book, sC, sV, eC, eV, isSection, memCount:0, addedAt: now });
+  msg.textContent = "Added!";
+  renderAllLists();
+}
+
+/* Remove verse/section */
+async function removeVerse(id){
+  if (!confirm("Are you sure you want to remove this item from your list?")) return;
+  const dr = doc(db, "versemem_users", state.user, "verses", id);
+  await updateDoc(dr, { deleted:true }); // soft-delete to avoid security rules surprises
+  // optionally actually delete: await deleteDoc(dr);
+  state.verses = state.verses.filter(v=> v.id !== id);
+  renderAllLists();
+}
+
+/* +1 memorized for a verse/section */
+async function incrementMem(id){
+  const it = state.verses.find(v=> v.id===id);
+  if (!it) return;
+  const newVal = (it.memCount||0)+1;
+  const dr = doc(db, "versemem_users", state.user, "verses", id);
+  await updateDoc(dr, { memCount: newVal });
+  it.memCount = newVal;
+  renderAllLists();
+}
+
+/* ------------------ Panels ------------------ */
+function hideAllWork(){
+  qs("homeCard").style.display = "none";
+  qs("flashCard").style.display= "none";
+  qs("quizCard").style.display = "none";
+  qs("listCard").style.display = "none";
+  qs("addCard").style.display  = "none";
+}
+function showPanel(which){
+  hideAllWork();
+  if (!state.user){ qs("loginCard").style.display = "block"; return; }
+  qs("homeCard").style.display = "block"; // KPIs & leaderboard always on top
+  if (which==="flash"){ qs("flashCard").style.display = "block"; prepareFlash(); }
+  if (which==="quiz"){  qs("quizCard").style.display  = "block"; prepareQuiz(); }
+  if (which==="list"){  qs("listCard").style.display  = "block"; renderVerseList(); }
+  if (which==="add"){   qs("addCard").style.display   = "block"; }
+}
+
+/* ------------------ Sorting & Rendering ------------------ */
+function canonOrder(a,b){
+  const ai = BOOKS.indexOf(a.book), bi = BOOKS.indexOf(b.book);
+  if (ai!==bi) return ai-bi;
+  if ((a.sC||0)!==(b.sC||0)) return (a.sC||0)-(b.sC||0);
+  return (a.sV||0)-(b.sV||0);
+}
+function renderVerseList(){
+  const sort = qs("listSort").value;
+  let items = state.verses.slice();
+
+  if (sort==="canon") items.sort(canonOrder);
+  if (sort==="mem")   items.sort((a,b)=> (b.memCount||0)-(a.memCount||0));
+  if (sort==="added") items.sort((a,b)=> (b.addedAt||0)-(a.addedAt||0));
+
+  const box = qs("verseList");
+  box.innerHTML = "";
+  if (!items.length){
+    box.innerHTML = "<div class='mini muted'>Your list is empty. Add some in “New Verse(s)”.</div>";
+    return;
+  }
+  for(const it of items){
+    const row = document.createElement("div"); row.className="verse-item";
+    const top = document.createElement("div"); top.className="verse-head";
+    const L = document.createElement("div");
+    const ref = document.createElement("div"); ref.style.fontWeight="900"; ref.textContent = it.ref;
+    const text = document.createElement("div"); text.className="mini"; text.textContent = it.text;
+    L.appendChild(ref); L.appendChild(text);
+
+    const R = document.createElement("div"); R.className="row";
+    const count = document.createElement("div"); count.className="pill"; count.textContent = `❤️ ${it.memCount||0}`;
+    const heart = document.createElement("button"); heart.className="heart"; heart.textContent = "❤️ +1";
+    heart.onclick = ()=> incrementMem(it.id);
+    const del = document.createElement("button"); del.className="btn-danger"; del.textContent = "✖";
+    del.onclick = ()=> removeVerse(it.id);
+    R.appendChild(count); R.appendChild(heart); R.appendChild(del);
+
+    top.appendChild(L); top.appendChild(R);
+    row.appendChild(top);
+    box.appendChild(row);
+  }
+
+  // update flash & quiz pickers
+  buildPickers();
+}
+
+/* ------------------ Flashcards ------------------ */
+function buildPickers(){
+  const fs = qs("flashSource");
+  const qp = qs("quizPick");
+  // Flash: only "All verses" for now
+  fs.innerHTML = "<option value='all'>All verses</option>";
+
+  // Quiz: list all items
+  qp.innerHTML = "";
+  for(const it of state.verses){
+    const o = document.createElement("option");
+    o.value = it.id; o.textContent = it.ref + ` (${Math.max(0,it.memCount||0)}❤️)`;
+    qp.appendChild(o);
+  }
+  if (state.verses.length && state.quizIdx<0) state.quizIdx = 0;
+}
+function prepareFlash(){
+  if (!state.verses.length){
+    qs("flashFront").textContent = "No items yet. Add verses in “New Verse(s)”.";
+    qs("flashMeta").textContent = "";
+    return;
+  }
+  if (state.flashIdx >= state.verses.length) state.flashIdx = 0;
+  if (state.flashIdx < 0) state.flashIdx = state.verses.length-1;
+  renderFlash();
+}
+function renderFlash(){
+  if (!state.verses.length) return;
+  const it = state.verses[state.flashIdx];
+  qs("flashFront").textContent = state.flashBack ? it.ref : it.text;
+  qs("flashMeta").textContent = `Card ${state.flashIdx+1} / ${state.verses.length} • ${state.flashBack? "Back (Reference)" : "Front (Text)"}`;
+}
+function stepFlash(dir){
+  if (!state.verses.length) return;
+  state.flashIdx = (state.flashIdx + dir + state.verses.length) % state.verses.length;
+  state.flashBack = false;
+  renderFlash();
+}
+async function heartCurrentFlash(){
+  if (!state.verses.length) return;
+  const it = state.verses[state.flashIdx];
+  await incrementMem(it.id);
+}
+
+/* ------------------ Type Quiz ------------------ */
+function prepareQuiz(){
+  if (!state.verses.length){
+    qs("quizRefPill").style.display = "none";
+    qs("quizRefPill").textContent = "";
+    qs("quizInput").value = "";
+    qs("quizResult").innerHTML = "<span class='muted mini'>Your list is empty.</span>";
+    return;
+  }
+  if (state.quizIdx<0 || state.quizIdx>=state.verses.length) state.quizIdx = 0;
+  const it = state.verses[state.quizIdx];
+  qs("quizRefPill").style.display = "inline-flex";
+  qs("quizRefPill").textContent = it.ref;
+  qs("quizInput").value = "";
+  qs("quizResult").textContent = "";
+  buildPickers(); // ensure dropdown populated
+  qs("quizPick").value = it.id;
+}
+function pickRandomQuiz(){
+  if (!state.verses.length) return;
+  state.quizIdx = Math.floor(Math.random()*state.verses.length);
+  prepareQuiz();
+}
+qs("quizPick").onchange = ()=>{
+  const id = qs("quizPick").value;
+  const idx = state.verses.findIndex(v=>v.id===id);
+  if (idx>=0){ state.quizIdx = idx; prepareQuiz(); }
+};
+
+/* Normalize to tokens: lowercase, strip punctuation/apostrophes/quotes, collapse spaces */
+function normTokens(s){
+  if (!s) return [];
+  let t = s.toLowerCase();
+  // remove punctuation/quotes (keep letters/numbers/spaces)
+  t = t.normalize("NFKD").replace(/[\u0300-\u036f]/g,"");
+  t = t.replace(/[^a-z0-9\s]/g, " ");
+  t = t.replace(/\s+/g, " ").trim();
+  return t ? t.split(" ") : [];
+}
+/* LCS (token-level) length */
+function lcsLen(a,b){
+  const m=a.length, n=b.length;
+  const dp = Array.from({length:m+1}, ()=> new Array(n+1).fill(0));
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      if (a[i-1]===b[j-1]) dp[i][j]=dp[i-1][j-1]+1;
+      else dp[i][j]=Math.max(dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+/* Score 0–100; order-sensitive via LCS. We weight by target length. */
+function scorePercent(userText, targetText){
+  const u = normTokens(userText);
+  const t = normTokens(targetText);
+  if (!t.length) return 0;
+  const match = lcsLen(u,t);
+  const pct = Math.round(100 * (match / t.length));
+  return Math.max(0, Math.min(100, pct));
+}
+
+async function gradeQuiz(){
+  if (state.quizIdx<0 || !state.verses.length) return;
+  const it = state.verses[state.quizIdx];
+  const user = qs("quizInput").value;
+  const pct = scorePercent(user, it.text);
+
+  // > =95% counts as memorized +1
+  let line = `Score: <b class="score">${pct}%</b> — `;
+  if (pct>=95){
+    await incrementMem(it.id);
+    line += `<span class="good">Memorized! (+1 ❤️)</span>`;
+  } else if (pct>=70){
+    line += `<span class="warn">Close — keep going!</span>`;
+  } else {
+    line += `<span class="bad">Needs work.</span>`;
+  }
+
+  // add score
+  await addScore(pct);
+
+  qs("quizResult").innerHTML = line;
+}
+
+/* Reveal answer */
+function showQuizAnswer(){
+  if (state.quizIdx<0 || !state.verses.length) return;
+  const it = state.verses[state.quizIdx];
+  qs("quizResult").innerHTML = `<div class="mini"><b>${it.ref}</b><br>${it.text}</div>`;
+}
+
+/* ------------------ Rendering helpers ------------------ */
+function renderAllLists(){
+  renderVerseList();
+  prepareFlash();
+  prepareQuiz();
+}
+
+/* ------------------ Init ------------------ */
+function showOnlyLogin(){
+  qs("homeCard").style.display = "none";
+  qs("flashCard").style.display= "none";
+  qs("quizCard").style.display = "none";
+  qs("listCard").style.display = "none";
+  qs("addCard").style.display  = "none";
+  qs("loginCard").style.display= "block";
+}
+loadUserOrLogin().catch(err=>{
+  console.error(err);
+  showOnlyLogin();
+});
+</script>
+</body>
+</html>
