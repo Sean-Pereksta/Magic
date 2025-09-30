@@ -53,6 +53,17 @@
     .tab-btn:hover{ background:rgba(255,255,255,.16) }
     .tab-btn[aria-selected="true"]{ background:#fff; color:#111827; box-shadow:0 2px 14px rgba(15,23,42,.25) }
 
+    /* Daily Users pill (top-right) */
+    .hud{
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    }
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      background:#fff; color:#111827; border:1px solid rgba(255,255,255,.4);
+      border-radius:999px; padding:8px 12px; font-weight:800; box-shadow:0 2px 10px rgba(0,0,0,.12);
+    }
+    .pill i{ font-style:normal; font-weight:900; }
+
     /* Layout */
     .shell{ max-width:1200px; margin:18px auto; padding:0 12px 28px }
     .grid{ display:grid; grid-template-columns:2fr 1fr; gap:18px }
@@ -145,9 +156,16 @@
           <div class="subtitle">Create a lobby, invite friends, or jump into solo play.</div>
         </div>
       </div>
-      <div class="tabs" role="tablist" aria-label="Game Modes">
-        <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
-        <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
+
+      <!-- RIGHT HUD: tabs + Daily Users pill -->
+      <div class="hud">
+        <div id="dailyUsersPill" class="pill" title="Unique logins today (America/New_York)">
+          👤 Today: <i id="dailyUsersCount">0</i>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Game Modes">
+          <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
+          <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
+        </div>
       </div>
     </div>
   </header>
@@ -257,7 +275,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
-      getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
+      getFirestore, collection, addDoc, doc, setDoc, updateDoc, onSnapshot,
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -275,13 +293,8 @@
       spelltower: "/game/spelltower.html",
       zombiezone: "/game/zombiezone.html",
       biblegame:  "/game/biblegame.html",
-
-      // ADDED: History Rush
       historyrush:"/game/historyrush.html",
-      // ADDED: Crown & Council
       crowncouncil:"/game/crowncouncil.html",
-
-      // Singleplayer
       matchwars:  "/game/matchwars.html",
       flag:       "/game/Flag.html",
       microwars:  "/game/microwars.html",
@@ -289,19 +302,14 @@
       microwars4: "/game/microwaves4.html",
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html",
-
-      // ADDED: Verse Memorizer route (change if your filename differs)
-      versemem:   "/game/verse-memorizer.html" // ADDED
+      versemem:   "/game/verse-memorizer.html"
     };
 
-    // Games that auto-navigate once lobby "started"
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","zombiezone","biblegame",
       "historyrush","crowncouncil"
-      // NOTE: 'mountonline' and 'rock' are quick-play and do not use lobbies
     ]);
 
-    // Per-game player caps
     const MAX_PLAYERS = {
       mountain: 4,
       dutchblitz: 4,
@@ -316,17 +324,15 @@
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
-    // ---------- SINGLEPLAYER CATALOG ----------
     const SINGLEPLAYER_GAMES = [
-      // ADDED: Verse Memorizer at the top for visibility
-      { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true }, // ADDED
-      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes. Drag-select, right-click to move/attack. Blink & Stim. Survive escalating waves.", route: ROUTES.microwars },
-      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant: faster recruits, tactical pressure, hold the line longer.", route: ROUTES.microwars2 },
-      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow & pacing. Time your power spikes and stabilize.", route: ROUTES.microwars4 },
-      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler with towers, minions, and abilities. Push to destroy the core.", route: ROUTES.mobamania },
-      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match tiles to recruit, then steamroll the enemy stronghold. Quick & strategic.", route: ROUTES.matchwars },
+      { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true },
+      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes.", route: ROUTES.microwars },
+      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant.", route: ROUTES.microwars2 },
+      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow.", route: ROUTES.microwars4 },
+      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
+      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
       { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
-      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Command your army to capture flags and crush the enemy.", route: ROUTES.flag }
+      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
     ];
 
     // ---------- FIREBASE ----------
@@ -341,13 +347,89 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // ---------- DAILY USERS (NY time) ----------
+    const TZ = "America/New_York";
+    const fmtYMD = new Intl.DateTimeFormat("en-CA",{ timeZone:TZ, year:"numeric", month:"2-digit", day:"2-digit" });
+    const todayNY = () => fmtYMD.format(new Date()); // "YYYY-MM-DD"
+
+    async function bumpDailyUsers(uniqueUser){
+      const metricsRef = doc(db, "metrics", "dailyUsers");
+      const now = Date.now();
+      const today = todayNY();
+
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(metricsRef);
+        if (!snap.exists()){
+          // First ever record
+          tx.set(metricsRef, {
+            date: today,
+            users: { [uniqueUser]: true },
+            count: 1,
+            updatedAt: now
+          });
+          return;
+        }
+        const data = snap.data() || {};
+        const curDate = data.date;
+        const curUsers = data.users || {};
+        const curCount = typeof data.count === "number" ? data.count : Object.keys(curUsers).length;
+
+        if (curDate !== today){
+          // Archive previous day into dailyUsersLog/{curDate}
+          const logRef = doc(db, "dailyUsersLog", String(curDate));
+          tx.set(logRef, {
+            date: curDate,
+            count: curCount,
+            users: Object.keys(curUsers),
+            archivedAt: now
+          }, { merge:true });
+
+          // Reset to today with this user as #1
+          tx.set(metricsRef, {
+            date: today,
+            users: { [uniqueUser]: true },
+            count: 1,
+            updatedAt: now
+          });
+          return;
+        }
+
+        // Same day — only add if new unique user
+        if (!curUsers[uniqueUser]){
+          const nextUsers = { ...curUsers, [uniqueUser]: true };
+          tx.update(metricsRef, {
+            users: nextUsers,
+            count: Object.keys(nextUsers).length,
+            updatedAt: now
+          });
+        }else{
+          // Touch updatedAt to reflect activity (optional)
+          tx.update(metricsRef, { updatedAt: now });
+        }
+      });
+    }
+
+    // Live HUD listener
+    (function listenDailyUsers(){
+      const countEl = document.getElementById("dailyUsersCount");
+      const pill = document.getElementById("dailyUsersPill");
+      onSnapshot(doc(db,"metrics","dailyUsers"), (snap)=>{
+        if (!snap.exists()){ countEl.textContent = "0"; return; }
+        const d = snap.data();
+        // If Firestore doc somehow has stale date, still show its count; bumpDailyUsers will roll on next login.
+        const c = typeof d.count === "number" ? d.count : Object.keys(d.users||{}).length;
+        countEl.textContent = String(c);
+        pill.title = `Unique logins on ${d.date} (${TZ})`;
+      });
+    })();
+
     // ---------- STORAGE KEYS & SESSION HELPERS ----------
     const SK = {
       user: "gh.username",
       lastLobby: "gh.lastLobbyId",
       lastGame: "gh.lastGameType",
       lastTab: "gh.lastTab",
-      nextRoute: "gh.nextRoute" // ADDED: where to go post-login (singleplayer launch)
+      nextRoute: "gh.nextRoute"
     };
     const save = (k,v)=> localStorage.setItem(k, v);
     const read = (k)=> localStorage.getItem(k);
@@ -359,7 +441,7 @@
       save(SK.lastTab, activeTab);
     }
     function clearSession() {
-      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab); del(SK.nextRoute); // ADDED
+      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab); del(SK.nextRoute);
     }
 
     // ---------- TABS ----------
@@ -373,10 +455,8 @@
       save(SK.lastTab, which);
     };
 
-    // ADDED: helper to launch singleplayer items (handles login requirement + ?username)
     function playSingle(g){
       if (g.requiresUser && !username){
-        // remember where to go post-login
         save(SK.nextRoute, g.key);
         showTab('multi');
         showError("🔒 Please log in to play Verse Memorizer.");
@@ -391,7 +471,6 @@
       window.location.href = url;
     }
 
-    // Render Singleplayer
     function renderSingleplayer(){
       const el = document.getElementById('catalog');
       el.innerHTML = '';
@@ -401,8 +480,7 @@
         const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
         const pr = document.createElement('div'); pr.className = 'play-row';
         const btn = document.createElement('button'); btn.className = 'btn btn-lg'; btn.textContent = 'Play';
-        // ADDED: launch logic with username + login requirement
-        btn.addEventListener('click', ()=> playSingle(g)); // ADDED
+        btn.addEventListener('click', ()=> playSingle(g));
         pr.appendChild(btn);
         card.appendChild(t); card.appendChild(d); card.appendChild(pr);
         el.appendChild(card);
@@ -427,7 +505,6 @@
 
     if (username) { autoLogin(username); }
 
-    // ADDED: open pending singleplayer route (e.g., Verse Memorizer) right after login
     function openPendingRouteIfAny(){
       const key = read(SK.nextRoute);
       if (!key) return;
@@ -450,10 +527,14 @@
       if (!userSnap.exists() || userSnap.data().password !== password) {
         return showError("❌ Invalid login.");
       }
+
+      // ✅ Count unique daily user (after successful auth)
+      await bumpDailyUsers(username);
+
       enterLobbyUI();
       persistSession();
       maybeOfferResume();
-      openPendingRouteIfAny(); // ADDED
+      openPendingRouteIfAny();
     }
 
     async function autoLogin(name) {
@@ -462,10 +543,14 @@
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
         username = name;
+
+        // ✅ Count unique daily user for auto-login as well
+        await bumpDailyUsers(username);
+
         enterLobbyUI();
         persistSession();
         maybeOfferResume();
-        openPendingRouteIfAny(); // ADDED
+        openPendingRouteIfAny();
       }catch(e){ /* ignore */ }
     }
 
@@ -514,7 +599,7 @@
       const lobbiesCard = document.getElementById("availLobbiesCard");
       const playersCard = document.getElementById("playersCard");
 
-      const isQuickPlay = (gt === "mountonline" || gt === "rock"); // quick-play only
+      const isQuickPlay = (gt === "mountonline" || gt === "rock");
 
       title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
       nameWrap.style.display = isQuickPlay ? "none" : "block";
@@ -526,7 +611,6 @@
     async function startLobby() {
       const gameType = document.getElementById("gameType").value;
 
-      // QUICK-PLAY (no lobby): mountonline & rock
       if (gameType === "mountonline" || gameType === "rock") {
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES[gameType];
@@ -538,7 +622,6 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      // allow lobby games
       if (!['cat','grass','estate','mountain','stockkings','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil'].includes(gameType)) {
         return showError("Invalid game type.");
       }
@@ -646,7 +729,6 @@
         if (!docSnap.exists()) return;
         const data = docSnap.data();
 
-        // auto-close if empty
         if (!data.players || data.players.length === 0) {
           try { await deleteDoc(ref); } catch(e){}
           currentLobbyId = null; isHost=false;
@@ -657,7 +739,6 @@
           loadLobbies(); return;
         }
 
-        // Render players as chips
         const container = document.getElementById("lobbyPlayers");
         container.innerHTML = "";
         const headerBadge = document.createElement("div");
@@ -670,7 +751,6 @@
           const userSnap = await getDoc(userRef);
           const wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
 
-          // color tiers
           let color = "#cd7f32";
           if (wins >= 5 && wins < 10) color = "#c0c0c0";
           else if (wins >= 10 && wins < 15) color = "#ffd700";
@@ -685,11 +765,9 @@
           container.appendChild(chip);
         }
 
-        // Host can start
         const startBtn = document.getElementById("startBtn");
         startBtn.style.display = (data.host === username) ? "inline-block" : "none";
 
-        // Auto-redirect games on "started"
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
           const route = ROUTES[data.gameType] || ROUTES.cat;
           save(SK.lastGame, data.gameType);
@@ -853,6 +931,7 @@
   </script>
 </body>
 </html>
+
 
 
 
