@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>The Game — Vote • Classic • 2.0 (Minimal)</title>
+<title>The Game — Vote • Classic • 2.0 (Minimal + Play button)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
   :root{
@@ -12,56 +12,67 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-  header{position:sticky; top:0; z-index:20; background:#fff; border-bottom:1px solid var(--line); padding:8px 10px}
-  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-  .players{display:flex; gap:8px; flex-wrap:wrap}
-  .chip{padding:6px 10px; border:1px solid var(--line); border-radius:999px; font-size:14px; background:#fff; cursor:default}
+  /* Top bar */
+  header{position:sticky; top:0; z-index:30; background:#fff; border-bottom:1px solid var(--line); padding:6px 8px}
+  .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:65vw}
+  .chip{padding:6px 10px; border:1px solid var(--line); border-radius:999px; font-size:13px; background:#fff; cursor:default; white-space:nowrap}
   .chip.live{outline:2px solid var(--accent)}
   .chip.me{border-color:#60a5fa}
   .chip.clickable{cursor:pointer}
   .spacer{flex:1}
-  .btn{appearance:none; border:1px solid #d1d5db; background:#111827; color:#fff; padding:10px 14px; border-radius:10px; font-weight:700; cursor:pointer}
+  .btn{appearance:none; border:1px solid #d1d5db; background:#111827; color:#fff; padding:9px 12px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px}
   .btn[disabled]{opacity:.5; cursor:not-allowed}
+  #playBtn{display:none} /* shown when a power is selected */
+  .chip.fs{background:#eef2ff; border-color:#c7d2fe; color:#1e40af}
 
-  .wrap{max-width:860px; margin:8px auto; padding:0 10px; display:grid; gap:10px}
-  /* Vote */
+  /* Content */
+  .wrap{max-width:860px; margin:8px auto; padding:0 8px; display:grid; gap:8px}
+  /* Vote box */
   .vote{border:1px solid var(--line); background:#fff; border-radius:12px; padding:10px}
   .vote .title{font-weight:900; margin-bottom:6px}
-  .vote .opt{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; background:#fff}
+  .vote .opt{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; background:#fff; font-weight:700}
   .vote .opt.sel{outline:2px solid var(--accent)}
   .timer{font-weight:800; color:#ca8a04}
   /* Piles */
-  .piles{display:grid; grid-template-columns:repeat(2,1fr); gap:10px}
-  .pile{user-select:none; padding:12px; background:#fff; border:1px solid var(--line); border-radius:12px; text-align:center}
+  .piles{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
+  .pile{user-select:none; padding:10px; background:#fff; border:1px solid var(--line); border-radius:12px; text-align:center}
   .pile .dir{font-size:12px; color:var(--muted)}
-  .pile .top{font-weight:900; font-size:28px; margin:6px 0; padding:6px 10px; border:2px solid #e5e7eb; border-radius:10px; display:inline-block}
+  .pile .top{font-weight:900; font-size:26px; margin:6px 0; padding:6px 10px; border:2px solid #e5e7eb; border-radius:10px; display:inline-block}
   .pile .eff{font-size:12px; color:#0f172a; min-height:16px}
   .pile.can{outline:2px solid var(--good); outline-offset:2px}
   .pile.cannot{opacity:.7}
   /* Hand */
-  .hand{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; padding:8px 0 16px}
-  .card{position:relative; min-width:56px; height:74px; border-radius:12px; border:2px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:center;
-         font-weight:900; font-size:18px; cursor:pointer; background:#f3f4f6; color:#111827; user-select:none; touch-action:manipulation}
-  .card.power{background:#0ea5e9; color:#fff; border-color:#0284c7; font-size:14px}
+  .hand{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; padding:8px 0 14px}
+  .card{position:relative; min-width:52px; height:70px; border-radius:12px; border:2px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:center;
+         font-weight:900; font-size:17px; cursor:pointer; background:#f3f4f6; color:#111827; user-select:none; touch-action:manipulation}
+  .card.power{background:#0ea5e9; color:#fff; border-color:#0284c7; font-size:13px}
   .card.selected{outline:3px solid var(--accent); outline-offset:2px}
   .card.ghost{opacity:.45; filter:grayscale(.4); cursor:not-allowed}
   .band{position:absolute; left:0; right:0; bottom:0; height:6px; border-bottom-left-radius:10px; border-bottom-right-radius:10px; opacity:.85}
-  /* Log */
-  .log{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:120px; overflow:auto}
+  /* Hint / Log */
+  .hint{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 8px}
+  .log{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:110px; overflow:auto}
   @media (min-width:700px){ .piles{grid-template-columns:repeat(4,1fr)} }
+  /* Fullscreen tweaks */
+  .full header{position:fixed; top:0; left:0; right:0}
+  .full .wrap{padding-top:2px}
 </style>
 </head>
 <body>
 <header>
   <div class="row">
     <div id="players" class="players"></div>
+    <span id="fsChip" class="chip fs" style="display:none">FS ON</span>
     <div class="spacer"></div>
-    <button id="endBtn" class="btn" disabled>End Turn (draw)</button>
+    <button id="playBtn" class="btn">Play</button>
+    <button id="endBtn" class="btn" disabled>End Turn</button>
+    <button id="fsBtn" class="btn" title="Toggle Full Screen">⛶</button>
   </div>
 </header>
 
 <div class="wrap">
-  <!-- Vote box (shown during voting) -->
+  <!-- Vote -->
   <div id="voteBox" class="vote" style="display:none">
     <div class="row" style="justify-content:space-between">
       <div class="title">Vote which mode to play</div>
@@ -79,6 +90,7 @@
 
   <div id="piles" class="piles"></div>
   <div id="hand" class="hand"></div>
+  <div id="hint" class="hint" style="display:none"></div>
   <div id="log" class="log"></div>
 </div>
 
@@ -111,7 +123,11 @@ const $players = document.getElementById('players');
 const $piles   = document.getElementById('piles');
 const $hand    = document.getElementById('hand');
 const $log     = document.getElementById('log');
+const $hint    = document.getElementById('hint');
 const $end     = document.getElementById('endBtn');
+const $play    = document.getElementById('playBtn');
+const $fsBtn   = document.getElementById('fsBtn');
+const $fsChip  = document.getElementById('fsChip');
 const $voteBox = document.getElementById('voteBox');
 const $optClassic = document.getElementById('optClassic');
 const $optNew  = document.getElementById('optNew');
@@ -164,7 +180,7 @@ async function ensureRoomVotingOrResume(){
   const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
   if(!lob.exists()){ alert("Lobby not found."); return; }
   LOBBY = lob.data();
-  if(game.exists()) return; // someone already created
+  if(game.exists()) return; // already seeded
 
   // Host seeds vote doc
   if(LOBBY.host !== me) return;
@@ -194,7 +210,7 @@ function buildClassic(players, host){
 }
 function buildGame2(players, host){
   const deck=[]; for(let v=2; v<=119; v++) deck.push(v);
-  // powers (omit trade if solo)
+  // powers (omit Trade if solo)
   const addTrade = players.length>=2;
   const powers = [
     POWERS.FLIP, POWERS.FLIP, POWERS.FLIP,
@@ -221,13 +237,13 @@ function renderVote(){
   if(!G || G.phase!=='voting'){ $voteBox.style.display='none'; return; }
   $voteBox.style.display='block';
   const players = G.players||[]; const votes=G.votes||{};
-  $voteCount.textContent = `${Object.keys(votes).length}/${players.length}`;
-  $optClassic.classList.toggle('sel', votes[me]==='classic');
-  $optNew.classList.toggle('sel', votes[me]==='game2');
+  document.getElementById('voteCount').textContent = `${Object.keys(votes).length}/${players.length}`;
+  document.getElementById('optClassic').classList.toggle('sel', votes[me]==='classic');
+  document.getElementById('optNew').classList.toggle('sel', votes[me]==='game2');
 
   const remain = Math.max(0,(G.deadline||0)-Date.now());
   const secs = Math.ceil(remain/1000);
-  $voteTimer.textContent = `⏳ ${secs}s`;
+  document.getElementById('voteTimer').textContent = `⏳ ${secs}s`;
 
   $optClassic.onclick = ()=> castVote('classic');
   $optNew.onclick     = ()=> castVote('game2');
@@ -260,9 +276,9 @@ onSnapshot(lobbyRef, snap=>{ if(snap.exists()) LOBBY=snap.data(); });
 onSnapshot(gameRef, snap=>{
   if(!snap.exists()) return;
   G=snap.data();
-  if(G.phase==='voting'){ renderVote(); return; }
+  if(G.phase==='voting'){ renderVote(); updateActions(); return; }
   $voteBox.style.display='none';
-  renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd();
+  renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd(); updateActions();
 });
 
 /* ---------------- UI render ---------------- */
@@ -295,8 +311,7 @@ function renderPiles(){
     top.style.borderColor=`hsl(${hueForValue(p.top,max)} 80% 55%)`;
     top.style.background=`hsl(${hueForValue(p.top,max)} 90% 96%)`;
     const eff=document.createElement('div'); eff.className='eff';
-    const b=(p.effects||[]).find(e=>e.type==='bungee');
-    eff.textContent = b ? `🪢 x${b.charges}` : '';
+    const b=(p.effects||[]).find(e=>e.type==='bungee'); eff.textContent = b ? `🪢 x${b.charges}` : '';
 
     if(isMyTurn && mySelected!=null){
       if(isNumber(mySelected)){
@@ -335,19 +350,19 @@ function renderHand(){
     }
     if(mySelected===v) btn.classList.add('selected');
 
-    // Double-tap behavior for powers (works on phones)
+    // Double-tap behavior for powers (phones)
     let lastTap=0;
     const onTap=()=>{
       const now=Date.now(), dbl=(now-lastTap)<300; lastTap=now;
       if(!isPower(v)){
-        mySelected=(mySelected===v?null:v); pending=null; renderPiles(); renderHand(); return;
+        mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); return;
       }
       // powers
-      if(!dbl){ mySelected=(mySelected===v?null:v); pending=null; renderPiles(); renderHand(); return; }
+      if(!dbl){ mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); return; }
       mySelected=v;
       if(v===POWERS.TIMEWARP) { playTimeWarpTx(); return; }
-      if(v===POWERS.TRADE)   { pending={type:'TRADE'}; renderPlayers(); return; }
-      pending = (v===POWERS.SWAP) ? {type:'SWAP'} : null; renderPiles();
+      if(v===POWERS.TRADE)   { pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); return; }
+      pending = (v===POWERS.SWAP) ? {type:'SWAP'} : null; showHint(targetHintFor(v)); renderPiles(); updateActions();
     };
     btn.addEventListener('click', onTap);
     btn.addEventListener('touchend', (e)=>{ e.preventDefault(); onTap(); }, {passive:false});
@@ -357,9 +372,28 @@ function renderHand(){
   nums.forEach(add); pows.forEach(add);
 }
 
-function renderLog(){
-  const L = (G.log||[]).slice(-80);
-  $log.innerHTML = L.map(x=>`<div>${x}</div>`).reverse().join('');
+/* ---------------- Hints & actions ---------------- */
+function targetHintFor(v){
+  if(v===POWERS.FLIP) return 'Tap a pile to flip direction.';
+  if(v===POWERS.BUNGEE) return 'Tap a pile to arm Bungee (±20 once).';
+  if(v===POWERS.SWAP) return 'Tap two piles to swap their tops.';
+  if(v===POWERS.TRADE) return 'Tap a player to trade random cards.';
+  if(v===POWERS.TIMEWARP) return 'Time Warp played. You may end early this turn.';
+  return '';
+}
+function showHint(msg){
+  if(!msg){ $hint.style.display='none'; $hint.textContent=''; return; }
+  $hint.style.display='block'; $hint.textContent=msg;
+}
+
+function updateActions(){
+  // Play button visible if a power is selected
+  const powerSel = isPower(mySelected) && (G && G.phase==='game2');
+  $play.style.display = powerSel ? 'inline-block' : 'none';
+  $play.disabled = !powerSel || !isMyTurn;
+  if(powerSel){ $play.textContent = `Play ${LABEL[mySelected] || 'Power'}`; }
+  // FS chip
+  $fsChip.style.display = document.fullscreenElement ? 'inline-block' : 'none';
 }
 
 /* ---------------- Interactions ---------------- */
@@ -369,12 +403,23 @@ function onPileTap(id){
   if(mySelected===POWERS.FLIP)   return playFlipTx(id);
   if(mySelected===POWERS.BUNGEE) return playBungeeTx(id);
   if(mySelected===POWERS.SWAP){
-    if(!pending || pending.type!=='SWAP' || !pending.first){ pending={type:'SWAP', first:id}; renderPiles(); return; }
-    if(pending.first===id){ pending=null; return; }
-    const a=pending.first; pending=null; return playSwapTx(a,id);
+    if(!pending || pending.type!=='SWAP' || !pending.first){ pending={type:'SWAP', first:id}; showHint('Now tap a second pile.'); renderPiles(); return; }
+    if(pending.first===id){ pending=null; showHint(''); return; }
+    const a=pending.first; pending=null; showHint(''); return playSwapTx(a,id);
   }
 }
 
+/* Play button behavior for powers */
+$play.addEventListener('click', ()=>{
+  if(!isMyTurn || !G || G.phase!=='game2' || !isPower(mySelected)) return;
+  if(mySelected===POWERS.TIMEWARP){ playTimeWarpTx(); return; }
+  if(mySelected===POWERS.TRADE){ pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); return; }
+  if(mySelected===POWERS.SWAP){ pending={type:'SWAP'}; showHint('Tap two piles to swap their tops.'); renderPiles(); updateActions(); return; }
+  if(mySelected===POWERS.FLIP){ showHint('Tap a pile to flip direction.'); renderPiles(); return; }
+  if(mySelected===POWERS.BUNGEE){ showHint('Tap a pile to arm Bungee (±20 once).'); renderPiles(); return; }
+});
+
+/* End Turn gating */
 function anyMoves(hand, piles){
   for(const c of hand){
     if(isPower(c) && G.phase==='game2') return true;
@@ -394,7 +439,23 @@ function gateEnd(){
   const earlyPass = (G.timewarpPass && G.timewarpPass===current);
   $end.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain || earlyPass));
 }
-document.getElementById('endBtn').addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
+$end.addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
+
+/* Fullscreen toggle + chip */
+$fsBtn.addEventListener('click', ()=>{
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen?.();
+    document.documentElement.classList.add('full');
+  }else{
+    document.exitFullscreen?.();
+    document.documentElement.classList.remove('full');
+  }
+  setTimeout(updateActions, 50);
+});
+document.addEventListener('fullscreenchange', ()=>{ 
+  document.documentElement.classList.toggle('full', !!document.fullscreenElement);
+  updateActions();
+});
 
 /* ---------------- TX: numbers ---------------- */
 async function playNumberTx(card, pileId){
@@ -421,7 +482,7 @@ async function playNumberTx(card, pileId){
     log.push(`${me} played <b>${card}</b> on ${p.id} ${p.dir===UP?'▲':'▼'}${backwards?' via <b>±10</b>':''}${b20?' with <b>🪢 ±20</b>':''} (${prev}→${card}).`);
 
     tx.update(gameRef,{piles, hands, turnPlays:(S.turnPlays||0)+1, placed:(S.placed||0)+1, log});
-  }).catch(console.warn);
+  }).then(()=>{ mySelected=null; pending=null; showHint(''); updateActions(); }).catch(console.warn);
 }
 
 /* ---------------- TX: powers ---------------- */
@@ -438,7 +499,7 @@ async function playFlipTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔁 Flip</b> on ${p.id} — now <b>${p.dir===UP?'UP':'DOWN'}</b>.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
 }
 
 async function playBungeeTx(pileId){
@@ -456,7 +517,7 @@ async function playBungeeTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} armed <b>🪢 Bungee</b> on ${p.id}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
 }
 
 async function playSwapTx(aId,bId){
@@ -474,7 +535,7 @@ async function playSwapTx(aId,bId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔄 Swap</b> on ${aId}↔${bId}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
 }
 
 async function playTradeTx(target){
@@ -497,7 +558,7 @@ async function playTradeTx(target){
     const hands={...S.hands,[me]:my,[target]:his};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🤝 Trade</b> with <b>${target}</b>.`);
     tx.update(gameRef,{hands,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ pending=null; mySelected=null; renderPlayers(); renderHand(); }).catch(console.warn);
+  }).then(()=>{ pending=null; mySelected=null; showHint(''); renderPlayers(); renderHand(); updateActions(); }).catch(console.warn);
 }
 
 async function playTimeWarpTx(){
@@ -513,7 +574,7 @@ async function playTimeWarpTx(){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>⏳ Time Warp</b> (may end early; next turn +1 min).`);
     tx.update(gameRef,{hands,debts,timewarpPass:me,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ mySelected=null; renderHand(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); renderHand(); }).catch(console.warn);
 }
 
 /* ---------------- End Turn ---------------- */
@@ -544,7 +605,7 @@ async function endTurnTx(){
     tx.update(gameRef,{deck,hands,turnIndex:next,turnNum,turnPlays:0,log,debts,timewarpPass:pass});
   }).catch(console.warn);
 }
-document.getElementById('endBtn').addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
+$end.addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
 
 /* ---------------- Kickoff ---------------- */
 ensureRoomVotingOrResume();
