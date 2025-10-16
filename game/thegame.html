@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>The Game — Multiplayer + Vote</title>
+<title>The Game — Multiplayer + Vote (dynamic hand sizes)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{
@@ -24,7 +24,6 @@
   .btn[disabled]{opacity:.5; cursor:not-allowed}
   .btn:hover:not([disabled]){filter:brightness(1.1)}
 
-  /* 3 sections layout */
   #wrap{max-width:1100px; margin:12px auto; padding:0 12px; display:grid; gap:12px}
   #topBar{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
   .leftCluster{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
@@ -35,7 +34,6 @@
   .chip.me{border-color:#22c55e}
   .chip.live{background:#102d1b; border-color:#22c55e; color:#d1fae5}
 
-  /* middle piles */
   #middle{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
   .pile{
     user-select:none; background:linear-gradient(180deg,#0f1a38,#0c1430); border:1px solid var(--line);
@@ -48,25 +46,26 @@
   .pileTag{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #2b3a68; color:#9fb0c6; background:#0b1226}
   .pileNum{font-weight:800; font-size:24px; letter-spacing:.3px; padding:4px 10px; border-radius:8px; border:1px solid #2b3a68; background:#0b1226}
   .sub{font-size:12px; color:#9fb0c6}
+  .effRow{display:flex; gap:6px; flex-wrap:wrap}
+  .eff{font-size:11px; padding:2px 6px; border-radius:999px; border:1px solid #2b3a68; background:#0b1226; color:#9fb0c6}
 
-  /* bottom hand (compact buttons) */
   #bottom{display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:6px 0 12px}
   .cardBtn{
     position:relative; cursor:pointer; user-select:none; min-width:54px; height:72px; border-radius:10px; display:flex; align-items:center; justify-content:center;
-    font-weight:800; font-size:20px; letter-spacing:.3px; color:#0b1020; text-shadow:0 1px 0 rgba(255,255,255,.35);
+    font-weight:800; font-size:18px; letter-spacing:.3px; color:#0b1020; text-shadow:0 1px 0 rgba(255,255,255,.35);
     border:2px solid rgba(255,255,255,.75); box-shadow:0 6px 14px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.15);
     outline:3px solid transparent; background:#ddd; padding:2px 6px;
   }
   .cardBtn.selected{ outline-color:#22c55e; outline-offset:2px }
   .band{position:absolute; left:0; right:0; bottom:0; height:6px; border-bottom-left-radius:8px; border-bottom-right-radius:8px; opacity:.85}
   .ghost{opacity:.4; filter:grayscale(.6); cursor:not-allowed}
+  .power{ background:#0f1732; color:#e2e8f0; border-color:#4b5563; font-size:14px }
+  .power .band{ display:none }
 
-  /* log */
   #log{max-height:160px; overflow:auto; font-size:13px; color:#cbd5e1; background:#0f1732; border:1px solid var(--line);
        border-radius:12px; padding:10px 12px; }
   #log b{color:#e2e8f0} .msgLose{color:#fecaca} .msgWin{color:#bbf7d0}
 
-  /* vote modal / phase box */
   .phase{
     max-width:800px; margin:16px auto; padding:14px; background:#0f1732; border:1px solid var(--line);
     border-radius:14px; box-shadow:var(--shadow)
@@ -75,8 +74,8 @@
   .opt{display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #2b3a68; border-radius:12px; background:#0b1226; cursor:pointer}
   .opt.selected{outline:2px solid #22c55e}
   .timer{font-weight:800; color:#eab308}
+  .hint{font-size:12px; color:#9fb0c6}
 
-  /* fullscreen focus layout */
   .full #wrap{max-width:none; width:100%; height:100vh; display:grid; grid-template-rows:auto 1fr auto}
   .full body, .full html{height:100%}
   .full #middle{grid-template-columns:repeat(4,1fr); gap:12px; align-content:center; justify-content:center}
@@ -91,14 +90,13 @@
 <body>
 <header>
   <h1>The Game — Multiplayer</h1>
-  <span class="pill">Vote first • Up to 5 players • Draw at End Turn • ±10 rescue • Min/turn: 2 (deck) / 1 (empty)</span>
+  <span class="pill">Vote first • Hand sizes by player count • Min/turn: 2 (deck) / 1 (empty)</span>
   <div class="pill">Players: <b id="playerCount">—</b></div>
   <button id="fsBtn" class="btn" title="Full Screen Focus">⛶ Full Screen</button>
   <button id="leaveBtn" class="btn">Leave</button>
 </header>
 
 <div id="wrap">
-  <!-- Top: turn order + controls -->
   <div id="topBar">
     <div class="leftCluster">
       <div class="badge">Room: <b id="roomId">—</b></div>
@@ -115,23 +113,17 @@
     </div>
   </div>
 
-  <!-- Middle: piles or phase UI -->
   <div id="phaseBox" class="phase" style="display:none"></div>
   <div id="middle"></div>
-
-  <!-- Bottom: hand -->
   <div id="bottom"></div>
-
   <div id="log"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/*** Firebase config — same project as your lobby ***/
+/*** Firebase config (same project as lobby) ***/
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -163,401 +155,524 @@ const endBtn  = $("endTurnBtn");
 const phaseBox = $("phaseBox");
 
 /*** Local mirrors ***/
-let G = null;              // game doc
-let LOBBY = null;          // lobby doc
+let G = null, LOBBY = null;
 let mySelected = null;
 let myHand = [];
 let isMyTurn = false;
 
-/*** Color helpers ***/
+/*** Constants ***/
 const UP='up', DOWN='down';
-function hueForValue(v){ return Math.round((v-1)/99*300); }
-function colorForValue(v){
-  const hue = hueForValue(v);
-  const light = 55 + ((v%10)-5)*1.2;
+const POWERS = { FLIP:'FLIP', SWAP:'SWAP', TRADE:'TRADE', BUNGEE:'BUNGEE', TIMEWARP:'TIMEWARP' };
+const POWER_LABEL = { FLIP:'🔁 Flip', SWAP:'🔄 Swap', TRADE:'🤝 Trade', BUNGEE:'🪢 Bungee', TIMEWARP:'⏳ Time Warp' };
+
+/*** Helpers ***/
+const isNumber = x => typeof x === 'number';
+const isPower  = x => typeof x === 'string';
+
+function handCap(playersCount){
+  if (playersCount<=1) return 7;
+  if (playersCount===2) return 6;
+  return 5; // 3-5
+}
+function hueForValue(v,max=120){ return Math.round((v-1)/(max-1)*300); }
+function colorForValue(v,max=120){
+  const hue=hueForValue(v,max); const light=55+((v%10)-5)*1.2;
   return `hsl(${hue} 70% ${light}%)`;
 }
-function bandForValue(v){
-  const decade=Math.ceil(v/10), hue=Math.round((decade-1)/9*300);
+function bandForValue(v,max=120){
+  const span = max===120?12:10;
+  const decade=Math.ceil(v/10), hue=Math.round((decade-1)/span*300);
   return `linear-gradient(90deg, hsl(${hue} 80% 55%), hsl(${hue} 80% 45%))`;
 }
-function canPlayOn(card, pile){
-  if(pile.dir===UP)   return (card>pile.top) || (pile.top-card===10);
-  else                return (card<pile.top) || (card-pile.top===10);
-}
-function minRequired(deckLen){ return deckLen>0 ? 2 : 1; }
 
-/*** Ensure vote phase or game init (host drives) ***/
+// number rules (+ backwards ±10; +±20 if bungee)
+function canPlayOnNumber(card, pile, hasBungee){
+  if(pile.dir===UP){
+    if(card>pile.top) return true;
+    if(pile.top-card===10) return true;
+    if(hasBungee && pile.top-card===20) return true;
+  }else{
+    if(card<pile.top) return true;
+    if(card-pile.top===10) return true;
+    if(hasBungee && card-pile.top===20) return true;
+  }
+  return false;
+}
+function minRequiredBase(deckLen){ return deckLen>0 ? 2 : 1; }
+function minRequiredFor(player, deckLen, debts){ return minRequiredBase(deckLen) + ((debts&&debts[player])||0); }
+
+/*** Vote/init ***/
 async function ensureVotePhaseOrResume(){
   const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
   if(!lob.exists()) { alert("Lobby not found."); return; }
   LOBBY = lob.data();
-
   $("playerCount").textContent = (LOBBY.players||[]).length;
-
-  if (game.exists()){
-    // already voting or playing — nothing to do here
-    return;
-  }
-  // only host seeds vote phase
+  if (game.exists()) return;
   if (LOBBY.host !== me) return;
 
   const startedAt = Date.now();
-  const deadline = startedAt + 20000; // 20 seconds
-  const payload = {
-    phase: 'voting',
-    host: LOBBY.host,
-    players: (LOBBY.players||[]).slice(0,5),
-    votes: {},                 // username -> 'thegame'|'game2'
-    startedAt, deadline,
-    choice: null,              // resolved later
-    log: [`Voting started — choose <b>The Game</b> or <b>The Game 2.0</b>.`]
-  };
-  await setDoc(gameRef, payload);
+  const deadline = startedAt + 20000;
+  await setDoc(gameRef, {
+    phase:'voting', host: LOBBY.host, players:(LOBBY.players||[]).slice(0,5),
+    votes:{}, startedAt, deadline, choice:null,
+    log:[`Voting started — choose <b>The Game</b> or <b>The Game 2.0</b>.`]
+  });
 }
 
-/*** Vote UI ***/
-let voteTimer = null;
+/*** Build setups ***/
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function dealToCap(hands, deck, players){
+  const cap = handCap(players.length);
+  for(let r=0;r<cap;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
+  for(const p of players) hands[p].sort(sortCards);
+}
+
+function buildClassic(players, host){
+  const deck=[]; for(let v=2; v<=99; v++) deck.push(v);
+  shuffle(deck);
+  const hands={}; for(const p of players) hands[p]=[];
+  dealToCap(hands, deck, players);
+  const piles={
+    U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
+    D1:{id:'D1',dir:DOWN,top:100,effects:[]}, D2:{id:'D2',dir:DOWN,top:100,effects:[]}
+  };
+  return { phase:'game', host, players, piles, deck, hands,
+    placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
+    log:[`Vote ended. Starting <b>The Game</b> with ${players.length} player(s).`] };
+}
+
+function buildGame2(players, host){
+  const deck=[];
+  for(let v=2; v<=119; v++) deck.push(v);
+  deck.push(
+    POWERS.FLIP, POWERS.FLIP, POWERS.FLIP,
+    POWERS.BUNGEE, POWERS.BUNGEE,
+    POWERS.SWAP, POWERS.SWAP,
+    POWERS.TRADE, POWERS.TRADE,
+    POWERS.TIMEWARP, POWERS.TIMEWARP
+  );
+  shuffle(deck);
+  const hands={}; for(const p of players) hands[p]=[];
+  dealToCap(hands, deck, players);
+  const piles={
+    U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
+    D1:{id:'D1',dir:DOWN,top:120,effects:[]}, D2:{id:'D2',dir:DOWN,top:120,effects:[]}
+  };
+  return { phase:'game2', host, players, piles, deck, hands,
+    placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
+    log:[`Vote ended. Starting <b>The Game 2.0</b> with ${players.length} player(s).`] };
+}
+
+/*** Voting UI ***/
+let voteTimer=null;
 function renderVotePhase(){
-  if(!G || G.phase!=='voting') { phaseBox.style.display='none'; return; }
-  phaseBox.style.display='block';
-  pilesEl.style.display='none';
-  handEl.style.display='none';
+  if(!G || G.phase!=='voting'){ phaseBox.style.display='none'; return; }
+  phaseBox.style.display='block'; pilesEl.style.display='none'; handEl.style.display='none';
 
-  const players = G.players||[];
-  const votes = G.votes||{};
-  const votedCount = Object.keys(votes).length;
-  const total = players.length;
-
-  const remain = Math.max(0, (G.deadline||0) - Date.now());
-  const secs = Math.ceil(remain/1000);
+  const players = G.players||[]; const votes=G.votes||{};
+  const remain = Math.max(0,(G.deadline||0)-Date.now()); const secs = Math.ceil(remain/1000);
 
   phaseBox.innerHTML = `
     <div class="row" style="justify-content:space-between">
-      <div><b>Vote:</b> <span class="pill">Players in room: ${total}</span></div>
+      <div><b>Vote:</b> <span class="pill">Players in room: ${players.length}</span></div>
       <div class="timer">⏳ ${secs}s</div>
     </div>
     <div style="height:8px"></div>
     <div class="row">
       <div class="opt ${votes[me]==='thegame'?'selected':''}" id="voteA">🃏 The Game</div>
-      <div class="opt ${votes[me]==='game2'?'selected':''}" id="voteB">🃏 The Game 2.0 (placeholder)</div>
+      <div class="opt ${votes[me]==='game2'?'selected':''}" id="voteB">🧪 The Game 2.0</div>
     </div>
     <div style="height:8px"></div>
     <div class="row">
-      <div class="badge">Voted: <b>${votedCount}/${total}</b></div>
+      <div class="badge">Voted: <b>${Object.keys(votes).length}/${players.length}</b></div>
       <div class="badge">Most votes decide after 20s, or when all vote.</div>
-    </div>
-  `;
-
+    </div>`;
   $("voteA").onclick = ()=> castVote('thegame');
   $("voteB").onclick = ()=> castVote('game2');
-
-  // countdown refresh
-  if (voteTimer) clearTimeout(voteTimer);
-  if (remain>0) voteTimer = setTimeout(renderVotePhase, 300);
+  if(voteTimer) clearTimeout(voteTimer);
+  if(remain>0) voteTimer=setTimeout(renderVotePhase,300);
 }
 
 async function castVote(choice){
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(gameRef);
-    if(!snap.exists()) throw new Error('gone');
-    const S = snap.data();
-    if(S.phase !== 'voting') return;
+  await runTransaction(db, async tx=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S = snap.data(); if(S.phase!=='voting') return;
     const votes = { ...(S.votes||{}), [me]: choice };
-    const players = S.players||[];
-    const allVoted = players.every(p=>votes[p]);
-    let update = { votes };
-
-    // if everyone voted OR time up, decide winner (host arbitrates)
-    const timeUp = Date.now() >= (S.deadline||0);
-    if ((allVoted || timeUp) && LOBBY && LOBBY.host === me){
+    const players = S.players||[]; const allVoted = players.every(p=>votes[p]);
+    let update={ votes };
+    const timeUp = Date.now()>=(S.deadline||0);
+    if((allVoted||timeUp) && LOBBY && LOBBY.host===me){
       const tally = { thegame:0, game2:0 };
-      for(const k of Object.keys(votes)){ tally[votes[k]] = (tally[votes[k]]||0)+1; }
-      const choice = (tally.thegame >= tally.game2) ? 'thegame' : 'game2';
-      update = { ...update, choice };
-      // flip into chosen phase
-      if (choice === 'thegame'){
-        Object.assign(update, buildGameStartState(S.players||[], LOBBY.host));
-      }else{
-        update.phase = 'game2';
-        update.log = [...(S.log||[]), `Vote ended. Starting <b>The Game 2.0</b> (placeholder).`].slice(-200);
-      }
+      for(const k of Object.keys(votes)) tally[votes[k]]=(tally[votes[k]]||0)+1;
+      const win = (tally.thegame>=tally.game2)?'thegame':'game2';
+      update.choice = win;
+      Object.assign(update, win==='thegame' ? buildClassic(players, LOBBY.host) : buildGame2(players, LOBBY.host));
     }
     tx.update(gameRef, update);
   });
 }
 
-/*** Build initial "The Game" state (host only) ***/
-function buildGameStartState(players, host){
-  // Deck 2..99
-  const deck=[]; for(let v=2; v<=99; v++) deck.push(v);
-  for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]];}
-  const hands={}; for(const p of players) hands[p]=[];
-  for(let r=0;r<5;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
-  for(const p of players) hands[p].sort((a,b)=>a-b);
-  const piles={
-    U1:{id:'U1',dir:UP,top:1}, U2:{id:'U2',dir:UP,top:1},
-    D1:{id:'D1',dir:DOWN,top:100}, D2:{id:'D2',dir:DOWN,top:100}
-  };
-  return {
-    phase:'game',
-    host, players, piles, deck, hands,
-    placed:0, turnIndex:0, turnNum:1, turnPlays:0,
-    log:[`Vote ended. Starting <b>The Game</b> with ${players.length} player(s).`]
-  };
-}
-
 /*** Subscriptions ***/
-onSnapshot(lobbyRef, (snap)=>{
-  if(!snap.exists()) return;
-  LOBBY = snap.data();
+onSnapshot(lobbyRef,(snap)=>{
+  if(!snap.exists()) return; LOBBY=snap.data();
   $("playerCount").textContent = (LOBBY.players||[]).length;
 });
-
-onSnapshot(gameRef, (snap)=>{
-  if(!snap.exists()) return;
-  G = snap.data();
-
-  // Phase switching
-  if (G.phase === 'voting'){ renderVotePhase(); return; }
+onSnapshot(gameRef,(snap)=>{
+  if(!snap.exists()) return; G=snap.data();
+  if(G.phase==='voting'){ renderVotePhase(); return; }
   phaseBox.style.display='none'; pilesEl.style.display='grid'; handEl.style.display='flex';
-
-  if (G.phase === 'game2'){ renderPlaceholderGame2(); return; }
-
-  // Main game phase
-  renderHUD(); renderTurnOrder(); renderPiles(); renderHand(); renderLog();
-  gateEndTurn();
+  renderHUD(); renderTurnOrder(); renderPiles(); renderHand(); renderLog(); gateEndTurn();
 });
 
-/*** HUD / turn data ***/
+/*** HUD & rendering ***/
 function renderHUD(){
   $("deckCount").textContent = String((G.deck||[]).length);
   $("placedCount").textContent= String(G.placed||0);
   $("turnNum").textContent   = String(G.turnNum||1);
-  const players = G.players||[];
-  const current = players[G.turnIndex||0]||'';
-  $("turnName").textContent  = current || '—';
+  const players=G.players||[]; const current=players[G.turnIndex||0]||'';
+  $("turnName").textContent  = current||'—';
   $("turnPlays").textContent = String(G.turnPlays||0);
-  const need = Math.max(0, minRequired((G.deck||[]).length) - (G.turnPlays||0));
-  $("needMsg").textContent   = (me===current && need>0) ? `Need ${need} more` : '';
+  const req=minRequiredFor(current,(G.deck||[]).length,G.debts||{});
+  const need=Math.max(0, req-(G.turnPlays||0));
+  $("needMsg").textContent = (me===current && need>0)?`Need ${need} more`: '';
   isMyTurn = (me===current);
   myHand = (G.hands && G.hands[me]) ? [...G.hands[me]] : [];
 }
 
 function renderTurnOrder(){
-  const players = G.players||[];
-  const idx = G.turnIndex||0;
-  orderEl.innerHTML = '';
+  const players = G.players||[]; const idx = G.turnIndex||0; const hands = G.hands||{};
+  orderEl.innerHTML='';
   players.forEach((p,i)=>{
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    if (p===me) chip.classList.add('me');
-    if (i===idx) chip.classList.add('live');
-    chip.textContent = p;
+    const chip=document.createElement('div'); chip.className='chip';
+    if(p===me) chip.classList.add('me');
+    if(i===idx) chip.classList.add('live');
+    const count = (hands[p]||[]).length;
+    chip.textContent = `${p} (${count})`;
     orderEl.appendChild(chip);
   });
 }
 
-/*** Piles ***/
 function renderPiles(){
-  const piles = G?.piles || {};
-  pilesEl.innerHTML = '';
+  const piles = G?.piles||{}; pilesEl.innerHTML='';
+  const maxVal = (G.phase==='game2') ? 120 : 100;
   ['U1','U2','D1','D2'].forEach(k=>{
-    const p = piles[k]; if(!p) return;
-    const div = document.createElement('div'); div.className='pile'; div.dataset.id=p.id;
+    const p=piles[k]; if(!p) return;
+    const div=document.createElement('div'); div.className='pile'; div.dataset.id=p.id;
 
-    const head = document.createElement('div'); head.className='pileHead';
-    const tag  = document.createElement('span'); tag.className='pileTag'; tag.textContent = p.dir===UP?'UP ▲':'DOWN ▼';
-    const num  = document.createElement('div');  num.className='pileNum'; num.textContent = p.top;
-    num.style.borderColor = `hsl(${hueForValue(p.top)} 80% 55%)`;
-    num.style.background  = `hsl(${hueForValue(p.top)} 25% 15%)`;
+    const head=document.createElement('div'); head.className='pileHead';
+    const tag=document.createElement('span'); tag.className='pileTag'; tag.textContent=p.dir===UP?'UP ▲':'DOWN ▼';
+    const num=document.createElement('div'); num.className='pileNum'; num.textContent=p.top;
+    num.style.borderColor=`hsl(${hueForValue(p.top,maxVal)} 80% 55%)`;
+    num.style.background=`hsl(${hueForValue(p.top,maxVal)} 25% 15%)`;
     head.append(tag,num);
 
-    const ft = document.createElement('div'); ft.className='sub';
-    ft.innerHTML = p.dir===UP?'Play higher • or exactly -10':'Play lower • or exactly +10';
-
-    if(isMyTurn && mySelected!=null){
-      if(canPlayOn(mySelected, p)) div.classList.add('canPlay'); else div.classList.add('cannot');
+    const effRow=document.createElement('div'); effRow.className='effRow';
+    for(const e of p.effects||[]){
+      if(e.type==='bungee'){ const b=document.createElement('div'); b.className='eff'; b.textContent=`🪢 x${e.charges}`; effRow.appendChild(b); }
     }
 
-    div.addEventListener('click', ()=>{
-      if(!isMyTurn || mySelected==null) return;
-      playCardTx(mySelected, p.id);
-    });
+    const ft=document.createElement('div'); ft.className='sub';
+    ft.innerHTML = p.dir===UP?'Play higher • or exactly -10 (±20 if 🪢)':'Play lower • or exactly +10 (±20 if 🪢)';
 
-    div.append(head,ft);
+    if(isMyTurn && mySelected!=null){
+      if(isNumber(mySelected)){
+        const b=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
+        if(canPlayOnNumber(mySelected,p,b)) div.classList.add('canPlay'); else div.classList.add('cannot');
+      }else{
+        const t=mySelected;
+        if(t===POWERS.FLIP||t===POWERS.BUNGEE||t===POWERS.SWAP) div.classList.add('canPlay');
+      }
+    }
+
+    div.addEventListener('click', ()=> onPileClick(p.id));
+    div.append(head,effRow,ft);
     pilesEl.appendChild(div);
   });
 }
 
-/*** Hand ***/
 function renderHand(){
-  handEl.innerHTML = '';
-  for(const v of myHand){
-    const card = document.createElement('button');
-    card.className = 'cardBtn';
-    card.style.background = colorForValue(v);
-    const band = document.createElement('div'); band.className='band'; band.style.background = bandForValue(v);
-    card.appendChild(band);
-    card.textContent = v;
+  handEl.innerHTML='';
+  const maxVal = (G.phase==='game2') ? 120 : 100;
 
-    const playable = Object.values(G?.piles||{}).some(p=>canPlayOn(v,p));
-    if(!playable) card.classList.add('ghost');
+  const addBtn=(v)=>{
+    const card=document.createElement('button'); card.className='cardBtn';
+    if(isNumber(v)){
+      card.style.background=colorForValue(v,maxVal);
+      const band=document.createElement('div'); band.className='band'; band.style.background=bandForValue(v,maxVal);
+      card.appendChild(band); card.textContent=v;
+      const playable=Object.values(G?.piles||{}).some(p=>{
+        const b=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
+        return canPlayOnNumber(v,p,b);
+      });
+      if(!playable) card.classList.add('ghost');
+    }else{
+      card.classList.add('power'); card.textContent = POWER_LABEL[v]||v;
+    }
     if(mySelected===v) card.classList.add('selected');
     card.addEventListener('click', ()=>{
-      mySelected = (mySelected===v ? null : v);
-      renderPiles(); renderHand(); // refresh outlines
+      mySelected=(mySelected===v?null:v); pending=null; renderPiles(); renderHand();
+      if(isPower(v)) addHintForPower(v);
     });
     handEl.appendChild(card);
-  }
+  };
+
+  const nums = myHand.filter(isNumber).sort((a,b)=>a-b);
+  const pows = myHand.filter(isPower);
+  nums.forEach(addBtn); pows.forEach(addBtn);
 }
 
-/*** Log ***/
+function addHintForPower(p){
+  const msg = (p===POWERS.FLIP)?'Tap a pile to flip its direction.'
+    : (p===POWERS.BUNGEE)?'Tap a pile to arm a one-time ±20 rescue.'
+    : (p===POWERS.SWAP)?'Tap the first pile, then the second, to swap tops.'
+    : (p===POWERS.TRADE)?'Press Enter to choose a player to trade with.'
+    : (p===POWERS.TIMEWARP)?'Press Enter to activate; you may end early, next turn +1 minimum.'
+    : '';
+  if(msg){ const row=document.createElement('div'); row.className='hint'; row.textContent=msg; logEl.prepend(row); }
+}
+
 function renderLog(){
-  logEl.innerHTML = '';
-  const rows = G?.log || [];
-  for(let i=rows.length-1; i>=0; i--){
-    const d = document.createElement('div');
-    d.innerHTML = rows[i];
-    logEl.appendChild(d);
+  logEl.innerHTML='';
+  const rows=G?.log||[]; for(let i=rows.length-1;i>=0;i--){ const d=document.createElement('div'); d.innerHTML=rows[i]; logEl.appendChild(d); }
+}
+
+/*** End-turn gating ***/
+function anyMoves(hand, pilesArr){
+  for(const c of hand){
+    if(isPower(c) && G.phase==='game2') return true;
+    for(const p of pilesArr){
+      const b=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
+      if(isNumber(c) && canPlayOnNumber(c,p,b)) return true;
+    }
+  } return false;
+}
+function gateEndTurn(){
+  if(!G || (G.phase!=='game' && G.phase!=='game2')){ endBtn.disabled=true; return; }
+  const players=G.players||[]; const current=players[G.turnIndex||0]||'';
+  const req=minRequiredFor(current,(G.deck||[]).length,G.debts||{});
+  const movesRemain = anyMoves(myHand,Object.values(G.piles||{}));
+  const earlyPass = (G.timewarpPass && G.timewarpPass===current);
+  endBtn.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain || earlyPass));
+}
+
+/*** Interactions ***/
+let pending=null; // for SWAP
+function onPileClick(pileId){
+  if(!isMyTurn || mySelected==null) return;
+  if(isNumber(mySelected)){ playNumberTx(mySelected,pileId); return; }
+  const t=mySelected;
+  if(t===POWERS.FLIP)   playFlipTx(pileId);
+  else if(t===POWERS.BUNGEE) playBungeeTx(pileId);
+  else if(t===POWERS.SWAP){
+    if(!pending){ pending={type:'SWAP',first:pileId}; renderPiles(); return; }
+    if(pending.first===pileId){ pending=null; return; }
+    playSwapTx(pending.first,pileId); pending=null;
   }
 }
 
-/*** Moves & gating ***/
-function anyMoves(hand, pilesArr){
-  for(const c of hand){ for(const p of pilesArr){ if(canPlayOn(c,p)) return true; } }
-  return false;
-}
-
-function gateEndTurn(){
-  if(!G || G.phase!=='game'){ $("endTurnBtn").disabled = true; return; }
-  const req = minRequired((G.deck||[]).length);
-  const movesRemain = anyMoves(myHand, Object.values(G.piles||{}));
-  endBtn.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain));
+/*** TX helpers ***/
+function sortCards(a,b){ if(isNumber(a)&&isNumber(b)) return a-b; if(isNumber(a)) return -1; if(isNumber(b)) return 1; return String(a).localeCompare(String(b)); }
+function drawUpToCap(hands, player, deck, players){
+  const cap = handCap(players.length);
+  const mine = [...(hands[player]||[])];
+  while(mine.length < cap && deck.length){ mine.push(deck.pop()); }
+  mine.sort(sortCards); hands[player]=mine;
 }
 
 /*** Transactions ***/
-async function playCardTx(card, pileId){
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(gameRef);
-    if(!snap.exists()) throw new Error('gone');
-    const S = snap.data();
-    if(S.phase!=='game') throw new Error('not playing');
+async function playNumberTx(card, pileId){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game' && S.phase!=='game2') throw new Error('not playing');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
 
-    const players = S.players||[];
-    const current = players[S.turnIndex||0]||'';
-    if(current !== me) throw new Error('not your turn');
+    const piles=S.piles||{}; const p=piles[pileId]; if(!p) throw new Error('bad pile');
+    const my=[...(S.hands?.[me]||[])]; const idx=my.indexOf(card); if(idx<0) throw new Error('no card');
+    const hasBungee=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
+    if(!canPlayOnNumber(card,p,hasBungee)) throw new Error('illegal');
 
-    const piles = S.piles||{};
-    const p = piles[pileId]; if(!p) throw new Error('bad pile');
-
-    const my = (S.hands && S.hands[me]) ? [...S.hands[me]] : [];
-    const idx = my.indexOf(card); if(idx<0) throw new Error('no such card');
-
-    if(!canPlayOn(card, p)) throw new Error('illegal');
-    const backwards = (p.dir===UP && p.top-card===10) || (p.dir===DOWN && card-p.top===10);
-    const prev = p.top; p.top = card;
-
-    my.splice(idx,1); my.sort((a,b)=>a-b);
-    const hands = { ...(S.hands||{}) , [me]: my };
-
-    const placed = (S.placed||0)+1;
-    const turnPlays = (S.turnPlays||0)+1;
-
-    const log = (S.log||[]).slice(-200);
-    const arrow = p.dir===UP?'▲':'▼';
-    log.push(`${me} played <b>${card}</b> on ${p.id} ${arrow}${backwards?' via <b>backwards 10</b>':''} (${prev}→${card}).`);
-
-    // Win check: deck empty and all hands empty
-    const deck = S.deck||[];
-    const everyoneEmpty = Object.values(hands).every(h=>h.length===0);
-    if(deck.length===0 && everyoneEmpty){
-      log.push(`<b class="msgWin">Perfect! All cards placed. 🎉</b>`);
+    const prev=p.top; p.top=card;
+    if(hasBungee && Math.abs(prev-card)===20){
+      const ef=p.effects.find(e=>e.type==='bungee'&&e.charges>0);
+      if(ef){ ef.charges--; if(ef.charges<=0) p.effects=p.effects.filter(e=>!(e.type==='bungee'&&e.charges<=0)); }
     }
 
-    tx.update(gameRef, { piles, hands, placed, turnPlays, log });
-  }).catch(e=> console.warn(e));
+    my.splice(idx,1); my.sort(sortCards);
+    const hands={...(S.hands||{}), [me]:my};
+    const placed=(S.placed||0)+1; const turnPlays=(S.turnPlays||0)+1;
+    const log=(S.log||[]).slice(-200);
+    const backwards=(p.dir===UP && prev-card===10) || (p.dir===DOWN && card-prev===10);
+    const b20=(Math.abs(prev-card)===20);
+    log.push(`${me} played <b>${card}</b> on ${p.id} ${p.dir===UP?'▲':'▼'}${backwards?' via <b>backwards 10</b>':''}${b20?' with <b>🪢 20</b>':''} (${prev}→${card}).`);
+
+    const deck=S.deck||[]; const everyoneEmpty=Object.values(hands).every(h=>h.length===0);
+    if(deck.length===0 && everyoneEmpty) log.push(`<b class="msgWin">Perfect! All cards placed. 🎉</b>`);
+    tx.update(gameRef,{piles,hands,placed,turnPlays,log});
+  }).catch(e=>console.warn(e));
+}
+
+async function playFlipTx(pileId){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game2') throw new Error('flip only 2.0');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
+
+    const piles=S.piles||{}; const p=piles[pileId]; if(!p) throw new Error('bad pile');
+    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.FLIP); if(i<0) throw new Error('no flip');
+    my.splice(i,1); p.dir=(p.dir===UP?DOWN:UP);
+
+    const hands={...S.hands,[me]:my}; const log=(S.log||[]).slice(-200);
+    log.push(`${me} played <b>🔁 Flip</b> on ${p.id}. Direction is now <b>${p.dir===UP?'UP':'DOWN'}</b>.`);
+    tx.update(gameRef,{piles,hands,turnPlays:(S.turnPlays||0)+1,log});
+  }).catch(e=>console.warn(e));
+}
+
+async function playBungeeTx(pileId){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game2') throw new Error('not 2.0');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
+
+    const piles=S.piles||{}; const p=piles[pileId]; if(!p) throw new Error('bad pile');
+    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.BUNGEE); if(i<0) throw new Error('no bungee');
+    my.splice(i,1);
+
+    const effs=p.effects||[]; const ex=effs.find(e=>e.type==='bungee'); if(ex) ex.charges++; else effs.push({type:'bungee',charges:1});
+    p.effects=effs;
+
+    const hands={...S.hands,[me]:my}; const log=(S.log||[]).slice(-200);
+    log.push(`${me} armed <b>🪢 Bungee</b> on ${p.id}. Next ±20 rescue allowed once.`);
+    tx.update(gameRef,{piles,hands,turnPlays:(S.turnPlays||0)+1,log});
+  }).catch(e=>console.warn(e));
+}
+
+async function playSwapTx(aId,bId){
+  if(aId===bId) return;
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game2') throw new Error('not 2.0');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
+
+    const piles=S.piles||{}; const A=piles[aId], B=piles[bId]; if(!A||!B) throw new Error('bad piles');
+    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.SWAP); if(i<0) throw new Error('no swap');
+    my.splice(i,1);
+
+    const t=A.top; A.top=B.top; B.top=t;
+
+    const hands={...S.hands,[me]:my}; const log=(S.log||[]).slice(-200);
+    log.push(`${me} played <b>🔄 Swap</b>: ${aId}↔${bId}.`);
+    tx.update(gameRef,{piles,hands,turnPlays:(S.turnPlays||0)+1,log});
+  }).catch(e=>console.warn(e));
+}
+
+async function playTradeTx(target){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game2') throw new Error('not 2.0');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
+    if(!players.includes(target) || target===me) throw new Error('bad target');
+
+    const my=[...(S.hands?.[me]||[])]; const his=[...(S.hands?.[target]||[])];
+    const pi=my.indexOf(POWERS.TRADE); if(pi<0) throw new Error('no trade');
+    if(his.length===0 || my.length<=1) throw new Error('no trade possible');
+
+    my.splice(pi,1);
+    const mi=Math.floor(Math.random()*my.length), hi=Math.floor(Math.random()*his.length);
+    const myCard=my.splice(mi,1)[0]; const hisCard=his.splice(hi,1)[0];
+    my.push(hisCard); his.push(myCard);
+    my.sort(sortCards); his.sort(sortCards);
+
+    const hands={...S.hands,[me]:my,[target]:his}; const log=(S.log||[]).slice(-200);
+    log.push(`${me} used <b>🤝 Trade</b> with <b>${target}</b>.`);
+    tx.update(gameRef,{hands,turnPlays:(S.turnPlays||0)+1,log});
+  }).catch(e=>console.warn(e));
+}
+
+async function playTimeWarpTx(){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game2') throw new Error('not 2.0');
+    const players=S.players||[]; const current=players[S.turnIndex||0]||''; if(current!==me) throw new Error('not your turn');
+
+    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.TIMEWARP); if(i<0) throw new Error('no timewarp');
+    my.splice(i,1);
+    const debts={...(S.debts||{})}; debts[me]=(debts[me]||0)+1;
+
+    const hands={...S.hands,[me]:my}; const log=(S.log||[]).slice(-200);
+    log.push(`${me} activated <b>⏳ Time Warp</b> — may end early this turn; next turn requires +1 play.`);
+    tx.update(gameRef,{hands,debts,timewarpPass:me,turnPlays:(S.turnPlays||0)+1,log});
+  }).catch(e=>console.warn(e));
 }
 
 async function endTurnTx(){
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(gameRef);
-    if(!snap.exists()) throw new Error('gone');
-    const S = snap.data();
-    if(S.phase!=='game') throw new Error('not playing');
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
+    const S=snap.data(); if(S.phase!=='game' && S.phase!=='game2') throw new Error('not playing');
 
-    const players = S.players||[];
-    const tIndex = S.turnIndex||0;
-    const current = players[tIndex]||'';
-    if(current !== me) throw new Error('not your turn');
+    const players=S.players||[]; const tIndex=S.turnIndex||0; const current=players[tIndex]||'';
+    if(current!==me) throw new Error('not your turn');
 
-    const deck = [...(S.deck||[])];
-    const hands = {...(S.hands||{})};
-    const req = minRequired(deck.length);
-    if((S.turnPlays||0) < req){
-      throw new Error(`need ${req} plays`);
-    }
+    const deck=[...(S.deck||[])]; const hands={...(S.hands||{})};
+    const req=minRequiredFor(current, deck.length, S.debts||{});
+    const earlyPass=(S.timewarpPass && S.timewarpPass===current);
+    if((S.turnPlays||0) < req && !earlyPass) throw new Error(`need ${req} plays`);
 
-    // Draw to 5 for the current player (only now)
-    const mine = [...(hands[me]||[])];
-    while(mine.length < 5 && deck.length){ mine.push(deck.pop()); }
-    mine.sort((a,b)=>a-b);
-    hands[me]=mine;
+    drawUpToCap(hands, me, deck, players);
 
-    // Advance turn
-    const nextIndex = (tIndex + 1) % players.length;
+    const nextIndex=(tIndex+1)%players.length;
     const turnNum = (nextIndex===0) ? (S.turnNum||1)+1 : (S.turnNum||1);
-    const log = (S.log||[]).slice(-200);
-    const drew = Math.max(0, 5-((S.hands?.[me]?.length)||0));
+    const log=(S.log||[]).slice(-200);
+    const drew = Math.max(0, handCap(players.length) - ((S.hands?.[me]?.length)||0));
     log.push(`${me} ended turn. Drew ${drew} card(s). Next: <b>${players[nextIndex]||''}</b>.`);
 
-    tx.update(gameRef, {
-      deck, hands, turnIndex: nextIndex, turnNum,
-      turnPlays: 0, log
-    });
-  }).catch(e=> console.warn(e));
-}
+    // settle timewarp flags / debt
+    const debts={...(S.debts||{})}; let timewarpPass=S.timewarpPass;
+    if(timewarpPass===current) timewarpPass=null;
+    if((S.debts||{})[current]>0){ debts[current]=Math.max(0,(debts[current]||0)-1); if(debts[current]===0) delete debts[current]; }
 
-/*** Placeholder for Game 2.0 ***/
-function renderPlaceholderGame2(){
-  pilesEl.style.display='grid';
-  handEl.style.display='none';
-  pilesEl.innerHTML = `
-    <div class="pile" style="grid-column:1/-1">
-      <div class="pileHead"><span class="pileTag">🧪 Prototype</span><div class="pileNum">The Game 2.0</div></div>
-      <div class="sub">This is a placeholder mode. We’ll plug ideas in here!</div>
-    </div>
-  `;
-  $("needMsg").textContent = '';
-  $("turnName").textContent = '—';
-  $("endTurnBtn").disabled = true;
+    tx.update(gameRef,{deck,hands,turnIndex:nextIndex,turnNum,turnPlays:0,log,debts,timewarpPass});
+  }).catch(e=>console.warn(e));
 }
 
 /*** Controls ***/
 $("checkBtn").addEventListener('click', ()=>{
-  if(!G || G.phase!=='game'){ return; }
-  const moves = anyMoves(myHand, Object.values(G.piles||{}));
-  const need  = Math.max(0, minRequired((G.deck||[]).length) - (G.turnPlays||0));
-  const row = document.createElement('div'); row.textContent = moves ? `You have legal moves.${need>0?` Need ${need} more.`:''}` : `No legal moves.${need>0?` Need ${need} more.`:''}`;
+  if(!G || (G.phase!=='game' && G.phase!=='game2')) return;
+  const moves = anyMoves(myHand,Object.values(G.piles||{}));
+  const players=G.players||[]; const current=players[G.turnIndex||0]||'';
+  const req=minRequiredFor(current,(G.deck||[]).length,G.debts||{});
+  const need=Math.max(0,req-(G.turnPlays||0));
+  const row=document.createElement('div'); row.textContent = moves?`You have legal moves.${need>0?` Need ${need} more.`:''}`:`No legal moves.${need>0?` Need ${need} more.`:''}`;
   logEl.prepend(row);
 });
 $("endTurnBtn").addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
-$("leaveBtn").addEventListener('click', ()=>{
-  // back to lobby (adjust path if your index differs)
-  history.back();
-});
+$("leaveBtn").addEventListener('click', ()=>{ history.back(); });
 $("fsBtn").addEventListener('click', ()=>{
   document.documentElement.classList.toggle('full');
-  const el = document.documentElement;
-  if (!document.fullscreenElement){
-    el.requestFullscreen?.();
-  }else{
-    document.exitFullscreen?.();
+  const el=document.documentElement;
+  if(!document.fullscreenElement){ el.requestFullscreen?.(); } else { document.exitFullscreen?.(); }
+});
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Enter' && isMyTurn && isPower(mySelected)){
+    if(mySelected===POWERS.TIMEWARP) playTimeWarpTx();
+    if(mySelected===POWERS.TRADE)    promptTrade();
   }
 });
+
+/*** Trade prompt ***/
+function promptTrade(){
+  if(!G) return;
+  const players=(G.players||[]).filter(p=>p!==me);
+  if(players.length===0) return;
+  const name=prompt(`Trade with whom?\n${players.join(', ')}`);
+  if(!name) return;
+  if(!players.includes(name)){ alert('Not a valid player.'); return; }
+  playTradeTx(name);
+}
 
 /*** Kickoff ***/
 ensureVotePhaseOrResume();
 </script>
 </body>
 </html>
+
