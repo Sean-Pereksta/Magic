@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>The Game — Multiplayer + Vote</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b1020; --panel:#0f162b; --ink:#e6edf3; --muted:#9fb0c6; --line:#1e2a49;
+    --accent:#22c55e; --bad:#ef4444; --warn:#eab308; --soft:#121a31; --shadow:0 12px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 20% -10%, #1a2440 0%, #0b1020 60%);
+    color:var(--ink); font-family:system-ui,Segoe UI,Roboto,Inter,Arial;
+  }
+
+  header{ position:sticky; top:0; z-index:10; background:rgba(10,16,32,.7); backdrop-filter: blur(8px);
+    border-bottom:1px solid var(--line); padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h1{font-size:16px; margin:0; letter-spacing:.3px; color:#c7d2fe}
+  .pill{font-size:12px; padding:6px 10px; border:1px solid var(--line); border-radius:999px; color:#9fb0c6; background:#0d142a}
+  .btn{padding:8px 12px; border-radius:10px; border:1px solid #2b3a68; background:#131a33; color:#dbe6ff; cursor:pointer}
+  .btn[disabled]{opacity:.5; cursor:not-allowed}
+  .btn:hover:not([disabled]){filter:brightness(1.1)}
+
+  /* 3 sections layout */
+  #wrap{max-width:1100px; margin:12px auto; padding:0 12px; display:grid; gap:12px}
+  #topBar{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
+  .leftCluster{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .badge{display:inline-flex; align-items:center; gap:8px; background:#0f1732; border:1px solid var(--line);
+         border-radius:10px; padding:8px 10px; color:#cbd5e1; font-size:13px}
+  .order{display:flex; gap:6px; flex-wrap:wrap}
+  .chip{padding:6px 8px; border-radius:999px; border:1px solid #2b3a68; background:#0b1226; font-size:12px; color:#cbd5e1}
+  .chip.me{border-color:#22c55e}
+  .chip.live{background:#102d1b; border-color:#22c55e; color:#d1fae5}
+
+  /* middle piles */
+  #middle{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .pile{
+    user-select:none; background:linear-gradient(180deg,#0f1a38,#0c1430); border:1px solid var(--line);
+    border-radius:14px; padding:12px; min-height:120px; display:flex; flex-direction:column; gap:8px; justify-content:space-between;
+    outline:2px solid transparent; transition:.15s ease;
+  }
+  .pile.canPlay{ outline-color:#22c55e; outline-offset:2px }
+  .pile.cannot{ opacity:.7 }
+  .pileHead{display:flex; align-items:center; justify-content:space-between; color:#cbd5e1}
+  .pileTag{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #2b3a68; color:#9fb0c6; background:#0b1226}
+  .pileNum{font-weight:800; font-size:24px; letter-spacing:.3px; padding:4px 10px; border-radius:8px; border:1px solid #2b3a68; background:#0b1226}
+  .sub{font-size:12px; color:#9fb0c6}
+
+  /* bottom hand (compact buttons) */
+  #bottom{display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:6px 0 12px}
+  .cardBtn{
+    position:relative; cursor:pointer; user-select:none; min-width:54px; height:72px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:20px; letter-spacing:.3px; color:#0b1020; text-shadow:0 1px 0 rgba(255,255,255,.35);
+    border:2px solid rgba(255,255,255,.75); box-shadow:0 6px 14px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.15);
+    outline:3px solid transparent; background:#ddd; padding:2px 6px;
+  }
+  .cardBtn.selected{ outline-color:#22c55e; outline-offset:2px }
+  .band{position:absolute; left:0; right:0; bottom:0; height:6px; border-bottom-left-radius:8px; border-bottom-right-radius:8px; opacity:.85}
+  .ghost{opacity:.4; filter:grayscale(.6); cursor:not-allowed}
+
+  /* log */
+  #log{max-height:160px; overflow:auto; font-size:13px; color:#cbd5e1; background:#0f1732; border:1px solid var(--line);
+       border-radius:12px; padding:10px 12px; }
+  #log b{color:#e2e8f0} .msgLose{color:#fecaca} .msgWin{color:#bbf7d0}
+
+  /* vote modal / phase box */
+  .phase{
+    max-width:800px; margin:16px auto; padding:14px; background:#0f1732; border:1px solid var(--line);
+    border-radius:14px; box-shadow:var(--shadow)
+  }
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .opt{display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #2b3a68; border-radius:12px; background:#0b1226; cursor:pointer}
+  .opt.selected{outline:2px solid #22c55e}
+  .timer{font-weight:800; color:#eab308}
+
+  /* fullscreen focus layout */
+  .full #wrap{max-width:none; width:100%; height:100vh; display:grid; grid-template-rows:auto 1fr auto}
+  .full body, .full html{height:100%}
+  .full #middle{grid-template-columns:repeat(4,1fr); gap:12px; align-content:center; justify-content:center}
+  .full header{position:static}
+  .full #log{display:none}
+
+  @media (max-width:900px){
+    #middle{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>The Game — Multiplayer</h1>
+  <span class="pill">Vote first • Up to 5 players • Draw at End Turn • ±10 rescue • Min/turn: 2 (deck) / 1 (empty)</span>
+  <div class="pill">Players: <b id="playerCount">—</b></div>
+  <button id="fsBtn" class="btn" title="Full Screen Focus">⛶ Full Screen</button>
+  <button id="leaveBtn" class="btn">Leave</button>
+</header>
+
+<div id="wrap">
+  <!-- Top: turn order + controls -->
+  <div id="topBar">
+    <div class="leftCluster">
+      <div class="badge">Room: <b id="roomId">—</b></div>
+      <div class="badge">Deck: <b id="deckCount">—</b></div>
+      <div class="badge">Placed: <b id="placedCount">0</b></div>
+      <div class="badge">Turn: <b id="turnNum">1</b></div>
+      <div class="badge">Player: <b id="turnName">—</b></div>
+      <div class="badge">Played: <b id="turnPlays">0</b> <span id="needMsg" style="margin-left:6px"></span></div>
+    </div>
+    <div class="order" id="turnOrder"></div>
+    <div class="row">
+      <button id="checkBtn" class="btn">Check Moves</button>
+      <button id="endTurnBtn" class="btn" disabled>End Turn (draw)</button>
+    </div>
+  </div>
+
+  <!-- Middle: piles or phase UI -->
+  <div id="phaseBox" class="phase" style="display:none"></div>
+  <div id="middle"></div>
+
+  <!-- Bottom: hand -->
+  <div id="bottom"></div>
+
+  <div id="log"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/*** Firebase config — same project as your lobby ***/
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+/*** URL params ***/
+const qp = new URLSearchParams(location.search);
+const roomId = qp.get("gameId") || qp.get("room") || "";
+const me = (qp.get("username") || "").trim();
+if(!roomId || !me){ alert("Missing gameId or username."); }
+
+const lobbyRef = doc(db, "lobbies", roomId);
+const gameRef  = doc(db, "thegameRooms", roomId);
+
+/*** UI refs ***/
+const $ = (id)=>document.getElementById(id);
+$("roomId").textContent = roomId;
+const pilesEl = $("middle");
+const handEl  = $("bottom");
+const logEl   = $("log");
+const orderEl = $("turnOrder");
+const endBtn  = $("endTurnBtn");
+const phaseBox = $("phaseBox");
+
+/*** Local mirrors ***/
+let G = null;              // game doc
+let LOBBY = null;          // lobby doc
+let mySelected = null;
+let myHand = [];
+let isMyTurn = false;
+
+/*** Color helpers ***/
+const UP='up', DOWN='down';
+function hueForValue(v){ return Math.round((v-1)/99*300); }
+function colorForValue(v){
+  const hue = hueForValue(v);
+  const light = 55 + ((v%10)-5)*1.2;
+  return `hsl(${hue} 70% ${light}%)`;
+}
+function bandForValue(v){
+  const decade=Math.ceil(v/10), hue=Math.round((decade-1)/9*300);
+  return `linear-gradient(90deg, hsl(${hue} 80% 55%), hsl(${hue} 80% 45%))`;
+}
+function canPlayOn(card, pile){
+  if(pile.dir===UP)   return (card>pile.top) || (pile.top-card===10);
+  else                return (card<pile.top) || (card-pile.top===10);
+}
+function minRequired(deckLen){ return deckLen>0 ? 2 : 1; }
+
+/*** Ensure vote phase or game init (host drives) ***/
+async function ensureVotePhaseOrResume(){
+  const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
+  if(!lob.exists()) { alert("Lobby not found."); return; }
+  LOBBY = lob.data();
+
+  $("playerCount").textContent = (LOBBY.players||[]).length;
+
+  if (game.exists()){
+    // already voting or playing — nothing to do here
+    return;
+  }
+  // only host seeds vote phase
+  if (LOBBY.host !== me) return;
+
+  const startedAt = Date.now();
+  const deadline = startedAt + 20000; // 20 seconds
+  const payload = {
+    phase: 'voting',
+    host: LOBBY.host,
+    players: (LOBBY.players||[]).slice(0,5),
+    votes: {},                 // username -> 'thegame'|'game2'
+    startedAt, deadline,
+    choice: null,              // resolved later
+    log: [`Voting started — choose <b>The Game</b> or <b>The Game 2.0</b>.`]
+  };
+  await setDoc(gameRef, payload);
+}
+
+/*** Vote UI ***/
+let voteTimer = null;
+function renderVotePhase(){
+  if(!G || G.phase!=='voting') { phaseBox.style.display='none'; return; }
+  phaseBox.style.display='block';
+  pilesEl.style.display='none';
+  handEl.style.display='none';
+
+  const players = G.players||[];
+  const votes = G.votes||{};
+  const votedCount = Object.keys(votes).length;
+  const total = players.length;
+
+  const remain = Math.max(0, (G.deadline||0) - Date.now());
+  const secs = Math.ceil(remain/1000);
+
+  phaseBox.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div><b>Vote:</b> <span class="pill">Players in room: ${total}</span></div>
+      <div class="timer">⏳ ${secs}s</div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="row">
+      <div class="opt ${votes[me]==='thegame'?'selected':''}" id="voteA">🃏 The Game</div>
+      <div class="opt ${votes[me]==='game2'?'selected':''}" id="voteB">🃏 The Game 2.0 (placeholder)</div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="row">
+      <div class="badge">Voted: <b>${votedCount}/${total}</b></div>
+      <div class="badge">Most votes decide after 20s, or when all vote.</div>
+    </div>
+  `;
+
+  $("voteA").onclick = ()=> castVote('thegame');
+  $("voteB").onclick = ()=> castVote('game2');
+
+  // countdown refresh
+  if (voteTimer) clearTimeout(voteTimer);
+  if (remain>0) voteTimer = setTimeout(renderVotePhase, 300);
+}
+
+async function castVote(choice){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef);
+    if(!snap.exists()) throw new Error('gone');
+    const S = snap.data();
+    if(S.phase !== 'voting') return;
+    const votes = { ...(S.votes||{}), [me]: choice };
+    const players = S.players||[];
+    const allVoted = players.every(p=>votes[p]);
+    let update = { votes };
+
+    // if everyone voted OR time up, decide winner (host arbitrates)
+    const timeUp = Date.now() >= (S.deadline||0);
+    if ((allVoted || timeUp) && LOBBY && LOBBY.host === me){
+      const tally = { thegame:0, game2:0 };
+      for(const k of Object.keys(votes)){ tally[votes[k]] = (tally[votes[k]]||0)+1; }
+      const choice = (tally.thegame >= tally.game2) ? 'thegame' : 'game2';
+      update = { ...update, choice };
+      // flip into chosen phase
+      if (choice === 'thegame'){
+        Object.assign(update, buildGameStartState(S.players||[], LOBBY.host));
+      }else{
+        update.phase = 'game2';
+        update.log = [...(S.log||[]), `Vote ended. Starting <b>The Game 2.0</b> (placeholder).`].slice(-200);
+      }
+    }
+    tx.update(gameRef, update);
+  });
+}
+
+/*** Build initial "The Game" state (host only) ***/
+function buildGameStartState(players, host){
+  // Deck 2..99
+  const deck=[]; for(let v=2; v<=99; v++) deck.push(v);
+  for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]];}
+  const hands={}; for(const p of players) hands[p]=[];
+  for(let r=0;r<5;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
+  for(const p of players) hands[p].sort((a,b)=>a-b);
+  const piles={
+    U1:{id:'U1',dir:UP,top:1}, U2:{id:'U2',dir:UP,top:1},
+    D1:{id:'D1',dir:DOWN,top:100}, D2:{id:'D2',dir:DOWN,top:100}
+  };
+  return {
+    phase:'game',
+    host, players, piles, deck, hands,
+    placed:0, turnIndex:0, turnNum:1, turnPlays:0,
+    log:[`Vote ended. Starting <b>The Game</b> with ${players.length} player(s).`]
+  };
+}
+
+/*** Subscriptions ***/
+onSnapshot(lobbyRef, (snap)=>{
+  if(!snap.exists()) return;
+  LOBBY = snap.data();
+  $("playerCount").textContent = (LOBBY.players||[]).length;
+});
+
+onSnapshot(gameRef, (snap)=>{
+  if(!snap.exists()) return;
+  G = snap.data();
+
+  // Phase switching
+  if (G.phase === 'voting'){ renderVotePhase(); return; }
+  phaseBox.style.display='none'; pilesEl.style.display='grid'; handEl.style.display='flex';
+
+  if (G.phase === 'game2'){ renderPlaceholderGame2(); return; }
+
+  // Main game phase
+  renderHUD(); renderTurnOrder(); renderPiles(); renderHand(); renderLog();
+  gateEndTurn();
+});
+
+/*** HUD / turn data ***/
+function renderHUD(){
+  $("deckCount").textContent = String((G.deck||[]).length);
+  $("placedCount").textContent= String(G.placed||0);
+  $("turnNum").textContent   = String(G.turnNum||1);
+  const players = G.players||[];
+  const current = players[G.turnIndex||0]||'';
+  $("turnName").textContent  = current || '—';
+  $("turnPlays").textContent = String(G.turnPlays||0);
+  const need = Math.max(0, minRequired((G.deck||[]).length) - (G.turnPlays||0));
+  $("needMsg").textContent   = (me===current && need>0) ? `Need ${need} more` : '';
+  isMyTurn = (me===current);
+  myHand = (G.hands && G.hands[me]) ? [...G.hands[me]] : [];
+}
+
+function renderTurnOrder(){
+  const players = G.players||[];
+  const idx = G.turnIndex||0;
+  orderEl.innerHTML = '';
+  players.forEach((p,i)=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    if (p===me) chip.classList.add('me');
+    if (i===idx) chip.classList.add('live');
+    chip.textContent = p;
+    orderEl.appendChild(chip);
+  });
+}
+
+/*** Piles ***/
+function renderPiles(){
+  const piles = G?.piles || {};
+  pilesEl.innerHTML = '';
+  ['U1','U2','D1','D2'].forEach(k=>{
+    const p = piles[k]; if(!p) return;
+    const div = document.createElement('div'); div.className='pile'; div.dataset.id=p.id;
+
+    const head = document.createElement('div'); head.className='pileHead';
+    const tag  = document.createElement('span'); tag.className='pileTag'; tag.textContent = p.dir===UP?'UP ▲':'DOWN ▼';
+    const num  = document.createElement('div');  num.className='pileNum'; num.textContent = p.top;
+    num.style.borderColor = `hsl(${hueForValue(p.top)} 80% 55%)`;
+    num.style.background  = `hsl(${hueForValue(p.top)} 25% 15%)`;
+    head.append(tag,num);
+
+    const ft = document.createElement('div'); ft.className='sub';
+    ft.innerHTML = p.dir===UP?'Play higher • or exactly -10':'Play lower • or exactly +10';
+
+    if(isMyTurn && mySelected!=null){
+      if(canPlayOn(mySelected, p)) div.classList.add('canPlay'); else div.classList.add('cannot');
+    }
+
+    div.addEventListener('click', ()=>{
+      if(!isMyTurn || mySelected==null) return;
+      playCardTx(mySelected, p.id);
+    });
+
+    div.append(head,ft);
+    pilesEl.appendChild(div);
+  });
+}
+
+/*** Hand ***/
+function renderHand(){
+  handEl.innerHTML = '';
+  for(const v of myHand){
+    const card = document.createElement('button');
+    card.className = 'cardBtn';
+    card.style.background = colorForValue(v);
+    const band = document.createElement('div'); band.className='band'; band.style.background = bandForValue(v);
+    card.appendChild(band);
+    card.textContent = v;
+
+    const playable = Object.values(G?.piles||{}).some(p=>canPlayOn(v,p));
+    if(!playable) card.classList.add('ghost');
+    if(mySelected===v) card.classList.add('selected');
+    card.addEventListener('click', ()=>{
+      mySelected = (mySelected===v ? null : v);
+      renderPiles(); renderHand(); // refresh outlines
+    });
+    handEl.appendChild(card);
+  }
+}
+
+/*** Log ***/
+function renderLog(){
+  logEl.innerHTML = '';
+  const rows = G?.log || [];
+  for(let i=rows.length-1; i>=0; i--){
+    const d = document.createElement('div');
+    d.innerHTML = rows[i];
+    logEl.appendChild(d);
+  }
+}
+
+/*** Moves & gating ***/
+function anyMoves(hand, pilesArr){
+  for(const c of hand){ for(const p of pilesArr){ if(canPlayOn(c,p)) return true; } }
+  return false;
+}
+
+function gateEndTurn(){
+  if(!G || G.phase!=='game'){ $("endTurnBtn").disabled = true; return; }
+  const req = minRequired((G.deck||[]).length);
+  const movesRemain = anyMoves(myHand, Object.values(G.piles||{}));
+  endBtn.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain));
+}
+
+/*** Transactions ***/
+async function playCardTx(card, pileId){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef);
+    if(!snap.exists()) throw new Error('gone');
+    const S = snap.data();
+    if(S.phase!=='game') throw new Error('not playing');
+
+    const players = S.players||[];
+    const current = players[S.turnIndex||0]||'';
+    if(current !== me) throw new Error('not your turn');
+
+    const piles = S.piles||{};
+    const p = piles[pileId]; if(!p) throw new Error('bad pile');
+
+    const my = (S.hands && S.hands[me]) ? [...S.hands[me]] : [];
+    const idx = my.indexOf(card); if(idx<0) throw new Error('no such card');
+
+    if(!canPlayOn(card, p)) throw new Error('illegal');
+    const backwards = (p.dir===UP && p.top-card===10) || (p.dir===DOWN && card-p.top===10);
+    const prev = p.top; p.top = card;
+
+    my.splice(idx,1); my.sort((a,b)=>a-b);
+    const hands = { ...(S.hands||{}) , [me]: my };
+
+    const placed = (S.placed||0)+1;
+    const turnPlays = (S.turnPlays||0)+1;
+
+    const log = (S.log||[]).slice(-200);
+    const arrow = p.dir===UP?'▲':'▼';
+    log.push(`${me} played <b>${card}</b> on ${p.id} ${arrow}${backwards?' via <b>backwards 10</b>':''} (${prev}→${card}).`);
+
+    // Win check: deck empty and all hands empty
+    const deck = S.deck||[];
+    const everyoneEmpty = Object.values(hands).every(h=>h.length===0);
+    if(deck.length===0 && everyoneEmpty){
+      log.push(`<b class="msgWin">Perfect! All cards placed. 🎉</b>`);
+    }
+
+    tx.update(gameRef, { piles, hands, placed, turnPlays, log });
+  }).catch(e=> console.warn(e));
+}
+
+async function endTurnTx(){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef);
+    if(!snap.exists()) throw new Error('gone');
+    const S = snap.data();
+    if(S.phase!=='game') throw new Error('not playing');
+
+    const players = S.players||[];
+    const tIndex = S.turnIndex||0;
+    const current = players[tIndex]||'';
+    if(current !== me) throw new Error('not your turn');
+
+    const deck = [...(S.deck||[])];
+    const hands = {...(S.hands||{})};
+    const req = minRequired(deck.length);
+    if((S.turnPlays||0) < req){
+      throw new Error(`need ${req} plays`);
+    }
+
+    // Draw to 5 for the current player (only now)
+    const mine = [...(hands[me]||[])];
+    while(mine.length < 5 && deck.length){ mine.push(deck.pop()); }
+    mine.sort((a,b)=>a-b);
+    hands[me]=mine;
+
+    // Advance turn
+    const nextIndex = (tIndex + 1) % players.length;
+    const turnNum = (nextIndex===0) ? (S.turnNum||1)+1 : (S.turnNum||1);
+    const log = (S.log||[]).slice(-200);
+    const drew = Math.max(0, 5-((S.hands?.[me]?.length)||0));
+    log.push(`${me} ended turn. Drew ${drew} card(s). Next: <b>${players[nextIndex]||''}</b>.`);
+
+    tx.update(gameRef, {
+      deck, hands, turnIndex: nextIndex, turnNum,
+      turnPlays: 0, log
+    });
+  }).catch(e=> console.warn(e));
+}
+
+/*** Placeholder for Game 2.0 ***/
+function renderPlaceholderGame2(){
+  pilesEl.style.display='grid';
+  handEl.style.display='none';
+  pilesEl.innerHTML = `
+    <div class="pile" style="grid-column:1/-1">
+      <div class="pileHead"><span class="pileTag">🧪 Prototype</span><div class="pileNum">The Game 2.0</div></div>
+      <div class="sub">This is a placeholder mode. We’ll plug ideas in here!</div>
+    </div>
+  `;
+  $("needMsg").textContent = '';
+  $("turnName").textContent = '—';
+  $("endTurnBtn").disabled = true;
+}
+
+/*** Controls ***/
+$("checkBtn").addEventListener('click', ()=>{
+  if(!G || G.phase!=='game'){ return; }
+  const moves = anyMoves(myHand, Object.values(G.piles||{}));
+  const need  = Math.max(0, minRequired((G.deck||[]).length) - (G.turnPlays||0));
+  const row = document.createElement('div'); row.textContent = moves ? `You have legal moves.${need>0?` Need ${need} more.`:''}` : `No legal moves.${need>0?` Need ${need} more.`:''}`;
+  logEl.prepend(row);
+});
+$("endTurnBtn").addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
+$("leaveBtn").addEventListener('click', ()=>{
+  // back to lobby (adjust path if your index differs)
+  history.back();
+});
+$("fsBtn").addEventListener('click', ()=>{
+  document.documentElement.classList.toggle('full');
+  const el = document.documentElement;
+  if (!document.fullscreenElement){
+    el.requestFullscreen?.();
+  }else{
+    document.exitFullscreen?.();
+  }
+});
+
+/*** Kickoff ***/
+ensureVotePhaseOrResume();
+</script>
+</body>
+</html>
