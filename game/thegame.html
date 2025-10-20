@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>The Game — Vote • Classic • 2.0 (Minimal + Play button)</title>
+<title>The Game — Vote • Classic • 2.0 (Mobile Powers Popup)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
   :root{
@@ -12,6 +12,7 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+
   /* Top bar */
   header{position:sticky; top:0; z-index:30; background:#fff; border-bottom:1px solid var(--line); padding:6px 8px}
   .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
@@ -23,17 +24,21 @@
   .spacer{flex:1}
   .btn{appearance:none; border:1px solid #d1d5db; background:#111827; color:#fff; padding:9px 12px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px}
   .btn[disabled]{opacity:.5; cursor:not-allowed}
-  #playBtn{display:none} /* shown when a power is selected */
+  .btn.secondary{background:#fff; color:#111827}
+  .btn.ghost{background:#f3f4f6; color:#111827; border-color:#d1d5db}
+  #playBtn{display:none} /* legacy inline play button (kept for safety) */
   .chip.fs{background:#eef2ff; border-color:#c7d2fe; color:#1e40af}
 
   /* Content */
   .wrap{max-width:860px; margin:8px auto; padding:0 8px; display:grid; gap:8px}
+
   /* Vote box */
   .vote{border:1px solid var(--line); background:#fff; border-radius:12px; padding:10px}
   .vote .title{font-weight:900; margin-bottom:6px}
   .vote .opt{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; background:#fff; font-weight:700}
   .vote .opt.sel{outline:2px solid var(--accent)}
   .timer{font-weight:800; color:#ca8a04}
+
   /* Piles */
   .piles{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
   .pile{user-select:none; padding:10px; background:#fff; border:1px solid var(--line); border-radius:12px; text-align:center}
@@ -42,6 +47,7 @@
   .pile .eff{font-size:12px; color:#0f172a; min-height:16px}
   .pile.can{outline:2px solid var(--good); outline-offset:2px}
   .pile.cannot{opacity:.7}
+
   /* Hand */
   .hand{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; padding:8px 0 14px}
   .card{position:relative; min-width:52px; height:70px; border-radius:12px; border:2px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:center;
@@ -50,13 +56,37 @@
   .card.selected{outline:3px solid var(--accent); outline-offset:2px}
   .card.ghost{opacity:.45; filter:grayscale(.4); cursor:not-allowed}
   .band{position:absolute; left:0; right:0; bottom:0; height:6px; border-bottom-left-radius:10px; border-bottom-right-radius:10px; opacity:.85}
+
   /* Hint / Log */
   .hint{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 8px}
-  .log{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:110px; overflow:auto}
+  .log{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:120px; overflow:auto}
+
   @media (min-width:700px){ .piles{grid-template-columns:repeat(4,1fr)} }
   /* Fullscreen tweaks */
   .full header{position:fixed; top:0; left:0; right:0}
   .full .wrap{padding-top:2px}
+
+  /* ===== Powers Bottom Sheet (mobile-friendly, fullscreen-safe) ===== */
+  .sheet-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.35);
+    display:none; align-items:flex-end; justify-content:center; z-index:1000;
+  }
+  .sheet{ width:100%; max-width:860px; background:#fff; border-top-left-radius:16px; border-top-right-radius:16px;
+          box-shadow:0 -10px 30px rgba(0,0,0,.2); padding:10px; }
+  .sheet .grab{width:44px; height:5px; border-radius:99px; background:#e5e7eb; margin:0 auto 8px;}
+  .sheet h3{margin:0 0 8px 0; font-size:16px}
+  .powers-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
+  .power-item{border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:6px}
+  .power-item .label{font-weight:800}
+  .power-item .desc{font-size:12px; color:#4b5563; min-height:28px}
+  .power-actions{display:flex; gap:6px; justify-content:flex-end}
+  .inline-pill{display:inline-block; font-size:11px; background:#eef2ff; color:#1e40af; padding:2px 6px; border-radius:999px; border:1px solid #c7d2fe}
+
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:12px; background:#111827; color:#fff; padding:10px 14px; border-radius:12px;
+    font-size:13px; z-index:1100; display:none;
+  }
 </style>
 </head>
 <body>
@@ -65,9 +95,10 @@
     <div id="players" class="players"></div>
     <span id="fsChip" class="chip fs" style="display:none">FS ON</span>
     <div class="spacer"></div>
-    <button id="playBtn" class="btn">Play</button>
-    <button id="endBtn" class="btn" disabled>End Turn</button>
-    <button id="fsBtn" class="btn" title="Toggle Full Screen">⛶</button>
+    <button id="powersBtn" class="btn secondary" type="button" title="Open powers">✨ Powers</button>
+    <button id="playBtn" class="btn" type="button">Play</button>
+    <button id="endBtn" class="btn" type="button" disabled>End Turn</button>
+    <button id="fsBtn" class="btn" type="button" title="Toggle Full Screen">⛶</button>
   </div>
 </header>
 
@@ -93,6 +124,20 @@
   <div id="hint" class="hint" style="display:none"></div>
   <div id="log" class="log"></div>
 </div>
+
+<!-- ===== Powers Bottom Sheet ===== -->
+<div id="sheetWrap" class="sheet-backdrop" role="dialog" aria-modal="true">
+  <div class="sheet" role="document">
+    <div class="grab"></div>
+    <h3>Choose a Power <span id="powerCount" class="inline-pill">0</span></h3>
+    <div id="powersGrid" class="powers-grid"></div>
+    <div class="row" style="justify-content:flex-end; margin-top:8px">
+      <button id="closeSheet" class="btn ghost" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
 
 <script type="module">
 /* ---------------- Firestore ---------------- */
@@ -125,7 +170,7 @@ const $hand    = document.getElementById('hand');
 const $log     = document.getElementById('log');
 const $hint    = document.getElementById('hint');
 const $end     = document.getElementById('endBtn');
-const $play    = document.getElementById('playBtn');
+const $play    = document.getElementById('playBtn'); // legacy inline trigger
 const $fsBtn   = document.getElementById('fsBtn');
 const $fsChip  = document.getElementById('fsChip');
 const $voteBox = document.getElementById('voteBox');
@@ -133,11 +178,24 @@ const $optClassic = document.getElementById('optClassic');
 const $optNew  = document.getElementById('optNew');
 const $voteCount = document.getElementById('voteCount');
 const $voteTimer = document.getElementById('voteTimer');
+const $powersBtn = document.getElementById('powersBtn');
+const $sheetWrap = document.getElementById('sheetWrap');
+const $powersGrid= document.getElementById('powersGrid');
+const $powerCount= document.getElementById('powerCount');
+const $closeSheet= document.getElementById('closeSheet');
+const $toast = document.getElementById('toast');
 
 /* ---------------- Constants & helpers ---------------- */
 const UP='up', DOWN='down';
 const POWERS = { FLIP:'FLIP', SWAP:'SWAP', TRADE:'TRADE', BUNGEE:'BUNGEE', TIMEWARP:'TIMEWARP' };
 const LABEL = { FLIP:'🔁 Flip', SWAP:'🔄 Swap', TRADE:'🤝 Trade', BUNGEE:'🪢 Bungee', TIMEWARP:'⏳ Time Warp' };
+const DESC  = {
+  FLIP: 'Flip the pile direction (UP ⇄ DOWN). Tap a pile after choosing.',
+  SWAP: 'Swap the top numbers of two piles. Tap two piles.',
+  TRADE:'Trade a random card with a player. Tap a player.',
+  BUNGEE:'Arm a pile with one ±20 jump. Tap a pile.',
+  TIMEWARP:'End early this turn (adds +1 required on a future turn).'
+};
 
 const isNumber = x => typeof x === 'number';
 const isPower  = x => typeof x === 'string';
@@ -145,13 +203,7 @@ const sortCards=(a,b)=> (isNumber(a)&&isNumber(b)) ? a-b : (isNumber(a)?-1:(isNu
 function handCap(n){ if(n<=1) return 7; if(n===2) return 6; return 5; }
 function minBase(deckLen){ return deckLen>0 ? 2 : 1; }
 function minRequiredFor(player, deckLen, debts){ return minBase(deckLen) + ((debts&&debts[player])||0); }
-
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
-function dealToCap(hands, deck, players){
-  const cap = handCap(players.length);
-  for(let r=0;r<cap;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
-  for(const p of players){ hands[p].sort(sortCards); }
-}
 
 function hueForValue(v,max){ return Math.round((v-1)/(max-1)*300); }
 function colorForValue(v,max){
@@ -175,6 +227,13 @@ function canPlayOnNumber(card, pile, hasBungee){
   return false;
 }
 
+function toast(msg, ms=1400){
+  $toast.textContent = msg;
+  $toast.style.display='block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ $toast.style.display='none'; }, ms);
+}
+
 /* ---------------- Vote or resume ---------------- */
 async function ensureRoomVotingOrResume(){
   const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
@@ -195,6 +254,11 @@ async function ensureRoomVotingOrResume(){
 }
 
 /* ---------------- Build set-ups ---------------- */
+function dealToCap(hands, deck, players){
+  const cap = handCap(players.length);
+  for(let r=0;r<cap;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
+  for(const p of players){ hands[p].sort(sortCards); }
+}
 function buildClassic(players, host){
   const deck=[]; for(let v=2; v<=99; v++) deck.push(v);
   shuffle(deck);
@@ -237,13 +301,13 @@ function renderVote(){
   if(!G || G.phase!=='voting'){ $voteBox.style.display='none'; return; }
   $voteBox.style.display='block';
   const players = G.players||[]; const votes=G.votes||{};
-  document.getElementById('voteCount').textContent = `${Object.keys(votes).length}/${players.length}`;
+  $voteCount.textContent = `${Object.keys(votes).length}/${players.length}`;
   document.getElementById('optClassic').classList.toggle('sel', votes[me]==='classic');
   document.getElementById('optNew').classList.toggle('sel', votes[me]==='game2');
 
   const remain = Math.max(0,(G.deadline||0)-Date.now());
   const secs = Math.ceil(remain/1000);
-  document.getElementById('voteTimer').textContent = `⏳ ${secs}s`;
+  $voteTimer.textContent = `⏳ ${secs}s`;
 
   $optClassic.onclick = ()=> castVote('classic');
   $optNew.onclick     = ()=> castVote('game2');
@@ -259,7 +323,6 @@ async function castVote(choice){
     const players=S.players||[]; const allVoted = players.every(p=>votes[p]);
     const timeUp = Date.now()>=(S.deadline||0);
     const update={ votes };
-    // Only host resolves
     if((allVoted||timeUp) && LOBBY && LOBBY.host===me){
       const tally = { classic:0, game2:0 };
       Object.values(votes).forEach(v=>{ if(v==='classic') tally.classic++; else if(v==='game2') tally.game2++; });
@@ -276,7 +339,7 @@ onSnapshot(lobbyRef, snap=>{ if(snap.exists()) LOBBY=snap.data(); });
 onSnapshot(gameRef, snap=>{
   if(!snap.exists()) return;
   G=snap.data();
-  if(G.phase==='voting'){ renderVote(); updateActions(); return; }
+  if(G.phase==='voting'){ renderVote(); updateActions(); gateEnd(); return; }
   $voteBox.style.display='none';
   renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd(); updateActions();
 });
@@ -293,7 +356,7 @@ function renderPlayers(){
     // trade target
     if(pending && pending.type==='TRADE' && p!==me){
       el.classList.add('clickable');
-      el.addEventListener('click', ()=> playTradeTx(p));
+      el.addEventListener('click', ()=> playTradeTx(p), {once:true});
     }
     $players.appendChild(el);
   });
@@ -350,26 +413,21 @@ function renderHand(){
     }
     if(mySelected===v) btn.classList.add('selected');
 
-    // Double-tap behavior for powers (phones)
-    let lastTap=0;
-    const onTap=()=>{
-      const now=Date.now(), dbl=(now-lastTap)<300; lastTap=now;
-      if(!isPower(v)){
-        mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); return;
+    btn.addEventListener('click', ()=>{
+      if(!isNumber(v)){
+        // For powers, open sheet and preselect that power for guidance
+        openPowersSheet(v);
+        return;
       }
-      // powers
-      if(!dbl){ mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); return; }
-      mySelected=v;
-      if(v===POWERS.TIMEWARP) { playTimeWarpTx(); return; }
-      if(v===POWERS.TRADE)   { pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); return; }
-      pending = (v===POWERS.SWAP) ? {type:'SWAP'} : null; showHint(targetHintFor(v)); renderPiles(); updateActions();
-    };
-    btn.addEventListener('click', onTap);
-    btn.addEventListener('touchend', (e)=>{ e.preventDefault(); onTap(); }, {passive:false});
+      mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); gateEnd();
+    });
     $hand.appendChild(btn);
   };
 
   nums.forEach(add); pows.forEach(add);
+
+  // Update powers sheet counter
+  $powerCount.textContent = pows.length.toString();
 }
 
 /* ---------------- Hints & actions ---------------- */
@@ -377,7 +435,7 @@ function targetHintFor(v){
   if(v===POWERS.FLIP) return 'Tap a pile to flip direction.';
   if(v===POWERS.BUNGEE) return 'Tap a pile to arm Bungee (±20 once).';
   if(v===POWERS.SWAP) return 'Tap two piles to swap their tops.';
-  if(v===POWERS.TRADE) return 'Tap a player to trade random cards.';
+  if(v===POWERS.TRADE) return 'Tap a player to trade.';
   if(v===POWERS.TIMEWARP) return 'Time Warp played. You may end early this turn.';
   return '';
 }
@@ -387,7 +445,7 @@ function showHint(msg){
 }
 
 function updateActions(){
-  // Play button visible if a power is selected
+  // legacy play button (hidden by default)
   const powerSel = isPower(mySelected) && (G && G.phase==='game2');
   $play.style.display = powerSel ? 'inline-block' : 'none';
   $play.disabled = !powerSel || !isMyTurn;
@@ -395,6 +453,49 @@ function updateActions(){
   // FS chip
   $fsChip.style.display = document.fullscreenElement ? 'inline-block' : 'none';
 }
+
+/* ---------------- Powers Sheet ---------------- */
+function openPowersSheet(preselect=null){
+  if(!G || G.phase!=='game2'){ toast('Powers only in Game 2.0'); return; }
+  const pows = (G.hands?.[me]||[]).filter(isPower);
+  $powersGrid.innerHTML = '';
+  if(pows.length===0){
+    const empty=document.createElement('div');
+    empty.textContent='You have no power cards.';
+    $powersGrid.appendChild(empty);
+  }else{
+    // Aggregate by type for clean UI
+    const counts = pows.reduce((m,p)=> (m[p]=(m[p]||0)+1, m), {});
+    Object.keys(counts).sort().forEach(k=>{
+      const cardType = k;
+      const item = document.createElement('div'); item.className='power-item';
+      const label = document.createElement('div'); label.className='label'; label.textContent = `${LABEL[cardType]||cardType} ×${counts[cardType]}`;
+      const desc  = document.createElement('div'); desc.className='desc'; desc.textContent = DESC[cardType] || '';
+      const actions = document.createElement('div'); actions.className='power-actions';
+      const useBtn = document.createElement('button'); useBtn.className='btn'; useBtn.type='button';
+      useBtn.textContent = `Use ${LABEL[cardType]||cardType}`;
+      useBtn.addEventListener('click', ()=>{
+        if(!isMyTurn){ toast('Not your turn.'); return; }
+        mySelected = cardType;
+        // Start targeting guidance immediately
+        if(cardType===POWERS.TIMEWARP){ playTimeWarpTx(); closeSheet(); return; }
+        if(cardType===POWERS.TRADE){ pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.SWAP){ pending={type:'SWAP'}; showHint('Tap two piles to swap their tops.'); renderPiles(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.FLIP){ showHint('Tap a pile to flip direction.'); renderPiles(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.BUNGEE){ showHint('Tap a pile to arm Bungee (±20 once).'); renderPiles(); updateActions(); closeSheet(); return; }
+      });
+      actions.appendChild(useBtn);
+      item.append(label, desc, actions);
+      $powersGrid.appendChild(item);
+    });
+  }
+  $sheetWrap.style.display='flex';
+}
+function closeSheet(){ $sheetWrap.style.display='none'; }
+
+$powersBtn.addEventListener('click', ()=> openPowersSheet());
+$closeSheet.addEventListener('click', closeSheet);
+$sheetWrap.addEventListener('click', (e)=>{ if(e.target===$sheetWrap) closeSheet(); });
 
 /* ---------------- Interactions ---------------- */
 function onPileTap(id){
@@ -409,7 +510,7 @@ function onPileTap(id){
   }
 }
 
-/* Play button behavior for powers */
+/* Legacy inline play (kept, but Powers Sheet is primary) */
 $play.addEventListener('click', ()=>{
   if(!isMyTurn || !G || G.phase!=='game2' || !isPower(mySelected)) return;
   if(mySelected===POWERS.TIMEWARP){ playTimeWarpTx(); return; }
@@ -419,23 +520,22 @@ $play.addEventListener('click', ()=>{
   if(mySelected===POWERS.BUNGEE){ showHint('Tap a pile to arm Bungee (±20 once).'); renderPiles(); return; }
 });
 
-/* End Turn gating */
-function anyMoves(hand, piles){
-  for(const c of hand){
-    if(isPower(c) && G.phase==='game2') return true;
-    if(isNumber(c)){
-      for(const p of piles){
-        const b=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
-        if(canPlayOnNumber(c,p,b)) return true;
-      }
+/* End Turn gating — only NUMBER plays count as “moves remain” */
+function anyNumberMoves(hand, piles){
+  for (const c of hand){
+    if (!isNumber(c)) continue;
+    for (const p of piles){
+      const b = !!(p.effects||[]).find(e=>e.type==='bungee' && e.charges>0);
+      if (canPlayOnNumber(c, p, b)) return true;
     }
-  } return false;
+  }
+  return false;
 }
 function gateEnd(){
   if(!G){ $end.disabled=true; return; }
   const players=G.players||[]; const current=players[G.turnIndex||0]||'';
   const req=minRequiredFor(current,(G.deck||[]).length,G.debts||{});
-  const movesRemain = anyMoves(myHand, Object.values(G.piles||{}));
+  const movesRemain = anyNumberMoves(myHand, Object.values(G.piles||{}));
   const earlyPass = (G.timewarpPass && G.timewarpPass===current);
   $end.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain || earlyPass));
 }
@@ -450,7 +550,7 @@ $fsBtn.addEventListener('click', ()=>{
     document.exitFullscreen?.();
     document.documentElement.classList.remove('full');
   }
-  setTimeout(updateActions, 50);
+  setTimeout(()=>{ updateActions(); }, 50);
 });
 document.addEventListener('fullscreenchange', ()=>{ 
   document.documentElement.classList.toggle('full', !!document.fullscreenElement);
@@ -482,7 +582,7 @@ async function playNumberTx(card, pileId){
     log.push(`${me} played <b>${card}</b> on ${p.id} ${p.dir===UP?'▲':'▼'}${backwards?' via <b>±10</b>':''}${b20?' with <b>🪢 ±20</b>':''} (${prev}→${card}).`);
 
     tx.update(gameRef,{piles, hands, turnPlays:(S.turnPlays||0)+1, placed:(S.placed||0)+1, log});
-  }).then(()=>{ mySelected=null; pending=null; showHint(''); updateActions(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; pending=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
 }
 
 /* ---------------- TX: powers ---------------- */
@@ -499,7 +599,7 @@ async function playFlipTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔁 Flip</b> on ${p.id} — now <b>${p.dir===UP?'UP':'DOWN'}</b>.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playBungeeTx(pileId){
@@ -517,7 +617,7 @@ async function playBungeeTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} armed <b>🪢 Bungee</b> on ${p.id}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playSwapTx(aId,bId){
@@ -535,7 +635,7 @@ async function playSwapTx(aId,bId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔄 Swap</b> on ${aId}↔${bId}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playTradeTx(target){
@@ -558,7 +658,7 @@ async function playTradeTx(target){
     const hands={...S.hands,[me]:my,[target]:his};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🤝 Trade</b> with <b>${target}</b>.`);
     tx.update(gameRef,{hands,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ pending=null; mySelected=null; showHint(''); renderPlayers(); renderHand(); updateActions(); }).catch(console.warn);
+  }).then(()=>{ pending=null; mySelected=null; showHint(''); renderPlayers(); renderHand(); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playTimeWarpTx(){
@@ -572,9 +672,9 @@ async function playTimeWarpTx(){
 
     const debts={...(S.debts||{})}; debts[me]=(debts[me]||0)+1;
     const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>⏳ Time Warp</b> (may end early; next turn +1 min).`);
+    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>⏳ Time Warp</b> (may end early; future requirement +1).`);
     tx.update(gameRef,{hands,debts,timewarpPass:me,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); renderHand(); }).catch(console.warn);
+  }).then(()=>{ mySelected=null; showHint(''); updateActions(); renderHand(); gateEnd(); toast('Time Warp ready: you may End Turn now.'); }).catch(e=>toast(e.message||'Error'));
 }
 
 /* ---------------- End Turn ---------------- */
@@ -591,11 +691,12 @@ async function endTurnTx(){
 
     const cap=handCap(P.length);
     const mine=[...(hands[me]||[])];
+    const before=mine.length;
     while(mine.length<cap && deck.length){ mine.push(deck.pop()); }
     mine.sort(sortCards); hands[me]=mine;
 
     const next=(idx+1)%P.length; const turnNum = (next===0)?(S.turnNum||1)+1:(S.turnNum||1);
-    const log=(S.log||[]).slice(-200); const drew=Math.max(0, cap - ((S.hands?.[me]?.length)||0));
+    const log=(S.log||[]).slice(-200); const drew=Math.max(0, cap - before);
     log.push(`${me} ended turn. Drew ${drew}. Next: <b>${P[next]||''}</b>.`);
 
     const debts={...(S.debts||{})}; let pass=S.timewarpPass;
@@ -603,9 +704,21 @@ async function endTurnTx(){
     if((S.debts||{})[cur]>0){ debts[cur]=Math.max(0,(debts[cur]||0)-1); if(debts[cur]===0) delete debts[cur]; }
 
     tx.update(gameRef,{deck,hands,turnIndex:next,turnNum,turnPlays:0,log,debts,timewarpPass:pass});
-  }).catch(console.warn);
+  }).then(()=>{
+    mySelected = null;
+    pending = null;
+    showHint('');
+    updateActions();
+    gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
-$end.addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
+
+/* ---------------- Log ---------------- */
+function renderLog(){
+  const log=(G.log||[]).slice(-200);
+  $log.innerHTML = log.map(x=>`<div>${x}</div>`).join('');
+  $log.scrollTop=$log.scrollHeight;
+}
 
 /* ---------------- Kickoff ---------------- */
 ensureRoomVotingOrResume();
