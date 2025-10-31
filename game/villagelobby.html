@@ -6,126 +6,112 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
-      --bg:#0b1020; --panel:#0f1a33; --glass:rgba(255,255,255,.06);
-      --ink:#e6f0ff; --muted:#9db0c4; --line:rgba(255,255,255,.08);
-      --accent:#67e8f9; --accent2:#a78bfa; --good:#34d399; --warn:#fbbf24;
-      --danger:#fb7185; --chip:#0c142a; --glow:0 0 0 1px rgba(255,255,255,.05), 0 8px 24px rgba(0,0,0,.35), 0 0 32px rgba(103,232,249,.12);
+      /* Light theme */
+      --bg:#f7fbff; --panel:#ffffff; --ink:#0b1220; --muted:#5b6b7d; --line:#e6edf5;
+      --accent:#0ea5e9; --accent2:#7c3aed; --good:#16a34a; --warn:#f59e0b; --danger:#ef4444;
+      --chip:#f1f5f9; --glow:0 8px 22px rgba(13,37,62,.08);
     }
     *{ box-sizing:border-box }
     body{
-      margin:0; padding:24px; background: radial-gradient(80vw 80vh at 20% -10%, #0f2346 0%, #0b1020 45%, #090d19 100%);
+      margin:0; padding:24px;
+      background: radial-gradient(1200px 600px at 20% -10%, #e6f4ff 0%, #f7fbff 45%, #f7fbff 100%);
       color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
     }
     .shell{
       max-width:1200px; margin:0 auto; display:grid; grid-template-columns: 2fr 1fr; gap:18px;
     }
     .card{
-      background: linear-gradient(180deg, var(--glass), transparent);
-      border:1px solid var(--line); border-radius:14px; padding:16px 16px 18px; backdrop-filter: blur(10px);
-      box-shadow: var(--glow);
+      background: var(--panel);
+      border:1px solid var(--line); border-radius:14px; padding:16px 16px 18px; box-shadow: var(--glow);
     }
-    h1{ margin:0 0 10px 0; font-size:28px; letter-spacing:.4px }
+    h1{ margin:0 0 10px 0; font-size:28px; letter-spacing:.3px }
     h2{ margin:6px 0 12px; font-size:18px; color:var(--accent) }
-    h3{ margin:4px 0 10px; font-size:16px; color:var(--muted) }
+    h3{ margin:4px 0 10px; font-size:15px; color:var(--muted) }
 
     /* Left column */
     #villagesCard{ min-height:680px }
-    #villageList{
-      display:flex; flex-direction:column; gap:10px; max-height:560px; overflow:auto; padding-right:6px;
-    }
+    #villageList{ display:flex; flex-direction:column; gap:10px }
     .sectionTitle{
-      display:flex; align-items:center; gap:10px; margin:10px 0 4px; color:var(--accent2); font-weight:700;
-      text-shadow: 0 0 8px rgba(167,139,250,.35);
+      display:flex; align-items:center; gap:10px; margin:12px 0 6px; color:var(--accent2); font-weight:800;
     }
     .village-row{
       display:grid; grid-template-columns: 1.5fr .7fr auto; gap:10px;
       align-items:center; padding:10px; border:1px solid var(--line); border-radius:12px;
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-      transition: transform .06s ease, border-color .2s ease;
+      background: #ffffff;
+      transition: transform .06s ease, border-color .2s ease, box-shadow .2s ease;
     }
-    .village-row:hover{ transform: translateY(-1px); border-color: rgba(103,232,249,.25); }
-    .village-row.own{ outline:1px solid rgba(52,211,153,.4); box-shadow: 0 0 0 2px rgba(52,211,153,.1) inset; }
-    .v-name{ font-weight:700; color:#eaf2ff }
+    .village-row:hover{ transform: translateY(-1px); border-color: #d6e3f3; box-shadow: 0 6px 14px rgba(18,46,83,.06); }
+    .village-row.own{ outline:1px solid rgba(22,163,74,.35); box-shadow: 0 0 0 2px rgba(16,185,129,.08) inset; }
+    .v-name{ font-weight:800; color:#0e1726 }
     .v-owner{ color:var(--muted); font-size:13px }
-    .v-power{
-      font-variant-numeric: tabular-nums; font-weight:800; letter-spacing:.3px;
-    }
+    .v-power{ font-variant-numeric: tabular-nums; font-weight:900; letter-spacing:.2px }
     .pill{
-      background:var(--chip); border:1px solid var(--line); padding:6px 10px; border-radius:10px; font-weight:700;
-      color:var(--accent); box-shadow: inset 0 0 24px rgba(103,232,249,.06);
+      background:var(--chip); border:1px solid var(--line); padding:6px 10px; border-radius:999px; font-weight:800;
+      color:var(--accent);
     }
-    .row-actions{ display:flex; gap:8px; }
+    .row-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end }
     .btn{
-      appearance:none; border:1px solid var(--line); background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      appearance:none; border:1px solid var(--line); background:#fff;
       color:var(--ink); border-radius:10px; padding:8px 12px; font-weight:800; cursor:pointer; letter-spacing:.2px;
-      transition: transform .06s ease, filter .15s ease, border-color .2s ease; backdrop-filter: blur(4px);
+      transition: transform .06s ease, filter .15s ease, border-color .2s ease;
     }
-    .btn:hover{ filter: brightness(1.06); border-color: rgba(103,232,249,.35) }
+    .btn:hover{ filter: brightness(1.06); border-color: #cfe0f3 }
     .btn:active{ transform: translateY(1px) }
-    .btn-primary{ color:#05131c; background: linear-gradient(180deg, #67e8f9, #22d3ee); border:none; }
-    .btn-danger{ background: linear-gradient(180deg, #fb7185, #ef4444); border:none; }
+    .btn-primary{ color:white; background: linear-gradient(180deg, #38bdf8, #0ea5e9); border:none; }
     .btn-ghost{ background: transparent }
 
-    .toolbar{
-      display:flex; gap:10px; align-items:center; margin:10px 0 16px;
-    }
+    .toolbar{ display:flex; gap:10px; align-items:center; margin:10px 0 16px; flex-wrap:wrap }
     .toolbar .tag{
       font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      background:#fff;
     }
 
     /* Right column panels stack */
     .stack{ display:flex; flex-direction:column; gap:18px }
-
     .scrollbox{
-      max-height:260px; overflow:auto; padding-right:6px; border:1px dashed var(--line); border-radius:12px;
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      max-height:300px; overflow:auto; padding-right:6px; border:1px dashed var(--line); border-radius:12px;
+      background:#fff;
     }
     .leader-row{
       display:grid; grid-template-columns: auto 1fr auto; gap:10px; align-items:center; padding:8px 10px;
-      border-bottom:1px solid rgba(255,255,255,.06);
+      border-bottom:1px solid #eef3f8;
     }
     .leader-row:last-child{ border-bottom:0 }
     .ranknum{
       width:28px; height:28px; display:grid; place-items:center; border-radius:8px; font-weight:900;
-      color:#06121a; background:linear-gradient(180deg, #a78bfa, #7c3aed);
-      box-shadow: 0 0 0 2px rgba(167,139,250,.25) inset;
+      color:#fff; background:linear-gradient(180deg, #7c3aed, #6d28d9);
     }
-    .me .ranknum{ background:linear-gradient(180deg, #34d399, #10b981) }
-    .mini{
-      font-size:12px; color:var(--muted);
-    }
+    .me .ranknum{ background:linear-gradient(180deg, #16a34a, #0ea568) }
+    .mini{ font-size:12px; color:var(--muted) }
 
     /* Login & header */
-    .auth{
-      display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px;
-    }
+    .auth{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px }
     .input{
-      background: rgba(255,255,255,.06); border:1px solid var(--line); color:var(--ink);
+      background:#fff; border:1px solid var(--line); color:var(--ink);
       padding:8px 10px; border-radius:10px; outline:none; width:180px;
     }
     .idchip{ margin-left:auto; font-size:12px; color:var(--muted) }
 
     /* Preview popup */
     #previewPopup{
-      display:none; position:fixed; inset:0; background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
+      display:none; position:fixed; inset:0; background: rgba(0,0,0,.35);
       align-items:center; justify-content:center; z-index:1000;
     }
     .modal{
-      background: linear-gradient(180deg, rgba(8,14,26,.95), rgba(6,10,19,.92));
-      border:1px solid var(--line); border-radius:14px; padding:16px; width:min(90vw,520px); box-shadow: var(--glow);
+      background:#fff; color:var(--ink);
+      border:1px solid var(--line); border-radius:14px; padding:16px; width:min(90vw,520px); box-shadow: 0 16px 50px rgba(0,0,0,.12);
     }
     .modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
     #previewGrid{
       display:grid; grid-template-columns: repeat(16, 10px); gap:1px; margin-top:10px;
     }
-    #previewGrid div{ width:10px; height:10px; border:1px solid #2a3550; background:#0a1122 }
+    #previewGrid div{ width:10px; height:10px; border:1px solid #d7e2f0; background:#eff6ff }
 
-    /* tiny legend dots */
     .dot{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle }
-
-    /* helper */
     .sep{ height:1px; background:var(--line); margin:10px 0 }
+
+    /* Simple three-column grid for Suggested Battles list */
+    .grid3{ display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px }
   </style>
 
   <script type="module">
@@ -162,13 +148,11 @@
 
     /* ----------------- Boot ----------------- */
     document.addEventListener("DOMContentLoaded", () => {
-      // Wire login
       document.getElementById("loginBtn").onclick = doLogin;
 
-      // If we already have a username (came from battle/create), auto-load
       if (currentUsername) {
         document.getElementById("username").value = currentUsername;
-        document.getElementById("password").value = ""; // no PW required when returning via ?username
+        document.getElementById("password").value = ""; // no PW needed when returning via ?username
         loadVillagePage(true);
       }
     });
@@ -181,7 +165,7 @@
       const uSnap = await getDoc(uRef);
       if (uSnap.exists() && uSnap.data().password === pass) {
         currentUsername = user;
-        localStorage.setItem("username", user); // persist session
+        localStorage.setItem("username", user);
         loadVillagePage();
       } else {
         alert("Invalid credentials.");
@@ -189,38 +173,99 @@
     }
 
     /* ----------------- Load / Render ----------------- */
-    async function loadVillagePage(skipAuth=false){
-      // hide login
+    async function loadVillagePage(){
       document.getElementById("loginSection").style.display = "none";
-      // header id chip
       document.getElementById("idChip").textContent = `Signed in as ${currentUsername}`;
 
-      // campaign
       const userRef  = doc(db, "users", currentUsername);
       const userSnap = await getDoc(userRef);
       campaign       = userSnap.exists() ? (userSnap.data().campaign || 0) : 0;
       targetGoblinId = `Goblin${campaign + 1}`;
 
-      // villages
       const snap = await getDocs(collection(db, "villages"));
       villages   = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      renderVillages();
-      await loadTribeUI();
+      // Render order: Your Village (top) → Suggested Battles (below) → Active Villages
+      renderLeftColumn(userSnap.exists() ? userSnap.data().tribe : null);
       renderPlayerRankings();
-      renderSuggestedBattles();
+      await loadTribeUI();
     }
 
     function powerOf(v){ return (v?.power?.attack || 0) + (v?.power?.defense || 0); }
 
-    function renderVillages(){
+    function addSectionTitle(parent, text){
+      const div = document.createElement("div");
+      div.className = "sectionTitle";
+      div.innerHTML = `<span>${text}</span><span class="sep" style="flex:1"></span>`;
+      parent.appendChild(div);
+    }
+
+    function renderLeftColumn(myTribe){
       const list = document.getElementById("villageList");
       list.innerHTML = "";
 
-      // Campaign Block
+      // --- Your Village (top)
+      addSectionTitle(list, "🏰 Your Village");
+      const ownV = villages.find(v => v.owner === currentUsername);
+      if (ownV) {
+        const row = renderVillageRow(ownV, true, false, myTribe);
+        list.appendChild(row);
+      } else {
+        const create = document.createElement("div");
+        create.className = "village-row";
+        create.innerHTML = `
+          <div><div class="v-name">No village yet</div><div class="v-owner">Owner: ${currentUsername}</div></div>
+          <div class="v-power">0</div>
+          <div class="row-actions"></div>
+        `;
+        const actions = create.querySelector(".row-actions");
+        const makeBtn = document.createElement("button");
+        makeBtn.className = "btn btn-primary";
+        makeBtn.textContent = "🛠️ Create Village";
+        makeBtn.onclick = () => location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
+        actions.appendChild(makeBtn);
+        list.appendChild(create);
+      }
+
+      // --- Suggested Battles (3) directly under your village
+      addSectionTitle(list, "🎯 Suggested Battles (Top 3)");
+      const meV    = villages.find(v => v.owner === currentUsername);
+      const myPow  = powerOf(meV || {});
+      const sugg   = villages
+        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
+        .map(v => ({ v, diff: Math.abs(powerOf(v) - myPow) }))
+        .sort((a,b)=> a.diff - b.diff)
+        .slice(0,3);
+
+      const grid3 = document.createElement("div");
+      grid3.className = "grid3";
+      sugg.forEach(({v,diff})=>{
+        const card = document.createElement("div");
+        card.className = "village-row";
+        card.innerHTML = `
+          <div>
+            <div class="v-name">${v.id}</div>
+            <div class="v-owner">Owner: ${v.owner}</div>
+          </div>
+          <div class="v-power">${powerOf(v)}</div>
+          <div class="row-actions">
+            <span class="pill">Δ ${diff}</span>
+            <button class="btn" title="Preview">🧭 Preview</button>
+            <button class="btn btn-primary" title="Attack">⚔️ Attack</button>
+          </div>
+        `;
+        const acts = card.querySelector(".row-actions").children;
+        acts[1].onclick = (e)=>{ e.stopPropagation(); showVillagePreview(v.grid || []); };
+        acts[2].onclick = (e)=>{ e.stopPropagation(); location.href = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`; };
+        card.onclick = ()=> showVillagePreview(v.grid || []);
+        grid3.appendChild(card);
+      });
+      list.appendChild(grid3);
+
+      // --- Campaign Target
       addSectionTitle(list, "🎯 Campaign Target");
       const campV = villages.find(v => v.id === targetGoblinId);
-      if (campV) renderVillageRow(list, campV, false, true);
+      if (campV) list.appendChild(renderVillageRow(campV, false, true));
       else {
         const done = document.createElement("div");
         done.className = "village-row";
@@ -228,34 +273,27 @@
         list.appendChild(done);
       }
 
-      // Active
+      // --- Active Villages
       addSectionTitle(list, "🏘️ Active Villages");
-
-      const ownV = villages.find(v => v.owner === currentUsername);
-      if (ownV) renderVillageRow(list, ownV, true, false);
-
       const others = villages
         .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
         .sort((a,b) => powerOf(b) - powerOf(a));
-      others.forEach(v => renderVillageRow(list, v, false, false));
+      others.forEach(v => list.appendChild(renderVillageRow(v, false, false)));
 
-      // Work / Create
+      // Work/Edit button row under list
       const workRow = document.createElement("div");
       workRow.style.display = 'flex';
       workRow.style.justifyContent = 'flex-start';
       workRow.style.gap = '10px';
       const workBtn = document.createElement("button");
       workBtn.className = "btn btn-primary";
-      workBtn.textContent = ownV ? "🏰 Work on Village" : "🛠️ Create Village";
-      workBtn.onclick = () => {
-        // Correct link (no "Magic"), keep login by passing username
-        location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
-      };
+      workBtn.textContent = ownV ? "🔧 Work on Village" : "🛠️ Create Village";
+      workBtn.onclick = () => location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
       workRow.appendChild(workBtn);
 
-      const previewLegend = document.createElement("div");
-      previewLegend.className = "mini";
-      previewLegend.innerHTML = `
+      const legend = document.createElement("div");
+      legend.className = "mini";
+      legend.innerHTML = `
         <span class="dot" style="background:${buildingClassMap.archerTower}"></span>Archer
         <span class="dot" style="background:${buildingClassMap.sniperTower}"></span>Sniper
         <span class="dot" style="background:${buildingClassMap.lightningStriker}"></span>Lightning
@@ -265,18 +303,11 @@
         <span class="dot" style="background:${buildingClassMap.wall}"></span>Wall
         <span class="dot" style="background:${buildingClassMap.troopStructure}"></span>Troops
       `;
-      workRow.appendChild(previewLegend);
+      workRow.appendChild(legend);
       list.appendChild(workRow);
     }
 
-    function addSectionTitle(parent, text){
-      const div = document.createElement("div");
-      div.className = "sectionTitle";
-      div.innerHTML = `<span>${text}</span><span class="sep" style="flex:1"></span>`;
-      parent.appendChild(div);
-    }
-
-    function renderVillageRow(container, v, isOwn, isCampaign){
+    function renderVillageRow(v, isOwn=false, isCampaign=false, myTribe=null){
       const row = document.createElement("div");
       row.className = "village-row" + (isOwn ? " own" : "");
       const total = powerOf(v);
@@ -288,107 +319,50 @@
         <div class="v-power">${total}</div>
         <div class="row-actions"></div>
       `;
-      row.onclick = () => showVillagePreview(v.grid || []);
-
       const actions = row.querySelector(".row-actions");
 
-      if (!isOwn){
-        const atk = document.createElement("button");
-        atk.className = "btn";
-        atk.textContent = "⚔️ Attack";
-        atk.onclick = (e) => {
-          e.stopPropagation();
-          // Correct link (no "Magic") and keep username as attacker
-          const url = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`;
-          location.href = url;
-        };
-        actions.appendChild(atk);
-      } else {
+      if (isOwn){
+        if (myTribe){
+          const tribeBadge = document.createElement("span");
+          tribeBadge.className = "pill";
+          tribeBadge.textContent = `Tribe: ${myTribe}`;
+          actions.appendChild(tribeBadge);
+        }
         const edit = document.createElement("button");
         edit.className = "btn";
         edit.textContent = "🔧 Edit";
-        edit.onclick = (e)=>{
-          e.stopPropagation();
-          location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
-        };
+        edit.onclick = (e)=>{ e.stopPropagation(); location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`; };
         actions.appendChild(edit);
         const preview = document.createElement("button");
         preview.className = "btn";
         preview.textContent = "🧭 Preview";
         preview.onclick = (e)=>{ e.stopPropagation(); showVillagePreview(v.grid || []); };
         actions.appendChild(preview);
-      }
-
-      // subtle pill
-      const pill = document.createElement("span");
-      pill.className = "pill";
-      pill.textContent = isCampaign ? "Campaign" : (isOwn ? "Your Village" : "PvP");
-      actions.prepend(pill);
-
-      container.appendChild(row);
-    }
-
-    /* ----------------- Tribe UI ----------------- */
-    async function loadTribeUI(){
-      const tribeCard = document.getElementById("tribeCard");
-      tribeCard.innerHTML = `
-        <h2>🛡️ Tribe</h2>
-        <div id="myTribe"></div>
-        <div class="sep"></div>
-        <h3>🏆 Tribe Power Rankings</h3>
-        <div id="tribeRanks" class="scrollbox"></div>
-      `;
-      const uRef  = doc(db, "users", currentUsername);
-      const uSnap = await getDoc(uRef);
-      const userData = uSnap.exists() ? uSnap.data() : {};
-
-      const my = document.getElementById("myTribe");
-      if (userData.tribe){
-        my.innerHTML = `<div class="tag">Member of <b>${userData.tribe}</b></div>`;
       } else {
-        const sel = document.createElement("select");
-        sel.className = "input";
-        tribesList.forEach(t => {
-          const o = document.createElement("option"); o.value=t; o.text=t; sel.appendChild(o);
-        });
-        const join = document.createElement("button");
-        join.className = "btn btn-primary"; join.textContent = "Join Tribe";
-        join.onclick = async () => { await updateDoc(uRef, { tribe: sel.value }); loadTribeUI(); };
-        const row = document.createElement("div"); row.className="auth"; row.appendChild(sel); row.appendChild(join);
-        my.appendChild(row);
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = isCampaign ? "Campaign" : "PvP";
+        actions.appendChild(pill);
+
+        const preview = document.createElement("button");
+        preview.className = "btn";
+        preview.textContent = "🧭 Preview";
+        preview.onclick = (e)=>{ e.stopPropagation(); showVillagePreview(v.grid || []); };
+        actions.appendChild(preview);
+
+        const atk = document.createElement("button");
+        atk.className = "btn btn-primary";
+        atk.textContent = "⚔️ Attack";
+        atk.onclick = (e) => {
+          e.stopPropagation();
+          const url = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`;
+          location.href = url;
+        };
+        actions.appendChild(atk);
       }
 
-      // Build tribe map
-      const usersSnap = await getDocs(collection(db, "users"));
-      const tribeMap = {};
-      usersSnap.docs.forEach(d=>{
-        const ud = d.data();
-        if (ud.tribe){
-          tribeMap[ud.tribe] = tribeMap[ud.tribe] || [];
-          tribeMap[ud.tribe].push(d.id);
-        }
-      });
-      const ranks = Object.entries(tribeMap).map(([tribe,members])=>{
-        let sum = 0;
-        members.forEach(m=>{
-          const v = villages.find(x => x.owner === m);
-          sum += powerOf(v || {});
-        });
-        return { tribe, power: sum };
-      }).sort((a,b)=> b.power - a.power);
-
-      const box = document.getElementById("tribeRanks");
-      box.innerHTML = "";
-      ranks.forEach((r,i)=>{
-        const row = document.createElement("div");
-        row.className = "leader-row";
-        row.innerHTML = `
-          <div class="ranknum">${i+1}</div>
-          <div><b>${r.tribe}</b><div class="mini">${r.power} power</div></div>
-          <div></div>
-        `;
-        box.appendChild(row);
-      });
+      row.onclick = () => showVillagePreview(v.grid || []);
+      return row;
     }
 
     /* ----------------- Player Rankings (scrollable) ----------------- */
@@ -417,37 +391,87 @@
       });
     }
 
-    /* ----------------- Suggested Battles (closest power) ----------------- */
-    function renderSuggestedBattles(){
-      const card = document.getElementById("suggestCard");
-      const meV = villages.find(v => v.owner === currentUsername);
-      const myPower = powerOf(meV || {});
-      card.innerHTML = `
-        <h2>🎯 Suggested Battles</h2>
-        <div class="mini">Closest to your power: <b>${myPower || 0}</b></div>
+    /* ----------------- Tribe UI (click to see members) ----------------- */
+    async function loadTribeUI(){
+      const tribeCard = document.getElementById("tribeCard");
+      tribeCard.innerHTML = `
+        <h2>🛡️ Tribe</h2>
+        <div id="myTribe"></div>
         <div class="sep"></div>
-        <div id="suggestList" class="scrollbox"></div>
+        <h3>🏆 Tribe Power Rankings</h3>
+        <div id="tribeRanks" class="scrollbox"></div>
       `;
-      const list = villages
-        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
-        .map(v => ({ v, diff: Math.abs(powerOf(v) - (myPower||0)) }))
-        .sort((a,b)=> a.diff - b.diff)
-        .slice(0,8);
+      const uRef  = doc(db, "users", currentUsername);
+      const uSnap = await getDoc(uRef);
+      const userData = uSnap.exists() ? uSnap.data() : {};
 
-      const box = document.getElementById("suggestList");
+      const my = document.getElementById("myTribe");
+      if (userData.tribe){
+        my.innerHTML = `<div class="pill" style="color:#0f766e;background:#e6fffb;border-color:#b6f3ee">You’re in <b>${userData.tribe}</b></div>`;
+      } else {
+        const sel = document.createElement("select");
+        sel.className = "input";
+        tribesList.forEach(t => {
+          const o = document.createElement("option"); o.value=t; o.text=t; sel.appendChild(o);
+        });
+        const join = document.createElement("button");
+        join.className = "btn btn-primary"; join.textContent = "Join Tribe";
+        join.onclick = async () => { await updateDoc(uRef, { tribe: sel.value }); loadTribeUI(); };
+        const row = document.createElement("div"); row.className="auth"; row.appendChild(sel); row.appendChild(join);
+        my.appendChild(row);
+      }
+
+      // Build tribe map + powers
+      const usersSnap = await getDocs(collection(db, "users"));
+      const tribeMap = {};
+      usersSnap.docs.forEach(d=>{
+        const ud = d.data();
+        if (ud.tribe){
+          tribeMap[ud.tribe] = tribeMap[ud.tribe] || [];
+          tribeMap[ud.tribe].push(d.id);
+        }
+      });
+      const ranks = Object.entries(tribeMap).map(([tribe,members])=>{
+        let sum = 0;
+        members.forEach(m=>{
+          const v = villages.find(x => x.owner === m);
+          sum += powerOf(v || {});
+        });
+        return { tribe, members, power: sum };
+      }).sort((a,b)=> b.power - a.power);
+
+      // Render, with expandable member lists
+      const box = document.getElementById("tribeRanks");
       box.innerHTML = "";
-      list.forEach(({v,diff})=>{
+      ranks.forEach((r,i)=>{
         const row = document.createElement("div");
         row.className = "leader-row";
+        row.style.cursor = "pointer";
         row.innerHTML = `
-          <div class="ranknum">⚔️</div>
-          <div><b>${v.owner}</b><div class="mini">${v.id}</div></div>
-          <div class="mini">Δ${diff} | ${powerOf(v)}</div>
+          <div class="ranknum">${i+1}</div>
+          <div><b>${r.tribe}</b><div class="mini">${r.power} power — click to view members</div></div>
+          <div>👥</div>
         `;
+        const membersWrap = document.createElement("div");
+        membersWrap.style.display = "none";
+        membersWrap.style.padding = "6px 10px 10px 44px";
+        membersWrap.style.background = "#fafcff";
+
+        const list = document.createElement("div");
+        list.className = "mini";
+        list.innerHTML = r.members
+          .map(m => {
+            const v = villages.find(x => x.owner === m);
+            return `<div style="padding:2px 0"><b>${m}</b> — <span style="opacity:.8">${powerOf(v||{})} power</span></div>`;
+          }).join("");
+        membersWrap.appendChild(list);
+
         row.onclick = ()=>{
-          location.href = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`;
+          membersWrap.style.display = (membersWrap.style.display === "none") ? "block" : "none";
         };
+
         box.appendChild(row);
+        box.appendChild(membersWrap);
       });
     }
 
@@ -461,9 +485,9 @@
           const cell = document.createElement("div");
           const tile = grid?.find(t => t.x===x && t.y===y);
           if (tile){
-            const color = buildingClassMap[tile.type] || '#20304f';
+            const color = buildingClassMap[tile.type] || '#cfe3ff';
             cell.style.background = color;
-            cell.style.borderColor = '#31406a';
+            cell.style.borderColor = '#dbe7f7';
           }
           pg.appendChild(cell);
         }
@@ -475,14 +499,14 @@
 </head>
 <body>
   <div class="shell">
-    <!-- LEFT: Villages -->
+    <!-- LEFT: Your Village (top) + Suggested Battles under it + Active Villages -->
     <div id="villagesCard" class="card">
       <div class="auth">
         <h1>⚡ Tribes Lobby</h1>
         <div class="idchip" id="idChip">Not signed in</div>
       </div>
 
-      <div id="loginSection" class="card" style="background:transparent; border-color:var(--line); margin-bottom:12px;">
+      <div id="loginSection" class="card" style="background:#fff; border-color:var(--line); margin-bottom:12px;">
         <div class="auth">
           <input id="username" class="input" type="text" placeholder="Username" />
           <input id="password" class="input" type="password" placeholder="Password" />
@@ -492,19 +516,18 @@
       </div>
 
       <div class="toolbar">
-        <span class="tag">Glass UI</span>
-        <span class="tag">Live Power</span>
-        <span class="tag">Suggest Battles</span>
+        <span class="tag">Light UI</span>
+        <span class="tag">Your Village on Top</span>
+        <span class="tag">Suggested Battles (3)</span>
       </div>
 
       <div id="villageList"></div>
     </div>
 
-    <!-- RIGHT: Stack panels -->
+    <!-- RIGHT: Player Rankings + Tribe Rankings (click to view members) -->
     <div class="stack">
-      <div id="tribeCard" class="card"></div>
       <div id="playerRanksCard" class="card"></div>
-      <div id="suggestCard" class="card"></div>
+      <div id="tribeCard" class="card"></div>
     </div>
   </div>
 
@@ -520,5 +543,7 @@
   </div>
 </body>
 </html>
+
+
 
 
