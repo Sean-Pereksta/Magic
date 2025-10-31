@@ -30,11 +30,12 @@
     }
     .troop.archer{ background:darkgreen; }
     .troop.guardian{ background:darkblue; }
-    .troop.bomber{ background:red; }
+    .troop.bomber{ background:#b91c1c; }
     .troop.raider{ background:#8b5cf6; }
     .troop.golem{ background:#334155; }
     .troop.minigolem{ background:#475569; }
     .troop.dragon{ background:#7c2d12; border-radius:6px; } /* flying look */
+    .troop.cthulu{ background:#0f766e; } /* teal eldritch */
 
     .troop-hp {
       position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
@@ -75,6 +76,35 @@
     .fx.hit { background:rgba(128,128,128,.65); width:12px; height:12px; animation: puff .25s ease-out forwards; }
     .fx.splash { background:rgba(75,85,99,.6); width:16px; height:16px; animation:puff .3s ease-out forwards; }
     .fx.fire { background:rgba(239,68,68,.55); width:18px; height:18px; animation:puff .35s ease-out forwards; }
+
+    /* BOMBER FX: fiery expanding blast */
+    .fx.explosion {
+      width: 8px; height: 8px; border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(255, 115, 0, 0.8), 0 0 0 0 rgba(255, 196, 0, .7);
+      background: radial-gradient(circle, rgba(255,180,0,.9) 0%, rgba(220,38,38,.85) 60%, rgba(0,0,0,0) 61%);
+      animation: boom .45s ease-out forwards;
+      z-index: 60;
+    }
+    @keyframes boom{
+      0%{ transform:translate(-50%,-50%) scale(1); opacity:1; box-shadow: 0 0 0 0 rgba(255,115,0,.8), 0 0 0 0 rgba(255,196,0,.7); }
+      60%{ transform:translate(-50%,-50%) scale(3); opacity:.9; box-shadow: 0 0 20px 12px rgba(255,115,0,.45), 0 0 40px 22px rgba(255,196,0,.25); }
+      100%{ transform:translate(-50%,-50%) scale(4.2); opacity:0; box-shadow: 0 0 60px 28px rgba(255,115,0,0); }
+    }
+
+    /* CTHULU BEAM: quick cyan laser segments */
+    .fx.beam {
+      width: 28px; height: 6px; border-radius: 3px;
+      background: linear-gradient(90deg, rgba(34,211,238,.15), rgba(34,211,238,.9), rgba(34,211,238,.15));
+      filter: drop-shadow(0 0 6px rgba(34,211,238,.8));
+      animation: flash .18s linear forwards;
+      z-index: 58;
+    }
+    .fx.beam.v { width: 6px; height: 28px; } /* vertical segment */
+    @keyframes flash {
+      from { opacity: .95; }
+      to   { opacity: 0; }
+    }
+
     @keyframes puff{
       from{ opacity:1; transform:translate(-50%,-50%) scale(1); }
       to{ opacity:0; transform:translate(-50%,-50%) scale(2); }
@@ -92,6 +122,8 @@
       <button onclick="selectTroopType('bomber')">💣 Bomber (6)</button>
       <button onclick="selectTroopType('golem')">💎 Golem (8)</button>
       <button onclick="selectTroopType('dragon')">🐉 Dragon (12)</button>
+      <!-- CTHULU button -->
+      <button onclick="selectTroopType('cthulu')">🐙 Cthulu (14)</button>
     </div>
     <div><strong>Troops Left:</strong> <span id="troopCount">0</span></div>
     <button id="surrenderBtn" onclick="endBattle(false)">🏳️ Surrender</button>
@@ -173,7 +205,9 @@
       raider:  { hp: 26,  damage: 5, range: 2, speed: 2, cost: 4 },
       bomber:  { hp: 20,  damage: 20,range: 2, speed: 0, cost: 6 },
       golem:   { hp: 200, damage: 4, range: 1, speed: 1, cost: 8 },  // hulking low DPS
-      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12 }  // fire breath, flies
+      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12 },  // fire breath, flies
+      // CTHULU: medium damage beam, range 3 (shorter than archer), a bit more HP than swordsman, expensive
+      cthulu:  { hp: 28,  damage: 6, range: 3, speed: 1, cost: 14 }
     };
 
     const enemyStructures = [];
@@ -203,7 +237,7 @@
       const p = gridCenter(c);
       fx.style.left = p.x + "px"; fx.style.top = p.y + "px";
       gridElement.appendChild(fx);
-      setTimeout(()=> fx.remove(), 360);
+      setTimeout(()=> fx.remove(), 460);
     }
     function shootProjectile(fromX,fromY,toX,toY,cls,onHit,travelMs=250){
       const from = cellAt(fromX,fromY), to = cellAt(toX,toY);
@@ -273,6 +307,51 @@
       return best;
     }
 
+    /* ============ CTHULU Helpers ============ */
+    function chooseBeamDirection(fromX, fromY, targetX, targetY){
+      const dx = targetX - fromX, dy = targetY - fromY;
+      if (Math.abs(dx) >= Math.abs(dy)){
+        return { dirX: Math.sign(dx) || 1, dirY: 0, orient: 'h' }; // default right if same tile
+      } else {
+        return { dirX: 0, dirY: Math.sign(dy) || 1, orient: 'v' }; // default down
+      }
+    }
+    function castBeam(fromX, fromY, dirX, dirY, damage, range){
+      // Draw quick beam segments and damage all structures along the line in that direction, up to edge or 'range' tiles
+      let steps = 0;
+      let x = fromX + dirX, y = fromY + dirY;
+      while (inBounds(x,y) && steps < 99){ // allow passing the whole row; visual limited by range with extra glow
+        // Visual segment
+        const cell = cellAt(x,y);
+        if (cell){
+          const seg = document.createElement("div");
+          seg.className = "fx beam" + (dirY!==0 ? " v" : "");
+          const p = gridCenter(cell);
+          seg.style.left = p.x + "px";
+          seg.style.top  = p.y + "px";
+          gridElement.appendChild(seg);
+          setTimeout(()=>seg.remove(), 220);
+        }
+        // Damage structures only
+        const k = `${x},${y}`;
+        const th = healthMap[k];
+        if (th?.current > 0){
+          th.current = Math.max(0, th.current - damage);
+          const tCell = cellAt(x,y);
+          if (th.current === 0){
+            delete healthMap[k];
+            if (tCell){ tCell.className="cell"; tCell.innerHTML=""; }
+            removeStructureFromList(x,y);
+            checkVictoryCondition();
+          } else if (tCell){ renderHealth(tCell, k, th.current); }
+        }
+        // Stop if we’ve visually reached the ranged "cap" (cosmetic; beam still keeps going thematically if desired)
+        steps++;
+        if (steps >= range) { /* cosmetic cutoff */ }
+        x += dirX; y += dirY;
+      }
+    }
+
     /* =================== TROOPS =================== */
     function selectTroopType(type){ selectedTroopType = type; }
     window.selectTroopType = selectTroopType;
@@ -298,7 +377,8 @@
         selectedTroopType === "bomber"   ? "💣" :
         selectedTroopType === "raider"   ? "🐎" :
         selectedTroopType === "golem"    ? "💎" :
-        selectedTroopType === "dragon"   ? "🐉" : "🗡️";
+        selectedTroopType === "dragon"   ? "🐉" :
+        selectedTroopType === "cthulu"   ? "🐙" : "🗡️";
 
       const {wrap, hpBar} = createTroopDiv(emoji, selectedTroopType, stats.hp);
       cell.appendChild(wrap);
@@ -337,7 +417,7 @@
       troop.interval = setInterval(() => {
         if (battleOver) return;
 
-        // Bomber proximity burst
+        // Bomber proximity burst + FX
         if (troop.type === "bomber") {
           let didExplode = false;
           const R = troop.range;
@@ -360,6 +440,8 @@
             }
           }
           if (didExplode){
+            // BOMBER FX: explosion at bomber's tile
+            spawnFX(troop.x, troop.y, "explosion");
             troop.hp = Math.max(0, troop.hp - troop.damage);
             troop.hpDisplay.textContent = troop.hp;
             if (troop.hp <= 0){
@@ -400,7 +482,6 @@
           } else if (troop.type==='dragon'){
             // fire breath projectile + small fire splash to structures
             shootProjectile(troop.x,troop.y,tx,ty,"fire",()=>{
-              // prefer structures
               if (!isSkeleton){
                 doDamageToTarget(targetObj, troop.damage);
                 spawnFX(tx,ty,"fire");
@@ -426,6 +507,10 @@
                 spawnFX(tx,ty,"fire");
               }
             }, 250);
+          } else if (troop.type==='cthulu'){
+            // CTHULU: beam horizontally or vertically toward the target
+            const { dirX, dirY } = chooseBeamDirection(troop.x, troop.y, tx, ty);
+            castBeam(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
           } else {
             // melee hit
             doDamageToTarget(targetObj, troop.damage);
@@ -443,21 +528,25 @@
               troop.x += Math.sign(dx);
               troop.y += Math.sign(dy);
             }
-          } else if (troop.type==='golem' || troop.type==='minigolem'){
+          } else if (troop.type==='golem' || troop.type==='minigolem' || troop.type==='cthulu'){
             // slow, cannot pass walls; if blocked, attack wall next tick
             const nx = troop.x + Math.sign(dx);
             const ny = troop.y + Math.sign(dy);
             if (inBounds(nx,ny) && !isBlocked(nx,ny)){
               troop.x=nx; troop.y=ny;
             } else {
-              // blocked—do nothing here; attack phase next tick will damage blocking wall when inRange=1
+              // blocked—do nothing now; next tick melee/beam may crack the block
               const bdx = Math.sign(dx), bdy = Math.sign(dy);
               const bx = troop.x + bdx, by = troop.y + bdy;
-              // If adjacent and blocked by a structure and within melee range, damage that block immediately
               if (inBounds(bx,by) && isBlocked(bx,by) && (Math.abs(dx)+Math.abs(dy) <= troop.range+1)){
                 const block = enemyStructures.find(s=>s.x===bx && s.y===by);
                 if (block){
-                  doDamageToTarget(block, troop.damage);
+                  if (troop.type==='cthulu'){
+                    const { dirX, dirY } = chooseBeamDirection(troop.x, troop.y, bx, by);
+                    castBeam(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
+                  } else {
+                    doDamageToTarget(block, troop.damage);
+                  }
                   spawnFX(bx,by,"splash");
                 }
               }
@@ -479,7 +568,6 @@
         const newCell = cellAt(troop.x,troop.y);
         if (newCell) newCell.appendChild(troop.div);
 
-        // GOLEM death trigger (handled in doDamageToTroop callers too)
       }, 800);
     }
 
@@ -633,7 +721,7 @@
             if (Math.abs(troop.x-lx)+Math.abs(troop.y-ly) <= 3){
               shootProjectile(lx,ly,troop.x,troop.y,"zap",()=>{
                 troop.hp -= 1;
-                if (troop.hpDisplay) troop.hpDisplay.textContent = troop.hp;
+                if (troop.hpDisplay) targetHpUpdate(troop);
                 spawnFX(troop.x,troop.y,"hit");
                 if (troop.hp<=0){
                   const c = cellAt(troop.x,troop.y); if (c) c.innerHTML="";
@@ -647,6 +735,8 @@
       }, 400);
     }
 
+    function targetHpUpdate(t){ if (t.hpDisplay) t.hpDisplay.textContent = t.hp; }
+
     function startTrapAttacks() {
       setInterval(() => {
         if (battleOver) return;
@@ -658,7 +748,7 @@
             if (troop.type==='dragon') continue; // traps cannot hit dragons
             if (Math.hypot(troop.x-tx, troop.y-ty) <= 1.5){
               troop.hp -= 10;
-              if (troop.hpDisplay) troop.hpDisplay.textContent = troop.hp;
+              targetHpUpdate(troop);
               spawnFX(troop.x,troop.y,"splash");
               if (troop.hp<=0){
                 const c = cellAt(troop.x,troop.y); if (c) c.innerHTML="";
@@ -686,7 +776,7 @@
           if (!target) continue;
           shootProjectile(x,y,target.x,target.y,"snipe",()=>{
             target.hp = Math.max(0, target.hp - DAMAGE);
-            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            targetHpUpdate(target);
             spawnFX(target.x,target.y,"hit");
             if (target.hp<=0){
               const c = cellAt(target.x,target.y); if (c) c.innerHTML="";
@@ -724,7 +814,7 @@
                   if (t.hp<=0) continue;
                   if (t.x===tx && t.y===ty){
                     t.hp = Math.max(0, t.hp - DAMAGE);
-                    if (t.hpDisplay) t.hpDisplay.textContent = t.hp;
+                    targetHpUpdate(t);
                     spawnFX(tx,ty,"splash");
                     if (t.hp<=0){
                       const c = cellAt(t.x,t.y); if (c) c.innerHTML="";
@@ -778,7 +868,7 @@
           if (!target) continue;
           shootProjectile(x,y,target.x,target.y,"necro",()=>{
             target.hp = Math.max(0, target.hp - DAMAGE);
-            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            targetHpUpdate(target);
             spawnFX(target.x,target.y,"hit");
             if (target.hp<=0){
               const cx = target.x, cy = target.y;
@@ -837,7 +927,7 @@
         const dist = Math.abs(dx)+Math.abs(dy);
         if (dist <= sk.range){
           tgt.hp = Math.max(0, tgt.hp - sk.damage);
-          if (tgt.hpDisplay) tgt.hpDisplay.textContent = tgt.hp;
+          targetHpUpdate(tgt);
           spawnFX(tgt.x,tgt.y,"splash");
           if (tgt.hp<=0){
             const tc = cellAt(tgt.x,tgt.y); if (tc) tc.innerHTML="";
@@ -918,11 +1008,6 @@
     init();
 
     /* ======== EXTRA: golem death hook for explosion & mini-golems ======== */
-    // Intercept any place we remove a troop (handled already in tower loops & melee):
-    // We’ll wrap a small observer on troop hpDisplay updates—simpler approach:
-    const _desc = Object.getOwnPropertyDescriptor(Object.prototype, "toString"); // no-op, placeholder
-    // For clarity, we trigger explosion when a GOLEM's hp drops to 0 inside existing damage paths:
-    // Add small utility you can call before deleting a golem DOM (call wherever troop dies if type==='golem')
     function golemDeathExplosion(gx,gy){
       // 3x3 structure splash
       for (let dx=-1; dx<=1; dx++){
@@ -950,28 +1035,16 @@
       }
     }
 
-    // Patch: when we set troop hp to 0, before clearing interval/DOM, if golem—explode.
-    // We already reduce hp in multiple places (towers, melee). We’ll monkey-patch doDamageToTarget for skeletons (handled),
-    // and add a helper when troops lose hp in tower loops. To keep it simple: hook a tiny helper:
-    function onTroopReducedToZero(t){
-      if (t.type==='golem'){
-        golemDeathExplosion(t.x,t.y);
-      }
-    }
-
-    // Override some kill sites to call onTroopReducedToZero:
-    // Archer hits, lightning, traps, sniper, cannon splash, melee, etc., already call onTroopDeath.
-    // We’ll wrap onTroopDeath to also check for golem explosion if we can find the last dead troop at (x,y).
     const _origOnTroopDeath = onTroopDeath;
     onTroopDeath = function(x,y){
-      // try find dead troop at this tile (most recent)
       const dead = troopUnits.find(t=>t.hp<=0 && t.x===x && t.y===y);
-      if (dead) onTroopReducedToZero(dead);
+      if (dead && dead.type==='golem'){ golemDeathExplosion(dead.x,dead.y); }
       _origOnTroopDeath(x,y);
     };
   </script>
 </body>
 </html>
+
 
 
 
