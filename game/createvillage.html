@@ -8,8 +8,7 @@
     :root{
       --bg:#0b1020; --panel:#0f1a33; --glass:rgba(255,255,255,.06);
       --ink:#e6f0ff; --muted:#9db0c4; --line:rgba(255,255,255,.08);
-      --accent:#67e8f9; --accent2:#a78bfa; --good:#34d399; --warn:#fbbf24;
-      --danger:#fb7185; --chip:#0c142a; --glow:0 8px 28px rgba(0,0,0,.35), 0 0 32px rgba(103,232,249,.12);
+      --accent:#67e8f9; --glow:0 8px 28px rgba(0,0,0,.35), 0 0 32px rgba(103,232,249,.12);
     }
     *{box-sizing:border-box}
     body{
@@ -17,38 +16,31 @@
       color:var(--ink);
       background: radial-gradient(80vw 80vh at 20% -10%, #0f2346 0%, #0b1020 45%, #090d19 100%);
     }
-
     .shell{ max-width:1100px; margin:0 auto; display:grid; grid-template-columns: 1fr 280px; gap:18px }
     @media (max-width:900px){ .shell{ grid-template-columns: 1fr } }
-
     .card{
       background: linear-gradient(180deg, var(--glass), transparent);
       border:1px solid var(--line); border-radius:14px; padding:14px; backdrop-filter: blur(8px);
       box-shadow: var(--glow);
     }
-    .header{
-      display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;
-    }
+    .header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
     .title{ font-weight:900; letter-spacing:.3px }
     .idchip{ font-size:12px; color:var(--muted) }
 
-    /* GRID */
     .grid-wrap{ padding:12px; }
-    .grid{
-      display:grid; grid-template-columns: repeat(16, 30px); gap:2px; justify-content:center;
-    }
+    .grid{ display:grid; grid-template-columns: repeat(16, 30px); gap:2px; justify-content:center; }
     .cell{
       width:30px; height:30px; background:#0a1426; border:1px solid #22314f; border-radius:4px;
-      transition: filter .15s ease, transform .03s ease, border-color .2s ease;
       position:relative; overflow:hidden;
+      transition: filter .15s ease, border-color .2s ease;
     }
     .cell:hover{ filter: brightness(1.08); border-color:#385182 }
-    .cell.ghost::after{
-      content:""; position:absolute; inset:0; background:rgba(255,255,255,.06);
-      pointer-events:none;
+
+    .structure-icon{
+      position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+      font-size:17px;
     }
 
-    /* RIGHT SIDEBAR */
     .sidebar .box{ margin-bottom:14px }
     .balance{
       display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -63,23 +55,18 @@
     .power b{ display:block; font-size:16px }
     .power small{ color:var(--muted) }
 
-    .palette{
-      display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px;
-    }
+    .palette{ display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; }
     .tile{
       border:1px solid var(--line); border-radius:10px; background:#0b1831; padding:8px 8px 6px;
-      cursor:pointer; transition: transform .03s ease, filter .15s ease, border-color .2s ease;
-      text-align:center;
+      cursor:pointer; text-align:center;
+      transition: filter .15s ease, border-color .2s ease, transform .03s ease;
     }
     .tile:hover{ filter:brightness(1.06); border-color:rgba(103,232,249,.35) }
     .tile.active{ outline:2px solid #67e8f9; box-shadow: 0 0 0 2px rgba(103,232,249,.15) inset; }
-    .building{
-      width:30px; height:30px; margin:0 auto 6px; border:2px solid #0b1831; border-radius:6px;
-    }
+    .building{ width:30px; height:30px; margin:0 auto 4px; border-radius:6px; border:2px solid #0b1831; }
     .label{ font-size:12px; color:var(--muted) }
     .label b{ color:#eaf2ff }
 
-    .toolbar{ display:flex; gap:10px; flex-wrap:wrap }
     .btn{
       appearance:none; border:1px solid var(--line); color:var(--ink);
       background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
@@ -89,9 +76,8 @@
     .btn:hover{ filter:brightness(1.06); border-color:rgba(103,232,249,.35) }
     .btn:active{ transform: translateY(1px) }
     .btn-primary{ color:#06131a; background: linear-gradient(180deg, #67e8f9, #22d3ee); border:none; }
-    .btn-ghost{ background:transparent }
 
-    /* Building colors */
+    /* Colors for preview tiles (backgrounds only; emoji overlay supplies icon) */
     .wall{              background:black }
     .strongWall{        background:orange }
     .archerTower{       background:#ef4444 }
@@ -103,15 +89,10 @@
     .necromancerTower{  background:#3b0764 }
     .eraser{            background:#ffffff; position:relative }
     .eraser::after{ content:"✖"; position:absolute; color:black; font-size:16px; top:2px; left:7px }
-
-    .legend{ color:var(--muted); font-size:12px; display:flex; gap:10px; flex-wrap:wrap; margin-top:6px }
-    .dot{ width:10px; height:10px; border-radius:2px; display:inline-block; margin-right:6px; vertical-align:middle }
-    .hint{ color:var(--muted); font-size:12px; margin-top:6px }
   </style>
 </head>
 <body>
   <div class="shell">
-    <!-- LEFT: Grid -->
     <div class="card">
       <div class="header">
         <div class="title">🎗️ Build Your Village</div>
@@ -120,19 +101,9 @@
 
       <div class="grid-wrap">
         <div id="villageGrid" class="grid"></div>
-        <div class="legend">
-          <span><i class="dot" style="background:#ef4444"></i>Archer</span>
-          <span><i class="dot" style="background:#6b7280"></i>Sniper / Cannon</span>
-          <span><i class="dot" style="background:#3b82f6"></i>Lightning</span>
-          <span><i class="dot" style="background:#3b0764"></i>Necro</span>
-          <span><i class="dot" style="background:#10b981"></i>Trap</span>
-          <span><i class="dot" style="background:black"></i>Wall</span>
-          <span><i class="dot" style="background:#a78bfa"></i>Troops</span>
-        </div>
       </div>
     </div>
 
-    <!-- RIGHT: Sidebar -->
     <div class="sidebar">
       <div class="card box">
         <div class="balance"><span>💰 Balance</span><span id="balanceBox">0</span></div>
@@ -146,14 +117,14 @@
       <div class="card box">
         <h3 style="margin:0 0 8px">Build Menu</h3>
         <div id="palette" class="palette"></div>
-        <div class="hint">Hotkeys: <b>1–9</b> to select, <b>E</b> or <b>Esc</b> to Erase.</div>
+        <div style="color:#9db0c4; font-size:12px; margin-top:6px">
+          Hotkeys: <b>1–9</b> to select, <b>E</b>/<b>Esc</b> to Erase.
+        </div>
       </div>
 
-      <div class="card box">
-        <div class="toolbar">
-          <button id="saveBtn" class="btn btn-primary">📂 Save Village</button>
-          <button id="backLobbyBtn" class="btn">⟵ Lobby</button>
-        </div>
+      <div class="card box" style="display:flex; gap:10px; flex-wrap:wrap">
+        <button id="saveBtn" class="btn btn-primary">📂 Save Village</button>
+        <button id="backLobbyBtn" class="btn">⟵ Lobby</button>
       </div>
     </div>
   </div>
@@ -162,7 +133,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    /* ---------- Session / Username ---------- */
+    /* ---------- Username via URL or localStorage ---------- */
     const params = new URLSearchParams(location.search);
     let currentUsername = params.get("username") || localStorage.getItem("username") || null;
     if (currentUsername) localStorage.setItem("username", currentUsername);
@@ -179,6 +150,19 @@
     };
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
+
+    /* ---------- Shared Emoji Map (mirror this in battle) ---------- */
+    const STRUCTURE_EMOJI = {
+      wall: "🧱",
+      strongWall: "🧱",
+      archerTower: "🏹",
+      trap: "🪤",
+      lightningStriker: "⚡",
+      troopStructure: "🏰",
+      sniperTower: "🎯",
+      cannonTower: "💣",
+      necromancerTower: "💀"
+    };
 
     /* ---------- Stats & Palette ---------- */
     const buildingStats = {
@@ -233,19 +217,17 @@
         const label = document.createElement("div");
         label.className = "label";
         if (b.type !== "eraser") {
-          label.innerHTML = `<b>${b.name}</b><br>$${buildingStats[b.type].cost}`;
+          const emoji = STRUCTURE_EMOJI[b.type] || "";
+          label.innerHTML = `<b>${emoji} ${b.name}</b><br>$${buildingStats[b.type].cost}`;
         } else {
-          label.innerHTML = `<b>${b.name}</b><br><span style="opacity:.6">E / Esc</span>`;
+          label.innerHTML = `<b>Erase</b><br><span style="opacity:.6">E / Esc</span>`;
         }
         tile.appendChild(label);
 
         tile.onclick = () => selectType(b.type);
         paletteEl.appendChild(tile);
 
-        // default selection
-        if (idx === 0 && !selectedType) {
-          selectType(b.type);
-        }
+        if (idx === 0 && !selectedType) selectType(b.type);
       });
       highlightSelection();
     }
@@ -254,7 +236,6 @@
       selectedType = type;
       highlightSelection();
     }
-
     function highlightSelection(){
       document.querySelectorAll(".tile").forEach(t=>{
         t.classList.toggle("active", t.dataset.type === selectedType);
@@ -275,7 +256,7 @@
       }
     }
 
-    /* ---------- Placement / Erase ---------- */
+    /* ---------- Placement / Erase (with emoji overlay) ---------- */
     function placeBuilding(cell, x, y){
       if (!selectedType) return;
       const idx = gridData.findIndex(t => t.x === x && t.y === y);
@@ -284,12 +265,9 @@
         if (idx !== -1){
           const removed = gridData[idx];
           const refund  = (buildingStats[removed.type]?.cost ?? 0);
-          if (refund > 0) {
-            currentBucks += refund;
-            updateBalance();
-          }
+          if (refund > 0) { currentBucks += refund; updateBalance(); }
           gridData.splice(idx, 1);
-          cell.className = "cell";
+          paintCell(cell, null); // clear
           updatePowerUI();
         }
         return;
@@ -306,19 +284,28 @@
 
       const tile = { x, y, type: selectedType };
       if (idx !== -1) {
-        // replacing doesn’t auto-refund; erase first if you want funds back
         gridData[idx] = tile;
       } else {
         gridData.push(tile);
       }
-      cell.className = `cell ${selectedType}`;
+      paintCell(cell, selectedType);
       updatePowerUI();
     }
 
-    function updateBalance(){
-      balanceEl.textContent = `${currentBucks}`;
+    function paintCell(cell, type){
+      cell.className = "cell" + (type ? ` ${type}` : "");
+      // wipe old icon
+      const old = cell.querySelector(".structure-icon");
+      if (old) old.remove();
+      if (type){
+        const ic = document.createElement("div");
+        ic.className = "structure-icon";
+        ic.textContent = STRUCTURE_EMOJI[type] || "";
+        cell.appendChild(ic);
+      }
     }
 
+    function updateBalance(){ balanceEl.textContent = `${currentBucks}`; }
     function calcPower(){
       let atk = 0, def = 0;
       for (const t of gridData){
@@ -327,45 +314,33 @@
       }
       return { attack: atk, defense: def, total: atk + def };
     }
-
     function updatePowerUI(){
       const p = calcPower();
       powAtkEl.textContent = p.attack;
       powDefEl.textContent = p.defense;
       powTotEl.textContent = p.total;
     }
-
     function paintExisting(){
       document.querySelectorAll(".cell").forEach(cell=>{
         const x = +cell.dataset.x, y = +cell.dataset.y;
         const m = gridData.find(t => t.x===x && t.y===y);
-        cell.className = m ? `cell ${m.type}` : "cell";
+        paintCell(cell, m ? m.type : null);
       });
       updatePowerUI();
     }
 
     /* ---------- Save / Load ---------- */
     async function saveVillage(){
-      if (!currentUsername) {
-        alert("No username provided!");
-        return;
-      }
-      const pwd = prompt("Enter your password:");
-      if (!pwd) return alert("Password required.");
+      if (!currentUsername) { alert("No username provided!"); return; }
+      const pwd = prompt("Enter your password:"); if (!pwd) return alert("Password required.");
 
       const uRef  = doc(db, "users", currentUsername);
       const uSnap = await getDoc(uRef);
-      if (!uSnap.exists() || uSnap.data().password !== pwd) {
-        return alert("Authentication failed.");
-      }
+      if (!uSnap.exists() || uSnap.data().password !== pwd) return alert("Authentication failed.");
 
       await setDoc(uRef, { bucks: currentBucks }, { merge: true });
       const vRef = doc(db, "villages", currentUsername);
-      await setDoc(vRef, {
-        owner: currentUsername,
-        grid: gridData,
-        power: calcPower()
-      });
+      await setDoc(vRef, { owner: currentUsername, grid: gridData, power: calcPower() });
 
       alert(`Village saved! Remaining balance: ${currentBucks} bucks.`);
     }
@@ -379,21 +354,14 @@
 
       const uRef  = doc(db, "users", currentUsername);
       const uSnap = await getDoc(uRef);
-      if (!uSnap.exists()) {
-        alert("User record missing!");
-        return;
-      }
+      if (!uSnap.exists()) { alert("User record missing!"); return; }
 
       let stored = uSnap.data().bucks || 0;
 
       const vRef  = doc(db, "villages", currentUsername);
       const vSnap = await getDoc(vRef);
       if (!vSnap.exists()){
-        // seed first-timers
-        if (stored === 0){
-          stored = 200;
-          await setDoc(uRef, { bucks: stored }, { merge: true });
-        }
+        if (stored === 0){ stored = 200; await setDoc(uRef, { bucks: stored }, { merge: true }); }
       } else {
         gridData.push(...(vSnap.data().grid || []));
         paintExisting();
@@ -416,9 +384,7 @@
       document.addEventListener("keydown", (e)=>{
         if (e.key === "Escape" || e.key.toLowerCase() === "e") { selectType("eraser"); return; }
         const n = parseInt(e.key,10);
-        if (!isNaN(n) && n>=1 && n<=keys.length){
-          selectType(keys[n-1]);
-        }
+        if (!isNaN(n) && n>=1 && n<=keys.length){ selectType(keys[n-1]); }
       });
     }
 
@@ -435,4 +401,6 @@
   </script>
 </body>
 </html>
+
+
 
