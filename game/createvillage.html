@@ -36,6 +36,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      min-width: 140px;
     }
     .balance-box {
       border: 1px solid #ccc;
@@ -87,15 +88,32 @@
       top: 2px;
       left: 7px;
     }
+
+    /* Buttons */
+    .btn {
+      appearance: none;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .02s ease, filter .15s ease;
+      margin-top: 10px;
+      width: 140px;
+    }
+    .btn:hover { filter: brightness(1.03); }
+    .btn:active { transform: translateY(1px); }
+
     #saveBtn {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 1em;
       background: #3498db;
       color: white;
       border: none;
-      border-radius: 5px;
-      cursor: pointer;
+    }
+    #backLobbyBtn {
+      background: #f1f5f9;
+      color: #0f172a;
     }
   </style>
 </head>
@@ -108,7 +126,8 @@
     <div class="sidebar">
       <div id="balanceBox" class="balance-box">💰 0 bucks</div>
       <div class="panel" id="buildingOptions"></div>
-      <button id="saveBtn">📂 Save Village</button>
+      <button id="saveBtn" class="btn">📂 Save Village</button>
+      <button id="backLobbyBtn" class="btn">⟵ Lobby</button>
     </div>
   </div>
 
@@ -149,7 +168,7 @@
       { type: "trap", name: "Trap" },
       { type: "lightningStriker", name: "Lightning" },
       { type: "troopStructure", name: "Troops" },
-       { type: "sniperTower", name: "Sniper" },
+      { type: "sniperTower", name: "Sniper" },
       { type: "eraser", name: "Erase" }
     ];
 
@@ -199,21 +218,28 @@
       }
     }
 
+    // Place or erase (erase refunds full cost of the removed item)
     function placeBuilding(cell, x, y) {
       if (!selectedType) return;
       const idx = gridData.findIndex(t => t.x === x && t.y === y);
 
+      // Erase mode: remove tile and REFUND
       if (selectedType === "eraser") {
         if (idx !== -1) {
-          const oldType = gridData[idx].type;
-          currentBucks += buildingStats[oldType].cost;
-          balanceBox.textContent = `💰 ${currentBucks} bucks`;
+          const removed = gridData[idx];
+          const oldType = removed.type;
+          const refund  = (buildingStats[oldType]?.cost ?? 0);
+          if (refund > 0) {
+            currentBucks += refund;
+            updateMoneyUI();
+          }
           gridData.splice(idx, 1);
           cell.className = "cell";
         }
         return;
       }
 
+      // Place/replace mode: charge for selectedType
       const cost = buildingStats[selectedType].cost;
       if (currentBucks < cost) {
         alert(`Insufficient bucks. You have ${currentBucks}, need ${cost}.`);
@@ -221,12 +247,21 @@
       }
 
       currentBucks -= cost;
-      balanceBox.textContent = `💰 ${currentBucks} bucks`;
+      updateMoneyUI();
 
       const tile = { x, y, type: selectedType };
-      if (idx !== -1) gridData[idx] = tile;
-      else gridData.push(tile);
+      if (idx !== -1) {
+        // Note: replacing an existing item does NOT auto-refund.
+        // Use the Eraser to reclaim funds first if desired.
+        gridData[idx] = tile;
+      } else {
+        gridData.push(tile);
+      }
       cell.className = `cell ${selectedType}`;
+    }
+
+    function updateMoneyUI(){
+      balanceBox.textContent = `💰 ${currentBucks} bucks`;
     }
 
     function calculatePower() {
@@ -288,14 +323,14 @@
         }
       } else {
         // load existing grid
-        gridData.push(...vSnap.data().grid);
+        gridData.push(...(vSnap.data().grid || []));
         updateGridVisual();
       }
 
       // update UI
       currentBucks = stored;
       userLabel.textContent   = `Logged in as: ${currentUsername}`;
-      balanceBox.textContent  = `💰 ${currentBucks} bucks`;
+      updateMoneyUI();
     }
 
     function updateGridVisual() {
@@ -306,11 +341,26 @@
       });
     }
 
+    // --- Back to Lobby: mirrors other games' redirect pattern and keeps ?username= ---
+    function goTo(path) {
+      const u = currentUsername ? `?username=${encodeURIComponent(currentUsername)}` : "";
+      window.location.href = `${path}${u}`;
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
       createBuildingButtons();
       createGrid();
       loadInitial();
+
       document.getElementById("saveBtn").onclick = saveVillage;
+      document.getElementById("backLobbyBtn").onclick = () => {
+        goTo("Magic/game/villagelobby.html");
+      };
+
+      // Optional: ESC quickly switches to Eraser (nice UX)
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") selectedType = "eraser";
+      });
     });
   </script>
 </body>
