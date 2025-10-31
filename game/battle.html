@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -34,8 +34,8 @@
     .troop.raider{ background:#8b5cf6; }
     .troop.golem{ background:#334155; }
     .troop.minigolem{ background:#475569; }
-    .troop.dragon{ background:#7c2d12; border-radius:6px; } /* flying look */
-    .troop.cthulu{ background:#0f766e; } /* teal eldritch */
+    .troop.dragon{ background:#7c2d12; border-radius:6px; }
+    .troop.cthulu{ background:#0f766e; }
 
     .troop-hp {
       position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
@@ -77,7 +77,6 @@
     .fx.splash { background:rgba(75,85,99,.6); width:16px; height:16px; animation:puff .3s ease-out forwards; }
     .fx.fire { background:rgba(239,68,68,.55); width:18px; height:18px; animation:puff .35s ease-out forwards; }
 
-    /* BOMBER FX: fiery expanding blast */
     .fx.explosion {
       width: 8px; height: 8px; border-radius: 50%;
       box-shadow: 0 0 0 0 rgba(255, 115, 0, 0.8), 0 0 0 0 rgba(255, 196, 0, .7);
@@ -91,7 +90,6 @@
       100%{ transform:translate(-50%,-50%) scale(4.2); opacity:0; box-shadow: 0 0 60px 28px rgba(255,115,0,0); }
     }
 
-    /* CTHULU BEAM: quick cyan laser segments */
     .fx.beam {
       width: 28px; height: 6px; border-radius: 3px;
       background: linear-gradient(90deg, rgba(34,211,238,.15), rgba(34,211,238,.9), rgba(34,211,238,.15));
@@ -99,7 +97,7 @@
       animation: flash .18s linear forwards;
       z-index: 58;
     }
-    .fx.beam.v { width: 6px; height: 28px; } /* vertical segment */
+    .fx.beam.v { width: 6px; height: 28px; }
     @keyframes flash {
       from { opacity: .95; }
       to   { opacity: 0; }
@@ -122,11 +120,10 @@
       <button onclick="selectTroopType('bomber')">💣 Bomber (6)</button>
       <button onclick="selectTroopType('golem')">💎 Golem (8)</button>
       <button onclick="selectTroopType('dragon')">🐉 Dragon (12)</button>
-      <!-- CTHULU button -->
       <button onclick="selectTroopType('cthulu')">🐙 Cthulu (14)</button>
     </div>
     <div><strong>Troops Left:</strong> <span id="troopCount">0</span></div>
-    <button id="surrenderBtn" onclick="endBattle(false)">🏳️ Surrender</button>
+    <button id="surrenderBtn" onclick="endBattle(false, true)">🏳️ Surrender</button>
     <button id="backLobbyBtn">⟵ Back to Lobby</button>
   </div>
 
@@ -163,9 +160,9 @@
     const gridSize = 16;
     const gridElement = document.getElementById("grid");
 
-    const healthMap = {};         // static structures (x,y) -> {current,max}
-    const troopUnits = [];        // attacking troops
-    const skeletons = [];         // necro summons
+    const healthMap = {};
+    const troopUnits = [];
+    const skeletons = [];
     let selectedTroopType = "base";
     let troopsLeft = 0;
     let archerInterval;
@@ -173,7 +170,6 @@
     let attackerRef;
     let defenderData;
 
-    /* =================== CONFIG =================== */
     const buildingHealth = {
       wall: 40,
       strongWall: 180,
@@ -204,9 +200,8 @@
       guardian:{ hp: 110, damage: 4, range: 1, speed: 1, cost: 4 },
       raider:  { hp: 26,  damage: 5, range: 2, speed: 2, cost: 4 },
       bomber:  { hp: 20,  damage: 20,range: 2, speed: 0, cost: 6 },
-      golem:   { hp: 200, damage: 4, range: 1, speed: 1, cost: 8 },  // hulking low DPS
-      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12 },  // fire breath, flies
-      // CTHULU: medium damage beam, range 3 (shorter than archer), a bit more HP than swordsman, expensive
+      golem:   { hp: 200, damage: 4, range: 1, speed: 1, cost: 8 },
+      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12 },
       cthulu:  { hp: 54,  damage: 6, range: 3, speed: 1, cost: 14 }
     };
 
@@ -218,12 +213,11 @@
     const cannonTowers = [];
     const necroTowers = [];
 
-    /* =================== HELPERS =================== */
     const inBounds = (x,y)=> x>=0 && y>=0 && x<gridSize && y<gridSize;
     const cellAt = (x,y)=> document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
     const isBlocked = (x,y)=> {
       const c = cellAt(x,y);
-      return !c || (c.classList.length > 1); // has a structure class
+      return !c || (c.classList.length > 1);
     };
     function gridCenter(el){
       const rect = el.getBoundingClientRect();
@@ -275,7 +269,6 @@
     }
 
     function getClosestTarget(x, y) {
-      // consider structures
       let minDist = Infinity, closest = null;
       for (const s of enemyStructures) {
         const key = `${s.x},${s.y}`;
@@ -284,7 +277,6 @@
           if (dist < minDist) { minDist = dist; closest = s; }
         }
       }
-      // consider skeletons
       for (const sk of skeletons) {
         if (sk.hp <= 0) continue;
         const dist = Math.abs(sk.x - x) + Math.abs(sk.y - y);
@@ -298,7 +290,6 @@
       for (const s of enemyStructures){
         const key = `${s.x},${s.y}`;
         if (!healthMap[key]?.current) continue;
-        // tower-ish (not walls)
         if (["archerTower","lightningStriker","troopStructure","sniperTower","cannonTower","necromancerTower","trap"].includes(s.type)){
           const d = Math.abs(s.x-x)+Math.abs(s.y-y);
           if (d<bd){ bd=d; best=s; }
@@ -307,21 +298,19 @@
       return best;
     }
 
-    /* ============ CTHULU Helpers ============ */
+    /* ======== CTHULU: now hurts skeletons on beam path ======== */
     function chooseBeamDirection(fromX, fromY, targetX, targetY){
       const dx = targetX - fromX, dy = targetY - fromY;
       if (Math.abs(dx) >= Math.abs(dy)){
-        return { dirX: Math.sign(dx) || 1, dirY: 0, orient: 'h' }; // default right if same tile
+        return { dirX: Math.sign(dx) || 1, dirY: 0, orient: 'h' };
       } else {
-        return { dirX: 0, dirY: Math.sign(dy) || 1, orient: 'v' }; // default down
+        return { dirX: 0, dirY: Math.sign(dy) || 1, orient: 'v' };
       }
     }
     function castBeam(fromX, fromY, dirX, dirY, damage, range){
-      // Draw quick beam segments and damage all structures along the line in that direction, up to edge or 'range' tiles
       let steps = 0;
       let x = fromX + dirX, y = fromY + dirY;
-      while (inBounds(x,y) && steps < 99){ // allow passing the whole row; visual limited by range with extra glow
-        // Visual segment
+      while (inBounds(x,y) && steps < 99){
         const cell = cellAt(x,y);
         if (cell){
           const seg = document.createElement("div");
@@ -332,7 +321,8 @@
           gridElement.appendChild(seg);
           setTimeout(()=>seg.remove(), 220);
         }
-        // Damage structures only
+
+        // Damage structures
         const k = `${x},${y}`;
         const th = healthMap[k];
         if (th?.current > 0){
@@ -345,9 +335,22 @@
             checkVictoryCondition();
           } else if (tCell){ renderHealth(tCell, k, th.current); }
         }
-        // Stop if we’ve visually reached the ranged "cap" (cosmetic; beam still keeps going thematically if desired)
+
+        // Damage skeletons on the same tile
+        for (const sk of skeletons){
+          if (sk.hp > 0 && sk.x === x && sk.y === y){
+            sk.hp = Math.max(0, sk.hp - damage);
+            if (sk.hpDisplay) sk.hpDisplay.textContent = sk.hp;
+            if (sk.hp === 0){
+              const sc = cellAt(sk.x, sk.y);
+              if (sc && sk.div && sk.div.parentNode === sc) sc.removeChild(sk.div);
+              clearInterval(sk.interval);
+            }
+          }
+        }
+
         steps++;
-        if (steps >= range) { /* cosmetic cutoff */ }
+        if (steps >= range) { /* cosmetic cap */ }
         x += dirX; y += dirY;
       }
     }
@@ -413,11 +416,10 @@
         return best;
       };
 
-      /* -------- main behaviour loop -------- */
       troop.interval = setInterval(() => {
         if (battleOver) return;
 
-        // Bomber proximity burst + FX
+        /* ======== BOMBER: now also hurts skeletons in radius ======== */
         if (troop.type === "bomber") {
           let didExplode = false;
           const R = troop.range;
@@ -425,6 +427,9 @@
             for (let dy=-R; dy<=R; dy++){
               if (dx===0 && dy===0) continue;
               const tx=troop.x+dx, ty=troop.y+dy;
+              if (!inBounds(tx,ty)) continue;
+
+              // Damage structures
               const key = `${tx},${ty}`, th = healthMap[key];
               if (th?.current > 0){
                 didExplode = true;
@@ -437,10 +442,23 @@
                   checkVictoryCondition();
                 } else if (cellT){ renderHealth(cellT, key, th.current); }
               }
+
+              // Damage skeletons on affected tiles
+              for (const sk of skeletons){
+                if (sk.hp > 0 && sk.x === tx && sk.y === ty){
+                  didExplode = true;
+                  sk.hp = Math.max(0, sk.hp - troop.damage);
+                  if (sk.hpDisplay) sk.hpDisplay.textContent = sk.hp;
+                  if (sk.hp === 0){
+                    const sc = cellAt(sk.x, sk.y);
+                    if (sc && sk.div && sk.div.parentNode === sc) sc.removeChild(sk.div);
+                    clearInterval(sk.interval);
+                  }
+                }
+              }
             }
           }
           if (didExplode){
-            // BOMBER FX: explosion at bomber's tile
             spawnFX(troop.x, troop.y, "explosion");
             troop.hp = Math.max(0, troop.hp - troop.damage);
             troop.hpDisplay.textContent = troop.hp;
@@ -468,11 +486,9 @@
         const dist = Math.abs(dx)+Math.abs(dy);
         const inRange = dist <= troop.range;
 
-        // remove old DOM pos
         const oldCell = cellAt(troop.x,troop.y);
         if (oldCell && troop.div && troop.div.parentNode===oldCell) oldCell.removeChild(troop.div);
 
-        // ATTACK or MOVE
         if (inRange){
           if (troop.type==='archer'){
             shootProjectile(troop.x,troop.y,tx,ty,"arrow",()=>{
@@ -480,12 +496,10 @@
               spawnFX(tx,ty,"hit");
             }, 220);
           } else if (troop.type==='dragon'){
-            // fire breath projectile + small fire splash to structures
             shootProjectile(troop.x,troop.y,tx,ty,"fire",()=>{
               if (!isSkeleton){
                 doDamageToTarget(targetObj, troop.damage);
                 spawnFX(tx,ty,"fire");
-                // tiny AoE to adjacent structures
                 for (let ax=-1; ax<=1; ax++){
                   for (let ay=-1; ay<=1; ay++){
                     if (ax===0 && ay===0) continue;
@@ -499,7 +513,7 @@
                     }
                   }
                 }
-              } else { // skeleton target fallback
+              } else {
                 targetObj.hp = Math.max(0, targetObj.hp - troop.damage);
                 if (targetObj.hp<=0){
                   const c = cellAt(targetObj.x,targetObj.y); if (c) c.innerHTML="";
@@ -508,34 +522,28 @@
               }
             }, 250);
           } else if (troop.type==='cthulu'){
-            // CTHULU: beam horizontally or vertically toward the target
             const { dirX, dirY } = chooseBeamDirection(troop.x, troop.y, tx, ty);
             castBeam(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
           } else {
-            // melee hit
             doDamageToTarget(targetObj, troop.damage);
             spawnFX(tx,ty,"splash");
           }
         } else {
-          // MOVE
           if (troop.type==='archer'){
             troop.x += Math.sign(dx);
             troop.y += Math.sign(dy);
           } else if (troop.type==='dragon'){
-            // can fly: ignores blocks, moves 2 steps
             const steps = troop.speed;
             for (let s=0; s<steps; s++){
               troop.x += Math.sign(dx);
               troop.y += Math.sign(dy);
             }
           } else if (troop.type==='golem' || troop.type==='minigolem' || troop.type==='cthulu'){
-            // slow, cannot pass walls; if blocked, attack wall next tick
             const nx = troop.x + Math.sign(dx);
             const ny = troop.y + Math.sign(dy);
             if (inBounds(nx,ny) && !isBlocked(nx,ny)){
               troop.x=nx; troop.y=ny;
             } else {
-              // blocked—do nothing now; next tick melee/beam may crack the block
               const bdx = Math.sign(dx), bdy = Math.sign(dy);
               const bx = troop.x + bdx, by = troop.y + bdy;
               if (inBounds(bx,by) && isBlocked(bx,by) && (Math.abs(dx)+Math.abs(dy) <= troop.range+1)){
@@ -564,7 +572,6 @@
           }
         }
 
-        // redraw
         const newCell = cellAt(troop.x,troop.y);
         if (newCell) newCell.appendChild(troop.div);
 
@@ -577,17 +584,17 @@
     }
 
     function doDamageToTarget(targetOrSkeleton, dmg){
-      // skeleton?
       if (targetOrSkeleton.isSkeleton){
         targetOrSkeleton.hp = Math.max(0, targetOrSkeleton.hp - dmg);
+        if (targetOrSkeleton.hpDisplay) targetOrSkeleton.hpDisplay.textContent = targetOrSkeleton.hp;
         if (targetOrSkeleton.hp <= 0){
           const c = cellAt(targetOrSkeleton.x,targetOrSkeleton.y);
           if (c && targetOrSkeleton.div && targetOrSkeleton.div.parentNode===c) c.removeChild(targetOrSkeleton.div);
+          clearInterval(targetOrSkeleton.interval);
           targetOrSkeleton.hp = 0;
         }
         return;
       }
-      // structure
       const key = `${targetOrSkeleton.x},${targetOrSkeleton.y}`;
       const th = healthMap[key];
       if (!th) return;
@@ -630,7 +637,6 @@
     }
 
     function onTroopDeath(x,y){
-      // try necro reanimate
       if (typeof window.__checkNecroReanimate === "function"){
         const done = window.__checkNecroReanimate(x,y);
         if (done) return;
@@ -657,7 +663,9 @@
       if (remaining.length === 0) endBattle(true);
     }
 
-    async function endBattle(victory) {
+    // defeat now supports surrender redirect
+    async function endBattle(victory, surrendered = false) {
+      if (battleOver) return;
       battleOver = true;
       clearInterval(archerInterval);
       troopUnits.forEach(t => clearInterval(t.interval));
@@ -673,13 +681,31 @@
         updates.push(updateDoc(defenderUserRef2, { bucks: increment(-10) }));
         if (isGoblinBattle) updates.push(updateDoc(attackerUserRef, { campaign: increment(1) }));
         document.getElementById("resultText").textContent = `🏆 Victory! You earned ${reward} bucks.`;
+        document.getElementById("resultPopup").style.display = "block";
       } else {
-        document.getElementById("resultText").textContent = "❌ Defeat! Defender keeps their 10 bucks.";
-      }
+        try {
+          const aSnap = await getDoc(attackerUserRef);
+          const aData = aSnap.data() || {};
+          const current = Number(aData.bucks || 0);
+          const loss = Math.min(5, Math.max(0, current));
+          if (loss > 0) updates.push(updateDoc(attackerUserRef, { bucks: current - loss }));
+          if (!isGoblinBattle) updates.push(updateDoc(defenderUserRef2, { bucks: increment(5) }));
+          await Promise.all(updates);
+        } catch (e) { console.warn("Defeat update error:", e); }
 
-      if (updates.length) await Promise.all(updates);
-      document.getElementById("resultPopup").style.display = "block";
+        const msg = surrendered ? "🏳️ You surrendered. Up to 5 bucks deducted." : "❌ Defeat! Up to 5 bucks deducted.";
+        document.getElementById("resultText").textContent = msg;
+
+        if (surrendered) {
+          const u = attacker || params.get("username") || "";
+          const base = "/game/villagelobby.html";
+          location.href = u ? `${base}?username=${encodeURIComponent(u)}` : base;
+        } else {
+          document.getElementById("resultPopup").style.display = "block";
+        }
+      }
     }
+    window.endBattle = endBattle;
 
     /* =================== TOWERS =================== */
     function startArcherAttacks() {
@@ -745,7 +771,7 @@
           const th = healthMap[key]; if (!th || th.current<=0) continue;
           for (const troop of troopUnits){
             if (troop.hp<=0) continue;
-            if (troop.type==='dragon') continue; // traps cannot hit dragons
+            if (troop.type==='dragon') continue;
             if (Math.hypot(troop.x-tx, troop.y-ty) <= 1.5){
               troop.hp -= 10;
               targetHpUpdate(troop);
@@ -794,7 +820,6 @@
         if (battleOver) return;
         for (const {x,y} of cannonTowers){
           const key = `${x},${y}`; if (!healthMap[key]?.current) continue;
-          // pick nearest troop in range, but NOT dragons
           let target=null, best=Infinity;
           for (const t of troopUnits){
             if (t.hp<=0 || t.type==='dragon') continue;
@@ -803,13 +828,11 @@
           }
           if (!target) continue;
           shootProjectile(x,y,target.x,target.y,"cannon",()=>{
-            // splash: 3x3 around target & knockback 1
             for (let dx=-1; dx<=1; dx++){
               for (let dy=-1; dy<=1; dy++){
                 const tx=target.x+dx, ty=target.y+dy;
                 if (!inBounds(tx,ty)) continue;
 
-                // damage troops in area
                 for (const t of troopUnits){
                   if (t.hp<=0) continue;
                   if (t.x===tx && t.y===ty){
@@ -824,7 +847,6 @@
                   }
                 }
 
-                // knockback (troops + skeletons), not through walls/out of bounds
                 const vx = Math.sign(tx - target.x), vy = Math.sign(ty - target.y);
                 if (vx===0 && vy===0) continue;
                 const kx = tx + vx*KNOCK, ky = ty + vy*KNOCK;
@@ -874,7 +896,6 @@
               const cx = target.x, cy = target.y;
               const cell = cellAt(cx,cy); if (cell) cell.innerHTML="";
               clearInterval(target.interval);
-              // reanimate if within REANIM_RANGE
               if (Math.abs(cx-x)+Math.abs(cy-y) <= REANIM_RANGE){
                 spawnSkeleton(cx,cy);
               } else {
@@ -885,7 +906,6 @@
         }
       }, FIRE_RATE);
 
-      // Hook for global deaths
       window.__checkNecroReanimate = function(dx,dy){
         for (const n of necroTowers){
           const key = `${n.x},${n.y}`;
@@ -915,7 +935,6 @@
 
       sk.interval = setInterval(()=>{
         if (battleOver || sk.hp<=0) return;
-        // go after nearest troop
         let tgt=null, best=Infinity;
         for (const t of troopUnits){
           if (t.hp<=0) continue;
@@ -997,7 +1016,6 @@
       startCannonAttacks();
       startNecroAttacks();
 
-      // Back to lobby button (keeps username/attacker)
       document.getElementById("backLobbyBtn").onclick = ()=>{
         const u = attacker || params.get("username") || "";
         const base = "/game/villagelobby.html";
@@ -1007,9 +1025,8 @@
 
     init();
 
-    /* ======== EXTRA: golem death hook for explosion & mini-golems ======== */
+    /* ======== EXTRA: golem death hook ======== */
     function golemDeathExplosion(gx,gy){
-      // 3x3 structure splash
       for (let dx=-1; dx<=1; dx++){
         for (let dy=-1; dy<=1; dy++){
           const sx=gx+dx, sy=gy+dy, k=`${sx},${sy}`;
@@ -1023,7 +1040,6 @@
           }
         }
       }
-      // spawn two mini golems in nearby free cells (N,E,S,W)
       const spots = [[0,-1],[1,0],[0,1],[-1,0]];
       let spawned = 0;
       for (const [dx,dy] of spots){
