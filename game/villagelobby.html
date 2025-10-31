@@ -104,7 +104,7 @@
     }
     .idchip{ margin-left:auto; font-size:12px; color:var(--muted) }
 
-    /* Preview popup */
+    /* Modal */
     #previewPopup{
       display:none; position:fixed; inset:0; background: rgba(0,0,0,.2);
       align-items:center; justify-content:center; z-index:1000;
@@ -126,7 +126,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
-      getFirestore, collection, doc, getDocs, getDoc, updateDoc
+      getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -145,22 +145,33 @@
     let currentUsername = params.get("username") || localStorage.getItem("username") || null;
     let villages = [];
     let campaign = 0;
-    let targetGoblinId = null;
     let tribeMap = {}; // tribe → [members]
 
     const tribesList = ["Reuben","Simeon","Levi","Judah","Dan","Naphtali","Gad","Asher","Issachar","Zebulun","Joseph","Benjamin"];
 
+    // Color map for preview pixels
     const buildingClassMap = {
       wall: '#111827', strongWall: 'orange', archerTower: '#ef4444',
       trap: '#10b981', lightningStriker: '#60a5fa', sniperTower: '#9ca3af', troopStructure: '#a78bfa',
       cannonTower:'#6b7280', necromancerTower:'#3b0764'
     };
 
+    // Stats used to compute "power" (must match your builder/battle meta)
+    const buildingStats = {
+      wall:             { attack: 0,  defense: 2 },
+      strongWall:       { attack: 0,  defense: 5 },
+      archerTower:      { attack: 4,  defense: 1 },
+      trap:             { attack: 3,  defense: 3 },
+      lightningStriker: { attack: 6,  defense: 1 },
+      troopStructure:   { attack: 5,  defense: 2 },
+      sniperTower:      { attack: 15, defense: 1 },
+      cannonTower:      { attack: 10, defense: 2 },
+      necromancerTower: { attack: 7,  defense: 4 }
+    };
+
     /* ----------------- Boot ----------------- */
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("loginBtn").onclick = doLogin;
-
-      // If already have a username (from battle/create), auto-load
       if (currentUsername) {
         document.getElementById("username").value = currentUsername;
         document.getElementById("password").value = "";
@@ -184,17 +195,14 @@
     }
 
     /* ----------------- Load / Render ----------------- */
-    async function loadVillagePage(skipAuth=false){
-      // hide login
+    async function loadVillagePage(){
       document.getElementById("loginSection").style.display = "none";
       document.getElementById("idChip").textContent = `Signed in as ${currentUsername}`;
 
-      // campaign
+      // my user
       const userRef  = doc(db, "users", currentUsername);
       const userSnap = await getDoc(userRef);
-      campaign       = userSnap.exists() ? (userSnap.data().campaign || 0) : 0;
-      const myTribe  = userSnap.exists() ? userSnap.data().tribe || null : null;
-      targetGoblinId = `Goblin${campaign + 1}`;
+      const myTribe  = userSnap.exists() ? (userSnap.data().tribe || null) : null;
 
       // villages
       const snap = await getDocs(collection(db, "villages"));
@@ -212,17 +220,25 @@
 
       renderLeftColumn(myTribe);
       renderPlayerRankings();
-      renderTribePanel(); // rankings & clickable to view members
+      renderTribePanel();
     }
 
-    function powerOf(v){ return (v?.power?.attack || 0) + (v?.power?.defense || 0); }
+    function powerOf(v){ 
+      const grid = v?.grid || [];
+      let atk=0, def=0;
+      grid.forEach(t=>{
+        const s = buildingStats[t.type];
+        if (s){ atk += s.attack; def += s.defense; }
+      });
+      return (atk + def);
+    }
 
-    /* ---------- Left column: Your Village + Suggested Battles ---------- */
+    /* ---------- Left column: Your Village + Explore + Suggested Battles ---------- */
     function renderLeftColumn(myTribe){
       const list = document.getElementById("villageList");
       list.innerHTML = "";
 
-      // Your Village (single, at the very top)
+      // Your Village (top)
       const ownV = villages.find(v => v.owner === currentUsername);
       const header = document.createElement("div");
       header.className = "sectionTitle";
@@ -230,8 +246,25 @@
       list.appendChild(header);
 
       if (ownV){
-        const row = buildVillageRow(ownV, true, false, myTribe);
+        const row = buildVillageRow(ownV, true, myTribe);
         list.appendChild(row);
+
+        // Explore Battle generator right under your village
+        const exploreBar = document.createElement("div");
+        exploreBar.style.display = "flex";
+        exploreBar.style.gap = "10px";
+        exploreBar.style.alignItems = "center";
+        exploreBar.style.margin = "6px 0 4px";
+        const tip = document.createElement("div");
+        tip.className = "mini";
+        tip.textContent = "Generate an NPC base ~100–200 power above yours and attack it.";
+        const genBtn = document.createElement("button");
+        genBtn.className = "btn btn-primary";
+        genBtn.textContent = "🧭 Generate Explore Battle";
+        genBtn.onclick = () => generateExploreBattle(ownV);
+        exploreBar.appendChild(genBtn);
+        exploreBar.appendChild(tip);
+        list.appendChild(exploreBar);
       } else {
         const createRow = document.createElement("div");
         createRow.className = "village-row own";
@@ -248,13 +281,13 @@
         createBtn.className = "btn btn-primary";
         createBtn.textContent = "🛠️ Create Village";
         createBtn.onclick = () => {
-          location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
+          location.href = \`/game/createvillage.html?username=\${encodeURIComponent(currentUsername)}\`;
         };
         actions.appendChild(createBtn);
         list.appendChild(createRow);
       }
 
-      // Suggested Battles (3 tiles right below)
+      // Suggested Battles (3 tiles below)
       const suggHeader = document.createElement("div");
       suggHeader.className = "sectionTitle";
       suggHeader.innerHTML = `<span>🎯 Suggested Battles</span><span class="sep"></span>`;
@@ -266,7 +299,7 @@
 
       const myPower = powerOf(ownV || {});
       const suggestions = villages
-        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
+        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin") && !v.id.startsWith("NPC-"))
         .map(v => ({ v, diff: Math.abs(powerOf(v)-myPower) }))
         .sort((a,b)=> a.diff - b.diff)
         .slice(0,3);
@@ -278,51 +311,23 @@
         list.appendChild(empty);
       } else {
         suggestions.forEach(({v,diff})=>{
-          const card = document.createElement("div");
-          card.className = "village-row suggest";
-          const total = powerOf(v);
-          card.innerHTML = `
-            <div>
-              <div class="v-name">${v.id}</div>
-              <div class="v-owner">Owner: ${v.owner}</div>
-            </div>
-            <div class="v-power">Their power: ${total} • Δ${diff}</div>
-            <div class="row-actions">
-              <span class="pill">PvP</span>
-              <button class="btn">⚔️ Attack</button>
-              <button class="btn btn-ghost">🧭 Preview</button>
-            </div>
-          `;
-          const [ , , actions ] = card.children;
-
-          const attackBtn = actions.querySelector("button.btn");
-          attackBtn.onclick = (e)=>{
-            e.stopPropagation();
-            const url = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`;
-            location.href = url;
-          };
-
-          const prevBtn = actions.querySelector(".btn.btn-ghost");
-          prevBtn.onclick = (e)=>{ e.stopPropagation(); showVillagePreview(v.grid || []); };
-
-          card.onclick = ()=> showVillagePreview(v.grid || []);
-          suggWrap.appendChild(card);
+          suggWrap.appendChild(buildSuggestCard(v, diff));
         });
       }
 
-      // Active Villages (optional list below, can keep short)
+      // Player villages (short list)
       const actHeader = document.createElement("div");
       actHeader.className = "sectionTitle";
       actHeader.innerHTML = `<span>🏘️ Active Villages</span><span class="sep"></span>`;
       list.appendChild(actHeader);
 
       const others = villages
-        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
+        .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin") && !v.id.startsWith("NPC-"))
         .sort((a,b)=> powerOf(b) - powerOf(a))
-        .slice(0,12); // show a handful
-      others.forEach(v => list.appendChild(buildVillageRow(v, false, false, null)));
+        .slice(0,12);
+      others.forEach(v => list.appendChild(buildVillageRow(v, false, null)));
 
-      // Work / Create button under the list
+      // Work/Create + legend
       const actionsRow = document.createElement("div");
       actionsRow.style.display = 'flex';
       actionsRow.style.gap = '10px';
@@ -332,7 +337,7 @@
       workBtn.className = "btn btn-primary";
       workBtn.textContent = ownV ? "🏰 Work on Village" : "🛠️ Create Village";
       workBtn.onclick = () => {
-        location.href = `/game/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
+        location.href = \`/game/createvillage.html?username=\${encodeURIComponent(currentUsername)}\`;
       };
       actionsRow.appendChild(workBtn);
 
@@ -353,13 +358,13 @@
       list.appendChild(actionsRow);
     }
 
-    function buildVillageRow(v, isOwn, isCampaign, myTribe){
+    function buildVillageRow(v, isOwn, myTribe){
       const row = document.createElement("div");
       row.className = "village-row" + (isOwn ? " own" : "");
       const total = powerOf(v);
       row.innerHTML = `
         <div>
-          <div class="v-name">${isCampaign ? "🎯 " : ""}${v.id}</div>
+          <div class="v-name">${v.id}</div>
           <div class="v-owner">Owner: ${v.owner}</div>
         </div>
         <div class="v-power">${total}</div>
@@ -368,10 +373,9 @@
       row.onclick = () => showVillagePreview(v.grid || []);
       const actions = row.querySelector(".row-actions");
 
-      // pill
       const pill = document.createElement("span");
       pill.className = "pill";
-      pill.textContent = isCampaign ? "Campaign" : (isOwn ? "Your Village" : "PvP");
+      pill.textContent = isOwn ? "Your Village" : "PvP";
       actions.appendChild(pill);
 
       if (isOwn){
@@ -412,7 +416,197 @@
       return row;
     }
 
-    /* ----------------- Right: Tribe panel (click to see members) ----------------- */
+    function buildSuggestCard(v, diff){
+      const card = document.createElement("div");
+      card.className = "village-row suggest";
+      const total = powerOf(v);
+      card.innerHTML = `
+        <div>
+          <div class="v-name">${v.id}</div>
+          <div class="v-owner">Owner: ${v.owner}</div>
+        </div>
+        <div class="v-power">Their power: ${total} • Δ${diff}</div>
+        <div class="row-actions">
+          <span class="pill">PvP</span>
+          <button class="btn">⚔️ Attack</button>
+          <button class="btn btn-ghost">🧭 Preview</button>
+        </div>
+      `;
+      const [ , , actions ] = card.children;
+      const attackBtn = actions.querySelector("button.btn");
+      attackBtn.onclick = (e)=>{
+        e.stopPropagation();
+        const url = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(v.owner)}`;
+        location.href = url;
+      };
+      const prevBtn = actions.querySelector(".btn.btn-ghost");
+      prevBtn.onclick = (e)=>{ e.stopPropagation(); showVillagePreview(v.grid || []); };
+      card.onclick = ()=> showVillagePreview(v.grid || []);
+      return card;
+    }
+
+    /* ----------------- Explore Battle Generator (NPC) ----------------- */
+    async function generateExploreBattle(myVillage){
+      if (!myVillage){
+        alert("You need a village first. Create one, then try again.");
+        return;
+      }
+      const myPower = powerOf(myVillage);
+      const minP = myPower + 100;
+      const maxP = myPower + 200;
+
+      // 1) build a grid with a wall preset + filled defenses
+      const grid = generateNpcGridWithTarget(minP, maxP);
+
+      // 2) persist NPC "village" and a matching "user" document
+      const ts = Date.now();
+      const npcOwner = `NPC-${currentUsername}-${ts}`;
+      const villageDoc = doc(db, "villages", npcOwner);
+      await setDoc(villageDoc, {
+        id: npcOwner,
+        owner: npcOwner,
+        grid,
+        power: { attack: 0, defense: 0 } // not used by this lobby; we compute from grid
+      });
+
+      const userDoc = doc(db, "users", npcOwner);
+      await setDoc(userDoc, {
+        password: "npc", // placeholder; your battle script only reads bucks/increments
+        bucks: 0,
+        tribe: null,
+        campaign: 0
+      }, { merge: true });
+
+      // 3) go fight!
+      location.href = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(npcOwner)}`;
+    }
+
+    function generateNpcGridWithTarget(minP, maxP){
+      const size = 16;
+      const occupied = new Set();
+      const grid = [];
+
+      // choose a wall preset
+      const presets = [placeRingWalls, placeCornerBastions, placeStripes, placeBoxMaze];
+      const preset = presets[Math.floor(Math.random()*presets.length)];
+      preset(size, grid, occupied);
+
+      // fill remaining with random mix; then tune to target power
+      const pool = [
+        "archerTower","sniperTower","lightningStriker","cannonTower","necromancerTower",
+        "trap","troopStructure","strongWall","wall"
+      ];
+
+      // initial fill pass
+      for (let y=0; y<size; y++){
+        for (let x=0; x<size; x++){
+          const key = `${x},${y}`;
+          if (occupied.has(key)) continue;
+          if (Math.random()<0.55){
+            const type = pool[Math.floor(Math.random()*pool.length)];
+            grid.push({x,y,type});
+            occupied.add(key);
+          }
+        }
+      }
+
+      // compute and nudge toward range
+      let p = computeGridPower(grid);
+      let guard = 0;
+      while ((p < minP || p > maxP) && guard < 400){
+        guard++;
+        if (p < minP){
+          // add strong structures in empty spots
+          // prefer snipers/cannons/necros/lightning
+          const adds = ["sniperTower","cannonTower","necromancerTower","lightningStriker","archerTower","trap","strongWall"];
+          let placed = false;
+          for (let tries=0; tries<50 && !placed; tries++){
+            const x = Math.floor(Math.random()*size), y = Math.floor(Math.random()*size);
+            const key = `${x},${y}`;
+            if (occupied.has(key)) continue;
+            const type = adds[Math.floor(Math.random()*adds.length)];
+            grid.push({x,y,type});
+            occupied.add(key);
+            placed = true;
+          }
+        } else {
+          // too strong → remove a higher value item
+          const idx = grid.findIndex(t => ["sniperTower","cannonTower","necromancerTower","lightningStriker","trap","strongWall","archerTower"].includes(t.type));
+          if (idx !== -1){
+            const key = `${grid[idx].x},${grid[idx].y}`;
+            occupied.delete(key);
+            grid.splice(idx,1);
+          } else {
+            // fallback remove anything
+            if (grid.length){
+              const r = Math.floor(Math.random()*grid.length);
+              const key2 = `${grid[r].x},${grid[r].y}`;
+              occupied.delete(key2);
+              grid.splice(r,1);
+            }
+          }
+        }
+        p = computeGridPower(grid);
+      }
+      return grid;
+    }
+
+    function computeGridPower(grid){
+      let atk=0, def=0;
+      grid.forEach(t=>{
+        const s = buildingStats[t.type];
+        if (s){ atk += s.attack; def += s.defense; }
+      });
+      return atk+def;
+    }
+
+    /* ---------- Wall presets ---------- */
+    function placeRingWalls(size, grid, occ){
+      const ring = (x,y)=> x===1||y===1||x===size-2||y===size-2;
+      for (let y=0;y<size;y++){
+        for (let x=0;x<size;x++){
+          if (ring(x,y)){
+            grid.push({x,y,type: (Math.random()<0.25?"strongWall":"wall")});
+            occ.add(`${x},${y}`);
+          }
+        }
+      }
+    }
+    function placeCornerBastions(size, grid, occ){
+      const chunks = [
+        [0,0],[0,1],[1,0],[1,1],
+        [size-1,0],[size-2,0],[size-1,1],[size-2,1],
+        [0,size-1],[0,size-2],[1,size-1],[1,size-2],
+        [size-1,size-1],[size-2,size-1],[size-1,size-2],[size-2,size-2]
+      ];
+      chunks.forEach(([x,y])=>{
+        grid.push({x,y,type: (Math.random()<0.5?"strongWall":"wall")});
+        occ.add(`${x},${y}`);
+      });
+    }
+    function placeStripes(size, grid, occ){
+      for (let y=2; y<size; y+=3){
+        for (let x=0;x<size;x++){
+          grid.push({x,y,type: (Math.random()<0.3?"strongWall":"wall")});
+          occ.add(`${x},${y}`);
+        }
+      }
+    }
+    function placeBoxMaze(size, grid, occ){
+      for (let layer=1; layer<=3; layer++){
+        const a=layer, b=size-1-layer;
+        for (let x=a;x<=b;x++){
+          grid.push({x, y:a, type:"wall"}); occ.add(`${x},${a}`);
+          grid.push({x, y:b, type:"wall"}); occ.add(`${x},${b}`);
+        }
+        for (let y=a+1;y<=b-1;y++){
+          grid.push({x:a, y, type:"wall"}); occ.add(`${a},${y}`);
+          grid.push({x:b, y, type:"wall"}); occ.add(`${b},${y}`);
+        }
+      }
+    }
+
+    /* ----------------- Right: Tribe & Player panels ----------------- */
     async function renderTribePanel(){
       const tribeCard = document.getElementById("tribeCard");
       tribeCard.innerHTML = `
@@ -470,7 +664,6 @@
       });
     }
 
-    /* ----------------- Player Rankings (scrollable) ----------------- */
     function renderPlayerRankings(){
       const card = document.getElementById("playerRanksCard");
       card.innerHTML = `
@@ -500,6 +693,8 @@
     window.showVillagePreview = function(grid){
       const modal = document.getElementById("previewPopup");
       const pg = document.getElementById("previewGrid");
+      const head = document.querySelector("#previewPopup .modal-head h3");
+      head.textContent = "🏘️ Village Layout";
       pg.innerHTML = "";
       for (let y=0; y<16; y++){
         for (let x=0; x<16; x++){
@@ -523,7 +718,6 @@
       const head = document.querySelector("#previewPopup .modal-head h3");
       head.textContent = `👥 ${tribe} — Members`;
 
-      // Replace grid area with member list
       pg.innerHTML = "";
       const list = document.createElement("div");
       list.style.display = "grid";
@@ -544,12 +738,12 @@
 
       pg.appendChild(list);
       modal.style.display = "flex";
-    }
+    };
   </script>
 </head>
 <body>
   <div class="shell">
-    <!-- LEFT: Your Village + Suggested + Some Active -->
+    <!-- LEFT: Your Village + Explore + Suggested + Some Active -->
     <div id="villagesCard" class="card">
       <div class="auth">
         <h1>⚡ Tribes Lobby</h1>
@@ -587,6 +781,8 @@
   </div>
 </body>
 </html>
+
+
 
 
 
