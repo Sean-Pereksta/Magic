@@ -6,105 +6,73 @@
   <style>
     body { font-family: Arial, sans-serif; background: #eef2f5; margin: 0; padding: 0; display: flex; }
     #sidebar { width: 160px; background: #ddd; padding: 10px; border-right: 2px solid #aaa; }
-    #grid { display: grid; grid-template-columns: repeat(16, 30px); gap: 2px; margin: 20px; }
+    #grid { display: grid; grid-template-columns: repeat(16, 30px); gap: 2px; margin: 20px; position: relative; }
     .cell { width: 30px; height: 30px; background: #fff; border: 1px solid #ccc; position: relative; }
-   .wall              { background: black; }
-.strongWall        { background: orange; }
-.archerTower       { background: red; }
-.trap              { background: green; }
-.lightningStriker  { background: blue; }
-.troopStructure    { background: purple; }
-.sniperTower       { background: #555; } /* new sniper tower styling */
 
+    .wall{ background:black; }
+    .strongWall{ background:orange; }
+    .archerTower{ background:red; }
+    .trap{ background:green; }
+    .lightningStriker{ background:blue; }
+    .troopStructure{ background:purple; }
+    .sniperTower{ background:#555; }
+    /* NEW towers */
+    .cannonTower{ background:#6b7280; }       /* steel */
+    .necromancerTower{ background:#3b0764; }  /* deep purple */
 
     .health-bar {
-      position: absolute;
-      top: 1px;
-      left: 1px;
-      width: 28px;
-      height: 4px;
-      background: #aaa;
+      position: absolute; top: 1px; left: 1px; width: 28px; height: 4px; background: #aaa;
     }
     .health-fill { height: 100%; background: limegreen; }
 
     .troop {
-      background: gray;
-      border: 2px solid black;
-      width: 26px;
-      height: 26px;
-      margin: auto;
-      border-radius: 50%;
+      background: gray; border: 2px solid black; width: 26px; height: 26px; margin: auto; border-radius: 50%;
+      display:grid; place-items:center; font-size:14px;
     }
-    .troop.archer {
-      background: darkgreen; /* or any color you prefer */
-    }
-    .troop.guardian {
-      background: darkblue;
-    }
-    .troop.bomber {
-      background: red;
-    }
-  
+    .troop.archer{ background:darkgreen; }
+    .troop.guardian{ background:darkblue; }
+    .troop.bomber{ background:red; }
+    .troop.raider{ background:#8b5cf6; }
+
     .troop-hp {
-  position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
-  background: #fff;
-  border: 1px solid #000;
-  padding: 1px 3px;
-  border-radius: 3px;
-  font-weight: bold;
-}
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      font-size:10px; background:#fff; border:1px solid #000; padding:1px 3px; border-radius:3px; font-weight:bold;
+    }
 
-.structure-icon {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 18px;
-  pointer-events: none;
-}
+    .structure-icon {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 18px; pointer-events: none;
+    }
 
-    .troop-tray button,
-    #surrenderBtn {
-      display: block;
-      margin: 5px 0;
-      padding: 6px;
-      width: 100%;
-      background: gray;
-      border: none;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
+    .troop-tray button, #surrenderBtn {
+      display:block; margin:5px 0; padding:6px; width:100%; background:gray; border:none; color:white; font-weight:bold; cursor:pointer;
     }
 
     #resultPopup {
-      display: none;
-      position: fixed;
-      top: 50%; left: 50%;
+      display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
+      background:white; border:3px solid black; padding:30px; text-align:center; z-index:1000; border-radius:10px;
+    }
+    #resultPopup h2{ margin-top:0; }
+    #resultPopup button{
+      padding:10px 20px; font-size:16px; background:#3498db; color:white; border:none; border-radius:5px; cursor:pointer;
+    }
+
+    /* Projectile + FX */
+    .proj, .fx {
+      position:absolute; width:6px; height:6px; border-radius:50%; pointer-events:none; z-index: 50;
       transform: translate(-50%, -50%);
-      background: white;
-      border: 3px solid black;
-      padding: 30px;
-      text-align: center;
-      z-index: 1000;
-      border-radius: 10px;
     }
+    .proj.arrow { background:#2f855a; }
+    .proj.snipe { background:#ff00ff; width:4px; height:4px; }
+    .proj.cannon { background:#374151; width:8px; height:8px; }
+    .proj.necro { background:#a855f7; }
+    .proj.zap { background:#fde047; width:5px; height:5px; }
 
-    #resultPopup h2 {
-      margin-top: 0;
-    }
-
-    #resultPopup button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background: #3498db;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
+    .fx.hit { background:rgba(128,128,128,.65); width:12px; height:12px; animation: puff .25s ease-out forwards; }
+    .fx.splash { background:rgba(75,85,99,.6); width:16px; height:16px; animation:puff .3s ease-out forwards; }
+    @keyframes puff{
+      from{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+      to{ opacity:0; transform:translate(-50%,-50%) scale(2); }
     }
   </style>
 </head>
@@ -131,14 +99,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-   import {
-  getFirestore,
-  doc,
-  getDoc,
-  updateDoc,
-  increment
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
+    import { getFirestore, doc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -155,21 +116,17 @@
     const params = new URLSearchParams(window.location.search);
     const attacker = params.get("attacker");
     const defender = params.get("defender");
+    const defenderUserRef = doc(db, "users", defender);
 
-const defenderUserRef = doc(db, "users", defender);
-
-
-    // which villages are “goblins” (lowercase/uppercase must match your doc IDs)
-const goblinVillages = [ "Goblin1", "Goblin2", "Goblin3", "Goblin4", "Goblin5", "Goblin6", "Goblin7", "Goblin8", "Goblin9", "Goblin10", "Goblin11", "Goblin12", "Goblin13", "Goblin14", "Goblin15", "Goblin16", "Goblin17", "Goblin18", "Goblin19", "Goblin20" ];
-
-// true if the defender is one of our goblins
-const isGoblinBattle = goblinVillages.includes(defender);
-
+    const goblinVillages = ["Goblin1","Goblin2","Goblin3","Goblin4","Goblin5","Goblin6","Goblin7","Goblin8","Goblin9","Goblin10","Goblin11","Goblin12","Goblin13","Goblin14","Goblin15","Goblin16","Goblin17","Goblin18","Goblin19","Goblin20"];
+    const isGoblinBattle = goblinVillages.includes(defender);
 
     const gridSize = 16;
     const gridElement = document.getElementById("grid");
-    const healthMap = {};
-    const troopUnits = [];
+
+    const healthMap = {};         // for static structures (x,y) -> {current,max}
+    const troopUnits = [];        // attacking troops
+    const skeletons = [];         // necro summons (move & attack attacker)
     let selectedTroopType = "base";
     let troopsLeft = 0;
     let archerInterval;
@@ -177,46 +134,89 @@ const isGoblinBattle = goblinVillages.includes(defender);
     let attackerRef;
     let defenderData;
 
-
     const buildingHealth = {
-  wall:             40,
-  strongWall:      180,
-  archerTower:      25,
-  trap:             40,
-  lightningStriker: 30,
-  troopStructure:   10,
-  sniperTower:      30   // health for the new sniper tower
-};
+      wall: 40,
+      strongWall: 180,
+      archerTower: 25,
+      trap: 40,
+      lightningStriker: 30,
+      troopStructure: 10,
+      sniperTower: 30,
+      cannonTower: 35,        // NEW
+      necromancerTower: 28    // NEW
+    };
 
-const structureEmoji = {
-  wall:             "🧱",
-  strongWall:       "🧱",
-  archerTower:      "🏹",
-  trap:             "🪤",
-  lightningStriker: "⚡",
-  troopStructure:   "🏰",
-  sniperTower:      "🎯"  // emoji for the sniper tower
-};
+    const structureEmoji = {
+      wall: "🧱",
+      strongWall: "🧱",
+      archerTower: "🏹",
+      trap: "🪤",
+      lightningStriker: "⚡",
+      troopStructure: "🏰",
+      sniperTower: "🎯",
+      cannonTower: "💣",
+      necromancerTower: "☠️"
+    };
 
+    const troopStats = {
+      base: { hp: 22, damage: 6, range: 1, speed: 1, cost: 1 },
+      archer: { hp: 12, damage: 3, range: 4, speed: 1, cost: 1 },
+      guardian: { hp: 110, damage: 4, range: 1, speed: 1, cost: 4 },
+      raider: { hp: 26, damage: 5, range: 2, speed: 2, cost: 4 },
+      bomber: { hp: 20, damage: 20, range: 2, speed: 0, cost: 6 }
+    };
 
+    const enemyStructures = [];
+    const archerTowers = [];
+    const lightningTowers = [];
+    const trapTowers = [];
+    const sniperTowers = [];
+    const cannonTowers = [];      // NEW
+    const necroTowers = [];       // NEW
 
-  const troopStats = {
-  base: { hp: 22, damage: 6, range: 1, speed: 1, cost: 1 },
-  archer: { hp: 12, damage: 3, range: 4, speed: 1, cost: 1 },
-  guardian: { hp: 110, damage: 4, range: 1, speed: 1, cost: 4 },
-  raider: { hp: 26, damage: 5, range: 2, speed: 2, cost: 4 },
-    bomber: { hp: 20, damage: 20, range: 2, speed: 0, cost: 6 }
-};
-
-
-
-
- const enemyStructures   = [];
-const archerTowers      = [];
-const lightningTowers   = [];
-const trapTowers        = [];
-const sniperTowers      = [];  // added array for sniper towers
-
+    /* ---------- Helpers: cell, occupancy, projectiles, fx ---------- */
+    const inBounds = (x,y)=> x>=0 && y>=0 && x<gridSize && y<gridSize;
+    const cellAt = (x,y)=> document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+    const isBlocked = (x,y)=> {
+      const c = cellAt(x,y);
+      return !c || (c.classList.length > 1); // has a structure class
+    };
+    function gridCenter(el){
+      const rect = el.getBoundingClientRect();
+      const gridRect = gridElement.getBoundingClientRect();
+      return { x: rect.left - gridRect.left + rect.width/2, y: rect.top - gridRect.top + rect.height/2 };
+    }
+    function spawnFX(x,y,cls="hit"){
+      const c = cellAt(x,y); if(!c) return;
+      const fx = document.createElement("div");
+      fx.className = `fx ${cls}`;
+      const p = gridCenter(c);
+      fx.style.left = p.x + "px"; fx.style.top = p.y + "px";
+      gridElement.appendChild(fx);
+      setTimeout(()=> fx.remove(), 320);
+    }
+    function shootProjectile(fromX,fromY,toX,toY,cls,onHit,travelMs=250){
+      const from = cellAt(fromX,fromY), to = cellAt(toX,toY);
+      if(!from || !to){ onHit?.(); return; }
+      const pFrom = gridCenter(from), pTo = gridCenter(to);
+      const dot = document.createElement("div");
+      dot.className = `proj ${cls}`;
+      dot.style.left = pFrom.x + "px";
+      dot.style.top = pFrom.y + "px";
+      gridElement.appendChild(dot);
+      const start = performance.now();
+      function step(t){
+        const k = Math.min(1,(t-start)/travelMs);
+        dot.style.left = (pFrom.x + (pTo.x-pFrom.x)*k) + "px";
+        dot.style.top  = (pFrom.y + (pTo.y-pFrom.y)*k) + "px";
+        if(k<1) requestAnimationFrame(step);
+        else{
+          dot.remove();
+          onHit?.();
+        }
+      }
+      requestAnimationFrame(step);
+    }
 
     function renderHealth(cell, key, value) {
       let healthBar = cell.querySelector(".health-bar");
@@ -234,204 +234,203 @@ const sniperTowers      = [];  // added array for sniper towers
     }
 
     function getClosestTarget(x, y) {
-      let minDist = Infinity;
-      let closest = null;
+      // Search towers
+      let minDist = Infinity, closest = null, kind="tower";
       for (const s of enemyStructures) {
         const key = `${s.x},${s.y}`;
         if (healthMap[key]?.current > 0) {
-          const dx = s.x - x;
-          const dy = s.y - y;
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist < minDist) {
-            minDist = dist;
-            closest = s;
-          }
+          const dist = Math.abs(s.x - x) + Math.abs(s.y - y);
+          if (dist < minDist) { minDist = dist; closest = s; kind="tower"; }
         }
       }
-      return closest;
+      // Also consider skeletons
+      for (const sk of skeletons) {
+        if (sk.hp <= 0) continue;
+        const dist = Math.abs(sk.x - x) + Math.abs(sk.y - y);
+        if (dist < minDist) { minDist = dist; closest = sk; kind="skeleton"; }
+      }
+      return closest ? { target: closest, kind } : null;
     }
-  
 
-function spawnTroop(x, y) {
-  /* -------- cost / placement guard ------------- */
-  const cost = troopStats[selectedTroopType].cost;
-  if (troopsLeft < cost || battleOver) return;
+    /* ---------- Spawning Attacker Troops ---------- */
+    function spawnTroop(x, y) {
+      const cost = troopStats[selectedTroopType].cost;
+      if (troopsLeft < cost || battleOver) return;
+      const cell = cellAt(x,y);
+      if (!cell || cell.classList.length > 1) return;
 
-  const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-  if (!cell || cell.classList.length > 1) return;   // can’t spawn on a building
+      const stats = troopStats[selectedTroopType];
 
-  /* ---------- build the DOM for the troop ---------- */
-  const stats = troopStats[selectedTroopType];
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
 
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "relative";
+      const hpBar = document.createElement("div");
+      hpBar.className = "troop-hp";
+      hpBar.textContent = stats.hp;
 
-  const hpBar = document.createElement("div");
-  hpBar.className = "troop-hp";
-  hpBar.textContent = stats.hp;
+      const icon = document.createElement("div");
+      icon.className = "troop " + selectedTroopType;
+      icon.textContent =
+        selectedTroopType === "archer"   ? "🏹" :
+        selectedTroopType === "guardian" ? "🛡️" :
+        selectedTroopType === "bomber"   ? "💣" :
+        selectedTroopType === "raider"   ? "🐎" : "🗡️";
 
-  const icon = document.createElement("div");
-  icon.className = "troop " + selectedTroopType;
-  icon.textContent =
-    selectedTroopType === "archer"   ? "🏹" :
-    selectedTroopType === "guardian" ? "🛡️" :
-    selectedTroopType === "bomber" ? "💣" :
-    selectedTroopType === "raider"   ? "🐎" : "🗡️";
+      wrapper.appendChild(hpBar);
+      wrapper.appendChild(icon);
+      cell.appendChild(wrapper);
 
-  wrapper.appendChild(hpBar);
-  wrapper.appendChild(icon);
-  cell.appendChild(wrapper);
+      const troop = {
+        x, y,
+        hp: stats.hp,
+        damage: stats.damage,
+        range: stats.range,
+        speed: stats.speed,
+        type: selectedTroopType,
+        interval: null,
+        div: wrapper,
+        hpDisplay: hpBar,
+        taunt: (selectedTroopType === "guardian")
+      };
+      troopUnits.push(troop);
 
-  /* ------------- register troop object -------------- */
-  const troop = {
-    x, y,
-    hp: stats.hp,
-    damage: stats.damage,
-    range: stats.range,
-    speed: stats.speed,
-    type: selectedTroopType,
-    interval: null,
-    div: wrapper,
-    hpDisplay: hpBar
-  };
-  troopUnits.push(troop);
+      troopsLeft -= cost;
+      document.getElementById("troopCount").textContent = troopsLeft;
 
-  troopsLeft -= cost;
-  document.getElementById("troopCount").textContent = troopsLeft;
+      const getClosestSpecialTarget = (ox, oy) => {
+        const prio = ["archerTower","sniperTower","lightningStriker","trap","cannonTower","necromancerTower"];
+        let best=null, bestDist=Infinity;
+        for (const s of enemyStructures) {
+          if (!prio.includes(s.type)) continue;
+          const key = `${s.x},${s.y}`;
+          if (!healthMap[key] || healthMap[key].current <= 0) continue;
+          const d = Math.abs(s.x - ox) + Math.abs(s.y - oy);
+          if (d < bestDist) { bestDist = d; best = s; }
+        }
+        return best;
+      };
 
-  // inside spawnTroop, right after creating the `troop` object:
-  troop.taunt = (troop.type === "guardian");
+      troop.interval = setInterval(() => {
+        if (battleOver) return;
 
-  /* -------- helper for prioritising towers (raider) -------- */
-  const getClosestSpecialTarget = (ox, oy) => {
-   const prio = ["archerTower", "sniperTower", "lightningStriker", "trap"];
-    let best = null, bestDist = Infinity;
-    for (const s of enemyStructures) {
-      if (!prio.includes(s.type)) continue;
-      const key = `${s.x},${s.y}`;
-      if (!healthMap[key] || healthMap[key].current <= 0) continue;
-      const d = Math.abs(s.x - ox) + Math.abs(s.y - oy);
-      if (d < bestDist) { bestDist = d; best = s; }
-    }
-    return best;
-  };
-
-  /* ---------------- main behaviour loop ---------------- */
-  troop.interval = setInterval(() => {
-    if (battleOver) return;
-
-
-   if (troop.type === "bomber") {
-    // 1) try to explode adjacent tiles
-    let didExplode = false;
-    const R = troop.range;
-    for (let dx = -R; dx <= R; dx++) {
-      for (let dy = -R; dy <= R; dy++) {
-        if (dx === 0 && dy === 0) continue;
-        const tx = troop.x + dx, ty = troop.y + dy;
-        const key = `${tx},${ty}`, th = healthMap[key];
-        if (th?.current > 0) {
-          didExplode = true;
-          th.current = Math.max(0, th.current - troop.damage);
-          const cell = document.querySelector(`.cell[data-x="${tx}"][data-y="${ty}"]`);
-          if (th.current === 0) {
-            delete healthMap[key];
-            if (cell) { cell.className = "cell"; cell.innerHTML = ""; }
-            checkVictoryCondition();
-          } else if (cell) {
-            renderHealth(cell, key, th.current);
+        // Bomber special case
+        if (troop.type === "bomber") {
+          let didExplode = false;
+          const R = troop.range;
+          for (let dx=-R; dx<=R; dx++){
+            for (let dy=-R; dy<=R; dy++){
+              if (dx===0 && dy===0) continue;
+              const tx=troop.x+dx, ty=troop.y+dy;
+              const key = `${tx},${ty}`, th = healthMap[key];
+              if (th?.current > 0){
+                didExplode = true;
+                th.current = Math.max(0, th.current - troop.damage);
+                const cellT = cellAt(tx,ty);
+                if (th.current === 0){
+                  delete healthMap[key];
+                  if (cellT){ cellT.className="cell"; cellT.innerHTML=""; }
+                  checkVictoryCondition();
+                } else if (cellT){ renderHealth(cellT, key, th.current); }
+              }
+            }
+          }
+          if (didExplode){
+            troop.hp = Math.max(0, troop.hp - troop.damage);
+            troop.hpDisplay.textContent = troop.hp;
+            if (troop.hp <= 0){
+              clearInterval(troop.interval);
+              const c = cellAt(troop.x,troop.y); if (c) c.innerHTML="";
+              onTroopDeath(troop.x,troop.y); // necro reanimate check
+            }
+            return;
           }
         }
-      }
+
+        // Target selection (raider prioritizes towers)
+        const pick = (troop.type==='raider')
+          ? (getClosestSpecialTarget(troop.x,troop.y) || getClosestTarget(troop.x,troop.y)?.target)
+          : getClosestTarget(troop.x,troop.y)?.target;
+
+        if (!pick) { clearInterval(troop.interval); endBattle(true); return; }
+
+        const isSkeleton = !!pick.isSkeleton;
+        const targetX = pick.x, targetY = pick.y;
+        const dx = targetX - troop.x;
+        const dy = targetY - troop.y;
+        const dist = Math.abs(dx)+Math.abs(dy);
+        const inRange = dist <= troop.range;
+
+        // remove old DOM
+        const oldCell = cellAt(troop.x,troop.y);
+        if (oldCell && troop.div && troop.div.parentNode===oldCell) oldCell.removeChild(troop.div);
+
+        // attack or move
+        if (inRange){
+          if (troop.type==='archer'){
+            // projectile arrow
+            shootProjectile(troop.x,troop.y,targetX,targetY,"arrow",()=>{
+              doDamageToTarget(pick, troop.damage);
+              spawnFX(targetX,targetY,"hit");
+            }, 220);
+          } else {
+            // melee hit with gray splash
+            doDamageToTarget(pick, troop.damage);
+            spawnFX(targetX,targetY,"splash");
+          }
+        } else {
+          if (troop.type==='archer'){
+            troop.x += Math.sign(dx);
+            troop.y += Math.sign(dy);
+          } else {
+            const steps = troop.type==='raider' ? 2 : 1;
+            for (let s=0; s<steps; s++){
+              const nx = troop.x + Math.sign(dx);
+              const ny = troop.y + Math.sign(dy);
+              if (!inBounds(nx,ny)) break;
+              const blocked = isBlocked(nx,ny) && troop.type!=='raider';
+              if (blocked) break;
+              troop.x = nx; troop.y = ny;
+            }
+          }
+        }
+
+        // redraw
+        const newCell = cellAt(troop.x,troop.y);
+        if (newCell) newCell.appendChild(troop.div);
+
+      }, 800);
     }
 
-    // 2) if we actually exploded, apply self-damage and stop here
-    if (didExplode) {
-      troop.hp = Math.max(0, troop.hp - troop.damage);
-      troop.hpDisplay.textContent = troop.hp;
-      if (troop.hp <= 0) {
-        clearInterval(troop.interval);
-        const c = document.querySelector(`.cell[data-x="${troop.x}"][data-y="${troop.y}"]`);
-        if (c) c.innerHTML = "";
+    function doDamageToTarget(targetOrSkeleton, dmg){
+      // skeleton?
+      if (targetOrSkeleton.isSkeleton){
+        targetOrSkeleton.hp = Math.max(0, targetOrSkeleton.hp - dmg);
+        if (targetOrSkeleton.hp <= 0){
+          // remove skeleton
+          const c = cellAt(targetOrSkeleton.x,targetOrSkeleton.y);
+          if (c && targetOrSkeleton.div && targetOrSkeleton.div.parentNode===c) c.removeChild(targetOrSkeleton.div);
+          targetOrSkeleton.hp = 0;
+        }
+        return;
       }
-      return;  // **only** short-circuit when explosion happened
-    }
-    // otherwise fall through to move/attack like a normal unit
-  }
-    /* choose target */
-    const target =
-      troop.type === "raider"
-        ? (getClosestSpecialTarget(troop.x, troop.y) || getClosestTarget(troop.x, troop.y))
-        :  getClosestTarget(troop.x, troop.y);
-
-    if (!target) { clearInterval(troop.interval); endBattle(true); return; }
-
-    /* compute distance / range */
-    const dx = target.x - troop.x;
-    const dy = target.y - troop.y;
-    const dist = Math.abs(dx) + Math.abs(dy);
-    const inRange = dist <= troop.range;
-
-    /* remove old DOM position */
-    const oldCell = document.querySelector(`.cell[data-x="${troop.x}"][data-y="${troop.y}"]`);
-    if (oldCell && troop.div) oldCell.removeChild(troop.div);
-
-    /* attack or move */
-    if (inRange) {
-      const key = `${target.x},${target.y}`;
+      // structure
+      const key = `${targetOrSkeleton.x},${targetOrSkeleton.y}`;
       const th = healthMap[key];
-      if (th && th.current > 0) {
-        th.current -= troop.damage;
-        th.current = Math.max(0, th.current);
-        const tCell = document.querySelector(`.cell[data-x="${target.x}"][data-y="${target.y}"]`);
-        if (th.current === 0) {
-          delete healthMap[key];
-          if (tCell) { tCell.className = "cell"; tCell.innerHTML = ""; }
-          checkVictoryCondition();
-        } else if (tCell) {
-          renderHealth(tCell, key, th.current);
-        }
-      }
-    } else {
-      if (troop.type === "archer") {
-  // Archers move exactly 1 tile until they’re in range
-  troop.x += Math.sign(dx);
-  troop.y += Math.sign(dy);
-
-} else {
-  // Base/Guardian = 1 step, Raider = 2 steps & ignores walls
-  const steps = troop.type === "raider" ? 2 : 1;
-  for (let s = 0; s < steps; s++) {
-    const nextX = troop.x + Math.sign(dx);
-    const nextY = troop.y + Math.sign(dy);
-    const nextCell = document.querySelector(
-      `.cell[data-x="${nextX}"][data-y="${nextY}"]`
-    );
-    if (!nextCell) break;
-    // Only raiders can leap over structures
-    if (nextCell.classList.length > 1 && troop.type !== "raider") break;
-
-    troop.x = nextX;
-    troop.y = nextY;
-    }
-    }
+      if (!th) return;
+      th.current = Math.max(0, th.current - dmg);
+      const tCell = cellAt(targetOrSkeleton.x,targetOrSkeleton.y);
+      if (th.current === 0){
+        delete healthMap[key];
+        if (tCell){ tCell.className="cell"; tCell.innerHTML=""; }
+        // also remove from structure list
+        const idx = enemyStructures.findIndex(s=>s.x===targetOrSkeleton.x && s.y===targetOrSkeleton.y);
+        if (idx>-1) enemyStructures.splice(idx,1);
+        checkVictoryCondition();
+      } else if (tCell){ renderHealth(tCell, key, th.current); }
     }
 
-    /* re‑draw at new location */
-    const newCell = document.querySelector(`.cell[data-x="${troop.x}"][data-y="${troop.y}"]`);
-    if (newCell) newCell.appendChild(troop.div);
-
-  }, 1000);
-}
-
-// let this live somewhere at top-level in your module
-function selectTroopType(type) {
-  // e.g. store the user’s choice
-  selectedTroopType = type;
-  // (optionally) update your UI to highlight the button, etc.
-}
-
-    window.selectTroopType = selectTroopType;
+    // expose troop selector
+    window.selectTroopType = function(type){ selectedTroopType = type; };
 
     function createGrid() {
       gridElement.innerHTML = "";
@@ -449,264 +448,375 @@ function selectTroopType(type) {
 
     function checkVictoryCondition() {
       const remaining = Object.values(healthMap).filter(h => h.current > 0);
-      if (remaining.length === 0) {
-        endBattle(true);
-      }
+      if (remaining.length === 0) endBattle(true);
     }
 
-async function endBattle(victory) {
-  battleOver = true;
-  clearInterval(archerInterval);
-  troopUnits.forEach(t => clearInterval(t.interval));
+    async function endBattle(victory) {
+      battleOver = true;
+      clearInterval(archerInterval);
+      troopUnits.forEach(t => clearInterval(t.interval));
+      skeletons.forEach(s => clearInterval(s.interval));
 
-  const attackerRef = doc(db, "users", attacker);
-  const defenderRef = doc(db, "users", defender);
-  const updates     = [];
+      const attackerRef = doc(db, "users", attacker);
+      const defenderRef = doc(db, "users", defender);
+      const updates = [];
 
-  if (victory) {
-    // Attacker wins → give attacker reward, take back defender’s 10
-    const reward = isGoblinBattle ? 50 : 5;
-    updates.push(updateDoc(attackerRef, { bucks: increment(reward) }));
-    updates.push(updateDoc(defenderRef, { bucks: increment(-10) }));
-    if (isGoblinBattle) {
-      updates.push(updateDoc(attackerRef, { campaign: increment(1) }));
-    }
-    document.getElementById("resultText").textContent =
-      `🏆 Victory! You earned ${reward} bucks.`;
-  } else {
-    // Attacker loses → defender already has their +10, so no writes here
-    document.getElementById("resultText").textContent =
-      "❌ Defeat! Defender keeps their 10 bucks.";
-  }
-
-  // run all writes in parallel
-  if (updates.length) await Promise.all(updates);
-
-  document.getElementById("resultPopup").style.display = "block";
-}
-
-
-
-function startArcherAttacks() {
-  archerInterval = setInterval(() => {
-    if (battleOver) return;
-    for (const { x, y } of archerTowers) {
-      const key = `${x},${y}`;
-      if (!healthMap[key]?.current) continue;
-
-      // gather all alive troops within range 5
-      const inRange = troopUnits.filter(t =>
-        t.hp > 0 &&
-        Math.abs(t.x - x) + Math.abs(t.y - y) <= 5
-      );
-      if (inRange.length === 0) continue;
-
-      // prefer guardians with taunt
-      const taunters = inRange.filter(t => t.taunt);
-      const candidates = taunters.length ? taunters : inRange;
-
-      // pick the closest candidate
-      let target = candidates.reduce((best, t) => {
-        const d = Math.abs(t.x - x) + Math.abs(t.y - y);
-        const bd = Math.abs(best.x - x) + Math.abs(best.y - y);
-        return d < bd ? t : best;
-      }, candidates[0]);
-
-      // apply damage
-      target.hp -= 5;
-      if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
-      const cell = document.querySelector(
-        `.cell[data-x="${target.x}"][data-y="${target.y}"]`
-      );
-      if (cell) {
-        cell.style.backgroundColor = 'red';
-        setTimeout(() => cell.style.backgroundColor = '', 100);
+      if (victory) {
+        const reward = isGoblinBattle ? 50 : 5;
+        updates.push(updateDoc(attackerRef, { bucks: increment(reward) }));
+        updates.push(updateDoc(defenderRef, { bucks: increment(-10) }));
+        if (isGoblinBattle) updates.push(updateDoc(attackerRef, { campaign: increment(1) }));
+        document.getElementById("resultText").textContent = `🏆 Victory! You earned ${reward} bucks.`;
+      } else {
+        document.getElementById("resultText").textContent = "❌ Defeat! Defender keeps their 10 bucks.";
       }
-      if (target.hp <= 0) {
-        clearInterval(target.interval);
-        if (cell) cell.innerHTML = "";
-      }
+
+      if (updates.length) await Promise.all(updates);
+      document.getElementById("resultPopup").style.display = "block";
     }
-  }, 1500);
-}
-  // remove the "(lightningTowers)" parameter
-function startLightningAttacks() {
-  setInterval(() => {
-    if (battleOver) return;
 
-    for (const tower of lightningTowers) {
-      const { x: lx, y: ly } = tower;
-      const key = `${lx},${ly}`;
-      const towerHealth = healthMap[key];
-      if (!towerHealth || towerHealth.current <= 0) continue;
+    /* ---------- Tower Loops (now with projectiles) ---------- */
+    function startArcherAttacks() {
+      archerInterval = setInterval(() => {
+        if (battleOver) return;
+        for (const {x,y} of archerTowers){
+          const key = `${x},${y}`; if (!healthMap[key]?.current) continue;
+          // within range 5; prefer taunt
+          const inRange = troopUnits.filter(t => t.hp>0 && Math.abs(t.x-x)+Math.abs(t.y-y) <= 5);
+          if (!inRange.length) continue;
+          const taunters = inRange.filter(t => t.taunt);
+          const candidates = taunters.length ? taunters : inRange;
+          let target = candidates.reduce((best,t)=>{
+            const d = Math.abs(t.x-x)+Math.abs(t.y-y);
+            const bd = Math.abs(best.x-x)+Math.abs(best.y-y);
+            return d<bd ? t : best;
+          }, candidates[0]);
+          // projectile arrow
+          shootProjectile(x,y,target.x,target.y,"arrow",()=>{
+            target.hp -= 5;
+            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            spawnFX(target.x,target.y,"hit");
+            if (target.hp <= 0){
+              clearInterval(target.interval);
+              const c = cellAt(target.x,target.y); if (c) c.innerHTML="";
+              onTroopDeath(target.x,target.y);
+            }
+          }, 260);
+        }
+      }, 1400);
+    }
 
-      for (const troop of troopUnits) {
-        if (troop.hp <= 0) continue;
-        const dx = troop.x - lx;
-        const dy = troop.y - ly;
-        if (Math.abs(dx)+Math.abs(dy) <= 3) {
-          troop.hp--;
-          troop.hpDisplay.textContent = troop.hp;
-          const cell = document.querySelector(`.cell[data-x="${troop.x}"][data-y="${troop.y}"]`);
-          if (cell) {
-            cell.style.backgroundColor = 'yellow';
-            setTimeout(() => cell.style.backgroundColor = '', 100);
-          }
-          if (troop.hp <= 0) {
-            if (cell) cell.innerHTML = "";
-            clearInterval(troop.interval);
+    function startLightningAttacks() {
+      setInterval(() => {
+        if (battleOver) return;
+        for (const {x:lx,y:ly} of lightningTowers){
+          const key = `${lx},${ly}`;
+          const th = healthMap[key]; if (!th || th.current<=0) continue;
+          for (const troop of troopUnits){
+            if (troop.hp<=0) continue;
+            if (Math.abs(troop.x-lx)+Math.abs(troop.y-ly) <= 3){
+              // visual zap projectile
+              shootProjectile(lx,ly,troop.x,troop.y,"zap",()=>{
+                troop.hp -= 1;
+                if (troop.hpDisplay) troop.hpDisplay.textContent = troop.hp;
+                spawnFX(troop.x,troop.y,"hit");
+                if (troop.hp<=0){
+                  const c = cellAt(troop.x,troop.y); if (c) c.innerHTML="";
+                  clearInterval(troop.interval);
+                  onTroopDeath(troop.x,troop.y);
+                }
+              }, 120);
+            }
           }
         }
-      }
+      }, 400);
     }
-  }, 400);
-}
 
-// likewise, drop the "(trapTowers)" parameter
-function startTrapAttacks() {
-  setInterval(() => {
-    if (battleOver) return;
-
-    for (const trap of trapTowers) {
-      const { x: tx, y: ty } = trap;
-      const key = `${tx},${ty}`;
-      const trapHealth = healthMap[key];
-      if (!trapHealth || trapHealth.current <= 0) continue;
-
-      for (const troop of troopUnits) {
-        if (troop.hp <= 0) continue;
-        const dx = troop.x - tx;
-        const dy = troop.y - ty;
-        if (Math.hypot(dx, dy) <= 1.5) {
-          troop.hp -= 10;
-          troop.hpDisplay.textContent = troop.hp;
-          const cell = document.querySelector(`.cell[data-x="${troop.x}"][data-y="${troop.y}"]`);
-          if (cell) {
-            cell.style.backgroundColor = 'orange';
-            setTimeout(() => cell.style.backgroundColor = '', 100);
-          }
-          if (troop.hp <= 0) {
-            if (cell) cell.innerHTML = "";
-            clearInterval(troop.interval);
+    function startTrapAttacks() {
+      setInterval(() => {
+        if (battleOver) return;
+        for (const {x:tx,y:ty} of trapTowers){
+          const key = `${tx},${ty}`;
+          const th = healthMap[key]; if (!th || th.current<=0) continue;
+          for (const troop of troopUnits){
+            if (troop.hp<=0) continue;
+            if (Math.hypot(troop.x-tx, troop.y-ty) <= 1.5){
+              troop.hp -= 10;
+              if (troop.hpDisplay) troop.hpDisplay.textContent = troop.hp;
+              spawnFX(troop.x,troop.y,"splash");
+              if (troop.hp<=0){
+                const c = cellAt(troop.x,troop.y); if (c) c.innerHTML="";
+                clearInterval(troop.interval);
+                onTroopDeath(troop.x,troop.y);
+              }
+            }
           }
         }
-      }
+      }, 1000);
     }
-  }, 1000);
-}
+
     function startSniperAttacks() {
-  const RANGE     = 12;    // how far it can shoot
-  const DAMAGE    = 15;    // damage per shot
-  const FIRE_RATE = 5000;  // milliseconds between shots
-
-  setInterval(() => {
-    if (battleOver) return;
-
-    for (const { x, y } of sniperTowers) {
-      const key = `${x},${y}`;
-      if (!healthMap[key]?.current) continue;
-
-      // find closest troop within RANGE
-      let target = null, bestDist = Infinity;
-      for (const t of troopUnits) {
-        if (t.hp <= 0) continue;
-        const dist = Math.abs(t.x - x) + Math.abs(t.y - y);
-        if (dist <= RANGE && dist < bestDist) {
-          bestDist = dist;
-          target   = t;
+      const RANGE=12, DAMAGE=15, FIRE_RATE=1600;
+      setInterval(() => {
+        if (battleOver) return;
+        for (const {x,y} of sniperTowers){
+          const key = `${x},${y}`; if (!healthMap[key]?.current) continue;
+          let target=null, bestDist=Infinity;
+          for (const t of troopUnits){
+            if (t.hp<=0) continue;
+            const d = Math.abs(t.x-x)+Math.abs(t.y-y);
+            if (d<=RANGE && d<bestDist){ bestDist=d; target=t; }
+          }
+          if (!target) continue;
+          shootProjectile(x,y,target.x,target.y,"snipe",()=>{
+            target.hp = Math.max(0, target.hp - DAMAGE);
+            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            spawnFX(target.x,target.y,"hit");
+            if (target.hp<=0){
+              const c = cellAt(target.x,target.y); if (c) c.innerHTML="";
+              clearInterval(target.interval);
+              onTroopDeath(target.x,target.y);
+            }
+          }, 200);
         }
-      }
-      if (!target) continue;
-
-      // apply damage
-      target.hp = Math.max(0, target.hp - DAMAGE);
-      if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
-
-      // visual feedback
-      const cell = document.querySelector(
-        `.cell[data-x="${target.x}"][data-y="${target.y}"]`
-      );
-      if (cell) {
-        cell.style.backgroundColor = 'magenta';
-        setTimeout(() => cell.style.backgroundColor = '', 200);
-      }
-
-      // remove dead troop
-      if (target.hp <= 0) {
-        clearInterval(target.interval);
-        if (cell) cell.innerHTML = "";
-      }
+      }, FIRE_RATE);
     }
-  }, FIRE_RATE);
-}
 
+    /* ---------- NEW: Cannon + Necromancer ---------- */
+    function startCannonAttacks(){
+      const RANGE=6, DAMAGE=8, FIRE_RATE=2200, KNOCK=1;
+      setInterval(()=>{
+        if (battleOver) return;
+        for (const {x,y} of cannonTowers){
+          const key = `${x},${y}`; if (!healthMap[key]?.current) continue;
+          // pick nearest troop in range
+          let target=null, best=Infinity;
+          for (const t of troopUnits){
+            if (t.hp<=0) continue;
+            const d = Math.abs(t.x-x)+Math.abs(t.y-y);
+            if (d<=RANGE && d<best){ best=d; target=t; }
+          }
+          if (!target) continue;
+          // fire bomb
+          shootProjectile(x,y,target.x,target.y,"cannon",()=>{
+            // splash: 3x3 around target
+            for (let dx=-1; dx<=1; dx++){
+              for (let dy=-1; dy<=1; dy++){
+                const tx=target.x+dx, ty=target.y+dy;
+                if (!inBounds(tx,ty)) continue;
+                // damage troops in area
+                for (const t of troopUnits){
+                  if (t.hp<=0) continue;
+                  if (t.x===tx && t.y===ty){
+                    t.hp = Math.max(0, t.hp - DAMAGE);
+                    if (t.hpDisplay) t.hpDisplay.textContent = t.hp;
+                    spawnFX(tx,ty,"splash");
+                    if (t.hp<=0){
+                      const c = cellAt(t.x,t.y); if (c) c.innerHTML="";
+                      clearInterval(t.interval);
+                      onTroopDeath(t.x,t.y);
+                    }
+                  }
+                }
+                // knockback (troops + skeletons)
+                const vx = Math.sign(tx - target.x), vy = Math.sign(ty - target.y);
+                if (vx===0 && vy===0) continue;
+                const kx = tx + vx*KNOCK, ky = ty + vy*KNOCK;
+                if (!inBounds(kx,ky) || isBlocked(kx,ky)) continue;
 
+                // move any troop exactly at (tx,ty)
+                for (const t of troopUnits){
+                  if (t.hp>0 && t.x===tx && t.y===ty){
+                    const fromCell = cellAt(t.x,t.y);
+                    if (fromCell && t.div && t.div.parentNode===fromCell) fromCell.removeChild(t.div);
+                    t.x=kx; t.y=ky;
+                    const toCell = cellAt(kx,ky); if (toCell) toCell.appendChild(t.div);
+                  }
+                }
+                // move any skeleton at (tx,ty)
+                for (const s of skeletons){
+                  if (s.hp>0 && s.x===tx && s.y===ty){
+                    const fromCell = cellAt(s.x,s.y);
+                    if (fromCell && s.div && s.div.parentNode===fromCell) fromCell.removeChild(s.div);
+                    s.x=kx; s.y=ky;
+                    const toCell = cellAt(kx,ky); if (toCell) toCell.appendChild(s.div);
+                  }
+                }
+              }
+            }
+          }, 260);
+        }
+      }, FIRE_RATE);
+    }
 
+    function startNecroAttacks(){
+      const RANGE=6, DAMAGE=4, FIRE_RATE=1500, REANIM_RANGE=4;
+      setInterval(()=>{
+        if (battleOver) return;
+        for (const {x,y} of necroTowers){
+          const key = `${x},${y}`; if (!healthMap[key]?.current) continue;
+          // nearest troop
+          let target=null, best=Infinity;
+          for (const t of troopUnits){
+            if (t.hp<=0) continue;
+            const d = Math.abs(t.x-x)+Math.abs(t.y-y);
+            if (d<=RANGE && d<best){ best=d; target=t; }
+          }
+          if (!target) continue;
+          shootProjectile(x,y,target.x,target.y,"necro",()=>{
+            target.hp = Math.max(0, target.hp - DAMAGE);
+            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            spawnFX(target.x,target.y,"hit");
+            if (target.hp<=0){
+              const cx = target.x, cy = target.y;
+              const cell = cellAt(cx,cy); if (cell) cell.innerHTML="";
+              clearInterval(target.interval);
+              // reanimate if within REANIM_RANGE
+              if (Math.abs(cx-x)+Math.abs(cy-y) <= REANIM_RANGE){
+                spawnSkeleton(cx,cy);
+              } else {
+                onTroopDeath(cx,cy); // still check other necros
+              }
+            }
+          }, 220);
+        }
+      }, FIRE_RATE);
 
-  async function init() {
-    await updateDoc(defenderUserRef, { bucks: increment(10) });
-  if (!attacker || !defender) return alert("Invalid URL");
+      // Hook general troop deaths to possibly reanimate by any necro in range
+      window.__checkNecroReanimate = function(dx,dy){
+        for (const n of necroTowers){
+          const key = `${n.x},${n.y}`;
+          if (!healthMap[key]?.current) continue;
+          if (Math.abs(dx-n.x)+Math.abs(dy-n.y) <= REANIM_RANGE){
+            spawnSkeleton(dx,dy);
+            return true;
+          }
+        }
+        return false;
+      };
+    }
 
-  // 1) assign the global attackerRef
-  attackerRef = doc(db, "villages", attacker);
+    function spawnSkeleton(x,y){
+      // avoid spawning on blocked cell
+      if (!inBounds(x,y) || isBlocked(x,y)) return;
+      const c = cellAt(x,y);
+      const div = document.createElement("div");
+      div.className = "troop"; // reuse style
+      div.style.background = "#4b5563";
+      div.textContent = "💀";
+      const hpUi = document.createElement("div");
+      hpUi.className = "troop-hp"; hpUi.textContent = "10";
+      const wrap = document.createElement("div");
+      wrap.style.position="relative";
+      wrap.appendChild(hpUi); wrap.appendChild(div);
+      c.appendChild(wrap);
 
-  // 2) build a ref for the defender
-  const defenderRef = doc(db, "villages", defender);
+      const sk = {
+        isSkeleton:true,
+        x,y, hp:10, damage:2, range:1, speed:1,
+        div: wrap, hpDisplay: hpUi, interval: null
+      };
+      skeletons.push(sk);
 
-  // 3) fetch both docs in parallel
-  const [attackerSnap, defenderSnap] = await Promise.all([
-    getDoc(attackerRef),
-    getDoc(defenderRef)
-  ]);
+      // behavior: move toward nearest attacker troop; attack when adjacent
+      sk.interval = setInterval(()=>{
+        if (battleOver || sk.hp<=0) return;
+        // choose nearest troop
+        let tgt=null, best=Infinity;
+        for (const t of troopUnits){
+          if (t.hp<=0) continue;
+          const d = Math.abs(t.x-sk.x)+Math.abs(t.y-sk.y);
+          if (d<best){ best=d; tgt=t; }
+        }
+        if (!tgt) return;
+        const dx = tgt.x - sk.x, dy = tgt.y - sk.y;
+        const dist = Math.abs(dx)+Math.abs(dy);
+        if (dist <= sk.range){
+          tgt.hp = Math.max(0, tgt.hp - sk.damage);
+          if (tgt.hpDisplay) tgt.hpDisplay.textContent = tgt.hp;
+          spawnFX(tgt.x,tgt.y,"splash");
+          if (tgt.hp<=0){
+            const tc = cellAt(tgt.x,tgt.y); if (tc) tc.innerHTML="";
+            clearInterval(tgt.interval);
+            onTroopDeath(tgt.x,tgt.y);
+          }
+        } else {
+          // move 1 step, avoid blocked cells
+          const nx = sk.x + Math.sign(dx);
+          const ny = sk.y + Math.sign(dy);
+          if (inBounds(nx,ny) && !isBlocked(nx,ny)){
+            const from = cellAt(sk.x,sk.y); if (from && sk.div && sk.div.parentNode===from) from.removeChild(sk.div);
+            sk.x=nx; sk.y=ny;
+            const to = cellAt(nx,ny); if (to) to.appendChild(sk.div);
+          }
+        }
+      }, 900);
+      return sk;
+    }
 
-  // 4) pull data into locals & wire up the defenderData global
-  const attackerData = attackerSnap.data();
-  defenderData       = defenderSnap.data();
+    function onTroopDeath(x,y){
+      // Any necro can reanimate if close enough
+      if (typeof window.__checkNecroReanimate === "function"){
+        const done = window.__checkNecroReanimate(x,y);
+        if (done) return;
+      }
+      // Otherwise nothing more
+    }
 
-  // 5) calculate how many troops you get
-  const troopBuildings = attackerData.grid?.filter(b => b.type === "troopStructure").length || 0;
-  troopsLeft           = troopBuildings * 5;
-  document.getElementById("troopCount").textContent = troopsLeft;
+    /* ---------- Init & placement ---------- */
+    async function init() {
+      await updateDoc(defenderUserRef, { bucks: increment(10) });
+      if (!attacker || !defender) return alert("Invalid URL");
 
-  // 6) render the grid and place the defender’s buildings
-  createGrid();
-  for (const b of defenderData.grid || []) {
-  const key = `${b.x},${b.y}`;
-  const cell = document.querySelector(`.cell[data-x="${b.x}"][data-y="${b.y}"]`);
-  if (!cell) continue;
+      attackerRef = doc(db, "villages", attacker);
+      const defenderRef = doc(db, "villages", defender);
+      const [attackerSnap, defenderSnap] = await Promise.all([ getDoc(attackerRef), getDoc(defenderRef) ]);
 
-  // 1. add the class & health bar as before
-  cell.classList.add(b.type);
-  const hp = buildingHealth[b.type] || 10;
-  healthMap[key] = { current: hp, max: hp };
-  renderHealth(cell, key, hp);
+      const attackerData = attackerSnap.data();
+      defenderData = defenderSnap.data();
 
-  // 2. insert emoji overlay
-  const icon = document.createElement("div");
-  icon.className = "structure-icon";
-  icon.textContent = structureEmoji[b.type] || "";
-  cell.appendChild(icon);
+      const troopBuildings = attackerData.grid?.filter(b => b.type === "troopStructure").length || 0;
+      troopsLeft = troopBuildings * 5;
+      document.getElementById("troopCount").textContent = troopsLeft;
 
-  // 3. register for tower loops
-  enemyStructures.push({ ...b });
-  if (b.type === "archerTower")      archerTowers.push({ x: b.x, y: b.y });
-  if (b.type === "lightningStriker") lightningTowers.push({ x: b.x, y: b.y });
-  if (b.type === "trap")             trapTowers.push({ x: b.x, y: b.y });
-  if (b.type === "sniperTower") sniperTowers.push({ x: b.x, y: b.y });
-}
+      createGrid();
 
+      for (const b of defenderData.grid || []) {
+        const key = `${b.x},${b.y}`;
+        const cell = cellAt(b.x,b.y);
+        if (!cell) continue;
 
-  // 7) start the tower‐attack loops
-  startArcherAttacks();
-  startLightningAttacks();
-  startTrapAttacks();
-  startSniperAttacks();
-}
+        cell.classList.add(b.type);
+        const hp = buildingHealth[b.type] || 10;
+        healthMap[key] = { current: hp, max: hp };
+        renderHealth(cell, key, hp);
 
-// wire it up and kick off initialization
-init();
-    
+        const icon = document.createElement("div");
+        icon.className = "structure-icon";
+        icon.textContent = structureEmoji[b.type] || "";
+        cell.appendChild(icon);
+
+        enemyStructures.push({ ...b });
+
+        if (b.type === "archerTower")      archerTowers.push({ x: b.x, y: b.y });
+        if (b.type === "lightningStriker") lightningTowers.push({ x: b.x, y: b.y });
+        if (b.type === "trap")             trapTowers.push({ x: b.x, y: b.y });
+        if (b.type === "sniperTower")      sniperTowers.push({ x: b.x, y: b.y });
+        if (b.type === "cannonTower")      cannonTowers.push({ x: b.x, y: b.y });
+        if (b.type === "necromancerTower") necroTowers.push({ x: b.x, y: b.y });
+      }
+
+      startArcherAttacks();
+      startLightningAttacks();
+      startTrapAttacks();
+      startSniperAttacks();
+      startCannonAttacks();       // NEW
+      startNecroAttacks();        // NEW
+    }
+
+    init();
   </script>
 </body>
-
 </html>
+
+
