@@ -46,6 +46,8 @@
   .teams-bar .tot{font-weight:900}
   .timer{font-weight:900;letter-spacing:.3px}
   .header-actions{display:flex;gap:6px;align-items:center}
+  .typebox{border:1px dashed #e5e7eb;border-radius:12px;background:#fff;padding:8px}
+  .typeitem{font-size:.9rem;padding:4px 8px;border-radius:9px;background:#faf5ff;border:1px solid #e9d5ff;display:inline-block;margin:3px 3px 0 0}
 
   /* Multiple-choice grid */
   .mc-wrap{margin-top:8px}
@@ -70,6 +72,11 @@
   }
   .reveal.good{ color:var(--good); border-color:#bbf7d0; background:#f0fdf4 }
   .reveal.bad{  color:var(--bad);  border-color:#fecaca; background:#fff1f2 }
+
+  /* Submitted notice */
+  .notice{margin-top:6px;font-weight:800}
+  .notice.ok{color:var(--good)}
+  .notice.bad{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -106,7 +113,7 @@
     <div class="row" style="justify-content:space-between;align-items:flex-end">
       <div>
         <div class="title">Vote: Game Type (30s)</div>
-        <div class="muted sm">Traditional • Speed • Draft • Teams • Co-Op Survival</div>
+        <div class="muted sm">Traditional • Speed • Teams • Co-Op Survival</div>
       </div>
       <div class="pill">Your vote: <strong id="myVote">—</strong></div>
     </div>
@@ -119,12 +126,8 @@
         <div class="left"><b>⚡ Speed</b><span class="sm muted">90s, per-player verses, −1 all-wrong</span></div>
         <span class="pill">Votes: <b id="v-speed">0</b></span>
       </button>
-      <button class="card" data-mode="draft">
-        <div class="left"><b>🧭 Draft</b><span class="sm muted">Snake picks • 3 books • −3 wrong book</span></div>
-        <span class="pill">Votes: <b id="v-draft">0</b></span>
-      </button>
       <button class="card" data-mode="teams">
-        <div class="left"><b>👥 Teams</b><span class="sm muted">6 rounds • team chat • first answer locks</span></div>
+        <div class="left"><b>👥 Teams</b><span class="sm muted">6 rounds • team chat • 60s/round</span></div>
         <span class="pill">Votes: <b id="v-teams">0</b></span>
       </button>
       <button class="card" data-mode="coop">
@@ -135,18 +138,6 @@
     <div class="sm muted" style="margin-top:6px">Highest votes wins; ties are randomly chosen.</div>
   </section>
 
-  <!-- DRAFT -->
-  <section class="panel" id="phase-draft" style="display:none">
-    <div class="row" style="justify-content:space-between;align-items:flex-end">
-      <div>
-        <div class="title">Draft: Pick 3 Books</div>
-        <div class="muted sm">Snake order • 10s per pick • Turn: <b id="turnName">—</b></div>
-      </div>
-      <div class="pickbar" id="myPicks"></div>
-    </div>
-    <div class="books-grid" id="booksGrid" style="margin-top:8px"></div>
-  </section>
-
   <!-- PLAY -->
   <section class="panel" id="phase-play" style="display:none">
     <!-- Teams meta (scores + chat) -->
@@ -155,7 +146,7 @@
       <div class="tot">Team B: <span id="teamBScore">0</span></div>
     </div>
 
-    <!-- Chat: Teams (team chat) or Co-Op Survival (global chat) -->
+    <!-- Chat + Teammate Typing -->
     <div id="chatWrap" style="display:none; margin-bottom:8px">
       <div class="chat">
         <div class="row" style="justify-content:space-between">
@@ -167,6 +158,10 @@
           <input id="chatInput" type="text" placeholder="Type hint/idea…" />
           <button class="btn small" id="sendChat">Send</button>
         </div>
+      </div>
+      <div class="typebox" id="typePanel" style="display:none; margin-top:6px">
+        <div class="muted sm" style="margin-bottom:4px">Teammates are selecting…</div>
+        <div id="typeList"></div>
       </div>
     </div>
 
@@ -192,6 +187,7 @@
     </div>
 
     <div id="playHelp" class="sm muted" style="margin-top:6px"></div>
+    <div id="submitNotice" class="notice" style="display:none"></div>
   </section>
 
   <!-- END -->
@@ -228,7 +224,6 @@
 
   // ---------- DOM ----------
   const $  = (id)=> document.getElementById(id);
-  const qs = (sel)=> document.querySelector(sel);
 
   // ---------- URL ----------
   const url = new URL(location.href);
@@ -242,6 +237,9 @@
   let lastMyWasCorrectFull = false; // for shared modes reveal
   let mcSelectedId = null;
   let prevGame = null; // for coop reveal
+  let iTypedDebounce = null;
+  let iJustSubmitted = false; // prevent external re-renders from clearing my inputs
+  let lastSubmittedInfo = null; // for classic local notice
 
   // ---------- FS REFS ----------
   const lobbyRef  = doc(db, 'lobbies', gameId);
@@ -312,7 +310,6 @@
     const {bookOK, chapOK, verOK, pts:base} = scoreAnswerBits(guess, correct);
     let pts = base;
     if (mode==='speed'){ if (!bookOK && !chapOK && !verOK) pts -= 1; }
-    else if (mode==='draft'){ if (!bookOK) pts -= 3; }
     return {pts, full: (bookOK && chapOK && verOK)};
   }
 
@@ -378,18 +375,13 @@
         deadline: now()+30000,
         round:0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
-        lives: Object.fromEntries(players.map(p=>[p,3])), /* legacy per-player (unused in coop) */
+        lives: Object.fromEntries(players.map(p=>[p,3])),
         sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
-        picks: {},
-        pickOrder: players,
-        pickIndex: 0,
-        picksPerPlayer: 3,
         chosenShared: [],
         options: [],
         endAt: 0,
-        turnDeadline: 0,
         coopLocked: false,
         coopNextAt: 0,
         coopAnsweredBy: "",
@@ -398,6 +390,22 @@
       }, {merge:true});
     });
   };
+
+  // Live-typing publisher (Teams mode)
+  ['bookInput','chapInput','verseInput'].forEach(id=>{
+    $(id).addEventListener('input', ()=>{
+      if (GAME?.mode!=='teams') return;
+      if (iTypedDebounce) clearTimeout(iTypedDebounce);
+      iTypedDebounce = setTimeout(async ()=>{
+        const book = $('bookInput').value || '';
+        const chapter = parseInt($('chapInput').value,10) || '';
+        const verseNum = parseInt($('verseInput').value,10) || '';
+        await setDoc(doc(pstateCol, username), {
+          typingGuess: {book, chapter, verse: verseNum, t: now()}
+        }, {merge:true});
+      }, 120);
+    });
+  });
 
   // ---------- STARTUP ----------
   main().catch(console.error);
@@ -436,14 +444,9 @@
         sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
-        picks: {},
-        pickOrder: players,
-        pickIndex: 0,
-        picksPerPlayer: 3,
         chosenShared: [],
         options: [],
         endAt: 0,
-        turnDeadline: 0,
         coopLocked: false,
         coopNextAt: 0,
         coopAnsweredBy: "",
@@ -471,6 +474,9 @@
           showRevealRef(v, !!lastMyWasCorrectFull);
           lastMyWasCorrectFull = false;
         }
+        // reset local notice on new round
+        lastSubmittedInfo = null;
+        $('submitNotice').style.display='none';
       }
       // Final reveal on end
       if (old && old.status==='playing' && fresh.status==='ended' && old.currentSharedId){
@@ -485,33 +491,42 @@
       }
     });
 
-    // Votes listener (FIXED: use snapDoc consistently)
+    // Votes listener
     onSnapshot(votesCol, (qsnap)=>{
-      const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
+      const counts = {traditional:0, speed:0, teams:0, coop:0};
       qsnap.forEach((snapDoc)=>{
         const m = (snapDoc.data() || {}).mode;
         if (counts[m] !== undefined) counts[m]++;
       });
       $('v-traditional').textContent = counts.traditional;
       $('v-speed').textContent       = counts.speed;
-      $('v-draft').textContent       = counts.draft;
       $('v-teams').textContent       = counts.teams;
       $('v-coop').textContent        = counts.coop;
       highlightVoteLeader(counts);
     });
 
-    // Chat listener (use 'snapDoc' to avoid collisions)
+    // Chat listener
     onSnapshot(query(chatCol, orderBy('ts','desc'), limit(20)), (qsnap)=>{
       const msgs=[]; qsnap.forEach((snapDoc)=> msgs.push(snapDoc.data())); msgs.reverse(); drawChat(msgs);
     });
 
-    // Player state (my current verse for speed/draft)
+    // Player state (my current verse for speed)
     onSnapshot(doc(pstateCol, username), (psnap)=>{
       const st = psnap.exists() ? psnap.data() : null;
       if (st && st.currentVerseId){
         const v = verses.find(x=> x.id === st.currentVerseId);
-        if (v){ myCurrentVerse = v; maybeShowVerse(); }
+        if (v){ myCurrentVerse = v; maybeShowVerse(true); }
       }
+    });
+
+    // Team typing panel listener (watch all)
+    onSnapshot(pstateCol, (qsnap)=>{
+      const all = [];
+      qsnap.forEach(s=>{
+        const data=s.data();
+        all.push({name:s.id, typingGuess:data.typingGuess||null});
+      });
+      drawTyping(all);
     });
 
     // Timer loop
@@ -529,7 +544,6 @@
 
     // Toggle views
     $('phase-vote').style.display  = (phase === 'voting')   ? 'block' : 'none';
-    $('phase-draft').style.display = (phase === 'drafting') ? 'block' : 'none';
     $('phase-play').style.display  = (phase === 'playing')  ? 'block' : 'none';
     $('phase-end').style.display   = (phase === 'ended')    ? 'block' : 'none';
 
@@ -543,9 +557,7 @@
 
     drawScores();
 
-    if (phase === 'drafting'){
-      buildDraftUI();
-    } else if (phase === 'playing'){
+    if (phase === 'playing'){
       // Chat visibility
       if (GAME.mode === 'teams'){
         $('teamsBar').style.display = 'flex';
@@ -553,13 +565,16 @@
         $('teamBScore').textContent = (GAME.teamTotals && GAME.teamTotals.B) || 0;
         $('chatWrap').style.display = 'block';
         $('chatLabel').textContent = 'Team chat';
+        $('typePanel').style.display = 'block';
       } else if (GAME.mode === 'coop'){
         $('teamsBar').style.display = 'none';
         $('chatWrap').style.display = 'block';
         $('chatLabel').textContent = 'Chat';
+        $('typePanel').style.display = 'none';
       } else {
         $('teamsBar').style.display = 'none';
         $('chatWrap').style.display = 'none';
+        $('typePanel').style.display = 'none';
       }
 
       // Inputs vs Multiple-choice
@@ -573,7 +588,7 @@
       }
 
       buildPlayHelp();
-      maybeShowVerse();
+      maybeShowVerse(false);
     }
     updateCountdownUI();
   }
@@ -605,11 +620,11 @@
   function updateCountdownUI(){
     if (!GAME) return;
     let text='--:--';
-    if (GAME.status === 'voting' || GAME.status === 'drafting'){
-      const t = (GAME.turnDeadline || GAME.deadline || 0) - now();
+    if (GAME.status === 'voting'){
+      const t = (GAME.deadline || 0) - now();
       text = fmtTime(t);
     } else if (GAME.status === 'playing'){
-      if (GAME.mode==='speed' || GAME.mode==='draft'){
+      if (GAME.mode==='speed'){
         text = fmtTime((GAME.endAt||0) - now());
       } else if (GAME.mode==='coop'){
         const start = GAME.coopStartAt || now();
@@ -623,11 +638,10 @@
 
   function highlightVoteLeader(counts){
     for (const btn of document.querySelectorAll('#phase-vote .card')) btn.classList.remove('leader');
-    const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams, counts.coop);
+    const max = Math.max(counts.traditional, counts.speed, counts.teams, counts.coop);
     const leaders = [];
     if (counts.traditional===max) leaders.push('traditional');
     if (counts.speed===max)       leaders.push('speed');
-    if (counts.draft===max)       leaders.push('draft');
     if (counts.teams===max)       leaders.push('teams');
     if (counts.coop===max)        leaders.push('coop');
     for (const m of leaders){
@@ -651,10 +665,10 @@
     if (GAME.status === 'voting'){
       if (tnow >= (GAME.deadline || 0)){
         const vSnap = await getDocs(votesCol);
-        const counts = {traditional:0, speed:0, draft:0, teams:0, coop:0};
+        const counts = {traditional:0, speed:0, teams:0, coop:0};
         vSnap.forEach((snapDoc)=>{ const m=snapDoc.data().mode; if (counts[m]!==undefined) counts[m]++; });
 
-        const max = Math.max(counts.traditional, counts.speed, counts.draft, counts.teams, counts.coop);
+        const max = Math.max(counts.traditional, counts.speed, counts.teams, counts.coop);
         const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
         const chosen = top[Math.floor(Math.random()*top.length)]; // random tie-break
 
@@ -664,15 +678,7 @@
           chosenShared: []
         };
 
-        if (chosen === 'draft'){
-          await updateDoc(gameRef, {
-            status:'drafting', ...baseUpdate,
-            pickOrder: (GAME.players||[]),
-            pickIndex: 0,
-            picks: {},
-            turnDeadline: tnow + 10000
-          });
-        } else if (chosen === 'teams'){
+        if (chosen === 'teams'){
           const ps = (GAME.players||[]).slice();
           const A=[], B=[]; ps.forEach((p,i)=> (i%2===0?A:B).push(p));
           await updateDoc(gameRef, {
@@ -680,7 +686,7 @@
             teamA:A, teamB:B, teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false},
             round:1,
             currentSharedId: pickRandomVerse().id,
-            deadline: tnow + 30000
+            deadline: tnow + 60000 // <-- one minute
           });
         } else if (chosen === 'speed'){
           await updateDoc(gameRef, { status:'playing', ...baseUpdate, endAt: tnow + 90000 });
@@ -708,21 +714,10 @@
         }
       }
     }
-    else if (GAME.status === 'drafting'){
-      if (tnow >= (GAME.turnDeadline || 0)){ await autoPickIfNeeded(); }
-      const picks = GAME.picks || {};
-      const done = (GAME.players||[]).every(p => (picks[p]||[]).length >= (GAME.picksPerPlayer||3));
-      if (done){
-        await updateDoc(gameRef, { status:'playing', endAt: tnow + 90000 });
-        await seedPerPlayerVerses(true);
-      }
-    }
     else if (GAME.status === 'playing'){
       const mode = GAME.mode;
       if (mode === 'coop'){
-        // End if out of lives
         if ((GAME.sharedLives||0) <= 0){ await updateDoc(gameRef, {status:'ended'}); return; }
-        // Advance to next verse after lock + reveal delay
         if (GAME.coopLocked && tnow >= (GAME.coopNextAt || 0)){
           const chosenSet = new Set(GAME.chosenShared || []);
           let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
@@ -748,115 +743,54 @@
               round: nextRound,
               currentSharedId: v.id,
               chosenShared: Array.from(chosenSet),
-              deadline: tnow + 30000,
+              deadline: tnow + (mode==='teams' ? 60000 : 30000), // 60s teams, 30s classic
               teamLocks: mode==='teams' ? {A:false,B:false} : (GAME.teamLocks||{})
             });
           }
         }
-      } else { // speed/draft
+      } else if (mode === 'speed'){
         if (tnow >= (GAME.endAt || 0)){ await updateDoc(gameRef, {status:'ended'}); }
       }
     }
   }
 
-  async function autoPickIfNeeded(){
-    const order = GAME.pickOrder || [];
-    const idx = GAME.pickIndex || 0;
-    if (!order.length) return;
-    const cur = order[idx % order.length];
-    const picks = GAME.picks || {};
-    const curPicks = picks[cur] || [];
-    if (curPicks.length >= (GAME.picksPerPlayer||3)){
-      const nextIdx = nextPickIndex(order, picks, GAME.picksPerPlayer||3, idx+1);
-      await updateDoc(gameRef, { pickIndex: nextIdx, turnDeadline: now()+10000 });
-      return;
-    }
-    await runTransaction(db, async (tx)=>{
-      const g = await tx.get(gameRef); if (!g.exists()) return;
-      const G = g.data();
-      const P = G.picks || {};
-      const mine = P[cur] || [];
-      if (mine.length >= (G.picksPerPlayer||3)) return;
-      const taken = new Set(Object.values(P).flat());
-      const pool = books.filter(b=> !taken.has(b));
-      const pick = pool.length ? pool[Math.floor(Math.random()*pool.length)] : books[Math.floor(Math.random()*books.length)];
-      P[cur] = [...mine, pick];
-      const nIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
-      tx.update(gameRef, { picks:P, pickIndex:nIdx, turnDeadline: now()+10000 });
-    });
-  }
-  function nextPickIndex(order, picks, per, startIdx){
-    let idx = startIdx;
-    for (let guard=0; guard<order.length*4; guard++){
-      const cur = order[idx % order.length];
-      if ((picks[cur]||[]).length < per) break;
-      idx++;
-    }
-    return idx % order.length;
-  }
-  async function seedPerPlayerVerses(restrict=false){
+  async function seedPerPlayerVerses(){
     const players = (GAME.players || []);
     for (const p of players){
-      const filterFn = restrict ? (v)=> (GAME.picks && (GAME.picks[p]||[]).includes(v.book)) : null;
-      const v = pickRandomVerse(filterFn);
+      const v = pickRandomVerse();
       if (!v) continue;
       await setDoc(doc(pstateCol, p), { currentVerseId: v.id }, {merge:true});
     }
   }
 
-  // ---------- DRAFT UI ----------
-  function buildDraftUI(){
-    $('turnName').textContent = (GAME.pickOrder||[])[GAME.pickIndex||0] || '—';
-    const grid = $('booksGrid'); grid.innerHTML='';
-    const taken = new Set(Object.values(GAME.picks||{}).flat());
-    for (const b of books){
-      const btn = document.createElement('button');
-      btn.className='book-btn'; btn.textContent=b; btn.disabled = taken.has(b);
-      btn.onclick = ()=> pickBook(b);
-      grid.appendChild(btn);
-    }
-    const my = (GAME.picks && GAME.picks[username]) || [];
-    const bar = $('myPicks'); bar.innerHTML='';
-    for (const b of my){ const s=document.createElement('span'); s.className='pick'; s.textContent=b; bar.appendChild(s); }
-  }
-  async function pickBook(book){
-    if (GAME.status!=='drafting') return;
-    if ((GAME.pickOrder||[])[GAME.pickIndex||0] !== username) return;
-    await runTransaction(db, async (tx)=>{
-      const g = await tx.get(gameRef); if (!g.exists()) return;
-      const G = g.data(); const P = G.picks || {}; const mine = P[username] || [];
-      if (mine.includes(book) || mine.length >= (G.picksPerPlayer||3)) return;
-      const taken = new Set(Object.values(P).flat()); if (taken.has(book)) return;
-      P[username] = [...mine, book];
-      const nextIdx = nextPickIndex(G.pickOrder||[], P, G.picksPerPlayer||3, (G.pickIndex||0)+1);
-      tx.update(gameRef, { picks:P, pickIndex: nextIdx, turnDeadline: now()+10000 });
-    });
-  }
-
   // ---------- PLAY VIEW ----------
-  function maybeShowVerse(){
+  function maybeShowVerse(isMineChange){
     if (!GAME) return;
     const mode = GAME.mode;
     if (mode==='traditional' || mode==='teams' || mode==='coop'){
       const v = verses.find(x=> x.id === GAME.currentSharedId);
       $('verseHeader').textContent = (mode==='coop')
         ? `Co-Op Survival`
-        : `Round ${GAME.round||1} • Shared`;
+        : (mode==='teams' ? `Round ${GAME.round||1} • Teams (60s)` : `Round ${GAME.round||1} • Shared`);
       $('verseText').textContent = v ? v.text : '—';
       if (mode==='coop') buildMCUI();
+      // Do NOT clear my inputs here. (prevents resets on other players' submissions)
+      if (!isMineChange){
+        // keep what I'm typing
+      }
     } else {
-      $('verseHeader').textContent = (mode==='draft') ? 'Your verse (drafted books)' : 'Your verse';
+      $('verseHeader').textContent = 'Your verse';
       $('verseText').textContent = myCurrentVerse ? myCurrentVerse.text : '—';
+      // Do NOT clear inputs unless I submitted (handled in onSubmitAnswer)
     }
-    $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
   }
+
   function buildPlayHelp(){
     const m = GAME.mode;
     let txt='';
     if (m==='traditional') txt='6 rounds • 30s each • Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse (no negatives)';
     else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 • −1 if ALL three wrong';
-    else if (m==='draft') txt='90s • Only your 3 drafted books • Scoring 1/3/5 • −3 if Book wrong';
-    else if (m==='teams') txt='6 rounds • 30s • First team answer locks • Team chat above • Scoring 1/3/5 (no negatives)';
+    else if (m==='teams') txt='6 rounds • 60s • First team answer locks • Team chat above • Live teammate picks • Scoring 1/3/5';
     else if (m==='coop')  txt='Survival • Shared lives • First answer locks • Choose 1 of 4 refs • +1 if correct, wrong costs a life';
     $('playHelp').textContent = txt;
   }
@@ -887,7 +821,7 @@
     $('mcSubmitBtn').disabled = locked || dead || !mcSelectedId;
   }
 
-  // Manual inputs submit (Traditional/Teams/Speed/Draft)
+  // Manual inputs submit (Traditional/Teams/Speed)
   async function onSubmitAnswer(){
     if (!GAME) return;
     const mode = GAME.mode;
@@ -913,22 +847,49 @@
           const tots = G.teamTotals || {A:0,B:0}; tots[team] = (tots[team]||0) + Math.max(0,pts);
           tx.update(gameRef, { teamLocks: locks, scores: scs, teamTotals: tots });
         });
+        // Announce who submitted what for teams
+        await addDoc(chatCol, {
+          name: username,
+          text: `submitted ${book} ${chapter}:${verseNum}`,
+          team: getMyTeam() || 'A',
+          ts: serverTimestamp()
+        });
       } else {
         await updateDoc(gameRef, { [`scores.${username}`]: increment(Math.max(0, pts)) });
+        // Classic: show immediate local submitted result
+        lastSubmittedInfo = {
+          ok: full,
+          correct: `${v.book} ${v.chapter}:${v.verse}`
+        };
+        showSubmittedNotice();
       }
+
+      // I submitted: clear my inputs locally only
+      iJustSubmitted = true;
       $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
-    } else { // speed/draft
+      setTimeout(()=>{ iJustSubmitted = false; }, 400);
+    } else if (mode==='speed'){
       const v = myCurrentVerse; if (!v) return;
       const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
       await updateDoc(gameRef, { [`scores.${username}`]: increment(pts) });
       showRevealRef(v, full);
 
-      const restrict = (mode==='draft');
-      const filterFn = restrict ? (x)=> (GAME.picks && (GAME.picks[username]||[]).includes(x.book)) : null;
-      const next = pickRandomVerse(filterFn);
+      const next = pickRandomVerse();
       if (next) await setDoc(doc(pstateCol, username), { currentVerseId: next.id }, {merge:true});
+
+      // I submitted: clear my inputs locally only
+      iJustSubmitted = true;
       $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
+      setTimeout(()=>{ iJustSubmitted = false; }, 400);
     }
+  }
+
+  function showSubmittedNotice(){
+    if (!lastSubmittedInfo) return;
+    const el = $('submitNotice');
+    el.style.display='block';
+    el.className = 'notice ' + (lastSubmittedInfo.ok ? 'ok' : 'bad');
+    el.textContent = `Submitted — ${lastSubmittedInfo.ok ? 'Correct!' : 'Wrong'} • Correct: ${lastSubmittedInfo.correct}`;
   }
 
   // Co-Op submission (first answer locks; updates shared lives / score; schedules next verse)
@@ -1000,6 +961,27 @@
       const div = document.createElement('div'); div.className='bubble';
       div.textContent = `${m.name}: ${m.text}`; log.appendChild(div);
     }
+  }
+
+  // ---------- TEAM TYPING PANEL ----------
+  function drawTyping(allStates){
+    if (!GAME || GAME.mode!=='teams') return;
+    const myTeam = getMyTeam(); if (!myTeam) return;
+    const isOnTeam = (name)=>{
+      return (myTeam==='A' ? (GAME.teamA||[]).includes(name) : (GAME.teamB||[]).includes(name));
+    };
+    const list = $('typeList'); list.innerHTML='';
+    const cutoff = now() - 65000; // show last ~65s
+    allStates
+      .filter(s=> s.name!==username && isOnTeam(s.name) && s.typingGuess && (s.typingGuess.t||0) >= cutoff)
+      .forEach(s=>{
+        const g = s.typingGuess;
+        const txt = `${s.name}: ${g.book||'—'} ${g.chapter||''}${g.verse?':'+g.verse:''}`;
+        const chip = document.createElement('div');
+        chip.className='typeitem';
+        chip.textContent = txt.trim();
+        list.appendChild(chip);
+      });
   }
 </script>
 </body>
