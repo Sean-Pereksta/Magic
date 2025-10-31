@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🎗️ Build Your Village</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #eef2f5;
+      text-align: center;
+      padding: 20px;
+    }
+    #userLabel {
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .game-area {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 40px;
+      margin-top: 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(16, 30px);
+      gap: 2px;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .balance-box {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 15px;
+      font-weight: bold;
+      background: #fff;
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 80px;
+    }
+    .building-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 60px;
+    }
+    .building {
+      width: 30px;
+      height: 30px;
+      border: 2px solid black;
+      cursor: pointer;
+    }
+    .building-label {
+      font-size: 0.75em;
+      margin-top: 2px;
+      text-align: center;
+      max-width: 60px;
+    }
+    .wall { background: black; }
+    .strongWall { background: orange; }
+    .archerTower { background: red; }
+    .trap { background: green; }
+    .lightningStriker { background: blue; }
+    .troopStructure { background: purple; }
+    .sniperTower { background: darkslategray; }
+    .eraser { background: white; position: relative; }
+    .eraser::after {
+      content: "✖";
+      position: absolute;
+      color: black;
+      font-size: 16px;
+      top: 2px;
+      left: 7px;
+    }
+    #saveBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎗️ Build Your Village</h1>
+  <div id="userLabel">Not logged in</div>
+
+  <div class="game-area">
+    <div id="villageGrid" class="grid"></div>
+    <div class="sidebar">
+      <div id="balanceBox" class="balance-box">💰 0 bucks</div>
+      <div class="panel" id="buildingOptions"></div>
+      <button id="saveBtn">📂 Save Village</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // pull username from URL
+    const params = new URLSearchParams(window.location.search);
+    const currentUsername = params.get("username");
+    let currentBucks = 0;
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:9fbf492e23c765e445a1"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    const buildingStats = {
+      wall:            { attack: 0, defense: 2, cost: 5 },
+      strongWall:      { attack: 0, defense: 5, cost: 15 },
+      archerTower:     { attack: 4, defense: 1, cost: 25 },
+      trap:            { attack: 3, defense: 3, cost: 20 },
+      lightningStriker:{ attack: 6, defense: 1, cost: 20 },
+      troopStructure:  { attack: 5, defense: 2, cost: 20 },
+      sniperTower:     { attack: 15, defense: 1, cost: 50 }
+    };
+
+    const buildingTypes = [
+      { type: "wall", name: "Wall" },
+      { type: "strongWall", name: "Strong Wall" },
+      { type: "archerTower", name: "Archer" },
+      { type: "trap", name: "Trap" },
+      { type: "lightningStriker", name: "Lightning" },
+      { type: "troopStructure", name: "Troops" },
+       { type: "sniperTower", name: "Sniper" },
+      { type: "eraser", name: "Erase" }
+    ];
+
+    let selectedType = null;
+    const gridSize = 16;
+    const gridData = [];
+
+    const gridContainer   = document.getElementById("villageGrid");
+    const buildingOptions = document.getElementById("buildingOptions");
+    const userLabel       = document.getElementById("userLabel");
+    const balanceBox      = document.getElementById("balanceBox");
+
+    function createBuildingButtons() {
+      buildingTypes.forEach(b => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "building-option";
+
+        const div = document.createElement("div");
+        div.className = `building ${b.type}`;
+        div.title = b.name;
+        div.onclick = () => selectedType = b.type;
+
+        const label = document.createElement("div");
+        label.className = "building-label";
+        if (b.type !== "eraser") {
+          label.innerHTML = `${b.name}<br>Ⓜ $${buildingStats[b.type].cost}`;
+        } else {
+          label.textContent = b.name;
+        }
+
+        wrapper.append(div, label);
+        buildingOptions.appendChild(wrapper);
+      });
+    }
+
+    function createGrid() {
+      gridContainer.innerHTML = "";
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+          cell.onclick = () => placeBuilding(cell, x, y);
+          gridContainer.appendChild(cell);
+        }
+      }
+    }
+
+    function placeBuilding(cell, x, y) {
+      if (!selectedType) return;
+      const idx = gridData.findIndex(t => t.x === x && t.y === y);
+
+      if (selectedType === "eraser") {
+        if (idx !== -1) {
+          const oldType = gridData[idx].type;
+          currentBucks += buildingStats[oldType].cost;
+          balanceBox.textContent = `💰 ${currentBucks} bucks`;
+          gridData.splice(idx, 1);
+          cell.className = "cell";
+        }
+        return;
+      }
+
+      const cost = buildingStats[selectedType].cost;
+      if (currentBucks < cost) {
+        alert(`Insufficient bucks. You have ${currentBucks}, need ${cost}.`);
+        return;
+      }
+
+      currentBucks -= cost;
+      balanceBox.textContent = `💰 ${currentBucks} bucks`;
+
+      const tile = { x, y, type: selectedType };
+      if (idx !== -1) gridData[idx] = tile;
+      else gridData.push(tile);
+      cell.className = `cell ${selectedType}`;
+    }
+
+    function calculatePower() {
+      let atk = 0, def = 0;
+      gridData.forEach(t => {
+        const s = buildingStats[t.type];
+        if (s) { atk += s.attack; def += s.defense; }
+      });
+      return { attack: atk, defense: def };
+    }
+
+    async function saveVillage() {
+      if (!currentUsername) {
+        alert("No username provided!");
+        return;
+      }
+      const pwd = prompt("Enter your password:");
+      if (!pwd) return alert("Password required.");
+
+      const uRef  = doc(db, "users", currentUsername);
+      const uSnap = await getDoc(uRef);
+      if (!uSnap.exists() || uSnap.data().password !== pwd) {
+        return alert("Authentication failed.");
+      }
+
+      await setDoc(uRef, { bucks: currentBucks }, { merge: true });
+      const vRef = doc(db, "villages", currentUsername);
+      await setDoc(vRef, {
+        owner: currentUsername,
+        grid: gridData,
+        power: calculatePower()
+      });
+
+      alert(`Village saved! Remaining balance: ${currentBucks} bucks.`);
+    }
+
+    async function loadInitial() {
+      if (!currentUsername) return;
+
+      // load user doc
+      const uRef  = doc(db, "users", currentUsername);
+      const uSnap = await getDoc(uRef);
+      if (!uSnap.exists()) {
+        alert("User record missing!");
+        return;
+      }
+
+      // get stored bucks (default 0)
+      let stored = uSnap.data().bucks || 0;
+
+      // check if village exists
+      const vRef  = doc(db, "villages", currentUsername);
+      const vSnap = await getDoc(vRef);
+      if (!vSnap.exists()) {
+        // first-time: if they have 0, seed with 200
+        if (stored === 0) {
+          stored = 200;
+          await setDoc(uRef, { bucks: stored }, { merge: true });
+        }
+      } else {
+        // load existing grid
+        gridData.push(...vSnap.data().grid);
+        updateGridVisual();
+      }
+
+      // update UI
+      currentBucks = stored;
+      userLabel.textContent   = `Logged in as: ${currentUsername}`;
+      balanceBox.textContent  = `💰 ${currentBucks} bucks`;
+    }
+
+    function updateGridVisual() {
+      document.querySelectorAll(".cell").forEach(cell => {
+        const x = +cell.dataset.x, y = +cell.dataset.y;
+        const m = gridData.find(t => t.x === x && t.y === y);
+        cell.className = m ? `cell ${m.type}` : "cell";
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      createBuildingButtons();
+      createGrid();
+      loadInitial();
+      document.getElementById("saveBtn").onclick = saveVillage;
+    });
+  </script>
+</body>
+</html>

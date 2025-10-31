@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🏰 Tribes Page</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    .container {
+      display: flex;
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    /* Left column: villages */
+    #villageColumn {
+      flex: 2;
+      padding: 20px;
+      border-right: 1px solid #ddd;
+    }
+    #villageList {
+      max-height: 600px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .village-box {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      margin: 4px 0;
+      font-size: 0.9em;
+      background: #eee;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .village-box.own {
+      background: #dfe6e9;
+      border: 2px solid #00b894;
+    }
+    .village-box button {
+      margin-left: 10px;
+      padding: 6px 10px;
+      font-size: 0.85em;
+    }
+    /* Right column: tribe UI */
+    #tribeSidebar {
+      flex: 1;
+      padding: 20px;
+    }
+    #myTribeSection, #tribeRankingSection {
+      margin-bottom: 30px;
+    }
+    #myTribeSection h3, #tribeRankingSection h3 {
+      margin-top: 0;
+    }
+    #tribeSelect, #joinTribeBtn {
+      width: 100%;
+      padding: 8px;
+      margin-top: 8px;
+      font-size: 1em;
+    }
+    #previewPopup {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 2px solid #333;
+      border-radius: 10px;
+      z-index: 1000;
+    }
+    #previewPopup button {
+      float: right;
+      font-size: 18px;
+      background: none;
+      color: black;
+      border: none;
+      cursor: pointer;
+    }
+    #previewGrid {
+      display: grid;
+      grid-template-columns: repeat(16, 10px);
+      gap: 1px;
+      margin-top: 10px;
+    }
+    #previewGrid div {
+      width: 10px; height: 10px;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      getDocs,
+      getDoc,
+      updateDoc,
+      onSnapshot
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    let currentUsername = null;
+    let villages = [];
+    const tribesList = [
+      "Reuben","Simeon","Levi","Judah","Dan","Naphtali",
+      "Gad","Asher","Issachar","Zebulun","Joseph","Benjamin"
+    ];
+    let campaign = 0;
+  let targetGoblinId = null;
+
+    const buildingClassMap = {
+      wall: 'black', strongWall: 'orange', archerTower: 'red',
+      trap: 'green', lightningStriker: 'blue', sniperTower: 'gray', troopStructure: 'purple'
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("loginBtn").onclick = async () => {
+        const user  = document.getElementById("username").value.trim();
+        const pass  = document.getElementById("password").value.trim();
+        const uRef  = doc(db, "users", user);
+        const uSnap = await getDoc(uRef);
+        if (uSnap.exists() && uSnap.data().password === pass) {
+          currentUsername = user;
+          loadVillagePage();
+        } else {
+          alert("Invalid credentials.");
+        }
+      };
+    });
+
+   async function loadVillagePage() {
+  // hide the login form
+  document.getElementById("loginSection").style.display = "none";
+
+  // 0) get the user's campaign progress
+  const userRef  = doc(db, "users", currentUsername);
+  const userSnap = await getDoc(userRef);
+  campaign       = userSnap.exists() ? (userSnap.data().campaign || 0) : 0;
+  targetGoblinId = `Goblin${campaign + 1}`;   // ← backticks!
+
+  // 1) now fetch all villages
+  const snap = await getDocs(collection(db, "villages"));
+  villages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // 2) render just your own + the target goblin
+  renderVillages();
+
+  // 3) finally render the tribe sidebar UI
+  await loadTribeUI();
+}
+
+
+    function renderVillages() {
+  const container = document.getElementById("villageList");
+  container.innerHTML = "";
+
+  // 1) Campaign header
+  const hCampaign = document.createElement("h2");
+  hCampaign.textContent = "🎯 Campaign Target";
+  container.appendChild(hCampaign);
+
+  const campV = villages.find(v => v.id === targetGoblinId);
+  if (campV) {
+    renderVillageBox(campV, false);
+  } else {
+    const msg = document.createElement("p");
+    msg.textContent = "🎉 Campaign Complete!";
+    container.appendChild(msg);
+  }
+
+  // 2) Active Villages header
+  const hActive = document.createElement("h2");
+  hActive.textContent = "🏘️ Active Villages";
+  container.appendChild(hActive);
+
+  // 2a) Your own village
+  const ownV = villages.find(v => v.owner === currentUsername);
+  if (ownV) renderVillageBox(ownV, true);
+
+  // 2b) Everyone else
+  const others = villages
+    .filter(v => v.owner !== currentUsername && !v.id.startsWith("Goblin"))
+    .sort((a, b) => ((b.power.attack||0)+(b.power.defense||0)) 
+                 - ((a.power.attack||0)+(a.power.defense||0)));
+  others.forEach(v => renderVillageBox(v, false));
+
+  // 3) Work/Create button
+  const workBtn = document.createElement("button");
+  workBtn.textContent = ownV ? "🏰 Work on Village" : "🛠️ Create Village";
+  workBtn.onclick = () => {
+    window.location.href =
+      `/bible-tools-website/village/createvillage.html?username=${encodeURIComponent(currentUsername)}`;
+  };
+  container.appendChild(workBtn);
+}
+
+
+    function renderVillageBox(v, isOwn) {
+  // Debug: log each village as it's rendered
+  console.log("renderVillageBox:", {
+    id: v.id,
+    owner: v.owner,
+    isOwn: isOwn
+  });
+
+  const div = document.createElement("div");
+  div.className = "village-box" + (isOwn ? " own" : "");
+  const total = (v.power.attack || 0) + (v.power.defense || 0);
+  div.innerHTML = `
+    <div><strong>${v.id}</strong> (${v.owner})</div>
+    <div>Power: ${total}</div>
+  `;
+  div.onclick = () => showVillagePreview(v.grid || []);
+
+  if (!isOwn) {
+    const atk = document.createElement("button");
+    atk.textContent = "⚔️ Attack";
+    atk.onclick = e => {
+      e.stopPropagation();
+
+      // Debug: show what URL we're about to navigate to
+      const url = `/bible-tools-website/village/battle.html` +
+                  `?attacker=${encodeURIComponent(currentUsername)}` +
+                  `&defender=${encodeURIComponent(v.owner)}`;
+      console.log("Attack click →", { id: v.id, owner: v.owner, url });
+
+      window.location.href = url;
+    };
+    div.appendChild(atk);
+  }
+
+  document.getElementById("villageList").appendChild(div);
+}
+
+
+    async function loadTribeUI() {
+      const sidebar = document.getElementById("tribeSidebar");
+      sidebar.innerHTML = `
+        <div id="myTribeSection"><h3>Your Tribe</h3></div>
+        <div id="tribeRankingSection"><h3>Tribe Rankings</h3></div>
+      `;
+
+      // get user doc
+      const uRef  = doc(db, "users", currentUsername);
+      const uSnap = await getDoc(uRef);
+      const userData = uSnap.exists() ? uSnap.data() : {};
+
+      // membership UI
+      const mySec = document.getElementById("myTribeSection");
+      if (userData.tribe) {
+        mySec.innerHTML += `<p>🛡️ ${userData.tribe}</p>`;
+      } else {
+        // join form
+        const sel = document.createElement("select");
+        sel.id = "tribeSelect";
+        tribesList.forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = t;
+          opt.text = t;
+          sel.appendChild(opt);
+        });
+        const btn = document.createElement("button");
+        btn.id = "joinTribeBtn";
+        btn.textContent = "Join Tribe";
+        btn.onclick = async () => {
+          await updateDoc(uRef, { tribe: sel.value });
+          await loadTribeUI();
+        };
+        mySec.appendChild(sel);
+        mySec.appendChild(btn);
+      }
+
+      // build tribe membership map
+      const usersSnap = await getDocs(collection(db, "users"));
+      const tribeMap = {};
+      usersSnap.docs.forEach(d => {
+        const ud = d.data();
+        if (ud.tribe) {
+          tribeMap[ud.tribe] = tribeMap[ud.tribe]||[];
+          tribeMap[ud.tribe].push(d.id);
+        }
+      });
+      // calculate power per tribe
+      const rankings = Object.entries(tribeMap).map(([tribe, members]) => {
+        let sum = 0;
+        members.forEach(m => {
+          const v = villages.find(x => x.owner === m);
+          if (v && v.power) sum += (v.power.attack||0)+(v.power.defense||0);
+        });
+        return { tribe, power: sum };
+      }).sort((a,b) => b.power - a.power);
+
+      // render rankings
+      const rankSec = document.getElementById("tribeRankingSection");
+      rankings.forEach(r => {
+        const d = document.createElement("div");
+        d.textContent = `${r.tribe}: ${r.power}`;
+        rankSec.appendChild(d);
+      });
+    }
+
+    function showVillagePreview(grid) {
+      const popup = document.getElementById("previewPopup");
+      const pg = document.getElementById("previewGrid");
+      pg.innerHTML = "";
+      for (let y=0; y<16; y++) {
+        for (let x=0; x<16; x++) {
+          const cell = document.createElement("div");
+          const tile = grid.find(t => t.x===x && t.y===y);
+          if (tile && buildingClassMap[tile.type]) {
+            cell.style.background = buildingClassMap[tile.type];
+          }
+          pg.appendChild(cell);
+        }
+      }
+      popup.style.display = "block";
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <!-- Left: villages & login -->
+    <div id="villageColumn">
+      <h1>🛡️ Tribes of Israel</h1>
+      <div id="loginSection">
+        <input id="username" type="text" placeholder="Username" />
+        <input id="password" type="password" placeholder="Password" />
+        <button id="loginBtn">🔐 Login</button>
+      </div>
+      <div id="villageList"></div>
+    </div>
+
+    <!-- Right: tribe sidebar -->
+    <div id="tribeSidebar"></div>
+  </div>
+
+  <!-- Preview popup -->
+  <div id="previewPopup">
+    <button onclick="document.getElementById('previewPopup').style.display='none'">❌</button>
+    <h3>🏘️ Village Layout</h3>
+    <div id="previewGrid"></div>
+  </div>
+</body>
+</html>
