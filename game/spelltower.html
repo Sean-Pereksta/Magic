@@ -14,15 +14,18 @@
     :root{ --cell:32px; --hand-h:22vh; --card-h:152px; }
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
+  html,body{min-height:100%}
   body{
     margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
     background:radial-gradient(1200px 600px at 50% -200px, #4c1d95 0%, #312e81 55%, #0b1014 100%) fixed;
-    overflow:hidden; /* screen never grows; only the trays can scroll */
+    overflow:auto; /* allow page scroll */
   }
   .shell{
-    height:100dvh; max-width:1100px; margin:0 auto; padding:8px;
-    display:grid; grid-template-rows:auto 1fr auto auto; gap:8px; overflow:hidden;
+    min-height:100dvh; height:auto;
+    max-width:1100px; margin:0 auto; padding:8px;
+    display:grid; gap:8px;
+    grid-template-rows:auto auto auto auto;
+    overflow:visible;
   }
   header{
     position:sticky; top:0; z-index:5;
@@ -41,7 +44,7 @@
   .btn{
     cursor:pointer; border:1px solid #2a3757; background:#0c1422; color:var(--ink);
     border-radius:10px; padding:8px 10px; font-weight:800; font-size:.95rem;
-    width:100%; min-height:40px; touch-action:manipulation;
+    width:auto; min-height:40px; touch-action:manipulation;
   }
   .btn:hover{ background:#101a2b }
   .danger{border-color:#7f1d1d; color:#fecaca}
@@ -53,7 +56,14 @@
     box-shadow:0 10px 25px rgba(0,0,0,.18); backdrop-filter: blur(6px);
   }
 
-  .board-wrap{display:flex; justify-content:center; overflow:hidden}
+  /* The board pane can scroll inside itself on small screens */
+  .board-wrap{
+    display:flex; justify-content:center;
+    overflow:auto;             /* key change: allow scrolling */
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-x pan-y;
+    max-height:none;
+  }
   .board{
     display:grid; grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--cell);
     gap:var(--gap); padding:6px; border-radius:10px; background:#0a1220; border:1px solid #1f2a44;
@@ -96,7 +106,7 @@
 
   /* One-row horizontal scroll hand tray */
   .hand-scroll{
-    height: calc(var(--card-h) + 16px);  /* one row, just enough for the cards */
+    height: calc(var(--card-h) + 16px);
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling:touch;
@@ -104,7 +114,6 @@
   }
   .hand{ display:flex; flex-wrap:nowrap; gap:6px; }
 
-  /* Cards: slightly shorter vertically */
   .card{
     min-width:92px; max-width:120px; width:calc(50% - 9px);
     border:1px solid #2a3757; background:#111b2c; color:#e6edf3;
@@ -135,6 +144,10 @@
   }
   #enemyTip .title{font-weight:800; margin-bottom:4px}
   #enemyTip .line{font-size:.92rem; color:#cbd5e1}
+
+  /* zoom slider row */
+  .zoomrow{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .zoomrow input{ width:160px; }
 </style>
 </head>
 <body>
@@ -159,13 +172,20 @@
       <div class="stat tiny" title="Turn / Tick">
         🔁 Turn: <b id="turnText">?</b> • ⏱️ <b id="tickText">—</b>
       </div>
-      <button id="fsBtn" class="btn fsbtn" title="Fullscreen" style="width:auto;min-height:auto;padding:6px 9px">⛶ Full</button>
-      <button id="leaveBtn" class="btn danger" style="width:auto;min-height:auto;padding:6px 9px">🏠 Leave</button>
+      <div class="zoomrow">
+        <span class="tiny">Zoom</span>
+        <input id="zoomRange" type="range" min="24" max="64" step="2" />
+        <button id="fsBtn" class="btn fsbtn" title="Fullscreen" style="width:auto;min-height:auto;padding:6px 9px">⛶ Full</button>
+        <button id="leaveBtn" class="btn danger" style="width:auto;min-height:auto;padding:6px 9px">🏠 Leave</button>
+      </div>
     </div>
   </header>
 
   <section class="board-card" style="min-height:140px">
-    <div class="board-wrap"><div id="board" class="board" aria-label="Battlefield"></div></div>
+    <div class="board-wrap">
+      <div id="board" class="board" aria-label="Battlefield"></div>
+    </div>
+    <p class="tiny muted" style="margin:6px 4px 0 4px">Tip: drag to scroll the board if it’s larger than your screen.</p>
   </section>
 
   <section class="trade-card">
@@ -185,6 +205,7 @@
   <section class="hand-card">
     <div class="hand-head">
       <div class="tiny">Your Hand</div>
+      <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
     </div>
     <div class="hand-scroll">
       <div id="hand" class="hand" aria-label="Your spell cards"></div>
@@ -193,8 +214,7 @@
 
   <footer>
     <div class="row">
-      <button id="tradeHereBtn" class="btn">Put Selected → Trade Block</button>
-      <button id="endTurnBtn" class="btn ok" style="width:auto">End Turn (+1 card)</button>
+      <button id="endTurnBtn" class="btn ok">End Turn (+1 card)</button>
     </div>
     <div class="tiny muted">Game: <code id="gidTxt"></code> • Player: <code id="unameTxt"></code></div>
   </footer>
@@ -259,7 +279,7 @@
   const TOWER_ROW = ROWS - 1;
   const START_HP = 50;
 
-  // ---------- Enemies (with weaknesses/resists) ----------
+  // ---------- Enemies ----------
   const ENEMIES = [
     { key:"rat",    name:"Cave Rat",     hp:3,  spd:2, dmg:1, emoji:"🐀",  weight:1,  ability:null,        weak:['fire'], res:[] },
     { key:"imp",    name:"Ember Imp",    hp:5,  spd:2, dmg:1, emoji:"😈",  weight:2,  ability:null,        weak:['water','ice'], res:['fire'] },
@@ -271,8 +291,6 @@
     { key:"golem",  name:"Stone Golem",  hp:20, spd:1, dmg:4, emoji:"🗿",  weight:7,  ability:null,        weak:['water','nature'], res:['earth','electric'] },
     { key:"slime",  name:"Slime",        hp:9,  spd:2, dmg:1, emoji:"🦠",  weight:4,  ability:null,        weak:['electric','ice'], res:['water','nature'] },
     { key:"specter",name:"Specter",      hp:7,  spd:2, dmg:2, emoji:"👻",  weight:5,  ability:null,        weak:['electric','fire'], res:['water','nature'] },
-
-    /* NEW: only spawns via split, not normal waves */
     { key:"slime_baby", name:"Baby Slime", hp:4, spd:2, dmg:1, emoji:"🧫", weight:0, ability:null, weak:['electric','ice'], res:['water','nature'] },
   ];
 
@@ -359,6 +377,7 @@
   const clearTradeBtn = document.getElementById("clearTradeBtn");
   const leaveBtn = document.getElementById("leaveBtn");
   const fsBtn = document.getElementById("fsBtn");
+  const zoomRange = document.getElementById("zoomRange");
 
   const enemyTip = document.getElementById("enemyTip");
   const tipTitle = document.getElementById("tipTitle");
@@ -366,6 +385,15 @@
   const tipWeak = document.getElementById("tipWeak");
   const tipRes = document.getElementById("tipRes");
   const tipAbility = document.getElementById("tipAbility");
+
+  // ---------- Zoom ----------
+  const cssRoot = document.documentElement;
+  const getCell = ()=> parseInt(getComputedStyle(cssRoot).getPropertyValue('--cell')) || 38;
+  zoomRange.value = String(getCell());
+  zoomRange.addEventListener('input', (e)=>{
+    const v = parseInt(e.target.value,10);
+    cssRoot.style.setProperty('--cell', v+'px');
+  });
 
   // ---------- Basic actions ----------
   leaveBtn.onclick = ()=> { location.href = `/?username=${encodeURIComponent(username)}`; };
@@ -438,7 +466,6 @@
     return picks;
   }
 
-  // --- Area helpers & dispels ---
   const neighbors8 = (x,y)=>{
     const pts=[];
     for (let dx=-1; dx<=1; dx++){
@@ -461,7 +488,6 @@
     return pts;
   };
   function clearWaterArea(d, cx, cy, r=1){
-    // "water/ice" persistence -> frozenCols; clear columns within area
     const cols = new Set(rectArea(cx,cy,r).map(([x])=> x));
     for (const x of cols){ if (d.frozenCols && d.frozenCols[x] != null) delete d.frozenCols[x]; }
   }
@@ -704,31 +730,27 @@
         <button class="btn btn-bottom" data-act="combine">Combine…</button>
       `;
 
-      // Button handlers
       const castBtn = el.querySelector('[data-act="cast"]');
       const combBtn = el.querySelector('[data-act="combine"]');
 
       castBtn.addEventListener('click', (e)=>{
         e.preventDefault(); e.stopPropagation();
         ui.mode='cast'; ui.selectedCardId = card.id; hideEnemyTip();
-        renderHand(cards, s); // clear combine highlights immediately
+        renderHand(cards, s);
       });
 
       combBtn.addEventListener('click', (e)=>{
         e.preventDefault(); e.stopPropagation();
         hideEnemyTip();
         if (ui.mode === 'combine' && ui.selectedCardId && ui.selectedCardId !== card.id){
-          // second selection via button -> combine now
           immediateCombineByIds(ui.selectedCardId, card.id);
           ui.mode=null; ui.selectedCardId=null;
         } else {
-          // first selection -> show highlights now
           ui.mode='combine'; ui.selectedCardId = card.id;
           renderHand(cards, s);
         }
       });
 
-      // Whole card tap = second selection for combine
       el.addEventListener('click', ()=>{
         if (ui.mode==='combine' && ui.selectedCardId && card.id !== ui.selectedCardId){
           immediateCombineByIds(ui.selectedCardId, card.id);
@@ -825,7 +847,7 @@
 
   // --- Knockback helpers (Golems immune) ---
   function tryPush(e, amount){
-    if (e.key === "golem") return; // immune to knockback
+    if (e.key === "golem") return;
     e.y = Math.max(0, e.y - amount);
   }
   function pushBackColumn(d, x, amount){
@@ -856,10 +878,8 @@
   }
 
   function damageAtTyped(d, x,y,amt, type='neutral'){
-    // bolts
     for (const b of d.bolts||[]){ if (b.x===x && b.y===y){ b.hp -= amt; } }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0);
-    // enemies
     for (const e of d.enemies||[]){
       if (e.x===x && e.y===y){
         e.hp -= applyTypeMod(e, amt, type);
@@ -869,7 +889,6 @@
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
   }
 
-  // geometry helpers
   const area = (cx,cy,r=1)=> { const pts=[]; for (let x=cx-r; x<=cx+r; x++){ for (let y=cy-r; y<=cy+r; y++){ if (inBoard(x,y)) pts.push([x,y]); } } return pts; };
   const cross = (cx,cy)=> [[cx,cy],[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]].filter(([x,y])=> inBoard(x,y));
   const column = (x)=> { const pts=[]; for (let y=0;y<ROWS;y++) pts.push([x,y]); return pts; };
@@ -936,7 +955,6 @@
       return;
     }
 
-    // Inspect enemy when not casting
     const e = enemyAt(latestState, x,y);
     if (e){ showEnemyTip(e, cellEl); }
   }
@@ -964,7 +982,7 @@
     }).catch(()=>{});
   }
 
-  // ---------- Effects (typed) ----------
+  // ---------- Effects ----------
   function applyCardEffectMut(d, card, tx, ty){
     const eff = card.effect;
     const now = (d.turn||0);
@@ -973,24 +991,22 @@
     const PING = (cells,amt)=> { for (const [x,y] of cells) DMG(x,y,amt); };
 
     switch(eff){
-      /* ==== BASE ==== */
       case "fire":      DMG(tx,ty,3);                         pulseCells([[tx,ty]], "glow-red"); break;
       case "lightning": chainLightning(d, tx, ty, 0);         pulseCells([[tx,ty]], "flash-yellow"); break;
       case "water":     freezeCol(d,tx,2,now); DMG(tx,ty,1);  pulseCells(column(tx), "glow-blue"); break;
       case "plant":     addVine(d,tx,ty,2,now); DMG(tx,ty,1); pulseCells([[tx,ty]], "glow-green"); break;
 
-      /* ==== TIER 1 / DOUBLES ==== */
       case "pyro":         PING(cross(tx,ty),4);                                 pulseCells(cross(tx,ty), "glow-red"); break;
       case "inferno":      for (const [x,y] of cross(tx,ty)){ DMG(x,y,5); addBurn(d,x,y,2,now); } pulseCells(cross(tx,ty), "glow-orange"); break;
       case "chain":        chainLightning(d, tx, ty, 1);                         pulseCells([[tx,ty]], "flash-yellow"); break;
 
-      case "steam": { // fire + water
+      case "steam": {
         for (const [x,y] of area(tx,ty,1)) DMG(x,y,2);
         pulseCells(area(tx,ty,1), "glow-blue");
         break;
       }
 
-      case "vine": { // root splash + poke
+      case "vine": {
         addVine(d,tx,ty,2,now);
         for (const [x,y] of cross(tx,ty)) addVine(d,x,y,1,now);
         DMG(tx,ty,2);
@@ -1016,7 +1032,7 @@
         break;
       }
 
-      case "storm": { // water + light
+      case "storm": {
         chainLightning(d, tx, ty, 1);
         freezeCol(d,tx,1,now);
         DMG(tx,ty,1);
@@ -1024,7 +1040,7 @@
         break;
       }
 
-      case "steamblast": { // alias used by steamburst/flashboil too
+      case "steamblast": {
         for (const [x,y] of area(tx,ty,1)){ addVine(d,x,y,1,now); DMG(x,y,2); }
         pulseCells(area(tx,ty,1),"glow-orange");
         break;
@@ -1108,14 +1124,13 @@
       }
 
       case "entangle":
-      case "net": { // both root via lightning trace
+      case "net": {
         chainLightning(d, tx, ty, 0, false, true);
         DMG(tx,ty,1);
         pulseCells([[tx,ty]], "glow-green");
         break;
       }
 
-      /* ==== BIG IMPACTS ==== */
       case "cataclysm": {
         const cx2 = clamp(tx+1,0,COLS-1);
         [tx, cx2].forEach(cx=>{
@@ -1165,36 +1180,35 @@
         break;
       }
 
-      /* ==== VARIETY (EXTRAS) ==== */
-      case "frostline": { // water + wall
+      case "frostline": {
         freezeCol(d,tx,3,now);
         for (let y = 0; y < ROWS; y++) damageAtTyped(d, tx, y, 2, 'ice');
         pulseCells(column(tx), "glow-blue");
         break;
       }
 
-      case "battery": { // chain + wall — big zap seed
+      case "battery": {
         chainLightning(d, tx, ty, 2);
         DMG(tx,ty,2);
         pulseCells([[tx,ty]], "flash-yellow");
         break;
       }
 
-      case "shockpush": { // geyser+chain — zap and push back in column
+      case "shockpush": {
         for (let y=0;y<ROWS;y++) damageAtTyped(d,tx,y,3,'electric');
         pushBackColumn(d, tx, 1);
         pulseCells(column(tx), "flash-yellow");
         break;
       }
 
-      case "fireline": { // wall+pyro — horizontal burn streak
+      case "fireline": {
         const band = [[tx-1,ty],[tx,ty],[tx+1,ty]].filter(([x,y])=>inBoard(x,y));
         for (const [x,y] of band){ DMG(x,y,3); addBurn(d,x,y,2,now); }
         pulseCells(band, "glow-orange");
         break;
       }
 
-      case "bogstorm": { // light+marsh — electric zaps + brief root
+      case "bogstorm": {
         const picks = randomEnemyCells(d, 5);
         if (picks.length) {
           for (const [x,y] of picks) { damageAtTyped(d,x,y,4,'electric'); addVine(d,x,y,1,now); }
@@ -1205,7 +1219,6 @@
         break;
       }
 
-      /* ==== FALLBACK ==== */
       default: {
         DMG(tx,ty,2);
         pulseCells([[tx,ty]], "flash-yellow");
@@ -1230,9 +1243,7 @@
   }
   function randCol(){ return Math.floor(Math.random()*COLS); }
 
-  // === Gentle HP scaling & unified spawner ===
   function healthScaleForTurn(turn){
-    // Every 6 turns is ~one "wave"; +8% max HP per wave, capped at 3x.
     const wave = Math.floor((turn||0)/6);
     return Math.min(3, 1 + wave * 0.08);
   }
@@ -1257,7 +1268,6 @@
   function startOfTurnMut(d){
     const now = d.turn || 0;
 
-    // DOTs — burn (can kill & trigger splits)
     for (const [key,until] of Object.entries(d.burnCells||{})){
       if (until >= now){
         const [x,y] = key.split(",").map(Number);
@@ -1271,36 +1281,30 @@
     }
     d.enemies = (d.enemies||[]).filter(e=> e.hp>0);
 
-    // enemy abilities
     for (const e of d.enemies || []){
-      // Dark Mage: summon rats (existing) + Clear water/ice nearby
       if (e.key === "mage"){
         if (Math.random() < 0.15){
           const n = 1 + Math.floor(Math.random()*2);
           for (let i=0;i<n;i++){ spawnEnemy(d, "rat"); }
         }
         if (Math.random() < 0.50){
-          clearWaterArea(d, e.x, e.y, 1); // r=1 ⇒ 3x3
+          clearWaterArea(d, e.x, e.y, 1);
         }
       }
-      // Imp: Burn plants nearby
       if (e.key === "imp" && Math.random() < 0.5){
-        clearVinesArea(d, e.x, e.y, 1); // r=1 ⇒ 3x3
+        clearVinesArea(d, e.x, e.y, 1);
       }
-      // Demon Lord: fire bolt unchanged
       if (e.ability === "fire_bolt" && Math.random() < 0.4){
-        if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:6 }); // bolt travels next
+        if (!d.bolts) d.bolts=[]; d.bolts.push({ id:id(), x:e.x, y:e.y+1, hp:1, dmg:6 });
       }
     }
 
-    // bolts travel
     for (const b of (d.bolts||[])){ b.y += 1; }
     for (const b of d.bolts||[]){
       if (b.y >= TOWER_ROW){ d.towerHP -= (b.dmg||6); b.hp = 0; }
     }
     d.bolts = (d.bolts||[]).filter(b=> b.hp>0 && b.y<TOWER_ROW);
 
-    // enemies advance (respect freeze/vines; specters ignore vines)
     const frozen = d.frozenCols || {};
     const vines = d.vineCells || {};
     for (const e of d.enemies){
@@ -1311,13 +1315,12 @@
       e.y += e.spd || getEnemySpec(e.key).spd || 1;
       if (e.y >= TOWER_ROW){
         d.towerHP -= (e.dmg || getEnemySpec(e.key).dmg || 1);
-        e._deadHandled = true; // prevent death effects on tower impact
+        e._deadHandled = true;
         e.hp = 0;
       }
     }
     d.enemies = d.enemies.filter(e=> e.hp>0 && e.y<TOWER_ROW);
 
-    // spawn wave
     const wave = Math.floor((d.turn||0)/6);
     const maxSpawn = maxSpawnForTurn(d.turn||0);
     const n = 1 + Math.floor(Math.random()*maxSpawn);
@@ -1326,7 +1329,6 @@
       spawnEnemy(d, pick.key);
     }
 
-    // expire statuses
     for (const [x,until] of Object.entries(d.frozenCols||{})){ if (until < now) delete d.frozenCols[x]; }
     for (const [k,until] of Object.entries(d.vineCells||{})){ if (until < now) delete d.vineCells[k]; }
     for (const [k,until] of Object.entries(d.burnCells||{})){ if (until < now) delete d.burnCells[k]; }
@@ -1341,11 +1343,9 @@
       const d = st.data();
       if (!d.running || d.currentPlayer !== username) return;
 
-      // draw (+1)
       const hand = d.hands[username] || [];
       hand.push(makeCardFromKey(randBase()));
 
-      // pass turn
       const order = d.turnOrder || [];
       if (!order.length) return;
       let idx = d.turnIndex || 0;
@@ -1354,7 +1354,6 @@
       d.turnIndex = idx;
       d.currentPlayer = order[idx];
 
-      // start-of-turn processing
       startOfTurnMut(d);
 
       tx.update(stateRef, {
@@ -1400,9 +1399,6 @@
 </script>
 </body>
 </html>
-
-
-
 
 
 
