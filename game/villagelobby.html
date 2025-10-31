@@ -119,14 +119,13 @@
     }
     #previewGrid div{ width:10px; height:10px; border:1px solid #e5e7eb; background:#ffffff }
 
-    /* tiny legend dots */
     .dot{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle }
   </style>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
-      getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc
+      getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -169,14 +168,46 @@
     };
 
     /* ----------------- Boot ----------------- */
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("loginBtn").onclick = doLogin;
       if (currentUsername) {
         document.getElementById("username").value = currentUsername;
         document.getElementById("password").value = "";
-        loadVillagePage(true);
+        // Cleanup any Explore-generated NPCs for this user before loading lobby
+        await cleanupExploreNPCs(currentUsername);
+        await loadVillagePage();
       }
     });
+
+    /* ----------------- Helpers: Explore NPC cleanup ----------------- */
+    function npcPrefixFor(user){ return `NPC-${user}-`; }
+    function looksLikeExploreNPC(idOrOwner, user){
+      const pref = npcPrefixFor(user);
+      return typeof idOrOwner === "string" && idOrOwner.startsWith(pref);
+    }
+
+    async function cleanupExploreNPCs(user){
+      try{
+        const vSnap = await getDocs(collection(db, "villages"));
+        const toDelete = vSnap.docs.filter(d=>{
+          const data = d.data() || {};
+          const owner = data.owner || d.id;
+          return looksLikeExploreNPC(d.id, user) || looksLikeExploreNPC(owner, user);
+        });
+
+        // Delete matching village docs and their paired user docs
+        for (const d of toDelete){
+          const vid = d.id;
+          await deleteDoc(doc(db, "villages", vid));
+          // Paired user doc has same NPC id
+          if (looksLikeExploreNPC(vid, user)){
+            await deleteDoc(doc(db, "users", vid));
+          }
+        }
+      }catch(e){
+        console.warn("NPC cleanup skipped (permission/rules or offline):", e?.message || e);
+      }
+    }
 
     /* ----------------- Login ----------------- */
     async function doLogin(){
@@ -192,6 +223,8 @@
         if (!("password" in data) || data.password === pass){
           currentUsername = user;
           localStorage.setItem("username", user);
+          // Cleanup Explore NPCs made by this user before loading
+          await cleanupExploreNPCs(currentUsername);
           await loadVillagePage();
         } else {
           alert("Invalid credentials.");
@@ -200,6 +233,8 @@
         await setDoc(uRef, { password: pass, bucks: 0, tribe: null, campaign: 0 });
         currentUsername = user;
         localStorage.setItem("username", user);
+        // No prior data, but run cleanup defensively
+        await cleanupExploreNPCs(currentUsername);
         await loadVillagePage();
       }
     }
@@ -214,7 +249,7 @@
       const userSnap = await getDoc(userRef);
       const myTribe  = userSnap.exists() ? (userSnap.data().tribe || null) : null;
 
-      // villages
+      // villages (after cleanup)
       const snap = await getDocs(collection(db, "villages"));
       villages   = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -469,10 +504,8 @@
       const minP = myPower + 100;
       const maxP = myPower + 200;
 
-      // 1) build a grid with a wall preset + filled defenses
       const grid = generateNpcGridWithTarget(minP, maxP);
 
-      // 2) persist NPC "village" and a matching "user" document
       const ts = Date.now();
       const npcOwner = `NPC-${currentUsername}-${ts}`;
       const villageDoc = doc(db, "villages", npcOwner);
@@ -491,7 +524,6 @@
         campaign: 0
       }, { merge: true });
 
-      // 3) go fight!
       location.href = `/game/battle.html?attacker=${encodeURIComponent(currentUsername)}&defender=${encodeURIComponent(npcOwner)}`;
     }
 
@@ -500,18 +532,15 @@
       const occupied = new Set();
       const grid = [];
 
-      // choose a wall preset
       const presets = [placeRingWalls, placeCornerBastions, placeStripes, placeBoxMaze];
       const preset = presets[Math.floor(Math.random()*presets.length)];
       preset(size, grid, occupied);
 
-      // fill remaining with random mix; then tune to target power
       const pool = [
         "archerTower","sniperTower","lightningStriker","cannonTower","necromancerTower",
         "trap","troopStructure","strongWall","wall"
       ];
 
-      // initial fill pass
       for (let y=0; y<size; y++){
         for (let x=0; x<size; x++){
           const key = `${x},${y}`;
@@ -524,13 +553,11 @@
         }
       }
 
-      // compute and nudge toward range
       let p = computeGridPower(grid);
       let guard = 0;
       while ((p < minP || p > maxP) && guard < 400){
         guard++;
         if (p < minP){
-          // add strong structures in empty spots
           const adds = ["sniperTower","cannonTower","necromancerTower","lightningStriker","archerTower","trap","strongWall"];
           let placed = false;
           for (let tries=0; tries<50 && !placed; tries++){
@@ -543,14 +570,12 @@
             placed = true;
           }
         } else {
-          // too strong → remove a higher value item
           const idx = grid.findIndex(t => ["sniperTower","cannonTower","necromancerTower","lightningStriker","trap","strongWall","archerTower"].includes(t.type));
           if (idx !== -1){
             const key = `${grid[idx].x},${grid[idx].y}`;
             occupied.delete(key);
             grid.splice(idx,1);
           } else {
-            // fallback remove anything
             if (grid.length){
               const r = Math.floor(Math.random()*grid.length);
               const key2 = `${grid[r].x},${grid[r].y}`;
@@ -794,7 +819,6 @@
   </div>
 </body>
 </html>
-
 
 
 
