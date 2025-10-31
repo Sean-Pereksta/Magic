@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Splinters — Multiplayer (with Right Combo Panel)</title>
+<title>Wild Matches — Multiplayer</title>
 <style>
   :root{
-    --ink:#eaf2ff; --muted:#a7bfdc; --bg:#0a0e14; --pane:#0f1726; --edge:#1a2b46; --accent:#b91c1c; --accent-2:#7f1d1d;
+    --ink:#0a1b12; --muted:#54705f; --bg:#08120c; --pane:#0e1b14; --edge:#1a3a2a;
+    --accent:#0ea35a; --accent-2:#0a7a44;
     --h:48px; --scoresH:38px; --oppsH:46px; --handH:102px;
     --riverW:min(96vw,720px);
     --cardW: clamp(48px, 9vw, 66px); --cardH: calc(var(--cardW) * 1.33);
-    --handBottomOffset: 10vh;            /* elevated hand on mobile */
-    --sbW: 240px;                         /* side panel width */
-    --sbGap: 8px;
-    --padR: 0px;                          /* computed when panel open */
+    --handBottomOffset: 10vh;
+    --sbW: 240px; --sbGap: 8px;
+    --padR: 0px;
   }
   @media (min-width: 901px){ :root{ --handBottomOffset: 8vh; } }
   @media (max-width: 540px){ :root{ --sbW: 200px; } }
@@ -23,28 +23,28 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
-    margin:0;background:radial-gradient(1000px 700px at 60% -10%,#151f31 0%,#0a0e14 45%,#070a10 100%);
+    margin:0;
+    background:
+      radial-gradient(900px 600px at 60% -10%, #173626 0%, #0c1a12 50%, #08120c 100%),
+      linear-gradient(180deg, #0b1711, #08120c);
     color:var(--ink);font:600 12px/1.25 system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif;overflow:hidden;
     -webkit-tap-highlight-color:transparent
   }
-  button{appearance:none;border:1px solid #2b3f64;background:#132139;color:#eaf3ff;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}
+  button{appearance:none;border:1px solid #24563e;background:#133022;color:#e6fff2;border-radius:10px;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}
   button:active{transform:translateY(1px)}
-
-  /* Header bar */
   .top{position:fixed;inset:0 0 auto 0;height:var(--h);display:flex;align-items:center;justify-content:space-between;padding:6px 8px}
   .brand{display:flex;align-items:center;gap:8px}
-  .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff14;border:1px solid #ffffff22;font-size:16px}
+  .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff0f;border:1px solid #ffffff1e;font-size:16px}
   .title{font-weight:900;letter-spacing:.2px}
   .controls{display:flex;align-items:center;gap:6px}
-  .badge{padding:3px 8px;border-radius:999px;background:#0f1a2b;border:1px solid #21365b;color:#cfe4ff;font-size:11px}
-  .host{background:#192940;border-color:#2f4e7d}
-  .leave{background:#260c0c;border-color:#4b1a1a}
-  .ghost{background:#0d1728;border-color:#1b2b48}
+  .badge{padding:3px 8px;border-radius:999px;background:#112a1e;border:1px solid #205238;color:#d6ffe8;font-size:11px}
+  .host{background:#163a29;border-color:#246a4a}
+  .leave{background:#2b0f17;border-color:#541a27}
+  .ghost{background:#12261c;border-color:#234c37}
 
-  /* Scoreboard medals */
   .scoresBar{position:fixed;left:0;right:0;top:var(--h);height:var(--scoresH);display:flex;align-items:center;justify-content:center;padding:0 6px}
   .scores-inner{width:calc(var(--riverW) + var(--padR));display:flex;gap:6px;justify-content:center;overflow:auto;-webkit-overflow-scrolling:touch}
-  .sc{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid #223a5f;background:#0f1a2b;white-space:nowrap;font-size:11px}
+  .sc{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid #214e38;background:#0f2419;white-space:nowrap;font-size:11px;color:#e2ffe8}
   .sc .dot{width:10px;height:10px;border-radius:50%}
   .m1{border-color:#e6c200;background:linear-gradient(180deg,#2b2500,#0f1200);color:#ffe680}
   .m1 .dot{background:#ffd700}
@@ -53,19 +53,17 @@
   .m3{border-color:#b2732a;background:linear-gradient(180deg,#23160a,#0f0b07);color:#ffd9b3}
   .m3 .dot{background:#cd7f32}
 
-  /* Opponents strip */
   .opps{position:fixed;left:0;right:0;top:calc(var(--h) + var(--scoresH));height:var(--oppsH);display:flex;align-items:center;justify-content:center;padding:0 6px}
   .opps-inner{width:calc(var(--riverW) + var(--padR));display:flex;gap:6px;justify-content:center;overflow:hidden}
-  .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0e1626;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:6px}
+  .opp{flex:1 1 0;min-width:0;border:1px solid var(--edge);background:#0f2419;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:6px;color:#e6fff2}
   .opp .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mini{display:flex;gap:3px;margin-left:auto}
-  .mini i{width:14px;height:20px;border-radius:4px;background:#112036;border:1px solid #213a62;display:block}
-  .revealMini{display:flex;gap:6px;margin-left:auto;font-size:11px;color:#dbe8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini i{width:14px;height:20px;border-radius:4px;background:#0f2c20;border:1px solid #1b513b;display:block}
+  .revealMini{display:flex;gap:6px;margin-left:auto;font-size:11px;color:#d6ffe8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .flag{font-size:12px;opacity:.9}
   .flag.sil{color:#fbbf24}
   .flag.shd{color:#60a5fa}
 
-  /* Board / river (centered) */
   .main{
     position:absolute;
     inset:calc(var(--h) + var(--scoresH) + var(--oppsH)) 0 calc(env(safe-area-inset-bottom) + var(--handH) + var(--handBottomOffset) + 60px) 0;
@@ -74,88 +72,81 @@
   }
   .riverWrap{width:var(--riverW);margin:0 auto}
   .river{display:grid;grid-template-columns:repeat(5,var(--cardW));grid-auto-rows:var(--cardH);gap:6px}
-  .slot{width:var(--cardW);height:var(--cardH);border-radius:8px;border:1px solid var(--edge);background:#0f1a2a;display:grid;place-items:center;position:relative}
+  .slot{width:var(--cardW);height:var(--cardH);border-radius:8px;border:1px solid var(--edge);background:#0f2419;display:grid;place-items:center;position:relative}
   .slot.empty{border-style:dashed;opacity:.6}
-  .card{width:calc(100% - 6px);height:calc(100% - 6px);border-radius:8px;border:1px solid #1e2f52;background:#14243c;position:relative;overflow:hidden}
+  .card{width:calc(100% - 6px);height:calc(100% - 6px);border-radius:8px;border:1px solid #1f4a37;background:#113624;position:relative;overflow:hidden;color:#eafff2}
   .front,.back{position:absolute;inset:0;display:grid;place-items:start;padding:5px}
   .front .t{font-weight:900;font-size:11px}
-  .front .f{font-size:10px;color:#cfe1ffcc}
+  .front .f{font-size:10px;color:#d3ffe0cc}
   .sel{outline:3px solid var(--accent);outline-offset:2px}
   .frozen .slot{filter:grayscale(.2) contrast(.92);opacity:.88}
-  .flipGlow .slot{box-shadow:0 0 0 2px #b91c1c99 inset}
+  .flipGlow .slot{box-shadow:0 0 0 2px #0ea35a99 inset}
   .back{
     background:
-      linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%),
-      linear-gradient(45deg, #1b2a45 25%, transparent 25%, transparent 75%, #1b2a45 75%);
-    background-size: 12px 12px; background-position: 0 0, 6px 6px; background-color:#0a1422;
+      linear-gradient(45deg, #163a29 25%, transparent 25%, transparent 75%, #163a29 75%),
+      linear-gradient(45deg, #163a29 25%, transparent 25%, transparent 75%, #163a29 75%);
+    background-size: 12px 12px; background-position: 0 0, 6px 6px; background-color:#0b2418;
   }
 
-  /* Flip timer per river card (10s base) */
   .timer{position:absolute;top:4px;right:4px;width:22px;height:22px;display:grid;place-items:center;pointer-events:none;opacity:.92;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
   .timer svg{width:22px;height:22px}
-  .timer .track{fill:none;stroke:#243a5f;stroke-width:3}
-  .timer .prog{fill:none;stroke:#ef4444;stroke-width:3;stroke-linecap:round}
-  .timer .txt{position:absolute;font-size:9px;font-weight:900;color:#ffd7d7}
+  .timer .track{fill:none;stroke:#1f4a37;stroke-width:3}
+  .timer .prog{fill:none;stroke:#0ea35a;stroke-width:3;stroke-linecap:round}
+  .timer .txt{position:absolute;font-size:9px;font-weight:900;color:#d5ffe7}
 
-  /* Suggestions / buttons above hand */
   .suggest{position:fixed;left:0;right:0;bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);display:grid;place-items:center;pointer-events:none}
   .suggest-inner{width:calc(var(--riverW) + var(--padR));display:grid;grid-template-rows:auto auto;gap:6px;pointer-events:all}
   .ready{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .pill{display:flex;flex-direction:column;gap:4px;border:1px solid #223a5f;background:#111e33;border-radius:12px;padding:6px 8px;font-size:11px;color:#dbe7ff;min-width:240px;max-width:calc(var(--riverW) - 12px)}
+  .pill{display:flex;flex-direction:column;gap:4px;border:1px solid #214e38;background:#0f2419;border-radius:12px;padding:6px 8px;font-size:11px;color:#d6ffe8;min-width:240px;max-width:calc(var(--riverW) - 12px)}
   .pill .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .pill .label{font-weight:900}
   .pill .cards{opacity:.9}
   .pill .desc{font-size:10px;opacity:.95}
-  .playBtn{background:var(--accent);border-color:#5e1111;color:#fff;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.3px}
+  .playBtn{background:var(--accent);border-color:#0a7a44;color:#fff;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.3px}
   .playBtn:hover{filter:brightness(1.05)}
   .playBtn:active{background:var(--accent-2)}
 
-  /* Hand (elevated) */
   .handWrap{position:fixed;left:0;right:0;bottom:var(--handBottomOffset);height:calc(var(--handH) + env(safe-area-inset-bottom));padding:6px 8px env(safe-area-inset-bottom)}
-  .hand{height:100%;margin:0 auto;width:calc(var(--riverW) + var(--padR));border:1px solid var(--edge);background:#0f1a2a;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
-  .hslot{width:calc(var(--cardW) * 1.02);height:calc(var(--cardH) * 1.02);border:1px solid var(--edge);background:#0d1728;border-radius:8px;display:grid;place-items:center}
+  .hand{height:100%;margin:0 auto;width:calc(var(--riverW) + var(--padR));border:1px solid var(--edge);background:#0f2419;border-radius:10px;padding:6px;display:flex;gap:6px;align-items:center;justify-content:center}
+  .hslot{width:calc(var(--cardW) * 1.02);height:calc(var(--cardH) * 1.02);border:1px solid var(--edge);background:#0e2218;border-radius:8px;display:grid;place-items:center}
   .hslot.empty{opacity:.5;border-style:dashed}
 
-  /* Winner modal */
   .overlay{position:fixed;inset:0;background:rgba(5,10,18,.86);display:none;align-items:center;justify-content:center;z-index:40}
   .overlay.show{display:flex}
-  .modal{background:#0f1a2a;border:1px solid #1b2c48;border-radius:12px;width:min(92vw,420px);padding:12px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .modal{background:#0f2419;border:1px solid #1b2c48;border-radius:12px;width:min(92vw,420px);padding:12px;box-shadow:0 24px 60px rgba(0,0,0,.45);color:#eafff2}
   .modal h2{margin:0 0 6px 0}
-  .modal p{margin:0 0 6px 0;color:#cfe1ff}
+  .modal p{margin:0 0 6px 0;color:#d6ffe8}
   .table{width:100%;border-collapse:collapse;font-size:12px}
-  .table td,.table th{border-bottom:1px solid #22385d;padding:6px;text-align:left}
+  .table td,.table th{border-bottom:1px solid #214e38;padding:6px;text-align:left}
   .table tr:last-child td{border-bottom:none}
 
-  /* Target pickers */
   .pick{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,20,.84);z-index:45}
   .pick.show{display:flex}
-  .pickBox{background:#0f1b2e;border:1px solid #1b2c48;border-radius:12px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px}
+  .pickBox{background:#0f2419;border:1px solid #1b2c48;border-radius:12px;width:min(94vw,520px);max-height:min(72vh,520px);overflow:auto;padding:10px;color:#eafff2}
   .pickBox h3{margin:0 0 8px 0;font-size:14px}
-  .prow{border:1px solid #223a5f;background:#0d1727;border-radius:10px;padding:8px;margin:6px 0}
-  .prow h4{margin:0 0 6px 0;font-size:12px;color:#cfe4ff}
+  .prow{border:1px solid #214e38;background:#0e2218;border-radius:10px;padding:8px;margin:6px 0}
+  .prow h4{margin:0 0 6px 0;font-size:12px;color:#d6ffe8}
   .pcards{display:flex;flex-wrap:wrap;gap:6px}
-  .pbtn{font-size:11px;padding:5px 8px;border-radius:9px;border:1px solid #2a426d;background:#132242;color:#dbeaff;cursor:pointer}
+  .pbtn{font-size:11px;padding:5px 8px;border-radius:9px;border:1px solid #2a6a4d;background:#133022;color:#dbeaff;cursor:pointer}
 
-  /* Toasts */
   .toasts{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--h) + 4px);display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none}
-  .toast{background:#0f1b2e;border:1px solid #203656;color:#e6efff;padding:6px 8px;border-radius:9px;box-shadow:0 8px 20px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);animation:tIn .22s ease-out forwards}
+  .toast{background:#0f2419;border:1px solid #214e38;color:#e6efff;padding:6px 8px;border-radius:9px;box-shadow:0 8px 20px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);animation:tIn .22s ease-out forwards}
   @keyframes tIn{to{opacity:1;transform:translateY(0)}}
   .toast.out{animation:tOut .22s ease-in forwards}
   @keyframes tOut{to{opacity:0;transform:translateY(-6px)}}
 
-  /* ===== Right Combo Panel ===== */
   .sidepanel{
     position:fixed; right:6px;
     top:calc(var(--h) + var(--scoresH) + 6px);
     bottom:calc(var(--handH) + var(--handBottomOffset) + env(safe-area-inset-bottom) + 6px);
-    width:var(--sbW); background:#0f1a2a; border:1px solid var(--edge); border-radius:10px;
-    display:flex; flex-direction:column; overflow:hidden; z-index:31;
+    width:var(--sbW); background:#0f2419; border:1px solid var(--edge); border-radius:10px;
+    display:flex; flex-direction:column; overflow:hidden; z-index:31; color:#eafff2
   }
   .sp-head{display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px; border-bottom:1px solid #1b2b48}
   .sp-title{font-weight:900}
   .sp-btn{padding:4px 8px; border-radius:999px; font-size:11px}
   .sp-body{overflow:auto; padding:6px}
-  .comboRow{border:1px solid #223a5f; background:#111e33; color:#dbe7ff; border-radius:10px; padding:6px; margin-bottom:6px; display:grid; gap:2px}
+  .comboRow{border:1px solid #214e38; background:#0f2419; color:#d6ffe8; border-radius:10px; padding:6px; margin-bottom:6px; display:grid; gap:2px}
   .comboRow .r1{display:flex; align-items:center; justify-content:space-between; gap:8px}
   .comboRow .cName{font-weight:900; font-size:11px}
   .comboRow .cPts{opacity:.9; font-size:11px}
@@ -176,8 +167,8 @@
 <body class="sb-open">
   <div class="top">
     <div class="brand">
-      <div class="logo">🪄</div>
-      <div class="title">Splinters</div>
+      <div class="logo">🌿</div>
+      <div class="title">Wild Matches</div>
       <span class="badge" id="hostBadge" hidden>Host</span>
       <span class="badge" id="gameIdBadge"></span>
       <span class="badge" id="banBadge" hidden></span>
@@ -191,20 +182,15 @@
     </div>
   </div>
 
-  <!-- Scoreboard medals -->
   <div class="scoresBar"><div class="scores-inner" id="scores"></div></div>
-
-  <!-- Opponents -->
   <div class="opps"><div class="opps-inner" id="opps"></div></div>
 
-  <!-- Board -->
   <main class="main">
     <div class="riverWrap">
       <div class="river" id="river"></div>
     </div>
   </main>
 
-  <!-- Suggestions -->
   <div class="suggest">
     <div class="suggest-inner">
       <div class="ready" id="ready"></div>
@@ -212,10 +198,8 @@
     </div>
   </div>
 
-  <!-- Hand -->
   <div class="handWrap"><div class="hand" id="hand"></div></div>
 
-  <!-- Right Combo Panel -->
   <aside id="comboPanel" class="sidepanel">
     <div class="sp-head">
       <span class="sp-title">Combos (Pairs & Sets)</span>
@@ -224,7 +208,6 @@
     <div class="sp-body" id="comboList"></div>
   </aside>
 
-  <!-- Winner -->
   <div class="overlay" id="over">
     <div class="modal">
       <h2 id="overTitle">Game Over</h2>
@@ -236,7 +219,6 @@
     </div>
   </div>
 
-  <!-- Target pickers -->
   <div class="pick" id="pick">
     <div class="pickBox">
       <h3 id="pickTitle">Pick a target</h3>
@@ -279,47 +261,65 @@ if (!gameId || !username) alert("Missing gameId or username in URL.");
 const gref = doc(db, "games", gameId);
 const uref = doc(db, "users", username);
 
-/* ======= Cards & combos ======= */
-const F = { Scholar:'Scholar', Weather:'Weather', Beast:'Beast', Tamer:'Tamer', Relic:'Relic' };
+/* ======= Cards & combos (Nature Theme) ======= */
+
+/* Families */
+const F = {
+  Plant:  'Plant',
+  Animal: 'Animal',
+  Weather:'Weather',
+  Water:  'Water',
+  Habitat:'Habitat',
+
+  /* Back-compat keys used in a couple effect helpers */
+  Beast:  'Animal',   // used by discardNonBeastEach handler
+  Relic:  'Habitat'   // (we don't use destroyRelicEach in nature set)
+};
+
+/* Card list */
 const CARDS = [
-  {id:'SchLight',name:'Scholar of Light',fam:F.Scholar,emoji:'✨',tier:2},
-  {id:'SchStorm',name:'Scholar of Storms',fam:F.Scholar,emoji:'🌩️',tier:2},
-  {id:'SchBeast',name:'Scholar of Beasts',fam:F.Scholar,emoji:'🐾',tier:2},
-  {id:'SchStars',name:'Scholar of Stars',fam:F.Scholar,emoji:'🌌',tier:3},
-  {id:'SchTime', name:'Scholar of Time', fam:F.Scholar,emoji:'⏳',tier:3},
-  {id:'SchDark', name:'Scholar of Darkness', fam:F.Scholar,emoji:'🌑',tier:2},
+  // Plants
+  {id:'Seed',     name:'Seed',      fam:F.Plant,   emoji:'🌱', tier:1},
+  {id:'Flower',   name:'Flower',    fam:F.Plant,   emoji:'🌼', tier:2},
+  {id:'Tree',     name:'Tree',      fam:F.Plant,   emoji:'🌳', tier:3},
+  {id:'Vine',     name:'Vine',      fam:F.Plant,   emoji:'🌿', tier:2},
+  {id:'Mushroom', name:'Mushroom',  fam:F.Plant,   emoji:'🍄', tier:2},
 
-  {id:'StormCloud',name:'Storm Cloud',fam:F.Weather,emoji:'☁️',tier:1},
-  {id:'Lightning',name:'Lightning',fam:F.Weather,emoji:'⚡',tier:2},
-  {id:'Sun', name:'Sun', fam:F.Weather,emoji:'☀️',tier:1},
-  {id:'Rain',name:'Rain',fam:F.Weather,emoji:'🌧️',tier:1},
-  {id:'Blizzard',name:'Blizzard',fam:F.Weather,emoji:'❄️',tier:2},
-  {id:'Eclipse',name:'Eclipse',fam:F.Weather,emoji:'🌘',tier:3},
+  // Animals
+  {id:'Bee',      name:'Bee',       fam:F.Animal,  emoji:'🐝', tier:2},
+  {id:'Bird',     name:'Bird',      fam:F.Animal,  emoji:'🐦', tier:2},
+  {id:'Wolf',     name:'Wolf',      fam:F.Animal,  emoji:'🐺', tier:2},
+  {id:'Bear',     name:'Bear',      fam:F.Animal,  emoji:'🐻', tier:3},
+  {id:'Fish',     name:'Fish',      fam:F.Animal,  emoji:'🐟', tier:1},
 
-  {id:'SkySerpent',name:'Sky Serpent',fam:F.Beast,emoji:'🐍',tier:2},
-  {id:'RockRhino',name:'Rock Rhino',fam:F.Beast,emoji:'🦏',tier:2},
-  {id:'FireDrake',name:'Fire Drake',fam:F.Beast,emoji:'🐉',tier:3},
-  {id:'ShadowWolf',name:'Shadow Wolf',fam:F.Beast,emoji:'🐺',tier:2},
+  // Weather
+  {id:'Sun',      name:'Sun',       fam:F.Weather, emoji:'☀️', tier:1},
+  {id:'Rain',     name:'Rain',      fam:F.Weather, emoji:'🌧️', tier:1},
+  {id:'Storm',    name:'Storm',     fam:F.Weather, emoji:'⛈️', tier:2},
+  {id:'Snow',     name:'Snow',      fam:F.Weather, emoji:'❄️', tier:2},
+  {id:'Wind',     name:'Wind',      fam:F.Weather, emoji:'🌬️', tier:1},
+  {id:'Rainbow',  name:'Rainbow',   fam:F.Weather, emoji:'🌈', tier:3},
 
-  {id:'BeastMaster',name:'Beast Master',fam:F.Tamer,emoji:'🐾⚔️',tier:2},
-  {id:'DragonKnight',name:'Dragon Knight',fam:F.Tamer,emoji:'🐉⚔️',tier:3},
-  {id:'WolfTamer',name:'Wolf Tamer',fam:F.Tamer,emoji:'🐺⚔️',tier:2},
-  {id:'StormRider',name:'Storm Rider',fam:F.Tamer,emoji:'🌩️⚔️',tier:2},
+  // Water
+  {id:'River',    name:'River',     fam:F.Water,   emoji:'🏞️', tier:2},
+  {id:'Lake',     name:'Lake',      fam:F.Water,   emoji:'🫧',  tier:1},
+  {id:'Falls',    name:'Waterfall', fam:F.Water,   emoji:'💦',  tier:2},
+  {id:'Glacier',  name:'Glacier',   fam:F.Water,   emoji:'🧊',  tier:3},
 
-  {id:'SanctumOrb',name:'Sanctum Orb',fam:F.Relic,emoji:'🔮',tier:3},
-  {id:'StormLance',name:'Storm Lance',fam:F.Relic,emoji:'⚔️🌩️',tier:2},
-  {id:'SunCrown',name:'Sun Crown',fam:F.Relic,emoji:'👑☀️',tier:2},
-  {id:'ShadowDagger',name:'Shadow Dagger',fam:F.Relic,emoji:'🗡️🌑',tier:2},
-  {id:'MirrorStars',name:'Mirror of Stars',fam:F.Relic,emoji:'🪞🌌',tier:3},
+  // Habitats
+  {id:'Hive',     name:'Hive',      fam:F.Habitat, emoji:'🏠🐝', tier:2},
+  {id:'Nest',     name:'Nest',      fam:F.Habitat, emoji:'🪺',   tier:2},
+  {id:'Den',      name:'Den',       fam:F.Habitat, emoji:'🕳️',   tier:2},
+  {id:'Dam',      name:'Dam',       fam:F.Habitat, emoji:'🪵🌊',  tier:3},
 ];
 
-/* Hoisted helper to avoid TDZ issues */
+/* Family icon used in side panel */
 function famIcon(fam){
-  if (fam === 'Scholar') return '📘';
-  if (fam === 'Beast')   return '🐾';
-  if (fam === 'Relic')   return '🗝️';
-  if (fam === 'Tamer')   return '⚔️';
+  if (fam === 'Plant')   return '🌿';
+  if (fam === 'Animal')  return '🐾';
   if (fam === 'Weather') return '⛅';
+  if (fam === 'Water')   return '💧';
+  if (fam === 'Habitat') return '🏡';
   return '❓';
 }
 
@@ -329,7 +329,7 @@ const NEED = {
   fam:(fam)=>({fam,label:fam, test:c=>c.fam===fam}),
 };
 
-/* EFFECT legend */
+/* Effect legend + descriptions (unchanged structure) */
 const ICON = {
   steal:'🫴', destroy:'💥', freeze:'🧊', flip:'🔁', reveal:'👁️',
   draw:'➕', duplicate:'🪞', shield:'🛡️', scry:'🔮', refresh:'♻️',
@@ -342,7 +342,6 @@ function effectDescription(combo){
   if (e.startsWith('stealTarget:'))    return `${ICON.steal} Steal a ${e.split(':')[1]}`;
   if (e.startsWith('duplicateTarget')) return `${ICON.duplicate} Duplicate any card`;
   if (e.startsWith('destroyTarget'))   return `${ICON.destroy} Destroy any card`;
-  if (e==='destroyRelicEach')          return `${ICON.destroy} Destroy a Relic from each foe`;
   if (e.startsWith('freeze:'))         return `${ICON.freeze} Freeze river ${Math.round((+e.split(':')[1]||0)/1000)}s`;
   if (e.startsWith('flip:'))           return `${ICON.flip} Reveal center ${Math.round((+e.split(':')[1]||0)/1000)}s`;
   if (e.startsWith('revealOpp:'))      return `${ICON.reveal} Reveal opponents ${Math.round((+e.split(':')[1]||0)/1000)}s`;
@@ -354,64 +353,64 @@ function effectDescription(combo){
   if (e.startsWith('scry:'))           return `${ICON.scry} Scry top ${e.split(':')[1]}`;
   if (e.startsWith('banFam:'))         return `${ICON.ban} Ban ${e.split(':')[1]} ${Math.round((+e.split(':')[2]||0)/1000)}s`;
   if (e.startsWith('discardEach:'))    return `${ICON.discard} All foes discard ${e.split(':')[1]}`;
-  if (e==='discardNonBeastEach:1')     return `${ICON.cull} Foes discard non-Beast`;
+  if (e==='discardNonBeastEach:1')     return `${ICON.cull} Foes discard non-Animals`;
   if (e.startsWith('tradeRandom'))     return `${ICON.trade} Trade a random card`;
   if (e.startsWith('silenceTarget:'))  return `${ICON.silence} Silence ${Math.round((+e.split(':')[1]||0)/1000)}s`;
   if (e.startsWith('legend:'))         return `🌟 Legend combo`;
   return `${ICON.points} +${combo.pts}`;
 }
 
-/* ======= Combos ======= */
+/* Nature combos — intuitive reads */
 const COMBOS = [
-  {key:'ThunderHeist', label:'Thunder Heist', pts:12, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider')], effect:'stealEach:1'},
-  {key:'MidnightAssassination', label:'Midnight Assassination', pts:13, need:[NEED.id('ShadowDagger'),NEED.id('SchDark'),NEED.id('StormCloud')], effect:'destroyTarget:any'},
-  {key:'StormShatter', label:'Storm Shatter', pts:14, need:[NEED.id('StormLance'),NEED.id('Lightning'),NEED.id('SchStorm')], effect:'destroyRelicEach'},
-  {key:'Weatherlift', label:'Weatherlift', pts:15, need:[NEED.id('Rain'),NEED.id('StormCloud'),NEED.id('SchTime')], effect:'stealTarget:Weather'},
-  {key:'SerpentsSpoils', label:'Serpent’s Spoils', pts:10, need:[NEED.id('SkySerpent'),NEED.id('SchBeast'),NEED.id('ShadowDagger')], effect:'stealTarget:Relic'},
-  {key:'FrozenOracle', label:'Frozen Oracle', pts:12, need:[NEED.id('SanctumOrb'),NEED.id('Blizzard'),NEED.id('SchTime')], effect:'freeze:4000'},
-  {key:'CrownCommand', label:'Crown Command', pts:15, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('BeastMaster')], effect:'draw:1'},
-  {key:'PackRaid', label:'Pack Raid', pts:18, need:[NEED.id('ShadowWolf'),NEED.id('BeastMaster'),NEED.id('WolfTamer')], effect:'stealTarget:Beast'},
-  {key:'StarlitCopy', label:'Starlit Copy', pts:20, need:[NEED.id('SchStars'),NEED.id('MirrorStars'),NEED.id('SchTime')], effect:'duplicateTarget:any'},
-  {key:'ScholarsGlint', label:'Scholars’ Glint', pts:5, need:[NEED.id('SchLight'),NEED.id('SchStorm')], effect:'flip:2500'},
-  {key:'TwilightEdict', label:'Twilight Edict', pts:5, need:[NEED.id('Eclipse'),NEED.id('SchDark')], effect:'revealOpp:3000'},
+  {key:'Germination',     label:'Germination',      pts:12, need:[NEED.id('Seed'),NEED.id('Rain'),NEED.id('Sun')], effect:'draw:1'},
+  {key:'Photosynthesis',  label:'Photosynthesis',   pts:14, need:[NEED.id('Tree'),NEED.id('Sun'),NEED.id('Rain')], effect:'shieldSelf:4000'},
+  {key:'Pollination',     label:'Pollination',      pts:13, need:[NEED.id('Flower'),NEED.id('Bee'),NEED.id('Sun')], effect:'scry:3'},
+  {key:'HoneyHarvest',    label:'Honey Harvest',    pts:15, need:[NEED.id('Bee'),NEED.id('Flower'),NEED.id('Hive')], effect:'stealEach:1'},
+  {key:'NestBuilding',    label:'Nest Building',    pts:10, need:[NEED.id('Bird'),NEED.id('Vine'),NEED.id('Nest')], effect:'draw:1'},
+  {key:'SalmonRun',       label:'Salmon Run',       pts:12, need:[NEED.id('River'),NEED.id('Fish'),NEED.id('Bear')], effect:'stealTarget:Animal'},
+  {key:'BeaverWorks',     label:'Beaver Works',     pts:14, need:[NEED.id('Dam'),NEED.id('River'),NEED.id('Tree')], effect:'refreshColumn'},
+  {key:'WinterShelter',   label:'Winter Shelter',   pts:11, need:[NEED.id('Bear'),NEED.id('Den'),NEED.id('Snow')], effect:'shieldSelf:5000'},
+  {key:'Migration',       label:'Migration',        pts:9,  need:[NEED.id('Bird'),NEED.id('Wind'),NEED.id('Sun')], effect:'revealOpp:3000'},
+  {key:'Bloom',           label:'Bloom',            pts:8,  need:[NEED.id('Flower'),NEED.id('Rain'),NEED.id('Sun')], effect:'flip:3000'},
+  {key:'Icestorm',        label:'Icestorm',         pts:12, need:[NEED.id('Snow'),NEED.id('Storm'),NEED.id('Wind')], effect:'freeze:4000'},
+  {key:'RainbowAfterRain',label:'Rainbow After Rain',pts:10,need:[NEED.id('Rain'),NEED.id('Sun'),NEED.id('Rainbow')], effect:'scry:2'},
+  {key:'Floodwaters',     label:'Floodwaters',      pts:16, need:[NEED.id('Storm'),NEED.id('Rain'),NEED.id('River')], effect:'refreshRow:bottom'},
 
-  {key:'AscendantTempest', label:'ASCENDANT TEMPEST', pts:42, need:[NEED.id('SchStorm'),NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('StormRider'),NEED.id('Eclipse')], effect:'legend:tempest'},
-  {key:'RelicsUnleashed', label:'RELICS UNLEASHED', pts:34, need:[NEED.id('SanctumOrb'),NEED.id('MirrorStars'),NEED.id('StormLance'),NEED.id('SunCrown')], effect:'legend:relics'},
-  {key:'ScholarsCouncil', label:'SCHOLARS COUNCIL', pts:28, need:[NEED.id('SchLight'),NEED.id('SchDark'),NEED.id('SchStars'),NEED.id('SchTime')], effect:'legend:council'},
-  {key:'BeastDominion', label:'BEAST DOMINION', pts:30, need:[NEED.id('BeastMaster'),NEED.id('WolfTamer'),NEED.id('SkySerpent'),NEED.id('ShadowWolf')], effect:'legend:beast'},
+  {key:'AnimalTrio',      label:'Animal Trio',      pts:12, need:[NEED.fam(F.Animal), NEED.fam(F.Animal), NEED.fam(F.Animal)], effect:'banFam:Weather:4000'},
+  {key:'PlantTrio',       label:'Plant Trio',       pts:12, need:[NEED.fam(F.Plant),  NEED.fam(F.Plant),  NEED.fam(F.Plant)],  effect:'scry:3'},
+  {key:'WeatherParade',   label:'Weather Parade',   pts:10, need:[NEED.fam(F.Weather),NEED.fam(F.Weather),NEED.fam(F.Weather)], effect:'refreshColumn'},
+  {key:'HabitatSet',      label:'Habitat Set',      pts:14, need:[NEED.fam(F.Habitat),NEED.fam(F.Habitat),NEED.fam(F.Habitat)], effect:'draw:1'},
+  {key:'WaterCycle',      label:'Water Cycle',      pts:18, need:[NEED.id('Lake'),NEED.id('River'),NEED.id('Falls'),NEED.id('Sun')], effect:'swapRiver'},
+    {key:'MyceliumNetwork',  label:'Mycelium Network',   pts:11, need:[NEED.id('Mushroom'),NEED.id('Tree'),NEED.id('Rain')], effect:'scry:2'},
+  {key:'HiveDefense',      label:'Hive Defense',       pts:10, need:[NEED.id('Hive'),NEED.id('Bee'),NEED.id('Wind')], effect:'shieldSelf:4000'},
+  {key:'SpawningGrounds',  label:'Spawning Grounds',   pts:9,  need:[NEED.id('Lake'),NEED.id('Fish'),NEED.id('Sun')], effect:'draw:1'},
+  {key:'ForestCanopy',     label:'Forest Canopy',      pts:10, need:[NEED.id('Tree'),NEED.id('Bird'),NEED.id('Nest')], effect:'revealOpp:2500'},
+  {key:'PredatorsDomain',  label:'Predator’s Domain',  pts:12, need:[NEED.id('Wolf'),NEED.id('Den'),NEED.id('Snow')],  effect:'banFam:Plant:4000'},
+  {key:'LightningStrike',  label:'Lightning Strike',   pts:13, need:[NEED.id('Storm'),NEED.id('Tree'),NEED.id('Wind')], effect:'destroyTarget:any'},
+  {key:'Thaw',             label:'Thaw',               pts:10, need:[NEED.id('Sun'),NEED.id('Glacier'),NEED.id('River')], effect:'refreshRow:bottom'},
+  {key:'Rainmaker',        label:'Rainmaker',          pts:9,  need:[NEED.id('Lake'),NEED.id('Sun'),NEED.id('Wind')], effect:'refreshColumn'},
+  {key:'BloomingMeadow',   label:'Blooming Meadow',    pts:11, need:[NEED.id('Flower'),NEED.id('Tree'),NEED.id('Bee')], effect:'scry:2'},
+  {key:'Waterwheel',       label:'Waterwheel',         pts:10, need:[NEED.id('Dam'),NEED.id('River'),NEED.id('Wind')], effect:'draw:1'},
+  {key:'AuroraChill',      label:'Aurora Chill',       pts:12, need:[NEED.id('Rainbow'),NEED.id('Glacier'),NEED.id('Wind')], effect:'freeze:4000'},
+  {key:'FertileDelta',     label:'Fertile Delta',      pts:9,  need:[NEED.id('River'),NEED.id('Sun'),NEED.id('Seed')], effect:'draw:1'},
+  {key:'FoggyMorning',     label:'Foggy Morning',      pts:8,  need:[NEED.id('Lake'),NEED.id('Wind'),NEED.id('Tree')], effect:'flip:2500'},
+  {key:'Monsoon',          label:'Monsoon',            pts:14, need:[NEED.id('Storm'),NEED.id('Rain'),NEED.id('Wind')], effect:'refreshRow:top'},
+  {key:'PollinatorSwarm',  label:'Pollinator Swarm',   pts:12, need:[NEED.id('Bee'),NEED.id('Bee'),NEED.id('Flower')], effect:'scry:3'},
+  {key:'PackHunt',         label:'Pack Hunt',          pts:13, need:[NEED.id('Wolf'),NEED.id('Wolf'),NEED.id('Bird')], effect:'stealTarget:Animal'},
+  {key:'DeepHibernate',    label:'Deep Hibernate',     pts:12, need:[NEED.id('Bear'),NEED.id('Glacier'),NEED.id('Den')], effect:'shieldSelf:6000'},
+  {key:'RiverTrade',       label:'River Trade',        pts:9,  need:[NEED.id('River'),NEED.id('Nest'),NEED.id('Fish')], effect:'tradeRandom'},
+  {key:'CleanSweep',       label:'Clean Sweep',        pts:11, need:[NEED.id('Wind'),NEED.id('Wind'),NEED.id('Flower')], effect:'discardEach:1'},
+  {key:'TidalSurge',       label:'Tidal Surge',        pts:15, need:[NEED.id('Falls'),NEED.id('River'),NEED.id('Storm')], effect:'swapRiver'},
 
-  {key:'OrbSurvey', label:'Orb Survey', pts:8, need:[NEED.id('SanctumOrb'),NEED.id('SchTime'),NEED.id('SchLight')], effect:'scry:4'},
-  {key:'CelestialPeek', label:'Celestial Peek', pts:7, need:[NEED.id('SchStars'),NEED.id('MirrorStars'),NEED.id('Sun')], effect:'flip:4000'},
-  {key:'TempestScout', label:'Tempest Scout', pts:6, need:[NEED.id('StormRider'),NEED.id('StormCloud'),NEED.id('Rain')], effect:'flip:3000'},
-  {key:'EyeOfTheStorm', label:'Eye of the Storm', pts:7, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('SchStorm')], effect:'scry:3'},
-  {key:'EclipsedRevelation', label:'Eclipsed Revelation', pts:8, need:[NEED.id('Eclipse'),NEED.id('SchDark'),NEED.id('SchTime')], effect:'flip:5000'},
+  {key:'HowlOfNight',     label:'Howl of Night',    pts:7,  need:[NEED.id('Wolf'),NEED.id('Wind'),NEED.id('Snow')], effect:'discardEach:1'},
+  {key:'PredatorCulling', label:'Predator Culling', pts:10, need:[NEED.id('Wolf'),NEED.id('Bear'),NEED.id('Bird')], effect:'discardNonBeastEach:1'},
+  {key:'GlacialShift',    label:'Glacial Shift',    pts:8,  need:[NEED.id('Glacier'),NEED.id('Wind'),NEED.id('Tree')], effect:'flip:2500'},
+  {key:'TroutTrade',      label:'Trout Trade',      pts:8,  need:[NEED.id('Fish'),NEED.id('River'),NEED.id('Lake')],  effect:'tradeRandom'},
 
-  {key:'TempestPillage', label:'Tempest Pillage', pts:7, need:[NEED.id('StormRider'),NEED.id('ShadowDagger'),NEED.id('Lightning')], effect:'stealEach:1'},
-  {key:'RelicRobbery', label:'Relic Robbery', pts:7, need:[NEED.id('StormLance'),NEED.id('ShadowDagger'),NEED.id('MirrorStars')], effect:'stealTarget:Relic'},
-  {key:'EclipseTheft', label:'Eclipse Theft', pts:8, need:[NEED.id('Eclipse'),NEED.id('SchDark'),NEED.id('ShadowDagger')], effect:'stealTarget:any'},
-  {key:'HowlOfFear', label:'Howl of Fear', pts:6, need:[NEED.id('ShadowWolf'),NEED.id('Eclipse'),NEED.id('WolfTamer')], effect:'discardEach:1'},
-  {key:'ThunderPanic', label:'Thunder Panic', pts:6, need:[NEED.id('Lightning'),NEED.id('StormCloud'),NEED.id('Sun')], effect:'discardEach:1'},
-  {key:'DragonsDemand', label:'Dragon’s Demand', pts:8, need:[NEED.id('FireDrake'),NEED.id('DragonKnight'),NEED.id('SunCrown')], effect:'stealEach:1'},
-  {key:'ScholarsEdict', label:'Scholars’ Edict', pts:9, need:[NEED.id('SchStars'),NEED.id('SchTime'),NEED.id('SchDark')], effect:'discardEach:1'},
-  {key:'BlizzardSnatch', label:'Blizzard Snatch', pts:7, need:[NEED.id('Blizzard'),NEED.id('SchStorm'),NEED.id('StormRider')], effect:'stealTarget:Weather'},
-
-  {key:'Cloudburst', label:'Cloudburst', pts:7, need:[NEED.id('StormCloud'),NEED.id('Rain'),NEED.id('Lightning')], effect:'refreshColumn'},
-  {key:'SolarCoronation', label:'Solar Coronation', pts:12, need:[NEED.id('SunCrown'),NEED.id('Sun'),NEED.id('SchLight')], effect:'shieldSelf:4000'},
-  {key:'RhinoStudy', label:'Rhino Study', pts:9, need:[NEED.id('RockRhino'),NEED.id('SchBeast'),NEED.id('BeastMaster')], effect:'draw:1'},
-  {key:'TimeAndStars', label:'Time & Stars', pts:16, need:[NEED.id('SchTime'),NEED.id('SchStars'),NEED.id('SanctumOrb')], effect:'scry:3'},
-  {key:'WeatherSet', label:'Weather Set', pts:20, need:[NEED.id('Rain'),NEED.id('Sun'),NEED.id('Blizzard'),NEED.id('Lightning')], effect:'refreshRow:top'},
-  {key:'Skychain', label:'Skychain', pts:17, need:[NEED.id('SkySerpent'),NEED.id('BeastMaster'),NEED.id('Lightning')], effect:'swapRiver'},
-  {key:'ScholarTriad', label:'Scholar Triad', pts:18, need:[NEED.id('SchLight'),NEED.id('SchStorm'),NEED.id('SchBeast')], effect:'revealOpp:2000'},
-  {key:'BeastTrio', label:'Beast Trio', pts:12, need:[NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast)], effect:'banFam:Weather:4000'},
-  {key:'BeastHorde', label:'Beast Horde', pts:18, need:[NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast), NEED.fam(F.Beast)], effect:'refreshRow:bottom'},
-  {key:'ScholarAssembly', label:'Scholar Assembly', pts:16, need:[NEED.fam(F.Scholar), NEED.fam(F.Scholar), NEED.fam(F.Scholar)], effect:'pullRelics:1'},
-  {key:'ScholarConclave', label:'Scholar Conclave', pts:22, need:[NEED.fam(F.Scholar), NEED.fam(F.Scholar), NEED.fam(F.Scholar), NEED.fam(F.Scholar)], effect:'shieldSelf:5000'},
-  {key:'RelicSet', label:'Relic Set', pts:14, need:[NEED.fam(F.Relic), NEED.fam(F.Relic), NEED.fam(F.Relic)], effect:'pullRelics:2'},
-  {key:'TamerLine', label:'Tamer Line', pts:13, need:[NEED.fam(F.Tamer), NEED.fam(F.Tamer), NEED.fam(F.Tamer)], effect:'tradeRandom'},
-  {key:'WeatherParade', label:'Weather Parade', pts:10, need:[NEED.fam(F.Weather), NEED.fam(F.Weather), NEED.fam(F.Weather)], effect:'refreshColumn'},
-  {key:'NightSilence', label:'Night Silence', pts:9, need:[NEED.id('ShadowDagger'),NEED.id('SchDark'),NEED.id('Eclipse')], effect:'silenceTarget:5000'},
-  {key:'BeastCulling', label:'Beast Culling', pts:10, need:[NEED.id('ShadowWolf'),NEED.id('SkySerpent'),NEED.id('WolfTamer')], effect:'discardNonBeastEach:1'}
+  {key:'Ecosystem',       label:'ECOSYSTEM',        pts:34, need:[NEED.id('Tree'),NEED.id('River'),NEED.id('Sun'),NEED.id('Rain'),NEED.id('Bee')], effect:'legend:ecosystem'},
+  {key:'GreatMigration',  label:'GREAT MIGRATION',  pts:28, need:[NEED.id('Bird'),NEED.id('Wind'),NEED.id('Sun'),NEED.id('Nest')], effect:'legend:migration'},
 ];
+
 const COMBO_BY_KEY = Object.fromEntries(COMBOS.map(c=>[c.key,c]));
 
 /* ======= DOM refs ======= */
@@ -461,7 +460,7 @@ function setPanel(open, persist=true){
 el.spToggle.addEventListener('click', ()=> setPanel(el.sp.classList.contains('min')));
 setPanel(localStorage.getItem(SB_KEY)!=='0', false);
 
-/* Render the panel: compact, scrollable list of combos & requirements */
+/* Render the panel */
 function renderComboPanel(){
   const rows = COMBOS.slice().sort((a,b)=> (b.pts + (b.effect?2:0)) - (a.pts + (a.effect?2:0)));
   el.spList.innerHTML = '';
@@ -483,7 +482,7 @@ renderComboPanel();
 /* ======= Helpers ======= */
 function miniHand(count){ return `<div class="mini">${Array.from({length:Math.min(5,count)},()=>'<i></i>').join('')}</div>`; }
 function buildDeck(){
-  const freq = { Scholar:3, Weather:4, Beast:3, Tamer:3, Relic:3 };
+  const freq = { Plant:4, Animal:3, Weather:4, Water:3, Habitat:3 };
   const deck=[];
   for(const c of CARDS){ const n=freq[c.fam]??2; for(let i=0;i<n;i++) deck.push(c.id); }
   for(let i=0;i<8;i++){ deck.push(CARDS[(Math.random()*CARDS.length)|0].id); }
@@ -671,41 +670,27 @@ function effectNeedsTarget(effect){
 function famMatch(fam, id){ return fam==='any' ? true : byId[id].fam===fam; }
 function targetShielded(g, player){ const t=(g.shields||{})[player]||0; return now()<t; }
 
-/* Generic non-target effect applier + legends */
+/* Legends + general non-target effects */
 function applyNonTargetEffect(g, who, comboKey){
   const combo = COMBO_BY_KEY[comboKey] || {effect:''};
   const e = combo.effect || '';
 
   if (e.startsWith('legend:')){
     const which = e.split(':')[1];
-    if (which==='tempest'){
+    if (which==='ecosystem'){
+      // reveal opps briefly, draw a card, and force one discard from each opponent (feels powerful)
       g.revealOppUntil = now()+4000;
       for(const opp of oppList(g, who)){
-        for(let k=0;k<2;k++){ const got = removeRandomFromHand(g, opp); if (got) pushToHandOrDiscard(g, who, got.id); }
         const d = removeRandomFromHand(g, opp); if (d) (g.discard||=(g.discard||[])).push(d.id);
       }
-      pushEvent(g, {ts:now(), text:`${who} unleashed ASCENDANT TEMPEST!`});
-    } else if (which==='relics'){
-      for(const opp of oppList(g, who)){ const d = removeFirstFam(g, opp, F.Relic); if (d) (g.discard||=(g.discard||[])).push(d.id); }
-      const deck = g.deck||[]; if (deck.length){ pushToHandOrDiscard(g, who, deck.pop()); }
-      pushEvent(g, {ts:now(), text:`${who} unleashed RELICS!`});
-    } else if (which==='council'){
-      g.freezeUntil = now()+3000;
-      pushEvent(g, {ts:now(), text:`${who} convened COUNCIL (river frozen 3s).`});
-    } else if (which==='beast'){
-      const deck = g.deck||[]; if (deck.length) pushToHandOrDiscard(g, who, deck.pop()); if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
-      for(const opp of oppList(g, who)){ const d = removeRandomFromHand(g, opp); if (d) (g.discard||=(g.discard||[])).push(d.id); }
-      pushEvent(g, {ts:now(), text:`${who} proclaimed BEAST DOMINION!`});
+      const deck = g.deck||[]; if (deck.length) pushToHandOrDiscard(g, who, deck.pop());
+      pushEvent(g, {ts:now(), text:`${who} completed ECOSYSTEM!`});
+    } else if (which==='migration'){
+      // give who a shield and refresh top row (winds of change)
+      g.shields = Object.assign({}, g.shields, {[who]: now()+4000});
+      refreshRow(g,'top');
+      pushEvent(g, {ts:now(), text:`${who} launched GREAT MIGRATION!`});
     }
-    return;
-  }
-
-  if (e==='destroyRelicEach'){
-    for(const opp of oppList(g, who)){
-      const d = removeFirstFam(g, opp, F.Relic);
-      if (d) (g.discard||=(g.discard||[])).push(d.id);
-    }
-    pushEvent(g, {ts:now(), text:`${who} shattered opponents’ relics.`});
     return;
   }
 
@@ -745,7 +730,7 @@ function applyNonTargetEffect(g, who, comboKey){
       pull.sort((a,b)=> byId[b].tier - byId[a].tier);
       const keep = pull.shift();
       pushToHandOrDiscard(g, who, keep);
-      while(pull.length) deck.push(pull.pop()); // return rest
+      while(pull.length) deck.push(pull.pop());
       pushEvent(g, {ts:now(), text:`${who} scried the deck.`});
       pushEvent(g, {ts:now(), type:'revealCenter', ms:1500, text:`Scry shimmer`});
     }
@@ -769,11 +754,11 @@ function applyNonTargetEffect(g, who, comboKey){
   if (e==='discardNonBeastEach:1'){
     for(const opp of oppList(g, who)){
       const h = (g.hands[opp]||[]);
-      let idx = h.findIndex(x=>byId[x.id].fam!==F.Beast);
+      let idx = h.findIndex(x=>byId[x.id].fam!==F.Animal);
       if (idx<0 && h.length) idx = (Math.random()*h.length)|0;
       if (idx>=0){ const [c]=h.splice(idx,1); (g.discard||=(g.discard||[])).push(c.id); }
     }
-    pushEvent(g, {ts:now(), text:`${who} culled non-beasts from foes.`});
+    pushEvent(g, {ts:now(), text:`${who} culled non-animals from foes.`});
     return;
   }
   if (e.startsWith('stealEach:')){
@@ -913,8 +898,7 @@ function openTargetCardPicker(game, combo, useUids, needs){
     const row = document.createElement('div'); row.className='prow';
     row.innerHTML = `<h4>${p} ${targetShielded(game,p)?' <span class="flag shd">🛡️</span>':''}</h4>`;
     const cardsDiv = document.createElement('div'); cardsDiv.className='pcards';
-    const hand = (game.hands?.[p]||[]);
-    let any=false;
+    const hand = (game.hands?.[p]||[]); let any=false;
     for(const c of hand){
       if (needs.fam!=='any' && !famMatch(needs.fam, c.id)) continue;
       any=true;
@@ -1113,7 +1097,7 @@ function updateHUD(game){
   el.hostBadge.hidden = !(game.host===username);
 }
 
-/* Face/back + timer updater (local reveal, 10s on spawn) */
+/* ======= Face/back + timer updater ======= */
 function rafFaces(){
   const slots = el.river.querySelectorAll('.slot');
   const t = now();
@@ -1274,7 +1258,7 @@ onSnapshot(gref, async (snap)=>{
   if (g.status==='over'){
     showOver(g);
     if (!localStorage.getItem(`splinters.bumped.${gameId}.${username}`)){
-      await bumpMyWinsIfWinner(g.winners||[]);
+      await bumpMyWinsIfWinner(g.winners||[]);  // harmless if not winner
       localStorage.setItem(`splinters.bumped.${gameId}.${username}`,'1');
       setTimeout(()=>{ location.href = `${LOBBY_URL}?username=${encodeURIComponent(username)}`; }, 1500);
     }
@@ -1317,6 +1301,7 @@ window.addEventListener('resize', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
