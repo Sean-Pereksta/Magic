@@ -70,7 +70,8 @@
     .proj.snipe { background:#ff00ff; width:4px; height:4px; }
     .proj.cannon { background:#374151; width:8px; height:8px; }
     .proj.necro { background:#a855f7; }
-    .proj.zap { background:#fde047; width:5px; height:5px; }
+    /* OLD zap removed in favor of bolt FX */
+
     .proj.fire { background:#ef4444; width:7px; height:7px; }
 
     .fx.hit { background:rgba(128,128,128,.65); width:12px; height:12px; animation: puff .25s ease-out forwards; }
@@ -90,17 +91,50 @@
       100%{ transform:translate(-50%,-50%) scale(4.2); opacity:0; box-shadow: 0 0 60px 28px rgba(255,115,0,0); }
     }
 
+    /* Cthulu beam (now rotatable) */
     .fx.beam {
       width: 28px; height: 6px; border-radius: 3px;
-      background: linear-gradient(90deg, rgba(34,211,238,.15), rgba(34,211,238,.9), rgba(34,211,238,.15));
-      filter: drop-shadow(0 0 6px rgba(34,211,238,.8));
+      background: linear-gradient(90deg, rgba(34,211,238,.15), rgba(34,211,238,.95), rgba(34,211,238,.15));
+      filter: drop-shadow(0 0 6px rgba(34,211,238,.9));
       animation: flash .18s linear forwards;
       z-index: 58;
     }
-    .fx.beam.v { width: 6px; height: 28px; }
     @keyframes flash {
       from { opacity: .95; }
       to   { opacity: 0; }
+    }
+
+    /* Lightning bolt (jagged multi-segment) */
+    .fx.bolt {
+      height: 3px;
+      background: linear-gradient(90deg, #ffffff, #c7e0ff);
+      box-shadow: 0 0 8px rgba(59,130,246,.95), 0 0 16px rgba(147,197,253,.8);
+      border-radius: 2px;
+      opacity: .95;
+      animation: boltFade .14s ease-out forwards;
+      z-index: 62;
+    }
+    @keyframes boltFade {
+      to { opacity: 0; }
+    }
+
+    /* Burning particles */
+    .fx.flameParticle {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,196,0,1) 0%, rgba(255,94,0,.9) 55%, rgba(255,0,0,0) 60%);
+      filter: drop-shadow(0 0 6px rgba(255,120,0,.9));
+      animation: rise .8s ease-out forwards;
+      z-index: 61;
+    }
+    .fx.smokeParticle {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(120,120,120,.7) 0%, rgba(80,80,80,.4) 60%, rgba(0,0,0,0) 70%);
+      animation: rise .9s ease-out forwards;
+      z-index: 60;
+    }
+    @keyframes rise {
+      0%   { transform: translate(-50%,-50%) translateY(0) scale(1); opacity: .9; }
+      100% { transform: translate(-50%,-50%) translateY(-14px) scale(.6); opacity: 0; }
     }
 
     @keyframes puff{
@@ -170,6 +204,9 @@
     let attackerRef;
     let defenderData;
 
+    /* Burning state: key -> {until, tickTimer, particleTimer} */
+    const burningState = new Map();
+
     const buildingHealth = {
       wall: 40,
       strongWall: 180,
@@ -195,14 +232,15 @@
     };
 
     const troopStats = {
-      base:    { hp: 22,  damage: 6, range: 1, speed: 1, cost: 1 },
-      archer:  { hp: 12,  damage: 3, range: 4, speed: 1, cost: 1 },
-      guardian:{ hp: 110, damage: 4, range: 1, speed: 1, cost: 4 },
-      raider:  { hp: 26,  damage: 5, range: 2, speed: 2, cost: 4 },
-      bomber:  { hp: 20,  damage: 20,range: 2, speed: 0, cost: 6 },
-      golem:   { hp: 200, damage: 4, range: 1, speed: 1, cost: 8 },
-      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12 },
-      cthulu:  { hp: 54,  damage: 6, range: 3, speed: 1, cost: 14 }
+      base:    { hp: 22,  damage: 6, range: 1, speed: 1, cost: 1, atkCd: 800 },
+      archer:  { hp: 12,  damage: 3, range: 4, speed: 1, cost: 1, atkCd: 800 },
+      guardian:{ hp: 110, damage: 4, range: 1, speed: 1, cost: 4, atkCd: 800 },
+      raider:  { hp: 26,  damage: 5, range: 2, speed: 2, cost: 4, atkCd: 800 },
+      bomber:  { hp: 20,  damage: 20,range: 2, speed: 0, cost: 6, atkCd: 800 },
+      golem:   { hp: 200, damage: 4, range: 1, speed: 1, cost: 8, atkCd: 800 },
+      /* DRAGON slower fire rate */
+      dragon:  { hp: 90,  damage: 8, range: 3, speed: 2, cost: 12, atkCd: 1600 },
+      cthulu:  { hp: 54,  damage: 6, range: 3, speed: 1, cost: 14, atkCd: 900 }
     };
 
     const enemyStructures = [];
@@ -298,26 +336,27 @@
       return best;
     }
 
-    /* ======== CTHULU: now hurts skeletons on beam path ======== */
-    function chooseBeamDirection(fromX, fromY, targetX, targetY){
-      const dx = targetX - fromX, dy = targetY - fromY;
-      if (Math.abs(dx) >= Math.abs(dy)){
-        return { dirX: Math.sign(dx) || 1, dirY: 0, orient: 'h' };
-      } else {
-        return { dirX: 0, dirY: Math.sign(dy) || 1, orient: 'v' };
-      }
+    /* ======== CTHULU: now supports diagonal beams (8-way) and still hurts skeletons ======== */
+    function chooseBeamDirection8(fromX, fromY, targetX, targetY){
+      const dx = Math.sign(targetX - fromX);
+      const dy = Math.sign(targetY - fromY);
+      // If both 0 (same tile), default to right
+      return { dirX: dx || 1, dirY: dy || 0 };
     }
-    function castBeam(fromX, fromY, dirX, dirY, damage, range){
+    function castBeam8(fromX, fromY, dirX, dirY, damage, range){
       let steps = 0;
       let x = fromX + dirX, y = fromY + dirY;
-      while (inBounds(x,y) && steps < 99){
+      const angle = Math.atan2(dirY, dirX) * 180 / Math.PI;
+
+      while (inBounds(x,y) && steps < range){
         const cell = cellAt(x,y);
         if (cell){
           const seg = document.createElement("div");
-          seg.className = "fx beam" + (dirY!==0 ? " v" : "");
+          seg.className = "fx beam";
           const p = gridCenter(cell);
           seg.style.left = p.x + "px";
           seg.style.top  = p.y + "px";
+          seg.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
           gridElement.appendChild(seg);
           setTimeout(()=>seg.remove(), 220);
         }
@@ -332,6 +371,7 @@
             delete healthMap[k];
             if (tCell){ tCell.className="cell"; tCell.innerHTML=""; }
             removeStructureFromList(x,y);
+            stopBurning(k);
             checkVictoryCondition();
           } else if (tCell){ renderHealth(tCell, k, th.current); }
         }
@@ -350,9 +390,134 @@
         }
 
         steps++;
-        if (steps >= range) { /* cosmetic cap */ }
         x += dirX; y += dirY;
       }
+    }
+
+    /* =================== LIGHTNING FX (bolt) =================== */
+    function spawnLightningFX(fromX,fromY,toX,toY){
+      const a = cellAt(fromX,fromY);
+      const b = cellAt(toX,toY);
+      if (!a || !b) return;
+      const pA = gridCenter(a), pB = gridCenter(b);
+
+      // Create 5–7 jagged segments with small random lateral offsets
+      const parts = 6 + Math.floor(Math.random()*2); // 6-7
+      const points = [];
+      for (let i=0;i<=parts;i++){
+        const t = i/parts;
+        const x = pA.x + (pB.x - pA.x)*t;
+        const y = pA.y + (pB.y - pA.y)*t;
+        // lateral jitter perpendicular to main dir
+        const dx = pB.x - pA.x, dy = pB.y - pA.y;
+        const len = Math.hypot(dx,dy) || 1;
+        const nx = -dy/len, ny = dx/len;
+        const jitter = (Math.random()*8 - 4); // -4..4 px
+        points.push({x: x + nx*jitter, y: y + ny*jitter});
+      }
+      for (let i=0;i<points.length-1;i++){
+        const p1 = points[i], p2 = points[i+1];
+        const seg = document.createElement("div");
+        seg.className = "fx bolt";
+        const cx = (p1.x + p2.x)/2;
+        const cy = (p1.y + p2.y)/2;
+        const w = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+        const ang = Math.atan2(p2.y-p1.y, p2.x-p1.x) * 180/Math.PI;
+        seg.style.width = `${w}px`;
+        seg.style.left = `${cx}px`;
+        seg.style.top  = `${cy}px`;
+        seg.style.transform = `translate(-50%,-50%) rotate(${ang}deg)`;
+        gridElement.appendChild(seg);
+        setTimeout(()=>seg.remove(), 140);
+      }
+    }
+
+    /* =================== BURNING (DOT + particles + spread) =================== */
+    function igniteCell(x,y, dps=1, durationMs=1000){
+      const key = `${x},${y}`;
+      if (!healthMap[key]?.current) return; // no building to burn
+      const now = Date.now();
+      const until = now + durationMs;
+
+      // If already burning, extend
+      const prev = burningState.get(key);
+      if (prev){
+        prev.until = Math.max(prev.until, until);
+        return;
+      }
+
+      const tickEvery = 250; // 4 ticks/sec
+      const tick = setInterval(()=>{
+        const th = healthMap[key];
+        if (!th) { stopBurning(key); return; }
+        th.current = Math.max(0, th.current - dps);
+        const c = cellAt(x,y);
+        if (th.current === 0){
+          delete healthMap[key];
+          if (c){ c.className="cell"; c.innerHTML=""; }
+          removeStructureFromList(x,y);
+          stopBurning(key);
+          checkVictoryCondition();
+        } else if (c){ renderHealth(c, key, th.current); }
+        if (Date.now() >= (burningState.get(key)?.until || 0)) stopBurning(key);
+      }, tickEvery);
+
+      // Particle visuals while burning
+      const particles = setInterval(()=>{
+        const cell = cellAt(x,y);
+        if (!cell || Date.now() >= (burningState.get(key)?.until || 0)) return;
+        const p = gridCenter(cell);
+        for (let i=0;i<2;i++){
+          const f = document.createElement("div");
+          f.className = "fx flameParticle";
+          f.style.left = (p.x + (Math.random()*10 - 5)) + "px";
+          f.style.top  = (p.y + (Math.random()*4 - 6)) + "px";
+          gridElement.appendChild(f);
+          setTimeout(()=>f.remove(), 800);
+        }
+        const s = document.createElement("div");
+        s.className = "fx smokeParticle";
+        s.style.left = (p.x + (Math.random()*12 - 6)) + "px";
+        s.style.top  = (p.y - 2 + (Math.random()*4 - 2)) + "px";
+        gridElement.appendChild(s);
+        setTimeout(()=>s.remove(), 900);
+      }, 150);
+
+      burningState.set(key, { until, tickTimer: tick, particleTimer: particles });
+    }
+    function stopBurning(key){
+      const st = burningState.get(key);
+      if (!st) return;
+      clearInterval(st.tickTimer);
+      clearInterval(st.particleTimer);
+      burningState.delete(key);
+    }
+
+    function spreadFireFrom(tx,ty, dps=1, durationMs=1000){
+      const dirs = [-1,0,1];
+      for (let ax of dirs){
+        for (let ay of dirs){
+          if (ax===0 && ay===0) continue;
+          const sx = tx+ax, sy = ty+ay;
+          const k = `${sx},${sy}`;
+          if (healthMap[k]?.current>0){
+            igniteCell(sx,sy,dps,durationMs);
+          }
+        }
+      }
+    }
+
+    function getClosestSpecialTarget(ox, oy) {
+      const prio = ["archerTower","sniperTower","lightningStriker","necromancerTower","cannonTower","trap"];
+      let best=null, bestDist=Infinity;
+      for (const s of enemyStructures) {
+        if (!prio.includes(s.type)) continue;
+        const key = `${s.x},${s.y}`;
+        if (!healthMap[key] || healthMap[key].current <= 0) continue;
+        const d = Math.abs(s.x - ox) + Math.abs(s.y - oy);
+        if (d < bestDist) { bestDist = d; best = s; }
+      }
+      return best;
     }
 
     /* =================== TROOPS =================== */
@@ -396,30 +561,19 @@
         interval: null,
         div: wrap, hpDisplay: hpBar,
         taunt: (selectedTroopType === "guardian"),
-        flying: (selectedTroopType === "dragon")
+        flying: (selectedTroopType === "dragon"),
+        lastAttack: 0,
+        atkCd: stats.atkCd || 800
       };
       troopUnits.push(troop);
 
       troopsLeft -= cost;
       document.getElementById("troopCount").textContent = troopsLeft;
 
-      const getClosestSpecialTarget = (ox, oy) => {
-        const prio = ["archerTower","sniperTower","lightningStriker","necromancerTower","cannonTower","trap"];
-        let best=null, bestDist=Infinity;
-        for (const s of enemyStructures) {
-          if (!prio.includes(s.type)) continue;
-          const key = `${s.x},${s.y}`;
-          if (!healthMap[key] || healthMap[key].current <= 0) continue;
-          const d = Math.abs(s.x - ox) + Math.abs(s.y - oy);
-          if (d < bestDist) { bestDist = d; best = s; }
-        }
-        return best;
-      };
-
       troop.interval = setInterval(() => {
         if (battleOver) return;
 
-        /* ======== BOMBER: now also hurts skeletons in radius ======== */
+        /* ======== BOMBER: already hurts skeletons in radius ======== */
         if (troop.type === "bomber") {
           let didExplode = false;
           const R = troop.range;
@@ -439,6 +593,7 @@
                   delete healthMap[key];
                   if (cellT){ cellT.className="cell"; cellT.innerHTML=""; }
                   removeStructureFromList(tx,ty);
+                  stopBurning(key);
                   checkVictoryCondition();
                 } else if (cellT){ renderHealth(cellT, key, th.current); }
               }
@@ -471,8 +626,21 @@
           }
         }
 
-        // DRAGON: prioritize towers
-        let targetObj = (troop.type==='dragon')
+        // Target selection
+        const getClosestSpecialTarget = (ox, oy) => {
+          const prio = ["archerTower","sniperTower","lightningStriker","necromancerTower","cannonTower","trap"];
+          let best=null, bestDist=Infinity;
+          for (const s of enemyStructures) {
+            if (!prio.includes(s.type)) continue;
+            const key = `${s.x},${s.y}`;
+            if (!healthMap[key] || healthMap[key].current <= 0) continue;
+            const d = Math.abs(s.x - ox) + Math.abs(s.y - oy);
+            if (d < bestDist) { bestDist = d; best = s; }
+          }
+          return best;
+        };
+
+        const targetObj = (troop.type==='dragon')
           ? (getClosestTower(troop.x,troop.y) || getClosestTarget(troop.x,troop.y))
           : (troop.type==='raider'
               ? (getClosestSpecialTarget(troop.x,troop.y) || getClosestTarget(troop.x,troop.y))
@@ -489,30 +657,26 @@
         const oldCell = cellAt(troop.x,troop.y);
         if (oldCell && troop.div && troop.div.parentNode===oldCell) oldCell.removeChild(troop.div);
 
-        if (inRange){
+        const now = Date.now();
+
+        if (inRange && (now - troop.lastAttack) >= troop.atkCd){
+          troop.lastAttack = now;
+
           if (troop.type==='archer'){
             shootProjectile(troop.x,troop.y,tx,ty,"arrow",()=>{
               doDamageToTarget(targetObj, troop.damage);
               spawnFX(tx,ty,"hit");
             }, 220);
+
           } else if (troop.type==='dragon'){
+            // Fireball + ignite + spread + visible fire FX
             shootProjectile(troop.x,troop.y,tx,ty,"fire",()=>{
               if (!isSkeleton){
                 doDamageToTarget(targetObj, troop.damage);
                 spawnFX(tx,ty,"fire");
-                for (let ax=-1; ax<=1; ax++){
-                  for (let ay=-1; ay<=1; ay++){
-                    if (ax===0 && ay===0) continue;
-                    const sx=tx+ax, sy=ty+ay, k=`${sx},${sy}`;
-                    const th = healthMap[k];
-                    if (th?.current>0){
-                      th.current = Math.max(0, th.current - Math.ceil(troop.damage/2));
-                      const c = cellAt(sx,sy);
-                      if (th.current===0){ delete healthMap[k]; if(c){c.className="cell"; c.innerHTML="";} removeStructureFromList(sx,sy); checkVictoryCondition(); }
-                      else if (c){ renderHealth(c,k,th.current); }
-                    }
-                  }
-                }
+                // Ignite target and neighbors with low DPS for 1 second
+                igniteCell(tx,ty, 1, 1000);
+                spreadFireFrom(tx,ty, 1, 1000);
               } else {
                 targetObj.hp = Math.max(0, targetObj.hp - troop.damage);
                 if (targetObj.hp<=0){
@@ -520,24 +684,30 @@
                 }
                 spawnFX(tx,ty,"fire");
               }
-            }, 250);
+            }, 270);
+
           } else if (troop.type==='cthulu'){
-            const { dirX, dirY } = chooseBeamDirection(troop.x, troop.y, tx, ty);
-            castBeam(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
+            const { dirX, dirY } = chooseBeamDirection8(troop.x, troop.y, tx, ty);
+            castBeam8(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
+
           } else {
             doDamageToTarget(targetObj, troop.damage);
             spawnFX(tx,ty,"splash");
           }
-        } else {
+
+        } else if (!inRange) {
+          // Move toward target
           if (troop.type==='archer'){
             troop.x += Math.sign(dx);
             troop.y += Math.sign(dy);
+
           } else if (troop.type==='dragon'){
             const steps = troop.speed;
             for (let s=0; s<steps; s++){
               troop.x += Math.sign(dx);
               troop.y += Math.sign(dy);
             }
+
           } else if (troop.type==='golem' || troop.type==='minigolem' || troop.type==='cthulu'){
             const nx = troop.x + Math.sign(dx);
             const ny = troop.y + Math.sign(dy);
@@ -550,8 +720,8 @@
                 const block = enemyStructures.find(s=>s.x===bx && s.y===by);
                 if (block){
                   if (troop.type==='cthulu'){
-                    const { dirX, dirY } = chooseBeamDirection(troop.x, troop.y, bx, by);
-                    castBeam(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
+                    const { dirX, dirY } = chooseBeamDirection8(troop.x, troop.y, bx, by);
+                    castBeam8(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
                   } else {
                     doDamageToTarget(block, troop.damage);
                   }
@@ -559,6 +729,7 @@
                 }
               }
             }
+
           } else {
             const steps = troop.type==='raider' ? 2 : 1;
             for (let s=0; s<steps; s++){
@@ -604,6 +775,7 @@
         delete healthMap[key];
         if (tCell){ tCell.className="cell"; tCell.innerHTML=""; }
         removeStructureFromList(targetOrSkeleton.x,targetOrSkeleton.y);
+        stopBurning(key);
         checkVictoryCondition();
       } else if (tCell){ renderHealth(tCell, key, th.current); }
     }
@@ -613,7 +785,7 @@
       if (!inBounds(x,y) || isBlocked(x,y)) return null;
       const {wrap, hpBar} = createTroopDiv("🔹","minigolem",30);
       const c = cellAt(x,y); if (c) c.appendChild(wrap);
-      const mg = { x,y, hp:30, damage:2, range:1, speed:1, type:"minigolem", div:wrap, hpDisplay:hpBar, interval:null };
+      const mg = { x,y, hp:30, damage:2, range:1, speed:1, type:"minigolem", div:wrap, hpDisplay:hpBar, interval:null, lastAttack:0, atkCd:900 };
       troopUnits.push(mg);
       mg.interval = setInterval(()=>{
         if (battleOver || mg.hp<=0) return;
@@ -621,10 +793,12 @@
         if (!target) { clearInterval(mg.interval); endBattle(true); return; }
         const dx = target.x - mg.x, dy = target.y - mg.y;
         const dist = Math.abs(dx)+Math.abs(dy);
-        if (dist <= mg.range){
+        const now = Date.now();
+        if (dist <= mg.range && (now - mg.lastAttack) >= mg.atkCd){
+          mg.lastAttack = now;
           doDamageToTarget(target, mg.damage);
           spawnFX(target.x,target.y,"splash");
-        } else {
+        } else if (dist > mg.range){
           const nx = mg.x + Math.sign(dx), ny = mg.y + Math.sign(dy);
           if (inBounds(nx,ny) && !isBlocked(nx,ny)){
             const from = cellAt(mg.x,mg.y); if (from && mg.div && mg.div.parentNode===from) from.removeChild(mg.div);
@@ -670,6 +844,9 @@
       clearInterval(archerInterval);
       troopUnits.forEach(t => clearInterval(t.interval));
       skeletons.forEach(s => clearInterval(s.interval));
+
+      // stop any burning timers
+      for (const [k, st] of burningState.entries()) stopBurning(k);
 
       const attackerUserRef = doc(db, "users", attacker);
       const defenderUserRef2 = doc(db, "users", defender);
@@ -724,7 +901,7 @@
           }, candidates[0]);
           shootProjectile(x,y,target.x,target.y,"arrow",()=>{
             target.hp -= 5;
-            if (target.hpDisplay) target.hpDisplay.textContent = target.hp;
+            if (target.hpDisplay) targetHpUpdate(target);
             spawnFX(target.x,target.y,"hit");
             if (target.hp <= 0){
               clearInterval(target.interval);
@@ -745,7 +922,9 @@
           for (const troop of troopUnits){
             if (troop.hp<=0) continue;
             if (Math.abs(troop.x-lx)+Math.abs(troop.y-ly) <= 3){
-              shootProjectile(lx,ly,troop.x,troop.y,"zap",()=>{
+              // Fancy lightning bolt instead of ball
+              spawnLightningFX(lx,ly,troop.x,troop.y);
+              setTimeout(()=>{
                 troop.hp -= 1;
                 if (troop.hpDisplay) targetHpUpdate(troop);
                 spawnFX(troop.x,troop.y,"hit");
@@ -754,7 +933,7 @@
                   clearInterval(troop.interval);
                   onTroopDeath(troop.x,troop.y);
                 }
-              }, 120);
+              }, 100);
             }
           }
         }
@@ -1034,7 +1213,7 @@
           if (th?.current>0){
             th.current = Math.max(0, th.current - 12);
             const c = cellAt(sx,sy);
-            if (th.current===0){ delete healthMap[k]; if(c){c.className="cell"; c.innerHTML="";} removeStructureFromList(sx,sy); checkVictoryCondition(); }
+            if (th.current===0){ delete healthMap[k]; if(c){c.className="cell"; c.innerHTML="";} removeStructureFromList(sx,sy); stopBurning(k); checkVictoryCondition(); }
             else if (c){ renderHealth(c,k,th.current); }
             spawnFX(sx,sy,"splash");
           }
@@ -1060,6 +1239,7 @@
   </script>
 </body>
 </html>
+
 
 
 
