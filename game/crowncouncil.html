@@ -12,26 +12,28 @@
 
     --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
-    --p0:#ef4444; --p1:#3b82f6;
+    --p0:#b91c1c; --p1:#1d4ed8;
     --poison:#fef3c7;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
 
-  .shell{max-width:1200px;margin:0 auto;padding:12px 14px 28px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
-  .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  /* Top bar with lives + timer (sticks at top in fullscreen) */
+  .topbar{
+    position:sticky; top:0; z-index:30;
+    background:#fff; border-bottom:1px solid var(--line);
+    padding:8px 10px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .badge{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:var(--shadow);font-weight:800}
   .btn{appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;background:#111827;color:#fff}
   .btn.ghost{background:#fff;color:var(--ink)}
   .btn:hover{filter:brightness(1.05)}
 
-  .window{
-    display:grid; grid-template-columns: 1fr 260px; gap:14px;
-    border:1px solid var(--line); border-radius:16px; background:#fff; box-shadow:var(--shadow); padding:10px;
-  }
+  /* Main window: just viewport now */
+  .window{ padding:8px; }
   .viewport{
-    position:relative; width:100%; height:min(78vh,860px);
+    position:relative; width:100%; height:calc(100dvh - 70px);
     border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff;
     cursor:grab; user-select:none;
   }
@@ -50,9 +52,10 @@
   .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569}
   .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
-  .p0 .tag{color:#991b1b;border-color:#fecaca}
-  .p1 .tag{color:#1e3a8a;border-color:#bfdbfe}
+  .p0 .tag{color:var(--p0);border-color:#fecaca}
+  .p1 .tag{color:var(--p1);border-color:#bfdbfe}
 
+  /* Overlay + draft cards */
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
   .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
   .card{width:min(240px,34vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;cursor:pointer;display:grid;gap:6px;user-select:none}
@@ -60,24 +63,23 @@
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
 
-  .side{ display:grid; gap:10px; }
-  .panel{border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow)}
-  .head{padding:10px 12px;border-bottom:1px solid var(--line);font-weight:900}
-  .body{padding:10px 12px}
-  .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:800}
-  .list{display:grid;gap:6px}
+  /* “Selected: …” banner shown during pack gap */
+  .pickNote{
+    position:absolute;left:50%;top:12%;transform:translateX(-50%);
+    z-index:60;background:#fff;border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow);
+    padding:8px 14px;font-weight:900;display:none;
+  }
 
   .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);font-weight:800;z-index:200;display:none}
 </style>
 </head>
 <body>
-<div class="shell">
   <div class="topbar">
-    <div class="left">
+    <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
       <span id="phaseBadge" class="badge">—</span>
     </div>
-    <div class="left">
+    <div class="row">
       <span id="p0Badge" class="badge">P0 — ❤❤❤❤</span>
       <span id="p1Badge" class="badge">P1 — ❤❤❤❤</span>
       <span id="timerBadge" class="badge">⏳ —</span>
@@ -94,31 +96,11 @@
       </div>
       <div id="overlay" class="overlay"></div>
       <div id="cardRow" class="cardRow" style="display:none"></div>
+      <div id="pickNote" class="pickNote"></div>
     </div>
-
-    <aside class="side">
-      <div class="panel">
-        <div class="head">Players</div>
-        <div class="body list">
-          <div id="p0Line" class="pill">P0</div>
-          <div id="p1Line" class="pill">P1</div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="head">Phases</div>
-        <div class="body list">
-          <div class="pill">Faction Pick: 20s</div>
-          <div class="pill">Draft: 3 × 10s</div>
-          <div class="pill">Loser bonus: 1 × 10s</div>
-          <div class="pill">Frontline = nearer enemy</div>
-          <div class="pill">Backline = furthest</div>
-        </div>
-      </div>
-    </aside>
   </div>
-</div>
 
-<div id="toast" class="toast"></div>
+  <div id="toast" class="toast"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -165,7 +147,7 @@ viewport.addEventListener("pointercancel", ()=> dragging=false);
 applyPan();
 
 /* ---------------- Board ---------------- */
-const W=8, H=32;
+const W=8, H=32; // 8x32 as requested
 const cellsEl=$("cells");
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
@@ -187,11 +169,10 @@ const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
 /* ---------------- Unit content ---------------- */
-/* Helper presets */
-const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd}); // ranged base
-const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});     // melee base
+const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
+const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* Troops keyed by unique type across factions */
+/* Troops */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
@@ -212,30 +193,22 @@ const TROOPS = {
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 }
 };
 
-/* Faction pools */
+/* Factions and specials */
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner"],
   Aesir:  ["phaser","blade","storm","guardian"],
   Helions:["hellspawn","roach","defiler","blood"]
 };
-
-/* Specials (bound to owned types later) */
-const SPECIALS = {
-  double:  { key:"double",  name:"Double Type",  emoji:"🃏",   desc:(n)=>`Double your ${n}` },
-  upgrade: { key:"upgrade", name:"Upgrade Type", emoji:"⬆️",   desc:(n)=>`Upgrade your ${n} (+1 level)` }
-};
-
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 const FACTION_EMOJI = { Helions:"🔥", Aesir:"⚡", Vanir:"🧊" };
 
-/* Level helpers */
 const levelMult=(l)=> [1,1,1.5,2][l] || 1;
 const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
 
 /* ---------------- State ---------------- */
 let S=null;
 let meIndex=0;
-let lobbyPlayers = [];   // from lobby snapshot
+let lobbyPlayers = [];
 let isHost = false;
 
 /* ---------------- Roster helpers ---------------- */
@@ -254,17 +227,11 @@ function rosterUpgradeOneSpecific(roster, type){
   f.lvl++;
 }
 
-/* ---------------- Placement helpers ---------------- */
-function frontRow(p){ return p===0 ? Math.floor(H/2)-1 : Math.floor(H/2); }
-function backEdgeRow(p){ return p===0 ? H-1 : 0; }
-function moveArmyTowardCenter(state, p){
-  const dir = (p===0? -1 : +1);
-  for(const u of state.field.units){ if (u.p!==p) continue;
-    const ny=u.y+dir; if (!inside(u.x,ny)) return false;
-    if (state.field.units.some(v=>v!==u && v.x===u.x && v.y===ny)) return false;
-  }
-  for(const u of state.field.units){ if (u.p===p) u.y += dir; }
-  return true;
+/* ---------------- Spawn + placement ---------------- */
+/* Your half is 0..15 for P0 (top half), 16..31 for P1 (bottom half).
+   Far edge spawn: P0 near y=0..2; P1 near y=H-1..H-3 */
+function farBackRow(p){
+  return (p===0) ? 1 : (H-2);
 }
 function rowSlot(state,row){
   const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
@@ -275,28 +242,27 @@ function rowSlot(state,row){
   return null;
 }
 function spawnSlot(state,p,typeKey){
-  const base=TROOPS[typeKey];
-  const role=base?.role||"front";
   const same=state.field.units.filter(u=>u.p===p && u.type===typeKey);
   if (same.length){
     const row=same[same.length-1].y;
     const pos=rowSlot(state,row); if (pos) return pos;
   }
-  let row = (role==="front" ? frontRow(p) : backEdgeRow(p));
-  while(inside(0,row)){
+  let row = farBackRow(p);
+  // try a few rows within your own half moving inward if needed
+  const step = (p===0)? +1 : -1;
+  for(let tries=0; tries<8; tries++){
     const pos=rowSlot(state,row); if (pos) return pos;
-    if (role==="back"){
-      if (!moveArmyTowardCenter(state,p)) break;
-    }else{
-      row = (p===0? row+1 : row-1);
-    }
+    row += step;
+    if (p===0 && row>14) break;
+    if (p===1 && row<17) break;
   }
-  const y0 = (p===0? Math.floor(H/2):0);
-  const y1 = (p===0? H-1 : Math.floor(H/2)-1);
+  // absolute fallback: first free in your half
+  const y0 = (p===0? 0 : 16);
+  const y1 = (p===0? 15 : 31);
   for(let y=y0;y<=y1;y++){ for(let x=0;x<W;x++){
     if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
   }}
-  return {x:Math.floor(W/2), y: backEdgeRow(p)};
+  return {x:Math.floor(W/2), y: farBackRow(p)};
 }
 function placeUnit(state,p,key,lvl){
   const t=TROOPS[key]; if(!t) return;
@@ -314,7 +280,7 @@ function placeUnit(state,p,key,lvl){
       blink50:!!b.blink50, blinked:false,
       chain3:!!b.chain3,
       kamikaze:!!b.kamikaze, paints:!!b.paints, fuse:0,
-      nextAtk:0, stealthUntil:0, __jumped:false
+      nextAtk:0, slowUntil:0
     };
     state.field.units.push(u);
   }
@@ -343,7 +309,7 @@ function buildSpecialChoices(roster){
   const types = ownedTypes(roster);
   if (!types.length) return [];
   const picks=[];
-  // slightly rarer: sample at most 1 special per pack build step
+  // prefer at most one special in a pack; upgrade always present; double 50% chance
   const t = types[Math.floor(Math.random()*types.length)];
   picks.push({type:"special", special:"upgrade", for:t, name:`Upgrade ${TROOPS[t].name}`, emoji:"⬆️"});
   if (Math.random()<0.5){
@@ -355,8 +321,7 @@ function buildSpecialChoices(roster){
 function filterPackForPlayer(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
   const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji:TROOPS[k].emoji, role:TROOPS[k].role}));
-  const specials = (Math.random()<0.35) ? buildSpecialChoices(roster) : []; // rarer than troops
-  // Build pack of 3, no duplicates
+  const specials = (Math.random()<0.35) ? buildSpecialChoices(roster) : [];
   const packPool = [...troopCards, ...specials];
   const chosen = uniqueSample(packPool, 3);
   while(chosen.length<3 && troopCards.length){
@@ -366,20 +331,18 @@ function filterPackForPlayer(roster, faction){
   return chosen.slice(0,3);
 }
 
-/* ---------------- Poison map (BloodBurst) ---------------- */
+/* ---------------- Poison ---------------- */
 function paintPoison(state, cx, cy, durMs=6000){
   const until = Date.now()+durMs;
+  state.field.poison = state.field.poison || [];
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
     const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-    state.poison = state.poison || [];
-    state.poison.push({x,y,until});
+    state.field.poison.push({x,y,until});
   }
 }
-function isPoisonAt(state,x,y){ return (state.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>Date.now()); }
 
 /* ---------------- Render ---------------- */
-function paint(units, stateLike){
-  const poison = (stateLike?.poison)||[];
+function paint(units, field){
   const grid=Array(W*H).fill(null);
   for(const u of units){ grid[idx(u.x,u.y)] = u; }
   for(let i=0;i<W*H;i++){
@@ -388,13 +351,13 @@ function paint(units, stateLike){
     // poison tint
     const {x,y} = xy(i);
     d.querySelector(".poison")?.remove();
-    if (poison.some(p=>p.x===x&&p.y===y&&p.until>Date.now())){
+    if ((field?.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>Date.now())){
       const t=document.createElement("div"); t.className="poison"; d.appendChild(t);
     }
     const lvl=d.querySelector(".lvl"), tag=d.querySelector(".tag"), hp=d.querySelector(".hp>i"), uni=d.querySelector(".unit");
     if(u){
       d.classList.add(levelClass(u.lvl), u.p===0?"p0":"p1");
-      uni.textContent = u.emoji; tag.textContent = (u.p===0?(S?.players?.[0]||"P0"):(S?.players?.[1]||"P1"));
+      uni.textContent = u.emoji; tag.textContent = (S?.players?.[u.p]|| (u.p===0?"P0":"P1"));
       hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
     }else{
       uni.textContent=""; tag.textContent=""; hp.style.width="0%";
@@ -408,8 +371,6 @@ function render(){
 
   $("p0Badge").textContent = `${p0n} — ${"❤".repeat(lives[0])}`;
   $("p1Badge").textContent = `${p1n} — ${"❤".repeat(lives[1])}`;
-  $("p0Line").textContent  = `${p0n} — ${"❤".repeat(lives[0])}`;
-  $("p1Line").textContent  = `${p1n} — ${"❤".repeat(lives[1])}`;
 
   let phase = S?.phase || (lobbyPlayers.length<2 ? "waiting-for-players" : "bootstrapping");
   $("phaseBadge").textContent = phase.replaceAll("-"," ");
@@ -418,7 +379,7 @@ function render(){
   const tleft = showDraft ? Math.max(0,(S?.phaseEndsAt||0) - Date.now()) : 0;
   $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : (phase==="waiting-for-players" ? "⏳ waiting…" : "⏳ —");
 
-  // During drafts, show armies (preview) not fighting
+  // During drafts, show armies positioned (no fighting)
   if (showDraft){
     const ghost=structuredClone(S);
     rebuildFieldFromRoster(ghost);
@@ -427,17 +388,35 @@ function render(){
     paint(S?.field?.units||[], S?.field);
   }
 
-  // Cards
+  // Draft cards
   const row=$("cardRow");
   const overlay=$("overlay");
-  overlay.style.display = showDraft ? "block" : "none";
-  row.style.display     = showDraft ? "flex" : "none";
-  row.innerHTML = "";
+  const note=$("pickNote");
 
-  if (!showDraft) return;
+  if (!showDraft){
+    overlay.style.display = "none";
+    row.style.display     = "none";
+    note.style.display    = "none";
+    row.innerHTML = "";
+    return;
+  }
 
-  // Faction pick cards
+  overlay.style.display = "block";
+
+  // If I already picked this round, hide pack and show note
+  const di = S?.draftIndex|0;
+  const sk = pKey(meIndex);
+  const pickedIndex = S?.selections?.[sk]?.[di];
   if (phase==="faction-select"){
+    const alreadyFac = (S?.factions?.[sk] != null);
+    if (alreadyFac){
+      row.style.display="none"; row.innerHTML="";
+      note.textContent = `Selected: ${S.factions[sk]}`;
+      note.style.display="block";
+      return;
+    }
+    // show 3 faction cards
+    row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach((fac)=>{
       const el=document.createElement("div"); el.className="card";
       el.innerHTML=`<div class="title">${FACTION_EMOJI[fac]} ${fac}</div>
@@ -449,7 +428,20 @@ function render(){
   }
 
   // Draft packs
-  const pack = (S?.currentPacks?.[pKey(meIndex)] || []);
+  const pack = (S?.currentPacks?.[sk] || []);
+  if (pickedIndex!=null){
+    row.style.display="none"; row.innerHTML="";
+    const picked = pack[pickedIndex];
+    const label = picked
+      ? (picked.type==="troop" ? picked.name : `${picked.special==="upgrade"?"Upgrade":"Double"} ${TROOPS[picked.for]?.name||""}`)
+      : "(auto)";
+    note.textContent = `Selected: ${label}`;
+    note.style.display="block";
+    return;
+  }
+
+  // Show choices
+  row.style.display="flex"; row.innerHTML=""; note.style.display="none";
   pack.forEach((c,i)=>{
     const el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
@@ -469,7 +461,6 @@ async function chooseFaction(fac){
   if (S.factions?.[sk]) return;
   await updateDoc(stateRef, { [`factions.${sk}`]: fac });
 }
-
 async function chooseCard(i){
   if(!S) return;
   const di=S.draftIndex|0;
@@ -479,7 +470,7 @@ async function chooseCard(i){
   await updateDoc(stateRef, { [`selections.${sk}.${di}`]: i });
 }
 
-/* ---------------- Targeting helpers ---------------- */
+/* ---------------- Targeting + movement ---------------- */
 function nearestEnemy(u,units){ let b=null,bd=1e9; for(const v of units){ if(v.p===u.p) continue; const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b; }
 function nearestEnemyRangedPriority(u,units){
   const ranged = units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
@@ -509,26 +500,56 @@ function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
 function stepToward(u,t,units){
   const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
   const opts=[];
-  // try vertical first to "go around" blocks sometimes
+  // bias vertical to help “go around” blocks
   if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
   else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
+  // fallbacks
   opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
   for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
 }
+function blinkIfNeeded(u){
+  if (!u.blink50 || u.blinked) return;
+  if (u.hp <= 0.5*u.maxhp){
+    const dir = (u.p===0? -1 : +1); // blink away toward your own far edge (up for P0, down for P1)
+    for(let i=0;i<3;i++){
+      const nx=u.x, ny=u.y+dir;
+      // ensure blink stays within your half
+      if (u.p===0 && ny<0) break;
+      if (u.p===1 && ny>=H) break;
+      if (cellFree(S.field.units,nx,ny)){ u.x=nx;u.y=ny; }
+    }
+    u.blinked=true;
+  }
+}
 
-/* ---------------- Battle sim ---------------- */
+/* ---------------- Battle utils ---------------- */
+function applyPoisonSlowAndDot(field, units){
+  const now=Date.now();
+  (field.poison||[]).forEach(p=>{
+    if (p.until<=now) return;
+    for(const u of units){
+      if (u.x===p.x && u.y===p.y){
+        u.slowUntil = Math.max(u.slowUntil||0, now+600);
+        if (!u._poisonTick || now - u._poisonTick >= 600){
+          u._poisonTick = now;
+          u.hp -= 1;
+        }
+      }
+    }
+  });
+}
+
 function attack(u,t,now,units,field){
-  const dist=Math.abs(u.x+t0 - (t.x+t0)) + Math.abs(u.y - t.y); // t0 cancels; keep manhattan
-  const inRange = (Math.abs(u.x-t.x)+Math.abs(u.y-t.y)) <= (u.range||1);
+  const manhattan = (Math.abs(u.x-t.x)+Math.abs(u.y-t.y));
+  const inRange = manhattan <= (u.range||1);
   if(inRange){
     if (now >= (u.nextAtk||0)){
       if (u.kamikaze){
-        // explode on contact (assume inRange==1)
         t.hp -= u.dmg;
         splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
-        if (u.paints) paintPoison(field,u.x,u.y,6000);
-        u.hp = 0; // dies
-      } else if (TROOPS[u.type]?.name==="Rockets" || u.type==="vrocket"){
+        if (u.paints) paintPoison(S, u.x, u.y, 6000);
+        u.hp = 0;
+      } else if (u.type==="vrocket"){
         t.hp -= u.dmg;
         splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
       } else if (u.chain3){
@@ -544,40 +565,7 @@ function attack(u,t,now,units,field){
   return false;
 }
 
-function applyPoisonSlowAndDot(field, units){
-  const now=Date.now();
-  (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    for(const u of units){
-      if (u.x===p.x && u.y===p.y){
-        // slow: mark slowed for short period
-        u.slowUntil = Math.max(u.slowUntil||0, now+600);
-        if (!u._poisonTick || now - u._poisonTick >= 600){
-          u._poisonTick = now;
-          u.hp -= 1;
-        }
-      }
-    }
-  });
-}
-
-function assassinLogic(u,now,units){
-  // (not used in this factions set)
-}
-
-function blinkIfNeeded(u,units){
-  if (!u.blink50 || u.blinked) return;
-  if (u.hp <= 0.5*u.maxhp){
-    const dir = (u.p===0? +1 : -1); // blink away (toward own back edge)
-    for(let i=0;i<3;i++){
-      const nx=u.x, ny=u.y+dir;
-      if (cellFree(units,nx,ny)){ u.x=nx;u.y=ny; }
-    }
-    u.blinked=true;
-  }
-}
-
-/* ---------------- Robust INIT (no nested arrays) ---------------- */
+/* ---------------- INIT (no nested arrays) ---------------- */
 async function ensureStateExists(){
   const lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
@@ -659,14 +647,12 @@ function startHostLoops(){
       return;
     }
 
-    // Draft-like phases
     const isDraftish=["draft","loser-bonus","draft-after"].includes(d.phase);
     if (isDraftish && now >= (d.phaseEndsAt||0)){
       const di=d.draftIndex|0;
       const sel=d.selections||{p0:[],p1:[]};
       const fx = d.factions || {};
 
-      // auto-pick if missing
       ["p0","p1"].forEach(sk=>{
         if (sel[sk][di]==null){
           const pack=(d.currentPacks?.[sk]||[]);
@@ -754,24 +740,23 @@ function runBattle(){
     const units=st.field.units;
     const now=Date.now();
 
-    // poison dot & slow
     applyPoisonSlowAndDot(st.field, units);
 
-    // blink checks
-    for(const u of units) blinkIfNeeded(u, units);
-
-    // resolve attacks / movement
     for(const u of units){
-      const spd = (u.slowUntil && u.slowUntil>now) ? Math.max(1, Math.ceil((u.spd||1)/3)) : (u.spd||1);
+      blinkIfNeeded(u);
+    }
 
-      // target selection
+    for(const u of units){
+      // select target
       let t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
       if(!t) continue;
 
-      // attack if in range else move
+      // try to attack, else move toward target (respect slow + spd)
       if(!attack(u,t,now,units,st.field)){
-        for(let s=0;s<spd;s++){
-          // recalc target occasionally
+        const baseSpd = u.spd||1;
+        const slowed = (u.slowUntil && u.slowUntil>now);
+        const steps = slowed ? Math.max(1, Math.ceil(baseSpd/3)) : baseSpd;
+        for(let s=0;s<steps;s++){
           t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
           if(!t) break;
           stepToward(u,t,units);
@@ -845,6 +830,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
