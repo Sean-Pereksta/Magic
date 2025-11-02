@@ -10,7 +10,6 @@
     --panel:#ffffff; --shadow:0 10px 30px rgba(2,6,23,.08);
     --rad:16px; --rad-sm:12px;
 
-    /* board */
     --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
     --p0:#ef4444; --p1:#3b82f6;
@@ -26,7 +25,6 @@
   .btn.ghost{background:#fff;color:var(--ink)}
   .btn:hover{filter:brightness(1.05)}
 
-  /* Windowed board */
   .window{
     display:grid; grid-template-columns: 1fr 260px; gap:14px;
     border:1px solid var(--line); border-radius:16px; background:#fff; box-shadow:var(--shadow); padding:10px;
@@ -53,7 +51,6 @@
   .p0 .tag{color:#991b1b;border-color:#fecaca}
   .p1 .tag{color:#1e3a8a;border-color:#bfdbfe}
 
-  /* Draft overlay/cards */
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
   .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50}
   .card{width:min(220px,31vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
@@ -61,10 +58,7 @@
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
 
-  /* Side HUD */
-  .side{
-    display:grid; gap:10px;
-  }
+  .side{ display:grid; gap:10px; }
   .panel{border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow)}
   .head{padding:10px 12px;border-bottom:1px solid var(--line);font-weight:900}
   .body{padding:10px 12px}
@@ -90,7 +84,6 @@
   </div>
 
   <div class="window">
-    <!-- Viewport with click-drag pan -->
     <div id="viewport" class="viewport" aria-label="Game board">
       <div id="canvas" class="canvas">
         <div class="board">
@@ -101,7 +94,6 @@
       <div id="cardRow" class="cardRow" style="display:none"></div>
     </div>
 
-    <!-- Side HUD -->
     <aside class="side">
       <div class="panel">
         <div class="head">Players</div>
@@ -141,9 +133,9 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/* ---------- Firebase config ---------- */
+/* ---------------- Firebase ---------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -155,20 +147,20 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ---------- URL params ---------- */
+/* ---------------- URL params ---------------- */
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
 if (!gameId || !username){ alert("Missing gameId or username."); }
 
-/* ---------- Firestore refs ---------- */
-const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
+const lobbyRef = doc(db,"lobbies",gameId);
+const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
-/* ---------- DOM helpers ---------- */
+/* ---------------- DOM helpers ---------------- */
 const $ = (id)=>document.getElementById(id);
 const toast = (t)=>{ const x=$("toast"); x.textContent=t; x.style.display="block"; clearTimeout(window.__t); window.__t=setTimeout(()=>x.style.display="none",1500); };
 
-/* ---------- Viewport pan ---------- */
+/* ---------------- Viewport pan ---------------- */
 const viewport = $("viewport"), canvas = $("canvas");
 let pan={x:12,y:12}, dragging=false, last={x:0,y:0};
 function applyPan(){ canvas.style.transform=`translate(${pan.x}px,${pan.y}px)`; }
@@ -182,7 +174,7 @@ viewport.addEventListener("pointerup", ()=> dragging=false);
 viewport.addEventListener("pointercancel", ()=> dragging=false);
 applyPan();
 
-/* ---------- Board geometry ---------- */
+/* ---------------- Board ---------------- */
 const W=8, H=32;
 const cellsEl=$("cells");
 function buildBoard(){
@@ -204,7 +196,7 @@ const idx=(x,y)=> y*W+x;
 const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-/* ---------- Content ---------- */
+/* ---------------- Content ---------------- */
 const TROOPS = [
   { key:"knight",   name:"Knight",   emoji:"🗡️", role:"front", base:{hp:10,dmg:3,spd:1,range:1,cd:600} },
   { key:"archer",   name:"Archer",   emoji:"🏹", role:"back",  base:{hp:5, dmg:2,spd:1,range:3,cd:800} },
@@ -217,34 +209,32 @@ const SPECIAL = [
   { key:"double",  name:"Double Type",  emoji:"🃏", special:"double",  desc:"Double one of your existing troop types" },
   { key:"upgrade", name:"Upgrade Type", emoji:"⬆️", special:"upgrade", desc:"Upgrade one existing troop type (+1 level)" }
 ];
+const ALL_TROOP_CARDS = TROOPS.map(t=>({type:"troop",...t}));
+const ALL_SPEC_CARDS  = SPECIAL.map(s=>({type:"special",...s}));
 
-/* ---------- Packs (per-player) with filtering ---------- */
-const ALL_CARDS_TROOPS = TROOPS.map(t=>({type:"troop",...t}));
-const ALL_CARDS_SPECIAL= SPECIAL.map(s=>({type:"special",...s}));
 function filterPackForPlayer(roster){
   const hasAny = (roster||[]).some(r=>r.count>0);
-  const specials = hasAny ? ALL_CARDS_SPECIAL : [];        // gate specials until player has troops
-  const pool = [...ALL_CARDS_TROOPS, ...specials];
-  // sample 3 distinct
+  const specials = hasAny ? ALL_SPEC_CARDS : []; // gate specials
+  const pool = [...ALL_TROOP_CARDS, ...specials];
   const out=[]; const bag=[...pool];
   for(let i=0;i<3 && bag.length;i++){
     const j=Math.floor(Math.random()*bag.length);
     out.push(bag.splice(j,1)[0]);
   }
-  // Fallback if somehow <3 (e.g., initial bag too small) – fill with troops
-  while(out.length<3){ out.push(ALL_CARDS_TROOPS[Math.floor(Math.random()*ALL_CARDS_TROOPS.length)]); }
+  while(out.length<3){ out.push(ALL_TROOP_CARDS[Math.floor(Math.random()*ALL_TROOP_CARDS.length)]); }
   return out;
 }
 
-/* ---------- State ---------- */
+/* ---------------- State ---------------- */
 let S=null;
-let me=0;
+let meIndex=0;
+let lobbyPlayers = [];   // live from lobby snapshot
+let isHost = false;
 
-/* ---------- Helpers ---------- */
+/* ---------------- Roster helpers ---------------- */
 const levelMult=(l)=> [1,1,1.5,2][l] || 1;
 const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
 
-/* Roster ops */
 function rosterAdd(roster, type, inc=1){
   const f=roster.find(r=>r.type===type);
   if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc});
@@ -261,12 +251,11 @@ function rosterUpgradeOne(roster){
   ks[Math.floor(Math.random()*ks.length)].lvl++;
 }
 
-/* Frontline/backline rows (front = nearer enemy, back = furthest) */
-function frontRow(p){ return p===0 ? Math.floor(H/2)-1 : Math.floor(H/2); } // near middle
-function backEdgeRow(p){ return p===0 ? H-1 : 0; }                          // far from enemy
+/* ---------------- Placement helpers ---------------- */
+function frontRow(p){ return p===0 ? Math.floor(H/2)-1 : Math.floor(H/2); }
+function backEdgeRow(p){ return p===0 ? H-1 : 0; }
 function moveArmyTowardCenter(state, p){
-  const dir = (p===0? -1 : +1); // toward middle
-  // check collisions
+  const dir = (p===0? -1 : +1);
   for(const u of state.field.units){ if (u.p!==p) continue;
     const ny=u.y+dir; if (!inside(u.x,ny)) return false;
     if (state.field.units.some(v=>v!==u && v.x===u.x && v.y===ny)) return false;
@@ -296,11 +285,9 @@ function spawnSlot(state,p,typeKey){
     if (role==="back"){
       if (!moveArmyTowardCenter(state,p)) break;
     }else{
-      // try one step away from enemy if jammed
       row = (p===0? row+1 : row-1);
     }
   }
-  // fallback any free on side
   const y0 = (p===0? Math.floor(H/2):0);
   const y1 = (p===0? H-1 : Math.floor(H/2)-1);
   for(let y=y0;y<=y1;y++){ for(let x=0;x<W;x++){
@@ -331,7 +318,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* Rendering */
+/* ---------------- Render ---------------- */
 function paint(units){
   const grid=Array(W*H).fill(null);
   for(const u of units){ grid[idx(u.x,u.y)] = u; }
@@ -341,7 +328,7 @@ function paint(units){
     const lvl=d.querySelector(".lvl"), tag=d.querySelector(".tag"), hp=d.querySelector(".hp>i"), uni=d.querySelector(".unit");
     if(u){
       d.classList.add(levelClass(u.lvl), u.p===0?"p0":"p1");
-      uni.textContent = u.emoji; tag.textContent = (u.p===0?"P0":"P1");
+      uni.textContent = u.emoji; tag.textContent = (u.p===0?(S?.players?.[0]||"P0"):(S?.players?.[1]||"P1"));
       hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
     }else{
       uni.textContent=""; tag.textContent=""; hp.style.width="0%";
@@ -349,36 +336,35 @@ function paint(units){
   }
 }
 function render(){
-  if(!S) return;
-  const showDraft = ["draft","loser-bonus","draft-after"].includes(S.phase);
-  $("phaseBadge").textContent = S.phase || "—";
-  const tleft = Math.max(0,(S.phaseEndsAt||0) - Date.now());
-  $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : "⏳ —";
+  const p0n = (S?.players?.[0]) || lobbyPlayers[0] || "P0";
+  const p1n = (S?.players?.[1]) || lobbyPlayers[1] || "P1";
+  const lives = S?.lives || [4,4];
 
-  const p0n = S.players?.[0] || "P0";
-  const p1n = S.players?.[1] || "P1";
-  const l0  = "❤".repeat((S.lives?.[0]??4));
-  const l1  = "❤".repeat((S.lives?.[1]??4));
-  $("p0Badge").textContent = `${p0n} — ${l0}`;
-  $("p1Badge").textContent = `${p1n} — ${l1}`;
-  $("p0Line").textContent  = `${p0n} — ${l0}`;
-  $("p1Line").textContent  = `${p1n} — ${l1}`;
+  $("p0Badge").textContent = `${p0n} — ${"❤".repeat(lives[0])}`;
+  $("p1Badge").textContent = `${p1n} — ${"❤".repeat(lives[1])}`;
+  $("p0Line").textContent  = `${p0n} — ${"❤".repeat(lives[0])}`;
+  $("p1Line").textContent  = `${p1n} — ${"❤".repeat(lives[1])}`;
 
-  // During draft, render from roster so both sides see forces “so far”
+  let phase = S?.phase || (lobbyPlayers.length<2 ? "waiting-for-players" : "bootstrapping");
+  $("phaseBadge").textContent = phase.replaceAll("-"," ");
+  const showDraft = ["draft","loser-bonus","draft-after"].includes(phase);
+
+  const tleft = showDraft ? Math.max(0,(S?.phaseEndsAt||0) - Date.now()) : 0;
+  $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : (phase==="waiting-for-players" ? "⏳ waiting…" : "⏳ —");
+
   if (showDraft){
     const ghost=structuredClone(S);
     rebuildFieldFromRoster(ghost);
     paint(ghost.field.units);
   }else{
-    paint(S.field?.units||[]);
+    paint(S?.field?.units||[]);
   }
 
-  // Draft cards (per player)
   $("overlay").style.display = showDraft ? "block" : "none";
   const row=$("cardRow");
   row.style.display = showDraft ? "flex":"none";
   if (showDraft){
-    const pack = (S.currentPacks?.[me] || []);
+    const pack = (S?.currentPacks?.[meIndex] || []);
     row.innerHTML="";
     pack.forEach((c,i)=>{
       const el=document.createElement("div");
@@ -393,17 +379,15 @@ function render(){
     });
   }
 }
-
-/* Choose card */
 async function chooseCard(i){
   if(!S) return;
-  const draftIx=S.draftIndex|0;
-  const already = S.selections?.[me]?.[draftIx];
+  const di=S.draftIndex|0;
+  const already = S.selections?.[meIndex]?.[di];
   if (already!=null) return;
-  await updateDoc(stateRef, { [`selections.${me}.${draftIx}`]: i });
+  await updateDoc(stateRef, { [`selections.${meIndex}.${di}`]: i });
 }
 
-/* Battle sim */
+/* ---------------- Battle sim (unchanged core) ---------------- */
 function nearestEnemy(u,units){ let b=null,bd=1e9; for(const v of units){ if(v.p===u.p) continue; const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b; }
 function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x&&o.y===y); }
 function tryKnock(cx,cy,t,units){ if(!t) return; const dx=Math.sign(t.x-cx), dy=Math.sign(t.y-cy); const nx=t.x+dx, ny=t.y+dy; if(cellFree(units,nx,ny)){ t.x=nx;t.y=ny; } }
@@ -426,10 +410,8 @@ function attack(u,t,now,units){
 function stepToward(u,t,units){
   const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
   const opts=[];
-  // prefer advancing toward enemy: for p0 move up, for p1 move down toward center/enemy
   if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
   else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
-  // backups
   opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
   for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
 }
@@ -442,50 +424,102 @@ function assassinLogic(u,now,units){
     for(const dx of order){ const x=Math.max(0,Math.min(W-1,cx+dx)); if(cellFree(units,x,row)){ u.x=x;u.y=row;u.__jumped=true;break; } }
   }
 }
-function clean(units){ return units.filter(u=>u.hp>0); }
 
-/* Host loop */
-let host=false, hostTick=null, battleTick=null;
-(async function whoHost(){
-  const lob=await getDoc(doc(db,"lobbies",gameId));
-  host = lob.exists() && lob.data().host===username;
-  if (host) startHost();
-})();
-function startHost(){
+/* ---------------- Robust INIT: anyone can create state ---------------- */
+async function ensureStateExists(){
+  // read lobby (players + host)
+  const lobSnap = await getDoc(lobbyRef);
+  if (!lobSnap.exists()) return false;
+  const lob = lobSnap.data();
+  lobbyPlayers = (Array.isArray(lob.players)? lob.players : []).slice(0,2);
+  isHost = lob.host === username;
+
+  // transactional init if missing
+  let created=false;
+  await runTransaction(db, async (tx)=>{
+    const st = await tx.get(stateRef);
+    if (st.exists()) return;
+
+    if (lobbyPlayers.length < 1){
+      // still create a minimal doc so the UI shows “waiting for players”
+      tx.set(stateRef, {
+        inited:true, players: lobbyPlayers, lives:[4,4],
+        phase:"waiting", phaseEndsAt:0,
+        roster:[[],[]], field:{units:[]}, selections:[[],[]], currentPacks:[[],[]],
+        draftIndex:0, winner:null
+      });
+      created=true; return;
+    }
+
+    // start draft immediately
+    tx.set(stateRef, {
+      inited:true,
+      players: lobbyPlayers,
+      lives:[4,4],
+      phase: lobbyPlayers.length<2 ? "waiting" : "draft",
+      phaseEndsAt: lobbyPlayers.length<2 ? 0 : (Date.now()+10_000),
+      roster:[[],[]],
+      field:{units:[]},
+      selections:[[],[]],
+      currentPacks:[
+        filterPackForPlayer([]),
+        filterPackForPlayer([])
+      ],
+      draftIndex:0,
+      winner:null
+    });
+    created=true;
+  });
+  return created;
+}
+
+/* Keep players synced: if lobby’s first two players change, mirror into state */
+async function syncPlayersIntoStateIfNeeded(){
+  const stSnap = await getDoc(stateRef);
+  if (!stSnap.exists()) return;
+  const st = stSnap.data();
+  const cur = Array.isArray(st.players) ? st.players : [];
+  const want = lobbyPlayers.slice(0,2);
+  if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
+    await updateDoc(stateRef, { players: want });
+  }
+}
+
+/* ---------------- Host loops (unchanged behavior) ---------------- */
+let hostTick=null, battleTick=null;
+
+function startHostLoops(){
   if(hostTick) return;
   hostTick=setInterval(async ()=>{
     const snap=await getDoc(stateRef); if(!snap.exists()) return;
     const d=snap.data();
 
-    /* Bootstrap – start draft immediately */
-    if(!d.inited){
-      const lob=await getDoc(doc(db,"lobbies",gameId));
-      const players=(lob.exists()? (lob.data().players||[]) : [username]).slice(0,2);
-      const init={
-        inited:true, players, lives:[4,4],
-        phase:"draft", draftIndex:0, selections:[[],[]],
-        currentPacks:[ filterPackForPlayer([]), filterPackForPlayer([]) ], // gate specials
-        phaseEndsAt: Date.now()+10_000,
-        roster:[[],[]], field:{units:[]}, winner:null
-      };
-      await setDoc(stateRef, init);
+    // If we’re still in “waiting” and now have 2 players => begin draft
+    if (d.phase==="waiting" && lobbyPlayers.length>=2){
+      await updateDoc(stateRef, {
+        phase:"draft",
+        draftIndex:0,
+        selections:[[],[]],
+        currentPacks:[ filterPackForPlayer(d.roster?.[0]||[]), filterPackForPlayer(d.roster?.[1]||[]) ],
+        phaseEndsAt: Date.now()+10_000
+      });
       return;
     }
 
     const now=Date.now();
 
-    /* Draft phases: enforce timer + auto pick */
+    // Draft & timers
     if (["draft","loser-bonus","draft-after"].includes(d.phase) && now >= (d.phaseEndsAt||0)){
       const di=d.draftIndex|0;
       const sel=d.selections||[[],[]];
-      // auto-picks if missing
+
       for(let p=0;p<2;p++){
         if (sel[p][di]==null){
           const pack=(d.currentPacks?.[p]||[]);
           sel[p][di] = Math.floor(Math.random()*Math.max(1,pack.length));
         }
       }
-      // apply picks
+
       const roster=d.roster||[[],[]];
       for(let p=0;p<2;p++){
         const pack=(d.currentPacks?.[p]||[]);
@@ -541,12 +575,10 @@ function startHost(){
       }
     }
 
-    /* Battle driver guard */
     if (d.phase==="battle" && !battleTick) runBattle();
   }, 250);
 }
 
-/* Battle loop */
 function runBattle(){
   if(battleTick) return;
   battleTick=setInterval(async ()=>{
@@ -556,9 +588,7 @@ function runBattle(){
     const units=st.field.units;
     const now=Date.now();
 
-    // assassins
     for(const u of units) if(u.assassin) assassinLogic(u,now,units);
-    // bomber fuses
     for(const u of units) if(u.bomber && u.fuse && now>=u.fuse){
       const mid=units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
       if(mid){ mid.hp -= u.dmg; tryKnock(u.x,u.y,mid,units); }
@@ -567,7 +597,6 @@ function runBattle(){
     }
     st.field.units = units.filter(u=>u.hp>0);
 
-    // attack or move
     for(const u of st.field.units){
       if (u.type==="rocket"){ const t=nearestEnemy(u,st.field.units); if(t) attack(u,t,now,st.field.units); continue; }
       const t=nearestEnemy(u,st.field.units); if(!t) continue;
@@ -598,15 +627,38 @@ function runBattle(){
   }, 250);
 }
 
-/* Snapshot */
-onSnapshot(stateRef,(snap)=>{
-  if(!snap.exists()) return;
-  S=snap.data();
-  me = Math.max(0,(S.players||[]).indexOf(username));
+/* ---------------- Live listeners ---------------- */
+onSnapshot(lobbyRef, async (snap)=>{
+  if (!snap.exists()) return;
+  const lob = snap.data();
+  lobbyPlayers = (Array.isArray(lob.players)? lob.players : []).slice(0,2);
+  isHost = lob.host === username;
+
+  // make sure state exists (any client can create)
+  await ensureStateExists();
+
+  // keep state.players synced with lobby
+  await syncPlayersIntoStateIfNeeded();
+
+  // my index
+  const currentPlayers = S?.players || lobbyPlayers;
+  meIndex = Math.max(0, (currentPlayers||[]).indexOf(username));
+
+  // start host loops if I’m host
+  if (isHost) startHostLoops();
+
   render();
 });
 
-/* Fullscreen */
+onSnapshot(stateRef,(snap)=>{
+  if(!snap.exists()) return;
+  S=snap.data();
+  const currentPlayers = S.players || lobbyPlayers;
+  meIndex = Math.max(0, (currentPlayers||[]).indexOf(username));
+  render();
+});
+
+/* ---------------- Fullscreen ---------------- */
 $("fsBtn").onclick = async ()=>{
   try{
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
@@ -616,6 +668,8 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
+
 
 
 
