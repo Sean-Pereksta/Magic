@@ -13,12 +13,11 @@
     --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
     --p0:#b91c1c; --p1:#1d4ed8;
-    --poison:#fef3c7;
+    --poison:#fde2e2; /* NEW: red-tinted */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
 
-  /* Top bar with lives + timer (sticks at top in fullscreen) */
   .topbar{
     position:sticky; top:0; z-index:30;
     background:#fff; border-bottom:1px solid var(--line);
@@ -30,7 +29,6 @@
   .btn.ghost{background:#fff;color:var(--ink)}
   .btn:hover{filter:brightness(1.05)}
 
-  /* Main window: just viewport now */
   .window{ padding:8px; }
   .viewport{
     position:relative; width:100%; height:calc(100dvh - 70px);
@@ -42,18 +40,45 @@
 
   .board{ position:relative }
   .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap)}
-  .cell{width:var(--cell);height:var(--cell);border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;display:grid;place-items:center;position:relative;overflow:hidden}
-  .poison{ position:absolute; inset:0; background:var(--poison); opacity:.6 }
-  .lvl{position:absolute;inset:0;border-radius:8px;opacity:.85}
+  .cell{
+    width:var(--cell);height:var(--cell);
+    border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;
+    position:relative;overflow:hidden;
+  }
+  .lvl{position:absolute;inset:0;border-radius:8px;opacity:.85;pointer-events:none}
   .cell.l1 .lvl{background:var(--l1)}
   .cell.l2 .lvl{background:var(--l2)}
   .cell.l3 .lvl{background:var(--l3)}
-  .unit{font-size:20px;text-shadow:0 1px 0 rgba(0,0,0,.08)}
-  .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569}
-  .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden}
+
+  /* NEW: hit flash */
+  .hitflash{ position:absolute; inset:0; background:rgba(255,255,255,.9); animation:flash .12s ease; pointer-events:none }
+  @keyframes flash{ from{opacity:.9} to{opacity:0} }
+
+  /* NEW: floating damage */
+  .dmg{
+    position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
+    font-weight:900; font-size:12px; color:#b91c1c; text-shadow:0 1px 0 rgba(0,0,0,.15);
+    animation:dmg 600ms ease-out forwards; pointer-events:none;
+  }
+  @keyframes dmg{
+    0%{opacity:0; transform:translate(-50%,-40%) scale(.9)}
+    10%{opacity:1;}
+    100%{opacity:0; transform:translate(-50%,-100%) scale(1)}
+  }
+
+  /* troop visuals on top */
+  .unit{
+    position:absolute; inset:0; display:grid; place-items:center;
+    font-size:22px; z-index:2; pointer-events:none; /* NEW: on top */
+  }
+  .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569;z-index:3}
+  .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:3}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
   .p0 .tag{color:var(--p0);border-color:#fecaca}
   .p1 .tag{color:var(--p1);border-color:#bfdbfe}
+
+  /* stains */
+  .poison{ position:absolute; inset:0; background:var(--poison); opacity:.6; z-index:1 }
 
   /* Overlay + draft cards */
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
@@ -63,7 +88,6 @@
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
 
-  /* “Selected: …” banner shown during pack gap */
   .pickNote{
     position:absolute;left:50%;top:12%;transform:translateX(-50%);
     z-index:60;background:#fff;border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow);
@@ -106,6 +130,15 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+/* ---------------- Global pacing (NEW) ---------------- */
+const PACE = {
+  tickMs: 450,       // slower tick
+  atkMult: 1.9,      // longer cooldowns
+  moveSteps: 1,      // fewer micro-steps per tick
+  poisonDotMs: 800,  // slower dot tick
+  poisonSlowMs: 900, // slow window
+};
+
 /* ---------------- Firebase ---------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -147,18 +180,21 @@ viewport.addEventListener("pointercancel", ()=> dragging=false);
 applyPan();
 
 /* ---------------- Board ---------------- */
-const W=8, H=32; // 8x32 as requested
+const W=8, H=32;
 const cellsEl=$("cells");
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.innerHTML="";
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
-      const i=y*W+x;
       const d=document.createElement("div");
       d.className="cell";
-      d.dataset.i=i;
-      d.innerHTML=`<div class="lvl"></div><div class="unit"></div><div class="tag"></div><div class="hp"><i style="width:0%"></i></div>`;
+      d.dataset.x=x; d.dataset.y=y;
+      d.innerHTML=`
+        <div class="lvl"></div>
+        <div class="unit"></div>
+        <div class="tag"></div>
+        <div class="hp"><i style="width:0%"></i></div>`;
       cellsEl.appendChild(d);
     }
   }
@@ -172,7 +208,7 @@ const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* Troops */
+/* Troops (unchanged stats, timing slowed via PACE.atkMult) */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
@@ -193,7 +229,6 @@ const TROOPS = {
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 }
 };
 
-/* Factions and specials */
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner"],
   Aesir:  ["phaser","blade","storm","guardian"],
@@ -227,11 +262,20 @@ function rosterUpgradeOneSpecific(roster, type){
   f.lvl++;
 }
 
-/* ---------------- Spawn + placement ---------------- */
-/* Your half is 0..15 for P0 (top half), 16..31 for P1 (bottom half).
-   Far edge spawn: P0 near y=0..2; P1 near y=H-1..H-3 */
-function farBackRow(p){
-  return (p===0) ? 1 : (H-2);
+/* ---------------- Spawn bands (NEW: honor front/back lines) ---------------- */
+/* P0 (top half 0..15):
+   - BACK line rows: 0..2
+   - FRONT line rows: 4..7
+   P1 (bottom half 16..31):
+   - BACK line rows: 31..29
+   - FRONT line rows: 27..24
+*/
+function bandRows(p, role){
+  if (p===0){
+    return role==="back" ? [0,1,2] : [4,5,6,7];
+  }else{
+    return role==="back" ? [31,30,29] : [27,26,25,24];
+  }
 }
 function rowSlot(state,row){
   const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
@@ -242,27 +286,18 @@ function rowSlot(state,row){
   return null;
 }
 function spawnSlot(state,p,typeKey){
-  const same=state.field.units.filter(u=>u.p===p && u.type===typeKey);
-  if (same.length){
-    const row=same[same.length-1].y;
-    const pos=rowSlot(state,row); if (pos) return pos;
+  const role = TROOPS[typeKey]?.role || "front";
+  const rows = bandRows(p, role);
+  for(const r of rows){
+    const pos=rowSlot(state,r); if (pos) return pos;
   }
-  let row = farBackRow(p);
-  // try a few rows within your own half moving inward if needed
-  const step = (p===0)? +1 : -1;
-  for(let tries=0; tries<8; tries++){
-    const pos=rowSlot(state,row); if (pos) return pos;
-    row += step;
-    if (p===0 && row>14) break;
-    if (p===1 && row<17) break;
-  }
-  // absolute fallback: first free in your half
+  // fallback: scan your half
   const y0 = (p===0? 0 : 16);
   const y1 = (p===0? 15 : 31);
   for(let y=y0;y<=y1;y++){ for(let x=0;x<W;x++){
     if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
   }}
-  return {x:Math.floor(W/2), y: farBackRow(p)};
+  return {x:Math.floor(W/2), y:(p===0?1:30)};
 }
 function placeUnit(state,p,key,lvl){
   const t=TROOPS[key]; if(!t) return;
@@ -275,7 +310,7 @@ function placeUnit(state,p,key,lvl){
       lvl, x:pos.x, y:pos.y,
       maxhp:Math.round((b.hp||10)*levelMult(lvl)), hp:Math.round((b.hp||10)*levelMult(lvl)),
       dmg:Math.round((b.dmg||3)*levelMult(lvl)),
-      spd: b.spd ?? 1, range:b.range ?? 1, cd:b.cd ?? 600,
+      spd: b.spd ?? 1, range:b.range ?? 1, cd: Math.round((b.cd ?? 600)*PACE.atkMult), // NEW
       splash1:!!b.splash1, knock:!!b.knock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false,
       chain3:!!b.chain3,
@@ -289,9 +324,12 @@ function rebuildFieldFromRoster(state){
   state.field={units:[], poison:[]};
   for(let p=0;p<2;p++){
     const rk = pKey(p);
-    for(const r of (state.roster?.[rk]||[])){
-      for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl);
-    }
+    const roster = (state.roster?.[rk]||[]);
+    // NEW: spawn fronts first, then backs for proper line formation
+    const fronts = roster.filter(r=>TROOPS[r.type]?.role==="front");
+    const backs  = roster.filter(r=>TROOPS[r.type]?.role!=="front");
+    for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
+    for(const r of backs ){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
   }
 }
 
@@ -305,14 +343,16 @@ function uniqueSample(arr, n){
   }
   return out;
 }
-function buildSpecialChoices(roster){
+/* NEW: specials guarantee */
+function buildSpecialChoicesGuaranteed(roster){
   const types = ownedTypes(roster);
   if (!types.length) return [];
   const picks=[];
-  // prefer at most one special in a pack; upgrade always present; double 50% chance
-  const t = types[Math.floor(Math.random()*types.length)];
-  picks.push({type:"special", special:"upgrade", for:t, name:`Upgrade ${TROOPS[t].name}`, emoji:"⬆️"});
-  if (Math.random()<0.5){
+  // Always include at least one special:
+  const tUp = types[Math.floor(Math.random()*types.length)];
+  picks.push({type:"special", special:"upgrade", for:tUp, name:`Upgrade ${TROOPS[tUp].name}`, emoji:"⬆️"});
+  // If multiple owned types, also include a guaranteed Double sometimes
+  if (types.length>=1){
     const t2 = types[Math.floor(Math.random()*types.length)];
     picks.push({type:"special", special:"double", for:t2, name:`Double ${TROOPS[t2].name}`, emoji:"🃏"});
   }
@@ -321,18 +361,36 @@ function buildSpecialChoices(roster){
 function filterPackForPlayer(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
   const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji:TROOPS[k].emoji, role:TROOPS[k].role}));
-  const specials = (Math.random()<0.35) ? buildSpecialChoices(roster) : [];
+  // Always include at least one special when owning something
+  const specials = buildSpecialChoicesGuaranteed(roster);
   const packPool = [...troopCards, ...specials];
-  const chosen = uniqueSample(packPool, 3);
-  while(chosen.length<3 && troopCards.length){
-    const extra = troopCards[Math.floor(Math.random()*troopCards.length)];
-    if (!chosen.some(c=> (c.type==="troop" && c.key===extra.key))) chosen.push(extra);
+
+  // Create pack of 3 without duplicates; prefer troops but keep at least 1 special if present
+  const out=[];
+  const tryPick=(arr,cond)=> {
+    const filtered = arr.filter(cond);
+    if (!filtered.length) return false;
+    const pick = filtered[Math.floor(Math.random()*filtered.length)];
+    out.push(pick);
+    return true;
+  };
+
+  if (specials.length) tryPick(specials, ()=>true); // ensure at least 1 special
+  while (out.length<3 && packPool.length){
+    const next = packPool[Math.floor(Math.random()*packPool.length)];
+    if (next.type==="troop" && !out.some(o=>o.type==="troop" && o.key===next.key)) out.push(next);
+    else if (next.type==="special" && !out.some(o=>o.type==="special" && o.special===next.special && o.for===next.for)) out.push(next);
   }
-  return chosen.slice(0,3);
+  // If still short, pad with random troops
+  while (out.length<3 && troopCards.length){
+    const t = troopCards[Math.floor(Math.random()*troopCards.length)];
+    if (!out.some(o=>o.type==="troop" && o.key===t.key)) out.push(t);
+  }
+  return out.slice(0,3);
 }
 
-/* ---------------- Poison ---------------- */
-function paintPoison(state, cx, cy, durMs=6000){
+/* ---------------- Stains / Poison ---------------- */
+function paintPoison(state, cx, cy, durMs=7000){ // NEW: longer & red
   const until = Date.now()+durMs;
   state.field.poison = state.field.poison || [];
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
@@ -341,17 +399,30 @@ function paintPoison(state, cx, cy, durMs=6000){
   }
 }
 
+/* ---------------- Render helpers (NEW: flash + dmg text) ---------------- */
+function flashAt(x,y, dmgNum=0){
+  const i=idx(x,y); const cell=cellsEl.children[i]; if (!cell) return;
+  const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
+  setTimeout(()=>f.remove(), 140);
+  if (dmgNum>0){
+    const t=document.createElement("div"); t.className="dmg"; t.textContent = `-${dmgNum}`;
+    cell.appendChild(t); setTimeout(()=>t.remove(), 650);
+  }
+}
+
 /* ---------------- Render ---------------- */
 function paint(units, field){
-  const grid=Array(W*H).fill(null);
-  for(const u of units){ grid[idx(u.x,u.y)] = u; }
+  const map=new Map(); // position -> unit
+  for(const u of units){ map.set(idx(u.x,u.y), u); }
+  const now=Date.now();
   for(let i=0;i<W*H;i++){
-    const d=cellsEl.children[i], u=grid[i];
+    const d=cellsEl.children[i];
+    const u=map.get(i);
     d.className="cell";
-    // poison tint
     const {x,y} = xy(i);
+    // stain
     d.querySelector(".poison")?.remove();
-    if ((field?.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>Date.now())){
+    if ((field?.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>now)){
       const t=document.createElement("div"); t.className="poison"; d.appendChild(t);
     }
     const lvl=d.querySelector(".lvl"), tag=d.querySelector(".tag"), hp=d.querySelector(".hp>i"), uni=d.querySelector(".unit");
@@ -379,7 +450,6 @@ function render(){
   const tleft = showDraft ? Math.max(0,(S?.phaseEndsAt||0) - Date.now()) : 0;
   $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : (phase==="waiting-for-players" ? "⏳ waiting…" : "⏳ —");
 
-  // During drafts, show armies positioned (no fighting)
   if (showDraft){
     const ghost=structuredClone(S);
     rebuildFieldFromRoster(ghost);
@@ -388,7 +458,7 @@ function render(){
     paint(S?.field?.units||[], S?.field);
   }
 
-  // Draft cards
+  // Draft UI
   const row=$("cardRow");
   const overlay=$("overlay");
   const note=$("pickNote");
@@ -403,10 +473,10 @@ function render(){
 
   overlay.style.display = "block";
 
-  // If I already picked this round, hide pack and show note
   const di = S?.draftIndex|0;
   const sk = pKey(meIndex);
   const pickedIndex = S?.selections?.[sk]?.[di];
+
   if (phase==="faction-select"){
     const alreadyFac = (S?.factions?.[sk] != null);
     if (alreadyFac){
@@ -415,7 +485,6 @@ function render(){
       note.style.display="block";
       return;
     }
-    // show 3 faction cards
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach((fac)=>{
       const el=document.createElement("div"); el.className="card";
@@ -427,7 +496,6 @@ function render(){
     return;
   }
 
-  // Draft packs
   const pack = (S?.currentPacks?.[sk] || []);
   if (pickedIndex!=null){
     row.style.display="none"; row.innerHTML="";
@@ -440,7 +508,6 @@ function render(){
     return;
   }
 
-  // Show choices
   row.style.display="flex"; row.innerHTML=""; note.style.display="none";
   pack.forEach((c,i)=>{
     const el=document.createElement("div"); el.className="card";
@@ -481,13 +548,19 @@ function nearestEnemyRangedPriority(u,units){
 }
 function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x&&o.y===y); }
 function tryKnock(cx,cy,t,units){ if(!t) return; const dx=Math.sign(t.x-cx), dy=Math.sign(t.y-cy); const nx=t.x+dx, ny=t.y+dy; if(cellFree(units,nx,ny)){ t.x=nx;t.y=ny; } }
-function splash(units,x,y,dmg,srcP,kn=false){ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const nx=x+dx,ny=y+dy; if(!inside(nx,ny)) continue; const hit=units.find(o=>o.p!==srcP&&o.x===nx&&o.y===ny); if(hit){ hit.hp-=dmg; if(kn) tryKnock(x,y,hit,units); } } }
+function splash(units,x,y,dmg,srcP,kn=false){
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(!dx&&!dy) continue;
+    const nx=x+dx,ny=y+dy; if(!inside(nx,ny)) continue;
+    const hit=units.find(o=>o.p!==srcP&&o.x===nx&&o.y===ny);
+    if(hit){ hit.hp-=dmg; flashAt(nx,ny,dmg); if(kn) tryKnock(x,y,hit,units); }
+  }
+}
 function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
   let cur = startTarget; let left=hops;
   const hitSet=new Set();
   while(cur && left>0){
-    cur.hp -= dmg; hitSet.add(cur.id);
-    // find next target near current within 2 cells, excluding already hit and ally
+    cur.hp -= dmg; flashAt(cur.x,cur.y,dmg); hitSet.add(cur.id);
     let cand=null,bd=1e9;
     for(const v of units){
       if(v.p===srcP || hitSet.has(v.id)) continue;
@@ -500,20 +573,17 @@ function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
 function stepToward(u,t,units){
   const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
   const opts=[];
-  // bias vertical to help “go around” blocks
   if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
   else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
-  // fallbacks
   opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
   for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
 }
 function blinkIfNeeded(u){
   if (!u.blink50 || u.blinked) return;
   if (u.hp <= 0.5*u.maxhp){
-    const dir = (u.p===0? -1 : +1); // blink away toward your own far edge (up for P0, down for P1)
+    const dir = (u.p===0? -1 : +1);
     for(let i=0;i<3;i++){
       const nx=u.x, ny=u.y+dir;
-      // ensure blink stays within your half
       if (u.p===0 && ny<0) break;
       if (u.p===1 && ny>=H) break;
       if (cellFree(S.field.units,nx,ny)){ u.x=nx;u.y=ny; }
@@ -529,10 +599,11 @@ function applyPoisonSlowAndDot(field, units){
     if (p.until<=now) return;
     for(const u of units){
       if (u.x===p.x && u.y===p.y){
-        u.slowUntil = Math.max(u.slowUntil||0, now+600);
-        if (!u._poisonTick || now - u._poisonTick >= 600){
+        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
+        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
           u._poisonTick = now;
-          u.hp -= 1;
+          u.hp = u.hp - 1;
+          flashAt(u.x,u.y,1);
         }
       }
     }
@@ -544,18 +615,19 @@ function attack(u,t,now,units,field){
   const inRange = manhattan <= (u.range||1);
   if(inRange){
     if (now >= (u.nextAtk||0)){
+      let dealt = u.dmg;
       if (u.kamikaze){
-        t.hp -= u.dmg;
+        t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
-        if (u.paints) paintPoison(S, u.x, u.y, 6000);
+        if (u.paints) paintPoison(S, u.x, u.y, 7000);
         u.hp = 0;
       } else if (u.type==="vrocket"){
-        t.hp -= u.dmg;
+        t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
       } else if (u.chain3){
         chainLightning(units,t,u.p,3, u.dmg);
       } else {
-        t.hp -= u.dmg;
+        t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         if (u.splash1) splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
       }
       u.nextAtk = now + (u.cd||600);
@@ -565,7 +637,7 @@ function attack(u,t,now,units,field){
   return false;
 }
 
-/* ---------------- INIT (no nested arrays) ---------------- */
+/* ---------------- INIT ---------------- */
 async function ensureStateExists(){
   const lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
@@ -628,7 +700,7 @@ function startHostLoops(){
     }
 
     const now=Date.now();
-    // Resolve faction timeout
+
     if (d.phase==="faction-select" && now >= (d.phaseEndsAt||0)){
       const fx = {...(d.factions||{})};
       if (!fx.p0) fx.p0 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
@@ -742,20 +814,16 @@ function runBattle(){
 
     applyPoisonSlowAndDot(st.field, units);
 
-    for(const u of units){
-      blinkIfNeeded(u);
-    }
+    for(const u of units){ blinkIfNeeded(u); }
 
     for(const u of units){
-      // select target
       let t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
       if(!t) continue;
 
-      // try to attack, else move toward target (respect slow + spd)
       if(!attack(u,t,now,units,st.field)){
-        const baseSpd = u.spd||1;
+        const baseSteps = Math.max(1, u.spd||1);
         const slowed = (u.slowUntil && u.slowUntil>now);
-        const steps = slowed ? Math.max(1, Math.ceil(baseSpd/3)) : baseSpd;
+        const steps = Math.max(1, Math.min(PACE.moveSteps, slowed ? 1 : PACE.moveSteps)); // very slow
         for(let s=0;s<steps;s++){
           t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
           if(!t) break;
@@ -765,7 +833,6 @@ function runBattle(){
       }
     }
 
-    // cleanup dead
     st.field.units = st.field.units.filter(u=>u.hp>0);
 
     const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
@@ -791,7 +858,7 @@ function runBattle(){
     }else{
       await updateDoc(stateRef,st);
     }
-  }, 250);
+  }, PACE.tickMs);
 }
 
 /* ---------------- Live listeners ---------------- */
