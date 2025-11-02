@@ -13,7 +13,7 @@
     --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
     --p0:#b91c1c; --p1:#1d4ed8;
-    --poison:#fde2e2; /* NEW: red-tinted */
+    --poison:#fde2e2; /* red-tinted */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -33,7 +33,7 @@
   .viewport{
     position:relative; width:100%; height:calc(100dvh - 70px);
     border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff;
-    cursor:grab; user-select:none;
+    cursor:grab; user-select:none; touch-action:none; /* smoother mobile drag */
   }
   .viewport:active{ cursor:grabbing; }
   .canvas{ position:absolute; left:0; top:0; transform:translate3d(0,0,0) }
@@ -50,11 +50,9 @@
   .cell.l2 .lvl{background:var(--l2)}
   .cell.l3 .lvl{background:var(--l3)}
 
-  /* NEW: hit flash */
   .hitflash{ position:absolute; inset:0; background:rgba(255,255,255,.9); animation:flash .12s ease; pointer-events:none }
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
 
-  /* NEW: floating damage */
   .dmg{
     position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
     font-weight:900; font-size:12px; color:#b91c1c; text-shadow:0 1px 0 rgba(0,0,0,.15);
@@ -66,10 +64,9 @@
     100%{opacity:0; transform:translate(-50%,-100%) scale(1)}
   }
 
-  /* troop visuals on top */
   .unit{
     position:absolute; inset:0; display:grid; place-items:center;
-    font-size:22px; z-index:2; pointer-events:none; /* NEW: on top */
+    font-size:22px; z-index:2; pointer-events:none;
   }
   .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569;z-index:3}
   .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:3}
@@ -77,10 +74,9 @@
   .p0 .tag{color:var(--p0);border-color:#fecaca}
   .p1 .tag{color:var(--p1);border-color:#bfdbfe}
 
-  /* stains */
   .poison{ position:absolute; inset:0; background:var(--poison); opacity:.6; z-index:1 }
 
-  /* Overlay + draft cards */
+  /* overlay + draft cards */
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
   .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
   .card{width:min(240px,34vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;cursor:pointer;display:grid;gap:6px;user-select:none}
@@ -95,6 +91,14 @@
   }
 
   .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);font-weight:800;z-index:200;display:none}
+
+  /* beam layer */
+  .beams{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
+  .beam{
+    position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.9),rgba(239,68,68,.9));
+    opacity:.9; transform-origin:0 50%; animation:beamfade .35s ease-out forwards;
+  }
+  @keyframes beamfade{ to{ opacity:0 } }
 </style>
 </head>
 <body>
@@ -117,6 +121,7 @@
         <div class="board">
           <div id="cells" class="cells" style="--w:8; --cell:40px; --gap:4px"></div>
         </div>
+        <div id="beams" class="beams"></div>
       </div>
       <div id="overlay" class="overlay"></div>
       <div id="cardRow" class="cardRow" style="display:none"></div>
@@ -130,16 +135,16 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/* ---------------- Global pacing (NEW) ---------------- */
+/* ------------ Pace (slower again) ------------ */
 const PACE = {
-  tickMs: 450,       // slower tick
-  atkMult: 1.9,      // longer cooldowns
-  moveSteps: 1,      // fewer micro-steps per tick
-  poisonDotMs: 800,  // slower dot tick
-  poisonSlowMs: 900, // slow window
+  tickMs: 560,       // slower tick
+  atkMult: 2.25,     // longer cooldowns
+  moveSteps: 1,
+  poisonDotMs: 850,
+  poisonSlowMs: 1000,
 };
 
-/* ---------------- Firebase ---------------- */
+/* ------------ Firebase ------------ */
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -151,7 +156,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ---------------- URL params ---------------- */
+/* ------------ URL params ------------ */
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
@@ -160,27 +165,68 @@ if (!gameId || !username){ alert("Missing gameId or username."); }
 const lobbyRef = doc(db,"lobbies",gameId);
 const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
-/* ---------------- DOM helpers ---------------- */
+/* ------------ DOM helpers ------------ */
 const $ = (id)=>document.getElementById(id);
 const toast = (t)=>{ const x=$("toast"); x.textContent=t; x.style.display="block"; clearTimeout(window.__t); window.__t=setTimeout(()=>x.style.display="none",1500); };
 const pKey = (i)=> i===0 ? "p0" : "p1";
 
-/* ---------------- Viewport pan ---------------- */
+/* ------------ Viewport pan w/ inertia ------------ */
 const viewport = $("viewport"), canvas = $("canvas");
-let pan={x:12,y:12}, dragging=false, last={x:0,y:0};
+let pan={x:12,y:12}, dragging=false, last={x:0,y:0}, lastTime=0, v={x:0,y:0}, anim=null;
 function applyPan(){ canvas.style.transform=`translate(${pan.x}px,${pan.y}px)`; }
-viewport.addEventListener("pointerdown", e=>{ dragging=true; last={x:e.clientX,y:e.clientY}; });
-viewport.addEventListener("pointermove", e=>{
+
+function onDown(e){ dragging=true; last={x:e.clientX,y:e.clientY}; lastTime=performance.now(); v.x=v.y=0; if(anim){cancelAnimationFrame(anim); anim=null;} }
+function onMove(e){
   if(!dragging) return;
+  const t=performance.now();
   const dx=e.clientX-last.x, dy=e.clientY-last.y;
-  last={x:e.clientX,y:e.clientY}; pan.x+=dx; pan.y+=dy; applyPan();
-});
-viewport.addEventListener("pointerup", ()=> dragging=false);
-viewport.addEventListener("pointercancel", ()=> dragging=false);
+  const dt=Math.max(1, t-lastTime);
+  pan.x+=dx; pan.y+=dy; applyPan();
+  v.x=dx/dt*16; v.y=dy/dt*16; // px/frame-ish
+  last={x:e.clientX,y:e.clientY}; lastTime=t;
+}
+function onUp(){ dragging=false; inertia(); }
+function inertia(){
+  const friction=0.92;
+  function step(){
+    v.x*=friction; v.y*=friction;
+    pan.x+=v.x; pan.y+=v.y; applyPan();
+    if (Math.hypot(v.x,v.y) > 0.4) anim=requestAnimationFrame(step);
+    else anim=null;
+  }
+  step();
+}
+viewport.addEventListener("pointerdown", onDown, {passive:true});
+viewport.addEventListener("pointermove", onMove, {passive:true});
+viewport.addEventListener("pointerup", onUp, {passive:true});
+viewport.addEventListener("pointercancel", onUp, {passive:true});
 applyPan();
 
-/* ---------------- Board ---------------- */
-const W=8, H=32;
+/* ------------ Beam visuals ------------ */
+const beamsEl = $("beams");
+const CELL=40, GAP=4;
+const H=28, W=8; // <-- NEW: 8x28
+function centerPx(x,y){
+  const left = x*(CELL+GAP) + CELL/2;
+  const top  = y*(CELL+GAP) + CELL/2;
+  return {left, top};
+}
+function drawBeam(x1,y1,x2,y2){
+  const a = centerPx(x1,y1), b=centerPx(x2,y2);
+  const dx=b.left-a.left, dy=b.top-a.top;
+  const len=Math.hypot(dx,dy);
+  const ang=Math.atan2(dy,dx);
+  const el=document.createElement("div");
+  el.className="beam";
+  el.style.left = a.left + "px";
+  el.style.top  = a.top  + "px";
+  el.style.width = Math.max(1,len) + "px";
+  el.style.transform = `rotate(${ang}rad)`;
+  beamsEl.appendChild(el);
+  setTimeout(()=>el.remove(), 350);
+}
+
+/* ------------ Board ------------ */
 const cellsEl=$("cells");
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
@@ -204,11 +250,11 @@ const idx=(x,y)=> y*W+x;
 const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-/* ---------------- Unit content ---------------- */
+/* ------------ Unit templates ------------ */
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* Troops (unchanged stats, timing slowed via PACE.atkMult) */
+/* Troops (balance changes applied) */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
@@ -216,16 +262,16 @@ const TROOPS = {
   vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(18,3,800)}, splash1:true },
   miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
 
-  /* Aesir */
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(8,3,4,900), blink50:true}, spawn:2 },
+  /* Aesir (Phaser HP lowered) */
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,3,4,900), blink50:true}, spawn:2 },
   blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
   guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,4,900), splash1:true, knock:true} },
 
-  /* Helions */
+  /* Helions (Defiler HP raised; BloodBurst explodes on contact & death) */
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:{...M(6,2,600), spd:3}, spawn:3 },
   roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:{...R(10,3,3,1300)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(20,4,900), splash1:true} },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(26,4,900), splash1:true} }, /* 20 -> 26 */
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 }
 };
 
@@ -240,13 +286,13 @@ const FACTION_EMOJI = { Helions:"🔥", Aesir:"⚡", Vanir:"🧊" };
 const levelMult=(l)=> [1,1,1.5,2][l] || 1;
 const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
 
-/* ---------------- State ---------------- */
+/* ------------ State ------------ */
 let S=null;
 let meIndex=0;
 let lobbyPlayers = [];
 let isHost = false;
 
-/* ---------------- Roster helpers ---------------- */
+/* ------------ Roster helpers ------------ */
 function rosterAdd(roster, type, inc=1){
   const f=roster.find(r=>r.type===type);
   if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc});
@@ -262,19 +308,12 @@ function rosterUpgradeOneSpecific(roster, type){
   f.lvl++;
 }
 
-/* ---------------- Spawn bands (NEW: honor front/back lines) ---------------- */
-/* P0 (top half 0..15):
-   - BACK line rows: 0..2
-   - FRONT line rows: 4..7
-   P1 (bottom half 16..31):
-   - BACK line rows: 31..29
-   - FRONT line rows: 27..24
-*/
+/* ------------ Spawn bands / formation ------------ */
 function bandRows(p, role){
   if (p===0){
     return role==="back" ? [0,1,2] : [4,5,6,7];
   }else{
-    return role==="back" ? [31,30,29] : [27,26,25,24];
+    return role==="back" ? [27,26,25] : [23,22,21,20];
   }
 }
 function rowSlot(state,row){
@@ -291,13 +330,13 @@ function spawnSlot(state,p,typeKey){
   for(const r of rows){
     const pos=rowSlot(state,r); if (pos) return pos;
   }
-  // fallback: scan your half
-  const y0 = (p===0? 0 : 16);
-  const y1 = (p===0? 15 : 31);
+  // fallback: scan half
+  const y0 = (p===0? 0 : Math.max(0, H-14));
+  const y1 = (p===0? 13 : H-1);
   for(let y=y0;y<=y1;y++){ for(let x=0;x<W;x++){
     if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
   }}
-  return {x:Math.floor(W/2), y:(p===0?1:30)};
+  return {x:Math.floor(W/2), y:(p===0?1:H-2)};
 }
 function placeUnit(state,p,key,lvl){
   const t=TROOPS[key]; if(!t) return;
@@ -310,7 +349,7 @@ function placeUnit(state,p,key,lvl){
       lvl, x:pos.x, y:pos.y,
       maxhp:Math.round((b.hp||10)*levelMult(lvl)), hp:Math.round((b.hp||10)*levelMult(lvl)),
       dmg:Math.round((b.dmg||3)*levelMult(lvl)),
-      spd: b.spd ?? 1, range:b.range ?? 1, cd: Math.round((b.cd ?? 600)*PACE.atkMult), // NEW
+      spd: b.spd ?? 1, range:b.range ?? 1, cd: Math.round((b.cd ?? 600)*PACE.atkMult),
       splash1:!!b.splash1, knock:!!b.knock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false,
       chain3:!!b.chain3,
@@ -325,7 +364,6 @@ function rebuildFieldFromRoster(state){
   for(let p=0;p<2;p++){
     const rk = pKey(p);
     const roster = (state.roster?.[rk]||[]);
-    // NEW: spawn fronts first, then backs for proper line formation
     const fronts = roster.filter(r=>TROOPS[r.type]?.role==="front");
     const backs  = roster.filter(r=>TROOPS[r.type]?.role!=="front");
     for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
@@ -333,7 +371,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* ---------------- Packs ---------------- */
+/* ------------ Packs (reduced special odds) ------------ */
 function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
 function uniqueSample(arr, n){
   const bag=[...arr]; const out=[];
@@ -343,54 +381,49 @@ function uniqueSample(arr, n){
   }
   return out;
 }
-/* NEW: specials guarantee */
-function buildSpecialChoicesGuaranteed(roster){
+
+function buildSpecialChoicesReduced(roster){
   const types = ownedTypes(roster);
   if (!types.length) return [];
   const picks=[];
-  // Always include at least one special:
-  const tUp = types[Math.floor(Math.random()*types.length)];
-  picks.push({type:"special", special:"upgrade", for:tUp, name:`Upgrade ${TROOPS[tUp].name}`, emoji:"⬆️"});
-  // If multiple owned types, also include a guaranteed Double sometimes
-  if (types.length>=1){
-    const t2 = types[Math.floor(Math.random()*types.length)];
-    picks.push({type:"special", special:"double", for:t2, name:`Double ${TROOPS[t2].name}`, emoji:"🃏"});
+  // ~35% chance to see an Upgrade
+  if (Math.random()<0.35){
+    const up = types[Math.floor(Math.random()*types.length)];
+    picks.push({type:"special", special:"upgrade", for:up, name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"});
+  }
+  // ~25% chance to see a Double
+  if (Math.random()<0.25){
+    const db = types[Math.floor(Math.random()*types.length)];
+    picks.push({type:"special", special:"double", for:db, name:`Double ${TROOPS[db].name}`, emoji:"🃏"});
   }
   return picks;
 }
+
 function filterPackForPlayer(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
   const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji:TROOPS[k].emoji, role:TROOPS[k].role}));
-  // Always include at least one special when owning something
-  const specials = buildSpecialChoicesGuaranteed(roster);
-  const packPool = [...troopCards, ...specials];
+  const specials = buildSpecialChoicesReduced(roster);
+  const pool = [...troopCards, ...specials];
 
-  // Create pack of 3 without duplicates; prefer troops but keep at least 1 special if present
   const out=[];
-  const tryPick=(arr,cond)=> {
-    const filtered = arr.filter(cond);
-    if (!filtered.length) return false;
-    const pick = filtered[Math.floor(Math.random()*filtered.length)];
-    out.push(pick);
-    return true;
-  };
-
-  if (specials.length) tryPick(specials, ()=>true); // ensure at least 1 special
-  while (out.length<3 && packPool.length){
-    const next = packPool[Math.floor(Math.random()*packPool.length)];
-    if (next.type==="troop" && !out.some(o=>o.type==="troop" && o.key===next.key)) out.push(next);
-    else if (next.type==="special" && !out.some(o=>o.type==="special" && o.special===next.special && o.for===next.for)) out.push(next);
+  while(out.length<3 && pool.length){
+    const pick = pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+    if (pick.type==="troop"){
+      if (!out.some(o=>o.type==="troop" && o.key===pick.key)) out.push(pick);
+    }else{
+      if (!out.some(o=>o.type==="special" && o.special===pick.special && o.for===pick.for)) out.push(pick);
+    }
   }
-  // If still short, pad with random troops
-  while (out.length<3 && troopCards.length){
+  // pad with random troops if needed
+  while(out.length<3 && troopCards.length){
     const t = troopCards[Math.floor(Math.random()*troopCards.length)];
     if (!out.some(o=>o.type==="troop" && o.key===t.key)) out.push(t);
   }
   return out.slice(0,3);
 }
 
-/* ---------------- Stains / Poison ---------------- */
-function paintPoison(state, cx, cy, durMs=7000){ // NEW: longer & red
+/* ------------ Stains / Poison ------------ */
+function paintPoison(state, cx, cy, durMs=7000){
   const until = Date.now()+durMs;
   state.field.poison = state.field.poison || [];
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
@@ -399,7 +432,7 @@ function paintPoison(state, cx, cy, durMs=7000){ // NEW: longer & red
   }
 }
 
-/* ---------------- Render helpers (NEW: flash + dmg text) ---------------- */
+/* ------------ Render helpers ------------ */
 function flashAt(x,y, dmgNum=0){
   const i=idx(x,y); const cell=cellsEl.children[i]; if (!cell) return;
   const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
@@ -409,10 +442,8 @@ function flashAt(x,y, dmgNum=0){
     cell.appendChild(t); setTimeout(()=>t.remove(), 650);
   }
 }
-
-/* ---------------- Render ---------------- */
 function paint(units, field){
-  const map=new Map(); // position -> unit
+  const map=new Map();
   for(const u of units){ map.set(idx(u.x,u.y), u); }
   const now=Date.now();
   for(let i=0;i<W*H;i++){
@@ -420,7 +451,6 @@ function paint(units, field){
     const u=map.get(i);
     d.className="cell";
     const {x,y} = xy(i);
-    // stain
     d.querySelector(".poison")?.remove();
     if ((field?.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>now)){
       const t=document.createElement("div"); t.className="poison"; d.appendChild(t);
@@ -458,7 +488,6 @@ function render(){
     paint(S?.field?.units||[], S?.field);
   }
 
-  // Draft UI
   const row=$("cardRow");
   const overlay=$("overlay");
   const note=$("pickNote");
@@ -537,7 +566,7 @@ async function chooseCard(i){
   await updateDoc(stateRef, { [`selections.${sk}.${di}`]: i });
 }
 
-/* ---------------- Targeting + movement ---------------- */
+/* ------------ Targeting + movement ------------ */
 function nearestEnemy(u,units){ let b=null,bd=1e9; for(const v of units){ if(v.p===u.p) continue; const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b; }
 function nearestEnemyRangedPriority(u,units){
   const ranged = units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
@@ -592,7 +621,7 @@ function blinkIfNeeded(u){
   }
 }
 
-/* ---------------- Battle utils ---------------- */
+/* ------------ Battle utilities ------------ */
 function applyPoisonSlowAndDot(field, units){
   const now=Date.now();
   (field.poison||[]).forEach(p=>{
@@ -610,23 +639,34 @@ function applyPoisonSlowAndDot(field, units){
   });
 }
 
+function rangedBeamIfApplicable(u,t){
+  // Consider anything with range>1 or special ranged behaviors
+  const isRanged = (u.range||1)>1 || u.type==="vrocket" || u.type==="phaser" || u.type==="roach" || u.type==="rifleman" || u.chain3;
+  if (!isRanged) return;
+  drawBeam(u.x,u.y,t.x,t.y);
+}
+
 function attack(u,t,now,units,field){
   const manhattan = (Math.abs(u.x-t.x)+Math.abs(u.y-t.y));
   const inRange = manhattan <= (u.range||1);
   if(inRange){
     if (now >= (u.nextAtk||0)){
-      let dealt = u.dmg;
       if (u.kamikaze){
+        // Contact explosion (also kills self)
+        rangedBeamIfApplicable(u,t);
         t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
         if (u.paints) paintPoison(S, u.x, u.y, 7000);
         u.hp = 0;
       } else if (u.type==="vrocket"){
+        rangedBeamIfApplicable(u,t);
         t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
       } else if (u.chain3){
+        rangedBeamIfApplicable(u,t);
         chainLightning(units,t,u.p,3, u.dmg);
       } else {
+        if ((u.range||1)>1) rangedBeamIfApplicable(u,t);
         t.hp -= u.dmg; flashAt(t.x,t.y,u.dmg);
         if (u.splash1) splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
       }
@@ -637,7 +677,7 @@ function attack(u,t,now,units,field){
   return false;
 }
 
-/* ---------------- INIT ---------------- */
+/* ------------ INIT ------------ */
 async function ensureStateExists(){
   const lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
@@ -682,7 +722,7 @@ async function syncPlayersIntoStateIfNeeded(){
   }
 }
 
-/* ---------------- Host loop ---------------- */
+/* ------------ Host loop ------------ */
 let hostTick=null, battleTick=null;
 
 function startHostLoops(){
@@ -799,10 +839,10 @@ function startHostLoops(){
     }
 
     if (d.phase==="battle" && !battleTick) runBattle();
-  }, 250);
+  }, 260);
 }
 
-/* ---------------- Battle loop ---------------- */
+/* ------------ Battle loop ------------ */
 function runBattle(){
   if(battleTick) return;
   battleTick=setInterval(async ()=>{
@@ -821,9 +861,8 @@ function runBattle(){
       if(!t) continue;
 
       if(!attack(u,t,now,units,st.field)){
-        const baseSteps = Math.max(1, u.spd||1);
         const slowed = (u.slowUntil && u.slowUntil>now);
-        const steps = Math.max(1, Math.min(PACE.moveSteps, slowed ? 1 : PACE.moveSteps)); // very slow
+        const steps = Math.max(1, slowed ? 1 : PACE.moveSteps);
         for(let s=0;s<steps;s++){
           t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
           if(!t) break;
@@ -833,6 +872,11 @@ function runBattle(){
       }
     }
 
+    // handle deaths; ensure kamikaze painters explode on death too
+    const dead = st.field.units.filter(u=>u.hp<=0);
+    for(const u of dead){
+      if (u.paints){ paintPoison(st, u.x, u.y, 7000); }
+    }
     st.field.units = st.field.units.filter(u=>u.hp>0);
 
     const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
@@ -861,7 +905,7 @@ function runBattle(){
   }, PACE.tickMs);
 }
 
-/* ---------------- Live listeners ---------------- */
+/* ------------ Live listeners ------------ */
 onSnapshot(lobbyRef, async (snap)=>{
   if (!snap.exists()) return;
   const lob = snap.data();
@@ -887,7 +931,7 @@ onSnapshot(stateRef,(snap)=>{
   render();
 });
 
-/* ---------------- Fullscreen ---------------- */
+/* ------------ Fullscreen ------------ */
 $("fsBtn").onclick = async ()=>{
   try{
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
@@ -897,8 +941,6 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
-
-
 
 
 
