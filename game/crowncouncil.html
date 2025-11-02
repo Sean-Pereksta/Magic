@@ -56,6 +56,13 @@
   .hitFlash{ animation:hf .25s linear }
   @keyframes hf{ from{filter:brightness(1.8)} to{filter:brightness(1)} }
 
+  /* Health bar */
+  .hpWrap{
+    position:absolute; left:0; right:0; top:-7px; height:5px;
+    background:rgba(0,0,0,.12); border-radius:6px; overflow:hidden; pointer-events:none;
+  }
+  .hpFill{ height:100%; background:linear-gradient(90deg,#22c55e,#eab308,#ef4444); transform-origin:left center }
+
   /* Fields / blood / acid */
   .fieldTile{
     position:absolute; width:34px; height:34px; border-radius:6px;
@@ -89,7 +96,7 @@
   }
   .pickCard:hover{ transform:translateY(-2px) }
   .pc-emoji{ font-size:24px }
-  .pc-title{ font-weight:900; font-size:1rem }
+  .pc-title{ font-weight:900; font-size:1rem; text-align:center }
   .pc-note{ color:var(--muted); font-size:.85rem; text-align:center }
 
   .youPicked{
@@ -262,7 +269,9 @@ const FACTIONS = {
   Helions:["Hell Spawn","Roach","Defiler","BloodBurst","Spitter"]
 };
 const SPECIAL_TYPES = { double:"Double", upgrade:"Upgrade", ward:"Ward" };
-const WEIGHTS = { troop:3, special:1 };
+
+/* odds: troops more likely than specials (bumped further) */
+const WEIGHTS = { troop:4, special:1 };
 
 /* ---------------------- State shape ------------------- */
 let me = username;
@@ -387,7 +396,10 @@ function showPicks(){
     pickedToast.textContent =
       (state.phase==="faction")
         ? `Selected faction: ${already.faction}`
-        : `Selected: ${already.kind==="troop"?already.type:already.kind}`;
+        : (already.kind==="troop" ? `Selected: ${already.type}` :
+           already.kind==="double" ? `Selected: Double ${already.targetType||"(random)"}` :
+           already.kind==="upgrade" ? `Selected: Upgrade ${already.targetType||"(random)"}`
+           : "Selected: Ward");
     pickedToast.style.display = "block";
     return;
   } else {
@@ -404,11 +416,19 @@ function showPicks(){
       t.textContent = o.faction;
       n.textContent = "Faction";
     } else {
-      t.textContent = (o.kind==="troop") ? o.type : (o.kind==="double" ? "Double" : (o.kind==="upgrade" ? "Upgrade" : "Ward"));
-      n.textContent = (o.kind==="troop") ? "Add to army" :
-                      (o.kind==="double") ? "Duplicate an owned type" :
-                      (o.kind==="upgrade") ? "Level up an owned type" :
-                      "Place a Ward";
+      if (o.kind==="troop"){
+        t.textContent = o.type;
+        n.textContent = "Add to army";
+      } else if (o.kind==="double"){
+        t.textContent = `Double ${o.targetType}`;
+        n.textContent = "Duplicate that owned type";
+      } else if (o.kind==="upgrade"){
+        t.textContent = `Upgrade ${o.targetType}`;
+        n.textContent = "Level up that owned type";
+      } else {
+        t.textContent = "Ward";
+        n.textContent = "Shield tile";
+      }
     }
     c.appendChild(em); c.appendChild(t); c.appendChild(n);
     c.onclick = ()=> pickOption(o);
@@ -416,10 +436,11 @@ function showPicks(){
   });
 }
 
+/* Build a 3-card hand. Specials are specific to an owned type. */
 function pickOptionsFor(name){
   const mineFaction = state.factions?.[name] || null;
   const mineArmy = state.armies?.[name] || [];
-  const haveTypes = new Set(mineArmy.map(e=>e.type));
+  const haveTypes = Array.from(new Set(mineArmy.map(e=>e.type)));
 
   if (state.phase==="faction"){
     const facs = ["Vanir","Aesir","Helions"];
@@ -430,18 +451,28 @@ function pickOptionsFor(name){
   const pool = FACTIONS[mineFaction] || [];
   const baseTroops = shuffle(pool).map(t=>({ kind:"troop", type:t, emoji:TROOPS[t]?.emoji||"❓" }));
 
-  const ownList = Array.from(haveTypes);
+  // specials — only if you own at least one type; each card targets a *specific* owned type
   const specialBag = [];
-  if (ownList.length>0){
-    specialBag.push({ kind:"double", emoji:"🂡" });
-    specialBag.push({ kind:"upgrade", emoji:"⬆️" });
+  if (haveTypes.length>0){
+    // choose a target for each card we add to the bag
+    const pickOwned = ()=> haveTypes[rand(haveTypes.length)];
+    // titles will be rendered in showPicks; include small marker in emoji for clarity
+    specialBag.push({ kind:"double", targetType: pickOwned(), emoji:"🂡" });
+    // only include upgrade if there exists a non-maxed level to upgrade
+    const upCandidates = mineArmy.filter(e=>(e.level||1)<3).map(e=>e.type);
+    if (upCandidates.length>0){
+      const target = upCandidates[rand(upCandidates.length)];
+      specialBag.push({ kind:"upgrade", targetType: target, emoji:"⬆️" });
+    }
   }
+  // Ward is allowed any time
   specialBag.push({ kind:"ward", emoji:"🧱" });
 
+  // Assemble weighted bag
   const bag = [];
   const seen = new Set();
   const pushIfNew = (obj)=>{
-    const key = obj.kind + ":" + (obj.type||obj.faction||"");
+    const key = obj.kind + ":" + (obj.type||obj.targetType||obj.faction||"");
     if (seen.has(key)) return; seen.add(key); bag.push(obj);
   };
 
@@ -452,9 +483,10 @@ function pickOptionsFor(name){
   const hand=[];
   while(hand.length<3 && bag.length){
     const cand = bag.shift();
-    if ((cand.kind==="double"||cand.kind==="upgrade") && ownList.length===0) continue;
+    if ((cand.kind==="double"||cand.kind==="upgrade") && haveTypes.length===0) continue;
     hand.push(cand);
   }
+  // ensure emojis for troop types are correct
   return hand.map(o=> o.kind==="troop" ? {...o, emoji:TROOPS[o.type]?.emoji||"❓"} : o );
 }
 
@@ -545,15 +577,23 @@ async function resolveDraftPick(){
       else arr.push({ type: pk.type, level:1, count: (TROOPS[pk.type]?.spawnCount || 1) });
       armies[p] = arr;
     } else if (pk.kind==="double"){
-      const owned = (armies[p]||[]).filter(e=> e.count>0);
-      if (owned.length>0){
-        const t = choice(owned);
-        t.count += Math.max(1, (TROOPS[t.type]?.spawnCount || 1));
+      const arr = armies[p]||[];
+      let target = arr.find(e=> e.type === pk.targetType);
+      if (!target){ // fallback for older states: random owned
+        const owned = arr.filter(e=> e.count>0);
+        if (owned.length>0) target = choice(owned);
+      }
+      if (target){
+        target.count += Math.max(1, (TROOPS[target.type]?.spawnCount || 1));
       }
     } else if (pk.kind==="upgrade"){
-      const owned = (armies[p]||[]).filter(e=> (e.level||1) < 3);
-      if (owned.length>0){
-        const target = choice(owned);
+      const arr = armies[p]||[];
+      let target = arr.find(e=> e.type === pk.targetType && (e.level||1)<3);
+      if (!target){ // fallback: any upgradable
+        const owned = arr.filter(e=> (e.level||1) < 3);
+        if (owned.length>0) target = choice(owned);
+      }
+      if (target){
         target.level = clamp((target.level||1)+1,1,3);
       }
     } else if (pk.kind==="ward"){
@@ -622,9 +662,10 @@ function spawnArmyFor(p, army, wards, preview=false){
         attempt++;
       }
       if (!occupiedFootprint(units, wards, x,y,s)){
+        const hpM = scaledHp(e.type, e.level||1);
         units.push({
           id: uid(), owner:p, type:e.type, level:e.level||1,
-          x, y, hp: scaledHp(e.type, e.level||1), size:s, cd: 0,
+          x, y, hp: hpM, hpMax: hpM, size:s, cd: 0,
           _ghost: preview
         });
       }
@@ -697,7 +738,7 @@ function manhattan(a,b){
 function lineShot(from,to){
   const x1 = from.x*(CELL+GAP)+CELL/2, y1 = from.y*(CELL+GAP)+CELL/2;
   const x2 = to.x*(CELL+GAP)+CELL/2, y2 = to.y*(CELL+GAP)+CELL/2;
-  return { x1,y1,x2,y2, len: Math.hypot(x2-x1,y2-y1), ang: Math.atan2(y2-y1, x2-x1) };
+  return { x1,y1,x2,y2, len: Math.hypot(x2-x1, y2-y1), ang: Math.atan2(y2-y1, x2-x1) };
 }
 
 function canStand(units, wards, x,y,s, selfId){
@@ -786,6 +827,9 @@ async function stepSim(){
     const slow = applyFieldEffects(u, fields, DT);
     u.cd = Math.max(0, (u.cd||0)-DT);
     u._mv = (u._mv||0) + 1;
+
+    // ensure hpMax exists (for older states)
+    if (!u.hpMax){ u.hpMax = scaledHp(u.type, u.level||1); u.hp = Math.min(u.hp, u.hpMax); }
 
     const enemy = pickTarget(u, units);
     if (!enemy) continue;
@@ -943,8 +987,21 @@ function renderUnit(u, ghost=false){
   const w = s*CELL + (s-1)*GAP, h = s*CELL + (s-1)*GAP;
   el.style.left = left+"px"; el.style.top = top+"px"; el.style.width = w+"px"; el.style.height=h+"px";
   el.style.zIndex = String(100 + u.y*2 + (s===2?1:0));
+
+  // emoji
   const em = document.createElement("div"); em.className="emoji"; em.textContent = TROOPS[u.type]?.emoji || "❓";
   el.appendChild(em);
+
+  // health bar (even in preview for clarity)
+  const maxHp = u.hpMax || scaledHp(u.type, u.level||1);
+  const curHp = Math.max(0, Math.min(u.hp ?? maxHp, maxHp));
+  const pct = maxHp ? (curHp / maxHp) : 1;
+  const hpWrap = document.createElement("div"); hpWrap.className="hpWrap";
+  const hpFill = document.createElement("div"); hpFill.className="hpFill";
+  hpFill.style.width = (pct*100).toFixed(0) + "%";
+  hpWrap.appendChild(hpFill);
+  el.appendChild(hpWrap);
+
   unitLayer.appendChild(el);
 }
 
@@ -1012,6 +1069,7 @@ async function endBattle(winner){
 </script>
 </body>
 </html>
+
 
 
 
