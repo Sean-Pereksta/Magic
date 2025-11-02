@@ -2,21 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>⚔️ Draft Brawl (2P) — Crown & Council</title>
+<title>⚔️ Draft Brawl (2P)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
     --panel:#ffffff; --shadow:0 10px 30px rgba(2,6,23,.08);
     --rad:16px; --rad-sm:12px;
-    --cell:38px; --gap:4px;
+
+    /* board */
+    --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
     --p0:#ef4444; --p1:#3b82f6;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
 
-  .shell{max-width:1100px;margin:0 auto;padding:12px 14px 28px}
+  .shell{max-width:1200px;margin:0 auto;padding:12px 14px 28px}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
   .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .badge{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:var(--shadow);font-weight:800}
@@ -24,31 +26,50 @@
   .btn.ghost{background:#fff;color:var(--ink)}
   .btn:hover{filter:brightness(1.05)}
 
-  .boardWrap{border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--shadow);padding:10px}
-  .board{position:relative;width:100%;height:min(80vh,880px);display:grid;justify-content:center;align-content:center}
-  .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap);margin:0 auto}
+  /* Windowed board */
+  .window{
+    display:grid; grid-template-columns: 1fr 260px; gap:14px;
+    border:1px solid var(--line); border-radius:16px; background:#fff; box-shadow:var(--shadow); padding:10px;
+  }
+  .viewport{
+    position:relative; width:100%; height:min(78vh,860px);
+    border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff;
+    cursor:grab; user-select:none;
+  }
+  .viewport:active{ cursor:grabbing; }
+  .canvas{ position:absolute; left:0; top:0; transform:translate3d(0,0,0) }
+
+  .board{ position:relative }
+  .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap)}
   .cell{width:var(--cell);height:var(--cell);border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;display:grid;place-items:center;position:relative;overflow:hidden}
   .lvl{position:absolute;inset:0;border-radius:8px;opacity:.9}
   .cell.l1 .lvl{background:var(--l1)}
   .cell.l2 .lvl{background:var(--l2)}
   .cell.l3 .lvl{background:var(--l3)}
-  .unit{font-size:18px;text-shadow:0 1px 0 rgba(0,0,0,.08)}
+  .unit{font-size:20px;text-shadow:0 1px 0 rgba(0,0,0,.08)}
   .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569}
   .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
   .p0 .tag{color:#991b1b;border-color:#fecaca}
   .p1 .tag{color:#1e3a8a;border-color:#bfdbfe}
 
-  .centerCards{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50}
-  .overlay{position:absolute;inset:0;background:rgba(255,255,255,.6);display:none;z-index:40}
-  .card{width:min(200px,30vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
+  /* Draft overlay/cards */
+  .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
+  .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50}
+  .card{width:min(220px,31vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
   .card:hover{background:#f8fafc}
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
 
-  .hud{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  /* Side HUD */
+  .side{
+    display:grid; gap:10px;
+  }
+  .panel{border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow)}
+  .head{padding:10px 12px;border-bottom:1px solid var(--line);font-weight:900}
+  .body{padding:10px 12px}
   .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:800}
-  .legend{display:flex;flex-wrap:wrap;gap:6px}
+  .list{display:grid;gap:6px}
 
   .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);font-weight:800;z-index:200;display:none}
 </style>
@@ -59,45 +80,70 @@
     <div class="left">
       <span class="badge">⚔️ Draft Brawl</span>
       <span id="phaseBadge" class="badge">—</span>
-      <span id="timerBadge" class="badge">⏳ —</span>
     </div>
     <div class="left">
       <span id="p0Badge" class="badge">P0 — ❤❤❤❤</span>
       <span id="p1Badge" class="badge">P1 — ❤❤❤❤</span>
+      <span id="timerBadge" class="badge">⏳ —</span>
       <button id="fsBtn" class="btn ghost">⛶ Fullscreen</button>
     </div>
   </div>
 
-  <div class="boardWrap">
-    <div class="board">
-      <div id="cells" class="cells" style="--w:8; --cell:38px; --gap:4px"></div>
-      <div id="overlay" class="overlay"></div>
-      <div id="centerCards" class="centerCards" style="display:none"></div>
-    </div>
-    <div class="hud">
-      <div class="legend">
-        <span class="pill">🗡️ Knight</span>
-        <span class="pill">🏹 Archer</span>
-        <span class="pill">💣 Bomber</span>
-        <span class="pill">🗡️🕳️ Assassin</span>
-        <span class="pill">🧌 Giant</span>
-        <span class="pill">🚀 Rocket</span>
-        <span class="pill">🃏 Double Type</span>
-        <span class="pill">⬆️ Upgrade Type</span>
+  <div class="window">
+    <!-- Viewport with click-drag pan -->
+    <div id="viewport" class="viewport" aria-label="Game board">
+      <div id="canvas" class="canvas">
+        <div class="board">
+          <div id="cells" class="cells" style="--w:8; --cell:40px; --gap:4px"></div>
+        </div>
       </div>
-      <span class="pill" style="margin-left:auto;color:#334155">Draft 3×10s → Battle. Loser gets +1 pick, then both draft 3×10s again.</span>
+      <div id="overlay" class="overlay"></div>
+      <div id="cardRow" class="cardRow" style="display:none"></div>
     </div>
+
+    <!-- Side HUD -->
+    <aside class="side">
+      <div class="panel">
+        <div class="head">Players</div>
+        <div class="body list">
+          <div id="p0Line" class="pill">P0</div>
+          <div id="p1Line" class="pill">P1</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="head">Draft & Phases</div>
+        <div class="body list">
+          <div class="pill">Draft: 3 × 10s</div>
+          <div class="pill">Loser bonus: 1 × 10s</div>
+          <div class="pill">Armies persist between battles</div>
+          <div class="pill">Frontline = nearer enemy</div>
+          <div class="pill">Backline = furthest from enemy</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="head">Legend</div>
+        <div class="body list">
+          <div class="pill">🗡️ Knight (front)</div>
+          <div class="pill">🏹 Archer (back)</div>
+          <div class="pill">💣 Bomber (front)</div>
+          <div class="pill">🗡️🕳️ Assassin (front)</div>
+          <div class="pill">🧌 Giant (front)</div>
+          <div class="pill">🚀 Rocket (back)</div>
+          <div class="pill">🃏 Double (needs troops)</div>
+          <div class="pill">⬆️ Upgrade (needs troops)</div>
+        </div>
+      </div>
+    </aside>
   </div>
 </div>
 
 <div id="toast" class="toast"></div>
 
-<!-- Firebase game logic -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/* ---------- Firebase config (yours) ---------- */
+/* ---------- Firebase config ---------- */
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -122,9 +168,23 @@ const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
 const $ = (id)=>document.getElementById(id);
 const toast = (t)=>{ const x=$("toast"); x.textContent=t; x.style.display="block"; clearTimeout(window.__t); window.__t=setTimeout(()=>x.style.display="none",1500); };
 
+/* ---------- Viewport pan ---------- */
+const viewport = $("viewport"), canvas = $("canvas");
+let pan={x:12,y:12}, dragging=false, last={x:0,y:0};
+function applyPan(){ canvas.style.transform=`translate(${pan.x}px,${pan.y}px)`; }
+viewport.addEventListener("pointerdown", e=>{ dragging=true; last={x:e.clientX,y:e.clientY}; });
+viewport.addEventListener("pointermove", e=>{
+  if(!dragging) return;
+  const dx=e.clientX-last.x, dy=e.clientY-last.y;
+  last={x:e.clientX,y:e.clientY}; pan.x+=dx; pan.y+=dy; applyPan();
+});
+viewport.addEventListener("pointerup", ()=> dragging=false);
+viewport.addEventListener("pointercancel", ()=> dragging=false);
+applyPan();
+
 /* ---------- Board geometry ---------- */
-const W=8, H=32;  // 8 x 32 grid
-const cellsEl = $("cells");
+const W=8, H=32;
+const cellsEl=$("cells");
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.innerHTML="";
@@ -144,7 +204,7 @@ const idx=(x,y)=> y*W+x;
 const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-/* ---------- Game content ---------- */
+/* ---------- Content ---------- */
 const TROOPS = [
   { key:"knight",   name:"Knight",   emoji:"🗡️", role:"front", base:{hp:10,dmg:3,spd:1,range:1,cd:600} },
   { key:"archer",   name:"Archer",   emoji:"🏹", role:"back",  base:{hp:5, dmg:2,spd:1,range:3,cd:800} },
@@ -157,240 +217,207 @@ const SPECIAL = [
   { key:"double",  name:"Double Type",  emoji:"🃏", special:"double",  desc:"Double one of your existing troop types" },
   { key:"upgrade", name:"Upgrade Type", emoji:"⬆️", special:"upgrade", desc:"Upgrade one existing troop type (+1 level)" }
 ];
-const ALL_CARDS=[...TROOPS.map(t=>({type:"troop",...t})), ...SPECIAL.map(s=>({type:"special",...s}))];
-const randCards=(n=3)=> Array.from({length:n},()=> ALL_CARDS[Math.floor(Math.random()*ALL_CARDS.length)]);
 
-/* ---------- Local working copy ---------- */
+/* ---------- Packs (per-player) with filtering ---------- */
+const ALL_CARDS_TROOPS = TROOPS.map(t=>({type:"troop",...t}));
+const ALL_CARDS_SPECIAL= SPECIAL.map(s=>({type:"special",...s}));
+function filterPackForPlayer(roster){
+  const hasAny = (roster||[]).some(r=>r.count>0);
+  const specials = hasAny ? ALL_CARDS_SPECIAL : [];        // gate specials until player has troops
+  const pool = [...ALL_CARDS_TROOPS, ...specials];
+  // sample 3 distinct
+  const out=[]; const bag=[...pool];
+  for(let i=0;i<3 && bag.length;i++){
+    const j=Math.floor(Math.random()*bag.length);
+    out.push(bag.splice(j,1)[0]);
+  }
+  // Fallback if somehow <3 (e.g., initial bag too small) – fill with troops
+  while(out.length<3){ out.push(ALL_CARDS_TROOPS[Math.floor(Math.random()*ALL_CARDS_TROOPS.length)]); }
+  return out;
+}
+
+/* ---------- State ---------- */
 let S=null;
-let meIndex=0;
-let host=false;
+let me=0;
 
-/* ---------- Phases ----------
-draft (3 picks) → battle → loser-bonus (1 pick: both see, loser matters) → draft-after (3 picks) → battle → ...
-Lives: [4,4]. Game ends when any hits 0.
-We maintain:
-- roster[0], roster[1]: [{type,lvl,count}] (persistent army between battles)
-- field.units: actual board layout for rendering and for battles (freshly cloned from roster at battle start; in draft we render from roster so both can see forces)
-------------------------------------- */
-
-/* ---------- Army / roster helpers ---------- */
+/* ---------- Helpers ---------- */
 const levelMult=(l)=> [1,1,1.5,2][l] || 1;
 const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
+
+/* Roster ops */
 function rosterAdd(roster, type, inc=1){
-  const found=roster.find(r=>r.type===type);
-  if (found) found.count += inc;
-  else roster.push({type, lvl:1, count:inc});
+  const f=roster.find(r=>r.type===type);
+  if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc});
 }
 function rosterDoubleOne(roster){
-  const keys = roster.filter(r=>r.count>0);
-  if (!keys.length) return;
-  const k = keys[Math.floor(Math.random()*keys.length)];
-  k.count += Math.max(1,k.count); // double (add current count)
+  const ks=roster.filter(r=>r.count>0);
+  if (!ks.length) return;
+  const k=ks[Math.floor(Math.random()*ks.length)];
+  k.count += Math.max(1,k.count);
 }
 function rosterUpgradeOne(roster){
-  const keys = roster.filter(r=>r.count>0 && r.lvl<3);
-  if (!keys.length) return;
-  const k = keys[Math.floor(Math.random()*keys.length)];
-  k.lvl = Math.min(3, k.lvl+1);
-}
-function buildFieldFromRoster(state){
-  // Create fresh field from roster, placing units via spawn rules
-  state.field = { units: [] };
-  for (let p=0;p<2;p++){
-    const arr = (state.roster?.[p]||[]);
-    // expand counts into actual units with placement
-    for (const r of arr){
-      for (let i=0;i<r.count;i++){
-        placeNewUnit(state, p, r.type, r.lvl);
-      }
-    }
-  }
+  const ks=roster.filter(r=>r.count>0 && r.lvl<3);
+  if (!ks.length) return;
+  ks[Math.floor(Math.random()*ks.length)].lvl++;
 }
 
-/* ---------- Placement rules ---------- */
-function forwardDir(p){ return p===0 ? -1 : +1; }
-const centerRow = Math.floor(H/2);
-function frontlineRow(p){ return p===0 ? centerRow : centerRow-1; }
-function backlineRowStart(p){ return p===0 ? H-1 : 0; }
-function bumpAllTowardCenter(state, p){
-  const dir = -forwardDir(p); // toward center
-  // ensure valid
-  for (const u of state.field.units){ if (u.p!==p) continue;
+/* Frontline/backline rows (front = nearer enemy, back = furthest) */
+function frontRow(p){ return p===0 ? Math.floor(H/2)-1 : Math.floor(H/2); } // near middle
+function backEdgeRow(p){ return p===0 ? H-1 : 0; }                          // far from enemy
+function moveArmyTowardCenter(state, p){
+  const dir = (p===0? -1 : +1); // toward middle
+  // check collisions
+  for(const u of state.field.units){ if (u.p!==p) continue;
     const ny=u.y+dir; if (!inside(u.x,ny)) return false;
-    // collision check
     if (state.field.units.some(v=>v!==u && v.x===u.x && v.y===ny)) return false;
   }
-  // apply
-  for (const u of state.field.units){ if (u.p===p) u.y += dir; }
+  for(const u of state.field.units){ if (u.p===p) u.y += dir; }
   return true;
 }
-function tryRowSlot(state, row){
-  const cx=Math.floor(W/2);
-  const order=[0,-1,1,-2,2,-3,3,-4,4, -5,5]; // wider safety
-  for (const dx of order){
+function rowSlot(state,row){
+  const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
+  for(const dx of order){
     const x=Math.max(0,Math.min(W-1,cx+dx));
     if (!state.field.units.some(o=>o.x===x && o.y===row)) return {x,y:row};
   }
   return null;
 }
-function spawnSlotForType(state, p, typeKey){
-  const base = TROOPS.find(t=>t.key===typeKey);
-  const role = base?.role || "front";
-  const owned = state.field.units.filter(u=>u.p===p);
-  const same = owned.filter(u=>u.type===typeKey);
-  // prefer clustering: use the last placed same-type row if exists
+function spawnSlot(state,p,typeKey){
+  const base=TROOPS.find(t=>t.key===typeKey);
+  const role=base?.role||"front";
+  const same=state.field.units.filter(u=>u.p===p && u.type===typeKey);
   if (same.length){
-    const row = same[same.length-1].y;
-    const pos = tryRowSlot(state,row); if (pos) return pos;
+    const row=same[same.length-1].y;
+    const pos=rowSlot(state,row); if (pos) return pos;
   }
-  let row = (role==="back"? backlineRowStart(p) : frontlineRow(p));
-  while (inside(0,row)){
-    const pos = tryRowSlot(state,row); if (pos) return pos;
+  let row = (role==="front" ? frontRow(p) : backEdgeRow(p));
+  while(inside(0,row)){
+    const pos=rowSlot(state,row); if (pos) return pos;
     if (role==="back"){
-      // push army toward center if back row jammed
-      if (!bumpAllTowardCenter(state,p)) break;
+      if (!moveArmyTowardCenter(state,p)) break;
     }else{
-      // try deeper toward base if front row jammed
+      // try one step away from enemy if jammed
       row = (p===0? row+1 : row-1);
     }
   }
-  // fallback: any free on your half
-  const yStart = (p===0? centerRow : 0);
-  const yEnd   = (p===0? H-1 : centerRow-1);
-  for (let y=yStart;y<=yEnd;y++){
-    for (let x=0;x<W;x++){
-      if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
-    }
-  }
-  return {x:Math.floor(W/2), y:(p===0? H-1:0)};
+  // fallback any free on side
+  const y0 = (p===0? Math.floor(H/2):0);
+  const y1 = (p===0? H-1 : Math.floor(H/2)-1);
+  for(let y=y0;y<=y1;y++){ for(let x=0;x<W;x++){
+    if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
+  }}
+  return {x:Math.floor(W/2), y: backEdgeRow(p)};
 }
-function placeNewUnit(state, p, typeKey, lvl){
-  const base = TROOPS.find(t=>t.key===typeKey); if (!base) return;
-  const pos = spawnSlotForType(state, p, typeKey);
-  const u = {
-    id: crypto.randomUUID(), p, type:typeKey, emoji:base.emoji, role:base.role,
+function placeUnit(state,p,key,lvl){
+  const b=TROOPS.find(t=>t.key===key); if(!b) return;
+  const pos=spawnSlot(state,p,key);
+  const u={
+    id:crypto.randomUUID(), p, type:key, emoji:b.emoji, role:b.role,
     lvl, x:pos.x, y:pos.y,
-    maxhp: Math.round(base.base.hp*levelMult(lvl)),
-    hp: Math.round(base.base.hp*levelMult(lvl)),
-    dmg: Math.round(base.base.dmg*levelMult(lvl)),
-    spd: base.base.spd, range: base.base.range, cd: base.base.cd,
-    bomber:!!base.base.bomber, assassin:!!base.base.assassin, splash1:!!base.base.splash1, knock:!!base.base.knock,
+    maxhp:Math.round(b.base.hp*levelMult(lvl)), hp:Math.round(b.base.hp*levelMult(lvl)),
+    dmg:Math.round(b.base.dmg*levelMult(lvl)),
+    spd:b.base.spd, range:b.base.range, cd:b.base.cd,
+    bomber:!!b.base.bomber, assassin:!!b.base.assassin, splash1:!!b.base.splash1, knock:!!b.base.knock,
     nextAtk:0, fuse:0, stealthUntil:0, __jumped:false
   };
   state.field.units.push(u);
 }
+function rebuildFieldFromRoster(state){
+  state.field={units:[]};
+  for(let p=0;p<2;p++){
+    for(const r of (state.roster?.[p]||[])){
+      for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl);
+    }
+  }
+}
 
-/* ---------- Rendering ---------- */
+/* Rendering */
+function paint(units){
+  const grid=Array(W*H).fill(null);
+  for(const u of units){ grid[idx(u.x,u.y)] = u; }
+  for(let i=0;i<W*H;i++){
+    const d=cellsEl.children[i], u=grid[i];
+    d.className="cell";
+    const lvl=d.querySelector(".lvl"), tag=d.querySelector(".tag"), hp=d.querySelector(".hp>i"), uni=d.querySelector(".unit");
+    if(u){
+      d.classList.add(levelClass(u.lvl), u.p===0?"p0":"p1");
+      uni.textContent = u.emoji; tag.textContent = (u.p===0?"P0":"P1");
+      hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
+    }else{
+      uni.textContent=""; tag.textContent=""; hp.style.width="0%";
+    }
+  }
+}
 function render(){
-  if (!S) return;
+  if(!S) return;
+  const showDraft = ["draft","loser-bonus","draft-after"].includes(S.phase);
   $("phaseBadge").textContent = S.phase || "—";
-  const tleft = Math.max(0, (S.phaseEndsAt||0) - Date.now());
-  $("timerBadge").textContent = (S.phase==="draft"||S.phase==="loser-bonus"||S.phase==="draft-after") ? ("⏳ "+Math.ceil(tleft/1000)+"s") : "⏳ —";
+  const tleft = Math.max(0,(S.phaseEndsAt||0) - Date.now());
+  $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : "⏳ —";
 
   const p0n = S.players?.[0] || "P0";
   const p1n = S.players?.[1] || "P1";
-  $("p0Badge").textContent = `${p0n} — ${"❤".repeat(S.lives?.[0]??4)}`;
-  $("p1Badge").textContent = `${p1n} — ${"❤".repeat(S.lives?.[1]??4)}`;
+  const l0  = "❤".repeat((S.lives?.[0]??4));
+  const l1  = "❤".repeat((S.lives?.[1]??4));
+  $("p0Badge").textContent = `${p0n} — ${l0}`;
+  $("p1Badge").textContent = `${p1n} — ${l1}`;
+  $("p0Line").textContent  = `${p0n} — ${l0}`;
+  $("p1Line").textContent  = `${p1n} — ${l1}`;
 
-  // ensure field is built from roster during draft so both armies are visible
-  if (S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after"){
-    const ghost = structuredClone(S);
-    buildFieldFromRoster(ghost);
-    paintBoard(ghost.field.units);
+  // During draft, render from roster so both sides see forces “so far”
+  if (showDraft){
+    const ghost=structuredClone(S);
+    rebuildFieldFromRoster(ghost);
+    paint(ghost.field.units);
   }else{
-    paintBoard(S.field?.units||[]);
+    paint(S.field?.units||[]);
   }
 
-  // center cards
-  const showCards = (S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after");
-  $("overlay").style.display = showCards ? "block":"none";
-  $("centerCards").style.display = showCards ? "flex":"none";
-  if (showCards) drawCardsUI();
-}
-function paintBoard(units){
-  const grid = Array(W*H).fill(null);
-  for (const u of units){ grid[idx(u.x,u.y)] = u; }
-  for (let i=0;i<W*H;i++){
-    const d = cellsEl.children[i];
-    const u = grid[i];
-    d.className="cell";
-    if (u){
-      d.classList.add(levelClass(u.lvl));
-      d.classList.add(u.p===0?"p0":"p1");
-      d.querySelector(".unit").textContent = u.emoji;
-      d.querySelector(".tag").textContent = (u.p===0?"P0":"P1");
-      const pct = Math.max(0, Math.round(100*(u.hp/u.maxhp)));
-      d.querySelector(".hp>i").style.width = pct+"%";
-    }else{
-      d.querySelector(".unit").textContent = "";
-      d.querySelector(".tag").textContent = "";
-      d.querySelector(".hp>i").style.width = "0%";
-    }
-  }
-}
-function drawCardsUI(){
-  const cards = S.currentPack || [];
-  const wrap = $("centerCards");
-  wrap.innerHTML="";
-  cards.forEach((c, i)=>{
-    const el=document.createElement("div");
-    el.className="card";
-    if (c.type==="troop"){
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} unit</div>`;
-    }else{
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.desc}</div>`;
-    }
-    el.onclick = ()=> chooseCard(i);
-    wrap.appendChild(el);
-  });
-}
-
-/* ---------- Choosing a card ---------- */
-async function chooseCard(index){
-  if (!S) return;
-  if (!(S.phase==="draft"||S.phase==="loser-bonus"||S.phase==="draft-after")) return;
-  const key = `selections.${meIndex}.${S.draftIndex}`;
-  const cur = S.selections?.[meIndex]?.[S.draftIndex];
-  if (cur!=null) return; // already picked
-  await updateDoc(stateRef, { [key]: index });
-}
-
-/* ---------- Host loop & battle sim ---------- */
-let hostTimer=null, battleTimer=null;
-
-function nearestEnemy(u, units){
-  let best=null, bd=1e9;
-  for (const v of units){ if (v.p===u.p) continue;
-    const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if (d<bd){ bd=d; best=v; }
-  }
-  return best;
-}
-function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x && o.y===y); }
-function tryKnock(cx,cy, target, units){
-  if (!target) return;
-  const dx=Math.sign(target.x-cx), dy=Math.sign(target.y-cy);
-  const nx=target.x+dx, ny=target.y+dy;
-  if (cellFree(units,nx,ny)){ target.x=nx; target.y=ny; }
-}
-function splash(units, x,y, dmg, srcP, knock=false){
-  for (let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    if (!dx && !dy) continue;
-    const nx=x+dx, ny=y+dy; if (!inside(nx,ny)) continue;
-    const hit=units.find(o=>o.p!==srcP && o.x===nx && o.y===ny);
-    if (hit){ hit.hp -= dmg; if (knock) tryKnock(x,y,hit,units); }
-  }
-}
-function attack(u,t, nowMs, units){
-  const dist=Math.abs(u.x-t.x)+Math.abs(u.y-t.y);
-  if (dist <= (u.range||1)){
-    if (nowMs >= u.nextAtk){
-      if (u.bomber && dist<=1){
-        u.fuse = u.fuse || (nowMs+1000);
+  // Draft cards (per player)
+  $("overlay").style.display = showDraft ? "block" : "none";
+  const row=$("cardRow");
+  row.style.display = showDraft ? "flex":"none";
+  if (showDraft){
+    const pack = (S.currentPacks?.[me] || []);
+    row.innerHTML="";
+    pack.forEach((c,i)=>{
+      const el=document.createElement("div");
+      el.className="card";
+      if(c.type==="troop"){
+        el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} unit</div>`;
       }else{
-        t.hp -= u.dmg;
-        if (u.splash1) splash(units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
+        el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.desc}</div>`;
       }
-      u.nextAtk = nowMs + (u.cd||600);
+      el.onclick = ()=> chooseCard(i);
+      row.appendChild(el);
+    });
+  }
+}
+
+/* Choose card */
+async function chooseCard(i){
+  if(!S) return;
+  const draftIx=S.draftIndex|0;
+  const already = S.selections?.[me]?.[draftIx];
+  if (already!=null) return;
+  await updateDoc(stateRef, { [`selections.${me}.${draftIx}`]: i });
+}
+
+/* Battle sim */
+function nearestEnemy(u,units){ let b=null,bd=1e9; for(const v of units){ if(v.p===u.p) continue; const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b; }
+function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x&&o.y===y); }
+function tryKnock(cx,cy,t,units){ if(!t) return; const dx=Math.sign(t.x-cx), dy=Math.sign(t.y-cy); const nx=t.x+dx, ny=t.y+dy; if(cellFree(units,nx,ny)){ t.x=nx;t.y=ny; } }
+function splash(units,x,y,dmg,srcP,kn=false){ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const nx=x+dx,ny=y+dy; if(!inside(nx,ny)) continue; const hit=units.find(o=>o.p!==srcP&&o.x===nx&&o.y===ny); if(hit){ hit.hp-=dmg; if(kn) tryKnock(x,y,hit,units); } } }
+function attack(u,t,now,units){
+  const dist=Math.abs(u.x-t.x)+Math.abs(u.y-t.y);
+  if(dist <= (u.range||1)){
+    if(now >= u.nextAtk){
+      if(u.bomber && dist<=1){ u.fuse = u.fuse || (now+1000); }
+      else{
+        t.hp -= u.dmg;
+        if(u.splash1) splash(units,t.x,t.y,Math.max(1,Math.floor(u.dmg*0.6)),u.p,!!u.knock);
+      }
+      u.nextAtk = now + (u.cd||600);
     }
     return true;
   }
@@ -399,115 +426,114 @@ function attack(u,t, nowMs, units){
 function stepToward(u,t,units){
   const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
   const opts=[];
-  if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+dy],[u.x+dx,u.y]);
-  else opts.push([u.x+dx,u.y],[u.x,u.y+dy]);
+  // prefer advancing toward enemy: for p0 move up, for p1 move down toward center/enemy
+  if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
+  else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
+  // backups
   opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
-  for (const [nx,ny] of opts){ if (cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
+  for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
 }
-function assassinLogic(u, nowMs, units){
-  if (!u.assassin) return;
-  if (!u.stealthUntil) u.stealthUntil = nowMs+3000;
-  if (nowMs >= u.stealthUntil && !u.__jumped){
-    const enemy=1-u.p; const row=backlineRowStart(enemy);
+function assassinLogic(u,now,units){
+  if(!u.assassin) return;
+  if(!u.stealthUntil) u.stealthUntil = now+3000;
+  if(now>=u.stealthUntil && !u.__jumped){
+    const enemy=1-u.p; const row=backEdgeRow(enemy);
     const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
-    for (const dx of order){
-      const x=Math.max(0,Math.min(W-1,cx+dx));
-      if (cellFree(units,x,row)){ u.x=x;u.y=row;u.__jumped=true;break; }
-    }
+    for(const dx of order){ const x=Math.max(0,Math.min(W-1,cx+dx)); if(cellFree(units,x,row)){ u.x=x;u.y=row;u.__jumped=true;break; } }
   }
 }
 function clean(units){ return units.filter(u=>u.hp>0); }
 
-async function hostLoop(){
-  clearInterval(hostTimer);
-  hostTimer=setInterval(async ()=>{
-    const snap=await getDoc(stateRef);
-    if (!snap.exists()) return;
+/* Host loop */
+let host=false, hostTick=null, battleTick=null;
+(async function whoHost(){
+  const lob=await getDoc(doc(db,"lobbies",gameId));
+  host = lob.exists() && lob.data().host===username;
+  if (host) startHost();
+})();
+function startHost(){
+  if(hostTick) return;
+  hostTick=setInterval(async ()=>{
+    const snap=await getDoc(stateRef); if(!snap.exists()) return;
     const d=snap.data();
 
-    // init
-    if (!d.inited){
+    /* Bootstrap – start draft immediately */
+    if(!d.inited){
       const lob=await getDoc(doc(db,"lobbies",gameId));
       const players=(lob.exists()? (lob.data().players||[]) : [username]).slice(0,2);
-      const next={
+      const init={
         inited:true, players, lives:[4,4],
-        phase:"draft", phaseEndsAt: Date.now()+10_000,
-        draftIndex:0, currentPack: randCards(3),
-        selections:[[],[]],
-        roster:[[],[]], // persistent armies
-        field:{units:[]},
-        winner:null
+        phase:"draft", draftIndex:0, selections:[[],[]],
+        currentPacks:[ filterPackForPlayer([]), filterPackForPlayer([]) ], // gate specials
+        phaseEndsAt: Date.now()+10_000,
+        roster:[[],[]], field:{units:[]}, winner:null
       };
-      await setDoc(stateRef,next);
+      await setDoc(stateRef, init);
       return;
     }
 
-    // phase timeouts / auto-picks
-    const nowMs=Date.now();
-    if ((d.phase==="draft"||d.phase==="loser-bonus"||d.phase==="draft-after") && nowMs >= (d.phaseEndsAt||0)){
-      // ensure both have a pick
-      const sel = d.selections || [[],[]];
-      for (let p=0;p<2;p++){
-        if (sel[p][d.draftIndex]==null){
-          sel[p][d.draftIndex] = Math.floor(Math.random()* (d.currentPack?.length||3));
+    const now=Date.now();
+
+    /* Draft phases: enforce timer + auto pick */
+    if (["draft","loser-bonus","draft-after"].includes(d.phase) && now >= (d.phaseEndsAt||0)){
+      const di=d.draftIndex|0;
+      const sel=d.selections||[[],[]];
+      // auto-picks if missing
+      for(let p=0;p<2;p++){
+        if (sel[p][di]==null){
+          const pack=(d.currentPacks?.[p]||[]);
+          sel[p][di] = Math.floor(Math.random()*Math.max(1,pack.length));
         }
       }
-      // apply picks to roster
-      const pack = d.currentPack || [];
-      const roster = d.roster || [[],[]];
-      for (let p=0;p<2;p++){
-        const pick = pack[ sel[p][d.draftIndex] ];
-        if (pick.type==="troop"){
-          rosterAdd(roster[p], pick.key, 1);
-        }else if (pick.type==="special"){
+      // apply picks
+      const roster=d.roster||[[],[]];
+      for(let p=0;p<2;p++){
+        const pack=(d.currentPacks?.[p]||[]);
+        const pick=pack[ sel[p][di] ];
+        if (pick?.type==="troop") rosterAdd(roster[p], pick.key, 1);
+        else if (pick?.type==="special"){
           if (pick.special==="double") rosterDoubleOne(roster[p]);
-          else if (pick.special==="upgrade") rosterUpgradeOne(roster[p]);
+          if (pick.special==="upgrade") rosterUpgradeOne(roster[p]);
         }
       }
 
-      // advance phase
       if (d.phase==="draft"){
-        const nextIdx=d.draftIndex+1;
-        if (nextIdx>=3){
-          // start battle (clone from roster)
-          const next={...d, phase:"battle", phaseEndsAt:0, draftIndex:0, selections:[[],[]], currentPack:[], roster};
-          buildFieldFromRoster(next);
+        const nextIx=di+1;
+        if (nextIx>=3){
+          const next={...d, roster, selections:[[],[]], draftIndex:0, currentPacks:[[],[]], phase:"battle", phaseEndsAt:0};
+          rebuildFieldFromRoster(next);
           await updateDoc(stateRef,next);
-          startBattle();
+          runBattle();
         }else{
           await updateDoc(stateRef,{
-            selections:sel, roster,
-            draftIndex: nextIdx,
-            currentPack: randCards(3),
+            roster, selections:sel, draftIndex:nextIx,
+            currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
             phaseEndsAt: Date.now()+10_000
           });
         }
         return;
       }
+
       if (d.phase==="loser-bonus"){
-        // after loser bonus → draft-after 3 picks
         await updateDoc(stateRef,{
-          selections: [[],[]],
-          roster,
-          phase:"draft-after",
-          draftIndex:0,
-          currentPack: randCards(3),
-          phaseEndsAt: Date.now()+10_000
+          roster, selections:[[],[]], draftIndex:0,
+          currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
+          phase:"draft-after", phaseEndsAt: Date.now()+10_000
         });
         return;
       }
+
       if (d.phase==="draft-after"){
-        const nextIdx=d.draftIndex+1;
-        if (nextIdx>=3){
-          const next={...d, phase:"battle", phaseEndsAt:0, draftIndex:0, selections:[[],[]], currentPack:[], roster};
-          buildFieldFromRoster(next);
+        const nextIx=di+1;
+        if (nextIx>=3){
+          const next={...d, roster, selections:[[],[]], draftIndex:0, currentPacks:[[],[]], phase:"battle", phaseEndsAt:0};
+          rebuildFieldFromRoster(next);
           await updateDoc(stateRef,next);
-          startBattle();
+          runBattle();
         }else{
           await updateDoc(stateRef,{
-            selections:sel, roster,
-            draftIndex: nextIdx,
-            currentPack: randCards(3),
+            roster, selections:sel, draftIndex:nextIx,
+            currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
             phaseEndsAt: Date.now()+10_000
           });
         }
@@ -515,113 +541,72 @@ async function hostLoop(){
       }
     }
 
-    // battle driving guard
-    if (d.phase==="battle" && !battleTimer){
-      startBattle(); // safety
-    }
-    if (d.phase==="game-over"){
-      clearInterval(hostTimer);
-      if (battleTimer){ clearInterval(battleTimer); battleTimer=null; }
-    }
+    /* Battle driver guard */
+    if (d.phase==="battle" && !battleTick) runBattle();
   }, 250);
 }
 
-function startBattle(){
-  if (battleTimer) return;
-  battleTimer=setInterval(async ()=>{
-    const snap=await getDoc(stateRef);
-    if (!snap.exists()){ clearInterval(battleTimer); battleTimer=null; return; }
-    const d=snap.data();
-    if (d.phase!=="battle"){ clearInterval(battleTimer); battleTimer=null; return; }
-    const state=structuredClone(d);
-    const units=state.field.units;
+/* Battle loop */
+function runBattle(){
+  if(battleTick) return;
+  battleTick=setInterval(async ()=>{
+    const snap=await getDoc(stateRef); if(!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
+    const d=snap.data(); if(d.phase!=="battle"){ clearInterval(battleTick); battleTick=null; return; }
+    const st=structuredClone(d);
+    const units=st.field.units;
+    const now=Date.now();
 
-    // tick
-    const nowMs=Date.now();
-
-    // assassin stealth/jump
-    for (const u of units){ if (u.assassin) assassinLogic(u, nowMs, units); }
-
-    // bomber explosions
-    for (const u of units){ if (u.bomber && u.fuse && nowMs>=u.fuse){
-      const center=units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
-      if (center){ center.hp -= u.dmg; tryKnock(u.x,u.y,center,units); }
+    // assassins
+    for(const u of units) if(u.assassin) assassinLogic(u,now,units);
+    // bomber fuses
+    for(const u of units) if(u.bomber && u.fuse && now>=u.fuse){
+      const mid=units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
+      if(mid){ mid.hp -= u.dmg; tryKnock(u.x,u.y,mid,units); }
       splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
       u.hp=0;
-    }}
-    state.field.units = clean(units);
-
-    // attacks / moves
-    for (const u of state.field.units){
-      if (u.type==="rocket"){
-        const t=nearestEnemy(u,state.field.units);
-        if (t) attack(u,t,nowMs,state.field.units);
-        continue;
-      }
-      const t=nearestEnemy(u,state.field.units);
-      if (!t) continue;
-      if (!attack(u,t,nowMs,state.field.units)){
-        if (u.spd>0) stepToward(u,t,state.field.units);
-      }
     }
-    state.field.units = clean(state.field.units);
+    st.field.units = units.filter(u=>u.hp>0);
 
-    // end?
-    const alive0=state.field.units.some(u=>u.p===0);
-    const alive1=state.field.units.some(u=>u.p===1);
-    if (!alive0 || !alive1){
-      clearInterval(battleTimer); battleTimer=null;
-      const loser = alive0?1:0;
-      const lives = [...(state.lives||[4,4])];
-      lives[loser]=Math.max(0, lives[loser]-1);
+    // attack or move
+    for(const u of st.field.units){
+      if (u.type==="rocket"){ const t=nearestEnemy(u,st.field.units); if(t) attack(u,t,now,st.field.units); continue; }
+      const t=nearestEnemy(u,st.field.units); if(!t) continue;
+      if(!attack(u,t,now,st.field.units)){ if(u.spd>0) stepToward(u,t,st.field.units); }
+    }
+    st.field.units = st.field.units.filter(u=>u.hp>0);
 
-      // winner?
-      const winner = lives[0]===0 ? state.players[1]
-                    : lives[1]===0 ? state.players[0] : null;
+    const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
+    if(!a0 || !a1){
+      clearInterval(battleTick); battleTick=null;
+      const loser = a0?1:0;
+      const lives=[...(st.lives||[4,4])]; lives[loser]=Math.max(0,lives[loser]-1);
+      const winner = lives[0]===0 ? st.players[1] : (lives[1]===0 ? st.players[0] : null);
 
-      // after battle, we DO NOT change roster (armies persist); field will be rebuilt from roster for next draft
       const next = {
-        ...state,
-        lives,
+        ...st, lives,
         phase: winner ? "game-over" : "loser-bonus",
         phaseEndsAt: winner ? 0 : Date.now()+10_000,
-        winner: winner || null,
         selections:[[],[]],
-        currentPack: winner ? [] : randCards(3),
-        draftIndex: 0
+        currentPacks: winner ? [[],[]] : [ filterPackForPlayer(st.roster[0]), filterPackForPlayer(st.roster[1]) ],
+        draftIndex:0,
+        winner: winner || null
       };
       await updateDoc(stateRef,next);
     }else{
-      await updateDoc(stateRef,state);
+      await updateDoc(stateRef,st);
     }
   }, 250);
 }
 
-/* ---------- Snapshot & identity ---------- */
-onSnapshot(stateRef, (snap)=>{
-  if (!snap.exists()) return;
-  S = snap.data();
-
-  // who am I?
-  meIndex = Math.max(0, (S.players||[]).indexOf(username));
-
-  // render
+/* Snapshot */
+onSnapshot(stateRef,(snap)=>{
+  if(!snap.exists()) return;
+  S=snap.data();
+  me = Math.max(0,(S.players||[]).indexOf(username));
   render();
 });
 
-/* ---------- Host gate ---------- */
-(async function setHost(){
-  const lob = await getDoc(doc(db,"lobbies",gameId));
-  host = lob.exists() && lob.data().host===username;
-  if (host) hostLoop();
-})();
-
-/* ---------- Card click guards in UI ---------- */
-window.addEventListener("keydown",(e)=>{
-  if (e.key==="f" && (e.ctrlKey||e.metaKey)){ e.preventDefault(); }
-});
-
-/* ---------- Fullscreen ---------- */
+/* Fullscreen */
 $("fsBtn").onclick = async ()=>{
   try{
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
@@ -631,6 +616,8 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
+
 
 
 
