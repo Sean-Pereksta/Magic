@@ -49,11 +49,6 @@
     touch-action:none; background:#0b1422;
   }
   canvas{display:block; width:100%; height:100%}
-  .aimDot{
-    pointer-events:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:18px; height:18px; border-radius:50%; background:#99c3ff88; border:2px solid #99c3ff;
-    display:none;
-  }
 
   /* Hand & actions */
   .bottom{
@@ -122,7 +117,6 @@
       </div>
       <div class="view" id="view">
         <canvas id="cv"></canvas>
-        <div class="aimDot" id="aimDot"></div>
       </div>
     </div>
   </div>
@@ -137,7 +131,7 @@
         <span class="pill">🫱 Hand: <b id="handCount">0</b></span>
       </div>
       <div class="log" id="log"></div>
-      <div class="muted">Tip: Play 1 card per turn. Troops & enemies act at the start of each player's turn. Drag the field to pan. When aiming siege, drag from the dot.</div>
+      <div class="muted">Tip: Click a tile to fire siege. Ballista pierces to that tile; Catapult splashes on that tile. Troops auto-move toward the nearest enemy each turn.</div>
     </div>
   </div>
 </div>
@@ -157,12 +151,13 @@ const HAND_SIZE = 3;
 
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function dist(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); } // manhattan
 function inBounds(x,y){ return x>=0 && y>=0 && x<GRID_W && y<GRID_H; }
 function getParam(name){
   const m = new RegExp('[?&]'+name+'=([^&#]*)').exec(location.search);
   return m ? decodeURIComponent(m[1].replace(/\+/g,'%20')) : null;
 }
+function randRange(n){ return (Math.random()*n)|0; }
+function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]];} return a; }
 
 const EMOJI = {
   wall: "🧱",
@@ -176,15 +171,7 @@ const EMOJI = {
   witch: "🧙‍♀️",
   cyclops: "👁️",
   dragon: "🐉",
-  fire: "🔥",
-  rubble: "💥"
 };
-
-// Enemy tiers unlock every 5 turns: 1..5 goblins, add orcs, add trolls, add gnoll+witch,
-// add cyclops, add dragon
-function tierForTurn(turn){
-  return Math.floor((turn-1)/5)+1;
-}
 
 /* ============================================================
    Game State
@@ -192,21 +179,21 @@ function tierForTurn(turn){
 const state = {
   turn: 1,
   castleHP: CASTLE_MAX_HP,
-  players: [],       // { name, deck:[], discard:[], hand:[] }
+  players: [],
   curP: 0,
   actedThisTurn: false,
-  grid: [],          // occupancy id grid
-  units: {},         // id -> {id, side:'ally'|'enemy'|'wall'|'effect', kind, hp,max, dmg, range, speed, splash, x,y, ai:'ranged'|'melee', burnTurns:0}
-  burns: {},         // key "x,y" -> remaining turns of burn
-  targetAiming: null,// {cardIndex, weapon:'catapult'|'ballista'}
+  grid: [],
+  units: {},
+  targetAiming: null, // {cardIndex, weapon, level}
   dragging:false, dragStart:null, viewOffset:{x:0,y:0}, viewScale:1,
-  gameOver:false
+  gameOver:false,
+  highlights: [] // {x,y,ttl,type:'path'|'splash'}
 };
 
-// Firebase hooks (no-op for now). Plug your RTDB/Firestore here if desired.
+// Placeholder sync (no-op)
 const FirebaseSync = {
-  isMyTurn: ()=> true, // multi-device gate
-  onAdvance: ()=>{},   // broadcast state diff
+  isMyTurn: ()=> true,
+  onAdvance: ()=>{},  // broadcast state/highlights if you wire RTDB/Firestore
 };
 
 /* ============================================================
@@ -214,18 +201,14 @@ const FirebaseSync = {
    ============================================================ */
 function starterDeck(){
   const d = [];
-  // troops
   d.push(makeTroopCard("knight"));
   d.push(makeTroopCard("archer"));
   d.push(makeTroopCard("wizard"));
   d.push(makeTroopCard("knight"));
-  // siege
   d.push(makeSiegeCard("catapult"));
   d.push(makeSiegeCard("ballista"));
-  // upgrades
   d.push(makeUpgradeCard());
   d.push(makeUpgradeCard());
-  // duplicate to make a fuller deck
   d.push(makeTroopCard("archer"));
   d.push(makeSiegeCard("catapult"));
   return d;
@@ -234,7 +217,7 @@ function starterDeck(){
 function makeTroopCard(kind){ return {id:uid(), type:"troop", kind, level:1, name:cap(kind)+" (Lv1)", desc:`Summon ${cap(kind)}s near the wall. Count scales with level.`}; }
 function makeSiegeCard(kind){ 
   const nm = kind==="catapult"?"Catapult":"Ballista";
-  return {id:uid(), type:"siege", kind, level:1, name:`${nm} (Lv1)`, desc:(kind==="catapult"?"Splash at target.":"Pierces along path; extra dmg at impact.")};
+  return {id:uid(), type:"siege", kind, level:1, name:`${nm} (Lv1)`, desc:(kind==="catapult"?"Splash at clicked tile.":"Pierces to clicked tile; extra at impact.")};
 }
 function makeUpgradeCard(){ return {id:uid(), type:"upgrade", name:"Upgrade", desc:"Click this, then click a card in your hand to level it up."}; }
 
@@ -282,8 +265,6 @@ function levelUpCard(card){
 /* ============================================================
    Grid & Units
    ============================================================ */
-function keyXY(x,y){ return `${x},${y}`; }
-
 function clearGrid(){
   state.grid = [];
   for(let y=0;y<GRID_H;y++){
@@ -319,18 +300,21 @@ function makeWall(){
   }
 }
 
-function countFreeNearWall(){
-  let free=0;
-  for(let y=0;y<GRID_H;y++){
-    const x = WALL_X+1;
-    if(!state.grid[y][x]) free++;
+/* ------- Spawn helper: random Y, shift columns if full ------- */
+function findSpawnSpot(startCol){
+  const yOrder = shuffled([...Array(GRID_H).keys()]);
+  let x = startCol;
+  while(x < GRID_W){
+    for(const y of yOrder){
+      if(!state.grid[y][x]) return {x,y};
+    }
+    x++; // column full → move right
   }
-  return free;
+  return null;
 }
 
 /* ----- Allied Troops ----- */
 function troopStats(kind, level=1){
-  // level can modestly increase dmg/hp
   const base = {
     knight: {hp:4, dmg:2, range:1, speed:1, ai:'melee'},
     archer: {hp:3, dmg:2, range:4, speed:1, ai:'ranged'},
@@ -344,25 +328,27 @@ function summonTroops(kind, level){
   // Number spawned = ceil(level/2), min 1, max 4
   const count = Math.min(4, Math.max(1, Math.ceil(level/2)));
   let placed=0;
-  for(let y=0;y<GRID_H && placed<count;y++){
-    const x = WALL_X+1;
-    if(!state.grid[y][x]){
-      const st = troopStats(kind, level);
-      const u = {
-        id:uid(), side:'ally', kind, emoji:(kind==='knight'?EMOJI.knight:kind==='archer'?EMOJI.archer:EMOJI.wizard),
-        hp:st.hp, max:st.hp, dmg:st.dmg, range:st.range, speed:st.speed, splash:(kind==='wizard'?1:0),
-        x, y
-      };
-      placeUnit(u);
-      placed++;
-    }
+  const startCol = WALL_X+1;
+  for(let i=0;i<count;i++){
+    const spot = findSpawnSpot(startCol);
+    if(!spot){ log(`⚠️ No space to summon more ${cap(kind)}s (${placed}/${count}).`); break; }
+    const st = troopStats(kind, level);
+    const u = {
+      id:uid(), side:'ally', kind,
+      emoji:(kind==='knight'?EMOJI.knight:kind==='archer'?EMOJI.archer:EMOJI.wizard),
+      hp:st.hp, max:st.hp, dmg:st.dmg, range:st.range, speed:st.speed, splash:(kind==='wizard'?1:0),
+      x:spot.x, y:spot.y
+    };
+    placeUnit(u);
+    placed++;
   }
-  if(placed<count){ log(`⚠️ Not enough space near the wall. Spawned ${placed}/${count}.`); }
+  if(placed<count){ log(`⚠️ Spawned ${placed}/${count}.`); }
 }
 
 /* ----- Enemies & Waves ----- */
+function tierForTurn(turn){ return Math.floor((turn-1)/5)+1; }
+
 function enemyDef(kind, lvl){
-  // scale hp slowly with tier/level
   const scale = 1 + Math.floor((lvl-1)/5)*0.25 + (lvl*0.02);
   const table = {
     goblin: {hp:2, dmg:1, range:1, speed:2, ai:'melee'},
@@ -383,14 +369,12 @@ function enemyDef(kind, lvl){
 }
 function emojiForEnemy(kind){
   return {
-    goblin:EMOJI.goblin, orc:EMOJI.orc, troll:EMOJI.troll, gnoll:EMOJI.gnoll,
-    witch:EMOJI.witch, cyclops:EMOJI.cyclops, dragon:EMOJI.dragon
+    goblin:"👺", orc:"🧌", troll:"🗿", gnoll:"🐺", witch:"🧙‍♀️",
+    cyclops:"👁️", dragon:"🐉"
   }[kind];
 }
 function spawnWave(turn){
   const tier = tierForTurn(turn);
-  // choose a few spawns based on tier
-  // base count grows with tier
   const count = Math.min(6, 2 + Math.floor(tier/2));
   for(let i=0;i<count;i++){
     const pool = [];
@@ -400,15 +384,12 @@ function spawnWave(turn){
     if(tier>=4){ pool.push("gnoll","witch"); }
     if(tier>=5){ pool.push("cyclops"); }
     if(tier>=6){ pool.push("dragon"); }
-
     const kind = pool[(Math.random()*pool.length)|0];
-    const y = (Math.random()*GRID_H)|0;
+    const y = randRange(GRID_H);
     const def = enemyDef(kind, turn);
-    const u = {
-      id:uid(), side:'enemy', kind, emoji:emojiForEnemy(kind),
+    const u = {id:uid(), side:'enemy', kind, emoji:emojiForEnemy(kind),
       hp:def.hp, max:def.hp, dmg:def.dmg, range:def.range, speed:def.speed, ai:def.ai,
-      x:ENEMY_SPAWN_X, y
-    };
+      x:ENEMY_SPAWN_X, y};
     if(!state.grid[y][ENEMY_SPAWN_X]) placeUnit(u);
   }
   log(`👹 Enemy wave (T${tier}) arrived.`);
@@ -422,31 +403,17 @@ function curPlayer(){ return state.players[state.curP]; }
 function endTurn(){
   if(state.gameOver) return;
   if(!FirebaseSync.isMyTurn()) return;
-  if(!state.actedThisTurn){
-    // If player did nothing, still allowed to end turn
-  }
-  // Next player
   state.curP = (state.curP+1) % state.players.length;
   state.turn += 1;
   state.actedThisTurn = false;
 
-  // Start-of-turn resolution:
-  // 1) burns tick
-  tickBurns();
-  // 2) allies auto act (move or attack)
+  tickHighlights();
   alliesAct();
-  // 3) enemies resolve (enemy-by-enemy)
   enemiesAct();
-  // 4) apply castle damage from enemies adjacent to wall (or at wall)
   applyCastleDamage();
-
-  // Spawn new wave
   spawnWave(state.turn);
-
-  // Draw up to 3 for new current player
   drawUpTo(curPlayer());
 
-  // Lose check
   if(state.castleHP<=0){ gameOver(false); return; }
 
   renderAll();
@@ -455,7 +422,7 @@ function endTurn(){
 
 function startGame(players=1){
   state.turn=1; state.castleHP=CASTLE_MAX_HP; state.curP=0; state.actedThisTurn=false; state.gameOver=false;
-  state.burns = {};
+  state.highlights=[];
   clearGrid();
   state.units = {};
   initPlayers(players);
@@ -465,24 +432,8 @@ function startGame(players=1){
 }
 
 /* ============================================================
-   Auto Actions
+   Auto Actions (nearest enemy movement)
    ============================================================ */
-function enemiesAct(){
-  // resolve enemy by enemy in a fixed order (left-to-right, top-to-bottom)
-  const ids = Object.values(state.units).filter(u=>u.side==='enemy').sort((a,b)=> (a.x-b.x)|| (a.y-b.y)).map(u=>u.id);
-  for(const id of ids){
-    const u = state.units[id]; if(!u) continue;
-    doEnemyAction(u);
-  }
-}
-function alliesAct(){
-  const ids = Object.values(state.units).filter(u=>u.side==='ally').sort((a,b)=> (b.x-a.x)|| (a.y-b.y)).map(u=>u.id);
-  for(const id of ids){
-    const u = state.units[id]; if(!u) continue;
-    doAllyAction(u);
-  }
-}
-
 function nearestTarget(u, targets){
   let best=null, bestD=1e9;
   for(const t of targets){
@@ -491,119 +442,84 @@ function nearestTarget(u, targets){
   }
   return best;
 }
-
-function tilesInLine(a,b){
-  // simple Bresenham-ish for straight-ish lines (we mostly move on x with small y adjust)
-  const path=[];
-  let x=a.x, y=a.y;
-  while(x!==b.x || y!==b.y){
-    if(x<b.x) x++; else if(x>b.x) x--;
-    if(y<b.y) y++; else if(y>b.y) y--;
-    path.push({x,y});
-    if(path.length>GRID_W+GRID_H) break;
-  }
-  return path;
-}
-
 function canAttack(att, tgt){
   return (Math.abs(att.x-tgt.x)+Math.abs(att.y-tgt.y)) <= att.range;
 }
-
 function hitUnit(target, dmg){
-  if(target.side==='wall'){
-    // wall soaks, castle behind takes when enemies reach WALL_X
-    // do nothing to wall
-    return 0;
-  }
+  if(target.side==='wall') return 0;
   target.hp -= dmg;
-  if(target.hp<=0){
-    removeUnit(target);
-    return 1;
-  }
+  if(target.hp<=0){ removeUnit(target); return 1; }
   return 0;
 }
-
 function splashAt(x,y, radius, dmg, sideFilter=null){
-  const killed = [];
+  let killed=0;
   for(let iy=y-radius; iy<=y+radius; iy++){
     for(let ix=x-radius; ix<=x+radius; ix++){
       if(!inBounds(ix,iy)) continue;
+      if(Math.abs(ix-x)+Math.abs(iy-y) > radius) continue;
       const id = state.grid[iy][ix];
       if(!id) continue;
       const u = state.units[id];
       if(!u) continue;
-      if(sideFilter && u.side!==sideFilter) continue;
       if(u.side==='wall') continue;
-      if(Math.abs(ix-x)+Math.abs(iy-y) <= radius){
-        if(hitUnit(u,dmg)) killed.push(u);
-      }
+      if(sideFilter && u.side!==sideFilter) continue;
+      killed += hitUnit(u, dmg);
     }
   }
-  return killed.length;
+  return killed;
 }
-
 function stepToward(u, tx, ty, steps){
-  // attempt to move steps tiles toward target (avoid collisions)
   for(let s=0;s<steps;s++){
     const dx = Math.sign(tx - u.x);
     const dy = Math.sign(ty - u.y);
-    // prefer x movement
+    // try x first, then y
     if(dx && moveUnit(u, u.x+dx, u.y)) continue;
     if(dy && moveUnit(u, u.x, u.y+dy)) continue;
-    // try side-step
+    // try swapping priority
     if(dy && moveUnit(u, u.x, u.y+dy)) continue;
     // stuck
     break;
   }
 }
-
-function doEnemyAction(u){
-  if(!u) return;
-  // targets: nearest ally; if none, walk toward wall
-  const allies = Object.values(state.units).filter(v=>v.side==='ally');
-  if(allies.length){
-    const t = nearestTarget(u, allies);
-    if(canAttack(u,t)){
-      // attack (some variants)
-      if(u.ai==='melee'){ hitUnit(t, u.dmg); }
-      else if(u.ai==='meleeSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
-      else if(u.ai==='meleeKnock'){ // cyclops
-        hitUnit(t, u.dmg);
-        // knockback 1 tile away from enemy
-        const kx = t.x + Math.sign(t.x-u.x);
-        const ky = t.y + Math.sign(t.y-u.y);
-        if(inBounds(kx,ky) && !state.grid[ky][kx]) moveUnit(t,kx,ky);
+function enemiesAct(){
+  const ids = Object.values(state.units).filter(u=>u.side==='enemy').sort((a,b)=> (a.x-b.x)|| (a.y-b.y)).map(u=>u.id);
+  for(const id of ids){
+    const u = state.units[id]; if(!u) continue;
+    const allies = Object.values(state.units).filter(v=>v.side==='ally');
+    if(allies.length){
+      const t = nearestTarget(u, allies);
+      if(canAttack(u,t)){
+        if(u.ai==='melee'){ hitUnit(t, u.dmg); }
+        else if(u.ai==='meleeSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
+        else if(u.ai==='meleeKnock'){ hitUnit(t,u.dmg); const kx=t.x+Math.sign(t.x-u.x), ky=t.y+Math.sign(t.y-u.y); if(inBounds(kx,ky)&&!state.grid[ky][kx]) moveUnit(t,kx,ky); }
+        else if(u.ai==='ranged'){ hitUnit(t, u.dmg); }
+        else if(u.ai==='rangedSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
+        else if(u.ai==='rangedSplashWide'){ splashAt(t.x,t.y,2,u.dmg,'ally'); }
+      }else{
+        stepToward(u, t.x, t.y, u.speed);
       }
-      else if(u.ai==='ranged'){ hitUnit(t, u.dmg); }
-      else if(u.ai==='rangedSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
-      else if(u.ai==='rangedSplashWide'){ splashAt(t.x,t.y,2,u.dmg,'ally'); }
-      return;
     }else{
-      stepToward(u, t.x, t.y, u.speed);
-      return;
+      stepToward(u, WALL_X, u.y, u.speed);
     }
-  }else{
-    // march to wall
-    stepToward(u, WALL_X, u.y, u.speed);
   }
 }
-
-function doAllyAction(u){
-  // allies prefer closest enemy; if in range, attack else advance toward right
-  const enemies = Object.values(state.units).filter(v=>v.side==='enemy');
-  if(!enemies.length) return;
-  const t = nearestTarget(u, enemies);
-  if(canAttack(u,t)){
-    if(u.splash){ splashAt(t.x,t.y,u.splash,u.dmg,'enemy'); }
-    else hitUnit(t, u.dmg);
-  }else{
-    // push forward (to the right) up to speed
-    stepToward(u, u.x+10, u.y, u.speed);
+function alliesAct(){
+  const ids = Object.values(state.units).filter(u=>u.side==='ally').sort((a,b)=> (b.x-a.x)|| (a.y-b.y)).map(u=>u.id);
+  for(const id of ids){
+    const u = state.units[id]; if(!u) continue;
+    const enemies = Object.values(state.units).filter(v=>v.side==='enemy');
+    if(!enemies.length) continue;
+    const t = nearestTarget(u, enemies);
+    if(canAttack(u,t)){
+      if(u.splash){ splashAt(t.x,t.y,u.splash,u.dmg,'enemy'); }
+      else hitUnit(t, u.dmg);
+    }else{
+      // move TOWARD nearest enemy (requested change)
+      stepToward(u, t.x, t.y, u.speed);
+    }
   }
 }
-
 function applyCastleDamage(){
-  // any enemy that reaches x<=WALL_X damages castle (1 each) and stays put
   let hits=0;
   for(const u of Object.values(state.units)){
     if(u.side==='enemy' && u.x<=WALL_X){
@@ -617,32 +533,22 @@ function applyCastleDamage(){
 }
 
 /* ============================================================
-   Burns (catapult Lv10)
+   Highlights (shared-visible)
    ============================================================ */
-function tickBurns(){
-  const keys = Object.keys(state.burns);
-  for(const k of keys){
-    state.burns[k] -= 1;
-    if(state.burns[k] <= 0) delete state.burns[k];
+function addHighlight(tiles, type='path', ttl=3){
+  for(const t of tiles){
+    state.highlights.push({x:t.x, y:t.y, ttl, type});
   }
-  // apply damage to enemies standing on burning tiles
-  let burned=0;
-  for(const k of Object.keys(state.burns)){
-    const [xS,yS]=k.split(','); const x=+xS, y=+yS;
-    const id = state.grid[y]?.[x];
-    if(!id) continue;
-    const u = state.units[id];
-    if(u && u.side==='enemy'){
-      if(hitUnit(u, 1)) burned++;
-    }
-  }
-  if(burned>0) log(`🔥 Burned ${burned} enemy.`);
+}
+function tickHighlights(){
+  state.highlights.forEach(h=>h.ttl--);
+  state.highlights = state.highlights.filter(h=>h.ttl>0);
 }
 
 /* ============================================================
    Cards — Interactions
    ============================================================ */
-let upgradeWaiting = null; // if player clicked Upgrade, then must click a card
+let upgradeWaiting = null; // after clicking Upgrade
 
 function playCard(idx){
   if(state.gameOver) return;
@@ -655,25 +561,22 @@ function playCard(idx){
 
   if(c.type==="upgrade"){
     upgradeWaiting = {fromIndex: idx};
-    renderHand(); // visually mark
-    log("⬆️ Select a card in your hand to upgrade.");
+    renderHand();
+    log("⬆️ Select a different card in your hand to upgrade.");
     return;
   }
 
   if(upgradeWaiting){
-    // Expect user to click a card to upgrade
     if(idx === upgradeWaiting.fromIndex){
       log("❌ Choose a different card to upgrade.");
       return;
     }
     levelUpCard(p.hand[idx]);
     log(`🔧 Upgraded "${p.hand[idx].name}".`);
-    // discard the upgrade card
     discardCard(p, upgradeWaiting.fromIndex);
     upgradeWaiting = null;
     state.actedThisTurn = true;
     renderAll();
-    // Auto end turn after a short beat
     setTimeout(endTurn, 350);
     return;
   }
@@ -689,38 +592,27 @@ function playCard(idx){
   }
 
   if(c.type==="siege"){
-    // enter aiming mode
     state.targetAiming = {cardIndex: idx, weapon:c.kind, level:c.level||1};
-    showAimDot(true);
     renderHand();
-    log(`🎯 Aim the ${c.kind==='catapult'?'Catapult':'Ballista'} — drag from the dot and release.`);
+    log(`🎯 Click a tile to fire the ${c.kind==='catapult'?'Catapult':'Ballista'}.`);
     return;
   }
 }
 
 function onHandClick(idx){
-  // route clicks depending on upgrade mode
   if(upgradeWaiting && state.players[state.curP].hand[idx]?.type!=="upgrade"){
-    playCard(idx); // upgrade path handled inside
+    playCard(idx);
     return;
   }
   playCard(idx);
 }
 
 /* ============================================================
-   Siege aiming + resolution
+   Siege (CLICK targeting)
    ============================================================ */
 const viewEl = document.getElementById('view');
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
-const aimDot = document.getElementById('aimDot');
-
-let aimDrag = null; // {start:{x,y}, cur:{x,y}}
-
-function showAimDot(show){
-  aimDot.style.display = show ? 'block' : 'none';
-}
-function screenCenter(){ const r=viewEl.getBoundingClientRect(); return {x:r.width/2, y:r.height/2}; }
 
 function toWorld(px,py){
   const r = viewEl.getBoundingClientRect();
@@ -736,15 +628,17 @@ function tileCenter(tx,ty){
 }
 
 function onPointerDown(e){
-  const isAim = !!state.targetAiming;
-  if(isAim){
-    const c = screenCenter();
-    aimDrag = { start:{x:c.x,y:c.y}, cur:{x:c.x,y:c.y} };
-  }else{
-    // start panning
-    state.dragging = true;
-    state.dragStart = {mx:e.clientX, my:e.clientY, ox:state.viewOffset.x, oy:state.viewOffset.y};
+  // Aiming mode → resolve shot at clicked tile
+  if(state.targetAiming){
+    const w = toWorld(e.clientX, e.clientY);
+    const {tx,ty} = worldToTile(w.x,w.y);
+    if(!inBounds(tx,ty)){ log("❌ Click inside the battlefield."); return; }
+    resolveSiegeClick(tx,ty);
+    return;
   }
+  // otherwise start panning
+  state.dragging = true;
+  state.dragStart = {mx:e.clientX, my:e.clientY, ox:state.viewOffset.x, oy:state.viewOffset.y};
 }
 function onPointerMove(e){
   if(state.dragging && state.dragStart){
@@ -754,150 +648,102 @@ function onPointerMove(e){
     state.viewOffset.y = clamp(state.dragStart.oy + dy, 0, GRID_H*TILE - 50);
     renderCanvas();
   }
-  if(aimDrag){
-    aimDrag.cur = {x:e.clientX - viewEl.getBoundingClientRect().left, y:e.clientY - viewEl.getBoundingClientRect().top};
-    renderCanvas(); // show line
-  }
 }
-function onPointerUp(e){
-  if(aimDrag && state.targetAiming){
-    // compute vector from center to current -> aim direction and power
-    const c = screenCenter();
-    const vx = (aimDrag.start.x - aimDrag.cur.x);
-    const vy = (aimDrag.start.y - aimDrag.cur.y);
-    resolveSiegeShot(vx, vy);
-    aimDrag = null;
-    state.targetAiming = null;
-    showAimDot(false);
-  }
-  state.dragging=false; state.dragStart=null;
-}
+function onPointerUp(){ state.dragging=false; state.dragStart=null; }
 
 viewEl.addEventListener('pointerdown', onPointerDown);
 viewEl.addEventListener('pointermove', onPointerMove);
 viewEl.addEventListener('pointerup', onPointerUp);
 viewEl.addEventListener('pointerleave', onPointerUp);
-viewEl.addEventListener('wheel', (e)=>{ // zoom (optional)
+viewEl.addEventListener('wheel', (e)=>{
   e.preventDefault();
-  const s = clamp(state.viewScale - Math.sign(e.deltaY)*0.05, 0.6, 1.5);
-  state.viewScale = s; renderCanvas();
+  state.viewScale = clamp(state.viewScale - Math.sign(e.deltaY)*0.05, 0.6, 1.5);
+  renderCanvas();
 },{passive:false});
 
-function resolveSiegeShot(vx,vy){
+function resolveSiegeClick(tx,ty){
   const p = curPlayer();
   const a = state.targetAiming;
   const card = p.hand[a.cardIndex];
   if(!card) return;
-  const len = Math.hypot(vx,vy);
-  if(len<10){ log("❌ Too soft. Try pulling further."); return; }
-  const powerTiles = Math.min(16, Math.max(3, Math.floor(len/40) )); // distance in tiles
-  const dirx = vx/len, diry = vy/len; // direction from center outward
-  // convert center to world tile as origin: center is the wall area-ish. We'll cast a ray from WALL_X+2 mid row.
-  // But better: ray from the center of the visible screen in world coords.
-  const r = viewEl.getBoundingClientRect();
-  const wx = state.viewOffset.x + r.width/state.viewScale/2;
-  const wy = state.viewOffset.y + r.height/state.viewScale/2;
-  let {tx,ty} = worldToTile(wx,wy);
-
-  // clamp start
-  tx = clamp(tx, 0, GRID_W-1);
-  ty = clamp(ty, 0, GRID_H-1);
 
   if(card.kind === 'catapult'){
-    // fly to target tile; no path damage; splash at end
-    let cx=tx, cy=ty;
-    for(let i=0;i<powerTiles;i++){
-      cx = clamp(Math.round(tx + dirx*i), 0, GRID_W-1);
-      cy = clamp(Math.round(ty + diry*i), 0, GRID_H-1);
-    }
+    // Splash only at the clicked tile (no path hits)
     const splashR = (card.level>=10)?2 : (card.level>=5?2:1);
     const dmg = 1 + Math.floor((card.level-1)/2);
-    const killed = splashAt(cx,cy,splashR,dmg,'enemy');
-    if(card.level>=5){
-      // debris spray: random tiles in wide area
-      let extraHits=0;
-      for(let i=0;i<5;i++){
-        const rx = clamp(cx + ((Math.random()*5)|0)-2, 0, GRID_W-1);
-        const ry = clamp(cy + ((Math.random()*5)|0)-2, 0, GRID_H-1);
-        extraHits += splashAt(rx,ry,0,1,'enemy');
-      }
-      if(extraHits) log(`💥 Debris hit ${extraHits}.`);
-    }
-    if(card.level>=10){
-      // set burn for next turn (1 extra tick of damage)
-      for(let yy=cy-1; yy<=cy+1; yy++){
-        for(let xx=cx-1; xx<=cx+1; xx++){
-          if(!inBounds(xx,yy)) continue;
-          state.burns[keyXY(xx,yy)] = 2; // lasts through the next turn's tick
-        }
+    const affected = [];
+    for(let y=ty-splashR; y<=ty+splashR; y++){
+      for(let x=tx-splashR; x<=tx+splashR; x++){
+        if(!inBounds(x,y)) continue;
+        if(Math.abs(x-tx)+Math.abs(y-ty) <= splashR) affected.push({x,y});
       }
     }
-    log(`🪨 Catapult impact at ${cx},${cy}. ${killed} down.`);
+    addHighlight(affected,'splash',3);
+    const killed = splashAt(tx,ty,splashR,dmg,'enemy');
+    log(`🪨 Catapult impact at ${tx},${ty}. ${killed} down.`);
   }else{
-    // ballista: pierce along path, extra damage at final tile
-    let cx=tx, cy=ty; let last={x:cx,y:cy};
-    const lineHits = [];
-    for(let i=1;i<=powerTiles;i++){
-      cx = clamp(Math.round(tx + dirx*i), 0, GRID_W-1);
-      cy = clamp(Math.round(ty + diry*i), 0, GRID_H-1);
-      last={x:cx,y:cy};
-      const id = state.grid[cy][cx];
+    // Ballista: pierce in a straight row from the wall lane to the clicked tile y
+    const y = ty;
+    const startX = WALL_X+1;
+    const dir = tx >= startX ? 1 : -1;
+    const path = [];
+    let killed=0;
+    const base = 1 + Math.floor((card.level-1)/3);
+
+    for(let x=startX; dir>0 ? x<=tx : x>=tx; x+=dir){
+      path.push({x, y});
+      const id = state.grid[y][x];
       if(id){
         const u = state.units[id];
         if(u && u.side==='enemy'){
-          lineHits.push(u);
+          killed += hitUnit(u, base);
         }
       }
     }
-    // apply line damage
-    let killed=0;
-    const base = 1 + Math.floor((card.level-1)/3);
-    for(const u of lineHits){ if(hitUnit(u, base)) killed++; }
-    // extra impact damage at last tile
-    const id2 = state.grid[last.y][last.x];
+    // extra impact on final tile if enemy there
+    const id2 = state.grid[y][tx];
     if(id2){
       const u2 = state.units[id2];
       if(u2 && u2.side==='enemy'){
-        if(hitUnit(u2, base+1)) killed++;
-        // knockback at Lv10
-        if(card.level>=10){
-          const kx = u2.x + Math.sign(u2.x - tx);
-          if(inBounds(kx,u2.y) && !state.grid[u2.y][kx]) moveUnit(u2,kx,u2.y);
-        }
+        killed += hitUnit(u2, base+1);
       }
     }
-    // Tri-shot at L5
+    // L5: two side mini-lines (slight vertical offsets)
     if(card.level>=5){
-      const offsets=[[0,0],[ -diry*0.6, dirx*0.6 ], [ diry*0.6, -dirx*0.6 ]];
-      for(let b=1;b<offsets.length;b++){
-        let lx=tx, ly=ty;
-        for(let i=1;i<=powerTiles;i++){
-          const ax = clamp(Math.round(tx + (dirx+offsets[b][0]) * i), 0, GRID_W-1);
-          const ay = clamp(Math.round(ty + (diry+offsets[b][1]) * i), 0, GRID_H-1);
-          const id = state.grid[ay][ax];
+      for(const oy of [-1,1]){
+        const yy = clamp(y+oy,0,GRID_H-1);
+        for(let x=startX; dir>0 ? x<=tx : x>=tx; x+=dir){
+          if(!inBounds(x,yy)) continue;
+          const id = state.grid[yy][x];
           if(id){
             const u = state.units[id];
             if(u && u.side==='enemy'){
-              if(hitUnit(u, base)) killed++;
+              killed += hitUnit(u, base);
             }
           }
-          lx=ax; ly=ay;
-        }
-        // extra at end tip (less)
-        const id3 = state.grid[ly][lx];
-        if(id3){
-          const u3 = state.units[id3];
-          if(u3 && u3.side==='enemy'){ if(hitUnit(u3, base)) killed++; }
         }
       }
     }
-    log(`🏹 Ballista fired. ${killed} down.`);
+    // L10: tiny knockback on impact tile, if space
+    if(card.level>=10){
+      const idK = state.grid[y][tx];
+      if(idK){
+        const uK = state.units[idK];
+        if(uK && uK.side==='enemy'){
+          const kx = clamp(uK.x + 1, 0, GRID_W-1);
+          if(inBounds(kx,uK.y) && !state.grid[uK.y][kx]) moveUnit(uK,kx,uK.y);
+        }
+      }
+    }
+
+    addHighlight(path,'path',3);
+    log(`🏹 Ballista fired to ${tx},${ty}. ${killed} down.`);
   }
 
   // discard card & end turn
-  const idx = a.cardIndex;
-  discardCard(p, idx);
+  discardCard(p, a.cardIndex);
   state.actedThisTurn = true;
+  state.targetAiming = null;
   renderAll();
   setTimeout(endTurn, 350);
 }
@@ -914,14 +760,12 @@ function log(msg){
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
 }
-
 function renderAll(){
   renderStatus();
   renderPlayers();
   renderHand();
   renderCanvas();
 }
-
 function renderStatus(){
   qs('#turnNum').textContent = state.turn;
   qs('#turnLabel').textContent = curPlayer().name;
@@ -933,7 +777,6 @@ function renderStatus(){
   qs('#handCount').textContent = curPlayer().hand.length;
   qs('#endBtn').disabled = state.gameOver || !FirebaseSync.isMyTurn();
 }
-
 function renderPlayers(){
   const bar = qs('#playersBar'); bar.innerHTML="";
   state.players.forEach((p,i)=>{
@@ -944,7 +787,6 @@ function renderPlayers(){
     bar.appendChild(chip);
   });
 }
-
 function renderHand(){
   const h = qs('#hand'); h.innerHTML="";
   const p = curPlayer();
@@ -973,8 +815,11 @@ function resizeCanvas(){
 }
 window.addEventListener('resize', ()=>{ resizeCanvas(); renderCanvas(); });
 
-function drawGrid(){
+function renderCanvas(){
+  resizeCanvas();
   const w = cv.width/devicePixelRatio, h = cv.height/devicePixelRatio;
+  ctx.clearRect(0,0,w,h);
+
   ctx.save();
   ctx.translate(-state.viewOffset.x*state.viewScale, -state.viewOffset.y*state.viewScale);
   ctx.scale(state.viewScale, state.viewScale);
@@ -983,7 +828,7 @@ function drawGrid(){
   ctx.fillStyle = '#0b1422';
   ctx.fillRect(state.viewOffset.x, state.viewOffset.y, w/state.viewScale, h/state.viewScale);
 
-  // tiles
+  // grid
   ctx.strokeStyle = '#1a2742';
   ctx.lineWidth = 1;
   for(let y=0;y<GRID_H;y++){
@@ -992,35 +837,16 @@ function drawGrid(){
     }
   }
 
-  // burning tiles highlight
-  for(const k of Object.keys(state.burns)){
-    const [xS,yS]=k.split(','); const x=+xS, y=+yS;
-    ctx.fillStyle = 'rgba(255,80,60,0.15)';
-    ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
-  }
-
   // wall band
   ctx.fillStyle = 'rgba(120,160,255,0.08)';
   ctx.fillRect(WALL_X*TILE, 0, TILE, GRID_H*TILE);
 
-  // aim line
-  if(aimDrag && state.targetAiming){
-    const c = screenCenter();
-    const sx = state.viewOffset.x + (c.x/state.viewScale);
-    const sy = state.viewOffset.y + (c.y/state.viewScale);
-    const ex = state.viewOffset.x + (aimDrag.cur.x/state.viewScale);
-    const ey = state.viewOffset.y + (aimDrag.cur.y/state.viewScale);
-    ctx.strokeStyle = '#9cc8ff';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(ex,ey); ctx.stroke();
-
-    // arrow head
-    const ang = Math.atan2(ey-sy, ex-sx);
-    ctx.beginPath();
-    ctx.moveTo(ex,ey);
-    ctx.lineTo(ex - 12*Math.cos(ang-0.4), ey - 12*Math.sin(ang-0.4));
-    ctx.lineTo(ex - 12*Math.cos(ang+0.4), ey - 12*Math.sin(ang+0.4));
-    ctx.closePath(); ctx.fillStyle='#9cc8ff'; ctx.fill();
+  // highlights
+  for(const hlt of state.highlights){
+    ctx.fillStyle = hlt.type==='splash' ? 'rgba(255,120,80,0.22)' : 'rgba(120,200,255,0.22)';
+    ctx.fillRect(hlt.x*TILE, hlt.y*TILE, TILE, TILE);
+    ctx.strokeStyle = hlt.type==='splash' ? 'rgba(255,140,110,0.6)' : 'rgba(130,210,255,0.6)';
+    ctx.strokeRect(hlt.x*TILE+1, hlt.y*TILE+1, TILE-2, TILE-2);
   }
 
   // units
@@ -1028,10 +854,8 @@ function drawGrid(){
   for(const u of Object.values(state.units)){
     const px = u.x*TILE + TILE/2;
     const py = u.y*TILE + TILE/2;
-    // token
     ctx.font = '22px system-ui,Segoe UI,Apple Color Emoji,Segoe UI Emoji';
     ctx.fillText(u.emoji, px, py);
-    // hp
     if(u.side!=='wall'){
       ctx.fillStyle = '#99c3ff';
       ctx.font = '11px system-ui';
@@ -1041,18 +865,6 @@ function drawGrid(){
   }
 
   ctx.restore();
-}
-
-function renderCanvas(){
-  resizeCanvas();
-  const w = cv.width/devicePixelRatio, h = cv.height/devicePixelRatio;
-  ctx.clearRect(0,0,w,h);
-  drawGrid();
-
-  // center the aim dot
-  const c = screenCenter();
-  aimDot.style.left = c.x+'px';
-  aimDot.style.top  = c.y+'px';
 }
 
 /* ============================================================
@@ -1076,14 +888,16 @@ function gameOver(win){
 /* ============================================================
    Boot
    ============================================================ */
-// read ?players=N (fallback 2), clamp 1–4
+// read ?players=N (fallback 1), clamp 1–4
 const pParam = parseInt(getParam('players') || '', 10);
-const PLAYER_COUNT = clamp(isNaN(pParam) ? 2 : pParam, 1, 4);
+const PLAYER_COUNT = clamp(isNaN(pParam) ? 1 : pParam, 1, 4);
 
 startGame(PLAYER_COUNT);
+renderAll();
 </script>
 </body>
 </html>
+
 
 
 
