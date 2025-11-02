@@ -2,98 +2,100 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>⚔️ Draft Brawl — 2P</title>
+<title>⚔️ Draft Brawl (2P) — Crown & Council</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
-    --bg:#0b1014; --panel:#0f1720; --ink:#e9f0ff; --muted:#99a9bd; --line:#1b2a3c;
-    --accent:#ef4444; --accent2:#dc2626; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-    --card:#0d1420; --shadow:0 12px 30px rgba(0,0,0,.35); --rad:16px; --sm:12px;
-    --l1:#10b98120; --l2:#3b82f620; --l3:#ef444420;
-    --gsize:42px; --gap:4px;
+    --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
+    --panel:#ffffff; --shadow:0 10px 30px rgba(2,6,23,.08);
+    --rad:16px; --rad-sm:12px;
+    --cell:38px; --gap:4px;
+    --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
+    --p0:#ef4444; --p1:#3b82f6;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:radial-gradient(1200px 700px at -200px -120px,#0e1a2a,#0b1014);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
-  .shell{max-width:1100px;margin:0 auto;padding:10px 12px 26px}
-  .topbar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:8px 0 12px}
-  .badge{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#0e1624;box-shadow:var(--shadow);font-weight:800}
-  .btn{appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;background:var(--accent);color:#fff}
-  .btn.ghost{background:#0e1624;color:var(--ink)}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+
+  .shell{max-width:1100px;margin:0 auto;padding:12px 14px 28px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+  .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .badge{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:var(--shadow);font-weight:800}
+  .btn{appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;background:#111827;color:#fff}
+  .btn.ghost{background:#fff;color:var(--ink)}
   .btn:hover{filter:brightness(1.05)}
-  .gridWrap{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,#0e1726,#0c1422);box-shadow:var(--shadow);padding:10px}
-  .board{position:relative;width:100%;height:min(78vh,760px);display:grid;justify-content:center;align-content:center}
-  /* Vertical rectangle board */
+
+  .boardWrap{border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--shadow);padding:10px}
+  .board{position:relative;width:100%;height:min(80vh,880px);display:grid;justify-content:center;align-content:center}
   .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap);margin:0 auto}
-  .cell{width:var(--cell);height:var(--cell);border:1px solid #16304a;border-radius:10px;background:#0a1220;display:grid;place-items:center;position:relative;overflow:hidden}
-  .cell .lvl{position:absolute;inset:0;border-radius:8px;opacity:.55}
+  .cell{width:var(--cell);height:var(--cell);border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;display:grid;place-items:center;position:relative;overflow:hidden}
+  .lvl{position:absolute;inset:0;border-radius:8px;opacity:.9}
   .cell.l1 .lvl{background:var(--l1)}
   .cell.l2 .lvl{background:var(--l2)}
   .cell.l3 .lvl{background:var(--l3)}
-  .unit{font-size:20px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
-  .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#152435;overflow:hidden}
-  .hp>i{display:block;height:100%;background:linear-gradient(90deg,#16a34a,#22c55e)}
-  .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#091423;border:1px solid #17324d;font-size:10px;letter-spacing:.2px}
-  .p0 .tag{color:#fb7185;border-color:#7f1d1d}
-  .p1 .tag{color:#60a5fa;border-color:#1e3a8a}
-  .divider{position:absolute;left:0;right:0;top:50%;height:2px;background:linear-gradient(90deg,transparent,#1e293b,transparent);opacity:.7}
+  .unit{font-size:18px;text-shadow:0 1px 0 rgba(0,0,0,.08)}
+  .tag{position:absolute;top:3px;left:4px;padding:1px 6px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:10px;font-weight:900;color:#475569}
+  .hp{position:absolute;left:4px;right:4px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden}
+  .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
+  .p0 .tag{color:#991b1b;border-color:#fecaca}
+  .p1 .tag{color:#1e3a8a;border-color:#bfdbfe}
+
   .centerCards{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50}
-  .card{width:min(180px,28vw);background:#0e1624;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
-  .card:hover{background:#122034}
-  .card .title{font-weight:900}
-  .card .desc{color:var(--muted);font-size:.92rem}
-  .overlay{position:absolute;inset:0;display:none;background:rgba(0,0,0,.45);z-index:40}
-  .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e1624;font-weight:800}
-  .side{display:flex;gap:8px;align-items:center}
-  .legend{display:flex;gap:6px;flex-wrap:wrap}
-  .note{color:var(--muted);font-size:.9rem}
-  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#0e1624;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);font-weight:800;z-index:200;display:none}
+  .overlay{position:absolute;inset:0;background:rgba(255,255,255,.6);display:none;z-index:40}
+  .card{width:min(200px,30vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
+  .card:hover{background:#f8fafc}
+  .title{font-weight:900}
+  .desc{color:var(--muted);font-size:.92rem}
+
+  .hud{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:800}
+  .legend{display:flex;flex-wrap:wrap;gap:6px}
+
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);font-weight:800;z-index:200;display:none}
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="topbar">
-    <div class="side">
+    <div class="left">
       <span class="badge">⚔️ Draft Brawl</span>
       <span id="phaseBadge" class="badge">—</span>
       <span id="timerBadge" class="badge">⏳ —</span>
-      <span id="lives0" class="badge">👤 —</span>
-      <span id="lives1" class="badge">👤 —</span>
     </div>
-    <div class="side">
-      <span class="pill">L1 <span style="width:10px;height:10px;border-radius:50%;background:var(--l1);display:inline-block;border:1px solid #1e293b"></span></span>
-      <span class="pill">L2 <span style="width:10px;height:10px;border-radius:50%;background:var(--l2);display:inline-block;border:1px solid #1e293b"></span></span>
-      <span class="pill">L3 <span style="width:10px;height:10px;border-radius:50%;background:var(--l3);display:inline-block;border:1px solid #1e293b"></span></span>
+    <div class="left">
+      <span id="p0Badge" class="badge">P0 — ❤❤❤❤</span>
+      <span id="p1Badge" class="badge">P1 — ❤❤❤❤</span>
       <button id="fsBtn" class="btn ghost">⛶ Fullscreen</button>
     </div>
   </div>
 
-  <div class="gridWrap">
+  <div class="boardWrap">
     <div class="board">
-      <div class="cells" id="cells"></div>
-      <div class="divider"></div>
-      <div class="overlay" id="overlay"></div>
-      <div class="centerCards" id="centerCards" style="display:none"></div>
+      <div id="cells" class="cells" style="--w:8; --cell:38px; --gap:4px"></div>
+      <div id="overlay" class="overlay"></div>
+      <div id="centerCards" class="centerCards" style="display:none"></div>
     </div>
-    <div class="legend" style="margin-top:10px">
-      <span class="pill">🗡️ Knight</span>
-      <span class="pill">🏹 Archer</span>
-      <span class="pill">💣 Bomber</span>
-      <span class="pill">🗡️🕳️ Assassin</span>
-      <span class="pill">🧌 Giant</span>
-      <span class="pill">🚀 Rocket</span>
-      <span class="pill">🃏 Double Type</span>
-      <span class="pill">⬆️ Upgrade Type</span>
-      <span class="note">Drafts are 10s; after 3 picks: battle. Loser gets 1 extra pick, then both pick 3 again.</span>
+    <div class="hud">
+      <div class="legend">
+        <span class="pill">🗡️ Knight</span>
+        <span class="pill">🏹 Archer</span>
+        <span class="pill">💣 Bomber</span>
+        <span class="pill">🗡️🕳️ Assassin</span>
+        <span class="pill">🧌 Giant</span>
+        <span class="pill">🚀 Rocket</span>
+        <span class="pill">🃏 Double Type</span>
+        <span class="pill">⬆️ Upgrade Type</span>
+      </div>
+      <span class="pill" style="margin-left:auto;color:#334155">Draft 3×10s → Battle. Loser gets +1 pick, then both draft 3×10s again.</span>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div id="toast" class="toast"></div>
 
-<!-- Firebase (v10 modular) -->
+<!-- Firebase game logic -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ---------- Firebase config (yours) ---------- */
 const firebaseConfig = {
@@ -107,227 +109,216 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* ---------- Params ---------- */
+/* ---------- URL params ---------- */
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
-if (!gameId || !username){ alert("Missing gameId or username in URL."); }
+if (!gameId || !username){ alert("Missing gameId or username."); }
 
-/* ---------- Refs ---------- */
-const stateRef = doc(db,"lobbies",gameId,"draftbrawl","state");
+/* ---------- Firestore refs ---------- */
+const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "state");
 
 /* ---------- DOM helpers ---------- */
 const $ = (id)=>document.getElementById(id);
 const toast = (t)=>{ const x=$("toast"); x.textContent=t; x.style.display="block"; clearTimeout(window.__t); window.__t=setTimeout(()=>x.style.display="none",1500); };
 
-/* ---------- Board config ---------- */
-const W=9, H=16;               // tall, vertical rectangle
-const CELL=42, GAP=4;          // CSS variables set at runtime
-document.documentElement.style.setProperty('--w', W);
-document.documentElement.style.setProperty('--cell', CELL+'px');
-document.documentElement.style.setProperty('--gap', GAP+'px');
-
-/* Layers */
+/* ---------- Board geometry ---------- */
+const W=8, H=32;  // 8 x 32 grid
 const cellsEl = $("cells");
-const centerCards = $("centerCards");
-const overlay = $("overlay");
-
-/* ---------- Player slot color tags ---------- */
-const PCLR = ["p0","p1"]; // 2 players only
-
-/* ---------- Cards (draft pool) ---------- */
-const TROOPS = [
-  { key:"knight",   name:"Knight",   emoji:"🗡️", role:"front",  base:{hp:10,dmg:3,spd:1,range:1,cd:600} },
-  { key:"archer",   name:"Archer",   emoji:"🏹", role:"back",   base:{hp:5, dmg:2,spd:1,range:3,cd:800} },
-  { key:"bomber",   name:"Bomber",   emoji:"💣", role:"front",  base:{hp:3, dmg:4,spd:1,range:1,cd:0, bomber:true} },
-  { key:"assassin", name:"Assassin", emoji:"🗡️", role:"front",  base:{hp:4, dmg:3,spd:2,range:1,cd:0, assassin:true} },
-  { key:"giant",    name:"Giant",    emoji:"🧌", role:"front",  base:{hp:20,dmg:4,spd:1,range:1,cd:1000, splash1:true} },
-  { key:"rocket",   name:"Rocket",   emoji:"🚀", role:"back",   base:{hp:6, dmg:3,spd:0,range:6,cd:1800, splash1:true, knock:true} },
-];
-const SPECIAL = [
-  { key:"double", name:"Double Type", emoji:"🃏", special:"double", desc:"Double one of your existing troop types" },
-  { key:"upgrade", name:"Upgrade Type", emoji:"⬆️", special:"upgrade", desc:"Upgrade one existing troop type (+1 level)" }
-];
-
-const ALL_CARDS = [...TROOPS.map(t=>({type:"troop", ...t})), ...SPECIAL.map(s=>({type:"special", ...s}))];
-
-function randCards(n=3){
-  const pool = [...ALL_CARDS];
-  // Avoid duplicates with different roles? It’s fine; random.
-  return Array.from({length:n},()=> pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
-}
-
-/* ---------- State in-memory ---------- */
-let S=null;              // Firestore state
-let meIndex=0;           // 0 or 1
-let battleTimer=null;    // host battle loop
-let uiBuilt=false;
-let hostGuard=null;
-
-/* ---------- Build board DOM ---------- */
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.innerHTML="";
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
-      const i = y*W+x;
-      const d = document.createElement("div");
+      const i=y*W+x;
+      const d=document.createElement("div");
       d.className="cell";
       d.dataset.i=i;
-      d.innerHTML = `<div class="lvl"></div><div class="unit"></div><div class="tag"></div><div class="hp"><i style="width:100%"></i></div>`;
+      d.innerHTML=`<div class="lvl"></div><div class="unit"></div><div class="tag"></div><div class="hp"><i style="width:0%"></i></div>`;
       cellsEl.appendChild(d);
     }
   }
-  uiBuilt=true;
 }
-
-/* ---------- Helpers ---------- */
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+buildBoard();
+const idx=(x,y)=> y*W+x;
+const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
-const idx  =(x,y)=> y*W+x;
-const xy   =(i)=>({x:i%W,y:Math.floor(i/W)});
-const now = ()=> Date.now();
 
-/* Side geometry: player 0 starts bottom half moving up; player 1 starts top half moving down */
-const centerRow = Math.floor(H/2);       // Row dividing halves
+/* ---------- Game content ---------- */
+const TROOPS = [
+  { key:"knight",   name:"Knight",   emoji:"🗡️", role:"front", base:{hp:10,dmg:3,spd:1,range:1,cd:600} },
+  { key:"archer",   name:"Archer",   emoji:"🏹", role:"back",  base:{hp:5, dmg:2,spd:1,range:3,cd:800} },
+  { key:"bomber",   name:"Bomber",   emoji:"💣", role:"front", base:{hp:3, dmg:4,spd:1,range:1,cd:0, bomber:true} },
+  { key:"assassin", name:"Assassin", emoji:"🗡️", role:"front", base:{hp:4, dmg:3,spd:2,range:1,cd:0, assassin:true} },
+  { key:"giant",    name:"Giant",    emoji:"🧌", role:"front", base:{hp:20,dmg:4,spd:1,range:1,cd:1000, splash1:true} },
+  { key:"rocket",   name:"Rocket",   emoji:"🚀", role:"back",  base:{hp:6, dmg:3,spd:0,range:6,cd:1800, splash1:true, knock:true} },
+];
+const SPECIAL = [
+  { key:"double",  name:"Double Type",  emoji:"🃏", special:"double",  desc:"Double one of your existing troop types" },
+  { key:"upgrade", name:"Upgrade Type", emoji:"⬆️", special:"upgrade", desc:"Upgrade one existing troop type (+1 level)" }
+];
+const ALL_CARDS=[...TROOPS.map(t=>({type:"troop",...t})), ...SPECIAL.map(s=>({type:"special",...s}))];
+const randCards=(n=3)=> Array.from({length:n},()=> ALL_CARDS[Math.floor(Math.random()*ALL_CARDS.length)]);
 
-function sideOf(y){
-  if (y>=centerRow) return 0;      // bottom side
-  return 1;                        // top side
+/* ---------- Local working copy ---------- */
+let S=null;
+let meIndex=0;
+let host=false;
+
+/* ---------- Phases ----------
+draft (3 picks) → battle → loser-bonus (1 pick: both see, loser matters) → draft-after (3 picks) → battle → ...
+Lives: [4,4]. Game ends when any hits 0.
+We maintain:
+- roster[0], roster[1]: [{type,lvl,count}] (persistent army between battles)
+- field.units: actual board layout for rendering and for battles (freshly cloned from roster at battle start; in draft we render from roster so both can see forces)
+------------------------------------- */
+
+/* ---------- Army / roster helpers ---------- */
+const levelMult=(l)=> [1,1,1.5,2][l] || 1;
+const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
+function rosterAdd(roster, type, inc=1){
+  const found=roster.find(r=>r.type===type);
+  if (found) found.count += inc;
+  else roster.push({type, lvl:1, count:inc});
 }
-function forwardDir(p){ return p===0 ? -1 : +1; } // p0 moves up (-1), p1 moves down (+1)
+function rosterDoubleOne(roster){
+  const keys = roster.filter(r=>r.count>0);
+  if (!keys.length) return;
+  const k = keys[Math.floor(Math.random()*keys.length)];
+  k.count += Math.max(1,k.count); // double (add current count)
+}
+function rosterUpgradeOne(roster){
+  const keys = roster.filter(r=>r.count>0 && r.lvl<3);
+  if (!keys.length) return;
+  const k = keys[Math.floor(Math.random()*keys.length)];
+  k.lvl = Math.min(3, k.lvl+1);
+}
+function buildFieldFromRoster(state){
+  // Create fresh field from roster, placing units via spawn rules
+  state.field = { units: [] };
+  for (let p=0;p<2;p++){
+    const arr = (state.roster?.[p]||[]);
+    // expand counts into actual units with placement
+    for (const r of arr){
+      for (let i=0;i<r.count;i++){
+        placeNewUnit(state, p, r.type, r.lvl);
+      }
+    }
+  }
+}
+
+/* ---------- Placement rules ---------- */
+function forwardDir(p){ return p===0 ? -1 : +1; }
+const centerRow = Math.floor(H/2);
 function frontlineRow(p){ return p===0 ? centerRow : centerRow-1; }
 function backlineRowStart(p){ return p===0 ? H-1 : 0; }
-function nextRowAwayFromCenter(p, row){ return p===0 ? row+1 : row-1; } // away from center (toward base)
-function bumpAllTowardCenter(p){
-  // push everything of player p one row toward the center (if possible)
-  const dir = -forwardDir(p); // toward center: p0 (-1), p1 (+1)
-  const occ = new Set();
-  for (const u of (S.field.units||[])){
-    if (u.p!==p) continue;
-    const nx=u.x, ny=u.y+dir;
-    if (!inside(nx,ny)) return false; // can't bump (someone at edge) – skip
-    occ.add(idx(nx,ny));
-  }
-  // also ensure no collision with other troops after move
-  for (const u of (S.field.units||[])){
-    if (u.p!==p) continue;
-    const nx=u.x, ny=u.y+dir;
-    if ((S.field.units||[]).some(v=>v!==u && v.x===nx && v.y===ny)) return false;
+function bumpAllTowardCenter(state, p){
+  const dir = -forwardDir(p); // toward center
+  // ensure valid
+  for (const u of state.field.units){ if (u.p!==p) continue;
+    const ny=u.y+dir; if (!inside(u.x,ny)) return false;
+    // collision check
+    if (state.field.units.some(v=>v!==u && v.x===u.x && v.y===ny)) return false;
   }
   // apply
-  for (const u of (S.field.units||[])){ if (u.p===p){ u.y += dir; } }
+  for (const u of state.field.units){ if (u.p===p) u.y += dir; }
   return true;
 }
-
-/* ---------- Army & Spawn rules ---------- */
-function levelColor(l){ return l>=3?"l3":(l>=2?"l2":"l1"); }
-function levelMult(l){ return [1,1,1.5,2][l] || 1; }
-
-function spawnSlotForType(p, typeKey){
-  // returns {x,y} to place a NEW unit of typeKey for player p, following rules:
-  // - if same type exists, place “next to” existing in most recent row (outward push)
-  // - else if role backline -> spawn at furthest row from center on your side (away from center)
-  // - else if front line -> spawn at frontline row (closest to center)
-  const role = TROOPS.find(t=>t.key===typeKey)?.role || "front";
-  const dir = forwardDir(p);
-  const owned = (S.field.units||[]).filter(u=>u.p===p);
-  const same = owned.filter(u=>u.type===typeKey).sort((a,b)=> (p===0? b.y-a.y : a.y-b.y)); // prefer nearer center rows for front line cluster
-  let baseRow = (role==="back") ? backlineRowStart(p) : frontlineRow(p);
-
-  // if backline and row is blocked “fully”, we push army toward center and try again
-  const tryPlaceInRow = (row)=>{
-    // outward push around center column
-    const cx = Math.floor(W/2);
-    const order = [0, -1, +1, -2, +2, -3, +3, -4, +4];
-    for (const dx of order){
-      const x = clamp(cx+dx,0,W-1);
-      if (!(S.field.units||[]).some(u=>u.x===x && u.y===row)) return {x,y:row};
-    }
-    return null;
-  };
-
+function tryRowSlot(state, row){
+  const cx=Math.floor(W/2);
+  const order=[0,-1,1,-2,2,-3,3,-4,4, -5,5]; // wider safety
+  for (const dx of order){
+    const x=Math.max(0,Math.min(W-1,cx+dx));
+    if (!state.field.units.some(o=>o.x===x && o.y===row)) return {x,y:row};
+  }
+  return null;
+}
+function spawnSlotForType(state, p, typeKey){
+  const base = TROOPS.find(t=>t.key===typeKey);
+  const role = base?.role || "front";
+  const owned = state.field.units.filter(u=>u.p===p);
+  const same = owned.filter(u=>u.type===typeKey);
+  // prefer clustering: use the last placed same-type row if exists
   if (same.length){
-    // place near existing cluster: same row, outward
-    const row = same[0].y;
-    const pos = tryPlaceInRow(row);
-    if (pos) return pos;
-    // row full: try adjacent rows on same side of center
-    let r = row + (p===0 ? -1 : +1); // towards base (keep cluster compact)
-    while (inside(0,r) && (p===0? r>=centerRow : r<centerRow)){
-      const pos2 = tryPlaceInRow(r);
-      if (pos2) return pos2;
-      r += (p===0? -1 : +1);
-    }
+    const row = same[same.length-1].y;
+    const pos = tryRowSlot(state,row); if (pos) return pos;
   }
-
-  // no same-type or no space in that row
-  while (true){
-    const pos = tryPlaceInRow(baseRow);
-    if (pos) return pos;
-    // If we cannot place in back row because it's full and role is backline,
-    // push everything “up” one toward center and try again.
+  let row = (role==="back"? backlineRowStart(p) : frontlineRow(p));
+  while (inside(0,row)){
+    const pos = tryRowSlot(state,row); if (pos) return pos;
     if (role==="back"){
-      if (!bumpAllTowardCenter(p)) break;
-      // re-loop; baseRow moved “up” one automatically
-    } else {
-      // frontline: try one row deeper toward base if front is jammed
-      baseRow = nextRowAwayFromCenter(p, baseRow);
-      if (!inside(0,baseRow)) break;
+      // push army toward center if back row jammed
+      if (!bumpAllTowardCenter(state,p)) break;
+    }else{
+      // try deeper toward base if front row jammed
+      row = (p===0? row+1 : row-1);
     }
   }
-  // Fallback: find any free cell on your half
+  // fallback: any free on your half
   const yStart = (p===0? centerRow : 0);
   const yEnd   = (p===0? H-1 : centerRow-1);
-  for (let y=yStart; y<=yEnd; y++){
+  for (let y=yStart;y<=yEnd;y++){
     for (let x=0;x<W;x++){
-      if (!(S.field.units||[]).some(u=>u.x===x && u.y===y)) return {x,y};
+      if (!state.field.units.some(o=>o.x===x && o.y===y)) return {x,y};
     }
   }
   return {x:Math.floor(W/2), y:(p===0? H-1:0)};
 }
-
-function addTroopToArmy(p, typeKey, level=1, count=1){
-  const base = TROOPS.find(t=>t.key===typeKey);
-  if (!base) return;
-  for (let k=0;k<count;k++){
-    const pos = spawnSlotForType(p, typeKey);
-    S.field.units.push({
-      id: crypto.randomUUID(), p, type:typeKey, emoji:base.emoji, role:base.role,
-      lvl:level, x:pos.x, y:pos.y,
-      hp: Math.round(base.base.hp*levelMult(level)), maxhp: Math.round(base.base.hp*levelMult(level)),
-      dmg: Math.round(base.base.dmg*levelMult(level)),
-      spd: base.base.spd, range: base.base.range, cd: base.base.cd,
-      bomber: !!base.base.bomber, assassin: !!base.base.assassin, splash1: !!base.base.splash1, knock: !!base.base.knock,
-      nextAtk: 0, fuse: 0, stealthUntil: 0
-    });
-  }
+function placeNewUnit(state, p, typeKey, lvl){
+  const base = TROOPS.find(t=>t.key===typeKey); if (!base) return;
+  const pos = spawnSlotForType(state, p, typeKey);
+  const u = {
+    id: crypto.randomUUID(), p, type:typeKey, emoji:base.emoji, role:base.role,
+    lvl, x:pos.x, y:pos.y,
+    maxhp: Math.round(base.base.hp*levelMult(lvl)),
+    hp: Math.round(base.base.hp*levelMult(lvl)),
+    dmg: Math.round(base.base.dmg*levelMult(lvl)),
+    spd: base.base.spd, range: base.base.range, cd: base.base.cd,
+    bomber:!!base.base.bomber, assassin:!!base.base.assassin, splash1:!!base.base.splash1, knock:!!base.base.knock,
+    nextAtk:0, fuse:0, stealthUntil:0, __jumped:false
+  };
+  state.field.units.push(u);
 }
 
 /* ---------- Rendering ---------- */
 function render(){
-  if (!uiBuilt) buildBoard();
-  $("phaseBadge").textContent = S?.phase || "—";
-  const remain = Math.max(0,(S?.phaseEndsAt||0)-now());
-  $("timerBadge").textContent = (S?.phase?.startsWith("draft")||S?.phase==="loser-bonus") ? ("⏳ "+Math.ceil(remain/1000)+"s") : "⏳ —";
+  if (!S) return;
+  $("phaseBadge").textContent = S.phase || "—";
+  const tleft = Math.max(0, (S.phaseEndsAt||0) - Date.now());
+  $("timerBadge").textContent = (S.phase==="draft"||S.phase==="loser-bonus"||S.phase==="draft-after") ? ("⏳ "+Math.ceil(tleft/1000)+"s") : "⏳ —";
 
-  const p0 = S?.players?.[0]||"—";
-  const p1 = S?.players?.[1]||"—";
-  $("lives0").textContent = `🟥 ${p0}: ${S?.lives?.[0]??4}`;
-  $("lives1").textContent = `🟦 ${p1}: ${S?.lives?.[1]??4}`;
+  const p0n = S.players?.[0] || "P0";
+  const p1n = S.players?.[1] || "P1";
+  $("p0Badge").textContent = `${p0n} — ${"❤".repeat(S.lives?.[0]??4)}`;
+  $("p1Badge").textContent = `${p1n} — ${"❤".repeat(S.lives?.[1]??4)}`;
 
-  // grid
+  // ensure field is built from roster during draft so both armies are visible
+  if (S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after"){
+    const ghost = structuredClone(S);
+    buildFieldFromRoster(ghost);
+    paintBoard(ghost.field.units);
+  }else{
+    paintBoard(S.field?.units||[]);
+  }
+
+  // center cards
+  const showCards = (S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after");
+  $("overlay").style.display = showCards ? "block":"none";
+  $("centerCards").style.display = showCards ? "flex":"none";
+  if (showCards) drawCardsUI();
+}
+function paintBoard(units){
   const grid = Array(W*H).fill(null);
-  for (const u of (S.field?.units||[])){ grid[idx(u.x,u.y)] = u; }
+  for (const u of units){ grid[idx(u.x,u.y)] = u; }
   for (let i=0;i<W*H;i++){
     const d = cellsEl.children[i];
     const u = grid[i];
-    d.className = "cell";
+    d.className="cell";
     if (u){
-      d.classList.add(levelColor(u.lvl));
-      d.classList.add(PCLR[u.p]);
+      d.classList.add(levelClass(u.lvl));
+      d.classList.add(u.p===0?"p0":"p1");
       d.querySelector(".unit").textContent = u.emoji;
-      d.querySelector(".tag").textContent = (u.p===0? "P0":"P1");
+      d.querySelector(".tag").textContent = (u.p===0?"P0":"P1");
       const pct = Math.max(0, Math.round(100*(u.hp/u.maxhp)));
       d.querySelector(".hp>i").style.width = pct+"%";
     }else{
@@ -336,351 +327,299 @@ function render(){
       d.querySelector(".hp>i").style.width = "0%";
     }
   }
-
-  // cards
-  if (S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after"){
-    overlay.style.display="block";
-    centerCards.style.display="flex";
-    drawCardsUI();
-  }else{
-    overlay.style.display="none";
-    centerCards.style.display="none";
-  }
 }
-
 function drawCardsUI(){
-  centerCards.innerHTML="";
   const cards = S.currentPack || [];
-  cards.forEach((c, idx)=>{
-    const el = document.createElement("div");
+  const wrap = $("centerCards");
+  wrap.innerHTML="";
+  cards.forEach((c, i)=>{
+    const el=document.createElement("div");
     el.className="card";
     if (c.type==="troop"){
-      el.innerHTML = `<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} unit</div>`;
+      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} unit</div>`;
     }else{
-      el.innerHTML = `<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.desc}</div>`;
+      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.desc}</div>`;
     }
-    el.onclick = ()=> chooseCard(idx);
-    centerCards.appendChild(el);
+    el.onclick = ()=> chooseCard(i);
+    wrap.appendChild(el);
   });
 }
 
-/* ---------- Draft pick ---------- */
+/* ---------- Choosing a card ---------- */
 async function chooseCard(index){
   if (!S) return;
-  if (!(S.phase==="draft" || S.phase==="loser-bonus" || S.phase==="draft-after")) return;
-  const selKey = `selections.${meIndex}.${S.draftIndex}`;
-  // ignore if already picked this draft index
-  if (S.selections?.[meIndex]?.[S.draftIndex]!=null) return;
-  await updateDoc(stateRef, { [selKey]: index });
+  if (!(S.phase==="draft"||S.phase==="loser-bonus"||S.phase==="draft-after")) return;
+  const key = `selections.${meIndex}.${S.draftIndex}`;
+  const cur = S.selections?.[meIndex]?.[S.draftIndex];
+  if (cur!=null) return; // already picked
+  await updateDoc(stateRef, { [key]: index });
 }
 
-/* ---------- Battle sim (host) ---------- */
-function nearestEnemy(u){
+/* ---------- Host loop & battle sim ---------- */
+let hostTimer=null, battleTimer=null;
+
+function nearestEnemy(u, units){
   let best=null, bd=1e9;
-  for (const v of S.field.units){
-    if (v.p===u.p) continue;
-    const d = Math.abs(v.x-u.x)+Math.abs(v.y-u.y);
-    if (d<bd){ bd=d; best=v; }
+  for (const v of units){ if (v.p===u.p) continue;
+    const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if (d<bd){ bd=d; best=v; }
   }
   return best;
 }
-
-function cellFree(x,y){
-  return inside(x,y) && !S.field.units.some(o=>o.x===x && o.y===y);
-}
-
-function tryKnockback(cx,cy, target){
+function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x && o.y===y); }
+function tryKnock(cx,cy, target, units){
   if (!target) return;
-  const dx = Math.sign(target.x - cx);
-  const dy = Math.sign(target.y - cy);
-  const nx = target.x + dx;
-  const ny = target.y + dy;
-  if (cellFree(nx,ny)){ target.x = nx; target.y = ny; }
+  const dx=Math.sign(target.x-cx), dy=Math.sign(target.y-cy);
+  const nx=target.x+dx, ny=target.y+dy;
+  if (cellFree(units,nx,ny)){ target.x=nx; target.y=ny; }
 }
-
-function splashAround(x,y, dmg, srcP, knock=false){
-  for (let dy=-1;dy<=1;dy++){
-    for (let dx=-1;dx<=1;dx++){
-      if (dx===0 && dy===0) continue;
-      const nx=x+dx, ny=y+dy;
-      if (!inside(nx,ny)) continue;
-      const hit = S.field.units.find(o=>o.x===nx && o.y===ny && o.p!==srcP);
-      if (hit){
-        hit.hp -= dmg;
-        if (knock) tryKnockback(x,y,hit);
-      }
-    }
+function splash(units, x,y, dmg, srcP, knock=false){
+  for (let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if (!dx && !dy) continue;
+    const nx=x+dx, ny=y+dy; if (!inside(nx,ny)) continue;
+    const hit=units.find(o=>o.p!==srcP && o.x===nx && o.y===ny);
+    if (hit){ hit.hp -= dmg; if (knock) tryKnock(x,y,hit,units); }
   }
 }
-
-function attackIfInRange(u, t, ms){
-  if (!t) return false;
-  const dist = Math.abs(u.x - t.x)+Math.abs(u.y - t.y);
+function attack(u,t, nowMs, units){
+  const dist=Math.abs(u.x-t.x)+Math.abs(u.y-t.y);
   if (dist <= (u.range||1)){
-    if (now() >= u.nextAtk){
-      // bomber special: blows 1s after contact (dist<=1)
+    if (nowMs >= u.nextAtk){
       if (u.bomber && dist<=1){
-        u.fuse = u.fuse || (now()+1000);
+        u.fuse = u.fuse || (nowMs+1000);
       }else{
-        // standard attack
         t.hp -= u.dmg;
-        if (u.splash1) splashAround(t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
+        if (u.splash1) splash(units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
       }
-      u.nextAtk = now() + (u.cd||600);
+      u.nextAtk = nowMs + (u.cd||600);
     }
     return true;
   }
   return false;
 }
-
-function stepMoveToward(u, t){
-  if (!t) return;
-  // simple greedy step: try vertical then horizontal, but avoid occupied
-  const trySteps = [];
-  const dx = Math.sign(t.x - u.x);
-  const dy = Math.sign(t.y - u.y);
-  if (Math.abs(u.y - t.y) >= Math.abs(u.x - t.x)) trySteps.push([u.x, u.y+dy], [u.x+dx, u.y]);
-  else trySteps.push([u.x+dx, u.y], [u.x, u.y+dy]);
-  // fallback alternatives (sidestep)
-  trySteps.push([u.x+dx, u.y-dy],[u.x-dx, u.y+dy],[u.x-dx, u.y],[u.x, u.y-dy]);
-  for (const [nx,ny] of trySteps){
-    if (cellFree(nx,ny)){ u.x=nx; u.y=ny; return; }
-  }
+function stepToward(u,t,units){
+  const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
+  const opts=[];
+  if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+dy],[u.x+dx,u.y]);
+  else opts.push([u.x+dx,u.y],[u.x,u.y+dy]);
+  opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
+  for (const [nx,ny] of opts){ if (cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
 }
-
-function assassinLogic(u){
+function assassinLogic(u, nowMs, units){
   if (!u.assassin) return;
-  // first 3s stealth (no targeting/being targeted), then teleport behind enemy backline
-  if (!u.stealthUntil){
-    u.stealthUntil = now()+3000;
-  }
-  if (now() >= u.stealthUntil && !u.__jumped){
-    // place at enemy back row near center
-    const enemy = 1-u.p;
-    let row = backlineRowStart(enemy);
-    // find nearest open
-    const cx = Math.floor(W/2);
-    const order = [0,-1,1,-2,2,-3,3,-4,4];
+  if (!u.stealthUntil) u.stealthUntil = nowMs+3000;
+  if (nowMs >= u.stealthUntil && !u.__jumped){
+    const enemy=1-u.p; const row=backlineRowStart(enemy);
+    const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
     for (const dx of order){
-      const x = clamp(cx+dx,0,W-1);
-      if (cellFree(x,row)){ u.x=x; u.y=row; u.__jumped=true; break; }
+      const x=Math.max(0,Math.min(W-1,cx+dx));
+      if (cellFree(units,x,row)){ u.x=x;u.y=row;u.__jumped=true;break; }
     }
   }
 }
+function clean(units){ return units.filter(u=>u.hp>0); }
 
-function rocketLogic(u){
-  // rockets prioritize long shots, don't move
-  const t = nearestEnemy(u);
-  if (!t) return;
-  attackIfInRange(u,t);
-}
-
-function cleanCorpses(){
-  S.field.units = S.field.units.filter(u=> u.hp>0);
-}
-
-function battleTick(){
-  // assassins stealth/jump
-  for (const u of S.field.units){
-    if (u.assassin) assassinLogic(u);
-  }
-
-  // bombs fuse
-  for (const u of S.field.units){
-    if (u.bomber && u.fuse && now() >= u.fuse){
-      // explode at u cell
-      const centerHit = S.field.units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
-      if (centerHit){ centerHit.hp -= u.dmg; tryKnockback(u.x,u.y,centerHit); }
-      splashAround(u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
-      u.hp = 0; // bomber consumed
-    }
-  }
-  cleanCorpses();
-
-  // actions
-  for (const u of S.field.units){
-    // rockets: turret style
-    if (u.type==="rocket"){ rocketLogic(u); continue; }
-    const t = nearestEnemy(u);
-    if (!t) continue;
-    // if in range attack else move
-    if (!attackIfInRange(u,t)){
-      // move toward if speed > 0
-      if (u.spd>0) stepMoveToward(u,t);
-    }
-  }
-  cleanCorpses();
-
-  // end check
-  const alive0 = S.field.units.some(u=>u.p===0);
-  const alive1 = S.field.units.some(u=>u.p===1);
-  if (!alive0 || !alive1){
-    clearInterval(battleTimer); battleTimer=null;
-    const loser = alive0? 1 : 0;
-    S.lives[loser] = Math.max(0, (S.lives[loser]||4)-1);
-    S.phase = (S.lives[0]===0 || S.lives[1]===0) ? "game-over" : "loser-bonus";
-    S.phaseEndsAt = now()+10_000;
-    S.winner = (S.lives[0]===0? S.players[1] : (S.lives[1]===0? S.players[0] : null));
-    // clear field (we’ll re-seed with army layout for display)
-    // Note: “army persists” = we keep reserve spec. Here we keep field as display between drafts.
-    return updateDoc(stateRef, S);
-  }
-}
-
-/* ---------- Phase driving (host) ---------- */
 async function hostLoop(){
-  // only host runs this guard
-  clearInterval(hostGuard);
-  hostGuard = setInterval(async ()=>{
-    const snap = await getDoc(stateRef);
+  clearInterval(hostTimer);
+  hostTimer=setInterval(async ()=>{
+    const snap=await getDoc(stateRef);
     if (!snap.exists()) return;
-    const d = snap.data();
-    // initialize missing state
+    const d=snap.data();
+
+    // init
     if (!d.inited){
-      const lobby = await getDoc(doc(db,"lobbies",gameId));
-      const lp = lobby.exists()? (lobby.data().players||[]) : [username];
-      const players = lp.slice(0,2);
-      const lives = [4,4];
-      const draftIndex = 0;
-      const pack = randCards(3);
-      const startField = { units:[] }; // army display
-      const next = {
-        inited:true, players, lives, phase:"draft", phaseEndsAt: now()+10_000,
-        currentPack: pack, selections: [[],[]], draftIndex,
-        field: startField, // “army on board” view
-        afterSets:0, // counter inside “draft-after” (3)
+      const lob=await getDoc(doc(db,"lobbies",gameId));
+      const players=(lob.exists()? (lob.data().players||[]) : [username]).slice(0,2);
+      const next={
+        inited:true, players, lives:[4,4],
+        phase:"draft", phaseEndsAt: Date.now()+10_000,
+        draftIndex:0, currentPack: randCards(3),
+        selections:[[],[]],
+        roster:[[],[]], // persistent armies
+        field:{units:[]},
         winner:null
       };
-      await setDoc(stateRef, next);
+      await setDoc(stateRef,next);
       return;
     }
 
-    // phase timers / transitions
-    if (d.phase==="draft" || d.phase==="loser-bonus" || d.phase==="draft-after"){
-      // auto-pick if someone missed
-      if (now() >= (d.phaseEndsAt||0)){
-        // ensure both selections for this draftIndex exist
-        const sel = d.selections || [[],[]];
-        for (let p=0;p<2;p++){
-          if (sel[p][d.draftIndex]==null){
-            sel[p][d.draftIndex] = Math.floor(Math.random()* (d.currentPack?.length||3));
-          }
+    // phase timeouts / auto-picks
+    const nowMs=Date.now();
+    if ((d.phase==="draft"||d.phase==="loser-bonus"||d.phase==="draft-after") && nowMs >= (d.phaseEndsAt||0)){
+      // ensure both have a pick
+      const sel = d.selections || [[],[]];
+      for (let p=0;p<2;p++){
+        if (sel[p][d.draftIndex]==null){
+          sel[p][d.draftIndex] = Math.floor(Math.random()* (d.currentPack?.length||3));
         }
-        // apply picks to field (spawn)
-        for (let p=0;p<2;p++){
-          const pick = d.currentPack[ sel[p][d.draftIndex] ];
-          if (pick.type==="troop"){
-            // add 1 unit (level 1)
-            if (!d.field) d.field={units:[]};
-            addTroopToArmy(p, pick.key, 1, 1);
-          }else if (pick.type==="special"){
-            if (pick.special==="double"){
-              // find owned types and double one at random
-              const mine = (S.field.units||[]).filter(u=>u.p===p);
-              const keys = [...new Set(mine.map(u=>u.type))];
-              if (keys.length){
-                const k = keys[Math.floor(Math.random()*keys.length)];
-                addTroopToArmy(p, k, 1, Math.max(1, mine.filter(u=>u.type===k).length));
-              }
-            }else if (pick.special==="upgrade"){
-              // upgrade one existing type by +1 (cap 3) — only affects reserve/on-board layout (not future spawns)
-              const mine = (S.field.units||[]).filter(u=>u.p===p);
-              const keys = [...new Set(mine.map(u=>u.type))];
-              if (keys.length){
-                const k = keys[Math.floor(Math.random()*keys.length)];
-                for (const u of S.field.units){ if (u.p===p && u.type===k){ u.lvl = Math.min(3, u.lvl+1); u.hp=Math.round(u.maxhp*levelMult(u.lvl)/levelMult(1)); u.maxhp=Math.round(u.maxhp*levelMult(u.lvl)/levelMult(1)); } }
-              }
-            }
-          }
-        }
-        // advance draft counters
-        if (d.phase==="draft"){
-          const nextIndex = d.draftIndex+1;
-          if (nextIndex>=3){
-            // start battle
-            d.phase="battle";
-            d.phaseEndsAt=0;
-            d.draftIndex=0;
-            d.currentPack=[];
-          }else{
-            d.draftIndex=nextIndex;
-            d.currentPack = randCards(3);
-            d.phaseEndsAt = now()+10_000;
-          }
-        }else if (d.phase==="loser-bonus"){
-          // one extra for loser already applied; go to “draft-after” set 1
-          d.phase="draft-after";
-          d.afterSets=0;
-          d.draftIndex=0;
-          d.currentPack = randCards(3);
-          d.phaseEndsAt = now()+10_000;
-        }else if (d.phase==="draft-after"){
-          const nextIndex = d.draftIndex+1;
-          if (nextIndex>=3){
-            // done 3 picks set; start battle
-            d.phase="battle";
-            d.phaseEndsAt=0;
-            d.draftIndex=0;
-            d.afterSets=0;
-            d.currentPack=[];
-          }else{
-            d.draftIndex=nextIndex;
-            d.currentPack = randCards(3);
-            d.phaseEndsAt = now()+10_000;
-          }
-        }
-        await updateDoc(stateRef, d);
       }
-      return;
+      // apply picks to roster
+      const pack = d.currentPack || [];
+      const roster = d.roster || [[],[]];
+      for (let p=0;p<2;p++){
+        const pick = pack[ sel[p][d.draftIndex] ];
+        if (pick.type==="troop"){
+          rosterAdd(roster[p], pick.key, 1);
+        }else if (pick.type==="special"){
+          if (pick.special==="double") rosterDoubleOne(roster[p]);
+          else if (pick.special==="upgrade") rosterUpgradeOne(roster[p]);
+        }
+      }
+
+      // advance phase
+      if (d.phase==="draft"){
+        const nextIdx=d.draftIndex+1;
+        if (nextIdx>=3){
+          // start battle (clone from roster)
+          const next={...d, phase:"battle", phaseEndsAt:0, draftIndex:0, selections:[[],[]], currentPack:[], roster};
+          buildFieldFromRoster(next);
+          await updateDoc(stateRef,next);
+          startBattle();
+        }else{
+          await updateDoc(stateRef,{
+            selections:sel, roster,
+            draftIndex: nextIdx,
+            currentPack: randCards(3),
+            phaseEndsAt: Date.now()+10_000
+          });
+        }
+        return;
+      }
+      if (d.phase==="loser-bonus"){
+        // after loser bonus → draft-after 3 picks
+        await updateDoc(stateRef,{
+          selections: [[],[]],
+          roster,
+          phase:"draft-after",
+          draftIndex:0,
+          currentPack: randCards(3),
+          phaseEndsAt: Date.now()+10_000
+        });
+        return;
+      }
+      if (d.phase==="draft-after"){
+        const nextIdx=d.draftIndex+1;
+        if (nextIdx>=3){
+          const next={...d, phase:"battle", phaseEndsAt:0, draftIndex:0, selections:[[],[]], currentPack:[], roster};
+          buildFieldFromRoster(next);
+          await updateDoc(stateRef,next);
+          startBattle();
+        }else{
+          await updateDoc(stateRef,{
+            selections:sel, roster,
+            draftIndex: nextIdx,
+            currentPack: randCards(3),
+            phaseEndsAt: Date.now()+10_000
+          });
+        }
+        return;
+      }
     }
 
+    // battle driving guard
     if (d.phase==="battle" && !battleTimer){
-      // clone display army into active field (already in S.field). Start loop.
-      battleTimer = setInterval(async ()=>{
-        battleTick();
-        await updateDoc(stateRef, S);
-        // after battleTick, phase may have changed by host
-      }, 250);
-      return;
+      startBattle(); // safety
     }
-
     if (d.phase==="game-over"){
-      clearInterval(hostGuard);
+      clearInterval(hostTimer);
       if (battleTimer){ clearInterval(battleTimer); battleTimer=null; }
-      return;
     }
-
-  }, 300);
+  }, 250);
 }
 
-/* ---------- Init snapshot ---------- */
+function startBattle(){
+  if (battleTimer) return;
+  battleTimer=setInterval(async ()=>{
+    const snap=await getDoc(stateRef);
+    if (!snap.exists()){ clearInterval(battleTimer); battleTimer=null; return; }
+    const d=snap.data();
+    if (d.phase!=="battle"){ clearInterval(battleTimer); battleTimer=null; return; }
+    const state=structuredClone(d);
+    const units=state.field.units;
+
+    // tick
+    const nowMs=Date.now();
+
+    // assassin stealth/jump
+    for (const u of units){ if (u.assassin) assassinLogic(u, nowMs, units); }
+
+    // bomber explosions
+    for (const u of units){ if (u.bomber && u.fuse && nowMs>=u.fuse){
+      const center=units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
+      if (center){ center.hp -= u.dmg; tryKnock(u.x,u.y,center,units); }
+      splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
+      u.hp=0;
+    }}
+    state.field.units = clean(units);
+
+    // attacks / moves
+    for (const u of state.field.units){
+      if (u.type==="rocket"){
+        const t=nearestEnemy(u,state.field.units);
+        if (t) attack(u,t,nowMs,state.field.units);
+        continue;
+      }
+      const t=nearestEnemy(u,state.field.units);
+      if (!t) continue;
+      if (!attack(u,t,nowMs,state.field.units)){
+        if (u.spd>0) stepToward(u,t,state.field.units);
+      }
+    }
+    state.field.units = clean(state.field.units);
+
+    // end?
+    const alive0=state.field.units.some(u=>u.p===0);
+    const alive1=state.field.units.some(u=>u.p===1);
+    if (!alive0 || !alive1){
+      clearInterval(battleTimer); battleTimer=null;
+      const loser = alive0?1:0;
+      const lives = [...(state.lives||[4,4])];
+      lives[loser]=Math.max(0, lives[loser]-1);
+
+      // winner?
+      const winner = lives[0]===0 ? state.players[1]
+                    : lives[1]===0 ? state.players[0] : null;
+
+      // after battle, we DO NOT change roster (armies persist); field will be rebuilt from roster for next draft
+      const next = {
+        ...state,
+        lives,
+        phase: winner ? "game-over" : "loser-bonus",
+        phaseEndsAt: winner ? 0 : Date.now()+10_000,
+        winner: winner || null,
+        selections:[[],[]],
+        currentPack: winner ? [] : randCards(3),
+        draftIndex: 0
+      };
+      await updateDoc(stateRef,next);
+    }else{
+      await updateDoc(stateRef,state);
+    }
+  }, 250);
+}
+
+/* ---------- Snapshot & identity ---------- */
 onSnapshot(stateRef, (snap)=>{
   if (!snap.exists()) return;
   S = snap.data();
 
-  // Resolve meIndex
-  // Use lobby players order; if username isn’t in S.players, just map to 0 (local only)
+  // who am I?
   meIndex = Math.max(0, (S.players||[]).indexOf(username));
 
-  // Make sure we always have field & units array locally for helpers
-  if (!S.field) S.field={units:[]};
-  if (!Array.isArray(S.field.units)) S.field.units = [];
-
-  // When we need to seed a “bonus pick” loser, ensure only that player picks:
-  if (S.phase==="loser-bonus" && S.phaseEndsAt && now()<S.phaseEndsAt){
-    // not enforcing UI lock for the other player, but the host applies both sides anyway.
-  }
-
-  // UI
+  // render
   render();
 });
 
-/* ---------- Ensure host role ---------- */
-(async function ensureHost(){
+/* ---------- Host gate ---------- */
+(async function setHost(){
   const lob = await getDoc(doc(db,"lobbies",gameId));
-  const isHost = lob.exists() && lob.data().host===username;
-  if (isHost){ hostLoop(); }
+  host = lob.exists() && lob.data().host===username;
+  if (host) hostLoop();
 })();
+
+/* ---------- Card click guards in UI ---------- */
+window.addEventListener("keydown",(e)=>{
+  if (e.key==="f" && (e.ctrlKey||e.metaKey)){ e.preventDefault(); }
+});
 
 /* ---------- Fullscreen ---------- */
 $("fsBtn").onclick = async ()=>{
@@ -692,6 +631,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
