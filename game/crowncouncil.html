@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>⚔️ Draft Brawl (2P)</title>
+<title>⚔️ Draft Brawl — Factions (2P)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
@@ -13,6 +13,7 @@
     --cell:40px; --gap:4px;
     --l1:#dcfce7; --l2:#dbeafe; --l3:#fee2e2;
     --p0:#ef4444; --p1:#3b82f6;
+    --poison:#fef3c7;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -40,7 +41,8 @@
   .board{ position:relative }
   .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap)}
   .cell{width:var(--cell);height:var(--cell);border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;display:grid;place-items:center;position:relative;overflow:hidden}
-  .lvl{position:absolute;inset:0;border-radius:8px;opacity:.9}
+  .poison{ position:absolute; inset:0; background:var(--poison); opacity:.6 }
+  .lvl{position:absolute;inset:0;border-radius:8px;opacity:.85}
   .cell.l1 .lvl{background:var(--l1)}
   .cell.l2 .lvl{background:var(--l2)}
   .cell.l3 .lvl{background:var(--l3)}
@@ -52,8 +54,8 @@
   .p1 .tag{color:#1e3a8a;border-color:#bfdbfe}
 
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
-  .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50}
-  .card{width:min(220px,31vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;cursor:pointer;display:grid;gap:6px;user-select:none}
+  .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
+  .card{width:min(240px,34vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;cursor:pointer;display:grid;gap:6px;user-select:none}
   .card:hover{background:#f8fafc}
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
@@ -72,7 +74,7 @@
 <div class="shell">
   <div class="topbar">
     <div class="left">
-      <span class="badge">⚔️ Draft Brawl</span>
+      <span class="badge">⚔️ Draft Brawl — Factions</span>
       <span id="phaseBadge" class="badge">—</span>
     </div>
     <div class="left">
@@ -103,26 +105,13 @@
         </div>
       </div>
       <div class="panel">
-        <div class="head">Draft & Phases</div>
+        <div class="head">Phases</div>
         <div class="body list">
+          <div class="pill">Faction Pick: 20s</div>
           <div class="pill">Draft: 3 × 10s</div>
           <div class="pill">Loser bonus: 1 × 10s</div>
-          <div class="pill">Armies persist between battles</div>
           <div class="pill">Frontline = nearer enemy</div>
-          <div class="pill">Backline = furthest from enemy</div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="head">Legend</div>
-        <div class="body list">
-          <div class="pill">🗡️ Knight (front)</div>
-          <div class="pill">🏹 Archer (back)</div>
-          <div class="pill">💣 Bomber (front)</div>
-          <div class="pill">🗡️🕳️ Assassin (front)</div>
-          <div class="pill">🧌 Giant (front)</div>
-          <div class="pill">🚀 Rocket (back)</div>
-          <div class="pill">🃏 Double (needs troops)</div>
-          <div class="pill">⬆️ Upgrade (needs troops)</div>
+          <div class="pill">Backline = furthest</div>
         </div>
       </div>
     </aside>
@@ -159,6 +148,7 @@ const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 /* ---------------- DOM helpers ---------------- */
 const $ = (id)=>document.getElementById(id);
 const toast = (t)=>{ const x=$("toast"); x.textContent=t; x.style.display="block"; clearTimeout(window.__t); window.__t=setTimeout(()=>x.style.display="none",1500); };
+const pKey = (i)=> i===0 ? "p0" : "p1";
 
 /* ---------------- Viewport pan ---------------- */
 const viewport = $("viewport"), canvas = $("canvas");
@@ -196,59 +186,72 @@ const idx=(x,y)=> y*W+x;
 const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-/* ---------------- Content ---------------- */
-const TROOPS = [
-  { key:"knight",   name:"Knight",   emoji:"🗡️", role:"front", base:{hp:10,dmg:3,spd:1,range:1,cd:600} },
-  { key:"archer",   name:"Archer",   emoji:"🏹", role:"back",  base:{hp:5, dmg:2,spd:1,range:3,cd:800} },
-  { key:"bomber",   name:"Bomber",   emoji:"💣", role:"front", base:{hp:3, dmg:4,spd:1,range:1,cd:0, bomber:true} },
-  { key:"assassin", name:"Assassin", emoji:"🗡️", role:"front", base:{hp:4, dmg:3,spd:2,range:1,cd:0, assassin:true} },
-  { key:"giant",    name:"Giant",    emoji:"🧌", role:"front", base:{hp:20,dmg:4,spd:1,range:1,cd:1000, splash1:true} },
-  { key:"rocket",   name:"Rocket",   emoji:"🚀", role:"back",  base:{hp:6, dmg:3,spd:0,range:6,cd:1800, splash1:true, knock:true} },
-];
-const SPECIAL = [
-  { key:"double",  name:"Double Type",  emoji:"🃏", special:"double",  desc:"Double one of your existing troop types" },
-  { key:"upgrade", name:"Upgrade Type", emoji:"⬆️", special:"upgrade", desc:"Upgrade one existing troop type (+1 level)" }
-];
-const ALL_TROOP_CARDS = TROOPS.map(t=>({type:"troop",...t}));
-const ALL_SPEC_CARDS  = SPECIAL.map(s=>({type:"special",...s}));
+/* ---------------- Unit content ---------------- */
+/* Helper presets */
+const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd}); // ranged base
+const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});     // melee base
 
-function filterPackForPlayer(roster){
-  const hasAny = (roster||[]).some(r=>r.count>0);
-  const specials = hasAny ? ALL_SPEC_CARDS : []; // gate specials
-  const pool = [...ALL_TROOP_CARDS, ...specials];
-  const out=[]; const bag=[...pool];
-  for(let i=0;i<3 && bag.length;i++){
-    const j=Math.floor(Math.random()*bag.length);
-    out.push(bag.splice(j,1)[0]);
-  }
-  while(out.length<3){ out.push(ALL_TROOP_CARDS[Math.floor(Math.random()*ALL_TROOP_CARDS.length)]); }
-  return out;
-}
+/* Troops keyed by unique type across factions */
+const TROOPS = {
+  /* Vanir */
+  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
+  vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:{...R(8,4,10,2000), splash1:true, knock:true} },
+  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(18,3,800)}, splash1:true },
+  miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
+
+  /* Aesir */
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(8,3,4,900), blink50:true}, spawn:2 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
+  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,4,900), splash1:true, knock:true} },
+
+  /* Helions */
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:{...M(6,2,600), spd:3}, spawn:3 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:{...R(10,3,3,1300)}, spawn:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(20,4,900), splash1:true} },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 }
+};
+
+/* Faction pools */
+const FACTIONS = {
+  Vanir:  ["rifleman","vrocket","vguard","miner"],
+  Aesir:  ["phaser","blade","storm","guardian"],
+  Helions:["hellspawn","roach","defiler","blood"]
+};
+
+/* Specials (bound to owned types later) */
+const SPECIALS = {
+  double:  { key:"double",  name:"Double Type",  emoji:"🃏",   desc:(n)=>`Double your ${n}` },
+  upgrade: { key:"upgrade", name:"Upgrade Type", emoji:"⬆️",   desc:(n)=>`Upgrade your ${n} (+1 level)` }
+};
+
+const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
+const FACTION_EMOJI = { Helions:"🔥", Aesir:"⚡", Vanir:"🧊" };
+
+/* Level helpers */
+const levelMult=(l)=> [1,1,1.5,2][l] || 1;
+const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
 
 /* ---------------- State ---------------- */
 let S=null;
 let meIndex=0;
-let lobbyPlayers = [];   // live from lobby snapshot
+let lobbyPlayers = [];   // from lobby snapshot
 let isHost = false;
 
 /* ---------------- Roster helpers ---------------- */
-const levelMult=(l)=> [1,1,1.5,2][l] || 1;
-const levelClass=(l)=> l>=3?"l3":(l>=2?"l2":"l1");
-
 function rosterAdd(roster, type, inc=1){
   const f=roster.find(r=>r.type===type);
   if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc});
 }
-function rosterDoubleOne(roster){
-  const ks=roster.filter(r=>r.count>0);
-  if (!ks.length) return;
-  const k=ks[Math.floor(Math.random()*ks.length)];
-  k.count += Math.max(1,k.count);
+function rosterDoubleOneSpecific(roster, type){
+  const f=roster.find(r=>r.type===type);
+  if (!f) return;
+  f.count += Math.max(1,f.count);
 }
-function rosterUpgradeOne(roster){
-  const ks=roster.filter(r=>r.count>0 && r.lvl<3);
-  if (!ks.length) return;
-  ks[Math.floor(Math.random()*ks.length)].lvl++;
+function rosterUpgradeOneSpecific(roster, type){
+  const f=roster.find(r=>r.type===type && r.lvl<3);
+  if (!f) return;
+  f.lvl++;
 }
 
 /* ---------------- Placement helpers ---------------- */
@@ -272,7 +275,7 @@ function rowSlot(state,row){
   return null;
 }
 function spawnSlot(state,p,typeKey){
-  const base=TROOPS.find(t=>t.key===typeKey);
+  const base=TROOPS[typeKey];
   const role=base?.role||"front";
   const same=state.field.units.filter(u=>u.p===p && u.type===typeKey);
   if (same.length){
@@ -296,35 +299,98 @@ function spawnSlot(state,p,typeKey){
   return {x:Math.floor(W/2), y: backEdgeRow(p)};
 }
 function placeUnit(state,p,key,lvl){
-  const b=TROOPS.find(t=>t.key===key); if(!b) return;
-  const pos=spawnSlot(state,p,key);
-  const u={
-    id:crypto.randomUUID(), p, type:key, emoji:b.emoji, role:b.role,
-    lvl, x:pos.x, y:pos.y,
-    maxhp:Math.round(b.base.hp*levelMult(lvl)), hp:Math.round(b.base.hp*levelMult(lvl)),
-    dmg:Math.round(b.base.dmg*levelMult(lvl)),
-    spd:b.base.spd, range:b.base.range, cd:b.base.cd,
-    bomber:!!b.base.bomber, assassin:!!b.base.assassin, splash1:!!b.base.splash1, knock:!!b.base.knock,
-    nextAtk:0, fuse:0, stealthUntil:0, __jumped:false
-  };
-  state.field.units.push(u);
+  const t=TROOPS[key]; if(!t) return;
+  const spawnCount = Math.max(1, t.spawn||1);
+  for(let k=0;k<spawnCount;k++){
+    const pos=spawnSlot(state,p,key);
+    const b=t.base;
+    const u={
+      id:crypto.randomUUID(), p, type:key, emoji:t.emoji, role:t.role, faction:t.faction,
+      lvl, x:pos.x, y:pos.y,
+      maxhp:Math.round((b.hp||10)*levelMult(lvl)), hp:Math.round((b.hp||10)*levelMult(lvl)),
+      dmg:Math.round((b.dmg||3)*levelMult(lvl)),
+      spd: b.spd ?? 1, range:b.range ?? 1, cd:b.cd ?? 600,
+      splash1:!!b.splash1, knock:!!b.knock, hunterRanged:!!b.hunterRanged,
+      blink50:!!b.blink50, blinked:false,
+      chain3:!!b.chain3,
+      kamikaze:!!b.kamikaze, paints:!!b.paints, fuse:0,
+      nextAtk:0, stealthUntil:0, __jumped:false
+    };
+    state.field.units.push(u);
+  }
 }
 function rebuildFieldFromRoster(state){
-  state.field={units:[]};
+  state.field={units:[], poison:[]};
   for(let p=0;p<2;p++){
-    for(const r of (state.roster?.[p]||[])){
+    const rk = pKey(p);
+    for(const r of (state.roster?.[rk]||[])){
       for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl);
     }
   }
 }
 
+/* ---------------- Packs ---------------- */
+function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
+function uniqueSample(arr, n){
+  const bag=[...arr]; const out=[];
+  while(out.length<n && bag.length){
+    const j=Math.floor(Math.random()*bag.length);
+    out.push(bag.splice(j,1)[0]);
+  }
+  return out;
+}
+function buildSpecialChoices(roster){
+  const types = ownedTypes(roster);
+  if (!types.length) return [];
+  const picks=[];
+  // slightly rarer: sample at most 1 special per pack build step
+  const t = types[Math.floor(Math.random()*types.length)];
+  picks.push({type:"special", special:"upgrade", for:t, name:`Upgrade ${TROOPS[t].name}`, emoji:"⬆️"});
+  if (Math.random()<0.5){
+    const t2 = types[Math.floor(Math.random()*types.length)];
+    picks.push({type:"special", special:"double", for:t2, name:`Double ${TROOPS[t2].name}`, emoji:"🃏"});
+  }
+  return picks;
+}
+function filterPackForPlayer(roster, faction){
+  const poolTypes = FACTIONS[faction] || [];
+  const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji:TROOPS[k].emoji, role:TROOPS[k].role}));
+  const specials = (Math.random()<0.35) ? buildSpecialChoices(roster) : []; // rarer than troops
+  // Build pack of 3, no duplicates
+  const packPool = [...troopCards, ...specials];
+  const chosen = uniqueSample(packPool, 3);
+  while(chosen.length<3 && troopCards.length){
+    const extra = troopCards[Math.floor(Math.random()*troopCards.length)];
+    if (!chosen.some(c=> (c.type==="troop" && c.key===extra.key))) chosen.push(extra);
+  }
+  return chosen.slice(0,3);
+}
+
+/* ---------------- Poison map (BloodBurst) ---------------- */
+function paintPoison(state, cx, cy, durMs=6000){
+  const until = Date.now()+durMs;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+    state.poison = state.poison || [];
+    state.poison.push({x,y,until});
+  }
+}
+function isPoisonAt(state,x,y){ return (state.poison||[]).some(p=>p.x===x&&p.y===y&&p.until>Date.now()); }
+
 /* ---------------- Render ---------------- */
-function paint(units){
+function paint(units, stateLike){
+  const poison = (stateLike?.poison)||[];
   const grid=Array(W*H).fill(null);
   for(const u of units){ grid[idx(u.x,u.y)] = u; }
   for(let i=0;i<W*H;i++){
     const d=cellsEl.children[i], u=grid[i];
     d.className="cell";
+    // poison tint
+    const {x,y} = xy(i);
+    d.querySelector(".poison")?.remove();
+    if (poison.some(p=>p.x===x&&p.y===y&&p.until>Date.now())){
+      const t=document.createElement("div"); t.className="poison"; d.appendChild(t);
+    }
     const lvl=d.querySelector(".lvl"), tag=d.querySelector(".tag"), hp=d.querySelector(".hp>i"), uni=d.querySelector(".unit");
     if(u){
       d.classList.add(levelClass(u.lvl), u.p===0?"p0":"p1");
@@ -347,59 +413,129 @@ function render(){
 
   let phase = S?.phase || (lobbyPlayers.length<2 ? "waiting-for-players" : "bootstrapping");
   $("phaseBadge").textContent = phase.replaceAll("-"," ");
-  const showDraft = ["draft","loser-bonus","draft-after"].includes(phase);
+  const showDraft = ["faction-select","draft","loser-bonus","draft-after"].includes(phase);
 
   const tleft = showDraft ? Math.max(0,(S?.phaseEndsAt||0) - Date.now()) : 0;
   $("timerBadge").textContent = showDraft ? `⏳ ${Math.ceil(tleft/1000)}s` : (phase==="waiting-for-players" ? "⏳ waiting…" : "⏳ —");
 
+  // During drafts, show armies (preview) not fighting
   if (showDraft){
     const ghost=structuredClone(S);
     rebuildFieldFromRoster(ghost);
-    paint(ghost.field.units);
+    paint(ghost.field.units, ghost.field);
   }else{
-    paint(S?.field?.units||[]);
+    paint(S?.field?.units||[], S?.field);
   }
 
-  $("overlay").style.display = showDraft ? "block" : "none";
+  // Cards
   const row=$("cardRow");
-  row.style.display = showDraft ? "flex":"none";
-  if (showDraft){
-    const pack = (S?.currentPacks?.[meIndex] || []);
-    row.innerHTML="";
-    pack.forEach((c,i)=>{
-      const el=document.createElement("div");
-      el.className="card";
-      if(c.type==="troop"){
-        el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} unit</div>`;
-      }else{
-        el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.desc}</div>`;
-      }
-      el.onclick = ()=> chooseCard(i);
+  const overlay=$("overlay");
+  overlay.style.display = showDraft ? "block" : "none";
+  row.style.display     = showDraft ? "flex" : "none";
+  row.innerHTML = "";
+
+  if (!showDraft) return;
+
+  // Faction pick cards
+  if (phase==="faction-select"){
+    ["Helions","Aesir","Vanir"].forEach((fac)=>{
+      const el=document.createElement("div"); el.className="card";
+      el.innerHTML=`<div class="title">${FACTION_EMOJI[fac]} ${fac}</div>
+        <div class="desc">${FACTIONS[fac].map(k=>TROOPS[k].emoji+" "+TROOPS[k].name).join(" · ")}</div>`;
+      el.onclick=()=> chooseFaction(fac);
       row.appendChild(el);
     });
+    return;
   }
+
+  // Draft packs
+  const pack = (S?.currentPacks?.[pKey(meIndex)] || []);
+  pack.forEach((c,i)=>{
+    const el=document.createElement("div"); el.className="card";
+    if (c.type==="troop"){
+      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} — ${TROOPS[c.key].faction}</div>`;
+    }else{
+      const nn = TROOPS[c.for]?.name || "Type";
+      el.innerHTML=`<div class="title">${c.emoji} ${c.name|| (c.special==="upgrade"?"Upgrade":"Double")}</div><div class="desc">${c.special==="upgrade"?"Upgrade":"Double"} ${nn}</div>`;
+    }
+    el.onclick = ()=> chooseCard(i);
+    row.appendChild(el);
+  });
 }
+
+async function chooseFaction(fac){
+  if(!S) return;
+  const sk=pKey(meIndex);
+  if (S.factions?.[sk]) return;
+  await updateDoc(stateRef, { [`factions.${sk}`]: fac });
+}
+
 async function chooseCard(i){
   if(!S) return;
   const di=S.draftIndex|0;
-  const already = S.selections?.[meIndex]?.[di];
+  const sk=pKey(meIndex);
+  const already = S.selections?.[sk]?.[di];
   if (already!=null) return;
-  await updateDoc(stateRef, { [`selections.${meIndex}.${di}`]: i });
+  await updateDoc(stateRef, { [`selections.${sk}.${di}`]: i });
 }
 
-/* ---------------- Battle sim (unchanged core) ---------------- */
+/* ---------------- Targeting helpers ---------------- */
 function nearestEnemy(u,units){ let b=null,bd=1e9; for(const v of units){ if(v.p===u.p) continue; const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b; }
+function nearestEnemyRangedPriority(u,units){
+  const ranged = units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
+  if (ranged.length){
+    let b=null,bd=1e9; for(const v of ranged){ const d=Math.abs(v.x-u.x)+Math.abs(v.y-u.y); if(d<bd){bd=d;b=v;} } return b;
+  }
+  return nearestEnemy(u,units);
+}
 function cellFree(units,x,y){ return inside(x,y) && !units.some(o=>o.x===x&&o.y===y); }
 function tryKnock(cx,cy,t,units){ if(!t) return; const dx=Math.sign(t.x-cx), dy=Math.sign(t.y-cy); const nx=t.x+dx, ny=t.y+dy; if(cellFree(units,nx,ny)){ t.x=nx;t.y=ny; } }
 function splash(units,x,y,dmg,srcP,kn=false){ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const nx=x+dx,ny=y+dy; if(!inside(nx,ny)) continue; const hit=units.find(o=>o.p!==srcP&&o.x===nx&&o.y===ny); if(hit){ hit.hp-=dmg; if(kn) tryKnock(x,y,hit,units); } } }
-function attack(u,t,now,units){
-  const dist=Math.abs(u.x-t.x)+Math.abs(u.y-t.y);
-  if(dist <= (u.range||1)){
-    if(now >= u.nextAtk){
-      if(u.bomber && dist<=1){ u.fuse = u.fuse || (now+1000); }
-      else{
+function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
+  let cur = startTarget; let left=hops;
+  const hitSet=new Set();
+  while(cur && left>0){
+    cur.hp -= dmg; hitSet.add(cur.id);
+    // find next target near current within 2 cells, excluding already hit and ally
+    let cand=null,bd=1e9;
+    for(const v of units){
+      if(v.p===srcP || hitSet.has(v.id)) continue;
+      const d=Math.abs(v.x-cur.x)+Math.abs(v.y-cur.y);
+      if(d<=2 && d<bd){ bd=d; cand=v; }
+    }
+    cur=cand; left--;
+  }
+}
+function stepToward(u,t,units){
+  const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
+  const opts=[];
+  // try vertical first to "go around" blocks sometimes
+  if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
+  else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
+  opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
+  for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
+}
+
+/* ---------------- Battle sim ---------------- */
+function attack(u,t,now,units,field){
+  const dist=Math.abs(u.x+t0 - (t.x+t0)) + Math.abs(u.y - t.y); // t0 cancels; keep manhattan
+  const inRange = (Math.abs(u.x-t.x)+Math.abs(u.y-t.y)) <= (u.range||1);
+  if(inRange){
+    if (now >= (u.nextAtk||0)){
+      if (u.kamikaze){
+        // explode on contact (assume inRange==1)
         t.hp -= u.dmg;
-        if(u.splash1) splash(units,t.x,t.y,Math.max(1,Math.floor(u.dmg*0.6)),u.p,!!u.knock);
+        splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
+        if (u.paints) paintPoison(field,u.x,u.y,6000);
+        u.hp = 0; // dies
+      } else if (TROOPS[u.type]?.name==="Rockets" || u.type==="vrocket"){
+        t.hp -= u.dmg;
+        splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
+      } else if (u.chain3){
+        chainLightning(units,t,u.p,3, u.dmg);
+      } else {
+        t.hp -= u.dmg;
+        if (u.splash1) splash(units,t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
       }
       u.nextAtk = now + (u.cd||600);
     }
@@ -407,73 +543,74 @@ function attack(u,t,now,units){
   }
   return false;
 }
-function stepToward(u,t,units){
-  const dx=Math.sign(t.x-u.x), dy=Math.sign(t.y-u.y);
-  const opts=[];
-  if (Math.abs(t.y-u.y) >= Math.abs(t.x-u.x)) opts.push([u.x,u.y+Math.sign(t.y-u.y)],[u.x+dx,u.y]);
-  else opts.push([u.x+dx,u.y],[u.x,u.y+Math.sign(t.y-u.y)]);
-  opts.push([u.x+dx,u.y-dy],[u.x-dx,u.y+dy],[u.x-dx,u.y],[u.x,u.y-dy]);
-  for(const [nx,ny] of opts){ if(cellFree(units,nx,ny)){ u.x=nx;u.y=ny;return; } }
+
+function applyPoisonSlowAndDot(field, units){
+  const now=Date.now();
+  (field.poison||[]).forEach(p=>{
+    if (p.until<=now) return;
+    for(const u of units){
+      if (u.x===p.x && u.y===p.y){
+        // slow: mark slowed for short period
+        u.slowUntil = Math.max(u.slowUntil||0, now+600);
+        if (!u._poisonTick || now - u._poisonTick >= 600){
+          u._poisonTick = now;
+          u.hp -= 1;
+        }
+      }
+    }
+  });
 }
+
 function assassinLogic(u,now,units){
-  if(!u.assassin) return;
-  if(!u.stealthUntil) u.stealthUntil = now+3000;
-  if(now>=u.stealthUntil && !u.__jumped){
-    const enemy=1-u.p; const row=backEdgeRow(enemy);
-    const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
-    for(const dx of order){ const x=Math.max(0,Math.min(W-1,cx+dx)); if(cellFree(units,x,row)){ u.x=x;u.y=row;u.__jumped=true;break; } }
+  // (not used in this factions set)
+}
+
+function blinkIfNeeded(u,units){
+  if (!u.blink50 || u.blinked) return;
+  if (u.hp <= 0.5*u.maxhp){
+    const dir = (u.p===0? +1 : -1); // blink away (toward own back edge)
+    for(let i=0;i<3;i++){
+      const nx=u.x, ny=u.y+dir;
+      if (cellFree(units,nx,ny)){ u.x=nx;u.y=ny; }
+    }
+    u.blinked=true;
   }
 }
 
-/* ---------------- Robust INIT: anyone can create state ---------------- */
+/* ---------------- Robust INIT (no nested arrays) ---------------- */
 async function ensureStateExists(){
-  // read lobby (players + host)
   const lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
   const lob = lobSnap.data();
   lobbyPlayers = (Array.isArray(lob.players)? lob.players : []).slice(0,2);
   isHost = lob.host === username;
 
-  // transactional init if missing
   let created=false;
   await runTransaction(db, async (tx)=>{
     const st = await tx.get(stateRef);
     if (st.exists()) return;
 
-    if (lobbyPlayers.length < 1){
-      // still create a minimal doc so the UI shows “waiting for players”
-      tx.set(stateRef, {
-        inited:true, players: lobbyPlayers, lives:[4,4],
-        phase:"waiting", phaseEndsAt:0,
-        roster:[[],[]], field:{units:[]}, selections:[[],[]], currentPacks:[[],[]],
-        draftIndex:0, winner:null
-      });
-      created=true; return;
-    }
-
-    // start draft immediately
-    tx.set(stateRef, {
+    const now=Date.now();
+    const baseDoc = {
       inited:true,
       players: lobbyPlayers,
       lives:[4,4],
-      phase: lobbyPlayers.length<2 ? "waiting" : "draft",
-      phaseEndsAt: lobbyPlayers.length<2 ? 0 : (Date.now()+10_000),
-      roster:[[],[]],
-      field:{units:[]},
-      selections:[[],[]],
-      currentPacks:[
-        filterPackForPlayer([]),
-        filterPackForPlayer([])
-      ],
+      phase: lobbyPlayers.length<2 ? "waiting" : "faction-select",
+      phaseEndsAt: lobbyPlayers.length<2 ? 0 : (now+20_000),
+      roster:{ p0:[], p1:[] },
+      factions:{ p0:null, p1:null },
+      field:{ units:[], poison:[] },
+      selections:{ p0:[], p1:[] },
+      currentPacks:{ p0:[], p1:[] },
       draftIndex:0,
       winner:null
-    });
+    };
+    tx.set(stateRef, baseDoc);
     created=true;
   });
   return created;
 }
 
-/* Keep players synced: if lobby’s first two players change, mirror into state */
 async function syncPlayersIntoStateIfNeeded(){
   const stSnap = await getDoc(stateRef);
   if (!stSnap.exists()) return;
@@ -485,7 +622,7 @@ async function syncPlayersIntoStateIfNeeded(){
   }
 }
 
-/* ---------------- Host loops (unchanged behavior) ---------------- */
+/* ---------------- Host loop ---------------- */
 let hostTick=null, battleTick=null;
 
 function startHostLoops(){
@@ -494,54 +631,76 @@ function startHostLoops(){
     const snap=await getDoc(stateRef); if(!snap.exists()) return;
     const d=snap.data();
 
-    // If we’re still in “waiting” and now have 2 players => begin draft
     if (d.phase==="waiting" && lobbyPlayers.length>=2){
       await updateDoc(stateRef, {
-        phase:"draft",
-        draftIndex:0,
-        selections:[[],[]],
-        currentPacks:[ filterPackForPlayer(d.roster?.[0]||[]), filterPackForPlayer(d.roster?.[1]||[]) ],
-        phaseEndsAt: Date.now()+10_000
+        phase:"faction-select",
+        phaseEndsAt: Date.now()+20_000
       });
       return;
     }
 
     const now=Date.now();
+    // Resolve faction timeout
+    if (d.phase==="faction-select" && now >= (d.phaseEndsAt||0)){
+      const fx = {...(d.factions||{})};
+      if (!fx.p0) fx.p0 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+      if (!fx.p1) fx.p1 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+      await updateDoc(stateRef,{
+        factions:fx,
+        phase:"draft",
+        draftIndex:0,
+        selections:{p0:[],p1:[]},
+        currentPacks:{
+          p0: filterPackForPlayer(d.roster?.p0||[], fx.p0),
+          p1: filterPackForPlayer(d.roster?.p1||[], fx.p1)
+        },
+        phaseEndsAt: Date.now()+10_000
+      });
+      return;
+    }
 
-    // Draft & timers
-    if (["draft","loser-bonus","draft-after"].includes(d.phase) && now >= (d.phaseEndsAt||0)){
+    // Draft-like phases
+    const isDraftish=["draft","loser-bonus","draft-after"].includes(d.phase);
+    if (isDraftish && now >= (d.phaseEndsAt||0)){
       const di=d.draftIndex|0;
-      const sel=d.selections||[[],[]];
+      const sel=d.selections||{p0:[],p1:[]};
+      const fx = d.factions || {};
 
-      for(let p=0;p<2;p++){
-        if (sel[p][di]==null){
-          const pack=(d.currentPacks?.[p]||[]);
-          sel[p][di] = Math.floor(Math.random()*Math.max(1,pack.length));
+      // auto-pick if missing
+      ["p0","p1"].forEach(sk=>{
+        if (sel[sk][di]==null){
+          const pack=(d.currentPacks?.[sk]||[]);
+          sel[sk][di] = Math.floor(Math.random()*Math.max(1,pack.length));
         }
-      }
+      });
 
-      const roster=d.roster||[[],[]];
-      for(let p=0;p<2;p++){
-        const pack=(d.currentPacks?.[p]||[]);
-        const pick=pack[ sel[p][di] ];
-        if (pick?.type==="troop") rosterAdd(roster[p], pick.key, 1);
-        else if (pick?.type==="special"){
-          if (pick.special==="double") rosterDoubleOne(roster[p]);
-          if (pick.special==="upgrade") rosterUpgradeOne(roster[p]);
+      const roster = d.roster || {p0:[],p1:[]};
+      ["p0","p1"].forEach(sk=>{
+        const pack=(d.currentPacks?.[sk]||[]);
+        const pick=pack[ sel[sk][di] ];
+        if (!pick) return;
+        if (pick.type==="troop"){
+          rosterAdd(roster[sk], pick.key, 1);
+        }else if (pick.type==="special"){
+          if (pick.special==="double") rosterDoubleOneSpecific(roster[sk], pick.for);
+          if (pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sk], pick.for);
         }
-      }
+      });
 
       if (d.phase==="draft"){
         const nextIx=di+1;
         if (nextIx>=3){
-          const next={...d, roster, selections:[[],[]], draftIndex:0, currentPacks:[[],[]], phase:"battle", phaseEndsAt:0};
+          const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0};
           rebuildFieldFromRoster(next);
           await updateDoc(stateRef,next);
           runBattle();
         }else{
           await updateDoc(stateRef,{
             roster, selections:sel, draftIndex:nextIx,
-            currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
+            currentPacks:{
+              p0: filterPackForPlayer(roster.p0, fx.p0),
+              p1: filterPackForPlayer(roster.p1, fx.p1)
+            },
             phaseEndsAt: Date.now()+10_000
           });
         }
@@ -550,8 +709,11 @@ function startHostLoops(){
 
       if (d.phase==="loser-bonus"){
         await updateDoc(stateRef,{
-          roster, selections:[[],[]], draftIndex:0,
-          currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
+          roster, selections:{p0:[],p1:[]}, draftIndex:0,
+          currentPacks:{
+            p0: filterPackForPlayer(roster.p0, fx.p0),
+            p1: filterPackForPlayer(roster.p1, fx.p1)
+          },
           phase:"draft-after", phaseEndsAt: Date.now()+10_000
         });
         return;
@@ -560,14 +722,17 @@ function startHostLoops(){
       if (d.phase==="draft-after"){
         const nextIx=di+1;
         if (nextIx>=3){
-          const next={...d, roster, selections:[[],[]], draftIndex:0, currentPacks:[[],[]], phase:"battle", phaseEndsAt:0};
+          const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0};
           rebuildFieldFromRoster(next);
           await updateDoc(stateRef,next);
           runBattle();
         }else{
           await updateDoc(stateRef,{
             roster, selections:sel, draftIndex:nextIx,
-            currentPacks:[ filterPackForPlayer(roster[0]), filterPackForPlayer(roster[1]) ],
+            currentPacks:{
+              p0: filterPackForPlayer(roster.p0, fx.p0),
+              p1: filterPackForPlayer(roster.p1, fx.p1)
+            },
             phaseEndsAt: Date.now()+10_000
           });
         }
@@ -579,6 +744,7 @@ function startHostLoops(){
   }, 250);
 }
 
+/* ---------------- Battle loop ---------------- */
 function runBattle(){
   if(battleTick) return;
   battleTick=setInterval(async ()=>{
@@ -588,20 +754,33 @@ function runBattle(){
     const units=st.field.units;
     const now=Date.now();
 
-    for(const u of units) if(u.assassin) assassinLogic(u,now,units);
-    for(const u of units) if(u.bomber && u.fuse && now>=u.fuse){
-      const mid=units.find(v=>v.p!==u.p && v.x===u.x && v.y===u.y);
-      if(mid){ mid.hp -= u.dmg; tryKnock(u.x,u.y,mid,units); }
-      splash(units,u.x,u.y, Math.max(1,Math.floor(u.dmg*0.8)), u.p, true);
-      u.hp=0;
-    }
-    st.field.units = units.filter(u=>u.hp>0);
+    // poison dot & slow
+    applyPoisonSlowAndDot(st.field, units);
 
-    for(const u of st.field.units){
-      if (u.type==="rocket"){ const t=nearestEnemy(u,st.field.units); if(t) attack(u,t,now,st.field.units); continue; }
-      const t=nearestEnemy(u,st.field.units); if(!t) continue;
-      if(!attack(u,t,now,st.field.units)){ if(u.spd>0) stepToward(u,t,st.field.units); }
+    // blink checks
+    for(const u of units) blinkIfNeeded(u, units);
+
+    // resolve attacks / movement
+    for(const u of units){
+      const spd = (u.slowUntil && u.slowUntil>now) ? Math.max(1, Math.ceil((u.spd||1)/3)) : (u.spd||1);
+
+      // target selection
+      let t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
+      if(!t) continue;
+
+      // attack if in range else move
+      if(!attack(u,t,now,units,st.field)){
+        for(let s=0;s<spd;s++){
+          // recalc target occasionally
+          t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
+          if(!t) break;
+          stepToward(u,t,units);
+          if ((Math.abs(u.x-t.x)+Math.abs(u.y-t.y))<= (u.range||1)) break;
+        }
+      }
     }
+
+    // cleanup dead
     st.field.units = st.field.units.filter(u=>u.hp>0);
 
     const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
@@ -615,8 +794,11 @@ function runBattle(){
         ...st, lives,
         phase: winner ? "game-over" : "loser-bonus",
         phaseEndsAt: winner ? 0 : Date.now()+10_000,
-        selections:[[],[]],
-        currentPacks: winner ? [[],[]] : [ filterPackForPlayer(st.roster[0]), filterPackForPlayer(st.roster[1]) ],
+        selections:{p0:[],p1:[]},
+        currentPacks: winner ? {p0:[],p1:[]} : {
+          p0: filterPackForPlayer(st.roster.p0, st.factions.p0),
+          p1: filterPackForPlayer(st.roster.p1, st.factions.p1)
+        },
         draftIndex:0,
         winner: winner || null
       };
@@ -634,17 +816,12 @@ onSnapshot(lobbyRef, async (snap)=>{
   lobbyPlayers = (Array.isArray(lob.players)? lob.players : []).slice(0,2);
   isHost = lob.host === username;
 
-  // make sure state exists (any client can create)
   await ensureStateExists();
-
-  // keep state.players synced with lobby
   await syncPlayersIntoStateIfNeeded();
 
-  // my index
   const currentPlayers = S?.players || lobbyPlayers;
   meIndex = Math.max(0, (currentPlayers||[]).indexOf(username));
 
-  // start host loops if I’m host
   if (isHost) startHostLoops();
 
   render();
@@ -668,6 +845,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
