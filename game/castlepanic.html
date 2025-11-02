@@ -159,6 +159,10 @@ function uid(){ return Math.random().toString(36).slice(2,9); }
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function dist(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); } // manhattan
 function inBounds(x,y){ return x>=0 && y>=0 && x<GRID_W && y<GRID_H; }
+function getParam(name){
+  const m = new RegExp('[?&]'+name+'=([^&#]*)').exec(location.search);
+  return m ? decodeURIComponent(m[1].replace(/\+/g,'%20')) : null;
+}
 
 const EMOJI = {
   wall: "🧱",
@@ -1072,9 +1076,14 @@ function gameOver(win){
 /* ============================================================
    Boot
    ============================================================ */
-startGame(2); // set 1–4 players here
+// read ?players=N (fallback 2), clamp 1–4
+const pParam = parseInt(getParam('players') || '', 10);
+const PLAYER_COUNT = clamp(isNaN(pParam) ? 2 : pParam, 1, 4);
+
+startGame(PLAYER_COUNT);
 </script>
 </body>
 </html>
+
 
 
