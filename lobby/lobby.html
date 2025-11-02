@@ -223,6 +223,8 @@
                   <option value="historyrush">🏛️ History Rush (4P)</option>
                   <option value="crowncouncil">👑 Crown & Council (4P)</option>
                   <option value="thegame">🃏 The Game (5P)</option>
+                  <!-- ⬇️ NEW -->
+                  <option value="castledefense">🏰 Castle Defense (4P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -281,37 +283,38 @@
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // ---------- ROUTES ----------
-  const ROUTES = {
-  cat:        "/game/catandmouse.html",
-  grass:      "/game/grassrealms.html",
-  estate:     "/game/estatedefense.html",
-  mountain:   "/game/mountainblade.html",
-  mountonline:"/game/mountonline.html",
-  rock:       "/game/rock.html",
-  stockkings: "/game/stockkings.html",
-  dutchblitz: "/game/dutchblitz.html",
-  splinters:  "/game/Splinters.html",
-  spelltower: "/game/spelltower.html",
-  zombiezone: "/game/zombiezone.html",
-  biblegame:  "/game/biblegame.html",
-  historyrush:"/game/historyrush.html",
-  crowncouncil:"/game/crowncouncil.html",
-  thegame:    "/game/thegame.html",
-  matchwars:  "/game/matchwars.html",
-  flag:       "/game/Flag.html",
-  microwars:  "/game/microwars.html",
-  microwars2: "/game/microwaves2.html",
-  microwars4: "/game/microwaves4.html",
-  border:     "/game/border.html",
-  mobamania:  "/game/CatLanes.html",
-  versemem:   "/game/verse-memorizer.html",
-  /** ⬇️ NEW */
-  village:    "/game/villagelobby.html"
-};
+    const ROUTES = {
+      cat:        "/game/catandmouse.html",
+      grass:      "/game/grassrealms.html",
+      estate:     "/game/estatedefense.html",
+      mountain:   "/game/mountainblade.html",
+      mountonline:"/game/mountonline.html",
+      rock:       "/game/rock.html",
+      stockkings: "/game/stockkings.html",
+      dutchblitz: "/game/dutchblitz.html",
+      splinters:  "/game/Splinters.html",
+      spelltower: "/game/spelltower.html",
+      zombiezone: "/game/zombiezone.html",
+      biblegame:  "/game/biblegame.html",
+      historyrush:"/game/historyrush.html",
+      crowncouncil:"/game/crowncouncil.html",
+      thegame:    "/game/thegame.html",
+      matchwars:  "/game/matchwars.html",
+      flag:       "/game/Flag.html",
+      microwars:  "/game/microwars.html",
+      microwars2: "/game/microwaves2.html",
+      microwars4: "/game/microwaves4.html",
+      border:     "/game/border.html",
+      mobamania:  "/game/CatLanes.html",
+      versemem:   "/game/verse-memorizer.html",
+      /** ⬇️ NEW */
+      village:    "/game/villagelobby.html",
+      castledefense: "/game/castle-defense.html"
+    };
 
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","thegame","zombiezone","biblegame",
-      "historyrush","crowncouncil"
+      "historyrush","crowncouncil","castledefense" // ⬅️ NEW
     ]);
 
     const MAX_PLAYERS = {
@@ -324,24 +327,25 @@
       biblegame: 20,
       historyrush: 4,
       thegame: 5,
-      crowncouncil: 4
+      crowncouncil: 4,
+      castledefense: 4 // ⬅️ NEW
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     const SINGLEPLAYER_GAMES = [
-  /** ⬇️ NEW */
-  { key: "village", title: "Village", emoji: "🏘️", desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
+      /** ⬇️ NEW */
+      { key: "village", title: "Village", emoji: "🏘️", desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
 
-  { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true },
-  { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes.", route: ROUTES.microwars },
-  { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant.", route: ROUTES.microwars2 },
-  { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow.", route: ROUTES.microwars4 },
-  { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
-  { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
-  { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
-  { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
-];
+      { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true },
+      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes.", route: ROUTES.microwars },
+      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant.", route: ROUTES.microwars2 },
+      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow.", route: ROUTES.microwars4 },
+      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
+      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
+      { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
+      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
+    ];
 
 
     // ---------- FIREBASE ----------
@@ -369,7 +373,6 @@
       await runTransaction(db, async (tx)=>{
         const snap = await tx.get(metricsRef);
         if (!snap.exists()){
-          // First ever record
           tx.set(metricsRef, {
             date: today,
             users: { [uniqueUser]: true },
@@ -384,7 +387,6 @@
         const curCount = typeof data.count === "number" ? data.count : Object.keys(curUsers).length;
 
         if (curDate !== today){
-          // Archive previous day into dailyUsersLog/{curDate}
           const logRef = doc(db, "dailyUsersLog", String(curDate));
           tx.set(logRef, {
             date: curDate,
@@ -393,7 +395,6 @@
             archivedAt: now
           }, { merge:true });
 
-          // Reset to today with this user as #1
           tx.set(metricsRef, {
             date: today,
             users: { [uniqueUser]: true },
@@ -403,7 +404,6 @@
           return;
         }
 
-        // Same day — only add if new unique user
         if (!curUsers[uniqueUser]){
           const nextUsers = { ...curUsers, [uniqueUser]: true };
           tx.update(metricsRef, {
@@ -412,20 +412,17 @@
             updatedAt: now
           });
         }else{
-          // Touch updatedAt to reflect activity (optional)
           tx.update(metricsRef, { updatedAt: now });
         }
       });
     }
 
-    // Live HUD listener
     (function listenDailyUsers(){
       const countEl = document.getElementById("dailyUsersCount");
       const pill = document.getElementById("dailyUsersPill");
       onSnapshot(doc(db,"metrics","dailyUsers"), (snap)=>{
         if (!snap.exists()){ countEl.textContent = "0"; return; }
         const d = snap.data();
-        // If Firestore doc somehow has stale date, still show its count; bumpDailyUsers will roll on next login.
         const c = typeof d.count === "number" ? d.count : Object.keys(d.users||{}).length;
         countEl.textContent = String(c);
         pill.title = `Unique logins on ${d.date} (${TZ})`;
@@ -598,6 +595,7 @@
              type==='historyrush'?'🏛️ History Rush (4P)' :
              type==='thegame'?'🃏 The Game (5P)' :
              type==='crowncouncil'?'👑 Crown & Council (4P)' :
+             type==='castledefense'?'🏰 Castle Defense (4P)' : /* ⬅️ NEW */
              '🐭 Cat & Mouse';
     }
 
@@ -632,7 +630,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil'].includes(gameType)) {
+      if (!['cat','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -941,6 +939,7 @@
   </script>
 </body>
 </html>
+
 
 
 
