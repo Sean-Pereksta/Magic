@@ -120,15 +120,20 @@
   </div>
 
 <script type="module">
+"use strict";
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, collection, getDocs, query, where, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction,
+  collection, getDocs, query, where, limit
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ---------- Pace controls ---------- */
 var PACE = { atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100 };
 var LOGIC_MS = 560;  // battle cadence (unchanged)
 var VIEW_MS  = 220;  // publish rate (faster visuals)
 
-/* ---------- Grid (restored to 120 rows) ---------- */
+/* ---------- Grid (full 120 rows) ---------- */
 var CELL=40, GAP=4, W=8, H=120;
 
 /* ---------- Firebase ---------- */
@@ -149,14 +154,15 @@ var gameId   = params.get("gameId");
 var username = params.get("username");
 if (!gameId || !username){ alert("Missing gameId or username."); }
 
+/* ---------- Refs ---------- */
 var lobbyRef = doc(db,"lobbies",gameId);
 var stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
-/* ---------- DOM ---------- */
+/* ---------- DOM helpers ---------- */
 function $(id){ return document.getElementById(id); }
 var cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
 
-/* ---------- Fit-to-view & drag (avoid style.translate) ---------- */
+/* ---------- Fit-to-view & drag ---------- */
 var boardScale = 1;
 var pan = {x:12, y:12};
 function applyTransform(){
@@ -171,16 +177,16 @@ function fitBoard(){
 }
 new ResizeObserver(fitBoard).observe(viewport);
 
-var dragging=false, last={x:0,y:0}, lastT=0, vel={x:0,y:0}, anim=null;
-function onDown(e){ dragging=true; last={x:e.clientX,y:e.clientY}; lastT=performance.now(); vel.x=0; vel.y=0; if(anim){cancelAnimationFrame(anim);anim=null;} }
+var dragging=false, lastPt={x:0,y:0}, lastT=0, vel={x:0,y:0}, anim=null;
+function onDown(e){ dragging=true; lastPt={x:e.clientX,y:e.clientY}; lastT=performance.now(); vel.x=0; vel.y=0; if(anim){cancelAnimationFrame(anim);anim=null;} }
 function onMove(e){
   if(!dragging) return;
   var t=performance.now();
-  var dx=e.clientX-last.x, dy=e.clientY-last.y;
+  var dx=e.clientX-lastPt.x, dy=e.clientY-lastPt.y;
   var dt=Math.max(1, t-lastT);
   pan.x+=dx; pan.y+=dy; applyTransform();
   vel.x=dx/dt*16; vel.y=dy/dt*16;
-  last={x:e.clientX,y:e.clientY}; lastT=t;
+  lastPt={x:e.clientX,y:e.clientY}; lastT=t;
 }
 function onUp(){
   dragging=false;
@@ -219,6 +225,13 @@ function safeUUID(){ try{ return (crypto && crypto.randomUUID) ? crypto.randomUU
 function pKey(i){ return i===0 ? "p0" : "p1"; }
 function inside(x,y){ return x>=0 && x<W && y>=0 && y<H; }
 function unitEmoji(type){ return (TROOPS[type] && TROOPS[type].emoji) ? TROOPS[type].emoji : "❓"; }
+function assign(target){
+  for (var i=1;i<arguments.length;i++){
+    var src=arguments[i]||{};
+    for (var k in src){ if (Object.prototype.hasOwnProperty.call(src,k)) target[k]=src[k]; }
+  }
+  return target;
+}
 
 /* ---------- Troops ---------- */
 function R(hp,dmg,range,cd){ return {hp:hp,dmg:dmg,range:range,cd:cd}; }
@@ -238,18 +251,11 @@ var TROOPS = {
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🛡️✨", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1700, wardDur:6000, wardHp:2 }},
 
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:assign({}, M(6,2,600), {spd:3}), spawn:3 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:assign({}, R(10,3,3,1300), {}) , spawn:2 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:assign({}, R(10,3,3,1300), {}), spawn:2 },
   defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:assign({}, M(26,4,900), {splash1:true}), size:2 },
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:assign({}, M(9,3,0), {kamikaze:true, paints:true}), spawn:2 },
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:assign({}, R(9,3,5,1200), {acid:true, acidDur:3500}) }
 };
-function assign(target){
-  for (var i=1;i<arguments.length;i++){
-    var src=arguments[i]||{};
-    for (var k in src){ if (Object.prototype.hasOwnProperty.call(src,k)) target[k]=src[k]; }
-  }
-  return target;
-}
 var FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic"],
   Aesir:  ["phaser","blade","storm","guardian","wardmaker"],
@@ -264,24 +270,24 @@ function rectangleFree(units,x,y,size){
     for(var xx=0; xx<size; xx++){
       var nx=x+xx, ny=y+yy;
       if(!inside(nx,ny)) return false;
-      var blocked = false;
       for (var i=0;i<units.length;i++){
         var o=units[i];
         var os=unitSize(o);
-        if (nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os){ blocked=true; break; }
+        if (nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os) return false;
       }
-      if (blocked) return false;
     }
   }
   return true;
 }
 function canMoveTo(u, units, nx, ny){
   var s = unitSize(u);
-  var others = [];
-  for (var i=0;i<units.length;i++){ if (units[i].id!==u.id) others.push(units[i]); }
-  return rectangleFree(others, nx, ny, s);
+  for (var i=0;i<units.length;i++){
+    var o=units[i]; if (o.id===u.id) continue;
+    var os=unitSize(o);
+    if (nx+0>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os) return false;
+  }
+  return inside(nx,ny) && rectangleFree(units, nx, ny, s);
 }
-
 function bandRows(p, role){
   if (p===0){
     return role==="back" ? [H-1,H-2,H-3] : [H-6,H-5,H-4];
@@ -304,9 +310,9 @@ function spawnSlot(state,p,typeKey){
     }
   }
   if (p===0){
-    for(var y=H-1;y>=Math.max(0,H-8);y--) for(var x2=0;x2<=W-sz;x2++) if (rectangleFree(state.field.units,x2,y,sz)) return {x:x2,y:y};
+    for(var y=H-1;y>=Math.max(0,H-8);y--) for(var x2=0; x2<=W-sz; x2++) if (rectangleFree(state.field.units,x2,y,sz)) return {x:x2,y:y};
   }else{
-    for(var y2=0; y2<Math.min(H,8); y2++) for(var x3=0;x3<=W-sz;x3++) if (rectangleFree(state.field.units,x3,y2,sz)) return {x:x3,y:y2};
+    for(var y2=0; y2<Math.min(H,8); y2++) for(var x3=0; x3<=W-sz; x3++) if (rectangleFree(state.field.units,x3,y2,sz)) return {x:x3,y:y2};
   }
   return {x:Math.max(0,Math.min(W-sz, Math.floor(W/2))), y:(p===0? H-2 : 1)};
 }
@@ -381,9 +387,9 @@ function packFor(roster, faction){
   var specials=[];
   if (types.length){
     var up = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"upgrade", for:up, name:"Upgrade " + (TROOPS[up].name), emoji:"⬆️"});
+    specials.push({type:"special", special:"upgrade", for:up, name:"Upgrade "+(TROOPS[up].name), emoji:"⬆️"});
     var db = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"double", for:db, name:"Double " + (TROOPS[db].name), emoji:"🃏"});
+    specials.push({type:"special", special:"double", for:db, name:"Double "+(TROOPS[db].name), emoji:"🃏"});
   }
   var pool = [];
   for (var t=0;t<troopCards.length;t++) pool.push({item:troopCards[t], w:3});
@@ -821,7 +827,8 @@ function startHostLoops(){
     }
     if (d.phase==="faction-select"){
       if (bothFactionsChosen(d) || now >= (d.phaseEndsAt||0)){
-        var fx={}; fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+        var fx={};
+        fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
         fx.p1 = (d.factions && d.factions.p1) ? d.factions.p1 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
         await updateDoc(stateRef,{
           factions:fx, phase:"draft", draftIndex:0,
@@ -853,16 +860,17 @@ function startHostLoops(){
       }
 
       var roster=d.roster||{p0:[],p1:[]}; if(!roster.p0) roster.p0=[]; if(!roster.p1) roster.p1=[];
-      ["p0","p1"].forEach(function(sk){
-        var pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
-        var pick=pack[ sel[sk][di] ];
-        if(!pick) return;
-        if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
+      var idxKey;
+      for (idxKey in {p0:1,p1:1}){
+        var pack=(d.currentPacks && d.currentPacks[idxKey]) ? d.currentPacks[idxKey] : [];
+        var pick=pack[ sel[idxKey][di] ];
+        if(!pick) continue;
+        if (pick.type==="troop") rosterAdd(roster[idxKey], pick.key, 1);
         else if (pick.type==="special"){
-          if(pick.special==="double") rosterDoubleOneSpecific(roster[sk], pick.for);
-          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sk], pick.for);
+          if(pick.special==="double") rosterDoubleOneSpecific(roster[idxKey], pick.for);
+          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[idxKey], pick.for);
         }
-      });
+      }
 
       var nextIx=di+1;
       if (nextIx>=3){
@@ -941,16 +949,17 @@ function startHostLoops(){
       }
 
       var roster3=d.roster||{p0:[],p1:[]}; if(!roster3.p0) roster3.p0=[]; if(!roster3.p1) roster3.p1=[];
-      ["p0","p1"].forEach(function(sk){
-        var pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
-        var pick=pack[ sel3[sk][di3] ];
-        if(!pick) return;
-        if (pick.type==="troop") rosterAdd(roster3[sk], pick.key, 1);
+      var key2;
+      for (key2 in {p0:1,p1:1}){
+        var pack=(d.currentPacks && d.currentPacks[key2]) ? d.currentPacks[key2] : [];
+        var pick=pack[ sel3[key2][di3] ];
+        if(!pick) continue;
+        if (pick.type==="troop") rosterAdd(roster3[key2], pick.key, 1);
         else if (pick.type==="special"){
-          if(pick.special==="double") rosterDoubleOneSpecific(roster3[sk], pick.for);
-          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster3[sk], pick.for);
+          if(pick.special==="double") rosterDoubleOneSpecific(roster3[key2], pick.for);
+          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster3[key2], pick.for);
         }
-      });
+      }
 
       var nextIx2=di3+1;
       if (nextIx2>=3){
@@ -990,11 +999,11 @@ function startHostLoops(){
   }, 260);
 }
 
-/* ---------- Your requested runBattle (publish faster, same logic speed) ---------- */
+/* ---------- Battle loop (faster publish; same logic speed) ---------- */
 function runBattle(){
   if(battleTick) return;
-  var lastLogic = 0;
 
+  var lastLogic = 0;
   battleTick = setInterval(async function(){
     var snap=await getDoc(stateRef); if(!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
     var d=snap.data(); if(d.phase!=="battle"){ clearInterval(battleTick); battleTick=null; return; }
@@ -1023,7 +1032,8 @@ function runBattle(){
             var t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
             if(!t2) break;
             stepToward(u,t2,units);
-            if (Math.abs(unitCenter(u).x-unitCenter(t2).x)+Math.abs(unitCenter(u).y-unitCenter(t2).y <= (u.range||1)){ attack(u,t2,now,st); break; }
+            var distNow = Math.abs(unitCenter(u).x-unitCenter(t2).x)+Math.abs(unitCenter(u).y-unitCenter(t2).y;
+            if (distNow <= (u.range||1)){ attack(u,t2,now,st); break; }
           }
         }
       }
@@ -1054,22 +1064,22 @@ function runBattle(){
       var winner = (lives[0]===0) ? st.players[1] : (lives[1]===0 ? st.players[0] : null);
 
       if (winner){
-        var next = assign({}, st, { lives:lives, phase:"game-over", phaseEndsAt:0, winner:winner });
+        var next = assign({}, st);
+        next.lives = lives; next.phase="game-over"; next.phaseEndsAt=0; next.winner=winner;
         await updateDoc(stateRef,next);
       }else{
         var loserKey = pKey(loser);
         var winnerKey = pKey(1-loser);
-        var next2 = assign({}, st, {
-          lives:lives,
-          phase: "loser-bonus",
-          phaseEndsAt: Date.now()+10000,
-          selections:{p0:[],p1:[]},
-          currentPacks: (function(){
-            var obj={}; obj[loserKey]=packFor(st.roster[loserKey], st.factions[loserKey]); obj[winnerKey]=[]; return obj;
-          })(),
-          draftIndex:0,
-          bonusFor: loserKey
-        });
+        var next2 = assign({}, st);
+        next2.lives = lives;
+        next2.phase = "loser-bonus";
+        next2.phaseEndsAt = Date.now()+10000;
+        next2.selections = {p0:[],p1:[]};
+        next2.currentPacks = (function(){
+          var obj={}; obj[loserKey]=packFor(st.roster[loserKey], st.factions[loserKey]); obj[winnerKey]=[]; return obj;
+        })();
+        next2.draftIndex = 0;
+        next2.bonusFor = loserKey;
         await updateDoc(stateRef,next2);
       }
     }else{
@@ -1120,7 +1130,6 @@ onSnapshot(stateRef,function(snap){
 
 /* ---------- UI ---------- */
 function cleanPhaseName(s){
-  // replaceAll fallback
   return String(s).split("-").join(" ");
 }
 function render(){
@@ -1161,22 +1170,25 @@ function render(){
 
   if (phase==="faction-select"){
     var already = (S && S.factions && S.factions[sk]) ? S.factions[sk] : null;
-    if (already){ row.style.display="none"; row.innerHTML=""; note.textContent="Selected: " + already; note.style.display="block"; return; }
+    if (already){ row.style.display="none"; row.innerHTML=""; note.textContent="Selected: "+already; note.style.display="block"; return; }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
-    ["Helions","Aesir","Vanir"].forEach(function(f){
-      var el=document.createElement("div"); el.className="card";
-      var troopList = (FACTIONS[f]||[]).map(function(k){ return unitEmoji(k)+" "+TROOPS[k].name; }).join(" · ");
-      el.innerHTML='<div class="title">'+f+'</div><div class="desc">'+troopList+'</div>';
-      el.onclick=function(){ chooseFaction(f); };
-      row.appendChild(el);
-    });
+    var arrF = ["Helions","Aesir","Vanir"];
+    for (var fi=0; fi<arrF.length; fi++){
+      (function(f){
+        var el=document.createElement("div"); el.className="card";
+        var troopList = (FACTIONS[f]||[]).map(function(k){ return unitEmoji(k)+" "+TROOPS[k].name; }).join(" · ");
+        el.innerHTML='<div class="title">'+f+'</div><div class="desc">'+troopList+'</div>';
+        el.onclick=function(){ chooseFaction(f); };
+        row.appendChild(el);
+      })(arrF[fi]);
+    }
     return;
   }
 
   if (phase==="loser-bonus"){
     var loserKey = (S && S.bonusFor) ? S.bonusFor : null;
     if (loserKey !== sk){
-      row.style.display="none"; row.innerHTML=""; note.textContent="Opponent bonus pick…"; note.style.display="block"; return;
+      row.style.display="none"; row.innerHTML=""; note.textContent="Opponent bonus pick..."; note.style.display="block"; return;
     }
   }
 
@@ -1194,16 +1206,18 @@ function render(){
 
   row.style.display="flex"; row.innerHTML=""; note.style.display="none";
   for (var i=0;i<pack.length;i++){
-    var c=pack[i];
-    var el=document.createElement("div"); el.className="card";
-    if (c.type==="troop"){
-      el.innerHTML='<div class="title">'+c.emoji+' '+c.name+'</div><div class="desc">'+(c.role==="back"?"Backline":"Frontline")+' — '+TROOPS[c.key].faction+'</div>';
-    }else{
-      var nn=(TROOPS[c.for] && TROOPS[c.for].name) ? TROOPS[c.for].name : "Type";
-      el.innerHTML='<div class="title">'+c.emoji+' '+(c.name|| (c.special==="upgrade"?"Upgrade":"Double"))+'</div><div class="desc">'+(c.special==="upgrade"?"Upgrade":"Double")+' '+nn+'</div>';
-    }
-    (function(index){ el.onclick=function(){ chooseCard(index); }; })(i);
-    row.appendChild(el);
+    (function(index){
+      var c=pack[index];
+      var el=document.createElement("div"); el.className="card";
+      if (c.type==="troop"){
+        el.innerHTML='<div class="title">'+c.emoji+' '+c.name+'</div><div class="desc">'+(c.role==="back"?"Backline":"Frontline")+' — '+TROOPS[c.key].faction+'</div>';
+      }else{
+        var nn=(TROOPS[c.for] && TROOPS[c.for].name) ? TROOPS[c.for].name : "Type";
+        el.innerHTML='<div class="title">'+c.emoji+' '+(c.name|| (c.special==="upgrade"?"Upgrade":"Double"))+'</div><div class="desc">'+(c.special==="upgrade"?"Upgrade":"Double")+' '+nn+'</div>';
+      }
+      el.onclick=function(){ chooseCard(index); };
+      row.appendChild(el);
+    })(i);
   }
 }
 async function chooseFaction(fac){
@@ -1229,13 +1243,6 @@ $("fsBtn").onclick = async function(){
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
 
 
 
