@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -10,8 +10,14 @@
     --shadow:0 10px 30px rgba(2,6,23,.08);
     --cell:64px; /* bigger tiles for closer view */
     --gap:4px;
-    --p0bg:#ffdbe0; /* solid red-tinted */
-    --p1bg:#dbe7ff; /* solid blue-tinted */
+    /* team fills kept around but unused now (rank colors used instead) */
+    --p0bg:#ffdbe0;
+    --p1bg:#dbe7ff;
+
+    /* rank colors */
+    --rank1:#22c55e;  /* green */
+    --rank2:#eab308;  /* yellow */
+    --rank3:#ef4444;  /* red */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -48,7 +54,7 @@
   }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) */
-  .under{ position:absolute; inset:0; z-index:0; } /* team fill */
+  .under{ position:absolute; inset:0; z-index:0; } /* rank fill */
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
   .hp{position:absolute;left:3px;right:3px;bottom:3px;height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:4}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
@@ -68,6 +74,11 @@
   /* Ground effects */
   .poison{ position:absolute; inset:0; background:#ffb3b3; opacity:.95; z-index:1; animation:poipulse 1s ease-in-out infinite; }
   @keyframes poipulse{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.15)} }
+
+  /* NEW: Defiler toxic splash (purple) */
+  .toxic{ position:absolute; inset:0; background:#6b21a8; opacity:.9; z-index:1; animation:toxpulse 1s ease-in-out infinite; }
+  @keyframes toxpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
+
   .acid{ position:absolute; inset:0; background:#c7b8ff; opacity:.95; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
   @keyframes acidpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
   .ward{ position:absolute; inset:0; background:#8ec5ff; border:1px solid #4ea3ff; z-index:1 }
@@ -159,7 +170,7 @@ const lobbyRef = doc(db,"lobbies",gameId);
 const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
 /* ---------------- Pace / sizes ---------------- */
-const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100 };
+const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100, toxicDotMs: 1000 };
 const VIEW_MS  = 120;   // publish + render cadence (smoother remote view)
 const LOGIC_MS = 560;   // core logic cadence (unchanged battle speed)
 const MOVE_MS  = 560;   // gate movement per unit so logic pacing matches old behavior
@@ -229,9 +240,14 @@ buildBoard();
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
+/* NOTE: Changes per request:
+   - rifleman dmg ↓ and range ↑
+   - guardian size -> 1, dmg ↑, stronger knockback
+   - defiler size -> 1, gains toxicSplash on hit (10s purple DoT)
+*/
 const TROOPS = {
   /* Vanir */
-  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
+  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,1,6,1200)}, spawn:2 },
   vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:{...R(8,4,10,2000), splash1:true, knock:true} },
   vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(18,3,800)}, splash1:true },
   miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
@@ -241,13 +257,13 @@ const TROOPS = {
   phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,2,4,900), blink50:true}, spawn:2 },
   blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,4,900), splash1:true, knock:true}, size:2 },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,7,900), splash1:true, knock:true, strongKnock:true}, size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🛡️✨", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1700, wardDur:6000, wardHp:2 }},
 
   /* Helions */
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:{...M(6,2,600), spd:3}, spawn:3 },
   roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:{...R(10,3,3,1300)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(26,4,900), splash1:true}, size:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(26,4,900), splash1:true, toxicSplash:true}, size:1 },
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(9,3,5,1200), acid:true, acidDur:3500} }
 };
@@ -263,10 +279,17 @@ const pKey = (i)=> i===0 ? "p0" : "p1";
 const idx=(x,y)=> y*W+x;
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
-const fieldEmpty = ()=>({units:[], poison:[], acid:[], wards:[], fx:[]});
+/* rank color map */
+function rankColor(lvl){
+  if (lvl===3) return getComputedStyle(document.documentElement).getPropertyValue('--rank3') || '#ef4444';
+  if (lvl===2) return getComputedStyle(document.documentElement).getPropertyValue('--rank2') || '#eab308';
+  return getComputedStyle(document.documentElement).getPropertyValue('--rank1') || '#22c55e';
+}
 
-/* 2×2 helpers */
+let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
+
+/* 2×2 helpers (guardians/defilers now 1×1 but keep generic) */
 function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
 function rectangleFree(units,x,y,size){
   for(let yy=0; yy<size; yy++){
@@ -324,19 +347,21 @@ function placeUnit(state,p,key,lvl){
       maxhp:Math.round((b.hp||10)), hp:Math.round((b.hp||10)),
       dmg:Math.round((b.dmg||3)), spd: b.spd ?? 1, range:b.range ?? 1,
       cd: Math.round((b.cd ?? 600)*PACE.atkMult),
-      splash1:!!b.splash1, knock:!!b.knock, hunterRanged:!!b.hunterRanged,
+      splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
       kamikaze:!!b.kamikaze, paints:!!b.paints, size,
       heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
       ward:!!b.ward, wardCd:b.wardCd||0, wardDur:b.wardDur||0, wardHp:b.wardHp||1,
       acid:!!b.acid, acidDur:b.acidDur||0,
+      toxicSplash:!!b.toxicSplash,
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
-    const mult = [1,1,1.5,2][lvl] || 1;
+    /* NEW: +33% per level (L1=1.00, L2=1.33, L3=1.66) */
+    const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
-    u.dmg   = Math.round(u.dmg*mult);
+    u.dmg   = Math.max(1, Math.round(u.dmg*mult));
     state.field.units.push(u);
   }
 }
@@ -344,6 +369,7 @@ function rebuildFieldFromRoster(state){
   state.field = state.field || fieldEmpty();
   state.field.units = [];
   state.field.poison = state.field.poison || [];
+  state.field.toxic  = state.field.toxic  || [];
   state.field.acid   = state.field.acid   || [];
   state.field.wards  = state.field.wards  || [];
   for(let p=0;p<2;p++){
@@ -356,7 +382,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* Draft packs */
+/* Draft packs (unchanged logic, specials are targeted) */
 function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
 function weightedPick(pool, n){
   const out=[]; const copy=[...pool];
@@ -444,7 +470,7 @@ function flashAt(x,y, dmgNum){
   }
 }
 
-/* Painting board */
+/* Painting board — NOW BY RANK, not team */
 function paint(units, field){
   const total=W*H;
   for(let i=0;i<total;i++){
@@ -453,6 +479,7 @@ function paint(units, field){
     const uni=d.querySelector(".unit"); uni.textContent="";
     d.querySelector(".hp>i").style.width="0%";
     d.querySelector(".poison")?.remove();
+    d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
     d.querySelector(".ward")?.remove();
   }
@@ -461,6 +488,11 @@ function paint(units, field){
     if (p.until<=now) return;
     const i=idx(p.x,p.y); const d=cellsEl.children[i]; if (!d) return;
     d.appendChild(Object.assign(document.createElement("div"),{className:"poison"}));
+  });
+  (field.toxic||[]).forEach(t=>{
+    if (t.until<=now) return;
+    const i=idx(t.x,t.y); const d=cellsEl.children[i]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"),{className:"toxic"}));
   });
   (field.acid||[]).forEach(a=>{
     if (a.until<=now) return;
@@ -475,16 +507,18 @@ function paint(units, field){
 
   for(const u of units){
     const s = unitSize(u);
+    const color = rankColor(u.lvl||1).trim() || '#22c55e';
     for(let yy=0; yy<s; yy++){
       for(let xx=0; xx<s; xx++){
         const i=idx(u.x+xx,u.y+yy); const d=cellsEl.children[i]; if(!d) continue;
         const under=d.querySelector(".under");
-        under.style.background = u.p===0 ? "var(--p0bg)" : "var(--p1bg)";
+        /* Fill by RANK (solid), not team */
+        under.style.background = color;
       }
     }
     const i0=idx(u.x,u.y), d0=cellsEl.children[i0]; if(!d0) continue;
     const uni=d0.querySelector(".unit");
-    uni.style.zIndex = "3";                 // emoji above team fill & effects
+    uni.style.zIndex = "3";                 // emoji above fill & effects
     uni.style.fontSize = s===2 ? "32px" : "26px";
     uni.textContent = unitEmoji(u.type);
     const hp=d0.querySelector(".hp>i");
@@ -597,20 +631,23 @@ function applyDamage(victim, dmg){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
 }
-function splash(units,x,y,dmg,srcP,kn){
+function splash(units,x,y,dmg,srcP,kn,strong=false){
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
       const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
-      if(hit){ applyDamage(hit,dmg); if(kn) tryKnock(x,y,hit,units); }
+      if(hit){ applyDamage(hit,dmg); if(kn) tryKnock(x,y,hit,units,strong); }
     }
   }
 }
-function tryKnock(cx,cy,t,units){
+function tryKnock(cx,cy,t,units,strong=false){
   const tcx=t.x+(unitSize(t)-1)/2, tcy=t.y+(unitSize(t)-1)/2;
   const dx=Math.sign(tcx-cx), dy=Math.sign(tcy-cy);
-  const nx=t.x+dx, ny=t.y+dy;
-  if (canMoveTo(t, units, nx, ny)){ t.x=nx; t.y=ny; }
+  let steps = strong ? 2 : 1;
+  while(steps>0){
+    const nx=t.x+dx, ny=t.y+dy;
+    if (canMoveTo(t, units, nx, ny)){ t.x=nx; t.y=ny; steps--; } else break;
+  }
 }
 function chainLightning(units, startTarget, srcP, hops, dmg){
   let cur = startTarget; let left=hops; const hit=new Set();
@@ -661,7 +698,12 @@ function attack(u,t,now,st){
   } else {
     if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     applyDamage(t,u.dmg);
-    if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock);
+    const strong = !!u.strongKnock;
+    if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock, strong);
+    /* NEW: Defiler toxic splash (10s) */
+    if (u.toxicSplash){
+      addToxicSplash(st, t.x, t.y, 10_000);
+    }
   }
   u.nextAtk = now + (u.cd||600);
   return true;
@@ -675,6 +717,17 @@ function paintPoison(state, cx, cy, durMs){
     for(let dx=-1;dx<=1;dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
       state.field.poison.push({x,y,until});
+    }
+  }
+}
+/* NEW: toxic (purple) DoT area for Defiler — 3x3 around impact */
+function addToxicSplash(state, cx, cy, durMs){
+  const until = Date.now()+durMs;
+  state.field.toxic = state.field.toxic || [];
+  for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++){
+      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+      state.field.toxic.push({x,y,until});
     }
   }
 }
@@ -704,6 +757,19 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(p.x,p.y,false);
   });
+  /* NEW: toxic purple — damage over 10s, no slow */
+  (field.toxic||[]).forEach(t=>{
+    if (t.until<=now) return;
+    let ticked=false;
+    for(const u of units){
+      if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
+        if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
+          u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        }
+      }
+    }
+    if (ticked) groundTickParticles(t.x,t.y,true);
+  });
   (field.acid||[]).forEach(a=>{
     if (a.until<=now) return;
     let ticked=false;
@@ -719,7 +785,7 @@ function applyTerrain(field, units){
   });
 }
 
-/* Init & host loops */
+/* Init & host loops (unchanged flow) */
 async function ensureStateExists(){
   const lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
@@ -919,6 +985,7 @@ function startHostLoops(){
     const now2=Date.now();
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
+    nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
     if (JSON.stringify(nf) !== JSON.stringify(d.field)){
@@ -1150,6 +1217,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
