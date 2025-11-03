@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -9,8 +9,12 @@
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
     --shadow:0 10px 30px rgba(2,6,23,.08);
     --cell:40px; --gap:4px;
-    --p0bg:#ffdbe0; /* solid light red */
-    --p1bg:#dbe7ff; /* solid light blue */
+    /* keep neutral cell bg; colored unit blocks render in overlay */
+    --p0outline:#ef4444;  /* red outline */
+    --p1outline:#3b82f6;  /* blue outline */
+    --lvl1:#16a34a;       /* solid green */
+    --lvl2:#eab308;       /* solid yellow */
+    --lvl3:#dc2626;       /* solid red */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -39,7 +43,8 @@
     border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;
     position:relative;overflow:hidden;
   }
-  .under{ position:absolute; inset:0; } /* solid */
+  /* neutral solid background; unit fill is drawn in overlay */
+  .under{ position:absolute; inset:0; background:transparent; } 
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:22px; z-index:2; pointer-events:none; }
   .hp{position:absolute;left:3px;right:3px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:3}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
@@ -62,6 +67,20 @@
   .acid{ position:absolute; inset:0; background:#c7b8ff; opacity:.95; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
   @keyframes acidpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
   .ward{ position:absolute; inset:0; background:#8ec5ff; border:1px solid #4ea3ff; z-index:1 }
+  .fire{ position:absolute; inset:0; background:#ff6b6b; opacity:.95; z-index:1; animation:firepulse 0.8s ease-in-out infinite; }
+  @keyframes firepulse{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.25)} }
+
+  /* Overlay for solid colored unit blocks (with outline by player) */
+  .unitsOverlay{ position:absolute; left:0; top:0; width:1px; height:1px; z-index:5; pointer-events:none; }
+  .uBox{
+    position:absolute; border:3px solid; border-radius:8px; 
+    box-shadow:0 2px 8px rgba(0,0,0,.08);
+  }
+  .uBox.p0{ border-color:var(--p0outline); }
+  .uBox.p1{ border-color:var(--p1outline); }
+  .uBox.lvl1{ background:var(--lvl1); }
+  .uBox.lvl2{ background:var(--lvl2); }
+  .uBox.lvl3{ background:var(--lvl3); }
 
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
   .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
@@ -80,7 +99,7 @@
     padding:6px 12px;font-weight:900;display:none;
   }
 
-  .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
+  .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; z-index:6; }
   .beam{
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.95),rgba(239,68,68,.95));
     opacity:.95; transform-origin:0 50%; animation:beamfade .35s ease-out forwards;
@@ -114,6 +133,8 @@
     <div class="canvas" id="canvas">
       <!-- board: 8 x 20 -->
       <div id="cells" class="cells" style="--w:8; --cell:40px; --gap:4px"></div>
+      <!-- NEW: overlay layer for solid colored unit blocks -->
+      <div id="unitsOverlay" class="unitsOverlay"></div>
       <div id="beams" class="beams"></div>
       <div id="particles" class="particles"></div>
     </div>
@@ -128,7 +149,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ------------ Pace / balance ------------ */
-const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100 };
+const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1800 }; // slow more for blood-burst dead spots
 const CELL=40, GAP=4, W=8, H=20;
 
 /* ------------ Firebase ------------ */
@@ -154,7 +175,7 @@ const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
 /* ------------ DOM ------------ */
 const $ = (id)=>document.getElementById(id);
-const cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
+const cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles"), overlayUnits=$("unitsOverlay");
 
 /* ------------ Fit-to-view scaling + drag w/ inertia ------------ */
 function fitBoard(){
@@ -244,7 +265,7 @@ const xy =(i)=> ({x:i%W,y:Math.floor(i/W)});
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
-const fieldEmpty = ()=>({units:[], poison:[], acid:[], wards:[], fx:[]});
+const fieldEmpty = ()=>({units:[], poison:[], acid:[], fire:[], wards:[], fx:[]});
 
 /* ------------ 2×2 occupancy ------------ */
 function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
@@ -312,7 +333,8 @@ function placeUnit(state,p,key,lvl){
       acid:!!b.acid, acidDur:b.acidDur||0,
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0
     };
-    const mult = [1,1,1.5,2][lvl] || 1;
+    /* NEW: +33% per level (Lv1=1.00, Lv2=1.33, Lv3=1.66) */
+    const mult = [1,1,1.33,1.66][lvl] || 1;
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
     u.dmg   = Math.round(u.dmg*mult);
@@ -324,6 +346,7 @@ function rebuildFieldFromRoster(state){
   state.field.units = [];
   state.field.poison = state.field.poison || [];
   state.field.acid   = state.field.acid   || [];
+  state.field.fire   = state.field.fire   || [];
   state.field.wards  = state.field.wards  || [];
   for(let p=0;p<2;p++){
     const rk = pKey(p);
@@ -393,7 +416,8 @@ function renderBeam(ev, heal=false){
   setTimeout(()=>el.remove(), ev.ttl);
 }
 function renderBurst(ev){
-  for(let i=0;i<8;i++){
+  /* more particles */
+  for(let i=0;i<14;i++){
     const dot=document.createElement("div"); dot.className="p";
     const offx = (Math.random()*14-7), offy=(Math.random()*14-7);
     const a=centerPx(ev.cx,ev.cy);
@@ -405,7 +429,7 @@ function renderBurst(ev){
 }
 function groundTickParticles(x,y, purple=false){
   const a=centerPx(x,y);
-  for(let i=0;i<3;i++){
+  for(let i=0;i<6;i++){      // more particles
     const dot=document.createElement("div"); dot.className="p"; if (purple) dot.classList.add("purple");
     const offx = (Math.random()*10-5), offy=(Math.random()*6-3);
     dot.style.left = (a.left + offx) + "px";
@@ -423,7 +447,36 @@ function flashAt(x,y, dmgNum=0){
     cell.appendChild(t); setTimeout(()=>t.remove(), 650);
   }
 }
+
+/* NEW: Solid colored unit overlay by level + outline by player */
+function levelClass(lvl){
+  if (lvl>=3) return "lvl3";
+  if (lvl===2) return "lvl2";
+  return "lvl1";
+}
+function redrawUnitBlocks(units){
+  overlayUnits.style.width = (W*(CELL+GAP)-GAP) + "px";
+  overlayUnits.style.height= (H*(CELL+GAP)-GAP) + "px";
+  overlayUnits.innerHTML = "";
+  for(const u of units){
+    const s = unitSize(u);
+    const left = u.x*(CELL+GAP);
+    const top  = u.y*(CELL+GAP);
+    const w = s*CELL + (s-1)*GAP;
+    const h = s*CELL + (s-1)*GAP;
+    const box = document.createElement("div");
+    box.className = `uBox ${u.p===0?"p0":"p1"} ${levelClass(u.lvl)}`;
+    box.style.left = left + "px";
+    box.style.top  = top  + "px";
+    box.style.width= w + "px";
+    box.style.height=h + "px";
+    overlayUnits.appendChild(box);
+  }
+}
+
+/* Base board paint (cells & ground effects & emoji & HP) */
 function paint(units, field){
+  // reset cells
   for(let i=0;i<W*H;i++){
     const d=cellsEl.children[i];
     const under=d.querySelector(".under"); under.style.background="transparent";
@@ -431,6 +484,7 @@ function paint(units, field){
     d.querySelector(".hp>i").style.width="0%";
     d.querySelector(".poison")?.remove();
     d.querySelector(".acid")?.remove();
+    d.querySelector(".fire")?.remove();
     d.querySelector(".ward")?.remove();
   }
   const now=Date.now();
@@ -444,19 +498,20 @@ function paint(units, field){
     const i=idx(a.x,a.y); const d=cellsEl.children[i]; if (!d) return;
     d.appendChild(Object.assign(document.createElement("div"),{className:"acid"}));
   });
+  (field.fire||[]).forEach(f=>{
+    if (f.until<=now) return;
+    const i=idx(f.x,f.y); const d=cellsEl.children[i]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"),{className:"fire"}));
+  });
   (field.wards||[]).forEach(w=>{
     if (w.until<=now || w.hp<=0) return;
     const i=idx(w.x,w.y); const d=cellsEl.children[i]; if(!d) return;
     d.appendChild(Object.assign(document.createElement("div"),{className:"ward"}));
   });
 
+  // Emoji+HP bar (HP bar stays on the top-left cell of a 2x2)
   for(const u of units){
     const s = unitSize(u);
-    for(let yy=0; yy<s; yy++) for(let xx=0; xx<s; xx++){
-      const i=idx(u.x+xx,u.y+yy); const d=cellsEl.children[i]; if(!d) continue;
-      const under=d.querySelector(".under");
-      under.style.background = u.p===0 ? "var(--p0bg)" : "var(--p1bg)"; /* solid */
-    }
     const i0=idx(u.x,u.y), d0=cellsEl.children[i0]; if(!d0) continue;
     const uni=d0.querySelector(".unit");
     uni.style.fontSize = s===2 ? "28px" : "22px";
@@ -464,7 +519,11 @@ function paint(units, field){
     const hp=d0.querySelector(".hp>i");
     hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
   }
+
+  // draw colored solid blocks (covers 2×2 visually as one square)
+  redrawUnitBlocks(units);
 }
+
 function render(){
   const p0n=(S?.players?.[0])||"P0", p1n=(S?.players?.[1])||"P1";
   const lives=S?.lives||[4,4];
@@ -485,7 +544,7 @@ function render(){
     counter.style.display="block"; counter.textContent = `Bonus 1 / 1`;
   } else { counter.style.display="none"; }
 
-  // while drafting, render a ghost field so you can see both armies
+  // show ghost armies while drafting
   if (draftish){
     const ghost=structuredClone(S); rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
@@ -581,7 +640,7 @@ function manhattanUnits(u,t){
   return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
 }
 
-/* 4-direction step: pick the axis with bigger gap first; fallbacks in cardinal directions */
+/* 4-direction step */
 function stepToward(u,t,units){
   const a=unitCenter(u), b=unitCenter(t);
   const dx=b.x-a.x, dy=b.y-a.y;
@@ -702,6 +761,13 @@ function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
   }
 }
 
+/* NEW: Fire tile (used by Lv3 Rocket impact) */
+function addFire(state,x,y,durMs=5000){
+  if(!inside(x,y)) return;
+  state.field.fire = state.field.fire || [];
+  state.field.fire.push({x,y,until:Date.now()+durMs});
+}
+
 function attack(u,t,now,st){
   const inRange = manhattanUnits(u,t) <= (u.range||1);
   if(!inRange) return false;
@@ -728,6 +794,10 @@ function attack(u,t,now,st){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     applyDamage(t,u.dmg);
     splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
+    /* NEW: Lv3 rocket leaves fire tile */
+    if (u.lvl>=3){
+      addFire(st, t.x, t.y, 5000);
+    }
   } else if (u.chain3){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     chainLightning(st.field.units,t,u.p,3, u.dmg);
@@ -793,6 +863,17 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(a.x,a.y,true); // purple particles for acid
   });
+  (field.fire||[]).forEach(f=>{
+    if (f.until<=now) return;
+    for(const u of units){
+      if (u.x<=f.x && f.x<u.x+unitSize(u) && u.y<=f.y && f.y<u.y+unitSize(u)){
+        if (!u._fireTick || now - u._fireTick >= 900){
+          u._fireTick = now; u.hp = u.hp - 2; flashAt(u.x,u.y,2);
+        }
+      }
+    }
+    // visual ticks handled by .fire animation
+  });
 }
 
 /* ------------ Init & host loops ------------ */
@@ -817,7 +898,7 @@ async function ensureStateExists(){
       field:fieldEmpty(),
       selections:{p0:[],p1:[]},
       currentPacks:{p0:[],p1:[]},
-      bonusFor:null,              /* NEW: which side gets the loser bonus */
+      bonusFor:null,
       draftIndex:0, winner:null
     });
   });
@@ -869,8 +950,6 @@ function startHostLoops(){
       return;
     }
 
-    const draftish=["draft","loser-bonus","draft-after"].includes(d.phase);
-
     if (d.phase==="draft" && (bothPicked(d) || now >= (d.phaseEndsAt||0))){
       const di=d.draftIndex|0;
       const sel=d.selections||{p0:[],p1:[]};
@@ -919,7 +998,6 @@ function startHostLoops(){
       const di=d.draftIndex|0;
       const sel=d.selections||{p0:[],p1:[]};
 
-      // only loser makes a pick; if timer expires and no pick, auto-pick for loser
       if (sel[loser]?.[di]==null && now >= (d.phaseEndsAt||0)){
         const pack=(d.currentPacks?.[loser]||[]);
         sel[loser][di] = Math.floor(Math.random()*Math.max(1,pack.length));
@@ -1002,6 +1080,7 @@ function startHostLoops(){
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
+    nf.fire  = (nf.fire  ||[]).filter(f=>f.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
     if (JSON.stringify(nf) !== JSON.stringify(d.field)){
       await updateDoc(stateRef, { field: nf });
@@ -1033,7 +1112,7 @@ function runBattle(){
         for(let s=0;s<steps;s++){
           const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
           if(!t2) break;
-          stepToward(u,t2,units);              // 4-directional pathing
+          stepToward(u,t2,units);              
           if (manhattanUnits(u,t2) <= (u.range||1)){ attack(u,t2,now,st); break; }
         }
       }
@@ -1071,7 +1150,7 @@ function runBattle(){
           selections:{p0:[],p1:[]},
           currentPacks: {
             [loserKey]:  packFor(st.roster[loserKey],  st.factions[loserKey]),
-            [winnerKey]: []  // winner gets NO bonus pack
+            [winnerKey]: []
           },
           draftIndex:0,
           bonusFor: loserKey
@@ -1131,6 +1210,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
