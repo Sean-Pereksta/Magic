@@ -7,6 +7,7 @@
 <style>
   :root{
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
+    --good:#22c55e; --mid:#3b82f6; --bad:#ef4444; --warn:#f59e0b;
     --p0:#ef4444; --p1:#3b82f6;
   }
   *{box-sizing:border-box}
@@ -17,30 +18,29 @@
     background:#fff; border-bottom:1px solid var(--line);
     display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px;
   }
-  .lives{display:flex; gap:8px; align-items:center; font-weight:900}
-  .life{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:.95rem}
+  .lives{display:flex; gap:10px; align-items:center; font-weight:900}
+  .life{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:#fff}
   .dot{width:10px;height:10px;border-radius:50%}
   .dot.p0{ background:var(--p0) } .dot.p1{ background:var(--p1) }
 
-  .btn{appearance:none;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}
+  .btn{appearance:none;border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 12px;font-weight:800;cursor:pointer}
   .btn:hover{background:#f8fafc}
   .timer{font-weight:900}
   .status{font-weight:800}
-  .muted{color:var(--muted)}
 
-  .stage{ padding:6px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .stage .left{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .stage{ padding:8px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .stage .left{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 
-  /* Board Window (smaller) */
-  .wrap{ position:relative; margin:8px auto; width:min(980px, 98vw); height:min(68vh, 640px);
+  /* Board Window */
+  .wrap{ position:relative; margin:8px auto; width:min(1100px, 98vw); height: min(72vh, 760px);
          border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#fff; }
-  .draghint{ position:absolute; right:8px; bottom:8px; color:var(--muted); font-size:.8rem; background:#fff; padding:3px 8px; border-radius:8px; border:1px solid var(--line); }
+  .draghint{ position:absolute; right:8px; bottom:8px; color:var(--muted); font-size:.85rem; background:#fff; padding:4px 8px; border-radius:8px; border:1px solid var(--line); }
 
-  .boardOuter{ position:absolute; inset:0; overflow:hidden; background:#fff; touch-action:none; }
+  .boardOuter{ position:absolute; inset:0; overflow:hidden; background:#fff }
   .boardInner{ position:absolute; left:0; top:0; transform:translate3d(0,0,0); }
 
-  /* Grid (smaller cells) */
-  .cell{ position:absolute; width:34px; height:34px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; }
+  /* Grid */
+  .cell{ position:absolute; width:40px; height:40px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; }
   .centerLine{ position:absolute; left:0; right:0; height:2px; background:#e5e7eb; }
 
   /* Units */
@@ -49,62 +49,58 @@
     color:#111; font-weight:900; border:2px solid #111; border-radius:8px;
     pointer-events:none; box-shadow:0 2px 0 rgba(0,0,0,.2);
   }
-  .unitBox .emoji{ font-size:18px; line-height:1 }
-  .lvl1{ background:#22c55e } .lvl2{ background:#3b82f6 } .lvl3{ background:#ef4444 }
+  .unitBox .emoji{ font-size:20px; line-height:1 }
+  .lvl1{ background:#22c55e }   /* green */
+  .lvl2{ background:#3b82f6 }   /* blue */
+  .lvl3{ background:#ef4444 }   /* red  */
   .big{ border-radius:10px }     /* 2×2 */
-  .ghost{ opacity:.7; outline:2px dashed rgba(0,0,0,.25); }
   .hitFlash{ animation:hf .25s linear }
   @keyframes hf{ from{filter:brightness(1.8)} to{filter:brightness(1)} }
 
-  /* Health bar */
-  .hpWrap{
-    position:absolute; left:0; right:0; top:-7px; height:5px;
-    background:rgba(0,0,0,.12); border-radius:6px; overflow:hidden; pointer-events:none;
-  }
-  .hpFill{ height:100%; background:linear-gradient(90deg,#22c55e,#eab308,#ef4444); transform-origin:left center }
-
   /* Fields / blood / acid */
   .fieldTile{
-    position:absolute; width:34px; height:34px; border-radius:6px;
+    position:absolute; width:40px; height:40px; border-radius:6px;
     background:#b91c1c; opacity:.55; pointer-events:none;
   }
-
   /* Wards */
   .ward{
-    position:absolute; width:34px; height:34px; border-radius:8px;
-    background:#7c3aed; border:2px solid #3b0764; color:#fff; font-size:11px; display:grid; place-items:center;
+    position:absolute; width:40px; height:40px; border-radius:8px;
+    background:#7c3aed; border:2px solid #3b0764; color:#fff; font-size:12px; display:grid; place-items:center;
     box-shadow:0 2px 0 rgba(0,0,0,.25);
   }
 
   /* Shots */
-  .shot{ position:absolute; height:2px; background:#111; opacity:.85; transform-origin:left center; }
+  .shot{
+    position:absolute; height:2px; background:#111; opacity:.8; transform-origin:left center;
+  }
   .shot.lightning{ height:3px; background:linear-gradient(90deg,#fb923c,#f59e0b,#fbbf24) }
   .shot.plasma{ height:2px; background:#22d3ee }
 
-  /* Center draft cards (smaller) */
+  /* Modal for center draft cards */
   .centerModal{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:30;
-    background:rgba(255,255,255,.0);
+    background:rgba(255,255,255,.0); /* subtle */
     pointer-events:none;
   }
-  .cardRow{ display:flex; gap:10px; pointer-events:auto; flex-wrap:wrap; justify-content:center; }
+  .cardRow{ display:flex; gap:12px; pointer-events:auto; }
   .pickCard{
-    width:min(180px,42vw); border:2px solid var(--line); border-radius:12px; background:#fff;
-    box-shadow:0 6px 24px rgba(0,0,0,.12); padding:10px; cursor:pointer; user-select:none;
-    display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center;
+    width:min(220px, 44vw); border:2px solid var(--line); border-radius:14px; background:#fff;
+    box-shadow:0 6px 28px rgba(0,0,0,.15); padding:12px; cursor:pointer; user-select:none;
+    display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center;
     transition:transform .1s ease;
   }
   .pickCard:hover{ transform:translateY(-2px) }
-  .pc-emoji{ font-size:24px }
-  .pc-title{ font-weight:900; font-size:1rem; text-align:center }
-  .pc-note{ color:var(--muted); font-size:.85rem; text-align:center }
+  .pc-emoji{ font-size:28px }
+  .pc-title{ font-weight:900 }
+  .pc-note{ color:var(--muted); font-size:.92rem; text-align:center }
 
   .youPicked{
-    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
     background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-weight:800;
-    z-index:60; font-size:.95rem;
+    z-index:60;
   }
 
+  /* Mobile fullscreen button */
   .fsBtn{
     position:fixed; right:10px; top:10px; z-index:1000;
     border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 10px; font-weight:800;
@@ -138,10 +134,13 @@
 
   <div class="wrap">
     <div class="boardOuter" id="boardOuter" aria-label="Battlefield (drag to pan)">
-      <div class="boardInner" id="boardInner"></div>
+      <div class="boardInner" id="boardInner">
+        <!-- grid, units, fields, shots appended here -->
+      </div>
     </div>
     <div class="draghint">Drag to pan • 8×20</div>
 
+    <!-- picks appear centered here -->
     <div id="centerUI" class="centerModal" style="display:none;">
       <div class="cardRow" id="cardRow"></div>
     </div>
@@ -176,28 +175,26 @@ const stateRef = doc(db, "lobbies", gameId, "draftbattle", "state");
 
 /* ---------------------- Board ------------------------- */
 const W = 8, H = 20;         // 8×20
-const CELL = 34, GAP = 4;    // px
+const CELL = 40, GAP = 4;    // px
 const boardInner = document.getElementById("boardInner");
 const boardOuter = document.getElementById("boardOuter");
+
+/* pan */
+let pan = { x: 10, y: 10 };
+let drag = null;
 boardInner.style.width = (W*CELL + (W-1)*GAP) + "px";
 boardInner.style.height= (H*CELL + (H-1)*GAP) + "px";
+function applyPan(){ boardInner.style.transform = `translate(${pan.x}px, ${pan.y}px)`; }
+boardOuter.addEventListener("pointerdown", (e)=>{ drag={x:e.clientX,y:e.clientY,sx:pan.x,sy:pan.y}; boardOuter.setPointerCapture(e.pointerId); });
+boardOuter.addEventListener("pointermove", (e)=>{ if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; pan.x=drag.sx+dx; pan.y=drag.sy+dy; applyPan(); });
+boardOuter.addEventListener("pointerup", ()=> drag=null);
+applyPan();
 
-/* layers */
+/* Build grid */
 const gridLayer = document.createElement("div"); boardInner.appendChild(gridLayer);
 const unitLayer = document.createElement("div"); boardInner.appendChild(unitLayer);
 const fieldLayer= document.createElement("div"); boardInner.appendChild(fieldLayer);
 const shotLayer = document.createElement("div"); boardInner.appendChild(shotLayer);
-
-/* pan with mobile polish */
-let pan = { x: 8, y: 8 };
-let drag = null;
-function applyPan(){ boardInner.style.transform = `translate(${pan.x}px, ${pan.y}px)`; }
-boardOuter.addEventListener("pointerdown", (e)=>{ drag={id:e.pointerId,x:e.clientX,y:e.clientY,sx:pan.x,sy:pan.y}; boardOuter.setPointerCapture(e.pointerId); e.preventDefault(); }, {passive:false});
-boardOuter.addEventListener("pointermove", (e)=>{ if(!drag||e.pointerId!==drag.id) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; pan.x=drag.sx+dx; pan.y=drag.sy+dy; applyPan(); e.preventDefault(); }, {passive:false});
-boardOuter.addEventListener("pointerup", (e)=>{ if(drag&&e.pointerId===drag.id) drag=null; }, {passive:true});
-applyPan();
-
-/* Build grid */
 for (let y=0;y<H;y++){
   for (let x=0;x<W;x++){
     const d = document.createElement("div");
@@ -224,6 +221,7 @@ const pickedMsg = document.getElementById("pickedMsg");
 const cardRow = document.getElementById("cardRow");
 const centerUI = document.getElementById("centerUI");
 const pickedToast = document.getElementById("pickedToast");
+const clearPickBtn = document.getElementById("clearPick");
 
 /* ---------------------- Fullscreen -------------------- */
 document.getElementById("fsBtn").onclick = async ()=>{
@@ -234,25 +232,28 @@ document.getElementById("fsBtn").onclick = async ()=>{
 };
 
 /* ---------------------- Game Data --------------------- */
+/*  Helper: random util */
 const rand = (n)=> Math.floor(Math.random()*n);
 const choice = (arr)=> arr[rand(arr.length)];
 const clamp = (n,a,b)=> Math.max(a, Math.min(b,n));
 const now = ()=> Date.now();
 
+/* factions & troops
+   NOTE: ranged are nerfed (atk ~-20%) vs earlier values                     */
 const TROOPS = {
   /* VANIR */
-  Rifleman: { emoji:"🔫", role:"ranged", range:4, atk:13, hp:62, asp:1.2, speed:1, size:1, frontline:false, spawnCount:2 },
+  Rifleman: { emoji:"🔫", role:"ranged", range:4, atk:13, hp:70, asp:1.2, speed:1, size:1, frontline:false, spawnCount:2 },
   Rockets:  { emoji:"🚀", role:"artillery", range:10, atk:18, hp:120, asp:1.9, speed:0.8, size:1, frontline:false, splash:true, knock:true },
   "Vanir Guard": { emoji:"🛡️", role:"melee", range:1, atk:16, hp:200, asp:1.0, speed:1, size:1, frontline:true },
-  Miner: { emoji:"⛏️", role:"diver", range:1, atk:18, hp:160, asp:1.0, speed:2, size:1, frontline:true, spawnCount:2, priority:"rangedFirst", pathBias:"bypass" },
+  Miner: { emoji:"⛏️", role:"diver", range:1, atk:15, hp:160, asp:1.0, speed:2, size:1, frontline:true, spawnCount:2, priority:"rangedFirst", pathBias:"bypass" },
   Ballista: { emoji:"🎯", role:"siege", range:6, atk:16, hp:140, asp:1.4, speed:0.8, size:1, frontline:false, knock:true },
 
   /* AESIR */
-  Phaser: { emoji:"✨", role:"ranged", range:4, atk:11, hp:75, asp:1.2, speed:1, size:1, frontline:false, spawnCount:2, retreat50:true, retreatDist:3 },
+  Phaser: { emoji:"✨", role:"ranged", range:4, atk:12, hp:80, asp:1.2, speed:1, size:1, frontline:false, spawnCount:2, retreat50:true, retreatDist:3 },
   Blademaster: { emoji:"⚔️", role:"assassin", range:1, atk:28, hp:140, asp:0.9, speed:3, size:1, frontline:true, spawnCount:2 },
   "Storm Seer": { emoji:"⚡", role:"chain", range:3, atk:14, hp:90, asp:1.3, speed:1, size:1, frontline:false, chain:3 },
   Guardian: { emoji:"🛡️", role:"bruiser", range:1, atk:22, hp:260, asp:1.1, speed:1, size:2, frontline:true, splash:true, knock:true },
-  Warder: { emoji:"🧱", role:"support", range:0, atk:0, hp:1, asp:1, speed:0, size:1, frontline:false, placeWard:true },
+  Warder: { emoji:"🧱", role:"support", range:0, atk:0, hp:1, asp:1, speed:0, size:1, frontline:false, placeWard:true }, // plays Ward card
 
   /* HELIONS */
   "Hell Spawn": { emoji:"🔥", role:"swarm", range:1, atk:9, hp:55, asp:0.8, speed:3, size:1, frontline:true, spawnCount:3 },
@@ -262,18 +263,49 @@ const TROOPS = {
                 deathField:{ durationMs:6000, slow:0.15, dps:8, color:"#b91c1c" } },
   Spitter: { emoji:"🧪", role:"acid", range:3, atk:10, hp:110, asp:1.4, speed:1, size:1, frontline:false, splashSmall:true }
 };
+
+/* Generic ward object (blocks paths & shots; loses HP on hits) */
 const WARD_HP = 120;
+
+/* factions content */
 const FACTIONS = {
   Vanir: ["Rifleman","Rockets","Vanir Guard","Miner","Ballista"],
-  Aesir: ["Phaser","Blademaster","Storm Seer","Guardian","Warder"],
+  Aesir: ["Phaser","Blademaster","Storm Seer","Guardian","Warder"],  // Warder lets you place Wards (draft special)
   Helions:["Hell Spawn","Roach","Defiler","BloodBurst","Spitter"]
 };
-const SPECIAL_TYPES = { double:"Double", upgrade:"Upgrade", ward:"Ward" };
 
-/* odds: troops more likely than specials (bumped further) */
-const WEIGHTS = { troop:4, special:1 };
+/* Specials: doubles / upgrades / ward placement */
+const SPECIAL_TYPES = {
+  double: "Double",
+  upgrade: "Upgrade",
+  ward: "Ward"  // place a 1×1 Ward block on your backline row during draft
+};
+
+/* rarity weights (specials 1/3rd as likely) */
+const WEIGHTS = {
+  troop: 3,
+  special: 1
+};
 
 /* ---------------------- State shape ------------------- */
+/*
+state = {
+  createdAt, host, players:[p0,p1],
+  lives: { [name]:4, ... },
+  round: 1,
+  phase: "faction"|"draft"|"battle"|"finished",
+  phaseEndsAt: <ms>,
+  factions: { [name]:"Vanir"|"Aesir"|"Helions" },
+  picked:   { [name]: <pick object or null> },       // transient during phase
+  armies:   { [name]: [ { type, level, count } ] },  // no nested arrays
+  bonusFor: <name|null>,   // last-round loser (gets +1 extra pick)
+  draftLeft:{ [name]: number }, // remaining picks in current draft window
+  board: { units:[ {id,owner, type, level, x, y, hp, size} ], wards:[{x,y,hp,owner}], fields:[{id,tiles:[{x,y},...],tEnd,dps,slow}] },
+  winner: null|name
+}
+*/
+
+/* ---------------------- Local session ----------------- */
 let me = username;
 let state = null;
 let players = [];
@@ -281,15 +313,14 @@ let meIdx = 0;
 let isHost = false;
 let timerIv = null;
 
-/* helpers */
+/* ---------------------- Utils ------------------------- */
 function uid(){ return Math.random().toString(36).slice(2); }
 function inBounds(x,y){ return x>=0 && x<W && y>=0 && y<H; }
 function isTop(playerName){ return (players.indexOf(playerName)===1); } // p0 bottom, p1 top
-function frontlineDir(name){ return isTop(name) ? +1 : -1; }
-function frontRowIndex(name){ return isTop(name) ? 1 : H-2; }
-function backRowIndex(name){ return isTop(name) ? 0 : H-1; }
-function unitSize(u){ return (TROOPS[u.type]?.size===2) ? 2 : 1; }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
+function mySideTop(){ return isTop(me); }
+function frontlineDir(name){ return isTop(name) ? +1 : -1; } // top moves down (+1), bottom moves up (-1)
+function frontRowIndex(name){ return isTop(name) ? 1 : H-2; }      // near mid
+function backRowIndex(name){ return isTop(name) ? 0 : H-1; }       // far edge
 
 /* ---------------------- Boot -------------------------- */
 await ensureState();
@@ -302,7 +333,7 @@ onSnapshot(stateRef, (snap)=>{
   renderAll();
 });
 
-/* create state if missing */
+/* create state if missing & lock players from lobby */
 async function ensureState(){
   const s = await getDoc(stateRef);
   if (s.exists()) return;
@@ -332,9 +363,10 @@ async function ensureState(){
   await setDoc(stateRef, payload);
 }
 
-/* ---------------------- Timer / Phase ----------------- */
+/* ---------------------- Phase & UI -------------------- */
 function renderAll(){
   if (!state) return;
+
   // names & lives
   p0Name.textContent = players[0] || "—";
   p1Name.textContent = players[1] || "—";
@@ -342,28 +374,31 @@ function renderAll(){
   p1Lives.textContent = (state.lives?.[players[1]] ?? 4);
 
   // badges
+  roundBadge.textContent = `Round ${state.round ?? 1}`;
   phaseBadge.textContent = `Phase: ${state.phase}`;
-  document.getElementById("roundBadge").textContent = `Round ${state.round ?? 1}`;
-  document.getElementById("bonusBadge").style.display = state.bonusFor ? "inline-block" : "none";
+  bonusBadge.style.display = state.bonusFor ? "inline-block" : "none";
 
+  // timer
   ensureTimer();
 
-  // Draw board: during battle use real units; during faction/draft show PREVIEW of both armies
-  if (state.phase==="battle"){
-    drawBoard(state.board || {units:[],wards:[],fields:[]});
+  // board render
+  drawBoard(state.board || {units:[],wards:[],fields:[]});
+
+  // center cards / picked banner
+  if (state.phase==="faction" || state.phase==="draft"){
+    showPicks();
   } else {
-    drawDraftPreview();
+    centerUI.style.display = "none";
+    pickedToast.style.display = "none";
   }
 
-  // cards
-  if (state.phase==="faction" || state.phase==="draft") showPicks();
-  else { document.getElementById("centerUI").style.display="none"; document.getElementById("pickedToast").style.display="none"; }
-
-  // draft counter
+  // draft counters
   if (state.phase==="draft"){
     const mine = state.draftLeft?.[me] ?? 0;
     draftCount.textContent = `Your picks left: ${mine}`;
-  } else draftCount.textContent = "";
+  } else {
+    draftCount.textContent = "";
+  }
 }
 
 function ensureTimer(){
@@ -376,35 +411,36 @@ function tickTimer(){
   const ms = Math.max(0, state.phaseEndsAt - now());
   const s = Math.ceil(ms/1000);
   timerBadge.textContent = `⏳ ${s}s`;
-  if (isHost && ms<=0) advancePhaseTimeout();
+
+  if (isHost && ms<=0){
+    // time expired, advance phase server-side
+    advancePhaseTimeout();
+  }
 }
 
 /* ---------------------- Picks UI ---------------------- */
-function factionEmoji(f){ return f==="Vanir"?"🛡️": f==="Aesir"?"⚡":"🔥"; }
+async function showPicks(){
+  const alreadyPicked = state.picked?.[me] || null;
 
-function showPicks(){
-  const already = state.picked?.[me] || null;
+  // Compute options
   const opts = pickOptionsFor(me);
-  const cardRow = document.getElementById("cardRow");
-  const centerUI = document.getElementById("centerUI");
-  const pickedToast = document.getElementById("pickedToast");
-
   cardRow.innerHTML = "";
   centerUI.style.display = "flex";
 
-  if (already){
+  const countBanner = (state.phase==="draft")
+    ? `Draft: pick ${state.draftLeft?.[me] ?? 0} left` : `Pick your Faction`;
+
+  // If already picked, hide cards and show banner
+  if (alreadyPicked){
+    cardRow.innerHTML = "";
     pickedToast.textContent =
       (state.phase==="faction")
-        ? `Selected faction: ${already.faction}`
-        : (already.kind==="troop" ? `Selected: ${already.type}` :
-           already.kind==="double" ? `Selected: Double ${already.targetType||"(random)"}` :
-           already.kind==="upgrade" ? `Selected: Upgrade ${already.targetType||"(random)"}`
-           : "Selected: Ward");
+        ? `Selected faction: ${alreadyPicked.faction}`
+        : `Selected: ${alreadyPicked.kind==="troop"?alreadyPicked.type:alreadyPicked.kind}`;
     pickedToast.style.display = "block";
     return;
-  } else {
-    pickedToast.style.display = "none";
   }
+  pickedToast.style.display = "none";
 
   opts.forEach(o=>{
     const c = document.createElement("div"); c.className="pickCard";
@@ -414,21 +450,13 @@ function showPicks(){
 
     if (state.phase==="faction"){
       t.textContent = o.faction;
-      n.textContent = "Faction";
+      n.textContent = ["Vanir","Aesir","Helions"].includes(o.faction) ? "Faction" : "";
     } else {
-      if (o.kind==="troop"){
-        t.textContent = o.type;
-        n.textContent = "Add to army";
-      } else if (o.kind==="double"){
-        t.textContent = `Double ${o.targetType}`;
-        n.textContent = "Duplicate that owned type";
-      } else if (o.kind==="upgrade"){
-        t.textContent = `Upgrade ${o.targetType}`;
-        n.textContent = "Level up that owned type";
-      } else {
-        t.textContent = "Ward";
-        n.textContent = "Shield tile";
-      }
+      t.textContent = (o.kind==="troop") ? o.type : (o.kind==="double" ? "Double" : (o.kind==="upgrade" ? "Upgrade" : "Ward"));
+      n.textContent = (o.kind==="troop") ? "Add to army" :
+                      (o.kind==="double") ? "Duplicate one owned type" :
+                      (o.kind==="upgrade") ? "Level up an owned type" :
+                      "Place a protective Ward";
     }
     c.appendChild(em); c.appendChild(t); c.appendChild(n);
     c.onclick = ()=> pickOption(o);
@@ -436,59 +464,65 @@ function showPicks(){
   });
 }
 
-/* Build a 3-card hand. Specials are specific to an owned type. */
+/* produce 3 options, respecting rules */
 function pickOptionsFor(name){
   const mineFaction = state.factions?.[name] || null;
   const mineArmy = state.armies?.[name] || [];
-  const haveTypes = Array.from(new Set(mineArmy.map(e=>e.type)));
 
   if (state.phase==="faction"){
+    // randomize 3 distinct factions
     const facs = ["Vanir","Aesir","Helions"];
     return shuffle(facs).slice(0,3).map(f=>({ kind:"faction", faction:f, emoji: factionEmoji(f) }));
   }
 
   // draft
   const pool = FACTIONS[mineFaction] || [];
-  const baseTroops = shuffle(pool).map(t=>({ kind:"troop", type:t, emoji:TROOPS[t]?.emoji||"❓" }));
+  const haveTypes = new Set(mineArmy.map(e=>e.type));
 
-  // specials — only if you own at least one type; each card targets a *specific* owned type
+  const baseTroops = shuffle(pool).map(t=>({ kind:"troop", type:t, emoji:TROOPS[t]?.emoji||"❓" }));
+  // specials limited by ownership
+  const ownList = Array.from(haveTypes);
   const specialBag = [];
-  if (haveTypes.length>0){
-    // choose a target for each card we add to the bag
-    const pickOwned = ()=> haveTypes[rand(haveTypes.length)];
-    // titles will be rendered in showPicks; include small marker in emoji for clarity
-    specialBag.push({ kind:"double", targetType: pickOwned(), emoji:"🂡" });
-    // only include upgrade if there exists a non-maxed level to upgrade
-    const upCandidates = mineArmy.filter(e=>(e.level||1)<3).map(e=>e.type);
-    if (upCandidates.length>0){
-      const target = upCandidates[rand(upCandidates.length)];
-      specialBag.push({ kind:"upgrade", targetType: target, emoji:"⬆️" });
-    }
+  if (ownList.length>0){
+    specialBag.push({ kind:"double", emoji:"🂡" });
+    specialBag.push({ kind:"upgrade", emoji:"⬆️" });
   }
-  // Ward is allowed any time
+  // Generic Ward option available to any faction
   specialBag.push({ kind:"ward", emoji:"🧱" });
 
-  // Assemble weighted bag
+  // Weights: troop 3, special 1
   const bag = [];
+  // ensure uniqueness by kind+type
   const seen = new Set();
-  const pushIfNew = (obj)=>{
-    const key = obj.kind + ":" + (obj.type||obj.targetType||obj.faction||"");
-    if (seen.has(key)) return; seen.add(key); bag.push(obj);
-  };
 
+  function pushIfNew(obj){
+    const key = obj.kind + ":" + (obj.type||obj.faction||"");
+    if (seen.has(key)) return;
+    seen.add(key); bag.push(obj);
+  }
+
+  // Build a mixed bag
   for(const t of baseTroops){ for(let i=0;i<WEIGHTS.troop;i++) pushIfNew(t); }
   for(const s of specialBag){ for(let i=0;i<WEIGHTS.special;i++) pushIfNew(s); }
 
+  // Remove troop types that would be duplicates in the 3-card hand (we still allow picking a type you already own)
   shuffle(bag);
-  const hand=[];
+  const hand = [];
   while(hand.length<3 && bag.length){
     const cand = bag.shift();
-    if ((cand.kind==="double"||cand.kind==="upgrade") && haveTypes.length===0) continue;
+    // disallow double/upgrade with no owned types
+    if ((cand.kind==="double"||cand.kind==="upgrade") && ownList.length===0) continue;
     hand.push(cand);
   }
-  // ensure emojis for troop types are correct
-  return hand.map(o=> o.kind==="troop" ? {...o, emoji:TROOPS[o.type]?.emoji||"❓"} : o );
+  // Map emoji for troop after shuffle
+  return hand.map(o=>{
+    if (o.kind==="troop") return {...o, emoji: TROOPS[o.type]?.emoji || "❓" };
+    return o;
+  });
 }
+
+function factionEmoji(f){ return f==="Vanir"?"🛡️": f==="Aesir"?"⚡":"🔥"; }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
 
 async function pickOption(opt){
   const pkt = (state.phase==="faction")
@@ -497,66 +531,86 @@ async function pickOption(opt){
   await updateDoc(stateRef, { [`picked.${me}`]: pkt });
 }
 
-/* ---------------------- Advance Phase ----------------- */
-onSnapshot(stateRef, (snap)=>{
-  if (!snap.exists() || !isHost) return;
-  const d = snap.data();
-  if (d.phase==="faction" || d.phase==="draft"){
-    const a = !!d.picked?.[players[0]];
-    const b = !!d.picked?.[players[1]];
-    if (a && b) advancePhaseTimeout();
-  }
-});
-
+/* host: on timer end OR both-picked, advance phase */
 async function advancePhaseTimeout(){
   if (!isHost || !state) return;
 
+  // If both picked early, or timer hit 0, resolve phase
   if (state.phase==="faction"){
-    for (const p of players){
-      if (!state.picked?.[p]){
-        const choice = pickOptionsFor(p)[0];
-        await updateDoc(stateRef, { [`picked.${p}`]: { faction: choice.faction, emoji: factionEmoji(choice.faction) } });
+    const pA = !!state.picked?.[players[0]];
+    const pB = !!state.picked?.[players[1]];
+    if (!pA || !pB){
+      // time over: assign random to those who didn't pick
+      const upd = {};
+      for (const p of players){
+        if (!state.picked?.[p]){
+          const choice = pickOptionsFor(p)[0]; // first option from generator
+          upd[`picked.${p}`] = { faction: choice.faction, emoji: factionEmoji(choice.faction) };
+        }
       }
+      if (Object.keys(upd).length) await updateDoc(stateRef, upd);
     }
     await resolveFactionPhase();
     return;
   }
 
   if (state.phase==="draft"){
-    const upd={};
+    const leftA = state.draftLeft?.[players[0]] ?? 0;
+    const leftB = state.draftLeft?.[players[1]] ?? 0;
+    const pA = !!state.picked?.[players[0]];
+    const pB = !!state.picked?.[players[1]];
+
+    // auto-pick random for those who didn’t
+    const upd = {};
     for (const p of players){
-      const left = state.draftLeft?.[p] ?? 0;
-      if (left>0 && !state.picked?.[p]){
+      const mineLeft = state.draftLeft?.[p] ?? 0;
+      if (mineLeft>0 && !state.picked?.[p]){
         const opt = pickOptionsFor(p)[0];
         upd[`picked.${p}`] = opt;
       }
     }
     if (Object.keys(upd).length) await updateDoc(stateRef, upd);
-    await resolveDraftPick();
+
+    // resolve once both have a pick packet
+    if ((!pA && !upd[`picked.${players[0]}`]) || (!pB && !upd[`picked.${players[1]}`])) {
+      // not yet picked; will try again next tick
+      return;
+    }
+    await resolveDraftPick(); // decrements picks, applies effects, starts battle when both are at zero
     return;
   }
 
   if (state.phase==="battle"){
-    if ((state.phaseEndsAt||0) <= now()) await endBattle(null);
+    // battle step tick is separate; timeout safely ends battle if stuck
+    // but we’ll rely on the sim to finish; add a guard anyway:
+    if ((state.phaseEndsAt||0) <= now()){
+      await forceBattleFinishIfNeeded();
+    }
+    return;
   }
 }
 
+/* ---------------------- Resolve Phases ---------------- */
 async function resolveFactionPhase(){
   const factions = {...(state.factions||{})};
   for(const p of players){
     const pick = state.picked?.[p];
-    factions[p] = pick?.faction || choice(["Vanir","Aesir","Helions"]);
+    const f = pick?.faction || choice(["Vanir","Aesir","Helions"]);
+    factions[p] = f;
   }
+  // give each player an empty army to start
   const armies = {...(state.armies||{})};
   players.forEach(p=>{ if (!armies[p]) armies[p]=[]; });
 
   const draftLeft = {};
+  // start draft: 3 picks per, loser bonus if any
   for (const p of players){
     draftLeft[p] = 3 + ((state.bonusFor===p) ? 1 : 0);
   }
 
   await updateDoc(stateRef, {
-    factions, picked: {}, armies,
+    factions, picked: {},
+    armies,
     phase: "draft",
     phaseEndsAt: now()+10_000,
     draftLeft
@@ -564,6 +618,7 @@ async function resolveFactionPhase(){
 }
 
 async function resolveDraftPick(){
+  // apply each player's pick to army and decrement
   const armies = {...state.armies};
   const draftLeft = {...state.draftLeft};
   const picked = {...state.picked};
@@ -577,29 +632,24 @@ async function resolveDraftPick(){
       else arr.push({ type: pk.type, level:1, count: (TROOPS[pk.type]?.spawnCount || 1) });
       armies[p] = arr;
     } else if (pk.kind==="double"){
-      const arr = armies[p]||[];
-      let target = arr.find(e=> e.type === pk.targetType);
-      if (!target){ // fallback for older states: random owned
-        const owned = arr.filter(e=> e.count>0);
-        if (owned.length>0) target = choice(owned);
-      }
-      if (target){
-        target.count += Math.max(1, (TROOPS[target.type]?.spawnCount || 1));
+      // duplicate one owned type at random
+      const owned = (armies[p]||[]).filter(e=> e.count>0);
+      if (owned.length>0){
+        const t = choice(owned);
+        t.count += Math.max(1, (TROOPS[t.type]?.spawnCount || 1));
       }
     } else if (pk.kind==="upgrade"){
-      const arr = armies[p]||[];
-      let target = arr.find(e=> e.type === pk.targetType && (e.level||1)<3);
-      if (!target){ // fallback: any upgradable
-        const owned = arr.filter(e=> (e.level||1) < 3);
-        if (owned.length>0) target = choice(owned);
-      }
-      if (target){
-        target.level = clamp((target.level||1)+1,1,3);
+      const owned = (armies[p]||[]).filter(e=> (e.level||1) < 3);
+      if (owned.length>0){
+        choice(owned).level = clamp((choice(owned).level||1)+1,1,3);
       }
     } else if (pk.kind==="ward"){
+      // place a ward object stored in board at backline (one per pick)
+      // store in a temp "preWards" list we’ll merge at battle start
       const side = isTop(p) ? 0 : H-1;
       const x = rand(W);
       const ward = { id: uid(), owner:p, x, y:side, hp: WARD_HP };
+      // keep in a safe array in board.wards (no nested arrays)
       const wards = (state.board?.wards||[]).slice();
       wards.push(ward);
       await updateDoc(stateRef, { "board.wards": wards });
@@ -607,15 +657,17 @@ async function resolveDraftPick(){
     draftLeft[p] = Math.max(0, (draftLeft[p]||0) - 1);
   }
 
+  // Clear picks
   const nextPicked = {};
-  const more = (draftLeft[players[0]]>0) || (draftLeft[players[1]]>0);
+  const morePicksRemain = (draftLeft[players[0]]>0) || (draftLeft[players[1]]>0);
 
-  if (more){
+  if (morePicksRemain){
     await updateDoc(stateRef, {
       armies, picked: nextPicked, draftLeft,
       phase: "draft", phaseEndsAt: now()+10_000
     });
   } else {
+    // start battle
     await updateDoc(stateRef, {
       armies, picked: nextPicked, draftLeft,
       phase: "battle", phaseEndsAt: now()+120_000
@@ -624,49 +676,53 @@ async function resolveDraftPick(){
   }
 }
 
-/* ---------------------- PREVIEW (during draft) -------- */
-function drawDraftPreview(){
-  const board = { units:[], wards:(state.board?.wards||[]), fields:(state.board?.fields||[]) };
-  // spawn from current armies (ghosted)
-  for(const p of players){
-    const army = state.armies?.[p] || [];
-    const us = spawnArmyFor(p, army, board.wards, true/*preview*/);
-    board.units.push(...us);
-  }
-  drawBoard(board, true);
+/* If stuck, award draw -> no life loss (rare) */
+async function forceBattleFinishIfNeeded(){
+  if (!isHost || state.phase!=="battle") return;
+  await endBattle(null);
 }
 
 /* ---------------------- Battle Sim (host) ------------- */
-function spawnArmyFor(p, army, wards, preview=false){
+function unitSize(u){ return (TROOPS[u.type]?.size===2) ? 2 : 1; }
+
+function spawnArmyFor(p, army, wards){
+  // Create units on far side; backline vs frontline
   const units = [];
+  const bottom = !isTop(p); // bottom side spawns at y=H-1(back) toward mid
   const baseFront = frontRowIndex(p);
   const baseBack  = backRowIndex(p);
+
+  // Lay down lanes by type
   const laneX = shuffle([...Array(W).keys()]);
   let lf=0, lb=0;
 
   for(const e of army){
     const spec = TROOPS[e.type]||{};
     const s = spec.size===2 ? 2 : 1;
+
     const times = e.count || 1;
     for(let k=0;k<times;k++){
       const front = !!spec.frontline;
       const col = laneX[(front?lf:lb)%W]; if (front) lf++; else lb++;
       let x = clamp(col, 0, W-(s));
       let y = front ? baseFront : baseBack;
-      if (!isTop(p) && !front) y = H-1-(s-1);
-      if (isTop(p) && !front) y = 0;
 
+      // adjust for footprint
+      if (bottom && !front) y = H-1-(s-1);
+      if (!bottom && !front) y = 0;
+
+      // if collides with a ward or unit, try nearby columns
       let attempt=0;
       while(occupiedFootprint(units, wards, x,y,s) && attempt<8){
         x = (x+1)% (W-(s-1));
         attempt++;
       }
       if (!occupiedFootprint(units, wards, x,y,s)){
-        const hpM = scaledHp(e.type, e.level||1);
+        const id = uid();
         units.push({
-          id: uid(), owner:p, type:e.type, level:e.level||1,
-          x, y, hp: hpM, hpMax: hpM, size:s, cd: 0,
-          _ghost: preview
+          id, owner:p, type:e.type, level:e.level||1,
+          x, y, hp: scaledHp(e.type, e.level||1), size:s,
+          cd: 0
         });
       }
     }
@@ -684,6 +740,7 @@ function scaledAtk(type, lvl){
   const mul = lvl===1?1 : (lvl===2?1.25:1.55);
   return Math.round(base * mul);
 }
+
 function occupiedFootprint(units, wards, x,y,s){
   for(const w of wards){ if (rectsOverlap(x,y,s,s, w.x,w.y,1,1)) return true; }
   for(const u of units){
@@ -698,47 +755,40 @@ function rectsOverlap(ax,ay,aw,ah, bx,by,bw,bh){
 
 let simIv = null;
 async function startBattle(){
+  // host builds units from armies + existing wards
   const wards = (state.board?.wards||[]).slice();
   const units = [];
   for(const p of players){
     const army = state.armies?.[p] || [];
-    const us = spawnArmyFor(p, army, wards, false);
+    const us = spawnArmyFor(p, army, wards);
     units.push(...us);
   }
+  // reset fields (keep wards from draft)
   const board = { units, wards, fields: [] };
   await updateDoc(stateRef, { board });
+
+  // tick sim
   if (simIv) clearInterval(simIv);
-  simIv = setInterval(()=> stepSim(), 200); // slower tick for readability
+  const TICK_MS = 200; // slow
+  simIv = setInterval(()=> stepSim(), TICK_MS);
 }
 
-function pickTarget(u, units){
-  // Priority rules: Miner => rangedFirst; others => nearest
-  if (TROOPS[u.type]?.priority === "rangedFirst"){
-    const r = units.filter(v=> v.owner!==u.owner && ["ranged","artillery","chain","siege","acid"].includes(TROOPS[v.type]?.role));
-    if (r.length){
-      r.sort((a,b)=> manhattan(u,a) - manhattan(u,b));
-      return r[0];
-    }
-  }
-  // default nearest
+function nearestEnemy(u, units){
   let best=null, bestD=1e9;
+  const ux = u.x + (unitSize(u)-1)/2, uy = u.y + (unitSize(u)-1)/2;
   for(const v of units){
-    if (v.owner===u.owner || v.hp<=0) continue;
-    const d = manhattan(u,v);
+    if (v.owner===u.owner) continue;
+    const vx = v.x + (unitSize(v)-1)/2, vy = v.y + (unitSize(v)-1)/2;
+    const d = Math.abs(ux-vx)+Math.abs(uy-vy);
     if (d<bestD){ bestD=d; best=v; }
   }
   return best;
 }
-function manhattan(a,b){
-  const ax = a.x + (unitSize(a)-1)/2, ay = a.y + (unitSize(a)-1)/2;
-  const bx = b.x + (unitSize(b)-1)/2, by = b.y + (unitSize(b)-1)/2;
-  return Math.abs(ax-bx) + Math.abs(ay-by);
-}
 
-function lineShot(from,to){
+function lineShot(from,to){ // returns line segments for UI & for ward collisions
   const x1 = from.x*(CELL+GAP)+CELL/2, y1 = from.y*(CELL+GAP)+CELL/2;
   const x2 = to.x*(CELL+GAP)+CELL/2, y2 = to.y*(CELL+GAP)+CELL/2;
-  return { x1,y1,x2,y2, len: Math.hypot(x2-x1, y2-y1), ang: Math.atan2(y2-y1, x2-x1) };
+  return { x1,y1,x2,y2, len: Math.hypot(x2-x1,y2-y1), ang: Math.atan2(y2-y1, x2-x1) };
 }
 
 function canStand(units, wards, x,y,s, selfId){
@@ -746,44 +796,31 @@ function canStand(units, wards, x,y,s, selfId){
   if (x+s-1 >= W || y+s-1 >= H) return false;
   for (const w of wards){ if (rectsOverlap(x,y,s,s, w.x,w.y,1,1)) return false; }
   for (const u of units){
-    if (u.id===selfId || u.hp<=0) continue;
+    if (u.id===selfId) continue;
     const ss=unitSize(u);
     if (rectsOverlap(x,y,s,s, u.x,u.y,ss,ss)) return false;
   }
   return true;
 }
 
-function greedyStep(units, wards, u, target){
-  // If adjacent/in range already, don't move (prevents sliding past)
-  const dist = manhattan(u,target);
-  const rng = TROOPS[u.type]?.range || 1;
-  if (dist <= rng) return {x:u.x, y:u.y};
-
+function bfsNextStep(units, wards, u, target){
+  // simple greedy toward target with 4-dir priority
   const s = unitSize(u);
-  const dirPrimary = (frontlineDir(u.owner));
   const dirs = [
-    {dx: 0, dy: dirPrimary},              // toward enemy side
-    {dx: (target.x>u.x?+1:-1), dy:0},     // toward target column
-    {dx: 0, dy: -dirPrimary},             // away (rarely useful)
+    {dx: 0, dy: (frontlineDir(u.owner))}, // toward enemy
+    {dx: 0, dy: -frontlineDir(u.owner)},
+    {dx: (target.x>u.x?+1:-1), dy:0},
     {dx: -(target.x>u.x?+1:-1), dy:0}
   ];
-
-  // Try steps that reduce distance; skip those that increase it
   for(const d of dirs){
     const nx = u.x + d.dx, ny = u.y + d.dy;
-    if (!canStand(units, wards, nx, ny, s, u.id)) continue;
-    const newD = Math.abs(nx + (s-1)/2 - (target.x + (unitSize(target)-1)/2))
-               + Math.abs(ny + (s-1)/2 - (target.y + (unitSize(target)-1)/2));
-    if (newD < dist) return {x:nx,y:ny};
+    if (canStand(units, wards, nx, ny, s, u.id)) return {x:nx,y:ny};
   }
-
-  // Last resort: any open tile that doesn’t increase too much
-  const fallbacks = [ {dx:0,dy:1},{dx:0,dy:-1},{dx:1,dy:0},{dx:-1,dy:0} ];
-  for(const d of fallbacks){
+  // last resort: try any direction to unstick
+  const any = [ {dx:0,dy:1},{dx:0,dy:-1},{dx:1,dy:0},{dx:-1,dy:0} ];
+  for(const d of any){
     const nx = u.x + d.dx, ny = u.y + d.dy;
-    if (!canStand(units, wards, nx, ny, s, u.id)) continue;
-    const newD = Math.abs(nx - target.x) + Math.abs(ny - target.y);
-    if (newD <= dist) return {x:nx,y:ny};
+    if (canStand(units, wards, nx, ny, s, u.id)) return {x:nx,y:ny};
   }
   return {x:u.x, y:u.y};
 }
@@ -805,6 +842,7 @@ function applyFieldEffects(u, fields, dt){
 }
 
 async function stepSim(){
+  // pull fresh once
   const snap = await getDoc(stateRef);
   if (!snap.exists()) return;
   const d = snap.data();
@@ -814,65 +852,78 @@ async function stepSim(){
   let wards = board.wards.map(x=>({...x}));
   let fields= board.fields.filter(f=> now() <= f.tEnd );
 
+  // remove dead wards
   wards = wards.filter(w => w.hp>0);
 
+  // shots drawn later; but we track ward hits along the line:
   const shots = [];
-  const DT = 0.2;
 
+  // per unit tick
+  const DT = 0.2; // seconds per step
   for (const u of units){
     if (u.hp<=0) continue;
     const spec = TROOPS[u.type] || {};
     const rng = spec.range || 1;
 
+    // field effects
     const slow = applyFieldEffects(u, fields, DT);
+    const moveEvery = Math.max(1, Math.round(2/spec.speed)); // coarse move pacing
+    u._mv = (u._mv||0)+1;
     u.cd = Math.max(0, (u.cd||0)-DT);
-    u._mv = (u._mv||0) + 1;
 
-    // ensure hpMax exists (for older states)
-    if (!u.hpMax){ u.hpMax = scaledHp(u.type, u.level||1); u.hp = Math.min(u.hp, u.hpMax); }
+    const enemy = nearestEnemy(u, units.filter(x=>x.hp>0));
+    if (!enemy){ /* battle over will be handled */ continue; }
 
-    const enemy = pickTarget(u, units);
-    if (!enemy) continue;
+    const dist = Math.abs((u.x + (unitSize(u)-1)/2) - (enemy.x + (unitSize(enemy)-1)/2))
+               + Math.abs((u.y + (unitSize(u)-1)/2) - (enemy.y + (unitSize(enemy)-1)/2));
 
-    const dist = manhattan(u, enemy);
-
+    // attack if in range
     if (dist <= rng && u.cd<=0){
+      // ranged line (or melee small line)
       const shot = lineShot(
         {x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2},
         {x: enemy.x + (unitSize(enemy)-1)/2, y: enemy.y + (unitSize(enemy)-1)/2}
       );
       shots.push({ ...shot, kind: (spec.role==="chain"?"lightning": spec.role==="ranged"?"plasma":"plain") });
 
-      // Ward interception
+      // ward collision: if a ward is between, it takes damage and may absorb
       let blocked = false;
       for (const w of wards){
+        // project ward center onto shot; crude check: if ward y between y1,y2 and x between too
         const wx = w.x*(CELL+GAP)+CELL/2, wy = w.y*(CELL+GAP)+CELL/2;
-        const dmin = pointSegDist({x:shot.x1,y:shot.y1},{x:shot.x2,y:shot.y2},{x:wx,y:wy});
-        if (dmin < 17){ // inside half-cell
+        // distance from line segment
+        const A = {x:shot.x1, y:shot.y1}, B={x:shot.x2,y:shot.y2}, P={x:wx,y:wy};
+        const d = pointSegDist(A,B,P);
+        if (d < 20){ // within half-cell
+          // ward soaks damage
           const dmg = scaledAtk(u.type, u.level||1);
-          w.hp -= dmg; blocked=true; break;
+          w.hp -= dmg;
+          blocked = true;
+          break;
         }
       }
       if (!blocked){
+        // apply to target (with splash/chain)
         const dmg = scaledAtk(u.type, u.level||1);
         applyDamage(units, enemy, dmg, spec, u);
       }
       u.cd = spec.asp || 1.0;
     } else {
-      // move (only if it helps close the distance)
+      // move toward enemy
       if ((u._mv % Math.max(1, Math.round(1/(spec.speed*slow))))===0){
-        const step = greedyStep(units.filter(x=>x.hp>0), wards, u, enemy);
+        const step = bfsNextStep(units.filter(x=>x.hp>0), wards, u, enemy);
         u.x = step.x; u.y = step.y;
       }
     }
 
-    // kamikaze contact
+    // kamikaze on contact
     if (spec.kamikaze && dist<=1){
+      // explode and die
       spawnField(fields, u.x, u.y, spec.deathField);
       u.hp = 0;
     }
 
-    // phaser retreat
+    // Phaser retreat (once below 50%)
     if (spec.retreat50 && u.hp < 0.5*scaledHp(u.type,u.level||1) && !u.__retreated){
       const dir = -frontlineDir(u.owner);
       const nx = u.x, ny = clamp(u.y + 3*dir, 0, H-1);
@@ -882,6 +933,7 @@ async function stepSim(){
     }
   }
 
+  // remove dead units; trigger blood field on BloodBurst death
   const after = [];
   for (const u of units){
     if (u.hp>0){ after.push(u); continue; }
@@ -890,15 +942,18 @@ async function stepSim(){
     }
   }
 
+  // win check
   const aliveA = after.some(u=> u.owner===players[0] && u.hp>0);
   const aliveB = after.some(u=> u.owner===players[1] && u.hp>0);
 
+  // write snapshot
   await updateDoc(stateRef, {
     "board.units": after,
     "board.wards": wards,
     "board.fields": fields
   });
 
+  // draw shots (visual only clients will render)
   drawShots(shots);
 
   if (!aliveA || !aliveB){
@@ -909,13 +964,15 @@ async function stepSim(){
 }
 
 function applyDamage(units, target, dmg, spec, attacker){
+  // splash?
   if (spec.splash || spec.splashSmall){
-    const rad = spec.splash ? 1 : 0;
+    const rad = spec.splash ? 1 : 0; // splash radius in tiles
     for (const v of units){
-      if (v.owner===attacker.owner || v.hp<=0) continue;
+      if (v.owner===attacker.owner) continue;
       if (Math.abs(v.x - target.x) <= rad && Math.abs(v.y - target.y) <= rad){
         v.hp -= dmg;
         if (spec.knock){
+          // knock one tile away from impact center if free
           const dx = Math.sign(v.x - target.x), dy = Math.sign(v.y - target.y);
           const nx = clamp(v.x+dx,0,W-1), ny = clamp(v.y+dy,0,H-1);
           if (canStand(units, [], nx, ny, unitSize(v), v.id)) { v.x=nx; v.y=ny; }
@@ -923,10 +980,14 @@ function applyDamage(units, target, dmg, spec, attacker){
       }
     }
   } else if (spec.role==="chain"){
+    // lightning: chain to up to 3 enemies near target
     const foes = units.filter(u=>u.owner!==attacker.owner && u.hp>0)
-                      .sort((a,b)=> manhattan(target,a) - manhattan(target,b));
+                      .sort((a,b)=> (Math.abs(a.x-target.x)+Math.abs(a.y-target.y)) - (Math.abs(b.x-target.x)+Math.abs(b.y-target.y)));
     let left = TROOPS[attacker.type].chain || 3;
-    for(const v of foes){ v.hp -= dmg; left--; if (left<=0) break; }
+    for(const v of foes){
+      v.hp -= dmg;
+      left--; if (left<=0) break;
+    }
   } else {
     target.hp -= dmg;
   }
@@ -944,12 +1005,11 @@ function spawnField(fields, cx, cy, opts){
   fields.push({ id: uid(), tiles, tEnd: now()+durationMs, dps, slow, color });
 }
 
-/* ---------------------- Rendering --------------------- */
-function drawBoard(board, preview=false){
+/* ---------------------- Render Board ------------------ */
+function drawBoard(board){
+  // clear layers
   unitLayer.innerHTML = "";
   fieldLayer.innerHTML= "";
-  shotLayer.innerHTML = "";
-
   // fields
   for(const f of board.fields||[]){
     if (now()>f.tEnd) continue;
@@ -960,10 +1020,9 @@ function drawBoard(board, preview=false){
       e.style.top  = (t.y*(CELL+GAP))+"px";
       e.style.background = f.color || "#b91c1c";
       fieldLayer.appendChild(e);
-      if (!preview) particleBurst(t.x,t.y, f.color||"#b91c1c");
+      particleBurst(t.x,t.y, f.color||"#b91c1c");
     }
   }
-
   // wards
   for(const w of board.wards||[]){
     const e = document.createElement("div");
@@ -973,38 +1032,27 @@ function drawBoard(board, preview=false){
     e.textContent = Math.max(0, w.hp|0);
     fieldLayer.appendChild(e);
   }
-
   // units
   for(const u of board.units||[]){
-    renderUnit(u, !!(preview || u._ghost));
+    renderUnit(u);
   }
 }
-function renderUnit(u, ghost=false){
+
+function renderUnit(u){
   const s = unitSize(u);
   const el = document.createElement("div");
-  el.className = `unitBox lvl${u.level||1}` + (s===2?" big":"") + (ghost?" ghost":"");
+  el.className = `unitBox lvl${u.level||1}` + (s===2?" big":"");
   const left = u.x*(CELL+GAP), top = u.y*(CELL+GAP);
   const w = s*CELL + (s-1)*GAP, h = s*CELL + (s-1)*GAP;
   el.style.left = left+"px"; el.style.top = top+"px"; el.style.width = w+"px"; el.style.height=h+"px";
   el.style.zIndex = String(100 + u.y*2 + (s===2?1:0));
-
-  // emoji
   const em = document.createElement("div"); em.className="emoji"; em.textContent = TROOPS[u.type]?.emoji || "❓";
   el.appendChild(em);
-
-  // health bar (even in preview for clarity)
-  const maxHp = u.hpMax || scaledHp(u.type, u.level||1);
-  const curHp = Math.max(0, Math.min(u.hp ?? maxHp, maxHp));
-  const pct = maxHp ? (curHp / maxHp) : 1;
-  const hpWrap = document.createElement("div"); hpWrap.className="hpWrap";
-  const hpFill = document.createElement("div"); hpFill.className="hpFill";
-  hpFill.style.width = (pct*100).toFixed(0) + "%";
-  hpWrap.appendChild(hpFill);
-  el.appendChild(hpWrap);
-
   unitLayer.appendChild(el);
+  u.__el = el;
 }
 
+/* shot visuals */
 function drawShots(shots){
   shotLayer.innerHTML = "";
   for(const s of shots){
@@ -1013,10 +1061,11 @@ function drawShots(shots){
     e.style.left = s.x1+"px"; e.style.top = s.y1+"px";
     e.style.width = s.len+"px"; e.style.transform = `rotate(${s.ang}rad)`;
     shotLayer.appendChild(e);
-    setTimeout(()=>{ if (e.parentNode) e.parentNode.removeChild(e); }, 220);
+    setTimeout(()=>{ if (e.parentNode) e.parentNode.removeChild(e); }, 200);
   }
 }
 
+/* tiny particles on fields */
 function particleBurst(x,y,color){
   for(let i=0;i<2;i++){
     const p = document.createElement("div");
@@ -1031,7 +1080,7 @@ function particleBurst(x,y,color){
   }
 }
 
-/* small geometry helper */
+/* geometry helpers */
 function pointSegDist(A,B,P){
   const ABx=B.x-A.x, ABy=B.y-A.y, APx=P.x-A.x, APy=P.y-A.y;
   const ab2=ABx*ABx + ABy*ABy;
@@ -1042,33 +1091,73 @@ function pointSegDist(A,B,P){
 
 /* ---------------------- End Battle -------------------- */
 async function endBattle(winner){
+  // adjust lives, set bonus for loser only
   const lives = {...state.lives};
   let bonusFor = null;
-  if (winner===players[0]){ lives[players[1]] = Math.max(0, (lives[players[1]]||1)-1); bonusFor = players[1]; }
-  else if (winner===players[1]){ lives[players[0]] = Math.max(0, (lives[players[0]]||1)-1); bonusFor = players[0]; }
+  if (winner===players[0]){
+    lives[players[1]] = Math.max(0, (lives[players[1]]||1)-1);
+    bonusFor = players[1];
+  } else if (winner===players[1]){
+    lives[players[0]] = Math.max(0, (lives[players[0]]||1)-1);
+    bonusFor = players[0];
+  } else {
+    // draw: no life change
+    bonusFor = null;
+  }
 
+  // check game end
   let winName = null;
   if ((lives[players[0]]||0)<=0) winName = players[1];
   if ((lives[players[1]]||0)<=0) winName = players[0];
 
   if (winName){
-    await updateDoc(stateRef, { lives, winner: winName, phase:"finished", phaseEndsAt: 0 });
+    await updateDoc(stateRef, {
+      lives, winner: winName, phase:"finished", phaseEndsAt: 0
+    });
     return;
   }
 
+  // next round: reset picks with loser bonus
   const draftLeft = {};
-  for (const p of players){ draftLeft[p] = 3 + ((bonusFor===p)?1:0); }
-
+  for (const p of players){
+    draftLeft[p] = 3 + ((bonusFor===p)?1:0);
+  }
   await updateDoc(stateRef, {
-    lives, bonusFor, round: (state.round||1)+1,
-    phase: "draft", phaseEndsAt: now()+10_000,
-    picked: {}, draftLeft,
-    "board.units": [], "board.fields": []
+    lives,
+    bonusFor,
+    round: (state.round||1)+1,
+    phase: "draft",
+    phaseEndsAt: now()+10_000,
+    picked: {},
+    draftLeft,
+    // board persists wards; clear units & fields
+    "board.units": [],
+    "board.fields": []
   });
 }
+
+/* ---------------------- Shots & Picks Early  ----------- */
+/* advance early if both picked */
+onSnapshot(stateRef, (snap)=>{
+  if (!snap.exists()) return;
+  const d = snap.data();
+  if (!isHost) return;
+
+  if (d.phase==="faction" || d.phase==="draft"){
+    const a = !!d.picked?.[players[0]];
+    const b = !!d.picked?.[players[1]];
+    if (a && b){
+      // advance immediately without waiting full timer
+      advancePhaseTimeout();
+    }
+  }
+});
+
+/* ---------------------- End --------------------------- */
 </script>
 </body>
 </html>
+
 
 
 
