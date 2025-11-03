@@ -31,7 +31,7 @@
     cursor:grab; user-select:none; touch-action:none;
   }
   .viewport:active{ cursor:grabbing; }
-  .canvas{ position:absolute; left:0; top:0; transform-origin:0 0; }
+  .canvas{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
 
   .cells{position:relative;display:grid;grid-template-columns:repeat(var(--w),var(--cell));grid-auto-rows:var(--cell);gap:var(--gap)}
   .cell{
@@ -40,8 +40,8 @@
     position:relative;overflow:hidden;
   }
 
-  /* ✅ Z-index order: background < beams/particles < emoji < hp/overlays */
-  .under{ position:absolute; inset:0; z-index:1; }      /* team background */
+  /* Z-order: background < beams/particles < emoji < hp/overlays */
+  .under{ position:absolute; inset:0; z-index:1; }
   .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; z-index:5; }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:22px; z-index:6; pointer-events:none; } /* emoji ABOVE */
   .hp{position:absolute;left:3px;right:3px;bottom:3px;height:5px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:7}
@@ -55,7 +55,6 @@
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
   @keyframes dmg{ 0%{opacity:0; transform:translate(-50%,-40%) scale(.9)} 10%{opacity:1;} 100%{opacity:0; transform:translate(-50%,-100%) scale(1)} }
 
-  /* Ground effects under emoji */
   .poison{ position:absolute; inset:0; background:#ffb3b3; opacity:.95; z-index:5; animation:poipulse 1s ease-in-out infinite; }
   @keyframes poipulse{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.15)} }
   .acid{ position:absolute; inset:0; background:#c7b8ff; opacity:.95; z-index:5; animation:acidpulse 1s ease-in-out infinite; }
@@ -122,18 +121,18 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, collection, getDocs, query, where, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ---------- Pace controls ---------- */
-const PACE = { atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100 };
-const LOGIC_MS = 560;  // battle cadence (unchanged)
-const VIEW_MS  = 220;  // publish rate (faster visuals)
+var PACE = { atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100 };
+var LOGIC_MS = 560;  // battle cadence (unchanged)
+var VIEW_MS  = 220;  // publish rate (faster visuals)
 
-/* ---------- Grid ---------- */
-const CELL=40, GAP=4, W=8, H=20;
+/* ---------- Grid (restored to 120 rows) ---------- */
+var CELL=40, GAP=4, W=8, H=120;
 
 /* ---------- Firebase ---------- */
-const firebaseConfig = {
+var firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
   projectId: "bible-game-246c0",
@@ -141,45 +140,57 @@ const firebaseConfig = {
   messagingSenderId: "959619818996",
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+var app = initializeApp(firebaseConfig);
+var db  = getFirestore(app);
 
 /* ---------- Params ---------- */
-const params   = new URLSearchParams(location.search);
-const gameId   = params.get("gameId");
-const username = params.get("username");
+var params   = new URLSearchParams(location.search);
+var gameId   = params.get("gameId");
+var username = params.get("username");
 if (!gameId || !username){ alert("Missing gameId or username."); }
 
-const lobbyRef = doc(db,"lobbies",gameId);
-const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
+var lobbyRef = doc(db,"lobbies",gameId);
+var stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
 /* ---------- DOM ---------- */
-const $ = (id)=>document.getElementById(id);
-const cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
+function $(id){ return document.getElementById(id); }
+var cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
 
-/* ---------- Fit-to-view & drag ---------- */
+/* ---------- Fit-to-view & drag (avoid style.translate) ---------- */
+var boardScale = 1;
+var pan = {x:12, y:12};
+function applyTransform(){
+  canvas.style.transform = "translate(" + pan.x + "px," + pan.y + "px) scale(" + boardScale + ")";
+}
 function fitBoard(){
-  const boardW = W*(CELL+GAP)-GAP;
-  const boardH = H*(CELL+GAP)-GAP;
-  const vw = viewport.clientWidth, vh=viewport.clientHeight;
-  const scale = Math.min(1, Math.min(vw/boardW, vh/boardH));
-  canvas.style.transform = `scale(${scale}) translate(12px,12px)`;
+  var boardW = W*(CELL+GAP)-GAP;
+  var boardH = H*(CELL+GAP)-GAP;
+  var vw = viewport.clientWidth, vh=viewport.clientHeight;
+  boardScale = Math.min(1, Math.min(vw/boardW, vh/boardH));
+  applyTransform();
 }
 new ResizeObserver(fitBoard).observe(viewport);
 
-let dragging=false, last={x:0,y:0}, lastT=0, v={x:0,y:0}, anim=null, pan={x:12,y:12};
-function applyPan(){ canvas.style.translate = `${pan.x}px ${pan.y}px`; }
-function onDown(e){ dragging=true; last={x:e.clientX,y:e.clientY}; lastT=performance.now(); v.x=v.y=0; if(anim){cancelAnimationFrame(anim);anim=null;} }
+var dragging=false, last={x:0,y:0}, lastT=0, vel={x:0,y:0}, anim=null;
+function onDown(e){ dragging=true; last={x:e.clientX,y:e.clientY}; lastT=performance.now(); vel.x=0; vel.y=0; if(anim){cancelAnimationFrame(anim);anim=null;} }
 function onMove(e){
   if(!dragging) return;
-  const t=performance.now();
-  const dx=e.clientX-last.x, dy=e.clientY-last.y;
-  const dt=Math.max(1, t-lastT);
-  pan.x+=dx; pan.y+=dy; applyPan();
-  v.x=dx/dt*16; v.y=dy/dt*16;
+  var t=performance.now();
+  var dx=e.clientX-last.x, dy=e.clientY-last.y;
+  var dt=Math.max(1, t-lastT);
+  pan.x+=dx; pan.y+=dy; applyTransform();
+  vel.x=dx/dt*16; vel.y=dy/dt*16;
   last={x:e.clientX,y:e.clientY}; lastT=t;
 }
-function onUp(){ dragging=false; const friction=0.92; (function step(){ v.x*=friction; v.y*=friction; pan.x+=v.x; pan.y+=v.y; applyPan(); if (Math.hypot(v.x,v.y)>0.4) anim=requestAnimationFrame(step); else anim=null; })(); }
+function onUp(){
+  dragging=false;
+  var friction=0.92;
+  (function step(){
+    vel.x*=friction; vel.y*=friction;
+    pan.x+=vel.x; pan.y+=vel.y; applyTransform();
+    if (Math.hypot(vel.x,vel.y)>0.4) anim=requestAnimationFrame(step); else anim=null;
+  })();
+}
 viewport.addEventListener("pointerdown", onDown, {passive:true});
 viewport.addEventListener("pointermove", onMove, {passive:true});
 viewport.addEventListener("pointerup", onUp, {passive:true});
@@ -189,81 +200,88 @@ viewport.addEventListener("pointercancel", onUp, {passive:true});
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.innerHTML="";
-  for (let y=0;y<H;y++){
-    for (let x=0;x<W;x++){
-      const d=document.createElement("div");
+  for (var y=0;y<H;y++){
+    for (var x=0;x<W;x++){
+      var d=document.createElement("div");
       d.className="cell";
-      d.dataset.x=x; d.dataset.y=y;
-      d.innerHTML=`
-        <div class="under"></div>
-        <div class="unit"></div>
-        <div class="hp"><i style="width:0%"></i></div>
-      `;
+      d.setAttribute("data-x", x);
+      d.setAttribute("data-y", y);
+      d.innerHTML='<div class="under"></div><div class="unit"></div><div class="hp"><i style="width:0%"></i></div>';
       cellsEl.appendChild(d);
     }
   }
 }
 buildBoard();
 
-/* ---------- Troops & data ---------- */
-const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
-const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
+/* ---------- Utils ---------- */
+function deepClone(o){ try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return null; } }
+function safeUUID(){ try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("id_"+Math.random().toString(36).slice(2)); }catch(_){ return "id_"+Math.random().toString(36).slice(2); } }
+function pKey(i){ return i===0 ? "p0" : "p1"; }
+function inside(x,y){ return x>=0 && x<W && y>=0 && y<H; }
+function unitEmoji(type){ return (TROOPS[type] && TROOPS[type].emoji) ? TROOPS[type].emoji : "❓"; }
 
-const TROOPS = {
-  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,4,4,1200)}, spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:{...R(8,4,10,2000), splash1:true, knock:true} },
-  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(18,3,800)}, splash1:true },
-  miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
+/* ---------- Troops ---------- */
+function R(hp,dmg,range,cd){ return {hp:hp,dmg:dmg,range:range,cd:cd}; }
+function M(hp,dmg,cd){ return {hp:hp,dmg:dmg,range:1,cd:cd}; }
+
+var TROOPS = {
+  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:assign({}, R(7,4,4,1200)), spawn:2 },
+  vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:assign({}, R(8,4,10,2000), {splash1:true, knock:true}) },
+  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:assign({}, M(18,3,800), {splash1:true}) },
+  miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:assign({}, M(16,2,800), {spd:2, hunterRanged:true}), spawn:2 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back", base:{ hp:8, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }},
 
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,2,4,900), blink50:true}, spawn:2 },
-  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
-  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,4,900), splash1:true, knock:true}, size:2 },
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:assign({}, R(6,2,4,900), {blink50:true}), spawn:2 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:assign({}, M(12,6,700), {spd:2}), spawn:2 },
+  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:assign({}, R(7,3,3,1100), {chain3:true}) },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:assign({}, M(22,4,900), {splash1:true, knock:true}), size:2 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🛡️✨", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1700, wardDur:6000, wardHp:2 }},
 
-  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:{...M(6,2,600), spd:3}, spawn:3 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:{...R(10,3,3,1300)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(26,4,900), splash1:true}, size:2 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
-  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(9,3,5,1200), acid:true, acidDur:3500} }
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:assign({}, M(6,2,600), {spd:3}), spawn:3 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:assign({}, R(10,3,3,1300), {}) , spawn:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:assign({}, M(26,4,900), {splash1:true}), size:2 },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:assign({}, M(9,3,0), {kamikaze:true, paints:true}), spawn:2 },
+  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:assign({}, R(9,3,5,1200), {acid:true, acidDur:3500}) }
 };
-const FACTIONS = {
+function assign(target){
+  for (var i=1;i<arguments.length;i++){
+    var src=arguments[i]||{};
+    for (var k in src){ if (Object.prototype.hasOwnProperty.call(src,k)) target[k]=src[k]; }
+  }
+  return target;
+}
+var FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic"],
   Aesir:  ["phaser","blade","storm","guardian","wardmaker"],
   Helions:["hellspawn","roach","defiler","blood","spitter"]
 };
-const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
+var ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 
-/* ---------- Helpers/state ---------- */
-const pKey = (i)=> i===0 ? "p0" : "p1";
-const idx=(x,y)=> y*W+x;
-const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
-
-let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
-const fieldEmpty = ()=>({units:[], poison:[], acid:[], wards:[], fx:[]});
-
-/* sizes */
-function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
+/* ---------- Sizes, movement, spawn ---------- */
+function unitSize(u){ return (TROOPS[u.type] && TROOPS[u.type].size===2) ? 2 : 1; }
 function rectangleFree(units,x,y,size){
-  for(let yy=0; yy<size; yy++){
-    for(let xx=0; xx<size; xx++){
-      const nx=x+xx, ny=y+yy;
+  for(var yy=0; yy<size; yy++){
+    for(var xx=0; xx<size; xx++){
+      var nx=x+xx, ny=y+yy;
       if(!inside(nx,ny)) return false;
-      if (units.some(o=>{
-        const os=unitSize(o);
-        return nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os;
-      })) return false;
+      var blocked = false;
+      for (var i=0;i<units.length;i++){
+        var o=units[i];
+        var os=unitSize(o);
+        if (nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os){ blocked=true; break; }
+      }
+      if (blocked) return false;
     }
   }
   return true;
 }
 function canMoveTo(u, units, nx, ny){
-  const s = unitSize(u);
-  return rectangleFree(units.filter(o=>o.id!==u.id), nx, ny, s);
+  var s = unitSize(u);
+  var others = [];
+  for (var i=0;i<units.length;i++){ if (units[i].id!==u.id) others.push(units[i]); }
+  return rectangleFree(others, nx, ny, s);
 }
 
-/* spawn rows */
 function bandRows(p, role){
   if (p===0){
     return role==="back" ? [H-1,H-2,H-3] : [H-6,H-5,H-4];
@@ -272,44 +290,46 @@ function bandRows(p, role){
   }
 }
 function spawnSlot(state,p,typeKey){
-  const role = TROOPS[typeKey]?.role || "front";
-  const sz = TROOPS[typeKey]?.size===2 ? 2 : 1;
-  const rows = bandRows(p, role);
-  for(const r of rows){
-    const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
-    for(const dx of order){
-      const x=Math.max(0,Math.min(W-sz,cx+dx));
-      const y=r;
-      if (rectangleFree(state.field.units, x, y, sz)) return {x,y};
+  var role = (TROOPS[typeKey] && TROOPS[typeKey].role) ? TROOPS[typeKey].role : "front";
+  var sz = (TROOPS[typeKey] && TROOPS[typeKey].size===2) ? 2 : 1;
+  var rows = bandRows(p, role);
+  for(var rIdx=0; rIdx<rows.length; rIdx++){
+    var r=rows[rIdx];
+    var cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
+    for(var j=0;j<order.length;j++){
+      var dx=order[j];
+      var x=Math.max(0,Math.min(W-sz,cx+dx));
+      var y=r;
+      if (rectangleFree(state.field.units, x, y, sz)) return {x:x,y:y};
     }
   }
   if (p===0){
-    for(let y=H-1;y>=Math.max(0,H-8);y--) for(let x=0;x<=W-sz;x++) if (rectangleFree(state.field.units,x,y,sz)) return {x,y};
+    for(var y=H-1;y>=Math.max(0,H-8);y--) for(var x2=0;x2<=W-sz;x2++) if (rectangleFree(state.field.units,x2,y,sz)) return {x:x2,y:y};
   }else{
-    for(let y=0; y<Math.min(H,8); y++) for(let x=0;x<=W-sz;x++) if (rectangleFree(state.field.units,x,y,sz)) return {x,y};
+    for(var y2=0; y2<Math.min(H,8); y2++) for(var x3=0;x3<=W-sz;x3++) if (rectangleFree(state.field.units,x3,y2,sz)) return {x:x3,y:y2};
   }
   return {x:Math.max(0,Math.min(W-sz, Math.floor(W/2))), y:(p===0? H-2 : 1)};
 }
 function placeUnit(state,p,key,lvl){
-  const t=TROOPS[key]; if(!t) return;
-  const spawnCount = Math.max(1, t.spawn||1);
-  for(let k=0;k<spawnCount;k++){
-    const pos=spawnSlot(state,p,key);
-    const b=t.base, size = t.size===2?2:1;
-    const u={
-      id:crypto.randomUUID(), p, type:key, x:pos.x, y:pos.y, lvl,
+  var t=TROOPS[key]; if(!t) return;
+  var spawnCount = Math.max(1, t.spawn||1);
+  for(var k=0;k<spawnCount;k++){
+    var pos=spawnSlot(state,p,key);
+    var b=t.base, size = (t.size===2?2:1);
+    var u={
+      id:safeUUID(), p:p, type:key, x:pos.x, y:pos.y, lvl:lvl,
       maxhp:Math.round((b.hp||10)), hp:Math.round((b.hp||10)),
-      dmg:Math.round((b.dmg||3)), spd: b.spd ?? 1, range:b.range ?? 1,
-      cd: Math.round((b.cd ?? 600)*PACE.atkMult),
+      dmg:Math.round((b.dmg||3)), spd: (typeof b.spd==="number"? b.spd:1), range:(typeof b.range==="number"? b.range:1),
+      cd: Math.round((typeof b.cd==="number"? b.cd:600)*PACE.atkMult),
       splash1:!!b.splash1, knock:!!b.knock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
-      kamikaze:!!b.kamikaze, paints:!!b.paints, size,
+      kamikaze:!!b.kamikaze, paints:!!b.paints, size:size,
       heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
       ward:!!b.ward, wardCd:b.wardCd||0, wardDur:b.wardDur||0, wardHp:b.wardHp||1,
       acid:!!b.acid, acidDur:b.acidDur||0,
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0
     };
-    const mult = [1,1,1.5,2][lvl] || 1;
+    var multArr=[1,1,1.5,2]; var mult = multArr[lvl] || 1;
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
     u.dmg   = Math.round(u.dmg*mult);
@@ -317,198 +337,220 @@ function placeUnit(state,p,key,lvl){
   }
 }
 function rebuildFieldFromRoster(state){
-  state.field = state.field || fieldEmpty();
+  if (!state.field) state.field = fieldEmpty();
   state.field.units = [];
   state.field.poison = state.field.poison || [];
   state.field.acid   = state.field.acid   || [];
   state.field.wards  = state.field.wards  || [];
-  for(let p=0;p<2;p++){
-    const rk = pKey(p);
-    const roster = (state.roster?.[rk]||[]);
-    const fronts = roster.filter(r=>TROOPS[r.type]?.role==="front");
-    const backs  = roster.filter(r=>TROOPS[r.type]?.role!=="front");
-    for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
-    for(const r of backs ){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
+  for(var p=0;p<2;p++){
+    var rk = pKey(p);
+    var roster = (state.roster && state.roster[rk]) ? state.roster[rk] : [];
+    var fronts = []; var backs=[];
+    for (var i=0;i<roster.length;i++){
+      var r=roster[i];
+      if ((TROOPS[r.type] && TROOPS[r.type].role==="front")) fronts.push(r);
+      else backs.push(r);
+    }
+    for (var f=0;f<fronts.length;f++){ var rf=fronts[f]; for(var c=0;c<rf.count;c++) placeUnit(state,p,rf.type,rf.lvl); }
+    for (var b=0;b<backs.length; b++){ var rb=backs[b];  for(var c2=0;c2<rb.count;c2++) placeUnit(state,p,rb.type,rb.lvl); }
   }
 }
 
 /* packs */
-function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
+function ownedTypes(roster){
+  var out=[]; for(var i=0;i<roster.length;i++){ if (roster[i].count>0) out.push(roster[i].type); }
+  return out;
+}
 function weightedPick(pool, n){
-  const out=[]; const copy=[...pool];
-  for(let k=0;k<n && copy.length;k++){
-    const sum = copy.reduce((a,b)=>a+b.w,0);
-    let r = Math.random()*sum, i=0;
-    for(; i<copy.length; i++){ r-=copy[i].w; if(r<=0) break; }
-    out.push(copy[i].item); copy.splice(i,1);
+  var out=[]; var copy=pool.slice();
+  for(var k=0;k<n && copy.length;k++){
+    var sum=0; for (var i=0;i<copy.length;i++) sum+=copy[i].w;
+    var r=Math.random()*sum, idx=0;
+    for(idx=0; idx<copy.length; idx++){ r-=copy[idx].w; if(r<=0) break; }
+    out.push(copy[idx].item); copy.splice(idx,1);
   }
   return out;
 }
-function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
 function packFor(roster, faction){
-  const poolTypes = FACTIONS[faction] || [];
-  const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji: unitEmoji(k), role:TROOPS[k].role}));
-  const types = ownedTypes(roster);
-  const specials=[];
-  if (types.length){
-    const up = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"upgrade", for:up, name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"});
-    const db = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"double", for:db, name:`Double ${TROOPS[db].name}`, emoji:"🃏"});
+  var poolTypes = FACTIONS[faction] || [];
+  var troopCards = [];
+  for (var i=0;i<poolTypes.length;i++){
+    var k=poolTypes[i]; troopCards.push({type:"troop", key:k, name:TROOPS[k].name, emoji: unitEmoji(k), role:TROOPS[k].role});
   }
-  const pool = [
-    ...troopCards.map(item=>({item,w:3})),
-    ...specials.map(item=>({item,w:1}))
-  ];
+  var types = ownedTypes(roster);
+  var specials=[];
+  if (types.length){
+    var up = types[Math.floor(Math.random()*types.length)];
+    specials.push({type:"special", special:"upgrade", for:up, name:"Upgrade " + (TROOPS[up].name), emoji:"⬆️"});
+    var db = types[Math.floor(Math.random()*types.length)];
+    specials.push({type:"special", special:"double", for:db, name:"Double " + (TROOPS[db].name), emoji:"🃏"});
+  }
+  var pool = [];
+  for (var t=0;t<troopCards.length;t++) pool.push({item:troopCards[t], w:3});
+  for (var s=0;s<specials.length;s++) pool.push({item:specials[s], w:1});
   return weightedPick(pool, 3);
 }
-function rosterAdd(roster, type, inc=1){ const f=roster.find(r=>r.type===type); if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc}); }
-function rosterDoubleOneSpecific(roster, type){ const f=roster.find(r=>r.type===type); if(!f) return; f.count += Math.max(1,f.count); }
-function rosterUpgradeOneSpecific(roster, type){ const f=roster.find(r=>r.type===type && r.lvl<3); if(!f) return; f.lvl++; }
+function rosterAdd(roster, type, inc){ if (typeof inc!=="number") inc=1; var f=null; for (var i=0;i<roster.length;i++){ if (roster[i].type===type){ f=roster[i]; break; } } if (f) f.count+=inc; else roster.push({type:type, lvl:1, count:inc}); }
+function rosterDoubleOneSpecific(roster, type){ var f=null; for (var i=0;i<roster.length;i++){ if (roster[i].type===type){ f=roster[i]; break; } } if(!f) return; f.count += Math.max(1,f.count); }
+function rosterUpgradeOneSpecific(roster, type){ var f=null; for (var i=0;i<roster.length;i++){ if (roster[i].type===type && roster[i].lvl<3){ f=roster[i]; break; } } if(!f) return; f.lvl++; }
 
-/* Effects rendering helpers */
+/* Effects helpers */
 function centerPx(x,y){
-  const left = x*(CELL+GAP) + CELL/2;
-  const top  = y*(CELL+GAP) + CELL/2;
-  return {left, top};
+  var left = x*(CELL+GAP) + CELL/2;
+  var top  = y*(CELL+GAP) + CELL/2;
+  return {left:left, top:top};
 }
-function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
-function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
-function fxBurst(cx,cy){ return { id:crypto.randomUUID(), type:"burst", cx,cy, at:Date.now(), ttl:700 }; }
-function renderBeam(ev, heal=false){
-  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
-  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
-  const el=document.createElement("div"); el.className= heal? "hbeam" : "beam";
+function fxBeam(x1,y1,x2,y2){ return { id:safeUUID(), type:"beam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
+function fxHeal(x1,y1,x2,y2){ return { id:safeUUID(), type:"hbeam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
+function fxBurst(cx,cy){ return { id:safeUUID(), type:"burst", cx:cx,cy:cy, at:Date.now(), ttl:700 }; }
+function renderBeam(ev, heal){
+  var a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
+  var dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  var el=document.createElement("div"); el.className= heal? "hbeam" : "beam";
   el.style.left = a.left + "px";
   el.style.top  = a.top  + "px";
   el.style.width = Math.max(1,len) + "px";
-  el.style.transform = `rotate(${ang}rad)`;
+  el.style.transform = "rotate(" + ang + "rad)";
   beamsEl.appendChild(el);
-  setTimeout(()=>el.remove(), ev.ttl);
+  setTimeout(function(){ el.remove(); }, ev.ttl);
 }
 function renderBurst(ev){
-  for(let i=0;i<8;i++){
-    const dot=document.createElement("div"); dot.className="p";
-    const offx = (Math.random()*14-7), offy=(Math.random()*14-7);
-    const a=centerPx(ev.cx,ev.cy);
+  for(var i=0;i<8;i++){
+    var dot=document.createElement("div"); dot.className="p";
+    var offx = (Math.random()*14-7), offy=(Math.random()*14-7);
+    var a=centerPx(ev.cx,ev.cy);
     dot.style.left = (a.left + offx) + "px";
     dot.style.top  = (a.top + offy) + "px";
     partsEl.appendChild(dot);
-    setTimeout(()=>dot.remove(), ev.ttl);
+    (function(el){ setTimeout(function(){ el.remove(); }, ev.ttl); })(dot);
   }
 }
-function groundTickParticles(x,y, purple=false){
-  const a=centerPx(x,y);
-  for(let i=0;i<3;i++){
-    const dot=document.createElement("div"); dot.className="p"; if (purple) dot.classList.add("purple");
-    const offx = (Math.random()*10-5), offy=(Math.random()*6-3);
+function groundTickParticles(x,y, purple){
+  var a=centerPx(x,y);
+  for(var i=0;i<3;i++){
+    var dot=document.createElement("div"); dot.className="p"; if (purple) dot.className+=" purple";
+    var offx = (Math.random()*10-5), offy=(Math.random()*6-3);
     dot.style.left = (a.left + offx) + "px";
     dot.style.top  = (a.top + offy) + "px";
     partsEl.appendChild(dot);
-    setTimeout(()=>dot.remove(), 550);
+    (function(el){ setTimeout(function(){ el.remove(); }, 550); })(dot);
   }
 }
-function flashAt(x,y, dmgNum=0){
-  const i=y*W+x; const cell=cellsEl.children[i]; if (!cell) return;
-  const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
-  setTimeout(()=>f.remove(), 140);
+function flashAt(x,y, dmgNum){
+  if (typeof dmgNum!=="number") dmgNum=0;
+  var i=y*W+x; var cell=cellsEl.children[i]; if (!cell) return;
+  var f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
+  setTimeout(function(){ f.remove(); }, 140);
   if (dmgNum>0){
-    const t=document.createElement("div"); t.className="dmg"; t.textContent=`-${dmgNum}`;
-    cell.appendChild(t); setTimeout(()=>t.remove(), 650);
+    var t=document.createElement("div"); t.className="dmg"; t.textContent="-"+dmgNum;
+    cell.appendChild(t); setTimeout(function(){ t.remove(); }, 650);
   }
 }
 
 /* paint field: ensure emoji above */
 function paint(units, field){
-  for(let i=0;i<W*H;i++){
-    const d=cellsEl.children[i];
-    const under=d.querySelector(".under"); under.style.background="transparent";
-    const uni=d.querySelector(".unit"); uni.textContent="";
+  var total = W*H;
+  for(var i=0;i<total;i++){
+    var d=cellsEl.children[i];
+    var under=d.querySelector(".under"); under.style.background="transparent";
+    var uni=d.querySelector(".unit"); uni.textContent="";
     d.querySelector(".hp>i").style.width="0%";
-    d.querySelector(".poison")?.remove();
-    d.querySelector(".acid")?.remove();
-    d.querySelector(".ward")?.remove();
+    var p=d.querySelector(".poison"); if(p) p.remove();
+    var a=d.querySelector(".acid");   if(a) a.remove();
+    var w=d.querySelector(".ward");   if(w) w.remove();
   }
-  const now=Date.now();
-  (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    const i=p.y*W+p.x; const d=cellsEl.children[i]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"poison"}));
-  });
-  (field.acid||[]).forEach(a=>{
-    if (a.until<=now) return;
-    const i=a.y*W+a.x; const d=cellsEl.children[i]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"acid"}));
-  });
-  (field.wards||[]).forEach(w=>{
-    if (w.until<=now || w.hp<=0) return;
-    const i=w.y*W+w.x; const d=cellsEl.children[i]; if(!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"ward"}));
-  });
+  var now=Date.now();
+  var pArr = (field && field.poison) ? field.poison : [];
+  for (var pi=0;pi<pArr.length;pi++){
+    var P = pArr[pi]; if (P.until<=now) continue;
+    var i1=P.y*W+P.x; var d1=cellsEl.children[i1]; if (!d1) continue;
+    var el=document.createElement("div"); el.className="poison"; d1.appendChild(el);
+  }
+  var aArr = (field && field.acid) ? field.acid : [];
+  for (var ai=0;ai<aArr.length;ai++){
+    var A = aArr[ai]; if (A.until<=now) continue;
+    var i2=A.y*W+A.x; var d2=cellsEl.children[i2]; if (!d2) continue;
+    var el2=document.createElement("div"); el2.className="acid"; d2.appendChild(el2);
+  }
+  var wArr = (field && field.wards) ? field.wards : [];
+  for (var wi=0;wi<wArr.length;wi++){
+    var Wd = wArr[wi]; if (Wd.until<=now || Wd.hp<=0) continue;
+    var i3=Wd.y*W+Wd.x; var d3=cellsEl.children[i3]; if (!d3) continue;
+    var el3=document.createElement("div"); el3.className="ward"; d3.appendChild(el3);
+  }
 
-  for(const u of units){
-    const s = unitSize(u);
-    for(let yy=0; yy<s; yy++) for(let xx=0; xx<s; xx++){
-      const i=(u.y+yy)*W+(u.x+xx); const d=cellsEl.children[i]; if(!d) continue;
-      const under=d.querySelector(".under");
-      under.style.background = u.p===0 ? "var(--p0bg)" : "var(--p1bg)";
+  for(var ui=0;ui<units.length;ui++){
+    var u=units[ui];
+    var s = unitSize(u);
+    for(var yy=0; yy<s; yy++) for(var xx=0; xx<s; xx++){
+      var idx=(u.y+yy)*W+(u.x+xx); var d4=cellsEl.children[idx]; if(!d4) continue;
+      var under2=d4.querySelector(".under");
+      under2.style.background = (u.p===0 ? "var(--p0bg)" : "var(--p1bg)");
     }
-    const i0=u.y*W+u.x, d0=cellsEl.children[i0]; if(!d0) continue;
-    const uni=d0.querySelector(".unit");
-    uni.style.fontSize = s===2 ? "28px" : "22px";
-    uni.textContent = unitEmoji(u.type); /* ✅ emoji sits on top */
-    const hp=d0.querySelector(".hp>i");
-    hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
+    var i0=u.y*W+u.x, d0=cellsEl.children[i0]; if(!d0) continue;
+    var uni2=d0.querySelector(".unit");
+    uni2.style.fontSize = (s===2 ? "28px" : "22px");
+    uni2.textContent = unitEmoji(u.type); /* emoji sits on top */
+    var hp=d0.querySelector(".hp>i");
+    var pct = Math.max(0, Math.round(100*u.hp/u.maxhp));
+    hp.style.width = pct + "%";
   }
 }
 
 /* targeting & movement */
 function unitCenter(u){ return { x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2 }; }
 function nearestEnemy(u,units){
-  let b=null,bd=1e9; const c=unitCenter(u);
-  for(const v of units){ if(v.p===u.p) continue;
-    const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y);
+  var b=null,bd=1e9; var c=unitCenter(u);
+  for(var i=0;i<units.length;i++){ var v=units[i]; if(v.p===u.p) continue;
+    var cc=unitCenter(v);
+    var d=Math.abs(cc.x-c.x)+Math.abs(cc.y-c.y);
     if(d<bd){bd=d;b=v;}
   } return b;
 }
 function nearestEnemyRangedPriority(u,units){
-  const ranged=units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
+  var ranged=[];
+  for (var i=0;i<units.length;i++){
+    var v=units[i];
+    if (v.p!==u.p && TROOPS[v.type] && TROOPS[v.type].role==="back") ranged.push(v);
+  }
   if(ranged.length){
-    let b=null,bd=1e9; const c=unitCenter(u);
-    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){bd=d;b=v;} }
+    var b=null,bd=1e9; var c=unitCenter(u);
+    for(var j=0;j<ranged.length;j++){ var v2=ranged[j]; var c2=unitCenter(v2);
+      var d=Math.abs(c2.x-c.x)+Math.abs(c2.y-c.y); if(d<bd){bd=d;b=v2;} }
     return b;
   }
   return nearestEnemy(u,units);
 }
 function manhattanUnits(u,t){
-  const a=unitCenter(u), b=unitCenter(t);
-  return Math.abs(a.x+b.x-2*a.x)+Math.abs(a.y+b.y-2*a.y); // same as |dx|+|dy|
+  var a=unitCenter(u), b=unitCenter(t);
+  return Math.abs(b.x-a.x)+Math.abs(b.y-a.y);
 }
 function stepToward(u,t,units){
-  const a=unitCenter(u), b=unitCenter(t);
-  const dx=b.x-a.x, dy=b.y-a.y;
-  const sx=Math.sign(dx), sy=Math.sign(dy);
-  const absx=Math.abs(dx), absy=Math.abs(dy);
-  const primary = absx>=absy ? "x" : "y";
-  const opts = primary==="x"
+  var a=unitCenter(u), b=unitCenter(t);
+  var dx=b.x-a.x, dy=b.y-a.y;
+  var sx=dx>0?1:(dx<0?-1:0), sy=dy>0?1:(dy<0?-1:0);
+  var absx=Math.abs(dx), absy=Math.abs(dy);
+  var primary = absx>=absy ? "x" : "y";
+  var opts = primary==="x"
     ? [[u.x+sx,u.y],[u.x,u.y+sy],[u.x-sx,u.y],[u.x,u.y-sy]]
     : [[u.x,u.y+sy],[u.x+sx,u.y],[u.x,u.y-sy],[u.x-sx,u.y]];
-  for(const [nx,ny] of opts){
+  for(var i=0;i<opts.length;i++){
+    var nx=opts[i][0], ny=opts[i][1];
     if (canMoveTo(u,units,nx,ny)){ u.x=nx; u.y=ny; return; }
   }
 }
 function canStepNow(u, now){
-  const slowExtra = (u.slowUntil && u.slowUntil > now) ? 400 : 0;
-  const due = (u.nextMove || 0) <= now;
+  var slowExtra = (u.slowUntil && u.slowUntil > now) ? 400 : 0;
+  var due = (u.nextMove || 0) <= now;
   if (due) u.nextMove = now + LOGIC_MS + slowExtra;
   return due;
 }
 function blinkIfNeeded(u){
   if(!u.blink50 || u.blinked) return;
   if (u.hp <= 0.5*u.maxhp){
-    const dir = (u.p===0? +1 : -1);
-    for(let i=0;i<3;i++){
-      const nx=u.x, ny=u.y+dir;
+    var dir = (u.p===0? +1 : -1);
+    for(var i=0;i<3;i++){
+      var nx=u.x, ny=u.y+dir;
       if (!inside(nx,ny)) break;
       if (canMoveTo(u, S.field.units, nx, ny)){ u.x=nx; u.y=ny; }
     }
@@ -516,24 +558,27 @@ function blinkIfNeeded(u){
   }
 }
 function tilesOnLine(x1,y1,x2,y2){
-  const tiles=[];
-  const dx=x2-x1, dy=y2-y1;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  var tiles=[];
+  var dx=x2-x1, dy=y2-y1;
+  var steps = Math.max(Math.abs(dx), Math.abs(dy));
   if (steps===0){ tiles.push({x:Math.round(x1),y:Math.round(y1)}); return tiles; }
-  const sx=dx/steps, sy=dy/steps;
-  let x=x1, y=y1;
-  for(let i=0;i<=steps;i++){
+  var sx=dx/steps, sy=dy/steps;
+  var x=x1, y=y1;
+  for(var i=0;i<=steps;i++){
     tiles.push({x:Math.round(x), y:Math.round(y)});
     x+=sx; y+=sy;
   }
   return tiles;
 }
 function beamBlockedByWard(u,t, wards){
-  const a=unitCenter(u), b=unitCenter(t);
-  const path=tilesOnLine(a.x,a.y,b.x,b.y);
-  for(const pt of path){
-    const w = wards.find(w=>w.hp>0 && w.x===Math.round(pt.x) && w.y===Math.round(pt.y) && w.until>Date.now());
-    if (w) return w;
+  var a=unitCenter(u), b=unitCenter(t);
+  var path=tilesOnLine(a.x,a.y,b.x,b.y);
+  for(var i=0;i<path.length;i++){
+    var pt=path[i];
+    for (var w=0;w<wards.length;w++){
+      var Wd=wards[w];
+      if (Wd.hp>0 && Wd.x===Math.round(pt.x) && Wd.y===Math.round(pt.y) && Wd.until>Date.now()) return Wd;
+    }
   }
   return null;
 }
@@ -542,18 +587,20 @@ function beamBlockedByWard(u,t, wards){
 function healAction(u, st, now){
   if (!u.heal) return false;
   if (now < (u.nextHeal||0)) return false;
-  const allies = st.field.units.filter(v=>v.p===u.p && v.id!==u.id && v.hp>0);
+  var allies = [];
+  for (var i=0;i<st.field.units.length;i++){ var v=st.field.units[i]; if(v.p===u.p && v.id!==u.id && v.hp>0) allies.push(v); }
   if (!allies.length) return false;
-  let target=null, minRatio=1.01;
-  for(const a of allies){
-    const dist = Math.abs(unitCenter(a).x-unitCenter(u).x)+Math.abs(unitCenter(a).y-unitCenter(u).y);
+  var target=null, minRatio=1.01;
+  for(var j=0;j<allies.length;j++){
+    var a=allies[j];
+    var dist = Math.abs(unitCenter(a).x-unitCenter(u).x)+Math.abs(unitCenter(a).y-unitCenter(u).y);
     if (dist <= (u.healRange||2)){
-      const r = a.hp/a.maxhp;
+      var r = a.hp/a.maxhp;
       if (r < minRatio){ minRatio = r; target=a; }
     }
   }
   if (!target) return false;
-  const amt = Math.max(1, u.healAmt|0);
+  var amt = Math.max(1, u.healAmt|0);
   target.hp = Math.min(target.maxhp, target.hp + amt);
   st.field.fx.push(fxHeal(u.x,u.y,target.x,target.y));
   u.nextHeal = now + (u.healCd||1200);
@@ -562,8 +609,8 @@ function healAction(u, st, now){
 function wardAction(u, st, now){
   if (!u.ward) return false;
   if (now < (u.nextWard||0)) return false;
-  const dir = u.p===0 ? -1 : +1;
-  const tx=u.x, ty=u.y+dir;
+  var dir = u.p===0 ? -1 : +1;
+  var tx=u.x, ty=u.y+dir;
   if (inside(tx,ty)){
     if (placeWard(st, tx,ty, u.wardHp||2, u.wardDur||6000)){
       u.nextWard = now + (u.wardCd||1700);
@@ -573,59 +620,73 @@ function wardAction(u, st, now){
   return false;
 }
 function applyDamage(victim, dmg){ victim.hp -= dmg; flashAt(victim.x, victim.y, dmg); }
-function splash(units,x,y,dmg,srcP,kn=false){
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
-    const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
-    if(hit){ applyDamage(hit,dmg); if(kn) tryKnock(x,y,hit,units); }
+function splash(units,x,y,dmg,srcP,kn){
+  for(var dy=-1;dy<=1;dy++)for(var dx=-1;dx<=1;dx++){
+    var nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
+    for(var i=0;i<units.length;i++){
+      var o=units[i];
+      if(o.p===srcP) continue;
+      var os=unitSize(o);
+      if (nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os){
+        applyDamage(o,dmg); if(kn) tryKnock(x,y,o,units); break;
+      }
+    }
   }
 }
 function tryKnock(cx,cy,t,units){
-  const tcx=t.x+(unitSize(t)-1)/2, tcy=t.y+(unitSize(t)-1)/2;
-  const dx=Math.sign(tcx-cx), dy=Math.sign(tcy-cy);
-  const nx=t.x+dx, ny=t.y+dy;
+  var tcx=t.x+(unitSize(t)-1)/2, tcy=t.y+(unitSize(t)-1)/2;
+  var dx=Math.sign(tcx-cx), dy=Math.sign(tcy-cy);
+  var nx=t.x+dx, ny=t.y+dy;
   if (canMoveTo(t, units, nx, ny)){ t.x=nx; t.y=ny; }
 }
-function chainLightning(units, startTarget, srcP, hops=3, dmg=3){
-  let cur = startTarget; let left=hops; const hit=new Set();
+function chainLightning(units, startTarget, srcP, hops, dmg){
+  if (typeof hops!=="number") hops=3;
+  if (typeof dmg!=="number") dmg=3;
+  var cur = startTarget; var left=hops; var hit={};
   while(cur && left>0){
-    applyDamage(cur,dmg); hit.add(cur.id);
-    let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
-    for(const v of units){
-      if(v.p===srcP || hit.has(v.id)) continue;
-      const d=Math.abs(v.x-cx)+Math.abs(v.y-cy);
+    applyDamage(cur,dmg); hit[cur.id]=true;
+    var cand=null,bd=1e9; var cx=cur.x, cy=cur.y;
+    for(var i=0;i<units.length;i++){
+      var v=units[i];
+      if(v.p===srcP || hit[v.id]) continue;
+      var d=Math.abs(v.x-cx)+Math.abs(v.y-cy);
       if(d<=2 && d<bd){ bd=d; cand=v; }
     }
     cur=cand; left--;
   }
 }
-function addAcid(state, x,y, durMs=3500){
+function addAcid(state, x,y, durMs){
+  if (typeof durMs!=="number") durMs=3500;
   if(!inside(x,y)) return;
-  state.field.acid = state.field.acid || [];
-  state.field.acid.push({x,y,until:Date.now()+durMs});
+  if(!state.field.acid) state.field.acid=[];
+  state.field.acid.push({x:x,y:y,until:Date.now()+durMs});
 }
-function paintPoison(state, cx, cy, durMs=7000){
-  const until = Date.now()+durMs;
-  state.field.poison = state.field.poison || [];
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-    state.field.poison.push({x,y,until});
+function paintPoison(state, cx, cy, durMs){
+  if (typeof durMs!=="number") durMs=7000;
+  var until = Date.now()+durMs;
+  if(!state.field.poison) state.field.poison=[];
+  for(var dy=-1;dy<=1;dy++)for(var dx=-1;dx<=1;dx++){
+    var x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+    state.field.poison.push({x:x,y:y,until:until});
   }
 }
-function placeWard(state, x,y, hp=2, dur=6000){
+function placeWard(state, x,y, hp, dur){
+  if (typeof hp!=="number") hp=2;
+  if (typeof dur!=="number") dur=6000;
   if(!inside(x,y)) return false;
-  if (state.field.wards.some(w=>w.x===x&&w.y===y)) return false;
-  state.field.wards.push({x,y,hp,until:Date.now()+dur});
+  if (!state.field.wards) state.field.wards=[];
+  for (var i=0;i<state.field.wards.length;i++){ var w=state.field.wards[i]; if (w.x===x && w.y===y) return false; }
+  state.field.wards.push({x:x,y:y,hp:hp,until:Date.now()+dur});
   return true;
 }
 function attack(u,t,now,st){
-  const inRange = (Math.abs(unitCenter(u).x-unitCenter(t).x)+Math.abs(unitCenter(u).y-unitCenter(t).y)) <= (u.range||1);
+  var inRange = (Math.abs(unitCenter(u).x-unitCenter(t).x)+Math.abs(unitCenter(u).y-unitCenter(t).y)) <= (u.range||1);
   if(!inRange) return false;
   if(now < (u.nextAtk||0)) return true;
 
-  const ranged = (u.range||1) > 1;
+  var ranged = (u.range||1) > 1;
   if (ranged){
-    const ward = beamBlockedByWard(u,t, st.field.wards||[]);
+    var ward = beamBlockedByWard(u,t, st.field.wards||[]);
     if (ward){
       st.field.fx.push(fxBeam(u.x,u.y,ward.x,ward.y));
       ward.hp -= 1;
@@ -650,7 +711,7 @@ function attack(u,t,now,st){
   } else if (u.acid){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     applyDamage(t,u.dmg);
-    addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur||3500);
+    addAcid(st, t.x, t.y, (TROOPS[u.type] && TROOPS[u.type].base && TROOPS[u.type].base.acidDur) ? TROOPS[u.type].base.acidDur : 3500);
   } else {
     if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     applyDamage(t,u.dmg);
@@ -660,55 +721,70 @@ function attack(u,t,now,st){
   return true;
 }
 function applyTerrain(field, units){
-  const now=Date.now();
-  (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    let ticked=false;
-    for(const u of units){
-      if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
-        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
-        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
-          u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+  var now=Date.now();
+  var pArr = field.poison||[];
+  for (var i=0;i<pArr.length;i++){
+    var p=pArr[i]; if (p.until<=now) continue;
+    var ticked=false;
+    for(var u=0;u<units.length;u++){
+      var a=units[u];
+      if (a.x<=p.x && p.x<a.x+unitSize(a) && a.y<=p.y && p.y<a.y+unitSize(a)){
+        a.slowUntil = Math.max(a.slowUntil||0, now+PACE.poisonSlowMs);
+        if (!a._poisonTick || now - a._poisonTick >= PACE.poisonDotMs){
+          a._poisonTick = now; a.hp = a.hp - 1; flashAt(a.x,a.y,1); ticked=true;
         }
       }
     }
     if (ticked) groundTickParticles(p.x,p.y,false);
-  });
-  (field.acid||[]).forEach(a=>{
-    if (a.until<=now) return;
-    let ticked=false;
-    for(const u of units){
-      if (u.x<=a.x && a.x<u.x+unitSize(u) && u.y<=a.y && a.y<u.y+unitSize(u)){
-        u.slowUntil = Math.max(u.slowUntil||0, now+800);
-        if (!u._acidTick || now - u._acidTick >= 1100){
-          u._acidTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+  }
+  var aArr = field.acid||[];
+  for (var j=0;j<aArr.length;j++){
+    var ac=aArr[j]; if (ac.until<=now) continue;
+    var ticked2=false;
+    for(var v=0;v<units.length;v++){
+      var b=units[v];
+      if (b.x<=ac.x && ac.x<b.x+unitSize(b) && b.y<=ac.y && ac.y<b.y+unitSize(b)){
+        b.slowUntil = Math.max(b.slowUntil||0, now+800);
+        if (!b._acidTick || now - b._acidTick >= 1100){
+          b._acidTick = now; b.hp = b.hp - 1; flashAt(b.x,b.y,1); ticked2=true;
         }
       }
     }
-    if (ticked) groundTickParticles(a.x,a.y,true);
-  });
+    if (ticked2) groundTickParticles(ac.x,ac.y,true);
+  }
 }
 
 /* ---------- State/phase control ---------- */
-const ownedRoster = (state, p)=> (state.roster?.[pKey(p)]||[]);
-function bothPicked(d){ const di=d.draftIndex|0; return (d.selections?.p0?.[di] != null) && (d.selections?.p1?.[di] != null); }
-function bothFactionsChosen(d){ return !!(d.factions?.p0) && !!(d.factions?.p1); }
+function fieldEmpty(){ return {units:[], poison:[], acid:[], wards:[], fx:[]}; }
+function bothPicked(d){
+  var di = d.draftIndex || 0;
+  var s = d.selections || {p0:[],p1:[]};
+  var a = (s.p0 && typeof s.p0[di] !== "undefined");
+  var b = (s.p1 && typeof s.p1[di] !== "undefined");
+  return !!(a && b);
+}
+function bothFactionsChosen(d){
+  var f=d.factions||{};
+  return !!(f.p0 && f.p1);
+}
+
+var S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 
 async function ensureStateExists(){
-  const lobSnap = await getDoc(lobbyRef);
+  var lobSnap = await getDoc(lobbyRef);
   if (!lobSnap.exists()) return false;
-  const lob=lobSnap.data();
+  var lob=lobSnap.data();
   lobbyPlayers=(Array.isArray(lob.players)? lob.players:[]).slice(0,2);
   isHost = lob.host===username;
 
-  await runTransaction(db, async tx=>{
-    const st=await tx.get(stateRef);
+  await runTransaction(db, async function(tx){
+    var st=await tx.get(stateRef);
     if (st.exists()) return;
-    const now=Date.now();
+    var now=Date.now();
     tx.set(stateRef,{
       players:lobbyPlayers, lives:[4,4],
       phase: lobbyPlayers.length<2? "waiting":"faction-select",
-      phaseEndsAt: lobbyPlayers.length<2?0:now+20_000,
+      phaseEndsAt: lobbyPlayers.length<2?0:(now+20000),
       roster:{p0:[],p1:[]}, factions:{p0:null,p1:null},
       field:fieldEmpty(),
       selections:{p0:[],p1:[]},
@@ -719,38 +795,42 @@ async function ensureStateExists(){
   });
 }
 async function syncPlayersIntoStateIfNeeded(){
-  const st = (await getDoc(stateRef)).data(); if(!st) return;
-  const want = lobbyPlayers.slice(0,2);
-  const cur = Array.isArray(st.players)? st.players : [];
-  if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
+  var stSnap = await getDoc(stateRef);
+  var st = stSnap.data(); if(!st) return;
+  var want = lobbyPlayers.slice(0,2);
+  var cur = Array.isArray(st.players)? st.players : [];
+  var same = (want.length===cur.length);
+  if (same){
+    for (var i=0;i<want.length;i++){ if (want[i]!==cur[i]){ same=false; break; } }
+  }
+  if (!same && want.length){
     await updateDoc(stateRef, { players: want });
   }
 }
 
-let hostTick=null, battleTick=null;
+var hostTick=null, battleTick=null;
 function startHostLoops(){
   if(hostTick) return;
-  hostTick=setInterval(async ()=>{
-    const snap=await getDoc(stateRef); if(!snap.exists()) return;
-    const d=snap.data(); const now=Date.now();
+  hostTick=setInterval(async function(){
+    var snap=await getDoc(stateRef); if(!snap.exists()) return;
+    var d=snap.data(); var now=Date.now();
 
     if (d.phase==="waiting" && lobbyPlayers.length>=2){
-      await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20_000 });
+      await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20000 });
       return;
     }
     if (d.phase==="faction-select"){
       if (bothFactionsChosen(d) || now >= (d.phaseEndsAt||0)){
-        const fx={...d.factions};
-        if(!fx.p0) fx.p0 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
-        if(!fx.p1) fx.p1 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+        var fx={}; fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+        fx.p1 = (d.factions && d.factions.p1) ? d.factions.p1 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
         await updateDoc(stateRef,{
           factions:fx, phase:"draft", draftIndex:0,
           selections:{p0:[],p1:[]},
           currentPacks:{
-            p0: packFor(d.roster?.p0||[], fx.p0),
-            p1: packFor(d.roster?.p1||[], fx.p1)
+            p0: packFor((d.roster && d.roster.p0) ? d.roster.p0:[], fx.p0),
+            p1: packFor((d.roster && d.roster.p1) ? d.roster.p1:[], fx.p1)
           },
-          phaseEndsAt: now+10_000,
+          phaseEndsAt: now+10000,
           bonusFor:null
         });
       }
@@ -758,20 +838,24 @@ function startHostLoops(){
     }
 
     if (d.phase==="draft" && (bothPicked(d) || now >= (d.phaseEndsAt||0))){
-      const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
+      var di= d.draftIndex || 0;
+      var sel = d.selections || {p0:[],p1:[]};
+      if (!sel.p0) sel.p0=[];
+      if (!sel.p1) sel.p1=[];
 
-      ["p0","p1"].forEach(sk=>{
-        if (sel[sk][di]==null){
-          const pack=(d.currentPacks?.[sk]||[]);
-          sel[sk][di] = Math.floor(Math.random()*Math.max(1,pack.length));
-        }
-      });
+      if (typeof sel.p0[di] === "undefined"){
+        var pack0=(d.currentPacks && d.currentPacks.p0) ? d.currentPacks.p0 : [];
+        sel.p0[di] = Math.floor(Math.random()*Math.max(1,pack0.length));
+      }
+      if (typeof sel.p1[di] === "undefined"){
+        var pack1=(d.currentPacks && d.currentPacks.p1) ? d.currentPacks.p1 : [];
+        sel.p1[di] = Math.floor(Math.random()*Math.max(1,pack1.length));
+      }
 
-      const roster=d.roster||{p0:[],p1:[]};
-      ["p0","p1"].forEach(sk=>{
-        const pack=(d.currentPacks?.[sk]||[]);
-        const pick=pack[ sel[sk][di] ];
+      var roster=d.roster||{p0:[],p1:[]}; if(!roster.p0) roster.p0=[]; if(!roster.p1) roster.p1=[];
+      ["p0","p1"].forEach(function(sk){
+        var pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+        var pick=pack[ sel[sk][di] ];
         if(!pick) return;
         if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
         else if (pick.type==="special"){
@@ -780,20 +864,28 @@ function startHostLoops(){
         }
       });
 
-      const nextIx=di+1;
+      var nextIx=di+1;
       if (nextIx>=3){
-        const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0, field:fieldEmpty(), bonusFor:null};
+        var next=deepClone(d); if(!next) next=d;
+        next.roster = roster;
+        next.selections = {p0:[],p1:[]};
+        next.draftIndex = 0;
+        next.currentPacks = {p0:[],p1:[]};
+        next.phase="battle";
+        next.phaseEndsAt=0;
+        next.field=fieldEmpty();
+        next.bonusFor=null;
         rebuildFieldFromRoster(next);
         await updateDoc(stateRef,next);
         runBattle();
       }else{
         await updateDoc(stateRef,{
-          roster, selections:sel, draftIndex:nextIx,
+          roster: roster, selections: sel, draftIndex: nextIx,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster.p0, (d.factions && d.factions.p0)?d.factions.p0:null),
+            p1: packFor(roster.p1, (d.factions && d.factions.p1)?d.factions.p1:null)
           },
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           bonusFor:null
         });
       }
@@ -801,36 +893,35 @@ function startHostLoops(){
     }
 
     if (d.phase==="loser-bonus"){
-      const loser = d.bonusFor; // "p0" or "p1"
-      const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
-
-      if (sel[loser]?.[di]==null && now >= (d.phaseEndsAt||0)){
-        const pack=(d.currentPacks?.[loser]||[]);
-        sel[loser][di] = Math.floor(Math.random()*Math.max(1,pack.length));
+      var loser = d.bonusFor; // "p0" or "p1"
+      var di2=d.draftIndex||0;
+      var sel2=d.selections||{p0:[],p1:[]}; if(!sel2.p0) sel2.p0=[]; if(!sel2.p1) sel2.p1=[];
+      if (loser && typeof (sel2[loser] && sel2[loser][di2]) === "undefined" && now >= (d.phaseEndsAt||0)){
+        var packL=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
+        sel2[loser][di2] = Math.floor(Math.random()*Math.max(1,packL.length));
       }
-      const hasPicked = sel[loser]?.[di]!=null;
+      var hasPicked = loser && typeof sel2[loser][di2] !== "undefined";
       if (hasPicked){
-        const roster=d.roster||{p0:[],p1:[]};
-        const pack=(d.currentPacks?.[loser]||[]);
-        const pick=pack[ sel[loser][di] ];
-        if (pick){
-          if (pick.type==="troop") rosterAdd(roster[loser], pick.key, 1);
-          else if (pick.type==="special"){
-            if(pick.special==="double") rosterDoubleOneSpecific(roster[loser], pick.for);
-            if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[loser], pick.for);
+        var roster2=d.roster||{p0:[],p1:[]}; if(!roster2.p0) roster2.p0=[]; if(!roster2.p1) roster2.p1=[];
+        var packB=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
+        var pickB=packB[ sel2[loser][di2] ];
+        if (pickB){
+          if (pickB.type==="troop") rosterAdd(roster2[loser], pickB.key, 1);
+          else if (pickB.type==="special"){
+            if(pickB.special==="double") rosterDoubleOneSpecific(roster2[loser], pickB.for);
+            if(pickB.special==="upgrade") rosterUpgradeOneSpecific(roster2[loser], pickB.for);
           }
         }
         await updateDoc(stateRef,{
-          roster,
+          roster: roster2,
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster2.p0, (d.factions && d.factions.p0)?d.factions.p0:null),
+            p1: packFor(roster2.p1, (d.factions && d.factions.p1)?d.factions.p1:null)
           },
           phase:"draft-after",
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           bonusFor:null
         });
       }
@@ -838,42 +929,48 @@ function startHostLoops(){
     }
 
     if (d.phase==="draft-after" && (bothPicked(d) || now >= (d.phaseEndsAt||0))){
-      const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
+      var di3=d.draftIndex||0;
+      var sel3=d.selections||{p0:[],p1:[]}; if(!sel3.p0) sel3.p0=[]; if(!sel3.p1) sel3.p1=[];
+      if (typeof sel3.p0[di3] === "undefined"){
+        var packA0=(d.currentPacks && d.currentPacks.p0) ? d.currentPacks.p0 : [];
+        sel3.p0[di3] = Math.floor(Math.random()*Math.max(1,packA0.length));
+      }
+      if (typeof sel3.p1[di3] === "undefined"){
+        var packA1=(d.currentPacks && d.currentPacks.p1) ? d.currentPacks.p1 : [];
+        sel3.p1[di3] = Math.floor(Math.random()*Math.max(1,packA1.length));
+      }
 
-      ["p0","p1"].forEach(sk=>{
-        if (sel[sk][di]==null){
-          const pack=(d.currentPacks?.[sk]||[]);
-          sel[sk][di] = Math.floor(Math.random()*Math.max(1,pack.length));
-        }
-      });
-
-      const roster=d.roster||{p0:[],p1:[]};
-      ["p0","p1"].forEach(sk=>{
-        const pack=(d.currentPacks?.[sk]||[]);
-        const pick=pack[ sel[sk][di] ];
+      var roster3=d.roster||{p0:[],p1:[]}; if(!roster3.p0) roster3.p0=[]; if(!roster3.p1) roster3.p1=[];
+      ["p0","p1"].forEach(function(sk){
+        var pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+        var pick=pack[ sel3[sk][di3] ];
         if(!pick) return;
-        if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
+        if (pick.type==="troop") rosterAdd(roster3[sk], pick.key, 1);
         else if (pick.type==="special"){
-          if(pick.special==="double") rosterDoubleOneSpecific(roster[sk], pick.for);
-          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sk], pick.for);
+          if(pick.special==="double") rosterDoubleOneSpecific(roster3[sk], pick.for);
+          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster3[sk], pick.for);
         }
       });
 
-      const nextIx=di+1;
-      if (nextIx>=3){
-        const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0, field:fieldEmpty()};
-        rebuildFieldFromRoster(next);
-        await updateDoc(stateRef,next);
+      var nextIx2=di3+1;
+      if (nextIx2>=3){
+        var next2=deepClone(d); if(!next2) next2=d;
+        next2.roster = roster3;
+        next2.selections = {p0:[],p1:[]};
+        next2.draftIndex = 0;
+        next2.currentPacks = {p0:[],p1:[]};
+        next2.phase="battle"; next2.phaseEndsAt=0; next2.field=fieldEmpty();
+        rebuildFieldFromRoster(next2);
+        await updateDoc(stateRef,next2);
         runBattle();
       }else{
         await updateDoc(stateRef,{
-          roster, selections:sel, draftIndex:nextIx,
+          roster: roster3, selections: sel3, draftIndex: nextIx2,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster3.p0, (d.factions && d.factions.p0)?d.factions.p0:null),
+            p1: packFor(roster3.p1, (d.factions && d.factions.p1)?d.factions.p1:null)
           },
-          phaseEndsAt: Date.now()+10_000
+          phaseEndsAt: Date.now()+10000
         });
       }
       return;
@@ -881,60 +978,49 @@ function startHostLoops(){
 
     if (d.phase==="battle" && !battleTick) runBattle();
 
-    const nf = {...d.field};
-    const now2=Date.now();
-    nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
-    nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
-    nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
-    nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
+    var nf = assign({}, d.field);
+    var now2=Date.now();
+    nf.fx    = (nf.fx||[]).filter(function(ev){ return ev.at+ev.ttl > now2; });
+    nf.poison= (nf.poison||[]).filter(function(p){ return p.until>now2; });
+    nf.acid  = (nf.acid  ||[]).filter(function(a){ return a.until>now2; });
+    nf.wards = (nf.wards ||[]).filter(function(w){ return w.until>now2 && w.hp>0; });
     if (JSON.stringify(nf) !== JSON.stringify(d.field)){
       await updateDoc(stateRef, { field: nf });
     }
   }, 260);
 }
 
-/* ---------- ✅ Your requested runBattle implementation ---------- */
+/* ---------- Your requested runBattle (publish faster, same logic speed) ---------- */
 function runBattle(){
   if(battleTick) return;
+  var lastLogic = 0;
 
-  let lastLogic = 0; // gate core logic to preserve battle speed
+  battleTick = setInterval(async function(){
+    var snap=await getDoc(stateRef); if(!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
+    var d=snap.data(); if(d.phase!=="battle"){ clearInterval(battleTick); battleTick=null; return; }
+    var st=deepClone(d); if(!st) st = d;
+    var units=st.field.units; var now=Date.now();
 
-  battleTick = setInterval(async ()=>{
-    const snap=await getDoc(stateRef); if(!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
-    const d=snap.data(); if(d.phase!=="battle"){ clearInterval(battleTick); battleTick=null; return; }
-    const st=structuredClone(d);
-    const units=st.field.units; const now=Date.now();
-
-    // Only advance combat/movement when logic frame is due
-    const doLogic = (now - lastLogic) >= LOGIC_MS;
+    var doLogic = (now - lastLogic) >= LOGIC_MS;
     if (doLogic) lastLogic = now;
 
-    // Terrain DoT can still tick visually per logic frame
     if (doLogic) applyTerrain(st.field, units);
+    if (doLogic){ for(var bi=0;bi<units.length;bi++){ blinkIfNeeded(units[bi]); } }
 
-    // Blink checks can be logic-gated
-    if (doLogic) for(const u of units){ blinkIfNeeded(u); }
+    for(var ui=0; ui<units.length; ui++){
+      var u=units[ui];
+      if (doLogic) { healAction(u, st, now); wardAction(u, st, now); }
 
-    for(const u of units){
-      // Healing & wards on logic frames only
-      if (doLogic) {
-        healAction(u, st, now);
-        wardAction(u, st, now);
-      }
-
-      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
+      var t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
       if(!t) continue;
 
-      // Attacks are already time-gated by nextAtk, so we can try each view frame
-      // but they will only fire when their cooldown allows.
-      const attacked = attack(u,t,now,st);
+      var attacked = attack(u,t,now,st);
       if (!attacked && doLogic) {
-        // Move only at logic cadence AND only if this unit is move-due
         if (canStepNow(u, now)) {
-          const slowed=(u.slowUntil && u.slowUntil>now);
-          const steps = slowed ? 1 : PACE.moveSteps; // remains the same logic
-          for(let s=0;s<steps;s++){
-            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
+          var slowed=(u.slowUntil && u.slowUntil>now);
+          var steps = slowed ? 1 : PACE.moveSteps;
+          for(var s=0;s<steps;s++){
+            var t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
             if(!t2) break;
             stepToward(u,t2,units);
             if (Math.abs(unitCenter(u).x-unitCenter(t2).x)+Math.abs(unitCenter(u).y-unitCenter(t2).y <= (u.range||1)){ attack(u,t2,now,st); break; }
@@ -943,61 +1029,66 @@ function runBattle(){
       }
     }
 
-    // Death handling + poison burst on logic frames keeps pacing identical
     if (doLogic){
-      const dead = st.field.units.filter(u=>u.hp<=0);
-      for(const u of dead){
-        if (u.paints){ paintPoison(st, u.x, u.y, 7000); st.field.fx.push(fxBurst(u.x,u.y)); }
+      var dead = [];
+      for (var di=0;di<st.field.units.length;di++){ if (st.field.units[di].hp<=0) dead.push(st.field.units[di]); }
+      for(var dd=0;dd<dead.length;dd++){
+        var du=dead[dd];
+        if (du.paints){ paintPoison(st, du.x, du.y, 7000); st.field.fx.push(fxBurst(du.x,du.y)); }
       }
-      st.field.units = st.field.units.filter(u=>u.hp>0);
+      st.field.units = st.field.units.filter(function(u){ return u.hp>0; });
     }
 
-    const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
+    var a0=false, a1=false;
+    for (var ck=0;ck<st.field.units.length;ck++){
+      if (st.field.units[ck].p===0) a0=true;
+      if (st.field.units[ck].p===1) a1=true;
+      if (a0 && a1) break;
+    }
+
     if(!a0 || !a1){
       clearInterval(battleTick); battleTick=null;
-      const loser = a0?1:0;
-      const lives=[...(st.lives||[4,4])]; lives[loser]=Math.max(0,lives[loser]-1);
-      const winner = lives[0]===0 ? st.players[1] : (lives[1]===0 ? st.players[0] : null);
+      var loser = a0?1:0;
+      var lives=(st.lives||[4,4]).slice();
+      lives[loser]=Math.max(0,lives[loser]-1);
+      var winner = (lives[0]===0) ? st.players[1] : (lives[1]===0 ? st.players[0] : null);
 
       if (winner){
-        const next = { ...st, lives, phase:"game-over", phaseEndsAt:0, winner };
+        var next = assign({}, st, { lives:lives, phase:"game-over", phaseEndsAt:0, winner:winner });
         await updateDoc(stateRef,next);
       }else{
-        const loserKey = pKey(loser);
-        const winnerKey = pKey(1-loser);
-        const next = {
-          ...st,
-          lives,
+        var loserKey = pKey(loser);
+        var winnerKey = pKey(1-loser);
+        var next2 = assign({}, st, {
+          lives:lives,
           phase: "loser-bonus",
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           selections:{p0:[],p1:[]},
-          currentPacks: {
-            [loserKey]:  packFor(st.roster[loserKey],  st.factions[loserKey]),
-            [winnerKey]: []
-          },
+          currentPacks: (function(){
+            var obj={}; obj[loserKey]=packFor(st.roster[loserKey], st.factions[loserKey]); obj[winnerKey]=[]; return obj;
+          })(),
           draftIndex:0,
           bonusFor: loserKey
-        };
-        await updateDoc(stateRef,next);
+        });
+        await updateDoc(stateRef,next2);
       }
     }else{
-      // Publish more often (VIEW_MS) for smoother remote updates
       await updateDoc(stateRef,st);
     }
   }, VIEW_MS);
 }
 
 /* ---------- Listeners & VFX ---------- */
-onSnapshot(lobbyRef, async (snap)=>{
+onSnapshot(lobbyRef, async function(snap){
   if (!snap.exists()) return;
-  const lob = snap.data();
+  var lob = snap.data();
   lobbyPlayers=(Array.isArray(lob.players)? lob.players:[]).slice(0,2);
   isHost = lob.host===username;
 
   await ensureStateExists();
   await syncPlayersIntoStateIfNeeded();
 
-  const current = S?.players || lobbyPlayers;
+  var current = (S && S.players) ? S.players : lobbyPlayers;
   meIndex = Math.max(0, (current||[]).indexOf(username));
 
   if (isHost) startHostLoops();
@@ -1005,117 +1096,131 @@ onSnapshot(lobbyRef, async (snap)=>{
   render();
 });
 
-let lastFxSeen=new Set();
-onSnapshot(stateRef,(snap)=>{
+var lastFxSeen={};
+onSnapshot(stateRef,function(snap){
   if(!snap.exists()) return;
   S=snap.data();
-  const current = S.players || lobbyPlayers;
+  var current = S.players || lobbyPlayers;
   meIndex = Math.max(0, (current||[]).indexOf(username));
   render();
 
-  const list=S.field?.fx||[];
-  for(const ev of list){
-    if (lastFxSeen.has(ev.id)) continue;
-    lastFxSeen.add(ev.id);
+  var list=(S.field && S.field.fx) ? S.field.fx : [];
+  for(var i=0;i<list.length;i++){
+    var ev=list[i];
+    if (lastFxSeen[ev.id]) continue;
+    lastFxSeen[ev.id]=true;
     if (ev.type==="beam") renderBeam(ev,false);
     if (ev.type==="hbeam") renderBeam(ev,true);
     if (ev.type==="burst") renderBurst(ev);
-    setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
+    (function(id,ttl){
+      setTimeout(function(){ delete lastFxSeen[id]; }, ttl+200);
+    })(ev.id, ev.ttl);
   }
 });
 
 /* ---------- UI ---------- */
+function cleanPhaseName(s){
+  // replaceAll fallback
+  return String(s).split("-").join(" ");
+}
 function render(){
-  const p0n=(S?.players?.[0])||"P0", p1n=(S?.players?.[1])||"P1";
-  const lives=S?.lives||[4,4];
-  $("p0Badge").textContent = `${p0n} — ${"❤".repeat(lives[0])}`;
-  $("p1Badge").textContent = `${p1n} — ${"❤".repeat(lives[1])}`;
+  var p0n=(S && S.players && S.players[0]) ? S.players[0] : "P0";
+  var p1n=(S && S.players && S.players[1]) ? S.players[1] : "P1";
+  var lives=(S && S.lives) ? S.lives : [4,4];
+  $("p0Badge").textContent = p0n + " — " + new Array(lives[0]+1).join("❤");
+  $("p1Badge").textContent = p1n + " — " + new Array(lives[1]+1).join("❤");
 
-  const phase=S?.phase||"waiting";
-  $("phaseBadge").textContent = phase.replaceAll("-"," ");
-  const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
-  const tleft = draftish ? Math.max(0,(S?.phaseEndsAt||0)-Date.now()) : 0;
-  $("timerBadge").textContent = draftish ? `⏳ ${Math.ceil(tleft/1000)}s` : "⏳ —";
+  var phase=(S && S.phase) ? S.phase : "waiting";
+  $("phaseBadge").textContent = cleanPhaseName(phase);
+  var draftish = (phase==="faction-select"||phase==="draft"||phase==="loser-bonus"||phase==="draft-after");
+  var tleft = draftish ? Math.max(0, ((S && S.phaseEndsAt)? S.phaseEndsAt:0) - Date.now()) : 0;
+  $("timerBadge").textContent = draftish ? ("⏳ " + Math.ceil(tleft/1000) + "s") : "⏳ —";
 
-  const counter = $("pickCounter");
+  var counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
     counter.style.display="block";
-    counter.textContent = `Pick ${ (S?.draftIndex||0)+1 } / 3`;
+    counter.textContent = "Pick " + (((S && typeof S.draftIndex==="number")? S.draftIndex:0)+1) + " / 3";
   } else if (phase==="loser-bonus"){
-    counter.style.display="block"; counter.textContent = `Bonus 1 / 1`;
+    counter.style.display="block"; counter.textContent = "Bonus 1 / 1";
   } else { counter.style.display="none"; }
 
-  const draftishPhase = draftish;
-  if (draftishPhase){
-    const ghost=structuredClone(S); rebuildFieldFromRoster(ghost);
+  var ghostNeeded = draftish;
+  if (ghostNeeded){
+    var ghost=deepClone(S); if(!ghost) ghost=S;
+    rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
-  }else{ paint(S?.field?.units||[], S?.field||fieldEmpty()); }
+  }else{ paint((S && S.field && S.field.units)? S.field.units:[], (S && S.field)? S.field:fieldEmpty()); }
 
-  const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
-  if (!draftishPhase){ overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML=""; return; }
+  var row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
+  if (!draftish){ overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML=""; return; }
   overlay.style.display="block";
 
-  const di=S?.draftIndex|0;
-  const sk=pKey(meIndex);
-  const pickedIndex=S?.selections?.[sk]?.[di];
+  var di=(S && typeof S.draftIndex==="number") ? S.draftIndex : 0;
+  var sk=pKey(meIndex);
+  var pickedIndex = (S && S.selections && S.selections[sk]) ? S.selections[sk][di] : undefined;
 
   if (phase==="faction-select"){
-    const already=S?.factions?.[sk];
-    if (already){ row.style.display="none"; row.innerHTML=""; note.textContent=`Selected: ${already}`; note.style.display="block"; return; }
+    var already = (S && S.factions && S.factions[sk]) ? S.factions[sk] : null;
+    if (already){ row.style.display="none"; row.innerHTML=""; note.textContent="Selected: " + already; note.style.display="block"; return; }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
-    ["Helions","Aesir","Vanir"].forEach(f=>{
-      const el=document.createElement("div"); el.className="card";
-      el.innerHTML=`<div class="title">${f}</div><div class="desc">${(FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ")}</div>`;
-      el.onclick=()=> chooseFaction(f); row.appendChild(el);
+    ["Helions","Aesir","Vanir"].forEach(function(f){
+      var el=document.createElement("div"); el.className="card";
+      var troopList = (FACTIONS[f]||[]).map(function(k){ return unitEmoji(k)+" "+TROOPS[k].name; }).join(" · ");
+      el.innerHTML='<div class="title">'+f+'</div><div class="desc">'+troopList+'</div>';
+      el.onclick=function(){ chooseFaction(f); };
+      row.appendChild(el);
     });
     return;
   }
 
   if (phase==="loser-bonus"){
-    const loserKey = S?.bonusFor || null;
+    var loserKey = (S && S.bonusFor) ? S.bonusFor : null;
     if (loserKey !== sk){
-      row.style.display="none"; row.innerHTML=""; note.textContent=`Opponent bonus pick…`; note.style.display="block"; return;
+      row.style.display="none"; row.innerHTML=""; note.textContent="Opponent bonus pick…"; note.style.display="block"; return;
     }
   }
 
-  const pack=(S?.currentPacks?.[sk]||[]);
-  if (pickedIndex!=null){
+  var pack=(S && S.currentPacks && S.currentPacks[sk]) ? S.currentPacks[sk] : [];
+  if (typeof pickedIndex !== "undefined"){
     row.style.display="none"; row.innerHTML="";
-    const picked = pack[pickedIndex];
-    const label = picked
-      ? (picked.type==="troop" ? picked.name : `${picked.special==="upgrade"?"Upgrade":"Double"} ${(TROOPS[picked.for]||{}).name||""}`)
+    var picked = pack[pickedIndex];
+    var label = picked
+      ? (picked.type==="troop" ? picked.name : ((picked.special==="upgrade"?"Upgrade":"Double")+" "+((TROOPS[picked.for]||{}).name||"")))
       : "(auto)";
-    note.textContent=`Selected: ${label}`;
+    note.textContent="Selected: " + label;
     note.style.display="block";
     return;
   }
 
   row.style.display="flex"; row.innerHTML=""; note.style.display="none";
-  pack.forEach((c,i)=>{
-    const el=document.createElement("div"); el.className="card";
+  for (var i=0;i<pack.length;i++){
+    var c=pack[i];
+    var el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} — ${TROOPS[c.key].faction}</div>`;
+      el.innerHTML='<div class="title">'+c.emoji+' '+c.name+'</div><div class="desc">'+(c.role==="back"?"Backline":"Frontline")+' — '+TROOPS[c.key].faction+'</div>';
     }else{
-      const nn=TROOPS[c.for]?.name||"Type";
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name|| (c.special==="upgrade"?"Upgrade":"Double")}</div><div class="desc">${c.special==="upgrade"?"Upgrade":"Double"} ${nn}</div>`;
+      var nn=(TROOPS[c.for] && TROOPS[c.for].name) ? TROOPS[c.for].name : "Type";
+      el.innerHTML='<div class="title">'+c.emoji+' '+(c.name|| (c.special==="upgrade"?"Upgrade":"Double"))+'</div><div class="desc">'+(c.special==="upgrade"?"Upgrade":"Double")+' '+nn+'</div>';
     }
-    el.onclick=()=> chooseCard(i);
+    (function(index){ el.onclick=function(){ chooseCard(index); }; })(i);
     row.appendChild(el);
-  });
+  }
 }
 async function chooseFaction(fac){
-  if(!S) return; const sk=pKey(meIndex);
-  if (S.factions?.[sk]) return;
-  await updateDoc(stateRef, { [`factions.${sk}`]: fac });
+  if(!S) return; var sk=pKey(meIndex);
+  if (S.factions && S.factions[sk]) return;
+  var payload={}; payload["factions."+sk]=fac;
+  await updateDoc(stateRef, payload);
 }
 async function chooseCard(i){
-  if(!S) return; const di=S.draftIndex|0; const sk=pKey(meIndex);
-  const already=S.selections?.[sk]?.[di]; if (already!=null) return;
-  await updateDoc(stateRef, { [`selections.${sk}.${di}`]: i });
+  if(!S) return; var di=(S.draftIndex||0); var sk=pKey(meIndex);
+  if (S.selections && S.selections[sk] && typeof S.selections[sk][di] !== "undefined") return;
+  var payload={}; payload["selections."+sk+"."+di]=i;
+  await updateDoc(stateRef, payload);
 }
 
 /* ---------- Listen ---------- */
-$("fsBtn").onclick = async ()=>{
+$("fsBtn").onclick = async function(){
   try{
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     else await document.exitFullscreen();
@@ -1124,6 +1229,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
