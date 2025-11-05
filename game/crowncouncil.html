@@ -330,7 +330,19 @@ const TROOPS = {
   blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
   guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:{...M(20,6,900), splash1:true, knock:true, strongKnock:true}, size:1 },
-  wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:2 }},
+  wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
+  base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:2 },
+  wardHealAmt:2, wardHealRange:3, wardHealCd:1500
+},
+  architect:{ 
+  faction:"Aesir", name:"Aegis Architect", emoji:"🧱", role:"back",
+  // builds wards like Wardmaker, but its wards also SHOOT
+  base:{ hp:8, dmg:0, range:3, cd:1600, ward:true, wardCd:2200, wardDur:7000, wardHp:2 },
+  wardShooter:true,         // turn on ward beams
+  wardDmg:2,                // per shot
+  wardRange:3,              // tiles (Manhattan)
+  wardCdShoot:1400          // ms between ward shots
+},
 
   /* Helions */
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:{...M(6,2,500), spd:3}, spawn:4 },
@@ -340,8 +352,8 @@ const TROOPS = {
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(8,3,5,1200), acid:true, acidDur:3500} }
 };
 const FACTIONS = {
-  Vanir:  ["rifleman","vrocket","vguard","miner","medic"],
-  Aesir:  ["phaser","blade","storm","guardian","wardmaker"],
+  Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap"],
+  Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect"],  // <-- added
   Helions:["hellspawn","roach","defiler","blood","spitter"]
 };
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
@@ -359,6 +371,61 @@ function rankColor(lvl){
 }
   /* ---- Shield Captain aura + damage helpers ---- */
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+  function wardsHeal(st, now){
+  const wards = st.field.wards || [];
+  for (const w of wards){
+    if (!w.heal || w.hp<=0 || w.until<=now) continue;
+    if (now < (w.nextHeal||0)) continue;
+
+    // pick lowest HP% ally in range
+    let tgt = null, minRatio = 1.01;
+    for (const v of st.field.units){
+      if (v.hp<=0) continue;
+      if (w.p!=null && v.p !== w.p) continue; // only heal own side (if owner known)
+      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      if (d <= (w.hRange||3)){
+        const r = v.hp / v.maxhp;
+        if (r < 1 && r < minRatio){ minRatio = r; tgt = v; }
+      }
+    }
+    if (!tgt) continue;
+
+    const amt = Math.max(1, w.hAmt|0);
+    tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
+    st.field.fx.push(fxHeal(w.x, w.y, tgt.x, tgt.y));
+    w.nextHeal = now + (w.hCd || 1500);
+  }
+}
+
+  function wardsShoot(st, now){
+  const wards = st.field.wards || [];
+  for (const w of wards){
+    if (!w.shoot || w.hp<=0 || w.until<=now) continue;
+    if (now < (w.next||0)) continue;
+
+    // find nearest enemy within range
+    let best=null, bd=1e9;
+    for (const v of st.field.units){
+      if (v.hp<=0) continue;
+      if (w.p!=null && v.p===w.p) continue; // no friendly fire if owner known
+      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      if (d <= (w.wRange||3) && d < bd){ bd=d; best=v; }
+    }
+    if (!best) continue;
+
+    // fire a beam
+    st.field.fx.push(fxBeam(w.x, w.y, best.x, best.y));
+
+    // damage (respects Shield Captain aura if you added reduceDamageForTarget)
+    const raw = w.wDmg || 1;
+    const dmg = (typeof reduceDamageForTarget === "function")
+      ? reduceDamageForTarget(raw, best, st.field)
+      : raw;
+    applyDamage(best, dmg);
+
+    w.next = now + (w.wCd || 1400);
+  }
+}
 
 function auraDamageReduceFor(target, field){
   let reduce = 0;
@@ -739,11 +806,29 @@ function wardAction(u, st, now){
   const dir = u.p===0 ? -1 : +1;
   const tx=u.x, ty=u.y+dir;
   if (inside(tx,ty)){
-    if (placeWard(st, tx,ty, u.wardHp||2, u.wardDur||6000)){
-      u.nextWard = now + (u.wardCd||1700);
-      return true;
-    }
+  // Architect drops shooting wards; Wardmaker (original) drops healing wards
+  const isShooter = !!u.wardShooter;
+  const opts = isShooter
+    ? {
+        p:u.p,
+        shoot:true,
+        wDmg:(u.wardDmg||2),
+        wRange:(u.wardRange||3),
+        wCd:(u.wardCdShoot||u.wardCd||1400)
+      }
+    : {
+        p:u.p,
+        heal:true,
+        hAmt:(u.wardHealAmt||2),
+        hRange:(u.wardHealRange||3),
+        hCd:(u.wardHealCd||1500)
+      };
+
+  if (placeWard(st, tx, ty, u.wardHp||2, u.wardDur||6000, opts)){
+    u.nextWard = now + (u.wardCd||1700);
+    return true;
   }
+}
   return false;
 }
 function applyDamage(victim, dmg){
@@ -882,12 +967,37 @@ function addAcid(state, x,y, durMs){
   state.field.acid = state.field.acid || [];
   state.field.acid.push({x,y,until:Date.now()+durMs});
 }
-function placeWard(state, x,y, hp, dur){
-  if(!inside(x,y)) return false;
-  if (state.field.wards.some(w=>w.x===x&&w.y===y)) return false;
-  state.field.wards.push({x,y,hp,until:Date.now()+dur});
+function placeWard(state, x, y, hp, dur, opts = {}){
+  if (!inside(x,y)) return false;
+  if (state.field.wards.some(w=>w.x===x && w.y===y)) return false;
+
+  const until = Date.now() + dur;
+  state.field.wards.push({
+    x, y,
+    hp: hp|0,
+    until,
+
+    // ownership
+    p: opts.p ?? null,
+
+    // SHOOTING (Architect)
+    shoot: !!opts.shoot,
+    wDmg:  (opts.wDmg ?? 1)|0,
+    wRange:(opts.wRange ?? 3)|0,
+    wCd:   (opts.wCd ?? 1400)|0,
+    next:  0, // next shot
+
+    // HEALING (Wardmaker / original ward)
+    heal:    !!opts.heal,
+    hAmt:    (opts.hAmt ?? 2)|0,
+    hRange:  (opts.hRange ?? 3)|0,
+    hCd:     (opts.hCd ?? 1500)|0,
+    nextHeal:0 // next heal
+  });
   return true;
 }
+
+
 function applyTerrain(field, units){
   const now=Date.now();
   (field.poison||[]).forEach(p=>{
@@ -1119,87 +1229,116 @@ function startHostLoops(){
 
 /* ----------- Battle loop (fast view, gated logic) ----------- */
 function runBattle(){
-  if(battleTick) return;
+  if (battleTick) return;
 
   let lastLogic = 0;
 
   battleTick = setInterval(async ()=>{
-    const snap=await getDoc(stateRef); if(!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
-    const d=snap.data(); if(d.phase!=="battle"){ clearInterval(battleTick); battleTick=null; return; }
-    const st=structuredClone(d);
-    const units=st.field.units; const now=Date.now();
+    const snap = await getDoc(stateRef);
+    if (!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
+    const d = snap.data();
+    if (d.phase !== "battle"){ clearInterval(battleTick); battleTick=null; return; }
+
+    const st = structuredClone(d);
+    const units = st.field.units;
+    const now = Date.now();
 
     const doLogic = (now - lastLogic) >= LOGIC_MS;
     if (doLogic) lastLogic = now;
 
+    // Terrain ticks / one-shot logic
     if (doLogic) applyTerrain(st.field, units);
-    if (doLogic) for(const u of units){ blinkIfNeeded(u); }
+    if (doLogic) for (const u of units){ blinkIfNeeded(u); }
 
-    for(const u of units){
-      if (doLogic) {
+    // NEW: wards that shoot (Architect wards)
+    if (doLogic) wardsHeal(st, now);
+    if (doLogic) wardsShoot(st, now);
+
+    // Unit AI: heals, wards, attack, movement
+    for (const u of units){
+      if (doLogic){
         healAction(u, st, now);
         wardAction(u, st, now);
       }
-      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
-      if(!t) continue;
 
-      const attacked = attack(u,t,now,st); // time-gated by nextAtk
-      if (!attacked && doLogic) {
+      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units)
+                               : nearestEnemy(u,units);
+      if (!t) continue;
+
+      const attacked = attack(u, t, now, st); // time-gated by nextAtk
+
+      if (!attacked && doLogic){
         if (canStepNow(u, now)) {
-          const slowed=(u.slowUntil && u.slowUntil>now);
+          const slowed = (u.slowUntil && u.slowUntil > now);
           const steps = slowed ? 1 : PACE.moveSteps;
-          for(let s=0;s<steps;s++){
-            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units) : nearestEnemy(u,units);
-            if(!t2) break;
-            stepToward(u,t2,units);
-            if (manhattanUnits(u,t2) <= (u.range||1)){ attack(u,t2,now,st); break; }
+          for (let s=0; s<steps; s++){
+            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units)
+                                      : nearestEnemy(u,units);
+            if (!t2) break;
+            stepToward(u, t2, units);
+            if (manhattanUnits(u, t2) <= (u.range||1)){
+              attack(u, t2, now, st);
+              break;
+            }
           }
         }
       }
     }
 
+    // Death handling + on-death effects
     if (doLogic){
       const dead = st.field.units.filter(u=>u.hp<=0);
-      for(const u of dead){
-        if (u.paints){ paintPoison(st, u.x, u.y, 7000); st.field.fx.push(fxBurst(u.x,u.y)); }
+      for (const u of dead){
+        if (u.paints){
+          paintPoison(st, u.x, u.y, 7000);
+          st.field.fx.push(fxBurst(u.x,u.y));
+        }
       }
       st.field.units = st.field.units.filter(u=>u.hp>0);
     }
 
-    const a0=st.field.units.some(u=>u.p===0), a1=st.field.units.some(u=>u.p===1);
-    if(!a0 || !a1){
+    // Round end / life tracking
+    const a0 = st.field.units.some(u=>u.p===0);
+    const a1 = st.field.units.some(u=>u.p===1);
+    if (!a0 || !a1){
       clearInterval(battleTick); battleTick=null;
-      const loser = a0?1:0;
-      const lives=[...(st.lives||[4,4])]; lives[loser]=Math.max(0,lives[loser]-1);
-      const winner = lives[0]===0 ? st.players[1] : (lives[1]===0 ? st.players[0] : null);
+
+      const loser = a0 ? 1 : 0;
+      const lives = [...(st.lives||[4,4])];
+      lives[loser] = Math.max(0, lives[loser]-1);
+
+      const winner = lives[0]===0 ? st.players[1]
+                   : lives[1]===0 ? st.players[0]
+                   : null;
 
       if (winner){
         const next = { ...st, lives, phase:"game-over", phaseEndsAt:0, winner };
-        await updateDoc(stateRef,next);
-      }else{
-        const loserKey = pKey(loser);
+        await updateDoc(stateRef, next);
+      } else {
+        const loserKey  = pKey(loser);
         const winnerKey = pKey(1-loser);
         const next = {
           ...st,
           lives,
           phase: "loser-bonus",
           phaseEndsAt: Date.now()+10_000,
-          selections:{p0:[],p1:[]},
+          selections: { p0:[], p1:[] },
           currentPacks: {
             [loserKey]:  packFor(st.roster[loserKey],  st.factions[loserKey]),
             [winnerKey]: []
           },
-          draftIndex:0,
+          draftIndex: 0,
           bonusFor: loserKey
         };
-        await updateDoc(stateRef,next);
+        await updateDoc(stateRef, next);
       }
-    }else{
+    } else {
       // publish frequently for smooth remote viewing
-      await updateDoc(stateRef,st);
+      await updateDoc(stateRef, st);
     }
   }, VIEW_MS);
 }
+
 
 /* ----------- Live listeners & render ----------- */
 function render(){
@@ -1349,6 +1488,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
