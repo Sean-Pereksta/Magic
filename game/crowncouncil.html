@@ -1015,16 +1015,21 @@ function attack(u, t, now, st){
   const deal = (victim, raw) => applyDamage(victim, reduceDamageForTarget(raw, victim, st.field));
 
   if (u.kamikaze){
-    st.field.fx.push(fxBurst(u.x,u.y));
-    deal(t, u.dmg);
-    if (u.splash1){
-      const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
-    }
-    if (u.paints) paintPoison(st, u.x, u.y, 7000);
-    u.hp = 0;
+  st.field.fx.push(fxBurst(u.x,u.y));
+  deal(t, u.dmg);
 
-  } else if (u.type === "vrocket"){
+  if (u.splash1){
+    const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+    // keep your current splash signature
+    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+  }
+
+  // tag poison tiles with the owner side
+  if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
+
+  u.hp = 0;
+}
+ else if (u.type === "vrocket"){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     deal(t, u.dmg);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
@@ -1065,13 +1070,14 @@ function attack(u, t, now, st){
 
 
 /* Terrain */
-function paintPoison(state, cx, cy, durMs){
+function paintPoison(state, cx, cy, durMs, ownerP = null){
   const until = Date.now()+durMs;
   state.field.poison = state.field.poison || [];
-  for(let dy=-1;dy<=1;dy++){
-    for(let dx=-1;dx<=1;dx++){
+  for (let dy=-1; dy<=1; dy++){
+    for (let dx=-1; dx<=1; dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.poison.push({x,y,until});
+      // store owner `p` when provided (enemy-only DoT/slow)
+      state.field.poison.push({x,y,until,p:ownerP});
     }
   }
 }
@@ -1125,18 +1131,23 @@ function placeWard(state, x, y, hp, dur, opts = {}){
 function applyTerrain(field, units){
   const now=Date.now();
   (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    let ticked=false;
-    for(const u of units){
-      if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
-        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
-        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
-          u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
-        }
+  if (p.until<=now) return;
+  let ticked=false;
+
+  for (const u of units){
+    if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
+      // If the tile has an owner, only affect enemies; if no owner (legacy), affect everyone.
+      if (p.p!=null && u.p === p.p) continue;
+
+      u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
+      if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
+        u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
       }
     }
-    if (ticked) groundTickParticles(p.x,p.y,false);
-  });
+  }
+
+  if (ticked) groundTickParticles(p.x,p.y,false);
+});
   /* toxic purple — damages only enemies (no friendly fire) */
   (field.toxic||[]).forEach(t=>{
     if (t.until<=now) return;
@@ -1426,15 +1437,19 @@ function runBattle(){
 
     // Death handling + on-death effects
     if (doLogic){
-      const dead = st.field.units.filter(u=>u.hp<=0);
-      for (const u of dead){
-        if (u.paints){
-          paintPoison(st, u.x, u.y, 7000);
-          st.field.fx.push(fxBurst(u.x,u.y));
-        }
-      }
-      st.field.units = st.field.units.filter(u=>u.hp>0);
+  const dead = st.field.units.filter(u=>u.hp<=0);
+
+  for (const u of dead){
+    if (u.paints){
+      // tag the poison with the owner team so allies are ignored
+      paintPoison(st, u.x, u.y, 7000, u.p);
+      st.field.fx.push(fxBurst(u.x,u.y));
     }
+  }
+
+  st.field.units = st.field.units.filter(u=>u.hp>0);
+}
+
 
     // Round end / life tracking
     const a0 = st.field.units.some(u=>u.p===0);
@@ -1628,6 +1643,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
