@@ -14,10 +14,10 @@
     --p0bg:#ffdbe0;
     --p1bg:#dbe7ff;
 
-    /* rank colors */
-    --rank1:#22c55e;  /* green */
-    --rank2:#eab308;  /* yellow */
-    --rank3:#ef4444;  /* red */
+    /* darker, solid rank colors */
+    --rank1:#166534;  /* dark green */
+    --rank2:#a16207;  /* dark amber/gold */
+    --rank3:#991b1b;  /* dark red */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -54,7 +54,13 @@
   }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) */
-  .under{ position:absolute; inset:0; z-index:0; } /* rank fill */
+  .under{
+    position:absolute; inset:0; z-index:0; /* rank fill */
+    /* force fully solid color (no transparency or blending) */
+    opacity:1 !important;
+    mix-blend-mode:normal !important;
+    filter:none !important;
+  }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
   .hp{position:absolute;left:3px;right:3px;bottom:3px;height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:4}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
@@ -1217,6 +1223,7 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
+
 
 
 
