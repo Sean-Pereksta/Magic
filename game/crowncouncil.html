@@ -349,12 +349,28 @@ const TROOPS = {
   roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:{...R(12,3,3,1000)}, spawn:2 },
   defiler:  { faction:"Helions", name:"Defiler",  emoji:"🐍", role:"front", base:{...M(22,4,900), splash1:true, toxicSplash:true}, size:1 }, /* 1 tile */
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
+  matron:{
+  faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"front",
+  base:{ hp:18, dmg:1, range:3, cd:1200 }, // low ranged poke
+  brood:true,           // enables periodic spawns
+  broodType:"hellspawn",
+  broodCd:3500          // ms between spawns
+},
+
+// Backline assassin: will leap over blockers to reach backline units
+viper:{
+  faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
+  base:{ ...M(12,4,700), spd:2 }, // fast melee
+  hunterRanged:true,   // prefers backline targets when available
+  viperLeap:true,      // enables leap logic
+  leapDist:2           // leap forward up to 2 tiles when blocked
+},
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(8,3,5,1200), acid:true, acidDur:3500} }
 };
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap"],
-  Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect"],  // <-- added
-  Helions:["hellspawn","roach","defiler","blood","spitter"]
+  Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect"],
+  Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper"] // +2
 };
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 
@@ -438,6 +454,86 @@ function auraDamageReduceFor(target, field){
     }
   }
   return reduce;
+}
+function spawnAdjacentUnit(st, parent, typeKey){
+  const t = TROOPS[typeKey]; if (!t) return false;
+  const size = (t.size===2?2:1);
+  // candidate ring (prefer forward toward enemy)
+  const dir = parent.p===0 ? -1 : +1;
+  const candidates = [
+    [parent.x, parent.y+dir],
+    [parent.x-1, parent.y+dir],[parent.x+1, parent.y+dir],
+    [parent.x-1,parent.y],[parent.x+1,parent.y],
+    [parent.x, parent.y-dir],
+    [parent.x-1,parent.y-dir],[parent.x+1,parent.y-dir]
+  ];
+  for (const [x,y] of candidates){
+    if (!inside(x,y)) continue;
+    if (rectangleFree(st.field.units, x, y, size)){
+      // Minimal spawn (single unit, lvl 1)
+      const b=t.base;
+      const u={
+        id:crypto.randomUUID(), p:parent.p, type:typeKey, x, y, lvl:1,
+        maxhp:Math.round(b.hp||8), hp:Math.round(b.hp||8),
+        dmg:Math.round(b.dmg||2), spd: b.spd ?? 1, range:b.range ?? 1,
+        cd: Math.round((b.cd ?? 700)*PACE.atkMult),
+        splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
+        blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
+        kamikaze:!!b.kamikaze, paints:!!b.paints, size,
+        heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
+        ward:false, acid:!!b.acid, acidDur:b.acidDur||0, toxicSplash:!!b.toxicSplash,
+        nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
+      };
+      st.field.units.push(u);
+      st.field.fx.push(fxBurst(x,y));
+      return true;
+    }
+  }
+  return false;
+}
+function isBacklineUnit(v){
+  return (TROOPS[v.type]?.role === "back");
+}
+
+// simple check for a forward blocker directly ahead
+function frontBlocked(u, units){
+  const dir = (u.p===0? -1 : +1); // p0 advances upward (y-), p1 downward (y+)
+  const nx = u.x, ny = u.y + dir;
+  return units.some(o=>{
+    if (o.p === u.p) return false;
+    const os = unitSize(o);
+    const blocks = nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os;
+    return blocks && (TROOPS[o.type]?.role === "front");
+  });
+}
+
+function attemptViperLeap(u, units){
+  if (!u.viperLeap) return false;
+  const dir = (u.p===0? -1 : +1);
+  const dist = Math.max(1, u.leapDist || 2);
+
+  // try 2, then 1 tile forward (centered leap)
+  for (let d=dist; d>=1; d--){
+    const nx = u.x, ny = u.y + dir*d;
+    if (!inside(nx,ny)) continue;
+    if (canMoveTo(u, units, nx, ny)){ u.x = nx; u.y = ny; return true; }
+  }
+  return false;
+}
+
+function broodTick(st, now){
+  for (const u of st.field.units){
+    if (!u.brood || u.hp<=0) continue;
+    if (!u.nextBrood) u.nextBrood = 0;
+    if (now >= u.nextBrood){
+      if (spawnAdjacentUnit(st, u, u.broodType || "hellspawn")){
+        u.nextBrood = now + (u.broodCd || 3500);
+      } else {
+        // no space; try again sooner (small backoff)
+        u.nextBrood = now + 800;
+      }
+    }
+  }
 }
 
 function reduceDamageForTarget(baseDmg, target, field){
@@ -558,21 +654,49 @@ function weightedPick(pool, n){
 }
 function packFor(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
-  const troopCards = poolTypes.map(k=>({type:"troop", key:k, name:TROOPS[k].name, emoji: unitEmoji(k), role:TROOPS[k].role}));
-  const types = ownedTypes(roster);
-  const specials=[];
-  if (types.length){
-    const up = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"upgrade", for:up, name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"});
-    const db = types[Math.floor(Math.random()*types.length)];
-    specials.push({type:"special", special:"double", for:db, name:`Double ${TROOPS[db].name}`, emoji:"🃏"});
+
+  // Troop cards (always available)
+  const troopCards = poolTypes.map(k=>({
+    type:"troop",
+    key:k,
+    name:TROOPS[k].name,
+    emoji: unitEmoji(k),
+    role:TROOPS[k].role
+  }));
+
+  // What the player already owns
+  const owned = Array.isArray(roster) ? roster : [];
+  const ownedTypes      = owned.filter(r=>r.count>0).map(r=>r.type);
+  const ownedUpgradeable= owned.filter(r=>r.count>0 && (r.lvl||1) < 3).map(r=>r.type);
+
+  // Specials
+  const specials = [];
+  if (ownedTypes.length){
+    // Only offer UPGRADE if at least one owned type is below lvl 3
+    if (ownedUpgradeable.length){
+      const up = ownedUpgradeable[Math.floor(Math.random()*ownedUpgradeable.length)];
+      specials.push({
+        type:"special", special:"upgrade", for:up,
+        name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"
+      });
+    }
+    // Double is still okay for any owned type
+    const db = ownedTypes[Math.floor(Math.random()*ownedTypes.length)];
+    specials.push({
+      type:"special", special:"double", for:db,
+      name:`Double ${TROOPS[db].name}`, emoji:"🃏"
+    });
   }
+
+  // Weighting: troops common, specials rarer
   const pool = [
-    ...troopCards.map(item=>({item,w:3})),
-    ...specials.map(item=>({item,w:1})) // ~33%
+    ...troopCards.map(item=>({ item, w:3 })),
+    ...specials   .map(item=>({ item, w:1 }))
   ];
+
   return weightedPick(pool, 3);
 }
+
 
 /* Roster ops */
 function rosterAdd(roster, type, inc=1){ const f=roster.find(r=>r.type===type); if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc}); }
@@ -1250,9 +1374,10 @@ function runBattle(){
     if (doLogic) applyTerrain(st.field, units);
     if (doLogic) for (const u of units){ blinkIfNeeded(u); }
 
-    // NEW: wards that shoot (Architect wards)
+    // NEW: wards (heal + shoot) and brood spawns
     if (doLogic) wardsHeal(st, now);
     if (doLogic) wardsShoot(st, now);
+    if (doLogic) broodTick(st, now);   // <-- Brood Matron spawns Hellspawn
 
     // Unit AI: heals, wards, attack, movement
     for (const u of units){
@@ -1271,10 +1396,24 @@ function runBattle(){
         if (canStepNow(u, now)) {
           const slowed = (u.slowUntil && u.slowUntil > now);
           const steps = slowed ? 1 : PACE.moveSteps;
+
           for (let s=0; s<steps; s++){
             const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units)
                                       : nearestEnemy(u,units);
             if (!t2) break;
+
+            // NEW: Viper leap — if chasing a backliner and a frontline blocks ahead, jump over
+            const targetIsBack = isBacklineUnit(t2);
+            if (u.viperLeap && targetIsBack && frontBlocked(u, units)){
+              if (attemptViperLeap(u, units)){
+                if (manhattanUnits(u, t2) <= (u.range||1)){
+                  attack(u, t2, now, st);
+                }
+                continue; // consume this step after leap
+              }
+            }
+
+            // normal step
             stepToward(u, t2, units);
             if (manhattanUnits(u, t2) <= (u.range||1)){
               attack(u, t2, now, st);
@@ -1338,6 +1477,7 @@ function runBattle(){
     }
   }, VIEW_MS);
 }
+
 
 
 /* ----------- Live listeners & render ----------- */
@@ -1488,6 +1628,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
