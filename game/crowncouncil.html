@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>  
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -56,7 +56,6 @@
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) */
   .under{
     position:absolute; inset:0; z-index:0; /* rank fill */
-    /* force fully solid color (no transparency or blending) */
     opacity:1 !important;
     mix-blend-mode:normal !important;
     filter:none !important;
@@ -81,7 +80,7 @@
   .poison{ position:absolute; inset:0; background:#ffb3b3; opacity:.95; z-index:1; animation:poipulse 1s ease-in-out infinite; }
   @keyframes poipulse{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.15)} }
 
-  /* NEW: Defiler toxic splash (purple) */
+  /* Defiler toxic splash (purple) */
   .toxic{ position:absolute; inset:0; background:#6b21a8; opacity:.9; z-index:1; animation:toxpulse 1s ease-in-out infinite; }
   @keyframes toxpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
 
@@ -246,11 +245,7 @@ buildBoard();
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* NOTE: Changes per request:
-   - rifleman dmg ↓ and range ↑
-   - guardian size -> 1, dmg ↑, stronger knockback
-   - defiler size -> 1, gains toxicSplash on hit (10s purple DoT)
-*/
+/* Rifle damage ↓, range ↑; Guardian size 1; Defiler size 1 + toxicSplash */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,1,6,1050)}, spawn:2 },
@@ -363,7 +358,7 @@ function placeUnit(state,p,key,lvl){
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
-    /* NEW: +33% per level (L1=1.00, L2=1.33, L3=1.66) */
+    /* +33% per level (L1=1.00, L2=1.33, L3=1.66) */
     const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
@@ -388,7 +383,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* Draft packs (unchanged logic, specials are targeted) */
+/* Draft packs */
 function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
 function weightedPick(pool, n){
   const out=[]; const copy=[...pool];
@@ -518,13 +513,12 @@ function paint(units, field){
       for(let xx=0; xx<s; xx++){
         const i=idx(u.x+xx,u.y+yy); const d=cellsEl.children[i]; if(!d) continue;
         const under=d.querySelector(".under");
-        /* Fill by RANK (solid), not team */
         under.style.background = color;
       }
     }
     const i0=idx(u.x,u.y), d0=cellsEl.children[i0]; if(!d0) continue;
     const uni=d0.querySelector(".unit");
-    uni.style.zIndex = "3";                 // emoji above fill & effects
+    uni.style.zIndex = "3";
     uni.style.fontSize = s===2 ? "32px" : "26px";
     uni.textContent = unitEmoji(u.type);
     const hp=d0.querySelector(".hp>i");
@@ -545,7 +539,7 @@ function nearestEnemyRangedPriority(u,units){
   const ranged=units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
   if(ranged.length){
     let b=null,bd=1e9; const c=unitCenter(u);
-    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){bd=d;b=v;} }
+    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){ bd=d;b=v; } }
     return b;
   }
   return nearestEnemy(u,units);
@@ -706,9 +700,9 @@ function attack(u,t,now,st){
     applyDamage(t,u.dmg);
     const strong = !!u.strongKnock;
     if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock, strong);
-    /* NEW: Defiler toxic splash (10s) */
+    /* Defiler toxic splash (7s) — now owned so it won't hurt allies */
     if (u.toxicSplash){
-      addToxicSplash(st, t.x, t.y, 7_000);
+      addToxicSplash(st, t.x, t.y, 7_000, u.p); // PASS OWNER
     }
   }
   u.nextAtk = now + (u.cd||600);
@@ -726,14 +720,14 @@ function paintPoison(state, cx, cy, durMs){
     }
   }
 }
-/* NEW: toxic (purple) DoT area for Defiler — 3x3 around impact */
-function addToxicSplash(state, cx, cy, durMs){
+/* toxic (purple) DoT area for Defiler — 3x3 around impact; stores owner */
+function addToxicSplash(state, cx, cy, durMs, ownerP){
   const until = Date.now()+durMs;
   state.field.toxic = state.field.toxic || [];
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.toxic.push({x,y,until});
+      state.field.toxic.push({x,y,until, owner: ownerP});
     }
   }
 }
@@ -763,11 +757,12 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(p.x,p.y,false);
   });
-  /* NEW: toxic purple — damage over 10s, no slow */
+  /* toxic purple — damages only enemies of the owner; no slow */
   (field.toxic||[]).forEach(t=>{
     if (t.until<=now) return;
     let ticked=false;
     for(const u of units){
+      if (u.p === t.owner) continue; // <-- NO FRIENDLY FIRE
       if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
         if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
           u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
@@ -1095,7 +1090,7 @@ function render(){
   $("phaseBadge").textContent = phase.replaceAll("-"," ");
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   const tleft = draftish ? Math.max(0,(S?.phaseEndsAt||0)-Date.now()) : 0;
-  $("timerBadge").textContent = draftish ? `⏳ ${Math.ceil(tleft/1000)}s` : "⏳ —";
+  $("timerBadge").textContent = draftish ? `⏳ ${Math.ceil(tleft/1000)}s` : "⏳ —`;
 
   const counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
@@ -1223,18 +1218,3 @@ $("fsBtn").onclick = async ()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
