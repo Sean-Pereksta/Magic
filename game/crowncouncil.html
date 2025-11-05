@@ -10,13 +10,21 @@
     --shadow:0 10px 30px rgba(2,6,23,.08);
     --cell:64px; /* bigger tiles for closer view */
     --gap:4px;
+
     /* team fills kept around but unused now (rank colors used instead) */
     --p0bg:#ffdbe0;
     --p1bg:#dbe7ff;
+
     /* darker, solid rank colors */
     --rank1:#166534;  /* dark green */
     --rank2:#a16207;  /* dark amber/gold */
     --rank3:#991b1b;  /* dark red */
+
+    /* team colors for HP bars */
+    --team0:#ef4444;  /* red */
+    --team0b:#dc2626; /* darker red */
+    --team1:#3b82f6;  /* blue */
+    --team1b:#2563eb; /* darker blue */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -60,8 +68,20 @@
     filter:none !important;
   }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
-  .hp{position:absolute;left:3px;right:3px;bottom:3px;height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden;z-index:4}
-  .hp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
+
+  .hp{
+    position:absolute;left:3px;right:3px;bottom:3px;height:6px;border-radius:4px;
+    background:#e2e8f0;overflow:hidden;z-index:4
+  }
+  /* default (fallback) fill is green; team classes override it */
+  .hp>i{
+    display:block;height:100%;
+    background:linear-gradient(90deg,#22c55e,#16a34a);
+  }
+  /* team-colored HP fills */
+  .hp>i.team0{ background:linear-gradient(90deg,var(--team0),var(--team0b)); }
+  .hp>i.team1{ background:linear-gradient(90deg,var(--team1),var(--team1b)); }
+
   .hitflash{ position:absolute; inset:0; background:rgba(255,255,255,.9); animation:flash .12s ease; pointer-events:none; z-index:2 }
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
   .dmg{
@@ -471,56 +491,81 @@ function flashAt(x,y, dmgNum){
 
 /* Painting board — BY RANK color */
 function paint(units, field){
-  const total=W*H;
-  for(let i=0;i<total;i++){
-    const d=cellsEl.children[i];
-    const under=d.querySelector(".under"); under.style.background="transparent";
-    const uni=d.querySelector(".unit"); uni.textContent="";
-    d.querySelector(".hp>i").style.width="0%";
+  const total = W * H;
+  for (let i = 0; i < total; i++){
+    const d = cellsEl.children[i];
+    if (!d) continue;
+
+    // clear fills / text
+    const under = d.querySelector(".under"); if (under) under.style.background = "transparent";
+    const uni = d.querySelector(".unit"); if (uni) uni.textContent = "";
+
+    // reset HP fill width + team classes
+    const hpFill = d.querySelector(".hp>i");
+    if (hpFill){
+      hpFill.style.width = "0%";
+      hpFill.classList.remove("team0","team1"); // important so colors don't carry over
+    }
+
+    // remove any ground FX/wards
     d.querySelector(".poison")?.remove();
     d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
     d.querySelector(".ward")?.remove();
   }
-  const now=Date.now();
+
+  const now = Date.now();
   (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    const i=idx(p.x,p.y); const d=cellsEl.children[i]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"poison"}));
+    if (p.until <= now) return;
+    const d = cellsEl.children[idx(p.x,p.y)]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"), { className:"poison" }));
   });
   (field.toxic||[]).forEach(t=>{
-    if (t.until<=now) return;
-    const i=idx(t.x,t.y); const d=cellsEl.children[i]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"toxic"}));
+    if (t.until <= now) return;
+    const d = cellsEl.children[idx(t.x,t.y)]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"), { className:"toxic" }));
   });
   (field.acid||[]).forEach(a=>{
-    if (a.until<=now) return;
-    const i=idx(a.x,a.y); const d=cellsEl.children[i]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"acid"}));
+    if (a.until <= now) return;
+    const d = cellsEl.children[idx(a.x,a.y)]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"), { className:"acid" }));
   });
   (field.wards||[]).forEach(w=>{
-    if (w.until<=now || w.hp<=0) return;
-    const i=idx(w.x,w.y); const d=cellsEl.children[i]; if(!d) return;
-    d.appendChild(Object.assign(document.createElement("div"),{className:"ward"}));
+    if (w.until <= now || w.hp <= 0) return;
+    const d = cellsEl.children[idx(w.x,w.y)]; if (!d) return;
+    d.appendChild(Object.assign(document.createElement("div"), { className:"ward" }));
   });
 
-  for(const u of units){
+  for (const u of units){
     const s = unitSize(u);
-    const color = rankColor(u.lvl||1).trim() || '#22c55e';
-    for(let yy=0; yy<s; yy++){
-      for(let xx=0; xx<s; xx++){
-        const i=idx(u.x+xx,u.y+yy); const d=cellsEl.children[i]; if(!d) continue;
-        const under=d.querySelector(".under");
+    const color = (rankColor(u.lvl||1).trim() || '#22c55e');
+
+    // paint rank fill under the unit (center color remains rank-based)
+    for (let yy=0; yy<s; yy++){
+      for (let xx=0; xx<s; xx++){
+        const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
+        const under = d.querySelector(".under"); if (!under) continue;
         under.style.background = color;
       }
     }
-    const i0=idx(u.x,u.y), d0=cellsEl.children[i0]; if(!d0) continue;
-    const uni=d0.querySelector(".unit");
-    uni.style.zIndex = "3";
-    uni.style.fontSize = s===2 ? "32px" : "26px";
-    uni.textContent = unitEmoji(u.type);
-    const hp=d0.querySelector(".hp>i");
-    hp.style.width = Math.max(0,Math.round(100*u.hp/u.maxhp))+"%";
+
+    // top-left tile holds the emoji + HP bar
+    const d0 = cellsEl.children[idx(u.x, u.y)]; if (!d0) continue;
+
+    const uni = d0.querySelector(".unit");
+    if (uni){
+      uni.style.zIndex = "3";
+      uni.style.fontSize = s===2 ? "32px" : "26px";
+      uni.textContent = unitEmoji(u.type);
+    }
+
+    const hpFill = d0.querySelector(".hp>i");
+    if (hpFill){
+      // team-colored HP bar
+      hpFill.classList.toggle("team0", u.p === 0);
+      hpFill.classList.toggle("team1", u.p === 1);
+      hpFill.style.width = Math.max(0, Math.round(100 * u.hp / u.maxhp)) + "%";
+    }
   }
 }
 
@@ -1219,6 +1264,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
