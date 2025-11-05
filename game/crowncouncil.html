@@ -235,7 +235,45 @@ viewport.addEventListener("pointermove", e=>{
 viewport.addEventListener("pointerup", ()=>{ dragging=false; });
 viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
 
-/* ---------------- Build cells ---------------- */
+let didEnsure = false;
+let ensureInFlight = false;
+
+async function ensureStateExists(){
+  if (didEnsure || ensureInFlight) return;
+  ensureInFlight = true;
+  try{
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (st.exists()) return;  // someone else created it
+      const lob = await tx.get(lobbyRef);
+      const players = (lob.exists() && Array.isArray(lob.data().players)) ? lob.data().players.slice(0,2) : [];
+      const now = Date.now();
+
+      tx.set(stateRef, {
+        players,
+        lives:[4,4],
+        phase: players.length < 2 ? "waiting" : "faction-select",
+        phaseEndsAt: players.length < 2 ? 0 : now + 20000,
+        roster:{ p0:[], p1:[] },
+        factions:{ p0:null, p1:null },
+        field:{ units:[], poison:[], toxic:[], acid:[], wards:[], fx:[] },
+        selections:{ p0:[], p1:[] },
+        currentPacks:{ p0:[], p1:[] },
+        bonusFor:null,
+        draftIndex:0,
+        winner:null
+      });
+    });
+    didEnsure = true;
+  }catch(e){
+    // If another client beat us in the race, just proceed.
+    if (e?.code !== 'already-exists') console.error('ensureStateExists failed', e);
+    didEnsure = true;
+  }finally{
+    ensureInFlight = false;
+  }
+}
+  /* ---------------- Build cells ---------------- */
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.style.setProperty("--cell", CELL + "px");
@@ -1219,20 +1257,28 @@ async function chooseCard(i){
 /* Listeners */
 onSnapshot(lobbyRef, async (snap)=>{
   if (!snap.exists()) return;
-  const lob = snap.data();
-  lobbyPlayers=(Array.isArray(lob.players)? lob.players:[]).slice(0,2);
-  isHost = lob.host===username;
 
-  await ensureStateExists();
-  await syncPlayersIntoStateIfNeeded();
+  const lob = snap.data() || {};
+  lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
+  isHost = (lob.host === username);
 
-  const current = S?.players || lobbyPlayers;
-  meIndex = Math.max(0, (current||[]).indexOf(username));
+  // Only the host creates/updates the battle state doc (prevents 409s)
+  if (isHost) {
+    await ensureStateExists();          // guarded/debounced inside the function
+    await syncPlayersIntoStateIfNeeded(); // keep state.players aligned with lobby
+    startHostLoops();                   // run pacing / phase logic only on host
+  }
 
-  if (isHost) startHostLoops();
+  // Determine my index from state if present; fallback to lobby order
+  const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
+  let idx = curPlayers.indexOf(username);
+  if (idx === -1) idx = 0;                      // default if join race hasn't propagated
+  meIndex = Math.max(0, Math.min(1, idx));      // clamp to [0,1]
+
   fitBoard();
   render();
 });
+
 
 let lastFxSeen=new Set();
 onSnapshot(stateRef,(snap)=>{
@@ -1264,6 +1310,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
