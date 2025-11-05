@@ -1,4 +1,4 @@
-<!DOCTYPE html>  
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -13,7 +13,6 @@
     /* team fills kept around but unused now (rank colors used instead) */
     --p0bg:#ffdbe0;
     --p1bg:#dbe7ff;
-
     /* darker, solid rank colors */
     --rank1:#166534;  /* dark green */
     --rank2:#a16207;  /* dark amber/gold */
@@ -55,7 +54,7 @@
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) */
   .under{
-    position:absolute; inset:0; z-index:0; /* rank fill */
+    position:absolute; inset:0; z-index:0;
     opacity:1 !important;
     mix-blend-mode:normal !important;
     filter:none !important;
@@ -92,7 +91,7 @@
   .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
   .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
   .card{width:min(240px,34vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;cursor:pointer;display:grid;gap:6px;user-select:none}
-  .card:hover{background:#f8fafc}
+  .card:hover
   .title{font-weight:900}
   .desc{color:var(--muted);font-size:.92rem}
   .pickNote{
@@ -245,27 +244,27 @@ buildBoard();
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* Rifle damage ↓, range ↑; Guardian size 1; Defiler size 1 + toxicSplash */
+/* NOTE: rifleman dmg ↓ and range ↑; guardian size 1; defiler size 1, toxicSplash */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,1,6,1050)}, spawn:2 },
   vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:{...R(8,4,10,2000), splash1:true, knock:true} },
   vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(18,5,800)}, splash1:true },
-  miner:    { faction:"Vanir", name:"Miners",    emoji:"🌑", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
+  miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,2,800), spd:2, hunterRanged:true}, spawn:2 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back", base:{ hp:8, dmg:0, range:3, cd:1100, heal:true, healAmt:2, healRange:3, healCd:1200 }},
 
   /* Aesir */
   phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,2,4,900), blink50:true}, spawn:2 },
   blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:{...M(22,6,900), splash1:true, knock:true, strongKnock:true}, size:1 },
-  wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:2 }},
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🛡️", role:"front", base:{...M(22,6,900), splash1:true, knock:true, strongKnock:true}, size:1 },
+  wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🛡️✨", role:"back", base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:2 }},
 
   /* Helions */
-  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:{...M(6,2,500), spd:3}, spawn:4 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:{...R(12,3,3,1000)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🐍", role:"front", base:{...M(26,4,900), splash1:true, toxicSplash:true}, size:1 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🔥", role:"front", base:{...M(6,2,500), spd:3}, spawn:4 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"🐞", role:"back",  base:{...R(12,3,3,1000)}, spawn:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🧟", role:"front", base:{...M(26,4,900), splash1:true, toxicSplash:true}, size:1 }, /* 1 tile */
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🩸", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(12,3,5,1200), acid:true, acidDur:3500} }
 };
 const FACTIONS = {
@@ -290,7 +289,7 @@ function rankColor(lvl){
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
 
-/* 2×2 helpers (guardians/defilers now 1×1 but keep generic) */
+/* 2×2 helpers (kept for generic handling) */
 function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
 function rectangleFree(units,x,y,size){
   for(let yy=0; yy<size; yy++){
@@ -358,7 +357,7 @@ function placeUnit(state,p,key,lvl){
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
-    /* +33% per level (L1=1.00, L2=1.33, L3=1.66) */
+    /* +33% per level */
     const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
@@ -383,7 +382,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* Draft packs */
+/* Draft packs (unchanged logic, specials are targeted) */
 function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
 function weightedPick(pool, n){
   const out=[]; const copy=[...pool];
@@ -471,7 +470,7 @@ function flashAt(x,y, dmgNum){
   }
 }
 
-/* Painting board — NOW BY RANK, not team */
+/* Painting board — BY RANK color */
 function paint(units, field){
   const total=W*H;
   for(let i=0;i<total;i++){
@@ -539,7 +538,7 @@ function nearestEnemyRangedPriority(u,units){
   const ranged=units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
   if(ranged.length){
     let b=null,bd=1e9; const c=unitCenter(u);
-    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){ bd=d;b=v; } }
+    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){bd=d;b=v;} }
     return b;
   }
   return nearestEnemy(u,units);
@@ -700,9 +699,9 @@ function attack(u,t,now,st){
     applyDamage(t,u.dmg);
     const strong = !!u.strongKnock;
     if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock, strong);
-    /* Defiler toxic splash (7s) — now owned so it won't hurt allies */
+    /* Defiler toxic splash — 7s — no friendly fire */
     if (u.toxicSplash){
-      addToxicSplash(st, t.x, t.y, 7_000, u.p); // PASS OWNER
+      addToxicSplash(st, t.x, t.y, 7_000, u.p); // CHANGED: pass owner (u.p)
     }
   }
   u.nextAtk = now + (u.cd||600);
@@ -720,14 +719,14 @@ function paintPoison(state, cx, cy, durMs){
     }
   }
 }
-/* toxic (purple) DoT area for Defiler — 3x3 around impact; stores owner */
-function addToxicSplash(state, cx, cy, durMs, ownerP){
+/* toxic (purple) DoT area for Defiler — 3x3 around impact, records owner to avoid friendly fire */
+function addToxicSplash(state, cx, cy, durMs, ownerP){ // CHANGED: ownerP
   const until = Date.now()+durMs;
   state.field.toxic = state.field.toxic || [];
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.toxic.push({x,y,until, owner: ownerP});
+      state.field.toxic.push({x,y,until,p:ownerP}); // CHANGED: store p
     }
   }
 }
@@ -757,15 +756,17 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(p.x,p.y,false);
   });
-  /* toxic purple — damages only enemies of the owner; no slow */
+  /* toxic purple — damages only enemies (no friendly fire) */
   (field.toxic||[]).forEach(t=>{
     if (t.until<=now) return;
     let ticked=false;
     for(const u of units){
-      if (u.p === t.owner) continue; // <-- NO FRIENDLY FIRE
       if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
-        if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
-          u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        // CHANGED: only damage if unit is not the owner side; if missing t.p (old states), behave like before.
+        if (t.p==null || u.p !== t.p){
+          if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
+            u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+          }
         }
       }
     }
@@ -1216,6 +1217,9 @@ $("fsBtn").onclick = async ()=>{
   }catch(e){}
 };
 </script>
+
 </body>
 </html>
+
+
 
