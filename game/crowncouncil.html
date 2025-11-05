@@ -868,32 +868,6 @@ function applyTerrain(field, units){
     if (ticked) groundTickParticles(a.x,a.y,true);
   });
 }
-
-/* Init & host loops (unchanged flow) */
-async function ensureStateExists(){
-  const lobSnap = await getDoc(lobbyRef);
-  if (!lobSnap.exists()) return false;
-  const lob=lobSnap.data();
-  lobbyPlayers=(Array.isArray(lob.players)? lob.players:[]).slice(0,2);
-  isHost = lob.host===username;
-
-  await runTransaction(db, async tx=>{
-    const st=await tx.get(stateRef);
-    if (st.exists()) return;
-    const now=Date.now();
-    tx.set(stateRef,{
-      players:lobbyPlayers, lives:[4,4],
-      phase: lobbyPlayers.length<2? "waiting":"faction-select",
-      phaseEndsAt: lobbyPlayers.length<2?0:now+20_000,
-      roster:{p0:[],p1:[]}, factions:{p0:null,p1:null},
-      field:fieldEmpty(),
-      selections:{p0:[],p1:[]},
-      currentPacks:{p0:[],p1:[]},
-      bonusFor:null,
-      draftIndex:0, winner:null
-    });
-  });
-}
 async function syncPlayersIntoStateIfNeeded(){
   const st = (await getDoc(stateRef)).data(); if(!st) return;
   const want = lobbyPlayers.slice(0,2);
@@ -1310,6 +1284,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
