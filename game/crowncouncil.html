@@ -304,11 +304,26 @@ const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 /* NOTE: rifleman dmg ↓ and range ↑; guardian size 1; defiler size 1, toxicSplash */
 const TROOPS = {
   /* Vanir */
-  rifleman: { faction:"Vanir", name:"Riflemen", emoji:"🔫", role:"back",  base:{...R(7,2,6,1050)}, spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",   emoji:"🚀", role:"back",  base:{...R(8,5,10,2000), splash1:true, knock:true} },
+  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:{...R(7,2,6,1050)}, spawn:2 },
+  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:{...R(8,5,10,2000), splash1:true, knock:true} },
   vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(20,5,800)}, splash1:true },
-  miner:    { faction:"Vanir", name:"Miners",    emoji:"⛏️", role:"front", base:{...M(16,3,800), spd:2, hunterRanged:true}, spawn:2 },
-  medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back", base:{ hp:8, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }},
+  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:{...M(16,3,800), spd:2, hunterRanged:true}, spawn:2 },
+  medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",  base:{ hp:8, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }},
+
+  // NEW — area suppression: applies slow on hit
+  suppressor:{ faction:"Vanir", name:"Suppressor", emoji:"🧯", role:"back",
+    base:{ hp:7, dmg:1, range:3, cd:850, spd:1 },
+    suppress:true,          // enable slow-on-hit
+    suppressDur:900,        // ms
+    slowFactor:2            // movement delay multiplier while slowed
+  },
+
+  // NEW — formation buffer: reduces incoming damage to nearby allies
+  shieldcap:{ faction:"Vanir", name:"Shield Captain", emoji:"🛡️⭐", role:"front",
+    base:{ hp:16, dmg:3, range:1, cd:800, spd:1 },
+    auraReduce:1,           // -1 damage taken (min 1)
+    auraRange:2             // tiles (Manhattan) around the captain
+  },
 
   /* Aesir */
   phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,2,4,800), blink50:true}, spawn:2 },
@@ -342,6 +357,29 @@ function rankColor(lvl){
   if (lvl===2) return getComputedStyle(document.documentElement).getPropertyValue('--rank2') || '#eab308';
   return getComputedStyle(document.documentElement).getPropertyValue('--rank1') || '#22c55e';
 }
+  /* ---- Shield Captain aura + damage helpers ---- */
+function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+
+function auraDamageReduceFor(target, field){
+  let reduce = 0;
+  for (const a of field.units || []) {
+    if (a.p !== target.p) continue;
+    if (!a.auraReduce || a.hp <= 0) continue;
+    const rng = a.auraRange || 0;
+    if (rng > 0 && manhattan(a, target) <= rng) {
+      reduce = Math.max(reduce, a.auraReduce|0);
+    }
+  }
+  return reduce;
+}
+
+function reduceDamageForTarget(baseDmg, target, field){
+  let dmg = baseDmg|0;
+  const reduce = auraDamageReduceFor(target, field);
+  if (reduce > 0) dmg = Math.max(1, dmg - reduce);
+  return dmg;
+}
+
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
@@ -712,12 +750,16 @@ function applyDamage(victim, dmg){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
 }
-function splash(units,x,y,dmg,srcP,kn,strong=false){
+function splash(units, field, x,y,dmg,srcP,kn,strong=false){
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
       const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
-      if(hit){ applyDamage(hit,dmg); if(kn) tryKnock(x,y,hit,units,strong); }
+      if(hit){
+        const rd = reduceDamageForTarget(dmg, hit, field);
+        applyDamage(hit, rd);
+        if(kn) tryKnock(x,y,hit,units,strong);
+      }
     }
   }
 }
@@ -730,10 +772,11 @@ function tryKnock(cx,cy,t,units,strong=false){
     if (canMoveTo(t, units, nx, ny)){ t.x=nx; t.y=ny; steps--; } else break;
   }
 }
-function chainLightning(units, startTarget, srcP, hops, dmg){
+function chainLightning(units, field, startTarget, srcP, hops, dmg){
   let cur = startTarget; let left=hops; const hit=new Set();
   while(cur && left>0){
-    applyDamage(cur,dmg); hit.add(cur.id);
+    applyDamage(cur, reduceDamageForTarget(dmg, cur, field));
+    hit.add(cur.id);
     let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
     for(const v of units){
       if(v.p===srcP || hit.has(v.id)) continue;
@@ -743,14 +786,14 @@ function chainLightning(units, startTarget, srcP, hops, dmg){
     cur=cand; left--;
   }
 }
-function attack(u,t,now,st){
+function attack(u, t, now, st){
   const inRange = manhattanUnits(u,t) <= (u.range||1);
-  if(!inRange) return false;
-  if(now < (u.nextAtk||0)) return true;
+  if (!inRange) return false;
+  if (now < (u.nextAtk||0)) return true;
 
   const ranged = (u.range||1) > 1;
   if (ranged){
-    const ward = beamBlockedByWard(u,t, st.field.wards||[]);
+    const ward = beamBlockedByWard(u, t, st.field.wards||[]);
     if (ward){
       st.field.fx.push(fxBeam(u.x,u.y,ward.x,ward.y));
       ward.hp -= 1;
@@ -759,36 +802,58 @@ function attack(u,t,now,st){
     }
   }
 
+  // helper to apply reduced damage (Shield Captain aura)
+  const deal = (victim, raw) => applyDamage(victim, reduceDamageForTarget(raw, victim, st.field));
+
   if (u.kamikaze){
     st.field.fx.push(fxBurst(u.x,u.y));
-    applyDamage(t,u.dmg);
-    if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
+    deal(t, u.dmg);
+    if (u.splash1){
+      const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+    }
     if (u.paints) paintPoison(st, u.x, u.y, 7000);
-    u.hp=0;
-  } else if (u.type==="vrocket"){
+    u.hp = 0;
+
+  } else if (u.type === "vrocket"){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    applyDamage(t,u.dmg);
-    splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, true);
+    deal(t, u.dmg);
+    const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+
   } else if (u.chain3){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    chainLightning(st.field.units,t,u.p,3, u.dmg);
+    chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg);
+
   } else if (u.acid){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    applyDamage(t,u.dmg);
-    addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur||3500);
+    deal(t, u.dmg);
+    addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur || 3500);
+
   } else {
     if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    applyDamage(t,u.dmg);
+    deal(t, u.dmg);
     const strong = !!u.strongKnock;
-    if (u.splash1) splash(st.field.units, t.x,t.y, Math.max(1,Math.floor(u.dmg*0.6)), u.p, !!u.knock, strong);
-    /* Defiler toxic splash — 7s — no friendly fire */
+    if (u.splash1){
+      const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, !!u.knock, strong);
+    }
+    // Defiler toxic splash — 7s — no friendly fire
     if (u.toxicSplash){
-      addToxicSplash(st, t.x, t.y, 7_000, u.p); // CHANGED: pass owner (u.p)
+      addToxicSplash(st, t.x, t.y, 7000, u.p);
     }
   }
-  u.nextAtk = now + (u.cd||600);
+
+  // Suppressor: apply slow-on-hit (stores factor on target)
+  if (u.suppress && t.hp > 0){
+    t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
+    t.slowFactor = u.slowFactor || 2;
+  }
+
+  u.nextAtk = now + (u.cd || 600);
   return true;
 }
+
 
 /* Terrain */
 function paintPoison(state, cx, cy, durMs){
@@ -1284,6 +1349,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
