@@ -14,23 +14,6 @@
     *{box-sizing:border-box}
     body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
 
-    /* Logout (fixed, top-left) */
-    .logout{
-      position:fixed;
-      top: calc(8px + env(safe-area-inset-top));
-      left: calc(8px + env(safe-area-inset-left));
-      z-index: 1000;
-      padding:10px 14px;
-      border-radius:12px;
-      border:1px solid rgba(0,0,0,.08);
-      background:#fff;
-      box-shadow: var(--shadow);
-      font-weight:800;
-      cursor:pointer;
-      display:none; /* shown after login */
-    }
-    .logout:hover{ background:#fff5f5 }
-
     /* Header */
     .hero{
       background: radial-gradient(1200px 600px at 50% -200px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
@@ -44,7 +27,8 @@
     .title{ font-weight:800; letter-spacing:.3px; font-size:1.35rem }
     .subtitle{ color:#ffe2e2; font-size:.95rem }
 
-    /* Tabs */
+    /* Tabs + HUD on right */
+    .hud{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.12); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.22); overflow:auto; -webkit-overflow-scrolling:touch }
     .tab-btn{
       appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#fff5f5; background:transparent;
@@ -53,16 +37,18 @@
     .tab-btn:hover{ background:rgba(255,255,255,.16) }
     .tab-btn[aria-selected="true"]{ background:#fff; color:#111827; box-shadow:0 2px 14px rgba(15,23,42,.25) }
 
-    /* Daily Users pill (top-right) */
-    .hud{
-      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    }
+    /* Right side chips */
     .pill{
       display:inline-flex; align-items:center; gap:8px;
       background:#fff; color:#111827; border:1px solid rgba(255,255,255,.4);
       border-radius:999px; padding:8px 12px; font-weight:800; box-shadow:0 2px 10px rgba(0,0,0,.12);
     }
     .pill i{ font-style:normal; font-weight:900; }
+
+    .btn{ cursor:pointer; font-weight:800; border:1px solid var(--accent); background:var(--accent); color:#fff; transition:background .2s; padding:10px 14px; border-radius:12px }
+    .btn:hover{ background:var(--accent-2) }
+    .btn-ghost{ border-color:#fff; background:transparent; color:#fff; font-weight:800 }
+    .btn-ghost:hover{ background:rgba(255,255,255,.16) }
 
     /* Layout */
     .shell{ max-width:1200px; margin:18px auto; padding:0 12px 28px }
@@ -77,14 +63,10 @@
 
     /* Forms */
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-    .input, .select, .btn{
+    .input, .select{
       padding:14px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:16px; outline:none; min-height:44px;
     }
     .input:focus, .select:focus{ border-color:#fecaca; box-shadow:0 0 0 4px rgba(239,68,68,.25) }
-    .btn{ cursor:pointer; font-weight:800; border-color:var(--accent); background:var(--accent); color:#fff; transition:background .2s }
-    .btn:hover{ background:var(--accent-2) }
-    .btn-ghost{ border-color:var(--br); background:#fff; color:#111827; font-weight:700 }
-    .btn-ghost:hover{ background:#fff5f5 }
     .btn-lg{ min-height:var(--tap); font-size:17px }
     .btn-block{ width:100% }
 
@@ -100,7 +82,7 @@
     .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
     .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
     .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #fecaca; font-weight:700 }
-    .subtle{ color:#6b7280; font-size:.96rem }
+    .subtle{ color:var(--muted); font-size:.96rem }
     .cap{ height:8px; background:#fff1f2; border:1px solid var(--br); border-radius:999px; overflow:hidden }
     .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#f59e0b,#ef4444,#b91c1c) }
 
@@ -143,9 +125,6 @@
   </style>
 </head>
 <body>
-  <!-- Fixed Logout -->
-  <button id="logoutBtn" class="logout" onclick="logout()">🚪 Logout</button>
-
   <!-- HERO -->
   <header class="hero">
     <div class="hero-inner">
@@ -157,7 +136,7 @@
         </div>
       </div>
 
-      <!-- RIGHT HUD: tabs + Daily Users pill -->
+      <!-- RIGHT HUD: tabs + Daily Users pill + Logout -->
       <div class="hud">
         <div id="dailyUsersPill" class="pill" title="Unique logins today (America/New_York)">
           👤 Today: <i id="dailyUsersCount">0</i>
@@ -166,6 +145,7 @@
           <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
           <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
         </div>
+        <button id="logoutBtn" class="btn-ghost" style="display:none" onclick="logout()">🚪 Logout</button>
       </div>
     </div>
   </header>
@@ -186,9 +166,9 @@
             <div class="resume" id="resumeBanner" aria-live="polite" role="region">
               <div class="info">You have an unfinished session.</div>
               <div class="actions">
-                <button class="btn-ghost btn-lg" id="resumeLobbyBtn">Rejoin Lobby</button>
-                <button class="btn-ghost btn-lg" id="resumeGameBtn">Reopen Game</button>
-                <button class="btn-ghost btn-lg" id="clearSessionBtn">Clear</button>
+                <button class="btn btn-lg" id="resumeLobbyBtn" style="background:#fff;color:#111;border-color:#ddd">Rejoin Lobby</button>
+                <button class="btn btn-lg" id="resumeGameBtn" style="background:#fff;color:#111;border-color:#ddd">Reopen Game</button>
+                <button class="btn btn-lg" id="clearSessionBtn" style="background:#fff;color:#111;border-color:#ddd">Clear</button>
               </div>
             </div>
             <div id="error"></div>
@@ -244,7 +224,7 @@
                 <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
                 <div class="controls">
                   <button id="startBtn" class="btn btn-lg">🚀 Start Game</button>
-                  <button class="btn-ghost btn-lg" onclick="leaveLobby()">❌ Leave Lobby</button>
+                  <button class="btn btn-lg" style="background:#fff;color:#111;border-color:#ddd" onclick="leaveLobby()">❌ Leave Lobby</button>
                 </div>
               </div>
             </div>
@@ -280,7 +260,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, collection, addDoc, doc, setDoc, updateDoc, onSnapshot,
-      query, where, getDoc, getDocs, deleteDoc, limit, runTransaction
+      query, where, getDoc, getDocs, deleteDoc, limit, runTransaction,
+      serverTimestamp, getCountFromServer
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // ---------- ROUTES ----------
@@ -350,7 +331,6 @@
       { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
     ];
 
-
     // ---------- FIREBASE ----------
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -363,74 +343,40 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ---------- DAILY USERS (NY time) ----------
+    // ---------- DAILY USERS — per-user-per-day (NO HOT DOCS) ----------
     const TZ = "America/New_York";
     const fmtYMD = new Intl.DateTimeFormat("en-CA",{ timeZone:TZ, year:"numeric", month:"2-digit", day:"2-digit" });
     const todayNY = () => fmtYMD.format(new Date()); // "YYYY-MM-DD"
+    const DU_KEY = () => "gh.du.marked." + todayNY();
 
-    async function bumpDailyUsers(uniqueUser){
-      const metricsRef = doc(db, "metrics", "dailyUsers");
-      const now = Date.now();
-      const today = todayNY();
-
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(metricsRef);
-        if (!snap.exists()){
-          tx.set(metricsRef, {
-            date: today,
-            users: { [uniqueUser]: true },
-            count: 1,
-            updatedAt: now
-          });
-          return;
-        }
-        const data = snap.data() || {};
-        const curDate = data.date;
-        const curUsers = data.users || {};
-        const curCount = typeof data.count === "number" ? data.count : Object.keys(curUsers).length;
-
-        if (curDate !== today){
-          const logRef = doc(db, "dailyUsersLog", String(curDate));
-          tx.set(logRef, {
-            date: curDate,
-            count: curCount,
-            users: Object.keys(curUsers),
-            archivedAt: now
-          }, { merge:true });
-
-          tx.set(metricsRef, {
-            date: today,
-            users: { [uniqueUser]: true },
-            count: 1,
-            updatedAt: now
-          });
-          return;
-        }
-
-        if (!curUsers[uniqueUser]){
-          const nextUsers = { ...curUsers, [uniqueUser]: true };
-          tx.update(metricsRef, {
-            users: nextUsers,
-            count: Object.keys(nextUsers).length,
-            updatedAt: now
-          });
-        }else{
-          tx.update(metricsRef, { updatedAt: now });
-        }
-      });
+    async function markDailyUserOnce(uid){
+      if (!uid) return;
+      const key = DU_KEY();
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+      const dateKey = todayNY();
+      await setDoc(doc(db, "metrics_dailyUsers", dateKey, "users", uid), { ts: serverTimestamp() }, { merge: true });
     }
 
-    (function listenDailyUsers(){
+    async function fetchDailyUserCount(){
+      const dateKey = todayNY();
+      const col = collection(db, "metrics_dailyUsers", dateKey, "users");
+      const snap = await getCountFromServer(col);
+      return snap.data().count || 0;
+    }
+
+    async function showDailyUsersPill(){
       const countEl = document.getElementById("dailyUsersCount");
       const pill = document.getElementById("dailyUsersPill");
-      onSnapshot(doc(db,"metrics","dailyUsers"), (snap)=>{
-        if (!snap.exists()){ countEl.textContent = "0"; return; }
-        const d = snap.data();
-        const c = typeof d.count === "number" ? d.count : Object.keys(d.users||{}).length;
+      try{
+        const c = await fetchDailyUserCount();
         countEl.textContent = String(c);
-        pill.title = `Unique logins on ${d.date} (${TZ})`;
-      });
-    })();
+        pill.title = `Unique logins on ${todayNY()} (${TZ})`;
+      }catch(e){ /* ignore visual errors */ }
+    }
+    // initial fetch (optional: poll every 15s)
+    showDailyUsersPill();
+    // setInterval(showDailyUsersPill, 15000); // uncomment if you want passive refresh
 
     // ---------- STORAGE KEYS & SESSION HELPERS ----------
     const SK = {
@@ -537,8 +483,9 @@
         return showError("❌ Invalid login.");
       }
 
-      // ✅ Count unique daily user (after successful auth)
-      await bumpDailyUsers(username);
+      // ✅ Count unique daily user safely (no hotspot)
+      await markDailyUserOnce(username);
+      await showDailyUsersPill();
 
       enterLobbyUI();
       persistSession();
@@ -553,8 +500,9 @@
         if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
         username = name;
 
-        // ✅ Count unique daily user for auto-login as well
-        await bumpDailyUsers(username);
+        // ✅ Safe daily-user mark for auto-login too (session-throttled)
+        await markDailyUserOnce(username);
+        await showDailyUsersPill();
 
         enterLobbyUI();
         persistSession();
@@ -599,7 +547,7 @@
              type==='catmobile'?'🐭📱 Cat vs Mouse Mobile (8P)' :
              type==='thegame'?'🃏 The Game (5P)' :
              type==='crowncouncil'?'👑 Faction Forge (2P)' :
-             type==='castledefense'?'🏰 Castle Defense (4P)' : /* ⬅️ NEW */
+             type==='castledefense'?'🏰 Castle Defense (4P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -695,7 +643,7 @@
         const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
         const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
         if (isFinite(cap) && playerCount >= cap) {
-          btn.disabled = true; btn.className="btn-ghost btn-lg"; btn.textContent="Full";
+          btn.disabled = true; btn.className="btn btn-lg"; btn.style.background="#fff"; btn.style.color="#111"; btn.style.borderColor="#ddd"; btn.textContent="Full";
         } else {
           btn.addEventListener("click", ()=> joinLobby(docSnap.id));
         }
