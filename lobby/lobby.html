@@ -209,6 +209,7 @@
                 <label class="subtle">Game</label>
                 <select id="gameType" class="select">
                   <option value="cat">🐭 Cat & Mouse</option>
+                  <option value="catmobile">🐭📱 Cat vs Mouse Mobile (8P)</option>
                   <option value="grass">🌿 Grass Realms</option>
                   <option value="estate">🏡 Estate Defense</option>
                   <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
@@ -300,6 +301,7 @@
       crowncouncil:"/game/crowncouncil.html",
       thegame:    "/game/thegame.html",
       matchwars:  "/game/matchwars.html",
+      catmobile:  "/game/catmousemobile.html",
       flag:       "/game/Flag.html",
       microwars:  "/game/microwars.html",
       microwars2: "/game/microwaves2.html",
@@ -313,7 +315,7 @@
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
-      "cat","grass","mountain","stockkings","dutchblitz","splinters","spelltower","thegame","zombiezone","biblegame",
+      "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters","spelltower","thegame","zombiezone","biblegame",
       "historyrush","crowncouncil","castledefense" // ⬅️ NEW
     ]);
 
@@ -325,6 +327,7 @@
       zombiezone: 4,
       stockkings: 8,
       biblegame: 20,
+      catmobile: 8,
       historyrush: 4,
       thegame: 5,
       crowncouncil: 2,
@@ -593,6 +596,7 @@
              type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' :
              type==='biblegame'?'📖 Bible Game (20P)' :
              type==='historyrush'?'🏛️ History Rush (4P)' :
+             type==='catmobile'?'🐭📱 Cat vs Mouse Mobile (8P)' :
              type==='thegame'?'🃏 The Game (5P)' :
              type==='crowncouncil'?'👑 Faction Forge (2P)' :
              type==='castledefense'?'🏰 Castle Defense (4P)' : /* ⬅️ NEW */
@@ -630,7 +634,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -939,6 +943,7 @@
   </script>
 </body>
 </html>
+
 
 
 
