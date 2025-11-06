@@ -180,6 +180,12 @@ function spawnHitParticles(x, y, count=6, color="#f6d365"){
     stageEl.appendChild(p); setTimeout(()=>p.remove(),520);
   }
 }
+      async function placeTempPickup(x,y,t,ttlMs=30000){
+  await setDoc(doc(structsCol, key(x,y)), {
+    x, y, t, hp:1, max:1,
+    expAt: Date.now() + ttlMs
+  });
+}
       function passableForCat(x,y){
   return !(x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) && !isBlocked(x,y);
 }
@@ -401,24 +407,36 @@ function powerupPool(){
 }
 
 async function hostSpawnPickups(){
-  const types = unlockedItems();
+  const types = ["🧱","🔫","🐝"];
+  // circles (common)
   for (let i=0;i<3;i++){
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
     if (tileOccupied(x,y)) continue;
     const t = "⭕"+types[Math.floor(Math.random()*types.length)];
-    await placeStructureHost(x,y,t,1);
+    await placeTempPickup(x,y,t, 30000); // 30s
   }
-  if (Math.random()<0.45){
+  // triangles (rarer)
+  if (Math.random()<0.4){
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
     if (!tileOccupied(x,y)){
-      const picks = powerupPool();
-      const t = picks[Math.floor(Math.random()*picks.length)];
-      await placeStructureHost(x,y,t,1);
+      const t = "🔺"+types[Math.floor(Math.random()*types.length)];
+      await placeTempPickup(x,y,t, 30000); // 30s
     }
   }
 }
+
+// --- NEW: host cleanup loop to despawn expired pickups/powerups ---
+setInterval(async ()=>{
+  if (!I_AM_HOST) return;
+  const now = Date.now();
+  for (const s of structures.values()){
+    if ((s.t?.startsWith?.("⭕") || s.t?.startsWith?.("🔺")) && s.expAt && now >= s.expAt){
+      await deleteDoc(doc(structsCol, key(s.x, s.y)));
+    }
+  }
+}, 2000);
 
 /* ---- Enemy spawns ---- */
 async function hostSpawnRatWave(){
@@ -601,83 +619,127 @@ function nearbyPowerBonusFor(x,y){
 }
 let nearbyPowerBonus = 0; // recalculated per tower when firing
 
+// Points per cat hit (turret or arc)
+const CAT_HIT_POINTS = 1;
+
 async function hostTurretsAndArc(){
   if (!I_AM_HOST) return;
-  for(const o of structures.values()){
-    if (!["🔫","⚡"].includes(o.t)) continue;
-    const rng = o.t==="🔫" ? 5 : 4;
-    nearbyPowerBonus = nearbyPowerBonusFor(o.x,o.y);
 
-    // find nearest enemy (cat counts as “hit feedback only”, no HP)
-    const targets=[];
+  for (const o of structures.values()){
+    if (!["🔫","⚡"].includes(o.t)) continue;
+
+    const rng = (o.t==="🔫") ? 5 : 4;
+    const nearbyPowerBonus = nearbyPowerBonusFor(o.x,o.y); // assuming you have this helper
+
+    // collect potential targets (cat is "hit feedback + points" only)
+    const targets = [];
+
     if (gameDoc.cat){
-      const d=Math.abs(gameDoc.cat.x-o.x)+Math.abs(gameDoc.cat.y-o.y);
-      if (d<=rng) targets.push({type:"cat",x:gameDoc.cat.x,y:gameDoc.cat.y});
+      const d = Math.abs(gameDoc.cat.x - o.x) + Math.abs(gameDoc.cat.y - o.y);
+      if (d <= rng) targets.push({type:"cat", x:gameDoc.cat.x, y:gameDoc.cat.y});
     }
-    for(const [id,r] of rats){
-      const d=Math.abs(r.x-o.x)+Math.abs(r.y-o.y);
-      if (d<=rng) targets.push({type:"rat",id,x:r.x,y:r.y});
+    for (const [id,r] of rats){
+      const d = Math.abs(r.x - o.x) + Math.abs(r.y - o.y);
+      if (d <= rng) targets.push({type:"rat", id, x:r.x, y:r.y});
     }
-    for(const [id,c] of caterpillars){
-      const d=Math.abs(c.x-o.x)+Math.abs(c.y-o.y);
-      if (d<=rng) targets.push({type:"cater",id,x:c.x,y:c.y});
+    for (const [id,c] of caterpillars){
+      const d = Math.abs(c.x - o.x) + Math.abs(c.y - o.y);
+      if (d <= rng) targets.push({type:"cater", id, x:c.x, y:c.y});
     }
-    for(const [id,cw] of crows){
-      const d=Math.abs(cw.x-o.x)+Math.abs(cw.y-o.y);
-      if (d<=rng) targets.push({type:"crow",id,x:cw.x,y:cw.y});
+    for (const [id,cw] of crows){
+      const d = Math.abs(cw.x - o.x) + Math.abs(cw.y - o.y);
+      if (d <= rng) targets.push({type:"crow", id, x:cw.x, y:cw.y});
     }
     if (!targets.length) continue;
-    targets.sort((a,b)=> (Math.abs(a.x-o.x)+Math.abs(a.y-o.y)) - (Math.abs(b.x-o.x)+Math.abs(b.y-o.y)));
-    const t=targets[0];
 
-    if (o.t==="🔫"){
-      const dmg=dmgTurret();
-      spawnHitParticles(t.x,t.y,6);
-      if (t.type==="rat"){
-        const r=rats.get(t.id); if (!r) continue;
-        const hp=r.hp - dmg; if (hp<=0) await deleteDoc(doc(ratsCol,t.id)); else await updateDoc(doc(ratsCol,t.id),{hp});
-      }else if (t.type==="cater"){
-        // Caterpillars are one-shot impact units; optionally give them hp
-        await deleteDoc(doc(catsCol,t.id));
-      }else if (t.type==="crow"){
-        await deleteDoc(doc(crowsCol,t.id));
+    // nearest first
+    targets.sort((a,b)=>
+      (Math.abs(a.x-o.x)+Math.abs(a.y-o.y)) -
+      (Math.abs(b.x-o.x)+Math.abs(b.y-o.y))
+    );
+    const t = targets[0];
+
+    if (o.t === "🔫"){
+      const dmg = Math.round(dmgTurret() * (1 + nearbyPowerBonus));
+      spawnHitParticles(t.x, t.y, 6);
+
+      if (t.type === "cat"){
+        // Cat: award points only; no HP change
+        me.score += CAT_HIT_POINTS;
+        await updateDoc(doc(playersCol, myName), { score: me.score });
+        floatText(t.x, t.y, `+${CAT_HIT_POINTS}`, "#7cf");
+        continue;
       }
-      // cat: visual only
 
-    }else if (o.t==="⚡"){
-      // chain lightning
-      let jumps=arcJumps();
-      const dmg=dmgArc();
-      let chainList=[t];
-      let hitSet=new Set([t.id||`${t.type}:${t.x}:${t.y}`]);
-      while(jumps>0){
-        const last=chainList[chainList.length-1];
-        spawnHitParticles(last.x,last.y,8,"#bde1ff");
-        // apply dmg
-        if (last.type==="rat"){
-          const r=rats.get(last.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,last.id)); else await updateDoc(doc(ratsCol,last.id),{hp}); }
-        }else if (last.type==="cater"){ await deleteDoc(doc(catsCol,last.id)); }
-        else if (last.type==="crow"){ await deleteDoc(doc(crowsCol,last.id)); }
-        // find next target within 3
-        let next=null, best=1e9;
-        const pool = [];
-        for(const [id,r] of rats) pool.push({type:"rat",id,x:r.x,y:r.y});
-        for(const [id,c] of caterpillars) pool.push({type:"cater",id,x:c.x,y:c.y});
-        for(const [id,cw] of crows) pool.push({type:"crow",id,x:cw.x,y:cw.y});
-        for(const cand of pool){
-          const sig=cand.id||`${cand.type}:${cand.x}:${cand.y}`;
-          if (hitSet.has(sig)) continue;
-          const d=Math.abs(cand.x-last.x)+Math.abs(cand.y-last.y);
-          if (d<=3 && d<best){ best=d; next=cand; }
+      if (t.type === "rat"){
+        const r = rats.get(t.id); if (!r) continue;
+        const hp = r.hp - dmg;
+        if (hp <= 0) await deleteDoc(doc(ratsCol, t.id));
+        else          await updateDoc(doc(ratsCol, t.id), { hp });
+      } else if (t.type === "cater"){
+        await deleteDoc(doc(catsCol, t.id)); // one-shot impact unit
+      } else if (t.type === "crow"){
+        await deleteDoc(doc(crowsCol, t.id));
+      }
+
+    } else if (o.t === "⚡"){
+      // Arc Tower: chain lightning
+      let jumps = arcJumps(); // includes upgrades (every 3 lvls +1 jump)
+      const base = dmgArc();  // already includes upgrades scaling
+      const dmg  = Math.round(base * (1 + nearbyPowerBonus));
+
+      // start chain at the chosen target (can be cat)
+      let chainList = [t];
+      const sigOf = n => n.id || `${n.type}:${n.x}:${n.y}`;
+      const hitSet = new Set([sigOf(t)]);
+
+      while (chainList.length && jumps >= 0){
+        const last = chainList[chainList.length - 1];
+
+        spawnHitParticles(last.x, last.y, 8, "#bde1ff");
+
+        if (last.type === "cat"){
+          // Cat link: award points; cat takes no damage; continue chaining
+          me.score += CAT_HIT_POINTS;
+          await updateDoc(doc(playersCol, myName), { score: me.score });
+          floatText(last.x, last.y, `+${CAT_HIT_POINTS}`, "#7cf");
+        } else if (last.type === "rat"){
+          const r = rats.get(last.id);
+          if (r){
+            const hp = r.hp - dmg;
+            if (hp <= 0) await deleteDoc(doc(ratsCol, last.id));
+            else          await updateDoc(doc(ratsCol, last.id), { hp });
+          }
+        } else if (last.type === "cater"){
+          await deleteDoc(doc(catsCol, last.id));
+        } else if (last.type === "crow"){
+          await deleteDoc(doc(crowsCol, last.id));
         }
+
+        // find next chain target (exclude cat unless it’s the very first link again)
+        // pool only includes real enemies (no cat), within 3 of the last hit
+        let next = null, best = 1e9;
+        const pool = [];
+        for (const [id,r] of rats)          pool.push({type:"rat",   id, x:r.x,  y:r.y});
+        for (const [id,c] of caterpillars)  pool.push({type:"cater", id, x:c.x,  y:c.y});
+        for (const [id,cw] of crows)        pool.push({type:"crow",  id, x:cw.x, y:cw.y});
+
+        for (const cand of pool){
+          const sig = sigOf(cand);
+          if (hitSet.has(sig)) continue;
+          const d = Math.abs(cand.x - last.x) + Math.abs(cand.y - last.y);
+          if (d <= 3 && d < best){ best = d; next = cand; }
+        }
+
         if (!next) break;
-        hitSet.add(next.id||`${next.type}:${next.x}:${next.y}`);
+        hitSet.add(sigOf(next));
         chainList.push(next);
         jumps--;
       }
     }
   }
 }
+
 
 /* ---- Hives, fleas, routers ---- */
 function hiveSpawnRate(){ return Math.max(900, 1800 * (1 - 0.15*levels.hive)); }
@@ -710,6 +772,9 @@ function routerNearHive(rx,ry){
   }
   return false;
 }
+// change if you want different points than turrets/arc
+const FLEA_CAT_HIT_POINTS = 1;
+
 async function hostFleasMove(){
   if (!I_AM_HOST) return;
 
@@ -717,18 +782,18 @@ async function hostFleasMove(){
   async function killFlea(fid){ try{ await deleteDoc(doc(fleasCol,fid)); }catch(e){} }
 
   for (const [id,f] of fleas){
-    // pick nearest target (cat, then enemies)
+    // pick nearest target (prefers cat, then enemies)
     let target=null, best=1e9;
     const consider = (x,y,tag,extra={})=>{
       const d = Math.abs(x-f.x)+Math.abs(y-f.y);
       if (d<best){ best=d; target={x,y,tag,...extra}; }
     };
     if (gameDoc.cat) consider(gameDoc.cat.x, gameDoc.cat.y, "cat");
-    for (const [rid,r] of rats)           consider(r.x,r.y,"rat",{rid});
-    for (const [cid,c] of caterpillars)   consider(c.x,c.y,"cater",{cid});
-    for (const [crid,cw] of crows)        consider(cw.x,cw.y,"crow",{crid});
+    for (const [rid,r] of rats)          consider(r.x,r.y,"rat",{rid});
+    for (const [cid,c] of caterpillars)  consider(c.x,c.y,"cater",{cid});
+    for (const [crid,cw] of crows)       consider(cw.x,cw.y,"crow",{crid});
 
-    // optional router detour (same as before)
+    // optional router detour: choose nearest 🔀 that’s within 5 of ANY hive 🐝
     let routerDest=null;
     const routerNearHive = (rx,ry)=>{
       for(const s of structures.values()){
@@ -744,14 +809,13 @@ async function hostFleasMove(){
       }
     }
 
-    // step
+    // decide step: prefer router path; otherwise greedy one-tile step toward target
     let step=null;
     if (routerDest){
       const p = findPath(f.x,f.y,routerDest.x,routerDest.y,true);
       if (p && p.length>1) step = {x:p[1][0], y:p[1][1], viaRouter:true};
     }
     if (!step && target){
-      // greedy step toward target
       const dx = Math.sign(target.x - f.x);
       const dy = Math.sign(target.y - f.y);
       step = (Math.abs(target.x-f.x) >= Math.abs(target.y-f.y))
@@ -759,56 +823,70 @@ async function hostFleasMove(){
         : {x:f.x, y:clamp(f.y+dy,1,gridSize-2)};
     }
 
-    // no path? tick down life
+    // no path? tick life and continue
     if (!step){
-      const life = f.life-1;
+      const life = (f.life ?? 0) - 1;
       if (life<=0) await killFlea(id); else await updateDoc(doc(fleasCol,id),{life});
       continue;
     }
 
-    // move
-    await updateDoc(doc(fleasCol,id),{x:step.x,y:step.y,life:f.life-1});
+    // move + age
+    const nextLife = (f.life ?? 0) - 1;
+    await updateDoc(doc(fleasCol,id),{x:step.x,y:step.y,life:nextLife});
 
-    // duplicate when passing a router in router mode
-    const sHere = structures.get(key(step.x,step.y));
-    if (sHere && sHere.t==="🔀"){
-      // quick duplication toward final target
-      if (target){
-        const dx = Math.sign(target.x - step.x);
-        const dy = Math.sign(target.y - step.y);
-        const nx = clamp(step.x + (Math.abs(target.x-step.x)>=Math.abs(target.y-step.y)?dx:0),1,gridSize-2);
-        const ny = clamp(step.y + (Math.abs(target.x-step.x)< Math.abs(target.y-step.y)?dy:0),1,gridSize-2);
-        await addDoc(fleasCol,{x:nx,y:ny,life:Math.max(10,f.life-3)});
-      }
+    // duplication when touching a router tile (rapid hop + split toward target)
+    const sHere = structures.get(`${step.x}_${step.y}`);
+    if (sHere && sHere.t==="🔀" && target){
+      const dx = Math.sign(target.x - step.x);
+      const dy = Math.sign(target.y - step.y);
+      const nx = clamp(step.x + (Math.abs(target.x-step.x)>=Math.abs(target.y-step.y)?dx:0),1,gridSize-2);
+      const ny = clamp(step.y + (Math.abs(target.x-step.x)< Math.abs(target.y-step.y)?dy:0),1,gridSize-2);
+      // newborn has slightly reduced life so splits can't snowball forever
+      await addDoc(fleasCol,{x:nx,y:ny,life:Math.max(10,nextLife-2)});
     }
 
-    // contact checks — fleas **die on impact** with any target
+    // impact checks — fleas DIE on ANY impact (cat gives points)
     let impacted=false;
+
     if (gameDoc.cat && step.x===gameDoc.cat.x && step.y===gameDoc.cat.y){
       spawnHitParticles(step.x,step.y,5,"#7cf");
-      me.score += 1; await updateDoc(doc(playersCol,myName),{score:me.score});
+      me.score += FLEA_CAT_HIT_POINTS;
+      await updateDoc(doc(playersCol,myName),{score:me.score});
+      floatText(step.x,step.y,`+${FLEA_CAT_HIT_POINTS}`,"#7cf");
       impacted=true;
     }
-    for (const [rid,r] of rats){
-      if (r.x===step.x && r.y===step.y){
-        const nh=(r.hp||0)-5; spawnHitParticles(step.x,step.y,6);
-        if (nh<=0) await deleteDoc(doc(ratsCol,rid)); else await updateDoc(doc(ratsCol,rid),{hp:nh});
-        impacted=true; break;
+
+    if (!impacted){
+      for (const [rid,r] of rats){
+        if (r.x===step.x && r.y===step.y){
+          const nh=(r.hp||0)-5;
+          spawnHitParticles(step.x,step.y,6);
+          if (nh<=0) await deleteDoc(doc(ratsCol,rid)); else await updateDoc(doc(ratsCol,rid),{hp:nh});
+          impacted=true; break;
+        }
       }
     }
     if (!impacted){
       for (const [cid,c] of caterpillars){
-        if (c.x===step.x && c.y===step.y){ spawnHitParticles(step.x,step.y,6); await deleteDoc(doc(catsCol,cid)); impacted=true; break; }
+        if (c.x===step.x && c.y===step.y){
+          spawnHitParticles(step.x,step.y,6);
+          await deleteDoc(doc(catsCol,cid));
+          impacted=true; break;
+        }
       }
     }
     if (!impacted){
       for (const [crid,cw] of crows){
-        if (cw.x===step.x && cw.y===step.y){ spawnHitParticles(step.x,step.y,6); await deleteDoc(doc(crowsCol,crid)); impacted=true; break; }
+        if (cw.x===step.x && cw.y===step.y){
+          spawnHitParticles(step.x,step.y,6);
+          await deleteDoc(doc(crowsCol,crid));
+          impacted=true; break;
+        }
       }
     }
 
     // remove flea if it hit anything OR life expired
-    if (impacted || (f.life-1)<=0){ await killFlea(id); }
+    if (impacted || nextLife<=0){ await killFlea(id); }
   }
 }
 
@@ -1161,6 +1239,7 @@ document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement
 </script>
 </body>
 </html>
+
 
 
 
