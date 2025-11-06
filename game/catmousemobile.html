@@ -743,25 +743,53 @@ async function hostTurretsAndArc(){
 
 /* ---- Hives, fleas, routers ---- */
 function hiveSpawnRate(){ return Math.max(900, 1800 * (1 - 0.15*levels.hive)); }
+// put near other host state:
+const hiveTimers = new Map(); // "x_y" -> nextMs
+
+function hiveKey(x,y){ return `${x}_${y}`; }
+
 async function hostFleaHiveTick(){
   if (!I_AM_HOST) return;
-  const now=Date.now();
-  for(const o of structures.values()){
-    if (o.t!=="🐝") continue;
-    if (!o._next) o._next = now + hiveSpawnRate();
-    if (now < o._next) continue;
-    o._next = now + hiveSpawnRate();
-    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [dx,dy] of dirs){
-      const nx=o.x+dx, ny=o.y+dy;
+  const now = Date.now();
+
+  // clean timers for removed hives
+  for (const k of [...hiveTimers.keys()]) {
+    const [sx,sy] = k.split('_').map(Number);
+    const s = structures.get(k);
+    if (!s || s.t !== "🐝") hiveTimers.delete(k);
+  }
+
+  for (const o of structures.values()){
+    if (o.t !== "🐝") continue;
+
+    const k = hiveKey(o.x,o.y);
+    const next = hiveTimers.get(k) ?? (now + hiveSpawnRate());
+
+    if (now < next){
+      // not yet time
+      continue;
+    }
+
+    // it's time: try up to 4 adjacents; if all blocked, delay a little
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    let spawned = false;
+    for (const [dx,dy] of dirs){
+      const nx = o.x + dx, ny = o.y + dy;
       if (isBlocked(nx,ny)) continue;
-      let occ=false; for(const f of fleas.values()) if (f.x===nx&&f.y===ny){occ=true;break;}
+      // avoid double-occupying a flea
+      let occ = false; for (const f of fleas.values()) { if (f.x===nx && f.y===ny){ occ=true; break; } }
       if (occ) continue;
-      await addDoc(fleasCol,{x:nx,y:ny,life:25}); // ~10s via 400ms tick
+
+      await addDoc(fleasCol, { x:nx, y:ny, life:25 }); // ~10s lifespan @ 400ms tick
+      spawned = true;
       break;
     }
+
+    // schedule next tick: if we spawned, full interval; if not, retry soon
+    hiveTimers.set(k, spawned ? (now + hiveSpawnRate()) : (now + 300));
   }
 }
+
 function routerNearHive(rx,ry){
   // is this router within 5 of any hive?
   for(const s of structures.values()){
@@ -1239,6 +1267,7 @@ document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement
 </script>
 </body>
 </html>
+
 
 
 
