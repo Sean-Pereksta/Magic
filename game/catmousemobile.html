@@ -180,6 +180,27 @@ function spawnHitParticles(x, y, count=6, color="#f6d365"){
     stageEl.appendChild(p); setTimeout(()=>p.remove(),520);
   }
 }
+      function passableForCat(x,y){
+  return !(x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) && !isBlocked(x,y);
+}
+
+function findPathToTargetOrAdjacent(sx,sy,tx,ty){
+  // try direct
+  let p = findPath(sx,sy,tx,ty,true);
+  if (p) return p;
+
+  // try any passable neighbor around target
+  const adj = [[1,0],[-1,0],[0,1],[0,-1]];
+  let best=null, bestLen=1e9;
+  for (const [dx,dy] of adj){
+    const ax=tx+dx, ay=ty+dy;
+    if (!passableForCat(ax,ay)) continue;
+    const q = findPath(sx,sy,ax,ay,false);
+    if (q && q.length<bestLen){ best=q; bestLen=q.length; }
+  }
+  return best; // may be null
+}
+
 
 /* ------------------------------- Blocking -------------------------------- */
 // Mice can walk over structures, but AI/placements consider blocks
@@ -304,15 +325,15 @@ async function damageStructureHost(x,y,amt){
   if (hp<=0) await deleteDoc(doc(structsCol,id));
   else await updateDoc(doc(structsCol,id),{hp});
 }
-function hpWall(){   return Math.round(60 * (1+0.15*levels.wall)); }
-function hpTur(){    return Math.round(30 * (1+0.15*levels.turret)); }
-function hpHive(){   return Math.round(35 * (1+0.15*levels.hive)); }
+function hpWall(){   return Math.round(30 * (1+0.15*levels.wall)); }
+function hpTur(){    return Math.round(20 * (1+0.15*levels.turret)); }
+function hpHive(){   return Math.round(25 * (1+0.15*levels.hive)); }
 function hpSpike(){  return Math.round(18 * (1+0.15*levels.spike)); }
 function hpOil(){    return Math.round(18 * (1+0.15*levels.oil)); }
-function hpArc(){    return Math.round(28 * (1+0.15*levels.arc)); }
-function hpPower(){  return Math.round(28 * (1+0.15*levels.power)); }
-function hpRepair(){ return Math.round(28 * (1+0.15*levels.repair)); }
-function hpRouter(){ return Math.round(24 * (1+0.15*levels.router)); }
+function hpArc(){    return Math.round(20 * (1+0.15*levels.arc)); }
+function hpPower(){  return Math.round(20 * (1+0.15*levels.power)); }
+function hpRepair(){ return Math.round(15 * (1+0.15*levels.repair)); }
+function hpRouter(){ return Math.round(15 * (1+0.15*levels.router)); }
 
 function dmgTurret(){  return Math.round(6 * (1+0.25*levels.turret) * (1 + 0.15*nearbyPowerBonus)); }
 function dmgArc(){     return Math.round(5 * (1+0.25*levels.arc) * (1 + 0.15*nearbyPowerBonus)); }
@@ -458,60 +479,113 @@ async function hostSpawnCrows(){
 /* ---- Cat AI ---- */
 async function hostCatAI(){
   if (!I_AM_HOST || !gameDoc.cat) return;
-  const cat={...gameDoc.cat};
-  let bestPath=null;
 
-  const aliveM=[];
-  if (me.alive) aliveM.push({x:me.x,y:me.y});
-  for(const p of Object.values(players)) if (p.alive) aliveM.push({x:p.x,y:p.y});
+  const cat = {...gameDoc.cat};
 
-  for(const m of aliveM){
-    const p=findPath(cat.x,cat.y,m.x,m.y,false);
-    if (p && (!bestPath||p.length<bestPath.length)) bestPath=p;
+  // ----- pick target: mouse > turret > any structure -----
+  const mice=[];
+  if (me.alive) mice.push({x:me.x,y:me.y,type:"mouse",name:myName});
+  for (const [n,p] of Object.entries(players)) if (p.alive) mice.push({x:p.x,y:p.y,type:"mouse",name:n});
+
+  let target=null;
+
+  // nearest alive mouse by Manhattan
+  if (mice.length){
+    mice.sort((a,b)=> (Math.abs(a.x-cat.x)+Math.abs(a.y-cat.y)) - (Math.abs(b.x-cat.x)+Math.abs(b.y-cat.y)));
+    target = mice[0];
   }
-  if (!bestPath){
-    for(const o of structures.values()){
-      if (["🔫","⚡","🐝"].includes(o.t)){
-        const p=findPath(cat.x,cat.y,o.x,o.y,false);
-        if (p && (!bestPath||p.length<bestPath.length)) bestPath=p;
+
+  // prefer turret if closer than mouse path (pressure defenses)
+  if (!target){
+    for (const s of structures.values()){ if (s.t==="🔫"){ target={x:s.x,y:s.y,type:"turret"}; break; } }
+  }
+  if (!target){
+    // fallback: nearest structure (walls/hives too)
+    let best=1e9;
+    for (const s of structures.values()){
+      if (!["🧱","🔫","🐝"].includes(s.t)) continue;
+      const d=Math.abs(s.x-cat.x)+Math.abs(s.y-cat.y);
+      if (d<best){ best=d; target={x:s.x,y:s.y,type:"struct"}; }
+    }
+  }
+  if (!target){ await updateDoc(gameRef,{cat}); return; }
+
+  // ----- path toward target (tolerate busy/blocked target tile) -----
+  let path = findPathToTargetOrAdjacent(cat.x,cat.y,target.x,target.y);
+
+  if (path && path.length>1){
+    // follow path normally
+    const step = path[1];
+    cat.x = step[0]; cat.y = step[1];
+  }else{
+    // No full path (dynamic choke?). Greedy advance toward target…
+    const dx = Math.sign(target.x - cat.x);
+    const dy = Math.sign(target.y - cat.y);
+
+    // pick the axis that reduces Manhattan more
+    const tryDirs = (Math.abs(target.x-cat.x) >= Math.abs(target.y-cat.y))
+      ? [[dx,0],[0,dy],[dx,dy],[-dx,dy]]
+      : [[0,dy],[dx,0],[dx,dy],[dx,-dy]];
+
+    let moved=false;
+    for (const [sx,sy] of tryDirs){
+      const nx = clamp(cat.x+sx,1,gridSize-2);
+      const ny = clamp(cat.y+sy,1,gridSize-2);
+      if (nx===cat.x && ny===cat.y) continue;
+
+      const block = structures.get(`${nx}_${ny}`);
+      if (!block){
+        // empty: just step in
+        cat.x=nx; cat.y=ny; moved=true; break;
+      }else if (["🧱","🔫","🐝"].includes(block.t)){
+        // chew the blocker to open the hole
+        const chew = 2 + Math.floor((gameDoc.catPower||0)/2);
+        await damageStructureHost(nx,ny,chew);
+        // particles (optional)
+        if (typeof spawnHitParticles==="function") spawnHitParticles(nx,ny,5,"#f88");
+        // stay this tick; gap will open in a few bites
+        moved=true; break;
+      }else{
+        // pickups / non-blocking: step in
+        cat.x=nx; cat.y=ny; moved=true; break;
       }
     }
+    // if still not moved, cat holds position this tick
   }
-  if (!bestPath){
-    let min=1e9, pick=null, pth=null;
-    for(const o of structures.values()){
-      if (!["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(o.t)) continue;
-      const p=findPath(cat.x,cat.y,o.x,o.y,false);
-      if (p && p.length<min){ min=p.length; pick=o; pth=p; }
-    }
-    if (pick){ bestPath=pth; }
-  }
-  if (bestPath && bestPath.length>1){
-    const step=bestPath[1]; cat.x=step[0]; cat.y=step[1];
-  }
-  // bite adjacent structure or mouse
-  const adj=[[1,0],[-1,0],[0,1],[0,-1]];
-  for(const [dx,dy] of adj){
-    const tx=cat.x+dx, ty=cat.y+dy;
-    const s=structures.get(key(tx,ty));
-    if (s && ["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(s.t)){
-      await damageStructureHost(tx,ty, catBiteDmg());
-      // set wall burning if fire rat would later interact too—cat bites don’t ignite
+
+  // ----- attack if adjacent to chewables or mice -----
+  const adj = [[1,0],[-1,0],[0,1],[0,-1]];
+  for (const [ax,ay] of adj){
+    const tx=cat.x+ax, ty=cat.y+ay;
+
+    // bite structures
+    const s = structures.get(`${tx}_${ty}`);
+    if (s && ["🧱","🔫","🐝"].includes(s.t)){
+      const chew = 2 + Math.floor((gameDoc.catPower||0)/2);
+      await damageStructureHost(tx,ty,chew);
+      if (typeof spawnHitParticles==="function") spawnHitParticles(tx,ty,6,"#f99");
       break;
     }
+
+    // catch mice
     if (me.alive && me.x===tx && me.y===ty){
-      me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false});
-      await addDoc(corpsesCol,{x:tx,y:ty}); break;
+      me.alive=false;
+      await updateDoc(doc(playersCol,myName),{alive:false});
+      await addDoc(corpsesCol,{x:tx,y:ty});
+      break;
     }
     for (const [n,p] of Object.entries(players)){
       if (p.alive && p.x===tx && p.y===ty){
         await updateDoc(doc(playersCol,n),{alive:false});
-        await addDoc(corpsesCol,{x:tx,y:ty}); break;
+        await addDoc(corpsesCol,{x:tx,y:ty});
+        break;
       }
     }
   }
+
   await updateDoc(gameRef,{cat});
 }
+
 
 /* ---- Turrets / Arc towers / Nodes / Repair / Mines / Oil / Routers ---- */
 function nearbyPowerBonusFor(x,y){
@@ -1087,6 +1161,7 @@ document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement
 </script>
 </body>
 </html>
+
 
 
 
