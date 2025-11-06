@@ -638,118 +638,190 @@ function routerNearHive(rx,ry){
 }
 async function hostFleasMove(){
   if (!I_AM_HOST) return;
-  for(const [id,f] of fleas){
-    // target nearest cat/rat/caterpillar/crow
-    let target=null, best=1e9;
-    const addCand = (x,y,tag) => { const d=Math.abs(x-f.x)+Math.abs(y-f.y); if (d<best){best=d; target={x,y,tag};} };
-    if (gameDoc.cat){ addCand(gameDoc.cat.x,gameDoc.cat.y,"cat"); }
-    for(const r of rats.values()) addCand(r.x,r.y,"rat");
-    for(const c of caterpillars.values()) addCand(c.x,c.y,"cater");
-    for(const cw of crows.values()) addCand(cw.x,cw.y,"crow");
 
-    // router logic: if a router exists within 5 of a hive, fleas path to it first and duplicate on pass
+  // tiny helper to remove a flea safely
+  async function killFlea(fid){ try{ await deleteDoc(doc(fleasCol,fid)); }catch(e){} }
+
+  for (const [id,f] of fleas){
+    // pick nearest target (cat, then enemies)
+    let target=null, best=1e9;
+    const consider = (x,y,tag,extra={})=>{
+      const d = Math.abs(x-f.x)+Math.abs(y-f.y);
+      if (d<best){ best=d; target={x,y,tag,...extra}; }
+    };
+    if (gameDoc.cat) consider(gameDoc.cat.x, gameDoc.cat.y, "cat");
+    for (const [rid,r] of rats)           consider(r.x,r.y,"rat",{rid});
+    for (const [cid,c] of caterpillars)   consider(c.x,c.y,"cater",{cid});
+    for (const [crid,cw] of crows)        consider(cw.x,cw.y,"crow",{crid});
+
+    // optional router detour (same as before)
     let routerDest=null;
-    for(const s of structures.values()){
+    const routerNearHive = (rx,ry)=>{
+      for(const s of structures.values()){
+        if (s.t==="🐝" && (Math.abs(s.x-rx)+Math.abs(s.y-ry) <= 5)) return true;
+      }
+      return false;
+    };
+    for (const s of structures.values()){
       if (s.t==="🔀" && routerNearHive(s.x,s.y)){
         const d=Math.abs(s.x-f.x)+Math.abs(s.y-f.y);
-        if (d<best){ routerDest={x:s.x,y:s.y}; }
+        if (!routerDest || d < (Math.abs(routerDest.x-f.x)+Math.abs(routerDest.y-f.y)))
+          routerDest = {x:s.x,y:s.y};
       }
     }
 
+    // step
     let step=null;
     if (routerDest){
-      const p=findPath(f.x,f.y,routerDest.x,routerDest.y,true);
-      if (p && p.length>1) step=p[1];
+      const p = findPath(f.x,f.y,routerDest.x,routerDest.y,true);
+      if (p && p.length>1) step = {x:p[1][0], y:p[1][1], viaRouter:true};
     }
     if (!step && target){
-      const dx = Math.sign(target.x - f.x), dy = Math.sign(target.y - f.y);
-      step = (Math.abs(target.x-f.x)>=Math.abs(target.y-f.y)) ? {x:f.x+dx,y:f.y} : {x:f.x,y:f.y+dy};
+      // greedy step toward target
+      const dx = Math.sign(target.x - f.x);
+      const dy = Math.sign(target.y - f.y);
+      step = (Math.abs(target.x-f.x) >= Math.abs(target.y-f.y))
+        ? {x:clamp(f.x+dx,1,gridSize-2), y:f.y}
+        : {x:f.x, y:clamp(f.y+dy,1,gridSize-2)};
     }
-    if (step){
-      // duplicate if stepping onto router tile in “router mode”
-      const steppingRouter = structures.get(key(step.x,step.y));
-      await updateDoc(doc(fleasCol,id),{x:clamp(step.x,1,gridSize-2),y:clamp(step.y,1,gridSize-2),life:f.life-1});
-      if (steppingRouter && steppingRouter.t==="🔀" && routerNearHive(steppingRouter.x,steppingRouter.y)){
-        // spawn clone next step toward final target if free
-        if (target){
-          const dx = Math.sign(target.x - step.x), dy = Math.sign(target.y - step.y);
-          const nx=clamp(step.x + (Math.abs(target.x-step.x)>=Math.abs(target.y-step.y)?dx:0),1,gridSize-2);
-          const ny=clamp(step.y + (Math.abs(target.x-step.x)< Math.abs(target.y-step.y)?dy:0),1,gridSize-2);
-          await addDoc(fleasCol,{x:nx,y:ny,life:Math.max(10,f.life-3)});
-        }
-      }
-      // damage if collide
-      if (gameDoc.cat && step.x===gameDoc.cat.x && step.y===gameDoc.cat.y){
-        spawnHitParticles(step.x,step.y,5,"#7cf");
-        me.score+=1; await updateDoc(doc(playersCol,myName),{score:me.score});
-      }
-      for(const [rid,r] of rats){
-        if (r.x===step.x && r.y===step.y){
-          const nh=(r.hp||0)-5; spawnHitParticles(step.x,step.y,5);
-          if (nh<=0) await deleteDoc(doc(ratsCol,rid)); else await updateDoc(doc(ratsCol,rid),{hp:nh});
-        }
-      }
-      for(const [cid,c] of caterpillars){
-        if (c.x===step.x && c.y===step.y){ spawnHitParticles(step.x,step.y,5); await deleteDoc(doc(catsCol,cid)); }
-      }
-      for(const [crid,cw] of crows){
-        if (cw.x===step.x && cw.y===step.y){ spawnHitParticles(step.x,step.y,5); await deleteDoc(doc(crowsCol,crid)); }
-      }
-    }else{
-      await updateDoc(doc(fleasCol,id),{life:f.life-1});
+
+    // no path? tick down life
+    if (!step){
+      const life = f.life-1;
+      if (life<=0) await killFlea(id); else await updateDoc(doc(fleasCol,id),{life});
+      continue;
     }
-    if (f.life-1<=0){ await deleteDoc(doc(fleasCol,id)); }
+
+    // move
+    await updateDoc(doc(fleasCol,id),{x:step.x,y:step.y,life:f.life-1});
+
+    // duplicate when passing a router in router mode
+    const sHere = structures.get(key(step.x,step.y));
+    if (sHere && sHere.t==="🔀"){
+      // quick duplication toward final target
+      if (target){
+        const dx = Math.sign(target.x - step.x);
+        const dy = Math.sign(target.y - step.y);
+        const nx = clamp(step.x + (Math.abs(target.x-step.x)>=Math.abs(target.y-step.y)?dx:0),1,gridSize-2);
+        const ny = clamp(step.y + (Math.abs(target.x-step.x)< Math.abs(target.y-step.y)?dy:0),1,gridSize-2);
+        await addDoc(fleasCol,{x:nx,y:ny,life:Math.max(10,f.life-3)});
+      }
+    }
+
+    // contact checks — fleas **die on impact** with any target
+    let impacted=false;
+    if (gameDoc.cat && step.x===gameDoc.cat.x && step.y===gameDoc.cat.y){
+      spawnHitParticles(step.x,step.y,5,"#7cf");
+      me.score += 1; await updateDoc(doc(playersCol,myName),{score:me.score});
+      impacted=true;
+    }
+    for (const [rid,r] of rats){
+      if (r.x===step.x && r.y===step.y){
+        const nh=(r.hp||0)-5; spawnHitParticles(step.x,step.y,6);
+        if (nh<=0) await deleteDoc(doc(ratsCol,rid)); else await updateDoc(doc(ratsCol,rid),{hp:nh});
+        impacted=true; break;
+      }
+    }
+    if (!impacted){
+      for (const [cid,c] of caterpillars){
+        if (c.x===step.x && c.y===step.y){ spawnHitParticles(step.x,step.y,6); await deleteDoc(doc(catsCol,cid)); impacted=true; break; }
+      }
+    }
+    if (!impacted){
+      for (const [crid,cw] of crows){
+        if (cw.x===step.x && cw.y===step.y){ spawnHitParticles(step.x,step.y,6); await deleteDoc(doc(crowsCol,crid)); impacted=true; break; }
+      }
+    }
+
+    // remove flea if it hit anything OR life expired
+    if (impacted || (f.life-1)<=0){ await killFlea(id); }
   }
 }
 
 /* ---- Enemy brains ---- */
 async function hostRatsThink(){
   if (!I_AM_HOST) return;
-  for(const [id,r] of rats){
-    // oil slow?
-    let slowed=false;
-    const os=structures.get(key(r.x,r.y));
-    if (os && os.t==="🛢️") slowed=true;
-    if (slowed && Math.random() < oilSlowPct()) continue; // skip move this tick
 
-    // target nearest mouse or structure
-    let targets=[];
+  // tiny stable hash so each rat’s “every other tick” is consistent
+  const hsh = (s)=>{ let h=0; for (let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return (h>>>0); };
+
+  for (const [id,r] of rats){
+    // deterministic slow on oil: move only on frames where parity differs from hash
+    const onOil = (structures.get(key(r.x,r.y))?.t==="🛢️");
+    if (onOil){
+      const parity = ((Date.now()>>9) & 1);  // toggles every ~512ms
+      if ((hsh(id)&1) === parity){ continue; } // skip *this* tick; moves next tick
+    }
+
+    // build target list
+    const targets=[];
     if (me.alive) targets.push({x:me.x,y:me.y,type:"mouse",name:myName});
     for (const [n,p] of Object.entries(players)) if (p.alive) targets.push({x:p.x,y:p.y,type:"mouse",name:n});
-    for(const s of structures.values()) if (["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(s.t))
-      targets.push({x:s.x,y:s.y,type:"struct"});
-
+    for (const s of structures.values()){
+      if (["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(s.t))
+        targets.push({x:s.x,y:s.y,type:"struct"});
+    }
     if (!targets.length) continue;
+
+    // nearest target
     targets.sort((a,b)=> (Math.abs(a.x-r.x)+Math.abs(a.y-r.y)) - (Math.abs(b.x-r.x)+Math.abs(b.y-r.y)));
     const t = targets[0];
-    const p = findPath(r.x,r.y,t.x,t.y,false);
+
+    // try BFS path first (allow stepping into the target tile even if “blocked”)
+    let p = findPath(r.x,r.y,t.x,t.y,true);
+    let moved=false;
+
     if (p && p.length>1){
       const step=p[1];
       await updateDoc(doc(ratsCol,id),{x:step[0],y:step[1]});
-      // spike mines trigger
-      const ms=structures.get(key(step[0],step[1]));
+      moved=true;
+
+      // mine trigger on arrival
+      const ms = structures.get(key(step[0],step[1]));
       if (ms && ms.t==="🧨"){
-        const dmg=spikeDamage(); spawnHitParticles(step[0],step[1],8);
-        const hp=r.hp-dmg;
-        await deleteDoc(doc(structsCol,key(step[0],step[1]))); // mine consumed
-        if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp});
+        const dmg = spikeDamage(); spawnHitParticles(step[0],step[1],8);
+        const hp = (r.hp||0)-dmg;
+        await deleteDoc(doc(structsCol,key(step[0],step[1]))); // consume mine
+        if (hp<=0){ await deleteDoc(doc(ratsCol,id)); continue; }
+        else { await updateDoc(doc(ratsCol,id),{hp}); }
       }
-    }else if (t.type==="struct" && (r.x===t.x && r.y===t.y)){
-      // chew structure
-      await damageStructureHost(r.x,r.y, 1 + Math.floor((gameDoc.catPower||0)/3));
-    }
-    // attack mouse
-    if (t.type==="mouse" && r.x===t.x && r.y===t.y){
-      if (t.name===myName && me.alive){ me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false}); await addDoc(corpsesCol,{x:r.x,y:r.y}); }
-      else await updateDoc(doc(playersCol,t.name),{alive:false});
+    } else {
+      // greedy one-step fallback so they never “freeze”
+      const dx = Math.sign(t.x - r.x);
+      const dy = Math.sign(t.y - r.y);
+      const nx = clamp(r.x + (Math.abs(t.x-r.x)>=Math.abs(t.y-r.y)?dx:0),1,gridSize-2);
+      const ny = clamp(r.y + (Math.abs(t.x-r.x)< Math.abs(t.y-r.y)?dy:0),1,gridSize-2);
+      await updateDoc(doc(ratsCol,id),{x:nx,y:ny});
+      moved=true;
+
+      const ms = structures.get(key(nx,ny));
+      if (ms && ms.t==="🧨"){
+        const dmg = spikeDamage(); spawnHitParticles(nx,ny,8);
+        const hp=(r.hp||0)-dmg;
+        await deleteDoc(doc(structsCol,key(nx,ny)));
+        if (hp<=0){ await deleteDoc(doc(ratsCol,id)); continue; }
+        else { await updateDoc(doc(ratsCol,id),{hp}); }
+      }
     }
 
-    // FIRE RAT effect: ignite walls it touches; spread 50%
+    // attack if standing on structure or mouse
+    if (t.type==="struct" && r.x===t.x && r.y===t.y){
+      await damageStructureHost(r.x,r.y, 1 + Math.floor((gameDoc.catPower||0)/3));
+    }
+    if (t.type==="mouse" && r.x===t.x && r.y===t.y){
+      if (t.name===myName && me.alive){
+        me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false});
+        await addDoc(corpsesCol,{x:r.x,y:r.y});
+      } else {
+        await updateDoc(doc(playersCol,t.name),{alive:false});
+      }
+    }
+
+    // FIRE RAT: ignite walls it stands on (spread handled elsewhere)
     if (r.type==="firerat"){
-      const s=structures.get(key(r.x,r.y));
+      const s = structures.get(key(r.x,r.y));
       if (s && s.t==="🧱"){
-        const idk=key(r.x,r.y);
-        await updateDoc(doc(structsCol,idk),{burn:true});
+        await updateDoc(doc(structsCol,key(r.x,r.y)),{burn:true});
       }
     }
   }
@@ -1015,6 +1087,7 @@ document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement
 </script>
 </body>
 </html>
+
 
 
 
