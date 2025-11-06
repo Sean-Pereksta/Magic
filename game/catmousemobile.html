@@ -13,7 +13,6 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Arial,sans-serif}
-  /* HUD */
   #hud{position:fixed;top:0;left:0;right:0;display:flex;gap:8px;align-items:center;justify-content:space-between;
        padding:8px 12px;background:linear-gradient(180deg,rgba(10,16,26,.85),rgba(10,16,26,.35));backdrop-filter:blur(6px);z-index:10}
   .chip{display:inline-flex;gap:8px;align-items:center;background:#0e1726;border:1px solid #1f2a44;border-radius:999px;padding:6px 10px}
@@ -33,6 +32,14 @@
   .hpbar>i{display:block;height:100%;background:#ff5252}
   .float{position:absolute;pointer-events:none;font-weight:700;animation:rise .8s ease-out forwards}
   @keyframes rise{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-16px)}}
+
+  /* line effect for bee tower */
+  .line{
+    position:absolute; height:3px; background:#a8d1ff; opacity:0.9;
+    transform-origin:0 50%; border-radius:3px; box-shadow:0 0 8px rgba(160,210,255,.8);
+    animation:fadeLine .18s ease-out forwards;
+  }
+  @keyframes fadeLine{0%{opacity:1}100%{opacity:0}}
 
   /* Joysticks */
   #pads{width:100%;max-width:860px;display:flex;justify-content:space-between;gap:12px;padding:8px 12px 14px}
@@ -63,7 +70,6 @@
     <span id="hostBadge" class="pill">Host?</span>
     <span>👥 <b id="aliveCount">0</b></span>
     <span>⭐ <b id="score">0</b></span>
-    <span class="pill">+10 / 20s</span>
   </div>
   <div id="held" class="chip">
     <span>Held:</span><span id="heldIcon" style="min-width:28px;text-align:center">—</span>
@@ -130,23 +136,23 @@ let camera = {x:0,y:0};
 
 let I_AM_HOST = false;
 let gameDoc = {};
-let players = {};          // other players
-let structures = new Map();// "x_y" -> {t,hp,max,flags...}
-let rats = new Map();      // id -> {x,y,hp,max,type:"rat"|"firerat"}
+let players = {};
+let structures = new Map(); // "x_y" -> {x,y,t,hp,max,...}
+let rats = new Map();       // id -> {x,y,hp,max,type:"rat"}
+let bears = new Map();      // id -> {x,y,hp,max,type:"bear"}
 let caterpillars = new Map();
 let crows = new Map();
-let fleas = new Map();
 let corpses = new Map();
 
 let me = {x:2,y:2,alive:true,score:0};
 
 // held item
-let heldType = null;   // "🧱","🔫","🐝","🧨","🛢️","⚡","🔌","🩹","🔀"
+let heldType = null;   // "🧱","🔫","🐝","🚀","🧨","🛢️","⚡","🔌","🩹","🔀"
 let heldCount = 0;
 
 // upgrades
 let levels = {
-  wall:0, turret:0, hive:0,
+  wall:0, turret:0, bee:0, rocket:0,
   spike:0, oil:0, arc:0, power:0, repair:0, router:0
 };
 
@@ -163,23 +169,8 @@ function inBounds(x,y){ return x>0 && y>0 && x<gridSize-1 && y<gridSize-1; }
 function toast(msg,ms=1200){ const el=$("#toast"); el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
 function setHostBadge(){ $("#hostBadge").textContent = I_AM_HOST? "👑 Host" : "Client"; }
 function setHeldUI(){ $("#heldIcon").textContent = heldType || "—"; $("#heldCount").textContent = heldCount || 0; }
-
 function focusCamera(){ camera.x = clamp(me.x - Math.floor(view/2), 0, gridSize - view);
                         camera.y = clamp(me.y - Math.floor(view/2), 0, gridSize - view); }
-
-function spawnHitParticles(x, y, count=6, color="#f6d365"){
-  const baseX = (x - camera.x)*cellPx + cellPx/2;
-  const baseY = (y - camera.y)*cellPx + cellPx/2;
-  for (let i=0;i<count;i++){
-    const p = document.createElement('div');
-    p.style.position='absolute'; p.style.left=baseX+'px'; p.style.top=baseY+'px';
-    p.style.width='4px'; p.style.height='4px'; p.style.borderRadius='50%'; p.style.background=color; p.style.pointerEvents='none';
-    const ang=Math.random()*Math.PI*2, spd=8+Math.random()*14, dx=Math.cos(ang)*spd, dy=Math.sin(ang)*spd;
-    p.animate([{transform:'translate(-2px,-2px)',opacity:1},{transform:`translate(${dx}px,${dy}px)`,opacity:0}],
-              {duration:280+Math.random()*220,easing:'ease-out',fill:'forwards'});
-    stageEl.appendChild(p); setTimeout(()=>p.remove(),520);
-  }
-}
 function floatText(x,y,txt,color="#fff"){
   const el = document.createElement('div');
   el.className='float';
@@ -190,13 +181,10 @@ function floatText(x,y,txt,color="#fff"){
   stageEl.appendChild(el);
   setTimeout(()=>el.remove(),1000);
 }
-function passableForCat(x,y){
-  return !(x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) && !isBlocked(x,y);
-}
 function minutesSinceStart(){ return Math.floor((Date.now() - (gameDoc.startMs||Date.now()))/60000); }
 
 /* ------------------------------- Blocking -------------------------------- */
-const BLOCKERS = ["🧱","🔫","🐝","🧨","🛢️","⚡","🔌","🩹","🔀","🎁"]; // 🔥 is NOT a blocker
+const BLOCKERS = ["🧱","🔫","🐝","🚀","🧨","🛢️","⚡","🔌","🩹","🔀","🎁"]; // 🔥 non-blocking
 
 function isBlocked(x,y){
   if (x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) return true;
@@ -211,7 +199,20 @@ function hpBar(el, cur, max){
   const fill=document.createElement("i"); const pct = Math.max(0,Math.min(1,(cur||0)/(max||1)));
   fill.style.width=(pct*100)+"%"; bar.appendChild(fill); el.appendChild(bar);
 }
-
+function renderLine(x1,y1,x2,y2){
+  const sx = (x1 - camera.x)*cellPx + cellPx/2;
+  const sy = (y1 - camera.y)*cellPx + cellPx/2;
+  const ex = (x2 - camera.x)*cellPx + cellPx/2;
+  const ey = (y2 - camera.y)*cellPx + cellPx/2;
+  const dx=ex-sx, dy=ey-sy, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  const line = document.createElement('div');
+  line.className='line';
+  line.style.left = sx+'px'; line.style.top = sy+'px';
+  line.style.width = len+'px';
+  line.style.transform = `rotate(${ang}rad)`;
+  stageEl.appendChild(line);
+  setTimeout(()=>line.remove(), 200);
+}
 function render(){
   focusCamera();
   gridEl.innerHTML="";
@@ -222,40 +223,33 @@ function render(){
       if (gx===0||gy===0||gx===gridSize-1||gy===gridSize-1) el.classList.add("edge"); else el.classList.add("grass");
       let txt="";
 
-      // structures (incl. 🔥 & 🎁)
+      // structures
       const s=structures.get(key(gx,gy));
       if (s){
         txt=s.t;
-        if (BLOCKERS.includes(s.t)){
-          hpBar(el, s.hp||0, s.max||1);
-        }
+        if (BLOCKERS.includes(s.t)) hpBar(el, s.hp||0, s.max||1);
         if (s.t==="🧱" && s.burn){ el.style.boxShadow="inset 0 0 10px rgba(255,80,0,.8)"; }
         if (s.t==="🔥"){ el.style.boxShadow="inset 0 0 16px rgba(255,120,0,.9)"; }
         if (s.t==="🎁"){ el.style.outline="2px solid #eab308"; el.style.borderRadius="6px"; }
       }
 
-      // enemies overlays + hp bars
+      // enemies
       const ratHere=[...rats].find(([,r])=>r.x===gx&&r.y===gy);
-      if (ratHere){ txt = ratHere[1].type==="firerat" ? "🐀🔥" : "🐀"; hpBar(el, ratHere[1].hp||1, ratHere[1].max||ratHere[1].hp||1); }
+      if (ratHere){ txt="🐀"; hpBar(el, ratHere[1].hp||1, ratHere[1].max||ratHere[1].hp||1); }
+      const bearHere=[...bears].find(([,b])=>b.x===gx&&b.y===gy);
+      if (bearHere){ txt="🐻"; hpBar(el, bearHere[1].hp||1, bearHere[1].max||bearHere[1].hp||1); }
       const catp=[...caterpillars].find(([,c])=>c.x===gx&&c.y===gy);
       if (catp){ txt="🐛"; if (catp[1].hp) hpBar(el, catp[1].hp, catp[1].max||catp[1].hp); }
       const crow=[...crows].find(([,c])=>c.x===gx&&c.y===gy);
       if (crow){ txt="🐦"; }
 
-      // fleas
-      for(const f of fleas.values()){ if (f.x===gx&&f.y===gy) txt="🐞"; }
-
-      // corpse
       if (corpses.has(key(gx,gy))) txt="🪦";
 
-      // cat
       if (gameDoc.cat && gameDoc.cat.x===gx && gameDoc.cat.y===gy) {
         txt = (gameDoc.cat.stunUntil && Date.now() < gameDoc.cat.stunUntil) ? "😵‍💫" : "🐱";
-        // show cat HP bar
         hpBar(el, gameDoc.cat.h||0, Math.max(1, gameDoc.cat.hMax||50));
       }
 
-      // players
       for(const [n,p] of Object.entries(players)){ if (p.alive && p.x===gx && p.y===gy) txt="🐭"; }
       if (me.alive && me.x===gx && me.y===gy) txt="🐭";
 
@@ -273,9 +267,9 @@ const gameRef = doc(db,"games",gameId);
 const playersCol = collection(db,"games",gameId,"players");
 const structsCol = collection(db,"games",gameId,"structures");
 const ratsCol = collection(db,"games",gameId,"rats");
+const bearsCol = collection(db,"games",gameId,"bears");
 const catsCol = collection(db,"games",gameId,"caterpillars");
 const crowsCol = collection(db,"games",gameId,"crows");
-const fleasCol = collection(db,"games",gameId,"fleas");
 const corpsesCol = collection(db,"games",gameId,"corpses");
 const highsCol = collection(db,"games",gameId,"highscores");
 
@@ -306,9 +300,9 @@ function listen(){
   onSnapshot(playersCol,(snap)=>{ const next={}; snap.forEach(d=>{ if (d.id!==myName) next[d.id]=d.data(); }); players=next; render(); });
   onSnapshot(structsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>{ const v=d.data(); m.set(key(v.x,v.y),v); }); structures=m; render(); });
   onSnapshot(ratsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); rats=m; render(); });
+  onSnapshot(bearsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); bears=m; render(); });
   onSnapshot(catsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); caterpillars=m; render(); });
   onSnapshot(crowsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); crows=m; render(); });
-  onSnapshot(fleasCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); fleas=m; render(); });
   onSnapshot(corpsesCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(key(d.data().x,d.data().y), d.id)); corpses=m; render(); });
 }
 
@@ -318,7 +312,8 @@ async function deleteStructureHost(x,y){ await deleteDoc(doc(structsCol,key(x,y)
 
 function hpWall(){   return Math.round(30 * (1+0.15*levels.wall)); }
 function hpTur(){    return Math.round(20 * (1+0.15*levels.turret)); }
-function hpHive(){   return Math.round(25 * (1+0.15*levels.hive)); }
+function hpBee(){    return Math.round(22 * (1+0.15*levels.bee)); }
+function hpRocket(){ return Math.round(20 * (1+0.15*levels.rocket)); }
 function hpSpike(){  return Math.round(18 * (1+0.15*levels.spike)); }
 function hpOil(){    return Math.round(18 * (1+0.15*levels.oil)); }
 function hpArc(){    return Math.round(20 * (1+0.15*levels.arc)); }
@@ -327,13 +322,13 @@ function hpRepair(){ return Math.round(15 * (1+0.15*levels.repair)); }
 function hpRouter(){ return Math.round(15 * (1+0.15*levels.router)); }
 function hpSpawner(){return 28;}
 
-function dmgTurret(){  return Math.round(6 * (1+0.25*levels.turret) * (1 + 0.15*nearbyPowerBonus)); }
-function dmgArc(){     return Math.round(5 * (1+0.25*levels.arc) * (1 + 0.15*nearbyPowerBonus)); }
-function spikeDamage(){return Math.round(10 * (1+0.3*levels.spike)); }
-function oilSlowPct(){ return Math.min(0.6, 0.25 + 0.08*levels.oil); }
+function dmgTurret(){   return Math.round(6  * (1+0.25*levels.turret) * (1 + 0.15*nearbyPowerBonus)); }
+function dmgArc(){      return Math.round(5  * (1+0.25*levels.arc)     * (1 + 0.15*nearbyPowerBonus)); }
+function dmgBee(){      return Math.round(14 * (1+0.3*levels.bee)      * (1 + 0.15*nearbyPowerBonus)); } // high
+function dmgRocket(){   return Math.round(8  * (1+0.25*levels.rocket)  * (1 + 0.15*nearbyPowerBonus)); }
+function spikeDamage(){ return Math.round(10 * (1+0.3*levels.spike)); }
+function oilSlowPct(){  return Math.min(0.6, 0.25 + 0.08*levels.oil); }
 function repairPerTickBase(){ return 1 + Math.floor(levels.repair/2); }
-function catBiteDmg(){ return 2 + Math.floor((gameDoc.catPower||0)/2); } // heal cap
-
 function arcJumps(){ return 1 + Math.floor(levels.arc/3); }
 function powerBuffRadius(){ return 2; }
 function repairRadius(){ return 2; }
@@ -361,19 +356,6 @@ function findPath(sx,sy,tx,ty,allowTargetBlocked=false,fly=false){
   while(cur){ path.push(cur); cur=P.get(key(cur[0],cur[1])); }
   path.reverse(); return path;
 }
-function findPathToTargetOrAdjacent(sx,sy,tx,ty){
-  let p = findPath(sx,sy,tx,ty,true);
-  if (p) return p;
-  const adj = [[1,0],[-1,0],[0,1],[0,-1]];
-  let best=null, bestLen=1e9;
-  for (const [dx,dy] of adj){
-    const ax=tx+dx, ay=ty+dy;
-    if (!passableForCat(ax,ay)) continue;
-    const q = findPath(sx,sy,ax,ay,false);
-    if (q && q.length<bestLen){ best=q; bestLen=q.length; }
-  }
-  return best;
-}
 
 /* ----------------------------- Cat HP & stun ------------------------------ */
 async function damageCat(amount){
@@ -382,49 +364,47 @@ async function damageCat(amount){
   if (!snap.exists()) return;
   const g = snap.data();
   const cat = {...g.cat};
-
-  // if stunned, ignore damage (flavor)
   if (cat.stunUntil && Date.now() < cat.stunUntil) return;
 
   cat.h = Math.max(0, (cat.h||0) - amount);
-
   if (cat.h <= 0){
     const nextCount = (cat.stunCount||0) + 1;
-    const nextMax   = 50 * (nextCount + 0); // 50, 100, 150, ...
+    const nextMax   = 50 * (nextCount + 0);
     cat.stunCount = nextCount;
-    cat.stunUntil = Date.now() + 10000; // 10s stun
+    cat.stunUntil = Date.now() + 10000; // 10s
     cat.hMax = nextMax;
-    cat.h = nextMax; // refill for post-stun
+    cat.h = nextMax;
   }
-
   await updateDoc(gameRef, { cat });
 }
 
 /* --------------------------- Fires (burn tiles) --------------------------- */
 async function igniteTile(x,y,ms=5000){
-  // store fire as a non-blocking structure t:"🔥" with expiry expAt
   await setDoc(doc(structsCol,key(x,y)), { x,y,t:"🔥", hp:1, max:1, expAt: Date.now()+ms });
 }
 async function burnTick(){
   if (!I_AM_HOST) return;
   const now = Date.now();
-  // clean expired, damage units on active tiles
   for (const s of structures.values()){
     if (s.t!=="🔥") continue;
-    if (s.expAt && now >= s.expAt){
-      await deleteStructureHost(s.x,s.y);
-      continue;
-    }
+    if (s.expAt && now >= s.expAt){ await deleteStructureHost(s.x,s.y); continue; }
     // damage rats
     for (const [id,r] of rats){
       if (r.x===s.x && r.y===s.y){
         const hp=(r.hp||0)-2;
-        spawnHitParticles(r.x,r.y,4,"#ffb36b");
         if (hp<=0) await deleteDoc(doc(ratsCol,id));
         else       await updateDoc(doc(ratsCol,id),{hp});
       }
     }
-    // damage cat + award point per tick
+    // bears
+    for (const [id,b] of bears){
+      if (b.x===s.x && b.y===s.y){
+        const hp=(b.hp||0)-2;
+        if (hp<=0) await deleteDoc(doc(bearsCol,id));
+        else       await updateDoc(doc(bearsCol,id),{hp});
+      }
+    }
+    // cat
     if (gameDoc.cat && gameDoc.cat.x===s.x && gameDoc.cat.y===s.y){
       await damageCat(2);
       me.score += 1; await updateDoc(doc(playersCol,myName),{score:me.score});
@@ -433,67 +413,47 @@ async function burnTick(){
   }
 }
 
-/* --------------------------- Oil explosions (chain) ---------------------- */
+/* ---------------------- Oil explosions (chain; knock) --------------------- */
 async function explodeOil(x,y,visited=new Set()){
   if (!I_AM_HOST) return;
   const tag=key(x,y); if (visited.has(tag)) return; visited.add(tag);
-
-  // visual + ignite ring
-  spawnHitParticles(x,y,12,"#ffae42");
   await igniteTile(x,y,5000);
-  const area=[];
   for (let dx=-2; dx<=2; dx++){
     for (let dy=-2; dy<=2; dy++){
       const nx=x+dx, ny=y+dy;
       if (!inBounds(nx,ny)) continue;
       if (Math.abs(dx)+Math.abs(dy) <= 2){
-        area.push([nx,ny]);
         await igniteTile(nx,ny,5000);
       }
     }
   }
-
-  // damage enemies + cat in radius
+  // damage enemies
   for (const [id,r] of rats){
-    if (area.some(([nx,ny])=>nx===r.x && ny===r.y)){
-      const hp=(r.hp||0)-8;
-      if (hp<=0) await deleteDoc(doc(ratsCol,id));
-      else       await updateDoc(doc(ratsCol,id),{hp});
-    }
+    const d=Math.abs(r.x-x)+Math.abs(r.y-y);
+    if (d<=2){ const hp=r.hp-8; if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp}); }
   }
-  if (gameDoc.cat && area.some(([nx,ny])=>nx===gameDoc.cat.x && ny===gameDoc.cat.y)){
-    await damageCat(8);
-    me.score += 3; await updateDoc(doc(playersCol,myName),{score:me.score});
-    floatText(gameDoc.cat.x,gameDoc.cat.y,"+3","#ffa94d");
+  for (const [id,b] of bears){
+    const d=Math.abs(b.x-x)+Math.abs(b.y-y);
+    if (d<=2){ const hp=b.hp-6; if (hp<=0) await deleteDoc(doc(bearsCol,id)); else await updateDoc(doc(bearsCol,id),{hp}); }
   }
-
+  if (gameDoc.cat && Math.abs(gameDoc.cat.x-x)+Math.abs(gameDoc.cat.y-y)<=2){
+    await damageCat(8); me.score+=3; await updateDoc(doc(playersCol,myName),{score:me.score}); floatText(gameDoc.cat.x,gameDoc.cat.y,"+3","#ffa94d");
+  }
   // chain to nearby oils
   for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[2,0],[-2,0],[0,2],[0,-2]]){
-    const nx=x+dx, ny=y+dy;
-    const s=structures.get(key(nx,ny));
-    if (s && s.t==="🛢️"){
-      await deleteStructureHost(nx,ny);
-      await explodeOil(nx,ny,visited);
-    }
+    const nx=x+dx, ny=y+dy; const s=structures.get(key(nx,ny));
+    if (s && s.t==="🛢️"){ await deleteStructureHost(nx,ny); await explodeOil(nx,ny,visited); }
   }
 }
-
-/* ---------- Unified structure damage with oil-explode hook ---------- */
 async function damageStructureHost(x,y,amt){
   const id=key(x,y); const s=structures.get(id); if (!s) return;
-  spawnHitParticles(x,y,6);
-  // Oil: explode on ANY hit
-  if (s.t==="🛢️"){
-    await deleteStructureHost(x,y);
-    await explodeOil(x,y);
-    return;
-  }
-  let hp=Math.max(0,(s.hp||0)-amt);
-  if (hp<=0) await deleteStructureHost(x,y);
-  else await updateDoc(doc(structsCol,id),{hp});
+  // oil explodes on hit
+  if (s.t==="🛢️"){ await deleteStructureHost(x,y); await explodeOil(x,y); return; }
+  const hp=Math.max(0,(s.hp||0)-amt);
+  if (hp<=0) await deleteStructureHost(x,y); else await updateDoc(doc(structsCol,id),{hp});
 }
 
-/* ------------------------------ Turrets/Arc ------------------------------ */
+/* ------------------------------ Towers logic ------------------------------ */
 function nearbyPowerBonusFor(x,y){
   let count=0;
   for(const s of structures.values()){
@@ -506,270 +466,187 @@ function nearbyPowerBonusFor(x,y){
 }
 let nearbyPowerBonus = 0;
 
-const CAT_HIT_POINTS = 1;
-
+/* Turrets & Arc (turrets shoot OVER walls) */
 async function hostTurretsAndArc(){
   if (!I_AM_HOST) return;
-
   for (const o of structures.values()){
     if (!["🔫","⚡"].includes(o.t)) continue;
+    const rng = (o.t==="🔫") ? 6 : 4; // turret over-walls, arc normal
+    const bonus = nearbyPowerBonusFor(o.x,o.y);
 
-    const rng = (o.t==="🔫") ? 5 : 4;
-    const nearbyPowerBonus = nearbyPowerBonusFor(o.x,o.y);
+    const pool = [];
+    if (gameDoc.cat) pool.push({kind:"cat", x:gameDoc.cat.x, y:gameDoc.cat.y});
+    for (const [id,r] of rats)  pool.push({kind:"rat", id, x:r.x, y:r.y});
+    for (const [id,b] of bears) pool.push({kind:"bear", id, x:b.x, y:b.y});
+    for (const [id,c] of caterpillars) pool.push({kind:"cater", id, x:c.x, y:c.y});
+    for (const [id,cw] of crows) pool.push({kind:"crow", id, x:cw.x, y:cw.y});
+    if (!pool.length) continue;
 
-    const targets = [];
+    pool.sort((a,b)=> (Math.abs(a.x-o.x)+Math.abs(a.y-o.y)) - (Math.abs(b.x-o.x)+Math.abs(b.y-o.y)));
+    const t=pool[0];
+    const dist = Math.abs(t.x-o.x)+Math.abs(t.y-o.y);
+    if (dist>rng) continue;
 
-    // Cat is a valid target: awards point AND (now) gets damaged only by FIRE/BURN; turrets/arcs still only give points
-    if (gameDoc.cat){
-      const d = Math.abs(gameDoc.cat.x - o.x) + Math.abs(gameDoc.cat.y - o.y);
-      if (d <= rng) targets.push({type:"cat", x:gameDoc.cat.x, y:gameDoc.cat.y});
-    }
-    for (const [id,r] of rats){
-      const d = Math.abs(r.x - o.x) + Math.abs(r.y - o.y);
-      if (d <= rng) targets.push({type:"rat", id, x:r.x, y:r.y});
-    }
-    for (const [id,c] of caterpillars){
-      const d = Math.abs(c.x - o.x) + Math.abs(c.y - o.y);
-      if (d <= rng) targets.push({type:"cater", id, x:c.x, y:c.y});
-    }
-    for (const [id,cw] of crows){
-      const d = Math.abs(cw.x - o.x) + Math.abs(cw.y - o.y);
-      if (d <= rng) targets.push({type:"crow", id, x:cw.x, y:cw.y});
-    }
-    if (!targets.length) continue;
-
-    targets.sort((a,b)=>
-      (Math.abs(a.x-o.x)+Math.abs(a.y-o.y)) -
-      (Math.abs(b.x-o.x)+Math.abs(b.y-o.y))
-    );
-    const t = targets[0];
-
-    if (o.t === "🔫"){
-      const dmg = Math.round(dmgTurret() * (1 + nearbyPowerBonus));
-      spawnHitParticles(t.x, t.y, 6);
-
-      if (t.type === "cat"){
-        me.score += CAT_HIT_POINTS;
-        await updateDoc(doc(playersCol, myName), { score: me.score });
-        floatText(t.x, t.y, `+${CAT_HIT_POINTS}`, "#7cf");
-      } else if (t.type === "rat"){
-        const r = rats.get(t.id); if (!r) continue;
-        const hp = r.hp - dmg;
-        if (hp <= 0) await deleteDoc(doc(ratsCol, t.id));
-        else          await updateDoc(doc(ratsCol, t.id), { hp });
-      } else if (t.type === "cater"){
-        await deleteDoc(doc(catsCol, t.id));
-      } else if (t.type === "crow"){
-        await deleteDoc(doc(crowsCol, t.id));
-      }
-
-    } else if (o.t === "⚡"){
+    if (o.t==="🔫"){ // hits through/over walls
+      const dmg = Math.round(dmgTurret() * (1 + bonus));
+      if (t.kind==="cat"){ me.score+=1; await updateDoc(doc(playersCol,myName),{score:me.score}); }
+      else if (t.kind==="rat"){ const r=rats.get(t.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,t.id)); else await updateDoc(doc(ratsCol,t.id),{hp}); } }
+      else if (t.kind==="bear"){ const b=bears.get(t.id); if (b){ const hp=b.hp-Math.floor(dmg*0.8); if (hp<=0) await deleteDoc(doc(bearsCol,t.id)); else await updateDoc(doc(bearsCol,t.id),{hp}); } }
+      else if (t.kind==="cater"){ await deleteDoc(doc(catsCol,t.id)); }
+      else if (t.kind==="crow"){ await deleteDoc(doc(crowsCol,t.id)); }
+    }else if (o.t==="⚡"){
       let jumps = arcJumps();
-      const base = dmgArc();
-      const dmg  = Math.round(base * (1 + nearbyPowerBonus));
+      const dmg = Math.round(dmgArc() * (1 + bonus));
+      let current=t; const hit=new Set();
+      const sig = n => n.kind+":"+(n.id??`${n.x},${n.y}`);
+      while (current && jumps>=0){
+        if (current.kind==="rat"){ const r=rats.get(current.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,current.id)); else await updateDoc(doc(ratsCol,current.id),{hp}); } }
+        else if (current.kind==="bear"){ const b=bears.get(current.id); if (b){ const hp=b.hp-Math.floor(dmg*0.7); if (hp<=0) await deleteDoc(doc(bearsCol,current.id)); else await updateDoc(doc(bearsCol,current.id),{hp}); } }
+        else if (current.kind==="cater"){ await deleteDoc(doc(catsCol,current.id)); }
+        else if (current.kind==="crow"){ await deleteDoc(doc(crowsCol,current.id)); }
+        else if (current.kind==="cat"){ me.score+=1; await updateDoc(doc(playersCol,myName),{score:me.score}); }
 
-      let chainList = [t];
-      const sigOf = n => n.id || `${n.type}:${n.x}:${n.y}`;
-      const hitSet = new Set([sigOf(t)]);
-
-      while (chainList.length && jumps >= 0){
-        const last = chainList[chainList.length - 1];
-
-        spawnHitParticles(last.x, last.y, 8, "#bde1ff");
-
-        if (last.type === "cat"){
-          me.score += CAT_HIT_POINTS;
-          await updateDoc(doc(playersCol, myName), { score: me.score });
-          floatText(last.x, last.y, `+${CAT_HIT_POINTS}`, "#7cf");
-        } else if (last.type === "rat"){
-          const r = rats.get(last.id);
-          if (r){
-            const hp = r.hp - dmg;
-            if (hp <= 0) await deleteDoc(doc(ratsCol, last.id));
-            else          await updateDoc(doc(ratsCol, last.id), { hp });
-          }
-        } else if (last.type === "cater"){
-          await deleteDoc(doc(catsCol, last.id));
-        } else if (last.type === "crow"){
-          await deleteDoc(doc(crowsCol, last.id));
-        }
-
-        // next jump
-        let next = null, best = 1e9;
-        const pool = [];
-        for (const [id,r] of rats)          pool.push({type:"rat",   id, x:r.x,  y:r.y});
-        for (const [id,c] of caterpillars)  pool.push({type:"cater", id, x:c.x,  y:c.y});
-        for (const [id,cw] of crows)        pool.push({type:"crow",  id, x:cw.x, y:cw.y});
-
+        hit.add(sig(current));
+        // find next within 3
+        let next=null, best=1e9;
         for (const cand of pool){
-          const sig = sigOf(cand);
-          if (hitSet.has(sig)) continue;
-          const d = Math.abs(cand.x - last.x) + Math.abs(cand.y - last.y);
-          if (d <= 3 && d < best){ best = d; next = cand; }
+          if (hit.has(sig(cand))) continue;
+          const d = Math.abs(cand.x-current.x)+Math.abs(cand.y-current.y);
+          if (d<=3 && d<best){ best=d; next=cand; }
         }
-
-        if (!next) break;
-        hitSet.add(sigOf(next));
-        chainList.push(next);
-        jumps--;
+        current=next; jumps--;
       }
     }
   }
 }
 
-/* ---- Hives, fleas, routers ---- */
-function hiveSpawnRate(){ return Math.max(600, 1200 * (1 - 0.15*levels.hive)); } // faster
-const hiveTimers = new Map();
-function hiveKey(x,y){ return `${x}_${y}`; }
-
-async function hostFleaHiveTick(){
+/* Bee Tower: long range line, high dmg, slow ROF (upgrades: faster + harder) */
+const beeTimers = new Map(); // "x_y" -> nextMs
+function beeFireDelay(){ return Math.max(800, 2200 - 200*levels.bee); } // faster with upgrades
+async function hostBeeTowers(){
   if (!I_AM_HOST) return;
   const now = Date.now();
-  for (const k of [...hiveTimers.keys()]) {
-    const s = structures.get(k);
-    if (!s || s.t !== "🐝") hiveTimers.delete(k);
-  }
-
   for (const o of structures.values()){
-    if (o.t !== "🐝") continue;
-
-    const k = hiveKey(o.x,o.y);
-    const next = hiveTimers.get(k) ?? (now + hiveSpawnRate());
+    if (o.t!=="🐝") continue;
+    const k=key(o.x,o.y);
+    const next = beeTimers.get(k) ?? 0;
     if (now < next) continue;
 
-    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-    let spawned = false;
-    for (const [dx,dy] of dirs){
-      const nx = o.x + dx, ny = o.y + dy;
-      if (isBlocked(nx,ny)) continue;
-      let occ = false; for (const f of fleas.values()) { if (f.x===nx && f.y===ny){ occ=true; break; } }
-      if (occ) continue;
+    const rng = 8; // long
+    const bonus = nearbyPowerBonusFor(o.x,o.y);
+    const dmg = Math.round(dmgBee() * (1 + bonus));
 
-      await addDoc(fleasCol, { x:nx, y:ny, life:25 }); // ~ fast now
-      spawned = true;
-      break;
-    }
-    hiveTimers.set(k, spawned ? (now + hiveSpawnRate()) : (now + 300));
+    // pick farthest in range to emphasize "sniper"
+    const pool=[];
+    for (const [id,r] of rats){ const d=Math.abs(r.x-o.x)+Math.abs(r.y-o.y); if (d<=rng) pool.push({kind:"rat",id,x:r.x,y:r.y,d}); }
+    for (const [id,b] of bears){ const d=Math.abs(b.x-o.x)+Math.abs(b.y-o.y); if (d<=rng) pool.push({kind:"bear",id,x:b.x,y:b.y,d}); }
+    if (gameDoc.cat){ const d=Math.abs(gameDoc.cat.x-o.x)+Math.abs(gameDoc.cat.y-o.y); if (d<=rng) pool.push({kind:"cat",x:gameDoc.cat.x,y:gameDoc.cat.y,d}); }
+    pool.sort((a,b)=> b.d - a.d);
+    const t = pool[0];
+    if (!t) { beeTimers.set(k, now+300); continue; }
+
+    // damage (turret style, can shoot over walls)
+    if (t.kind==="rat"){ const r=rats.get(t.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,t.id)); else await updateDoc(doc(ratsCol,t.id),{hp}); } }
+    else if (t.kind==="bear"){ const b=bears.get(t.id); if (b){ const hp=b.hp-Math.floor(dmg*0.9); if (hp<=0) await deleteDoc(doc(bearsCol,t.id)); else await updateDoc(doc(bearsCol,t.id),{hp}); } }
+    else if (t.kind==="cat"){ me.score+=2; await updateDoc(doc(playersCol,myName),{score:me.score}); }
+
+    // client-side beam effect
+    renderLine(o.x,o.y,t.x,t.y);
+
+    beeTimers.set(k, now + beeFireDelay());
   }
 }
 
-/* Flea brains (unchanged core, points on cat hit) */
-const FLEA_CAT_HIT_POINTS = 1;
-async function hostFleasMove(){
+/* Rocket Tower: splash + knockback (never through walls) */
+const rocketTimers = new Map();
+function rocketDelay(){ return Math.max(900, 2000 - 150*levels.rocket); }
+async function hostRocketTowers(){
   if (!I_AM_HOST) return;
-  const killFlea = async(fid)=>{ try{ await deleteDoc(doc(fleasCol,fid)); }catch(e){} };
+  const now = Date.now();
+  for (const o of structures.values()){
+    if (o.t!=="🚀") continue;
+    const k=key(o.x,o.y);
+    const next = rocketTimers.get(k) ?? 0;
+    if (now < next) continue;
 
-  for (const [id,f] of fleas){
-    let target=null, best=1e9;
-    const consider = (x,y,tag,extra={})=>{
-      const d = Math.abs(x-f.x)+Math.abs(y-f.y);
-      if (d<best){ best=d; target={x,y,tag,...extra}; }
-    };
-    if (gameDoc.cat) consider(gameDoc.cat.x, gameDoc.cat.y, "cat");
-    for (const [rid,r] of rats)          consider(r.x,r.y,"rat",{rid});
-    for (const [cid,c] of caterpillars)  consider(c.x,c.y,"cater",{cid});
-    for (const [crid,cw] of crows)       consider(cw.x,cw.y,"crow",{crid});
+    const rng=6, splashR=1;
+    const bonus = nearbyPowerBonusFor(o.x,o.y);
+    const dmg = Math.round(dmgRocket() * (1 + bonus));
 
-    // move toward target
-    let step=null;
-    if (target){
-      const dx = Math.sign(target.x - f.x);
-      const dy = Math.sign(target.y - f.y);
-      step = (Math.abs(target.x-f.x) >= Math.abs(target.y-f.y))
-        ? {x:clamp(f.x+dx,1,gridSize-2), y:f.y}
-        : {x:f.x, y:clamp(f.y+dy,1,gridSize-2)};
+    const pool=[];
+    for (const [id,r] of rats){ const d=Math.abs(r.x-o.x)+Math.abs(r.y-o.y); if (d<=rng) pool.push({kind:"rat",id,x:r.x,y:r.y,d}); }
+    for (const [id,b] of bears){ const d=Math.abs(b.x-o.x)+Math.abs(b.y-o.y); if (d<=rng) pool.push({kind:"bear",id,x:b.x,y:b.y,d}); }
+    if (!pool.length){ rocketTimers.set(k, now+300); continue; }
+    pool.sort((a,b)=> a.d - b.d);
+    const t=pool[0];
+
+    // splash damage
+    const affect = [];
+    for (const [id,r] of rats){
+      const d = Math.max(Math.abs(r.x-t.x), Math.abs(r.y-t.y)); // Chebyshev splash
+      if (d<=splashR) affect.push({kind:"rat",id});
     }
-    const nextLife = (f.life ?? 0) - 1;
-    if (!step){ if (nextLife<=0) await killFlea(id); else await updateDoc(doc(fleasCol,id),{life:nextLife}); continue; }
-    await updateDoc(doc(fleasCol,id),{x:step.x,y:step.y,life:nextLife});
-
-    // impacts
-    let impacted=false;
-    if (gameDoc.cat && step.x===gameDoc.cat.x && step.y===gameDoc.cat.y){
-      spawnHitParticles(step.x,step.y,5,"#7cf");
-      me.score += FLEA_CAT_HIT_POINTS;
-      await updateDoc(doc(playersCol,myName),{score:me.score});
-      floatText(step.x,step.y,`+${FLEA_CAT_HIT_POINTS}`,"#7cf");
-      impacted=true;
+    for (const [id,b] of bears){
+      const d = Math.max(Math.abs(b.x-t.x), Math.abs(b.y-t.y));
+      if (d<=splashR) affect.push({kind:"bear",id});
     }
-    if (!impacted){
-      for (const [rid,r] of rats){
-        if (r.x===step.x && r.y===step.y){
-          const nh=(r.hp||0)-5;
-          spawnHitParticles(step.x,step.y,6);
-          if (nh<=0) await deleteDoc(doc(ratsCol,rid)); else await updateDoc(doc(ratsCol,rid),{hp:nh});
-          impacted=true; break;
-        }
+    // cat takes small (score) and slight knockback attempt
+    const hitCat = (gameDoc.cat && Math.max(Math.abs(gameDoc.cat.x-t.x), Math.abs(gameDoc.cat.y-t.y))<=splashR);
+
+    for (const a of affect){
+      if (a.kind==="rat"){
+        const r=rats.get(a.id); if (!r) continue;
+        const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,a.id)); else await updateDoc(doc(ratsCol,a.id),{hp});
+        // knockback one tile away from center, if not through walls
+        const dx=Math.sign(r.x - t.x), dy=Math.sign(r.y - t.y);
+        const nx=clamp(r.x+dx,1,gridSize-2), ny=clamp(r.y+dy,1,gridSize-2);
+        if (!isBlocked(nx,ny)) await updateDoc(doc(ratsCol,a.id),{x:nx,y:ny});
+      }else{
+        const b=bears.get(a.id); if (!b) continue;
+        const hp=b.hp-Math.floor(dmg*0.9); if (hp<=0) await deleteDoc(doc(bearsCol,a.id)); else await updateDoc(doc(bearsCol,a.id),{hp});
+        const dx=Math.sign(b.x - t.x), dy=Math.sign(b.y - t.y);
+        const nx=clamp(b.x+dx,1,gridSize-2), ny=clamp(b.y+dy,1,gridSize-2);
+        if (!isBlocked(nx,ny)) await updateDoc(doc(bearsCol,a.id),{x:nx,y:ny});
       }
     }
-    if (!impacted){
-      for (const [cid,c] of caterpillars){
-        if (c.x===step.x && c.y===step.y){
-          spawnHitParticles(step.x,step.y,6);
-          await deleteDoc(doc(catsCol,cid));
-          impacted=true; break;
-        }
-      }
-    }
-    if (!impacted){
-      for (const [crid,cw] of crows){
-        if (cw.x===step.x && cw.y===step.y){
-          spawnHitParticles(step.x,step.y,6);
-          await deleteDoc(doc(crowsCol,crid));
-          impacted=true; break;
-        }
-      }
-    }
-    if (impacted || nextLife<=0){ await killFlea(id); }
+    if (hitCat){ me.score+=1; await updateDoc(doc(playersCol,myName),{score:me.score}); }
+
+    rocketTimers.set(k, now + rocketDelay());
   }
 }
 
 /* ------------------------------ Enemy brains ----------------------------- */
-// Rats: prefer reachable mouse within 8; else nearest structure/distant player
+function passableForCat(x,y){ return !(x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) && !isBlocked(x,y); }
+
 async function hostRatsThink(){
   if (!I_AM_HOST) return;
-
   for (const [id,r] of rats){
-    // 1) find reachable mouse within 8
-    let chaseMouse=null, best=1e9;
+    // closest target (mouse, then structure)
+    let target=null, best=1e9;
     const mice=[];
     if (me.alive) mice.push({x:me.x,y:me.y,name:myName});
     for (const [n,p] of Object.entries(players)) if (p.alive) mice.push({x:p.x,y:p.y,name:n});
     for (const m of mice){
-      const dist = Math.abs(m.x-r.x)+Math.abs(m.y-r.y);
-      if (dist<=8){
-        const p = findPath(r.x,r.y,m.x,m.y,true);
-        if (p && dist<best){ best=dist; chaseMouse={...m}; }
-      }
+      const d=Math.abs(m.x-r.x)+Math.abs(m.y-r.y);
+      if (d<best){ best=d; target={type:"mouse", ...m}; }
     }
-
-    let t=null;
-    if (chaseMouse){
-      t = {type:"mouse", ...chaseMouse};
-    }else{
-      // fallback: closest structure or (if none) closest player anywhere
-      let sPick=null, sBest=1e9;
+    if (!target){
       for (const s of structures.values()){
-        if (["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(s.t)){
+        if (["🧱","🔫","🐝","🚀","⚡"].includes(s.t)){
           const d=Math.abs(s.x-r.x)+Math.abs(s.y-r.y);
-          if (d<sBest){ sBest=d; sPick=s; }
+          if (d<best){ best=d; target={type:"struct", x:s.x, y:s.y}; }
         }
       }
-      if (sPick) t = {type:"struct", x:sPick.x, y:sPick.y};
-      else if (mice.length){
-        mice.sort((a,b)=> (Math.abs(a.x-r.x)+Math.abs(a.y-r.y)) - (Math.abs(b.x-r.x)+Math.abs(b.y-r.y)));
-        t = {type:"mouse", ...mice[0]};
-      }
     }
-    if (!t) continue;
+    if (!target) continue;
 
-    // move toward t
-    let p = findPath(r.x,r.y,t.x,t.y,true);
+    // step
     let step=null;
+    const p=findPath(r.x,r.y,target.x,target.y,true);
     if (p && p.length>1) step={x:p[1][0],y:p[1][1]};
     else {
-      const dx=Math.sign(t.x-r.x), dy=Math.sign(t.y-r.y);
-      step = (Math.abs(t.x-r.x)>=Math.abs(t.y-r.y))
+      const dx=Math.sign(target.x-r.x), dy=Math.sign(target.y-r.y);
+      step = (Math.abs(target.x-r.x)>=Math.abs(target.y-r.y))
         ? {x:clamp(r.x+dx,1,gridSize-2), y:r.y}
         : {x:r.x, y:clamp(r.y+dy,1,gridSize-2)};
     }
@@ -777,34 +654,46 @@ async function hostRatsThink(){
 
     // mines
     const ms = structures.get(key(step.x,step.y));
-    if (ms && ms.t==="🧨"){
-      const dmg = spikeDamage(); spawnHitParticles(step.x,step.y,8);
-      const hp=(r.hp||0)-dmg;
-      await deleteStructureHost(step.x,step.y); // consume mine
-      if (hp<=0){ await deleteDoc(doc(ratsCol,id)); continue; }
-      else { await updateDoc(doc(ratsCol,id),{hp}); }
-    }
+    if (ms && ms.t==="🧨"){ const dmg = spikeDamage(); await deleteStructureHost(step.x,step.y);
+      const hp=(r.hp||0)-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp}); }
 
-    // attack on overlap
-    if (t.type==="struct" && r.x===t.x && r.y===t.y){
-      await damageStructureHost(r.x,r.y, 1 + Math.floor((gameDoc.catPower||0)/3));
+    // attack
+    if (target.type==="struct" && r.x===target.x && r.y===target.y){ await damageStructureHost(r.x,r.y,1); }
+    if (target.type==="mouse" && r.x===target.x && r.y===target.y){
+      if (target.name===myName && me.alive){ me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false}); await addDoc(corpsesCol,{x:r.x,y:r.y}); }
+      else { await updateDoc(doc(playersCol,target.name),{alive:false}); await addDoc(corpsesCol,{x:r.x,y:r.y}); }
     }
-    if (t.type==="mouse" && r.x===t.x && r.y===t.y){
-      if (t.name===myName && me.alive){
-        me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false});
-        await addDoc(corpsesCol,{x:r.x,y:r.y});
-      } else {
-        await updateDoc(doc(playersCol,t.name),{alive:false});
-        await addDoc(corpsesCol,{x:r.x,y:r.y});
+  }
+}
+async function hostBearsThink(){
+  if (!I_AM_HOST) return;
+  for (const [id,b] of bears){
+    // like rats but slower steps (move every other tick)
+    if (Math.random()<0.5) continue;
+    let target=null, best=1e9;
+    const mice=[]; if (me.alive) mice.push({x:me.x,y:me.y,name:myName});
+    for (const [n,p] of Object.entries(players)) if (p.alive) mice.push({x:p.x,y:p.y,name:n});
+    for (const m of mice){ const d=Math.abs(m.x-b.x)+Math.abs(m.y-b.y); if (d<best){best=d; target={type:"mouse",...m};} }
+    if (!target){
+      for (const s of structures.values()){
+        if (["🧱","🔫","🐝","🚀","⚡"].includes(s.t)){
+          const d=Math.abs(s.x-b.x)+Math.abs(s.y-b.y);
+          if (d<best){best=d; target={type:"struct",x:s.x,y:s.y};}
+        }
       }
     }
-
-    // FIRE RAT: ignite walls underfoot
-    if (r.type==="firerat"){
-      const s = structures.get(key(r.x,r.y));
-      if (s && s.t==="🧱"){
-        await updateDoc(doc(structsCol,key(r.x,r.y)),{burn:true});
-      }
+    if (!target) continue;
+    let step=null;
+    const p=findPath(b.x,b.y,target.x,target.y,true);
+    if (p && p.length>1) step={x:p[1][0],y:p[1][1]};
+    else { const dx=Math.sign(target.x-b.x), dy=Math.sign(target.y-b.y);
+           step=(Math.abs(target.x-b.x)>=Math.abs(target.y-b.y))?{x:clamp(b.x+dx,1,gridSize-2),y:b.y}:{x:b.x,y:clamp(b.y+dy,1,gridSize-2)}; }
+    await updateDoc(doc(bearsCol,id),{x:step.x,y:step.y});
+    // smash (high damage)
+    if (target.type==="struct" && b.x===target.x && b.y===target.y){ await damageStructureHost(b.x,b.y,4); }
+    if (target.type==="mouse" && b.x===target.x && b.y===target.y){
+      if (target.name===myName && me.alive){ me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false}); await addDoc(corpsesCol,{x:b.x,y:b.y}); }
+      else { await updateDoc(doc(playersCol,target.name),{alive:false}); await addDoc(corpsesCol,{x:b.x,y:b.y}); }
     }
   }
 }
@@ -813,7 +702,7 @@ async function hostCaterpillarsThink(){
   for(const [id,c] of caterpillars){
     let pick=null,best=1e9;
     for(const s of structures.values()){
-      if (!["🧱","🔫","⚡"].includes(s.t)) continue;
+      if (!["🧱","🔫","⚡","🐝","🚀"].includes(s.t)) continue;
       const d=Math.abs(s.x-c.x)+Math.abs(s.y-c.y);
       if (d<best){best=d; pick=s;}
     }
@@ -823,7 +712,6 @@ async function hostCaterpillarsThink(){
       const step=p[1]; await updateDoc(doc(catsCol,id),{x:step[0],y:step[1]});
     }
     if (c.x===pick.x && c.y===pick.y){
-      spawnHitParticles(c.x,c.y,8);
       await damageStructureHost(c.x,c.y,20);
       await deleteDoc(doc(catsCol,id));
     }
@@ -835,7 +723,7 @@ async function hostCrowsThink(){
     let targets=[];
     if (me.alive) targets.push({x:me.x,y:me.y,type:"mouse"});
     for (const [,p] of Object.entries(players)) if (p.alive) targets.push({x:p.x,y:p.y,type:"mouse"});
-    for(const s of structures.values()) if (["🔫","⚡","🐝"].includes(s.t)) targets.push({x:s.x,y:s.y,type:"struct"});
+    for(const s of structures.values()) if (["🔫","⚡","🐝","🚀"].includes(s.t)) targets.push({x:s.x,y:s.y,type:"struct"});
     if (!targets.length) continue;
     targets.sort((a,b)=> (Math.abs(a.x-cw.x)+Math.abs(a.y-cw.y)) - (Math.abs(b.x-cw.x)+Math.abs(b.y-cw.y)));
     const t=targets[0];
@@ -844,53 +732,8 @@ async function hostCrowsThink(){
       const step=p[1];
       if (Math.random()<0.5) await updateDoc(doc(crowsCol,id),{x:step[0],y:step[1]});
     }else{
-      if (t.type==="struct" && cw.x===t.x && cw.y===t.y){
-        spawnHitParticles(cw.x,cw.y,6);
-        await damageStructureHost(cw.x,cw.y,2);
-      }
+      if (t.type==="struct" && cw.x===t.x && cw.y===t.y){ await damageStructureHost(cw.x,cw.y,2); }
     }
-  }
-}
-
-/* ---- Wall burn spread & repair ---- */
-async function hostWallBurnTick(){
-  if (!I_AM_HOST) return;
-  const toUpdate=[];
-  for(const s of structures.values()){
-    if (s.t==="🧱" && s.burn){ toUpdate.push(s); }
-  }
-  for(const w of toUpdate){
-    await damageStructureHost(w.x,w.y,3); // DoT
-    if (Math.random()<0.5){
-      const adj=[[1,0],[-1,0],[0,1],[0,-1]];
-      for(const [dx,dy] of adj){
-        const nb=structures.get(key(w.x+dx,w.y+dy));
-        if (nb && nb.t==="🧱" && !nb.burn){ await updateDoc(doc(structsCol,key(nb.x,nb.y)),{burn:true}); }
-      }
-    }
-  }
-}
-async function hostRepairTick(){
-  if (!I_AM_HOST) return;
-  const heals = new Map(); // "x_y" -> totalHeal
-  for(const s of structures.values()){
-    if (s.t!=="🩹") continue;
-    const per = repairPerTickBase() * (1 + 0.2*levels.repair);
-    for (const o of structures.values()){
-      if (!["🧱","🔫","🐝","⚡","🔌","🩹","🔀","🧨","🛢️"].includes(o.t)) continue;
-      const d=Math.abs(o.x-s.x)+Math.abs(o.y-s.y);
-      if (d<=repairRadius()){
-        const k=key(o.x,o.y);
-        heals.set(k,(heals.get(k)||0)+per);
-      }
-    }
-  }
-  const cap = catBiteDmg();
-  for(const [k,amt] of heals){
-    const s=structures.get(k); if (!s) continue;
-    const healed = Math.min(amt, cap);
-    const nh = Math.min(s.max||s.hp||9999, (s.hp||0)+Math.floor(healed));
-    await updateDoc(doc(structsCol,k),{hp:nh});
   }
 }
 
@@ -909,6 +752,7 @@ async function tryMove(dx,dy){
     if (s.t==="⭕🧱"){ take("🧱",20); await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕🔫"){ take("🔫",3);  await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕🐝"){ take("🐝",2);  await deleteDoc(doc(structsCol,key(nx,ny))); }
+    if (s.t==="⭕🚀"){ take("🚀",2);  await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕🧨"){ take("🧨",4);  await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕🛢️"){ take("🛢️",6);  await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕⚡"){  take("⚡",2);  await deleteDoc(doc(structsCol,key(nx,ny))); }
@@ -919,7 +763,8 @@ async function tryMove(dx,dy){
     const inc = (k,msg)=>{ levels[k]++; toast(msg); };
     if (s.t==="🔺🧱"){ inc("wall","🧱 +15% HP"); await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="🔺🔫"){ inc("turret","🔫 +HP/+DMG"); await deleteDoc(doc(structsCol,key(nx,ny))); }
-    if (s.t==="🔺🐝"){ inc("hive","🐝 +rate/+HP"); await deleteDoc(doc(structsCol,key(nx,ny))); }
+    if (s.t==="🔺🐝"){ inc("bee","🐝 +DMG/+ROF"); await deleteDoc(doc(structsCol,key(nx,ny))); }
+    if (s.t==="🔺🚀"){ inc("rocket","🚀 +DMG/+ROF"); await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="🔺🧨"){ inc("spike","🧨 +DMG/+HP"); await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="🔺🛢️"){ inc("oil","🛢️ +SLOW/+HP"); await deleteDoc(doc(structsCol,key(nx,ny))); }
     if (s.t==="🔺⚡"){  inc("arc","⚡ +DMG / +jumps"); await deleteDoc(doc(structsCol,key(nx,ny))); }
@@ -956,9 +801,10 @@ async function tryBuild(dx,dy){
   let hp=10;
   if (heldType==="🧱"){ hp=hpWall(); }
   if (heldType==="🔫"){ hp=hpTur(); }
-  if (heldType==="🐝"){ hp=hpHive(); }
-  if (heldType==="🧨"){ hp=hpSpike(); }    // mine
-  if (heldType==="🛢️"){ hp=hpOil(); }     // oil
+  if (heldType==="🐝"){ hp=hpBee(); }
+  if (heldType==="🚀"){ hp=hpRocket(); }
+  if (heldType==="🧨"){ hp=hpSpike(); }
+  if (heldType==="🛢️"){ hp=hpOil(); }
   if (heldType==="⚡"){  hp=hpArc(); }
   if (heldType==="🔌"){  hp=hpPower(); }
   if (heldType==="🩹"){  hp=hpRepair(); }
@@ -970,42 +816,29 @@ async function tryBuild(dx,dy){
 
 /* --------------------------- Pickups (weighted) --------------------------- */
 function unlockedItems(){
-  // weighted: 🧱 > 🔫 > 🐝 > others
   const m=minutesSinceStart();
-  const base = [];
-  const pushW=(icon,w)=>{ for(let i=0;i<w;i++) base.push(icon); };
-
-  pushW("🧱", 6);  // most common
-  pushW("🔫", 4);
-  pushW("🐝", 3);
-  pushW("🧨", 2);
-  pushW("🛢️", 2);
-  pushW("🔀", 1);
-
-  if (m>=3) pushW("⚡", 2);
-  if (m>=4) pushW("🔌", 2);
-  if (m>=5) pushW("🩹", 2);
-
-  return base;
+  const arr=[];
+  const pushW=(icon,w)=>{ for(let i=0;i<w;i++) arr.push(icon); };
+  pushW("🧱",6); pushW("🔫",4); pushW("🐝",3); pushW("🚀",2); pushW("🧨",2); pushW("🛢️",2); pushW("🔀",1);
+  if (m>=3) pushW("⚡",2);
+  if (m>=4) pushW("🔌",2);
+  if (m>=5) pushW("🩹",2);
+  return arr;
 }
 function powerupPool(){
   const m=minutesSinceStart();
-  const arr=["🔺🧱","🔺🔫","🔺🐝","🔺🧨","🔺🛢️","🔺🔀"];
+  const arr=["🔺🧱","🔺🔫","🔺🐝","🔺🚀","🔺🧨","🔺🛢️","🔺🔀"];
   if (m>=3) arr.push("🔺⚡");
   if (m>=4) arr.push("🔺🔌");
   if (m>=5) arr.push("🔺🩹");
   return arr;
 }
 async function placeTempPickup(x,y,t,ttlMs=30000){
-  await setDoc(doc(structsCol, key(x,y)), {
-    x, y, t, hp:1, max:1,
-    expAt: Date.now() + ttlMs
-  });
+  await setDoc(doc(structsCol, key(x,y)), { x,y,t, hp:1, max:1, expAt: Date.now() + ttlMs });
 }
 async function hostSpawnPickups(){
   if (!I_AM_HOST) return;
   const types = unlockedItems();
-  // common (3)
   for (let i=0;i<3;i++){
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
@@ -1014,7 +847,6 @@ async function hostSpawnPickups(){
     const t = "⭕"+pick;
     await placeTempPickup(x,y,t, 30000);
   }
-  // rarer upgrade (chance)
   if (Math.random()<0.4){
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
@@ -1025,7 +857,6 @@ async function hostSpawnPickups(){
     }
   }
 }
-// cleanup expired pickups 🔺 / ⭕
 setInterval(async ()=>{
   if (!I_AM_HOST) return;
   const now = Date.now();
@@ -1039,11 +870,8 @@ setInterval(async ()=>{
 /* --------------------------- Pickup Spawner 🎁 ---------------------------- */
 async function ensurePickupSpawner(){
   if (!I_AM_HOST) return;
-  const snap = await getDoc(gameRef);
-  const g = snap.exists() ? snap.data() : {};
-  if (g.spawnerPlaced) return;
-  if (minutesSinceStart() < 3) return;
-
+  const g = (await getDoc(gameRef)).data()||{};
+  if (g.spawnerPlaced || minutesSinceStart() < 3) return;
   for (let tries=0; tries<200; tries++){
     const x = 6 + Math.floor(Math.random() * (gridSize-12));
     const y = 6 + Math.floor(Math.random() * (gridSize-12));
@@ -1055,24 +883,18 @@ async function ensurePickupSpawner(){
 }
 async function pickupSpawnerTick(){
   if (!I_AM_HOST) return;
-  const snap = await getDoc(gameRef);
-  if (!snap.exists()) return;
-  const g = snap.data() || {};
+  const g = (await getDoc(gameRef)).data()||{};
   if (!g.spawner || !g.spawnerPlaced) return;
-
   const now = Date.now();
-  const next = g.spawnerNext || 0;
-  if (now < next) return;
-
+  if (now < (g.spawnerNext||0)) return;
   const {x,y} = g.spawner;
   const adj = [[0,-1],[1,0],[0,1],[-1,0]];
   const useTriangle = (Math.random() < 0.35);
   const pool = useTriangle ? powerupPool() : unlockedItems();
   const baseIcon = pool[Math.floor(Math.random()*pool.length)];
   const t = useTriangle ? ("🔺"+baseIcon.replace("🔺","")) : ("⭕"+baseIcon.replace("⭕",""));
-
   for (const [dx,dy] of adj){
-    const nx = x + dx, ny = y + dy;
+    const nx=x+dx, ny=y+dy;
     if (!inBounds(nx,ny)) continue;
     if (tileOccupied(nx,ny)) continue;
     await placeTempPickup(nx,ny,t, 30000);
@@ -1095,35 +917,35 @@ async function hostSpawnRatWave(){
     const x = clamp(cat.x+dx,1,gridSize-2);
     const y = clamp(cat.y+dy,1,gridSize-2);
     if (isBlocked(x,y)) continue;
-    const hp = 6 + (gameDoc.catPower||0)*3;
+    const hp = 8 + (gameDoc.catPower||0)*3;
     await addDoc(ratsCol,{x,y,hp,max:hp,type:"rat"});
     spawned++;
   }
 }
-async function hostSpawnCaterpillars(){
+async function hostSpawnBears(){
   if (!I_AM_HOST) return;
-  const mins=minutesSinceStart(); if (mins<3) return;
-  const count = 1 + (mins-3);
+  const mins = minutesSinceStart();
+  if (mins < 4) return;
+  const count = Math.max(1, mins - 3); // 4min=>1, 5min=>2, ...
   let spawned=0, tries=0;
   while (spawned<count && tries<200){
     tries++;
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
     if (isBlocked(x,y)) continue;
-    await addDoc(catsCol,{x,y}); spawned++;
+    const hp = 40 + (mins-4)*10 + (gameDoc.catPower||0)*5;
+    await addDoc(bearsCol,{x,y,hp,max:hp,type:"bear"});
+    spawned++;
   }
 }
-async function hostSpawnFireRats(){
+async function hostSpawnCaterpillars(){
   if (!I_AM_HOST) return;
-  const mins=minutesSinceStart(); if (mins<5) return;
-  const cat = gameDoc.cat || {x:gridSize-2,y:gridSize-2};
-  const dx = (Math.random()<.5?-1:1) * (2+Math.floor(Math.random()*3));
-  const dy = (Math.random()<.5?-1:1) * (2+Math.floor(Math.random()*3));
-  const x = clamp(cat.x+dx,1,gridSize-2);
-  const y = clamp(cat.y+dy,1,gridSize-2);
-  if (isBlocked(x,y)) return;
-  const hp = 10 + (gameDoc.catPower||0)*4;
-  await addDoc(ratsCol,{x,y,hp,max:hp,type:"firerat"});
+  const mins=minutesSinceStart(); if (mins<3) return;
+  if (Math.random()<0.5){
+    const x = 2 + Math.floor(Math.random()*(gridSize-4));
+    const y = 2 + Math.floor(Math.random()*(gridSize-4));
+    if (!isBlocked(x,y)) await addDoc(catsCol,{x,y});
+  }
 }
 async function hostSpawnCrows(){
   if (!I_AM_HOST) return;
@@ -1139,141 +961,81 @@ async function hostSpawnCrows(){
 /* ------------------------------- Cat AI ---------------------------------- */
 async function hostCatAI(){
   if (!I_AM_HOST || !gameDoc.cat) return;
-
   const cat = {...gameDoc.cat};
+  if (cat.stunUntil && Date.now() < cat.stunUntil){ await updateDoc(gameRef,{cat}); return; }
 
-  // stunned?
-  if (cat.stunUntil && Date.now() < cat.stunUntil){
-    await updateDoc(gameRef,{cat});
-    return;
-  }
-
-  // pick target
-  const mice=[];
-  if (me.alive) mice.push({x:me.x,y:me.y,type:"mouse",name:myName});
+  const mice=[]; if (me.alive) mice.push({x:me.x,y:me.y,type:"mouse",name:myName});
   for (const [n,p] of Object.entries(players)) if (p.alive) mice.push({x:p.x,y:p.y,type:"mouse",name:n});
-
   let target=null;
-  if (mice.length){
-    mice.sort((a,b)=> (Math.abs(a.x-cat.x)+Math.abs(a.y-cat.y)) - (Math.abs(b.x-cat.x)+Math.abs(b.y-cat.y)));
-    target = mice[0];
-  }
+  if (mice.length){ mice.sort((a,b)=> (Math.abs(a.x-cat.x)+Math.abs(a.y-cat.y)) - (Math.abs(b.x-cat.x)+Math.abs(b.y-cat.y))); target=mice[0]; }
   if (!target){
     for (const s of structures.values()){ if (s.t==="🔫"){ target={x:s.x,y:s.y,type:"turret"}; break; } }
   }
   if (!target){
     let best=1e9;
     for (const s of structures.values()){
-      if (!["🧱","🔫","🐝"].includes(s.t)) continue;
+      if (!["🧱","🔫","🐝","🚀"].includes(s.t)) continue;
       const d=Math.abs(s.x-cat.x)+Math.abs(s.y-cat.y);
       if (d<best){ best=d; target={x:s.x,y:s.y,type:"struct"}; }
     }
   }
   if (!target){ await updateDoc(gameRef,{cat}); return; }
 
-  // path
-  let path = findPathToTargetOrAdjacent(cat.x,cat.y,target.x,target.y);
+  let path = findPath(cat.x,cat.y,target.x,target.y,true);
   if (path && path.length>1){
-    const step = path[1];
-    cat.x = step[0]; cat.y = step[1];
+    const step = path[1]; cat.x=step[0]; cat.y=step[1];
   }else{
-    const dx = Math.sign(target.x - cat.x);
-    const dy = Math.sign(target.y - cat.y);
-    const tryDirs = (Math.abs(target.x-cat.x) >= Math.abs(target.y-cat.y))
-      ? [[dx,0],[0,dy],[dx,dy],[-dx,dy]]
-      : [[0,dy],[dx,0],[dx,dy],[dx,-dy]];
-    let moved=false;
-    for (const [sx,sy] of tryDirs){
-      const nx = clamp(cat.x+sx,1,gridSize-2);
-      const ny = clamp(cat.y+sy,1,gridSize-2);
-      if (nx===cat.x && ny===cat.y) continue;
-
-      const block = structures.get(`${nx}_${ny}`);
-      if (!block){
-        cat.x=nx; cat.y=ny; moved=true; break;
-      }else if (["🧱","🔫","🐝"].includes(block.t)){
-        const chew = 2 + Math.floor((gameDoc.catPower||0)/2);
-        await damageStructureHost(nx,ny,chew);
-        moved=true; break;
-      }else{
-        cat.x=nx; cat.y=ny; moved=true; break;
-      }
-    }
+    const dx = Math.sign(target.x - cat.x), dy=Math.sign(target.y - cat.y);
+    const nx=clamp(cat.x+dx,1,gridSize-2), ny=clamp(cat.y+dy,1,gridSize-2);
+    const block = structures.get(key(nx,ny));
+    if (!block){ cat.x=nx; cat.y=ny; }
+    else if (["🧱","🔫","🐝","🚀"].includes(block.t)){ await damageStructureHost(nx,ny,2 + Math.floor((gameDoc.catPower||0)/2)); }
   }
 
   // adjacent bites
-  const adj = [[1,0],[-1,0],[0,1],[0,-1]];
-  for (const [ax,ay] of adj){
+  for (const [ax,ay] of [[1,0],[-1,0],[0,1],[0,-1]]){
     const tx=cat.x+ax, ty=cat.y+ay;
-
-    const s = structures.get(`${tx}_${ty}`);
-    if (s && ["🧱","🔫","🐝"].includes(s.t)){
-      const chew = 2 + Math.floor((gameDoc.catPower||0)/2);
-      await damageStructureHost(tx,ty,chew);
-      spawnHitParticles(tx,ty,6,"#f99");
-      break;
-    }
-
-    if (me.alive && me.x===tx && me.y===ty){
-      me.alive=false;
-      await updateDoc(doc(playersCol,myName),{alive:false});
-      await addDoc(corpsesCol,{x:tx,y:ty});
-      break;
-    }
-    for (const [n,p] of Object.entries(players)){
-      if (p.alive && p.x===tx && p.y===ty){
-        await updateDoc(doc(playersCol,n),{alive:false});
-        await addDoc(corpsesCol,{x:tx,y:ty});
-        break;
-      }
-    }
+    const s = structures.get(key(tx,ty));
+    if (s && ["🧱","🔫","🐝","🚀"].includes(s.t)){ await damageStructureHost(tx,ty,2 + Math.floor((gameDoc.catPower||0)/2)); break; }
+    if (me.alive && me.x===tx && me.y===ty){ me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false}); await addDoc(corpsesCol,{x:tx,y:ty}); break; }
+    for (const [n,p] of Object.entries(players)){ if (p.alive && p.x===tx && p.y===ty){ await updateDoc(doc(playersCol,n),{alive:false}); await addDoc(corpsesCol,{x:tx,y:ty}); break; } }
   }
-
   await updateDoc(gameRef,{cat});
 }
 
 /* ------------------------------- Timers/loops ---------------------------- */
-/* scoring trickle */
 setInterval(async ()=>{ if (!me.alive) return; me.score += 10; await updateDoc(doc(playersCol,myName),{score:me.score}); }, 20000);
-
-/* difficulty scaler (damage per minute) */
 setInterval(async ()=>{ if (!I_AM_HOST) return; const cp=(gameDoc.catPower||0)+1; await updateDoc(gameRef,{catPower:cp}); }, 60000);
 
-/* waves & unlock-based spawns */
 setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnRatWave(); }, 12000);
+setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnBears(); }, 60000);
 setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnCaterpillars(); }, 15000);
-setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnFireRats(); }, 30000);
 setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnCrows(); }, 30000);
 
-/* brains (adaptive cat speed: -10% interval per minute, floored 100ms) */
-// remove any fixed cat interval from before; use adaptive loop:
 let catAITimer=null;
 async function catAITick(){
   await hostCatAI();
   const mins = minutesSinceStart();
-  const base = 500;
-  const factor = Math.pow(0.9, Math.max(0, mins));
-  const delay = Math.max(100, Math.round(base * factor));
+  const base = 500, factor = Math.pow(0.9, Math.max(0, mins)), delay = Math.max(100, Math.round(base * factor));
   catAITimer = setTimeout(catAITick, delay);
 }
 catAITick();
 
 setInterval(hostRatsThink, 450);
+setInterval(hostBearsThink, 650);
 setInterval(hostCaterpillarsThink, 600);
 setInterval(hostCrowsThink, 700);
 
-/* towers & support */
+/* towers */
 setInterval(hostTurretsAndArc, 1000);
-setInterval(hostFleaHiveTick, 1000);
-setInterval(hostFleasMove, 400);
+setInterval(hostBeeTowers, 220);
+setInterval(hostRocketTowers, 240);
 setInterval(async ()=>{ if (I_AM_HOST) await hostSpawnPickups(); }, 18000);
-setInterval(hostWallBurnTick, 900);
-setInterval(hostRepairTick, 1000);
 
 /* fires */
 setInterval(burnTick, 500);
 
-/* pickup spawner checks */
+/* pickup spawner */
 setInterval(ensurePickupSpawner, 3000);
 setInterval(pickupSpawnerTick, 1500);
 
@@ -1300,7 +1062,7 @@ setInterval(()=>{ if (!me.alive) return; if (buildIntent.dx||buildIntent.dy) try
 setupJoystick(document.getElementById('moveJoy'), d=>{ moveIntent=d; });
 setupJoystick(document.getElementById('buildJoy'), d=>{ buildIntent=d; });
 
-// Keyboard fallback (desktop)
+// Keyboard fallback
 window.addEventListener("keydown",e=>{
   if (e.key==="ArrowUp")  moveIntent={dx:0,dy:-1};
   if (e.key==="ArrowDown")moveIntent={dx:0,dy:1};
@@ -1315,8 +1077,6 @@ window.addEventListener("keyup",e=>{
   if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) moveIntent={dx:0,dy:0};
   if (["w","a","s","d"].includes(e.key)) buildIntent={dx:0,dy:0};
 });
-
-// Fullscreen
 document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen?.(); };
 
 /* --------------------------------- Boot ---------------------------------- */
@@ -1336,6 +1096,8 @@ document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement
 </script>
 </body>
 </html>
+
+
 
 
 
