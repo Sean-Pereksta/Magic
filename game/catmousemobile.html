@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -44,7 +44,7 @@
   .freezeOverlay{position:absolute;inset:0; background:rgba(150,220,255,.25); z-index:1; animation:tileBlink .25s ease-out forwards;}
   @keyframes tileBlink{0%{opacity:.35}100%{opacity:0}}
 
-  #pads{width:100%;max-width:860px;display:flex;justify-content:space-between;gap:12px;padding:8px 12px 70px} /* leave space for power bar */
+  #pads{width:100%;max-width:860px;display:flex;justify-content:space-between;gap:12px;padding:8px 12px 70px}
   .joyWrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
   .joy{width:140px;height:140px;border-radius:50%;background:radial-gradient(120px at 50% 50%, #0e1726, #0c1422);
        border:1px solid #223154; position:relative; touch-action:none; box-shadow:0 8px 24px rgba(0,0,0,.35);}
@@ -610,10 +610,10 @@ function rand2(arr){ const a=[...arr]; const i=Math.floor(Math.random()*a.length
 function powerIcon(n){ return n==="Fire"?"🔥":n==="Lightning"?"⚡":n==="Ice"?"❄️":"🪨"; }
 
 function powerPeriod(name,lvl){
-  if (name==="Stone") return Math.max(5000, 30000 - 3000*(lvl-1)); // 30s then -3s per upgrade
-  if (name==="Ice")   return Math.max(5000, 30000 - 1000*(lvl-1)); // 30s then -1s
-  if (name==="Lightning") return Math.max(4000, 15000 - 1000*(lvl-1)); // 15s then -1s
-  if (name==="Fire")  return Math.max(6000, 30000 - 1000*(lvl-1)); // 30s then -1s
+  if (name==="Stone") return Math.max(5000, 30000 - 3000*(lvl-1));
+  if (name==="Ice")   return Math.max(5000, 30000 - 1000*(lvl-1));
+  if (name==="Lightning") return Math.max(4000, 15000 - 1000*(lvl-1));
+  if (name==="Fire")  return Math.max(6000, 30000 - 1000*(lvl-1));
   return 30000;
 }
 function powerData(p){ return p && typeof p.lvl==="number" ? p : {lvl:0,nextAt:Date.now()+99999999}; }
@@ -626,7 +626,6 @@ function showPowerOffer(){
     const btn=document.createElement('div'); btn.className='opt';
     btn.innerHTML = `${powerIcon(name)} <b>${name}</b>`;
     btn.onclick=async ()=>{
-      // level up
       const cur = powerData(me.powers?.[name]);
       const nextLvl = (cur.lvl||0)+1;
       const nextAt = Date.now() + powerPeriod(name,nextLvl);
@@ -648,13 +647,12 @@ async function hostPowerTick(){
   // Offer chooser every 2 min
   const g = (await getDoc(gameRef)).data()||{};
   if ((g.nextPowerOfferAt||0) <= Date.now()){
-    // Tell clients to show (we'll just rely on each client showing when host schedules new time)
     if (myName===g.host) showPowerOffer();
     await updateDoc(gameRef,{ nextPowerOfferAt: Date.now() + 120000 });
   }
 
   // Tick powers for all players
-  const all = {...players}; // others
+  const all = {...players};
   all[myName] = {x:me.x,y:me.y,alive:me.alive,powers:me.powers};
   for (const [name,p] of Object.entries(all)){
     if (!p?.alive) continue;
@@ -662,7 +660,7 @@ async function hostPowerTick(){
     const powers = p.powers || {};
     const now = Date.now();
 
-    // Stone: spawn a wall randomly around the mouse every 30s, -3s per upgrade level
+    // Stone
     if (powers.Stone && (powers.Stone.nextAt||0) <= now){
       const lvl=powers.Stone.lvl||1;
       const cand = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
@@ -676,10 +674,10 @@ async function hostPowerTick(){
       else { await updateDoc(doc(playersCol,name), { powers: {...powers, Stone:{lvl, nextAt} } }); }
     }
 
-    // Ice: freeze enemies in a 5x5 (r=2) for 5s, cooldown -1s each upgrade, freeze length -0.5s each upgrade
+    // Ice
     if (powers.Ice && (powers.Ice.nextAt||0) <= now){
       const lvl=powers.Ice.lvl||1;
-      const dur = Math.max(1000, (5000 - 500*(lvl-1))); // decreases by 0.5s per level
+      const dur = Math.max(1000, (5000 - 500*(lvl-1)));
       const r=2;
       renderFreezeArea(px,py,r);
       const inR = (ux,uy)=> Math.max(Math.abs(ux-px),Math.abs(uy-py))<=r;
@@ -692,7 +690,7 @@ async function hostPowerTick(){
       else { await updateDoc(doc(playersCol,name), { powers: {...powers, Ice:{lvl, nextAt} } }); }
     }
 
-    // Lightning: zap nearest enemy within 5; damage 5 +2/level, chain +1/level to nearest within 5; cooldown -1s/level
+    // Lightning
     if (powers.Lightning && (powers.Lightning.nextAt||0) <= now){
       const lvl=powers.Lightning.lvl||1;
       const rng=5; const dmg = 5 + 2*(lvl-1); const chains = 1 + (lvl-1);
@@ -725,7 +723,7 @@ async function hostPowerTick(){
       else { await updateDoc(doc(playersCol,name), { powers: {...powers, Lightning:{lvl, nextAt} } }); }
     }
 
-    // Fire: explosion 5x5 around player, push/damage; cooldown -1s/level
+    // Fire
     if (powers.Fire && (powers.Fire.nextAt||0) <= now){
       const lvl=powers.Fire.lvl||1;
       const r=2; const inR = (ux,uy)=> Math.max(Math.abs(ux-px),Math.abs(uy-py))<=r;
@@ -743,12 +741,11 @@ async function hostPowerTick(){
 }
 
 /* ------------------------------- Timers/loops ---------------------------- */
-      if (typeof ensurePickupSpawner !== 'function') {
-  async function ensurePickupSpawner(){}   // no-op
-}
-if (typeof pickupSpawnerTick !== 'function') {
-  async function pickupSpawnerTick(){}     // no-op
-}
+/* Hard-safe no-ops so setInterval never references an undefined ident.
+   (Block-scoped function declarations in modules won’t leak; use consts.) */
+const ensurePickupSpawner = async ()=>{}; // safe stub
+const pickupSpawnerTick  = async ()=>{};  // safe stub
+
 setInterval(async ()=>{ if (!me.alive) return; me.score += 10; await updateDoc(doc(playersCol,myName),{score:me.score}); }, 20000);
 setInterval(async ()=>{ if (!I_AM_HOST) return; const cp=(gameDoc.catPower||0)+1; await updateDoc(gameRef,{catPower:cp}); }, 60000);
 
@@ -897,7 +894,6 @@ function unlockedItems(){
   return arr;
 }
 function powerupPool(){
-  // triangles = upgrades
   return ["🔺🧱","🔺🔫","🔺📡","🔺🏃"];
 }
 async function placeTempPickup(x,y,t,ttlMs=30000){
@@ -1009,6 +1005,8 @@ async function tryBuild(dx,dy){
 </script>
 </body>
 </html>
+
+
 
 
 
