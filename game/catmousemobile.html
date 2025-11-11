@@ -743,6 +743,12 @@ async function hostPowerTick(){
 }
 
 /* ------------------------------- Timers/loops ---------------------------- */
+      if (typeof ensurePickupSpawner !== 'function') {
+  async function ensurePickupSpawner(){}   // no-op
+}
+if (typeof pickupSpawnerTick !== 'function') {
+  async function pickupSpawnerTick(){}     // no-op
+}
 setInterval(async ()=>{ if (!me.alive) return; me.score += 10; await updateDoc(doc(playersCol,myName),{score:me.score}); }, 20000);
 setInterval(async ()=>{ if (!I_AM_HOST) return; const cp=(gameDoc.catPower||0)+1; await updateDoc(gameRef,{catPower:cp}); }, 60000);
 
@@ -1003,6 +1009,7 @@ async function tryBuild(dx,dy){
 </script>
 </body>
 </html>
+
 
 
 
