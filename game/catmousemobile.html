@@ -33,7 +33,6 @@
   .float{position:absolute;pointer-events:none;font-weight:700;animation:rise .8s ease-out forwards; z-index:4}
   @keyframes rise{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-16px)}}
 
-  /* Explosion + freeze visuals */
   .blast{position:absolute;width:10px;height:10px;border-radius:50%;
     background:radial-gradient(circle, rgba(255,240,180,1) 0%, rgba(255,120,40,0.9) 40%, rgba(255,60,0,0.6) 60%, rgba(0,0,0,0) 70%);
     transform:translate(-50%,-50%) scale(1); opacity:0.95; z-index:6; animation:boom .28s ease-out forwards;}
@@ -55,7 +54,6 @@
   #toast{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#0e1726;border:1px solid #1f2a44;
          padding:10px 14px;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.35);display:none;z-index:15}
 
-  /* Power-up chooser bar (bottom) */
   #powerBar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;align-items:center;justify-content:center;
     padding:8px 10px;background:linear-gradient(0deg,rgba(10,16,26,.9),rgba(10,16,26,.3)); backdrop-filter:blur(6px); z-index:12;}
   #powerBar .opt{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #2a3a60;border-radius:12px;background:#0f1a2e;cursor:pointer}
@@ -140,24 +138,26 @@ let I_AM_HOST = false;
 let gameDoc = {};
 let players = {};
 let structures = new Map(); // "x_y" -> {x,y,t,hp,max, expAt?}
-let rats = new Map();       // id -> {x,y,hp,max,type:"rat", freezeUntil?}
-let bears = new Map();      // id -> {x,y,hp,max,type:"bear", freezeUntil?}
+let rats = new Map();
+let bears = new Map();
 let caterpillars = new Map();
 let crows = new Map();
 let corpses = new Map();
+/* NEW: pets and specials */
+let fleas = new Map();    // id -> {x,y,owner,createdMs}
+let beetles = new Map();  // id -> {x,y,owner,hp,max,atk,lvl}
 
+/* me */
 let me = {x:2,y:2,alive:true,score:0,powers:{}};
 
-// held item
+/* held item */
 let heldType = null;   // "🧱","🔫","💣"
 let heldCount = 0;
 
-// upgrades
-let levels = {
-  wall:0, turret:0, range:0, speed:0
-};
+/* upgrades */
+let levels = { wall:0, turret:0, range:0, speed:0 };
 
-// input
+/* input */
 let baseMoveDelay=120, buildDelay=120;
 let lastMoveAt=0, lastBuildAt=0;
 let moveIntent={dx:0,dy:0}, buildIntent={dx:0,dy:0};
@@ -185,7 +185,7 @@ function floatText(x,y,txt,color="#fff"){
 function minutesSinceStart(){ return Math.floor((Date.now() - (gameDoc.startMs||Date.now()))/60000); }
 
 /* ------------------------------- Blocking -------------------------------- */
-const BLOCKERS = ["🧱","🔫","💣"]; // only the 3 structures block
+const BLOCKERS = ["🧱","🔫","💣"]; // structures block movement
 
 function isBlocked(x,y){
   if (x<=0||y<=0||x>=gridSize-1||y>=gridSize-1) return true;
@@ -253,11 +253,19 @@ function render(){
 
       if (corpses.has(key(gx,gy))) putEmoji(el,"🪦");
 
+      // Cat
       if (gameDoc.cat && gameDoc.cat.x===gx && gameDoc.cat.y===gy) {
         putEmoji(el, (gameDoc.cat.stunUntil && Date.now() < gameDoc.cat.stunUntil) ? "😵‍💫" : "🐱");
         addHPBar(el, gameDoc.cat.h||0, Math.max(1, gameDoc.cat.hMax||50));
       }
 
+      // Pets
+      const fleaHere=[...fleas].find(([,f])=>f.x===gx&&f.y===gy);
+      if (fleaHere){ putEmoji(el,"🪰"); }  // fleas suicide, no HP bar
+      const beetleHere=[...beetles].find(([,b])=>b.x===gx&&b.y===gy);
+      if (beetleHere){ putEmoji(el,"🪲"); addHPBar(el, beetleHere[1].hp||1, beetleHere[1].max||1); }
+
+      // Players
       for(const [n,p] of Object.entries(players)){ if (p.alive && p.x===gx && p.y===gy) putEmoji(el,"🐭"); }
       if (me.alive && me.x===gx && me.y===gy) putEmoji(el,"🐭");
 
@@ -279,6 +287,9 @@ const catsCol = collection(db,"games",gameId,"caterpillars");
 const crowsCol = collection(db,"games",gameId,"crows");
 const corpsesCol = collection(db,"games",gameId,"corpses");
 const highsCol = collection(db,"games",gameId,"highscores");
+/* NEW: pets */
+const fleasCol = collection(db,"games",gameId,"fleas");
+const beetlesCol = collection(db,"games",gameId,"beetles");
 
 async function claimHost(){
   const snap = await getDoc(gameRef);
@@ -315,6 +326,9 @@ function listen(){
   onSnapshot(catsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); caterpillars=m; render(); });
   onSnapshot(crowsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); crows=m; render(); });
   onSnapshot(corpsesCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(key(d.data().x,d.data().y), d.id)); corpses=m; render(); });
+  /* NEW */
+  onSnapshot(fleasCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); fleas=m; render(); });
+  onSnapshot(beetlesCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); beetles=m; render(); });
 }
 
 /* ------------------------------ Placement/HP ------------------------------ */
@@ -325,7 +339,7 @@ function hpWall(){   return Math.round(35 * (1+0.2*levels.wall)); }
 function hpTur(){    return Math.round(24 * (1+0.2*levels.turret)); }
 
 /* ------------------------------ Pathfinding ------------------------------ */
-function findPath(sx,sy,tx,ty,allowTargetBlocked=false,fly=false){
+function findPath(sx,sy,tx,ty,allowTargetBlocked=false,fly=false,extraBlockersFn=null){
   const Q=[[sx,sy]];
   const P=new Map([[key(sx,sy),null]]);
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
@@ -336,7 +350,7 @@ function findPath(sx,sy,tx,ty,allowTargetBlocked=false,fly=false){
       const nx=x+dx, ny=y+dy;
       if (nx<0||ny<0||nx>=gridSize||ny>=gridSize) continue;
       if (P.has(key(nx,ny))) continue;
-      const blocked = fly? false : isBlocked(nx,ny);
+      const blocked = fly? false : isBlocked(nx,ny) || (extraBlockersFn?.(nx,ny)??false);
       const isTarget = (nx===tx && ny===ty);
       if (blocked && !(allowTargetBlocked && isTarget)) continue;
       P.set(key(nx,ny),[x,y]); Q.push([nx,ny]);
@@ -348,7 +362,7 @@ function findPath(sx,sy,tx,ty,allowTargetBlocked=false,fly=false){
   path.reverse(); return path;
 }
 
-/* ------------------------------- Enemy target logic ---------------------- */
+/* ------------------------------- Selection utils ------------------------- */
 function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
 function nearestStructureFrom(x,y){
   let pick=null, best=1e9;
@@ -360,20 +374,33 @@ function nearestStructureFrom(x,y){
   return pick;
 }
 
+/* ------------------------------- Damage helpers -------------------------- */
+async function damageEnemy(kind, id, amount){
+  if (kind==="rat"){ const r=rats.get(id); if (!r) return; const hp=r.hp-amount; if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp}); }
+  else if (kind==="bear"){ const b=bears.get(id); if (!b) return; const hp=b.hp-amount; if (hp<=0) await deleteDoc(doc(bearsCol,id)); else await updateDoc(doc(bearsCol,id),{hp}); }
+  else if (kind==="cater"){ const c=caterpillars.get(id); if (!c) return; const hp=c.hp-amount; if (hp<=0) await deleteDoc(doc(catsCol,id)); else await updateDoc(doc(catsCol,id),{hp}); }
+  else if (kind==="crow"){ const cw=crows.get(id); if (!cw) return; const hp=cw.hp-amount; if (hp<=0) await deleteDoc(doc(crowsCol,id)); else await updateDoc(doc(crowsCol,id),{hp}); }
+}
+async function damageStructureHost(x,y,amt){
+  const id=key(x,y); const s=structures.get(id); if (!s) return;
+  if (s.t==="💣"){ await deleteStructureHost(x,y); await detonateAt(x,y); return; }
+  const hp=Math.max(0,(s.hp||0)-amt);
+  if (hp<=0) await deleteStructureHost(x,y); else await updateDoc(doc(structsCol,id),{hp});
+}
+
 /* ------------------------------- Bombs ----------------------------------- */
 async function detonateAt(x,y, dmgRat=18, dmgBear=14, dmgOther=16){
   if (!I_AM_HOST) return;
   renderExplosion(x,y);
   const within = (ux,uy)=> Math.max(Math.abs(ux-x), Math.abs(uy-y))<=1; // 3x3
-  // destroy walls in radius
   for (let dx=-1; dx<=1; dx++) for (let dy=-1; dy<=1; dy++){
     const nx=x+dx, ny=y+dy; const s=structures.get(key(nx,ny));
     if (s && s.t==="🧱"){ await deleteStructureHost(nx,ny); }
   }
-  for (const [id,r] of rats){ if (within(r.x,r.y)) { const hp=(r.hp||0)-dmgRat; if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp}); } }
-  for (const [id,b] of bears){ if (within(b.x,b.y)) { const hp=(b.hp||0)-dmgBear; if (hp<=0) await deleteDoc(doc(bearsCol,id)); else await updateDoc(doc(bearsCol,id),{hp}); } }
-  for (const [id,c] of caterpillars){ if (within(c.x,c.y)) { const hp=(c.hp||0)-dmgOther; if (hp<=0) await deleteDoc(doc(catsCol,id)); else await updateDoc(doc(catsCol,id),{hp}); } }
-  for (const [id,cw] of crows){ if (within(cw.x,cw.y)) { const hp=(cw.hp||0)-dmgOther; if (hp<=0) await deleteDoc(doc(crowsCol,id)); else await updateDoc(doc(crowsCol,id),{hp}); } }
+  for (const [id,r] of rats){ if (within(r.x,r.y)) await damageEnemy("rat",id,dmgRat); }
+  for (const [id,b] of bears){ if (within(b.x,b.y)) await damageEnemy("bear",id,dmgBear); }
+  for (const [id,c] of caterpillars){ if (within(c.x,c.y)) await damageEnemy("cater",id,dmgOther); }
+  for (const [id,cw] of crows){ if (within(cw.x,cw.y)) await damageEnemy("crow",id,dmgOther); }
   if (gameDoc.cat && within(gameDoc.cat.x,gameDoc.cat.y)){
     await damageCat(16); me.score+=4; await updateDoc(doc(playersCol,myName),{score:me.score}); floatText(gameDoc.cat.x,gameDoc.cat.y,"+4","#ffa94d");
   }
@@ -403,7 +430,6 @@ async function damageCat(amount){
 /* ------------------------------ Turrets ---------------------------------- */
 function turretRange(){ return 5 + levels.range; }
 function turretDamage(){ return Math.round(6 * (1 + 0.25*levels.turret)); }
-
 async function hostTurrets(){
   if (!I_AM_HOST) return;
   for (const o of structures.values()){
@@ -423,10 +449,10 @@ async function hostTurrets(){
     if (dist>rng) continue;
 
     const dmg = turretDamage();
-    if (t.kind==="rat"){ const r=rats.get(t.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,t.id)); else await updateDoc(doc(ratsCol,t.id),{hp}); } }
-    else if (t.kind==="bear"){ const b=bears.get(t.id); if (b){ const hp=b.hp-Math.floor(dmg*0.85); if (hp<=0) await deleteDoc(doc(bearsCol,t.id)); else await updateDoc(doc(bearsCol,t.id),{hp}); } }
-    else if (t.kind==="cater"){ const c=caterpillars.get(t.id); if (c){ const hp=c.hp-dmg; if (hp<=0) await deleteDoc(doc(catsCol,t.id)); else await updateDoc(doc(catsCol,t.id),{hp}); } }
-    else if (t.kind==="crow"){ const cw=crows.get(t.id); if (cw){ const hp=cw.hp-dmg; if (hp<=0) await deleteDoc(doc(crowsCol,t.id)); else await updateDoc(doc(crowsCol,t.id),{hp}); } }
+    if (t.kind==="rat"){ await damageEnemy("rat",t.id,dmg); }
+    else if (t.kind==="bear"){ await damageEnemy("bear",t.id,Math.floor(dmg*0.85)); }
+    else if (t.kind==="cater"){ await damageEnemy("cater",t.id,dmg); }
+    else if (t.kind==="crow"){ await damageEnemy("crow",t.id,dmg); }
     else if (t.kind==="cat"){ await damageCat(Math.floor(dmg/2)); me.score+=1; await updateDoc(doc(playersCol,myName),{score:me.score}); }
   }
 }
@@ -438,12 +464,11 @@ async function hostRatsThink(){
   if (!I_AM_HOST) return;
   for (const [id,r] of rats){
     if (isFrozen(r)) continue;
-    // choose target
-    let target=null, best=1e9;
+    let target=null;
+
     const mice=[]; if (me.alive) mice.push({x:me.x,y:me.y,name:myName});
     for (const [n,p] of Object.entries(players)) if (p.alive) mice.push({x:p.x,y:p.y,name:n});
 
-    // prefer mouse within 8 tiles
     let nearMouse = null, nearMouseDist = 1e9;
     for (const m of mice){
       const d=manhattan(r.x,r.y,m.x,m.y);
@@ -451,12 +476,9 @@ async function hostRatsThink(){
     }
 
     if (nearMouse && nearMouseDist<=8){
-      // try to path around walls, else break walls
       const pathToMouse = findPath(r.x,r.y,nearMouse.x,nearMouse.y,true);
-      if (pathToMouse && pathToMouse.length>1){
-        target = nearMouse;
-      }else{
-        // no path -> attack nearest wall (to open a route)
+      if (pathToMouse && pathToMouse.length>1) target = nearMouse;
+      else{
         let wallPick=null, bestW=1e9;
         for (const s of structures.values()){
           if (s.t!=="🧱") continue;
@@ -466,13 +488,11 @@ async function hostRatsThink(){
         target = wallPick || nearMouse;
       }
     }else{
-      // otherwise nearest structure
       const st = nearestStructureFrom(r.x,r.y);
       if (st) target={type:"struct",x:st.x,y:st.y};
     }
     if (!target) continue;
 
-    // move step
     let step=null;
     const p=findPath(r.x,r.y,target.x,target.y,true);
     if (p && p.length>1) step={x:p[1][0],y:p[1][1]};
@@ -484,11 +504,9 @@ async function hostRatsThink(){
     }
     await updateDoc(doc(ratsCol,id),{x:step.x,y:step.y});
 
-    // detonate if stepping onto a bomb
     const ms = structures.get(key(step.x,step.y));
     if (ms && ms.t==="💣"){ await deleteStructureHost(step.x,step.y); await detonateAt(step.x,step.y); }
 
-    // attack on contact
     if (target.type==="struct" && r.x===target.x && r.y===target.y){ await damageStructureHost(r.x,r.y,1); }
     if (target.type==="mouse" && r.x===target.x && r.y===target.y){
       if (target.name===myName && me.alive){ me.alive=false; await updateDoc(doc(playersCol,myName),{alive:false}); await addDoc(corpsesCol,{x:r.x,y:r.y}); }
@@ -553,13 +571,6 @@ async function hostCrowsThink(){
 }
 
 /* ------------------------------- Cat AI ---------------------------------- */
-async function damageStructureHost(x,y,amt){
-  const id=key(x,y); const s=structures.get(id); if (!s) return;
-  if (s.t==="💣"){ await deleteStructureHost(x,y); await detonateAt(x,y); return; }
-  const hp=Math.max(0,(s.hp||0)-amt);
-  if (hp<=0) await deleteStructureHost(x,y); else await updateDoc(doc(structsCol,id),{hp});
-}
-
 async function hostCatAI(){
   if (!I_AM_HOST || !gameDoc.cat) return;
   const cat = {...gameDoc.cat};
@@ -589,7 +600,6 @@ async function hostCatAI(){
     else if (["🧱","🔫","💣"].includes(block.t)){ await damageStructureHost(nx,ny,2 + Math.floor((gameDoc.catPower||0)/2)); }
   }
 
-  // adjacent bites
   for (const [ax,ay] of [[1,0],[-1,0],[0,1],[0,-1]]){
     const tx=cat.x+ax, ty=cat.y+ay;
     const s = structures.get(key(tx,ty));
@@ -601,19 +611,20 @@ async function hostCatAI(){
 }
 
 /* ------------------------------- Power-ups --------------------------------
-   Stored per-player in players/{name}.powers.{stone,ice,lightning,fire} = {lvl,nextAt}
-   Offer every 2 minutes (gameRef.nextPowerOfferAt)
+   Now includes: Fire, Lightning, Ice, Stone, Flea, Beetle
 -----------------------------------------------------------------------------*/
 const powerBar = document.getElementById('powerBar');
-const POWER_LIST = ["Fire","Lightning","Ice","Stone"];
+const POWER_LIST = ["Fire","Lightning","Ice","Stone","Flea","Beetle"];
 function rand2(arr){ const a=[...arr]; const i=Math.floor(Math.random()*a.length); let j=Math.floor(Math.random()*a.length); if (j===i) j=(j+1)%a.length; return [a[i],a[j]]; }
-function powerIcon(n){ return n==="Fire"?"🔥":n==="Lightning"?"⚡":n==="Ice"?"❄️":"🪨"; }
+function powerIcon(n){ return n==="Fire"?"🔥":n==="Lightning"?"⚡":n==="Ice"?"❄️":n==="Stone"?"🪨":n==="Flea"?"🪰":"🪲"; }
 
 function powerPeriod(name,lvl){
-  if (name==="Stone") return Math.max(5000, 30000 - 3000*(lvl-1));
-  if (name==="Ice")   return Math.max(5000, 30000 - 1000*(lvl-1));
+  if (name==="Stone")     return Math.max(5000, 30000 - 3000*(lvl-1));
+  if (name==="Ice")       return Math.max(5000, 30000 - 1000*(lvl-1));
   if (name==="Lightning") return Math.max(4000, 15000 - 1000*(lvl-1));
-  if (name==="Fire")  return Math.max(6000, 30000 - 1000*(lvl-1));
+  if (name==="Fire")      return Math.max(6000, 30000 - 1000*(lvl-1));
+  if (name==="Flea")      return Math.max(5000, 30000 - 1000*(lvl-1)); // base 30s, -1s/level
+  if (name==="Beetle")    return Math.max(5000, 45000 - 2000*(lvl-1)); // base 45s, -2s/level
   return 30000;
 }
 function powerData(p){ return p && typeof p.lvl==="number" ? p : {lvl:0,nextAt:Date.now()+99999999}; }
@@ -641,26 +652,26 @@ function showPowerOffer(){
   powerBar.style.display='flex';
 }
 
+/* ------------------------------ Power ticking ---------------------------- */
 async function hostPowerTick(){
   if (!I_AM_HOST) return;
 
-  // Offer chooser every 2 min
   const g = (await getDoc(gameRef)).data()||{};
   if ((g.nextPowerOfferAt||0) <= Date.now()){
     if (myName===g.host) showPowerOffer();
     await updateDoc(gameRef,{ nextPowerOfferAt: Date.now() + 120000 });
   }
 
-  // Tick powers for all players
   const all = {...players};
   all[myName] = {x:me.x,y:me.y,alive:me.alive,powers:me.powers};
+  const now = Date.now();
+
   for (const [name,p] of Object.entries(all)){
     if (!p?.alive) continue;
     const px=p.x, py=p.y;
     const powers = p.powers || {};
-    const now = Date.now();
 
-    // Stone
+    /* Stone (unchanged) */
     if (powers.Stone && (powers.Stone.nextAt||0) <= now){
       const lvl=powers.Stone.lvl||1;
       const cand = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
@@ -669,12 +680,11 @@ async function hostPowerTick(){
         const x=clamp(px+dx,1,gridSize-2), y=clamp(py+dy,1,gridSize-2);
         if (!tileOccupied(x,y)){ await placeStructureHost(x,y,"🧱", hpWall()); break; }
       }
-      const nextAt = now + powerPeriod("Stone",lvl);
-      if (name===myName){ me.powers.Stone.nextAt = nextAt; await updateDoc(doc(playersCol,myName),{powers:me.powers}); }
-      else { await updateDoc(doc(playersCol,name), { powers: {...powers, Stone:{lvl, nextAt} } }); }
+      const nextAt = now + powerPeriod("Stone",powers.Stone.lvl||1);
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Stone:{lvl:powers.Stone.lvl, nextAt} } });
     }
 
-    // Ice
+    /* Ice (unchanged) */
     if (powers.Ice && (powers.Ice.nextAt||0) <= now){
       const lvl=powers.Ice.lvl||1;
       const dur = Math.max(1000, (5000 - 500*(lvl-1)));
@@ -686,11 +696,10 @@ async function hostPowerTick(){
       for (const [id,c] of caterpillars){ if (inR(c.x,c.y)) await updateDoc(doc(catsCol,id), { freezeUntil: now+dur }); }
       for (const [id,cw] of crows){ if (inR(cw.x,cw.y)) await updateDoc(doc(crowsCol,id), { freezeUntil: now+dur }); }
       const nextAt = now + powerPeriod("Ice",lvl);
-      if (name===myName){ me.powers.Ice.nextAt = nextAt; await updateDoc(doc(playersCol,myName),{powers:me.powers}); }
-      else { await updateDoc(doc(playersCol,name), { powers: {...powers, Ice:{lvl, nextAt} } }); }
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Ice:{lvl, nextAt} } });
     }
 
-    // Lightning
+    /* Lightning (unchanged) */
     if (powers.Lightning && (powers.Lightning.nextAt||0) <= now){
       const lvl=powers.Lightning.lvl||1;
       const rng=5; const dmg = 5 + 2*(lvl-1); const chains = 1 + (lvl-1);
@@ -705,11 +714,7 @@ async function hostPowerTick(){
       const sig=(e)=>e.kind+":"+(e.id??`${e.x},${e.y}`);
       while(current && hits<=chains){
         hitSet.add(sig(current));
-        if (current.kind==="rat"){ const r=rats.get(current.id); if (r){ const hp=r.hp-dmg; if (hp<=0) await deleteDoc(doc(ratsCol,current.id)); else await updateDoc(doc(ratsCol,current.id),{hp}); } }
-        else if (current.kind==="bear"){ const b=bears.get(current.id); if (b){ const hp=b.hp-dmg; if (hp<=0) await deleteDoc(doc(bearsCol,current.id)); else await updateDoc(doc(bearsCol,current.id),{hp}); } }
-        else if (current.kind==="cater"){ const c=caterpillars.get(current.id); if (c){ const hp=c.hp-dmg; if (hp<=0) await deleteDoc(doc(catsCol,current.id)); else await updateDoc(doc(catsCol,current.id),{hp}); } }
-        else if (current.kind==="crow"){ const cw=crows.get(current.id); if (cw){ const hp=cw.hp-dmg; if (hp<=0) await deleteDoc(doc(crowsCol,current.id)); else await updateDoc(doc(crowsCol,current.id),{hp}); } }
-        // chain
+        await damageEnemy(current.kind,current.id,dmg);
         let next=null, best=1e9;
         for (const cand of inR){
           if (hitSet.has(sig(cand))) continue;
@@ -719,32 +724,144 @@ async function hostPowerTick(){
         current=next; hits++;
       }
       const nextAt = now + powerPeriod("Lightning",lvl);
-      if (name===myName){ me.powers.Lightning.nextAt = nextAt; await updateDoc(doc(playersCol,myName),{powers:me.powers}); }
-      else { await updateDoc(doc(playersCol,name), { powers: {...powers, Lightning:{lvl, nextAt} } }); }
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Lightning:{lvl, nextAt} } });
     }
 
-    // Fire
+    /* Fire (unchanged) */
     if (powers.Fire && (powers.Fire.nextAt||0) <= now){
       const lvl=powers.Fire.lvl||1;
       const r=2; const inR = (ux,uy)=> Math.max(Math.abs(ux-px),Math.abs(uy-py))<=r;
       renderExplosion(px,py);
-      for (const [id,rn] of rats){ if (inR(rn.x,rn.y)){ const hp=rn.hp-(10+3*(lvl-1)); if (hp<=0) await deleteDoc(doc(ratsCol,id)); else await updateDoc(doc(ratsCol,id),{hp}); const dx=Math.sign(rn.x-px), dy=Math.sign(rn.y-py); const nx=clamp(rn.x+dx,1,gridSize-2), ny=clamp(rn.y+dy,1,gridSize-2); if (!isBlocked(nx,ny)) await updateDoc(doc(ratsCol,id),{x:nx,y:ny}); } }
-      for (const [id,b] of bears){ if (inR(b.x,b.y)){ const hp=b.hp-(8+3*(lvl-1)); if (hp<=0) await deleteDoc(doc(bearsCol,id)); else await updateDoc(doc(bearsCol,id),{hp}); const dx=Math.sign(b.x-px), dy=Math.sign(b.y-py); const nx=clamp(b.x+dx,1,gridSize-2), ny=clamp(b.y+dy,1,gridSize-2); if (!isBlocked(nx,ny)) await updateDoc(doc(bearsCol,id),{x:nx,y:ny}); } }
-      for (const [id,c] of caterpillars){ if (inR(c.x,c.y)){ const hp=c.hp-(10+3*(lvl-1)); if (hp<=0) await deleteDoc(doc(catsCol,id)); else await updateDoc(doc(catsCol,id),{hp}); } }
-      for (const [id,cw] of crows){ if (inR(cw.x,cw.y)){ const hp=cw.hp-(10+3*(lvl-1)); if (hp<=0) await deleteDoc(doc(crowsCol,id)); else await updateDoc(doc(crowsCol,id),{hp}); } }
+      for (const [id,rn] of rats){ if (inR(rn.x,rn.y)){ await damageEnemy("rat",id,10+3*(lvl-1)); const dx=Math.sign(rn.x-px), dy=Math.sign(rn.y-py); const nx=clamp(rn.x+dx,1,gridSize-2), ny=clamp(rn.y+dy,1,gridSize-2); if (!isBlocked(nx,ny)) await updateDoc(doc(ratsCol,id),{x:nx,y:ny}); } }
+      for (const [id,b] of bears){ if (inR(b.x,b.y)){ await damageEnemy("bear",id,8+3*(lvl-1)); const dx=Math.sign(b.x-px), dy=Math.sign(b.y-py); const nx=clamp(b.x+dx,1,gridSize-2), ny=clamp(b.y+dy,1,gridSize-2); if (!isBlocked(nx,ny)) await updateDoc(doc(bearsCol,id),{x:nx,y:ny}); } }
+      for (const [id,c] of caterpillars){ if (inR(c.x,c.y)){ await damageEnemy("cater",id,10+3*(lvl-1)); } }
+      for (const [id,cw] of crows){ if (inR(cw.x,cw.y)){ await damageEnemy("crow",id,10+3*(lvl-1)); } }
       if (gameDoc.cat && inR(gameDoc.cat.x,gameDoc.cat.y)){ await damageCat(8+3*(lvl-1)); }
       const nextAt = now + powerPeriod("Fire",lvl);
-      if (name===myName){ me.powers.Fire.nextAt = nextAt; await updateDoc(doc(playersCol,myName),{powers:me.powers}); }
-      else { await updateDoc(doc(playersCol,name), { powers: {...powers, Fire:{lvl, nextAt} } }); }
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Fire:{lvl, nextAt} } });
+    }
+
+    /* NEW: Flea spawns – spawn lvl fleas near player, through walls pathing */
+    if (powers.Flea && (powers.Flea.nextAt||0) <= now){
+      const lvl=powers.Flea.lvl||1;
+      const count = Math.max(1,lvl);
+      for (let i=0;i<count;i++){
+        const ox = [-1,0,1][Math.floor(Math.random()*3)];
+        const oy = [-1,0,1][Math.floor(Math.random()*3)];
+        const sx = clamp(px+ox,1,gridSize-2), sy=clamp(py+oy,1,gridSize-2);
+        await addDoc(fleasCol,{ x:sx,y:sy,owner:name,createdMs:now });
+      }
+      const nextAt = now + powerPeriod("Flea",lvl);
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Flea:{lvl, nextAt} } });
+    }
+
+    /* NEW: Beetle spawns – 1 beetle near player, walls honored */
+    if (powers.Beetle && (powers.Beetle.nextAt||0) <= now){
+      const lvl=powers.Beetle.lvl||1;
+      const hp = 30 + 20*(lvl-1);
+      const atk = 5 + 5*(lvl-1);
+      const cand = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+      let placed=false;
+      for (let t=0;t<8;t++){
+        const [dx,dy]=cand[Math.floor(Math.random()*cand.length)];
+        const sx=clamp(px+dx,1,gridSize-2), sy=clamp(py+dy,1,gridSize-2);
+        const occupied = [...beetles].some(([,b])=>b.x===sx&&b.y===sy);
+        if (!isBlocked(sx,sy) && !occupied){ await addDoc(beetlesCol,{ x:sx,y:sy,owner:name,hp:hp,max:hp,atk,lvl }); placed=true; break; }
+      }
+      if (!placed){ await addDoc(beetlesCol,{ x:px,y:py,owner:name,hp:hp,max:hp,atk,lvl }); }
+      const nextAt = now + powerPeriod("Beetle",lvl);
+      await updateDoc(doc(playersCol,name), { powers: {...powers, Beetle:{lvl, nextAt} } });
     }
   }
 }
 
+/* ------------------------------- NEW: Pets AI ---------------------------- */
+function nearestEnemyFrom(x,y){
+  const pool=[];
+  if (gameDoc.cat) pool.push({kind:"cat", x:gameDoc.cat.x, y:gameDoc.cat.y});
+  for (const [id,r] of rats)  pool.push({kind:"rat", id, x:r.x, y:r.y});
+  for (const [id,b] of bears) pool.push({kind:"bear", id, x:b.x, y:b.y});
+  for (const [id,c] of caterpillars) pool.push({kind:"cater", id, x:c.x, y:c.y});
+  for (const [id,cw] of crows) pool.push({kind:"crow", id, x:cw.x, y:cw.y});
+  if (!pool.length) return null;
+  pool.sort((a,b)=> manhattan(x,y,a.x,a.y) - manhattan(x,y,b.x,b.y));
+  return pool[0];
+}
+
+/* Fleas: fly through walls; on contact deal 5 then die */
+async function hostFleasThink(){
+  if (!I_AM_HOST) return;
+  for (const [id,f] of fleas){
+    const t = nearestEnemyFrom(f.x,f.y);
+    if (!t) continue;
+    const fly = true;
+    const p = findPath(f.x,f.y,t.x,t.y,true,fly);
+    if (p && p.length>1){
+      const s=p[1]; await updateDoc(doc(fleasCol,id),{x:s[0],y:s[1]});
+    }
+    // contact?
+    if (f.x===t.x && f.y===t.y){
+      if (t.kind==="cat") await damageCat(5);
+      else await damageEnemy(t.kind,t.id,5);
+      await deleteDoc(doc(fleasCol,id));
+    }
+  }
+}
+
+/* Beetles: follow owner, attack within 8, honor walls, avoid stacking */
+function beetleBlocker(nx,ny,selfId){
+  for (const [bid,b] of beetles){ if (bid!==selfId && b.x===nx && b.y===ny) return true; }
+  return false;
+}
+async function hostBeetlesThink(){
+  if (!I_AM_HOST) return;
+  for (const [id,b] of beetles){
+    // dead?
+    if ((b.hp||0)<=0){ await deleteDoc(doc(beetlesCol,id)); continue; }
+
+    const owner = (b.owner===myName) ? me : players[b.owner];
+    if (!owner || !owner.alive){ continue; }
+
+    // target enemy within 8
+    let target = null;
+    const pool=[];
+    if (gameDoc.cat) pool.push({kind:"cat", x:gameDoc.cat.x, y:gameDoc.cat.y});
+    for (const [eid,r] of rats)  pool.push({kind:"rat", id:eid, x:r.x, y:r.y});
+    for (const [eid,br] of bears) pool.push({kind:"bear", id:eid, x:br.x, y:br.y});
+    for (const [eid,ct] of caterpillars) pool.push({kind:"cater", id:eid, x:ct.x, y:ct.y});
+    for (const [eid,cw] of crows) pool.push({kind:"crow", id:eid, x:cw.x, y:cw.y});
+    pool.sort((a,b2)=> manhattan(b.x,b.y,a.x,a.y)-manhattan(b.x,b.y,b2.x,b2.y));
+    const near = pool.find(e=> manhattan(b.x,b.y,e.x,e.y) <= 8);
+
+    if (near) target = near;
+    else target = { x: owner.x, y: owner.y, kind:"follow" };
+
+    // attack if adjacent / same tile to enemy
+    if (near && manhattan(b.x,b.y,near.x,near.y)<=1){
+      if (near.kind==="cat") await damageCat(b.atk||5);
+      else await damageEnemy(near.kind, near.id, b.atk||5);
+      continue;
+    }
+
+    // move step toward target honoring walls and other beetles
+    const p = findPath(b.x,b.y,target.x,target.y,true,false,(nx,ny)=>beetleBlocker(nx,ny,id));
+    let nx=b.x, ny=b.y;
+    if (p && p.length>1){ nx=p[1][0]; ny=p[1][1]; }
+    else{
+      // small separation push if stuck on another beetle
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for (const [dx,dy] of dirs){
+        const tx=clamp(b.x+dx,1,gridSize-2), ty=clamp(b.y+dy,1,gridSize-2);
+        if (!isBlocked(tx,ty) && !beetleBlocker(tx,ty,id)){ nx=tx; ny=ty; break; }
+      }
+    }
+    if (nx!==b.x || ny!==b.y) await updateDoc(doc(beetlesCol,id),{x:nx,y:ny});
+  }
+}
+
 /* ------------------------------- Timers/loops ---------------------------- */
-/* Hard-safe no-ops so setInterval never references an undefined ident.
-   (Block-scoped function declarations in modules won’t leak; use consts.) */
-const ensurePickupSpawner = async ()=>{}; // safe stub
-const pickupSpawnerTick  = async ()=>{};  // safe stub
+const ensurePickupSpawner = async ()=>{}; // safe stubs
+const pickupSpawnerTick  = async ()=>{};
 
 setInterval(async ()=>{ if (!me.alive) return; me.score += 10; await updateDoc(doc(playersCol,myName),{score:me.score}); }, 20000);
 setInterval(async ()=>{ if (!I_AM_HOST) return; const cp=(gameDoc.catPower||0)+1; await updateDoc(gameRef,{catPower:cp}); }, 60000);
@@ -767,6 +884,9 @@ setInterval(hostRatsThink, 450);
 setInterval(hostBearsThink, 650);
 setInterval(hostCaterpillarsThink, 600);
 setInterval(hostCrowsThink, 700);
+/* NEW pets AI loops */
+setInterval(hostFleasThink, 220);   // quick/flyers
+setInterval(hostBeetlesThink, 380); // medium pace
 
 /* turrets */
 setInterval(hostTurrets, 250);
@@ -814,7 +934,6 @@ setInterval(()=>{ if (!me.alive) return; if (buildIntent.dx||buildIntent.dy) try
 setupJoystick(document.getElementById('moveJoy'), d=>{ moveIntent=d; });
 setupJoystick(document.getElementById('buildJoy'), d=>{ buildIntent=d; });
 
-// Keyboard fallback
 window.addEventListener("keydown",e=>{
   if (e.key==="ArrowUp")  moveIntent={dx:0,dy:-1};
   if (e.key==="ArrowDown")moveIntent={dx:0,dy:1};
@@ -853,7 +972,7 @@ async function hostSpawnBears(){
   if (!I_AM_HOST) return;
   const mins = minutesSinceStart();
   if (mins < 4) return;
-  const count = Math.max(1, mins - 3); // 4min=>1, 5min=>2, ...
+  const count = Math.max(1, mins - 3);
   let spawned=0, tries=0;
   while (spawned<count && tries<200){
     tries++;
@@ -885,20 +1004,14 @@ async function hostSpawnCrows(){
   await addDoc(crowsCol,{x,y,hp:7,max:7});
 }
 
-/* Pickups — only walls/turrets/bombs as items; upgrades for wall/turret/range/speed */
+/* Pickups (unchanged core) */
 function unlockedItems(){
-  const m=minutesSinceStart();
-  const arr=[];
-  const pushW=(icon,w)=>{ for(let i=0;i<w;i++) arr.push(icon); };
+  const arr=[]; const pushW=(icon,w)=>{ for(let i=0;i<w;i++) arr.push(icon); };
   pushW("🧱",6); pushW("🔫",4); pushW("💣",3);
   return arr;
 }
-function powerupPool(){
-  return ["🔺🧱","🔺🔫","🔺📡","🔺🏃"];
-}
-async function placeTempPickup(x,y,t,ttlMs=30000){
-  await setDoc(doc(structsCol, key(x,y)), { x,y,t, hp:1, max:1, expAt: Date.now() + ttlMs });
-}
+function powerupPool(){ return ["🔺🧱","🔺🔫","🔺📡","🔺🏃"]; }
+async function placeTempPickup(x,y,t,ttlMs=30000){ await setDoc(doc(structsCol, key(x,y)), { x,y,t, hp:1, max:1, expAt: Date.now() + ttlMs }); }
 async function hostSpawnPickups(){
   if (!I_AM_HOST) return;
   const types = unlockedItems();
@@ -938,7 +1051,6 @@ async function tryMove(dx,dy,moveDelay){
   if (!inBounds(nx,ny)) return;
   me.x=nx; me.y=ny; lastMoveAt=Date.now(); await upsertMe();
 
-  // pickups
   const s=structures.get(key(nx,ny));
   if (s){
     const take=(icon,count)=>{ heldType=icon; heldCount=count; toast(`Held ${icon} x${count}`); };
@@ -981,7 +1093,7 @@ async function tryBuild(dx,dy){
   let hp=10, extra={};
   if (heldType==="🧱"){ hp=hpWall(); }
   if (heldType==="🔫"){ hp=hpTur(); }
-  if (heldType==="💣"){ hp=1; extra.expAt = Date.now() + 3000; } // 3s fuse
+  if (heldType==="💣"){ hp=1; extra.expAt = Date.now() + 3000; }
 
   await placeStructureHost(tx,ty,heldType,hp,extra);
   heldCount--; lastBuildAt=Date.now(); setHeldUI(); render();
@@ -1005,6 +1117,7 @@ async function tryBuild(dx,dy){
 </script>
 </body>
 </html>
+
 
 
 
