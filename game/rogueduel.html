@@ -471,11 +471,41 @@ function impactBurst(card, big=false){
 
 /* ===================== Helpers ===================== */
 function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
-function chooseTarget(opp){
-  const foes=living(opp); if(!foes.length) return null;
-  const taunts=foes.filter(f=>f.taunt); if(taunts.length) return taunts[Math.floor(rand()*taunts.length)];
-  return foes[Math.floor(rand()*foes.length)];
+// NEW: never pick a same-owner target, even if called wrong.
+function chooseTarget(attacker, oppDeck){
+  const foes = (oppDeck || []).filter(c =>
+    c && c.type === TYPE_UNIT && c.alive && c.owner !== attacker.owner
+  );
+  if (!foes.length) return null;
+
+  const taunts = foes.filter(f => f.taunt);
+  if (taunts.length) return taunts[Math.floor(rand() * taunts.length)];
+  return foes[Math.floor(rand() * foes.length)];
 }
+
+function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
+  if (!u.alive) return;
+  u.turnsAlive++;
+  if (u.frozen){ log(`${u.name} is frozen and skips.`); return; }
+
+  // Respect synergy priority lift
+  if ((u.tags||[]).includes('ranged') && synergyBuffs.rangedPriorityUp && u.priority>PRIORITY.HIGH) {
+    u.priority = PRIORITY.HIGH;
+  }
+
+  // Healers etc. (unchanged up to target selection)...
+
+  // Determine the OPP deck strictly by owner
+  const oppDeck = (u.owner === 'you') ? foeDeck : myDeck;
+
+  // 🔒 Hard safety: if somehow wrong arrays are passed, prevent friendly fire
+  let target = chooseTarget(u, oppDeck);
+  if (!target) return;
+
+  const doHit = ()=>{ /* ...leave your existing damage/splash/poison/freeze code... */ };
+  // ...leave the rest of actUnit as-is (shove anim etc.), just ensure target and oppDeck use the above...
+}
+
 function waitMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 /* HP & Healing respect temp maxHP */
@@ -929,34 +959,44 @@ async function ensureStateSeats(){
   ui.pFoe.textContent = (SEAT==='p1'?p2Name:(SEAT==='p2'?p1Name:'—'));
 
   // init match state if missing
+// ---------- INIT: create match doc with 3 forced COMMON picks each ----------
+{
   await runTransaction(db, async (tx)=>{
     const cur = await tx.get(stateRef);
     if (!cur.exists()){
-      // first round: simultaneous 3 COMMON picks each
       const seed = Date.now() & 0xffffffff;
       setSeed(seed);
-      const offers = {
-        p1: rollDraft(true),  // force common
-        p2: rollDraft(true)
-      };
+      // Round 1 → simultaneous 3 common picks each
       tx.set(stateRef, {
-        p1:p1Name, p2:p2Name,
+        p1: p1Name, p2: p2Name,
         createdAt: serverTimestamp(),
-        round:1,
-        phase:'draft',
+        round: 1,
+        phase: 'draft',
         draftSeed: seed,
-        draftOffers: offers,
-        p1Deck:[], p2Deck:[],
-        p1Pick:null, p2Pick:null,
-        p1Relics:[], p2Relics:[],
-        relicOffers:null,
-        p1RelicPick:null, p2RelicPick:null
+        draftOffers: { p1: rollDraft(true), p2: rollDraft(true) }, // force common
+        // decks
+        p1Deck: [], p2Deck: [],
+        // picks for this sub-step
+        p1Pick: null, p2Pick: null,
+        // per-round counters
+        draftTarget: 3,                // how many picks this round
+        p1DraftedThisRound: 0,
+        p2DraftedThisRound: 0,
+        // relics
+        p1Relics: [], p2Relics: [],
+        relicSeed: null,
+        relicOffers: null,
+        p1RelicPick: null,
+        p2RelicPick: null,
+        // battle
+        battleSeed: null,
+        winner: null
       });
     }
   });
 }
 
-/* Roll draft offers (3 choices) */
+// ---------- Draft / Relic roll helpers ----------
 function rollDraft(forceCommon=false){
   const picks=[];
   for(let i=0;i<3;i++){
@@ -967,8 +1007,7 @@ function rollDraft(forceCommon=false){
     }else{
       const rar = weightedPick(draftWeights());
       const pool = PLAYER_POOL.filter(n=>cardRarity(n)===rar);
-      const fallback = PLAYER_POOL;
-      const coll = pool.length?pool:fallback;
+      const coll = pool.length ? pool : PLAYER_POOL;
       name = coll[Math.floor(rand()*coll.length)];
     }
     picks.push(name);
@@ -977,8 +1016,8 @@ function rollDraft(forceCommon=false){
 }
 function rollRelics(){
   const ids = RELICS.map(r=>r.id);
-  const picks = [];
   const bag = ids.slice(0);
+  const picks=[];
   for(let i=0;i<3;i++){
     const j = Math.floor(rand()*bag.length);
     picks.push(bag.splice(j,1)[0]);
@@ -986,112 +1025,154 @@ function rollRelics(){
   return picks;
 }
 
-/* State listener */
+// ---------- Live state listener driving the flow ----------
 onSnapshot(stateRef, async (snap)=>{
   if (!snap.exists()) return;
   const st = snap.data();
-  setPhase(st.phase||'—'); setRound(st.round||1);
+  setPhase(st.phase||'—');
+  setRound(st.round||1);
 
-  // DRAFT PHASE
+  // ----- DRAFT PHASE (simultaneous, private options) -----
   if (st.phase==='draft' && st.draftOffers){
     const minePick = (SEAT==='p1'? st.p1Pick : SEAT==='p2'? st.p2Pick : null);
     ui.draftStatus.textContent = minePick ? '✅ Pick locked. Waiting for the other player…' : 'Choose one.';
-    setSeed(st.draftSeed>>>0); // ensure same order for roll logic viewing (not strictly required)
-    if (!minePick) openDraft(st.draftOffers, SEAT, false);
-    else { openDraft(st.draftOffers, SEAT, true); }
+    setSeed((st.draftSeed>>>0) || 0);
+    openDraft(st.draftOffers, SEAT, !!minePick);   // show only my 3
   } else {
     closeDraft();
   }
 
-  // When both picked in draft → apply to deck; if need relic this round → open relic phase else → start battle
+  // When BOTH players have picked → host (p1) applies & advances
   if (st.phase==='draft' && st.p1Pick && st.p2Pick){
-    // Host (p1) advances phase deterministically
     if (USER===st.p1){
       await runTransaction(db, async (tx)=>{
-        const cur = await tx.get(stateRef); const c = cur.data();
+        const cur = await tx.get(stateRef); if (!cur.exists()) return;
+        const c = cur.data();
         if (c.phase!=='draft') return;
+
+        // move picks into decks
         const nextP1Deck = [...(c.p1Deck||[]), c.p1Pick];
         const nextP2Deck = [...(c.p2Deck||[]), c.p2Pick];
-        const needR = needRelic(c.round);
-        if (needR){
-          const seed = (Date.now()^1234567) & 0xffffffff;
+
+        const target = c.draftTarget || 1;
+        const p1Count = (c.p1DraftedThisRound||0)+1;
+        const p2Count = (c.p2DraftedThisRound||0)+1;
+
+        const needMoreThisRound = (p1Count < target) || (p2Count < target);
+
+        if (needMoreThisRound){
+          // Continue drafting within the same round
+          const seed = (Date.now() ^ 0x51f0) & 0xffffffff;
           setSeed(seed);
           tx.update(stateRef, {
             p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-            p1Pick:null, p2Pick:null,
-            phase:'relic',
-            relicSeed: seed,
-            relicOffers: { p1: rollRelics(), p2: rollRelics() },
-            p1RelicPick:null, p2RelicPick:null
+            p1Pick: null, p2Pick: null,
+            p1DraftedThisRound: p1Count,
+            p2DraftedThisRound: p2Count,
+            draftSeed: seed,
+            draftOffers: { p1: rollDraft(false), p2: rollDraft(false) }, // normal weights now
+            winner: null
           });
-        }else{
-          const seed = (Date.now()^7654321) & 0xffffffff;
-          tx.update(stateRef, {
-            p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-            p1Pick:null, p2Pick:null,
-            phase:'battle',
-            battleSeed: seed
-          });
+        } else {
+          // Round draft done → relic or battle
+          const round = c.round || 1;
+          const needR = needRelic(round); // pure fn: true on multiples of 5
+          if (needR){
+            const rseed = (Date.now() ^ 0x9e37) & 0xffffffff;
+            setSeed(rseed);
+            tx.update(stateRef, {
+              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Pick:null, p2Pick:null,
+              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+              relicSeed: rseed,
+              relicOffers: { p1: rollRelics(), p2: rollRelics() },
+              p1RelicPick: null, p2RelicPick: null,
+              phase: 'relic',
+              winner: null
+            });
+          } else {
+            const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
+            tx.update(stateRef, {
+              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Pick:null, p2Pick:null,
+              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+              phase:'battle',
+              battleSeed: bseed,
+              winner: null
+            });
+          }
         }
       });
     }
   }
 
-  // RELIC PHASE
+  // ----- RELIC PHASE (simultaneous, private options) -----
   if (st.phase==='relic' && st.relicOffers){
     const minePick = (SEAT==='p1'? st.p1RelicPick : SEAT==='p2'? st.p2RelicPick : null);
-    setSeed(st.relicSeed>>>0);
-    if (!minePick) openRelicDraft(st.relicOffers, SEAT, false);
-    else { openRelicDraft(st.relicOffers, SEAT, true); }
+    setSeed((st.relicSeed>>>0) || 0);
+    openRelicDraft(st.relicOffers, SEAT, !!minePick);
   } else {
     closeRelic();
   }
 
-  // After both relic picks → attach relic and battle
+  // When BOTH relic picks are in → host applies and goes to battle
   if (st.phase==='relic' && st.p1RelicPick && st.p2RelicPick){
     if (USER===st.p1){
       await runTransaction(db, async (tx)=>{
-        const cur = await tx.get(stateRef); const c = cur.data();
-        if (c.phase!=='relic') return;
-        const nextP1Relics = [...(c.p1Relics||[]), {id:c.p1RelicPick}];
-        const nextP2Relics = [...(c.p2Relics||[]), {id:c.p2RelicPick}];
-        const seed = (Date.now()^24681357) & 0xffffffff;
+        const cur = await tx.get(stateRef); if (!cur.exists()) return;
+        const c = cur.data(); if (c.phase!=='relic') return;
+
+        const nextP1Relics = [...(c.p1Relics||[]), { id: c.p1RelicPick }];
+        const nextP2Relics = [...(c.p2Relics||[]), { id: c.p2RelicPick }];
+        const bseed = (Date.now() ^ 0x6d6d) & 0xffffffff;
+
         tx.update(stateRef, {
-          p1Relics: nextP1Relics, p2Relics: nextP2Relics,
-          p1RelicPick:null, p2RelicPick:null, relicOffers:null,
-          phase:'battle', battleSeed: seed
+          p1Relics: nextP1Relics,
+          p2Relics: nextP2Relics,
+          p1RelicPick: null,
+          p2RelicPick: null,
+          relicOffers: null,
+          phase: 'battle',
+          battleSeed: bseed,
+          winner: null
         });
       });
     }
   }
 
-  // BATTLE PHASE
+  // ----- BATTLE PHASE (deterministic local sim with shared seed) -----
   if (st.phase==='battle' && typeof st.battleSeed==='number'){
-    // Run battle locally (both sides) using same seed; host writes result
     (async ()=>{
-      const result = await runBattle(st.battleSeed>>>0, st);
+      const result = await runBattle(st.battleSeed>>>0, st); // both clients simulate
       if (USER===st.p1){
         await updateDoc(stateRef, { phase:'result', winner: result.winner });
       }
     })();
   }
 
-  // RESULT → next round setup (host)
+  // ----- RESULT → NEXT ROUND SETUP (host drives) -----
   if (st.phase==='result' && st.winner){
     if (USER===st.p1){
       await runTransaction(db, async (tx)=>{
-        const cur = await tx.get(stateRef); const c = cur.data();
-        if (c.phase!=='result') return;
-        // Prepare NEXT round: new simultaneous draft (not forced common anymore except round 1 already done)
-        const seed = (Date.now()^97531) & 0xffffffff;
+        const cur = await tx.get(stateRef); if (!cur.exists()) return;
+        const c = cur.data(); if (c.phase!=='result') return;
+
+        const nextRound = (c.round||1) + 1;
+        const seed = (Date.now() ^ 0x12345) & 0xffffffff;
         setSeed(seed);
+
         tx.update(stateRef, {
-          round: (c.round||1) + 1,
-          phase:'draft',
+          round: nextRound,
+          phase: 'draft',
           draftSeed: seed,
           draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
-          p1Pick:null, p2Pick:null,
-          winner:null
+          p1Pick: null, p2Pick: null,
+          // NORMAL rounds: 1 pick each
+          draftTarget: 1,
+          p1DraftedThisRound: 0,
+          p2DraftedThisRound: 0,
+          winner: null,
+          battleSeed: null
         });
       });
     }
@@ -1105,4 +1186,5 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
