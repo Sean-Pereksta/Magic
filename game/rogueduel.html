@@ -472,15 +472,12 @@ function impactBurst(card, big=false){
 /* ===================== Helpers ===================== */
 function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
 // NEW: never pick a same-owner target, even if called wrong.
-function chooseTarget(attacker, oppDeck){
-  const foes = (oppDeck || []).filter(c =>
-    c && c.type === TYPE_UNIT && c.alive && c.owner !== attacker.owner
-  );
+function chooseTarget(oppDeck){
+  const foes = (oppDeck || []).filter(c => c && c.type === TYPE_UNIT && c.alive);
   if (!foes.length) return null;
-
   const taunts = foes.filter(f => f.taunt);
-  if (taunts.length) return taunts[Math.floor(rand() * taunts.length)];
-  return foes[Math.floor(rand() * foes.length)];
+  const pool = taunts.length ? taunts : foes;
+  return pool[Math.floor(rand() * pool.length)];
 }
 
 function waitMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
@@ -1163,6 +1160,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
