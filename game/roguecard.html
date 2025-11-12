@@ -403,41 +403,73 @@ function updateHeader(){
 }
 
 /*** Card factory (includes relic stat hooks) ***/
-function makeCard(name,stars=1){
-  const base=CATALOG[name];
-  const isSpell=base.type===TYPE_SPELL;
-  const up=state.upgrades[name]||1;
+function makeCard(name, stars = 1){
+  const base = CATALOG[name];
+  if (!base) throw new Error(`Unknown card: ${name}`);
+
+  const isSpell = base.type === TYPE_SPELL;
+  const up = (state.upgrades && state.upgrades[name]) || 1;
+
   const relicSpellPlus = (state.relicFlags?.relicSpellStarsPlus || 0);
-  const starsFinal=isSpell?Math.min(4, up + relicSpellPlus):Math.min(4,Math.max(stars,up));
-  let hp = base.hp||0, dmg = base.dmg||0;
+  const starsFinal = isSpell
+    ? Math.min(4, up + relicSpellPlus)
+    : Math.min(4, Math.max(stars, up));
+
+  let hp = base.hp || 0, dmg = base.dmg || 0;
 
   // Apply relic stat hooks (HP/dmg broad buffs)
   const hpMult = (state.relicFlags?.relicHP || 1);
   const allDmgMult = (state.relicFlags?.relicAllDmg || 1);
-  if(!isSpell){
+
+  if (!isSpell){
     hp = Math.round(hp * hpMult);
     dmg = Math.round(dmg * allDmgMult);
-    if((base.tags||[]).includes('ranged') && state.relicFlags?.relicRangedDmg){
+    if ((base.tags || []).includes('ranged') && state.relicFlags?.relicRangedDmg){
       dmg = Math.round(dmg * state.relicFlags.relicRangedDmg);
     }
   }
 
-  const c={
-    id:Math.random().toString(36).slice(2), name, icon:base.icon, type:base.type, rar:base.rar,
-    stars:starsFinal, priority:base.priority, tags:clone(base.tags||[]),
-    hp:hp, dmg:dmg, hpNow:isSpell?0:Math.round(hp*starMult(starsFinal)),
-    alive:true, owner:'you', effects:[], frozen:false, turnsAlive:0, baby:false,
-    taunt:!!base.taunt, splash2:!!base.splash2, splash3:!!base.splash3, extraStrike:!!base.extraStrike,
-    applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2=base.heal2?clone(base.heal2):null,
-    chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
-    alpha:!!base.alpha, wardSong:!!base.wardSong,
-    freeze:!!base.freeze,
-    acolyte:!!base.acolyte,
-    spell:base.spell?clone(base.spell):null,
-    _used:false
+  const c = {
+    id: Math.random().toString(36).slice(2),
+    name,
+    icon: base.icon,
+    type: base.type,
+    rar: base.rar,
+    stars: starsFinal,
+    priority: base.priority,
+    tags: clone(base.tags || []),
+    hp: hp,
+    dmg: dmg,
+    hpNow: isSpell ? 0 : Math.round(hp * starMult(starsFinal)),
+    alive: true,
+    owner: 'you',
+    effects: [],
+    frozen: false,
+    turnsAlive: 0,
+    baby: false,
+
+    taunt: !!base.taunt,
+    splash2: !!base.splash2,
+    splash3: !!base.splash3,
+    extraStrike: !!base.extraStrike,
+    applyPoison: base.applyPoison ? clone(base.applyPoison) : null,
+    heal2: base.heal2 ? clone(base.heal2) : null,   // <-- fixed colon
+    chain3: !!base.chain3,
+    split: !!base.split,
+    smiteHeal: !!base.smiteHeal,
+    regen2: !!base.regen2,
+    alpha: !!base.alpha,
+    wardSong: !!base.wardSong,
+    freeze: !!base.freeze,
+    acolyte: !!base.acolyte,
+
+    spell: base.spell ? clone(base.spell) : null,
+    _used: false
   };
+
   return c;
 }
+
 
 /*** Rendering ***/
 function mountCard(c){
@@ -1218,5 +1250,6 @@ function prepareTeamsForBattle(){
 </script>
 </body>
 </html>
+
 
 
