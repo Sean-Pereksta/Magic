@@ -324,10 +324,9 @@ const r = ()=>rand();
 
 /* ===================== Card Factory ===================== */
 function makeCard(name, stars=1, relicFlags={}){
-  // Guard: unknown or falsy card names
   if (!name || !CATALOG[name]) {
     console.warn('[makeCard] Unknown card name:', name);
-    return null; // callers must filter(Boolean)
+    return null;
   }
   const base=CATALOG[name];
   const isSpell = base.type===TYPE_SPELL;
@@ -359,6 +358,9 @@ function makeCard(name, stars=1, relicFlags={}){
 
 
 /* ===================== Rendering ===================== */
+function hasShield(c){return !!c.effects.find(e=>e.kind==='shield' && e.dur>0);}
+function isPoisoned(c){return !!c.effects.find(e=>e.kind==='poison' && e.dur>0);}
+
 function mountCard(c){
   const div=document.createElement('div');
   div.className='card rarity-'+rarClass(c.rar);
@@ -395,14 +397,7 @@ function renderDeckBar(myDeck){
   for(const c of myDeck) ui.deckBar.appendChild(mountCard(c));
 }
 
-/* ===================== Status & FX ===================== */
-function hasShield(c){return !!c.effects.find(e=>e.kind==='shield' && e.dur>0);}
-function isPoisoned(c){return !!c.effects.find(e=>e.kind==='poison' && e.dur>0);}
-function applyShield(c,dur=5){const ex=c.effects.find(e=>e.kind==='shield'); if(ex){ex.dur=Math.max(ex.dur||0,dur);} else c.effects.push({kind:'shield',dur});}
-function addPoison(t,dmg,dur){t.effects.push({kind:'poison',dmg,dur});}
-function addBleed(t,amt=1,dur=2){t.effects.push({kind:'bleed',dmg:amt,dur});}
-function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
-function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
+/* ===================== FX ===================== */
 function elCenter(el){const rct = el.getBoundingClientRect(); return { x: rct.left + rct.width/2, y: rct.top + rct.height*0.15 }; }
 function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
 
@@ -494,10 +489,9 @@ function healCard(target,amt){
   renderBoard(currentMyDeck, currentFoeDeck);
 }
 
-/* ===================== Targeting with hard owner safety ===================== */
+/* ===================== Targeting ===================== */
 function safeOpponentsFor(attacker, myDeck, foeDeck){
-  const pool = attacker.owner==='you' ? living(foeDeck) : living(myDeck);
-  return pool;
+  return attacker.owner==='you' ? living(foeDeck) : living(myDeck);
 }
 function chooseTargetFor(attacker, myDeck, foeDeck){
   const foes = safeOpponentsFor(attacker, myDeck, foeDeck);
@@ -508,8 +502,13 @@ function chooseTargetFor(attacker, myDeck, foeDeck){
 }
 
 /* ===================== Combat ===================== */
-function dealDamage(attacker,target,base, heavy=false){
-  // Hard guard: never apply damage to same-owner targets
+function addPoison(t,dmg,dur){t.effects.push({kind:'poison',dmg,dur});}
+function addBleed(t,amt=1,dur=2){t.effects.push({kind:'bleed',dmg:amt,dur});}
+function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
+function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
+function applyShield(c,dur=5){const ex=c.effects.find(e=>e.kind==='shield'); if(ex){ex.dur=Math.max(ex.dur||0,dur);} else c.effects.push({kind:'shield',dur});}
+
+function dealDamageBase(attacker,target,base, heavy=false){
   if (!target || !attacker || attacker.owner === target.owner) return;
   if(!target.alive) return;
   const dmgStarred=Math.round(base*starMult(attacker.stars));
@@ -523,7 +522,7 @@ function dealDamage(attacker,target,base, heavy=false){
   if(target.hpNow<=0){
     target.alive=false;
     if(target.split){
-      const mk=()=>makeCard("Slime",Math.max(1,target.stars-1), {});
+      const mk=()=>makeCard("Slime",Math.max(1,target.stars-1), {}) || makeCard("Slime",1,{});
       const b1=mk(), b2=mk(); b1.owner=target.owner; b2.owner=target.owner;
       b1.baby=b2.baby=true; b1.hpNow=2; b2.hpNow=2; b1.split=b2.split=false;
       (target.owner==='you'?currentMyDeck:currentFoeDeck).push(b1,b2);
@@ -534,28 +533,28 @@ function dealDamage(attacker,target,base, heavy=false){
 }
 
 /* Hoplite retaliation wrapper */
-const _dealDamage=dealDamage;
-dealDamage=function(attacker,target,base,heavy=false){
+function dealDamage(attacker,target,base,heavy=false){
   const aliveBefore = target?.alive;
-  _dealDamage(attacker,target,base,heavy);
+  dealDamageBase(attacker,target,base,heavy);
   if(target && target.alive && target.tags && target.tags.includes('retaliate') && !target._retalUsed && aliveBefore){
     target._retalUsed=true;
     slashTrail(target, attacker, '#fbbf24');
-    _dealDamage(target, attacker, 3, false);
+    dealDamageBase(target, attacker, 3, false);
     log(`${target.name} retaliates!`);
   }
-};
+}
 
-/* Spells – once per battle (always other side for harmful, same side for helpful) */
-function castSpellsOnce(deck, enemyDeck, owner, relicFlags, synergyBuffs){
+/* Spells – once per battle */
+function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
   for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
     s._used = true;
     const pow = starMult(s.stars);
     const sp = clone(s.spell);
 
     if (sp.kind==='fire'){
-      const tgt = living(enemyDeck)[0] ? living(enemyDeck)[Math.floor(r()*living(enemyDeck).length)] : null;
-      if (tgt){ fireExplosion(tgt); dealDamage(s, tgt, Math.round(sp.dmg*pow), true); log(`${owner} 💥 Firebolt hits ${tgt.name}`); }
+      const pool = living(enemyDeck);
+      const tgt = pool.length ? pool[Math.floor(r()*pool.length)] : null;
+      if (tgt){ fireExplosion(tgt); dealDamage(s, tgt, Math.round(sp.dmg*pow), true); log(`${ownerLabel} 💥 Firebolt hits ${tgt.name}`); }
     }
     else if (sp.kind==='lightning'){
       for (let i=0;i<sp.hits;i++){
@@ -563,7 +562,7 @@ function castSpellsOnce(deck, enemyDeck, owner, relicFlags, synergyBuffs){
         const t = foes.length? foes[Math.floor(r()*foes.length)] : null;
         if (t){ dealDamage(s,t,Math.round(sp.dmg*pow)); }
       }
-      log(`${owner} ⚡ Lightning strikes ${sp.hits} targets`);
+      log(`${ownerLabel} ⚡ Lightning strikes ${sp.hits} targets`);
     }
     else if (sp.kind==='shield'){
       const allies = living(deck).filter(a=>!hasShield(a));
@@ -573,13 +572,11 @@ function castSpellsOnce(deck, enemyDeck, owner, relicFlags, synergyBuffs){
         applyShield(tgt, (sp.dur||1) + extra);
         bigExplosion(tgt,'var(--shield)',18);
         gFloat(tgt, `Shield`, 'var(--shield)');
-        log(`${owner} 🛡️ Shield on ${tgt.name}`);
+        log(`${ownerLabel} 🛡️ Shield on ${tgt.name}`);
       }
     }
     else if (sp.kind==='plague'){
-      const opp = living(enemyDeck).slice();
-      // deterministic pick: sort by id then take first N
-      opp.sort((a,b)=>a.id.localeCompare(b.id));
+      const opp = living(enemyDeck).slice().sort((a,b)=>a.id.localeCompare(b.id));
       const count = Math.min(sp.count||3, opp.length);
       for (let i=0;i<count;i++){
         const add = (relicFlags?.relicPoisonPlus||0) + (synergyBuffs.poisonPlus||0);
@@ -587,18 +584,22 @@ function castSpellsOnce(deck, enemyDeck, owner, relicFlags, synergyBuffs){
         addPoison(opp[i], Math.round(sp.dmg*pow)+add, (sp.dur||3)+durPlus);
         plagueSplash(opp[i]); gFloat(opp[i], `☣`, '#7c3aed');
       }
-      log(`${owner} ☣️ Plague spreads`);
+      log(`${ownerLabel} ☣️ Plague spreads`);
     }
     else if (sp.kind==='ward'){
       deck.__wards = deck.__wards || [];
       deck.__wards.push({heal:Math.round((sp.heal||5)*pow), dur:sp.dur||3, targets:sp.targets||2});
       for (const u of living(deck)) { bigExplosion(u,'#34d399',10); }
-      log(`${owner} ✨ Healing Ward active`);
+      log(`${ownerLabel} ✨ Healing Ward active`);
     }
     else if (sp.kind==='freeze2'){
-      const opp = living(enemyDeck).slice(0).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,2);
-      for (const t of opp){ blizzardBurst(t); addFreeze(t, 1 + (synergyBuffs.freezePlus||0)); dealDamage(s,t,Math.round((sp.dmg||3)*pow)); }
-      log(`${owner} ❄️ Blizzard chills two`);
+      const opp = living(enemyDeck).slice().sort((a,b)=>a.id.localeCompare(b.id)).slice(0,2);
+      for (const t of opp){
+        blizzardBurst(t);
+        addFreeze(t, 1 + (synergyBuffs.freezePlus||0));
+        dealDamage(s,t,Math.round((sp.dmg||3)*pow));
+      }
+      log(`${ownerLabel} ❄️ Blizzard chills two`);
     }
     else if (sp.kind==='hotAll'){
       const DURATION = 3;
@@ -608,14 +609,14 @@ function castSpellsOnce(deck, enemyDeck, owner, relicFlags, synergyBuffs){
         u.effects.push({kind:'maxhp', bonus:1, dur:DURATION});
         gFloat(u, '+MaxHP', '#34d399'); heartPulse(u);
       }
-      log(`${owner} 💚 Rejuvenate across allies`);
+      log(`${ownerLabel} 💚 Rejuvenate across allies`);
     }
   }
 }
 
 /* End-of-round ticks */
-function processEndOfRound(myDeck, foeDeck, synergyBuffs){
-  function tick(deck){
+function processEndOfRound(myDeck, foeDeck, synYou, synFoe){
+  function tick(deck, syn){
     for(const c of deck.filter(x=>x.type===TYPE_UNIT)){
       for(const e of c.effects){
         if((e.kind==='poison' || e.kind==='bleed' || e.kind==='burn') && e.dur>0 && c.alive){
@@ -634,7 +635,7 @@ function processEndOfRound(myDeck, foeDeck, synergyBuffs){
       const newMax = getMaxHP(c);
       if (c.hpNow > newMax) c.hpNow = newMax;
 
-      if(c.regen2 && c.alive) healCard(c,2 + (synergyBuffs.healPlus||0));
+      if(c.regen2 && c.alive) healCard(c,2 + (syn.healPlus||0));
       if(c.smiteHeal && c.alive) healCard(c,2);
     }
     const wards=deck.__wards||[];
@@ -651,7 +652,8 @@ function processEndOfRound(myDeck, foeDeck, synergyBuffs){
 
     for(const c of deck.filter(x=>x.baby && x.alive)){ c.alive=false; gFloat(c,'✖','#6b7280'); }
   }
-  tick(myDeck); tick(foeDeck);
+  tick(myDeck, synYou);
+  tick(foeDeck, synFoe);
 }
 
 /* Unit action */
@@ -671,7 +673,13 @@ function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
   if(u.heal2){
     const allies=living(u.owner==='you'?myDeck:foeDeck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
     for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (synergyBuffs.healPlus||0)); }
-    if(u.tags.includes('bubble') && allies.length){ const tgt=allies[0]; if(tgt && !hasShield(tgt)){ applyShield(tgt,1 + (relicFlags?.relicShieldPlus||0)); gFloat(tgt,'Bubble','var(--shield)'); } }
+    if(u.tags.includes('bubble') && allies.length){
+      const tgt=allies[0];
+      if(tgt && !hasShield(tgt)){
+        applyShield(tgt,1 + (relicFlags?.relicShieldPlus||0));
+        gFloat(tgt,'Bubble','var(--shield)');
+      }
+    }
     log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals two`);
     return;
   }
@@ -707,13 +715,20 @@ function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
     if(u.splash3){
       const oppDeck = u.owner==='you'?foeDeck:myDeck;
       const arr=living(oppDeck); const n=Math.min(3,arr.length);
-      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); if(u.tags.includes('burn')) addBurn(arr[i],1,2); }
+      for(let i=0;i<n;i++){
+        slashTrail(u, arr[i], '#ef4444');
+        dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true);
+        if(u.tags.includes('burn')) addBurn(arr[i],1,2);
+      }
       log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} hits ${n}`);
     }
     else if(u.splash2){
       const oppDeck = u.owner==='you'?foeDeck:myDeck;
       const arr=living(oppDeck); const n=Math.min(2,arr.length);
-      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); }
+      for(let i=0;i<n;i++){
+        slashTrail(u, arr[i], '#ef4444');
+        dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true);
+      }
       log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} cleaves ${n}`);
     }
     else{
@@ -726,7 +741,6 @@ function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
     }
   };
 
-  // Shove anim (purely visual)
   const aEl=findCardEl(u.id), dEl= target? findCardEl(target.id):null;
   if(!aEl||!dEl){ doHit(); return; }
   const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
@@ -763,7 +777,7 @@ function computeSynergies(deck){
   return buffs;
 }
 
-/* ===================== DRAFT UI ===================== */
+/* ===================== DRAFT / RELIC HELPERS ===================== */
 function draftWeights(){ return {common:70, rare:24, epic:5, legend:1}; }
 function weightedPick(weights){
   const entries = Object.entries(weights);
@@ -772,12 +786,41 @@ function weightedPick(weights){
   for(const [k,v] of entries){ if((rnum-=v)<=0) return k; }
   return entries[0][0];
 }
+function rollDraft(forceCommon=false){
+  const picks=[];
+  for(let i=0;i<3;i++){
+    let pool;
+    if (forceCommon){
+      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===RAR.COMMON);
+    } else {
+      const rar = weightedPick(draftWeights());
+      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===rar);
+      if (!pool.length) pool = PLAYER_POOL.filter(n => CATALOG[n]);
+    }
+    picks.push(pool[Math.floor(r()*pool.length)]);
+  }
+  return picks;
+}
+function rollRelics(){
+  const ids = RELICS.map(r=>r.id);
+  const bag = ids.slice(0);
+  const picks=[];
+  for(let i=0;i<3;i++){
+    const j = Math.floor(r()*bag.length);
+    picks.push(bag.splice(j,1)[0]);
+  }
+  return picks;
+}
+function needRelic(round){ return round>0 && round%5===0; }
+
+/* ===================== DRAFT UI ===================== */
 function openDraft(offers, mySeat, myPicked){
   ui.draftChoices.innerHTML='';
   ui.draftModal.classList.add('on');
   const mine = mySeat==='p1'? offers.p1 : offers.p2;
   for(const name of mine){
-    const preview = makeCard(name, 1, {}); // preview only
+    const preview = makeCard(name, 1, {});
+    if (!preview) continue;
     const box=document.createElement('div');
     box.className='card rarity-'+rarClass(preview.rar);
     box.innerHTML=`
@@ -804,6 +847,7 @@ function openRelicDraft(offers, mySeat, myPicked){
   const mine = mySeat==='p1'? offers.p1 : offers.p2;
   for(const id of mine){
     const r = RELICS.find(x=>x.id===id);
+    if (!r) continue;
     const box=document.createElement('div');
     box.className='card rarity-legend';
     box.innerHTML=`
@@ -824,14 +868,15 @@ function closeRelic(){ ui.relicModal.classList.remove('on'); }
 
 /* ===================== BATTLE ORCHESTRATION ===================== */
 let currentMyDeck=[], currentFoeDeck=[];
-function prepareTeamsForBattle(myDeck, foeDeck, relicFlags){
+
+function prepareTeamsForBattle(myDeck, foeDeck, flagsYou={}, flagsFoe={}){
   for(const c of myDeck){
     c.owner='you';
     if(c.type===TYPE_UNIT){
       c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
       c.hpNow=Math.round(c.hp*starMult(c.stars));
-      const rpct = relicFlags?.relicMaxHPPct || 0;
-      const hpStartHealPct = relicFlags?.relicStartHealPct || 0;
+      const rpct = flagsYou.relicMaxHPPct || 0;
+      const hpStartHealPct = flagsYou.relicStartHealPct || 0;
       if (rpct > 0){
         const baseMax = Math.round(c.hp * starMult(c.stars));
         const bonus   = Math.max(1, Math.round(baseMax * rpct));
@@ -847,12 +892,21 @@ function prepareTeamsForBattle(myDeck, foeDeck, relicFlags){
     if(c.type===TYPE_UNIT){
       c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
       c.hpNow=Math.round(c.hp*starMult(c.stars));
+      const rpct = flagsFoe.relicMaxHPPct || 0;
+      const hpStartHealPct = flagsFoe.relicStartHealPct || 0;
+      if (rpct > 0){
+        const baseMax = Math.round(c.hp * starMult(c.stars));
+        const bonus   = Math.max(1, Math.round(baseMax * rpct));
+        c.effects.push({kind:'maxhp', bonus, dur:null});
+        const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
+        c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
+      }
     }
     if(c.type===TYPE_SPELL) c._used=false;
   }
 }
 
-async function playRound(myDeck, foeDeck, synergyBuffs, relicFlags){
+async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
   for(const x of [...myDeck, ...foeDeck]) x._retalUsed=false;
 
   const Y=living(myDeck).sort((a,b)=>a.priority-b.priority);
@@ -860,57 +914,57 @@ async function playRound(myDeck, foeDeck, synergyBuffs, relicFlags){
 
   for(const u of [...Y,...F]){
     if(!u.alive) continue;
-    const delayBefore = (relicFlags?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
+    const isYou = u.owner==='you';
+    const delayBefore = (isYou && flagsYou?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 :
+                        (!isYou && flagsFoe?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
     await waitMs(delayBefore/speed);
-    actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags);
+    if(isYou) actUnit(u, myDeck, foeDeck, synYou, flagsYou);
+    else      actUnit(u, foeDeck, myDeck, synFoe, flagsFoe);
     await waitMs(300/speed);
     if(living(myDeck).length===0 || living(foeDeck).length===0) break;
   }
   await waitMs(220/speed);
-  processEndOfRound(myDeck, foeDeck, synergyBuffs);
+  processEndOfRound(myDeck, foeDeck, synYou, synFoe);
 }
 
 async function runBattle(seed, state){
   setPhase('battle'); ui.battleFlash.innerHTML='';
   setSeed(seed);
 
-  // Route ALL randomness (logic + visuals) through our seeded RNG
-  // so P2 replays exactly what host sees.
   const oldRandom = Math.random;
   Math.random = rand;
   try {
-    // ---- Relic flags
     const p1Relics = state.p1Relics || [];
     const p2Relics = state.p2Relics || [];
     const flagsYou = {}, flagsFoe = {};
-    for (const r of (SEAT==='p1' ? p1Relics : p2Relics)) { (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsYou); }
-    for (const r of (SEAT==='p1' ? p2Relics : p1Relics)) { (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsFoe); }
 
-    // ---- Safe deck build (filter out bad/undefined names)
-    const sanitize = arr => (arr || []).filter(n => !!n && !!CATALOG[n]);
-    const myNames  = sanitize(SEAT==='p1' ? state.p1Deck : state.p2Deck);
-    const foeNames = sanitize(SEAT==='p1' ? state.p2Deck : state.p1Deck);
+    const myRelics  = (SEAT==='p1' ? p1Relics : p2Relics);
+    const foeRelics = (SEAT==='p1' ? p2Relics : p1Relics);
+
+    for (const r of myRelics){  (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsYou); }
+    for (const r of foeRelics){ (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsFoe); }
+
+    const sanitizeNames = arr => (arr || []).filter(n => !!n && !!CATALOG[n]);
+
+    const myNames  = sanitizeNames(SEAT==='p1' ? state.p1Deck : state.p2Deck);
+    const foeNames = sanitizeNames(SEAT==='p1' ? state.p2Deck : state.p1Deck);
 
     currentMyDeck  = myNames .map(n => makeCard(n, 1, flagsYou)).filter(Boolean);
     currentFoeDeck = foeNames.map(n => makeCard(n, 1, flagsFoe)).filter(Boolean);
 
-    // Ensure owners + round-start setup are applied BEFORE any targeting can happen.
-    prepareTeamsForBattle(currentMyDeck, currentFoeDeck, flagsYou);
+    prepareTeamsForBattle(currentMyDeck, currentFoeDeck, flagsYou, flagsFoe);
 
-    // ---- Names
     ui.pYou.textContent = (SEAT==='p1' ? p1Name : p2Name);
     ui.pFoe.textContent = (SEAT==='p1' ? p2Name : p1Name);
 
-    // ---- Synergies (computed after prepareTeamsForBattle so tags/owners are ready)
     const synYou = computeSynergies(currentMyDeck);
     const synFoe = computeSynergies(currentFoeDeck);
 
-    // ---- Start shields from synergy/relics
     if (synYou.startShieldSmall){
       const allies = living(currentMyDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, synYou.startShieldSmall);
       for (const a of allies){ applyShield(a, 1 + (flagsYou?.relicShieldPlus||0)); }
     }
-    if (flagsYou?.relicFirstShield)
+    if (flagsYou?.relicFirstShield){
       const allies = living(currentMyDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, 2);
       for (const a of allies){ applyShield(a, 1 + (flagsYou?.relicShieldPlus||0)); }
     }
@@ -923,23 +977,19 @@ async function runBattle(seed, state){
       for (const a of allies){ applyShield(a, 1 + (flagsFoe?.relicShieldPlus||0)); }
     }
 
-    // ---- Flash UI
     ui.synYou.innerHTML = (synYou._active||[]).map(id=>`<span class="synBadge">${SYNERGIES.find(s=>s.id===id)?.label||id}</span>`).join('');
     ui.synFoe.innerHTML = (synFoe._active||[]).map(id=>`<span class="synBadge">${SYNERGIES.find(s=>s.id===id)?.label||id}</span>`).join('');
-    showSynergyFlashes(synYou._active||[], (SEAT==='p1'?p1Relics:p2Relics));
+    showSynergyFlashes(synYou._active||[], myRelics);
 
-    // ---- Mount boards
     renderBoard(currentMyDeck, currentFoeDeck);
     renderDeckBar(currentMyDeck);
 
-    // ---- Spells (once per battle; still deterministic via seeded Math.random)
     await waitMs(260/speed);
     castSpellsOnce(currentMyDeck, currentFoeDeck, 'You',   flagsYou, synYou);
     castSpellsOnce(currentFoeDeck, currentMyDeck, 'Enemy', flagsFoe, synFoe);
 
-    // ---- Rounds
     while (living(currentMyDeck).length>0 && living(currentFoeDeck).length>0){
-      await playRound(currentMyDeck, currentFoeDeck, synYou, flagsYou);
+      await playRound(currentMyDeck, currentFoeDeck, synYou, synFoe, flagsYou, flagsFoe);
       if (living(currentMyDeck).length===0 || living(currentFoeDeck).length===0) break;
       await waitMs(340/speed);
     }
@@ -947,14 +997,13 @@ async function runBattle(seed, state){
     const youWin = living(currentMyDeck).length>0;
     return { winner: youWin ? (SEAT==='p1'?'p1':'p2') : (SEAT==='p1'?'p2':'p1') };
   } finally {
-    // Always restore native randomness after battle
     Math.random = oldRandom;
   }
 }
 
-
 /* ===================== FIRESTORE ORCHESTRATION ===================== */
-function needRelic(round){ return round>0 && round%5===0; }
+const isValidCardName = (n) => typeof n === 'string' && !!CATALOG[n];
+const sanitizeDeck = (arr) => (arr || []).filter(isValidCardName);
 
 async function ensureStateSeats(){
   const lob = await getDoc(lobbyRef);
@@ -968,7 +1017,6 @@ async function ensureStateSeats(){
   ui.pYou.textContent = (SEAT==='p1'?p1Name:(SEAT==='p2'?p2Name:'—'));
   ui.pFoe.textContent = (SEAT==='p1'?p2Name:(SEAT==='p2'?p1Name:'—'));
 
-  // INIT match if missing
   await runTransaction(db, async (tx)=>{
     const cur = await tx.get(stateRef);
     if (!cur.exists()){
@@ -993,7 +1041,6 @@ async function ensureStateSeats(){
         p2RelicPick: null,
         battleSeed: null,
         winner: null,
-        // Match scoring
         p1Score: 0,
         p2Score: 0,
         bestTo: 10,
@@ -1002,275 +1049,200 @@ async function ensureStateSeats(){
     }
   });
 
-  // --- Helpers available after ensureStateSeats scope ---
-  function draftWeights(){ return {common:70, rare:24, epic:5, legend:1}; }
-  function weightedPick(weights){
-    const entries = Object.entries(weights);
-    const total=entries.reduce((s,[,v])=>s+v,0);
-    let rnum = r()*total;
-    for(const [k,v] of entries){ if((rnum-=v)<=0) return k; }
-    return entries[0][0];
-  }
-  function rollDraft(forceCommon=false){
-    const picks=[];
-    for(let i=0;i<3;i++){
-      let name=null;
-      if (forceCommon){
-        const commons = PLAYER_POOL.filter(n=>cardRarity(n)===RAR.COMMON);
-        name = commons[Math.floor(r()*commons.length)];
-      }else{
-        const rar = weightedPick(draftWeights());
-        const pool = PLAYER_POOL.filter(n=>cardRarity(n)===rar);
-        const coll = pool.length ? pool : PLAYER_POOL;
-        name = coll[Math.floor(r()*coll.length)];
+  onSnapshot(stateRef, async (snap) => {
+    if (!snap.exists()) return;
+    const st = snap.data() || {};
+    setPhase(st.phase || '—');
+    setRound(st.round || 1);
+
+    if (uiScoreP1 && typeof st.p1Score === 'number') uiScoreP1.textContent = String(st.p1Score);
+    if (uiScoreP2 && typeof st.p2Score === 'number') uiScoreP2.textContent = String(st.p2Score);
+
+    // ===== DRAFT PHASE =====
+    if (st.phase === 'draft') {
+      if (st.draftOffers && (SEAT === 'p1' || SEAT === 'p2')) {
+        const minePick = (SEAT === 'p1' ? st.p1Pick : SEAT === 'p2' ? st.p2Pick : null);
+        ui.draftStatus.textContent = minePick ? '✅ Pick locked. Waiting for the other player…' : 'Choose one.';
+        setSeed((st.draftSeed >>> 0) || 0);
+        openDraft(st.draftOffers, SEAT, !!minePick);
+      } else {
+        closeDraft();
       }
-      picks.push(name);
-    }
-    return picks;
-  }
-  function rollRelics(){
-    const ids = RELICS.map(r=>r.id);
-    const bag = ids.slice(0);
-    const picks=[];
-    for(let i=0;i<3;i++){
-      const j = Math.floor(r()*bag.length);
-      picks.push(bag.splice(j,1)[0]);
-    }
-    return picks;
-  }
 
-  // ---------- Live state listener driving the flow ----------
-// SAFE helpers
-const isValidCardName = (n) => typeof n === 'string' && !!CATALOG[n];
-const sanitizeDeck = (arr) => (arr || []).filter(isValidCardName);
+      if (st.p1Pick && st.p2Pick && USER === st.p1) {
+        await runTransaction(db, async (tx) => {
+          const cur = await tx.get(stateRef); if (!cur.exists()) return;
+          const c = cur.data(); if (c.phase !== 'draft') return;
 
-// Optional: auto-wire score labels if not already wired
-const uiScoreP1 = window.uiScoreP1 || (window.uiScoreP1 = document.getElementById('scoreP1'));
-const uiScoreP2 = window.uiScoreP2 || (window.uiScoreP2 = document.getElementById('scoreP2'));
+          const pick1 = isValidCardName(c.p1Pick) ? c.p1Pick : null;
+          const pick2 = isValidCardName(c.p2Pick) ? c.p2Pick : null;
 
-onSnapshot(stateRef, async (snap) => {
-  if (!snap.exists()) return;
-  const st = snap.data() || {};
-  setPhase(st.phase || '—');
-  setRound(st.round || 1);
+          const nextP1Deck = sanitizeDeck([...(c.p1Deck || []), ...(pick1 ? [pick1] : [])]);
+          const nextP2Deck = sanitizeDeck([...(c.p2Deck || []), ...(pick2 ? [pick2] : [])]);
 
-  // Live score labels (if present in DOM)
-  if (uiScoreP1 && typeof st.p1Score === 'number') uiScoreP1.textContent = String(st.p1Score);
-  if (uiScoreP2 && typeof st.p2Score === 'number') uiScoreP2.textContent = String(st.p2Score);
+          const target  = c.draftTarget || 1;
+          const p1Count = (c.p1DraftedThisRound || 0) + 1;
+          const p2Count = (c.p2DraftedThisRound || 0) + 1;
 
-  // ===== DRAFT PHASE =====
-  if (st.phase === 'draft') {
-    // Show my draft UI if I'm seated
-    if (st.draftOffers && (SEAT === 'p1' || SEAT === 'p2')) {
-      const minePick = (SEAT === 'p1' ? st.p1Pick : SEAT === 'p2' ? st.p2Pick : null);
-      ui.draftStatus.textContent = minePick ? '✅ Pick locked. Waiting for the other player…' : 'Choose one.';
-      setSeed((st.draftSeed >>> 0) || 0);
-      openDraft(st.draftOffers, SEAT, !!minePick);
+          const needMoreThisRound = (p1Count < target) || (p2Count < target);
+
+          if (needMoreThisRound) {
+            const seed = (Date.now() ^ 0x51f0) & 0xffffffff;
+            setSeed(seed);
+            tx.update(stateRef, {
+              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Pick: null, p2Pick: null,
+              p1DraftedThisRound: p1Count,
+              p2DraftedThisRound: p2Count,
+              draftSeed: seed,
+              draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
+              winner: null
+            });
+          } else {
+            const round = c.round || 1;
+            const needR = needRelic(round);
+            if (needR) {
+              const rseed = (Date.now() ^ 0x9e37) & 0xffffffff;
+              setSeed(rseed);
+              tx.update(stateRef, {
+                p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+                p1Pick: null, p2Pick: null,
+                p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+                relicSeed: rseed,
+                relicOffers: { p1: rollRelics(), p2: rollRelics() },
+                p1RelicPick: null, p2RelicPick: null,
+                phase: 'relic',
+                winner: null
+              });
+            } else {
+              const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
+              tx.update(stateRef, {
+                p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+                p1Pick: null, p2Pick: null,
+                p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+                phase: 'battle',
+                battleSeed: bseed,
+                winner: null
+              });
+            }
+          }
+        });
+      }
     } else {
       closeDraft();
     }
 
-    // Both have picked → host applies & advances (with validation)
-    if (st.p1Pick && st.p2Pick && USER === st.p1) {
-      await runTransaction(db, async (tx) => {
-        const cur = await tx.get(stateRef); if (!cur.exists()) return;
-        const c = cur.data(); if (c.phase !== 'draft') return;
+    // ===== RELIC PHASE =====
+    if (st.phase === 'relic') {
+      if (st.relicOffers && (SEAT === 'p1' || SEAT === 'p2')) {
+        const minePick = (SEAT === 'p1' ? st.p1RelicPick : st.p2RelicPick) || null;
+        setSeed((st.relicSeed >>> 0) || 0);
+        openRelicDraft(st.relicOffers, SEAT, !!minePick);
+      } else {
+        closeRelic();
+      }
 
-        // Validate picks against catalog to prevent undefined cards later
-        const pick1 = isValidCardName(c.p1Pick) ? c.p1Pick : null;
-        const pick2 = isValidCardName(c.p2Pick) ? c.p2Pick : null;
+      if (st.p1RelicPick && st.p2RelicPick && USER === st.p1) {
+        await runTransaction(db, async (tx) => {
+          const cur = await tx.get(stateRef); if (!cur.exists()) return;
+          const c = cur.data(); if (c.phase !== 'relic') return;
 
-        const nextP1Deck = sanitizeDeck([...(c.p1Deck || []), ...(pick1 ? [pick1] : [])]);
-        const nextP2Deck = sanitizeDeck([...(c.p2Deck || []), ...(pick2 ? [pick2] : [])]);
+          const validRelic = (id) => !!RELICS.find(r => r.id === id);
+          const r1 = validRelic(c.p1RelicPick) ? { id: c.p1RelicPick } : null;
+          const r2 = validRelic(c.p2RelicPick) ? { id: c.p2RelicPick } : null;
 
-        const target  = c.draftTarget || 1;
-        const p1Count = (c.p1DraftedThisRound || 0) + 1;
-        const p2Count = (c.p2DraftedThisRound || 0) + 1;
+          const nextP1Relics = [...(c.p1Relics || []), ...(r1 ? [r1] : [])];
+          const nextP2Relics = [...(c.p2Relics || []), ...(r2 ? [r2] : [])];
 
-        const needMoreThisRound = (p1Count < target) || (p2Count < target);
+          const bseed = (Date.now() ^ 0x6d6d) & 0xffffffff;
 
-        if (needMoreThisRound) {
-          const seed = (Date.now() ^ 0x51f0) & 0xffffffff;
-          setSeed(seed);
           tx.update(stateRef, {
-            p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-            p1Pick: null, p2Pick: null,
-            p1DraftedThisRound: p1Count,
-            p2DraftedThisRound: p2Count,
-            draftSeed: seed,
-            draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
+            p1Relics: nextP1Relics,
+            p2Relics: nextP2Relics,
+            p1RelicPick: null,
+            p2RelicPick: null,
+            relicOffers: null,
+            phase: 'battle',
+            battleSeed: bseed,
             winner: null
           });
-        } else {
-          const round = c.round || 1;
-          const needR = needRelic(round);
-          if (needR) {
-            const rseed = (Date.now() ^ 0x9e37) & 0xffffffff;
-            setSeed(rseed);
-            tx.update(stateRef, {
-              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-              p1Pick: null, p2Pick: null,
-              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
-              relicSeed: rseed,
-              relicOffers: { p1: rollRelics(), p2: rollRelics() },
-              p1RelicPick: null, p2RelicPick: null,
-              phase: 'relic',
-              winner: null
-            });
-          } else {
-            const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
-            tx.update(stateRef, {
-              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-              p1Pick: null, p2Pick: null,
-              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
-              phase: 'battle',
-              battleSeed: bseed,
-              winner: null
-            });
-          }
-        }
-      });
-    }
-  } else {
-    closeDraft();
-  }
-
-  // ===== RELIC PHASE =====
-  if (st.phase === 'relic') {
-    if (st.relicOffers && (SEAT === 'p1' || SEAT === 'p2')) {
-      const minePick = (SEAT === 'p1' ? st.p1RelicPick : st.p2RelicPick) || null;
-      setSeed((st.relicSeed >>> 0) || 0);
-      openRelicDraft(st.relicOffers, SEAT, !!minePick);
+        });
+      }
     } else {
       closeRelic();
     }
 
-    // Both chose relic → host pushes to battle
-    if (st.p1RelicPick && st.p2RelicPick && USER === st.p1) {
+    // ===== BATTLE PHASE (deterministic) =====
+    if (st.phase === 'battle' && typeof st.battleSeed === 'number') {
+      if (window.__ranBattleForSeed !== st.battleSeed) {
+        window.__ranBattleForSeed = st.battleSeed;
+        (async () => {
+          const result = await runBattle(st.battleSeed >>> 0, st);
+          if (USER === st.p1) {
+            await updateDoc(stateRef, { phase: 'result', winner: result.winner });
+          }
+        })();
+      }
+    }
+
+    // ===== RESULT → SCORE / NEXT (host drives) =====
+    if (st.phase === 'result' && st.winner && USER === st.p1) {
       await runTransaction(db, async (tx) => {
         const cur = await tx.get(stateRef); if (!cur.exists()) return;
-        const c = cur.data(); if (c.phase !== 'relic') return;
+        const c = cur.data(); if (c.phase !== 'result') return;
 
-        // Validate relic ids exist
-        const validRelic = (id) => !!RELICS.find(r => r.id === id);
-        const r1 = validRelic(c.p1RelicPick) ? { id: c.p1RelicPick } : null;
-        const r2 = validRelic(c.p2RelicPick) ? { id: c.p2RelicPick } : null;
+        const bestTo = c.bestTo || 10;
+        let p1Score = typeof c.p1Score === 'number' ? c.p1Score : 0;
+        let p2Score = typeof c.p2Score === 'number' ? c.p2Score : 0;
 
-        const nextP1Relics = [...(c.p1Relics || []), ...(r1 ? [r1] : [])];
-        const nextP2Relics = [...(c.p2Relics || []), ...(r2 ? [r2] : [])];
+        if (c.winner === 'p1') p1Score++;
+        else if (c.winner === 'p2') p2Score++;
 
-        const bseed = (Date.now() ^ 0x6d6d) & 0xffffffff;
-
-        tx.update(stateRef, {
-          p1Relics: nextP1Relics,
-          p2Relics: nextP2Relics,
-          p1RelicPick: null,
-          p2RelicPick: null,
-          relicOffers: null,
-          phase: 'battle',
-          battleSeed: bseed,
-          winner: null
-        });
-      });
-    }
-  } else {
-    closeRelic();
-  }
-
-  // ===== BATTLE PHASE (deterministic) =====
-  if (st.phase === 'battle' && typeof st.battleSeed === 'number') {
-    if (window.__ranBattleForSeed !== st.battleSeed) {
-      window.__ranBattleForSeed = st.battleSeed;
-      (async () => {
-        const result = await runBattle(st.battleSeed >>> 0, st);
-        if (USER === st.p1) {
-          await updateDoc(stateRef, { phase: 'result', winner: result.winner });
+        if (p1Score >= bestTo || p2Score >= bestTo) {
+          tx.update(stateRef, {
+            p1Score, p2Score,
+            matchWinner: p1Score >= bestTo ? 'p1' : 'p2',
+            phase: 'gameover'
+          });
+          return;
         }
-      })();
-    }
-  }
 
-  // ===== RESULT → SCORE / NEXT (host drives) =====
-  if (st.phase === 'result' && st.winner && USER === st.p1) {
-    await runTransaction(db, async (tx) => {
-      const cur = await tx.get(stateRef); if (!cur.exists()) return;
-      const c = cur.data(); if (c.phase !== 'result') return;
+        const nextRound = (c.round || 1) + 1;
+        const seed = (Date.now() ^ 0x12345) & 0xffffffff;
+        setSeed(seed);
 
-      const bestTo = c.bestTo || 10;
-      let p1Score = typeof c.p1Score === 'number' ? c.p1Score : 0;
-      let p2Score = typeof c.p2Score === 'number' ? c.p2Score : 0;
-
-      if (c.winner === 'p1') p1Score++;
-      else if (c.winner === 'p2') p2Score++;
-
-      // Match end
-      if (p1Score >= bestTo || p2Score >= bestTo) {
         tx.update(stateRef, {
           p1Score, p2Score,
-          matchWinner: p1Score >= bestTo ? 'p1' : 'p2',
-          phase: 'gameover'
+          round: nextRound,
+          phase: 'draft',
+          draftSeed: seed,
+          draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
+          p1Pick: null, p2Pick: null,
+          draftTarget: 1,
+          p1DraftedThisRound: 0,
+          p2DraftedThisRound: 0,
+          winner: null,
+          battleSeed: null
         });
-        return;
-      }
-
-      // Next round
-      const nextRound = (c.round || 1) + 1;
-      const seed = (Date.now() ^ 0x12345) & 0xffffffff;
-      setSeed(seed);
-
-      tx.update(stateRef, {
-        p1Score, p2Score,
-        round: nextRound,
-        phase: 'draft',
-        draftSeed: seed,
-        draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
-        p1Pick: null, p2Pick: null,
-        draftTarget: 1,
-        p1DraftedThisRound: 0,
-        p2DraftedThisRound: 0,
-        winner: null,
-        battleSeed: null
       });
-    });
-  }
+    }
 
-  // ===== GAME OVER =====
-  if (st.phase === 'gameover' && st.matchWinner) {
-    const name = st.matchWinner === 'p1' ? p1Name : p2Name;
-    setPhase('gameover');
-    log(`🏆 Match over! Winner: ${name} (${st.p1Score ?? 0}–${st.p2Score ?? 0})`);
-    ui.draftModal.classList.remove('on');
-    ui.relicModal.classList.remove('on');
-  }
-}); // end onSnapshot
-
+    // ===== GAME OVER =====
+    if (st.phase === 'gameover' && st.matchWinner) {
+      const name = st.matchWinner === 'p1' ? p1Name : p2Name;
+      setPhase('gameover');
+      log(`🏆 Match over! Winner: ${name} (${st.p1Score ?? 0}–${st.p2Score ?? 0})`);
+      ui.draftModal.classList.remove('on');
+      ui.relicModal.classList.remove('on');
+    }
+  });
+}
 
 /* ===================== Boot ===================== */
 await ensureStateSeats();
-
-/* ===== Utilities (scoped to ensureStateSeats for transactor helpers) ===== */
-function rollDraft(forceCommon=false){
-  const picks=[];
-  for(let i=0;i<3;i++){
-    let pool;
-    if (forceCommon){
-      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===RAR.COMMON);
-    } else {
-      const rar = weightedPick(draftWeights());
-      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===rar);
-      if (!pool.length) pool = PLAYER_POOL.filter(n => CATALOG[n]); // ultimate fallback
-    }
-    picks.push(pool[Math.floor(r()*pool.length)]);
-  }
-  return picks;
-}
-
-function rollRelics(){ /* replaced inside ensureStateSeats */ return ['vigor','glass','aegis']; }
-
 </script>
 </body>
 </html>
-
 
 
 
