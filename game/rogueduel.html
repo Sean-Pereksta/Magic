@@ -3,38 +3,47 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-<title>Rogue Duel — 2P Simul Draft + Relics</title>
+<title>Rogue Duel — 2-Player Simul Draft, Relics & Synergies</title>
 <style>
   :root{
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
     --good:#16a34a; --warn:#eab308; --bad:#dc2626; --heal:#0ea5e9; --shield:#2563eb;
     --panel:#f8fafc; --card:#ffffff; --radius:14px; --shadow:0 10px 30px rgba(2,6,23,.08);
     --rar-common:#94a3b8; --rar-rare:#3b82f6; --rar-epic:#8b5cf6; --rar-legend:#f59e0b;
-    --syn:#22c55e; --relic:#fb923c;
+    --relic:#fb923c; --syn:#22c55e;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Arial,sans-serif}
-  header{padding:12px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
-  .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  header{padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
+  .left{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-weight:700}
+  #controls{display:flex;gap:8px;flex-wrap:wrap}
+  button{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);color:white;border:1px solid #0369a1;
+    padding:9px 12px;border-radius:12px;font-weight:800;cursor:pointer
+  }
+  button:disabled{opacity:.6;cursor:not-allowed}
+
   #root{padding:14px;display:grid;gap:14px;max-width:1100px;margin:0 auto}
-  .lbl{font-size:12px;color:var(--muted);margin:4px 0}
   #arena{display:grid;gap:14px}
+  .bar{display:flex;justify-content:space-between;gap:12px;align-items:center}
+  .nameWithSyn{display:flex;gap:10px;align-items:center}
+  .synList{font-size:12px;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:3px 8px;opacity:0;transform:translateY(-4px);transition:all .4s}
+  .synList.on{opacity:1;transform:translateY(0)}
   .laneWrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
-  .sideTitle{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:10px}
-  .synFlash{font-size:12px;font-weight:800;color:#065f46;background:#d1fae5;border:1px solid #10b981;border-radius:999px;padding:2px 8px;opacity:0;animation:fadeInOut 3.2s ease forwards}
-  .relicFlash{font-size:12px;font-weight:800;color:#7c2d12;background:#ffedd5;border:1px solid #fb923c;border-radius:999px;padding:2px 8px;opacity:0;animation:fadeInOut 3.2s ease forwards}
-  @keyframes fadeInOut{ 0%{opacity:0;transform:translateY(-6px)} 12%{opacity:1;transform:none} 80%{opacity:1} 100%{opacity:0} }
+  .sideTitle{font-size:12px;color:var(--muted);margin-bottom:6px}
   .lane{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));min-height:140px}
 
   .card{
     position:relative;border-radius:12px;background:var(--card);
     border:1px solid var(--line);box-shadow:var(--shadow);
     padding:8px;user-select:none;touch-action:manipulation;cursor:pointer;
-    transition:transform .15s ease;
-    display:flex;flex-direction:column;gap:6px;min-height:124px;overflow:visible;
+    transition:transform .15s ease, box-shadow .15s ease;
+    display:flex;flex-direction:column;gap:6px;min-height:124px;
+    overflow:visible;
   }
   .card:hover{transform:translateY(-2px)}
+  .card.picked{outline:3px solid #10b981; box-shadow:0 0 0 2px rgba(16,185,129,.35) inset, var(--shadow)}
   .rowline{display:flex;justify-content:space-between;gap:6px}
   .emoji{font-size:28px;line-height:28px}
   .name{font-size:13px;font-weight:800}
@@ -47,6 +56,7 @@
   .statline{display:flex;gap:6px;font-size:12px;color:#475569;flex-wrap:wrap}
   .tag{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:2px 6px;color:#475569}
   .fx{position:absolute;inset:0;pointer-events:none}
+
   .shieldRing{position:absolute;inset:-2px;border-radius:12px;border:2px solid var(--shield);box-shadow:0 0 12px rgba(37,99,235,.45) inset;pointer-events:none}
   .freezeVeil{position:absolute;inset:0;border-radius:12px;background:rgba(96,165,250,.17);backdrop-filter:blur(1px);pointer-events:none}
   .poisonGlow{position:absolute;inset:-2px;border-radius:12px;box-shadow:0 0 0 2px rgba(124,58,237,.8) inset, 0 0 18px rgba(124,58,237,.35) inset}
@@ -58,9 +68,8 @@
   .badge.freeze{background:#60a5fa}
   .badge.shield{background:#2563eb}
   .badge.hot{background:#34d399}
-
-  .heartPulse{position:absolute;inset:-4px;border-radius:12px;pointer-events:none;box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 18px rgba(52,211,153,.25);animation:heartPulse 540ms ease-out;}
-  @keyframes heartPulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 0 rgba(52,211,153,0)}60%{box-shadow:0 0 0 12px rgba(52,211,153,0), inset 0 0 18px rgba(52,211,153,.45)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0), inset 0 0 0 rgba(52,211,153,0)}}
+  .badge.syn{background:var(--syn)}
+  .badge.relic{background:var(--relic)}
 
   .rarity-common{box-shadow:0 0 0 2px rgba(148,163,184,.5) inset, var(--shadow)}
   .rarity-rare{box-shadow:0 0 0 2px rgba(59,130,246,.6) inset, 0 0 14px rgba(59,130,246,.28), var(--shadow)}
@@ -68,35 +77,47 @@
   .rarity-legend{box-shadow:0 0 0 2px rgba(245,158,11,.8) inset, 0 0 18px rgba(245,158,11,.32), var(--shadow)}
 
   #deckBars{display:grid;gap:10px}
-  #deckBarP1,#deckBarP2{display:flex;gap:8px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-  #deckBarP1 .card,#deckBarP2 .card{flex:0 0 auto;min-width:120px}
-  #log{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--panel)}
-  #controls{display:flex;gap:8px;flex-wrap:wrap}
-  button{background:linear-gradient(180deg,#0ea5e9,#0284c7);color:white;border:1px solid #0369a1;padding:10px 12px;border-radius:12px;font-weight:800;cursor:pointer}
-  button:disabled{opacity:.5;cursor:not-allowed}
+  .deckRow{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+  .deckBar{display:flex;gap:8px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  .deckBar .card{flex:0 0 auto;min-width:120px}
 
+  #log{max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--panel)}
+
+  /* Modals */
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);padding:14px;z-index:10}
   .modal.on{display:flex}
-  .sheet{max-width:980px;width:100%;background:#ffffff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
-  .sheet h2{margin:0 0 12px 0}
-  .dual{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .bucket{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px}
+  .sheet{max-width:1100px;width:100%;background:#ffffff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+  .sheet h2{margin:0 0 8px 0}
   .grid{display:grid;gap:10px}
-  .grid.cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
-  .pickNote{font-size:12px;color:var(--muted);margin-top:6px}
-  .picked{outline:2px solid #16a34a}
+  .grid.cards{grid-template-columns:repeat(3,minmax(200px,1fr))}
+  .subgrid{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+  .sideBox{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel)}
+  .sideBox h3{margin:0 0 8px 0}
+  .note{font-size:12px;color:var(--muted);margin-top:6px;text-align:center}
+  .wait{font-size:12px;color:#64748b;font-style:italic;text-align:center;margin-top:6px}
 
+  /* FX */
   #fxRoot{position:fixed;inset:0;pointer-events:none;z-index:99999}
   .fxFloat{position:absolute;font-weight:900;font-size:18px;text-shadow:0 2px 10px rgba(0,0,0,.25);animation:fxRise .95s ease-out forwards;z-index:99999}
   @keyframes fxRise { to { transform:translate(-50%,-38px); opacity:0; } }
   .fxBoom{position:absolute;width:7px;height:7px;border-radius:50%;opacity:0.95}
+
+  #battleFlash{position:fixed; right:12px; top:74px; width:280px; z-index:9999; pointer-events:none;}
+  .flashCard{
+    background:#fff; border:2px solid var(--line); border-left:5px solid var(--syn);
+    box-shadow:0 10px 30px rgba(2,6,23,.12); border-radius:12px; margin-bottom:10px; padding:10px 12px;
+    transform:translateX(320px); opacity:0; animation:flashIn 650ms ease forwards;
+  }
+  .flashCard.relic{border-left-color:var(--relic)}
+  .flashTitle{font-weight:900; font-size:14px; margin-bottom:4px}
+  .flashDesc{font-size:12px; color:#475569}
+  @keyframes flashIn{ to{transform:translateX(0); opacity:1;} }
 </style>
 </head>
 <body>
 <header>
   <div class="left">
-    <div class="pill">Round: <span id="round">1</span></div>
-    <div class="pill">Draft phase: <span id="draftPhase">Opening (3x COMMON)</span></div>
+    <div class="pill">Round: <span id="round">0</span></div>
   </div>
   <div id="controls">
     <button id="btnSpeed">Speed: 1x</button>
@@ -104,86 +125,96 @@
 </header>
 
 <div id="root">
+  <div class="bar">
+    <div class="nameWithSyn">
+      <div class="pill">Player 1</div>
+      <div id="synP1" class="synList"></div>
+    </div>
+    <div class="nameWithSyn">
+      <div id="synP2" class="synList"></div>
+      <div class="pill">Player 2</div>
+    </div>
+  </div>
+
   <div id="arena">
     <div class="laneWrap">
-      <div class="sideTitle">Player 1 <span id="p1Syn" class="synFlash" style="display:none"></span> <span id="p1RelFlash" class="relicFlash" style="display:none"></span></div>
+      <div class="sideTitle">P1 Board</div>
       <div id="p1" class="lane"></div>
     </div>
     <div class="laneWrap">
-      <div class="sideTitle">Player 2 <span id="p2Syn" class="synFlash" style="display:none"></span> <span id="p2RelFlash" class="relicFlash" style="display:none"></span></div>
+      <div class="sideTitle">P2 Board</div>
       <div id="p2" class="lane"></div>
     </div>
   </div>
 
   <div id="deckBars">
-    <div>
-      <div class="lbl">P1 Deck</div>
-      <div id="deckBarP1"></div>
-    </div>
-    <div>
-      <div class="lbl">P2 Deck</div>
-      <div id="deckBarP2"></div>
+    <div class="deckRow">
+      <div>
+        <div class="sideTitle">P1 Deck</div>
+        <div id="deckP1" class="deckBar"></div>
+      </div>
+      <div>
+        <div class="sideTitle">P2 Deck</div>
+        <div id="deckP2" class="deckBar"></div>
+      </div>
     </div>
   </div>
 
   <div>
-    <div class="lbl">Battle Log</div>
+    <div class="sideTitle">Battle Log</div>
     <div id="log"></div>
   </div>
 </div>
 
-<!-- Simultaneous Card Draft Modal -->
+<!-- CARD Draft Modal -->
 <div id="draftModal" class="modal">
   <div class="sheet">
-    <h2><span id="draftTitle">Opening Draft</span></h2>
-    <div class="dual">
-      <div class="bucket">
-        <div style="font-weight:800;margin-bottom:6px">P1 — choose 1</div>
-        <div id="draftChoicesP1" class="grid cards"></div>
-        <div class="pickNote" id="noteP1"></div>
+    <h2 id="draftTitle">Draft</h2>
+    <div class="subgrid">
+      <div class="sideBox">
+        <h3>P1 — Choose 1</h3>
+        <div class="grid cards" id="draftChoicesP1"></div>
+        <div id="noteP1" class="note">Pick quickly—waiting only shows when the other side finishes.</div>
+        <div id="waitP1" class="wait" style="display:none;">Waiting for Player 2…</div>
       </div>
-      <div class="bucket">
-        <div style="font-weight:800;margin-bottom:6px">P2 — choose 1</div>
-        <div id="draftChoicesP2" class="grid cards"></div>
-        <div class="pickNote" id="noteP2"></div>
+      <div class="sideBox">
+        <h3>P2 — Choose 1</h3>
+        <div class="grid cards" id="draftChoicesP2"></div>
+        <div id="noteP2" class="note">Pick quickly—waiting only shows when the other side finishes.</div>
+        <div id="waitP2" class="wait" style="display:none;">Waiting for Player 1…</div>
       </div>
     </div>
-    <div class="pickNote" id="draftFooterNote"></div>
   </div>
 </div>
 
-<!-- Simultaneous Relic Draft Modal -->
+<!-- RELIC Draft Modal -->
 <div id="relicModal" class="modal">
   <div class="sheet">
-    <h2>Relic Draft (both players)</h2>
-    <div class="dual">
-      <div class="bucket">
-        <div style="font-weight:800;margin-bottom:6px">P1 — choose 1 Relic</div>
-        <div id="relicChoicesP1" class="grid cards"></div>
+    <h2>Relic Draft</h2>
+    <div class="subgrid">
+      <div class="sideBox">
+        <h3>P1 — Choose 1 Relic</h3>
+        <div class="grid cards" id="relicChoicesP1"></div>
+        <div id="rnoteP1" class="note">Pick any relic. Starts after both finish.</div>
+        <div id="rwaitP1" class="wait" style="display:none;">Waiting for Player 2…</div>
       </div>
-      <div class="bucket">
-        <div style="font-weight:800;margin-bottom:6px">P2 — choose 1 Relic</div>
-        <div id="relicChoicesP2" class="grid cards"></div>
+      <div class="sideBox">
+        <h3>P2 — Choose 1 Relic</h3>
+        <div class="grid cards" id="relicChoicesP2"></div>
+        <div id="rnoteP2" class="note">Pick any relic. Starts after both finish.</div>
+        <div id="rwaitP2" class="wait" style="display:none;">Waiting for Player 1…</div>
       </div>
     </div>
-    <div class="pickNote">Relics stack and permanently modify combat for that player.</div>
-  </div>
-</div>
-
-<!-- Detail Modal -->
-<div id="detailModal" class="modal" onclick="hideDetail()">
-  <div class="sheet" onclick="event.stopPropagation()">
-    <span style="float:right;cursor:pointer;color:#64748b" onclick="hideDetail()">✕</span>
-    <div id="detailBody"></div>
   </div>
 </div>
 
 <!-- GLOBAL FX -->
 <div id="fxRoot"></div>
+<div id="battleFlash"></div>
 
 <script>
 /*** Timing ***/
-const SPEEDS=[1,1.4,1.8]; let speedIdx=0;
+const SPEEDS=[1,1.3,1.6]; let speedIdx=0;
 
 /*** Enums ***/
 const PRIORITY={HIGH:0,MID:1,LOW:2};
@@ -194,17 +225,15 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 
 /*** State ***/
 let state={
+  round:0,
   speed:1,
-  round:1,
   p1Deck:[], p2Deck:[],
   p1Relics:[], p2Relics:[],
-  p1RelicFlags:{}, p2RelicFlags:{},
-  p1Syn:{}, p2Syn:{},
-  playing:false,
-  // drafting
-  openDraftCountRemaining:0,
-  forceCommon:false,
-  awaitingP1:false, awaitingP2:false
+  p1Flags:{}, p2Flags:{},
+  drafting:false,
+  _openCount:0,
+  _forceCommon:false,
+  p1Locked:false, p2Locked:false
 };
 
 /*** Helpers ***/
@@ -214,13 +243,13 @@ function fmtStars(stars){return '★'.repeat(stars)+'☆'.repeat(4-stars);}
 function prioName(p){return p===0?'High':p===1?'Mid':'Low';}
 function rarClass(r){return r===RAR.COMMON?'common':r===RAR.RARE?'rare':r===RAR.EPIC?'epic':'legend';}
 function log(msg){const el=document.getElementById('log'); el.innerHTML+=msg+'<br>'; el.scrollTop=el.scrollHeight;}
-function setRound(n){state.round=n; document.getElementById('round').textContent=n;}
-function setDraftPhase(text){document.getElementById('draftPhase').textContent=text;}
+function updateHeader(){ document.getElementById('round').textContent=state.round; }
 
-/*** Catalog (player-legal only) ***/
+/*** Catalog (player-only names—no AI names) ***/
 const PRIOR=PRIORITY, TYPE_UNIT=TYPE.UNIT, TYPE_SPELL=TYPE.SPELL, R=RAR;
+
 const CATALOG={
-  // Commons
+  // commons
   "Slinger":   {rar:R.COMMON, icon:"🪃", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIOR.HIGH, tags:["ranged","starter"]},
   "Spearman":  {rar:R.COMMON, icon:"🗡️", type:TYPE_UNIT, hp:9,  dmg:4, priority:PRIOR.MID,  tags:["melee","starter"]},
   "Acolyte":   {rar:R.COMMON, icon:"🙏", type:TYPE_UNIT, hp:8,  dmg:0, priority:PRIOR.LOW,  tags:["heal1","starter"], heal1:{amt:4}},
@@ -229,7 +258,7 @@ const CATALOG={
   "Slime":     {rar:R.COMMON, icon:"🧪", type:TYPE_UNIT, hp:12, dmg:3, priority:PRIOR.MID,  tags:["poison","split"], applyPoison:{dmg:2,dur:3}, split:true},
   "Pikeman":   {rar:R.COMMON, icon:"🔱", type:TYPE_UNIT, hp:12, dmg:6, priority:PRIOR.MID,  tags:["melee"]},
 
-  // Higher rarity
+  // better
   "Knight":      {rar:R.COMMON,  icon:"🛡️", type:TYPE_UNIT, hp:16, dmg:6, priority:PRIOR.MID,  tags:["melee","guard"]},
   "Longbowman":  {rar:R.RARE,    icon:"🏹", type:TYPE_UNIT, hp:9,  dmg:7, priority:PRIOR.HIGH, tags:["ranged","pierce"]},
   "Hoplite":     {rar:R.RARE,    icon:"🥏", type:TYPE_UNIT, hp:14, dmg:5, priority:PRIOR.MID,  tags:["taunt","retaliate"], taunt:true},
@@ -248,7 +277,7 @@ const CATALOG={
   "Assassin":    {rar:R.EPIC,    icon:"🗡️", type:TYPE_UNIT, hp:7,  dmg:10,priority:PRIOR.HIGH, tags:["alpha"], alpha:true},
   "Bard":        {rar:R.RARE,    icon:"🎵", type:TYPE_UNIT, hp:9,  dmg:0, priority:PRIOR.LOW,  tags:["ward-song"], wardSong:true},
 
-  // Spells (once per battle)
+  // spells
   "Firebolt":     {rar:R.COMMON,  icon:"💥", type:TYPE_SPELL, spell:{kind:'fire', dmg:12}},
   "Lightning":    {rar:R.RARE,    icon:"⚡", type:TYPE_SPELL, spell:{kind:'lightning', hits:3, dmg:6}},
   "Shield":       {rar:R.RARE,    icon:"🛡️", type:TYPE_SPELL, spell:{kind:'shield', amount:0.5, dur:5}},
@@ -260,17 +289,18 @@ const CATALOG={
 const PLAYER_UNITS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_UNIT);
 const PLAYER_SPELLS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_SPELL);
 const PLAYER_POOL = [...PLAYER_UNITS, ...PLAYER_SPELLS];
+function cardRarity(name){ const base=CATALOG[name]; return base?base.rar:RAR.COMMON; }
 
-/*** Relics (per-player) ***/
+/*** Relics ***/
 const RELICS=[
   {id:'vigor',  title:'Banner of Vigor', desc:'+10% Max HP and +10% start heal', apply:(F)=>{F.relicMaxHPPct=0.10; F.relicStartHealPct=0.10;}},
-  {id:'glass',  title:'Glass Arrows', desc:'+20% ranged damage, -10% HP (base)', apply:(F)=>{F.relicRangedDmg=1.20; F.relicHP=(F.relicHP||1)*0.90;}},
-  {id:'aegis',  title:'Aegis Charm',  desc:'Shields last +1 turn', apply:(F)=>F.relicShieldPlus=1},
-  {id:'venom',  title:'Venom Vial',   desc:'+1 poison damage / tick', apply:(F)=>F.relicPoisonPlus=(F.relicPoisonPlus||0)+1},
-  {id:'spark',  title:'Arcane Capacitor', desc:'Your spells count as +1★', apply:(F)=>F.relicSpellStarsPlus=(F.relicSpellStarsPlus||0)+1},
-  {id:'tempo',  title:'Tempo Drum',   desc:'High-priority allies act +15% faster', apply:(F)=>F.relicFasterHigh=true},
-  {id:'warder', title:'Warder’s Oath',desc:'Round 1: small shield to 2 low-HP allies', apply:(F)=>F.relicFirstShield=1},
-  {id:'fervor', title:'Fervor Coin',  desc:'+10% ally damage', apply:(F)=>F.relicAllDmg=1.10}
+  {id:'glass',  title:'Glass Arrows', desc:'+20% ranged dmg, -10% HP (base)', apply:(F)=>{F.relicRangedDmg=1.20; F.relicHP=(F.relicHP||1)*0.90;}},
+  {id:'aegis',  title:'Aegis Charm', desc:'Shields last +1 turn', apply:(F)=>F.relicShieldPlus=1},
+  {id:'venom',  title:'Venom Vial', desc:'+1 poison dmg / tick', apply:(F)=>F.relicPoisonPlus=(F.relicPoisonPlus||0)+1},
+  {id:'spark',  title:'Arcane Capacitor', desc:'Your spells count as +1★', apply:(F)=>F.relicSpellStarsPlus=1},
+  {id:'tempo',  title:'Tempo Drum', desc:'High-priority allies act +15% faster', apply:(F)=>F.relicFasterHigh=true},
+  {id:'warder', title:'Warder’s Oath', desc:'Round 1: small shield to 2 lowest HP allies', apply:(F)=>F.relicFirstShield=1},
+  {id:'fervor', title:'Fervor Coin', desc:'+10% ally damage', apply:(F)=>F.relicAllDmg=1.10}
 ];
 
 /*** Synergies ***/
@@ -283,17 +313,36 @@ const SYNERGIES=[
   {id:'freeze', label:'Cold Front',     tag:'freeze',  t:2, effect:(B)=>{B.freezePlus=1;}, desc:'Freeze lasts +1 turn'}
 ];
 
+/*** HP helpers w/ temp max HP ***/
+function getMaxHP(c){
+  const base = Math.round((c.hp||0) * starMult(c.stars));
+  const extra = (c.effects||[]).filter(e=>e.kind==='maxhp')
+                .reduce((s,e)=>s+(e.bonus||0),0);
+  return base + extra;
+}
+
 /*** Card factory ***/
-function makeCard(name,stars=1){
+function makeCard(name,stars=1, flags={}){
   const base=CATALOG[name];
   const isSpell=base.type===TYPE_SPELL;
+  const relicSpellPlus = (flags?.relicSpellStarsPlus || 0);
+  const starsFinal=isSpell?Math.min(4, stars + relicSpellPlus):Math.min(4,Math.max(stars,1));
+  let hp = base.hp||0, dmg = base.dmg||0;
+
+  const allDmgMult = (flags?.relicAllDmg || 1);
+  if(!isSpell){
+    dmg = Math.round(dmg * allDmgMult);
+    if((base.tags||[]).includes('ranged') && flags?.relicRangedDmg){
+      dmg = Math.round(dmg * flags.relicRangedDmg);
+    }
+    if(flags?.relicHP){ hp = Math.round(hp * flags.relicHP); }
+  }
+
   const c={
-    id:Math.random().toString(36).slice(2),
-    name, icon:base.icon, type:base.type, rar:base.rar,
-    stars:Math.min(4,Math.max(1,stars)),
-    priority:base.priority, tags:clone(base.tags||[]),
-    hp:base.hp||0, dmg:base.dmg||0, hpNow:isSpell?0:Math.round((base.hp||0)*starMult(stars)),
-    alive:!isSpell, owner:'p1', effects:[], frozen:false, turnsAlive:0, baby:false,
+    id:Math.random().toString(36).slice(2), name, icon:base.icon, type:base.type, rar:base.rar,
+    stars:starsFinal, priority:base.priority, tags:clone(base.tags||[]),
+    hp:hp, dmg:dmg, hpNow:isSpell?0:Math.round(hp*starMult(starsFinal)),
+    alive:true, owner:'p1', effects:[], frozen:false, turnsAlive:0, baby:false,
     taunt:!!base.taunt, splash2:!!base.splash2, splash3:!!base.splash3, extraStrike:!!base.extraStrike,
     applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2:base.heal2?clone(base.heal2):null,
     chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
@@ -303,12 +352,11 @@ function makeCard(name,stars=1){
   return c;
 }
 
-/*** Render ***/
+/*** Rendering ***/
 function mountCard(c){
   const div=document.createElement('div');
   div.className='card rarity-'+rarClass(c.rar);
   div.dataset.id=c.id;
-  div.onclick=()=>showDetail(c);
   div.innerHTML=`
     <div class="rowline">
       <div class="emoji">${c.icon||'🂠'}</div>
@@ -329,6 +377,20 @@ function mountCard(c){
   if(hasShield(c)) div.appendChild(Object.assign(document.createElement('div'),{className:'shieldRing'}));
   if(c.frozen) div.appendChild(Object.assign(document.createElement('div'),{className:'freezeVeil'}));
   if(isPoisoned(c)) div.appendChild(Object.assign(document.createElement('div'),{className:'poisonGlow'}));
+
+  const badges = document.createElement('div');
+  badges.className='badges';
+  const p = c.effects.find(e=>e.kind==='poison' && e.dur>0);
+  const f = c.effects.find(e=>e.kind==='freeze' && e.dur>0);
+  const s = c.effects.find(e=>e.kind==='shield' && e.dur>0);
+  const deck = c.owner==='p1'?state.p1Deck:state.p2Deck;
+  const hotActive = (deck.__hots||[]).some(h=>h.dur>0);
+  if (p){ const b=document.createElement('div'); b.className='badge poison'; b.textContent=`☠ ${p.dur}`; badges.appendChild(b); }
+  if (f){ const b=document.createElement('div'); b.className='badge freeze'; b.textContent=`❄ ${f.dur}`; badges.appendChild(b); }
+  if (s){ const b=document.createElement('div'); b.className='badge shield'; b.textContent=`🛡 ${s.dur}`; badges.appendChild(b); }
+  if (hotActive){ const b=document.createElement('div'); b.className='badge hot'; b.textContent=`💚 HOT`; badges.appendChild(b); }
+  if (badges.childElementCount) div.appendChild(badges);
+
   if(c.taunt) div.classList.add('taunt');
   return div;
 }
@@ -340,8 +402,8 @@ function renderBoards(){
   for(const c of state.p2Deck.filter(x=>x.type===TYPE_UNIT && x.alive)) p2.appendChild(mountCard(c));
 }
 function renderDeckBars(){
-  const b1=document.getElementById('deckBarP1'); b1.innerHTML='';
-  const b2=document.getElementById('deckBarP2'); b2.innerHTML='';
+  const b1=document.getElementById('deckP1'); b1.innerHTML='';
+  const b2=document.getElementById('deckP2'); b2.innerHTML='';
   for(const c of state.p1Deck) b1.appendChild(mountCard(c));
   for(const c of state.p2Deck) b2.appendChild(mountCard(c));
 }
@@ -386,6 +448,57 @@ function bigExplosion(card, color='#ef4444', count=30){ const el = findCardEl(ca
 function fireExplosion(card){ bigExplosion(card, '#fb923c', 36); }
 function plagueSplash(card){ bigExplosion(card, '#a78bfa', 28); }
 function blizzardBurst(card){ bigExplosion(card, '#60a5fa', 30); }
+function zapStrike(from, to){
+  const aEl = findCardEl(from.id), dEl = findCardEl(to.id);
+  if (!aEl || !dEl) return;
+  const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
+  const fx = document.getElementById('fxRoot');
+  const line = document.createElement('div');
+  const dx = (d.left + d.width/2) - (a.left + a.width/2);
+  const dy = (d.top  + d.height/2) - (a.top  + a.height/2);
+  const angle = Math.atan2(dy,dx) * 180/Math.PI;
+  const len = Math.min(280, Math.hypot(dx,dy));
+  line.style.position='absolute';
+  line.style.left=(a.left + a.width/2)+'px';
+  line.style.top =(a.top  + a.height/2)+'px';
+  line.style.width=len+'px'; line.style.height='4px';
+  line.style.background='linear-gradient(90deg, rgba(250,204,21,0), rgba(250,204,21,1), rgba(250,204,21,0))';
+  line.style.boxShadow='0 0 18px rgba(250,204,21,.85)';
+  line.style.transformOrigin='0 50%';
+  line.style.transform=`translate(-0px,-2px) rotate(${angle}deg)`;
+  line.style.opacity='1'; line.style.transition=`opacity ${190/state.speed}ms ease`;
+  fx.appendChild(line);
+  setTimeout(()=>{ line.style.opacity='0'; setTimeout(()=>line.remove(), 210/state.speed); }, 140/state.speed);
+  const {x,y} = elCenter(dEl); boomAt(x,y,'#facc15',14,90);
+}
+function heartPulse(card){
+  const el = findCardEl(card.id); if(!el) return;
+  const ring = document.createElement('div');
+  ring.className='heartPulse';
+  ring.style.position='absolute'; ring.style.inset='-4px'; ring.style.borderRadius='12px';
+  ring.style.boxShadow='0 0 0 0 rgba(52,211,153,.55), inset 0 0 18px rgba(52,211,153,.25)';
+  ring.animate([{boxShadow:'0 0 0 0 rgba(52,211,153,.55), inset 0 0 0 rgba(52,211,153,0)'},{boxShadow:'0 0 0 12px rgba(52,211,153,0), inset 0 0 18px rgba(52,211,153,.45)'},{boxShadow:'0 0 0 0 rgba(52,211,153,0), inset 0 0 0 rgba(52,211,153,0)'}], {duration:540/state.speed, easing:'ease-out'});
+  el.appendChild(ring);
+  setTimeout(()=>ring.remove(), 560/state.speed);
+}
+function impactBurst(card, big=false){
+  const fx=findCardEl(card.id)?.querySelector('.fx'); if(!fx) return;
+  for(let i=0;i<(big?20:12);i++){
+    const p=document.createElement('div');
+    const size=3+Math.random()*4;
+    p.style.position='absolute';
+    p.style.width=p.style.height=size+'px';
+    p.style.borderRadius='50%'; p.style.background= big?'#ef4444':'#f87171';
+    p.style.left=(40+Math.random()*40)+'%';
+    p.style.top=(60)+'%';
+    const dx=(Math.random()*66-33), dy=(-34-Math.random()*44);
+    p.style.opacity='0.95';
+    p.style.transition=`transform ${560/state.speed}ms ease-out, opacity ${640/state.speed}ms linear`;
+    fx.appendChild(p);
+    requestAnimationFrame(()=>{p.style.transform=`translate(${dx}px,${dy}px)`; p.style.opacity='0';});
+    setTimeout(()=>p.remove(),660/state.speed);
+  }
+}
 function slashTrail(fromCard,toCard,color='#ef4444'){
   const aEl=findCardEl(fromCard.id), dEl=findCardEl(toCard.id);
   if(!aEl||!dEl) return;
@@ -413,23 +526,18 @@ function chooseTarget(opp){
 }
 function waitMs(ms){return new Promise(r=>setTimeout(r,ms));}
 
-/*** Dyn Max HP ***/
-function getMaxHP(c){
-  const base = Math.round((c.hp||0) * starMult(c.stars));
-  const extra = (c.effects||[]).filter(e=>e.kind==='maxhp').reduce((s,e)=>s+(e.bonus||0),0);
-  return base + extra;
-}
+/*** Healing that respects dynamic Max HP ***/
 function healCard(target,amt){
   if(!target.alive) return;
   const max = getMaxHP(target);
   const before=target.hpNow; target.hpNow=Math.min(max, target.hpNow + amt);
   const diff = target.hpNow - before;
-  if(diff>0){ gFloat(target, `+${diff}`, '#0ea5e9'); const el=findCardEl(target.id); if(el){ const ring=document.createElement('div'); ring.className='heartPulse'; el.appendChild(ring); setTimeout(()=>ring.remove(),560/state.speed);} }
+  if(diff>0){ gFloat(target, `+${diff}`, '#0ea5e9'); heartPulse(target); }
   renderBoards();
 }
 
-/*** Combat ***/
-function dealDamage(attacker,target,base,heavy=false){
+/*** Damage & retaliation ***/
+function dealDamage(attacker,target,base, heavy=false){
   if(!target.alive) return;
   const dmgStarred=Math.round(base*starMult(attacker.stars));
   let dmg=dmgStarred;
@@ -437,23 +545,12 @@ function dealDamage(attacker,target,base,heavy=false){
   target.hpNow-=dmg;
 
   gFloat(target, `-${dmg}`, '#dc2626');
-  if(heavy) bigExplosion(target); else {
-    const fx=findCardEl(target.id)?.querySelector('.fx'); if(fx){
-      for(let i=0;i<12;i++){ const p=document.createElement('div'); const size=3+Math.random()*4;
-        p.style.position='absolute'; p.style.width=p.style.height=size+'px'; p.style.borderRadius='50%'; p.style.background='#f87171';
-        p.style.left=(40+Math.random()*40)+'%'; p.style.top='60%';
-        const dx=(Math.random()*66-33), dy=(-34-Math.random()*44);
-        p.style.opacity='0.95'; p.style.transition=`transform ${560/state.speed}ms ease-out, opacity ${640/state.speed}ms linear`;
-        fx.appendChild(p); requestAnimationFrame(()=>{p.style.transform=`translate(${dx}px,${dy}px)`; p.style.opacity='0';});
-        setTimeout(()=>p.remove(),660/state.speed);
-      }
-    }
-  }
+  if(heavy) bigExplosion(target); else impactBurst(target, false);
 
   if(target.hpNow<=0){
     target.alive=false;
     if(target.split){
-      const mk=()=>makeCard("Slime",Math.max(1,target.stars-1));
+      const mk=()=>makeCard("Slime",Math.max(1,target.stars-1), target.owner==='p1'?state.p1Flags:state.p2Flags);
       const b1=mk(), b2=mk(); b1.owner=target.owner; b2.owner=target.owner;
       b1.baby=b2.baby=true; b1.hpNow=2; b2.hpNow=2; b1.split=b2.split=false;
       (target.owner==='p1'?state.p1Deck:state.p2Deck).push(b1,b2);
@@ -463,7 +560,7 @@ function dealDamage(attacker,target,base,heavy=false){
   renderBoards();
 }
 
-/*** Hoplite retaliation ***/
+/*** Hoplite retaliation hook ***/
 const _dealDamage=dealDamage;
 dealDamage=function(attacker,target,base,heavy=false){
   const aliveBefore=target.alive;
@@ -476,55 +573,62 @@ dealDamage=function(attacker,target,base,heavy=false){
   }
 }
 
-/*** Spells — once per battle per deck ***/
-function castSpellsOnce(deck, owner, syn, flags){
+/*** Spells — fire once per battle ***/
+function castSpellsOnce(side){
+  const deck = side==='p1' ? state.p1Deck : state.p2Deck;
+  const flags= side==='p1' ? state.p1Flags : state.p2Flags;
+  const other = side==='p1' ? state.p2Deck : state.p1Deck;
+
   for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
     s._used = true;
-    const plusStars = flags.relicSpellStarsPlus||0;
-    const pow = starMult(Math.min(4, s.stars + plusStars));
+    const pow = starMult(s.stars);
     const sp = clone(s.spell);
-    const opp = owner==='p1'? state.p2Deck : state.p1Deck;
 
     if (sp.kind==='fire'){
-      const tgt = chooseTarget(opp);
-      if (tgt){ fireExplosion(tgt); dealDamage(s, tgt, Math.round(sp.dmg*pow), true); log(`${owner.toUpperCase()} 💥 Firebolt hits ${tgt.name}`); }
+      const tgt = chooseTarget(other);
+      if (tgt){ fireExplosion(tgt); dealDamage(s, tgt, Math.round(sp.dmg*pow), true);
+        log(`${side==='p1'?'P1':'P2'} 💥 Firebolt hits ${tgt.name}`);
+      }
     }
     else if (sp.kind==='lightning'){
       for (let i=0;i<sp.hits;i++){
-        const t=chooseTarget(opp);
-        if (t){ slashTrail(s, t, '#facc15'); dealDamage(s,t,Math.round(sp.dmg*pow)); }
+        const t=chooseTarget(other);
+        if (t){ zapStrike(s, t); dealDamage(s,t,Math.round(sp.dmg*pow)); }
       }
-      log(`${owner.toUpperCase()} ⚡ Lightning strikes ${sp.hits} targets`);
+      log(`${side==='p1'?'P1':'P2'} ⚡ Lightning strikes ${sp.hits} targets`);
     }
     else if (sp.kind==='shield'){
       const allies = living(deck).filter(a=>!hasShield(a));
       if (allies.length){
         const tgt = allies.sort((a,b)=>b.hpNow-a.hpNow)[0];
-        applyShield(tgt, (sp.dur||1) + (flags.relicShieldPlus||0));
+        const extra = (flags?.relicShieldPlus||0);
+        applyShield(tgt, (sp.dur||1) + extra);
         bigExplosion(tgt,'#2563eb',18);
         gFloat(tgt, `Shield`, '#2563eb');
-        log(`${owner.toUpperCase()} 🛡️ Shield on ${tgt.name}`);
+        log(`${side==='p1'?'P1':'P2'} 🛡️ Shield on ${tgt.name}`);
       }
     }
     else if (sp.kind==='plague'){
-      const oppL = living(opp);
-      const count = Math.min(sp.count||3, oppL.length);
+      const opp = living(other);
+      const count = Math.min(sp.count||3, opp.length);
       for (let i=0;i<count;i++){
-        addPoison(oppL[i], Math.round(sp.dmg*pow) + (syn.poisonPlus||0) + (flags.relicPoisonPlus||0), (sp.dur||3) + (syn.poisonDurPlus||0));
-        plagueSplash(oppL[i]); gFloat(oppL[i], `☣`, '#7c3aed');
+        addPoison(opp[i],
+          Math.round(sp.dmg*pow) + (flags?.relicPoisonPlus||0) + ((side==='p1'?state.p1Syn:state.p2Syn).poisonPlus||0),
+          (sp.dur||3) + ((side==='p1'?state.p1Syn:state.p2Syn).poisonDurPlus||0));
+        plagueSplash(opp[i]); gFloat(opp[i], `☣`, '#7c3aed');
       }
-      log(`${owner.toUpperCase()} ☣️ Plague spreads`);
+      log(`${side==='p1'?'P1':'P2'} ☣️ Plague spreads`);
     }
     else if (sp.kind==='ward'){
       deck.__wards = deck.__wards || [];
       deck.__wards.push({heal:Math.round((sp.heal||5)*pow), dur:sp.dur||3, targets:sp.targets||2});
       for (const u of living(deck)) { bigExplosion(u,'#34d399',10); }
-      log(`${owner.toUpperCase()} ✨ Healing Ward active`);
+      log(`${side==='p1'?'P1':'P2'} ✨ Healing Ward active`);
     }
     else if (sp.kind==='freeze2'){
-      const oppL = living(opp).slice(0,2);
-      for (const t of oppL){ blizzardBurst(t); addFreeze(t, 1 + (syn.freezePlus||0)); dealDamage(s,t,Math.round((sp.dmg||3)*pow)); }
-      log(`${owner.toUpperCase()} ❄️ Blizzard chills two`);
+      const opp = living(other).slice(0,2);
+      for (const t of opp){ blizzardBurst(t); addFreeze(t, 1 + ((side==='p1'?state.p1Syn:state.p2Syn).freezePlus||0)); dealDamage(s,t,Math.round((sp.dmg||3)*pow)); }
+      log(`${side==='p1'?'P1':'P2'} ❄️ Blizzard chills two`);
     }
     else if (sp.kind==='hotAll'){
       const DURATION = 3;
@@ -533,8 +637,9 @@ function castSpellsOnce(deck, owner, syn, flags){
       for (const u of living(deck)) {
         u.effects.push({kind:'maxhp', bonus:1, dur:DURATION});
         gFloat(u, '+MaxHP', '#34d399');
+        heartPulse(u);
       }
-      log(`${owner.toUpperCase()} 💚 Rejuvenate for ${DURATION} turns`);
+      log(`${side==='p1'?'P1':'P2'} 💚 Rejuvenate: +Max HP & HoT for ${DURATION} turns`);
     }
   }
 }
@@ -578,35 +683,36 @@ function processEndOfRound(){
 }
 
 /*** Unit actions ***/
-function actUnit(u, synSelf, flagsSelf){
+function actUnit(u){
   if(!u.alive) return;
   u.turnsAlive++;
-  if(u.frozen){ log(`${u.owner.toUpperCase()} ${u.name} is frozen and skips.`); return; }
+  if(u.frozen){ log(`${u.name} is frozen and skips.`); return; }
 
-  // Ranged priority bump
-  if((u.tags||[]).includes('ranged') && synSelf.rangedPriorityUp && u.priority>PRIORITY.HIGH) u.priority=PRIORITY.HIGH;
+  const syn = u.owner==='p1'?state.p1Syn:state.p2Syn;
+  const flags = u.owner==='p1'?state.p1Flags:state.p2Flags;
 
-  // Healers
+  if((u.tags||[]).includes('ranged') && syn.rangedPriorityUp && u.priority>PRIORITY.HIGH) u.priority=PRIORITY.HIGH;
+
   if(u.heal1){
-    const deck=u.owner==='p1'?state.p1Deck:state.p2Deck;
-    const allies=living(deck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
-    if(allies.length) healCard(allies[0], Math.round(u.heal1.amt*starMult(u.stars)) + (synSelf.healPlus||0));
-    log(`${u.owner.toUpperCase()} ${u.icon} ${u.name} heals`);
+    const allies=living(u.owner==='p1'?state.p1Deck:state.p2Deck)
+      .sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+    if(allies.length) healCard(allies[0], Math.round(u.heal1.amt*starMult(u.stars)) + (syn.healPlus||0));
+    log(`${u.owner==='p1'?'P1':'P2'} ${u.icon} ${u.name} heals`);
     return;
   }
   if(u.heal2){
-    const deck=u.owner==='p1'?state.p1Deck:state.p2Deck;
-    const allies=living(deck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
-    for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (synSelf.healPlus||0)); }
-    if(u.tags.includes('bubble') && allies.length){ const tgt=allies[0]; if(tgt && !hasShield(tgt)){ applyShield(tgt,1 + (flagsSelf.relicShieldPlus||0)); gFloat(tgt,'Bubble','var(--shield)'); } }
-    log(`${u.owner.toUpperCase()} ${u.icon} ${u.name} heals two`);
+    const allies=living(u.owner==='p1'?state.p1Deck:state.p2Deck)
+      .sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+    for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (syn.healPlus||0)); }
+    if(u.tags.includes('bubble') && allies.length){ const tgt=allies[0]; if(tgt && !hasShield(tgt)){ applyShield(tgt,1 + (flags?.relicShieldPlus||0)); gFloat(tgt,'Bubble','var(--shield)'); } }
+    log(`${u.owner==='p1'?'P1':'P2'} ${u.icon} ${u.name} heals two`);
     return;
   }
   if(u.wardSong){
     const deck=u.owner==='p1'?state.p1Deck:state.p2Deck;
     deck.__wards=deck.__wards||[]; deck.__wards.push({heal:2,dur:1,targets:2});
     for (const a of living(deck)) bigExplosion(a,'#34d399',8);
-    log(`${u.owner.toUpperCase()} 🎵 Bard inspires`);
+    log(`${u.owner==='p1'?'P1':'P2'} 🎵 Bard inspires`);
   }
 
   let bonusMult = (u.alpha && u.turnsAlive===1)? 2 : 1;
@@ -614,10 +720,10 @@ function actUnit(u, synSelf, flagsSelf){
   const target=chooseTarget(oppDeck); if(!target) return;
 
   const doHit=()=>{
-    const splashPlus = (synSelf.splashPlus||0);
-    const poisonPlus = (synSelf.poisonPlus||0) + (flagsSelf.relicPoisonPlus||0);
-    const poisonDurPlus = (synSelf.poisonDurPlus||0);
-    const freezePlus = (synSelf.freezePlus||0);
+    const splashPlus = (syn.splashPlus||0);
+    const poisonPlus = (syn.poisonPlus||0) + (flags?.relicPoisonPlus||0);
+    const poisonDurPlus = (syn.poisonDurPlus||0);
+    const freezePlus = (syn.freezePlus||0);
 
     if(u.tags.includes('charge') && u.turnsAlive===1) bonusMult*=1.5;
     if(u.tags.includes('bleed') && u.turnsAlive===1) addBleed(target,1,2);
@@ -631,29 +737,26 @@ function actUnit(u, synSelf, flagsSelf){
       }
     }
 
-    const allDmgMult = flagsSelf.relicAllDmg || 1;
-    const rangedMult = (u.tags||[]).includes('ranged') && flagsSelf.relicRangedDmg ? flagsSelf.relicRangedDmg : 1;
-    const finalBase = Math.round(u.dmg * allDmgMult * rangedMult);
-
     if(u.splash3){
       const arr=living(oppDeck); const n=Math.min(3,arr.length);
-      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(finalBase+splashPlus)*bonusMult, true); if(u.tags.includes('burn')) addBurn(arr[i],1,2); }
-      log(`${u.owner.toUpperCase()} ${u.icon} ${u.name} hits ${n}`);
-    } else if(u.splash2){
+      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); if(u.tags.includes('burn')) addBurn(arr[i],1,2); }
+      log(`${u.owner==='p1'?'P1':'P2'} ${u.icon} ${u.name} hits ${n}`);
+    }
+    else if(u.splash2){
       const arr=living(oppDeck); const n=Math.min(2,arr.length);
-      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(finalBase+splashPlus)*bonusMult, true); }
-      log(`${u.owner.toUpperCase()} ${u.icon} ${u.name} cleaves ${n}`);
-    } else{
+      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); }
+      log(`${u.owner==='p1'?'P1':'P2'} ${u.icon} ${u.name} cleaves ${n}`);
+    }
+    else{
       slashTrail(u, target, '#ef4444');
-      dealDamage(u,target,finalBase*bonusMult);
+      dealDamage(u,target,u.dmg*bonusMult);
       if(u.freeze && target.alive) addFreeze(target,1+freezePlus);
       if(u.applyPoison && target.alive) addPoison(target, u.applyPoison.dmg + poisonPlus, u.applyPoison.dur + poisonDurPlus);
       if(u.smiteHeal) healCard(u,2);
-      log(`${u.owner.toUpperCase()} ${u.icon} ${u.name} strikes ${target.name}`);
+      log(`${u.owner==='p1'?'P1':'P2'} ${u.icon} ${u.name} strikes ${target.name}`);
     }
   };
 
-  // animation shim
   const aEl=findCardEl(u.id), dEl=findCardEl(target.id);
   if(!aEl||!dEl){ doHit(); return; }
   const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
@@ -662,7 +765,7 @@ function actUnit(u, synSelf, flagsSelf){
   setTimeout(()=>{ doHit(); aEl.style.transform='translate(0,0)';},180/state.speed);
 }
 
-/*** Synergies ***/
+/*** Synergy compute (+ flash) ***/
 function computeSynergies(deck){
   const counts={}; const tagsByCard=deck.filter(c=>c.type===TYPE_UNIT).map(c=>c.tags||[]);
   for(const tags of tagsByCard){ for(const t of tags){ counts[t]=(counts[t]||0)+1; } }
@@ -672,69 +775,37 @@ function computeSynergies(deck){
   }
   return buffs;
 }
-
-/*** Relic helpers ***/
-function applyRelicsToFlags(list){
-  const F={};
-  for(const r of list) r.apply(F);
-  return F;
+function flashCard(title,desc,kind=''){
+  const box=document.createElement('div');
+  box.className='flashCard'+(kind?(' '+kind):'');
+  box.innerHTML=`<div class="flashTitle">${title}</div><div class="flashDesc">${desc}</div>`;
+  document.getElementById('battleFlash').appendChild(box);
+  setTimeout(()=>box.remove(), 3600);
 }
-function flashSynergyAndRelics(){
-  const syn1 = SYNERGIES.filter(s=>state.p1Syn._active?.includes(s.id)).map(s=>s.label).join(' • ') || '';
-  const syn2 = SYNERGIES.filter(s=>state.p2Syn._active?.includes(s.id)).map(s=>s.label).join(' • ') || '';
-  const rel1 = state.p1Relics.map(r=>'🔶 '+r.title).join(' • ');
-  const rel2 = state.p2Relics.map(r=>'🔶 '+r.title).join(' • ');
-  const s1=document.getElementById('p1Syn'), s2=document.getElementById('p2Syn');
-  const rf1=document.getElementById('p1RelFlash'), rf2=document.getElementById('p2RelFlash');
-  s1.textContent = syn1; s2.textContent = syn2; rf1.textContent = rel1; rf2.textContent = rel2;
-  s1.style.display=syn1? 'inline-block':'none'; s2.style.display=syn2? 'inline-block':'none';
-  rf1.style.display=rel1? 'inline-block':'none'; rf2.style.display=rel2? 'inline-block':'none';
-}
-
-/*** Prepare teams ***/
-function prepareForBattle(){
-  // reset flags
-  state.p1RelicFlags = applyRelicsToFlags(state.p1Relics);
-  state.p2RelicFlags = applyRelicsToFlags(state.p2Relics);
-
-  for(const c of state.p1Deck.concat(state.p2Deck)){
-    if(c.type===TYPE_UNIT){
-      c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
-      // base HP (with possible global HP penalty from Glass Arrows)
-      const flag = c.owner==='p1'?state.p1RelicFlags:state.p2RelicFlags;
-      const hpMult = (flag.relicHP||1);
-      const baseMax = Math.round(c.hp * hpMult * starMult(c.stars));
-      c.hpNow = baseMax;
-
-      // Vigor (+maxhp effect + start heal)
-      const rpct = flag.relicMaxHPPct||0, healPct = flag.relicStartHealPct||0;
-      if(rpct>0){
-        const bonus = Math.max(1, Math.round(baseMax * rpct));
-        c.effects.push({kind:'maxhp', bonus, dur:null});
-        const healAmt = Math.max(1, Math.round(baseMax * healPct));
-        c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
-      }
-    }
-    if(c.type===TYPE_SPELL) c._used=false;
+function showSynergyFlashes(){
+  document.getElementById('battleFlash').innerHTML='';
+  for(const s of SYNERGIES){
+    if(state.p1Syn._active?.includes(s.id)) flashCard(`P1: 🧩 ${s.label}`, s.desc);
+    if(state.p2Syn._active?.includes(s.id)) flashCard(`P2: 🧩 ${s.label}`, s.desc);
   }
+  for(const r of state.p1Relics) flashCard(`P1 Relic: ${r.title}`, r.desc, 'relic');
+  for(const r of state.p2Relics) flashCard(`P2 Relic: ${r.title}`, r.desc, 'relic');
 }
 
 /*** Battle loop ***/
-async function playRound(){
-  // reset retaliate flags
+async function playRoundOnce(){
   for(const x of [...state.p1Deck, ...state.p2Deck]) x._retalUsed=false;
 
-  const Y=living(state.p1Deck).sort((a,b)=>a.priority-b.priority);
-  const F=living(state.p2Deck).sort((a,b)=>a.priority-b.priority);
+  const A=living(state.p1Deck).sort((a,b)=>a.priority-b.priority);
+  const B=living(state.p2Deck).sort((a,b)=>a.priority-b.priority);
 
-  const fastP1 = state.p1RelicFlags.relicFasterHigh;
-  const fastP2 = state.p2RelicFlags.relicFasterHigh;
-
-  for(const u of [...Y,...F]){
+  for(const u of [...A,...B]){
     if(!u.alive) continue;
-    const fast = (u.owner==='p1'?fastP1:fastP2) && u.priority===PRIORITY.HIGH;
-    await waitMs((fast?140:190)/state.speed);
-    actUnit(u, u.owner==='p1'?state.p1Syn:state.p2Syn, u.owner==='p1'?state.p1RelicFlags:state.p2RelicFlags);
+    const fastHighP1 = (state.p1Flags?.relicFasterHigh && u.owner==='p1' && u.priority===PRIORITY.HIGH);
+    const fastHighP2 = (state.p2Flags?.relicFasterHigh && u.owner==='p2' && u.priority===PRIORITY.HIGH);
+    const delayBefore = (fastHighP1 || fastHighP2) ? 140 : 190;
+    await waitMs(delayBefore/state.speed);
+    actUnit(u);
     await waitMs(300/state.speed);
     if(living(state.p1Deck).length===0 || living(state.p2Deck).length===0) break;
   }
@@ -743,235 +814,282 @@ async function playRound(){
 }
 
 async function battle(){
-  if(state.playing) return;
-  state.playing=true;
-  setDraftPhase('Battle');
+  // compute relic flags fresh
+  state.p1Flags={}; state.p2Flags={};
+  for(const r of state.p1Relics) r.apply(state.p1Flags);
+  for(const r of state.p2Relics) r.apply(state.p2Flags);
 
-  state.p1Syn=computeSynergies(state.p1Deck);
-  state.p2Syn=computeSynergies(state.p2Deck);
-  prepareForBattle(); renderBoards(); renderDeckBars();
-
-  // start shields from synergy & relics
-  if(state.p1Syn.startShieldSmall){
-    const allies=living(state.p1Deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,state.p1Syn.startShieldSmall);
-    for(const a of allies){ applyShield(a,1+(state.p1RelicFlags.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
+  // reset units & apply Banner of Vigor as persistent effect
+  function prep(deck, flags, owner){
+    for(const c of deck){
+      c.owner=owner;
+      if(c.type===TYPE_UNIT){
+        c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
+        c.hpNow=Math.round(c.hp*starMult(c.stars));
+        const rpct = flags?.relicMaxHPPct || 0;
+        const hpStartHealPct = flags?.relicStartHealPct || 0;
+        if (rpct > 0){
+          const baseMax = Math.round(c.hp * starMult(c.stars));
+          const bonus   = Math.max(1, Math.round(baseMax * rpct));
+          c.effects.push({kind:'maxhp', bonus, dur:null});
+          const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
+          c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
+        }
+      }
+      if(c.type===TYPE_SPELL) c._used=false;
+    }
   }
-  if(state.p2Syn.startShieldSmall){
-    const allies=living(state.p2Deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,state.p2Syn.startShieldSmall);
-    for(const a of allies){ applyShield(a,1+(state.p2RelicFlags.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
-  }
-  if(state.p1RelicFlags.relicFirstShield){
-    const allies=living(state.p1Deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,2);
-    for(const a of allies){ applyShield(a,1+(state.p1RelicFlags.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
-  }
-  if(state.p2RelicFlags.relicFirstShield){
-    const allies=living(state.p2Deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,2);
-    for(const a of allies){ applyShield(a,1+(state.p2RelicFlags.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
-  }
+  prep(state.p1Deck, state.p1Flags, 'p1');
+  prep(state.p2Deck, state.p2Flags, 'p2');
 
-  flashSynergyAndRelics();
+  // compute synergies
+  state.p1Syn = computeSynergies(state.p1Deck);
+  state.p2Syn = computeSynergies(state.p2Deck);
 
-  // spells once
-  castSpellsOnce(state.p1Deck,'p1',state.p1Syn,state.p1RelicFlags);
-  castSpellsOnce(state.p2Deck,'p2',state.p2Syn,state.p2RelicFlags);
+  // UI little fade lists by names
+  const syn1=document.getElementById('synP1'); const syn2=document.getElementById('synP2');
+  syn1.textContent = (state.p1Syn._active||[]).map(id=>SYNERGIES.find(s=>s.id===id)?.label||'').filter(Boolean).join(' • ') || '—';
+  syn2.textContent = (state.p2Syn._active||[]).map(id=>SYNERGIES.find(s=>s.id===id)?.label||'').filter(Boolean).join(' • ') || '—';
+  syn1.classList.add('on'); syn2.classList.add('on');
+  setTimeout(()=>{syn1.classList.remove('on'); syn2.classList.remove('on');}, 2600);
 
-  // loop
-  let rounds=1;
+  renderBoards(); renderDeckBars();
+  showSynergyFlashes();
+
+  // synergy start shields + relic start shields
+  function startShields(deck, syn, flags){
+    if(syn.startShieldSmall){
+      const allies = living(deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,syn.startShieldSmall);
+      for(const a of allies){ applyShield(a,1 + (flags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
+    }
+    if(flags?.relicFirstShield){
+      const allies = living(deck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,2);
+      for(const a of allies){ applyShield(a,1 + (flags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
+    }
+  }
+  startShields(state.p1Deck, state.p1Syn, state.p1Flags);
+  startShields(state.p2Deck, state.p2Syn, state.p2Flags);
+
+  // spells (once)
+  castSpellsOnce('p1');
+  castSpellsOnce('p2');
+
+  // main
   while(living(state.p1Deck).length>0 && living(state.p2Deck).length>0){
-    log(`<b>Round ${rounds}</b>`);
-    await playRound();
+    await playRoundOnce();
     if(living(state.p1Deck).length===0 || living(state.p2Deck).length===0) break;
-    rounds++;
     await waitMs(340/state.speed);
   }
-  const win=living(state.p1Deck).length>0;
-  log(win?`<b>P1 Victory!</b>`:`<b>P2 Victory!</b>`);
-  state.playing=false;
+  const p1Alive = living(state.p1Deck).length>0;
+  log(p1Alive?`<b>P1 Victory!</b>`:`<b>P2 Victory!</b>`);
+  state.round++;
+  updateHeader();
 
-  // Between-battle: round++ → if multiple rounds wanted, open relic draft on 5th, then normal draft
-  setRound(state.round+1);
-  // Every 5th round: relic draft first
-  if((state.round-1) % 5 === 0){ openRelicDraft(()=> openSimulDraft({count:1,forceCommon:false, title:`Round ${state.round} Draft`})); }
-  else { openSimulDraft({count:1,forceCommon:false, title:`Round ${state.round} Draft`}); }
+  // post-battle: drafting for next round
+  if(state.round % 5 === 0){
+    openSimulDraft({count:1, forceCommon:false, title:`Round ${state.round} Draft`}, () => {
+      openRelicDraft(() => {
+        battle();
+      });
+    });
+  } else {
+    openSimulDraft({count:1, forceCommon:false, title:`Round ${state.round} Draft`}, () => {
+      battle();
+    });
+  }
 }
 
-/*** Simultaneous Drafts ***/
-function draftWeightsForLevel(){ return {common:58, rare:30, epic:10, legend:2}; }
+/*** Weighted rarity ***/
+function draftWeights(){
+  // flat-ish duel weights
+  return {common:58, rare:30, epic:10, legend:2};
+}
 function weightedPick(weights){
-  const entries=Object.entries(weights);
+  const entries = Object.entries(weights);
   const total=entries.reduce((s,[,v])=>s+v,0);
   let r=Math.random()*total;
   for(const [k,v] of entries){ if((r-=v)<=0) return k; }
   return entries[0][0];
 }
-function poolByRarity(rar){ return PLAYER_POOL.filter(n=>CATALOG[n].rar===RAR[rar.toUpperCase()]); }
-
-function makeChoiceCard(c, onPick){
-  const box=document.createElement('div');
-  box.className='card rarity-'+rarClass(c.rar);
-  box.innerHTML=`
-    <div class="rowline"><div class="emoji">${c.icon||'🂠'}</div><div class="stars">${fmtStars(c.stars)}</div></div>
-    <div class="rowline"><div class="name">${c.name}</div><div class="rar ${rarClass(c.rar)}">${c.rar.toUpperCase()}</div></div>
-    <div class="statline">${c.type===TYPE_UNIT?`<span>HP ${c.hpNow}</span><span>DMG ${c.dmg}</span><span>${prioName(c.priority)}</span>`:`<span>Spell</span>`}</div>
-    <div class="statline">${(c.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
-  box.onclick=()=>{ onPick(); box.classList.add('picked'); };
-  return box;
+function poolByRarity(r){
+  return PLAYER_POOL.filter(n=>cardRarity(n)===r);
 }
 
-function openSimulDraft({count=1, forceCommon=false, title='Draft'}={}){
-  state.openDraftCountRemaining = count;
-  state.forceCommon = forceCommon;
+/*** Draft rendering helpers ***/
+function makeChoiceCard(c, onClick){
+  const el = mountCard(c);
+  el.onclick = onClick;
+  return el;
+}
+function relicChoiceCard(r, onClick){
+  const c={id:'r_'+r.id, name:r.title, icon:'🔶', type:'relic', rar:RAR.LEGEND, stars:4, priority:PRIORITY.LOW, tags:[], hp:0, dmg:0, hpNow:0, spell:null};
+  const el = mountCard(c);
+  el.querySelector('.statline').innerHTML = `<span>${r.desc}</span>`;
+  el.onclick = onClick;
+  return el;
+}
+
+/*** Simultaneous CARD Draft (both sides) ***/
+function openSimulDraft({count=1, forceCommon=false, title='Draft'}={}, onDone){
+  state._openCount = count;
+  state._forceCommon = forceCommon;
+
+  const modal = document.getElementById('draftModal');
   document.getElementById('draftTitle').textContent = title + (forceCommon?' — COMMONS':'');
-  setDraftPhase(forceCommon?`Opening (remaining ${count})`:`Round ${state.round} Draft`);
-  nextSimulPick();
+  modal.classList.add('on');
+
+  nextDraftStep(onDone);
 }
-
-function nextSimulPick(){
-  const modal=document.getElementById('draftModal'); modal.classList.add('on');
-  const a=document.getElementById('draftChoicesP1'); const b=document.getElementById('draftChoicesP2');
+function nextDraftStep(onDone){
+  state.p1Locked=false; state.p2Locked=false;
+  const a = document.getElementById('draftChoicesP1');
+  const b = document.getElementById('draftChoicesP2');
+  const noteP1 = document.getElementById('noteP1');
+  const noteP2 = document.getElementById('noteP2');
+  const waitP1 = document.getElementById('waitP1');
+  const waitP2 = document.getElementById('waitP2');
   a.innerHTML=''; b.innerHTML='';
-  state.awaitingP1=true; state.awaitingP2=true;
-  document.getElementById('noteP1').textContent=''; document.getElementById('noteP2').textContent='';
-  document.getElementById('draftFooterNote').textContent = `Picks left in this draft phase: ${state.openDraftCountRemaining}`;
+  noteP1.style.display='block'; noteP2.style.display='block';
+  waitP1.style.display='none'; waitP2.style.display='none';
 
-  const buildSet = ()=>{
-    if(state.forceCommon){
+  function buildSet(flags){
+    if(state._forceCommon){
       const commons = poolByRarity('common');
-      return [makeCard(commons[RAND(commons.length)],1), makeCard(commons[RAND(commons.length)],1), makeCard(commons[RAND(commons.length)],1)];
-    }else{
-      const w = draftWeightsForLevel();
+      return [
+        makeCard(commons[RAND(commons.length)],1, flags),
+        makeCard(commons[RAND(commons.length)],1, flags),
+        makeCard(commons[RAND(commons.length)],1, flags)
+      ];
+    } else {
+      const w = draftWeights();
       const rarPick = weightedPick(w);
       const pool = poolByRarity(rarPick);
-      const fall = PLAYER_POOL;
-      const choose = (pool.length?pool:fall);
-      return [makeCard(choose[RAND(choose.length)],1), makeCard(choose[RAND(choose.length)],1), makeCard(choose[RAND(choose.length)],1)];
+      const choose = (pool.length?pool:PLAYER_POOL);
+      return [
+        makeCard(choose[RAND(choose.length)],1, flags),
+        makeCard(choose[RAND(choose.length)],1, flags),
+        makeCard(choose[RAND(choose.length)],1, flags)
+      ];
     }
-  };
+  }
 
-  const setP1=buildSet(), setP2=buildSet();
-  for(const c of setP1){
-    const el=makeChoiceCard(c, ()=>{
-      if(!state.awaitingP1) return;
-      pickFor('p1',c);
-      state.awaitingP1=false;
-      document.getElementById('noteP1').textContent='✓ Pick locked';
-      maybeCloseDraftStep();
+  const p1set = buildSet(state.p1Flags);
+  const p2set = buildSet(state.p2Flags);
+
+  // P1 clickable only in P1 bucket
+  p1set.forEach((c)=>{
+    const el = makeChoiceCard(c, ()=>{
+      if(state.p1Locked) return;
+      state.p1Deck.push(c);
+      el.classList.add('picked');
+      state.p1Locked=true;
+      noteP1.textContent='✓ Pick locked';
+      waitP1.style.display = state.p2Locked ? 'none' : 'block';
+      maybeCloseThisStep();
+      renderDeckBars();
     });
     a.appendChild(el);
-  }
-  for(const c of setP2){
-    const el=makeChoiceCard(c, ()=>{
-      if(!state.awaitingP2) return;
-      pickFor('p2',c);
-      state.awaitingP2=false;
-      document.getElementById('noteP2').textContent='✓ Pick locked';
-      maybeCloseDraftStep();
+  });
+
+  // P2 clickable only in P2 bucket
+  p2set.forEach((c)=>{
+    const el = makeChoiceCard(c, ()=>{
+      if(state.p2Locked) return;
+      c.owner='p2';
+      state.p2Deck.push(c);
+      el.classList.add('picked');
+      state.p2Locked=true;
+      noteP2.textContent='✓ Pick locked';
+      waitP2.style.display = state.p1Locked ? 'none' : 'block';
+      maybeCloseThisStep();
+      renderDeckBars();
     });
     b.appendChild(el);
-  }
-}
+  });
 
-function pickFor(owner, card){
-  const deck = owner==='p1'?state.p1Deck:state.p2Deck;
-  if(deck.length>=20){
-    // remove lowest rarity oldest first
-    const idx = deck.findIndex(x=>x.type===TYPE_UNIT||x.type===TYPE_SPELL);
-    if(idx>=0) deck.splice(idx,1);
-  }
-  const c = clone(card); c.owner = owner;
-  (owner==='p1'?state.p1Deck:state.p2Deck).push(c);
-  renderDeckBars();
-}
-
-function maybeCloseDraftStep(){
-  if(state.awaitingP1 || state.awaitingP2) return;
-  state.openDraftCountRemaining--;
-  if(state.openDraftCountRemaining>0){
-    // Next simultaneous pick in same phase
-    nextSimulPick();
-  }else{
-    // Phase complete
-    document.getElementById('draftModal').classList.remove('on');
-    // If we just finished opening draft, start the first battle
-    if(state.forceCommon){
-      state.forceCommon=false;
-      setDraftPhase('—');
-      battle();
-    }else{
-      // Between-round draft finished → start next battle
-      battle();
+  function maybeCloseThisStep(){
+    if(!state.p1Locked || !state.p2Locked) return;
+    state._openCount--;
+    if(state._openCount>0){
+      // next step in same modal
+      setTimeout(()=>nextDraftStep(onDone), 260);
+    } else {
+      document.getElementById('draftModal').classList.remove('on');
+      // after opening commons, immediately battle
+      if(onDone){ onDone(); }
+      else {
+        battle();
+      }
     }
   }
 }
 
-/*** Relic Draft (simultaneous) ***/
-function relicChoiceCard(r, onPick){
-  const box=document.createElement('div');
-  box.className='card rarity-legend';
-  box.innerHTML=`
-    <div class="rowline"><div class="emoji">🔶</div><div class="stars">Relic</div></div>
-    <div class="rowline"><div class="name">${r.title}</div><div class="rar legend">RELIC</div></div>
-    <div class="statline"><span>${r.desc}</span></div>`;
-  box.onclick=()=>{ onPick(); box.classList.add('picked'); };
-  return box;
-}
-
+/*** Simultaneous RELIC Draft ***/
 function openRelicDraft(onDone){
-  const modal=document.getElementById('relicModal'); modal.classList.add('on');
-  const a=document.getElementById('relicChoicesP1'); const b=document.getElementById('relicChoicesP2');
+  const modal = document.getElementById('relicModal'); 
+  modal.classList.add('on');
+  const a = document.getElementById('relicChoicesP1');
+  const b = document.getElementById('relicChoicesP2');
+  const n1 = document.getElementById('rnoteP1');
+  const n2 = document.getElementById('rnoteP2');
+  const w1 = document.getElementById('rwaitP1');
+  const w2 = document.getElementById('rwaitP2');
   a.innerHTML=''; b.innerHTML='';
+  w1.style.display='none'; w2.style.display='none';
   let lockP1=false, lockP2=false;
 
   const choices1=[...RELICS].sort(()=>Math.random()-0.5).slice(0,3);
   const choices2=[...RELICS].sort(()=>Math.random()-0.5).slice(0,3);
 
-  for(const r of choices1){
-    a.appendChild(relicChoiceCard(r, ()=>{
-      if(lockP1) return; lockP1=true;
+  choices1.forEach((r)=>{
+    const el = relicChoiceCard(r, ()=>{
+      if(lockP1) return;
       state.p1Relics.push(r);
-      if(lockP1 && lockP2){ modal.classList.remove('on'); onDone&&onDone(); }
-    }));
-  }
-  for(const r of choices2){
-    b.appendChild(relicChoiceCard(r, ()=>{
-      if(lockP2) return; lockP2=true;
+      el.classList.add('picked');
+      lockP1=true; n1.textContent='✓ Relic locked';
+      w1.style.display = lockP2 ? 'none' : 'block';
+      maybeDone();
+    });
+    a.appendChild(el);
+  });
+  choices2.forEach((r)=>{
+    const el = relicChoiceCard(r, ()=>{
+      if(lockP2) return;
       state.p2Relics.push(r);
-      if(lockP1 && lockP2){ modal.classList.remove('on'); onDone&&onDone(); }
-    }));
+      el.classList.add('picked');
+      lockP2=true; n2.textContent='✓ Relic locked';
+      w2.style.display = lockP1 ? 'none' : 'block';
+      maybeDone();
+    });
+    b.appendChild(el);
+  });
+
+  function maybeDone(){
+    if(lockP1 && lockP2){
+      modal.classList.remove('on');
+      onDone && onDone();
+    }
   }
 }
-
-/*** Detail ***/
-function showDetail(c){
-  const m=document.getElementById('detailModal'); m.classList.add('on');
-  const base=CATALOG[c.name]; const b=document.getElementById('detailBody');
-  b.innerHTML=`
-    <h2 style="margin:0 0 6px 0">${c.icon||''} ${c.name}${c.baby?' (baby)':''}</h2>
-    <div style="color:#475569;font-size:13px;margin-bottom:8px">${c.type.toUpperCase()} • ${c.rar.toUpperCase()} • ${fmtStars(c.stars)} ${c.type===TYPE_UNIT?`• Priority: ${prioName(c.priority)}`:''}</div>
-    ${c.type===TYPE_UNIT?`
-      <div>Max HP now: ${getMaxHP(c)}, Damage: ${Math.round((c.dmg||0)*starMult(c.stars))}</div>
-      <div style="margin-top:6px">Tags: ${(c.tags||[]).join(', ')||'—'}</div>
-    `:`<div>Spell: <code>${JSON.stringify(base.spell)}</code></div>`}
-  `;
-}
-function hideDetail(){ document.getElementById('detailModal').classList.remove('on'); }
 
 /*** Controls ***/
 document.getElementById('btnSpeed').onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length; state.speed=SPEEDS[speedIdx]; document.getElementById('btnSpeed').textContent=`Speed: ${state.speed}x`;};
 
 /*** Bootstrap ***/
-function startGame(){
-  state.round=1; setRound(1);
+function startMatch(){
+  state.round=0;
   state.p1Deck=[]; state.p2Deck=[];
   state.p1Relics=[]; state.p2Relics=[];
-  state.p1RelicFlags={}; state.p2RelicFlags={};
+  state.p1Flags={}; state.p2Flags={};
   document.getElementById('log').innerHTML='';
-  renderDeckBars(); renderBoards();
-  // Opening: 3x COMMON picks simultaneously
-  openSimulDraft({count:3, forceCommon:true, title:'Opening Draft'});
+  updateHeader(); renderDeckBars(); renderBoards();
+
+  // Opening: 3 forced COMMON picks simultaneously, then battle.
+  openSimulDraft({count:3, forceCommon:true, title:'Opening Draft'}, () => {
+    battle();
+  });
 }
-startGame();
+startMatch();
 </script>
 </body>
 </html>
-
