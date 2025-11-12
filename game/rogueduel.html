@@ -483,29 +483,6 @@ function chooseTarget(attacker, oppDeck){
   return foes[Math.floor(rand() * foes.length)];
 }
 
-function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
-  if (!u.alive) return;
-  u.turnsAlive++;
-  if (u.frozen){ log(`${u.name} is frozen and skips.`); return; }
-
-  // Respect synergy priority lift
-  if ((u.tags||[]).includes('ranged') && synergyBuffs.rangedPriorityUp && u.priority>PRIORITY.HIGH) {
-    u.priority = PRIORITY.HIGH;
-  }
-
-  // Healers etc. (unchanged up to target selection)...
-
-  // Determine the OPP deck strictly by owner
-  const oppDeck = (u.owner === 'you') ? foeDeck : myDeck;
-
-  // 🔒 Hard safety: if somehow wrong arrays are passed, prevent friendly fire
-  let target = chooseTarget(u, oppDeck);
-  if (!target) return;
-
-  const doHit = ()=>{ /* ...leave your existing damage/splash/poison/freeze code... */ };
-  // ...leave the rest of actUnit as-is (shove anim etc.), just ensure target and oppDeck use the above...
-}
-
 function waitMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 /* HP & Healing respect temp maxHP */
@@ -1186,5 +1163,6 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
