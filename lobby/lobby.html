@@ -203,6 +203,7 @@
                   <option value="biblegame">📖 Bible Game (12P)</option>
                   <option value="historyrush">🏛️ History Rush (4P)</option>
                   <option value="crowncouncil">👑 Faction Forge (2P)</option>
+                  <option value="rogueduel">🂡 Rogue Duel (2P)</option>
                   <option value="thegame">🃏 The Game (5P)</option>
                   <!-- ⬇️ NEW -->
                   <option value="castledefense">🏰 Castle Defense (4P)</option>
@@ -289,6 +290,8 @@
       microwars4: "/game/microwaves4.html",
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html",
+      roguecards: "/game/roguecard.html",   // NEW
+      rogueduel:  "/game/rogueduel.html",   // NEW
       versemem:   "/game/verse-memorizer.html",
       /** ⬇️ NEW */
       village:    "/game/villagelobby.html",
@@ -296,9 +299,11 @@
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
-      "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters","spelltower","thegame","zombiezone","biblegame",
-      "historyrush","crowncouncil","castledefense" // ⬅️ NEW
-    ]);
+    "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
+    "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
+    "castledefense",
+    "rogueduel" // NEW
+  ]);
 
     const MAX_PLAYERS = {
       mountain: 4,
@@ -312,6 +317,7 @@
       historyrush: 4,
       thegame: 5,
       crowncouncil: 2,
+      rogueduel: 2,
       castledefense: 4 // ⬅️ NEW
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
@@ -328,6 +334,7 @@
       { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
       { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
       { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
+      { key: "roguecards", title: "Rogue Cards", emoji: "🂠", desc: "Solo deckbuilder run.", route: ROUTES.roguecards },
       { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
     ];
 
@@ -548,6 +555,7 @@
              type==='thegame'?'🃏 The Game (5P)' :
              type==='crowncouncil'?'👑 Faction Forge (2P)' :
              type==='castledefense'?'🏰 Castle Defense (4P)' :
+            type==='rogueduel'?'🂡 Rogue Duel (2P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -582,7 +590,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense','rogueduel'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -891,6 +899,7 @@
   </script>
 </body>
 </html>
+
 
 
 
