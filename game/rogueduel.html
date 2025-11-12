@@ -1000,170 +1000,174 @@ function rollRelics(){
 }
 
 // ---------- Live state listener driving the flow ----------
-onSnapshot(stateRef, async (snap)=>{
+onSnapshot(stateRef, async (snap) => {
   if (!snap.exists()) return;
   const st = snap.data();
-  setPhase(st.phase||'—');
-  setRound(st.round||1);
+  setPhase(st.phase || '—');
+  setRound(st.round || 1);
 
-// ----- DRAFT PHASE (simultaneous, private options) -----
-if (st.phase === 'draft') {
-  // Show/refresh my draft UI (only for seated players)
-  if (st.draftOffers && (SEAT === 'p1' || SEAT === 'p2')) {
-    const minePick = (SEAT === 'p1' ? st.p1Pick : SEAT === 'p2' ? st.p2Pick : null);
-    ui.draftStatus.textContent = minePick ? '✅ Pick locked. Waiting for the other player…' : 'Choose one.';
-    setSeed((st.draftSeed >>> 0) || 0);
-    openDraft(st.draftOffers, SEAT, !!minePick);
-  } else {
-    closeDraft();
-  }
+  // ----- DRAFT PHASE (simultaneous, private options) -----
+  if (st.phase === 'draft') {
+    // Show/refresh my draft UI (only for seated players)
+    if (st.draftOffers && (SEAT === 'p1' || SEAT === 'p2')) {
+      const minePick = (SEAT === 'p1' ? st.p1Pick : SEAT === 'p2' ? st.p2Pick : null);
+      ui.draftStatus.textContent = minePick ? '✅ Pick locked. Waiting for the other player…' : 'Choose one.';
+      setSeed((st.draftSeed >>> 0) || 0);
+      openDraft(st.draftOffers, SEAT, !!minePick);
+    } else {
+      closeDraft();
+    }
 
-  // When BOTH players have picked → host (p1) applies & advances
-  if (st.p1Pick && st.p2Pick && USER === st.p1) {
-    await runTransaction(db, async (tx) => {
-      const cur = await tx.get(stateRef); if (!cur.exists()) return;
-      const c = cur.data(); if (c.phase !== 'draft') return;
+    // When BOTH players have picked → host (p1) applies & advances
+    if (st.p1Pick && st.p2Pick && USER === st.p1) {
+      await runTransaction(db, async (tx) => {
+        const cur = await tx.get(stateRef); if (!cur.exists()) return;
+        const c = cur.data(); if (c.phase !== 'draft') return;
 
-      const nextP1Deck = [...(c.p1Deck || []), c.p1Pick];
-      const nextP2Deck = [...(c.p2Deck || []), c.p2Pick];
+        const nextP1Deck = [...(c.p1Deck || []), c.p1Pick];
+        const nextP2Deck = [...(c.p2Deck || []), c.p2Pick];
 
-      const target  = c.draftTarget || 1;
-      const p1Count = (c.p1DraftedThisRound || 0) + 1;
-      const p2Count = (c.p2DraftedThisRound || 0) + 1;
+        const target  = c.draftTarget || 1;
+        const p1Count = (c.p1DraftedThisRound || 0) + 1;
+        const p2Count = (c.p2DraftedThisRound || 0) + 1;
 
-      const needMoreThisRound = (p1Count < target) || (p2Count < target);
+        const needMoreThisRound = (p1Count < target) || (p2Count < target);
 
-      if (needMoreThisRound) {
-        const seed = (Date.now() ^ 0x51f0) & 0xffffffff;
-        setSeed(seed);
-        tx.update(stateRef, {
-          p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-          p1Pick: null, p2Pick: null,
-          p1DraftedThisRound: p1Count,
-          p2DraftedThisRound: p2Count,
-          draftSeed: seed,
-          draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
-          winner: null
-        });
-      } else {
-        const round = c.round || 1;
-        const needR = needRelic(round); // multiples of 5
-        if (needR) {
-          const rseed = (Date.now() ^ 0x9e37) & 0xffffffff;
-          setSeed(rseed);
+        if (needMoreThisRound) {
+          const seed = (Date.now() ^ 0x51f0) & 0xffffffff;
+          setSeed(seed);
           tx.update(stateRef, {
             p1Deck: nextP1Deck, p2Deck: nextP2Deck,
             p1Pick: null, p2Pick: null,
-            p1DraftedThisRound: 0, p2DraftedThisRound: 0,
-            relicSeed: rseed,
-            relicOffers: { p1: rollRelics(), p2: rollRelics() },
-            p1RelicPick: null, p2RelicPick: null,
-            phase: 'relic',
+            p1DraftedThisRound: p1Count,
+            p2DraftedThisRound: p2Count,
+            draftSeed: seed,
+            draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
             winner: null
           });
         } else {
-          const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
-          tx.update(stateRef, {
-            p1Deck: nextP1Deck, p2Deck: nextP2Deck,
-            p1Pick: null, p2Pick: null,
-            p1DraftedThisRound: 0, p2DraftedThisRound: 0,
-            phase: 'battle',
-            battleSeed: bseed,
-            winner: null
-          });
+          const round = c.round || 1;
+          const needR = needRelic(round); // multiples of 5
+          if (needR) {
+            const rseed = (Date.now() ^ 0x9e37) & 0xffffffff;
+            setSeed(rseed);
+            tx.update(stateRef, {
+              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Pick: null, p2Pick: null,
+              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+              relicSeed: rseed,
+              relicOffers: { p1: rollRelics(), p2: rollRelics() },
+              p1RelicPick: null, p2RelicPick: null,
+              phase: 'relic',
+              winner: null
+            });
+          } else {
+            const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
+            tx.update(stateRef, {
+              p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Pick: null, p2Pick: null,
+              p1DraftedThisRound: 0, p2DraftedThisRound: 0,
+              phase: 'battle',
+              battleSeed: bseed,
+              winner: null
+            });
+          }
         }
-      }
-    });
-  }
-} else {
-  // Leaving draft -> ensure modal is closed
-  closeDraft();
-}
-
-// ----- RELIC PHASE (simultaneous, private options) -----
-if (st.phase === 'relic') {
-  if (st.relicOffers && (SEAT === 'p1' || SEAT === 'p2')) {
-    const minePick = (SEAT === 'p1' ? st.p1RelicPick : SEAT === 'p2' ? st.p2RelicPick : null);
-    setSeed((st.relicSeed >>> 0) || 0);
-    openRelicDraft(st.relicOffers, SEAT, !!minePick);
+      });
+    }
   } else {
+    // Leaving draft -> ensure modal is closed
+    closeDraft();
+  }
+
+  // ----- RELIC PHASE (simultaneous, private options) -----
+  if (st.phase === 'relic') {
+    if (st.relicOffers && (SEAT === 'p1' || SEAT === 'p2')) {
+      const minePick = (SEAT === 'p1' ? st.p1RelicPick : SEAT === 'p2' ? st.p2RelicPick : null);
+      setSeed((st.relicSeed >>> 0) || 0);
+      openRelicDraft(st.relicOffers, SEAT, !!minePick);
+    } else {
+      closeRelic();
+    }
+
+    // When BOTH relic picks are in → host goes to battle
+    if (st.p1RelicPick && st.p2RelicPick && USER === st.p1) {
+      await runTransaction(db, async (tx) => {
+        const cur = await tx.get(stateRef); if (!cur.exists()) return;
+        const c = cur.data(); if (c.phase !== 'relic') return;
+
+        const nextP1Relics = [...(c.p1Relics || []), { id: c.p1RelicPick }];
+        const nextP2Relics = [...(c.p2Relics || []), { id: c.p2RelicPick }];
+        const bseed = (Date.now() ^ 0x6d6d) & 0xffffffff;
+
+        tx.update(stateRef, {
+          p1Relics: nextP1Relics,
+          p2Relics: nextP2Relics,
+          p1RelicPick: null,
+          p2RelicPick: null,
+          relicOffers: null,
+          phase: 'battle',
+          battleSeed: bseed,
+          winner: null
+        });
+      });
+    }
+  } else {
+    // Leaving relic -> ensure modal is closed
     closeRelic();
   }
 
-  // When BOTH relic picks are in → host goes to battle
-  if (st.p1RelicPick && st.p2RelicPick && USER === st.p1) {
+  // ----- BATTLE PHASE (deterministic local sim with shared seed) -----
+  if (st.phase === 'battle' && typeof st.battleSeed === 'number') {
+    // Guard: don’t re-run the same seed on re-renders
+    if (window.__ranBattleForSeed !== st.battleSeed) {
+      window.__ranBattleForSeed = st.battleSeed;
+      (async () => {
+        const result = await runBattle(st.battleSeed >>> 0, st); // both clients simulate
+        if (USER === st.p1) {
+          await updateDoc(stateRef, { phase: 'result', winner: result.winner });
+        }
+      })();
+    }
+  }
+
+  // ----- RESULT → NEXT ROUND SETUP (host drives) -----
+  if (st.phase === 'result' && st.winner && USER === st.p1) {
     await runTransaction(db, async (tx) => {
       const cur = await tx.get(stateRef); if (!cur.exists()) return;
-      const c = cur.data(); if (c.phase !== 'relic') return;
+      const c = cur.data(); if (c.phase !== 'result') return;
 
-      const nextP1Relics = [...(c.p1Relics || []), { id: c.p1RelicPick }];
-      const nextP2Relics = [...(c.p2Relics || []), { id: c.p2RelicPick }];
-      const bseed = (Date.now() ^ 0x6d6d) & 0xffffffff;
+      const nextRound = (c.round || 1) + 1;
+      const seed = (Date.now() ^ 0x12345) & 0xffffffff;
+      setSeed(seed);
 
       tx.update(stateRef, {
-        p1Relics: nextP1Relics,
-        p2Relics: nextP2Relics,
-        p1RelicPick: null,
-        p2RelicPick: null,
-        relicOffers: null,
-        phase: 'battle',
-        battleSeed: bseed,
-        winner: null
+        round: nextRound,
+        phase: 'draft',
+        draftSeed: seed,
+        draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
+        p1Pick: null, p2Pick: null,
+        draftTarget: 1, // normal rounds
+        p1DraftedThisRound: 0,
+        p2DraftedThisRound: 0,
+        winner: null,
+        battleSeed: null
       });
     });
   }
-} else {
-  // Leaving relic -> ensure modal is closed
-  closeRelic();
-}
+}); // <-- end onSnapshot listener
 
-// ----- BATTLE PHASE (deterministic local sim with shared seed) -----
-if (st.phase === 'battle' && typeof st.battleSeed === 'number') {
-  // Guard: don’t re-run the same seed on re-renders
-  if (window.__ranBattleForSeed !== st.battleSeed) {
-    window.__ranBattleForSeed = st.battleSeed;
-    (async () => {
-      const result = await runBattle(st.battleSeed >>> 0, st); // both clients simulate
-      if (USER === st.p1) {
-        await updateDoc(stateRef, { phase: 'result', winner: result.winner });
-      }
-    })();
-  }
-}
-
-// ----- RESULT → NEXT ROUND SETUP (host drives) -----
-if (st.phase === 'result' && st.winner && USER === st.p1) {
-  await runTransaction(db, async (tx) => {
-    const cur = await tx.get(stateRef); if (!cur.exists()) return;
-    const c = cur.data(); if (c.phase !== 'result') return;
-
-    const nextRound = (c.round || 1) + 1;
-    const seed = (Date.now() ^ 0x12345) & 0xffffffff;
-    setSeed(seed);
-
-    tx.update(stateRef, {
-      round: nextRound,
-      phase: 'draft',
-      draftSeed: seed,
-      draftOffers: { p1: rollDraft(false), p2: rollDraft(false) },
-      p1Pick: null, p2Pick: null,
-      draftTarget: 1, // normal rounds
-      p1DraftedThisRound: 0,
-      p2DraftedThisRound: 0,
-      winner: null,
-      battleSeed: null
-    });
-  });
-}
-
+} // <-- end ensureStateSeats()
 
 /* ===================== Boot ===================== */
 await ensureStateSeats();
 
 /* ===================== (End module) ===================== */
+
 </script>
 </body>
 </html>
+
 
 
 
