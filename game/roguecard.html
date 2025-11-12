@@ -86,6 +86,7 @@
     padding:10px 12px;border-radius:12px;font-weight:800;cursor:pointer
   }
   button:disabled{opacity:.5;cursor:not-allowed}
+  #btnReset{background:linear-gradient(180deg,#94a3b8,#64748b);border-color:#475569}
 
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);padding:14px;z-index:10}
   .modal.on{display:flex}
@@ -116,6 +117,30 @@
   .flashTitle{font-weight:900; font-size:14px; margin-bottom:4px}
   .flashDesc{font-size:12px; color:#475569}
   @keyframes flashIn{ to{transform:translateX(0); opacity:1;} }
+
+  /* ===== Mobile fit: 3 rows × up to 8 cols, smaller cards, both boards visible ===== */
+  @media (max-width: 768px){
+    #root{max-width:none;padding:8px}
+    header{gap:6px}
+    .pill{padding:4px 8px;font-size:12px}
+    #controls button{padding:8px 10px;font-size:12px}
+    .laneWrap{padding:6px;min-height:28vh} /* two boards ≈ 56vh, leaves room */
+    .lane{
+      grid-template-columns:repeat(8, minmax(0,1fr));
+      grid-auto-rows:minmax(66px,auto);
+      gap:6px;
+    }
+    .card{
+      min-height:76px;padding:6px;border-radius:10px;
+    }
+    .emoji{font-size:20px;line-height:20px}
+    .name{font-size:12px}
+    .stars{font-size:11px}
+    .statline{font-size:10px;gap:4px}
+    .tag{font-size:9px;padding:1px 5px}
+    #deckBar .card{min-width:96px}
+    #log{max-height:22vh}
+  }
 </style>
 </head>
 <body>
@@ -131,7 +156,8 @@
   <div id="controls">
     <button id="btnStart">Start ▶</button>
     <button id="btnSpeed">Speed: 1x</button>
-    <button id="btnReset" style="background:linear-gradient(180deg,#94a3b8,#64748b);border-color:#475569">New Run</button>
+    <button id="btnFullscreen">Fullscreen ⛶</button>
+    <button id="btnReset">New Run</button>
   </div>
 </header>
 
@@ -238,7 +264,7 @@ function renderScores(){
 let state={
   level:1, enemyScale:1, myDeck:[], foeDeck:[], upgrades:{},
   playing:false, round:0, speed:1, drafting:false, autoNext:false,
-  relics:[], // [{id,title,desc,apply:fn, flags}]
+  relics:[], // [{id,title,desc,apply:fn}]
   synergyBuffs:{}, // computed from deck each battle
   lastBoss:false
 };
@@ -261,13 +287,16 @@ function weightedPick(weights){
   return entries[0][0];
 }
 
-/*** Catalog (trimmed comments for brevity) ***/
+/*** Catalog ***/
 const TYPE_UNIT=TYPE.UNIT, TYPE_SPELL=TYPE.SPELL;
 const CATALOG={
   // Starters
   "Slinger":   {rar:RAR.COMMON, icon:"🪃", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIORITY.HIGH, tags:["ranged","starter"]},
   "Spearman":  {rar:RAR.COMMON, icon:"🗡️", type:TYPE_UNIT, hp:9,  dmg:4, priority:PRIORITY.MID,  tags:["melee","starter"]},
-  "Acolyte":   {rar:RAR.COMMON, icon:"🙏", type:TYPE_UNIT, hp:8,  dmg:0, priority:PRIORITY.LOW,  tags:["heal1","starter"], heal1:{amt:4}},
+
+  /* Acolyte rework: 1 dmg + heal teammate for 2 every turn */
+  "Acolyte":   {rar:RAR.COMMON, icon:"🙏", type:TYPE_UNIT, hp:8,  dmg:1, priority:PRIORITY.LOW,  tags:["support","starter"], acolyte:true},
+
   "Scout":     {rar:RAR.COMMON, icon:"🦊", type:TYPE_UNIT, hp:8,  dmg:4, priority:PRIORITY.HIGH, tags:["fast","starter"]},
 
   // Player units
@@ -277,7 +306,10 @@ const CATALOG={
   "Ninja":       {rar:RAR.EPIC,    icon:"🥷", type:TYPE_UNIT, hp:8,  dmg:5, priority:PRIORITY.HIGH, tags:["double","bleed"], extraStrike:true},
   "Blow Dart":   {rar:RAR.COMMON,  icon:"🪱", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIORITY.HIGH, tags:["poison"], applyPoison:{dmg:2,dur:3}},
   "Cavalier":    {rar:RAR.RARE,    icon:"🐎", type:TYPE_UNIT, hp:20, dmg:9, priority:PRIORITY.MID,  tags:["charge"]},
-  "Priest":      {rar:RAR.RARE,    icon:"✝️", type:TYPE_UNIT, hp:10, dmg:0, priority:PRIORITY.LOW,  tags:["heal2","bubble"], heal2:{amt:6}},
+
+  /* Healers slightly better */
+  "Priest":      {rar:RAR.RARE,    icon:"✝️", type:TYPE_UNIT, hp:10, dmg:0, priority:PRIORITY.LOW,  tags:["heal2","bubble"], heal2:{amt:7}},
+
   "Dragonet":    {rar:RAR.EPIC,    icon:"🐉", type:TYPE_UNIT, hp:22, dmg:6, priority:PRIORITY.MID,  tags:["splash3","burn"], splash3:true},
   "Ice Dragon":  {rar:RAR.LEGEND,  icon:"🧊", type:TYPE_UNIT, hp:24, dmg:6, priority:PRIORITY.MID,  tags:["freeze"], freeze:true},
   "Giant":       {rar:RAR.RARE,    icon:"🗿", type:TYPE_UNIT, hp:28, dmg:5, priority:PRIORITY.LOW,  tags:["taunt","splash2"], taunt:true, splash2:true},
@@ -306,12 +338,12 @@ const CATALOG={
   "Lich":          {rar:RAR.LEGEND,  icon:"💀", type:TYPE_UNIT, hp:35, dmg:8,  priority:PRIORITY.MID,  tags:["boss","poison","freeze"], applyPoison:{dmg:2,dur:3}, freeze:true},
   "Ancient Dragon":{rar:RAR.LEGEND,  icon:"🐲", type:TYPE_UNIT, hp:45, dmg:8, priority:PRIORITY.MID,  tags:["boss","splash3","burn"], splash3:true},
 
-  // Spells (player)
+  // Spells (player) — Healing Ward a bit stronger
   "Firebolt":     {rar:RAR.COMMON,  icon:"💥", type:TYPE_SPELL, spell:{kind:'fire', dmg:12}},
   "Lightning":    {rar:RAR.RARE,    icon:"⚡", type:TYPE_SPELL, spell:{kind:'lightning', hits:3, dmg:6}},
   "Shield":       {rar:RAR.RARE,    icon:"🛡️", type:TYPE_SPELL, spell:{kind:'shield', amount:0.5, dur:5}},
   "Plague":       {rar:RAR.RARE,    icon:"☣️", type:TYPE_SPELL, spell:{kind:'plague', dmg:2, dur:3, count:3}},
-  "Healing Ward": {rar:RAR.RARE,    icon:"✨", type:TYPE_SPELL, spell:{kind:'ward', heal:5, dur:3, targets:2}},
+  "Healing Ward": {rar:RAR.RARE,    icon:"✨", type:TYPE_SPELL, spell:{kind:'ward', heal:6, dur:3, targets:2}},
   "Blizzard":     {rar:RAR.EPIC,    icon:"❄️", type:TYPE_SPELL, spell:{kind:'freeze2', dmg:3}},
   "Rejuvenate":   {rar:RAR.RARE,    icon:"💚", type:TYPE_SPELL, spell:{kind:'hotAll', heal:2, dur:3}}
 };
@@ -323,7 +355,6 @@ const ENEMY_ONLY = ["Goblin","Goblin Archer","Goblin Mage","Orc","Troll","Demon"
 
 /*** Unlock gates by level (progression) ***/
 function isUnlocked(name, level){
-  // gentle gates to keep power progression fun
   const gates={
     "Ninja":3, "Paladin":4, "Bomber":4, "Dragonet":5, "Bard":5,
     "Frost Golem":6, "Blizzard":6, "Assassin":7, "Ice Dragon":8, "Rejuvenate":3
@@ -333,7 +364,8 @@ function isUnlocked(name, level){
 
 /*** Relics Catalog ***/
 const RELICS=[
-  {id:'vigor',  title:'Banner of Vigor',    desc:'+15% HP for all allies',          apply:(S)=>S.relicHP=1.15},
+  // Reworked: 10% max HP and full heal
+  {id:'vigor',  title:'Banner of Vigor',    desc:'+10% max HP for allies & fully heal now', apply:(S)=>{S.relicHP=1.10; S.relicFullHeal=true;}},
   {id:'glass',  title:'Glass Arrows',       desc:'+20% ranged damage, -10% HP',     apply:(S)=>{S.relicRangedDmg=1.20; S.relicHP=(S.relicHP||1)*0.90;}},
   {id:'aegis',  title:'Aegis Charm',        desc:'Shields last +1 turn',            apply:(S)=>S.relicShieldPlus=1},
   {id:'venom',  title:'Venom Vial',         desc:'+1 poison damage / tick',         apply:(S)=>S.relicPoisonPlus=(S.relicPoisonPlus||0)+1},
@@ -343,7 +375,7 @@ const RELICS=[
   {id:'fervor', title:'Fervor Coin',        desc:'+10% ally damage',                apply:(S)=>S.relicAllDmg=1.10}
 ];
 
-/*** Synergies: thresholds & buffs (computed each battle) ***/
+/*** Synergies ***/
 const SYNERGIES=[
   {id:'poison', label:'Toxic Chorus',   tag:'poison',  t:3, effect:(B)=>{B.poisonPlus=(B.poisonPlus||0)+1; B.poisonDurPlus=(B.poisonDurPlus||0)+1;}, desc:'+1 poison dmg & +1 duration'},
   {id:'ranged', label:'Volley Line',    tag:'ranged',  t:3, effect:(B)=>{B.rangedPriorityUp=true; B.rangedDmg=(B.rangedDmg||1)*1.1;}, desc:'Ranged +10% dmg & +Priority'},
@@ -360,10 +392,7 @@ function fmtStars(stars){return '★'.repeat(stars)+'☆'.repeat(4-stars);}
 function prioName(p){return p===0?'High':p===1?'Mid':'Low';}
 function rarClass(r){return r===RAR.COMMON?'common':r===RAR.RARE?'rare':r===RAR.EPIC?'epic':'legend';}
 function log(msg){const el=document.getElementById('log'); el.innerHTML+=msg+'<br>'; el.scrollTop=el.scrollHeight;}
-function cardRarity(name){
-  const base = CATALOG[name];
-  return base ? base.rar : RAR.COMMON;
-}
+function cardRarity(name){ const base = CATALOG[name]; return base ? base.rar : RAR.COMMON; }
 function updateHeader(){
   document.getElementById('level').textContent=state.level;
   document.getElementById('estr').textContent=state.enemyScale.toFixed(2)+'x';
@@ -388,7 +417,6 @@ function makeCard(name,stars=1){
   if(!isSpell){
     hp = Math.round(hp * hpMult);
     dmg = Math.round(dmg * allDmgMult);
-    // Glass arrows: extra ranged dmg
     if((base.tags||[]).includes('ranged') && state.relicFlags?.relicRangedDmg){
       dmg = Math.round(dmg * state.relicFlags.relicRangedDmg);
     }
@@ -400,10 +428,11 @@ function makeCard(name,stars=1){
     hp:hp, dmg:dmg, hpNow:isSpell?0:Math.round(hp*starMult(starsFinal)),
     alive:true, owner:'you', effects:[], frozen:false, turnsAlive:0, baby:false,
     taunt:!!base.taunt, splash2:!!base.splash2, splash3:!!base.splash3, extraStrike:!!base.extraStrike,
-    applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2:base.heal2?clone(base.heal2):null,
+    applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2=base.heal2?clone(base.heal2):null,
     chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
     alpha:!!base.alpha, wardSong:!!base.wardSong,
-    freeze:!!base.freeze, // ensure property exists
+    freeze:!!base.freeze,
+    acolyte:!!base.acolyte,
     spell:base.spell?clone(base.spell):null,
     _used:false
   };
@@ -474,7 +503,7 @@ function addBleed(t,amt=1,dur=2){t.effects.push({kind:'bleed',dmg:amt,dur});}
 function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
 function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
 
-/*** FX overlay helpers ***/
+/*** FX helpers ***/
 function elCenter(el){const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height*0.15 }; }
 function gFloat(card, txt, color='#111827'){
   const targetEl = findCardEl(card.id); if(!targetEl) return;
@@ -581,12 +610,7 @@ function slashTrail(fromCard,toCard,color='#ef4444'){
   setTimeout(()=>line.remove(),260/state.speed);
 }
 
-/*** Text popups (legacy, rarely used) ***/
-function floatText(el, txt, color){
-  const f=document.createElement('div');
-  f.className='float'; f.textContent=txt; f.style.color=color;
-  el.appendChild(f); setTimeout(()=>f.remove(),1000/state.speed);
-}
+/*** Utility ***/
 function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
 function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
 function chooseTarget(opp){
@@ -610,7 +634,6 @@ function bonk(attacker,defender,onHit){
 function dealDamage(attacker,target,base, heavy=false){
   if(!target.alive) return;
   const dmgStarred=Math.round(base*starMult(attacker.stars));
-  // relic all-dmg already baked into card dmg; additive synergy bonuses on splash handled elsewhere
   let dmg=dmgStarred;
   if(hasShield(target)) dmg=Math.max(1,Math.floor(dmg*0.5));
   target.hpNow-=dmg;
@@ -632,7 +655,7 @@ function dealDamage(attacker,target,base, heavy=false){
 }
 function healCard(target,amt){
   if(!target.alive) return;
-  const baseHp=target.hp; // already relic-adjusted
+  const baseHp=target.hp;
   const max=Math.round(baseHp*starMult(target.stars));
   const before=target.hpNow; target.hpNow=Math.min(max,target.hpNow+amt);
   gFloat(target, `+${target.hpNow-before}`, '#0ea5e9');
@@ -645,7 +668,7 @@ function healCard(target,amt){
 function castSpellsOnce(side){
   const deck = side==='you' ? state.myDeck : state.foeDeck;
   for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
-    s._used = true; // fire once
+    s._used = true;
     const pow = starMult(s.stars);
     const sp = clone(s.spell);
 
@@ -666,7 +689,7 @@ function castSpellsOnce(side){
       const allies = living(deck).filter(a=>!hasShield(a));
       if (allies.length){
         const tgt = allies.sort((a,b)=>b.hpNow-a.hpNow)[0];
-        const extra = (state.relicFlags?.relicShieldPlus||0) + (state.synergyBuffs.freezePlus?0:0);
+        const extra = (state.relicFlags?.relicShieldPlus||0);
         applyShield(tgt, sp.dur + extra);
         bigExplosion(tgt,'#2563eb',18);
         gFloat(tgt, `Shield`, '#2563eb');
@@ -743,22 +766,27 @@ function actUnit(u){
   // Ranged priority bump synergy
   if((u.tags||[]).includes('ranged') && state.synergyBuffs.rangedPriorityUp && u.priority>PRIORITY.HIGH) u.priority=PRIORITY.HIGH;
 
-  if(u.heal1){
+  // Acolyte: heal teammate for 2 every turn, then still attacks for 1
+  if(u.acolyte){
     const allies=living(u.owner==='you'?state.myDeck:state.foeDeck).sort((a,b)=>(a.hpNow/a.hp)-(b.hpNow/b.hp));
-    if(allies.length) healCard(allies[0],Math.round(u.heal1.amt*starMult(u.stars)) + (state.synergyBuffs.healPlus||0));
-    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals one`); return;
-  }
-  if(u.heal2){
+    if(allies.length){
+      const healAmt = 2 + (state.synergyBuffs.healPlus||0);
+      healCard(allies[0], healAmt);
+      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals ${allies[0].name} for ${healAmt}`);
+    }
+    // continue to attack below
+  } else if(u.heal2){
     const allies=living(u.owner==='you'?state.myDeck:state.foeDeck).sort((a,b)=>(a.hpNow/a.hp)-(b.hpNow/b.hp));
     for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (state.synergyBuffs.healPlus||0)); }
     if(u.tags.includes('bubble') && allies.length){ const tgt=allies[0]; if(tgt && !hasShield(tgt)){ applyShield(tgt,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(tgt,'Bubble','var(--shield)'); } }
-    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals two`); return;
-  }
-  if(u.wardSong){
+    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals two`);
+    return;
+  } else if(u.wardSong){
     const deck=u.owner==='you'?state.myDeck:state.foeDeck;
     deck.__wards=deck.__wards||[]; deck.__wards.push({heal:2,dur:1,targets:2});
     for (const a of living(deck)) bigExplosion(a,'#34d399',8);
     log(`${u.owner==='you'?'Your':'Enemy'} 🎵 Bard inspires`);
+    return;
   }
 
   let bonusMult = (u.alpha && u.turnsAlive===1)? 2 : 1;
@@ -858,11 +886,9 @@ function showSynergyFlashes(){
       flashCard('', `🧩 ${s.label}`, s.desc);
     }
   }
-  // Relics preview
   for(const r of state.relics){
     flashCard('relic', `🔶 Relic: ${r.title}`, r.desc);
   }
-  // Boss flag
   if(state.lastBoss) flashCard('boss', '👹 Boss Battle!', 'Stronger foes + unique boss');
 }
 
@@ -879,6 +905,16 @@ function computeSynergies(){
 
 /*** Boss check ***/
 function isBossLevel(level){return level>0 && level%5===0;}
+
+/*** Heal helpers ***/
+function fullHealTeam(deck){
+  for(const c of deck){
+    if(c.type===TYPE_UNIT){
+      const max = Math.round(c.hp*starMult(c.stars));
+      c.hpNow = max;
+    }
+  }
+}
 
 /*** Battle flow ***/
 async function battle(){
@@ -917,13 +953,11 @@ async function battle(){
   if(win){
     const prev = state.level;
     state.level++;
-    // gentle growth: +1% per win
     state.enemyScale = +(state.enemyScale * 1.01).toFixed(2);
     const score = state.level-1;
     const best = getBest();
     if(score>best){ setBest(score); }
     updateHeader();
-    // Relic every 3 levels (after 3,6,9,...)
     const relicRound = (state.level-1)%3===0;
     openDraft(true, relicRound);
   }else{
@@ -937,17 +971,21 @@ async function battle(){
 /*** Setup / Prepare teams ***/
 function prepareTeamsForBattle(){
   state.round=0;
-  // fold relics into a simple flags object for quick reads
+  // fold relics into flags
   state.relicFlags={};
   for(const r of state.relics){ r.apply(state.relicFlags); }
 
   for(const c of state.myDeck){
     if(c.type===TYPE_UNIT){
       c.alive=true;c.effects=[];c.frozen=false;c.turnsAlive=0; c.baby=false;
+      // hp already includes relicHP multiplier via makeCard; star mult reapplied:
       c.hpNow=Math.round(c.hp*starMult(c.stars));
     }
     if(c.type===TYPE_SPELL) c._used=false;
   }
+  // If vigor exists, ensure full heal at battle start (explicit)
+  if(state.relicFlags.relicFullHeal){ fullHealTeam(state.myDeck); }
+
   state.foeDeck=makeEnemyDeck();
   for(const c of state.foeDeck){ c.owner='foe'; if(c.type===TYPE_SPELL) c._used=false; }
   state.lastBoss = isBossLevel(state.level);
@@ -956,7 +994,6 @@ function prepareTeamsForBattle(){
 /*** Softer enemy curve + Boss decks ***/
 function makeEnemyDeck(){
   if(isBossLevel(state.level)){
-    // Pick a boss rotation
     const bosses=["Ogre King","Lich","Ancient Dragon"];
     const bossName = bosses[(Math.floor(state.level/5)-1)%bosses.length];
     const B=makeCard(bossName, Math.min(4, 2 + Math.floor((state.level-1)/8)));
@@ -964,13 +1001,12 @@ function makeEnemyDeck(){
 
     const adds=[];
     const addPool = ["Orc","Troll","Goblin Mage","Wyvern","Goblin Archer"];
-    const addCount = 2 + Math.floor((state.level-1)/5); // slowly grows
+    const addCount = 2 + Math.floor((state.level-1)/5);
     for(let i=0;i<addCount;i++){
       const name = addPool[RAND(Math.min(addPool.length, 2 + Math.floor((state.level-1)/4)))];
       const c=makeCard(name, clamp(1+Math.floor((state.level-1)/8),1,4));
       adds.push(c);
     }
-    // slight extra scaling for bosses
     const pack = [B, ...adds];
     for(const c of pack){
       if(c.type===TYPE_UNIT){
@@ -978,12 +1014,10 @@ function makeEnemyDeck(){
         c.dmg   = Math.round(c.dmg   * state.enemyScale * 1.05);
       }
     }
-    // small chance of a spell assist on boss rounds
     if (Math.random() < 0.25) pack.push(makeCard("Firebolt",1));
     return pack;
   }
 
-  // Normal deck
   const pool=[...ENEMY_ONLY,"Spearman","Slinger","Hoplite","Giant","Crossbowman","Pikeman"];
   const baseCount = Math.min(3 + Math.floor((state.level-1)/2), 14);
   const poolOpenCount = Math.min(pool.length, 3 + Math.floor((state.level-1)/3));
@@ -1014,14 +1048,14 @@ function makeEnemyDeck(){
   return arr;
 }
 
-/*** Drafting (lower upgrade odds; respect unlocks) ***/
+/*** Drafting ***/
 function openDraft(autoStartAfterPick=false, alsoRelic=false){
   if(state.drafting) return;
   state.drafting=true; state.autoNext=!!autoStartAfterPick;
   const modal=document.getElementById('draftModal'); modal.classList.add('on');
   const slot=document.getElementById('draftChoices'); slot.innerHTML='';
 
-  const UPGRADE_BASE_CHANCE = 0.08; // lowered from 0.12
+  const UPGRADE_BASE_CHANCE = 0.08;
   const haveNames = currentDeckNames().filter(n => PLAYER_POOL.includes(n));
 
   const choices=[];
@@ -1038,7 +1072,6 @@ function openDraft(autoStartAfterPick=false, alsoRelic=false){
       choices.push({kind:'upgrade', target, rar: showRar});
       continue;
     }
-    // respect unlocks
     const poolOfRarity = PLAYER_POOL.filter(n=>cardRarity(n)===rarPick && isUnlocked(n, state.level));
     const fallbackPool = PLAYER_POOL.filter(n=>isUnlocked(n, state.level));
     const name = (poolOfRarity.length ? poolOfRarity[RAND(poolOfRarity.length)] : fallbackPool[RAND(fallbackPool.length)]);
@@ -1100,7 +1133,6 @@ function openDiscard(incoming, alsoRelic=false){
 function openRelicPick(){
   const modal=document.getElementById('relicModal'); modal.classList.add('on');
   const slot=document.getElementById('relicChoices'); slot.innerHTML='';
-  // pick 3 random relics
   const pick=[...RELICS].sort(()=>Math.random()-0.5).slice(0,3);
   for(const r of pick){
     const box=document.createElement('div'); box.className='card rarity-legend'; box.style.cursor='pointer';
@@ -1108,7 +1140,15 @@ function openRelicPick(){
       <div class="rowline"><div class="emoji">🔶</div><div class="stars">Relic</div></div>
       <div class="rowline"><div class="name">${r.title}</div><div class="rar legend">RELIC</div></div>
       <div class="statline"><span>${r.desc}</span></div>`;
-    box.onclick=()=>{ state.relics.push(r); document.getElementById('relicModal').classList.remove('on'); updateHeader(); if(state.autoNext) battle(); };
+    box.onclick=()=>{ 
+      state.relics.push(r); 
+      // apply immediate full-heal if vigor picked
+      state.relicFlags={}; for(const rr of state.relics){ rr.apply(state.relicFlags); }
+      if(state.relicFlags.relicFullHeal) fullHealTeam(state.myDeck);
+      document.getElementById('relicModal').classList.remove('on'); 
+      updateHeader(); renderBoard();
+      if(state.autoNext) battle(); 
+    };
     slot.appendChild(box);
   }
 }
@@ -1134,6 +1174,16 @@ function hideDetail(){ document.getElementById('detailModal').classList.remove('
 document.getElementById('btnSpeed').onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length; state.speed=SPEEDS[speedIdx]; document.getElementById('btnSpeed').textContent=`Speed: ${state.speed}x`;};
 document.getElementById('btnReset').onclick=()=>newRun();
 document.getElementById('btnStart').onclick=()=>battle();
+
+/* Fullscreen toggle */
+document.getElementById('btnFullscreen').onclick=()=>{
+  if(!document.fullscreenElement){
+    (document.documentElement.requestFullscreen||document.body.requestFullscreen).call(document.documentElement);
+  }else{
+    document.exitFullscreen && document.exitFullscreen();
+  }
+};
+
 for(const m of document.querySelectorAll('.modal .closeX')) m.onclick=()=>{}; // disabled X (flow controlled)
 
 /*** Bootstrap ***/
@@ -1146,11 +1196,11 @@ function newRun(){
   const WEAK_POOL=["Slinger","Spearman","Acolyte","Scout"];
   for(let i=0;i<3;i++){ const n=WEAK_POOL[RAND(WEAK_POOL.length)]; const c=makeCard(n,1); c.owner='you'; state.myDeck.push(c); }
   updateHeader(); renderDeckBar(); renderBoard(); renderScores();
-  openDraft(false,false); // opening draft
+  openDraft(false,false);
 }
 newRun();
 
-/*** Prepare (reset) before each battle ***/
+/*** Prepare (reset) before each battle (kept at end for your prior pattern) ***/
 function prepareTeamsForBattle(){
   state.round=0;
   state.relicFlags={};
@@ -1162,9 +1212,11 @@ function prepareTeamsForBattle(){
     }
     if(c.type===TYPE_SPELL) c._used=false;
   }
+  if(state.relicFlags.relicFullHeal){ fullHealTeam(state.myDeck); }
   state.foeDeck=makeEnemyDeck(); for(const c of state.foeDeck){ c.owner='foe'; if(c.type===TYPE_SPELL) c._used=false; }
 }
 </script>
 </body>
 </html>
+
 
