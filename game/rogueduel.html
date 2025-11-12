@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>Emoji Auto-Draft Battler — Auto, Relics & Synergies</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
+    --good:#16a34a; --warn:#eab308; --bad:#dc2626; --heal:#0ea5e9; --shield:#2563eb;
+    --panel:#f8fafc; --card:#ffffff; --radius:14px; --shadow:0 10px 30px rgba(2,6,23,.08);
+    --rar-common:#94a3b8; --rar-rare:#3b82f6; --rar-epic:#8b5cf6; --rar-legend:#f59e0b;
+    --boss:#ef4444; --relic:#fb923c; --syn:#22c55e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Arial,sans-serif}
+  header{padding:12px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
+  .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-weight:600}
+  #root{padding:14px;display:grid;gap:14px;max-width:1100px;margin:0 auto}
+  .lbl{font-size:12px;color:var(--muted);margin:4px 0}
+  #arena{display:grid;gap:14px}
+  .laneWrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+  .sideTitle{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .lane{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));min-height:140px}
+
+  .card{
+    position:relative;border-radius:12px;background:var(--card);
+    border:1px solid var(--line);box-shadow:var(--shadow);
+    padding:8px;user-select:none;touch-action:manipulation;cursor:pointer;
+    transition:transform .15s ease;
+    display:flex;flex-direction:column;gap:6px;min-height:124px;
+    overflow:visible;
+  }
+  .card:hover{transform:translateY(-2px)}
+  .rowline{display:flex;justify-content:space-between;gap:6px}
+  .emoji{font-size:28px;line-height:28px}
+  .name{font-size:13px;font-weight:800}
+  .stars{font-size:12px;letter-spacing:.5px;color:#475569}
+  .rar{font-size:11px;font-weight:800;padding:2px 6px;border-radius:999px;border:1px solid var(--line);color:#fff}
+  .rar.common{background:var(--rar-common)}
+  .rar.rare{background:var(--rar-rare)}
+  .rar.epic{background:var(--rar-epic)}
+  .rar.legend{background:var(--rar-legend)}
+  .statline{display:flex;gap:6px;font-size:12px;color:#475569;flex-wrap:wrap}
+  .tag{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:2px 6px;color:#475569}
+  .fx{position:absolute;inset:0;pointer-events:none}
+  .shieldRing{position:absolute;inset:-2px;border-radius:12px;border:2px solid var(--shield);box-shadow:0 0 12px rgba(37,99,235,.45) inset;pointer-events:none}
+  .freezeVeil{position:absolute;inset:0;border-radius:12px;background:rgba(96,165,250,.17);backdrop-filter:blur(1px);pointer-events:none}
+  .poisonGlow{position:absolute;inset:-2px;border-radius:12px;box-shadow:0 0 0 2px rgba(124,58,237,.8) inset, 0 0 18px rgba(124,58,237,.35) inset}
+  .taunt{outline:2px solid #f59e0b}
+
+  .badges{position:absolute;right:6px;top:6px;display:flex;gap:4px;z-index:3}
+  .badge{font-size:11px;font-weight:800;padding:1px 5px;border-radius:999px;color:#fff;background:#0ea5e9;border:1px solid rgba(0,0,0,.1);box-shadow:0 1px 6px rgba(2,6,23,.15)}
+  .badge.poison{background:#7c3aed}
+  .badge.freeze{background:#60a5fa}
+  .badge.shield{background:#2563eb}
+  .badge.hot{background:#34d399}
+  .badge.syn{background:var(--syn)}
+  .badge.relic{background:var(--relic)}
+
+  .heartPulse{
+    position:absolute;inset:-4px;border-radius:12px;pointer-events:none;
+    box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 18px rgba(52,211,153,.25);
+    animation:heartPulse 540ms ease-out;
+  }
+  @keyframes heartPulse{
+    0%{box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 0 rgba(52,211,153,0.0)}
+    60%{box-shadow:0 0 0 12px rgba(52,211,153,0), inset 0 0 18px rgba(52,211,153,.45)}
+    100%{box-shadow:0 0 0 0 rgba(52,211,153,0), inset 0 0 0 rgba(52,211,153,0)}
+  }
+
+  .rarity-common{box-shadow:0 0 0 2px rgba(148,163,184,.5) inset, var(--shadow)}
+  .rarity-rare{box-shadow:0 0 0 2px rgba(59,130,246,.6) inset, 0 0 14px rgba(59,130,246,.28), var(--shadow)}
+  .rarity-epic{box-shadow:0 0 0 2px rgba(139,92,246,.7) inset, 0 0 16px rgba(139,92,246,.30), var(--shadow)}
+  .rarity-legend{box-shadow:0 0 0 2px rgba(245,158,11,.8) inset, 0 0 18px rgba(245,158,11,.32), var(--shadow)}
+
+  #deckBar{display:flex;gap:8px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  #deckBar .card{flex:0 0 auto;min-width:120px}
+  #log{max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--panel)}
+  #controls{display:flex;gap:8px;flex-wrap:wrap}
+  button{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);color:white;border:1px solid #0369a1;
+    padding:10px 12px;border-radius:12px;font-weight:800;cursor:pointer
+  }
+  button:disabled{opacity:.5;cursor:not-allowed}
+
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);padding:14px;z-index:10}
+  .modal.on{display:flex}
+  .sheet{max-width:980px;width:100%;background:#ffffff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+  .grid{display:grid;gap:10px}
+  .grid.cards{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .sheet h2{margin:0 0 8px 0}
+  .closeX{float:right;cursor:pointer;color:var(--muted)}
+  .helper{font-size:12px;color:var(--muted);margin-top:6px}
+
+  #fxRoot{position:fixed;inset:0;pointer-events:none;z-index:99999}
+  .fxFloat{position:absolute;font-weight:900;font-size:18px;text-shadow:0 2px 10px rgba(0,0,0,.25);animation:fxRise .95s ease-out forwards;z-index:99999}
+  @keyframes fxRise { to { transform:translate(-50%,-38px); opacity:0; } }
+  .fxBoom{position:absolute;width:7px;height:7px;border-radius:50%;opacity:0.95}
+
+  #battleFlash{position:fixed; right:12px; top:74px; width:280px; z-index:9999; pointer-events:none;}
+  .flashCard{
+    background:#fff; border:2px solid var(--line); border-left:5px solid var(--syn);
+    box-shadow:0 10px 30px rgba(2,6,23,.12); border-radius:12px; margin-bottom:10px; padding:10px 12px;
+    transform:translateX(320px); opacity:0; animation:flashIn 650ms ease forwards;
+  }
+  .flashCard.relic{border-left-color:var(--relic)}
+  .flashCard.boss{border-left-color:var(--boss)}
+  .flashTitle{font-weight:900; font-size:14px; margin-bottom:4px}
+  .flashDesc{font-size:12px; color:#475569}
+  @keyframes flashIn{ to{transform:translateX(0); opacity:1;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="left">
+    <div class="pill">Level: <span id="level">1</span></div>
+    <div class="pill">Run: <span id="runScore">0</span></div>
+    <div class="pill">Best: <span id="bestScore">0</span></div>
+    <div class="pill">Enemy: <span id="estr">1.0x</span></div>
+    <div class="pill">Deck: <span id="deckCount">0</span>/20</div>
+    <div class="pill">Relics: <span id="relicCount">0</span></div>
+  </div>
+  <div id="controls">
+    <button id="btnSpeed">Speed: 1x</button>
+    <button id="btnReset" style="background:linear-gradient(180deg,#94a3b8,#64748b);border-color:#475569">New Run</button>
+  </div>
+</header>
+
+<div id="root">
+  <div id="arena">
+    <div class="laneWrap">
+      <div class="sideTitle">Your Board</div>
+      <div id="you" class="lane"></div>
+    </div>
+    <div class="laneWrap">
+      <div class="sideTitle">Enemy Board</div>
+      <div id="foe" class="lane"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="lbl">Your Deck</div>
+    <div id="deckBar"></div>
+  </div>
+
+  <div>
+    <div class="lbl">Battle Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="scores" style="max-width:1100px;margin:0 auto 14px auto;">
+  <div class="lbl">Highscores</div>
+  <div class="pill" style="display:inline-block;margin-right:8px;">Best: <span id="hsBest">0</span></div>
+  <div class="pill" style="display:inline-block">Recent: <span id="hsRecent"></span></div>
+</div>
+
+<!-- Draft Modal -->
+<div id="draftModal" class="modal">
+  <div class="sheet">
+    <span class="closeX">✕</span>
+    <h2>Draft: Choose 1</h2>
+    <div class="grid cards" id="draftChoices"></div>
+    <div class="helper">Deck max 20. Auto-battles after your pick.</div>
+  </div>
+</div>
+
+<!-- Relic Modal -->
+<div id="relicModal" class="modal">
+  <div class="sheet">
+    <span class="closeX">✕</span>
+    <h2>Choose a Relic</h2>
+    <div class="grid cards" id="relicChoices"></div>
+    <div class="helper">Relics apply every battle and stack. Continues automatically.</div>
+  </div>
+</div>
+
+<!-- Discard Modal -->
+<div id="discardModal" class="modal">
+  <div class="sheet">
+    <span class="closeX">✕</span>
+    <h2>Deck full — remove 1 to accept your draft</h2>
+    <div class="grid cards" id="discardChoices"></div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detailModal" class="modal" onclick="hideDetail()">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <span class="closeX" onclick="hideDetail()">✕</span>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<!-- GLOBAL OVERLAYS -->
+<div id="fxRoot"></div>
+<div id="battleFlash"></div>
+
+<script>
+/*** Timing ***/
+const SPEEDS=[0.9,1.2,1.6]; let speedIdx=0;
+
+/*** Enums ***/
+const PRIORITY={HIGH:0,MID:1,LOW:2};
+const TYPE={UNIT:'unit',SPELL:'spell'};
+const RAR={COMMON:'common', RARE:'rare', EPIC:'epic', LEGEND:'legend'};
+const RAND=n=>Math.floor(Math.random()*n);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+
+/*** LocalStorage Highscores ***/
+const LS_BEST='adb_bestLevel';
+const LS_SCORES='adb_scores';
+function getBest(){ return +(localStorage.getItem(LS_BEST)||0); }
+function setBest(v){ localStorage.setItem(LS_BEST, String(v)); }
+function pushScore(score){
+  const arr=getScores(); arr.unshift({score, ts:Date.now()});
+  while(arr.length>10) arr.pop();
+  localStorage.setItem(LS_SCORES, JSON.stringify(arr));
+  renderScores();
+}
+function getScores(){ try{ return JSON.parse(localStorage.getItem(LS_SCORES)||'[]'); }catch{ return []; } }
+function renderScores(){
+  document.getElementById('hsBest').textContent=getBest();
+  const arr=getScores().slice(0,5).map(s=>s.score).join(', ');
+  document.getElementById('hsRecent').textContent=arr||'—';
+}
+
+/*** State ***/
+let state={
+  level:1, enemyScale:1, myDeck:[], foeDeck:[], upgrades:{},
+  playing:false, round:0, speed:1, drafting:false,
+  relics:[], synergyBuffs:{}, relicFlags:{}, lastBoss:false,
+  startDraftsLeft:0, forceStartCommon:false
+};
+
+/*** Rarity utility ***/
+function cardRarity(name){ const base=CATALOG[name]; return base?base.rar:RAR.COMMON; }
+
+/*** Helpers ***/
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function starMult(stars){return 1+0.5*(stars-1);}
+function fmtStars(stars){return '★'.repeat(stars)+'☆'.repeat(4-stars);}
+function prioName(p){return p===0?'High':p===1?'Mid':'Low';}
+function rarClass(r){return r===RAR.COMMON?'common':r===RAR.RARE?'rare':r===RAR.EPIC?'epic':'legend';}
+function log(msg){const el=document.getElementById('log'); el.innerHTML+=msg+'<br>'; el.scrollTop=el.scrollHeight;}
+function updateHeader(){
+  document.getElementById('level').textContent=state.level;
+  document.getElementById('estr').textContent=state.enemyScale.toFixed(2)+'x';
+  document.getElementById('deckCount').textContent=state.myDeck.length;
+  document.getElementById('runScore').textContent=(state.level-1);
+  document.getElementById('bestScore').textContent=getBest();
+  document.getElementById('relicCount').textContent=state.relics.length;
+}
+
+/*** Catalog ***/
+const PRIOR=PRIORITY, TYPE_UNIT=TYPE.UNIT, TYPE_SPELL=TYPE.SPELL, R=RAR;
+const CATALOG={
+  // Starters / commons
+  "Slinger":   {rar:R.COMMON, icon:"🪃", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIOR.HIGH, tags:["ranged","starter"]},
+  "Spearman":  {rar:R.COMMON, icon:"🗡️", type:TYPE_UNIT, hp:9,  dmg:4, priority:PRIOR.MID,  tags:["melee","starter"]},
+  "Acolyte":   {rar:R.COMMON, icon:"🙏", type:TYPE_UNIT, hp:8,  dmg:0, priority:PRIOR.LOW,  tags:["heal1","starter"], heal1:{amt:4}}, // buffed heal to 4
+  "Scout":     {rar:R.COMMON, icon:"🦊", type:TYPE_UNIT, hp:8,  dmg:4, priority:PRIOR.HIGH, tags:["fast","starter"]},
+  "Blow Dart": {rar:R.COMMON, icon:"🪱", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIOR.HIGH, tags:["poison"], applyPoison:{dmg:2,dur:3}},
+  "Slime":     {rar:R.COMMON, icon:"🧪", type:TYPE_UNIT, hp:12, dmg:3, priority:PRIOR.MID,  tags:["poison","split"], applyPoison:{dmg:2,dur:3}, split:true},
+  "Pikeman":   {rar:R.COMMON, icon:"🔱", type:TYPE_UNIT, hp:12, dmg:6, priority:PRIOR.MID,  tags:["melee"]},
+
+  // Rares & above (a few heal buffs)
+  "Knight":      {rar:R.COMMON,  icon:"🛡️", type:TYPE_UNIT, hp:16, dmg:6, priority:PRIOR.MID,  tags:["melee","guard"]},
+  "Longbowman":  {rar:R.RARE,    icon:"🏹", type:TYPE_UNIT, hp:9,  dmg:7, priority:PRIOR.HIGH, tags:["ranged","pierce"]},
+  "Hoplite":     {rar:R.RARE,    icon:"🥏", type:TYPE_UNIT, hp:14, dmg:5, priority:PRIOR.MID,  tags:["taunt","retaliate"], taunt:true},
+  "Ninja":       {rar:R.EPIC,    icon:"🥷", type:TYPE_UNIT, hp:8,  dmg:5, priority:PRIOR.HIGH, tags:["double","bleed"], extraStrike:true},
+  "Cavalier":    {rar:R.RARE,    icon:"🐎", type:TYPE_UNIT, hp:20, dmg:9, priority:PRIOR.MID,  tags:["charge"]},
+  "Priest":      {rar:R.RARE,    icon:"✝️", type:TYPE_UNIT, hp:10, dmg:0, priority:PRIOR.LOW,  tags:["heal2","bubble"], heal2:{amt:7}}, // slightly stronger
+  "Dragonet":    {rar:R.EPIC,    icon:"🐉", type:TYPE_UNIT, hp:22, dmg:6, priority:PRIOR.MID,  tags:["splash3","burn"], splash3:true},
+  "Ice Dragon":  {rar:R.LEGEND,  icon:"🧊", type:TYPE_UNIT, hp:24, dmg:6, priority:PRIOR.MID,  tags:["freeze"], freeze:true},
+  "Giant":       {rar:R.RARE,    icon:"🗿", type:TYPE_UNIT, hp:28, dmg:5, priority:PRIOR.LOW,  tags:["taunt","splash2"], taunt:true, splash2:true},
+  "Wolf Pack":   {rar:R.RARE,    icon:"🐺", type:TYPE_UNIT, hp:6,  dmg:3, priority:PRIOR.MID,  tags:["replicate2"], replicateTurns:2},
+  "Crossbowman": {rar:R.RARE,    icon:"🏹", type:TYPE_UNIT, hp:10, dmg:8, priority:PRIOR.HIGH, tags:["ranged"]},
+  "Paladin":     {rar:R.EPIC,    icon:"🛐", type:TYPE_UNIT, hp:18, dmg:7, priority:PRIOR.MID,  tags:["smite-heal"], smiteHeal:true},
+  "Bomber":      {rar:R.RARE,    icon:"💣", type:TYPE_UNIT, hp:9,  dmg:9, priority:PRIOR.MID,  tags:["splash2"], splash2:true},
+  "Druid":       {rar:R.RARE,    icon:"🌿", type:TYPE_UNIT, hp:12, dmg:2, priority:PRIOR.LOW,  tags:["regen2","bud"], regen2:true},
+  "Frost Golem": {rar:R.EPIC,    icon:"🧊", type:TYPE_UNIT, hp:26, dmg:6, priority:PRIOR.LOW,  tags:["taunt","freeze"], taunt:true, freeze:true},
+  "Assassin":    {rar:R.EPIC,    icon:"🗡️", type:TYPE_UNIT, hp:7,  dmg:10,priority:PRIOR.HIGH, tags:["alpha"], alpha:true},
+  "Bard":        {rar:R.RARE,    icon:"🎵", type:TYPE_UNIT, hp:9,  dmg:0, priority:PRIOR.LOW,  tags:["ward-song"], wardSong:true},
+
+  // Spells (player)
+  "Firebolt":     {rar:R.COMMON,  icon:"💥", type:TYPE_SPELL, spell:{kind:'fire', dmg:12}},
+  "Lightning":    {rar:R.RARE,    icon:"⚡", type:TYPE_SPELL, spell:{kind:'lightning', hits:3, dmg:6}},
+  "Shield":       {rar:R.RARE,    icon:"🛡️", type:TYPE_SPELL, spell:{kind:'shield', amount:0.5, dur:5}},
+  "Plague":       {rar:R.RARE,    icon:"☣️", type:TYPE_SPELL, spell:{kind:'plague', dmg:2, dur:3, count:3}},
+  "Healing Ward": {rar:R.RARE,    icon:"✨", type:TYPE_SPELL, spell:{kind:'ward', heal:6, dur:3, targets:2}}, // slightly stronger
+  "Blizzard":     {rar:R.EPIC,    icon:"❄️", type:TYPE_SPELL, spell:{kind:'freeze2', dmg:3}},
+  "Rejuvenate":   {rar:R.RARE,    icon:"💚", type:TYPE_SPELL,
+                   // new meaning: +1 Max HP for 3 rounds & heal 1 for 3 rounds to all allies
+                   spell:{kind:'hotAll'}}
+};
+const PLAYER_UNITS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_UNIT);
+const PLAYER_SPELLS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_SPELL);
+const PLAYER_POOL = [...PLAYER_UNITS, ...PLAYER_SPELLS]; // used for drafting
+
+/*** Unlocks by level ***/
+function isUnlocked(name, level){
+  const gates={
+    "Ninja":3, "Paladin":4, "Bomber":4, "Dragonet":5, "Bard":5,
+    "Frost Golem":6, "Blizzard":6, "Assassin":7, "Ice Dragon":8, "Rejuvenate":3
+  };
+  return (gates[name]||1) <= level;
+}
+
+/*** Relics ***/
+const RELICS=[
+  // Updated Banner of Vigor per request
+  {id:'vigor',  title:'Banner of Vigor',
+   desc:'+10% Max HP and +10% heal at battle start',
+   apply:(S)=>{ S.relicMaxHPPct=0.10; S.relicStartHealPct=0.10; }},
+  {id:'glass',  title:'Glass Arrows',       desc:'+20% ranged damage, -10% HP (base)',     apply:(S)=>{ S.relicRangedDmg=1.20; S.relicHP=(S.relicHP||1)*0.90; }},
+  {id:'aegis',  title:'Aegis Charm',        desc:'Shields last +1 turn',                    apply:(S)=>S.relicShieldPlus=1},
+  {id:'venom',  title:'Venom Vial',         desc:'+1 poison damage / tick',                 apply:(S)=>S.relicPoisonPlus=(S.relicPoisonPlus||0)+1},
+  {id:'spark',  title:'Arcane Capacitor',   desc:'Your spells count as +1★',                apply:(S)=>S.relicSpellStarsPlus=1},
+  {id:'tempo',  title:'Tempo Drum',         desc:'High-priority allies act +15% faster',    apply:(S)=>S.relicFasterHigh=true},
+  {id:'warder', title:'Warder’s Oath',      desc:'First round: small shield to 2 low-HP allies', apply:(S)=>S.relicFirstShield=1},
+  {id:'fervor', title:'Fervor Coin',        desc:'+10% ally damage',                        apply:(S)=>S.relicAllDmg=1.10}
+];
+
+/*** Synergies ***/
+const SYNERGIES=[
+  {id:'poison', label:'Toxic Chorus',   tag:'poison',  t:3, effect:(B)=>{B.poisonPlus=(B.poisonPlus||0)+1; B.poisonDurPlus=(B.poisonDurPlus||0)+1;}, desc:'+1 poison dmg & +1 duration'},
+  {id:'ranged', label:'Volley Line',    tag:'ranged',  t:3, effect:(B)=>{B.rangedPriorityUp=true; B.rangedDmg=(B.rangedDmg||1)*1.1;}, desc:'Ranged +10% dmg & +Priority'},
+  {id:'taunt',  label:'Shield Wall',    tag:'taunt',   t:2, effect:(B)=>{B.startShieldSmall=2;}, desc:'Start: small shield to 2 allies'},
+  {id:'heal',   label:'Sanctuary',      tag:'heal2',   t:2, effect:(B)=>{B.healPlus=(B.healPlus||0)+2;}, desc:'+2 per targeted heal'},
+  {id:'splash', label:'Shatterline',    tag:'splash2', t:2, effect:(B)=>{B.splashPlus=(B.splashPlus||0)+1;}, desc:'+1 damage on splash'},
+  {id:'freeze', label:'Cold Front',     tag:'freeze',  t:2, effect:(B)=>{B.freezePlus=1;}, desc:'Freeze lasts +1 turn'}
+];
+
+/*** HP helpers respecting temporary max HP ***/
+function getMaxHP(c){
+  const base = Math.round((c.hp||0) * starMult(c.stars));
+  const extra = (c.effects||[]).filter(e=>e.kind==='maxhp')
+                .reduce((s,e)=>s+(e.bonus||0),0);
+  return base + extra;
+}
+
+/*** Card factory (includes relic stat hooks) ***/
+function makeCard(name,stars=1){
+  const base=CATALOG[name];
+  const isSpell=base.type===TYPE_SPELL;
+  const up=state.upgrades[name]||1;
+  const relicSpellPlus = (state.relicFlags?.relicSpellStarsPlus || 0);
+  const starsFinal=isSpell?Math.min(4, up + relicSpellPlus):Math.min(4,Math.max(stars,up));
+  let hp = base.hp||0, dmg = base.dmg||0;
+
+  // HP multiplier no longer applied here for Banner of Vigor; we use maxhp effect at start
+  const allDmgMult = (state.relicFlags?.relicAllDmg || 1);
+  if(!isSpell){
+    dmg = Math.round(dmg * allDmgMult);
+    if((base.tags||[]).includes('ranged') && state.relicFlags?.relicRangedDmg){
+      dmg = Math.round(dmg * state.relicFlags.relicRangedDmg);
+    }
+  }
+
+  const c={
+    id:Math.random().toString(36).slice(2), name, icon:base.icon, type:base.type, rar:base.rar,
+    stars:starsFinal, priority:base.priority, tags:clone(base.tags||[]),
+    hp:hp, dmg:dmg, hpNow:isSpell?0:Math.round(hp*starMult(starsFinal)),
+    alive:true, owner:'you', effects:[], frozen:false, turnsAlive:0, baby:false,
+    taunt:!!base.taunt, splash2:!!base.splash2, splash3:!!base.splash3, extraStrike:!!base.extraStrike,
+    applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2:base.heal2?clone(base.heal2):null,
+    chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
+    alpha:!!base.alpha, wardSong:!!base.wardSong, freeze:!!base.freeze,
+    spell:base.spell?clone(base.spell):null, _used:false
+  };
+  return c;
+}
+
+/*** Rendering ***/
+function mountCard(c){
+  const div=document.createElement('div');
+  div.className='card rarity-'+rarClass(c.rar);
+  div.dataset.id=c.id;
+  div.onclick=()=>showDetail(c);
+  div.innerHTML=`
+    <div class="rowline">
+      <div class="emoji">${c.icon||'🂠'}</div>
+      <div class="stars">${fmtStars(c.stars)}</div>
+    </div>
+    <div class="rowline">
+      <div class="name">${c.name}${c.baby?' (baby)':''}</div>
+      <div class="rar ${rarClass(c.rar)}">${c.rar.toUpperCase()}</div>
+    </div>
+    <div class="statline">
+      ${c.type===TYPE_UNIT?`<span>HP ${c.hpNow}</span>`:''}
+      ${c.type===TYPE_UNIT?`<span>DMG ${Math.round((c.dmg||0)*starMult(c.stars))}</span>`:''}
+      ${c.type===TYPE_UNIT?`<span>${prioName(c.priority)}</span>`:`<span>Spell</span>`}
+    </div>
+    <div class="statline">${(c.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    <div class="fx"></div>
+  `;
+  if(hasShield(c)) div.appendChild(Object.assign(document.createElement('div'),{className:'shieldRing'}));
+  if(c.frozen) div.appendChild(Object.assign(document.createElement('div'),{className:'freezeVeil'}));
+  if(isPoisoned(c)) div.appendChild(Object.assign(document.createElement('div'),{className:'poisonGlow'}));
+
+  const badges = document.createElement('div');
+  badges.className='badges';
+  const p = c.effects.find(e=>e.kind==='poison' && e.dur>0);
+  const f = c.effects.find(e=>e.kind==='freeze' && e.dur>0);
+  const s = c.effects.find(e=>e.kind==='shield' && e.dur>0);
+  const deck = c.owner==='you'?state.myDeck:state.foeDeck;
+  const hotActive = (deck.__hots||[]).some(h=>h.dur>0);
+  if (p){ const b=document.createElement('div'); b.className='badge poison'; b.textContent=`☠ ${p.dur}`; badges.appendChild(b); }
+  if (f){ const b=document.createElement('div'); b.className='badge freeze'; b.textContent=`❄ ${f.dur}`; badges.appendChild(b); }
+  if (s){ const b=document.createElement('div'); b.className='badge shield'; b.textContent=`🛡 ${s.dur}`; badges.appendChild(b); }
+  if (hotActive){ const b=document.createElement('div'); b.className='badge hot'; b.textContent=`💚 HOT`; badges.appendChild(b); }
+  if (badges.childElementCount) div.appendChild(badges);
+
+  if(c.taunt) div.classList.add('taunt');
+  return div;
+}
+function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
+function renderBoard(){
+  const you=document.getElementById('you'); you.innerHTML='';
+  const foe=document.getElementById('foe'); foe.innerHTML='';
+  for(const c of state.myDeck.filter(x=>x.type===TYPE_UNIT && x.alive)) you.appendChild(mountCard(c));
+  for(const c of state.foeDeck.filter(x=>x.type===TYPE_UNIT && x.alive)) foe.appendChild(mountCard(c));
+}
+function renderDeckBar(){
+  const bar=document.getElementById('deckBar'); bar.innerHTML='';
+  for(const c of state.myDeck) bar.appendChild(mountCard(c));
+}
+
+/*** Status & FX helpers ***/
+function hasShield(c){return !!c.effects.find(e=>e.kind==='shield' && e.dur>0);}
+function isPoisoned(c){return !!c.effects.find(e=>e.kind==='poison' && e.dur>0);}
+function applyShield(c,dur=5){const ex=c.effects.find(e=>e.kind==='shield'); if(ex){ex.dur=Math.max(ex.dur||0,dur);} else c.effects.push({kind:'shield',dur});}
+function addPoison(t,dmg,dur){t.effects.push({kind:'poison',dmg,dur});}
+function addBleed(t,amt=1,dur=2){t.effects.push({kind:'bleed',dmg:amt,dur});}
+function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
+function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
+function elCenter(el){const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height*0.15 }; }
+function gFloat(card, txt, color='#111827'){
+  const targetEl = findCardEl(card.id); if(!targetEl) return;
+  const {x,y} = elCenter(targetEl);
+  const f = document.createElement('div');
+  f.className = 'fxFloat'; f.textContent = txt;
+  f.style.left = (x)+'px'; f.style.top  = (y)+'px';
+  f.style.transform = 'translate(-50%, 0)'; f.style.color = color;
+  document.getElementById('fxRoot').appendChild(f);
+  setTimeout(()=>f.remove(), 1000/state.speed);
+}
+function boomAt(x, y, color='#ef4444', count=26, spread=100){
+  const root = document.getElementById('fxRoot');
+  for (let i=0;i<count;i++){
+    const p = document.createElement('div');
+    p.className = 'fxBoom';
+    p.style.background = color;
+    const ang = (Math.random()*spread - spread/2) * Math.PI/180;
+    const dist = 34 + Math.random()*72;
+    const dx = Math.cos(ang)*dist, dy = Math.sin(ang)*dist - 10;
+    p.style.left = (x)+'px'; p.style.top = (y)+'px';
+    p.style.transform = 'translate(-50%, -50%)';
+    p.style.transition = `transform ${620/state.speed}ms ease-out, opacity ${700/state.speed}ms linear`;
+    root.appendChild(p);
+    requestAnimationFrame(()=>{p.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; p.style.opacity = '0';});
+    setTimeout(()=>p.remove(), 720/state.speed);
+  }
+}
+function bigExplosion(card, color='#ef4444', count=30){ const el = findCardEl(card.id); if(!el) return; const {x,y} = elCenter(el); boomAt(x, y, color, count, 150); }
+function fireExplosion(card){ bigExplosion(card, '#fb923c', 36); }
+function plagueSplash(card){ bigExplosion(card, '#a78bfa', 28); }
+function blizzardBurst(card){ bigExplosion(card, '#60a5fa', 30); }
+function zapStrike(from, to){
+  const aEl = findCardEl(from.id), dEl = findCardEl(to.id);
+  if (!aEl || !dEl) return;
+  const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
+  const fx = document.getElementById('fxRoot');
+  const line = document.createElement('div');
+  const dx = (d.left + d.width/2) - (a.left + a.width/2);
+  const dy = (d.top  + d.height/2) - (a.top  + a.height/2);
+  const angle = Math.atan2(dy,dx) * 180/Math.PI;
+  const len = Math.min(280, Math.hypot(dx,dy));
+  line.style.position='absolute';
+  line.style.left=(a.left + a.width/2)+'px';
+  line.style.top =(a.top  + a.height/2)+'px';
+  line.style.width=len+'px'; line.style.height='4px';
+  line.style.background='linear-gradient(90deg, rgba(250,204,21,0), rgba(250,204,21,1), rgba(250,204,21,0))';
+  line.style.boxShadow='0 0 18px rgba(250,204,21,.85)';
+  line.style.transformOrigin='0 50%';
+  line.style.transform=`translate(-0px,-2px) rotate(${angle}deg)`;
+  line.style.opacity='1'; line.style.transition=`opacity ${190/state.speed}ms ease`;
+  fx.appendChild(line);
+  setTimeout(()=>{ line.style.opacity='0'; setTimeout(()=>line.remove(), 210/state.speed); }, 140/state.speed);
+  const {x,y} = elCenter(dEl); boomAt(x,y,'#facc15',14,90);
+}
+function heartPulse(card){
+  const el = findCardEl(card.id); if(!el) return;
+  const ring = document.createElement('div');
+  ring.className='heartPulse';
+  el.appendChild(ring);
+  setTimeout(()=>ring.remove(), 560/state.speed);
+}
+function impactBurst(card, big=false){
+  const fx=findCardEl(card.id)?.querySelector('.fx'); if(!fx) return;
+  for(let i=0;i<(big?20:12);i++){
+    const p=document.createElement('div');
+    const size=3+Math.random()*4;
+    p.style.position='absolute';
+    p.style.width=p.style.height=size+'px';
+    p.style.borderRadius='50%'; p.style.background= big?'#ef4444':'#f87171';
+    p.style.left=(40+Math.random()*40)+'%';
+    p.style.top=(60)+'%';
+    const dx=(Math.random()*66-33), dy=(-34-Math.random()*44);
+    p.style.opacity='0.95';
+    p.style.transition=`transform ${560/state.speed}ms ease-out, opacity ${640/state.speed}ms linear`;
+    fx.appendChild(p);
+    requestAnimationFrame(()=>{p.style.transform=`translate(${dx}px,${dy}px)`; p.style.opacity='0';});
+    setTimeout(()=>p.remove(),660/state.speed);
+  }
+}
+function slashTrail(fromCard,toCard,color='#ef4444'){
+  const aEl=findCardEl(fromCard.id), dEl=findCardEl(toCard.id);
+  if(!aEl||!dEl) return;
+  const fx=dEl.querySelector('.fx'); if(!fx) return;
+  const line=document.createElement('div');
+  line.style.position='absolute'; line.style.height='3px'; line.style.background=color; line.style.borderRadius='2px';
+  line.style.opacity='0.95'; line.style.left='10%'; line.style.top='50%';
+  const len=120+Math.random()*40;
+  line.style.width=len+'px';
+  const angle=(Math.random()*40-20);
+  line.style.transformOrigin='0 50%';
+  line.style.transform=`rotate(${angle}deg) translate(-10px, -10px)`;
+  line.style.transition=`opacity ${240/state.speed}ms ease`;
+  fx.appendChild(line);
+  requestAnimationFrame(()=>{line.style.opacity='0';});
+  setTimeout(()=>line.remove(),260/state.speed);
+}
+
+/*** Choose & utility ***/
+function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
+function chooseTarget(opp){
+  const foes=living(opp); if(!foes.length) return null;
+  const taunts=foes.filter(f=>f.taunt); if(taunts.length) return taunts[RAND(taunts.length)];
+  return foes[RAND(foes.length)];
+}
+function waitMs(ms){return new Promise(r=>setTimeout(r,ms));}
+
+/*** Healing that respects dynamic Max HP ***/
+function healCard(target,amt){
+  if(!target.alive) return;
+  const max = getMaxHP(target);
+  const before=target.hpNow; target.hpNow=Math.min(max, target.hpNow + amt);
+  const diff = target.hpNow - before;
+  if(diff>0){ gFloat(target, `+${diff}`, '#0ea5e9'); heartPulse(target); }
+  renderBoard();
+}
+
+/*** Combat ***/
+function dealDamage(attacker,target,base, heavy=false){
+  if(!target.alive) return;
+  const dmgStarred=Math.round(base*starMult(attacker.stars));
+  let dmg=dmgStarred;
+  if(hasShield(target)) dmg=Math.max(1,Math.floor(dmg*0.5));
+  target.hpNow-=dmg;
+
+  gFloat(target, `-${dmg}`, '#dc2626');
+  if(heavy) bigExplosion(target); else impactBurst(target, false);
+
+  if(target.hpNow<=0){
+    target.alive=false;
+    if(target.split){
+      const mk=()=>makeCard("Slime",Math.max(1,target.stars-1));
+      const b1=mk(), b2=mk(); b1.owner=target.owner; b2.owner=target.owner;
+      b1.baby=b2.baby=true; b1.hpNow=2; b2.hpNow=2; b1.split=b2.split=false;
+      (target.owner==='you'?state.myDeck:state.foeDeck).push(b1,b2);
+      log(`${target.owner==='you'?'Your':'Enemy'} Slime split into babies!`);
+    }
+  }
+  renderBoard();
+}
+
+/*** Spells — fire once per battle ***/
+function castSpellsOnce(side){
+  const deck = side==='you' ? state.myDeck : state.foeDeck;
+  for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
+    s._used = true;
+    const pow = starMult(s.stars);
+    const sp = clone(s.spell);
+
+    if (sp.kind==='fire'){
+      const tgt = chooseTarget(side==='you'?state.foeDeck:state.myDeck);
+      if (tgt){ fireExplosion(tgt); dealDamage(s, tgt, Math.round(sp.dmg*pow), true);
+        log(`${side==='you'?'Your':'Enemy'} 💥 Firebolt hits ${tgt.name}`);
+      }
+    }
+    else if (sp.kind==='lightning'){
+      for (let i=0;i<sp.hits;i++){
+        const t=chooseTarget(side==='you'?state.foeDeck:state.myDeck);
+        if (t){ zapStrike(s, t); dealDamage(s,t,Math.round(sp.dmg*pow)); }
+      }
+      log(`${side==='you'?'Your':'Enemy'} ⚡ Lightning strikes ${sp.hits} targets`);
+    }
+    else if (sp.kind==='shield'){
+      const allies = living(deck).filter(a=>!hasShield(a));
+      if (allies.length){
+        const tgt = allies.sort((a,b)=>b.hpNow-a.hpNow)[0];
+        const extra = (state.relicFlags?.relicShieldPlus||0);
+        applyShield(tgt, (sp.dur||1) + extra);
+        bigExplosion(tgt,'#2563eb',18);
+        gFloat(tgt, `Shield`, '#2563eb');
+        log(`${side==='you'?'Your':'Enemy'} 🛡️ Shield on ${tgt.name}`);
+      }
+    }
+    else if (sp.kind==='plague'){
+      const opp = living(side==='you'?state.foeDeck:state.myDeck);
+      const count = Math.min(sp.count||3, opp.length);
+      for (let i=0;i<count;i++){
+        addPoison(opp[i],
+          Math.round(sp.dmg*pow) + (state.relicFlags?.relicPoisonPlus||0) + (state.synergyBuffs.poisonPlus||0),
+          (sp.dur||3) + (state.synergyBuffs.poisonDurPlus||0));
+        plagueSplash(opp[i]); gFloat(opp[i], `☣`, '#7c3aed');
+      }
+      log(`${side==='you'?'Your':'Enemy'} ☣️ Plague spreads`);
+    }
+    else if (sp.kind==='ward'){
+      deck.__wards = deck.__wards || [];
+      deck.__wards.push({heal:Math.round((sp.heal||5)*pow), dur:sp.dur||3, targets:sp.targets||2});
+      for (const u of living(deck)) { bigExplosion(u,'#34d399',10); }
+      log(`${side==='you'?'Your':'Enemy'} ✨ Healing Ward active`);
+    }
+    else if (sp.kind==='freeze2'){
+      const opp = living(side==='you'?state.foeDeck:state.myDeck).slice(0,2);
+      for (const t of opp){ blizzardBurst(t); addFreeze(t, 1 + (state.synergyBuffs.freezePlus||0)); dealDamage(s,t,Math.round((sp.dmg||3)*pow)); }
+      log(`${side==='you'?'Your':'Enemy'} ❄️ Blizzard chills two`);
+    }
+    else if (sp.kind==='hotAll'){
+      // New Rejuvenate: +1 Max HP and HoT 1 for 3 rounds
+      const DURATION = 3;
+      deck.__hots = deck.__hots || [];
+      deck.__hots.push({heal:1, dur:DURATION, label:'Rejuv'});
+      for (const u of living(deck)) {
+        u.effects.push({kind:'maxhp', bonus:1, dur:DURATION});
+        gFloat(u, '+MaxHP', '#34d399');
+        heartPulse(u);
+      }
+      log(`${side==='you'?'Your':'Enemy'} 💚 Rejuvenate: +Max HP & HoT for ${DURATION} turns`);
+    }
+  }
+}
+
+/*** End-of-round ticks ***/
+function processEndOfRound(){
+  function tick(deck){
+    for(const c of deck.filter(x=>x.type===TYPE_UNIT)){
+      for(const e of c.effects){
+        if((e.kind==='poison' || e.kind==='bleed' || e.kind==='burn') && e.dur>0 && c.alive){
+          c.hpNow-=e.dmg; e.dur--;
+          gFloat(c, `-${e.dmg}${e.kind==='poison'?'☠':e.kind==='bleed'?'🩸':'🔥'}`,
+                 e.kind==='poison'?'#7c3aed':(e.kind==='bleed'?'#b91c1c':'#fb923c'));
+          if(c.hpNow<=0){ c.alive=false; }
+        }
+        if(e.kind==='shield' && e.dur>0){ e.dur--; }
+        if(e.kind==='freeze' && e.dur>0){ e.dur--; if(e.dur===0) c.frozen=false; }
+        if(e.kind==='bud' && e.dur>0 && c.alive){ healCard(c,1); e.dur--; }
+        if(e.kind==='maxhp' && e.dur!=null && e.dur>0){ e.dur--; }
+      }
+      c.effects=c.effects.filter(e=> (e.dur==null)||e.dur>0);
+
+      // Clamp to updated Max HP if bonuses expired
+      const newMax = getMaxHP(c);
+      if (c.hpNow > newMax) c.hpNow = newMax;
+
+      if(c.regen2 && c.alive) healCard(c,2 + (state.synergyBuffs.healPlus||0));
+      if(c.smiteHeal && c.alive) healCard(c,2); // slight bump
+    }
+    const wards=deck.__wards||[];
+    for(const w of wards){ if(w.dur>0){
+      const allies=living(deck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+      for(let i=0;i<Math.min(w.targets||2,allies.length);i++){ healCard(allies[i],w.heal); }
+      w.dur--;
+    }}
+    deck.__wards=(wards||[]).filter(w=>w.dur>0);
+
+    const hots = deck.__hots || [];
+    for (const h of hots){ if(h.dur>0){ const allies=living(deck); for (const a of allies) healCard(a, h.heal); h.dur--; } }
+    deck.__hots = hots.filter(h=>h.dur>0);
+
+    for(const c of deck.filter(x=>x.baby && x.alive)){ c.alive=false; gFloat(c,'✖','#6b7280'); }
+  }
+  tick(state.myDeck); tick(state.foeDeck); renderBoard();
+}
+
+/*** Unit actions ***/
+function actUnit(u){
+  if(!u.alive) return;
+  u.turnsAlive++;
+  if(u.frozen){ log(`${u.name} is frozen and skips.`); return; }
+
+  // Ranged priority bump synergy
+  if((u.tags||[]).includes('ranged') && state.synergyBuffs.rangedPriorityUp && u.priority>PRIORITY.HIGH) u.priority=PRIORITY.HIGH;
+
+  // Healers — target MOST damaged ally by % (acolyte stronger: amt=4)
+  if(u.heal1){
+    const allies=living(u.owner==='you'?state.myDeck:state.foeDeck)
+      .sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+    if(allies.length) healCard(allies[0], Math.round(u.heal1.amt*starMult(u.stars)) + (state.synergyBuffs.healPlus||0));
+    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals`);
+    return;
+  }
+  if(u.heal2){
+    const allies=living(u.owner==='you'?state.myDeck:state.foeDeck)
+      .sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+    for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (state.synergyBuffs.healPlus||0)); }
+    if(u.tags.includes('bubble') && allies.length){ const tgt=allies[0]; if(tgt && !hasShield(tgt)){ applyShield(tgt,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(tgt,'Bubble','var(--shield)'); } }
+    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals two`);
+    return;
+  }
+  if(u.wardSong){
+    const deck=u.owner==='you'?state.myDeck:state.foeDeck;
+    deck.__wards=deck.__wards||[]; deck.__wards.push({heal:2,dur:1,targets:2});
+    for (const a of living(deck)) bigExplosion(a,'#34d399',8);
+    log(`${u.owner==='you'?'Your':'Enemy'} 🎵 Bard inspires`);
+  }
+
+  let bonusMult = (u.alpha && u.turnsAlive===1)? 2 : 1;
+  const oppDeck=u.owner==='you'?state.foeDeck:state.myDeck;
+  const target=chooseTarget(oppDeck); if(!target) return;
+
+  const doHit=()=>{
+    const splashPlus = (state.synergyBuffs.splashPlus||0);
+    const poisonPlus = (state.synergyBuffs.poisonPlus||0) + (state.relicFlags?.relicPoisonPlus||0);
+    const poisonDurPlus = (state.synergyBuffs.poisonDurPlus||0);
+    const freezePlus = (state.synergyBuffs.freezePlus||0);
+
+    if(u.tags.includes('charge') && u.turnsAlive===1) bonusMult*=1.5;
+    if(u.tags.includes('bleed') && u.turnsAlive===1) addBleed(target,1,2);
+
+    if(u.tags.includes('pierce')){
+      const others=living(oppDeck).filter(x=>x.id!==target.id);
+      if(others.length && Math.random()<0.40){
+        const second=others[RAND(others.length)];
+        slashTrail(u, second, '#fca5a5');
+        dealDamage(u, second, Math.floor(u.dmg*0.5), false);
+      }
+    }
+
+    if(u.splash3){
+      const arr=living(oppDeck); const n=Math.min(3,arr.length);
+      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); if(u.tags.includes('burn')) addBurn(arr[i],1,2); }
+      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} hits ${n}`);
+    }
+    else if(u.splash2){
+      const arr=living(oppDeck); const n=Math.min(2,arr.length);
+      for(let i=0;i<n;i++){ slashTrail(u, arr[i], '#ef4444'); dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true); }
+      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} cleaves ${n}`);
+    }
+    else{
+      slashTrail(u, target, '#ef4444');
+      dealDamage(u,target,u.dmg*bonusMult);
+      if(u.freeze && target.alive) addFreeze(target,1+freezePlus);
+      if(u.applyPoison && target.alive) addPoison(target, u.applyPoison.dmg + poisonPlus, u.applyPoison.dur + poisonDurPlus);
+      if(u.smiteHeal) healCard(u,2);
+      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} strikes ${target.name}`);
+    }
+  };
+
+  // animation shim
+  const aEl=findCardEl(u.id), dEl=findCardEl(target.id);
+  if(!aEl||!dEl){ doHit(); return; }
+  const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
+  const dx=(d.left-a.left)*0.12, dy=(d.top-a.top)*0.12;
+  aEl.style.transition=`transform ${160/state.speed}ms ease`; aEl.style.transform=`translate(${dx}px,${dy}px)`;
+  setTimeout(()=>{ doHit(); aEl.style.transform='translate(0,0)';},180/state.speed);
+}
+
+/*** Hoplite retaliation hook ***/
+const _dealDamage=dealDamage;
+dealDamage=function(attacker,target,base,heavy=false){
+  const aliveBefore=target.alive;
+  _dealDamage(attacker,target,base,heavy);
+  if(target && target.alive && target.tags && target.tags.includes('retaliate') && !target._retalUsed && aliveBefore){
+    target._retalUsed=true;
+    slashTrail(target, attacker, '#fbbf24');
+    _dealDamage(target,attacker,3,false);
+    log(`${target.name} retaliates!`);
+  }
+}
+
+/*** Flash panel ***/
+function flashCard(kind,title,desc){
+  const box=document.createElement('div');
+  box.className='flashCard'+(kind?(' '+kind):'');
+  box.innerHTML=`<div class="flashTitle">${title}</div><div class="flashDesc">${desc}</div>`;
+  document.getElementById('battleFlash').appendChild(box);
+  setTimeout(()=>box.remove(), 4000);
+}
+function showSynergyFlashes(){
+  document.getElementById('battleFlash').innerHTML='';
+  for(const s of SYNERGIES){
+    if(state.synergyBuffs._active?.includes(s.id)){
+      flashCard('', `🧩 ${s.label}`, s.desc);
+    }
+  }
+  for(const r of state.relics){
+    flashCard('relic', `🔶 Relic: ${r.title}`, r.desc);
+  }
+  if(state.lastBoss) flashCard('boss', '👹 Boss Battle!', 'Stronger foes + unique boss');
+}
+
+/*** Synergy compute ***/
+function computeSynergies(){
+  const counts={}; const tagsByCard=state.myDeck.filter(c=>c.type===TYPE_UNIT).map(c=>c.tags||[]);
+  for(const tags of tagsByCard){ for(const t of tags){ counts[t]=(counts[t]||0)+1; } }
+  const buffs={_active:[]};
+  for(const syn of SYNERGIES){
+    if( (counts[syn.tag]||0) >= syn.t ){ syn.effect(buffs); buffs._active.push(syn.id); }
+  }
+  return buffs;
+}
+function isBossLevel(level){return level>0 && level%5===0;}
+
+/*** Battle loop ***/
+async function playRound(){
+  state.round++; log(`<b>Round ${state.round}</b>`);
+  for(const x of [...state.myDeck, ...state.foeDeck]) x._retalUsed=false;
+
+  const Y=living(state.myDeck).sort((a,b)=>a.priority-b.priority);
+  const F=living(state.foeDeck).sort((a,b)=>a.priority-b.priority);
+
+  for(const u of [...Y,...F]){
+    if(!u.alive) continue;
+    const delayBefore = (state.relicFlags?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
+    await waitMs(delayBefore/state.speed);
+    actUnit(u);
+    await waitMs(300/state.speed);
+    if(living(state.myDeck).length===0 || living(state.foeDeck).length===0) break;
+  }
+  await waitMs(220/state.speed);
+  processEndOfRound();
+}
+
+async function battle(){
+  if(state.playing) return;
+  state.playing=true;
+
+  state.synergyBuffs = computeSynergies();
+  prepareTeamsForBattle(); renderBoard(); renderDeckBar();
+
+  // Start shields from synergy & relic
+  if(state.synergyBuffs.startShieldSmall){
+    const allies = living(state.myDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,state.synergyBuffs.startShieldSmall);
+    for(const a of allies){ applyShield(a,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
+  }
+  if(state.relicFlags?.relicFirstShield){
+    const allies = living(state.myDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,2);
+    for(const a of allies){ applyShield(a,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
+  }
+
+  showSynergyFlashes();
+  castSpellsOnce('you');
+  castSpellsOnce('foe');
+
+  while(living(state.myDeck).length>0 && living(state.foeDeck).length>0){
+    await playRound();
+    if(living(state.myDeck).length===0 || living(state.foeDeck).length===0) break;
+    await waitMs(340/state.speed);
+  }
+  const win=living(state.myDeck).length>0;
+  log(win?`<b>Victory!</b>`:`<b>Defeat…</b>`);
+  state.playing=false;
+
+  if(win){
+    const prev = state.level;
+    state.level++;
+    state.enemyScale = +(state.enemyScale * 1.06).toFixed(2);
+    const score = state.level-1;
+    if(score>getBest()) setBest(score);
+    updateHeader();
+    // Every 3 levels: relic; always draft after win; auto-continue
+    const relicRound = (state.level-1)%3===0;
+    openDraft(true, relicRound); // autoNextAfterPick, maybe relic
+  }else{
+    const score = state.level-1;
+    if(score>getBest()) setBest(score);
+    pushScore(score);
+    updateHeader();
+    // Run ends. Player can press New Run.
+  }
+}
+
+/*** Setup / Prepare teams ***/
+function prepareTeamsForBattle(){
+  state.round=0;
+  // fold relics into flags
+  state.relicFlags={};
+  for(const r of state.relics){ r.apply(state.relicFlags); }
+
+  for(const c of state.myDeck){
+    if(c.type===TYPE_UNIT){
+      c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
+      c.hpNow=Math.round(c.hp*starMult(c.stars));
+      // Apply Banner of Vigor: +10% max HP (as effect) and +10% start heal
+      const rpct = state.relicFlags?.relicMaxHPPct || 0;
+      const hpStartHealPct = state.relicFlags?.relicStartHealPct || 0;
+      if (rpct > 0){
+        const baseMax = Math.round(c.hp * starMult(c.stars));
+        const bonus   = Math.max(1, Math.round(baseMax * rpct));
+        c.effects.push({kind:'maxhp', bonus, dur:null}); // lasts whole battle
+        const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
+        c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
+      }
+    }
+    if(c.type===TYPE_SPELL) c._used=false;
+  }
+
+  // Enemy deck & reset
+  state.foeDeck=makeEnemyDeck();
+  for(const c of state.foeDeck){
+    c.owner='foe';
+    if(c.type===TYPE_UNIT){
+      c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
+      c.hpNow=Math.round(c.hp*starMult(c.stars));
+    }
+    if(c.type===TYPE_SPELL) c._used=false;
+  }
+
+  state.lastBoss = isBossLevel(state.level);
+}
+
+/*** Enemy curve + Boss ***/
+function makeEnemyDeck(){
+  if(isBossLevel(state.level)){
+    const bosses=["Ogre King","Lich","Ancient Dragon"];
+    const bossName = bosses[(Math.floor(state.level/5)-1)%bosses.length];
+    const B=makeCard(bossName, Math.min(4, 2 + Math.floor((state.level-1)/8)));
+    B.owner='foe';
+
+    const adds=[];
+    const addPool = ["Orc","Troll","Goblin Mage","Wyvern","Goblin Archer","Spearman","Slinger","Hoplite","Giant","Crossbowman","Pikeman"];
+    const addCount = 2 + Math.floor((state.level-1)/5);
+    for(let i=0;i<addCount;i++){
+      const name = addPool[RAND(Math.min(addPool.length, 3 + Math.floor((state.level-1)/4)))];
+      const c=makeCard(name, clamp(1+Math.floor((state.level-1)/8),1,4));
+      adds.push(c);
+    }
+    const pack = [B, ...adds];
+    for(const c of pack){
+      if(c.type===TYPE_UNIT){
+        c.hpNow = Math.round(c.hpNow * state.enemyScale * 1.05);
+        c.dmg   = Math.round(c.dmg   * state.enemyScale * 1.05);
+      }
+    }
+    if (Math.random() < 0.25) pack.push(makeCard("Firebolt",1));
+    return pack;
+  }
+
+  // Normal deck
+  const pool=["Goblin","Goblin Archer","Goblin Mage","Orc","Troll","Demon","Wyvern","Spearman","Slinger","Hoplite","Giant","Crossbowman","Pikeman"];
+  const baseCount = Math.min(3 + Math.floor((state.level-1)/2), 14);
+  const poolOpenCount = Math.min(pool.length, 3 + Math.floor((state.level-1)/3));
+
+  const arr=[];
+  for(let i=0;i<baseCount;i++){
+    const name = pool[RAND(poolOpenCount)];
+    const stars = clamp(1 + Math.floor((state.level-1)/8), 1, 4);
+
+    let earlyScale = 1.00;
+    if (state.level <= 5) earlyScale = 0.82;
+    else if (state.level <= 9) earlyScale = 0.92;
+
+    const c = makeCard(name, stars);
+    if (c.type===TYPE_UNIT){
+      c.hpNow = Math.round(c.hpNow * state.enemyScale * earlyScale);
+      c.dmg   = Math.round(c.dmg   * state.enemyScale * earlyScale);
+    }
+    arr.push(c);
+  }
+
+  if (state.level >= 5){
+    const p = (lvl)=>Math.min(0.10 + (lvl-5)*0.01, 0.22);
+    if (Math.random() < p(state.level)) arr.push(makeCard("Firebolt",1));
+    if (Math.random() < p(state.level)*0.7) arr.push(makeCard("Lightning",1));
+    if (Math.random() < p(state.level)*0.6) arr.push(makeCard("Shield",1));
+  }
+  return arr;
+}
+
+/*** Drafting ***/
+function currentDeckNames(){ const set=new Set(); for(const c of state.myDeck) set.add(c.name); return Array.from(set); }
+
+function openDraft(autoNextAfterPick=false, alsoRelic=false){
+  if(state.drafting) return;
+  state.drafting=true;
+  const modal=document.getElementById('draftModal'); modal.classList.add('on');
+  const slot=document.getElementById('draftChoices'); slot.innerHTML='';
+
+  const haveNames = currentDeckNames().filter(n => PLAYER_POOL.includes(n));
+  const choices=[];
+  while(choices.length<3){
+    // Rarity logic: force COMMON during opening 3 picks
+    let pickName=null;
+    if (state.forceStartCommon){
+      const commons = PLAYER_POOL.filter(n=>cardRarity(n)===RAR.COMMON && isUnlocked(n, state.level));
+      pickName = commons[RAND(commons.length)];
+    }else{
+      // normal weighted by level
+      const weights = draftWeightsForLevel(state.level);
+      const rarPick = weightedPick(weights);
+      const poolOfRarity = PLAYER_POOL.filter(n=>cardRarity(n)===rarPick && isUnlocked(n, state.level));
+      const fallbackPool = PLAYER_POOL.filter(n=>isUnlocked(n, state.level));
+      pickName = (poolOfRarity.length ? poolOfRarity[RAND(poolOfRarity.length)] : fallbackPool[RAND(fallbackPool.length)]);
+    }
+    choices.push({kind:'card', card:makeCard(pickName,1)});
+  }
+
+  for(const ch of choices){
+    const box=document.createElement('div'); 
+    box.className='card rarity-'+(ch.kind==='card'?rarClass(ch.card.rar):'rare');
+    box.style.cursor='pointer';
+    if(ch.kind==='card'){
+      const c=ch.card;
+      box.innerHTML=`
+        <div class="rowline"><div class="emoji">${c.icon||'🂠'}</div><div class="stars">${fmtStars(c.stars)}</div></div>
+        <div class="rowline"><div class="name">${c.name}</div><div class="rar ${rarClass(c.rar)}">${c.rar.toUpperCase()}</div></div>
+        <div class="statline">${c.type===TYPE_UNIT?`<span>HP ${c.hpNow}</span><span>DMG ${c.dmg}</span><span>${prioName(c.priority)}</span>`:`<span>Spell</span>`}</div>
+        <div class="statline">${(c.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
+      box.onclick=()=>chooseDraft(c,null, autoNextAfterPick, alsoRelic);
+    }
+    slot.appendChild(box);
+  }
+}
+
+function closeDraft(){ document.getElementById('draftModal').classList.remove('on'); state.drafting=false; }
+
+function chooseDraft(card,upgradeTarget, autoNextAfterPick, alsoRelic){
+  if(!PLAYER_POOL.includes(card.name)) return;
+  if(state.myDeck.length>=20){ openDiscard(card, autoNextAfterPick, alsoRelic); }
+  else { state.myDeck.push(card); closeDraft(); renderDeckBar();
+
+    // If we are in the initial forced 3 common drafts:
+    if (state.startDraftsLeft>0){
+      state.startDraftsLeft--;
+      if (state.startDraftsLeft>0){
+        openDraft(false, false); // open next starter pick
+        return;
+      }else{
+        // done with starters, turn off forcing and start first battle
+        state.forceStartCommon=false;
+        battle();
+        return;
+      }
+    }
+
+    if(alsoRelic) openRelicPick(autoNextAfterPick);
+    else if(autoNextAfterPick) battle();
+  }
+}
+
+function openDiscard(incoming, autoNextAfterPick=false, alsoRelic=false){
+  const modal=document.getElementById('discardModal'); modal.classList.add('on');
+  const slot=document.getElementById('discardChoices'); slot.innerHTML='';
+  for(const c of state.myDeck){
+    const el=mountCard(c); el.style.cursor='pointer';
+    el.onclick=()=>{ state.myDeck=state.myDeck.filter(x=>x.id!==c.id); state.myDeck.push(incoming); document.getElementById('discardModal').classList.remove('on'); closeDraft(); renderDeckBar();
+      if (state.startDraftsLeft>0){
+        state.startDraftsLeft--;
+        if (state.startDraftsLeft>0){ openDraft(false,false); }
+        else { state.forceStartCommon=false; battle(); }
+        return;
+      }
+      if(alsoRelic) openRelicPick(autoNextAfterPick);
+      else if(autoNextAfterPick) battle();
+    };
+    slot.appendChild(el);
+  }
+}
+
+/*** Relic selection ***/
+function openRelicPick(autoNextAfterPick=false){
+  const modal=document.getElementById('relicModal'); modal.classList.add('on');
+  const slot=document.getElementById('relicChoices'); slot.innerHTML='';
+  const pick=[...RELICS].sort(()=>Math.random()-0.5).slice(0,3);
+  for(const r of pick){
+    const box=document.createElement('div'); box.className='card rarity-legend'; box.style.cursor='pointer';
+    box.innerHTML=`
+      <div class="rowline"><div class="emoji">🔶</div><div class="stars">Relic</div></div>
+      <div class="rowline"><div class="name">${r.title}</div><div class="rar legend">RELIC</div></div>
+      <div class="statline"><span>${r.desc}</span></div>`;
+    box.onclick=()=>{ state.relics.push(r); document.getElementById('relicModal').classList.remove('on'); updateHeader(); if(autoNextAfterPick) battle(); };
+    slot.appendChild(box);
+  }
+}
+
+/*** Weights ***/
+function draftWeightsForLevel(level){
+  const bump = Math.floor((level-1)/5);
+  const w = {common:62, rare:28, epic:9, legend:1};
+  for(let i=0;i<bump;i++){
+    if(w.common>4){ w.common-=2; w.rare+=1.5; w.epic+=0.5; }
+    if(i%3===2 && w.epic>8){ w.epic-=0.5; w.legend+=0.5; }
+  }
+  return w;
+}
+function weightedPick(weights){
+  const entries = Object.entries(weights);
+  const total=entries.reduce((s,[,v])=>s+v,0);
+  let r=Math.random()*total;
+  for(const [k,v] of entries){ if((r-=v)<=0) return k; }
+  return entries[0][0];
+}
+
+/*** Detail view ***/
+function showDetail(c){
+  const m=document.getElementById('detailModal'); m.classList.add('on');
+  const base=CATALOG[c.name]; const b=document.getElementById('detailBody');
+  b.innerHTML=`
+    <h2 style="margin:0 0 6px 0">${c.icon||''} ${c.name}${c.baby?' (baby)':''}</h2>
+    <div style="color:#475569;font-size:13px;margin-bottom:8px">${c.type.toUpperCase()} • ${c.rar.toUpperCase()} • ${fmtStars(c.stars)} ${c.type===TYPE_UNIT?`• Priority: ${prioName(c.priority)}`:''}</div>
+    ${c.type===TYPE_UNIT?`
+      <div>Max HP now: ${getMaxHP(c)}, Damage: ${Math.round((c.dmg||0)*starMult(c.stars))}</div>
+      <div style="margin-top:6px">Tags: ${(c.tags||[]).join(', ')||'—'}</div>
+    `:`<div>Spell: <code>${JSON.stringify(base.spell)}</code></div>`}
+  `;
+}
+function hideDetail(){ document.getElementById('detailModal').classList.remove('on'); }
+
+/*** Controls ***/
+document.getElementById('btnSpeed').onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length; state.speed=SPEEDS[speedIdx]; document.getElementById('btnSpeed').textContent=`Speed: ${state.speed}x`;};
+document.getElementById('btnReset').onclick=()=>newRun();
+
+/*** Bootstrap ***/
+function newRun(){
+  if(state.level>1 && !state.playing){
+    const score=state.level-1; if(score>0){ if(score>getBest()) setBest(score); pushScore(score); }
+  }
+  state={ level:1, enemyScale:1, myDeck:[], foeDeck:[], upgrades:{}, playing:false, round:0, speed:SPEEDS[speedIdx]||1, drafting:false, relics:[], synergyBuffs:{}, relicFlags:{}, lastBoss:false, startDraftsLeft:3, forceStartCommon:true };
+  document.getElementById('log').innerHTML='';
+  updateHeader(); renderDeckBar(); renderBoard(); renderScores();
+
+  // Start with 3 forced COMMON drafts, auto-battle after the third pick
+  openDraft(false,false);
+}
+newRun();
+</script>
+</body>
+</html>
