@@ -990,7 +990,11 @@ function prepareTeamsForBattle(myDeck, foeDeck, flagsYou={}, flagsFoe={}){
 }
 
 async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
-  for (const x of [...myDeck, ...foeDeck]) x._retalUsed = false;
+  // reset retaliation flags
+  const allUnits = myDeck.concat(foeDeck);
+  for (const x of allUnits) {
+    x._retalUsed = false;
+  }
 
   let Y = living(myDeck).slice();
   let F = living(foeDeck).slice();
@@ -998,13 +1002,18 @@ async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
   Y.sort((a,b)=>a.priority-b.priority);
   F.sort((a,b)=>a.priority-b.priority);
 
-  for (const u of [...Y, ...F]){
+  const turnOrder = Y.concat(F);
+
+  for (const u of turnOrder){
     if (!u.alive) continue;
 
     const isYou = (u.owner === 'you');
+    const fasterHighYou  = !!(flagsYou  && flagsYou.relicFasterHigh);
+    const fasterHighFoe  = !!(flagsFoe  && flagsFoe.relicFasterHigh);
+
     const delayBefore =
-      (isYou && flagsYou?.relicFasterHigh && u.priority === PRIORITY.HIGH) ||
-      (!isYou && flagsFoe?.relicFasterHigh && u.priority === PRIORITY.HIGH)
+      (isYou && fasterHighYou && u.priority === PRIORITY.HIGH) ||
+      (!isYou && fasterHighFoe && u.priority === PRIORITY.HIGH)
         ? 140
         : 190;
 
@@ -1348,6 +1357,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
