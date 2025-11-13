@@ -304,7 +304,7 @@ const CATALOG={
   "Knight":      {rar:RAR.COMMON,  icon:"🛡️", type:TYPE_UNIT, hp:16, dmg:6, priority:PRIORITY.MID,  tags:["melee","guard"]},
   "Longbowman":  {rar:RAR.RARE,    icon:"🏹", type:TYPE_UNIT, hp:9,  dmg:7, priority:PRIORITY.HIGH, tags:["ranged","pierce"]},
   "Hoplite":     {rar:RAR.RARE,    icon:"🥏", type:TYPE_UNIT, hp:14, dmg:5, priority:PRIORITY.MID,  tags:["taunt","retaliate"], taunt:true},
-  "Ninja":       {rar:RAR.EPIC,    icon:"🥷", type:TYPE_UNIT, hp:8,  dmg:8, priority:PRIORITY.HIGH, tags:["double","bleed"], extraStrike:true},
+  "Ninja":       {rar:RAR.EPIC,    icon:"🥷", type:TYPE_UNIT, hp:8,  dmg:11, priority:PRIORITY.HIGH, tags:["double","bleed"], extraStrike:true},
   "Blow Dart":   {rar:RAR.COMMON,  icon:"🪱", type:TYPE_UNIT, hp:7,  dmg:3, priority:PRIORITY.HIGH, tags:["poison"], applyPoison:{dmg:3,dur:3}},
   "Cavalier":    {rar:RAR.RARE,    icon:"🐎", type:TYPE_UNIT, hp:20, dmg:9, priority:PRIORITY.MID,  tags:["charge"]},
 
@@ -318,12 +318,17 @@ const CATALOG={
   "Slime":       {rar:RAR.COMMON,  icon:"🧪", type:TYPE_UNIT, hp:16, dmg:5, priority:PRIORITY.MID,  tags:["poison","split"], applyPoison:{dmg:3,dur:3}, split:true},
   "Crossbowman": {rar:RAR.RARE,    icon:"🏹", type:TYPE_UNIT, hp:12, dmg:9, priority:PRIORITY.HIGH, tags:["ranged"]},
   "Pikeman":     {rar:RAR.COMMON,  icon:"🔱", type:TYPE_UNIT, hp:12, dmg:6, priority:PRIORITY.MID,  tags:["melee"]},
-  "Paladin":     {rar:RAR.EPIC,    icon:"🛐", type:TYPE_UNIT, hp:21, dmg:7, priority:PRIORITY.MID,  tags:["smite-heal"], smiteHeal:true},
+  "Paladin":     {rar:RAR.EPIC,    icon:"🛐", type:TYPE_UNIT, hp:24, dmg:7, priority:PRIORITY.MID,  tags:["smite-heal"], smiteHeal:true},
   "Bomber":      {rar:RAR.RARE,    icon:"💣", type:TYPE_UNIT, hp:8,  dmg:12, priority:PRIORITY.MID,  tags:["splash2"], splash2:true},
   "Druid":       {rar:RAR.RARE,    icon:"🌿", type:TYPE_UNIT, hp:14, dmg:4, priority:PRIORITY.LOW,  tags:["regen2","bud"], regen2:true},
   "Frost Golem": {rar:RAR.EPIC,    icon:"🧊", type:TYPE_UNIT, hp:26, dmg:6, priority:PRIORITY.LOW,  tags:["taunt","freeze"], taunt:true, freeze:true},
-  "Assassin":    {rar:RAR.EPIC,    icon:"🗡️", type:TYPE_UNIT, hp:5,  dmg:18,priority:PRIORITY.HIGH, tags:["alpha"], alpha:true},
+  "Assassin":    {rar:RAR.EPIC,    icon:"🗡️", type:TYPE_UNIT, hp:5,  dmg:20,priority:PRIORITY.HIGH, tags:["alpha"], alpha:true},
   "Bard":        {rar:RAR.RARE,    icon:"🎵", type:TYPE_UNIT, hp:14,  dmg:0, priority:PRIORITY.LOW,  tags:["ward-song"], wardSong:true},
+
+  "War Golem":   {rar:RAR.EPIC,   icon:"🤖", type:TYPE_UNIT, hp:55, dmg:9, priority:PRIORITY.LOW,  tags:["taunt","regen2"], taunt:true, regen2:true},
+  "Phoenix":     {rar:RAR.LEGEND, icon:"🔥", type:TYPE_UNIT, hp:35, dmg:12, priority:PRIORITY.HIGH, tags:["ranged","splash3","burn"], splash3:true},
+  "Hydra":       {rar:RAR.LEGEND, icon:"🐍", type:TYPE_UNIT, hp:50, dmg:17, priority:PRIORITY.MID,  tags:["splash2","poison"], splash2:true, applyPoison:{dmg:2,dur:3}},
+  "Battle Priest":{rar:RAR.RARE,  icon:"🕊️", type:TYPE_UNIT, hp:28, dmg:8, priority:PRIORITY.MID, tags:["heal2","smite-heal"], heal2:{amt:5}, smiteHeal:true},
 
   // Enemy-only
   "Goblin":        {rar:RAR.COMMON,  icon:"🟩", type:TYPE_UNIT, hp:8,  dmg:4, priority:PRIORITY.MID,  tags:["melee"]},
@@ -349,7 +354,14 @@ const CATALOG={
   "Rejuvenate":   {rar:RAR.RARE,    icon:"💚", type:TYPE_SPELL, spell:{kind:'hotAll', heal:4, dur:3}}
 };
 
-const PLAYER_UNITS = ["Slinger","Spearman","Acolyte","Scout","Knight","Longbowman","Hoplite","Ninja","Blow Dart","Cavalier","Priest","Dragonet","Ice Dragon","Giant","Wolf Pack","Slime","Crossbowman","Pikeman","Paladin","Bomber","Druid","Frost Golem","Assassin","Bard"];
+const PLAYER_UNITS = [
+  "Slinger","Spearman","Acolyte","Scout",
+  "Knight","Longbowman","Hoplite","Ninja","Blow Dart","Cavalier","Priest",
+  "Dragonet","Ice Dragon","Giant","Wolf Pack","Slime","Crossbowman","Pikeman",
+  "Paladin","Bomber","Druid","Frost Golem","Assassin","Bard",
+  "War Golem","Phoenix","Hydra","Battle Priest"
+];
+
 const PLAYER_SPELLS = ["Firebolt","Lightning","Shield","Plague","Healing Ward","Blizzard","Rejuvenate"];
 const PLAYER_POOL = [...PLAYER_UNITS, ...PLAYER_SPELLS];
 const ENEMY_ONLY = ["Goblin","Goblin Archer","Goblin Mage","Orc","Troll","Demon","Wyvern"];
@@ -357,11 +369,24 @@ const ENEMY_ONLY = ["Goblin","Goblin Archer","Goblin Mage","Orc","Troll","Demon"
 /*** Unlock gates by level (progression) ***/
 function isUnlocked(name, level){
   const gates={
-    "Ninja":3, "Paladin":4, "Bomber":4, "Dragonet":5, "Bard":5,
-    "Frost Golem":6, "Blizzard":6, "Assassin":7, "Ice Dragon":8, "Rejuvenate":3
+    "Ninja":5,
+    "Paladin":10,
+    "Bomber":12,
+    "Dragonet":15,
+    "Bard":5,
+    "Frost Golem":16,
+    "Blizzard":15,
+    "Assassin":25,
+    "Battle Priest":35,
+    "Ice Dragon":40,
+    "War Golem":45,
+    "Phoenix":50,
+    "Hydra":55,
+    "Rejuvenate":3
   };
   return (gates[name]||1) <= level;
 }
+
 
 /*** Relics Catalog (STACKING) ***/
 const RELICS=[
@@ -455,6 +480,7 @@ function makeCard(name, stars = 1){
     wardSong: !!base.wardSong,
     freeze: !!base.freeze,
     acolyte: !!base.acolyte,
+    replicateLeft: base.replicateTurns || 0,
 
     spell: base.spell ? clone(base.spell) : null,
     _used: false
@@ -759,33 +785,91 @@ function castSpellsOnce(side){
 /*** End-of-round ticks ***/
 function processEndOfRound(){
   function tick(deck){
+    // Status effects, shields, freeze, buds
     for(const c of deck.filter(x=>x.type===TYPE_UNIT)){
       for(const e of c.effects){
         if((e.kind==='poison' || e.kind==='bleed' || e.kind==='burn') && e.dur>0 && c.alive){
           c.hpNow-=e.dmg; e.dur--;
-          gFloat(c, `-${e.dmg}${e.kind==='poison'?'☠':e.kind==='bleed'?'🩸':'🔥'}`,
-                 e.kind==='poison'?'#7c3aed':(e.kind==='bleed'?'#b91c1c':'#fb923c'));
+          gFloat(
+            c,
+            `-${e.dmg}${e.kind==='poison'?'☠':e.kind==='bleed'?'🩸':'🔥'}`,
+            e.kind==='poison' ? '#7c3aed' : (e.kind==='bleed' ? '#b91c1c' : '#fb923c')
+          );
           if(c.hpNow<=0){ c.alive=false; }
         }
         if(e.kind==='shield' && e.dur>0){ e.dur--; }
-        if(e.kind==='freeze' && e.dur>0){ e.dur--; if(e.dur===0) c.frozen=false; }
-        if(e.kind==='bud' && e.dur>0 && c.alive){ healCard(c,1); e.dur--; }
+        if(e.kind==='freeze' && e.dur>0){
+          e.dur--;
+          if(e.dur===0) c.frozen=false;
+        }
+        if(e.kind==='bud' && e.dur>0 && c.alive){
+          healCard(c,1);
+          e.dur--;
+        }
       }
-      c.effects=c.effects.filter(e=> (e.dur==null)||e.dur>0);
-      if(c.regen2 && c.alive) healCard(c,2 + (state.synergyBuffs.healPlus||0));
-      if(c.smiteHeal && c.alive) healCard(c,1 + Math.floor((state.synergyBuffs.healPlus||0)/2));
-    }
-    const wards=deck.__wards||[];
-    for(const w of wards){ if(w.dur>0){ const allies=living(deck).sort((a,b)=>(a.hpNow/a.hp)-(b.hpNow/b.hp)); for(let i=0;i<Math.min(w.targets||2,allies.length);i++){ healCard(allies[i],w.heal); } w.dur--; } }
-    deck.__wards=(wards||[]).filter(w=>w.dur>0);
+      c.effects = c.effects.filter(e => (e.dur==null) || e.dur>0);
 
+      // Passive regens / smite heals
+      if(c.regen2 && c.alive)
+        healCard(c, 2 + (state.synergyBuffs.healPlus||0));
+      if(c.smiteHeal && c.alive)
+        healCard(c, 1 + Math.floor((state.synergyBuffs.healPlus||0)/2));
+    }
+
+    // Healing wards (target lowest % HP allies)
+    const wards = deck.__wards || [];
+    for(const w of wards){
+      if(w.dur>0){
+        const allies = living(deck).sort((a,b)=>(a.hpNow/a.hp)-(b.hpNow/b.hp));
+        for(let i=0;i<Math.min(w.targets||2, allies.length); i++){
+          healCard(allies[i], w.heal);
+        }
+        w.dur--;
+      }
+    }
+    deck.__wards = (wards || []).filter(w=>w.dur>0);
+
+    // Rejuvenate / HOT pulses
     const hots = deck.__hots || [];
-    for (const h of hots){ if(h.dur>0){ const allies=living(deck); for (const a of allies) healCard(a, h.heal); h.dur--; } }
+    for(const h of hots){
+      if(h.dur>0){
+        const allies = living(deck);
+        for(const a of allies) healCard(a, h.heal);
+        h.dur--;
+      }
+    }
     deck.__hots = hots.filter(h=>h.dur>0);
 
-    for(const c of deck.filter(x=>x.baby && x.alive)){ c.alive=false; gFloat(c,'✖','#6b7280'); }
+    // 🐺 Wolf replication: each unit with replicateLeft > 0 spawns one new copy
+    const newborns = [];
+    for(const c of deck.filter(x=>x.alive && x.replicateLeft > 0)){
+      c.replicateLeft--;
+      const pup = makeCard(c.name, c.stars);
+      pup.owner = c.owner;
+
+      // copy buffed stats so relics/synergies are reflected
+      pup.hp    = c.hp;
+      pup.dmg   = c.dmg;
+      pup.hpNow = Math.round(pup.hp * starMult(pup.stars));
+      // pups do not chain replicate
+      pup.replicateLeft = 0;
+
+      newborns.push(pup);
+      log(`${c.owner==='you' ? 'Your' : 'Enemy'} ${c.icon} ${c.name} calls a new ally!`);
+      gFloat(c, '+🐺', '#22c55e');
+    }
+    for(const n of newborns) deck.push(n);
+
+    // Baby slimes expire at end of round
+    for(const c of deck.filter(x=>x.baby && x.alive)){
+      c.alive=false;
+      gFloat(c,'✖','#6b7280');
+    }
   }
-  tick(state.myDeck); tick(state.foeDeck); renderBoard();
+
+  tick(state.myDeck);
+  tick(state.foeDeck);
+  renderBoard();
 }
 
 /*** Unit actions (with synergy hooks) ***/
@@ -988,27 +1072,31 @@ function prepareTeamsForBattle(){
   for(const r of state.relics){ r.apply(state.relicFlags); }
 
   for(const c of state.myDeck){
-    if(c.type===TYPE_UNIT){
-      c.alive=true;c.effects=[];c.frozen=false;c.turnsAlive=0; c.baby=false;
+  if(c.type===TYPE_UNIT){
+    c.alive=true;c.effects=[];c.frozen=false;c.turnsAlive=0; c.baby=false;
 
-      const baseHp = (c.baseHp!=null) ? c.baseHp : (CATALOG[c.name]?.hp || c.hp || 0);
-      const baseDmg = (c.baseDmg!=null) ? c.baseDmg : (CATALOG[c.name]?.dmg || c.dmg || 0);
+    const baseHp = (c.baseHp!=null) ? c.baseHp : (CATALOG[c.name]?.hp || c.hp || 0);
+    const baseDmg = (c.baseDmg!=null) ? c.baseDmg : (CATALOG[c.name]?.dmg || c.dmg || 0);
 
-      let hpMult = state.relicFlags.relicHP || 1;
-      let dmgMult = state.relicFlags.relicAllDmg || 1;
-      let rangedMult = state.relicFlags.relicRangedDmg || 1;
-      const tags = c.tags || [];
+    let hpMult = state.relicFlags.relicHP || 1;
+    let dmgMult = state.relicFlags.relicAllDmg || 1;
+    let rangedMult = state.relicFlags.relicRangedDmg || 1;
+    const tags = c.tags || [];
 
-      const buffedHp = Math.round(baseHp * hpMult);
-      let buffedDmg = Math.round(baseDmg * dmgMult);
-      if(tags.includes('ranged')) buffedDmg = Math.round(buffedDmg * rangedMult);
+    const buffedHp = Math.round(baseHp * hpMult);
+    let buffedDmg = Math.round(baseDmg * dmgMult);
+    if(tags.includes('ranged')) buffedDmg = Math.round(buffedDmg * rangedMult);
 
-      c.hp = buffedHp;
-      c.dmg = buffedDmg;
-      c.hpNow=Math.round(c.hp*starMult(c.stars));
-    }
-    if(c.type===TYPE_SPELL) c._used=false;
+    c.hp = buffedHp;
+    c.dmg = buffedDmg;
+    c.hpNow=Math.round(c.hp*starMult(c.stars));
+
+    // Reset replication uses for this battle
+    c.replicateLeft = CATALOG[c.name]?.replicateTurns || c.replicateLeft || 0;
   }
+  if(c.type===TYPE_SPELL) c._used=false;
+}
+
 
   // Full heal relic uses the post-buff HP
   if(state.relicFlags.relicFullHeal){ fullHealTeam(state.myDeck); }
@@ -1249,6 +1337,7 @@ newRun();
 </script>
 </body>
 </html>
+
 
 
 
