@@ -533,16 +533,61 @@ function dealDamageBase(attacker,target,base, heavy=false){
 }
 
 /* Hoplite retaliation wrapper */
-function dealDamage(attacker,target,base,heavy=false){
-  const aliveBefore = target?.alive;
-  dealDamageBase(attacker,target,base,heavy);
-  if(target && target.alive && target.tags && target.tags.includes('retaliate') && !target._retalUsed && aliveBefore){
-    target._retalUsed=true;
-    slashTrail(target, attacker, '#fbbf24');
-    dealDamageBase(target, attacker, 3, false);
-    log(`${target.name} retaliates!`);
+/* ===================== Combat (no friendly fire) ===================== */
+function dealDamage(attacker, target, base, heavy=false){
+  if (!attacker || !target || !target.alive) return;
+
+  const dmgStarred = Math.round(base * starMult(attacker.stars));
+  let dmg = dmgStarred;
+
+  if (hasShield(target)) dmg = Math.max(1, Math.floor(dmg * 0.5));
+
+  target.hpNow -= dmg;
+
+  gFloat(target, `-${dmg}`, '#dc2626');
+  if (heavy) bigExplosion(target); else impactBurst(target, false);
+
+  if (target.hpNow <= 0){
+    target.alive = false;
+
+    // Slime split – keep the same owner
+    if (target.split){
+      const mk = () => makeCard("Slime", Math.max(1, target.stars - 1), {});
+      const b1 = mk(), b2 = mk();
+      b1.owner = target.owner;
+      b2.owner = target.owner;
+      b1.baby = b2.baby = true;
+      b1.hpNow = b2.hpNow = 2;
+      b1.split = b2.split = false;
+
+      const deck = (target.owner === 'you' ? currentMyDeck : currentFoeDeck);
+      deck.push(b1, b2);
+      log(`${target.owner === 'you' ? 'Your' : 'Enemy'} Slime splits into two!`);
+    }
   }
+
+  renderBoard(currentMyDeck, currentFoeDeck);
 }
+
+/* Hoplite retaliation wrapper (uses anti-friendly-fire dealDamage above) */
+const _dealDamage = dealDamage;
+dealDamage = function(attacker, target, base, heavy=false){
+  if (!attacker || !target || !target.alive) return;
+
+  const aliveBefore = target.alive;
+  _dealDamage(attacker, target, base, heavy);
+
+  // Retaliate only if still alive and enemy
+  if (target.alive && target.tags && target.tags.includes('retaliate') && !target._retalUsed && aliveBefore){
+    if (attacker && attacker.alive && attacker.owner !== target.owner){
+      target._retalUsed = true;
+      slashTrail(target, attacker, '#fbbf24');
+      _dealDamage(target, attacker, 3, false);
+      log(`${target.name} retaliates!`);
+    }
+  }
+};
+
 
 /* Spells – once per battle */
 function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
@@ -616,138 +661,110 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
 
 /* End-of-round ticks */
 function processEndOfRound(myDeck, foeDeck, synYou, synFoe){
-  function tick(deck, syn){
-    for(const c of deck.filter(x=>x.type===TYPE_UNIT)){
-      for(const e of c.effects){
-        if((e.kind==='poison' || e.kind==='bleed' || e.kind==='burn') && e.dur>0 && c.alive){
-          c.hpNow-=e.dmg; e.dur--;
-          gFloat(c, `-${e.dmg}${e.kind==='poison'?'☠':e.kind==='bleed'?'🩸':'🔥'}`,
-                 e.kind==='poison'?'#7c3aed':(e.kind==='bleed'?'#b91c1c':'#fb923c'));
-          if(c.hpNow<=0){ c.alive=false; }
-        }
-        if(e.kind==='shield' && e.dur>0){ e.dur--; }
-        if(e.kind==='freeze' && e.dur>0){ e.dur--; if(e.dur===0) c.frozen=false; }
-        if(e.kind==='bud' && e.dur>0 && c.alive){ healCard(c,1); e.dur--; }
-        if(e.kind==='maxhp' && e.dur!=null && e.dur>0){ e.dur--; }
-      }
-      c.effects=c.effects.filter(e=> (e.dur==null)||e.dur>0);
+  function tick(deck, buffs){
+    const buf = buffs || {}; // safety default
 
+    for (const c of deck.filter(x => x.type === TYPE_UNIT)){
+      // Tick effects
+      for (const e of c.effects){
+        // Damage-over-time
+        if ((e.kind === 'poison' || e.kind === 'bleed' || e.kind === 'burn') && e.dur > 0 && c.alive){
+          c.hpNow -= e.dmg;
+          e.dur--;
+
+          gFloat(
+            c,
+            `-${e.dmg}${e.kind === 'poison' ? '☠' : e.kind === 'bleed' ? '🩸' : '🔥'}`,
+            e.kind === 'poison' ? '#7c3aed' : (e.kind === 'bleed' ? '#b91c1c' : '#fb923c')
+          );
+
+          if (c.hpNow <= 0){
+            c.alive = false;
+          }
+        }
+
+        // Shield duration
+        if (e.kind === 'shield' && e.dur > 0){
+          e.dur--;
+        }
+
+        // Freeze duration
+        if (e.kind === 'freeze' && e.dur > 0){
+          e.dur--;
+          if (e.dur === 0) c.frozen = false;
+        }
+
+        // Bud (small regen) on self
+        if (e.kind === 'bud' && e.dur > 0 && c.alive){
+          healCard(c, 1);
+          e.dur--;
+        }
+
+        // Temporary max-HP bonuses
+        if (e.kind === 'maxhp' && e.dur != null && e.dur > 0){
+          e.dur--;
+        }
+      }
+
+      // Strip expired effects
+      c.effects = c.effects.filter(e => (e.dur == null) || e.dur > 0);
+
+      // Clamp to max HP after buffs
       const newMax = getMaxHP(c);
       if (c.hpNow > newMax) c.hpNow = newMax;
 
-      if(c.regen2 && c.alive) healCard(c,2 + (syn.healPlus||0));
-      if(c.smiteHeal && c.alive) healCard(c,2);
+      // Passive regen synergies (per side)
+      if (c.regen2 && c.alive){
+        healCard(c, 2 + (buf.healPlus || 0));
+      }
+
+      // Smite-style self-heal
+      if (c.smiteHeal && c.alive){
+        healCard(c, 2);
+      }
     }
-    const wards=deck.__wards||[];
-    for(const w of wards){ if(w.dur>0){
-      const allies=living(deck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
-      for(let i=0;i<Math.min(w.targets||2,allies.length);i++){ healCard(allies[i],w.heal); }
-      w.dur--;
-    }}
-    deck.__wards=(wards||[]).filter(w=>w.dur>0);
 
+    // Wards (healing aura)
+    const wards = deck.__wards || [];
+    for (const w of wards){
+      if (w.dur > 0){
+        const allies = living(deck).sort(
+          (a,b) => (a.hpNow / getMaxHP(a)) - (b.hpNow / getMaxHP(b))
+        );
+        for (let i = 0; i < Math.min(w.targets || 2, allies.length); i++){
+          healCard(allies[i], w.heal);
+        }
+        w.dur--;
+      }
+    }
+    deck.__wards = wards.filter(w => w.dur > 0);
+
+    // Rejuvenate-style HoTs (healing over time)
     const hots = deck.__hots || [];
-    for (const h of hots){ if(h.dur>0){ const allies=living(deck); for (const a of allies) healCard(a, h.heal); h.dur--; } }
-    deck.__hots = hots.filter(h=>h.dur>0);
+    for (const h of hots){
+      if (h.dur > 0){
+        const allies = living(deck);
+        for (const a of allies){
+          healCard(a, h.heal);
+        }
+        h.dur--;
+      }
+    }
+    deck.__hots = hots.filter(h => h.dur > 0);
 
-    for(const c of deck.filter(x=>x.baby && x.alive)){ c.alive=false; gFloat(c,'✖','#6b7280'); }
+    // Babies (temporary slimes) expire at end of round
+    for (const c of deck.filter(x => x.baby && x.alive)){
+      c.alive = false;
+      gFloat(c, '✖', '#6b7280');
+    }
   }
+
+  // Side-aware: each side gets its own synergy buffs
   tick(myDeck, synYou);
   tick(foeDeck, synFoe);
 }
 
-/* Unit action */
-function actUnit(u, myDeck, foeDeck, synergyBuffs, relicFlags){
-  if(!u.alive) return;
-  u.turnsAlive++;
-  if(u.frozen){ log(`${u.name} is frozen and skips.`); return; }
 
-  if((u.tags||[]).includes('ranged') && synergyBuffs.rangedPriorityUp && u.priority>PRIORITY.HIGH) u.priority=PRIORITY.HIGH;
-
-  if(u.heal1){
-    const allies=living(u.owner==='you'?myDeck:foeDeck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
-    if(allies.length) healCard(allies[0], Math.round(u.heal1.amt*starMult(u.stars)) + (synergyBuffs.healPlus||0));
-    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals`);
-    return;
-  }
-  if(u.heal2){
-    const allies=living(u.owner==='you'?myDeck:foeDeck).sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
-    for(let i=0;i<Math.min(2,allies.length);i++){ healCard(allies[i],Math.round(u.heal2.amt*starMult(u.stars)) + (synergyBuffs.healPlus||0)); }
-    if(u.tags.includes('bubble') && allies.length){
-      const tgt=allies[0];
-      if(tgt && !hasShield(tgt)){
-        applyShield(tgt,1 + (relicFlags?.relicShieldPlus||0));
-        gFloat(tgt,'Bubble','var(--shield)');
-      }
-    }
-    log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} heals two`);
-    return;
-  }
-  if(u.wardSong){
-    const deck=u.owner==='you'?myDeck:foeDeck;
-    deck.__wards=deck.__wards||[]; deck.__wards.push({heal:2,dur:1,targets:2});
-    for (const a of living(deck)) bigExplosion(a,'#34d399',8);
-    log(`${u.owner==='you'?'Your':'Enemy'} 🎵 Bard inspires`);
-  }
-
-  let bonusMult = (u.alpha && u.turnsAlive===1)? 2 : 1;
-  const target=chooseTargetFor(u, myDeck, foeDeck); if(!target) return;
-
-  const doHit=()=>{
-    const splashPlus = (synergyBuffs.splashPlus||0);
-    const poisonPlus = (synergyBuffs.poisonPlus||0);
-    const poisonDurPlus = (synergyBuffs.poisonDurPlus||0);
-    const freezePlus = (synergyBuffs.freezePlus||0);
-
-    if(u.tags.includes('charge') && u.turnsAlive===1) bonusMult*=1.5;
-    if(u.tags.includes('bleed') && u.turnsAlive===1) addBleed(target,1,2);
-
-    if(u.tags.includes('pierce')){
-      const oppDeck = u.owner==='you'?foeDeck:myDeck;
-      const others=living(oppDeck).filter(x=>x.id!==target.id);
-      if(others.length && r()<0.40){
-        const second=others[Math.floor(r()*others.length)];
-        slashTrail(u, second, '#fca5a5');
-        dealDamage(u, second, Math.floor(u.dmg*0.5), false);
-      }
-    }
-
-    if(u.splash3){
-      const oppDeck = u.owner==='you'?foeDeck:myDeck;
-      const arr=living(oppDeck); const n=Math.min(3,arr.length);
-      for(let i=0;i<n;i++){
-        slashTrail(u, arr[i], '#ef4444');
-        dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true);
-        if(u.tags.includes('burn')) addBurn(arr[i],1,2);
-      }
-      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} hits ${n}`);
-    }
-    else if(u.splash2){
-      const oppDeck = u.owner==='you'?foeDeck:myDeck;
-      const arr=living(oppDeck); const n=Math.min(2,arr.length);
-      for(let i=0;i<n;i++){
-        slashTrail(u, arr[i], '#ef4444');
-        dealDamage(u,arr[i],(u.dmg+splashPlus)*bonusMult, true);
-      }
-      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} cleaves ${n}`);
-    }
-    else{
-      slashTrail(u, target, '#ef4444');
-      dealDamage(u,target,u.dmg*bonusMult);
-      if(u.freeze && target.alive) addFreeze(target,1+freezePlus);
-      if(u.applyPoison && target.alive) addPoison(target, u.applyPoison.dmg + (poisonPlus), u.applyPoison.dur + (poisonDurPlus));
-      if(u.smiteHeal) healCard(u,2);
-      log(`${u.owner==='you'?'Your':'Enemy'} ${u.icon} ${u.name} strikes ${target.name}`);
-    }
-  };
-
-  const aEl=findCardEl(u.id), dEl= target? findCardEl(target.id):null;
-  if(!aEl||!dEl){ doHit(); return; }
-  const a=aEl.getBoundingClientRect(), d=dEl.getBoundingClientRect();
-  const dx=(d.left-a.left)*0.12, dy=(d.top-a.top)*0.12;
-  aEl.style.transition=`transform ${160/speed}ms ease`; aEl.style.transform=`translate(${dx}px,${dy}px)`;
-  setTimeout(()=>{ doHit(); aEl.style.transform='translate(0,0)';},180/speed);
-}
 
 /* ===================== Synergies / Relics UI ===================== */
 function flashCard(kind,title,desc){
@@ -786,6 +803,14 @@ function weightedPick(weights){
   for(const [k,v] of entries){ if((rnum-=v)<=0) return k; }
   return entries[0][0];
 }
+  function chooseEnemyTarget(enemies){
+  const foes = living(enemies);
+  if (!foes.length) return null;
+  const taunts = foes.filter(f => f.taunt);
+  const bag = taunts.length ? taunts : foes;
+  return bag[Math.floor(r() * bag.length)];
+}
+
 function rollDraft(forceCommon=false){
   const picks=[];
   for(let i=0;i<3;i++){
@@ -907,28 +932,36 @@ function prepareTeamsForBattle(myDeck, foeDeck, flagsYou={}, flagsFoe={}){
 }
 
 async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
-  for(const x of [...myDeck, ...foeDeck]) x._retalUsed=false;
+  for (const x of [...myDeck, ...foeDeck]) x._retalUsed = false;
 
-  const Y=living(myDeck).sort((a,b)=>a.priority-b.priority);
-  const F=living(foeDeck).sort((a,b)=>a.priority-b.priority);
+  const Y = living(myDeck).sort((a,b) => a.priority - b.priority);
+  const F = living(foeDeck).sort((a,b) => a.priority - b.priority);
 
-  for(const u of [...Y,...F]){
-    if(!u.alive) continue;
-    const isYou = u.owner==='you';
-    const delayBefore = (isYou && flagsYou?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 :
-                        (!isYou && flagsFoe?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
-    await waitMs(delayBefore/speed);
-    if(isYou) actUnit(u, myDeck, foeDeck, synYou, flagsYou);
-    else      actUnit(u, foeDeck, myDeck, synFoe, flagsFoe);
-    await waitMs(300/speed);
-    if(living(myDeck).length===0 || living(foeDeck).length===0) break;
+  for (const u of [...Y, ...F]){
+    if (!u.alive) continue;
+
+    const isYou = (u.owner === 'you');
+    const delayBefore =
+      (isYou && flagsYou?.relicFasterHigh && u.priority === PRIORITY.HIGH) ||
+      (!isYou && flagsFoe?.relicFasterHigh && u.priority === PRIORITY.HIGH)
+        ? 140
+        : 190;
+
+    await waitMs(delayBefore / speed);
+    actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe);
+    await waitMs(300 / speed);
+
+    if (living(myDeck).length === 0 || living(foeDeck).length === 0) break;
   }
-  await waitMs(220/speed);
+
+  await waitMs(220 / speed);
   processEndOfRound(myDeck, foeDeck, synYou, synFoe);
 }
 
+
 async function runBattle(seed, state){
-  setPhase('battle'); ui.battleFlash.innerHTML='';
+  setPhase('battle');
+  ui.battleFlash.innerHTML = '';
   setSeed(seed);
 
   const oldRandom = Math.random;
@@ -938,68 +971,82 @@ async function runBattle(seed, state){
     const p2Relics = state.p2Relics || [];
     const flagsYou = {}, flagsFoe = {};
 
-    const myRelics  = (SEAT==='p1' ? p1Relics : p2Relics);
-    const foeRelics = (SEAT==='p1' ? p2Relics : p1Relics);
+    for (const r of (SEAT === 'p1' ? p1Relics : p2Relics)){
+      (RELICS.find(x => x.id === r.id) || {}).apply?.(flagsYou);
+    }
+    for (const r of (SEAT === 'p1' ? p2Relics : p1Relics)){
+      (RELICS.find(x => x.id === r.id) || {}).apply?.(flagsFoe);
+    }
 
-    for (const r of myRelics){  (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsYou); }
-    for (const r of foeRelics){ (RELICS.find(x=>x.id===r.id)||{}).apply?.(flagsFoe); }
-
-    const sanitizeNames = arr => (arr || []).filter(n => !!n && !!CATALOG[n]);
-
-    const myNames  = sanitizeNames(SEAT==='p1' ? state.p1Deck : state.p2Deck);
-    const foeNames = sanitizeNames(SEAT==='p1' ? state.p2Deck : state.p1Deck);
+    const sanitize = arr => (arr || []).filter(n => !!n && !!CATALOG[n]);
+    const myNames  = sanitize(SEAT === 'p1' ? state.p1Deck : state.p2Deck);
+    const foeNames = sanitize(SEAT === 'p1' ? state.p2Deck : state.p1Deck);
 
     currentMyDeck  = myNames .map(n => makeCard(n, 1, flagsYou)).filter(Boolean);
     currentFoeDeck = foeNames.map(n => makeCard(n, 1, flagsFoe)).filter(Boolean);
 
-    prepareTeamsForBattle(currentMyDeck, currentFoeDeck, flagsYou, flagsFoe);
+    prepareTeamsForBattle(currentMyDeck, currentFoeDeck, flagsYou);
 
-    ui.pYou.textContent = (SEAT==='p1' ? p1Name : p2Name);
-    ui.pFoe.textContent = (SEAT==='p1' ? p2Name : p1Name);
+    ui.pYou.textContent = (SEAT === 'p1' ? p1Name : p2Name);
+    ui.pFoe.textContent = (SEAT === 'p1' ? p2Name : p1Name);
 
     const synYou = computeSynergies(currentMyDeck);
     const synFoe = computeSynergies(currentFoeDeck);
 
+    // Start shields from synergies / relics
     if (synYou.startShieldSmall){
-      const allies = living(currentMyDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, synYou.startShieldSmall);
-      for (const a of allies){ applyShield(a, 1 + (flagsYou?.relicShieldPlus||0)); }
+      const allies = living(currentMyDeck)
+        .sort((a,b) => a.hpNow - b.hpNow)
+        .slice(0, synYou.startShieldSmall);
+      for (const a of allies) applyShield(a, 1 + (flagsYou.relicShieldPlus || 0));
     }
-    if (flagsYou?.relicFirstShield){
-      const allies = living(currentMyDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, 2);
-      for (const a of allies){ applyShield(a, 1 + (flagsYou?.relicShieldPlus||0)); }
+    if (flagsYou.relicFirstShield){
+      const allies = living(currentMyDeck)
+        .sort((a,b) => a.hpNow - b.hpNow)
+        .slice(0, 2);
+      for (const a of allies) applyShield(a, 1 + (flagsYou.relicShieldPlus || 0));
     }
     if (synFoe.startShieldSmall){
-      const allies = living(currentFoeDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, synFoe.startShieldSmall);
-      for (const a of allies){ applyShield(a, 1 + (flagsFoe?.relicShieldPlus||0)); }
+      const allies = living(currentFoeDeck)
+        .sort((a,b) => a.hpNow - b.hpNow)
+        .slice(0, synFoe.startShieldSmall);
+      for (const a of allies) applyShield(a, 1 + (flagsFoe.relicShieldPlus || 0));
     }
-    if (flagsFoe?.relicFirstShield){
-      const allies = living(currentFoeDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0, 2);
-      for (const a of allies){ applyShield(a, 1 + (flagsFoe?.relicShieldPlus||0)); }
+    if (flagsFoe.relicFirstShield){
+      const allies = living(currentFoeDeck)
+        .sort((a,b) => a.hpNow - b.hpNow)
+        .slice(0, 2);
+      for (const a of allies) applyShield(a, 1 + (flagsFoe.relicShieldPlus || 0));
     }
 
-    ui.synYou.innerHTML = (synYou._active||[]).map(id=>`<span class="synBadge">${SYNERGIES.find(s=>s.id===id)?.label||id}</span>`).join('');
-    ui.synFoe.innerHTML = (synFoe._active||[]).map(id=>`<span class="synBadge">${SYNERGIES.find(s=>s.id===id)?.label||id}</span>`).join('');
-    showSynergyFlashes(synYou._active||[], myRelics);
+    ui.synYou.innerHTML = (synYou._active || [])
+      .map(id => `<span class="synBadge">${SYNERGIES.find(s => s.id === id)?.label || id}</span>`)
+      .join('');
+    ui.synFoe.innerHTML = (synFoe._active || [])
+      .map(id => `<span class="synBadge">${SYNERGIES.find(s => s.id === id)?.label || id}</span>`)
+      .join('');
+    showSynergyFlashes(synYou._active || [], (SEAT === 'p1' ? p1Relics : p2Relics));
 
     renderBoard(currentMyDeck, currentFoeDeck);
     renderDeckBar(currentMyDeck);
 
-    await waitMs(260/speed);
+    await waitMs(260 / speed);
     castSpellsOnce(currentMyDeck, currentFoeDeck, 'You',   flagsYou, synYou);
     castSpellsOnce(currentFoeDeck, currentMyDeck, 'Enemy', flagsFoe, synFoe);
 
-    while (living(currentMyDeck).length>0 && living(currentFoeDeck).length>0){
+    while (living(currentMyDeck).length > 0 && living(currentFoeDeck).length > 0){
       await playRound(currentMyDeck, currentFoeDeck, synYou, synFoe, flagsYou, flagsFoe);
-      if (living(currentMyDeck).length===0 || living(currentFoeDeck).length===0) break;
-      await waitMs(340/speed);
+      if (living(currentMyDeck).length === 0 || living(currentFoeDeck).length === 0) break;
+      await waitMs(340 / speed);
     }
 
-    const youWin = living(currentMyDeck).length>0;
-    return { winner: youWin ? (SEAT==='p1'?'p1':'p2') : (SEAT==='p1'?'p2':'p1') };
+    const youWin = living(currentMyDeck).length > 0;
+    return { winner: youWin ? (SEAT === 'p1' ? 'p1' : 'p2') : (SEAT === 'p1' ? 'p2' : 'p1') };
   } finally {
     Math.random = oldRandom;
   }
 }
+
 
 /* ===================== FIRESTORE ORCHESTRATION ===================== */
 const isValidCardName = (n) => typeof n === 'string' && !!CATALOG[n];
@@ -1243,6 +1290,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
