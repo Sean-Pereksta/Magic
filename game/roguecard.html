@@ -124,7 +124,7 @@
     header{gap:6px}
     .pill{padding:4px 8px;font-size:12px}
     #controls button{padding:8px 10px;font-size:12px}
-    .laneWrap{padding:6px;min-height:28vh} /* two boards ≈ 56vh, leaves room */
+    .laneWrap{padding:6px;min-height:28vh}
     .lane{
       grid-template-columns:repeat(8, minmax(0,1fr));
       grid-auto-rows:minmax(66px,auto);
@@ -266,6 +266,7 @@ let state={
   playing:false, round:0, speed:1, drafting:false, autoNext:false,
   relics:[], // [{id,title,desc,apply:fn}]
   synergyBuffs:{}, // computed from deck each battle
+  relicFlags:{},
   lastBoss:false
 };
 
@@ -362,17 +363,17 @@ function isUnlocked(name, level){
   return (gates[name]||1) <= level;
 }
 
-/*** Relics Catalog ***/
+/*** Relics Catalog (STACKING) ***/
 const RELICS=[
-  // Reworked: 10% max HP and full heal
-  {id:'vigor',  title:'Banner of Vigor',    desc:'+10% max HP for allies & fully heal now', apply:(S)=>{S.relicHP=1.10; S.relicFullHeal=true;}},
-  {id:'glass',  title:'Glass Arrows',       desc:'+20% ranged damage, -10% HP',     apply:(S)=>{S.relicRangedDmg=1.20; S.relicHP=(S.relicHP||1)*0.90;}},
-  {id:'aegis',  title:'Aegis Charm',        desc:'Shields last +1 turn',            apply:(S)=>S.relicShieldPlus=1},
-  {id:'venom',  title:'Venom Vial',         desc:'+1 poison damage / tick',         apply:(S)=>S.relicPoisonPlus=(S.relicPoisonPlus||0)+1},
-  {id:'spark',  title:'Arcane Capacitor',   desc:'Your spells count as +1★',        apply:(S)=>S.relicSpellStarsPlus=1},
-  {id:'tempo',  title:'Tempo Drum',         desc:'High-priority allies act +15% faster (shorter delays)', apply:(S)=>S.relicFasterHigh=true},
-  {id:'warder', title:'Warder’s Oath',      desc:'First round: grant a small shield to 2 lowest HP allies', apply:(S)=>S.relicFirstShield=1},
-  {id:'fervor', title:'Fervor Coin',        desc:'+10% ally damage',                apply:(S)=>S.relicAllDmg=1.10}
+  // 10% max HP per copy & full heal
+  {id:'vigor',  title:'Banner of Vigor',    desc:'+10% max HP for allies & fully heal now (stacks)', apply:(S)=>{S.relicHP=(S.relicHP||1)*1.10; S.relicFullHeal=true;}},
+  {id:'glass',  title:'Glass Arrows',       desc:'+20% ranged damage, -10% HP (stacks)',             apply:(S)=>{S.relicRangedDmg=(S.relicRangedDmg||1)*1.20; S.relicHP=(S.relicHP||1)*0.90;}},
+  {id:'aegis',  title:'Aegis Charm',        desc:'Shields last +1 turn (stacks)',                    apply:(S)=>{S.relicShieldPlus=(S.relicShieldPlus||0)+1;}},
+  {id:'venom',  title:'Venom Vial',         desc:'+1 poison damage / tick (stacks)',                 apply:(S)=>{S.relicPoisonPlus=(S.relicPoisonPlus||0)+1;}},
+  {id:'spark',  title:'Arcane Capacitor',   desc:'Your spells count as +1★ (stacks up to ★★★★)',     apply:(S)=>{S.relicSpellStarsPlus=(S.relicSpellStarsPlus||0)+1;}},
+  {id:'tempo',  title:'Tempo Drum',         desc:'High-priority allies act +15% faster',             apply:(S)=>{S.relicFasterHigh=true;}},
+  {id:'warder', title:'Warder’s Oath',      desc:'First round: shield more low-HP allies (stacks)',  apply:(S)=>{S.relicFirstShield=(S.relicFirstShield||0)+1;}},
+  {id:'fervor', title:'Fervor Coin',        desc:'+10% ally damage (stacks)',                        apply:(S)=>{S.relicAllDmg=(S.relicAllDmg||1)*1.10;}
 ];
 
 /*** Synergies ***/
@@ -402,7 +403,7 @@ function updateHeader(){
   document.getElementById('relicCount').textContent=state.relics.length;
 }
 
-/*** Card factory (includes relic stat hooks) ***/
+/*** Card factory (now NO relic baked-in; relics applied at battle time so old troops get buffs too) ***/
 function makeCard(name, stars = 1){
   const base = CATALOG[name];
   if (!base) throw new Error(`Unknown card: ${name}`);
@@ -410,24 +411,11 @@ function makeCard(name, stars = 1){
   const isSpell = base.type === TYPE_SPELL;
   const up = (state.upgrades && state.upgrades[name]) || 1;
 
-  const relicSpellPlus = (state.relicFlags?.relicSpellStarsPlus || 0);
-  const starsFinal = isSpell
-    ? Math.min(4, up + relicSpellPlus)
-    : Math.min(4, Math.max(stars, up));
+  // Relic spell-star bonus handled during casting, so stars here are just upgrades/base
+  const starsFinal = Math.min(4, Math.max(stars, up));
 
-  let hp = base.hp || 0, dmg = base.dmg || 0;
-
-  // Apply relic stat hooks (HP/dmg broad buffs)
-  const hpMult = (state.relicFlags?.relicHP || 1);
-  const allDmgMult = (state.relicFlags?.relicAllDmg || 1);
-
-  if (!isSpell){
-    hp = Math.round(hp * hpMult);
-    dmg = Math.round(dmg * allDmgMult);
-    if ((base.tags || []).includes('ranged') && state.relicFlags?.relicRangedDmg){
-      dmg = Math.round(dmg * state.relicFlags.relicRangedDmg);
-    }
-  }
+  let hp = base.hp || 0;
+  let dmg = base.dmg || 0;
 
   const c = {
     id: Math.random().toString(36).slice(2),
@@ -438,6 +426,11 @@ function makeCard(name, stars = 1){
     stars: starsFinal,
     priority: base.priority,
     tags: clone(base.tags || []),
+
+    // base stats (never mutated) so relics can be re-applied every battle
+    baseHp: hp,
+    baseDmg: dmg,
+
     hp: hp,
     dmg: dmg,
     hpNow: isSpell ? 0 : Math.round(hp * starMult(starsFinal)),
@@ -453,7 +446,7 @@ function makeCard(name, stars = 1){
     splash3: !!base.splash3,
     extraStrike: !!base.extraStrike,
     applyPoison: base.applyPoison ? clone(base.applyPoison) : null,
-    heal2: base.heal2 ? clone(base.heal2) : null,   // <-- fixed colon
+    heal2: base.heal2 ? clone(base.heal2) : null,
     chain3: !!base.chain3,
     split: !!base.split,
     smiteHeal: !!base.smiteHeal,
@@ -536,6 +529,7 @@ function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
 function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
 
 /*** FX helpers ***/
+function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
 function elCenter(el){const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height*0.15 }; }
 function gFloat(card, txt, color='#111827'){
   const targetEl = findCardEl(card.id); if(!targetEl) return;
@@ -643,7 +637,6 @@ function slashTrail(fromCard,toCard,color='#ef4444'){
 }
 
 /*** Utility ***/
-function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
 function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
 function chooseTarget(opp){
   const foes=living(opp); if(!foes.length) return null;
@@ -696,12 +689,14 @@ function healCard(target,amt){
   renderBoard();
 }
 
-/*** Spells — ONCE per battle ***/
+/*** Spells — ONCE per battle; relic stars stack for spells here ***/
 function castSpellsOnce(side){
   const deck = side==='you' ? state.myDeck : state.foeDeck;
   for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
     s._used = true;
-    const pow = starMult(s.stars);
+    const extraStars = (side==='you' ? (state.relicFlags?.relicSpellStarsPlus || 0) : 0);
+    const effectiveStars = Math.min(4, s.stars + extraStars);
+    const pow = starMult(effectiveStars);
     const sp = clone(s.spell);
 
     if (sp.kind==='fire'){
@@ -732,7 +727,11 @@ function castSpellsOnce(side){
       const opp = living(side==='you'?state.foeDeck:state.myDeck);
       const count = Math.min(sp.count, opp.length);
       for (let i=0;i<count;i++){
-        addPoison(opp[i], Math.round(sp.dmg*pow) + (state.relicFlags?.relicPoisonPlus||0) + (state.synergyBuffs.poisonPlus||0), sp.dur + (state.synergyBuffs.poisonDurPlus||0));
+        addPoison(
+          opp[i],
+          Math.round(sp.dmg*pow) + (state.relicFlags?.relicPoisonPlus||0) + (state.synergyBuffs.poisonPlus||0),
+          sp.dur + (state.synergyBuffs.poisonDurPlus||0)
+        );
         plagueSplash(opp[i]); gFloat(opp[i], `☣`, '#7c3aed');
       }
       log(`${side==='you'?'Your':'Enemy'} ☣️ Plague spreads`);
@@ -870,26 +869,6 @@ function actUnit(u){
   }
 }
 
-/*** Round & Battle ***/
-async function playRound(){
-  state.round++; log(`<b>Round ${state.round}</b>`);
-  for(const x of [...state.myDeck, ...state.foeDeck]) x._retalUsed=false;
-
-  const Y=living(state.myDeck).sort((a,b)=>a.priority-b.priority);
-  const F=living(state.foeDeck).sort((a,b)=>a.priority-b.priority);
-
-  for(const u of [...Y,...F]){
-    if(!u.alive) continue;
-    const delayBefore = (state.relicFlags?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
-    await waitMs(delayBefore/state.speed);
-    actUnit(u);
-    await waitMs(300/state.speed);
-    if(living(state.myDeck).length===0 || living(state.foeDeck).length===0) break;
-  }
-  await waitMs(220/state.speed);
-  processEndOfRound();
-}
-
 /*** Hoplite retaliation hook ***/
 const _dealDamage=dealDamage;
 dealDamage=function(attacker,target,base,heavy=false){
@@ -962,7 +941,9 @@ async function battle(){
     for(const a of allies){ applyShield(a,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
   }
   if(state.relicFlags?.relicFirstShield){
-    const allies = living(state.myDeck).sort((a,b)=>a.hpNow-b.hpNow).slice(0,2);
+    const allAllies = living(state.myDeck).sort((a,b)=>a.hpNow-b.hpNow);
+    const count = Math.min(2 + (state.relicFlags.relicFirstShield-1), allAllies.length); // more copies = more allies shielded
+    const allies = allAllies.slice(0,count);
     for(const a of allies){ applyShield(a,1 + (state.relicFlags?.relicShieldPlus||0)); gFloat(a,'🛡','var(--shield)'); }
   }
 
@@ -1000,22 +981,36 @@ async function battle(){
   }
 }
 
-/*** Setup / Prepare teams ***/
+/*** Setup / Prepare teams (relics applied fresh each battle so they buff ALL existing troops) ***/
 function prepareTeamsForBattle(){
   state.round=0;
-  // fold relics into flags
   state.relicFlags={};
   for(const r of state.relics){ r.apply(state.relicFlags); }
 
   for(const c of state.myDeck){
     if(c.type===TYPE_UNIT){
       c.alive=true;c.effects=[];c.frozen=false;c.turnsAlive=0; c.baby=false;
-      // hp already includes relicHP multiplier via makeCard; star mult reapplied:
+
+      const baseHp = (c.baseHp!=null) ? c.baseHp : (CATALOG[c.name]?.hp || c.hp || 0);
+      const baseDmg = (c.baseDmg!=null) ? c.baseDmg : (CATALOG[c.name]?.dmg || c.dmg || 0);
+
+      let hpMult = state.relicFlags.relicHP || 1;
+      let dmgMult = state.relicFlags.relicAllDmg || 1;
+      let rangedMult = state.relicFlags.relicRangedDmg || 1;
+      const tags = c.tags || [];
+
+      const buffedHp = Math.round(baseHp * hpMult);
+      let buffedDmg = Math.round(baseDmg * dmgMult);
+      if(tags.includes('ranged')) buffedDmg = Math.round(buffedDmg * rangedMult);
+
+      c.hp = buffedHp;
+      c.dmg = buffedDmg;
       c.hpNow=Math.round(c.hp*starMult(c.stars));
     }
     if(c.type===TYPE_SPELL) c._used=false;
   }
-  // If vigor exists, ensure full heal at battle start (explicit)
+
+  // Full heal relic uses the post-buff HP
   if(state.relicFlags.relicFullHeal){ fullHealTeam(state.myDeck); }
 
   state.foeDeck=makeEnemyDeck();
@@ -1087,7 +1082,8 @@ function openDraft(autoStartAfterPick=false, alsoRelic=false){
   const modal=document.getElementById('draftModal'); modal.classList.add('on');
   const slot=document.getElementById('draftChoices'); slot.innerHTML='';
 
-  const UPGRADE_BASE_CHANCE = 0.08;
+  // Upgrades slightly more common now (from 8% -> 16%)
+  const UPGRADE_BASE_CHANCE = 0.16;
   const haveNames = currentDeckNames().filter(n => PLAYER_POOL.includes(n));
 
   const choices=[];
@@ -1174,7 +1170,6 @@ function openRelicPick(){
       <div class="statline"><span>${r.desc}</span></div>`;
     box.onclick=()=>{ 
       state.relics.push(r); 
-      // apply immediate full-heal if vigor picked
       state.relicFlags={}; for(const rr of state.relics){ rr.apply(state.relicFlags); }
       if(state.relicFlags.relicFullHeal) fullHealTeam(state.myDeck);
       document.getElementById('relicModal').classList.remove('on'); 
@@ -1196,14 +1191,34 @@ function showDetail(c){
       <div>HP: ${Math.round((c.hp||0)*starMult(c.stars))}, Damage: ${Math.round((c.dmg||0)*starMult(c.stars))}</div>
       <div style="margin-top:6px">Tags: ${(c.tags||[]).join(', ')||'—'}</div>
     `:`
-      <div>Spell scales with stars (upgrades): <code>${JSON.stringify(base.spell)}</code></div>
+      <div>Spell scales with stars (upgrades + relics): <code>${JSON.stringify(base.spell)}</code></div>
     `}
   `;
 }
 function hideDetail(){ document.getElementById('detailModal').classList.remove('on'); }
 
+/*** Round ***/
+async function playRound(){
+  state.round++; log(`<b>Round ${state.round}</b>`);
+  for(const x of [...state.myDeck, ...state.foeDeck]) x._retalUsed=false;
+
+  const Y=living(state.myDeck).sort((a,b)=>a.priority-b.priority);
+  const F=living(state.foeDeck).sort((a,b)=>a.priority-b.priority);
+
+  for(const u of [...Y,...F]){
+    if(!u.alive) continue;
+    const delayBefore = (state.relicFlags?.relicFasterHigh && u.priority===PRIORITY.HIGH) ? 140 : 190;
+    await waitMs(delayBefore/state.speed);
+    actUnit(u);
+    await waitMs(300/state.speed);
+    if(living(state.myDeck).length===0 || living(state.foeDeck).length===0) break;
+  }
+  await waitMs(220/state.speed);
+  processEndOfRound();
+}
+
 /*** Controls ***/
-document.getElementById('btnSpeed').onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length; state.speed=SPEEDS[speedIdx]; document.getElementById('btnSpeed').textContent=`Speed: ${state.speed}x`;};
+document.getElementById('btnSpeed').onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length; state.speed=SPEEDS[speedIdx]||1; document.getElementById('btnSpeed').textContent=`Speed: ${state.speed}x`;};
 document.getElementById('btnReset').onclick=()=>newRun();
 document.getElementById('btnStart').onclick=()=>battle();
 
@@ -1231,25 +1246,10 @@ function newRun(){
   openDraft(false,false);
 }
 newRun();
-
-/*** Prepare (reset) before each battle (kept at end for your prior pattern) ***/
-function prepareTeamsForBattle(){
-  state.round=0;
-  state.relicFlags={};
-  for(const r of state.relics){ r.apply(state.relicFlags); }
-  for(const c of state.myDeck){
-    if(c.type===TYPE_UNIT){
-      c.alive=true;c.effects=[];c.frozen=false;c.turnsAlive=0; c.baby=false;
-      c.hpNow=Math.round(c.hp*starMult(c.stars));
-    }
-    if(c.type===TYPE_SPELL) c._used=false;
-  }
-  if(state.relicFlags.relicFullHeal){ fullHealTeam(state.myDeck); }
-  state.foeDeck=makeEnemyDeck(); for(const c of state.foeDeck){ c.owner='foe'; if(c.type===TYPE_SPELL) c._used=false; }
-}
 </script>
 </body>
 </html>
+
 
 
 
