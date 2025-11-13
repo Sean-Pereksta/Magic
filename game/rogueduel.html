@@ -930,7 +930,139 @@ function prepareTeamsForBattle(myDeck, foeDeck, flagsYou={}, flagsFoe={}){
     if(c.type===TYPE_SPELL) c._used=false;
   }
 }
+function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
+  // Only units act
+  if (!u || u.type !== TYPE_UNIT || !u.alive) return;
 
+  const my    = (u.owner === 'you') ? myDeck : foeDeck;
+  const enemy = (u.owner === 'you') ? foeDeck : myDeck;
+  const syn   = (u.owner === 'you') ? (synYou || {}) : (synFoe || {});
+  const flags = (u.owner === 'you') ? (flagsYou || {}) : (flagsFoe || {});
+
+  // Frozen units skip their turn
+  if (u.frozen){
+    gFloat(u, '❄', '#60a5fa');
+    return;
+  }
+
+  u.turnsAlive = (u.turnsAlive || 0) + 1;
+
+  const tags = u.tags || [];
+
+  // --- Support / utility actions ---
+
+  // Bard – put small shields out instead of attacking hard
+  if (u.wardSong){
+    const allies = living(my).filter(a => a !== u && !hasShield(a));
+    if (allies.length){
+      const tgt = allies[Math.floor(r() * allies.length)];
+      applyShield(tgt, 1 + (flags.relicShieldPlus || 0));
+      gFloat(tgt, '♪ Ward', '#0ea5e9');
+    }
+  }
+
+  // Strong healer (Priest / heal2) – heal lowest ally instead of attacking
+  if (tags.includes('heal2') && u.heal2){
+    const allies = living(my).filter(a => a !== u);
+    if (allies.length){
+      const sorted = allies.sort(
+        (a,b) => (a.hpNow / getMaxHP(a)) - (b.hpNow / getMaxHP(b))
+      );
+      const target = sorted[0];
+      const bonus  = syn.healPlus || 0;
+      const amt    = (u.heal2.amt || 0) + bonus;
+      healCard(target, amt);
+      log(`${u.name} heals ${target.name} for ${amt}`);
+    }
+    return; // healer turn spent
+  }
+
+  // --- Attackers ---
+
+  let swings = 1;
+
+  // Ninja / double-strike
+  if (u.extraStrike) swings++;
+
+  // Assassin alpha: extra swing on first turn
+  if (u.alpha && u.turnsAlive === 1) swings++;
+
+  const isRanged = tags.includes('ranged');
+  const hasSplash2 = !!u.splash2;
+  const hasSplash3 = !!u.splash3;
+
+  for (let i = 0; i < swings; i++){
+    const target = chooseTargetFor(u, myDeck, foeDeck);
+    if (!target) break;
+
+    // Base damage
+    let base = u.dmg || 0;
+
+    // Ranged synergy + relics
+    const synRangedMult   = syn.rangedDmg || 1;
+    const relicRangedMult = (isRanged && flags.relicRangedDmg) ? flags.relicRangedDmg : 1;
+    if (isRanged){
+      base = Math.round(base * synRangedMult * relicRangedMult);
+    }
+
+    // Alpha (Assassin) gets a damage bump on first swing of first turn
+    if (u.alpha && u.turnsAlive === 1 && i === 0){
+      base = Math.round(base * 1.4);
+    }
+
+    // Charge (Cavalier) hits heavier on first turn
+    const heavy = tags.includes('charge') && u.turnsAlive === 1;
+
+    // Visual trail
+    slashTrail(u, target, isRanged ? '#38bdf8' : '#ef4444');
+
+    // Primary hit
+    dealDamage(u, target, base, heavy);
+
+    // Splash damage (Giant / Bomber / Dragonet etc.)
+    const splashCount = hasSplash3 ? 3 : (hasSplash2 ? 2 : 0);
+    if (splashCount > 0){
+      const others = living(enemy).filter(e => e !== target);
+      const splashTargets = others.slice(0, splashCount);
+      for (const s of splashTargets){
+        const splashBase = Math.max(
+          1,
+          Math.round(base * 0.6) + (syn.splashPlus || 0)
+        );
+        impactBurst(s, false);
+        dealDamage(u, s, splashBase, false);
+      }
+    }
+
+    // On-hit status: poison
+    if (u.applyPoison){
+      const extra    = (syn.poisonPlus || 0) + (flags.relicPoisonPlus || 0);
+      const durPlus  = syn.poisonDurPlus || 0;
+      const pDmg     = (u.applyPoison.dmg || 0) + extra;
+      const pDur     = (u.applyPoison.dur || 0) + durPlus;
+      addPoison(target, pDmg, pDur);
+      gFloat(target, '☠', '#7c3aed');
+    }
+
+    // On-hit bleed
+    if (tags.includes('bleed')){
+      addBleed(target, 2, 2);
+      gFloat(target, '🩸', '#b91c1c');
+    }
+
+    // On-hit freeze
+    if (u.freeze){
+      const dur = 1 + (syn.freezePlus || 0);
+      addFreeze(target, dur);
+      gFloat(target, '❄', '#60a5fa');
+    }
+
+    // Smite-heal already self-heals in end-of-round; but you could
+    // optionally do a tiny self-heal per swing here if you want more punch.
+  }
+}
+
+  
 async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
   for (const x of [...myDeck, ...foeDeck]) x._retalUsed = false;
 
@@ -1290,6 +1422,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
