@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-<title>🂡 Rogue Duel (2P) — Simultaneous Draft + Relics</title>
+<title>🂡 Rogue Duel (2P) — Simultaneous Draft + Relics + Upgrades</title>
 <style>
   :root{
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
@@ -15,17 +15,30 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Arial,sans-serif}
   header{
-    padding:10px 14px;
-    display:flex;gap:10px;
-    align-items:center;
-    justify-content:space-between;
-    border-bottom:1px solid var(--line);
-    background:#fff;
-    position:sticky;top:0;z-index:5;
-    flex-wrap:wrap;
+    padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;
+    border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5
   }
   .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-weight:700}
+  .pill{
+    padding:6px 10px;border:1px solid var(--line);border-radius:999px;
+    background:var(--panel);font-weight:700;font-size:12px;display:flex;align-items:center;gap:4px;
+  }
+
+  /* Scoreboard */
+  .scorePill{
+    background:linear-gradient(135deg,#0f172a,#1e293b);
+    color:#e5e7eb;border-color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.35);
+  }
+  .scoreNames{display:flex;align-items:center;gap:6px;font-size:11px;color:#cbd5f5;text-transform:uppercase;letter-spacing:.06em}
+  .scoreRow{display:flex;align-items:baseline;gap:6px;margin-top:2px}
+  .scoreNum{
+    font-size:18px;font-weight:900;padding:0 6px;border-radius:8px;min-width:20px;text-align:center;
+    background:rgba(15,23,42,.7);
+  }
+  .scoreDash{font-size:14px;color:#e5e7eb}
+  .scoreLead{box-shadow:0 0 0 1px rgba(250,204,21,.7),0 0 12px rgba(250,204,21,.5);color:#facc15;background:rgba(24,24,27,.9);}
+  .scoreNameHighlight{color:#fbbf24;font-weight:800}
+
   #root{padding:14px;display:grid;gap:14px;max-width:1100px;margin:0 auto}
   .lbl{font-size:12px;color:var(--muted);margin:4px 0}
   #arena{display:grid;gap:14px}
@@ -99,6 +112,15 @@
   @keyframes fxRise { to { transform:translate(-50%,-38px); opacity:0; } }
   .fxBoom{position:absolute;width:7px;height:7px;border-radius:50%;opacity:0.95}
 
+  /* Ghost attacker */
+  .attackGhost{
+    position:absolute;width:64px;height:80px;margin:-40px 0 0 -32px;
+    border-radius:12px;background:#ffffff;box-shadow:0 10px 30px rgba(15,23,42,.35);
+    display:flex;align-items:center;justify-content:center;font-size:30px;
+    pointer-events:none;z-index:99999;opacity:1;
+    transition:transform 260ms ease-out, opacity 200ms ease-out;
+  }
+
   /* Battle flash cards (synergies/relics) */
   #battleFlash{position:fixed; right:12px; top:74px; width:280px; z-index:9999; pointer-events:none;}
   .flashCard{
@@ -112,52 +134,6 @@
   @keyframes flashIn{ to{transform:translateX(0); opacity:1;} }
 
   .wait{padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:#fff7ed;color:#7c2d12;font-weight:700}
-
-  /* Scoreboard */
-  .scorePill{
-    display:flex;align-items:center;gap:10px;
-    padding:6px 10px;
-    border-radius:999px;
-    border:1px solid var(--line);
-    background:linear-gradient(90deg,#f9fafb,#e0f2fe);
-    box-shadow:0 8px 20px rgba(15,23,42,.08);
-    font-size:12px;
-    min-width:260px;
-  }
-  .scoreSide{
-    display:flex;flex-direction:column;align-items:center;
-    min-width:72px;
-  }
-  .scoreName{
-    font-weight:700;font-size:11px;
-    color:var(--muted);
-    text-transform:uppercase;
-    letter-spacing:.06em;
-  }
-  .scoreVal{
-    font-weight:900;font-size:20px;
-  }
-  .scoreMid{
-    display:flex;flex-direction:column;align-items:center;
-    padding:0 6px;
-  }
-  .scoreLabel{font-size:11px;color:var(--muted);}
-  .scoreRound{font-size:12px;font-weight:700;}
-  .scoreSide.lead .scoreVal{
-    color:var(--good);
-    transform:scale(1.08);
-  }
-  .scoreSide.lead{
-    filter:drop-shadow(0 0 8px rgba(34,197,94,.25));
-  }
-  .scoreSide.behind .scoreVal{
-    color:#9ca3af;
-  }
-
-  @keyframes heartPulse{
-    0%{box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 12px rgba(52,211,153,.25);}
-    100%{box-shadow:0 0 0 20px rgba(52,211,153,0), inset 0 0 4px rgba(52,211,153,.1);}
-  }
 </style>
 </head>
 <body>
@@ -166,20 +142,19 @@
     <div class="pill">Game: <span id="gameId">—</span></div>
     <div class="pill">You: <span id="me">—</span></div>
     <div class="pill">Seat: <span id="seat">—</span></div>
+    <div class="pill">Round: <span id="round">1</span></div>
     <div class="pill">Phase: <span id="phase">setup</span></div>
-  </div>
-  <div class="scorePill">
-    <div class="scoreSide" id="scoreSideP1">
-      <div class="scoreName" id="scoreNameP1">P1</div>
-      <div class="scoreVal" id="scoreP1">0</div>
-    </div>
-    <div class="scoreMid">
-      <div class="scoreLabel">Best of <span id="bestOf">5</span></div>
-      <div class="scoreRound">Round <span id="round">1</span></div>
-    </div>
-    <div class="scoreSide" id="scoreSideP2">
-      <div class="scoreName" id="scoreNameP2">P2</div>
-      <div class="scoreVal" id="scoreP2">0</div>
+    <div class="pill scorePill">
+      <div class="scoreNames">
+        <span id="scoreLabelP1">P1</span>
+        <span style="opacity:.5;">vs</span>
+        <span id="scoreLabelP2">P2</span>
+      </div>
+      <div class="scoreRow">
+        <span class="scoreNum" id="scoreP1">0</span>
+        <span class="scoreDash">–</span>
+        <span class="scoreNum" id="scoreP2">0</span>
+      </div>
     </div>
   </div>
   <div id="controls">
@@ -275,6 +250,8 @@ const stateRef = doc(db, "games_rogueduel", GAME_ID);
 const logEl = document.getElementById('log');
 const uiScoreP1 = document.getElementById('scoreP1');
 const uiScoreP2 = document.getElementById('scoreP2');
+const uiScoreLabelP1 = document.getElementById('scoreLabelP1');
+const uiScoreLabelP2 = document.getElementById('scoreLabelP2');
 function log(msg){ logEl.innerHTML += msg + '<br>'; logEl.scrollTop = logEl.scrollHeight; }
 function setPhase(x){ document.getElementById('phase').textContent = x; }
 function setRound(n){ document.getElementById('round').textContent = n; }
@@ -291,7 +268,7 @@ const TYPE={UNIT:'unit',SPELL:'spell'};
 const RAR={COMMON:'common', RARE:'rare', EPIC:'epic', LEGEND:'legend'};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 function clone(o){return JSON.parse(JSON.stringify(o));}
-function starMult(stars){return 1+0.5*(stars-1); }
+function starMult(stars){return 1+0.5*(stars-1);}
 function fmtStars(stars){return '★'.repeat(stars)+'☆'.repeat(4-stars);}
 function prioName(p){return p===0?'High':p===1?'Mid':'Low';}
 function rarClass(r){return r===RAR.COMMON?'common':r===RAR.RARE?'rare':r===RAR.EPIC?'epic':'legend';}
@@ -332,12 +309,17 @@ const CATALOG={
   "Plague":       {rar:R.RARE,    icon:"☣️", type:TYPE_SPELL, spell:{kind:'plague', dmg:2, dur:3, count:3}},
   "Healing Ward": {rar:R.RARE,    icon:"✨", type:TYPE_SPELL, spell:{kind:'ward', heal:6, dur:3, targets:2}},
   "Blizzard":     {rar:R.EPIC,    icon:"❄️", type:TYPE_SPELL, spell:{kind:'freeze2', dmg:3}},
-  "Rejuvenate":   {rar:R.RARE,    icon:"💚", type:TYPE_SPELL, spell:{kind:'hotAll'}}
+  "Rejuvenate":   {rar:R.RARE,    icon:"💚", type:TYPE_SPELL, spell:{kind:'hotAll'}},
+
+  /* Upgrade cards (draft-only, level up cards) */
+  "Training Grounds": {rar:R.RARE,   icon:"⬆️", type:TYPE_SPELL, tags:["upgrade"], upgrade:true, upgradeAmount:1},
+  "Elite Forge":      {rar:R.EPIC,   icon:"⚒️", type:TYPE_SPELL, tags:["upgrade"], upgrade:true, upgradeAmount:2}
 };
-const PLAYER_UNITS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_UNIT);
+const PLAYER_UNITS  = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_UNIT);
 const PLAYER_SPELLS = Object.keys(CATALOG).filter(n=>CATALOG[n].type===TYPE_SPELL);
-const PLAYER_POOL = [...PLAYER_UNITS, ...PLAYER_SPELLS];
+const PLAYER_POOL   = [...PLAYER_UNITS, ...PLAYER_SPELLS];
 function cardRarity(name){ const base=CATALOG[name]; return base?base.rar:RAR.COMMON; }
+function isUpgradeCardName(name){ return !!(CATALOG[name] && CATALOG[name].upgrade); }
 
 /* Relics */
 const RELICS=[
@@ -381,20 +363,7 @@ const ui = {
   relicStatus: document.getElementById('relicStatus'),
   fxRoot: document.getElementById('fxRoot'),
   battleFlash: document.getElementById('battleFlash'),
-  scoreSideP1: document.getElementById('scoreSideP1'),
-  scoreSideP2: document.getElementById('scoreSideP2'),
-  scoreNameP1: document.getElementById('scoreNameP1'),
-  scoreNameP2: document.getElementById('scoreNameP2'),
-  bestOfEl: document.getElementById('bestOf'),
 };
-
-/* Canonical battle state (always p1 vs p2) */
-let deckP1 = [];
-let deckP2 = [];
-let synP1 = {};
-let synP2 = {};
-let flagsP1 = {};
-let flagsP2 = {};
 
 /* ===================== RNG (seeded) ===================== */
 function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; } }
@@ -411,7 +380,7 @@ function makeCard(name, stars=1, relicFlags={}){
   const base=CATALOG[name];
   const isSpell = base.type===TYPE_SPELL;
   const relicSpellPlus = (relicFlags.relicSpellStarsPlus||0);
-  const starsFinal = isSpell? Math.min(4, stars + relicSpellPlus) : stars;
+  const starsFinal = isSpell? Math.min(4, stars + relicSpellPlus) : Math.min(4, stars);
 
   let hp = base.hp||0, dmg = base.dmg||0;
   if(!isSpell){
@@ -427,7 +396,7 @@ function makeCard(name, stars=1, relicFlags={}){
     name, icon:base.icon, type:base.type, rar:base.rar,
     stars:starsFinal, priority:base.priority, tags:clone(base.tags||[]),
     hp:hp, dmg:dmg, hpNow:isSpell?0:Math.round(hp*starMult(starsFinal)),
-    alive:true, owner:null, effects:[], frozen:false, turnsAlive:0, baby:false,
+    alive:true, owner:'you', effects:[], frozen:false, turnsAlive:0, baby:false,
     taunt:!!base.taunt, splash2:!!base.splash2, splash3:!!base.splash3, extraStrike:!!base.extraStrike,
     applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2:base.heal2?clone(base.heal2):null,
     chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
@@ -466,21 +435,12 @@ function mountCard(c){
   if(isPoisoned(c)) div.appendChild(Object.assign(document.createElement('div'),{className:'poisonGlow'}));
   return div;
 }
-
-function getPerspectiveDecks(){
-  if(SEAT==='p2') return [deckP2, deckP1];
-  return [deckP1, deckP2];
-}
-
-function renderBoard(){
-  const [myDeck, foeDeck] = getPerspectiveDecks();
+function renderBoard(myDeck, foeDeck){
   ui.you.innerHTML=''; ui.foe.innerHTML='';
   for(const c of myDeck.filter(x=>x.type===TYPE_UNIT && x.alive)) ui.you.appendChild(mountCard(c));
   for(const c of foeDeck.filter(x=>x.type===TYPE_UNIT && x.alive)) ui.foe.appendChild(mountCard(c));
 }
-
-function renderDeckBar(){
-  const [myDeck] = getPerspectiveDecks();
+function renderDeckBar(myDeck){
   ui.deckBar.innerHTML='';
   for(const c of myDeck) ui.deckBar.appendChild(mountCard(c));
 }
@@ -509,7 +469,7 @@ function boomAt(x, y, color='#ef4444', count=26, spread=100){
     const dx = Math.cos(ang)*dist, dy = Math.sin(ang)*dist - 10;
     p.style.left = (x)+'px'; p.style.top = (y)+'px';
     p.style.transform = 'translate(-50%, -50%)';
-    p.style.transition = `transform ${620/speed}ms ease-out, opacity ${700/speed}ms linear`;
+    p.style.transition = `transform ${620/speed}msease-out, opacity ${700/speed}ms linear`;
     ui.fxRoot.appendChild(p);
     requestAnimationFrame(()=>{p.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; p.style.opacity = '0';});
     setTimeout(()=>p.remove(), 720/speed);
@@ -559,8 +519,37 @@ function impactBurst(card, big=false){
   }
 }
 
+/* Ghost card that lunges from attacker → target */
+function attackGhost(attacker, target, isRanged){
+  const aEl = findCardEl(attacker.id);
+  const dEl = findCardEl(target.id);
+  if(!aEl || !dEl) return;
+  const aRect = aEl.getBoundingClientRect();
+  const dRect = dEl.getBoundingClientRect();
+  const startX = aRect.left + aRect.width/2;
+  const startY = aRect.top  + aRect.height/2;
+  const endX   = dRect.left + dRect.width/2;
+  const endY   = dRect.top  + dRect.height/2;
+  const ghost = document.createElement('div');
+  ghost.className = 'attackGhost';
+  ghost.style.left = startX+'px';
+  ghost.style.top  = startY+'px';
+  ghost.style.transform='translate(-50%,-50%)';
+  ghost.textContent = attacker.icon || '🂠';
+  ui.fxRoot.appendChild(ghost);
+
+  const travelMs = isRanged ? 220/speed : 260/speed;
+  requestAnimationFrame(()=>{
+    ghost.style.transform = `translate(${endX-startX-32}px, ${endY-startY-40}px)`;
+  });
+  setTimeout(()=>{
+    ghost.style.opacity='0';
+    setTimeout(()=>ghost.remove(), 220/speed);
+  }, travelMs);
+}
+
 /* ===================== Helpers ===================== */
-function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive); }
+function living(arr){return arr.filter(c=>c.type===TYPE_UNIT && c.alive);}
 function waitMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 function getMaxHP(c){
@@ -568,49 +557,27 @@ function getMaxHP(c){
   const extra = (c.effects||[]).filter(e=>e.kind==='maxhp').reduce((s,e)=>s+(e.bonus||0),0);
   return base + extra;
 }
+let currentMyDeck = [], currentFoeDeck = [];
 
 function healCard(target,amt){
-  if(!target || !target.alive) return;
+  if(!target.alive) return;
   const max = getMaxHP(target);
   const before=target.hpNow; target.hpNow=Math.min(max, target.hpNow + amt);
   const diff = target.hpNow - before;
   if(diff>0){ gFloat(target, `+${diff}`, '#0ea5e9'); heartPulse(target); }
-  renderBoard();
+  renderBoard(currentMyDeck, currentFoeDeck);
 }
 
-/* ===================== Targeting & Animation ===================== */
-function chooseTargetFor(attacker){
-  const foes = attacker.owner==='p1' ? living(deckP2) : living(deckP1);
+/* ===================== Targeting ===================== */
+function safeOpponentsFor(attacker, myDeck, foeDeck){
+  return attacker.owner==='you' ? living(foeDeck) : living(myDeck);
+}
+function chooseTargetFor(attacker, myDeck, foeDeck){
+  const foes = safeOpponentsFor(attacker, myDeck, foeDeck);
   if (!foes.length) return null;
   const taunts = foes.filter(f => f.taunt);
   const bag = taunts.length ? taunts : foes;
   return bag[Math.floor(r()*bag.length)];
-}
-
-async function animateAttack(attacker, target, isRanged){
-  const atkEl = findCardEl(attacker.id);
-  const defEl = findCardEl(target.id);
-  if (!atkEl || !defEl) return;
-
-  const a = atkEl.getBoundingClientRect();
-  const d = defEl.getBoundingClientRect();
-  const dx = (d.left + d.width/2) - (a.left + a.width/2);
-  const dy = (d.top + d.height*0.5) - (a.top + a.height*0.5);
-
-  const factor = isRanged ? 0.22 : 0.45;
-  const tx = dx * factor;
-  const ty = dy * factor;
-
-  const original = atkEl.style.transform || '';
-  atkEl.style.transition = `transform ${180/speed}ms ease-out`;
-  atkEl.style.transform = `translate(${tx}px,${ty}px)`;
-
-  await waitMs(180 / speed);
-
-  atkEl.style.transition = `transform ${160/speed}ms ease-in`;
-  atkEl.style.transform = original || 'translate(0,0)';
-
-  await waitMs(160 / speed);
 }
 
 /* ===================== Combat ===================== */
@@ -639,22 +606,17 @@ function dealDamage(attacker, target, base, heavy=false){
 
     // Slime split – keep the same owner
     if (target.split){
-      const mk = () => {
-        const baby = makeCard("Slime", Math.max(1, target.stars - 1), target.owner==='p1'?flagsP1:flagsP2);
-        if(!baby) return null;
-        baby.owner = target.owner;
-        baby.baby = true;
-        baby.hpNow = 2;
-        baby.split = false;
-        baby.alive = true;
-        baby.effects = [];
-        return baby;
-      };
+      const mk = () => makeCard("Slime", Math.max(1, target.stars - 1), {});
       const b1 = mk(), b2 = mk();
-      const deck = (target.owner === 'p1' ? deckP1 : deckP2);
-      if(b1) deck.push(b1);
-      if(b2) deck.push(b2);
-      log(`${target.owner === 'p1' ? p1Name : p2Name}'s Slime splits into two!`);
+      b1.owner = target.owner;
+      b2.owner = target.owner;
+      b1.baby = b2.baby = true;
+      b1.hpNow = b2.hpNow = 2;
+      b1.split = b2.split = false;
+
+      const deck = (target.owner === 'you' ? currentMyDeck : currentFoeDeck);
+      deck.push(b1, b2);
+      log(`${target.owner === 'you' ? 'Your' : 'Enemy'} Slime splits into two!`);
     }
   }
 
@@ -669,17 +631,17 @@ function dealDamage(attacker, target, base, heavy=false){
     }
   }
 
-  renderBoard();
+  renderBoard(currentMyDeck, currentFoeDeck);
 }
 
-/* Unit action (canonical p1/p2) */
-async function actUnit(u){
+/* Unit action: this is what gets called in playRound */
+function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
   if (!u || u.type !== TYPE_UNIT || !u.alive) return;
 
-  const my    = (u.owner === 'p1') ? deckP1 : deckP2;
-  const enemy = (u.owner === 'p1') ? deckP2 : deckP1;
-  const syn   = (u.owner === 'p1') ? (synP1 || {}) : (synP2 || {});
-  const flags = (u.owner === 'p1') ? (flagsP1 || {}) : (flagsP2 || {});
+  const my    = (u.owner === 'you') ? myDeck : foeDeck;
+  const enemy = (u.owner === 'you') ? foeDeck : myDeck;
+  const syn   = (u.owner === 'you') ? (synYou || {}) : (synFoe || {});
+  const flags = (u.owner === 'you') ? (flagsYou || {}) : (flagsFoe || {});
 
   // Frozen units skip their turn
   if (u.frozen){
@@ -726,7 +688,7 @@ async function actUnit(u){
   const hasSplash3 = !!u.splash3;
 
   for (let i = 0; i < swings; i++){
-    const target = chooseTargetFor(u);
+    const target = chooseTargetFor(u, myDeck, foeDeck);
     if (!target) break;
 
     let base = u.dmg || 0;
@@ -746,7 +708,7 @@ async function actUnit(u){
     // Charge on first turn
     const heavy = tags.includes('charge') && u.turnsAlive === 1;
 
-    await animateAttack(u, target, isRanged);
+    attackGhost(u, target, isRanged);
     slashTrail(u, target, isRanged ? '#38bdf8' : '#ef4444');
     dealDamage(u, target, base, heavy);
 
@@ -792,7 +754,7 @@ async function actUnit(u){
 
 /* Spells – once per battle */
 function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
-  for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used)) {
+  for (const s of deck.filter(c=>c.type===TYPE_SPELL && !c._used && !isUpgradeCardName(c.name))) {
     s._used = true;
     const pow = starMult(s.stars);
     const sp = clone(s.spell);
@@ -822,7 +784,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
       }
     }
     else if (sp.kind==='plague'){
-      const opp = living(enemyDeck).slice();
+      const opp = living(enemyDeck).slice(); // keep deck order for determinism
       const count = Math.min(sp.count||3, opp.length);
       for (let i=0;i<count;i++){
         const add = (relicFlags?.relicPoisonPlus||0) + (synergyBuffs.poisonPlus||0);
@@ -860,8 +822,8 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
   }
 }
 
-/* End-of-round ticks (canonical) */
-function processEndOfRound(){
+/* End-of-round ticks */
+function processEndOfRound(myDeck, foeDeck, synYou, synFoe){
   function tick(deck, buffs){
     const buf = buffs || {};
 
@@ -947,9 +909,8 @@ function processEndOfRound(){
     }
   }
 
-  tick(deckP1, synP1);
-  tick(deckP2, synP2);
-  renderBoard();
+  tick(myDeck, synYou);
+  tick(foeDeck, synFoe);
 }
 
 /* ===================== Synergies / Relics UI ===================== */
@@ -994,7 +955,7 @@ function rollDraft(forceCommon=false){
   for(let i=0;i<3;i++){
     let pool;
     if (forceCommon){
-      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===RAR.COMMON);
+      pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===RAR.COMMON && !isUpgradeCardName(n));
     } else {
       const rar = weightedPick(draftWeights());
       pool = PLAYER_POOL.filter(n => CATALOG[n] && cardRarity(n)===rar);
@@ -1026,10 +987,15 @@ function openDraft(offers, mySeat, myPicked){
     if (!preview) continue;
     const box=document.createElement('div');
     box.className='card rarity-'+rarClass(preview.rar);
+    const isUp = isUpgradeCardName(name);
     box.innerHTML=`
-      <div class="rowline"><div class="emoji">${preview.icon}</div><div class="stars">${fmtStars(preview.stars)}</div></div>
+      <div class="rowline"><div class="emoji">${preview.icon}</div><div class="stars">${isUp? 'UPGRADE' : fmtStars(preview.stars)}</div></div>
       <div class="rowline"><div class="name">${preview.name}</div><div class="rar ${rarClass(preview.rar)}">${preview.rar.toUpperCase()}</div></div>
-      <div class="statline">${preview.type===TYPE_UNIT?`<span>HP ${preview.hpNow}</span><span>DMG ${preview.dmg}</span><span>${prioName(preview.priority)}</span>`:`<span>Spell</span>`}</div>
+      <div class="statline">${
+        isUp
+         ? '<span>Level up your last drafted card this match.</span>'
+         : (preview.type===TYPE_UNIT?`<span>HP ${preview.hpNow}</span><span>DMG ${preview.dmg}</span><span>${prioName(preview.priority)}</span>`:`<span>Spell</span>`)
+      }</div>
       <div class="statline">${(preview.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
     box.onclick= async ()=>{
       if (myPicked) return;
@@ -1069,30 +1035,81 @@ function openRelicDraft(offers, mySeat, myPicked){
 }
 function closeRelic(){ ui.relicModal.classList.remove('on'); }
 
-/* ===================== BATTLE ORCHESTRATION (DETERMINISTIC) ===================== */
-async function playRound(){
-  // deterministic turn order: by priority, then id (stable between clients)
-  const order = [...living(deckP1), ...living(deckP2)].sort((a,b)=>{
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return a.id.localeCompare(b.id);
-  });
+/* ===================== BATTLE ORCHESTRATION ===================== */
+function prepareTeamsForBattle(myDeck, foeDeck, flagsYou={}, flagsFoe={}){
+  for(const c of myDeck){
+    c.owner='you';
+    if(c.type===TYPE_UNIT){
+      c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
+      c.hpNow=Math.round(c.hp*starMult(c.stars));
+      const rpct = flagsYou.relicMaxHPPct || 0;
+      const hpStartHealPct = flagsYou.relicStartHealPct || 0;
+      if (rpct > 0){
+        const baseMax = Math.round(c.hp * starMult(c.stars));
+        const bonus   = Math.max(1, Math.round(baseMax * rpct));
+        c.effects.push({kind:'maxhp', bonus, dur:null});
+        const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
+        c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
+      }
+    }
+    if(c.type===TYPE_SPELL) c._used=false;
+  }
+  for(const c of foeDeck){
+    c.owner='foe';
+    if(c.type===TYPE_UNIT){
+      c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
+      c.hpNow=Math.round(c.hp*starMult(c.stars));
+      const rpct = flagsFoe.relicMaxHPPct || 0;
+      const hpStartHealPct = flagsFoe.relicStartHealPct || 0;
+      if (rpct > 0){
+        const baseMax = Math.round(c.hp * starMult(c.stars));
+        const bonus   = Math.max(1, Math.round(baseMax * rpct));
+        c.effects.push({kind:'maxhp', bonus, dur:null});
+        const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
+        c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
+      }
+    }
+    if(c.type===TYPE_SPELL) c._used=false;
+  }
+}
 
-  for (const u of order){
+async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
+  // reset retaliation flags
+  const allUnits = myDeck.concat(foeDeck);
+  for (const x of allUnits) {
+    x._retalUsed = false;
+  }
+
+  let Y = living(myDeck).slice();
+  let F = living(foeDeck).slice();
+
+  Y.sort((a,b)=>a.priority-b.priority);
+  F.sort((a,b)=>a.priority-b.priority);
+
+  const turnOrder = Y.concat(F);
+
+  for (const u of turnOrder){
     if (!u.alive) continue;
 
-    const flags = (u.owner === 'p1') ? flagsP1 : flagsP2;
-    const fasterHigh = !!(flags && flags.relicFasterHigh);
-    const delayBefore = (fasterHigh && u.priority === PRIORITY.HIGH) ? 140 : 190;
+    const isYou = (u.owner === 'you');
+    const fasterHighYou  = !!(flagsYou  && flagsYou.relicFasterHigh);
+    const fasterHighFoe  = !!(flagsFoe  && flagsFoe.relicFasterHigh);
+
+    const delayBefore =
+      (isYou && fasterHighYou && u.priority === PRIORITY.HIGH) ||
+      (!isYou && fasterHighFoe && u.priority === PRIORITY.HIGH)
+        ? 140
+        : 190;
 
     await waitMs(delayBefore / speed);
-    await actUnit(u);
-    await waitMs(260 / speed);
+    actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe);
+    await waitMs(300 / speed);
 
-    if (living(deckP1).length === 0 || living(deckP2).length === 0) break;
+    if (living(myDeck).length === 0 || living(foeDeck).length === 0) break;
   }
 
   await waitMs(220 / speed);
-  processEndOfRound();
+  processEndOfRound(myDeck, foeDeck, synYou, synFoe);
 }
 
 async function runBattle(seed, state){
@@ -1105,108 +1122,83 @@ async function runBattle(seed, state){
   try {
     const p1Relics = state.p1Relics || [];
     const p2Relics = state.p2Relics || [];
-    flagsP1 = {}; flagsP2 = {};
+    const flagsYou = {}, flagsFoe = {};
 
-    for (const rObj of p1Relics){
-      (RELICS.find(x => x.id === rObj.id) || {}).apply?.(flagsP1);
+    for (const rObj of (SEAT === 'p1' ? p1Relics : p2Relics)){
+      (RELICS.find(x => x.id === rObj.id) || {}).apply?.(flagsYou);
     }
-    for (const rObj of p2Relics){
-      (RELICS.find(x => x.id === rObj.id) || {}).apply?.(flagsP2);
+    for (const rObj of (SEAT === 'p1' ? p2Relics : p1Relics)){
+      (RELICS.find(x => x.id === rObj.id) || {}).apply?.(flagsFoe);
     }
 
     const sanitize = arr => (arr || []).filter(n => !!n && !!CATALOG[n]);
-    const p1Names  = sanitize(state.p1Deck);
-    const p2Names  = sanitize(state.p2Deck);
+    const myNames  = sanitize(SEAT === 'p1' ? state.p1Deck : state.p2Deck);
+    const foeNames = sanitize(SEAT === 'p1' ? state.p2Deck : state.p1Deck);
 
-    deckP1  = p1Names .map(n => makeCard(n, 1, flagsP1)).filter(Boolean);
-    deckP2  = p2Names .map(n => makeCard(n, 1, flagsP2)).filter(Boolean);
+    const p1Up = state.p1Upgrades || {};
+    const p2Up = state.p2Upgrades || {};
+    const myUps  = (SEAT === 'p1' ? p1Up : p2Up);
+    const foeUps = (SEAT === 'p1' ? p2Up : p1Up);
 
-    const prepSide = (deck, owner, flags)=>{
-      for(const c of deck){
-        c.owner = owner;
-        if(c.type===TYPE_UNIT){
-          c.alive=true; c.effects=[]; c.frozen=false; c.turnsAlive=0; c.baby=false;
-          c.hpNow=Math.round((c.hp||0)*starMult(c.stars));
-          const rpct = flags.relicMaxHPPct || 0;
-          const hpStartHealPct = flags.relicStartHealPct || 0;
-          if (rpct > 0){
-            const baseMax = Math.round((c.hp||0) * starMult(c.stars));
-            const bonus   = Math.max(1, Math.round(baseMax * rpct));
-            c.effects.push({kind:'maxhp', bonus, dur:null});
-            const healAmt = Math.max(1, Math.round(baseMax * hpStartHealPct));
-            c.hpNow = Math.min(getMaxHP(c), c.hpNow + healAmt);
-          }
-        }
-        if(c.type===TYPE_SPELL) c._used=false;
-      }
-    };
+    currentMyDeck  = myNames .map(n => makeCard(n, myUps[n]  || 1, flagsYou)).filter(Boolean);
+    currentFoeDeck = foeNames.map(n => makeCard(n, foeUps[n] || 1, flagsFoe)).filter(Boolean);
 
-    prepSide(deckP1, 'p1', flagsP1);
-    prepSide(deckP2, 'p2', flagsP2);
+    prepareTeamsForBattle(currentMyDeck, currentFoeDeck, flagsYou, flagsFoe);
 
-    // Names by perspective
-    ui.pYou.textContent = (SEAT === 'p1' ? p1Name : (SEAT === 'p2' ? p2Name : '—'));
-    ui.pFoe.textContent = (SEAT === 'p1' ? p2Name : (SEAT === 'p2' ? p1Name : '—'));
+    ui.pYou.textContent = (SEAT === 'p1' ? p1Name : p2Name);
+    ui.pFoe.textContent = (SEAT === 'p1' ? p2Name : p1Name);
 
-    synP1 = computeSynergies(deckP1);
-    synP2 = computeSynergies(deckP2);
+    const synYou = computeSynergies(currentMyDeck);
+    const synFoe = computeSynergies(currentFoeDeck);
 
-    // Start-of-battle shields
-    if (synP1.startShieldSmall){
-      const allies = living(deckP1)
+    if (synYou.startShieldSmall){
+      const allies = living(currentMyDeck)
         .sort((a,b) => a.hpNow - b.hpNow)
-        .slice(0, synP1.startShieldSmall);
-      for (const a of allies) applyShield(a, 1 + (flagsP1.relicShieldPlus || 0));
+        .slice(0, synYou.startShieldSmall);
+      for (const a of allies) applyShield(a, 1 + (flagsYou.relicShieldPlus || 0));
     }
-    if (flagsP1.relicFirstShield){
-      const allies = living(deckP1)
+    if (flagsYou.relicFirstShield){
+      const allies = living(currentMyDeck)
         .sort((a,b) => a.hpNow - b.hpNow)
         .slice(0, 2);
-      for (const a of allies) applyShield(a, 1 + (flagsP1.relicShieldPlus || 0));
+      for (const a of allies) applyShield(a, 1 + (flagsYou.relicShieldPlus || 0));
     }
-    if (synP2.startShieldSmall){
-      const allies = living(deckP2)
+    if (synFoe.startShieldSmall){
+      const allies = living(currentFoeDeck)
         .sort((a,b) => a.hpNow - b.hpNow)
-        .slice(0, synP2.startShieldSmall);
-      for (const a of allies) applyShield(a, 1 + (flagsP2.relicShieldPlus || 0));
+        .slice(0, synFoe.startShieldSmall);
+      for (const a of allies) applyShield(a, 1 + (flagsFoe.relicShieldPlus || 0));
     }
-    if (flagsP2.relicFirstShield){
-      const allies = living(deckP2)
+    if (flagsFoe.relicFirstShield){
+      const allies = living(currentFoeDeck)
         .sort((a,b) => a.hpNow - b.hpNow)
         .slice(0, 2);
-      for (const a of allies) applyShield(a, 1 + (flagsP2.relicShieldPlus || 0));
+      for (const a of allies) applyShield(a, 1 + (flagsFoe.relicShieldPlus || 0));
     }
 
-    const mySyn  = (SEAT==='p1' ? synP1 : (SEAT==='p2' ? synP2 : synP1));
-    const foeSyn = (SEAT==='p1' ? synP2 : (SEAT==='p2' ? synP1 : synP2));
-    ui.synYou.innerHTML = (mySyn._active || [])
+    ui.synYou.innerHTML = (synYou._active || [])
       .map(id => `<span class="synBadge">${SYNERGIES.find(s => s.id === id)?.label || id}</span>`)
       .join('');
-    ui.synFoe.innerHTML = (foeSyn._active || [])
+    ui.synFoe.innerHTML = (synFoe._active || [])
       .map(id => `<span class="synBadge">${SYNERGIES.find(s => s.id === id)?.label || id}</span>`)
       .join('');
-    const myRelics = (SEAT==='p1' ? p1Relics : (SEAT==='p2' ? p2Relics : p1Relics));
-    showSynergyFlashes(mySyn._active || [], myRelics);
+    showSynergyFlashes(synYou._active || [], (SEAT === 'p1' ? p1Relics : p2Relics));
 
-    renderBoard();
-    renderDeckBar();
+    renderBoard(currentMyDeck, currentFoeDeck);
+    renderDeckBar(currentMyDeck);
 
     await waitMs(260 / speed);
+    castSpellsOnce(currentMyDeck, currentFoeDeck, 'You',   flagsYou, synYou);
+    castSpellsOnce(currentFoeDeck, currentMyDeck, 'Enemy', flagsFoe, synFoe);
 
-    const labelP1 = (SEAT === 'p1' ? 'You' : 'Enemy');
-    const labelP2 = (SEAT === 'p2' ? 'You' : 'Enemy');
-
-    castSpellsOnce(deckP1, deckP2, labelP1, flagsP1, synP1);
-    castSpellsOnce(deckP2, deckP1, labelP2, flagsP2, synP2);
-
-    while (living(deckP1).length > 0 && living(deckP2).length > 0){
-      await playRound();
-      if (living(deckP1).length === 0 || living(deckP2).length === 0) break;
+    while (living(currentMyDeck).length > 0 && living(currentFoeDeck).length > 0){
+      await playRound(currentMyDeck, currentFoeDeck, synYou, synFoe, flagsYou, flagsFoe);
+      if (living(currentMyDeck).length === 0 || living(currentFoeDeck).length === 0) break;
       await waitMs(340 / speed);
     }
 
-    const winner = living(deckP1).length > 0 ? 'p1' : 'p2';
-    return { winner };
+    const youWin = living(currentMyDeck).length > 0;
+    return { winner: youWin ? (SEAT === 'p1' ? 'p1' : 'p2') : (SEAT === 'p1' ? 'p2' : 'p1') };
   } finally {
     Math.random = oldRandom;
   }
@@ -1216,25 +1208,11 @@ async function runBattle(seed, state){
 const isValidCardName = (n) => typeof n === 'string' && !!CATALOG[n];
 const sanitizeDeck = (arr) => (arr || []).filter(isValidCardName);
 
-function updateScoreUI(st){
-  const s1 = typeof st.p1Score === 'number' ? st.p1Score : 0;
-  const s2 = typeof st.p2Score === 'number' ? st.p2Score : 0;
-  if (uiScoreP1) uiScoreP1.textContent = String(s1);
-  if (uiScoreP2) uiScoreP2.textContent = String(s2);
-  const bo = st.bestTo || 5;
-  if (ui.bestOfEl) ui.bestOfEl.textContent = String(bo);
-
-  if (ui.scoreSideP1 && ui.scoreSideP2){
-    ui.scoreSideP1.classList.remove('lead','behind');
-    ui.scoreSideP2.classList.remove('lead','behind');
-    if (s1 > s2){
-      ui.scoreSideP1.classList.add('lead');
-      ui.scoreSideP2.classList.add('behind');
-    } else if (s2 > s1){
-      ui.scoreSideP2.classList.add('lead');
-      ui.scoreSideP1.classList.add('behind');
-    }
-  }
+function applyUpgradeToLast(deckNames, upgradeMap, amount){
+  if (!deckNames.length) return;
+  const targetName = deckNames[deckNames.length-1];
+  const curStars = upgradeMap[targetName] || 1;
+  upgradeMap[targetName] = clamp(curStars + amount, 1, 4);
 }
 
 async function ensureStateSeats(){
@@ -1248,8 +1226,8 @@ async function ensureStateSeats(){
   document.getElementById('seat').textContent = SEAT;
   ui.pYou.textContent = (SEAT==='p1'?p1Name:(SEAT==='p2'?p2Name:'—'));
   ui.pFoe.textContent = (SEAT==='p1'?p2Name:(SEAT==='p2'?p1Name:'—'));
-  if (ui.scoreNameP1) ui.scoreNameP1.textContent = p1Name || 'P1';
-  if (ui.scoreNameP2) ui.scoreNameP2.textContent = p2Name || 'P2';
+  uiScoreLabelP1.textContent = p1Name || 'P1';
+  uiScoreLabelP2.textContent = p2Name || 'P2';
 
   await runTransaction(db, async (tx)=>{
     const cur = await tx.get(stateRef);
@@ -1278,7 +1256,9 @@ async function ensureStateSeats(){
         p1Score: 0,
         p2Score: 0,
         bestTo: 10,
-        matchWinner: null
+        matchWinner: null,
+        p1Upgrades: {},
+        p2Upgrades: {}
       });
     }
   });
@@ -1288,7 +1268,23 @@ async function ensureStateSeats(){
     const st = snap.data() || {};
     setPhase(st.phase || '—');
     setRound(st.round || 1);
-    updateScoreUI(st);
+
+    if (typeof st.p1Score === 'number') uiScoreP1.textContent = String(st.p1Score);
+    if (typeof st.p2Score === 'number') uiScoreP2.textContent = String(st.p2Score);
+
+    const s1 = st.p1Score ?? 0;
+    const s2 = st.p2Score ?? 0;
+    uiScoreP1.classList.remove('scoreLead');
+    uiScoreP2.classList.remove('scoreLead');
+    uiScoreLabelP1.classList.remove('scoreNameHighlight');
+    uiScoreLabelP2.classList.remove('scoreNameHighlight');
+    if (s1 > s2){
+      uiScoreP1.classList.add('scoreLead');
+      uiScoreLabelP1.classList.add('scoreNameHighlight');
+    } else if (s2 > s1){
+      uiScoreP2.classList.add('scoreLead');
+      uiScoreLabelP2.classList.add('scoreNameHighlight');
+    }
 
     // ===== DRAFT PHASE =====
     if (st.phase === 'draft') {
@@ -1309,8 +1305,27 @@ async function ensureStateSeats(){
           const pick1 = isValidCardName(c.p1Pick) ? c.p1Pick : null;
           const pick2 = isValidCardName(c.p2Pick) ? c.p2Pick : null;
 
-          const nextP1Deck = sanitizeDeck([...(c.p1Deck || []), ...(pick1 ? [pick1] : [])]);
-          const nextP2Deck = sanitizeDeck([...(c.p2Deck || []), ...(pick2 ? [pick2] : [])]);
+          let nextP1Deck = sanitizeDeck(c.p1Deck || []);
+          let nextP2Deck = sanitizeDeck(c.p2Deck || []);
+          const nextP1Up = {...(c.p1Upgrades || {})};
+          const nextP2Up = {...(c.p2Upgrades || {})};
+
+          if (pick1){
+            if (isUpgradeCardName(pick1)){
+              const amt = CATALOG[pick1].upgradeAmount || 1;
+              applyUpgradeToLast(nextP1Deck, nextP1Up, amt);
+            } else {
+              nextP1Deck = sanitizeDeck([...nextP1Deck, pick1]);
+            }
+          }
+          if (pick2){
+            if (isUpgradeCardName(pick2)){
+              const amt = CATALOG[pick2].upgradeAmount || 1;
+              applyUpgradeToLast(nextP2Deck, nextP2Up, amt);
+            } else {
+              nextP2Deck = sanitizeDeck([...nextP2Deck, pick2]);
+            }
+          }
 
           const target  = c.draftTarget || 1;
           const p1Count = (c.p1DraftedThisRound || 0) + 1;
@@ -1323,6 +1338,7 @@ async function ensureStateSeats(){
             setSeed(seed);
             tx.update(stateRef, {
               p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+              p1Upgrades: nextP1Up, p2Upgrades: nextP2Up,
               p1Pick: null, p2Pick: null,
               p1DraftedThisRound: p1Count,
               p2DraftedThisRound: p2Count,
@@ -1338,6 +1354,7 @@ async function ensureStateSeats(){
               setSeed(rseed);
               tx.update(stateRef, {
                 p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+                p1Upgrades: nextP1Up, p2Upgrades: nextP2Up,
                 p1Pick: null, p2Pick: null,
                 p1DraftedThisRound: 0, p2DraftedThisRound: 0,
                 relicSeed: rseed,
@@ -1350,6 +1367,7 @@ async function ensureStateSeats(){
               const bseed = (Date.now() ^ 0x2a2a) & 0xffffffff;
               tx.update(stateRef, {
                 p1Deck: nextP1Deck, p2Deck: nextP2Deck,
+                p1Upgrades: nextP1Up, p2Upgrades: nextP2Up,
                 p1Pick: null, p2Pick: null,
                 p1DraftedThisRound: 0, p2DraftedThisRound: 0,
                 phase: 'battle',
@@ -1404,7 +1422,7 @@ async function ensureStateSeats(){
       closeRelic();
     }
 
-    // ===== BATTLE PHASE (deterministic p1 vs p2) =====
+    // ===== BATTLE PHASE (deterministic) =====
     if (st.phase === 'battle' && typeof st.battleSeed === 'number') {
       if (window.__ranBattleForSeed !== st.battleSeed) {
         window.__ranBattleForSeed = st.battleSeed;
@@ -1475,6 +1493,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
