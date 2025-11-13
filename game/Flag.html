@@ -1,1210 +1,1437 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ascendants vs Swarm — Three Orders (Campaign + Abilities + Minimap + Zoom)</title>
+<title>Chess Lite — Factions & Cooldowns</title>
 <style>
   :root{
-    --bg:#0b1320; --panel:#0f1729; --line:#1b2b4a; --muted:#9fb3c8; --text:#e6edf3;
-    --p:#67e8f9; --a:#f87171; --flag:#ffd166; --grid:#203358; --cell:#0c1527; --sel:#e9d8a6;
-    --acid:#27c93f; --acid2:#159b2b; --white:#ffffff;
-    --ok:#8df2b2; --warn:#ffd166; --bad:#ff8b8b;
+    --bg:#020617; --panel:#020617; --line:#1e293b; --muted:#9ca3af; --text:#e5e7eb;
+    --order:#60a5fa; --chaos:#f97373; --void:#a855f7;
+    --sel:#eab308;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0; color:var(--text);
-    font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
-    background:radial-gradient(1000px 500px at 20% 0%, #0c1a3a 0%, #0b1320 50%, #070d1b 100%);
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:radial-gradient(900px 500px at 20% 0%, #0f172a 0%, #020617 55%, #000 100%);
   }
   .wrap{
-    display:grid; grid-template-columns: 980px 460px; gap:16px; padding:16px;
+    display:grid;
+    grid-template-columns: minmax(0,380px) minmax(0,360px);
+    gap:16px;
+    padding:12px;
+  }
+  @media (max-width: 800px){
+    .wrap{
+      grid-template-columns: minmax(0,1fr);
+    }
   }
 
-  /* Viewport + big map */
-  .view{position:relative; width:980px; height:640px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 12px 36px rgba(0,0,0,.35)}
-  .world{position:absolute; left:0; top:0; will-change:transform; transform-origin:0 0;}
-  .grid{display:grid; gap:6px}
-  .cell{
-    width:48px; height:48px; background:var(--cell); border:1px solid var(--grid); border-radius:8px; position:relative;
-    overflow:visible; /* allow label to float above */
+  .board-wrap{
+    background:var(--panel);
+    border-radius:14px;
+    border:1px solid var(--line);
+    padding:10px;
+    box-shadow:0 12px 36px rgba(0,0,0,.4);
   }
-  .cell:hover{filter:brightness(1.05)}
-  .flag{position:absolute; inset:8px; border-radius:8px; outline:2px dashed rgba(255,255,255,.08)}
-  .flag::after{content:"🏁"; position:absolute; font-size:18px; right:6px; top:6px}
-  .banner-stack{position:absolute; left:6px; top:6px; display:flex; gap:2px}
-  .banner{width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,.35)}
-  .banner.p{background:var(--p)} .banner.a{background:var(--a)}
+  .board-header{
+    display:flex; flex-wrap:wrap;
+    gap:8px; margin-bottom:8px;
+    align-items:center;
+  }
+  .pill{
+    padding:5px 9px; border-radius:999px;
+    font-size:12px;
+    border:1px solid var(--line);
+    background:#020617;
+    color:var(--muted);
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+  }
 
-  /* Unit in-cell content */
-  .unit{position:absolute; inset:0; display:grid; place-items:center; font-size:30px; z-index:1}
-  .unit-emoji{filter:drop-shadow(0 1px 0 rgba(0,0,0,.45)); line-height:1}
+  .board{
+    --tile: min(14vw, 58px);
+    display:grid;
+    grid-template-columns:repeat(6, var(--tile));
+    grid-template-rows:repeat(6, var(--tile));
+    gap:2px;
+    justify-content:center;
+    margin:auto;
+  }
+  @media (max-width: 600px){
+    .board{
+      --tile: min(18vw, 54px);
+    }
+  }
 
-  /* Floating label ABOVE the unit (never covering the emoji) */
-  .unit-label{
-    position:absolute; left:50%; bottom:calc(100% + 6px); transform:translateX(-50%);
-    display:inline-flex; align-items:center; gap:6px;
-    padding:3px 8px; border-radius:999px; pointer-events:none; white-space:nowrap;
-    background:rgba(12, 24, 49, .95); border:1px solid #223a66; color:#cfe3ff; font-size:11px;
-    box-shadow:0 6px 18px rgba(0,0,0,.35);
+  .tile{
+    width:var(--tile);
+    height:var(--tile);
+    border-radius:10px;
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    user-select:none;
+    background:radial-gradient(circle at 30% 20%, #111827 0, #020617 55%);
+    border:1px solid rgba(15,23,42,.9);
+    box-shadow:inset 0 0 0 1px rgba(15,23,42,.7);
+  }
+  .tile:hover{filter:brightness(1.1);}
+  .tile.sel{
+    outline:2px solid var(--sel);
+    outline-offset:-2px;
+  }
+  .tile.move-ok{
+    box-shadow:0 0 0 2px rgba(56,189,248,.6), inset 0 0 0 1px rgba(15,23,42,.9);
+  }
+  .tile.attack-ok{
+    box-shadow:0 0 0 2px rgba(248,113,113,.7), inset 0 0 0 1px rgba(15,23,42,.9);
+  }
+  .tile.trap{
+    background:radial-gradient(circle at 50% 30%, #4c1d95 0,#020617 60%);
+  }
+
+  .piece{
+    position:relative;
+    font-size:28px;
+    filter:drop-shadow(0 1px 0 rgba(0,0,0,.75));
     z-index:2;
   }
-  /* If at top edge, flip label BELOW so it doesn't get clipped */
-  .unit-label.down{ bottom:auto; top:calc(100% + 6px); }
 
-  .dot{width:8px; height:8px; border-radius:50%; display:inline-block; border:1px solid rgba(255,255,255,.25)}
-  .dot.p{ background:var(--p) }
-  .dot.a{ background:var(--a) }
-
-  .label-name{font-weight:700; letter-spacing:.1px}
-  .label-slim{opacity:.9}
-
-  /* Optional extra badges shown INSIDE the label when present */
-  .badge{
-    font-size:10px; padding:1px 6px; border-radius:999px; border:1px solid #2b4474; background:#0a1931; color:#a9c8ff;
-    margin-left:4px;
+  @keyframes movePulse {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.12);}
+    100%{transform:scale(1);}
+  }
+  @keyframes hitShake {
+    0%,100%{transform:translateX(0);}
+    25%{transform:translateX(-2px);}
+    50%{transform:translateX(2px);}
+    75%{transform:translateX(-1px);}
   }
 
-  .sel{outline:3px solid var(--sel);}
-
-  .hint-move{box-shadow: inset 0 0 0 3px rgba(122,162,247,.35); background:linear-gradient(180deg,rgba(122,162,247,.08),transparent)}
-  .hint-attack{box-shadow: inset 0 0 0 3px rgba(247,118,142,.5); background:linear-gradient(180deg,rgba(247,118,142,.15),transparent)}
-  .hint-ability{box-shadow: inset 0 0 0 3px rgba(255,209,102,.45); background:linear-gradient(180deg,rgba(255,209,102,.12),transparent)}
-
-  /* Terrain + Hazards */
-  .rock{position:absolute; inset:4px; border-radius:7px; background:repeating-linear-gradient(135deg, #1b2540 0 6px, #142039 6px 12px); opacity:.7}
-  .acid{position:absolute; inset:6px; border-radius:6px; background:repeating-linear-gradient(135deg, var(--acid) 0 6px, var(--acid2) 6px 12px); opacity:.55; box-shadow:0 0 10px rgba(39,201,63,.5) inset}
-
-  /* Right panel */
-  .side{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:0 10px 28px rgba(0,0,0,.28)}
-  h1{margin:0 0 8px; font-size:20px; color:#cbd6f3}
-  .row{display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap}
-  .pill{padding:6px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-size:12px; background:#0e1a31}
-  .orders{font-weight:700; color:#e2e8f8}
-  .btns{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 4px}
-  button{background:#0f1729; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer}
-  button:hover{background:#111b33}
-  .sep{height:1px; background:var(--line); margin:12px 0}
-
-  /* Action bar with descriptions */
-  .actionbar{display:grid; grid-template-columns:1fr; gap:8px}
-  .action{
-    display:flex; align-items:flex-start; gap:10px; padding:8px; border:1px solid var(--line);
-    border-radius:12px; background:#0e1b33;
+  .cd-container{
+    position:absolute;
+    left:50%; transform:translateX(-50%);
+    bottom:100%; margin-bottom:4px;
+    width:80%;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    z-index:3;
   }
-  .action h4{margin:0; font-size:14px; color:#eaf0ff}
-  .action p{margin:2px 0 0; font-size:12px; color:#aebbd6; line-height:1.35}
-  .hk{font-weight:700; letter-spacing:.5px; padding:1px 6px; border:1px solid #22406f; border-radius:6px; font-size:11px; color:#cfe3ff; background:#0e203d}
-  .actBtns{display:flex; gap:8px; margin-left:auto}
-  .actBtns button{padding:8px 10px}
+  .cd-bar{
+    width:100%; height:5px;
+    background:rgba(15,23,42,.9);
+    border-radius:999px;
+    overflow:hidden;
+    border:1px solid rgba(148,163,184,.7);
+  }
+  .cd-inner{
+    height:100%; width:100%;
+    transform-origin:left center;
+  }
+  .cd-move .cd-inner{background:#22d3ee;}
+  .cd-ability .cd-inner{background:#facc15;}
 
-  /* Unit detail + minimap + highscore */
-  .unitPanel{border:1px solid var(--line); border-radius:12px; padding:10px; background:#0d1831;}
-  .unitTitle{font-weight:700; color:#eaf0ff; margin-bottom:6px; display:flex; align-items:center; gap:6px}
-  .abilityBtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
-  .ability-btn{background:#0e203d; border:1px solid #22406f; padding:8px 10px; border-radius:9px; font-size:12px}
-  .ability-btn:disabled{opacity:.5; cursor:not-allowed}
-  .abilityCard{margin-top:6px; border:1px dashed #2b4474; background:#0a1a33; padding:8px 10px; border-radius:10px}
-  .abilityCard .name{color:#ffd166; font-weight:700}
-  .abilityCard .desc{color:#cfe3ff; font-size:12px; margin-top:4px}
-  .abilityMeta{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
-  .meta{font-size:11px; padding:3px 6px; border-radius:999px; border:1px solid #2b4474; color:#a9c8ff; background:#0a1931}
+  .hp-chip{
+    position:absolute;
+    right:4px; bottom:4px;
+    padding:1px 5px;
+    font-size:11px;
+    border-radius:999px;
+    background:rgba(15,23,42,.9);
+    border:1px solid rgba(148,163,184,.8);
+    z-index:3;
+  }
+  .king-badge{
+    position:absolute;
+    left:4px; bottom:4px;
+    font-size:13px;
+    text-shadow:0 1px 2px rgba(0,0,0,.8);
+  }
+  .king-icon{
+    position:absolute;
+    left:50%;
+    bottom:-4px;
+    transform:translateX(-50%);
+    font-size:14px;
+    text-shadow:0 1px 2px rgba(0,0,0,.9);
+  }
 
-  .miniwrap{margin-top:10px; border:1px solid var(--line); border-radius:12px; padding:8px; background:#0d1831;}
-  #minimap{display:block; width:100%; height:auto; border-radius:8px; background:#0b1326}
+  .side{
+    background:var(--panel);
+    border-radius:14px;
+    border:1px solid var(--line);
+    padding:10px;
+    box-shadow:0 10px 28px rgba(0,0,0,.4);
+  }
+  h1{
+    margin:0 0 8px;
+    font-size:19px;
+    color:#e5e7eb;
+  }
 
-  .textin{flex:1 1 auto; min-width:160px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0f1e36; color:var(--white)}
+  .row{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:4px 0;}
 
-  /* Helper footer */
-  .helpbar{
-    margin-top:10px; border:1px solid #2b4474; background:#0a1730; border-radius:12px; padding:8px 10px; color:#cfe3ff;
+  button{
+    background:#020617;
+    color:var(--text);
+    border-radius:999px;
+    border:1px solid var(--line);
+    padding:7px 11px;
+    cursor:pointer;
+    font-size:13px;
+  }
+  button:hover{background:#020617ee;}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  .faction-btn.active{
+    border-color:#facc15;
+    box-shadow:0 0 0 1px rgba(250,204,21,.3);
+  }
+
+  select{
+    background:#020617;
+    color:var(--text);
+    border-radius:999px;
+    border:1px solid var(--line);
+    padding:5px 9px;
+    font-size:13px;
+  }
+
+  .unit-panel{
+    margin-top:6px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    padding:8px;
+    background:#020617;
+  }
+  .unit-title{
+    display:flex; gap:8px; align-items:center;
+    margin-bottom:4px;
+  }
+  .unit-title span.emoji{font-size:24px;}
+  .unit-name{font-weight:600;}
+  .unit-stats{font-size:12px; color:#d1d5db;}
+
+  .action-btns{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;}
+
+  .help-box{
+    margin-top:8px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    padding:7px 9px;
+    background:#020617;
     font-size:12px;
+    color:#e5e7eb;
   }
-  .toast{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1729; color:#cfe3ff; border:1px solid var(--line); padding:10px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(0,0,0,.35);}
+  .log-box{
+    margin-top:8px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    padding:7px 9px;
+    background:#020617;
+  }
+  .log-title{font-size:13px; margin-bottom:3px;}
+  .log{max-height:200px; overflow:auto; font-size:12px; color:#d1d5db;}
+  .log p{margin:1px 0;}
+
+  .toast{
+    position:fixed;
+    left:50%; bottom:12px;
+    transform:translateX(-50%);
+    background:#020617;
+    border-radius:999px;
+    border:1px solid var(--line);
+    padding:7px 13px;
+    font-size:13px;
+    color:#e5e7eb;
+    box-shadow:0 8px 24px rgba(0,0,0,.6);
+    display:none;
+    z-index:20;
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="view" id="view">
-      <div class="world">
-        <div id="grid" class="grid"></div>
-      </div>
+<div class="wrap">
+  <div class="board-wrap">
+    <div class="board-header">
+      <span class="pill">Faction:
+        <button id="btnOrder" class="faction-btn">Order</button>
+        <button id="btnChaos" class="faction-btn">Chaos</button>
+        <button id="btnVoid"  class="faction-btn">Void</button>
+      </span>
+      <span class="pill">AI Difficulty:
+        <select id="difficulty">
+          <option value="slow">Slow</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast</option>
+          <option value="insane">Insane</option>
+        </select>
+      </span>
+      <button id="btnStart">Start / Restart</button>
     </div>
-
-    <div class="side">
-      <h1>Ascendants vs Swarm — <span style="color:var(--flag)">Campaign</span></h1>
-
-      <div class="row">
-        <span class="pill">Level <b id="level">1</b></span>
-        <span class="pill">Round <b id="roundNum">1</b></span>
-        <span class="pill">Turn: <b id="turnWho">Player</b></span>
-        <span class="pill orders">Orders Left: <b id="ordersLeft">3</b></span>
-        <span class="pill">Abilities Left: <b id="abilitiesLeft">2</b></span>
-        <span class="pill">Best (session): <b id="bestLevel">1</b></span>
-      </div>
-
-      <div class="row" style="justify-content:space-between">
-        <div class="pill">Zoom <b id="zoomDisp">200%</b></div>
-        <div class="btns">
-          <button id="zoomFit" title="Center on board">Center</button>
-          <button id="zoomOut" title="[-] zoom out">−</button>
-          <button id="zoomIn" title="[=] zoom in">＋</button>
-          <button id="toggleAutoZoom">Smart focus: <span id="autoZoomState">On</span></button>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- Clean Action Bar with descriptions + hotkeys -->
-      <div class="actionbar" id="actionbar">
-        <div class="action">
-          <div class="hk">Q</div>
-          <div>
-            <h4>Move</h4>
-            <p>Choose a highlighted teal tile within speed. Zones of Control (adjacent enemies) stop pathing.</p>
-          </div>
-          <div class="actBtns"><button id="btnMove">Move</button></div>
-        </div>
-        <div class="action">
-          <div class="hk">W</div>
-          <div>
-            <h4>Attack</h4>
-            <p>Click a red-outlined enemy in line (melee needs adjacency; ranged requires clear line).</p>
-          </div>
-          <div class="actBtns"><button id="btnAttack">Attack</button></div>
-        </div>
-        <div class="action">
-          <div class="hk">E</div>
-          <div>
-            <h4>Ability</h4>
-            <p>Use your unit’s unique power. See details below — range, target type, and effects.</p>
-          </div>
-          <div class="actBtns"><button id="btnAbility">Ability</button></div>
-        </div>
-        <div class="action">
-          <div class="hk">R</div>
-          <div>
-            <h4>Fortify</h4>
-            <p>Gain <b>+1 Armor</b> and heal <b>+1 HP</b>. Ends one order.</p>
-          </div>
-          <div class="actBtns"><button id="btnFortify">Fortify</button></div>
-        </div>
-        <div class="action">
-          <div class="hk">Enter</div>
-          <div>
-            <h4>End Turn</h4>
-            <p>Pass remaining orders to the AI, then start your next round.</p>
-          </div>
-          <div class="actBtns">
-            <button id="btnEnd">End Turn</button>
-            <button id="btnReset" title="Restart campaign">↺ Reset</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <div class="unitPanel">
-        <div class="unitTitle"><span id="unitEmoji">⬚</span><span id="unitName">No unit selected</span></div>
-        <div class="row"><span class="pill" id="unitStats">—</span></div>
-        <div id="abilityBtns" class="abilityBtns"></div>
-        <div id="abilityCard" class="abilityCard" style="display:none">
-          <div class="name" id="abilityName">—</div>
-          <div class="desc" id="abilityDesc">—</div>
-          <div class="abilityMeta" id="abilityMeta"></div>
-        </div>
-      </div>
-
-      <div class="miniwrap">
-        <canvas id="minimap" width="220" height="150"></canvas>
-      </div>
-
-      <div class="miniwrap">
-        <div class="row"><span class="pill">Save Highscore (level)</span></div>
-        <div class="row">
-          <input id="playerName" class="textin" placeholder="Your name (optional)"/>
-          <button id="saveScore">Save Highscore</button>
-        </div>
-        <div id="saveStatus" class="pill" style="display:none; margin-top:8px"></div>
-      </div>
-
-      <div class="helpbar" id="helpbar">Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.</div>
-
-      <div class="sep"></div>
-      <div class="row" style="gap:12px; color:#aebbd6; font-size:13px">
-        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--p); border-radius:50%; display:inline-block"></span> Ascendants (you)</div>
-        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--a); border-radius:50%; display:inline-block"></span> Swarm (AI)</div>
-        <div style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:var(--flag); border-radius:50%; display:inline-block"></span> Flags (score banners)</div>
-      </div>
-
-      <div class="sep"></div>
-      <div class="log" id="log" style="max-height:210px; overflow:auto; font-size:13px; color:#aebbd6"></div>
+    <div class="board-header">
+      <span class="pill">Status: <b id="statusText">Pick a faction & difficulty, then Start.</b></span>
     </div>
+    <div id="board" class="board"></div>
   </div>
 
-  <div id="toast" class="toast" style="display:none"></div>
+  <div class="side">
+    <h1>Unit Detail & Commands</h1>
+    <div class="row">
+      <span class="pill">Time: <b id="timeDisp">0.0s</b></span>
+      <span class="pill">Pieces — You: <b id="countP">0</b> • AI: <b id="countAI">0</b></span>
+      <span class="pill" id="checkInfo">Check: —</span>
+    </div>
 
-<script>
-// Make session highscore visible to Firebase script later
-window.maxLevelReached = 1;
-</script>
+    <div class="unit-panel">
+      <div class="unit-title">
+        <span class="emoji" id="unitEmoji">⬚</span>
+        <span class="unit-name" id="unitName">No unit selected</span>
+      </div>
+      <div class="unit-stats" id="unitStats">—</div>
+      <div class="action-btns">
+        <button id="btnMove">Move</button>
+        <button id="btnAttack">Attack</button>
+        <button id="btnAbility">Ability</button>
+      </div>
+    </div>
+
+    <div class="help-box">
+      <div><b>How it works</b></div>
+      <ul style="margin:4px 0 0; padding-left:18px;">
+        <li>Pick your <b>Faction</b> and <b>AI Difficulty</b>, then press Start.</li>
+        <li>Each side has a <b>King</b> (♔ / ♚ / ♛ + icon). If your king dies, you lose.</li>
+        <li>Pieces move in straight <b>orthogonal directions only</b> (no diagonals).</li>
+        <li><b>Normal attacks are contact-only:</b> you must move onto an enemy’s tile to hit it.</li>
+        <li>If the enemy survives (HP &gt; 0), it gets <b>knocked</b> to a nearby open tile instead.</li>
+        <li>Only <b>abilities</b> can hit at range or affect areas.</li>
+        <li>Bars above pieces: <span style="color:#22d3ee">teal</span> = move/attack cooldown, <span style="color:#facc15">gold</span> = ability cooldown.</li>
+      </ul>
+    </div>
+
+    <div class="log-box">
+      <div class="log-title"><b>Battle Log</b></div>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
 
 <script>
 (function(){
-  // ===== Big Map Config =====
-  const W=24, H=16;
-  const TILE=48, GAP=6;
-  const CELL=TILE+GAP;
-  const FLAGS_Y = Math.floor(H/2);
-  const FLAG_XS = [3, 7, 12, 17, 21];
+  const BOARD_W = 6, BOARD_H = 6;
 
-  // ===== Camera (zoom + mouse-look / edge pan) =====
-  const view = document.getElementById('view');
-  const world = document.querySelector('.world');
-  const gridEl = document.getElementById('grid');
-  let cam = {x:0, y:0, vx:0, vy:0, tx:null, ty:null, easing:0.12};
-  let zoom = 2.0; const ZMIN=1.2, ZMAX=3.0;
-  const VIEW_W = view.clientWidth, VIEW_H = view.clientHeight;
-  let autoZoom = true;
+  const PIECES = {
+    // ORDER
+    order_king: {
+      name:'Order King', emoji:'♔', hp:3, dmg:1, move:1,
+      moveCool:2.2, abilityCool:8.0,
+      abilityKey:'order_aura', faction:'order', isKing:true,
+      desc:'Order: adjacent allies share rhythm. Normal attack = step onto an enemy; survivors get knocked away. Ability: pulse that speeds nearby allies.'
+    },
+    order_guard: {
+      name:'Sentinel', emoji:'🛡️', hp:3, dmg:1, move:1,
+      moveCool:2.0, abilityCool:9.0,
+      abilityKey:'order_shield', faction:'order', isKing:false,
+      desc:'Sturdy defender. Ability: shield a neighboring ally (+1 HP).'
+    },
+    order_archer: {
+      name:'Sky Archer', emoji:'🏹', hp:1, dmg:1, move:1,
+      moveCool:2.4, abilityCool:9.5,
+      abilityKey:'order_volley', faction:'order', isKing:false,
+      desc:'Contact hit by stepping on enemies. Ability: ranged volley hitting up to two enemies in a line.'
+    },
+    order_mage: {
+      name:'Circle Mage', emoji:'🔮', hp:2, dmg:1, move:1,
+      moveCool:2.6, abilityCool:10.0,
+      abilityKey:'order_swap', faction:'order', isKing:false,
+      desc:'Coordinator. Ability: swap positions with a friendly unit within 2 tiles.'
+    },
 
-  const WORLD_W = W*CELL+GAP, WORLD_H = H*CELL+GAP;
-  const zoomDispEl = document.getElementById('zoomDisp');
+    // CHAOS
+    chaos_king: {
+      name:'Chaos King', emoji:'♚', hp:3, dmg:1, move:1,
+      moveCool:2.1, abilityCool:8.5,
+      abilityKey:'chaos_quake', faction:'chaos', isKing:true,
+      desc:'Ruler of mayhem. Ability: scramble nearby enemy cooldowns.'
+    },
+    chaos_imp: {
+      name:'Warp Imp', emoji:'😈', hp:1, dmg:1, move:2,
+      moveCool:1.7, abilityCool:8.0,
+      abilityKey:'chaos_blink', faction:'chaos', isKing:false,
+      desc:'Fast harasser. Contact hit by stepping on enemies. Ability: blink behind an enemy and strike.'
+    },
+    chaos_reaver: {
+      name:'Reaver', emoji:'🗡️', hp:2, dmg:2, move:1,
+      moveCool:2.4, abilityCool:9.5,
+      abilityKey:'chaos_backstab', faction:'chaos', isKing:false,
+      desc:'Assassin. Ability: big bonus when striking from behind the enemy line.'
+    },
+    chaos_witch: {
+      name:'Witch', emoji:'☠️', hp:2, dmg:1, move:1,
+      moveCool:2.5, abilityCool:10.0,
+      abilityKey:'chaos_curse', faction:'chaos', isKing:false,
+      desc:'Debuffer. Ability: curse a target so the next two hits deal +1.'
+    },
 
-  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)) }
-  function within(v,a,b){ return v>=a && v<=b }
-
-  function setZoom(nz, anchor){
-    nz = clamp(nz, ZMIN, ZMAX);
-    const rect = view.getBoundingClientRect();
-    const ax = anchor? anchor[0] : rect.width/2;
-    const ay = anchor? anchor[1] : rect.height/2;
-    const wx = (cam.x + ax) / zoom;
-    const wy = (cam.y + ay) / zoom;
-    zoom = nz;
-    cam.x = clamp(wx * zoom - ax, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.y = clamp(wy * zoom - ay, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
-    zoomDispEl.textContent = Math.round(zoom*100)+'%';
-  }
-
-  function centerCamera(tx = Math.floor(W/2), ty = Math.floor(H/2), z = zoom){
-    const worldPxX = tx * CELL;
-    const worldPxY = ty * CELL;
-    cam.x = clamp(worldPxX * z - VIEW_W/2, 0, Math.max(0, WORLD_W*z - VIEW_W));
-    cam.y = clamp(worldPxY * z - VIEW_H/2, 0, Math.max(0, WORLD_H*z - VIEW_H));
-    world.style.transform = `scale(${z}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
-    zoomDispEl.textContent = Math.round(z*100)+'%';
-  }
-
-  function setCamTarget(nx, ny){
-    cam.tx = clamp(nx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.ty = clamp(ny, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
-  }
-
-  // Smart focus: gently pan only if unit is outside padded viewport
-  function smartFocusOn(u){
-    if(!autoZoom || !u) return;
-    const pad = 80; // px
-    const ux = u.x * CELL; const uy = u.y * CELL;
-    const sx = ux*zoom - cam.x;
-    const sy = uy*zoom - cam.y;
-    const visX = within(sx, pad, VIEW_W - pad - TILE*zoom);
-    const visY = within(sy, pad, VIEW_H - pad - TILE*zoom);
-    if(!(visX && visY)){
-      const tx = ux*zoom - (VIEW_W - TILE*zoom)/2;
-      const ty = uy*zoom - (VIEW_H - TILE*zoom)/2;
-      setCamTarget(tx, ty);
+    // VOID
+    void_king: {
+      name:'Void King', emoji:'♛', hp:3, dmg:1, move:1,
+      moveCool:2.3, abilityCool:8.5,
+      abilityKey:'void_trapfield', faction:'void', isKing:true,
+      desc:'Master of snares. Ability: lay trap tiles that root and wound whoever steps on them.'
+    },
+    void_warden: {
+      name:'Warden', emoji:'⛓️', hp:3, dmg:1, move:1,
+      moveCool:2.2, abilityCool:9.0,
+      abilityKey:'void_root', faction:'void', isKing:false,
+      desc:'Controller. Ability: root an enemy in place for several seconds.'
+    },
+    void_shade: {
+      name:'Shade', emoji:'👁️', hp:2, dmg:1, move:2,
+      moveCool:2.0, abilityCool:9.5,
+      abilityKey:'void_pull', faction:'void', isKing:false,
+      desc:'Ambusher. Ability: pull an enemy one tile closer (into danger… or a trap).'
+    },
+    void_orb: {
+      name:'Null Orb', emoji:'⚫', hp:1, dmg:1, move:1,
+      moveCool:2.4, abilityCool:10.0,
+      abilityKey:'void_blast', faction:'void', isKing:false,
+      desc:'Mine-like. Ability: void blast damaging a small area.'
     }
-  }
-
-  gridEl.style.gridTemplateColumns = `repeat(${W}, ${TILE}px)`;
-  gridEl.style.gridTemplateRows    = `repeat(${H}, ${TILE}px)`;
-  gridEl.style.padding = `${GAP}px`;
-
-  const lastMouse = {x:0,y:0};
-  view.addEventListener('mousemove', (e)=>{ lastMouse.x=e.clientX; lastMouse.y=e.clientY; });
-  view.addEventListener('wheel', (e)=>{
-    e.preventDefault();
-    const rect=view.getBoundingClientRect();
-    setZoom( zoom * (e.deltaY<0?1.1:0.9), [e.clientX-rect.left, e.clientY-rect.top] );
-  }, {passive:false});
-
-  function updateCamera(){
-    const rect = view.getBoundingClientRect();
-    const mx = lastMouse.x - rect.left, my = lastMouse.y - rect.top;
-    const margin = 100; const maxSpeed = 24;
-    let vx=0, vy=0;
-    if(mx < margin) vx = -((margin-mx)/margin)*maxSpeed;
-    else if(mx > VIEW_W - margin) vx = ((mx-(VIEW_W-margin))/margin)*maxSpeed;
-    if(my < margin) vy = -((margin-my)/margin)*maxSpeed;
-    else if(my > VIEW_H - margin) vy = ((my-(VIEW_H-margin))/margin)*maxSpeed;
-
-    // Ease toward target (smart focus)
-    if(cam.tx!=null && cam.ty!=null){
-      cam.x += (cam.tx - cam.x)*cam.easing;
-      cam.y += (cam.ty - cam.y)*cam.easing;
-      if(Math.hypot(cam.tx - cam.x, cam.ty - cam.y) < 0.5){
-        cam.tx = cam.ty = null;
-      }
-    }
-
-    // Edge scroll
-    cam.x = clamp(cam.x + vx, 0, Math.max(0, WORLD_W*zoom - VIEW_W));
-    cam.y = clamp(cam.y + vy, 0, Math.max(0, WORLD_H*zoom - VIEW_H));
-
-    world.style.transform = `scale(${zoom}) translate3d(${-cam.x}px, ${-cam.y}px, 0)`;
-    drawMinimap();
-    requestAnimationFrame(updateCamera);
-  }
-  requestAnimationFrame(updateCamera);
-
-  document.getElementById('zoomIn').onclick  = ()=> setZoom(zoom*1.15);
-  document.getElementById('zoomOut').onclick = ()=> setZoom(zoom/1.15);
-  document.getElementById('zoomFit').onclick = ()=> centerCamera(Math.floor(W/2), Math.floor(H/2), zoom);
-  document.getElementById('toggleAutoZoom').onclick = ()=>{
-    autoZoom = !autoZoom;
-    document.getElementById('autoZoomState').textContent = autoZoom ? 'On' : 'Off';
-    if(!autoZoom){ cam.tx = cam.ty = null; }
   };
 
-  // ===== Factions & Unit Databases (with abilities) =====
-  const ASCENDANT_TYPES = {
-    vanguard:  {hp:2, dmg:1, range:1, move:2, emoji:'🛡️', name:'Vanguard', ability:{key:'shieldwall', name:'Shield Wall', kind:'self', maxPerTurn:1}},
-    ranger:    {hp:1, dmg:1, range:4, move:2, emoji:'🏹', name:'Ranger', ability:{key:'snipe', name:'Snipe', kind:'unitEnemy', range:5, maxPerTurn:1, ignoreLoS:true, dmg:2}},
-    judicator: {hp:3, dmg:1, range:1, move:2, emoji:'👑', name:'Judicator', aura:+1, ability:{key:'rally', name:'Rally', kind:'unitFriendly', range:2, maxPerTurn:1, moveBonus:1}},
-    lancer:    {hp:2, dmg:1, range:1, move:3, emoji:'🗡️', name:'Lancer', ability:{key:'lunge', name:'Lunge', kind:'unitEnemy', range:2, maxPerTurn:1}},
-    stormseer: {hp:1, dmg:2, range:2, move:2, emoji:'⚡', name:'Stormseer', ability:{key:'chain', name:'Chain Lightning', kind:'unitEnemy', range:2, maxPerTurn:1, chain:2}},
-    aegis:     {hp:4, dmg:1, range:1, move:2, emoji:'🛸', name:'Aegis', ability:{key:'bulwark', name:'Bulwark', kind:'self', maxPerTurn:1}},
-    blinkblade:{hp:2, dmg:1, range:1, move:2, emoji:'🌀', name:'Blinkblade', ability:{key:'blink', name:'Blink', kind:'tile', range:3, maxPerTurn:1, ignoreBlocks:true}},
-    oracle:    {hp:1, dmg:0, range:1, move:2, emoji:'🔮', name:'Oracle', ability:{key:'haste', name:'Haste', kind:'unitFriendly', range:2, maxPerTurn:1, moveBonus:2}},
-    disruptor: {hp:1, dmg:1, range:2, move:2, emoji:'🧲', name:'Disruptor', ability:{key:'emp', name:'EMP', kind:'unitEnemy', range:2, maxPerTurn:1}},
+  const FACTION_ROWS = {
+    order: ['order_guard','order_archer','order_mage','order_guard','order_archer','order_king'],
+    chaos: ['chaos_imp','chaos_reaver','chaos_witch','chaos_imp','chaos_reaver','chaos_king'],
+    void:  ['void_warden','void_shade','void_orb','void_warden','void_shade','void_king']
   };
 
-  const SWARM_TYPES = {
-    drone:   {hp:2, dmg:1, range:1, move:2, emoji:'🐛', name:'Drone'},
-    spitter: {hp:1, dmg:1, range:3, move:2, emoji:'🧪', name:'Spitter', ability:{key:'acid', name:'Acid Pool', kind:'tile', range:3, maxPerTurn:1}},
-    brute:   {hp:3, dmg:2, range:1, move:2, emoji:'🦍', name:'Brute', ability:{key:'smash', name:'Smash', kind:'self', maxPerTurn:1}},
-    stalker: {hp:2, dmg:1, range:2, move:2, emoji:'🕷️', name:'Stalker', ability:{key:'mark', name:'Mark Prey', kind:'unitEnemy', range:2, maxPerTurn:1}},
-    brooder: {hp:3, dmg:1, range:1, move:2, emoji:'🥚', name:'Brood-Queen', aura:+1, ability:{key:'spawn', name:'Spawnling', kind:'tile', range:1, maxPerTurn:1}},
-    leaper:  {hp:2, dmg:1, range:1, move:3, emoji:'🦗', name:'Leaper', ability:{key:'leap', name:'Leap', kind:'tile', range:2, maxPerTurn:1, ignoreBlocks:true}},
-    psycher: {hp:2, dmg:1, range:2, move:2, emoji:'🧠', name:'Psycher', ability:{key:'silence', name:'Silence', kind:'unitEnemy', range:3, maxPerTurn:1}},
-    burster: {hp:2, dmg:1, range:1, move:2, emoji:'💥', name:'Burster', ability:{key:'explode', name:'Explode', kind:'self', maxPerTurn:1}},
-    dronelet:{hp:1, dmg:1, range:1, move:2, emoji:'🐜', name:'Dronelet', spawnOnly:true},
+  const DIFFICULTY_INTERVAL = {
+    slow:   1.2,
+    normal: 0.8,
+    fast:   0.5,
+    insane: 0.25
   };
 
-  const TYPES = { P: ASCENDANT_TYPES, A: SWARM_TYPES };
+  const boardEl     = document.getElementById('board');
+  const logEl       = document.getElementById('log');
+  const statusText  = document.getElementById('statusText');
+  const timeDisp    = document.getElementById('timeDisp');
+  const countP      = document.getElementById('countP');
+  const countAI     = document.getElementById('countAI');
+  const checkInfo   = document.getElementById('checkInfo');
 
-  function abilityText(Ab, unitName){
-    if(!Ab) return {desc:'—', meta:[]};
-    const tgt = Ab.kind==='self' ? 'Self'
-              : Ab.kind==='tile' ? 'Tile'
-              : Ab.kind==='unitFriendly' ? 'Friendly unit'
-              : 'Enemy unit';
-    const meta = [
-      `Target: ${tgt}`,
-      ...(Ab.range!=null ? [`Range: ${Ab.range}`] : []),
-      ...(Ab.maxPerTurn!=null ? [`Uses/turn: ${Ab.maxPerTurn}`] : []),
-      ...(Ab.ignoreLoS ? ['Ignores line of sight'] : []),
-      ...(Ab.ignoreBlocks ? ['Ignores terrain/hazards for placement'] : []),
-    ];
+  const unitEmoji   = document.getElementById('unitEmoji');
+  const unitName    = document.getElementById('unitName');
+  const unitStats   = document.getElementById('unitStats');
+  const btnMove     = document.getElementById('btnMove');
+  const btnAttack   = document.getElementById('btnAttack');
+  const btnAbility  = document.getElementById('btnAbility');
 
-    switch(Ab.key){
-      case 'shieldwall': return {desc:`Raise a heavy barrier around ${unitName}, granting +2 Armor (up to 3).`, meta};
-      case 'snipe':      return {desc:`Fire a precise shot that deals ${Ab.dmg||2} damage. Ignores line of sight.`, meta};
-      case 'rally':      return {desc:`Bolster a friendly unit with +${Ab.moveBonus||1} Move and set Armor to at least 1 this turn.`, meta};
-      case 'lunge':      return {desc:`Dash to the edge of the target and immediately strike for normal weapon damage.`, meta};
-      case 'chain':      return {desc:`Zap a target for 1 damage, then chain up to ${Ab.chain||2} adjacent enemies for 1 damage each.`, meta};
-      case 'bulwark':    return {desc:`Brace for impact: +2 Armor and restore +1 HP.`, meta};
-      case 'blink':      return {desc:`Teleport to an empty tile within range. Ignores obstacles.`, meta};
-      case 'haste':      return {desc:`Imbue speed: target friendly gains +${Ab.moveBonus||2} Move this turn.`, meta};
-      case 'emp':        return {desc:`Strip defenses and silence: remove Armor and prevent ability use for 1 turn.`, meta};
-      // Swarm
-      case 'acid':       return {desc:`Create a lingering acid pool on a tile (3 turns) that blocks movement.`, meta};
-      case 'smash':      return {desc:`Power up: your next attack deals +1 damage.`, meta};
-      case 'mark':       return {desc:`Mark prey: the target takes +1 damage from Swarm attackers for 2 turns.`, meta};
-      case 'spawn':      return {desc:`Hatch a Dronelet on a nearby empty tile.`, meta};
-      case 'leap':       return {desc:`Jump to a tile within range, bypassing obstacles.`, meta};
-      case 'silence':    return {desc:`Mute a foe: prevent ability use for 1 turn.`, meta};
-      case 'explode':    return {desc:`Detonate, dealing 2 damage to adjacent units, destroying yourself.`, meta};
-      default:           return {desc:`Special ability.`, meta};
-    }
+  const btnOrder = document.getElementById('btnOrder');
+  const btnChaos = document.getElementById('btnChaos');
+  const btnVoid  = document.getElementById('btnVoid');
+  const btnStart = document.getElementById('btnStart');
+  const diffSel  = document.getElementById('difficulty');
+
+  let state = {
+    units: [],
+    traps: [],
+    now:0,
+    running:false,
+    winner:null,
+    factionP:null,
+    factionAI:null,
+    difficulty:'normal',
+    aiInterval:0.8,
+    lastAiAct:0,
+    selectedId:null,
+    hintMode:null,
+    hints:new Set(),
+    animMove:new Set(),
+    animHit:new Set(),
+    checkOnP:false,
+    checkOnAI:false
+  };
+
+  function id(){ return Math.random().toString(36).slice(2,9); }
+  function key(x,y){ return x+','+y; }
+  function isInside(x,y){ return x>=0 && y>=0 && x<BOARD_W && y<BOARD_H; }
+  function pieceDef(u){ return PIECES[u.tKey]; }
+  function getUnitAt(x,y){ return state.units.find(u=>u.hp>0 && u.x===x && u.y===y); }
+
+  // ===== Faction selection =====
+  function setFaction(f){
+    state.factionP = f;
+    const all = ['order','chaos','void'];
+    const remaining = all.filter(x=>x!==f);
+    state.factionAI = remaining[Math.floor(Math.random()*remaining.length)];
+    btnOrder.classList.toggle('active', f==='order');
+    btnChaos.classList.toggle('active', f==='chaos');
+    btnVoid.classList.toggle('active',  f==='void');
+    pushStatus();
   }
 
-  // ===== Game State =====
-  let state=null; let selectedId=null; let hintMode=null; let hints=new Set();
-  const turnWhoEl=document.getElementById('turnWho');
-  const roundNumEl=document.getElementById('roundNum');
-  const ordersLeftEl=document.getElementById('ordersLeft');
-  const abilitiesLeftEl=document.getElementById('abilitiesLeft');
-  const levelEl=document.getElementById('level');
-  const bestLevelEl=document.getElementById('bestLevel');
-  const logEl=document.getElementById('log');
-  const helpbarEl=document.getElementById('helpbar');
+  btnOrder.onclick = ()=> setFaction('order');
+  btnChaos.onclick = ()=> setFaction('chaos');
+  btnVoid.onclick  = ()=> setFaction('void');
 
-  const unitEmojiEl=document.getElementById('unitEmoji');
-  const unitNameEl=document.getElementById('unitName');
-  const unitStatsEl=document.getElementById('unitStats');
-  const abilityBtnsEl=document.getElementById('abilityBtns');
-  const abilityCard=document.getElementById('abilityCard');
-  const abilityName=document.getElementById('abilityName');
-  const abilityDesc=document.getElementById('abilityDesc');
-  const abilityMeta=document.getElementById('abilityMeta');
+  diffSel.onchange = ()=>{
+    state.difficulty = diffSel.value;
+    state.aiInterval = DIFFICULTY_INTERVAL[state.difficulty] || 0.8;
+    pushStatus();
+  };
 
-  const minimap = document.getElementById('minimap');
-  const mctx = minimap.getContext('2d');
-
-  document.getElementById('btnMove').onclick = ()=>setHint('move');
-  document.getElementById('btnAttack').onclick = ()=>setHint('attack');
-  document.getElementById('btnAbility').onclick = ()=>setHint('ability');
-  document.getElementById('btnFortify').onclick = ()=>performFortify();
-  document.getElementById('btnEnd').onclick = ()=>endTurn();
-  document.getElementById('btnReset').onclick = ()=> startCampaign(1);
-
-  // Hotkeys
-  window.addEventListener('keydown', (e)=>{
-    if(e.repeat) return;
-    if(e.key==='q' || e.key==='Q') return document.getElementById('btnMove').click();
-    if(e.key==='w' || e.key==='W') return document.getElementById('btnAttack').click();
-    if(e.key==='e' || e.key==='E') return document.getElementById('btnAbility').click();
-    if(e.key==='r' || e.key==='R') return document.getElementById('btnFortify').click();
-    if(e.key==='Enter') return document.getElementById('btnEnd').click();
-    if(e.key==='=' || e.key==='+') return document.getElementById('zoomIn').click();
-    if(e.key==='-' || e.key==='_') return document.getElementById('zoomOut').click();
-  });
-
-  function id(){ return Math.random().toString(36).slice(2,9) }
-  function key(x,y){ return x+","+y }
-  function isOnBoard(x,y){ return x>=0 && y>=0 && x<W && y<H }
-
-  // Terrain (light obstacles) + Hazards with TTL
-  function genTerrain(){
-    const rocks=new Set();
-    const safeCols=new Set([Math.floor(W/2)-1, Math.floor(W/2)]);
-    const density=0.08; // sparse
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
-        if(safeCols.has(x)) continue;
-        if(Math.random()<density) rocks.add(key(x,y));
-      }
+  function pushStatus(){
+    if(!state.factionP){
+      statusText.textContent = 'Pick a faction & difficulty, then Start.';
+      return;
     }
-    return rocks;
+    statusText.textContent = `You: ${state.factionP.toUpperCase()} · AI: ${state.factionAI.toUpperCase()} · Difficulty: ${state.difficulty}`;
   }
 
-  function flagsAtStart(){ return FLAG_XS.map(x=>({x, y:FLAGS_Y, bannersP:0, bannersA:0})); }
+  // ===== Game start =====
+  btnStart.onclick = ()=> startGame();
 
-  function rollUnits(side, level){
-    const pool = Object.keys(TYPES[side]);
-    const lineup=[];
-    const startRow = side==='P' ? 1 : H-2;
-    const xs = [2,5,8,11,14,17];
-    for(let i=0;i<6;i++){
-      const tKey = pool[Math.floor(Math.random()*pool.length)];
-      const base = TYPES[side][tKey];
-      const scaled = Object.assign({}, base);
-      if(side==='A' && level>1){
-        const mult = 1 + (level-1)*0.15; // scale enemy
-        scaled.hp = Math.max(1, Math.round(base.hp*mult));
-        scaled.dmg = Math.max(1, Math.round(base.dmg*mult));
-      }
-      lineup.push({id:id(), side, tKey, x:xs[i], y:startRow, hp:scaled.hp, maxHp:scaled.hp, armor:0, abilUses:0, silenced:0, nextAtkBonus:0, bonusMove:0, markedByA:0});
-    }
-    return lineup;
+  function spawnUnit(side,tKey,x,y){
+    const def = PIECES[tKey];
+    state.units.push({
+      id:id(),
+      side,
+      tKey,
+      x,y,
+      hp:def.hp,
+      maxHp:def.hp,
+      dmg:def.dmg,
+      bonusDmg:0,
+      moveCool:def.moveCool,
+      abilityCool:def.abilityCool,
+      nextMoveAt:0,
+      nextAbilityAt:def.abilityCool*0.5,
+      curseStacks:0,
+      rootUntil:0
+    });
   }
 
-  function startCampaign(level){
-    selectedId=null; hintMode=null; hints.clear();
-    state={
-      level, turn:'P', round:1, orders:3,
-      abilityLeftP:2, abilityLeftA:2,
-      flags: flagsAtStart(),
-      terrain: genTerrain(),
-      hazards: new Map(), // key -> {type:'acid', ttl}
-      units: [],
-      log:[]
-    };
-    state.units.push(...rollUnits('P', level));
-    state.units.push(...rollUnits('A', level));
-    pushLog(`Campaign started. Level ${level}. Player goes first.`);
-    startOfTurn();
-    centerCamera(Math.floor(W/2), Math.floor(H/2), zoom); // initial position only
+  function startGame(){
+    if(!state.factionP){
+      toast('Pick a faction first.');
+      return;
+    }
+    state.units = [];
+    state.traps = [];
+    state.now = 0;
+    state.running = true;
+    state.winner = null;
+    state.selectedId = null;
+    state.hintMode = null;
+    state.hints.clear();
+    state.animMove.clear();
+    state.animHit.clear();
+    state.checkOnP = false;
+    state.checkOnAI = false;
+    state.difficulty = diffSel.value;
+    state.aiInterval = DIFFICULTY_INTERVAL[state.difficulty] || 0.8;
+    state.lastAiAct = 0;
+
+    const rowP = FACTION_ROWS[state.factionP];
+    for(let x=0;x<BOARD_W;x++){
+      const tKey = rowP[x % rowP.length];
+      spawnUnit('P', tKey, x, BOARD_H-1);
+    }
+    const rowAI = FACTION_ROWS[state.factionAI];
+    for(let x=0;x<BOARD_W;x++){
+      const tKey = rowAI[x % rowAI.length];
+      spawnUnit('AI', tKey, x, 0);
+    }
+
+    logEl.innerHTML='';
+    pushLog(`Game started. You = ${state.factionP.toUpperCase()}, AI = ${state.factionAI.toUpperCase()}, difficulty = ${state.difficulty}.`);
+    pushStatus();
     render();
   }
 
-  // ===== Helpers / Rules =====
-  function unitAt(x,y){ return state.units.find(u=>u.x===x&&u.y===y) }
-  function hazardAt(x,y){ return state.hazards.get(key(x,y)) }
-  function isBlocked(x,y){ return state.terrain.has(key(x,y)) || !!hazardAt(x,y) }
-  function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y) }
-  function getFlag(x,y){ return state.flags.find(f=>f.x===x && f.y===y) }
-  function isFlag(x,y){ return !!getFlag(x,y) }
-  function sideName(s){ return s==='P'?'Player':'AI' }
-  function T(u){ return TYPES[u.side][u.tKey]; }
-  function abilityOf(u){ return T(u).ability || null }
-  function sideAbilityLeft(side){ return side==='P'? state.abilityLeftP : state.abilityLeftA }
-  function decSideAbilityLeft(side){ if(side==='P') state.abilityLeftP--; else state.abilityLeftA--; }
-
-  function captainAdjacentBonus(u){
-    const caps = state.units.filter(v=>v.side===u.side && TYPES[v.side][v.tKey].aura===+1);
-    return caps.some(c=>manhattan(c,u)===1) ? 1 : 0;
+  // ===== Rendering =====
+  function cooldownRatio(now, nextAt, cool){
+    if(cool<=0) return 1;
+    if(now>=nextAt) return 1;
+    const remaining = nextAt - now;
+    const r = 1 - remaining / cool;
+    return Math.max(0, Math.min(1,r));
   }
 
-  function inZoC(tile, enemySide){ return state.units.some(u=>u.side===enemySide && manhattan(u,tile)===1); }
+  function render(){
+    boardEl.innerHTML='';
+    const now = state.now;
 
-  function pathfindReach(u){
-    const maxSteps = T(u).move + captainAdjacentBonus(u) + (u.bonusMove||0);
+    for(let y=0;y<BOARD_H;y++){
+      for(let x=0;x<BOARD_W;x++){
+        const tile = document.createElement('div');
+        tile.className='tile';
+        tile.dataset.x=x;
+        tile.dataset.y=y;
+
+        if(state.traps.some(t=>t.x===x && t.y===y)){
+          tile.classList.add('trap');
+        }
+
+        const u = getUnitAt(x,y);
+
+        const k = key(x,y);
+        if(state.hintMode==='move' && state.hints.has(k)){
+          tile.classList.add('move-ok');
+        }
+        if(state.hintMode==='attack' && u && state.hints.has('id:'+u.id)){
+          tile.classList.add('attack-ok');
+        }
+        if(state.hintMode==='ability' && (state.hints.has(k) || (u && state.hints.has('id:'+u.id)))){
+          tile.classList.add(u ? 'attack-ok' : 'move-ok');
+        }
+
+        if(u && state.selectedId===u.id){
+          tile.classList.add('sel');
+        }
+
+        if(u){
+          const def = pieceDef(u);
+          const cdMoveRatio = cooldownRatio(now, u.nextMoveAt, u.moveCool);
+          const cdAbRatio   = cooldownRatio(now, u.nextAbilityAt, u.abilityCool);
+
+          const cdWrap = document.createElement('div');
+          cdWrap.className='cd-container';
+          const barM = document.createElement('div');
+          barM.className='cd-bar cd-move';
+          const inM = document.createElement('div');
+          inM.className='cd-inner';
+          inM.style.transform = 'scaleX('+cdMoveRatio.toFixed(3)+')';
+          barM.appendChild(inM);
+          const barA = document.createElement('div');
+          barA.className='cd-bar cd-ability';
+          const inA = document.createElement('div');
+          inA.className='cd-inner';
+          inA.style.transform = 'scaleX('+cdAbRatio.toFixed(3)+')';
+          barA.appendChild(inA);
+          cdWrap.appendChild(barM); cdWrap.appendChild(barA);
+          tile.appendChild(cdWrap);
+
+          const piece = document.createElement('div');
+          piece.className='piece';
+          piece.textContent = def.emoji;
+          if(def.faction==='order') piece.style.color = 'var(--order)';
+          else if(def.faction==='chaos') piece.style.color = 'var(--chaos)';
+          else piece.style.color = 'var(--void)';
+
+          if(state.animMove.has(u.id)){
+            piece.style.animation='movePulse 0.25s ease-out';
+          } else if(state.animHit.has(u.id)){
+            piece.style.animation='hitShake 0.25s ease-out';
+          }
+          tile.appendChild(piece);
+
+          const hp = document.createElement('div');
+          hp.className='hp-chip';
+          hp.textContent = `${u.hp}/${u.maxHp}`;
+          tile.appendChild(hp);
+
+          if(def.isKing){
+            const kb=document.createElement('div');
+            kb.className='king-badge';
+            kb.textContent='♛';
+            tile.appendChild(kb);
+
+            const ki=document.createElement('div');
+            ki.className='king-icon';
+            ki.textContent = def.faction==='order' ? '⚖️' : def.faction==='chaos' ? '🔥' : '🕳️';
+            tile.appendChild(ki);
+          }
+        }
+
+        tile.onclick = onTileClick;
+        boardEl.appendChild(tile);
+      }
+    }
+
+    state.animMove.clear();
+    state.animHit.clear();
+
+    timeDisp.textContent = state.now.toFixed(1)+'s';
+    const pAlive = state.units.filter(u=>u.side==='P' && u.hp>0).length;
+    const aAlive = state.units.filter(u=>u.side==='AI' && u.hp>0).length;
+    countP.textContent = pAlive;
+    countAI.textContent = aAlive;
+
+    updateUnitPanel();
+    updateCheckStatus();
+    const chkP = state.checkOnP ? 'You' : null;
+    const chkAI = state.checkOnAI ? 'AI' : null;
+    if(!chkP && !chkAI) checkInfo.textContent = 'Check: —';
+    else if(chkP && !chkAI) checkInfo.textContent = 'Check: on You';
+    else if(!chkP && chkAI) checkInfo.textContent = 'Check: on AI';
+    else checkInfo.textContent = 'Check: mutual chaos?!';
+  }
+
+  // ===== UI / panel =====
+  function updateUnitPanel(){
+    const u = state.units.find(x=>x.id===state.selectedId && x.hp>0);
+    if(!u){
+      unitEmoji.textContent='⬚';
+      unitName.textContent='No unit selected';
+      unitStats.textContent='—';
+      btnMove.disabled=true;
+      btnAttack.disabled=true;
+      btnAbility.disabled=true;
+      return;
+    }
+    const def = pieceDef(u);
+    const moveReady = (state.now>=u.nextMoveAt && !isRooted(u));
+    const abReady   = (state.now>=u.nextAbilityAt);
+    unitEmoji.textContent = def.emoji;
+    unitName.textContent =
+      `${def.name} — ${u.side==='P'?'You':'AI'}${def.isKing?' (King)':''}`;
+    unitStats.textContent =
+      `HP ${u.hp}/${u.maxHp} • Dmg ${u.dmg + u.bonusDmg} • Stride ${def.move} · ${def.desc}`;
+
+    btnMove.disabled   = !(u.side==='P' && moveReady && state.running && !state.winner);
+    btnAttack.disabled = !(u.side==='P' && moveReady && state.running && !state.winner);
+    btnAbility.disabled= !(u.side==='P' && abReady   && state.running && !state.winner);
+
+    btnMove.textContent   = moveReady ? 'Move' : 'Move (cooling / rooted)';
+    btnAttack.textContent = moveReady ? 'Attack (contact)' : 'Attack (cooling / rooted)';
+    btnAbility.textContent= abReady ? 'Ability' : 'Ability (cooling)';
+  }
+
+  btnMove.onclick = ()=> setHintMode('move');
+  btnAttack.onclick = ()=> setHintMode('attack');
+  btnAbility.onclick = ()=> setHintMode('ability');
+
+  // ===== Movement / targeting helpers =====
+  function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
+  function isRooted(u){ return state.now < (u.rootUntil || 0); }
+
+  function reachableTiles(u, steps){
+    if(isRooted(u)) return new Set();
     const visited = new Set([key(u.x,u.y)]);
-    const q=[{x:u.x,y:u.y, steps:0}];
-    const reachable = new Set();
+    const q=[{x:u.x,y:u.y,d:0}];
+    const res=new Set();
     while(q.length){
       const cur=q.shift();
       const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
       for(const [dx,dy] of dirs){
-        const nx=cur.x+dx, ny=cur.y+dy; if(!isOnBoard(nx,ny)) continue;
-        if(isBlocked(nx,ny)) continue;
-        if(unitAt(nx,ny)) continue;
-        const k=key(nx,ny); if(visited.has(k)) continue;
-        const steps = cur.steps+1; if(steps>maxSteps) continue;
-        visited.add(k); reachable.add(k);
-        const enemySide = (u.side==='P'?'A':'P');
-        const tile={x:nx,y:ny};
-        if(!inZoC(tile, enemySide)) q.push({x:nx,y:ny,steps});
+        const nx=cur.x+dx, ny=cur.y+dy;
+        if(!isInside(nx,ny)) continue;
+        const k=key(nx,ny);
+        if(visited.has(k)) continue;
+        if(getUnitAt(nx,ny)) continue;
+        const nd=cur.d+1;
+        if(nd>steps) continue;
+        visited.add(k);
+        res.add(k);
+        q.push({x:nx,y:ny,d:nd});
       }
     }
-    return reachable;
+    return res;
   }
 
-  function inRange(a,b,range){ return (a.x===b.x || a.y===b.y) && manhattan(a,b)<=range }
-  function clearLine(a,b){
-    if(!(a.x===b.x || a.y===b.y)) return false;
-    if(a.x===b.x){
-      const [y1,y2]= a.y<b.y ? [a.y,b.y] : [b.y,a.y];
-      for(let y=y1+1;y<y2;y++){ if(isBlocked(a.x,y) || unitAt(a.x,y)) return false; }
-      return true;
-    } else {
-      const [x1,x2]= a.x<b.x ? [a.x,b.x] : [b.x,a.x];
-      for(let x=x1+1;x<x2;x++){ if(isBlocked(x,a.y) || unitAt(x,a.y)) return false; }
-      return true;
-    }
-  }
-
-  function attackables(u){
-    const Tu=T(u);
-    const targets = state.units.filter(v=>v.side!==u.side && inRange(u,v,Tu.range));
-    return targets.filter(t=> (Tu.range===1 ? manhattan(u,t)===1 : clearLine(u,t)) );
-  }
-
-  function performMove(u, tx, ty){
-    const reach = pathfindReach(u);
-    if(!reach.has(key(tx,ty))) return toast('Not reachable');
-    u.x=tx; u.y=ty; spendOrder(`${sideName(u.side)} moved ${label(u)} to (${tx},${ty})`);
-    render();
-  }
-
-  function actualDamage(attacker, target, base){
-    let dmg = base + (attacker.nextAtkBonus||0);
-    attacker.nextAtkBonus = 0; // consume any buff
-    if(attacker.side==='A' && target.markedByA>0) dmg += 1; // marked bonus
-    if(target.armor>0){ dmg=Math.max(0,dmg-1); target.armor=0; }
-    return dmg;
-  }
-
-  function damageUnit(attacker, target, base, note){
-    const dmg = actualDamage(attacker, target, base);
-    if(dmg>0) target.hp -= dmg;
-    pushLog(`${label(attacker)} ${note||'hit'} ${label(target)} for ${dmg}.`);
-    if(target.hp<=0){
-      state.units = state.units.filter(w=>w.id!==target.id);
-      pushLog(`${label(target)} was defeated.`);
-    }
-  }
-
-  function performAttack(u, target){
-    const Tu=T(u);
-    const list = attackables(u);
-    if(!list.some(v=>v.id===target.id)) return toast('Target not in range');
-    damageUnit(u, target, Tu.dmg, 'hit');
-    spendOrder(`${label(u)} attacked.`);
-    render();
-  }
-
-  function performFortify(){
-    if(!selectedId) return toast('Select a unit first');
-    const u = state.units.find(x=>x.id===selectedId);
-    if(!u || u.side!==state.turn || u.side!=='P') return;
-    u.hp=Math.min(u.maxHp, u.hp+1);
-    u.armor=1;
-    spendOrder(`${sideName(u.side)} fortified ${label(u)} (+1 armor, +1 HP)`);
-    render();
-  }
-
-  function canUseAbility(u){
-    const A = abilityOf(u); if(!A) return {ok:false, why:'No ability'};
-    if(u.side!==state.turn || u.side!=='P') return {ok:false, why:'Not your turn'};
-    if(u.silenced>0) return {ok:false, why:'Silenced'};
-    if(sideAbilityLeft(u.side)<=0) return {ok:false, why:'No abilities left this turn'};
-    if(u.abilUses>= (A.maxPerTurn||1)) return {ok:false, why:'Used already'};
-    return {ok:true, why:''};
-  }
-
-  function abilityTargets(u){
-    const A = abilityOf(u); if(!A) return {tiles:new Set(), units:new Set(), kind:null};
-    const tiles=new Set(), units=new Set();
-    if(A.kind==='self'){ /* no targets */ }
-    else if(A.kind==='tile'){
-      for(let y=0;y<H;y++) for(let x=0;x<W;x++){
-        const d = Math.abs(u.x-x)+Math.abs(u.y-y); if(d<= (A.range||0)){
-          if(unitAt(x,y)) continue; // must be empty
-          if(!A.ignoreBlocks && isBlocked(x,y)) continue;
-          tiles.add(key(x,y));
+  function canReachEnemyContact(u, target, steps){
+    if(u.side===target.side) return false;
+    if(isRooted(u)) return false;
+    const visited = new Set([key(u.x,u.y)]);
+    const q=[{x:u.x,y:u.y,d:0}];
+    while(q.length){
+      const cur=q.shift();
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [dx,dy] of dirs){
+        const nx=cur.x+dx, ny=cur.y+dy;
+        if(!isInside(nx,ny)) continue;
+        const k=key(nx,ny);
+        if(visited.has(k)) continue;
+        const occ = getUnitAt(nx,ny);
+        const nd = cur.d+1;
+        if(nd>steps) continue;
+        if(occ && occ.id!==target.id) continue; // cannot move through others
+        if(occ && occ.id===target.id){
+          return true;
         }
+        visited.add(k);
+        q.push({x:nx,y:ny,d:nd});
       }
     }
-    else if(A.kind==='unitFriendly' || A.kind==='unitEnemy'){
-      const foes = (A.kind==='unitEnemy');
-      for(const t of state.units){
-        if((t.side!==u.side) !== foes) continue;
-        const d = Math.abs(u.x-t.x)+Math.abs(u.y-t.y); if(d<= (A.range||0)){
-          if(A.ignoreLoS){ units.add(t.id); }
-          else { if(u.x===t.x || u.y===t.y){ if(clearLine(u,t)) units.add(t.id); } }
-        }
-      }
-    }
-    return {tiles, units, kind:A.kind};
-  }
-
-  function useAbility(u, target){
-    const A = abilityOf(u); if(!A) return toast('No ability');
-    const check=canUseAbility(u); if(!check.ok) return toast(check.why);
-
-    switch(A.key){
-      case 'shieldwall':
-        u.armor = Math.min(3, (u.armor||0)+2);
-        spendAbility(u, `${label(u)} raises Shield Wall (+2 armor).`);
-        break;
-      case 'snipe':{
-        const t = target; if(!t) return toast('Pick a target');
-        damageUnit(u, t, A.dmg||2, 'sniped');
-        spendAbility(u, `${label(u)} used Snipe.`);
-        break;}
-      case 'rally':{
-        const t=target; if(!t) return toast('Pick a friendly');
-        t.bonusMove = (t.bonusMove||0) + (A.moveBonus||1);
-        t.armor = Math.max(t.armor||0, 1);
-        spendAbility(u, `${label(u)} rallied ${label(t)} (+${A.moveBonus||1} move, +1 armor).`);
-        break;}
-      case 'lunge':{
-        const t=target; if(!t) return toast('Pick an enemy');
-        const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:t.x+dx,y:t.y+dy}))
-          .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y));
-        spots.sort((a,b)=> (Math.abs(a.x-u.x)+Math.abs(a.y-u.y)) - (Math.abs(b.x-u.x)+Math.abs(b.y-u.y)) );
-        if(!spots.length) return toast('No space to lunge');
-        const spot=spots[0]; u.x=spot.x; u.y=spot.y; damageUnit(u,t, T(u).dmg, 'lunged');
-        spendAbility(u, `${label(u)} lunged adjacent and struck.`); render();
-        break;}
-      case 'chain':{
-        const t=target; if(!t) return toast('Pick an enemy');
-        damageUnit(u,t,1,'zapped');
-        const adj = state.units.filter(v=> v.side!==u.side && manhattan(v,t)===1).slice(0, A.chain||2);
-        for(const v of adj) damageUnit(u,v,1,'chained');
-        spendAbility(u, `${label(u)} unleashed Chain Lightning.`); render();
-        break;}
-      case 'bulwark':
-        u.armor = Math.min(3, (u.armor||0)+2); u.hp=Math.min(u.maxHp, u.hp+1);
-        spendAbility(u, `${label(u)} enters Bulwark (+2 armor, +1 HP).`);
-        break;
-      case 'blink':{
-        const tile = target; if(!tile) return toast('Pick a tile');
-        u.x=tile.x; u.y=tile.y; spendAbility(u, `${label(u)} blinked to (${u.x},${u.y}).`); render();
-        break;}
-      case 'haste':{
-        const t=target; if(!t) return toast('Pick a friendly');
-        t.bonusMove = (t.bonusMove||0) + (A.moveBonus||2);
-        spendAbility(u, `${label(u)} cast Haste on ${label(t)} (+${A.moveBonus||2} move).`);
-        break;}
-      case 'emp':{
-        const t=target; if(!t) return toast('Pick an enemy');
-        t.armor=0; t.silenced = Math.max(t.silenced||0, 1);
-        spendAbility(u, `${label(u)} EMP'ed ${label(t)} (armor stripped, silenced).`);
-        break;}
-      // Swarm
-      case 'acid':{
-        const tile=target; if(!tile) return;
-        state.hazards.set(key(tile.x,tile.y), {type:'acid', ttl:3});
-        spendAbility(u, `${label(u)} spread acid at (${tile.x},${tile.y}).`); render();
-        break;}
-      case 'smash':
-        u.nextAtkBonus = (u.nextAtkBonus||0) + 1; spendAbility(u, `${label(u)} readies a Smash (+1 next attack).`); break;
-      case 'mark':{
-        const t=target; if(!t) return; t.markedByA=2; spendAbility(u, `${label(u)} marked ${label(t)} (takes +1 from Swarm).`); break;}
-      case 'spawn':{
-        const tile=target; if(!tile) return; const tKey='dronelet';
-        state.units.push({id:id(), side:'A', tKey, x:tile.x, y:tile.y, hp:SWARM_TYPES[tKey].hp, maxHp:SWARM_TYPES[tKey].hp, armor:0, abilUses:0, silenced:0, nextAtkBonus:0, bonusMove:0, markedByA:0});
-        spendAbility(u, `${label(u)} spawned a Dronelet.`); render(); break;}
-      case 'leap':{
-        const tile=target; if(!tile) return; u.x=tile.x; u.y=tile.y; spendAbility(u, `${label(u)} leaped to (${u.x},${u.y}).`); render(); break;}
-      case 'silence':{
-        const t=target; if(!t) return; t.silenced = Math.max(t.silenced||0,1); spendAbility(u, `${label(u)} silenced ${label(t)}.`); break;}
-      case 'explode':{
-        const adj = state.units.filter(v=> manhattan(v,u)===1 && !(v.id===u.id));
-        for(const v of adj){ damageUnit(u,v,2,'exploded on'); }
-        state.units = state.units.filter(w=>w.id!==u.id);
-        spendAbility(u, `${label(u)} exploded!`); render(); break;}
-      default: toast('Ability not implemented'); return;
-    }
-  }
-
-  function spendAbility(u, msg){
-    u.abilUses = (u.abilUses||0) + 1; decSideAbilityLeft(u.side); pushLog(msg); state.orders--; // abilities cost an order
-    if(state.orders<=0) endTurn(); else updateHud();
-  }
-
-  function startOfTurn(){
-    if(state.turn==='P'){ state.abilityLeftP=2; } else { state.abilityLeftA=2; }
-    for(const u of state.units){
-      if(u.side===state.turn){ u.armor=0; u.abilUses=0; u.bonusMove=0; if(u.silenced>0) u.silenced--; }
-      if(u.markedByA>0){ u.markedByA--; }
-    }
-    const me = state.turn;
-    for(const f of state.flags){
-      const onMe = state.units.find(u=>u.side===me && u.x===f.x && u.y===f.y);
-      const onThem = state.units.find(u=>u.side!==me && u.x===f.x && u.y===f.y);
-      if(onMe && !onThem){ if(me==='P') f.bannersP++; else f.bannersA++; }
-    }
-    for(const [k,h] of Array.from(state.hazards.entries())){ h.ttl--; if(h.ttl<=0) state.hazards.delete(k); }
-  }
-
-  function spendOrder(msg){ state.orders--; pushLog(msg); if(state.orders<=0){ endTurn(); } else updateHud(); }
-
-  function endTurn(){
-    if(checkVictory(state.turn)) return;
-    state.turn = (state.turn==='P'?'A':'P');
-    if(state.turn==='P') state.round++;
-    state.orders=3; hintMode=null; hints.clear();
-    startOfTurn(); render();
-    if(state.turn==='A') setTimeout(aiTurn, 350);
-  }
-
-  function checkVictory(side){
-    const enemies = state.units.filter(u=>u.side!==side);
-    if(enemies.length===0){ return endLevel(side, `${sideName(side)} wins by elimination!`), true; }
-    const ctl = state.flags.filter(f=>{
-      const me = state.units.find(u=>u.side===side && u.x===f.x && u.y===f.y);
-      const them = state.units.find(u=>u.side!==side && u.x===f.x && u.y===f.y);
-      return !!me && !them;
-    });
-    const banners = (side==='P') ? (f=>f.bannersP) : (f=>f.bannersA);
-    if(ctl.filter(f=>banners(f)>0).length>=2){ return endLevel(side, `${sideName(side)} controls two bannered flags!`), true; }
     return false;
   }
 
-  function endLevel(winner, msg){
-    pushLog(msg); toast(msg);
-    if(winner==='P'){
-      window.maxLevelReached = Math.max(window.maxLevelReached || 1, state.level);
-      bestLevelEl.textContent = window.maxLevelReached;
-      const next = state.level+1;
-      setTimeout(()=> startCampaign(next), 900);
+  function contactTargets(u){
+    const def = pieceDef(u);
+    const res=[];
+    for(const v of state.units){
+      if(v.hp<=0 || v.side===u.side) continue;
+      if(canReachEnemyContact(u,v,def.move)) res.push(v);
+    }
+    return res;
+  }
+
+  function enemiesInRange(u, range){
+    return state.units.filter(v=>v.hp>0 && v.side!==u.side && manhattan(u,v)<=range);
+  }
+
+  // traps & knockback
+  function triggerTrapAt(u){
+    const idx = state.traps.findIndex(t=>t.x===u.x && t.y===u.y);
+    if(idx===-1) return;
+    state.traps.splice(idx,1);
+    u.hp -= 1;
+    u.rootUntil = state.now + 3.5;
+    state.animHit.add(u.id);
+    pushLog(`${pieceDef(u).name} stepped on a Void trap! -1 HP and rooted.`);
+    if(u.hp<=0){
+      pushLog(`${pieceDef(u).name} was destroyed by a trap.`);
+      checkKingsAlive();
+    }
+  }
+
+  function knockbackTarget(attacker,target){
+    if(target.hp<=0) return;
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    let best=null;
+    for(const [dx,dy] of dirs){
+      const nx=target.x+dx, ny=target.y+dy;
+      if(!isInside(nx,ny)) continue;
+      if(getUnitAt(nx,ny)) continue;
+      const dist = manhattan({x:nx,y:ny}, attacker);
+      if(!best || dist>best.dist) best={x:nx,y:ny,dist};
+    }
+    if(best){
+      target.x=best.x; target.y=best.y;
+      state.animHit.add(target.id);
+      triggerTrapAt(target);
+      pushLog(`${pieceDef(target).name} was knocked back.`);
     } else {
-      setTimeout(()=> startCampaign(1), 900);
+      // nowhere to go: crushed
+      target.hp=0;
+      state.animHit.add(target.id);
+      pushLog(`${pieceDef(target).name} had nowhere to go and was crushed.`);
+      checkKingsAlive();
     }
   }
 
-  function label(u){ return `${u.side==='P'?'P':'AI'} ${T(u).name}` }
-
-  // ===== Rendering =====
-  function render(){
-    world.style.width = (W*CELL+GAP) + 'px';
-    world.style.height= (H*CELL+GAP) + 'px';
-
-    gridEl.innerHTML='';
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
-        const cell=document.createElement('div');
-        cell.className='cell';
-        cell.dataset.x=x; cell.dataset.y=y;
-
-        if(state.terrain.has(key(x,y))){ const r=document.createElement('div'); r.className='rock'; cell.appendChild(r); }
-        const hz = hazardAt(x,y); if(hz){ const a=document.createElement('div'); a.className='acid'; cell.appendChild(a); }
-
-        const flag=getFlag(x,y);
-        if(flag){
-          const f=document.createElement('div'); f.className='flag'; f.style.background='linear-gradient(180deg, rgba(255,209,102,.18), transparent)';
-          cell.appendChild(f);
-          const bs=document.createElement('div'); bs.className='banner-stack';
-          for(let i=0;i<Math.min(flag.bannersP,3);i++){ const b=document.createElement('div'); b.className='banner p'; bs.appendChild(b); }
-          for(let i=0;i<Math.min(flag.bannersA,3);i++){ const b=document.createElement('div'); b.className='banner a'; bs.appendChild(b); }
-          cell.appendChild(bs);
-        }
-
-        const uHere = state.units.find(w=>w.x===x && w.y===y);
-
-        if(hintMode==='move' && hints.has(key(x,y))) cell.classList.add('hint-move');
-        if((hintMode==='attack' || hintMode==='ability') && uHere && hints.has(uHere.id)) {
-          cell.classList.add(hintMode==='attack' ? 'hint-attack' : 'hint-ability');
-        }
-        if(hintMode==='ability' && hints.has(key(x,y))) cell.classList.add('hint-ability');
-
-        if(uHere){
-          const wrap=document.createElement('div'); wrap.className='unit';
-
-          /* Floating label ABOVE the unit with allegiance + name + HP (plus badges if needed) */
-          const lab=document.createElement('div'); 
-          lab.className='unit-label';
-          // Flip label below if on top row to prevent clipping
-          if (y === 0) lab.classList.add('down');
-
-          const dot=document.createElement('span'); dot.className='dot ' + (uHere.side==='P'?'p':'a'); lab.appendChild(dot);
-
-          const name=document.createElement('span'); name.className='label-name'; name.textContent=T(uHere).name; lab.appendChild(name);
-
-          const sep=document.createElement('span'); sep.className='label-slim'; sep.textContent='•'; lab.appendChild(sep);
-
-          const side=document.createElement('span'); side.className='label-slim'; side.textContent = (uHere.side==='P' ? 'Ascendants' : 'Swarm'); lab.appendChild(side);
-
-          const sep2=document.createElement('span'); sep2.className='label-slim'; sep2.style.margin='0 2px'; sep2.textContent='•'; lab.appendChild(sep2);
-
-          const hp=document.createElement('span'); hp.textContent=`${uHere.hp}/${uHere.maxHp} HP`; lab.appendChild(hp);
-
-          if(uHere.armor>0){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Armor +${uHere.armor}`; lab.appendChild(bd); }
-          if(uHere.silenced>0){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Silenced`; lab.appendChild(bd); }
-          if(uHere.markedByA>0 && uHere.side==='P'){ const bd=document.createElement('span'); bd.className='badge'; bd.textContent=`Marked`; lab.appendChild(bd); }
-
-          wrap.appendChild(lab);
-
-          /* Emoji sits clear and bright in the center */
-          const em=document.createElement('div'); em.className='unit-emoji'; em.textContent= T(uHere).emoji; wrap.appendChild(em);
-
-          if(selectedId===uHere.id) cell.classList.add('sel');
-          cell.appendChild(wrap);
-        }
-
-        cell.onclick = onCellClick;
-        gridEl.appendChild(cell);
-      }
-    }
-    updateHud();
-    updateUnitPanel();
-    drawMinimap();
-  }
-
-  function updateHud(){
-    document.getElementById('turnWho').textContent = state.turn==='P'? 'Player':'AI';
-    document.getElementById('roundNum').textContent = state.round;
-    document.getElementById('ordersLeft').textContent = state.orders;
-    document.getElementById('abilitiesLeft').textContent = state.turn==='P'? state.abilityLeftP : state.abilityLeftA;
-    document.getElementById('level').textContent = state.level;
-
-    if(!selectedId){
-      helpbarEl.textContent = 'Select a unit (ally or enemy) to view its stats and ability. Use Q/W/E/R or the buttons to issue orders.';
-    } else if(hintMode==='move'){
-      helpbarEl.textContent = 'Move mode: click a teal tile to path there. Zones of Control (adjacent enemies) restrict chaining.';
-    } else if(hintMode==='attack'){
-      helpbarEl.textContent = 'Attack mode: click a red-outlined enemy in line. Melee needs adjacency; ranged requires clear line.';
-    } else if(hintMode==='ability'){
-      const u = state.units.find(x=>x.id===selectedId);
-      const A = u ? abilityOf(u) : null;
-      const what = A ? A.name : 'Ability';
-      helpbarEl.textContent = `Ability mode: ${what}. Click a highlighted target (${A?.kind||'target'}) within range.`;
-    } else {
-      helpbarEl.textContent = 'Select an action (Q/W/E/R) or click an option. Hover each card for a description.';
-    }
-  }
-
-  function updateUnitPanel(){
-    const u = state.units.find(x=>x.id===selectedId);
-    if(!u){
-      unitEmojiEl.textContent='⬚'; unitNameEl.textContent='No unit selected'; unitStatsEl.textContent='—'; abilityBtnsEl.innerHTML=''; abilityCard.style.display='none';
+  // ===== Hinting & clicks =====
+  function setHintMode(mode){
+    const u = state.units.find(x=>x.id===state.selectedId && x.hp>0);
+    if(!u || u.side!=='P'){
+      toast('Select one of your pieces first.');
       return;
     }
-    const Tu=T(u);
-    unitEmojiEl.textContent = Tu.emoji;
-    unitNameEl.textContent = `${Tu.name} ${u.side==='P'?'(You)':'(AI)'}`;
-    unitStatsEl.textContent = `HP ${u.hp}/${u.maxHp} • Move ${Tu.move + (u.bonusMove||0)} • Range ${Tu.range}` + (u.armor? ` • Armor ${u.armor}`:'' ) + (u.silenced? ' • Silenced':'' );
-
-    abilityBtnsEl.innerHTML='';
-    const A = abilityOf(u);
-    if(A){
-      const btn=document.createElement('button');
-      btn.className='ability-btn';
-      btn.textContent = `Use ${A.name} (E)`;
-      const can = canUseAbility(u);
-      if(!(u.side===state.turn && u.side==='P')) { btn.disabled=true; btn.title = 'Only your units can act on your turn'; }
-      else if(!can.ok){ btn.disabled=true; btn.title=can.why; }
-      btn.onclick = ()=>{ selectedId=u.id; setHint('ability'); };
-      abilityBtnsEl.appendChild(btn);
-
-      const {desc, meta} = abilityText(A, Tu.name);
-      abilityCard.style.display='';
-      abilityName.textContent = A.name;
-      abilityDesc.textContent = desc;
-      abilityMeta.innerHTML = '';
-      for(const m of meta) {
-        const span = document.createElement('span');
-        span.className='meta';
-        span.textContent = m;
-        abilityMeta.appendChild(span);
-      }
-    } else {
-      abilityCard.style.display='none';
-      const s=document.createElement('span'); s.className='pill'; s.textContent='— No ability —'; abilityBtnsEl.appendChild(s);
+    if(!state.running || state.winner) return;
+    if((mode==='move' || mode==='attack') && (state.now<u.nextMoveAt || isRooted(u))){
+      toast('Move/attack still cooling or rooted.');
+      return;
     }
-  }
-
-  // ===== Player Input =====
-  function setHint(mode){
-    if(!selectedId) { toast('Select a unit first'); return; }
-    hintMode=mode; hints.clear();
-    const u=state.units.find(x=>x.id===selectedId);
-    if(!u) return;
-
-    if(state.turn!=='P' || u.side!=='P'){
-      helpbarEl.textContent = 'You can only act with your units during your turn.';
-      render();
+    if(mode==='ability' && state.now<u.nextAbilityAt){
+      toast('Ability still cooling.');
       return;
     }
 
-    if(mode==='move') pathfindReach(u).forEach(k=>hints.add(k));
-    else if(mode==='attack') for(const t of attackables(u)) hints.add(t.id);
-    else if(mode==='ability'){
-      const A = abilityOf(u); if(!A){ toast('No ability'); return; }
-      const check=canUseAbility(u); if(!check.ok){ toast(check.why); return; }
-      const tgs = abilityTargets(u);
-      if(A.kind==='tile'){ tgs.tiles.forEach(k=>hints.add(k)); }
-      else if(A.kind==='unitFriendly' || A.kind==='unitEnemy'){ for(const id of tgs.units) hints.add(id); }
-      else { hints.add(key(u.x,u.y)); }
+    state.hintMode=mode;
+    state.hints.clear();
+    const def = pieceDef(u);
+
+    if(mode==='move'){
+      const reach = reachableTiles(u, def.move);
+      for(const k of reach) state.hints.add(k);
+    } else if(mode==='attack'){
+      const targets = contactTargets(u);
+      for(const t of targets) state.hints.add('id:'+t.id);
+    } else if(mode==='ability'){
+      abilityHints(u);
     }
     render();
   }
 
-  function onCellClick(e){
-    const x=+e.currentTarget.dataset.x, y=+e.currentTarget.dataset.y;
-    const u = unitAt(x,y);
+  function abilityHints(u){
+    const def = pieceDef(u);
+    const keyAb = def.abilityKey;
+    const r = 3;
 
-    // Resolve current action modes first
-    if(hintMode==='attack' && u && hints.has(u.id)){
-      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
-      if(me.side!==state.turn || me.side!=='P') return; performAttack(me,u); hints.clear(); hintMode=null; return;
+    if(keyAb==='order_aura' || keyAb==='chaos_quake'){
+      state.hints.add('id:'+u.id);
+    } else if(keyAb==='order_shield'){
+      const allies = state.units.filter(v=>v.hp>0 && v.side===u.side && v.id!==u.id && manhattan(u,v)===1);
+      for(const a of allies) state.hints.add('id:'+a.id);
+    } else if(keyAb==='order_volley'){
+      const foes = state.units.filter(v=>v.hp>0 && v.side!==u.side && (v.x===u.x || v.y===u.y) && manhattan(u,v)<=3);
+      for(const f of foes) state.hints.add('id:'+f.id);
+    } else if(keyAb==='order_swap'){
+      const allies = state.units.filter(v=>v.hp>0 && v.side===u.side && v.id!==u.id && manhattan(u,v)<=2);
+      for(const a of allies) state.hints.add('id:'+a.id);
+    } else if(keyAb==='chaos_blink' || keyAb==='chaos_backstab'){
+      const foes = enemiesInRange(u,2);
+      for(const f of foes) state.hints.add('id:'+f.id);
+    } else if(keyAb==='chaos_curse'){
+      const foes = enemiesInRange(u,2);
+      for(const f of foes) state.hints.add('id:'+f.id);
+    } else if(keyAb==='void_trapfield' || keyAb==='void_blast'){
+      for(let y=0;y<BOARD_H;y++){
+        for(let x=0;x<BOARD_W;x++){
+          if(manhattan(u,{x,y})<=r) state.hints.add(key(x,y));
+        }
+      }
+    } else if(keyAb==='void_root' || keyAb==='void_pull'){
+      const foes = enemiesInRange(u,3);
+      for(const f of foes) state.hints.add('id:'+f.id);
     }
-    if(hintMode==='move' && hints.has(key(x,y))){
-      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
-      if(me.side!==state.turn || me.side!=='P') return; performMove(me,x,y); hints.clear(); hintMode=null; return;
-    }
-    if(hintMode==='ability'){
-      const me = state.units.find(w=>w.id===selectedId); if(!me) return;
-      const A=abilityOf(me); if(!A) return;
-      if(A.kind==='tile' && hints.has(key(x,y))) { useAbility(me, {x,y}); hints.clear(); hintMode=null; return; }
-      if((A.kind==='unitFriendly' || A.kind==='unitEnemy') && u && hints.has(u.id)) { useAbility(me, u); hints.clear(); hintMode=null; return; }
-      if(A.kind==='self' && u && u.id===me.id){ useAbility(me, null); hints.clear(); hintMode=null; return; }
+  }
+
+  function onTileClick(e){
+    const x = +e.currentTarget.dataset.x;
+    const y = +e.currentTarget.dataset.y;
+    const u = getUnitAt(x,y);
+
+    const sel = state.units.find(w=>w.id===state.selectedId && w.hp>0);
+
+    if(sel && sel.side==='P' && state.running && !state.winner){
+      if(state.hintMode==='move' && state.hints.has(key(x,y))){
+        doMove(sel,x,y);
+        return;
+      }
+      if(state.hintMode==='attack' && u && state.hints.has('id:'+u.id)){
+        doAttack(sel,u);
+        return;
+      }
+      if(state.hintMode==='ability'){
+        resolveAbilityClick(sel,u,x,y);
+        return;
+      }
     }
 
-    // Always allow inspecting any unit (ally or enemy)
     if(u){
-      selectedId=u.id;
-      smartFocusOn(u); 
+      state.selectedId = u.id;
+      state.hintMode = null;
+      state.hints.clear();
       render();
+    }
+  }
+
+  // ===== Actions =====
+  function setMoveCooldown(u){
+    let duration = u.moveCool;
+    const def = pieceDef(u);
+    if(def.faction==='order'){
+      const alliesAdj = state.units.filter(v=>v.hp>0 && v.side===u.side && v.id!==u.id && manhattan(u,v)===1).length;
+      const mult = Math.max(0.6, 1 - alliesAdj*0.15);
+      duration *= mult;
+    }
+    u.nextMoveAt = state.now + duration;
+  }
+
+  function doMove(u,tx,ty){
+    if(state.now<u.nextMoveAt || isRooted(u)){
+      toast('Move still cooling or rooted.');
       return;
     }
-  }
-
-  // ===== Minimap =====
-  function drawMinimap(){
-    const kx = minimap.width / (W*CELL+GAP);
-    const ky = minimap.height/ (H*CELL+GAP);
-    mctx.clearRect(0,0,minimap.width,minimap.height);
-    // terrain
-    mctx.fillStyle = '#1e2a46';
-    state.terrain.forEach(k=>{ const [x,y]=k.split(',').map(Number); mctx.fillRect(x*CELL*kx, y*CELL*ky, TILE*kx, TILE*ky); });
-    // hazards
-    mctx.fillStyle = '#2fe85a';
-    for(const [k,h] of state.hazards.entries()){ const [x,y]=k.split(',').map(Number); mctx.fillRect(x*CELL*kx, y*CELL*ky, TILE*kx, TILE*ky); }
-    // flags
-    mctx.fillStyle = '#ffd166';
-    state.flags.forEach(f=>{ mctx.fillRect(f.x*CELL*kx, f.y*CELL*ky, TILE*kx, TILE*ky); });
-    // units
-    for(const u of state.units){
-      mctx.fillStyle = (u.side==='P')? '#67e8f9' : '#f87171';
-      mctx.fillRect(u.x*CELL*kx+1, u.y*CELL*ky+1, TILE*kx-2, TILE*ky-2);
+    if(getUnitAt(tx,ty)){
+      toast('Cannot move onto another piece (use Attack to land on them).');
+      return;
     }
-    // selected
-    const su = state.units.find(x=>x.id===selectedId);
-    if(su){ mctx.strokeStyle='#ffffff'; mctx.lineWidth=1; mctx.strokeRect(su.x*CELL*kx+0.5, su.y*CELL*ky+0.5, TILE*kx-1, TILE*ky-1); }
-    // viewport
-    const vx = (cam.x/zoom) * kx;
-    const vy = (cam.y/zoom) * ky;
-    const vw = (VIEW_W/zoom) * kx;
-    const vh = (VIEW_H/zoom) * ky;
-    mctx.strokeStyle = '#cfe3ff'; mctx.lineWidth = 2; mctx.strokeRect(vx, vy, vw, vh);
+    if(!reachableTiles(u, pieceDef(u).move).has(key(tx,ty))){
+      toast('Not reachable.');
+      return;
+    }
+    u.x=tx; u.y=ty;
+    triggerTrapAt(u);
+    state.animMove.add(u.id);
+    setMoveCooldown(u);
+    pushLog(`${sideName(u.side)} ${pieceDef(u).name} moved.`);
+    postAction();
   }
 
-  minimap.addEventListener('click', (e)=>{
-    const rect = minimap.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const kx = minimap.width / (W*CELL+GAP), ky = minimap.height/ (H*CELL+GAP);
-    const wx = mx / kx; const wy = my / ky;
-    const z = zoom;
-    setCamTarget(wx*z - VIEW_W/2, wy*z - VIEW_H/2);
-  });
+  function doAttack(attacker,target){
+    if(state.now<attacker.nextMoveAt || isRooted(attacker)){
+      toast('Attack still cooling or rooted.');
+      return;
+    }
+    const defA = pieceDef(attacker);
+    if(!canReachEnemyContact(attacker,target,defA.move)){
+      toast('Target not reachable by contact.');
+      return;
+    }
+
+    // Step onto target's tile
+    attacker.x = target.x;
+    attacker.y = target.y;
+
+    let dmg = defA.dmg + attacker.bonusDmg;
+    if(target.curseStacks>0) dmg += 1;
+    target.hp -= dmg;
+    attacker.bonusDmg = 0;
+    state.animMove.add(attacker.id);
+    state.animHit.add(target.id);
+    pushLog(`${sideName(attacker.side)} ${defA.name} slammed into ${pieceDef(target).name} for ${dmg}.`);
+    setMoveCooldown(attacker);
+
+    if(target.hp<=0){
+      pushLog(`${pieceDef(target).name} was destroyed.`);
+      checkKingsAlive();
+    } else {
+      knockbackTarget(attacker,target);
+    }
+
+    triggerTrapAt(attacker);
+    postAction();
+  }
+
+  function postAction(){
+    state.hintMode=null;
+    state.hints.clear();
+    render();
+  }
+
+  // ===== Abilities =====
+  function eachEnemyAround(u, radius, cb){
+    for(const v of state.units){
+      if(v.hp<=0 || v.side===u.side) continue;
+      if(manhattan(u,v)<=radius) cb(v);
+    }
+  }
+
+  function resolveAbilityClick(u,target,x,y){
+    const def = pieceDef(u);
+    const ak = def.abilityKey;
+    const now = state.now;
+    if(now<u.nextAbilityAt){
+      toast('Ability still cooling.');
+      return;
+    }
+
+    const tileK = key(x,y);
+
+    if(ak==='order_aura' && state.hints.has('id:'+u.id)){
+      abilityOrderAura(u);
+    } else if(ak==='order_shield' && target && state.hints.has('id:'+target.id)){
+      abilityOrderShield(u,target);
+    } else if(ak==='order_volley' && target && state.hints.has('id:'+target.id)){
+      abilityOrderVolley(u,target);
+    } else if(ak==='order_swap' && target && state.hints.has('id:'+target.id)){
+      abilityOrderSwap(u,target);
+    } else if(ak==='chaos_quake' && state.hints.has('id:'+u.id)){
+      abilityChaosQuake(u);
+    } else if(ak==='chaos_blink' && target && state.hints.has('id:'+target.id)){
+      abilityChaosBlink(u,target);
+    } else if(ak==='chaos_backstab' && target && state.hints.has('id:'+target.id)){
+      abilityChaosBackstab(u,target);
+    } else if(ak==='chaos_curse' && target && state.hints.has('id:'+target.id)){
+      abilityChaosCurse(u,target);
+    } else if(ak==='void_trapfield' && state.hints.has(tileK)){
+      abilityVoidTrapfield(u,{x,y});
+    } else if(ak==='void_root' && target && state.hints.has('id:'+target.id)){
+      abilityVoidRoot(u,target);
+    } else if(ak==='void_pull' && target && state.hints.has('id:'+target.id)){
+      abilityVoidPull(u,target);
+    } else if(ak==='void_blast' && state.hints.has(tileK)){
+      abilityVoidBlast(u,{x,y});
+    } else {
+      toast('Invalid ability target.');
+      return;
+    }
+    u.nextAbilityAt = now + u.abilityCool;
+    state.hintMode=null;
+    state.hints.clear();
+    render();
+  }
+
+  // ORDER
+  function abilityOrderAura(u){
+    const affected = state.units.filter(v=>v.hp>0 && v.side===u.side && manhattan(u,v)<=1);
+    for(const a of affected){
+      if(a===u) continue;
+      a.nextMoveAt = Math.max(state.now, a.nextMoveAt - 1.0);
+      state.animMove.add(a.id);
+    }
+    pushLog(`${sideName(u.side)} Order King pulsed an aura, speeding allies.`);
+  }
+
+  function abilityOrderShield(u,ally){
+    ally.hp = Math.min(ally.maxHp, ally.hp+1);
+    state.animMove.add(u.id);
+    pushLog(`${sideName(u.side)} Sentinel shielded ${pieceDef(ally).name} (+1 HP).`);
+  }
+
+  function abilityOrderVolley(u,primary){
+    const isCol = (primary.x===u.x);
+    const hits=[];
+    for(const v of state.units){
+      if(v.hp<=0 || v.side===u.side) continue;
+      if(isCol && v.x===u.x && Math.sign(v.y-u.y)===Math.sign(primary.y-u.y) && manhattan(u,v)<=3){
+        hits.push(v);
+      } else if(!isCol && v.y===u.y && Math.sign(v.x-u.x)===Math.sign(primary.x-u.x) && manhattan(u,v)<=3){
+        hits.push(v);
+      }
+    }
+    hits.sort((a,b)=>a.hp-b.hp);
+    const toHit=hits.slice(0,2);
+    for(const v of toHit){
+      let dmg = 1;
+      if(v.curseStacks>0) dmg +=1;
+      v.hp-=dmg;
+      state.animHit.add(v.id);
+      pushLog(`${sideName(u.side)} Sky Archer volley hit ${pieceDef(v).name} for ${dmg}.`);
+      if(v.hp<=0){
+        pushLog(`${pieceDef(v).name} was destroyed.`);
+      }
+    }
+    checkKingsAlive();
+  }
+
+  function abilityOrderSwap(u,ally){
+    const oldX=u.x, oldY=u.y;
+    u.x=ally.x; u.y=ally.y;
+    ally.x=oldX; ally.y=oldY;
+    state.animMove.add(u.id);
+    state.animMove.add(ally.id);
+    pushLog(`${sideName(u.side)} Circle Mage swapped with ${pieceDef(ally).name}.`);
+  }
+
+  // CHAOS
+  function abilityChaosQuake(u){
+    eachEnemyAround(u,2, v=>{
+      const rnd = 0.5 + Math.random()*1.5;
+      const newCd = v.moveCool * rnd;
+      v.nextMoveAt = state.now + newCd;
+      state.animHit.add(v.id);
+    });
+    pushLog(`${sideName(u.side)} Chaos King scrambled enemy rhythms.`);
+  }
+
+  function abilityChaosBlink(u,target){
+    const dy = (u.side==='P' ? -1 : 1);
+    const bx = target.x;
+    const by = target.y + dy;
+    if(isInside(bx,by) && !getUnitAt(bx,by)){
+      u.x=bx; u.y=by;
+    }
+    let dmg = pieceDef(u).dmg + 1;
+    if(target.curseStacks>0) dmg +=1;
+    target.hp-=dmg;
+    state.animMove.add(u.id);
+    state.animHit.add(target.id);
+    pushLog(`${sideName(u.side)} Warp Imp blinked and struck ${pieceDef(target).name} for ${dmg}.`);
+    if(target.hp<=0){
+      pushLog(`${pieceDef(target).name} was destroyed.`);
+      checkKingsAlive();
+    }
+  }
+
+  function abilityChaosBackstab(u,target){
+    let dmg = pieceDef(u).dmg + 1;
+    if(target.curseStacks>0) dmg +=1;
+    if((u.side==='P' && u.y<target.y) || (u.side==='AI' && u.y>target.y)){
+      dmg +=1;
+    }
+    target.hp-=dmg;
+    state.animHit.add(target.id);
+    pushLog(`${sideName(u.side)} Reaver backstabbed ${pieceDef(target).name} for ${dmg}.`);
+    if(target.hp<=0){
+      pushLog(`${pieceDef(target).name} was destroyed.`);
+      checkKingsAlive();
+    }
+  }
+
+  function abilityChaosCurse(u,target){
+    target.curseStacks +=2;
+    state.animHit.add(target.id);
+    pushLog(`${sideName(u.side)} Witch cursed ${pieceDef(target).name}; next 2 hits deal +1 damage.`);
+  }
+
+  // VOID
+  function abilityVoidTrapfield(u,tile){
+    state.traps.push({x:tile.x,y:tile.y});
+    pushLog(`${sideName(u.side)} Void King laid a trap at (${tile.x+1},${BOARD_H-tile.y}).`);
+  }
+
+  function abilityVoidRoot(u,target){
+    target.rootUntil = Math.max(target.rootUntil || 0, state.now + 4.0);
+    state.animHit.add(target.id);
+    pushLog(`${sideName(u.side)} Warden rooted ${pieceDef(target).name}.`);
+  }
+
+  function abilityVoidPull(u,target){
+    const dx = Math.sign(u.x - target.x);
+    const dy = Math.sign(u.y - target.y);
+    const nx = target.x + dx;
+    const ny = target.y + dy;
+    if(isInside(nx,ny) && !getUnitAt(nx,ny)){
+      target.x=nx; target.y=ny;
+      state.animHit.add(target.id);
+      pushLog(`${sideName(u.side)} Shade pulled ${pieceDef(target).name} closer.`);
+      triggerTrapAt(target);
+    }else{
+      pushLog(`${sideName(u.side)} Shade tried to pull ${pieceDef(target).name} but there was no space.`);
+    }
+  }
+
+  function abilityVoidBlast(u,tile){
+    const radius=1;
+    for(const v of state.units){
+      if(v.hp<=0 || v.side===u.side) continue;
+      if(Math.abs(v.x-tile.x)<=radius && Math.abs(v.y-tile.y)<=radius){
+        let dmg=1;
+        if(v.curseStacks>0) dmg +=1;
+        v.hp-=dmg;
+        state.animHit.add(v.id);
+        pushLog(`${sideName(u.side)} Null Orb blasted ${pieceDef(v).name} for ${dmg}.`);
+        if(v.hp<=0){
+          pushLog(`${pieceDef(v).name} was destroyed.`);
+        }
+      }
+    }
+    checkKingsAlive();
+  }
+
+  // ===== Check / kings =====
+  function sideName(side){ return side==='P'?'You':'AI'; }
+
+  function kingOf(side){
+    return state.units.find(u=>u.hp>0 && u.side===side && pieceDef(u).isKing);
+  }
+
+  function canPieceContactAttack(attacker,target){
+    const def = pieceDef(attacker);
+    return canReachEnemyContact(attacker,target,def.move);
+  }
+
+  function isKingInCheck(side){
+    const king = kingOf(side);
+    if(!king) return false;
+    const enemySide = (side==='P'?'AI':'P');
+    for(const u of state.units){
+      if(u.hp<=0 || u.side!==enemySide) continue;
+      if(canPieceContactAttack(u,king)) return true;
+    }
+    return false;
+  }
+
+  function updateCheckStatus(){
+    state.checkOnP = isKingInCheck('P');
+    state.checkOnAI= isKingInCheck('AI');
+  }
+
+  function checkKingsAlive(){
+    const kP = kingOf('P');
+    const kA = kingOf('AI');
+    if(!kP || kP.hp<=0){
+      endGame('AI','Your king was destroyed (checkmate-ish).');
+    }else if(!kA || kA.hp<=0){
+      endGame('P','AI king was destroyed (checkmate-ish).');
+    }
+  }
+
+  function endGame(winnerSide,msg){
+    if(state.winner) return;
+    state.running=false;
+    state.winner = winnerSide;
+    statusText.textContent = msg + ' Press Start for a new battle.';
+    pushLog(msg);
+    toast(msg);
+  }
 
   // ===== AI =====
-  function aiTurn(){
-    if(state.turn!=='A') return;
-    let orders=3;
+  function shouldAiUseAbility(u){
+    const def = pieceDef(u);
+    const ak = def.abilityKey;
+    const foes2 = enemiesInRange(u,2);
+    const foes3 = enemiesInRange(u,3);
 
-    function tryAbilityPlays(){
-      if(sideAbilityLeft('A')<=0) return false;
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='explode')){
-        if(u.silenced>0) continue;
-        const adjEnemies = state.units.filter(v=>v.side==='P' && manhattan(v,u)===1);
-        const wouldKill = adjEnemies.filter(v=> (v.hp <= 2));
-        if(wouldKill.length>=1){ useAbility(u,null); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='silence')){
-        if(u.silenced>0) continue;
-        const A=abilityOf(u); const cands = state.units.filter(v=> v.side==='P' && abilityOf(v) && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v));
-        const t = cands[0]; if(t){ useAbility(u,t); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='mark')){
-        if(u.silenced>0) continue; const A=abilityOf(u);
-        const cands = state.units.filter(v=> v.side==='P' && inRange(u,v,A.range) && (u.x===v.x || u.y===v.y) && clearLine(u,v) && isFlag(v.x,v.y));
-        const t = cands[0]; if(t){ useAbility(u,t); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='spawn')){
-        if(u.silenced>0) continue; const A=abilityOf(u);
-        const spots=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:u.x+dx,y:u.y+dy}))
-          .filter(p=>isOnBoard(p.x,p.y) && !unitAt(p.x,p.y) && !isBlocked(p.x,p.y) && inRange(u,p,A.range));
-        const nearFlag = spots.find(s=>isFlag(s.x,s.y));
-        if(nearFlag){ useAbility(u, nearFlag); return true; }
-        if(spots[0]){ useAbility(u, spots[0]); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='acid')){
-        if(u.silenced>0) continue; const A=abilityOf(u);
-        const targets = state.flags
-          .filter(f=> !state.units.some(v=>v.side==='A' && v.x===f.x && v.y===f.y))
-          .map(f=>({x:f.x,y:f.y}))
-          .filter(t=> inRange(u,t,A.range) && (u.x===t.x || u.y===t.y) && clearLine(u,t) && !unitAt(t.x,t.y));
-        if(targets[0]){ useAbility(u, targets[0]); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='leap')){
-        if(u.silenced>0) continue; const A=abilityOf(u);
-        const targets = state.flags.map(f=>({x:f.x,y:f.y}))
-          .filter(t=> inRange(u,t,A.range) && !unitAt(t.x,t.y));
-        if(targets[0]){ useAbility(u, targets[0]); return true; }
-      }
-      for(const u of state.units.filter(x=>x.side==='A' && abilityOf(x)?.key==='smash')){
-        if(u.silenced>0) continue; const adj = state.units.some(v=>v.side==='P' && manhattan(v,u)===1);
-        if(adj){ useAbility(u,null); return true; }
-      }
-      return false;
+    if(ak==='chaos_quake' || ak==='order_aura'){
+      return state.units.some(v=>v.hp>0 && manhattan(u,v)<=2 && v.side!==u.side);
     }
-
-    function doAttackIfPossible(){
-      const pairs=[];
-      for(const u of state.units.filter(x=>x.side==='A')){
-        const list=attackables(u);
-        for(const t of list){
-          const onFlag = !!getFlag(t.x,t.y);
-          const score=(onFlag?100:0) + (5 - t.hp) + (t.markedByA?1:0);
-          pairs.push({u,t, score});
-        }
-      }
-      if(pairs.length){ pairs.sort((a,b)=>b.score-a.score); const {u,t}=pairs[0]; performAttack(u,t); return true; }
-      return false;
+    if(ak==='chaos_backstab' || ak==='chaos_blink'){
+      return foes2.length>0;
     }
-
-    function moveTowardFlags(){
-      const targets = state.flags.filter(f=> !state.units.some(u=>u.side==='P' && u.x===f.x && u.y===f.y) );
-      if(!targets.length) return false;
-      let best=null;
-      for(const u of state.units.filter(x=>x.side==='A')){
-        const reach = Array.from(pathfindReach(u)).map(s=>s.split(',').map(Number)); if(!reach.length) continue;
-        const curDist = Math.min(...targets.map(f=>Math.abs(u.x-f.x)+Math.abs(u.y-f.y)));
-        for(const [tx,ty] of reach){
-          const nd = Math.min(...targets.map(f=>Math.abs(tx-f.x)+Math.abs(ty-f.y)));
-          const gain = curDist-nd; const score = gain*10 + (isFlag(tx,ty)?3:0);
-          if(!best || score>best.score) best={u,tx,ty,score};
-        }
-      }
-      if(best){ performMove(best.u,best.tx,best.ty); return true; }
-      return false;
+    if(ak==='chaos_curse' || ak==='void_root' || ak==='void_pull'){
+      return foes2.length>0;
     }
-
-    function fortifyOnFlags(){
-      const u = state.units.find(v=> v.side==='A' && isFlag(v.x,v.y));
-      if(u){ selectedId=u.id; performFortify(); return true; }
-      return false;
+    if(ak==='order_shield'){
+      return state.units.some(v=>v.hp>0 && v.side===u.side && v.id!==u.id && v.hp<v.maxHp && manhattan(u,v)===1);
     }
-
-    function defendWinning(){
-      const ours = state.flags.filter(f=> f.bannersA>0 && state.units.some(u=>u.side==='A' && u.x===f.x && u.y===f.y) && !state.units.some(u=>u.side==='P' && u.x===f.x && u.y===f.y));
-      if(ours.length>=2){ if(doAttackIfPossible()) return true; if(fortifyOnFlags()) return true; }
-      return false;
+    if(ak==='order_volley'){
+      return state.units.some(v=>v.hp>0 && v.side!==u.side && (v.x===u.x||v.y===u.y) && manhattan(u,v)<=3);
     }
-
-    function step(){
-      if(orders<=0 || state.turn!=='A') { if(state.turn==='A') endTurn(); return; }
-      if(defendWinning()) { orders--; return setTimeout(step, 200); }
-      if(tryAbilityPlays()) { orders--; return setTimeout(step, 200); }
-      if(doAttackIfPossible()) { orders--; return setTimeout(step, 200); }
-      if(moveTowardFlags()) { orders--; return setTimeout(step, 200); }
-      if(fortifyOnFlags()) { orders--; return setTimeout(step, 200); }
-      const pool=state.units.filter(u=>u.side==='A'); const u=pool[Math.floor(Math.random()*pool.length)]; selectedId=u.id; performFortify(); orders--; return setTimeout(step, 200);
+    if(ak==='order_swap'){
+      return state.units.some(v=>v.hp>0 && v.side===u.side && v.id!==u.id && pieceDef(v).isKing);
     }
-    step();
+    if(ak==='void_trapfield' || ak==='void_blast'){
+      return true;
+    }
+    return false;
   }
 
-  // ===== Logging & HUD =====
-  function pushLog(s){ state.log.unshift(s); logEl.innerHTML = state.log.slice(0,22).map(x=>`<p>• ${escapeHtml(x)}</p>`).join(''); }
-  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 1600); }
-  function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])) }
+  function aiUseAbility(u){
+    const def = pieceDef(u);
+    const ak = def.abilityKey;
+    const now = state.now;
+    if(now<u.nextAbilityAt) return;
 
-  // ===== Start =====
-  startCampaign(1);
+    const foes2 = enemiesInRange(u,2);
+    const foes3 = enemiesInRange(u,3);
+
+    if(ak==='order_aura'){
+      abilityOrderAura(u);
+    } else if(ak==='order_shield'){
+      const allies = state.units.filter(v=>v.hp>0 && v.side===u.side && v.id!==u.id && v.hp<v.maxHp && manhattan(u,v)===1);
+      if(!allies.length) return;
+      abilityOrderShield(u,allies[0]);
+    } else if(ak==='order_volley'){
+      const cands = state.units.filter(v=>v.hp>0 && v.side!==u.side && (v.x===u.x||v.y===u.y) && manhattan(u,v)<=3);
+      if(!cands.length) return;
+      cands.sort((a,b)=>a.hp-b.hp);
+      abilityOrderVolley(u,cands[0]);
+    } else if(ak==='order_swap'){
+      const allies = state.units.filter(v=>v.hp>0 && v.side===u.side && v.id!==u.id);
+      if(!allies.length) return;
+      allies.sort((a,b)=>(pieceDef(b).isKing?1:0)-(pieceDef(a).isKing?1:0));
+      abilityOrderSwap(u,allies[0]);
+    } else if(ak==='chaos_quake'){
+      abilityChaosQuake(u);
+    } else if(ak==='chaos_blink'){
+      if(!foes2.length) return;
+      foes2.sort((a,b)=>a.hp-b.hp);
+      abilityChaosBlink(u,foes2[0]);
+    } else if(ak==='chaos_backstab'){
+      const adj = enemiesInRange(u,1);
+      if(!adj.length) return;
+      adj.sort((a,b)=>a.hp-b.hp);
+      abilityChaosBackstab(u,adj[0]);
+    } else if(ak==='chaos_curse'){
+      if(!foes2.length) return;
+      foes2.sort((a,b)=>a.hp-b.hp);
+      abilityChaosCurse(u,foes2[0]);
+    } else if(ak==='void_trapfield'){
+      const kp = kingOf('P');
+      if(!kp) return;
+      let bestTile=null, bestScore=-1;
+      for(let y=0;y<BOARD_H;y++){
+        for(let x=0;x<BOARD_W;x++){
+          if(!getUnitAt(x,y) && manhattan(u,{x,y})<=3){
+            const d = manhattan({x,y},kp);
+            const score = 10 - d;
+            if(score>bestScore){ bestScore=score; bestTile={x,y}; }
+          }
+        }
+      }
+      if(bestTile) abilityVoidTrapfield(u,bestTile); else return;
+    } else if(ak==='void_root'){
+      if(!foes2.length) return;
+      foes2.sort((a,b)=>(pieceDef(b).isKing?1:0)-(pieceDef(a).isKing?1:0) || a.hp-b.hp);
+      abilityVoidRoot(u,foes2[0]);
+    } else if(ak==='void_pull'){
+      if(!foes3.length) return;
+      foes3.sort((a,b)=>a.hp-b.hp);
+      abilityVoidPull(u,foes3[0]);
+    } else if(ak==='void_blast'){
+      const kp = kingOf('P');
+      if(!kp) return;
+      abilityVoidBlast(u,{x:kp.x,y:kp.y});
+    } else return;
+
+    u.nextAbilityAt = now + u.abilityCool;
+  }
+
+  function aiStep(){
+    if(!state.running || state.winner) return;
+    const candidates = state.units.filter(u=>u.hp>0 && u.side==='AI' && state.now>=u.nextMoveAt && !isRooted(u));
+    if(!candidates.length) return;
+
+    const abUser = candidates.find(u=> state.now>=u.nextAbilityAt && shouldAiUseAbility(u));
+    if(abUser){
+      aiUseAbility(abUser);
+      return;
+    }
+
+    const attackChoices=[];
+    for(const u of candidates){
+      const targets = contactTargets(u);
+      for(const v of targets){
+        const score = (pieceDef(v).isKing?200:0) + (v.hp<=pieceDef(u).dmg+u.bonusDmg?50:0) + (3-v.hp);
+        attackChoices.push({u,v,score});
+      }
+    }
+    if(attackChoices.length){
+      attackChoices.sort((a,b)=>b.score-a.score);
+      const best=attackChoices[0];
+      doAttack(best.u,best.v);
+      return;
+    }
+
+    const kingP = kingOf('P');
+    if(!kingP) return;
+    let bestMove = null;
+    for(const u of candidates){
+      const def=pieceDef(u);
+      const tiles = reachableTiles(u, def.move);
+      for(const k of tiles){
+        const [tx,ty] = k.split(',').map(Number);
+        const distNow = manhattan(u,kingP);
+        const distNew = manhattan({x:tx,y:ty},kingP);
+        const gain = distNow - distNew;
+        const score = gain*10 + (pieceDef(u).isKing? -3:0);
+        if(!bestMove || score>bestMove.score){
+          bestMove = {u,tx,ty,score};
+        }
+      }
+    }
+    if(bestMove){
+      doMove(bestMove.u,bestMove.tx,bestMove.ty);
+    }
+  }
+
+  // ===== Logging & toast =====
+  function pushLog(msg){
+    const p=document.createElement('p');
+    p.textContent='• '+msg;
+    logEl.insertBefore(p,logEl.firstChild);
+    const max=60;
+    while(logEl.children.length>max) logEl.removeChild(logEl.lastChild);
+  }
+
+  function toast(msg){
+    const t=document.getElementById('toast');
+    t.textContent=msg;
+    t.style.display='block';
+    clearTimeout(t._h);
+    t._h=setTimeout(()=>{t.style.display='none';},1600);
+  }
+
+  // ===== Loop =====
+  let lastTime = performance.now();
+  function loop(nowMs){
+    const dt = (nowMs - lastTime)/1000;
+    lastTime = nowMs;
+    state.now += dt;
+
+    if(state.running && !state.winner){
+      if(state.now - state.lastAiAct >= state.aiInterval){
+        state.lastAiAct = state.now;
+        aiStep();
+      }
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  render();
 })();
-</script>
-
-<!-- Firebase (Compat SDKs for simple script usage) -->
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-<script>
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.firebasestorage.app",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
-  measurementId: "G-8PR6LVKSH3"
-};
-
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-
-// Hook up the "Save Highscore" button
-const saveBtn = document.getElementById('saveScore');
-const nameEl  = document.getElementById('playerName');
-const saveStatusEl = document.getElementById('saveStatus');
-
-saveBtn.addEventListener('click', async () => {
-  const name = (nameEl.value || '').trim() || 'Anonymous';
-  const level = window.maxLevelReached || 1;
-  saveStatusEl.style.display='inline-block';
-  saveStatusEl.textContent = 'Saving…';
-  try {
-    await firebase.database().ref('Flag').push({
-      name,
-      level,
-      timestamp: Date.now()
-    });
-    saveStatusEl.textContent = `Saved! ${name} — Level ${level}`;
-  } catch (err) {
-    saveStatusEl.textContent = 'Error: ' + (err?.message || err);
-  }
-});
 </script>
 </body>
 </html>
+
 
 
 
