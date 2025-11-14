@@ -459,7 +459,7 @@
     lastAiAct:0,
     selectedId:null,
     hintMode:null,   // 'auto', 'move', 'attack', 'ability'
-    hints:new Set(), // keys: "x,y" for tiles, "id:XYZ" for units
+    hints:new Set(), // keys: "x,y" or "id:XYZ"
     animMove:new Set(),
     animHit:new Set(),
     checkOnP:false,
@@ -472,7 +472,7 @@
   function pieceDef(u){ return PIECES[u.tKey]; }
   function getUnitAt(x,y){ return state.units.find(u=>u.hp>0 && u.x===x && u.y===y); }
 
-  // ===== Faction selection =====
+  // ==== Faction selection ====
   function setFaction(f){
     state.factionP = f;
     const all = ['order','chaos','void'];
@@ -503,7 +503,7 @@
       `You: ${state.factionP.toUpperCase()} · AI: ${state.factionAI.toUpperCase()} · Difficulty: ${state.difficulty}`;
   }
 
-  // ===== Game start =====
+  // ==== Game start ====
   btnStart.onclick = ()=> startGame();
 
   function spawnUnit(side,tKey,x,y){
@@ -519,7 +519,7 @@
       bonusDmg:0,
       moveCool:def.moveCool,
       abilityCool:def.abilityCool,
-      // start with bars empty: must "load" before the first move/ability
+      // Start with bars empty → must "load" before first move/ability
       nextMoveAt:def.moveCool,
       nextAbilityAt:def.abilityCool,
       curseStacks:0,
@@ -565,7 +565,7 @@
     render();
   }
 
-  // ===== Rendering =====
+  // ==== Rendering ====
   function cooldownRatio(now, nextAt, cool){
     if(cool<=0) return 1;
     if(now>=nextAt) return 1;
@@ -686,7 +686,7 @@
     else checkInfo.textContent = 'Check: mutual chaos?!';
   }
 
-  // ===== UI / panel =====
+  // ==== UI / panel ====
   function updateUnitPanel(){
     const u = state.units.find(x=>x.id===state.selectedId && x.hp>0);
     if(!u){
@@ -707,27 +707,25 @@
     unitStats.textContent =
       `HP ${u.hp}/${u.maxHp} • Dmg ${u.dmg + u.bonusDmg} • Stride ${def.move} · ${def.desc}`;
 
-    btnMove.disabled   = !(u.side==='P' && moveReady && state.running && !state.winner);
-    btnAttack.disabled = !(u.side==='P' && moveReady && state.running && !state.winner);
-    btnAbility.disabled= !(u.side==='P' && abReady   && state.running && !state.winner);
+    btnMove.disabled   = !(u.side==='P' && state.running && !state.winner);
+    btnAttack.disabled = !(u.side==='P' && state.running && !state.winner);
+    btnAbility.disabled= !(u.side==='P' && state.running && !state.winner);
 
-    btnMove.textContent   = moveReady ? 'Move (telegraph)' : 'Move (cooling / rooted)';
-    btnAttack.textContent = moveReady ? 'Attack (contact)' : 'Attack (cooling / rooted)';
-    btnAbility.textContent= abReady ? 'Ability' : 'Ability (cooling)';
+    btnMove.textContent   = moveReady ? 'Move (telegraph)' : 'Move (charging…)';
+    btnAttack.textContent = moveReady ? 'Attack (contact)' : 'Attack (charging…)';
+    btnAbility.textContent= abReady ? 'Ability' : 'Ability (charging…)';
   }
 
-  // tap-based default telegraph
+  // NEW: always telegraph when you tap a friendly piece, even if cooldown isn’t done
   function autoTelegraph(u){
-    if(!u || u.side!=='P' || !state.running || state.winner) return;
+    if(!u || u.side!=='P') return;
     state.hintMode='auto';
     state.hints.clear();
     const def = pieceDef(u);
-    if(state.now>=u.nextMoveAt && !isRooted(u)){
-      const reach = reachableTiles(u,def.move);
-      for(const k of reach) state.hints.add(k);
-      const targets = contactTargets(u);
-      for(const t of targets) state.hints.add('id:'+t.id);
-    }
+    const reach = reachableTiles(u,def.move);
+    for(const k of reach) state.hints.add(k);
+    const targets = contactTargets(u);
+    for(const t of targets) state.hints.add('id:'+t.id);
   }
 
   function selectUnit(u){
@@ -739,9 +737,9 @@
       return;
     }
     state.selectedId = u.id;
-    if(u.side==='P' && state.running && !state.winner){
+    if(u.side==='P'){
       autoTelegraph(u);
-    }else{
+    } else {
       state.hintMode=null;
       state.hints.clear();
     }
@@ -752,12 +750,11 @@
   btnAttack.onclick = ()=> setHintMode('attack');
   btnAbility.onclick= ()=> setHintMode('ability');
 
-  // ===== Movement / targeting helpers =====
+  // ==== Movement / targeting ====
   function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
   function isRooted(u){ return state.now < (u.rootUntil || 0); }
 
   function reachableTiles(u, steps){
-    if(isRooted(u)) return new Set();
     const visited = new Set([key(u.x,u.y)]);
     const q=[{x:u.x,y:u.y,d:0}];
     const res=new Set();
@@ -782,7 +779,6 @@
 
   function canReachEnemyContact(u, target, steps){
     if(u.side===target.side) return false;
-    if(isRooted(u)) return false;
     const visited = new Set([key(u.x,u.y)]);
     const q=[{x:u.x,y:u.y,d:0}];
     while(q.length){
@@ -860,7 +856,7 @@
     }
   }
 
-  // ===== Hint mode from buttons (optional) =====
+  // ==== Hint mode from buttons ====
   function setHintMode(mode){
     const u = state.units.find(x=>x.id===state.selectedId && x.hp>0);
     if(!u || u.side!=='P'){
@@ -871,8 +867,7 @@
 
     if(mode==='move' || mode==='attack'){
       if(state.now<u.nextMoveAt || isRooted(u)){
-        toast('Move/attack still cooling or rooted.');
-        return;
+        toast('Move/attack still cooling or rooted — you can see range but must wait.');
       }
       state.hintMode=mode;
       state.hints.clear();
@@ -887,8 +882,7 @@
       render();
     } else if(mode==='ability'){
       if(state.now<u.nextAbilityAt){
-        toast('Ability still cooling.');
-        return;
+        toast('Ability still cooling — you can see targets but must wait.');
       }
       state.hintMode='ability';
       state.hints.clear();
@@ -897,7 +891,7 @@
     }
   }
 
-  // ===== Ability hinting =====
+  // ==== Ability hinting ====
   function abilityHints(u){
     const def = pieceDef(u);
     const keyAb = def.abilityKey;
@@ -932,20 +926,20 @@
     }
   }
 
-  // ===== Click handling =====
+  // ==== Click handling ====
   function onTileClick(e){
     const x = +e.currentTarget.dataset.x;
     const y = +e.currentTarget.dataset.y;
     const u = getUnitAt(x,y);
     const sel = state.units.find(w=>w.id===state.selectedId && w.hp>0);
 
-    // If we're in ability mode, resolve that first
+    // Ability targeting first
     if(state.hintMode==='ability' && sel && sel.side==='P' && state.running && !state.winner){
       resolveAbilityClick(sel,u,x,y);
       return;
     }
 
-    // If we have a selected piece with hints, treat tap on hint as action
+    // If we have a selected piece with hints, treat click on hints as action
     if(sel && sel.side==='P' && state.running && !state.winner &&
        (state.hintMode==='auto' || state.hintMode==='move' || state.hintMode==='attack')){
       const enemyHit = u && state.hints.has('id:'+u.id);
@@ -968,7 +962,7 @@
     }
   }
 
-  // ===== Actions =====
+  // ==== Actions ====
   function setMoveCooldown(u){
     let duration = u.moveCool;
     const def = pieceDef(u);
@@ -1041,7 +1035,7 @@
     render();
   }
 
-  // ===== Abilities =====
+  // ==== Abilities (same as before) ====
   function eachEnemyAround(u, radius, cb){
     for(const v of state.units){
       if(v.hp<=0 || v.side===u.side) continue;
@@ -1242,7 +1236,7 @@
     checkKingsAlive();
   }
 
-  // ===== Check / kings =====
+  // ==== Check / kings ====
   function sideName(side){ return side==='P'?'You':'AI'; }
 
   function kingOf(side){
@@ -1289,7 +1283,7 @@
     toast(msg);
   }
 
-  // ===== AI =====
+  // ==== AI ====
   function shouldAiUseAbility(u){
     const def = pieceDef(u);
     const ak = def.abilityKey;
@@ -1439,7 +1433,7 @@
     }
   }
 
-  // ===== Logging & toast =====
+  // ==== Logging & toast ====
   function pushLog(msg){
     const p=document.createElement('p');
     p.textContent='• '+msg;
@@ -1456,7 +1450,7 @@
     t._h=setTimeout(()=>{t.style.display='none';},1600);
   }
 
-  // ===== Loop =====
+  // ==== Loop ====
   let lastTime = performance.now();
   function loop(nowMs){
     const dt = (nowMs - lastTime)/1000;
@@ -1477,8 +1471,10 @@
   render();
 })();
 </script>
+
 </body>
 </html>
+
 
 
 
