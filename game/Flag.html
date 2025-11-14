@@ -297,8 +297,8 @@
       </div>
       <div class="unit-stats" id="unitStats">—</div>
       <div class="action-btns">
-        <button id="btnMove">Move</button>
-        <button id="btnAttack">Attack</button>
+        <button id="btnMove">Move (telegraph)</button>
+        <button id="btnAttack">Attack (contact)</button>
         <button id="btnAbility">Ability</button>
       </div>
     </div>
@@ -309,10 +309,13 @@
         <li>Pick your <b>Faction</b> and <b>AI Difficulty</b>, then press Start.</li>
         <li>Each side has a <b>King</b> (♔ / ♚ / ♛ + icon). If your king dies, you lose.</li>
         <li>Pieces move in straight <b>orthogonal directions only</b> (no diagonals).</li>
-        <li><b>Normal attacks are contact-only:</b> you must move onto an enemy’s tile to hit it.</li>
+        <li><b>Tap a piece</b> to see its telegraph:
+          teal = move tiles, red = enemies you can slam.</li>
+        <li>Tap a teal tile to move there, or a red enemy to contact-attack.</li>
         <li>If the enemy survives (HP &gt; 0), it gets <b>knocked</b> to a nearby open tile instead.</li>
         <li>Only <b>abilities</b> can hit at range or affect areas.</li>
-        <li>Bars above pieces: <span style="color:#22d3ee">teal</span> = move/attack cooldown, <span style="color:#facc15">gold</span> = ability cooldown.</li>
+        <li>Bars above pieces: <span style="color:#22d3ee">teal</span> = move/attack cooldown, <span style="color:#facc15">gold</span> = ability cooldown.  
+            Everyone starts with empty bars and must “load” before the first move.</li>
       </ul>
     </div>
 
@@ -335,7 +338,7 @@
       name:'Order King', emoji:'♔', hp:3, dmg:1, move:1,
       moveCool:2.2, abilityCool:8.0,
       abilityKey:'order_aura', faction:'order', isKing:true,
-      desc:'Order: adjacent allies share rhythm. Normal attack = step onto an enemy; survivors get knocked away. Ability: pulse that speeds nearby allies.'
+      desc:'Order: adjacent allies share rhythm. Contact attack = step onto an enemy; survivors get knocked away. Ability: pulse that speeds nearby allies.'
     },
     order_guard: {
       name:'Sentinel', emoji:'🛡️', hp:3, dmg:1, move:1,
@@ -455,8 +458,8 @@
     aiInterval:0.8,
     lastAiAct:0,
     selectedId:null,
-    hintMode:null,
-    hints:new Set(),
+    hintMode:null,   // 'auto', 'move', 'attack', 'ability'
+    hints:new Set(), // keys: "x,y" for tiles, "id:XYZ" for units
     animMove:new Set(),
     animHit:new Set(),
     checkOnP:false,
@@ -477,13 +480,13 @@
     state.factionAI = remaining[Math.floor(Math.random()*remaining.length)];
     btnOrder.classList.toggle('active', f==='order');
     btnChaos.classList.toggle('active', f==='chaos');
-    btnVoid.classList.toggle('active',  f==='void');
+    btnVoid .classList.toggle('active', f==='void');
     pushStatus();
   }
 
   btnOrder.onclick = ()=> setFaction('order');
   btnChaos.onclick = ()=> setFaction('chaos');
-  btnVoid.onclick  = ()=> setFaction('void');
+  btnVoid .onclick = ()=> setFaction('void');
 
   diffSel.onchange = ()=>{
     state.difficulty = diffSel.value;
@@ -496,7 +499,8 @@
       statusText.textContent = 'Pick a faction & difficulty, then Start.';
       return;
     }
-    statusText.textContent = `You: ${state.factionP.toUpperCase()} · AI: ${state.factionAI.toUpperCase()} · Difficulty: ${state.difficulty}`;
+    statusText.textContent =
+      `You: ${state.factionP.toUpperCase()} · AI: ${state.factionAI.toUpperCase()} · Difficulty: ${state.difficulty}`;
   }
 
   // ===== Game start =====
@@ -515,8 +519,9 @@
       bonusDmg:0,
       moveCool:def.moveCool,
       abilityCool:def.abilityCool,
-      nextMoveAt:0,
-      nextAbilityAt:def.abilityCool*0.5,
+      // start with bars empty: must "load" before the first move/ability
+      nextMoveAt:def.moveCool,
+      nextAbilityAt:def.abilityCool,
       curseStacks:0,
       rootUntil:0
     });
@@ -584,24 +589,26 @@
           tile.classList.add('trap');
         }
 
-        const u = getUnitAt(x,y);
-
+        const uHere = getUnitAt(x,y);
         const k = key(x,y);
-        if(state.hintMode==='move' && state.hints.has(k)){
+        const hm = state.hintMode;
+
+        if((hm==='move' || hm==='auto') && state.hints.has(k)){
           tile.classList.add('move-ok');
         }
-        if(state.hintMode==='attack' && u && state.hints.has('id:'+u.id)){
+        if((hm==='attack' || hm==='auto' || hm==='ability') && uHere && state.hints.has('id:'+uHere.id)){
           tile.classList.add('attack-ok');
         }
-        if(state.hintMode==='ability' && (state.hints.has(k) || (u && state.hints.has('id:'+u.id)))){
-          tile.classList.add(u ? 'attack-ok' : 'move-ok');
+        if(hm==='ability' && state.hints.has(k)){
+          tile.classList.add('move-ok');
         }
 
-        if(u && state.selectedId===u.id){
+        if(uHere && state.selectedId===uHere.id){
           tile.classList.add('sel');
         }
 
-        if(u){
+        if(uHere){
+          const u = uHere;
           const def = pieceDef(u);
           const cdMoveRatio = cooldownRatio(now, u.nextMoveAt, u.moveCool);
           const cdAbRatio   = cooldownRatio(now, u.nextAbilityAt, u.abilityCool);
@@ -704,14 +711,46 @@
     btnAttack.disabled = !(u.side==='P' && moveReady && state.running && !state.winner);
     btnAbility.disabled= !(u.side==='P' && abReady   && state.running && !state.winner);
 
-    btnMove.textContent   = moveReady ? 'Move' : 'Move (cooling / rooted)';
+    btnMove.textContent   = moveReady ? 'Move (telegraph)' : 'Move (cooling / rooted)';
     btnAttack.textContent = moveReady ? 'Attack (contact)' : 'Attack (cooling / rooted)';
     btnAbility.textContent= abReady ? 'Ability' : 'Ability (cooling)';
   }
 
-  btnMove.onclick = ()=> setHintMode('move');
+  // tap-based default telegraph
+  function autoTelegraph(u){
+    if(!u || u.side!=='P' || !state.running || state.winner) return;
+    state.hintMode='auto';
+    state.hints.clear();
+    const def = pieceDef(u);
+    if(state.now>=u.nextMoveAt && !isRooted(u)){
+      const reach = reachableTiles(u,def.move);
+      for(const k of reach) state.hints.add(k);
+      const targets = contactTargets(u);
+      for(const t of targets) state.hints.add('id:'+t.id);
+    }
+  }
+
+  function selectUnit(u){
+    if(!u){
+      state.selectedId=null;
+      state.hintMode=null;
+      state.hints.clear();
+      render();
+      return;
+    }
+    state.selectedId = u.id;
+    if(u.side==='P' && state.running && !state.winner){
+      autoTelegraph(u);
+    }else{
+      state.hintMode=null;
+      state.hints.clear();
+    }
+    render();
+  }
+
+  btnMove.onclick   = ()=> setHintMode('move');
   btnAttack.onclick = ()=> setHintMode('attack');
-  btnAbility.onclick = ()=> setHintMode('ability');
+  btnAbility.onclick= ()=> setHintMode('ability');
 
   // ===== Movement / targeting helpers =====
   function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
@@ -757,7 +796,7 @@
         const occ = getUnitAt(nx,ny);
         const nd = cur.d+1;
         if(nd>steps) continue;
-        if(occ && occ.id!==target.id) continue; // cannot move through others
+        if(occ && occ.id!==target.id) continue;
         if(occ && occ.id===target.id){
           return true;
         }
@@ -814,7 +853,6 @@
       triggerTrapAt(target);
       pushLog(`${pieceDef(target).name} was knocked back.`);
     } else {
-      // nowhere to go: crushed
       target.hp=0;
       state.animHit.add(target.id);
       pushLog(`${pieceDef(target).name} had nowhere to go and was crushed.`);
@@ -822,7 +860,7 @@
     }
   }
 
-  // ===== Hinting & clicks =====
+  // ===== Hint mode from buttons (optional) =====
   function setHintMode(mode){
     const u = state.units.find(x=>x.id===state.selectedId && x.hp>0);
     if(!u || u.side!=='P'){
@@ -830,31 +868,36 @@
       return;
     }
     if(!state.running || state.winner) return;
-    if((mode==='move' || mode==='attack') && (state.now<u.nextMoveAt || isRooted(u))){
-      toast('Move/attack still cooling or rooted.');
-      return;
-    }
-    if(mode==='ability' && state.now<u.nextAbilityAt){
-      toast('Ability still cooling.');
-      return;
-    }
 
-    state.hintMode=mode;
-    state.hints.clear();
-    const def = pieceDef(u);
-
-    if(mode==='move'){
-      const reach = reachableTiles(u, def.move);
-      for(const k of reach) state.hints.add(k);
-    } else if(mode==='attack'){
-      const targets = contactTargets(u);
-      for(const t of targets) state.hints.add('id:'+t.id);
+    if(mode==='move' || mode==='attack'){
+      if(state.now<u.nextMoveAt || isRooted(u)){
+        toast('Move/attack still cooling or rooted.');
+        return;
+      }
+      state.hintMode=mode;
+      state.hints.clear();
+      const def=pieceDef(u);
+      if(mode==='move'){
+        const reach = reachableTiles(u,def.move);
+        for(const k of reach) state.hints.add(k);
+      } else {
+        const targets = contactTargets(u);
+        for(const t of targets) state.hints.add('id:'+t.id);
+      }
+      render();
     } else if(mode==='ability'){
+      if(state.now<u.nextAbilityAt){
+        toast('Ability still cooling.');
+        return;
+      }
+      state.hintMode='ability';
+      state.hints.clear();
       abilityHints(u);
+      render();
     }
-    render();
   }
 
+  // ===== Ability hinting =====
   function abilityHints(u){
     const def = pieceDef(u);
     const keyAb = def.abilityKey;
@@ -889,33 +932,39 @@
     }
   }
 
+  // ===== Click handling =====
   function onTileClick(e){
     const x = +e.currentTarget.dataset.x;
     const y = +e.currentTarget.dataset.y;
     const u = getUnitAt(x,y);
-
     const sel = state.units.find(w=>w.id===state.selectedId && w.hp>0);
 
-    if(sel && sel.side==='P' && state.running && !state.winner){
-      if(state.hintMode==='move' && state.hints.has(key(x,y))){
-        doMove(sel,x,y);
-        return;
-      }
-      if(state.hintMode==='attack' && u && state.hints.has('id:'+u.id)){
+    // If we're in ability mode, resolve that first
+    if(state.hintMode==='ability' && sel && sel.side==='P' && state.running && !state.winner){
+      resolveAbilityClick(sel,u,x,y);
+      return;
+    }
+
+    // If we have a selected piece with hints, treat tap on hint as action
+    if(sel && sel.side==='P' && state.running && !state.winner &&
+       (state.hintMode==='auto' || state.hintMode==='move' || state.hintMode==='attack')){
+      const enemyHit = u && state.hints.has('id:'+u.id);
+      const tileHit  = state.hints.has(key(x,y));
+
+      if(enemyHit){
         doAttack(sel,u);
         return;
-      }
-      if(state.hintMode==='ability'){
-        resolveAbilityClick(sel,u,x,y);
+      } else if(tileHit && !getUnitAt(x,y)){
+        doMove(sel,x,y);
         return;
       }
     }
 
+    // Otherwise, update selection
     if(u){
-      state.selectedId = u.id;
-      state.hintMode = null;
-      state.hints.clear();
-      render();
+      selectUnit(u);
+    } else {
+      selectUnit(null);
     }
   }
 
@@ -937,7 +986,7 @@
       return;
     }
     if(getUnitAt(tx,ty)){
-      toast('Cannot move onto another piece (use Attack to land on them).');
+      toast('Cannot move onto another piece (tap enemy to attack instead).');
       return;
     }
     if(!reachableTiles(u, pieceDef(u).move).has(key(tx,ty))){
@@ -963,7 +1012,6 @@
       return;
     }
 
-    // Step onto target's tile
     attacker.x = target.x;
     attacker.y = target.y;
 
@@ -1046,7 +1094,7 @@
     render();
   }
 
-  // ORDER
+  // ORDER abilities
   function abilityOrderAura(u){
     const affected = state.units.filter(v=>v.hp>0 && v.side===u.side && manhattan(u,v)<=1);
     for(const a of affected){
@@ -1098,7 +1146,7 @@
     pushLog(`${sideName(u.side)} Circle Mage swapped with ${pieceDef(ally).name}.`);
   }
 
-  // CHAOS
+  // CHAOS abilities
   function abilityChaosQuake(u){
     eachEnemyAround(u,2, v=>{
       const rnd = 0.5 + Math.random()*1.5;
@@ -1149,7 +1197,7 @@
     pushLog(`${sideName(u.side)} Witch cursed ${pieceDef(target).name}; next 2 hits deal +1 damage.`);
   }
 
-  // VOID
+  // VOID abilities
   function abilityVoidTrapfield(u,tile){
     state.traps.push({x:tile.x,y:tile.y});
     pushLog(`${sideName(u.side)} Void King laid a trap at (${tile.x+1},${BOARD_H-tile.y}).`);
@@ -1431,6 +1479,8 @@
 </script>
 </body>
 </html>
+
+
 
 
 
