@@ -6,14 +6,13 @@
 <title>Dutch Blitz — Arena (Realtime, Auto-Fit + Fixed Discard/Reshuffle)</title>
 <style>
   :root{
-    --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
+    --bg:#020617; --panel:#020819; --ink:#e6efff; --muted:#a8b3c7; --edge:#26334f; --accent:#8b5cf6;
     --y:#facc15; --o:#fb923c; --g:#22c55e; --b:#60a5fa;
     --gap: clamp(6px, 1vw, 12px);
     --cardW: clamp(118px, 36vw, 220px);
     --cardH: clamp(58px, 18vw, 98px);
     --radius: 12px;
 
-    /* Center piles (base; then whole stage is auto-scaled) */
     --pileSize: 64px;
     --pileGap: 8px;
   }
@@ -21,10 +20,13 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   html, body{
-    margin:0;background:var(--bg);color:var(--ink);
+    margin:0;
+    background:
+      radial-gradient(circle at top,#0b1120 0,#020617 55%);
+    color:var(--ink);
     font-family:system-ui,Segoe UI,Roboto,Arial;
     -webkit-tap-highlight-color: transparent;
-    overflow:hidden;             /* no page scroll */
+    overflow:hidden;
     overscroll-behavior:none;
   }
 
@@ -38,13 +40,14 @@
     width:100%; height:100%;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden;
+    padding:4px;
   }
   #stage{ transform-origin: top center; will-change: transform; }
 
   /* ===== Stage layout (natural size; then auto-scaled) ===== */
   #screen{
     display:grid;
-    grid-template-rows: auto auto 1fr auto;  /* HUD, Store, Center, Bottom */
+    grid-template-rows: auto auto 1fr auto;
     gap: var(--gap);
     padding: var(--gap);
     max-width: 820px;
@@ -55,49 +58,65 @@
   #hud{
     display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center;
     padding:10px 12px;
-    background:linear-gradient(180deg, rgba(15,23,42,.9), rgba(14,21,35,.9));
-    border:1px solid #24324c; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.34);
-    backdrop-filter: blur(3px);
+    background:linear-gradient(180deg, rgba(15,23,42,.96), rgba(2,6,23,.96));
+    border:1px solid #1f2937; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.6);
+    backdrop-filter: blur(4px);
   }
   .hudRow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center}
   .stat{
     display:inline-flex;align-items:center;gap:6px;
-    background:#0c1423;border:1px solid #1d2840;border-radius:999px;
+    background:#020617;border:1px solid #1e293b;border-radius:999px;
     padding:6px 10px; min-width:80px; justify-content:center;
   }
   .stat .val{font-weight:900;font-size:16px;line-height:1}
   .stat .lbl{font-size:10px;color:#a9b6cc;letter-spacing:.3px;text-transform:uppercase}
   .timerRow{display:flex; gap:10px; align-items:center; width:100%; max-width:560px}
-  .timerbar{height:10px;background:#0c1423;border:1px solid #17223a;border-radius:999px;overflow:hidden;flex:1}
-  .timerbar>div{height:100%;background:var(--accent);width:0%}
+  .timerbar{
+    height:10px;background:#020617;border:1px solid #17223a;border-radius:999px;overflow:hidden;flex:1;
+    box-shadow:0 0 0 1px rgba(15,23,42,.8),0 0 18px rgba(139,92,246,.25) inset;
+  }
+  .timerbar>div{
+    height:100%;
+    background:linear-gradient(90deg,#22c55e,#8b5cf6,#f97316);
+    width:0%;
+  }
   .tickLbl{font-weight:800; font-size:12px; opacity:.9; min-width:62px; text-align:right}
 
   #playersMini{display:flex; gap:6px; flex-wrap:nowrap; overflow:hidden}
   .chip{
     display:inline-flex; align-items:center; gap:6px;
-    padding:4px 8px; border:1px solid #1d2840; border-radius:999px; background:#0c1423; font-size:12px;
+    padding:4px 8px; border:1px solid #1d2840; border-radius:999px; background:#020617; font-size:12px;
     white-space:nowrap;
   }
+  .chip b{font-weight:900}
   .dot{width:10px;height:10px;border-radius:50%}
-  .legend{color:#c6d0e0;font-size:11px;text-align:center}
+  .legend{color:#c6d0e0;font-size:11px;text-align:center;opacity:.9}
 
   /* ===== Store (always 3 items on top) ===== */
   #storeTop{
     display:flex; gap:8px; align-items:center; justify-content:space-between;
-    padding:10px; background:var(--panel); border:1px solid #1a243a; border-radius:var(--radius);
+    padding:10px; background:var(--panel); border:1px solid #111827; border-radius:var(--radius);
+    box-shadow:0 12px 30px rgba(0,0,0,.6);
   }
   #storeItems{display:flex; gap:8px; align-items:center; justify-content:center; flex:1; flex-wrap:nowrap}
   .storeCol{display:flex;flex-direction:column;align-items:center;gap:6px}
   .btn{
-    padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#13223a;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
+    padding:8px 10px;border-radius:10px;border:1px solid #223252;background:#111827;color:#e6efff;cursor:pointer;font-weight:800;text-align:center;touch-action:manipulation;
     min-height:36px;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);
+    font-size:13px;
   }
-  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+  .btn:active{
+    transform:translateY(1px) scale(.97);
+    box-shadow:0 2px 8px rgba(0,0,0,.7);
+  }
 
   /* ===== Center Piles ===== */
   #centerBand{
-    border:1px dashed #20304f; border-radius:10px; padding:8px;
-    background:#0e1626; min-height:140px; height:100%; overflow:hidden;
+    border:1px dashed #1f2937; border-radius:10px; padding:8px;
+    background:radial-gradient(circle at top,#020617,#020617 55%,#000 100%);
+    min-height:140px; height:100%; overflow:hidden;
     display:flex; align-items:center; justify-content:center;
   }
   #piles{
@@ -107,21 +126,33 @@
     gap:var(--pileGap);
     place-content:start center;
   }
+
   .tile{
     width:var(--pileSize); height:var(--pileSize);
     border:2px solid var(--edge); border-radius:12px;
     display:flex; align-items:center; justify-content:center; gap:2px;
-    font-weight:900; color:#0b0b0b; box-shadow:0 6px 16px rgba(0,0,0,.28);
+    font-weight:900; color:#020617; box-shadow:0 6px 16px rgba(0,0,0,.7);
     cursor:pointer; user-select:none; touch-action:manipulation;
     position:relative; outline-offset:-5px; min-height:44px;
+    transition: transform .12s ease-out, box-shadow .18s ease-out, outline-color .18s ease-out, border-color .18s ease-out;
   }
-  .tile.valid{ outline:6px solid #84cc16; box-shadow:0 0 0 6px rgba(132,204,22,.35), 0 12px 22px rgba(0,0,0,.3); }
+  .tile.mine{
+    outline:2px solid rgba(96,165,250,.95);
+  }
+  .tile.valid{
+    outline:4px solid #84cc16;
+    box-shadow:0 0 0 4px rgba(132,204,22,.45), 0 14px 26px rgba(0,0,0,.7);
+  }
+  .tile:active{
+    transform:translateY(1px) scale(.97);
+    box-shadow:0 3px 10px rgba(0,0,0,.7);
+  }
+
   .own{
     position:absolute; bottom:2px; right:4px; font-size:11px;
-    color:#0b1014; background:rgba(255,255,255,.92); padding:2px 8px; border-radius:999px; font-weight:800;
+    color:#020617; background:rgba(248,250,252,.95); padding:2px 8px; border-radius:999px; font-weight:800;
     pointer-events:none;
   }
-  /* tiny owner trail dots per card in the pile (left-bottom) */
   .trail{position:absolute; left:4px; bottom:4px; display:flex; gap:3px}
   .trail i{display:block; width:8px; height:8px; border-radius:50%}
 
@@ -129,46 +160,58 @@
   .rect{
     width:var(--cardW); height:var(--cardH); border-radius:12px; border:2px solid var(--edge);
     display:flex; align-items:center; justify-content:space-between; padding:0 12px;
-    color:#0b0b0b; font-weight:900; box-shadow:0 5px 18px rgba(0,0,0,.26);
+    color:#020617; font-weight:900; box-shadow:0 5px 18px rgba(0,0,0,.7);
     user-select:none; -webkit-user-select:none; touch-action:manipulation; cursor:pointer;
     outline-offset:-6px; min-height:44px;
+    transition: transform .12s ease-out, box-shadow .18s ease-out, outline-color .18s ease-out, border-color .18s ease-out;
   }
-  .rect.sel{ outline:4px solid #ef4444; }
+  .rect.sel{ outline:4px solid #f97316; }
+  .rect:active{
+    transform:translateY(1px) scale(.97);
+    box-shadow:0 3px 10px rgba(0,0,0,.7);
+  }
 
   .c-yellow{background:linear-gradient(135deg,var(--y),#fee780);border-color:#eab308}
   .c-orange{background:linear-gradient(135deg,var(--o),#fed7aa);border-color:#fb923c}
   .c-green{background:linear-gradient(135deg,var(--g),#bbf7d0);border-color:#22c55e}
   .c-blue{background:linear-gradient(135deg,var(--b),#bae6fd);border-color:#60a5fa}
 
-  /* ===== Bottom bar: Hand + Counts ===== */
+  /* ===== Bottom bar: hand + counts ===== */
   #bottomBar{
     display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
   }
-  #handWrap{display:flex; gap:8px; align-items:center}
+  #handWrap{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
   #counts{
     display:flex; gap:10px; align-items:center; justify-content:flex-end;
-    background:#0c1423;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:190px;
+    background:#020617;border:1px solid #1d2840;border-radius:12px;padding:8px 10px; min-width:190px;
+    box-shadow:0 8px 20px rgba(0,0,0,.7);
+    font-size:12px;
   }
-  .countItem{display:flex; gap:6px; align-items:center; font-weight:800}
+  .countItem{display:flex; gap:6px; align-items:center; font-weight:700}
 
   /* Reshuffle bar (local 1s) */
   #reshuffleWrap{
     display:none; flex-direction:column; gap:4px;
     margin-left:8px; min-width:140px;
   }
+  #reshuffleWrap label{font-size:11px;color:#cbd5e1;opacity:.8}
   #reshuffleBar{
-    height:8px; border-radius:999px; overflow:hidden; border:1px solid #334155; background:#0b1528;
+    height:8px; border-radius:999px; overflow:hidden; border:1px solid #334155; background:#020617;
     width:140px;
   }
   #reshuffleBar>div{height:100%; width:0%; background:#22c55e}
 
   /* Overlay */
-  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:40}
-  .dialog{background:#0f172a;border:1px solid #243754;border-radius:16px;padding:16px;min-width:min(780px,95vw);max-width:95vw;max-height:92vh;overflow:auto;box-shadow:0 18px 44px rgba(0,0,0,.45)}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);display:none;align-items:center;justify-content:center;z-index:40}
+  .dialog{
+    background:#020617;border:1px solid #243754;border-radius:16px;padding:16px;
+    min-width:min(780px,95vw);max-width:95vw;max-height:92vh;overflow:auto;
+    box-shadow:0 22px 60px rgba(0,0,0,.9)
+  }
   .dialog .big{font-size:24px;font-weight:900;margin-bottom:6px}
   .dialog .sub{font-size:14px;color:#c2cee3;margin-bottom:10px}
   .dialog .actions{display:flex;gap:10px;justify-content:center;margin-top:12px}
-  .chartBox{background:#0c1423;border:1px solid #26334f;border-radius:12px;padding:10px;margin-top:8px}
+  .chartBox{background:#020617;border:1px solid #26334f;border-radius:12px;padding:10px;margin-top:8px}
   .chartTitle{font-weight:800;margin-bottom:6px}
   .legendRow{display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:#cbd5e1; margin-top:4px}
   .legendSwatch{width:12px;height:12px;border-radius:3px;display:inline-block;margin-right:6px}
@@ -189,20 +232,21 @@
               <div class="stat"><span class="lbl">Damage</span><span class="val" id="youAtk">0</span></div>
               <div class="stat"><span class="lbl">Ward</span><span class="val" id="youWard">0</span></div>
               <div class="stat"><span class="lbl">Gold</span><span class="val" id="youGold">0</span></div>
+              <div class="stat"><span class="lbl">Role</span><span class="val" id="youRole">Player</span></div>
             </div>
             <div class="timerRow">
               <div class="timerbar" title="Tick"><div id="tickBar"></div></div>
               <div class="tickLbl"><span id="tickIn">10.0</span>s</div>
             </div>
             <div id="playersMini"></div>
-            <div class="legend">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
+            <div class="legend" id="legendText">💰 Gold • ⚔️ Damage • ❤️ Heal • 🛡️ Ward</div>
           </section>
 
           <!-- Store (top, exactly 3 items) -->
           <section id="storeTop" aria-label="Store">
             <strong>Store</strong>
             <div id="storeItems"></div>
-            <div style="display:flex; align-items:center; gap:8px">
+            <div style="display:flex; align-items:center; gap:8px; font-size:13px">
               <span>Gold: <b id="gold2">0</b></span>
             </div>
           </section>
@@ -221,7 +265,7 @@
 
               <!-- Local reshuffle UI -->
               <div id="reshuffleWrap" aria-hidden="true">
-                <div style="font-size:12px;color:#cbd5e1">Reshuffling…</div>
+                <label>Reshuffling…</label>
                 <div id="reshuffleBar"><div></div></div>
               </div>
             </div>
@@ -280,10 +324,15 @@ const CCLS={yellow:"c-yellow",orange:"c-orange",green:"c-green",blue:"c-blue"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const uid=(()=>{let i=1;return()=> "id"+(i++)})();
 const nowMs=()=>Date.now();
-const TICK_MS = 10000; // 10s server tick
-const BASE_GOLD_PER_TICK = 1; // ===== BASE GOLD INCOME =====
+const TICK_MS = 10000;           // 10s server tick
+const BASE_GOLD_PER_TICK = 1;    // passive gold for everyone every tick (LOW but steady)
 
 const $=sel=>document.querySelector(sel);
+
+/* Unique per-device id so only ONE host device processes actions/ticks */
+const clientId = (crypto.randomUUID ? crypto.randomUUID() : "c"+Math.random().toString(36).slice(2));
+let hostPumpStarted = false;
+let hostTickTimer = null;
 
 /* ========= Auto-Fit (ALWAYS fits to one screen) ========= */
 function fitToViewport(){
@@ -355,7 +404,7 @@ function buildStoreDeck(){
   return d;
 }
 function refillStore(G){ while(G.storeVis.length < 5 && G.storeDeck.length>0) G.storeVis.push(G.storeDeck.pop()); }
-function newGameDoc(host, players){
+function newGameDoc(host, players, hostClientId){
   const P = {};
   players.forEach(name => {
     P[name] = { name, alive: true, health: 100, maxHealth: 100, gold: 0, deck: baseDeck(), discard: [], viewIndex: 0 };
@@ -364,6 +413,7 @@ function newGameDoc(host, players){
     type:"dutchblitz", host, players, status:"playing", winner:null,
     piles: [], storeDeck: buildStoreDeck(), storeVis: [],
     tickEndsAt: nowMs() + TICK_MS, awarded:false,
+    hostClientId,                        // which device is the host authority
     createdAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
   refillStore(G); return {G,P};
@@ -392,6 +442,9 @@ function livingPlayers(G,P){ return G.players.filter(n => P[n]?.alive); }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 /* ========= Host: apply action ========= */
+/* Actions are always tagged with .by (the username),
+   so each player's clicks only mutate THEIR deck/state.
+   The host device just applies them to the shared game. */
 async function hostApplyAction(act){
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
@@ -436,6 +489,7 @@ async function hostApplyAction(act){
       if(c.color==="yellow") me.gold=(me.gold||0)+c.val;
 
       if(c.val===10){
+        // Resolve "burst"
         for(const n of G.players){
           const t=P[n]; if(!t?.alive) continue;
           const s=sumsFor(G,P,n), eff=Math.max(0, 10-(s.ward||0));
@@ -475,10 +529,13 @@ async function hostApplyAction(act){
 
 /* ========= Host: tick ========= */
 async function hostTickIfNeeded(){
+  // Only the authoritative host device should ever run this
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
     if(!snap.exists()) return; const root=snap.data();
     if(root.status!=="playing") return;
+    if(root.hostClientId && root.hostClientId !== clientId) return; // not my job
+
     const tnow=nowMs(); if(tnow<root.tickEndsAt) return;
 
     const G={...root}, P={...root.P}; G.piles=G.piles.map(p=>({...p, cards:[...p.cards]}));
@@ -489,7 +546,7 @@ async function hostTickIfNeeded(){
     for(const n of alive){
       const p=P[n], s=sums.get(n)||{atk:0,heal:0,ward:0,gold:0};
       p.health = clamp((p.health||0)+(s.heal||0), 0, (p.maxHealth||100));
-      // ===== BASE GOLD INCOME =====
+      // ===== PASSIVE GOLD INCOME (per tick, low) =====
       p.gold   = (p.gold||0) + BASE_GOLD_PER_TICK + (s.gold||0);
       atkBy.set(n, s.atk||0);
     }
@@ -507,7 +564,7 @@ async function hostTickIfNeeded(){
   });
 }
 
-/* ========= Host action queue (guarded) ========= */
+/* ========= Host action queue (guarded by hostClientId) ========= */
 function startHostActionPump(){
   if (window.__DB_ACTIONS_UNSUB) { return; }
   const qy=query(actionsCol, orderBy("ts","asc"));
@@ -614,6 +671,7 @@ function render(){
   $("#youWard").textContent = s(L.me).ward||0;
   $("#youAtk").textContent  = s(L.me).atk||0;
   $("#youHeal").textContent = s(L.me).heal||0;
+  $("#youRole").textContent = (L.isHost && root.host === L.me) ? "Host" : "Player";
 
   // Tick countdown and progress
   const left = Math.max(0, (root.tickEndsAt||0) - nowMs());
@@ -640,6 +698,7 @@ function render(){
     const m=ownerMeta(pile.owner);
     const tile=document.createElement("div");
     tile.className=`tile ${CCLS[top.color]}`;
+    if(pile.owner === L.me) tile.classList.add("mine");
 
     // selection validity (current player's hand)
     const sel=L.selectedCardId && handCard(root, root.P, L.me);
@@ -655,7 +714,6 @@ function render(){
       }).join("")}</div>
     `;
     tile.style.borderColor = m.color;
-    tile.style.boxShadow = `0 0 0 4px ${m.color}, 0 6px 16px rgba(0,0,0,.3)`;
     tile.addEventListener("pointerup",(e)=>{
       e.preventDefault();
       if(!selected){ return; }
@@ -674,7 +732,6 @@ function render(){
     hand.className=`rect ${CCLS[c.color]}${L.selectedCardId===c.id?' sel':''}`;
     hand.style.opacity = "1"; hand.style.pointerEvents="auto";
     hand.style.borderColor = myColor;
-    hand.style.boxShadow = `0 0 0 4px ${myColor}, 0 5px 18px rgba(0,0,0,.26)`;
     hand.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
     hand.onclick = ()=>{
       if(c.val===1){
@@ -697,7 +754,7 @@ function render(){
     }
   }
 
-  // Store — exactly 3
+  // Store — exactly 3 visible slots
   const store=$("#storeItems"); store.innerHTML="";
   const visibleCards = root.storeVis.slice(0, 3);
   visibleCards.forEach((card)=>{
@@ -709,7 +766,6 @@ function render(){
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
     r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
     r.style.borderColor = "#334155";
-    r.style.boxShadow = "0 0 0 3px rgba(148,163,184,.35)";
     col.appendChild(r);
     store.appendChild(col);
   });
@@ -831,6 +887,12 @@ async function toggleFullscreen(){ if(isFullscreen()) await exitFullscreen(); el
 
 /* ========= Boot ========= */
 async function boot(){
+  // Set legend text to show passive income clearly
+  const legendEl = document.getElementById("legendText");
+  if(legendEl){
+    legendEl.textContent = `💰 Gold (includes passive +${BASE_GOLD_PER_TICK}/tick) • ⚔️ Damage • ❤️ Heal • 🛡️ Ward`;
+  }
+
   // lobby → players/host
   const lSnap = await getDoc(lobbyRef);
   if(!lSnap.exists()){ alert("Lobby not found."); return; }
@@ -843,8 +905,24 @@ async function boot(){
   // create game if absent
   const gSnap = await getDoc(gameRef);
   if(L.isHost && !gSnap.exists()){
-    const {G,P} = newGameDoc(host, players);
+    const {G,P} = newGameDoc(host, players, clientId);
     await setDoc(gameRef, { ...G, P });
+  } else if(L.isHost && gSnap.exists()){
+    const data = gSnap.data();
+    // If no hostClientId yet (old game), claim it from this device
+    if(!data.hostClientId){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const cur = await tx.get(gameRef);
+          if(!cur.exists()) return;
+          const root = cur.data();
+          if(root.hostClientId) return; // someone else already claimed
+          tx.update(gameRef, { hostClientId: clientId, updatedAt: serverTimestamp() });
+        });
+      }catch(err){
+        console.error("Failed to claim hostClientId", err);
+      }
+    }
   }
 
   // subscribe
@@ -852,10 +930,20 @@ async function boot(){
     if(!snap.exists()) return;
     L.game=snap.data();
 
-    // award once
-    if(L.isHost && L.game.status==="finished" && L.game.winner && !L.game.awarded){
+    // If I'm the host and THIS device owns hostClientId, start pumps once
+    const isAuthority = L.isHost && L.game.hostClientId === clientId;
+
+    if(isAuthority && !hostPumpStarted){
+      startHostActionPump();
+      hostTickTimer = setInterval(hostTickIfNeeded, 250);
+      hostPumpStarted = true;
+    }
+
+    // Award once — only the authoritative host device does it
+    if(isAuthority && L.game.status==="finished" && L.game.winner && !L.game.awarded){
       await runTransaction(db, async (tx)=>{
-        const cur = await tx.get(gameRef); const root=cur.data();
+        const cur = await tx.get(gameRef); if(!cur.exists()) return;
+        const root=cur.data();
         if(root.awarded) return;
         const wRef = doc(db, "users", L.game.winner);
         const wSnap = await tx.get(wRef);
@@ -868,14 +956,9 @@ async function boot(){
         tx.update(gameRef, { awarded: true, updatedAt: serverTimestamp() });
       });
     }
+
     render();
   });
-
-  // host pumps
-  if(L.isHost){
-    startHostActionPump();
-    setInterval(hostTickIfNeeded, 250);
-  }
 
   // controls
   $("#flipBtn").addEventListener("pointerup", (e)=>{
@@ -908,6 +991,8 @@ boot();
 </script>
 </body>
 </html>
+
+
 
 
 
