@@ -47,12 +47,23 @@
     position:relative; user-select:none; overflow:hidden;
     height: min(52vh, 560px);
     overscroll-behavior: none;
-    touch-action: none; /* critical for responsive mobile pan/zoom */
+    touch-action: none;
   }
   @media (min-width:901px){ .map-wrap{ height: min(70vh, 820px); } }
   :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 52vh; }
   @media (min-width:901px){ :fullscreen .map-wrap, .map-wrap:fullscreen{ height: 70vh; } }
   canvas{ display:block; width:100%; height:100%; touch-action: none; }
+
+  #miniMap{
+    position:absolute;
+    right:10px;
+    bottom:10px;
+    width:130px;
+    height:130px;
+    border-radius:12px;
+    border:1px solid #1f2937;
+    background:rgba(15,23,42,.9);
+  }
 
   .right-col{ display:grid; gap:10px; }
   .card{ background:#0e1726; border:1px solid var(--line); border-radius:16px; padding:12px }
@@ -67,7 +78,6 @@
   .chip{ display:inline-flex; align-items:center; gap:6px; padding:8px 10px; background:#0b1322; border:1px solid #1b2b48; border-radius:999px; font-weight:800 }
   .dot{ width:10px; height:10px; border-radius:50% }
 
-  /* Build modal (inside #playArea so it appears over fullscreen) */
   .modal{ position:fixed; inset:0; display:none; place-items:center; z-index:2147483000; }
   .modal.show{ display:grid; }
   .modal::before{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.5); }
@@ -83,7 +93,6 @@
   }
   .tool small{ color:#9fb3cb; font-weight:600; font-size:12px }
 
-  /* Dice banners */
   .dice-banner{
     position:absolute; inset:auto 0 28% 0; margin:auto; width:100%; display:grid; place-items:center; pointer-events:none;
     font-weight:900; font-size: clamp(40px, 10vw, 96px); color:#fff; text-shadow:0 8px 24px rgba(0,0,0,.5);
@@ -112,7 +121,6 @@
   .dead .box{ background:#0e1726; border:1px solid #223456; border-radius:16px; padding:20px; max-width:520px }
   .dead .box h2{ margin:0 0 8px }
 
-  /* Toast (also inside fullscreen root) */
   .toast{
     position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(10px);
     background:#17263e; color:#e6edf3; border:1px solid #2a3f66;
@@ -132,11 +140,11 @@
     <button id="btnFullscreen" class="btn">⤢ Fullscreen</button>
   </div>
 
-  <!-- Fullscreen target -->
   <div id="playArea">
     <div class="shell">
       <div class="map-wrap" id="mapWrap">
         <canvas id="map"></canvas>
+        <canvas id="miniMap"></canvas>
         <div id="diceBanner" class="dice-banner"></div>
         <div id="careBanner" class="care-banner"></div>
       </div>
@@ -179,14 +187,13 @@
 
         <div class="card" style="font-size:13px; line-height:1.45; color:#9fb3cb">
           <h3>Build Costs</h3>
-          <div><b>Wire</b> 1 ore (or Free Wire token) • <b>Wall</b> <u>2 wood</u> • <b>Ultra Wall</b> <u>3 brick</u> • <b>Command Ctr</b> 2 ore,2 brick,2 sheep • <b>Central Base</b> 2 ore,2 brick,2 sheep</div>
+          <div><b>Wire</b> 1 ore (or Free Wire token, Engineer discounts) • <b>Wall</b> <u>2 wood</u> • <b>Ultra Wall</b> <u>3 brick</u> • <b>Command Ctr</b> 2 ore,2 brick,2 sheep • <b>Central Base</b> 2 ore,2 brick,2 sheep</div>
           <div><b>Turret</b> 1 wood,1 sheep • <b>Catapult</b> 3 wood,2 sheep • <b>Fire Beacon</b> 1 wood,2 wheat • <b>Tesla</b> 2 ore,2 wheat,2 sheep,2 wood • <b>Tri-Bolt</b> 2 wood,2 ore,1 brick • <b>Mortar</b> <u>1 ore,3 brick</u> • <b>Drill</b> 2 ore • <b>Upgrade</b> (towers) 2 wheat,1 ore</div>
           <div>Everything except walls must connect to your <b>wires</b>. If zombies cut/destroy a wire, disconnected stuff gets destroyed.</div>
         </div>
       </div>
     </div>
 
-    <!-- Overlays inside fullscreen root -->
     <div id="buildModal" class="modal" aria-hidden="true">
       <div class="box">
         <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
@@ -212,7 +219,6 @@
   </div>
 
 <script type="module">
-/* ---------------- Firebase ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction,
@@ -230,30 +236,44 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* ---------------- URL Params ---------------- */
+/* URL Params */
 const params = new URLSearchParams(location.search);
 const gameId = params.get("gameId") || "local";
 const username = params.get("username") || ("Player" + Math.floor(Math.random()*999));
 
-/* ---------------- Constants ---------------- */
+/* Constants */
 const W = 64, H = 64;
 const TILE_COLORS = { red:"#7f1d1d", gray:"#374151", white:"#cbd5e1", yellow:"#f59e0b", green:"#197141" };
 const RESOURCE_BY_COLOR = { red:'brick', gray:'ore', white:'sheep', yellow:'wheat', green:'wood' };
 const R_KEYS = ['brick','ore','sheep','wheat','wood'];
 const TURN_SECONDS = 60;
 
-/* ---------------- State ---------------- */
+const ROLES = [
+  {id:'engineer', name:'Engineer', desc:'Cheaper and tougher wires.'},
+  {id:'quartermaster', name:'Quartermaster', desc:'Stronger care packages.'},
+  {id:'warden', name:'Warden', desc:'Stronger walls and bases.'},
+  {id:'artillery', name:'Artillery Chief', desc:'Stronger long-range towers.'}
+];
+const ROLE_MAP = ROLES.reduce((m,r)=>{m[r.id]=r; return m;}, {});
+
+/* State */
 let state = null;
 let myIndex = -1;
 let localCareSeenRound = 0;
 let lastRollSeenTurnId = -1;
-let endingTurn = false; // ← mobile “freeze” guard
+let endingTurn = false;
 
-/* ---------------- DOM ---------------- */
+let careTimer = null;
+let careSecondsLeft = 0;
+let careChoicesShown = false;
+
+/* DOM */
 const playArea = document.getElementById('playArea');
 const wrap = document.getElementById('mapWrap');
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
+const miniCanvas = document.getElementById('miniMap');
+const miniCtx = miniCanvas.getContext('2d');
 const diceBanner = document.getElementById('diceBanner');
 const careBanner = document.getElementById('careBanner');
 const resRow = document.getElementById('resRow');
@@ -277,7 +297,7 @@ const lastRollUi = document.getElementById('lastRollUi');
 const toastEl = document.getElementById('toast');
 const deadOverlay = document.getElementById('deadOverlay');
 
-/* ---------------- Camera / Interaction ---------------- */
+/* Camera / Interaction */
 let local = {
   scale:36, camX:0, camY:0,
   dragging:false, dragStart:[0,0], camStart:[0,0],
@@ -290,6 +310,10 @@ function resize(){
   canvas.width  = wrap.clientWidth * dpr;
   canvas.height = wrap.clientHeight * dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  miniCanvas.width = miniCanvas.clientWidth * dpr;
+  miniCanvas.height = miniCanvas.clientHeight * dpr;
+  miniCtx.setTransform(dpr,0,0,dpr,0,0);
 }
 window.addEventListener('resize', resize);
 
@@ -336,7 +360,7 @@ wrap.addEventListener('pointerup',(e)=>{
 }, {passive:false});
 wrap.addEventListener('pointercancel',()=> local.dragging=false);
 
-/* Pinch zoom via touch */
+/* Pinch zoom */
 let pinchDist=0;
 wrap.addEventListener('touchstart',(e)=>{ if(e.touches.length===2){ pinchDist = dist(e.touches[0], e.touches[1]); } }, {passive:true});
 wrap.addEventListener('touchmove',(e)=>{
@@ -356,7 +380,6 @@ wrap.addEventListener('touchmove',(e)=>{
 wrap.addEventListener('touchend',()=>{ pinchDist=0; }, {passive:true});
 function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
 
-/* Zoom helpers */
 function zoomAt(pointX, pointY, factor){
   const [wx, wy] = screenToWorld(pointX, pointY);
   local.scale *= factor; clampScale();
@@ -368,7 +391,7 @@ function zoomAt(pointX, pointY, factor){
 btnZoomIn.onclick  = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.15);
 btnZoomOut.onclick = ()=> zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1/1.15);
 
-/* ---------------- Helpers ---------------- */
+/* Helpers */
 function indexOf(x, y){ return y*W + x; }
 function inBounds(x,y){ return x>=0 && y>=0 && x<W && y<H; }
 function getTile(g, x, y){ return g.tiles[indexOf(x,y)]; }
@@ -390,6 +413,19 @@ function hpFor(kind){
   if(kind==='wire') return 1;
   return 1;
 }
+function hpForKindOwner(kind, ownerIndex, g=state){
+  let base = hpFor(kind);
+  if(!g || ownerIndex==null || ownerIndex<0) return base;
+  const role = g.players?.[ownerIndex]?.role;
+  if(role==='warden'){
+    if(kind==='wall' || kind==='uwall') base += 4;
+    if(kind==='cc' || kind==='base') base += 2;
+  }
+  if(role==='engineer' && kind==='wire'){
+    base += 1;
+  }
+  return base;
+}
 function drawHpBar(x, y, cur, max){
   const w = Math.max(24, local.scale - 6);
   const h = 5;
@@ -409,12 +445,12 @@ function drawHpBar(x, y, cur, max){
   }
 }
 
-/* ---------------- RNG + Map ---------------- */
+/* RNG + Map */
 function seededRng(seed){ let s = seed>>>0; return ()=> (s = (s*1664525 + 1013904223) >>> 0)/2**32; }
 function genMap(seed){
   const rnd = seededRng(seed);
   const colors = Object.keys(TILE_COLORS);
-  const nums = [2,3,4,5,6,8,9,10,11,12]; // no 7
+  const nums = [2,3,4,5,6,8,9,10,11,12];
   const tiles = new Array(W*H);
   for(let y=0;y<H;y++){
     for(let x=0;x<W;x++){
@@ -427,7 +463,7 @@ function genMap(seed){
   return tiles;
 }
 
-/* ---------------- UI bits ---------------- */
+/* UI bits */
 function toast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -439,16 +475,27 @@ function moneyChip(label, color, amt){
   const text = document.createElement('span'); text.textContent=`${label}: ${amt|0}`;
   div.append(dot,text); return div;
 }
+function roleChip(rid){
+  const div = document.createElement('div'); div.className='chip';
+  const dot = document.createElement('span'); dot.className='dot'; dot.style.background='#7c3aed';
+  const text = document.createElement('span');
+  const pretty = ROLE_MAP[rid]?.name || 'Civilian';
+  text.textContent = `Role: ${pretty}`;
+  div.append(dot,text);
+  return div;
+}
 function renderResources(){
   resRow.innerHTML=''; if(!state||myIndex<0) return;
-  const r = state.players[myIndex].res;
+  const me = state.players[myIndex];
+  const r = me.res;
+  if(me.role) resRow.append(roleChip(me.role));
   resRow.append(
     moneyChip('Brick','#b91c1c', r.brick),
     moneyChip('Ore','#64748b', r.ore),
     moneyChip('Sheep','#e2e8f0', r.sheep),
     moneyChip('Wheat','#fbbf24', r.wheat),
     moneyChip('Wood','#22c55e', r.wood),
-    moneyChip('Free Wire','#93c5fd', state.players[myIndex].freeWire||0),
+    moneyChip('Free Wire','#93c5fd', me.freeWire||0),
   );
 }
 function showDice(n){
@@ -476,7 +523,7 @@ function showCare(items){
   setTimeout(()=> careBanner.classList.remove('show'), 1800);
 }
 
-/* ---------------- Costs & Build ---------------- */
+/* Costs & Build */
 const COST = {
   wire: {ore:1}, wall:{wood:2}, uwall:{brick:3},
   cc:{ore:2,brick:2,sheep:2}, base:{ore:2,brick:2,sheep:2},
@@ -499,17 +546,42 @@ const BUILD_TOOLS = [
   {id:'drill',label:'Drill',icon:'⛏️'}
 ];
 function needsWire(kind){ return !['wall','uwall'].includes(kind); }
+
+function costForGame(g, kind, pi){
+  const base = COST[kind];
+  if(!base) return null;
+  const role = g.players?.[pi]?.role;
+  const c = {...base};
+  if(role === 'engineer' && kind === 'wire'){
+    if(c.ore) c.ore = Math.max(0, c.ore-1); // free wires
+  }
+  return c;
+}
+function hasResIn(g, pi, cost){
+  const r = g.players[pi].res;
+  for(const k of Object.keys(cost)){ if((r[k]||0) < cost[k]) return false; }
+  return true;
+}
+function canAffordIn(g, pi, kind){
+  if(kind==='wire'){
+    const p = g.players[pi];
+    const token = (p.freeWire||0)>0;
+    const cost = costForGame(g,'wire',pi);
+    const payRes = cost ? hasResIn(g,pi,cost) : true;
+    return token || payRes;
+  }
+  const cost = costForGame(g,kind,pi);
+  if(!cost) return true;
+  return hasResIn(g,pi,cost);
+}
+function canAfford(kind){
+  if(!state || myIndex<0) return false;
+  return canAffordIn(state, myIndex, kind);
+}
 function hasRes(cost){
   const r = state.players[myIndex].res;
   for(const k of Object.keys(cost)){ if((r[k]||0) < cost[k]) return false; }
   return true;
-}
-function canAfford(kind){
-  if(kind==='wire'){
-    const token = (state.players[myIndex].freeWire||0)>0;
-    return token || hasRes(COST.wire);
-  }
-  return COST[kind] ? hasRes(COST[kind]) : true;
 }
 function upgradable(b){ return ['turret','cata','beacon','tesla','tribolt','mortar'].includes(b.kind); }
 function costText(obj){ return Object.entries(obj).map(([k,v])=>`${v} ${k}`).join(', '); }
@@ -564,19 +636,23 @@ function placeable(x,y,sel,g=state){
 
 async function doPlace(x,y,sel){
   if(sel.kind==='wire'){
-    const hasToken = (state.players[myIndex].freeWire||0)>0;
-    const payOre = hasRes(COST.wire);
-    if(!hasToken && !payOre){ toast('Not enough ore (or Free Wire)'); return; }
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(gameRef); if(!snap.exists()) return;
       const g = snap.data();
       if(!placeable(x,y,sel,g)) return;
+      const p = g.players[myIndex];
+      const hasToken = (p.freeWire||0)>0;
+      const cost = costForGame(g,'wire',myIndex);
+      const payRes = cost ? hasResIn(g,myIndex,cost) : true;
+      if(!hasToken && !payRes) return;
 
-      g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:hpFor('wire'), level:1});
+      g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:hpForKindOwner('wire',myIndex,g), level:1});
       if(hasToken){
-        g.players[myIndex].freeWire = (g.players[myIndex].freeWire||0) - 1;
-      }else{
-        g.players[myIndex].res.ore = (g.players[myIndex].res.ore||0) - 1;
+        p.freeWire = (p.freeWire||0) - 1;
+      }else if(cost){
+        for(const k of Object.keys(cost)){
+          p.res[k] = (p.res[k]||0) - cost[k];
+        }
       }
       await tx.update(gameRef,g);
     });
@@ -591,16 +667,21 @@ async function doPlace(x,y,sel){
 
     if(sel.kind==='base'){
       const i = g.buildings.findIndex(b=>b.x===x&&b.y===y&&b.kind==='cc'&&b.owner===myIndex);
-      if(i>=0){ g.buildings[i].kind='base'; g.buildings[i].level=1; g.buildings[i].hp = Math.max(g.buildings[i].hp, hpFor('base')); }
+      if(i>=0){
+        g.buildings[i].kind='base';
+        g.buildings[i].level=1;
+        g.buildings[i].hp = Math.max(g.buildings[i].hp, hpForKindOwner('base',myIndex,g));
+      }
       const pb = g.players[myIndex].bases.find(b=>b.x===x&&b.y===y);
       if(pb) pb.type='base';
     }else{
-      g.buildings.push({kind:sel.kind, owner:myIndex, x,y, hp:hpFor(sel.kind), level:1});
+      g.buildings.push({kind:sel.kind, owner:myIndex, x,y, hp:hpForKindOwner(sel.kind,myIndex,g), level:1});
       if(sel.kind==='cc'){ g.players[myIndex].bases.push({x,y,type:'cc'}); }
     }
     if(COST[sel.kind]){
-      for(const k of Object.keys(COST[sel.kind])){
-        g.players[myIndex].res[k] = (g.players[myIndex].res[k]||0) - COST[sel.kind][k];
+      const cost = costForGame(g, sel.kind, myIndex) || COST[sel.kind];
+      for(const k of Object.keys(cost)){
+        g.players[myIndex].res[k] = (g.players[myIndex].res[k]||0) - cost[k];
       }
     }
     pruneDisconnected(g,myIndex);
@@ -622,7 +703,7 @@ async function tryUpgrade(b){
   });
 }
 
-/* ---------------- Game Doc ---------------- */
+/* Game Doc */
 const gameRef = doc(db, "zombiezone", gameId);
 
 async function initialPlayers(){
@@ -643,14 +724,23 @@ async function ensureGame(){
       const seed = Math.floor(Math.random()*2**31);
       const tiles = genMap(seed);
       const players = await initialPlayers();
-      const pls = players.map(n=>({
+
+      const rolePool = [...ROLES];
+      for(let i=rolePool.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [rolePool[i],rolePool[j]] = [rolePool[j],rolePool[i]];
+      }
+
+      const pls = players.map((n,idx)=>({
         name:n, alive:true,
         res:{brick:0,ore:0,sheep:0,wheat:0,wood:0},
         bases:[],
         needsFirstCC:true,
         lastCareRound: 0,
         careShow: [],
-        freeWire: 0
+        freeWire: 0,
+        role: rolePool[idx]?.id || null,
+        pendingCareChoices: []
       }));
       await tx.set(gameRef,{
         seed, tiles,
@@ -673,14 +763,16 @@ async function ensureGame(){
   });
 }
 
-/* ---------------- Subscriptions ---------------- */
+/* Subscriptions */
 onSnapshot(gameRef, (snap)=>{
   if(!snap.exists()) return;
   state = snap.data();
   myIndex = (state.players||[]).findIndex(p=>p.name===username);
-  renderResources(); renderTrades(); updateHud();
+  renderResources();
+  renderTrades();
+  updateHud();
+  updateCareUI();
 
-  // Care package banner
   if(myIndex>=0){
     const me = state.players[myIndex];
     if(me.lastCareRound && me.lastCareRound > localCareSeenRound){
@@ -691,7 +783,6 @@ onSnapshot(gameRef, (snap)=>{
     }
   }
 
-  // Dice banner/UI
   if(state.lastRollTurnId != null && state.lastRollTurnId !== lastRollSeenTurnId && state.lastRoll != null){
     lastRollSeenTurnId = state.lastRollTurnId;
     showDice(state.lastRoll);
@@ -718,7 +809,7 @@ function updateHud(){
   turnInfo.textContent = meTurn ? `Your turn` : `Waiting on ${curName}`;
 }
 
-/* ---------------- Timer ---------------- */
+/* Timer */
 let timerHandle=null;
 function startTimer(){
   if(timerHandle) clearInterval(timerHandle);
@@ -732,14 +823,111 @@ function startTimer(){
 }
 startTimer();
 
-/* ---------------- Input / Tap ---------------- */
+/* Care choice UI & selection */
+function clearCareUI(){
+  careBanner.classList.remove('show');
+  careBanner.innerHTML='';
+  careChoicesShown=false;
+  if(careTimer){ clearInterval(careTimer); careTimer=null; }
+}
+function careChoiceLabel(ch){
+  const parts=[];
+  const res = ch.res||{};
+  for(const k of R_KEYS){
+    if(res[k]) parts.push(`+${res[k]} ${k}`);
+  }
+  if(ch.wire) parts.push(`+${ch.wire} Wire`);
+  return parts.join(', ');
+}
+function showCareChoices(choices){
+  careBanner.innerHTML='';
+  const box=document.createElement('div');
+  box.className='care-box';
+  const label=document.createElement('div');
+  label.textContent='🎁 Care Package – choose one';
+  box.appendChild(label);
+
+  const timerSpan=document.createElement('span');
+  timerSpan.className='care-pill';
+  timerSpan.id='careCountdown';
+  timerSpan.textContent='10s';
+  box.appendChild(timerSpan);
+
+  choices.forEach((ch,idx)=>{
+    const pill=document.createElement('button');
+    pill.className='care-pill';
+    pill.style.cursor='pointer';
+    pill.textContent=careChoiceLabel(ch);
+    pill.onclick=()=>{ clearCareUI(); chooseCare(idx); };
+    box.appendChild(pill);
+  });
+
+  careBanner.appendChild(box);
+  careBanner.classList.add('show');
+  careChoicesShown=true;
+  careSecondsLeft=10;
+  if(careTimer) clearInterval(careTimer);
+  careTimer=setInterval(()=>{
+    careSecondsLeft-=1;
+    const cd=document.getElementById('careCountdown');
+    if(cd) cd.textContent = careSecondsLeft+'s';
+    if(careSecondsLeft<=0){
+      clearInterval(careTimer); careTimer=null;
+      const choicesNow = (state && myIndex>=0 && state.players[myIndex].pendingCareChoices) || [];
+      clearCareUI();
+      if(choicesNow.length){
+        const rndIdx = Math.floor(Math.random()*choicesNow.length);
+        chooseCare(rndIdx);
+      }
+    }
+  },1000);
+}
+function updateCareUI(){
+  if(!state || myIndex<0){ clearCareUI(); return; }
+  const me = state.players[myIndex];
+  const choices = me.pendingCareChoices || [];
+  if(choices.length){
+    if(!careChoicesShown) showCareChoices(choices);
+  }else{
+    clearCareUI();
+  }
+}
+async function chooseCare(idx){
+  if(!state || myIndex<0) return;
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(gameRef); if(!snap.exists()) return;
+    const g = snap.data();
+    const p = g.players[myIndex];
+    const choices = p.pendingCareChoices || [];
+    if(!choices.length) return;
+    let choiceIndex = idx;
+    if(choiceIndex==null || choiceIndex<0 || choiceIndex>=choices.length){
+      choiceIndex = Math.floor(Math.random()*choices.length);
+    }
+    const chosen = choices[choiceIndex];
+    const res = chosen.res || {};
+    for(const k of R_KEYS){
+      if(res[k]) p.res[k] = (p.res[k]||0) + res[k];
+    }
+    const wireGain = chosen.wire || 0;
+    if(wireGain){ p.freeWire = (p.freeWire||0) + wireGain; }
+    p.pendingCareChoices = [];
+    p.lastCareRound = g.round || p.lastCareRound;
+    p.careShow = [
+      ...R_KEYS.filter(k=>res[k]).map(k=>({k, n:res[k]})),
+      ...(wireGain? [{k:'wire', n:wireGain}]:[])
+    ];
+    await tx.update(gameRef,g);
+  });
+}
+
+/* Input / Tap */
 function handleTap(e){
   const rect = wrap.getBoundingClientRect();
   const [tx,ty]=ptToTile(e.clientX-rect.left,e.clientY-rect.top);
   if(!inBounds(tx,ty)){ local.build=null; return; }
   if(!alive()) return;
 
-  // FIRST-TURN FREE CC PLACEMENT
   if(isMyTurn() && state.players[myIndex]?.needsFirstCC){
     placeFirstCC(tx,ty);
     return;
@@ -750,7 +938,6 @@ function handleTap(e){
     if(placeable(tx,ty,local.build)) doPlace(tx,ty,local.build);
     local.build=null; return;
   }
-  // try upgrade click
   const b = state.buildings.find(b=>b.x===tx&&b.y===ty&&b.owner===myIndex&&upgradable(b));
   if(b) tryUpgrade(b);
 }
@@ -758,7 +945,7 @@ document.body.addEventListener('click',(e)=>{
   if(!wrap.contains(e.target) && !buildModal.contains(e.target)) local.build=null;
 }, true);
 
-/* ---------------- First turn CC placement ---------------- */
+/* First turn CC placement */
 async function placeFirstCC(x,y){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
@@ -770,11 +957,11 @@ async function placeFirstCC(x,y){
     for(const p of g.players){
       for(const bb of (p.bases||[])){
         const d = Math.abs(bb.x-x)+Math.abs(bb.y-y);
-        if(d<3) return; // spacing
+        if(d<3) return;
       }
     }
-    g.buildings.push({kind:'cc', owner:myIndex, x,y, hp:hpFor('cc'), level:1});
-    g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:hpFor('wire'), level:1}); // power seed
+    g.buildings.push({kind:'cc', owner:myIndex, x,y, hp:hpForKindOwner('cc',myIndex,g), level:1});
+    g.buildings.push({kind:'wire', owner:myIndex, x,y, hp:hpForKindOwner('wire',myIndex,g), level:1});
     me.bases.push({x,y,type:'cc'});
     me.needsFirstCC=false;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
@@ -782,9 +969,9 @@ async function placeFirstCC(x,y){
   });
 }
 
-/* ---------------- Drawing ---------------- */
+/* Drawing */
 function draw(){
-  if(!state) return requestAnimationFrame(draw);
+  if(!state) { requestAnimationFrame(draw); return; }
   const {buildings,zombies} = state;
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -794,17 +981,15 @@ function draw(){
   const x1 = Math.min(W-1, Math.ceil(local.camX + vw));
   const y1 = Math.min(H-1, Math.ceil(local.camY + vh));
 
-  // base tiles
   for(let y=y0;y<=y1;y++){
     for(let x=x0;x<=x1;x++){
       const t = tileAt(x,y); if(!t) continue;
       const [sx,sy] = worldToScreen(x,y);
       ctx.fillStyle = TILE_COLORS[t.color];
-      ctx.fillRect(sx,sy,1*local.scale,1*local.scale);
+      ctx.fillRect(sx,sy,local.scale,local.scale);
     }
   }
 
-  // wires
   for(const b of buildings){
     if(b.kind!=='wire') continue;
     const [sx,sy] = worldToScreen(b.x,b.y);
@@ -812,13 +997,20 @@ function draw(){
     ctx.fillRect(sx+local.scale*0.35, sy+local.scale*0.35, local.scale*0.3, local.scale*0.3);
   }
 
-  // buildings + HP
   for(const b of buildings){
     if(b.kind==='wire') continue;
     const [sx,sy] = worldToScreen(b.x,b.y);
     ctx.strokeStyle = playerColor(b.owner);
-    ctx.lineWidth=2; ctx.strokeRect(sx+1,sy+1, local.scale-2, local.scale-2);
-    ctx.fillStyle="#0b1322aa"; ctx.fillRect(sx,sy,local.scale,local.scale);
+    ctx.lineWidth=2;
+    ctx.strokeRect(sx+1,sy+1, local.scale-2, local.scale-2);
+
+    if(b.owner===myIndex){
+      ctx.fillStyle = "rgba(34,197,94,0.25)";
+    }else{
+      ctx.fillStyle="#0b1322aa";
+    }
+    ctx.fillRect(sx,sy,local.scale,local.scale);
+
     const icon = (
       b.kind==='wall'?'🧱': b.kind==='uwall'?'🧱':
       b.kind==='cc'?'🏚️': b.kind==='base'?'🏛️':
@@ -831,21 +1023,23 @@ function draw(){
     ctx.fillText(icon, sx+local.scale/2, sy+local.scale/2+1);
     if(b.level && b.level>1){ ctx.fillText("★", sx+local.scale-10, sy+10); }
 
-    // HP BAR (always for non-wire)
     const maxhp = Math.max(hpFor(b.kind), b.hp||1);
     drawHpBar(sx, sy, b.hp ?? maxhp, maxhp);
   }
 
-  // zombies + HP bar
   for(const z of zombies){
     const [sx,sy] = worldToScreen(z.x,z.y);
     ctx.font = "bold 20px system-ui";
     ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("🧟", sx+local.scale/2, sy+local.scale/2);
+    let icon='🧟';
+    if(z.type==='runner') icon='🏃‍♂️';
+    else if(z.type==='brute') icon='🧟‍♂️';
+    else if(z.type==='sapper') icon='🧨';
+    else if(z.type==='swarm') icon='🪲';
+    ctx.fillText(icon, sx+local.scale/2, sy+local.scale/2);
     drawHpBar(sx, sy, z.hp, z.maxhp);
   }
 
-  // numbers
   ctx.fillStyle = "rgba(255,255,255,.98)";
   ctx.font = "bold 12px ui-sans-serif";
   ctx.textAlign="center"; ctx.textBaseline="bottom";
@@ -857,7 +1051,6 @@ function draw(){
     }
   }
 
-  // build hint
   if(local.build){
     const [hx,hy]=local.hover;
     if(inBounds(hx,hy)){
@@ -868,11 +1061,55 @@ function draw(){
       ctx.restore();
     }
   }
+
+  drawMini();
   requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);
 
-/* ---------------- Turn Flow (ROLL AT END) ---------------- */
+function drawMini(){
+  if(!state) return;
+  const w = miniCanvas.clientWidth;
+  const h = miniCanvas.clientHeight;
+  miniCtx.clearRect(0,0,w,h);
+  const s = Math.min(w/W, h/H);
+  const offX = (w - W*s)/2;
+  const offY = (h - H*s)/2;
+
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const t = tileAt(x,y); if(!t) continue;
+      miniCtx.fillStyle = TILE_COLORS[t.color];
+      miniCtx.fillRect(offX + x*s, offY + y*s, s, s);
+    }
+  }
+
+  if(myIndex>=0){
+    miniCtx.fillStyle = "#e5e7eb";
+    for(const b of state.buildings){
+      if(b.owner !== myIndex) continue;
+      miniCtx.fillRect(offX + b.x*s, offY + b.y*s, s, s);
+    }
+  }
+
+  miniCtx.fillStyle = "#ef4444";
+  for(const z of state.zombies){
+    miniCtx.fillRect(offX + z.x*s, offY + z.y*s, s, s);
+  }
+
+  const vw = wrap.clientWidth / local.scale;
+  const vh = wrap.clientHeight / local.scale;
+  miniCtx.strokeStyle = "#e5e7eb";
+  miniCtx.lineWidth = 1.5;
+  miniCtx.strokeRect(
+    offX + local.camX * s,
+    offY + local.camY * s,
+    vw * s,
+    vh * s
+  );
+}
+
+/* Turn Flow */
 function setEndingUI(on){
   endingTurn = on;
   btnEndTurn.textContent = on ? 'Ending…' : 'End Turn';
@@ -889,7 +1126,6 @@ async function endTurnSafely(){
     console.error(err);
     toast('End turn failed');
   }finally{
-    // Button state will also update via snapshot; keep responsive here:
     setEndingUI(false);
   }
 }
@@ -902,19 +1138,16 @@ btnFullscreen.onclick = ()=> {
 };
 btnReturnLobby.onclick = ()=>{ window.location.href='/?username='+encodeURIComponent(username); };
 
-// The actual turn logic (kept separate)
 async function applyEndTurn(){
   await runTransaction(db, async (tx)=>{
     const snap = await tx.get(gameRef); if(!snap.exists()) return;
     const g = snap.data();
     if(g.playerOrder[g.currentTurn]!==myIndex) return;
 
-    // 1) Roll dice now (END of turn)
     const roll = 2 + Math.floor(Math.random()*6) + Math.floor(Math.random()*6);
     g.lastRoll = roll;
     g.lastRollTurnId = g.turnId;
 
-    // 2) Payout to ALL players based on the roll
     const adj4 = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
     for(let pi=0; pi<g.players.length; pi++){
       const pl = g.players[pi];
@@ -925,7 +1158,8 @@ async function applyEndTurn(){
           const x=b.x+dx,y=b.y+dy; if(!inBounds(x,y)) continue;
           const t = getTile(g, x,y); if(!t) continue;
           if(t.num===roll){
-            const mult = (g.buildings.some(bb=>bb.kind==='drill'&&bb.x===x&&bb.y===y)?3:1) * (b.type==='base'?2:1);
+            const hasDrill = g.buildings.some(bb=>bb.kind==='drill'&&bb.x===x&&bb.y===y);
+            const mult = (hasDrill?3:1) * (b.type==='base'?2:1);
             const rkey = RESOURCE_BY_COLOR[t.color];
             addRes[rkey] += mult;
           }
@@ -934,17 +1168,13 @@ async function applyEndTurn(){
       for(const k of R_KEYS){ pl.res[k]=(pl.res[k]||0)+(addRes[k]||0); }
     }
 
-    // 3) Current player's defenses fire
     fireDefenses(g,myIndex);
 
-    // 4) If 7, zombies take an extra step now
     if(roll===7){ zombiesAdvance(g); }
 
-    // 5) End-of-turn zombies move 1 and spawn 1
     zombiesAdvance(g);
     spawnEdgeZombies(g, 1);
 
-    // 6) Next turn logic & round wrap
     const cur=g.currentTurn;
     let nt=(cur+1)%g.playerOrder.length;
     for(let guard=0; guard<8; guard++){
@@ -958,33 +1188,34 @@ async function applyEndTurn(){
       if(g.round%5===0) g.zombieBaseHP+=1;
       spawnEdgeZombies(g, g.zombiesPerEdge);
 
-      // CARE PACKAGES at start of every even round
       if(g.round % 2 === 0){
         for(let i=0;i<g.players.length;i++){
           const p = g.players[i];
           if(!p.alive) continue;
-          const picks = [pickRes(), pickRes(), pickRes()];
-          const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
-          for(const k of picks){ counts[k]++; }
-          for(const k of R_KEYS){ p.res[k] = (p.res[k]||0) + counts[k]; }
-          p.freeWire = (p.freeWire||0) + 1; // free wire token
-          p.lastCareRound = g.round;
-          p.careShow = [
-            ...R_KEYS.filter(k=>counts[k]>0).map(k=>({k, n:counts[k]})),
-            {k:'wire', n:1}
-          ];
+          const role = p.role;
+          const choiceCount = 3;
+          const choices = [];
+          for(let c=0;c<choiceCount;c++){
+            const picks = [pickRes(), pickRes(), pickRes()];
+            const counts = {brick:0,ore:0,sheep:0,wheat:0,wood:0};
+            for(const k of picks){ counts[k]++; }
+            if(role==='quartermaster'){
+              const extraK = pickRes();
+              counts[extraK] += 1;
+            }
+            choices.push({res:counts, wire:1});
+          }
+          p.pendingCareChoices = choices;
         }
       }
     }
 
-    // alive flags
     for(let i=0;i<g.players.length;i++){
       const still = g.buildings.some(b=>b.owner===i&&(b.kind==='cc'||b.kind==='base'));
       g.players[i].alive = !!still;
       if(!still) g.players[i].bases=[];
     }
 
-    // next turn timing + new turn id
     g.currentTurn = nt;
     g.turnEndsAt = Date.now()+TURN_SECONDS*1000;
     g.turnId = (g.turnId||0) + 1;
@@ -995,7 +1226,7 @@ async function applyEndTurn(){
 function pickRes(){ return R_KEYS[Math.floor(Math.random()*R_KEYS.length)]; }
 async function forceEndTurn(){ if(endingTurn) return; if(state && state.playerOrder[state.currentTurn]===myIndex) await endTurnSafely(); }
 
-/* ---------------- Zombies / Pathing & Attacks ---------------- */
+/* Zombies / Pathing */
 function zombiesAdvance(g){
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
   const walkable = (x,y)=>{
@@ -1004,10 +1235,11 @@ function zombiesAdvance(g){
   };
 
   for(const z of g.zombies){
-    // 0) Damage any building on the current tile
+    const dmg = (z.type==='brute'?2:1);
+
     const onIdx = g.buildings.findIndex(b=>b.x===z.x && b.y===z.y);
     if(onIdx>=0){
-      g.buildings[onIdx].hp -= 1;
+      g.buildings[onIdx].hp -= dmg;
       if(g.buildings[onIdx].hp<=0){
         const owner = g.buildings[onIdx].owner;
         g.buildings.splice(onIdx,1);
@@ -1015,31 +1247,49 @@ function zombiesAdvance(g){
       }
     }
 
-    // 1) Determine target (nearest alive base)
     const targets=[];
     g.players.forEach((p)=>{ if(!p.alive) return; for(const bb of p.bases||[]) targets.push({x:bb.x,y:bb.y}); });
     if(!targets.length) continue;
     const goal = nearest(targets, z.x,z.y);
 
-    // 2) Try step toward goal
     const step = bfsStep(z.x,z.y, goal.x,goal.y, walkable);
-
     if(step){
       z.x=step.x; z.y=step.y;
-      // After moving, if it moved onto a building tile, it will damage it next tick via step 0
+      if(z.type==='runner'){
+        const step2 = bfsStep(z.x,z.y, goal.x,goal.y, walkable);
+        if(step2){ z.x=step2.x; z.y=step2.y; }
+      }
     }else{
-      // 3) If blocked: attack adjacent ANY building (prefer walls if present)
-      const adjIdxWall = dirs
-        .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&(b.kind==='wall'||b.kind==='uwall')))
-        .find(ix=>ix>=0);
-      let targetIdx = adjIdxWall;
-      if(targetIdx<0){
-        targetIdx = dirs
+      let targetIdx=-1;
+      if(z.type==='sapper'){
+        const adjWire = dirs
+          .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&b.kind==='wire'))
+          .find(ix=>ix>=0);
+        if(adjWire>=0){
+          targetIdx=adjWire;
+        }else{
+          const adjWall = dirs
+            .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&(b.kind==='wall'||b.kind==='uwall')))
+            .find(ix=>ix>=0);
+          if(adjWall>=0){
+            targetIdx=adjWall;
+          }else{
+            targetIdx = dirs
+              .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy))
+              .find(ix=>ix>=0);
+          }
+        }
+      }else{
+        const adjWall = dirs
+          .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy&&(b.kind==='wall'||b.kind==='uwall')))
+          .find(ix=>ix>=0);
+        targetIdx = adjWall>=0 ? adjWall :
+          dirs
           .map(([dx,dy])=> g.buildings.findIndex(b=>b.x===z.x+dx&&b.y===z.y+dy))
           .find(ix=>ix>=0);
       }
       if(targetIdx>=0){
-        g.buildings[targetIdx].hp -= 1;
+        g.buildings[targetIdx].hp -= dmg;
         if(g.buildings[targetIdx].hp<=0){
           const owner = g.buildings[targetIdx].owner;
           g.buildings.splice(targetIdx,1);
@@ -1048,7 +1298,6 @@ function zombiesAdvance(g){
       }
     }
   }
-  // Cleanup
   g.buildings = g.buildings.filter(b=> b.hp==null || b.hp>0 );
 }
 function nearest(arr,x,y){
@@ -1081,6 +1330,24 @@ function bfsStep(sx,sy,tx,ty,pass){
   }
   return null;
 }
+
+function pickZombieType(round){
+  if(round<3) return 'walker';
+  const r=Math.random();
+  if(round<7){
+    if(r<0.6) return 'walker';
+    if(r<0.8) return 'runner';
+    if(r<0.95) return 'swarm';
+    return 'sapper';
+  }else{
+    if(r<0.4) return 'walker';
+    if(r<0.6) return 'runner';
+    if(r<0.8) return 'swarm';
+    if(r<0.93) return 'sapper';
+    return 'brute';
+  }
+}
+
 function spawnEdgeZombies(g,count){
   for(let i=0;i<count;i++){
     const edge=Math.floor(Math.random()*4);
@@ -1090,11 +1357,18 @@ function spawnEdgeZombies(g,count){
     if(edge===2){ x=0; y=Math.floor(Math.random()*H); }
     if(edge===3){ x=W-1; y=Math.floor(Math.random()*H); }
     if(g.zombies.some(z=>z.x===x&&z.y===y)){ i--; continue; }
-    g.zombies.push({x,y,hp:g.zombieBaseHP,maxhp:g.zombieBaseHP});
+
+    const type = pickZombieType(g.round || 1);
+    let hp = g.zombieBaseHP;
+    if(type==='brute') hp += 2;
+    if(type==='runner') hp = Math.max(1, hp-1);
+    if(type==='swarm') hp = Math.max(1, Math.floor(hp/2));
+    if(type==='sapper') hp += 1;
+    g.zombies.push({x,y,hp,maxhp:hp,type});
   }
 }
 
-/* ---------------- Connectivity Prune ---------------- */
+/* Connectivity Prune */
 function pruneDisconnected(g, owner){
   const needs = (b)=> !['wall','uwall'].includes(b.kind);
   const sources = [
@@ -1122,24 +1396,40 @@ function pruneDisconnected(g, owner){
   });
 }
 
-/* ---------------- Defenses (incl. Mortar) ---------------- */
+/* Defenses + Synergies */
 function fireDefenses(g, owner){
   const towers = g.buildings.filter(b=>b.owner===owner && ['turret','cata','beacon','tesla','tribolt','mortar'].includes(b.kind));
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
   for(const t of towers){
     if(g.zombies.length===0) continue;
-    const rangeOf = (k)=>{
+    const role = g.players[t.owner]?.role;
+    const neighbors = dirs.map(([dx,dy])=> g.buildings.find(b=>b.owner===owner && b.x===t.x+dx && b.y===t.y+dy && ['turret','cata','beacon','tesla','tribolt','mortar','wall','uwall'].includes(b.kind))).filter(Boolean);
+    const hasBeaconAdj = neighbors.some(n=>n.kind==='beacon');
+    const hasMortarAdj = neighbors.some(n=>n.kind==='mortar');
+    const hasTeslaAdj  = neighbors.some(n=>n.kind==='tesla');
+    const hasTriboltAdj= neighbors.some(n=>n.kind==='tribolt');
+    const hasWallAdj   = neighbors.some(n=>n.kind==='wall' || n.kind==='uwall');
+
+    function rangeOf(k){
       let r=(k==='turret')?5:(k==='cata')?6:(k==='beacon')?4:(k==='tesla')?5:(k==='tribolt')?6:(k==='mortar')?8:4;
       if(t.level>1) r++;
+      if(role==='artillery' && (k==='mortar' || k==='cata' || k==='tribolt')) r++;
       return r;
-    };
-    const dmgOf   = (k)=>{
+    }
+    function dmgOf(k){
       let d=(k==='turret')?2:(k==='cata')?1:(k==='beacon')?1:(k==='tesla')?2:(k==='tribolt')?1:(k==='mortar')?2:1;
       if(t.level>1) d++;
+      if(role==='artillery' && (k==='mortar' || k==='cata' || k==='tribolt')) d++;
+      if(k==='turret' && hasWallAdj) d++;
       return d;
-    };
+    }
     const inR = (z)=> Math.abs(z.x-t.x)+Math.abs(z.y-t.y) <= rangeOf(t.kind);
     const targets = g.zombies.filter(inR);
     if(targets.length===0) continue;
+
+    const triboltTargets = hasTeslaAdj ? 4 : 3;
+    let mortarRadius = 1;
+    if(hasBeaconAdj) mortarRadius = 2;
 
     if(t.kind==='turret'){
       hitNearest(targets,1,dmgOf('turret'));
@@ -1156,20 +1446,22 @@ function fireDefenses(g, owner){
       }
       for(const zz of chain){ zz.hp -= dmgOf('tesla'); }
     }else if(t.kind==='tribolt'){
-      hitNearest(targets, Math.min(3,targets.length), dmgOf('tribolt'));
+      hitNearest(targets, Math.min(triboltTargets,targets.length), dmgOf('tribolt'));
     }else if(t.kind==='mortar'){
-      const z = nearest(targets,t.x,t.y); // explode 3x3
-      for(const zz of g.zombies){ if(Math.abs(zz.x-z.x)<=1 && Math.abs(zz.y-z.y)<=1) zz.hp -= dmgOf('mortar'); }
+      const z = nearest(targets,t.x,t.y);
+      const rad = mortarRadius;
+      for(const zz of g.zombies){ if(Math.abs(zz.x-z.x)<=rad && Math.abs(zz.y-z.y)<=rad) zz.hp -= dmgOf('mortar'); }
     }
   }
   g.zombies = g.zombies.filter(z=>z.hp>0);
+
   function hitNearest(arr,n,d){
     arr.sort((a,b)=> (Math.abs(a.x-t.x)+Math.abs(a.y-t.y)) - (Math.abs(b.x-t.x)+Math.abs(b.y-t.y)));
     for(let i=0;i<n;i++) if(arr[i]) arr[i].hp -= d;
   }
 }
 
-/* ---------------- Trades ---------------- */
+/* Trades */
 const tradesRef = collection(db, "zombiezone", gameId, "trades");
 document.getElementById('btnPostTrade').onclick = async ()=>{
   if(!alive()) return;
@@ -1230,7 +1522,7 @@ async function acceptTrade(t){
   try{ await deleteDoc(doc(db,"zombiezone",gameId,"trades",t.id)); }catch(e){}
 }
 
-/* ---------------- Timer hooks ---------------- */
+/* Timer hook for turn changes */
 let lastTurnSeen=-1;
 onSnapshot(gameRef,(snap)=>{
   if(!snap.exists()) return;
@@ -1241,13 +1533,14 @@ onSnapshot(gameRef,(snap)=>{
   }
 });
 
-/* ---------------- Init ---------------- */
+/* Init */
 await ensureGame();
 requestAnimationFrame(draw);
 
 </script>
 </body>
 </html>
+
 
 
 
