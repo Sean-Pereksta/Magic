@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>  
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -167,7 +167,8 @@
   .joyLabel{margin-top:6px; color:#a8c3ff; font-size:13px; text-align:center}
 
   #toast{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#0e1726;border:1px solid #1f2a44;
-         padding:10px 14px;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.35);display:none;z-index:15}
+         padding:10px 14px;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.35);display:none;z-index:15;opacity:0;transition:opacity .2s;}
+  #toast.show{display:block;opacity:1;}
 
   #powerBar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;align-items:center;justify-content:center;
     padding:8px 10px;background:linear-gradient(0deg,rgba(10,16,26,.9),rgba(10,16,26,.3)); backdrop-filter:blur(6px); z-index:12;}
@@ -356,7 +357,7 @@ let crows = new Map();
 let corpses = new Map();
 let fleas = new Map();
 let beetles = new Map();
-let golems = new Map();     // NEW: siege enemies
+let golems = new Map();     // siege enemies
 
 let me = {x:2,y:2,alive:true,score:0,gold:0,powers:{}};
 
@@ -364,11 +365,11 @@ let me = {x:2,y:2,alive:true,score:0,gold:0,powers:{}};
 let heldType = null;   // "🧱","🔫","💣","🏭"
 let heldCount = 0;
 
-// upgrades (manual, via gold)
+// legacy structural levels (still used for calc; not shown in UI)
 let levels = { wall:0, turret:0, range:0, speed:0 };
 
-// power global passives (team-wide scaling)
-let globalStoneLevel=0, globalLightningLevel=0, globalFireLevel=0, globalIceLevel=0, globalFleasLevel=0, globalBeetlesLevel=0;
+// elemental passives (global hooks)
+let globalStoneLevel=0, globalLightningLevel=0, globalFireLevel=0, globalFleasLevel=0, globalBeetlesLevel=0;
 
 // meta progression
 const metaRef = doc(db,"games",gameId,"meta","global");
@@ -383,16 +384,27 @@ let moveIntent={dx:0,dy:0}, buildIntent={dx:0,dy:0};
 let summaryShown=false;
 let gameOverTriggered=false;
 
+// Upgrade card economy
+let upgradeCardCost = 80;  // starting gold cost for an upgrade card
+
 /* ------------------------------- Helpers --------------------------------- */
 const $ = sel => document.querySelector(sel);
 function key(x,y){ return `${x}_${y}`; }
 function clamp(v,min,max){ return v<min?min:v>max?max:v; }
 function inBounds(x,y){ return x>0 && y>0 && x<gridSize-1 && y<gridSize-1; }
-function toast(msg,ms=1200){ const el=$("#toast"); el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
+function toast(msg,ms=1200){
+  const el=$("#toast");
+  el.textContent=msg;
+  el.classList.add("show");
+  setTimeout(()=>{ el.classList.remove("show"); setTimeout(()=>{ if(!el.classList.contains("show")) el.style.display='none'; },200); },ms);
+  el.style.display='block';
+}
 function setHostBadge(){ $("#hostBadge").textContent = I_AM_HOST? "👑 Host" : "Client"; }
 function setHeldUI(){ $("#heldIcon").textContent = heldType || "—"; $("#heldCount").textContent = heldCount || 0; }
-function focusCamera(){ camera.x = clamp(me.x - Math.floor(view/2), 0, gridSize - view);
-                        camera.y = clamp(me.y - Math.floor(view/2), 0, gridSize - view); }
+function focusCamera(){
+  camera.x = clamp(me.x - Math.floor(view/2), 0, gridSize - view);
+  camera.y = clamp(me.y - Math.floor(view/2), 0, gridSize - view);
+}
 function floatText(x,y,txt,color="#fff"){
   const el = document.createElement('div');
   el.className='float';
@@ -418,78 +430,67 @@ function updateGoldUI(){
   if (el) el.textContent = me.gold || 0;
 }
 
-/* Upgrade config */
-const UPG_CFG = {
-  wall:  { key:"wall",   icon:"🧱", label:"Wall Armor",     baseCost:40 },
-  turret:{ key:"turret", icon:"🔫", label:"Turret Power",   baseCost:60 },
-  range: { key:"range",  icon:"📡", label:"Turret Range",   baseCost:50 },
-  speed: { key:"speed",  icon:"🏃", label:"Mouse Speed",    baseCost:50 },
-};
-function getUpgradeCost(k){
-  const cfg = UPG_CFG[k];
-  const base = cfg.baseCost;
-  const lvl = levels[k] || 0;
-  return Math.round(base * Math.pow(1.4, lvl)); // grows each purchase
-}
-function buyUpgrade(k){
-  const cost = getUpgradeCost(k);
-  if ((me.gold||0) < cost) return;
-  me.gold -= cost;
-  levels[k] = (levels[k]||0) + 1;
-  updateGoldUI();
-  renderUpgradesUI();
-  safeUpdate(doc(playersCol,myName), { gold: me.gold });
-  toast(`${UPG_CFG[k].label} Lv${levels[k]}`);
-}
+/* ---------------------- Upgrade card UI + logic -------------------------- */
 function renderUpgradesUI(){
   const body = document.getElementById("upgradeBody");
   if (!body) return;
   body.innerHTML="";
-  Object.values(UPG_CFG).forEach(cfg=>{
-    const lvl = levels[cfg.key] || 0;
-    const cost = getUpgradeCost(cfg.key);
-    const row=document.createElement("div");
-    row.className="upRow";
 
-    const top=document.createElement("div");
-    top.className="upRowTop";
+  const row=document.createElement("div");
+  row.className="upRow";
 
-    const title=document.createElement("div");
-    title.className="title";
-    title.innerHTML = `<span>${cfg.icon}</span><span>${cfg.label}</span>`;
+  const top=document.createElement("div");
+  top.className="upRowTop";
 
-    const meta=document.createElement("div");
-    meta.className="meta";
-    meta.textContent = `Lv ${lvl} · ${cost}g`;
+  const title=document.createElement("div");
+  title.className="title";
+  title.innerHTML = `<span>🎴</span><span>Upgrade Card</span>`;
 
-    const btn=document.createElement("button");
-    btn.className="upBtn";
-    const can = (me.gold||0) >= cost;
-    if (can){
-      btn.classList.add("ready");
-      btn.textContent="Upgrade";
-      btn.onclick=()=>buyUpgrade(cfg.key);
-    }else{
-      btn.textContent=`${cost}g`;
-      btn.onclick=null;
-    }
+  const meta=document.createElement("div");
+  meta.className="meta";
+  meta.textContent = `${upgradeCardCost}g`;
 
-    top.appendChild(title);
-    top.appendChild(meta);
-    top.appendChild(btn);
+  const btn=document.createElement("button");
+  btn.className="upBtn";
+  const can = (me.gold||0) >= upgradeCardCost;
+  if (can){
+    btn.classList.add("ready");
+    btn.textContent="Draw";
+    btn.onclick=()=>buyUpgradeCard();
+  }else{
+    btn.textContent=`Need ${upgradeCardCost}g`;
+    btn.onclick=null;
+  }
 
-    const barOuter=document.createElement("div");
-    barOuter.className="upBarOuter";
-    const barInner=document.createElement("div");
-    barInner.className="upBarInner";
-    const pct = Math.max(0, Math.min(1, (me.gold||0)/cost));
-    barInner.style.width = (pct*100)+"%";
-    barOuter.appendChild(barInner);
+  top.appendChild(title);
+  top.appendChild(meta);
+  top.appendChild(btn);
 
-    row.appendChild(top);
-    row.appendChild(barOuter);
-    body.appendChild(row);
-  });
+  const barOuter=document.createElement("div");
+  barOuter.className="upBarOuter";
+  const barInner=document.createElement("div");
+  barInner.className="upBarInner";
+  const pct = Math.max(0, Math.min(1, (me.gold||0)/upgradeCardCost));
+  barInner.style.width = (pct*100)+"%";
+  barOuter.appendChild(barInner);
+
+  row.appendChild(top);
+  row.appendChild(barOuter);
+  body.appendChild(row);
+}
+
+function buyUpgradeCard(){
+  if ((me.gold||0) < upgradeCardCost) return;
+  me.gold -= upgradeCardCost;
+  // next card is more expensive
+  upgradeCardCost = Math.round(upgradeCardCost * 1.5);
+  if (upgradeCardCost > 999) upgradeCardCost = 999;
+
+  updateGoldUI();
+  renderUpgradesUI();
+  safeUpdate(doc(playersCol,myName), { gold: me.gold });
+  // Show choice of two random elemental upgrades
+  showPowerOffer();
 }
 
 /* Safe firestore wrappers */
@@ -703,8 +704,7 @@ async function claimHost(){
       host: myName,
       startMs: Date.now(),
       cat: { x:gridSize-2, y:gridSize-2, h: 50, hMax: 50, stunCount:0, stunUntil:0 },
-      catPower: 0,
-      nextPowerOfferAt: Date.now() + 120000
+      catPower: 0
     },{merge:true});
     I_AM_HOST = true;
   }else{
@@ -738,6 +738,7 @@ function listen(){
       const data=d.data();
       if (d.id===myName){
         me.gold = data.gold || 0;
+        me.powers = data.powers || {};
         updateGoldUI();
         renderUpgradesUI();
       }else{
@@ -770,7 +771,7 @@ function hpWall(){
 }
 function hpTur(){
   const base = 24;
-  const metaMult = turretDmgMetaMult(); // treat as small hp buff too
+  const metaMult = turretDmgMetaMult(); // small hp buff as well
   return Math.round(base * (1+0.2*levels.turret) * metaMult);
 }
 
@@ -1094,7 +1095,13 @@ async function hostCatAI(){
 /* ------------------------------- Power-ups -------------------------------- */
 const powerBar = document.getElementById('powerBar');
 const POWER_LIST = ["Fire","Lightning","Ice","Stone","Fleas","Beetles"];
-function rand2(arr){ const a=[...arr]; const i=Math.floor(Math.random()*a.length); let j=Math.floor(Math.random()*a.length); if (j===i) j=(j+1)%a.length; return [a[i],a[j]]; }
+function rand2(arr){
+  const a=[...arr];
+  const i=Math.floor(Math.random()*a.length);
+  let j=Math.floor(Math.random()*a.length);
+  if (j===i) j=(j+1)%a.length;
+  return [a[i],a[j]];
+}
 function powerIcon(n){ return n==="Fire"?"🔥":n==="Lightning"?"⚡":n==="Ice"?"❄️":n==="Stone"?"🪨":n==="Fleas"?"🪰":"🪲"; }
 
 function powerPeriod(name,lvl){
@@ -1108,6 +1115,7 @@ function powerPeriod(name,lvl){
 }
 function powerData(p){ return p && typeof p.lvl==="number" ? p : {lvl:0,nextAt:Date.now()+99999999}; }
 
+/* This is the "upgrade card" choice: 2 random options from elemental powers */
 function showPowerOffer(){
   if (!me.alive) return;
   const [a,b]=rand2(POWER_LIST);
@@ -1122,7 +1130,7 @@ function showPowerOffer(){
       me.powers = {...(me.powers||{}), [name]:{lvl:nextLvl,nextAt}};
       await safeUpdate(doc(playersCol,myName), { powers: me.powers });
       powerBar.style.display='none';
-      toast(`${name} +1`);
+      toast(`Chosen ${name} upgrade`);
     };
     return btn;
   };
@@ -1138,7 +1146,6 @@ function unlockedItems(){
   pushW("🧱",6); pushW("🔫",4); pushW("💣",3); pushW("🏭",3); // factories added
   return arr;
 }
-// No more auto-upgrade pickups
 function powerupPool(){ return []; }
 
 async function placeTempPickup(x,y,t,ttlMs=30000){
@@ -1155,7 +1162,6 @@ async function hostSpawnPickups(){
     const t = "⭕"+pick;
     await placeTempPickup(x,y,t, 30000);
   }
-  // powerupPool disabled for now (no free upgrades)
 }
 setInterval(async ()=>{
   if (!I_AM_HOST) return;
@@ -1183,11 +1189,10 @@ async function tryMove(dx,dy,moveDelay){
     if (s.t==="⭕💣"){ take("💣",4);  await safeDelete(doc(structsCol,key(nx,ny))); }
     if (s.t==="⭕🏭"){ take("🏭",3);  await safeDelete(doc(structsCol,key(nx,ny))); } // factories pickup
 
-    // Removed all "🔺" auto-upgrade pickups (manual upgrades only now)
     setHeldUI();
   }
 
-  // revive (use cached corpse map, avoid multi-where index)
+  // revive
   if (corpses.has(key(nx,ny))){
     const corpseId = corpses.get(key(nx,ny));
     if (corpseId) await safeDelete(doc(corpsesCol, corpseId));
@@ -1223,7 +1228,7 @@ async function tryBuild(dx,dy){
     hp = hpWall();
     extra.owner = myName;
     extra.factory = true;
-    extra.cashRate = 3; // gold per tick chunk
+    extra.cashRate = 3;
   }
 
   await placeStructureHost(tx,ty,heldType,hp,extra);
@@ -1231,7 +1236,6 @@ async function tryBuild(dx,dy){
 }
 
 /* ------------------------------ Allies (Fleas & Beetles) ----------------- */
-// Fleas: fly to nearest enemy, deal 5 on hit, then die
 async function hostFleaTick(){
   if (!I_AM_HOST) return;
   for (const [id,f] of fleas){
@@ -1260,7 +1264,6 @@ async function hostFleaTick(){
   }
 }
 
-// Beetles: follow owner, path with walls, attack within 8, avoid overlap
 function beetleStats(lvl){ return {hp: 30 + 20*(lvl-1), dmg: 5 + 5*(lvl-1)}; }
 async function hostBeetleTick(){
   if (!I_AM_HOST) return;
@@ -1297,7 +1300,6 @@ async function hostBeetleTick(){
 }
 
 /* ------------------------------- Timers/loops ---------------------------- */
-/* Pickup spawner stubs (no-op for now; safe globals) */
 async function ensurePickupSpawner(){ }
 async function pickupSpawnerTick(){ }
 
@@ -1331,7 +1333,7 @@ setInterval(hostTurrets, 250);
 /* Factory income (gold generator) */
 async function hostFactoryTick(){
   if (!I_AM_HOST) return;
-  const incomePerTick = 3; // gold per factory per tick
+  const incomePerTick = 3;
   const byOwner = {};
   for (const s of structures.values()){
     if (s.t==="🏭" && s.owner){
@@ -1366,13 +1368,6 @@ setInterval(async ()=>{
 async function hostPowerTick(){
   if (!I_AM_HOST) return;
 
-  // Offer chooser every 2 min
-  const g = (await getDoc(gameRef)).data()||{};
-  if ((g.nextPowerOfferAt||0) <= Date.now()){
-    if (myName===g.host) showPowerOffer();
-    await safeUpdate(gameRef,{ nextPowerOfferAt: Date.now() + 120000 });
-  }
-
   const all = {...players}; all[myName] = {x:me.x,y:me.y,alive:me.alive,powers:me.powers};
   for (const [name,p] of Object.entries(all)){
     if (!p?.alive) continue;
@@ -1380,7 +1375,7 @@ async function hostPowerTick(){
     const powers = p.powers || {};
     const now = Date.now();
 
-    // Stone (auto walls + passive wall HP scaling via globalStoneLevel)
+    // Stone
     if (powers.Stone && (powers.Stone.nextAt||0) <= now){
       const lvl=powers.Stone.lvl||1;
       globalStoneLevel = Math.max(globalStoneLevel, lvl);
@@ -1398,7 +1393,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Stone:{lvl, nextAt} } }); }
     }
 
-    // Ice (radius & duration scale by lvl)
+    // Ice
     if (powers.Ice && (powers.Ice.nextAt||0) <= now){
       const lvl=powers.Ice.lvl||1;
       globalIceLevel = Math.max(globalIceLevel,lvl);
@@ -1416,7 +1411,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Ice:{lvl, nextAt} } }); }
     }
 
-    // Lightning (chains, damage, passive turret synergy via globalLightningLevel)
+    // Lightning
     if (powers.Lightning && (powers.Lightning.nextAt||0) <= now){
       const lvl=powers.Lightning.lvl||1;
       globalLightningLevel = Math.max(globalLightningLevel,lvl);
@@ -1425,7 +1420,7 @@ async function hostPowerTick(){
       for (const [id,r] of rats){ pool.push({kind:"rat",id,x:r.x,y:r.y}); }
       for (const [id,b] of bears){ pool.push({kind:"bear",id,x:b.x,y:b.y}); }
       for (const [id,c] of caterpillars){ pool.push({kind:"cater",id,x:c.x,y:c.y}); }
-      for (const [id,cw] of crows){ pool.push({kind:"crow",id,x:cw.x,y:cw.y}); }
+      for (const [id,cw] of crows){ pool.push({kind:"crow",id:x:cw.x,y:cw.y}); }
       for (const [id,g] of golems){ pool.push({kind:"golem",id,x:g.x,y:g.y}); }
       pool.sort((a,b)=> manhattan(px,py,a.x,a.y) - manhattan(px,py,b.x,b.y));
       const inR = pool.filter(e=> manhattan(px,py,e.x,e.y)<=rng);
@@ -1448,7 +1443,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Lightning:{lvl, nextAt} } }); }
     }
 
-    // Fire (bigger damage + small knockback)
+    // Fire
     if (powers.Fire && (powers.Fire.nextAt||0) <= now){
       const lvl=powers.Fire.lvl||1;
       globalFireLevel = Math.max(globalFireLevel,lvl);
@@ -1474,7 +1469,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Fire:{lvl, nextAt} } }); }
     }
 
-    // Fleas (spawn N fleas, N = lvl)
+    // Fleas
     if (powers.Fleas && (powers.Fleas.nextAt||0) <= now){
       const lvl=powers.Fleas.lvl||1;
       globalFleasLevel = Math.max(globalFleasLevel,lvl);
@@ -1490,7 +1485,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Fleas:{lvl, nextAt} } }); }
     }
 
-    // Beetles (cap per owner; stats scale)
+    // Beetles
     if (powers.Beetles && (powers.Beetles.nextAt||0) <= now){
       const lvl=powers.Beetles.lvl||1;
       globalBeetlesLevel = Math.max(globalBeetlesLevel,lvl);
@@ -1582,7 +1577,7 @@ async function hostSpawnCrows(){
   const mins=minutesSinceStart(); if (mins<7) return;
   const cat = gameDoc.cat || {x:gridSize-2,y:gridSize-2};
   const dx = (Math.random()<.5?-1:1) * (3+Math.floor(Math.random()*4));
-  const dy = (Math.random()<.5?-1:1) * (3+Math.floor(Math.random()*4));
+  const dy = (Math.random)<.5?-1:1 * (3+Math.floor(Math.random()*4));
   const x = clamp(cat.x+dx,1,gridSize-2);
   const y = clamp(cat.y+dy,1,gridSize-2);
   await addDoc(crowsCol,{x,y,hp:7,max:7});
@@ -1614,9 +1609,10 @@ function drawCooldowns(){
   const order=["Fire","Lightning","Ice","Stone","Fleas","Beetles"];
   coolwrap.innerHTML="";
   for (const name of order){
-    const cur = p[name]; const lvl = cur?.lvl||0; const eta = cur? fmt(msLeft(cur.nextAt)) : "—";
+    const cur = p[name];
+    const eta = cur? fmt(msLeft(cur.nextAt)) : "—";
     const row=document.createElement('div'); row.className="cool";
-    row.innerHTML = `<span>${powerIcon(name)} <b>${name}</b> <small style="opacity:.7">Lv${lvl}</small></span><span class="eta">${eta}</span>`;
+    row.innerHTML = `<span>${powerIcon(name)} <b>${name}</b></span><span class="eta">${eta}</span>`;
     coolwrap.appendChild(row);
   }
 }
@@ -1643,9 +1639,7 @@ function showSessionSummary(gdoc){
   addStat("Best Score (all time)", meta.bestScore||0);
   modal.style.display='flex';
 }
-document.getElementById("summaryClose").onclick=()=>{
-  location.reload();
-};
+document.getElementById("summaryClose").onclick=()=>{ location.reload(); };
 
 /* --------------------------------- Joysticks ----------------------------- */
 function setupJoystick(el, onDir){
@@ -1681,7 +1675,11 @@ window.addEventListener("keyup",e=>{
   if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) moveIntent={dx:0,dy:0};
   if (["w","a","s","d"].includes(e.key)) buildIntent={dx:0,dy:0};
 });
-document.getElementById("fsBtn").onclick=()=>{ const el=document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen?.(); };
+document.getElementById("fsBtn").onclick=()=>{
+  const el=document.documentElement;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else el.requestFullscreen?.();
+};
 
 /* Upgrade panel toggle */
 document.getElementById("upgradeHeader").onclick=()=>{
