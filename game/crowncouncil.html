@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -60,7 +60,7 @@
     position:relative;overflow:hidden;
   }
 
-  /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) */
+  /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) < status(6) */
   .under{
     position:absolute; inset:0; z-index:0;
     opacity:1 !important;
@@ -82,6 +82,20 @@
   .hp>i.team0{ background:linear-gradient(90deg,var(--team0),var(--team0b)); }
   .hp>i.team1{ background:linear-gradient(90deg,var(--team1),var(--team1b)); }
 
+  .status{
+    position:absolute;
+    top:4px;
+    right:4px;
+    display:flex;
+    gap:2px;
+    font-size:11px;
+    z-index:6;
+    pointer-events:none;
+  }
+  .status span{
+    text-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+
   .hitflash{ position:absolute; inset:0; background:rgba(255,255,255,.9); animation:flash .12s ease; pointer-events:none; z-index:2 }
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
   .dmg{
@@ -95,15 +109,14 @@
     100%{opacity:0; transform:translate(-50%,-100%) scale(1)}
   }
 
-  /* Ground effects */
-  .poison{ position:absolute; inset:0; background:#ffb3b3; opacity:.95; z-index:1; animation:poipulse 1s ease-in-out infinite; }
+  /* Ground effects (more saturated) */
+  .poison{ position:absolute; inset:0; background:#15803d; opacity:.85; z-index:1; animation:poipulse 1s ease-in-out infinite; }
   @keyframes poipulse{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.15)} }
 
-  /* Defiler toxic splash (purple) */
   .toxic{ position:absolute; inset:0; background:#6b21a8; opacity:.9; z-index:1; animation:toxpulse 1s ease-in-out infinite; }
   @keyframes toxpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
 
-  .acid{ position:absolute; inset:0; background:#c7b8ff; opacity:.95; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
+  .acid{ position:absolute; inset:0; background:#1d4ed8; opacity:.85; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
   @keyframes acidpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
   .ward{ position:absolute; inset:0; background:#8ec5ff; border:1px solid #4ea3ff; z-index:1 }
 
@@ -134,11 +147,39 @@
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(34,197,94,1),rgba(134,239,172,1));
     opacity:1; transform-origin:0 50%; animation:beamfade .35s ease-out forwards;
   }
+  .tline{
+    position:absolute;
+    height:3px;
+    border-radius:3px;
+    background:linear-gradient(90deg,#22c55e,#06b6d4);
+    opacity:.95;
+    transform-origin:0 50%;
+    animation:beamfade .45s ease-out forwards;
+  }
   @keyframes beamfade{ to{ opacity:0 } }
 
   .p{ position:absolute; width:6px; height:6px; border-radius:50%; background:#ef4444; opacity:.95; animation:pfade .7s ease-out forwards }
   .p.purple{ background:#6b21a8; }
   @keyframes pfade{ to{ opacity:0; transform:translateY(-8px) scale(.7) } }
+
+  .endSummary{
+    position:fixed;
+    left:50%;
+    bottom:16px;
+    transform:translateX(-50%);
+    min-width:280px;
+    max-width:90vw;
+    background:#0f172a;
+    color:#e5e7eb;
+    padding:10px 14px;
+    border-radius:12px;
+    box-shadow:var(--shadow);
+    font-size:.9rem;
+    z-index:50;
+    display:none;
+  }
+  .endSummary .mmrUp{ color:#22c55e; font-weight:700; }
+  .endSummary .mmrDown{ color:#ef4444; font-weight:700; }
 </style>
 </head>
 <body>
@@ -166,6 +207,8 @@
     <div id="pickNote" class="pickNote"></div>
     <div id="pickCounter" class="pickCounter"></div>
   </div>
+
+  <div id="endSummary" class="endSummary"></div>
 
 <script type="module">
 /* ---------------- Firebase ---------------- */
@@ -261,19 +304,21 @@ async function ensureStateExists(){
         currentPacks:{ p0:[], p1:[] },
         bonusFor:null,
         draftIndex:0,
-        winner:null
+        winner:null,
+        mmr:[1000,1000],
+        mmrChange:[0,0]
       });
     });
     didEnsure = true;
   }catch(e){
-    // If another client beat us in the race, just proceed.
     if (e?.code !== 'already-exists') console.error('ensureStateExists failed', e);
     didEnsure = true;
   }finally{
     ensureInFlight = false;
   }
 }
-  /* ---------------- Build cells ---------------- */
+
+/* ---------------- Build cells ---------------- */
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.style.setProperty("--cell", CELL + "px");
@@ -288,6 +333,7 @@ function buildBoard(){
         <div class="under"></div>
         <div class="unit"></div>
         <div class="hp"><i style="width:0%"></i></div>
+        <div class="status"></div>
       `;
       frag.appendChild(d);
     }
@@ -310,19 +356,17 @@ const TROOPS = {
   miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:{...M(16,3,800), spd:2, hunterRanged:true}, spawn:2 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",  base:{ hp:10, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }},
 
-  // NEW — area suppression: applies slow on hit
   suppressor:{ faction:"Vanir", name:"Suppressor", emoji:"🧯", role:"back",
     base:{ hp:7, dmg:1, range:3, cd:850, spd:1 },
-    suppress:true,          // enable slow-on-hit
-    suppressDur:900,        // ms
-    slowFactor:2            // movement delay multiplier while slowed
+    suppress:true,
+    suppressDur:900,
+    slowFactor:2
   },
 
-  // NEW — formation buffer: reduces incoming damage to nearby allies
   shieldcap:{ faction:"Vanir", name:"Shield Captain", emoji:"🛡️⭐", role:"front",
     base:{ hp:16, dmg:3, range:1, cd:800, spd:1 },
-    auraReduce:1,           // -1 damage taken (min 1)
-    auraRange:2             // tiles (Manhattan) around the captain
+    auraReduce:1,
+    auraRange:2
   },
 
   /* Aesir */
@@ -331,46 +375,43 @@ const TROOPS = {
   storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
   guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:{...M(20,6,900), splash1:true, knock:true, strongKnock:true}, size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
-  base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:4 },
-  wardHealAmt:2, wardHealRange:3, wardHealCd:1500
-},
-  architect:{ 
-  faction:"Aesir", name:"Aegis Architect", emoji:"🧱", role:"back",
-  // builds wards like Wardmaker, but its wards also SHOOT
-  base:{ hp:8, dmg:0, range:3, cd:1600, ward:true, wardCd:2200, wardDur:7000, wardHp:4 },
-  wardShooter:true,         // turn on ward beams
-  wardDmg:2,                // per shot
-  wardRange:3,              // tiles (Manhattan)
-  wardCdShoot:1400          // ms between ward shots
-},
+    base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:4 },
+    wardHealAmt:2, wardHealRange:3, wardHealCd:1500
+  },
+  architect:{
+    faction:"Aesir", name:"Aegis Architect", emoji:"🧱", role:"back",
+    base:{ hp:8, dmg:0, range:3, cd:1600, ward:true, wardCd:2200, wardDur:7000, wardHp:4 },
+    wardShooter:true,
+    wardDmg:2,
+    wardRange:3,
+    wardCdShoot:1400
+  },
 
   /* Helions */
   hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:{...M(8,2,500), spd:3}, spawn:4 },
   roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:{...R(11,3,3,1000)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:{...M(22,4,900), splash1:true, toxicSplash:true}, size:1 }, /* 1 tile */
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:{...M(22,4,900), splash1:true, toxicSplash:true}, size:1 },
   blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
   matron:{
-  faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
-  base:{ hp:18, dmg:1, range:3, cd:1200 }, // low ranged poke
-  brood:true,           // enables periodic spawns
-  broodType:"hellspawn",
-  broodCd:3500          // ms between spawns
-},
-
-// Backline assassin: will leap over blockers to reach backline units
-viper:{
-  faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
-  base:{ ...M(8,14,2000), spd:2 }, // fast melee
-  hunterRanged:true,   // prefers backline targets when available
-  viperLeap:true,      // enables leap logic
-  leapDist:2, spawn:2          // leap forward up to 2 tiles when blocked
-},
+    faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
+    base:{ hp:18, dmg:1, range:3, cd:1200 },
+    brood:true,
+    broodType:"hellspawn",
+    broodCd:3500
+  },
+  viper:{
+    faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
+    base:{ ...M(8,14,2000), spd:2 },
+    hunterRanged:true,
+    viperLeap:true,
+    leapDist:2, spawn:2
+  },
   spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(8,3,5,1200), acid:true, acidDur:3500} }
 };
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap"],
   Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect"],
-  Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper"] // +2
+  Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper"]
 };
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 
@@ -385,19 +426,19 @@ function rankColor(lvl){
   if (lvl===2) return getComputedStyle(document.documentElement).getPropertyValue('--rank2') || '#eab308';
   return getComputedStyle(document.documentElement).getPropertyValue('--rank1') || '#22c55e';
 }
-  /* ---- Shield Captain aura + damage helpers ---- */
+
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
-  function wardsHeal(st, now){
+
+function wardsHeal(st, now){
   const wards = st.field.wards || [];
   for (const w of wards){
     if (!w.heal || w.hp<=0 || w.until<=now) continue;
     if (now < (w.nextHeal||0)) continue;
 
-    // pick lowest HP% ally in range
     let tgt = null, minRatio = 1.01;
     for (const v of st.field.units){
       if (v.hp<=0) continue;
-      if (w.p!=null && v.p !== w.p) continue; // only heal own side (if owner known)
+      if (w.p!=null && v.p !== w.p) continue;
       const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
       if (d <= (w.hRange||3)){
         const r = v.hp / v.maxhp;
@@ -413,32 +454,30 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
   }
 }
 
-  function wardsShoot(st, now){
+function wardsShoot(st, now){
   const wards = st.field.wards || [];
   for (const w of wards){
     if (!w.shoot || w.hp<=0 || w.until<=now) continue;
     if (now < (w.next||0)) continue;
 
-    // find nearest enemy within range
-    let best=null, bd=1e9;
+    const maxT = w.maxTargets || 1;
+    const cand = [];
     for (const v of st.field.units){
       if (v.hp<=0) continue;
-      if (w.p!=null && v.p===w.p) continue; // no friendly fire if owner known
+      if (w.p!=null && v.p===w.p) continue;
       const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
-      if (d <= (w.wRange||3) && d < bd){ bd=d; best=v; }
+      if (d <= (w.wRange||3)) cand.push({v,d});
     }
-    if (!best) continue;
+    if (!cand.length) continue;
+    cand.sort((a,b)=>a.d-b.d);
+    const targets = cand.slice(0, maxT).map(c=>c.v);
 
-    // fire a beam
-    st.field.fx.push(fxBeam(w.x, w.y, best.x, best.y));
-
-    // damage (respects Shield Captain aura if you added reduceDamageForTarget)
-    const raw = w.wDmg || 1;
-    const dmg = (typeof reduceDamageForTarget === "function")
-      ? reduceDamageForTarget(raw, best, st.field)
-      : raw;
-    applyDamage(best, dmg);
-
+    for (const tgt of targets){
+      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
+      const raw = w.wDmg || 1;
+      const dmg = reduceDamageForTarget(raw, tgt, st.field);
+      applyDamage(tgt, dmg);
+    }
     w.next = now + (w.wCd || 1400);
   }
 }
@@ -455,10 +494,10 @@ function auraDamageReduceFor(target, field){
   }
   return reduce;
 }
+
 function spawnAdjacentUnit(st, parent, typeKey){
   const t = TROOPS[typeKey]; if (!t) return false;
   const size = (t.size===2?2:1);
-  // candidate ring (prefer forward toward enemy)
   const dir = parent.p===0 ? -1 : +1;
   const candidates = [
     [parent.x, parent.y+dir],
@@ -470,7 +509,6 @@ function spawnAdjacentUnit(st, parent, typeKey){
   for (const [x,y] of candidates){
     if (!inside(x,y)) continue;
     if (rectangleFree(st.field.units, x, y, size)){
-      // Minimal spawn (single unit, lvl 1)
       const b=t.base;
       const u={
         id:crypto.randomUUID(), p:parent.p, type:typeKey, x, y, lvl:1,
@@ -495,9 +533,8 @@ function isBacklineUnit(v){
   return (TROOPS[v.type]?.role === "back");
 }
 
-// simple check for a forward blocker directly ahead
 function frontBlocked(u, units){
-  const dir = (u.p===0? -1 : +1); // p0 advances upward (y-), p1 downward (y+)
+  const dir = (u.p===0? -1 : +1);
   const nx = u.x, ny = u.y + dir;
   return units.some(o=>{
     if (o.p === u.p) return false;
@@ -507,16 +544,23 @@ function frontBlocked(u, units){
   });
 }
 
-function attemptViperLeap(u, units){
+function attemptViperLeap(u, units, st){
   if (!u.viperLeap) return false;
   const dir = (u.p===0? -1 : +1);
   const dist = Math.max(1, u.leapDist || 2);
 
-  // try 2, then 1 tile forward (centered leap)
+  const fromX = u.x, fromY = u.y;
+
   for (let d=dist; d>=1; d--){
     const nx = u.x, ny = u.y + dir*d;
     if (!inside(nx,ny)) continue;
-    if (canMoveTo(u, units, nx, ny)){ u.x = nx; u.y = ny; return true; }
+    if (canMoveTo(u, units, nx, ny)){
+      u.x = nx; u.y = ny;
+      if ((u.lvl||1) >= 3 && st && st.field && st.field.fx){
+        st.field.fx.push(fxTransport(fromX, fromY, nx, ny));
+      }
+      return true;
+    }
   }
   return false;
 }
@@ -527,9 +571,8 @@ function broodTick(st, now){
     if (!u.nextBrood) u.nextBrood = 0;
     if (now >= u.nextBrood){
       if (spawnAdjacentUnit(st, u, u.broodType || "hellspawn")){
-        u.nextBrood = now + (u.broodCd || 3500);
+        u.nextBrood = now + (u.broodCd || TROOPS[u.type]?.broodCd || 3500);
       } else {
-        // no space; try again sooner (small backoff)
         u.nextBrood = now + 800;
       }
     }
@@ -543,6 +586,28 @@ function reduceDamageForTarget(baseDmg, target, field){
   return dmg;
 }
 
+function applyWardShields(attacker, target, rawDmg, field){
+  const wards = field.wards || [];
+  if (!wards.length || rawDmg <= 0) return rawDmg;
+
+  const a = unitCenter(attacker), b = unitCenter(target);
+  const path = tilesOnLine(a.x, a.y, b.x, b.y);
+  const now = Date.now();
+  let dmg = rawDmg;
+
+  for (const w of wards){
+    if (w.hp <= 0 || w.until <= now) continue;
+    if (w.p != null && w.p !== target.p) continue;
+
+    const onPath = path.some(pt => pt.x === w.x && pt.y === w.y);
+    if (!onPath) continue;
+
+    const reduce = w.shieldReduce != null ? w.shieldReduce : 2;
+    dmg = Math.max(0, dmg - reduce);
+    w.hp -= 1;
+  }
+  return dmg;
+}
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
@@ -615,11 +680,21 @@ function placeUnit(state,p,key,lvl){
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
+
     /* +33% per level */
     const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
     u.maxhp = Math.round(u.maxhp*mult);
     u.hp    = u.maxhp;
     u.dmg   = Math.max(1, Math.round(u.dmg*mult));
+
+    // Level 3+ special hooks
+    if (key === "rifleman" && (lvl||1) >= 3){
+      u.cd = Math.round(u.cd * 0.7);
+    }
+    if (key === "matron" && (lvl||1) >= 3){
+      u.broodCd = Math.round((u.broodCd || TROOPS[key].broodCd || 3500) * 0.7);
+    }
+
     state.field.units.push(u);
   }
 }
@@ -640,7 +715,7 @@ function rebuildFieldFromRoster(state){
   }
 }
 
-/* Draft packs (unchanged logic, specials are targeted) */
+/* Draft packs */
 function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
 function weightedPick(pool, n){
   const out=[]; const copy=[...pool];
@@ -655,7 +730,6 @@ function weightedPick(pool, n){
 function packFor(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
 
-  // Troop cards (always available)
   const troopCards = poolTypes.map(k=>({
     type:"troop",
     key:k,
@@ -664,15 +738,12 @@ function packFor(roster, faction){
     role:TROOPS[k].role
   }));
 
-  // What the player already owns
   const owned = Array.isArray(roster) ? roster : [];
-  const ownedTypes      = owned.filter(r=>r.count>0).map(r=>r.type);
+  const ownedTypesList      = owned.filter(r=>r.count>0).map(r=>r.type);
   const ownedUpgradeable= owned.filter(r=>r.count>0 && (r.lvl||1) < 3).map(r=>r.type);
 
-  // Specials
   const specials = [];
-  if (ownedTypes.length){
-    // Only offer UPGRADE if at least one owned type is below lvl 3
+  if (ownedTypesList.length){
     if (ownedUpgradeable.length){
       const up = ownedUpgradeable[Math.floor(Math.random()*ownedUpgradeable.length)];
       specials.push({
@@ -680,15 +751,13 @@ function packFor(roster, faction){
         name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"
       });
     }
-    // Double is still okay for any owned type
-    const db = ownedTypes[Math.floor(Math.random()*ownedTypes.length)];
+    const db = ownedTypesList[Math.floor(Math.random()*ownedTypesList.length)];
     specials.push({
       type:"special", special:"double", for:db,
       name:`Double ${TROOPS[db].name}`, emoji:"🃏"
     });
   }
 
-  // Weighting: troops common, specials rarer
   const pool = [
     ...troopCards.map(item=>({ item, w:3 })),
     ...specials   .map(item=>({ item, w:1 }))
@@ -696,7 +765,6 @@ function packFor(roster, faction){
 
   return weightedPick(pool, 3);
 }
-
 
 /* Roster ops */
 function rosterAdd(roster, type, inc=1){ const f=roster.find(r=>r.type===type); if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc}); }
@@ -707,6 +775,7 @@ function rosterUpgradeOneSpecific(roster, type){ const f=roster.find(r=>r.type==
 function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
 function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
 function fxBurst(cx,cy){ return { id:crypto.randomUUID(), type:"burst", cx,cy, at:Date.now(), ttl:700 }; }
+function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1,y1,x2,y2, at:Date.now(), ttl:450 }; }
 function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
 function centerPx(x,y){
   const left = x*(CELL+GAP) + CELL/2;
@@ -720,6 +789,18 @@ function renderBeam(ev, heal=false){
   el.style.left = a.left + "px";
   el.style.top  = a.top  + "px";
   el.style.width = Math.max(1,len) + "px";
+  el.style.transform = `rotate(${ang}rad)`;
+  beamsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl);
+}
+function renderTransport(ev){
+  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
+  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  const el=document.createElement("div");
+  el.className = "tline";
+  el.style.left = a.left + "px";
+  el.style.top  = a.top  + "px";
+  el.style.width = Math.max(1, len) + "px";
   el.style.transform = `rotate(${ang}rad)`;
   beamsEl.appendChild(el);
   setTimeout(()=>el.remove(), ev.ttl);
@@ -759,29 +840,27 @@ function flashAt(x,y, dmgNum){
 /* Painting board — BY RANK color */
 function paint(units, field){
   const total = W * H;
+  const now = Date.now();
   for (let i = 0; i < total; i++){
     const d = cellsEl.children[i];
     if (!d) continue;
 
-    // clear fills / text
     const under = d.querySelector(".under"); if (under) under.style.background = "transparent";
     const uni = d.querySelector(".unit"); if (uni) uni.textContent = "";
+    const statusEl = d.querySelector(".status"); if (statusEl) statusEl.textContent = "";
 
-    // reset HP fill width + team classes
     const hpFill = d.querySelector(".hp>i");
     if (hpFill){
       hpFill.style.width = "0%";
-      hpFill.classList.remove("team0","team1"); // important so colors don't carry over
+      hpFill.classList.remove("team0","team1");
     }
 
-    // remove any ground FX/wards
     d.querySelector(".poison")?.remove();
     d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
     d.querySelector(".ward")?.remove();
   }
 
-  const now = Date.now();
   (field.poison||[]).forEach(p=>{
     if (p.until <= now) return;
     const d = cellsEl.children[idx(p.x,p.y)]; if (!d) return;
@@ -807,7 +886,6 @@ function paint(units, field){
     const s = unitSize(u);
     const color = (rankColor(u.lvl||1).trim() || '#22c55e');
 
-    // paint rank fill under the unit (center color remains rank-based)
     for (let yy=0; yy<s; yy++){
       for (let xx=0; xx<s; xx++){
         const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
@@ -816,7 +894,6 @@ function paint(units, field){
       }
     }
 
-    // top-left tile holds the emoji + HP bar
     const d0 = cellsEl.children[idx(u.x, u.y)]; if (!d0) continue;
 
     const uni = d0.querySelector(".unit");
@@ -828,31 +905,67 @@ function paint(units, field){
 
     const hpFill = d0.querySelector(".hp>i");
     if (hpFill){
-      // team-colored HP bar
       hpFill.classList.toggle("team0", u.p === 0);
       hpFill.classList.toggle("team1", u.p === 1);
       hpFill.style.width = Math.max(0, Math.round(100 * u.hp / u.maxhp)) + "%";
+    }
+
+    const statusEl = d0.querySelector(".status");
+    if (statusEl){
+      const icons = [];
+      if (u.slowUntil && u.slowUntil > now) icons.push("🐢");
+      if (u.statusPoisonUntil && u.statusPoisonUntil > now) icons.push("☠");
+      if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
+      if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
+      if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
+      statusEl.innerHTML = icons.map(i=>`<span>${i}</span>`).join("");
     }
   }
 }
 
 /* Ranged helpers & AI */
 function unitCenter(u){ return { x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2 }; }
-function nearestEnemy(u,units){
-  let b=null,bd=1e9; const c=unitCenter(u);
-  for(const v of units){ if(v.p===u.p) continue;
-    const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y);
-    if(d<bd){bd=d;b=v;}
-  } return b;
-}
-function nearestEnemyRangedPriority(u,units){
-  const ranged=units.filter(v=>v.p!==u.p && TROOPS[v.type]?.role==="back");
-  if(ranged.length){
-    let b=null,bd=1e9; const c=unitCenter(u);
-    for(const v of ranged){ const d=Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y); if(d<bd){bd=d;b=v;} }
-    return b;
+function nearestEnemy(u,units,field){
+  const wards = field.wards || [];
+  let best=null, bd=1e9;
+  const c=unitCenter(u);
+
+  const consider=(obj,isWard)=>{
+    if (obj.p === u.p) return;
+    if (obj.hp <= 0) return;
+    const sz = isWard ? 1 : unitSize(obj);
+    const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
+    const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
+    if (d < bd){ bd=d; best=obj; }
+  };
+
+  for(const v of units) consider(v,false);
+  for(const w of wards){
+    if (!w.shoot) continue;
+    consider(w,true);
   }
-  return nearestEnemy(u,units);
+  return best;
+}
+function nearestEnemyRangedPriority(u,units,field){
+  const wards = field.wards || [];
+  const c = unitCenter(u);
+  let best=null, bd=1e9;
+
+  const consider=(obj,isWard)=>{
+    if (obj.p === u.p) return;
+    if (obj.hp <= 0) return;
+    const sz = isWard ? 1 : unitSize(obj);
+    const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
+    const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
+    if (d < bd){ bd=d; best=obj; }
+  };
+
+  const rangedUnits = units.filter(v=> v.p!==u.p && TROOPS[v.type]?.role==="back" && v.hp>0);
+  if (rangedUnits.length){
+    rangedUnits.forEach(v=>consider(v,false));
+    if (best) return best;
+  }
+  return nearestEnemy(u,units,field);
 }
 function manhattanUnits(u,t){
   const a=unitCenter(u), b=unitCenter(t);
@@ -893,15 +1006,6 @@ function tilesOnLine(x1,y1,x2,y2){
   for(let i=0;i<=steps;i++){ tiles.push({x:Math.round(x), y:Math.round(y)}); x+=sx; y+=sy; }
   return tiles;
 }
-function beamBlockedByWard(u,t, wards){
-  const a=unitCenter(u), b=unitCenter(t);
-  const path=tilesOnLine(a.x,a.y,b.x,b.y);
-  for(const pt of path){
-    const w = wards.find(w2=>w2.hp>0 && w2.x===Math.round(pt.x) && w2.y===Math.round(pt.y) && w2.until>Date.now());
-    if (w) return w;
-  }
-  return null;
-}
 
 /* Combat & abilities */
 function healAction(u, st, now){
@@ -930,29 +1034,32 @@ function wardAction(u, st, now){
   const dir = u.p===0 ? -1 : +1;
   const tx=u.x, ty=u.y+dir;
   if (inside(tx,ty)){
-  // Architect drops shooting wards; Wardmaker (original) drops healing wards
-  const isShooter = !!u.wardShooter;
-  const opts = isShooter
-    ? {
-        p:u.p,
-        shoot:true,
-        wDmg:(u.wardDmg||2),
-        wRange:(u.wardRange||3),
-        wCd:(u.wardCdShoot||u.wardCd||1400)
-      }
-    : {
-        p:u.p,
-        heal:true,
-        hAmt:(u.wardHealAmt||2),
-        hRange:(u.wardHealRange||3),
-        hCd:(u.wardHealCd||1500)
-      };
+    const isShooter = !!u.wardShooter;
+    const isL3Architect = (u.type === "architect" && (u.lvl||1) >= 3);
 
-  if (placeWard(st, tx, ty, u.wardHp||2, u.wardDur||6000, opts)){
-    u.nextWard = now + (u.wardCd||1700);
-    return true;
+    const opts = isShooter
+      ? {
+          p:u.p,
+          shoot:true,
+          wDmg:(u.wardDmg||2),
+          wRange:(u.wardRange||3),
+          wCd:(u.wardCdShoot||u.wardCd||1400),
+          multi:isL3Architect,
+          maxTargets:isL3Architect ? 3 : 1
+        }
+      : {
+          p:u.p,
+          heal:true,
+          hAmt:(u.wardHealAmt||2),
+          hRange:(u.wardHealRange||3),
+          hCd:(u.wardHealCd||1500)
+        };
+
+    if (placeWard(st, tx, ty, u.wardHp||2, u.wardDur||6000, opts)){
+      u.nextWard = now + (u.wardCd||1700);
+      return true;
+    }
   }
-}
   return false;
 }
 function applyDamage(victim, dmg){
@@ -1001,37 +1108,31 @@ function attack(u, t, now, st){
   if (now < (u.nextAtk||0)) return true;
 
   const ranged = (u.range||1) > 1;
-  if (ranged){
-    const ward = beamBlockedByWard(u, t, st.field.wards||[]);
-    if (ward){
-      st.field.fx.push(fxBeam(u.x,u.y,ward.x,ward.y));
-      ward.hp -= 1;
-      u.nextAtk = now + (u.cd||600);
-      return true;
-    }
-  }
 
-  // helper to apply reduced damage (Shield Captain aura)
-  const deal = (victim, raw) => applyDamage(victim, reduceDamageForTarget(raw, victim, st.field));
+  const deal = (victim, raw, isRanged)=>{
+    let dmg = raw|0;
+    if (isRanged){
+      dmg = applyWardShields(u, victim, dmg, st.field);
+    }
+    dmg = reduceDamageForTarget(dmg, victim, st.field);
+    applyDamage(victim, dmg);
+  };
 
   if (u.kamikaze){
-  st.field.fx.push(fxBurst(u.x,u.y));
-  deal(t, u.dmg);
+    st.field.fx.push(fxBurst(u.x,u.y));
+    deal(t, u.dmg, ranged);
 
-  if (u.splash1){
-    const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-    // keep your current splash signature
-    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
-  }
+    if (u.splash1){
+      const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+    }
+    if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
-  // tag poison tiles with the owner side
-  if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
+    u.hp = 0;
 
-  u.hp = 0;
-}
- else if (u.type === "vrocket"){
+  } else if (u.type === "vrocket"){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    deal(t, u.dmg);
+    deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
     splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
 
@@ -1039,26 +1140,35 @@ function attack(u, t, now, st){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg);
 
+  } else if (u.type === "roach" && (u.lvl||1) >= 3){
+    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    deal(t, u.dmg, true);
+    paintPoison(st, t.x, t.y, 5000, u.p);
+
   } else if (u.acid){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    deal(t, u.dmg);
+    deal(t, u.dmg, true);
     addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur || 3500);
 
   } else {
     if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    deal(t, u.dmg);
+    deal(t, u.dmg, ranged);
     const strong = !!u.strongKnock;
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
       splash(st.field.units, st.field, t.x, t.y, sd, u.p, !!u.knock, strong);
     }
-    // Defiler toxic splash — 7s — no friendly fire
     if (u.toxicSplash){
       addToxicSplash(st, t.x, t.y, 7000, u.p);
     }
+
+    if (u.type === "storm" && (u.lvl||1) >= 3 && t.hp > 0){
+      const shockDur = 1200;
+      t.slowUntil = Math.max(t.slowUntil||0, now + shockDur);
+      t.statusShockUntil = Math.max(t.statusShockUntil||0, now + shockDur);
+    }
   }
 
-  // Suppressor: apply slow-on-hit (stores factor on target)
   if (u.suppress && t.hp > 0){
     t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
     t.slowFactor = u.slowFactor || 2;
@@ -1068,7 +1178,6 @@ function attack(u, t, now, st){
   return true;
 }
 
-
 /* Terrain */
 function paintPoison(state, cx, cy, durMs, ownerP = null){
   const until = Date.now()+durMs;
@@ -1076,19 +1185,17 @@ function paintPoison(state, cx, cy, durMs, ownerP = null){
   for (let dy=-1; dy<=1; dy++){
     for (let dx=-1; dx<=1; dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      // store owner `p` when provided (enemy-only DoT/slow)
       state.field.poison.push({x,y,until,p:ownerP});
     }
   }
 }
-/* toxic (purple) DoT area for Defiler — 3x3 around impact, records owner to avoid friendly fire */
-function addToxicSplash(state, cx, cy, durMs, ownerP){ // CHANGED: ownerP
+function addToxicSplash(state, cx, cy, durMs, ownerP){
   const until = Date.now()+durMs;
   state.field.toxic = state.field.toxic || [];
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.toxic.push({x,y,until,p:ownerP}); // CHANGED: store p
+      state.field.toxic.push({x,y,until,p:ownerP});
     }
   }
 }
@@ -1105,57 +1212,58 @@ function placeWard(state, x, y, hp, dur, opts = {}){
   state.field.wards.push({
     x, y,
     hp: hp|0,
+    maxhp: hp|0,
     until,
 
-    // ownership
     p: opts.p ?? null,
 
-    // SHOOTING (Architect)
+    type: opts.shoot ? "wardTurret" : "wardShield",
+    shieldReduce: opts.shieldReduce ?? 2,
+
     shoot: !!opts.shoot,
     wDmg:  (opts.wDmg ?? 1)|0,
     wRange:(opts.wRange ?? 3)|0,
     wCd:   (opts.wCd ?? 1400)|0,
-    next:  0, // next shot
+    next:  0,
+    multi: !!opts.multi,
+    maxTargets: opts.maxTargets ?? 1,
 
-    // HEALING (Wardmaker / original ward)
     heal:    !!opts.heal,
     hAmt:    (opts.hAmt ?? 2)|0,
     hRange:  (opts.hRange ?? 3)|0,
     hCd:     (opts.hCd ?? 1500)|0,
-    nextHeal:0 // next heal
+    nextHeal:0
   });
   return true;
 }
 
-
 function applyTerrain(field, units){
   const now=Date.now();
   (field.poison||[]).forEach(p=>{
-  if (p.until<=now) return;
-  let ticked=false;
+    if (p.until<=now) return;
+    let ticked=false;
 
-  for (const u of units){
-    if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
-      // If the tile has an owner, only affect enemies; if no owner (legacy), affect everyone.
-      if (p.p!=null && u.p === p.p) continue;
+    for (const u of units){
+      if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
+        if (p.p!=null && u.p === p.p) continue;
+        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
+        u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.poisonDotMs);
 
-      u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
-      if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
-        u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
+          u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        }
       }
     }
-  }
+    if (ticked) groundTickParticles(p.x,p.y,false);
+  });
 
-  if (ticked) groundTickParticles(p.x,p.y,false);
-});
-  /* toxic purple — damages only enemies (no friendly fire) */
   (field.toxic||[]).forEach(t=>{
     if (t.until<=now) return;
     let ticked=false;
     for(const u of units){
       if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
-        // CHANGED: only damage if unit is not the owner side; if missing t.p (old states), behave like before.
         if (t.p==null || u.p !== t.p){
+          u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.toxicDotMs);
           if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
             u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
           }
@@ -1164,12 +1272,14 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(t.x,t.y,true);
   });
+
   (field.acid||[]).forEach(a=>{
     if (a.until<=now) return;
     let ticked=false;
     for(const u of units){
       if (u.x<=a.x && a.x<u.x+unitSize(u) && u.y<=a.y && a.y<u.y+unitSize(u)){
         u.slowUntil = Math.max(u.slowUntil||0, now+800);
+        u.statusAcidUntil = Math.max(u.statusAcidUntil||0, now + 2200);
         if (!u._acidTick || now - u._acidTick >= 1100){
           u._acidTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
         }
@@ -1178,8 +1288,10 @@ function applyTerrain(field, units){
     if (ticked) groundTickParticles(a.x,a.y,true);
   });
 }
+
 async function syncPlayersIntoStateIfNeeded(){
-  const st = (await getDoc(stateRef)).data(); if(!st) return;
+  const stSnap = await getDoc(stateRef);
+  const st = stSnap.data(); if(!st) return;
   const want = lobbyPlayers.slice(0,2);
   const cur = Array.isArray(st.players)? st.players : [];
   if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
@@ -1192,6 +1304,37 @@ function bothPicked(d){
 }
 function bothFactionsChosen(d){
   return !!(d.factions?.p0) && !!(d.factions?.p1);
+}
+
+/* MMR helpers */
+function calcMMRChange(st, winnerName){
+  const mmr = st.mmr || [1000,1000];
+  const players = st.players || [];
+  const idxWin = players.indexOf(winnerName);
+  if (idxWin < 0) return { mmr, delta:[0,0] };
+  const idxLose = idxWin === 0 ? 1 : 0;
+
+  const base = 25;
+  const diff = (mmr[idxLose] - mmr[idxWin]) || 0;
+  const factor = 1 + diff / 4000;
+  const gain = Math.max(10, Math.round(base * factor));
+
+  const next = [...mmr];
+  next[idxWin]  = mmr[idxWin]  + gain;
+  next[idxLose] = Math.max(0, mmr[idxLose] - gain);
+
+  const delta = [0,0];
+  delta[idxWin]  = gain;
+  delta[idxLose] = -gain;
+
+  return { mmr:next, delta };
+}
+function rankLabel(m){
+  if (m >= 1600) return "Diamond";
+  if (m >= 1400) return "Platinum";
+  if (m >= 1200) return "Gold";
+  if (m >= 1050) return "Silver";
+  return "Bronze";
 }
 
 let hostTick=null, battleTick=null;
@@ -1289,6 +1432,7 @@ function startHostLoops(){
           }
         }
         await updateDoc(stateRef,{
+
           roster,
           selections:{p0:[],p1:[]},
           draftIndex:0,
@@ -1335,6 +1479,7 @@ function startHostLoops(){
         runBattle();
       }else{
         await updateDoc(stateRef,{
+
           roster, selections:sel, draftIndex:nextIx,
           currentPacks:{
             p0: packFor(roster.p0, d.factions.p0),
@@ -1348,7 +1493,6 @@ function startHostLoops(){
 
     if (d.phase==="battle" && !battleTick) runBattle();
 
-    // prune expired tiles/fx
     const nf = {...d.field};
     const now2=Date.now();
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
@@ -1362,7 +1506,7 @@ function startHostLoops(){
   }, 260);
 }
 
-/* ----------- Battle loop (fast view, gated logic) ----------- */
+/* ----------- Battle loop ----------- */
 function runBattle(){
   if (battleTick) return;
 
@@ -1381,27 +1525,39 @@ function runBattle(){
     const doLogic = (now - lastLogic) >= LOGIC_MS;
     if (doLogic) lastLogic = now;
 
-    // Terrain ticks / one-shot logic
     if (doLogic) applyTerrain(st.field, units);
     if (doLogic) for (const u of units){ blinkIfNeeded(u); }
 
-    // NEW: wards (heal + shoot) and brood spawns
     if (doLogic) wardsHeal(st, now);
     if (doLogic) wardsShoot(st, now);
-    if (doLogic) broodTick(st, now);   // <-- Brood Matron spawns Hellspawn
+    if (doLogic) broodTick(st, now);
 
-    // Unit AI: heals, wards, attack, movement
     for (const u of units){
       if (doLogic){
         healAction(u, st, now);
         wardAction(u, st, now);
+
+        // VGuard L3 self-regen
+        if (u.type === "vguard" && (u.lvl||1) >= 3 && u.hp > 0 && u.hp < u.maxhp){
+          if (!u.regenCd) u.regenCd = 2000;
+          if (!u.nextRegen) u.nextRegen = 0;
+          if (now >= u.nextRegen){
+            const amt = 2;
+            const before = u.hp;
+            u.hp = Math.min(u.maxhp, u.hp + amt);
+            if (u.hp > before){
+              st.field.fx.push(fxHeal(u.x, u.y, u.x, u.y));
+            }
+            u.nextRegen = now + u.regenCd;
+          }
+        }
       }
 
-      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units)
-                               : nearestEnemy(u,units);
+      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
+                               : nearestEnemy(u,units,st.field);
       if (!t) continue;
 
-      const attacked = attack(u, t, now, st); // time-gated by nextAtk
+      const attacked = attack(u, t, now, st);
 
       if (!attacked && doLogic){
         if (canStepNow(u, now)) {
@@ -1409,22 +1565,20 @@ function runBattle(){
           const steps = slowed ? 1 : PACE.moveSteps;
 
           for (let s=0; s<steps; s++){
-            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units)
-                                      : nearestEnemy(u,units);
+            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
+                                      : nearestEnemy(u,units,st.field);
             if (!t2) break;
 
-            // NEW: Viper leap — if chasing a backliner and a frontline blocks ahead, jump over
             const targetIsBack = isBacklineUnit(t2);
             if (u.viperLeap && targetIsBack && frontBlocked(u, units)){
-              if (attemptViperLeap(u, units)){
+              if (attemptViperLeap(u, units, st)){
                 if (manhattanUnits(u, t2) <= (u.range||1)){
                   attack(u, t2, now, st);
                 }
-                continue; // consume this step after leap
+                continue;
               }
             }
 
-            // normal step
             stepToward(u, t2, units);
             if (manhattanUnits(u, t2) <= (u.range||1)){
               attack(u, t2, now, st);
@@ -1435,23 +1589,17 @@ function runBattle(){
       }
     }
 
-    // Death handling + on-death effects
     if (doLogic){
-  const dead = st.field.units.filter(u=>u.hp<=0);
-
-  for (const u of dead){
-    if (u.paints){
-      // tag the poison with the owner team so allies are ignored
-      paintPoison(st, u.x, u.y, 7000, u.p);
-      st.field.fx.push(fxBurst(u.x,u.y));
+      const dead = st.field.units.filter(u=>u.hp<=0);
+      for (const u of dead){
+        if (u.paints){
+          paintPoison(st, u.x, u.y, 7000, u.p);
+          st.field.fx.push(fxBurst(u.x,u.y));
+        }
+      }
+      st.field.units = st.field.units.filter(u=>u.hp>0);
     }
-  }
 
-  st.field.units = st.field.units.filter(u=>u.hp>0);
-}
-
-
-    // Round end / life tracking
     const a0 = st.field.units.some(u=>u.p===0);
     const a1 = st.field.units.some(u=>u.p===1);
     if (!a0 || !a1){
@@ -1466,7 +1614,16 @@ function runBattle(){
                    : null;
 
       if (winner){
-        const next = { ...st, lives, phase:"game-over", phaseEndsAt:0, winner };
+        const { mmr:nextMmr, delta } = calcMMRChange(st, winner);
+        const next = {
+          ...st,
+          lives,
+          phase:"game-over",
+          phaseEndsAt:0,
+          winner,
+          mmr: nextMmr,
+          mmrChange: delta
+        };
         await updateDoc(stateRef, next);
       } else {
         const loserKey  = pKey(loser);
@@ -1487,26 +1644,26 @@ function runBattle(){
         await updateDoc(stateRef, next);
       }
     } else {
-      // publish frequently for smooth remote viewing
+      st.field.wards = (st.field.wards||[]).filter(w=>w.hp>0 && w.until>now);
       await updateDoc(stateRef, st);
     }
   }, VIEW_MS);
 }
 
-
-
 /* ----------- Live listeners & render ----------- */
 function render(){
   const p0n=(S?.players?.[0])||"P0", p1n=(S?.players?.[1])||"P1";
   const lives=S?.lives||[4,4];
-  $("p0Badge").textContent = `${p0n} — ${"❤".repeat(lives[0])}`;
-  $("p1Badge").textContent = `${p1n} — ${"❤".repeat(lives[1])}`;
+  const mmr = S?.mmr || [1000,1000];
+
+  $("p0Badge").textContent = `${p0n} [${rankLabel(mmr[0])} ${mmr[0]}] — ${"❤".repeat(lives[0])}`;
+  $("p1Badge").textContent = `${p1n} [${rankLabel(mmr[1])} ${mmr[1]}] — ${"❤".repeat(lives[1])}`;
 
   const phase=S?.phase||"waiting";
   $("phaseBadge").textContent = phase.replaceAll("-"," ");
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   const tleft = draftish ? Math.max(0,(S?.phaseEndsAt||0)-Date.now()) : 0;
- $("timerBadge").textContent = draftish ? "⏳ " + Math.ceil(tleft/1000) + "s" : "⏳ —";
+  $("timerBadge").textContent = draftish ? "⏳ " + Math.ceil(tleft/1000) + "s" : "⏳ —";
 
   const counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
@@ -1516,7 +1673,37 @@ function render(){
     counter.style.display="block"; counter.textContent = `Bonus 1 / 1`;
   } else { counter.style.display="none"; }
 
-  if (draftish){
+  const endSummaryEl = $("endSummary");
+  if (S?.phase === "game-over"){
+    const mmrFinal = S.mmr || [1000,1000];
+    const delta = S.mmrChange || [0,0];
+    const players = S.players || ["P0","P1"];
+    const winner = S.winner;
+
+    const p0Before = mmrFinal[0] - (delta[0]||0);
+    const p1Before = mmrFinal[1] - (delta[1]||0);
+
+    const fmtDelta = d => d>0
+      ? `<span class="mmrUp">+${d}</span>`
+      : d<0
+        ? `<span class="mmrDown">${d}</span>`
+        : `<span>${d}</span>`;
+
+    endSummaryEl.innerHTML = `
+      <div><strong>Winner:</strong> ${winner||"—"}</div>
+      <div><strong>${players[0]||"P0"}:</strong> ${p0Before} → ${mmrFinal[0]} ${fmtDelta(delta[0]||0)}</div>
+      <div><strong>${players[1]||"P1"}:</strong> ${p1Before} → ${mmrFinal[1]} ${fmtDelta(delta[1]||0)}</div>
+      <div style="margin-top:6px;opacity:.9">
+        Factions: ${(S.factions?.p0)||"?"} vs ${(S.factions?.p1)||"?"}
+      </div>
+    `;
+    endSummaryEl.style.display = "block";
+  } else {
+    if (endSummaryEl) endSummaryEl.style.display = "none";
+  }
+
+  const draftishPh=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
+  if (draftishPh){
     const ghost=structuredClone(S); rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
   }else{
@@ -1524,7 +1711,7 @@ function render(){
   }
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
-  if (!draftish){ overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML=""; return; }
+  if (!draftishPh){ overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML=""; return; }
   overlay.style.display="block";
 
   const di=S?.draftIndex|0;
@@ -1595,23 +1782,20 @@ onSnapshot(lobbyRef, async (snap)=>{
   lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
   isHost = (lob.host === username);
 
-  // Only the host creates/updates the battle state doc (prevents 409s)
   if (isHost) {
-    await ensureStateExists();          // guarded/debounced inside the function
-    await syncPlayersIntoStateIfNeeded(); // keep state.players aligned with lobby
-    startHostLoops();                   // run pacing / phase logic only on host
+    await ensureStateExists();
+    await syncPlayersIntoStateIfNeeded();
+    startHostLoops();
   }
 
-  // Determine my index from state if present; fallback to lobby order
   const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
   let idx = curPlayers.indexOf(username);
-  if (idx === -1) idx = 0;                      // default if join race hasn't propagated
-  meIndex = Math.max(0, Math.min(1, idx));      // clamp to [0,1]
+  if (idx === -1) idx = 0;
+  meIndex = Math.max(0, Math.min(1, idx));
 
   fitBoard();
   render();
 });
-
 
 let lastFxSeen=new Set();
 onSnapshot(stateRef,(snap)=>{
@@ -1628,6 +1812,7 @@ onSnapshot(stateRef,(snap)=>{
     if (ev.type==="beam") renderBeam(ev,false);
     if (ev.type==="hbeam") renderBeam(ev,true);
     if (ev.type==="burst") renderBurst(ev);
+    if (ev.type==="transport") renderTransport(ev);
     setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
   }
 });
@@ -1643,7 +1828,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
