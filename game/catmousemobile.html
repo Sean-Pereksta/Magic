@@ -20,8 +20,11 @@
   .pill{padding:2px 8px;border-radius:999px;border:1px solid #2a3a60;background:#121c30;color:#9fb3d0}
   a.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;border:1px solid #2a3a60;background:#0f1a2e;color:#cfe6ff;text-decoration:none}
 
-  /* Cooldowns HUD (top-right) */
-  #coolwrap{position:fixed; top:56px; right:10px; z-index:11; display:flex; flex-direction:column; gap:6px;}
+  /* Cooldowns HUD (top-right) — now hidden */
+  #coolwrap{
+    position:fixed; top:56px; right:10px; z-index:11;
+    display:none; /* hide the cooldown bars entirely */
+  }
   .cool{display:flex; align-items:center; gap:6px; background:#0e1726; border:1px solid #203054; padding:4px 8px; border-radius:10px; min-width:180px; justify-content:space-between}
   .cool b{font-weight:600}
   .cool .eta{font-variant-numeric:tabular-nums; color:#a8c3ff}
@@ -37,7 +40,7 @@
     border-radius:12px;
     box-shadow:0 10px 30px rgba(0,0,0,.6);
     font-size:12px;
-    min-width:200px;
+    min-width:220px;
     overflow:hidden;
   }
   #upgradeHeader{
@@ -157,6 +160,23 @@
   }
   @keyframes laser{0%{opacity:.95}100%{opacity:0}}
 
+  /* Lightning bolt for Lightning power (big, bright, obvious) */
+  .lightning{
+    position:absolute;
+    height:4px;
+    border-radius:999px;
+    background:linear-gradient(90deg,rgba(56,189,248,0.1),rgba(56,189,248,1),rgba(250,250,249,1));
+    box-shadow:0 0 18px rgba(56,189,248,.95);
+    transform-origin:0 50%;
+    opacity:1;
+    z-index:7;
+    animation:bolt .22s ease-out forwards;
+  }
+  @keyframes bolt{
+    0%{opacity:1;filter:brightness(1.4);}
+    100%{opacity:0;filter:brightness(1);}
+  }
+
   #pads{width:100%;max-width:860px;display:flex;justify-content:space-between;gap:12px;padding:8px 12px 70px}
   .joyWrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
   .joy{width:140px;height:140px;border-radius:50%;background:radial-gradient(120px at 50% 50%, #0e1726, #0c1422);
@@ -265,7 +285,7 @@
   <div id="upgradeBody"></div>
 </div>
 
-<!-- Cooldown HUD -->
+<!-- Cooldown HUD (now hidden by CSS) -->
 <div id="coolwrap"></div>
 
 <div id="main">
@@ -359,15 +379,14 @@ let fleas = new Map();
 let beetles = new Map();
 let golems = new Map();     // siege enemies
 
-let me = {x:2,y:2,alive:true,score:0,gold:0,powers:{}};
+let me = {x:2,y:2,alive:true,score:0,gold:0,powers:{},upgrades:{}};
 
 // held item
 let heldType = null;   // "🧱","🔫","💣","🏭"
 let heldCount = 0;
 
-// legacy structural levels (still used for calc; not shown in UI)
-let levels = { wall:0, turret:0, range:0, speed:0 };
-
+// building upgrade levels (per player, for new builds etc.)
+let levels = { wall:0, turret:0, range:0, speed:0, bomb:0, factory:0 };
 
 // elemental passives (global hooks)
 let globalStoneLevel=0,
@@ -391,8 +410,14 @@ let moveIntent={dx:0,dy:0}, buildIntent={dx:0,dy:0};
 let summaryShown=false;
 let gameOverTriggered=false;
 
-// Upgrade card economy
-let upgradeCardCost = 80;  // starting gold cost for an upgrade card
+// Upgrade economies
+let upgradeCardCost = 80;  // elemental upgrade card
+const buildingCosts = {
+  wall: 40,
+  turret: 60,
+  factory: 80,
+  bomb: 50
+};
 
 /* ------------------------------- Helpers --------------------------------- */
 const $ = sel => document.querySelector(sel);
@@ -437,12 +462,70 @@ function updateGoldUI(){
   if (el) el.textContent = me.gold || 0;
 }
 
-/* ---------------------- Upgrade card UI + logic -------------------------- */
+/* ---------------------- Upgrade UI + logic -------------------------- */
 function renderUpgradesUI(){
   const body = document.getElementById("upgradeBody");
   if (!body) return;
   body.innerHTML="";
 
+  const curGold = me.gold || 0;
+
+  const mkBuildingRow = (kind, icon, label, desc) => {
+    const row = document.createElement("div");
+    row.className = "upRow";
+
+    const top = document.createElement("div");
+    top.className = "upRowTop";
+
+    const title = document.createElement("div");
+    title.className = "title";
+    title.innerHTML = `<span>${icon}</span><span>${label}</span>`;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const lvl = levels[kind] || 0;
+    const cost = buildingCosts[kind];
+    meta.textContent = `Lv ${lvl} · ${cost}g`;
+
+    const btn = document.createElement("button");
+    btn.className = "upBtn";
+    if (curGold >= cost){
+      btn.classList.add("ready");
+      btn.textContent = "Upgrade";
+      btn.onclick = () => buyBuildingUpgrade(kind);
+    } else {
+      btn.textContent = `Need ${cost}g`;
+      btn.onclick = null;
+    }
+
+    top.appendChild(title);
+    top.appendChild(meta);
+    top.appendChild(btn);
+
+    const barOuter = document.createElement("div");
+    barOuter.className = "upBarOuter";
+    const barInner = document.createElement("div");
+    barInner.className = "upBarInner";
+    const pct = Math.max(0, Math.min(1, curGold / cost));
+    barInner.style.width = (pct*100) + "%";
+    barOuter.appendChild(barInner);
+
+    const descEl = document.createElement("div");
+    descEl.className = "meta";
+    descEl.textContent = desc;
+
+    row.appendChild(top);
+    row.appendChild(barOuter);
+    row.appendChild(descEl);
+    body.appendChild(row);
+  };
+
+  mkBuildingRow("wall","🧱","Walls","+HP for new walls so they tank longer.");
+  mkBuildingRow("turret","🔫","Turrets","+damage for your turrets.");
+  mkBuildingRow("factory","🏭","Factories","+gold from your factories.");
+  mkBuildingRow("bomb","💣","Bombs","+damage; big radius at higher levels.");
+
+  // Upgrade card row (elemental powers)
   const row=document.createElement("div");
   row.className="upRow";
 
@@ -451,7 +534,7 @@ function renderUpgradesUI(){
 
   const title=document.createElement("div");
   title.className="title";
-  title.innerHTML = `<span>🎴</span><span>Upgrade Card</span>`;
+  title.innerHTML = `<span>🎴</span><span>Elemental Card</span>`;
 
   const meta=document.createElement("div");
   meta.className="meta";
@@ -459,7 +542,7 @@ function renderUpgradesUI(){
 
   const btn=document.createElement("button");
   btn.className="upBtn";
-  const can = (me.gold||0) >= upgradeCardCost;
+  const can = curGold >= upgradeCardCost;
   if (can){
     btn.classList.add("ready");
     btn.textContent="Draw";
@@ -477,13 +560,41 @@ function renderUpgradesUI(){
   barOuter.className="upBarOuter";
   const barInner=document.createElement("div");
   barInner.className="upBarInner";
-  const pct = Math.max(0, Math.min(1, (me.gold||0)/upgradeCardCost));
+  const pct = Math.max(0, Math.min(1, curGold/upgradeCardCost));
   barInner.style.width = (pct*100)+"%";
   barOuter.appendChild(barInner);
 
   row.appendChild(top);
   row.appendChild(barOuter);
   body.appendChild(row);
+}
+
+function buyBuildingUpgrade(kind){
+  const cost = buildingCosts[kind];
+  if ((me.gold||0) < cost) return;
+
+  me.gold -= cost;
+  buildingCosts[kind] = Math.min(999, Math.round(cost * 1.6));
+  levels[kind] = (levels[kind] || 0) + 1;
+
+  // keep an "upgrades" snapshot for this player (for host use where needed)
+  const prevUp = me.upgrades || {};
+  const nextUp = { ...prevUp, [kind]: (prevUp[kind] || 0) + 1 };
+  me.upgrades = nextUp;
+
+  updateGoldUI();
+  renderUpgradesUI();
+  safeUpdate(doc(playersCol,myName), { gold: me.gold, upgrades: nextUp });
+
+  if (kind === "factory"){
+    toast("🏭 Factory output upgraded!");
+  } else if (kind === "wall"){
+    toast("🧱 New walls are sturdier!");
+  } else if (kind === "turret"){
+    toast("🔫 Turrets hit harder!");
+  } else if (kind === "bomb"){
+    toast("💣 Bombs blast harder & wider!");
+  }
 }
 
 function buyUpgradeCard(){
@@ -635,6 +746,36 @@ function renderTurretShot(sx,sy,tx,ty){
   stageEl.appendChild(el);
   setTimeout(()=>el.remove(),220);
 }
+
+/* BIG lightning visuals for Lightning power */
+function renderLightningStrike(sx,sy,tx,ty){
+  const fromX = (sx - camera.x + 0.5)*cellPx;
+  const fromY = (sy - camera.y + 0.5)*cellPx;
+  const toX   = (tx - camera.x + 0.5)*cellPx;
+  const toY   = (ty - camera.y + 0.5)*cellPx;
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const dist = Math.hypot(dx,dy);
+  const angle = Math.atan2(dy,dx)*180/Math.PI;
+
+  const bolt = document.createElement("div");
+  bolt.className = "lightning";
+  bolt.style.left = fromX + "px";
+  bolt.style.top = fromY + "px";
+  bolt.style.width = dist + "px";
+  bolt.style.transform = `translateY(-50%) rotate(${angle}deg)`;
+  stageEl.appendChild(bolt);
+
+  const ring = document.createElement("div");
+  ring.className = "shock";
+  ring.style.left = toX + "px";
+  ring.style.top = toY + "px";
+  stageEl.appendChild(ring);
+
+  setTimeout(()=>bolt.remove(),260);
+  setTimeout(()=>ring.remove(),260);
+}
+
 function render(){
   focusCamera();
   gridEl.innerHTML="";
@@ -726,7 +867,8 @@ async function upsertMe(){
   await safeSet(doc(playersCol,myName), {
     x:me.x,y:me.y,alive:me.alive,score:me.score,displayName:myName,
     powers: me.powers || {},
-    gold: me.gold || 0
+    gold: me.gold || 0,
+    upgrades: me.upgrades || {}
   },{merge:true});
 }
 function listen(){
@@ -744,8 +886,14 @@ function listen(){
     snap.forEach(d=>{
       const data=d.data();
       if (d.id===myName){
-        me.gold = data.gold || 0;
-        me.powers = data.powers || {};
+        me.gold = data.gold || me.gold || 0;
+        me.powers = data.powers || me.powers || {};
+        me.upgrades = data.upgrades || me.upgrades || {};
+        // sync levels from upgrades
+        levels.wall = me.upgrades.wall || 0;
+        levels.turret = me.upgrades.turret || 0;
+        levels.factory = me.upgrades.factory || 0;
+        levels.bomb = me.upgrades.bomb || 0;
         updateGoldUI();
         renderUpgradesUI();
       }else{
@@ -774,12 +922,13 @@ function hpWall(){
   const base = 35;
   const metaMult = wallHpMetaMult();
   const stoneMult = 1 + 0.05*globalStoneLevel;
-  return Math.round(base * (1+0.2*levels.wall) * metaMult * stoneMult);
+  const levelMult = 1 + 0.2*(levels.wall||0);
+  return Math.round(base * levelMult * metaMult * stoneMult);
 }
-function hpTur(){
-  const base = 24;
+function hpTur(baseHP=24){
   const metaMult = turretDmgMetaMult(); // small hp buff as well
-  return Math.round(base * (1+0.2*levels.turret) * metaMult);
+  const levelMult = 1 + 0.15*(levels.turret||0);
+  return Math.round(baseHP * levelMult * metaMult);
 }
 
 /* ------------------------------ Pathfinding ------------------------------ */
@@ -823,8 +972,21 @@ function nearestStructureFrom(x,y){
 /* ------------------------------- Bombs ----------------------------------- */
 async function detonateAt(x,y, dmgRat=18, dmgBear=14, dmgOther=16, radiusOverride){
   if (!I_AM_HOST) return;
+
+  // Bomb upgrades & Fire synergy: more damage + radius with levels
+  const bombMult = 1 + 0.35*(levels.bomb||0);
+  const fireMult = 1 + 0.10*globalFireLevel;
+  const mult = bombMult * fireMult;
+
+  const ratDmg   = Math.round(dmgRat   * mult);
+  const bearDmg  = Math.round(dmgBear  * mult);
+  const otherDmg = Math.round(dmgOther * mult);
+
+  const baseRadius = radiusOverride ?? bombRadiusBase();
+  const radius = baseRadius + Math.floor((levels.bomb||0)/3); // bigger radius with more bomb levels
+
   renderExplosion(x,y);
-  const radius = radiusOverride ?? bombRadiusBase();
+
   const within = (ux,uy)=> Math.max(Math.abs(ux-x), Math.abs(uy-y))<=radius;
 
   for (let dx=-radius; dx<=radius; dx++) for (let dy=-radius; dy<=radius; dy++){
@@ -833,14 +995,15 @@ async function detonateAt(x,y, dmgRat=18, dmgBear=14, dmgOther=16, radiusOverrid
     if (s && s.t==="🧱"){ await deleteStructureHost(nx,ny); }
   }
 
-  for (const [id,r] of rats){ if (within(r.x,r.y)) { const hp=(r.hp||0)-dmgRat; if (hp<=0) await safeDelete(doc(ratsCol,id)); else await safeUpdate(doc(ratsCol,id),{hp}); } }
-  for (const [id,b] of bears){ if (within(b.x,b.y)) { const hp=(b.hp||0)-dmgBear; if (hp<=0) await safeDelete(doc(bearsCol,id)); else await safeUpdate(doc(bearsCol,id),{hp}); } }
-  for (const [id,c] of caterpillars){ if (within(c.x,c.y)) { const hp=(c.hp||0)-dmgOther; if (hp<=0) await safeDelete(doc(catsCol,id)); else await safeUpdate(doc(catsCol,id),{hp}); } }
-  for (const [id,cw] of crows){ if (within(cw.x,cw.y)) { const hp=(cw.hp||0)-dmgOther; if (hp<=0) await safeDelete(doc(crowsCol,id)); else await safeUpdate(doc(crowsCol,id),{hp}); } }
-  for (const [id,g] of golems){ if (within(g.x,g.y)) { const hp=(g.hp||0)-dmgOther; if (hp<=0) await safeDelete(doc(golemsCol,id)); else await safeUpdate(doc(golemsCol,id),{hp}); } }
+  for (const [id,r] of rats){ if (within(r.x,r.y)) { const hp=(r.hp||0)-ratDmg; if (hp<=0) await safeDelete(doc(ratsCol,id)); else await safeUpdate(doc(ratsCol,id),{hp}); } }
+  for (const [id,b] of bears){ if (within(b.x,b.y)) { const hp=(b.hp||0)-bearDmg; if (hp<=0) await safeDelete(doc(bearsCol,id)); else await safeUpdate(doc(bearsCol,id),{hp}); } }
+  for (const [id,c] of caterpillars){ if (within(c.x,c.y)) { const hp=(c.hp||0)-otherDmg; if (hp<=0) await safeDelete(doc(catsCol,id)); else await safeUpdate(doc(catsCol,id),{hp}); } }
+  for (const [id,cw] of crows){ if (within(cw.x,cw.y)) { const hp=(cw.hp||0)-otherDmg; if (hp<=0) await safeDelete(doc(crowsCol,id)); else await safeUpdate(doc(crowsCol,id),{hp}); } }
+  for (const [id,g] of golems){ if (within(g.x,g.y)) { const hp=(g.hp||0)-otherDmg; if (hp<=0) await safeDelete(doc(golemsCol,id)); else await safeUpdate(doc(golemsCol,id),{hp}); } }
 
   if (gameDoc.cat && within(gameDoc.cat.x,gameDoc.cat.y)){
-    await damageCat(16); me.score+=4; await safeUpdate(doc(playersCol,myName),{score:me.score}); floatText(gameDoc.cat.x,gameDoc.cat.y,"+4","#ffa94d");
+    await damageCat(otherDmg);
+    me.score+=4; await safeUpdate(doc(playersCol,myName),{score:me.score}); floatText(gameDoc.cat.x,gameDoc.cat.y,"+4","#ffa94d");
   }
 }
 
@@ -866,12 +1029,13 @@ async function damageCat(amount){
 }
 
 /* ------------------------------ Turrets ---------------------------------- */
-function turretRange(){ return 5 + levels.range; }
-function turretDamage(){
+function turretRange(){ return 5 + (levels.range||0); }
+function turretDamage(struct){
   const base = 6;
+  const lvl = struct?.tLevel || 0;
   const metaMult = turretDmgMetaMult();
   const lightningMult = 1 + 0.05*globalLightningLevel;
-  return Math.round(base * (1 + 0.25*levels.turret) * metaMult * lightningMult);
+  return Math.round(base * (1 + 0.25*lvl) * metaMult * lightningMult);
 }
 async function damageEnemy(kind,id,amount){
   if (kind==="rat"){ const r=rats.get(id); if (!r) return; const hp=r.hp-amount; if (hp<=0) await safeDelete(doc(ratsCol,id)); else await safeUpdate(doc(ratsCol,id),{hp}); }
@@ -902,7 +1066,7 @@ async function hostTurrets(){
     // visual
     renderTurretShot(o.x,o.y,t.x,t.y);
 
-    const dmg = turretDamage();
+    const dmg = turretDamage(o);
     if (t.kind==="cat"){ await damageCat(Math.floor(dmg/2)); me.score+=1; await safeUpdate(doc(playersCol,myName),{score:me.score}); }
     else { await damageEnemy(t.kind,t.id,dmg); }
   }
@@ -1228,14 +1392,25 @@ async function tryBuild(dx,dy){
   if (tileOccupied(tx,ty)) return;
 
   let hp=10, extra={};
-  if (heldType==="🧱"){ hp=hpWall(); }
-  if (heldType==="🔫"){ hp=hpTur(); }
-  if (heldType==="💣"){ hp=1; extra.expAt = Date.now() + 3000; } // 3s fuse
+  if (heldType==="🧱"){
+    hp=hpWall();
+    extra.owner = myName;
+    extra.wLevel = levels.wall || 0;
+  }
+  if (heldType==="🔫"){
+    hp=hpTur();
+    extra.owner = myName;
+    extra.tLevel = levels.turret || 0;
+  }
+  if (heldType==="💣"){
+    hp=1; extra.expAt = Date.now() + 3000; // 3s fuse
+    extra.owner = myName;
+  }
   if (heldType==="🏭"){
     hp = hpWall();
     extra.owner = myName;
     extra.factory = true;
-    extra.cashRate = 3;
+    extra.cashRate = 3; // base per tick; factory upgrades multiply income in hostFactoryTick
   }
 
   await placeStructureHost(tx,ty,heldType,hp,extra);
@@ -1348,7 +1523,19 @@ async function hostFactoryTick(){
     }
   }
   const entries = Object.entries(byOwner);
-  for (const [owner,amt] of entries){
+  for (const [owner,baseAmt] of entries){
+    // factory upgrades: more income based on owner's factory level
+    let lvl = 0;
+    if (owner === myName){
+      lvl = levels.factory || 0;
+    } else {
+      const pdata = players[owner];
+      if (pdata && pdata.upgrades && typeof pdata.upgrades.factory === "number"){
+        lvl = pdata.upgrades.factory;
+      }
+    }
+    const mult = 1 + 0.3 * (lvl||0);
+    const amt = Math.round(baseAmt * mult);
     await safeUpdate(doc(playersCol, owner), { gold: increment(amt) });
   }
 }
@@ -1392,7 +1579,7 @@ async function hostPowerTick(){
         for (let i=0;i<8;i++){
           const [dx,dy] = cand[Math.floor(Math.random()*cand.length)];
           const x=clamp(px+dx,1,gridSize-2), y=clamp(py+dy,1,gridSize-2);
-          if (!tileOccupied(x,y)){ await placeStructureHost(x,y,"🧱", hpWall()); break; }
+          if (!tileOccupied(x,y)){ await placeStructureHost(x,y,"🧱", hpWall(), {owner:name,wLevel:levels.wall||0}); break; }
         }
       }
       const nextAt = now + powerPeriod("Stone",lvl);
@@ -1418,7 +1605,7 @@ async function hostPowerTick(){
       else { await safeUpdate(doc(playersCol,name), { powers: {...powers, Ice:{lvl, nextAt} } }); }
     }
 
-    // Lightning
+    // Lightning — now with very clear visuals and damage
     if (powers.Lightning && (powers.Lightning.nextAt||0) <= now){
       const lvl=powers.Lightning.lvl||1;
       globalLightningLevel = Math.max(globalLightningLevel,lvl);
@@ -1437,19 +1624,30 @@ async function hostPowerTick(){
 
       pool.sort((a,b)=> manhattan(px,py,a.x,a.y) - manhattan(px,py,b.x,b.y));
       const inR = pool.filter(e=> manhattan(px,py,e.x,e.y)<=rng);
-      let current=inR[0]; let hits=0; const hitSet=new Set();
-      const sig=(e)=>e.kind+":"+(e.id??`${e.x},${e.y}`);
-      while(current && hits<=chains){
-        hitSet.add(sig(current));
-        if (current.kind==="cat"){ await damageCat(dmg); }
-        else { await damageEnemy(current.kind,current.id,dmg); }
-        let next=null, best=1e9;
-        for (const cand of inR){
-          if (hitSet.has(sig(cand))) continue;
-          const d = manhattan(current.x,current.y,cand.x,cand.y);
-          if (d<=5 && d<best){ best=d; next=cand; }
+      if (inR.length){
+        let current=inR[0]; let hits=0; const hitSet=new Set();
+        const sig=(e)=>e.kind+":"+(e.id??`${e.x},${e.y}`);
+
+        // first bolt from player to first target
+        renderLightningStrike(px,py,current.x,current.y);
+
+        while(current && hits<=chains){
+          hitSet.add(sig(current));
+          if (current.kind==="cat"){ await damageCat(dmg); }
+          else { await damageEnemy(current.kind,current.id,dmg); }
+
+          let next=null, best=1e9;
+          for (const cand of inR){
+            if (hitSet.has(sig(cand))) continue;
+            const d = manhattan(current.x,current.y,cand.x,cand.y);
+            if (d<=5 && d<best){ best=d; next=cand; }
+          }
+          if (next){
+            // chain lightning visual between enemies
+            renderLightningStrike(current.x,current.y,next.x,next.y);
+          }
+          current=next; hits++;
         }
-        current=next; hits++;
       }
       const nextAt = now + powerPeriod("Lightning",lvl);
       if (name===myName){ me.powers.Lightning.nextAt = nextAt; await safeUpdate(doc(playersCol,myName),{powers:me.powers}); }
@@ -1471,10 +1669,11 @@ async function hostPowerTick(){
         if (hp<=0) safeDelete(ref); else safeUpdate(ref,{hp});
         if (!isBlocked(nx,ny)) safeUpdate(ref,{x:nx,y:ny});
       };
-      for (const [id,rn] of rats){ doKnock(rn,ratsCol,id,10+3*(lvl-1)); }
+      const fireDmg = 10+3*(lvl-1);
+      for (const [id,rn] of rats){ doKnock(rn,ratsCol,id,fireDmg); }
       for (const [id,b] of bears){ doKnock(b,bearsCol,id,8+3*(lvl-1)); }
-      for (const [id,c] of caterpillars){ if (inR(c.x,c.y)){ const hp=c.hp-(10+3*(lvl-1)); if (hp<=0) await safeDelete(doc(catsCol,id)); else await safeUpdate(doc(catsCol,id),{hp}); } }
-      for (const [id,cw] of crows){ if (inR(cw.x,cw.y)){ const hp=cw.hp-(10+3*(lvl-1)); if (hp<=0) await safeDelete(doc(crowsCol,id)); else await safeUpdate(doc(crowsCol,id),{hp}); } }
+      for (const [id,c] of caterpillars){ if (inR(c.x,c.y)){ const hp=c.hp-fireDmg; if (hp<=0) await safeDelete(doc(catsCol,id)); else await safeUpdate(doc(catsCol,id),{hp}); } }
+      for (const [id,cw] of crows){ if (inR(cw.x,cw.y)){ const hp=cw.hp-fireDmg; if (hp<=0) await safeDelete(doc(crowsCol,id)); else await safeUpdate(doc(crowsCol,id),{hp}); } }
       for (const [id,g] of golems){ if (inR(g.x,g.y)){ const hp=g.hp-(8+3*(lvl-1)); if (hp<=0) await safeDelete(doc(golemsCol,id)); else await safeUpdate(doc(golemsCol,id),{hp}); } }
       if (gameDoc.cat && inR(gameDoc.cat.x,gameDoc.cat.y)){ await damageCat(8+3*(lvl-1)); }
       const nextAt = now + powerPeriod("Fire",lvl);
@@ -1614,12 +1813,14 @@ async function hostSpawnGolems(){
   }
 }
 
-/* --------------------------- Cooldown HUD update -------------------------- */
+/* --------------------------- Cooldown HUD update --------------------------
+   Left in place but UI is hidden; no bars visible on screen. */
 function msLeft(t){ return Math.max(0,(t||0)-Date.now()); }
 function fmt(ms){ const s=Math.ceil(ms/1000); return s<=0?"ready":`${s}s`; }
 function drawCooldowns(){
   const p = me.powers||{};
   const order=["Fire","Lightning","Ice","Stone","Fleas","Beetles"];
+  if (!coolwrap) return;
   coolwrap.innerHTML="";
   for (const name of order){
     const cur = p[name];
@@ -1709,6 +1910,7 @@ document.getElementById("upgradeHeader").onclick=()=>{
   me.x = 2 + Math.floor(Math.random()*6);
   me.y = 2 + Math.floor(Math.random()*6);
   me.powers = {};
+  me.upgrades = me.upgrades || {};
   me.gold = me.gold || 0;
   await upsertMe();
   const g=await getDoc(gameRef);
@@ -1727,9 +1929,6 @@ document.getElementById("upgradeHeader").onclick=()=>{
 </script>
 </body>
 </html>
-
-
-
 
 
 
