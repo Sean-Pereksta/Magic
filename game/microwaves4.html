@@ -1288,27 +1288,45 @@
         player.hp = Math.min(player.maxHP, player.hp + player.regen*dt);
       }
 
-      // auto-fire
-      player.fireTimer -= dt;
-      if(player.fireTimer<=0){
-        var target = null;
-        var bestD = player.range*player.range;
-        for(var i=0;i<enemies.length;i++){
-          var e=enemies[i];
-          if(!e.alive) continue;
-          var d = distanceSq(player.x,player.y,e.x,e.y);
-          if(d<bestD){
-            bestD=d;
-            target=e;
-          }
-        }
-        if(target){
-          addBullet(player.x,player.y,target.x,target.y,340,player.dmg,'friendly');
-          player.fireTimer = player.fireCooldown;
-        }else{
-          player.fireTimer = 0.1;
-        }
-      }
+     // auto-fire (now targets enemies, enemy turrets, and boss)
+player.fireTimer -= dt;
+if (player.fireTimer <= 0) {
+  var target = null;
+  var bestD = player.range * player.range;
+
+  function considerTarget(obj) {
+    if (!obj || !obj.alive) return;
+    var d = distanceSq(player.x, player.y, obj.x, obj.y);
+    if (d < bestD) {
+      bestD = d;
+      target = obj;
+    }
+  }
+
+  // Regular enemies
+  for (var i = 0; i < enemies.length; i++) {
+    considerTarget(enemies[i]);
+  }
+
+  // Enemy turrets
+  for (var j = 0; j < enemyTurrets.length; j++) {
+    considerTarget(enemyTurrets[j]);
+  }
+
+  // Boss
+  if (boss) {
+    considerTarget(boss);
+  }
+
+  if (target) {
+    addBullet(player.x, player.y, target.x, target.y, 340, player.dmg, 'friendly');
+    player.fireTimer = player.fireCooldown;
+  } else {
+    // small delay so we're not spamming checks every frame
+    player.fireTimer = 0.1;
+  }
+}
+
 
       // specials
       if(player.unlocked.shotgun){
@@ -2009,6 +2027,7 @@
 </script>
 </body>
 </html>
+
 
 
 
