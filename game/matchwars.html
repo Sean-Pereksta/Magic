@@ -137,6 +137,7 @@
         <button class="btn" id="openShopBtn">🛍️ Shop</button>
       </div>
       <div class="tip">Match 3+ tiles to summon your troops. Ranged units stop to fire; melee clash on contact.</div>
+      <div class="tip" id="synergyRow"></div>
     </div>
   </div>
 
@@ -184,34 +185,28 @@
   let GRID_W = 0, GRID_H = 0, GRID_X = 0, GRID_Y = 0;
 
   function computeGridGeometry(){
-    // Fit grid below lane if possible; otherwise shrink tiles and/or lift grid so it never overflows
-    const maxTileByHeight = Math.floor((H - (GRASS_Y + 40) - 20) / GRID_ROWS); // 40px gap + 20px bottom margin
-    TILE = Math.max(40, Math.min(70, maxTileByHeight)); // clamp tile size (never too tiny, never too big)
+    const maxTileByHeight = Math.floor((H - (GRASS_Y + 40) - 20) / GRID_ROWS);
+    TILE = Math.max(40, Math.min(70, maxTileByHeight));
     GRID_W = GRID_COLS * TILE;
     GRID_H = GRID_ROWS * TILE;
     GRID_X = Math.round((W - GRID_W) / 2);
     GRID_Y = GRASS_Y + 20;
 
-    // If still overflowing, lift the grid until it fits
     const bottomMargin = 12;
     if (GRID_Y + GRID_H > H - bottomMargin){
       GRID_Y = H - bottomMargin - GRID_H;
     }
 
-    // Update the overlay frame
     gridFrame.style.width  = GRID_W + 'px';
     gridFrame.style.height = GRID_H + 'px';
     gridFrame.style.top    = (GRID_Y - 8) + 'px';
     gridFrame.style.left   = GRID_X + 'px';
 
-    // Reposition sidebar each time geometry changes
     positionSidebar();
   }
 
-  // Grid frame element
   const gridFrame = document.getElementById('gridFrame');
 
-  // Sidebar placement (relative to grid)
   const sidebar = document.getElementById('sidebar');
   function positionSidebar(){
     if (!sidebar) return;
@@ -223,7 +218,6 @@
   }
 
   addEventListener('resize', () => {
-    // Canvas size is fixed, but we still recompute geometry so overlays and sidebar follow the layout
     computeGridGeometry();
   });
 
@@ -232,6 +226,7 @@
   const levelTxt  = document.getElementById('levelTxt');
   const hpYouTxt  = document.getElementById('hpYouTxt');
   const hpEnemyTxt= document.getElementById('hpEnemyTxt');
+  const synergyRow = document.getElementById('synergyRow');
 
   const ct = {
     level:   document.getElementById('ct-level'),
@@ -271,9 +266,51 @@
   const upgrades = {};
   for (const k in COLORS) upgrades[k] = { attack:1, speed:1, health:1, ability:1 };
 
-  // Enemy has its own scaling table (we’ll raise this per level)
+  // Enemy has its own scaling table (per level, then wave)
   const enemyUpgrades = {};
   for (const k in COLORS) enemyUpgrades[k] = { attack:1, speed:1, health:1, ability:1 };
+
+  // Synergy: colors get stronger as you field more of them
+  const synergy = {};
+  for (const k in COLORS) synergy[k] = { count:0, level:0 }; // level 0–3
+
+  function synergyMultipliers(key){
+    const s = synergy[key] || {level:0};
+    const lv = s.level || 0;
+    if (!lv) return { atk:1, hp:1, spd:1, ability:1 };
+    return {
+      atk:     1 + 0.12*lv,
+      hp:      1 + 0.15*lv,
+      spd:     1 + 0.05*lv,
+      ability: 1 + 0.18*lv
+    };
+  }
+
+  function bumpSynergy(key){
+    const s = synergy[key];
+    if (!s) return;
+    s.count++;
+    const c = s.count;
+    const newLevel = (c>=15) ? 3 : (c>=8) ? 2 : (c>=4) ? 1 : 0;
+    if (newLevel !== s.level){
+      s.level = newLevel;
+      syncSynergyUI();
+    }
+  }
+
+  function syncSynergyUI(){
+    if (!synergyRow) return;
+    const parts = [];
+    for (const k in synergy){
+      const s = synergy[k];
+      if (s.level>0){
+        const c = COLORS[k];
+        const marks = s.level===1 ? '+' : s.level===2 ? '++' : '+++';
+        parts.push(`${c.emoji} ${c.name} ${marks}`);
+      }
+    }
+    synergyRow.textContent = parts.length ? 'Synergies: ' + parts.join('   ') : '';
+  }
 
   function unlockedKeys(){
     return Object.entries(COLORS).filter(([k,v])=>v.unlocked).map(([k])=>k);
@@ -357,10 +394,21 @@
     while(tries++<25){
       const k = randomColorKey();
       if (!createsImmediateMatch(r,c,k)){
-        return { key:k, special: Math.random()<0.09 };
+        // ~12% chance to be special or magical circle
+        let special = false;
+        let glyph = null;
+        if (Math.random() < 0.12){
+          if (Math.random() < 0.5){
+            special = true; // elite trigger
+          } else {
+            const kinds = ['atk','spd','hp','abl']; // attack, speed, health, ability
+            glyph = kinds[(Math.random()*kinds.length)|0];
+          }
+        }
+        return { key:k, special, glyph };
       }
     }
-    return { key: randomColorKey(), special:false };
+    return { key: randomColorKey(), special:false, glyph:null };
   }
   function buildGrid(){
     for (let r=0;r<GRID_ROWS;r++){
@@ -378,14 +426,18 @@
   const SAVE_KEY = 'colorclash-autosave-v1';
 
   function snapshotGrid(){
-    return grid.map(row => row.map(t => ({ key: t.key, special: !!t.special })));
+    return grid.map(row => row.map(t => ({
+      key: t.key,
+      special: !!t.special,
+      glyph: t.glyph || null
+    })));
   }
   function restoreGrid(snap){
     if (!Array.isArray(snap) || snap.length !== GRID_ROWS) { refillGrid(); return; }
     for (let r=0;r<GRID_ROWS;r++){
       for (let c=0;c<GRID_COLS;c++){
         const t = snap[r]?.[c];
-        grid[r][c] = t ? { key: t.key, special: !!t.special } : genTile(r,c);
+        grid[r][c] = t ? { key: t.key, special: !!t.special, glyph: t.glyph || null } : genTile(r,c);
       }
     }
   }
@@ -393,7 +445,7 @@
     return {
       v:1,
       gold, level, playerBase, enemyBase,
-      colors: Object.fromEntries(Object.entries(COLORS).map(([k,v]) => [k, { unlocked: !!v.unlocked }])),
+      colors: Object.fromEntries(Object.entries(COLORS).map(([k,v]) => [k, { unlocked: !!v.unlocked }]))),
       upgrades: JSON.parse(JSON.stringify(upgrades)),
       grid: snapshotGrid(),
       ts: Date.now()
@@ -429,9 +481,11 @@
       enemyUnits.length  = 0;
       projectiles.length = 0;
 
-      applyEnemyScaling(level); // ensure scaling matches loaded level
+      applyEnemyScaling(level);
+      resetWaves();
 
       syncBar(); syncCounters();
+      syncSynergyUI();
       return true;
     } catch(e){
       console.warn('Load failed', e);
@@ -443,7 +497,7 @@
   let dragging=null, mouseX=0, mouseY=0;
 
   cv.addEventListener('mousedown', (e)=>{
-    if (paused || moves <= 0) return; // block if out of moves
+    if (paused || moves <= 0) return;
     const {x,y} = canvasMouse(e);
     const hit = hitGrid(x,y);
     if (hit) dragging = { from: hit, tile: {...grid[hit.r][hit.c]} };
@@ -460,15 +514,12 @@
     const from = dragging.from;
 
     if (to && (Math.abs(to.r-from.r)+Math.abs(to.c-from.c)===1) && moves > 0){
-      // swap tiles (always keep the swap)
       const tmp = grid[to.r][to.c];
       grid[to.r][to.c] = grid[from.r][from.c];
       grid[from.r][from.c] = tmp;
 
-      // resolve matches; returns number of match groups spawned
       const groups = resolveMatches(); // integer
 
-      // spend 1 move, gain +1 per troop spawned (per group)
       moves = Math.max(0, moves - 1 + groups);
 
       syncBar(); syncCounters();
@@ -491,7 +542,6 @@
     ctx.fillStyle = 'rgba(0,0,0,.12)';
     ctx.fillRect(GRID_X-6, GRID_Y-6, GRID_W+12, GRID_H+12);
 
-    // scale emoji text to tile size
     const emojiSize = Math.max(18, Math.floor(TILE*0.6));
     const specialSize = Math.max(12, Math.floor(TILE*0.35));
 
@@ -510,6 +560,13 @@
         if (t.special){
           ctx.font = `${specialSize}px system-ui`;
           ctx.fillText('✨', x + TILE - specialSize*1.1, y + specialSize*0.3);
+        } else if (t.glyph){
+          ctx.font = `${specialSize}px system-ui`;
+          const glyphEmoji =
+            t.glyph==='atk' ? '⚔️' :
+            t.glyph==='spd' ? '💨' :
+            t.glyph==='hp'  ? '❤️' : '🔮';
+          ctx.fillText(glyphEmoji, x + TILE - specialSize*1.3, y + specialSize*0.3);
         }
       }
     }
@@ -526,6 +583,18 @@
   }
 
   // Find matches, spawn units, replace
+  function applyGlyphs(colorKey, glyphs){
+    if (!glyphs.length) return;
+    const up = upgrades[colorKey];
+    for (const g of glyphs){
+      if (g==='atk') up.attack++;
+      if (g==='spd') up.speed++;
+      if (g==='hp')  up.health++;
+      if (g==='abl') up.ability++;
+    }
+    buildShop(); // refresh costs display
+  }
+
   function resolveMatches(){
     const mark = [...Array(GRID_ROWS)].map(()=>Array(GRID_COLS).fill(false));
     const groups = [];
@@ -561,24 +630,33 @@
     }
     if (!groups.length) return 0;
 
-    // Spawn per group; elite if any special in group
     for (const g of groups){
       let elite = false;
+      const glyphs = [];
       if (g.dir==='h'){
-        for (let cc=0; cc<g.len; cc++) if (grid[g.r][g.c0+cc].special){ elite=true; break; }
+        for (let cc=0; cc<g.len; cc++){
+          const tile = grid[g.r][g.c0+cc];
+          if (tile.special) elite=true;
+          if (tile.glyph) glyphs.push(tile.glyph);
+        }
       } else {
-        for (let rr=0; rr<g.len; rr++) if (grid[g.r0+rr][g.c].special){ elite=true; break; }
+        for (let rr=0; rr<g.len; rr++){
+          const tile = grid[g.r0+rr][g.c];
+          if (tile.special) elite=true;
+          if (tile.glyph) glyphs.push(tile.glyph);
+        }
       }
       spawnPlayerUnit(g.key, g.len, elite);
+      applyGlyphs(g.key, glyphs);
     }
+
     stats.matches += groups.length;
 
-    // Replace matched tiles
     for (let r=0;r<GRID_ROWS;r++)
       for (let c=0;c<GRID_COLS;c++)
         if (mark[r][c]) grid[r][c]=genTile(r,c);
 
-    return groups.length; // number of troops spawned (for moves refund)
+    return groups.length;
   }
 
   // ===== Units & Combat =====
@@ -610,29 +688,57 @@
 
   function spawnPlayerUnit(key, len, elite=false){
     if (!COLORS[key].unlocked) return;
+
+    // Synergy tick first so new units benefit when levels breakpoints are hit
+    bumpSynergy(key);
+    const syn = synergyMultipliers(key);
+
     const s = baseStats(key, len, elite, upgrades);
-    const size = 12 + 4*len + (elite?3:0);
+    const sizeBase = 12 + 4*len + (elite?3:0);
+
+    const hp  = Math.round(s.hp  * syn.hp);
+    const atk = Math.round(s.atk * syn.atk);
+    const spd = s.spd * syn.spd;
+
     playerUnits.push({
       side:'player', key, emoji:COLORS[key].emoji, power:s.pwr,
-      x: PLAYER_BASE_X-5, y: LANE_Y, vx: -s.spd, range:s.rng,
-      hp:s.hp, maxHp:s.hp, atk:s.atk, cd:0, size, elite,
-      poison:0, slow:0, stun:0
+      x: PLAYER_BASE_X-5, y: LANE_Y, vx: -spd, range:s.rng,
+      hp, maxHp:hp, atk, cd:0, size:sizeBase, elite,
+      poison:0, slow:0, stun:0, isBoss:false
     });
+
+    syncSynergyUI();
   }
 
-  // ===== Enemy scaling & spawning =====
+  // ===== Enemy scaling & waves =====
+  let enemySpawnCount = 0;
+  let enemyWave = 1;
+  let waveAtkMult = 1;
+  let waveHpMult  = 1;
+  let waveSpdMult = 1;
+
+  function recalcWaveScaling(){
+    waveAtkMult = 1 + 0.04*(enemyWave-1);
+    waveHpMult  = 1 + 0.06*(enemyWave-1);
+    waveSpdMult = 1 + 0.02*(enemyWave-1);
+  }
+  function resetWaves(){
+    enemySpawnCount = 0;
+    enemyWave = 1;
+    recalcWaveScaling();
+  }
+
   function enemyIntervalFor(lvl){
-    if (lvl <= 1) return 3600; // slow start
+    if (lvl <= 1) return 3600;
     const base = 2400 - (lvl-2)*120;
     return Math.max(900, base);
   }
 
   function applyEnemyScaling(lvl){
-    // Progressive difficulty curve (becomes meaningfully harder each level)
-    const scAtk = 1 + 0.07*(lvl-1);   // +7% / level
-    const scHp  = 1 + 0.08*(lvl-1);   // +8% / level
-    const scSpd = 1 + 0.02*(lvl-1);   // +2% / level
-    const scAbl = 1 + 0.05*(lvl-1);   // +5% / level (DOTs, crit chance, heals)
+    const scAtk = 1 + 0.07*(lvl-1);
+    const scHp  = 1 + 0.08*(lvl-1);
+    const scSpd = 1 + 0.02*(lvl-1);
+    const scAbl = 1 + 0.05*(lvl-1);
     for (const k in enemyUpgrades){
       enemyUpgrades[k].attack  = scAtk;
       enemyUpgrades[k].health  = scHp;
@@ -641,8 +747,7 @@
     }
   }
 
-  function spawnEnemyUnit(){
-    // Enemy pool grows with level
+  function spawnEnemyUnit(isBoss=false){
     const basePool = ['red','blue','green','pink'];
     if (level>=2) basePool.push('aqua');
     if (level>=3) basePool.push('orange');
@@ -650,28 +755,36 @@
     if (level>=5) basePool.push('purple','black');
     const key = basePool[(Math.random()*basePool.length)|0];
 
-    // Longer matches (bigger units) at higher levels
-    const extraLen = Math.min(2, Math.floor(level/4)); // +0..+2 by level
-    const len = 3
+    const extraLen = Math.min(2, Math.floor(level/4));
+    let len = 3
       + (Math.random()<.25 ? 1 : 0)
       + (Math.random()<.10 ? 1 : 0)
       + (Math.random()<.50 ? extraLen : 0);
 
-    // Elite chance rises with level (cap)
-    const elite = Math.random() < Math.min(0.08 + level*0.01, 0.28);
+    // Boss: longer "match", always elite, much tougher
+    let elite = Math.random() < Math.min(0.08 + level*0.01, 0.28);
+    if (isBoss){
+      len += 2;
+      elite = true;
+    }
 
     const s = baseStats(key, len, elite, enemyUpgrades);
-    const size = 12 + 4*len + (elite?3:0);
+
+    let hp  = Math.round(s.hp  * waveHpMult  * (isBoss ? 3.0 : 1.0));
+    let atk = Math.round(s.atk * waveAtkMult * (isBoss ? 2.0 : 1.0));
+    let spd = s.spd * waveSpdMult * (isBoss ? 0.9 : 1.0);
+    let size = (12 + 4*len + (elite?3:0)) * (isBoss ? 1.4 : 1.0);
+
     enemyUnits.push({
       side:'enemy', key, emoji:COLORS[key].emoji, power:s.pwr,
-      x: ENEMY_BASE_X+5, y: LANE_Y, vx: s.spd, range:s.rng,
-      hp:s.hp, maxHp:s.hp, atk:s.atk, cd:0, size, elite,
-      poison:0, slow:0, stun:0
+      x: ENEMY_BASE_X+5, y: LANE_Y, vx: spd, range:s.rng,
+      hp, maxHp:hp, atk, cd:0, size, elite,
+      poison:0, slow:0, stun:0, isBoss
     });
   }
 
   function drawUnit(u){
-    const icon = (
+    const icon = u.isBoss ? '👑' : (
       u.power==='heal'   ? '✨' :
       u.power==='ranged' ? '🎯' :
       u.power==='pierce' ? '🗡️' :
@@ -682,6 +795,16 @@
       u.power==='crit'   ? '🔥' :
       u.power==='volley' ? '🎯' : '•'
     );
+
+    if (u.isBoss){
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,215,0,.24)';
+      ctx.beginPath();
+      ctx.arc(u.x, u.y-12, u.size+12, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.font='22px serif';
     ctx.fillText(icon, u.x-10, u.y - (u.size+20));
     ctx.beginPath(); ctx.arc(u.x, u.y-8, u.size, 0, Math.PI*2);
@@ -697,7 +820,7 @@
 
   function fireProjectile(from){
     const dir = from.side==='player' ? -1 : 1;
-    const baseSpeed = 3;
+    const baseSpeed = 3.2;
     const pierce = (from.power==='pierce') ? 2 : 0;
     projectiles.push({
       x: from.x, y: from.y-14, vx: dir*baseSpeed,
@@ -719,34 +842,34 @@
       const skel = {
         side: attacker.side, key: attacker.key || 'purple', emoji: '💀', power: 'melee',
         x: victim.x, y: victim.y, vx: (attacker.side === 'player' ? -skelSpeed : skelSpeed), range: 26,
-        hp: sHP, maxHp: sHP, atk: sATK, cd: 0, size, elite: false, poison: 0, slow: 0, stun: 0
+        hp: sHP, maxHp: sHP, atk: sATK, cd: 0, size, elite: false, poison: 0, slow: 0, stun: 0, isBoss:false
       };
       (attacker.side === 'player' ? playerUnits : enemyUnits).push(skel);
     }
     kills++;
-    gold += 1; // 1 gold per kill
+    gold += 1;
     syncBar(); syncCounters();
   }
 
   function unitTick(u, dt){
     const upSet = (u.side === 'player') ? upgrades : enemyUpgrades;
     const up = upSet[u.key] || { attack:1, speed:1, health:1, ability:1 };
+    const syn = (u.side === 'player') ? synergyMultipliers(u.key) : { atk:1, hp:1, spd:1, ability:1 };
+    const abilityPow = (up.ability || 1) * syn.ability;
 
-    // Hard CC first
     if (u.stun > 0){ u.stun--; return; }
 
-    // Slow affects movement this tick
     let speedMul = (u.slow > 0) ? 0.5 : 1;
     if (u.slow > 0) u.slow--;
 
     const foes = (u.side === 'player') ? enemyUnits : playerUnits;
 
-    // Healing aura (Pink): small periodic heal in a radius, scales with ability
+    // Healing aura (Pink)
     if (u.power === 'heal' && (Date.now() % 900) < 20){
       const friends = (u.side === 'player') ? playerUnits : enemyUnits;
       for (const f of friends){
         if (Math.abs(f.x - u.x) < 64){
-          const bonus = Math.floor((up.ability - 1) * 0.25);
+          const bonus = Math.floor((abilityPow - 1) * 0.25);
           f.hp = Math.min(f.maxHp, f.hp + 1 + bonus);
         }
       }
@@ -761,10 +884,8 @@
       if (inFront && d < dist){ target = e; dist = d; }
     }
 
-    // Engagement distance depends on sizes; ranged uses weapon range
     const engageDist = target ? Math.max(24, (u.size + target.size) * 0.55) : 24;
 
-    // Move unless in ranged position or in melee contact
     let shouldMove = true;
     if (target){
       const isRanged = (u.power === 'ranged' || u.power === 'pierce' || u.power === 'volley');
@@ -776,12 +897,10 @@
       u.x += u.vx * dt * speedMul;
     }
 
-    // DoT tick on the unit itself
     if (u.poison > 0 && (Date.now() % 500) < 20){
       u.hp -= 1; u.poison--;
     }
 
-    // Attack logic
     if (target){
       const isRanged = (u.power === 'ranged' || u.power === 'pierce' || u.power === 'volley');
       const inRange  = dist <= (isRanged ? u.range : engageDist);
@@ -789,21 +908,17 @@
       if (inRange){
         if (u.cd <= 0){
           if (isRanged){
-            // Fire projectile(s)
             fireProjectile(u);
             u.cd = 28;
           } else {
-            // Melee hit
             let dmg = u.atk;
             target.hp -= Math.max(1, Math.round(dmg));
 
-            // On-hit effects (scale with the correct upgrade table)
-            if (u.power === 'poison' && Math.random() < 0.6) target.poison += 3 * up.ability;
-            if (u.power === 'slow'   && Math.random() < 0.7) target.slow   += 60;
-            if (u.power === 'stun'   && Math.random() < 0.18) target.stun   = 25;
-            if (u.power === 'crit'   && Math.random() < 0.2 * up.ability) {
-              // extra crit burst
-              target.hp -= Math.max(1, Math.round(dmg * 0.8));
+            if (u.power === 'poison' && Math.random() < 0.6 * abilityPow) target.poison += 3 * abilityPow;
+            if (u.power === 'slow'   && Math.random() < 0.7 * abilityPow) target.slow   += Math.round(40 * abilityPow);
+            if (u.power === 'stun'   && Math.random() < 0.18 * abilityPow) target.stun   = Math.round(25 * abilityPow);
+            if (u.power === 'crit'   && Math.random() < 0.2 * abilityPow) {
+              target.hp -= Math.max(1, Math.round(dmg * (0.4 + 0.2*abilityPow)));
             }
 
             if (target.hp <= 0){
@@ -835,7 +950,7 @@
         if (p.power==='slow' && Math.random()<.4) e.slow += 40;
         if (e.hp <= 0){
           e.dead = true;
-          onKill({ side: p.side, power: p.power, key: p.key }, e);
+          onKill({ side: p.side, power: p.power, key: p.key, atk:p.dmg }, e);
         }
         if (p.pierce > 0){ p.pierce--; } else { p.alive = false; break; }
       }
@@ -860,6 +975,50 @@
     i=projectiles.length; while(i--) if (!projectiles[i].alive) projectiles.splice(i,1);
   }
 
+  // ===== Base turrets =====
+  const playerTurret = { x:PLAYER_BASE_X, y:LANE_Y-26, cd:0 };
+  const enemyTurret  = { x:ENEMY_BASE_X,  y:LANE_Y-26, cd:0 };
+
+  function turretTick(turret, side){
+    if (turret.cd > 0){ turret.cd--; return; }
+    const foes = side==='player' ? enemyUnits : playerUnits;
+    if (!foes.length) return;
+
+    const maxRange = 260;
+    let best = null, bestD = maxRange+1;
+    for (const f of foes){
+      const d = Math.abs(f.x - turret.x);
+      if (d < bestD && d <= maxRange){
+        best = f; bestD = d;
+      }
+    }
+    if (!best) return;
+
+    const dmg = 4 + Math.floor(level*0.5);
+    const dir = side==='player' ? -1 : 1;
+    projectiles.push({
+      x: turret.x, y: turret.y,
+      vx: dir*3.4,
+      dmg, side, pierce:0, power:'turret', key:'turret', alive:true
+    });
+    turret.cd = Math.max(14, 32 - level*1); // shoots faster at higher levels
+  }
+
+  function drawTurret(t, side){
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    ctx.beginPath();
+    ctx.moveTo(-10,6);
+    ctx.lineTo(10,6);
+    ctx.lineTo(0,-10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font='18px serif';
+    ctx.fillText('🔺', -10, -18);
+    ctx.restore();
+  }
+
   // ===== Loop & Spawning =====
   let last = performance.now();
   let enemyTimer=0;
@@ -875,12 +1034,23 @@
     enemyUnits.sort((a,b)=>a.x-b.x);
 
     for (const p of projectiles) projectileTick(p, dt);
+
+    turretTick(playerTurret,'player');
+    turretTick(enemyTurret,'enemy');
+
     cleanup();
 
     enemyTimer += dt*16.6667;
     if (enemyTimer >= enemyInterval){
       enemyTimer = 0;
-      spawnEnemyUnit();
+      enemySpawnCount++;
+      spawnEnemyUnit(false);
+      // Every 8 spawns, enemies get a new "wave" buff and a mini-boss joins
+      if (enemySpawnCount % 8 === 0){
+        enemyWave++;
+        recalcWaveScaling();
+        spawnEnemyUnit(true); // mini-boss
+      }
     }
 
     syncCounters();
@@ -898,17 +1068,16 @@
           level = 1;
         }
 
-        // Recompute difficulty & spawn cadence on level change
         enemyInterval = enemyIntervalFor(level);
         applyEnemyScaling(level);
+        resetWaves();
 
-        // Reset battlefield state (fresh round)
         playerUnits.length = 0; enemyUnits.length = 0; projectiles.length = 0;
         playerBase = 5; enemyBase = 5;
         moves = 10;
 
         syncBar(); syncCounters();
-        buildShop(); openShop(); // opening shop also auto-saves
+        buildShop(); openShop();
         paused = false;
       }, 60);
     }
@@ -917,6 +1086,9 @@
   function draw(){
     ctx.clearRect(0,0,W,H);
     drawSkyAndGrass();
+
+    drawTurret(enemyTurret,'enemy');
+    drawTurret(playerTurret,'player');
 
     for (const e of enemyUnits)  drawUnit(e);
     for (const p of playerUnits) drawUnit(p);
@@ -942,12 +1114,13 @@
   const openShopBtn = document.getElementById('openShopBtn');
   const closeShopBtn = document.getElementById('closeShopBtn');
 
-  function openShop(){ shop.style.display='flex'; paused = true; saveGame(); } // autosave when shop opens
+  function openShop(){ shop.style.display='flex'; paused = true; saveGame(); }
   function closeShop(){ shop.style.display='none'; paused = false; }
   openShopBtn.onclick = openShop;
   closeShopBtn.onclick = closeShop;
 
   function buildShop(){
+    // Unlock buttons
     unlockList.innerHTML = '';
     for (const k in COLORS){
       const c = COLORS[k];
@@ -965,6 +1138,7 @@
       unlockList.appendChild(btn);
     }
 
+    // Upgrade buttons
     upgradeList.innerHTML = '';
     for (const k in COLORS){
       const c = COLORS[k];
@@ -986,11 +1160,13 @@
   }
 
   // ===== Init =====
-  computeGridGeometry();    // make sure grid fits canvas
+  computeGridGeometry();
   buildGrid();
-  const didLoad = loadGame();   // autoload on page open (if a save exists)
-  applyEnemyScaling(level);     // ensure scaling at current level
+  const didLoad = loadGame();
+  applyEnemyScaling(level);
+  resetWaves();
   syncBar(); syncCounters();
+  syncSynergyUI();
   buildShop();
   requestAnimationFrame(loop);
 
@@ -999,4 +1175,6 @@
 
 </body>
 </html>
+
+
 
