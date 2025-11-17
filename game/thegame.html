@@ -11,81 +11,309 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    -webkit-tap-highlight-color:transparent;
+  }
 
   /* Top bar */
-  header{position:sticky; top:0; z-index:30; background:#fff; border-bottom:1px solid var(--line); padding:6px 8px}
+  header{
+    position:sticky;
+    top:0;
+    z-index:30;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:6px 8px;
+  }
   .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
-  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:65vw}
-  .chip{padding:6px 10px; border:1px solid var(--line); border-radius:999px; font-size:13px; background:#fff; cursor:default; white-space:nowrap}
-  .chip.live{outline:2px solid var(--accent)}
+  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:60vw}
+  .chip{
+    padding:6px 10px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    font-size:13px;
+    background:#fff;
+    cursor:default;
+    white-space:nowrap;
+  }
+  .chip.live{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+    background:#eef2ff;
+  }
   .chip.me{border-color:#60a5fa}
   .chip.clickable{cursor:pointer}
   .spacer{flex:1}
-  .btn{appearance:none; border:1px solid #d1d5db; background:#111827; color:#fff; padding:9px 12px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px}
+  .btn{
+    appearance:none;
+    border:1px solid #d1d5db;
+    background:#111827;
+    color:#fff;
+    padding:8px 10px;
+    border-radius:10px;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+    touch-action:manipulation;
+  }
   .btn[disabled]{opacity:.5; cursor:not-allowed}
   .btn.secondary{background:#fff; color:#111827}
   .btn.ghost{background:#f3f4f6; color:#111827; border-color:#d1d5db}
   #playBtn{display:none} /* legacy inline play button (kept for safety) */
-  .chip.fs{background:#eef2ff; border-color:#c7d2fe; color:#1e40af}
+  .chip.fs{
+    background:#eef2ff;
+    border-color:#c7d2fe;
+    color:#1e40af;
+  }
 
   /* Content */
-  .wrap{max-width:860px; margin:8px auto; padding:0 8px; display:grid; gap:8px}
+  .wrap{
+    max-width:860px;
+    margin:4px auto;
+    padding:4px 8px 90px; /* extra bottom space so sticky hand never covers content */
+    display:grid;
+    gap:8px;
+  }
 
   /* Vote box */
-  .vote{border:1px solid var(--line); background:#fff; border-radius:12px; padding:10px}
+  .vote{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:12px;
+    padding:10px;
+  }
   .vote .title{font-weight:900; margin-bottom:6px}
-  .vote .opt{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; background:#fff; font-weight:700}
-  .vote .opt.sel{outline:2px solid var(--accent)}
+  .vote .opt{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px;
+    cursor:pointer;
+    background:#fff;
+    font-weight:700;
+  }
+  .vote .opt.sel{
+    outline:2px solid var(--accent);
+    background:#eff6ff;
+  }
   .timer{font-weight:800; color:#ca8a04}
 
   /* Piles */
-  .piles{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
-  .pile{user-select:none; padding:10px; background:#fff; border:1px solid var(--line); border-radius:12px; text-align:center}
-  .pile .dir{font-size:12px; color:var(--muted)}
-  .pile .top{font-weight:900; font-size:26px; margin:6px 0; padding:6px 10px; border:2px solid #e5e7eb; border-radius:10px; display:inline-block}
-  .pile .eff{font-size:12px; color:#0f172a; min-height:16px}
-  .pile.can{outline:2px solid var(--good); outline-offset:2px}
-  .pile.cannot{opacity:.7}
+  .piles{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+  }
+  .pile{
+    user-select:none;
+    padding:10px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:12px;
+    text-align:center;
+    min-height:84px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:4px;
+    touch-action:manipulation;
+  }
+  .pile .dir{
+    font-size:12px;
+    color:var(--muted);
+    font-weight:600;
+  }
+  .pile .top{
+    font-weight:900;
+    font-size:26px;
+    margin:4px 0;
+    padding:6px 10px;
+    border:2px solid #e5e7eb;
+    border-radius:10px;
+    display:inline-block;
+  }
+  .pile .eff{
+    font-size:12px;
+    color:#0f172a;
+    min-height:16px;
+  }
+  .pile.can{
+    outline:2px solid var(--good);
+    outline-offset:2px;
+    background:#ecfdf3;
+  }
+  .pile.cannot{
+    opacity:.55;
+    filter:grayscale(.3);
+  }
 
-  /* Hand */
-  .hand{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; padding:8px 0 14px}
-  .card{position:relative; min-width:52px; height:70px; border-radius:12px; border:2px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:center;
-         font-weight:900; font-size:17px; cursor:pointer; background:#f3f4f6; color:#111827; user-select:none; touch-action:manipulation}
-  .card.power{background:#0ea5e9; color:#fff; border-color:#0284c7; font-size:13px}
-  .card.selected{outline:3px solid var(--accent); outline-offset:2px}
-  .card.ghost{opacity:.45; filter:grayscale(.4); cursor:not-allowed}
-  .band{position:absolute; left:0; right:0; bottom:0; height:6px; border-bottom-left-radius:10px; border-bottom-right-radius:10px; opacity:.85}
+  /* Pile flash animation when affected */
+  .pile.flash{
+    animation:pileFlash 0.45s ease-out;
+  }
+  @keyframes pileFlash{
+    0%{ box-shadow:0 0 0 0 rgba(34,197,94,.7); transform:scale(1.02); }
+    100%{ box-shadow:none; transform:scale(1); }
+  }
+
+  /* Hand – mobile-friendly sticky bottom bar */
+  .hand{
+    position:sticky;
+    bottom:0;
+    left:0;
+    right:0;
+    z-index:20;
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    justify-content:center;
+    padding:8px 6px 10px;
+    background:linear-gradient(to top,#f9fafb,rgba(249,250,251,.96),transparent);
+    border-top:1px solid var(--line);
+  }
+  .card{
+    position:relative;
+    min-width:58px;
+    height:78px;
+    border-radius:12px;
+    border:2px solid rgba(0,0,0,.08);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:900;
+    font-size:18px;
+    cursor:pointer;
+    background:#f3f4f6;
+    color:#111827;
+    user-select:none;
+    touch-action:manipulation;
+  }
+  .card.power{
+    background:#0ea5e9;
+    color:#fff;
+    border-color:#0284c7;
+    font-size:13px;
+    padding:0 6px;
+    text-align:center;
+  }
+  .card.selected{
+    outline:3px solid var(--accent);
+    outline-offset:2px;
+    box-shadow:0 0 0 2px rgba(37,99,235,.2);
+  }
+  .card.ghost{
+    opacity:.45;
+    filter:grayscale(.4);
+    cursor:not-allowed;
+  }
+  .band{
+    position:absolute;
+    left:0;
+    right:0;
+    bottom:0;
+    height:6px;
+    border-bottom-left-radius:10px;
+    border-bottom-right-radius:10px;
+    opacity:.9;
+  }
 
   /* Hint / Log */
-  .hint{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 8px}
-  .log{font-size:12px; color:#374151; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:120px; overflow:auto}
+  .hint{
+    font-size:12px;
+    color:#374151;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:6px 8px;
+  }
+  .log{
+    font-size:12px;
+    color:#374151;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px;
+    max-height:120px;
+    overflow:auto;
+  }
 
-  @media (min-width:700px){ .piles{grid-template-columns:repeat(4,1fr)} }
+  @media (min-width:700px){
+    .piles{grid-template-columns:repeat(4,1fr)}
+    .hand{justify-content:flex-start}
+  }
+
   /* Fullscreen tweaks */
   .full header{position:fixed; top:0; left:0; right:0}
   .full .wrap{padding-top:2px}
 
   /* ===== Powers Bottom Sheet (mobile-friendly, fullscreen-safe) ===== */
   .sheet-backdrop{
-    position:fixed; inset:0; background:rgba(0,0,0,.35);
-    display:none; align-items:flex-end; justify-content:center; z-index:1000;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.35);
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+    z-index:1000;
   }
-  .sheet{ width:100%; max-width:860px; background:#fff; border-top-left-radius:16px; border-top-right-radius:16px;
-          box-shadow:0 -10px 30px rgba(0,0,0,.2); padding:10px; }
-  .sheet .grab{width:44px; height:5px; border-radius:99px; background:#e5e7eb; margin:0 auto 8px;}
+  .sheet{
+    width:100%;
+    max-width:860px;
+    background:#fff;
+    border-top-left-radius:16px;
+    border-top-right-radius:16px;
+    box-shadow:0 -10px 30px rgba(0,0,0,.2);
+    padding:10px;
+  }
+  .sheet .grab{
+    width:44px;
+    height:5px;
+    border-radius:99px;
+    background:#e5e7eb;
+    margin:0 auto 8px;
+  }
   .sheet h3{margin:0 0 8px 0; font-size:16px}
   .powers-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
-  .power-item{border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:6px}
+  .power-item{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
   .power-item .label{font-weight:800}
   .power-item .desc{font-size:12px; color:#4b5563; min-height:28px}
   .power-actions{display:flex; gap:6px; justify-content:flex-end}
-  .inline-pill{display:inline-block; font-size:11px; background:#eef2ff; color:#1e40af; padding:2px 6px; border-radius:999px; border:1px solid #c7d2fe}
+  .inline-pill{
+    display:inline-block;
+    font-size:11px;
+    background:#eef2ff;
+    color:#1e40af;
+    padding:2px 6px;
+    border-radius:999px;
+    border:1px solid #c7d2fe;
+  }
 
   .toast{
-    position:fixed; left:50%; transform:translateX(-50%);
-    bottom:12px; background:#111827; color:#fff; padding:10px 14px; border-radius:12px;
-    font-size:13px; z-index:1100; display:none;
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:12px;
+    background:#111827;
+    color:#fff;
+    padding:10px 14px;
+    border-radius:12px;
+    font-size:13px;
+    z-index:1100;
+    display:none;
+    max-width:90vw;
+    text-align:center;
   }
 </style>
 </head>
@@ -234,6 +462,14 @@ function toast(msg, ms=1400){
   toast._t = setTimeout(()=>{ $toast.style.display='none'; }, ms);
 }
 
+/* Visual flash for piles when affected */
+function flashPile(id){
+  const el = document.querySelector(`.pile[data-id="${id}"]`);
+  if(!el) return;
+  el.classList.add('flash');
+  setTimeout(()=> el.classList.remove('flash'), 450);
+}
+
 /* ---------------- Vote or resume ---------------- */
 async function ensureRoomVotingOrResume(){
   const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
@@ -369,12 +605,17 @@ function renderPiles(){
   ['U1','U2','D1','D2'].forEach(id=>{
     const p=G.piles[id]; if(!p) return;
     const div=document.createElement('div'); div.className='pile'; div.dataset.id=id;
-    const dir=document.createElement('div'); dir.className='dir'; dir.textContent = p.dir===UP?'UP ▲':'DOWN ▼';
+    const dir=document.createElement('div'); dir.className='dir';
+    const isUp = p.dir===UP;
+    dir.textContent = isUp ? 'UP ▲' : 'DOWN ▼';
+    dir.style.color = isUp ? '#16a34a' : '#b91c1c';
+
     const top=document.createElement('div'); top.className='top'; top.textContent = p.top;
     top.style.borderColor=`hsl(${hueForValue(p.top,max)} 80% 55%)`;
     top.style.background=`hsl(${hueForValue(p.top,max)} 90% 96%)`;
     const eff=document.createElement('div'); eff.className='eff';
-    const b=(p.effects||[]).find(e=>e.type==='bungee'); eff.textContent = b ? `🪢 x${b.charges}` : '';
+    const b=(p.effects||[]).find(e=>e.type==='bungee');
+    eff.textContent = b ? `🪢 Bungee x${b.charges}` : '';
 
     if(isMyTurn && mySelected!=null){
       if(isNumber(mySelected)){
@@ -441,7 +682,7 @@ function targetHintFor(v){
 }
 function showHint(msg){
   if(!msg){ $hint.style.display='none'; $hint.textContent=''; return; }
-  $hint.style.display='block'; $hint.textContent=msg;
+  $hint.style.display='block'; $hint.innerHTML = msg;
 }
 
 function updateActions(){
@@ -473,16 +714,17 @@ function openPowersSheet(preselect=null){
       const desc  = document.createElement('div'); desc.className='desc'; desc.textContent = DESC[cardType] || '';
       const actions = document.createElement('div'); actions.className='power-actions';
       const useBtn = document.createElement('button'); useBtn.className='btn'; useBtn.type='button';
-      useBtn.textContent = `Use ${LABEL[cardType]||cardType}`;
+      useBtn.textContent = isMyTurn ? `Use ${LABEL[cardType]||cardType}` : 'Not your turn';
+      useBtn.disabled = !isMyTurn;
       useBtn.addEventListener('click', ()=>{
         if(!isMyTurn){ toast('Not your turn.'); return; }
         mySelected = cardType;
         // Start targeting guidance immediately
         if(cardType===POWERS.TIMEWARP){ playTimeWarpTx(); closeSheet(); return; }
-        if(cardType===POWERS.TRADE){ pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.SWAP){ pending={type:'SWAP'}; showHint('Tap two piles to swap their tops.'); renderPiles(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.FLIP){ showHint('Tap a pile to flip direction.'); renderPiles(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.BUNGEE){ showHint('Tap a pile to arm Bungee (±20 once).'); renderPiles(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.TRADE){ pending={type:'TRADE'}; showHint('🤝 Trade: tap a player chip to trade.'); renderPlayers(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.SWAP){ pending={type:'SWAP'}; showHint('🔄 Swap: tap two piles to swap their tops.'); renderPiles(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.FLIP){ showHint('🔁 Flip: tap a pile to flip its direction.'); renderPiles(); updateActions(); closeSheet(); return; }
+        if(cardType===POWERS.BUNGEE){ showHint('🪢 Bungee: tap a pile to arm ±20 once.'); renderPiles(); updateActions(); closeSheet(); return; }
       });
       actions.appendChild(useBtn);
       item.append(label, desc, actions);
@@ -504,7 +746,7 @@ function onPileTap(id){
   if(mySelected===POWERS.FLIP)   return playFlipTx(id);
   if(mySelected===POWERS.BUNGEE) return playBungeeTx(id);
   if(mySelected===POWERS.SWAP){
-    if(!pending || pending.type!=='SWAP' || !pending.first){ pending={type:'SWAP', first:id}; showHint('Now tap a second pile.'); renderPiles(); return; }
+    if(!pending || pending.type!=='SWAP' || !pending.first){ pending={type:'SWAP', first:id}; showHint('Now tap a second pile to complete swap.'); renderPiles(); return; }
     if(pending.first===id){ pending=null; showHint(''); return; }
     const a=pending.first; pending=null; showHint(''); return playSwapTx(a,id);
   }
@@ -582,7 +824,12 @@ async function playNumberTx(card, pileId){
     log.push(`${me} played <b>${card}</b> on ${p.id} ${p.dir===UP?'▲':'▼'}${backwards?' via <b>±10</b>':''}${b20?' with <b>🪢 ±20</b>':''} (${prev}→${card}).`);
 
     tx.update(gameRef,{piles, hands, turnPlays:(S.turnPlays||0)+1, placed:(S.placed||0)+1, log});
-  }).then(()=>{ mySelected=null; pending=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    mySelected=null; pending=null; showHint('');
+    renderPiles();
+    flashPile(pileId);
+    updateActions(); gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 /* ---------------- TX: powers ---------------- */
@@ -599,7 +846,12 @@ async function playFlipTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔁 Flip</b> on ${p.id} — now <b>${p.dir===UP?'UP':'DOWN'}</b>.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    mySelected=null; showHint('');
+    renderPiles();
+    flashPile(pileId);
+    updateActions(); gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playBungeeTx(pileId){
@@ -617,7 +869,12 @@ async function playBungeeTx(pileId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} armed <b>🪢 Bungee</b> on ${p.id}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    mySelected=null; showHint('');
+    renderPiles();
+    flashPile(pileId);
+    updateActions(); gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playSwapTx(aId,bId){
@@ -635,7 +892,12 @@ async function playSwapTx(aId,bId){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔄 Swap</b> on ${aId}↔${bId}.`);
     tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    mySelected=null; showHint('');
+    renderPiles();
+    flashPile(aId); flashPile(bId);
+    updateActions(); gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playTradeTx(target){
@@ -658,7 +920,10 @@ async function playTradeTx(target){
     const hands={...S.hands,[me]:my,[target]:his};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🤝 Trade</b> with <b>${target}</b>.`);
     tx.update(gameRef,{hands,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ pending=null; mySelected=null; showHint(''); renderPlayers(); renderHand(); updateActions(); gateEnd(); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    pending=null; mySelected=null; showHint('');
+    renderPlayers(); renderHand(); updateActions(); gateEnd();
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 async function playTimeWarpTx(){
@@ -674,7 +939,11 @@ async function playTimeWarpTx(){
     const hands={...S.hands,[me]:my};
     const log=(S.log||[]).slice(-200); log.push(`${me} used <b>⏳ Time Warp</b> (may end early; future requirement +1).`);
     tx.update(gameRef,{hands,debts,timewarpPass:me,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{ mySelected=null; showHint(''); updateActions(); renderHand(); gateEnd(); toast('Time Warp ready: you may End Turn now.'); }).catch(e=>toast(e.message||'Error'));
+  }).then(()=>{
+    mySelected=null; showHint('⏳ Time Warp active: you may End Turn early this round.');
+    renderHand();
+    updateActions(); gateEnd(); toast('Time Warp ready: you may End Turn now.');
+  }).catch(e=>toast(e.message||'Error'));
 }
 
 /* ---------------- End Turn ---------------- */
@@ -725,5 +994,7 @@ ensureRoomVotingOrResume();
 </script>
 </body>
 </html>
+
+
 
 
