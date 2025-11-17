@@ -1515,7 +1515,7 @@ async function ensureStateSeats(){
       }
     }
 
-    // ===== RESULT → SCORE / NEXT (host drives) =====
+      // ===== RESULT → SCORE / NEXT (host drives) =====
     if (st.phase === 'result' && st.winner && USER === st.p1) {
       await runTransaction(db, async (tx) => {
         const cur = await tx.get(stateRef); if (!cur.exists()) return;
@@ -1525,9 +1525,11 @@ async function ensureStateSeats(){
         let p1Score = typeof c.p1Score === 'number' ? c.p1Score : 0;
         let p2Score = typeof c.p2Score === 'number' ? c.p2Score : 0;
 
+        // Base scoring
         if (c.winner === 'p1') p1Score++;
         else if (c.winner === 'p2') p2Score++;
 
+        // If match is over, just record and end — no need for loser buff
         if (p1Score >= bestTo || p2Score >= bestTo) {
           tx.update(stateRef, {
             p1Score, p2Score,
@@ -1536,6 +1538,42 @@ async function ensureStateSeats(){
           });
           return;
         }
+
+        // --- Consolation upgrade for the loser of this round ---
+        let p1Upgrades = { ...(c.p1Upgrades || {}) };
+        let p2Upgrades = { ...(c.p2Upgrades || {}) };
+
+        const p1DeckNames = sanitizeDeck(c.p1Deck || []);
+        const p2DeckNames = sanitizeDeck(c.p2Deck || []);
+
+        // Determine loser of the round
+        let loserKey = null;
+        if (c.winner === 'p1') loserKey = 'p2';
+        else if (c.winner === 'p2') loserKey = 'p1';
+
+        if (loserKey === 'p1' || loserKey === 'p2') {
+          let deckNames = loserKey === 'p1' ? p1DeckNames : p2DeckNames;
+          let upMap     = loserKey === 'p1' ? p1Upgrades : p2Upgrades;
+
+          // Prefer upgrading a unit (HP & DMG), fall back to any card if all spells
+          const unitNames = deckNames.filter(
+            n => CATALOG[n] && CATALOG[n].type === TYPE_UNIT
+          );
+          const pool = unitNames.length ? unitNames : deckNames;
+
+          if (pool.length) {
+            const idx = Math.floor(Math.random() * pool.length);
+            const chosenName = pool[idx];
+
+            const currentStars = upMap[chosenName] || 1;
+            const nextStars    = clamp(currentStars + 1, 1, 4); // +1 level = +50% HP/DMG
+            upMap[chosenName]  = nextStars;
+          }
+
+          if (loserKey === 'p1') p1Upgrades = upMap;
+          else p2Upgrades = upMap;
+        }
+        // --- end loser upgrade ---
 
         const nextRound = (c.round || 1) + 1;
         const seed = (Date.now() ^ 0x12345) & 0xffffffff;
@@ -1552,10 +1590,13 @@ async function ensureStateSeats(){
           p1DraftedThisRound: 0,
           p2DraftedThisRound: 0,
           winner: null,
-          battleSeed: null
+          battleSeed: null,
+          p1Upgrades,
+          p2Upgrades
         });
       });
     }
+
 
     // ===== GAME OVER =====
     if (st.phase === 'gameover' && st.matchWinner) {
@@ -1573,6 +1614,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
