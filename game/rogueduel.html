@@ -42,7 +42,10 @@
   #root{padding:14px;display:grid;gap:14px;max-width:1100px;margin:0 auto}
   .lbl{font-size:12px;color:var(--muted);margin:4px 0}
   #arena{display:grid;gap:14px}
-  .laneWrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+  .laneWrap{
+    background:radial-gradient(circle at top,#e0f2fe 0,#eff6ff 26%,#f8fafc 65%);
+    border:1px solid var(--line);border-radius:14px;padding:10px
+  }
   .sideTitle{font-size:12px;color:var(--muted);margin-bottom:6px}
   .lane{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));min-height:140px}
 
@@ -56,13 +59,20 @@
     border:1px solid var(--line);box-shadow:var(--shadow);
     padding:8px;user-select:none;touch-action:manipulation;cursor:pointer;
     display:flex;flex-direction:column;gap:6px;min-height:124px;overflow:visible;
-    transition:transform .14s ease;
+    transition:transform .14s ease, box-shadow .14s ease;
   }
-  .card:hover{transform:translateY(-2px)}
+  .card:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 14px 35px rgba(15,23,42,.18);}
   .rowline{display:flex;justify-content:space-between;gap:6px}
   .emoji{font-size:28px;line-height:28px}
   .name{font-size:13px;font-weight:800}
-  .stars{font-size:12px;letter-spacing:.5px;color:#475569}
+  .stars{
+    font-size:12px;letter-spacing:.5px;color:#475569;
+    display:flex;align-items:center;gap:4px;
+  }
+  .lvlTag{
+    font-size:10px;font-weight:900;padding:1px 5px;border-radius:999px;
+    background:#0f172a;color:#e5e7eb;text-transform:uppercase;
+  }
   .rar{font-size:11px;font-weight:800;padding:2px 6px;border-radius:999px;border:1px solid var(--line);color:#fff}
   .rar.common{background:var(--rar-common)}
   .rar.rare{background:var(--rar-rare)}
@@ -111,6 +121,30 @@
   .fxFloat{position:absolute;font-weight:900;font-size:18px;text-shadow:0 2px 10px rgba(0,0,0,.25);animation:fxRise .95s ease-out forwards;z-index:99999}
   @keyframes fxRise { to { transform:translate(-50%,-38px); opacity:0; } }
   .fxBoom{position:absolute;width:7px;height:7px;border-radius:50%;opacity:0.95}
+
+  /* Heal pips */
+  .healPip{
+    position:absolute;
+    left:50%;top:60%;
+    transform:translate(-50%,0) scale(.9);
+    font-size:14px;font-weight:900;
+    color:#22c55e;
+    text-shadow:0 1px 4px rgba(15,23,42,.5);
+    animation:healRise 700ms ease-out forwards;
+  }
+  @keyframes healRise{
+    to{
+      transform:translate(-50%,-20px) scale(1.1);
+      opacity:0;
+    }
+  }
+
+  /* Heart pulse for heals */
+  @keyframes heartPulse{
+    0%{box-shadow:0 0 0 0 rgba(52,211,153,.55), inset 0 0 10px rgba(52,211,153,.25);}
+    70%{box-shadow:0 0 0 10px rgba(52,211,153,0), inset 0 0 18px rgba(52,211,153,.35);}
+    100%{box-shadow:0 0 0 0 rgba(52,211,153,0), inset 0 0 10px rgba(52,211,153,0);}
+  }
 
   /* Ghost attacker */
   .attackGhost{
@@ -416,7 +450,10 @@ function mountCard(c){
   div.innerHTML=`
     <div class="rowline">
       <div class="emoji">${c.icon||'🂠'}</div>
-      <div class="stars">${fmtStars(c.stars)}</div>
+      <div class="stars">
+        ${fmtStars(c.stars)}
+        <span class="lvlTag">Lv${c.stars}</span>
+      </div>
     </div>
     <div class="rowline">
       <div class="name">${c.name}${c.baby?' (baby)':''}</div>
@@ -469,7 +506,7 @@ function boomAt(x, y, color='#ef4444', count=26, spread=100){
     const dx = Math.cos(ang)*dist, dy = Math.sin(ang)*dist - 10;
     p.style.left = (x)+'px'; p.style.top = (y)+'px';
     p.style.transform = 'translate(-50%, -50%)';
-    p.style.transition = `transform ${620/speed}msease-out, opacity ${700/speed}ms linear`;
+    p.style.transition = `transform ${620/speed}ms ease-out, opacity ${700/speed}ms linear`;
     ui.fxRoot.appendChild(p);
     requestAnimationFrame(()=>{p.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; p.style.opacity = '0';});
     setTimeout(()=>p.remove(), 720/speed);
@@ -488,6 +525,19 @@ function heartPulse(card){
   ring.style.pointerEvents='none';
   el.appendChild(ring);
   setTimeout(()=>ring.remove(), 560/speed);
+}
+function healFX(card, count=4){
+  const el = findCardEl(card.id); if(!el) return;
+  const fx = el.querySelector('.fx'); if(!fx) return;
+  for(let i=0;i<count;i++){
+    const pip=document.createElement('div');
+    pip.className='healPip';
+    pip.textContent='✚';
+    const offsetX = (Math.random()*40 - 20);
+    pip.style.left = (50+offsetX/2)+'%';
+    fx.appendChild(pip);
+    setTimeout(()=>pip.remove(), 800/speed);
+  }
 }
 function slashTrail(fromCard,toCard,color='#ef4444'){
   const aEl=findCardEl(fromCard.id), dEl=findCardEl(toCard.id);
@@ -564,7 +614,11 @@ function healCard(target,amt){
   const max = getMaxHP(target);
   const before=target.hpNow; target.hpNow=Math.min(max, target.hpNow + amt);
   const diff = target.hpNow - before;
-  if(diff>0){ gFloat(target, `+${diff}`, '#0ea5e9'); heartPulse(target); }
+  if(diff>0){
+    gFloat(target, `+${diff}`, '#16a34a');
+    heartPulse(target);
+    healFX(target);
+  }
   renderBoard(currentMyDeck, currentFoeDeck);
 }
 
@@ -743,7 +797,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
       gFloat(target, '🩸', '#b91c1c');
     }
 
-    // On-hit freeze
+    // On-hit freeze (Ice Dragon / Frost Golem)
     if (u.freeze){
       const dur = 1 + (syn.freezePlus || 0);
       addFreeze(target, dur);
@@ -815,7 +869,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
       deck.__hots.push({heal:1, dur:DURATION, label:'Rejuv'});
       for (const u of living(deck)) {
         u.effects.push({kind:'maxhp', bonus:1, dur:DURATION});
-        gFloat(u, '+MaxHP', '#34d399'); heartPulse(u);
+        gFloat(u, '+MaxHP', '#34d399'); heartPulse(u); healFX(u,3);
       }
       log(`${ownerLabel} 💚 Rejuvenate across allies`);
     }
@@ -993,7 +1047,7 @@ function openDraft(offers, mySeat, myPicked){
       <div class="rowline"><div class="name">${preview.name}</div><div class="rar ${rarClass(preview.rar)}">${preview.rar.toUpperCase()}</div></div>
       <div class="statline">${
         isUp
-         ? '<span>Level up your last drafted card this match.</span>'
+         ? '<span>Upgrade your last drafted unit’s ⭐ (this match).</span>'
          : (preview.type===TYPE_UNIT?`<span>HP ${preview.hpNow}</span><span>DMG ${preview.dmg}</span><span>${prioName(preview.priority)}</span>`:`<span>Spell</span>`)
       }</div>
       <div class="statline">${(preview.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
@@ -1112,6 +1166,7 @@ async function playRound(myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
   processEndOfRound(myDeck, foeDeck, synYou, synFoe);
 }
 
+/* Run one full battle */
 async function runBattle(seed, state){
   setPhase('battle');
   ui.battleFlash.innerHTML = '';
@@ -1215,6 +1270,9 @@ function applyUpgradeToLast(deckNames, upgradeMap, amount){
   upgradeMap[targetName] = clamp(curStars + amount, 1, 4);
 }
 
+/* track previous upgrades so we can show logs when they change */
+let prevUpP1=null, prevUpP2=null;
+
 async function ensureStateSeats(){
   const lob = await getDoc(lobbyRef);
   if(!lob.exists()){ alert('Lobby not found.'); return; }
@@ -1285,6 +1343,28 @@ async function ensureStateSeats(){
       uiScoreP2.classList.add('scoreLead');
       uiScoreLabelP2.classList.add('scoreNameHighlight');
     }
+
+    /* ===== Upgrade change logging so upgrades feel clear ===== */
+    const up1 = st.p1Upgrades || {};
+    const up2 = st.p2Upgrades || {};
+    if (prevUpP1){
+      for (const [name,val] of Object.entries(up1)){
+        const old = prevUpP1[name] || 1;
+        if (val>old){
+          log(`⭐ ${st.p1}'s ${name} upgraded to Lv${val}`);
+        }
+      }
+    }
+    if (prevUpP2){
+      for (const [name,val] of Object.entries(up2)){
+        const old = prevUpP2[name] || 1;
+        if (val>old){
+          log(`⭐ ${st.p2}'s ${name} upgraded to Lv${val}`);
+        }
+      }
+    }
+    prevUpP1 = {...up1};
+    prevUpP2 = {...up2};
 
     // ===== DRAFT PHASE =====
     if (st.phase === 'draft') {
@@ -1493,6 +1573,7 @@ await ensureStateSeats();
 </script>
 </body>
 </html>
+
 
 
 
