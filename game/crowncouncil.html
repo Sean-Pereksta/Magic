@@ -284,39 +284,45 @@ let ensureInFlight = false;
 async function ensureStateExists(){
   if (didEnsure || ensureInFlight) return;
   ensureInFlight = true;
-  try{
-    await runTransaction(db, async tx=>{
-      const st = await tx.get(stateRef);
-      if (st.exists()) return;  // someone else created it
-      const lob = await tx.get(lobbyRef);
-      const players = (lob.exists() && Array.isArray(lob.data().players)) ? lob.data().players.slice(0,2) : [];
-      const now = Date.now();
+  try {
+    // If state already exists, we're done
+    const stSnap = await getDoc(stateRef);
+    if (stSnap.exists()) {
+      didEnsure = true;
+      return;
+    }
 
-      tx.set(stateRef, {
-        players,
-        lives:[4,4],
-        phase: players.length < 2 ? "waiting" : "faction-select",
-        phaseEndsAt: players.length < 2 ? 0 : now + 20000,
-        roster:{ p0:[], p1:[] },
-        factions:{ p0:null, p1:null },
-        field:{ units:[], poison:[], toxic:[], acid:[], wards:[], fx:[] },
-        selections:{ p0:[], p1:[] },
-        currentPacks:{ p0:[], p1:[] },
-        bonusFor:null,
-        draftIndex:0,
-        winner:null,
-        mmr:[1000,1000],
-        mmrChange:[0,0]
-      });
+    // Otherwise build initial state from the lobby
+    const lobSnap = await getDoc(lobbyRef);
+    const lob = lobSnap.exists() ? lobSnap.data() : {};
+    const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
+    const now = Date.now();
+
+    await setDoc(stateRef, {
+      players,
+      lives: [4, 4],
+      phase: players.length < 2 ? "waiting" : "faction-select",
+      phaseEndsAt: players.length < 2 ? 0 : now + 20000,
+      roster:   { p0: [], p1: [] },
+      factions: { p0: null, p1: null },
+      field:    { units: [], poison: [], toxic: [], acid: [], wards: [], fx: [] },
+      selections:   { p0: [], p1: [] },
+      currentPacks: { p0: [], p1: [] },
+      bonusFor: null,
+      draftIndex: 0,
+      winner: null,
+      mmr: [1000, 1000],
+      mmrChange: [0, 0]
     });
+
     didEnsure = true;
-  }catch(e){
-    if (e?.code !== 'already-exists') console.error('ensureStateExists failed', e);
-    didEnsure = true;
-  }finally{
+  } catch (e) {
+    console.error("ensureStateExists failed", e);
+  } finally {
     ensureInFlight = false;
   }
 }
+
 
 /* ---------------- Build cells ---------------- */
 function buildBoard(){
@@ -1828,6 +1834,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
