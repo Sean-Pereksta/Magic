@@ -409,7 +409,8 @@
           <div class="side-title">Tips</div>
           <div class="small">
             • Tap ahead on the lane to move down the corridor.<br/>
-            • Towers block the path; waves of enemies spawn from the far right.<br/>
+            • The camera <b>follows your hero</b> – you must travel to reach towers.<br/>
+            • Towers are far from your base; waves spawn from the far right.<br/>
             • Enemies march toward the <b>nearest ally / knight / base</b>.<br/>
             • <b>Yellow dots</b> are your shots. Red tiles = incoming fire.
           </div>
@@ -456,24 +457,25 @@
     const username = (params.get("username") || "Guest").trim();
     document.getElementById("playerName").textContent = username;
 
-    // --- GRID / MAP ---
-    const GRID_W = 18;
-    const GRID_H = 11;
-    const BASE_COL = 1;
-    const PATH_COLS = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-    const PATH_ROWS_MAIN = [4,5,6];
-    const PATH_ROWS_TOP = [];
-    const PATH_ROWS_BOT = [];
+    // --- WORLD vs VIEWPORT ---
+    const WORLD_W = 60;
+    const WORLD_H = 11;
+    const VIEW_W = 18;
+    const VIEW_H = 11;
 
+    const BASE_COL = 1;
+    const PATH_ROWS_MAIN = [4,5,6];
+
+    // Make full horizontal corridor
     const terrain = [];
-    for(let y=0;y<GRID_H;y++){
+    for(let y=0;y<WORLD_H;y++){
       terrain[y] = [];
-      for(let x=0;x<GRID_W;x++){
+      for(let x=0;x<WORLD_W;x++){
         let type = "space";
-        if (x===0 || x===GRID_W-1 || y===0 || y===GRID_H-1){
+        if (x===0 || x===WORLD_W-1 || y===0 || y===WORLD_H-1){
           type = "terrain";
         }
-        if (PATH_COLS.includes(x) && (PATH_ROWS_MAIN.includes(y) || PATH_ROWS_TOP.includes(y) || PATH_ROWS_BOT.includes(y))){
+        if (x>0 && x<WORLD_W-1 && PATH_ROWS_MAIN.includes(y)){
           type = "path";
         }
         if (x <= BASE_COL && PATH_ROWS_MAIN.includes(y)){
@@ -484,24 +486,20 @@
     }
 
     const gridEl = document.getElementById("grid");
-    gridEl.style.gridTemplateColumns = `repeat(${GRID_W}, var(--cellSize))`;
-    gridEl.style.gridTemplateRows = `repeat(${GRID_H}, var(--cellSize))`;
+    gridEl.style.gridTemplateColumns = `repeat(${VIEW_W}, var(--cellSize))`;
+    gridEl.style.gridTemplateRows = `repeat(${VIEW_H}, var(--cellSize))`;
 
     const cells = [];
-    for(let y=0;y<GRID_H;y++){
-      for(let x=0;x<GRID_W;x++){
+    for(let vy=0;vy<VIEW_H;vy++){
+      for(let vx=0;vx<VIEW_W;vx++){
         const c = document.createElement("div");
         c.className = "cell";
-        const tt = terrain[y][x];
-        if(tt==="terrain") c.classList.add("cell-terrain");
-        if(tt==="path") c.classList.add("cell-path");
-        if(tt==="base") c.classList.add("cell-base");
         gridEl.appendChild(c);
-        if(!cells[y]) cells[y]=[];
-        cells[y][x] = c;
+        if(!cells[vy]) cells[vy]=[];
+        cells[vy][vx] = c;
 
-        c.addEventListener("click", ()=> onCellClick(x,y));
-        c.addEventListener("touchstart", (e)=>{ e.preventDefault(); onCellClick(x,y); }, {passive:false});
+        c.addEventListener("click", ()=> onCellClick(vx,vy));
+        c.addEventListener("touchstart", (e)=>{ e.preventDefault(); onCellClick(vx,vy); }, {passive:false});
       }
     }
 
@@ -513,20 +511,33 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // --- HELPER: build corridor tower lines + boss ---
+    // --- Helper: camera centered on player ---
+    function getCamera(){
+      const px = localPlayerState ? Math.round(localPlayerState.x) : BASE_COL;
+      const py = localPlayerState ? Math.round(localPlayerState.y) : Math.floor(WORLD_H/2);
+      let left = px - Math.floor(VIEW_W/2);
+      let top  = py - Math.floor(VIEW_H/2);
+      left = Math.max(0, Math.min(WORLD_W - VIEW_W, left));
+      top  = Math.max(0, Math.min(WORLD_H - VIEW_H, top));
+      return {left, top};
+    }
+
+    // --- HELPER: build corridor tower lines + boss (far away) ---
     function createCorridorTowers(){
       const towers = [];
       const lanes = PATH_ROWS_MAIN;
+
+      // Place towers far from base
       const towerCols = [
-        {col:5,  tier:1, type:"charger"},
-        {col:7,  tier:2, type:"scatter"},
-        {col:9,  tier:3, type:"rocket"},
-        {col:11, tier:4, type:"laser"},
-        {col:13, tier:5, type:"storm"}
+        {col:22, tier:1, type:"charger"},
+        {col:30, tier:2, type:"scatter"},
+        {col:38, tier:3, type:"rocket"},
+        {col:46, tier:4, type:"laser"},
+        {col:54, tier:5, type:"storm"}
       ];
       function pushTower(col,row,tier,type){
-        const baseHP = 35 + tier*20;
-        const cdBase = Math.max(4, 8 - tier); // later towers shoot faster
+        const baseHP = 45 + tier*25;
+        const cdBase = Math.max(4, 9 - tier); // later towers shoot faster
         towers.push({
           id:`tw_${col}_${row}`,
           role:"tower",
@@ -550,14 +561,14 @@
       });
       // Final boss at far right, center lane
       const bossRow = PATH_ROWS_MAIN[Math.floor(PATH_ROWS_MAIN.length/2)];
-      const bossHP = 350;
+      const bossHP = 400;
       towers.push({
         id:"boss_main",
         role:"tower",
         boss:true,
         mobile:false,
         type:"voider",
-        x:15,
+        x:WORLD_W-3,
         y:bossRow,
         hp:bossHP,
         maxHp:bossHP,
@@ -749,7 +760,7 @@
       return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
     }
     function isWalkable(x,y){
-      if(x<0||x>=GRID_W||y<0||y>=GRID_H) return false;
+      if(x<0||x>=WORLD_W||y<0||y>=WORLD_H) return false;
       const t = terrain[y][x];
       return t==="path" || t==="base" || t==="terrain";
     }
@@ -815,7 +826,7 @@
       const cells=[];
       const kindSelect = e.type;
       if(kindSelect==="charger"){
-        const t = players.length? nearest(players,e) : basePos;
+        const t = players.length? nearest(players,e,10) || basePos : basePos;
         const dx = Math.sign(t.x - e.x);
         const dy = Math.sign(t.y - e.y);
         const tx = e.x+dx;
@@ -832,7 +843,8 @@
         e.aim = {kind:"scatter", cells};
         e.telegraph = 3;
       }else if(kindSelect==="rocket"){
-        const targetRow = players.length? nearest(players,e).y : basePos.y;
+        const tgt = players.length? nearest(players,e,999) || basePos : basePos;
+        const targetRow = tgt.y;
         for(let x=e.x-1;x>=BASE_COL;x--){
           if(isWalkable(x,targetRow)) cells.push({x,y:targetRow});
         }
@@ -841,14 +853,14 @@
       }else if(kindSelect==="laser"){
         const mid = e.y;
         const up = Math.max(1, mid-2);
-        const down = Math.min(GRID_H-2, mid+2);
+        const down = Math.min(WORLD_H-2, mid+2);
         for(let yy=up; yy<=down; yy++){
           if(isWalkable(e.x-1,yy)) cells.push({x:e.x-1,y:yy});
         }
         e.aim = {kind:"laser", cells};
         e.telegraph = 3;
       }else if(kindSelect==="sniper"){
-        const t = players.length? nearest(players,e) : basePos;
+        const t = players.length? nearest(players,e,999) || basePos : basePos;
         if(t){
           cells.push({x:t.x,y:t.y});
           e.aim = {kind:"sniper", cells};
@@ -923,7 +935,7 @@
             k.hp -= finalD;
           }
         }
-        // base (if shot reaches base lane)
+        // base
         if(cell.x<=BASE_COL && PATH_ROWS_MAIN.includes(cell.y)){
           let finalD = dmg;
           if(isCellShielded({x:BASE_COL,y:cell.y}, g.shieldPulses)){
@@ -979,7 +991,6 @@
       const playerList = Object.values(players);
       const numPlayers = playerList.length || 1;
 
-      // Ensure base & arrays
       g.base = g.base || {hp:100,maxHp:100};
       g.enemies = g.enemies || [];
       g.knights = g.knights || [];
@@ -993,7 +1004,7 @@
         derivedStats[p.id] = computeDerivedStats(p);
       }
 
-      // Check if towers / boss still exist
+      // Check towers/boss still exist
       const anyBossOrTower = g.enemies.some(e=>e.boss || e.role==="tower");
 
       // 0) Spawn mobile enemy waves from far right while towers are alive
@@ -1003,7 +1014,7 @@
         if(Math.random() < spawnChance){
           const laneRows = PATH_ROWS_MAIN;
           const y = laneRows[randInt(0,laneRows.length-1)];
-          const x = GRID_W-2;
+          const x = WORLD_W-2;
 
           let pool = ["charger","scatter","rocket","laser"];
           if(waveIndex>=2) pool.push("sniper");
@@ -1030,7 +1041,7 @@
         }
       }
 
-      // 1) Move players (slow but readable)
+      // 1) Move players
       for(const p of playerList){
         const cls = CLASSES[p.classIndex ?? 0];
         const speed = (cls?.speed || 1);
@@ -1046,7 +1057,7 @@
         }
       }
 
-      // 2) Knights spawn periodically
+      // 2) Knights
       if(g.tick % 18 === 0){
         for(const p of playerList){
           const ds = derivedStats[p.id];
@@ -1070,7 +1081,6 @@
         }
       }
 
-      // 3) Knights move & fight (hit towers or mobs in front)
       for(const k of g.knights){
         let target = null;
         for(const e of g.enemies){
@@ -1081,13 +1091,13 @@
           target.hp-=dmg;
           if(target.hp<=0) target.dead=true;
         }else{
-          const nx = Math.min(GRID_W-2, k.x+1);
+          const nx = Math.min(WORLD_W-2, k.x+1);
           if(isWalkable(nx,k.y)) k.x = nx;
         }
       }
       g.knights = g.knights.filter(k=>k.hp>0);
 
-      // 4) Tower + Mob AI & telegraphed attacks
+      // 3) Tower + Mob AI
       const basePos = {x:BASE_COL, y:5};
       const friendTargets = [];
 
@@ -1117,9 +1127,9 @@
           }
         }
 
-        // movement ONLY for mobile mobs
+        // movement for mobs only
         if(e.role==="mob" && e.telegraph===0){
-          const target = nearest(friendTargets, e);
+          const target = nearest(friendTargets, e, 999);
           if(target){
             const dx = Math.sign(target.x - e.x);
             const dy = Math.sign(target.y - e.y);
@@ -1131,7 +1141,6 @@
               e.y += dy; moved=true;
             }
 
-            // reached base lane
             if(e.x<=BASE_COL && PATH_ROWS_MAIN.includes(e.y)){
               g.base.hp -= 2;
               e.dead = true;
@@ -1141,7 +1150,7 @@
       }
       g.enemies = g.enemies.filter(e=>!e.dead);
 
-      // 5) Ability autos: shield pulses & nova
+      // 4) Ability autos
       for(const p of playerList){
         const ds = derivedStats[p.id];
         if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
@@ -1179,14 +1188,14 @@
       }
       g.enemies = g.enemies.filter(e=>!e.dead);
 
-      // 6) Player auto-fire & projectiles (very visible shots)
+      // 5) Player auto-fire & projectiles
       for(const p of playerList){
         const cls = CLASSES[p.classIndex ?? 0];
         if(!cls) continue;
         const ds = derivedStats[p.id];
         const atkSpeedMult = ds.atkSpeedMult || 1;
         const dmgBonus = ds.dmgBonus || 0;
-        const attackRoll = 0.35 * atkSpeedMult; // calm, readable
+        const attackRoll = 0.35 * atkSpeedMult;
         if(Math.random() < attackRoll){
           const enemy = nearest(g.enemies, p, cls.range || 3);
           if(enemy){
@@ -1217,7 +1226,7 @@
       g.enemies = g.enemies.filter(e=>!e.dead);
       g.projectiles = g.projectiles.filter(p=>!p.done);
 
-      // 7) XP & level up (near any enemy/tower)
+      // 6) XP / Level
       for(const p of playerList){
         let live = latestPlayers[p.id] || {};
         if(typeof live.xp==="number") p.xp = live.xp;
@@ -1239,11 +1248,11 @@
         }
       }
 
-      // 8) Decay telegraphs & shields
+      // 7) Decay telegraphs & shields
       g.dangerCells = (g.dangerCells||[]).map(dc=>({ ...dc, ttl:dc.ttl-1 })).filter(dc=>dc.ttl>0);
       g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
 
-      // 9) Victory / defeat check
+      // 8) Win/Lose
       const towersAlive = g.enemies.some(e=>e.boss || e.role==="tower");
       if(g.base.hp<=0){
         g.status = "defeat";
@@ -1251,11 +1260,11 @@
         g.status = "victory";
       }
 
-      // 10) Write global state
+      // 9) Write global state
       g.tick = (g.tick||0)+1;
       await setDoc(gameRef,g,{merge:true});
 
-      // 11) Write players back (positions, XP, HP with Regen Aura & pendingChoice)
+      // 10) Write players back
       for(const p of playerList){
         const baseLive = latestPlayers[p.id] || {};
         let hp = baseLive.hp ?? p.hp;
@@ -1295,25 +1304,36 @@
       baseHpFill.style.width = pct+"%";
     }
 
-    function clearCellOverlays(){
-      for(let y=0;y<GRID_H;y++){
-        for(let x=0;x<GRID_W;x++){
-          const cell = cells[y][x];
-          cell.innerHTML = "";
-          cell.classList.remove("cell-highlight");
-        }
-      }
-    }
-
     function renderBoard(){
       if(!latestGame) return;
-      clearCellOverlays();
+      const cam = getCamera();
+      const left = cam.left;
+      const top = cam.top;
+
+      for(let vy=0;vy<VIEW_H;vy++){
+        for(let vx=0;vx<VIEW_W;vx++){
+          const cell = cells[vy][vx];
+          cell.innerHTML = "";
+          cell.className = "cell";
+
+          const wx = left + vx;
+          const wy = top + vy;
+
+          if(wx>=0 && wx<WORLD_W && wy>=0 && wy<WORLD_H){
+            const t = terrain[wy][wx];
+            if(t==="terrain") cell.classList.add("cell-terrain");
+            if(t==="path") cell.classList.add("cell-path");
+            if(t==="base") cell.classList.add("cell-base");
+          }
+        }
+      }
 
       const dcs = latestGame.dangerCells || [];
       for(const dc of dcs){
-        if(dc.x<0||dc.x>=GRID_W||dc.y<0||dc.y>=GRID_H) continue;
-        const cell = cells[dc.y][dc.x];
-        if(!cell) continue;
+        const vx = dc.x - left;
+        const vy = dc.y - top;
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         let overlay;
         if(dc.type==="telegraph"){
           overlay = document.createElement("div");
@@ -1328,33 +1348,37 @@
         if(overlay) cell.appendChild(overlay);
       }
 
-      // Shield pulses (center markers)
       for(const sp of (latestGame.shieldPulses||[])){
-        if(sp.x<0||sp.x>=GRID_W||sp.y<0||sp.y>=GRID_H) continue;
-        const cell = cells[sp.y][sp.x];
+        const vx = sp.x - left;
+        const vy = sp.y - top;
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         const ring = document.createElement("div");
         ring.className="shield-ring";
         cell.appendChild(ring);
       }
 
       // Base emblem
-      for(let y=0;y<GRID_H;y++){
+      for(let y of PATH_ROWS_MAIN){
         for(let x=0;x<=BASE_COL;x++){
-          if(PATH_ROWS_MAIN.includes(y)){
-            const cell = cells[y][x];
-            const ent = document.createElement("div");
-            ent.className="entity";
-            ent.textContent = "🏰";
-            cell.appendChild(ent);
-          }
+          const vx = x - left;
+          const vy = y - top;
+          if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+          const cell = cells[vy][vx];
+          const ent = document.createElement("div");
+          ent.className="entity";
+          ent.textContent = "🏰";
+          cell.appendChild(ent);
         }
       }
 
       // Knights
       for(const k of (latestGame.knights||[])){
         if(k.hp<=0) continue;
-        if(k.x<0||k.x>=GRID_W||k.y<0||k.y>=GRID_H) continue;
-        const cell = cells[k.y][k.x];
+        const vx = Math.round(k.x - left);
+        const vy = Math.round(k.y - top);
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         const ent = document.createElement("div");
         ent.className="entity";
         ent.textContent = "⚔️";
@@ -1370,11 +1394,13 @@
         cell.appendChild(hpBar);
       }
 
-      // Towers + mobs
+      // Enemies (towers + mobs)
       for(const e of (latestGame.enemies||[])){
         if(e.hp<=0) continue;
-        if(e.x<0||e.x>=GRID_W||e.y<0||e.y>=GRID_H) continue;
-        const cell = cells[e.y][e.x];
+        const vx = Math.round(e.x - left);
+        const vy = Math.round(e.y - top);
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         const ent = document.createElement("div");
         ent.className="entity";
         let emoji="👾";
@@ -1398,16 +1424,17 @@
         cell.appendChild(hpBar);
       }
 
-      // Projectiles (your shots) – interpolate between start and target
+      // Projectiles – interpolate and map to viewport
       for(const proj of (latestGame.projectiles||[])){
         const tMax = proj.tMax || 1;
         const tNow = Math.min(proj.t || 0, tMax);
         const prog = tNow / tMax;
-        const cx = Math.round(proj.x + (proj.tx - proj.x)*prog);
-        const cy = Math.round(proj.y + (proj.ty - proj.y)*prog);
-        if(cy<0||cy>=GRID_H||cx<0||cx>=GRID_W) continue;
-        const cell = cells[cy][cx];
-        if(!cell) continue;
+        const wx = Math.round(proj.x + (proj.tx - proj.x)*prog);
+        const wy = Math.round(proj.y + (proj.ty - proj.y)*prog);
+        const vx = wx - left;
+        const vy = wy - top;
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         const ent = document.createElement("div");
         ent.className="entity proj-friendly";
         ent.textContent = "●";
@@ -1417,10 +1444,12 @@
       // Players
       for(const id in latestPlayers){
         const p = latestPlayers[id];
-        const x = Math.round(p.x);
-        const y = Math.round(p.y);
-        if(x<0||x>=GRID_W||y<0||y>=GRID_H) continue;
-        const cell = cells[y][x];
+        const wx = Math.round(p.x);
+        const wy = Math.round(p.y);
+        const vx = wx - left;
+        const vy = wy - top;
+        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
+        const cell = cells[vy][vx];
         const ent = document.createElement("div");
         ent.className="entity";
         const cls = CLASSES[p.classIndex ?? 0];
@@ -1496,14 +1525,17 @@
       }
     }
 
-    // --- INPUT: TAP TO MOVE ---
-    async function onCellClick(x,y){
+    // --- INPUT: TAP TO MOVE (viewport -> world) ---
+    async function onCellClick(vx,vy){
       if(!localPlayerState) return;
-      if(!isWalkable(x,y)) return;
+      const cam = getCamera();
+      const wx = cam.left + vx;
+      const wy = cam.top + vy;
+      if(!isWalkable(wx,wy)) return;
       try{
         await setDoc(playerRef,{
-          targetX:x,
-          targetY:y,
+          targetX:wx,
+          targetY:wy,
           lastInputAt:Date.now()
         },{merge:true});
       }catch(e){
@@ -1571,5 +1603,6 @@
   </script>
 </body>
 </html>
+
 
 
