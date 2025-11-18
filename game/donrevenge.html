@@ -232,6 +232,18 @@
       pointer-events:none;
     }
 
+    /* Very visible shots */
+    .entity.proj-friendly{
+      font-size:calc(var(--cellSize)*0.7);
+      color:#facc15;
+      text-shadow:0 0 6px rgba(250,204,21,.9);
+    }
+    .entity.proj-enemy{
+      font-size:calc(var(--cellSize)*0.7);
+      color:#f97316;
+      text-shadow:0 0 6px rgba(248,113,22,.9);
+    }
+
     .hp-chip{
       position:absolute;
       left:50%;
@@ -396,10 +408,10 @@
         <div class="side-card">
           <div class="side-title">Tips</div>
           <div class="small">
-            • Tap a tile to move.<br/>
-            • Auto-fire & knight waves help you push.<br/>
-            • Red tiles = incoming attacks.<br/>
-            • Every 5 levels, pick a new auto ability.
+            • Tap ahead on the lane to move down the corridor.<br/>
+            • Break each <b>tower line</b> in order, then the final boss on the far right.<br/>
+            • <b>Yellow dots</b> are your shots.<br/>
+            • Red tiles = incoming tower fire. Stay out of them!
           </div>
         </div>
         <div class="side-card">
@@ -450,8 +462,8 @@
     const BASE_COL = 1;
     const PATH_COLS = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
     const PATH_ROWS_MAIN = [4,5,6];
-    const PATH_ROWS_TOP = [2,3];
-    const PATH_ROWS_BOT = [7,8];
+    const PATH_ROWS_TOP = [];
+    const PATH_ROWS_BOT = [];
 
     const terrain = [];
     for(let y=0;y<GRID_H;y++){
@@ -499,6 +511,59 @@
       line.textContent = msg;
       logEl.appendChild(line);
       logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // --- HELPER: build corridor tower lines ---
+    function createCorridorTowers(){
+      const towers = [];
+      const lanes = PATH_ROWS_MAIN;
+      const towerCols = [
+        {col:5,  tier:1, type:"charger"},
+        {col:7,  tier:2, type:"scatter"},
+        {col:9,  tier:3, type:"rocket"},
+        {col:11, tier:4, type:"laser"},
+        {col:13, tier:5, type:"storm"}
+      ];
+      function pushTower(col,row,tier,type){
+        const baseHP = 35 + tier*20;
+        const cdBase = Math.max(4, 8 - tier); // later towers shoot faster
+        towers.push({
+          id:`tw_${col}_${row}`,
+          type,
+          x:col,
+          y:row,
+          hp:baseHP,
+          maxHp:baseHP,
+          cd:cdBase,
+          telegraph:0,
+          aim:null,
+          lane:"mid",
+          tier
+        });
+      }
+      towerCols.forEach(set=>{
+        for(const row of lanes){
+          pushTower(set.col,row,set.tier,set.type);
+        }
+      });
+      // Final boss at far right, center lane
+      const bossRow = PATH_ROWS_MAIN[Math.floor(PATH_ROWS_MAIN.length/2)];
+      const bossHP = 350;
+      towers.push({
+        id:"boss_main",
+        type:"voider", // big AoE pattern
+        x:15,
+        y:bossRow,
+        hp:bossHP,
+        maxHp:bossHP,
+        cd:5,
+        telegraph:0,
+        aim:null,
+        lane:"boss",
+        tier:6,
+        boss:true
+      });
+      return towers;
     }
 
     // --- GAME FIREBASE STRUCTURE ---
@@ -576,7 +641,7 @@
             status:"running",
             tick:0,
             base:{ hp:baseHP, maxHp:baseHP },
-            enemies:[],
+            enemies: createCorridorTowers(),   // towers as enemies
             knights:[],
             projectiles:[],
             dangerCells:[],
@@ -653,7 +718,7 @@
     }
 
     // --- HOST LOOP ---
-    const TICK_MS = 280;
+    const TICK_MS = 380; // slowed down for readability
     const SHIELD_PERIOD = 24;
     const NOVA_PERIOD = 30;
 
@@ -712,292 +777,6 @@
       return out;
     }
 
-    async function hostTick(){
-      if(!latestGame) return;
-      const g = structuredClone(latestGame);
-      if(g.status!=="running") return;
-
-      const players = latestPlayers;
-      const playerList = Object.values(players);
-      const numPlayers = playerList.length || 1;
-
-      // Derived stats per player
-      const derivedStats = {};
-      for(const p of playerList){
-        derivedStats[p.id] = computeDerivedStats(p);
-      }
-
-      // 1) Move players
-      for(const p of playerList){
-        const cls = CLASSES[p.classIndex ?? 0];
-        const speed = (cls?.speed || 1);
-        for(let step=0;step<speed;step++){
-          const dx = Math.sign((p.targetX??p.x)-p.x);
-          const dy = Math.sign((p.targetY??p.y)-p.y);
-          if(dx===0 && dy===0) break;
-          const nx = p.x + dx;
-          const ny = p.y + dy;
-          if(isWalkable(nx,ny)){
-            p.x = nx; p.y = ny;
-          }else break;
-        }
-      }
-
-      // 2) Spawn enemies (with waves & new types)
-      const wave = Math.floor((g.tick || 0) / 300); // higher tick -> later waves
-      const spawnChance = 0.1 + 0.05*(numPlayers-1);
-      if(Math.random() < spawnChance){
-        const lane = Math.random()<0.5 ? "top" : "bot";
-        const yRange = lane==="top" ? [2,3] : [7,8];
-        const y = randInt(yRange[0], yRange[1]);
-        const x = GRID_W-2;
-
-        let pool = ["charger","scatter","rocket","laser"];
-        if(wave>=2) pool.push("sniper");
-        if(wave>=4) pool.push("storm");
-        if(wave>=6) pool.push("voider");
-        const type = pool[Math.floor(Math.random()*pool.length)];
-
-        const hpBase = 10 + g.tick*0.02 + numPlayers*3 + wave*4;
-        const enemy = {
-          id:`e_${Date.now()}_${Math.random().toString(16).slice(2,6)}`,
-          type,
-          x,y,
-          hp:Math.round(hpBase),
-          maxHp:Math.round(hpBase),
-          cd: randInt(4,7),
-          telegraph:0,
-          aim:null,
-          lane,
-          tier:wave
-        };
-        g.enemies.push(enemy);
-      }
-
-      // Ensure arrays exist
-      g.enemies = g.enemies || [];
-      g.knights = g.knights || [];
-      g.projectiles = g.projectiles || [];
-      g.dangerCells = g.dangerCells || [];
-      g.shieldPulses = g.shieldPulses || [];
-
-      // 3) Knights spawn periodically, buffed by Knight Drill
-      if(g.tick % 14 === 0){
-        for(const p of playerList){
-          const ds = derivedStats[p.id];
-          const spawnY = p.y;
-          const leftSide = Math.random()<0.5;
-          const kx = leftSide ? 0 : BASE_COL;
-          const ky = spawnY;
-          let baseHp = 10 + (p.knightLevel||1)*3;
-          let baseDmg = 3 + (p.knightLevel||1);
-          if(ds.knightHpMult) baseHp = Math.round(baseHp * ds.knightHpMult);
-          if(ds.knightDmgMult) baseDmg = Math.round(baseDmg * ds.knightDmgMult);
-
-          g.knights.push({
-            id:`k_${p.id}_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
-            owner:p.id,
-            x:kx,
-            y:ky,
-            hp:baseHp,
-            maxHp:baseHp,
-            dmg:baseDmg
-          });
-        }
-      }
-
-      // 4) Knights move & fight
-      for(const k of g.knights){
-        let target = null;
-        for(const e of g.enemies){
-          if(dist(k,e)<=1){ target=e; break; }
-        }
-        if(target){
-          const dmg = k.dmg || 3;
-          target.hp-=dmg;
-          if(target.hp<=0) target.dead=true;
-        }else{
-          const nx = Math.min(GRID_W-1, k.x+1);
-          if(isWalkable(nx,k.y)) k.x = nx;
-        }
-      }
-      g.knights = g.knights.filter(k=>k.hp>0);
-
-      // 5) Enemy AI & telegraphed attacks
-      const basePos = {x:BASE_COL, y:5};
-      for(const e of g.enemies){
-        if(e.hp<=0){ e.dead=true; continue; }
-
-        if(e.telegraph>0){
-          e.telegraph--;
-          if(e.telegraph===0 && e.aim){
-            resolveEnemyAttack(g,e);
-            e.cd = randInt(5,9);
-            e.aim = null;
-          }
-        }else{
-          e.cd--;
-          if(e.cd<=0){
-            beginTelegraph(g,e,playerList,basePos);
-          }
-        }
-
-        if(e.telegraph===0){
-          const target = playerList.length? nearest(playerList,e) : basePos;
-          const dx = Math.sign(target.x - e.x);
-          const dy = Math.sign(target.y - e.y);
-          let moved=false;
-          if(dx!==0 && isWalkable(e.x+dx,e.y)){
-            e.x+=dx; moved=true;
-          }
-          if(!moved && dy!==0 && isWalkable(e.x,e.y+dy)){
-            e.y+=dy; moved=true;
-          }
-        }
-
-        if(e.x<=BASE_COL && PATH_ROWS_MAIN.includes(e.y)){
-          g.base.hp -= 2;
-          e.dead=true;
-        }
-      }
-      g.enemies = g.enemies.filter(e=>!e.dead);
-
-      // 6) Ability autos: shield pulses & nova
-      for(const p of playerList){
-        const ds = derivedStats[p.id];
-        if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
-          g.shieldPulses.push({
-            x:p.x,
-            y:p.y,
-            radius:2,
-            ttl:5
-          });
-        }
-        if(ds.nova && g.tick % NOVA_PERIOD===0){
-          for(const e of g.enemies){
-            if(dist(e,p)<=2 && e.hp>0){
-              e.hp -= 4 + (p.level||1);
-              if(e.hp<=0) e.dead=true;
-            }
-          }
-          // Visual explosions around hero
-          const novaCells = [];
-          for(let dy=-2; dy<=2; dy++){
-            for(let dx=-2; dx<=2; dx++){
-              if(Math.abs(dx)+Math.abs(dy)>2) continue;
-              const nx = p.x+dx;
-              const ny = p.y+dy;
-              if(isWalkable(nx,ny)){
-                novaCells.push({x:nx,y:ny});
-              }
-            }
-          }
-          for(const c of novaCells){
-            g.dangerCells.push({
-              x:c.x,y:c.y,type:"explosion",ttl:2
-            });
-          }
-        }
-      }
-      g.enemies = g.enemies.filter(e=>!e.dead);
-
-      // 7) Player auto-fire & projectiles (Rapidfire + Powershot)
-      for(const p of playerList){
-        const cls = CLASSES[p.classIndex ?? 0];
-        if(!cls) continue;
-        const ds = derivedStats[p.id];
-        const atkSpeedMult = ds.atkSpeedMult || 1;
-        const dmgBonus = ds.dmgBonus || 0;
-        const attackRoll = 0.45 * atkSpeedMult;
-        if(Math.random() < attackRoll){
-          const enemy = nearest(g.enemies, p, cls.range || 3);
-          if(enemy){
-            const dmg = (cls.dmg||2) + dmgBonus;
-            g.projectiles.push({
-              id:`proj_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
-              x:p.x, y:p.y,
-              tx:enemy.x, ty:enemy.y,
-              owner:p.id,
-              dmg,
-              t:0, tMax:2
-            });
-          }
-        }
-      }
-
-      for(const proj of g.projectiles){
-        proj.t++;
-        if(proj.t>=proj.tMax){
-          const hit = g.enemies.find(e=>e.x===proj.tx && e.y===proj.ty && !e.dead);
-          if(hit){
-            hit.hp-=proj.dmg;
-            if(hit.hp<=0) hit.dead=true;
-          }
-          proj.done=true;
-        }
-      }
-      g.enemies = g.enemies.filter(e=>!e.dead);
-      g.projectiles = g.projectiles.filter(p=>!p.done);
-
-      // 8) XP & level up
-      for(const p of playerList){
-        let live = latestPlayers[p.id] || {};
-        if(typeof live.xp==="number") p.xp = live.xp;
-        if(typeof live.level==="number") p.level = live.level;
-        if(typeof live.nextLevelXp==="number") p.nextLevelXp = live.nextLevelXp;
-        if(live.abilities) p.abilities = live.abilities;
-
-        // simple xp: 1 xp per tick if near enemies
-        const anyNear = g.enemies.some(e=>dist(e,p)<=4);
-        if(anyNear) p.xp = (p.xp||0)+0.3;
-
-        if(p.xp >= (p.nextLevelXp||10)){
-          p.xp -= p.nextLevelXp;
-          p.level = (p.level||1)+1;
-          p.nextLevelXp = Math.round((p.nextLevelXp||10)*1.35);
-          if(p.level % 5 === 0){
-            const options = pickRandomAbilities(3);
-            p.pendingChoice = { options, pickedIndex:null };
-          }
-        }
-      }
-
-      // 9) Decay telegraphs & shields
-      g.dangerCells = (g.dangerCells||[]).map(dc=>({ ...dc, ttl:dc.ttl-1 })).filter(dc=>dc.ttl>0);
-      g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
-
-      // 10) Write global state
-      g.tick = (g.tick||0)+1;
-      await setDoc(gameRef,g,{merge:true});
-
-      // 11) Write players back (positions, XP, level, HP with Regen Aura & pendingChoice)
-      for(const p of playerList){
-        const baseLive = latestPlayers[p.id] || {};
-        let hp = baseLive.hp ?? p.hp;
-        let maxHp = baseLive.maxHp ?? p.maxHp ?? hp ?? 10;
-        if(baseLive.abilities){
-          if(baseLive.abilities.some(a=>a.effect?.regen)){
-            hp = Math.min(maxHp, hp+0.05);
-          }
-        }
-        await setDoc(doc(db,"games_trumprev",gameId,"players",p.id),{
-          x:p.x, y:p.y,
-          hp, maxHp,
-          level:p.level||1,
-          xp:p.xp||0,
-          nextLevelXp:p.nextLevelXp||10,
-          pendingChoice:p.pendingChoice||baseLive.pendingChoice||null,
-          lastUpdated:serverTimestamp()
-        },{merge:true});
-      }
-
-      if(g.base.hp<=0){
-        await updateDoc(gameRef,{ status:"defeat" });
-        stopHostLoop();
-        log("Base destroyed! Defeat.");
-      }
-    }
-
     function nearest(list, from, maxRange=999){
       let best=null, bestD=9999;
       for(const e of list){
@@ -1020,6 +799,15 @@
       return out;
     }
 
+    function isCellShielded(cell, shieldPulses){
+      if(!shieldPulses || !shieldPulses.length) return false;
+      return shieldPulses.some(sp=>{
+        if(sp.ttl<=0) return false;
+        const d = Math.abs(sp.x-cell.x)+Math.abs(sp.y-cell.y);
+        return d <= (sp.radius||2);
+      });
+    }
+
     function beginTelegraph(g,e,players,basePos){
       const cells=[];
       const kindSelect = e.type;
@@ -1035,7 +823,7 @@
       }else if(kindSelect==="scatter"){
         for(let i=0;i<5;i++){
           const rx = e.x + randInt(-2,2);
-          const ry = e.y + randInt(-2,2);
+          const ry = e.y + randInt(-1,1);
           if(isWalkable(rx,ry)) cells.push({x:rx,y:ry});
         }
         e.aim = {kind:"scatter", cells};
@@ -1043,16 +831,16 @@
       }else if(kindSelect==="rocket"){
         const targetRow = players.length? nearest(players,e).y : basePos.y;
         for(let x=e.x-1;x>=BASE_COL;x--){
-          cells.push({x,y:targetRow});
+          if(isWalkable(x,targetRow)) cells.push({x,y:targetRow});
         }
         e.aim = {kind:"rocket", cells};
         e.telegraph = 3;
       }else if(kindSelect==="laser"){
         const mid = e.y;
-        const up = Math.max(1, mid-3);
-        const down = Math.min(GRID_H-2, mid+3);
+        const up = Math.max(1, mid-2);
+        const down = Math.min(GRID_H-2, mid+2);
         for(let yy=up; yy<=down; yy++){
-          cells.push({x:e.x-1,y:yy});
+          if(isWalkable(e.x-1,yy)) cells.push({x:e.x-1,y:yy});
         }
         e.aim = {kind:"laser", cells};
         e.telegraph = 3;
@@ -1101,15 +889,6 @@
       }
     }
 
-    function isCellShielded(cell, shieldPulses){
-      if(!shieldPulses || !shieldPulses.length) return false;
-      return shieldPulses.some(sp=>{
-        if(sp.ttl<=0) return false;
-        const d = Math.abs(sp.x-cell.x)+Math.abs(sp.y-cell.y);
-        return d <= (sp.radius||2);
-      });
-    }
-
     function resolveEnemyAttack(g,e){
       if(!e.aim) return;
       const kind = e.aim.kind;
@@ -1141,7 +920,7 @@
             k.hp -= finalD;
           }
         }
-        // base
+        // base (if shot reaches base lane)
         if(cell.x<=BASE_COL && PATH_ROWS_MAIN.includes(cell.y)){
           let finalD = dmg;
           if(isCellShielded({x:BASE_COL,y:cell.y}, g.shieldPulses)){
@@ -1185,6 +964,255 @@
           damagePlayers(c,7);
           g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:3});
         }
+      }
+    }
+
+    async function hostTick(){
+      if(!latestGame) return;
+      const g = structuredClone(latestGame);
+      if(g.status!=="running") return;
+
+      const players = latestPlayers;
+      const playerList = Object.values(players);
+      const numPlayers = playerList.length || 1;
+
+      // Ensure base & arrays
+      g.base = g.base || {hp:100,maxHp:100};
+      g.enemies = g.enemies || [];
+      g.knights = g.knights || [];
+      g.projectiles = g.projectiles || [];
+      g.dangerCells = g.dangerCells || [];
+      g.shieldPulses = g.shieldPulses || [];
+
+      // If somehow empty, rebuild tower corridor
+      if(!g.enemies.length){
+        g.enemies = createCorridorTowers();
+      }
+
+      // Derived stats per player
+      const derivedStats = {};
+      for(const p of playerList){
+        derivedStats[p.id] = computeDerivedStats(p);
+      }
+
+      // 1) Move players (slower overall because of higher TICK_MS)
+      for(const p of playerList){
+        const cls = CLASSES[p.classIndex ?? 0];
+        const speed = (cls?.speed || 1);
+        for(let step=0;step<speed;step++){
+          const dx = Math.sign((p.targetX??p.x)-p.x);
+          const dy = Math.sign((p.targetY??p.y)-p.y);
+          if(dx===0 && dy===0) break;
+          const nx = p.x + dx;
+          const ny = p.y + dy;
+          if(isWalkable(nx,ny)){
+            p.x = nx; p.y = ny;
+          }else break;
+        }
+      }
+
+      // 2) Knights spawn periodically, but a bit slower
+      if(g.tick % 18 === 0){
+        for(const p of playerList){
+          const ds = derivedStats[p.id];
+          const spawnY = p.y;
+          const kx = BASE_COL;
+          const ky = spawnY;
+          let baseHp = 10 + (p.knightLevel||1)*3;
+          let baseDmg = 3 + (p.knightLevel||1);
+          if(ds.knightHpMult) baseHp = Math.round(baseHp * ds.knightHpMult);
+          if(ds.knightDmgMult) baseDmg = Math.round(baseDmg * ds.knightDmgMult);
+
+          g.knights.push({
+            id:`k_${p.id}_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
+            owner:p.id,
+            x:kx,
+            y:ky,
+            hp:baseHp,
+            maxHp:baseHp,
+            dmg:baseDmg
+          });
+        }
+      }
+
+      // 3) Knights move & fight towers
+      for(const k of g.knights){
+        let target = null;
+        for(const e of g.enemies){
+          if(dist(k,e)<=1){ target=e; break; }
+        }
+        if(target){
+          const dmg = k.dmg || 3;
+          target.hp-=dmg;
+          if(target.hp<=0) target.dead=true;
+        }else{
+          const nx = Math.min(GRID_W-2, k.x+1);
+          if(isWalkable(nx,k.y)) k.x = nx;
+        }
+      }
+      g.knights = g.knights.filter(k=>k.hp>0);
+
+      // 4) Tower AI & telegraphed attacks (no movement)
+      const basePos = {x:BASE_COL, y:5};
+      for(const e of g.enemies){
+        if(e.hp<=0){ e.dead=true; continue; }
+
+        if(e.telegraph>0){
+          e.telegraph--;
+          if(e.telegraph===0 && e.aim){
+            resolveEnemyAttack(g,e);
+            e.cd = randInt(5,9);
+            e.aim = null;
+          }
+        }else{
+          e.cd = (e.cd || 0) - 1;
+          if(e.cd<=0){
+            beginTelegraph(g,e,playerList,basePos);
+          }
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+
+      // 5) Ability autos: shield pulses & nova
+      for(const p of playerList){
+        const ds = derivedStats[p.id];
+        if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
+          g.shieldPulses.push({
+            x:p.x,
+            y:p.y,
+            radius:2,
+            ttl:5
+          });
+        }
+        if(ds.nova && g.tick % NOVA_PERIOD===0){
+          for(const e of g.enemies){
+            if(dist(e,p)<=2 && e.hp>0){
+              e.hp -= 4 + (p.level||1);
+              if(e.hp<=0) e.dead=true;
+            }
+          }
+          const novaCells = [];
+          for(let dy=-2; dy<=2; dy++){
+            for(let dx=-2; dx<=2; dx++){
+              if(Math.abs(dx)+Math.abs(dy)>2) continue;
+              const nx = p.x+dx;
+              const ny = p.y+dy;
+              if(isWalkable(nx,ny)){
+                novaCells.push({x:nx,y:ny});
+              }
+            }
+          }
+          for(const c of novaCells){
+            g.dangerCells.push({
+              x:c.x,y:c.y,type:"explosion",ttl:2
+            });
+          }
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+
+      // 6) Player auto-fire & projectiles (very visible shots)
+      for(const p of playerList){
+        const cls = CLASSES[p.classIndex ?? 0];
+        if(!cls) continue;
+        const ds = derivedStats[p.id];
+        const atkSpeedMult = ds.atkSpeedMult || 1;
+        const dmgBonus = ds.dmgBonus || 0;
+        const attackRoll = 0.35 * atkSpeedMult; // slightly calmer
+        if(Math.random() < attackRoll){
+          const enemy = nearest(g.enemies, p, cls.range || 3);
+          if(enemy){
+            const dmg = (cls.dmg||2) + dmgBonus;
+            g.projectiles.push({
+              id:`proj_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
+              x:p.x, y:p.y,
+              tx:enemy.x, ty:enemy.y,
+              owner:p.id,
+              dmg,
+              t:0, tMax:4
+            });
+          }
+        }
+      }
+
+      for(const proj of g.projectiles){
+        proj.t++;
+        if(proj.t>=proj.tMax){
+          const hit = g.enemies.find(e=>e.x===proj.tx && e.y===proj.ty && !e.dead);
+          if(hit){
+            hit.hp-=proj.dmg;
+            if(hit.hp<=0) hit.dead=true;
+          }
+          proj.done=true;
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+      g.projectiles = g.projectiles.filter(p=>!p.done);
+
+      // 7) XP & level up (near towers)
+      for(const p of playerList){
+        let live = latestPlayers[p.id] || {};
+        if(typeof live.xp==="number") p.xp = live.xp;
+        if(typeof live.level==="number") p.level = live.level;
+        if(typeof live.nextLevelXp==="number") p.nextLevelXp = live.nextLevelXp;
+        if(live.abilities) p.abilities = live.abilities;
+
+        const anyNear = g.enemies.some(e=>dist(e,p)<=4);
+        if(anyNear) p.xp = (p.xp||0)+0.3;
+
+        if(p.xp >= (p.nextLevelXp||10)){
+          p.xp -= p.nextLevelXp;
+          p.level = (p.level||1)+1;
+          p.nextLevelXp = Math.round((p.nextLevelXp||10)*1.35);
+          if(p.level % 5 === 0){
+            const options = pickRandomAbilities(3);
+            p.pendingChoice = { options, pickedIndex:null };
+          }
+        }
+      }
+
+      // 8) Decay telegraphs & shields
+      g.dangerCells = (g.dangerCells||[]).map(dc=>({ ...dc, ttl:dc.ttl-1 })).filter(dc=>dc.ttl>0);
+      g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
+
+      // 9) Victory / defeat check
+      if(g.base.hp<=0){
+        g.status = "defeat";
+      }else if(g.enemies.length===0){
+        g.status = "victory";
+      }
+
+      // 10) Write global state
+      g.tick = (g.tick||0)+1;
+      await setDoc(gameRef,g,{merge:true});
+
+      // 11) Write players back (positions, XP, HP with Regen Aura & pendingChoice)
+      for(const p of playerList){
+        const baseLive = latestPlayers[p.id] || {};
+        let hp = baseLive.hp ?? p.hp;
+        let maxHp = baseLive.maxHp ?? p.maxHp ?? hp ?? 10;
+        if(baseLive.abilities){
+          if(baseLive.abilities.some(a=>a.effect?.regen)){
+            hp = Math.min(maxHp, hp+0.05);
+          }
+        }
+        await setDoc(doc(db,"games_trumprev",gameId,"players",p.id),{
+          x:p.x, y:p.y,
+          hp, maxHp,
+          level:p.level||1,
+          xp:p.xp||0,
+          nextLevelXp:p.nextLevelXp||10,
+          pendingChoice:p.pendingChoice||baseLive.pendingChoice||null,
+          lastUpdated:serverTimestamp()
+        },{merge:true});
+      }
+
+      if(g.status==="defeat"){
+        stopHostLoop();
+        log("Base destroyed! Defeat.");
+      }else if(g.status==="victory"){
+        stopHostLoop();
+        log("All tower lines destroyed! Victory.");
       }
     }
 
@@ -1273,7 +1301,7 @@
         cell.appendChild(hpBar);
       }
 
-      // Enemies
+      // Towers (enemies)
       for(const e of (latestGame.enemies||[])){
         if(e.hp<=0) continue;
         if(e.x<0||e.x>=GRID_W||e.y<0||e.y>=GRID_H) continue;
@@ -1281,7 +1309,7 @@
         const ent = document.createElement("div");
         ent.className="entity";
         let emoji="👾";
-        if(e.type==="charger") emoji="🐗";
+        if(e.type==="charger") emoji="🗼";
         else if(e.type==="scatter") emoji="💣";
         else if(e.type==="rocket") emoji="🚀";
         else if(e.type==="laser") emoji="🔺";
@@ -1301,13 +1329,19 @@
         cell.appendChild(hpBar);
       }
 
-      // Projectiles
+      // Projectiles (your shots) – interpolate between start and target
       for(const proj of (latestGame.projectiles||[])){
-        const cell = cells[proj.ty]?.[proj.tx];
+        const tMax = proj.tMax || 1;
+        const tNow = Math.min(proj.t || 0, tMax);
+        const prog = tNow / tMax;
+        const cx = Math.round(proj.x + (proj.tx - proj.x)*prog);
+        const cy = Math.round(proj.y + (proj.ty - proj.y)*prog);
+        if(cy<0||cy>=GRID_H||cx<0||cx>=GRID_W) continue;
+        const cell = cells[cy][cx];
         if(!cell) continue;
         const ent = document.createElement("div");
-        ent.className="entity";
-        ent.textContent = "•";
+        ent.className="entity proj-friendly";
+        ent.textContent = "●";
         cell.appendChild(ent);
       }
 
@@ -1468,3 +1502,4 @@
   </script>
 </body>
 </html>
+
