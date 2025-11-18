@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🏰 Base Defense: Trump Revenge (4P)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <style>
+    :root{
+      --bg:#020617;
+      --panel:#020617;
+      --ink:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#f97316;
+      --accent-soft:#1f2937;
+      --danger:#ef4444;
+      --good:#22c55e;
+      --border:#1f2937;
+      --radius:14px;
+      --cellSize: min(5vh, 5vw);
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+    html,body{
+      margin:0; padding:0;
+      height:100%;
+      background:radial-gradient(circle at top,#0f172a 0,#020617 55%);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      overflow:hidden;
+    }
+    body{
+      display:flex;
+      flex-direction:column;
+    }
+
+    .shell{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      max-width:1200px;
+      margin:0 auto;
+      width:100%;
+      padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+      gap:8px;
+    }
+
+    .top-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      padding:6px 10px;
+      background:rgba(15,23,42,.9);
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      box-shadow:0 6px 18px rgba(0,0,0,.6);
+    }
+    .top-left{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .game-title{
+      font-weight:800;
+      font-size:.9rem;
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .pill{
+      border-radius:999px;
+      padding:4px 8px;
+      font-size:.75rem;
+      border:1px solid var(--border);
+      background:rgba(15,23,42,.9);
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+    }
+
+    .hp-bar{
+      width:110px;
+      height:10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#020617;
+      overflow:hidden;
+    }
+    .hp-fill{
+      height:100%;
+      background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);
+      width:0%;
+      transition:width .12s linear;
+    }
+    .small{
+      font-size:.75rem;
+      color:var(--muted);
+    }
+
+    .top-right{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    /* Abilities bar */
+    .abilities{
+      display:flex;
+      gap:4px;
+      align-items:center;
+      flex-wrap:wrap;
+      padding:4px 6px;
+      background:rgba(15,23,42,.9);
+      border-radius:999px;
+      border:1px solid var(--border);
+      box-shadow:0 6px 18px rgba(0,0,0,.5);
+      max-width:60%;
+      overflow:hidden;
+    }
+    .ability-tile{
+      position:relative;
+      width:32px;
+      height:32px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      background:#020617;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:.75rem;
+    }
+    .ability-tile span{
+      pointer-events:none;
+    }
+    .ability-cooldown{
+      position:absolute;
+      inset:0;
+      background:rgba(15,23,42,.8);
+      transform-origin:bottom;
+      transform:scaleY(0);
+      transition:transform .1s linear;
+    }
+
+    /* Grid */
+    .game-area{
+      flex:1;
+      display:flex;
+      gap:8px;
+      min-height:0;
+    }
+
+    .grid-wrapper{
+      flex:1;
+      background:radial-gradient(circle at top,#111827 0,#020617 60%);
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      padding:6px;
+      box-shadow:0 18px 40px rgba(0,0,0,.7);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:0;
+    }
+
+    #grid{
+      display:grid;
+      gap:1px;
+      background:#020617;
+      touch-action:none;
+    }
+    .cell{
+      width:var(--cellSize);
+      height:var(--cellSize);
+      background:#020617;
+      position:relative;
+      border-radius:2px;
+      overflow:hidden;
+    }
+    .cell-path{
+      background:#0b1120;
+    }
+    .cell-terrain{
+      background:radial-gradient(circle at 30% 20%,#1f2937 0,#020617 55%);
+    }
+    .cell-base{
+      background:radial-gradient(circle at 30% 20%,#111827 0,#020617 60%);
+      box-shadow:inset 0 0 10px rgba(250,250,250,.1);
+    }
+
+    .cell-highlight{
+      box-shadow:0 0 0 2px rgba(234,179,8,.6) inset;
+    }
+
+    .danger-telegraph{
+      position:absolute;
+      inset:0;
+      background:rgba(239,68,68,.35);
+      box-shadow:0 0 0 1px rgba(248,113,113,.9) inset;
+    }
+    .danger-explosion{
+      position:absolute;
+      inset:15%;
+      border-radius:50%;
+      background:radial-gradient(circle,#f97316 0,#b91c1c 55%,transparent 70%);
+      opacity:.9;
+    }
+    .laser-line{
+      position:absolute;
+      inset:30%;
+      border-radius:999px;
+      background:linear-gradient(90deg,#f97316,#facc15);
+      box-shadow:0 0 12px rgba(250,204,21,.8);
+    }
+
+    .shield-ring{
+      position:absolute;
+      inset:15%;
+      border-radius:50%;
+      border:2px solid rgba(34,197,94,.8);
+      box-shadow:0 0 10px rgba(34,197,94,.7);
+    }
+
+    .entity{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:calc(var(--cellSize)*0.5);
+      pointer-events:none;
+    }
+
+    .hp-chip{
+      position:absolute;
+      left:50%;
+      bottom:1px;
+      transform:translateX(-50%);
+      min-width:60%;
+      height:3px;
+      border-radius:999px;
+      background:rgba(15,23,42,.7);
+      overflow:hidden;
+    }
+    .hp-chip-fill{
+      height:100%;
+      background:linear-gradient(90deg,#22c55e,#f97316,#ef4444);
+      width:100%;
+    }
+
+    .side-panel{
+      width:150px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      font-size:.78rem;
+    }
+    .side-card{
+      background:rgba(15,23,42,.9);
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      padding:6px 8px;
+      box-shadow:0 10px 28px rgba(0,0,0,.7);
+    }
+    .side-title{
+      font-weight:700;
+      margin-bottom:4px;
+      font-size:.78rem;
+    }
+    .log{
+      max-height:150px;
+      overflow:auto;
+      font-size:.72rem;
+      color:var(--muted);
+    }
+
+    .btn-small{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:4px 6px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#020617;
+      color:var(--ink);
+      font-size:.7rem;
+      cursor:pointer;
+    }
+
+    /* Level up modal */
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.8);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:30;
+    }
+    .modal{
+      width:min(360px, 95vw);
+      background:#020617;
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      box-shadow:0 18px 50px rgba(0,0,0,.9);
+      padding:12px;
+    }
+    .modal h2{
+      margin:0 0 6px;
+      font-size:1rem;
+    }
+    .modal p{
+      margin:0 0 8px;
+      font-size:.8rem;
+      color:var(--muted);
+    }
+    .modal-options{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .option-btn{
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#020617;
+      padding:6px 8px;
+      cursor:pointer;
+      text-align:left;
+      font-size:.8rem;
+    }
+    .option-btn:hover{
+      border-color:#f97316;
+      box-shadow:0 0 0 1px rgba(249,115,22,.3);
+    }
+    .option-title{
+      font-weight:700;
+      margin-bottom:2px;
+    }
+    .option-desc{
+      font-size:.78rem;
+      color:var(--muted);
+    }
+
+    @media (max-width:768px){
+      .game-area{
+        flex-direction:column;
+      }
+      .side-panel{
+        flex-direction:row;
+        width:100%;
+        overflow:auto;
+      }
+      .side-card{
+        min-width:140px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="top-bar">
+      <div class="top-left">
+        <div class="game-title">
+          🏰 <span>Base Defense: Trump Revenge</span>
+        </div>
+        <div class="pill">
+          <span id="playerName">Player</span>
+        </div>
+        <div class="pill">
+          Base HP
+          <div class="hp-bar"><div id="baseHpFill" class="hp-fill"></div></div>
+        </div>
+        <div class="pill">
+          <span id="levelLabel">Lv 1</span>
+          <span class="small" id="xpLabel">(0 / 10 XP)</span>
+        </div>
+      </div>
+      <div class="top-right">
+        <div class="abilities" id="abilitiesBar">
+          <span class="small">Abilities</span>
+        </div>
+        <button class="btn-small" id="fullscreenBtn">⛶</button>
+      </div>
+    </div>
+
+    <div class="game-area">
+      <div class="grid-wrapper">
+        <div id="grid"></div>
+      </div>
+      <div class="side-panel">
+        <div class="side-card">
+          <div class="side-title">Party</div>
+          <div id="partyInfo" class="small"></div>
+        </div>
+        <div class="side-card">
+          <div class="side-title">Tips</div>
+          <div class="small">
+            • Tap a tile to move.<br/>
+            • Auto-fire & knight waves help you push.<br/>
+            • Red tiles = incoming attacks.<br/>
+            • Every 5 levels, pick a new auto ability.
+          </div>
+        </div>
+        <div class="side-card">
+          <div class="side-title">Log</div>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level-up modal -->
+  <div id="levelModal" class="modal-backdrop" style="display:none;">
+    <div class="modal">
+      <h2>New Ability!</h2>
+      <p>Choose 1 auto-trigger ability for your hero.</p>
+      <div id="modalOptions" class="modal-options"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
+      collection, getDocs, serverTimestamp, runTransaction
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // --- CONFIG ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- URL PARAMS ---
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("gameId") || "dev-room";
+    const username = (params.get("username") || "Guest").trim();
+    document.getElementById("playerName").textContent = username;
+
+    // --- GRID / MAP ---
+    const GRID_W = 18;
+    const GRID_H = 11;
+    const BASE_COL = 1;
+    const PATH_COLS = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+    const PATH_ROWS_MAIN = [4,5,6];
+    const PATH_ROWS_TOP = [2,3];
+    const PATH_ROWS_BOT = [7,8];
+
+    const terrain = [];
+    for(let y=0;y<GRID_H;y++){
+      terrain[y] = [];
+      for(let x=0;x<GRID_W;x++){
+        let type = "space";
+        if (x===0 || x===GRID_W-1 || y===0 || y===GRID_H-1){
+          type = "terrain";
+        }
+        if (PATH_COLS.includes(x) && (PATH_ROWS_MAIN.includes(y) || PATH_ROWS_TOP.includes(y) || PATH_ROWS_BOT.includes(y))){
+          type = "path";
+        }
+        if (x <= BASE_COL && PATH_ROWS_MAIN.includes(y)){
+          type = "base";
+        }
+        terrain[y][x] = type;
+      }
+    }
+
+    const gridEl = document.getElementById("grid");
+    gridEl.style.gridTemplateColumns = `repeat(${GRID_W}, var(--cellSize))`;
+    gridEl.style.gridTemplateRows = `repeat(${GRID_H}, var(--cellSize))`;
+
+    const cells = [];
+    for(let y=0;y<GRID_H;y++){
+      for(let x=0;x<GRID_W;x++){
+        const c = document.createElement("div");
+        c.className = "cell";
+        const tt = terrain[y][x];
+        if(tt==="terrain") c.classList.add("cell-terrain");
+        if(tt==="path") c.classList.add("cell-path");
+        if(tt==="base") c.classList.add("cell-base");
+        gridEl.appendChild(c);
+        if(!cells[y]) cells[y]=[];
+        cells[y][x] = c;
+
+        c.addEventListener("click", ()=> onCellClick(x,y));
+        c.addEventListener("touchstart", (e)=>{ e.preventDefault(); onCellClick(x,y); }, {passive:false});
+      }
+    }
+
+    function log(msg){
+      const logEl = document.getElementById("log");
+      const line = document.createElement("div");
+      line.textContent = msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // --- GAME FIREBASE STRUCTURE ---
+    const gameRef = doc(db, "games_trumprev", gameId);
+    const playerRef = doc(db, "games_trumprev", gameId, "players", username);
+
+    let isHost = false;
+    let hostTickHandle = null;
+    let latestGame = null;
+    let latestPlayers = {};
+    let localPlayerState = null;
+
+    // --- CLASSES / ABILITIES ---
+    const CLASSES = [
+      { key:"vanguard", emoji:"🛡️", name:"Vanguard", hp:18, range:3, dmg:3, speed:1 },
+      { key:"ranger",   emoji:"🏹", name:"Ranger",   hp:14, range:5, dmg:4, speed:1 },
+      { key:"aegis",    emoji:"✨", name:"Aegis",    hp:16, range:3, dmg:2, speed:1 }
+    ];
+
+    // Level-up ability pool
+    const ABILITY_POOL = [
+      {
+        key:"rapidfire",
+        name:"Rapid Volley",
+        desc:"+25% attack speed.",
+        kind:"passive",
+        effect:{ atkSpeedMult:1.25 }
+      },
+      {
+        key:"powershot",
+        name:"Power Shot",
+        desc:"+2 damage per hit.",
+        kind:"passive",
+        effect:{ dmgBonus:2 }
+      },
+      {
+        key:"barrierPulse",
+        name:"Barrier Pulse",
+        desc:"Periodic shield pulses reduce nearby damage.",
+        kind:"auto",
+        effect:{ shieldPulse:true }
+      },
+      {
+        key:"knightBoost",
+        name:"Knight Drill",
+        desc:"+40% knight HP & damage.",
+        kind:"passive",
+        effect:{ knightBoost:true }
+      },
+      {
+        key:"regenAura",
+        name:"Regen Aura",
+        desc:"Slowly regenerate HP over time.",
+        kind:"auto",
+        effect:{ regen:true }
+      },
+      {
+        key:"blastNova",
+        name:"Blast Nova",
+        desc:"Periodic AoE blast around you.",
+        kind:"auto",
+        effect:{ nova:true }
+      }
+    ];
+
+    // --- INITIAL JOIN / HOST CLAIM ---
+    async function joinGame(){
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(gameRef);
+        if(!snap.exists()){
+          const baseHP = 100;
+          const initial = {
+            host: username,
+            createdAt: serverTimestamp(),
+            status:"running",
+            tick:0,
+            base:{ hp:baseHP, maxHp:baseHP },
+            enemies:[],
+            knights:[],
+            projectiles:[],
+            dangerCells:[],
+            shieldPulses:[]
+          };
+          tx.set(gameRef, initial);
+          isHost = true;
+          log("You are host — running simulation.");
+        }else{
+          const d = snap.data();
+          if(!d.host){
+            tx.update(gameRef, { host:username });
+            isHost = true;
+            log("You became host.");
+          }else{
+            isHost = (d.host === username);
+          }
+        }
+      });
+
+      const pSnap = await getDoc(playerRef);
+      if(!pSnap.exists()){
+        const classIdx = Math.floor(Math.random()*CLASSES.length);
+        const cls = CLASSES[classIdx];
+        const spawn = { x:BASE_COL, y:5 };
+        await setDoc(playerRef,{
+          id:username,
+          classIndex:classIdx,
+          x:spawn.x, y:spawn.y,
+          targetX:spawn.x, targetY:spawn.y,
+          hp:cls.hp, maxHp:cls.hp,
+          level:1,
+          xp:0,
+          nextLevelXp:10,
+          knightLevel:1,
+          abilities:[],
+          pendingChoice:null,
+          lastInputAt:Date.now(),
+          lastUpdated:serverTimestamp()
+        });
+        log(`Joined as ${CLASSES[classIdx].emoji} ${CLASSES[classIdx].name}`);
+      }else{
+        log("Rejoined game.");
+      }
+
+      subscribeGame();
+      subscribePlayers();
+      if(isHost) startHostLoop();
+    }
+
+    // --- SUBSCRIPTIONS ---
+    function subscribeGame(){
+      onSnapshot(gameRef,(snap)=>{
+        if(!snap.exists()) return;
+        latestGame = snap.data();
+        renderBase();
+        renderBoard();
+        syncHostLoopState();
+      });
+    }
+
+    function subscribePlayers(){
+      const col = collection(db,"games_trumprev",gameId,"players");
+      onSnapshot(col,(snap)=>{
+        latestPlayers = {};
+        snap.forEach(d=>{
+          latestPlayers[d.id]=d.data();
+          if(d.id===username) localPlayerState = d.data();
+        });
+        renderParty();
+        renderBoard();
+        checkLevelUpModal();
+      });
+    }
+
+    // --- HOST LOOP ---
+    const TICK_MS = 280;
+    const SHIELD_PERIOD = 24;
+    const NOVA_PERIOD = 30;
+
+    function startHostLoop(){
+      if(hostTickHandle) clearInterval(hostTickHandle);
+      hostTickHandle = setInterval(()=>hostTick().catch(()=>{}), TICK_MS);
+    }
+    function stopHostLoop(){
+      if(hostTickHandle) clearInterval(hostTickHandle);
+      hostTickHandle = null;
+    }
+    function syncHostLoopState(){
+      if(!latestGame) return;
+      if(!isHost && hostTickHandle){
+        stopHostLoop();
+      }else if(isHost && !hostTickHandle){
+        startHostLoop();
+      }
+    }
+
+    function randInt(min,max){
+      return Math.floor(Math.random()*(max-min+1))+min;
+    }
+    function dist(a,b){
+      return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+    }
+    function isWalkable(x,y){
+      if(x<0||x>=GRID_W||y<0||y>=GRID_H) return false;
+      const t = terrain[y][x];
+      return t==="path" || t==="base" || t==="terrain";
+    }
+
+    function computeDerivedStats(p){
+      const out = {
+        atkSpeedMult:1,
+        dmgBonus:0,
+        knightHpMult:1,
+        knightDmgMult:1,
+        regen:false,
+        shieldPulse:false,
+        nova:false
+      };
+      const abilities = p.abilities || [];
+      for(const ab of abilities){
+        const eff = ab.effect || {};
+        if(eff.atkSpeedMult) out.atkSpeedMult *= eff.atkSpeedMult;
+        if(eff.dmgBonus) out.dmgBonus += eff.dmgBonus;
+        if(eff.knightBoost){
+          out.knightHpMult *= 1.4;
+          out.knightDmgMult *= 1.4;
+        }
+        if(eff.regen) out.regen = true;
+        if(eff.shieldPulse) out.shieldPulse = true;
+        if(eff.nova) out.nova = true;
+      }
+      return out;
+    }
+
+    async function hostTick(){
+      if(!latestGame) return;
+      const g = structuredClone(latestGame);
+      if(g.status!=="running") return;
+
+      const players = latestPlayers;
+      const playerList = Object.values(players);
+      const numPlayers = playerList.length || 1;
+
+      // Derived stats per player
+      const derivedStats = {};
+      for(const p of playerList){
+        derivedStats[p.id] = computeDerivedStats(p);
+      }
+
+      // 1) Move players
+      for(const p of playerList){
+        const cls = CLASSES[p.classIndex ?? 0];
+        const speed = (cls?.speed || 1);
+        for(let step=0;step<speed;step++){
+          const dx = Math.sign((p.targetX??p.x)-p.x);
+          const dy = Math.sign((p.targetY??p.y)-p.y);
+          if(dx===0 && dy===0) break;
+          const nx = p.x + dx;
+          const ny = p.y + dy;
+          if(isWalkable(nx,ny)){
+            p.x = nx; p.y = ny;
+          }else break;
+        }
+      }
+
+      // 2) Spawn enemies (with waves & new types)
+      const wave = Math.floor((g.tick || 0) / 300); // higher tick -> later waves
+      const spawnChance = 0.1 + 0.05*(numPlayers-1);
+      if(Math.random() < spawnChance){
+        const lane = Math.random()<0.5 ? "top" : "bot";
+        const yRange = lane==="top" ? [2,3] : [7,8];
+        const y = randInt(yRange[0], yRange[1]);
+        const x = GRID_W-2;
+
+        let pool = ["charger","scatter","rocket","laser"];
+        if(wave>=2) pool.push("sniper");
+        if(wave>=4) pool.push("storm");
+        if(wave>=6) pool.push("voider");
+        const type = pool[Math.floor(Math.random()*pool.length)];
+
+        const hpBase = 10 + g.tick*0.02 + numPlayers*3 + wave*4;
+        const enemy = {
+          id:`e_${Date.now()}_${Math.random().toString(16).slice(2,6)}`,
+          type,
+          x,y,
+          hp:Math.round(hpBase),
+          maxHp:Math.round(hpBase),
+          cd: randInt(4,7),
+          telegraph:0,
+          aim:null,
+          lane,
+          tier:wave
+        };
+        g.enemies.push(enemy);
+      }
+
+      // Ensure arrays exist
+      g.enemies = g.enemies || [];
+      g.knights = g.knights || [];
+      g.projectiles = g.projectiles || [];
+      g.dangerCells = g.dangerCells || [];
+      g.shieldPulses = g.shieldPulses || [];
+
+      // 3) Knights spawn periodically, buffed by Knight Drill
+      if(g.tick % 14 === 0){
+        for(const p of playerList){
+          const ds = derivedStats[p.id];
+          const spawnY = p.y;
+          const leftSide = Math.random()<0.5;
+          const kx = leftSide ? 0 : BASE_COL;
+          const ky = spawnY;
+          let baseHp = 10 + (p.knightLevel||1)*3;
+          let baseDmg = 3 + (p.knightLevel||1);
+          if(ds.knightHpMult) baseHp = Math.round(baseHp * ds.knightHpMult);
+          if(ds.knightDmgMult) baseDmg = Math.round(baseDmg * ds.knightDmgMult);
+
+          g.knights.push({
+            id:`k_${p.id}_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
+            owner:p.id,
+            x:kx,
+            y:ky,
+            hp:baseHp,
+            maxHp:baseHp,
+            dmg:baseDmg
+          });
+        }
+      }
+
+      // 4) Knights move & fight
+      for(const k of g.knights){
+        let target = null;
+        for(const e of g.enemies){
+          if(dist(k,e)<=1){ target=e; break; }
+        }
+        if(target){
+          const dmg = k.dmg || 3;
+          target.hp-=dmg;
+          if(target.hp<=0) target.dead=true;
+        }else{
+          const nx = Math.min(GRID_W-1, k.x+1);
+          if(isWalkable(nx,k.y)) k.x = nx;
+        }
+      }
+      g.knights = g.knights.filter(k=>k.hp>0);
+
+      // 5) Enemy AI & telegraphed attacks
+      const basePos = {x:BASE_COL, y:5};
+      for(const e of g.enemies){
+        if(e.hp<=0){ e.dead=true; continue; }
+
+        if(e.telegraph>0){
+          e.telegraph--;
+          if(e.telegraph===0 && e.aim){
+            resolveEnemyAttack(g,e);
+            e.cd = randInt(5,9);
+            e.aim = null;
+          }
+        }else{
+          e.cd--;
+          if(e.cd<=0){
+            beginTelegraph(g,e,playerList,basePos);
+          }
+        }
+
+        if(e.telegraph===0){
+          const target = playerList.length? nearest(playerList,e) : basePos;
+          const dx = Math.sign(target.x - e.x);
+          const dy = Math.sign(target.y - e.y);
+          let moved=false;
+          if(dx!==0 && isWalkable(e.x+dx,e.y)){
+            e.x+=dx; moved=true;
+          }
+          if(!moved && dy!==0 && isWalkable(e.x,e.y+dy)){
+            e.y+=dy; moved=true;
+          }
+        }
+
+        if(e.x<=BASE_COL && PATH_ROWS_MAIN.includes(e.y)){
+          g.base.hp -= 2;
+          e.dead=true;
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+
+      // 6) Ability autos: shield pulses & nova
+      for(const p of playerList){
+        const ds = derivedStats[p.id];
+        if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
+          g.shieldPulses.push({
+            x:p.x,
+            y:p.y,
+            radius:2,
+            ttl:5
+          });
+        }
+        if(ds.nova && g.tick % NOVA_PERIOD===0){
+          for(const e of g.enemies){
+            if(dist(e,p)<=2 && e.hp>0){
+              e.hp -= 4 + (p.level||1);
+              if(e.hp<=0) e.dead=true;
+            }
+          }
+          // Visual explosions around hero
+          const novaCells = [];
+          for(let dy=-2; dy<=2; dy++){
+            for(let dx=-2; dx<=2; dx++){
+              if(Math.abs(dx)+Math.abs(dy)>2) continue;
+              const nx = p.x+dx;
+              const ny = p.y+dy;
+              if(isWalkable(nx,ny)){
+                novaCells.push({x:nx,y:ny});
+              }
+            }
+          }
+          for(const c of novaCells){
+            g.dangerCells.push({
+              x:c.x,y:c.y,type:"explosion",ttl:2
+            });
+          }
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+
+      // 7) Player auto-fire & projectiles (Rapidfire + Powershot)
+      for(const p of playerList){
+        const cls = CLASSES[p.classIndex ?? 0];
+        if(!cls) continue;
+        const ds = derivedStats[p.id];
+        const atkSpeedMult = ds.atkSpeedMult || 1;
+        const dmgBonus = ds.dmgBonus || 0;
+        const attackRoll = 0.45 * atkSpeedMult;
+        if(Math.random() < attackRoll){
+          const enemy = nearest(g.enemies, p, cls.range || 3);
+          if(enemy){
+            const dmg = (cls.dmg||2) + dmgBonus;
+            g.projectiles.push({
+              id:`proj_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
+              x:p.x, y:p.y,
+              tx:enemy.x, ty:enemy.y,
+              owner:p.id,
+              dmg,
+              t:0, tMax:2
+            });
+          }
+        }
+      }
+
+      for(const proj of g.projectiles){
+        proj.t++;
+        if(proj.t>=proj.tMax){
+          const hit = g.enemies.find(e=>e.x===proj.tx && e.y===proj.ty && !e.dead);
+          if(hit){
+            hit.hp-=proj.dmg;
+            if(hit.hp<=0) hit.dead=true;
+          }
+          proj.done=true;
+        }
+      }
+      g.enemies = g.enemies.filter(e=>!e.dead);
+      g.projectiles = g.projectiles.filter(p=>!p.done);
+
+      // 8) XP & level up
+      for(const p of playerList){
+        let live = latestPlayers[p.id] || {};
+        if(typeof live.xp==="number") p.xp = live.xp;
+        if(typeof live.level==="number") p.level = live.level;
+        if(typeof live.nextLevelXp==="number") p.nextLevelXp = live.nextLevelXp;
+        if(live.abilities) p.abilities = live.abilities;
+
+        // simple xp: 1 xp per tick if near enemies
+        const anyNear = g.enemies.some(e=>dist(e,p)<=4);
+        if(anyNear) p.xp = (p.xp||0)+0.3;
+
+        if(p.xp >= (p.nextLevelXp||10)){
+          p.xp -= p.nextLevelXp;
+          p.level = (p.level||1)+1;
+          p.nextLevelXp = Math.round((p.nextLevelXp||10)*1.35);
+          if(p.level % 5 === 0){
+            const options = pickRandomAbilities(3);
+            p.pendingChoice = { options, pickedIndex:null };
+          }
+        }
+      }
+
+      // 9) Decay telegraphs & shields
+      g.dangerCells = (g.dangerCells||[]).map(dc=>({ ...dc, ttl:dc.ttl-1 })).filter(dc=>dc.ttl>0);
+      g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
+
+      // 10) Write global state
+      g.tick = (g.tick||0)+1;
+      await setDoc(gameRef,g,{merge:true});
+
+      // 11) Write players back (positions, XP, level, HP with Regen Aura & pendingChoice)
+      for(const p of playerList){
+        const baseLive = latestPlayers[p.id] || {};
+        let hp = baseLive.hp ?? p.hp;
+        let maxHp = baseLive.maxHp ?? p.maxHp ?? hp ?? 10;
+        if(baseLive.abilities){
+          if(baseLive.abilities.some(a=>a.effect?.regen)){
+            hp = Math.min(maxHp, hp+0.05);
+          }
+        }
+        await setDoc(doc(db,"games_trumprev",gameId,"players",p.id),{
+          x:p.x, y:p.y,
+          hp, maxHp,
+          level:p.level||1,
+          xp:p.xp||0,
+          nextLevelXp:p.nextLevelXp||10,
+          pendingChoice:p.pendingChoice||baseLive.pendingChoice||null,
+          lastUpdated:serverTimestamp()
+        },{merge:true});
+      }
+
+      if(g.base.hp<=0){
+        await updateDoc(gameRef,{ status:"defeat" });
+        stopHostLoop();
+        log("Base destroyed! Defeat.");
+      }
+    }
+
+    function nearest(list, from, maxRange=999){
+      let best=null, bestD=9999;
+      for(const e of list){
+        if(e.hp<=0) continue;
+        const d = dist(e,from);
+        if(d<=maxRange && d<bestD){
+          best=e; bestD=d;
+        }
+      }
+      return best;
+    }
+
+    function pickRandomAbilities(n){
+      const copy = [...ABILITY_POOL];
+      const out=[];
+      while(out.length<n && copy.length){
+        const idx = Math.floor(Math.random()*copy.length);
+        out.push(copy.splice(idx,1)[0]);
+      }
+      return out;
+    }
+
+    function beginTelegraph(g,e,players,basePos){
+      const cells=[];
+      const kindSelect = e.type;
+      if(kindSelect==="charger"){
+        const t = players.length? nearest(players,e) : basePos;
+        const dx = Math.sign(t.x - e.x);
+        const dy = Math.sign(t.y - e.y);
+        const tx = e.x+dx;
+        const ty = e.y+dy;
+        if(isWalkable(tx,ty)) cells.push({x:tx,y:ty});
+        e.aim = {kind:"charger", cells};
+        e.telegraph = 2;
+      }else if(kindSelect==="scatter"){
+        for(let i=0;i<5;i++){
+          const rx = e.x + randInt(-2,2);
+          const ry = e.y + randInt(-2,2);
+          if(isWalkable(rx,ry)) cells.push({x:rx,y:ry});
+        }
+        e.aim = {kind:"scatter", cells};
+        e.telegraph = 3;
+      }else if(kindSelect==="rocket"){
+        const targetRow = players.length? nearest(players,e).y : basePos.y;
+        for(let x=e.x-1;x>=BASE_COL;x--){
+          cells.push({x,y:targetRow});
+        }
+        e.aim = {kind:"rocket", cells};
+        e.telegraph = 3;
+      }else if(kindSelect==="laser"){
+        const mid = e.y;
+        const up = Math.max(1, mid-3);
+        const down = Math.min(GRID_H-2, mid+3);
+        for(let yy=up; yy<=down; yy++){
+          cells.push({x:e.x-1,y:yy});
+        }
+        e.aim = {kind:"laser", cells};
+        e.telegraph = 3;
+      }else if(kindSelect==="sniper"){
+        const t = players.length? nearest(players,e) : basePos;
+        if(t){
+          cells.push({x:t.x,y:t.y});
+          e.aim = {kind:"sniper", cells};
+          e.telegraph = 4;
+        }
+      }else if(kindSelect==="storm"){
+        const cx = e.x-1;
+        const cy = e.y;
+        const plus = [
+          {x:cx,y:cy},
+          {x:cx+1,y:cy},
+          {x:cx-1,y:cy},
+          {x:cx,y:cy+1},
+          {x:cx,y:cy-1}
+        ];
+        for(const c of plus){
+          if(isWalkable(c.x,c.y)) cells.push(c);
+        }
+        e.aim = {kind:"storm", cells};
+        e.telegraph = 3;
+      }else if(kindSelect==="voider"){
+        const cx = e.x-1;
+        const cy = e.y;
+        for(let dy=-1;dy<=1;dy++){
+          for(let dx=-1;dx<=1;dx++){
+            const nx = cx+dx;
+            const ny = cy+dy;
+            if(isWalkable(nx,ny)) cells.push({x:nx,y:ny});
+          }
+        }
+        e.aim = {kind:"voider", cells};
+        e.telegraph = 4;
+      }
+
+      for(const c of cells){
+        g.dangerCells.push({
+          x:c.x,y:c.y,
+          type:"telegraph",
+          ttl:e.telegraph
+        });
+      }
+    }
+
+    function isCellShielded(cell, shieldPulses){
+      if(!shieldPulses || !shieldPulses.length) return false;
+      return shieldPulses.some(sp=>{
+        if(sp.ttl<=0) return false;
+        const d = Math.abs(sp.x-cell.x)+Math.abs(sp.y-cell.y);
+        return d <= (sp.radius||2);
+      });
+    }
+
+    function resolveEnemyAttack(g,e){
+      if(!e.aim) return;
+      const kind = e.aim.kind;
+      const cells = e.aim.cells || [];
+      if(!cells.length) return;
+
+      const damagePlayers = (cell,dmg)=>{
+        // players
+        for(const id in latestPlayers){
+          const p = latestPlayers[id];
+          const px = Math.round(p.x);
+          const py = Math.round(p.y);
+          if(px===cell.x && py===cell.y){
+            let finalD = dmg;
+            if(isCellShielded({x:px,y:py}, g.shieldPulses)){
+              finalD = Math.ceil(dmg*0.4);
+            }
+            p.hp = (p.hp||p.maxHp||10) - finalD;
+            if(p.hp<0) p.hp=0;
+          }
+        }
+        // knights
+        for(const k of g.knights){
+          if(k.x===cell.x && k.y===cell.y){
+            let finalD = dmg;
+            if(isCellShielded({x:k.x,y:k.y}, g.shieldPulses)){
+              finalD = Math.ceil(dmg*0.4);
+            }
+            k.hp -= finalD;
+          }
+        }
+        // base
+        if(cell.x<=BASE_COL && PATH_ROWS_MAIN.includes(cell.y)){
+          let finalD = dmg;
+          if(isCellShielded({x:BASE_COL,y:cell.y}, g.shieldPulses)){
+            finalD = Math.ceil(dmg*0.4);
+          }
+          g.base.hp -= finalD;
+        }
+      };
+
+      if(kind==="charger"){
+        const cell = cells[0];
+        if(!cell) return;
+        damagePlayers(cell,6);
+      }else if(kind==="scatter"){
+        for(const c of cells){
+          damagePlayers(c,4);
+          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
+        }
+      }else if(kind==="rocket"){
+        for(const c of cells){
+          damagePlayers(c,5);
+          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
+        }
+      }else if(kind==="laser"){
+        for(const c of cells){
+          damagePlayers(c,3);
+          g.dangerCells.push({x:c.x,y:c.y,type:"laser",ttl:2});
+        }
+      }else if(kind==="sniper"){
+        const cell = cells[0];
+        if(!cell) return;
+        damagePlayers(cell,10);
+        g.dangerCells.push({x:cell.x,y:cell.y,type:"explosion",ttl:3});
+      }else if(kind==="storm"){
+        for(const c of cells){
+          damagePlayers(c,5);
+          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
+        }
+      }else if(kind==="voider"){
+        for(const c of cells){
+          damagePlayers(c,7);
+          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:3});
+        }
+      }
+    }
+
+    // --- RENDERING ---
+    function renderBase(){
+      if(!latestGame) return;
+      const baseHpFill = document.getElementById("baseHpFill");
+      const hp = latestGame.base?.hp || 0;
+      const max = latestGame.base?.maxHp || 1;
+      const pct = Math.max(0,Math.min(100,(hp/max)*100));
+      baseHpFill.style.width = pct+"%";
+    }
+
+    function clearCellOverlays(){
+      for(let y=0;y<GRID_H;y++){
+        for(let x=0;x<GRID_W;x++){
+          const cell = cells[y][x];
+          cell.innerHTML = "";
+          cell.classList.remove("cell-highlight");
+        }
+      }
+    }
+
+    function renderBoard(){
+      if(!latestGame) return;
+      clearCellOverlays();
+
+      const dcs = latestGame.dangerCells || [];
+      for(const dc of dcs){
+        if(dc.x<0||dc.x>=GRID_W||dc.y<0||dc.y>=GRID_H) continue;
+        const cell = cells[dc.y][dc.x];
+        if(!cell) continue;
+        let overlay;
+        if(dc.type==="telegraph"){
+          overlay = document.createElement("div");
+          overlay.className="danger-telegraph";
+        }else if(dc.type==="explosion"){
+          overlay = document.createElement("div");
+          overlay.className="danger-explosion";
+        }else if(dc.type==="laser"){
+          overlay = document.createElement("div");
+          overlay.className="laser-line";
+        }
+        if(overlay) cell.appendChild(overlay);
+      }
+
+      // Shield pulses (center markers)
+      for(const sp of (latestGame.shieldPulses||[])){
+        if(sp.x<0||sp.x>=GRID_W||sp.y<0||sp.y>=GRID_H) continue;
+        const cell = cells[sp.y][sp.x];
+        const ring = document.createElement("div");
+        ring.className="shield-ring";
+        cell.appendChild(ring);
+      }
+
+      // Base emblem
+      for(let y=0;y<GRID_H;y++){
+        for(let x=0;x<=BASE_COL;x++){
+          if(PATH_ROWS_MAIN.includes(y)){
+            const cell = cells[y][x];
+            const ent = document.createElement("div");
+            ent.className="entity";
+            ent.textContent = "🏰";
+            cell.appendChild(ent);
+          }
+        }
+      }
+
+      // Knights
+      for(const k of (latestGame.knights||[])){
+        if(k.hp<=0) continue;
+        if(k.x<0||k.x>=GRID_W||k.y<0||k.y>=GRID_H) continue;
+        const cell = cells[k.y][k.x];
+        const ent = document.createElement("div");
+        ent.className="entity";
+        ent.textContent = "⚔️";
+        cell.appendChild(ent);
+
+        const hpBar = document.createElement("div");
+        hpBar.className="hp-chip";
+        const fill = document.createElement("div");
+        fill.className="hp-chip-fill";
+        const pct = Math.max(0,Math.min(100,(k.hp/k.maxHp)*100));
+        fill.style.width = pct+"%";
+        hpBar.appendChild(fill);
+        cell.appendChild(hpBar);
+      }
+
+      // Enemies
+      for(const e of (latestGame.enemies||[])){
+        if(e.hp<=0) continue;
+        if(e.x<0||e.x>=GRID_W||e.y<0||e.y>=GRID_H) continue;
+        const cell = cells[e.y][e.x];
+        const ent = document.createElement("div");
+        ent.className="entity";
+        let emoji="👾";
+        if(e.type==="charger") emoji="🐗";
+        else if(e.type==="scatter") emoji="💣";
+        else if(e.type==="rocket") emoji="🚀";
+        else if(e.type==="laser") emoji="🔺";
+        else if(e.type==="sniper") emoji="🎯";
+        else if(e.type==="storm") emoji="🌩️";
+        else if(e.type==="voider") emoji="🕳️";
+        ent.textContent = emoji;
+        cell.appendChild(ent);
+
+        const hpBar = document.createElement("div");
+        hpBar.className="hp-chip";
+        const fill = document.createElement("div");
+        fill.className="hp-chip-fill";
+        const pct = Math.max(0,Math.min(100,(e.hp/e.maxHp)*100));
+        fill.style.width = pct+"%";
+        hpBar.appendChild(fill);
+        cell.appendChild(hpBar);
+      }
+
+      // Projectiles
+      for(const proj of (latestGame.projectiles||[])){
+        const cell = cells[proj.ty]?.[proj.tx];
+        if(!cell) continue;
+        const ent = document.createElement("div");
+        ent.className="entity";
+        ent.textContent = "•";
+        cell.appendChild(ent);
+      }
+
+      // Players
+      for(const id in latestPlayers){
+        const p = latestPlayers[id];
+        const x = Math.round(p.x);
+        const y = Math.round(p.y);
+        if(x<0||x>=GRID_W||y<0||y>=GRID_H) continue;
+        const cell = cells[y][x];
+        const ent = document.createElement("div");
+        ent.className="entity";
+        const cls = CLASSES[p.classIndex ?? 0];
+        const emoji = cls?.emoji || "🧍";
+        ent.textContent = emoji;
+        if(id===username) cell.classList.add("cell-highlight");
+        cell.appendChild(ent);
+
+        const hpBar = document.createElement("div");
+        hpBar.className="hp-chip";
+        const fill = document.createElement("div");
+        fill.className="hp-chip-fill";
+        const hp = p.hp ?? p.maxHp ?? 1;
+        const maxHp = p.maxHp || 1;
+        const pct = Math.max(0,Math.min(100,(hp/maxHp)*100));
+        fill.style.width = pct+"%";
+        hpBar.appendChild(fill);
+        cell.appendChild(hpBar);
+      }
+
+      if(localPlayerState){
+        document.getElementById("levelLabel").textContent = `Lv ${localPlayerState.level||1}`;
+        const xp = localPlayerState.xp||0;
+        const nxp = localPlayerState.nextLevelXp||10;
+        document.getElementById("xpLabel").textContent = `(${Math.round(xp)} / ${nxp} XP)`;
+        renderAbilities(localPlayerState);
+      }
+    }
+
+    function renderParty(){
+      const box = document.getElementById("partyInfo");
+      const arr = Object.values(latestPlayers);
+      box.innerHTML = "";
+      if(!arr.length){
+        box.textContent="Waiting for players...";
+        return;
+      }
+      for(const p of arr){
+        const cls = CLASSES[p.classIndex ?? 0];
+        const line = document.createElement("div");
+        const tag = p.id === username ? "(You)" : "";
+        line.textContent = `${cls?.emoji||"🧍"} ${p.id} ${tag} — Lv ${p.level||1}`;
+        box.appendChild(line);
+      }
+    }
+
+    function renderAbilities(p){
+      const bar = document.getElementById("abilitiesBar");
+      bar.innerHTML = "";
+      const label = document.createElement("span");
+      label.className="small";
+      label.textContent = "Abilities";
+      bar.appendChild(label);
+
+      const abilities = p.abilities || [];
+      for(const a of abilities){
+        const tile = document.createElement("div");
+        tile.className="ability-tile";
+        const iconSpan = document.createElement("span");
+        iconSpan.textContent =
+          a.key==="rapidfire" ? "⚡" :
+          a.key==="powershot" ? "💥" :
+          a.key==="barrierPulse" ? "🛡️" :
+          a.key==="knightBoost" ? "⚔️" :
+          a.key==="regenAura" ? "➕" :
+          a.key==="blastNova" ? "💣" : "★";
+        const cdOverlay = document.createElement("div");
+        cdOverlay.className="ability-cooldown";
+        cdOverlay.style.transform = "scaleY(0)";
+        tile.appendChild(cdOverlay);
+        tile.appendChild(iconSpan);
+        bar.appendChild(tile);
+      }
+    }
+
+    // --- INPUT: TAP TO MOVE ---
+    async function onCellClick(x,y){
+      if(!localPlayerState) return;
+      if(!isWalkable(x,y)) return;
+      try{
+        await setDoc(playerRef,{
+          targetX:x,
+          targetY:y,
+          lastInputAt:Date.now()
+        },{merge:true});
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    // --- LEVEL-UP MODAL ---
+    function checkLevelUpModal(){
+      if(!localPlayerState) return;
+      const pending = localPlayerState.pendingChoice;
+      const modal = document.getElementById("levelModal");
+      const optionsBox = document.getElementById("modalOptions");
+      if(pending && pending.options && pending.options.length && (pending.pickedIndex==null)){
+        modal.style.display="flex";
+        optionsBox.innerHTML = "";
+        pending.options.forEach((opt,idx)=>{
+          const btn = document.createElement("button");
+          btn.type="button";
+          btn.className="option-btn";
+          btn.innerHTML = `<div class="option-title">${opt.name}</div><div class="option-desc">${opt.desc}</div>`;
+          btn.onclick = ()=> chooseAbility(idx, opt);
+          optionsBox.appendChild(btn);
+        });
+      }else{
+        modal.style.display="none";
+      }
+    }
+
+    async function chooseAbility(index, ability){
+      try{
+        const pSnap = await getDoc(playerRef);
+        if(!pSnap.exists()) return;
+        const p = pSnap.data();
+        const abilities = p.abilities || [];
+        abilities.push(ability);
+        await setDoc(playerRef,{
+          abilities,
+          pendingChoice:{
+            options:p.pendingChoice?.options || [],
+            pickedIndex:index
+          }
+        },{merge:true});
+        log(`Gained ability: ${ability.name}`);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    // --- FULLSCREEN ---
+    document.getElementById("fullscreenBtn").addEventListener("click",()=>{
+      const el = document.documentElement;
+      if(!document.fullscreenElement){
+        el.requestFullscreen?.();
+      }else{
+        document.exitFullscreen?.();
+      }
+    });
+
+    // --- START ---
+    joinGame().catch(err=>{
+      console.error(err);
+      alert("Error joining game: "+err.message);
+    });
+  </script>
+</body>
+</html>
