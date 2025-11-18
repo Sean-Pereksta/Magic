@@ -409,9 +409,9 @@
           <div class="side-title">Tips</div>
           <div class="small">
             • Tap ahead on the lane to move down the corridor.<br/>
-            • Break each <b>tower line</b> in order, then the final boss on the far right.<br/>
-            • <b>Yellow dots</b> are your shots.<br/>
-            • Red tiles = incoming tower fire. Stay out of them!
+            • Towers block the path; waves of enemies spawn from the far right.<br/>
+            • Enemies march toward the <b>nearest ally / knight / base</b>.<br/>
+            • <b>Yellow dots</b> are your shots. Red tiles = incoming fire.
           </div>
         </div>
         <div class="side-card">
@@ -513,7 +513,7 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // --- HELPER: build corridor tower lines ---
+    // --- HELPER: build corridor tower lines + boss ---
     function createCorridorTowers(){
       const towers = [];
       const lanes = PATH_ROWS_MAIN;
@@ -529,6 +529,8 @@
         const cdBase = Math.max(4, 8 - tier); // later towers shoot faster
         towers.push({
           id:`tw_${col}_${row}`,
+          role:"tower",
+          mobile:false,
           type,
           x:col,
           y:row,
@@ -551,7 +553,10 @@
       const bossHP = 350;
       towers.push({
         id:"boss_main",
-        type:"voider", // big AoE pattern
+        role:"tower",
+        boss:true,
+        mobile:false,
+        type:"voider",
         x:15,
         y:bossRow,
         hp:bossHP,
@@ -560,8 +565,7 @@
         telegraph:0,
         aim:null,
         lane:"boss",
-        tier:6,
-        boss:true
+        tier:6
       });
       return towers;
     }
@@ -583,7 +587,6 @@
       { key:"aegis",    emoji:"✨", name:"Aegis",    hp:16, range:3, dmg:2, speed:1 }
     ];
 
-    // Level-up ability pool
     const ABILITY_POOL = [
       {
         key:"rapidfire",
@@ -780,7 +783,7 @@
     function nearest(list, from, maxRange=999){
       let best=null, bestD=9999;
       for(const e of list){
-        if(e.hp<=0) continue;
+        if(e.hp!==undefined && e.hp<=0) continue;
         const d = dist(e,from);
         if(d<=maxRange && d<bestD){
           best=e; bestD=d;
@@ -984,18 +987,50 @@
       g.dangerCells = g.dangerCells || [];
       g.shieldPulses = g.shieldPulses || [];
 
-      // If somehow empty, rebuild tower corridor
-      if(!g.enemies.length){
-        g.enemies = createCorridorTowers();
-      }
-
       // Derived stats per player
       const derivedStats = {};
       for(const p of playerList){
         derivedStats[p.id] = computeDerivedStats(p);
       }
 
-      // 1) Move players (slower overall because of higher TICK_MS)
+      // Check if towers / boss still exist
+      const anyBossOrTower = g.enemies.some(e=>e.boss || e.role==="tower");
+
+      // 0) Spawn mobile enemy waves from far right while towers are alive
+      if(anyBossOrTower){
+        const waveIndex = Math.floor((g.tick||0)/300);
+        const spawnChance = 0.08 + 0.04*(numPlayers-1);
+        if(Math.random() < spawnChance){
+          const laneRows = PATH_ROWS_MAIN;
+          const y = laneRows[randInt(0,laneRows.length-1)];
+          const x = GRID_W-2;
+
+          let pool = ["charger","scatter","rocket","laser"];
+          if(waveIndex>=2) pool.push("sniper");
+          if(waveIndex>=4) pool.push("storm");
+          if(waveIndex>=6) pool.push("voider");
+          const type = pool[Math.floor(Math.random()*pool.length)];
+
+          const hpBase = 18 + waveIndex*6 + numPlayers*4;
+          const enemy = {
+            id:`m_${Date.now()}_${Math.random().toString(16).slice(2,6)}`,
+            role:"mob",
+            mobile:true,
+            type,
+            x,y,
+            hp:Math.round(hpBase),
+            maxHp:Math.round(hpBase),
+            cd: randInt(5,9),
+            telegraph:0,
+            aim:null,
+            lane:"mid",
+            tier:waveIndex+1
+          };
+          g.enemies.push(enemy);
+        }
+      }
+
+      // 1) Move players (slow but readable)
       for(const p of playerList){
         const cls = CLASSES[p.classIndex ?? 0];
         const speed = (cls?.speed || 1);
@@ -1011,7 +1046,7 @@
         }
       }
 
-      // 2) Knights spawn periodically, but a bit slower
+      // 2) Knights spawn periodically
       if(g.tick % 18 === 0){
         for(const p of playerList){
           const ds = derivedStats[p.id];
@@ -1035,7 +1070,7 @@
         }
       }
 
-      // 3) Knights move & fight towers
+      // 3) Knights move & fight (hit towers or mobs in front)
       for(const k of g.knights){
         let target = null;
         for(const e of g.enemies){
@@ -1052,11 +1087,22 @@
       }
       g.knights = g.knights.filter(k=>k.hp>0);
 
-      // 4) Tower AI & telegraphed attacks (no movement)
+      // 4) Tower + Mob AI & telegraphed attacks
       const basePos = {x:BASE_COL, y:5};
+      const friendTargets = [];
+
+      for(const p of playerList){
+        friendTargets.push({x:p.x,y:p.y, hp:p.hp ?? p.maxHp ?? 1});
+      }
+      for(const k of g.knights){
+        friendTargets.push({x:k.x,y:k.y, hp:k.hp});
+      }
+      friendTargets.push(basePos);
+
       for(const e of g.enemies){
         if(e.hp<=0){ e.dead=true; continue; }
 
+        // attack cycle
         if(e.telegraph>0){
           e.telegraph--;
           if(e.telegraph===0 && e.aim){
@@ -1068,6 +1114,28 @@
           e.cd = (e.cd || 0) - 1;
           if(e.cd<=0){
             beginTelegraph(g,e,playerList,basePos);
+          }
+        }
+
+        // movement ONLY for mobile mobs
+        if(e.role==="mob" && e.telegraph===0){
+          const target = nearest(friendTargets, e);
+          if(target){
+            const dx = Math.sign(target.x - e.x);
+            const dy = Math.sign(target.y - e.y);
+            let moved=false;
+            if(dx!==0 && isWalkable(e.x+dx,e.y)){
+              e.x += dx; moved=true;
+            }
+            if(!moved && dy!==0 && isWalkable(e.x,e.y+dy)){
+              e.y += dy; moved=true;
+            }
+
+            // reached base lane
+            if(e.x<=BASE_COL && PATH_ROWS_MAIN.includes(e.y)){
+              g.base.hp -= 2;
+              e.dead = true;
+            }
           }
         }
       }
@@ -1118,7 +1186,7 @@
         const ds = derivedStats[p.id];
         const atkSpeedMult = ds.atkSpeedMult || 1;
         const dmgBonus = ds.dmgBonus || 0;
-        const attackRoll = 0.35 * atkSpeedMult; // slightly calmer
+        const attackRoll = 0.35 * atkSpeedMult; // calm, readable
         if(Math.random() < attackRoll){
           const enemy = nearest(g.enemies, p, cls.range || 3);
           if(enemy){
@@ -1149,7 +1217,7 @@
       g.enemies = g.enemies.filter(e=>!e.dead);
       g.projectiles = g.projectiles.filter(p=>!p.done);
 
-      // 7) XP & level up (near towers)
+      // 7) XP & level up (near any enemy/tower)
       for(const p of playerList){
         let live = latestPlayers[p.id] || {};
         if(typeof live.xp==="number") p.xp = live.xp;
@@ -1176,9 +1244,10 @@
       g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
 
       // 9) Victory / defeat check
+      const towersAlive = g.enemies.some(e=>e.boss || e.role==="tower");
       if(g.base.hp<=0){
         g.status = "defeat";
-      }else if(g.enemies.length===0){
+      }else if(!towersAlive && g.enemies.length===0){
         g.status = "victory";
       }
 
@@ -1212,7 +1281,7 @@
         log("Base destroyed! Defeat.");
       }else if(g.status==="victory"){
         stopHostLoop();
-        log("All tower lines destroyed! Victory.");
+        log("All towers and waves cleared! Victory.");
       }
     }
 
@@ -1301,7 +1370,7 @@
         cell.appendChild(hpBar);
       }
 
-      // Towers (enemies)
+      // Towers + mobs
       for(const e of (latestGame.enemies||[])){
         if(e.hp<=0) continue;
         if(e.x<0||e.x>=GRID_W||e.y<0||e.y>=GRID_H) continue;
@@ -1309,13 +1378,13 @@
         const ent = document.createElement("div");
         ent.className="entity";
         let emoji="👾";
-        if(e.type==="charger") emoji="🗼";
+        if(e.type==="charger") emoji = e.role==="tower" ? "🗼" : "🐗";
         else if(e.type==="scatter") emoji="💣";
         else if(e.type==="rocket") emoji="🚀";
         else if(e.type==="laser") emoji="🔺";
         else if(e.type==="sniper") emoji="🎯";
         else if(e.type==="storm") emoji="🌩️";
-        else if(e.type==="voider") emoji="🕳️";
+        else if(e.type==="voider") emoji = e.boss ? "👑" : "🕳️";
         ent.textContent = emoji;
         cell.appendChild(ent);
 
@@ -1502,4 +1571,5 @@
   </script>
 </body>
 </html>
+
 
