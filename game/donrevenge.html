@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -16,11 +16,12 @@
       --good:#22c55e;
       --border:#1f2937;
       --radius:14px;
-      --cellSize: min(5vh, 5vw);
+      /* Zoomed in more */
+      --cellSize: min(6vh, 6vw);
     }
     @media (max-width:768px){
       :root{
-        --cellSize: min(8vh, 8vw); /* bigger zoom on mobile */
+        --cellSize: min(7vh, 7vw);
       }
     }
 
@@ -212,6 +213,23 @@
       box-shadow:0 0 12px rgba(250,204,21,.8);
     }
 
+    /* Hero hit beams */
+    .hero-ray{
+      position:absolute;
+      inset:38%;
+      border-radius:999px;
+      background:linear-gradient(90deg,#38bdf8,#f9a8d4);
+      box-shadow:0 0 10px rgba(56,189,248,.9);
+      opacity:.95;
+    }
+    .hero-impact{
+      position:absolute;
+      inset:18%;
+      border-radius:50%;
+      background:radial-gradient(circle,#f97316 0,#facc15 40%,transparent 70%);
+      box-shadow:0 0 16px rgba(250,204,21,.95);
+    }
+
     .shield-ring{
       position:absolute;
       inset:15%;
@@ -230,11 +248,13 @@
       pointer-events:none;
     }
 
-    /* Very visible friendly shots */
-    .entity.proj-friendly{
-      font-size:calc(var(--cellSize)*0.7);
-      color:#facc15;
-      text-shadow:0 0 6px rgba(250,204,21,.9);
+    /* Enemy row-shot visual (rockets moving along row) */
+    .enemy-row-shot{
+      position:absolute;
+      inset:24%;
+      border-radius:50%;
+      background:radial-gradient(circle,#f97316 0,#b91c1c 60%,transparent 75%);
+      box-shadow:0 0 14px rgba(248,113,113,.9);
     }
 
     .hp-chip{
@@ -267,7 +287,7 @@
       cursor:pointer;
     }
 
-    /* Level up modal */
+    /* Modals */
     .modal-backdrop{
       position:fixed;
       inset:0;
@@ -358,12 +378,21 @@
     </div>
   </div>
 
-  <!-- Level-up modal -->
+  <!-- Ability modal (every 5 levels) -->
   <div id="levelModal" class="modal-backdrop" style="display:none;">
     <div class="modal">
       <h2>New Ability!</h2>
-      <p>Choose 1 auto-trigger ability for your hero.</p>
+      <p>Every 5 levels you gain a powerful ability. Choose 1.</p>
       <div id="modalOptions" class="modal-options"></div>
+    </div>
+  </div>
+
+  <!-- Upgrade modal (every level) -->
+  <div id="upgradeModal" class="modal-backdrop" style="display:none;">
+    <div class="modal">
+      <h2>Level Up!</h2>
+      <p>Choose one upgrade for you or your knights.</p>
+      <div id="upgradeOptions" class="modal-options"></div>
     </div>
   </div>
 
@@ -393,15 +422,16 @@
     document.getElementById("playerName").textContent = username;
 
     // --- WORLD vs VIEWPORT ---
-    const WORLD_W = 60;
-    const WORLD_H = 11;
-    const VIEW_W = 18;
-    const VIEW_H = 11;
+    const WORLD_W = 80;
+    const WORLD_H = 12;
+    const VIEW_W = 16;
+    const VIEW_H = 12;
 
     const BASE_COL = 1;
-    const PATH_ROWS_MAIN = [4,5,6];
+    const BASE_ROW = Math.floor(WORLD_H / 2);
+    const PATH_ROWS_MAIN = [BASE_ROW - 1, BASE_ROW, BASE_ROW + 1];
 
-    // Make full horizontal corridor
+    // World terrain
     const terrain = [];
     for(let y=0;y<WORLD_H;y++){
       terrain[y] = [];
@@ -451,7 +481,7 @@
     // Camera centered on player
     function getCamera(){
       const px = localPlayerState ? Math.round(localPlayerState.x) : BASE_COL;
-      const py = localPlayerState ? Math.round(localPlayerState.y) : Math.floor(WORLD_H/2);
+      const py = localPlayerState ? Math.round(localPlayerState.y) : BASE_ROW;
       let left = px - Math.floor(VIEW_W/2);
       let top  = py - Math.floor(VIEW_H/2);
       left = Math.max(0, Math.min(WORLD_W - VIEW_W, left));
@@ -459,20 +489,20 @@
       return {left, top};
     }
 
-    // Corridor towers + boss far down lane
+    // Towers & boss further apart
     function createCorridorTowers(){
       const towers = [];
       const lanes = PATH_ROWS_MAIN;
 
       const towerCols = [
-        {col:22, tier:1, type:"charger"},
-        {col:30, tier:2, type:"scatter"},
-        {col:38, tier:3, type:"rocket"},
-        {col:46, tier:4, type:"laser"},
-        {col:54, tier:5, type:"storm"}
+        {col:18, tier:1, type:"charger"},
+        {col:32, tier:2, type:"scatter"},
+        {col:46, tier:3, type:"rocket"},
+        {col:60, tier:4, type:"laser"},
+        {col:74, tier:5, type:"storm"}
       ];
       function pushTower(col,row,tier,type){
-        const baseHP = 45 + tier*25;
+        const baseHP = 50 + tier*30;
         const cdBase = Math.max(4, 9 - tier);
         towers.push({
           id:`tw_${col}_${row}`,
@@ -497,7 +527,7 @@
       });
       // Final boss
       const bossRow = PATH_ROWS_MAIN[Math.floor(PATH_ROWS_MAIN.length/2)];
-      const bossHP = 400;
+      const bossHP = 450;
       towers.push({
         id:"boss_main",
         role:"tower",
@@ -527,7 +557,7 @@
     let latestPlayers = {};
     let localPlayerState = null;
 
-    // --- CLASSES / ABILITIES ---
+    // --- CLASSES / ABILITIES / UPGRADES ---
     const CLASSES = [
       { key:"vanguard", emoji:"🛡️", name:"Vanguard", hp:18, range:3, dmg:3, speed:1 },
       { key:"ranger",   emoji:"🏹", name:"Ranger",   hp:14, range:5, dmg:4, speed:1 },
@@ -552,7 +582,7 @@
       {
         key:"barrierPulse",
         name:"Barrier Pulse",
-        desc:"Periodic shield pulses reduce nearby damage.",
+        desc:"Shield pulses reduce nearby damage.",
         kind:"auto",
         effect:{ shieldPulse:true }
       },
@@ -577,6 +607,18 @@
         kind:"auto",
         effect:{ nova:true }
       }
+    ];
+
+    // Generic per-level stat upgrade pool
+    const UPGRADE_POOL = [
+      { key:"hp",        name:"+4 Max HP",          desc:"Increase your maximum HP by 4.",           hp:4 },
+      { key:"dmg",       name:"+1 Damage",          desc:"Increase your basic attack damage by 1.",  dmg:1 },
+      { key:"speed",     name:"Move Speed +1",      desc:"Move more tiles each tick.",               speed:1 },
+      { key:"fireRate",  name:"Faster Fire",        desc:"+15% attack speed.",                       fireRateMult:1.15 },
+      { key:"kHp",       name:"Knight HP+",         desc:"Knights gain +20% HP.",                    knightHpMult:1.2 },
+      { key:"kDmg",      name:"Knight Damage+",     desc:"Knights gain +20% damage.",                knightDmgMult:1.2 },
+      { key:"kSpawn",    name:"Knight Spawn+",      desc:"Your knights spawn more often.",           knightSpawnLevel:1 },
+      { key:"regenUp",   name:"Regen+",             desc:"Increase your passive health regen.",      regenLevel:1 }
     ];
 
     // --- INITIAL JOIN / HOST CLAIM ---
@@ -616,7 +658,7 @@
       if(!pSnap.exists()){
         const classIdx = Math.floor(Math.random()*CLASSES.length);
         const cls = CLASSES[classIdx];
-        const spawn = { x:BASE_COL, y:5 };
+        const spawn = { x:BASE_COL, y:BASE_ROW };
         await setDoc(playerRef,{
           id:username,
           classIndex:classIdx,
@@ -629,6 +671,14 @@
           knightLevel:1,
           abilities:[],
           pendingChoice:null,
+          pendingUpgrade:null,
+          bonusDmg:0,
+          fireRateMult:1,
+          speedLevel:0,
+          knightHpLevel:0,
+          knightDmgLevel:0,
+          knightSpawnLevel:0,
+          regenLevel:0,
           lastInputAt:Date.now(),
           lastUpdated:serverTimestamp()
         });
@@ -662,6 +712,7 @@
           if(d.id===username) localPlayerState = d.data();
         });
         renderBoard();
+        checkUpgradeModal();
         checkLevelUpModal();
       });
     }
@@ -670,6 +721,7 @@
     const TICK_MS = 380; // slower for clarity
     const SHIELD_PERIOD = 24;
     const NOVA_PERIOD = 30;
+    const BASE_KNIGHT_PERIOD = 20;
 
     function startHostLoop(){
       if(hostTickHandle) clearInterval(hostTickHandle);
@@ -707,8 +759,11 @@
         knightHpMult:1,
         knightDmgMult:1,
         regen:false,
+        regenRate:0,
         shieldPulse:false,
-        nova:false
+        nova:false,
+        moveSteps:1,
+        knightSpawnLevel: p.knightSpawnLevel || 0
       };
       const abilities = p.abilities || [];
       for(const ab of abilities){
@@ -719,10 +774,25 @@
           out.knightHpMult *= 1.4;
           out.knightDmgMult *= 1.4;
         }
-        if(eff.regen) out.regen = true;
+        if(eff.regen){
+          out.regen = true;
+          out.regenRate += 0.05;
+        }
         if(eff.shieldPulse) out.shieldPulse = true;
         if(eff.nova) out.nova = true;
       }
+
+      // Persistent upgrades
+      if(typeof p.bonusDmg === "number") out.dmgBonus += p.bonusDmg;
+      if(typeof p.fireRateMult === "number" && p.fireRateMult>0) out.atkSpeedMult *= p.fireRateMult;
+      if(typeof p.speedLevel === "number" && p.speedLevel>0) out.moveSteps += p.speedLevel;
+      if(typeof p.knightHpLevel === "number" && p.knightHpLevel>0) out.knightHpMult *= (1 + 0.2*p.knightHpLevel);
+      if(typeof p.knightDmgLevel === "number" && p.knightDmgLevel>0) out.knightDmgMult *= (1 + 0.2*p.knightDmgLevel);
+      if(typeof p.regenLevel === "number" && p.regenLevel>0){
+        out.regen = true;
+        out.regenRate += 0.03 * p.regenLevel;
+      }
+
       return out;
     }
 
@@ -748,6 +818,16 @@
       return out;
     }
 
+    function pickRandomUpgrades(n){
+      const copy = [...UPGRADE_POOL];
+      const out=[];
+      while(out.length<n && copy.length){
+        const idx = Math.floor(Math.random()*copy.length);
+        out.push(copy.splice(idx,1)[0]);
+      }
+      return out;
+    }
+
     function isCellShielded(cell, shieldPulses){
       if(!shieldPulses || !shieldPulses.length) return false;
       return shieldPulses.some(sp=>{
@@ -757,7 +837,7 @@
       });
     }
 
-    // Per-enemy attack range (no global map snipers)
+    // Attack ranges per enemy (no whole-map snipers)
     function getEnemyRange(e){
       let baseRange = 6;
       switch(e.type){
@@ -798,7 +878,6 @@
         e.telegraph = 2;
 
       }else if(kindSelect==="scatter"){
-        // Always local area around them
         for(let i=0;i<5;i++){
           const rx = e.x + randInt(-2,2);
           const ry = e.y + randInt(-1,1);
@@ -885,6 +964,7 @@
       if(!cells.length) return;
 
       const damagePlayers = (cell,dmg)=>{
+        // Players
         for(const id in latestPlayers){
           const p = latestPlayers[id];
           const px = Math.round(p.x);
@@ -901,6 +981,7 @@
             p.hp = hpVal;
           }
         }
+        // Knights
         for(const k of g.knights){
           if(k.x===cell.x && k.y===cell.y){
             let finalD = dmg;
@@ -910,6 +991,7 @@
             k.hp -= finalD;
           }
         }
+        // Base
         if(cell.x<=BASE_COL && PATH_ROWS_MAIN.includes(cell.y)){
           let finalD = dmg;
           if(isCellShielded({x:BASE_COL,y:cell.y}, g.shieldPulses)){
@@ -954,6 +1036,22 @@
           g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:3});
         }
       }
+    }
+
+    // Simple line between hero and target for beam effect
+    function lineBetween(a,b){
+      const cells = [];
+      let x = a.x;
+      let y = a.y;
+      const dx = Math.sign(b.x - a.x);
+      const dy = Math.sign(b.y - a.y);
+      const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      for(let i=0;i<steps;i++){
+        x += dx;
+        y += dy;
+        cells.push({x,y});
+      }
+      return cells;
     }
 
     async function hostTick(){
@@ -1013,11 +1111,13 @@
         }
       }
 
-      // Players move
+      // Players move (speed upgrades affect this)
       for(const p of playerList){
+        const ds = derivedStats[p.id] || {};
         const cls = CLASSES[p.classIndex ?? 0];
-        const speed = (cls?.speed || 1);
-        for(let step=0;step<speed;step++){
+        const baseSpeed = cls?.speed || 1;
+        const steps = Math.max(1, Math.min(4, Math.round(baseSpeed + (ds.moveSteps - 1))));
+        for(let step=0;step<steps;step++){
           const dx = Math.sign((p.targetX??p.x)-p.x);
           const dy = Math.sign((p.targetY??p.y)-p.y);
           if(dx===0 && dy===0) break;
@@ -1029,10 +1129,12 @@
         }
       }
 
-      // Knights
-      if(g.tick % 18 === 0){
-        for(const p of playerList){
-          const ds = derivedStats[p.id];
+      // Knights (per-player spawn rate)
+      for(const p of playerList){
+        const ds = derivedStats[p.id] || {};
+        const spawnLevel = ds.knightSpawnLevel || 0;
+        const period = Math.max(8, BASE_KNIGHT_PERIOD - spawnLevel*2);
+        if(g.tick % period === 0){
           const spawnY = p.y;
           const kx = BASE_COL;
           const ky = spawnY;
@@ -1053,6 +1155,7 @@
         }
       }
 
+      // Knight AI
       for(const k of g.knights){
         let target = null;
         for(const e of g.enemies){
@@ -1070,7 +1173,7 @@
       g.knights = g.knights.filter(k=>k.hp>0);
 
       // Enemy AI
-      const basePos = {x:BASE_COL, y:5};
+      const basePos = {x:BASE_COL, y:BASE_ROW};
       const friendTargets = [];
       for(const p of playerList){
         friendTargets.push({x:p.x,y:p.y, hp:p.hp ?? p.maxHp ?? 1});
@@ -1119,7 +1222,7 @@
       }
       g.enemies = g.enemies.filter(e=>!e.dead);
 
-      // Ability autos
+      // Ability autos (shield pulses / nova)
       for(const p of playerList){
         const ds = derivedStats[p.id];
         if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
@@ -1157,11 +1260,11 @@
       }
       g.enemies = g.enemies.filter(e=>!e.dead);
 
-      // Player auto-fire & projectiles
+      // HERO AUTO-FIRE — hitscan beam (no bullets)
       for(const p of playerList){
         const cls = CLASSES[p.classIndex ?? 0];
         if(!cls) continue;
-        const ds = derivedStats[p.id];
+        const ds = derivedStats[p.id] || {};
         const atkSpeedMult = ds.atkSpeedMult || 1;
         const dmgBonus = ds.dmgBonus || 0;
         const attackRoll = 0.35 * atkSpeedMult;
@@ -1169,39 +1272,39 @@
           const enemy = nearest(g.enemies, p, cls.range || 3);
           if(enemy){
             const dmg = (cls.dmg||2) + dmgBonus;
-            g.projectiles.push({
-              id:`proj_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
-              x:p.x, y:p.y,
-              tx:enemy.x, ty:enemy.y,
-              owner:p.id,
-              dmg,
-              t:0, tMax:4
+            enemy.hp -= dmg;
+            if(enemy.hp<=0) enemy.dead=true;
+
+            const rayCells = lineBetween(p, enemy);
+            for(const c of rayCells){
+              g.dangerCells.push({
+                x:c.x,
+                y:c.y,
+                type:"heroRay",
+                ttl:1
+              });
+            }
+            g.dangerCells.push({
+              x:enemy.x,
+              y:enemy.y,
+              type:"heroImpact",
+              ttl:2
             });
           }
         }
       }
 
-      for(const proj of g.projectiles){
-        proj.t++;
-        if(proj.t>=proj.tMax){
-          const hit = g.enemies.find(e=>e.x===proj.tx && e.y===proj.ty && !e.dead);
-          if(hit){
-            hit.hp-=proj.dmg;
-            if(hit.hp<=0) hit.dead=true;
-          }
-          proj.done=true;
-        }
-      }
       g.enemies = g.enemies.filter(e=>!e.dead);
-      g.projectiles = g.projectiles.filter(p=>!p.done);
 
-      // XP / Level
+      // XP / Level (per-level upgrade + ability every 5)
       for(const p of playerList){
-        let live = latestPlayers[p.id] || {};
+        const live = latestPlayers[p.id] || {};
         if(typeof live.xp==="number") p.xp = live.xp;
         if(typeof live.level==="number") p.level = live.level;
         if(typeof live.nextLevelXp==="number") p.nextLevelXp = live.nextLevelXp;
         if(live.abilities) p.abilities = live.abilities;
+        if(live.pendingChoice) p.pendingChoice = live.pendingChoice;
+        if(live.pendingUpgrade) p.pendingUpgrade = live.pendingUpgrade;
 
         const anyNear = g.enemies.some(e=>dist(e,p)<=4);
         if(anyNear) p.xp = (p.xp||0)+0.3;
@@ -1210,6 +1313,12 @@
           p.xp -= p.nextLevelXp;
           p.level = (p.level||1)+1;
           p.nextLevelXp = Math.round((p.nextLevelXp||10)*1.35);
+
+          // Per-level stat upgrade choice
+          const upOptions = pickRandomUpgrades(3);
+          p.pendingUpgrade = { options:upOptions, pickedIndex:null };
+
+          // Ability every 5 levels
           if(p.level % 5 === 0){
             const options = pickRandomAbilities(3);
             p.pendingChoice = { options, pickedIndex:null };
@@ -1231,16 +1340,16 @@
       g.tick = (g.tick||0)+1;
       await setDoc(gameRef,g,{merge:true});
 
+      // Regen + HP sync back to player docs
       for(const p of playerList){
         const baseLive = latestPlayers[p.id] || {};
         const liveMaxHp = baseLive.maxHp ?? p.maxHp ?? baseLive.hp ?? p.hp ?? 10;
         let hp = baseLive.hp ?? p.hp ?? liveMaxHp;
         let maxHp = liveMaxHp;
 
-        if(baseLive.abilities){
-          if(baseLive.abilities.some(a=>a.effect?.regen)){
-            hp = Math.min(maxHp, hp+0.05);
-          }
+        const dsPlayer = derivedStats[p.id] || {};
+        if(dsPlayer.regen){
+          hp = Math.min(maxHp, hp + (dsPlayer.regenRate || 0.05));
         }
         hp = Math.min(maxHp, hp);
 
@@ -1250,7 +1359,8 @@
           level:p.level||1,
           xp:p.xp||0,
           nextLevelXp:p.nextLevelXp||10,
-          pendingChoice:p.pendingChoice||baseLive.pendingChoice||null,
+          pendingChoice:p.pendingChoice || baseLive.pendingChoice || null,
+          pendingUpgrade:p.pendingUpgrade || baseLive.pendingUpgrade || null,
           lastUpdated:serverTimestamp()
         },{merge:true});
       }
@@ -1315,6 +1425,12 @@
         }else if(dc.type==="laser"){
           overlay = document.createElement("div");
           overlay.className="laser-line";
+        }else if(dc.type==="heroRay"){
+          overlay = document.createElement("div");
+          overlay.className="hero-ray";
+        }else if(dc.type==="heroImpact"){
+          overlay = document.createElement("div");
+          overlay.className="hero-impact";
         }
         if(overlay) cell.appendChild(overlay);
       }
@@ -1330,7 +1446,7 @@
       }
 
       // Base icons near left
-      for(let y of PATH_ROWS_MAIN){
+      for(const y of PATH_ROWS_MAIN){
         for(let x=0;x<=BASE_COL;x++){
           const vx = x - left;
           const vy = y - top;
@@ -1342,6 +1458,9 @@
           cell.appendChild(ent);
         }
       }
+
+      // Enemies (draw row-shot rockets moving during telegraph)
+      const enemies = latestGame.enemies || [];
 
       // Knights
       for(const k of (latestGame.knights||[])){
@@ -1368,7 +1487,7 @@
       }
 
       // Enemies (towers + mobs)
-      for(const e of (latestGame.enemies||[])){
+      for(const e of enemies){
         if(e.hp<=0) continue;
         const vx = Math.round(e.x - left);
         const vy = Math.round(e.y - top);
@@ -1399,21 +1518,26 @@
         cell.appendChild(hpBar);
       }
 
-      // Projectiles (friendly)
-      for(const proj of (latestGame.projectiles||[])){
-        const tMax = proj.tMax || 1;
-        const tNow = Math.min(proj.t || 0, tMax);
-        const prog = tNow / tMax;
-        const wx = Math.round(proj.x + (proj.tx - proj.x)*prog);
-        const wy = Math.round(proj.y + (proj.ty - proj.y)*prog);
-        const vx = wx - left;
-        const vy = wy - top;
+      // Rocket row-shots visually moving along their telegraphed row
+      for(const e of enemies){
+        if(!e.aim || !e.telegraph || e.telegraph<=0) continue;
+        if(e.aim.kind !== "rocket") continue;
+        const cellsPath = e.aim.cells || [];
+        if(!cellsPath.length) continue;
+        const initialTele = 3; // matches rocket telegraph duration
+        const teleLeft = e.telegraph;
+        const progress = Math.max(0, Math.min(1, (initialTele - teleLeft) / initialTele));
+        let idx = Math.floor(progress * cellsPath.length);
+        if(idx<0) idx=0;
+        if(idx>=cellsPath.length) idx=cellsPath.length-1;
+        const cWorld = cellsPath[idx];
+        const vx = cWorld.x - left;
+        const vy = cWorld.y - top;
         if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
         const cell = cells[vy][vx];
-        const ent = document.createElement("div");
-        ent.className="entity proj-friendly";
-        ent.textContent = "●";
-        cell.appendChild(ent);
+        const projDiv = document.createElement("div");
+        projDiv.className = "enemy-row-shot";
+        cell.appendChild(projDiv);
       }
 
       // Players
@@ -1525,7 +1649,7 @@
       }
     }
 
-    // --- LEVEL-UP MODAL ---
+    // --- LEVEL-UP / UPGRADE MODALS ---
     function checkLevelUpModal(){
       if(!localPlayerState) return;
       const pending = localPlayerState.pendingChoice;
@@ -1541,6 +1665,27 @@
           btn.innerHTML = `<div class="option-title">${opt.name}</div><div class="option-desc">${opt.desc}</div>`;
           btn.onclick = ()=> chooseAbility(idx, opt);
           optionsBox.appendChild(btn);
+        });
+      }else{
+        modal.style.display="none";
+      }
+    }
+
+    function checkUpgradeModal(){
+      if(!localPlayerState) return;
+      const pending = localPlayerState.pendingUpgrade;
+      const modal = document.getElementById("upgradeModal");
+      const box = document.getElementById("upgradeOptions");
+      if(pending && pending.options && pending.options.length && (pending.pickedIndex==null)){
+        modal.style.display="flex";
+        box.innerHTML = "";
+        pending.options.forEach((opt,idx)=>{
+          const btn = document.createElement("button");
+          btn.type="button";
+          btn.className="option-btn";
+          btn.innerHTML = `<div class="option-title">${opt.name}</div><div class="option-desc">${opt.desc}</div>`;
+          btn.onclick = ()=> chooseUpgrade(idx,opt);
+          box.appendChild(btn);
         });
       }else{
         modal.style.display="none";
@@ -1567,6 +1712,56 @@
       }
     }
 
+    async function chooseUpgrade(index, opt){
+      try{
+        const pSnap = await getDoc(playerRef);
+        if(!pSnap.exists()) return;
+        const p = pSnap.data();
+        const updates = {
+          pendingUpgrade:{
+            options:p.pendingUpgrade?.options || [],
+            pickedIndex:index
+          }
+        };
+
+        // Apply stat changes
+        if(opt.hp){
+          const cls = CLASSES[p.classIndex ?? 0] || {hp:10};
+          const currentMax = p.maxHp ?? cls.hp;
+          const newMax = currentMax + opt.hp;
+          const currentHp = p.hp ?? currentMax;
+          updates.maxHp = newMax;
+          updates.hp = Math.min(newMax, currentHp + opt.hp);
+        }
+        if(opt.dmg){
+          updates.bonusDmg = (p.bonusDmg || 0) + opt.dmg;
+        }
+        if(opt.speed){
+          updates.speedLevel = (p.speedLevel || 0) + opt.speed;
+        }
+        if(opt.fireRateMult){
+          updates.fireRateMult = (p.fireRateMult || 1) * opt.fireRateMult;
+        }
+        if(opt.knightHpMult){
+          updates.knightHpLevel = (p.knightHpLevel || 0) + 1;
+        }
+        if(opt.knightDmgMult){
+          updates.knightDmgLevel = (p.knightDmgLevel || 0) + 1;
+        }
+        if(opt.knightSpawnLevel){
+          updates.knightSpawnLevel = (p.knightSpawnLevel || 0) + opt.knightSpawnLevel;
+        }
+        if(opt.regenLevel){
+          updates.regenLevel = (p.regenLevel || 0) + opt.regenLevel;
+        }
+
+        await setDoc(playerRef, updates, {merge:true});
+        log(`Upgrade chosen: ${opt.name}`);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
     // --- FULLSCREEN ---
     document.getElementById("fullscreenBtn").addEventListener("click",()=>{
       const el = document.documentElement;
@@ -1585,6 +1780,7 @@
   </script>
 </body>
 </html>
+
 
 
 
