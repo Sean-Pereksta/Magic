@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Base Push — Frontline War</title>
+  <title>Base Push — Frontline War (3 Lanes)</title>
   <meta name="viewport"
         content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <style>
@@ -350,7 +350,7 @@
     });
   }
 
-  // Hitscan beams
+  // Hitscan beams & lightning arcs
   var beams = [];
   function spawnBeam(x1,y1,x2,y2,color){
     beams.push({
@@ -363,9 +363,17 @@
 
   // ---------- World & camera ----------
   var world = {
-    width: 5200,   // extended for more turret rows
-    height: 900
+    width: 5200,
+    height: 1500   // taller map
   };
+
+  // Three lanes (top / mid / bottom) marching toward the right / boss
+  var LANES = [
+    {name:'top', y: world.height*0.25},
+    {name:'mid', y: world.height*0.5},
+    {name:'bot', y: world.height*0.75}
+  ];
+
   var cameraX = 0;
   var cameraY = 0;
 
@@ -397,13 +405,15 @@
       shotgun:false,
       sniper:false,
       missile:false,
-      shockwave:false
+      shockwave:false,
+      chain:false
     },
     atkTimers:{
       shotgun:0,
       sniper:0,
       missile:0,
-      shockwave:0
+      shockwave:0,
+      chain:0
     },
     mods:{
       burn:false,
@@ -433,7 +443,7 @@
   var troopConfig = {
     spawnInterval: 5,
     spawnTimer: 2.5,
-    count: 2,
+    count: 1,        // per lane
     maxHP: 80,
     hp: 80,
     dmg: 10,
@@ -571,9 +581,11 @@
       var baseRange = 360 + r.tier*60;
       var cd = 1.0 - r.tier*0.12;
       if(cd<0.4) cd=0.4;
+
+      // place per row on mid and slightly offset lanes so all lanes eventually hit them
       enemyTurrets.push({
         x:r.x,
-        y:world.height*0.4,
+        y:LANES[0].y,
         size:22,
         maxHP:baseHP,
         hp:baseHP,
@@ -592,7 +604,26 @@
       });
       enemyTurrets.push({
         x:r.x,
-        y:world.height*0.6,
+        y:LANES[1].y,
+        size:22,
+        maxHP:baseHP,
+        hp:baseHP,
+        fireCooldown:cd,
+        fireTimer:0,
+        dmg:baseDmg,
+        range:baseRange,
+        alive:true,
+        side:'enemy',
+        tier:r.tier,
+        pattern:r.pattern,
+        burstShotsRemaining:0,
+        burstGap:0,
+        lastTargetX:0,
+        lastTargetY:0
+      });
+      enemyTurrets.push({
+        x:r.x,
+        y:LANES[2].y,
         size:22,
         maxHP:baseHP,
         hp:baseHP,
@@ -649,10 +680,12 @@
     player.unlocked.sniper=false;
     player.unlocked.missile=false;
     player.unlocked.shockwave=false;
+    player.unlocked.chain=false;
     player.atkTimers.shotgun=0;
     player.atkTimers.sniper=0;
     player.atkTimers.missile=0;
     player.atkTimers.shockwave=0;
+    player.atkTimers.chain=0;
     player.mods.burn=false;
     player.mods.freeze=false;
 
@@ -672,7 +705,7 @@
 
     troopConfig.spawnInterval=5;
     troopConfig.spawnTimer=2.5;
-    troopConfig.count=2;
+    troopConfig.count=1;
     troopConfig.maxHP=80;
     troopConfig.dmg=10;
     troopConfig.range=220;
@@ -761,9 +794,9 @@
     },
     {
       id:'troop_count',
-      title:'Troops: +1 per wave',
-      desc:'One extra trooper each spawn.',
-      apply:function(){ troopConfig.count = Math.min(5, troopConfig.count+1); }
+      title:'Troops: +1 per lane',
+      desc:'One extra trooper in each lane.',
+      apply:function(){ troopConfig.count = Math.min(3, troopConfig.count+1); }
     }
   ];
 
@@ -771,22 +804,27 @@
     {
       id:'shotgun',
       title:'Shotgun Blast',
-      desc:'Periodic cone of pellets.',
+      desc:'Periodic cone of pellets.'
     },
     {
       id:'sniper',
       title:'Sniper Beam',
-      desc:'Periodically snipes a far enemy.',
+      desc:'Periodically snipes a far enemy.'
     },
     {
       id:'missile',
       title:'Mini Missiles',
-      desc:'Homing mini-missiles on random foes.',
+      desc:'Homing mini-missiles on random foes.'
     },
     {
       id:'shockwave',
       title:'Shockwave',
-      desc:'Periodic radial burst around you.',
+      desc:'Periodic radial burst around you.'
+    },
+    {
+      id:'chain',
+      title:'Chain Lightning',
+      desc:'Lightning jumps between enemies.'
     }
   ];
 
@@ -946,22 +984,28 @@
 
   function spawnTroopsFromBase(){
     if(!base.alive) return;
-    for(var i=0;i<troopConfig.count;i++){
-      var tx = base.x+base.w+10+Math.random()*20;
-      var ty = base.y+base.h*0.3 + Math.random()*base.h*0.4;
-      alliedTroops.push({
-        x:tx,
-        y:ty,
-        size:18,
-        maxHP:troopConfig.maxHP,
-        hp:troopConfig.maxHP,
-        speed:troopConfig.speed,
-        dmg:troopConfig.dmg,
-        range:troopConfig.range,
-        fireCooldown:troopConfig.fireCooldown,
-        fireTimer:Math.random()*troopConfig.fireCooldown,
-        alive:true
-      });
+    // spawn troops in each lane marching toward right
+    for(var l=0;l<LANES.length;l++){
+      for(var i=0;i<troopConfig.count;i++){
+        var tx = base.x+base.w+10+Math.random()*25;
+        var laneY = LANES[l].y + randRange(-40,40);
+        var ty = clamp(laneY,80,world.height-80);
+        alliedTroops.push({
+          x:tx,
+          y:ty,
+          size:18,
+          maxHP:troopConfig.maxHP,
+          hp:troopConfig.maxHP,
+          speed:troopConfig.speed,
+          dmg:troopConfig.dmg,
+          range:troopConfig.range,
+          fireCooldown:troopConfig.fireCooldown,
+          fireTimer:Math.random()*troopConfig.fireCooldown,
+          alive:true,
+          laneIndex:l,
+          laneY:LANES[l].y
+        });
+      }
     }
   }
 
@@ -1072,7 +1116,6 @@
   // Hero on-hit elemental effects
   function applyHeroOnHitEffects(target, baseDamage){
     if(!target || !target.alive) return;
-    // apply to enemies / boss; turrets stay mechanical
     if(player.mods.burn){
       target.burnTimer = 3;
       target.burnDps = (target.burnDps || 0) + (8 + player.level*0.6);
@@ -1098,6 +1141,62 @@
     if(ent.freezeTimer && ent.freezeTimer>0){
       ent.freezeTimer -= dt;
       if(ent.freezeTimer<0) ent.freezeTimer=0;
+    }
+  }
+
+  // Chain Lightning: zaps enemies and jumps between them
+  function castChainLightning(){
+    var cands = [];
+    for(var i=0;i<enemies.length;i++){
+      if(enemies[i].alive) cands.push(enemies[i]);
+    }
+    if(boss && boss.alive) cands.push(boss);
+    if(!cands.length) return;
+
+    // start on nearest to player
+    var start=null, best=Infinity;
+    for(var j=0;j<cands.length;j++){
+      var c=cands[j];
+      var d=distanceSq(player.x,player.y,c.x,c.y);
+      if(d<best){
+        best=d; start=c;
+      }
+    }
+    if(!start) return;
+
+    var used=[];
+    var prevX = player.x;
+    var prevY = player.y;
+    var current = start;
+    var dmg = player.dmg*2.2;
+    var jumps = 4;
+    var jumpRadiusSq = 260*260;
+
+    for(var step=0; step<jumps && current; step++){
+      spawnBeam(prevX,prevY,current.x,current.y,'#a855f7');
+      hitEntity(current,dmg,'#a855f7');
+      if(current.kind && current.hp<=0){
+        onEnemyDeath(current);
+      }
+      applyHeroOnHitEffects(current,dmg);
+
+      used.push(current);
+      prevX = current.x;
+      prevY = current.y;
+
+      var next=null, best2=Infinity;
+      for(var k=0;k<cands.length;k++){
+        var cand=cands[k];
+        if(!cand.alive) continue;
+        if(used.indexOf(cand)>=0) continue;
+        var dd=distanceSq(current.x,current.y,cand.x,cand.y);
+        if(dd<jumpRadiusSq && dd<best2){
+          best2=dd;
+          next=cand;
+        }
+      }
+      dmg *= 0.6;
+      current = next;
     }
   }
 
@@ -1151,7 +1250,7 @@
     }
   }
 
-  // ---------- Update helpers ----------
+  // ---------- Target helper ----------
   function nearestFriendlyTarget(x,y){
     var target=null;
     var bestD=Infinity;
@@ -1380,7 +1479,7 @@
     timeElapsed += dt;
     enemySpawnTimer += dt;
 
-    // spawn enemies (slower, stronger over time)
+    // spawn enemies (three lanes)
     var spawnInterval = Math.max(0.9, 2.4 - timeElapsed*0.01);
     while(enemySpawnTimer >= spawnInterval){
       enemySpawnTimer -= spawnInterval;
@@ -1484,6 +1583,13 @@
           player.atkTimers.shockwave=0;
         }
       }
+      if(player.unlocked.chain){
+        player.atkTimers.chain += dt;
+        if(player.atkTimers.chain>=8){
+          castChainLightning();
+          player.atkTimers.chain=0;
+        }
+      }
     }else{
       player.respawnTimer -= dt;
       if(player.respawnTimer<=0){
@@ -1525,12 +1631,14 @@
       }
     }
 
-    // allied troops
+    // allied troops (3-lane marching)
     for(var a=0;a<alliedTroops.length;a++){
       var tr = alliedTroops[a];
       if(!tr.alive) continue;
       var target=null;
       var bestD=Infinity;
+
+      // find nearest enemy / turret / boss
       for(var eIdx=0;eIdx<enemies.length;eIdx++){
         var e=enemies[eIdx];
         if(!e.alive) continue;
@@ -1557,10 +1665,13 @@
         }
       }
 
-      if(target){
+      var engageRadius = tr.range*tr.range*1.1;
+
+      if(target && bestD <= engageRadius){
+        // engage & move toward target
         var dx3=target.x-tr.x;
         var dy3=target.y-tr.y;
-        var dist3=Math.sqrt(dx3*dx3+dy3*dy3);
+        var dist3=Math.sqrt(dx3*dx3+dy3*dy3) || 1;
         if(dist3>40){
           tr.x += dx3/dist3 * tr.speed*dt;
           tr.y += dy3/dist3 * tr.speed*dt;
@@ -1571,7 +1682,15 @@
           tr.fireTimer = tr.fireCooldown;
         }
       }else{
-        tr.x += tr.speed*dt*0.4;
+        // lane march towards boss along assigned lane
+        var targetLaneY = (typeof tr.laneY === 'number') ? tr.laneY : world.height/2;
+        tr.x += tr.speed*dt;
+        var dyLane = targetLaneY - tr.y;
+        if(Math.abs(dyLane) > 2){
+          var dir = dyLane>0 ? 1 : -1;
+          tr.y += dir * tr.speed*0.4*dt;
+        }
+        tr.y = clamp(tr.y,40,world.height-40);
       }
     }
 
@@ -1742,10 +1861,10 @@
           }
         }
         for(var atIdx=0;atIdx<alliedTroops.length;atIdx++){
-          var tr=alliedTroops[atIdx];
-          if(!tr.alive) continue;
-          if(distanceSq(tr.x,tr.y,ms.tx,ms.ty)<=reSq){
-            hitEntity(tr,ms.dmg);
+          var tr2=alliedTroops[atIdx];
+          if(!tr2.alive) continue;
+          if(distanceSq(tr2.x,tr2.y,ms.tx,ms.ty)<=reSq){
+            hitEntity(tr2,ms.dmg);
           }
         }
       }else{
@@ -1878,12 +1997,12 @@
         }
         if(!hit2){
           for(var at2=0;at2<alliedTroops.length;at2++){
-            var tr2=alliedTroops[at2];
-            if(!tr2.alive) continue;
-            var dat=distanceSq(bl.x,bl.y,tr2.x,tr2.y);
-            var rat=bl.radius + tr2.size;
+            var tro=alliedTroops[at2];
+            if(!tro.alive) continue;
+            var dat=distanceSq(bl.x,bl.y,tro.x,tro.y);
+            var rat=bl.radius + tro.size;
             if(dat<=rat*rat){
-              hitEntity(tr2,bl.dmg);
+              hitEntity(tro,bl.dmg);
               hit2=true;
               break;
             }
@@ -1994,8 +2113,12 @@
     }
     if(aliveCount>55) return;
 
-    var y = randRange(80, world.height-80);
+    // pick a lane: 0=top,1=mid,2=bot
+    var laneIndex = Math.floor(Math.random()*LANES.length);
+    var lane = LANES[laneIndex];
+
     var x = randRange(world.width-400, world.width-120);
+    var y = clamp(lane.y + randRange(-80,80), 80, world.height-80);
 
     var t;
     if(timeElapsed<45){
@@ -2326,15 +2449,22 @@
       }
     }
 
-    // hitscan beams
+    // hitscan beams & chain arcs
     for(var bi=0;bi<beams.length;bi++){
       var bm=beams[bi];
       var s1 = worldToScreen(bm.x1,bm.y1);
       var s2 = worldToScreen(bm.x2,bm.y2);
       var alpha = bm.life/0.08;
       ctx.save();
-      ctx.strokeStyle='rgba(248,250,252,'+alpha+')';
-      ctx.lineWidth=2;
+      var col = bm.color || '#e5e7eb';
+      // parse rgb from color string if needed? keep simple: treat as full alpha
+      if(col.indexOf('#')===0){
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = alpha;
+      }else{
+        ctx.strokeStyle = col;
+      }
+      ctx.lineWidth = (bm.color==='#a855f7'?3:2);
       ctx.beginPath();
       ctx.moveTo(s1.x,s1.y);
       ctx.lineTo(s2.x,s2.y);
@@ -2466,6 +2596,7 @@
 </script>
 </body>
 </html>
+
 
 
 
