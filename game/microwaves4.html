@@ -176,11 +176,59 @@
       transform:translateX(-50%) translateY(-4px);
     }
 
+    /* Base shop */
+    #shopPanel{
+      position:absolute;
+      left:8px;
+      top:54px;
+      background:rgba(15,23,42,.92);
+      border-radius:10px;
+      padding:8px;
+      border:1px solid #1f2937;
+      box-shadow:0 12px 24px rgba(0,0,0,.4);
+      font-size:11px;
+      min-width:180px;
+      pointer-events:auto;
+      display:none;
+      z-index:12;
+    }
+    .shopTitle{
+      font-weight:600;
+      margin-bottom:4px;
+    }
+    .shopItems{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .shopItem{
+      width:100%;
+      text-align:left;
+      padding:4px 6px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+      background:#020617;
+      color:var(--ink);
+      font-size:11px;
+      cursor:pointer;
+    }
+    .shopItem small{color:var(--muted);}
+    .shopItem:disabled{
+      opacity:.4;
+      border-style:dashed;
+      cursor:default;
+    }
+    .shopItem:active{
+      transform:scale(.97);
+      background:#030712;
+    }
+
     @media (max-width:600px){
       #topBar{font-size:11px;}
       .pill{padding:1px 6px;}
       #btnFullscreen{padding:3px 8px;font-size:11px;}
       .upgradeCard{min-width:100px;}
+      #shopPanel{font-size:10px;}
     }
   </style>
 </head>
@@ -192,6 +240,7 @@
       <div class="pill" id="hudHP">HP 100 / 100</div>
       <div class="pill" id="hudBase">Base 1000 / 1000</div>
       <div class="pill" id="hudXP">XP 0 / 20</div>
+      <div class="pill" id="hudCredits">★ 0</div>
       <div class="pill" id="hudTip">Tap / click to move • Auto-fire</div>
     </div>
     <button id="btnFullscreen">⛶ Fullscreen</button>
@@ -201,6 +250,26 @@
   </div>
   <div id="canvasWrap">
     <canvas id="gameCanvas"></canvas>
+
+    <!-- Base shop (shows when you stand near base) -->
+    <div id="shopPanel">
+      <div class="shopTitle">🏪 Base Shop</div>
+      <div class="shopItems">
+        <button class="shopItem" data-item="burn">
+          🔥 Burn Rounds<br>
+          <small>Shots apply burning DoT (20★)</small>
+        </button>
+        <button class="shopItem" data-item="freeze">
+          ❄️ Frost Rounds<br>
+          <small>Shots slow enemies (20★)</small>
+        </button>
+        <button class="shopItem" data-item="power">
+          ⚡ Power Core<br>
+          <small>+20% hero damage (25★)</small>
+        </button>
+      </div>
+    </div>
+
     <div id="overlay"><span></span></div>
     <div id="toast"></div>
   </div>
@@ -219,12 +288,15 @@
   var hudHP = document.getElementById('hudHP');
   var hudBase = document.getElementById('hudBase');
   var hudXP = document.getElementById('hudXP');
+  var hudCredits = document.getElementById('hudCredits');
 
   var upgradeBar = document.getElementById('upgradeBar');
   var upgradeHint = document.getElementById('upgradeHint');
 
   var btnFullscreen = document.getElementById('btnFullscreen');
   var gameRoot = document.getElementById('gameRoot');
+
+  var shopPanel = document.getElementById('shopPanel');
 
   function resizeCanvas(){
     var rect = canvas.parentElement.getBoundingClientRect();
@@ -249,9 +321,49 @@
     return d;
   }
 
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(function(){
+      toastEl.classList.remove('show');
+    },1800);
+  }
+
+  function drawBar(x,y,w,h,ratio,colorBg,colorFg){
+    ratio = ratio<0?0:(ratio>1?1:ratio);
+    ctx.fillStyle=colorBg;
+    ctx.fillRect(x,y,w,h);
+    ctx.fillStyle=colorFg;
+    ctx.fillRect(x,y,w*ratio,h);
+  }
+
+  // Floating damage numbers
+  var damageTexts = [];
+  function spawnDamageText(x,y,amount,color){
+    damageTexts.push({
+      x:x,
+      y:y,
+      text:Math.round(amount),
+      life:0.7,
+      vy:-22,
+      color:color || '#f97316'
+    });
+  }
+
+  // Hitscan beams
+  var beams = [];
+  function spawnBeam(x1,y1,x2,y2,color){
+    beams.push({
+      x1:x1, y1:y1,
+      x2:x2, y2:y2,
+      life:0.08,
+      color:color || '#e5e7eb'
+    });
+  }
+
   // ---------- World & camera ----------
   var world = {
-    width: 4400,
+    width: 5200,   // extended for more turret rows
     height: 900
   };
   var cameraX = 0;
@@ -292,6 +404,10 @@
       sniper:0,
       missile:0,
       shockwave:0
+    },
+    mods:{
+      burn:false,
+      freeze:false
     }
   };
 
@@ -319,6 +435,7 @@
     spawnTimer: 2.5,
     count: 2,
     maxHP: 80,
+    hp: 80,
     dmg: 10,
     range: 220,
     speed: 110,
@@ -336,20 +453,64 @@
   var currentUpgradeMode = 'stats'; // 'stats' or 'weapon'
   var pendingSpecial = false;
 
-  function showToast(msg){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    setTimeout(function(){
-      toastEl.classList.remove('show');
-    },1800);
+  // Shop / currency
+  var credits = 0;
+  var SHOP_ITEMS = {
+    burn:{
+      cost:20,
+      apply:function(){
+        player.mods.burn = true;
+        showToast('Burn Rounds acquired!');
+      }
+    },
+    freeze:{
+      cost:20,
+      apply:function(){
+        player.mods.freeze = true;
+        showToast('Frost Rounds acquired!');
+      }
+    },
+    power:{
+      cost:25,
+      apply:function(){
+        player.dmg = Math.round(player.dmg*1.2);
+        showToast('Power Core acquired!');
+      }
+    }
+  };
+  var ownedShop = {burn:false,freeze:false,power:false};
+
+  function addCredits(amount){
+    credits += (amount||0);
+    if(credits<0) credits=0;
   }
 
-  function drawBar(x,y,w,h,ratio,colorBg,colorFg){
-    ratio = ratio<0?0:(ratio>1?1:ratio);
-    ctx.fillStyle=colorBg;
-    ctx.fillRect(x,y,w,h);
-    ctx.fillStyle=colorFg;
-    ctx.fillRect(x,y,w*ratio,h);
+  function hitEntity(ent, dmg, color){
+    if(!ent || !ent.alive) return;
+    ent.hp -= dmg;
+    var cx = ent.x, cy = ent.y;
+    if(ent===base){
+      cx = base.x+base.w/2;
+      cy = base.y+base.h/2;
+    }else if(typeof ent.w==='number' && typeof ent.h==='number'){
+      cx = ent.x+ent.w/2;
+      cy = ent.y+ent.h/2;
+    }
+    spawnDamageText(cx, cy-10, dmg, color || '#f97316');
+    if(ent.hp <= 0){
+      ent.hp = 0;
+      ent.alive=false;
+      if(ent===base){
+        base.alive=false;
+      }
+    }
+  }
+
+  function onEnemyDeath(e){
+    if(e.deadHandled) return;
+    e.deadHandled = true;
+    if(e.xp) gainXP(e.xp);
+    addCredits(1);
   }
 
   // ---------- Init map ----------
@@ -394,43 +555,59 @@
 
   function makeEnemyTurrets(){
     enemyTurrets.length = 0;
-    // 4 rows -> stronger as you go right
-    var xs = [2600, 3000, 3400, 3800];
-    for(var i=0;i<xs.length;i++){
-      var tier = i+1;
-      var baseHP = 220 + tier*90;
-      var baseDmg = 22 + tier*12;
-      var baseRange = 360 + tier*60;
-      var cd = 1.0 - tier*0.12;
-      if(cd<0.45) cd=0.45;
-      // two lanes
+    // More rows, stronger + more complex patterns as you go right
+    var rows = [
+      {x:2600,tier:1,pattern:'single'},
+      {x:3000,tier:2,pattern:'single'},
+      {x:3400,tier:3,pattern:'burst'},
+      {x:3800,tier:4,pattern:'burst'},
+      {x:4200,tier:5,pattern:'scatter'},
+      {x:4600,tier:6,pattern:'scatter'}
+    ];
+    for(var i=0;i<rows.length;i++){
+      var r = rows[i];
+      var baseHP = 220 + r.tier*90;
+      var baseDmg = 22 + r.tier*12;
+      var baseRange = 360 + r.tier*60;
+      var cd = 1.0 - r.tier*0.12;
+      if(cd<0.4) cd=0.4;
       enemyTurrets.push({
-        x: xs[i],
-        y: world.height*0.4,
-        size: 22,
-        maxHP: baseHP,
-        hp: baseHP,
-        fireCooldown: cd,
+        x:r.x,
+        y:world.height*0.4,
+        size:22,
+        maxHP:baseHP,
+        hp:baseHP,
+        fireCooldown:cd,
         fireTimer:0,
-        dmg: baseDmg,
-        range: baseRange,
+        dmg:baseDmg,
+        range:baseRange,
         alive:true,
         side:'enemy',
-        tier:tier
+        tier:r.tier,
+        pattern:r.pattern,
+        burstShotsRemaining:0,
+        burstGap:0,
+        lastTargetX:0,
+        lastTargetY:0
       });
       enemyTurrets.push({
-        x: xs[i],
-        y: world.height*0.6,
-        size: 22,
-        maxHP: baseHP,
-        hp: baseHP,
-        fireCooldown: cd,
+        x:r.x,
+        y:world.height*0.6,
+        size:22,
+        maxHP:baseHP,
+        hp:baseHP,
+        fireCooldown:cd,
         fireTimer:0,
-        dmg: baseDmg,
-        range: baseRange,
+        dmg:baseDmg,
+        range:baseRange,
         alive:true,
         side:'enemy',
-        tier:tier
+        tier:r.tier,
+        pattern:r.pattern,
+        burstShotsRemaining:0,
+        burstGap:0,
+        lastTargetX:0,
+        lastTargetY:0
       });
     }
   }
@@ -476,6 +653,8 @@
     player.atkTimers.sniper=0;
     player.atkTimers.missile=0;
     player.atkTimers.shockwave=0;
+    player.mods.burn=false;
+    player.mods.freeze=false;
 
     base.maxHP=1000;
     base.hp=1000;
@@ -488,6 +667,8 @@
     bullets.length=0;
     missiles.length=0;
     explosions.length=0;
+    beams.length=0;
+    damageTexts.length=0;
 
     troopConfig.spawnInterval=5;
     troopConfig.spawnTimer=2.5;
@@ -513,6 +694,8 @@
     pendingSpecial=false;
     clearUpgradesUI();
     setOverlay('');
+    credits=0;
+    ownedShop={burn:false,freeze:false,power:false};
   }
 
   resetGame();
@@ -638,7 +821,6 @@
     var count = Math.min(3, pool.length);
     upgradeChoices=[];
     if(count===0){
-      // No choices (e.g., all weapons unlocked)
       upgradeOpen=false;
       pauseForUpgrade=false;
       clearUpgradesUI();
@@ -662,7 +844,6 @@
       card.addEventListener('click',function(){
         if(currentUpgradeMode==='stats'){
           up.apply();
-          // After stats, if we have a pending special weapon, open that.
           var anyWeaponLeft = SPECIAL_WEAPONS.some(function(w){return !player.unlocked[w.id];});
           if(pendingSpecial && anyWeaponLeft){
             pendingSpecial=false;
@@ -673,7 +854,6 @@
             clearUpgradesUI();
           }
         }else{
-          // Weapon choice
           player.unlocked[up.id]=true;
           if(player.atkTimers[up.id]===undefined){
             player.atkTimers[up.id]=0;
@@ -699,59 +879,69 @@
 
   function levelUp(){
     player.level += 1;
-    // Grow base HP a bit
     player.maxHP = Math.round(player.maxHP + 18);
     player.hp = player.maxHP;
     player.xpNext = Math.round(player.xpNext * 1.35);
 
-    // At every 5 levels, schedule a weapon choice after the stat choice
     var anyWeaponLeft = SPECIAL_WEAPONS.some(function(w){return !player.unlocked[w.id];});
     pendingSpecial = (player.level % 5 === 0) && anyWeaponLeft;
 
     openUpgradeChoices('stats');
   }
 
+  // ---------- Shop events ----------
+  Array.prototype.forEach.call(shopPanel.querySelectorAll('.shopItem'), function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-item');
+      var item = SHOP_ITEMS[key];
+      if(!item) return;
+      if(ownedShop[key]){
+        showToast('Already purchased.');
+        return;
+      }
+      if(credits < item.cost){
+        showToast('Need '+(item.cost-credits)+' more credits.');
+        return;
+      }
+      addCredits(-item.cost);
+      item.apply();
+      ownedShop[key]=true;
+      btn.disabled=true;
+    });
+  });
+
   // ---------- Spawning & allies ----------
-  function addBullet(x,y,tx,ty,speed,dmg,side){
+  function addBullet(x,y,tx,ty,speed,dmg,side,type,fromHero){
     var dx = tx-x;
     var dy = ty-y;
     var len = Math.sqrt(dx*dx+dy*dy) || 1;
     var vx = dx/len*speed;
     var vy = dy/len*speed;
-    bullets.push({
+    var b = {
       x:x,y:y,
       vx:vx,vy:vy,
       dmg:dmg,
       side:side,
       life:3,
-      radius:6
-    });
+      radius:6,
+      type:type || 'normal',
+      fromHero:!!fromHero,
+      tx:tx,
+      ty:ty,
+      target:null
+    };
+    bullets.push(b);
+    return b;
   }
 
-  function hitEntity(ent, dmg){
-    if(!ent.alive) return;
-    ent.hp -= dmg;
-    if(ent.hp <= 0){
-      ent.hp = 0;
-      ent.alive=false;
-      if(ent===base){
-        base.alive=false;
-      }
+  function getEntityCenter(ent){
+    if(ent===base){
+      return {x:base.x+base.w/2, y:base.y+base.h/2};
     }
-  }
-
-  function fireBossMissile(targetX,targetY, dmg, radius){
-    missiles.push({
-      x:boss?boss.x:targetX,
-      y:boss?boss.y:targetY,
-      tx:targetX,
-      ty:targetY,
-      speed:120,
-      radius:radius||10,
-      arrived:false,
-      explodeRadius:90,
-      dmg:dmg||120
-    });
+    if(typeof ent.w==='number' && typeof ent.h==='number'){
+      return {x:ent.x+ent.w/2, y:ent.y+ent.h/2};
+    }
+    return {x:ent.x, y:ent.y};
   }
 
   function spawnTroopsFromBase(){
@@ -775,155 +965,18 @@
     }
   }
 
-  function spawnEnemy(){
-    // Cap enemy count to avoid huge clumps
-    var aliveCount=0;
-    for(var i=0;i<enemies.length;i++){
-      if(enemies[i].alive) aliveCount++;
-    }
-    if(aliveCount>55) return;
-
-    var y = randRange(80, world.height-80);
-    var x = randRange(world.width-400, world.width-120);
-
-    var t;
-    if(timeElapsed<45){
-      // early game
-      var r1 = Math.random();
-      if(r1<0.65) t='bug';
-      else if(r1<0.9) t='alien';
-      else t='fast';
-    }else if(timeElapsed<110){
-      var r2=Math.random();
-      if(r2<0.30) t='bug';
-      else if(r2<0.55) t='fast';
-      else if(r2<0.75) t='alien';
-      else if(r2<0.9) t='tank';
-      else t='laser';
-    }else{
-      var r3=Math.random();
-      if(r3<0.18) t='bug';
-      else if(r3<0.33) t='fast';
-      else if(r3<0.53) t='alien';
-      else if(r3<0.68) t='tank';
-      else if(r3<0.84) t='laser';
-      else t='dash';
-    }
-
-    var enemy;
-    if(t==='bug'){
-      enemy = {
-        kind:'bug',
-        emoji:'🐜',
-        x:x,y:y,
-        size:18,
-        maxHP:40,
-        hp:40,
-        speed:70,
-        dmg:6,
-        dps:10,
-        xp:5,
-        range:18,
-        alive:true
-      };
-    }else if(t==='fast'){
-      enemy = {
-        kind:'fast',
-        emoji:'🐝',
-        x:x,y:y,
-        size:16,
-        maxHP:32,
-        hp:32,
-        speed:140,
-        dmg:5,
-        dps:9,
-        xp:7,
-        range:18,
-        alive:true
-      };
-    }else if(t==='tank'){
-      enemy = {
-        kind:'tank',
-        emoji:'🪲',
-        x:x,y:y,
-        size:26,
-        maxHP:130,
-        hp:130,
-        speed:45,
-        dmg:14,
-        dps:18,
-        xp:12,
-        range:24,
-        alive:true
-      };
-    }else if(t==='alien'){
-      enemy = {
-        kind:'alien',
-        emoji:'👾',
-        x:x,y:y,
-        size:22,
-        maxHP:75,
-        hp:75,
-        speed:60,
-        dmg:10,
-        dps:0,
-        xp:10,
-        range:230,
-        fireCooldown:1.5,
-        fireTimer:0,
-        alive:true
-      };
-    }else if(t==='laser'){
-      enemy = {
-        kind:'laser',
-        emoji:'🕷',
-        x:x,y:y,
-        size:22,
-        maxHP:85,
-        hp:85,
-        speed:55,
-        dmg:0,
-        dps:0,
-        xp:14,
-        range:0,
-        alive:true,
-        arcRange:230,
-        arcWidth:Math.PI/2.8,
-        arcCooldown:5.0,
-        arcTimer:2.5,
-        arcDuration:1.0,
-        arcActiveTime:0,
-        arcAngle:0
-      };
-    }else{
-      // dash
-      enemy = {
-        kind:'dash',
-        emoji:'🦂',
-        x:x,y:y,
-        size:20,
-        maxHP:65,
-        hp:65,
-        speed:90,
-        dmg:20,
-        dps:0,
-        xp:13,
-        range:18,
-        alive:true,
-        state:'normal',
-        dashCooldownMax:5,
-        dashCooldown:2+Math.random()*2,
-        dashStateTimer:0,
-        dashTargetX:x,
-        dashTargetY:y,
-        dashSpeed:320,
-        dashDamage:45,
-        dashRange:260,
-        dashVx:0,
-        dashVy:0
-      };
-    }
-    enemies.push(enemy);
+  function fireBossMissile(targetX,targetY, dmg, radius){
+    missiles.push({
+      x:boss?boss.x:targetX,
+      y:boss?boss.y:targetY,
+      tx:targetX,
+      ty:targetY,
+      speed:120,
+      radius:radius||10,
+      arrived:false,
+      explodeRadius:90,
+      dmg:dmg||120
+    });
   }
 
   // ---------- Specials ----------
@@ -954,7 +1007,8 @@
       var a = baseAng + spread*(i-(count-1)/2);
       var tx = player.x + Math.cos(a)*player.range;
       var ty = player.y + Math.sin(a)*player.range;
-      addBullet(player.x,player.y,tx,ty,260,Math.round(player.dmg*0.7),'friendly');
+      var b = addBullet(player.x,player.y,tx,ty,260,Math.round(player.dmg*0.7),'friendly','shotgun',true);
+      b.life = 1.6;
     }
   }
 
@@ -971,7 +1025,8 @@
       }
     }
     if(!far) return;
-    addBullet(player.x,player.y,far.x,far.y,420,Math.round(player.dmg*3),'friendly');
+    var b = addBullet(player.x,player.y,far.x,far.y,420,Math.round(player.dmg*3),'friendly','sniper',true);
+    b.life = 2.5;
   }
 
   function spawnMiniMissiles(){
@@ -984,7 +1039,10 @@
     for(var s=0;s<shots;s++){
       var idx = Math.floor(Math.random()*list.length);
       var e=list[idx];
-      addBullet(player.x,player.y,e.x,e.y,180,Math.round(player.dmg*1.6),'friendly');
+      var b = addBullet(player.x,player.y,e.x,e.y,180,Math.round(player.dmg*1.6),'friendly','missile',true);
+      b.target = e;
+      b.life = 4;
+      b.radius = 7;
     }
   }
 
@@ -1003,11 +1061,43 @@
       if(!e.alive) continue;
       var d = Math.sqrt(distanceSq(player.x,player.y,e.x,e.y));
       if(d<=radius){
-        hitEntity(e,dmg);
+        hitEntity(e,dmg,'#e5e7eb');
         if(!e.alive){
-          gainXP(e.xp);
+          onEnemyDeath(e);
         }
       }
+    }
+  }
+
+  // Hero on-hit elemental effects
+  function applyHeroOnHitEffects(target, baseDamage){
+    if(!target || !target.alive) return;
+    // apply to enemies / boss; turrets stay mechanical
+    if(player.mods.burn){
+      target.burnTimer = 3;
+      target.burnDps = (target.burnDps || 0) + (8 + player.level*0.6);
+    }
+    if(player.mods.freeze){
+      target.freezeTimer = 2;
+    }
+  }
+
+  function updateStatusOnUnit(ent, dt, isEnemyArray){
+    if(!ent) return;
+    if(ent.burnTimer && ent.burnTimer>0){
+      ent.burnTimer -= dt;
+      if(ent.burnTimer<0) ent.burnTimer=0;
+      var dps = ent.burnDps || 0;
+      if(dps>0 && ent.alive){
+        hitEntity(ent,dps*dt,'#fb923c');
+        if(isEnemyArray && !ent.alive){
+          onEnemyDeath(ent);
+        }
+      }
+    }
+    if(ent.freezeTimer && ent.freezeTimer>0){
+      ent.freezeTimer -= dt;
+      if(ent.freezeTimer<0) ent.freezeTimer=0;
     }
   }
 
@@ -1110,7 +1200,7 @@
   function applyLaserArcDamage(en,dt){
     var r = en.arcRange;
     var w = en.arcWidth;
-    var dps = 40; // fairly strong laser
+    var dps = 40;
     function tryHit(obj,x,y){
       if(!obj.alive) return;
       var dx=x-en.x, dy=y-en.y;
@@ -1118,20 +1208,16 @@
       if(dist>r) return;
       var ang = Math.atan2(dy,dx);
       if(Math.abs(angleDiff(ang,en.arcAngle)) <= w/2){
-        hitEntity(obj,dps*dt);
+        hitEntity(obj,dps*dt,'#fb7185');
       }
     }
-    // player
     if(player.alive) tryHit(player,player.x,player.y);
-    // base
     if(base.alive) tryHit(base,base.x+base.w/2,base.y+base.h/2);
-    // turrets
     for(var i=0;i<friendlyTurrets.length;i++){
       var ft=friendlyTurrets[i];
       if(!ft.alive) continue;
       tryHit(ft,ft.x,ft.y);
     }
-    // troops
     for(var j=0;j<alliedTroops.length;j++){
       var tr=alliedTroops[j];
       if(!tr.alive) continue;
@@ -1140,33 +1226,43 @@
   }
 
   function updateLaserEnemy(en,target,dt){
+    var slowFactor = (en.freezeTimer && en.freezeTimer>0)?0.45:1;
     // movement
     if(target){
       var dx = target.x-en.x;
       var dy = target.y-en.y;
       var dist = Math.sqrt(dx*dx+dy*dy);
-      var desired = 170;
-      if(dist>desired+20){
-        en.x += dx/dist * en.speed*dt;
-        en.y += dy/dist * en.speed*dt;
-      }else if(dist<desired-20){
-        en.x -= dx/dist * en.speed*dt*0.5;
-        en.y -= dy/dist * en.speed*dt*0.5;
+      var desired = 190;
+      if(dist>desired+25){
+        en.x += dx/dist * en.speed*slowFactor*dt;
+        en.y += dy/dist * en.speed*slowFactor*dt;
+      }else if(dist<desired-25){
+        en.x -= dx/dist * en.speed*slowFactor*dt*0.6;
+        en.y -= dy/dist * en.speed*slowFactor*dt*0.6;
       }
     }else{
-      en.x -= en.speed*dt*0.5;
+      en.x -= en.speed*slowFactor*dt*0.4;
     }
 
-    // arc logic
+    // sweeping wiper-style arc
     if(en.arcActiveTime>0){
       en.arcActiveTime -= dt;
+      en.arcAngle += en.sweepDir * en.sweepSpeed * dt;
+      if(en.arcAngle > en.maxAngle){
+        en.arcAngle = en.maxAngle;
+        en.sweepDir = -1;
+      }else if(en.arcAngle < en.minAngle){
+        en.arcAngle = en.minAngle;
+        en.sweepDir = 1;
+      }
       applyLaserArcDamage(en,dt);
     }else{
       en.arcTimer -= dt;
-      if(en.arcTimer<=0 && target){
-        en.arcAngle = Math.atan2(target.y-en.y,target.x-en.x);
+      if(en.arcTimer<=0){
         en.arcActiveTime = en.arcDuration;
         en.arcTimer = en.arcCooldown;
+        en.arcAngle = en.minAngle;
+        en.sweepDir = 1;
       }
     }
   }
@@ -1178,7 +1274,7 @@
       var d=distanceSq(en.x,en.y,x,y);
       var rad=(en.size+22);
       if(d<=rad*rad){
-        hitEntity(obj,dmg);
+        hitEntity(obj,dmg,'#fb7185');
       }
     }
     if(player.alive) tryHit(player,player.x,player.y);
@@ -1196,14 +1292,15 @@
   }
 
   function updateDashEnemy(en,target,dt){
+    var slowFactor = (en.freezeTimer && en.freezeTimer>0)?0.45:1;
     if(en.state==='normal'){
       if(target){
         var dx = target.x-en.x;
         var dy = target.y-en.y;
         var dist = Math.sqrt(dx*dx+dy*dy);
         if(dist>2){
-          en.x += dx/dist*en.speed*dt;
-          en.y += dy/dist*en.speed*dt;
+          en.x += dx/dist*en.speed*slowFactor*dt;
+          en.y += dy/dist*en.speed*slowFactor*dt;
         }
         if(dist < en.size + 24){
           hitEntity(target.ref,en.dmg*dt*0.6);
@@ -1216,18 +1313,18 @@
           en.dashTargetY=target.y;
         }
       }else{
-        en.x -= en.speed*dt*0.6;
+        en.x -= en.speed*slowFactor*dt*0.6;
       }
     }else if(en.state==='windup'){
       en.dashStateTimer-=dt;
       if(en.dashStateTimer<=0){
         en.state='dash';
         en.dashStateTimer=0.25;
-        var dx = en.dashTargetX-en.x;
-        var dy = en.dashTargetY-en.y;
-        var dist = Math.sqrt(dx*dx+dy*dy) || 1;
-        en.dashVx = dx/dist*en.dashSpeed;
-        en.dashVy = dy/dist*en.dashSpeed;
+        var dx2 = en.dashTargetX-en.x;
+        var dy2 = en.dashTargetY-en.y;
+        var dist2 = Math.sqrt(dx2*dx2+dy2*dy2) || 1;
+        en.dashVx = dx2/dist2*en.dashSpeed;
+        en.dashVy = dy2/dist2*en.dashSpeed;
       }
     }else if(en.state==='dash'){
       en.dashStateTimer-=dt;
@@ -1241,6 +1338,38 @@
     }
   }
 
+  function updateScatterEnemy(en,target,dt){
+    var slowFactor = (en.freezeTimer && en.freezeTimer>0)?0.45:1;
+    if(target){
+      var dx = target.x-en.x;
+      var dy = target.y-en.y;
+      var dist = Math.sqrt(dx*dx+dy*dy);
+      var desired = 220;
+      if(dist>desired+15){
+        en.x += dx/dist * en.speed*slowFactor*dt;
+        en.y += dy/dist * en.speed*slowFactor*dt;
+      }else if(dist<desired-15){
+        en.x -= dx/dist * en.speed*slowFactor*dt*0.7;
+        en.y -= dy/dist * en.speed*slowFactor*dt*0.7;
+      }
+      en.fireTimer -= dt;
+      if(en.fireTimer<=0 && dist<en.range){
+        var baseAng = Math.atan2(target.y-en.y,target.x-en.x);
+        var count = 5;
+        var spread = Math.PI/5;
+        for(var i=0;i<count;i++){
+          var a = baseAng + spread*(i-(count-1)/2);
+          var tx = en.x + Math.cos(a)*en.range;
+          var ty = en.y + Math.sin(a)*en.range;
+          addBullet(en.x,en.y,tx,ty,260,en.dmg,'enemy','scatter',false);
+        }
+        en.fireTimer = en.fireCooldown;
+      }
+    }else{
+      en.x -= en.speed*slowFactor*dt*0.5;
+    }
+  }
+
   // ---------- Main update ----------
   var lastTime = performance.now();
 
@@ -1251,7 +1380,7 @@
     timeElapsed += dt;
     enemySpawnTimer += dt;
 
-    // spawn enemies (slower, stronger)
+    // spawn enemies (slower, stronger over time)
     var spawnInterval = Math.max(0.9, 2.4 - timeElapsed*0.01);
     while(enemySpawnTimer >= spawnInterval){
       enemySpawnTimer -= spawnInterval;
@@ -1288,45 +1417,43 @@
         player.hp = Math.min(player.maxHP, player.hp + player.regen*dt);
       }
 
-     // auto-fire (now targets enemies, enemy turrets, and boss)
-player.fireTimer -= dt;
-if (player.fireTimer <= 0) {
-  var target = null;
-  var bestD = player.range * player.range;
+      // base shop visibility (stand near base)
+      var bcx = base.x+base.w/2;
+      var bcy = base.y+base.h/2;
+      var nearBase = base.alive && Math.sqrt(distanceSq(player.x,player.y,bcx,bcy)) < 200 && !gameOver;
+      shopPanel.style.display = nearBase ? 'block' : 'none';
 
-  function considerTarget(obj) {
-    if (!obj || !obj.alive) return;
-    var d = distanceSq(player.x, player.y, obj.x, obj.y);
-    if (d < bestD) {
-      bestD = d;
-      target = obj;
-    }
-  }
+      // auto-fire using hitscan beam (hero basic)
+      player.fireTimer -= dt;
+      if(player.fireTimer <= 0){
+        var target = null;
+        var bestD = player.range * player.range;
 
-  // Regular enemies
-  for (var i = 0; i < enemies.length; i++) {
-    considerTarget(enemies[i]);
-  }
+        function considerTarget(obj){
+          if(!obj || !obj.alive) return;
+          var d = distanceSq(player.x,player.y,obj.x,obj.y);
+          if(d<bestD){
+            bestD = d;
+            target = obj;
+          }
+        }
 
-  // Enemy turrets
-  for (var j = 0; j < enemyTurrets.length; j++) {
-    considerTarget(enemyTurrets[j]);
-  }
+        for(var i0=0;i0<enemies.length;i0++) considerTarget(enemies[i0]);
+        for(var j0=0;j0<enemyTurrets.length;j0++) considerTarget(enemyTurrets[j0]);
+        if(boss) considerTarget(boss);
 
-  // Boss
-  if (boss) {
-    considerTarget(boss);
-  }
-
-  if (target) {
-    addBullet(player.x, player.y, target.x, target.y, 340, player.dmg, 'friendly');
-    player.fireTimer = player.fireCooldown;
-  } else {
-    // small delay so we're not spamming checks every frame
-    player.fireTimer = 0.1;
-  }
-}
-
+        if(target){
+          spawnBeam(player.x,player.y,target.x,target.y,'#e5e7eb');
+          var dmg = player.dmg;
+          hitEntity(target,dmg,'#e5e7eb');
+          if(target.kind || target===boss){
+            applyHeroOnHitEffects(target,dmg);
+          }
+          player.fireTimer = player.fireCooldown;
+        }else{
+          player.fireTimer = 0.12;
+        }
+      }
 
       // specials
       if(player.unlocked.shotgun){
@@ -1390,7 +1517,7 @@ if (player.fireTimer <= 0) {
           }
         }
         if(target){
-          addBullet(t.x,t.y,target.x,target.y,320,t.dmg,'friendly');
+          addBullet(t.x,t.y,target.x,target.y,320,t.dmg,'friendly','turret',false);
           t.fireTimer = t.fireCooldown;
         }else{
           t.fireTimer=0.15;
@@ -1431,20 +1558,20 @@ if (player.fireTimer <= 0) {
       }
 
       if(target){
-        var dx=target.x-tr.x;
-        var dy=target.y-tr.y;
-        var dist=Math.sqrt(dx*dx+dy*dy);
-        if(dist>40){
-          tr.x += dx/dist * tr.speed*dt;
-          tr.y += dy/dist * tr.speed*dt;
+        var dx3=target.x-tr.x;
+        var dy3=target.y-tr.y;
+        var dist3=Math.sqrt(dx3*dx3+dy3*dy3);
+        if(dist3>40){
+          tr.x += dx3/dist3 * tr.speed*dt;
+          tr.y += dy3/dist3 * tr.speed*dt;
         }
         tr.fireTimer -= dt;
-        if(tr.fireTimer<=0 && dist<=tr.range){
-          addBullet(tr.x,tr.y,target.x,target.y,300,tr.dmg,'friendly');
+        if(tr.fireTimer<=0 && dist3<=tr.range){
+          addBullet(tr.x,tr.y,target.x,target.y,300,tr.dmg,'friendly','troop',false);
           tr.fireTimer = tr.fireCooldown;
         }
       }else{
-        tr.x += tr.speed*dt*0.4; // march forward
+        tr.x += tr.speed*dt*0.4;
       }
     }
 
@@ -1452,12 +1579,40 @@ if (player.fireTimer <= 0) {
     for(var i2=0;i2<enemyTurrets.length;i2++){
       var et2=enemyTurrets[i2];
       if(!et2.alive) continue;
+
+      // handle ongoing burst sequences
+      if(et2.pattern==='burst' && et2.burstShotsRemaining>0){
+        et2.burstGap -= dt;
+        if(et2.burstGap<=0){
+          et2.burstGap = 0.16;
+          et2.burstShotsRemaining--;
+          addBullet(et2.x,et2.y,et2.lastTargetX,et2.lastTargetY,260+et2.tier*20,et2.dmg,'enemy','normal',false);
+        }
+      }
+
       et2.fireTimer -= dt;
       if(et2.fireTimer<=0){
-        var best=nearestFriendlyTarget(et2.x,et2.y);
+        var best = nearestFriendlyTarget(et2.x,et2.y);
         if(best && distanceSq(et2.x,et2.y,best.x,best.y)<=et2.range*et2.range){
-          // higher tier turrets shoot harder, but still bullets
-          addBullet(et2.x,et2.y,best.x,best.y,260+et2.tier*20,et2.dmg,'enemy');
+          if(et2.pattern==='single'){
+            addBullet(et2.x,et2.y,best.x,best.y,260+et2.tier*20,et2.dmg,'enemy','normal',false);
+          }else if(et2.pattern==='burst'){
+            et2.lastTargetX = best.x;
+            et2.lastTargetY = best.y;
+            addBullet(et2.x,et2.y,best.x,best.y,260+et2.tier*20,et2.dmg,'enemy','normal',false);
+            et2.burstShotsRemaining = 2;
+            et2.burstGap = 0.16;
+          }else if(et2.pattern==='scatter'){
+            var baseAngT = Math.atan2(best.y-et2.y,best.x-et2.x);
+            var countS = 5;
+            var spreadS = Math.PI/10;
+            for(var k=-2;k<=2;k++){
+              var aa = baseAngT + k*spreadS;
+              var tx = et2.x + Math.cos(aa)*et2.range;
+              var ty = et2.y + Math.sin(aa)*et2.range;
+              addBullet(et2.x,et2.y,tx,ty,260+et2.tier*20,et2.dmg,'enemy','scatter',false);
+            }
+          }
           et2.fireTimer = et2.fireCooldown;
         }else{
           et2.fireTimer=0.3;
@@ -1474,12 +1629,21 @@ if (player.fireTimer <= 0) {
 
       if(en.kind==='laser'){
         updateLaserEnemy(en,target?{x:target.x,y:target.y}:null,dt);
+        updateStatusOnUnit(en,dt,true);
         continue;
       }
       if(en.kind==='dash'){
         updateDashEnemy(en,target,dt);
+        updateStatusOnUnit(en,dt,true);
         continue;
       }
+      if(en.kind==='scatter'){
+        updateScatterEnemy(en,target?{x:target.x,y:target.y}:null,dt);
+        updateStatusOnUnit(en,dt,true);
+        continue;
+      }
+
+      var slowFactor = (en.freezeTimer && en.freezeTimer>0)?0.45:1;
 
       if(target){
         var dx2 = target.x-en.x;
@@ -1488,8 +1652,8 @@ if (player.fireTimer <= 0) {
 
         if(en.kind!=='alien' || dist2>en.range*0.6){
           if(dist2>1){
-            en.x += dx2/dist2 * en.speed*dt;
-            en.y += dy2/dist2 * en.speed*dt;
+            en.x += dx2/dist2 * en.speed*slowFactor*dt;
+            en.y += dy2/dist2 * en.speed*slowFactor*dt;
           }
         }
 
@@ -1506,13 +1670,15 @@ if (player.fireTimer <= 0) {
         if(en.kind==='alien'){
           en.fireTimer -= dt;
           if(en.fireTimer<=0 && dist2<en.range*en.range){
-            addBullet(en.x,en.y,target.x,target.y,260,en.dmg,'enemy');
+            addBullet(en.x,en.y,target.x,target.y,260,en.dmg,'enemy','normal',false);
             en.fireTimer = en.fireCooldown || 1.5;
           }
         }
       }else{
-        en.x -= en.speed*dt*0.5;
+        en.x -= en.speed*slowFactor*dt*0.5;
       }
+
+      updateStatusOnUnit(en,dt,true);
     }
 
     // Boss
@@ -1524,11 +1690,12 @@ if (player.fireTimer <= 0) {
         inAggro = (dBoss <= boss.aggroRange);
       }
       if(inAggro && boss.missileTimer<=0){
-        var tx = player.x;
-        var ty = player.y;
-        fireBossMissile(tx,ty,120,10);
+        var txB = player.x;
+        var tyB = player.y;
+        fireBossMissile(txB,tyB,120,10);
         boss.missileTimer = boss.missileCooldown;
       }
+      updateStatusOnUnit(boss,dt,false);
     }
 
     // Missiles (boss)
@@ -1596,6 +1763,20 @@ if (player.fireTimer <= 0) {
         bullets[bIdx]=null;
         continue;
       }
+
+      // missile homing
+      if(bl.type==='missile' && bl.target && bl.target.alive){
+        var dxh = bl.target.x-bl.x;
+        var dyh = bl.target.y-bl.y;
+        var dh = Math.sqrt(dxh*dxh+dyh*dyh) || 1;
+        var speedH = 220;
+        var dvx = dxh/dh*speedH;
+        var dvy = dyh/dh*speedH;
+        var steer = 6*dt;
+        bl.vx = bl.vx + (dvx-bl.vx)*steer;
+        bl.vy = bl.vy + (dvy-bl.vy)*steer;
+      }
+
       bl.x += bl.vx*dt;
       bl.y += bl.vy*dt;
       if(bl.x< -50 || bl.x>world.width+50 || bl.y<-50 || bl.y>world.height+50){
@@ -1612,9 +1793,11 @@ if (player.fireTimer <= 0) {
           var de=distanceSq(bl.x,bl.y,e2.x,e2.y);
           var rad = bl.radius + e2.size*0.7;
           if(de<=rad*rad){
-            hitEntity(e2,bl.dmg);
+            hitEntity(e2,bl.dmg,'#e5e7eb');
             if(!e2.alive){
-              gainXP(e2.xp);
+              onEnemyDeath(e2);
+            }else if(bl.fromHero){
+              applyHeroOnHitEffects(e2,bl.dmg);
             }
             hit=true;
             break;
@@ -1624,7 +1807,10 @@ if (player.fireTimer <= 0) {
           var dboss=distanceSq(bl.x,bl.y,boss.x,boss.y);
           var radB = bl.radius + boss.size;
           if(dboss<=radB*radB){
-            hitEntity(boss,bl.dmg);
+            hitEntity(boss,bl.dmg,'#e5e7eb');
+            if(bl.fromHero){
+              applyHeroOnHitEffects(boss,bl.dmg);
+            }
             hit=true;
           }
         }
@@ -1635,7 +1821,11 @@ if (player.fireTimer <= 0) {
             var det=distanceSq(bl.x,bl.y,et3.x,et3.y);
             var radet=bl.radius + et3.size;
             if(det<=radet*radet){
-              hitEntity(et3,bl.dmg);
+              hitEntity(et3,bl.dmg,'#e5e7eb');
+              if(!et3.alive && !et3.deadHandled){
+                et3.deadHandled=true;
+                addCredits(5);
+              }
               hit=true;
               break;
             }
@@ -1649,7 +1839,7 @@ if (player.fireTimer <= 0) {
           var dp2=distanceSq(bl.x,bl.y,player.x,player.y);
           var rp=bl.radius + player.size;
           if(dp2<=rp*rp){
-            player.hp -= bl.dmg;
+            hitEntity(player,bl.dmg,'#fb7185');
             if(player.hp<=0){
               player.hp=0;
               player.alive=false;
@@ -1710,6 +1900,26 @@ if (player.fireTimer <= 0) {
       if(exo.life<0){
         explosions.splice(ex,1);
         ex--;
+      }
+    }
+
+    // update beams
+    for(var bi=0;bi<beams.length;bi++){
+      beams[bi].life -= dt;
+      if(beams[bi].life<=0){
+        beams.splice(bi,1);
+        bi--;
+      }
+    }
+
+    // update damage texts
+    for(var di=0;di<damageTexts.length;di++){
+      var dtxt = damageTexts[di];
+      dtxt.life -= dt;
+      dtxt.y += dtxt.vy*dt;
+      if(dtxt.life<=0){
+        damageTexts.splice(di,1);
+        di--;
       }
     }
 
@@ -1774,6 +1984,178 @@ if (player.fireTimer <= 0) {
     var camTargetY = player.y;
     cameraX = clamp(camTargetX, canvas.width/window.devicePixelRatio/2, world.width - canvas.width/window.devicePixelRatio/2);
     cameraY = clamp(camTargetY, canvas.height/window.devicePixelRatio/2, world.height - canvas.height/window.devicePixelRatio/2);
+  }
+
+  // ---------- Enemy spawning ----------
+  function spawnEnemy(){
+    var aliveCount=0;
+    for(var i=0;i<enemies.length;i++){
+      if(enemies[i].alive) aliveCount++;
+    }
+    if(aliveCount>55) return;
+
+    var y = randRange(80, world.height-80);
+    var x = randRange(world.width-400, world.width-120);
+
+    var t;
+    if(timeElapsed<45){
+      var r1 = Math.random();
+      if(r1<0.65) t='bug';
+      else if(r1<0.9) t='alien';
+      else t='fast';
+    }else if(timeElapsed<110){
+      var r2=Math.random();
+      if(r2<0.30) t='bug';
+      else if(r2<0.55) t='fast';
+      else if(r2<0.75) t='alien';
+      else if(r2<0.9) t='tank';
+      else t='laser';
+    }else{
+      var r3=Math.random();
+      if(r3<0.16) t='bug';
+      else if(r3<0.30) t='fast';
+      else if(r3<0.46) t='alien';
+      else if(r3<0.62) t='tank';
+      else if(r3<0.78) t='laser';
+      else if(r3<0.9) t='dash';
+      else t='scatter';
+    }
+
+    var enemy;
+    if(t==='bug'){
+      enemy = {
+        kind:'bug',
+        emoji:'🐜',
+        x:x,y:y,
+        size:18,
+        maxHP:40,
+        hp:40,
+        speed:70,
+        dmg:6,
+        dps:10,
+        xp:5,
+        range:18,
+        alive:true
+      };
+    }else if(t==='fast'){
+      enemy = {
+        kind:'fast',
+        emoji:'🐝',
+        x:x,y:y,
+        size:16,
+        maxHP:32,
+        hp:32,
+        speed:140,
+        dmg:5,
+        dps:9,
+        xp:7,
+        range:18,
+        alive:true
+      };
+    }else if(t==='tank'){
+      enemy = {
+        kind:'tank',
+        emoji:'🪲',
+        x:x,y:y,
+        size:26,
+        maxHP:130,
+        hp:130,
+        speed:45,
+        dmg:14,
+        dps:18,
+        xp:12,
+        range:24,
+        alive:true
+      };
+    }else if(t==='alien'){
+      enemy = {
+        kind:'alien',
+        emoji:'👾',
+        x:x,y:y,
+        size:22,
+        maxHP:75,
+        hp:75,
+        speed:60,
+        dmg:10,
+        dps:0,
+        xp:10,
+        range:230,
+        fireCooldown:1.5,
+        fireTimer:0,
+        alive:true
+      };
+    }else if(t==='laser'){
+      enemy = {
+        kind:'laser',
+        emoji:'🕷',
+        x:x,y:y,
+        size:22,
+        maxHP:85,
+        hp:85,
+        speed:55,
+        dmg:0,
+        dps:0,
+        xp:14,
+        range:0,
+        alive:true,
+        arcRange:230,
+        arcWidth:Math.PI/2.8,
+        arcCooldown:5.0,
+        arcTimer:2.5,
+        arcDuration:1.4,
+        arcActiveTime:0,
+        arcAngle:0,
+        sweepDir:1,
+        minAngle:-Math.PI/3,
+        maxAngle:Math.PI/3,
+        sweepSpeed:1.8
+      };
+    }else if(t==='scatter'){
+      enemy = {
+        kind:'scatter',
+        emoji:'🦀',
+        x:x,y:y,
+        size:22,
+        maxHP:95,
+        hp:95,
+        speed:60,
+        dmg:8,
+        dps:0,
+        xp:15,
+        range:260,
+        fireCooldown:2.8,
+        fireTimer:0,
+        alive:true
+      };
+    }else{
+      // dash
+      enemy = {
+        kind:'dash',
+        emoji:'🦂',
+        x:x,y:y,
+        size:20,
+        maxHP:65,
+        hp:65,
+        speed:90,
+        dmg:20,
+        dps:0,
+        xp:13,
+        range:18,
+        alive:true,
+        state:'normal',
+        dashCooldownMax:5,
+        dashCooldown:2+Math.random()*2,
+        dashStateTimer:0,
+        dashTargetX:x,
+        dashTargetY:y,
+        dashSpeed:320,
+        dashDamage:45,
+        dashRange:260,
+        dashVx:0,
+        dashVy:0
+      };
+    }
+    enemies.push(enemy);
   }
 
   // ---------- Drawing ----------
@@ -1934,6 +2316,30 @@ if (player.fireTimer <= 0) {
         ctx.setLineDash([]);
         ctx.restore();
       }
+      // freeze ring
+      if(en.freezeTimer && en.freezeTimer>0){
+        ctx.beginPath();
+        ctx.arc(es2.x,es2.y,en.size+4,0,Math.PI*2);
+        ctx.strokeStyle='rgba(56,189,248,0.85)';
+        ctx.lineWidth=2;
+        ctx.stroke();
+      }
+    }
+
+    // hitscan beams
+    for(var bi=0;bi<beams.length;bi++){
+      var bm=beams[bi];
+      var s1 = worldToScreen(bm.x1,bm.y1);
+      var s2 = worldToScreen(bm.x2,bm.y2);
+      var alpha = bm.life/0.08;
+      ctx.save();
+      ctx.strokeStyle='rgba(248,250,252,'+alpha+')';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(s1.x,s1.y);
+      ctx.lineTo(s2.x,s2.y);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // bullets
@@ -1941,13 +2347,30 @@ if (player.fireTimer <= 0) {
       var bl=bullets[bIdx];
       if(!bl) continue;
       var bs2=worldToScreen(bl.x,bl.y);
-      ctx.beginPath();
-      ctx.arc(bs2.x,bs2.y,4,0,Math.PI*2);
-      ctx.fillStyle = bl.side==='friendly' ? '#e5e7eb' : '#fb7185';
-      ctx.fill();
+
+      if(bl.type==='missile'){
+        ctx.save();
+        var ang = Math.atan2(bl.vy,bl.vx);
+        ctx.translate(bs2.x,bs2.y);
+        ctx.rotate(ang);
+        ctx.beginPath();
+        ctx.moveTo(7,0);
+        ctx.lineTo(-4,3);
+        ctx.lineTo(-4,-3);
+        ctx.closePath();
+        ctx.fillStyle = bl.side==='friendly' ? '#e5e7eb' : '#fb7185';
+        ctx.fill();
+        ctx.restore();
+      }else{
+        ctx.beginPath();
+        var r = (bl.side==='friendly'?3:4);
+        ctx.arc(bs2.x,bs2.y,r,0,Math.PI*2);
+        ctx.fillStyle = bl.side==='friendly' ? '#e5e7eb' : '#fb7185';
+        ctx.fill();
+      }
     }
 
-    // missiles
+    // missiles (boss)
     for(var m=0;m<missiles.length;m++){
       var ms=missiles[m];
       var msS=worldToScreen(ms.x,ms.y);
@@ -1971,6 +2394,21 @@ if (player.fireTimer <= 0) {
       ctx.strokeStyle='rgba(248,250,252,'+t+')';
       ctx.lineWidth=4;
       ctx.stroke();
+    }
+
+    // floating damage numbers
+    ctx.font='11px system-ui';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    for(var di=0;di<damageTexts.length;di++){
+      var dtxt = damageTexts[di];
+      var s = worldToScreen(dtxt.x,dtxt.y);
+      var alpha = dtxt.life/0.7;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = dtxt.color;
+      ctx.fillText(dtxt.text,s.x,s.y);
+      ctx.restore();
     }
 
     // push line (frontline)
@@ -1998,6 +2436,7 @@ if (player.fireTimer <= 0) {
     hudHP.textContent='HP '+Math.round(player.hp)+' / '+player.maxHP;
     hudBase.textContent='Base '+Math.round(base.hp)+' / '+base.maxHP;
     hudXP.textContent='XP '+Math.round(player.xp)+' / '+player.xpNext;
+    hudCredits.textContent='★ '+credits;
 
     if(!player.alive && !gameOver){
       setOverlay('You died — respawn in '+Math.ceil(player.respawnTimer)+'s');
