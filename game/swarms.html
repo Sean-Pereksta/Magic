@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Swarm Wars – Mineral Front (Save & Resume)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<style>
+  :root{
+    --bg:#020617;
+    --panel:#020617;
+    --card:#0f172a;
+    --accent:#38bdf8;
+    --accent2:#f97373;
+    --muted:#94a3b8;
+    --good:#22c55e;
+    --warn:#eab308;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;}
+  body{
+    background:radial-gradient(circle at top,#0b1120,#020617);
+    color:#e5e7eb;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:12px;
+    gap:10px;
+  }
+  h1{
+    font-size:20px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#f9fafb;
+    text-shadow:0 0 10px rgba(56,189,248,.6);
+  }
+  #hud{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 14px;
+    padding:8px 12px;
+    background:rgba(15,23,42,.9);
+    border-radius:10px;
+    box-shadow:0 10px 25px rgba(15,23,42,.7);
+    align-items:center;
+    justify-content:center;
+    max-width:1100px;
+  }
+  #hud > div{
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  #hud span.label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    color:var(--muted);
+  }
+  #hud span.value{
+    font-weight:600;
+    color:#e5e7eb;
+    margin-left:2px;
+    font-size:12px;
+  }
+  #upgrades, #workerPanel{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  #upgrades button, #workerPanel button{
+    background:var(--card);
+    border:1px solid #1f2937;
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:11px;
+    color:#e5e7eb;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    cursor:pointer;
+    box-shadow:0 4px 10px rgba(15,23,42,.8);
+    white-space:nowrap;
+  }
+  #upgrades button span.cost,
+  #workerPanel button span.cost{
+    font-size:10px;
+    color:var(--warn);
+  }
+  #upgrades button:disabled,
+  #workerPanel button:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+  }
+  #sessionControls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  #sessionControls button{
+    background:var(--card);
+    border:1px solid #1f2937;
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:11px;
+    color:#e5e7eb;
+    cursor:pointer;
+    box-shadow:0 4px 10px rgba(15,23,42,.8);
+    white-space:nowrap;
+  }
+  #gameWrapper{
+    position:relative;
+  }
+  canvas{
+    background:#020617;
+    border-radius:14px;
+    border:1px solid #1f2937;
+    box-shadow:0 18px 45px rgba(15,23,42,.9);
+    display:block;
+    cursor:grab;
+  }
+  canvas.dragging{
+    cursor:grabbing;
+  }
+  #messageBanner{
+    position:absolute;
+    left:50%;
+    top:10px;
+    transform:translateX(-50%);
+    padding:6px 12px;
+    border-radius:999px;
+    background:rgba(15,23,42,.92);
+    border:1px solid rgba(250,250,250,.08);
+    font-size:12px;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .25s;
+  }
+  #spellsBar{
+    margin-top:8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    align-items:center;
+  }
+  #spellsBarTitle{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.14em;
+    color:var(--muted);
+  }
+  #spellsList{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    justify-content:center;
+    min-height:26px;
+  }
+  #spellsList button{
+    background:#0f172a;
+    border-radius:999px;
+    border:1px solid #1e293b;
+    font-size:11px;
+    padding:4px 10px;
+    color:#e5e7eb;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    box-shadow:0 6px 16px rgba(15,23,42,.9);
+  }
+  #spellsList button span.kind{
+    opacity:.8;
+    font-size:10px;
+  }
+  #spellsList button.targeting{
+    border-color:var(--accent);
+    box-shadow:0 0 0 1px rgba(56,189,248,.4),0 0 18px rgba(56,189,248,.6);
+  }
+  #spellHint{
+    font-size:11px;
+    color:var(--muted);
+    min-height:14px;
+  }
+  #footer{
+    font-size:10px;
+    color:#64748b;
+    opacity:.8;
+    margin-top:4px;
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<h1>Swarm Wars: Mineral Front</h1>
+
+<div id="hud">
+  <div>
+    <span class="label">Gold</span>
+    <span class="value" id="gold">0</span>
+  </div>
+  <div>
+    <span class="label">Minerals</span>
+    <span class="value" id="minerals">0</span>
+  </div>
+  <div>
+    <span class="label">Level</span>
+    <span class="value" id="level">1</span>
+  </div>
+  <div>
+    <span class="label">Best</span>
+    <span class="value" id="bestLevel">1</span>
+  </div>
+  <div>
+    <span class="label">Troops</span>
+    <span class="value" id="pCount">0</span>
+  </div>
+  <div>
+    <span class="label">Enemy</span>
+    <span class="value" id="eCount">0</span>
+  </div>
+  <div>
+    <span class="label">Workers</span>
+    <span class="value" id="workers">0</span>
+  </div>
+  <div>
+    <span class="label">Next Spell</span>
+    <span class="value" id="nextSpellTimer">15.0s</span>
+  </div>
+  <div id="upgrades">
+    <button id="btnSpawnRate"><strong>Spawn Rate</strong> <span class="cost" id="costSpawnRate"></span></button>
+    <button id="btnGroupSize"><strong>Spawn Group</strong> <span class="cost" id="costGroupSize"></span></button>
+    <button id="btnHP"><strong>Health</strong> <span class="cost" id="costHP"></span></button>
+    <button id="btnDMG"><strong>Damage</strong> <span class="cost" id="costDMG"></span></button>
+    <button id="btnSPD"><strong>Speed</strong> <span class="cost" id="costSPD"></span></button>
+  </div>
+  <div id="workerPanel">
+    <button id="btnWorker"><strong>Buy Worker</strong> <span class="cost" id="costWorker"></span></button>
+    <button id="btnCarry"><strong>Worker Carry</strong> <span class="cost" id="costCarry"></span></button>
+  </div>
+  <div id="sessionControls">
+    <button id="btnLoadRun">Open Save</button>
+    <button id="btnRestartRun">Restart</button>
+  </div>
+</div>
+
+<div id="gameWrapper">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="messageBanner"></div>
+</div>
+
+<div id="spellsBar">
+  <div id="spellsBarTitle">Spells (click spell, then click battlefield)</div>
+  <div id="spellsList"></div>
+  <div id="spellHint"></div>
+</div>
+
+<div id="footer">
+  Drag to move the camera • Both sides mine minerals & tech worker hubs • Outposts: Spawn / Turret / Reaper / Worker • Game auto-saves locally.
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const VIEW_W = canvas.width;
+  const VIEW_H = canvas.height;
+  const WORLD_W = 2400;
+  const WORLD_H = 1600;
+
+  const goldEl = document.getElementById('gold');
+  const mineralsEl = document.getElementById('minerals');
+  const levelEl = document.getElementById('level');
+  const bestLevelEl = document.getElementById('bestLevel');
+  const pCountEl = document.getElementById('pCount');
+  const eCountEl = document.getElementById('eCount');
+  const workersEl = document.getElementById('workers');
+  const nextSpellTimerEl = document.getElementById('nextSpellTimer');
+  const bannerEl = document.getElementById('messageBanner');
+  const spellsListEl = document.getElementById('spellsList');
+  const spellHintEl = document.getElementById('spellHint');
+
+  const btnSpawnRate = document.getElementById('btnSpawnRate');
+  const btnGroupSize = document.getElementById('btnGroupSize');
+  const btnHP = document.getElementById('btnHP');
+  const btnDMG = document.getElementById('btnDMG');
+  const btnSPD = document.getElementById('btnSPD');
+  const btnWorker = document.getElementById('btnWorker');
+  const btnCarry = document.getElementById('btnCarry');
+
+  const costSpawnRateEl = document.getElementById('costSpawnRate');
+  const costGroupSizeEl = document.getElementById('costGroupSize');
+  const costHPEl = document.getElementById('costHP');
+  const costDMGEl = document.getElementById('costDMG');
+  const costSPEl = document.getElementById('costSPD');
+  const costWorkerEl = document.getElementById('costWorker');
+  const costCarryEl = document.getElementById('costCarry');
+
+  const btnLoadRun = document.getElementById('btnLoadRun');
+  const btnRestartRun = document.getElementById('btnRestartRun');
+
+  const SAVE_KEY = 'swarmMineralSaveV1';
+  const BEST_KEY = 'swarmMineralBestLevelV1';
+
+  // camera
+  const cam = { x:0, y:0 };
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragStartCamX = 0;
+  let dragStartCamY = 0;
+
+  // game state
+  let troops = [];       // soldiers, reapers, workers, god
+  let effects = [];      // visual + spells
+  let structures = [];   // HQ + outposts
+  let minerals = [];     // mineral patches
+
+  let playerHQ = null;
+  let enemyHQ = null;
+
+  let level = 1;
+  let bestLevel = 1;
+  let lastTime = performance.now();
+  let messageTimer = 0;
+  let autoSaveTimer = 0;
+  let loopStarted = false;
+
+  let playerTroopCount = 0;
+  let enemyTroopCount = 0;
+  let playerWorkerCount = 0;
+  let enemyWorkerCount = 0;
+
+  const MAX_PLAYER_TROOPS = 600;
+  const MAX_ENEMY_TROOPS = 600;
+
+  let playerMinerals = 0;
+  let enemyMinerals = 0;
+
+  const BASE_TROOP_HP = 12;
+  const BASE_TROOP_DMG = 3;
+  const BASE_TROOP_SPEED = 38;
+
+  const playerStats = {
+    gold: 0,
+    spawnRateLevel: 1,
+    groupSizeLevel: 1,
+    hpLevel: 1,
+    dmgLevel: 1,
+    speedLevel: 1,
+    workerCarryLevel: 1,
+    get spawnRate(){ return 3 * this.spawnRateLevel; }, // groups/sec
+    get groupSize(){ return this.groupSizeLevel; },
+    get troopHpMult(){ return 1 + 0.35*(this.hpLevel-1); },
+    get troopDmgMult(){ return 1 + 0.35*(this.dmgLevel-1); },
+    get troopSpeedMult(){ return 1 + 0.18*(this.speedLevel-1); },
+    get workerCarryAmount(){ return 20 + (this.workerCarryLevel-1)*6; }
+  };
+
+  const enemyStats = {
+    spawnRate: 2.5,
+    groupSize: 1,
+    hpMult: 1,
+    dmgMult: 1,
+    speedMult: 1
+  };
+
+  function applyDifficulty(){
+    enemyStats.spawnRate = 2.5 + level * 0.6;
+    enemyStats.groupSize = 1 + Math.floor(level/2);
+    enemyStats.hpMult    = 1 + 0.25*(level-1);
+    enemyStats.dmgMult   = 1 + 0.22*(level-1);
+    enemyStats.speedMult = 1 + 0.10*(level-1);
+  }
+
+  function enemyWorkerPeriod(){
+    return Math.max(8, 25 / (1 + 0.25*(level-1)));
+  }
+
+  // costs
+  function costSpawnRate(){
+    const l = playerStats.spawnRateLevel;
+    return Math.round(80 * l * l * 1.1);
+  }
+  function costGroupSize(){
+    const l = playerStats.groupSizeLevel;
+    return Math.round(120 * l * l * 1.35);
+  }
+  function costHP(){
+    const l = playerStats.hpLevel;
+    return Math.round(90 * l * l * 1.15);
+  }
+  function costDMG(){
+    const l = playerStats.dmgLevel;
+    return Math.round(90 * l * l * 1.15);
+  }
+  function costSPD(){
+    const l = playerStats.speedLevel;
+    return Math.round(110 * l * l * 1.2);
+  }
+  function costWorkerMinerals(){
+    return 20 + 10 * playerWorkerCount;
+  }
+  function costWorkerGold(){
+    return 40 + 15 * playerWorkerCount;
+  }
+  function costCarry(){
+    const l = playerStats.workerCarryLevel;
+    return Math.round(70 * l * Math.pow(1.5, l-1));
+  }
+
+  // spells
+  const SPELL_TYPES = ['catapult','napalm','laser','summon','god'];
+  let spellTimer = 0;
+  let availableSpells = [];
+  let pendingSpellIndex = null;
+  let pendingSpellType = null;
+
+  // outcome
+  let pendingOutcome = null; // 'win' | 'lose'
+
+  // enemy outpost tech timer
+  let enemyTechTimer = 0;
+
+  // helpers
+  function showMessage(text){
+    bannerEl.textContent = text;
+    bannerEl.style.opacity = '1';
+    messageTimer = 2.2;
+  }
+  function updateBanner(dt){
+    if(messageTimer>0){
+      messageTimer -= dt;
+      if(messageTimer<=0){
+        bannerEl.style.opacity = '0';
+      }
+    }
+  }
+  function rndChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  function dist2(ax,ay,bx,by){
+    const dx = bx-ax, dy = by-ay;
+    return dx*dx+dy*dy;
+  }
+  function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+
+  // ---------- World setup ----------
+  function setupMineralPatches(){
+    minerals = [];
+    const patches = [
+      {x:WORLD_W*0.20, y:WORLD_H*0.25},
+      {x:WORLD_W*0.20, y:WORLD_H*0.75},
+      {x:WORLD_W*0.35, y:WORLD_H*0.5},
+      {x:WORLD_W*0.50, y:WORLD_H*0.25},
+      {x:WORLD_W*0.50, y:WORLD_H*0.75},
+      {x:WORLD_W*0.65, y:WORLD_H*0.5},
+      {x:WORLD_W*0.80, y:WORLD_H*0.25},
+      {x:WORLD_W*0.80, y:WORLD_H*0.75}
+    ];
+    for(const p of patches){
+      minerals.push({
+        x:p.x,
+        y:p.y,
+        radius:30,
+        max:1000,
+        remaining:1000
+      });
+    }
+  }
+
+  function setupLevel(resetPlayerCapture){
+    troops = [];
+    effects = [];
+    structures = [];
+    setupMineralPatches();
+
+    const hqSize = 70;
+    const outSize = 54;
+
+    const playerX = 80;
+    const enemyX  = WORLD_W - 80 - hqSize;
+
+    playerHQ = {
+      id:'phq',
+      type:'hq',
+      side:'player',
+      owner:'player',
+      x:playerX,
+      y:WORLD_H/2 - hqSize/2,
+      w:hqSize,
+      h:hqSize,
+      capture: resetPlayerCapture ? 0 : (playerHQ ? playerHQ.capture : 0),
+      captureNeeded:50,
+      spawnTimer:0
+    };
+    enemyHQ = {
+      id:'ehq',
+      type:'hq',
+      side:'enemy',
+      owner:'enemy',
+      x:enemyX,
+      y:WORLD_H/2 - hqSize/2,
+      w:hqSize,
+      h:hqSize,
+      capture:0,
+      captureNeeded:50,
+      spawnTimer:0
+    };
+    structures.push(playerHQ, enemyHQ);
+
+    const cx = WORLD_W/2;
+    const cy = WORLD_H/2;
+    const offX = 220;
+    const offY = 140;
+    const outSizeHalf = outSize/2;
+    const diamond = [
+      {x:cx-offX, y:cy-outSizeHalf},
+      {x:cx,      y:cy-offY-outSizeHalf},
+      {x:cx+offX, y:cy-outSizeHalf},
+      {x:cx,      y:cy+offY-outSizeHalf}
+    ];
+
+    function makeOutpost(x,y){
+      return {
+        id:'out'+structures.length,
+        type:'outpost',
+        side:null,
+        owner:'neutral',
+        x, y,
+        w:outSize,
+        h:outSize,
+        capture:0,
+        captureNeeded:20,
+        spawnTimer:0,
+        mode:'spawn',      // 'spawn' | 'turret' | 'reaper' | 'worker'
+        turretCD:0,
+        workerTimer:0
+      };
+    }
+
+    for(const p of diamond){
+      structures.push(makeOutpost(p.x,p.y));
+    }
+
+    const extras = [
+      {x:WORLD_W*0.30, y:WORLD_H*0.25},
+      {x:WORLD_W*0.30, y:WORLD_H*0.75},
+      {x:WORLD_W*0.50, y:WORLD_H*0.10},
+      {x:WORLD_W*0.50, y:WORLD_H*0.90},
+      {x:WORLD_W*0.70, y:WORLD_H*0.25},
+      {x:WORLD_W*0.70, y:WORLD_H*0.75},
+      {x:WORLD_W*0.20, y:WORLD_H*0.50},
+      {x:WORLD_W*0.80, y:WORLD_H*0.50}
+    ];
+    for(const p of extras){
+      structures.push(makeOutpost(p.x,p.y));
+    }
+
+    playerTroopCount = 0;
+    enemyTroopCount = 0;
+    playerWorkerCount = 0;
+    enemyWorkerCount = 0;
+    enemyTechTimer = 0;
+  }
+
+  // ---------- Economy per round ----------
+  function spawnWorkerForSide(side, xOverride, yOverride){
+    const baseHpMult = side==='player' ? playerStats.troopHpMult : enemyStats.hpMult;
+    const hp = BASE_TROOP_HP * baseHpMult * 3;
+    const spdBase = BASE_TROOP_SPEED * 0.85;
+    const spd = side==='player'
+      ? spdBase * playerStats.troopSpeedMult
+      : spdBase * enemyStats.speedMult;
+
+    const homeHQ = side==='player' ? playerHQ : enemyHQ;
+    const cx = (typeof xOverride === 'number') ? xOverride : (homeHQ.x + homeHQ.w/2);
+    const cy = (typeof yOverride === 'number') ? yOverride : (homeHQ.y + homeHQ.h/2);
+
+    const t = {
+      side,
+      x:cx,y:cy,
+      vx:0,vy:0,
+      speed:spd,
+      radius:6.5,
+      unitClass:'worker',
+      hpMax:hp,
+      hp:hp,
+      dmg:0,
+      attackCooldown:0,
+      flash:0,
+      retargetTimer:0,
+      target:null,
+      isGod:false,
+      shootCooldown:0,
+      workerState:'toMineral',
+      workerPatch:null,
+      mineTimer:0,
+      carry:0
+    };
+    troops.push(t);
+  }
+
+  function initRoundEconomy(){
+    playerMinerals = 100;
+    enemyMinerals  = 100;
+    for(let i=0;i<3;i++){
+      spawnWorkerForSide('player');
+      spawnWorkerForSide('enemy');
+    }
+  }
+
+  // ---------- Troops ----------
+  function spawnTroop(side, x, y, count, spawnKind){
+    const stats = side==='player' ? playerStats : enemyStats;
+    for(let i=0;i<count;i++){
+      if(side==='player' && playerTroopCount>=MAX_PLAYER_TROOPS) break;
+      if(side==='enemy' && enemyTroopCount>=MAX_ENEMY_TROOPS) break;
+
+      if(spawnKind!=='spell'){
+        if(side==='player'){
+          if(playerMinerals <= 0) break;
+          playerMinerals -= 1;
+        }else{
+          if(enemyMinerals <= 0) break;
+          enemyMinerals -= 1;
+        }
+      }
+
+      const angle = Math.random()*Math.PI*2;
+      const r = 10 + Math.random()*10;
+
+      let hp,dmg,spd;
+      if(side==='player'){
+        hp = BASE_TROOP_HP * stats.troopHpMult;
+        dmg= BASE_TROOP_DMG * stats.troopDmgMult;
+        spd= BASE_TROOP_SPEED * stats.troopSpeedMult;
+      }else{
+        hp = BASE_TROOP_HP * enemyStats.hpMult;
+        dmg= BASE_TROOP_DMG * enemyStats.dmgMult;
+        spd= BASE_TROOP_SPEED * enemyStats.speedMult;
+      }
+
+      const t = {
+        side,
+        x: x+Math.cos(angle)*r,
+        y: y+Math.sin(angle)*r,
+        vx:0,vy:0,
+        speed:spd,
+        radius: spawnKind==='reaper' ? 7 : 6,
+        unitClass: spawnKind==='reaper' ? 'reaper' : 'soldier',
+        hpMax:hp,
+        hp:hp,
+        dmg:dmg,
+        attackCooldown:0,
+        flash:0,
+        retargetTimer:0,
+        target:null,
+        isGod:false,
+        shootCooldown:0,
+        workerState:null,
+        workerPatch:null,
+        mineTimer:0,
+        carry:0
+      };
+      troops.push(t);
+      if(side==='player') playerTroopCount++;
+      else enemyTroopCount++;
+    }
+  }
+
+  function spawnGodTroop(x,y){
+    const hp = 150 * playerStats.troopHpMult;
+    const dmg= 14  * playerStats.troopDmgMult;
+    const spd= 40  * playerStats.troopSpeedMult;
+    const t = {
+      side:'player',
+      x,y,
+      vx:0,vy:0,
+      speed:spd,
+      radius:10,
+      unitClass:'god',
+      hpMax:hp,
+      hp:hp,
+      dmg:dmg,
+      attackCooldown:0,
+      flash:0,
+      retargetTimer:0,
+      target:null,
+      isGod:true,
+      shootCooldown:0,
+      workerState:null,
+      workerPatch:null,
+      mineTimer:0,
+      carry:0
+    };
+    troops.push(t);
+    playerTroopCount++;
+  }
+
+  function applyDamage(target, amount, sourceSide){
+    if(!target || target.hp<=0) return;
+    target.hp -= amount;
+    target.flash = 0.12;
+    if(target.hp <= 0){
+      if(target.side === 'enemy' && sourceSide === 'player'){
+        playerStats.gold += 1;
+      }
+      target.hp = 0;
+      target.dead = true;
+    }
+  }
+
+  function chooseTargetForFighter(t){
+    let nearestOutpost=null, nearestOutpostDist=Infinity;
+    let enemyHQStruct=null;
+    for(const s of structures){
+      if(s.type==='hq' && s.side!==t.side){
+        enemyHQStruct = s;
+      }
+      if(s.type==='outpost' && s.owner!==t.side){
+        const cx=s.x+s.w/2, cy=s.y+s.h/2;
+        const d2=dist2(t.x,t.y,cx,cy);
+        if(d2<nearestOutpostDist){
+          nearestOutpostDist=d2;
+          nearestOutpost=s;
+        }
+      }
+    }
+    let chosenStruct=null, structDist=Infinity;
+    if(enemyHQStruct){
+      const hx=enemyHQStruct.x+enemyHQStruct.w/2;
+      const hy=enemyHQStruct.y+enemyHQStruct.h/2;
+      const dHQ2=dist2(t.x,t.y,hx,hy);
+      if(!nearestOutpost || dHQ2<nearestOutpostDist){
+        chosenStruct=enemyHQStruct;
+        structDist=dHQ2;
+      }else{
+        chosenStruct=nearestOutpost;
+        structDist=nearestOutpostDist;
+      }
+    }else if(nearestOutpost){
+      chosenStruct=nearestOutpost;
+      structDist=nearestOutpostDist;
+    }
+
+    let chosenTroop=null, troopDist=Infinity;
+
+    if(t.unitClass==='reaper'){
+      for(const other of troops){
+        if(other.side===t.side || other.hp<=0) continue;
+        if(other.unitClass!=='worker') continue;
+        const d2=dist2(t.x,t.y,other.x,other.y);
+        if(d2<troopDist){
+          troopDist=d2;
+          chosenTroop=other;
+        }
+      }
+    }
+
+    if(!chosenTroop){
+      troopDist=Infinity;
+      for(const other of troops){
+        if(other.side===t.side || other.hp<=0) continue;
+        const d2=dist2(t.x,t.y,other.x,other.y);
+        if(d2<troopDist){
+          troopDist=d2;
+          chosenTroop=other;
+        }
+      }
+    }
+
+    if(chosenTroop && (!chosenStruct || troopDist<structDist)){
+      t.target={kind:'troop', ref:chosenTroop};
+    }else if(chosenStruct){
+      t.target={kind:'struct', ref:chosenStruct};
+    }else{
+      t.target=null;
+    }
+  }
+
+  function troopHitsStructure(t,s){
+    if(s.type==='hq'){
+      if(t.side==='player' && s.side==='enemy'){
+        s.capture += 1;
+        if(s.capture>=s.captureNeeded && !pendingOutcome){
+          pendingOutcome='win';
+        }
+      }else if(t.side==='enemy' && s.side==='player'){
+        s.capture -= 1;
+        if(Math.abs(s.capture)>=s.captureNeeded && !pendingOutcome){
+          pendingOutcome='lose';
+        }
+      }
+    }else{
+      if(t.side==='player'){
+        s.capture = Math.min(s.captureNeeded, s.capture+1);
+        if(s.capture>=s.captureNeeded){
+          s.owner='player';
+        }
+      }else if(t.side==='enemy'){
+        s.capture = Math.max(-s.captureNeeded, s.capture-1);
+        if(s.capture<=-s.captureNeeded){
+          s.owner='enemy';
+        }
+      }
+    }
+    t.dead=true;
+  }
+
+  function updateSpawning(dt){
+    for(const s of structures){
+      if(s.owner!=='player' && s.owner!=='enemy') continue;
+      const side = s.owner;
+      const sideStats = side==='player' ? playerStats : enemyStats;
+
+      let multiplier = 1;
+      let spawnKind = 'soldier';
+
+      if(s.type==='hq'){
+        multiplier = 1;
+      }else if(s.type==='outpost'){
+        if(side==='player'){
+          if(!s.mode) s.mode='spawn';
+          if(s.mode==='spawn') multiplier=0.25;
+          else if(s.mode==='turret') multiplier=0.125;
+          else if(s.mode==='reaper'){
+            multiplier=0.25;
+            spawnKind='reaper';
+          }else if(s.mode==='worker'){
+            multiplier=0;
+          }
+        }else{
+          if(!s.mode) s.mode='spawn';
+          if(s.mode==='worker'){
+            multiplier=0;
+          }else{
+            multiplier=0.25;
+          }
+        }
+      }
+
+      const rate = sideStats.spawnRate * multiplier;
+      s.spawnTimer += dt * rate;
+      const groupSize = sideStats.groupSize;
+
+      while(s.spawnTimer>=1){
+        s.spawnTimer -= 1;
+        const cx=s.x+s.w/2;
+        const cy=s.y+s.h/2;
+        if(side==='player'){
+          spawnTroop('player',cx,cy,groupSize,spawnKind);
+        }else{
+          spawnTroop('enemy',cx,cy,groupSize,'soldier');
+        }
+      }
+    }
+  }
+
+  // ---------- Workers ----------
+  function assignWorkerPatch(t){
+    let best=null, bestD2=Infinity;
+    for(const m of minerals){
+      if(m.remaining<=0) continue;
+      const d2=dist2(t.x,t.y,m.x,m.y);
+      if(d2<bestD2){
+        bestD2=d2;
+        best=m;
+      }
+    }
+    t.workerPatch = best;
+  }
+
+  function updateWorker(t,dt){
+    if(!t.workerState) t.workerState='toMineral';
+    const carryAmount = playerStats.workerCarryAmount;
+    const homeHQ = t.side==='player' ? playerHQ : enemyHQ;
+
+    if(t.workerState==='toMineral'){
+      if(!t.workerPatch || t.workerPatch.remaining<=0) assignWorkerPatch(t);
+      const patch = t.workerPatch;
+      if(!patch){
+        t.vx=t.vy=0;
+      }else{
+        const dx = patch.x - t.x;
+        const dy = patch.y - t.y;
+        const d = Math.hypot(dx,dy) || 1;
+        if(d < patch.radius - 6){
+          t.workerState='mining';
+          t.mineTimer=2;
+          t.vx=t.vy=0;
+        }else{
+          const desiredVx=dx/d*t.speed;
+          const desiredVy=dy/d*t.speed;
+          t.vx += (desiredVx - t.vx)*0.2;
+          t.vy += (desiredVy - t.vy)*0.2;
+        }
+      }
+    }else if(t.workerState==='mining'){
+      const patch = t.workerPatch;
+      if(!patch || patch.remaining<=0){
+        t.workerState='toMineral';
+        t.workerPatch=null;
+        t.mineTimer=0;
+      }else{
+        t.mineTimer -= dt;
+        t.vx=t.vy=0;
+        if(t.mineTimer<=0){
+          let amt = Math.min(carryAmount, patch.remaining);
+          patch.remaining -= amt;
+          if(amt<=0){
+            t.workerState='toMineral';
+            t.workerPatch=null;
+            t.carry=0;
+          }else{
+            t.carry = amt;
+            t.workerState='returning';
+          }
+        }
+      }
+    }else if(t.workerState==='returning'){
+      if(!homeHQ){
+        t.workerState='toMineral';
+      }else{
+        const hx=homeHQ.x+homeHQ.w/2;
+        const hy=homeHQ.y+homeHQ.h/2;
+        const dx=hx-t.x;
+        const dy=hy-t.y;
+        const d=Math.hypot(dx,dy) || 1;
+        if(d<45){
+          if(t.side==='player') playerMinerals += t.carry;
+          else enemyMinerals += t.carry;
+          t.carry=0;
+          t.workerState='toMineral';
+          t.workerPatch=null;
+        }else{
+          const desiredVx=dx/d*t.speed;
+          const desiredVy=dy/d*t.speed;
+          t.vx += (desiredVx - t.vx)*0.22;
+          t.vy += (desiredVy - t.vy)*0.22;
+        }
+      }
+    }
+
+    t.x += t.vx*dt;
+    t.y += t.vy*dt;
+    const margin=10;
+    t.x = clamp(t.x, margin, WORLD_W-margin);
+    t.y = clamp(t.y, margin, WORLD_H-margin);
+    if(t.flash>0){
+      t.flash -= dt;
+      if(t.flash<0) t.flash=0;
+    }
+  }
+
+  function updateFighter(t,dt){
+    t.retargetTimer -= dt;
+    if(t.retargetTimer<=0){
+      chooseTargetForFighter(t);
+      t.retargetTimer = 0.4 + Math.random()*0.4;
+    }
+    if(t.target){
+      let tx,ty;
+      if(t.target.kind==='troop'){
+        const trg=t.target.ref;
+        if(!trg || trg.dead || trg.hp<=0){
+          t.target=null;
+        }else{ tx=trg.x; ty=trg.y; }
+      }else if(t.target.kind==='struct'){
+        const s=t.target.ref;
+        tx=s.x+s.w/2;
+        ty=s.y+s.h/2;
+      }
+      if(tx!==undefined){
+        const dx=tx-t.x;
+        const dy=ty-t.y;
+        const dist=Math.hypot(dx,dy)||1;
+        const desiredVx=dx/dist*t.speed;
+        const desiredVy=dy/dist*t.speed;
+        t.vx += (desiredVx - t.vx)*0.15;
+        t.vy += (desiredVy - t.vy)*0.15;
+      }
+    }
+
+    t.x += t.vx*dt;
+    t.y += t.vy*dt;
+    const margin=10;
+    t.x = clamp(t.x, margin, WORLD_W-margin);
+    t.y = clamp(t.y, margin, WORLD_H-margin);
+    if(t.flash>0){
+      t.flash -= dt;
+      if(t.flash<0) t.flash=0;
+    }
+  }
+
+  function updateTroops(dt){
+    for(const t of troops){
+      if(t.dead || t.hp<=0) continue;
+      if(t.unitClass==='worker'){
+        updateWorker(t,dt);
+      }else{
+        updateFighter(t,dt);
+      }
+    }
+
+    for(let i=0;i<troops.length;i++){
+      const a=troops[i];
+      if(a.dead || a.hp<=0) continue;
+      for(let j=i+1;j<troops.length;j++){
+        const b=troops[j];
+        if(b.dead || b.hp<=0) continue;
+        const dx=b.x-a.x, dy=b.y-a.y;
+        const d2=dx*dx+dy*dy;
+        const minDist=a.radius+b.radius+3;
+        if(d2<minDist*minDist && d2>0){
+          const d=Math.sqrt(d2)||1;
+          const overlap=(minDist-d)*0.5;
+          const nx=dx/d, ny=dy/d;
+          a.x -= nx*overlap;
+          a.y -= ny*overlap;
+          b.x += nx*overlap;
+          b.y += ny*overlap;
+        }
+      }
+    }
+
+    for(const a of troops){
+      if(a.dead || a.hp<=0) continue;
+      if(a.unitClass==='worker') continue;
+      a.attackCooldown -= dt;
+      const range=15;
+      if(a.attackCooldown<=0){
+        let victim=null, bestD2=range*range;
+        for(const b of troops){
+          if(b.dead || b.hp<=0) continue;
+          if(b.side===a.side) continue;
+          const d2=dist2(a.x,a.y,b.x,b.y);
+          if(d2<bestD2){
+            bestD2=d2;
+            victim=b;
+          }
+        }
+        if(victim){
+          applyDamage(victim,a.dmg,a.side);
+          a.attackCooldown=0.45;
+        }
+      }
+    }
+
+    for(const t of troops){
+      if(!t.isGod || t.dead || t.hp<=0) continue;
+      t.shootCooldown -= dt;
+      if(t.shootCooldown<=0){
+        const range=180;
+        let victim=null, bestD2=range*range;
+        for(const b of troops){
+          if(b.dead || b.hp<=0 || b.side===t.side) continue;
+          const d2=dist2(t.x,t.y,b.x,b.y);
+          if(d2<bestD2){
+            bestD2=d2;
+            victim=b;
+          }
+        }
+        if(victim){
+          effects.push({
+            kind:'godLaser',
+            x1:t.x,y1:t.y,
+            x2:victim.x,y2:victim.y,
+            t:0,
+            duration:0.25
+          });
+          applyDamage(victim,t.dmg*2.5,'player');
+          t.shootCooldown=0.8;
+        }else{
+          t.shootCooldown=0.3;
+        }
+      }
+    }
+
+    for(const t of troops){
+      if(t.dead || t.hp<=0) continue;
+      if(t.unitClass==='worker') continue;
+      for(const s of structures){
+        const cx=s.x+s.w/2, cy=s.y+s.h/2;
+        const rad=Math.max(s.w,s.h)/2 + 4;
+        if(dist2(t.x,t.y,cx,cy)<rad*rad){
+          if((s.type==='hq' && s.side!==t.side) ||
+             (s.type==='outpost' && s.owner!==t.side)){
+            troopHitsStructure(t,s);
+          }
+          break;
+        }
+      }
+    }
+
+    const newTroops=[];
+    let pC=0,eC=0,wCPlayer=0,wCEnemy=0;
+    for(const t of troops){
+      if(!t.dead && t.hp>0){
+        newTroops.push(t);
+        if(t.side==='player'){
+          if(t.unitClass==='worker') wCPlayer++;
+          else pC++;
+        }else{
+          if(t.unitClass==='worker') wCEnemy++;
+          else eC++;
+        }
+      }
+    }
+    troops=newTroops;
+    playerTroopCount=pC;
+    enemyTroopCount=eC;
+    playerWorkerCount=wCPlayer;
+    enemyWorkerCount=wCEnemy;
+  }
+
+  // ---------- Turrets & worker outposts ----------
+  function updateTurrets(dt){
+    for(const s of structures){
+      if(s.type!=='outpost') continue;
+      if(s.owner!=='player') continue;
+      if(s.mode!=='turret') continue;
+      s.turretCD = (s.turretCD || 0) - dt;
+      if(s.turretCD>0) continue;
+
+      const cx=s.x+s.w/2;
+      const cy=s.y+s.h/2;
+      const range=260;
+
+      let victim=null, bestD2=range*range;
+      for(const t of troops){
+        if(t.side!=='enemy' || t.hp<=0) continue;
+        const d2=dist2(cx,cy,t.x,t.y);
+        if(d2<bestD2){
+          bestD2=d2;
+          victim=t;
+        }
+      }
+      if(victim){
+        effects.push({
+          kind:'turret',
+          x1:cx,y1:cy,
+          x2:victim.x,y2:victim.y,
+          t:0,
+          duration:0.25
+        });
+        applyDamage(victim,35,'player');
+        s.turretCD=0.7;
+      }else{
+        s.turretCD=0.2;
+      }
+    }
+  }
+
+  function updateWorkerOutposts(dt){
+    for(const s of structures){
+      if(s.type!=='outpost') continue;
+      if(s.mode!=='worker') continue;
+      const owner = s.owner;
+      if(owner!=='player' && owner!=='enemy') continue;
+      s.workerTimer = (s.workerTimer || 0) + dt;
+      const period = owner==='player' ? 15 : enemyWorkerPeriod();
+      if(s.workerTimer >= period){
+        s.workerTimer -= period;
+        const cx=s.x+s.w/2;
+        const cy=s.y+s.h/2;
+        spawnWorkerForSide(owner, cx, cy);
+      }
+    }
+  }
+
+  function updateEnemyOutpostAI(dt){
+    enemyTechTimer += dt;
+    const baseInterval = 26;
+    const interval = Math.max(10, baseInterval - 2*(level-1));
+    if(enemyTechTimer < interval) return;
+    enemyTechTimer = 0;
+
+    const workerCap = 6 + 2*level;
+    if(enemyWorkerCount >= workerCap) return;
+
+    const candidates = structures.filter(s =>
+      s.type==='outpost' &&
+      s.owner==='enemy' &&
+      s.mode!=='worker'
+    );
+    if(candidates.length === 0) return;
+
+    const chosen = rndChoice(candidates);
+    chosen.mode = 'worker';
+  }
+
+  // ---------- Spells ----------
+  function addRandomSpell(){
+    const type=rndChoice(SPELL_TYPES);
+    availableSpells.push({type});
+    refreshSpellsBar();
+  }
+
+  function refreshSpellsBar(){
+    spellsListEl.innerHTML='';
+    availableSpells.forEach((s,idx)=>{
+      const btn=document.createElement('button');
+      let label='',kind='';
+      if(s.type==='catapult'){ label='Catapult'; kind='AoE knockback'; }
+      else if(s.type==='napalm'){ label='Napalm'; kind='Burn zone'; }
+      else if(s.type==='laser'){ label='HQ Laser'; kind='Line damage'; }
+      else if(s.type==='summon'){ label='Summon'; kind='+15 troops'; }
+      else if(s.type==='god'){ label='God Troop'; kind='Mini titan'; }
+
+      const spanName=document.createElement('span');
+      spanName.textContent=label;
+      const spanKind=document.createElement('span');
+      spanKind.textContent=kind;
+      spanKind.className='kind';
+      btn.appendChild(spanName);
+      btn.appendChild(spanKind);
+
+      btn.onclick=()=>{
+        pendingSpellIndex=idx;
+        pendingSpellType=s.type;
+        Array.from(spellsListEl.children).forEach((c,i)=>{
+          c.classList.toggle('targeting', i===idx);
+        });
+        spellHintEl.textContent='Click on the battlefield to choose a target.';
+        canvas.style.cursor='crosshair';
+      };
+
+      spellsListEl.appendChild(btn);
+    });
+    if(pendingSpellIndex===null && !dragging){
+      spellHintEl.textContent='';
+      canvas.style.cursor='grab';
+    }
+  }
+
+  function castSpellAt(type, wx, wy){
+    if(type==='catapult'){
+      const radius=90;
+      effects.push({kind:'catapult',x:wx,y:wy,radius,t:0,duration:0.35});
+      for(const t of troops){
+        if(t.side!=='enemy' || t.hp<=0) continue;
+        const dx=t.x-wx, dy=t.y-wy;
+        const d=Math.hypot(dx,dy);
+        if(d<radius && d>0){
+          const factor=1-d/radius;
+          const dmg=40*factor;
+          applyDamage(t,dmg,'player');
+          const nx=dx/d, ny=dy/d;
+          t.vx += nx*220*factor;
+          t.vy += ny*220*factor;
+        }
+      }
+    }else if(type==='napalm'){
+      const radius=100;
+      effects.push({kind:'napalm',x:wx,y:wy,radius,t:0,duration:7});
+    }else if(type==='laser'){
+      const hx=playerHQ.x+playerHQ.w/2;
+      const hy=playerHQ.y+playerHQ.h/2;
+      let dx=wx-hx, dy=wy-hy;
+      const len=Math.hypot(dx,dy)||1;
+      dx/=len; dy/=len;
+      const maxRange=WORLD_W*1.2;
+      const ex=hx+dx*maxRange;
+      const ey=hy+dy*maxRange;
+      effects.push({kind:'laser',x1:hx,y1:hy,x2:ex,y2:ey,t:0,duration:0.28});
+      const thickness=18;
+      const L2=dist2(hx,hy,ex,ey);
+      for(const t of troops){
+        if(t.side!=='enemy' || t.hp<=0) continue;
+        const px=t.x, py=t.y;
+        const u=((px-hx)*(ex-hx)+(py-hy)*(ey-hy))/(L2||1);
+        if(u<0||u>1) continue;
+        const projx=hx+(ex-hx)*u;
+        const projy=hy+(ey-hy)*u;
+        const d=Math.hypot(px-projx,py-projy);
+        if(d<thickness){
+          applyDamage(t,60,'player');
+        }
+      }
+    }else if(type==='summon'){
+      spawnTroop('player',wx,wy,15,'spell');
+    }else if(type==='god'){
+      spawnGodTroop(wx,wy);
+    }
+  }
+
+  function updateEffects(dt){
+    const next=[];
+    for(const e of effects){
+      e.t += dt;
+      if(e.kind==='napalm'){
+        for(const t of troops){
+          if(t.hp<=0) continue;
+          const dx=t.x-e.x, dy=t.y-e.y;
+          const d=Math.hypot(dx,dy);
+          if(d<e.radius){
+            applyDamage(t,10*dt,'player');
+          }
+        }
+      }
+      if(e.t<e.duration){
+        next.push(e);
+      }
+    }
+    effects=next;
+  }
+
+  function updateSpells(dt){
+    spellTimer += dt;
+    let remaining=Math.max(0,15-spellTimer);
+    nextSpellTimerEl.textContent = remaining.toFixed(1)+'s';
+    if(spellTimer>=15){
+      spellTimer=0;
+      if(availableSpells.length<3){
+        addRandomSpell();
+      }
+    }
+  }
+
+  // ---------- Drawing ----------
+  function drawScreenBackground(){
+    ctx.fillStyle='#020617';
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
+
+    ctx.save();
+    ctx.strokeStyle='rgba(15,23,42,0.9)';
+    ctx.lineWidth=1;
+    ctx.setLineDash([6,8]);
+    const worldCenterX=WORLD_W/2;
+    const screenCenterX=worldCenterX - cam.x;
+    if(screenCenterX>=0 && screenCenterX<=VIEW_W){
+      ctx.beginPath();
+      ctx.moveTo(screenCenterX,20);
+      ctx.lineTo(screenCenterX,VIEW_H-20);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function drawMinerals(){
+    for(const m of minerals){
+      const frac = m.remaining / m.max;
+      ctx.save();
+      const r=m.radius;
+      const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,r);
+      g.addColorStop(0, frac>0 ? '#67e8f9' : '#94a3b8');
+      g.addColorStop(0.4, frac>0 ? '#22c55e' : '#6b7280');
+      g.addColorStop(1,'rgba(15,23,42,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.arc(m.x,m.y,r,0,Math.PI*2);
+      ctx.fill();
+
+      ctx.fillStyle= frac>0 ? '#0f172a' : '#111827';
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y-r*0.7);
+      ctx.lineTo(m.x+r*0.4, m.y+r*0.5);
+      ctx.lineTo(m.x-r*0.4, m.y+r*0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      const barW = r*1.5;
+      const barH = 5;
+      const bx = m.x - barW/2;
+      const by = m.y + r + 4;
+      ctx.fillStyle='#020617';
+      ctx.fillRect(bx,by,barW,barH);
+      ctx.fillStyle = frac>0.5 ? '#22c55e' : frac>0.25 ? '#eab308' : '#ef4444';
+      ctx.fillRect(bx,by,barW*clamp(frac,0,1),barH);
+      ctx.restore();
+    }
+  }
+
+  function drawStructures(){
+    for(const s of structures){
+      const cx=s.x+s.w/2;
+      const cy=s.y+s.h/2;
+
+      let fill;
+      if(s.type==='hq'){
+        fill = s.side==='player' ? '#38bdf8' : '#fb7185';
+      }else{
+        if(s.owner==='player') fill='#0ea5e9';
+        else if(s.owner==='enemy') fill='#f97373';
+        else fill='#1f2937';
+      }
+
+      ctx.fillStyle=fill;
+      ctx.strokeStyle='#020617';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      if(ctx.roundRect){
+        ctx.roundRect(s.x,s.y,s.w,s.h,8);
+      }else{
+        ctx.rect(s.x,s.y,s.w,s.h);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle='#020617';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      if(s.type==='hq'){
+        ctx.font='bold 15px system-ui';
+        ctx.fillText('HQ',cx,cy);
+      }else{
+        ctx.font='bold 11px system-ui';
+        let label='OUT';
+        if(s.owner==='player'){
+          if(s.mode==='spawn') label='SP';
+          else if(s.mode==='turret') label='T';
+          else if(s.mode==='reaper') label='R';
+          else if(s.mode==='worker') label='W';
+        }
+        ctx.fillText(label,cx,cy);
+      }
+
+      if(s.type==='outpost' && s.owner==='player' && s.mode==='worker'){
+        const period=15;
+        const frac = clamp((s.workerTimer || 0)/period, 0, 1);
+        const barW=s.w;
+        const barH=4;
+        const bx=s.x;
+        const by=s.y-6;
+        ctx.fillStyle='#020617';
+        ctx.fillRect(bx,by,barW,barH);
+        ctx.fillStyle='#a3e635';
+        ctx.fillRect(bx,by,barW*frac,barH);
+      }
+
+      if(s.type==='outpost' || s.type==='hq'){
+        const barW=s.w;
+        const barH=6;
+        const bx=s.x;
+        const by=s.y+s.h+4;
+        ctx.fillStyle='#020617';
+        ctx.fillRect(bx,by,barW,barH);
+
+        const needed=s.captureNeeded;
+        const v=s.capture;
+        const half=barW/2;
+        if(v>0){
+          const frac=Math.min(1,v/needed);
+          ctx.fillStyle='#38bdf8';
+          ctx.fillRect(bx+half,by,half*frac,barH);
+        }else if(v<0){
+          const frac=Math.min(1,Math.abs(v)/needed);
+          ctx.fillStyle='#f97373';
+          ctx.fillRect(bx+half-half*frac,by,half*frac,barH);
+        }
+        ctx.fillStyle='#111827';
+        ctx.fillRect(bx+half-1,by,2,barH);
+      }
+    }
+  }
+
+  function drawTroops(){
+    for(const t of troops){
+      const r=t.radius;
+      ctx.beginPath();
+      ctx.arc(t.x,t.y,r+1.5,0,Math.PI*2);
+      ctx.fillStyle='#020617';
+      ctx.fill();
+
+      let color;
+      if(t.unitClass==='worker') color='#facc15';
+      else if(t.unitClass==='reaper') color='#f97316';
+      else if(t.isGod) color='#a855f7';
+      else color = t.side==='player' ? '#38bdf8' : '#fb7185';
+      if(t.flash>0) color='#f9fafb';
+
+      if(t.unitClass==='reaper'){
+        ctx.beginPath();
+        ctx.rect(t.x-r,t.y-r,r*2,r*2);
+        ctx.fillStyle=color;
+        ctx.fill();
+      }else{
+        ctx.beginPath();
+        ctx.arc(t.x,t.y,r,0,Math.PI*2);
+        ctx.fillStyle=color;
+        ctx.fill();
+      }
+
+      const hpFrac=t.hp/t.hpMax;
+      const bw=16, bh=3;
+      const bx=t.x-bw/2;
+      const by=t.y-r-8;
+      ctx.fillStyle='#020617';
+      ctx.fillRect(bx,by,bw,bh);
+      ctx.fillStyle = hpFrac>0.6 ? '#22c55e' : hpFrac>0.3 ? '#eab308' : '#ef4444';
+      ctx.fillRect(bx,by,bw*hpFrac,bh);
+    }
+  }
+
+  function drawEffects(){
+    for(const e of effects){
+      if(e.kind==='catapult'){
+        const alpha=1-e.t/e.duration;
+        ctx.save();
+        ctx.globalAlpha=0.4*alpha;
+        const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.radius);
+        g.addColorStop(0,'#f97373');
+        g.addColorStop(1,'rgba(15,23,42,0)');
+        ctx.fillStyle=g;
+        ctx.beginPath();
+        ctx.arc(e.x,e.y,e.radius,0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }else if(e.kind==='napalm'){
+        const alpha=0.35+0.25*Math.sin(e.t*6);
+        ctx.save();
+        ctx.globalAlpha=alpha;
+        const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.radius);
+        g.addColorStop(0,'#f97316');
+        g.addColorStop(0.5,'#fb923c');
+        g.addColorStop(1,'rgba(15,23,42,0)');
+        ctx.fillStyle=g;
+        ctx.beginPath();
+        ctx.arc(e.x,e.y,e.radius,0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }else if(e.kind==='laser' || e.kind==='godLaser' || e.kind==='turret'){
+        const alpha=1-e.t/e.duration;
+        ctx.save();
+        ctx.globalAlpha=0.7*alpha;
+        if(e.kind==='turret'){
+          ctx.lineWidth=3;
+          ctx.strokeStyle='#facc15';
+        }else if(e.kind==='laser'){
+          ctx.lineWidth=8;
+          const grad=ctx.createLinearGradient(e.x1,e.y1,e.x2,e.y2);
+          grad.addColorStop(0,'#22c55e');
+          grad.addColorStop(0.5,'#facc15');
+          grad.addColorStop(1,'#f97316');
+          ctx.strokeStyle=grad;
+        }else{
+          ctx.lineWidth=5;
+          const grad=ctx.createLinearGradient(e.x1,e.y1,e.x2,e.y2);
+          grad.addColorStop(0,'#a855f7');
+          grad.addColorStop(1,'#38bdf8');
+          ctx.strokeStyle=grad;
+        }
+        ctx.beginPath();
+        ctx.moveTo(e.x1,e.y1);
+        ctx.lineTo(e.x2,e.y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawScreenOverlay(){
+    const g=ctx.createRadialGradient(VIEW_W/2,VIEW_H/2,0,VIEW_W/2,VIEW_H/2,Math.max(VIEW_W,VIEW_H)/1.3);
+    g.addColorStop(0,'rgba(0,0,0,0)');
+    g.addColorStop(1,'rgba(0,0,0,0.8)');
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  }
+
+  function draw(){
+    drawScreenBackground();
+    ctx.save();
+    ctx.translate(-cam.x,-cam.y);
+    drawMinerals();
+    drawStructures();
+    drawEffects();
+    drawTroops();
+    ctx.restore();
+    drawScreenOverlay();
+  }
+
+  // ---------- UI / Upgrades ----------
+  function updateUI(){
+    goldEl.textContent = playerStats.gold.toString();
+    mineralsEl.textContent = Math.floor(playerMinerals).toString();
+    levelEl.textContent = level.toString();
+    bestLevelEl.textContent = bestLevel.toString();
+    pCountEl.textContent = playerTroopCount.toString();
+    eCountEl.textContent = enemyTroopCount.toString();
+    workersEl.textContent = playerWorkerCount.toString();
+
+    const g = playerStats.gold;
+    const cSR = costSpawnRate();
+    const cGS = costGroupSize();
+    const cHP = costHP();
+    const cDMG= costDMG();
+    const cSPD= costSPD();
+    const cWMin = costWorkerMinerals();
+    const cWGold= costWorkerGold();
+    const cCarry= costCarry();
+
+    costSpawnRateEl.textContent = `-${cSR}g`;
+    costGroupSizeEl.textContent = `-${cGS}g`;
+    costHPEl.textContent       = `-${cHP}g`;
+    costDMGEl.textContent      = `-${cDMG}g`;
+    costSPEl.textContent       = `-${cSPD}g`;
+    costWorkerEl.textContent   = `-${cWMin}m / ${cWGold}g`;
+    costCarryEl.textContent    = `-${cCarry}g`;
+
+    btnSpawnRate.disabled = g < cSR;
+    btnGroupSize.disabled = g < cGS;
+    btnHP.disabled        = g < cHP;
+    btnDMG.disabled       = g < cDMG;
+    btnSPD.disabled       = g < cSPD;
+    btnCarry.disabled     = g < cCarry;
+
+    btnWorker.disabled = !(playerMinerals >= cWMin || g >= cWGold);
+  }
+
+  btnSpawnRate.onclick=()=>{
+    const c=costSpawnRate();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.spawnRateLevel++;
+      showMessage('Spawn Rate upgraded!');
+      updateUI();
+    }
+  };
+  btnGroupSize.onclick=()=>{
+    const c=costGroupSize();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.groupSizeLevel++;
+      showMessage('Spawn Group Size upgraded!');
+      updateUI();
+    }
+  };
+  btnHP.onclick=()=>{
+    const c=costHP();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.hpLevel++;
+      showMessage('Troop Health upgraded!');
+      updateUI();
+    }
+  };
+  btnDMG.onclick=()=>{
+    const c=costDMG();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.dmgLevel++;
+      showMessage('Troop Damage upgraded!');
+      updateUI();
+    }
+  };
+  btnSPD.onclick=()=>{
+    const c=costSPD();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.speedLevel++;
+      showMessage('Troop Speed upgraded!');
+      updateUI();
+    }
+  };
+  btnWorker.onclick=()=>{
+    const cMin=costWorkerMinerals();
+    const cGold=costWorkerGold();
+    if(playerMinerals>=cMin){
+      playerMinerals-=cMin;
+      spawnWorkerForSide('player');
+      showMessage('Worker purchased (minerals)!');
+    }else if(playerStats.gold>=cGold){
+      playerStats.gold-=cGold;
+      spawnWorkerForSide('player');
+      showMessage('Worker purchased (gold)!');
+    }
+    updateUI();
+  };
+  btnCarry.onclick=()=>{
+    const c=costCarry();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.workerCarryLevel++;
+      showMessage('Workers carry more minerals!');
+      updateUI();
+    }
+  };
+
+  // ---------- Save / Load ----------
+  function loadBestLevel(){
+    try{
+      const raw=localStorage.getItem(BEST_KEY);
+      if(raw){
+        const v=parseInt(raw,10);
+        if(!isNaN(v) && v>0) bestLevel=v;
+      }
+    }catch(e){}
+    bestLevelEl.textContent = bestLevel.toString();
+  }
+
+  function updateBestLevelMaybe(){
+    if(level>bestLevel){
+      bestLevel = level;
+      bestLevelEl.textContent = bestLevel.toString();
+      try{
+        localStorage.setItem(BEST_KEY,String(bestLevel));
+      }catch(e){}
+    }
+  }
+
+  function saveGame(){
+    try{
+      const save = {
+        level,
+        playerStats: {
+          gold: playerStats.gold,
+          spawnRateLevel: playerStats.spawnRateLevel,
+          groupSizeLevel: playerStats.groupSizeLevel,
+          hpLevel: playerStats.hpLevel,
+          dmgLevel: playerStats.dmgLevel,
+          speedLevel: playerStats.speedLevel,
+          workerCarryLevel: playerStats.workerCarryLevel
+        },
+        playerMinerals,
+        enemyMinerals,
+        minerals,
+        structures,
+        troops,
+        effects,
+        spellTimer,
+        availableSpells,
+        cam,
+        enemyTechTimer
+      };
+      updateBestLevelMaybe();
+      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    }catch(e){
+      // ignore storage failures
+    }
+  }
+
+  function tryLoadGame(){
+    let raw;
+    try{
+      raw = localStorage.getItem(SAVE_KEY);
+    }catch(e){
+      return false;
+    }
+    if(!raw) return false;
+    let save;
+    try{
+      save = JSON.parse(raw);
+    }catch(e){
+      return false;
+    }
+    if(!save || typeof save !== 'object') return false;
+
+    level = save.level || 1;
+    applyDifficulty();
+
+    const ps = save.playerStats || {};
+    playerStats.gold            = ps.gold || 0;
+    playerStats.spawnRateLevel  = ps.spawnRateLevel || 1;
+    playerStats.groupSizeLevel  = ps.groupSizeLevel || 1;
+    playerStats.hpLevel         = ps.hpLevel || 1;
+    playerStats.dmgLevel        = ps.dmgLevel || 1;
+    playerStats.speedLevel      = ps.speedLevel || 1;
+    playerStats.workerCarryLevel= ps.workerCarryLevel || 1;
+
+    playerMinerals = save.playerMinerals ?? 100;
+    enemyMinerals  = save.enemyMinerals ?? 100;
+
+    minerals   = save.minerals   || [];
+    structures = save.structures || [];
+    troops     = save.troops     || [];
+    effects    = save.effects    || [];
+    spellTimer = save.spellTimer || 0;
+    availableSpells = (save.availableSpells || []).map(sp=>({type:sp.type || sp}));
+    enemyTechTimer = save.enemyTechTimer || 0;
+
+    cam.x = clamp(save.cam && typeof save.cam.x==='number' ? save.cam.x : WORLD_W/2 - VIEW_W/2,
+                  0, Math.max(0,WORLD_W-VIEW_W));
+    cam.y = clamp(save.cam && typeof save.cam.y==='number' ? save.cam.y : WORLD_H/2 - VIEW_H/2,
+                  0, Math.max(0,WORLD_H-VIEW_H));
+
+    playerHQ = structures.find(s=>s.type==='hq' && s.side==='player') || null;
+    enemyHQ  = structures.find(s=>s.type==='hq' && s.side==='enemy') || null;
+
+    for(const s of structures){
+      if(s.type==='outpost'){
+        if(!s.mode) s.mode='spawn';
+        if(s.workerTimer==null) s.workerTimer=0;
+        if(s.turretCD==null) s.turretCD=0;
+      }
+      if(s.spawnTimer==null) s.spawnTimer=0;
+    }
+    for(const t of troops){
+      if(t.flash==null) t.flash=0;
+      if(t.retargetTimer==null) t.retargetTimer=0;
+      if(t.attackCooldown==null) t.attackCooldown=0;
+      if(t.vx==null) t.vx=0;
+      if(t.vy==null) t.vy=0;
+    }
+
+    let pC=0,eC=0,wCPlayer=0,wCEnemy=0;
+    for(const t of troops){
+      if(t.dead || t.hp<=0) continue;
+      if(t.side==='player'){
+        if(t.unitClass==='worker') wCPlayer++; else pC++;
+      }else{
+        if(t.unitClass==='worker') wCEnemy++; else eC++;
+      }
+    }
+    playerTroopCount=pC;
+    enemyTroopCount=eC;
+    playerWorkerCount=wCPlayer;
+    enemyWorkerCount=wCEnemy;
+
+    pendingOutcome=null;
+    autoSaveTimer=0;
+
+    refreshSpellsBar();
+    updateUI();
+    showMessage(`Loaded saved run at Level ${level}`);
+    return true;
+  }
+
+  function newRun(){
+    level = 1;
+    applyDifficulty();
+
+    playerStats.gold = 80;
+    playerStats.spawnRateLevel = 1;
+    playerStats.groupSizeLevel = 1;
+    playerStats.hpLevel = 1;
+    playerStats.dmgLevel = 1;
+    playerStats.speedLevel = 1;
+    playerStats.workerCarryLevel = 1;
+
+    setupLevel(true);
+    initRoundEconomy();
+
+    availableSpells=[];
+    spellTimer=0;
+    effects=[];
+    enemyTechTimer=0;
+    pendingOutcome=null;
+    autoSaveTimer=0;
+
+    cam.x = clamp(WORLD_W/2 - VIEW_W/2, 0, Math.max(0,WORLD_W-VIEW_W));
+    cam.y = clamp(WORLD_H/2 - VIEW_H/2, 0, Math.max(0,WORLD_H-VIEW_H));
+
+    refreshSpellsBar();
+    updateUI();
+    saveGame();
+    showMessage('New run started at Level 1. Out-mine and out-swarm the enemy!');
+  }
+
+  btnRestartRun.onclick = () => {
+    if(confirm('Restart from Level 1? This overwrites your current run but keeps your best level.')){
+      try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+      newRun();
+    }
+  };
+
+  btnLoadRun.onclick = () => {
+    const ok = tryLoadGame();
+    if(!ok){
+      showMessage('No saved run found.');
+    }
+  };
+
+  // ---------- Canvas interaction ----------
+  function worldFromEvent(ev){
+    const rect=canvas.getBoundingClientRect();
+    const sx=(ev.clientX-rect.left)*(canvas.width/rect.width);
+    const sy=(ev.clientY-rect.top)*(canvas.height/rect.height);
+    const wx=cam.x+sx;
+    const wy=cam.y+sy;
+    return {wx,wy};
+  }
+
+  canvas.addEventListener('mousedown',(ev)=>{
+    dragging=true;
+    canvas.classList.add('dragging');
+    const rect=canvas.getBoundingClientRect();
+    dragStartX=ev.clientX-rect.left;
+    dragStartY=ev.clientY-rect.top;
+    dragStartCamX=cam.x;
+    dragStartCamY=cam.y;
+  });
+  window.addEventListener('mousemove',(ev)=>{
+    if(!dragging) return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=ev.clientX-rect.left;
+    const my=ev.clientY-rect.top;
+    const dx=mx-dragStartX;
+    const dy=my-dragStartY;
+    cam.x = clamp(dragStartCamX - dx, 0, Math.max(0,WORLD_W-VIEW_W));
+    cam.y = clamp(dragStartCamY - dy, 0, Math.max(0,WORLD_H-VIEW_H));
+  });
+  window.addEventListener('mouseup',()=>{
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  });
+  canvas.addEventListener('mouseleave',()=>{
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  });
+
+  canvas.addEventListener('click',(ev)=>{
+    if(pendingSpellType!=null && pendingSpellIndex!=null){
+      const {wx,wy}=worldFromEvent(ev);
+      castSpellAt(pendingSpellType,wx,wy);
+      availableSpells.splice(pendingSpellIndex,1);
+      pendingSpellIndex=null;
+      pendingSpellType=null;
+      refreshSpellsBar();
+      spellHintEl.textContent='';
+      canvas.style.cursor='grab';
+      saveGame();
+      return;
+    }
+
+    const {wx,wy}=worldFromEvent(ev);
+    let clicked=null;
+    for(const s of structures){
+      if(s.type!=='outpost') continue;
+      if(s.owner!=='player') continue;
+      if(wx>=s.x && wx<=s.x+s.w && wy>=s.y && wy<=s.y+s.h){
+        clicked=s;
+        break;
+      }
+    }
+    if(clicked){
+      if(!clicked.mode) clicked.mode='spawn';
+      if(clicked.mode==='spawn') clicked.mode='turret';
+      else if(clicked.mode==='turret') clicked.mode='reaper';
+      else if(clicked.mode==='reaper') clicked.mode='worker';
+      else clicked.mode='spawn';
+      showMessage(`Outpost mode: ${clicked.mode.toUpperCase()}`);
+      saveGame();
+    }
+  });
+
+  // ---------- Outcome ----------
+  function handlePendingOutcome(){
+    if(!pendingOutcome) return;
+    if(pendingOutcome==='win'){
+      level++;
+      applyDifficulty();
+      playerStats.gold += 120 + level*40;
+      showMessage(`Enemy HQ captured! Level ${level} – enemy economy ramps up.`);
+      setupLevel(true);
+      initRoundEconomy();
+      spellTimer=0;
+      availableSpells=[];
+      effects=[];
+      enemyTechTimer=0;
+      autoSaveTimer=0;
+      updateBestLevelMaybe();
+      saveGame();
+    }else if(pendingOutcome==='lose'){
+      level = Math.max(1, level-1);
+      applyDifficulty();
+      showMessage('Your HQ fell! Enemy pushes reset – hold the line.');
+      setupLevel(true);
+      initRoundEconomy();
+      spellTimer=0;
+      availableSpells=[];
+      effects=[];
+      enemyTechTimer=0;
+      autoSaveTimer=0;
+      saveGame();
+    }
+    pendingOutcome=null;
+  }
+
+  // ---------- Loop ----------
+  function update(dt){
+    handlePendingOutcome();
+    updateSpawning(dt);
+    updateTroops(dt);
+    updateTurrets(dt);
+    updateWorkerOutposts(dt);
+    updateEnemyOutpostAI(dt);
+    updateEffects(dt);
+    updateSpells(dt);
+    updateBanner(dt);
+    updateUI();
+
+    autoSaveTimer += dt;
+    if(autoSaveTimer>=5){
+      autoSaveTimer=0;
+      saveGame();
+    }
+  }
+
+  function loop(ts){
+    let dt=(ts-lastTime)/1000;
+    if(dt>0.05) dt=0.05;
+    lastTime=ts;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Boot ----------
+  function boot(){
+    loadBestLevel();
+    const loaded = tryLoadGame();
+    if(!loaded){
+      newRun();
+    }else{
+      showMessage('Auto-loaded your last run. Use Restart to start fresh.');
+    }
+    updateUI();
+    refreshSpellsBar();
+    lastTime=performance.now();
+    if(!loopStarted){
+      loopStarted=true;
+      requestAnimationFrame(loop);
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
