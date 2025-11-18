@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -6,121 +6,421 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
     :root{
-      --bg:#fef2f2; --ink:#111827; --muted:#6b7280; --card:#fff; --br:#f3e2e2;
+      --bg:#f9fafb; --ink:#111827; --muted:#6b7280; --card:#ffffff; --br:#e5e7eb;
       --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2; --good:#16a34a; --bad:#ef4444;
-      --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px;
+      --shadow:0 14px 40px rgba(15,23,42,.12); --radius:16px; --radius-sm:12px;
       --tap:56px;
     }
     *{box-sizing:border-box}
-    body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--ink); background:var(--bg) }
+    body{
+      margin:0;
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      color:var(--ink);
+      background:
+        radial-gradient(1200px 600px at 0% -200px, rgba(248,113,113,.18) 0%, transparent 55%),
+        radial-gradient(1200px 600px at 100% -260px, rgba(248,113,113,.2) 0%, transparent 60%),
+        var(--bg);
+    }
 
     /* Header */
     .hero{
-      background: radial-gradient(1200px 600px at 50% -200px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
-      color:#fff; padding:28px 16px 18px; position:relative; overflow:hidden;
+      background: radial-gradient(1200px 600px at 50% -260px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
+      color:#fff;
+      padding:24px 16px 18px;
+      position:relative;
+      overflow:hidden;
       box-shadow:var(--shadow);
-      padding-top: calc(28px + env(safe-area-inset-top));
+      padding-top: calc(24px + env(safe-area-inset-top));
     }
-    .hero-inner{ max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
-    .brand{ display:flex; align-items:center; gap:12px; }
-    .logo{ width:44px; height:44px; display:grid; place-items:center; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:14px; font-size:22px }
-    .title{ font-weight:800; letter-spacing:.3px; font-size:1.35rem }
-    .subtitle{ color:#ffe2e2; font-size:.95rem }
+    .hero::after{
+      content:"";
+      position:absolute;
+      inset:auto -40px -160px;
+      height:280px;
+      background:radial-gradient(600px 280px at 50% 120%, rgba(0,0,0,.35) 0%, transparent 70%);
+      opacity:.4;
+      pointer-events:none;
+    }
+    .hero-inner{
+      max-width:1200px;
+      margin:0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      position:relative;
+      z-index:1;
+    }
+    .brand{ display:flex; align-items:center; gap:14px; }
+    .logo{
+      width:46px; height:46px;
+      display:grid; place-items:center;
+      background:rgba(255,255,255,.14);
+      border:1px solid rgba(255,255,255,.26);
+      border-radius:18px;
+      font-size:24px;
+      box-shadow:0 12px 30px rgba(15,23,42,.45);
+      backdrop-filter:blur(10px);
+    }
+    .title{ font-weight:800; letter-spacing:.3px; font-size:1.4rem }
+    .subtitle{ color:#ffe2e2; font-size:.94rem }
 
     /* Tabs + HUD on right */
     .hud{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .tabs{ display:flex; gap:10px; background:rgba(255,255,255,.12); padding:6px; border-radius:999px; border:1px solid rgba(255,255,255,.22); overflow:auto; -webkit-overflow-scrolling:touch }
-    .tab-btn{
-      appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; color:#fff5f5; background:transparent;
-      font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap
+    .tabs{
+      display:flex; gap:8px;
+      background:rgba(15,23,42,.18);
+      padding:4px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.22);
+      overflow:auto;
+      -webkit-overflow-scrolling:touch;
     }
-    .tab-btn:hover{ background:rgba(255,255,255,.16) }
-    .tab-btn[aria-selected="true"]{ background:#fff; color:#111827; box-shadow:0 2px 14px rgba(15,23,42,.25) }
+    .tab-btn{
+      appearance:none; border:none; cursor:pointer;
+      padding:9px 16px; border-radius:999px;
+      color:#fffbfb; background:transparent;
+      font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap;
+      font-size:.9rem;
+    }
+    .tab-btn:hover{ background:rgba(255,255,255,.18) }
+    .tab-btn[aria-selected="true"]{
+      background:#fff; color:#111827;
+      box-shadow:0 2px 16px rgba(15,23,42,.35);
+    }
 
-    /* Right side chips */
+    /* Chips & buttons */
     .pill{
       display:inline-flex; align-items:center; gap:8px;
-      background:#fff; color:#111827; border:1px solid rgba(255,255,255,.4);
-      border-radius:999px; padding:8px 12px; font-weight:800; box-shadow:0 2px 10px rgba(0,0,0,.12);
+      background:#fff; color:#111827;
+      border:1px solid rgba(148,163,184,.5);
+      border-radius:999px; padding:8px 12px;
+      font-weight:700; box-shadow:0 4px 16px rgba(15,23,42,.22);
+      font-size:.82rem;
     }
     .pill i{ font-style:normal; font-weight:900; }
 
-    .btn{ cursor:pointer; font-weight:800; border:1px solid var(--accent); background:var(--accent); color:#fff; transition:background .2s; padding:10px 14px; border-radius:12px }
-    .btn:hover{ background:var(--accent-2) }
-    .btn-ghost{ border-color:#fff; background:transparent; color:#fff; font-weight:800 }
-    .btn-ghost:hover{ background:rgba(255,255,255,.16) }
+    .btn{
+      cursor:pointer;
+      font-weight:700;
+      border:1px solid var(--accent);
+      background:var(--accent);
+      color:#fff;
+      transition:background .18s, transform .08s, box-shadow .18s;
+      padding:10px 14px;
+      border-radius:12px;
+      box-shadow:0 8px 18px rgba(185,28,28,.35);
+    }
+    .btn:hover{ background:var(--accent-2); transform:translateY(-1px); }
+    .btn:active{ transform:translateY(0); box-shadow:0 4px 12px rgba(0,0,0,.2); }
+
+    .btn-ghost{
+      border-color:rgba(255,255,255,.8);
+      background:rgba(15,23,42,.15);
+      color:#fff;
+      font-weight:700;
+      padding:8px 12px;
+      border-radius:12px;
+      box-shadow:0 4px 14px rgba(15,23,42,.25);
+    }
+    .btn-ghost:hover{ background:rgba(255,255,255,.12); }
+
+    /* Member dropdown */
+    .member-wrap{ position:relative; }
+    .member-btn{
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.8);
+      background:rgba(15,23,42,.12);
+      color:#fff;
+      font-size:.82rem;
+      font-weight:700;
+      box-shadow:0 4px 14px rgba(15,23,42,.3);
+    }
+    .member-btn span.chevron{
+      font-size:.78rem;
+      opacity:.8;
+      transform-origin:center;
+      transition:transform .16s;
+    }
+    .member-btn.open span.chevron{ transform:rotate(180deg); }
+
+    .member-panel{
+      position:absolute;
+      right:0;
+      top:calc(100% + 8px);
+      width:min(320px, 90vw);
+      max-height:380px;
+      background:#fff;
+      border-radius:var(--radius-sm);
+      border:1px solid var(--br);
+      box-shadow:0 18px 40px rgba(15,23,42,.25);
+      padding:0;
+      overflow:auto;
+      z-index:40;
+    }
+    .member-head{
+      padding:10px 14px;
+      border-bottom:1px solid var(--br);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      font-weight:700;
+      font-size:.9rem;
+      background:#f9fafb;
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+    .member-head small{ color:var(--muted); font-weight:500; }
+    .member-list{ padding:4px 0; }
+    .member-row{
+      padding:8px 14px;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      font-size:.85rem;
+    }
+    .member-row:nth-child(odd){ background:#f9fafb; }
+    .member-name{ font-weight:600; }
+    .member-meta{ color:var(--muted); font-size:.78rem; }
 
     /* Layout */
-    .shell{ max-width:1200px; margin:18px auto; padding:0 12px 28px }
+    .shell{
+      max-width:1200px;
+      margin:18px auto 32px;
+      padding:0 12px 28px;
+    }
     .grid{ display:grid; grid-template-columns:2fr 1fr; gap:18px }
     @media (max-width:980px){ .grid{ grid-template-columns:1fr } }
 
     /* Cards */
-    .card{ background:var(--card); border:1px solid var(--br); border-radius:var(--radius); box-shadow:var(--shadow) }
-    .card-head{ padding:14px 16px; border-bottom:1px solid var(--br); display:flex; align-items:center; justify-content:space-between; gap:12px }
-    .card-title{ font-weight:800 }
-    .card-body{ padding:14px 16px }
+    .card{
+      background:var(--card);
+      border:1px solid var(--br);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:12px 16px;
+      border-bottom:1px solid var(--br);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      background:linear-gradient(135deg,#fef2f2,#fff);
+    }
+    .card-title{ font-weight:800; font-size:.98rem; }
+    .card-body{ padding:14px 16px; }
 
     /* Forms */
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
     .input, .select{
-      padding:14px 12px; border:1px solid var(--br); border-radius:12px; background:#fff; font-size:16px; outline:none; min-height:44px;
+      padding:12px 12px;
+      border:1px solid var(--br);
+      border-radius:12px;
+      background:#fff;
+      font-size:15px;
+      outline:none;
+      min-height:42px;
+      transition:border-color .16s, box-shadow .16s, background .16s;
     }
-    .input:focus, .select:focus{ border-color:#fecaca; box-shadow:0 0 0 4px rgba(239,68,68,.25) }
-    .btn-lg{ min-height:var(--tap); font-size:17px }
+    .input:focus, .select:focus{
+      border-color:#fecaca;
+      box-shadow:0 0 0 3px rgba(239,68,68,.18);
+      background:#fef2f2;
+    }
+    .btn-lg{ min-height:var(--tap); font-size:16px }
     .btn-block{ width:100% }
 
     /* Resume banner */
     .resume{
-      display:none; margin:12px 0 0; padding:12px; border:1px solid #fecaca; background:#fff1f2; color:#7f1d1d; border-radius:12px;
-      display:flex; align-items:center; gap:10px; justify-content:space-between;
+      display:none;
+      margin:12px 0 0;
+      padding:10px 12px;
+      border:1px solid #fecaca;
+      background:#fff1f2;
+      color:#7f1d1d;
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      justify-content:space-between;
+      flex-wrap:wrap;
     }
-    .resume .info{ font-weight:700 }
+    .resume .info{ font-weight:700; font-size:.9rem; }
     .resume .actions{ display:flex; gap:8px; flex-wrap:wrap }
 
     /* Lobby list as cards */
-    .lobbies{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:14px }
-    .lobby-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
-    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:var(--accent-soft); color:var(--accent); border:1px solid #fecaca; font-weight:700 }
-    .subtle{ color:var(--muted); font-size:.96rem }
-    .cap{ height:8px; background:#fff1f2; border:1px solid var(--br); border-radius:999px; overflow:hidden }
-    .cap > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#f59e0b,#ef4444,#b91c1c) }
+    .lobbies{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap:14px;
+    }
+    .lobby-card{
+      position:relative;
+      border:1px solid var(--br);
+      border-radius:14px;
+      padding:12px 12px 11px;
+      background:#ffffff;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      overflow:hidden;
+    }
+    .lobby-card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:radial-gradient(400px 260px at 0% 0%, rgba(248,113,113,.20), transparent 65%);
+      opacity:0;
+      transition:opacity .18s;
+      pointer-events:none;
+    }
+    .lobby-card:hover::before{ opacity:1; }
+    .lobby-main{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:8px;
+    }
+    .lobby-name{ font-weight:800; font-size:.95rem; }
+    .lobby-meta{ color:var(--muted); font-size:.78rem; }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:11px;
+      background:var(--accent-soft);
+      color:var(--accent);
+      border:1px solid #fecaca;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .subtle{ color:var(--muted); font-size:.9rem }
+
+    .cap{
+      height:7px;
+      background:#f9fafb;
+      border:1px solid var(--br);
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .cap > i{
+      display:block;
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);
+      transition:width .18s;
+    }
+
+    .lobby-actions{
+      display:flex;
+      justify-content:flex-end;
+      margin-top:4px;
+    }
 
     /* Players box */
-    .players{ display:flex; flex-wrap:wrap; gap:8px }
-    .chip{
-      display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--br); border-radius:999px; background:#fff7f7; font-size:14px
+    .players{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      padding-top:2px;
+      border-top:1px dashed #e5e7eb;
+      margin-top:10px;
     }
-    .dot{ width:10px; height:10px; border-radius:50% }
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:7px 11px;
+      border:1px solid var(--br);
+      border-radius:999px;
+      background:#fff7f7;
+      font-size:.82rem;
+      box-shadow:0 4px 10px rgba(15,23,42,.06);
+    }
+    .dot{ width:9px; height:9px; border-radius:50% }
 
     /* Leaderboard */
     .ladder{ display:grid; gap:10px }
-    .lb-row{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--br); border-radius:12px; background:#fff }
-    .rank{ font-weight:900; width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#fee2e2; color:#7f1d1d }
+    .lb-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:9px 11px;
+      border:1px solid var(--br);
+      border-radius:12px;
+      background:#fff;
+    }
+    .rank{
+      font-weight:900;
+      width:26px; height:26px;
+      border-radius:999px;
+      display:grid; place-items:center;
+      background:#fee2e2;
+      color:#7f1d1d;
+      font-size:.78rem;
+    }
 
     /* Singleplayer catalog */
-    .catalog{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:14px }
-    .game-card{ border:1px solid var(--br); border-radius:14px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:10px }
-    .game-title{ font-weight:800; display:flex; align-items:center; gap:8px }
-    .game-desc{ color:var(--muted); line-height:1.45 }
+    .catalog{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+      gap:14px;
+    }
+    .game-card{
+      border:1px solid var(--br);
+      border-radius:14px;
+      padding:14px;
+      background:#fff;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      box-shadow:0 10px 28px rgba(15,23,42,.08);
+    }
+    .game-title{
+      font-weight:800;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:.98rem;
+    }
+    .game-desc{ color:var(--muted); line-height:1.45; font-size:.9rem; }
     .play-row{ display:flex; justify-content:flex-end }
 
     /* Start/Leave buttons row */
-    .controls{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px }
+    .controls{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+      justify-content:flex-start;
+    }
     #startBtn{ display:none }
-    #error{ margin-top:6px; color:var(--bad); font-weight:700 }
+    #error{ margin-top:6px; color:var(--bad); font-weight:700; font-size:.9rem; }
 
     /* Mobile polish */
     @media (max-width:720px){
       .row{ flex-direction:column; align-items:stretch }
       .input, .select, .btn{ width:100% }
       .btn{ min-height:var(--tap) }
-      .tab-btn{ padding:12px 16px }
-      .hero-inner{ gap:12px }
+      .tab-btn{ padding:11px 15px }
+      .hero-inner{ gap:10px }
       .lobby-card .btn{ width:100% }
-      .subtitle{ font-size:.9rem }
-      .card{ border-radius:20px }
+      .subtitle{ font-size:.88rem }
+      .card{ border-radius:18px }
       body{ padding-bottom: calc(env(safe-area-inset-bottom) + 8px) }
+      .member-panel{ right:auto; left:0; }
     }
   </style>
 </head>
@@ -136,15 +436,32 @@
         </div>
       </div>
 
-      <!-- RIGHT HUD: tabs + Daily Users pill + Logout -->
+      <!-- RIGHT HUD: tabs + Daily Users pill + Members + Logout -->
       <div class="hud">
-        <div id="dailyUsersPill" class="pill" title="Unique logins today (America/New_York)">
-          👤 Today: <i id="dailyUsersCount">0</i>
-        </div>
         <div class="tabs" role="tablist" aria-label="Game Modes">
           <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
           <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
         </div>
+
+        <div id="dailyUsersPill" class="pill" title="Unique logins today (America/New_York)">
+          👤 Today: <i id="dailyUsersCount">0</i>
+        </div>
+
+        <div class="member-wrap">
+          <button id="memberToggle" class="member-btn" type="button" onclick="toggleMembers()">
+            👥 Members <span class="chevron">▾</span>
+          </button>
+          <div id="memberPanel" class="member-panel" hidden>
+            <div class="member-head">
+              <span>Members</span>
+              <small>Sorted by last login</small>
+            </div>
+            <div id="memberList" class="member-list">
+              <!-- members injected -->
+            </div>
+          </div>
+        </div>
+
         <button id="logoutBtn" class="btn-ghost" style="display:none" onclick="logout()">🚪 Logout</button>
       </div>
     </div>
@@ -166,9 +483,9 @@
             <div class="resume" id="resumeBanner" aria-live="polite" role="region">
               <div class="info">You have an unfinished session.</div>
               <div class="actions">
-                <button class="btn btn-lg" id="resumeLobbyBtn" style="background:#fff;color:#111;border-color:#ddd">Rejoin Lobby</button>
-                <button class="btn btn-lg" id="resumeGameBtn" style="background:#fff;color:#111;border-color:#ddd">Reopen Game</button>
-                <button class="btn btn-lg" id="clearSessionBtn" style="background:#fff;color:#111;border-color:#ddd">Clear</button>
+                <button class="btn btn-lg" id="resumeLobbyBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Rejoin Lobby</button>
+                <button class="btn btn-lg" id="resumeGameBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Reopen Game</button>
+                <button class="btn btn-lg" id="clearSessionBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Clear</button>
               </div>
             </div>
             <div id="error"></div>
@@ -205,8 +522,9 @@
                   <option value="crowncouncil">👑 Faction Forge (2P)</option>
                   <option value="rogueduel">🂡 Rogue Duel (2P)</option>
                   <option value="thegame">🃏 The Game (5P)</option>
-                  <!-- ⬇️ NEW -->
                   <option value="castledefense">🏰 Castle Defense (4P)</option>
+                  <!-- NEW MULTIPLAYER -->
+                  <option value="trumprev">🏰 Base Defense: Revenge (4P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -214,7 +532,7 @@
 
             <div id="availLobbiesCard" class="card" style="margin-top:14px">
               <div class="card-head"><div class="card-title">Available Lobbies</div></div>
-              <div class="card-body">
+              <div class="card-body" style="padding-top:10px">
                 <div id="lobbyList" class="lobbies"><!-- Lobby cards injected here --></div>
               </div>
             </div>
@@ -225,7 +543,7 @@
                 <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
                 <div class="controls">
                   <button id="startBtn" class="btn btn-lg">🚀 Start Game</button>
-                  <button class="btn btn-lg" style="background:#fff;color:#111;border-color:#ddd" onclick="leaveLobby()">❌ Leave Lobby</button>
+                  <button class="btn btn-lg" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none" onclick="leaveLobby()">❌ Leave Lobby</button>
                 </div>
               </div>
             </div>
@@ -262,7 +580,7 @@
     import {
       getFirestore, collection, addDoc, doc, setDoc, updateDoc, onSnapshot,
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction,
-      serverTimestamp, getCountFromServer
+      serverTimestamp, getCountFromServer, orderBy
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // ---------- ROUTES ----------
@@ -287,23 +605,23 @@
       flag:       "/game/Flag.html",
       microwars:  "/game/microwars.html",
       microwars2: "/game/microwaves2.html",
-      microwars4: "/game/microwaves4.html",
+      microwars4: "/game/microwaves4.html",   // legacy route reused
       border:     "/game/border.html",
       mobamania:  "/game/CatLanes.html",
-      roguecards: "/game/roguecard.html",   // NEW
-      rogueduel:  "/game/rogueduel.html",   // NEW
+      roguecards: "/game/roguecard.html",
+      rogueduel:  "/game/rogueduel.html",
       versemem:   "/game/verse-memorizer.html",
-      /** ⬇️ NEW */
       village:    "/game/villagelobby.html",
-      castledefense: "/game/castlepanic.html"
+      castledefense: "/game/castlepanic.html",
+      // NEW multiplayer alias for former Micro Wars Nexus
+      trumprev:   "/game/trumprev.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
-    "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
-    "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
-    "castledefense",
-    "rogueduel" // NEW
-  ]);
+      "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
+      "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
+      "castledefense","rogueduel","trumprev"
+    ]);
 
     const MAX_PLAYERS = {
       mountain: 4,
@@ -318,24 +636,22 @@
       thegame: 5,
       crowncouncil: 2,
       rogueduel: 2,
-      castledefense: 4 // ⬅️ NEW
+      castledefense: 4,
+      trumprev: 4
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     const SINGLEPLAYER_GAMES = [
-      /** ⬇️ NEW */
-      { key: "village", title: "Village", emoji: "🏘️", desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
-
-      { key: "versemem", title: "Verse Memorizer", emoji: "📖🧠", desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true },
-      { key: "microwars",  title: "Micro Wars",        emoji: "🔬⚔️",    desc: "Blinkers & Soldiers RTS skirmishes.", route: ROUTES.microwars },
-      { key: "microwars2", title: "Micro Wars Terran", emoji: "🛰️🪖",    desc: "Terran-flavored variant.", route: ROUTES.microwars2 },
-      { key: "microwars4", title: "Micro Wars Nexus",  emoji: "💠✨",    desc: "Altered tech flow.", route: ROUTES.microwars4 },
-      { key: "mobamania",  title: "MOBA Mania",        emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
-      { key: "matchwars",  title: "MatchWars",         emoji: "🧩⚔️",    desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
-      { key: "trials",     title: "Trials",            emoji: "⚔️",      desc: "Survive", route: ROUTES.border },
-      { key: "roguecards", title: "Rogue Cards", emoji: "🂠", desc: "Solo deckbuilder run.", route: ROUTES.roguecards },
-      { key: "flag",       title: "Flag Fight",        emoji: "🏁⚔️",    desc: "Capture flags and crush the core.", route: ROUTES.flag }
+      { key: "village",    title: "Village",        emoji: "🏘️",     desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
+      { key: "versemem",  title: "Verse Memorizer", emoji: "📖🧠",   desc: "Drill scripture, track streaks, and race the clock. Launches with your username.", route: ROUTES.versemem, requiresUser:true, autoUsername:true },
+      { key: "microwars", title: "Micro Wars",      emoji: "🔬⚔️",   desc: "Blinkers & Soldiers RTS skirmishes.", route: ROUTES.microwars },
+      { key: "microwars2",title: "Micro Wars Terran", emoji: "🛰️🪖", desc: "Terran-flavored variant.", route: ROUTES.microwars2 },
+      { key: "mobamania", title: "MOBA Mania",      emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
+      { key: "matchwars", title: "MatchWars",       emoji: "🧩⚔️",   desc: "Match to recruit & steamroll.", route: ROUTES.matchwars },
+      { key: "trials",    title: "Trials",          emoji: "⚔️",     desc: "Survive.", route: ROUTES.border },
+      { key: "roguecards",title: "Rogue Cards",     emoji: "🂠",     desc: "Solo deckbuilder run.", route: ROUTES.roguecards },
+      { key: "flag",      title: "Flag Fight",      emoji: "🏁⚔️",   desc: "Capture flags and crush the core.", route: ROUTES.flag }
     ];
 
     // ---------- FIREBASE ----------
@@ -355,6 +671,15 @@
     const fmtYMD = new Intl.DateTimeFormat("en-CA",{ timeZone:TZ, year:"numeric", month:"2-digit", day:"2-digit" });
     const todayNY = () => fmtYMD.format(new Date()); // "YYYY-MM-DD"
     const DU_KEY = () => "gh.du.marked." + todayNY();
+
+    const fmtLastLogin = new Intl.DateTimeFormat("en-US", {
+      timeZone: TZ,
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    });
 
     async function markDailyUserOnce(uid){
       if (!uid) return;
@@ -381,9 +706,7 @@
         pill.title = `Unique logins on ${todayNY()} (${TZ})`;
       }catch(e){ /* ignore visual errors */ }
     }
-    // initial fetch (optional: poll every 15s)
     showDailyUsersPill();
-    // setInterval(showDailyUsersPill, 15000); // uncomment if you want passive refresh
 
     // ---------- STORAGE KEYS & SESSION HELPERS ----------
     const SK = {
@@ -421,7 +744,7 @@
       if (g.requiresUser && !username){
         save(SK.nextRoute, g.key);
         showTab('multi');
-        showError("🔒 Please log in to play Verse Memorizer.");
+        showError("🔒 Please log in to play this game.");
         const u = document.getElementById('username'); if (u) u.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
@@ -490,7 +813,10 @@
         return showError("❌ Invalid login.");
       }
 
-      // ✅ Count unique daily user safely (no hotspot)
+      // update last login timestamp
+      await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
+
+      // ✅ Count unique daily user safely
       await markDailyUserOnce(username);
       await showDailyUsersPill();
 
@@ -507,7 +833,9 @@
         if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
         username = name;
 
-        // ✅ Safe daily-user mark for auto-login too (session-throttled)
+        // update last login timestamp for auto-login too
+        await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
+
         await markDailyUserOnce(username);
         await showDailyUsersPill();
 
@@ -555,7 +883,8 @@
              type==='thegame'?'🃏 The Game (5P)' :
              type==='crowncouncil'?'👑 Faction Forge (2P)' :
              type==='castledefense'?'🏰 Castle Defense (4P)' :
-            type==='rogueduel'?'🂡 Rogue Duel (2P)' :
+             type==='rogueduel'?'🂡 Rogue Duel (2P)' :
+             type==='trumprev'?'🏰 Base Defense: Revenge (4P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -590,7 +919,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense','rogueduel'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense','rogueduel','trumprev'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       const lobby = await addDoc(collection(db, "lobbies"), {
@@ -623,17 +952,18 @@
 
         const card = document.createElement("div"); card.className = "lobby-card";
 
-        const head = document.createElement("div"); head.style.display="flex"; head.style.justifyContent="space-between"; head.style.alignItems="center"; head.style.gap="8px";
+        const head = document.createElement("div");
+        head.className = "lobby-main";
         const titleWrap = document.createElement("div");
-        const title = document.createElement("div"); title.style.fontWeight="800"; title.textContent = data.name || "Lobby";
-        const meta = document.createElement("div"); meta.className="subtle";
+        const title = document.createElement("div"); title.className="lobby-name"; title.textContent = data.name || "Lobby";
+        const meta = document.createElement("div"); meta.className="lobby-meta";
 
         const cap = getMaxPlayers(data.gameType);
         const playerCount = (data.players || []).length;
 
         meta.textContent =
           (isFinite(cap) ? `${playerCount}/${cap} players` : `${playerCount} players`) +
-          ` — Host: ${data.host || "?"}`;
+          ` • Host: ${data.host || "?"}`;
 
         titleWrap.appendChild(title);
         titleWrap.appendChild(meta);
@@ -648,10 +978,16 @@
           fill.style.width = pct + "%";
         } else { fill.style.width = "100%"; }
 
-        const actions = document.createElement("div"); actions.style.display="flex"; actions.style.justifyContent="flex-end";
+        const actions = document.createElement("div"); actions.className="lobby-actions";
         const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
         if (isFinite(cap) && playerCount >= cap) {
-          btn.disabled = true; btn.className="btn btn-lg"; btn.style.background="#fff"; btn.style.color="#111"; btn.style.borderColor="#ddd"; btn.textContent="Full";
+          btn.disabled = true;
+          btn.className="btn btn-lg";
+          btn.style.background="#fff";
+          btn.style.color="#111";
+          btn.style.borderColor="#ddd";
+          btn.style.boxShadow="none";
+          btn.textContent="Full";
         } else {
           btn.addEventListener("click", ()=> joinLobby(docSnap.id));
         }
@@ -837,6 +1173,63 @@
       const e = document.getElementById("error"); e.textContent = msg;
     }
 
+    // ---------- MEMBER LIST ----------
+    async function loadMembers(){
+      const box = document.getElementById("memberList");
+      if (!box) return;
+      box.innerHTML = '<div class="subtle" style="padding:8px 14px">Loading…</div>';
+      try{
+        const qy = query(collection(db, "users"), orderBy("lastLogin", "desc"), limit(50));
+        const snap = await getDocs(qy);
+        if (snap.empty){
+          box.innerHTML = '<div class="subtle" style="padding:8px 14px">No members found.</div>';
+          return;
+        }
+        box.innerHTML = "";
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const row = document.createElement("div"); row.className="member-row";
+          const nameEl = document.createElement("div"); nameEl.className="member-name"; nameEl.textContent = docSnap.id;
+          const metaEl = document.createElement("div"); metaEl.className="member-meta";
+
+          const wins = d.wins || 0;
+          let lastText = "No login recorded";
+          if (d.lastLogin && typeof d.lastLogin.toDate === "function"){
+            const dt = d.lastLogin.toDate();
+            lastText = `Last login: ${fmtLastLogin.format(dt)}`;
+          }
+          metaEl.textContent = `${lastText} • 🏆 ${wins} wins`;
+          row.appendChild(nameEl); row.appendChild(metaEl);
+          box.appendChild(row);
+        });
+      }catch(e){
+        box.innerHTML = '<div class="subtle" style="padding:8px 14px">Error loading members.</div>';
+      }
+    }
+
+    window.toggleMembers = function(){
+      const panel = document.getElementById("memberPanel");
+      const btn = document.getElementById("memberToggle");
+      if (!panel || !btn) return;
+      const nowHidden = !panel.hidden;
+      panel.hidden = nowHidden;
+      btn.classList.toggle("open", !panel.hidden);
+      if (!panel.hidden){
+        loadMembers();
+      }
+    };
+
+    document.addEventListener("click", (ev)=>{
+      const panel = document.getElementById("memberPanel");
+      const btn = document.getElementById("memberToggle");
+      if (!panel || !btn) return;
+      if (panel.hidden) return;
+      if (!panel.contains(ev.target) && !btn.contains(ev.target)){
+        panel.hidden = true;
+        btn.classList.remove("open");
+      }
+    });
+
     // ---------- RESUME BANNER ----------
     function maybeOfferResume(){
       const banner = document.getElementById("resumeBanner");
@@ -899,7 +1292,6 @@
   </script>
 </body>
 </html>
-
 
 
 
