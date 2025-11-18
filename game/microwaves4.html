@@ -1324,47 +1324,67 @@
     }
   }
 
-  function updateLaserEnemy(en,target,dt){
-    var slowFactor = (en.freezeTimer && en.freezeTimer>0)?0.45:1;
-    // movement
-    if(target){
-      var dx = target.x-en.x;
-      var dy = target.y-en.y;
-      var dist = Math.sqrt(dx*dx+dy*dy);
-      var desired = 190;
-      if(dist>desired+25){
-        en.x += dx/dist * en.speed*slowFactor*dt;
-        en.y += dy/dist * en.speed*slowFactor*dt;
-      }else if(dist<desired-25){
-        en.x -= dx/dist * en.speed*slowFactor*dt*0.6;
-        en.y -= dy/dist * en.speed*slowFactor*dt*0.6;
-      }
-    }else{
-      en.x -= en.speed*slowFactor*dt*0.4;
+  function updateLaserEnemy(en, target, dt){
+  var slowFactor = (en.freezeTimer && en.freezeTimer > 0) ? 0.45 : 1;
+
+  // movement
+  if (target) {
+    var dx = target.x - en.x;
+    var dy = target.y - en.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    var desired = 190;
+
+    if (dist > desired + 25) {
+      en.x += dx/dist * en.speed * slowFactor * dt;
+      en.y += dy/dist * en.speed * slowFactor * dt;
+    } else if (dist < desired - 25) {
+      en.x -= dx/dist * en.speed * slowFactor * dt * 0.6;
+      en.y -= dy/dist * en.speed * slowFactor * dt * 0.6;
+    }
+  } else {
+    // no clear target, drift slowly toward the left
+    en.x -= en.speed * slowFactor * dt * 0.4;
+  }
+
+  // sweeping wiper-style arc
+  if (en.arcActiveTime > 0) {
+    en.arcActiveTime -= dt;
+    en.arcAngle += en.sweepDir * en.sweepSpeed * dt;
+
+    if (en.arcAngle > en.maxAngle) {
+      en.arcAngle = en.maxAngle;
+      en.sweepDir = -1;
+    } else if (en.arcAngle < en.minAngle) {
+      en.arcAngle = en.minAngle;
+      en.sweepDir = 1;
     }
 
-    // sweeping wiper-style arc
-    if(en.arcActiveTime>0){
-      en.arcActiveTime -= dt;
-      en.arcAngle += en.sweepDir * en.sweepSpeed * dt;
-      if(en.arcAngle > en.maxAngle){
-        en.arcAngle = en.maxAngle;
-        en.sweepDir = -1;
-      }else if(en.arcAngle < en.minAngle){
-        en.arcAngle = en.minAngle;
-        en.sweepDir = 1;
+    applyLaserArcDamage(en, dt);
+  } else {
+    en.arcTimer -= dt;
+    if (en.arcTimer <= 0) {
+      en.arcActiveTime = en.arcDuration;
+      en.arcTimer = en.arcCooldown;
+
+      // 🔥 NEW: aim the arc toward the target (or left toward the base)
+      var baseAng;
+      if (target) {
+        baseAng = Math.atan2(target.y - en.y, target.x - en.x);
+      } else {
+        // default: aim left (toward base side)
+        baseAng = Math.PI;
       }
-      applyLaserArcDamage(en,dt);
-    }else{
-      en.arcTimer -= dt;
-      if(en.arcTimer<=0){
-        en.arcActiveTime = en.arcDuration;
-        en.arcTimer = en.arcCooldown;
-        en.arcAngle = en.minAngle;
-        en.sweepDir = 1;
-      }
+
+      var spread = en.arcWidth || (Math.PI / 2.8);
+      en.minAngle = baseAng - spread / 2;
+      en.maxAngle = baseAng + spread / 2;
+
+      // start sweeping from one side of the "wiper"
+      en.arcAngle = en.minAngle;
+      en.sweepDir = 1;
     }
   }
+}
 
   function applyDashDamage(en){
     var dmg = en.dashDamage;
@@ -2209,7 +2229,7 @@
       };
     }else if(t==='laser'){
       enemy = {
-        kind:'laser',
+         kind:'laser',
         emoji:'🕷',
         x:x,y:y,
         size:22,
@@ -2222,15 +2242,15 @@
         range:0,
         alive:true,
         arcRange:230,
-        arcWidth:Math.PI/2.8,
+        arcWidth:Math.PI/2.8,   // keep this
         arcCooldown:5.0,
         arcTimer:2.5,
         arcDuration:1.4,
         arcActiveTime:0,
         arcAngle:0,
         sweepDir:1,
-        minAngle:-Math.PI/3,
-        maxAngle:Math.PI/3,
+        minAngle:0,             // will be overwritten when firing
+        maxAngle:0,             // will be overwritten when firing
         sweepSpeed:1.8
       };
     }else if(t==='scatter'){
@@ -2596,6 +2616,7 @@
 </script>
 </body>
 </html>
+
 
 
 
