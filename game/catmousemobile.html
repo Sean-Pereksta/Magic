@@ -257,6 +257,19 @@
     color:#e5e7eb;
     cursor:pointer;
   }
+  /* simple highscores header styling in summary */
+  #summaryModal .hsTitle{
+    margin-top:12px;
+    font-size:14px;
+    font-weight:600;
+    color:#e5e7eb;
+  }
+  #summaryModal .hsRow{
+    display:flex;
+    justify-content:space-between;
+    font-size:12px;
+    color:#9ca3af;
+  }
 </style>
 </head>
 <body>
@@ -341,7 +354,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection,
-  addDoc, deleteDoc, serverTimestamp, getDocs, query, where, increment
+  addDoc, deleteDoc, serverTimestamp, getDocs, query, where, increment,
+  orderBy, limit
 } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1832,8 +1846,63 @@ function drawCooldowns(){
 }
 setInterval(drawCooldowns, 250);
 
+/* ---------------------- Highscore rendering in summary ------------------- */
+async function renderHighscoresInSummary(myScore){
+  const statsEl = document.getElementById("summaryStats");
+  if (!statsEl) return;
+  try{
+    const qRef = query(highsCol, orderBy("score","desc"), limit(10));
+    const snap = await getDocs(qRef);
+    if (snap.empty) return;
+
+    const rows = [];
+    snap.forEach(docSnap=>{
+      const d = docSnap.data();
+      rows.push({
+        score: d.score || 0,
+        names: Array.isArray(d.names)? d.names : [],
+      });
+    });
+
+    const total = rows.length;
+    let myRank = null;
+    if (typeof myScore === "number" && myScore>0){
+      for (let i=0;i<rows.length;i++){
+        if (myScore >= rows[i].score){
+          myRank = i+1;
+          break;
+        }
+      }
+      if (myRank==null) myRank = total+1;
+    }
+
+    const hsTitle = document.createElement("div");
+    hsTitle.className = "hsTitle";
+    hsTitle.textContent = "All-Time Highscores";
+    statsEl.appendChild(hsTitle);
+
+    rows.forEach((r,idx)=>{
+      const row = document.createElement("div");
+      row.className = "hsRow";
+      const rank = idx+1;
+      const nameLabel = r.names && r.names.length ? r.names[0] + (r.names.length>1 ? ` +${r.names.length-1}`:"") : "Team";
+      row.innerHTML = `<span>#${rank} · ${nameLabel}</span><span>${r.score}</span>`;
+      statsEl.appendChild(row);
+    });
+
+    if (myRank!=null){
+      const sub = document.getElementById("summarySubtitle");
+      if (sub){
+        sub.textContent += ` · Approx. rank this run: #${myRank}`;
+      }
+    }
+  }catch(e){
+    // silently ignore highscore errors so game still shows summary
+  }
+}
+
 /* ----------------------------- Summary UI -------------------------------- */
-function showSessionSummary(gdoc){
+async function showSessionSummary(gdoc){
   if (summaryShown) return;
   summaryShown=true;
   const modal = document.getElementById("summaryModal");
@@ -1851,6 +1920,10 @@ function showSessionSummary(gdoc){
   addStat("Cat Power Reached", gdoc.catPower||0);
   addStat("Total Runs (all time)", meta.totalRuns||0);
   addStat("Best Score (all time)", meta.bestScore||0);
+
+  // load and render highscores under the core stats
+  await renderHighscoresInSummary(finalScore);
+
   modal.style.display='flex';
 }
 document.getElementById("summaryClose").onclick=()=>{ location.reload(); };
@@ -1929,6 +2002,7 @@ document.getElementById("upgradeHeader").onclick=()=>{
 </script>
 </body>
 </html>
+
 
 
 
