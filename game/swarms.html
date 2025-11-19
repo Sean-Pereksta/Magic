@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -31,6 +31,7 @@
     text-transform:uppercase;
     color:#f9fafb;
     text-shadow:0 0 10px rgba(56,189,248,.6);
+    text-align:center;
   }
   #hud{
     display:flex;
@@ -106,8 +107,40 @@
     box-shadow:0 4px 10px rgba(15,23,42,.8);
     white-space:nowrap;
   }
+
+  /* Zoom controls */
+  #zoomControls{
+    margin-top:6px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    padding:4px 10px;
+    background:rgba(15,23,42,.9);
+    border-radius:999px;
+    box-shadow:0 8px 20px rgba(15,23,42,.7);
+    font-size:11px;
+  }
+  #zoomControls button{
+    background:var(--card);
+    border:1px solid #1f2937;
+    border-radius:999px;
+    padding:2px 8px;
+    font-size:12px;
+    color:#e5e7eb;
+    cursor:pointer;
+  }
+  #zoomLabel{
+    font-variant-numeric:tabular-nums;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    font-size:10px;
+  }
+
   #gameWrapper{
     position:relative;
+    margin-top:8px;
   }
   canvas{
     background:#020617;
@@ -116,6 +149,11 @@
     box-shadow:0 18px 45px rgba(15,23,42,.9);
     display:block;
     cursor:grab;
+    /* responsive for phone */
+    width:100%;
+    max-width:960px;
+    height:auto;
+    touch-action:none; /* let us handle panning instead of browser scrolling */
   }
   canvas.dragging{
     cursor:grabbing;
@@ -133,6 +171,10 @@
     pointer-events:none;
     opacity:0;
     transition:opacity .25s;
+    white-space:nowrap;
+    max-width:90vw;
+    text-overflow:ellipsis;
+    overflow:hidden;
   }
   #spellsBar{
     margin-top:8px;
@@ -146,6 +188,7 @@
     text-transform:uppercase;
     letter-spacing:.14em;
     color:var(--muted);
+    text-align:center;
   }
   #spellsList{
     display:flex;
@@ -179,6 +222,7 @@
     font-size:11px;
     color:var(--muted);
     min-height:14px;
+    text-align:center;
   }
   #footer{
     font-size:10px;
@@ -242,6 +286,12 @@
   </div>
 </div>
 
+<div id="zoomControls">
+  <button id="zoomOut">−</button>
+  <span id="zoomLabel">100%</span>
+  <button id="zoomIn">+</button>
+</div>
+
 <div id="gameWrapper">
   <canvas id="game" width="960" height="540"></canvas>
   <div id="messageBanner"></div>
@@ -254,7 +304,7 @@
 </div>
 
 <div id="footer">
-  Drag to move the camera • Both sides mine minerals & tech worker hubs • Outposts: Spawn / Turret / Reaper / Worker • Game auto-saves locally.
+  Drag or swipe to move the camera • Pinpoint spells by tapping • Both sides mine minerals & tech worker hubs • Outposts: Spawn / Turret / Reaper / Worker • Game auto-saves locally.
 </div>
 
 <script>
@@ -297,16 +347,30 @@
   const btnLoadRun = document.getElementById('btnLoadRun');
   const btnRestartRun = document.getElementById('btnRestartRun');
 
+  const zoomOutBtn = document.getElementById('zoomOut');
+  const zoomInBtn = document.getElementById('zoomIn');
+  const zoomLabelEl = document.getElementById('zoomLabel');
+
   const SAVE_KEY = 'swarmMineralSaveV1';
   const BEST_KEY = 'swarmMineralBestLevelV1';
 
-  // camera
+  // camera + zoom
   const cam = { x:0, y:0 };
+  let zoom = 1;
+  const MIN_ZOOM = 0.6;
+  const MAX_ZOOM = 1.6;
+  const ZOOM_STEP = 0.2;
+
   let dragging = false;
   let dragStartX = 0;
   let dragStartY = 0;
   let dragStartCamX = 0;
   let dragStartCamY = 0;
+
+  // touch tracking
+  let lastTouchClientX = 0;
+  let lastTouchClientY = 0;
+  let touchMoved = false;
 
   // game state
   let troops = [];       // soldiers, reapers, workers, god
@@ -440,6 +504,38 @@
     return dx*dx+dy*dy;
   }
   function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+
+  // camera clamping and zoom
+  function clampCam(){
+    const viewWorldW = VIEW_W / zoom;
+    const viewWorldH = VIEW_H / zoom;
+    const maxCamX = Math.max(0, WORLD_W - viewWorldW);
+    const maxCamY = Math.max(0, WORLD_H - viewWorldH);
+    cam.x = clamp(cam.x, 0, maxCamX);
+    cam.y = clamp(cam.y, 0, maxCamY);
+  }
+
+  function setZoom(newZoom){
+    const oldZoom = zoom;
+    zoom = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
+    if(zoom === oldZoom) return;
+
+    const viewWorldWOld = VIEW_W / oldZoom;
+    const viewWorldHOld = VIEW_H / oldZoom;
+    const centerWorldX = cam.x + viewWorldWOld / 2;
+    const centerWorldY = cam.y + viewWorldHOld / 2;
+
+    const viewWorldWNew = VIEW_W / zoom;
+    const viewWorldHNew = VIEW_H / zoom;
+
+    cam.x = centerWorldX - viewWorldWNew / 2;
+    cam.y = centerWorldY - viewWorldHNew / 2;
+    clampCam();
+
+    if(zoomLabelEl){
+      zoomLabelEl.textContent = Math.round(zoom * 100) + '%';
+    }
+  }
 
   // ---------- World setup ----------
   function setupMineralPatches(){
@@ -1218,7 +1314,7 @@
         Array.from(spellsListEl.children).forEach((c,i)=>{
           c.classList.toggle('targeting', i===idx);
         });
-        spellHintEl.textContent='Click on the battlefield to choose a target.';
+        spellHintEl.textContent='Tap or click on the battlefield to choose a target.';
         canvas.style.cursor='crosshair';
       };
 
@@ -1324,7 +1420,7 @@
     ctx.lineWidth=1;
     ctx.setLineDash([6,8]);
     const worldCenterX=WORLD_W/2;
-    const screenCenterX=worldCenterX - cam.x;
+    const screenCenterX=(worldCenterX - cam.x)*zoom;
     if(screenCenterX>=0 && screenCenterX<=VIEW_W){
       ctx.beginPath();
       ctx.moveTo(screenCenterX,20);
@@ -1558,7 +1654,8 @@
   function draw(){
     drawScreenBackground();
     ctx.save();
-    ctx.translate(-cam.x,-cam.y);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-cam.x, -cam.y);
     drawMinerals();
     drawStructures();
     drawEffects();
@@ -1674,6 +1771,10 @@
     }
   };
 
+  // zoom button events
+  zoomInBtn.onclick = () => setZoom(zoom + ZOOM_STEP);
+  zoomOutBtn.onclick = () => setZoom(zoom - ZOOM_STEP);
+
   // ---------- Save / Load ----------
   function loadBestLevel(){
     try{
@@ -1718,7 +1819,8 @@
         spellTimer,
         availableSpells,
         cam,
-        enemyTechTimer
+        enemyTechTimer,
+        zoom
       };
       updateBestLevelMaybe();
       localStorage.setItem(SAVE_KEY, JSON.stringify(save));
@@ -1766,10 +1868,12 @@
     availableSpells = (save.availableSpells || []).map(sp=>({type:sp.type || sp}));
     enemyTechTimer = save.enemyTechTimer || 0;
 
-    cam.x = clamp(save.cam && typeof save.cam.x==='number' ? save.cam.x : WORLD_W/2 - VIEW_W/2,
-                  0, Math.max(0,WORLD_W-VIEW_W));
-    cam.y = clamp(save.cam && typeof save.cam.y==='number' ? save.cam.y : WORLD_H/2 - VIEW_H/2,
-                  0, Math.max(0,WORLD_H-VIEW_H));
+    zoom = typeof save.zoom === 'number' ? clamp(save.zoom, MIN_ZOOM, MAX_ZOOM) : 1;
+    if(zoomLabelEl) zoomLabelEl.textContent = Math.round(zoom*100)+'%';
+
+    cam.x = (save.cam && typeof save.cam.x==='number') ? save.cam.x : WORLD_W/2 - VIEW_W/2;
+    cam.y = (save.cam && typeof save.cam.y==='number') ? save.cam.y : WORLD_H/2 - VIEW_H/2;
+    clampCam();
 
     playerHQ = structures.find(s=>s.type==='hq' && s.side==='player') || null;
     enemyHQ  = structures.find(s=>s.type==='hq' && s.side==='enemy') || null;
@@ -1825,6 +1929,9 @@
     playerStats.speedLevel = 1;
     playerStats.workerCarryLevel = 1;
 
+    zoom = 1;
+    if(zoomLabelEl) zoomLabelEl.textContent = '100%';
+
     setupLevel(true);
     initRoundEconomy();
 
@@ -1835,8 +1942,9 @@
     pendingOutcome=null;
     autoSaveTimer=0;
 
-    cam.x = clamp(WORLD_W/2 - VIEW_W/2, 0, Math.max(0,WORLD_W-VIEW_W));
-    cam.y = clamp(WORLD_H/2 - VIEW_H/2, 0, Math.max(0,WORLD_H-VIEW_H));
+    cam.x = WORLD_W/2 - VIEW_W/2;
+    cam.y = WORLD_H/2 - VIEW_H/2;
+    clampCam();
 
     refreshSpellsBar();
     updateUI();
@@ -1863,48 +1971,13 @@
     const rect=canvas.getBoundingClientRect();
     const sx=(ev.clientX-rect.left)*(canvas.width/rect.width);
     const sy=(ev.clientY-rect.top)*(canvas.height/rect.height);
-    const wx=cam.x+sx;
-    const wy=cam.y+sy;
+    const wx=cam.x + sx/zoom;
+    const wy=cam.y + sy/zoom;
     return {wx,wy};
   }
 
-  canvas.addEventListener('mousedown',(ev)=>{
-    dragging=true;
-    canvas.classList.add('dragging');
-    const rect=canvas.getBoundingClientRect();
-    dragStartX=ev.clientX-rect.left;
-    dragStartY=ev.clientY-rect.top;
-    dragStartCamX=cam.x;
-    dragStartCamY=cam.y;
-  });
-  window.addEventListener('mousemove',(ev)=>{
-    if(!dragging) return;
-    const rect=canvas.getBoundingClientRect();
-    const mx=ev.clientX-rect.left;
-    const my=ev.clientY-rect.top;
-    const dx=mx-dragStartX;
-    const dy=my-dragStartY;
-    cam.x = clamp(dragStartCamX - dx, 0, Math.max(0,WORLD_W-VIEW_W));
-    cam.y = clamp(dragStartCamY - dy, 0, Math.max(0,WORLD_H-VIEW_H));
-  });
-  window.addEventListener('mouseup',()=>{
-    dragging=false;
-    canvas.classList.remove('dragging');
-    if(pendingSpellIndex===null){
-      canvas.style.cursor='grab';
-    }
-  });
-  canvas.addEventListener('mouseleave',()=>{
-    dragging=false;
-    canvas.classList.remove('dragging');
-    if(pendingSpellIndex===null){
-      canvas.style.cursor='grab';
-    }
-  });
-
-  canvas.addEventListener('click',(ev)=>{
+  function handleCanvasAction(wx,wy){
     if(pendingSpellType!=null && pendingSpellIndex!=null){
-      const {wx,wy}=worldFromEvent(ev);
       castSpellAt(pendingSpellType,wx,wy);
       availableSpells.splice(pendingSpellIndex,1);
       pendingSpellIndex=null;
@@ -1916,7 +1989,6 @@
       return;
     }
 
-    const {wx,wy}=worldFromEvent(ev);
     let clicked=null;
     for(const s of structures){
       if(s.type!=='outpost') continue;
@@ -1935,7 +2007,114 @@
       showMessage(`Outpost mode: ${clicked.mode.toUpperCase()}`);
       saveGame();
     }
+  }
+
+  // mouse dragging
+  canvas.addEventListener('mousedown',(ev)=>{
+    dragging=true;
+    canvas.classList.add('dragging');
+    const rect=canvas.getBoundingClientRect();
+    dragStartX=ev.clientX-rect.left;
+    dragStartY=ev.clientY-rect.top;
+    dragStartCamX=cam.x;
+    dragStartCamY=cam.y;
   });
+  window.addEventListener('mousemove',(ev)=>{
+    if(!dragging) return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=ev.clientX-rect.left;
+    const my=ev.clientY-rect.top;
+    const dx=mx-dragStartX;
+    const dy=my-dragStartY;
+    cam.x = dragStartCamX - dx/zoom;
+    cam.y = dragStartCamY - dy/zoom;
+    clampCam();
+  });
+  window.addEventListener('mouseup',()=>{
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  });
+  canvas.addEventListener('mouseleave',()=>{
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  });
+
+  // mouse click for desktop
+  canvas.addEventListener('click',(ev)=>{
+    // On touch devices we handle via touchend (preventDefault on touch),
+    // so this is mainly for mouse / desktop.
+    const {wx,wy}=worldFromEvent(ev);
+    handleCanvasAction(wx,wy);
+  });
+
+  // touch support for phone / tablet
+  function onTouchStart(ev){
+    if(ev.touches.length!==1) return;
+    ev.preventDefault();
+    const t = ev.touches[0];
+    const rect=canvas.getBoundingClientRect();
+    dragging=true;
+    canvas.classList.add('dragging');
+    dragStartX=t.clientX-rect.left;
+    dragStartY=t.clientY-rect.top;
+    dragStartCamX=cam.x;
+    dragStartCamY=cam.y;
+    lastTouchClientX=t.clientX;
+    lastTouchClientY=t.clientY;
+    touchMoved=false;
+  }
+  function onTouchMove(ev){
+    if(!dragging) return;
+    if(ev.touches.length!==1) return;
+    ev.preventDefault();
+    const t = ev.touches[0];
+    const rect=canvas.getBoundingClientRect();
+    const mx=t.clientX-rect.left;
+    const my=t.clientY-rect.top;
+    const dx=mx-dragStartX;
+    const dy=my-dragStartY;
+    if(Math.abs(dx)>6 || Math.abs(dy)>6){
+      touchMoved=true;
+    }
+    cam.x = dragStartCamX - dx/zoom;
+    cam.y = dragStartCamY - dy/zoom;
+    clampCam();
+    lastTouchClientX = t.clientX;
+    lastTouchClientY = t.clientY;
+  }
+  function onTouchEnd(ev){
+    if(!dragging) return;
+    ev.preventDefault();
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(!touchMoved){
+      // treat as tap
+      const fakeEv = {clientX:lastTouchClientX, clientY:lastTouchClientY};
+      const {wx,wy}=worldFromEvent(fakeEv);
+      handleCanvasAction(wx,wy);
+    }
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  }
+  function onTouchCancel(ev){
+    dragging=false;
+    canvas.classList.remove('dragging');
+    if(pendingSpellIndex===null){
+      canvas.style.cursor='grab';
+    }
+  }
+
+  canvas.addEventListener('touchstart', onTouchStart, {passive:false});
+  canvas.addEventListener('touchmove', onTouchMove, {passive:false});
+  canvas.addEventListener('touchend', onTouchEnd, {passive:false});
+  canvas.addEventListener('touchcancel', onTouchCancel, {passive:false});
 
   // ---------- Outcome ----------
   function handlePendingOutcome(){
@@ -2002,6 +2181,7 @@
   // ---------- Boot ----------
   function boot(){
     loadBestLevel();
+    if(zoomLabelEl) zoomLabelEl.textContent = Math.round(zoom*100)+'%';
     const loaded = tryLoadGame();
     if(!loaded){
       newRun();
@@ -2010,6 +2190,7 @@
     }
     updateUI();
     refreshSpellsBar();
+    clampCam();
     lastTime=performance.now();
     if(!loopStarted){
       loopStarted=true;
@@ -2022,3 +2203,5 @@
 </script>
 </body>
 </html>
+
+
