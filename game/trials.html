@@ -385,17 +385,16 @@
 
 <script>
   // 🔥 DROP YOUR EXISTING CONFIG HERE (same one as the original script)
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.firebasestorage.app",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
-  measurementId: "G-8PR6LVKSH3"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.firebasestorage.app",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+    measurementId: "G-8PR6LVKSH3"
+  };
   let db = null;
   let scoresRef = null;
   try{
@@ -532,7 +531,9 @@ const firebaseConfig = {
     enemies:[],
     bullets:[],
     enemyBullets:[],
+    rockets:[],
     fireZones:[],
+    poisonZones:[],
     obstacles:[],
     particles:[],
     time:0,
@@ -547,27 +548,28 @@ const firebaseConfig = {
       radius:26,
       maxHp:100,
       hp:100,
-      speed:260,
-      regen:1, // hp per sec
-      baseDamage:20,
-      fireRate:3.0, // shots/s
+      speed:240,
+      regen:0.4,         // hp per sec
+      baseDamage:14,
+      fireRate:2.8,      // shots/s
       projectileCount:1,
       projectileSpread:0.18,
       bulletSpeed:560,
-      knockback:220,
+      knockback:200,
       explosionRadius:0,
       splinter:0,
       poisonLevel:0,
       freezeLevel:0,
       lightningLevel:0,
       weakenLevel:0,
-      clipSize:10,
-      ammo:10,
-      reloadTime:1.6,
+      clipSize:9,
+      ammo:9,
+      reloadTime:1.7,
       reloadTimer:0,
       shotCooldown:0,
       dragonShot:false,
       dragonCounter:0,
+      dragonLevel:0
     }
   };
 
@@ -578,7 +580,9 @@ const firebaseConfig = {
     state.enemies = [];
     state.bullets = [];
     state.enemyBullets = [];
+    state.rockets = [];
     state.fireZones = [];
+    state.poisonZones = [];
     state.particles = [];
     // Random blocks
     const count = 18;
@@ -606,13 +610,13 @@ const firebaseConfig = {
   function spawnWave(){
     state.enemies.length = 0;
     const level = state.level;
-    const tier = Math.floor((level-1)/10); // 0.. etc
-    const enemyTypeCap = Math.min(7, tier+1); // 1 type first 10, then 2, etc
+    const tier = Math.floor((level-1)/5); // more types over time
+    const enemyTypeCap = Math.min(7, 1 + tier); // 1 type first 5 levels, then more
     const isBossRound = level % 5 === 0;
     const isBigBoss = level % 10 === 0;
 
-    const scaleFactor = 1 + 0.15*Math.floor(level/5);
-    state.enemyScale = scaleFactor;
+    const hpScale = 1 + 0.18*(level-1);
+    state.enemyScale = hpScale;
 
     if(isBossRound){
       const bossCount = isBigBoss ? 1 : 2;
@@ -623,7 +627,7 @@ const firebaseConfig = {
         state.enemies.push(enemy);
       }
       // plus some minions
-      const minions = 4 + Math.floor(level/3);
+      const minions = 4 + Math.floor(level/2);
       for(let i=0;i<minions;i++){
         const type = Math.floor(Math.random()*enemyTypeCap);
         const e = makeEnemy(type,false,false);
@@ -650,24 +654,36 @@ const firebaseConfig = {
     enemy.y = state.player.y + Math.sin(angle)*dist;
   }
 
+  // Types:
+  // 0 = 🐜 Ant (fast, splits)
+  // 1 = 👻 Ghost (teleports, ignores walls)
+  // 2 = 🐺 Wolf (dash)
+  // 3 = 👺 Goblin (rockets)
+  // 4 = 🪨 Golem (splits to mini golems)
+  // 5 = 🧙‍♀️ Witch (poison circles)
+  // 6 = 🦑 Squid (big laser)
   function makeEnemy(type,boss,bigBoss){
-    const baseHp = [40,60,70,80,120,180,90,110][type] || 60;
-    const baseSpeed = [90,170,120,100,150,60,120,80][type] || 100;
-    const baseDamage = [10,18,15,22,20,30,18,22][type] || 15;
+    const baseHp    = [30, 60, 80, 70, 180, 90, 100][type] || 60;
+    const baseSpeed = [180,120,160,120, 60, 90, 80][type] || 100;
+    const baseDmg   = [ 8, 12, 16, 18,  22, 14, 18][type] || 15;
 
-    const extraHpFactor = 1 + 0.18*Math.floor(state.level/5);
-    let hp = baseHp*state.enemyScale*extraHpFactor;
-    let speed = baseSpeed*(1 + 0.07*Math.floor(state.level/5));
-    let dmg = baseDamage*(1 + 0.1*Math.floor(state.level/5));
+    const lvl = state.level;
+    const hpScale = 1 + 0.18*(lvl-1);
+    const spdScale= 1 + 0.06*(lvl-1);
+    const dmgScale= 1 + 0.12*(lvl-1);
+
+    let hp = baseHp * hpScale;
+    let speed = baseSpeed * spdScale;
+    let dmg = baseDmg * dmgScale;
 
     if(boss){
-      const healthMult = bigBoss?20:15;
+      const healthMult = bigBoss?14:9;
       hp *= healthMult;
-      speed *= bigBoss?1.1:1.05;
+      speed *= bigBoss?1.15:1.08;
       dmg *= bigBoss?2.0:1.6;
     }
 
-    return {
+    const e = {
       id:Math.random().toString(36).slice(2),
       type,
       boss,
@@ -680,28 +696,44 @@ const firebaseConfig = {
       speed,
       damage:dmg,
       behaviorTimer:0,
-      shootTimer:0,
-      chargeTimer:0,
-      explodeTimer:0,
-      spinTimer:0,
       slowFactor:1,
       poisonTimer:0,
       poisonDps:0,
       weakenTimer:0,
       lightningCooldown:0,
+      // per-type state:
+      splitTimer:0,
+      teleportTimer:0,
+      teleportCooldown:1.5 + Math.random()*2,
+      dashState:"chase",
+      dashCooldown:1.5 + Math.random()*1.5,
+      dashWindup:0,
+      dashTime:0,
+      dashTargetX:0,
+      dashTargetY:0,
+      rocketTimer:0,
+      small:false,
+      castTimer:0,
+      laserWindup:0,
+      laserFiring:0,
+      laserCooldown:1.5 + Math.random()*1.5,
+      laserDir:0,
+      mixTimer:0
     };
+
+    return e;
   }
 
-  // Upgrades pool
+  // === Upgrades: scaled splinters, explosions, stackable elementals, upgradeable dragon ===
   const upgrades = [
-    // COMMONS
+    // COMMON
     { id:"dmg1", name:"+15% Damage", rarity:"common",
       desc:"+15% bullet damage.",
       apply:p=>{ p.baseDamage*=1.15; }
     },
     { id:"rate1", name:"+20% Fire Rate", rarity:"common",
       desc:"Shoot 20% faster.",
-      apply:p=>{ p.fireRate*=1.2; }
+      apply:p=>{ p.fireRate*=1.20; }
     },
     { id:"proj1", name:"+1 Projectile", rarity:"common",
       desc:"Fire +1 projectile per shot.",
@@ -731,7 +763,7 @@ const firebaseConfig = {
     },
     { id:"rate2", name:"+40% Fire Rate", rarity:"rare",
       desc:"Shoot much faster.",
-      apply:p=>{ p.fireRate*=1.4; }
+      apply:p=>{ p.fireRate*=1.40; }
     },
     { id:"proj2", name:"+2 Projectiles", rarity:"rare",
       desc:"More bullets in each volley.",
@@ -746,44 +778,58 @@ const firebaseConfig = {
       apply:p=>{ p.knockback*=1.6; }
     },
     { id:"expl1", name:"Small Explosions", rarity:"rare",
-      desc:"Bullets create small splash damage.",
-      apply:p=>{ p.explosionRadius = Math.max(p.explosionRadius,70); }
+      desc:"Bullets create small splash damage that grows with more picks.",
+      apply:p=>{
+        if(p.explosionRadius === 0){
+          p.explosionRadius = 60;
+        }else{
+          p.explosionRadius += 30;
+        }
+      }
     },
     { id:"splinter1", name:"Splinter Shot", rarity:"rare",
-      desc:"Bullets split into 2 shards on hit.",
-      apply:p=>{ p.splinter = Math.max(p.splinter,2); }
+      desc:"Bullets split into more shards on hit (stacks).",
+      apply:p=>{ p.splinter += 1; }
     },
 
     // EPIC
     { id:"poison1", name:"Poison Rounds", rarity:"epic",
-      desc:"Bullets apply a strong damage-over-time.",
-      apply:p=>{ p.poisonLevel = Math.max(p.poisonLevel,1); }
+      desc:"Bullets apply stacking poison damage over time.",
+      apply:p=>{ p.poisonLevel = (p.poisonLevel || 0) + 1; }
     },
     { id:"freeze1", name:"Freeze Rounds", rarity:"epic",
-      desc:"Bullets slow enemies heavily.",
-      apply:p=>{ p.freezeLevel = Math.max(p.freezeLevel,1); }
+      desc:"Bullets apply stronger slows each level.",
+      apply:p=>{ p.freezeLevel = (p.freezeLevel || 0) + 1; }
     },
     { id:"light1", name:"Chain Lightning", rarity:"epic",
-      desc:"Bullets arc to nearby enemies.",
-      apply:p=>{ p.lightningLevel = Math.max(p.lightningLevel,1); }
+      desc:"Bullets arc to more targets and proc more often.",
+      apply:p=>{ p.lightningLevel = (p.lightningLevel || 0) + 1; }
     },
     { id:"weaken1", name:"Weaken", rarity:"epic",
-      desc:"Bullets make enemies take more damage.",
-      apply:p=>{ p.weakenLevel = Math.max(p.weakenLevel,1); }
+      desc:"Bullets make enemies take more damage for longer (stacks).",
+      apply:p=>{ p.weakenLevel = (p.weakenLevel || 0) + 1; }
     },
-    { id:"expl2", name:"Big Explosions", rarity:"epic",
-      desc:"Large splash radius on hit.",
-      apply:p=>{ p.explosionRadius = Math.max(p.explosionRadius,120); }
+    { id:"expl2", name:"Bigger Explosions", rarity:"epic",
+      desc:"Explosion radius grows a lot each time you pick this.",
+      apply:p=>{
+        if(p.explosionRadius === 0){
+          p.explosionRadius = 80;
+        }
+        p.explosionRadius += 45;
+      }
     },
     { id:"splinter2", name:"Multi Splinter", rarity:"epic",
-      desc:"Bullets split into 3 shards.",
-      apply:p=>{ p.splinter = Math.max(p.splinter,3); }
+      desc:"Adds even more splinters to each hit (stacks).",
+      apply:p=>{ p.splinter += 2; }
     },
 
-    // LEGENDARY (post 25)
+    // LEGENDARY
     { id:"dragon", name:"Dragon Shot", rarity:"legend",
-      desc:"Every 5th shot becomes a homing dragon shot that burns the ground.",
-      apply:p=>{ p.dragonShot = true; }
+      desc:"Unlocks/empowers Dragon Shot. More levels = more frequent, stronger fire.",
+      apply:p=>{
+        p.dragonShot = true;
+        p.dragonLevel = (p.dragonLevel || 0) + 1;
+      }
     }
   ];
 
@@ -798,7 +844,7 @@ const firebaseConfig = {
   function pickUpgrades(level){
     const pool = upgrades.filter(u=>{
       if(u.rarity === "legend"){
-        return level>=25; // dragon only late
+        return level>=25;
       }
       return true;
     });
@@ -806,7 +852,6 @@ const firebaseConfig = {
     const picks = [];
     const used = new Set();
     while(picks.length<3 && picks.length<pool.length){
-      // weighted roll
       let totalW = 0;
       for(const u of pool) totalW += rarityWeight(u.rarity);
       let roll = Math.random()*totalW;
@@ -932,7 +977,7 @@ const firebaseConfig = {
     hpDisplay.textContent = `${Math.round(state.player.hp)} / ${Math.round(state.player.maxHp)}`;
   }
 
-  // Game loop
+  // === Game loop ===
   let lastTime = performance.now();
   resetWorld();
   startRound();
@@ -948,7 +993,9 @@ const firebaseConfig = {
   requestAnimationFrame(loop);
 
   function step(dt){
-    if(state.showOverlay) return; // pause while choosing upgrades
+    if(state.showOverlay) return;
+
+    const p = state.player;
 
     // Keyboard fallback movement
     let kbX = 0, kbY = 0;
@@ -959,15 +1006,32 @@ const firebaseConfig = {
     let moveX = moveInput.x + kbX;
     let moveY = moveInput.y + kbY;
     const moveLen = Math.hypot(moveX,moveY);
-    if(moveLen>1) { moveX/=moveLen; moveY/=moveLen; }
+    if(moveLen>1){ moveX/=moveLen; moveY/=moveLen; }
 
     // Move player
-    const p = state.player;
     p.x += moveX*p.speed*dt;
     p.y += moveY*p.speed*dt;
     // Clamp inside world
     p.x = Math.max(-halfWorld+60, Math.min(halfWorld-60, p.x));
     p.y = Math.max(-halfWorld+60, Math.min(halfWorld-60, p.y));
+    // Prevent running through walls (obstacles)
+    for(const ob of state.obstacles){
+      const rx1 = ob.x-ob.w/2;
+      const ry1 = ob.y-ob.h/2;
+      const rx2 = ob.x+ob.w/2;
+      const ry2 = ob.y+ob.h/2;
+      const nx = clamp(p.x,rx1,rx2);
+      const ny = clamp(p.y,ry1,ry2);
+      const dx = p.x-nx;
+      const dy = p.y-ny;
+      const dist = Math.hypot(dx,dy);
+      const minDist = p.radius+2;
+      if(dist < minDist){
+        const push = (minDist - (dist||1));
+        p.x += (dx/(dist||1))*push;
+        p.y += (dy/(dist||1))*push;
+      }
+    }
 
     // Regen
     p.hp = Math.min(p.maxHp, p.hp + p.regen*dt);
@@ -1048,7 +1112,39 @@ const firebaseConfig = {
       }
     }
 
-    // Fire zones (dragon fire, etc.)
+    // Goblin rockets
+    for(let i=state.rockets.length-1;i>=0;i--){
+      const r = state.rockets[i];
+      r.time += dt;
+      const t = Math.min(1, r.time / r.ttl);
+      r.x = r.sx + (r.tx-r.sx)*t;
+      r.y = r.sy + (r.ty-r.sy)*t;
+      if(r.time>=r.ttl){
+        // Explosion
+        const dx = p.x - r.tx;
+        const dy = p.y - r.ty;
+        if(dx*dx+dy*dy < r.radius*r.radius){
+          p.hp -= r.damage;
+          if(p.hp<=0){
+            p.hp = 0;
+            updateHud();
+            showRoundOverlay();
+            return;
+          }
+        }
+        // Particle ring
+        state.particles.push({
+          x:r.tx,
+          y:r.ty,
+          life:0.55,
+          maxLife:0.55,
+          radius:r.radius
+        });
+        state.rockets.splice(i,1);
+      }
+    }
+
+    // Fire zones (dragon / explosion) – damage enemies only
     for(let i=state.fireZones.length-1;i>=0;i--){
       const fz = state.fireZones[i];
       fz.life -= dt;
@@ -1063,11 +1159,9 @@ const firebaseConfig = {
     for(let i=state.enemies.length-1;i>=0;i--){
       const e = state.enemies[i];
       e.behaviorTimer += dt;
-      e.shootTimer += dt;
-      e.spinTimer += dt;
       e.lightningCooldown = Math.max(0,e.lightningCooldown-dt);
 
-      // Effects
+      // Status effects
       if(e.poisonTimer>0){
         e.poisonTimer -= dt;
         e.hp -= e.poisonDps*dt;
@@ -1075,179 +1169,260 @@ const firebaseConfig = {
       if(e.weakenTimer>0){
         e.weakenTimer -= dt;
       }
+
       let effectiveSpeed = e.speed * (e.slowFactor || 1);
 
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const dist = Math.hypot(dx,dy)||1;
 
-      // Behavior by type
-      if(e.type===0){
-        // simple chaser
-        e.vx = (dx/dist)*effectiveSpeed;
-        e.vy = (dy/dist)*effectiveSpeed;
-      }else if(e.type===1){
-        // charger: telegraph line then dash
-        if(e.chargeTimer<=0){
-          if(dist>260){
-            e.vx = (dx/dist)*effectiveSpeed;
-            e.vy = (dy/dist)*effectiveSpeed;
+      // Boss mix abilities: occasionally do extra stuff
+      if(e.boss){
+        e.mixTimer += dt;
+        if(e.mixTimer>4){
+          e.mixTimer = 0;
+          const roll = Math.floor(Math.random()*3);
+          if(roll===0){
+            // spawn ant minion
+            const child = makeEnemy(0,false,false);
+            child.x = e.x + (Math.random()-0.5)*120;
+            child.y = e.y + (Math.random()-0.5)*120;
+            state.enemies.push(child);
+          }else if(roll===1){
+            // spawn poison circle near player
+            const ang = Math.random()*Math.PI*2;
+            const rr = 80 + Math.random()*160;
+            const zx = p.x + Math.cos(ang)*rr;
+            const zy = p.y + Math.sin(ang)*rr;
+            state.poisonZones.push({
+              x:zx,y:zy,
+              radius:80,
+              telegraphTime:0.7,
+              activeTime:2.0,
+              timer:0,
+              active:false,
+              dps:16
+            });
           }else{
-            e.chargeTimer = 0.45;
-            e.chargeDir = Math.atan2(dy,dx);
-            e.vx = 0; e.vy=0;
-          }
-        }else{
-          e.chargeTimer -= dt;
-          if(e.chargeTimer<=0){
-            e.vx = Math.cos(e.chargeDir)*effectiveSpeed*3.5;
-            e.vy = Math.sin(e.chargeDir)*effectiveSpeed*3.5;
-            e.chargeTimer = -0.4;
-          }
-        }
-        if(e.chargeTimer<0){
-          e.chargeTimer += dt;
-        }
-      }else if(e.type===2){
-        // shooter: keep medium distance and fire bullets
-        if(dist>420){
-          e.vx = (dx/dist)*effectiveSpeed;
-          e.vy = (dy/dist)*effectiveSpeed;
-        }else if(dist<260){
-          e.vx = -(dx/dist)*effectiveSpeed;
-          e.vy = -(dy/dist)*effectiveSpeed;
-        }else{
-          e.vx *= 0.9;
-          e.vy *= 0.9;
-        }
-        if(e.shootTimer>1.1){
-          e.shootTimer = 0;
-          const shots = e.boss?4:2;
-          const spread = 0.2;
-          const baseAngle = Math.atan2(dy,dx);
-          for(let s=0;s<shots;s++){
-            const a = baseAngle + spread*(s-(shots-1)/2);
-            spawnEnemyBullet(e.x,e.y,a,e.damage*(e.boss?1.2:1.0),220+state.level*8);
-          }
-        }
-      }else if(e.type===3){
-        // bomber: slowly approach, then telegraph circle and explode
-        if(dist>260){
-          e.vx=(dx/dist)*effectiveSpeed*0.9;
-          e.vy=(dy/dist)*effectiveSpeed*0.9;
-        }else{
-          e.vx*=0.5; e.vy*=0.5;
-          e.explodeTimer += dt;
-          if(e.explodeTimer>1.0){
-            // explosion
-            const rad = 120*(e.boss?1.4:1);
-            const d2 = dx*dx+dy*dy;
-            if(d2 < rad*rad){
-              p.hp -= e.damage*(e.boss?1.6:1.2);
-              if(p.hp<=0){
-                p.hp=0;
-                updateHud();
-                showRoundOverlay();
-                return;
-              }
-            }
-            // self-destruct
-            state.enemies.splice(i,1);
-            continue;
-          }
-        }
-      }else if(e.type===4){
-        // zigzag runner
-        const baseDir = Math.atan2(dy,dx);
-        const wobble = Math.sin(e.behaviorTimer*5)*(e.boss?0.7:0.45);
-        const a = baseDir + wobble;
-        e.vx = Math.cos(a)*effectiveSpeed;
-        e.vy = Math.sin(a)*effectiveSpeed;
-      }else if(e.type===5){
-        // tank: slow but heavy, sometimes short burst
-        if(e.behaviorTimer>2.8){
-          e.behaviorTimer=0;
-          e.burstDir = Math.atan2(dy,dx);
-        }
-        const factor = (e.behaviorTimer<0.4)?2.2:1.0;
-        e.vx = Math.cos(e.burstDir || Math.atan2(dy,dx))*effectiveSpeed*factor*0.6;
-        e.vy = Math.sin(e.burstDir || Math.atan2(dy,dx))*effectiveSpeed*factor*0.6;
-      }else if(e.type===6){
-        // spinner: orbits and fires radial shots
-        const desired = 340;
-        if(dist>desired+40){
-          e.vx = (dx/dist)*effectiveSpeed;
-          e.vy = (dy/dist)*effectiveSpeed;
-        }else if(dist<desired-40){
-          e.vx = -(dx/dist)*effectiveSpeed;
-          e.vy = -(dy/dist)*effectiveSpeed;
-        }else{
-          e.vx*=0.9; e.vy*=0.9;
-        }
-        if(e.spinTimer>1.6){
-          e.spinTimer=0;
-          const rays = e.boss?14:8;
-          for(let k=0;k<rays;k++){
-            const a = (k/rays)*Math.PI*2;
-            spawnEnemyBullet(e.x,e.y,a,e.damage*0.8,200+state.level*6);
-          }
-        }
-      }else if(e.type===7){
-        // laser line: telegraph then fire a narrow beam
-        if(e.chargeTimer<=0){
-          if(dist>420){
-            e.vx=(dx/dist)*effectiveSpeed;
-            e.vy=(dy/dist)*effectiveSpeed;
-          }else{
-            e.vx*=0.9;
-            e.vy*=0.9;
-            e.chargeTimer = 1.0;
-            e.laserDir = Math.atan2(dy,dx);
-          }
-        }else{
-          e.chargeTimer -= dt;
-          if(e.chargeTimer<=0){
-            // fire beam
-            const beamLen = 900;
-            const bw = 32;
-            const ax = e.x;
-            const ay = e.y;
-            const bx = e.x + Math.cos(e.laserDir)*beamLen;
-            const by = e.y + Math.sin(e.laserDir)*beamLen;
-            // approximate hit
-            const t = ((p.x-ax)*Math.cos(e.laserDir)+(p.y-ay)*Math.sin(e.laserDir))/beamLen;
-            if(t>0 && t<1){
-              const projX = ax + (bx-ax)*t;
-              const projY = ay + (by-ay)*t;
-              const d2 = (p.x-projX)**2+(p.y-projY)**2;
-              if(d2 < bw*bw){
-                p.hp -= e.damage*(e.boss?1.7:1.3);
-                if(p.hp<=0){
-                  p.hp=0;
-                  updateHud();
-                  showRoundOverlay();
-                  return;
-                }
-              }
-            }
+            // fire rocket toward area near player
+            const offAng = Math.random()*Math.PI*2;
+            const offRad = 60+Math.random()*100;
+            const tx = p.x + Math.cos(offAng)*offRad;
+            const ty = p.y + Math.sin(offAng)*offRad;
+            state.rockets.push({
+              sx:e.x, sy:e.y,
+              x:e.x, y:e.y,
+              tx,ty,
+              radius:110,
+              damage:e.damage*1.3,
+              ttl:1.1,
+              time:0
+            });
           }
         }
       }
 
+      // Behavior by enemy type
+      if(e.type===0){
+        // 🐜 Ant – fast chaser, splits
+        e.vx = (dx/dist)*effectiveSpeed;
+        e.vy = (dy/dist)*effectiveSpeed;
+        e.splitTimer += dt;
+        if(e.splitTimer>=8){
+          e.splitTimer = 0;
+          if(Math.random()<0.5){
+            const child = makeEnemy(0,false,false);
+            child.x = e.x + (Math.random()-0.5)*60;
+            child.y = e.y + (Math.random()-0.5)*60;
+            state.enemies.push(child);
+          }
+        }
+      }else if(e.type===1){
+        // 👻 Ghost – slow drift + random teleports, ignores walls
+        e.vx = (dx/dist)*effectiveSpeed*0.6;
+        e.vy = (dy/dist)*effectiveSpeed*0.6;
+        e.teleportTimer += dt;
+        if(e.teleportTimer>=e.teleportCooldown){
+          e.teleportTimer = 0;
+          e.teleportCooldown = 1.8 + Math.random()*2.2;
+          const r = 220 + Math.random()*200;
+          const ang = Math.random()*Math.PI*2;
+          e.x = p.x + Math.cos(ang)*r;
+          e.y = p.y + Math.sin(ang)*r;
+        }
+      }else if(e.type===2){
+        // 🐺 Wolf – dash attacker
+        if(e.dashState==="chase"){
+          e.vx = (dx/dist)*effectiveSpeed;
+          e.vy = (dy/dist)*effectiveSpeed;
+          e.dashCooldown -= dt;
+          if(e.dashCooldown<=0 && dist<480){
+            e.dashState = "windup";
+            e.dashWindup = 0.5;
+            e.dashTargetX = p.x;
+            e.dashTargetY = p.y;
+            e.dashCooldown = 3 + Math.random()*2;
+          }
+        }else if(e.dashState==="windup"){
+          e.vx *= 0.4;
+          e.vy *= 0.4;
+          e.dashWindup -= dt;
+          if(e.dashWindup<=0){
+            e.dashState = "dash";
+            const dir = Math.atan2(e.dashTargetY-e.y, e.dashTargetX-e.x);
+            e.vx = Math.cos(dir)*effectiveSpeed*4.0;
+            e.vy = Math.sin(dir)*effectiveSpeed*4.0;
+            e.dashTime = 0.28;
+          }
+        }else if(e.dashState==="dash"){
+          e.dashTime -= dt;
+          if(e.dashTime<=0){
+            e.dashState="chase";
+          }
+        }
+      }else if(e.type===3){
+        // 👺 Goblin – mid-range kiter with rockets
+        const desired = 420;
+        if(dist>desired+50){
+          e.vx = (dx/dist)*effectiveSpeed;
+          e.vy = (dy/dist)*effectiveSpeed;
+        }else if(dist<desired-80){
+          e.vx = -(dx/dist)*effectiveSpeed;
+          e.vy = -(dy/dist)*effectiveSpeed;
+        }else{
+          e.vx *= 0.85;
+          e.vy *= 0.85;
+        }
+        e.rocketTimer += dt;
+        const interval = e.boss?1.4:2.1;
+        if(e.rocketTimer>=interval){
+          e.rocketTimer = 0;
+          const offAng = Math.random()*Math.PI*2;
+          const offRad = 40+Math.random()*100;
+          const tx = p.x + Math.cos(offAng)*offRad;
+          const ty = p.y + Math.sin(offAng)*offRad;
+          state.rockets.push({
+            sx:e.x, sy:e.y,
+            x:e.x, y:e.y,
+            tx,ty,
+            radius:90,
+            damage:e.damage*(e.boss?1.5:1.2),
+            ttl:1.0,
+            time:0
+          });
+        }
+      }else if(e.type===4){
+        // 🪨 Golem – slow tank, splits when dead
+        e.vx = (dx/dist)*effectiveSpeed*0.6;
+        e.vy = (dy/dist)*effectiveSpeed*0.6;
+      }else if(e.type===5){
+        // 🧙‍♀️ Witch – keeps distance, casts poison circles
+        const minDist = 420;
+        const maxDist = 700;
+        if(dist>maxDist){
+          e.vx = (dx/dist)*effectiveSpeed*0.7;
+          e.vy = (dy/dist)*effectiveSpeed*0.7;
+        }else if(dist<minDist){
+          e.vx = -(dx/dist)*effectiveSpeed*0.7;
+          e.vy = -(dy/dist)*effectiveSpeed*0.7;
+        }else{
+          e.vx *= 0.8;
+          e.vy *= 0.8;
+        }
+        e.castTimer += dt;
+        const castInterval = e.boss?2.4:3.3;
+        if(e.castTimer>=castInterval){
+          e.castTimer = 0;
+          const circles = e.boss?4:3;
+          for(let c=0;c<circles;c++){
+            const ang = Math.random()*Math.PI*2;
+            const rr = 80 + Math.random()*160;
+            const zx = p.x + Math.cos(ang)*rr;
+            const zy = p.y + Math.sin(ang)*rr;
+            state.poisonZones.push({
+              x:zx,y:zy,
+              radius:70,
+              telegraphTime:0.7,
+              activeTime:1.8,
+              timer:0,
+              active:false,
+              dps:16
+            });
+          }
+        }
+      }else if(e.type===6){
+        // 🦑 Squid – laser caster
+        const idealDist = 520;
+        if(dist>idealDist+60){
+          e.vx = (dx/dist)*effectiveSpeed*0.8;
+          e.vy = (dy/dist)*effectiveSpeed*0.8;
+        }else if(dist<idealDist-80){
+          e.vx = -(dx/dist)*effectiveSpeed*0.8;
+          e.vy = -(dy/dist)*effectiveSpeed*0.8;
+        }else{
+          e.vx *= 0.7;
+          e.vy *= 0.7;
+        }
+
+        if(e.laserFiring>0){
+          e.laserFiring -= dt;
+          if(e.laserFiring<=0){
+            e.laserFiring = 0;
+            e.laserCooldown = 2 + Math.random()*1.5;
+          }
+        }else{
+          e.laserCooldown -= dt;
+          if(e.laserWindup>0){
+            e.laserWindup -= dt;
+            if(e.laserWindup<=0){
+              // Fire beam now
+              e.laserFiring = 0.35;
+              const beamLen = 1000;
+              const bw = 40;
+              const ax = e.x;
+              const ay = e.y;
+              const bx = e.x + Math.cos(e.laserDir)*beamLen;
+              const by = e.y + Math.sin(e.laserDir)*beamLen;
+              const tproj = ((p.x-ax)*Math.cos(e.laserDir)+(p.y-ay)*Math.sin(e.laserDir))/beamLen;
+              if(tproj>0 && tproj<1){
+                const projX = ax + (bx-ax)*tproj;
+                const projY = ay + (by-ay)*tproj;
+                const d2 = (p.x-projX)**2+(p.y-projY)**2;
+                if(d2 < bw*bw){
+                  p.hp -= e.damage*(e.boss?2.0:1.4);
+                  if(p.hp<=0){
+                    p.hp = 0;
+                    updateHud();
+                    showRoundOverlay();
+                    return;
+                  }
+                }
+              }
+            }
+          }else if(e.laserCooldown<=0 && dist<900){
+            e.laserWindup = 0.8;
+            e.laserDir = Math.atan2(dy,dx);
+          }
+        }
+      }
+
+      // Move enemy
       e.x += e.vx*dt;
       e.y += e.vy*dt;
 
-      // collisions with obstacles push out a bit
-      for(const ob of state.obstacles){
-        const nearestX = clamp(e.x, ob.x-ob.w/2, ob.x+ob.w/2);
-        const nearestY = clamp(e.y, ob.y-ob.h/2, ob.y+ob.h/2);
-        const dx2 = e.x-nearestX;
-        const dy2 = e.y-nearestY;
-        const dist2 = Math.hypot(dx2,dy2);
-        if(dist2 < e.radius+4){
-          const diff = (e.radius+4)-(dist2||1);
-          e.x += (dx2/(dist2||1))*diff;
-          e.y += (dy2/(dist2||1))*diff;
+      // collisions with obstacles (ghosts ignore)
+      if(e.type!==1){
+        for(const ob of state.obstacles){
+          const nearestX = clamp(e.x, ob.x-ob.w/2, ob.x+ob.w/2);
+          const nearestY = clamp(e.y, ob.y-ob.h/2, ob.y+ob.h/2);
+          const dx2 = e.x-nearestX;
+          const dy2 = e.y-nearestY;
+          const dist2 = Math.hypot(dx2,dy2);
+          if(dist2 < e.radius+4){
+            const diff = (e.radius+4)-(dist2||1);
+            e.x += (dx2/(dist2||1))*diff;
+            e.y += (dy2/(dist2||1))*diff;
+          }
         }
       }
 
@@ -1266,14 +1441,52 @@ const firebaseConfig = {
         }
       }
 
-      if(e.hp>0) aliveEnemies++;
-      else{
+      // Death handling
+      if(e.hp<=0){
+        onEnemyDeath(e);
         state.enemies.splice(i,1);
         continue;
+      }else{
+        aliveEnemies++;
       }
     }
 
-    // Bullet vs enemy
+    // Poison zones – damage player
+    for(let i=state.poisonZones.length-1;i>=0;i--){
+      const z = state.poisonZones[i];
+      z.timer += dt;
+      if(!z.active && z.timer>=z.telegraphTime){
+        z.active = true;
+      }
+      if(z.timer >= z.telegraphTime + z.activeTime){
+        state.poisonZones.splice(i,1);
+        continue;
+      }
+      if(z.active){
+        const dx = p.x - z.x;
+        const dy = p.y - z.y;
+        if(dx*dx+dy*dy < z.radius*z.radius){
+          p.hp -= z.dps*dt;
+          if(p.hp<=0){
+            p.hp=0;
+            updateHud();
+            showRoundOverlay();
+            return;
+          }
+        }
+      }
+    }
+
+    // Particles
+    for(let i=state.particles.length-1;i>=0;i--){
+      const part = state.particles[i];
+      part.life -= dt;
+      if(part.life<=0){
+        state.particles.splice(i,1);
+      }
+    }
+
+    // Bullet vs enemy collisions
     for(let i=state.bullets.length-1;i>=0;i--){
       const b = state.bullets[i];
       let removed=false;
@@ -1290,7 +1503,7 @@ const firebaseConfig = {
       if(removed) continue;
     }
 
-    // Fire zones apply damage
+    // Fire zones apply damage to enemies
     for(const fz of state.fireZones){
       for(const e of state.enemies){
         const dx = e.x-fz.x;
@@ -1308,7 +1521,6 @@ const firebaseConfig = {
       if(state.kills >= state.targetKills && enemiesAlive===0){
         showRoundOverlay();
       }else if(enemiesAlive===0 && state.kills < state.targetKills){
-        // spawn next chunk if we need more kills
         const remaining = state.targetKills - state.kills;
         if(remaining>0){
           state.spawnBudget = remaining;
@@ -1323,11 +1535,19 @@ const firebaseConfig = {
     const baseAngle = angle;
     const n = p.projectileCount;
     const spread = p.projectileSpread;
+
+    // Dragon interval depends on dragonLevel (more levels = more frequent)
+    const dragonLvl = p.dragonLevel || 0;
+    const baseInterval = 6;
+    const dragonInterval = dragonLvl > 0
+      ? Math.max(2, baseInterval - (dragonLvl - 1))
+      : Infinity;
+
     for(let i=0;i<n;i++){
       const offset = spread*(n===1?0:(i-(n-1)/2));
       const a = baseAngle + offset;
       const speed = p.bulletSpeed;
-      const dragon = p.dragonShot && (++p.dragonCounter % 5 === 0);
+      const dragon = p.dragonShot && (++p.dragonCounter % dragonInterval === 0);
       const bullet = {
         x:p.x + Math.cos(a)* (p.radius+6),
         y:p.y + Math.sin(a)* (p.radius+6),
@@ -1335,11 +1555,34 @@ const firebaseConfig = {
         vy:Math.sin(a)*speed,
         speed,
         damage:p.baseDamage,
-        life:2.2,
+        life:2.1,
         dragon,
+        dragonLevel: dragon ? (p.dragonLevel || 1) : 0,
         homing:420,
+        poisonLevel:p.poisonLevel||0,
+        freezeLevel:p.freezeLevel||0,
+        lightningLevel:p.lightningLevel||0,
+        weakenLevel:p.weakenLevel||0
       };
       state.bullets.push(bullet);
+    }
+  }
+
+  function onEnemyDeath(e){
+    state.kills++;
+    // Golem split
+    if(e.type===4 && !e.small){
+      for(let m=0;m<2;m++){
+        const child = makeEnemy(4,false,false);
+        child.small = true;
+        child.radius = e.radius*0.7;
+        child.maxHp = e.maxHp*0.3;
+        child.hp = child.maxHp;
+        child.speed = e.speed*1.7;
+        child.x = e.x + (Math.random()-0.5)*50;
+        child.y = e.y + (Math.random()-0.5)*50;
+        state.enemies.push(child);
+      }
     }
   }
 
@@ -1408,27 +1651,29 @@ const firebaseConfig = {
             vx:Math.cos(a)*speed,
             vy:Math.sin(a)*speed,
             speed,
-            damage:p.baseDamage*0.4,
+            damage:p.baseDamage*0.25,
             life:1.0,
             dragon:false,
-            homing:0
+            dragonLevel:0,
+            homing:0,
+            poisonLevel:p.poisonLevel||0,
+            freezeLevel:p.freezeLevel||0,
+            lightningLevel:p.lightningLevel||0,
+            weakenLevel:p.weakenLevel||0
           });
         }
       }
 
       // Dragon fire zone
       if(b.dragon){
+        const dl = b.dragonLevel || 1;
         state.fireZones.push({
           x:e.x,
           y:e.y,
-          radius:110,
-          dps:14,
-          life:2.5
+          radius:100 + 24*dl,
+          dps:7 + 4*dl,
+          life:1.8 + 0.25*dl
         });
-      }
-
-      if(e.hp<=0){
-        state.kills++;
       }
     }
     state.bullets.splice(bulletIndex,1);
@@ -1482,6 +1727,36 @@ const firebaseConfig = {
 
   function clamp(v,min,max){ return v<min?min:v>max?max:v; }
 
+  function getBulletColor(b){
+    if(b.dragon) return "#f97316"; // dragon always fiery
+
+    const poison = b.poisonLevel>0;
+    const freeze = b.freezeLevel>0;
+    const lightning = b.lightningLevel>0;
+    const weaken = b.weakenLevel>0;
+
+    if(poison && freeze) return "#a3e635"; // toxic ice
+    if(freeze)           return "#22d3ee";
+    if(poison)           return "#22c55e";
+    if(lightning)        return "#facc15";
+    if(weaken)           return "#e879f9";
+
+    return "#e5e7eb";
+  }
+
+  function getEnemyEmoji(e){
+    switch(e.type){
+      case 0: return "🐜";
+      case 1: return "👻";
+      case 2: return "🐺";
+      case 3: return "👺";
+      case 4: return "🪨";
+      case 5: return "🧙‍♀️";
+      case 6: return "🦑";
+      default:return "❓";
+    }
+  }
+
   // Draw
   function draw(){
     const w = canvas.width;
@@ -1529,7 +1804,7 @@ const firebaseConfig = {
       ctx.restore();
     }
 
-    // Fire zones
+    // Fire zones (dragon / explosions)
     for(const fz of state.fireZones){
       ctx.save();
       ctx.translate(fz.x,fz.y);
@@ -1544,43 +1819,81 @@ const firebaseConfig = {
       ctx.restore();
     }
 
-    // Enemy telegraphs for certain types/boss
+    // Poison zones (witch)
+    for(const z of state.poisonZones){
+      ctx.save();
+      ctx.translate(z.x,z.y);
+      const alpha = z.active ? 0.4 : 0.25;
+      const grd = ctx.createRadialGradient(0,0,0,0,0,z.radius);
+      grd.addColorStop(0,`rgba(74,222,128,${alpha})`);
+      grd.addColorStop(1,"rgba(22,101,52,0)");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(0,0,z.radius,0,Math.PI*2);
+      ctx.fill();
+
+      ctx.strokeStyle = z.active ? "rgba(22,163,74,.9)" : "rgba(190,242,100,.9)";
+      ctx.setLineDash(z.active?[]:[6,6]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0,0,z.radius,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Explosion particles
+    for(const par of state.particles){
+      ctx.save();
+      ctx.translate(par.x,par.y);
+      const t = par.life / par.maxLife;
+      ctx.strokeStyle=`rgba(248,250,252,${t})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(0,0,par.radius*(1-t*0.3),0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Enemy telegraphs
     for(const e of state.enemies){
-      if(e.type===1 && e.chargeTimer>0){
-        // charge line
+      // Wolf dash line
+      if(e.type===2 && e.dashState==="windup"){
         ctx.save();
         ctx.strokeStyle="rgba(248,250,252,.7)";
         ctx.lineWidth = e.boss?6:4;
         ctx.setLineDash([8,8]);
-        const len = e.boss?900:650;
-        const a = e.chargeDir || Math.atan2(state.player.y-e.y,state.player.x-e.x);
         ctx.beginPath();
         ctx.moveTo(e.x,e.y);
-        ctx.lineTo(e.x+Math.cos(a)*len,e.y+Math.sin(a)*len);
+        ctx.lineTo(e.dashTargetX,e.dashTargetY);
         ctx.stroke();
         ctx.restore();
-      }else if(e.type===3 && e.explodeTimer>0){
-        const t = e.explodeTimer;
-        const rad = 120*(e.boss?1.4:1);
-        ctx.save();
-        ctx.strokeStyle=`rgba(248,113,113,${0.4+0.4*t})`;
-        ctx.lineWidth=3;
-        ctx.setLineDash([6,6]);
-        ctx.beginPath();
-        ctx.arc(e.x,e.y,rad,0,Math.PI*2);
-        ctx.stroke();
-        ctx.restore();
-      }else if(e.type===7 && e.chargeTimer>0){
-        ctx.save();
-        ctx.strokeStyle="rgba(248,250,252,.5)";
-        ctx.lineWidth=e.boss?5:3;
-        const len = 900;
+      }
+      // Squid laser telegraph & beam
+      if(e.type===6){
+        const beamLen = 1000;
         const a = e.laserDir || Math.atan2(state.player.y-e.y,state.player.x-e.x);
-        ctx.beginPath();
-        ctx.moveTo(e.x,e.y);
-        ctx.lineTo(e.x+Math.cos(a)*len,e.y+Math.sin(a)*len);
-        ctx.stroke();
-        ctx.restore();
+        if(e.laserWindup>0){
+          ctx.save();
+          ctx.strokeStyle="rgba(191,219,254,.7)";
+          ctx.lineWidth=e.boss?5:3;
+          ctx.setLineDash([10,8]);
+          ctx.beginPath();
+          ctx.moveTo(e.x,e.y);
+          ctx.lineTo(e.x+Math.cos(a)*beamLen, e.y+Math.sin(a)*beamLen);
+          ctx.stroke();
+          ctx.restore();
+        }
+        if(e.laserFiring>0){
+          ctx.save();
+          ctx.strokeStyle="#f97316";
+          ctx.lineWidth=e.boss?9:7;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(e.x,e.y);
+          ctx.lineTo(e.x+Math.cos(a)*beamLen, e.y+Math.sin(a)*beamLen);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
     }
 
@@ -1595,12 +1908,24 @@ const firebaseConfig = {
       ctx.restore();
     }
 
+    // Goblin rockets (✖ marker)
+    for(const r of state.rockets){
+      ctx.save();
+      ctx.translate(r.x,r.y);
+      ctx.fillStyle="#f97316";
+      ctx.font="18px system-ui,emoji";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText("✖",0,0);
+      ctx.restore();
+    }
+
     // Bullets
     for(const b of state.bullets){
       ctx.save();
       ctx.translate(b.x,b.y);
       ctx.rotate(Math.atan2(b.vy,b.vx));
-      ctx.fillStyle = b.dragon ? "#f97316" : "#e5e7eb";
+      ctx.fillStyle = getBulletColor(b);
       ctx.beginPath();
       ctx.rect(-6,-2,12,4);
       ctx.fill();
@@ -1611,17 +1936,18 @@ const firebaseConfig = {
     for(const e of state.enemies){
       ctx.save();
       ctx.translate(e.x,e.y);
-      // body
-      let color="#ef4444";
-      if(e.type===1) color="#f97316";
-      else if(e.type===2) color="#3b82f6";
-      else if(e.type===3) color="#facc15";
-      else if(e.type===4) color="#22c55e";
-      else if(e.type===5) color="#a855f7";
-      else if(e.type===6) color="#ec4899";
-      else if(e.type===7) color="#e5e7eb";
-
       const r = e.radius;
+
+      // Body glow
+      let color="#ef4444";
+      if(e.type===0) color="#f97316";
+      else if(e.type===1) color="#6366f1";
+      else if(e.type===2) color="#facc15";
+      else if(e.type===3) color="#22c55e";
+      else if(e.type===4) color="#a855f7";
+      else if(e.type===5) color="#ec4899";
+      else if(e.type===6) color="#38bdf8";
+
       const grd = ctx.createRadialGradient(0,-r*0.3, r*0.2, 0,0,r);
       grd.addColorStop(0,"#f9fafb");
       grd.addColorStop(1,color);
@@ -1641,12 +1967,20 @@ const firebaseConfig = {
 
       // HP bar
       const barW = r*2;
-      const hpRatio = e.hp/e.maxHp;
-      ctx.translate(-barW/2, -r-10);
+      const hpRatio = Math.max(0,e.hp/e.maxHp);
+      ctx.save();
+      ctx.translate(-barW/2, -r-12);
       ctx.fillStyle="rgba(15,23,42,.8)";
       ctx.fillRect(0,0,barW,5);
       ctx.fillStyle="#22c55e";
       ctx.fillRect(0,0,barW*hpRatio,5);
+      ctx.restore();
+
+      // Emoji symbol
+      ctx.font = `${r*1.3}px system-ui,emoji`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(getEnemyEmoji(e),0,0);
 
       ctx.restore();
     }
@@ -1680,3 +2014,4 @@ const firebaseConfig = {
 </script>
 </body>
 </html>
+
