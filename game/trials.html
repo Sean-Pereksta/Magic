@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🔥 Gun Arena — Roguelite</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <style>
+    :root{
+      --bg:#020617;
+      --panel:#020617;
+      --ink:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#22c55e;
+      --accent-soft:#064e3b;
+      --bad:#ef4444;
+      --epic:#a855f7;
+      --rare:#3b82f6;
+      --common:#6b7280;
+      --legend:#f97316;
+      --radius:12px;
+      --shadow:0 14px 40px rgba(15,23,42,.7);
+    }
+    *{box-sizing:border-box;}
+    html,body{
+      margin:0;
+      padding:0;
+      height:100%;
+      overflow:hidden;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:radial-gradient(circle at top,#020617,#000);
+      color:var(--ink);
+      touch-action:none;
+      -webkit-user-select:none;
+      user-select:none;
+    }
+    #root{
+      position:relative;
+      width:100%;
+      height:100%;
+      display:flex;
+      flex-direction:column;
+    }
+    header{
+      height:44px;
+      padding:4px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      background:linear-gradient(to right,#020617,#0b1120);
+      border-bottom:1px solid #111827;
+      z-index:20;
+    }
+    header .left, header .right{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .pill{
+      padding:4px 10px;
+      border-radius:999px;
+      background:#020617;
+      border:1px solid #1f2937;
+      font-size:12px;
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .pill span.value{
+      color:var(--ink);
+      font-weight:600;
+    }
+    #fullscreenBtn{
+      border:none;
+      outline:none;
+      border-radius:999px;
+      padding:4px 8px;
+      font-size:16px;
+      background:#020617;
+      color:var(--muted);
+      border:1px solid #1f2937;
+      cursor:pointer;
+    }
+    #fullscreenBtn:hover{
+      background:#111827;
+    }
+
+    #gameContainer{
+      position:relative;
+      flex:1;
+      background:#020617;
+      overflow:hidden;
+    }
+    #gameCanvas{
+      width:100%;
+      height:100%;
+      display:block;
+      background:radial-gradient(circle at center,#020617,#000);
+    }
+
+    /* Virtual joysticks */
+    .joystick{
+      position:absolute;
+      bottom:24px;
+      width:140px;
+      height:140px;
+      border-radius:999px;
+      background:radial-gradient(circle at center,rgba(15,23,42,.92),rgba(15,23,42,.7));
+      border:1px solid #1f2937;
+      box-shadow:0 12px 40px rgba(0,0,0,.8);
+      touch-action:none;
+    }
+    #leftStick{ left:16px; }
+    #rightStick{ right:16px; }
+
+    .stick-inner{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:60px;
+      height:60px;
+      margin:-30px 0 0 -30px;
+      border-radius:999px;
+      background:radial-gradient(circle at 30% 30%,#0ea5e9,#1d4ed8);
+      box-shadow:0 8px 25px rgba(15,23,42,.9);
+      transition:transform .05s linear;
+    }
+
+    /* Overlay */
+    .overlay{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:radial-gradient(circle at top,rgba(15,23,42,.96),rgba(3,7,18,.98));
+      z-index:30;
+    }
+    .overlay.hidden{ display:none; }
+
+    .overlay-card{
+      width:min(900px,95vw);
+      max-height:90vh;
+      background:linear-gradient(145deg,#020617,#020617,#020617);
+      border-radius:18px;
+      border:1px solid #1e293b;
+      box-shadow:var(--shadow);
+      padding:16px 18px 18px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .overlay-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:10px;
+      font-size:14px;
+    }
+    .overlay-header h2{
+      margin:0;
+      font-size:18px;
+    }
+    .overlay-header p{
+      margin:2px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+    .overlay-body{
+      display:flex;
+      gap:14px;
+      margin-top:6px;
+      flex-wrap:wrap;
+    }
+    .leaderboard{
+      flex:1.2;
+      min-width:260px;
+      background:radial-gradient(circle at top,#020617,#020617);
+      border-radius:14px;
+      border:1px solid #1f2937;
+      padding:10px 12px;
+      overflow:auto;
+      max-height:360px;
+      font-size:13px;
+    }
+    .leaderboard h3{
+      margin:0 0 6px;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .leaderboard table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:12px;
+    }
+    .leaderboard th,
+    .leaderboard td{
+      padding:4px 4px;
+      text-align:left;
+      border-bottom:1px solid #0f172a;
+    }
+    .leaderboard tr.highlight{
+      background:rgba(34,197,94,.15);
+    }
+    .leaderboard th{
+      color:var(--muted);
+      font-weight:500;
+      font-size:11px;
+    }
+
+    .upgrade-grid{
+      flex:1;
+      min-width:260px;
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+      gap:10px;
+    }
+    .upgrade-card{
+      border-radius:14px;
+      border:1px solid #111827;
+      background:radial-gradient(circle at top,#020617,#020617);
+      padding:10px;
+      cursor:pointer;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+    .upgrade-card:hover{
+      transform:translateY(-3px);
+      box-shadow:0 16px 45px rgba(15,23,42,.95);
+    }
+    .upgrade-title{
+      font-size:13px;
+      font-weight:600;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:6px;
+    }
+    .rarity-pill{
+      font-size:10px;
+      padding:2px 6px;
+      border-radius:999px;
+      border:1px solid;
+      text-transform:uppercase;
+      letter-spacing:.03em;
+    }
+    .rarity-common{ color:#9ca3af; border-color:#4b5563; }
+    .rarity-rare{ color:#60a5fa; border-color:#1d4ed8; }
+    .rarity-epic{ color:#e879f9; border-color:#a855f7;}
+    .rarity-legend{ color:#fdba74; border-color:#f97316;}
+    .upgrade-desc{
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .overlay-footer{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-top:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      padding:3px 8px;
+      border-radius:999px;
+      background:#020617;
+      border:1px solid #1f2937;
+      font-size:11px;
+    }
+
+    /* Small mobile tweaks */
+    @media (max-width:720px){
+      header{height:40px; padding:2px 6px;}
+      .pill{padding:2px 8px; font-size:11px;}
+      #leftStick,#rightStick{
+        width:120px;
+        height:120px;
+        bottom:16px;
+      }
+      .stick-inner{
+        width:54px;
+        height:54px;
+        margin:-27px 0 0 -27px;
+      }
+      .overlay-card{
+        padding:10px 10px 12px;
+      }
+      .overlay-header h2{
+        font-size:16px;
+      }
+      .leaderboard{max-height:230px;}
+    }
+  </style>
+</head>
+<body>
+<div id="root">
+  <header>
+    <div class="left">
+      <div class="pill">Lvl <span id="levelDisplay" class="value">1</span></div>
+      <div class="pill">HP <span id="hpDisplay" class="value">100 / 100</span></div>
+      <div class="pill">Kills <span id="scoreDisplay" class="value">0</span></div>
+      <div class="pill">Round <span id="roundDisplay" class="value">1</span></div>
+    </div>
+    <div class="right">
+      <div class="pill">
+        Name
+        <span id="nameDisplay" class="value">Player</span>
+      </div>
+      <button id="fullscreenBtn" title="Toggle fullscreen">⛶</button>
+    </div>
+  </header>
+
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Joysticks -->
+    <div id="leftStick" class="joystick">
+      <div class="stick-inner"></div>
+    </div>
+    <div id="rightStick" class="joystick">
+      <div class="stick-inner"></div>
+    </div>
+
+    <!-- Round end + Upgrades + Leaderboard -->
+    <div id="roundOverlay" class="overlay hidden">
+      <div class="overlay-card">
+        <div class="overlay-header">
+          <div>
+            <h2 id="overlayTitle">Round Complete</h2>
+            <p id="overlaySubtitle">
+              Choose one upgrade and see how your run ranks among all players.
+            </p>
+          </div>
+          <div class="badge">
+            <span>Best Run</span>
+            <strong id="bestRunBadge">–</strong>
+          </div>
+        </div>
+        <div class="overlay-body">
+          <div class="leaderboard">
+            <h3>🏆 All-Time Highscores</h3>
+            <div id="leaderboardStatus" style="font-size:12px;color:var(--muted);margin-bottom:4px;">
+              Loading leaderboard...
+            </div>
+            <table id="leaderboardTable">
+              <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Lvl</th>
+                <th>Kills</th>
+              </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="upgrade-grid" id="upgradeGrid">
+            <!-- Upgrade cards injected here -->
+          </div>
+        </div>
+        <div class="overlay-footer">
+          <div>
+            <span style="color:var(--legend);font-weight:600;">Legendary</span> cards are very rare and only appear in late game.
+          </div>
+          <div id="runPlacement">
+            <!-- Filled with "You placed #X of Y" -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase (same project as your other games) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+<script>
+  // 🔥 DROP YOUR EXISTING CONFIG HERE (same one as the original script)
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.firebasestorage.app",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+  measurementId: "G-8PR6LVKSH3"
+};
+  let db = null;
+  let scoresRef = null;
+  try{
+    if(firebaseConfig && firebaseConfig.projectId){
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      scoresRef = db.collection("gunArenaScores");
+    }
+  }catch(e){
+    console.warn("Firebase init failed:", e);
+  }
+</script>
+
+<script>
+(function(){
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const container = document.getElementById("gameContainer");
+  const roundOverlay = document.getElementById("roundOverlay");
+  const upgradeGrid = document.getElementById("upgradeGrid");
+  const leaderboardTableBody = document.querySelector("#leaderboardTable tbody");
+  const leaderboardStatus = document.getElementById("leaderboardStatus");
+  const overlayTitle = document.getElementById("overlayTitle");
+  const overlaySubtitle = document.getElementById("overlaySubtitle");
+  const runPlacement = document.getElementById("runPlacement");
+  const bestRunBadge = document.getElementById("bestRunBadge");
+
+  const levelDisplay = document.getElementById("levelDisplay");
+  const hpDisplay = document.getElementById("hpDisplay");
+  const scoreDisplay = document.getElementById("scoreDisplay");
+  const roundDisplay = document.getElementById("roundDisplay");
+  const nameDisplay = document.getElementById("nameDisplay");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+  let playerName = localStorage.getItem("gunArenaPlayerName") || null;
+  if(!playerName){
+    playerName = prompt("Enter a name for the leaderboard:", "Commander") || "Commander";
+    localStorage.setItem("gunArenaPlayerName", playerName);
+  }
+  nameDisplay.textContent = playerName;
+
+  function resizeCanvas(){
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  fullscreenBtn.addEventListener("click", ()=>{
+    if(!document.fullscreenElement){
+      (document.documentElement.requestFullscreen && document.documentElement.requestFullscreen());
+    }else{
+      (document.exitFullscreen && document.exitFullscreen());
+    }
+  });
+
+  // Virtual joystick helpers
+  const moveInput = {x:0,y:0};
+  const shootInput = {x:0,y:0};
+  setupJoystick(document.getElementById("leftStick"), moveInput);
+  setupJoystick(document.getElementById("rightStick"), shootInput);
+
+  function setupJoystick(el, target){
+    const knob = el.querySelector(".stick-inner");
+    let active = false;
+    let rect = null;
+
+    function updatePos(clientX, clientY){
+      if(!rect) rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      let dx = clientX - cx;
+      let dy = clientY - cy;
+      const max = rect.width*0.4;
+      const dist = Math.hypot(dx,dy);
+      if(dist > 0){
+        const k = Math.min(dist, max) / dist;
+        dx *= k;
+        dy *= k;
+        target.x = dx/max;
+        target.y = dy/max;
+        knob.style.transform = `translate(${dx}px,${dy}px)`;
+      }else{
+        target.x = 0;
+        target.y = 0;
+        knob.style.transform = "translate(0,0)";
+      }
+    }
+
+    function reset(){
+      active = false;
+      rect = null;
+      target.x = 0;
+      target.y = 0;
+      knob.style.transform = "translate(0,0)";
+    }
+
+    el.addEventListener("pointerdown",(e)=>{
+      active = true;
+      rect = el.getBoundingClientRect();
+      el.setPointerCapture(e.pointerId);
+      updatePos(e.clientX,e.clientY);
+    });
+    el.addEventListener("pointermove",(e)=>{
+      if(!active) return;
+      updatePos(e.clientX,e.clientY);
+    });
+    el.addEventListener("pointerup",(e)=>{
+      reset();
+      el.releasePointerCapture(e.pointerId);
+    });
+    el.addEventListener("pointercancel",reset);
+    el.addEventListener("pointerleave",()=>{ if(!active) reset(); });
+  }
+
+  // Keyboard fallback
+  const keys = {};
+  window.addEventListener("keydown",(e)=>{ keys[e.key.toLowerCase()] = true;});
+  window.addEventListener("keyup",(e)=>{ keys[e.key.toLowerCase()] = false;});
+
+  // World + game state
+  const WORLD_SIZE = 2800;
+  const halfWorld = WORLD_SIZE/2;
+
+  const state = {
+    level:1,
+    round:1,
+    kills:0,
+    bestLevel:1,
+    bestKills:0,
+    inRound:true,
+    showOverlay:false,
+    enemies:[],
+    bullets:[],
+    enemyBullets:[],
+    fireZones:[],
+    obstacles:[],
+    particles:[],
+    time:0,
+    enemyScale:1,
+    targetKills:12,
+    spawnBudget:0,
+    worldWidth:WORLD_SIZE,
+    worldHeight:WORLD_SIZE,
+    player:{
+      x:0,
+      y:0,
+      radius:26,
+      maxHp:100,
+      hp:100,
+      speed:260,
+      regen:1, // hp per sec
+      baseDamage:20,
+      fireRate:3.0, // shots/s
+      projectileCount:1,
+      projectileSpread:0.18,
+      bulletSpeed:560,
+      knockback:220,
+      explosionRadius:0,
+      splinter:0,
+      poisonLevel:0,
+      freezeLevel:0,
+      lightningLevel:0,
+      weakenLevel:0,
+      clipSize:10,
+      ammo:10,
+      reloadTime:1.6,
+      reloadTimer:0,
+      shotCooldown:0,
+      dragonShot:false,
+      dragonCounter:0,
+    }
+  };
+
+  function resetWorld(){
+    state.worldWidth = WORLD_SIZE;
+    state.worldHeight = WORLD_SIZE;
+    state.obstacles = [];
+    state.enemies = [];
+    state.bullets = [];
+    state.enemyBullets = [];
+    state.fireZones = [];
+    state.particles = [];
+    // Random blocks
+    const count = 18;
+    for(let i=0;i<count;i++){
+      const w = 120 + Math.random()*200;
+      const h = 120 + Math.random()*200;
+      const x = (Math.random()-0.5)*(WORLD_SIZE-600);
+      const y = (Math.random()-0.5)*(WORLD_SIZE-600);
+      state.obstacles.push({x,y,w,h});
+    }
+    state.player.x = 0;
+    state.player.y = 0;
+  }
+
+  function startRound(){
+    state.inRound = true;
+    state.showOverlay = false;
+    roundOverlay.classList.add("hidden");
+    state.targetKills = 10 + state.level*2;
+    state.spawnBudget = state.targetKills;
+    spawnWave();
+    updateHud();
+  }
+
+  function spawnWave(){
+    state.enemies.length = 0;
+    const level = state.level;
+    const tier = Math.floor((level-1)/10); // 0.. etc
+    const enemyTypeCap = Math.min(7, tier+1); // 1 type first 10, then 2, etc
+    const isBossRound = level % 5 === 0;
+    const isBigBoss = level % 10 === 0;
+
+    const scaleFactor = 1 + 0.15*Math.floor(level/5);
+    state.enemyScale = scaleFactor;
+
+    if(isBossRound){
+      const bossCount = isBigBoss ? 1 : 2;
+      for(let i=0;i<bossCount;i++){
+        const type = Math.floor(Math.random()*enemyTypeCap);
+        const enemy = makeEnemy(type,true,isBigBoss);
+        placeEnemyAround(enemy);
+        state.enemies.push(enemy);
+      }
+      // plus some minions
+      const minions = 4 + Math.floor(level/3);
+      for(let i=0;i<minions;i++){
+        const type = Math.floor(Math.random()*enemyTypeCap);
+        const e = makeEnemy(type,false,false);
+        placeEnemyAround(e);
+        state.enemies.push(e);
+      }
+      return;
+    }
+
+    let remaining = state.spawnBudget;
+    while(remaining>0){
+      const type = Math.floor(Math.random()*enemyTypeCap);
+      const e = makeEnemy(type,false,false);
+      placeEnemyAround(e);
+      state.enemies.push(e);
+      remaining--;
+    }
+  }
+
+  function placeEnemyAround(enemy){
+    const dist = 650 + Math.random()*700;
+    const angle = Math.random()*Math.PI*2;
+    enemy.x = state.player.x + Math.cos(angle)*dist;
+    enemy.y = state.player.y + Math.sin(angle)*dist;
+  }
+
+  function makeEnemy(type,boss,bigBoss){
+    const baseHp = [40,60,70,80,120,180,90,110][type] || 60;
+    const baseSpeed = [90,170,120,100,150,60,120,80][type] || 100;
+    const baseDamage = [10,18,15,22,20,30,18,22][type] || 15;
+
+    const extraHpFactor = 1 + 0.18*Math.floor(state.level/5);
+    let hp = baseHp*state.enemyScale*extraHpFactor;
+    let speed = baseSpeed*(1 + 0.07*Math.floor(state.level/5));
+    let dmg = baseDamage*(1 + 0.1*Math.floor(state.level/5));
+
+    if(boss){
+      const healthMult = bigBoss?20:15;
+      hp *= healthMult;
+      speed *= bigBoss?1.1:1.05;
+      dmg *= bigBoss?2.0:1.6;
+    }
+
+    return {
+      id:Math.random().toString(36).slice(2),
+      type,
+      boss,
+      bigBoss,
+      x:0,y:0,
+      vx:0,vy:0,
+      radius: boss?40:26,
+      maxHp:hp,
+      hp:hp,
+      speed,
+      damage:dmg,
+      behaviorTimer:0,
+      shootTimer:0,
+      chargeTimer:0,
+      explodeTimer:0,
+      spinTimer:0,
+      slowFactor:1,
+      poisonTimer:0,
+      poisonDps:0,
+      weakenTimer:0,
+      lightningCooldown:0,
+    };
+  }
+
+  // Upgrades pool
+  const upgrades = [
+    // COMMONS
+    { id:"dmg1", name:"+15% Damage", rarity:"common",
+      desc:"+15% bullet damage.",
+      apply:p=>{ p.baseDamage*=1.15; }
+    },
+    { id:"rate1", name:"+20% Fire Rate", rarity:"common",
+      desc:"Shoot 20% faster.",
+      apply:p=>{ p.fireRate*=1.2; }
+    },
+    { id:"proj1", name:"+1 Projectile", rarity:"common",
+      desc:"Fire +1 projectile per shot.",
+      apply:p=>{ p.projectileCount+=1; }
+    },
+    { id:"speed1", name:"+15% Move Speed", rarity:"common",
+      desc:"Move 15% faster.",
+      apply:p=>{ p.speed*=1.15; }
+    },
+    { id:"clip1", name:"+4 Clip Size", rarity:"common",
+      desc:"+4 bullets per clip.",
+      apply:p=>{ p.clipSize+=4; p.ammo=p.clipSize; }
+    },
+    { id:"reload1", name:"Reload +15% faster", rarity:"common",
+      desc:"Shorter reload time.",
+      apply:p=>{ p.reloadTime*=0.85; }
+    },
+    { id:"hp1", name:"+20 Max HP", rarity:"common",
+      desc:"+20 max HP and heal 20.",
+      apply:p=>{ p.maxHp+=20; p.hp=Math.min(p.maxHp,p.hp+20); }
+    },
+
+    // RARE
+    { id:"dmg2", name:"+35% Damage", rarity:"rare",
+      desc:"Big damage spike.",
+      apply:p=>{ p.baseDamage*=1.35; }
+    },
+    { id:"rate2", name:"+40% Fire Rate", rarity:"rare",
+      desc:"Shoot much faster.",
+      apply:p=>{ p.fireRate*=1.4; }
+    },
+    { id:"proj2", name:"+2 Projectiles", rarity:"rare",
+      desc:"More bullets in each volley.",
+      apply:p=>{ p.projectileCount+=2; }
+    },
+    { id:"spread1", name:"Tight Spread", rarity:"rare",
+      desc:"Projectiles are more accurate.",
+      apply:p=>{ p.projectileSpread*=0.7; }
+    },
+    { id:"knock1", name:"Knockback+", rarity:"rare",
+      desc:"Bullets knock enemies back harder.",
+      apply:p=>{ p.knockback*=1.6; }
+    },
+    { id:"expl1", name:"Small Explosions", rarity:"rare",
+      desc:"Bullets create small splash damage.",
+      apply:p=>{ p.explosionRadius = Math.max(p.explosionRadius,70); }
+    },
+    { id:"splinter1", name:"Splinter Shot", rarity:"rare",
+      desc:"Bullets split into 2 shards on hit.",
+      apply:p=>{ p.splinter = Math.max(p.splinter,2); }
+    },
+
+    // EPIC
+    { id:"poison1", name:"Poison Rounds", rarity:"epic",
+      desc:"Bullets apply a strong damage-over-time.",
+      apply:p=>{ p.poisonLevel = Math.max(p.poisonLevel,1); }
+    },
+    { id:"freeze1", name:"Freeze Rounds", rarity:"epic",
+      desc:"Bullets slow enemies heavily.",
+      apply:p=>{ p.freezeLevel = Math.max(p.freezeLevel,1); }
+    },
+    { id:"light1", name:"Chain Lightning", rarity:"epic",
+      desc:"Bullets arc to nearby enemies.",
+      apply:p=>{ p.lightningLevel = Math.max(p.lightningLevel,1); }
+    },
+    { id:"weaken1", name:"Weaken", rarity:"epic",
+      desc:"Bullets make enemies take more damage.",
+      apply:p=>{ p.weakenLevel = Math.max(p.weakenLevel,1); }
+    },
+    { id:"expl2", name:"Big Explosions", rarity:"epic",
+      desc:"Large splash radius on hit.",
+      apply:p=>{ p.explosionRadius = Math.max(p.explosionRadius,120); }
+    },
+    { id:"splinter2", name:"Multi Splinter", rarity:"epic",
+      desc:"Bullets split into 3 shards.",
+      apply:p=>{ p.splinter = Math.max(p.splinter,3); }
+    },
+
+    // LEGENDARY (post 25)
+    { id:"dragon", name:"Dragon Shot", rarity:"legend",
+      desc:"Every 5th shot becomes a homing dragon shot that burns the ground.",
+      apply:p=>{ p.dragonShot = true; }
+    }
+  ];
+
+  function rarityWeight(r){
+    if(r==="common") return 70;
+    if(r==="rare") return 25;
+    if(r==="epic") return 5;
+    if(r==="legend") return 1;
+    return 1;
+  }
+
+  function pickUpgrades(level){
+    const pool = upgrades.filter(u=>{
+      if(u.rarity === "legend"){
+        return level>=25; // dragon only late
+      }
+      return true;
+    });
+
+    const picks = [];
+    const used = new Set();
+    while(picks.length<3 && picks.length<pool.length){
+      // weighted roll
+      let totalW = 0;
+      for(const u of pool) totalW += rarityWeight(u.rarity);
+      let roll = Math.random()*totalW;
+      let chosen = null;
+      for(const u of pool){
+        roll -= rarityWeight(u.rarity);
+        if(roll<=0){
+          chosen = u;
+          break;
+        }
+      }
+      if(!chosen) chosen = pool[0];
+      if(used.has(chosen.id)) continue;
+      used.add(chosen.id);
+      picks.push(chosen);
+    }
+    return picks;
+  }
+
+  function showRoundOverlay(){
+    state.inRound = false;
+    state.showOverlay = true;
+    overlayTitle.textContent = state.player.hp<=0 ? "You Fell This Run" : `Round ${state.round} Complete`;
+    overlaySubtitle.textContent = state.player.hp<=0
+      ? "Pick a final upgrade and check how far you climbed compared to everyone else."
+      : "Pick one upgrade for your gun build, then continue to the next round.";
+
+    state.bestLevel = Math.max(state.bestLevel,state.level);
+    state.bestKills = Math.max(state.bestKills,state.kills);
+    bestRunBadge.textContent = `Lvl ${state.bestLevel} • ${state.bestKills} kills`;
+
+    // Build upgrade cards
+    upgradeGrid.innerHTML = "";
+    const available = pickUpgrades(state.level);
+    available.forEach(up=>{
+      const card = document.createElement("div");
+      card.className = "upgrade-card";
+      const rarityClass = up.rarity === "legend" ? "legend" : up.rarity;
+      card.innerHTML = `
+        <div class="upgrade-title">
+          <span>${up.name}</span>
+          <span class="rarity-pill rarity-${rarityClass}">
+            ${up.rarity.toUpperCase()}
+          </span>
+        </div>
+        <div class="upgrade-desc">${up.desc}</div>
+      `;
+      card.addEventListener("click",()=>{
+        up.apply(state.player);
+        // Heal a bit on upgrade
+        state.player.hp = Math.min(state.player.maxHp, state.player.hp+10);
+        state.level++;
+        state.round++;
+        startRound();
+      });
+      upgradeGrid.appendChild(card);
+    });
+
+    // Save score + load leaderboard
+    if(scoresRef && db){
+      const thisRun = {name:playerName, level:state.level, kills:state.kills, ts:Date.now()};
+      scoresRef.add(thisRun).then(()=>{
+        updateLeaderboard(thisRun);
+      }).catch(err=>{
+        console.warn("Failed to save score:",err);
+        leaderboardStatus.textContent = "Could not save score. Offline?";
+      });
+    }else{
+      leaderboardStatus.textContent = "Firebase not configured. Leaderboard disabled.";
+      leaderboardTableBody.innerHTML = "";
+    }
+
+    roundOverlay.classList.remove("hidden");
+  }
+
+  async function updateLeaderboard(thisRun){
+    leaderboardStatus.textContent = "Loading leaderboard...";
+    leaderboardTableBody.innerHTML = "";
+    let placementText = "";
+    try{
+      // top 20
+      const snap = await scoresRef.orderBy("kills","desc").limit(20).get();
+      let i=1;
+      let highlightIndex = null;
+      snap.forEach(doc=>{
+        const d = doc.data();
+        const tr = document.createElement("tr");
+        const isThis = (d.name===thisRun.name && d.kills===thisRun.kills && d.level===thisRun.level);
+        if(isThis){
+          tr.classList.add("highlight");
+          highlightIndex = i;
+        }
+        tr.innerHTML = `
+          <td>${i}</td>
+          <td>${d.name||"?"}</td>
+          <td>${d.level||1}</td>
+          <td>${d.kills||0}</td>
+        `;
+        leaderboardTableBody.appendChild(tr);
+        i++;
+      });
+      leaderboardStatus.textContent = snap.empty ? "No scores yet. You are the first!" : "";
+      // Placement across all scores
+      const higherSnap = await scoresRef.where("kills",">",thisRun.kills).get();
+      const rank = higherSnap.size+1;
+      const total = (await scoresRef.get()).size;
+      placementText = `Your run: #${rank} of ${total} all-time (by kills).`;
+      if(highlightIndex!=null){
+        placementText += ` You are currently #${highlightIndex} on the visible board.`;
+      }
+    }catch(err){
+      console.warn("Leaderboard error:",err);
+      placementText = "Leaderboard unavailable (error).";
+      leaderboardStatus.textContent = "Leaderboard unavailable.";
+    }
+    runPlacement.textContent = placementText;
+  }
+
+  function updateHud(){
+    levelDisplay.textContent = state.level;
+    scoreDisplay.textContent = state.kills;
+    roundDisplay.textContent = state.round;
+    hpDisplay.textContent = `${Math.round(state.player.hp)} / ${Math.round(state.player.maxHp)}`;
+  }
+
+  // Game loop
+  let lastTime = performance.now();
+  resetWorld();
+  startRound();
+
+  function loop(now){
+    const dt = Math.min((now-lastTime)/1000,0.04);
+    lastTime = now;
+    state.time += dt;
+    step(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function step(dt){
+    if(state.showOverlay) return; // pause while choosing upgrades
+
+    // Keyboard fallback movement
+    let kbX = 0, kbY = 0;
+    if(keys["w"]||keys["arrowup"]) kbY-=1;
+    if(keys["s"]||keys["arrowdown"]) kbY+=1;
+    if(keys["a"]||keys["arrowleft"]) kbX-=1;
+    if(keys["d"]||keys["arrowright"]) kbX+=1;
+    let moveX = moveInput.x + kbX;
+    let moveY = moveInput.y + kbY;
+    const moveLen = Math.hypot(moveX,moveY);
+    if(moveLen>1) { moveX/=moveLen; moveY/=moveLen; }
+
+    // Move player
+    const p = state.player;
+    p.x += moveX*p.speed*dt;
+    p.y += moveY*p.speed*dt;
+    // Clamp inside world
+    p.x = Math.max(-halfWorld+60, Math.min(halfWorld-60, p.x));
+    p.y = Math.max(-halfWorld+60, Math.min(halfWorld-60, p.y));
+
+    // Regen
+    p.hp = Math.min(p.maxHp, p.hp + p.regen*dt);
+
+    // Shooting
+    const aimLen = Math.hypot(shootInput.x,shootInput.y);
+    const wantsShoot = aimLen>0.25;
+    p.shotCooldown -= dt;
+    if(p.reloadTimer>0){
+      p.reloadTimer -= dt;
+      if(p.reloadTimer<=0){
+        p.ammo = p.clipSize;
+      }
+    }
+    if(wantsShoot && p.shotCooldown<=0 && p.reloadTimer<=0){
+      const dirAngle = Math.atan2(shootInput.y,shootInput.x);
+      fireShot(dirAngle);
+      p.shotCooldown = 1/p.fireRate;
+      p.ammo--;
+      if(p.ammo<=0){
+        p.reloadTimer = p.reloadTime;
+      }
+    }
+
+    // Update bullets
+    for(let i=state.bullets.length-1;i>=0;i--){
+      const b = state.bullets[i];
+      b.life -= dt;
+      if(b.life<=0){
+        state.bullets.splice(i,1);
+        continue;
+      }
+      if(b.dragon){
+        // steer toward nearest enemy
+        const tgt = findNearestEnemy(b.x,b.y,400);
+        if(tgt){
+          const angle = Math.atan2(tgt.y-b.y,tgt.x-b.x);
+          b.vx += Math.cos(angle)*b.homing*dt;
+          b.vy += Math.sin(angle)*b.homing*dt;
+          const speed = Math.hypot(b.vx,b.vy)||1;
+          const s = b.speed/speed;
+          b.vx*=s; b.vy*=s;
+        }
+      }
+      b.x += b.vx*dt;
+      b.y += b.vy*dt;
+      // collision with obstacles
+      for(const ob of state.obstacles){
+        if(circleRectOverlap(b.x,b.y,4,ob)){
+          bulletImpact(b,null,i);
+          break;
+        }
+      }
+    }
+
+    // Enemy bullets
+    for(let i=state.enemyBullets.length-1;i>=0;i--){
+      const eb = state.enemyBullets[i];
+      eb.life -= dt;
+      if(eb.life<=0){
+        state.enemyBullets.splice(i,1);
+        continue;
+      }
+      eb.x += eb.vx*dt;
+      eb.y += eb.vy*dt;
+      // hit player
+      const dx = eb.x - p.x;
+      const dy = eb.y - p.y;
+      if(dx*dx+dy*dy < (p.radius*0.7)*(p.radius*0.7)){
+        p.hp -= eb.damage;
+        state.enemyBullets.splice(i,1);
+        if(p.hp<=0){
+          p.hp = 0;
+          updateHud();
+          showRoundOverlay();
+          return;
+        }
+      }
+    }
+
+    // Fire zones (dragon fire, etc.)
+    for(let i=state.fireZones.length-1;i>=0;i--){
+      const fz = state.fireZones[i];
+      fz.life -= dt;
+      if(fz.life<=0){
+        state.fireZones.splice(i,1);
+        continue;
+      }
+    }
+
+    // Enemies
+    let aliveEnemies = 0;
+    for(let i=state.enemies.length-1;i>=0;i--){
+      const e = state.enemies[i];
+      e.behaviorTimer += dt;
+      e.shootTimer += dt;
+      e.spinTimer += dt;
+      e.lightningCooldown = Math.max(0,e.lightningCooldown-dt);
+
+      // Effects
+      if(e.poisonTimer>0){
+        e.poisonTimer -= dt;
+        e.hp -= e.poisonDps*dt;
+      }
+      if(e.weakenTimer>0){
+        e.weakenTimer -= dt;
+      }
+      let effectiveSpeed = e.speed * (e.slowFactor || 1);
+
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      const dist = Math.hypot(dx,dy)||1;
+
+      // Behavior by type
+      if(e.type===0){
+        // simple chaser
+        e.vx = (dx/dist)*effectiveSpeed;
+        e.vy = (dy/dist)*effectiveSpeed;
+      }else if(e.type===1){
+        // charger: telegraph line then dash
+        if(e.chargeTimer<=0){
+          if(dist>260){
+            e.vx = (dx/dist)*effectiveSpeed;
+            e.vy = (dy/dist)*effectiveSpeed;
+          }else{
+            e.chargeTimer = 0.45;
+            e.chargeDir = Math.atan2(dy,dx);
+            e.vx = 0; e.vy=0;
+          }
+        }else{
+          e.chargeTimer -= dt;
+          if(e.chargeTimer<=0){
+            e.vx = Math.cos(e.chargeDir)*effectiveSpeed*3.5;
+            e.vy = Math.sin(e.chargeDir)*effectiveSpeed*3.5;
+            e.chargeTimer = -0.4;
+          }
+        }
+        if(e.chargeTimer<0){
+          e.chargeTimer += dt;
+        }
+      }else if(e.type===2){
+        // shooter: keep medium distance and fire bullets
+        if(dist>420){
+          e.vx = (dx/dist)*effectiveSpeed;
+          e.vy = (dy/dist)*effectiveSpeed;
+        }else if(dist<260){
+          e.vx = -(dx/dist)*effectiveSpeed;
+          e.vy = -(dy/dist)*effectiveSpeed;
+        }else{
+          e.vx *= 0.9;
+          e.vy *= 0.9;
+        }
+        if(e.shootTimer>1.1){
+          e.shootTimer = 0;
+          const shots = e.boss?4:2;
+          const spread = 0.2;
+          const baseAngle = Math.atan2(dy,dx);
+          for(let s=0;s<shots;s++){
+            const a = baseAngle + spread*(s-(shots-1)/2);
+            spawnEnemyBullet(e.x,e.y,a,e.damage*(e.boss?1.2:1.0),220+state.level*8);
+          }
+        }
+      }else if(e.type===3){
+        // bomber: slowly approach, then telegraph circle and explode
+        if(dist>260){
+          e.vx=(dx/dist)*effectiveSpeed*0.9;
+          e.vy=(dy/dist)*effectiveSpeed*0.9;
+        }else{
+          e.vx*=0.5; e.vy*=0.5;
+          e.explodeTimer += dt;
+          if(e.explodeTimer>1.0){
+            // explosion
+            const rad = 120*(e.boss?1.4:1);
+            const d2 = dx*dx+dy*dy;
+            if(d2 < rad*rad){
+              p.hp -= e.damage*(e.boss?1.6:1.2);
+              if(p.hp<=0){
+                p.hp=0;
+                updateHud();
+                showRoundOverlay();
+                return;
+              }
+            }
+            // self-destruct
+            state.enemies.splice(i,1);
+            continue;
+          }
+        }
+      }else if(e.type===4){
+        // zigzag runner
+        const baseDir = Math.atan2(dy,dx);
+        const wobble = Math.sin(e.behaviorTimer*5)*(e.boss?0.7:0.45);
+        const a = baseDir + wobble;
+        e.vx = Math.cos(a)*effectiveSpeed;
+        e.vy = Math.sin(a)*effectiveSpeed;
+      }else if(e.type===5){
+        // tank: slow but heavy, sometimes short burst
+        if(e.behaviorTimer>2.8){
+          e.behaviorTimer=0;
+          e.burstDir = Math.atan2(dy,dx);
+        }
+        const factor = (e.behaviorTimer<0.4)?2.2:1.0;
+        e.vx = Math.cos(e.burstDir || Math.atan2(dy,dx))*effectiveSpeed*factor*0.6;
+        e.vy = Math.sin(e.burstDir || Math.atan2(dy,dx))*effectiveSpeed*factor*0.6;
+      }else if(e.type===6){
+        // spinner: orbits and fires radial shots
+        const desired = 340;
+        if(dist>desired+40){
+          e.vx = (dx/dist)*effectiveSpeed;
+          e.vy = (dy/dist)*effectiveSpeed;
+        }else if(dist<desired-40){
+          e.vx = -(dx/dist)*effectiveSpeed;
+          e.vy = -(dy/dist)*effectiveSpeed;
+        }else{
+          e.vx*=0.9; e.vy*=0.9;
+        }
+        if(e.spinTimer>1.6){
+          e.spinTimer=0;
+          const rays = e.boss?14:8;
+          for(let k=0;k<rays;k++){
+            const a = (k/rays)*Math.PI*2;
+            spawnEnemyBullet(e.x,e.y,a,e.damage*0.8,200+state.level*6);
+          }
+        }
+      }else if(e.type===7){
+        // laser line: telegraph then fire a narrow beam
+        if(e.chargeTimer<=0){
+          if(dist>420){
+            e.vx=(dx/dist)*effectiveSpeed;
+            e.vy=(dy/dist)*effectiveSpeed;
+          }else{
+            e.vx*=0.9;
+            e.vy*=0.9;
+            e.chargeTimer = 1.0;
+            e.laserDir = Math.atan2(dy,dx);
+          }
+        }else{
+          e.chargeTimer -= dt;
+          if(e.chargeTimer<=0){
+            // fire beam
+            const beamLen = 900;
+            const bw = 32;
+            const ax = e.x;
+            const ay = e.y;
+            const bx = e.x + Math.cos(e.laserDir)*beamLen;
+            const by = e.y + Math.sin(e.laserDir)*beamLen;
+            // approximate hit
+            const t = ((p.x-ax)*Math.cos(e.laserDir)+(p.y-ay)*Math.sin(e.laserDir))/beamLen;
+            if(t>0 && t<1){
+              const projX = ax + (bx-ax)*t;
+              const projY = ay + (by-ay)*t;
+              const d2 = (p.x-projX)**2+(p.y-projY)**2;
+              if(d2 < bw*bw){
+                p.hp -= e.damage*(e.boss?1.7:1.3);
+                if(p.hp<=0){
+                  p.hp=0;
+                  updateHud();
+                  showRoundOverlay();
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      e.x += e.vx*dt;
+      e.y += e.vy*dt;
+
+      // collisions with obstacles push out a bit
+      for(const ob of state.obstacles){
+        const nearestX = clamp(e.x, ob.x-ob.w/2, ob.x+ob.w/2);
+        const nearestY = clamp(e.y, ob.y-ob.h/2, ob.y+ob.h/2);
+        const dx2 = e.x-nearestX;
+        const dy2 = e.y-nearestY;
+        const dist2 = Math.hypot(dx2,dy2);
+        if(dist2 < e.radius+4){
+          const diff = (e.radius+4)-(dist2||1);
+          e.x += (dx2/(dist2||1))*diff;
+          e.y += (dy2/(dist2||1))*diff;
+        }
+      }
+
+      // hit player by contact
+      if(!state.showOverlay){
+        const d2p = (e.x-p.x)**2+(e.y-p.y)**2;
+        const range = e.radius+p.radius*0.5;
+        if(d2p < range*range){
+          p.hp -= e.damage*dt*0.45;
+          if(p.hp<=0){
+            p.hp=0;
+            updateHud();
+            showRoundOverlay();
+            return;
+          }
+        }
+      }
+
+      if(e.hp>0) aliveEnemies++;
+      else{
+        state.enemies.splice(i,1);
+        continue;
+      }
+    }
+
+    // Bullet vs enemy
+    for(let i=state.bullets.length-1;i>=0;i--){
+      const b = state.bullets[i];
+      let removed=false;
+      for(let j=state.enemies.length-1;j>=0;j--){
+        const e = state.enemies[j];
+        const dx = e.x-b.x;
+        const dy = e.y-b.y;
+        if(dx*dx+dy*dy < (e.radius+6)*(e.radius+6)){
+          bulletImpact(b,e,i);
+          removed=true;
+          break;
+        }
+      }
+      if(removed) continue;
+    }
+
+    // Fire zones apply damage
+    for(const fz of state.fireZones){
+      for(const e of state.enemies){
+        const dx = e.x-fz.x;
+        const dy = e.y-fz.y;
+        if(dx*dx+dy*dy < fz.radius*fz.radius){
+          e.hp -= fz.dps*dt;
+        }
+      }
+    }
+
+    // Check round end
+    updateHud();
+    if(state.inRound){
+      const enemiesAlive = state.enemies.length;
+      if(state.kills >= state.targetKills && enemiesAlive===0){
+        showRoundOverlay();
+      }else if(enemiesAlive===0 && state.kills < state.targetKills){
+        // spawn next chunk if we need more kills
+        const remaining = state.targetKills - state.kills;
+        if(remaining>0){
+          state.spawnBudget = remaining;
+          spawnWave();
+        }
+      }
+    }
+  }
+
+  function fireShot(angle){
+    const p = state.player;
+    const baseAngle = angle;
+    const n = p.projectileCount;
+    const spread = p.projectileSpread;
+    for(let i=0;i<n;i++){
+      const offset = spread*(n===1?0:(i-(n-1)/2));
+      const a = baseAngle + offset;
+      const speed = p.bulletSpeed;
+      const dragon = p.dragonShot && (++p.dragonCounter % 5 === 0);
+      const bullet = {
+        x:p.x + Math.cos(a)* (p.radius+6),
+        y:p.y + Math.sin(a)* (p.radius+6),
+        vx:Math.cos(a)*speed,
+        vy:Math.sin(a)*speed,
+        speed,
+        damage:p.baseDamage,
+        life:2.2,
+        dragon,
+        homing:420,
+      };
+      state.bullets.push(bullet);
+    }
+  }
+
+  function bulletImpact(b,e,bulletIndex){
+    const p = state.player;
+    if(e){
+      let dmg = b.damage;
+      if(e.weakenTimer>0){
+        dmg*=1.4;
+      }
+      e.hp -= dmg;
+      // Knockback
+      const dx = e.x-b.x;
+      const dy = e.y-b.y;
+      const dist = Math.hypot(dx,dy)||1;
+      e.x += (dx/dist)*p.knockback*0.04;
+      e.y += (dy/dist)*p.knockback*0.04;
+
+      // Poison
+      if(p.poisonLevel>0){
+        e.poisonTimer = 2.2;
+        e.poisonDps = 7*p.poisonLevel;
+      }
+      // Freeze (slow)
+      if(p.freezeLevel>0){
+        e.slowFactor = 0.3;
+        setTimeout(()=>{ e.slowFactor = 1; }, 700+300*p.freezeLevel);
+      }
+      // Weaken
+      if(p.weakenLevel>0){
+        e.weakenTimer = 2+p.weakenLevel;
+      }
+      // Lightning chain
+      if(p.lightningLevel>0 && Math.random()<0.6){
+        const chains = 1+p.lightningLevel;
+        chainLightning(e.x,e.y,chains,dmg*0.7);
+      }
+
+      // Explosion
+      if(p.explosionRadius>0){
+        const rad = p.explosionRadius;
+        for(const other of state.enemies){
+          if(other===e) continue;
+          const dx2 = other.x-e.x;
+          const dy2 = other.y-e.y;
+          if(dx2*dx2+dy2*dy2 < rad*rad){
+            other.hp -= dmg*0.6;
+          }
+        }
+        state.fireZones.push({
+          x:e.x,y:e.y,
+          radius:rad*0.7,
+          dps:4+2*p.poisonLevel,
+          life:0.7
+        });
+      }
+
+      // Splinter
+      if(p.splinter>0){
+        for(let k=0;k<p.splinter;k++){
+          const a = Math.random()*Math.PI*2;
+          const speed = p.bulletSpeed*0.7;
+          state.bullets.push({
+            x:e.x,
+            y:e.y,
+            vx:Math.cos(a)*speed,
+            vy:Math.sin(a)*speed,
+            speed,
+            damage:p.baseDamage*0.4,
+            life:1.0,
+            dragon:false,
+            homing:0
+          });
+        }
+      }
+
+      // Dragon fire zone
+      if(b.dragon){
+        state.fireZones.push({
+          x:e.x,
+          y:e.y,
+          radius:110,
+          dps:14,
+          life:2.5
+        });
+      }
+
+      if(e.hp<=0){
+        state.kills++;
+      }
+    }
+    state.bullets.splice(bulletIndex,1);
+  }
+
+  function chainLightning(x,y,count,damage){
+    for(let i=0;i<count;i++){
+      const target = findNearestEnemy(x,y,260);
+      if(!target) break;
+      target.hp -= damage;
+      x = target.x;
+      y = target.y;
+    }
+  }
+
+  function findNearestEnemy(x,y,maxDist){
+    let best=null;
+    let bestD=maxDist*maxDist;
+    for(const e of state.enemies){
+      const dx=e.x-x, dy=e.y-y;
+      const d=dx*dx+dy*dy;
+      if(d<bestD){
+        bestD=d;
+        best=e;
+      }
+    }
+    return best;
+  }
+
+  function spawnEnemyBullet(x,y,angle,damage,speed){
+    state.enemyBullets.push({
+      x,y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed,
+      damage,
+      life:3
+    });
+  }
+
+  function circleRectOverlap(cx,cy,r,rect){
+    const rx1 = rect.x-rect.w/2;
+    const ry1 = rect.y-rect.h/2;
+    const rx2 = rect.x+rect.w/2;
+    const ry2 = rect.y+rect.h/2;
+    const nx = clamp(cx,rx1,rx2);
+    const ny = clamp(cy,ry1,ry2);
+    const dx = cx-nx;
+    const dy = cy-ny;
+    return dx*dx+dy*dy < r*r;
+  }
+
+  function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+
+  // Draw
+  function draw(){
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0,0,w,h);
+
+    const p = state.player;
+    const camX = p.x - w/2;
+    const camY = p.y - h/2;
+    ctx.setTransform(1,0,0,1,-camX,-camY);
+
+    // Arena background grid
+    ctx.save();
+    ctx.strokeStyle="#020617";
+    ctx.lineWidth=1;
+    const step=160;
+    for(let x=-halfWorld;x<=halfWorld;x+=step){
+      ctx.beginPath();
+      ctx.moveTo(x,-halfWorld);
+      ctx.lineTo(x,halfWorld);
+      ctx.stroke();
+    }
+    for(let y=-halfWorld;y<=halfWorld;y+=step){
+      ctx.beginPath();
+      ctx.moveTo(-halfWorld,y);
+      ctx.lineTo(halfWorld,y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Obstacles
+    for(const ob of state.obstacles){
+      ctx.save();
+      ctx.translate(ob.x,ob.y);
+      ctx.fillStyle="#0f172a";
+      ctx.strokeStyle="#111827";
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.rect(-ob.w/2,-ob.h/2,ob.w,ob.h);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Fire zones
+    for(const fz of state.fireZones){
+      ctx.save();
+      ctx.translate(fz.x,fz.y);
+      const alpha = Math.max(0,fz.life/2.5);
+      const grd = ctx.createRadialGradient(0,0,0,0,0,fz.radius);
+      grd.addColorStop(0,`rgba(248,113,113,${alpha})`);
+      grd.addColorStop(1,`rgba(127,29,29,0)`);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(0,0,fz.radius,0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Enemy telegraphs for certain types/boss
+    for(const e of state.enemies){
+      if(e.type===1 && e.chargeTimer>0){
+        // charge line
+        ctx.save();
+        ctx.strokeStyle="rgba(248,250,252,.7)";
+        ctx.lineWidth = e.boss?6:4;
+        ctx.setLineDash([8,8]);
+        const len = e.boss?900:650;
+        const a = e.chargeDir || Math.atan2(state.player.y-e.y,state.player.x-e.x);
+        ctx.beginPath();
+        ctx.moveTo(e.x,e.y);
+        ctx.lineTo(e.x+Math.cos(a)*len,e.y+Math.sin(a)*len);
+        ctx.stroke();
+        ctx.restore();
+      }else if(e.type===3 && e.explodeTimer>0){
+        const t = e.explodeTimer;
+        const rad = 120*(e.boss?1.4:1);
+        ctx.save();
+        ctx.strokeStyle=`rgba(248,113,113,${0.4+0.4*t})`;
+        ctx.lineWidth=3;
+        ctx.setLineDash([6,6]);
+        ctx.beginPath();
+        ctx.arc(e.x,e.y,rad,0,Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+      }else if(e.type===7 && e.chargeTimer>0){
+        ctx.save();
+        ctx.strokeStyle="rgba(248,250,252,.5)";
+        ctx.lineWidth=e.boss?5:3;
+        const len = 900;
+        const a = e.laserDir || Math.atan2(state.player.y-e.y,state.player.x-e.x);
+        ctx.beginPath();
+        ctx.moveTo(e.x,e.y);
+        ctx.lineTo(e.x+Math.cos(a)*len,e.y+Math.sin(a)*len);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Enemy bullets
+    for(const eb of state.enemyBullets){
+      ctx.save();
+      ctx.translate(eb.x,eb.y);
+      ctx.fillStyle="#f97316";
+      ctx.beginPath();
+      ctx.arc(0,0,5,0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Bullets
+    for(const b of state.bullets){
+      ctx.save();
+      ctx.translate(b.x,b.y);
+      ctx.rotate(Math.atan2(b.vy,b.vx));
+      ctx.fillStyle = b.dragon ? "#f97316" : "#e5e7eb";
+      ctx.beginPath();
+      ctx.rect(-6,-2,12,4);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Enemies
+    for(const e of state.enemies){
+      ctx.save();
+      ctx.translate(e.x,e.y);
+      // body
+      let color="#ef4444";
+      if(e.type===1) color="#f97316";
+      else if(e.type===2) color="#3b82f6";
+      else if(e.type===3) color="#facc15";
+      else if(e.type===4) color="#22c55e";
+      else if(e.type===5) color="#a855f7";
+      else if(e.type===6) color="#ec4899";
+      else if(e.type===7) color="#e5e7eb";
+
+      const r = e.radius;
+      const grd = ctx.createRadialGradient(0,-r*0.3, r*0.2, 0,0,r);
+      grd.addColorStop(0,"#f9fafb");
+      grd.addColorStop(1,color);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(0,0,r,0,Math.PI*2);
+      ctx.fill();
+
+      // boss ring
+      if(e.boss){
+        ctx.strokeStyle = e.bigBoss?"#f97316":"#fbbf24";
+        ctx.lineWidth = e.bigBoss?5:3;
+        ctx.beginPath();
+        ctx.arc(0,0,r+6,0,Math.PI*2);
+        ctx.stroke();
+      }
+
+      // HP bar
+      const barW = r*2;
+      const hpRatio = e.hp/e.maxHp;
+      ctx.translate(-barW/2, -r-10);
+      ctx.fillStyle="rgba(15,23,42,.8)";
+      ctx.fillRect(0,0,barW,5);
+      ctx.fillStyle="#22c55e";
+      ctx.fillRect(0,0,barW*hpRatio,5);
+
+      ctx.restore();
+    }
+
+    // Player
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    const pr = p.radius;
+    const pg = ctx.createRadialGradient(0,-pr*0.4, pr*0.3, 0,0,pr);
+    pg.addColorStop(0,"#e0f2fe");
+    pg.addColorStop(1,"#0ea5e9");
+    ctx.fillStyle=pg;
+    ctx.beginPath();
+    ctx.arc(0,0,pr,0,Math.PI*2);
+    ctx.fill();
+
+    // gun direction sprite
+    const aimLen = Math.hypot(shootInput.x,shootInput.y);
+    if(aimLen>0.2){
+      const a = Math.atan2(shootInput.y,shootInput.x);
+      ctx.rotate(a);
+      ctx.fillStyle="#f9fafb";
+      ctx.fillRect(pr*0.2,-5,pr+16,10);
+    }
+    ctx.restore();
+
+    // reset transform for UI
+    ctx.setTransform(1,0,0,1,0,0);
+  }
+})();
+</script>
+</body>
+</html>
