@@ -703,43 +703,40 @@ function spawnWave(){
   const hpScale = 1 + 0.18 * (level - 1);
   state.enemyScale = hpScale;
 
-  // Use the chosen group for this round; fall back to ants if something breaks
   const allowedTypes = (state.roundEnemyTypes && state.roundEnemyTypes.length)
     ? state.roundEnemyTypes
     : [0];
 
   if(isBossRound){
-    // Boss type is chosen from this round's group
     const bossCount = isBigBoss ? 1 : 2;
     const bossType = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
 
     for(let i = 0; i < bossCount; i++){
       const enemy = makeEnemy(bossType, true, isBigBoss);
-      placeEnemyAround(enemy);
+      placeEnemyOnEdge(enemy);        // ✅ use this
       state.enemies.push(enemy);
     }
 
-    // Minions are also drawn from the same group
     const minions = 4 + Math.floor(level / 2);
     for(let i = 0; i < minions; i++){
       const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
       const e = makeEnemy(type, false, false);
-      placeEnemyAround(e);
+      placeEnemyOnEdge(e);            // ✅ and here
       state.enemies.push(e);
     }
     return;
   }
 
-  // Normal rounds: fill spawnBudget with enemies from this round's types
   let remaining = state.spawnBudget;
   while(remaining > 0){
     const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
     const e = makeEnemy(type, false, false);
-    placeEnemyAround(e);
+    placeEnemyOnEdge(e);              // ✅ and here
     state.enemies.push(e);
     remaining--;
   }
 }
+
 
   // Spawn at the edges of the arena, not around the player
   function placeEnemyOnEdge(enemy){
@@ -2208,6 +2205,7 @@ function spawnWave(){
 </script>
 </body>
 </html>
+
 
 
 
