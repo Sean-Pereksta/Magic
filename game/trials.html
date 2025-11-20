@@ -537,64 +537,66 @@
   const WORLD_SIZE = 2800;
   const halfWorld = WORLD_SIZE/2;
 
-  const state = {
-    level:1,
-    round:1,
-    kills:0,          // total run kills
-    roundKills:0,     // kills this round (for target)
-    bestLevel:1,
-    bestKills:0,
-    inRound:true,
-    showOverlay:false,
-    lastOutcome:"win", // "win" | "death"
-    enemies:[],
-    bullets:[],
-    enemyBullets:[],
-    rockets:[],
-    fireZones:[],
-    poisonZones:[],
-    obstacles:[],
-    particles:[],
-    time:0,
-    enemyScale:1,
-    targetKills:12,
-    spawnBudget:0,    // how many more enemies can spawn this round
-    spawnTimer:0,     // for continuous edge spawns
-    enemyTypeCap:1,
-    isBossRound:false,
-    isBigBoss:false,
-    worldWidth:WORLD_SIZE,
-    worldHeight:WORLD_SIZE,
-    player:{
-      x:0,
-      y:0,
-      radius:26,
-      maxHp:100,
-      hp:100,
-      speed:240,
-      regen:0.4,         // hp per sec
-      baseDamage:14,
-      fireRate:2.8,      // shots/s
-      projectileCount:1,
-      projectileSpread:0.18,
-      bulletSpeed:560,
-      knockback:200,
-      explosionRadius:0,
-      splinter:0,
-      poisonLevel:0,
-      freezeLevel:0,
-      lightningLevel:0,
-      weakenLevel:0,
-      clipSize:9,
-      ammo:9,
-      reloadTime:1.7,
-      reloadTimer:0,
-      shotCooldown:0,
-      dragonShot:false,
-      dragonCounter:0,
-      dragonLevel:0
-    }
-  };
+ const state = {
+  level:1,
+  round:1,
+  kills:0,          // total run kills
+  roundKills:0,     // kills this round (for target)
+  bestLevel:1,
+  bestKills:0,
+  inRound:true,
+  showOverlay:false,
+  lastOutcome:"win", // "win" | "death"
+  enemies:[],
+  bullets:[],
+  enemyBullets:[],
+  rockets:[],
+  fireZones:[],
+  poisonZones:[],
+  obstacles:[],
+  particles:[],
+  time:0,
+  enemyScale:1,
+  targetKills:12,
+  spawnBudget:0,    // how many more enemies can spawn this round
+  spawnTimer:0,     // for continuous edge spawns
+  enemyTypeCap:1,
+  roundEnemyTypes:[0], // 👈 NEW: which enemy types are allowed this round
+  isBossRound:false,
+  isBigBoss:false,
+  worldWidth:WORLD_SIZE,
+  worldHeight:WORLD_SIZE,
+  player:{
+    x:0,
+    y:0,
+    radius:26,
+    maxHp:100,
+    hp:100,
+    speed:240,
+    regen:0.4,         // hp per sec
+    baseDamage:14,
+    fireRate:2.8,      // shots/s
+    projectileCount:1,
+    projectileSpread:0.18,
+    bulletSpeed:560,
+    knockback:200,
+    explosionRadius:0,
+    splinter:0,
+    poisonLevel:0,
+    freezeLevel:0,
+    lightningLevel:0,
+    weakenLevel:0,
+    clipSize:9,
+    ammo:9,
+    reloadTime:1.7,
+    reloadTimer:0,
+    shotCooldown:0,
+    dragonShot:false,
+    dragonCounter:0,
+    dragonLevel:0
+  }
+};
+
 
   function resetPlayerStats(){
     const p = state.player;
@@ -651,53 +653,93 @@
     state.player.y = 0;
   }
 
-  function startRound(){
-    state.inRound = true;
-    state.showOverlay = false;
-    state.roundKills = 0;
-    roundOverlay.classList.add("hidden");
+ function startRound(){
+  state.inRound = true;
+  state.showOverlay = false;
+  roundOverlay.classList.add("hidden");
 
-    // target kills per round increases slowly as you level up
-    state.targetKills = 10 + state.level * 2;
-    state.spawnBudget = state.targetKills;
-    state.spawnTimer = 0;
+  // target kills scales slowly with level
+  state.targetKills = 10 + state.level * 2;
+  state.spawnBudget = state.targetKills;
 
-    spawnWave();  // sets enemyTypeCap, bosses + some initial minions
-    updateHud();
+  // 🎲 NEW: randomly choose which enemy types are allowed this round
+  state.roundEnemyTypes = pickRoundEnemyTypes(state.level);
+
+  spawnWave();
+  updateHud();
+}
+
+function pickRoundEnemyTypes(level){
+  // Unlock more enemy types as you go deeper
+  // 0..6 are your defined types
+  const maxUnlocked = Math.min(6, Math.floor((level - 1) / 3) + 1);
+  const pool = [];
+  for(let i = 0; i <= maxUnlocked; i++){
+    pool.push(i);
   }
 
-  function spawnWave(){
-    state.enemies.length = 0;
+  const types = [];
+  const minTypes = 1;
+  // As you go higher, you can get more mixed waves
+  const maxTypes = Math.min(pool.length, 2 + Math.floor(level / 7)); // up to 3–4 types later
+  const targetCount = Math.max(
+    minTypes,
+    Math.min(maxTypes, 1 + Math.floor(Math.random() * maxTypes))
+  );
 
-    const level = state.level;
-    const tier = Math.floor((level-1)/5); // unlocks more types over time
-    state.enemyTypeCap = Math.min(7, 1 + tier);
+  while(types.length < targetCount && pool.length){
+    const idx = Math.floor(Math.random() * pool.length);
+    types.push(pool.splice(idx, 1)[0]);
+  }
+  return types;
+}
 
-    state.isBossRound = level % 5 === 0;
-    state.isBigBoss = level % 10 === 0;
+function spawnWave(){
+  state.enemies.length = 0;
+  const level = state.level;
+  const isBossRound = level % 5 === 0;
+  const isBigBoss = level % 10 === 0;
 
-    const hpScale = 1 + 0.18*(level-1);
-    state.enemyScale = hpScale;
+  const hpScale = 1 + 0.18 * (level - 1);
+  state.enemyScale = hpScale;
 
-    if(state.isBossRound){
-      const bossCount = state.isBigBoss ? 1 : 2;
-      for(let i=0;i<bossCount;i++){
-        const type = Math.floor(Math.random()*state.enemyTypeCap);
-        const boss = makeEnemy(type,true,state.isBigBoss);
-        placeEnemyOnEdge(boss);
-        state.enemies.push(boss);
-      }
-      // spawn a few minions immediately, consuming from spawnBudget
-      const minions = 4 + Math.floor(level/2);
-      for(let i=0;i<minions && state.spawnBudget>0;i++){
-        const type = Math.floor(Math.random()*state.enemyTypeCap);
-        const e = makeEnemy(type,false,false);
-        placeEnemyOnEdge(e);
-        state.enemies.push(e);
-        state.spawnBudget--;
-      }
+  // Use the chosen group for this round; fall back to ants if something breaks
+  const allowedTypes = (state.roundEnemyTypes && state.roundEnemyTypes.length)
+    ? state.roundEnemyTypes
+    : [0];
+
+  if(isBossRound){
+    // Boss type is chosen from this round's group
+    const bossCount = isBigBoss ? 1 : 2;
+    const bossType = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
+
+    for(let i = 0; i < bossCount; i++){
+      const enemy = makeEnemy(bossType, true, isBigBoss);
+      placeEnemyAround(enemy);
+      state.enemies.push(enemy);
     }
+
+    // Minions are also drawn from the same group
+    const minions = 4 + Math.floor(level / 2);
+    for(let i = 0; i < minions; i++){
+      const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
+      const e = makeEnemy(type, false, false);
+      placeEnemyAround(e);
+      state.enemies.push(e);
+    }
+    return;
   }
+
+  // Normal rounds: fill spawnBudget with enemies from this round's types
+  let remaining = state.spawnBudget;
+  while(remaining > 0){
+    const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
+    const e = makeEnemy(type, false, false);
+    placeEnemyAround(e);
+    state.enemies.push(e);
+    remaining--;
+  }
+}
 
   // Spawn at the edges of the arena, not around the player
   function placeEnemyOnEdge(enemy){
@@ -2166,5 +2208,6 @@
 </script>
 </body>
 </html>
+
 
 
