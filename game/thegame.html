@@ -29,7 +29,7 @@
     padding:6px 8px;
   }
   .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
-  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:60vw}
+  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:50vw}
   .chip{
     padding:6px 10px;
     border:1px solid var(--line);
@@ -46,6 +46,7 @@
   }
   .chip.me{border-color:#60a5fa}
   .chip.clickable{cursor:pointer}
+  .chip.deck{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;font-weight:800;} /* 🔹 deck chip */
   .spacer{flex:1}
   .btn{
     appearance:none;
@@ -321,6 +322,8 @@
 <header>
   <div class="row">
     <div id="players" class="players"></div>
+    <!-- 🔹 Remaining cards indicator -->
+    <span id="remainChip" class="chip deck" style="display:none;">Cards: --</span>
     <span id="fsChip" class="chip fs" style="display:none">FS ON</span>
     <div class="spacer"></div>
     <button id="powersBtn" class="btn secondary" type="button" title="Open powers">✨ Powers</button>
@@ -368,9 +371,15 @@
 <div id="toast" class="toast"></div>
 
 <script type="module">
-/* ---------------- Firestore ---------------- */
+/* ---------------- Firebase setup (with anonymous auth) ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { 
+  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";  // 🔹 auth import
+
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
@@ -381,6 +390,8 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
+const auth = getAuth(app);                           // 🔹 auth instance
+let currentUser = null;                              // 🔹 store user
 
 /* ---------------- Params & refs ---------------- */
 const qp = new URLSearchParams(location.search);
@@ -412,6 +423,7 @@ const $powersGrid= document.getElementById('powersGrid');
 const $powerCount= document.getElementById('powerCount');
 const $closeSheet= document.getElementById('closeSheet');
 const $toast = document.getElementById('toast');
+const $remainChip = document.getElementById('remainChip'); // 🔹 deck chip
 
 /* ---------------- Constants & helpers ---------------- */
 const UP='up', DOWN='down';
@@ -500,12 +512,14 @@ function buildClassic(players, host){
   shuffle(deck);
   const hands={}; players.forEach(p=>hands[p]=[]);
   dealToCap(hands, deck, players);
+  const totalCards = deck.length + players.reduce((s,p)=> s + (hands[p]||[]).length, 0); // 🔹 track total
   const piles={
     U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
     D1:{id:'D1',dir:DOWN,top:100,effects:[]}, D2:{id:'D2',dir:DOWN,top:100,effects:[]}
   };
   return { phase:'game', host, players, piles, deck, hands,
     placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
+    totalCards,                                  // 🔹 stored in doc
     log:[`Vote ended. Starting <b>Classic</b> with ${players.length} player(s).`] };
 }
 function buildGame2(players, host){
@@ -522,19 +536,21 @@ function buildGame2(players, host){
   deck.push(...powers); shuffle(deck);
   const hands={}; players.forEach(p=>hands[p]=[]);
   dealToCap(hands, deck, players);
+  const totalCards = deck.length + players.reduce((s,p)=> s + (hands[p]||[]).length, 0); // 🔹 track total
   const piles={
     U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
     D1:{id:'D1',dir:DOWN,top:120,effects:[]}, D2:{id:'D2',dir:DOWN,top:120,effects:[]}
   };
   return { phase:'game2', host, players, piles, deck, hands,
     placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
+    totalCards,                                  // 🔹 stored in doc
     log:[`Vote ended. Starting <b>Game 2.0</b> with ${players.length} player(s).`] };
 }
 
 /* ---------------- Voting UI ---------------- */
 let voteTick=null;
 function renderVote(){
-  if(!G || G.phase!=='voting'){ $voteBox.style.display='none'; return; }
+  if(!G || G.phase!=='voting'){ $voteBox.style.display='none'; updateRemaining(); return; }
   $voteBox.style.display='block';
   const players = G.players||[]; const votes=G.votes||{};
   $voteCount.textContent = `${Object.keys(votes).length}/${players.length}`;
@@ -550,6 +566,8 @@ function renderVote(){
 
   if(voteTick) clearTimeout(voteTick);
   voteTick = setTimeout(renderVote, 300);
+
+  updateRemaining(); // will hide during voting
 }
 async function castVote(choice){
   await runTransaction(db, async tx=>{
@@ -570,15 +588,18 @@ async function castVote(choice){
   });
 }
 
-/* ---------------- Subscriptions ---------------- */
-onSnapshot(lobbyRef, snap=>{ if(snap.exists()) LOBBY=snap.data(); });
-onSnapshot(gameRef, snap=>{
-  if(!snap.exists()) return;
-  G=snap.data();
-  if(G.phase==='voting'){ renderVote(); updateActions(); gateEnd(); return; }
-  $voteBox.style.display='none';
-  renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd(); updateActions();
-});
+/* ---------------- Subscriptions (started after auth) ---------------- */
+function startSubscriptions(){
+  onSnapshot(lobbyRef, snap=>{ if(snap.exists()) LOBBY=snap.data(); });
+
+  onSnapshot(gameRef, snap=>{
+    if(!snap.exists()) return;
+    G=snap.data();
+    if(G.phase==='voting'){ renderVote(); updateActions(); gateEnd(); return; }
+    $voteBox.style.display='none';
+    renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd(); updateActions(); updateRemaining();
+  });
+}
 
 /* ---------------- UI render ---------------- */
 function renderPlayers(){
@@ -669,6 +690,25 @@ function renderHand(){
 
   // Update powers sheet counter
   $powerCount.textContent = pows.length.toString();
+}
+
+/* 🔹 Remaining cards chip: deck + all hands (how many to play before "goal hit") */
+function updateRemaining(){
+  if(!$remainChip) return;
+  if(!G || (G.phase === 'voting')){
+    $remainChip.style.display = 'none';
+    return;
+  }
+  const deckCount = (G.deck || []).length;
+  const hands = G.hands || {};
+  let handCount = 0;
+  Object.values(hands).forEach(h => { handCount += (h || []).length; });
+  const remaining = deckCount + handCount;
+  const total = G.totalCards || null;
+  $remainChip.style.display = 'inline-flex';
+  $remainChip.textContent = total 
+    ? `Cards: ${remaining}/${total}` 
+    : `Cards: ${remaining}`;
 }
 
 /* ---------------- Hints & actions ---------------- */
@@ -989,8 +1029,19 @@ function renderLog(){
   $log.scrollTop=$log.scrollHeight;
 }
 
-/* ---------------- Kickoff ---------------- */
-ensureRoomVotingOrResume();
+/* ---------------- Kickoff with anonymous auth (for rules) ---------------- */
+signInAnonymously(auth).catch(console.error);
+
+onAuthStateChanged(auth, (user)=>{
+  if(!user) return;
+  currentUser = user;
+  if(window.__theGameStarted) return;
+  window.__theGameStarted = true;
+
+  // Now that request.auth != null is true, it's safe with your rules
+  ensureRoomVotingOrResume().catch(console.error);
+  startSubscriptions();
+});
 </script>
 </body>
 </html>
