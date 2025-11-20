@@ -298,6 +298,22 @@
       }
       .leaderboard{max-height:230px;}
     }
+
+    .restart-button{
+      width:100%;
+      padding:10px;
+      border-radius:12px;
+      border:1px solid #1f2937;
+      background:linear-gradient(to right,#0f172a,#111827);
+      color:#e5e7eb;
+      font-size:14px;
+      font-weight:600;
+      cursor:pointer;
+      text-align:center;
+    }
+    .restart-button:hover{
+      background:linear-gradient(to right,#111827,#1f2937);
+    }
   </style>
 </head>
 <body>
@@ -363,11 +379,11 @@
             </table>
           </div>
           <div class="upgrade-grid" id="upgradeGrid">
-            <!-- Upgrade cards injected here -->
+            <!-- Upgrade cards / restart button injected here -->
           </div>
         </div>
         <div class="overlay-footer">
-          <div>
+          <div id="overlayFooterHint">
             <span style="color:var(--legend);font-weight:600;">Legendary</span> cards are very rare and only appear in late game.
           </div>
           <div id="runPlacement">
@@ -384,7 +400,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 
 <script>
-  // 🔥 DROP YOUR EXISTING CONFIG HERE (same one as the original script)
+  // 🔥 Using your existing config
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
@@ -421,6 +437,7 @@
   const overlaySubtitle = document.getElementById("overlaySubtitle");
   const runPlacement = document.getElementById("runPlacement");
   const bestRunBadge = document.getElementById("bestRunBadge");
+  const overlayFooterHint = document.getElementById("overlayFooterHint");
 
   const levelDisplay = document.getElementById("levelDisplay");
   const hpDisplay = document.getElementById("hpDisplay");
@@ -523,11 +540,13 @@
   const state = {
     level:1,
     round:1,
-    kills:0,
+    kills:0,          // total run kills
+    roundKills:0,     // kills this round (for target)
     bestLevel:1,
     bestKills:0,
     inRound:true,
     showOverlay:false,
+    lastOutcome:"win", // "win" | "death"
     enemies:[],
     bullets:[],
     enemyBullets:[],
@@ -539,7 +558,11 @@
     time:0,
     enemyScale:1,
     targetKills:12,
-    spawnBudget:0,
+    spawnBudget:0,    // how many more enemies can spawn this round
+    spawnTimer:0,     // for continuous edge spawns
+    enemyTypeCap:1,
+    isBossRound:false,
+    isBigBoss:false,
     worldWidth:WORLD_SIZE,
     worldHeight:WORLD_SIZE,
     player:{
@@ -573,6 +596,37 @@
     }
   };
 
+  function resetPlayerStats(){
+    const p = state.player;
+    p.x = 0;
+    p.y = 0;
+    p.radius = 26;
+    p.maxHp = 100;
+    p.hp = 100;
+    p.speed = 240;
+    p.regen = 0.4;
+    p.baseDamage = 14;
+    p.fireRate = 2.8;
+    p.projectileCount = 1;
+    p.projectileSpread = 0.18;
+    p.bulletSpeed = 560;
+    p.knockback = 200;
+    p.explosionRadius = 0;
+    p.splinter = 0;
+    p.poisonLevel = 0;
+    p.freezeLevel = 0;
+    p.lightningLevel = 0;
+    p.weakenLevel = 0;
+    p.clipSize = 9;
+    p.ammo = 9;
+    p.reloadTime = 1.7;
+    p.reloadTimer = 0;
+    p.shotCooldown = 0;
+    p.dragonShot = false;
+    p.dragonCounter = 0;
+    p.dragonLevel = 0;
+  }
+
   function resetWorld(){
     state.worldWidth = WORLD_SIZE;
     state.worldHeight = WORLD_SIZE;
@@ -600,58 +654,72 @@
   function startRound(){
     state.inRound = true;
     state.showOverlay = false;
+    state.roundKills = 0;
     roundOverlay.classList.add("hidden");
-    state.targetKills = 10 + state.level*2;
+
+    // target kills per round increases slowly as you level up
+    state.targetKills = 10 + state.level * 2;
     state.spawnBudget = state.targetKills;
-    spawnWave();
+    state.spawnTimer = 0;
+
+    spawnWave();  // sets enemyTypeCap, bosses + some initial minions
     updateHud();
   }
 
   function spawnWave(){
     state.enemies.length = 0;
+
     const level = state.level;
-    const tier = Math.floor((level-1)/5); // more types over time
-    const enemyTypeCap = Math.min(7, 1 + tier); // 1 type first 5 levels, then more
-    const isBossRound = level % 5 === 0;
-    const isBigBoss = level % 10 === 0;
+    const tier = Math.floor((level-1)/5); // unlocks more types over time
+    state.enemyTypeCap = Math.min(7, 1 + tier);
+
+    state.isBossRound = level % 5 === 0;
+    state.isBigBoss = level % 10 === 0;
 
     const hpScale = 1 + 0.18*(level-1);
     state.enemyScale = hpScale;
 
-    if(isBossRound){
-      const bossCount = isBigBoss ? 1 : 2;
+    if(state.isBossRound){
+      const bossCount = state.isBigBoss ? 1 : 2;
       for(let i=0;i<bossCount;i++){
-        const type = Math.floor(Math.random()*enemyTypeCap);
-        const enemy = makeEnemy(type,true,isBigBoss);
-        placeEnemyAround(enemy);
-        state.enemies.push(enemy);
+        const type = Math.floor(Math.random()*state.enemyTypeCap);
+        const boss = makeEnemy(type,true,state.isBigBoss);
+        placeEnemyOnEdge(boss);
+        state.enemies.push(boss);
       }
-      // plus some minions
+      // spawn a few minions immediately, consuming from spawnBudget
       const minions = 4 + Math.floor(level/2);
-      for(let i=0;i<minions;i++){
-        const type = Math.floor(Math.random()*enemyTypeCap);
+      for(let i=0;i<minions && state.spawnBudget>0;i++){
+        const type = Math.floor(Math.random()*state.enemyTypeCap);
         const e = makeEnemy(type,false,false);
-        placeEnemyAround(e);
+        placeEnemyOnEdge(e);
         state.enemies.push(e);
+        state.spawnBudget--;
       }
-      return;
-    }
-
-    let remaining = state.spawnBudget;
-    while(remaining>0){
-      const type = Math.floor(Math.random()*enemyTypeCap);
-      const e = makeEnemy(type,false,false);
-      placeEnemyAround(e);
-      state.enemies.push(e);
-      remaining--;
     }
   }
 
-  function placeEnemyAround(enemy){
-    const dist = 650 + Math.random()*700;
-    const angle = Math.random()*Math.PI*2;
-    enemy.x = state.player.x + Math.cos(angle)*dist;
-    enemy.y = state.player.y + Math.sin(angle)*dist;
+  // Spawn at the edges of the arena, not around the player
+  function placeEnemyOnEdge(enemy){
+    const side = Math.floor(Math.random()*4);
+    const margin = 60;
+    if(side === 0){
+      // left
+      enemy.x = -halfWorld + margin;
+      enemy.y = (Math.random()-0.5)*(WORLD_SIZE - margin*2);
+    }else if(side === 1){
+      // right
+      enemy.x = halfWorld - margin;
+      enemy.y = (Math.random()-0.5)*(WORLD_SIZE - margin*2);
+    }else if(side === 2){
+      // top
+      enemy.y = -halfWorld + margin;
+      enemy.x = (Math.random()-0.5)*(WORLD_SIZE - margin*2);
+    }else{
+      // bottom
+      enemy.y = halfWorld - margin;
+      enemy.x = (Math.random()-0.5)*(WORLD_SIZE - margin*2);
+    }
   }
 
   // Types:
@@ -871,44 +939,72 @@
     return picks;
   }
 
+  function restartRun(){
+    // restart from level 1, no free level-ups on death
+    state.level = 1;
+    state.round = 1;
+    state.kills = 0;
+    state.roundKills = 0;
+    state.time = 0;
+    resetPlayerStats();
+    resetWorld();
+    startRound();
+    state.showOverlay = false;
+  }
+
   function showRoundOverlay(){
     state.inRound = false;
     state.showOverlay = true;
-    overlayTitle.textContent = state.player.hp<=0 ? "You Fell This Run" : `Round ${state.round} Complete`;
-    overlaySubtitle.textContent = state.player.hp<=0
-      ? "Pick a final upgrade and check how far you climbed compared to everyone else."
+
+    const isDeath = state.player.hp <= 0;
+    state.lastOutcome = isDeath ? "death" : "win";
+
+    overlayTitle.textContent = isDeath ? "You Died" : `Round ${state.round} Complete`;
+    overlaySubtitle.textContent = isDeath
+      ? "Your run has ended. Check the leaderboard and start a new run."
       : "Pick one upgrade for your gun build, then continue to the next round.";
+    overlayFooterHint.style.visibility = isDeath ? "hidden" : "visible";
 
     state.bestLevel = Math.max(state.bestLevel,state.level);
     state.bestKills = Math.max(state.bestKills,state.kills);
     bestRunBadge.textContent = `Lvl ${state.bestLevel} • ${state.bestKills} kills`;
 
-    // Build upgrade cards
+    // Build panel content
     upgradeGrid.innerHTML = "";
-    const available = pickUpgrades(state.level);
-    available.forEach(up=>{
-      const card = document.createElement("div");
-      card.className = "upgrade-card";
-      const rarityClass = up.rarity === "legend" ? "legend" : up.rarity;
-      card.innerHTML = `
-        <div class="upgrade-title">
-          <span>${up.name}</span>
-          <span class="rarity-pill rarity-${rarityClass}">
-            ${up.rarity.toUpperCase()}
-          </span>
-        </div>
-        <div class="upgrade-desc">${up.desc}</div>
-      `;
-      card.addEventListener("click",()=>{
-        up.apply(state.player);
-        // Heal a bit on upgrade
-        state.player.hp = Math.min(state.player.maxHp, state.player.hp+10);
-        state.level++;
-        state.round++;
-        startRound();
+    if(!isDeath){
+      const available = pickUpgrades(state.level);
+      available.forEach(up=>{
+        const card = document.createElement("div");
+        card.className = "upgrade-card";
+        const rarityClass = up.rarity === "legend" ? "legend" : up.rarity;
+        card.innerHTML = `
+          <div class="upgrade-title">
+            <span>${up.name}</span>
+            <span class="rarity-pill rarity-${rarityClass}">
+              ${up.rarity.toUpperCase()}
+            </span>
+          </div>
+          <div class="upgrade-desc">${up.desc}</div>
+        `;
+        card.addEventListener("click",()=>{
+          up.apply(state.player);
+          // Heal a bit on upgrade
+          state.player.hp = Math.min(state.player.maxHp, state.player.hp+10);
+          state.level++;          // ⬅ only level up on a win
+          state.round++;
+          startRound();
+        });
+        upgradeGrid.appendChild(card);
       });
-      upgradeGrid.appendChild(card);
-    });
+    }else{
+      const btn = document.createElement("button");
+      btn.className = "restart-button";
+      btn.textContent = "🔁 Start New Run (Back to Level 1)";
+      btn.addEventListener("click", ()=>{
+        restartRun();
+      });
+      upgradeGrid.appendChild(btn);
+    }
 
     // Save score + load leaderboard
     if(scoresRef && db){
@@ -1106,7 +1202,7 @@
         if(p.hp<=0){
           p.hp = 0;
           updateHud();
-          showRoundOverlay();
+          showRoundOverlay(); // death -> no leveling up
           return;
         }
       }
@@ -1132,8 +1228,9 @@
             return;
           }
         }
-        // Particle ring
+        // Particle ring (big impact)
         state.particles.push({
+          type:"ring",
           x:r.tx,
           y:r.ty,
           life:0.55,
@@ -1514,18 +1611,28 @@
       }
     }
 
-    // Check round end
+    // Continuous spawning from edges while we still need kills this round
+    if(state.inRound && state.spawnBudget > 0){
+      state.spawnTimer += dt;
+      const baseDelay = 0.9;
+      const minDelay = 0.35;
+      const spawnDelay = Math.max(minDelay, baseDelay - state.level*0.03); // slightly faster over time
+      while(state.spawnTimer >= spawnDelay && state.spawnBudget > 0){
+        const type = Math.floor(Math.random()*state.enemyTypeCap);
+        const e = makeEnemy(type,false,false);
+        placeEnemyOnEdge(e);
+        state.enemies.push(e);
+        state.spawnBudget--;
+        state.spawnTimer -= spawnDelay;
+      }
+    }
+
+    // Check round end (you must kill enough AND clear remaining enemies)
     updateHud();
     if(state.inRound){
       const enemiesAlive = state.enemies.length;
-      if(state.kills >= state.targetKills && enemiesAlive===0){
-        showRoundOverlay();
-      }else if(enemiesAlive===0 && state.kills < state.targetKills){
-        const remaining = state.targetKills - state.kills;
-        if(remaining>0){
-          state.spawnBudget = remaining;
-          spawnWave();
-        }
+      if(state.roundKills >= state.targetKills && enemiesAlive===0){
+        showRoundOverlay(); // win -> upgrades + level up
       }
     }
   }
@@ -1570,6 +1677,8 @@
 
   function onEnemyDeath(e){
     state.kills++;
+    state.roundKills++;
+
     // Golem split
     if(e.type===4 && !e.small){
       for(let m=0;m<2;m++){
@@ -1588,6 +1697,19 @@
 
   function bulletImpact(b,e,bulletIndex){
     const p = state.player;
+    const impactX = e ? e.x : b.x;
+    const impactY = e ? e.y : b.y;
+
+    // Extra hit impact particles
+    state.particles.push({
+      type:"hit",
+      x:impactX,
+      y:impactY,
+      life:0.22,
+      maxLife:0.22,
+      radius:14
+    });
+
     if(e){
       let dmg = b.damage;
       if(e.weakenTimer>0){
@@ -1841,16 +1963,31 @@
       ctx.restore();
     }
 
-    // Explosion particles
+    // Explosion / hit particles
     for(const par of state.particles){
       ctx.save();
       ctx.translate(par.x,par.y);
       const t = par.life / par.maxLife;
-      ctx.strokeStyle=`rgba(248,250,252,${t})`;
-      ctx.lineWidth=2;
-      ctx.beginPath();
-      ctx.arc(0,0,par.radius*(1-t*0.3),0,Math.PI*2);
-      ctx.stroke();
+      if(par.type === "hit"){
+        // small starburst lines
+        ctx.strokeStyle=`rgba(248,250,252,${t})`;
+        ctx.lineWidth=2;
+        const rays = 6;
+        const len = par.radius * (1-t);
+        for(let i=0;i<rays;i++){
+          const a = (Math.PI*2 * i)/rays;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a)*2, Math.sin(a)*2);
+          ctx.lineTo(Math.cos(a)*(len+4), Math.sin(a)*(len+4));
+          ctx.stroke();
+        }
+      }else{ // ring
+        ctx.strokeStyle=`rgba(248,250,252,${t})`;
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(0,0,par.radius*(1-t*0.3),0,Math.PI*2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -2007,11 +2144,27 @@
     }
     ctx.restore();
 
-    // reset transform for UI
+    // Player HP bar directly above character
+    ctx.save();
+    ctx.translate(p.x, p.y - p.radius - 18);
+    const barW = 70;
+    const barH = 7;
+    const ratio = Math.max(0, p.hp / p.maxHp);
+    ctx.fillStyle = "rgba(15,23,42,.9)";
+    ctx.fillRect(-barW/2, 0, barW, barH);
+    ctx.fillStyle = "#22c55e";
+    ctx.fillRect(-barW/2, 0, barW*ratio, barH);
+    ctx.strokeStyle = "rgba(15,23,42,1)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-barW/2, 0, barW, barH);
+    ctx.restore();
+
+    // reset transform for UI if needed
     ctx.setTransform(1,0,0,1,0,0);
   }
 })();
 </script>
 </body>
 </html>
+
 
