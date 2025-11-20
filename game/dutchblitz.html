@@ -410,6 +410,8 @@ function newGameDoc(host, players, hostClientId){
     P[name] = { name, alive: true, health: 100, maxHealth: 100, gold: 0, deck: baseDeck(), discard: [], viewIndex: 0 };
   });
   const G = {
+    // 🔐 gameId added to satisfy rules like request.resource.data.gameId == gameId
+    gameId,
     type:"dutchblitz", host, players, status:"playing", winner:null,
     piles: [], storeDeck: buildStoreDeck(), storeVis: [],
     tickEndsAt: nowMs() + TICK_MS, awarded:false,
@@ -442,9 +444,6 @@ function livingPlayers(G,P){ return G.players.filter(n => P[n]?.alive); }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 /* ========= Host: apply action ========= */
-/* Actions are always tagged with .by (the username),
-   so each player's clicks only mutate THEIR deck/state.
-   The host device just applies them to the shared game. */
 async function hostApplyAction(act){
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
@@ -529,7 +528,6 @@ async function hostApplyAction(act){
 
 /* ========= Host: tick ========= */
 async function hostTickIfNeeded(){
-  // Only the authoritative host device should ever run this
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(gameRef);
     if(!snap.exists()) return; const root=snap.data();
@@ -546,7 +544,6 @@ async function hostTickIfNeeded(){
     for(const n of alive){
       const p=P[n], s=sums.get(n)||{atk:0,heal:0,ward:0,gold:0};
       p.health = clamp((p.health||0)+(s.heal||0), 0, (p.maxHealth||100));
-      // ===== PASSIVE GOLD INCOME (per tick, low) =====
       p.gold   = (p.gold||0) + BASE_GOLD_PER_TICK + (s.gold||0);
       atkBy.set(n, s.atk||0);
     }
@@ -564,7 +561,7 @@ async function hostTickIfNeeded(){
   });
 }
 
-/* ========= Host action queue (guarded by hostClientId) ========= */
+/* ========= Host action queue ========= */
 function startHostActionPump(){
   if (window.__DB_ACTIONS_UNSUB) { return; }
   const qy=query(actionsCol, orderBy("ts","asc"));
@@ -640,7 +637,8 @@ function startLocalReshuffle(){
     bar.style.width = (pct*100).toFixed(1) + "%";
     if (left <= 0){
       cancelAnimationFrame(L.reshufRAF);
-      addDoc(actionsCol, { by:L.me, type:"reshuffle", ts: serverTimestamp() });
+      // 🔐 gameId added to action
+      addDoc(actionsCol, { gameId, by:L.me, type:"reshuffle", ts: serverTimestamp() });
       L.reshuffling = false;
       return;
     }
@@ -691,7 +689,7 @@ function render(){
     mini.appendChild(chip);
   });
 
-  // Center piles (with owner trail)
+  // Center piles
   const grid=$("#piles"); grid.innerHTML="";
   root.piles.forEach(pile=>{
     const top=pile.cards[pile.cards.length-1].card;
@@ -700,7 +698,6 @@ function render(){
     tile.className=`tile ${CCLS[top.color]}`;
     if(pile.owner === L.me) tile.classList.add("mine");
 
-    // selection validity (current player's hand)
     const sel=L.selectedCardId && handCard(root, root.P, L.me);
     const selected=sel && sel.id===L.selectedCardId ? sel : null;
     if(selected && selected.color===pile.color && pile.topVal===selected.val-1) tile.classList.add("valid");
@@ -717,14 +714,15 @@ function render(){
     tile.addEventListener("pointerup",(e)=>{
       e.preventDefault();
       if(!selected){ return; }
-      addDoc(actionsCol, { by:L.me, type:"playOn", pileId:pile.id, cardId:selected.id, ts: serverTimestamp() });
+      // 🔐 gameId added to action
+      addDoc(actionsCol, { gameId, by:L.me, type:"playOn", pileId:pile.id, cardId:selected.id, ts: serverTimestamp() });
       L.selectedCardId=null;
     });
     grid.appendChild(tile);
   });
   fitPilesToBand();
 
-  // Hand card (+ local reshuffle trigger when deck exhausted)
+  // Hand card
   const hand=$("#hand");
   const c=handCard(root, root.P, L.me);
   if(c){
@@ -735,7 +733,8 @@ function render(){
     hand.innerHTML=`<span style="font-weight:900;font-size:22px">${c.val}</span><span style="font-size:22px">${ICON[c.color]}</span>`;
     hand.onclick = ()=>{
       if(c.val===1){
-        addDoc(actionsCol, { by:L.me, type:"start", cardId:c.id, ts: serverTimestamp() });
+        // 🔐 gameId added to action
+        addDoc(actionsCol, { gameId, by:L.me, type:"start", cardId:c.id, ts: serverTimestamp() });
         L.selectedCardId=null;
       } else {
         L.selectedCardId = (L.selectedCardId===c.id) ? null : c.id;
@@ -754,14 +753,18 @@ function render(){
     }
   }
 
-  // Store — exactly 3 visible slots
+  // Store — 3 visible
   const store=$("#storeItems"); store.innerHTML="";
   const visibleCards = root.storeVis.slice(0, 3);
   visibleCards.forEach((card)=>{
     const col=document.createElement("div"); col.className="storeCol";
     const btn=document.createElement("button"); btn.className="btn"; btn.textContent=`Buy $${card.val}`;
     if((me.gold||0) < card.val || !me.alive) btn.disabled=true;
-    btn.addEventListener("pointerup",(e)=>{ e.preventDefault(); addDoc(actionsCol, { by:L.me, type:"buy", cardId: card.id, ts: serverTimestamp() }); });
+    btn.addEventListener("pointerup",(e)=>{ 
+      e.preventDefault(); 
+      // 🔐 gameId added to action
+      addDoc(actionsCol, { gameId, by:L.me, type:"buy", cardId: card.id, ts: serverTimestamp() }); 
+    });
     col.appendChild(btn);
     const r=document.createElement("div"); r.className=`rect ${CCLS[card.color]}`;
     r.innerHTML=`<span style="font-weight:900;font-size:18px">${card.val}</span><span style="font-size:18px">${ICON[card.color]}</span>`;
@@ -783,7 +786,7 @@ function render(){
   }
 }
 
-/* ========= Charts (SVG sparklines) ========= */
+/* ========= Charts ========= */
 function makeSparklineSVG(seriesMap, title, height=120, width=720, padding=24){
   const t = L.ts;
   if (t.length < 2) return `<div class="chartBox"><div class="chartTitle">${title}</div><div style="opacity:.7">Not enough data.</div></div>`;
@@ -887,13 +890,12 @@ async function toggleFullscreen(){ if(isFullscreen()) await exitFullscreen(); el
 
 /* ========= Boot ========= */
 async function boot(){
-  // Set legend text to show passive income clearly
+  // legend text
   const legendEl = document.getElementById("legendText");
   if(legendEl){
     legendEl.textContent = `💰 Gold (includes passive +${BASE_GOLD_PER_TICK}/tick) • ⚔️ Damage • ❤️ Heal • 🛡️ Ward`;
   }
 
-  // lobby → players/host
   const lSnap = await getDoc(lobbyRef);
   if(!lSnap.exists()){ alert("Lobby not found."); return; }
   const lobby = lSnap.data();
@@ -909,14 +911,13 @@ async function boot(){
     await setDoc(gameRef, { ...G, P });
   } else if(L.isHost && gSnap.exists()){
     const data = gSnap.data();
-    // If no hostClientId yet (old game), claim it from this device
     if(!data.hostClientId){
       try{
         await runTransaction(db, async (tx)=>{
           const cur = await tx.get(gameRef);
           if(!cur.exists()) return;
           const root = cur.data();
-          if(root.hostClientId) return; // someone else already claimed
+          if(root.hostClientId) return;
           tx.update(gameRef, { hostClientId: clientId, updatedAt: serverTimestamp() });
         });
       }catch(err){
@@ -930,7 +931,6 @@ async function boot(){
     if(!snap.exists()) return;
     L.game=snap.data();
 
-    // If I'm the host and THIS device owns hostClientId, start pumps once
     const isAuthority = L.isHost && L.game.hostClientId === clientId;
 
     if(isAuthority && !hostPumpStarted){
@@ -939,7 +939,6 @@ async function boot(){
       hostPumpStarted = true;
     }
 
-    // Award once — only the authoritative host device does it
     if(isAuthority && L.game.status==="finished" && L.game.winner && !L.game.awarded){
       await runTransaction(db, async (tx)=>{
         const cur = await tx.get(gameRef); if(!cur.exists()) return;
@@ -964,7 +963,8 @@ async function boot(){
   $("#flipBtn").addEventListener("pointerup", (e)=>{
     e.preventDefault();
     if (L.reshuffling || L.waitingReshuffle) return;
-    addDoc(actionsCol, { by:L.me, type:"flip", ts: serverTimestamp() });
+    // 🔐 gameId added to action
+    addDoc(actionsCol, { gameId, by:L.me, type:"flip", ts: serverTimestamp() });
   });
   window.addEventListener("keydown", (e)=>{ if(e.key===" "){ e.preventDefault(); $("#flipBtn").click(); } });
 
@@ -980,11 +980,9 @@ async function boot(){
     });
   }
 
-  // Refits
   new ResizeObserver(()=>{ fitPilesToBand(); fitToViewport(); }).observe(document.getElementById("centerBand"));
   new ResizeObserver(()=>{ fitToViewport(); }).observe(document.getElementById("stage"));
 
-  // First fit
   fitToViewport();
 }
 boot();
