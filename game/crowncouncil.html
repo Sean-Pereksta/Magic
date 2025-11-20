@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
-    --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
-    --shadow:0 10px 30px rgba(2,6,23,.08);
+    --bg:#020617; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
+    --shadow:0 10px 30px rgba(2,6,23,.18);
     --cell:64px; /* bigger tiles for closer view */
     --gap:4px;
 
@@ -27,22 +27,73 @@
     --team1b:#2563eb; /* darker blue */
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at top,#0b1120 0,#020617 55%,#000 100%);
+    color:#e5e7eb;
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  }
 
   .topbar{
     position:sticky; top:0; z-index:30;
-    background:#fff; border-bottom:1px solid var(--line);
-    padding:8px 10px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:linear-gradient(90deg,#020617,#020617,#0f172a);
+    border-bottom:1px solid rgba(148,163,184,.35);
+    padding:8px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    box-shadow:0 12px 30px rgba(15,23,42,.65);
   }
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .badge{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;box-shadow:var(--shadow);font-weight:800}
-  .btn{appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;background:#111827;color:#fff}
-  .btn.ghost{background:#fff;color:var(--ink)}
+  .badge{
+    display:inline-flex;
+    gap:8px;
+    align-items:center;
+    padding:6px 12px;
+    border-radius:999px;
+    background:rgba(15,23,42,.9);
+    border:1px solid rgba(148,163,184,.4);
+    box-shadow:0 6px 18px rgba(15,23,42,.55);
+    font-weight:700;
+    font-size:.85rem;
+    color:#e5e7eb;
+    backdrop-filter:blur(10px);
+  }
+  .badge.p0{border-color:#f97373;background:linear-gradient(135deg,rgba(248,113,113,.22),rgba(15,23,42,.95));}
+  .badge.p1{border-color:#60a5fa;background:linear-gradient(135deg,rgba(96,165,250,.22),rgba(15,23,42,.95));}
+  .badge.phase{background:rgba(15,23,42,.95);border-style:dashed;border-color:rgba(148,163,184,.7);}
+  .badge.timer{background:rgba(15,23,42,.95);}
+
+  .btn{
+    appearance:none;
+    border-radius:999px;
+    padding:8px 12px;
+    font-weight:700;
+    cursor:pointer;
+    border:1px solid rgba(148,163,184,.5);
+    background:#111827;
+    color:#e5e7eb;
+    font-size:.85rem;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .btn.ghost{background:rgba(15,23,42,.8);}
+  .btn:hover{border-color:#38bdf8;}
 
   .viewport{
-    position:relative; width:100%; height:calc(100dvh - 70px);
-    border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff;
-    cursor:grab; user-select:none; touch-action:none;
+    position:relative;
+    width:100%;
+    height:calc(100dvh - 70px);
+    border-top:1px solid rgba(15,23,42,.8);
+    border-radius:18px 18px 0 0;
+    overflow:hidden;
+    background:radial-gradient(circle at top,#020617,#020617,#020617);
+    cursor:grab;
+    user-select:none;
+    touch-action:none;
   }
   .viewport:active{ cursor:grabbing; }
   .canvas{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
@@ -53,34 +104,40 @@
     grid-template-columns:repeat(var(--w),var(--cell));
     grid-auto-rows:var(--cell);
     gap:var(--gap);
+    padding:10px;
   }
   .cell{
     width:var(--cell);height:var(--cell);
-    border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;
+    border-radius:12px;
+    background:radial-gradient(circle at top,#0f172a,#020617);
+    border:1px solid rgba(30,64,175,.5);
     position:relative;overflow:hidden;
+    box-shadow:0 0 0 1px rgba(15,23,42,.6),0 18px 40px rgba(15,23,42,.7) inset;
   }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) < status(6) */
   .under{
     position:absolute; inset:0; z-index:0;
     opacity:1 !important;
-    mix-blend-mode:normal !important;
-    filter:none !important;
+    mix-blend-mode:screen !important;
+    filter:brightness(1.05) saturate(1.1);
   }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
 
   .hp{
-    position:absolute;left:3px;right:3px;bottom:3px;height:6px;border-radius:4px;
-    background:#e2e8f0;overflow:hidden;z-index:4
+    position:absolute;left:6px;right:6px;bottom:4px;height:7px;border-radius:999px;
+    background:rgba(15,23,42,.9);overflow:hidden;z-index:4;
+    box-shadow:0 0 0 1px rgba(15,23,42,.85),0 0 18px rgba(15,23,42,.9) inset;
   }
   /* default (fallback) fill is green; team classes override it */
   .hp>i{
     display:block;height:100%;
     background:linear-gradient(90deg,#22c55e,#16a34a);
+    box-shadow:0 0 18px rgba(34,197,94,.6);
   }
   /* team-colored HP fills */
-  .hp>i.team0{ background:linear-gradient(90deg,var(--team0),var(--team0b)); }
-  .hp>i.team1{ background:linear-gradient(90deg,var(--team1),var(--team1b)); }
+  .hp>i.team0{ background:linear-gradient(90deg,var(--team0),var(--team0b)); box-shadow:0 0 18px rgba(248,113,113,.7); }
+  .hp>i.team1{ background:linear-gradient(90deg,var(--team1),var(--team1b)); box-shadow:0 0 18px rgba(96,165,250,.7); }
 
   .status{
     position:absolute;
@@ -93,14 +150,14 @@
     pointer-events:none;
   }
   .status span{
-    text-shadow:0 1px 2px rgba(0,0,0,.4);
+    text-shadow:0 1px 2px rgba(0,0,0,.7);
   }
 
-  .hitflash{ position:absolute; inset:0; background:rgba(255,255,255,.9); animation:flash .12s ease; pointer-events:none; z-index:2 }
+  .hitflash{ position:absolute; inset:0; background:rgba(248,250,252,.9); animation:flash .12s ease; pointer-events:none; z-index:2 }
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
   .dmg{
     position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
-    font-weight:900; font-size:12px; color:#b91c1c; text-shadow:0 1px 0 rgba(0,0,0,.15);
+    font-weight:900; font-size:12px; color:#f97373; text-shadow:0 1px 0 rgba(15,23,42,.7);
     animation:dmg 600ms ease-out forwards; pointer-events:none; z-index:5;
   }
   @keyframes dmg{
@@ -118,48 +175,91 @@
 
   .acid{ position:absolute; inset:0; background:#1d4ed8; opacity:.85; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
   @keyframes acidpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
-  .ward{ position:absolute; inset:0; background:#8ec5ff; border:1px solid #4ea3ff; z-index:1 }
+  .ward{ position:absolute; inset:0; background:#8ec5ff33; border:1px solid #4ea3ff; z-index:1; box-shadow:0 0 20px rgba(59,130,246,.7) inset; }
 
   /* Draft overlay */
-  .overlay{position:absolute;inset:0;background:rgba(255,255,255,.55);display:none;z-index:40}
-  .cardRow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:10px;z-index:50;flex-wrap:wrap;justify-content:center}
-  .card{width:min(240px,34vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;cursor:pointer;display:grid;gap:6px;user-select:none}
-  .card:hover .title{font-weight:900}
-  .desc{color:var(--muted);font-size:.92rem}
+  .overlay{position:absolute;inset:0;background:radial-gradient(circle at top,rgba(15,23,42,.85),rgba(15,23,42,.97));display:none;z-index:40}
+  .cardRow{
+    position:absolute;
+    left:50%;top:50%;
+    transform:translate(-50%,-50%);
+    display:flex;
+    gap:14px;
+    z-index:50;
+    flex-wrap:wrap;
+    justify-content:center;
+    max-width:960px;
+  }
+  .card{
+    width:min(260px,40vw);
+    background:radial-gradient(circle at top,#0b1120,#020617);
+    border-radius:16px;
+    border:1px solid rgba(148,163,184,.7);
+    box-shadow:0 18px 40px rgba(15,23,42,.9);
+    padding:12px 14px;
+    cursor:pointer;
+    display:grid;
+    gap:6px;
+    user-select:none;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .card .title{
+    font-weight:800;
+    letter-spacing:.02em;
+    font-size:.96rem;
+    color:#e5e7eb;
+  }
+  .card .meta{
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:#93c5fd;
+  }
+  .card .desc{
+    color:#cbd5f5;
+    font-size:.88rem;
+  }
+  .card:hover{
+    transform:translateY(-3px);
+    box-shadow:0 22px 50px rgba(15,23,42,1);
+    border-color:#38bdf8;
+  }
+
   .pickNote{
     position:absolute;left:50%;top:12%;transform:translateX(-50%);
-    z-index:60;background:#fff;border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow);
-    padding:8px 14px;font-weight:900;display:none;
+    z-index:60;background:rgba(15,23,42,.96);border:1px solid rgba(148,163,184,.7);border-radius:999px;box-shadow:var(--shadow);
+    padding:8px 16px;font-weight:800;display:none;font-size:.85rem;color:#e5e7eb;letter-spacing:.03em;text-transform:uppercase;
   }
   .pickCounter{
-    position:absolute;left:50%;top:8%;transform:translateX(-50%);
-    z-index:61;background:#fff;border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow);
-    padding:6px 12px;font-weight:900;display:none;
+    position:absolute;left:50%;top:7%;transform:translateX(-50%);
+    z-index:61;background:rgba(15,23,42,.96);border:1px solid rgba(148,163,184,.7);border-radius:999px;box-shadow:var(--shadow);
+    padding:6px 14px;font-weight:800;display:none;font-size:.78rem;color:#bfdbfe;text-transform:uppercase;letter-spacing:.08em;
   }
 
   /* VFX */
   .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
   .beam{
-    position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.95),rgba(239,68,68,.95));
-    opacity:.95; transform-origin:0 50%; animation:beamfade .35s ease-out forwards;
+    position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.98),rgba(239,68,68,.98));
+    opacity:.98; transform-origin:0 50%; animation:beamfade .35s ease-out forwards; box-shadow:0 0 16px rgba(59,130,246,.8);
   }
   .hbeam{
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(34,197,94,1),rgba(134,239,172,1));
-    opacity:1; transform-origin:0 50%; animation:beamfade .35s ease-out forwards;
+    opacity:1; transform-origin:0 50%; animation:beamfade .35s ease-out forwards; box-shadow:0 0 16px rgba(34,197,94,.9);
   }
   .tline{
     position:absolute;
     height:3px;
     border-radius:3px;
     background:linear-gradient(90deg,#22c55e,#06b6d4);
-    opacity:.95;
+    opacity:.98;
     transform-origin:0 50%;
     animation:beamfade .45s ease-out forwards;
+    box-shadow:0 0 16px rgba(45,212,191,.9);
   }
   @keyframes beamfade{ to{ opacity:0 } }
 
-  .p{ position:absolute; width:6px; height:6px; border-radius:50%; background:#ef4444; opacity:.95; animation:pfade .7s ease-out forwards }
-  .p.purple{ background:#6b21a8; }
+  .p{ position:absolute; width:6px; height:6px; border-radius:50%; background:#ef4444; opacity:.95; animation:pfade .7s ease-out forwards; box-shadow:0 0 10px rgba(248,113,113,.7);}
+  .p.purple{ background:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.9);}
   @keyframes pfade{ to{ opacity:0; transform:translateY(-8px) scale(.7) } }
 
   .endSummary{
@@ -169,29 +269,37 @@
     transform:translateX(-50%);
     min-width:280px;
     max-width:90vw;
-    background:#0f172a;
+    background:#020617;
     color:#e5e7eb;
     padding:10px 14px;
     border-radius:12px;
-    box-shadow:var(--shadow);
+    box-shadow:0 18px 40px rgba(15,23,42,.95);
     font-size:.9rem;
     z-index:50;
     display:none;
+    border:1px solid rgba(148,163,184,.6);
   }
   .endSummary .mmrUp{ color:#22c55e; font-weight:700; }
   .endSummary .mmrDown{ color:#ef4444; font-weight:700; }
+
+  @media (max-width:768px){
+    .badge{padding:5px 10px;font-size:.8rem}
+    .btn{padding:6px 10px;font-size:.8rem}
+    .card{width:min(260px,88vw);}
+    .cells{padding:6px;}
+  }
 </style>
 </head>
 <body>
   <div class="topbar">
     <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
-      <span id="phaseBadge" class="badge">—</span>
+      <span id="phaseBadge" class="badge phase">—</span>
     </div>
     <div class="row">
-      <span id="p0Badge" class="badge">P0 — ❤❤❤❤</span>
-      <span id="p1Badge" class="badge">P1 — ❤❤❤❤</span>
-      <span id="timerBadge" class="badge">⏳ —</span>
+      <span id="p0Badge" class="badge p0">P0 — ❤❤❤❤</span>
+      <span id="p1Badge" class="badge p1">P1 — ❤❤❤❤</span>
+      <span id="timerBadge" class="badge timer">⏳ —</span>
       <button id="fsBtn" class="btn ghost">⛶ Fullscreen</button>
     </div>
   </div>
@@ -281,48 +389,46 @@ viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
 let didEnsure = false;
 let ensureInFlight = false;
 
+/* -------- transactional state creation (host only) -------- */
 async function ensureStateExists(){
   if (didEnsure || ensureInFlight) return;
   ensureInFlight = true;
   try {
-    // If state already exists, we're done
-    const stSnap = await getDoc(stateRef);
-    if (stSnap.exists()) {
+    await runTransaction(db, async (tx)=>{
+      const stSnap = await tx.get(stateRef);
+      if (stSnap.exists()) {
+        didEnsure = true;
+        return;
+      }
+      const lobSnap = await tx.get(lobbyRef);
+      const lob = lobSnap.exists() ? lobSnap.data() : {};
+      const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
+      const now = Date.now();
+
+      tx.set(stateRef, {
+        players,
+        lives: [4, 4],
+        phase: players.length < 2 ? "waiting" : "faction-select",
+        phaseEndsAt: players.length < 2 ? 0 : now + 20000,
+        roster:   { p0: [], p1: [] },
+        factions: { p0: null, p1: null },
+        field:    { units: [], poison: [], toxic: [], acid: [], wards: [], fx: [] },
+        selections:   { p0: [], p1: [] },
+        currentPacks: { p0: [], p1: [] },
+        bonusFor: null,
+        draftIndex: 0,
+        winner: null,
+        mmr: [1000, 1000],
+        mmrChange: [0, 0]
+      });
       didEnsure = true;
-      return;
-    }
-
-    // Otherwise build initial state from the lobby
-    const lobSnap = await getDoc(lobbyRef);
-    const lob = lobSnap.exists() ? lobSnap.data() : {};
-    const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
-    const now = Date.now();
-
-    await setDoc(stateRef, {
-      players,
-      lives: [4, 4],
-      phase: players.length < 2 ? "waiting" : "faction-select",
-      phaseEndsAt: players.length < 2 ? 0 : now + 20000,
-      roster:   { p0: [], p1: [] },
-      factions: { p0: null, p1: null },
-      field:    { units: [], poison: [], toxic: [], acid: [], wards: [], fx: [] },
-      selections:   { p0: [], p1: [] },
-      currentPacks: { p0: [], p1: [] },
-      bonusFor: null,
-      draftIndex: 0,
-      winner: null,
-      mmr: [1000, 1000],
-      mmrChange: [0, 0]
     });
-
-    didEnsure = true;
   } catch (e) {
     console.error("ensureStateExists failed", e);
   } finally {
     ensureInFlight = false;
   }
 }
-
 
 /* ---------------- Build cells ---------------- */
 function buildBoard(){
@@ -896,7 +1002,7 @@ function paint(units, field){
       for (let xx=0; xx<s; xx++){
         const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
         const under = d.querySelector(".under"); if (!under) continue;
-        under.style.background = color;
+        under.style.background = `radial-gradient(circle at top,${color},${color})`;
       }
     }
 
@@ -1438,7 +1544,6 @@ function startHostLoops(){
           }
         }
         await updateDoc(stateRef,{
-
           roster,
           selections:{p0:[],p1:[]},
           draftIndex:0,
@@ -1485,7 +1590,6 @@ function startHostLoops(){
         runBattle();
       }else{
         await updateDoc(stateRef,{
-
           roster, selections:sel, draftIndex:nextIx,
           currentPacks:{
             p0: packFor(roster.p0, d.factions.p0),
@@ -1666,7 +1770,7 @@ function render(){
   $("p1Badge").textContent = `${p1n} [${rankLabel(mmr[1])} ${mmr[1]}] — ${"❤".repeat(lives[1])}`;
 
   const phase=S?.phase||"waiting";
-  $("phaseBadge").textContent = phase.replaceAll("-"," ");
+  $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   const tleft = draftish ? Math.max(0,(S?.phaseEndsAt||0)-Date.now()) : 0;
   $("timerBadge").textContent = draftish ? "⏳ " + Math.ceil(tleft/1000) + "s" : "⏳ —";
@@ -1674,9 +1778,9 @@ function render(){
   const counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
     counter.style.display="block";
-    counter.textContent = `Pick ${(S?.draftIndex||0)+1} / 3`;
+    counter.textContent = `PICK ${(S?.draftIndex||0)+1} / 3`;
   } else if (phase==="loser-bonus"){
-    counter.style.display="block"; counter.textContent = `Bonus 1 / 1`;
+    counter.style.display="block"; counter.textContent = `LOSER BONUS`;
   } else { counter.style.display="none"; }
 
   const endSummaryEl = $("endSummary");
@@ -1726,11 +1830,18 @@ function render(){
 
   if (phase==="faction-select"){
     const already=S?.factions?.[sk];
-    if (already){ row.style.display="none"; row.innerHTML=""; note.textContent=`Selected: ${already}`; note.style.display="block"; return; }
+    if (already){
+      row.style.display="none"; row.innerHTML="";
+      note.textContent=`FACTION LOCKED: ${already}`;
+      note.style.display="block"; return;
+    }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach(f=>{
       const el=document.createElement("div"); el.className="card";
-      el.innerHTML=`<div class="title">${f}</div><div class="desc">${(FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ")}</div>`;
+      el.innerHTML=`
+        <div class="meta">FACTION</div>
+        <div class="title">${f}</div>
+        <div class="desc">${(FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ")}</div>`;
       el.onclick=()=> chooseFaction(f); row.appendChild(el);
     });
     return;
@@ -1759,25 +1870,63 @@ function render(){
   pack.forEach((c,i)=>{
     const el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name}</div><div class="desc">${c.role==="back"?"Backline":"Frontline"} — ${TROOPS[c.key].faction}</div>`;
+      el.innerHTML=`
+        <div class="meta">${TROOPS[c.key].faction} · ${c.role==="back"?"Backline":"Frontline"}</div>
+        <div class="title">${c.emoji} ${c.name}</div>
+        <div class="desc">Solid ${c.role==="back"?"support / ranged":"frontline pressure"} unit from ${TROOPS[c.key].faction}.</div>`;
     }else{
       const nn=TROOPS[c.for]?.name||"Type";
-      el.innerHTML=`<div class="title">${c.emoji} ${c.name|| (c.special==="upgrade"?"Upgrade":"Double")}</div><div class="desc">${c.special==="upgrade"?"Upgrade":"Double"} ${nn}</div>`;
+      el.innerHTML=`
+        <div class="meta">SPECIAL</div>
+        <div class="title">${c.emoji} ${c.name|| (c.special==="upgrade"?"Upgrade":"Double")}</div>
+        <div class="desc">${c.special==="upgrade"?"Upgrade":"Double"} ${nn} in your roster.</div>`;
     }
     el.onclick=()=> chooseCard(i);
     row.appendChild(el);
   });
 }
 
+/* -------- transactional player actions to align with rules -------- */
 async function chooseFaction(fac){
-  if(!S) return; const sk=pKey(meIndex);
-  if (S.factions?.[sk]) return;
-  await updateDoc(stateRef, { [`factions.${sk}`]: fac });
+  if(!S) return;
+  const sk=pKey(meIndex);
+  try{
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(stateRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const currentFaction = data?.factions?.[sk];
+      if (currentFaction) return; // already chosen
+      const phase = data.phase;
+      if (phase !== "faction-select") return;
+      tx.update(stateRef, { [`factions.${sk}`]: fac });
+    });
+  }catch(e){
+    console.error("chooseFaction failed", e);
+  }
 }
 async function chooseCard(i){
-  if(!S) return; const di=S.draftIndex|0; const sk=pKey(meIndex);
-  const already=S.selections?.[sk]?.[di]; if (already!=null) return;
-  await updateDoc(stateRef, { [`selections.${sk}.${di}`]: i });
+  if(!S) return;
+  const di=S.draftIndex|0;
+  const sk=pKey(meIndex);
+  try{
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(stateRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.phase!=="draft" && data.phase!=="draft-after" && data.phase!=="loser-bonus") return;
+
+      const curSel = (((data.selections||{})[sk])||[])[di];
+      if (curSel!=null) return; // already picked
+
+      const pack = ((data.currentPacks||{})[sk])||[];
+      if (!pack || !pack.length) return;
+
+      tx.update(stateRef, { [`selections.${sk}.${di}`]: i });
+    });
+  }catch(e){
+    console.error("chooseCard failed", e);
+  }
 }
 
 /* Listeners */
