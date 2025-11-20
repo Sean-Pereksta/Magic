@@ -246,12 +246,16 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
+  // ---------- DOM refs for game/player labels ----------
+  const gidTxt = document.getElementById("gidTxt");
+  const unameTxt = document.getElementById("unameTxt");
+
   // ---------- URL params ----------
   const params = new URLSearchParams(location.search);
   const gameId = params.get("gameId") || "";
   const username = (params.get("username") || "").trim();
-  gidTxt.textContent = gameId;
-  unameTxt.textContent = username;
+  if (gidTxt) gidTxt.textContent = gameId;
+  if (unameTxt) unameTxt.textContent = username;
   if (!gameId || !username) { alert("Missing gameId/username (launch from lobby)."); }
 
   // ---------- Refs ----------
@@ -455,7 +459,7 @@
     if (!d.synergy){
       d.synergy = { fire:0, water:0, nature:0, electric:0, arcane:0 };
     } else {
-      for (const k of ['fire','water','nature','electric','arcane']){
+      for (const k of ['fire','water','nature','electric','arcane'] ){
         if (typeof d.synergy[k] !== 'number') d.synergy[k] = 0;
       }
     }
@@ -1002,104 +1006,6 @@
   function addVine(d,x,y,t,now){ if (!d.vineCells) d.vineCells={}; d.vineCells[`${x},${y}`]= now + t; }
   function freezeCol(d,x,t,now){ if (!d.frozenCols) d.frozenCols={}; d.frozenCols[x]= now + t; }
 
-  // ---------- Cast flow ----------
-  async function castSelectedOn(x,y){
-    const cardId = ui.selectedCardId;
-    if (!cardId) return;
-    await runTransaction(db, async tx=>{
-      const st = await tx.get(stateRef);
-      if (!st.exists()) return;
-      const d = st.data();
-      if (!d.running || d.currentPlayer !== username) return;
-
-      const hand = d.hands[username] || [];
-      const ci = hand.findIndex(c=> c.id===cardId);
-      if (ci<0) return;
-
-      const card = hand[ci];
-      if ((lastPlayedTurnMarker[card.id] || -1) === (d.turn||0)) return;
-      if (card.charges <= 0) return;
-
-      applyCardEffectMut(d, card, x, y);
-
-      if (card.super){
-        hand.splice(ci,1);
-      } else {
-        hand[ci].charges = Math.max(0, (hand[ci].charges||0)-1);
-        if (hand[ci].charges === 0){ hand.splice(ci,1); } else { hand[ci] = {...hand[ci]}; }
-      }
-
-      if (!d.playedTurn) d.playedTurn = {};
-      if (!d.playedTurn[username]) d.playedTurn[username] = {};
-      d.playedTurn[username][card.id] = d.turn||0;
-
-      tx.update(stateRef, {
-        hands: d.hands,
-        enemies: d.enemies,
-        bolts: d.bolts,
-        frozenCols: d.frozenCols,
-        vineCells: d.vineCells,
-        burnCells: d.burnCells,
-        playedTurn: d.playedTurn,
-        towerHP: d.towerHP,
-        mana: d.mana,
-        synergy: d.synergy
-      });
-    });
-
-    const s2 = (await getDoc(stateRef)).data();
-    const myHand2 = s2.hands[username]||[];
-    const stillThere = myHand2.find(c=> c.id===cardId);
-    if (!stillThere){ handEl.querySelectorAll(".card").forEach(el=> tinyImplosion(el)); }
-    lastPlayedTurnMarker[cardId] = (latestState?.turn||0);
-    ui.mode=null; ui.selectedCardId=null;
-    hideEnemyTip();
-  }
-
-  function onCellClick(x,y, cellEl){
-    hideEnemyTip();
-    if (!latestState) return;
-
-    if (ui.mode==='cast' && ui.selectedCardId){
-      castSelectedOn(x,y);
-      return;
-    }
-
-    const e = enemyAt(latestState, x,y);
-    if (e){ showEnemyTip(e, cellEl); }
-  }
-
-  // ---------- Combine ----------
-  function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
-
-  async function immediateCombineByIds(aId, bId){
-    await runTransaction(db, async tx=>{
-      const st = await tx.get(stateRef);
-      if (!st.exists()) return;
-      const d = st.data();
-      const hand = d.hands?.[username] || [];
-      const a = hand.find(c=> c.id===aId);
-      const b = hand.find(c=> c.id===bId);
-      if (!a || !b || a.id===b.id) return;
-      const combo = getCombo(a.type, b.type);
-      if (!combo) return;
-      const ai = hand.findIndex(c=> c.id===a.id);
-      const bi = hand.findIndex(c=> c.id===b.id);
-      const first = Math.max(ai,bi), second = Math.min(ai,bi);
-      hand.splice(first,1); hand.splice(second,1);
-      hand.push({
-        id: id(),
-        type: combo.key,
-        name: combo.name,
-        emoji: combo.emoji,
-        charges: combo.charges,
-        effect: combo.effect,
-        super: !!combo.super
-      });
-      tx.update(stateRef, { hands: d.hands });
-    }).catch(()=>{});
-  }
-
   // ---------- Effects ----------
   function applyCardEffectMut(d, card, tx, ty){
     const eff = card.effect;
@@ -1266,8 +1172,10 @@
       case "cataclysm": {
         const cx2 = clamp(tx+1,0,COLS-1);
         [tx, cx2].forEach(cx=>{
-          for (let y=0; y<ROWS; y++) damageAtTyped(d,cx,y,6 + dmgBonus,'fire');
-          pushBackColumn(d, cx, 2);
+          for (let y=0; y<ROWS; y++){
+            damageAtTyped(d,cx,y,6 + dmgBonus,'fire');
+            pushBackColumn(d, cx, 2);
+          }
         });
         for (const [x,y] of cross(tx,ty)) addBurn(d,x,y,burnDur(2),now);
         pulseCells(column(tx).concat(column(cx2)).concat(cross(tx,ty)), "glow-orange");
@@ -1437,6 +1345,104 @@
         break;
       }
     }
+  }
+
+  // ---------- Cast flow ----------
+  async function castSelectedOn(x,y){
+    const cardId = ui.selectedCardId;
+    if (!cardId) return;
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      if (!d.running || d.currentPlayer !== username) return;
+
+      const hand = d.hands[username] || [];
+      const ci = hand.findIndex(c=> c.id===cardId);
+      if (ci<0) return;
+
+      const card = hand[ci];
+      if ((lastPlayedTurnMarker[card.id] || -1) === (d.turn||0)) return;
+      if (card.charges <= 0) return;
+
+      applyCardEffectMut(d, card, x, y);
+
+      if (card.super){
+        hand.splice(ci,1);
+      } else {
+        hand[ci].charges = Math.max(0, (hand[ci].charges||0)-1);
+        if (hand[ci].charges === 0){ hand.splice(ci,1); } else { hand[ci] = {...hand[ci]}; }
+      }
+
+      if (!d.playedTurn) d.playedTurn = {};
+      if (!d.playedTurn[username]) d.playedTurn[username] = {};
+      d.playedTurn[username][card.id] = d.turn||0;
+
+      tx.update(stateRef, {
+        hands: d.hands,
+        enemies: d.enemies,
+        bolts: d.bolts,
+        frozenCols: d.frozenCols,
+        vineCells: d.vineCells,
+        burnCells: d.burnCells,
+        playedTurn: d.playedTurn,
+        towerHP: d.towerHP,
+        mana: d.mana,
+        synergy: d.synergy
+      });
+    });
+
+    const s2 = (await getDoc(stateRef)).data();
+    const myHand2 = s2.hands[username]||[];
+    const stillThere = myHand2.find(c=> c.id===cardId);
+    if (!stillThere){ handEl.querySelectorAll(".card").forEach(el=> tinyImplosion(el)); }
+    lastPlayedTurnMarker[cardId] = (latestState?.turn||0);
+    ui.mode=null; ui.selectedCardId=null;
+    hideEnemyTip();
+  }
+
+  function onCellClick(x,y, cellEl){
+    hideEnemyTip();
+    if (!latestState) return;
+
+    if (ui.mode==='cast' && ui.selectedCardId){
+      castSelectedOn(x,y);
+      return;
+    }
+
+    const e = enemyAt(latestState, x,y);
+    if (e){ showEnemyTip(e, cellEl); }
+  }
+
+  // ---------- Combine ----------
+  function getCombo(t1,t2){ return (t1 && t2) ? (COMBOS[`${t1}+${t2}`] || COMBOS[`${t2}+${t1}`] || null) : null; }
+
+  async function immediateCombineByIds(aId, bId){
+    await runTransaction(db, async tx=>{
+      const st = await tx.get(stateRef);
+      if (!st.exists()) return;
+      const d = st.data();
+      const hand = d.hands?.[username] || [];
+      const a = hand.find(c=> c.id===aId);
+      const b = hand.find(c=> c.id===bId);
+      if (!a || !b || a.id===b.id) return;
+      const combo = getCombo(a.type, b.type);
+      if (!combo) return;
+      const ai = hand.findIndex(c=> c.id===a.id);
+      const bi = hand.findIndex(c=> c.id===b.id);
+      const first = Math.max(ai,bi), second = Math.min(ai,bi);
+      hand.splice(first,1); hand.splice(second,1);
+      hand.push({
+        id: id(),
+        type: combo.key,
+        name: combo.name,
+        emoji: combo.emoji,
+        charges: combo.charges,
+        effect: combo.effect,
+        super: !!combo.super
+      });
+      tx.update(stateRef, { hands: d.hands });
+    }).catch(()=>{});
   }
 
   // ---------- Turn System ----------
