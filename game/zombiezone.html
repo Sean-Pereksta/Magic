@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <title>🧟‍♂️ Zombie Zone — 4P</title>
 <style>
   :root{
@@ -11,12 +12,15 @@
     --line:#16243d;
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
+  html,body{
+    height:100%;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
   body{
     margin:0; color:var(--ink);
     background:radial-gradient(1200px 600px at 50% -200px,#0f172a 0%,#0b1014 55%,#070b0f 100%);
     font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
-    overscroll-behavior: none;
   }
 
   .hud{
@@ -236,6 +240,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* Kill long-press / right-click context menu on mobile */
+window.addEventListener('contextmenu', e => {
+  e.preventDefault();
+}, {passive:false});
+
 /* URL Params */
 const params = new URLSearchParams(location.search);
 const gameId = params.get("gameId") || "local";
@@ -362,7 +371,11 @@ wrap.addEventListener('pointercancel',()=> local.dragging=false);
 
 /* Pinch zoom */
 let pinchDist=0;
-wrap.addEventListener('touchstart',(e)=>{ if(e.touches.length===2){ pinchDist = dist(e.touches[0], e.touches[1]); } }, {passive:true});
+wrap.addEventListener('touchstart',(e)=>{
+  if(e.touches.length===2){
+    pinchDist = dist(e.touches[0], e.touches[1]);
+  }
+},{passive:true});
 wrap.addEventListener('touchmove',(e)=>{
   if(e.touches.length===2){
     e.preventDefault();
@@ -1456,7 +1469,7 @@ function fireDefenses(g, owner){
   g.zombies = g.zombies.filter(z=>z.hp>0);
 
   function hitNearest(arr,n,d){
-    arr.sort((a,b)=> (Math.abs(a.x-t.x)+Math.abs(a.y-t.y)) - (Math.abs(b.x-t.x)+Math.abs(b.y-t.y)));
+    arr.sort((a,b)=> (Math.abs(a.x+t.x)+Math.abs(a.y+t.y)) - (Math.abs(b.x+t.x)+Math.abs(b.y+t.y)));
     for(let i=0;i<n;i++) if(arr[i]) arr[i].hp -= d;
   }
 }
@@ -1540,6 +1553,7 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
 
