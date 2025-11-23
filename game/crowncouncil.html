@@ -334,6 +334,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
+/* --------- safe deep clone (fix structuredClone issues) ---------- */
+function deepClone(obj){
+  if (typeof structuredClone === "function") {
+    return structuredClone(obj);
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
+
 /* ---------------- URL params ---------------- */
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
@@ -345,11 +353,11 @@ const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
 /* ---------------- Pace / sizes ---------------- */
 const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100, toxicDotMs: 1000 };
-const VIEW_MS  = 120;   // publish + render cadence (smoother remote view)
-const LOGIC_MS = 560;   // core logic cadence (unchanged battle speed)
-const MOVE_MS  = 560;   // gate movement per unit so logic pacing matches old behavior
+const VIEW_MS  = 120;   // publish + render cadence
+const LOGIC_MS = 560;   // core logic cadence
+const MOVE_MS  = 560;   // gate movement per unit
 
-let CELL=64, GAP=4, W=8, H=16; // half height and larger cells
+let CELL=64, GAP=4, W=8, H=16;
 
 /* ---------------- DOM ---------------- */
 const $ = (id)=>document.getElementById(id);
@@ -366,7 +374,7 @@ function fitBoard(){
   const vw = viewport.clientWidth, vh=viewport.clientHeight;
 
   const fitScale = Math.min(vw/boardW, vh/boardH);
-  boardScale = Math.min(2.2, fitScale * 1.25); // zoom in beyond fit
+  boardScale = Math.min(2.2, fitScale * 1.25);
 
   pan.x = Math.round((vw - boardW*boardScale) / 2);
   pan.y = Math.round((vh - boardH*boardScale) / 2);
@@ -381,7 +389,7 @@ viewport.addEventListener("pointermove", e=>{
   if(!dragging) return;
   const dx=e.clientX-last.x, dy=e.clientY-last.y;
   pan.x+=dx; pan.y+=dy; applyTransform();
-  last={x:e.clientX,y:e.clientY};
+  last={x:e.clientX,y=e.clientY};
 });
 viewport.addEventListener("pointerup", ()=>{ dragging=false; });
 viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
@@ -459,7 +467,6 @@ buildBoard();
 const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
 const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
 
-/* NOTE: rifleman dmg ↓ and range ↑; guardian size 1; defiler size 1, toxicSplash */
 const TROOPS = {
   /* Vanir */
   rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:{...R(7,2,6,1050)}, spawn:2 },
@@ -724,7 +731,7 @@ function applyWardShields(attacker, target, rawDmg, field){
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
 
-/* 2×2 helpers (kept for generic handling) */
+/* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
 function rectangleFree(units,x,y,size){
   for(let yy=0; yy<size; yy++){
@@ -839,6 +846,7 @@ function weightedPick(pool, n){
   }
   return out;
 }
+function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
 function packFor(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
 
@@ -888,7 +896,7 @@ function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1,y
 function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
 function fxBurst(cx,cy){ return { id:crypto.randomUUID(), type:"burst", cx,cy, at:Date.now(), ttl:700 }; }
 function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1,y1,x2,y2, at:Date.now(), ttl:450 }; }
-function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
+
 function centerPx(x,y){
   const left = x*(CELL+GAP) + CELL/2;
   const top  = y*(CELL+GAP) + CELL/2;
@@ -1457,7 +1465,7 @@ function startHostLoops(){
     const d=snap.data(); const now=Date.now();
 
     if (d.phase==="waiting" && lobbyPlayers.length>=2){
-      await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20_000 });
+      await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20000 });
       return;
     }
     if (d.phase==="faction-select"){
@@ -1472,7 +1480,7 @@ function startHostLoops(){
             p0: packFor(d.roster?.p0||[], fx.p0),
             p1: packFor(d.roster?.p1||[], fx.p1)
           },
-          phaseEndsAt: now+10_000,
+          phaseEndsAt: now+10000,
           bonusFor:null
         });
       }
@@ -1515,7 +1523,7 @@ function startHostLoops(){
             p0: packFor(roster.p0, d.factions.p0),
             p1: packFor(roster.p1, d.factions.p1)
           },
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           bonusFor:null
         });
       }
@@ -1552,7 +1560,7 @@ function startHostLoops(){
             p1: packFor(roster.p1, d.factions.p1)
           },
           phase:"draft-after",
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           bonusFor:null
         });
       }
@@ -1595,7 +1603,7 @@ function startHostLoops(){
             p0: packFor(roster.p0, d.factions.p0),
             p1: packFor(roster.p1, d.factions.p1)
           },
-          phaseEndsAt: Date.now()+10_000
+          phaseEndsAt: Date.now()+10000
         });
       }
       return;
@@ -1628,7 +1636,7 @@ function runBattle(){
     const d = snap.data();
     if (d.phase !== "battle"){ clearInterval(battleTick); battleTick=null; return; }
 
-    const st = structuredClone(d);
+    const st = deepClone(d);
     const units = st.field.units;
     const now = Date.now();
 
@@ -1742,7 +1750,7 @@ function runBattle(){
           ...st,
           lives,
           phase: "loser-bonus",
-          phaseEndsAt: Date.now()+10_000,
+          phaseEndsAt: Date.now()+10000,
           selections: { p0:[], p1:[] },
           currentPacks: {
             [loserKey]:  packFor(st.roster[loserKey],  st.factions[loserKey]),
@@ -1814,7 +1822,7 @@ function render(){
 
   const draftishPh=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   if (draftishPh){
-    const ghost=structuredClone(S); rebuildFieldFromRoster(ghost);
+    const ghost=deepClone(S); rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
   }else{
     paint(S?.field?.units||[], S?.field||fieldEmpty());
@@ -1886,7 +1894,7 @@ function render(){
   });
 }
 
-/* -------- transactional player actions to align with rules -------- */
+/* -------- transactional player actions -------- */
 async function chooseFaction(fac){
   if(!S) return;
   const sk=pKey(meIndex);
@@ -1896,7 +1904,7 @@ async function chooseFaction(fac){
       if (!snap.exists()) return;
       const data = snap.data();
       const currentFaction = data?.factions?.[sk];
-      if (currentFaction) return; // already chosen
+      if (currentFaction) return;
       const phase = data.phase;
       if (phase !== "faction-select") return;
       tx.update(stateRef, { [`factions.${sk}`]: fac });
@@ -1917,7 +1925,7 @@ async function chooseCard(i){
       if (data.phase!=="draft" && data.phase!=="draft-after" && data.phase!=="loser-bonus") return;
 
       const curSel = (((data.selections||{})[sk])||[])[di];
-      if (curSel!=null) return; // already picked
+      if (curSel!=null) return;
 
       const pack = ((data.currentPacks||{})[sk])||[];
       if (!pack || !pack.length) return;
@@ -1945,7 +1953,7 @@ onSnapshot(lobbyRef, async (snap)=>{
 
   const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
   let idx = curPlayers.indexOf(username);
-  if (idx === -1) idx = 0;
+  if (idx < 0) idx = 0;
   meIndex = Math.max(0, Math.min(1, idx));
 
   fitBoard();
@@ -1956,8 +1964,10 @@ let lastFxSeen=new Set();
 onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
   S=snap.data();
-  const current = S.players || lobbyPlayers;
-  meIndex = Math.max(0, (current||[]).indexOf(username));
+  const current = S.players || lobbyPlayers || [];
+  let idx = current.indexOf(username);
+  if (idx < 0) idx = 0;
+  meIndex = Math.max(0, Math.min(1, idx));
   render();
 
   const list=S.field?.fx||[];
@@ -1983,6 +1993,7 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
+
 
 
 
