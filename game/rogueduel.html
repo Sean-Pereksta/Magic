@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -253,6 +253,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInAnonymously
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 /* Your project config */
 const firebaseConfig = {
@@ -263,33 +266,38 @@ const firebaseConfig = {
   messagingSenderId: "959619818996",
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+let db;          // will be set after auth
+let lobbyRef;    // set in boot()
+let stateRef;    // set in boot()
 
 /* ===================== URL Params / Seats ===================== */
 const usp = new URLSearchParams(location.search);
 const GAME_ID = usp.get('gameId') || '';
-const USER = usp.get('username') || '';
+const USER    = usp.get('username') || '';
 document.getElementById('gameId').textContent = GAME_ID || '—';
-document.getElementById('me').textContent = USER || '—';
+document.getElementById('me').textContent     = USER || '—';
 
+const logEl = document.getElementById('log');
 if (!GAME_ID || !USER){
-  alert('Missing gameId or username.');
+  logEl.innerHTML = 'Missing gameId or username in URL.';
 }
 
-const lobbyRef = doc(db, "lobbies", GAME_ID);
-const stateRef = doc(db, "games_rogueduel", GAME_ID);
+let SEAT = 'spectator';
+let p1Name='—', p2Name='—';
 
-/* ===================== UI Helpers ===================== */
-const logEl = document.getElementById('log');
-const uiScoreP1 = document.getElementById('scoreP1');
-const uiScoreP2 = document.getElementById('scoreP2');
-const uiScoreLabelP1 = document.getElementById('scoreLabelP1');
-const uiScoreLabelP2 = document.getElementById('scoreLabelP2');
+const uiScoreP1       = document.getElementById('scoreP1');
+const uiScoreP2       = document.getElementById('scoreP2');
+const uiScoreLabelP1  = document.getElementById('scoreLabelP1');
+const uiScoreLabelP2  = document.getElementById('scoreLabelP2');
+
 function log(msg){ logEl.innerHTML += msg + '<br>'; logEl.scrollTop = logEl.scrollHeight; }
 function setPhase(x){ document.getElementById('phase').textContent = x; }
 function setRound(n){ document.getElementById('round').textContent = n; }
 
+/* ===================== UI + Speed ===================== */
 const SPEEDS=[1.0,1.3,1.6]; let speedIdx=0; let speed=SPEEDS[speedIdx];
 document.getElementById('btnSpeed').onclick=()=>{
   speedIdx=(speedIdx+1)%SPEEDS.length; speed=SPEEDS[speedIdx];
@@ -336,6 +344,20 @@ const CATALOG={
   "Assassin":    {rar:R.EPIC,    icon:"🗡️", type:TYPE_UNIT, hp:7,  dmg:10,priority:PRIOR.HIGH, tags:["alpha"], alpha:true},
   "Bard":        {rar:R.RARE,    icon:"🎵", type:TYPE_UNIT, hp:9,  dmg:0, priority:PRIOR.LOW,  tags:["ward-song"], wardSong:true},
 
+  /* NEW ally-buffing units */
+  "Standard Bearer": {
+    rar:R.RARE, icon:"🚩", type:TYPE_UNIT,
+    hp:11, dmg:2, priority:PRIOR.MID,
+    tags:["support","banner"],
+    banner:true
+  },
+  "Armorer": {
+    rar:R.RARE, icon:"🪖", type:TYPE_UNIT,
+    hp:13, dmg:3, priority:PRIOR.LOW,
+    tags:["support","fortify"],
+    fortify:true
+  },
+
   /* Spells: once per battle */
   "Firebolt":     {rar:R.COMMON,  icon:"💥", type:TYPE_SPELL, spell:{kind:'fire', dmg:12}},
   "Lightning":    {rar:R.RARE,    icon:"⚡", type:TYPE_SPELL, spell:{kind:'lightning', hits:3, dmg:6}},
@@ -344,6 +366,16 @@ const CATALOG={
   "Healing Ward": {rar:R.RARE,    icon:"✨", type:TYPE_SPELL, spell:{kind:'ward', heal:6, dur:3, targets:2}},
   "Blizzard":     {rar:R.EPIC,    icon:"❄️", type:TYPE_SPELL, spell:{kind:'freeze2', dmg:3}},
   "Rejuvenate":   {rar:R.RARE,    icon:"💚", type:TYPE_SPELL, spell:{kind:'hotAll'}},
+
+  /* NEW ally-buffing spells */
+  "Battle Shout": {
+    rar:R.RARE, icon:"📯", type:TYPE_SPELL,
+    spell:{kind:'battleShout', bonus:2, dur:2}
+  },
+  "Bulwark Chant": {
+    rar:R.RARE, icon:"🧱", type:TYPE_SPELL,
+    spell:{kind:'bulwark', bonus:3, dur:3, targets:3}
+  },
 
   /* Upgrade cards (draft-only, level up cards) */
   "Training Grounds": {rar:R.RARE,   icon:"⬆️", type:TYPE_SPELL, tags:["upgrade"], upgrade:true, upgradeAmount:1},
@@ -378,9 +410,6 @@ const SYNERGIES=[
 ];
 
 /* ===================== Local State ===================== */
-let SEAT = 'spectator';
-let p1Name='—', p2Name='—';
-
 const ui = {
   you: document.getElementById('you'),
   foe: document.getElementById('foe'),
@@ -435,6 +464,7 @@ function makeCard(name, stars=1, relicFlags={}){
     applyPoison:base.applyPoison?clone(base.applyPoison):null, heal2:base.heal2?clone(base.heal2):null,
     chain3:!!base.chain3, split:!!base.split, smiteHeal:!!base.smiteHeal, regen2:!!base.regen2,
     alpha:!!base.alpha, wardSong:!!base.wardSong, freeze:!!base.freeze,
+    banner: !!base.banner, fortify: !!base.fortify,
     spell:base.spell?clone(base.spell):null, _used:false
   };
 }
@@ -634,17 +664,22 @@ function chooseTargetFor(attacker, myDeck, foeDeck){
   return bag[Math.floor(r()*bag.length)];
 }
 
-/* ===================== Combat ===================== */
+/* ===================== Status helpers ===================== */
 function addPoison(t,dmg,dur){t.effects.push({kind:'poison',dmg,dur});}
 function addBleed(t,amt=1,dur=2){t.effects.push({kind:'bleed',dmg:amt,dur});}
 function addBurn(t,amt=1,dur=2){t.effects.push({kind:'burn',dmg:amt,dur});}
 function addFreeze(t,turns=1){t.frozen=true; t.effects.push({kind:'freeze',dur:turns});}
 function applyShield(c,dur=5){const ex=c.effects.find(e=>e.kind==='shield'); if(ex){ex.dur=Math.max(ex.dur||0,dur);} else c.effects.push({kind:'shield',dur});}
 
+/* ===================== Combat ===================== */
 function dealDamage(attacker, target, base, heavy=false){
   if (!attacker || !target || !target.alive) return;
 
-  const dmgStarred = Math.round(base * starMult(attacker.stars));
+  const bonusDmg = (attacker.effects||[])
+    .filter(e=>e.kind==='dmg')
+    .reduce((s,e)=>s+(e.bonus||0),0);
+
+  const dmgStarred = Math.round((base + bonusDmg) * starMult(attacker.stars));
   let dmg = dmgStarred;
 
   if (hasShield(target)) dmg = Math.max(1, Math.floor(dmg * 0.5));
@@ -705,6 +740,39 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
 
   u.turnsAlive = (u.turnsAlive || 0) + 1;
   const tags = u.tags || [];
+
+  // --- NEW SUPPORT UNITS ---
+
+  // Standard Bearer – temporary damage buff to up to 2 allies, instead of attacking
+  if (u.banner){
+    const allies = living(my).filter(a => a !== u);
+    if (allies.length){
+      const shuffled = allies.slice().sort(() => r() - 0.5);
+      const count = Math.min(2, shuffled.length);
+      for (let i=0;i<count;i++){
+        const ally = shuffled[i];
+        ally.effects.push({kind:'dmg', bonus:2, dur:1});
+        gFloat(ally, '⚔+', '#ea580c');
+        impactBurst(ally, false);
+      }
+      log(`${u.name} rallies nearby allies!`);
+    }
+    return;
+  }
+
+  // Armorer – permanently fortify the weakest ally with extra max HP and small heal
+  if (u.fortify){
+    const allies = living(my).filter(a => a !== u);
+    if (allies.length){
+      allies.sort((a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b)));
+      const target = allies[0];
+      target.effects.push({kind:'maxhp', bonus:2, dur:null});
+      healCard(target, 2);
+      gFloat(target, '🛡+', '#2563eb');
+      log(`${u.name} reinforces ${target.name}!`);
+    }
+    return;
+  }
 
   // Bard – shield an ally instead of attacking
   if (u.wardSong){
@@ -873,6 +941,32 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
       }
       log(`${ownerLabel} 💚 Rejuvenate across allies`);
     }
+    /* NEW: Battle Shout – temp damage buff to all allies */
+    else if (sp.kind==='battleShout'){
+      const allies = living(deck);
+      const bonus = sp.bonus || 2;
+      const dur   = sp.dur   || 2;
+      for (const a of allies){
+        a.effects.push({kind:'dmg', bonus, dur});
+        gFloat(a, '⚔', '#ea580c');
+      }
+      log(`${ownerLabel} 📯 Battle Shout empowers your troops`);
+    }
+    /* NEW: Bulwark Chant – temp max HP buff + heal to weakest allies */
+    else if (sp.kind==='bulwark'){
+      const allies = living(deck).sort(
+        (a,b)=>(a.hpNow/getMaxHP(a))-(b.hpNow/getMaxHP(b))
+      );
+      const targets = allies.slice(0, sp.targets || 3);
+      const bonus = sp.bonus || 3;
+      const dur   = sp.dur   || 3;
+      for (const a of targets){
+        a.effects.push({kind:'maxhp', bonus, dur});
+        healCard(a, bonus);
+        gFloat(a, '🧱', '#2563eb');
+      }
+      log(`${ownerLabel} 🧱 Bulwark fortifies the frontline`);
+    }
   }
 }
 
@@ -913,6 +1007,10 @@ function processEndOfRound(myDeck, foeDeck, synYou, synFoe){
         }
 
         if (e.kind === 'maxhp' && e.dur != null && e.dur > 0){
+          e.dur--;
+        }
+
+        if (e.kind === 'dmg' && e.dur > 0){
           e.dur--;
         }
       }
@@ -1515,7 +1613,7 @@ async function ensureStateSeats(){
       }
     }
 
-      // ===== RESULT → SCORE / NEXT (host drives) =====
+    // ===== RESULT → SCORE / NEXT (host drives) =====
     if (st.phase === 'result' && st.winner && USER === st.p1) {
       await runTransaction(db, async (tx) => {
         const cur = await tx.get(stateRef); if (!cur.exists()) return;
@@ -1566,7 +1664,7 @@ async function ensureStateSeats(){
             const chosenName = pool[idx];
 
             const currentStars = upMap[chosenName] || 1;
-            const nextStars    = clamp(currentStars + 1, 1, 4); // +1 level = +50% HP/DMG
+            const nextStars    = clamp(currentStars + 1, 1, 4);
             upMap[chosenName]  = nextStars;
           }
 
@@ -1597,7 +1695,6 @@ async function ensureStateSeats(){
       });
     }
 
-
     // ===== GAME OVER =====
     if (st.phase === 'gameover' && st.matchWinner) {
       const name = st.matchWinner === 'p1' ? p1Name : p2Name;
@@ -1609,8 +1706,38 @@ async function ensureStateSeats(){
   });
 }
 
-/* ===================== Boot ===================== */
-await ensureStateSeats();
+/* ===================== Boot (after Auth) ===================== */
+async function boot(){
+  if (!GAME_ID || !USER){
+    alert('Missing gameId or username in URL.');
+    return;
+  }
+  db = getFirestore(app);
+  lobbyRef = doc(db, "lobbies", GAME_ID);
+  stateRef = doc(db, "games_rogueduel", GAME_ID);
+  await ensureStateSeats();
+}
+
+/* Make sure we have request.auth != null for the rules */
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    boot().catch(err => {
+      console.error('Boot error', err);
+      alert('Error starting game, see console for details.');
+    });
+  } else {
+    // Try anonymous sign-in if not signed in
+    signInAnonymously(auth).catch(err => {
+      console.error('Anonymous sign-in failed', err);
+      alert('Unable to sign in anonymously. Enable Anonymous auth in Firebase console.');
+    });
+  }
+});
+
+// Kick off anonymous sign-in if we don't yet have a user
+if (!auth.currentUser) {
+  signInAnonymously(auth).catch(()=>{ /* handled in onAuthStateChanged */ });
+}
 </script>
 </body>
 </html>
