@@ -232,6 +232,28 @@
       overflow:auto;
     }
 
+    .node-mini-grid{
+      display:grid;
+      grid-template-columns:repeat(10,minmax(0,1fr));
+      gap:1px;
+      margin-top:6px;
+      background:#020617;
+      border-radius:6px;
+      border:1px solid #111827;
+      padding:2px;
+    }
+    .node-mini-cell{
+      font-size:.7rem;
+      min-height:10px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#020617;
+    }
+    .node-mini-player{background:#022c22;}
+    .node-mini-enemy{background:#111827;}
+    .node-mini-front{background:#1e293b;}
+
     .log-box{
       height:120px;
       border-radius:10px;
@@ -454,6 +476,7 @@
           - If they touch your green zones, those nodes become <span style="color:#facc15;">contested</span> and spawn attack waves.<br/>
           - Enemy nodes sprout <span style="color:#22c55e;">spine towers 🌵</span> that poison nearby troops.<br/>
           - Build troops & towers in node battlefields (first 3 columns) to hold the line.<br/>
+          - If aliens take the base, all players lose.<br/>
           - Survive to 20 minutes for victory.
         </div>
 
@@ -534,11 +557,12 @@
     const BATTLE_H = 10;
     const SPREAD_INTERVAL = 45; // seconds
     const INCOME_INTERVAL = 5;  // seconds
+    const FRONT_SPAWN_INTERVAL = 30; // seconds for border reinforcements
     const WAVE_MINUTES_1 = 5;
     const WAVE_MINUTES_2 = 10;
     const GAME_WIN_TIME = 20 * 60; // 20 minutes in seconds
 
-    const ECO_BONUS_PER_NODE = 2; // extra credits per eco node per income tick (global)
+    const ECO_BONUS_PER_NODE = 1; // extra credits per eco node per income tick (global, lowered)
 
     const params = new URLSearchParams(window.location.search);
     const gameId = params.get("gameId") || "dev-overlord";
@@ -639,9 +663,9 @@
     }
 
     function neighborsOf(row,col){
-      const dirs = [[1,0],[-1,0],[0,1],[-1,0],[0,-1]];
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
       const out=[];
-      for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      for(const [dr,dc] of dirs){
         const nr = row+dr, nc = col+dc;
         if(nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE){
           out.push(nodeKey(nr,nc));
@@ -683,7 +707,7 @@
           if(isNewGame){
             const baseHp = 120;
             const baseLevel = 1;
-            const baseIncomePerPlayer = 6;
+            const baseIncomePerPlayer = 3; // lowered base income
             tx.set(gameRef,{
               createdAt: serverTimestamp(),
               hostUid: currentUser.uid,
@@ -760,7 +784,7 @@
             tx.set(playerRef,{
               uid: currentUser.uid,
               name: displayName,
-              money: 40,
+              money: 25, // lowered starting credits
               incomeBonus: 0,
               joinedAt: serverTimestamp()
             });
@@ -819,9 +843,13 @@
       incomeLabel.textContent = base.incomePerPlayer ?? 0;
       baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
 
+      // Show cost right on the button
+      const costText = base.upgradeCost != null ? `Upgrade Generator (${base.upgradeCost})` : "Upgrade Generator";
+      upgradeBaseBtn.textContent = costText;
+
       // game end states
       if(latestGame.status === "lost"){
-        log("⚠ Base destroyed. Game over.");
+        log("⚠ Base destroyed or captured. Game over for all players.");
       }else if(latestGame.status === "won"){
         log("✅ You survived the full duration! Victory.");
       }
@@ -888,6 +916,58 @@
       }
     }
 
+    function renderNodeMiniGrid(node){
+      const bf = node.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[]};
+      const wrap = document.createElement("div");
+      wrap.className = "node-mini-grid";
+
+      const troops = bf.troops || [];
+      const towers = bf.towers || [];
+      const aliens = bf.aliens || [];
+      const spines = bf.spines || [];
+
+      function getCellContents(x,y){
+        const res = {troop:null,tower:null,alien:null,spine:null};
+        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+        res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
+        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+        return res;
+      }
+
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=0;x<BATTLE_W;x++){
+          const cell = document.createElement("div");
+          cell.className = "node-mini-cell";
+          if(x<=2) cell.classList.add("node-mini-player");
+          else if(x>=BATTLE_W-3) cell.classList.add("node-mini-enemy");
+          else cell.classList.add("node-mini-front");
+
+          const {troop,tower,alien,spine} = getCellContents(x,y);
+          let emoji = "";
+
+          if(spine){
+            emoji = "🌵";
+          }else if(tower){
+            const def = TOWERS[tower.kind] || TOWERS.laser;
+            emoji = def.emoji;
+          }else if(troop){
+            const def = TROOPS[troop.kind] || TROOPS.rifle;
+            emoji = def.emoji;
+          }
+          if(alien){
+            const def = ENEMIES[alien.type] || ENEMIES.bug;
+            emoji = def.emoji;
+          }
+
+          cell.textContent = emoji;
+          wrap.appendChild(cell);
+        }
+      }
+
+      return wrap;
+    }
+
     function renderNodeDetails(){
       if(!selectedNodeId || !selectedNode){
         nodeInfoEl.innerHTML = "<div>Select a node on the left.</div>";
@@ -895,31 +975,47 @@
         upgradeBaseBtn.disabled = true;
         return;
       }
-      let html = "";
-      html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
+      nodeInfoEl.innerHTML = "";
+      const titleDiv = document.createElement("div");
+      titleDiv.innerHTML = `<strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong>`;
+      nodeInfoEl.appendChild(titleDiv);
+
       const ownerName =
         selectedNode.owner==="player" ? "You (controlled)" :
         selectedNode.owner==="enemy" ? "Aliens" :
         selectedNode.owner==="contested" ? "Contested" :
         "Neutral";
-      html += `<div style="margin-top:4px;">Owner: <strong>${ownerName}</strong></div>`;
+      const ownerDiv = document.createElement("div");
+      ownerDiv.style.marginTop = "4px";
+      ownerDiv.innerHTML = `Owner: <strong>${ownerName}</strong>`;
+      nodeInfoEl.appendChild(ownerDiv);
 
-      const spreadPct = (((selectedNode.spreadChance ?? 0.33) * 100) || 33).toFixed(0);
-      html += `<div style="margin-top:4px;">Spread chance if targeted: ${spreadPct}%</div>`;
-
+      const descDiv = document.createElement("div");
+      descDiv.style.marginTop = "6px";
       if(selectedNode.type==="base"){
-        html += `<div style="margin-top:6px;">This node contains the <strong>central generator</strong>. Enemies that reach the left side of this battlefield damage the generator HP. Upgrading the generator increases credits per 5 seconds for all players.</div>`;
+        descDiv.innerHTML = `This node contains the <strong>central generator</strong>. If aliens take this node, the game is over for all players.`;
       }else if(selectedNode.type==="eco"){
-        html += `<div style="margin-top:6px;">This is an <strong>economic node</strong>. When it's <span style="color:#22c55e;">green</span> (your control), it adds bonus credits every income tick. Aliens would love to steal this.</div>`;
+        descDiv.innerHTML = `This is an <strong>economic node</strong>. When it's <span style="color:#22c55e;">green</span> (your control), it adds bonus credits every income tick.`;
       }else if(selectedNode.owner==="player"){
-        html += `<div style="margin-top:6px;">You can build defenses and troops here. Any node where you have structures and no aliens present remains <span style="color:#22c55e;">green</span>, letting you expand outward.</div>`;
+        descDiv.innerHTML = `Your territory. Build troops and towers here to push outward.`;
       }else if(selectedNode.owner==="enemy"){
-        html += `<div style="margin-top:6px;">Alien-controlled. Expect <strong>spine towers 🌵</strong> on this node that poison your troops. Build up at neighboring green nodes, then push in and clear their defenses to capture it.</div>`;
+        descDiv.innerHTML = `Alien-controlled. Expect <strong>spine towers 🌵</strong> and reinforcement waves along the border.`;
       }else if(selectedNode.owner==="contested"){
-        html += `<div style="margin-top:6px;">Aliens are actively assaulting this node. Expect waves of bugs from the right side of the battlefield, plus spine towers if this node is deep in alien lines.</div>`;
+        descDiv.innerHTML = `Contested ground. Both your forces and alien forces are active here.`;
+      }else{
+        descDiv.innerHTML = `Neutral space between you and the aliens.`;
+      }
+      nodeInfoEl.appendChild(descDiv);
+
+      // Mini battlefield grid
+      if(selectedNode.battlefield){
+        const miniTitle = document.createElement("div");
+        miniTitle.style.marginTop = "6px";
+        miniTitle.textContent = "Local Battlefield:";
+        nodeInfoEl.appendChild(miniTitle);
+        nodeInfoEl.appendChild(renderNodeMiniGrid(selectedNode));
       }
 
-      nodeInfoEl.innerHTML = html;
       openBattleBtn.disabled = false;
 
       if(selectedNode.type==="base"){
@@ -983,19 +1079,25 @@
         // apply simple update first
         await updateDoc(gameRef, updates);
         latestGame = {...game,...updates};
+        const updatedGame = latestGame;
 
         // Income tick
         if(timeSeconds % INCOME_INTERVAL === 0){
-          await applyIncomeTick(latestGame);
+          await applyIncomeTick(updatedGame);
         }
 
         // Spread tick
         if(timeSeconds % SPREAD_INTERVAL === 0){
-          await applySpreadTick(latestGame);
+          await applySpreadTick(updatedGame);
+        }
+
+        // Border reinforcements in enemy nodes adjacent to your land
+        if(timeSeconds % FRONT_SPAWN_INTERVAL === 0){
+          await spawnBorderReinforcements(updatedGame);
         }
 
         // Battle simulations per node
-        await simulateBattles(latestGame);
+        await simulateBattles(updatedGame);
 
       }catch(e){
         console.error("hostTick error", e);
@@ -1030,7 +1132,6 @@
     }
 
     async function applySpreadTick(game){
-      // We use local nodesState, which is updated via onSnapshot
       const nodeUpdates = [];
 
       for(const key in nodesState){
@@ -1070,7 +1171,15 @@
             spreadChance:0.33,
             pendingWave
           },{merge:true}));
-          log(`Alien influence spread into node ${row+1}-${col+1} (${newOwner}).`);
+
+          // If the base ended up fully enemy-controlled by spread, game over
+          if(node.type==="base" && newOwner==="enemy" && game.status!=="lost"){
+            await updateDoc(gameRef,{ status:"lost" });
+            game.status="lost";
+            log("❌ The base was corrupted and taken by alien influence. Game over.");
+          }else{
+            log(`Alien influence spread into node ${row+1}-${col+1} (${newOwner}).`);
+          }
         }else{
           // fail -> increase chance up to cap
           chance = Math.min(0.95, chance + 0.15);
@@ -1080,6 +1189,83 @@
       }
 
       if(nodeUpdates.length) await Promise.all(nodeUpdates);
+    }
+
+    // Spawn reinforcements in enemy nodes that border your land
+    async function spawnBorderReinforcements(game){
+      const timeSeconds = game.timeSeconds || 0;
+      if(timeSeconds <= 0) return;
+
+      const minutes = timeSeconds / 60;
+      let maxAliensPerNode;
+      if(minutes < 4) maxAliensPerNode = 8;
+      else if(minutes < 8) maxAliensPerNode = 14;
+      else maxAliensPerNode = 22;
+
+      const batch = [];
+
+      for(const key in nodesState){
+        const node = nodesState[key];
+        if(!node || node.owner!=="enemy") continue;
+
+        const neighbors = neighborsOf(node.row,node.col);
+        const bordersPlayer = neighbors.some(nk=>{
+          const nn = nodesState[nk];
+          return nn && (nn.owner==="player" || nn.owner==="contested");
+        });
+        if(!bordersPlayer) continue;
+
+        const bf = node.battlefield || {
+          width:BATTLE_W,height:BATTLE_H,
+          troops:[],towers:[],aliens:[],spines:[]
+        };
+
+        const currentAliens = (bf.aliens || []).length;
+        if(currentAliens >= maxAliensPerNode) continue;
+
+        // spawn a small group, scaling slightly with time, but capped
+        const baseSpawn = 3 + Math.floor(minutes/3);
+        const spawnCount = Math.max(2, Math.min(baseSpawn, maxAliensPerNode - currentAliens));
+
+        bf.aliens = bf.aliens || [];
+        for(let i=0;i<spawnCount;i++){
+          const row = 1 + (Math.floor(Math.random()*(BATTLE_H-2))); // avoid very top/bottom
+          const x = BATTLE_W-1;
+          let typeKey = "bug";
+
+          if(minutes < 4){
+            typeKey = (i%3===0) ? "spitter" : "bug";
+          }else if(minutes < 8){
+            typeKey = (i%4===0) ? "brute" : ((i%2===0) ? "spitter" : "bug");
+          }else{
+            if(i===0){
+              typeKey = "behemoth";
+            }else if(i%3===0){
+              typeKey = "brute";
+            }else if(i%2===0){
+              typeKey = "spitter";
+            }else{
+              typeKey = "bug";
+            }
+          }
+
+          const def = ENEMIES[typeKey];
+          bf.aliens.push({
+            id: "fr_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+            x,
+            y:row,
+            type:typeKey,
+            hp:def.baseHp,
+            maxHp:def.baseHp
+          });
+        }
+
+        const nodeRef = doc(nodesCol, key);
+        batch.push(setDoc(nodeRef,{ battlefield:bf },{merge:true}));
+        log(`Alien reinforcements spawned in border node ${node.row+1}-${node.col+1}.`);
+      }
+
+      if(batch.length) await Promise.all(batch);
     }
 
     // Helper to seed spine towers for an enemy node
@@ -1198,6 +1384,13 @@
               log(`🟢 You claimed a neutral node (${node.row+1}-${node.col+1}).`);
             }
           }
+
+          // Base node captured: instant loss for all players
+          if(node.type==="base" && node.owner==="enemy" && game.status!=="lost"){
+            await updateDoc(gameRef,{ status:"lost" });
+            game.status="lost";
+            log("❌ The base was taken by the aliens. All players lose!");
+          }
         }
 
         if(changed){
@@ -1308,7 +1501,7 @@
           }
         }
       }
-      // Shield towers reduce damage to allies
+      // Shield towers reduce damage to allies (troops & towers)
       for(const tw of towers){
         if(tw.kind!=="shield") continue;
         const radius = TOWERS.shield.range || 2;
@@ -1524,7 +1717,7 @@
       }
       bf.spines = spines.filter(s=>!s.dead);
 
-      // Alien actions: move left; damage troops / base if adjacent
+      // Alien actions: move left; damage troops/towers/base if adjacent
       for(const a of bf.aliens){
         // move 1 left if possible
         const newX = a.x-1;
@@ -1542,16 +1735,29 @@
       }
       bf.aliens = bf.aliens.filter(a=>!a.dead);
 
-      // Aliens damage adjacent troops
+      // Aliens damage adjacent troops OR towers
       for(const a of bf.aliens){
         const def = ENEMIES[a.type] || ENEMIES.bug;
         const dmg = def.dmg || 2;
-        // attack nearest troop in melee (range 1)
-        let best=null, bestD=2;
+        // attack nearest allied entity in melee (range 1)
+        let best=null, bestD=2, bestType=null;
         for(const t of troops){
           if(t.hp<=0) continue;
           const d = Math.abs(t.x - a.x)+Math.abs(t.y - a.y);
-          if(d<=1 && d<bestD){ best=t; bestD=d; }
+          if(d<=1 && d<bestD){
+            best = t;
+            bestD = d;
+            bestType = "troop";
+          }
+        }
+        for(const tw of towers){
+          if(tw.hp<=0) continue;
+          const d = Math.abs(tw.x - a.x)+Math.abs(tw.y - a.y);
+          if(d<=1 && d<bestD){
+            best = tw;
+            bestD = d;
+            bestType = "tower";
+          }
         }
         if(best){
           let finalDmg = dmg;
@@ -1567,6 +1773,12 @@
         if(t.hp<=0) t.dead=true;
       }
       bf.troops = troops.filter(t=>!t.dead);
+
+      // Remove dead towers
+      for(const tw of towers){
+        if(tw.hp<=0) tw.dead=true;
+      }
+      bf.towers = towers.filter(tw=>!tw.dead);
 
       return {changed, baseDamage};
     }
@@ -1828,11 +2040,11 @@
           if(!gSnap.exists() || !pSnap.exists()) throw new Error("Missing game or player.");
           const g = gSnap.data();
           const p = pSnap.data();
-          const base = g.base || {level:1,upgradeCost:60,incomePerPlayer:6};
+          const base = g.base || {level:1,upgradeCost:60,incomePerPlayer:3};
           const cost = base.upgradeCost || 60;
           if((p.money||0) < cost) throw new Error("Not enough credits for upgrade.");
           const newLevel = (base.level||1)+1;
-          const newIncome = (base.incomePerPlayer||6) + 3;
+          const newIncome = (base.incomePerPlayer||3) + 2; // smaller boost per upgrade
           const newCost = Math.round(cost*1.6);
           tx.update(playerRef,{ money: (p.money||0)-cost });
           tx.update(gameRef,{
@@ -1864,6 +2076,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
