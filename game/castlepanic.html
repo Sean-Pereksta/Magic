@@ -274,9 +274,46 @@
       color:var(--ink);
     }
 
+    /* 8×8 node preview */
+    .node-preview-wrap{
+      margin-top:2px;
+      margin-bottom:4px;
+    }
+    .node-preview-title{
+      font-size:.8rem;
+      color:var(--muted);
+      margin-bottom:3px;
+      font-weight:600;
+    }
+    .node-preview-grid{
+      display:grid;
+      grid-template-columns:repeat(8, minmax(0,1fr));
+      gap:1px;
+      padding:4px;
+      border-radius:8px;
+      border:1px solid #1f2937;
+      background:#020617;
+      max-width:220px;
+    }
+    .node-preview-cell{
+      width:100%;
+      aspect-ratio:1/1;
+      border-radius:3px;
+      background:#030712;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:.75rem;
+    }
+    .node-preview-cell.p1{
+      background:#052e16;
+    }
+    .node-preview-cell.p2{
+      background:#43171f;
+    }
+
     .log-box{
-      flex:1;
-      min-height:80px;
+      height:120px;        /* fixed, so it doesn't grow the whole panel */
       border-radius:10px;
       border:1px solid #1f2937;
       background:#020617;
@@ -369,6 +406,14 @@
 
         <div class="resource-line" id="resourceLine"></div>
 
+        <!-- 8×8 per-node battle grid preview -->
+        <div class="node-preview-wrap">
+          <div id="nodePreviewTitle" class="node-preview-title">
+            Click a node to view its 8×8 battle grid.
+          </div>
+          <div id="nodePreview" class="node-preview-grid"></div>
+        </div>
+
         <div class="build-section-title">Structures (Gold)</div>
         <div class="build-bar" id="buildingBar"></div>
 
@@ -380,9 +425,10 @@
           • <strong>Gold</strong> builds structures. Generated every 5s + bonus per green 💰 node you control.<br/>
           • <strong>Barracks</strong> → Footman pts ⚔️ · <strong>Den</strong> → Raider pts 🦊 · <strong>Armory</strong> → Advanced pts ⚙️.<br/>
           • Troops cost points (not gold). Points are spent when you deploy them.<br/>
-          • Knight / Archer / Catapult / Ballista / Glaive can only be built on nodes you control or adjacent.<br/>
-          • <strong>Thief</strong> & <strong>Assassin</strong> can be built on <em>any</em> node (even the enemy castle) but are fragile.<br/>
-          • On contested nodes, every second a mini battle resolves: catapults hit multiple enemies, glaives chain, ballistas fire heavy shots on cooldown, and raiders prefer sniping buildings.<br/>
+          • Each node has an internal <strong>8×8 grid</strong>.<br/>
+          • P1 units/structures live on the <strong>left</strong> side, P2 on the <strong>right</strong> side.<br/>
+          • You can only field up to <strong>16 units per node per side</strong> (first 2 columns of your side).<br/>
+          • On base nodes, each castle appears on the right side of that player’s half of the grid.<br/>
           • When a castle’s HP hits 0, that side loses; the other is declared winner.
         </div>
 
@@ -428,7 +474,12 @@
     const INCOME_INTERVAL = 5; // seconds
     const GAME_COLLECTION = "castlepanic_games";
 
-    // Castles: base on opposite sides
+    // Internal 8×8 per-node battlefield (visual)
+    const BATTLE_W = 8;
+    const BATTLE_H = 8;
+    const MAX_UNITS_PER_SIDE_PER_NODE = 16; // 2 columns × 8 rows
+
+    // Castles: base on opposite sides (world grid)
     const CASTLES = {
       A: { x: 2, y: 0 }, // P1 near top
       B: { x: 3, y: 5 }  // P2 near bottom
@@ -496,6 +547,7 @@
     let hostTicking = false;
     let selectedBuild = null; // {kind:"building"|"unit", key:"..."}
     let joined = false;
+    let selectedNodeId = null;
 
     // ---------- DOM ----------
     const youLabel = document.getElementById("youLabel");
@@ -510,6 +562,9 @@
     const troopBarEl = document.getElementById("troopBar");
     const resourceLineEl = document.getElementById("resourceLine");
     const logBoxEl = document.getElementById("logBox");
+
+    const nodePreviewTitleEl = document.getElementById("nodePreviewTitle");
+    const nodePreviewEl = document.getElementById("nodePreview");
 
     const winnerOverlay = document.getElementById("winnerOverlay");
     const winnerTitle = document.getElementById("winnerTitle");
@@ -566,147 +621,151 @@
     });
 
     // ---------- JOIN / INIT GAME ----------
-async function joinGame(){
-  try{
-    await runTransaction(db, async (tx)=>{
-      // 🔹 READS FIRST (no writes before these)
-      const gameSnap = await tx.get(gameRef);
-      const isNew = !gameSnap.exists();
-      let gameData = isNew ? null : gameSnap.data();
+    async function joinGame(){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const gameSnap = await tx.get(gameRef);
+          const isNew = !gameSnap.exists();
+          let gameData = isNew ? null : gameSnap.data();
 
-      const playerSnap = await tx.get(playerRef); // <-- moved BEFORE any tx.set/tx.update
+          const playerSnap = await tx.get(playerRef);
 
-      // 🔹 Now we can safely write
-      if(isNew){
-        // create game
-        gameData = {
-          createdAt: serverTimestamp(),
-          hostUid: currentUser.uid,
-          status: "running",
-          timeSeconds: 0,
-          baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-          baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-          slotAUid: currentUser.uid,
-          slotBUid: null,
-          winnerSide: null
-        };
-        tx.set(gameRef, gameData);
+          if(isNew){
+            gameData = {
+              createdAt: serverTimestamp(),
+              hostUid: currentUser.uid,
+              status: "running",
+              timeSeconds: 0,
+              baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+              baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+              slotAUid: currentUser.uid,
+              slotBUid: null,
+              winnerSide: null
+            };
+            tx.set(gameRef, gameData);
 
-        // init nodes
-        for(let y=0;y<GRID_SIZE;y++){
-          for(let x=0;x<GRID_SIZE;x++){
-            const id = nodeKey(y,x);
-            const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
-            const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
-            const eco = isEco(x,y);
-            let type = "normal";
-            if(baseA) type = "baseA";
-            else if(baseB) type = "baseB";
-            else if(eco) type = "eco";
+            // init nodes
+            for(let y=0;y<GRID_SIZE;y++){
+              for(let x=0;x<GRID_SIZE;x++){
+                const id = nodeKey(y,x);
+                const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
+                const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
+                const eco = isEco(x,y);
+                let type = "normal";
+                if(baseA) type = "baseA";
+                else if(baseB) type = "baseB";
+                else if(eco) type = "eco";
 
-            const nodeDocRef = doc(nodesCol, id);
-            const buildings = [];
-            if(baseA){
-              buildings.push({
-                id:"castleA",
-                owner:"A",
-                kind:"castle",
-                x,y,
-                hp:CASTLE_HP,
-                maxHp:CASTLE_HP
-              });
+                const nodeDocRef = doc(nodesCol, id);
+
+                // Root-level lists for gameplay
+                const units = [];
+                const buildings = [];
+
+                if(baseA){
+                  buildings.push({
+                    id:"castleA",
+                    owner:"A",
+                    kind:"castle",
+                    x:x,
+                    y:y,
+                    hp:CASTLE_HP,
+                    maxHp:CASTLE_HP
+                  });
+                }
+                if(baseB){
+                  buildings.push({
+                    id:"castleB",
+                    owner:"B",
+                    kind:"castle",
+                    x:x,
+                    y:y,
+                    hp:CASTLE_HP,
+                    maxHp:CASTLE_HP
+                  });
+                }
+
+                tx.set(nodeDocRef,{
+                  id,
+                  row:y,
+                  col:x,
+                  type,
+                  units,
+                  buildings
+                });
+              }
             }
-            if(baseB){
-              buildings.push({
-                id:"castleB",
-                owner:"B",
-                kind:"castle",
-                x,y,
-                hp:CASTLE_HP,
-                maxHp:CASTLE_HP
-              });
-            }
+          }
 
-            tx.set(nodeDocRef,{
-              id,
-              row:y,
-              col:x,
-              type,
-              units:[],
-              buildings
+          // assign side
+          let side = "spectator";
+          if(gameData.slotAUid === currentUser.uid){
+            side = "A";
+          }else if(gameData.slotBUid === currentUser.uid){
+            side = "B";
+          }else if(!gameData.slotAUid){
+            side = "A";
+            tx.update(gameRef,{slotAUid: currentUser.uid});
+          }else if(!gameData.slotBUid){
+            side = "B";
+            tx.update(gameRef,{slotBUid: currentUser.uid});
+          }else{
+            side = "spectator";
+          }
+
+          if(!playerSnap.exists()){
+            tx.set(playerRef,{
+              uid: currentUser.uid,
+              name: displayName,
+              side,
+              gold: 40,
+              footmanPts: 0,
+              raiderPts: 0,
+              advancedPts: 0,
+              joinedAt: serverTimestamp()
+            });
+          }else{
+            tx.update(playerRef,{
+              name: displayName,
+              side
             });
           }
-        }
-      }
-
-      // 🔹 Assign side for this player (A/B/spec)
-      let side = "spectator";
-      if(gameData.slotAUid === currentUser.uid){
-        side = "A";
-      }else if(gameData.slotBUid === currentUser.uid){
-        side = "B";
-      }else if(!gameData.slotAUid){
-        side = "A";
-        tx.update(gameRef,{slotAUid: currentUser.uid});
-      }else if(!gameData.slotBUid){
-        side = "B";
-        tx.update(gameRef,{slotBUid: currentUser.uid});
-      }else{
-        side = "spectator";
-      }
-
-      if(!playerSnap.exists()){
-        tx.set(playerRef,{
-          uid: currentUser.uid,
-          name: displayName,
-          side,
-          gold: 40,
-          footmanPts: 0,
-          raiderPts: 0,
-          advancedPts: 0,
-          joinedAt: serverTimestamp()
         });
-      }else{
-        tx.update(playerRef,{
-          name: displayName,
-          side
+
+        // listeners
+        onSnapshot(gameRef,(snap)=>{
+          if(!snap.exists()) return;
+          latestGame = snap.data();
+          renderMeta();
+          syncHostRole();
         });
+
+        onSnapshot(playerRef,(snap)=>{
+          if(!snap.exists()) return;
+          myPlayer = snap.data();
+          sideLabel.textContent =
+            myPlayer.side==="A" ? "P1" :
+            myPlayer.side==="B" ? "P2" :
+            "Spectator";
+          renderResources();
+        });
+
+        onSnapshot(nodesCol,(snap)=>{
+          nodesState = {};
+          snap.forEach(d=>{
+            nodesState[d.id] = d.data();
+          });
+          renderBoard();
+          renderResources();
+          renderNodePreview(); // keep preview in sync
+        });
+
+        log("Joined Firebase game: "+gameId);
+      }catch(e){
+        console.error(e);
+        alert("Error joining game: "+e.message);
       }
-    });
-
-    // 🔹 listeners (unchanged)
-    onSnapshot(gameRef,(snap)=>{
-      if(!snap.exists()) return;
-      latestGame = snap.data();
-      renderMeta();
-      syncHostRole();
-    });
-
-    onSnapshot(playerRef,(snap)=>{
-      if(!snap.exists()) return;
-      myPlayer = snap.data();
-      sideLabel.textContent =
-        myPlayer.side==="A" ? "P1" :
-        myPlayer.side==="B" ? "P2" :
-        "Spectator";
-      renderResources();
-    });
-
-    onSnapshot(nodesCol,(snap)=>{
-      nodesState = {};
-      snap.forEach(d=>{
-        nodesState[d.id] = d.data();
-      });
-      renderBoard();
-      renderResources();
-    });
-
-    log("Joined Firebase game: "+gameId);
-  }catch(e){
-    console.error(e);
-    alert("Error joining game: "+e.message);
-  }
-}
+    }
 
     // ---------- META / HOST ----------
     function renderMeta(){
@@ -884,7 +943,6 @@ async function joinGame(){
       return "none";
     }
 
-    // Helper pickers for combat
     function randomFrom(arr){
       if(!arr.length) return null;
       const idx = Math.floor(Math.random()*arr.length);
@@ -906,25 +964,24 @@ async function joinGame(){
       const def = UNITS[attacker.kind];
       if(!def) return;
 
-      // BALLISTA: big hit but on cooldown
+      // BALLISTA: cooldown-based heavy shot
       if(def.key==="ballista"){
         attacker.cooldown = (attacker.cooldown || 0) - 1;
         if(attacker.cooldown > 0){
           return;
         }
-        // prioritize castles -> other buildings -> units
         const castles = enemyBuildings.filter(b=>b.kind==="castle");
         const nonCastleBuildings = enemyBuildings.filter(b=>b.kind!=="castle");
         const unitTargets = enemyUnits;
         let target = randomFrom(castles) || randomFrom(nonCastleBuildings) || randomFrom(unitTargets);
         if(!target) return;
 
-        target.hp -= def.dmg; // heavy shot
+        target.hp -= def.dmg;
         attacker.cooldown = def.cooldownMax || 3;
         return;
       }
 
-      // THIEF / ASSASSIN: prefer buildings, then units
+      // THIEF / ASSASSIN: prefer buildings
       if(def.key==="thief" || def.key==="assassin"){
         const buildingTargets = enemyBuildings;
         const unitTargets = enemyUnits;
@@ -934,7 +991,7 @@ async function joinGame(){
         return;
       }
 
-      // CATAPULT: splash, up to 3 different targets
+      // CATAPULT: splash up to 3
       if(def.aoe){
         const allTargets = [...enemyUnits, ...enemyBuildings];
         if(!allTargets.length) return;
@@ -946,7 +1003,7 @@ async function joinGame(){
         return;
       }
 
-      // GLAIVE: hit one, then chain to up to 2 more
+      // GLAIVE: chain to up to 2 more
       if(def.chain3){
         const allTargets = [...enemyUnits, ...enemyBuildings];
         if(!allTargets.length) return;
@@ -960,7 +1017,7 @@ async function joinGame(){
         return;
       }
 
-      // DEFAULT: knight / archer etc. single-target DPS
+      // default DPS
       const allTargets = [...enemyUnits, ...enemyBuildings];
       const target = randomFrom(allTargets);
       if(!target) return;
@@ -980,9 +1037,8 @@ async function joinGame(){
 
         const hasA = units.some(u=>u.owner==="A") || buildings.some(b=>b.owner==="A");
         const hasB = units.some(u=>u.owner==="B") || buildings.some(b=>b.owner==="B");
-        if(!(hasA && hasB)) continue; // only run combat if both present
+        if(!(hasA && hasB)) continue; // only if both present
 
-        // Partition
         const unitsA = units.filter(u=>u.owner==="A");
         const unitsB = units.filter(u=>u.owner==="B");
         const bldA = buildings.filter(b=>b.owner==="A");
@@ -1002,14 +1058,14 @@ async function joinGame(){
           resolveUnitAttack(u, enemyUnitsForB, enemyBldForB);
         }
 
-        // Clean up death (keep castles even at 0hp so base HP can be read)
+        // cleanup
         const mergedUnits = [...unitsA, ...unitsB].filter(u=>u.hp>0);
         const mergedBuildings = [...bldA, ...bldB].filter(b=>{
           if(b.kind==="castle") return true;
           return b.hp > 0;
         });
 
-        // Check castle HP
+        // castle HP check
         for(const b of mergedBuildings){
           if(b.kind==="castle" && b.owner==="A" && b.hp<=0){
             castleADead = true;
@@ -1032,8 +1088,6 @@ async function joinGame(){
       let winnerSide = null;
       if(castleADead && !castleBDead) winnerSide = "B";
       if(castleBDead && !castleADead) winnerSide = "A";
-      // if both dead same tick, winnerSide stays null (tie) — game status won't flip here
-
       return { winnerSide };
     }
 
@@ -1099,6 +1153,10 @@ async function joinGame(){
           cell.dataset.row = y;
           cell.dataset.col = x;
 
+          if(id === selectedNodeId){
+            cell.classList.add("node-selected");
+          }
+
           const control = getNodeControl(node);
           if(control==="A") cell.classList.add("node-p1");
           else if(control==="B") cell.classList.add("node-p2");
@@ -1142,7 +1200,7 @@ async function joinGame(){
           sub.textContent = pieces.length ? pieces.join(" · ") : "Empty";
           cell.appendChild(sub);
 
-          cell.addEventListener("click", onCellClick);
+          cell.addEventListener("click", onBoardCellClick);
           boardGridEl.appendChild(cell);
         }
       }
@@ -1167,17 +1225,121 @@ async function joinGame(){
       winnerOverlay.style.display = "flex";
     }
 
+    // ---------- NODE PREVIEW (8×8 GRID) ----------
+    function renderNodePreview(){
+      nodePreviewEl.innerHTML = "";
+      // build empty grid by default
+      const gridData = [];
+      for(let y=0;y<BATTLE_H;y++){
+        const row=[];
+        for(let x=0;x<BATTLE_W;x++) row.push(null);
+        gridData.push(row);
+      }
+
+      if(!selectedNodeId || !nodesState[selectedNodeId]){
+        nodePreviewTitleEl.textContent = "Click a node to view its 8×8 battle grid.";
+        // render empty cells
+        for(let y=0;y<BATTLE_H;y++){
+          for(let x=0;x<BATTLE_W;x++){
+            const cell = document.createElement("div");
+            cell.className="node-preview-cell";
+            nodePreviewEl.appendChild(cell);
+          }
+        }
+        return;
+      }
+
+      const node = nodesState[selectedNodeId];
+      nodePreviewTitleEl.textContent = `Node (${node.col+1},${node.row+1}) — internal 8×8 battle grid`;
+
+      const units = node.units || [];
+      const buildings = node.buildings || [];
+
+      const unitsA = units.filter(u=>u.owner==="A");
+      const unitsB = units.filter(u=>u.owner==="B");
+      const bldA   = buildings.filter(b=>b.owner==="A");
+      const bldB   = buildings.filter(b=>b.owner==="B");
+
+      // Place castles visually on the "right" side of each player's half
+      // P1: left half (cols 0–3) → castle at col 1
+      // P2: right half (cols 4–7) → castle at col BATTLE_W-2
+      if(node.type==="baseA"){
+        const cy = Math.floor(BATTLE_H/2);
+        gridData[cy][1] = {emoji:"🏰", owner:"A"};
+      }
+      if(node.type==="baseB"){
+        const cy = Math.floor(BATTLE_H/2);
+        gridData[cy][BATTLE_W-2] = {emoji:"🏰", owner:"B"};
+      }
+
+      function tokensFromUnits(list){
+        return list.map(u=>{
+          const def = UNITS[u.kind];
+          return {emoji:(def && def.emoji) || "⚔️", owner:u.owner};
+        });
+      }
+      function tokensFromBuildings(list){
+        return list.map(b=>{
+          const def = BUILDINGS[b.kind];
+          return {emoji:(def && def.emoji) || "🏗️", owner:b.owner};
+        });
+      }
+
+      const tokensA = [
+        ...tokensFromUnits(unitsA),
+        ...tokensFromBuildings(bldA)
+      ];
+      const tokensB = [
+        ...tokensFromUnits(unitsB),
+        ...tokensFromBuildings(bldB)
+      ];
+
+      // Fill left two columns for P1
+      const slotsA = [];
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=0;x<2;x++){
+          if(!gridData[y][x]) slotsA.push({x,y});
+        }
+      }
+      tokensA.forEach((tok,i)=>{
+        if(i>=slotsA.length) return;
+        const {x,y} = slotsA[i];
+        gridData[y][x] = tok;
+      });
+
+      // Fill right two columns for P2
+      const slotsB = [];
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=BATTLE_W-2;x<BATTLE_W;x++){
+          if(!gridData[y][x]) slotsB.push({x,y});
+        }
+      }
+      tokensB.forEach((tok,i)=>{
+        if(i>=slotsB.length) return;
+        const {x,y} = slotsB[i];
+        gridData[y][x] = tok;
+      });
+
+      // Render
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=0;x<BATTLE_W;x++){
+          const cell = document.createElement("div");
+          cell.className="node-preview-cell";
+          const tok = gridData[y][x];
+          if(tok){
+            cell.textContent = tok.emoji;
+            if(tok.owner==="A") cell.classList.add("p1");
+            else if(tok.owner==="B") cell.classList.add("p2");
+          }
+          nodePreviewEl.appendChild(cell);
+        }
+      }
+    }
+
     // ---------- BUILDING RULES ----------
     function canBuildHereForSide(side,row,col,unitDefOrNull,isBuilding){
       const node = nodesState[nodeKey(row,col)];
       if(!node) return false;
-
-      if(isBuilding){
-        if(node.type==="baseA" || node.type==="baseB") return false;
-      }else if(unitDefOrNull && unitDefOrNull.raider){
-        // raider units (thief/assassin) can go anywhere
-        return true;
-      }
 
       // Non-raider troops & structures: must be on a node you control or adjacent
       const control = getNodeControl(node);
@@ -1190,36 +1352,44 @@ async function joinGame(){
       return false;
     }
 
-    // ---------- PLACE BUILDING / UNIT ----------
-    async function onCellClick(e){
-      if(!myPlayer) return;
-      if(latestGame && latestGame.status==="finished") return;
+    // ---------- BOARD CLICK (OPEN NODE & BUILD) ----------
+    function onBoardCellClick(e){
       const row = Number(e.currentTarget.dataset.row);
       const col = Number(e.currentTarget.dataset.col);
+      const id = nodeKey(row,col);
+      selectedNodeId = id;
+      renderBoard();
+      renderNodePreview();
+
+      if(!myPlayer) return;
+      if(latestGame && latestGame.status==="finished") return;
       const side = myPlayer.side;
       if(side!=="A" && side!=="B"){
         log("Spectators cannot build.");
         return;
       }
       if(!selectedBuild){
-        log("Select a structure or troop to build first.");
+        // just viewing node grid / situation
         return;
       }
 
-      const nodeId = nodeKey(row,col);
       const build = selectedBuild;
+      const nodeId = id;
 
-      try{
-        if(build.kind==="building"){
-          await placeBuilding(side,nodeId,row,col,build.key);
-        }else{
-          await placeUnit(side,nodeId,row,col,build.key);
+      (async ()=>{
+        try{
+          if(build.kind==="building"){
+            await placeBuilding(side,nodeId,row,col,build.key);
+          }else{
+            await placeUnit(side,nodeId,row,col,build.key);
+          }
+        }catch(err){
+          log("Build failed: "+err.message);
         }
-      }catch(err){
-        log("Build failed: "+err.message);
-      }
+      })();
     }
 
+    // ---------- PLACE BUILDING / UNIT ----------
     async function placeBuilding(side,nodeId,row,col,key){
       const def = BUILDINGS[key];
       if(!def) throw new Error("Unknown building.");
@@ -1276,11 +1446,7 @@ async function joinGame(){
       if(!def) throw new Error("Unknown troop.");
 
       if(!canBuildHereForSide(side,row,col,def,false)){
-        if(def.raider){
-          throw new Error("You cannot place there.");
-        }else{
-          throw new Error("Non-raider troops must be built in or next to your territory.");
-        }
+        throw new Error("Troops must be built in or next to your territory.");
       }
 
       await runTransaction(db, async (tx)=>{
@@ -1290,13 +1456,19 @@ async function joinGame(){
         if(p.side!==side) throw new Error("Side mismatch.");
         if(!hasCost(def.cost,p)) throw new Error("Not enough points.");
 
-        const updatedP = spendCost(def.cost,p);
-
         const nodeRef = doc(nodesCol,nodeId);
         const nSnap = await tx.get(nodeRef);
         if(!nSnap.exists()) throw new Error("Node missing.");
         const node = nSnap.data();
         node.units = node.units || [];
+
+        // Enforce "first 2 columns of your side" capacity via max 16 units / side / node
+        const existingSideCount = node.units.filter(u=>u.owner===side).length;
+        if(existingSideCount >= MAX_UNITS_PER_SIDE_PER_NODE){
+          throw new Error("Your deployment zone in this node is full (16 units).");
+        }
+
+        const updatedP = spendCost(def.cost,p);
 
         node.units.push({
           id:"u_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
@@ -1331,11 +1503,11 @@ async function joinGame(){
 
     // ---------- BOOT ----------
     log("Connecting to Firebase and waiting for authentication…");
-    buildBars(); // initial UI
+    buildBars();          // initial UI
+    renderNodePreview();  // render empty 8×8 preview initially
   </script>
 </body>
 </html>
-
 
 
 
