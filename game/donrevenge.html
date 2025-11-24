@@ -668,10 +668,17 @@
     async function joinGame(){
       try{
         await runTransaction(db, async (tx)=>{
-          const snap = await tx.get(gameRef);
           const center = Math.floor(BOARD_SIZE/2);
 
-          if(!snap.exists()){
+          // 🔹 READS FIRST
+          const gameSnap = await tx.get(gameRef);
+          const isNewGame = !gameSnap.exists();
+          const gameData = isNewGame ? null : gameSnap.data();
+
+          const playerSnap = await tx.get(playerRef);
+
+          // 🔹 GAME / NODE CREATION AFTER ALL READS
+          if(isNewGame){
             const baseHp = 120;
             const baseLevel = 1;
             const baseIncomePerPlayer = 6;
@@ -734,15 +741,13 @@
               }
             }
           }else{
-            const data = snap.data();
-            if(!data.hostUid){
+            if(!gameData.hostUid){
               tx.update(gameRef,{hostUid: currentUser.uid});
             }
           }
 
-          // create / update player
-          const pSnap = await tx.get(playerRef);
-          if(!pSnap.exists()){
+          // 🔹 PLAYER DOC AFTER READS (still safe — writes only)
+          if(!playerSnap.exists()){
             tx.set(playerRef,{
               uid: currentUser.uid,
               name: displayName,
@@ -751,7 +756,6 @@
               joinedAt: serverTimestamp()
             });
           }else{
-            // ensure name saved
             tx.update(playerRef,{ name: displayName });
           }
         });
@@ -1727,13 +1731,12 @@
 
     leaveBattleBtn.addEventListener("click",()=>{
       battleOverlay.style.display = "none";
-      if(battleUnsub){ battleUnsub(); battleUnsub=null; }
+      if(battleUnsub){ battleUnsub=null; }
     });
 
     upgradeBaseBtn.addEventListener("click", async ()=>{
       if(!latestGame || !myPlayer) return;
       if(!selectedNode || selectedNode.type!=="base") return;
-      const base = latestGame.base || {level:1,upgradeCost:60,incomePerPlayer:6};
       try{
         await runTransaction(db, async (tx)=>{
           const gSnap = await tx.get(gameRef);
@@ -1777,6 +1780,7 @@
   </script>
 </body>
 </html>
+
 
 
 
