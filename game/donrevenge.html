@@ -529,6 +529,10 @@
           <span id="battleOwnerTag" class="tag tag-green" style="margin-left:6px;">Player</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
+          <div class="pill" id="battleCreditsPill">
+            <span>Credits:</span>
+            <strong id="battleMoneyLabel">0</strong>
+          </div>
           <span class="small">Build only in the first 3 columns.</span>
           <button id="leaveBattleBtn" class="btn">⬅ Leave</button>
         </div>
@@ -645,6 +649,7 @@
 
     // ---------------- DOM ----------------
     const playerNameLabel = document.getElementById("playerNameLabel");
+    const battleMoneyLabel = document.getElementById("battleMoneyLabel");
     const timeLabel = document.getElementById("timeLabel");
     const moneyLabel = document.getElementById("moneyLabel");
     const baseHpFill = document.getElementById("baseHpFill");
@@ -844,8 +849,13 @@
         onSnapshot(playerRef, (snap)=>{
           if(!snap.exists()) return;
           myPlayer = snap.data();
-          moneyLabel.textContent = Math.floor(myPlayer.money || 0);
+          const credits = Math.floor(myPlayer.money || 0);
+          moneyLabel.textContent = credits;
+          if (battleMoneyLabel) {
+            battleMoneyLabel.textContent = credits;
+          }
         });
+
 
         log("Joined game: "+gameId);
       }catch(e){
@@ -2017,6 +2027,7 @@
   </script>
 </body>
 </html>
+
 
 
 
