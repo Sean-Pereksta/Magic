@@ -1425,295 +1425,395 @@
     }
 
     function simulateBattlefieldStep(node, bf, game){
-      const aliens = bf.aliens || [];
-      const troops = bf.troops || [];
-      const towers = bf.towers || [];
-      const spines = bf.spines || [];
-      let changed = false;
+  const aliens = bf.aliens || [];
+  const troops = bf.troops || [];
+  const towers = bf.towers || [];
+  const spines = bf.spines || [];
+  let changed = false;
 
-      for(const t of troops){
-        if(t.poisonTicks && t.poisonTicks > 0){
-          t.hp -= 1;
-          t.poisonTicks--;
-          changed = true;
+  // --- POISON TICK ON TROOPS ---
+  for (const t of troops) {
+    if (t.poisonTicks && t.poisonTicks > 0) {
+      t.hp -= 1;
+      t.poisonTicks--;
+      changed = true;
+    }
+  }
+
+  // --- BUFF / SHIELD MAPS ---
+  const damageBuffMap = {};
+  const shieldMap = {};
+  const entityById = {};
+
+  for (const t of troops) { entityById[t.id] = t; }
+  for (const tw of towers) { entityById[tw.id] = tw; }
+
+  // Signal towers buff damage
+  for (const tw of towers) {
+    if (tw.kind !== "signal") continue;
+    const def = TOWERS.signal;
+    const buffRadius = def.range || 2;
+    for (const id in entityById) {
+      const e = entityById[id];
+      const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
+      if (dist <= buffRadius) {
+        damageBuffMap[id] = (damageBuffMap[id] || 1) * 1.25;
+      }
+    }
+  }
+
+  // Sergeants buff troop damage
+  for (const t of troops) {
+    if (t.kind !== "sergeant") continue;
+    const radius = TROOPS.sergeant.range || 2;
+    for (const tt of troops) {
+      const dist = Math.abs(tt.x - t.x) + Math.abs(tt.y - t.y);
+      if (dist <= radius) {
+        damageBuffMap[tt.id] = (damageBuffMap[tt.id] || 1) * 1.15;
+      }
+    }
+  }
+
+  // Shield towers reduce damage taken
+  for (const tw of towers) {
+    if (tw.kind !== "shield") continue;
+    const radius = TOWERS.shield.range || 2;
+    for (const id in entityById) {
+      const e = entityById[id];
+      const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
+      if (dist <= radius) {
+        shieldMap[id] = (shieldMap[id] || 1) * 0.65;
+      }
+    }
+  }
+
+  // ========= NEW: MOVEMENT HELPERS =========
+  function nearestPlayerEntity(x, y) {
+    // "Player side" = troops + towers (includes generator)
+    let best = null;
+    let bestD = Infinity;
+
+    for (const t of troops) {
+      if (t.hp <= 0) continue;
+      const d = Math.abs(t.x - x) + Math.abs(t.y - y);
+      if (d < bestD) { best = t; bestD = d; }
+    }
+    for (const tw of towers) {
+      if (tw.hp <= 0) continue;
+      const d = Math.abs(tw.x - x) + Math.abs(tw.y - y);
+      if (d < bestD) { best = tw; bestD = d; }
+    }
+    return best ? { x: best.x, y: best.y, ent: best, dist: bestD } : null;
+  }
+
+  function nearestAlienEntity(x, y) {
+    // "Alien side" = aliens + spines
+    let best = null;
+    let bestD = Infinity;
+
+    for (const a of aliens) {
+      if (a.hp <= 0) continue;
+      const d = Math.abs(a.x - x) + Math.abs(a.y - y);
+      if (d < bestD) { best = a; bestD = d; }
+    }
+    for (const s of spines) {
+      if (s.hp <= 0) continue;
+      const d = Math.abs(s.x - x) + Math.abs(s.y - y);
+      if (d < bestD) { best = s; bestD = d; }
+    }
+    return best ? { x: best.x, y: best.y, ent: best, dist: bestD } : null;
+  }
+
+  function stepTowards(x1, y1, x2, y2) {
+    // Take a single grid step that reduces Manhattan distance
+    const dx = Math.sign(x2 - x1);
+    const dy = Math.sign(y2 - y1);
+
+    const candidates = [];
+    // Prefer moving along the axis with bigger gap
+    if (Math.abs(x2 - x1) >= Math.abs(y2 - y1)) {
+      if (dx !== 0) candidates.push({ x: x1 + dx, y: y1 });
+      if (dy !== 0) candidates.push({ x: x1, y: y1 + dy });
+    } else {
+      if (dy !== 0) candidates.push({ x: x1, y: y1 + dy });
+      if (dx !== 0) candidates.push({ x: x1 + dx, y: y1 });
+    }
+
+    for (const c of candidates) {
+      if (c.x >= 0 && c.x < BATTLE_W && c.y >= 0 && c.y < BATTLE_H) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  // ========= NEW: TROOP MOVEMENT (toward aliens/spines) =========
+  for (const t of troops) {
+    if (t.hp <= 0) continue;
+    const targetInfo = nearestAlienEntity(t.x, t.y);
+    if (!targetInfo) continue;
+
+    // If already adjacent, hold position so they can fight
+    if (targetInfo.dist <= 1) continue;
+
+    const step = stepTowards(t.x, t.y, targetInfo.x, targetInfo.y);
+    if (step) {
+      t.x = step.x;
+      t.y = step.y;
+      changed = true;
+    }
+  }
+
+  // ========= NEW: ALIEN MOVEMENT (toward troops/towers) =========
+  for (const a of aliens) {
+    if (a.hp <= 0) continue;
+
+    const targetInfo = nearestPlayerEntity(a.x, a.y);
+
+    if (targetInfo && targetInfo.dist > 1) {
+      // Move toward nearest troop/tower/generator
+      const step = stepTowards(a.x, a.y, targetInfo.x, targetInfo.y);
+      if (step) {
+        a.x = step.x;
+        a.y = step.y;
+        changed = true;
+      }
+    } else if (!targetInfo) {
+      // Fallback: if no targets at all, drift left like before
+      const newX = a.x - 1;
+      if (newX >= 0) {
+        a.x = newX;
+        changed = true;
+      }
+    }
+  }
+
+  // ========= EXISTING RANGED TARGETING (troops/towers) =========
+  function nearestEnemyFrom(x, y, range) {
+    let best = null, bestD = 999, bestType = null;
+    for (const a of aliens) {
+      if (a.hp <= 0) continue;
+      const d = Math.abs(a.x - x) + Math.abs(a.y - y);
+      if (d <= range && d < bestD) {
+        best = a; bestD = d; bestType = "alien";
+      }
+    }
+    for (const s of spines) {
+      if (s.hp <= 0) continue;
+      const d = Math.abs(s.x - x) + Math.abs(s.y - y);
+      if (d <= range && d < bestD) {
+        best = s; bestD = d; bestType = "spine";
+      }
+    }
+    return best ? { type: bestType, enemy: best } : null;
+  }
+
+  // --- TROOP ACTIONS (heal / shoot) ---
+  for (const t of troops) {
+    if (t.hp <= 0) continue;
+    const def = TROOPS[t.kind] || TROOPS.rifle;
+
+    if (t.kind === "medic") {
+      let best = null, bestPct = 1.1;
+      for (const ally of troops) {
+        if (ally.hp <= 0) continue;
+        const d = Math.abs(ally.x - t.x) + Math.abs(ally.y - t.y);
+        if (d <= (def.range || 2)) {
+          const pct = ally.hp / ally.maxHp;
+          if (pct < bestPct) {
+            bestPct = pct;
+            best = ally;
+          }
         }
       }
-
-      const damageBuffMap = {};
-      const shieldMap = {};
-      const entityById = {};
-
-      for(const t of troops){ entityById[t.id] = t; }
-      for(const tw of towers){ entityById[tw.id] = tw; }
-
-      for(const tw of towers){
-        if(tw.kind!=="signal") continue;
-        const def = TOWERS.signal;
-        const buffRadius = def.range || 2;
-        for(const id in entityById){
-          const e = entityById[id];
-          const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
-          if(dist <= buffRadius){
-            damageBuffMap[id] = (damageBuffMap[id]||1) * 1.25;
-          }
-        }
+      if (best && best.hp < best.maxHp) {
+        best.hp = Math.min(best.maxHp, best.hp + (def.heal || 3));
+        changed = true;
       }
-      for(const t of troops){
-        if(t.kind!=="sergeant") continue;
-        const radius = TROOPS.sergeant.range || 2;
-        for(const tt of troops){
-          const dist = Math.abs(tt.x - t.x) + Math.abs(tt.y - t.y);
-          if(dist <= radius){
-            damageBuffMap[tt.id] = (damageBuffMap[tt.id]||1) * 1.15;
-          }
-        }
-      }
-      for(const tw of towers){
-        if(tw.kind!=="shield") continue;
-        const radius = TOWERS.shield.range || 2;
-        for(const id in entityById){
-          const e = entityById[id];
-          const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
-          if(dist <= radius){
-            shieldMap[id] = (shieldMap[id]||1) * 0.65;
-          }
-        }
-      }
-
-      function nearestEnemyFrom(x,y,range){
-        let best=null, bestD=999, bestType=null;
-        for(const a of aliens){
-          if(a.hp<=0) continue;
-          const d = Math.abs(a.x-x)+Math.abs(a.y-y);
-          if(d<=range && d<bestD){
-            best=a; bestD=d; bestType="alien";
-          }
-        }
-        for(const s of spines){
-          if(s.hp<=0) continue;
-          const d = Math.abs(s.x-x)+Math.abs(s.y-y);
-          if(d<=range && d<bestD){
-            best=s; bestD=d; bestType="spine";
-          }
-        }
-        return best ? {type:bestType, enemy:best} : null;
-      }
-
-      for(const t of troops){
-        if(t.hp<=0) continue;
-        const def = TROOPS[t.kind] || TROOPS.rifle;
-        if(t.kind==="medic"){
-          let best=null, bestPct=1.1;
-          for(const ally of troops){
-            if(ally.hp<=0) continue;
-            const d = Math.abs(ally.x - t.x)+Math.abs(ally.y - t.y);
-            if(d <= (def.range || 2)){
-              const pct = ally.hp/ally.maxHp;
-              if(pct < bestPct){
-                bestPct = pct;
-                best = ally;
-              }
-            }
-          }
-          if(best && best.hp < best.maxHp){
-            best.hp = Math.min(best.maxHp, best.hp + (def.heal||3));
-            changed = true;
-          }
-        }else{
-          const range = def.range || 2;
-          const targetInfo = nearestEnemyFrom(t.x,t.y,range);
-          if(targetInfo){
-            let dmg = def.dmg || 2;
-            const buff = damageBuffMap[t.id] || 1;
-            dmg = Math.round(dmg * buff);
-            if(def.splash){
-              const tx = targetInfo.enemy.x;
-              const ty = targetInfo.enemy.y;
-              addHitLine(bf,"player",t.x,t.y,tx,ty);
-              for(const a of aliens){
-                const d = Math.abs(a.x - tx)+Math.abs(a.y - ty);
-                if(d<=1) { a.hp -= dmg; changed=true; }
-              }
-              for(const s of spines){
-                const d = Math.abs(s.x - tx)+Math.abs(s.y - ty);
-                if(d<=1) { s.hp -= dmg; changed=true; }
-              }
-            }else{
-              addHitLine(bf,"player",t.x,t.y,targetInfo.enemy.x,targetInfo.enemy.y);
-              if(targetInfo.type==="alien"){
-                targetInfo.enemy.hp -= dmg;
-              }else{
-                targetInfo.enemy.hp -= dmg;
-              }
-              changed = true;
-            }
-          }
-        }
-      }
-
-      for(const tw of towers){
-        if(tw.kind === "generator") continue; // generator doesn't attack
-        const def = TOWERS[tw.kind] || TOWERS.laser;
-        if(def.shield || def.buff) continue;
-        const range = def.range || 3;
-        const targetInfo = nearestEnemyFrom(tw.x,tw.y,range);
-        if(!targetInfo) continue;
+    } else {
+      const range = def.range || 2;
+      const targetInfo = nearestEnemyFrom(t.x, t.y, range);
+      if (targetInfo) {
         let dmg = def.dmg || 2;
-        const buff = damageBuffMap[tw.id] || 1;
+        const buff = damageBuffMap[t.id] || 1;
         dmg = Math.round(dmg * buff);
-        if(def.chain){
+
+        if (def.splash) {
           const tx = targetInfo.enemy.x;
           const ty = targetInfo.enemy.y;
-          const chainTargets = [];
-          for(const a of aliens){
-            if(a.hp<=0) continue;
-            const d = Math.abs(a.x - tx)+Math.abs(a.y - ty);
-            if(d<=1) chainTargets.push({type:"alien", ref:a});
+          addHitLine(bf, "player", t.x, t.y, tx, ty);
+          for (const a of aliens) {
+            const d = Math.abs(a.x - tx) + Math.abs(a.y - ty);
+            if (d <= 1) { a.hp -= dmg; changed = true; }
           }
-          for(const s of spines){
-            if(s.hp<=0) continue;
-            const d = Math.abs(s.x - tx)+Math.abs(s.y - ty);
-            if(d<=1) chainTargets.push({type:"spine", ref:s});
+          for (const s of spines) {
+            const d = Math.abs(s.x - tx) + Math.abs(s.y - ty);
+            if (d <= 1) { s.hp -= dmg; changed = true; }
           }
-          if(chainTargets.length===0){
-            chainTargets.push({type:targetInfo.type, ref:targetInfo.enemy});
-          }
-          chainTargets.slice(0,3).forEach(tObj=>{
-            addHitLine(bf,"player",tw.x,tw.y,tObj.ref.x,tObj.ref.y);
-            tObj.ref.hp -= dmg;
-          });
-          changed = true;
-        }else{
-          addHitLine(bf,"player",tw.x,tw.y,targetInfo.enemy.x,targetInfo.enemy.y);
+        } else {
+          addHitLine(bf, "player", t.x, t.y, targetInfo.enemy.x, targetInfo.enemy.y);
           targetInfo.enemy.hp -= dmg;
           changed = true;
         }
       }
-
-      for(const s of spines){
-        if(s.hp<=0) continue;
-        s.cooldown = (s.cooldown||0) - 1;
-        if(s.cooldown > 0) continue;
-
-        const range = s.range || 3;
-        const variant = s.variant || "piercer";
-
-        const inRangeTroops = [];
-        const inRangeTowers = [];
-        for(const t of troops){
-          if(t.hp<=0) continue;
-          const d = Math.abs(t.x - s.x)+Math.abs(t.y - s.y);
-          if(d <= range) inRangeTroops.push(t);
-        }
-        for(const tw of towers){
-          if(tw.hp<=0) continue;
-          const d = Math.abs(tw.x - s.x)+Math.abs(tw.y - s.y);
-          if(d <= range) inRangeTowers.push(tw);
-        }
-
-        if(variant === "shredder"){
-          let swung = false;
-          const dmgLow = s.dmg || 1;
-          for(const t of inRangeTroops){
-            let finalDmg = dmgLow;
-            const shield = shieldMap[t.id] || 1;
-            finalDmg = Math.max(1, Math.round(finalDmg * shield));
-            t.hp -= finalDmg;
-            addHitLine(bf,"enemy",s.x,s.y,t.x,t.y);
-            swung = true;
-          }
-          for(const tw of inRangeTowers){
-            let finalDmg = dmgLow;
-            const shield = shieldMap[tw.id] || 1;
-            finalDmg = Math.max(1, Math.round(finalDmg * shield));
-            tw.hp -= finalDmg;
-            addHitLine(bf,"enemy",s.x,s.y,tw.x,tw.y);
-            swung = true;
-          }
-          if(swung){
-            s.cooldown = s.cooldownMax || 3;
-            changed = true;
-          }
-        }else{
-          let best=null, bestD=999, bestType=null;
-          for(const t of inRangeTroops){
-            const d = Math.abs(t.x - s.x)+Math.abs(t.y - s.y);
-            if(d<bestD){ best=t; bestD=d; bestType="troop"; }
-          }
-          for(const tw of inRangeTowers){
-            const d = Math.abs(tw.x - s.x)+Math.abs(tw.y - s.y);
-            if(d<bestD){ best=tw; bestD=d; bestType="tower"; }
-          }
-          if(best){
-            let finalDmg = s.dmg || 3;
-            const shield = shieldMap[best.id] || 1;
-            finalDmg = Math.max(1, Math.round(finalDmg * shield));
-            best.hp -= finalDmg;
-            if(bestType==="troop"){
-              best.poisonTicks = Math.max(best.poisonTicks||0, s.poisonTicks || 5);
-            }
-            addHitLine(bf,"enemy",s.x,s.y,best.x,best.y);
-            s.cooldown = s.cooldownMax || 3;
-            changed = true;
-          }
-        }
-      }
-
-      for(const a of aliens){
-        const newX = a.x-1;
-        if(newX>=0){
-          a.x = newX;
-          changed = true;
-        }
-      }
-
-      for(const a of aliens){
-        const def = ENEMIES[a.type] || ENEMIES.bug;
-        const dmg = def.dmg || 2;
-        let bestEntity=null, bestD=2, bestType=null;
-
-        for(const t of troops){
-          if(t.hp<=0) continue;
-          const d = Math.abs(t.x - a.x)+Math.abs(t.y - a.y);
-          if(d<=1 && d<bestD){ bestEntity=t; bestD=d; bestType="troop"; }
-        }
-        for(const tw of towers){
-          if(tw.hp<=0) continue;
-          const d = Math.abs(tw.x - a.x)+Math.abs(tw.y - a.y);
-          if(d<=1 && d<bestD){ bestEntity=tw; bestD=d; bestType="tower"; }
-        }
-
-        if(bestEntity){
-          const shield = shieldMap[bestEntity.id] || 1;
-          let finalDmg = Math.max(1, Math.round(dmg * shield));
-          bestEntity.hp -= finalDmg;
-          addHitLine(bf,"enemy",a.x,a.y,bestEntity.x,bestEntity.y);
-          changed = true;
-        }
-      }
-
-      for(const a of aliens){
-        if(a.hp<=0) a.dead = true;
-      }
-      bf.aliens = aliens.filter(a=>!a.dead);
-
-      for(const s of spines){
-        if(s.hp<=0) s.dead=true;
-      }
-      bf.spines = spines.filter(s=>!s.dead);
-
-      for(const t of troops){
-        if(t.hp<=0) t.dead=true;
-      }
-      bf.troops = troops.filter(t=>!t.dead);
-
-      for(const tw of towers){
-        if(tw.hp<=0) tw.dead=true;
-      }
-      bf.towers = towers.filter(tw=>!tw.dead);
-
-      return {changed};
     }
+  }
+
+  // --- TOWER ATTACKS ---
+  for (const tw of towers) {
+    if (tw.kind === "generator") continue; // generator doesn't attack
+    const def = TOWERS[tw.kind] || TOWERS.laser;
+    if (def.shield || def.buff) continue;
+
+    const range = def.range || 3;
+    const targetInfo = nearestEnemyFrom(tw.x, tw.y, range);
+    if (!targetInfo) continue;
+
+    let dmg = def.dmg || 2;
+    const buff = damageBuffMap[tw.id] || 1;
+    dmg = Math.round(dmg * buff);
+
+    if (def.chain) {
+      const tx = targetInfo.enemy.x;
+      const ty = targetInfo.enemy.y;
+      const chainTargets = [];
+      for (const a of aliens) {
+        if (a.hp <= 0) continue;
+        const d = Math.abs(a.x - tx) + Math.abs(a.y - ty);
+        if (d <= 1) chainTargets.push({ type: "alien", ref: a });
+      }
+      for (const s of spines) {
+        if (s.hp <= 0) continue;
+        const d = Math.abs(s.x - tx) + Math.abs(s.y - ty);
+        if (d <= 1) chainTargets.push({ type: "spine", ref: s });
+      }
+      if (chainTargets.length === 0) {
+        chainTargets.push({ type: targetInfo.type, ref: targetInfo.enemy });
+      }
+      chainTargets.slice(0, 3).forEach(tObj => {
+        addHitLine(bf, "player", tw.x, tw.y, tObj.ref.x, tObj.ref.y);
+        tObj.ref.hp -= dmg;
+      });
+      changed = true;
+    } else {
+      addHitLine(bf, "player", tw.x, tw.y, targetInfo.enemy.x, targetInfo.enemy.y);
+      targetInfo.enemy.hp -= dmg;
+      changed = true;
+    }
+  }
+
+  // --- SPINE ATTACKS (enemy towers) ---
+  for (const s of spines) {
+    if (s.hp <= 0) continue;
+    s.cooldown = (s.cooldown || 0) - 1;
+    if (s.cooldown > 0) continue;
+
+    const range = s.range || 3;
+    const variant = s.variant || "piercer";
+
+    const inRangeTroops = [];
+    const inRangeTowers = [];
+    for (const t of troops) {
+      if (t.hp <= 0) continue;
+      const d = Math.abs(t.x - s.x) + Math.abs(t.y - s.y);
+      if (d <= range) inRangeTroops.push(t);
+    }
+    for (const tw of towers) {
+      if (tw.hp <= 0) continue;
+      const d = Math.abs(tw.x - s.x) + Math.abs(tw.y - s.y);
+      if (d <= range) inRangeTowers.push(tw);
+    }
+
+    if (variant === "shredder") {
+      let swung = false;
+      const dmgLow = s.dmg || 1;
+      for (const t of inRangeTroops) {
+        let finalDmg = dmgLow;
+        const shield = shieldMap[t.id] || 1;
+        finalDmg = Math.max(1, Math.round(finalDmg * shield));
+        t.hp -= finalDmg;
+        addHitLine(bf, "enemy", s.x, s.y, t.x, t.y);
+        swung = true;
+      }
+      for (const tw of inRangeTowers) {
+        let finalDmg = dmgLow;
+        const shield = shieldMap[tw.id] || 1;
+        finalDmg = Math.max(1, Math.round(finalDmg * shield));
+        tw.hp -= finalDmg;
+        addHitLine(bf, "enemy", s.x, s.y, tw.x, tw.y);
+        swung = true;
+      }
+      if (swung) {
+        s.cooldown = s.cooldownMax || 3;
+        changed = true;
+      }
+    } else {
+      let best = null, bestD = 999, bestType = null;
+      for (const t of inRangeTroops) {
+        const d = Math.abs(t.x - s.x) + Math.abs(t.y - s.y);
+        if (d < bestD) { best = t; bestD = d; bestType = "troop"; }
+      }
+      for (const tw of inRangeTowers) {
+        const d = Math.abs(tw.x - s.x) + Math.abs(tw.y - s.y);
+        if (d < bestD) { best = tw; bestD = d; bestType = "tower"; }
+      }
+      if (best) {
+        let finalDmg = s.dmg || 3;
+        const shield = shieldMap[best.id] || 1;
+        finalDmg = Math.max(1, Math.round(finalDmg * shield));
+        best.hp -= finalDmg;
+        if (bestType === "troop") {
+          best.poisonTicks = Math.max(best.poisonTicks || 0, s.poisonTicks || 5);
+        }
+        addHitLine(bf, "enemy", s.x, s.y, best.x, best.y);
+        s.cooldown = s.cooldownMax || 3;
+        changed = true;
+      }
+    }
+  }
+
+  // --- ALIEN MELEE (no more simple left-walk here) ---
+  for (const a of aliens) {
+    const def = ENEMIES[a.type] || ENEMIES.bug;
+    const dmg = def.dmg || 2;
+    let bestEntity = null, bestD = 2, bestType = null;
+
+    for (const t of troops) {
+      if (t.hp <= 0) continue;
+      const d = Math.abs(t.x - a.x) + Math.abs(t.y - a.y);
+      if (d <= 1 && d < bestD) { bestEntity = t; bestD = d; bestType = "troop"; }
+    }
+    for (const tw of towers) {
+      if (tw.hp <= 0) continue;
+      const d = Math.abs(tw.x - a.x) + Math.abs(tw.y - a.y);
+      if (d <= 1 && d < bestD) { bestEntity = tw; bestD = d; bestType = "tower"; }
+    }
+
+    if (bestEntity) {
+      const shield = shieldMap[bestEntity.id] || 1;
+      let finalDmg = Math.max(1, Math.round(dmg * shield));
+      bestEntity.hp -= finalDmg;
+      addHitLine(bf, "enemy", a.x, a.y, bestEntity.x, bestEntity.y);
+      changed = true;
+    }
+  }
+
+  // --- CLEANUP DEATHS ---
+  for (const a of aliens) { if (a.hp <= 0) a.dead = true; }
+  bf.aliens = aliens.filter(a => !a.dead);
+
+  for (const s of spines) { if (s.hp <= 0) s.dead = true; }
+  bf.spines = spines.filter(s => !s.dead);
+
+  for (const t of troops) { if (t.hp <= 0) t.dead = true; }
+  bf.troops = troops.filter(t => !t.dead);
+
+  for (const tw of towers) { if (tw.hp <= 0) tw.dead = true; }
+  bf.towers = towers.filter(tw => !tw.dead);
+
+  return { changed };
+}
+
 
     // ---------------- BATTLE UI ----------------
     function buildBattleBars(){
@@ -2027,6 +2127,7 @@
   </script>
 </body>
 </html>
+
 
 
 
