@@ -566,146 +566,147 @@
     });
 
     // ---------- JOIN / INIT GAME ----------
-    async function joinGame(){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const gameSnap = await tx.get(gameRef);
-          const isNew = !gameSnap.exists();
-          let gameData = isNew ? null : gameSnap.data();
+async function joinGame(){
+  try{
+    await runTransaction(db, async (tx)=>{
+      // 🔹 READS FIRST (no writes before these)
+      const gameSnap = await tx.get(gameRef);
+      const isNew = !gameSnap.exists();
+      let gameData = isNew ? null : gameSnap.data();
 
-          if(isNew){
-            // create game
-            gameData = {
-              createdAt: serverTimestamp(),
-              hostUid: currentUser.uid,
-              status: "running",
-              timeSeconds: 0,
-              baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-              baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-              slotAUid: currentUser.uid,
-              slotBUid: null,
-              winnerSide: null
-            };
-            tx.set(gameRef, gameData);
+      const playerSnap = await tx.get(playerRef); // <-- moved BEFORE any tx.set/tx.update
 
-            // init nodes
-            for(let y=0;y<GRID_SIZE;y++){
-              for(let x=0;x<GRID_SIZE;x++){
-                const id = nodeKey(y,x);
-                const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
-                const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
-                const eco = isEco(x,y);
-                let type = "normal";
-                if(baseA) type = "baseA";
-                else if(baseB) type = "baseB";
-                else if(eco) type = "eco";
+      // 🔹 Now we can safely write
+      if(isNew){
+        // create game
+        gameData = {
+          createdAt: serverTimestamp(),
+          hostUid: currentUser.uid,
+          status: "running",
+          timeSeconds: 0,
+          baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+          baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+          slotAUid: currentUser.uid,
+          slotBUid: null,
+          winnerSide: null
+        };
+        tx.set(gameRef, gameData);
 
-                const nodeDocRef = doc(nodesCol, id);
-                const buildings = [];
-                if(baseA){
-                  buildings.push({
-                    id:"castleA",
-                    owner:"A",
-                    kind:"castle",
-                    x,y,
-                    hp:CASTLE_HP,
-                    maxHp:CASTLE_HP
-                  });
-                }
-                if(baseB){
-                  buildings.push({
-                    id:"castleB",
-                    owner:"B",
-                    kind:"castle",
-                    x,y,
-                    hp:CASTLE_HP,
-                    maxHp:CASTLE_HP
-                  });
-                }
+        // init nodes
+        for(let y=0;y<GRID_SIZE;y++){
+          for(let x=0;x<GRID_SIZE;x++){
+            const id = nodeKey(y,x);
+            const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
+            const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
+            const eco = isEco(x,y);
+            let type = "normal";
+            if(baseA) type = "baseA";
+            else if(baseB) type = "baseB";
+            else if(eco) type = "eco";
 
-                tx.set(nodeDocRef,{
-                  id,
-                  row:y,
-                  col:x,
-                  type,
-                  units:[],
-                  buildings
-                });
-              }
+            const nodeDocRef = doc(nodesCol, id);
+            const buildings = [];
+            if(baseA){
+              buildings.push({
+                id:"castleA",
+                owner:"A",
+                kind:"castle",
+                x,y,
+                hp:CASTLE_HP,
+                maxHp:CASTLE_HP
+              });
             }
-          }
+            if(baseB){
+              buildings.push({
+                id:"castleB",
+                owner:"B",
+                kind:"castle",
+                x,y,
+                hp:CASTLE_HP,
+                maxHp:CASTLE_HP
+              });
+            }
 
-          // assign side for this player
-          const playerSnap = await tx.get(playerRef);
-          let side = "spectator";
-          if(gameData.slotAUid === currentUser.uid){
-            side = "A";
-          }else if(gameData.slotBUid === currentUser.uid){
-            side = "B";
-          }else if(!gameData.slotAUid){
-            side = "A";
-            tx.update(gameRef,{slotAUid: currentUser.uid});
-          }else if(!gameData.slotBUid){
-            side = "B";
-            tx.update(gameRef,{slotBUid: currentUser.uid});
-          }else{
-            side = "spectator";
-          }
-
-          if(!playerSnap.exists()){
-            tx.set(playerRef,{
-              uid: currentUser.uid,
-              name: displayName,
-              side,
-              gold: 40,
-              footmanPts: 0,
-              raiderPts: 0,
-              advancedPts: 0,
-              joinedAt: serverTimestamp()
-            });
-          }else{
-            tx.update(playerRef,{
-              name: displayName,
-              side
+            tx.set(nodeDocRef,{
+              id,
+              row:y,
+              col:x,
+              type,
+              units:[],
+              buildings
             });
           }
-        });
-
-        // watch game
-        onSnapshot(gameRef,(snap)=>{
-          if(!snap.exists()) return;
-          latestGame = snap.data();
-          renderMeta();
-          syncHostRole();
-        });
-
-        // watch player
-        onSnapshot(playerRef,(snap)=>{
-          if(!snap.exists()) return;
-          myPlayer = snap.data();
-          sideLabel.textContent =
-            myPlayer.side==="A" ? "P1" :
-            myPlayer.side==="B" ? "P2" :
-            "Spectator";
-          renderResources();
-        });
-
-        // watch nodes
-        onSnapshot(nodesCol,(snap)=>{
-          nodesState = {};
-          snap.forEach(d=>{
-            nodesState[d.id] = d.data();
-          });
-          renderBoard();
-          renderResources();
-        });
-
-        log("Joined Firebase game: "+gameId);
-      }catch(e){
-        console.error(e);
-        alert("Error joining game: "+e.message);
+        }
       }
-    }
+
+      // 🔹 Assign side for this player (A/B/spec)
+      let side = "spectator";
+      if(gameData.slotAUid === currentUser.uid){
+        side = "A";
+      }else if(gameData.slotBUid === currentUser.uid){
+        side = "B";
+      }else if(!gameData.slotAUid){
+        side = "A";
+        tx.update(gameRef,{slotAUid: currentUser.uid});
+      }else if(!gameData.slotBUid){
+        side = "B";
+        tx.update(gameRef,{slotBUid: currentUser.uid});
+      }else{
+        side = "spectator";
+      }
+
+      if(!playerSnap.exists()){
+        tx.set(playerRef,{
+          uid: currentUser.uid,
+          name: displayName,
+          side,
+          gold: 40,
+          footmanPts: 0,
+          raiderPts: 0,
+          advancedPts: 0,
+          joinedAt: serverTimestamp()
+        });
+      }else{
+        tx.update(playerRef,{
+          name: displayName,
+          side
+        });
+      }
+    });
+
+    // 🔹 listeners (unchanged)
+    onSnapshot(gameRef,(snap)=>{
+      if(!snap.exists()) return;
+      latestGame = snap.data();
+      renderMeta();
+      syncHostRole();
+    });
+
+    onSnapshot(playerRef,(snap)=>{
+      if(!snap.exists()) return;
+      myPlayer = snap.data();
+      sideLabel.textContent =
+        myPlayer.side==="A" ? "P1" :
+        myPlayer.side==="B" ? "P2" :
+        "Spectator";
+      renderResources();
+    });
+
+    onSnapshot(nodesCol,(snap)=>{
+      nodesState = {};
+      snap.forEach(d=>{
+        nodesState[d.id] = d.data();
+      });
+      renderBoard();
+      renderResources();
+    });
+
+    log("Joined Firebase game: "+gameId);
+  }catch(e){
+    console.error(e);
+    alert("Error joining game: "+e.message);
+  }
+}
 
     // ---------- META / HOST ----------
     function renderMeta(){
@@ -1334,6 +1335,7 @@
   </script>
 </body>
 </html>
+
 
 
 
