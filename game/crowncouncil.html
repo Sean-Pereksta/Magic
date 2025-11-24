@@ -320,8 +320,11 @@
 
 <script type="module">
 /* ---------------- Firebase ---------------- */
+// NOTE: Make sure your Firestore rules allow access to
+// /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/state
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -331,10 +334,25 @@ const firebaseConfig = {
   messagingSenderId: "959619818996",
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
 
-/* --------- safe deep clone (fix structuredClone issues) ---------- */
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+// 🔐 Sign in anonymously
+signInAnonymously(auth).catch((error) => {
+  console.error("Anon sign-in failed", error);
+});
+
+// Optional: don’t start listeners until we’re signed in
+onAuthStateChanged(auth, (user) => {
+  if (!user) return;
+  console.log("Signed in as anon uid:", user.uid);
+  // you can start lobby/state listeners here if you want to be strict
+});
+
+
+/* --------- safe deep clone ---------- */
 function deepClone(obj){
   if (typeof structuredClone === "function") {
     return structuredClone(obj);
@@ -346,13 +364,20 @@ function deepClone(obj){
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
-if (!gameId || !username){ alert("Missing gameId or username."); }
+if (!gameId || !username){ alert("Missing gameId or username in URL."); }
 
 const lobbyRef = doc(db,"lobbies",gameId);
 const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
 
 /* ---------------- Pace / sizes ---------------- */
-const PACE = { tickMs: 560, atkMult: 2.35, moveSteps: 1, poisonDotMs: 900, poisonSlowMs: 1100, toxicDotMs: 1000 };
+const PACE = {
+  tickMs: 560,
+  atkMult: 2.35,
+  moveSteps: 1,
+  poisonDotMs: 900,
+  poisonSlowMs: 1100,
+  toxicDotMs: 1000
+};
 const VIEW_MS  = 120;   // publish + render cadence
 const LOGIC_MS = 560;   // core logic cadence
 const MOVE_MS  = 560;   // gate movement per unit
@@ -384,12 +409,14 @@ new ResizeObserver(fitBoard).observe(viewport);
 
 /* pointer pan */
 let dragging=false, last={x:0,y:0};
-viewport.addEventListener("pointerdown", e=>{ dragging=true; last={x:e.clientX,y:e.clientY}; });
+viewport.addEventListener("pointerdown", e=>{
+  dragging=true; last={x:e.clientX,y:e.clientY};
+});
 viewport.addEventListener("pointermove", e=>{
   if(!dragging) return;
   const dx=e.clientX-last.x, dy=e.clientY-last.y;
   pan.x+=dx; pan.y+=dy; applyTransform();
-  last={x:e.clientX,y=e.clientY};
+  last={x:e.clientX,y:e.clientY};
 });
 viewport.addEventListener("pointerup", ()=>{ dragging=false; });
 viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
@@ -414,7 +441,7 @@ async function ensureStateExists(){
       const now = Date.now();
 
       tx.set(stateRef, {
-        players,
+        players: players,
         lives: [4, 4],
         phase: players.length < 2 ? "waiting" : "faction-select",
         phaseEndsAt: players.length < 2 ? 0 : now + 20000,
@@ -464,16 +491,18 @@ function buildBoard(){
 buildBoard();
 
 /* ---------------- Units & data ---------------- */
-const R = (hp,dmg,range,cd)=>({hp,dmg,range,cd});
-const M = (hp,dmg,cd)=>({hp,dmg,range:1,cd});
+const R = (hp,dmg,range,cd)=>({hp:hp,dmg:dmg,range:range,cd:cd});
+const M = (hp,dmg,cd)=>({hp:hp,dmg:dmg,range:1,cd:cd});
 
 const TROOPS = {
   /* Vanir */
-  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:{...R(7,2,6,1050)}, spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:{...R(8,6,10,2100), splash1:true, knock:true} },
-  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:{...M(20,5,800)}, splash1:true },
-  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:{...M(16,3,800), spd:2, hunterRanged:true}, spawn:2 },
-  medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",  base:{ hp:10, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }},
+  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:R(7,2,6,1050), spawn:2 },
+  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(8,6,10,2100),{splash1:true,knock:true}) },
+  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(20,5,800),{splash1:true}) },
+  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(16,3,800),{spd:2,hunterRanged:true}), spawn:2 },
+  medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",
+    base:{ hp:10, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }
+  },
 
   suppressor:{ faction:"Vanir", name:"Suppressor", emoji:"🧯", role:"back",
     base:{ hp:7, dmg:1, range:3, cd:850, spd:1 },
@@ -489,10 +518,10 @@ const TROOPS = {
   },
 
   /* Aesir */
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:{...R(6,2,4,800), blink50:true}, spawn:2 },
-  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:{...M(12,6,700), spd:2}, spawn:2 },
-  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:{...R(7,3,3,1100), chain3:true} },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:{...M(20,6,900), splash1:true, knock:true, strongKnock:true}, size:1 },
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,2,4,800),{blink50:true}), spawn:2 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(12,6,700),{spd:2}), spawn:2 },
+  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(7,3,3,1100),{chain3:true}) },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(20,6,900),{splash1:true,knock:true,strongKnock:true}), size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
     base:{ hp:9, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:6000, wardHp:4 },
     wardHealAmt:2, wardHealRange:3, wardHealCd:1500
@@ -507,10 +536,10 @@ const TROOPS = {
   },
 
   /* Helions */
-  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:{...M(8,2,500), spd:3}, spawn:4 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:{...R(11,3,3,1000)}, spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:{...M(22,4,900), splash1:true, toxicSplash:true}, size:1 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:{...M(9,3,0), kamikaze:true, paints:true}, spawn:2 },
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(8,2,500),{spd:3}), spawn:4 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(11,3,3,1000),{}), spawn:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(22,4,900),{splash1:true,toxicSplash:true}), size:1 },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,3,0),{kamikaze:true,paints:true}), spawn:2 },
   matron:{
     faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
     base:{ hp:18, dmg:1, range:3, cd:1200 },
@@ -520,12 +549,12 @@ const TROOPS = {
   },
   viper:{
     faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
-    base:{ ...M(8,14,2000), spd:2 },
+    base:{ hp:8, dmg:14, range:1, cd:2000, spd:2 },
     hunterRanged:true,
     viperLeap:true,
     leapDist:2, spawn:2
   },
-  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:{...R(8,3,5,1200), acid:true, acidDur:3500} }
+  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(8,3,5,1200),{acid:true,acidDur:3500}) }
 };
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap"],
@@ -539,76 +568,291 @@ const pKey = (i)=> i===0 ? "p0" : "p1";
 const idx=(x,y)=> y*W+x;
 const inside=(x,y)=> x>=0 && x<W && y>=0 && y<H;
 
-/* rank color map */
 function rankColor(lvl){
-  if (lvl===3) return getComputedStyle(document.documentElement).getPropertyValue('--rank3') || '#ef4444';
-  if (lvl===2) return getComputedStyle(document.documentElement).getPropertyValue('--rank2') || '#eab308';
-  return getComputedStyle(document.documentElement).getPropertyValue('--rank1') || '#22c55e';
+  const root = document.documentElement;
+  if (lvl===3) return getComputedStyle(root).getPropertyValue('--rank3') || '#ef4444';
+  if (lvl===2) return getComputedStyle(root).getPropertyValue('--rank2') || '#eab308';
+  return getComputedStyle(root).getPropertyValue('--rank1') || '#22c55e';
 }
 
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
-function wardsHeal(st, now){
-  const wards = st.field.wards || [];
-  for (const w of wards){
-    if (!w.heal || w.hp<=0 || w.until<=now) continue;
-    if (now < (w.nextHeal||0)) continue;
+let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
 
-    let tgt = null, minRatio = 1.01;
-    for (const v of st.field.units){
-      if (v.hp<=0) continue;
-      if (w.p!=null && v.p !== w.p) continue;
-      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
-      if (d <= (w.hRange||3)){
-        const r = v.hp / v.maxhp;
-        if (r < 1 && r < minRatio){ minRatio = r; tgt = v; }
+/* 2×2 helpers */
+function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
+function rectangleFree(units,x,y,size){
+  for(let yy=0; yy<size; yy++){
+    for(let xx=0; xx<size; xx++){
+      const nx=x+xx, ny=y+yy;
+      if(!inside(nx,ny)) return false;
+      if (units.some(o=>{
+        const os=unitSize(o);
+        return nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os;
+      })) return false;
+    }
+  }
+  return true;
+}
+function canMoveTo(u, units, nx, ny){
+  const s = unitSize(u);
+  return rectangleFree(units.filter(o=>o.id!==u.id), nx, ny, s);
+}
+
+/* spawn bands */
+function bandRows(p, role){
+  if (p===0){
+    return role==="back" ? [H-1,H-2,H-3] : [H-6,H-5,H-4];
+  }else{
+    return role==="back" ? [0,1,2] : [3,4,5];
+  }
+}
+function spawnSlot(state,p,typeKey){
+  const t = TROOPS[typeKey];
+  const role = t ? t.role : "front";
+  const sz = t && t.size===2 ? 2 : 1;
+  const rows = bandRows(p, role);
+  for(const r of rows){
+    const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
+    for(const dx of order){
+      const x=Math.max(0,Math.min(W-sz,cx+dx));
+      const y=r;
+      if (rectangleFree(state.field.units, x, y, sz)) return {x:x,y:y};
+    }
+  }
+  if (p===0){
+    for(let y=H-1;y>=Math.max(0,H-8);y--){
+      for(let x=0;x<=W-sz;x++){
+        if (rectangleFree(state.field.units,x,y,sz)) return {x:x,y:y};
       }
     }
-    if (!tgt) continue;
+  }else{
+    for(let y=0; y<Math.min(H,8); y++){
+      for(let x=0;x<=W-sz;x++){
+        if (rectangleFree(state.field.units,x,y,sz)) return {x:x,y:y};
+      }
+    }
+  }
+  return {x:Math.max(0,Math.min(W-sz, Math.floor(W/2))), y:(p===0? H-2 : 1)};
+}
 
-    const amt = Math.max(1, w.hAmt|0);
-    tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
-    st.field.fx.push(fxHeal(w.x, w.y, tgt.x, tgt.y));
-    w.nextHeal = now + (w.hCd || 1500);
+function placeUnit(state,p,key,lvl){
+  const t=TROOPS[key]; if(!t) return;
+  const spawnCount = Math.max(1, t.spawn || 1);
+  for(let k=0;k<spawnCount;k++){
+    const pos=spawnSlot(state,p,key);
+    const b=t.base;
+    const size = t.size===2?2:1;
+    let maxhp = Math.round(b.hp || 10);
+    let dmg   = Math.round(b.dmg || 3);
+    const cd  = Math.round((b.cd || 600)*PACE.atkMult);
+    const spd = (typeof b.spd === "number" ? b.spd : 1);
+    const range = (typeof b.range === "number" ? b.range : 1);
+
+    /* +33% per level */
+    const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
+    maxhp = Math.round(maxhp * mult);
+    dmg   = Math.max(1, Math.round(dmg * mult));
+
+    const u={
+      id:crypto.randomUUID(), p:p, type:key, x:pos.x, y:pos.y, lvl:lvl,
+      maxhp:maxhp, hp:maxhp,
+      dmg:dmg, spd:spd, range:range,
+      cd:cd,
+      splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
+      blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
+      kamikaze:!!b.kamikaze, paints:!!b.paints, size:size,
+      heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
+      ward:!!b.ward, wardCd:b.wardCd||0, wardDur:b.wardDur||0, wardHp:b.wardHp||1,
+      acid:!!b.acid, acidDur:b.acidDur||0,
+      toxicSplash:!!b.toxicSplash,
+      nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
+      nextStep:0
+    };
+
+    // Level 3+ special hooks
+    if (key === "rifleman" && (lvl||1) >= 3){
+      u.cd = Math.round(u.cd * 0.7);
+    }
+    if (key === "matron" && (lvl||1) >= 3){
+      u.broodCd = Math.round((t.broodCd || 3500) * 0.7);
+    }
+
+    state.field.units.push(u);
   }
 }
 
-function wardsShoot(st, now){
-  const wards = st.field.wards || [];
-  for (const w of wards){
-    if (!w.shoot || w.hp<=0 || w.until<=now) continue;
-    if (now < (w.next||0)) continue;
+function rebuildFieldFromRoster(state){
+  if (!state.field) state.field = fieldEmpty();
+  state.field.units = [];
+  if (!state.field.poison) state.field.poison = [];
+  if (!state.field.toxic)  state.field.toxic  = [];
+  if (!state.field.acid)   state.field.acid   = [];
+  if (!state.field.wards)  state.field.wards  = [];
 
-    const maxT = w.maxTargets || 1;
-    const cand = [];
-    for (const v of st.field.units){
-      if (v.hp<=0) continue;
-      if (w.p!=null && v.p===w.p) continue;
-      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
-      if (d <= (w.wRange||3)) cand.push({v,d});
-    }
-    if (!cand.length) continue;
-    cand.sort((a,b)=>a.d-b.d);
-    const targets = cand.slice(0, maxT).map(c=>c.v);
-
-    for (const tgt of targets){
-      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
-      const raw = w.wDmg || 1;
-      const dmg = reduceDamageForTarget(raw, tgt, st.field);
-      applyDamage(tgt, dmg);
-    }
-    w.next = now + (w.wCd || 1400);
+  for(let p=0;p<2;p++){
+    const rk = pKey(p);
+    const roster = (state.roster && state.roster[rk]) ? state.roster[rk] : [];
+    const fronts = roster.filter(r=>TROOPS[r.type] && TROOPS[r.type].role==="front");
+    const backs  = roster.filter(r=>!TROOPS[r.type] || TROOPS[r.type].role!=="front");
+    for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
+    for(const r of backs ){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
   }
 }
 
+/* Draft packs */
+function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
+function weightedPick(pool, n){
+  const out=[]; const copy=pool.slice();
+  for(let k=0;k<n && copy.length;k++){
+    const sum = copy.reduce((a,b)=>a+b.w,0);
+    let r = Math.random()*sum, i=0;
+    for(; i<copy.length; i++){
+      r-=copy[i].w;
+      if(r<=0) break;
+    }
+    out.push(copy[i].item);
+    copy.splice(i,1);
+  }
+  return out;
+}
+function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
+function packFor(roster, faction){
+  const poolTypes = FACTIONS[faction] || [];
+
+  const troopCards = poolTypes.map(k=>({
+    type:"troop",
+    key:k,
+    name:TROOPS[k].name,
+    emoji: unitEmoji(k),
+    role:TROOPS[k].role
+  }));
+
+  const owned = Array.isArray(roster) ? roster : [];
+  const ownedTypesList      = owned.filter(r=>r.count>0).map(r=>r.type);
+  const ownedUpgradeable    = owned.filter(r=>r.count>0 && (r.lvl||1) < 3).map(r=>r.type);
+
+  const specials = [];
+  if (ownedTypesList.length){
+    if (ownedUpgradeable.length){
+      const up = ownedUpgradeable[Math.floor(Math.random()*ownedUpgradeable.length)];
+      specials.push({
+        type:"special", special:"upgrade", for:up,
+        name:"Upgrade "+TROOPS[up].name, emoji:"⬆️"
+      });
+    }
+    const db = ownedTypesList[Math.floor(Math.random()*ownedTypesList.length)];
+    specials.push({
+      type:"special", special:"double", for:db,
+      name:"Double "+TROOPS[db].name, emoji:"🃏"
+    });
+  }
+
+  const pool = [
+    ...troopCards.map(item=>({ item:item, w:3 })),
+    ...specials   .map(item=>({ item:item, w:1 }))
+  ];
+
+  return weightedPick(pool, 3);
+}
+
+/* Roster ops */
+function rosterAdd(roster, type, inc){
+  const incVal = (typeof inc === "number" ? inc : 1);
+  const f=roster.find(r=>r.type===type);
+  if (f) f.count+=incVal;
+  else roster.push({type:type, lvl:1, count:incVal});
+}
+function rosterDoubleOneSpecific(roster, type){
+  const f=roster.find(r=>r.type===type);
+  if(!f) return;
+  const add = Math.max(1,f.count);
+  f.count += add;
+}
+function rosterUpgradeOneSpecific(roster, type){
+  const f=roster.find(r=>r.type===type && (r.lvl||1)<3);
+  if(!f) return;
+  f.lvl = (f.lvl||1)+1;
+}
+
+/* VFX helpers */
+function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
+function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
+function fxBurst(cx,cy){     return { id:crypto.randomUUID(), type:"burst", cx:cx,cy:cy, at:Date.now(), ttl:700 }; }
+function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:450 }; }
+
+function centerPx(x,y){
+  const left = x*(CELL+GAP) + CELL/2;
+  const top  = y*(CELL+GAP) + CELL/2;
+  return {left:left, top:top};
+}
+function renderBeam(ev, heal){
+  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
+  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  const el=document.createElement("div"); el.className= heal? "hbeam" : "beam";
+  el.style.left = a.left + "px";
+  el.style.top  = a.top  + "px";
+  el.style.width = Math.max(1,len) + "px";
+  el.style.transform = "rotate("+ang+"rad)";
+  beamsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl);
+}
+function renderTransport(ev){
+  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
+  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  const el=document.createElement("div");
+  el.className = "tline";
+  el.style.left = a.left + "px";
+  el.style.top  = a.top  + "px";
+  el.style.width = Math.max(1, len) + "px";
+  el.style.transform = "rotate("+ang+"rad)";
+  beamsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl);
+}
+function renderBurst(ev){
+  for(let i=0;i<10;i++){
+    const dot=document.createElement("div"); dot.className="p";
+    const offx = (Math.random()*14-7), offy=(Math.random()*14-7);
+    const a=centerPx(ev.cx,ev.cy);
+    dot.style.left = (a.left + offx) + "px";
+    dot.style.top  = (a.top + offy) + "px";
+    partsEl.appendChild(dot);
+    setTimeout(()=>dot.remove(), ev.ttl);
+  }
+}
+function groundTickParticles(x,y, purple){
+  const a=centerPx(x,y);
+  for(let i=0;i<4;i++){
+    const dot=document.createElement("div"); dot.className="p";
+    if (purple) dot.classList.add("purple");
+    const offx = (Math.random()*10-5), offy=(Math.random()*6-3);
+    dot.style.left = (a.left + offx) + "px";
+    dot.style.top  = (a.top + offy) + "px";
+    partsEl.appendChild(dot);
+    setTimeout(()=>dot.remove(), 550);
+  }
+}
+function flashAt(x,y, dmgNum){
+  const i=idx(x,y); const cell=cellsEl.children[i]; if (!cell) return;
+  const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
+  setTimeout(()=>f.remove(), 140);
+  if (dmgNum>0){
+    const t=document.createElement("div"); t.className="dmg"; t.textContent="-"+dmgNum;
+    cell.appendChild(t); setTimeout(()=>t.remove(), 650);
+  }
+}
+
+/* ward helpers / aura */
 function auraDamageReduceFor(target, field){
   let reduce = 0;
-  for (const a of field.units || []) {
+  const units = field.units || [];
+  for (const a of units) {
     if (a.p !== target.p) continue;
     if (!a.auraReduce || a.hp <= 0) continue;
     const rng = a.auraRange || 0;
     if (rng > 0 && manhattan(a, target) <= rng) {
-      reduce = Math.max(reduce, a.auraReduce|0);
+      if (a.auraReduce > reduce) reduce = a.auraReduce|0;
     }
   }
   return reduce;
@@ -625,18 +869,19 @@ function spawnAdjacentUnit(st, parent, typeKey){
     [parent.x, parent.y-dir],
     [parent.x-1,parent.y-dir],[parent.x+1,parent.y-dir]
   ];
-  for (const [x,y] of candidates){
+  for (let k=0;k<candidates.length;k++){
+    const x=candidates[k][0], y=candidates[k][1];
     if (!inside(x,y)) continue;
     if (rectangleFree(st.field.units, x, y, size)){
       const b=t.base;
       const u={
-        id:crypto.randomUUID(), p:parent.p, type:typeKey, x, y, lvl:1,
+        id:crypto.randomUUID(), p:parent.p, type:typeKey, x:x, y:y, lvl:1,
         maxhp:Math.round(b.hp||8), hp:Math.round(b.hp||8),
-        dmg:Math.round(b.dmg||2), spd: b.spd ?? 1, range:b.range ?? 1,
-        cd: Math.round((b.cd ?? 700)*PACE.atkMult),
+        dmg:Math.round(b.dmg||2), spd: b.spd || 1, range:b.range || 1,
+        cd: Math.round((b.cd || 700)*PACE.atkMult),
         splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
         blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
-        kamikaze:!!b.kamikaze, paints:!!b.paints, size,
+        kamikaze:!!b.kamikaze, paints:!!b.paints, size:size,
         heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
         ward:false, acid:!!b.acid, acidDur:b.acidDur||0, toxicSplash:!!b.toxicSplash,
         nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
@@ -649,18 +894,20 @@ function spawnAdjacentUnit(st, parent, typeKey){
   return false;
 }
 function isBacklineUnit(v){
-  return (TROOPS[v.type]?.role === "back");
+  return (TROOPS[v.type] && TROOPS[v.type].role === "back");
 }
 
 function frontBlocked(u, units){
   const dir = (u.p===0? -1 : +1);
   const nx = u.x, ny = u.y + dir;
-  return units.some(o=>{
-    if (o.p === u.p) return false;
+  for (let k=0;k<units.length;k++){
+    const o=units[k];
+    if (o.p === u.p) continue;
     const os = unitSize(o);
     const blocks = nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os;
-    return blocks && (TROOPS[o.type]?.role === "front");
-  });
+    if (blocks && TROOPS[o.type] && TROOPS[o.type].role === "front") return true;
+  }
+  return false;
 }
 
 function attemptViperLeap(u, units, st){
@@ -685,7 +932,9 @@ function attemptViperLeap(u, units, st){
 }
 
 function broodTick(st, now){
-  for (const u of st.field.units){
+  const units = st.field.units || [];
+  for (let i=0;i<units.length;i++){
+    const u = units[i];
     if (!u.brood || u.hp<=0) continue;
     if (!u.nextBrood) u.nextBrood = 0;
     if (now >= u.nextBrood){
@@ -705,6 +954,26 @@ function reduceDamageForTarget(baseDmg, target, field){
   return dmg;
 }
 
+/* ward shields vs ranged */
+function tilesOnLine(x1,y1,x2,y2){
+  const tiles=[];
+  const dx=x2-x1, dy=y2-y1;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps===0){
+    tiles.push({x:Math.round(x1),y:Math.round(y1)});
+    return tiles;
+  }
+  const sx=dx/steps, sy=dy/steps;
+  let x=x1, y=y1;
+  for(let i=0;i<=steps;i++){
+    tiles.push({x:Math.round(x), y:Math.round(y)});
+    x+=sx; y+=sy;
+  }
+  return tiles;
+}
+function unitCenter(u){
+  return { x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2 };
+}
 function applyWardShields(attacker, target, rawDmg, field){
   const wards = field.wards || [];
   if (!wards.length || rawDmg <= 0) return rawDmg;
@@ -714,247 +983,19 @@ function applyWardShields(attacker, target, rawDmg, field){
   const now = Date.now();
   let dmg = rawDmg;
 
-  for (const w of wards){
+  for (let i=0;i<wards.length;i++){
+    const w=wards[i];
     if (w.hp <= 0 || w.until <= now) continue;
     if (w.p != null && w.p !== target.p) continue;
 
     const onPath = path.some(pt => pt.x === w.x && pt.y === w.y);
     if (!onPath) continue;
 
-    const reduce = w.shieldReduce != null ? w.shieldReduce : 2;
+    const reduce = (w.shieldReduce != null ? w.shieldReduce : 2);
     dmg = Math.max(0, dmg - reduce);
     w.hp -= 1;
   }
   return dmg;
-}
-
-let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
-const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
-
-/* 2×2 helpers */
-function unitSize(u){ return TROOPS[u.type]?.size===2 ? 2 : 1; }
-function rectangleFree(units,x,y,size){
-  for(let yy=0; yy<size; yy++){
-    for(let xx=0; xx<size; xx++){
-      const nx=x+xx, ny=y+yy;
-      if(!inside(nx,ny)) return false;
-      if (units.some(o=>{
-        const os=unitSize(o);
-        return nx>=o.x && nx<o.x+os && ny>=o.y && ny<o.y+os;
-      })) return false;
-    }
-  }
-  return true;
-}
-function canMoveTo(u, units, nx, ny){
-  const s = unitSize(u);
-  return rectangleFree(units.filter(o=>o.id!==u.id), nx, ny, s);
-}
-
-/* Spawns */
-function bandRows(p, role){
-  if (p===0){
-    return role==="back" ? [H-1,H-2,H-3] : [H-6,H-5,H-4];
-  }else{
-    return role==="back" ? [0,1,2] : [3,4,5];
-  }
-}
-function spawnSlot(state,p,typeKey){
-  const role = TROOPS[typeKey]?.role || "front";
-  const sz = TROOPS[typeKey]?.size===2 ? 2 : 1;
-  const rows = bandRows(p, role);
-  for(const r of rows){
-    const cx=Math.floor(W/2), order=[0,-1,1,-2,2,-3,3,-4,4];
-    for(const dx of order){
-      const x=Math.max(0,Math.min(W-sz,cx+dx));
-      const y=r;
-      if (rectangleFree(state.field.units, x, y, sz)) return {x,y};
-    }
-  }
-  if (p===0){
-    for(let y=H-1;y>=Math.max(0,H-8);y--) for(let x=0;x<=W-sz;x++) if (rectangleFree(state.field.units,x,y,sz)) return {x,y};
-  }else{
-    for(let y=0; y<Math.min(H,8); y++) for(let x=0;x<=W-sz;x++) if (rectangleFree(state.field.units,x,y,sz)) return {x,y};
-  }
-  return {x:Math.max(0,Math.min(W-sz, Math.floor(W/2))), y:(p===0? H-2 : 1)};
-}
-function placeUnit(state,p,key,lvl){
-  const t=TROOPS[key]; if(!t) return;
-  const spawnCount = Math.max(1, t.spawn||1);
-  for(let k=0;k<spawnCount;k++){
-    const pos=spawnSlot(state,p,key);
-    const b=t.base, size = t.size===2?2:1;
-    const u={
-      id:crypto.randomUUID(), p, type:key, x:pos.x, y:pos.y, lvl,
-      maxhp:Math.round((b.hp||10)), hp:Math.round((b.hp||10)),
-      dmg:Math.round((b.dmg||3)), spd: b.spd ?? 1, range:b.range ?? 1,
-      cd: Math.round((b.cd ?? 600)*PACE.atkMult),
-      splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
-      blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
-      kamikaze:!!b.kamikaze, paints:!!b.paints, size,
-      heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
-      ward:!!b.ward, wardCd:b.wardCd||0, wardDur:b.wardDur||0, wardHp:b.wardHp||1,
-      acid:!!b.acid, acidDur:b.acidDur||0,
-      toxicSplash:!!b.toxicSplash,
-      nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
-      nextStep:0
-    };
-
-    /* +33% per level */
-    const mult = 1 + 0.33 * Math.max(0, (lvl||1)-1);
-    u.maxhp = Math.round(u.maxhp*mult);
-    u.hp    = u.maxhp;
-    u.dmg   = Math.max(1, Math.round(u.dmg*mult));
-
-    // Level 3+ special hooks
-    if (key === "rifleman" && (lvl||1) >= 3){
-      u.cd = Math.round(u.cd * 0.7);
-    }
-    if (key === "matron" && (lvl||1) >= 3){
-      u.broodCd = Math.round((u.broodCd || TROOPS[key].broodCd || 3500) * 0.7);
-    }
-
-    state.field.units.push(u);
-  }
-}
-function rebuildFieldFromRoster(state){
-  state.field = state.field || fieldEmpty();
-  state.field.units = [];
-  state.field.poison = state.field.poison || [];
-  state.field.toxic  = state.field.toxic  || [];
-  state.field.acid   = state.field.acid   || [];
-  state.field.wards  = state.field.wards  || [];
-  for(let p=0;p<2;p++){
-    const rk = pKey(p);
-    const roster = (state.roster?.[rk]||[]);
-    const fronts = roster.filter(r=>TROOPS[r.type]?.role==="front");
-    const backs  = roster.filter(r=>TROOPS[r.type]?.role!=="front");
-    for(const r of fronts){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
-    for(const r of backs ){ for(let c=0;c<r.count;c++) placeUnit(state,p,r.type,r.lvl); }
-  }
-}
-
-/* Draft packs */
-function ownedTypes(roster){ return (roster||[]).filter(r=>r.count>0).map(r=>r.type); }
-function weightedPick(pool, n){
-  const out=[]; const copy=[...pool];
-  for(let k=0;k<n && copy.length;k++){
-    const sum = copy.reduce((a,b)=>a+b.w,0);
-    let r = Math.random()*sum, i=0;
-    for(; i<copy.length; i++){ r-=copy[i].w; if(r<=0) break; }
-    out.push(copy[i].item); copy.splice(i,1);
-  }
-  return out;
-}
-function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
-function packFor(roster, faction){
-  const poolTypes = FACTIONS[faction] || [];
-
-  const troopCards = poolTypes.map(k=>({
-    type:"troop",
-    key:k,
-    name:TROOPS[k].name,
-    emoji: unitEmoji(k),
-    role:TROOPS[k].role
-  }));
-
-  const owned = Array.isArray(roster) ? roster : [];
-  const ownedTypesList      = owned.filter(r=>r.count>0).map(r=>r.type);
-  const ownedUpgradeable= owned.filter(r=>r.count>0 && (r.lvl||1) < 3).map(r=>r.type);
-
-  const specials = [];
-  if (ownedTypesList.length){
-    if (ownedUpgradeable.length){
-      const up = ownedUpgradeable[Math.floor(Math.random()*ownedUpgradeable.length)];
-      specials.push({
-        type:"special", special:"upgrade", for:up,
-        name:`Upgrade ${TROOPS[up].name}`, emoji:"⬆️"
-      });
-    }
-    const db = ownedTypesList[Math.floor(Math.random()*ownedTypesList.length)];
-    specials.push({
-      type:"special", special:"double", for:db,
-      name:`Double ${TROOPS[db].name}`, emoji:"🃏"
-    });
-  }
-
-  const pool = [
-    ...troopCards.map(item=>({ item, w:3 })),
-    ...specials   .map(item=>({ item, w:1 }))
-  ];
-
-  return weightedPick(pool, 3);
-}
-
-/* Roster ops */
-function rosterAdd(roster, type, inc=1){ const f=roster.find(r=>r.type===type); if (f) f.count+=inc; else roster.push({type, lvl:1, count:inc}); }
-function rosterDoubleOneSpecific(roster, type){ const f=roster.find(r=>r.type===type); if(!f) return; f.count += Math.max(1,f.count); }
-function rosterUpgradeOneSpecific(roster, type){ const f=roster.find(r=>r.type===type && r.lvl<3); if(!f) return; f.lvl++; }
-
-/* VFX helpers */
-function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
-function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1,y1,x2,y2, at:Date.now(), ttl:350 }; }
-function fxBurst(cx,cy){ return { id:crypto.randomUUID(), type:"burst", cx,cy, at:Date.now(), ttl:700 }; }
-function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1,y1,x2,y2, at:Date.now(), ttl:450 }; }
-
-function centerPx(x,y){
-  const left = x*(CELL+GAP) + CELL/2;
-  const top  = y*(CELL+GAP) + CELL/2;
-  return {left, top};
-}
-function renderBeam(ev, heal=false){
-  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
-  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
-  const el=document.createElement("div"); el.className= heal? "hbeam" : "beam";
-  el.style.left = a.left + "px";
-  el.style.top  = a.top  + "px";
-  el.style.width = Math.max(1,len) + "px";
-  el.style.transform = `rotate(${ang}rad)`;
-  beamsEl.appendChild(el);
-  setTimeout(()=>el.remove(), ev.ttl);
-}
-function renderTransport(ev){
-  const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
-  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
-  const el=document.createElement("div");
-  el.className = "tline";
-  el.style.left = a.left + "px";
-  el.style.top  = a.top  + "px";
-  el.style.width = Math.max(1, len) + "px";
-  el.style.transform = `rotate(${ang}rad)`;
-  beamsEl.appendChild(el);
-  setTimeout(()=>el.remove(), ev.ttl);
-}
-function renderBurst(ev){
-  for(let i=0;i<10;i++){
-    const dot=document.createElement("div"); dot.className="p";
-    const offx = (Math.random()*14-7), offy=(Math.random()*14-7);
-    const a=centerPx(ev.cx,ev.cy);
-    dot.style.left = (a.left + offx) + "px";
-    dot.style.top  = (a.top + offy) + "px";
-    partsEl.appendChild(dot);
-    setTimeout(()=>dot.remove(), ev.ttl);
-  }
-}
-function groundTickParticles(x,y, purple=false){
-  const a=centerPx(x,y);
-  for(let i=0;i<4;i++){
-    const dot=document.createElement("div"); dot.className="p"; if (purple) dot.classList.add("purple");
-    const offx = (Math.random()*10-5), offy=(Math.random()*6-3);
-    dot.style.left = (a.left + offx) + "px";
-    dot.style.top  = (a.top + offy) + "px";
-    partsEl.appendChild(dot);
-    setTimeout(()=>dot.remove(), 550);
-  }
-}
-function flashAt(x,y, dmgNum){
-  const i=idx(x,y); const cell=cellsEl.children[i]; if (!cell) return;
-  const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
-  setTimeout(()=>f.remove(), 140);
-  if (dmgNum>0){
-    const t=document.createElement("div"); t.className="dmg"; t.textContent=`-${dmgNum}`;
-    cell.appendChild(t); setTimeout(()=>t.remove(), 650);
-  }
 }
 
 /* Painting board — BY RANK color */
@@ -984,33 +1025,42 @@ function paint(units, field){
   (field.poison||[]).forEach(p=>{
     if (p.until <= now) return;
     const d = cellsEl.children[idx(p.x,p.y)]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"), { className:"poison" }));
+    const el = document.createElement("div");
+    el.className="poison";
+    d.appendChild(el);
   });
   (field.toxic||[]).forEach(t=>{
     if (t.until <= now) return;
     const d = cellsEl.children[idx(t.x,t.y)]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"), { className:"toxic" }));
+    const el = document.createElement("div");
+    el.className="toxic";
+    d.appendChild(el);
   });
   (field.acid||[]).forEach(a=>{
     if (a.until <= now) return;
     const d = cellsEl.children[idx(a.x,a.y)]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"), { className:"acid" }));
+    const el = document.createElement("div");
+    el.className="acid";
+    d.appendChild(el);
   });
   (field.wards||[]).forEach(w=>{
     if (w.until <= now || w.hp <= 0) return;
     const d = cellsEl.children[idx(w.x,w.y)]; if (!d) return;
-    d.appendChild(Object.assign(document.createElement("div"), { className:"ward" }));
+    const el = document.createElement("div");
+    el.className="ward";
+    d.appendChild(el);
   });
 
-  for (const u of units){
+  for (let i=0;i<units.length;i++){
+    const u = units[i];
     const s = unitSize(u);
-    const color = (rankColor(u.lvl||1).trim() || '#22c55e');
+    const color = (rankColor(u.lvl||1).trim() || "#22c55e");
 
     for (let yy=0; yy<s; yy++){
       for (let xx=0; xx<s; xx++){
         const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
         const under = d.querySelector(".under"); if (!under) continue;
-        under.style.background = `radial-gradient(circle at top,${color},${color})`;
+        under.style.background = "radial-gradient(circle at top,"+color+","+color+")";
       }
     }
 
@@ -1027,7 +1077,8 @@ function paint(units, field){
     if (hpFill){
       hpFill.classList.toggle("team0", u.p === 0);
       hpFill.classList.toggle("team1", u.p === 1);
-      hpFill.style.width = Math.max(0, Math.round(100 * u.hp / u.maxhp)) + "%";
+      const pct = Math.max(0, Math.round(100 * u.hp / u.maxhp));
+      hpFill.style.width = pct + "%";
     }
 
     const statusEl = d0.querySelector(".status");
@@ -1038,29 +1089,29 @@ function paint(units, field){
       if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
       if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
       if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
-      statusEl.innerHTML = icons.map(i=>`<span>${i}</span>`).join("");
+      statusEl.innerHTML = icons.map(i=>"<span>"+i+"</span>").join("");
     }
   }
 }
 
 /* Ranged helpers & AI */
-function unitCenter(u){ return { x: u.x + (unitSize(u)-1)/2, y: u.y + (unitSize(u)-1)/2 }; }
 function nearestEnemy(u,units,field){
   const wards = field.wards || [];
   let best=null, bd=1e9;
   const c=unitCenter(u);
 
-  const consider=(obj,isWard)=>{
+  function consider(obj,isWard){
     if (obj.p === u.p) return;
     if (obj.hp <= 0) return;
     const sz = isWard ? 1 : unitSize(obj);
     const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
     const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
     if (d < bd){ bd=d; best=obj; }
-  };
+  }
 
-  for(const v of units) consider(v,false);
-  for(const w of wards){
+  for(let i=0;i<units.length;i++) consider(units[i],false);
+  for(let i=0;i<wards.length;i++){
+    const w=wards[i];
     if (!w.shoot) continue;
     consider(w,true);
   }
@@ -1071,18 +1122,18 @@ function nearestEnemyRangedPriority(u,units,field){
   const c = unitCenter(u);
   let best=null, bd=1e9;
 
-  const consider=(obj,isWard)=>{
+  function consider(obj,isWard){
     if (obj.p === u.p) return;
     if (obj.hp <= 0) return;
     const sz = isWard ? 1 : unitSize(obj);
     const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
     const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
     if (d < bd){ bd=d; best=obj; }
-  };
+  }
 
-  const rangedUnits = units.filter(v=> v.p!==u.p && TROOPS[v.type]?.role==="back" && v.hp>0);
+  const rangedUnits = units.filter(v=> v.p!==u.p && TROOPS[v.type] && TROOPS[v.type].role==="back" && v.hp>0);
   if (rangedUnits.length){
-    rangedUnits.forEach(v=>consider(v,false));
+    for(let i=0;i<rangedUnits.length;i++) consider(rangedUnits[i],false);
     if (best) return best;
   }
   return nearestEnemy(u,units,field);
@@ -1099,12 +1150,16 @@ function stepToward(u,t,units){
   const opts = (absx>=absy)
     ? [[u.x+sx,u.y],[u.x,u.y+sy],[u.x-sx,u.y],[u.x,u.y-sy]]
     : [[u.x,u.y+sy],[u.x+sx,u.y],[u.x,u.y-sy],[u.x-sx,u.y]];
-  for(const p of opts){
+  for(let i=0;i<opts.length;i++){
+    const p=opts[i];
     if (canMoveTo(u,units,p[0],p[1])){ u.x=p[0]; u.y=p[1]; return; }
   }
 }
 function canStepNow(u, now){
-  if (!u.nextStep || now>=u.nextStep){ u.nextStep = now + MOVE_MS; return true; }
+  if (!u.nextStep || now>=u.nextStep){
+    u.nextStep = now + MOVE_MS;
+    return true;
+  }
   return false;
 }
 function blinkIfNeeded(u){
@@ -1119,12 +1174,177 @@ function blinkIfNeeded(u){
     u.blinked=true;
   }
 }
-function tilesOnLine(x1,y1,x2,y2){
-  const tiles=[]; const dx=x2-x1, dy=y2-y1; const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  if (steps===0){ tiles.push({x:Math.round(x1),y:Math.round(y1)}); return tiles; }
-  const sx=dx/steps, sy=dy/steps; let x=x1, y=y1;
-  for(let i=0;i<=steps;i++){ tiles.push({x:Math.round(x), y:Math.round(y)}); x+=sx; y+=sy; }
-  return tiles;
+
+/* Terrain */
+function paintPoison(state, cx, cy, durMs, ownerP){
+  const until = Date.now()+durMs;
+  if (!state.field.poison) state.field.poison = [];
+  for (let dy=-1; dy<=1; dy++){
+    for (let dx=-1; dx<=1; dx++){
+      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+      state.field.poison.push({x:x,y:y,until:until,p:ownerP});
+    }
+  }
+}
+function addToxicSplash(state, cx, cy, durMs, ownerP){
+  const until = Date.now()+durMs;
+  if (!state.field.toxic) state.field.toxic = [];
+  for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++){
+      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+      state.field.toxic.push({x:x,y:y,until:until,p:ownerP});
+    }
+  }
+}
+function addAcid(state, x,y, durMs){
+  if(!inside(x,y)) return;
+  if (!state.field.acid) state.field.acid = [];
+  state.field.acid.push({x:x,y:y,until:Date.now()+durMs});
+}
+function placeWard(state, x, y, hp, dur, opts){
+  if (!inside(x,y)) return false;
+  if (state.field.wards && state.field.wards.some(w=>w.x===x && w.y===y)) return false;
+
+  if (!state.field.wards) state.field.wards = [];
+
+  const until = Date.now() + dur;
+  const w = {
+    x:x, y:y,
+    hp: hp|0,
+    maxhp: hp|0,
+    until:until,
+    p: (opts && "p" in opts) ? opts.p : null,
+    type: (opts && opts.shoot) ? "wardTurret" : "wardShield",
+    shieldReduce: (opts && "shieldReduce" in opts) ? opts.shieldReduce : 2,
+    shoot: !!(opts && opts.shoot),
+    wDmg:  (opts && "wDmg"  in opts) ? (opts.wDmg|0)  : 1,
+    wRange:(opts && "wRange"in opts) ? (opts.wRange|0): 3,
+    wCd:   (opts && "wCd"   in opts) ? (opts.wCd|0)   : 1400,
+    next:  0,
+    multi: !!(opts && opts.multi),
+    maxTargets: (opts && "maxTargets" in opts) ? opts.maxTargets : 1,
+    heal:    !!(opts && opts.heal),
+    hAmt:    (opts && "hAmt"   in opts) ? (opts.hAmt|0)   : 2,
+    hRange:  (opts && "hRange" in opts) ? (opts.hRange|0) : 3,
+    hCd:     (opts && "hCd"    in opts) ? (opts.hCd|0)    : 1500,
+    nextHeal:0
+  };
+  state.field.wards.push(w);
+  return true;
+}
+
+function applyTerrain(field, units){
+  const now=Date.now();
+  (field.poison||[]).forEach(p=>{
+    if (p.until<=now) return;
+    let ticked=false;
+
+    for (let i=0;i<units.length;i++){
+      const u=units[i];
+      if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
+        if (p.p!=null && u.p === p.p) continue;
+        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
+        u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.poisonDotMs);
+
+        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
+          u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        }
+      }
+    }
+    if (ticked) groundTickParticles(p.x,p.y,false);
+  });
+
+  (field.toxic||[]).forEach(t=>{
+    if (t.until<=now) return;
+    let ticked=false;
+    for(let i=0;i<units.length;i++){
+      const u=units[i];
+      if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
+        if (t.p==null || u.p !== t.p){
+          u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.toxicDotMs);
+          if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
+            u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+          }
+        }
+      }
+    }
+    if (ticked) groundTickParticles(t.x,t.y,true);
+  });
+
+  (field.acid||[]).forEach(a=>{
+    if (a.until<=now) return;
+    let ticked=false;
+    for(let i=0;i<units.length;i++){
+      const u=units[i];
+      if (u.x<=a.x && a.x<u.x+unitSize(u) && u.y<=a.y && a.y<u.y+unitSize(u)){
+        u.slowUntil = Math.max(u.slowUntil||0, now+800);
+        u.statusAcidUntil = Math.max(u.statusAcidUntil||0, now + 2200);
+        if (!u._acidTick || now - u._acidTick >= 1100){
+          u._acidTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        }
+      }
+    }
+    if (ticked) groundTickParticles(a.x,a.y,true);
+  });
+}
+
+/* wards heal/shoot */
+function wardsHeal(st, now){
+  const wards = st.field.wards || [];
+  for (let i=0;i<wards.length;i++){
+    const w = wards[i];
+    if (!w.heal || w.hp<=0 || w.until<=now) continue;
+    if (now < (w.nextHeal||0)) continue;
+
+    let tgt = null, minRatio = 1.01;
+    for (let j=0;j<st.field.units.length;j++){
+      const v = st.field.units[j];
+      if (v.hp<=0) continue;
+      if (w.p!=null && v.p !== w.p) continue;
+      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      if (d <= (w.hRange||3)){
+        const r = v.hp / v.maxhp;
+        if (r < 1 && r < minRatio){ minRatio = r; tgt = v; }
+      }
+    }
+    if (!tgt) continue;
+
+    const amt = Math.max(1, w.hAmt|0);
+    tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
+    st.field.fx.push(fxHeal(w.x, w.y, tgt.x, tgt.y));
+    w.nextHeal = now + (w.hCd || 1500);
+  }
+}
+
+function wardsShoot(st, now){
+  const wards = st.field.wards || [];
+  for (let i=0;i<wards.length;i++){
+    const w = wards[i];
+    if (!w.shoot || w.hp<=0 || w.until<=now) continue;
+    if (now < (w.next||0)) continue;
+
+    const maxT = w.maxTargets || 1;
+    const cand = [];
+    for (let j=0;j<st.field.units.length;j++){
+      const v = st.field.units[j];
+      if (v.hp<=0) continue;
+      if (w.p!=null && v.p===w.p) continue;
+      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      if (d <= (w.wRange||3)) cand.push({v:v,d:d});
+    }
+    if (!cand.length) continue;
+    cand.sort((a,b)=>a.d-b.d);
+    const targets = cand.slice(0, maxT).map(c=>c.v);
+
+    for (let j=0;j<targets.length;j++){
+      const tgt = targets[j];
+      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
+      const raw = w.wDmg || 1;
+      const dmg = reduceDamageForTarget(raw, tgt, st.field);
+      applyDamage(tgt, dmg);
+    }
+    w.next = now + (w.wCd || 1400);
+  }
 }
 
 /* Combat & abilities */
@@ -1134,7 +1354,8 @@ function healAction(u, st, now){
   const allies = st.field.units.filter(v=>v.p===u.p && v.id!==u.id && v.hp>0);
   if (!allies.length) return false;
   let target=null, minRatio=1.01;
-  for(const a of allies){
+  for(let i=0;i<allies.length;i++){
+    const a = allies[i];
     const dist = Math.abs(unitCenter(a).x-unitCenter(u).x)+Math.abs(unitCenter(a).y-unitCenter(u).y);
     if (dist <= (u.healRange||2)){
       const r = a.hp/a.maxhp;
@@ -1182,11 +1403,12 @@ function wardAction(u, st, now){
   }
   return false;
 }
+
 function applyDamage(victim, dmg){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
 }
-function splash(units, field, x,y,dmg,srcP,kn,strong=false){
+function splash(units, field, x,y,dmg,srcP,kn,strong){
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
@@ -1199,7 +1421,7 @@ function splash(units, field, x,y,dmg,srcP,kn,strong=false){
     }
   }
 }
-function tryKnock(cx,cy,t,units,strong=false){
+function tryKnock(cx,cy,t,units,strong){
   const tcx=t.x+(unitSize(t)-1)/2, tcy=t.y+(unitSize(t)-1)/2;
   const dx=Math.sign(tcx-cx), dy=Math.sign(tcy-cy);
   let steps = strong ? 2 : 1;
@@ -1214,7 +1436,8 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg){
     applyDamage(cur, reduceDamageForTarget(dmg, cur, field));
     hit.add(cur.id);
     let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
-    for(const v of units){
+    for(let i=0;i<units.length;i++){
+      const v=units[i];
       if(v.p===srcP || hit.has(v.id)) continue;
       const d=Math.abs(v.x-cx)+Math.abs(v.y-cy);
       if(d<=2 && d<bd){ bd=d; cand=v; }
@@ -1229,14 +1452,14 @@ function attack(u, t, now, st){
 
   const ranged = (u.range||1) > 1;
 
-  const deal = (victim, raw, isRanged)=>{
+  function deal(victim, raw, isRanged){
     let dmg = raw|0;
     if (isRanged){
       dmg = applyWardShields(u, victim, dmg, st.field);
     }
     dmg = reduceDamageForTarget(dmg, victim, st.field);
     applyDamage(victim, dmg);
-  };
+  }
 
   if (u.kamikaze){
     st.field.fx.push(fxBurst(u.x,u.y));
@@ -1244,7 +1467,7 @@ function attack(u, t, now, st){
 
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false);
     }
     if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
@@ -1254,7 +1477,7 @@ function attack(u, t, now, st){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true);
+    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false);
 
   } else if (u.chain3){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
@@ -1298,132 +1521,31 @@ function attack(u, t, now, st){
   return true;
 }
 
-/* Terrain */
-function paintPoison(state, cx, cy, durMs, ownerP = null){
-  const until = Date.now()+durMs;
-  state.field.poison = state.field.poison || [];
-  for (let dy=-1; dy<=1; dy++){
-    for (let dx=-1; dx<=1; dx++){
-      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.poison.push({x,y,until,p:ownerP});
+/* VGuard L3 regen */
+function applyVguardRegen(u, st, now){
+  if (u.type === "vguard" && (u.lvl||1) >= 3 && u.hp > 0 && u.hp < u.maxhp){
+    if (!u.regenCd) u.regenCd = 2000;
+    if (!u.nextRegen) u.nextRegen = 0;
+    if (now >= u.nextRegen){
+      const amt = 2;
+      const before = u.hp;
+      u.hp = Math.min(u.maxhp, u.hp + amt);
+      if (u.hp > before){
+        st.field.fx.push(fxHeal(u.x, u.y, u.x, u.y));
+      }
+      u.nextRegen = now + u.regenCd;
     }
   }
 }
-function addToxicSplash(state, cx, cy, durMs, ownerP){
-  const until = Date.now()+durMs;
-  state.field.toxic = state.field.toxic || [];
-  for(let dy=-1;dy<=1;dy++){
-    for(let dx=-1;dx<=1;dx++){
-      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.toxic.push({x,y,until,p:ownerP});
-    }
-  }
-}
-function addAcid(state, x,y, durMs){
-  if(!inside(x,y)) return;
-  state.field.acid = state.field.acid || [];
-  state.field.acid.push({x,y,until:Date.now()+durMs});
-}
-function placeWard(state, x, y, hp, dur, opts = {}){
-  if (!inside(x,y)) return false;
-  if (state.field.wards.some(w=>w.x===x && w.y===y)) return false;
 
-  const until = Date.now() + dur;
-  state.field.wards.push({
-    x, y,
-    hp: hp|0,
-    maxhp: hp|0,
-    until,
-
-    p: opts.p ?? null,
-
-    type: opts.shoot ? "wardTurret" : "wardShield",
-    shieldReduce: opts.shieldReduce ?? 2,
-
-    shoot: !!opts.shoot,
-    wDmg:  (opts.wDmg ?? 1)|0,
-    wRange:(opts.wRange ?? 3)|0,
-    wCd:   (opts.wCd ?? 1400)|0,
-    next:  0,
-    multi: !!opts.multi,
-    maxTargets: opts.maxTargets ?? 1,
-
-    heal:    !!opts.heal,
-    hAmt:    (opts.hAmt ?? 2)|0,
-    hRange:  (opts.hRange ?? 3)|0,
-    hCd:     (opts.hCd ?? 1500)|0,
-    nextHeal:0
-  });
-  return true;
-}
-
-function applyTerrain(field, units){
-  const now=Date.now();
-  (field.poison||[]).forEach(p=>{
-    if (p.until<=now) return;
-    let ticked=false;
-
-    for (const u of units){
-      if (u.x<=p.x && p.x<u.x+unitSize(u) && u.y<=p.y && p.y<u.y+unitSize(u)){
-        if (p.p!=null && u.p === p.p) continue;
-        u.slowUntil = Math.max(u.slowUntil||0, now+PACE.poisonSlowMs);
-        u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.poisonDotMs);
-
-        if (!u._poisonTick || now - u._poisonTick >= PACE.poisonDotMs){
-          u._poisonTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
-        }
-      }
-    }
-    if (ticked) groundTickParticles(p.x,p.y,false);
-  });
-
-  (field.toxic||[]).forEach(t=>{
-    if (t.until<=now) return;
-    let ticked=false;
-    for(const u of units){
-      if (u.x<=t.x && t.x<u.x+unitSize(u) && u.y<=t.y && t.y<u.y+unitSize(u)){
-        if (t.p==null || u.p !== t.p){
-          u.statusPoisonUntil = Math.max(u.statusPoisonUntil||0, now + 2*PACE.toxicDotMs);
-          if (!u._toxicTick || now - u._toxicTick >= PACE.toxicDotMs){
-            u._toxicTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
-          }
-        }
-      }
-    }
-    if (ticked) groundTickParticles(t.x,t.y,true);
-  });
-
-  (field.acid||[]).forEach(a=>{
-    if (a.until<=now) return;
-    let ticked=false;
-    for(const u of units){
-      if (u.x<=a.x && a.x<u.x+unitSize(u) && u.y<=a.y && a.y<u.y+unitSize(u)){
-        u.slowUntil = Math.max(u.slowUntil||0, now+800);
-        u.statusAcidUntil = Math.max(u.statusAcidUntil||0, now + 2200);
-        if (!u._acidTick || now - u._acidTick >= 1100){
-          u._acidTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
-        }
-      }
-    }
-    if (ticked) groundTickParticles(a.x,a.y,true);
-  });
-}
-
-async function syncPlayersIntoStateIfNeeded(){
-  const stSnap = await getDoc(stateRef);
-  const st = stSnap.data(); if(!st) return;
-  const want = lobbyPlayers.slice(0,2);
-  const cur = Array.isArray(st.players)? st.players : [];
-  if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
-    await updateDoc(stateRef, { players: want });
-  }
-}
+/* state helpers */
 function bothPicked(d){
   const di=d.draftIndex|0;
-  return (d.selections?.p0?.[di] != null) && (d.selections?.p1?.[di] != null);
+  return (d.selections && d.selections.p0 && d.selections.p0[di] != null) &&
+         (d.selections && d.selections.p1 && d.selections.p1[di] != null);
 }
 function bothFactionsChosen(d){
-  return !!(d.factions?.p0) && !!(d.factions?.p1);
+  return !!(d.factions && d.factions.p0) && !!(d.factions && d.factions.p1);
 }
 
 /* MMR helpers */
@@ -1431,7 +1553,7 @@ function calcMMRChange(st, winnerName){
   const mmr = st.mmr || [1000,1000];
   const players = st.players || [];
   const idxWin = players.indexOf(winnerName);
-  if (idxWin < 0) return { mmr, delta:[0,0] };
+  if (idxWin < 0) return { mmr:mmr, delta:[0,0] };
   const idxLose = idxWin === 0 ? 1 : 0;
 
   const base = 25;
@@ -1439,7 +1561,7 @@ function calcMMRChange(st, winnerName){
   const factor = 1 + diff / 4000;
   const gain = Math.max(10, Math.round(base * factor));
 
-  const next = [...mmr];
+  const next = [mmr[0], mmr[1]];
   next[idxWin]  = mmr[idxWin]  + gain;
   next[idxLose] = Math.max(0, mmr[idxLose] - gain);
 
@@ -1447,7 +1569,7 @@ function calcMMRChange(st, winnerName){
   delta[idxWin]  = gain;
   delta[idxLose] = -gain;
 
-  return { mmr:next, delta };
+  return { mmr:next, delta:delta };
 }
 function rankLabel(m){
   if (m >= 1600) return "Diamond";
@@ -1458,27 +1580,45 @@ function rankLabel(m){
 }
 
 let hostTick=null, battleTick=null;
+
+/* keep lobby.players in state.players (host only) */
+async function syncPlayersIntoStateIfNeeded(){
+  const stSnap = await getDoc(stateRef);
+  if (!stSnap.exists()) return;
+  const st = stSnap.data();
+  const want = lobbyPlayers.slice(0,2);
+  const cur = Array.isArray(st.players)? st.players : [];
+  if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
+    await updateDoc(stateRef, { players: want });
+  }
+}
+
+/* ----------- Host loop (phase machine) ----------- */
 function startHostLoops(){
   if(hostTick) return;
   hostTick=setInterval(async ()=>{
     const snap=await getDoc(stateRef); if(!snap.exists()) return;
     const d=snap.data(); const now=Date.now();
 
+    if (!d.players || !Array.isArray(d.players)) d.players = lobbyPlayers.slice(0,2);
+
     if (d.phase==="waiting" && lobbyPlayers.length>=2){
       await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20000 });
       return;
     }
+
     if (d.phase==="faction-select"){
       if (bothFactionsChosen(d) || now >= (d.phaseEndsAt||0)){
-        const fx={...d.factions};
-        if(!fx.p0) fx.p0 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
-        if(!fx.p1) fx.p1 = ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+        const fx = { p0:null, p1:null };
+        fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+        fx.p1 = (d.factions && d.factions.p1) ? d.factions.p1 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
+
         await updateDoc(stateRef,{
           factions:fx, phase:"draft", draftIndex:0,
           selections:{p0:[],p1:[]},
           currentPacks:{
-            p0: packFor(d.roster?.p0||[], fx.p0),
-            p1: packFor(d.roster?.p1||[], fx.p1)
+            p0: packFor(d.roster && d.roster.p0 ? d.roster.p0 : [], fx.p0),
+            p1: packFor(d.roster && d.roster.p1 ? d.roster.p1 : [], fx.p1)
           },
           phaseEndsAt: now+10000,
           bonusFor:null
@@ -1489,19 +1629,26 @@ function startHostLoops(){
 
     if (d.phase==="draft" && (bothPicked(d) || now >= (d.phaseEndsAt||0))){
       const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
+      const sel = d.selections || {p0:[],p1:[]};
+
+      if (!sel.p0) sel.p0 = [];
+      if (!sel.p1) sel.p1 = [];
 
       ["p0","p1"].forEach(sk=>{
         if (sel[sk][di]==null){
-          const pack=(d.currentPacks?.[sk]||[]);
-          sel[sk][di] = Math.floor(Math.random()*Math.max(1,pack.length));
+          const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+          if (pack.length>0) sel[sk][di] = Math.floor(Math.random()*pack.length);
         }
       });
 
-      const roster=d.roster||{p0:[],p1:[]};
+      const roster = d.roster || {p0:[],p1:[]};
+      if (!roster.p0) roster.p0 = [];
+      if (!roster.p1) roster.p1 = [];
+
       ["p0","p1"].forEach(sk=>{
-        const pack=(d.currentPacks?.[sk]||[]);
-        const pick=pack[ sel[sk][di] ];
+        const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+        const pickIndex = sel[sk][di];
+        const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if(!pick) return;
         if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
         else if (pick.type==="special"){
@@ -1512,16 +1659,33 @@ function startHostLoops(){
 
       const nextIx=di+1;
       if (nextIx>=3){
-        const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0, field:fieldEmpty(), bonusFor:null};
-        rebuildFieldFromRoster(next);
-        await updateDoc(stateRef,next);
+        const temp = {
+          players: d.players || [],
+          lives: d.lives || [4,4],
+          roster: roster,
+          field: fieldEmpty(),
+          factions: d.factions || {p0:null,p1:null}
+        };
+        rebuildFieldFromRoster(temp);
+        await updateDoc(stateRef,{
+          roster: temp.roster,
+          field: temp.field,
+          selections:{p0:[],p1:[]},
+          draftIndex:0,
+          currentPacks:{p0:[],p1:[]},
+          phase:"battle",
+          phaseEndsAt:0,
+          bonusFor:null
+        });
         runBattle();
       }else{
         await updateDoc(stateRef,{
-          roster, selections:sel, draftIndex:nextIx,
+          roster: roster,
+          selections: sel,
+          draftIndex: nextIx,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
+            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
           },
           phaseEndsAt: Date.now()+10000,
           bonusFor:null
@@ -1533,17 +1697,25 @@ function startHostLoops(){
     if (d.phase==="loser-bonus"){
       const loser = d.bonusFor;
       const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
+      const sel=d.selections || {p0:[],p1:[]};
+      if (!sel.p0) sel.p0 = [];
+      if (!sel.p1) sel.p1 = [];
 
-      if (sel[loser]?.[di]==null && now >= (d.phaseEndsAt||0)){
-        const pack=(d.currentPacks?.[loser]||[]);
-        sel[loser][di] = Math.floor(Math.random()*Math.max(1,pack.length));
+      if (sel[loser] && sel[loser][di]==null && now >= (d.phaseEndsAt||0)){
+        const pack=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
+        if (pack.length>0){
+          sel[loser][di] = Math.floor(Math.random()*pack.length);
+        }
       }
-      const hasPicked = sel[loser]?.[di]!=null;
+      const hasPicked = sel[loser] && sel[loser][di]!=null;
       if (hasPicked){
-        const roster=d.roster||{p0:[],p1:[]};
-        const pack=(d.currentPacks?.[loser]||[]);
-        const pick=pack[ sel[loser][di] ];
+        const roster=d.roster || {p0:[],p1:[]};
+        if (!roster.p0) roster.p0 = [];
+        if (!roster.p1) roster.p1 = [];
+
+        const pack=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
+        const pickIndex = sel[loser][di];
+        const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if (pick){
           if (pick.type==="troop") rosterAdd(roster[loser], pick.key, 1);
           else if (pick.type==="special"){
@@ -1552,12 +1724,12 @@ function startHostLoops(){
           }
         }
         await updateDoc(stateRef,{
-          roster,
+          roster: roster,
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
+            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
           },
           phase:"draft-after",
           phaseEndsAt: Date.now()+10000,
@@ -1569,19 +1741,27 @@ function startHostLoops(){
 
     if (d.phase==="draft-after" && (bothPicked(d) || now >= (d.phaseEndsAt||0))){
       const di=d.draftIndex|0;
-      const sel=d.selections||{p0:[],p1:[]};
+      const sel=d.selections || {p0:[],p1:[]};
+      if (!sel.p0) sel.p0 = [];
+      if (!sel.p1) sel.p1 = [];
 
       ["p0","p1"].forEach(sk=>{
         if (sel[sk][di]==null){
-          const pack=(d.currentPacks?.[sk]||[]);
-          sel[sk][di] = Math.floor(Math.random()*Math.max(1,pack.length));
+          const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+          if (pack.length>0){
+            sel[sk][di] = Math.floor(Math.random()*pack.length);
+          }
         }
       });
 
-      const roster=d.roster||{p0:[],p1:[]};
+      const roster=d.roster || {p0:[],p1:[]};
+      if (!roster.p0) roster.p0 = [];
+      if (!roster.p1) roster.p1 = [];
+
       ["p0","p1"].forEach(sk=>{
-        const pack=(d.currentPacks?.[sk]||[]);
-        const pick=pack[ sel[sk][di] ];
+        const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
+        const pickIndex = sel[sk][di];
+        const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if(!pick) return;
         if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
         else if (pick.type==="special"){
@@ -1592,16 +1772,32 @@ function startHostLoops(){
 
       const nextIx=di+1;
       if (nextIx>=3){
-        const next={...d, roster, selections:{p0:[],p1:[]}, draftIndex:0, currentPacks:{p0:[],p1:[]}, phase:"battle", phaseEndsAt:0, field:fieldEmpty()};
-        rebuildFieldFromRoster(next);
-        await updateDoc(stateRef,next);
+        const temp = {
+          players: d.players || [],
+          lives: d.lives || [4,4],
+          roster: roster,
+          field: fieldEmpty(),
+          factions: d.factions || {p0:null,p1:null}
+        };
+        rebuildFieldFromRoster(temp);
+        await updateDoc(stateRef,{
+          roster: temp.roster,
+          field: temp.field,
+          selections:{p0:[],p1:[]},
+          draftIndex:0,
+          currentPacks:{p0:[],p1:[]},
+          phase:"battle",
+          phaseEndsAt:0
+        });
         runBattle();
       }else{
         await updateDoc(stateRef,{
-          roster, selections:sel, draftIndex:nextIx,
+          roster: roster,
+          selections: sel,
+          draftIndex: nextIx,
           currentPacks:{
-            p0: packFor(roster.p0, d.factions.p0),
-            p1: packFor(roster.p1, d.factions.p1)
+            p0: packFor(roster.p0, d.factions && d.factions.p0 ? d.factions.p0 : "Helions"),
+            p1: packFor(roster.p1, d.factions && d.factions.p1 ? d.factions.p1 : "Helions")
           },
           phaseEndsAt: Date.now()+10000
         });
@@ -1611,16 +1807,16 @@ function startHostLoops(){
 
     if (d.phase==="battle" && !battleTick) runBattle();
 
-    const nf = {...d.field};
+    /* cleanup FX + terrain */
+    const nf = d.field || fieldEmpty();
     const now2=Date.now();
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
     nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
-    if (JSON.stringify(nf) !== JSON.stringify(d.field)){
-      await updateDoc(stateRef, { field: nf });
-    }
+
+    await updateDoc(stateRef, { field: nf });
   }, 260);
 }
 
@@ -1632,43 +1828,40 @@ function runBattle(){
 
   battleTick = setInterval(async ()=>{
     const snap = await getDoc(stateRef);
-    if (!snap.exists()){ clearInterval(battleTick); battleTick=null; return; }
+    if (!snap.exists()){
+      clearInterval(battleTick); battleTick=null; return;
+    }
     const d = snap.data();
-    if (d.phase !== "battle"){ clearInterval(battleTick); battleTick=null; return; }
+    if (d.phase !== "battle"){
+      clearInterval(battleTick); battleTick=null; return;
+    }
 
     const st = deepClone(d);
-    const units = st.field.units;
+    const units = st.field.units || [];
     const now = Date.now();
 
     const doLogic = (now - lastLogic) >= LOGIC_MS;
     if (doLogic) lastLogic = now;
 
     if (doLogic) applyTerrain(st.field, units);
-    if (doLogic) for (const u of units){ blinkIfNeeded(u); }
+    if (doLogic){
+      for (let i=0;i<units.length;i++){
+        blinkIfNeeded(units[i]);
+      }
+    }
 
     if (doLogic) wardsHeal(st, now);
     if (doLogic) wardsShoot(st, now);
     if (doLogic) broodTick(st, now);
 
-    for (const u of units){
+    for (let i=0;i<units.length;i++){
+      const u = units[i];
+      if (!u || u.hp<=0) continue;
+
       if (doLogic){
         healAction(u, st, now);
         wardAction(u, st, now);
-
-        // VGuard L3 self-regen
-        if (u.type === "vguard" && (u.lvl||1) >= 3 && u.hp > 0 && u.hp < u.maxhp){
-          if (!u.regenCd) u.regenCd = 2000;
-          if (!u.nextRegen) u.nextRegen = 0;
-          if (now >= u.nextRegen){
-            const amt = 2;
-            const before = u.hp;
-            u.hp = Math.min(u.maxhp, u.hp + amt);
-            if (u.hp > before){
-              st.field.fx.push(fxHeal(u.x, u.y, u.x, u.y));
-            }
-            u.nextRegen = now + u.regenCd;
-          }
-        }
+        applyVguardRegen(u, st, now);
       }
 
       const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
@@ -1709,7 +1902,8 @@ function runBattle(){
 
     if (doLogic){
       const dead = st.field.units.filter(u=>u.hp<=0);
-      for (const u of dead){
+      for (let i=0;i<dead.length;i++){
+        const u = dead[i];
         if (u.paints){
           paintPoison(st, u.x, u.y, 7000, u.p);
           st.field.fx.push(fxBurst(u.x,u.y));
@@ -1724,75 +1918,80 @@ function runBattle(){
       clearInterval(battleTick); battleTick=null;
 
       const loser = a0 ? 1 : 0;
-      const lives = [...(st.lives||[4,4])];
+      const lives = (st.lives || [4,4]).slice();
       lives[loser] = Math.max(0, lives[loser]-1);
 
-      const winner = lives[0]===0 ? st.players[1]
-                   : lives[1]===0 ? st.players[0]
-                   : null;
+      const players = st.players || [];
+      let winnerName = null;
+      if (lives[0]===0 && players.length>1) winnerName = players[1];
+      if (lives[1]===0 && players.length>0) winnerName = players[0];
 
-      if (winner){
-        const { mmr:nextMmr, delta } = calcMMRChange(st, winner);
-        const next = {
-          ...st,
-          lives,
-          phase:"game-over",
-          phaseEndsAt:0,
-          winner,
-          mmr: nextMmr,
-          mmrChange: delta
-        };
-        await updateDoc(stateRef, next);
+      if (winnerName){
+        const mmrInfo = calcMMRChange(st, winnerName);
+        await updateDoc(stateRef, {
+          lives: lives,
+          phase: "game-over",
+          phaseEndsAt: 0,
+          winner: winnerName,
+          mmr: mmrInfo.mmr,
+          mmrChange: mmrInfo.delta
+        });
       } else {
         const loserKey  = pKey(loser);
         const winnerKey = pKey(1-loser);
-        const next = {
-          ...st,
-          lives,
+
+        const roster = st.roster || {p0:[],p1:[]};
+        if (!roster.p0) roster.p0 = [];
+        if (!roster.p1) roster.p1 = [];
+
+        await updateDoc(stateRef, {
+          lives: lives,
           phase: "loser-bonus",
           phaseEndsAt: Date.now()+10000,
           selections: { p0:[], p1:[] },
-          currentPacks: {
-            [loserKey]:  packFor(st.roster[loserKey],  st.factions[loserKey]),
-            [winnerKey]: []
-          },
+          currentPacks: (function(){
+            const packs = { p0:[], p1:[] };
+            packs[loserKey]  = packFor(roster[loserKey],  st.factions && st.factions[loserKey] ? st.factions[loserKey] : "Helions");
+            packs[winnerKey] = [];
+            return packs;
+          })(),
           draftIndex: 0,
           bonusFor: loserKey
-        };
-        await updateDoc(stateRef, next);
+        });
       }
     } else {
       st.field.wards = (st.field.wards||[]).filter(w=>w.hp>0 && w.until>now);
-      await updateDoc(stateRef, st);
+      await updateDoc(stateRef, { field: st.field });
     }
   }, VIEW_MS);
 }
 
-/* ----------- Live listeners & render ----------- */
+/* ----------- UI render ----------- */
 function render(){
-  const p0n=(S?.players?.[0])||"P0", p1n=(S?.players?.[1])||"P1";
-  const lives=S?.lives||[4,4];
-  const mmr = S?.mmr || [1000,1000];
+  const p0n=(S && S.players && S.players[0]) || "P0";
+  const p1n=(S && S.players && S.players[1]) || "P1";
+  const lives=(S && S.lives) || [4,4];
+  const mmr = (S && S.mmr) || [1000,1000];
 
-  $("p0Badge").textContent = `${p0n} [${rankLabel(mmr[0])} ${mmr[0]}] — ${"❤".repeat(lives[0])}`;
-  $("p1Badge").textContent = `${p1n} [${rankLabel(mmr[1])} ${mmr[1]}] — ${"❤".repeat(lives[1])}`;
+  $("p0Badge").textContent = p0n+" ["+rankLabel(mmr[0])+" "+mmr[0]+"] — "+("❤".repeat(lives[0]));
+  $("p1Badge").textContent = p1n+" ["+rankLabel(mmr[1])+" "+mmr[1]+"] — "+("❤".repeat(lives[1]));
 
-  const phase=S?.phase||"waiting";
+  const phase=(S && S.phase) || "waiting";
   $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
-  const tleft = draftish ? Math.max(0,(S?.phaseEndsAt||0)-Date.now()) : 0;
-  $("timerBadge").textContent = draftish ? "⏳ " + Math.ceil(tleft/1000) + "s" : "⏳ —";
+  const tleft = draftish ? Math.max(0,((S && S.phaseEndsAt) || 0)-Date.now()) : 0;
+  $("timerBadge").textContent = draftish ? "⏳ "+Math.ceil(tleft/1000)+"s" : "⏳ —";
 
   const counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
     counter.style.display="block";
-    counter.textContent = `PICK ${(S?.draftIndex||0)+1} / 3`;
+    counter.textContent = "PICK "+(((S && S.draftIndex) || 0)+1)+" / 3";
   } else if (phase==="loser-bonus"){
-    counter.style.display="block"; counter.textContent = `LOSER BONUS`;
+    counter.style.display="block"; counter.textContent = "LOSER BONUS";
   } else { counter.style.display="none"; }
 
   const endSummaryEl = $("endSummary");
-  if (S?.phase === "game-over"){
+  if (S && S.phase === "game-over"){
     const mmrFinal = S.mmr || [1000,1000];
     const delta = S.mmrChange || [0,0];
     const players = S.players || ["P0","P1"];
@@ -1801,20 +2000,19 @@ function render(){
     const p0Before = mmrFinal[0] - (delta[0]||0);
     const p1Before = mmrFinal[1] - (delta[1]||0);
 
-    const fmtDelta = d => d>0
-      ? `<span class="mmrUp">+${d}</span>`
-      : d<0
-        ? `<span class="mmrDown">${d}</span>`
-        : `<span>${d}</span>`;
+    function fmtDelta(d){
+      if (d>0) return '<span class="mmrUp">+'+d+'</span>';
+      if (d<0) return '<span class="mmrDown">'+d+'</span>';
+      return '<span>'+d+'</span>';
+    }
 
-    endSummaryEl.innerHTML = `
-      <div><strong>Winner:</strong> ${winner||"—"}</div>
-      <div><strong>${players[0]||"P0"}:</strong> ${p0Before} → ${mmrFinal[0]} ${fmtDelta(delta[0]||0)}</div>
-      <div><strong>${players[1]||"P1"}:</strong> ${p1Before} → ${mmrFinal[1]} ${fmtDelta(delta[1]||0)}</div>
-      <div style="margin-top:6px;opacity:.9">
-        Factions: ${(S.factions?.p0)||"?"} vs ${(S.factions?.p1)||"?"}
-      </div>
-    `;
+    endSummaryEl.innerHTML = ''+
+      '<div><strong>Winner:</strong> '+(winner||"—")+'</div>'+
+      '<div><strong>'+(players[0]||"P0")+':</strong> '+p0Before+' → '+mmrFinal[0]+' '+fmtDelta(delta[0]||0)+'</div>'+
+      '<div><strong>'+(players[1]||"P1")+':</strong> '+p1Before+' → '+mmrFinal[1]+' '+fmtDelta(delta[1]||0)+'</div>'+
+      '<div style="margin-top:6px;opacity:.9">'+
+      'Factions: '+((S.factions && S.factions.p0) || "?")+' vs '+((S.factions && S.factions.p1) || "?")+
+      '</div>';
     endSummaryEl.style.display = "block";
   } else {
     if (endSummaryEl) endSummaryEl.style.display = "none";
@@ -1822,76 +2020,90 @@ function render(){
 
   const draftishPh=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   if (draftishPh){
-    const ghost=deepClone(S); rebuildFieldFromRoster(ghost);
+    const ghost=deepClone(S);
+    rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
   }else{
-    paint(S?.field?.units||[], S?.field||fieldEmpty());
+    paint((S && S.field && S.field.units) || [], (S && S.field) || fieldEmpty());
   }
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
-  if (!draftishPh){ overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML=""; return; }
+  if (!draftishPh){
+    overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML="";
+    return;
+  }
   overlay.style.display="block";
 
-  const di=S?.draftIndex|0;
+  const di=(S && S.draftIndex) ? S.draftIndex|0 : 0;
   const sk=pKey(meIndex);
-  const pickedIndex=S?.selections?.[sk]?.[di];
+  const pickedIndex = (S && S.selections && S.selections[sk]) ? S.selections[sk][di] : null;
 
   if (phase==="faction-select"){
-    const already=S?.factions?.[sk];
+    const already = S && S.factions && S.factions[sk];
     if (already){
       row.style.display="none"; row.innerHTML="";
-      note.textContent=`FACTION LOCKED: ${already}`;
+      note.textContent="FACTION LOCKED: "+already;
       note.style.display="block"; return;
     }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach(f=>{
       const el=document.createElement("div"); el.className="card";
-      el.innerHTML=`
-        <div class="meta">FACTION</div>
-        <div class="title">${f}</div>
-        <div class="desc">${(FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ")}</div>`;
-      el.onclick=()=> chooseFaction(f); row.appendChild(el);
+      const units = (FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ");
+      el.innerHTML=''+
+        '<div class="meta">FACTION</div>'+
+        '<div class="title">'+f+'</div>'+
+        '<div class="desc">'+units+'</div>';
+      el.onclick=()=> chooseFaction(f);
+      row.appendChild(el);
     });
     return;
   }
 
   if (phase==="loser-bonus"){
-    const loserKey = S?.bonusFor || null;
+    const loserKey = S ? S.bonusFor : null;
     if (loserKey !== sk){
-      row.style.display="none"; row.innerHTML=""; note.textContent=`Opponent bonus pick…`; note.style.display="block"; return;
+      row.style.display="none"; row.innerHTML="";
+      note.textContent="Opponent bonus pick…";
+      note.style.display="block"; return;
     }
   }
 
-  const pack=(S?.currentPacks?.[sk]||[]);
+  const pack=(S && S.currentPacks && S.currentPacks[sk]) ? S.currentPacks[sk] : [];
   if (pickedIndex!=null){
     row.style.display="none"; row.innerHTML="";
     const picked = pack[pickedIndex];
     const label = picked
-      ? (picked.type==="troop" ? picked.name : `${picked.special==="upgrade"?"Upgrade":"Double"} ${(TROOPS[picked.for]||{}).name||""}`)
+      ? (picked.type==="troop"
+          ? picked.name
+          : ((picked.special==="upgrade"?"Upgrade ":"Double ")+(TROOPS[picked.for] ? TROOPS[picked.for].name : "")))
       : "(auto)";
-    note.textContent=`Selected: ${label}`;
+    note.textContent="Selected: "+label;
     note.style.display="block";
     return;
   }
 
   row.style.display="flex"; row.innerHTML=""; note.style.display="none";
-  pack.forEach((c,i)=>{
+  for(let i=0;i<pack.length;i++){
+    const c=pack[i];
     const el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
-      el.innerHTML=`
-        <div class="meta">${TROOPS[c.key].faction} · ${c.role==="back"?"Backline":"Frontline"}</div>
-        <div class="title">${c.emoji} ${c.name}</div>
-        <div class="desc">Solid ${c.role==="back"?"support / ranged":"frontline pressure"} unit from ${TROOPS[c.key].faction}.</div>`;
+      const tro = TROOPS[c.key];
+      el.innerHTML=''+
+        '<div class="meta">'+tro.faction+' · '+(tro.role==="back"?"Backline":"Frontline")+'</div>'+
+        '<div class="title">'+c.emoji+' '+c.name+'</div>'+
+        '<div class="desc">Solid '+(tro.role==="back"?"support / ranged":"frontline pressure")+' unit from '+tro.faction+'.</div>';
     }else{
       const nn=TROOPS[c.for]?.name||"Type";
-      el.innerHTML=`
-        <div class="meta">SPECIAL</div>
-        <div class="title">${c.emoji} ${c.name|| (c.special==="upgrade"?"Upgrade":"Double")}</div>
-        <div class="desc">${c.special==="upgrade"?"Upgrade":"Double"} ${nn} in your roster.</div>`;
+      el.innerHTML=''+
+        '<div class="meta">SPECIAL</div>'+
+        '<div class="title">'+c.emoji+' '+(c.name || (c.special==="upgrade"?"Upgrade":"Double"))+'</div>'+
+        '<div class="desc">'+(c.special==="upgrade"?"Upgrade ":"Double ")+nn+' in your roster.</div>';
     }
-    el.onclick=()=> chooseCard(i);
+    (function(idx){
+      el.onclick=function(){ chooseCard(idx); };
+    })(i);
     row.appendChild(el);
-  });
+  }
 }
 
 /* -------- transactional player actions -------- */
@@ -1903,11 +2115,13 @@ async function chooseFaction(fac){
       const snap = await tx.get(stateRef);
       if (!snap.exists()) return;
       const data = snap.data();
-      const currentFaction = data?.factions?.[sk];
+      const currentFaction = data && data.factions && data.factions[sk];
       if (currentFaction) return;
       const phase = data.phase;
       if (phase !== "faction-select") return;
-      tx.update(stateRef, { [`factions.${sk}`]: fac });
+      const newFacs = data.factions || {p0:null,p1:null};
+      newFacs[sk] = fac;
+      tx.update(stateRef, { factions: newFacs });
     });
   }catch(e){
     console.error("chooseFaction failed", e);
@@ -1924,13 +2138,18 @@ async function chooseCard(i){
       const data = snap.data();
       if (data.phase!=="draft" && data.phase!=="draft-after" && data.phase!=="loser-bonus") return;
 
-      const curSel = (((data.selections||{})[sk])||[])[di];
+      const selections = data.selections || {p0:[],p1:[]};
+      if (!selections.p0) selections.p0 = [];
+      if (!selections.p1) selections.p1 = [];
+
+      const curSel = selections[sk][di];
       if (curSel!=null) return;
 
-      const pack = ((data.currentPacks||{})[sk])||[];
+      const pack = (data.currentPacks && data.currentPacks[sk]) ? data.currentPacks[sk] : [];
       if (!pack || !pack.length) return;
 
-      tx.update(stateRef, { [`selections.${sk}.${di}`]: i });
+      selections[sk][di] = i;
+      tx.update(stateRef, { selections: selections });
     });
   }catch(e){
     console.error("chooseCard failed", e);
@@ -1970,8 +2189,9 @@ onSnapshot(stateRef,(snap)=>{
   meIndex = Math.max(0, Math.min(1, idx));
   render();
 
-  const list=S.field?.fx||[];
-  for(const ev of list){
+  const list=(S.field && S.field.fx) ? S.field.fx : [];
+  for(let i=0;i<list.length;i++){
+    const ev=list[i];
     if (lastFxSeen.has(ev.id)) continue;
     lastFxSeen.add(ev.id);
     if (ev.type==="beam") renderBeam(ev,false);
@@ -1987,14 +2207,14 @@ $("fsBtn").onclick = async ()=>{
   try{
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     else await document.exitFullscreen();
-  }catch(e){}
+  }catch(e){
+    console.warn(e);
+  }
 };
 </script>
 
 </body>
 </html>
-
-
 
 
 
