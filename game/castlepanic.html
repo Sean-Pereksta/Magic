@@ -1,902 +1,1340 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>🏰 Wall Defense — Co-op Card Siege</title>
-<style>
-  :root{
-    --bg:#0b1014; --panel:#0e1726; --ink:#e6efff; --muted:#9fb3c8; --card:#111827; --br:#1f2a44;
-    --good:#22c55e; --warn:#eab308; --bad:#ef4444; --accent:#60a5fa;
-    --tap:64px; --rad:16px; --shadow:0 10px 30px rgba(2,6,23,.35);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:radial-gradient(1000px 600px at 50% -150px,#162239,#0b1014);
-    color:var(--ink);
-  }
-  .wrap{
-    height:100svh; max-width:1100px; margin:0 auto; display:grid; grid-template-rows:auto 1fr auto; gap:10px; padding:10px;
-  }
-  .top{
-    display:grid; gap:10px; grid-template-columns:1fr auto; align-items:stretch;
-  }
-  .status{
-    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px 10px; display:grid; gap:6px; min-width:260px;
-  }
-  .row{display:flex; align-items:center; justify-content:space-between; gap:8px}
-  .hpbar{height:10px; background:#0e1627; border:1px solid var(--br); border-radius:999px; overflow:hidden}
-  .hpbar>i{display:block; height:100%; background:linear-gradient(90deg,#22c55e,#60a5fa); width:100%}
-  .chips{display:flex; gap:6px; flex-wrap:wrap}
-  .chip{
-    background:#0f1b2e; border:1px solid var(--br); padding:6px 10px; border-radius:999px; font-weight:700; font-size:13px; display:flex; gap:8px; align-items:center
-  }
-  .chip[data-cur="true"]{outline:2px solid var(--accent); box-shadow:0 0 0 4px rgba(96,165,250,.15)}
-  .topBtns{display:flex; gap:8px; align-items:center}
-  .btn{appearance:none; border:none; border-radius:12px; padding:10px 12px; font-weight:900; cursor:pointer; color:#081321; background:#9cc8ff;}
-  .btn.secondary{background:#c3d4ee; color:#0b1322}
-  .btn.warn{background:#ffd59b}
-  .btn.danger{background:#ff9ca8}
+  <meta charset="UTF-8" />
+  <title>🏰 Castle Panic — Competitive Node War (2P, Firebase)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <style>
+    :root{
+      --bg:#020617;
+      --panel:#0b1120;
+      --ink:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#38bdf8;
+      --accent-soft:#0ea5e9;
+      --p1:#16a34a;
+      --p2:#b91c1c;
+      --contested:#facc15;
+      --neutral:#4b5563;
+      --radius:14px;
+      --shadow:0 18px 40px rgba(0,0,0,.7);
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+    html,body{
+      margin:0;
+      padding:0;
+      height:100%;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:radial-gradient(circle at top,#0f172a 0,#020617 55%);
+      color:var(--ink);
+      overflow:hidden;
+    }
+    body{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+    }
+    .shell{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      width:100%;
+      max-width:1200px;
+      padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+      gap:8px;
+    }
+    .top-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:var(--radius);
+      background:rgba(15,23,42,.95);
+      border:1px solid #1f2937;
+      box-shadow:var(--shadow);
+      font-size:.9rem;
+    }
+    .top-left,.top-right{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .game-title{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-weight:700;
+    }
+    .pill{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:4px 10px;
+      background:rgba(15,23,42,.95);
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font-size:.78rem;
+      color:var(--muted);
+    }
+    .pill strong{color:var(--ink); font-weight:600;}
 
-  /* Battlefield window */
-  .boardWrap{
-    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px; display:grid; grid-template-rows:auto 1fr; gap:8px; min-height:0;
-  }
-  .legend{display:flex; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted)}
-  .view{
-    position:relative; overflow:hidden; border:1px solid var(--br); border-radius:12px; min-height:360px;
-    touch-action:none; background:#0b1422;
-  }
-  canvas{display:block; width:100%; height:100%}
+    .hp-bar{
+      position:relative;
+      width:90px;
+      height:8px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+      border:1px solid #1f2937;
+    }
+    .hp-fill{
+      position:absolute;
+      inset:0;
+      background:linear-gradient(90deg,#16a34a,#facc15,#ef4444);
+      width:100%;
+      transition:width .18s linear;
+    }
 
-  /* Hand & actions */
-  .bottom{
-    display:grid; grid-template-columns:1fr auto; gap:10px; align-items:stretch;
-  }
-  .hand{
-    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px; display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
-  }
-  .card{
-    background:linear-gradient(180deg,#0f1d33,#0a1222); border:1px solid var(--br); border-radius:12px; padding:10px; display:grid; gap:6px; min-height:96px;
-    box-shadow:var(--shadow); cursor:pointer; user-select:none
-  }
-  .card .name{font-weight:900; font-size:14px; line-height:1.1}
-  .card .desc{font-size:12px; color:var(--muted)}
-  .card[data-disabled="true"]{opacity:.45; filter:grayscale(.2); pointer-events:none}
-  .card[data-aim="true"]{outline:2px solid var(--accent); box-shadow:0 0 0 6px rgba(96,165,250,.15)}
-  .tag{font-size:11px; padding:3px 7px; border-radius:999px; border:1px solid #334; background:#0b1629; color:#a9c2ff; width:max-content}
+    .main{
+      flex:1;
+      display:flex;
+      gap:8px;
+      min-height:0;
+    }
+    @media (max-width:900px){
+      .main{flex-direction:column;}
+    }
 
-  .actions{
-    background:var(--panel); border:1px solid var(--br); border-radius:var(--rad); padding:8px; display:grid; gap:8px; min-width:210px
-  }
-  .bar{display:flex; gap:8px; flex-wrap:wrap}
-  .pill{background:#0f1b2e; border:1px solid var(--br); padding:6px 10px; border-radius:999px; font-size:12px}
-  .log{max-height:9lh; overflow:auto; font-size:12px; color:#a9b8d6}
-  .muted{color:var(--muted)}
+    .panel{
+      border-radius:var(--radius);
+      background:rgba(15,23,42,.96);
+      border:1px solid #1f2937;
+      box-shadow:var(--shadow);
+      padding:10px;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .panel-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:.85rem;
+      color:var(--muted);
+    }
 
-  @media (max-width:720px){
-    .top{grid-template-columns:1fr}
-    .status{min-width:unset}
-    .bottom{grid-template-columns:1fr}
-    .hand{grid-template-columns:repeat(2,1fr)}
-  }
-</style>
+    .board-panel{
+      flex:1.1;
+    }
+    .side-panel{
+      flex:0.9;
+      min-width:260px;
+    }
+
+    .board-grid{
+      flex:1;
+      display:grid;
+      grid-template-columns:repeat(6, minmax(0,1fr));
+      grid-auto-rows:minmax(46px,1fr);
+      gap:4px;
+      padding:4px;
+    }
+    .node-cell{
+      border-radius:12px;
+      border:1px solid #1f2937;
+      background:#020617;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      font-size:.78rem;
+      cursor:pointer;
+      position:relative;
+      overflow:hidden;
+      transition:transform .08s ease, box-shadow .08s ease, border-color .1s ease;
+    }
+    .node-main-label{
+      font-size:.8rem;
+    }
+    .node-sub{
+      font-size:.7rem;
+      opacity:.85;
+    }
+    .node-eco-tag,
+    .node-base-tag{
+      position:absolute;
+      top:4px;
+      left:6px;
+      font-size:.8rem;
+      opacity:.9;
+    }
+    .node-cell:hover{
+      transform:translateY(-1px);
+      box-shadow:0 8px 18px rgba(0,0,0,.7);
+      border-color:var(--accent-soft);
+    }
+    .node-selected{
+      box-shadow:0 0 0 2px var(--accent-soft);
+    }
+    .node-p1{
+      background:radial-gradient(circle at top,#14532d,#022c22);
+      border-color:var(--p1);
+    }
+    .node-p2{
+      background:radial-gradient(circle at top,#7f1d1d,#020617);
+      border-color:var(--p2);
+    }
+    .node-contested{
+      background:radial-gradient(circle at top,#facc15,#451a03);
+      border-color:var(--contested);
+      color:#111827;
+    }
+    .node-neutral{
+      background:radial-gradient(circle at top,#374151,#020617);
+      border-color:var(--neutral);
+    }
+
+    .btn{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      background:#020617;
+      padding:6px 10px;
+      font-size:.8rem;
+      color:var(--ink);
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+    }
+    .btn[disabled]{
+      opacity:.4;
+      cursor:default;
+    }
+    .btn-primary{
+      border-color:var(--accent-soft);
+      background:linear-gradient(135deg,#0ea5e9,#22c55e);
+      color:#0f172a;
+      font-weight:600;
+    }
+
+    .build-section-title{
+      font-size:.8rem;
+      color:var(--muted);
+      margin-top:4px;
+      margin-bottom:2px;
+      font-weight:600;
+    }
+    .build-bar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+      padding:4px;
+      border-radius:999px;
+      border:1px solid #1f2937;
+      background:rgba(15,23,42,.95);
+      font-size:.76rem;
+      align-items:center;
+    }
+    .build-pill{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:3px 7px;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      cursor:pointer;
+      background:#020617;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .build-pill span.cost{
+      opacity:.7;
+      font-size:.72rem;
+    }
+    .build-pill.active{
+      border-color:var(--accent-soft);
+      color:var(--ink);
+      background:radial-gradient(circle at top,#0ea5e9,#22c55e);
+    }
+
+    .small{
+      font-size:.76rem;
+      color:var(--muted);
+    }
+    .resource-line{
+      font-size:.8rem;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .resource-line span strong{
+      color:var(--ink);
+    }
+
+    .log-box{
+      flex:1;
+      min-height:80px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      padding:6px 8px;
+      font-size:.75rem;
+      color:var(--muted);
+      overflow:auto;
+    }
+    .log-line{
+      margin-bottom:2px;
+    }
+
+    .winner-banner{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.94);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:40;
+    }
+    .winner-card{
+      border-radius:18px;
+      padding:18px 22px;
+      border:1px solid #1f2937;
+      background:radial-gradient(circle at top,#0f172a,#020617);
+      box-shadow:var(--shadow);
+      text-align:center;
+      max-width:320px;
+    }
+    .winner-card h2{
+      margin:0 0 6px;
+    }
+    .winner-card p{
+      margin:4px 0;
+      font-size:.9rem;
+      color:var(--muted);
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <!-- TOP -->
-  <div class="top">
-    <div class="status">
-      <div class="row"><div>🗓️ <b>Turn</b></div><div id="turnNum">1</div></div>
-      <div class="row">
-        <div>🏰 <b>Castle</b></div>
-        <div style="flex:1; margin:0 8px" class="hpbar"><i id="hpFill" style="width:100%"></i></div>
-        <div id="hpLbl">30/30</div>
+  <div class="shell">
+    <div class="top-bar">
+      <div class="top-left">
+        <div class="game-title">
+          🏰 <span>Castle Panic</span>
+        </div>
+        <div class="pill">
+          <span>You:</span> <strong id="youLabel">…</strong>
+        </div>
+        <div class="pill">
+          <span>Side:</span> <strong id="sideLabel">…</strong>
+        </div>
+        <div class="pill">
+          <span>Time:</span> <strong id="timeLabel">0:00</strong>
+        </div>
       </div>
-      <div class="row"><div>👥 <b>Player</b></div><div id="turnLabel">P1</div></div>
-      <div class="chips" id="playersBar"></div>
-      <div class="topBtns">
-        <button class="btn secondary" id="fsBtn">📱 Fullscreen</button>
-        <button class="btn" id="endBtn">End Turn</button>
+      <div class="top-right">
+        <div class="pill">
+          <span>P1 Castle</span>
+          <div class="hp-bar">
+            <div id="p1HpFill" class="hp-fill"></div>
+          </div>
+        </div>
+        <div class="pill">
+          <span>P2 Castle</span>
+          <div class="hp-bar">
+            <div id="p2HpFill" class="hp-fill"></div>
+          </div>
+        </div>
+        <button id="fullscreenBtn" class="btn">⛶ Fullscreen</button>
       </div>
     </div>
-    <div class="boardWrap">
-      <div class="legend">
-        <span>🧱 Wall</span>
-        <span>⚔️ Knight</span>
-        <span>🏹 Archer</span>
-        <span>🧙‍♂️ Wizard</span>
-        <span>👺 Goblin</span>
-        <span>🧌 Orc</span>
-        <span>🗿 Troll</span>
-        <span>🐺🏹 Gnoll</span>
-        <span>🧙‍♀️ Witch</span>
-        <span>👁️ Cyclops</span>
-        <span>🐉 Dragon</span>
+
+    <div class="main">
+      <div class="panel board-panel">
+        <div class="panel-header">
+          <span>Battlefield — 6×6 Nodes</span>
+          <span class="small">
+            Teal = only P1 · Red = only P2 · Yellow = both · Grey = empty · 💰 = Eco · 🏰 = Castles
+          </span>
+        </div>
+        <div id="boardGrid" class="board-grid"></div>
       </div>
-      <div class="view" id="view">
-        <canvas id="cv"></canvas>
+
+      <div class="panel side-panel">
+        <div class="panel-header">
+          <span>Build & Stats</span>
+        </div>
+
+        <div class="resource-line" id="resourceLine"></div>
+
+        <div class="build-section-title">Structures (Gold)</div>
+        <div class="build-bar" id="buildingBar"></div>
+
+        <div class="build-section-title">Troops (Point Costs)</div>
+        <div class="build-bar" id="troopBar"></div>
+
+        <div class="small" style="margin-top:6px;">
+          <strong>Core Rules:</strong><br/>
+          • <strong>Gold</strong> builds structures. Generated every 5s + bonus per green 💰 node you control.<br/>
+          • <strong>Barracks</strong> → Footman pts ⚔️ · <strong>Den</strong> → Raider pts 🦊 · <strong>Armory</strong> → Advanced pts ⚙️.<br/>
+          • Troops cost points (not gold). Points are spent when you deploy them.<br/>
+          • Knight / Archer / Catapult / Ballista / Glaive can only be built on nodes you control or adjacent.<br/>
+          • <strong>Thief</strong> & <strong>Assassin</strong> can be built on <em>any</em> node (even the enemy castle) but are fragile.<br/>
+          • On contested nodes, every second a mini battle resolves: catapults hit multiple enemies, glaives chain, ballistas fire heavy shots on cooldown, and raiders prefer sniping buildings.<br/>
+          • When a castle’s HP hits 0, that side loses; the other is declared winner.
+        </div>
+
+        <div class="log-box" id="logBox"></div>
       </div>
     </div>
   </div>
 
-  <!-- BOTTOM -->
-  <div class="bottom">
-    <div class="hand" id="hand"></div>
-    <div class="actions">
-      <div class="bar">
-        <span class="pill">🃏 Deck: <b id="deckCount">0</b></span>
-        <span class="pill">♻️ Discard: <b id="discardCount">0</b></span>
-        <span class="pill">🫱 Hand: <b id="handCount">0</b></span>
-      </div>
-      <div class="log" id="log"></div>
-      <div class="muted">Tip: Click a tile to fire siege. Ballista pierces to that tile; Catapult splashes on that tile. Troops auto-move toward the nearest enemy each turn.</div>
+  <div id="winnerOverlay" class="winner-banner">
+    <div class="winner-card">
+      <h2 id="winnerTitle">Winner!</h2>
+      <p id="winnerText"></p>
+      <button class="btn btn-primary" onclick="location.reload()">🔁 Play Again</button>
     </div>
   </div>
-</div>
 
-<script>
-/* ============================================================
-   Config & helpers
-   ============================================================ */
-const TILE = 36;
-const GRID_W = 46;  // width in tiles
-const GRID_H = 18;  // height in tiles
-const WALL_X  = 2;  // wall column (allies spawn near here)
-const ENEMY_SPAWN_X = GRID_W - 3;
+  <script type="module">
+    // ---------- FIREBASE ----------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction,
+      collection, getDocs, onSnapshot, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import {
+      getAuth, signInAnonymously, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-const CASTLE_MAX_HP = 30;
-const HAND_SIZE = 3;
-
-function uid(){ return Math.random().toString(36).slice(2,9); }
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function inBounds(x,y){ return x>=0 && y>=0 && x<GRID_W && y<GRID_H; }
-function getParam(name){
-  const m = new RegExp('[?&]'+name+'=([^&#]*)').exec(location.search);
-  return m ? decodeURIComponent(m[1].replace(/\+/g,'%20')) : null;
-}
-function randRange(n){ return (Math.random()*n)|0; }
-function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]];} return a; }
-
-const EMOJI = {
-  wall: "🧱",
-  knight: "⚔️",
-  archer: "🏹",
-  wizard: "🧙‍♂️",
-  goblin: "👺",
-  orc: "🧌",
-  troll: "🗿",
-  gnoll: "🐺",
-  witch: "🧙‍♀️",
-  cyclops: "👁️",
-  dragon: "🐉",
-};
-
-/* ============================================================
-   Game State
-   ============================================================ */
-const state = {
-  turn: 1,
-  castleHP: CASTLE_MAX_HP,
-  players: [],
-  curP: 0,
-  actedThisTurn: false,
-  grid: [],
-  units: {},
-  targetAiming: null, // {cardIndex, weapon, level}
-  dragging:false, dragStart:null, viewOffset:{x:0,y:0}, viewScale:1,
-  gameOver:false,
-  highlights: [] // {x,y,ttl,type:'path'|'splash'}
-};
-
-// Placeholder sync (no-op)
-const FirebaseSync = {
-  isMyTurn: ()=> true,
-  onAdvance: ()=>{},  // broadcast state/highlights if you wire RTDB/Firestore
-};
-
-/* ============================================================
-   Deck & Cards
-   ============================================================ */
-function starterDeck(){
-  const d = [];
-  d.push(makeTroopCard("knight"));
-  d.push(makeTroopCard("archer"));
-  d.push(makeTroopCard("wizard"));
-  d.push(makeTroopCard("knight"));
-  d.push(makeSiegeCard("catapult"));
-  d.push(makeSiegeCard("ballista"));
-  d.push(makeUpgradeCard());
-  d.push(makeUpgradeCard());
-  d.push(makeTroopCard("archer"));
-  d.push(makeSiegeCard("catapult"));
-  return d;
-}
-
-function makeTroopCard(kind){ return {id:uid(), type:"troop", kind, level:1, name:cap(kind)+" (Lv1)", desc:`Summon ${cap(kind)}s near the wall. Count scales with level.`}; }
-function makeSiegeCard(kind){ 
-  const nm = kind==="catapult"?"Catapult":"Ballista";
-  return {id:uid(), type:"siege", kind, level:1, name:`${nm} (Lv1)`, desc:(kind==="catapult"?"Splash at clicked tile.":"Pierces to clicked tile; extra at impact.")};
-}
-function makeUpgradeCard(){ return {id:uid(), type:"upgrade", name:"Upgrade", desc:"Click this, then click a card in your hand to level it up."}; }
-
-function cap(s){ return s[0].toUpperCase()+s.slice(1); }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
-
-function initPlayers(n=1){
-  const arr=[];
-  for(let i=0;i<n;i++){
-    const deck = shuffle(starterDeck());
-    arr.push({name:`P${i+1}`, deck, discard:[], hand:[]});
-  }
-  state.players = arr;
-  for(const p of state.players){ drawUpTo(p); }
-}
-
-function draw(p){
-  if(!p.deck.length){
-    if(!p.discard.length) return null;
-    log(`🔄 ${p.name} reshuffled.`);
-    p.deck = shuffle(p.discard.splice(0));
-  }
-  return p.deck.pop();
-}
-function drawUpTo(p){
-  while(p.hand.length < HAND_SIZE){
-    const c = draw(p); if(!c) break;
-    p.hand.push(c);
-  }
-}
-function discardCard(p, idx){
-  const [c] = p.hand.splice(idx,1);
-  p.discard.push(c);
-}
-function levelUpCard(card){
-  card.level = Math.min(10, (card.level||1)+1);
-  if(card.type==="troop"){
-    card.name = `${cap(card.kind)} (Lv${card.level})`;
-  }else if(card.type==="siege"){
-    const nm = card.kind==="catapult"?"Catapult":"Ballista";
-    card.name = `${nm} (Lv${card.level})`;
-  }
-}
-
-/* ============================================================
-   Grid & Units
-   ============================================================ */
-function clearGrid(){
-  state.grid = [];
-  for(let y=0;y<GRID_H;y++){
-    const row = new Array(GRID_W).fill(null);
-    state.grid.push(row);
-  }
-}
-function placeUnit(u){
-  if(!inBounds(u.x,u.y)) return false;
-  if(state.grid[u.y][u.x]) return false;
-  state.units[u.id]=u;
-  state.grid[u.y][u.x]=u.id;
-  return true;
-}
-function moveUnit(u, nx, ny){
-  if(!inBounds(nx,ny)) return false;
-  if(state.grid[ny][nx]) return false;
-  state.grid[u.y][u.x]=null;
-  u.x = nx; u.y = ny;
-  state.grid[ny][nx]=u.id;
-  return true;
-}
-function removeUnit(u){
-  if(state.grid[u.y]?.[u.x]===u.id){ state.grid[u.y][u.x]=null; }
-  delete state.units[u.id];
-}
-
-function makeWall(){
-  for(let y=0;y<GRID_H;y++){
-    const id = uid();
-    const w = {id, side:'wall', kind:'wall', emoji:EMOJI.wall, hp:9999, max:9999, dmg:0, range:0, speed:0, x:WALL_X, y};
-    placeUnit(w);
-  }
-}
-
-/* ------- Spawn helper: random Y, shift columns if full ------- */
-function findSpawnSpot(startCol){
-  const yOrder = shuffled([...Array(GRID_H).keys()]);
-  let x = startCol;
-  while(x < GRID_W){
-    for(const y of yOrder){
-      if(!state.grid[y][x]) return {x,y};
-    }
-    x++; // column full → move right
-  }
-  return null;
-}
-
-/* ----- Allied Troops ----- */
-function troopStats(kind, level=1){
-  const base = {
-    knight: {hp:4, dmg:2, range:1, speed:1, ai:'melee'},
-    archer: {hp:3, dmg:2, range:4, speed:1, ai:'ranged'},
-    wizard: {hp:3, dmg:1, range:3, speed:1, ai:'rangedSplash'},
-  }[kind];
-  const hp = base.hp + Math.floor((level-1)/2);
-  const dmg = base.dmg + Math.floor((level-1)/3);
-  return {hp, dmg, range:base.range, speed:base.speed, ai:base.ai};
-}
-function summonTroops(kind, level){
-  // Number spawned = ceil(level/2), min 1, max 4
-  const count = Math.min(4, Math.max(1, Math.ceil(level/2)));
-  let placed=0;
-  const startCol = WALL_X+1;
-  for(let i=0;i<count;i++){
-    const spot = findSpawnSpot(startCol);
-    if(!spot){ log(`⚠️ No space to summon more ${cap(kind)}s (${placed}/${count}).`); break; }
-    const st = troopStats(kind, level);
-    const u = {
-      id:uid(), side:'ally', kind,
-      emoji:(kind==='knight'?EMOJI.knight:kind==='archer'?EMOJI.archer:EMOJI.wizard),
-      hp:st.hp, max:st.hp, dmg:st.dmg, range:st.range, speed:st.speed, splash:(kind==='wizard'?1:0),
-      x:spot.x, y:spot.y
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.appspot.com",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
-    placeUnit(u);
-    placed++;
-  }
-  if(placed<count){ log(`⚠️ Spawned ${placed}/${count}.`); }
-}
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-/* ----- Enemies & Waves ----- */
-function tierForTurn(turn){ return Math.floor((turn-1)/5)+1; }
+    // ---------- CONFIG ----------
+    const GRID_SIZE = 6;
+    const CASTLE_HP = 80;
+    const INCOME_INTERVAL = 5; // seconds
+    const GAME_COLLECTION = "castlepanic_games";
 
-function enemyDef(kind, lvl){
-  const scale = 1 + Math.floor((lvl-1)/5)*0.25 + (lvl*0.02);
-  const table = {
-    goblin: {hp:2, dmg:1, range:1, speed:2, ai:'melee'},
-    orc:    {hp:5, dmg:2, range:1, speed:1, ai:'melee'},
-    troll:  {hp:10,dmg:3, range:1, speed:1, ai:'meleeSplash'},
-    gnoll:  {hp:4, dmg:2, range:3, speed:1, ai:'ranged'},
-    witch:  {hp:4, dmg:1, range:3, speed:1, ai:'rangedSplash'},
-    cyclops:{hp:12,dmg:4, range:1, speed:1, ai:'meleeKnock'},
-    dragon: {hp:18,dmg:3, range:4, speed:1, ai:'rangedSplashWide'},
-  }[kind];
-  return {
-    hp: Math.ceil(table.hp*scale),
-    dmg: table.dmg,
-    range: table.range,
-    speed: table.speed,
-    ai: table.ai
-  };
-}
-function emojiForEnemy(kind){
-  return {
-    goblin:"👺", orc:"🧌", troll:"🗿", gnoll:"🐺", witch:"🧙‍♀️",
-    cyclops:"👁️", dragon:"🐉"
-  }[kind];
-}
-function spawnWave(turn){
-  const tier = tierForTurn(turn);
-  const count = Math.min(6, 2 + Math.floor(tier/2));
-  for(let i=0;i<count;i++){
-    const pool = [];
-    if(tier>=1){ pool.push("goblin"); }
-    if(tier>=2){ pool.push("orc"); }
-    if(tier>=3){ pool.push("troll"); }
-    if(tier>=4){ pool.push("gnoll","witch"); }
-    if(tier>=5){ pool.push("cyclops"); }
-    if(tier>=6){ pool.push("dragon"); }
-    const kind = pool[(Math.random()*pool.length)|0];
-    const y = randRange(GRID_H);
-    const def = enemyDef(kind, turn);
-    const u = {id:uid(), side:'enemy', kind, emoji:emojiForEnemy(kind),
-      hp:def.hp, max:def.hp, dmg:def.dmg, range:def.range, speed:def.speed, ai:def.ai,
-      x:ENEMY_SPAWN_X, y};
-    if(!state.grid[y][ENEMY_SPAWN_X]) placeUnit(u);
-  }
-  log(`👹 Enemy wave (T${tier}) arrived.`);
-}
+    // Castles: base on opposite sides
+    const CASTLES = {
+      A: { x: 2, y: 0 }, // P1 near top
+      B: { x: 3, y: 5 }  // P2 near bottom
+    };
 
-/* ============================================================
-   Turn Engine
-   ============================================================ */
-function curPlayer(){ return state.players[state.curP]; }
+    // Eco nodes: corners + middle 2×2
+    const ECO_NODES = [
+      {x:0,y:0},{x:5,y:0},{x:0,y:5},{x:5,y:5},
+      {x:2,y:2},{x:3,y:2},{x:2,y:3},{x:3,y:3}
+    ];
 
-function endTurn(){
-  if(state.gameOver) return;
-  if(!FirebaseSync.isMyTurn()) return;
-  state.curP = (state.curP+1) % state.players.length;
-  state.turn += 1;
-  state.actedThisTurn = false;
+    // Buildings (gold)
+    const BUILDINGS = {
+      barracks: { key:"barracks", name:"Barracks", emoji:"🏕️", goldCost:20, gen:{footman:1} },
+      den:      { key:"den",      name:"Den",      emoji:"🕳️", goldCost:20, gen:{raider:1} },
+      armory:   { key:"armory",   name:"Armory",   emoji:"⚒️", goldCost:25, gen:{advanced:1} }
+    };
 
-  tickHighlights();
-  alliesAct();
-  enemiesAct();
-  applyCastleDamage();
-  spawnWave(state.turn);
-  drawUpTo(curPlayer());
-
-  if(state.castleHP<=0){ gameOver(false); return; }
-
-  renderAll();
-  FirebaseSync.onAdvance();
-}
-
-function startGame(players=1){
-  state.turn=1; state.castleHP=CASTLE_MAX_HP; state.curP=0; state.actedThisTurn=false; state.gameOver=false;
-  state.highlights=[];
-  clearGrid();
-  state.units = {};
-  initPlayers(players);
-  makeWall();
-  spawnWave(state.turn);
-  renderAll();
-}
-
-/* ============================================================
-   Auto Actions (nearest enemy movement)
-   ============================================================ */
-function nearestTarget(u, targets){
-  let best=null, bestD=1e9;
-  for(const t of targets){
-    const d = Math.abs(u.x-t.x)+Math.abs(u.y-t.y);
-    if(d<bestD){ bestD=d; best=t; }
-  }
-  return best;
-}
-function canAttack(att, tgt){
-  return (Math.abs(att.x-tgt.x)+Math.abs(att.y-tgt.y)) <= att.range;
-}
-function hitUnit(target, dmg){
-  if(target.side==='wall') return 0;
-  target.hp -= dmg;
-  if(target.hp<=0){ removeUnit(target); return 1; }
-  return 0;
-}
-function splashAt(x,y, radius, dmg, sideFilter=null){
-  let killed=0;
-  for(let iy=y-radius; iy<=y+radius; iy++){
-    for(let ix=x-radius; ix<=x+radius; ix++){
-      if(!inBounds(ix,iy)) continue;
-      if(Math.abs(ix-x)+Math.abs(iy-y) > radius) continue;
-      const id = state.grid[iy][ix];
-      if(!id) continue;
-      const u = state.units[id];
-      if(!u) continue;
-      if(u.side==='wall') continue;
-      if(sideFilter && u.side!==sideFilter) continue;
-      killed += hitUnit(u, dmg);
-    }
-  }
-  return killed;
-}
-function stepToward(u, tx, ty, steps){
-  for(let s=0;s<steps;s++){
-    const dx = Math.sign(tx - u.x);
-    const dy = Math.sign(ty - u.y);
-    // try x first, then y
-    if(dx && moveUnit(u, u.x+dx, u.y)) continue;
-    if(dy && moveUnit(u, u.x, u.y+dy)) continue;
-    // try swapping priority
-    if(dy && moveUnit(u, u.x, u.y+dy)) continue;
-    // stuck
-    break;
-  }
-}
-function enemiesAct(){
-  const ids = Object.values(state.units).filter(u=>u.side==='enemy').sort((a,b)=> (a.x-b.x)|| (a.y-b.y)).map(u=>u.id);
-  for(const id of ids){
-    const u = state.units[id]; if(!u) continue;
-    const allies = Object.values(state.units).filter(v=>v.side==='ally');
-    if(allies.length){
-      const t = nearestTarget(u, allies);
-      if(canAttack(u,t)){
-        if(u.ai==='melee'){ hitUnit(t, u.dmg); }
-        else if(u.ai==='meleeSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
-        else if(u.ai==='meleeKnock'){ hitUnit(t,u.dmg); const kx=t.x+Math.sign(t.x-u.x), ky=t.y+Math.sign(t.y-u.y); if(inBounds(kx,ky)&&!state.grid[ky][kx]) moveUnit(t,kx,ky); }
-        else if(u.ai==='ranged'){ hitUnit(t, u.dmg); }
-        else if(u.ai==='rangedSplash'){ splashAt(t.x,t.y,1,u.dmg,'ally'); }
-        else if(u.ai==='rangedSplashWide'){ splashAt(t.x,t.y,2,u.dmg,'ally'); }
-      }else{
-        stepToward(u, t.x, t.y, u.speed);
+    // Units (points)
+    const UNITS = {
+      knight: {
+        key:"knight", name:"Knight", emoji:"🛡️",
+        hp:10, dmg:4, cost:{footman:1}, raider:false
+      },
+      archer: {
+        key:"archer", name:"Archer", emoji:"🏹",
+        hp:6, dmg:3, cost:{footman:1}, raider:false
+      },
+      catapult: {
+        key:"catapult", name:"Catapult", emoji:"🧱",
+        hp:8, dmg:2, cost:{advanced:2}, raider:false, aoe:true
+      },
+      ballista: {
+        key:"ballista", name:"Ballista", emoji:"🎯",
+        hp:8, dmg:6, cost:{advanced:2}, raider:false, cooldownMax:3
+      },
+      glaive: {
+        key:"glaive", name:"Glaive", emoji:"🌀",
+        hp:7, dmg:2, cost:{advanced:1}, raider:false, chain3:true
+      },
+      thief: {
+        key:"thief", name:"Thief", emoji:"🕵️",
+        hp:4, dmg:1, cost:{raider:1}, raider:true
+      },
+      assassin: {
+        key:"assassin", name:"Assassin", emoji:"🗡️",
+        hp:5, dmg:3, cost:{raider:1, advanced:1}, raider:true
       }
-    }else{
-      stepToward(u, WALL_X, u.y, u.speed);
+    };
+
+    // ---------- GLOBAL STATE ----------
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("gameId") || "dev-castlepanic";
+    const displayName = (params.get("username") || "Guest").trim() || "Guest";
+    const gameRef = doc(db, GAME_COLLECTION, gameId);
+    const nodesCol = collection(gameRef, "nodes");
+
+    let currentUser = null;
+    let playerRef = null;
+    let myPlayer = null;
+    let latestGame = null;
+    let nodesState = {}; // id -> node data
+    let isHost = false;
+    let hostTickHandle = null;
+    let hostTicking = false;
+    let selectedBuild = null; // {kind:"building"|"unit", key:"..."}
+    let joined = false;
+
+    // ---------- DOM ----------
+    const youLabel = document.getElementById("youLabel");
+    const sideLabel = document.getElementById("sideLabel");
+    const timeLabel = document.getElementById("timeLabel");
+    const p1HpFill = document.getElementById("p1HpFill");
+    const p2HpFill = document.getElementById("p2HpFill");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+    const boardGridEl = document.getElementById("boardGrid");
+    const buildingBarEl = document.getElementById("buildingBar");
+    const troopBarEl = document.getElementById("troopBar");
+    const resourceLineEl = document.getElementById("resourceLine");
+    const logBoxEl = document.getElementById("logBox");
+
+    const winnerOverlay = document.getElementById("winnerOverlay");
+    const winnerTitle = document.getElementById("winnerTitle");
+    const winnerText = document.getElementById("winnerText");
+
+    function log(msg){
+      const div = document.createElement("div");
+      div.className = "log-line";
+      div.textContent = msg;
+      logBoxEl.appendChild(div);
+      logBoxEl.scrollTop = logBoxEl.scrollHeight;
+      console.log("[CASTLE]", msg);
     }
-  }
-}
-function alliesAct(){
-  const ids = Object.values(state.units).filter(u=>u.side==='ally').sort((a,b)=> (b.x-a.x)|| (a.y-b.y)).map(u=>u.id);
-  for(const id of ids){
-    const u = state.units[id]; if(!u) continue;
-    const enemies = Object.values(state.units).filter(v=>v.side==='enemy');
-    if(!enemies.length) continue;
-    const t = nearestTarget(u, enemies);
-    if(canAttack(u,t)){
-      if(u.splash){ splashAt(t.x,t.y,u.splash,u.dmg,'enemy'); }
-      else hitUnit(t, u.dmg);
-    }else{
-      // move TOWARD nearest enemy (requested change)
-      stepToward(u, t.x, t.y, u.speed);
+
+    function formatTime(sec){
+      sec = Math.max(0, Math.floor(sec||0));
+      const m = Math.floor(sec/60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2,"0")}`;
     }
-  }
-}
-function applyCastleDamage(){
-  let hits=0;
-  for(const u of Object.values(state.units)){
-    if(u.side==='enemy' && u.x<=WALL_X){
-      hits += 1;
+
+    function isEco(x,y){
+      return ECO_NODES.some(n=>n.x===x && n.y===y);
     }
-  }
-  if(hits>0){
-    state.castleHP = Math.max(0, state.castleHP - hits);
-    log(`💥 Castle takes ${hits} damage.`);
-  }
-}
 
-/* ============================================================
-   Highlights (shared-visible)
-   ============================================================ */
-function addHighlight(tiles, type='path', ttl=3){
-  for(const t of tiles){
-    state.highlights.push({x:t.x, y:t.y, ttl, type});
-  }
-}
-function tickHighlights(){
-  state.highlights.forEach(h=>h.ttl--);
-  state.highlights = state.highlights.filter(h=>h.ttl>0);
-}
-
-/* ============================================================
-   Cards — Interactions
-   ============================================================ */
-let upgradeWaiting = null; // after clicking Upgrade
-
-function playCard(idx){
-  if(state.gameOver) return;
-  if(!FirebaseSync.isMyTurn()) { log("⏳ Not your turn."); return; }
-  if(state.actedThisTurn) { log("🛑 You already played a card this turn."); return; }
-
-  const p = curPlayer();
-  const c = p.hand[idx];
-  if(!c) return;
-
-  if(c.type==="upgrade"){
-    upgradeWaiting = {fromIndex: idx};
-    renderHand();
-    log("⬆️ Select a different card in your hand to upgrade.");
-    return;
-  }
-
-  if(upgradeWaiting){
-    if(idx === upgradeWaiting.fromIndex){
-      log("❌ Choose a different card to upgrade.");
-      return;
-    }
-    levelUpCard(p.hand[idx]);
-    log(`🔧 Upgraded "${p.hand[idx].name}".`);
-    discardCard(p, upgradeWaiting.fromIndex);
-    upgradeWaiting = null;
-    state.actedThisTurn = true;
-    renderAll();
-    setTimeout(endTurn, 350);
-    return;
-  }
-
-  if(c.type==="troop"){
-    summonTroops(c.kind, c.level||1);
-    log(`🛡️ Summoned ${cap(c.kind)}(s) (Lv${c.level}).`);
-    discardCard(p, idx);
-    state.actedThisTurn = true;
-    renderAll();
-    setTimeout(endTurn, 350);
-    return;
-  }
-
-  if(c.type==="siege"){
-    state.targetAiming = {cardIndex: idx, weapon:c.kind, level:c.level||1};
-    renderHand();
-    log(`🎯 Click a tile to fire the ${c.kind==='catapult'?'Catapult':'Ballista'}.`);
-    return;
-  }
-}
-
-function onHandClick(idx){
-  if(upgradeWaiting && state.players[state.curP].hand[idx]?.type!=="upgrade"){
-    playCard(idx);
-    return;
-  }
-  playCard(idx);
-}
-
-/* ============================================================
-   Siege (CLICK targeting)
-   ============================================================ */
-const viewEl = document.getElementById('view');
-const cv = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-
-function toWorld(px,py){
-  const r = viewEl.getBoundingClientRect();
-  const x = (px - r.left)/state.viewScale + state.viewOffset.x;
-  const y = (py - r.top)/state.viewScale  + state.viewOffset.y;
-  return {x,y};
-}
-function worldToTile(wx,wy){
-  return { tx: Math.floor(wx/TILE), ty: Math.floor(wy/TILE) };
-}
-function tileCenter(tx,ty){
-  return { x: tx*TILE + TILE/2, y: ty*TILE + TILE/2 };
-}
-
-function onPointerDown(e){
-  // Aiming mode → resolve shot at clicked tile
-  if(state.targetAiming){
-    const w = toWorld(e.clientX, e.clientY);
-    const {tx,ty} = worldToTile(w.x,w.y);
-    if(!inBounds(tx,ty)){ log("❌ Click inside the battlefield."); return; }
-    resolveSiegeClick(tx,ty);
-    return;
-  }
-  // otherwise start panning
-  state.dragging = true;
-  state.dragStart = {mx:e.clientX, my:e.clientY, ox:state.viewOffset.x, oy:state.viewOffset.y};
-}
-function onPointerMove(e){
-  if(state.dragging && state.dragStart){
-    const dx = (state.dragStart.mx - e.clientX)/state.viewScale;
-    const dy = (state.dragStart.my - e.clientY)/state.viewScale;
-    state.viewOffset.x = clamp(state.dragStart.ox + dx, 0, GRID_W*TILE - 50);
-    state.viewOffset.y = clamp(state.dragStart.oy + dy, 0, GRID_H*TILE - 50);
-    renderCanvas();
-  }
-}
-function onPointerUp(){ state.dragging=false; state.dragStart=null; }
-
-viewEl.addEventListener('pointerdown', onPointerDown);
-viewEl.addEventListener('pointermove', onPointerMove);
-viewEl.addEventListener('pointerup', onPointerUp);
-viewEl.addEventListener('pointerleave', onPointerUp);
-viewEl.addEventListener('wheel', (e)=>{
-  e.preventDefault();
-  state.viewScale = clamp(state.viewScale - Math.sign(e.deltaY)*0.05, 0.6, 1.5);
-  renderCanvas();
-},{passive:false});
-
-function resolveSiegeClick(tx,ty){
-  const p = curPlayer();
-  const a = state.targetAiming;
-  const card = p.hand[a.cardIndex];
-  if(!card) return;
-
-  if(card.kind === 'catapult'){
-    // Splash only at the clicked tile (no path hits)
-    const splashR = (card.level>=10)?2 : (card.level>=5?2:1);
-    const dmg = 1 + Math.floor((card.level-1)/2);
-    const affected = [];
-    for(let y=ty-splashR; y<=ty+splashR; y++){
-      for(let x=tx-splashR; x<=tx+splashR; x++){
-        if(!inBounds(x,y)) continue;
-        if(Math.abs(x-tx)+Math.abs(y-ty) <= splashR) affected.push({x,y});
+    function neighbors(x,y){
+      const res=[];
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [dx,dy] of dirs){
+        const nx=x+dx, ny=y+dy;
+        if(nx>=0 && nx<GRID_SIZE && ny>=0 && ny<GRID_SIZE) res.push({x:nx,y:ny});
       }
+      return res;
     }
-    addHighlight(affected,'splash',3);
-    const killed = splashAt(tx,ty,splashR,dmg,'enemy');
-    log(`🪨 Catapult impact at ${tx},${ty}. ${killed} down.`);
-  }else{
-    // Ballista: pierce in a straight row from the wall lane to the clicked tile y
-    const y = ty;
-    const startX = WALL_X+1;
-    const dir = tx >= startX ? 1 : -1;
-    const path = [];
-    let killed=0;
-    const base = 1 + Math.floor((card.level-1)/3);
 
-    for(let x=startX; dir>0 ? x<=tx : x>=tx; x+=dir){
-      path.push({x, y});
-      const id = state.grid[y][x];
-      if(id){
-        const u = state.units[id];
-        if(u && u.side==='enemy'){
-          killed += hitUnit(u, base);
-        }
-      }
+    function nodeKey(row,col){
+      return `${row}_${col}`;
     }
-    // extra impact on final tile if enemy there
-    const id2 = state.grid[y][tx];
-    if(id2){
-      const u2 = state.units[id2];
-      if(u2 && u2.side==='enemy'){
-        killed += hitUnit(u2, base+1);
-      }
-    }
-    // L5: two side mini-lines (slight vertical offsets)
-    if(card.level>=5){
-      for(const oy of [-1,1]){
-        const yy = clamp(y+oy,0,GRID_H-1);
-        for(let x=startX; dir>0 ? x<=tx : x>=tx; x+=dir){
-          if(!inBounds(x,yy)) continue;
-          const id = state.grid[yy][x];
-          if(id){
-            const u = state.units[id];
-            if(u && u.side==='enemy'){
-              killed += hitUnit(u, base);
+
+    // ---------- AUTH ----------
+    signInAnonymously(auth).catch(err=>{
+      console.error(err);
+      alert("Failed to sign in anonymously to Firebase: "+err.message);
+    });
+
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user) return;
+      currentUser = user;
+      if(joined) return;
+      joined = true;
+      playerRef = doc(gameRef,"players",user.uid);
+      youLabel.textContent = displayName;
+      await joinGame();
+    });
+
+    // ---------- JOIN / INIT GAME ----------
+    async function joinGame(){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const gameSnap = await tx.get(gameRef);
+          const isNew = !gameSnap.exists();
+          let gameData = isNew ? null : gameSnap.data();
+
+          if(isNew){
+            // create game
+            gameData = {
+              createdAt: serverTimestamp(),
+              hostUid: currentUser.uid,
+              status: "running",
+              timeSeconds: 0,
+              baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+              baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
+              slotAUid: currentUser.uid,
+              slotBUid: null,
+              winnerSide: null
+            };
+            tx.set(gameRef, gameData);
+
+            // init nodes
+            for(let y=0;y<GRID_SIZE;y++){
+              for(let x=0;x<GRID_SIZE;x++){
+                const id = nodeKey(y,x);
+                const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
+                const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
+                const eco = isEco(x,y);
+                let type = "normal";
+                if(baseA) type = "baseA";
+                else if(baseB) type = "baseB";
+                else if(eco) type = "eco";
+
+                const nodeDocRef = doc(nodesCol, id);
+                const buildings = [];
+                if(baseA){
+                  buildings.push({
+                    id:"castleA",
+                    owner:"A",
+                    kind:"castle",
+                    x,y,
+                    hp:CASTLE_HP,
+                    maxHp:CASTLE_HP
+                  });
+                }
+                if(baseB){
+                  buildings.push({
+                    id:"castleB",
+                    owner:"B",
+                    kind:"castle",
+                    x,y,
+                    hp:CASTLE_HP,
+                    maxHp:CASTLE_HP
+                  });
+                }
+
+                tx.set(nodeDocRef,{
+                  id,
+                  row:y,
+                  col:x,
+                  type,
+                  units:[],
+                  buildings
+                });
+              }
             }
           }
+
+          // assign side for this player
+          const playerSnap = await tx.get(playerRef);
+          let side = "spectator";
+          if(gameData.slotAUid === currentUser.uid){
+            side = "A";
+          }else if(gameData.slotBUid === currentUser.uid){
+            side = "B";
+          }else if(!gameData.slotAUid){
+            side = "A";
+            tx.update(gameRef,{slotAUid: currentUser.uid});
+          }else if(!gameData.slotBUid){
+            side = "B";
+            tx.update(gameRef,{slotBUid: currentUser.uid});
+          }else{
+            side = "spectator";
+          }
+
+          if(!playerSnap.exists()){
+            tx.set(playerRef,{
+              uid: currentUser.uid,
+              name: displayName,
+              side,
+              gold: 40,
+              footmanPts: 0,
+              raiderPts: 0,
+              advancedPts: 0,
+              joinedAt: serverTimestamp()
+            });
+          }else{
+            tx.update(playerRef,{
+              name: displayName,
+              side
+            });
+          }
+        });
+
+        // watch game
+        onSnapshot(gameRef,(snap)=>{
+          if(!snap.exists()) return;
+          latestGame = snap.data();
+          renderMeta();
+          syncHostRole();
+        });
+
+        // watch player
+        onSnapshot(playerRef,(snap)=>{
+          if(!snap.exists()) return;
+          myPlayer = snap.data();
+          sideLabel.textContent =
+            myPlayer.side==="A" ? "P1" :
+            myPlayer.side==="B" ? "P2" :
+            "Spectator";
+          renderResources();
+        });
+
+        // watch nodes
+        onSnapshot(nodesCol,(snap)=>{
+          nodesState = {};
+          snap.forEach(d=>{
+            nodesState[d.id] = d.data();
+          });
+          renderBoard();
+          renderResources();
+        });
+
+        log("Joined Firebase game: "+gameId);
+      }catch(e){
+        console.error(e);
+        alert("Error joining game: "+e.message);
+      }
+    }
+
+    // ---------- META / HOST ----------
+    function renderMeta(){
+      if(!latestGame) return;
+      timeLabel.textContent = formatTime(latestGame.timeSeconds || 0);
+
+      const baseA = latestGame.baseA || {hp:0,maxHp:1};
+      const baseB = latestGame.baseB || {hp:0,maxHp:1};
+      const pctA = Math.max(0,Math.min(100,(baseA.hp/baseA.maxHp)*100));
+      const pctB = Math.max(0,Math.min(100,(baseB.hp/baseB.maxHp)*100));
+      p1HpFill.style.width = pctA + "%";
+      p2HpFill.style.width = pctB + "%";
+
+      if(latestGame.status==="finished" && latestGame.winnerSide && !winnerOverlay.style.display){
+        showWinner(latestGame.winnerSide);
+      }
+    }
+
+    function syncHostRole(){
+      if(!latestGame || !currentUser) return;
+      const shouldBeHost = latestGame.hostUid === currentUser.uid;
+      if(shouldBeHost && !isHost){
+        isHost = true;
+        startHostLoop();
+        log("You are host — running simulation.");
+      }else if(!shouldBeHost && isHost){
+        isHost = false;
+        stopHostLoop();
+        log("Host role moved to another client.");
+      }
+    }
+
+    function startHostLoop(){
+      if(hostTickHandle) clearInterval(hostTickHandle);
+      hostTickHandle = setInterval(()=>hostTick().catch(console.error), 1000);
+    }
+    function stopHostLoop(){
+      if(hostTickHandle){
+        clearInterval(hostTickHandle);
+        hostTickHandle = null;
+      }
+    }
+
+    async function hostTick(){
+      if(!isHost || hostTicking) return;
+      hostTicking = true;
+      try{
+        const gSnap = await getDoc(gameRef);
+        if(!gSnap.exists()){ hostTicking=false; return; }
+        const game = gSnap.data();
+        if(game.status && game.status!=="running"){ hostTicking=false; return; }
+
+        let timeSeconds = (game.timeSeconds || 0) + 1;
+        const updates = { timeSeconds };
+
+        // combat every second
+        const combatResult = await processCombat(game);
+        if(combatResult && combatResult.winnerSide && game.status!=="finished"){
+          updates.status = "finished";
+          updates.winnerSide = combatResult.winnerSide;
+        }
+
+        // income
+        if(timeSeconds % INCOME_INTERVAL === 0 && game.status==="running"){
+          await applyIncomeTick();
+        }
+
+        // compute castle hp from nodes
+        const baseHp = computeBaseHpFromNodes();
+        updates.baseA = baseHp.baseA;
+        updates.baseB = baseHp.baseB;
+
+        if(updates.baseA.hp <=0 && !updates.winnerSide){
+          updates.status = "finished";
+          updates.winnerSide = "B";
+        }else if(updates.baseB.hp <=0 && !updates.winnerSide){
+          updates.status = "finished";
+          updates.winnerSide = "A";
+        }
+
+        await updateDoc(gameRef, updates);
+      }catch(e){
+        console.error("hostTick error", e);
+      }
+      hostTicking = false;
+    }
+
+    function computeBaseHpFromNodes(){
+      let hpA = 0, hpB = 0;
+      for(const key in nodesState){
+        const n = nodesState[key];
+        if(!n || !n.buildings) continue;
+        for(const b of n.buildings){
+          if(b.kind==="castle" && b.owner==="A") hpA = b.hp;
+          if(b.kind==="castle" && b.owner==="B") hpB = b.hp;
+        }
+      }
+      return {
+        baseA:{ hp:Math.max(0,hpA), maxHp:CASTLE_HP },
+        baseB:{ hp:Math.max(0,hpB), maxHp:CASTLE_HP }
+      };
+    }
+
+    async function applyIncomeTick(){
+      const playersSnap = await getDocs(collection(gameRef,"players"));
+      const ecoControl = computeEcoControl();
+
+      const updates = [];
+      playersSnap.forEach(ps=>{
+        const p = ps.data();
+        if(p.side!=="A" && p.side!=="B") return;
+        const side = p.side;
+        let goldGain = 3; // base
+        const extraEco = ecoControl[side] || 0;
+        goldGain += extraEco; // +1 per eco node controlled
+
+        let footmanPts = p.footmanPts || 0;
+        let raiderPts = p.raiderPts || 0;
+        let advancedPts = p.advancedPts || 0;
+
+        // building generation
+        for(const key in nodesState){
+          const n = nodesState[key];
+          if(!n || !n.buildings) continue;
+          for(const b of n.buildings){
+            if(b.owner !== side) continue;
+            const def = BUILDINGS[b.kind];
+            if(!def || !def.gen) continue;
+            if(def.gen.footman) footmanPts += def.gen.footman;
+            if(def.gen.raider) raiderPts += def.gen.raider;
+            if(def.gen.advanced) advancedPts += def.gen.advanced;
+          }
+        }
+
+        updates.push(updateDoc(ps.ref,{
+          gold:(p.gold||0)+goldGain,
+          footmanPts,
+          raiderPts,
+          advancedPts
+        }));
+      });
+
+      if(updates.length) await Promise.all(updates);
+    }
+
+    function computeEcoControl(){
+      const result = {A:0,B:0};
+      for(const nKey in nodesState){
+        const n = nodesState[nKey];
+        if(!n) continue;
+        if(n.type!=="eco") continue;
+        const control = getNodeControl(n);
+        if(control==="A") result.A++;
+        else if(control==="B") result.B++;
+      }
+      return result;
+    }
+
+    // ---------- COMBAT ----------
+    function getNodeControl(node){
+      const units = node.units || [];
+      const buildings = node.buildings || [];
+      let hasA=false, hasB=false;
+      for(const u of units){
+        if(u.owner==="A") hasA=true;
+        if(u.owner==="B") hasB=true;
+      }
+      for(const b of buildings){
+        if(b.owner==="A") hasA=true;
+        if(b.owner==="B") hasB=true;
+      }
+      if(hasA && hasB) return "contested";
+      if(hasA) return "A";
+      if(hasB) return "B";
+      return "none";
+    }
+
+    // Helper pickers for combat
+    function randomFrom(arr){
+      if(!arr.length) return null;
+      const idx = Math.floor(Math.random()*arr.length);
+      return arr[idx];
+    }
+
+    function randomOthers(arr,excludeId,limit){
+      const pool = arr.filter(t=>t.id!==excludeId);
+      const out=[];
+      while(pool.length && out.length<limit){
+        const idx = Math.floor(Math.random()*pool.length);
+        out.push(pool[idx]);
+        pool.splice(idx,1);
+      }
+      return out;
+    }
+
+    function resolveUnitAttack(attacker, enemyUnits, enemyBuildings){
+      const def = UNITS[attacker.kind];
+      if(!def) return;
+
+      // BALLISTA: big hit but on cooldown
+      if(def.key==="ballista"){
+        attacker.cooldown = (attacker.cooldown || 0) - 1;
+        if(attacker.cooldown > 0){
+          return;
+        }
+        // prioritize castles -> other buildings -> units
+        const castles = enemyBuildings.filter(b=>b.kind==="castle");
+        const nonCastleBuildings = enemyBuildings.filter(b=>b.kind!=="castle");
+        const unitTargets = enemyUnits;
+        let target = randomFrom(castles) || randomFrom(nonCastleBuildings) || randomFrom(unitTargets);
+        if(!target) return;
+
+        target.hp -= def.dmg; // heavy shot
+        attacker.cooldown = def.cooldownMax || 3;
+        return;
+      }
+
+      // THIEF / ASSASSIN: prefer buildings, then units
+      if(def.key==="thief" || def.key==="assassin"){
+        const buildingTargets = enemyBuildings;
+        const unitTargets = enemyUnits;
+        const target = randomFrom(buildingTargets) || randomFrom(unitTargets);
+        if(!target) return;
+        target.hp -= def.dmg;
+        return;
+      }
+
+      // CATAPULT: splash, up to 3 different targets
+      if(def.aoe){
+        const allTargets = [...enemyUnits, ...enemyBuildings];
+        if(!allTargets.length) return;
+        for(let i=0;i<3;i++){
+          const t = randomFrom(allTargets);
+          if(!t) break;
+          t.hp -= def.dmg;
+        }
+        return;
+      }
+
+      // GLAIVE: hit one, then chain to up to 2 more
+      if(def.chain3){
+        const allTargets = [...enemyUnits, ...enemyBuildings];
+        if(!allTargets.length) return;
+        const primary = randomFrom(allTargets);
+        if(!primary) return;
+        primary.hp -= def.dmg;
+        const others = randomOthers(allTargets, primary.id, 2);
+        for(const o of others){
+          o.hp -= def.dmg;
+        }
+        return;
+      }
+
+      // DEFAULT: knight / archer etc. single-target DPS
+      const allTargets = [...enemyUnits, ...enemyBuildings];
+      const target = randomFrom(allTargets);
+      if(!target) return;
+      target.hp -= def.dmg;
+    }
+
+    async function processCombat(game){
+      const nodeUpdates = [];
+      let castleADead = false;
+      let castleBDead = false;
+
+      for(const key in nodesState){
+        const node = nodesState[key];
+        if(!node) continue;
+        let units = (node.units || []).map(u=>({...u}));
+        let buildings = (node.buildings || []).map(b=>({...b}));
+
+        const hasA = units.some(u=>u.owner==="A") || buildings.some(b=>b.owner==="A");
+        const hasB = units.some(u=>u.owner==="B") || buildings.some(b=>b.owner==="B");
+        if(!(hasA && hasB)) continue; // only run combat if both present
+
+        // Partition
+        const unitsA = units.filter(u=>u.owner==="A");
+        const unitsB = units.filter(u=>u.owner==="B");
+        const bldA = buildings.filter(b=>b.owner==="A");
+        const bldB = buildings.filter(b=>b.owner==="B");
+
+        // A attacks B
+        const enemyUnitsForA = unitsB;
+        const enemyBldForA = bldB;
+        for(const u of unitsA){
+          resolveUnitAttack(u, enemyUnitsForA, enemyBldForA);
+        }
+
+        // B attacks A
+        const enemyUnitsForB = unitsA;
+        const enemyBldForB = bldA;
+        for(const u of unitsB){
+          resolveUnitAttack(u, enemyUnitsForB, enemyBldForB);
+        }
+
+        // Clean up death (keep castles even at 0hp so base HP can be read)
+        const mergedUnits = [...unitsA, ...unitsB].filter(u=>u.hp>0);
+        const mergedBuildings = [...bldA, ...bldB].filter(b=>{
+          if(b.kind==="castle") return true;
+          return b.hp > 0;
+        });
+
+        // Check castle HP
+        for(const b of mergedBuildings){
+          if(b.kind==="castle" && b.owner==="A" && b.hp<=0){
+            castleADead = true;
+          }
+          if(b.kind==="castle" && b.owner==="B" && b.hp<=0){
+            castleBDead = true;
+          }
+        }
+
+        nodeUpdates.push(
+          setDoc(doc(nodesCol,key),{
+            units: mergedUnits,
+            buildings: mergedBuildings
+          },{merge:true})
+        );
+      }
+
+      if(nodeUpdates.length) await Promise.all(nodeUpdates);
+
+      let winnerSide = null;
+      if(castleADead && !castleBDead) winnerSide = "B";
+      if(castleBDead && !castleADead) winnerSide = "A";
+      // if both dead same tick, winnerSide stays null (tie) — game status won't flip here
+
+      return { winnerSide };
+    }
+
+    // ---------- RENDER ----------
+    function buildBars(){
+      buildingBarEl.innerHTML = "";
+      troopBarEl.innerHTML = "";
+
+      for(const key in BUILDINGS){
+        const def = BUILDINGS[key];
+        const btn = document.createElement("button");
+        btn.type="button";
+        btn.className="build-pill";
+        btn.dataset.kind="building";
+        btn.dataset.key=def.key;
+        btn.innerHTML = `${def.emoji} ${def.name} <span class="cost">(${def.goldCost}💰)</span>`;
+        btn.onclick = ()=> selectBuild("building", def.key);
+        buildingBarEl.appendChild(btn);
+      }
+
+      for(const key in UNITS){
+        const def = UNITS[key];
+        const costStr = costToString(def.cost);
+        const btn = document.createElement("button");
+        btn.type="button";
+        btn.className="build-pill";
+        btn.dataset.kind="unit";
+        btn.dataset.key=def.key;
+        btn.innerHTML = `${def.emoji} ${def.name} <span class="cost">(${costStr})</span>`;
+        btn.onclick = ()=> selectBuild("unit", def.key);
+        troopBarEl.appendChild(btn);
+      }
+    }
+
+    function costToString(cost){
+      const parts = [];
+      if(cost.footman) parts.push(`${cost.footman}⚔️`);
+      if(cost.raider) parts.push(`${cost.raider}🦊`);
+      if(cost.advanced) parts.push(`${cost.advanced}⚙️`);
+      return parts.join(" + ") || "free";
+    }
+
+    function selectBuild(kind,key){
+      if(!myPlayer) return;
+      selectedBuild = { kind, key };
+      document.querySelectorAll(".build-pill").forEach(el=>{
+        const k = el.dataset.key;
+        const kd = el.dataset.kind;
+        el.classList.toggle("active", kd===kind && k===key);
+      });
+    }
+
+    function renderBoard(){
+      buildBars();
+      boardGridEl.innerHTML = "";
+      for(let y=0;y<GRID_SIZE;y++){
+        for(let x=0;x<GRID_SIZE;x++){
+          const id = nodeKey(y,x);
+          const node = nodesState[id] || { row:y,col:x,units:[],buildings:[],type:"normal" };
+
+          const cell = document.createElement("div");
+          cell.className="node-cell";
+          cell.dataset.row = y;
+          cell.dataset.col = x;
+
+          const control = getNodeControl(node);
+          if(control==="A") cell.classList.add("node-p1");
+          else if(control==="B") cell.classList.add("node-p2");
+          else if(control==="contested") cell.classList.add("node-contested");
+          else cell.classList.add("node-neutral");
+
+          const isEcoNode = node.type==="eco";
+          const isBaseA = node.type==="baseA";
+          const isBaseB = node.type==="baseB";
+
+          if(isEcoNode){
+            const tag = document.createElement("div");
+            tag.className="node-eco-tag";
+            tag.textContent="💰";
+            cell.appendChild(tag);
+          }
+          if(isBaseA || isBaseB){
+            const tag = document.createElement("div");
+            tag.className="node-base-tag";
+            tag.textContent="🏰";
+            cell.appendChild(tag);
+          }
+
+          const main = document.createElement("div");
+          main.className="node-main-label";
+          if(isBaseA) main.textContent="P1 Castle";
+          else if(isBaseB) main.textContent="P2 Castle";
+          else if(isEcoNode) main.textContent="Eco";
+          else main.textContent = `(${x+1},${y+1})`;
+          cell.appendChild(main);
+
+          const sub = document.createElement("div");
+          sub.className="node-sub";
+          const units = node.units || [];
+          const blds = node.buildings || [];
+          const countA = units.filter(u=>u.owner==="A").length + blds.filter(b=>b.owner==="A").length;
+          const countB = units.filter(u=>u.owner==="B").length + blds.filter(b=>b.owner==="B").length;
+          const pieces = [];
+          if(countA) pieces.push(`P1:${countA}`);
+          if(countB) pieces.push(`P2:${countB}`);
+          sub.textContent = pieces.length ? pieces.join(" · ") : "Empty";
+          cell.appendChild(sub);
+
+          cell.addEventListener("click", onCellClick);
+          boardGridEl.appendChild(cell);
         }
       }
     }
-    // L10: tiny knockback on impact tile, if space
-    if(card.level>=10){
-      const idK = state.grid[y][tx];
-      if(idK){
-        const uK = state.units[idK];
-        if(uK && uK.side==='enemy'){
-          const kx = clamp(uK.x + 1, 0, GRID_W-1);
-          if(inBounds(kx,uK.y) && !state.grid[uK.y][kx]) moveUnit(uK,kx,uK.y);
+
+    function renderResources(){
+      if(!myPlayer) return;
+      resourceLineEl.innerHTML = `
+        <span><strong>${myPlayer.side==="A"?"P1":myPlayer.side==="B"?"P2":"Spec"}</strong> Gold: ${myPlayer.gold ?? 0}💰</span>
+        <span>⚔️ Footman: <strong>${myPlayer.footmanPts ?? 0}</strong></span>
+        <span>🦊 Raider: <strong>${myPlayer.raiderPts ?? 0}</strong></span>
+        <span>⚙️ Advanced: <strong>${myPlayer.advancedPts ?? 0}</strong></span>
+      `;
+      renderMeta();
+    }
+
+    function showWinner(side){
+      const winnerTextSide = side==="A" ? "Player 1" : "Player 2";
+      const loser = side==="A" ? "Player 2" : "Player 1";
+      winnerTitle.textContent = `${winnerTextSide} Wins!`;
+      winnerText.textContent = `${winnerTextSide} destroyed ${loser}'s castle.`;
+      winnerOverlay.style.display = "flex";
+    }
+
+    // ---------- BUILDING RULES ----------
+    function canBuildHereForSide(side,row,col,unitDefOrNull,isBuilding){
+      const node = nodesState[nodeKey(row,col)];
+      if(!node) return false;
+
+      if(isBuilding){
+        if(node.type==="baseA" || node.type==="baseB") return false;
+      }else if(unitDefOrNull && unitDefOrNull.raider){
+        // raider units (thief/assassin) can go anywhere
+        return true;
+      }
+
+      // Non-raider troops & structures: must be on a node you control or adjacent
+      const control = getNodeControl(node);
+      if(control===side) return true;
+      const adj = neighbors(col,row);
+      for(const n of adj){
+        const adjNode = nodesState[nodeKey(n.y,n.x)];
+        if(adjNode && getNodeControl(adjNode)===side) return true;
+      }
+      return false;
+    }
+
+    // ---------- PLACE BUILDING / UNIT ----------
+    async function onCellClick(e){
+      if(!myPlayer) return;
+      if(latestGame && latestGame.status==="finished") return;
+      const row = Number(e.currentTarget.dataset.row);
+      const col = Number(e.currentTarget.dataset.col);
+      const side = myPlayer.side;
+      if(side!=="A" && side!=="B"){
+        log("Spectators cannot build.");
+        return;
+      }
+      if(!selectedBuild){
+        log("Select a structure or troop to build first.");
+        return;
+      }
+
+      const nodeId = nodeKey(row,col);
+      const build = selectedBuild;
+
+      try{
+        if(build.kind==="building"){
+          await placeBuilding(side,nodeId,row,col,build.key);
+        }else{
+          await placeUnit(side,nodeId,row,col,build.key);
         }
+      }catch(err){
+        log("Build failed: "+err.message);
       }
     }
 
-    addHighlight(path,'path',3);
-    log(`🏹 Ballista fired to ${tx},${ty}. ${killed} down.`);
-  }
+    async function placeBuilding(side,nodeId,row,col,key){
+      const def = BUILDINGS[key];
+      if(!def) throw new Error("Unknown building.");
 
-  // discard card & end turn
-  discardCard(p, a.cardIndex);
-  state.actedThisTurn = true;
-  state.targetAiming = null;
-  renderAll();
-  setTimeout(endTurn, 350);
-}
+      if(!canBuildHereForSide(side,row,col,null,true)){
+        throw new Error("Structures must be built in or next to your territory and not on castles.");
+      }
 
-/* ============================================================
-   UI: Rendering
-   ============================================================ */
-function qs(s){ return document.querySelector(s); }
-function log(msg){
-  const el = qs('#log');
-  const line = document.createElement('div');
-  const ts = new Date().toLocaleTimeString();
-  line.innerHTML = `<span style="opacity:.6">[${ts}]</span> ${msg}`;
-  el.appendChild(line);
-  el.scrollTop = el.scrollHeight;
-}
-function renderAll(){
-  renderStatus();
-  renderPlayers();
-  renderHand();
-  renderCanvas();
-}
-function renderStatus(){
-  qs('#turnNum').textContent = state.turn;
-  qs('#turnLabel').textContent = curPlayer().name;
-  const hpPct = Math.round(state.castleHP/CASTLE_MAX_HP*100);
-  qs('#hpFill').style.width = Math.max(0,hpPct)+'%';
-  qs('#hpLbl').textContent = `${state.castleHP}/${CASTLE_MAX_HP}`;
-  qs('#deckCount').textContent = curPlayer().deck.length;
-  qs('#discardCount').textContent = curPlayer().discard.length;
-  qs('#handCount').textContent = curPlayer().hand.length;
-  qs('#endBtn').disabled = state.gameOver || !FirebaseSync.isMyTurn();
-}
-function renderPlayers(){
-  const bar = qs('#playersBar'); bar.innerHTML="";
-  state.players.forEach((p,i)=>{
-    const chip = document.createElement('div');
-    chip.className='chip';
-    chip.dataset.cur = (i===state.curP);
-    chip.innerHTML = `<span>👤</span><b>${p.name}</b> <span style="opacity:.7">🃏${p.hand.length}</span>`;
-    bar.appendChild(chip);
-  });
-}
-function renderHand(){
-  const h = qs('#hand'); h.innerHTML="";
-  const p = curPlayer();
-  p.hand.forEach((c,idx)=>{
-    const el = document.createElement('div');
-    el.className='card';
-    el.onclick = ()=> onHandClick(idx);
-    const name = document.createElement('div'); name.className='name'; name.textContent = c.name;
-    const desc = document.createElement('div'); desc.className='desc'; desc.textContent = c.desc;
-    const tag = document.createElement('div'); tag.className='tag'; tag.textContent = c.type==='troop'? 'Summon' : (c.type==='siege' ? 'Attack' : 'Upgrade');
-    el.appendChild(name); el.appendChild(desc); el.appendChild(tag);
-    if(upgradeWaiting && upgradeWaiting.fromIndex===idx) el.setAttribute('data-aim','true');
-    if(state.targetAiming && state.targetAiming.cardIndex===idx) el.setAttribute('data-aim','true');
-    if(state.actedThisTurn) el.setAttribute('data-disabled','true');
-    if(!FirebaseSync.isMyTurn()) el.setAttribute('data-disabled','true');
-    h.appendChild(el);
-  });
-}
+      await runTransaction(db, async (tx)=>{
+        const pSnap = await tx.get(playerRef);
+        if(!pSnap.exists()) throw new Error("Player missing.");
+        const p = pSnap.data();
+        if(p.side!==side) throw new Error("Side mismatch.");
+        if((p.gold || 0) < def.goldCost) throw new Error("Not enough gold.");
 
-/* ===== Canvas drawing ===== */
-function resizeCanvas(){
-  const r = viewEl.getBoundingClientRect();
-  cv.width = Math.max(300, Math.floor(r.width  * devicePixelRatio));
-  cv.height= Math.max(220, Math.floor(r.height * devicePixelRatio));
-  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-}
-window.addEventListener('resize', ()=>{ resizeCanvas(); renderCanvas(); });
+        const nodeRef = doc(nodesCol,nodeId);
+        const nSnap = await tx.get(nodeRef);
+        if(!nSnap.exists()) throw new Error("Node missing.");
+        const node = nSnap.data();
+        node.buildings = node.buildings || [];
 
-function renderCanvas(){
-  resizeCanvas();
-  const w = cv.width/devicePixelRatio, h = cv.height/devicePixelRatio;
-  ctx.clearRect(0,0,w,h);
+        node.buildings.push({
+          id:"b_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          owner:side,
+          kind:def.key,
+          x:col,
+          y:row,
+          hp:12,
+          maxHp:12
+        });
 
-  ctx.save();
-  ctx.translate(-state.viewOffset.x*state.viewScale, -state.viewOffset.y*state.viewScale);
-  ctx.scale(state.viewScale, state.viewScale);
-
-  // background
-  ctx.fillStyle = '#0b1422';
-  ctx.fillRect(state.viewOffset.x, state.viewOffset.y, w/state.viewScale, h/state.viewScale);
-
-  // grid
-  ctx.strokeStyle = '#1a2742';
-  ctx.lineWidth = 1;
-  for(let y=0;y<GRID_H;y++){
-    for(let x=0;x<GRID_W;x++){
-      ctx.strokeRect(x*TILE, y*TILE, TILE, TILE);
+        tx.update(playerRef,{ gold:(p.gold||0)-def.goldCost });
+        tx.set(nodeRef,{ buildings:node.buildings },{merge:true});
+      });
+      log(`${side==="A"?"P1":"P2"} built ${def.name} at (${col+1},${row+1}).`);
     }
-  }
 
-  // wall band
-  ctx.fillStyle = 'rgba(120,160,255,0.08)';
-  ctx.fillRect(WALL_X*TILE, 0, TILE, GRID_H*TILE);
-
-  // highlights
-  for(const hlt of state.highlights){
-    ctx.fillStyle = hlt.type==='splash' ? 'rgba(255,120,80,0.22)' : 'rgba(120,200,255,0.22)';
-    ctx.fillRect(hlt.x*TILE, hlt.y*TILE, TILE, TILE);
-    ctx.strokeStyle = hlt.type==='splash' ? 'rgba(255,140,110,0.6)' : 'rgba(130,210,255,0.6)';
-    ctx.strokeRect(hlt.x*TILE+1, hlt.y*TILE+1, TILE-2, TILE-2);
-  }
-
-  // units
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  for(const u of Object.values(state.units)){
-    const px = u.x*TILE + TILE/2;
-    const py = u.y*TILE + TILE/2;
-    ctx.font = '22px system-ui,Segoe UI,Apple Color Emoji,Segoe UI Emoji';
-    ctx.fillText(u.emoji, px, py);
-    if(u.side!=='wall'){
-      ctx.fillStyle = '#99c3ff';
-      ctx.font = '11px system-ui';
-      ctx.fillText(`${u.hp}`, px, py + 14);
-      ctx.fillStyle = '#e6efff';
+    function hasCost(cost,p){
+      if(cost.footman && (p.footmanPts||0) < cost.footman) return false;
+      if(cost.raider && (p.raiderPts||0) < cost.raider) return false;
+      if(cost.advanced && (p.advancedPts||0) < cost.advanced) return false;
+      return true;
     }
-  }
+    function spendCost(cost,p){
+      const result = {...p};
+      if(cost.footman) result.footmanPts = (result.footmanPts||0) - cost.footman;
+      if(cost.raider) result.raiderPts = (result.raiderPts||0) - cost.raider;
+      if(cost.advanced) result.advancedPts = (result.advancedPts||0) - cost.advanced;
+      return result;
+    }
 
-  ctx.restore();
-}
+    async function placeUnit(side,nodeId,row,col,key){
+      const def = UNITS[key];
+      if(!def) throw new Error("Unknown troop.");
 
-/* ============================================================
-   Controls
-   ============================================================ */
-document.getElementById('endBtn').addEventListener('click', endTurn);
-document.getElementById('fsBtn').addEventListener('click', ()=>{
-  if(document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen();
-});
+      if(!canBuildHereForSide(side,row,col,def,false)){
+        if(def.raider){
+          throw new Error("You cannot place there.");
+        }else{
+          throw new Error("Non-raider troops must be built in or next to your territory.");
+        }
+      }
 
-/* ============================================================
-   Game Over
-   ============================================================ */
-function gameOver(win){
-  state.gameOver = true;
-  log(win ? "🏆 Victory!" : "☠️ Defeat — the castle fell.");
-  document.getElementById('endBtn').disabled = true;
-}
+      await runTransaction(db, async (tx)=>{
+        const pSnap = await tx.get(playerRef);
+        if(!pSnap.exists()) throw new Error("Player missing.");
+        const p = pSnap.data();
+        if(p.side!==side) throw new Error("Side mismatch.");
+        if(!hasCost(def.cost,p)) throw new Error("Not enough points.");
 
-/* ============================================================
-   Boot
-   ============================================================ */
-// read ?players=N (fallback 1), clamp 1–4
-const pParam = parseInt(getParam('players') || '', 10);
-const PLAYER_COUNT = clamp(isNaN(pParam) ? 1 : pParam, 1, 4);
+        const updatedP = spendCost(def.cost,p);
 
-startGame(PLAYER_COUNT);
-renderAll();
-</script>
+        const nodeRef = doc(nodesCol,nodeId);
+        const nSnap = await tx.get(nodeRef);
+        if(!nSnap.exists()) throw new Error("Node missing.");
+        const node = nSnap.data();
+        node.units = node.units || [];
+
+        node.units.push({
+          id:"u_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          owner:side,
+          kind:def.key,
+          x:col,
+          y:row,
+          hp:def.hp,
+          maxHp:def.hp,
+          cooldown:0
+        });
+
+        tx.update(playerRef,{
+          footmanPts: updatedP.footmanPts || 0,
+          raiderPts: updatedP.raiderPts || 0,
+          advancedPts: updatedP.advancedPts || 0
+        });
+        tx.set(nodeRef,{ units:node.units },{merge:true});
+      });
+      log(`${side==="A"?"P1":"P2"} deployed ${def.name} at (${col+1},${row+1}).`);
+    }
+
+    // ---------- FULLSCREEN ----------
+    fullscreenBtn.addEventListener("click",()=>{
+      const el = document.documentElement;
+      if(!document.fullscreenElement){
+        el.requestFullscreen?.();
+      }else{
+        document.exitFullscreen?.();
+      }
+    });
+
+    // ---------- BOOT ----------
+    log("Connecting to Firebase and waiting for authentication…");
+    buildBars(); // initial UI
+  </script>
 </body>
 </html>
+
 
 
 
