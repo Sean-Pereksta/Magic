@@ -1,343 +1,395 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🏰 Base Defense: Trump Revenge (4P)</title>
+  <title>🛰️ Grid Overlord — Co-op Node Defense</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
   <style>
     :root{
       --bg:#020617;
-      --panel:#020617;
+      --panel:#0b1120;
       --ink:#e5e7eb;
       --muted:#9ca3af;
-      --accent:#f97316;
-      --accent-soft:#1f2937;
+      --accent:#38bdf8;
+      --accent-soft:#0ea5e9;
       --danger:#ef4444;
-      --good:#22c55e;
-      --border:#1f2937;
+      --enemy:#b91c1c;
+      --player:#16a34a;
+      --contested:#facc15;
+      --neutral:#4b5563;
       --radius:14px;
-      /* Zoomed in more */
-      --cellSize: min(6vh, 6vw);
+      --shadow:0 18px 40px rgba(0,0,0,.7);
     }
-    @media (max-width:768px){
-      :root{
-        --cellSize: min(7vh, 7vw);
-      }
-    }
-
     *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
     html,body{
-      margin:0; padding:0;
+      margin:0;
+      padding:0;
       height:100%;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
       background:radial-gradient(circle at top,#0f172a 0,#020617 55%);
       color:var(--ink);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
       overflow:hidden;
     }
     body{
       display:flex;
       flex-direction:column;
+      align-items:center;
     }
-
     .shell{
       flex:1;
       display:flex;
       flex-direction:column;
-      max-width:1200px;
-      margin:0 auto;
       width:100%;
+      max-width:1200px;
       padding:8px 8px calc(8px + env(safe-area-inset-bottom));
       gap:8px;
     }
-
     .top-bar{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:8px;
-      padding:6px 10px;
-      background:rgba(15,23,42,.9);
+      padding:8px 12px;
       border-radius:var(--radius);
-      border:1px solid var(--border);
-      box-shadow:0 6px 18px rgba(0,0,0,.6);
+      background:rgba(15,23,42,.95);
+      border:1px solid #1f2937;
+      box-shadow:var(--shadow);
+      font-size:.9rem;
     }
-    .top-left{
+    .top-left,.top-right{
       display:flex;
-      gap:8px;
       align-items:center;
+      gap:10px;
       flex-wrap:wrap;
     }
     .game-title{
-      font-weight:700;
-      font-size:.9rem;
       display:flex;
       align-items:center;
-      gap:4px;
+      gap:6px;
+      font-weight:700;
     }
     .pill{
       border-radius:999px;
-      padding:4px 8px;
+      border:1px solid #1f2937;
+      padding:4px 10px;
+      background:rgba(15,23,42,.95);
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font-size:.78rem;
+      color:var(--muted);
+    }
+    .pill strong{color:var(--ink); font-weight:600;}
+
+    .hp-bar{
+      position:relative;
+      width:90px;
+      height:8px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+      border:1px solid #1f2937;
+    }
+    .hp-fill{
+      position:absolute;
+      inset:0;
+      background:linear-gradient(90deg,#16a34a,#facc15,#ef4444);
+      width:100%;
+      transition:width .18s linear;
+    }
+
+    .main{
+      flex:1;
+      display:flex;
+      gap:8px;
+      min-height:0;
+    }
+    @media (max-width:900px){
+      .main{flex-direction:column;}
+    }
+
+    .panel{
+      border-radius:var(--radius);
+      background:rgba(15,23,42,.96);
+      border:1px solid #1f2937;
+      box-shadow:var(--shadow);
+      padding:10px;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .panel-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:.85rem;
+      color:var(--muted);
+    }
+
+    .board-panel{
+      flex:1.1;
+    }
+    .side-panel{
+      flex:0.9;
+      min-width:260px;
+    }
+
+    .board-grid{
+      flex:1;
+      display:grid;
+      grid-template-columns:repeat(7, minmax(0,1fr));
+      grid-auto-rows:minmax(40px,1fr);
+      gap:4px;
+      padding:4px;
+    }
+    .node-cell{
+      border-radius:12px;
+      border:1px solid #1f2937;
+      background:#020617;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      font-size:.8rem;
+      cursor:pointer;
+      position:relative;
+      overflow:hidden;
+      transition:transform .08s ease, box-shadow .08s ease, border-color .1s ease;
+    }
+    .node-cell span{pointer-events:none;}
+    .node-owner{
+      font-size:.72rem;
+      opacity:.85;
+    }
+    .node-cell:hover{
+      transform:translateY(-1px);
+      box-shadow:0 8px 18px rgba(0,0,0,.7);
+      border-color:var(--accent-soft);
+    }
+    .node-base-tag{
+      position:absolute;
+      top:4px;
+      left:6px;
       font-size:.75rem;
-      border:1px solid var(--border);
-      background:rgba(15,23,42,.9);
+      opacity:.9;
+    }
+
+    .node-player{
+      background:radial-gradient(circle at top,#15803d,#022c22);
+      border-color:#16a34a;
+    }
+    .node-enemy{
+      background:radial-gradient(circle at top,#7f1d1d,#020617);
+      border-color:#b91c1c;
+    }
+    .node-neutral{
+      background:radial-gradient(circle at top,#374151,#020617);
+      border-color:#4b5563;
+    }
+    .node-contested{
+      background:radial-gradient(circle at top,#facc15,#451a03);
+      border-color:#facc15;
+      color:#111827;
+    }
+    .node-selected{
+      box-shadow:0 0 0 2px var(--accent-soft);
+    }
+
+    .btn{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      background:#020617;
+      padding:6px 10px;
+      font-size:.8rem;
+      color:var(--ink);
+      cursor:pointer;
       display:inline-flex;
       align-items:center;
       gap:4px;
     }
+    .btn[disabled]{
+      opacity:.4;
+      cursor:default;
+    }
+    .btn-primary{
+      border-color:var(--accent-soft);
+      background:linear-gradient(135deg,#0ea5e9,#22c55e);
+      color:#0f172a;
+      font-weight:600;
+    }
 
-    .hp-bar{
-      width:90px;
-      height:8px;
-      border-radius:999px;
-      border:1px solid var(--border);
+    .node-info-box{
+      flex:1;
+      min-height:80px;
+      border-radius:10px;
+      border:1px solid #1f2937;
       background:#020617;
-      overflow:hidden;
+      padding:6px 8px;
+      font-size:.78rem;
+      color:var(--muted);
+      overflow:auto;
     }
-    .hp-fill{
-      height:100%;
-      background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);
-      width:0%;
-      transition:width .12s linear;
-    }
-    .small{
+
+    .log-box{
+      height:120px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      padding:6px 8px;
       font-size:.75rem;
       color:var(--muted);
+      overflow:auto;
     }
+    .log-line{margin-bottom:2px;}
 
-    .top-right{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-
-    /* Abilities bar */
-    .abilities{
-      display:flex;
-      gap:4px;
-      align-items:center;
-      flex-wrap:wrap;
-      padding:4px 6px;
-      background:rgba(15,23,42,.9);
-      border-radius:999px;
-      border:1px solid var(--border);
-      box-shadow:0 6px 18px rgba(0,0,0,.5);
-      max-width:60%;
-      overflow:hidden;
-    }
-    .ability-tile{
-      position:relative;
-      width:32px;
-      height:32px;
-      border-radius:6px;
-      border:1px solid var(--border);
-      background:#020617;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:.75rem;
-    }
-    .ability-tile span{
-      pointer-events:none;
-    }
-    .ability-cooldown{
-      position:absolute;
+    /* Battle overlay */
+    .overlay{
+      position:fixed;
       inset:0;
-      background:rgba(15,23,42,.8);
-      transform-origin:bottom;
-      transform:scaleY(0);
-      transition:transform .1s linear;
-    }
-
-    .grid-wrapper{
-      flex:1;
-      background:radial-gradient(circle at top,#111827 0,#020617 60%);
-      border-radius:var(--radius);
-      border:1px solid var(--border);
-      padding:6px;
-      box-shadow:0 18px 40px rgba(0,0,0,.7);
+      background:rgba(15,23,42,.96);
       display:flex;
       align-items:center;
       justify-content:center;
+      z-index:40;
+    }
+    .overlay-inner{
+      width:min(1020px, 100vw - 12px);
+      height:min(620px, 100vh - 16px);
+      border-radius:var(--radius);
+      border:1px solid #1f2937;
+      background:radial-gradient(circle at top,#020617,#020617);
+      box-shadow:var(--shadow);
+      padding:8px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .battle-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:.85rem;
+      color:var(--muted);
+    }
+    .battle-main{
+      flex:1;
+      display:flex;
+      gap:6px;
       min-height:0;
     }
-
-    #grid{
-      display:grid;
-      gap:1px;
+    .battle-grid-wrap{
+      flex:1;
+      border-radius:12px;
+      border:1px solid #1f2937;
       background:#020617;
-      touch-action:none;
-    }
-    .cell{
-      width:var(--cellSize);
-      height:var(--cellSize);
-      background:#020617;
-      position:relative;
-      border-radius:2px;
-      overflow:hidden;
-    }
-    .cell-path{
-      background:#0b1120;
-    }
-    .cell-terrain{
-      background:radial-gradient(circle at 30% 20%,#1f2937 0,#020617 55%);
-    }
-    .cell-base{
-      background:radial-gradient(circle at 30% 20%,#111827 0,#020617 60%);
-      box-shadow:inset 0 0 10px rgba(250,250,250,.1);
-    }
-
-    .cell-highlight{
-      box-shadow:0 0 0 2px rgba(234,179,8,.6) inset;
-    }
-
-    .danger-telegraph{
-      position:absolute;
-      inset:0;
-      background:rgba(239,68,68,.35);
-      box-shadow:0 0 0 1px rgba(248,113,113,.9) inset;
-    }
-    .danger-explosion{
-      position:absolute;
-      inset:15%;
-      border-radius:50%;
-      background:radial-gradient(circle,#f97316 0,#b91c1c 55%,transparent 70%);
-      opacity:.9;
-    }
-    .laser-line{
-      position:absolute;
-      inset:30%;
-      border-radius:999px;
-      background:linear-gradient(90deg,#f97316,#facc15);
-      box-shadow:0 0 12px rgba(250,204,21,.8);
-    }
-
-    /* Hero hit beams */
-    .hero-ray{
-      position:absolute;
-      inset:38%;
-      border-radius:999px;
-      background:linear-gradient(90deg,#38bdf8,#f9a8d4);
-      box-shadow:0 0 10px rgba(56,189,248,.9);
-      opacity:.95;
-    }
-    .hero-impact{
-      position:absolute;
-      inset:18%;
-      border-radius:50%;
-      background:radial-gradient(circle,#f97316 0,#facc15 40%,transparent 70%);
-      box-shadow:0 0 16px rgba(250,204,21,.95);
-    }
-
-    .shield-ring{
-      position:absolute;
-      inset:15%;
-      border-radius:50%;
-      border:2px solid rgba(34,197,94,.8);
-      box-shadow:0 0 10px rgba(34,197,94,.7);
-    }
-
-    .entity{
-      position:absolute;
-      inset:0;
+      padding:4px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size:calc(var(--cellSize)*0.5);
-      pointer-events:none;
     }
-
-    /* Enemy row-shot visual (rockets moving along row) */
-    .enemy-row-shot{
-      position:absolute;
-      inset:24%;
-      border-radius:50%;
-      background:radial-gradient(circle,#f97316 0,#b91c1c 60%,transparent 75%);
-      box-shadow:0 0 14px rgba(248,113,113,.9);
+    .battle-grid{
+      display:grid;
+      grid-template-columns:repeat(10, minmax(0,1fr));
+      grid-auto-rows:minmax(0,1fr);
+      gap:2px;
+      width:100%;
+      max-width:520px;
+      aspect-ratio:1/1;
     }
-
-    .hp-chip{
-      position:absolute;
-      left:50%;
-      bottom:1px;
-      transform:translateX(-50%);
-      min-width:60%;
-      height:3px;
-      border-radius:999px;
-      background:rgba(15,23,42,.7);
+    .battle-cell{
+      border-radius:4px;
+      background:#020617;
+      border:1px solid #111827;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:1.1rem;
+      position:relative;
+      cursor:pointer;
       overflow:hidden;
     }
-    .hp-chip-fill{
+    .battle-cell-bg-player{
+      background:#022c22;
+    }
+    .battle-cell-bg-enemy{
+      background:#111827;
+    }
+    .battle-cell-bg-frontline{
+      background:#1e293b;
+    }
+    .battle-cell .hp-bar-mini{
+      position:absolute;
+      bottom:1px;
+      left:2px;
+      right:2px;
+      height:3px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+    }
+    .battle-cell .hp-bar-mini-fill{
       height:100%;
       background:linear-gradient(90deg,#22c55e,#f97316,#ef4444);
       width:100%;
     }
 
-    .btn-small{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:4px 6px;
-      border-radius:999px;
-      border:1px solid var(--border);
+    .battle-side{
+      width:220px;
+      border-radius:12px;
+      border:1px solid #1f2937;
       background:#020617;
-      color:var(--ink);
-      font-size:.7rem;
-      cursor:pointer;
-    }
-
-    /* Modals */
-    .modal-backdrop{
-      position:fixed;
-      inset:0;
-      background:rgba(15,23,42,.8);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      z-index:30;
-    }
-    .modal{
-      width:min(360px, 95vw);
-      background:#020617;
-      border-radius:var(--radius);
-      border:1px solid var(--border);
-      box-shadow:0 18px 50px rgba(0,0,0,.9);
-      padding:12px;
-    }
-    .modal h2{
-      margin:0 0 6px;
-      font-size:1rem;
-    }
-    .modal p{
-      margin:0 0 8px;
-      font-size:.8rem;
-      color:var(--muted);
-    }
-    .modal-options{
+      padding:6px;
+      font-size:.78rem;
       display:flex;
       flex-direction:column;
-      gap:6px;
+      gap:4px;
+      color:var(--muted);
     }
-    .option-btn{
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:#020617;
-      padding:6px 8px;
+
+    .build-bar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+      padding:4px;
+      border-radius:999px;
+      border:1px solid #1f2937;
+      background:rgba(15,23,42,.95);
+      font-size:.76rem;
+      align-items:center;
+    }
+    .build-pill{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:3px 7px;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
       cursor:pointer;
-      text-align:left;
-      font-size:.8rem;
+      background:#020617;
+      color:var(--muted);
     }
-    .option-btn:hover{
-      border-color:#f97316;
-      box-shadow:0 0 0 1px rgba(249,115,22,.3);
+    .build-pill.active{
+      border-color:var(--accent-soft);
+      color:var(--ink);
+      background:radial-gradient(circle at top,#0ea5e9,#22c55e);
     }
-    .option-title{
-      font-weight:700;
-      margin-bottom:2px;
+
+    .tag{
+      border-radius:999px;
+      padding:2px 6px;
+      border:1px solid #1f2937;
+      font-size:.7rem;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
     }
-    .option-desc{
-      font-size:.78rem;
+    .tag-base{border-color:var(--accent); color:var(--accent);}
+    .tag-enemy{border-color:var(--danger); color:var(--danger);}
+    .tag-green{border-color:var(--player); color:var(--player);}
+
+    .small{
+      font-size:.76rem;
       color:var(--muted);
     }
   </style>
@@ -347,63 +399,118 @@
     <div class="top-bar">
       <div class="top-left">
         <div class="game-title">
-          🏰 <span>Trump Revenge</span>
+          🛰️ <span>Grid Overlord</span>
         </div>
         <div class="pill">
-          <span id="playerName">Player</span>
+          <span>Player:</span> <strong id="playerNameLabel">…</strong>
         </div>
         <div class="pill">
-          Base
-          <div class="hp-bar"><div id="baseHpFill" class="hp-fill"></div></div>
+          <span>Time:</span> <strong id="timeLabel">0:00</strong>
         </div>
         <div class="pill">
-          You
-          <div class="hp-bar"><div id="playerHpFill" class="hp-fill"></div></div>
-        </div>
-        <div class="pill">
-          <span id="levelLabel">Lv 1</span>
-          <span class="small" id="xpLabel">(0 / 10 XP)</span>
+          <span>Credits:</span> <strong id="moneyLabel">0</strong>
         </div>
       </div>
       <div class="top-right">
-        <div class="abilities" id="abilitiesBar">
-          <span class="small">Abilities</span>
+        <div class="pill">
+          <span>Base</span>
+          <div class="hp-bar">
+            <div id="baseHpFill" class="hp-fill"></div>
+          </div>
         </div>
-        <button class="btn-small" id="fullscreenBtn">⛶</button>
+        <button class="btn" id="fullscreenBtn">⛶ Fullscreen</button>
       </div>
     </div>
 
-    <div class="grid-wrapper">
-      <div id="grid"></div>
+    <div class="main">
+      <div class="panel board-panel">
+        <div class="panel-header">
+          <span>Galaxy Map — Control Nodes</span>
+          <span class="small">Green = You · Red = Alien · Yellow = Contested</span>
+        </div>
+        <div id="boardGrid" class="board-grid"></div>
+      </div>
+
+      <div class="panel side-panel">
+        <div class="panel-header">
+          <span>Node Details</span>
+        </div>
+        <div id="nodeInfo" class="node-info-box">
+          <div>Select a node on the left to inspect or enter its battlefield.</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <button id="openBattleBtn" class="btn btn-primary" disabled>Enter Area</button>
+          <button id="upgradeBaseBtn" class="btn" disabled>Upgrade Generator</button>
+        </div>
+        <div id="baseInfo" class="small" style="margin-top:6px;display:none;">
+          Generator Lv <span id="baseLevelLabel">1</span> · +<span id="incomeLabel">0</span> credits / 5s per player · Next upgrade: <span id="baseUpgradeCostLabel">0</span>
+        </div>
+
+        <div style="margin-top:8px;font-size:.78rem;color:var(--muted);">
+          <strong>How it works:</strong><br/>
+          - Aliens expand every 45s from red tiles into neighbors.<br/>
+          - If they touch your green zones, those nodes become <span style="color:#facc15;">contested</span> and spawn attack waves.<br/>
+          - Build troops & towers in node battlefields (first 3 columns) to hold the line.<br/>
+          - Survive to 20 minutes for victory.
+        </div>
+
+        <div class="log-box" id="logBox"></div>
+      </div>
     </div>
   </div>
 
-  <!-- Ability modal (every 5 levels) -->
-  <div id="levelModal" class="modal-backdrop" style="display:none;">
-    <div class="modal">
-      <h2>New Ability!</h2>
-      <p>Every 5 levels you gain a powerful ability. Choose 1.</p>
-      <div id="modalOptions" class="modal-options"></div>
-    </div>
-  </div>
-
-  <!-- Upgrade modal (every level) -->
-  <div id="upgradeModal" class="modal-backdrop" style="display:none;">
-    <div class="modal">
-      <h2>Level Up!</h2>
-      <p>Choose one upgrade for you or your knights.</p>
-      <div id="upgradeOptions" class="modal-options"></div>
+  <!-- Battle Overlay -->
+  <div id="battleOverlay" class="overlay" style="display:none;">
+    <div class="overlay-inner">
+      <div class="battle-header">
+        <div>
+          <span id="battleNodeLabel">Node</span>
+          <span id="battleOwnerTag" class="tag tag-green" style="margin-left:6px;">Player</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="small">Build only in the first 3 columns.</span>
+          <button id="leaveBattleBtn" class="btn">⬅ Leave</button>
+        </div>
+      </div>
+      <div class="battle-main">
+        <div class="battle-grid-wrap">
+          <div id="battleGrid" class="battle-grid"></div>
+        </div>
+        <div class="battle-side">
+          <div><strong>Troops</strong></div>
+          <div class="build-bar" id="troopBar"></div>
+          <div style="margin-top:4px;"><strong>Towers</strong></div>
+          <div class="build-bar" id="towerBar"></div>
+          <div style="margin-top:4px;font-size:.76rem;">
+            <div>Click a type, then click a tile in the first 3 columns to place it.</div>
+            <div style="margin-top:4px;">
+              <span class="tag tag-base">Base node</span> has the generator. Enemies that reach the left side damage it.
+            </div>
+          </div>
+          <div style="margin-top:4px;font-size:.76rem;">
+            <strong>Synergies:</strong><br/>
+            - 🧑‍⚕️ Medics heal nearby allies.<br/>
+            - ⭐ Sergeants boost troop damage near them.<br/>
+            - 🛡️ Shield towers reduce damage taken near them.<br/>
+            - 📡 Signal towers empower nearby units & towers.<br/>
+            - ⚡ Tesla towers chain lightning between aliens.
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
   <script type="module">
+    // ---------------- FIREBASE SETUP (Auth + Firestore) ----------------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
-      collection, serverTimestamp, runTransaction
+      collection, runTransaction, serverTimestamp, getDocs
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import {
+      getAuth, signInAnonymously, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // --- CONFIG ---
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
       authDomain: "bible-game-246c0.firebaseapp.com",
@@ -414,1355 +521,1081 @@
     };
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app);
 
-    // --- URL PARAMS ---
+    // ---------------- CONSTANTS / CONFIG ----------------
+    const BOARD_SIZE = 7; // macro grid size
+    const BATTLE_W = 10;
+    const BATTLE_H = 10;
+    const SPREAD_INTERVAL = 45; // seconds
+    const INCOME_INTERVAL = 5;  // seconds
+    const WAVE_MINUTES_1 = 5;
+    const WAVE_MINUTES_2 = 10;
+    const GAME_WIN_TIME = 20 * 60; // 20 minutes in seconds
+
     const params = new URLSearchParams(window.location.search);
-    const gameId = params.get("gameId") || "dev-room";
-    const username = (params.get("username") || "Guest").trim();
-    document.getElementById("playerName").textContent = username;
+    const gameId = params.get("gameId") || "dev-overlord";
+    const displayName = (params.get("username") || "Guest").trim() || "Guest";
 
-    // --- WORLD vs VIEWPORT ---
-    const WORLD_W = 80;
-    const WORLD_H = 12;
-    const VIEW_W = 16;
-    const VIEW_H = 12;
+    const gameRef = doc(db, "grid_overlord_games", gameId);
+    const nodesCol = collection(gameRef, "nodes");
 
-    const BASE_COL = 1;
-    const BASE_ROW = Math.floor(WORLD_H / 2);
-    const PATH_ROWS_MAIN = [BASE_ROW - 1, BASE_ROW, BASE_ROW + 1];
+    // Troops & towers definitions
+    const TROOPS = {
+      rifle:   { key:"rifle",   name:"Rifleman",      emoji:"🔫", baseHp:12, dmg:3, range:3, cost:8 },
+      phase:   { key:"phase",   name:"Phase Blade",   emoji:"🗡️", baseHp:18, dmg:4, range:1, cost:10 },
+      bomber:  { key:"bomber",  name:"Photon Bomber", emoji:"💣", baseHp:10, dmg:3, range:3, splash:true, cost:12 },
+      medic:   { key:"medic",   name:"Medic",         emoji:"🧑‍⚕️", baseHp:10, heal:3, range:2, cost:10 },
+      sergeant:{ key:"sergeant",name:"Space Sergeant",emoji:"⭐", baseHp:14, dmg:2, range:2, buff:true, cost:14 },
+      sniper:  { key:"sniper",  name:"Ion Sniper",    emoji:"🎯", baseHp:8,  dmg:5, range:5, cost:14 }
+    };
 
-    // World terrain
-    const terrain = [];
-    for(let y=0;y<WORLD_H;y++){
-      terrain[y] = [];
-      for(let x=0;x<WORLD_W;x++){
-        let type = "space";
-        if (x===0 || x===WORLD_W-1 || y===0 || y===WORLD_H-1){
-          type = "terrain";
-        }
-        if (x>0 && x<WORLD_W-1 && PATH_ROWS_MAIN.includes(y)){
-          type = "path";
-        }
-        if (x <= BASE_COL && PATH_ROWS_MAIN.includes(y)){
-          type = "base";
-        }
-        terrain[y][x] = type;
-      }
-    }
+    const TOWERS = {
+      laser:  { key:"laser",  name:"Laser Tower",  emoji:"🔺", dmg:4, range:4, cost:14 },
+      tesla:  { key:"tesla",  name:"Tesla Coil",   emoji:"⚡", dmg:3, range:3, chain:true, cost:16 },
+      shield: { key:"shield", name:"Shield Tower", emoji:"🛡️", range:2, shield:true, cost:12 },
+      signal: { key:"signal", name:"Signal Tower", emoji:"📡", range:2, buff:true, cost:16 }
+    };
 
-    const gridEl = document.getElementById("grid");
-    gridEl.style.gridTemplateColumns = `repeat(${VIEW_W}, var(--cellSize))`;
-    gridEl.style.gridTemplateRows = `repeat(${VIEW_H}, var(--cellSize))`;
+    // Enemy types (aliens)
+    const ENEMIES = {
+      bug:    { key:"bug",    emoji:"🐜", baseHp:8,  dmg:2, speed:1 },
+      spitter:{ key:"spitter",emoji:"🪲", baseHp:12, dmg:3, speed:1 },
+      brute:  { key:"brute",  emoji:"🦂", baseHp:18, dmg:4, speed:1 }
+    };
 
-    const cells = [];
-    for(let vy=0;vy<VIEW_H;vy++){
-      for(let vx=0;vx<VIEW_W;vx++){
-        const c = document.createElement("div");
-        c.className = "cell";
-        gridEl.appendChild(c);
-        if(!cells[vy]) cells[vy]=[];
-        cells[vy][vx] = c;
-
-        c.addEventListener("click", ()=> onCellClick(vx,vy));
-        c.addEventListener("touchstart", (e)=>{ e.preventDefault(); onCellClick(vx,vy); }, {passive:false});
-      }
-    }
-
-    function log(msg){
-      console.log("[GAME]", msg);
-      const logEl = document.getElementById("log");
-      if(!logEl) return;
-      const line = document.createElement("div");
-      line.textContent = msg;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    // Camera centered on player
-    function getCamera(){
-      const px = localPlayerState ? Math.round(localPlayerState.x) : BASE_COL;
-      const py = localPlayerState ? Math.round(localPlayerState.y) : BASE_ROW;
-      let left = px - Math.floor(VIEW_W/2);
-      let top  = py - Math.floor(VIEW_H/2);
-      left = Math.max(0, Math.min(WORLD_W - VIEW_W, left));
-      top  = Math.max(0, Math.min(WORLD_H - VIEW_H, top));
-      return {left, top};
-    }
-
-    // Towers & boss further apart
-    function createCorridorTowers(){
-      const towers = [];
-      const lanes = PATH_ROWS_MAIN;
-
-      const towerCols = [
-        {col:18, tier:1, type:"charger"},
-        {col:32, tier:2, type:"scatter"},
-        {col:46, tier:3, type:"rocket"},
-        {col:60, tier:4, type:"laser"},
-        {col:74, tier:5, type:"storm"}
-      ];
-      function pushTower(col,row,tier,type){
-        const baseHP = 50 + tier*30;
-        const cdBase = Math.max(4, 9 - tier);
-        towers.push({
-          id:`tw_${col}_${row}`,
-          role:"tower",
-          mobile:false,
-          type,
-          x:col,
-          y:row,
-          hp:baseHP,
-          maxHp:baseHP,
-          cd:cdBase,
-          telegraph:0,
-          aim:null,
-          lane:"mid",
-          tier
-        });
-      }
-      towerCols.forEach(set=>{
-        for(const row of lanes){
-          pushTower(set.col,row,set.tier,set.type);
-        }
-      });
-      // Final boss
-      const bossRow = PATH_ROWS_MAIN[Math.floor(PATH_ROWS_MAIN.length/2)];
-      const bossHP = 450;
-      towers.push({
-        id:"boss_main",
-        role:"tower",
-        boss:true,
-        mobile:false,
-        type:"voider",
-        x:WORLD_W-3,
-        y:bossRow,
-        hp:bossHP,
-        maxHp:bossHP,
-        cd:5,
-        telegraph:0,
-        aim:null,
-        lane:"boss",
-        tier:6
-      });
-      return towers;
-    }
-
-    // --- GAME FIREBASE STRUCTURE ---
-    const gameRef = doc(db, "games_trumprev", gameId);
-    const playerRef = doc(db, "games_trumprev", gameId, "players", username);
-
+    // ---------------- LOCAL STATE ----------------
+    let currentUser = null;
+    let playerRef = null;
+    let myPlayer = null;
+    let latestGame = null;
+    let nodesState = {}; // nodeId -> nodeData
     let isHost = false;
     let hostTickHandle = null;
-    let latestGame = null;
-    let latestPlayers = {};
-    let localPlayerState = null;
+    let hostTicking = false;
 
-    // --- CLASSES / ABILITIES / UPGRADES ---
-    const CLASSES = [
-      { key:"vanguard", emoji:"🛡️", name:"Vanguard", hp:18, range:3, dmg:3, speed:1 },
-      { key:"ranger",   emoji:"🏹", name:"Ranger",   hp:14, range:5, dmg:4, speed:1 },
-      { key:"aegis",    emoji:"✨", name:"Aegis",    hp:16, range:3, dmg:2, speed:1 }
-    ];
+    let selectedNodeId = null;
+    let selectedNode = null;
 
-    const ABILITY_POOL = [
-      {
-        key:"rapidfire",
-        name:"Rapid Volley",
-        desc:"+25% attack speed.",
-        kind:"passive",
-        effect:{ atkSpeedMult:1.25 }
-      },
-      {
-        key:"powershot",
-        name:"Power Shot",
-        desc:"+2 damage per hit.",
-        kind:"passive",
-        effect:{ dmgBonus:2 }
-      },
-      {
-        key:"barrierPulse",
-        name:"Barrier Pulse",
-        desc:"Shield pulses reduce nearby damage.",
-        kind:"auto",
-        effect:{ shieldPulse:true }
-      },
-      {
-        key:"knightBoost",
-        name:"Knight Drill",
-        desc:"+40% knight HP & damage.",
-        kind:"passive",
-        effect:{ knightBoost:true }
-      },
-      {
-        key:"regenAura",
-        name:"Regen Aura",
-        desc:"Slowly regenerate HP over time.",
-        kind:"auto",
-        effect:{ regen:true }
-      },
-      {
-        key:"blastNova",
-        name:"Blast Nova",
-        desc:"Periodic AoE blast around you.",
-        kind:"auto",
-        effect:{ nova:true }
-      }
-    ];
+    let currentBuild = { type:null, category:null }; // {type:'rifle', category:'troop'|'tower'}
 
-    // Generic per-level stat upgrade pool
-    const UPGRADE_POOL = [
-      { key:"hp",        name:"+4 Max HP",          desc:"Increase your maximum HP by 4.",           hp:4 },
-      { key:"dmg",       name:"+1 Damage",          desc:"Increase your basic attack damage by 1.",  dmg:1 },
-      { key:"speed",     name:"Move Speed +1",      desc:"Move more tiles each tick.",               speed:1 },
-      { key:"fireRate",  name:"Faster Fire",        desc:"+15% attack speed.",                       fireRateMult:1.15 },
-      { key:"kHp",       name:"Knight HP+",         desc:"Knights gain +20% HP.",                    knightHpMult:1.2 },
-      { key:"kDmg",      name:"Knight Damage+",     desc:"Knights gain +20% damage.",                knightDmgMult:1.2 },
-      { key:"kSpawn",    name:"Knight Spawn+",      desc:"Your knights spawn more often.",           knightSpawnLevel:1 },
-      { key:"regenUp",   name:"Regen+",             desc:"Increase your passive health regen.",      regenLevel:1 }
-    ];
+    let battleUnsub = null;
 
-    // --- INITIAL JOIN / HOST CLAIM ---
-    async function joinGame(){
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(gameRef);
-        if(!snap.exists()){
-          const baseHP = 100;
-          const initial = {
-            host: username,
-            createdAt: serverTimestamp(),
-            status:"running",
-            tick:0,
-            base:{ hp:baseHP, maxHp:baseHP },
-            enemies: createCorridorTowers(),
-            knights:[],
-            projectiles:[],
-            dangerCells:[],
-            shieldPulses:[]
-          };
-          tx.set(gameRef, initial);
-          isHost = true;
-          log("You are host — running simulation.");
-        }else{
-          const d = snap.data();
-          if(!d.host){
-            tx.update(gameRef, { host:username });
-            isHost = true;
-            log("You became host.");
-          }else{
-            isHost = (d.host === username);
-          }
+    // ---------------- DOM REFS ----------------
+    const playerNameLabel = document.getElementById("playerNameLabel");
+    const timeLabel = document.getElementById("timeLabel");
+    const moneyLabel = document.getElementById("moneyLabel");
+    const baseHpFill = document.getElementById("baseHpFill");
+    const boardGridEl = document.getElementById("boardGrid");
+    const nodeInfoEl = document.getElementById("nodeInfo");
+    const logBoxEl = document.getElementById("logBox");
+    const openBattleBtn = document.getElementById("openBattleBtn");
+    const upgradeBaseBtn = document.getElementById("upgradeBaseBtn");
+    const baseInfoEl = document.getElementById("baseInfo");
+    const baseLevelLabel = document.getElementById("baseLevelLabel");
+    const incomeLabel = document.getElementById("incomeLabel");
+    const baseUpgradeCostLabel = document.getElementById("baseUpgradeCostLabel");
+
+    const battleOverlay = document.getElementById("battleOverlay");
+    const battleNodeLabel = document.getElementById("battleNodeLabel");
+    const battleOwnerTag = document.getElementById("battleOwnerTag");
+    const battleGridEl = document.getElementById("battleGrid");
+    const troopBarEl = document.getElementById("troopBar");
+    const towerBarEl = document.getElementById("towerBar");
+    const leaveBattleBtn = document.getElementById("leaveBattleBtn");
+
+    // ---------------- UTILS ----------------
+    function log(msg){
+      if(!logBoxEl) return;
+      const div = document.createElement("div");
+      div.className = "log-line";
+      div.textContent = msg;
+      logBoxEl.appendChild(div);
+      logBoxEl.scrollTop = logBoxEl.scrollHeight;
+      console.log("[GRID]", msg);
+    }
+
+    function nodeKey(row,col){ return `${row}_${col}`; }
+
+    function parseKey(key){
+      const [r,c]=key.split("_").map(Number);
+      return {row:r,col:c};
+    }
+
+    function formatTime(sec){
+      sec = Math.max(0, Math.floor(sec||0));
+      const m = Math.floor(sec/60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2,"0")}`;
+    }
+
+    function neighborsOf(row,col){
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      const out=[];
+      for(const [dr,dc] of dirs){
+        const nr = row+dr, nc = col+dc;
+        if(nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE){
+          out.push(nodeKey(nr,nc));
         }
-      });
+      }
+      return out;
+    }
 
-      const pSnap = await getDoc(playerRef);
-      if(!pSnap.exists()){
-        const classIdx = Math.floor(Math.random()*CLASSES.length);
-        const cls = CLASSES[classIdx];
-        const spawn = { x:BASE_COL, y:BASE_ROW };
-        await setDoc(playerRef,{
-          id:username,
-          classIndex:classIdx,
-          x:spawn.x, y:spawn.y,
-          targetX:spawn.x, targetY:spawn.y,
-          hp:cls.hp, maxHp:cls.hp,
-          level:1,
-          xp:0,
-          nextLevelXp:10,
-          knightLevel:1,
-          abilities:[],
-          pendingChoice:null,
-          pendingUpgrade:null,
-          bonusDmg:0,
-          fireRateMult:1,
-          speedLevel:0,
-          knightHpLevel:0,
-          knightDmgLevel:0,
-          knightSpawnLevel:0,
-          regenLevel:0,
-          lastInputAt:Date.now(),
-          lastUpdated:serverTimestamp()
+    // ---------------- AUTH + JOIN ----------------
+    let joined = false;
+    signInAnonymously(auth).catch(err=>{
+      console.error(err);
+      alert("Failed to sign in anonymously to Firebase: "+err.message);
+    });
+
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user) return;
+      currentUser = user;
+      if(joined) return;
+      joined = true;
+      playerRef = doc(gameRef,"players",user.uid);
+      playerNameLabel.textContent = displayName;
+      await joinGame();
+    });
+
+    async function joinGame(){
+      try{
+        await runTransaction(db, async (tx)=>{
+          const snap = await tx.get(gameRef);
+          if(!snap.exists()){
+            const baseHp = 120;
+            const baseLevel = 1;
+            const baseIncomePerPlayer = 6;
+            tx.set(gameRef,{
+              createdAt: serverTimestamp(),
+              hostUid: currentUser.uid,
+              status:"running",
+              timeSeconds:0,
+              base:{
+                hp:baseHp,
+                maxHp:baseHp,
+                level:baseLevel,
+                incomePerPlayer:baseIncomePerPlayer,
+                upgradeCost:60
+              },
+              winAtSeconds: GAME_WIN_TIME
+            });
+
+            // seed nodes
+            const center = Math.floor(BOARD_SIZE/2);
+            for(let r=0;r<BOARD_SIZE;r++){
+              for(let c=0;c<BOARD_SIZE;c++){
+                const id = doc(nodesCol, nodeKey(r,c)).id;
+                const owner = (r===center && c===center) ? "player"
+                              : (r===0 || c===0 || r===BOARD_SIZE-1 || c===BOARD_SIZE-1) ? "enemy"
+                              : "neutral";
+                const type = (r===center && c===center) ? "base" : "normal";
+                const spreadChance = 0.33;
+                const nodeDocRef = doc(nodesCol, nodeKey(r,c));
+                tx.set(nodeDocRef,{
+                  id:nodeKey(r,c),
+                  row:r,
+                  col:c,
+                  owner,
+                  type,
+                  spreadChance,
+                  pendingWave:false,
+                  battlefield:{
+                    width:BATTLE_W,
+                    height:BATTLE_H,
+                    troops:[],
+                    towers:[],
+                    aliens:[],
+                    spines:[]
+                  }
+                });
+              }
+            }
+          }else{
+            const data = snap.data();
+            if(!data.hostUid){
+              tx.update(gameRef,{hostUid: currentUser.uid});
+            }
+          }
+
+          // create / update player
+          const pSnap = await tx.get(playerRef);
+          if(!pSnap.exists()){
+            tx.set(playerRef,{
+              uid: currentUser.uid,
+              name: displayName,
+              money: 40,
+              incomeBonus: 0,
+              joinedAt: serverTimestamp()
+            });
+          }else{
+            // ensure name saved
+            tx.update(playerRef,{ name: displayName });
+          }
         });
-        log(`Joined as ${CLASSES[classIdx].emoji} ${CLASSES[classIdx].name}`);
-      }else{
-        log("Rejoined game.");
+
+        // Subscriptions
+        onSnapshot(gameRef, (snap)=>{
+          if(!snap.exists()) return;
+          latestGame = snap.data();
+          renderGameMeta();
+          syncHostRole();
+        });
+
+        onSnapshot(nodesCol, (snap)=>{
+          nodesState = {};
+          snap.forEach(d=>{ nodesState[d.id]=d.data(); });
+          renderBoard();
+          if(selectedNodeId){
+            selectedNode = nodesState[selectedNodeId] || null;
+            renderNodeDetails();
+          }
+        });
+
+        onSnapshot(playerRef, (snap)=>{
+          if(!snap.exists()) return;
+          myPlayer = snap.data();
+          moneyLabel.textContent = Math.floor(myPlayer.money || 0);
+        });
+
+        log("Joined game: "+gameId);
+      }catch(e){
+        console.error(e);
+        alert("Error joining game: "+e.message);
+      }
+    }
+
+    // ---------------- RENDER: GAME META ----------------
+    function renderGameMeta(){
+      if(!latestGame) return;
+      const sec = latestGame.timeSeconds || 0;
+      timeLabel.textContent = formatTime(sec);
+
+      const base = latestGame.base || {hp:0,maxHp:1,level:1,incomePerPlayer:0,upgradeCost:0};
+      const hp = Math.max(0, base.hp || 0);
+      const max = Math.max(1, base.maxHp || 1);
+      const pct = Math.max(0, Math.min(100, (hp/max)*100));
+      baseHpFill.style.width = pct + "%";
+
+      baseInfoEl.style.display = "block";
+      baseLevelLabel.textContent = base.level ?? 1;
+      incomeLabel.textContent = base.incomePerPlayer ?? 0;
+      baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
+
+      // game end states
+      if(latestGame.status === "lost"){
+        log("⚠ Base destroyed. Game over.");
+      }else if(latestGame.status === "won"){
+        log("✅ You survived the full duration! Victory.");
+      }
+    }
+
+    // ---------------- RENDER: WORLD BOARD ----------------
+    function renderBoard(){
+      if(!boardGridEl) return;
+      boardGridEl.innerHTML = "";
+      const center = Math.floor(BOARD_SIZE/2);
+
+      for(let r=0;r<BOARD_SIZE;r++){
+        for(let c=0;c<BOARD_SIZE;c++){
+          const key = nodeKey(r,c);
+          const node = nodesState[key];
+          const div = document.createElement("div");
+          div.className = "node-cell";
+          if(node){
+            if(node.owner==="player") div.classList.add("node-player");
+            else if(node.owner==="enemy") div.classList.add("node-enemy");
+            else if(node.owner==="neutral") div.classList.add("node-neutral");
+            else if(node.owner==="contested") div.classList.add("node-contested");
+            if(key===selectedNodeId) div.classList.add("node-selected");
+          }
+
+          const title = document.createElement("span");
+          title.textContent =
+            (r===center && c===center) ? "Base" :
+            `Node ${r+1}-${c+1}`;
+          div.appendChild(title);
+
+          const ownerSpan = document.createElement("span");
+          ownerSpan.className = "node-owner";
+          ownerSpan.textContent = node ? (
+            node.owner==="player" ? "You" :
+            node.owner==="enemy" ? "Aliens" :
+            node.owner==="contested" ? "Contested" :
+            "Neutral"
+          ) : "…";
+          div.appendChild(ownerSpan);
+
+          if(node && node.type==="base"){
+            const tag = document.createElement("div");
+            tag.className = "node-base-tag";
+            tag.textContent = "⚡";
+            div.appendChild(tag);
+          }
+
+          div.addEventListener("click",()=>{
+            selectedNodeId = key;
+            selectedNode = node || null;
+            renderBoard();
+            renderNodeDetails();
+          });
+
+          boardGridEl.appendChild(div);
+        }
+      }
+    }
+
+    function renderNodeDetails(){
+      if(!selectedNodeId || !selectedNode){
+        nodeInfoEl.innerHTML = "<div>Select a node on the left.</div>";
+        openBattleBtn.disabled = true;
+        upgradeBaseBtn.disabled = true;
+        return;
+      }
+      let html = "";
+      html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
+      const ownerName =
+        selectedNode.owner==="player" ? "You (controlled)" :
+        selectedNode.owner==="enemy" ? "Aliens" :
+        selectedNode.owner==="contested" ? "Contested" :
+        "Neutral";
+      html += `<div style="margin-top:4px;">Owner: <strong>${ownerName}</strong></div>`;
+      html += `<div style="margin-top:4px;">Spread chance if targeted: ${(selectedNode.spreadChance||0.33*100).toFixed(0)}%</div>`;
+
+      if(selectedNode.type==="base"){
+        html += `<div style="margin-top:6px;">This node contains the <strong>central generator</strong>. Enemies that reach the left side of this battlefield damage the generator HP. Upgrading the generator increases credits per 5 seconds for all players.</div>`;
+      }else if(selectedNode.owner==="player"){
+        html += `<div style="margin-top:6px;">You can build defenses and troops here. Any node where you have structures and no aliens present remains <span style="color:#22c55e;">green</span>, letting you expand outward.</div>`;
+      }else if(selectedNode.owner==="enemy"){
+        html += `<div style="margin-top:6px;">Alien-controlled. Build up at neighboring green nodes, then push in and clear their spines & bugs to capture it.</div>`;
+      }else if(selectedNode.owner==="contested"){
+        html += `<div style="margin-top:6px;">Aliens are actively assaulting this node. Expect waves of bugs from the right side of the battlefield.</div>`;
       }
 
-      subscribeGame();
-      subscribePlayers();
-      if(isHost) startHostLoop();
+      nodeInfoEl.innerHTML = html;
+      openBattleBtn.disabled = false;
+
+      if(selectedNode.type==="base"){
+        upgradeBaseBtn.disabled = false;
+      }else{
+        upgradeBaseBtn.disabled = true;
+      }
     }
 
-    // --- SUBSCRIPTIONS ---
-    function subscribeGame(){
-      onSnapshot(gameRef,(snap)=>{
-        if(!snap.exists()) return;
-        latestGame = snap.data();
-        renderBase();
-        renderBoard();
-        syncHostLoopState();
-      });
+    // ---------------- HOST ROLE / LOOP ----------------
+    function syncHostRole(){
+      if(!latestGame || !currentUser) return;
+      const hostUid = latestGame.hostUid;
+      const shouldBeHost = hostUid === currentUser.uid;
+      if(shouldBeHost && !isHost){
+        isHost = true;
+        startHostLoop();
+        log("You are host — running Overlord simulation.");
+      }else if(!shouldBeHost && isHost){
+        isHost = false;
+        stopHostLoop();
+        log("Another player is host now.");
+      }
     }
-
-    function subscribePlayers(){
-      const col = collection(db,"games_trumprev",gameId,"players");
-      onSnapshot(col,(snap)=>{
-        latestPlayers = {};
-        snap.forEach(d=>{
-          latestPlayers[d.id]=d.data();
-          if(d.id===username) localPlayerState = d.data();
-        });
-        renderBoard();
-        checkUpgradeModal();
-        checkLevelUpModal();
-      });
-    }
-
-    // --- HOST LOOP ---
-    const TICK_MS = 380; // slower for clarity
-    const SHIELD_PERIOD = 24;
-    const NOVA_PERIOD = 30;
-    const BASE_KNIGHT_PERIOD = 20;
 
     function startHostLoop(){
       if(hostTickHandle) clearInterval(hostTickHandle);
-      hostTickHandle = setInterval(()=>hostTick().catch(()=>{}), TICK_MS);
+      hostTickHandle = setInterval(()=>hostTick().catch(console.error), 1000);
     }
     function stopHostLoop(){
-      if(hostTickHandle) clearInterval(hostTickHandle);
-      hostTickHandle = null;
-    }
-    function syncHostLoopState(){
-      if(!latestGame) return;
-      if(!isHost && hostTickHandle){
-        stopHostLoop();
-      }else if(isHost && !hostTickHandle){
-        startHostLoop();
+      if(hostTickHandle){
+        clearInterval(hostTickHandle);
+        hostTickHandle = null;
       }
-    }
-
-    function randInt(min,max){
-      return Math.floor(Math.random()*(max-min+1))+min;
-    }
-    function dist(a,b){
-      return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
-    }
-    function isWalkable(x,y){
-      if(x<0||x>=WORLD_W||y<0||y>=WORLD_H) return false;
-      const t = terrain[y][x];
-      return t==="path" || t==="base" || t==="terrain";
-    }
-
-    function computeDerivedStats(p){
-      const out = {
-        atkSpeedMult:1,
-        dmgBonus:0,
-        knightHpMult:1,
-        knightDmgMult:1,
-        regen:false,
-        regenRate:0,
-        shieldPulse:false,
-        nova:false,
-        moveSteps:1,
-        knightSpawnLevel: p.knightSpawnLevel || 0
-      };
-      const abilities = p.abilities || [];
-      for(const ab of abilities){
-        const eff = ab.effect || {};
-        if(eff.atkSpeedMult) out.atkSpeedMult *= eff.atkSpeedMult;
-        if(eff.dmgBonus) out.dmgBonus += eff.dmgBonus;
-        if(eff.knightBoost){
-          out.knightHpMult *= 1.4;
-          out.knightDmgMult *= 1.4;
-        }
-        if(eff.regen){
-          out.regen = true;
-          out.regenRate += 0.05;
-        }
-        if(eff.shieldPulse) out.shieldPulse = true;
-        if(eff.nova) out.nova = true;
-      }
-
-      // Persistent upgrades
-      if(typeof p.bonusDmg === "number") out.dmgBonus += p.bonusDmg;
-      if(typeof p.fireRateMult === "number" && p.fireRateMult>0) out.atkSpeedMult *= p.fireRateMult;
-      if(typeof p.speedLevel === "number" && p.speedLevel>0) out.moveSteps += p.speedLevel;
-      if(typeof p.knightHpLevel === "number" && p.knightHpLevel>0) out.knightHpMult *= (1 + 0.2*p.knightHpLevel);
-      if(typeof p.knightDmgLevel === "number" && p.knightDmgLevel>0) out.knightDmgMult *= (1 + 0.2*p.knightDmgLevel);
-      if(typeof p.regenLevel === "number" && p.regenLevel>0){
-        out.regen = true;
-        out.regenRate += 0.03 * p.regenLevel;
-      }
-
-      return out;
-    }
-
-    function nearest(list, from, maxRange=999){
-      let best=null, bestD=9999;
-      for(const e of list){
-        if(e.hp!==undefined && e.hp<=0) continue;
-        const d = dist(e,from);
-        if(d<=maxRange && d<bestD){
-          best=e; bestD=d;
-        }
-      }
-      return best;
-    }
-
-    function pickRandomAbilities(n){
-      const copy = [...ABILITY_POOL];
-      const out=[];
-      while(out.length<n && copy.length){
-        const idx = Math.floor(Math.random()*copy.length);
-        out.push(copy.splice(idx,1)[0]);
-      }
-      return out;
-    }
-
-    function pickRandomUpgrades(n){
-      const copy = [...UPGRADE_POOL];
-      const out=[];
-      while(out.length<n && copy.length){
-        const idx = Math.floor(Math.random()*copy.length);
-        out.push(copy.splice(idx,1)[0]);
-      }
-      return out;
-    }
-
-    function isCellShielded(cell, shieldPulses){
-      if(!shieldPulses || !shieldPulses.length) return false;
-      return shieldPulses.some(sp=>{
-        if(sp.ttl<=0) return false;
-        const d = Math.abs(sp.x-cell.x)+Math.abs(sp.y-cell.y);
-        return d <= (sp.radius||2);
-      });
-    }
-
-    // Attack ranges per enemy (no whole-map snipers)
-    function getEnemyRange(e){
-      let baseRange = 6;
-      switch(e.type){
-        case "charger": baseRange = 4; break;
-        case "scatter": baseRange = 5; break;
-        case "rocket":  baseRange = 8; break;
-        case "laser":   baseRange = 7; break;
-        case "sniper":  baseRange = 10; break;
-        case "storm":   baseRange = 6; break;
-        case "voider":  baseRange = 7; break;
-        default: baseRange = 6;
-      }
-      if(e.boss) baseRange += 3;
-      if(typeof e.tier === "number") baseRange += Math.min(3, e.tier*0.5);
-      return baseRange;
-    }
-
-    function beginTelegraph(g,e,players,basePos){
-      const cells=[];
-      const kindSelect = e.type;
-      const range = getEnemyRange(e);
-
-      const clampTarget = (t)=>{
-        if(!t) return null;
-        return dist(e,t) <= range ? t : null;
-      };
-
-      if(kindSelect==="charger"){
-        let target = clampTarget(players.length ? nearest(players,e,range) : null);
-        if(!target && dist(e,basePos) <= range) target = basePos;
-        if(!target) return;
-        const dx = Math.sign(target.x - e.x);
-        const dy = Math.sign(target.y - e.y);
-        const tx = e.x+dx;
-        const ty = e.y+dy;
-        if(isWalkable(tx,ty)) cells.push({x:tx,y:ty});
-        e.aim = {kind:"charger", cells};
-        e.telegraph = 2;
-
-      }else if(kindSelect==="scatter"){
-        for(let i=0;i<5;i++){
-          const rx = e.x + randInt(-2,2);
-          const ry = e.y + randInt(-1,1);
-          if(isWalkable(rx,ry)) cells.push({x:rx,y:ry});
-        }
-        e.aim = {kind:"scatter", cells};
-        e.telegraph = 3;
-
-      }else if(kindSelect==="rocket"){
-        let target = clampTarget(players.length ? nearest(players,e,range) : null);
-        if(!target && dist(e,basePos) <= range) target = basePos;
-        if(!target) return;
-        const targetRow = target.y;
-        const maxWidth = Math.min(range, e.x - BASE_COL);
-        const startX = e.x-1;
-        const endX = Math.max(BASE_COL, e.x - maxWidth);
-        for(let x=startX;x>=endX;x--){
-          if(isWalkable(x,targetRow)) cells.push({x,y:targetRow});
-        }
-        e.aim = {kind:"rocket", cells};
-        e.telegraph = 3;
-
-      }else if(kindSelect==="laser"){
-        const mid = e.y;
-        const up = Math.max(1, mid-2);
-        const down = Math.min(WORLD_H-2, mid+2);
-        for(let yy=up; yy<=down; yy++){
-          if(isWalkable(e.x-1,yy)) cells.push({x:e.x-1,y:yy});
-        }
-        e.aim = {kind:"laser", cells};
-        e.telegraph = 3;
-
-      }else if(kindSelect==="sniper"){
-        let target = clampTarget(players.length ? nearest(players,e,range) : null);
-        if(!target && dist(e,basePos) <= range) target = basePos;
-        if(!target) return;
-        cells.push({x:target.x,y:target.y});
-        e.aim = {kind:"sniper", cells};
-        e.telegraph = 4;
-
-      }else if(kindSelect==="storm"){
-        const cx = e.x-1;
-        const cy = e.y;
-        const plus = [
-          {x:cx,y:cy},
-          {x:cx+1,y:cy},
-          {x:cx-1,y:cy},
-          {x:cx,y:cy+1},
-          {x:cx,y:cy-1}
-        ];
-        for(const c of plus){
-          if(isWalkable(c.x,c.y)) cells.push(c);
-        }
-        e.aim = {kind:"storm", cells};
-        e.telegraph = 3;
-
-      }else if(kindSelect==="voider"){
-        const cx = e.x-1;
-        const cy = e.y;
-        for(let dy=-1;dy<=1;dy++){
-          for(let dx=-1;dx<=1;dx++){
-            const nx = cx+dx;
-            const ny = cy+dy;
-            if(isWalkable(nx,ny)) cells.push({x:nx,y:ny});
-          }
-        }
-        e.aim = {kind:"voider", cells};
-        e.telegraph = 4;
-      }
-
-      for(const c of cells){
-        g.dangerCells.push({
-          x:c.x,y:c.y,
-          type:"telegraph",
-          ttl:e.telegraph
-        });
-      }
-    }
-
-    function resolveEnemyAttack(g,e){
-      if(!e.aim) return;
-      const kind = e.aim.kind;
-      const cells = e.aim.cells || [];
-      if(!cells.length) return;
-
-      const damagePlayers = (cell,dmg)=>{
-        // Players
-        for(const id in latestPlayers){
-          const p = latestPlayers[id];
-          const px = Math.round(p.x);
-          const py = Math.round(p.y);
-          if(px===cell.x && py===cell.y){
-            let finalD = dmg;
-            if(isCellShielded({x:px,y:py}, g.shieldPulses)){
-              finalD = Math.ceil(dmg*0.4);
-            }
-            const maxHp = p.maxHp ?? p.hp ?? 10;
-            let hpVal = p.hp ?? maxHp;
-            hpVal -= finalD;
-            if(hpVal<0) hpVal=0;
-            p.hp = hpVal;
-          }
-        }
-        // Knights
-        for(const k of g.knights){
-          if(k.x===cell.x && k.y===cell.y){
-            let finalD = dmg;
-            if(isCellShielded({x:k.x,y:k.y}, g.shieldPulses)){
-              finalD = Math.ceil(dmg*0.4);
-            }
-            k.hp -= finalD;
-          }
-        }
-        // Base
-        if(cell.x<=BASE_COL && PATH_ROWS_MAIN.includes(cell.y)){
-          let finalD = dmg;
-          if(isCellShielded({x:BASE_COL,y:cell.y}, g.shieldPulses)){
-            finalD = Math.ceil(dmg*0.4);
-          }
-          g.base.hp -= finalD;
-        }
-      };
-
-      if(kind==="charger"){
-        const cell = cells[0];
-        if(!cell) return;
-        damagePlayers(cell,6);
-      }else if(kind==="scatter"){
-        for(const c of cells){
-          damagePlayers(c,4);
-          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
-        }
-      }else if(kind==="rocket"){
-        for(const c of cells){
-          damagePlayers(c,5);
-          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
-        }
-      }else if(kind==="laser"){
-        for(const c of cells){
-          damagePlayers(c,3);
-          g.dangerCells.push({x:c.x,y:c.y,type:"laser",ttl:2});
-        }
-      }else if(kind==="sniper"){
-        const cell = cells[0];
-        if(!cell) return;
-        damagePlayers(cell,10);
-        g.dangerCells.push({x:cell.x,y:cell.y,type:"explosion",ttl:3});
-      }else if(kind==="storm"){
-        for(const c of cells){
-          damagePlayers(c,5);
-          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:2});
-        }
-      }else if(kind==="voider"){
-        for(const c of cells){
-          damagePlayers(c,7);
-          g.dangerCells.push({x:c.x,y:c.y,type:"explosion",ttl:3});
-        }
-      }
-    }
-
-    // Simple line between hero and target for beam effect
-    function lineBetween(a,b){
-      const cells = [];
-      let x = a.x;
-      let y = a.y;
-      const dx = Math.sign(b.x - a.x);
-      const dy = Math.sign(b.y - a.y);
-      const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-      for(let i=0;i<steps;i++){
-        x += dx;
-        y += dy;
-        cells.push({x,y});
-      }
-      return cells;
     }
 
     async function hostTick(){
-      if(!latestGame) return;
-      const g = structuredClone(latestGame);
-      if(g.status!=="running") return;
+      if(!isHost || hostTicking) return;
+      hostTicking = true;
+      try{
+        const gSnap = await getDoc(gameRef);
+        if(!gSnap.exists()) { hostTicking=false; return; }
+        const game = gSnap.data();
+        if(game.status && game.status!=="running"){ hostTicking=false; return; }
 
-      const players = latestPlayers;
-      const playerList = Object.values(players);
-      const numPlayers = playerList.length || 1;
+        let timeSeconds = (game.timeSeconds || 0) + 1;
+        const updates = { timeSeconds };
 
-      g.base = g.base || {hp:100,maxHp:100};
-      g.enemies = g.enemies || [];
-      g.knights = g.knights || [];
-      g.projectiles = g.projectiles || [];
-      g.dangerCells = g.dangerCells || [];
-      g.shieldPulses = g.shieldPulses || [];
-
-      const derivedStats = {};
-      for(const p of playerList){
-        derivedStats[p.id] = computeDerivedStats(p);
-      }
-
-      const anyBossOrTower = g.enemies.some(e=>e.boss || e.role==="tower");
-
-      // Mobile waves from far right
-      if(anyBossOrTower){
-        const waveIndex = Math.floor((g.tick||0)/300);
-        const spawnChance = 0.08 + 0.04*(numPlayers-1);
-        if(Math.random() < spawnChance){
-          const laneRows = PATH_ROWS_MAIN;
-          const y = laneRows[randInt(0,laneRows.length-1)];
-          const x = WORLD_W-2;
-
-          let pool = ["charger","scatter","rocket","laser"];
-          if(waveIndex>=2) pool.push("sniper");
-          if(waveIndex>=4) pool.push("storm");
-          if(waveIndex>=6) pool.push("voider");
-          const type = pool[Math.floor(Math.random()*pool.length)];
-
-          const hpBase = 18 + waveIndex*6 + numPlayers*4;
-          const enemy = {
-            id:`m_${Date.now()}_${Math.random().toString(16).slice(2,6)}`,
-            role:"mob",
-            mobile:true,
-            type,
-            x,y,
-            hp:Math.round(hpBase),
-            maxHp:Math.round(hpBase),
-            cd: randInt(5,9),
-            telegraph:0,
-            aim:null,
-            lane:"mid",
-            tier:waveIndex+1
-          };
-          g.enemies.push(enemy);
+        // base HP check
+        const base = game.base || {hp:0,maxHp:1,level:1,incomePerPlayer:0,upgradeCost:60};
+        if(base.hp <= 0 && game.status!=="lost"){
+          updates.status = "lost";
+          await updateDoc(gameRef, updates);
+          hostTicking=false;
+          return;
         }
-      }
-
-      // Players move (speed upgrades affect this)
-      for(const p of playerList){
-        const ds = derivedStats[p.id] || {};
-        const cls = CLASSES[p.classIndex ?? 0];
-        const baseSpeed = cls?.speed || 1;
-        const steps = Math.max(1, Math.min(4, Math.round(baseSpeed + (ds.moveSteps - 1))));
-        for(let step=0;step<steps;step++){
-          const dx = Math.sign((p.targetX??p.x)-p.x);
-          const dy = Math.sign((p.targetY??p.y)-p.y);
-          if(dx===0 && dy===0) break;
-          const nx = p.x + dx;
-          const ny = p.y + dy;
-          if(isWalkable(nx,ny)){
-            p.x = nx; p.y = ny;
-          }else break;
+        if(timeSeconds >= game.winAtSeconds && game.status!=="won"){
+          updates.status = "won";
         }
-      }
 
-      // Knights (per-player spawn rate)
-      for(const p of playerList){
-        const ds = derivedStats[p.id] || {};
-        const spawnLevel = ds.knightSpawnLevel || 0;
-        const period = Math.max(8, BASE_KNIGHT_PERIOD - spawnLevel*2);
-        if(g.tick % period === 0){
-          const spawnY = p.y;
-          const kx = BASE_COL;
-          const ky = spawnY;
-          let baseHp = 10 + (p.knightLevel||1)*3;
-          let baseDmg = 3 + (p.knightLevel||1);
-          if(ds.knightHpMult) baseHp = Math.round(baseHp * ds.knightHpMult);
-          if(ds.knightDmgMult) baseDmg = Math.round(baseDmg * ds.knightDmgMult);
+        // apply simple update first
+        await updateDoc(gameRef, updates);
+        latestGame = {...game,...updates};
 
-          g.knights.push({
-            id:`k_${p.id}_${Date.now()}_${Math.random().toString(16).slice(2,5)}`,
-            owner:p.id,
-            x:kx,
-            y:ky,
-            hp:baseHp,
-            maxHp:baseHp,
-            dmg:baseDmg
-          });
+        // Income tick
+        if(timeSeconds % INCOME_INTERVAL === 0){
+          await applyIncomeTick(latestGame);
         }
-      }
 
-      // Knight AI
-      for(const k of g.knights){
-        let target = null;
-        for(const e of g.enemies){
-          if(dist(k,e)<=1){ target=e; break; }
+        // Spread tick
+        if(timeSeconds % SPREAD_INTERVAL === 0){
+          await applySpreadTick(latestGame);
         }
-        if(target){
-          const dmg = k.dmg || 3;
-          target.hp-=dmg;
-          if(target.hp<=0) target.dead=true;
+
+        // Battle simulations per node
+        await simulateBattles(latestGame);
+
+      }catch(e){
+        console.error("hostTick error", e);
+      }
+      hostTicking=false;
+    }
+
+    async function applyIncomeTick(game){
+      const base = game.base || {incomePerPlayer:0};
+      const income = base.incomePerPlayer || 0;
+      if(income <= 0) return;
+      const playersSnap = await getDocs(collection(gameRef,"players"));
+      const batchUpdates = [];
+      for(const docSnap of playersSnap.docs){
+        const p = docSnap.data();
+        const extra = p.incomeBonus || 0;
+        const money = (p.money||0) + income + extra;
+        batchUpdates.push(updateDoc(docSnap.ref,{ money }));
+      }
+      await Promise.all(batchUpdates);
+    }
+
+    async function applySpreadTick(game){
+      // We use local nodesState, which is updated via onSnapshot
+      const center = Math.floor(BOARD_SIZE/2);
+      const nodeUpdates = [];
+
+      for(const key in nodesState){
+        const node = nodesState[key];
+        if(!node) continue;
+        // Only consider nodes that are not enemy but have enemy neighbors
+        if(node.owner==="enemy") continue;
+        const {row,col} = node;
+        const neighbors = neighborsOf(row,col);
+        const hasEnemyNeighbor = neighbors.some(nk=>{
+          const nn = nodesState[nk];
+          return nn && nn.owner==="enemy";
+        });
+        if(!hasEnemyNeighbor) continue;
+
+        let chance = typeof node.spreadChance === "number" ? node.spreadChance : 0.33;
+        const roll = Math.random();
+        const nodeRef = doc(nodesCol, key);
+
+        if(roll < chance){
+          // spread succeeds
+          let newOwner = node.owner;
+          let pendingWave = node.pendingWave || false;
+          if(node.owner === "player"){
+            newOwner = "contested";
+            pendingWave = true; // wave will spawn on next battle sim
+          }else if(node.owner === "neutral"){
+            newOwner = "enemy";
+          }else if(node.owner === "contested"){
+            newOwner = "enemy";
+          }
+          node.owner = newOwner;
+          node.spreadChance = 0.33;
+          node.pendingWave = pendingWave;
+          nodeUpdates.push(setDoc(nodeRef,{
+            owner:newOwner,
+            spreadChance:0.33,
+            pendingWave
+          },{merge:true}));
+          log(`Alien influence spread into node ${row+1}-${col+1} (${newOwner}).`);
         }else{
-          const nx = Math.min(WORLD_W-2, k.x+1);
-          if(isWalkable(nx,k.y)) k.x = nx;
+          // fail -> increase chance up to cap
+          chance = Math.min(0.95, chance + 0.15);
+          node.spreadChance = chance;
+          nodeUpdates.push(setDoc(nodeRef,{ spreadChance:chance },{merge:true}));
         }
       }
-      g.knights = g.knights.filter(k=>k.hp>0);
 
-      // Enemy AI
-      const basePos = {x:BASE_COL, y:BASE_ROW};
-      const friendTargets = [];
-      for(const p of playerList){
-        friendTargets.push({x:p.x,y:p.y, hp:p.hp ?? p.maxHp ?? 1});
-      }
-      for(const k of g.knights){
-        friendTargets.push({x:k.x,y:k.y, hp:k.hp});
-      }
-      friendTargets.push(basePos);
+      if(nodeUpdates.length) await Promise.all(nodeUpdates);
+    }
 
-      for(const e of g.enemies){
-        if(e.hp<=0){ e.dead=true; continue; }
+    async function simulateBattles(game){
+      const timeSeconds = game.timeSeconds || 0;
+      const batch = [];
 
-        if(e.telegraph>0){
-          e.telegraph--;
-          if(e.telegraph===0 && e.aim){
-            resolveEnemyAttack(g,e);
-            e.cd = randInt(5,9);
-            e.aim = null;
-          }
+      for(const key in nodesState){
+        const node = nodesState[key];
+        if(!node) continue;
+        let changed = false;
+        const bf = node.battlefield || {
+          width:BATTLE_W, height:BATTLE_H,
+          troops:[], towers:[], aliens:[], spines:[]
+        };
+
+        // Spawn pending wave on contested nodes
+        if(node.owner==="contested" && node.pendingWave){
+          spawnAlienWaveForNode(node, bf, timeSeconds);
+          node.pendingWave = false;
+          changed = true;
+        }
+
+        // Basic alien + defense simulation only if there are aliens or spines or player structures
+        const hasPlayerStuff = (bf.troops && bf.troops.length) || (bf.towers && bf.towers.length);
+        const hasAliens = (bf.aliens && bf.aliens.length) || (bf.spines && bf.spines.length);
+        if(!hasPlayerStuff && !hasAliens){
+          // Node with no activity
         }else{
-          e.cd = (e.cd || 0) - 1;
-          if(e.cd<=0){
-            beginTelegraph(g,e,playerList,basePos);
+          const result = simulateBattlefieldStep(node, bf, game);
+          if(result.changed) changed = true;
+
+          // if aliens reached base node left edge, damage generator
+          if(result.baseDamage > 0 && node.type==="base"){
+            const base = game.base || {hp:0};
+            const newHp = Math.max(0, (base.hp||0) - result.baseDamage);
+            await updateDoc(gameRef,{ "base.hp": newHp });
+            game.base.hp = newHp;
+            log(`⚠ Generator took ${result.baseDamage} damage from aliens at base node.`);
+          }
+
+          // capture / loss logic per node
+          if(node.owner==="contested"){
+            if(bf.aliens.length===0){
+              // you held it, revert to player
+              node.owner = "player";
+              changed = true;
+              log(`✅ Node ${node.row+1}-${node.col+1} held. Back to your control.`);
+            }else if(!hasPlayerStuff){
+              // aliens overrun it
+              node.owner = "enemy";
+              changed = true;
+              log(`❌ Node ${node.row+1}-${node.col+1} was overrun by aliens.`);
+            }
+          }else if(node.owner==="enemy"){
+            if(bf.aliens.length===0 && hasPlayerStuff){
+              // you cleared and hold it now
+              node.owner = "player";
+              changed = true;
+              log(`⚔ You captured an enemy node (${node.row+1}-${node.col+1}).`);
+            }
           }
         }
 
-        if(e.role==="mob" && e.telegraph===0){
-          const target = nearest(friendTargets, e, 999);
-          if(target){
-            const dx = Math.sign(target.x - e.x);
-            const dy = Math.sign(target.y - e.y);
-            let moved=false;
-            if(dx!==0 && isWalkable(e.x+dx,e.y)){
-              e.x += dx; moved=true;
-            }
-            if(!moved && dy!==0 && isWalkable(e.x,e.y+dy)){
-              e.y += dy; moved=true;
-            }
+        if(changed){
+          const nodeRef = doc(nodesCol, key);
+          batch.push(setDoc(nodeRef,{
+            owner: node.owner,
+            pendingWave: node.pendingWave || false,
+            battlefield: bf
+          },{merge:true}));
+        }
+      }
 
-            if(e.x<=BASE_COL && PATH_ROWS_MAIN.includes(e.y)){
-              g.base.hp -= 2;
-              e.dead = true;
-            }
+      if(batch.length) await Promise.all(batch);
+    }
+
+    function spawnAlienWaveForNode(node, bf, timeSeconds){
+      const minutes = timeSeconds / 60;
+      let tier = 1;
+      if(minutes >= WAVE_MINUTES_2) tier = 3;
+      else if(minutes >= WAVE_MINUTES_1) tier = 2;
+
+      const waveSize = tier===1 ? 6 : tier===2 ? 10 : 14;
+
+      bf.aliens = bf.aliens || [];
+      for(let i=0;i<waveSize;i++){
+        const row = 1 + (i % (BATTLE_H-2)); // avoid very top/bottom
+        const x = BATTLE_W-1;
+        let typeKey = "bug";
+        if(tier===2) typeKey = (i%3===0) ? "spitter" : "bug";
+        if(tier===3) typeKey = (i%3===0) ? "brute" : ((i%2===0) ? "spitter" : "bug");
+        const def = ENEMIES[typeKey];
+        bf.aliens.push({
+          id: "a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          x,
+          y:row,
+          type:typeKey,
+          hp:def.baseHp,
+          maxHp:def.baseHp
+        });
+      }
+      log(`Alien wave spawned in node ${node.row+1}-${node.col+1} (tier ${tier}).`);
+    }
+
+    function simulateBattlefieldStep(node, bf, game){
+      const base = game.base || {hp:0};
+      const aliens = bf.aliens || [];
+      const troops = bf.troops || [];
+      const towers = bf.towers || [];
+      let changed = false;
+      let baseDamage = 0;
+
+      // Precompute synergy buffs
+      const damageBuffMap = {}; // entity id -> scalar
+      const shieldMap = {};     // entity id -> shieldScalar
+      const entityById = {};
+
+      for(const t of troops){ entityById[t.id] = t; }
+      for(const tw of towers){ entityById[tw.id] = tw; }
+
+      // Signal towers buff nearby damage
+      for(const tw of towers){
+        if(tw.kind!=="signal") continue;
+        const def = TOWERS.signal;
+        const buffRadius = def.range || 2;
+        for(const id in entityById){
+          const e = entityById[id];
+          const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
+          if(dist <= buffRadius){
+            damageBuffMap[id] = (damageBuffMap[id]||1) * 1.25;
           }
         }
       }
-      g.enemies = g.enemies.filter(e=>!e.dead);
-
-      // Ability autos (shield pulses / nova)
-      for(const p of playerList){
-        const ds = derivedStats[p.id];
-        if(ds.shieldPulse && g.tick % SHIELD_PERIOD===0){
-          g.shieldPulses.push({
-            x:p.x,
-            y:p.y,
-            radius:2,
-            ttl:5
-          });
-        }
-        if(ds.nova && g.tick % NOVA_PERIOD===0){
-          for(const e of g.enemies){
-            if(dist(e,p)<=2 && e.hp>0){
-              e.hp -= 4 + (p.level||1);
-              if(e.hp<=0) e.dead=true;
-            }
+      // Sergeants buff troops
+      for(const t of troops){
+        if(t.kind!=="sergeant") continue;
+        const radius = TROOPS.sergeant.range || 2;
+        for(const tt of troops){
+          const dist = Math.abs(tt.x - t.x) + Math.abs(tt.y - t.y);
+          if(dist <= radius){
+            damageBuffMap[tt.id] = (damageBuffMap[tt.id]||1) * 1.15;
           }
-          const novaCells = [];
-          for(let dy=-2; dy<=2; dy++){
-            for(let dx=-2; dx<=2; dx++){
-              if(Math.abs(dx)+Math.abs(dy)>2) continue;
-              const nx = p.x+dx;
-              const ny = p.y+dy;
-              if(isWalkable(nx,ny)){
-                novaCells.push({x:nx,y:ny});
+        }
+      }
+      // Shield towers reduce damage to allies
+      for(const tw of towers){
+        if(tw.kind!=="shield") continue;
+        const radius = TOWERS.shield.range || 2;
+        for(const id in entityById){
+          const e = entityById[id];
+          const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
+          if(dist <= radius){
+            shieldMap[id] = (shieldMap[id]||1) * 0.65; // 35% damage taken
+          }
+        }
+      }
+
+      // Friendly actions: troops & towers
+      function nearestAlienFrom(x,y,range){
+        let best=null, bestD=999;
+        for(const a of aliens){
+          if(a.hp<=0) continue;
+          const d = Math.abs(a.x-x)+Math.abs(a.y-y);
+          if(d<=range && d<bestD){ best=a; bestD=d; }
+        }
+        return best;
+      }
+
+      // Troops
+      for(const t of troops){
+        if(t.hp<=0) continue;
+        const def = TROOPS[t.kind] || TROOPS.rifle;
+        if(t.kind==="medic"){
+          // heal lowest HP ally within range
+          let best=null, bestPct=1.1;
+          for(const ally of troops){
+            if(ally.hp<=0) continue;
+            const d = Math.abs(ally.x - t.x)+Math.abs(ally.y - t.y);
+            if(d <= (def.range || 2)){
+              const pct = ally.hp/ally.maxHp;
+              if(pct < bestPct){
+                bestPct = pct;
+                best = ally;
               }
             }
           }
-          for(const c of novaCells){
-            g.dangerCells.push({
-              x:c.x,y:c.y,type:"explosion",ttl:2
-            });
+          if(best && best.hp < best.maxHp){
+            best.hp = Math.min(best.maxHp, best.hp + (def.heal||3));
+            changed = true;
           }
-        }
-      }
-      g.enemies = g.enemies.filter(e=>!e.dead);
-
-      // HERO AUTO-FIRE — hitscan beam (no bullets)
-      for(const p of playerList){
-        const cls = CLASSES[p.classIndex ?? 0];
-        if(!cls) continue;
-        const ds = derivedStats[p.id] || {};
-        const atkSpeedMult = ds.atkSpeedMult || 1;
-        const dmgBonus = ds.dmgBonus || 0;
-        const attackRoll = 0.35 * atkSpeedMult;
-        if(Math.random() < attackRoll){
-          const enemy = nearest(g.enemies, p, cls.range || 3);
-          if(enemy){
-            const dmg = (cls.dmg||2) + dmgBonus;
-            enemy.hp -= dmg;
-            if(enemy.hp<=0) enemy.dead=true;
-
-            const rayCells = lineBetween(p, enemy);
-            for(const c of rayCells){
-              g.dangerCells.push({
-                x:c.x,
-                y:c.y,
-                type:"heroRay",
-                ttl:1
-              });
-            }
-            g.dangerCells.push({
-              x:enemy.x,
-              y:enemy.y,
-              type:"heroImpact",
-              ttl:2
-            });
-          }
-        }
-      }
-
-      g.enemies = g.enemies.filter(e=>!e.dead);
-
-      // XP / Level (per-level upgrade + ability every 5)
-      for(const p of playerList){
-        const live = latestPlayers[p.id] || {};
-        if(typeof live.xp==="number") p.xp = live.xp;
-        if(typeof live.level==="number") p.level = live.level;
-        if(typeof live.nextLevelXp==="number") p.nextLevelXp = live.nextLevelXp;
-        if(live.abilities) p.abilities = live.abilities;
-        if(live.pendingChoice) p.pendingChoice = live.pendingChoice;
-        if(live.pendingUpgrade) p.pendingUpgrade = live.pendingUpgrade;
-
-        const anyNear = g.enemies.some(e=>dist(e,p)<=4);
-        if(anyNear) p.xp = (p.xp||0)+0.3;
-
-        if(p.xp >= (p.nextLevelXp||10)){
-          p.xp -= p.nextLevelXp;
-          p.level = (p.level||1)+1;
-          p.nextLevelXp = Math.round((p.nextLevelXp||10)*1.35);
-
-          // Per-level stat upgrade choice
-          const upOptions = pickRandomUpgrades(3);
-          p.pendingUpgrade = { options:upOptions, pickedIndex:null };
-
-          // Ability every 5 levels
-          if(p.level % 5 === 0){
-            const options = pickRandomAbilities(3);
-            p.pendingChoice = { options, pickedIndex:null };
-          }
-        }
-      }
-
-      // Decay telegraphs & shields
-      g.dangerCells = (g.dangerCells||[]).map(dc=>({ ...dc, ttl:dc.ttl-1 })).filter(dc=>dc.ttl>0);
-      g.shieldPulses = (g.shieldPulses||[]).map(sp=>({ ...sp, ttl:sp.ttl-1 })).filter(sp=>sp.ttl>0);
-
-      const towersAlive = g.enemies.some(e=>e.boss || e.role==="tower");
-      if(g.base.hp<=0){
-        g.status = "defeat";
-      }else if(!towersAlive && g.enemies.length===0){
-        g.status = "victory";
-      }
-
-      g.tick = (g.tick||0)+1;
-      await setDoc(gameRef,g,{merge:true});
-
-      // Regen + HP sync back to player docs
-      for(const p of playerList){
-        const baseLive = latestPlayers[p.id] || {};
-        const liveMaxHp = baseLive.maxHp ?? p.maxHp ?? baseLive.hp ?? p.hp ?? 10;
-        let hp = baseLive.hp ?? p.hp ?? liveMaxHp;
-        let maxHp = liveMaxHp;
-
-        const dsPlayer = derivedStats[p.id] || {};
-        if(dsPlayer.regen){
-          hp = Math.min(maxHp, hp + (dsPlayer.regenRate || 0.05));
-        }
-        hp = Math.min(maxHp, hp);
-
-        await setDoc(doc(db,"games_trumprev",gameId,"players",p.id),{
-          x:p.x, y:p.y,
-          hp, maxHp,
-          level:p.level||1,
-          xp:p.xp||0,
-          nextLevelXp:p.nextLevelXp||10,
-          pendingChoice:p.pendingChoice || baseLive.pendingChoice || null,
-          pendingUpgrade:p.pendingUpgrade || baseLive.pendingUpgrade || null,
-          lastUpdated:serverTimestamp()
-        },{merge:true});
-      }
-
-      if(g.status==="defeat"){
-        stopHostLoop();
-        log("Base destroyed! Defeat.");
-      }else if(g.status==="victory"){
-        stopHostLoop();
-        log("All towers and waves cleared! Victory.");
-      }
-    }
-
-    // --- RENDERING ---
-    function renderBase(){
-      if(!latestGame) return;
-      const baseHpFill = document.getElementById("baseHpFill");
-      const hp = latestGame.base?.hp ?? 0;
-      const max = latestGame.base?.maxHp ?? 1;
-      const pct = Math.max(0,Math.min(100,(hp/max)*100));
-      baseHpFill.style.width = pct+"%";
-    }
-
-    function renderBoard(){
-      if(!latestGame) return;
-      const cam = getCamera();
-      const left = cam.left;
-      const top = cam.top;
-
-      // Clear & paint terrain
-      for(let vy=0;vy<VIEW_H;vy++){
-        for(let vx=0;vx<VIEW_W;vx++){
-          const cell = cells[vy][vx];
-          cell.innerHTML = "";
-          cell.className = "cell";
-
-          const wx = left + vx;
-          const wy = top + vy;
-
-          if(wx>=0 && wx<WORLD_W && wy>=0 && wy<WORLD_H){
-            const t = terrain[wy][wx];
-            if(t==="terrain") cell.classList.add("cell-terrain");
-            if(t==="path") cell.classList.add("cell-path");
-            if(t==="base") cell.classList.add("cell-base");
-          }
-        }
-      }
-
-      const dcs = latestGame.dangerCells || [];
-      for(const dc of dcs){
-        const vx = dc.x - left;
-        const vy = dc.y - top;
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        let overlay;
-        if(dc.type==="telegraph"){
-          overlay = document.createElement("div");
-          overlay.className="danger-telegraph";
-        }else if(dc.type==="explosion"){
-          overlay = document.createElement("div");
-          overlay.className="danger-explosion";
-        }else if(dc.type==="laser"){
-          overlay = document.createElement("div");
-          overlay.className="laser-line";
-        }else if(dc.type==="heroRay"){
-          overlay = document.createElement("div");
-          overlay.className="hero-ray";
-        }else if(dc.type==="heroImpact"){
-          overlay = document.createElement("div");
-          overlay.className="hero-impact";
-        }
-        if(overlay) cell.appendChild(overlay);
-      }
-
-      for(const sp of (latestGame.shieldPulses||[])){
-        const vx = sp.x - left;
-        const vy = sp.y - top;
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        const ring = document.createElement("div");
-        ring.className="shield-ring";
-        cell.appendChild(ring);
-      }
-
-      // Base icons near left
-      for(const y of PATH_ROWS_MAIN){
-        for(let x=0;x<=BASE_COL;x++){
-          const vx = x - left;
-          const vy = y - top;
-          if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-          const cell = cells[vy][vx];
-          const ent = document.createElement("div");
-          ent.className="entity";
-          ent.textContent = "🏰";
-          cell.appendChild(ent);
-        }
-      }
-
-      // Enemies (draw row-shot rockets moving during telegraph)
-      const enemies = latestGame.enemies || [];
-
-      // Knights
-      for(const k of (latestGame.knights||[])){
-        if(k.hp<=0) continue;
-        const vx = Math.round(k.x - left);
-        const vy = Math.round(k.y - top);
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        const ent = document.createElement("div");
-        ent.className="entity";
-        ent.textContent = "⚔️";
-        cell.appendChild(ent);
-
-        const hpBar = document.createElement("div");
-        hpBar.className="hp-chip";
-        const fill = document.createElement("div");
-        fill.className="hp-chip-fill";
-        const maxHp = k.maxHp ?? k.hp ?? 1;
-        const hp = Math.min(maxHp, k.hp ?? maxHp);
-        const pct = Math.max(0,Math.min(100,(hp/maxHp)*100));
-        fill.style.width = pct+"%";
-        hpBar.appendChild(fill);
-        cell.appendChild(hpBar);
-      }
-
-      // Enemies (towers + mobs)
-      for(const e of enemies){
-        if(e.hp<=0) continue;
-        const vx = Math.round(e.x - left);
-        const vy = Math.round(e.y - top);
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        const ent = document.createElement("div");
-        ent.className="entity";
-        let emoji="👾";
-        if(e.type==="charger") emoji = e.role==="tower" ? "🗼" : "🐗";
-        else if(e.type==="scatter") emoji="💣";
-        else if(e.type==="rocket") emoji="🚀";
-        else if(e.type==="laser") emoji="🔺";
-        else if(e.type==="sniper") emoji="🎯";
-        else if(e.type==="storm") emoji="🌩️";
-        else if(e.type==="voider") emoji = e.boss ? "👑" : "🕳️";
-        ent.textContent = emoji;
-        cell.appendChild(ent);
-
-        const hpBar = document.createElement("div");
-        hpBar.className="hp-chip";
-        const fill = document.createElement("div");
-        fill.className="hp-chip-fill";
-        const maxHp = e.maxHp ?? e.hp ?? 1;
-        const hp = Math.min(maxHp, e.hp ?? maxHp);
-        const pct = Math.max(0,Math.min(100,(hp/maxHp)*100));
-        fill.style.width = pct+"%";
-        hpBar.appendChild(fill);
-        cell.appendChild(hpBar);
-      }
-
-      // Rocket row-shots visually moving along their telegraphed row
-      for(const e of enemies){
-        if(!e.aim || !e.telegraph || e.telegraph<=0) continue;
-        if(e.aim.kind !== "rocket") continue;
-        const cellsPath = e.aim.cells || [];
-        if(!cellsPath.length) continue;
-        const initialTele = 3; // matches rocket telegraph duration
-        const teleLeft = e.telegraph;
-        const progress = Math.max(0, Math.min(1, (initialTele - teleLeft) / initialTele));
-        let idx = Math.floor(progress * cellsPath.length);
-        if(idx<0) idx=0;
-        if(idx>=cellsPath.length) idx=cellsPath.length-1;
-        const cWorld = cellsPath[idx];
-        const vx = cWorld.x - left;
-        const vy = cWorld.y - top;
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        const projDiv = document.createElement("div");
-        projDiv.className = "enemy-row-shot";
-        cell.appendChild(projDiv);
-      }
-
-      // Players
-      for(const id in latestPlayers){
-        const p = latestPlayers[id];
-        const wx = Math.round(p.x);
-        const wy = Math.round(p.y);
-        const vx = wx - left;
-        const vy = wy - top;
-        if(vx<0||vx>=VIEW_W||vy<0||vy>=VIEW_H) continue;
-        const cell = cells[vy][vx];
-        const ent = document.createElement("div");
-        ent.className="entity";
-        const cls = CLASSES[p.classIndex ?? 0];
-        const emoji = cls?.emoji || "🧍";
-        ent.textContent = emoji;
-        if(id===username) cell.classList.add("cell-highlight");
-        cell.appendChild(ent);
-
-        const hpBar = document.createElement("div");
-        hpBar.className="hp-chip";
-        const fill = document.createElement("div");
-        fill.className="hp-chip-fill";
-        const maxHp = p.maxHp ?? p.hp ?? 1;
-        const hp = Math.min(maxHp, p.hp ?? maxHp);
-        const pct = Math.max(0,Math.min(100,(hp/maxHp)*100));
-        fill.style.width = pct+"%";
-        hpBar.appendChild(fill);
-        cell.appendChild(hpBar);
-      }
-
-      // HUD for your HP + XP + abilities
-      if(localPlayerState){
-        const lvl = localPlayerState.level||1;
-        const xp = localPlayerState.xp||0;
-        const nxp = localPlayerState.nextLevelXp||10;
-        document.getElementById("levelLabel").textContent = `Lv ${lvl}`;
-        document.getElementById("xpLabel").textContent = `(${Math.round(xp)} / ${nxp} XP)`;
-
-        const pMax = localPlayerState.maxHp ?? localPlayerState.hp ?? 1;
-        const pHp = Math.min(pMax, localPlayerState.hp ?? pMax);
-        const pPct = Math.max(0,Math.min(100,(pHp/pMax)*100));
-        document.getElementById("playerHpFill").style.width = pPct+"%";
-
-        renderAbilities(localPlayerState);
-      }
-    }
-
-    function renderAbilities(p){
-      const bar = document.getElementById("abilitiesBar");
-      bar.innerHTML = "";
-      const label = document.createElement("span");
-      label.className="small";
-      label.textContent = "Abilities";
-      bar.appendChild(label);
-
-      const abilities = p.abilities || [];
-      const tick = latestGame?.tick ?? 0;
-
-      for(const a of abilities){
-        const tile = document.createElement("div");
-        tile.className="ability-tile";
-
-        const iconSpan = document.createElement("span");
-        iconSpan.textContent =
-          a.key==="rapidfire" ? "⚡" :
-          a.key==="powershot" ? "💥" :
-          a.key==="barrierPulse" ? "🛡️" :
-          a.key==="knightBoost" ? "⚔️" :
-          a.key==="regenAura" ? "➕" :
-          a.key==="blastNova" ? "💣" : "★";
-
-        const cdOverlay = document.createElement("div");
-        cdOverlay.className="ability-cooldown";
-
-        let ratio = 0;
-        if(a.effect?.shieldPulse){
-          const rem = SHIELD_PERIOD - (tick % SHIELD_PERIOD);
-          ratio = rem / SHIELD_PERIOD;
-        }else if(a.effect?.nova){
-          const rem = NOVA_PERIOD - (tick % NOVA_PERIOD);
-          ratio = rem / NOVA_PERIOD;
         }else{
-          ratio = 0;
-        }
-        cdOverlay.style.transform = `scaleY(${Math.min(1,Math.max(0,ratio))})`;
-
-        tile.appendChild(cdOverlay);
-        tile.appendChild(iconSpan);
-        bar.appendChild(tile);
-      }
-    }
-
-    // --- INPUT: TAP TO MOVE (viewport -> world) ---
-    async function onCellClick(vx,vy){
-      if(!localPlayerState) return;
-      const cam = getCamera();
-      const wx = cam.left + vx;
-      const wy = cam.top + vy;
-      if(!isWalkable(wx,wy)) return;
-      try{
-        await setDoc(playerRef,{
-          targetX:wx,
-          targetY:wy,
-          lastInputAt:Date.now()
-        },{merge:true});
-      }catch(e){
-        console.error(e);
-      }
-    }
-
-    // --- LEVEL-UP / UPGRADE MODALS ---
-    function checkLevelUpModal(){
-      if(!localPlayerState) return;
-      const pending = localPlayerState.pendingChoice;
-      const modal = document.getElementById("levelModal");
-      const optionsBox = document.getElementById("modalOptions");
-      if(pending && pending.options && pending.options.length && (pending.pickedIndex==null)){
-        modal.style.display="flex";
-        optionsBox.innerHTML = "";
-        pending.options.forEach((opt,idx)=>{
-          const btn = document.createElement("button");
-          btn.type="button";
-          btn.className="option-btn";
-          btn.innerHTML = `<div class="option-title">${opt.name}</div><div class="option-desc">${opt.desc}</div>`;
-          btn.onclick = ()=> chooseAbility(idx, opt);
-          optionsBox.appendChild(btn);
-        });
-      }else{
-        modal.style.display="none";
-      }
-    }
-
-    function checkUpgradeModal(){
-      if(!localPlayerState) return;
-      const pending = localPlayerState.pendingUpgrade;
-      const modal = document.getElementById("upgradeModal");
-      const box = document.getElementById("upgradeOptions");
-      if(pending && pending.options && pending.options.length && (pending.pickedIndex==null)){
-        modal.style.display="flex";
-        box.innerHTML = "";
-        pending.options.forEach((opt,idx)=>{
-          const btn = document.createElement("button");
-          btn.type="button";
-          btn.className="option-btn";
-          btn.innerHTML = `<div class="option-title">${opt.name}</div><div class="option-desc">${opt.desc}</div>`;
-          btn.onclick = ()=> chooseUpgrade(idx,opt);
-          box.appendChild(btn);
-        });
-      }else{
-        modal.style.display="none";
-      }
-    }
-
-    async function chooseAbility(index, ability){
-      try{
-        const pSnap = await getDoc(playerRef);
-        if(!pSnap.exists()) return;
-        const p = pSnap.data();
-        const abilities = p.abilities || [];
-        abilities.push(ability);
-        await setDoc(playerRef,{
-          abilities,
-          pendingChoice:{
-            options:p.pendingChoice?.options || [],
-            pickedIndex:index
+          const range = def.range || 2;
+          const target = nearestAlienFrom(t.x,t.y,range);
+          if(target){
+            let dmg = def.dmg || 2;
+            const buff = damageBuffMap[t.id] || 1;
+            dmg = Math.round(dmg * buff);
+            if(def.splash){
+              // splash to nearby aliens
+              for(const a of aliens){
+                const d = Math.abs(a.x - target.x)+Math.abs(a.y - target.y);
+                if(d<=1){
+                  a.hp -= dmg;
+                  changed = true;
+                }
+              }
+            }else{
+              target.hp -= dmg;
+              changed = true;
+            }
           }
-        },{merge:true});
-        log(`Gained ability: ${ability.name}`);
-      }catch(e){
-        console.error(e);
+        }
       }
-    }
 
-    async function chooseUpgrade(index, opt){
-      try{
-        const pSnap = await getDoc(playerRef);
-        if(!pSnap.exists()) return;
-        const p = pSnap.data();
-        const updates = {
-          pendingUpgrade:{
-            options:p.pendingUpgrade?.options || [],
-            pickedIndex:index
+      // Towers
+      for(const tw of towers){
+        const def = TOWERS[tw.kind] || TOWERS.laser;
+        if(def.shield || def.buff) continue; // already handled via buffs / shields
+        const range = def.range || 3;
+        const target = nearestAlienFrom(tw.x,tw.y,range);
+        if(!target) continue;
+        let dmg = def.dmg || 2;
+        const buff = damageBuffMap[tw.id] || 1;
+        dmg = Math.round(dmg * buff);
+        if(def.chain){
+          // Tesla: chain to up to 2 nearby aliens
+          const chainTargets = [];
+          for(const a of aliens){
+            if(a.hp<=0) continue;
+            const d = Math.abs(a.x - target.x)+Math.abs(a.y - target.y);
+            if(d<=1) chainTargets.push(a);
           }
-        };
+          if(chainTargets.length===0) chainTargets.push(target);
+          for(const a of chainTargets.slice(0,3)){
+            a.hp -= dmg;
+          }
+          changed = true;
+        }else{
+          target.hp -= dmg;
+          changed = true;
+        }
+      }
 
-        // Apply stat changes
-        if(opt.hp){
-          const cls = CLASSES[p.classIndex ?? 0] || {hp:10};
-          const currentMax = p.maxHp ?? cls.hp;
-          const newMax = currentMax + opt.hp;
-          const currentHp = p.hp ?? currentMax;
-          updates.maxHp = newMax;
-          updates.hp = Math.min(newMax, currentHp + opt.hp);
+      // Remove dead aliens
+      for(const a of aliens){
+        if(a.hp<=0){
+          a.dead = true;
+          changed = true;
         }
-        if(opt.dmg){
-          updates.bonusDmg = (p.bonusDmg || 0) + opt.dmg;
-        }
-        if(opt.speed){
-          updates.speedLevel = (p.speedLevel || 0) + opt.speed;
-        }
-        if(opt.fireRateMult){
-          updates.fireRateMult = (p.fireRateMult || 1) * opt.fireRateMult;
-        }
-        if(opt.knightHpMult){
-          updates.knightHpLevel = (p.knightHpLevel || 0) + 1;
-        }
-        if(opt.knightDmgMult){
-          updates.knightDmgLevel = (p.knightDmgLevel || 0) + 1;
-        }
-        if(opt.knightSpawnLevel){
-          updates.knightSpawnLevel = (p.knightSpawnLevel || 0) + opt.knightSpawnLevel;
-        }
-        if(opt.regenLevel){
-          updates.regenLevel = (p.regenLevel || 0) + opt.regenLevel;
-        }
+      }
+      bf.aliens = aliens.filter(a=>!a.dead);
 
-        await setDoc(playerRef, updates, {merge:true});
-        log(`Upgrade chosen: ${opt.name}`);
-      }catch(e){
-        console.error(e);
+      // Alien actions: move left; damage troops / base if adjacent
+      for(const a of bf.aliens){
+        // move 1 left if possible
+        const newX = a.x-1;
+        if(newX>=0){
+          a.x = newX;
+          changed = true;
+        }else{
+          // reached left border
+          if(node.type==="base"){
+            baseDamage += ENEMIES[a.type]?.dmg || 2;
+          }
+          a.dead = true;
+          changed = true;
+        }
+      }
+      bf.aliens = bf.aliens.filter(a=>!a.dead);
+
+      // Aliens damage adjacent troops
+      for(const a of bf.aliens){
+        const def = ENEMIES[a.type] || ENEMIES.bug;
+        const dmg = def.dmg || 2;
+        // attack nearest troop in melee (range 1)
+        let best=null, bestD=2;
+        for(const t of troops){
+          if(t.hp<=0) continue;
+          const d = Math.abs(t.x - a.x)+Math.abs(t.y - a.y);
+          if(d<=1 && d<bestD){ best=t; bestD=d; }
+        }
+        if(best){
+          let finalDmg = dmg;
+          const shield = shieldMap[best.id] || 1;
+          finalDmg = Math.max(1, Math.round(finalDmg * shield));
+          best.hp -= finalDmg;
+          changed = true;
+        }
+      }
+
+      // Remove dead troops
+      for(const t of troops){
+        if(t.hp<=0) t.dead=true;
+      }
+      bf.troops = troops.filter(t=>!t.dead);
+
+      return {changed, baseDamage};
+    }
+
+    // ---------------- BATTLE UI ----------------
+    function buildBattleBars(){
+      // Troops
+      troopBarEl.innerHTML = "";
+      for(const key in TROOPS){
+        const def = TROOPS[key];
+        const pill = document.createElement("button");
+        pill.type="button";
+        pill.className = "build-pill";
+        pill.dataset.type = def.key;
+        pill.dataset.category = "troop";
+        pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
+        pill.onclick = ()=>selectBuild(def.key,"troop");
+        troopBarEl.appendChild(pill);
+      }
+      // Towers
+      towerBarEl.innerHTML = "";
+      for(const key in TOWERS){
+        const def = TOWERS[key];
+        const pill = document.createElement("button");
+        pill.type="button";
+        pill.className = "build-pill";
+        pill.dataset.type = def.key;
+        pill.dataset.category = "tower";
+        pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
+        pill.onclick = ()=>selectBuild(def.key,"tower");
+        towerBarEl.appendChild(pill);
       }
     }
 
-    // --- FULLSCREEN ---
+    function selectBuild(type,category){
+      currentBuild = {type,category};
+      // highlight
+      document.querySelectorAll(".build-pill").forEach(el=>{
+        const t = el.dataset.type;
+        const cat = el.dataset.category;
+        el.classList.toggle("active", t===type && cat===category);
+      });
+    }
+
+    function openBattleForNode(nodeId){
+      if(!nodeId || !nodesState[nodeId]) return;
+      selectedNodeId = nodeId;
+      selectedNode = nodesState[nodeId];
+      renderBoard();
+      renderNodeDetails();
+
+      if(battleUnsub) battleUnsub();
+      const nodeRef = doc(nodesCol, nodeId);
+      battleUnsub = onSnapshot(nodeRef,(snap)=>{
+        if(!snap.exists()) return;
+        const node = snap.data();
+        nodesState[nodeId] = node;
+        renderBattlefield(node);
+      });
+
+      buildBattleBars();
+      const {row,col} = parseKey(nodeId);
+      battleNodeLabel.textContent = (selectedNode.type==="base" ? "Base Node" : "Node") + ` ${row+1}-${col+1}`;
+      updateBattleOwnerTag(selectedNode);
+      battleOverlay.style.display = "flex";
+    }
+
+    function updateBattleOwnerTag(node){
+      const owner = node.owner;
+      battleOwnerTag.textContent =
+        owner==="player" ? "Player-controlled" :
+        owner==="enemy" ? "Alien-controlled" :
+        owner==="contested" ? "Contested" :
+        "Neutral";
+      battleOwnerTag.className = "tag";
+      if(owner==="player") battleOwnerTag.classList.add("tag-green");
+      else if(owner==="enemy") battleOwnerTag.classList.add("tag-enemy");
+      else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
+    }
+
+    function renderBattlefield(node){
+      const bf = node.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[]};
+      battleGridEl.innerHTML = "";
+      const troops = bf.troops || [];
+      const towers = bf.towers || [];
+      const aliens = bf.aliens || [];
+      const spines = bf.spines || [];
+
+      // quick helper to find entity at cell (for simple layered display)
+      function getCellContents(x,y){
+        const res = {troop:null,tower:null,alien:null,spine:null};
+        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+        res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
+        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+        return res;
+      }
+
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=0;x<BATTLE_W;x++){
+          const cell = document.createElement("div");
+          cell.className = "battle-cell";
+          if(x<=2) cell.classList.add("battle-cell-bg-player");
+          else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
+          else cell.classList.add("battle-cell-bg-frontline");
+
+          const {troop,tower,alien,spine} = getCellContents(x,y);
+          let emoji = "";
+          let hp = null, maxHp = null;
+
+          if(spine){
+            emoji = "🦴";
+            hp = spine.hp;
+            maxHp = spine.maxHp;
+          }else if(tower){
+            const def = TOWERS[tower.kind] || TOWERS.laser;
+            emoji = def.emoji;
+            hp = tower.hp;
+            maxHp = tower.maxHp;
+          }else if(troop){
+            const def = TROOPS[troop.kind] || TROOPS.rifle;
+            emoji = def.emoji;
+            hp = troop.hp;
+            maxHp = troop.maxHp;
+          }
+          if(alien){
+            // show alien on top
+            const def = ENEMIES[alien.type] || ENEMIES.bug;
+            emoji = def.emoji;
+            hp = alien.hp;
+            maxHp = alien.maxHp;
+          }
+
+          if(emoji){
+            cell.textContent = emoji;
+          }else{
+            cell.textContent = "";
+          }
+
+          if(hp != null && maxHp != null){
+            const bar = document.createElement("div");
+            bar.className = "hp-bar-mini";
+            const fill = document.createElement("div");
+            fill.className = "hp-bar-mini-fill";
+            const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
+            fill.style.width = pct + "%";
+            bar.appendChild(fill);
+            cell.appendChild(bar);
+          }
+
+          cell.addEventListener("click",()=>{
+            onBattleCellClick(x,y,node);
+          });
+
+          battleGridEl.appendChild(cell);
+        }
+      }
+
+      updateBattleOwnerTag(node);
+    }
+
+    async function onBattleCellClick(x,y,node){
+      if(!currentBuild.type || !currentBuild.category){
+        log("Select a troop or tower type first.");
+        return;
+      }
+      if(x > 2){
+        log("You can only place in the first 3 columns.");
+        return;
+      }
+      if(!myPlayer){
+        log("Player data not loaded yet.");
+        return;
+      }
+      const cost =
+        currentBuild.category==="troop" ? TROOPS[currentBuild.type].cost :
+        TOWERS[currentBuild.type].cost;
+
+      if((myPlayer.money || 0) < cost){
+        log("Not enough credits.");
+        return;
+      }
+
+      try{
+        await runTransaction(db, async (tx)=>{
+          const pSnap = await tx.get(playerRef);
+          if(!pSnap.exists()) throw new Error("Player missing.");
+          const p = pSnap.data();
+          if((p.money||0) < cost) throw new Error("Not enough credits.");
+
+          const nodeRef = doc(nodesCol, selectedNodeId);
+          const nSnap = await tx.get(nodeRef);
+          if(!nSnap.exists()) throw new Error("Node missing.");
+          const n = nSnap.data();
+          const bf = n.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[]};
+
+          const occupied =
+            (bf.troops||[]).some(t=>t.x===x && t.y===y) ||
+            (bf.towers||[]).some(tw=>tw.x===x && tw.y===y) ||
+            (bf.spines||[]).some(s=>s.x===x && s.y===y);
+
+          if(occupied) throw new Error("Cannot build on occupied tile.");
+
+          if(currentBuild.category==="troop"){
+            const def = TROOPS[currentBuild.type];
+            bf.troops = bf.troops || [];
+            bf.troops.push({
+              id:"t_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+              x,y,
+              kind:def.key,
+              hp:def.baseHp,
+              maxHp:def.baseHp
+            });
+          }else{
+            const def = TOWERS[currentBuild.type];
+            bf.towers = bf.towers || [];
+            bf.towers.push({
+              id:"tw_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+              x,y,
+              kind:def.key,
+              hp:18,
+              maxHp:18
+            });
+          }
+
+          tx.update(playerRef,{ money:(p.money||0)-cost });
+          tx.set(nodeRef,{ battlefield:bf },{merge:true});
+        });
+        log(`Built ${currentBuild.category==="troop" ? TROOPS[currentBuild.type].name : TOWERS[currentBuild.type].name} at (${x+1},${y+1}).`);
+      }catch(e){
+        log("Build failed: "+e.message);
+      }
+    }
+
+    // ---------------- UI BUTTONS ----------------
+    openBattleBtn.addEventListener("click",()=>{
+      if(!selectedNodeId) return;
+      openBattleForNode(selectedNodeId);
+    });
+
+    leaveBattleBtn.addEventListener("click",()=>{
+      battleOverlay.style.display = "none";
+      if(battleUnsub){ battleUnsub(); battleUnsub=null; }
+    });
+
+    upgradeBaseBtn.addEventListener("click", async ()=>{
+      if(!latestGame || !myPlayer) return;
+      if(!selectedNode || selectedNode.type!=="base") return;
+      const base = latestGame.base || {level:1,upgradeCost:60,incomePerPlayer:6};
+      try{
+        await runTransaction(db, async (tx)=>{
+          const gSnap = await tx.get(gameRef);
+          const pSnap = await tx.get(playerRef);
+          if(!gSnap.exists() || !pSnap.exists()) throw new Error("Missing game or player.");
+          const g = gSnap.data();
+          const p = pSnap.data();
+          const base = g.base || {level:1,upgradeCost:60,incomePerPlayer:6};
+          const cost = base.upgradeCost || 60;
+          if((p.money||0) < cost) throw new Error("Not enough credits for upgrade.");
+          const newLevel = (base.level||1)+1;
+          const newIncome = (base.incomePerPlayer||6) + 3;
+          const newCost = Math.round(cost*1.6);
+          tx.update(playerRef,{ money: (p.money||0)-cost });
+          tx.update(gameRef,{
+            base:{
+              ...base,
+              level:newLevel,
+              incomePerPlayer:newIncome,
+              upgradeCost:newCost
+            }
+          });
+        });
+        log("⚡ Generator upgraded. All players gain more credits per tick.");
+      }catch(e){
+        log("Upgrade failed: "+e.message);
+      }
+    });
+
     document.getElementById("fullscreenBtn").addEventListener("click",()=>{
       const el = document.documentElement;
       if(!document.fullscreenElement){
@@ -1772,15 +1605,11 @@
       }
     });
 
-    // --- START ---
-    joinGame().catch(err=>{
-      console.error(err);
-      alert("Error joining game: "+err.message);
-    });
+    // ---------------- INIT ----------------
+    log("Connecting to Firebase and waiting for authentication…");
   </script>
 </body>
 </html>
-
 
 
 
