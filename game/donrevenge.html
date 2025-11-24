@@ -2018,94 +2018,115 @@
       updateBattleOwnerTag(node);
     }
 
-  async function onBattleCellClick(x,y,node){
-  // NEW: Territory check – can we build in this node at all?
+async function onBattleCellClick(x, y, node) {
+  // Territory check – can we build on this node at all?
   if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
     log("You can only build in nodes you control or nodes directly adjacent to your territory.");
     return;
   }
 
-  if(!currentBuild.type || !currentBuild.category){
+  if (!currentBuild.type || !currentBuild.category) {
     log("Select a troop or tower type first.");
     return;
   }
 
-  // Existing rule: only first 3 columns are buildable
-  if(x > 2){
+  // Only first 3 columns are buildable
+  if (x > 2) {
     log("You can only place in the first 3 columns.");
     return;
   }
-  if(!myPlayer){
-    log("Player data not loaded yet.");
+  if (!currentUser) {
+    log("Player auth not ready yet.");
     return;
   }
 
-  const cost =
-    currentBuild.category==="troop" ? TROOPS[currentBuild.type].cost :
-    TOWERS[currentBuild.type].cost;
+  const def =
+    currentBuild.category === "troop"
+      ? TROOPS[currentBuild.type]
+      : TOWERS[currentBuild.type];
 
-  if((myPlayer.money || 0) < cost){
-    log("Not enough credits.");
+  if (!def) {
+    log("Unknown unit type.");
     return;
   }
 
-  try{
-    await runTransaction(db, async (tx)=>{
-      const pSnap = await tx.get(playerRef);
-      if(!pSnap.exists()) throw new Error("Player missing.");
+  const cost = def.cost;
+
+  try {
+    await runTransaction(db, async (tx) => {
+      // 🔹 Always resolve the *current* player's doc inside the transaction
+      const thisPlayerRef = doc(gameRef, "players", currentUser.uid);
+      const pSnap = await tx.get(thisPlayerRef);
+      if (!pSnap.exists()) throw new Error("Player missing.");
       const p = pSnap.data();
-      if((p.money||0) < cost) throw new Error("Not enough credits.");
 
+      const currentMoney = p.money || 0;
+      if (currentMoney < cost) throw new Error("Not enough credits.");
+
+      // Load node inside the transaction as well
       const nodeRef = doc(nodesCol, selectedNodeId);
       const nSnap = await tx.get(nodeRef);
-      if(!nSnap.exists()) throw new Error("Node missing.");
+      if (!nSnap.exists()) throw new Error("Node missing.");
       const n = nSnap.data();
 
-      // EXTRA safety: re-check territory inside the transaction
-      if (!n.owner || (n.owner !== "player" && !canBuildInNode(selectedNodeId))) {
-        throw new Error("Cannot build here – this node is not in or next to your territory.");
+      // Extra safety: node must be buildable from latest state
+      if (!canBuildInNode(selectedNodeId)) {
+        throw new Error("Cannot build here – not in or adjacent to your territory.");
       }
 
       const bf = n.battlefield || {
-        width:BATTLE_W,height:BATTLE_H,
-        troops:[],towers:[],aliens:[],spines:[],hitLines:[]
+        width: BATTLE_W,
+        height: BATTLE_H,
+        troops: [],
+        towers: [],
+        aliens: [],
+        spines: [],
+        hitLines: [],
       };
 
+      // Check occupancy
       const occupied =
-        (bf.troops||[]).some(t=>t.x===x && t.y===y) ||
-        (bf.towers||[]).some(tw=>tw.x===x && tw.y===y) ||
-        (bf.spines||[]).some(s=>s.x===x && s.y===y);
+        (bf.troops || []).some((t) => t.x === x && t.y === y) ||
+        (bf.towers || []).some((tw) => tw.x === x && tw.y === y) ||
+        (bf.spines || []).some((s) => s.x === x && s.y === y);
 
-      if(occupied) throw new Error("Cannot build on occupied tile.");
+      if (occupied) throw new Error("Cannot build on occupied tile.");
 
-      if(currentBuild.category==="troop"){
-        const def = TROOPS[currentBuild.type];
+      // Place unit
+      if (currentBuild.category === "troop") {
         bf.troops = bf.troops || [];
         bf.troops.push({
-          id:"t_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          x,y,
-          kind:def.key,
-          hp:def.baseHp,
-          maxHp:def.baseHp
+          id: "t_" + Date.now() + "_" + Math.random().toString(16).slice(2, 6),
+          x,
+          y,
+          kind: def.key,
+          hp: def.baseHp,
+          maxHp: def.baseHp,
         });
-      }else{
-        const def = TOWERS[currentBuild.type];
+      } else {
         bf.towers = bf.towers || [];
         bf.towers.push({
-          id:"tw_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          x,y,
-          kind:def.key,
-          hp:18,
-          maxHp:18
+          id: "tw_" + Date.now() + "_" + Math.random().toString(16).slice(2, 6),
+          x,
+          y,
+          kind: def.key,
+          hp: 18,
+          maxHp: 18,
         });
       }
 
-      tx.update(playerRef,{ money:(p.money||0)-cost });
-      tx.set(nodeRef,{ battlefield:bf },{merge:true});
+      // 🔹 Deduct only from THIS player's doc
+      tx.update(thisPlayerRef, { money: currentMoney - cost });
+      tx.set(nodeRef, { battlefield: bf }, { merge: true });
     });
-    log(`Built ${currentBuild.category==="troop" ? TROOPS[currentBuild.type].name : TOWERS[currentBuild.type].name} at (${x+1},${y+1}).`);
-  }catch(e){
-    log("Build failed: "+e.message);
+
+    const name =
+      currentBuild.category === "troop"
+        ? TROOPS[currentBuild.type].name
+        : TOWERS[currentBuild.type].name;
+    log(`Built ${name} at (${x + 1},${y + 1}).`);
+  } catch (e) {
+    log("Build failed: " + e.message);
   }
 }
 
@@ -2166,6 +2187,7 @@
   </script>
 </body>
 </html>
+
 
 
 
