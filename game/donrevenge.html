@@ -721,6 +721,26 @@
       await joinGame();
     });
 
+    function canBuildInNode(nodeId){
+  const node = nodesState[nodeId];
+  if (!node) return false;
+
+  // You can always build in nodes you fully control
+  if (node.owner === "player") return true;
+
+  // Or in nodes adjacent to a player-controlled node
+  const { row, col } = node;
+  const neigh = neighborsOf(row, col);
+  for (const nk of neigh) {
+    const n = nodesState[nk];
+    if (n && n.owner === "player") {
+      return true;
+    }
+  }
+  return false;
+}
+
+
     async function joinGame(){
       try{
         await runTransaction(db, async (tx)=>{
@@ -1998,78 +2018,97 @@
       updateBattleOwnerTag(node);
     }
 
-    async function onBattleCellClick(x,y,node){
-      if(!currentBuild.type || !currentBuild.category){
-        log("Select a troop or tower type first.");
-        return;
+  async function onBattleCellClick(x,y,node){
+  // NEW: Territory check – can we build in this node at all?
+  if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
+    log("You can only build in nodes you control or nodes directly adjacent to your territory.");
+    return;
+  }
+
+  if(!currentBuild.type || !currentBuild.category){
+    log("Select a troop or tower type first.");
+    return;
+  }
+
+  // Existing rule: only first 3 columns are buildable
+  if(x > 2){
+    log("You can only place in the first 3 columns.");
+    return;
+  }
+  if(!myPlayer){
+    log("Player data not loaded yet.");
+    return;
+  }
+
+  const cost =
+    currentBuild.category==="troop" ? TROOPS[currentBuild.type].cost :
+    TOWERS[currentBuild.type].cost;
+
+  if((myPlayer.money || 0) < cost){
+    log("Not enough credits.");
+    return;
+  }
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const pSnap = await tx.get(playerRef);
+      if(!pSnap.exists()) throw new Error("Player missing.");
+      const p = pSnap.data();
+      if((p.money||0) < cost) throw new Error("Not enough credits.");
+
+      const nodeRef = doc(nodesCol, selectedNodeId);
+      const nSnap = await tx.get(nodeRef);
+      if(!nSnap.exists()) throw new Error("Node missing.");
+      const n = nSnap.data();
+
+      // EXTRA safety: re-check territory inside the transaction
+      if (!n.owner || (n.owner !== "player" && !canBuildInNode(selectedNodeId))) {
+        throw new Error("Cannot build here – this node is not in or next to your territory.");
       }
-      if(x > 2){
-        log("You can only place in the first 3 columns.");
-        return;
-      }
-      if(!myPlayer){
-        log("Player data not loaded yet.");
-        return;
-      }
-      const cost =
-        currentBuild.category==="troop" ? TROOPS[currentBuild.type].cost :
-        TOWERS[currentBuild.type].cost;
 
-      if((myPlayer.money || 0) < cost){
-        log("Not enough credits.");
-        return;
-      }
+      const bf = n.battlefield || {
+        width:BATTLE_W,height:BATTLE_H,
+        troops:[],towers:[],aliens:[],spines:[],hitLines:[]
+      };
 
-      try{
-        await runTransaction(db, async (tx)=>{
-          const pSnap = await tx.get(playerRef);
-          if(!pSnap.exists()) throw new Error("Player missing.");
-          const p = pSnap.data();
-          if((p.money||0) < cost) throw new Error("Not enough credits.");
+      const occupied =
+        (bf.troops||[]).some(t=>t.x===x && t.y===y) ||
+        (bf.towers||[]).some(tw=>tw.x===x && tw.y===y) ||
+        (bf.spines||[]).some(s=>s.x===x && s.y===y);
 
-          const nodeRef = doc(nodesCol, selectedNodeId);
-          const nSnap = await tx.get(nodeRef);
-          if(!nSnap.exists()) throw new Error("Node missing.");
-          const n = nSnap.data();
-          const bf = n.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[],hitLines:[]};
+      if(occupied) throw new Error("Cannot build on occupied tile.");
 
-          const occupied =
-            (bf.troops||[]).some(t=>t.x===x && t.y===y) ||
-            (bf.towers||[]).some(tw=>tw.x===x && tw.y===y) ||
-            (bf.spines||[]).some(s=>s.x===x && s.y===y);
-
-          if(occupied) throw new Error("Cannot build on occupied tile.");
-
-          if(currentBuild.category==="troop"){
-            const def = TROOPS[currentBuild.type];
-            bf.troops = bf.troops || [];
-            bf.troops.push({
-              id:"t_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-              x,y,
-              kind:def.key,
-              hp:def.baseHp,
-              maxHp:def.baseHp
-            });
-          }else{
-            const def = TOWERS[currentBuild.type];
-            bf.towers = bf.towers || [];
-            bf.towers.push({
-              id:"tw_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-              x,y,
-              kind:def.key,
-              hp:18,
-              maxHp:18
-            });
-          }
-
-          tx.update(playerRef,{ money:(p.money||0)-cost });
-          tx.set(nodeRef,{ battlefield:bf },{merge:true});
+      if(currentBuild.category==="troop"){
+        const def = TROOPS[currentBuild.type];
+        bf.troops = bf.troops || [];
+        bf.troops.push({
+          id:"t_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          x,y,
+          kind:def.key,
+          hp:def.baseHp,
+          maxHp:def.baseHp
         });
-        log(`Built ${currentBuild.category==="troop" ? TROOPS[currentBuild.type].name : TOWERS[currentBuild.type].name} at (${x+1},${y+1}).`);
-      }catch(e){
-        log("Build failed: "+e.message);
+      }else{
+        const def = TOWERS[currentBuild.type];
+        bf.towers = bf.towers || [];
+        bf.towers.push({
+          id:"tw_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          x,y,
+          kind:def.key,
+          hp:18,
+          maxHp:18
+        });
       }
-    }
+
+      tx.update(playerRef,{ money:(p.money||0)-cost });
+      tx.set(nodeRef,{ battlefield:bf },{merge:true});
+    });
+    log(`Built ${currentBuild.category==="troop" ? TROOPS[currentBuild.type].name : TOWERS[currentBuild.type].name} at (${x+1},${y+1}).`);
+  }catch(e){
+    log("Build failed: "+e.message);
+  }
+}
+
 
     // ---------------- UI BUTTONS ----------------
     openBattleBtn.addEventListener("click",()=>{
@@ -2127,6 +2166,7 @@
   </script>
 </body>
 </html>
+
 
 
 
