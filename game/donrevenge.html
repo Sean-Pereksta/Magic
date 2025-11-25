@@ -1195,30 +1195,60 @@
       hostTicking=false;
     }
 
-    async function applyIncomeTick(game){
-      const base = game.base || {incomePerPlayer:0};
-      const baseIncome = base.incomePerPlayer || 0;
+    // 🔹 How many players are in this game right now?
+async function getPlayerCount(){
+  const playersSnap = await getDocs(collection(gameRef, "players"));
+  return playersSnap.size || 1;
+}
 
-      let ecoCount = 0;
-      for(const key in nodesState){
-        const n = nodesState[key];
-        if(!n) continue;
-        if(n.type === "eco" && n.owner === "player") ecoCount++;
-      }
-      const ecoBonus = ecoCount * ECO_BONUS_PER_NODE;
-      const income = baseIncome + ecoBonus;
-      if(income <= 0) return;
+// 🔹 Turn player count into a difficulty factor
+// 1 player → 1.0
+// 2 players → 1.4
+// 3 players → 1.8
+// 4 players → 2.2, etc.
+function getDifficultyFactor(playerCount){
+  return 1 + (playerCount - 1) * 0.4;
+}
 
-      const playersSnap = await getDocs(collection(gameRef,"players"));
-      const batchUpdates = [];
-      for(const docSnap of playersSnap.docs){
-        const p = docSnap.data();
-        const extra = p.incomeBonus || 0;
-        const money = (p.money||0) + income + extra;
-        batchUpdates.push(updateDoc(docSnap.ref,{ money }));
-      }
-      await Promise.all(batchUpdates);
-    }
+
+async function applyIncomeTick(game){
+  const base = game.base || { incomePerPlayer:0 };
+  const baseIncome = base.incomePerPlayer || 0;
+
+  // Count eco nodes you control
+  let ecoCount = 0;
+  for (const key in nodesState){
+    const n = nodesState[key];
+    if(!n) continue;
+    if(n.type === "eco" && n.owner === "player") ecoCount++;
+  }
+  const ecoBonus = ecoCount * ECO_BONUS_PER_NODE;
+
+  // Pull all players once
+  const playersSnap = await getDocs(collection(gameRef,"players"));
+  const playerCount = playersSnap.size || 1;
+  const difficultyFactor = getDifficultyFactor(playerCount);
+
+  // Base income is what each player would get solo.
+  // We divide it a bit as player count goes up so a 4-stack isn’t crazy rich.
+  const rawIncome = baseIncome + ecoBonus;
+  const incomePerPlayer = Math.max(
+    0,
+    Math.round(rawIncome / difficultyFactor)
+  );
+
+  if (incomePerPlayer <= 0) return;
+
+  const batchUpdates = [];
+  for(const docSnap of playersSnap.docs){
+    const p = docSnap.data();
+    const extra = p.incomeBonus || 0;
+    const money = (p.money || 0) + incomePerPlayer + extra;
+    batchUpdates.push(updateDoc(docSnap.ref,{ money }));
+  }
+  await Promise.all(batchUpdates);
+}
+
 
     async function applySpreadTick(game){
       const nodeUpdates = [];
@@ -1299,80 +1329,103 @@
       return true;
     }
 
-    async function growEnemyForces(game){
-      const timeSeconds = game.timeSeconds || 0;
-      const minutes = timeSeconds / 60;
-      const maxAliensBase = 4 + Math.floor(minutes * 3);
-      const maxSpinesBase = 2 + Math.floor(minutes / 4);
+   async function growEnemyForces(game){
+  const timeSeconds = game.timeSeconds || 0;
+  const minutes = timeSeconds / 60;
 
-      const batch = [];
+  // 🔹 Difficulty based on how many players we have
+  const playerCount = await getPlayerCount();
+  const difficultyFactor = getDifficultyFactor(playerCount);
 
-      for(const key in nodesState){
-        const node = nodesState[key];
-        if(!node) continue;
-        if(node.owner !== "enemy") continue;
+  // Base scaling as before, but multiplied by difficulty
+  const maxAliensBase = (4 + Math.floor(minutes * 3)) * difficultyFactor;
+  const maxSpinesBase = (2 + Math.floor(minutes / 4)) * difficultyFactor;
 
-        const bf = node.battlefield || {
-          width:BATTLE_W,height:BATTLE_H,
-          troops:[],towers:[],aliens:[],spines:[]
-        };
-        bf.aliens = bf.aliens || [];
-        bf.spines = bf.spines || [];
+  const batch = [];
 
-        const maxAliens = Math.min(40, maxAliensBase);
-        const maxSpines = Math.min(8, maxSpinesBase);
+  for(const key in nodesState){
+    const node = nodesState[key];
+    if(!node) continue;
+    if(node.owner !== "enemy") continue;
 
-        let changed = false;
+    const bf = node.battlefield || {
+      width:BATTLE_W,
+      height:BATTLE_H,
+      troops:[],
+      towers:[],
+      aliens:[],
+      spines:[],
+      hitLines:[]
+    };
+    bf.aliens = bf.aliens || [];
+    bf.spines = bf.spines || [];
 
-        if(bf.aliens.length < maxAliens){
-          const deficit = maxAliens - bf.aliens.length;
-          const spawnCount = Math.min(4 + Math.floor(minutes), deficit);
-          for(let i=0;i<spawnCount;i++){
-            const row = 1 + (i % (BATTLE_H-2));
-            const x = BATTLE_W-1;
-            let typeKey = "bug";
-            if(minutes > 8){
-              if(i%4===0) typeKey="behemoth";
-              else if(i%3===0) typeKey="brute";
-              else if(i%2===0) typeKey="spitter";
-            }else if(minutes > 4){
-              if(i%3===0) typeKey="brute";
-              else if(i%2===0) typeKey="spitter";
-            }else if(minutes > 2){
-              if(i%2===0) typeKey="spitter";
-            }
-            const def = ENEMIES[typeKey];
-            bf.aliens.push({
-              id:"a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-              x,
-              y:row,
-              type:typeKey,
-              hp:def.baseHp,
-              maxHp:def.baseHp
-            });
-          }
-          changed = true;
+    const maxAliens = Math.min(40, Math.round(maxAliensBase));
+    const maxSpines = Math.min(8,  Math.round(maxSpinesBase));
+
+    let changed = false;
+
+    // ---------- ALIEN SPAWNS ----------
+    if(bf.aliens.length < maxAliens){
+      const deficit = maxAliens - bf.aliens.length;
+
+      // More players = more enemies per build tick
+      const baseSpawn = 4 + Math.floor(minutes);
+      const spawnCount = Math.min(
+        Math.round(baseSpawn * difficultyFactor),
+        deficit
+      );
+
+      for(let i=0;i<spawnCount;i++){
+        const row = 1 + (i % (BATTLE_H-2));
+        const x = BATTLE_W-1;
+        let typeKey = "bug";
+
+        if(minutes > 8){
+          if(i%4===0) typeKey="behemoth";
+          else if(i%3===0) typeKey="brute";
+          else if(i%2===0) typeKey="spitter";
+        }else if(minutes > 4){
+          if(i%3===0) typeKey="brute";
+          else if(i%2===0) typeKey="spitter";
+        }else if(minutes > 2){
+          if(i%2===0) typeKey="spitter";
         }
 
-        if(bf.spines.length < maxSpines){
-          const needed = maxSpines - bf.spines.length;
-          for(let i=0;i<needed;i++){
-            const x = BATTLE_W-3 - (i%2);
-            const y = 1 + Math.floor(Math.random()*(BATTLE_H-2));
-            const variant = (Math.random()<0.5 ? "piercer" : "shredder");
-            spawnSpine(bf,x,y,variant);
-          }
-          changed = true;
-        }
-
-        if(changed){
-          const nodeRef = doc(nodesCol,key);
-          batch.push(setDoc(nodeRef,{ battlefield:bf },{merge:true}));
-        }
+        const def = ENEMIES[typeKey];
+        bf.aliens.push({
+          id:"a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          x,
+          y:row,
+          type:typeKey,
+          hp:def.baseHp,
+          maxHp:def.baseHp
+        });
       }
-
-      if(batch.length) await Promise.all(batch);
+      changed = true;
     }
+
+    // ---------- SPINE (TOWER) SPAWNS ----------
+    if(bf.spines.length < maxSpines){
+      const needed = maxSpines - bf.spines.length;
+      for(let i=0;i<needed;i++){
+        const x = BATTLE_W - 3 - (i % 2);
+        const y = 1 + Math.floor(Math.random() * (BATTLE_H-2));
+        const variant = (Math.random() < 0.5 ? "piercer" : "shredder");
+        spawnSpine(bf, x, y, variant);
+      }
+      changed = true;
+    }
+
+    if(changed){
+      const nodeRef = doc(nodesCol,key);
+      batch.push(setDoc(nodeRef,{ battlefield:bf },{merge:true}));
+    }
+  }
+
+  if(batch.length) await Promise.all(batch);
+}
+
 
     async function simulateBattles(game){
       const timeSeconds = game.timeSeconds || 0;
@@ -2321,6 +2374,7 @@
   </script>
 </body>
 </html>
+
 
 
 
