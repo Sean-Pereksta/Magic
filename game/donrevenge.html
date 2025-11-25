@@ -371,7 +371,7 @@
     /* Hitline overlay */
     .hitline-layer{
       position:absolute;
-      inset:4px;
+       inset:0;
       pointer-events:none;
       z-index:2;
     }
@@ -2104,115 +2104,150 @@ async function applyIncomeTick(game){
       else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
     }
 
-    function renderBattlefield(node){
-      const bf = node.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[],hitLines:[]};
-      battleGridEl.innerHTML = "";
-      const troops = bf.troops || [];
-      const towers = bf.towers || [];
-      const aliens = bf.aliens || [];
-      const spines = bf.spines || [];
+   function renderBattlefield(node){
+  const bf = node.battlefield || {
+    width:BATTLE_W,
+    height:BATTLE_H,
+    troops:[],
+    towers:[],
+    aliens:[],
+    spines:[],
+    hitLines:[]
+  };
+  battleGridEl.innerHTML = "";
+  const troops = bf.troops || [];
+  const towers = bf.towers || [];
+  const aliens = bf.aliens || [];
+  const spines = bf.spines || [];
 
-      function getCellContents(x,y){
-        const res = {troop:null,tower:null,alien:null,spine:null};
-        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
-        res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
-        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
-        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
-        return res;
-      }
+  function getCellContents(x,y){
+    const res = {troop:null,tower:null,alien:null,spine:null};
+    res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+    res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
+    res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+    res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+    return res;
+  }
 
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=0;x<BATTLE_W;x++){
-          const cell = document.createElement("div");
-          cell.className = "battle-cell";
-          if(x<=2) cell.classList.add("battle-cell-bg-player");
-          else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
-          else cell.classList.add("battle-cell-bg-frontline");
+  for(let y=0;y<BATTLE_H;y++){
+    for(let x=0;x<BATTLE_W;x++){
+      const cell = document.createElement("div");
+      cell.className = "battle-cell";
+      cell.dataset.x = x;
+      cell.dataset.y = y;
 
-          const {troop,tower,alien,spine} = getCellContents(x,y);
-          let emoji = "";
-          let hp = null, maxHp = null;
+      if(x<=2) cell.classList.add("battle-cell-bg-player");
+      else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
+      else cell.classList.add("battle-cell-bg-frontline");
 
-          if(spine){
-            emoji = "🌵";
-            hp = spine.hp;
-            maxHp = spine.maxHp;
-          }else if(tower){
-            if(tower.kind === "generator"){
-              emoji = "🔋";
-            }else{
-              const def = TOWERS[tower.kind] || TOWERS.laser;
-              emoji = def.emoji;
-            }
-            hp = tower.hp;
-            maxHp = tower.maxHp;
-          }else if(troop){
-            const def = TROOPS[troop.kind] || TROOPS.rifle;
-            emoji = def.emoji;
-            hp = troop.hp;
-            maxHp = troop.maxHp;
-          }
-          if(alien){
-            const def = ENEMIES[alien.type] || ENEMIES.bug;
-            emoji = def.emoji;
-            hp = alien.hp;
-            maxHp = alien.maxHp;
-          }
+      const {troop,tower,alien,spine} = getCellContents(x,y);
+      let emoji = "";
+      let hp = null, maxHp = null;
 
-          if(emoji){
-            cell.textContent = emoji;
-          }else{
-            cell.textContent = "";
-          }
-
-          if(hp != null && maxHp != null){
-            const bar = document.createElement("div");
-            bar.className = "hp-bar-mini";
-            const fill = document.createElement("div");
-            fill.className = "hp-bar-mini-fill";
-            const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
-            fill.style.width = pct + "%";
-            bar.appendChild(fill);
-            cell.appendChild(bar);
-          }
-
-          cell.addEventListener("click",()=>{
-            onBattleCellClick(x,y,node);
-          });
-
-          battleGridEl.appendChild(cell);
+      if(spine){
+        emoji = "🌵";
+        hp = spine.hp;
+        maxHp = spine.maxHp;
+      }else if(tower){
+        if(tower.kind === "generator"){
+          emoji = "🔋";
+        }else{
+          const def = TOWERS[tower.kind] || TOWERS.laser;
+          emoji = def.emoji;
         }
+        hp = tower.hp;
+        maxHp = tower.maxHp;
+      }else if(troop){
+        const def = TROOPS[troop.kind] || TROOPS.rifle;
+        emoji = def.emoji;
+        hp = troop.hp;
+        maxHp = troop.maxHp;
+      }
+      if(alien){
+        const def = ENEMIES[alien.type] || ENEMIES.bug;
+        emoji = def.emoji;
+        hp = alien.hp;
+        maxHp = alien.maxHp;
       }
 
-      const wrap = battleGridEl.parentElement;
-      if(wrap){
-        wrap.querySelectorAll(".hitline-layer").forEach(el=>el.remove());
-        const layer = document.createElement("div");
-        layer.className = "hitline-layer";
-        const lines = bf.hitLines || [];
-        for(const l of lines){
-          const lineEl = document.createElement("div");
-          lineEl.className = "hitline " + (l.kind==="enemy" ? "enemy" : "player");
-
-          const x1p = ((l.x1 + 0.5) / BATTLE_W) * 100;
-          const y1p = ((l.y1 + 0.5) / BATTLE_H) * 100;
-          const dx = (l.x2 - l.x1) / BATTLE_W;
-          const dy = (l.y2 - l.y1) / BATTLE_H;
-          const length = Math.sqrt(dx*dx + dy*dy) * 100;
-          const angle = Math.atan2((l.y2 - l.y1),(l.x2 - l.x1)) * 180 / Math.PI;
-
-          lineEl.style.left = x1p + "%";
-          lineEl.style.top = y1p + "%";
-          lineEl.style.width = Math.max(5,length) + "%";
-          lineEl.style.transform = `translate(0,-50%) rotate(${angle}deg)`;
-
-          layer.appendChild(lineEl);
-        }
-        wrap.appendChild(layer);
+      if(emoji){
+        cell.textContent = emoji;
       }
 
-      updateBattleOwnerTag(node);
+      if(hp != null && maxHp != null){
+        const bar = document.createElement("div");
+        bar.className = "hp-bar-mini";
+        const fill = document.createElement("div");
+        fill.className = "hp-bar-mini-fill";
+        const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
+        fill.style.width = pct + "%";
+        bar.appendChild(fill);
+        cell.appendChild(bar);
+      }
+
+      cell.addEventListener("click",()=>{
+        onBattleCellClick(x,y,node);
+      });
+
+      battleGridEl.appendChild(cell);
     }
+  }
+
+  const wrap = battleGridEl.parentElement;
+  if(wrap){
+    // Remove old hitline layers
+    wrap.querySelectorAll(".hitline-layer").forEach(el=>el.remove());
+
+    const layer = document.createElement("div");
+    layer.className = "hitline-layer";
+
+    // We'll use actual pixel centers of cells to draw lines
+    const wrapRect = wrap.getBoundingClientRect();
+    const centerCache = {};
+
+    function getCellCenter(x,y){
+      const key = x+"_"+y;
+      if(centerCache[key]) return centerCache[key];
+
+      const cell = battleGridEl.querySelector(`.battle-cell[data-x="${x}"][data-y="${y}"]`);
+      if(!cell){
+        centerCache[key] = null;
+        return null;
+      }
+      const r = cell.getBoundingClientRect();
+      const cx = r.left + r.width/2 - wrapRect.left;
+      const cy = r.top + r.height/2 - wrapRect.top;
+      const center = {x:cx, y:cy};
+      centerCache[key] = center;
+      return center;
+    }
+
+    const lines = bf.hitLines || [];
+    for(const l of lines){
+      const p1 = getCellCenter(l.x1,l.y1);
+      const p2 = getCellCenter(l.x2,l.y2);
+      if(!p1 || !p2) continue;
+
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const angle = Math.atan2(dy,dx) * 180 / Math.PI;
+
+      const lineEl = document.createElement("div");
+      lineEl.className = "hitline " + (l.kind==="enemy" ? "enemy" : "player");
+      lineEl.style.left = p1.x + "px";
+      lineEl.style.top = p1.y + "px";
+      lineEl.style.width = dist + "px";
+      lineEl.style.transform = `translate(0,-50%) rotate(${angle}deg)`;
+
+      layer.appendChild(lineEl);
+    }
+
+    wrap.appendChild(layer);
+  }
+
+  updateBattleOwnerTag(node);
+}
 
     async function onBattleCellClick(x, y, node) {
       if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
@@ -2374,6 +2409,7 @@ async function applyIncomeTick(game){
   </script>
 </body>
 </html>
+
 
 
 
