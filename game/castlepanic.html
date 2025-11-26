@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🏰 Castle Panic — Competitive Node War (2P, Firebase)</title>
+  <title>🪳 Roach Run — Online Pac Maze (2P, Firebase)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
   <style>
     :root{
@@ -12,14 +12,12 @@
       --muted:#9ca3af;
       --accent:#38bdf8;
       --accent-soft:#0ea5e9;
-      --p1:#16a34a;
-      --p2:#b91c1c;
-      --contested:#facc15;
-      --neutral:#4b5563;
+      --good:#22c55e;
+      --bad:#ef4444;
       --radius:14px;
       --shadow:0 18px 40px rgba(0,0,0,.7);
     }
-    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     html,body{
       margin:0;
       padding:0;
@@ -33,19 +31,21 @@
       display:flex;
       flex-direction:column;
       align-items:center;
+      justify-content:center;
     }
     .shell{
       flex:1;
       display:flex;
       flex-direction:column;
       width:100%;
-      max-width:1200px;
+      max-width:900px;
       padding:8px 8px calc(8px + env(safe-area-inset-bottom));
       gap:8px;
     }
+
     .top-bar{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
       gap:8px;
       padding:8px 12px;
@@ -53,289 +53,178 @@
       background:rgba(15,23,42,.95);
       border:1px solid #1f2937;
       box-shadow:var(--shadow);
-      font-size:.9rem;
+      font-size:.85rem;
     }
-    .top-left,.top-right{
+    .top-left{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      flex:1;
+      min-width:0;
+    }
+    .title-row{
       display:flex;
       align-items:center;
-      gap:10px;
+      gap:8px;
       flex-wrap:wrap;
     }
     .game-title{
+      font-weight:700;
       display:flex;
       align-items:center;
       gap:6px;
-      font-weight:700;
+    }
+    .pill-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
     }
     .pill{
       border-radius:999px;
       border:1px solid #1f2937;
-      padding:4px 10px;
-      background:rgba(15,23,42,.95);
+      padding:3px 9px;
+      background:#020617;
       display:inline-flex;
       align-items:center;
-      gap:6px;
+      gap:5px;
       font-size:.78rem;
       color:var(--muted);
+      white-space:nowrap;
     }
-    .pill strong{color:var(--ink); font-weight:600;}
+    .pill strong{color:var(--ink);font-weight:600;}
+    .description{
+      font-size:.75rem;
+      color:var(--muted);
+    }
 
-    .hp-bar{
-      position:relative;
-      width:90px;
-      height:8px;
+    .top-right{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:4px;
+    }
+    #fullscreenBtn{
       border-radius:999px;
-      background:#020617;
-      overflow:hidden;
       border:1px solid #1f2937;
+      background:#020617;
+      padding:4px 8px;
+      font-size:.78rem;
+      color:var(--ink);
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
     }
-    .hp-fill{
-      position:absolute;
-      inset:0;
-      background:linear-gradient(90deg,#16a34a,#facc15,#ef4444);
-      width:100%;
-      transition:width .18s linear;
+    #fullscreenBtn:active{
+      transform:scale(.97);
+    }
+    .mini-label{
+      font-size:.75rem;
+      color:var(--muted);
+      margin-bottom:2px;
+    }
+    #oppMini{
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      box-shadow:0 10px 25px rgba(0,0,0,.6);
+      width:140px;
+      height:110px;
     }
 
-    .main{
+    .main-game{
       flex:1;
       display:flex;
+      flex-direction:column;
       gap:8px;
       min-height:0;
     }
-    @media (max-width:900px){
-      .main{flex-direction:column;}
-    }
-
-    .panel{
+    .game-panel{
+      flex:1;
       border-radius:var(--radius);
       background:rgba(15,23,42,.96);
       border:1px solid #1f2937;
       box-shadow:var(--shadow);
-      padding:10px;
+      padding:8px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       min-height:0;
+    }
+    #gameCanvas{
+      width:100%;
+      max-width:600px;
+      aspect-ratio:11/9;
+      border-radius:10px;
+      border:1px solid #111827;
+      background:#020617;
+      touch-action:none;
+    }
+
+    .joystick-bar{
+      height:140px;
+      border-radius:var(--radius);
+      background:rgba(15,23,42,.96);
+      border:1px solid #1f2937;
+      box-shadow:var(--shadow);
+      padding:6px 12px 10px;
       display:flex;
       flex-direction:column;
-      gap:8px;
+      gap:6px;
     }
-    .panel-header{
+    .joystick-label{
+      font-size:.78rem;
+      color:var(--muted);
       display:flex;
       justify-content:space-between;
       align-items:center;
-      font-size:.85rem;
-      color:var(--muted);
     }
-
-    .board-panel{
-      flex:1.1;
-    }
-    .side-panel{
-      flex:0.9;
-      min-width:260px;
-    }
-
-    .board-grid{
+    .joystick-area{
       flex:1;
-      display:grid;
-      grid-template-columns:repeat(6, minmax(0,1fr));
-      grid-auto-rows:minmax(46px,1fr);
-      gap:4px;
-      padding:4px;
-    }
-    .node-cell{
-      border-radius:12px;
-      border:1px solid #1f2937;
-      background:#020617;
       display:flex;
-      flex-direction:column;
       align-items:center;
       justify-content:center;
-      font-size:.78rem;
-      cursor:pointer;
+    }
+    .joystick-outer{
       position:relative;
-      overflow:hidden;
-      transition:transform .08s ease, box-shadow .08s ease, border-color .1s ease;
+      width:100px;
+      height:100px;
+      border-radius:999px;
+      border:2px solid #1f2937;
+      background:radial-gradient(circle at 30% 30%,#1f2937,#020617);
+      box-shadow:0 10px 30px rgba(0,0,0,.8) inset;
+      touch-action:none;
     }
-    .node-main-label{
-      font-size:.8rem;
-    }
-    .node-sub{
-      font-size:.7rem;
-      opacity:.85;
-    }
-    .node-eco-tag,
-    .node-base-tag{
+    .joystick-inner{
       position:absolute;
-      top:4px;
-      left:6px;
-      font-size:.8rem;
-      opacity:.9;
-    }
-    .node-cell:hover{
-      transform:translateY(-1px);
-      box-shadow:0 8px 18px rgba(0,0,0,.7);
-      border-color:var(--accent-soft);
-    }
-    .node-selected{
-      box-shadow:0 0 0 2px var(--accent-soft);
-    }
-    .node-p1{
-      background:radial-gradient(circle at top,#14532d,#022c22);
-      border-color:var(--p1);
-    }
-    .node-p2{
-      background:radial-gradient(circle at top,#7f1d1d,#020617);
-      border-color:var(--p2);
-    }
-    .node-contested{
-      background:radial-gradient(circle at top,#facc15,#451a03);
-      border-color:var(--contested);
-      color:#111827;
-    }
-    .node-neutral{
-      background:radial-gradient(circle at top,#374151,#020617);
-      border-color:var(--neutral);
-    }
-
-    .btn{
+      width:44px;
+      height:44px;
       border-radius:999px;
-      border:1px solid #1f2937;
-      background:#020617;
-      padding:6px 10px;
-      font-size:.8rem;
-      color:var(--ink);
-      cursor:pointer;
-      display:inline-flex;
-      align-items:center;
-      gap:4px;
-    }
-    .btn[disabled]{
-      opacity:.4;
-      cursor:default;
-    }
-    .btn-primary{
-      border-color:var(--accent-soft);
-      background:linear-gradient(135deg,#0ea5e9,#22c55e);
-      color:#0f172a;
-      font-weight:600;
+      background:radial-gradient(circle at 30% 30%,#38bdf8,#0ea5e9);
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      box-shadow:0 0 12px rgba(56,189,248,.7);
+      pointer-events:none;
     }
 
-    .build-section-title{
-      font-size:.8rem;
-      color:var(--muted);
-      margin-top:4px;
-      margin-bottom:2px;
-      font-weight:600;
-    }
-    .build-bar{
-      display:flex;
-      flex-wrap:wrap;
-      gap:4px;
-      padding:4px;
-      border-radius:999px;
-      border:1px solid #1f2937;
-      background:rgba(15,23,42,.95);
-      font-size:.76rem;
-      align-items:center;
-    }
-    .build-pill{
-      border-radius:999px;
-      border:1px solid #1f2937;
-      padding:3px 7px;
-      display:inline-flex;
-      align-items:center;
-      gap:4px;
-      cursor:pointer;
-      background:#020617;
-      color:var(--muted);
-      white-space:nowrap;
-    }
-    .build-pill span.cost{
-      opacity:.7;
-      font-size:.72rem;
-    }
-    .build-pill.active{
-      border-color:var(--accent-soft);
-      color:var(--ink);
-      background:radial-gradient(circle at top,#0ea5e9,#22c55e);
+    @media (min-width:900px){
+      .joystick-bar{
+        max-width:480px;
+        align-self:center;
+      }
     }
 
-    .small{
-      font-size:.76rem;
-      color:var(--muted);
-    }
-    .resource-line{
-      font-size:.8rem;
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    .resource-line span strong{
-      color:var(--ink);
-    }
-
-    /* 8×8 node preview */
-    .node-preview-wrap{
-      margin-top:2px;
-      margin-bottom:4px;
-    }
-    .node-preview-title{
-      font-size:.8rem;
-      color:var(--muted);
-      margin-bottom:3px;
-      font-weight:600;
-    }
-    .node-preview-grid{
-      display:grid;
-      grid-template-columns:repeat(8, minmax(0,1fr));
-      gap:1px;
-      padding:4px;
-      border-radius:8px;
-      border:1px solid #1f2937;
-      background:#020617;
-      max-width:220px;
-    }
-    .node-preview-cell{
-      width:100%;
-      aspect-ratio:1/1;
-      border-radius:3px;
-      background:#030712;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:.75rem;
-    }
-    .node-preview-cell.p1{
-      background:#052e16;
-    }
-    .node-preview-cell.p2{
-      background:#43171f;
-    }
-
-    .log-box{
-      height:120px;        /* fixed, so it doesn't grow the whole panel */
-      border-radius:10px;
-      border:1px solid #1f2937;
-      background:#020617;
-      padding:6px 8px;
-      font-size:.75rem;
-      color:var(--muted);
-      overflow:auto;
-    }
-    .log-line{
-      margin-bottom:2px;
-    }
-
-    .winner-banner{
+    .overlay{
       position:fixed;
       inset:0;
-      background:rgba(15,23,42,.94);
+      background:rgba(15,23,42,.96);
       display:none;
       align-items:center;
       justify-content:center;
       z-index:40;
     }
-    .winner-card{
+    .overlay-card{
       border-radius:18px;
       padding:18px 22px;
       border:1px solid #1f2937;
@@ -343,1171 +232,1131 @@
       box-shadow:var(--shadow);
       text-align:center;
       max-width:320px;
+      color:var(--ink);
     }
-    .winner-card h2{
+    .overlay-card h2{
       margin:0 0 6px;
     }
-    .winner-card p{
+    .overlay-card p{
       margin:4px 0;
       font-size:.9rem;
+      color:var(--muted);
+    }
+    .overlay-card button{
+      margin-top:10px;
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:7px 14px;
+      font-size:.85rem;
+      cursor:pointer;
+      background:linear-gradient(135deg,#0ea5e9,#22c55e);
+      color:#020617;
+      font-weight:600;
+    }
+
+    .waiting{
+      font-size:.8rem;
       color:var(--muted);
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <div class="top-bar">
-      <div class="top-left">
+<div class="shell">
+  <div class="top-bar">
+    <div class="top-left">
+      <div class="title-row">
         <div class="game-title">
-          🏰 <span>Castle Panic</span>
+          🪳 <span>Roach Run — Online Pac Maze</span>
+        </div>
+        <div class="pill"><span>You:</span> <strong id="youLabel">…</strong></div>
+        <div class="pill">
+          <span>Score</span>
+          <strong id="scoreLabel">0</strong>
         </div>
         <div class="pill">
-          <span>You:</span> <strong id="youLabel">…</strong>
-        </div>
-        <div class="pill">
-          <span>Side:</span> <strong id="sideLabel">…</strong>
-        </div>
-        <div class="pill">
-          <span>Time:</span> <strong id="timeLabel">0:00</strong>
+          <span>Opponent</span>
+          <strong id="oppScoreLabel">—</strong>
         </div>
       </div>
-      <div class="top-right">
+      <div class="pill-row">
         <div class="pill">
-          <span>P1 Castle</span>
-          <div class="hp-bar">
-            <div id="p1HpFill" class="hp-fill"></div>
-          </div>
+          <span>Level</span> <strong id="levelLabel">1</strong>
         </div>
         <div class="pill">
-          <span>P2 Castle</span>
-          <div class="hp-bar">
-            <div id="p2HpFill" class="hp-fill"></div>
-          </div>
+          <span>Lives</span> <strong id="livesLabel">3</strong>
         </div>
-        <button id="fullscreenBtn" class="btn">⛶ Fullscreen</button>
+        <div class="pill">
+          <span>Wins</span> <strong id="winsLabel">0</strong>
+        </div>
+        <div class="pill" id="statusPill">
+          <span>Status:</span> <strong id="statusLabel">Waiting for Firebase…</strong>
+        </div>
+      </div>
+      <div class="description">
+        Clear pellets for points (+50 each cleared board). Pickups attack the <strong>other</strong> player:
+        extra spiders, slime that slows, and blocked tunnels. Camera follows your roach.
       </div>
     </div>
-
-    <div class="main">
-      <div class="panel board-panel">
-        <div class="panel-header">
-          <span>Battlefield — 6×6 Nodes</span>
-          <span class="small">
-            Teal = only P1 · Red = only P2 · Yellow = both · Grey = empty · 💰 = Eco · 🏰 = Castles
-          </span>
-        </div>
-        <div id="boardGrid" class="board-grid"></div>
+    <div class="top-right">
+      <button id="fullscreenBtn">⛶ Fullscreen</button>
+      <div class="mini-label">
+        Other Player View
+        <span id="oppMiniStatus" class="waiting">(waiting…)</span>
       </div>
-
-      <div class="panel side-panel">
-        <div class="panel-header">
-          <span>Build & Stats</span>
-        </div>
-
-        <div class="resource-line" id="resourceLine"></div>
-
-        <!-- 8×8 per-node battle grid preview -->
-        <div class="node-preview-wrap">
-          <div id="nodePreviewTitle" class="node-preview-title">
-            Click a node to view its 8×8 battle grid.
-          </div>
-          <div id="nodePreview" class="node-preview-grid"></div>
-        </div>
-
-        <div class="build-section-title">Structures (Gold)</div>
-        <div class="build-bar" id="buildingBar"></div>
-
-        <div class="build-section-title">Troops (Point Costs)</div>
-        <div class="build-bar" id="troopBar"></div>
-
-        <div class="small" style="margin-top:6px;">
-          <strong>Core Rules:</strong><br/>
-          • <strong>Gold</strong> builds structures. Generated every 5s + bonus per green 💰 node you control.<br/>
-          • <strong>Barracks</strong> → Footman pts ⚔️ · <strong>Den</strong> → Raider pts 🦊 · <strong>Armory</strong> → Advanced pts ⚙️.<br/>
-          • Troops cost points (not gold). Points are spent when you deploy them.<br/>
-          • Each node has an internal <strong>8×8 grid</strong>.<br/>
-          • P1 units/structures live on the <strong>left</strong> side, P2 on the <strong>right</strong> side.<br/>
-          • You can only field up to <strong>16 units per node per side</strong> (first 2 columns of your side).<br/>
-          • On base nodes, each castle appears on the right side of that player’s half of the grid.<br/>
-          • When a castle’s HP hits 0, that side loses; the other is declared winner.
-        </div>
-
-        <div class="log-box" id="logBox"></div>
-      </div>
+      <canvas id="oppMini" width="140" height="110"></canvas>
     </div>
   </div>
 
-  <div id="winnerOverlay" class="winner-banner">
-    <div class="winner-card">
-      <h2 id="winnerTitle">Winner!</h2>
-      <p id="winnerText"></p>
-      <button class="btn btn-primary" onclick="location.reload()">🔁 Play Again</button>
+  <div class="main-game">
+    <div class="game-panel">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+    <div class="joystick-bar">
+      <div class="joystick-label">
+        <span>Touch Joystick (mobile) • WASD / Arrow keys (desktop)</span>
+        <span id="connectionLabel" class="waiting"></span>
+      </div>
+      <div class="joystick-area">
+        <div class="joystick-outer" id="joystickOuter">
+          <div class="joystick-inner" id="joystickInner"></div>
+        </div>
+      </div>
     </div>
   </div>
+</div>
 
-  <script type="module">
-    // ---------- FIREBASE ----------
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction,
-      collection, getDocs, onSnapshot, serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import {
-      getAuth, signInAnonymously, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+<div id="gameOverOverlay" class="overlay">
+  <div class="overlay-card">
+    <h2 id="gameOverTitle">Game Over</h2>
+    <p id="gameOverText"></p>
+    <button onclick="location.reload()">🔁 Play Again</button>
+  </div>
+</div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-      authDomain: "bible-game-246c0.firebaseapp.com",
-      projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.appspot.com",
-      messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+<script type="module">
+  // ---------- FIREBASE ----------
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, doc, collection, setDoc, updateDoc,
+    onSnapshot, serverTimestamp, arrayUnion
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // ---------- DOM ----------
+  const youLabel = document.getElementById("youLabel");
+  const scoreLabel = document.getElementById("scoreLabel");
+  const oppScoreLabel = document.getElementById("oppScoreLabel");
+  const levelLabel = document.getElementById("levelLabel");
+  const livesLabel = document.getElementById("livesLabel");
+  const winsLabel = document.getElementById("winsLabel");
+  const statusLabel = document.getElementById("statusLabel");
+  const statusPill = document.getElementById("statusPill");
+  const connectionLabel = document.getElementById("connectionLabel");
+  const oppMiniStatus = document.getElementById("oppMiniStatus");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+  const gameCanvas = document.getElementById("gameCanvas");
+  const oppMiniCanvas = document.getElementById("oppMini");
+  const gameOverOverlay = document.getElementById("gameOverOverlay");
+  const gameOverTitle = document.getElementById("gameOverTitle");
+  const gameOverText = document.getElementById("gameOverText");
+  const joystickOuter = document.getElementById("joystickOuter");
+  const joystickInner = document.getElementById("joystickInner");
+
+  const gCtx = gameCanvas.getContext("2d");
+  const miniCtx = oppMiniCanvas.getContext("2d");
+
+  // ---------- GAME CONFIG ----------
+  const GAME_COLLECTION = "roach_race_games"; // new game collection, same project
+  const params = new URLSearchParams(window.location.search);
+  const gameId = params.get("gameId") || "dev-roach-run";
+  const displayName = (params.get("username") || "Guest").trim() || "Guest";
+
+  const MAZE_ROWS = 15;
+  const MAZE_COLS = 19;
+  const TILE_SIZE = 32; // internal render tile size
+  const VIEW_COLS = 11;
+  const VIEW_ROWS = 9;
+
+  const MAZE = [
+    "###################",
+    "#........#........#",
+    "#.####.#.#.####.#.#",
+    "#.#..#.#.#.#..#.#.#",
+    "#.#..#.#.#.#..#.#.#",
+    "#.####.#.#.####.#.#",
+    "...................",
+    "###.###.###.###.###",
+    "#........#........#",
+    "#.####.#.#.####.#.#",
+    "#.#..#.#.#.#..#.#.#",
+    "#.#..#.#.#.#..#.#.#",
+    "#.####.#.#.####.#.#",
+    "#........#........#",
+    "###################"
+  ];
+
+  // Teleport tiles (wrap left/right)
+  const TELEPORTS = [
+    {x:0, y:6},
+    {x:18, y:6}
+  ];
+
+  // ---------- FIREBASE STATE ----------
+  let currentUser = null;
+  let gameRef = null;
+  let playersCol = null;
+  let playerRef = null;
+  let myData = null;
+  let opponentData = null;
+  let opponentId = null;
+
+  let snapshotIntervalId = null;
+  const processedEffectIds = new Set();
+
+  // ---------- LOCAL GAME STATE ----------
+  let roach = null;
+  let spiders = [];
+  let pellets = [];
+  let pelletsLeft = 0;
+  let slimeTiles = []; // {x,y,expiresAt}
+  let powerups = [];   // {x,y,type,expiresAt}
+  let powerupTimer = 0;
+
+  let score = 0;
+  let level = 1;
+  let lives = 3;
+  let wins = 0;
+  let isDead = false;
+  let gameOver = false;
+  let victory = false;
+  let winRecorded = false;
+
+  let teleportBlockedUntil = 0;
+  let nowMs = performance.now();
+
+  // movement / input
+  let lastFrameTime = performance.now();
+  let gameStarted = false;
+
+  // keyboard next direction
+  const nextDir = {x:0, y:0};
+
+  // ---------- HELPER: MAZE ----------
+  function isWall(x,y){
+    if(x < 0 || x >= MAZE_COLS || y < 0 || y >= MAZE_ROWS) return true;
+    return MAZE[y][x] === "#";
+  }
+  function isTeleportTile(x,y){
+    return TELEPORTS.some(t => t.x === x && t.y === y);
+  }
+  function otherTeleport(x,y){
+    const idx = TELEPORTS.findIndex(t => t.x === x && t.y === y);
+    if(idx === -1) return null;
+    const other = TELEPORTS[1-idx];
+    return {x:other.x, y:other.y};
+  }
+
+  function initPellets(){
+    pellets = [];
+    pelletsLeft = 0;
+    for(let y=0;y<MAZE_ROWS;y++){
+      const row = [];
+      for(let x=0;x<MAZE_COLS;x++){
+        const ch = MAZE[y][x];
+        if(ch === "."){
+          row.push(true);
+          pelletsLeft++;
+        }else{
+          row.push(false);
+        }
+      }
+      pellets.push(row);
+    }
+  }
+
+  function resetGameBoard(){
+    level = 1;
+    score = 0;
+    lives = 3;
+    teleportBlockedUntil = 0;
+    slimeTiles = [];
+    powerups = [];
+    powerupTimer = 0;
+
+    initPellets();
+
+    roach = {
+      tileX: 9,
+      tileY: 6,
+      dirX: 0,
+      dirY: 0,
+      speed: 5,     // tiles per second
+      slowFactor: 1,
+      slowUntil: 0
     };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
 
-    // ---------- CONFIG ----------
-    const GRID_SIZE = 6;
-    const CASTLE_HP = 80;
-    const INCOME_INTERVAL = 5; // seconds
-    const GAME_COLLECTION = "castlepanic_games";
-
-    // Internal 8×8 per-node battlefield (visual)
-    const BATTLE_W = 8;
-    const BATTLE_H = 8;
-    const MAX_UNITS_PER_SIDE_PER_NODE = 16; // 2 columns × 8 rows
-
-    // Castles: base on opposite sides (world grid)
-    const CASTLES = {
-      A: { x: 2, y: 0 }, // P1 near top
-      B: { x: 3, y: 5 }  // P2 near bottom
-    };
-
-    // Eco nodes: corners + middle 2×2
-    const ECO_NODES = [
-      {x:0,y:0},{x:5,y:0},{x:0,y:5},{x:5,y:5},
-      {x:2,y:2},{x:3,y:2},{x:2,y:3},{x:3,y:3}
+    spiders = [
+      {tileX:3, tileY:6, dirX:1, dirY:0, speed:4, color:"#ef4444", ai:"chaser"},   // red
+      {tileX:15,tileY:6, dirX:-1,dirY:0, speed:4, color:"#0ea5e9", ai:"ambush"},  // blue
+      {tileX:1, tileY:5, dirX:1, dirY:0, speed:3.5, color:"#a855f7", ai:"wander"},// purple
+      {tileX:17,tileY:5, dirX:-1,dirY:0, speed:3.5, color:"#facc15", ai:"patrol"} // yellow
     ];
 
-    // Buildings (gold)
-    const BUILDINGS = {
-      barracks: { key:"barracks", name:"Barracks", emoji:"🏕️", goldCost:20, gen:{footman:1} },
-      den:      { key:"den",      name:"Den",      emoji:"🕳️", goldCost:20, gen:{raider:1} },
-      armory:   { key:"armory",   name:"Armory",   emoji:"⚒️", goldCost:25, gen:{advanced:1} }
-    };
-
-    // Units (points)
-    const UNITS = {
-      knight: {
-        key:"knight", name:"Knight", emoji:"🛡️",
-        hp:10, dmg:4, cost:{footman:1}, raider:false
-      },
-      archer: {
-        key:"archer", name:"Archer", emoji:"🏹",
-        hp:6, dmg:3, cost:{footman:1}, raider:false
-      },
-      catapult: {
-        key:"catapult", name:"Catapult", emoji:"🧱",
-        hp:8, dmg:2, cost:{advanced:2}, raider:false, aoe:true
-      },
-      ballista: {
-        key:"ballista", name:"Ballista", emoji:"🎯",
-        hp:8, dmg:6, cost:{advanced:2}, raider:false, cooldownMax:3
-      },
-      glaive: {
-        key:"glaive", name:"Glaive", emoji:"🌀",
-        hp:7, dmg:2, cost:{advanced:1}, raider:false, chain3:true
-      },
-      thief: {
-        key:"thief", name:"Thief", emoji:"🕵️",
-        hp:4, dmg:1, cost:{raider:1}, raider:true
-      },
-      assassin: {
-        key:"assassin", name:"Assassin", emoji:"🗡️",
-        hp:5, dmg:3, cost:{raider:1, advanced:1}, raider:true
-      }
-    };
-
-    // ---------- GLOBAL STATE ----------
-    const params = new URLSearchParams(window.location.search);
-    const gameId = params.get("gameId") || "dev-castlepanic";
-    const displayName = (params.get("username") || "Guest").trim() || "Guest";
-    const gameRef = doc(db, GAME_COLLECTION, gameId);
-    const nodesCol = collection(gameRef, "nodes");
-
-    let currentUser = null;
-    let playerRef = null;
-    let myPlayer = null;
-    let latestGame = null;
-    let nodesState = {}; // id -> node data
-    let isHost = false;
-    let hostTickHandle = null;
-    let hostTicking = false;
-    let selectedBuild = null; // {kind:"building"|"unit", key:"..."}
-    let joined = false;
-    let selectedNodeId = null;
-
-    // ---------- DOM ----------
-    const youLabel = document.getElementById("youLabel");
-    const sideLabel = document.getElementById("sideLabel");
-    const timeLabel = document.getElementById("timeLabel");
-    const p1HpFill = document.getElementById("p1HpFill");
-    const p2HpFill = document.getElementById("p2HpFill");
-    const fullscreenBtn = document.getElementById("fullscreenBtn");
-
-    const boardGridEl = document.getElementById("boardGrid");
-    const buildingBarEl = document.getElementById("buildingBar");
-    const troopBarEl = document.getElementById("troopBar");
-    const resourceLineEl = document.getElementById("resourceLine");
-    const logBoxEl = document.getElementById("logBox");
-
-    const nodePreviewTitleEl = document.getElementById("nodePreviewTitle");
-    const nodePreviewEl = document.getElementById("nodePreview");
-
-    const winnerOverlay = document.getElementById("winnerOverlay");
-    const winnerTitle = document.getElementById("winnerTitle");
-    const winnerText = document.getElementById("winnerText");
-
-    function log(msg){
-      const div = document.createElement("div");
-      div.className = "log-line";
-      div.textContent = msg;
-      logBoxEl.appendChild(div);
-      logBoxEl.scrollTop = logBoxEl.scrollHeight;
-      console.log("[CASTLE]", msg);
-    }
-
-    function formatTime(sec){
-      sec = Math.max(0, Math.floor(sec||0));
-      const m = Math.floor(sec/60);
-      const s = sec % 60;
-      return `${m}:${s.toString().padStart(2,"0")}`;
-    }
-
-    function isEco(x,y){
-      return ECO_NODES.some(n=>n.x===x && n.y===y);
-    }
-
-    function neighbors(x,y){
-      const res=[];
-      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-      for(const [dx,dy] of dirs){
-        const nx=x+dx, ny=y+dy;
-        if(nx>=0 && nx<GRID_SIZE && ny>=0 && ny<GRID_SIZE) res.push({x:nx,y:ny});
-      }
-      return res;
-    }
-
-    function nodeKey(row,col){
-      return `${row}_${col}`;
-    }
-
-    // ---------- AUTH ----------
-    signInAnonymously(auth).catch(err=>{
-      console.error(err);
-      alert("Failed to sign in anonymously to Firebase: "+err.message);
-    });
-
-    onAuthStateChanged(auth, async (user)=>{
-      if(!user) return;
-      currentUser = user;
-      if(joined) return;
-      joined = true;
-      playerRef = doc(gameRef,"players",user.uid);
-      youLabel.textContent = displayName;
-      await joinGame();
-    });
-
-    // ---------- JOIN / INIT GAME ----------
-    async function joinGame(){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const gameSnap = await tx.get(gameRef);
-          const isNew = !gameSnap.exists();
-          let gameData = isNew ? null : gameSnap.data();
-
-          const playerSnap = await tx.get(playerRef);
-
-          if(isNew){
-            gameData = {
-              createdAt: serverTimestamp(),
-              hostUid: currentUser.uid,
-              status: "running",
-              timeSeconds: 0,
-              baseA: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-              baseB: { hp: CASTLE_HP, maxHp: CASTLE_HP },
-              slotAUid: currentUser.uid,
-              slotBUid: null,
-              winnerSide: null
-            };
-            tx.set(gameRef, gameData);
-
-            // init nodes
-            for(let y=0;y<GRID_SIZE;y++){
-              for(let x=0;x<GRID_SIZE;x++){
-                const id = nodeKey(y,x);
-                const baseA = (x===CASTLES.A.x && y===CASTLES.A.y);
-                const baseB = (x===CASTLES.B.x && y===CASTLES.B.y);
-                const eco = isEco(x,y);
-                let type = "normal";
-                if(baseA) type = "baseA";
-                else if(baseB) type = "baseB";
-                else if(eco) type = "eco";
-
-                const nodeDocRef = doc(nodesCol, id);
-
-                // Root-level lists for gameplay
-                const units = [];
-                const buildings = [];
-
-                if(baseA){
-                  buildings.push({
-                    id:"castleA",
-                    owner:"A",
-                    kind:"castle",
-                    x:x,
-                    y:y,
-                    hp:CASTLE_HP,
-                    maxHp:CASTLE_HP
-                  });
-                }
-                if(baseB){
-                  buildings.push({
-                    id:"castleB",
-                    owner:"B",
-                    kind:"castle",
-                    x:x,
-                    y:y,
-                    hp:CASTLE_HP,
-                    maxHp:CASTLE_HP
-                  });
-                }
-
-                tx.set(nodeDocRef,{
-                  id,
-                  row:y,
-                  col:x,
-                  type,
-                  units,
-                  buildings
-                });
-              }
-            }
-          }
-
-          // assign side
-          let side = "spectator";
-          if(gameData.slotAUid === currentUser.uid){
-            side = "A";
-          }else if(gameData.slotBUid === currentUser.uid){
-            side = "B";
-          }else if(!gameData.slotAUid){
-            side = "A";
-            tx.update(gameRef,{slotAUid: currentUser.uid});
-          }else if(!gameData.slotBUid){
-            side = "B";
-            tx.update(gameRef,{slotBUid: currentUser.uid});
-          }else{
-            side = "spectator";
-          }
-
-          if(!playerSnap.exists()){
-            tx.set(playerRef,{
-              uid: currentUser.uid,
-              name: displayName,
-              side,
-              gold: 40,
-              footmanPts: 0,
-              raiderPts: 0,
-              advancedPts: 0,
-              joinedAt: serverTimestamp()
-            });
-          }else{
-            tx.update(playerRef,{
-              name: displayName,
-              side
-            });
-          }
-        });
-
-        // listeners
-        onSnapshot(gameRef,(snap)=>{
-          if(!snap.exists()) return;
-          latestGame = snap.data();
-          renderMeta();
-          syncHostRole();
-        });
-
-        onSnapshot(playerRef,(snap)=>{
-          if(!snap.exists()) return;
-          myPlayer = snap.data();
-          sideLabel.textContent =
-            myPlayer.side==="A" ? "P1" :
-            myPlayer.side==="B" ? "P2" :
-            "Spectator";
-          renderResources();
-        });
-
-        onSnapshot(nodesCol,(snap)=>{
-          nodesState = {};
-          snap.forEach(d=>{
-            nodesState[d.id] = d.data();
-          });
-          renderBoard();
-          renderResources();
-          renderNodePreview(); // keep preview in sync
-        });
-
-        log("Joined Firebase game: "+gameId);
-      }catch(e){
-        console.error(e);
-        alert("Error joining game: "+e.message);
-      }
-    }
-
-    // ---------- META / HOST ----------
-    function renderMeta(){
-      if(!latestGame) return;
-      timeLabel.textContent = formatTime(latestGame.timeSeconds || 0);
-
-      const baseA = latestGame.baseA || {hp:0,maxHp:1};
-      const baseB = latestGame.baseB || {hp:0,maxHp:1};
-      const pctA = Math.max(0,Math.min(100,(baseA.hp/baseA.maxHp)*100));
-      const pctB = Math.max(0,Math.min(100,(baseB.hp/baseB.maxHp)*100));
-      p1HpFill.style.width = pctA + "%";
-      p2HpFill.style.width = pctB + "%";
-
-      if(latestGame.status==="finished" && latestGame.winnerSide && !winnerOverlay.style.display){
-        showWinner(latestGame.winnerSide);
-      }
-    }
-
-    function syncHostRole(){
-      if(!latestGame || !currentUser) return;
-      const shouldBeHost = latestGame.hostUid === currentUser.uid;
-      if(shouldBeHost && !isHost){
-        isHost = true;
-        startHostLoop();
-        log("You are host — running simulation.");
-      }else if(!shouldBeHost && isHost){
-        isHost = false;
-        stopHostLoop();
-        log("Host role moved to another client.");
-      }
-    }
-
-    function startHostLoop(){
-      if(hostTickHandle) clearInterval(hostTickHandle);
-      hostTickHandle = setInterval(()=>hostTick().catch(console.error), 1000);
-    }
-    function stopHostLoop(){
-      if(hostTickHandle){
-        clearInterval(hostTickHandle);
-        hostTickHandle = null;
-      }
-    }
-
-    async function hostTick(){
-      if(!isHost || hostTicking) return;
-      hostTicking = true;
-      try{
-        const gSnap = await getDoc(gameRef);
-        if(!gSnap.exists()){ hostTicking=false; return; }
-        const game = gSnap.data();
-        if(game.status && game.status!=="running"){ hostTicking=false; return; }
-
-        let timeSeconds = (game.timeSeconds || 0) + 1;
-        const updates = { timeSeconds };
-
-        // combat every second
-        const combatResult = await processCombat(game);
-        if(combatResult && combatResult.winnerSide && game.status!=="finished"){
-          updates.status = "finished";
-          updates.winnerSide = combatResult.winnerSide;
-        }
-
-        // income
-        if(timeSeconds % INCOME_INTERVAL === 0 && game.status==="running"){
-          await applyIncomeTick();
-        }
-
-        // compute castle hp from nodes
-        const baseHp = computeBaseHpFromNodes();
-        updates.baseA = baseHp.baseA;
-        updates.baseB = baseHp.baseB;
-
-        if(updates.baseA.hp <=0 && !updates.winnerSide){
-          updates.status = "finished";
-          updates.winnerSide = "B";
-        }else if(updates.baseB.hp <=0 && !updates.winnerSide){
-          updates.status = "finished";
-          updates.winnerSide = "A";
-        }
-
-        await updateDoc(gameRef, updates);
-      }catch(e){
-        console.error("hostTick error", e);
-      }
-      hostTicking = false;
-    }
-
-    function computeBaseHpFromNodes(){
-      let hpA = 0, hpB = 0;
-      for(const key in nodesState){
-        const n = nodesState[key];
-        if(!n || !n.buildings) continue;
-        for(const b of n.buildings){
-          if(b.kind==="castle" && b.owner==="A") hpA = b.hp;
-          if(b.kind==="castle" && b.owner==="B") hpB = b.hp;
-        }
-      }
-      return {
-        baseA:{ hp:Math.max(0,hpA), maxHp:CASTLE_HP },
-        baseB:{ hp:Math.max(0,hpB), maxHp:CASTLE_HP }
-      };
-    }
-
-    async function applyIncomeTick(){
-      const playersSnap = await getDocs(collection(gameRef,"players"));
-      const ecoControl = computeEcoControl();
-
-      const updates = [];
-      playersSnap.forEach(ps=>{
-        const p = ps.data();
-        if(p.side!=="A" && p.side!=="B") return;
-        const side = p.side;
-        let goldGain = 3; // base
-        const extraEco = ecoControl[side] || 0;
-        goldGain += extraEco; // +1 per eco node controlled
-
-        let footmanPts = p.footmanPts || 0;
-        let raiderPts = p.raiderPts || 0;
-        let advancedPts = p.advancedPts || 0;
-
-        // building generation
-        for(const key in nodesState){
-          const n = nodesState[key];
-          if(!n || !n.buildings) continue;
-          for(const b of n.buildings){
-            if(b.owner !== side) continue;
-            const def = BUILDINGS[b.kind];
-            if(!def || !def.gen) continue;
-            if(def.gen.footman) footmanPts += def.gen.footman;
-            if(def.gen.raider) raiderPts += def.gen.raider;
-            if(def.gen.advanced) advancedPts += def.gen.advanced;
-          }
-        }
-
-        updates.push(updateDoc(ps.ref,{
-          gold:(p.gold||0)+goldGain,
-          footmanPts,
-          raiderPts,
-          advancedPts
-        }));
-      });
-
-      if(updates.length) await Promise.all(updates);
-    }
-
-    function computeEcoControl(){
-      const result = {A:0,B:0};
-      for(const nKey in nodesState){
-        const n = nodesState[nKey];
-        if(!n) continue;
-        if(n.type!=="eco") continue;
-        const control = getNodeControl(n);
-        if(control==="A") result.A++;
-        else if(control==="B") result.B++;
-      }
-      return result;
-    }
-
-    // ---------- COMBAT ----------
-    function getNodeControl(node){
-      const units = node.units || [];
-      const buildings = node.buildings || [];
-      let hasA=false, hasB=false;
-      for(const u of units){
-        if(u.owner==="A") hasA=true;
-        if(u.owner==="B") hasB=true;
-      }
-      for(const b of buildings){
-        if(b.owner==="A") hasA=true;
-        if(b.owner==="B") hasB=true;
-      }
-      if(hasA && hasB) return "contested";
-      if(hasA) return "A";
-      if(hasB) return "B";
-      return "none";
-    }
-
-    function randomFrom(arr){
-      if(!arr.length) return null;
-      const idx = Math.floor(Math.random()*arr.length);
-      return arr[idx];
-    }
-
-    function randomOthers(arr,excludeId,limit){
-      const pool = arr.filter(t=>t.id!==excludeId);
-      const out=[];
-      while(pool.length && out.length<limit){
-        const idx = Math.floor(Math.random()*pool.length);
-        out.push(pool[idx]);
-        pool.splice(idx,1);
-      }
-      return out;
-    }
-
-    function resolveUnitAttack(attacker, enemyUnits, enemyBuildings){
-      const def = UNITS[attacker.kind];
-      if(!def) return;
-
-      // BALLISTA: cooldown-based heavy shot
-      if(def.key==="ballista"){
-        attacker.cooldown = (attacker.cooldown || 0) - 1;
-        if(attacker.cooldown > 0){
-          return;
-        }
-        const castles = enemyBuildings.filter(b=>b.kind==="castle");
-        const nonCastleBuildings = enemyBuildings.filter(b=>b.kind!=="castle");
-        const unitTargets = enemyUnits;
-        let target = randomFrom(castles) || randomFrom(nonCastleBuildings) || randomFrom(unitTargets);
-        if(!target) return;
-
-        target.hp -= def.dmg;
-        attacker.cooldown = def.cooldownMax || 3;
-        return;
-      }
-
-      // THIEF / ASSASSIN: prefer buildings
-      if(def.key==="thief" || def.key==="assassin"){
-        const buildingTargets = enemyBuildings;
-        const unitTargets = enemyUnits;
-        const target = randomFrom(buildingTargets) || randomFrom(unitTargets);
-        if(!target) return;
-        target.hp -= def.dmg;
-        return;
-      }
-
-      // CATAPULT: splash up to 3
-      if(def.aoe){
-        const allTargets = [...enemyUnits, ...enemyBuildings];
-        if(!allTargets.length) return;
-        for(let i=0;i<3;i++){
-          const t = randomFrom(allTargets);
-          if(!t) break;
-          t.hp -= def.dmg;
-        }
-        return;
-      }
-
-      // GLAIVE: chain to up to 2 more
-      if(def.chain3){
-        const allTargets = [...enemyUnits, ...enemyBuildings];
-        if(!allTargets.length) return;
-        const primary = randomFrom(allTargets);
-        if(!primary) return;
-        primary.hp -= def.dmg;
-        const others = randomOthers(allTargets, primary.id, 2);
-        for(const o of others){
-          o.hp -= def.dmg;
-        }
-        return;
-      }
-
-      // default DPS
-      const allTargets = [...enemyUnits, ...enemyBuildings];
-      const target = randomFrom(allTargets);
-      if(!target) return;
-      target.hp -= def.dmg;
-    }
-
-    async function processCombat(game){
-      const nodeUpdates = [];
-      let castleADead = false;
-      let castleBDead = false;
-
-      for(const key in nodesState){
-        const node = nodesState[key];
-        if(!node) continue;
-        let units = (node.units || []).map(u=>({...u}));
-        let buildings = (node.buildings || []).map(b=>({...b}));
-
-        const hasA = units.some(u=>u.owner==="A") || buildings.some(b=>b.owner==="A");
-        const hasB = units.some(u=>u.owner==="B") || buildings.some(b=>b.owner==="B");
-        if(!(hasA && hasB)) continue; // only if both present
-
-        const unitsA = units.filter(u=>u.owner==="A");
-        const unitsB = units.filter(u=>u.owner==="B");
-        const bldA = buildings.filter(b=>b.owner==="A");
-        const bldB = buildings.filter(b=>b.owner==="B");
-
-        // A attacks B
-        const enemyUnitsForA = unitsB;
-        const enemyBldForA = bldB;
-        for(const u of unitsA){
-          resolveUnitAttack(u, enemyUnitsForA, enemyBldForA);
-        }
-
-        // B attacks A
-        const enemyUnitsForB = unitsA;
-        const enemyBldForB = bldA;
-        for(const u of unitsB){
-          resolveUnitAttack(u, enemyUnitsForB, enemyBldForB);
-        }
-
-        // cleanup
-        const mergedUnits = [...unitsA, ...unitsB].filter(u=>u.hp>0);
-        const mergedBuildings = [...bldA, ...bldB].filter(b=>{
-          if(b.kind==="castle") return true;
-          return b.hp > 0;
-        });
-
-        // castle HP check
-        for(const b of mergedBuildings){
-          if(b.kind==="castle" && b.owner==="A" && b.hp<=0){
-            castleADead = true;
-          }
-          if(b.kind==="castle" && b.owner==="B" && b.hp<=0){
-            castleBDead = true;
-          }
-        }
-
-        nodeUpdates.push(
-          setDoc(doc(nodesCol,key),{
-            units: mergedUnits,
-            buildings: mergedBuildings
-          },{merge:true})
-        );
-      }
-
-      if(nodeUpdates.length) await Promise.all(nodeUpdates);
-
-      let winnerSide = null;
-      if(castleADead && !castleBDead) winnerSide = "B";
-      if(castleBDead && !castleADead) winnerSide = "A";
-      return { winnerSide };
-    }
-
-    // ---------- RENDER ----------
-    function buildBars(){
-      buildingBarEl.innerHTML = "";
-      troopBarEl.innerHTML = "";
-
-      for(const key in BUILDINGS){
-        const def = BUILDINGS[key];
-        const btn = document.createElement("button");
-        btn.type="button";
-        btn.className="build-pill";
-        btn.dataset.kind="building";
-        btn.dataset.key=def.key;
-        btn.innerHTML = `${def.emoji} ${def.name} <span class="cost">(${def.goldCost}💰)</span>`;
-        btn.onclick = ()=> selectBuild("building", def.key);
-        buildingBarEl.appendChild(btn);
-      }
-
-      for(const key in UNITS){
-        const def = UNITS[key];
-        const costStr = costToString(def.cost);
-        const btn = document.createElement("button");
-        btn.type="button";
-        btn.className="build-pill";
-        btn.dataset.kind="unit";
-        btn.dataset.key=def.key;
-        btn.innerHTML = `${def.emoji} ${def.name} <span class="cost">(${costStr})</span>`;
-        btn.onclick = ()=> selectBuild("unit", def.key);
-        troopBarEl.appendChild(btn);
-      }
-    }
-
-    function costToString(cost){
-      const parts = [];
-      if(cost.footman) parts.push(`${cost.footman}⚔️`);
-      if(cost.raider) parts.push(`${cost.raider}🦊`);
-      if(cost.advanced) parts.push(`${cost.advanced}⚙️`);
-      return parts.join(" + ") || "free";
-    }
-
-    function selectBuild(kind,key){
-      if(!myPlayer) return;
-      selectedBuild = { kind, key };
-      document.querySelectorAll(".build-pill").forEach(el=>{
-        const k = el.dataset.key;
-        const kd = el.dataset.kind;
-        el.classList.toggle("active", kd===kind && k===key);
-      });
-    }
-
-    function renderBoard(){
-      buildBars();
-      boardGridEl.innerHTML = "";
-      for(let y=0;y<GRID_SIZE;y++){
-        for(let x=0;x<GRID_SIZE;x++){
-          const id = nodeKey(y,x);
-          const node = nodesState[id] || { row:y,col:x,units:[],buildings:[],type:"normal" };
-
-          const cell = document.createElement("div");
-          cell.className="node-cell";
-          cell.dataset.row = y;
-          cell.dataset.col = x;
-
-          if(id === selectedNodeId){
-            cell.classList.add("node-selected");
-          }
-
-          const control = getNodeControl(node);
-          if(control==="A") cell.classList.add("node-p1");
-          else if(control==="B") cell.classList.add("node-p2");
-          else if(control==="contested") cell.classList.add("node-contested");
-          else cell.classList.add("node-neutral");
-
-          const isEcoNode = node.type==="eco";
-          const isBaseA = node.type==="baseA";
-          const isBaseB = node.type==="baseB";
-
-          if(isEcoNode){
-            const tag = document.createElement("div");
-            tag.className="node-eco-tag";
-            tag.textContent="💰";
-            cell.appendChild(tag);
-          }
-          if(isBaseA || isBaseB){
-            const tag = document.createElement("div");
-            tag.className="node-base-tag";
-            tag.textContent="🏰";
-            cell.appendChild(tag);
-          }
-
-          const main = document.createElement("div");
-          main.className="node-main-label";
-          if(isBaseA) main.textContent="P1 Castle";
-          else if(isBaseB) main.textContent="P2 Castle";
-          else if(isEcoNode) main.textContent="Eco";
-          else main.textContent = `(${x+1},${y+1})`;
-          cell.appendChild(main);
-
-          const sub = document.createElement("div");
-          sub.className="node-sub";
-          const units = node.units || [];
-          const blds = node.buildings || [];
-          const countA = units.filter(u=>u.owner==="A").length + blds.filter(b=>b.owner==="A").length;
-          const countB = units.filter(u=>u.owner==="B").length + blds.filter(b=>b.owner==="B").length;
-          const pieces = [];
-          if(countA) pieces.push(`P1:${countA}`);
-          if(countB) pieces.push(`P2:${countB}`);
-          sub.textContent = pieces.length ? pieces.join(" · ") : "Empty";
-          cell.appendChild(sub);
-
-          cell.addEventListener("click", onBoardCellClick);
-          boardGridEl.appendChild(cell);
-        }
-      }
-    }
-
-    function renderResources(){
-      if(!myPlayer) return;
-      resourceLineEl.innerHTML = `
-        <span><strong>${myPlayer.side==="A"?"P1":myPlayer.side==="B"?"P2":"Spec"}</strong> Gold: ${myPlayer.gold ?? 0}💰</span>
-        <span>⚔️ Footman: <strong>${myPlayer.footmanPts ?? 0}</strong></span>
-        <span>🦊 Raider: <strong>${myPlayer.raiderPts ?? 0}</strong></span>
-        <span>⚙️ Advanced: <strong>${myPlayer.advancedPts ?? 0}</strong></span>
-      `;
-      renderMeta();
-    }
-
-    function showWinner(side){
-      const winnerTextSide = side==="A" ? "Player 1" : "Player 2";
-      const loser = side==="A" ? "Player 2" : "Player 1";
-      winnerTitle.textContent = `${winnerTextSide} Wins!`;
-      winnerText.textContent = `${winnerTextSide} destroyed ${loser}'s castle.`;
-      winnerOverlay.style.display = "flex";
-    }
-
-    // ---------- NODE PREVIEW (8×8 GRID) ----------
-    function renderNodePreview(){
-      nodePreviewEl.innerHTML = "";
-      // build empty grid by default
-      const gridData = [];
-      for(let y=0;y<BATTLE_H;y++){
-        const row=[];
-        for(let x=0;x<BATTLE_W;x++) row.push(null);
-        gridData.push(row);
-      }
-
-      if(!selectedNodeId || !nodesState[selectedNodeId]){
-        nodePreviewTitleEl.textContent = "Click a node to view its 8×8 battle grid.";
-        // render empty cells
-        for(let y=0;y<BATTLE_H;y++){
-          for(let x=0;x<BATTLE_W;x++){
-            const cell = document.createElement("div");
-            cell.className="node-preview-cell";
-            nodePreviewEl.appendChild(cell);
-          }
-        }
-        return;
-      }
-
-      const node = nodesState[selectedNodeId];
-      nodePreviewTitleEl.textContent = `Node (${node.col+1},${node.row+1}) — internal 8×8 battle grid`;
-
-      const units = node.units || [];
-      const buildings = node.buildings || [];
-
-      const unitsA = units.filter(u=>u.owner==="A");
-      const unitsB = units.filter(u=>u.owner==="B");
-      const bldA   = buildings.filter(b=>b.owner==="A");
-      const bldB   = buildings.filter(b=>b.owner==="B");
-
-      // Place castles visually on the "right" side of each player's half
-      // P1: left half (cols 0–3) → castle at col 1
-      // P2: right half (cols 4–7) → castle at col BATTLE_W-2
-      if(node.type==="baseA"){
-        const cy = Math.floor(BATTLE_H/2);
-        gridData[cy][1] = {emoji:"🏰", owner:"A"};
-      }
-      if(node.type==="baseB"){
-        const cy = Math.floor(BATTLE_H/2);
-        gridData[cy][BATTLE_W-2] = {emoji:"🏰", owner:"B"};
-      }
-
-      function tokensFromUnits(list){
-        return list.map(u=>{
-          const def = UNITS[u.kind];
-          return {emoji:(def && def.emoji) || "⚔️", owner:u.owner};
-        });
-      }
-      function tokensFromBuildings(list){
-        return list.map(b=>{
-          const def = BUILDINGS[b.kind];
-          return {emoji:(def && def.emoji) || "🏗️", owner:b.owner};
-        });
-      }
-
-      const tokensA = [
-        ...tokensFromUnits(unitsA),
-        ...tokensFromBuildings(bldA)
-      ];
-      const tokensB = [
-        ...tokensFromUnits(unitsB),
-        ...tokensFromBuildings(bldB)
-      ];
-
-      // Fill left two columns for P1
-      const slotsA = [];
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=0;x<2;x++){
-          if(!gridData[y][x]) slotsA.push({x,y});
-        }
-      }
-      tokensA.forEach((tok,i)=>{
-        if(i>=slotsA.length) return;
-        const {x,y} = slotsA[i];
-        gridData[y][x] = tok;
-      });
-
-      // Fill right two columns for P2
-      const slotsB = [];
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=BATTLE_W-2;x<BATTLE_W;x++){
-          if(!gridData[y][x]) slotsB.push({x,y});
-        }
-      }
-      tokensB.forEach((tok,i)=>{
-        if(i>=slotsB.length) return;
-        const {x,y} = slotsB[i];
-        gridData[y][x] = tok;
-      });
-
-      // Render
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=0;x<BATTLE_W;x++){
-          const cell = document.createElement("div");
-          cell.className="node-preview-cell";
-          const tok = gridData[y][x];
-          if(tok){
-            cell.textContent = tok.emoji;
-            if(tok.owner==="A") cell.classList.add("p1");
-            else if(tok.owner==="B") cell.classList.add("p2");
-          }
-          nodePreviewEl.appendChild(cell);
-        }
-      }
-    }
-
-    // ---------- BUILDING RULES ----------
-    function canBuildHereForSide(side,row,col,unitDefOrNull,isBuilding){
-      const node = nodesState[nodeKey(row,col)];
-      if(!node) return false;
-
-      // Non-raider troops & structures: must be on a node you control or adjacent
-      const control = getNodeControl(node);
-      if(control===side) return true;
-      const adj = neighbors(col,row);
-      for(const n of adj){
-        const adjNode = nodesState[nodeKey(n.y,n.x)];
-        if(adjNode && getNodeControl(adjNode)===side) return true;
-      }
-      return false;
-    }
-
-    // ---------- BOARD CLICK (OPEN NODE & BUILD) ----------
-    function onBoardCellClick(e){
-      const row = Number(e.currentTarget.dataset.row);
-      const col = Number(e.currentTarget.dataset.col);
-      const id = nodeKey(row,col);
-      selectedNodeId = id;
-      renderBoard();
-      renderNodePreview();
-
-      if(!myPlayer) return;
-      if(latestGame && latestGame.status==="finished") return;
-      const side = myPlayer.side;
-      if(side!=="A" && side!=="B"){
-        log("Spectators cannot build.");
-        return;
-      }
-      if(!selectedBuild){
-        // just viewing node grid / situation
-        return;
-      }
-
-      const build = selectedBuild;
-      const nodeId = id;
-
-      (async ()=>{
-        try{
-          if(build.kind==="building"){
-            await placeBuilding(side,nodeId,row,col,build.key);
-          }else{
-            await placeUnit(side,nodeId,row,col,build.key);
-          }
-        }catch(err){
-          log("Build failed: "+err.message);
-        }
-      })();
-    }
-
-    // ---------- PLACE BUILDING / UNIT ----------
-    async function placeBuilding(side,nodeId,row,col,key){
-      const def = BUILDINGS[key];
-      if(!def) throw new Error("Unknown building.");
-
-      if(!canBuildHereForSide(side,row,col,null,true)){
-        throw new Error("Structures must be built in or next to your territory and not on castles.");
-      }
-
-      await runTransaction(db, async (tx)=>{
-        const pSnap = await tx.get(playerRef);
-        if(!pSnap.exists()) throw new Error("Player missing.");
-        const p = pSnap.data();
-        if(p.side!==side) throw new Error("Side mismatch.");
-        if((p.gold || 0) < def.goldCost) throw new Error("Not enough gold.");
-
-        const nodeRef = doc(nodesCol,nodeId);
-        const nSnap = await tx.get(nodeRef);
-        if(!nSnap.exists()) throw new Error("Node missing.");
-        const node = nSnap.data();
-        node.buildings = node.buildings || [];
-
-        node.buildings.push({
-          id:"b_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          owner:side,
-          kind:def.key,
-          x:col,
-          y:row,
-          hp:12,
-          maxHp:12
-        });
-
-        tx.update(playerRef,{ gold:(p.gold||0)-def.goldCost });
-        tx.set(nodeRef,{ buildings:node.buildings },{merge:true});
-      });
-      log(`${side==="A"?"P1":"P2"} built ${def.name} at (${col+1},${row+1}).`);
-    }
-
-    function hasCost(cost,p){
-      if(cost.footman && (p.footmanPts||0) < cost.footman) return false;
-      if(cost.raider && (p.raiderPts||0) < cost.raider) return false;
-      if(cost.advanced && (p.advancedPts||0) < cost.advanced) return false;
+    gameStarted = true;
+    isDead = false;
+    gameOver = false;
+    victory = false;
+    winRecorded = false;
+
+    updateHud();
+  }
+
+  function newLevel(){
+    level++;
+    score += 50; // bonus per cleared board
+    initPellets();
+
+    // tweak speeds slightly
+    roach.speed *= 1.03;
+    spiders.forEach(s => s.speed *= 1.06);
+
+    slimeTiles = [];
+    powerups = [];
+    powerupTimer = 0;
+    teleportBlockedUntil = 0;
+
+    // reset roach position
+    roach.tileX = 9;
+    roach.tileY = 6;
+    roach.dirX = 0;
+    roach.dirY = 0;
+    roach.slowFactor = 1;
+    roach.slowUntil = 0;
+
+    updateHud();
+  }
+
+  // ---------- MOVEMENT ----------
+  function setNextDir(dx,dy){
+    nextDir.x = dx;
+    nextDir.y = dy;
+  }
+
+  function canMoveFrom(tileX,tileY,dx,dy){
+    let nx = tileX + dx;
+    let ny = tileY + dy;
+
+    // teleports: treat as passable even if at edge
+    if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS){
       return true;
     }
-    function spendCost(cost,p){
-      const result = {...p};
-      if(cost.footman) result.footmanPts = (result.footmanPts||0) - cost.footman;
-      if(cost.raider) result.raiderPts = (result.raiderPts||0) - cost.raider;
-      if(cost.advanced) result.advancedPts = (result.advancedPts||0) - cost.advanced;
-      return result;
+    return !isWall(nx,ny);
+  }
+
+  function applyTeleportIfNeeded(entity){
+    if(!isTeleportTile(entity.tileX, entity.tileY)) return;
+    if(nowMs < teleportBlockedUntil){
+      // tile is just a cul-de-sac while blocked
+      return;
+    }
+    const other = otherTeleport(entity.tileX, entity.tileY);
+    if(other){
+      entity.tileX = other.x;
+      entity.tileY = other.y;
+    }
+  }
+
+  function handleRoachTileEvents(){
+    const tx = roach.tileX;
+    const ty = roach.tileY;
+
+    // pellet
+    if(ty>=0 && ty<MAZE_ROWS && tx>=0 && tx<MAZE_COLS){
+      if(pellets[ty][tx]){
+        pellets[ty][tx] = false;
+        pelletsLeft--;
+        score += 10;
+        if(pelletsLeft <= 0){
+          newLevel();
+        }
+      }
     }
 
-    async function placeUnit(side,nodeId,row,col,key){
-      const def = UNITS[key];
-      if(!def) throw new Error("Unknown troop.");
+    // slime
+    for(const s of slimeTiles){
+      if(s.x === tx && s.y === ty){
+        roach.slowFactor = 0.4;
+        roach.slowUntil = nowMs + 1500; // 1.5s slow
+        break;
+      }
+    }
 
-      if(!canBuildHereForSide(side,row,col,def,false)){
-        throw new Error("Troops must be built in or next to your territory.");
+    // powerups
+    for(let i=powerups.length-1;i>=0;i--){
+      const p = powerups[i];
+      if(p.x === tx && p.y === ty){
+        powerups.splice(i,1);
+        triggerPowerup(p.type);
+      }
+    }
+  }
+
+  function triggerPowerup(type){
+    if(!opponentId) return; // nothing to hit yet
+    const oppRef = doc(playersCol, opponentId);
+    const effect = {
+      id: "e_"+Date.now()+"_"+Math.random().toString(16).slice(2,7),
+      type,
+      createdAt: Date.now()
+    };
+    updateDoc(oppRef,{
+      incomingEffects: arrayUnion(effect)
+    }).catch(console.error);
+  }
+
+  function updateRoach(dt){
+    if(isDead || !roach) return;
+
+    // slow logic
+    if(roach.slowFactor < 1 && nowMs > roach.slowUntil){
+      roach.slowFactor = 1;
+    }
+
+    // attempt to change dir if we have input
+    if((nextDir.x !== roach.dirX || nextDir.y !== roach.dirY)){
+      if(canMoveFrom(roach.tileX, roach.tileY, nextDir.x, nextDir.y)){
+        roach.dirX = nextDir.x;
+        roach.dirY = nextDir.y;
+      }
+    }
+
+    if(roach.dirX === 0 && roach.dirY === 0) return;
+
+    const speedTilesPerSec = roach.speed * roach.slowFactor;
+    let moveAmount = speedTilesPerSec * dt;
+    // move in discrete steps of <=1 tile
+    while(moveAmount > 0){
+      const step = Math.min(moveAmount, 1);
+      let nx = roach.tileX + roach.dirX;
+      let ny = roach.tileY + roach.dirY;
+
+      // teleport wrap attempt
+      let tentativeX = nx;
+      let tentativeY = ny;
+
+      // allow stepping into teleport tile even if at edge
+      if(tentativeX < 0 || tentativeX >= MAZE_COLS || tentativeY < 0 || tentativeY >= MAZE_ROWS){
+        // wrap will be applied when entity sits in teleport tile; here just move
+      }else if(isWall(tentativeX,tentativeY)){
+        // hit wall, stop moving
+        roach.dirX = 0;
+        roach.dirY = 0;
+        break;
       }
 
-      await runTransaction(db, async (tx)=>{
-        const pSnap = await tx.get(playerRef);
-        if(!pSnap.exists()) throw new Error("Player missing.");
-        const p = pSnap.data();
-        if(p.side!==side) throw new Error("Side mismatch.");
-        if(!hasCost(def.cost,p)) throw new Error("Not enough points.");
+      roach.tileX = tentativeX;
+      roach.tileY = tentativeY;
+      applyTeleportIfNeeded(roach);
+      handleRoachTileEvents();
+      moveAmount -= step;
+      // only one tile per frame effectively; small dt means 1 step
+      break;
+    }
+  }
 
-        const nodeRef = doc(nodesCol,nodeId);
-        const nSnap = await tx.get(nodeRef);
-        if(!nSnap.exists()) throw new Error("Node missing.");
-        const node = nSnap.data();
-        node.units = node.units || [];
+  function availableDirs(tileX,tileY,currentDir){
+    const dirs = [
+      {x:1,y:0},
+      {x:-1,y:0},
+      {x:0,y:-1},
+      {x:0,y:1}
+    ];
+    const out = [];
+    for(const d of dirs){
+      // avoid going out-of-bounds into walls
+      const nx = tileX + d.x;
+      const ny = tileY + d.y;
+      if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS){
+        continue;
+      }
+      if(isWall(nx,ny)) continue;
+      // don't backtrack unless there's no other choice
+      if(currentDir && d.x === -currentDir.x && d.y === -currentDir.y) continue;
+      out.push(d);
+    }
+    if(!out.length && currentDir){
+      // forced to backtrack
+      out.push({x:-currentDir.x, y:-currentDir.y});
+    }
+    return out;
+  }
 
-        // Enforce "first 2 columns of your side" capacity via max 16 units / side / node
-        const existingSideCount = node.units.filter(u=>u.owner===side).length;
-        if(existingSideCount >= MAX_UNITS_PER_SIDE_PER_NODE){
-          throw new Error("Your deployment zone in this node is full (16 units).");
+  function updateSpiders(dt){
+    for(const s of spiders){
+      if(!s) continue;
+      const speedTilesPerSec = s.speed;
+      let moveAmount = speedTilesPerSec * dt;
+      while(moveAmount > 0){
+        const step = Math.min(moveAmount, 1);
+
+        // choose direction at intersections (approx: whenever previous step finished)
+        const dirs = availableDirs(s.tileX, s.tileY, {x:s.dirX,y:s.dirY});
+        if(dirs.length){
+          let chosen = dirs[0];
+          if(s.ai === "chaser"){
+            // minimize manhattan distance to roach
+            let best = Infinity;
+            for(const d of dirs){
+              const nx = s.tileX + d.x;
+              const ny = s.tileY + d.y;
+              const dist = Math.abs(nx - roach.tileX) + Math.abs(ny - roach.tileY);
+              if(dist < best){
+                best = dist;
+                chosen = d;
+              }
+            }
+          }else if(s.ai === "wander"){
+            chosen = dirs[Math.floor(Math.random()*dirs.length)];
+          }else if(s.ai === "ambush"){
+            // aim towards tile slightly ahead of roach
+            const targetX = roach.tileX + roach.dirX*2;
+            const targetY = roach.tileY + roach.dirY*2;
+            let best = Infinity;
+            for(const d of dirs){
+              const nx = s.tileX + d.x;
+              const ny = s.tileY + d.y;
+              const dist = Math.abs(nx - targetX) + Math.abs(ny - targetY);
+              if(dist < best){
+                best = dist;
+                chosen = d;
+              }
+            }
+          }else if(s.ai === "patrol"){
+            // favor horizontal moves
+            const horiz = dirs.filter(d=>d.y===0);
+            if(horiz.length){
+              chosen = horiz[Math.floor(Math.random()*horiz.length)];
+            }else{
+              chosen = dirs[Math.floor(Math.random()*dirs.length)];
+            }
+          }
+          s.dirX = chosen.x;
+          s.dirY = chosen.y;
         }
 
-        const updatedP = spendCost(def.cost,p);
+        const nx = s.tileX + s.dirX;
+        const ny = s.tileY + s.dirY;
 
-        node.units.push({
-          id:"u_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          owner:side,
-          kind:def.key,
-          x:col,
-          y:row,
-          hp:def.hp,
-          maxHp:def.hp,
-          cooldown:0
-        });
+        if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS || isWall(nx,ny)){
+          // reverse
+          s.dirX = -s.dirX;
+          s.dirY = -s.dirY;
+          break;
+        }
 
-        tx.update(playerRef,{
-          footmanPts: updatedP.footmanPts || 0,
-          raiderPts: updatedP.raiderPts || 0,
-          advancedPts: updatedP.advancedPts || 0
+        s.tileX = nx;
+        s.tileY = ny;
+        applyTeleportIfNeeded(s);
+
+        moveAmount -= step;
+        break;
+      }
+    }
+  }
+
+  function checkCollisions(){
+    if(isDead) return;
+    for(const s of spiders){
+      if(!s) continue;
+      if(s.tileX === roach.tileX && s.tileY === roach.tileY){
+        // hit!
+        lives--;
+        if(lives <= 0){
+          lives = 0;
+          isDead = true;
+          statusLabel.textContent = "You are out!";
+        }else{
+          // respawn in center row
+          roach.tileX = 9;
+          roach.tileY = 6;
+          roach.dirX = 0;
+          roach.dirY = 0;
+          roach.slowFactor = 1;
+        }
+        updateHud();
+        break;
+      }
+    }
+  }
+
+  // ---------- SLIME & POWERUPS ----------
+  function updateSlimeAndPowerups(dt){
+    // remove expired slime
+    const t = nowMs;
+    slimeTiles = slimeTiles.filter(s => s.expiresAt > t);
+    powerups = powerups.filter(p => p.expiresAt > t);
+
+    // spawn occasional powerups
+    powerupTimer += dt;
+    if(powerupTimer > 6 && powerups.length < 3){
+      powerupTimer = 0;
+      // random walkable tile
+      const candidates = [];
+      for(let y=0;y<MAZE_ROWS;y++){
+        for(let x=0;x<MAZE_COLS;x++){
+          if(isWall(x,y)) continue;
+          // avoid spawn on teleports
+          if(isTeleportTile(x,y)) continue;
+          candidates.push({x,y});
+        }
+      }
+      if(candidates.length){
+        const spot = candidates[Math.floor(Math.random()*candidates.length)];
+        const types = ["EXTRA_SPIDER","SLIME","BLOCK_TUNNELS"];
+        const type = types[Math.floor(Math.random()*types.length)];
+        powerups.push({
+          x:spot.x,
+          y:spot.y,
+          type,
+          expiresAt: t + 15000 // 15s lifetime
         });
-        tx.set(nodeRef,{ units:node.units },{merge:true});
+      }
+    }
+  }
+
+  function applyEffect(effect){
+    if(processedEffectIds.has(effect.id)) return;
+    processedEffectIds.add(effect.id);
+
+    if(effect.type === "EXTRA_SPIDER"){
+      // spawn new spider near center row
+      spiders.push({
+        tileX:9,
+        tileY:6,
+        dirX: (Math.random() < 0.5 ? 1 : -1),
+        dirY:0,
+        speed:3.8 + Math.random()*1.2,
+        color:"#f97316",
+        ai:"wander"
       });
-      log(`${side==="A"?"P1":"P2"} deployed ${def.name} at (${col+1},${row+1}).`);
+    }else if(effect.type === "SLIME"){
+      // spawn some slime tiles in random corridors
+      const tNow = Date.now();
+      for(let i=0;i<5;i++){
+        const x = Math.floor(Math.random()*MAZE_COLS);
+        const y = Math.floor(Math.random()*MAZE_ROWS);
+        if(isWall(x,y)) continue;
+        slimeTiles.push({
+          x,y,
+          expiresAt: tNow + 10000
+        });
+      }
+    }else if(effect.type === "BLOCK_TUNNELS"){
+      teleportBlockedUntil = Date.now() + 10000; // 10s
+    }
+  }
+
+  // ---------- RENDER ----------
+  function renderGame(){
+    const canvasWidth = VIEW_COLS * TILE_SIZE;
+    const canvasHeight = VIEW_ROWS * TILE_SIZE;
+    gameCanvas.width = canvasWidth;
+    gameCanvas.height = canvasHeight;
+
+    const ctx = gCtx;
+    ctx.clearRect(0,0,canvasWidth,canvasHeight);
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0,0,canvasWidth,canvasHeight);
+
+    if(!roach){
+      ctx.fillStyle = "#9ca3af";
+      ctx.font = "16px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("Connecting to Firebase…", canvasWidth/2, canvasHeight/2);
+      return;
     }
 
-    // ---------- FULLSCREEN ----------
-    fullscreenBtn.addEventListener("click",()=>{
-      const el = document.documentElement;
-      if(!document.fullscreenElement){
-        el.requestFullscreen?.();
+    // camera centered on roach
+    let camX = roach.tileX + 0.5 - VIEW_COLS/2;
+    let camY = roach.tileY + 0.5 - VIEW_ROWS/2;
+    camX = Math.max(0, Math.min(MAZE_COLS - VIEW_COLS, camX));
+    camY = Math.max(0, Math.min(MAZE_ROWS - VIEW_ROWS, camY));
+    const startX = Math.floor(camX);
+    const startY = Math.floor(camY);
+
+    // draw tiles
+    for(let vy=0;vy<VIEW_ROWS;vy++){
+      const my = startY + vy;
+      if(my < 0 || my >= MAZE_ROWS) continue;
+      for(let vx=0;vx<VIEW_COLS;vx++){
+        const mx = startX + vx;
+        if(mx < 0 || mx >= MAZE_COLS) continue;
+        const ch = MAZE[my][mx];
+        const x = vx * TILE_SIZE;
+        const y = vy * TILE_SIZE;
+
+        if(ch === "#"){
+          ctx.fillStyle = "#020617";
+          ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE);
+          ctx.fillStyle = "#1f2937";
+          ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
+        }else{
+          ctx.fillStyle = "#020617";
+          ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE);
+          ctx.fillStyle = "#030712";
+          ctx.fillRect(x+2,y+2,TILE_SIZE-4,TILE_SIZE-4);
+        }
+      }
+    }
+
+    // pellets
+    ctx.fillStyle = "#facc15";
+    for(let vy=0;vy<VIEW_ROWS;vy++){
+      const my = startY + vy;
+      if(my < 0 || my >= MAZE_ROWS) continue;
+      for(let vx=0;vx<VIEW_COLS;vx++){
+        const mx = startX + vx;
+        if(mx < 0 || mx >= MAZE_COLS) continue;
+        if(pellets[my] && pellets[my][mx]){
+          const cx = (vx+0.5)*TILE_SIZE;
+          const cy = (vy+0.5)*TILE_SIZE;
+          ctx.beginPath();
+          ctx.arc(cx,cy,3,0,Math.PI*2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // slime tiles
+    ctx.fillStyle = "rgba(34,197,94,0.6)";
+    for(const s of slimeTiles){
+      const vx = s.x - startX;
+      const vy = s.y - startY;
+      if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
+      const x = vx * TILE_SIZE;
+      const y = vy * TILE_SIZE;
+      ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
+    }
+
+    // powerups
+    for(const p of powerups){
+      const vx = p.x - startX;
+      const vy = p.y - startY;
+      if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
+      const x = vx * TILE_SIZE;
+      const y = vy * TILE_SIZE;
+      ctx.save();
+      ctx.translate(x + TILE_SIZE/2, y + TILE_SIZE/2);
+      ctx.font = "18px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      let emoji = "⭐";
+      if(p.type === "EXTRA_SPIDER") emoji = "🕷️";
+      else if(p.type === "SLIME") emoji = "🟢";
+      else if(p.type === "BLOCK_TUNNELS") emoji = "🚫";
+      ctx.fillText(emoji,0,1);
+      ctx.restore();
+    }
+
+    // roach
+    const r_vx = roach.tileX - camX;
+    const r_vy = roach.tileY - camY;
+    const rx = r_vx * TILE_SIZE + TILE_SIZE/2;
+    const ry = r_vy * TILE_SIZE + TILE_SIZE/2;
+    ctx.font = "22px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("🪳", rx, ry + 1);
+
+    // spiders
+    for(const s of spiders){
+      const svx = s.tileX - camX;
+      const svy = s.tileY - camY;
+      if(svx < 0 || svx >= VIEW_COLS || svy < 0 || svy >= VIEW_ROWS) continue;
+      const sx = svx*TILE_SIZE + TILE_SIZE/2;
+      const sy = svy*TILE_SIZE + TILE_SIZE/2;
+      ctx.beginPath();
+      ctx.fillStyle = s.color || "#e5e7eb";
+      ctx.arc(sx,sy,10,0,Math.PI*2);
+      ctx.fill();
+      ctx.font = "16px system-ui";
+      ctx.fillStyle = "#020617";
+      ctx.fillText("🕷️",sx,sy+1);
+    }
+
+    // teleports highlight if blocked
+    if(nowMs < teleportBlockedUntil){
+      ctx.fillStyle = "rgba(248,113,113,0.55)";
+      for(const t of TELEPORTS){
+        const vx = t.x - camX;
+        const vy = t.y - camY;
+        if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
+        const x = vx*TILE_SIZE;
+        const y = vy*TILE_SIZE;
+        ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
+      }
+    }
+  }
+
+  function renderOpponentMini(){
+    const ctx = miniCtx;
+    const w = oppMiniCanvas.width;
+    const h = oppMiniCanvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0,0,w,h);
+
+    if(!opponentData || !opponentData.snapshot){
+      ctx.fillStyle = "#64748b";
+      ctx.font = "11px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("No opponent yet", w/2, h/2);
+      oppMiniStatus.textContent = "(waiting…)";
+      return;
+    }
+    oppMiniStatus.textContent = "";
+
+    const tileW = w / MAZE_COLS;
+    const tileH = h / MAZE_ROWS;
+
+    // walls
+    for(let y=0;y<MAZE_ROWS;y++){
+      for(let x=0;x<MAZE_COLS;x++){
+        if(MAZE[y][x] === "#"){
+          ctx.fillStyle = "#020617";
+          ctx.fillRect(x*tileW,y*tileH,tileW,tileH);
+          ctx.fillStyle = "#111827";
+          ctx.fillRect(x*tileW+1,y*tileH+1,tileW-2,tileH-2);
+        }else{
+          ctx.fillStyle = "#020617";
+          ctx.fillRect(x*tileW,y*tileH,tileW,tileH);
+          ctx.fillStyle = "#030712";
+          ctx.fillRect(x*tileW+1,y*tileH+1,tileW-2,tileH-2);
+        }
+      }
+    }
+
+    // roach
+    const snap = opponentData.snapshot;
+    if(snap.roach){
+      const rx = (snap.roach.x + 0.5)*tileW;
+      const ry = (snap.roach.y + 0.5)*tileH;
+      ctx.font = "13px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("🪳",rx,ry+0.5);
+    }
+
+    // spiders
+    if(Array.isArray(snap.spiders)){
+      for(const s of snap.spiders){
+        const sx = (s.x+0.5)*tileW;
+        const sy = (s.y+0.5)*tileH;
+        ctx.beginPath();
+        ctx.fillStyle = s.color || "#e5e7eb";
+        ctx.arc(sx,sy,Math.min(tileW,tileH)*0.35,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ---------- HUD ----------
+  function updateHud(){
+    scoreLabel.textContent = score;
+    levelLabel.textContent = level;
+    livesLabel.textContent = lives;
+    winsLabel.textContent = wins;
+  }
+
+  function updateStatus(text,color){
+    statusLabel.textContent = text;
+    if(color === "good"){
+      statusPill.style.borderColor = "#16a34a";
+    }else if(color === "bad"){
+      statusPill.style.borderColor = "#dc2626";
+    }else{
+      statusPill.style.borderColor = "#1f2937";
+    }
+  }
+
+  // ---------- GAME LOOP ----------
+  function gameLoop(ts){
+    const dt = Math.min(0.05, (ts - lastFrameTime)/1000);
+    lastFrameTime = ts;
+    nowMs = ts;
+
+    if(gameStarted && !gameOver){
+      updateSlimeAndPowerups(dt);
+      updateRoach(dt);
+      updateSpiders(dt);
+      checkCollisions();
+    }
+
+    renderGame();
+    renderOpponentMini();
+    requestAnimationFrame(gameLoop);
+  }
+  requestAnimationFrame(gameLoop);
+
+  // ---------- JOYSTICK ----------
+  let joyActive = false;
+  let joyOrigin = {x:0,y:0};
+
+  joystickOuter.addEventListener("touchstart",(e)=>{
+    const t = e.touches[0];
+    const rect = joystickOuter.getBoundingClientRect();
+    joyActive = true;
+    joyOrigin = {
+      x: t.clientX - rect.left,
+      y: t.clientY - rect.top
+    };
+    joystickInner.style.transform = `translate(${joyOrigin.x-22}px,${joyOrigin.y-22}px)`;
+    e.preventDefault();
+  },{passive:false});
+
+  joystickOuter.addEventListener("touchmove",(e)=>{
+    if(!joyActive) return;
+    const rect = joystickOuter.getBoundingClientRect();
+    const t = e.touches[0];
+    let dx = (t.clientX - rect.left) - joyOrigin.x;
+    let dy = (t.clientY - rect.top) - joyOrigin.y;
+    const dist = Math.hypot(dx,dy);
+    const max = 32;
+    if(dist > max){
+      dx = dx / dist * max;
+      dy = dy / dist * max;
+    }
+    joystickInner.style.transform = `translate(${joyOrigin.x+dx-22}px,${joyOrigin.y+dy-22}px)`;
+
+    const threshold = 6;
+    let dirX = 0, dirY = 0;
+    if(Math.abs(dx) > Math.abs(dy)){
+      if(dx > threshold) dirX = 1;
+      else if(dx < -threshold) dirX = -1;
+    }else{
+      if(dy > threshold) dirY = 1;
+      else if(dy < -threshold) dirY = -1;
+    }
+    setNextDir(dirX,dirY);
+    e.preventDefault();
+  },{passive:false});
+
+  joystickOuter.addEventListener("touchend",()=>{
+    joyActive = false;
+    joystickInner.style.transform = "translate(-50%,-50%)";
+  });
+
+  // Keyboard controls
+  window.addEventListener("keydown",(e)=>{
+    let dx=0,dy=0;
+    if(e.key === "ArrowUp" || e.key === "w" || e.key === "W") dy = -1;
+    else if(e.key === "ArrowDown" || e.key === "s" || e.key === "S") dy = 1;
+    else if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A") dx = -1;
+    else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D") dx = 1;
+    else return;
+    setNextDir(dx,dy);
+    e.preventDefault();
+  });
+
+  // ---------- FULLSCREEN ----------
+  fullscreenBtn.addEventListener("click",()=>{
+    const el = document.documentElement;
+    if(!document.fullscreenElement){
+      el.requestFullscreen?.();
+    }else{
+      document.exitFullscreen?.();
+    }
+  });
+
+  // ---------- FIREBASE JOIN ----------
+  function showGameOver(title,text,isWin){
+    gameOver = true;
+    victory = !!isWin;
+    gameOverTitle.textContent = title;
+    gameOverText.textContent = text;
+    gameOverOverlay.style.display = "flex";
+
+    if(victory && !winRecorded && playerRef){
+      winRecorded = true;
+      const newWins = (myData && typeof myData.wins === "number") ? (myData.wins+1) : (wins+1);
+      wins = newWins;
+      updateDoc(playerRef,{wins:newWins}).catch(console.error);
+      updateHud();
+    }
+  }
+
+  function determineWinner(){
+    if(!myData) return;
+    const myDead = isDead || !!myData.dead;
+    const oppDead = opponentData && opponentData.dead;
+    const myScore = score;
+    const oppScore = opponentData ? (opponentData.score || 0) : 0;
+
+    if(gameOver) return;
+
+    if(myDead && oppDead){
+      if(myScore > oppScore){
+        showGameOver("Victory!","You outscored your opponent.",true);
+      }else if(myScore < oppScore){
+        showGameOver("Defeat","Your opponent outscored you.",false);
       }else{
-        document.exitFullscreen?.();
+        showGameOver("Tie","Both roaches fell with equal score.",false);
+      }
+    }else if(myDead && !oppDead){
+      if(oppScore > myScore){
+        showGameOver("Defeat","You ran out of lives while already behind.",false);
+      }
+    }else if(!myDead && oppDead){
+      if(myScore > oppScore){
+        showGameOver("Victory!","Opponent ran out of lives while you were ahead.",true);
+      }
+    }
+  }
+
+  async function pushSnapshot(){
+    if(!playerRef || !myData || !roach) return;
+    const snap = {
+      score,
+      level,
+      lives,
+      dead:isDead,
+      roach:{x:roach.tileX, y:roach.tileY},
+      spiders: spiders.map(s=>({x:s.tileX,y:s.tileY,color:s.color})),
+      pelletsLeft
+    };
+    try{
+      await updateDoc(playerRef,{
+        score,
+        level,
+        lives,
+        dead:isDead,
+        snapshot:snap,
+        lastSnapshot: serverTimestamp()
+      });
+    }catch(e){
+      console.error(e);
+    }
+  }
+
+  function handleMyDocUpdate(data){
+    myData = data;
+    if(typeof data.score === "number") score = data.score;
+    if(typeof data.level === "number") level = data.level;
+    if(typeof data.lives === "number") lives = data.lives;
+    if(typeof data.wins === "number") wins = data.wins;
+
+    youLabel.textContent = data.name || displayName;
+    updateHud();
+
+    // apply new effects
+    if(Array.isArray(data.incomingEffects)){
+      for(const eff of data.incomingEffects){
+        if(eff && eff.id){
+          applyEffect(eff);
+        }
+      }
+    }
+
+    determineWinner();
+  }
+
+  function handlePlayersSnapshot(snap){
+    opponentData = null;
+    opponentId = null;
+    snap.forEach(docSnap=>{
+      const d = docSnap.data();
+      if(docSnap.id === currentUser.uid){
+        myData = d;
+      }else if(!opponentData){
+        opponentData = d;
+        opponentId = docSnap.id;
       }
     });
 
-    // ---------- BOOT ----------
-    log("Connecting to Firebase and waiting for authentication…");
-    buildBars();          // initial UI
-    renderNodePreview();  // render empty 8×8 preview initially
-  </script>
+    if(myData){
+      handleMyDocUpdate(myData);
+    }
+
+    if(opponentData){
+      oppScoreLabel.textContent = opponentData.score ?? 0;
+      connectionLabel.textContent = "Opponent connected";
+      updateStatus("In match", "good");
+    }else{
+      oppScoreLabel.textContent = "—";
+      connectionLabel.textContent = "Waiting for second player…";
+      updateStatus("Waiting for opponent", null);
+    }
+
+    determineWinner();
+  }
+
+  async function joinGame(user){
+    currentUser = user;
+    gameRef = doc(db, GAME_COLLECTION, gameId);
+    playersCol = collection(gameRef,"players");
+    playerRef = doc(playersCol, user.uid);
+
+    youLabel.textContent = displayName;
+    connectionLabel.textContent = "Joining game…";
+
+    await setDoc(playerRef,{
+      uid:user.uid,
+      name:displayName,
+      score:0,
+      level:1,
+      lives:3,
+      wins:0,
+      dead:false,
+      createdAt:serverTimestamp()
+    },{merge:true});
+
+    onSnapshot(playersCol, handlePlayersSnapshot);
+    onSnapshot(playerRef,(snap)=>{
+      if(snap.exists()){
+        handleMyDocUpdate(snap.data());
+      }
+    });
+
+    if(snapshotIntervalId) clearInterval(snapshotIntervalId);
+    snapshotIntervalId = setInterval(pushSnapshot, 3000);
+
+    resetGameBoard();
+    updateStatus("In match (or waiting for opponent)", "good");
+  }
+
+  // ---------- AUTH ----------
+  signInAnonymously(auth).catch(err=>{
+    console.error(err);
+    updateStatus("Auth failed", "bad");
+    alert("Failed to sign in anonymously to Firebase: "+err.message);
+  });
+
+  onAuthStateChanged(auth,(user)=>{
+    if(!user) return;
+    joinGame(user).catch(e=>{
+      console.error(e);
+      updateStatus("Error joining game", "bad");
+    });
+  });
+</script>
 </body>
 </html>
+
 
 
 
