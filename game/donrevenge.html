@@ -634,665 +634,605 @@
   </div>
 
   <!-- Socket.IO client (served by your Node.js server) -->
-  <script src="/socket.io/socket.io.js"></script>
+<script src="https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev/socket.io/socket.io.js"></script>
 
-  <!-- Firebase + client logic -->
   <script type="module">
-    // ---------------- FIREBASE AUTH (ONLY) ----------------
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getAuth, signInAnonymously, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  // ---------------- FIREBASE AUTH (ONLY) ----------------
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getAuth,
+    signInAnonymously,
+    onAuthStateChanged,
+    getIdToken
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-      authDomain: "bible-game-246c0.firebaseapp.com",
-      projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.appspot.com",
-      messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-    };
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
 
-    // ---------------- GAME CONFIG (CLIENT-SIDE) ----------------
-    const BOARD_SIZE = 7;
-    const BATTLE_W = 10;
-    const BATTLE_H = 10;
+  // ---------------- GAME CONFIG (CLIENT-SIDE) ----------------
+  const BOARD_SIZE = 7;
+  const BATTLE_W = 10;
+  const BATTLE_H = 10;
 
-    const params = new URLSearchParams(window.location.search);
-    const gameId = params.get("gameId") || "dev-overlord";
-    const displayName = (params.get("username") || "Guest").trim() || "Guest";
+  const params = new URLSearchParams(window.location.search);
+  const gameId = params.get("gameId") || "dev-overlord";
+  const displayName = (params.get("username") || "Guest").trim() || "Guest";
 
-    // Unit definitions (client mirrors server numbers for UI only)
-    const TROOPS = {
-      rifle:   { key:"rifle",   name:"Rifleman",      emoji:"🔫", baseHp:12, dmg:3, range:3, cost:8 },
-      phase:   { key:"phase",   name:"Phase Blade",   emoji:"🗡️", baseHp:18, dmg:4, range:1, cost:10 },
-      bomber:  { key:"bomber",  name:"Photon Bomber", emoji:"💣", baseHp:10, dmg:3, range:3, splash:true, cost:12 },
-      medic:   { key:"medic",   name:"Medic",         emoji:"🧑‍⚕️", baseHp:10, heal:3, range:2, cost:10 },
-      sergeant:{ key:"sergeant",name:"Space Sergeant",emoji:"⭐", baseHp:14, dmg:2, range:2, buff:true, cost:14 },
-      sniper:  { key:"sniper",  name:"Ion Sniper",    emoji:"🎯", baseHp:8,  dmg:5, range:5, cost:14 }
-    };
+  const TROOPS = {
+    rifle:   { key:"rifle",   name:"Rifleman",      emoji:"🔫", baseHp:12, dmg:3, range:3, cost:8 },
+    phase:   { key:"phase",   name:"Phase Blade",   emoji:"🗡️", baseHp:18, dmg:4, range:1, cost:10 },
+    bomber:  { key:"bomber",  name:"Photon Bomber", emoji:"💣", baseHp:10, dmg:3, range:3, splash:true, cost:12 },
+    medic:   { key:"medic",   name:"Medic",         emoji:"🧑‍⚕️", baseHp:10, heal:3, range:2, cost:10 },
+    sergeant:{ key:"sergeant",name:"Space Sergeant",emoji:"⭐", baseHp:14, dmg:2, range:2, buff:true, cost:14 },
+    sniper:  { key:"sniper",  name:"Ion Sniper",    emoji:"🎯", baseHp:8,  dmg:5, range:5, cost:14 }
+  };
 
-    const TOWERS = {
-      laser:  { key:"laser",  name:"Laser Tower",  emoji:"🔺", dmg:4, range:4, cost:14 },
-      tesla:  { key:"tesla",  name:"Tesla Coil",   emoji:"⚡", dmg:3, range:3, chain:true, cost:16 },
-      shield: { key:"shield", name:"Shield Tower", emoji:"🛡️", range:2, shield:true, cost:12 },
-      signal: { key:"signal", name:"Signal Tower", emoji:"📡", range:2, buff:true, cost:16 }
-    };
+  const TOWERS = {
+    laser:  { key:"laser",  name:"Laser Tower",  emoji:"🔺", dmg:4, range:4, cost:14 },
+    tesla:  { key:"tesla",  name:"Tesla Coil",   emoji:"⚡", dmg:3, range:3, chain:true, cost:16 },
+    shield: { key:"shield", name:"Shield Tower", emoji:"🛡️", range:2, shield:true, cost:12 },
+    signal: { key:"signal", name:"Signal Tower", emoji:"📡", range:2, buff:true, cost:16 }
+  };
 
-    const ENEMIES = {
-      bug:       { key:"bug",       emoji:"🐜", baseHp:10 },
-      spitter:   { key:"spitter",   emoji:"🪲", baseHp:14 },
-      brute:     { key:"brute",     emoji:"🦂", baseHp:26 },
-      behemoth:  { key:"behemoth",  emoji:"👾", baseHp:40 },
-      hiveQueen: { key:"hiveQueen", emoji:"👑", baseHp:90,  isBoss:true },
-      warper:    { key:"warper",    emoji:"🌀", baseHp:75,  isBoss:true }
-    };
+  const ENEMIES = {
+    bug:       { key:"bug",       emoji:"🐜", baseHp:10 },
+    spitter:   { key:"spitter",   emoji:"🪲", baseHp:14 },
+    brute:     { key:"brute",     emoji:"🦂", baseHp:26 },
+    behemoth:  { key:"behemoth",  emoji:"👾", baseHp:40 },
+    hiveQueen: { key:"hiveQueen", emoji:"👑", baseHp:90,  isBoss:true },
+    warper:    { key:"warper",    emoji:"🌀", baseHp:75,  isBoss:true }
+  };
 
-    // ---------------- STATE ----------------
-    let currentUser = null;
-    let socket = null;
+  // ---------------- STATE ----------------
+  let currentUser = null;
+  let myUid = null;
+  let socket = null;
 
-    let latestGame = null;
-    let nodesState = {};
-    let myPlayer = null;
+  let latestGame = null;      // full game state from server
+  let nodesState = {};        // latestGame.nodesState
+  let myPlayer = null;        // entry from latestGame.players for my uid
 
-    let selectedNodeId = null;
-    let selectedNode = null;
-    let currentBuild = { type:null, category:null };
+  let selectedNodeId = null;
+  let selectedNode = null;
+  let currentBuild = { type:null, category:null };
 
-    let dropshipSourceNodeId = null;
-    let selectingDropshipTarget = false;
+  let dropshipSourceNodeId = null;
+  let selectingDropshipTarget = false;
 
-    let lastStatusSeen = null;
+  // ---------------- DOM ----------------
+  const playerNameLabel = document.getElementById("playerNameLabel");
+  const battleMoneyLabel = document.getElementById("battleMoneyLabel");
+  const timeLabel = document.getElementById("timeLabel");
+  const moneyLabel = document.getElementById("moneyLabel");
+  const baseHpFill = document.getElementById("baseHpFill");
+  const boardGridEl = document.getElementById("boardGrid");
+  const nodeInfoEl = document.getElementById("nodeInfo");
+  const logBoxEl = document.getElementById("logBox");
+  const openBattleBtn = document.getElementById("openBattleBtn");
+  const upgradeBaseBtn = document.getElementById("upgradeBaseBtn");
+  const baseInfoEl = document.getElementById("baseInfo");
+  const baseLevelLabel = document.getElementById("baseLevelLabel");
+  const incomeLabel = document.getElementById("incomeLabel");
+  const baseUpgradeCostLabel = document.getElementById("baseUpgradeCostLabel");
 
-    // ---------------- DOM ----------------
-    const playerNameLabel = document.getElementById("playerNameLabel");
-    const battleMoneyLabel = document.getElementById("battleMoneyLabel");
-    const timeLabel = document.getElementById("timeLabel");
-    const moneyLabel = document.getElementById("moneyLabel");
-    const baseHpFill = document.getElementById("baseHpFill");
-    const boardGridEl = document.getElementById("boardGrid");
-    const nodeInfoEl = document.getElementById("nodeInfo");
-    const logBoxEl = document.getElementById("logBox");
-    const openBattleBtn = document.getElementById("openBattleBtn");
-    const upgradeBaseBtn = document.getElementById("upgradeBaseBtn");
-    const baseInfoEl = document.getElementById("baseInfo");
-    const baseLevelLabel = document.getElementById("baseLevelLabel");
-    const incomeLabel = document.getElementById("incomeLabel");
-    const baseUpgradeCostLabel = document.getElementById("baseUpgradeCostLabel");
+  const battleOverlay = document.getElementById("battleOverlay");
+  const battleNodeLabel = document.getElementById("battleNodeLabel");
+  const battleOwnerTag = document.getElementById("battleOwnerTag");
+  const battleGridEl = document.getElementById("battleGrid");
+  const troopBarEl = document.getElementById("troopBar");
+  const towerBarEl = document.getElementById("towerBar");
+  const dropshipBtn = document.getElementById("dropshipBtn");
+  const dropshipStatusLabel = document.getElementById("dropshipStatus");
+  const leaveBattleBtn = document.getElementById("leaveBattleBtn");
 
-    const battleOverlay = document.getElementById("battleOverlay");
-    const battleNodeLabel = document.getElementById("battleNodeLabel");
-    const battleOwnerTag = document.getElementById("battleOwnerTag");
-    const battleGridEl = document.getElementById("battleGrid");
-    const troopBarEl = document.getElementById("troopBar");
-    const towerBarEl = document.getElementById("towerBar");
-    const dropshipBtn = document.getElementById("dropshipBtn");
-    const dropshipStatusLabel = document.getElementById("dropshipStatus");
-    const leaveBattleBtn = document.getElementById("leaveBattleBtn");
-
-    // ---------------- UTILS ----------------
-    function log(msg){
-      if(!logBoxEl) return;
-      const div = document.createElement("div");
-      div.className = "log-line";
-      div.textContent = msg;
-      logBoxEl.appendChild(div);
-      logBoxEl.scrollTop = logBoxEl.scrollHeight;
-      console.log("[GRID]", msg);
+  // ---------------- UTILS ----------------
+  function log(msg){
+    if(!logBoxEl) return;
+    const div = document.createElement("div");
+    div.className = "log-line";
+    div.textContent = msg;
+    logBoxEl.appendChild(div);
+    logBoxEl.scrollTop = logBoxEl.scrollHeight;
+    console.log("[GRID]", msg);
+  }
+  function nodeKey(row,col){ return `${row}_${col}`; }
+  function parseKey(key){
+    const [r,c]=key.split("_").map(Number);
+    return {row:r,col:c};
+  }
+  function formatTime(sec){
+    sec = Math.max(0, Math.floor(sec||0));
+    const m = Math.floor(sec/60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2,"0")}`;
+  }
+  function neighborsOf(row,col){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    const out=[];
+    for(const [dr,dc] of dirs){
+      const nr = row+dr, nc = col+dc;
+      if(nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE){
+        out.push(nodeKey(nr,nc));
+      }
     }
-    function nodeKey(row,col){ return `${row}_${col}`; }
-    function parseKey(key){
-      const [r,c]=key.split("_").map(Number);
-      return {row:r,col:c};
+    return out;
+  }
+  function canBuildInNode(nodeId){
+    const node = nodesState[nodeId];
+    if (!node) return false;
+    if (node.owner === "player") return true;
+    const { row, col } = node;
+    const neigh = neighborsOf(row, col);
+    for (const nk of neigh) {
+      const n = nodesState[nk];
+      if (n && n.owner === "player") return true;
     }
-    function formatTime(sec){
-      sec = Math.max(0, Math.floor(sec||0));
-      const m = Math.floor(sec/60);
-      const s = sec % 60;
-      return `${m}:${s.toString().padStart(2,"0")}`;
+    return false;
+  }
+
+  // ---------------- DROPSHIP STATUS UI ----------------
+  function updateDropshipStatus(){
+    if (!dropshipStatusLabel || !dropshipBtn) return;
+
+    if (!latestGame || !myPlayer){
+      dropshipStatusLabel.textContent = "…";
+      dropshipBtn.disabled = true;
+      return;
     }
-    function neighborsOf(row,col){
-      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-      const out=[];
-      for(const [dr,dc] of dirs){
-        const nr = row+dr, nc = col+dc;
-        if(nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE){
-          out.push(nodeKey(nr,nc));
+
+    const now = latestGame.timeSeconds || 0;
+    const last = myPlayer.lastDropshipAt || 0;
+    const CD = 60;
+    const remaining = CD - (now - (last || 0));
+
+    if (selectingDropshipTarget && dropshipSourceNodeId){
+      dropshipStatusLabel.textContent = "Select destination…";
+      dropshipBtn.disabled = false;
+      return;
+    }
+
+    if (remaining <= 0){
+      dropshipStatusLabel.textContent = "Ready";
+      dropshipBtn.disabled = false;
+    } else {
+      dropshipStatusLabel.textContent = `Cooldown: ${remaining}s`;
+      dropshipBtn.disabled = true;
+    }
+  }
+
+  // ---------------- RENDER META ----------------
+  function renderGameMeta(){
+    if (!latestGame) return;
+
+    const sec = latestGame.timeSeconds || 0;
+    timeLabel.textContent = formatTime(sec);
+
+    const base = latestGame.base || {
+      hp: 0,
+      maxHp: 1,
+      level: 1,
+      incomePerPlayer: 0,
+      upgradeCost: 0
+    };
+
+    const hp  = Math.max(0, base.hp  || 0);
+    const max = Math.max(1, base.maxHp || 1);
+    const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+    baseHpFill.style.width = pct + "%";
+
+    baseInfoEl.style.display = "block";
+    baseLevelLabel.textContent       = base.level ?? 1;
+    incomeLabel.textContent          = base.incomePerPlayer ?? 0;
+    baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
+
+    if (latestGame.status === "lost"){
+      log("⚠ Base destroyed. Game over for all players.");
+    } else if (latestGame.status === "won"){
+      log("✅ You survived the full duration! Victory.");
+    }
+
+    updateDropshipStatus();
+  }
+
+  function applyPlayerUi(){
+    if(!myPlayer) return;
+    const credits = Math.floor(myPlayer.money || 0);
+    moneyLabel.textContent = credits;
+    if(battleMoneyLabel){
+      battleMoneyLabel.textContent = credits;
+    }
+    updateDropshipStatus();
+  }
+
+  // ---------------- RENDER BOARD ----------------
+  function renderBoard(){
+    if(!boardGridEl) return;
+    boardGridEl.innerHTML = "";
+    const center = Math.floor(BOARD_SIZE/2);
+
+    for(let r=0;r<BOARD_SIZE;r++){
+      for(let c=0;c<BOARD_SIZE;c++){
+        const key = nodeKey(r,c);
+        const node = nodesState[key];
+        const div = document.createElement("div");
+        div.className = "node-cell";
+        if(node){
+          if(node.owner==="player") div.classList.add("node-player");
+          else if(node.owner==="enemy") div.classList.add("node-enemy");
+          else if(node.owner==="neutral") div.classList.add("node-neutral");
+          else if(node.owner==="contested") div.classList.add("node-contested");
+          if(key===selectedNodeId) div.classList.add("node-selected");
         }
-      }
-      return out;
-    }
-    function canBuildInNode(nodeId){
-      const node = nodesState[nodeId];
-      if (!node) return false;
-      if (node.owner === "player") return true;
 
-      const { row, col } = node;
-      const neigh = neighborsOf(row, col);
-      for (const nk of neigh) {
-        const n = nodesState[nk];
-        if (n && n.owner === "player") return true;
-      }
-      return false;
-    }
+        const title = document.createElement("span");
+        title.textContent =
+          (r===center && c===center) ? "Base" :
+          (node && node.type==="eco") ? "Eco" :
+          `Node ${r+1}-${c+1}`;
+        div.appendChild(title);
 
-    // ---------------- DROPSHIP STATUS UI ----------------
-    function updateDropshipStatus(){
-      if (!dropshipStatusLabel || !dropshipBtn) return;
+        const ownerSpan = document.createElement("span");
+        ownerSpan.className = "node-owner";
+        ownerSpan.textContent = node ? (
+          node.owner==="player" ? "You" :
+          node.owner==="enemy" ? "Aliens" :
+          node.owner==="contested" ? "Contested" :
+          "Neutral"
+        ) : "…";
+        div.appendChild(ownerSpan);
 
-      if (!latestGame || !myPlayer){
-        dropshipStatusLabel.textContent = "…";
-        dropshipBtn.disabled = true;
-        return;
-      }
-
-      const now = latestGame.timeSeconds || 0;
-      const last = myPlayer.lastDropshipAt || 0;
-      const CD = 60;
-      const remaining = CD - (now - (last || 0));
-
-      if (selectingDropshipTarget && dropshipSourceNodeId){
-        dropshipStatusLabel.textContent = "Select destination…";
-        dropshipBtn.disabled = false;
-        return;
-      }
-
-      if (remaining <= 0){
-        dropshipStatusLabel.textContent = "Ready";
-        dropshipBtn.disabled = false;
-      } else {
-        dropshipStatusLabel.textContent = `Cooldown: ${remaining}s`;
-        dropshipBtn.disabled = true;
-      }
-    }
-
-    // ---------------- RENDER META ----------------
-    function renderGameMeta(){
-      if (!latestGame) return;
-
-      const sec = latestGame.timeSeconds || 0;
-      timeLabel.textContent = formatTime(sec);
-
-      const base = latestGame.base || {
-        hp: 0,
-        maxHp: 1,
-        level: 1,
-        incomePerPlayer: 0,
-        upgradeCost: 0
-      };
-
-      const hp  = Math.max(0, base.hp  || 0);
-      const max = Math.max(1, base.maxHp || 1);
-      const pct = Math.max(0, Math.min(100, (hp / max) * 100));
-      baseHpFill.style.width = pct + "%";
-
-      baseInfoEl.style.display = "block";
-      baseLevelLabel.textContent       = base.level ?? 1;
-      incomeLabel.textContent          = base.incomePerPlayer ?? 0;
-      baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
-
-      if (latestGame.status && latestGame.status !== lastStatusSeen){
-        if (latestGame.status === "lost"){
-          log("⚠ Base destroyed. Game over for all players.");
-        } else if (latestGame.status === "won"){
-          log("✅ You survived the full duration! Victory.");
+        if(node && node.type==="base"){
+          const tag = document.createElement("div");
+          tag.className = "node-base-tag";
+          tag.textContent = "🔋";
+          div.appendChild(tag);
+        }else if(node && node.type==="eco"){
+          const tag = document.createElement("div");
+          tag.className = "node-eco-tag";
+          tag.textContent = "💰";
+          div.appendChild(tag);
         }
-        lastStatusSeen = latestGame.status;
-      }
 
-      updateDropshipStatus();
-    }
+        div.addEventListener("click",()=>{
+          selectedNodeId = key;
+          selectedNode = node || null;
+          renderBoard();
+          renderNodeDetails();
 
-    function applyPlayerUi(){
-      if(!myPlayer) return;
-      const credits = Math.floor(myPlayer.money || 0);
-      moneyLabel.textContent = credits;
-      if(battleMoneyLabel){
-        battleMoneyLabel.textContent = credits;
-      }
-      updateDropshipStatus();
-    }
-
-    // ---------------- RENDER BOARD ----------------
-    function renderBoard(){
-      if(!boardGridEl) return;
-      boardGridEl.innerHTML = "";
-      const center = Math.floor(BOARD_SIZE/2);
-
-      for(let r=0;r<BOARD_SIZE;r++){
-        for(let c=0;c<BOARD_SIZE;c++){
-          const key = nodeKey(r,c);
-          const node = nodesState[key];
-          const div = document.createElement("div");
-          div.className = "node-cell";
-          if(node){
-            if(node.owner==="player") div.classList.add("node-player");
-            else if(node.owner==="enemy") div.classList.add("node-enemy");
-            else if(node.owner==="neutral") div.classList.add("node-neutral");
-            else if(node.owner==="contested") div.classList.add("node-contested");
-            if(key===selectedNodeId) div.classList.add("node-selected");
-          }
-
-          const title = document.createElement("span");
-          title.textContent =
-            (r===center && c===center) ? "Base" :
-            (node && node.type==="eco") ? "Eco" :
-            `Node ${r+1}-${c+1}`;
-          div.appendChild(title);
-
-          const ownerSpan = document.createElement("span");
-          ownerSpan.className = "node-owner";
-          ownerSpan.textContent = node ? (
-            node.owner==="player" ? "You" :
-            node.owner==="enemy" ? "Aliens" :
-            node.owner==="contested" ? "Contested" :
-            "Neutral"
-          ) : "…";
-          div.appendChild(ownerSpan);
-
-          if(node && node.type==="base"){
-            const tag = document.createElement("div");
-            tag.className = "node-base-tag";
-            tag.textContent = "🔋";
-            div.appendChild(tag);
-          }else if(node && node.type==="eco"){
-            const tag = document.createElement("div");
-            tag.className = "node-eco-tag";
-            tag.textContent = "💰";
-            div.appendChild(tag);
-          }
-
-          div.addEventListener("click",()=>{
-            selectedNodeId = key;
-            selectedNode = node || null;
-            renderBoard();
-            renderNodeDetails();
-
-            if (selectingDropshipTarget && dropshipSourceNodeId && node){
-              if (key === dropshipSourceNodeId){
-                log("Dropship cancelled.");
-              } else if (node.owner === "player" || node.owner === "contested"){
-                requestDropship(dropshipSourceNodeId, key);
-              } else {
-                log("Dropship target must be a green or contested node.");
-              }
-              selectingDropshipTarget = false;
-              dropshipSourceNodeId = null;
-              updateDropshipStatus();
+          // If we're in dropship target selection, try to send troops
+          if (selectingDropshipTarget && dropshipSourceNodeId && node){
+            if (key === dropshipSourceNodeId){
+              log("Dropship cancelled.");
+            } else if (node.owner === "player" || node.owner === "contested"){
+              requestDropship(dropshipSourceNodeId, key);
+            } else {
+              log("Dropship target must be a green or contested node.");
             }
-          });
+            selectingDropshipTarget = false;
+            dropshipSourceNodeId = null;
+            updateDropshipStatus();
+          }
+        });
 
-          boardGridEl.appendChild(div);
-        }
+        boardGridEl.appendChild(div);
       }
     }
+  }
 
-    function appendMiniGrid(container, node){
-      const bf = node.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[]};
-      const troops = bf.troops || [];
-      const towers = bf.towers || [];
-      const aliens = bf.aliens || [];
-      const spines = bf.spines || [];
+  function appendMiniGrid(container, node){
+    const bf = node.battlefield || {width:BATTLE_W,height:BATTLE_H,troops:[],towers:[],aliens:[],spines:[]};
+    const troops = bf.troops || [];
+    const towers = bf.towers || [];
+    const aliens = bf.aliens || [];
+    const spines = bf.spines || [];
 
-      function getCell(x,y){
-        const res = {troop:null,tower:null,alien:null,spine:null};
-        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
-        res.tower = towers.find(t=>t.x===x && t.y===y) || null;
-        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
-        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
-        return res;
-      }
+    function getCell(x,y){
+      const res = {troop:null,tower:null,alien:null,spine:null};
+      res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+      res.tower = towers.find(t=>t.x===x && t.y===y) || null;
+      res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+      res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+      return res;
+    }
 
-      const grid = document.createElement("div");
-      grid.className = "mini-grid";
+    const grid = document.createElement("div");
+    grid.className = "mini-grid";
 
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=0;x<BATTLE_W;x++){
-          const cell = document.createElement("div");
-          cell.className = "mini-grid-cell";
+    for(let y=0;y<BATTLE_H;y++){
+      for(let x=0;x<BATTLE_W;x++){
+        const cell = document.createElement("div");
+        cell.className = "mini-grid-cell";
 
-          if(x<=2) cell.classList.add("bg-player");
-          else if(x>=BATTLE_W-3) cell.classList.add("bg-enemy");
-          else cell.classList.add("bg-front");
+        if(x<=2) cell.classList.add("bg-player");
+        else if(x>=BATTLE_W-3) cell.classList.add("bg-enemy");
+        else cell.classList.add("bg-front");
 
-          const {troop,tower,alien,spine} = getCell(x,y);
-          let emoji = "";
-          if(spine){
-            emoji = "🌵";
-          }else if(tower){
-            if(tower.kind === "generator"){
-              emoji = "🔋";
-            }else{
-              const def = TOWERS[tower.kind] || TOWERS.laser;
-              emoji = def.emoji;
-            }
-          }else if(troop){
-            const def = TROOPS[troop.kind] || TROOPS.rifle;
+        const {troop,tower,alien,spine} = getCell(x,y);
+        let emoji = "";
+        if(spine){
+          emoji = "🌵";
+        }else if(tower){
+          if(tower.kind === "generator"){
+            emoji = "🔋";
+          }else{
+            const def = TOWERS[tower.kind] || TOWERS.laser;
             emoji = def.emoji;
           }
-          if(alien){
-            const def = ENEMIES[alien.type] || ENEMIES.bug;
+        }else if(troop){
+          const def = TROOPS[troop.kind] || TROOPS.rifle;
+          emoji = def.emoji;
+        }
+        if(alien){
+          const def = ENEMIES[alien.type] || ENEMIES.bug;
+          emoji = def.emoji;
+        }
+        cell.textContent = emoji;
+        grid.appendChild(cell);
+      }
+    }
+
+    container.appendChild(grid);
+  }
+
+  function renderNodeDetails(){
+    if(!selectedNodeId || !selectedNode){
+      nodeInfoEl.innerHTML = "<div>Select a node on the left.</div>";
+      openBattleBtn.disabled = true;
+      upgradeBaseBtn.disabled = true;
+      return;
+    }
+    let html = "";
+    html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
+    const ownerName =
+      selectedNode.owner==="player" ? "You (green)" :
+      selectedNode.owner==="enemy" ? "Aliens (red)" :
+      selectedNode.owner==="contested" ? "Contested (yellow)" :
+      "Neutral (empty)";
+    html += `<div style="margin-top:4px;">Owner: <strong>${ownerName}</strong></div>`;
+
+    if(selectedNode.type==="base"){
+      const base = latestGame?.base || {};
+      html += `<div style="margin-top:6px;">
+        Central <strong>🔋 generator</strong> is in this node. If it dies, the run ends.<br/>
+        Next upgrade cost: <strong>${base.upgradeCost ?? 0}</strong> credits.
+      </div>`;
+    }else if(selectedNode.type==="eco"){
+      html += `<div style="margin-top:6px;">This <strong>💰 eco node</strong> gives extra income while it’s green.</div>`;
+    }else{
+      html += `<div style="margin-top:6px;">Control is based only on who is standing here. Clear aliens to flip red/yellow to green.</div>`;
+    }
+
+    nodeInfoEl.innerHTML = html;
+    appendMiniGrid(nodeInfoEl, selectedNode);
+
+    openBattleBtn.disabled = false;
+    upgradeBaseBtn.disabled = selectedNode.type!=="base";
+  }
+
+  // ---------------- BATTLE UI ----------------
+  function buildBattleBars(){
+    troopBarEl.innerHTML = "";
+    for(const key in TROOPS){
+      const def = TROOPS[key];
+      const pill = document.createElement("button");
+      pill.type="button";
+      pill.className = "build-pill";
+      pill.dataset.type = def.key;
+      pill.dataset.category = "troop";
+      pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
+      pill.onclick = ()=>selectBuild(def.key,"troop");
+      troopBarEl.appendChild(pill);
+    }
+    towerBarEl.innerHTML = "";
+    for(const key in TOWERS){
+      const def = TOWERS[key];
+      const pill = document.createElement("button");
+      pill.type="button";
+      pill.className = "build-pill";
+      pill.dataset.type = def.key;
+      pill.dataset.category = "tower";
+      pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
+      pill.onclick = ()=>selectBuild(def.key,"tower");
+      towerBarEl.appendChild(pill);
+    }
+  }
+
+  function selectBuild(type,category){
+    currentBuild = {type,category};
+    document.querySelectorAll(".build-pill").forEach(el=>{
+      const t = el.dataset.type;
+      const cat = el.dataset.category;
+      el.classList.toggle("active", t===type && cat===category);
+    });
+  }
+
+  function openBattleForNode(nodeId){
+    if(!nodeId || !nodesState[nodeId]) return;
+    selectedNodeId = nodeId;
+    selectedNode = nodesState[nodeId];
+    renderBoard();
+    renderNodeDetails();
+
+    buildBattleBars();
+    const {row,col} = parseKey(nodeId);
+    battleNodeLabel.textContent =
+      (selectedNode.type==="base" ? "Base Node" :
+       selectedNode.type==="eco" ? "Eco Node" : "Node") +
+      ` ${row+1}-${col+1}`;
+    updateBattleOwnerTag(selectedNode);
+    battleOverlay.style.display = "flex";
+  }
+
+  function updateBattleOwnerTag(node){
+    const owner = node.owner;
+    battleOwnerTag.textContent =
+      owner==="player" ? "Player-only (green)" :
+      owner==="enemy" ? "Alien-only (red)" :
+      owner==="contested" ? "Both present (yellow)" :
+      "Empty (neutral)";
+    battleOwnerTag.className = "tag";
+    if(owner==="player") battleOwnerTag.classList.add("tag-green");
+    else if(owner==="enemy") battleOwnerTag.classList.add("tag-enemy");
+    else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
+  }
+
+  function renderBattlefield(node){
+    const bf = node.battlefield || {
+      width:BATTLE_W,
+      height:BATTLE_H,
+      troops:[],
+      towers:[],
+      aliens:[],
+      spines:[],
+      hitLines:[]
+    };
+    battleGridEl.innerHTML = "";
+    const troops = bf.troops || [];
+    const towers = bf.towers || [];
+    const aliens = bf.aliens || [];
+    const spines = bf.spines || [];
+
+    function getCellContents(x,y){
+      const res = {troop:null,tower:null,alien:null,spine:null};
+      res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+      res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
+      res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+      res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+      return res;
+    }
+
+    for(let y=0;y<BATTLE_H;y++){
+      for(let x=0;x<BATTLE_W;x++){
+        const cell = document.createElement("div");
+        cell.className = "battle-cell";
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+
+        if(x<=2) cell.classList.add("battle-cell-bg-player");
+        else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
+        else cell.classList.add("battle-cell-bg-frontline");
+
+        const {troop,tower,alien,spine} = getCellContents(x,y);
+        let emoji = "";
+        let hp = null, maxHp = null;
+
+        if(spine){
+          emoji = "🌵";
+          hp = spine.hp;
+          maxHp = spine.maxHp;
+        }else if(tower){
+          if(tower.kind === "generator"){
+            emoji = "🔋";
+          }else{
+            const def = TOWERS[tower.kind] || TOWERS.laser;
             emoji = def.emoji;
           }
+          hp = tower.hp;
+          maxHp = tower.maxHp;
+        }else if(troop){
+          const def = TROOPS[troop.kind] || TROOPS.rifle;
+          emoji = def.emoji;
+          hp = troop.hp;
+          maxHp = troop.maxHp;
+        }
+        if(alien){
+          const def = ENEMIES[alien.type] || ENEMIES.bug;
+          emoji = def.emoji;
+          hp = alien.hp;
+          maxHp = alien.maxHp;
+        }
+
+        if(emoji){
           cell.textContent = emoji;
-          grid.appendChild(cell);
-        }
-      }
-
-      container.appendChild(grid);
-    }
-
-    function renderNodeDetails(){
-      if(!selectedNodeId || !selectedNode){
-        nodeInfoEl.innerHTML = "<div>Select a node on the left.</div>";
-        openBattleBtn.disabled = true;
-        upgradeBaseBtn.disabled = true;
-        return;
-      }
-      let html = "";
-      html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
-      const ownerName =
-        selectedNode.owner==="player" ? "You (green)" :
-        selectedNode.owner==="enemy" ? "Aliens (red)" :
-        selectedNode.owner==="contested" ? "Contested (yellow)" :
-        "Neutral (empty)";
-      html += `<div style="margin-top:4px;">Owner: <strong>${ownerName}</strong></div>`;
-
-      if(selectedNode.type==="base"){
-        const base = latestGame?.base || {};
-        html += `<div style="margin-top:6px;">
-          Central <strong>🔋 generator</strong> is in this node. If it dies, the run ends.<br/>
-          Next upgrade cost: <strong>${base.upgradeCost ?? 0}</strong> credits.
-        </div>`;
-      }else if(selectedNode.type==="eco"){
-        html += `<div style="margin-top:6px;">This <strong>💰 eco node</strong> gives extra income while it’s green.</div>`;
-      }else{
-        html += `<div style="margin-top:6px;">Control is based only on who is standing here. Clear aliens to flip red/yellow to green.</div>`;
-      }
-
-      nodeInfoEl.innerHTML = html;
-      appendMiniGrid(nodeInfoEl, selectedNode);
-
-      openBattleBtn.disabled = false;
-      upgradeBaseBtn.disabled = selectedNode.type!=="base";
-    }
-
-    // ---------------- BATTLE UI ----------------
-    function buildBattleBars(){
-      troopBarEl.innerHTML = "";
-      for(const key in TROOPS){
-        const def = TROOPS[key];
-        const pill = document.createElement("button");
-        pill.type="button";
-        pill.className = "build-pill";
-        pill.dataset.type = def.key;
-        pill.dataset.category = "troop";
-        pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
-        pill.onclick = ()=>selectBuild(def.key,"troop");
-        troopBarEl.appendChild(pill);
-      }
-      towerBarEl.innerHTML = "";
-      for(const key in TOWERS){
-        const def = TOWERS[key];
-        const pill = document.createElement("button");
-        pill.type="button";
-        pill.className = "build-pill";
-        pill.dataset.type = def.key;
-        pill.dataset.category = "tower";
-        pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
-        pill.onclick = ()=>selectBuild(def.key,"tower");
-        towerBarEl.appendChild(pill);
-      }
-    }
-
-    function selectBuild(type,category){
-      currentBuild = {type,category};
-      document.querySelectorAll(".build-pill").forEach(el=>{
-        const t = el.dataset.type;
-        const cat = el.dataset.category;
-        el.classList.toggle("active", t===type && cat===category);
-      });
-    }
-
-    function openBattleForNode(nodeId){
-      if(!nodeId || !nodesState[nodeId]) return;
-      selectedNodeId = nodeId;
-      selectedNode = nodesState[nodeId];
-      renderBoard();
-      renderNodeDetails();
-
-      buildBattleBars();
-      const {row,col} = parseKey(nodeId);
-      battleNodeLabel.textContent =
-        (selectedNode.type==="base" ? "Base Node" :
-         selectedNode.type==="eco" ? "Eco Node" : "Node") +
-        ` ${row+1}-${col+1}`;
-      updateBattleOwnerTag(selectedNode);
-      battleOverlay.style.display = "flex";
-
-      // No node-specific subscription; server sends whole state each tick.
-      renderBattlefield(selectedNode);
-    }
-
-    function updateBattleOwnerTag(node){
-      const owner = node.owner;
-      battleOwnerTag.textContent =
-        owner==="player" ? "Player-only (green)" :
-        owner==="enemy" ? "Alien-only (red)" :
-        owner==="contested" ? "Both present (yellow)" :
-        "Empty (neutral)";
-      battleOwnerTag.className = "tag";
-      if(owner==="player") battleOwnerTag.classList.add("tag-green");
-      else if(owner==="enemy") battleOwnerTag.classList.add("tag-enemy");
-      else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
-    }
-
-    function renderBattlefield(node){
-      const bf = node.battlefield || {
-        width:BATTLE_W,
-        height:BATTLE_H,
-        troops:[],
-        towers:[],
-        aliens:[],
-        spines:[],
-        hitLines:[]
-      };
-      battleGridEl.innerHTML = "";
-      const troops = bf.troops || [];
-      const towers = bf.towers || [];
-      const aliens = bf.aliens || [];
-      const spines = bf.spines || [];
-
-      function getCellContents(x,y){
-        const res = {troop:null,tower:null,alien:null,spine:null};
-        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
-        res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
-        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
-        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
-        return res;
-      }
-
-      for(let y=0;y<BATTLE_H;y++){
-        for(let x=0;x<BATTLE_W;x++){
-          const cell = document.createElement("div");
-          cell.className = "battle-cell";
-          cell.dataset.x = x;
-          cell.dataset.y = y;
-
-          if(x<=2) cell.classList.add("battle-cell-bg-player");
-          else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
-          else cell.classList.add("battle-cell-bg-frontline");
-
-          const {troop,tower,alien,spine} = getCellContents(x,y);
-          let emoji = "";
-          let hp = null, maxHp = null;
-
-          if(spine){
-            emoji = "🌵";
-            hp = spine.hp;
-            maxHp = spine.maxHp;
-          }else if(tower){
-            if(tower.kind === "generator"){
-              emoji = "🔋";
-            }else{
-              const def = TOWERS[tower.kind] || TOWERS.laser;
-              emoji = def.emoji;
-            }
-            hp = tower.hp;
-            maxHp = tower.maxHp;
-          }else if(troop){
-            const def = TROOPS[troop.kind] || TROOPS.rifle;
-            emoji = def.emoji;
-            hp = troop.hp;
-            maxHp = troop.maxHp;
-          }
-          if(alien){
-            const def = ENEMIES[alien.type] || ENEMIES.bug;
-            emoji = def.emoji;
-            hp = alien.hp;
-            maxHp = alien.maxHp;
-          }
-
-          if(emoji){
-            cell.textContent = emoji;
-          }
-
-          if(hp != null && maxHp != null){
-            const bar = document.createElement("div");
-            bar.className = "hp-bar-mini";
-            const fill = document.createElement("div");
-            fill.className = "hp-bar-mini-fill";
-            const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
-            fill.style.width = pct + "%";
-            bar.appendChild(fill);
-            cell.appendChild(bar);
-          }
-
-          cell.addEventListener("click",()=>{
-            onBattleCellClick(x,y,node);
-          });
-
-          battleGridEl.appendChild(cell);
-        }
-      }
-
-      const wrap = battleGridEl.parentElement;
-      if(wrap){
-        wrap.querySelectorAll(".hitline-layer").forEach(el=>el.remove());
-
-        const layer = document.createElement("div");
-        layer.className = "hitline-layer";
-
-        const wrapRect = wrap.getBoundingClientRect();
-        const centerCache = {};
-
-        function getCellCenter(x,y){
-          const key = x+"_"+y;
-          if(centerCache[key]) return centerCache[key];
-
-          const cell = battleGridEl.querySelector(`.battle-cell[data-x="${x}"][data-y="${y}"]`);
-          if(!cell){
-            centerCache[key] = null;
-            return null;
-          }
-          const r = cell.getBoundingClientRect();
-          const cx = r.left + r.width/2 - wrapRect.left;
-          const cy = r.top + r.height/2 - wrapRect.top;
-          const center = {x:cx, y:cy};
-          centerCache[key] = center;
-          return center;
         }
 
-        const lines = bf.hitLines || [];
-        for(const l of lines){
-          const p1 = getCellCenter(l.x1,l.y1);
-          const p2 = getCellCenter(l.x2,l.y2);
-          if(!p1 || !p2) continue;
-
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-          const angle = Math.atan2(dy,dx) * 180 / Math.PI;
-
-          const lineEl = document.createElement("div");
-          lineEl.className = "hitline " + (l.kind==="enemy" ? "enemy" : "player");
-          lineEl.style.left = p1.x + "px";
-          lineEl.style.top = p1.y + "px";
-          lineEl.style.width = dist + "px";
-          lineEl.style.transform = `translate(0,-50%) rotate(${angle}deg)`;
-
-          layer.appendChild(lineEl);
+        if(hp != null && maxHp != null){
+          const bar = document.createElement("div");
+          bar.className = "hp-bar-mini";
+          const fill = document.createElement("div");
+          fill.className = "hp-bar-mini-fill";
+          const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
+          fill.style.width = pct + "%";
+          bar.appendChild(fill);
+          cell.appendChild(bar);
         }
 
-        wrap.appendChild(layer);
-      }
+        cell.addEventListener("click",()=>{
+          onBattleCellClick(x,y,node);
+        });
 
-      updateBattleOwnerTag(node);
+        battleGridEl.appendChild(cell);
+      }
     }
 
-    function onBattleCellClick(x, y, node) {
-  if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
-    log("You can only build in nodes you control or adjacent to your territory.");
-    return;
+    updateBattleOwnerTag(node);
   }
 
-  if (!currentBuild.type || !currentBuild.category) {
-    log("Select a troop or tower type first.");
-    return;
+  function onBattleCellClick(x, y, node) {
+    if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
+      log("You can only build in nodes you control or adjacent to your territory.");
+      return;
+    }
+
+    if (!currentBuild.type || !currentBuild.category) {
+      log("Select a troop or tower type first.");
+      return;
+    }
+
+    if (x > 2) {
+      log("You can only place in the first 3 columns.");
+      return;
+    }
+    if (!currentUser) {
+      log("Player auth not ready yet.");
+      return;
+    }
+    if (!socket || !socket.connected){
+      log("Not connected to server.");
+      return;
+    }
+
+    const def =
+      currentBuild.category === "troop"
+        ? TROOPS[currentBuild.type]
+        : TOWERS[currentBuild.type];
+
+    if (!def) {
+      log("Unknown unit type.");
+      return;
+    }
+
+    // Send as playerAction: type=build, using unitType
+    socket.emit("playerAction", {
+      type: "build",
+      nodeId: selectedNodeId,
+      x,
+      y,
+      category: currentBuild.category,
+      unitType: currentBuild.type
+    });
+
+    const name = def.name;
+    log(`Build requested: ${name} at (${x+1},${y+1}).`);
   }
 
-  if (x > 2) {
-    log("You can only place in the first 3 columns.");
-    return;
-  }
-  if (!currentUser) {
-    log("Player auth not ready yet.");
-    return;
-  }
-  if (!socket || !socket.connected){
-    log("Not connected to server.");
-    return;
-  }
+  // ---------------- SOCKET.IO WIRING ----------------
+const SERVER_URL = "https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev";
 
-  const def =
-    currentBuild.category === "troop"
-      ? TROOPS[currentBuild.type]
-      : TOWERS[currentBuild.type];
-
-  if (!def) {
-    log("Unknown unit type.");
-    return;
-  }
-
-  socket.emit("playerAction", {
-    type: "build",
-    nodeId: selectedNodeId,
-    x,
-    y,
-    category: currentBuild.category,
-    unitType: currentBuild.type
-  });
-
-  const name =
-    currentBuild.category === "troop"
-      ? TROOPS[currentBuild.type].name
-      : TOWERS[currentBuild.type].name;
-  log(`Build requested: ${name} at (${x + 1},${y + 1}).`);
-}
-
-
-    // ---------------- SOCKET.IO WIRING (MATCHES SERVER) ----------------
-   // ---------------- SOCKET.IO WIRING ----------------
 function setupSocket(user, token){
-  // If HTML is served by the Node server (recommended):
-  socket = io(); // same origin: http://localhost:4000
+  // Connect directly to your Replit server
+  socket = io(SERVER_URL);
 
-  socket.on("connect", () => {
+  socket.on("connect", ()=>{
     log("Connected to Grid Overlord server.");
-
     socket.emit("joinGame", {
       token,
       gameId,
@@ -1300,190 +1240,183 @@ function setupSocket(user, token){
     });
   });
 
-  // Initial join payload
-  socket.on("joined", ({ uid, gameId: joinedGameId, state }) => {
-    log(`Joined game ${joinedGameId} as ${uid}`);
-    latestGame = state;
-    nodesState = state.nodesState || {};
-    myPlayer = (state.players || []).find(p => p.uid === uid) || null;
+    // Initial join snapshot
+    socket.on("joined", ({ uid, gameId: joinedGameId, state })=>{
+      myUid = uid;
+      latestGame = state;
+      nodesState = state.nodesState || {};
+      myPlayer = (state.players || []).find(p => p.uid === myUid) || null;
 
-    renderGameMeta();
-    renderBoard();
-    if (selectedNodeId && nodesState[selectedNodeId]) {
-      selectedNode = nodesState[selectedNodeId];
-      renderNodeDetails();
+      log(`Joined game ${joinedGameId} as ${displayName}.`);
+
+      renderGameMeta();
+      renderBoard();
+      if (selectedNodeId){
+        selectedNode = nodesState[selectedNodeId] || null;
+        renderNodeDetails();
+      }
+      applyPlayerUi();
+    });
+
+    // Authoritative state every second
+    socket.on("state", (gameState)=>{
+      latestGame = gameState || latestGame;
+      if (!latestGame) return;
+
+      nodesState = latestGame.nodesState || {};
+
+      if (currentUser){
+        myPlayer = (latestGame.players || []).find(p => p.uid === currentUser.uid) || null;
+      }
+
+      renderGameMeta();
+      renderBoard();
+
+      if (selectedNodeId){
+        selectedNode = nodesState[selectedNodeId] || null;
+        if (selectedNode){
+          renderNodeDetails();
+          if (battleOverlay.style.display !== "none"){
+            renderBattlefield(selectedNode);
+          }
+        }
+      }
+
+      applyPlayerUi();
+    });
+
+    socket.on("log", (msg)=> log(msg));
+    socket.on("errorMessage", (msg)=> log("⚠ " + msg));
+    socket.on("playerJoined", ({ uid, name })=>{
+      if (name) log(`${name} joined the battle.`);
+    });
+
+    socket.on("disconnect", ()=>{
+      log("Disconnected from Grid Overlord server.");
+    });
+  }
+
+  // ---------------- ACTION HELPERS (DROPSHIP / UPGRADE) ----------------
+  function requestDropship(sourceId, destId){
+    if(!socket || !socket.connected){
+      log("Not connected to server.");
+      return;
+    }
+    socket.emit("playerAction", {
+      type: "dropship",
+      sourceNodeId: sourceId,
+      destNodeId: destId
+    });
+    log("🚀 Dropship requested.");
+  }
+
+  function requestUpgradeBase(){
+    if(!socket || !socket.connected){
+      log("Not connected to server.");
+      return;
+    }
+    socket.emit("playerAction", { type: "upgradeBase" });
+    log("⚡ Generator upgrade requested.");
+  }
+
+  // ---------------- UI BUTTONS ----------------
+  openBattleBtn.addEventListener("click",()=>{
+    if(!selectedNodeId) return;
+    openBattleForNode(selectedNodeId);
+    if (selectedNode){
       renderBattlefield(selectedNode);
     }
-    applyPlayerUi();
   });
 
-  // Full state update each tick
-  socket.on("state", (fullState) => {
-    if (!fullState) return;
-    latestGame = fullState;
-    nodesState = fullState.nodesState || {};
-
-    // update myPlayer based on currentUser.uid
-    if (currentUser) {
-      const mine = (fullState.players || []).find(p => p.uid === currentUser.uid);
-      if (mine) myPlayer = mine;
+  dropshipBtn.addEventListener("click", ()=>{
+    if (!selectedNodeId || !selectedNode){
+      log("Select a green node you control first.");
+      return;
+    }
+    if (selectedNode.owner !== "player"){
+      log("Dropship source must be a green node you control.");
+      return;
     }
 
-    renderGameMeta();
-    renderBoard();
-    if (selectedNodeId && nodesState[selectedNodeId]) {
-      selectedNode = nodesState[selectedNodeId];
-      renderNodeDetails();
-      renderBattlefield(nodesState[selectedNodeId]);
+    const bf = selectedNode.battlefield || {};
+    const troops = bf.troops || [];
+    if (!troops.length){
+      log("No friendly troops in this node to dropship.");
+      return;
     }
-    applyPlayerUi();
-  });
 
-  socket.on("log", (msg) => log(msg));
-  socket.on("errorMessage", (msg) => log("⚠ " + msg));
+    if (!latestGame || !myPlayer){
+      log("Dropship not ready yet.");
+      return;
+    }
 
-  socket.on("disconnect", () => {
-    log("Disconnected from Grid Overlord server.");
-  });
-}
+    const now = latestGame.timeSeconds || 0;
+    const last = myPlayer.lastDropshipAt || 0;
+    const remaining = 60 - (now - (last || 0));
 
-// ---------------- AUTH FLOW ----------------
-log("Connecting to Firebase (auth only) and waiting for authentication…");
-
-signInAnonymously(auth).catch(err => {
-  console.error(err);
-  alert("Failed to sign in anonymously to Firebase: " + err.message);
-});
-
-let socketStarted = false;
-onAuthStateChanged(auth, (user) => {
-  if (!user || socketStarted) return;
-  currentUser = user;
-  playerNameLabel.textContent = displayName;
-
-  // Get ID token for the Node server
-  user.getIdToken().then((token) => {
-    socketStarted = true;
-    setupSocket(user, token);
-  }).catch(err => {
-    console.error("getIdToken error", err);
-    alert("Could not get auth token: " + err.message);
-  });
-});
-
-
-    // ---------------- ACTION HELPERS (DROPSHIP / UPGRADE) ----------------
-    function requestDropship(sourceId, destId){
-  if(!socket || !socket.connected){
-    log("Not connected to server.");
-    return;
-  }
-  socket.emit("playerAction", {
-    type: "dropship",
-    sourceNodeId: sourceId,
-    destNodeId: destId
-  });
-
-  const src = nodesState[sourceId];
-  const dst = nodesState[destId];
-  const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
-  const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
-  log(`Dropship requested from ${sLabel} to ${dLabel}.`);
-}
-
-
-    function requestUpgradeBase(){
-  if (!socket || !socket.connected) {
-    log("Not connected to server.");
-    return;
-  }
-  socket.emit("playerAction", { type: "upgradeBase" });
-}
-
-    // ---------------- UI BUTTONS ----------------
-    openBattleBtn.addEventListener("click",()=>{
-      if(!selectedNodeId) return;
-      openBattleForNode(selectedNodeId);
-    });
-
-    dropshipBtn.addEventListener("click", ()=>{
-      if (!selectedNodeId || !selectedNode){
-        log("Select a green node you control first.");
-        return;
-      }
-      if (selectedNode.owner !== "player"){
-        log("Dropship source must be a green node you control.");
-        return;
-      }
-
-      const bf = selectedNode.battlefield || {};
-      const troops = bf.troops || [];
-      if (!troops.length){
-        log("No friendly troops in this node to dropship.");
-        return;
-      }
-
-      if (!latestGame || !myPlayer){
-        log("Dropship not ready yet.");
-        return;
-      }
-
-      const now = latestGame.timeSeconds || 0;
-      const last = myPlayer.lastDropshipAt || 0;
-      const remaining = 60 - (now - (last || 0));
-
-      if (remaining > 0){
-        log(`Dropship is recharging (${remaining}s left).`);
-        updateDropshipStatus();
-        return;
-      }
-
-      dropshipSourceNodeId = selectedNodeId;
-      selectingDropshipTarget = true;
-      log("Dropship source locked. Click a green or contested node to send your troops (click the same node again to cancel).");
+    if (remaining > 0){
+      log(`Dropship is recharging (${remaining}s left).`);
       updateDropshipStatus();
-    });
+      return;
+    }
 
-    leaveBattleBtn.addEventListener("click",()=>{
-      battleOverlay.style.display = "none";
-    });
+    dropshipSourceNodeId = selectedNodeId;
+    selectingDropshipTarget = true;
+    log("Dropship source locked. Click a green or contested node to send your troops (click the same node again to cancel).");
+    updateDropshipStatus();
+  });
 
-    upgradeBaseBtn.addEventListener("click", ()=>{
-      if(!latestGame || !myPlayer) return;
-      if(!selectedNode || selectedNode.type!=="base") return;
-      requestUpgradeBase();
-    });
+  leaveBattleBtn.addEventListener("click",()=>{
+    battleOverlay.style.display = "none";
+  });
 
-    document.getElementById("fullscreenBtn").addEventListener("click",()=>{
-      const el = document.documentElement;
-      if(!document.fullscreenElement){
-        el.requestFullscreen?.();
-      }else{
-        document.exitFullscreen?.();
+  upgradeBaseBtn.addEventListener("click", ()=>{
+    if(!latestGame || !myPlayer) return;
+    if(!selectedNode || selectedNode.type!=="base") return;
+    requestUpgradeBase();
+  });
+
+  document.getElementById("fullscreenBtn").addEventListener("click",()=>{
+    const el = document.documentElement;
+    if(!document.fullscreenElement){
+      el.requestFullscreen?.();
+    }else{
+      document.exitFullscreen?.();
+    }
+  });
+
+  // ---------------- AUTH FLOW ----------------
+  log("Connecting to Firebase (auth only) and waiting for authentication…");
+
+  signInAnonymously(auth).catch(err=>{
+    console.error(err);
+    alert("Failed to sign in anonymously to Firebase: "+err.message);
+  });
+
+  let socketStarted = false;
+  onAuthStateChanged(auth, async (user)=>{
+    if(!user) return;
+    currentUser = user;
+    myUid = user.uid;
+    playerNameLabel.textContent = displayName;
+
+    if(!socketStarted){
+      socketStarted = true;
+      try{
+        const token = await getIdToken(user, true);
+        setupSocket(user, token);
+      }catch(err){
+        console.error(err);
+        log("Failed to get Firebase ID token: " + err.message);
       }
-    });
+    }
+  });
+</script>
 
-    // ---------------- AUTH FLOW ----------------
-    log("Connecting to Firebase (auth only) and waiting for authentication…");
-
-    signInAnonymously(auth).catch(err=>{
-      console.error(err);
-      alert("Failed to sign in anonymously to Firebase: "+err.message);
-    });
-
-    let socketStarted = false;
-    onAuthStateChanged(auth, (user)=>{
-      if(!user) return;
-      currentUser = user;
-      playerNameLabel.textContent = displayName;
-      if(!socketStarted){
-        socketStarted = true;
-        setupSocket(user);
-      }
-    });
-  </script>
 </body>
 </html>
+
+
 
 
 
