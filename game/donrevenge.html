@@ -105,7 +105,6 @@
       min-height:0;
     }
 
-    /* Desktop/tablet: side by side */
     .panel{
       border-radius:var(--radius);
       background:rgba(15,23,42,.96);
@@ -243,7 +242,6 @@
     }
     .log-line{margin-bottom:2px;}
 
-    /* Mini battlefield preview in node details */
     .mini-grid{
       margin-top:6px;
       display:grid;
@@ -271,7 +269,6 @@
     .mini-grid-cell.bg-enemy{ background:#43171f; }
     .mini-grid-cell.bg-front{ background:#020617; }
 
-    /* Battle overlay */
     .overlay{
       position:fixed;
       inset:0;
@@ -368,10 +365,9 @@
       width:100%;
     }
 
-    /* Hitline overlay */
     .hitline-layer{
       position:absolute;
-       inset:0;
+      inset:0;
       pointer-events:none;
       z-index:2;
     }
@@ -450,7 +446,6 @@
       color:var(--muted);
     }
 
-    /* ---------- MOBILE OPTIMIZATIONS ---------- */
     @media (max-width:900px){
       .shell{
         padding:6px 6px calc(6px + env(safe-area-inset-bottom));
@@ -489,7 +484,6 @@
     }
 
     @media (max-width:700px){
-      /* Keep two columns but everything tighter so Enter Area + credits stay visible */
       .board-grid{
         grid-auto-rows:minmax(30px,1fr);
         gap:3px;
@@ -503,7 +497,6 @@
     }
 
     @media (max-width:600px){
-      /* Battle overlay goes full-screen and stacks vertically */
       .overlay-inner{
         width:100vw;
         height:100vh;
@@ -530,7 +523,6 @@
     }
 
     @media (max-height:640px){
-      /* On very short screens, allow scroll instead of clipping */
       html,body{
         overflow:auto;
       }
@@ -593,7 +585,6 @@
           🔋 Lv <span id="baseLevelLabel">1</span> · +<span id="incomeLabel">0</span> credits / 5s per player · Next: <span id="baseUpgradeCostLabel">0</span>
         </div>
 
-        <!-- Compressed explanation so everything fits on mobile -->
         <div style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;">
           <strong>Quick guide:</strong><br/>
           • Colors: 🟢 only your troops/towers, 🔴 only aliens, 🟡 both, ⚪ none.<br/>
@@ -642,13 +633,13 @@
     </div>
   </div>
 
+  <!-- Socket.IO client (served by your Node.js server) -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Firebase + client logic -->
   <script type="module">
-    // ---------------- FIREBASE SETUP ----------------
+    // ---------------- FIREBASE AUTH (ONLY) ----------------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
-      collection, runTransaction, serverTimestamp, getDocs
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import {
       getAuth, signInAnonymously, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -662,30 +653,18 @@
       appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
     const auth = getAuth(app);
 
-    // ---------------- CONFIG ----------------
+    // ---------------- GAME CONFIG (CLIENT-SIDE) ----------------
     const BOARD_SIZE = 7;
     const BATTLE_W = 10;
     const BATTLE_H = 10;
-    const SPREAD_INTERVAL = 45;
-    const INCOME_INTERVAL = 5;
-    const ENEMY_BUILD_INTERVAL = 30;
-    const WAVE_MINUTES_1 = 5;
-    const WAVE_MINUTES_2 = 10;
-    const GAME_WIN_TIME = 20 * 60;
-    const ECO_BONUS_PER_NODE = 1;
-    const ECO_NODE_CAPACITY = 80;   // total “credits” in each eco node
-    const ECO_DRAIN_PER_TICK = 2;    // how much gets used each income tick while you control it
 
     const params = new URLSearchParams(window.location.search);
     const gameId = params.get("gameId") || "dev-overlord";
     const displayName = (params.get("username") || "Guest").trim() || "Guest";
 
-    const gameRef = doc(db, "grid_overlord_games", gameId);
-    const nodesCol = collection(gameRef, "nodes");
-
+    // Same troop/tower/enemy definitions as before, but server actually simulates them.
     const TROOPS = {
       rifle:   { key:"rifle",   name:"Rifleman",      emoji:"🔫", baseHp:12, dmg:3, range:3, cost:8 },
       phase:   { key:"phase",   name:"Phase Blade",   emoji:"🗡️", baseHp:18, dmg:4, range:1, cost:10 },
@@ -703,78 +682,26 @@
     };
 
     const ENEMIES = {
-  bug: {
-    key: "bug",
-    emoji: "🐜",
-    baseHp: 10,
-    dmg: 2,
-    speed: 1,
-    range: 1
-  },
-  spitter: {
-    key: "spitter",
-    emoji: "🪲",
-    baseHp: 14,
-    dmg: 3,
-    speed: 1,
-    range: 3   // hangs back and spits from range
-  },
-  brute: {
-    key: "brute",
-    emoji: "🦂",
-    baseHp: 26,
-    dmg: 5,
-    speed: 1,
-    range: 1
-  },
-  behemoth: {
-    key: "behemoth",
-    emoji: "👾",
-    baseHp: 40,
-    dmg: 6,
-    speed: 1,
-    range: 1
-  },
-
-  // 🐝 Boss 1: Hive Queen — summons bugs when your troops are around
-  hiveQueen: {
-    key: "hiveQueen",
-    emoji: "👑",
-    baseHp: 90,
-    dmg: 3,
-    speed: 1,
-    range: 2,
-    isBoss: true
-  },
-
-  // 🌀 Boss 2: Warper — teleports next to your towers
-  warper: {
-    key: "warper",
-    emoji: "🌀",
-    baseHp: 75,
-    dmg: 4,
-    speed: 1,
-    range: 3,
-    isBoss: true
-  }
-};
-
-
+      bug:       { key:"bug",       emoji:"🐜", baseHp:10 },
+      spitter:   { key:"spitter",   emoji:"🪲", baseHp:14 },
+      brute:     { key:"brute",     emoji:"🦂", baseHp:26 },
+      behemoth:  { key:"behemoth",  emoji:"👾", baseHp:40 },
+      hiveQueen: { key:"hiveQueen", emoji:"👑", baseHp:90,  isBoss:true },
+      warper:    { key:"warper",    emoji:"🌀", baseHp:75,  isBoss:true }
+    };
 
     // ---------------- STATE ----------------
     let currentUser = null;
-    let playerRef = null;
-    let myPlayer = null;
+    let socket = null;
+
     let latestGame = null;
     let nodesState = {};
-    let isHost = false;
-    let hostTickHandle = null;
-    let hostTicking = false;
+    let myPlayer = null;
 
     let selectedNodeId = null;
     let selectedNode = null;
     let currentBuild = { type:null, category:null };
-    let battleUnsub = null;
+
     let dropshipSourceNodeId = null;
     let selectingDropshipTarget = false;
 
@@ -836,8 +763,6 @@
       }
       return out;
     }
-
-    // Can build in your nodes or adjacent to your nodes
     function canBuildInNode(nodeId){
       const node = nodesState[nodeId];
       if (!node) return false;
@@ -852,306 +777,79 @@
       return false;
     }
 
-    // ---------------- AUTH / JOIN ----------------
-    let joined = false;
-    signInAnonymously(auth).catch(err=>{
-      console.error(err);
-      alert("Failed to sign in anonymously to Firebase: "+err.message);
-    });
+    // ---------------- DROPSHIP STATUS UI ----------------
+    function updateDropshipStatus(){
+      if (!dropshipStatusLabel || !dropshipBtn) return;
 
-    onAuthStateChanged(auth, async (user)=>{
-      if(!user) return;
-      currentUser = user;
-      if(joined) return;
-      joined = true;
-      playerRef = doc(gameRef,"players",user.uid);
-      playerNameLabel.textContent = displayName;
-      await joinGame();
-    });
+      if (!latestGame || !myPlayer){
+        dropshipStatusLabel.textContent = "…";
+        dropshipBtn.disabled = true;
+        return;
+      }
 
-    async function joinGame(){
-      try{
-        await runTransaction(db, async (tx)=>{
-          const center = Math.floor(BOARD_SIZE/2);
+      const now = latestGame.timeSeconds || 0;
+      const last = myPlayer.lastDropshipAt || 0;
+      const CD = 60;
+      const remaining = CD - (now - (last || 0));
 
-          const gameSnap = await tx.get(gameRef);
-          const isNewGame = !gameSnap.exists();
-          const gameData = isNewGame ? null : gameSnap.data();
-          const playerSnap = await tx.get(playerRef);
+      if (selectingDropshipTarget && dropshipSourceNodeId){
+        dropshipStatusLabel.textContent = "Select destination…";
+        dropshipBtn.disabled = false;
+        return;
+      }
 
-          if(isNewGame){
-            const baseHp = 120;
-            const baseLevel = 1;
-            const baseIncomePerPlayer = 7;
-            tx.set(gameRef,{
-              createdAt: serverTimestamp(),
-              hostUid: currentUser.uid,
-              status:"running",
-              timeSeconds:0,
-              base:{
-                hp:baseHp,
-                maxHp:baseHp,
-                level:baseLevel,
-                incomePerPlayer:baseIncomePerPlayer,
-                upgradeCost:60
-              },
-              winAtSeconds: GAME_WIN_TIME
-            });
-
-            for(let r=0;r<BOARD_SIZE;r++){
-              for(let c=0;c<BOARD_SIZE;c++){
-                const id = nodeKey(r,c);
-                const manhattan = Math.abs(r-center)+Math.abs(c-center);
-                let owner;
-                if(r===center && c===center){
-                  owner = "player";
-                }else if(manhattan === 1){
-                  owner = "player";
-                }else if(
-                  (r===0 && (c===1 || c===BOARD_SIZE-2)) ||
-                  (r===BOARD_SIZE-1 && (c===1 || c===BOARD_SIZE-2)) ||
-                  (c===0 && (r===1 || r===BOARD_SIZE-2)) ||
-                  (c===BOARD_SIZE-1 && (r===1 || r===BOARD_SIZE-2))
-                ){
-                  owner = "enemy";
-                }else{
-                  owner = "neutral";
-                }
-
-                let type = "normal";
-                  if (r === center && c === center) type = "base";
-                  else if (manhattan === 2) type = "eco";
-                  
-                  const nodeDocRef = doc(nodesCol, id);
-                  
-                  const battlefield = {
-                    width: BATTLE_W,
-                    height: BATTLE_H,
-                    troops: [],
-                    towers: [],
-                    aliens: [],
-                    spines: [],
-                    hitLines: []
-                  };
-                  
-                  // Base generator
-                  if (type === "base") {
-                    const midY = Math.floor(BATTLE_H / 2);
-                    battlefield.towers.push({
-                      id: "generator",
-                      x: 0,
-                      y: midY,
-                      kind: "generator",
-                      hp: baseHp,
-                      maxHp: baseHp
-                    });
-                  }
-                  
-                  // 💰 Eco nodes start with a full pool of resources
-                  const ecoPool = (type === "eco") ? ECO_NODE_CAPACITY : null;
-                  
-                  tx.set(nodeDocRef, {
-                    id,
-                    row: r,
-                    col: c,
-                    owner,
-                    type,
-                    spreadChance: 0.33,
-                    pendingWave: false,
-                    ecoPool,
-                    battlefield
-                  });
-              }
-            }
-          }else{
-            if(!gameData.hostUid){
-              tx.update(gameRef,{hostUid: currentUser.uid});
-            }
-          }
-
-          if(!playerSnap.exists()){
-            tx.set(playerRef,{
-              uid: currentUser.uid,
-              name: displayName,
-              money: 30,
-              incomeBonus: 0,
-              joinedAt: serverTimestamp()
-            });
-          }else{
-            tx.update(playerRef,{ name: displayName });
-          }
-        });
-
-        onSnapshot(gameRef, (snap)=>{
-          if(!snap.exists()) return;
-          latestGame = snap.data();
-          renderGameMeta();
-          syncHostRole();
-        });
-
-        onSnapshot(nodesCol, (snap)=>{
-          nodesState = {};
-          snap.forEach(d=>{ nodesState[d.id]=d.data(); });
-          renderBoard();
-          if(selectedNodeId){
-            selectedNode = nodesState[selectedNodeId] || null;
-            renderNodeDetails();
-          }
-        });
-
-        onSnapshot(playerRef, (snap)=>{
-          if(!snap.exists()) return;
-          myPlayer = snap.data();
-          const credits = Math.floor(myPlayer.money || 0);
-          moneyLabel.textContent = credits;
-          if (battleMoneyLabel) {
-            battleMoneyLabel.textContent = credits;
-          }
-        });
-
-        log("Joined game: "+gameId);
-      }catch(e){
-        console.error(e);
-        alert("Error joining game: "+e.message);
+      if (remaining <= 0){
+        dropshipStatusLabel.textContent = "Ready";
+        dropshipBtn.disabled = false;
+      } else {
+        dropshipStatusLabel.textContent = `Cooldown: ${remaining}s`;
+        dropshipBtn.disabled = true;
       }
     }
 
     // ---------------- RENDER META ----------------
-    function updateDropshipStatus(){
-  if (!dropshipStatusLabel || !dropshipBtn) return;
-
-  if (!latestGame || !myPlayer){
-    dropshipStatusLabel.textContent = "…";
-    dropshipBtn.disabled = true;
-    return;
-  }
-
-  const now = latestGame.timeSeconds || 0;
-  const last = myPlayer.lastDropshipAt || 0;
-  const CD = 60;
-  const remaining = CD - (now - (last || 0));
-
-  // If we're currently choosing a target, show mode instead of cooldown text
-  if (selectingDropshipTarget && dropshipSourceNodeId){
-    dropshipStatusLabel.textContent = "Select destination…";
-    dropshipBtn.disabled = false;
-    return;
-  }
-
-  if (remaining <= 0){
-    dropshipStatusLabel.textContent = "Ready";
-    dropshipBtn.disabled = false;
-  } else {
-    dropshipStatusLabel.textContent = `Cooldown: ${remaining}s`;
-    dropshipBtn.disabled = true;
-  }
-}
-
     function renderGameMeta(){
-  if (!latestGame) return;
+      if (!latestGame) return;
 
-  const sec = latestGame.timeSeconds || 0;
-  timeLabel.textContent = formatTime(sec);
+      const sec = latestGame.timeSeconds || 0;
+      timeLabel.textContent = formatTime(sec);
 
-  const base = latestGame.base || {
-    hp: 0,
-    maxHp: 1,
-    level: 1,
-    incomePerPlayer: 0,
-    upgradeCost: 0
-  };
-
-  const hp  = Math.max(0, base.hp  || 0);
-  const max = Math.max(1, base.maxHp || 1);
-  const pct = Math.max(0, Math.min(100, (hp / max) * 100));
-  baseHpFill.style.width = pct + "%";
-
-  baseInfoEl.style.display = "block";
-  baseLevelLabel.textContent      = base.level ?? 1;
-  incomeLabel.textContent         = base.incomePerPlayer ?? 0;
-  baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
-
-  if (latestGame.status === "lost"){
-    log("⚠ Base destroyed. Game over for all players.");
-  } else if (latestGame.status === "won"){
-    log("✅ You survived the full duration! Victory.");
-  }
-
-  // 🔹 Keep Dropship UI in sync with game time & cooldowns
-  updateDropshipStatus();
-}
-
-  async function attemptDropship(sourceId, destId){
-  if (!currentUser || !playerRef) return;
-
-  try{
-    await runTransaction(db, async (tx)=>{
-      const gSnap = await tx.get(gameRef);
-      const pSnap = await tx.get(playerRef);
-      if(!gSnap.exists() || !pSnap.exists()) throw new Error("Missing game or player.");
-
-      const g = gSnap.data();
-      const p = pSnap.data();
-      const now = g.timeSeconds || 0;
-      const last = p.lastDropshipAt || 0;
-
-      // 🔒 60s cooldown per player
-      if (now - (last || 0) < 60){
-        throw new Error("Dropship is still on cooldown.");
-      }
-
-      const srcRef = doc(nodesCol, sourceId);
-      const dstRef = doc(nodesCol, destId);
-      const srcSnap = await tx.get(srcRef);
-      const dstSnap = await tx.get(dstRef);
-      if(!srcSnap.exists() || !dstSnap.exists()) throw new Error("Node missing.");
-
-      const srcNode = srcSnap.data();
-      const dstNode = dstSnap.data();
-
-      // Source must be GREEN (player-controlled)
-      if (srcNode.owner !== "player"){
-        throw new Error("Source must be a green node you control.");
-      }
-      // Destination must be GREEN or ORANGE (contested)
-      if (!(dstNode.owner === "player" || dstNode.owner === "contested")){
-        throw new Error("Destination must be green or contested.");
-      }
-
-      const srcBf = srcNode.battlefield || {
-        width:BATTLE_W, height:BATTLE_H,
-        troops:[], towers:[], aliens:[], spines:[], hitLines:[]
-      };
-      const dstBf = dstNode.battlefield || {
-        width:BATTLE_W, height:BATTLE_H,
-        troops:[], towers:[], aliens:[], spines:[], hitLines:[]
+      const base = latestGame.base || {
+        hp: 0,
+        maxHp: 1,
+        level: 1,
+        incomePerPlayer: 0,
+        upgradeCost: 0
       };
 
-      const troopsToMove = srcBf.troops || [];
-      if (!troopsToMove.length){
-        throw new Error("No friendly troops in the source node.");
+      const hp  = Math.max(0, base.hp  || 0);
+      const max = Math.max(1, base.maxHp || 1);
+      const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+      baseHpFill.style.width = pct + "%";
+
+      baseInfoEl.style.display = "block";
+      baseLevelLabel.textContent       = base.level ?? 1;
+      incomeLabel.textContent          = base.incomePerPlayer ?? 0;
+      baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
+
+      if (latestGame.status === "lost"){
+        log("⚠ Base destroyed. Game over for all players.");
+      } else if (latestGame.status === "won"){
+        log("✅ You survived the full duration! Victory.");
       }
 
-      // Move ALL friendly troops (not towers, not aliens)
-      srcBf.troops = [];
-      dstBf.troops = (dstBf.troops || []).concat(troopsToMove);
+      updateDropshipStatus();
+    }
 
-      tx.update(srcRef, { battlefield: srcBf });
-      tx.update(dstRef, { battlefield: dstBf });
-      tx.update(playerRef, { lastDropshipAt: now });
-    });
-
-    const src = nodesState[sourceId];
-    const dst = nodesState[destId];
-    const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
-    const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
-    log(`🚀 Dropship: moved all troops from ${sLabel} to ${dLabel}.`);
-  }catch(e){
-    log("Dropship failed: " + e.message);
-  }
-}
-
-
+    function applyPlayerUi(){
+      if(!myPlayer) return;
+      const credits = Math.floor(myPlayer.money || 0);
+      moneyLabel.textContent = credits;
+      if(battleMoneyLabel){
+        battleMoneyLabel.textContent = credits;
+      }
+      updateDropshipStatus();
+    }
 
     // ---------------- RENDER BOARD ----------------
     function renderBoard(){
@@ -1207,13 +905,13 @@
             selectedNode = node || null;
             renderBoard();
             renderNodeDetails();
-          
+
             // If we're in dropship target selection, try to send troops
             if (selectingDropshipTarget && dropshipSourceNodeId && node){
               if (key === dropshipSourceNodeId){
                 log("Dropship cancelled.");
               } else if (node.owner === "player" || node.owner === "contested"){
-                attemptDropship(dropshipSourceNodeId, key);
+                requestDropship(dropshipSourceNodeId, key);
               } else {
                 log("Dropship target must be a green or contested node.");
               }
@@ -1222,7 +920,6 @@
               updateDropshipStatus();
             }
           });
-
 
           boardGridEl.appendChild(div);
         }
@@ -1319,1311 +1016,6 @@
       upgradeBaseBtn.disabled = selectedNode.type!=="base";
     }
 
-    // ---------------- HOST ROLE ----------------
-    function syncHostRole(){
-      if(!latestGame || !currentUser) return;
-      const hostUid = latestGame.hostUid;
-      const shouldBeHost = hostUid === currentUser.uid;
-      if(shouldBeHost && !isHost){
-        isHost = true;
-        startHostLoop();
-        log("You are host — running Overlord simulation.");
-      }else if(!shouldBeHost && isHost){
-        isHost = false;
-        stopHostLoop();
-        log("Another player is host now.");
-      }
-    }
-    function startHostLoop(){
-      if(hostTickHandle) clearInterval(hostTickHandle);
-      hostTickHandle = setInterval(()=>hostTick().catch(console.error), 1000);
-    }
-    function stopHostLoop(){
-      if(hostTickHandle){
-        clearInterval(hostTickHandle);
-        hostTickHandle = null;
-      }
-    }
-
-    async function hostTick(){
-      if(!isHost || hostTicking) return;
-      hostTicking = true;
-      try{
-        const gSnap = await getDoc(gameRef);
-        if(!gSnap.exists()) { hostTicking=false; return; }
-        const game = gSnap.data();
-        if(game.status && game.status!=="running"){ hostTicking=false; return; }
-
-        let timeSeconds = (game.timeSeconds || 0) + 1;
-        const updates = { timeSeconds };
-
-        const base = game.base || {hp:0,maxHp:1,level:1,incomePerPlayer:0,upgradeCost:60};
-        if(base.hp <= 0 && game.status!=="lost"){
-          updates.status = "lost";
-          await updateDoc(gameRef, updates);
-          hostTicking=false;
-          return;
-        }
-        if(timeSeconds >= game.winAtSeconds && game.status!=="won"){
-          updates.status = "won";
-        }
-
-        await updateDoc(gameRef, updates);
-        latestGame = {...game,...updates};
-
-        if(timeSeconds % INCOME_INTERVAL === 0){
-          await applyIncomeTick(latestGame);
-        }
-        if(timeSeconds % SPREAD_INTERVAL === 0){
-          await applySpreadTick(latestGame);
-        }
-        if(timeSeconds % ENEMY_BUILD_INTERVAL === 0){
-          await growEnemyForces(latestGame);
-        }
-
-        await simulateBattles(latestGame);
-      }catch(e){
-        console.error("hostTick error", e);
-      }
-      hostTicking=false;
-    }
-
-    // 🔹 How many players are in this game right now?
-async function getPlayerCount(){
-  const playersSnap = await getDocs(collection(gameRef, "players"));
-  return playersSnap.size || 1;
-}
-
-// 🔹 Turn player count into a difficulty factor
-// 1 player → 1.0
-// 2 players → 1.4
-// 3 players → 1.8
-// 4 players → 2.2, etc.
-function getDifficultyFactor(playerCount){
-  return 1 + (playerCount - 1) * 0.4;
-}
-
-
-async function applyIncomeTick(game){
-  const base = game.base || { incomePerPlayer: 0 };
-  const baseIncome = base.incomePerPlayer || 0;
-
-  // 🔹 Track eco usage + which ones run out
-  let ecoCount = 0;
-  const depletedEcoKeys = [];
-  const nodeWritePromises = [];
-
-  for (const key in nodesState) {
-    const node = nodesState[key];
-    if (!node) continue;
-    if (node.type !== "eco") continue;
-
-    // Only drain when players control it
-    if (node.owner === "player") {
-      const currentPool =
-        typeof node.ecoPool === "number" ? node.ecoPool : ECO_NODE_CAPACITY;
-
-      // Count it as “active” for bonus this tick if it still has juice
-      if (currentPool > 0) {
-        ecoCount++;
-      }
-
-      // Drain resources while you hold it
-      const newPool = currentPool - ECO_DRAIN_PER_TICK;
-      node.ecoPool = Math.max(0, newPool);
-
-      // If it just ran dry, convert to a normal node
-      if (newPool <= 0) {
-        node.type = "normal";
-        depletedEcoKeys.push(key);
-      }
-
-      const nodeRef = doc(nodesCol, key);
-      nodeWritePromises.push(
-        setDoc(
-          nodeRef,
-          {
-            type: node.type,
-            ecoPool: node.ecoPool
-          },
-          { merge: true }
-        )
-      );
-    } else {
-      // Eco node not controlled by players yet:
-      // no drain, no bonus until captured.
-      node.ecoPool =
-        typeof node.ecoPool === "number" ? node.ecoPool : ECO_NODE_CAPACITY;
-      const nodeRef = doc(nodesCol, key);
-      nodeWritePromises.push(
-        setDoc(
-          nodeRef,
-          { ecoPool: node.ecoPool },
-          { merge: true }
-        )
-      );
-    }
-  }
-
-  // 💰 Eco bonus this tick
-  const ecoBonus = ecoCount * ECO_BONUS_PER_NODE;
-
-  // 🔹 Pull all players once
-  const playersSnap = await getDocs(collection(gameRef, "players"));
-  const playerCount = playersSnap.size || 1;
-  const difficultyFactor = getDifficultyFactor(playerCount);
-
-  // Base income is what each player would get solo.
-  // We divide a bit as player count goes up so a 4-stack isn’t crazy rich.
-  const rawIncome = baseIncome + ecoBonus;
-  const incomePerPlayer = Math.max(
-    0,
-    Math.round(rawIncome / difficultyFactor)
-  );
-
-  if (incomePerPlayer > 0) {
-    for (const docSnap of playersSnap.docs) {
-      const p = docSnap.data();
-      const extra = p.incomeBonus || 0;
-      const money = (p.money || 0) + incomePerPlayer + extra;
-      nodeWritePromises.push(updateDoc(docSnap.ref, { money }));
-    }
-  }
-
-  // 🔹 Any eco nodes that ran out this tick?
-  if (depletedEcoKeys.length) {
-    // Find candidate alien-controlled nodes to convert into new eco nodes
-    const enemyCandidates = Object.keys(nodesState).filter((k) => {
-      const n = nodesState[k];
-      if (!n) return false;
-      return (
-        n.owner === "enemy" &&
-        n.type !== "base" &&
-        n.type !== "eco"
-      );
-    });
-
-    for (const spentKey of depletedEcoKeys) {
-      if (!enemyCandidates.length) break;
-
-      const idx = Math.floor(Math.random() * enemyCandidates.length);
-      const newKey = enemyCandidates.splice(idx, 1)[0];
-      const newNode = nodesState[newKey];
-      const oldNode = nodesState[spentKey];
-
-      if (!newNode) continue;
-
-      // New alien eco node with fresh pool
-      newNode.type = "eco";
-      newNode.ecoPool = ECO_NODE_CAPACITY;
-
-      const newRef = doc(nodesCol, newKey);
-      nodeWritePromises.push(
-        setDoc(
-          newRef,
-          {
-            type: "eco",
-            ecoPool: ECO_NODE_CAPACITY
-          },
-          { merge: true }
-        )
-      );
-
-      if (oldNode) {
-        log(
-          `💰 Eco node at ${oldNode.row + 1}-${oldNode.col + 1} is exhausted. New rich sector appears in alien territory at ${newNode.row + 1}-${newNode.col + 1}.`
-        );
-      } else {
-        log(
-          "💰 An eco node has been exhausted and relocated to a new alien-controlled sector."
-        );
-      }
-    }
-  }
-
-  if (nodeWritePromises.length) {
-    await Promise.all(nodeWritePromises);
-  }
-}
-
-
-
-    async function applySpreadTick(game){
-      const nodeUpdates = [];
-
-      for(const key in nodesState){
-        const node = nodesState[key];
-        if(!node) continue;
-        if(node.owner === "enemy") continue;
-        const {row,col} = node;
-        const neighbors = neighborsOf(row,col);
-        const hasEnemyNeighbor = neighbors.some(nk=>{
-          const nn = nodesState[nk];
-          return nn && nn.owner === "enemy";
-        });
-        if(!hasEnemyNeighbor) continue;
-
-        let chance = typeof node.spreadChance === "number" ? node.spreadChance : 0.33;
-        const roll = Math.random();
-        const nodeRef = doc(nodesCol, key);
-
-        if(roll < chance){
-          node.spreadChance = 0.33;
-          node.pendingWave = true;
-          nodeUpdates.push(setDoc(nodeRef,{
-            spreadChance:0.33,
-            pendingWave:true
-          },{merge:true}));
-          log(`Alien pressure builds in node ${row+1}-${col+1} — wave incoming.`);
-        }else{
-          chance = Math.min(0.95, chance + 0.15);
-          node.spreadChance = chance;
-          nodeUpdates.push(setDoc(nodeRef,{ spreadChance:chance },{merge:true}));
-        }
-      }
-
-      if(nodeUpdates.length) await Promise.all(nodeUpdates);
-    }
-
-    function spawnSpine(bf, x, y, variant){
-      const v = variant || "piercer";
-      let maxHp = v==="piercer" ? 26 : 20;
-      let dmg = v==="piercer" ? 5 : 1;
-      let poisonTicks = v==="piercer" ? 6 : 2;
-      const range = 3;
-
-      bf.spines = bf.spines || [];
-      bf.spines.push({
-        id:`sp_${Date.now()}_${Math.random().toString(16).slice(2,6)}`,
-        x,y,
-        hp:maxHp,
-        maxHp,
-        range,
-        dmg,
-        poisonTicks,
-        cooldown:0,
-        cooldownMax:3,
-        variant:v
-      });
-    }
-
-    function ensureSpinesForEnemyNode(node,bf){
-      bf.spines = bf.spines || [];
-      if(bf.spines.length>0) return false;
-
-      const mid = Math.floor(BATTLE_H/2);
-      const x = BATTLE_W-3;
-      const positions = [
-        {x, y:mid-2},
-        {x, y:mid},
-        {x, y:mid+2}
-      ].filter(p=>p.y>=1 && p.y<BATTLE_H-1);
-
-      positions.forEach((p,i)=>{
-        const variant = (i===1 ? "shredder" : "piercer");
-        spawnSpine(bf, p.x, p.y, variant);
-      });
-
-      return true;
-    }
-
-   async function growEnemyForces(game){
-  const timeSeconds = game.timeSeconds || 0;
-  const minutes = timeSeconds / 60;
-
-  // 🔹 Difficulty based on how many players we have
-  const playerCount = await getPlayerCount();
-  const difficultyFactor = getDifficultyFactor(playerCount);
-
-  // Base scaling as before, but multiplied by difficulty
-  const maxAliensBase = (4 + Math.floor(minutes * 3)) * difficultyFactor;
-  const maxSpinesBase = (2 + Math.floor(minutes / 4)) * difficultyFactor;
-
-  const batch = [];
-
-  for(const key in nodesState){
-    const node = nodesState[key];
-    if(!node) continue;
-    if(node.owner !== "enemy") continue;
-
-    const bf = node.battlefield || {
-      width:BATTLE_W,
-      height:BATTLE_H,
-      troops:[],
-      towers:[],
-      aliens:[],
-      spines:[],
-      hitLines:[]
-    };
-    bf.aliens = bf.aliens || [];
-    bf.spines = bf.spines || [];
-
-    const maxAliens = Math.min(40, Math.round(maxAliensBase));
-    const maxSpines = Math.min(8,  Math.round(maxSpinesBase));
-
-    let changed = false;
-
-      // ---------- ALIEN SPAWNS (grouped by type) ----------
-    if (bf.aliens.length < maxAliens){
-      const deficit = maxAliens - bf.aliens.length;
-
-      // More players = more enemies per build tick
-      const baseSpawn = 4 + Math.floor(minutes);
-      const spawnCount = Math.min(
-        Math.round(baseSpawn * difficultyFactor),
-        deficit
-      );
-
-      // Pick one "theme" for this spawn tick at this node
-      const primaryType = pickPrimaryAlienType(minutes, /*tier guess*/ minutes >= 10 ? 3 : minutes >= 5 ? 2 : 1);
-      const secondaryType = pickSecondaryAlienType(minutes);
-
-      for (let i = 0; i < spawnCount; i++){
-        const row = 1 + (i % (BATTLE_H - 2));
-        const x = BATTLE_W - 1;
-
-        let typeKey;
-        const r = Math.random();
-
-        // 75–85% primary, rest secondary/variety
-        if (r < 0.8){
-          typeKey = primaryType;
-        } else {
-          if (primaryType === "bug"){
-            typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
-          } else if (primaryType === "spitter"){
-            typeKey = Math.random() < 0.7 ? "bug" : secondaryType;
-          } else if (primaryType === "brute"){
-            typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
-          } else {
-            typeKey = Math.random() < 0.6 ? "brute" : secondaryType;
-          }
-        }
-
-        const def = ENEMIES[typeKey] || ENEMIES.bug;
-        bf.aliens.push({
-          id: "a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          x,
-          y: row,
-          type: typeKey,
-          hp: def.baseHp,
-          maxHp: def.baseHp
-        });
-      }
-      changed = true;
-    }
-
-
-    // ---------- SPINE (TOWER) SPAWNS ----------
-    if(bf.spines.length < maxSpines){
-      const needed = maxSpines - bf.spines.length;
-      for(let i=0;i<needed;i++){
-        const x = BATTLE_W - 3 - (i % 2);
-        const y = 1 + Math.floor(Math.random() * (BATTLE_H-2));
-        const variant = (Math.random() < 0.5 ? "piercer" : "shredder");
-        spawnSpine(bf, x, y, variant);
-      }
-      changed = true;
-    }
-
-    if(changed){
-      const nodeRef = doc(nodesCol,key);
-      batch.push(setDoc(nodeRef,{ battlefield:bf },{merge:true}));
-    }
-  }
-
-  if(batch.length) await Promise.all(batch);
-}
-
-
-    async function simulateBattles(game){
-      const timeSeconds = game.timeSeconds || 0;
-      const batch = [];
-      let baseGeneratorHp = null;
-
-      for(const key in nodesState){
-        const node = nodesState[key];
-        if(!node) continue;
-        let changed = false;
-        const bf = node.battlefield || {
-          width:BATTLE_W, height:BATTLE_H,
-          troops:[], towers:[], aliens:[], spines:[], hitLines:[]
-        };
-
-        bf.hitLines = [];
-
-        if(node.owner === "enemy"){
-          if(ensureSpinesForEnemyNode(node,bf)){
-            changed = true;
-          }
-        }
-
-        if(node.pendingWave){
-          spawnAlienWaveForNode(node, bf, timeSeconds);
-          node.pendingWave = false;
-          changed = true;
-        }
-
-        const hadStuff =
-          (bf.troops && bf.troops.length) ||
-          (bf.towers && bf.towers.length) ||
-          (bf.aliens && bf.aliens.length) ||
-          (bf.spines && bf.spines.length);
-
-        if(hadStuff){
-          const result = simulateBattlefieldStep(node, bf, game);
-          if(result.changed) changed = true;
-        }
-
-        const hasPlayerStuff = (bf.troops && bf.troops.length) || (bf.towers && bf.towers.length);
-        const hasEnemyStuff  = (bf.aliens && bf.aliens.length) || (bf.spines && bf.spines.length);
-        let newOwner;
-        if(hasPlayerStuff && !hasEnemyStuff) newOwner = "player";
-        else if(!hasPlayerStuff && hasEnemyStuff) newOwner = "enemy";
-        else if(hasPlayerStuff && hasEnemyStuff) newOwner = "contested";
-        else newOwner = "neutral";
-
-        if(newOwner !== node.owner){
-          node.owner = newOwner;
-          changed = true;
-        }
-
-        if(node.type === "base"){
-          const gen = (bf.towers || []).find(tw => tw.kind === "generator");
-          if(gen){
-            baseGeneratorHp = gen.hp;
-          }else{
-            baseGeneratorHp = 0;
-          }
-        }
-
-        if(changed){
-          const nodeRef = doc(nodesCol, key);
-          batch.push(setDoc(nodeRef,{
-            owner: node.owner,
-            pendingWave: node.pendingWave || false,
-            battlefield: bf
-          },{merge:true}));
-        }
-      }
-
-      if(batch.length) await Promise.all(batch);
-
-      if(baseGeneratorHp != null){
-        const newHp = Math.max(0, Math.round(baseGeneratorHp));
-        const status = newHp <= 0 ? "lost" : (game.status || "running");
-        await updateDoc(gameRef,{
-          "base.hp": newHp,
-          status
-        });
-        if(newHp <= 0){
-          log("⚠ Generator destroyed. Game over for all players.");
-        }
-      }
-    }
-
-    function pickPrimaryAlienType(minutes, tier){
-  // Tier logic based on game time:
-  // - Early (0–4 min): mostly bugs & a few spitters
-  // - Mid (4–8 min): mostly spitters & some brutes
-  // - Late (8+ min): mostly brutes & occasional behemoths
-
-  if (tier === 1){
-    // Early small waves
-    if (minutes < 2) return "bug";
-    if (minutes < 4) return Math.random() < 0.6 ? "bug" : "spitter";
-    return "spitter";
-  }
-
-  if (tier === 2){
-    // Mid-game waves
-    if (minutes < 6) return "spitter";
-    return Math.random() < 0.6 ? "spitter" : "brute";
-  }
-
-  // tier === 3, late waves
-  if (minutes < 10) return "brute";
-  return Math.random() < 0.6 ? "brute" : "behemoth";
-}
-
-// If we need a "secondary" variety in the group
-function pickSecondaryAlienType(minutes){
-  if (minutes < 3) return "bug";
-  if (minutes < 6) return "spitter";
-  if (minutes < 10) return "brute";
-  return "behemoth";
-}
-
-
-  function spawnAlienWaveForNode(node, bf, game){
-  const aliens = bf.aliens || [];
-  const nowSec = game.timeSeconds || 0;
-  const minutes = nowSec / 60;
-
-  // --- TIER CALC: base it on node + time ---
-  let baseTier =
-    node.alienTier ??
-    node.threatTier ??
-    node.tier ??
-    1;
-
-  // Scale up difficulty as game goes on
-  if (minutes > 8) {
-    baseTier += 3;
-  } else if (minutes > 5) {
-    baseTier += 2;
-  } else if (minutes > 2.5) {
-    baseTier += 1;
-  }
-
-  const tier = Math.max(1, Math.min(5, baseTier));
-
-  // --- GROUP THEME: mostly one type per wave ---
-  // higher tier => more elites & heavies
-  let theme;
-  const r = Math.random();
-  if (tier <= 2) {
-    // Early game: mostly bugs / spitters
-    if (r < 0.6) theme = "bugs";
-    else theme = "spitters";
-  } else if (tier <= 4) {
-    // Mid game: brutes + elite spitters
-    if      (r < 0.35) theme = "bugs";
-    else if (r < 0.7)  theme = "spitters";
-    else               theme = "brutes";
-  } else {
-    // Late game: heavy mixed
-    if      (r < 0.25) theme = "bugs";
-    else if (r < 0.5)  theme = "spitters";
-    else if (r < 0.8)  theme = "brutes";
-    else               theme = "heavies";
-  }
-
-  // Base wave size by tier
-  let baseCount = 4 + tier * 2; // grows with tier
-  // Slight randomness so waves aren’t identical
-  baseCount += Math.floor((Math.random() - 0.5) * 3); // -1..+1
-  baseCount = Math.max(3, baseCount);
-
-  // --- helper to create alien ---
-  function spawnAlien(x, y, type){
-    const def = ENEMIES[type] || ENEMIES.bug;
-    const hp = def.baseHp || 10;
-    aliens.push({
-      id: "alien_" + type + "_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
-      x,
-      y,
-      type,
-      hp,
-      maxHp: hp
-    });
-  }
-
-  // --- decide PRIMARY + SUPPORT types based on theme ---
-  let primaryType = "bug";
-  let supportTypes = [];
-
-  if (theme === "bugs") {
-    primaryType = "bug";
-    supportTypes = ["spitter"];
-  } else if (theme === "spitters") {
-    primaryType = "spitter";
-    supportTypes = ["bug"];
-  } else if (theme === "brutes") {
-    primaryType = "brute";
-    supportTypes = ["bug", "spitter"];
-  } else if (theme === "heavies") {
-    primaryType = "behemoth";
-    supportTypes = ["brute", "spitter"];
-  }
-
-  // --- spawn lane positions (entry columns on right side) ---
-  // We’ll spawn from the right edge-ish, 3 main lanes (top/mid/bot)
-  const entryX = BATTLE_W - 1;
-  const lanes = [
-    Math.floor(BATTLE_H * 0.2),
-    Math.floor(BATTLE_H * 0.5),
-    Math.floor(BATTLE_H * 0.8)
-  ].map(y => Math.max(0, Math.min(BATTLE_H - 1, y)));
-
-  // Distribute enemies across lanes, mostly primaryType
-  for (let i = 0; i < baseCount; i++) {
-    const laneY = lanes[i % lanes.length];
-    const jitterY = laneY + (Math.random() < 0.5 ? 0 : (Math.random() < 0.5 ? 1 : -1));
-    const y = Math.max(0, Math.min(BATTLE_H - 1, jitterY));
-
-    let type = primaryType;
-    // Small chance for support type instead of primary
-    if (supportTypes.length && Math.random() < 0.25) {
-      type = supportTypes[Math.floor(Math.random() * supportTypes.length)];
-    }
-
-    spawnAlien(entryX, y, type);
-  }
-
-  // --- BOSS SPAWN CHANCES (higher tiers only) ---
-  // Tier 3+ can get Hive Queen, Tier 4+ can get Warper
-  let hiveChance = 0;
-  let warpChance = 0;
-
-  if (tier >= 3 && tier <= 4) {
-    hiveChance = 0.18 + 0.04 * (tier - 3);   // ~18–22%
-  } else if (tier >= 5) {
-    hiveChance = 0.28;                       // ~28% in late game
-    warpChance = 0.22;                       // Warper starts showing up
-  }
-
-  // Slight extra scaling with time
-  hiveChance += Math.min(0.12, minutes * 0.01); // +1% per minute up to +12%
-  warpChance += Math.min(0.10, Math.max(0, minutes - 6) * 0.01); // after 6min
-
-  function findBossLaneY(){
-    // Prefer middle lane if available
-    return lanes[1] ?? lanes[0] ?? Math.floor(BATTLE_H / 2);
-  }
-
-  // 🐝 Hive Queen boss
-  if (hiveChance > 0 && Math.random() < hiveChance) {
-    const bossY = findBossLaneY();
-    const bossX = BATTLE_W - 2;
-    spawnAlien(bossX, bossY, "hiveQueen");
-  }
-
-  // 🌀 Warper boss
-  if (warpChance > 0 && Math.random() < warpChance) {
-    const bossY = findBossLaneY();
-    const bossX = BATTLE_W - 3;
-    spawnAlien(bossX, bossY, "warper");
-  }
-
-  bf.aliens = aliens;
-}
-
-
-// Bonus damage vs specific alien types for specific troops
-function troopVsAlienMultiplier(troopKind, alienType){
-  // Bugs take higher damage from Rifleman + Bombers
-  if ((troopKind === "rifle" || troopKind === "bomber") && alienType === "bug") {
-    return 1.75; // +75% damage
-  }
-
-  // Spitters take high damage from Phase Blades
-  if (troopKind === "phase" && alienType === "spitter") {
-    return 1.75;
-  }
-
-  // Brutes take high damage from Ion Snipers
-  if (troopKind === "sniper" && alienType === "brute") {
-    return 1.75;
-  }
-
-  // Behemoths are extra weak to Ion Snipers
-  if (troopKind === "sniper" && alienType === "behemoth") {
-    return 2.0; // double damage
-  }
-
-  return 1;
-}
-
-    function addHitLine(bf, kind, x1,y1,x2,y2){
-      bf.hitLines = bf.hitLines || [];
-      bf.hitLines.push({kind, x1,y1,x2,y2});
-    }
-
-    function simulateBattlefieldStep(node, bf, game){
-  const aliens = bf.aliens || [];
-  const troops = bf.troops || [];
-  const towers = bf.towers || [];
-  const spines = bf.spines || [];
-  let changed = false;
-
-  // --- Is there anything of the player on this battlefield? ---
-  const hasPlayerUnits =
-    troops.some(t => t.hp > 0) ||
-    towers.some(tw => tw.hp > 0);
-
-  // Track alien positions so they don't clump on the same tile while moving
-  const occupiedAlienPositions = new Set();
-  for (const a of aliens) {
-    if (a.hp > 0) {
-      occupiedAlienPositions.add(`${a.x}_${a.y}`);
-    }
-  }
-
-  function inBounds(x, y) {
-    return x >= 0 && x < BATTLE_W && y >= 0 && y < BATTLE_H;
-  }
-  function manhattan(x1, y1, x2, y2) {
-    return Math.abs(x1 - x2) + Math.abs(y1 - y2);
-  }
-
-  function isOccupiedTile(x, y) {
-    if (!inBounds(x, y)) return true;
-    for (const t of troops)  if (t.hp > 0 && t.x === x && t.y === y) return true;
-    for (const tw of towers) if (tw.hp > 0 && tw.x === x && tw.y === y) return true;
-    for (const a of aliens)  if (a.hp > 0 && a.x === x && a.y === y) return true;
-    for (const s of spines)  if (s.hp > 0 && s.x === x && s.y === y) return true;
-    return false;
-  }
-
-  // --- POISON TICK ON TROOPS ---
-  for (const t of troops) {
-    if (t.poisonTicks && t.poisonTicks > 0) {
-      t.hp -= 1;
-      t.poisonTicks--;
-      changed = true;
-    }
-  }
-
-  // --- BUFF / SHIELD MAPS ---
-  const damageBuffMap = {};
-  const shieldMap = {};
-  const entityById = {};
-
-  for (const t of troops) { entityById[t.id] = t; }
-  for (const tw of towers) { entityById[tw.id] = tw; }
-
-  // Signal towers buff damage
-  for (const tw of towers) {
-    if (tw.kind !== "signal") continue;
-    const def = TOWERS.signal;
-    const buffRadius = def.range || 2;
-    for (const id in entityById) {
-      const e = entityById[id];
-      const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
-      if (dist <= buffRadius) {
-        damageBuffMap[id] = (damageBuffMap[id] || 1) * 1.25;
-      }
-    }
-  }
-
-  // Sergeants buff troop damage
-  for (const t of troops) {
-    if (t.kind !== "sergeant") continue;
-    const radius = TROOPS.sergeant.range || 2;
-    for (const tt of troops) {
-      const dist = Math.abs(tt.x - t.x) + Math.abs(tt.y - t.y);
-      if (dist <= radius) {
-        damageBuffMap[tt.id] = (damageBuffMap[tt.id] || 1) * 1.15;
-      }
-    }
-  }
-
-  // Shield towers reduce damage taken
-  for (const tw of towers) {
-    if (tw.kind !== "shield") continue;
-    const radius = TOWERS.shield.range || 2;
-    for (const id in entityById) {
-      const e = entityById[id];
-      const dist = Math.abs(e.x - tw.x) + Math.abs(e.y - tw.y);
-      if (dist <= radius) {
-        shieldMap[id] = (shieldMap[id] || 1) * 0.65;
-      }
-    }
-  }
-
-  // ========= HELPERS FOR MOVEMENT / TARGETING =========
-  function nearestPlayerEntity(x, y) {
-    // "Player side" = troops + towers (includes generator)
-    let best = null;
-    let bestD = Infinity;
-
-    for (const t of troops) {
-      if (t.hp <= 0) continue;
-      const d = Math.abs(t.x - x) + Math.abs(t.y - y);
-      if (d < bestD) { best = t; bestD = d; }
-    }
-    for (const tw of towers) {
-      if (tw.hp <= 0) continue;
-      const d = Math.abs(tw.x - x) + Math.abs(tw.y - y);
-      if (d < bestD) { best = tw; bestD = d; }
-    }
-    return best ? { x: best.x, y: best.y, ent: best, dist: bestD } : null;
-  }
-
-  function nearestAlienEntity(x, y) {
-    // "Alien side" = aliens + spines
-    let best = null;
-    let bestD = Infinity;
-
-    for (const a of aliens) {
-      if (a.hp <= 0) continue;
-      const d = Math.abs(a.x - x) + Math.abs(a.y - y);
-      if (d < bestD) { best = a; bestD = d; }
-    }
-    for (const s of spines) {
-      if (s.hp <= 0) continue;
-      const d = Math.abs(s.x - x) + Math.abs(s.y - y);
-      if (d < bestD) { best = s; bestD = d; }
-    }
-    return best ? { x: best.x, y: best.y, ent: best, dist: bestD } : null;
-  }
-
-  function stepTowards(x1, y1, x2, y2) {
-    // Take a single grid step that reduces Manhattan distance
-    const dx = Math.sign(x2 - x1);
-    const dy = Math.sign(y2 - y1);
-
-    const candidates = [];
-    // Prefer moving along the axis with bigger gap
-    if (Math.abs(x2 - x1) >= Math.abs(y2 - y1)) {
-      if (dx !== 0) candidates.push({ x: x1 + dx, y: y1 });
-      if (dy !== 0) candidates.push({ x: x1, y: y1 + dy });
-    } else {
-      if (dy !== 0) candidates.push({ x: x1, y: y1 + dy });
-      if (dx !== 0) candidates.push({ x: x1 + dx, y: y1 });
-    }
-
-    for (const c of candidates) {
-      if (inBounds(c.x, c.y)) return c;
-    }
-    return null;
-  }
-
-  // ========= TROOP MOVEMENT (stop when in attack range) =========
-  for (const t of troops) {
-    if (t.hp <= 0) continue;
-
-    const def = TROOPS[t.kind] || TROOPS.rifle;
-    const attackRange = def.range || 1;   // sniper = 5, rifle = 3, etc.
-
-    const targetInfo = nearestAlienEntity(t.x, t.y);
-    if (!targetInfo) continue;
-
-    // Already in range for this troop? Hold position and fire instead of walking in.
-    if (targetInfo.dist <= attackRange) continue;
-
-    const step = stepTowards(t.x, t.y, targetInfo.x, targetInfo.y);
-    if (step) {
-      t.x = step.x;
-      t.y = step.y;
-      changed = true;
-    }
-  }
-
-  // ========= ALIEN MOVEMENT (stop when in own attack range) =========
-  for (const a of aliens) {
-    if (a.hp <= 0) continue;
-
-    const def = ENEMIES[a.type] || ENEMIES.bug;
-    const attackRange = def.range || 1;   // spitter = 3, others = 1
-
-    // Free up this tile while we decide where to go
-    occupiedAlienPositions.delete(`${a.x}_${a.y}`);
-
-    let targetX = a.x;
-    let targetY = a.y;
-    let haveMoveTarget = false;
-
-    const info = nearestPlayerEntity(a.x, a.y);
-
-    if (hasPlayerUnits && info) {
-      // If we're already in our attack range, don't move — just shoot/bonk.
-      if (info.dist > attackRange) {
-        targetX = info.x;
-        targetY = info.y;
-        haveMoveTarget = true;
-      } else {
-        haveMoveTarget = false; // in range, stand and attack
-      }
-    } else if (!hasPlayerUnits) {
-      // No troops/towers on your side:
-      // send aliens back toward their right-side staging line
-      const homeX = BATTLE_W - 3; // a line near the right edge
-      targetX = homeX;
-      targetY = Math.min(BATTLE_H - 2, Math.max(1, a.y));
-      haveMoveTarget = (a.x !== targetX);
-    }
-
-    let moved = false;
-
-    if (haveMoveTarget) {
-      // Primary step towards target
-      const step = stepTowards(a.x, a.y, targetX, targetY);
-      if (step && inBounds(step.x, step.y)) {
-        const key = `${step.x}_${step.y}`;
-        if (!occupiedAlienPositions.has(key)) {
-          a.x = step.x;
-          a.y = step.y;
-          occupiedAlienPositions.add(key);
-          changed = true;
-          moved = true;
-        }
-      }
-
-      // If our ideal step is blocked by another alien, try nearby tiles to spread out
-      if (!moved) {
-        const candidates = [
-          { x: a.x,     y: a.y - 1 },
-          { x: a.x,     y: a.y + 1 },
-          { x: a.x - 1, y: a.y     },
-          { x: a.x + 1, y: a.y     }
-        ]
-          .filter(p => inBounds(p.x, p.y))
-          .sort((p, q) =>
-            manhattan(p.x, p.y, targetX, targetY) -
-            manhattan(q.x, q.y, targetX, targetY)
-          );
-
-        for (const c of candidates) {
-          const k2 = `${c.x}_${c.y}`;
-          if (!occupiedAlienPositions.has(k2)) {
-            a.x = c.x;
-            a.y = c.y;
-            occupiedAlienPositions.add(k2);
-            changed = true;
-            moved = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // If we didn’t move at all, keep our old tile reserved
-    if (!moved) {
-      occupiedAlienPositions.add(`${a.x}_${a.y}`);
-    }
-  }
-
-  // ========= BOSS ABILITIES =========
-  for (const a of aliens) {
-    if (a.hp <= 0) continue;
-    const def = ENEMIES[a.type] || ENEMIES.bug;
-    if (!def.isBoss) continue;
-
-    // Tick down boss cooldowns
-    a.summonCooldown = (a.summonCooldown || 0) - 1;
-    a.warpCooldown   = (a.warpCooldown   || 0) - 1;
-
-    // 🐝 Hive Queen — summons bugs near herself when troops are present
-    if (a.type === "hiveQueen") {
-      if (a.summonCooldown <= 0 && troops.some(t => t.hp > 0)) {
-        const dirs = [
-          [1,0],[-1,0],[0,1],[0,-1],
-          [1,1],[1,-1],[-1,1],[-1,-1]
-        ];
-        let spawned = 0;
-        for (const [dx,dy] of dirs) {
-          if (spawned >= 3) break;
-          const sx = a.x + dx;
-          const sy = a.y + dy;
-          if (!inBounds(sx,sy)) continue;
-          if (isOccupiedTile(sx,sy)) continue;
-
-          const bugDef = ENEMIES.bug;
-          aliens.push({
-            id: "boss_bug_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
-            x: sx,
-            y: sy,
-            type: "bug",
-            hp: bugDef.baseHp,
-            maxHp: bugDef.baseHp
-          });
-          spawned++;
-          changed = true;
-        }
-        if (spawned > 0) {
-          a.summonCooldown = 6; // boss can summon every ~6 sim ticks
-        }
-      }
-    }
-
-    // 🌀 Warper — teleports next to your towers
-    if (a.type === "warper") {
-      if (a.warpCooldown <= 0 && towers.some(tw => tw.hp > 0)) {
-        // Jump near the nearest tower
-        let bestTower = null, bestD = Infinity;
-        for (const tw of towers) {
-          if (tw.hp <= 0) continue;
-          const d = manhattan(a.x, a.y, tw.x, tw.y);
-          if (d < bestD) { bestD = d; bestTower = tw; }
-        }
-        if (bestTower) {
-          const dirs = [
-            [1,0],[-1,0],[0,1],[0,-1],
-            [1,1],[1,-1],[-1,1],[-1,-1]
-          ];
-          let dest = null;
-          for (const [dx,dy] of dirs) {
-            const tx = bestTower.x + dx;
-            const ty = bestTower.y + dy;
-            if (!inBounds(tx,ty)) continue;
-            if (isOccupiedTile(tx,ty)) continue;
-            dest = {x:tx, y:ty};
-            break;
-          }
-          if (dest) {
-            a.x = dest.x;
-            a.y = dest.y;
-            a.warpCooldown = 8; // warp every ~8 sim ticks
-            changed = true;
-          }
-        }
-      }
-    }
-  }
-
-  // ========= RANGED TARGETING FOR TROOPS/TOWERS =========
-  function nearestEnemyFrom(x, y, range) {
-    let best = null, bestD = 999, bestType = null;
-    for (const a of aliens) {
-      if (a.hp <= 0) continue;
-      const d = Math.abs(a.x - x) + Math.abs(a.y - y);
-      if (d <= range && d < bestD) {
-        best = a; bestD = d; bestType = "alien";
-      }
-    }
-    for (const s of spines) {
-      if (s.hp <= 0) continue;
-      const d = Math.abs(s.x - x) + Math.abs(s.y - y);
-      if (d <= range && d < bestD) {
-        best = s; bestD = d; bestType = "spine";
-      }
-    }
-    return best ? { type: bestType, enemy: best } : null;
-  }
-
-  // --- TROOP ACTIONS (heal / shoot) ---
-  for (const t of troops) {
-    if (t.hp <= 0) continue;
-    const def = TROOPS[t.kind] || TROOPS.rifle;
-
-    // Medics still heal like before
-    if (t.kind === "medic") {
-      let best = null, bestPct = 1.1;
-      for (const ally of troops) {
-        if (ally.hp <= 0) continue;
-        const d = Math.abs(ally.x - t.x) + Math.abs(ally.y - t.y);
-        if (d <= (def.range || 2)) {
-          const pct = ally.hp / ally.maxHp;
-          if (pct < bestPct) {
-            bestPct = pct;
-            best = ally;
-          }
-        }
-      }
-      if (best && best.hp < best.maxHp) {
-        best.hp = Math.min(best.maxHp, best.hp + (def.heal || 3));
-        changed = true;
-      }
-    } else {
-      const range = def.range || 2;
-      const targetInfo = nearestEnemyFrom(t.x, t.y, range);
-      if (targetInfo) {
-        let dmg = def.dmg || 2;
-        const buff = damageBuffMap[t.id] || 1;
-        dmg = Math.round(dmg * buff);
-
-        if (def.splash) {
-          const tx = targetInfo.enemy.x;
-          const ty = targetInfo.enemy.y;
-          addHitLine(bf, "player", t.x, t.y, tx, ty);
-
-          // Splash vs aliens: apply per-target multiplier
-          for (const a of aliens) {
-            const d = Math.abs(a.x - tx) + Math.abs(a.y - ty);
-            if (d <= 1) {
-              const mult = troopVsAlienMultiplier(t.kind, a.type || "bug");
-              const finalDmg = Math.round(dmg * mult);
-              a.hp -= finalDmg;
-              changed = true;
-            }
-          }
-          // Splash vs spines: no special multiplier, they’re not "bugs"
-          for (const s of spines) {
-            const d = Math.abs(s.x - tx) + Math.abs(s.y - ty);
-            if (d <= 1) {
-              s.hp -= dmg;
-              changed = true;
-            }
-          }
-        } else {
-          // Single-target shot
-          let finalDmg = dmg;
-
-          if (targetInfo.type === "alien") {
-            const alienType = targetInfo.enemy.type || "bug";
-            const mult = troopVsAlienMultiplier(t.kind, alienType);
-            finalDmg = Math.round(dmg * mult);
-          }
-
-          addHitLine(bf, "player", t.x, t.y, targetInfo.enemy.x, targetInfo.enemy.y);
-          targetInfo.enemy.hp -= finalDmg;
-          changed = true;
-        }
-      }
-    }
-  }
-
-  // --- TOWER ATTACKS ---
-  for (const tw of towers) {
-    if (tw.kind === "generator") continue; // generator doesn't attack
-    const def = TOWERS[tw.kind] || TOWERS.laser;
-    if (def.shield || def.buff) continue;
-
-    const range = def.range || 3;
-    const targetInfo = nearestEnemyFrom(tw.x, tw.y, range);
-    if (!targetInfo) continue;
-
-    let dmg = def.dmg || 2;
-    const buff = damageBuffMap[tw.id] || 1;
-    dmg = Math.round(dmg * buff);
-
-    if (def.chain) {
-      const tx = targetInfo.enemy.x;
-      const ty = targetInfo.enemy.y;
-      const chainTargets = [];
-      for (const a of aliens) {
-        if (a.hp <= 0) continue;
-        const d = Math.abs(a.x - tx) + Math.abs(a.y - ty);
-        if (d <= 1) chainTargets.push({ type: "alien", ref: a });
-      }
-      for (const s of spines) {
-        if (s.hp <= 0) continue;
-        const d = Math.abs(s.x - tx) + Math.abs(s.y - ty);
-        if (d <= 1) chainTargets.push({ type: "spine", ref: s });
-      }
-      if (chainTargets.length === 0) {
-        chainTargets.push({ type: targetInfo.type, ref: targetInfo.enemy });
-      }
-      chainTargets.slice(0, 3).forEach(tObj => {
-        addHitLine(bf, "player", tw.x, tw.y, tObj.ref.x, tObj.ref.y);
-        tObj.ref.hp -= dmg;
-      });
-      changed = true;
-    } else {
-      addHitLine(bf, "player", tw.x, tw.y, targetInfo.enemy.x, targetInfo.enemy.y);
-      targetInfo.enemy.hp -= dmg;
-      changed = true;
-    }
-  }
-
-  // --- SPINE ATTACKS (enemy towers) ---
-  for (const s of spines) {
-    if (s.hp <= 0) continue;
-    s.cooldown = (s.cooldown || 0) - 1;
-    if (s.cooldown > 0) continue;
-
-    const range = s.range || 3;
-    const variant = s.variant || "piercer";
-
-    const inRangeTroops = [];
-    const inRangeTowers = [];
-    for (const t of troops) {
-      if (t.hp <= 0) continue;
-      const d = Math.abs(t.x - s.x) + Math.abs(t.y - s.y);
-      if (d <= range) inRangeTroops.push(t);
-    }
-    for (const tw of towers) {
-      if (tw.hp <= 0) continue;
-      const d = Math.abs(tw.x - s.x) + Math.abs(tw.y - s.y);
-      if (d <= range) inRangeTowers.push(tw);
-    }
-
-    if (variant === "shredder") {
-      let swung = false;
-      const dmgLow = s.dmg || 1;
-      for (const t of inRangeTroops) {
-        let finalDmg = dmgLow;
-        const shield = shieldMap[t.id] || 1;
-        finalDmg = Math.max(1, Math.round(finalDmg * shield));
-        t.hp -= finalDmg;
-        addHitLine(bf, "enemy", s.x, s.y, t.x, t.y);
-        swung = true;
-      }
-      for (const tw of inRangeTowers) {
-        let finalDmg = dmgLow;
-        const shield = shieldMap[tw.id] || 1;
-        finalDmg = Math.max(1, Math.round(finalDmg * shield));
-        tw.hp -= finalDmg;
-        addHitLine(bf, "enemy", s.x, s.y, tw.x, tw.y);
-        swung = true;
-      }
-      if (swung) {
-        s.cooldown = s.cooldownMax || 3;
-        changed = true;
-      }
-    } else {
-      let best = null, bestD = 999, bestType = null;
-      for (const t of inRangeTroops) {
-        const d = Math.abs(t.x - s.x) + Math.abs(t.y - t.y);
-        if (d < bestD) { best = t; bestD = d; bestType = "troop"; }
-      }
-      for (const tw of inRangeTowers) {
-        const d = Math.abs(tw.x - s.x) + Math.abs(tw.y - s.y);
-        if (d < bestD) { best = tw; bestD = d; bestType = "tower"; }
-      }
-      if (best) {
-        let finalDmg = s.dmg || 3;
-        const shield = shieldMap[best.id] || 1;
-        finalDmg = Math.max(1, Math.round(finalDmg * shield));
-        best.hp -= finalDmg;
-        if (bestType === "troop") {
-          best.poisonTicks = Math.max(best.poisonTicks || 0, s.poisonTicks || 5);
-        }
-        addHitLine(bf, "enemy", s.x, s.y, best.x, best.y);
-        s.cooldown = s.cooldownMax || 3;
-        changed = true;
-      }
-    }
-  }
-
-  // --- ALIEN ATTACKS (use enemy range for melee/ranged) ---
-  for (const a of aliens) {
-    if (a.hp <= 0) continue;
-    const def = ENEMIES[a.type] || ENEMIES.bug;
-    const dmg = def.dmg || 2;
-    const attackRange = def.range || 1;
-
-    let bestEntity = null, bestD = attackRange + 1, bestType = null;
-
-    for (const t of troops) {
-      if (t.hp <= 0) continue;
-      const d = Math.abs(t.x - a.x) + Math.abs(t.y - a.y);
-      if (d <= attackRange && d < bestD) {
-        bestEntity = t;
-        bestD = d;
-        bestType = "troop";
-      }
-    }
-    for (const tw of towers) {
-      if (tw.hp <= 0) continue;
-      const d = Math.abs(tw.x - a.x) + Math.abs(tw.y - a.y);
-      if (d <= attackRange && d < bestD) {
-        bestEntity = tw;
-        bestD = d;
-        bestType = "tower";
-      }
-    }
-
-    if (bestEntity) {
-      const shield = shieldMap[bestEntity.id] || 1;
-      let finalDmg = Math.max(1, Math.round(dmg * shield));
-      bestEntity.hp -= finalDmg;
-      addHitLine(bf, "enemy", a.x, a.y, bestEntity.x, bestEntity.y);
-      changed = true;
-    }
-  }
-
-  // --- CLEANUP DEATHS ---
-  for (const a of aliens) { if (a.hp <= 0) a.dead = true; }
-  bf.aliens = aliens.filter(a => !a.dead);
-
-  for (const s of spines) { if (s.hp <= 0) s.dead = true; }
-  bf.spines = spines.filter(s => !s.dead);
-
-  for (const t of troops) { if (t.hp <= 0) t.dead = true; }
-  bf.troops = troops.filter(t => !t.dead);
-
-  for (const tw of towers) { if (tw.hp <= 0) tw.dead = true; }
-  bf.towers = towers.filter(tw => !tw.dead);
-
-  return { changed };
-}
-
-
-
-
     // ---------------- BATTLE UI ----------------
     function buildBattleBars(){
       troopBarEl.innerHTML = "";
@@ -2668,20 +1060,18 @@ function troopVsAlienMultiplier(troopKind, alienType){
       renderBoard();
       renderNodeDetails();
 
-      if(battleUnsub) battleUnsub();
-      const nodeRef = doc(nodesCol, nodeId);
-      battleUnsub = onSnapshot(nodeRef,(snap)=>{
-        if(!snap.exists()) return;
-        const node = snap.data();
-        nodesState[nodeId] = node;
-        renderBattlefield(node);
-      });
-
       buildBattleBars();
       const {row,col} = parseKey(nodeId);
-      battleNodeLabel.textContent = (selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node") + ` ${row+1}-${col+1}`;
+      battleNodeLabel.textContent =
+        (selectedNode.type==="base" ? "Base Node" :
+         selectedNode.type==="eco" ? "Eco Node" : "Node") +
+        ` ${row+1}-${col+1}`;
       updateBattleOwnerTag(selectedNode);
       battleOverlay.style.display = "flex";
+
+      if(socket && socket.connected){
+        socket.emit("overlord:watchNode", { gameId, nodeId });
+      }
     }
 
     function updateBattleOwnerTag(node){
@@ -2697,152 +1087,150 @@ function troopVsAlienMultiplier(troopKind, alienType){
       else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
     }
 
-   function renderBattlefield(node){
-  const bf = node.battlefield || {
-    width:BATTLE_W,
-    height:BATTLE_H,
-    troops:[],
-    towers:[],
-    aliens:[],
-    spines:[],
-    hitLines:[]
-  };
-  battleGridEl.innerHTML = "";
-  const troops = bf.troops || [];
-  const towers = bf.towers || [];
-  const aliens = bf.aliens || [];
-  const spines = bf.spines || [];
+    function renderBattlefield(node){
+      const bf = node.battlefield || {
+        width:BATTLE_W,
+        height:BATTLE_H,
+        troops:[],
+        towers:[],
+        aliens:[],
+        spines:[],
+        hitLines:[]
+      };
+      battleGridEl.innerHTML = "";
+      const troops = bf.troops || [];
+      const towers = bf.towers || [];
+      const aliens = bf.aliens || [];
+      const spines = bf.spines || [];
 
-  function getCellContents(x,y){
-    const res = {troop:null,tower:null,alien:null,spine:null};
-    res.troop = troops.find(t=>t.x===x && t.y===y) || null;
-    res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
-    res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
-    res.spine = spines.find(s=>s.x===x && s.y===y) || null;
-    return res;
-  }
+      function getCellContents(x,y){
+        const res = {troop:null,tower:null,alien:null,spine:null};
+        res.troop = troops.find(t=>t.x===x && t.y===y) || null;
+        res.tower = towers.find(tw=>tw.x===x && tw.y===y) || null;
+        res.alien = aliens.find(a=>a.x===x && a.y===y) || null;
+        res.spine = spines.find(s=>s.x===x && s.y===y) || null;
+        return res;
+      }
 
-  for(let y=0;y<BATTLE_H;y++){
-    for(let x=0;x<BATTLE_W;x++){
-      const cell = document.createElement("div");
-      cell.className = "battle-cell";
-      cell.dataset.x = x;
-      cell.dataset.y = y;
+      for(let y=0;y<BATTLE_H;y++){
+        for(let x=0;x<BATTLE_W;x++){
+          const cell = document.createElement("div");
+          cell.className = "battle-cell";
+          cell.dataset.x = x;
+          cell.dataset.y = y;
 
-      if(x<=2) cell.classList.add("battle-cell-bg-player");
-      else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
-      else cell.classList.add("battle-cell-bg-frontline");
+          if(x<=2) cell.classList.add("battle-cell-bg-player");
+          else if(x>=BATTLE_W-3) cell.classList.add("battle-cell-bg-enemy");
+          else cell.classList.add("battle-cell-bg-frontline");
 
-      const {troop,tower,alien,spine} = getCellContents(x,y);
-      let emoji = "";
-      let hp = null, maxHp = null;
+          const {troop,tower,alien,spine} = getCellContents(x,y);
+          let emoji = "";
+          let hp = null, maxHp = null;
 
-      if(spine){
-        emoji = "🌵";
-        hp = spine.hp;
-        maxHp = spine.maxHp;
-      }else if(tower){
-        if(tower.kind === "generator"){
-          emoji = "🔋";
-        }else{
-          const def = TOWERS[tower.kind] || TOWERS.laser;
-          emoji = def.emoji;
+          if(spine){
+            emoji = "🌵";
+            hp = spine.hp;
+            maxHp = spine.maxHp;
+          }else if(tower){
+            if(tower.kind === "generator"){
+              emoji = "🔋";
+            }else{
+              const def = TOWERS[tower.kind] || TOWERS.laser;
+              emoji = def.emoji;
+            }
+            hp = tower.hp;
+            maxHp = tower.maxHp;
+          }else if(troop){
+            const def = TROOPS[troop.kind] || TROOPS.rifle;
+            emoji = def.emoji;
+            hp = troop.hp;
+            maxHp = troop.maxHp;
+          }
+          if(alien){
+            const def = ENEMIES[alien.type] || ENEMIES.bug;
+            emoji = def.emoji;
+            hp = alien.hp;
+            maxHp = alien.maxHp;
+          }
+
+          if(emoji){
+            cell.textContent = emoji;
+          }
+
+          if(hp != null && maxHp != null){
+            const bar = document.createElement("div");
+            bar.className = "hp-bar-mini";
+            const fill = document.createElement("div");
+            fill.className = "hp-bar-mini-fill";
+            const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
+            fill.style.width = pct + "%";
+            bar.appendChild(fill);
+            cell.appendChild(bar);
+          }
+
+          cell.addEventListener("click",()=>{
+            onBattleCellClick(x,y,node);
+          });
+
+          battleGridEl.appendChild(cell);
         }
-        hp = tower.hp;
-        maxHp = tower.maxHp;
-      }else if(troop){
-        const def = TROOPS[troop.kind] || TROOPS.rifle;
-        emoji = def.emoji;
-        hp = troop.hp;
-        maxHp = troop.maxHp;
-      }
-      if(alien){
-        const def = ENEMIES[alien.type] || ENEMIES.bug;
-        emoji = def.emoji;
-        hp = alien.hp;
-        maxHp = alien.maxHp;
       }
 
-      if(emoji){
-        cell.textContent = emoji;
+      const wrap = battleGridEl.parentElement;
+      if(wrap){
+        wrap.querySelectorAll(".hitline-layer").forEach(el=>el.remove());
+
+        const layer = document.createElement("div");
+        layer.className = "hitline-layer";
+
+        const wrapRect = wrap.getBoundingClientRect();
+        const centerCache = {};
+
+        function getCellCenter(x,y){
+          const key = x+"_"+y;
+          if(centerCache[key]) return centerCache[key];
+
+          const cell = battleGridEl.querySelector(`.battle-cell[data-x="${x}"][data-y="${y}"]`);
+          if(!cell){
+            centerCache[key] = null;
+            return null;
+          }
+          const r = cell.getBoundingClientRect();
+          const cx = r.left + r.width/2 - wrapRect.left;
+          const cy = r.top + r.height/2 - wrapRect.top;
+          const center = {x:cx, y:cy};
+          centerCache[key] = center;
+          return center;
+        }
+
+        const lines = bf.hitLines || [];
+        for(const l of lines){
+          const p1 = getCellCenter(l.x1,l.y1);
+          const p2 = getCellCenter(l.x2,l.y2);
+          if(!p1 || !p2) continue;
+
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+          const angle = Math.atan2(dy,dx) * 180 / Math.PI;
+
+          const lineEl = document.createElement("div");
+          lineEl.className = "hitline " + (l.kind==="enemy" ? "enemy" : "player");
+          lineEl.style.left = p1.x + "px";
+          lineEl.style.top = p1.y + "px";
+          lineEl.style.width = dist + "px";
+          lineEl.style.transform = `translate(0,-50%) rotate(${angle}deg)`;
+
+          layer.appendChild(lineEl);
+        }
+
+        wrap.appendChild(layer);
       }
 
-      if(hp != null && maxHp != null){
-        const bar = document.createElement("div");
-        bar.className = "hp-bar-mini";
-        const fill = document.createElement("div");
-        fill.className = "hp-bar-mini-fill";
-        const pct = Math.max(0, Math.min(100, (hp/maxHp)*100));
-        fill.style.width = pct + "%";
-        bar.appendChild(fill);
-        cell.appendChild(bar);
-      }
-
-      cell.addEventListener("click",()=>{
-        onBattleCellClick(x,y,node);
-      });
-
-      battleGridEl.appendChild(cell);
-    }
-  }
-
-  const wrap = battleGridEl.parentElement;
-  if(wrap){
-    // Remove old hitline layers
-    wrap.querySelectorAll(".hitline-layer").forEach(el=>el.remove());
-
-    const layer = document.createElement("div");
-    layer.className = "hitline-layer";
-
-    // We'll use actual pixel centers of cells to draw lines
-    const wrapRect = wrap.getBoundingClientRect();
-    const centerCache = {};
-
-    function getCellCenter(x,y){
-      const key = x+"_"+y;
-      if(centerCache[key]) return centerCache[key];
-
-      const cell = battleGridEl.querySelector(`.battle-cell[data-x="${x}"][data-y="${y}"]`);
-      if(!cell){
-        centerCache[key] = null;
-        return null;
-      }
-      const r = cell.getBoundingClientRect();
-      const cx = r.left + r.width/2 - wrapRect.left;
-      const cy = r.top + r.height/2 - wrapRect.top;
-      const center = {x:cx, y:cy};
-      centerCache[key] = center;
-      return center;
+      updateBattleOwnerTag(node);
     }
 
-    const lines = bf.hitLines || [];
-    for(const l of lines){
-      const p1 = getCellCenter(l.x1,l.y1);
-      const p2 = getCellCenter(l.x2,l.y2);
-      if(!p1 || !p2) continue;
-
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-      const angle = Math.atan2(dy,dx) * 180 / Math.PI;
-
-      const lineEl = document.createElement("div");
-      lineEl.className = "hitline " + (l.kind==="enemy" ? "enemy" : "player");
-      lineEl.style.left = p1.x + "px";
-      lineEl.style.top = p1.y + "px";
-      lineEl.style.width = dist + "px";
-      lineEl.style.transform = `translate(0,-50%) rotate(${angle}deg)`;
-
-      layer.appendChild(lineEl);
-    }
-
-    wrap.appendChild(layer);
-  }
-
-  updateBattleOwnerTag(node);
-}
-
-    async function onBattleCellClick(x, y, node) {
+    function onBattleCellClick(x, y, node) {
       if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
         log("You can only build in nodes you control or adjacent to your territory.");
         return;
@@ -2861,6 +1249,10 @@ function troopVsAlienMultiplier(troopKind, alienType){
         log("Player auth not ready yet.");
         return;
       }
+      if (!socket || !socket.connected){
+        log("Not connected to server.");
+        return;
+      }
 
       const def =
         currentBuild.category === "troop"
@@ -2872,78 +1264,129 @@ function troopVsAlienMultiplier(troopKind, alienType){
         return;
       }
 
-      const cost = def.cost;
+      const payload = {
+        gameId,
+        nodeId: selectedNodeId,
+        x,
+        y,
+        category: currentBuild.category,
+        kind: currentBuild.type
+      };
 
-      try {
-        await runTransaction(db, async (tx) => {
-          const thisPlayerRef = doc(gameRef, "players", currentUser.uid);
-          const pSnap = await tx.get(thisPlayerRef);
-          if (!pSnap.exists()) throw new Error("Player missing.");
-          const p = pSnap.data();
+      // Server will validate cost, occupancy, etc.
+      socket.emit("overlord:build", payload, (resp)=>{
+        if(!resp) return;
+        if(resp.ok){
+          const name =
+            currentBuild.category === "troop"
+              ? TROOPS[currentBuild.type].name
+              : TOWERS[currentBuild.type].name;
+          log(`Built ${name} at (${x + 1},${y + 1}).`);
+        }else if(resp.error){
+          log("Build failed: " + resp.error);
+        }
+      });
+    }
 
-          const currentMoney = p.money || 0;
-          if (currentMoney < cost) throw new Error("Not enough credits.");
+    // ---------------- SOCKET.IO WIRING ----------------
+    function setupSocket(user){
+      socket = io(); // same origin
 
-          const nodeRef = doc(nodesCol, selectedNodeId);
-          const nSnap = await tx.get(nodeRef);
-          if (!nSnap.exists()) throw new Error("Node missing.");
-          const n = nSnap.data();
-
-          if (!canBuildInNode(selectedNodeId)) {
-            throw new Error("Cannot build here – not in or adjacent to your territory.");
-          }
-
-          const bf = n.battlefield || {
-            width: BATTLE_W,
-            height: BATTLE_H,
-            troops: [],
-            towers: [],
-            aliens: [],
-            spines: [],
-            hitLines: [],
-          };
-
-          const occupied =
-            (bf.troops || []).some((t) => t.x === x && t.y === y) ||
-            (bf.towers || []).some((tw) => tw.x === x && tw.y === y) ||
-            (bf.spines || []).some((s) => s.x === x && s.y === y);
-
-          if (occupied) throw new Error("Cannot build on occupied tile.");
-
-          if (currentBuild.category === "troop") {
-            bf.troops = bf.troops || [];
-            bf.troops.push({
-              id: "t_" + Date.now() + "_" + Math.random().toString(16).slice(2, 6),
-              x,
-              y,
-              kind: def.key,
-              hp: def.baseHp,
-              maxHp: def.baseHp,
-            });
-          } else {
-            bf.towers = bf.towers || [];
-            bf.towers.push({
-              id: "tw_" + Date.now() + "_" + Math.random().toString(16).slice(2, 6),
-              x,
-              y,
-              kind: def.key,
-              hp: 18,
-              maxHp: 18,
-            });
-          }
-
-          tx.update(thisPlayerRef, { money: currentMoney - cost });
-          tx.set(nodeRef, { battlefield: bf }, { merge: true });
+      socket.on("connect", ()=>{
+        log("Connected to Grid Overlord server.");
+        socket.emit("overlord:join", {
+          gameId,
+          uid: user.uid,
+          name: displayName
         });
+      });
 
-        const name =
-          currentBuild.category === "troop"
-            ? TROOPS[currentBuild.type].name
-            : TOWERS[currentBuild.type].name;
-        log(`Built ${name} at (${x + 1},${y + 1}).`);
-      } catch (e) {
-        log("Build failed: " + e.message);
+      // Full snapshot
+      socket.on("overlord:state", (payload)=>{
+        if(!payload) return;
+        latestGame = payload.game || latestGame;
+        nodesState = payload.nodes || {};
+        myPlayer   = payload.player || myPlayer;
+        renderGameMeta();
+        renderBoard();
+        if(selectedNodeId){
+          selectedNode = nodesState[selectedNodeId] || null;
+          renderNodeDetails();
+        }
+        applyPlayerUi();
+      });
+
+      socket.on("overlord:gameUpdate", (game)=>{
+        latestGame = game || latestGame;
+        renderGameMeta();
+      });
+
+      socket.on("overlord:nodesUpdate", (nodes)=>{
+        nodesState = nodes || {};
+        renderBoard();
+        if(selectedNodeId){
+          selectedNode = nodesState[selectedNodeId] || null;
+          renderNodeDetails();
+        }
+      });
+
+      socket.on("overlord:nodeUpdate", (node)=>{
+        if(!node || !node.id) return;
+        nodesState[node.id] = node;
+        if(selectedNodeId === node.id){
+          selectedNode = node;
+          renderNodeDetails();
+          renderBattlefield(node);
+        }
+        renderBoard();
+      });
+
+      socket.on("overlord:playerUpdate", (player)=>{
+        myPlayer = player || myPlayer;
+        applyPlayerUi();
+      });
+
+      socket.on("overlord:log", (msg)=> log(msg));
+      socket.on("overlord:error", (msg)=> log("⚠ " + msg));
+
+      socket.on("disconnect", ()=>{
+        log("Disconnected from Grid Overlord server.");
+      });
+    }
+
+    // ---------------- ACTION HELPERS (DROPSHIP / UPGRADE) ----------------
+    function requestDropship(sourceId, destId){
+      if(!socket || !socket.connected){
+        log("Not connected to server.");
+        return;
       }
+      socket.emit("overlord:dropship", { gameId, sourceId, destId }, (resp)=>{
+        if(!resp) return;
+        if(resp.ok){
+          const src = nodesState[sourceId];
+          const dst = nodesState[destId];
+          const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
+          const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
+          log(`🚀 Dropship: moved troops from ${sLabel} to ${dLabel}.`);
+        }else if(resp.error){
+          log("Dropship failed: " + resp.error);
+        }
+      });
+    }
+
+    function requestUpgradeBase(){
+      if(!socket || !socket.connected){
+        log("Not connected to server.");
+        return;
+      }
+      socket.emit("overlord:upgradeBase", { gameId }, (resp)=>{
+        if(!resp) return;
+        if(resp.ok){
+          log("⚡ Generator upgraded. All players gain more credits per tick.");
+        }else if(resp.error){
+          log("Upgrade failed: " + resp.error);
+        }
+      });
     }
 
     // ---------------- UI BUTTONS ----------------
@@ -2953,79 +1396,54 @@ function troopVsAlienMultiplier(troopKind, alienType){
     });
 
     dropshipBtn.addEventListener("click", ()=>{
-  if (!selectedNodeId || !selectedNode){
-    log("Select a green node you control first.");
-    return;
-  }
-  if (selectedNode.owner !== "player"){
-    log("Dropship source must be a green node you control.");
-    return;
-  }
+      if (!selectedNodeId || !selectedNode){
+        log("Select a green node you control first.");
+        return;
+      }
+      if (selectedNode.owner !== "player"){
+        log("Dropship source must be a green node you control.");
+        return;
+      }
 
-  const bf = selectedNode.battlefield || {};
-  const troops = bf.troops || [];
-  if (!troops.length){
-    log("No friendly troops in this node to dropship.");
-    return;
-  }
+      const bf = selectedNode.battlefield || {};
+      const troops = bf.troops || [];
+      if (!troops.length){
+        log("No friendly troops in this node to dropship.");
+        return;
+      }
 
-  if (!latestGame || !myPlayer){
-    log("Dropship not ready yet.");
-    return;
-  }
+      if (!latestGame || !myPlayer){
+        log("Dropship not ready yet.");
+        return;
+      }
 
-  const now = latestGame.timeSeconds || 0;
-  const last = myPlayer.lastDropshipAt || 0;
-  const remaining = 60 - (now - (last || 0));
+      const now = latestGame.timeSeconds || 0;
+      const last = myPlayer.lastDropshipAt || 0;
+      const remaining = 60 - (now - (last || 0));
 
-  if (remaining > 0){
-    log(`Dropship is recharging (${remaining}s left).`);
-    updateDropshipStatus();
-    return;
-  }
+      if (remaining > 0){
+        log(`Dropship is recharging (${remaining}s left).`);
+        updateDropshipStatus();
+        return;
+      }
 
-  dropshipSourceNodeId = selectedNodeId;
-  selectingDropshipTarget = true;
-  log("Dropship source locked. Click a green or contested node to send your troops (click the same node again to cancel).");
-  updateDropshipStatus();
-});
-
+      dropshipSourceNodeId = selectedNodeId;
+      selectingDropshipTarget = true;
+      log("Dropship source locked. Click a green or contested node to send your troops (click the same node again to cancel).");
+      updateDropshipStatus();
+    });
 
     leaveBattleBtn.addEventListener("click",()=>{
       battleOverlay.style.display = "none";
-      if(battleUnsub){ battleUnsub(); battleUnsub=null; }
+      if(socket && socket.connected && selectedNodeId){
+        socket.emit("overlord:unwatchNode", { gameId, nodeId: selectedNodeId });
+      }
     });
 
-    upgradeBaseBtn.addEventListener("click", async ()=>{
+    upgradeBaseBtn.addEventListener("click", ()=>{
       if(!latestGame || !myPlayer) return;
       if(!selectedNode || selectedNode.type!=="base") return;
-      try{
-        await runTransaction(db, async (tx)=>{
-          const gSnap = await tx.get(gameRef);
-          const pSnap = await tx.get(playerRef);
-          if(!gSnap.exists() || !pSnap.exists()) throw new Error("Missing game or player.");
-          const g = gSnap.data();
-          const p = pSnap.data();
-          const base = g.base || {level:1,upgradeCost:60,incomePerPlayer:4};
-          const cost = base.upgradeCost || 60;
-          if((p.money||0) < cost) throw new Error("Not enough credits for upgrade.");
-          const newLevel = (base.level||1)+1;
-          const newIncome = (base.incomePerPlayer||4) + 3;
-          const newCost = Math.round(cost*1.7);
-          tx.update(playerRef,{ money: (p.money||0)-cost });
-          tx.update(gameRef,{
-            base:{
-              ...base,
-              level:newLevel,
-              incomePerPlayer:newIncome,
-              upgradeCost:newCost
-            }
-          });
-        });
-        log("⚡ Generator upgraded. All players gain more credits per tick.");
-      }catch(e){
-        log("Upgrade failed: "+e.message);
-      }
+      requestUpgradeBase();
     });
 
     document.getElementById("fullscreenBtn").addEventListener("click",()=>{
@@ -3037,10 +1455,28 @@ function troopVsAlienMultiplier(troopKind, alienType){
       }
     });
 
-    log("Connecting to Firebase and waiting for authentication…");
+    // ---------------- AUTH FLOW ----------------
+    log("Connecting to Firebase (auth only) and waiting for authentication…");
+
+    signInAnonymously(auth).catch(err=>{
+      console.error(err);
+      alert("Failed to sign in anonymously to Firebase: "+err.message);
+    });
+
+    let socketStarted = false;
+    onAuthStateChanged(auth, (user)=>{
+      if(!user) return;
+      currentUser = user;
+      playerNameLabel.textContent = displayName;
+      if(!socketStarted){
+        socketStarted = true;
+        setupSocket(user);
+      }
+    });
   </script>
 </body>
 </html>
+
 
 
 
