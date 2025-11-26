@@ -664,7 +664,7 @@
     const gameId = params.get("gameId") || "dev-overlord";
     const displayName = (params.get("username") || "Guest").trim() || "Guest";
 
-    // Same troop/tower/enemy definitions as before, but server actually simulates them.
+    // Unit definitions (client mirrors server numbers for UI only)
     const TROOPS = {
       rifle:   { key:"rifle",   name:"Rifleman",      emoji:"🔫", baseHp:12, dmg:3, range:3, cost:8 },
       phase:   { key:"phase",   name:"Phase Blade",   emoji:"🗡️", baseHp:18, dmg:4, range:1, cost:10 },
@@ -704,6 +704,8 @@
 
     let dropshipSourceNodeId = null;
     let selectingDropshipTarget = false;
+
+    let lastStatusSeen = null;
 
     // ---------------- DOM ----------------
     const playerNameLabel = document.getElementById("playerNameLabel");
@@ -832,10 +834,13 @@
       incomeLabel.textContent          = base.incomePerPlayer ?? 0;
       baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
 
-      if (latestGame.status === "lost"){
-        log("⚠ Base destroyed. Game over for all players.");
-      } else if (latestGame.status === "won"){
-        log("✅ You survived the full duration! Victory.");
+      if (latestGame.status && latestGame.status !== lastStatusSeen){
+        if (latestGame.status === "lost"){
+          log("⚠ Base destroyed. Game over for all players.");
+        } else if (latestGame.status === "won"){
+          log("✅ You survived the full duration! Victory.");
+        }
+        lastStatusSeen = latestGame.status;
       }
 
       updateDropshipStatus();
@@ -906,7 +911,6 @@
             renderBoard();
             renderNodeDetails();
 
-            // If we're in dropship target selection, try to send troops
             if (selectingDropshipTarget && dropshipSourceNodeId && node){
               if (key === dropshipSourceNodeId){
                 log("Dropship cancelled.");
@@ -1069,9 +1073,8 @@
       updateBattleOwnerTag(selectedNode);
       battleOverlay.style.display = "flex";
 
-      if(socket && socket.connected){
-        socket.emit("overlord:watchNode", { gameId, nodeId });
-      }
+      // No node-specific subscription; server sends whole state each tick.
+      renderBattlefield(selectedNode);
     }
 
     function updateBattleOwnerTag(node){
@@ -1265,91 +1268,82 @@
       }
 
       const payload = {
-        gameId,
+        type: "build",
         nodeId: selectedNodeId,
         x,
         y,
-        category: currentBuild.category,
-        kind: currentBuild.type
+        category: currentBuild.category, // "troop" or "tower"
+        unitType: currentBuild.type
       };
 
-      // Server will validate cost, occupancy, etc.
-      socket.emit("overlord:build", payload, (resp)=>{
-        if(!resp) return;
-        if(resp.ok){
-          const name =
-            currentBuild.category === "troop"
-              ? TROOPS[currentBuild.type].name
-              : TOWERS[currentBuild.type].name;
-          log(`Built ${name} at (${x + 1},${y + 1}).`);
-        }else if(resp.error){
-          log("Build failed: " + resp.error);
-        }
-      });
+      socket.emit("playerAction", payload);
     }
 
-    // ---------------- SOCKET.IO WIRING ----------------
+    // ---------------- SOCKET.IO WIRING (MATCHES SERVER) ----------------
     function setupSocket(user){
-      socket = io(); // same origin
+      socket = io(); // same origin as Node server
 
-      socket.on("connect", ()=>{
+      socket.on("connect", async ()=> {
         log("Connected to Grid Overlord server.");
-        socket.emit("overlord:join", {
-          gameId,
-          uid: user.uid,
-          name: displayName
-        });
+
+        try{
+          const token = await user.getIdToken();
+          socket.emit("joinGame", {
+            token,
+            gameId,
+            name: displayName
+          });
+        }catch(err){
+          console.error(err);
+          log("Failed to get ID token for joinGame.");
+        }
       });
 
-      // Full snapshot
-      socket.on("overlord:state", (payload)=>{
-        if(!payload) return;
-        latestGame = payload.game || latestGame;
-        nodesState = payload.nodes || {};
-        myPlayer   = payload.player || myPlayer;
+      // When server confirms join
+      socket.on("joined", ({ uid, gameId: joinedGameId, state }) => {
+        log(`Joined game ${joinedGameId}.`);
+        latestGame = state || {};
+        nodesState = state?.nodesState || {};
+
+        myPlayer = (state?.players || []).find(p => p.uid === uid) || null;
         renderGameMeta();
         renderBoard();
-        if(selectedNodeId){
-          selectedNode = nodesState[selectedNodeId] || null;
+        if(selectedNodeId && nodesState[selectedNodeId]){
+          selectedNode = nodesState[selectedNodeId];
           renderNodeDetails();
         }
         applyPlayerUi();
       });
 
-      socket.on("overlord:gameUpdate", (game)=>{
-        latestGame = game || latestGame;
+      // Authoritative state update each tick
+      socket.on("state", (state) => {
+        if (!state) return;
+        latestGame = state;
+        nodesState = state.nodesState || {};
+
+        const uid = currentUser?.uid;
+        if (uid){
+          myPlayer = (state.players || []).find(p => p.uid === uid) || null;
+        }
+
         renderGameMeta();
-      });
-
-      socket.on("overlord:nodesUpdate", (nodes)=>{
-        nodesState = nodes || {};
         renderBoard();
-        if(selectedNodeId){
-          selectedNode = nodesState[selectedNodeId] || null;
-          renderNodeDetails();
-        }
-      });
 
-      socket.on("overlord:nodeUpdate", (node)=>{
-        if(!node || !node.id) return;
-        nodesState[node.id] = node;
-        if(selectedNodeId === node.id){
-          selectedNode = node;
+        if(selectedNodeId && nodesState[selectedNodeId]){
+          selectedNode = nodesState[selectedNodeId];
           renderNodeDetails();
-          renderBattlefield(node);
+          if (battleOverlay.style.display !== "none"){
+            renderBattlefield(selectedNode);
+          }
         }
-        renderBoard();
-      });
 
-      socket.on("overlord:playerUpdate", (player)=>{
-        myPlayer = player || myPlayer;
         applyPlayerUi();
       });
 
-      socket.on("overlord:log", (msg)=> log(msg));
-      socket.on("overlord:error", (msg)=> log("⚠ " + msg));
+      socket.on("log", (msg)=> log(msg));
+      socket.on("errorMessage", (msg)=> log("⚠ " + msg));
 
-      socket.on("disconnect", ()=>{
+      socket.on("disconnect", ()=> {
         log("Disconnected from Grid Overlord server.");
       });
     }
@@ -1360,17 +1354,10 @@
         log("Not connected to server.");
         return;
       }
-      socket.emit("overlord:dropship", { gameId, sourceId, destId }, (resp)=>{
-        if(!resp) return;
-        if(resp.ok){
-          const src = nodesState[sourceId];
-          const dst = nodesState[destId];
-          const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
-          const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
-          log(`🚀 Dropship: moved troops from ${sLabel} to ${dLabel}.`);
-        }else if(resp.error){
-          log("Dropship failed: " + resp.error);
-        }
+      socket.emit("playerAction", {
+        type: "dropship",
+        sourceNodeId: sourceId,
+        destNodeId: destId
       });
     }
 
@@ -1379,14 +1366,7 @@
         log("Not connected to server.");
         return;
       }
-      socket.emit("overlord:upgradeBase", { gameId }, (resp)=>{
-        if(!resp) return;
-        if(resp.ok){
-          log("⚡ Generator upgraded. All players gain more credits per tick.");
-        }else if(resp.error){
-          log("Upgrade failed: " + resp.error);
-        }
-      });
+      socket.emit("playerAction", { type: "upgradeBase" });
     }
 
     // ---------------- UI BUTTONS ----------------
@@ -1435,9 +1415,6 @@
 
     leaveBattleBtn.addEventListener("click",()=>{
       battleOverlay.style.display = "none";
-      if(socket && socket.connected && selectedNodeId){
-        socket.emit("overlord:unwatchNode", { gameId, nodeId: selectedNodeId });
-      }
     });
 
     upgradeBaseBtn.addEventListener("click", ()=>{
@@ -1476,6 +1453,7 @@
   </script>
 </body>
 </html>
+
 
 
 
