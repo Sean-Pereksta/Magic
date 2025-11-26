@@ -583,9 +583,11 @@
         <div id="nodeInfo" class="node-info-box">
           <div>Select a node on the left to inspect or enter its battlefield.</div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
           <button id="openBattleBtn" class="btn btn-primary" disabled>Enter Area</button>
           <button id="upgradeBaseBtn" class="btn" disabled>Upgrade Generator</button>
+          <button id="dropshipBtn" class="btn">🚀 Dropship</button>
+          <span id="dropshipStatus" class="small">Ready</span>
         </div>
         <div id="baseInfo" class="small" style="margin-top:4px;display:none;">
           🔋 Lv <span id="baseLevelLabel">1</span> · +<span id="incomeLabel">0</span> credits / 5s per player · Next: <span id="baseUpgradeCostLabel">0</span>
@@ -699,11 +701,12 @@
     };
 
     const ENEMIES = {
-      bug:      { key:"bug",      emoji:"🐜", baseHp:10, dmg:2, speed:1 },
-      spitter:  { key:"spitter",  emoji:"🪲", baseHp:14, dmg:3, speed:1 },
-      brute:    { key:"brute",    emoji:"🦂", baseHp:26, dmg:5, speed:1 },
-      behemoth: { key:"behemoth", emoji:"👾", baseHp:40, dmg:6, speed:1 }
+      bug:      { key:"bug",      emoji:"🐜", baseHp:10, dmg:2, speed:1, range:1 }, // melee
+      spitter:  { key:"spitter",  emoji:"🪲", baseHp:14, dmg:3, speed:1, range:3 }, // mid-range
+      brute:    { key:"brute",    emoji:"🦂", baseHp:26, dmg:5, speed:1, range:1 }, // melee
+      behemoth: { key:"behemoth", emoji:"👾", baseHp:40, dmg:6, speed:1, range:1 }  // melee
     };
+
 
     // ---------------- STATE ----------------
     let currentUser = null;
@@ -719,6 +722,8 @@
     let selectedNode = null;
     let currentBuild = { type:null, category:null };
     let battleUnsub = null;
+    let dropshipSourceNodeId = null;
+    let selectingDropshipTarget = false;
 
     // ---------------- DOM ----------------
     const playerNameLabel = document.getElementById("playerNameLabel");
@@ -742,6 +747,8 @@
     const battleGridEl = document.getElementById("battleGrid");
     const troopBarEl = document.getElementById("troopBar");
     const towerBarEl = document.getElementById("towerBar");
+    const dropshipBtn = document.getElementById("dropshipBtn");
+    const dropshipStatusLabel = document.getElementById("dropshipStatus");
     const leaveBattleBtn = document.getElementById("leaveBattleBtn");
 
     // ---------------- UTILS ----------------
@@ -952,28 +959,141 @@
     }
 
     // ---------------- RENDER META ----------------
+    function updateDropshipStatus(){
+  if (!dropshipStatusLabel || !dropshipBtn) return;
+
+  if (!latestGame || !myPlayer){
+    dropshipStatusLabel.textContent = "…";
+    dropshipBtn.disabled = true;
+    return;
+  }
+
+  const now = latestGame.timeSeconds || 0;
+  const last = myPlayer.lastDropshipAt || 0;
+  const CD = 60;
+  const remaining = CD - (now - (last || 0));
+
+  // If we're currently choosing a target, show mode instead of cooldown text
+  if (selectingDropshipTarget && dropshipSourceNodeId){
+    dropshipStatusLabel.textContent = "Select destination…";
+    dropshipBtn.disabled = false;
+    return;
+  }
+
+  if (remaining <= 0){
+    dropshipStatusLabel.textContent = "Ready";
+    dropshipBtn.disabled = false;
+  } else {
+    dropshipStatusLabel.textContent = `Cooldown: ${remaining}s`;
+    dropshipBtn.disabled = true;
+  }
+}
+
     function renderGameMeta(){
-      if(!latestGame) return;
-      const sec = latestGame.timeSeconds || 0;
-      timeLabel.textContent = formatTime(sec);
+  if (!latestGame) return;
 
-      const base = latestGame.base || {hp:0,maxHp:1,level:1,incomePerPlayer:0,upgradeCost:0};
-      const hp = Math.max(0, base.hp || 0);
-      const max = Math.max(1, base.maxHp || 1);
-      const pct = Math.max(0, Math.min(100, (hp/max)*100));
-      baseHpFill.style.width = pct + "%";
+  const sec = latestGame.timeSeconds || 0;
+  timeLabel.textContent = formatTime(sec);
 
-      baseInfoEl.style.display = "block";
-      baseLevelLabel.textContent = base.level ?? 1;
-      incomeLabel.textContent = base.incomePerPlayer ?? 0;
-      baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
+  const base = latestGame.base || {
+    hp: 0,
+    maxHp: 1,
+    level: 1,
+    incomePerPlayer: 0,
+    upgradeCost: 0
+  };
 
-      if(latestGame.status === "lost"){
-        log("⚠ Base destroyed. Game over for all players.");
-      }else if(latestGame.status === "won"){
-        log("✅ You survived the full duration! Victory.");
+  const hp  = Math.max(0, base.hp  || 0);
+  const max = Math.max(1, base.maxHp || 1);
+  const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+  baseHpFill.style.width = pct + "%";
+
+  baseInfoEl.style.display = "block";
+  baseLevelLabel.textContent      = base.level ?? 1;
+  incomeLabel.textContent         = base.incomePerPlayer ?? 0;
+  baseUpgradeCostLabel.textContent = base.upgradeCost ?? 0;
+
+  if (latestGame.status === "lost"){
+    log("⚠ Base destroyed. Game over for all players.");
+  } else if (latestGame.status === "won"){
+    log("✅ You survived the full duration! Victory.");
+  }
+
+  // 🔹 Keep Dropship UI in sync with game time & cooldowns
+  updateDropshipStatus();
+}
+
+  async function attemptDropship(sourceId, destId){
+  if (!currentUser || !playerRef) return;
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const gSnap = await tx.get(gameRef);
+      const pSnap = await tx.get(playerRef);
+      if(!gSnap.exists() || !pSnap.exists()) throw new Error("Missing game or player.");
+
+      const g = gSnap.data();
+      const p = pSnap.data();
+      const now = g.timeSeconds || 0;
+      const last = p.lastDropshipAt || 0;
+
+      // 🔒 60s cooldown per player
+      if (now - (last || 0) < 60){
+        throw new Error("Dropship is still on cooldown.");
       }
-    }
+
+      const srcRef = doc(nodesCol, sourceId);
+      const dstRef = doc(nodesCol, destId);
+      const srcSnap = await tx.get(srcRef);
+      const dstSnap = await tx.get(dstRef);
+      if(!srcSnap.exists() || !dstSnap.exists()) throw new Error("Node missing.");
+
+      const srcNode = srcSnap.data();
+      const dstNode = dstSnap.data();
+
+      // Source must be GREEN (player-controlled)
+      if (srcNode.owner !== "player"){
+        throw new Error("Source must be a green node you control.");
+      }
+      // Destination must be GREEN or ORANGE (contested)
+      if (!(dstNode.owner === "player" || dstNode.owner === "contested")){
+        throw new Error("Destination must be green or contested.");
+      }
+
+      const srcBf = srcNode.battlefield || {
+        width:BATTLE_W, height:BATTLE_H,
+        troops:[], towers:[], aliens:[], spines:[], hitLines:[]
+      };
+      const dstBf = dstNode.battlefield || {
+        width:BATTLE_W, height:BATTLE_H,
+        troops:[], towers:[], aliens:[], spines:[], hitLines:[]
+      };
+
+      const troopsToMove = srcBf.troops || [];
+      if (!troopsToMove.length){
+        throw new Error("No friendly troops in the source node.");
+      }
+
+      // Move ALL friendly troops (not towers, not aliens)
+      srcBf.troops = [];
+      dstBf.troops = (dstBf.troops || []).concat(troopsToMove);
+
+      tx.update(srcRef, { battlefield: srcBf });
+      tx.update(dstRef, { battlefield: dstBf });
+      tx.update(playerRef, { lastDropshipAt: now });
+    });
+
+    const src = nodesState[sourceId];
+    const dst = nodesState[destId];
+    const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
+    const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
+    log(`🚀 Dropship: moved all troops from ${sLabel} to ${dLabel}.`);
+  }catch(e){
+    log("Dropship failed: " + e.message);
+  }
+}
+
+
 
     // ---------------- RENDER BOARD ----------------
     function renderBoard(){
@@ -1029,7 +1149,22 @@
             selectedNode = node || null;
             renderBoard();
             renderNodeDetails();
+          
+            // If we're in dropship target selection, try to send troops
+            if (selectingDropshipTarget && dropshipSourceNodeId && node){
+              if (key === dropshipSourceNodeId){
+                log("Dropship cancelled.");
+              } else if (node.owner === "player" || node.owner === "contested"){
+                attemptDropship(dropshipSourceNodeId, key);
+              } else {
+                log("Dropship target must be a green or contested node.");
+              }
+              selectingDropshipTarget = false;
+              dropshipSourceNodeId = null;
+              updateDropshipStatus();
+            }
           });
+
 
           boardGridEl.appendChild(div);
         }
@@ -1365,8 +1500,8 @@ async function applyIncomeTick(game){
 
     let changed = false;
 
-    // ---------- ALIEN SPAWNS ----------
-    if(bf.aliens.length < maxAliens){
+      // ---------- ALIEN SPAWNS (grouped by type) ----------
+    if (bf.aliens.length < maxAliens){
       const deficit = maxAliens - bf.aliens.length;
 
       // More players = more enemies per build tick
@@ -1376,34 +1511,45 @@ async function applyIncomeTick(game){
         deficit
       );
 
-      for(let i=0;i<spawnCount;i++){
-        const row = 1 + (i % (BATTLE_H-2));
-        const x = BATTLE_W-1;
-        let typeKey = "bug";
+      // Pick one "theme" for this spawn tick at this node
+      const primaryType = pickPrimaryAlienType(minutes, /*tier guess*/ minutes >= 10 ? 3 : minutes >= 5 ? 2 : 1);
+      const secondaryType = pickSecondaryAlienType(minutes);
 
-        if(minutes > 8){
-          if(i%4===0) typeKey="behemoth";
-          else if(i%3===0) typeKey="brute";
-          else if(i%2===0) typeKey="spitter";
-        }else if(minutes > 4){
-          if(i%3===0) typeKey="brute";
-          else if(i%2===0) typeKey="spitter";
-        }else if(minutes > 2){
-          if(i%2===0) typeKey="spitter";
+      for (let i = 0; i < spawnCount; i++){
+        const row = 1 + (i % (BATTLE_H - 2));
+        const x = BATTLE_W - 1;
+
+        let typeKey;
+        const r = Math.random();
+
+        // 75–85% primary, rest secondary/variety
+        if (r < 0.8){
+          typeKey = primaryType;
+        } else {
+          if (primaryType === "bug"){
+            typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
+          } else if (primaryType === "spitter"){
+            typeKey = Math.random() < 0.7 ? "bug" : secondaryType;
+          } else if (primaryType === "brute"){
+            typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
+          } else {
+            typeKey = Math.random() < 0.6 ? "brute" : secondaryType;
+          }
         }
 
-        const def = ENEMIES[typeKey];
+        const def = ENEMIES[typeKey] || ENEMIES.bug;
         bf.aliens.push({
-          id:"a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
+          id: "a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
           x,
-          y:row,
-          type:typeKey,
-          hp:def.baseHp,
-          maxHp:def.baseHp
+          y: row,
+          type: typeKey,
+          hp: def.baseHp,
+          maxHp: def.baseHp
         });
       }
       changed = true;
     }
+
 
     // ---------- SPINE (TOWER) SPAWNS ----------
     if(bf.spines.length < maxSpines){
@@ -1513,49 +1659,117 @@ async function applyIncomeTick(game){
       }
     }
 
-    function spawnAlienWaveForNode(node, bf, timeSeconds){
-      const minutes = timeSeconds / 60;
-      let tier = 1;
-      if(minutes >= WAVE_MINUTES_2) tier = 3;
-      else if(minutes >= WAVE_MINUTES_1) tier = 2;
+    function pickPrimaryAlienType(minutes, tier){
+  // Tier logic based on game time:
+  // - Early (0–4 min): mostly bugs & a few spitters
+  // - Mid (4–8 min): mostly spitters & some brutes
+  // - Late (8+ min): mostly brutes & occasional behemoths
 
-      const waveSize = tier===1 ? 6 : tier===2 ? 10 : 14;
+  if (tier === 1){
+    // Early small waves
+    if (minutes < 2) return "bug";
+    if (minutes < 4) return Math.random() < 0.6 ? "bug" : "spitter";
+    return "spitter";
+  }
 
-      bf.aliens = bf.aliens || [];
-      for(let i=0;i<waveSize;i++){
-        const row = 1 + (i % (BATTLE_H-2));
-        const x = BATTLE_W-1;
-        let typeKey = "bug";
+  if (tier === 2){
+    // Mid-game waves
+    if (minutes < 6) return "spitter";
+    return Math.random() < 0.6 ? "spitter" : "brute";
+  }
 
-        if(tier===1){
-          typeKey = (i%4===0) ? "spitter" : "bug";
-        }else if(tier===2){
-          if(i%3===0) typeKey = "spitter";
-          else typeKey = "bug";
-        }else{
-          if(i===0 || (i===waveSize-1 && waveSize>8)){
-            typeKey = "behemoth";
-          }else if(i%3===0){
-            typeKey = "brute";
-          }else if(i%2===0){
-            typeKey = "spitter";
-          }else{
-            typeKey = "bug";
-          }
-        }
+  // tier === 3, late waves
+  if (minutes < 10) return "brute";
+  return Math.random() < 0.6 ? "brute" : "behemoth";
+}
 
-        const def = ENEMIES[typeKey];
-        bf.aliens.push({
-          id: "a_"+Date.now()+"_"+Math.random().toString(16).slice(2,6),
-          x,
-          y:row,
-          type:typeKey,
-          hp:def.baseHp,
-          maxHp:def.baseHp
-        });
+// If we need a "secondary" variety in the group
+function pickSecondaryAlienType(minutes){
+  if (minutes < 3) return "bug";
+  if (minutes < 6) return "spitter";
+  if (minutes < 10) return "brute";
+  return "behemoth";
+}
+
+
+   function spawnAlienWaveForNode(node, bf, timeSeconds){
+  const minutes = timeSeconds / 60;
+  let tier = 1;
+  if (minutes >= WAVE_MINUTES_2) tier = 3;
+  else if (minutes >= WAVE_MINUTES_1) tier = 2;
+
+  const waveSize =
+    tier === 1 ? 6 :
+    tier === 2 ? 10 : 14;
+
+  // 🔹 Choose a primary enemy type for this wave
+  const primaryType = pickPrimaryAlienType(minutes, tier);
+  const secondaryType = pickSecondaryAlienType(minutes);
+
+  bf.aliens = bf.aliens || [];
+
+  for (let i = 0; i < waveSize; i++){
+    const row = 1 + (i % (BATTLE_H - 2));
+    const x = BATTLE_W - 1;
+
+    // 75–85% of the wave is the primary type, rest is “spice”
+    const r = Math.random();
+    let typeKey;
+
+    if (r < 0.8){
+      typeKey = primaryType;
+    } else {
+      // choose a secondary that isn't identical to primary
+      if (primaryType === "bug"){
+        typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
+      } else if (primaryType === "spitter"){
+        typeKey = Math.random() < 0.7 ? "bug" : secondaryType;
+      } else if (primaryType === "brute"){
+        typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
+      } else {
+        // primary is behemoth
+        typeKey = Math.random() < 0.6 ? "brute" : secondaryType;
       }
-      log(`Alien wave spawned in node ${node.row+1}-${node.col+1} (tier ${tier}).`);
     }
+
+    const def = ENEMIES[typeKey] || ENEMIES.bug;
+    bf.aliens.push({
+      id: "a_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
+      x,
+      y: row,
+      type: typeKey,
+      hp: def.baseHp,
+      maxHp: def.baseHp
+    });
+  }
+
+  log(`Alien wave spawned in node ${node.row+1}-${node.col+1} — mostly ${primaryType}s.`);
+}
+
+// Bonus damage vs specific alien types for specific troops
+function troopVsAlienMultiplier(troopKind, alienType){
+  // Bugs take higher damage from Rifleman + Bombers
+  if ((troopKind === "rifle" || troopKind === "bomber") && alienType === "bug") {
+    return 1.75; // +75% damage
+  }
+
+  // Spitters take high damage from Phase Blades
+  if (troopKind === "phase" && alienType === "spitter") {
+    return 1.75;
+  }
+
+  // Brutes take high damage from Ion Snipers
+  if (troopKind === "sniper" && alienType === "brute") {
+    return 1.75;
+  }
+
+  // Behemoths are extra weak to Ion Snipers
+  if (troopKind === "sniper" && alienType === "behemoth") {
+    return 2.0; // double damage
+  }
+
+  return 1;
+}
 
     function addHitLine(bf, kind, x1,y1,x2,y2){
       bf.hitLines = bf.hitLines || [];
@@ -1703,14 +1917,18 @@ async function applyIncomeTick(game){
     return null;
   }
 
-  // ========= TROOP MOVEMENT (toward aliens/spines) =========
+  // ========= TROOP MOVEMENT (stop when in attack range) =========
   for (const t of troops) {
     if (t.hp <= 0) continue;
+
+    const def = TROOPS[t.kind] || TROOPS.rifle;
+    const attackRange = def.range || 1;   // sniper = 5, rifle = 3, etc.
+
     const targetInfo = nearestAlienEntity(t.x, t.y);
     if (!targetInfo) continue;
 
-    // If already adjacent, hold position so they can fight
-    if (targetInfo.dist <= 1) continue;
+    // Already in range for this troop? Hold position and fire instead of walking in.
+    if (targetInfo.dist <= attackRange) continue;
 
     const step = stepTowards(t.x, t.y, targetInfo.x, targetInfo.y);
     if (step) {
@@ -1720,12 +1938,15 @@ async function applyIncomeTick(game){
     }
   }
 
-  // ========= UPDATED: ALIEN MOVEMENT =========
+  // ========= UPDATED: ALIEN MOVEMENT (stop when in attack range) =========
   // - When player has units: move toward nearest troop/tower/generator
   // - When player has NO units: drift back to right side (their half)
   // - Avoid clumping: aliens do not stack on the same tile
   for (const a of aliens) {
     if (a.hp <= 0) continue;
+
+    const def = ENEMIES[a.type] || ENEMIES.bug;
+    const attackRange = def.range || 1;   // spitter = 3, others = 1
 
     // Free up this tile while we decide where to go
     occupiedAlienPositions.delete(`${a.x}_${a.y}`);
@@ -1736,22 +1957,24 @@ async function applyIncomeTick(game){
 
     const info = nearestPlayerEntity(a.x, a.y);
 
-    if (hasPlayerUnits && info && info.dist > 1) {
-      // Normal behavior: hunt nearest player unit
-      targetX = info.x;
-      targetY = info.y;
-      haveMoveTarget = true;
+    if (hasPlayerUnits && info) {
+      // If we're already in our attack range, don't move — just shoot/bonk.
+      if (info.dist > attackRange) {
+        // Normal behavior: hunt nearest player unit until in range
+        targetX = info.x;
+        targetY = info.y;
+        haveMoveTarget = true;
+      } else {
+        haveMoveTarget = false; // in range, stand and attack
+      }
     } else if (!hasPlayerUnits) {
       // No troops/towers on your side:
       // send aliens back toward their right-side staging line
       const homeX = BATTLE_W - 3; // a line near the right edge
       targetX = homeX;
-      // keep roughly the same lane, but inside the board
       targetY = Math.min(BATTLE_H - 2, Math.max(1, a.y));
       haveMoveTarget = (a.x !== targetX);
     }
-    // If hasPlayerUnits && info && info.dist <= 1, they are already in melee range:
-    // don't move so they can attack. (haveMoveTarget stays false)
 
     let moved = false;
 
@@ -1828,6 +2051,7 @@ async function applyIncomeTick(game){
     if (t.hp <= 0) continue;
     const def = TROOPS[t.kind] || TROOPS.rifle;
 
+    // Medics still heal like before
     if (t.kind === "medic") {
       let best = null, bestPct = 1.1;
       for (const ally of troops) {
@@ -1857,17 +2081,37 @@ async function applyIncomeTick(game){
           const tx = targetInfo.enemy.x;
           const ty = targetInfo.enemy.y;
           addHitLine(bf, "player", t.x, t.y, tx, ty);
+
+          // Splash vs aliens: apply per-target multiplier
           for (const a of aliens) {
             const d = Math.abs(a.x - tx) + Math.abs(a.y - ty);
-            if (d <= 1) { a.hp -= dmg; changed = true; }
+            if (d <= 1) {
+              const mult = troopVsAlienMultiplier(t.kind, a.type || "bug");
+              const finalDmg = Math.round(dmg * mult);
+              a.hp -= finalDmg;
+              changed = true;
+            }
           }
+          // Splash vs spines: no special multiplier, they’re not "bugs"
           for (const s of spines) {
             const d = Math.abs(s.x - tx) + Math.abs(s.y - ty);
-            if (d <= 1) { s.hp -= dmg; changed = true; }
+            if (d <= 1) {
+              s.hp -= dmg;
+              changed = true;
+            }
           }
         } else {
+          // Single-target shot
+          let finalDmg = dmg;
+
+          if (targetInfo.type === "alien") {
+            const alienType = targetInfo.enemy.type || "bug";
+            const mult = troopVsAlienMultiplier(t.kind, alienType);
+            finalDmg = Math.round(dmg * mult);
+          }
+
           addHitLine(bf, "player", t.x, t.y, targetInfo.enemy.x, targetInfo.enemy.y);
-          targetInfo.enemy.hp -= dmg;
+          targetInfo.enemy.hp -= finalDmg;
           changed = true;
         }
       }
@@ -1965,7 +2209,7 @@ async function applyIncomeTick(game){
     } else {
       let best = null, bestD = 999, bestType = null;
       for (const t of inRangeTroops) {
-        const d = Math.abs(t.x - s.x) + Math.abs(t.y - s.y);
+        const d = Math.abs(t.x - s.x) + Math.abs(t.y - t.y);
         if (d < bestD) { best = t; bestD = d; bestType = "troop"; }
       }
       for (const tw of inRangeTowers) {
@@ -1987,22 +2231,32 @@ async function applyIncomeTick(game){
     }
   }
 
-  // --- ALIEN MELEE (adjacent attacks) ---
+  // --- ALIEN ATTACKS (use enemy range) ---
   for (const a of aliens) {
     if (a.hp <= 0) continue;
     const def = ENEMIES[a.type] || ENEMIES.bug;
     const dmg = def.dmg || 2;
-    let bestEntity = null, bestD = 2, bestType = null;
+    const attackRange = def.range || 1;
+
+    let bestEntity = null, bestD = attackRange + 1, bestType = null;
 
     for (const t of troops) {
       if (t.hp <= 0) continue;
       const d = Math.abs(t.x - a.x) + Math.abs(t.y - a.y);
-      if (d <= 1 && d < bestD) { bestEntity = t; bestD = d; bestType = "troop"; }
+      if (d <= attackRange && d < bestD) {
+        bestEntity = t;
+        bestD = d;
+        bestType = "troop";
+      }
     }
     for (const tw of towers) {
       if (tw.hp <= 0) continue;
       const d = Math.abs(tw.x - a.x) + Math.abs(tw.y - a.y);
-      if (d <= 1 && d < bestD) { bestEntity = tw; bestD = d; bestType = "tower"; }
+      if (d <= attackRange && d < bestD) {
+        bestEntity = tw;
+        bestD = d;
+        bestType = "tower";
+      }
     }
 
     if (bestEntity) {
@@ -2029,6 +2283,7 @@ async function applyIncomeTick(game){
 
   return { changed };
 }
+
 
 
     // ---------------- BATTLE UI ----------------
@@ -2359,6 +2614,45 @@ async function applyIncomeTick(game){
       openBattleForNode(selectedNodeId);
     });
 
+    dropshipBtn.addEventListener("click", ()=>{
+  if (!selectedNodeId || !selectedNode){
+    log("Select a green node you control first.");
+    return;
+  }
+  if (selectedNode.owner !== "player"){
+    log("Dropship source must be a green node you control.");
+    return;
+  }
+
+  const bf = selectedNode.battlefield || {};
+  const troops = bf.troops || [];
+  if (!troops.length){
+    log("No friendly troops in this node to dropship.");
+    return;
+  }
+
+  if (!latestGame || !myPlayer){
+    log("Dropship not ready yet.");
+    return;
+  }
+
+  const now = latestGame.timeSeconds || 0;
+  const last = myPlayer.lastDropshipAt || 0;
+  const remaining = 60 - (now - (last || 0));
+
+  if (remaining > 0){
+    log(`Dropship is recharging (${remaining}s left).`);
+    updateDropshipStatus();
+    return;
+  }
+
+  dropshipSourceNodeId = selectedNodeId;
+  selectingDropshipTarget = true;
+  log("Dropship source locked. Click a green or contested node to send your troops (click the same node again to cancel).");
+  updateDropshipStatus();
+});
+
+
     leaveBattleBtn.addEventListener("click",()=>{
       battleOverlay.style.display = "none";
       if(battleUnsub){ battleUnsub(); battleUnsub=null; }
@@ -2409,6 +2703,7 @@ async function applyIncomeTick(game){
   </script>
 </body>
 </html>
+
 
 
 
