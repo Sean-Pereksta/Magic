@@ -676,6 +676,8 @@
     const WAVE_MINUTES_2 = 10;
     const GAME_WIN_TIME = 20 * 60;
     const ECO_BONUS_PER_NODE = 1;
+    const ECO_NODE_CAPACITY = 80;   // total “credits” in each eco node
+    const ECO_DRAIN_PER_TICK = 2;    // how much gets used each income tick while you control it
 
     const params = new URLSearchParams(window.location.search);
     const gameId = params.get("gameId") || "dev-overlord";
@@ -701,11 +703,62 @@
     };
 
     const ENEMIES = {
-      bug:      { key:"bug",      emoji:"🐜", baseHp:10, dmg:2, speed:1, range:1 }, // melee
-      spitter:  { key:"spitter",  emoji:"🪲", baseHp:14, dmg:3, speed:1, range:3 }, // mid-range
-      brute:    { key:"brute",    emoji:"🦂", baseHp:26, dmg:5, speed:1, range:1 }, // melee
-      behemoth: { key:"behemoth", emoji:"👾", baseHp:40, dmg:6, speed:1, range:1 }  // melee
-    };
+  bug: {
+    key: "bug",
+    emoji: "🐜",
+    baseHp: 10,
+    dmg: 2,
+    speed: 1,
+    range: 1
+  },
+  spitter: {
+    key: "spitter",
+    emoji: "🪲",
+    baseHp: 14,
+    dmg: 3,
+    speed: 1,
+    range: 3   // hangs back and spits from range
+  },
+  brute: {
+    key: "brute",
+    emoji: "🦂",
+    baseHp: 26,
+    dmg: 5,
+    speed: 1,
+    range: 1
+  },
+  behemoth: {
+    key: "behemoth",
+    emoji: "👾",
+    baseHp: 40,
+    dmg: 6,
+    speed: 1,
+    range: 1
+  },
+
+  // 🐝 Boss 1: Hive Queen — summons bugs when your troops are around
+  hiveQueen: {
+    key: "hiveQueen",
+    emoji: "👑",
+    baseHp: 90,
+    dmg: 3,
+    speed: 1,
+    range: 2,
+    isBoss: true
+  },
+
+  // 🌀 Boss 2: Warper — teleports next to your towers
+  warper: {
+    key: "warper",
+    emoji: "🌀",
+    baseHp: 75,
+    dmg: 4,
+    speed: 1,
+    range: 3,
+    isBoss: true
+  }
+};
+
 
 
     // ---------------- STATE ----------------
@@ -866,43 +919,48 @@
                 }
 
                 let type = "normal";
-                if(r===center && c===center) type = "base";
-                else if(manhattan === 2) type = "eco";
-
-                const nodeDocRef = doc(nodesCol, id);
-
-                const battlefield = {
-                  width:BATTLE_W,
-                  height:BATTLE_H,
-                  troops:[],
-                  towers:[],
-                  aliens:[],
-                  spines:[],
-                  hitLines:[]
-                };
-
-                if(type === "base"){
-                  const midY = Math.floor(BATTLE_H/2);
-                  battlefield.towers.push({
-                    id:"generator",
-                    x:0,
-                    y:midY,
-                    kind:"generator",
-                    hp:baseHp,
-                    maxHp:baseHp
+                  if (r === center && c === center) type = "base";
+                  else if (manhattan === 2) type = "eco";
+                  
+                  const nodeDocRef = doc(nodesCol, id);
+                  
+                  const battlefield = {
+                    width: BATTLE_W,
+                    height: BATTLE_H,
+                    troops: [],
+                    towers: [],
+                    aliens: [],
+                    spines: [],
+                    hitLines: []
+                  };
+                  
+                  // Base generator
+                  if (type === "base") {
+                    const midY = Math.floor(BATTLE_H / 2);
+                    battlefield.towers.push({
+                      id: "generator",
+                      x: 0,
+                      y: midY,
+                      kind: "generator",
+                      hp: baseHp,
+                      maxHp: baseHp
+                    });
+                  }
+                  
+                  // 💰 Eco nodes start with a full pool of resources
+                  const ecoPool = (type === "eco") ? ECO_NODE_CAPACITY : null;
+                  
+                  tx.set(nodeDocRef, {
+                    id,
+                    row: r,
+                    col: c,
+                    owner,
+                    type,
+                    spreadChance: 0.33,
+                    pendingWave: false,
+                    ecoPool,
+                    battlefield
                   });
-                }
-
-                tx.set(nodeDocRef,{
-                  id,
-                  row:r,
-                  col:c,
-                  owner,
-                  type,
-                  spreadChance:0.33,
-                  pendingWave:false,
-                  battlefield
-                });
               }
             }
           }else{
@@ -1347,42 +1405,147 @@ function getDifficultyFactor(playerCount){
 
 
 async function applyIncomeTick(game){
-  const base = game.base || { incomePerPlayer:0 };
+  const base = game.base || { incomePerPlayer: 0 };
   const baseIncome = base.incomePerPlayer || 0;
 
-  // Count eco nodes you control
+  // 🔹 Track eco usage + which ones run out
   let ecoCount = 0;
-  for (const key in nodesState){
-    const n = nodesState[key];
-    if(!n) continue;
-    if(n.type === "eco" && n.owner === "player") ecoCount++;
+  const depletedEcoKeys = [];
+  const nodeWritePromises = [];
+
+  for (const key in nodesState) {
+    const node = nodesState[key];
+    if (!node) continue;
+    if (node.type !== "eco") continue;
+
+    // Only drain when players control it
+    if (node.owner === "player") {
+      const currentPool =
+        typeof node.ecoPool === "number" ? node.ecoPool : ECO_NODE_CAPACITY;
+
+      // Count it as “active” for bonus this tick if it still has juice
+      if (currentPool > 0) {
+        ecoCount++;
+      }
+
+      // Drain resources while you hold it
+      const newPool = currentPool - ECO_DRAIN_PER_TICK;
+      node.ecoPool = Math.max(0, newPool);
+
+      // If it just ran dry, convert to a normal node
+      if (newPool <= 0) {
+        node.type = "normal";
+        depletedEcoKeys.push(key);
+      }
+
+      const nodeRef = doc(nodesCol, key);
+      nodeWritePromises.push(
+        setDoc(
+          nodeRef,
+          {
+            type: node.type,
+            ecoPool: node.ecoPool
+          },
+          { merge: true }
+        )
+      );
+    } else {
+      // Eco node not controlled by players yet:
+      // no drain, no bonus until captured.
+      node.ecoPool =
+        typeof node.ecoPool === "number" ? node.ecoPool : ECO_NODE_CAPACITY;
+      const nodeRef = doc(nodesCol, key);
+      nodeWritePromises.push(
+        setDoc(
+          nodeRef,
+          { ecoPool: node.ecoPool },
+          { merge: true }
+        )
+      );
+    }
   }
+
+  // 💰 Eco bonus this tick
   const ecoBonus = ecoCount * ECO_BONUS_PER_NODE;
 
-  // Pull all players once
-  const playersSnap = await getDocs(collection(gameRef,"players"));
+  // 🔹 Pull all players once
+  const playersSnap = await getDocs(collection(gameRef, "players"));
   const playerCount = playersSnap.size || 1;
   const difficultyFactor = getDifficultyFactor(playerCount);
 
   // Base income is what each player would get solo.
-  // We divide it a bit as player count goes up so a 4-stack isn’t crazy rich.
+  // We divide a bit as player count goes up so a 4-stack isn’t crazy rich.
   const rawIncome = baseIncome + ecoBonus;
   const incomePerPlayer = Math.max(
     0,
     Math.round(rawIncome / difficultyFactor)
   );
 
-  if (incomePerPlayer <= 0) return;
-
-  const batchUpdates = [];
-  for(const docSnap of playersSnap.docs){
-    const p = docSnap.data();
-    const extra = p.incomeBonus || 0;
-    const money = (p.money || 0) + incomePerPlayer + extra;
-    batchUpdates.push(updateDoc(docSnap.ref,{ money }));
+  if (incomePerPlayer > 0) {
+    for (const docSnap of playersSnap.docs) {
+      const p = docSnap.data();
+      const extra = p.incomeBonus || 0;
+      const money = (p.money || 0) + incomePerPlayer + extra;
+      nodeWritePromises.push(updateDoc(docSnap.ref, { money }));
+    }
   }
-  await Promise.all(batchUpdates);
+
+  // 🔹 Any eco nodes that ran out this tick?
+  if (depletedEcoKeys.length) {
+    // Find candidate alien-controlled nodes to convert into new eco nodes
+    const enemyCandidates = Object.keys(nodesState).filter((k) => {
+      const n = nodesState[k];
+      if (!n) return false;
+      return (
+        n.owner === "enemy" &&
+        n.type !== "base" &&
+        n.type !== "eco"
+      );
+    });
+
+    for (const spentKey of depletedEcoKeys) {
+      if (!enemyCandidates.length) break;
+
+      const idx = Math.floor(Math.random() * enemyCandidates.length);
+      const newKey = enemyCandidates.splice(idx, 1)[0];
+      const newNode = nodesState[newKey];
+      const oldNode = nodesState[spentKey];
+
+      if (!newNode) continue;
+
+      // New alien eco node with fresh pool
+      newNode.type = "eco";
+      newNode.ecoPool = ECO_NODE_CAPACITY;
+
+      const newRef = doc(nodesCol, newKey);
+      nodeWritePromises.push(
+        setDoc(
+          newRef,
+          {
+            type: "eco",
+            ecoPool: ECO_NODE_CAPACITY
+          },
+          { merge: true }
+        )
+      );
+
+      if (oldNode) {
+        log(
+          `💰 Eco node at ${oldNode.row + 1}-${oldNode.col + 1} is exhausted. New rich sector appears in alien territory at ${newNode.row + 1}-${newNode.col + 1}.`
+        );
+      } else {
+        log(
+          "💰 An eco node has been exhausted and relocated to a new alien-controlled sector."
+        );
+      }
+    }
+  }
+
+  if (nodeWritePromises.length) {
+    await Promise.all(nodeWritePromises);
+  }
 }
+
 
 
     async function applySpreadTick(game){
@@ -1692,59 +1855,150 @@ function pickSecondaryAlienType(minutes){
 }
 
 
-   function spawnAlienWaveForNode(node, bf, timeSeconds){
-  const minutes = timeSeconds / 60;
-  let tier = 1;
-  if (minutes >= WAVE_MINUTES_2) tier = 3;
-  else if (minutes >= WAVE_MINUTES_1) tier = 2;
+  function spawnAlienWaveForNode(node, bf, game){
+  const aliens = bf.aliens || [];
+  const nowSec = game.timeSeconds || 0;
+  const minutes = nowSec / 60;
 
-  const waveSize =
-    tier === 1 ? 6 :
-    tier === 2 ? 10 : 14;
+  // --- TIER CALC: base it on node + time ---
+  let baseTier =
+    node.alienTier ??
+    node.threatTier ??
+    node.tier ??
+    1;
 
-  // 🔹 Choose a primary enemy type for this wave
-  const primaryType = pickPrimaryAlienType(minutes, tier);
-  const secondaryType = pickSecondaryAlienType(minutes);
+  // Scale up difficulty as game goes on
+  if (minutes > 8) {
+    baseTier += 3;
+  } else if (minutes > 5) {
+    baseTier += 2;
+  } else if (minutes > 2.5) {
+    baseTier += 1;
+  }
 
-  bf.aliens = bf.aliens || [];
+  const tier = Math.max(1, Math.min(5, baseTier));
 
-  for (let i = 0; i < waveSize; i++){
-    const row = 1 + (i % (BATTLE_H - 2));
-    const x = BATTLE_W - 1;
+  // --- GROUP THEME: mostly one type per wave ---
+  // higher tier => more elites & heavies
+  let theme;
+  const r = Math.random();
+  if (tier <= 2) {
+    // Early game: mostly bugs / spitters
+    if (r < 0.6) theme = "bugs";
+    else theme = "spitters";
+  } else if (tier <= 4) {
+    // Mid game: brutes + elite spitters
+    if      (r < 0.35) theme = "bugs";
+    else if (r < 0.7)  theme = "spitters";
+    else               theme = "brutes";
+  } else {
+    // Late game: heavy mixed
+    if      (r < 0.25) theme = "bugs";
+    else if (r < 0.5)  theme = "spitters";
+    else if (r < 0.8)  theme = "brutes";
+    else               theme = "heavies";
+  }
 
-    // 75–85% of the wave is the primary type, rest is “spice”
-    const r = Math.random();
-    let typeKey;
+  // Base wave size by tier
+  let baseCount = 4 + tier * 2; // grows with tier
+  // Slight randomness so waves aren’t identical
+  baseCount += Math.floor((Math.random() - 0.5) * 3); // -1..+1
+  baseCount = Math.max(3, baseCount);
 
-    if (r < 0.8){
-      typeKey = primaryType;
-    } else {
-      // choose a secondary that isn't identical to primary
-      if (primaryType === "bug"){
-        typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
-      } else if (primaryType === "spitter"){
-        typeKey = Math.random() < 0.7 ? "bug" : secondaryType;
-      } else if (primaryType === "brute"){
-        typeKey = Math.random() < 0.7 ? "spitter" : secondaryType;
-      } else {
-        // primary is behemoth
-        typeKey = Math.random() < 0.6 ? "brute" : secondaryType;
-      }
-    }
-
-    const def = ENEMIES[typeKey] || ENEMIES.bug;
-    bf.aliens.push({
-      id: "a_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
+  // --- helper to create alien ---
+  function spawnAlien(x, y, type){
+    const def = ENEMIES[type] || ENEMIES.bug;
+    const hp = def.baseHp || 10;
+    aliens.push({
+      id: "alien_" + type + "_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
       x,
-      y: row,
-      type: typeKey,
-      hp: def.baseHp,
-      maxHp: def.baseHp
+      y,
+      type,
+      hp,
+      maxHp: hp
     });
   }
 
-  log(`Alien wave spawned in node ${node.row+1}-${node.col+1} — mostly ${primaryType}s.`);
+  // --- decide PRIMARY + SUPPORT types based on theme ---
+  let primaryType = "bug";
+  let supportTypes = [];
+
+  if (theme === "bugs") {
+    primaryType = "bug";
+    supportTypes = ["spitter"];
+  } else if (theme === "spitters") {
+    primaryType = "spitter";
+    supportTypes = ["bug"];
+  } else if (theme === "brutes") {
+    primaryType = "brute";
+    supportTypes = ["bug", "spitter"];
+  } else if (theme === "heavies") {
+    primaryType = "behemoth";
+    supportTypes = ["brute", "spitter"];
+  }
+
+  // --- spawn lane positions (entry columns on right side) ---
+  // We’ll spawn from the right edge-ish, 3 main lanes (top/mid/bot)
+  const entryX = BATTLE_W - 1;
+  const lanes = [
+    Math.floor(BATTLE_H * 0.2),
+    Math.floor(BATTLE_H * 0.5),
+    Math.floor(BATTLE_H * 0.8)
+  ].map(y => Math.max(0, Math.min(BATTLE_H - 1, y)));
+
+  // Distribute enemies across lanes, mostly primaryType
+  for (let i = 0; i < baseCount; i++) {
+    const laneY = lanes[i % lanes.length];
+    const jitterY = laneY + (Math.random() < 0.5 ? 0 : (Math.random() < 0.5 ? 1 : -1));
+    const y = Math.max(0, Math.min(BATTLE_H - 1, jitterY));
+
+    let type = primaryType;
+    // Small chance for support type instead of primary
+    if (supportTypes.length && Math.random() < 0.25) {
+      type = supportTypes[Math.floor(Math.random() * supportTypes.length)];
+    }
+
+    spawnAlien(entryX, y, type);
+  }
+
+  // --- BOSS SPAWN CHANCES (higher tiers only) ---
+  // Tier 3+ can get Hive Queen, Tier 4+ can get Warper
+  let hiveChance = 0;
+  let warpChance = 0;
+
+  if (tier >= 3 && tier <= 4) {
+    hiveChance = 0.18 + 0.04 * (tier - 3);   // ~18–22%
+  } else if (tier >= 5) {
+    hiveChance = 0.28;                       // ~28% in late game
+    warpChance = 0.22;                       // Warper starts showing up
+  }
+
+  // Slight extra scaling with time
+  hiveChance += Math.min(0.12, minutes * 0.01); // +1% per minute up to +12%
+  warpChance += Math.min(0.10, Math.max(0, minutes - 6) * 0.01); // after 6min
+
+  function findBossLaneY(){
+    // Prefer middle lane if available
+    return lanes[1] ?? lanes[0] ?? Math.floor(BATTLE_H / 2);
+  }
+
+  // 🐝 Hive Queen boss
+  if (hiveChance > 0 && Math.random() < hiveChance) {
+    const bossY = findBossLaneY();
+    const bossX = BATTLE_W - 2;
+    spawnAlien(bossX, bossY, "hiveQueen");
+  }
+
+  // 🌀 Warper boss
+  if (warpChance > 0 && Math.random() < warpChance) {
+    const bossY = findBossLaneY();
+    const bossX = BATTLE_W - 3;
+    spawnAlien(bossX, bossY, "warper");
+  }
+
+  bf.aliens = aliens;
 }
+
 
 // Bonus damage vs specific alien types for specific troops
 function troopVsAlienMultiplier(troopKind, alienType){
@@ -1788,7 +2042,7 @@ function troopVsAlienMultiplier(troopKind, alienType){
     troops.some(t => t.hp > 0) ||
     towers.some(tw => tw.hp > 0);
 
-  // Track alien positions so they don't clump on the same tile
+  // Track alien positions so they don't clump on the same tile while moving
   const occupiedAlienPositions = new Set();
   for (const a of aliens) {
     if (a.hp > 0) {
@@ -1801,6 +2055,15 @@ function troopVsAlienMultiplier(troopKind, alienType){
   }
   function manhattan(x1, y1, x2, y2) {
     return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+  }
+
+  function isOccupiedTile(x, y) {
+    if (!inBounds(x, y)) return true;
+    for (const t of troops)  if (t.hp > 0 && t.x === x && t.y === y) return true;
+    for (const tw of towers) if (tw.hp > 0 && tw.x === x && tw.y === y) return true;
+    for (const a of aliens)  if (a.hp > 0 && a.x === x && a.y === y) return true;
+    for (const s of spines)  if (s.hp > 0 && s.x === x && s.y === y) return true;
+    return false;
   }
 
   // --- POISON TICK ON TROOPS ---
@@ -1938,10 +2201,7 @@ function troopVsAlienMultiplier(troopKind, alienType){
     }
   }
 
-  // ========= UPDATED: ALIEN MOVEMENT (stop when in attack range) =========
-  // - When player has units: move toward nearest troop/tower/generator
-  // - When player has NO units: drift back to right side (their half)
-  // - Avoid clumping: aliens do not stack on the same tile
+  // ========= ALIEN MOVEMENT (stop when in own attack range) =========
   for (const a of aliens) {
     if (a.hp <= 0) continue;
 
@@ -1960,7 +2220,6 @@ function troopVsAlienMultiplier(troopKind, alienType){
     if (hasPlayerUnits && info) {
       // If we're already in our attack range, don't move — just shoot/bonk.
       if (info.dist > attackRange) {
-        // Normal behavior: hunt nearest player unit until in range
         targetX = info.x;
         targetY = info.y;
         haveMoveTarget = true;
@@ -2023,6 +2282,84 @@ function troopVsAlienMultiplier(troopKind, alienType){
     // If we didn’t move at all, keep our old tile reserved
     if (!moved) {
       occupiedAlienPositions.add(`${a.x}_${a.y}`);
+    }
+  }
+
+  // ========= BOSS ABILITIES =========
+  for (const a of aliens) {
+    if (a.hp <= 0) continue;
+    const def = ENEMIES[a.type] || ENEMIES.bug;
+    if (!def.isBoss) continue;
+
+    // Tick down boss cooldowns
+    a.summonCooldown = (a.summonCooldown || 0) - 1;
+    a.warpCooldown   = (a.warpCooldown   || 0) - 1;
+
+    // 🐝 Hive Queen — summons bugs near herself when troops are present
+    if (a.type === "hiveQueen") {
+      if (a.summonCooldown <= 0 && troops.some(t => t.hp > 0)) {
+        const dirs = [
+          [1,0],[-1,0],[0,1],[0,-1],
+          [1,1],[1,-1],[-1,1],[-1,-1]
+        ];
+        let spawned = 0;
+        for (const [dx,dy] of dirs) {
+          if (spawned >= 3) break;
+          const sx = a.x + dx;
+          const sy = a.y + dy;
+          if (!inBounds(sx,sy)) continue;
+          if (isOccupiedTile(sx,sy)) continue;
+
+          const bugDef = ENEMIES.bug;
+          aliens.push({
+            id: "boss_bug_" + Date.now() + "_" + Math.random().toString(16).slice(2,6),
+            x: sx,
+            y: sy,
+            type: "bug",
+            hp: bugDef.baseHp,
+            maxHp: bugDef.baseHp
+          });
+          spawned++;
+          changed = true;
+        }
+        if (spawned > 0) {
+          a.summonCooldown = 6; // boss can summon every ~6 sim ticks
+        }
+      }
+    }
+
+    // 🌀 Warper — teleports next to your towers
+    if (a.type === "warper") {
+      if (a.warpCooldown <= 0 && towers.some(tw => tw.hp > 0)) {
+        // Jump near the nearest tower
+        let bestTower = null, bestD = Infinity;
+        for (const tw of towers) {
+          if (tw.hp <= 0) continue;
+          const d = manhattan(a.x, a.y, tw.x, tw.y);
+          if (d < bestD) { bestD = d; bestTower = tw; }
+        }
+        if (bestTower) {
+          const dirs = [
+            [1,0],[-1,0],[0,1],[0,-1],
+            [1,1],[1,-1],[-1,1],[-1,-1]
+          ];
+          let dest = null;
+          for (const [dx,dy] of dirs) {
+            const tx = bestTower.x + dx;
+            const ty = bestTower.y + dy;
+            if (!inBounds(tx,ty)) continue;
+            if (isOccupiedTile(tx,ty)) continue;
+            dest = {x:tx, y:ty};
+            break;
+          }
+          if (dest) {
+            a.x = dest.x;
+            a.y = dest.y;
+            a.warpCooldown = 8; // warp every ~8 sim ticks
+            changed = true;
+          }
+        }
+      }
     }
   }
 
@@ -2231,7 +2568,7 @@ function troopVsAlienMultiplier(troopKind, alienType){
     }
   }
 
-  // --- ALIEN ATTACKS (use enemy range) ---
+  // --- ALIEN ATTACKS (use enemy range for melee/ranged) ---
   for (const a of aliens) {
     if (a.hp <= 0) continue;
     const def = ENEMIES[a.type] || ENEMIES.bug;
@@ -2283,6 +2620,7 @@ function troopVsAlienMultiplier(troopKind, alienType){
 
   return { changed };
 }
+
 
 
 
@@ -2703,6 +3041,7 @@ function troopVsAlienMultiplier(troopKind, alienType){
   </script>
 </body>
 </html>
+
 
 
 
