@@ -1234,140 +1234,171 @@
     }
 
     function onBattleCellClick(x, y, node) {
-      if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
-        log("You can only build in nodes you control or adjacent to your territory.");
-        return;
-      }
+  if (!selectedNodeId || !canBuildInNode(selectedNodeId)) {
+    log("You can only build in nodes you control or adjacent to your territory.");
+    return;
+  }
 
-      if (!currentBuild.type || !currentBuild.category) {
-        log("Select a troop or tower type first.");
-        return;
-      }
+  if (!currentBuild.type || !currentBuild.category) {
+    log("Select a troop or tower type first.");
+    return;
+  }
 
-      if (x > 2) {
-        log("You can only place in the first 3 columns.");
-        return;
-      }
-      if (!currentUser) {
-        log("Player auth not ready yet.");
-        return;
-      }
-      if (!socket || !socket.connected){
-        log("Not connected to server.");
-        return;
-      }
+  if (x > 2) {
+    log("You can only place in the first 3 columns.");
+    return;
+  }
+  if (!currentUser) {
+    log("Player auth not ready yet.");
+    return;
+  }
+  if (!socket || !socket.connected){
+    log("Not connected to server.");
+    return;
+  }
 
-      const def =
-        currentBuild.category === "troop"
-          ? TROOPS[currentBuild.type]
-          : TOWERS[currentBuild.type];
+  const def =
+    currentBuild.category === "troop"
+      ? TROOPS[currentBuild.type]
+      : TOWERS[currentBuild.type];
 
-      if (!def) {
-        log("Unknown unit type.");
-        return;
-      }
+  if (!def) {
+    log("Unknown unit type.");
+    return;
+  }
 
-      const payload = {
-        type: "build",
-        nodeId: selectedNodeId,
-        x,
-        y,
-        category: currentBuild.category, // "troop" or "tower"
-        unitType: currentBuild.type
-      };
+  socket.emit("playerAction", {
+    type: "build",
+    nodeId: selectedNodeId,
+    x,
+    y,
+    category: currentBuild.category,
+    unitType: currentBuild.type
+  });
 
-      socket.emit("playerAction", payload);
-    }
+  const name =
+    currentBuild.category === "troop"
+      ? TROOPS[currentBuild.type].name
+      : TOWERS[currentBuild.type].name;
+  log(`Build requested: ${name} at (${x + 1},${y + 1}).`);
+}
+
 
     // ---------------- SOCKET.IO WIRING (MATCHES SERVER) ----------------
-    function setupSocket(user){
-      socket = io(); // same origin as Node server
+   // ---------------- SOCKET.IO WIRING ----------------
+function setupSocket(user, token){
+  // If HTML is served by the Node server (recommended):
+  socket = io(); // same origin: http://localhost:4000
 
-      socket.on("connect", async ()=> {
-        log("Connected to Grid Overlord server.");
+  socket.on("connect", () => {
+    log("Connected to Grid Overlord server.");
 
-        try{
-          const token = await user.getIdToken();
-          socket.emit("joinGame", {
-            token,
-            gameId,
-            name: displayName
-          });
-        }catch(err){
-          console.error(err);
-          log("Failed to get ID token for joinGame.");
-        }
-      });
+    socket.emit("joinGame", {
+      token,
+      gameId,
+      name: displayName
+    });
+  });
 
-      // When server confirms join
-      socket.on("joined", ({ uid, gameId: joinedGameId, state }) => {
-        log(`Joined game ${joinedGameId}.`);
-        latestGame = state || {};
-        nodesState = state?.nodesState || {};
+  // Initial join payload
+  socket.on("joined", ({ uid, gameId: joinedGameId, state }) => {
+    log(`Joined game ${joinedGameId} as ${uid}`);
+    latestGame = state;
+    nodesState = state.nodesState || {};
+    myPlayer = (state.players || []).find(p => p.uid === uid) || null;
 
-        myPlayer = (state?.players || []).find(p => p.uid === uid) || null;
-        renderGameMeta();
-        renderBoard();
-        if(selectedNodeId && nodesState[selectedNodeId]){
-          selectedNode = nodesState[selectedNodeId];
-          renderNodeDetails();
-        }
-        applyPlayerUi();
-      });
-
-      // Authoritative state update each tick
-      socket.on("state", (state) => {
-        if (!state) return;
-        latestGame = state;
-        nodesState = state.nodesState || {};
-
-        const uid = currentUser?.uid;
-        if (uid){
-          myPlayer = (state.players || []).find(p => p.uid === uid) || null;
-        }
-
-        renderGameMeta();
-        renderBoard();
-
-        if(selectedNodeId && nodesState[selectedNodeId]){
-          selectedNode = nodesState[selectedNodeId];
-          renderNodeDetails();
-          if (battleOverlay.style.display !== "none"){
-            renderBattlefield(selectedNode);
-          }
-        }
-
-        applyPlayerUi();
-      });
-
-      socket.on("log", (msg)=> log(msg));
-      socket.on("errorMessage", (msg)=> log("⚠ " + msg));
-
-      socket.on("disconnect", ()=> {
-        log("Disconnected from Grid Overlord server.");
-      });
+    renderGameMeta();
+    renderBoard();
+    if (selectedNodeId && nodesState[selectedNodeId]) {
+      selectedNode = nodesState[selectedNodeId];
+      renderNodeDetails();
+      renderBattlefield(selectedNode);
     }
+    applyPlayerUi();
+  });
+
+  // Full state update each tick
+  socket.on("state", (fullState) => {
+    if (!fullState) return;
+    latestGame = fullState;
+    nodesState = fullState.nodesState || {};
+
+    // update myPlayer based on currentUser.uid
+    if (currentUser) {
+      const mine = (fullState.players || []).find(p => p.uid === currentUser.uid);
+      if (mine) myPlayer = mine;
+    }
+
+    renderGameMeta();
+    renderBoard();
+    if (selectedNodeId && nodesState[selectedNodeId]) {
+      selectedNode = nodesState[selectedNodeId];
+      renderNodeDetails();
+      renderBattlefield(nodesState[selectedNodeId]);
+    }
+    applyPlayerUi();
+  });
+
+  socket.on("log", (msg) => log(msg));
+  socket.on("errorMessage", (msg) => log("⚠ " + msg));
+
+  socket.on("disconnect", () => {
+    log("Disconnected from Grid Overlord server.");
+  });
+}
+
+// ---------------- AUTH FLOW ----------------
+log("Connecting to Firebase (auth only) and waiting for authentication…");
+
+signInAnonymously(auth).catch(err => {
+  console.error(err);
+  alert("Failed to sign in anonymously to Firebase: " + err.message);
+});
+
+let socketStarted = false;
+onAuthStateChanged(auth, (user) => {
+  if (!user || socketStarted) return;
+  currentUser = user;
+  playerNameLabel.textContent = displayName;
+
+  // Get ID token for the Node server
+  user.getIdToken().then((token) => {
+    socketStarted = true;
+    setupSocket(user, token);
+  }).catch(err => {
+    console.error("getIdToken error", err);
+    alert("Could not get auth token: " + err.message);
+  });
+});
+
 
     // ---------------- ACTION HELPERS (DROPSHIP / UPGRADE) ----------------
     function requestDropship(sourceId, destId){
-      if(!socket || !socket.connected){
-        log("Not connected to server.");
-        return;
-      }
-      socket.emit("playerAction", {
-        type: "dropship",
-        sourceNodeId: sourceId,
-        destNodeId: destId
-      });
-    }
+  if(!socket || !socket.connected){
+    log("Not connected to server.");
+    return;
+  }
+  socket.emit("playerAction", {
+    type: "dropship",
+    sourceNodeId: sourceId,
+    destNodeId: destId
+  });
+
+  const src = nodesState[sourceId];
+  const dst = nodesState[destId];
+  const sLabel = src ? `${src.row+1}-${src.col+1}` : sourceId;
+  const dLabel = dst ? `${dst.row+1}-${dst.col+1}` : destId;
+  log(`Dropship requested from ${sLabel} to ${dLabel}.`);
+}
+
 
     function requestUpgradeBase(){
-      if(!socket || !socket.connected){
-        log("Not connected to server.");
-        return;
-      }
-      socket.emit("playerAction", { type: "upgradeBase" });
-    }
+  if (!socket || !socket.connected) {
+    log("Not connected to server.");
+    return;
+  }
+  socket.emit("playerAction", { type: "upgradeBase" });
+}
 
     // ---------------- UI BUTTONS ----------------
     openBattleBtn.addEventListener("click",()=>{
@@ -1453,6 +1484,7 @@
   </script>
 </body>
 </html>
+
 
 
 
