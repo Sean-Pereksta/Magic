@@ -166,7 +166,8 @@
       border-color:var(--accent-soft);
     }
     .node-base-tag,
-    .node-eco-tag{
+    .node-eco-tag,
+    .node-tech-tag{
       position:absolute;
       top:4px;
       left:6px;
@@ -446,6 +447,48 @@
       color:var(--muted);
     }
 
+    /* Tech panel */
+    .tech-panel{
+      margin-top:6px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      padding:6px 8px;
+      font-size:.75rem;
+      color:var(--muted);
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .tech-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+    }
+    .tech-btn{
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:3px 7px;
+      font-size:.72rem;
+      background:#020617;
+      color:var(--muted);
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .tech-btn[disabled]{
+      opacity:.45;
+      cursor:default;
+    }
+    .tech-btn.unlocked{
+      border-color:var(--accent-soft);
+      background:radial-gradient(circle at top,#0ea5e9,#22c55e);
+      color:#0f172a;
+      font-weight:600;
+    }
+
     @media (max-width:900px){
       .shell{
         padding:6px 6px calc(6px + env(safe-area-inset-bottom));
@@ -562,7 +605,7 @@
         <div class="panel-header">
           <span>Galaxy Map — Nodes</span>
           <span class="small">
-            🟢 you · 🔴 aliens · 🟡 both · ⚪ empty · 💰 eco
+            🟢 you · 🔴 aliens · 🟡 both · ⚪ empty · 💰 eco · 🧪 tech
           </span>
         </div>
         <div id="boardGrid" class="board-grid"></div>
@@ -585,10 +628,22 @@
           🔋 Lv <span id="baseLevelLabel">1</span> · +<span id="incomeLabel">0</span> credits / 5s per player · Next: <span id="baseUpgradeCostLabel">0</span>
         </div>
 
+        <div id="techPanel" class="tech-panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span><strong>Tech Upgrades</strong></span>
+            <span id="techNodeCountLabel" class="small">Tech nodes: 0</span>
+          </div>
+          <div id="techButtons" class="tech-grid"></div>
+          <div class="small">
+            Control 🧪 tech nodes to unlock powerful upgrades for your troops and towers.
+          </div>
+        </div>
+
         <div style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;">
           <strong>Quick guide:</strong><br/>
           • Colors: 🟢 only your troops/towers, 🔴 only aliens, 🟡 both, ⚪ none.<br/>
           • 💰 Eco nodes add bonus credits when they’re green.<br/>
+          • 🧪 Tech nodes unlock upgrades when controlled.<br/>
           • Aliens spread from red nodes and stockpile nests over time.<br/>
           • The center base node has the 🔋 generator at the back. If aliens destroy it, everyone loses.
         </div>
@@ -618,6 +673,7 @@
       <div class="battle-main">
         <div class="battle-grid-wrap">
           <div id="battleGrid" class="battle-grid"></div>
+          <div id="hitlineLayer" class="hitline-layer"></div>
         </div>
         <div class="battle-side">
           <div><strong>Troops</strong></div>
@@ -634,7 +690,7 @@
   </div>
 
   <!-- Socket.IO client (served by your Node.js server) -->
-<script src="https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev/socket.io/socket.io.js"></script>
+  <script src="https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev/socket.io/socket.io.js"></script>
 
   <script type="module">
   // ---------------- FIREBASE AUTH (ONLY) ----------------
@@ -691,6 +747,73 @@
     warper:    { key:"warper",    emoji:"🌀", baseHp:75,  isBoss:true }
   };
 
+  // Tech upgrades (must match server-side upgrade keys)
+  const TECH_UPGRADES = {
+    ironside: {
+      key: "ironside",
+      name: "Ironside",
+      desc: "Shield towers give stronger damage reduction.",
+      cost: 40,
+      reqTechNodes: 1
+    },
+    leaderAmongMen: {
+      key: "leaderAmongMen",
+      name: "Leader Among Men",
+      desc: "Sergeant aura is larger & stronger.",
+      cost: 40,
+      reqTechNodes: 1
+    },
+    longerBarrels: {
+      key: "longerBarrels",
+      name: "Longer Barrels",
+      desc: "Riflemen gain +1 attack range.",
+      cost: 45,
+      reqTechNodes: 1
+    },
+    plasmaGrieves: {
+      key: "plasmaGrieves",
+      name: "Plasma Grieves",
+      desc: "Phase Blades move faster toward enemies.",
+      cost: 55,
+      reqTechNodes: 2
+    },
+    healingTouch: {
+      key: "healingTouch",
+      name: "Healing Touch",
+      desc: "Medics heal for much more.",
+      cost: 45,
+      reqTechNodes: 2
+    },
+    deathgaze: {
+      key: "deathgaze",
+      name: "Deathgaze",
+      desc: "Snipers hit much harder but fire every other tick.",
+      cost: 60,
+      reqTechNodes: 2
+    },
+    furyOfThor: {
+      key: "furyOfThor",
+      name: "Fury of Thor",
+      desc: "Bombers gain splash radius and damage.",
+      cost: 60,
+      reqTechNodes: 2
+    },
+    lightningRod: {
+      key: "lightningRod",
+      name: "Lightning Rod",
+      desc: "Tesla coils gain range and damage.",
+      cost: 65,
+      reqTechNodes: 3
+    },
+    lockDown: {
+      key: "lockDown",
+      name: "Lock Down",
+      desc: "Laser towers deal greatly increased damage.",
+      cost: 65,
+      reqTechNodes: 3
+    }
+  };
+
   // ---------------- STATE ----------------
   let currentUser = null;
   let myUid = null;
@@ -727,11 +850,16 @@
   const battleNodeLabel = document.getElementById("battleNodeLabel");
   const battleOwnerTag = document.getElementById("battleOwnerTag");
   const battleGridEl = document.getElementById("battleGrid");
+  const hitlineLayerEl = document.getElementById("hitlineLayer");
   const troopBarEl = document.getElementById("troopBar");
   const towerBarEl = document.getElementById("towerBar");
   const dropshipBtn = document.getElementById("dropshipBtn");
   const dropshipStatusLabel = document.getElementById("dropshipStatus");
   const leaveBattleBtn = document.getElementById("leaveBattleBtn");
+
+  const techPanelEl = document.getElementById("techPanel");
+  const techButtonsEl = document.getElementById("techButtons");
+  const techNodeCountLabel = document.getElementById("techNodeCountLabel");
 
   // ---------------- UTILS ----------------
   function log(msg){
@@ -778,6 +906,17 @@
     return false;
   }
 
+  function countControlledTechNodes(){
+    let count = 0;
+    for (const key in nodesState){
+      const n = nodesState[key];
+      if (n && n.type === "tech" && n.owner === "player"){
+        count++;
+      }
+    }
+    return count;
+  }
+
   // ---------------- DROPSHIP STATUS UI ----------------
   function updateDropshipStatus(){
     if (!dropshipStatusLabel || !dropshipBtn) return;
@@ -809,6 +948,60 @@
   }
 
   // ---------------- RENDER META ----------------
+  function renderTechPanel(){
+    if (!techButtonsEl || !latestGame) return;
+
+    const base = latestGame.base || {};
+    const bought = base.upgrades || {};
+    const techNodes = countControlledTechNodes();
+    if (techNodeCountLabel){
+      techNodeCountLabel.textContent = `Tech nodes: ${techNodes}`;
+    }
+
+    const credits = myPlayer ? Math.floor(myPlayer.money || 0) : 0;
+    techButtonsEl.innerHTML = "";
+
+    for (const key in TECH_UPGRADES){
+      const up = TECH_UPGRADES[key];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tech-btn";
+      const isUnlocked = !!bought[key];
+      const hasNodes = techNodes >= (up.reqTechNodes || 0);
+      const affordable = credits >= (up.cost || 0);
+
+      if (isUnlocked){
+        btn.classList.add("unlocked");
+        btn.disabled = true;
+      }else{
+        if (!hasNodes || !affordable){
+          btn.disabled = true;
+        }
+      }
+
+      btn.innerHTML = `${up.name} <span style="opacity:.7;">(${up.cost}c, ${up.reqTechNodes}🧪)</span>`;
+      btn.title = up.desc;
+
+      btn.addEventListener("click", ()=>{
+        if (isUnlocked){
+          log(`${up.name} already researched.`);
+          return;
+        }
+        if (!socket || !socket.connected){
+          log("Not connected to server.");
+          return;
+        }
+        socket.emit("playerAction", {
+          type: "buyUpgrade",
+          upgradeKey: key
+        });
+        log(`Research requested: ${up.name}.`);
+      });
+
+      techButtonsEl.appendChild(btn);
+    }
+  }
+
   function renderGameMeta(){
     if (!latestGame) return;
 
@@ -840,6 +1033,7 @@
     }
 
     updateDropshipStatus();
+    renderTechPanel();
   }
 
   function applyPlayerUi(){
@@ -850,6 +1044,7 @@
       battleMoneyLabel.textContent = credits;
     }
     updateDropshipStatus();
+    renderTechPanel();
   }
 
   // ---------------- RENDER BOARD ----------------
@@ -876,6 +1071,7 @@
         title.textContent =
           (r===center && c===center) ? "Base" :
           (node && node.type==="eco") ? "Eco" :
+          (node && node.type==="tech") ? "Tech" :
           `Node ${r+1}-${c+1}`;
         div.appendChild(title);
 
@@ -898,6 +1094,11 @@
           const tag = document.createElement("div");
           tag.className = "node-eco-tag";
           tag.textContent = "💰";
+          div.appendChild(tag);
+        }else if(node && node.type==="tech"){
+          const tag = document.createElement("div");
+          tag.className = "node-tech-tag";
+          tag.textContent = "🧪";
           div.appendChild(tag);
         }
 
@@ -990,7 +1191,7 @@
       return;
     }
     let html = "";
-    html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
+    html += `<div><strong>${selectedNode.type==="base" ? "Base Node" : selectedNode.type==="eco" ? "Eco Node" : selectedNode.type==="tech" ? "Tech Node" : "Node"} ${selectedNode.row+1}-${selectedNode.col+1}</strong></div>`;
     const ownerName =
       selectedNode.owner==="player" ? "You (green)" :
       selectedNode.owner==="enemy" ? "Aliens (red)" :
@@ -1006,6 +1207,8 @@
       </div>`;
     }else if(selectedNode.type==="eco"){
       html += `<div style="margin-top:6px;">This <strong>💰 eco node</strong> gives extra income while it’s green.</div>`;
+    }else if(selectedNode.type==="tech"){
+      html += `<div style="margin-top:6px;">This <strong>🧪 tech node</strong> counts toward unlocking research upgrades.</div>`;
     }else{
       html += `<div style="margin-top:6px;">Control is based only on who is standing here. Clear aliens to flip red/yellow to green.</div>`;
     }
@@ -1065,7 +1268,8 @@
     const {row,col} = parseKey(nodeId);
     battleNodeLabel.textContent =
       (selectedNode.type==="base" ? "Base Node" :
-       selectedNode.type==="eco" ? "Eco Node" : "Node") +
+       selectedNode.type==="eco" ? "Eco Node" :
+       selectedNode.type==="tech" ? "Tech Node" : "Node") +
       ` ${row+1}-${col+1}`;
     updateBattleOwnerTag(selectedNode);
     battleOverlay.style.display = "flex";
@@ -1082,6 +1286,45 @@
     if(owner==="player") battleOwnerTag.classList.add("tag-green");
     else if(owner==="enemy") battleOwnerTag.classList.add("tag-enemy");
     else if(owner==="contested") battleOwnerTag.classList.add("tag-base");
+  }
+
+  function renderHitLines(bf){
+    if (!hitlineLayerEl || !battleGridEl) return;
+    hitlineLayerEl.innerHTML = "";
+    const lines = bf.hitLines || [];
+    if (!lines.length) return;
+
+    const gridRect = battleGridEl.getBoundingClientRect();
+    const cellCenters = {};
+    const cells = battleGridEl.querySelectorAll(".battle-cell");
+    cells.forEach(cell=>{
+      const x = Number(cell.dataset.x);
+      const y = Number(cell.dataset.y);
+      if (Number.isNaN(x) || Number.isNaN(y)) return;
+      const r = cell.getBoundingClientRect();
+      const cx = r.left + r.width/2 - gridRect.left;
+      const cy = r.top + r.height/2 - gridRect.top;
+      cellCenters[`${x}_${y}`] = {cx, cy};
+    });
+
+    for (const line of lines){
+      const start = cellCenters[`${line.x1}_${line.y1}`];
+      const end   = cellCenters[`${line.x2}_${line.y2}`];
+      if (!start || !end) continue;
+      const dx = end.cx - start.cx;
+      const dy = end.cy - start.cy;
+      const len = Math.sqrt(dx*dx + dy*dy);
+      if (!len) continue;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+      const div = document.createElement("div");
+      div.className = "hitline " + (line.kind === "enemy" ? "enemy" : "player");
+      div.style.width = `${len}px`;
+      div.style.left = `${start.cx}px`;
+      div.style.top = `${start.cy}px`;
+      div.style.transform = `translateY(-50%) rotate(${angle}deg)`;
+      hitlineLayerEl.appendChild(div);
+    }
   }
 
   function renderBattlefield(node){
@@ -1173,6 +1416,7 @@
       }
     }
 
+    renderHitLines(bf);
     updateBattleOwnerTag(node);
   }
 
@@ -1225,20 +1469,20 @@
   }
 
   // ---------------- SOCKET.IO WIRING ----------------
-const SERVER_URL = "https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev";
+  const SERVER_URL = "https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev";
 
-function setupSocket(user, token){
-  // Connect directly to your Replit server
-  socket = io(SERVER_URL);
+  function setupSocket(user, token){
+    // Connect directly to your Replit server
+    socket = io(SERVER_URL);
 
-  socket.on("connect", ()=>{
-    log("Connected to Grid Overlord server.");
-    socket.emit("joinGame", {
-      token,
-      gameId,
-      name: displayName
+    socket.on("connect", ()=>{
+      log("Connected to Grid Overlord server.");
+      socket.emit("joinGame", {
+        token,
+        gameId,
+        name: displayName
+      });
     });
-  });
 
     // Initial join snapshot
     socket.on("joined", ({ uid, gameId: joinedGameId, state })=>{
@@ -1411,39 +1655,10 @@ function setupSocket(user, token){
       }
     }
   });
-</script>
+  </script>
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
