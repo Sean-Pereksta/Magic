@@ -428,6 +428,10 @@
       color:var(--ink);
       background:radial-gradient(circle at top,#0ea5e9,#22c55e);
     }
+    .build-pill.locked{
+      opacity:.35;
+      cursor:not-allowed;
+    }
 
     .tag{
       border-radius:999px;
@@ -618,33 +622,46 @@
         <div id="nodeInfo" class="node-info-box">
           <div>Select a node on the left to inspect or enter its battlefield.</div>
         </div>
+
+        <!-- Node actions -->
         <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
           <button id="openBattleBtn" class="btn btn-primary" disabled>Enter Area</button>
           <button id="upgradeBaseBtn" class="btn" disabled>Upgrade Generator</button>
-          <button id="dropshipBtn" class="btn">🚀 Dropship</button>
-          <span id="dropshipStatus" class="small">Ready</span>
         </div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
+          <button id="dropshipBtn" class="btn">🚀 Dropship</button>
+          <span id="dropshipStatus" class="small">Locked</span>
+          <button id="orbitalBtn" class="btn">☄ Orbital</button>
+          <span id="orbitalStatus" class="small">Locked</span>
+        </div>
+
         <div id="baseInfo" class="small" style="margin-top:4px;display:none;">
           🔋 Lv <span id="baseLevelLabel">1</span> · +<span id="incomeLabel">0</span> credits / 5s per player · Next: <span id="baseUpgradeCostLabel">0</span>
         </div>
 
         <div id="techPanel" class="tech-panel">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span><strong>Tech Upgrades</strong></span>
+            <span><strong>Research & Tech</strong></span>
             <span id="techNodeCountLabel" class="small">Tech nodes: 0</span>
+          </div>
+          <div id="researchRow" style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+            <span class="small">
+              🔬 Research tier <strong id="researchLevelLabel">1</strong> / 3 · Next: <strong id="researchNextCostLabel">0c</strong>
+            </span>
+            <button id="researchUpgradeBtn" class="btn" style="font-size:.7rem;padding:3px 8px;">Upgrade</button>
           </div>
           <div id="techButtons" class="tech-grid"></div>
           <div class="small">
-            Control 🧪 tech nodes to unlock powerful upgrades for your troops and towers.
+            Control 🧪 tech nodes to unlock upgrades, Dropship (2 tech nodes), and ☄ Orbital Strike (Research 2 + 3 tech nodes).
           </div>
         </div>
 
         <div style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;">
           <strong>Quick guide:</strong><br/>
           • Colors: 🟢 only your troops/towers, 🔴 only aliens, 🟡 both, ⚪ none.<br/>
-          • 💰 Eco nodes add bonus credits when they’re green.<br/>
-          • 🧪 Tech nodes unlock upgrades when controlled.<br/>
-          • Aliens spread from red nodes and stockpile nests over time.<br/>
+          • 💰 Eco nodes add bonus credits while they’re green (then relocate to alien space when exhausted).<br/>
+          • 🧪 Tech nodes fuel research, unlock high-tech troops, Dropship, and Orbital Strike.<br/>
+          • Use 🚀 Dropship (2 tech nodes) to relocate armies; use ☄ Orbital Strike (Research 2 + 3 tech nodes) to blast a node’s aliens.<br/>
           • The center base node has the 🔋 generator at the back. If aliens destroy it, everyone loses.
         </div>
 
@@ -747,6 +764,13 @@
     warper:    { key:"warper",    emoji:"🌀", baseHp:75,  isBoss:true }
   };
 
+  // Research tiers (must match server)
+  const RESEARCH_MAX_LEVEL = 3;
+  const RESEARCH_LEVEL_COST = {
+    2: 40,
+    3: 80
+  };
+
   // Tech upgrades (must match server-side upgrade keys)
   const TECH_UPGRADES = {
     ironside: {
@@ -830,6 +854,8 @@
   let dropshipSourceNodeId = null;
   let selectingDropshipTarget = false;
 
+  let lastOrbitalUsedAtSec = null; // local orbital cooldown tracking
+
   // ---------------- DOM ----------------
   const playerNameLabel = document.getElementById("playerNameLabel");
   const battleMoneyLabel = document.getElementById("battleMoneyLabel");
@@ -855,11 +881,16 @@
   const towerBarEl = document.getElementById("towerBar");
   const dropshipBtn = document.getElementById("dropshipBtn");
   const dropshipStatusLabel = document.getElementById("dropshipStatus");
+  const orbitalBtn = document.getElementById("orbitalBtn");
+  const orbitalStatusLabel = document.getElementById("orbitalStatus");
   const leaveBattleBtn = document.getElementById("leaveBattleBtn");
 
   const techPanelEl = document.getElementById("techPanel");
   const techButtonsEl = document.getElementById("techButtons");
   const techNodeCountLabel = document.getElementById("techNodeCountLabel");
+  const researchLevelLabel = document.getElementById("researchLevelLabel");
+  const researchNextCostLabel = document.getElementById("researchNextCostLabel");
+  const researchUpgradeBtn = document.getElementById("researchUpgradeBtn");
 
   // ---------------- UTILS ----------------
   function log(msg){
@@ -917,12 +948,19 @@
     return count;
   }
 
-  // ---------------- DROPSHIP STATUS UI ----------------
+  // ---------------- DROPSHIP / ORBITAL STATUS UI ----------------
   function updateDropshipStatus(){
     if (!dropshipStatusLabel || !dropshipBtn) return;
 
     if (!latestGame || !myPlayer){
       dropshipStatusLabel.textContent = "…";
+      dropshipBtn.disabled = true;
+      return;
+    }
+
+    const techNodes = countControlledTechNodes();
+    if (techNodes < 2){
+      dropshipStatusLabel.textContent = "Requires 2 tech nodes";
       dropshipBtn.disabled = true;
       return;
     }
@@ -947,6 +985,43 @@
     }
   }
 
+  function updateOrbitalStatus(){
+    if (!orbitalStatusLabel || !orbitalBtn) return;
+
+    if (!latestGame || !myPlayer){
+      orbitalStatusLabel.textContent = "…";
+      orbitalBtn.disabled = true;
+      return;
+    }
+
+    const base = latestGame.base || {};
+    const researchLevel = base.researchLevel || 1;
+    const techNodes = countControlledTechNodes();
+
+    // Requirements: Research tier 2 + 3 tech nodes
+    if (researchLevel < 2){
+      orbitalStatusLabel.textContent = "Requires Research 2";
+      orbitalBtn.disabled = true;
+      return;
+    }
+    if (techNodes < 3){
+      orbitalStatusLabel.textContent = "Needs 3 tech nodes";
+      orbitalBtn.disabled = true;
+      return;
+    }
+
+    const now = latestGame.timeSeconds || 0;
+    const CD = 30;
+    if (lastOrbitalUsedAtSec == null || now - lastOrbitalUsedAtSec >= CD){
+      orbitalStatusLabel.textContent = "Ready";
+      orbitalBtn.disabled = false;
+    } else {
+      const remaining = CD - (now - lastOrbitalUsedAtSec);
+      orbitalStatusLabel.textContent = `Cooldown: ${remaining}s`;
+      orbitalBtn.disabled = true;
+    }
+  }
+
   // ---------------- RENDER META ----------------
   function renderTechPanel(){
     if (!techButtonsEl || !latestGame) return;
@@ -958,7 +1033,24 @@
       techNodeCountLabel.textContent = `Tech nodes: ${techNodes}`;
     }
 
+    const researchLevel = base.researchLevel || 1;
+    if (researchLevelLabel){
+      researchLevelLabel.textContent = researchLevel;
+    }
+
     const credits = myPlayer ? Math.floor(myPlayer.money || 0) : 0;
+    if (researchNextCostLabel && researchUpgradeBtn){
+      if (researchLevel >= RESEARCH_MAX_LEVEL){
+        researchNextCostLabel.textContent = "Maxed";
+        researchUpgradeBtn.disabled = true;
+      } else {
+        const nextLevel = researchLevel + 1;
+        const cost = RESEARCH_LEVEL_COST[nextLevel] || 0;
+        researchNextCostLabel.textContent = `${cost}c`;
+        researchUpgradeBtn.disabled = credits < cost;
+      }
+    }
+
     techButtonsEl.innerHTML = "";
 
     for (const key in TECH_UPGRADES){
@@ -1033,6 +1125,7 @@
     }
 
     updateDropshipStatus();
+    updateOrbitalStatus();
     renderTechPanel();
   }
 
@@ -1044,6 +1137,7 @@
       battleMoneyLabel.textContent = credits;
     }
     updateDropshipStatus();
+    updateOrbitalStatus();
     renderTechPanel();
   }
 
@@ -1208,7 +1302,7 @@
     }else if(selectedNode.type==="eco"){
       html += `<div style="margin-top:6px;">This <strong>💰 eco node</strong> gives extra income while it’s green.</div>`;
     }else if(selectedNode.type==="tech"){
-      html += `<div style="margin-top:6px;">This <strong>🧪 tech node</strong> counts toward unlocking research upgrades.</div>`;
+      html += `<div style="margin-top:6px;">This <strong>🧪 tech node</strong> counts toward research, tech upgrades, Dropship, and Orbital Strike.</div>`;
     }else{
       html += `<div style="margin-top:6px;">Control is based only on who is standing here. Clear aliens to flip red/yellow to green.</div>`;
     }
@@ -1223,6 +1317,13 @@
   // ---------------- BATTLE UI ----------------
   function buildBattleBars(){
     troopBarEl.innerHTML = "";
+    towerBarEl.innerHTML = "";
+
+    const base = latestGame ? latestGame.base || {} : {};
+    const researchLevel = base.researchLevel || 1;
+    const techNodes = countControlledTechNodes();
+
+    // Troops
     for(const key in TROOPS){
       const def = TROOPS[key];
       const pill = document.createElement("button");
@@ -1231,10 +1332,28 @@
       pill.dataset.type = def.key;
       pill.dataset.category = "troop";
       pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
-      pill.onclick = ()=>selectBuild(def.key,"troop");
+
+      let lockedReason = null;
+      // High-tech infantry require at least 1 tech node
+      if ((def.key === "sergeant" || def.key === "bomber" || def.key === "sniper") && techNodes < 1){
+        lockedReason = "Requires 1+ tech node.";
+      }
+
+      if (lockedReason){
+        pill.classList.add("locked");
+        pill.disabled = true;
+        pill.title = lockedReason;
+      }
+
+      pill.addEventListener("click", ()=>{
+        if (pill.disabled) return;
+        selectBuild(def.key,"troop");
+      });
+
       troopBarEl.appendChild(pill);
     }
-    towerBarEl.innerHTML = "";
+
+    // Towers
     for(const key in TOWERS){
       const def = TOWERS[key];
       const pill = document.createElement("button");
@@ -1243,8 +1362,25 @@
       pill.dataset.type = def.key;
       pill.dataset.category = "tower";
       pill.innerHTML = `${def.emoji} ${def.name} <span style="opacity:.7;">(${def.cost})</span>`;
-      pill.onclick = ()=>selectBuild(def.key,"tower");
+
+      pill.addEventListener("click", ()=>{
+        if (pill.disabled) return;
+        selectBuild(def.key,"tower");
+      });
+
       towerBarEl.appendChild(pill);
+    }
+
+    // Re-highlight current selection if any
+    if (currentBuild.type && currentBuild.category){
+      document.querySelectorAll(".build-pill").forEach(el=>{
+        const t = el.dataset.type;
+        const cat = el.dataset.category;
+        el.classList.toggle(
+          "active",
+          t === currentBuild.type && cat === currentBuild.category
+        );
+      });
     }
   }
 
@@ -1454,7 +1590,6 @@
       return;
     }
 
-    // Send as playerAction: type=build, using unitType
     socket.emit("playerAction", {
       type: "build",
       nodeId: selectedNodeId,
@@ -1472,7 +1607,6 @@
   const SERVER_URL = "https://1188056e-a89f-4c58-8bec-b92cd40d3064-00-2jihxrsoc1s8q.janeway.replit.dev";
 
   function setupSocket(user, token){
-    // Connect directly to your Replit server
     socket = io(SERVER_URL);
 
     socket.on("connect", ()=>{
@@ -1521,6 +1655,7 @@
         if (selectedNode){
           renderNodeDetails();
           if (battleOverlay.style.display !== "none"){
+            buildBattleBars();
             renderBattlefield(selectedNode);
           }
         }
@@ -1540,7 +1675,7 @@
     });
   }
 
-  // ---------------- ACTION HELPERS (DROPSHIP / UPGRADE) ----------------
+  // ---------------- ACTION HELPERS ----------------
   function requestDropship(sourceId, destId){
     if(!socket || !socket.connected){
       log("Not connected to server.");
@@ -1563,6 +1698,29 @@
     log("⚡ Generator upgrade requested.");
   }
 
+  function requestUpgradeResearch(){
+    if(!socket || !socket.connected){
+      log("Not connected to server.");
+      return;
+    }
+    socket.emit("playerAction", { type: "upgradeResearch" });
+    log("🔬 Research upgrade requested.");
+  }
+
+  function requestOrbitalStrike(targetNodeId){
+    if(!socket || !socket.connected){
+      log("Not connected to server.");
+      return;
+    }
+    socket.emit("playerAction", {
+      type: "orbitalStrike",
+      nodeId: targetNodeId
+    });
+    lastOrbitalUsedAtSec = latestGame ? (latestGame.timeSeconds || 0) : 0;
+    log(`☄ Orbital Strike requested on node ${targetNodeId}.`);
+    updateOrbitalStatus();
+  }
+
   // ---------------- UI BUTTONS ----------------
   openBattleBtn.addEventListener("click",()=>{
     if(!selectedNodeId) return;
@@ -1579,6 +1737,12 @@
     }
     if (selectedNode.owner !== "player"){
       log("Dropship source must be a green node you control.");
+      return;
+    }
+
+    const techNodes = countControlledTechNodes();
+    if (techNodes < 2){
+      log("Dropship requires at least 2 tech nodes controlled.");
       return;
     }
 
@@ -1610,6 +1774,41 @@
     updateDropshipStatus();
   });
 
+  orbitalBtn.addEventListener("click", ()=>{
+    if (!latestGame || !myPlayer){
+      log("Orbital not ready yet.");
+      return;
+    }
+    if (!selectedNodeId || !selectedNode){
+      log("Select a node to target with Orbital Strike.");
+      return;
+    }
+
+    const base = latestGame.base || {};
+    const researchLevel = base.researchLevel || 1;
+    const techNodes = countControlledTechNodes();
+
+    if (researchLevel < 2){
+      log("Orbital Strike requires Research tier 2.");
+      return;
+    }
+    if (techNodes < 3){
+      log("Orbital Strike requires control of at least 3 tech nodes.");
+      return;
+    }
+
+    const now = latestGame.timeSeconds || 0;
+    const CD = 30;
+    if (lastOrbitalUsedAtSec != null && now - lastOrbitalUsedAtSec < CD){
+      const remaining = CD - (now - lastOrbitalUsedAtSec);
+      log(`Orbital Strike is recharging (${remaining}s left).`);
+      updateOrbitalStatus();
+      return;
+    }
+
+    requestOrbitalStrike(selectedNodeId);
+  });
+
   leaveBattleBtn.addEventListener("click",()=>{
     battleOverlay.style.display = "none";
   });
@@ -1619,6 +1818,19 @@
     if(!selectedNode || selectedNode.type!=="base") return;
     requestUpgradeBase();
   });
+
+  if (researchUpgradeBtn){
+    researchUpgradeBtn.addEventListener("click", ()=>{
+      if (!latestGame || !myPlayer) return;
+      const base = latestGame.base || {};
+      const researchLevel = base.researchLevel || 1;
+      if (researchLevel >= RESEARCH_MAX_LEVEL){
+        log("Research is already at max tier.");
+        return;
+      }
+      requestUpgradeResearch();
+    });
+  }
 
   document.getElementById("fullscreenBtn").addEventListener("click",()=>{
     const el = document.documentElement;
@@ -1659,7 +1871,6 @@
 
 </body>
 </html>
-
 
 
 
