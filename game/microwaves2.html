@@ -1,934 +1,2326 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Micro Wars — Soldiers, Medics, Shock Troops</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  :root{
-    --panel-w: 320px; --bg:#0e0f12; --ink:#e7ecf2; --muted:#8ba0b3; --accent:#4da3ff;
-    --good:#50e3a4; --bad:#ff6b6b; --warn:#ffd166; --grid:#1a1e25; --ring-blue:#4da3ff33; --ring-green:#38ef7d33;
-  }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans";user-select:none;overflow:hidden}
-  #wrap{display:grid;grid-template-columns:1fr var(--panel-w);height:100%}
-  #hudTop{position:absolute;top:10px;left:10px;right:calc(var(--panel-w) + 10px);display:flex;gap:12px;align-items:center;pointer-events:none}
-  .chip{pointer-events:auto;background:#151922;border:1px solid #2a3240;padding:6px 10px;border-radius:999px;font-weight:600;display:inline-flex;align-items:center;gap:8px;box-shadow:0 1px 0 #0008,inset 0 1px 0 #ffffff08}
-  .chip .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-  #canvas{display:block;background:#0b0d11}
-  #panel{background:#0f1218;border-left:1px solid #1f2631;padding:14px 14px 80px 14px;overflow-y:auto}
-  h2,h3{margin:10px 0 6px}
-  #selList{display:grid;grid-template-columns:1fr auto;gap:6px 8px}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .btn{background:#162131;border:1px solid #2a3240;color:var(--ink);padding:8px 10px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:inset 0 -1px 0 #0008,0 1px 0 #0006}
-  .btn:hover{filter:brightness(1.1)} .btn[disabled]{opacity:.55;cursor:not-allowed}
-  #abilityTray{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
-  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0e1420;border:1px solid #2a3240;border-bottom-color:#1a2230;padding:0 6px;border-radius:6px;font-weight:700}
-  #legend{font-size:13px;color:var(--muted);margin-top:10px} #legend b{color:var(--ink)}
-  #levelFlash{position:absolute;inset:0 calc(var(--panel-w) + 0px) auto 0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-weight:900;font-size:42px;letter-spacing:2px;color:#ffffffdd;text-shadow:0 2px 20px #000;opacity:0;transition:opacity .4s ease}
-  #over{position:absolute;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);background:#0009}
-  #overCard{width:min(560px,92vw);background:#0f1218;border:1px solid #2a3240;border-radius:16px;padding:18px;box-shadow:0 12px 50px #000a,inset 0 1px 0 #ffffff06}
-  #overCard h2{margin:0 0 6px}
-  .field{display:flex;gap:10px;align-items:center;margin:10px 0}
-  .field input{flex:1 1 auto;background:#0b0f18;border:1px solid #273142;color:var(--ink);padding:10px 12px;border-radius:10px;outline:none}
-  .listy{font-size:13px;color:var(--muted)} .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#151a22;border:1px solid #253043;margin-right:6px}
-  #controls{font-size:12px;color:#a9b6c6;line-height:1.4} .small{font-size:12px;color:var(--muted)}
-  #cornerHelp{position:absolute;bottom:8px;left:8px;right:calc(var(--panel-w) + 8px);display:flex;gap:8px;align-items:center;pointer-events:none;opacity:.9}
-  #cornerHelp .chip{pointer-events:auto}
-</style>
+  <meta charset="UTF-8" />
+  <title>Monster Quest — Firebase RPG</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#020617;
+      --panel:#0b1120;
+      --ink:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#22c55e;
+      --danger:#ef4444;
+      --zone1:#14532d;
+      --zone2:#1d4ed8;
+      --zone3:#7c2d12;
+      --zone4:#4b5563;
+      --zone5:#065f46;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    body{
+      background:radial-gradient(circle at top,#0f172a,#020617);
+      color:var(--ink);
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+    }
+    #app{
+      width:100%;
+      max-width:1100px;
+      height:95vh;
+      max-height:800px;
+      background:rgba(15,23,42,.95);
+      border-radius:18px;
+      box-shadow:0 30px 80px rgba(0,0,0,.7);
+      display:flex;
+      overflow:hidden;
+      border:1px solid #1f2937;
+    }
+    #leftPane{
+      flex:2.1;
+      border-right:1px solid #1f2937;
+      position:relative;
+      overflow:hidden;
+      background:#020617;
+    }
+    #rightPane{
+      flex:1.2;
+      display:flex;
+      flex-direction:column;
+      background:linear-gradient(180deg,#020617,#020617,#020617);
+    }
+    #mapView{
+      width:100%;
+      height:100%;
+      display:grid;
+      grid-template-columns:repeat(15,1fr);
+      grid-template-rows:repeat(15,1fr);
+      gap:1px;
+      padding:6px;
+      background:#000;
+    }
+    .tile{
+      position:relative;
+      border-radius:4px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:12px;
+      color:#e5e7eb;
+      user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .tile.zone1{background:var(--zone1);}
+    .tile.zone2{background:var(--zone2);}
+    .tile.zone3{background:var(--zone3);}
+    .tile.zone4{background:var(--zone4);}
+    .tile.zone5{background:var(--zone5);}
+    .tile.bush::after{
+      content:"🌿";
+      position:absolute;
+      font-size:14px;
+    }
+    .tile.rock::after{
+      content:"🪨";
+      position:absolute;
+      font-size:14px;
+    }
+    .tile.shop::after{
+      content:"🏪";
+      position:absolute;
+      font-size:16px;
+    }
+    .tile.arena::after{
+      content:"⚔️";
+      position:absolute;
+      font-size:15px;
+    }
+    .playerMarker{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:16px;
+    }
+    .playerMarker span{
+      filter:drop-shadow(0 0 4px rgba(0,0,0,.7));
+    }
+
+    /* Right pane */
+    #header{
+      padding:10px 12px;
+      border-bottom:1px solid #1f2937;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    #header h1{
+      font-size:18px;
+      font-weight:600;
+      letter-spacing:.03em;
+    }
+    #header small{
+      color:var(--muted);
+      font-size:11px;
+    }
+    .pill{
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid #1f2937;
+      font-size:11px;
+      color:var(--muted);
+    }
+    #metaRow{
+      padding:6px 10px 8px;
+      border-bottom:1px solid #1f2937;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    #inventory{
+      padding:6px 10px;
+      border-bottom:1px solid #1f2937;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      font-size:12px;
+    }
+    .chip{
+      padding:4px 8px;
+      border-radius:999px;
+      background:#0f172a;
+      border:1px solid #1f2937;
+      display:flex;
+      align-items:center;
+      gap:4px;
+      font-size:11px;
+    }
+    .chip span{
+      font-size:13px;
+    }
+    #controls{
+      padding:8px 10px;
+      border-bottom:1px solid #1f2937;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      font-size:12px;
+    }
+    button{
+      background:var(--accent);
+      border:none;
+      color:#ecfdf5;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:12px;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:4px;
+    }
+    button.secondary{
+      background:#0f172a;
+      color:var(--muted);
+      border:1px solid #1f2937;
+    }
+    button.danger{
+      background:var(--danger);
+    }
+    button:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+    input[type="text"]{
+      background:#020617;
+      color:var(--ink);
+      border-radius:999px;
+      border:1px solid #1f2937;
+      padding:4px 9px;
+      font-size:12px;
+      min-width:0;
+    }
+    #log{
+      flex:1;
+      padding:8px 10px;
+      font-size:12px;
+      overflow-y:auto;
+    }
+    .logLine{
+      margin-bottom:4px;
+      color:#e5e7eb;
+    }
+    .logLine span.tag{
+      font-size:10px;
+      padding:1px 4px;
+      border-radius:999px;
+      margin-right:4px;
+      background:#0f172a;
+      color:var(--muted);
+    }
+    #footer{
+      padding:6px 10px;
+      border-top:1px solid #1f2937;
+      font-size:10px;
+      color:var(--muted);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    /* Overlays (start, battle, shop, arena, game over) */
+    .overlay{
+      position:absolute;
+      inset:0;
+      background:rgba(15,23,42,.96);
+      display:none;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:10;
+    }
+    .overlay.visible{display:flex;}
+    .panel{
+      background:#020617;
+      border-radius:16px;
+      border:1px solid #1f2937;
+      padding:14px 16px;
+      width:100%;
+      max-width:420px;
+      max-height:90%;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      overflow:hidden;
+    }
+    .panelHeader{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      border-bottom:1px solid #1f2937;
+      padding-bottom:6px;
+    }
+    .panelHeader h2{
+      font-size:16px;
+    }
+    .panelBody{
+      flex:1;
+      overflow-y:auto;
+      padding-top:4px;
+      font-size:12px;
+    }
+    .panelFooter{
+      padding-top:6px;
+      border-top:1px solid #1f2937;
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:6px;
+      margin-bottom:4px;
+    }
+    .row strong{font-size:12px;}
+    .battleStats{
+      display:flex;
+      gap:6px;
+      margin-bottom:6px;
+      flex-wrap:wrap;
+    }
+    .badge{
+      border-radius:999px;
+      padding:1px 6px;
+      font-size:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      color:var(--muted);
+    }
+    .hpBar{
+      width:100%;
+      height:6px;
+      background:#111827;
+      border-radius:999px;
+      overflow:hidden;
+      margin-top:2px;
+    }
+    .hpFill{
+      height:100%;
+      background:linear-gradient(90deg,#22c55e,#f97316);
+    }
+    .sectionTitle{
+      font-weight:600;
+      margin:4px 0 2px;
+      color:#e5e7eb;
+    }
+    .listItem{
+      padding:4px 4px;
+      border-radius:6px;
+      border:1px solid #1f2937;
+      margin-bottom:4px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:4px;
+    }
+    @media (max-width:900px){
+      #app{flex-direction:column;height:100vh;max-height:none;border-radius:0;}
+      #leftPane{flex:1.6;border-right:none;border-bottom:1px solid #1f2937;}
+      #rightPane{flex:1.4;}
+    }
+  </style>
 </head>
 <body>
-<div id="wrap">
-  <div style="position:relative;">
-    <canvas id="canvas"></canvas>
-    <div id="hudTop">
-      <div id="levelChip" class="chip"><span class="dot" style="background:var(--accent)"></span> Wave <b id="levelNum">1</b></div>
-      <div id="armyChip" class="chip"><span class="dot" style="background:var(--good)"></span> Army: <b id="armyType">Soldiers + Medics + Shock</b> <span class="small" id="armyCount"></span></div>
-      <div id="enemyChip" class="chip"><span class="dot" style="background:var(--bad)"></span> Enemies: <b id="enemyCount"></b></div>
-      <div class="chip" title="Frames per second">FPS: <b id="fps">60</b></div>
-    </div>
-    <div id="levelFlash">WAVE 1</div>
-    <div id="cornerHelp">
-      <div class="chip">
-        Box-select with left drag. <b>Right-click = Move</b>.
-        <span class="kbd">A</span> Attack-nearest,
-        <span class="kbd">F</span> Soldier Dash,
-        <span class="kbd">B</span> Shock Plasma Volley (instant),
-        <span class="kbd">S</span> Stun Grenade → <b>Left-click</b> to throw,
-        <span class="kbd">Esc</span> cancel.
+<div id="app">
+  <div id="leftPane">
+    <div id="mapView"></div>
+
+    <!-- Start / Save selection overlay -->
+    <div id="startOverlay" class="overlay visible">
+      <div class="panel">
+        <div class="panelHeader">
+          <h2>Monster Quest</h2>
+          <button class="secondary" id="btnStartClose" style="padding-inline:8px;font-size:11px;">X</button>
+        </div>
+        <div class="panelBody">
+          <p style="margin-bottom:8px;color:var(--muted);">
+            Choose a <strong>save name</strong>. You can start a new adventure or load an existing one
+            (saved under your anonymous Firebase ID).
+          </p>
+          <label style="font-size:12px;display:block;margin-bottom:4px;">Save Name</label>
+          <input type="text" id="saveNameInput" placeholder="e.g. my-first-run" style="width:100%;margin-bottom:8px;">
+          <p id="startStatus" style="font-size:11px;color:var(--muted);min-height:14px;"></p>
+        </div>
+        <div class="panelFooter">
+          <button class="secondary" id="btnLoadGame">Load Game</button>
+          <button id="btnNewGame">Start New Game</button>
+        </div>
       </div>
     </div>
-    <div id="over">
-      <div id="overCard">
-        <h2>Game Over</h2>
-        <div class="listy">You reached <b>Wave <span id="finalLevel">1</span></b>. Save your score?</div>
-        <div class="field">
-          <input type="text" id="playerName" placeholder="Your name" maxlength="40"/>
-          <button class="btn" id="saveScore">Save to Firebase</button>
+
+    <!-- Battle overlay -->
+    <div id="battleOverlay" class="overlay">
+      <div class="panel">
+        <div class="panelHeader">
+          <h2 id="battleTitle">Wild Battle</h2>
+          <button class="secondary" id="btnBattleClose">X</button>
         </div>
-        <div class="small" id="saveMsg"></div>
-        <div class="listy" style="margin-top:12px">
-          <span class="pill">Soldier = 🪖 (dash)</span>
-          <span class="pill">Medic = 🧑‍⚕️ (heals)</span>
-          <span class="pill">Shock = ⚡️ (plasma + stun)</span>
-          <span class="pill">Ling = 🐜</span>
-          <span class="pill">Bling = 🟢</span>
-          <span class="pill">Sting = 🦟</span>
-          <span class="pill">Brute = 👹</span>
-          <span class="pill">Pickup = 🎁</span>
+        <div class="panelBody" id="battleBody">
+          <!-- Filled by JS -->
+        </div>
+        <div class="panelFooter" id="battleFooter">
+          <!-- Actions: abilities, capture, potion, switch, run (if wild) -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop overlay -->
+    <div id="shopOverlay" class="overlay">
+      <div class="panel">
+        <div class="panelHeader">
+          <h2>Item Shop</h2>
+          <button class="secondary" id="btnShopClose">X</button>
+        </div>
+        <div class="panelBody" id="shopBody"></div>
+        <div class="panelFooter">
+          <button class="secondary" id="btnShopBack">Back to Map</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arena overlay -->
+    <div id="arenaOverlay" class="overlay">
+      <div class="panel">
+        <div class="panelHeader">
+          <h2>Arena Challenge</h2>
+          <button class="secondary" id="btnArenaClose">X</button>
+        </div>
+        <div class="panelBody" id="arenaBody"></div>
+        <div class="panelFooter">
+          <button class="secondary" id="btnArenaCancel">Leave Arena</button>
+          <button id="btnArenaStart">Begin Battle</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over overlay -->
+    <div id="gameOverOverlay" class="overlay">
+      <div class="panel">
+        <div class="panelHeader">
+          <h2>Game Over</h2>
+        </div>
+        <div class="panelBody">
+          <p style="margin-bottom:8px;">All of your critters have fallen. This save is done.</p>
+          <p style="font-size:11px;color:var(--muted);">
+            You can start a new game with the same or a different save name from the main menu.
+          </p>
+        </div>
+        <div class="panelFooter">
+          <button id="btnGameOverToMenu">Return to Menu</button>
         </div>
       </div>
     </div>
   </div>
-  <aside id="panel">
-    <h2>Selected <span id="selCount">0</span></h2>
-    <div class="row" style="margin-bottom:6px">
-      <div id="selBreakdown" class="small">—</div>
-      <button id="clearSel" class="btn" title="Clear selection">Clear</button>
-    </div>
-    <div id="abilityTray">
-      <button id="dashBtn" class="btn" title="Soldier Dash (F): +50% speed for 5s (12s CD) on selected Soldiers">Dash (F)</button>
-      <button id="volleyBtn" class="btn" title="Shock Plasma Volley (B): All selected shocks fire an instant boosted plasma shot (6s CD)">Plasma Volley (B)</button>
-      <button id="stunBtn" class="btn" title="Stun Grenade (S): Enter targeting, then click to freeze enemies for 3s (10s CD). One shock throws per click.">Stun Grenade (S)</button>
-      <button id="attackBtn" class="btn" title="Selected attack nearest enemy in aggro range">Attack Nearest (A)</button>
-    </div>
 
-    <h3 style="margin-top:16px;">Units</h3>
-    <div id="selList"></div>
-
-    <h3 style="margin-top:16px;">Legend</h3>
-    <div id="legend">
-      <div><b>🪖 Soldier</b> — very fast, weak rifle. Ability: <b>Dash</b> +50% speed for 5s (12s CD).</div>
-      <div><b>🧑‍⚕️ Medic</b> — can’t fight; auto-heals lowest-HP ally in range with a green beam.</div>
-      <div><b>⚡️ Shock Troop</b> — high-dmg plasma rifle. <b>B</b>: Plasma Volley (instant). <b>S</b>: Stun Grenade (click to throw, 3s freeze).</div>
-      <div>Enemies: <b>🐜 Ling</b> (melee swarm), <b>🟢 Bling</b> (kamikaze AoE), <b>🦟 Sting</b> (ranged), <b>👹 Brute</b> (cleave).</div>
-      <div><b>🎁 Pickup</b> — walk over to spawn reinforcements.</div>
+  <div id="rightPane">
+    <div id="header">
+      <div>
+        <h1>Monster Quest</h1>
+        <small id="userTag">Connecting to Firebase…</small>
+      </div>
+      <div class="pill" id="saveTag">No save loaded</div>
     </div>
-
-    <h3 style="margin-top:16px;">Controls</h3>
+    <div id="metaRow">
+      <div>Zone: <span id="zoneName">-</span></div>
+      <div>Pos: <span id="posLabel">-</span></div>
+      <div>Mode: <span id="modeLabel">Exploration</span></div>
+    </div>
+    <div id="inventory"></div>
     <div id="controls">
-      • Left-drag to box-select. Click to select one.<br/>
-      • Right-click ground to <b>move</b> there.<br/>
-      • <span class="kbd">A</span>: Attack nearest.<br/>
-      • <span class="kbd">F</span>: Dash for selected Soldiers.<br/>
-      • <span class="kbd">B</span>: Plasma Volley for selected Shock Troops (immediate).<br/>
-      • <span class="kbd">S</span>: Stun target mode → <b>left-click</b> to throw one grenade from selected Shock Troops.<br/>
-      • Edge-pan the camera by pushing the mouse to canvas edges.<br/>
+      <input type="text" id="quickSaveName" placeholder="Save name" style="flex:1;min-width:80px;">
+      <button class="secondary" id="btnQuickLoad" style="font-size:11px;">Load</button>
+      <button id="btnQuickSave" style="font-size:11px;">Save</button>
+      <button class="secondary" id="btnCenter" style="font-size:11px;">Center on Player</button>
     </div>
-  </aside>
+    <div id="log"></div>
+    <div id="footer">
+      <span>Click / tap a tile to move. Bushes / rocks increase encounter odds.</span>
+      <span style="opacity:.7;">v0.1 proto</span>
+    </div>
+  </div>
 </div>
 
-<!-- Firebase (Compat v9) -->
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-<script>
-/* ===========================
-   Firebase (same as before)
-   =========================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.firebasestorage.app",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
-  measurementId: "G-8PR6LVKSH3"
-};
-let fbApp, fbDb;
-try { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); }
-catch (e) { console.warn("Firebase init error:", e); }
+<script type="module">
+  // ----------------------------------------
+  // Firebase init (anonymous auth, Firestore)
+  // ----------------------------------------
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/* ===========================
-   Helpers & Constants
-   =========================== */
-const TWO_PI = Math.PI * 2;
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const rand=(a,b)=>a+Math.random()*(b-a);
-const randi=(a,b)=>Math.floor(rand(a,b+1));
-const dist2=(a,b)=>{const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy;};
-const nowMS=()=>performance.now();
-
-/* Map & camera */
-const MAP_W=3600, MAP_H=2400; const GRID=60;
-const VIEWPAD=180, EDGE_SCROLL=640;
-
-/* Pickups */
-const PICKUP_INTERVAL_RANGE=[9000,15000];
-const MAX_ACTIVE_PICKUPS=5;
-
-/* Stun grenade */
-const STUN = { radius: 90, freezeMs: 3000, throwSpeed: 720, cdMs: 10000 };
-
-/* Colors */
-const COLORS = {
-  hpGood:"#4de395", hpBad:"#ff6b81",
-  ringSelf:"#4da3ff", ringEnemy:"#38ef7d",
-  bullet:"#d9dde7",
-  plasma:"#8ac7ff",
-  beamHeal:"#66ffcc",
-  stingBolt:"#31dd77",
-  selBox:"#4da3ff88", selStroke:"#4da3ff",
-  freezeFill:"rgba(120,190,255,0.18)", freezeStroke:"rgba(120,190,255,0.80)"
-};
-
-const PLAYER=1, ENEMY=2;
-
-const UNIT_TYPES = {
-  SOLDIER:"soldier", MEDIC:"medic", SHOCK:"shock",
-  LING:"ling", BLING:"bling", STING:"sting", BRUTE:"brute",
-};
-
-const PLURAL_LABEL={
-  soldier:"Soldiers", medic:"Medics", shock:"Shock Troops"
-};
-
-/* ===========================
-   Unit Stats
-   =========================== */
-const UNIT_STATS={
-  // Player
-  soldier:{ emoji:"🪖", r:10, team:PLAYER, maxHp:55, speed:260, range:180, fireRate:3.0, dmg:4, aggro:360,
-            dash:{ speedMul:1.5, durMs:5000, cdMs:12000 } },
-  medic:{ emoji:"🧑‍⚕️", r:10, team:PLAYER, maxHp:46, speed:200, range:160, aggro:340,
-          healer:{ tickMs:250, healAmt:2 } }, // ≈8 hp/sec
-  shock:{ emoji:"⚡️", r:12, team:PLAYER, maxHp:80, speed:120, range:220, fireRate:0.7, dmg:22, aggro:380,
-          plasma:{ dmg:40, cdMs:6000 }, stun: STUN },
-
-  // Enemies (unchanged)
-  ling:{  emoji:"🐜", r:8,  team:ENEMY, maxHp:40,  speed:220, range:18, fireRate:1.6, dmg:12, aggro:400, melee:true },
-  bling:{ emoji:"🟢", r:10, team:ENEMY, maxHp:46,  speed:190, range:14, fireRate:1.2, dmg:32, aggro:380, melee:true, explode:{ radius:64, dmg:28 } },
-  sting:{ emoji:"🦟", r:9,  team:ENEMY, maxHp:60,  speed:160, range:100, fireRate:0.5, dmg:22, projSpeed:460, aggro:360 },
-  brute:{ emoji:"👹", r:13, team:ENEMY, maxHp:180, speed:120, range:20, fireRate:0.9, dmg:30, aggro:420, melee:true, cleave:{ radius:54, dmg:18 } }
-};
-
-function makeUnit(kind,x,y){
-  const S=UNIT_STATS[kind];
-  return {
-    id:Math.random().toString(36).slice(2),
-    kind, team:S.team, x,y, vx:0,vy:0,
-    r:S.r, maxHp:S.maxHp, hp:S.maxHp,
-    speed:S.speed, range:S.range||0, fireRate:S.fireRate||0, dmg:S.dmg||0, projSpeed:S.projSpeed||640, aggro:S.aggro||0,
-    melee:!!S.melee,
-    buffs:{ dashUntil:0, dashCdUntil:0, plasmaCdUntil:0, stunCdUntil:0, frozenUntil:0 },
-    healTickCd:0,
-    target:null, order:null, cd:0, alive:true, selected:false
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.firebasestorage.app",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+    measurementId: "G-8PR6LVKSH3"
   };
-}
 
-/* ===========================
-   State
-   =========================== */
-const state={
-  level:1,
-  units:[], projs:[], grenades:[], splashes:[], pickups:[],
-  camera:{ x:MAP_W/2-800, y:MAP_H/2-500, w:0, h:0 },
-  dragging:false, dragStart:null, dragEnd:null,
-  mouse:{ x:0, y:0, worldX:0, worldY:0, overCanvas:false },
-  keys:{},
-  stunMode:false, // click-to-throw
-  gameOver:false,
-  nextPickupAt:0,
-  _spawnNextWaveAt:null
-};
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-const canvas=document.getElementById("canvas");
-const ctx=canvas.getContext("2d");
+  let currentUser = null;
+  let savesCache = {}; // map of saveName -> gameState
+  const userTagEl = document.getElementById("userTag");
+  const saveTagEl = document.getElementById("saveTag");
+  const logEl = document.getElementById("log");
+  const invEl = document.getElementById("inventory");
+  const zoneNameEl = document.getElementById("zoneName");
+  const posLabelEl = document.getElementById("posLabel");
+  const modeLabelEl = document.getElementById("modeLabel");
 
-const $=(id)=>document.getElementById(id);
-const levelNum=$("levelNum"), enemyCountEl=$("enemyCount"), armyCountEl=$("armyCount"), armyTypeEl=$("armyType");
-const levelFlash=$("levelFlash"), selCountEl=$("selCount"), selBreakdownEl=$("selBreakdown"), selListEl=$("selList");
-const dashBtn=$("dashBtn"), volleyBtn=$("volleyBtn"), stunBtn=$("stunBtn"), attackBtn=$("attackBtn"), clearSelBtn=$("clearSel");
-const fpsEl=$("fps"), over=$("over"), finalLevelEl=$("finalLevel"), playerNameEl=$("playerName");
-const saveScoreBtn=$("saveScore"), saveMsgEl=$("saveMsg");
+  // ----------------------------------------
+  // Game data definitions
+  // ----------------------------------------
 
-/* ===========================
-   Layout
-   =========================== */
-function resize(){
-  const panelW=parseInt(getComputedStyle(document.documentElement).getPropertyValue("--panel-w"));
-  const w=window.innerWidth - panelW, h=window.innerHeight;
-  canvas.width=w; canvas.height=h; state.camera.w=w; state.camera.h=h;
-}
-window.addEventListener("resize", resize);
+  const ELEMENTS = ["Fire","Water","Nature","Storm","Stone"];
 
-/* ===========================
-   Spawning & Waves
-   =========================== */
-function spawnInitialArmy(){
-  const cx=MAP_W/2, cy=MAP_H/2, ringR=120;
-  const soldiers=8, medics=2, shocks=3;
-  for (let i=0;i<soldiers;i++){
-    const a=Math.random()*TWO_PI, d=rand(12, ringR);
-    state.units.push(makeUnit(UNIT_TYPES.SOLDIER, cx+Math.cos(a)*d, cy+Math.sin(a)*d));
+  const TYPE_CHART = {
+    Fire:   { Nature:2, Water:0.5, Stone:0.5 },
+    Water:  { Fire:2, Stone:2, Nature:0.5, Storm:0.5 },
+    Nature: { Water:2, Stone:2, Fire:0.5 },
+    Storm:  { Water:2, Stone:0.5 },
+    Stone:  { Storm:2, Fire:2, Water:0.5, Nature:0.5 }
+  };
+
+  function typeMultiplier(att, def){
+    const row = TYPE_CHART[att];
+    if(row && row[def] != null) return row[def];
+    return 1;
   }
-  for (let i=0;i<medics;i++){
-    const a=Math.random()*TWO_PI, d=rand(12, ringR);
-    state.units.push(makeUnit(UNIT_TYPES.MEDIC, cx+Math.cos(a)*d, cy+Math.sin(a)*d));
+
+ const SPECIES = [
+  // =========================
+  // WEAK TIER (10)
+  // =========================
+
+  // Fire (2)
+  {
+    id:"emberkit",
+    name:"Emberkit",
+    element:"Fire",
+    baseHP:70,
+    baseAtk:14,
+    baseDef:12,
+    baseSpd:18,
+    abilities:[
+      {name:"Warm Nip", kind:"damage", power:16, maxCharges:7},
+      {name:"Tiny Ember", kind:"damage", power:18, maxCharges:5}
+    ]
+  },
+  {
+    id:"cinderchip",
+    name:"Cinderchip",
+    element:"Fire",
+    baseHP:68,
+    baseAtk:15,
+    baseDef:11,
+    baseSpd:20,
+    abilities:[
+      {name:"Cinder Peck", kind:"damage", power:17, maxCharges:7},
+      {name:"Glow Up", kind:"buffAtk", amount:4, maxCharges:3}
+    ]
+  },
+
+  // Water (2)
+  {
+    id:"splashling",
+    name:"Splashling",
+    element:"Water",
+    baseHP:72,
+    baseAtk:13,
+    baseDef:13,
+    baseSpd:17,
+    abilities:[
+      {name:"Tiny Wave", kind:"damage", power:16, maxCharges:7},
+      {name:"Soothing Drip", kind:"heal", amount:18, maxCharges:3}
+    ]
+  },
+  {
+    id:"drizzlefin",
+    name:"Drizzlefin",
+    element:"Water",
+    baseHP:74,
+    baseAtk:15,
+    baseDef:12,
+    baseSpd:19,
+    abilities:[
+      {name:"Drizzle Shot", kind:"damage", power:18, maxCharges:6},
+      {name:"Rain Veil", kind:"buffDef", amount:4, maxCharges:3}
+    ]
+  },
+
+  // Nature (2)
+  {
+    id:"sproutbug",
+    name:"Sproutbug",
+    element:"Nature",
+    baseHP:68,
+    baseAtk:13,
+    baseDef:12,
+    baseSpd:18,
+    abilities:[
+      {name:"Nibble Leaf", kind:"damage", power:16, maxCharges:7},
+      {name:"Green Pulse", kind:"heal", amount:16, maxCharges:3}
+    ]
+  },
+  {
+    id:"thornsprout",
+    name:"Thornsprout",
+    element:"Nature",
+    baseHP:70,
+    baseAtk:16,
+    baseDef:11,
+    baseSpd:17,
+    abilities:[
+      {name:"Thorn Prick", kind:"damage", power:18, maxCharges:6},
+      {name:"Root Slow", kind:"debuffSpd", amount:4, maxCharges:3} // treated as no-op but flavor text
+    ]
+  },
+
+  // Storm (2)
+  {
+    id:"gustling",
+    name:"Gustling",
+    element:"Storm",
+    baseHP:66,
+    baseAtk:14,
+    baseDef:11,
+    baseSpd:22,
+    abilities:[
+      {name:"Breeze Peck", kind:"damage", power:17, maxCharges:7},
+      {name:"Tailwind", kind:"buffSpd", amount:5, maxCharges:3}
+    ]
+  },
+  {
+    id:"sparkmite",
+    name:"Sparkmite",
+    element:"Storm",
+    baseHP:64,
+    baseAtk:15,
+    baseDef:10,
+    baseSpd:23,
+    abilities:[
+      {name:"Static Nibble", kind:"damage", power:18, maxCharges:6},
+      {name:"Charge Up", kind:"buffAtk", amount:4, maxCharges:3}
+    ]
+  },
+
+  // Stone (2)
+  {
+    id:"pebblepup",
+    name:"Pebblepup",
+    element:"Stone",
+    baseHP:76,
+    baseAtk:13,
+    baseDef:15,
+    baseSpd:14,
+    abilities:[
+      {name:"Pebble Bop", kind:"damage", power:17, maxCharges:7},
+      {name:"Hard Shell", kind:"buffDef", amount:4, maxCharges:3}
+    ]
+  },
+  {
+    id:"dustpebble",
+    name:"Dustpebble",
+    element:"Stone",
+    baseHP:72,
+    baseAtk:15,
+    baseDef:14,
+    baseSpd:15,
+    abilities:[
+      {name:"Dust Toss", kind:"damage", power:18, maxCharges:6},
+      {name:"Dust Screen", kind:"debuffAtk", amount:4, maxCharges:3}
+    ]
+  },
+
+  // =========================
+  // MODERATE TIER (10)
+  // =========================
+
+  // Fire (2)
+  {
+    id:"flarethorn",
+    name:"Flarethorn",
+    element:"Fire",
+    baseHP:80,
+    baseAtk:19,
+    baseDef:15,
+    baseSpd:19,
+    abilities:[
+      {name:"Flare Bite", kind:"damage", power:22, maxCharges:6},
+      {name:"Heat Bloom", kind:"buffAtk", amount:5, maxCharges:3}
+    ]
+  },
+  {
+    id:"charcub",
+    name:"Charcub",
+    element:"Fire",
+    baseHP:82,
+    baseAtk:20,
+    baseDef:14,
+    baseSpd:20,
+    abilities:[
+      {name:"Char Swipe", kind:"damage", power:22, maxCharges:6},
+      {name:"Warm Fur", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
+
+  // Water (2)
+  {
+    id:"brookfin",
+    name:"Brookfin",
+    element:"Water",
+    baseHP:84,
+    baseAtk:18,
+    baseDef:17,
+    baseSpd:18,
+    abilities:[
+      {name:"Brook Jet", kind:"damage", power:22, maxCharges:6},
+      {name:"Fresh Current", kind:"heal", amount:22, maxCharges:3}
+    ]
+  },
+  {
+    id:"tideotter",
+    name:"Tideotter",
+    element:"Water",
+    baseHP:86,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:19,
+    abilities:[
+      {name:"Tide Tackle", kind:"damage", power:23, maxCharges:6},
+      {name:"Shell Rub", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
+
+  // Nature (2)
+  {
+    id:"mossling",
+    name:"Mossling",
+    element:"Nature",
+    baseHP:82,
+    baseAtk:18,
+    baseDef:17,
+    baseSpd:18,
+    abilities:[
+      {name:"Moss Bite", kind:"damage", power:22, maxCharges:6},
+      {name:"Soft Growth", kind:"heal", amount:22, maxCharges:3}
+    ]
+  },
+  {
+    id:"vinepup",
+    name:"Vinepup",
+    element:"Nature",
+    baseHP:80,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:20,
+    abilities:[
+      {name:"Vine Lash", kind:"damage", power:23, maxCharges:6},
+      {name:"Entangle", kind:"debuffDef", amount:5, maxCharges:3}
+    ]
+  },
+
+  // Storm (2)
+  {
+    id:"breezerat",
+    name:"Breezerat",
+    element:"Storm",
+    baseHP:78,
+    baseAtk:19,
+    baseDef:14,
+    baseSpd:24,
+    abilities:[
+      {name:"Gale Scratch", kind:"damage", power:23, maxCharges:6},
+      {name:"Tail Current", kind:"buffSpd", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"stormkit",
+    name:"Stormkit",
+    element:"Storm",
+    baseHP:80,
+    baseAtk:20,
+    baseDef:15,
+    baseSpd:23,
+    abilities:[
+      {name:"Spark Swipe", kind:"damage", power:23, maxCharges:6},
+      {name:"Static Coat", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
+
+  // Stone (2)
+  {
+    id:"rubblepup",
+    name:"Rubblepup",
+    element:"Stone",
+    baseHP:88,
+    baseAtk:19,
+    baseDef:19,
+    baseSpd:16,
+    abilities:[
+      {name:"Rubble Bash", kind:"damage", power:23, maxCharges:6},
+      {name:"Stone Guard", kind:"buffDef", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"stonehopper",
+    name:"Stonehopper",
+    element:"Stone",
+    baseHP:86,
+    baseAtk:20,
+    baseDef:18,
+    baseSpd:17,
+    abilities:[
+      {name:"Pebble Kick", kind:"damage", power:22, maxCharges:6},
+      {name:"Dust Leap", kind:"buffSpd", amount:5, maxCharges:3}
+    ]
+  },
+
+  // =========================
+  // GOOD TIER (10)
+  // (Starters live here)
+  // =========================
+
+  // Fire (2) — includes Blazefox
+  {
+    id:"blazefox",
+    name:"Blazefox",
+    element:"Fire",
+    baseHP:90,
+    baseAtk:25,
+    baseDef:15,
+    baseSpd:20,
+    abilities:[
+      {name:"Flame Bite", kind:"damage", power:24, maxCharges:6},
+      {name:"Fire Claws", kind:"damage", power:30, maxCharges:4},
+      {name:"Inferno Howl", kind:"buffAtk", amount:7, maxCharges:2}
+    ]
+  },
+  {
+    id:"emberclaw",
+    name:"Emberclaw",
+    element:"Fire",
+    baseHP:94,
+    baseAtk:26,
+    baseDef:16,
+    baseSpd:21,
+    abilities:[
+      {name:"Claw Blaze", kind:"damage", power:26, maxCharges:5},
+      {name:"Smolder Guard", kind:"buffDef", amount:6, maxCharges:3}
+    ]
+  },
+
+  // Water (2) — includes Tidalfin
+  {
+    id:"tidalfin",
+    name:"Tidalfin",
+    element:"Water",
+    baseHP:95,
+    baseAtk:22,
+    baseDef:18,
+    baseSpd:18,
+    abilities:[
+      {name:"Water Jet", kind:"damage", power:24, maxCharges:6},
+      {name:"Bubble Burst", kind:"damage", power:28, maxCharges:4},
+      {name:"Splash Shield", kind:"buffDef", amount:7, maxCharges:3}
+    ]
+  },
+  {
+    id:"surfstrider",
+    name:"Surfstrider",
+    element:"Water",
+    baseHP:98,
+    baseAtk:24,
+    baseDef:18,
+    baseSpd:20,
+    abilities:[
+      {name:"Surf Crash", kind:"damage", power:26, maxCharges:5},
+      {name:"Foam Veil", kind:"heal", amount:26, maxCharges:3}
+    ]
+  },
+
+  // Nature (2) — includes Leafling
+  {
+    id:"leafling",
+    name:"Leafling",
+    element:"Nature",
+    baseHP:88,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:20,
+    abilities:[
+      {name:"Vine Whip", kind:"damage", power:24, maxCharges:6},
+      {name:"Photosynthesis", kind:"heal", amount:26, maxCharges:4},
+      {name:"Root Bind", kind:"debuffDef", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"briarhorn",
+    name:"Briarhorn",
+    element:"Nature",
+    baseHP:96,
+    baseAtk:24,
+    baseDef:18,
+    baseSpd:18,
+    abilities:[
+      {name:"Briar Charge", kind:"damage", power:26, maxCharges:5},
+      {name:"Thorn Screen", kind:"debuffAtk", amount:6, maxCharges:3}
+    ]
+  },
+
+  // Storm (2) — Stormpup & Voltwing
+  {
+    id:"stormpup",
+    name:"Stormpup",
+    element:"Storm",
+    baseHP:82,
+    baseAtk:23,
+    baseDef:14,
+    baseSpd:30,
+    abilities:[
+      {name:"Spark Pounce", kind:"damage", power:24, maxCharges:7},
+      {name:"Thunder Bark", kind:"damage", power:28, maxCharges:4},
+      {name:"Agility", kind:"buffSpd", amount:7, maxCharges:3}
+    ]
+  },
+  {
+    id:"voltwing",
+    name:"Voltwing",
+    element:"Storm",
+    baseHP:84,
+    baseAtk:24,
+    baseDef:15,
+    baseSpd:26,
+    abilities:[
+      {name:"Lightning Peck", kind:"damage", power:26, maxCharges:6},
+      {name:"Static Field", kind:"debuffAtk", amount:7, maxCharges:3}
+    ]
+  },
+
+  // Stone (2) — Boulderback plus a buddy
+  {
+    id:"boulderback",
+    name:"Boulderback",
+    element:"Stone",
+    baseHP:120,
+    baseAtk:20,
+    baseDef:26,
+    baseSpd:12,
+    abilities:[
+      {name:"Rock Slam", kind:"damage", power:26, maxCharges:6},
+      {name:"Earthen Wall", kind:"buffDef", amount:9, maxCharges:3},
+      {name:"Quake Stomp", kind:"damage", power:30, maxCharges:3}
+    ]
+  },
+  {
+    id:"pebblord",
+    name:"Pebblord",
+    element:"Stone",
+    baseHP:110,
+    baseAtk:23,
+    baseDef:24,
+    baseSpd:14,
+    abilities:[
+      {name:"Pebble Storm", kind:"damage", power:26, maxCharges:5},
+      {name:"Stone Crown", kind:"buffAtk", amount:6, maxCharges:3}
+    ]
+  },
+
+  // =========================
+  // GREAT TIER (10)
+  // =========================
+
+  // Fire (2)
+  {
+    id:"magmafang",
+    name:"Magmafang",
+    element:"Fire",
+    baseHP:110,
+    baseAtk:30,
+    baseDef:20,
+    baseSpd:22,
+    abilities:[
+      {name:"Magma Maul", kind:"damage", power:32, maxCharges:4},
+      {name:"Lava Armor", kind:"buffDef", amount:8, maxCharges:3}
+    ]
+  },
+  {
+    id:"solaraptor",
+    name:"Solaraptor",
+    element:"Fire",
+    baseHP:105,
+    baseAtk:31,
+    baseDef:19,
+    baseSpd:26,
+    abilities:[
+      {name:"Solar Claw", kind:"damage", power:33, maxCharges:4},
+      {name:"Flare Halo", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
+
+  // Water (2)
+  {
+    id:"abysslurker",
+    name:"Abysslurker",
+    element:"Water",
+    baseHP:112,
+    baseAtk:28,
+    baseDef:22,
+    baseSpd:20,
+    abilities:[
+      {name:"Abyss Bite", kind:"damage", power:32, maxCharges:4},
+      {name:"Dark Tide", kind:"damage", power:28, maxCharges:4}
+    ]
+  },
+  {
+    id:"glacialon",
+    name:"Glacialon",
+    element:"Water",
+    baseHP:108,
+    baseAtk:27,
+    baseDef:23,
+    baseSpd:21,
+    abilities:[
+      {name:"Glacier Crash", kind:"damage", power:32, maxCharges:4},
+      {name:"Frost Heal", kind:"heal", amount:34, maxCharges:3}
+    ]
+  },
+
+  // Nature (2)
+  {
+    id:"barkback",
+    name:"Barkback",
+    element:"Nature",
+    baseHP:112,
+    baseAtk:27,
+    baseDef:24,
+    baseSpd:18,
+    abilities:[
+      {name:"Trunk Smash", kind:"damage", power:30, maxCharges:4},
+      {name:"Ancient Bark", kind:"buffDef", amount:9, maxCharges:3}
+    ]
+  },
+  {
+    id:"wildbloom",
+    name:"Wildbloom",
+    element:"Nature",
+    baseHP:104,
+    baseAtk:28,
+    baseDef:22,
+    baseSpd:22,
+    abilities:[
+      {name:"Bloom Burst", kind:"damage", power:30, maxCharges:4},
+      {name:"Verdant Pulse", kind:"heal", amount:32, maxCharges:3}
+    ]
+  },
+
+  // Storm (2)
+  {
+    id:"thundraptor",
+    name:"Thundraptor",
+    element:"Storm",
+    baseHP:104,
+    baseAtk:30,
+    baseDef:20,
+    baseSpd:28,
+    abilities:[
+      {name:"Thunder Claw", kind:"damage", power:33, maxCharges:4},
+      {name:"Sky Roar", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
+  {
+    id:"cloudcoil",
+    name:"Cloudcoil",
+    element:"Storm",
+    baseHP:108,
+    baseAtk:27,
+    baseDef:23,
+    baseSpd:24,
+    abilities:[
+      {name:"Cloud Lash", kind:"damage", power:30, maxCharges:4},
+      {name:"Storm Veil", kind:"debuffAtk", amount:8, maxCharges:3}
+    ]
+  },
+
+  // Stone (2)
+  {
+    id:"slabtoise",
+    name:"Slabtoise",
+    element:"Stone",
+    baseHP:125,
+    baseAtk:27,
+    baseDef:28,
+    baseSpd:14,
+    abilities:[
+      {name:"Slab Crush", kind:"damage", power:32, maxCharges:4},
+      {name:"Granite Shell", kind:"buffDef", amount:10, maxCharges:3}
+    ]
+  },
+  {
+    id:"gritclaw",
+    name:"Gritclaw",
+    element:"Stone",
+    baseHP:116,
+    baseAtk:29,
+    baseDef:24,
+    baseSpd:18,
+    abilities:[
+      {name:"Rubble Rend", kind:"damage", power:31, maxCharges:4},
+      {name:"Stone Howl", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
+
+  // =========================
+  // LEGENDARY TIER (10)
+  // =========================
+
+  // Fire (2)
+  {
+    id:"infernotitan",
+    name:"Infernotitan",
+    element:"Fire",
+    baseHP:138,
+    baseAtk:38,
+    baseDef:28,
+    baseSpd:26,
+    abilities:[
+      {name:"Titan Blaze", kind:"damage", power:40, maxCharges:3},
+      {name:"Worldfire Aura", kind:"buffAtk", amount:10, maxCharges:2}
+    ]
+  },
+  {
+    id:"phoenixflare",
+    name:"Phoenixflare",
+    element:"Fire",
+    baseHP:130,
+    baseAtk:36,
+    baseDef:26,
+    baseSpd:30,
+    abilities:[
+      {name:"Phoenix Dive", kind:"damage", power:38, maxCharges:3},
+      {name:"Rebirth Flame", kind:"heal", amount:40, maxCharges:2}
+    ]
+  },
+
+  // Water (2)
+  {
+    id:"leviadrake",
+    name:"Leviadrake",
+    element:"Water",
+    baseHP:140,
+    baseAtk:37,
+    baseDef:30,
+    baseSpd:24,
+    abilities:[
+      {name:"Leviathan Crush", kind:"damage", power:40, maxCharges:3},
+      {name:"Abyssal Shield", kind:"buffDef", amount:11, maxCharges:2}
+    ]
+  },
+  {
+    id:"maelstromwyrm",
+    name:"Maelstromwyrm",
+    element:"Water",
+    baseHP:132,
+    baseAtk:36,
+    baseDef:28,
+    baseSpd:28,
+    abilities:[
+      {name:"Maelstrom Coil", kind:"damage", power:38, maxCharges:3},
+      {name:"Ocean's Grace", kind:"heal", amount:40, maxCharges:2}
+    ]
+  },
+
+  // Nature (2)
+  {
+    id:"worldroot",
+    name:"Worldroot",
+    element:"Nature",
+    baseHP:142,
+    baseAtk:35,
+    baseDef:32,
+    baseSpd:22,
+    abilities:[
+      {name:"Root of Ages", kind:"damage", power:38, maxCharges:3},
+      {name:"Gaia's Embrace", kind:"heal", amount:42, maxCharges:2}
+    ]
+  },
+  {
+    id:"sylphqueen",
+    name:"Sylphqueen",
+    element:"Nature",
+    baseHP:130,
+    baseAtk:34,
+    baseDef:28,
+    baseSpd:30,
+    abilities:[
+      {name:"Sylph Ray", kind:"damage", power:36, maxCharges:3},
+      {name:"Royal Bloom", kind:"buffAtk", amount:9, maxCharges:2}
+    ]
+  },
+
+  // Storm (2)
+  {
+    id:"skytyrant",
+    name:"Skytyrant",
+    element:"Storm",
+    baseHP:134,
+    baseAtk:37,
+    baseDef:27,
+    baseSpd:32,
+    abilities:[
+      {name:"Tyrant Bolt", kind:"damage", power:40, maxCharges:3},
+      {name:"Storm Dominion", kind:"buffSpd", amount:10, maxCharges:2}
+    ]
+  },
+  {
+    id:"tempestlion",
+    name:"Tempestlion",
+    element:"Storm",
+    baseHP:136,
+    baseAtk:38,
+    baseDef:29,
+    baseSpd:30,
+    abilities:[
+      {name:"Tempest Fang", kind:"damage", power:39, maxCharges:3},
+      {name:"Thunder Roar", kind:"debuffDef", amount:10, maxCharges:2}
+    ]
+  },
+
+  // Stone (2)
+  {
+    id:"colossogolem",
+    name:"Colossogolem",
+    element:"Stone",
+    baseHP:150,
+    baseAtk:36,
+    baseDef:34,
+    baseSpd:22,
+    abilities:[
+      {name:"Colossal Slam", kind:"damage", power:40, maxCharges:3},
+      {name:"Mountain Core", kind:"buffDef", amount:12, maxCharges:2}
+    ]
+  },
+  {
+    id:"aurorite",
+    name:"Aurorite",
+    element:"Stone",
+    baseHP:140,
+    baseAtk:35,
+    baseDef:32,
+    baseSpd:24,
+    abilities:[
+      {name:"Aurora Shatter", kind:"damage", power:38, maxCharges:3},
+      {name:"Crystal Radiance", kind:"buffAtk", amount:10, maxCharges:2}
+    ]
   }
-  for (let i=0;i<shocks;i++){
-    const a=Math.random()*TWO_PI, d=rand(12, ringR);
-    state.units.push(makeUnit(UNIT_TYPES.SHOCK, cx+Math.cos(a)*d, cy+Math.sin(a)*d));
+];
+
+
+  function cloneAbilities(abilities){
+    return abilities.map(a => ({
+      name:a.name,
+      kind:a.kind,
+      power:a.power ?? 0,
+      amount:a.amount ?? 0,
+      maxCharges:a.maxCharges ?? 3,
+      charges:a.maxCharges ?? 3
+    }));
   }
-}
 
-function pickEnemyKind(level){
-  const r=Math.random();
-  const bruteBias=Math.min(Math.max((level-5)*0.06,0),0.40);
-  const stingBias=Math.min(0.12 + level*0.01, 0.28);
-  const blingBias=Math.min(0.08 + level*0.012, 0.26);
-  const lingBase=1-(bruteBias+stingBias+blingBias);
-  if (r < lingBase) return UNIT_TYPES.LING;
-  if (r < lingBase + stingBias) return UNIT_TYPES.STING;
-  if (r < lingBase + stingBias + blingBias) return UNIT_TYPES.BLING;
-  return UNIT_TYPES.BRUTE;
-}
-function edgeCenter(edge,margin){
-  switch(edge){
-    case 0: return {x:rand(margin,MAP_W-margin), y:margin};
-    case 1: return {x:MAP_W-margin, y:rand(margin,MAP_H-margin)};
-    case 2: return {x:rand(margin,MAP_W-margin), y:MAP_H-margin};
-    default:return {x:margin, y:rand(margin,MAP_H-margin)};
+  function createCritterFromSpecies(specId, level){
+    const s = SPECIES.find(sp=>sp.id===specId);
+    if(!s) throw new Error("Unknown species "+specId);
+    const lvlFactor = 1 + (level-1)*0.08;
+    return {
+      speciesId:s.id,
+      name:s.name,
+      element:s.element,
+      level,
+      maxHP:Math.round(s.baseHP*lvlFactor),
+      currentHP:Math.round(s.baseHP*lvlFactor),
+      atk:Math.round(s.baseAtk*lvlFactor),
+      def:Math.round(s.baseDef*lvlFactor),
+      spd:Math.round(s.baseSpd*lvlFactor),
+      xp:0,
+      xpToNext:25 + level*15,
+      abilities:cloneAbilities(s.abilities)
+    };
   }
-}
-function spawnWave(level){
-  levelNum.textContent=level; showWaveFlash(level);
-  const base = 10 + Math.floor((level-1)*2);
-  const clusters = Math.min(1 + Math.floor((level-1)/4), 3);
-  const margin=40;
-  const basePer = Math.max(5, Math.floor(base/clusters));
-  const remainder = base - basePer*clusters;
-  for (let c=0;c<clusters;c++){
-    const edge=randi(0,3), center=edgeCenter(edge, margin);
-    const radius=rand(90,160), count=basePer + (c<remainder?1:0);
-    for (let i=0;i<count;i++){
-      const kind=pickEnemyKind(level), ang=Math.random()*TWO_PI, d=rand(0,radius);
-      const x=clamp(center.x+Math.cos(ang)*d, margin, MAP_W-margin);
-      const y=clamp(center.y+Math.sin(ang)*d, margin, MAP_H-margin);
-      state.units.push(makeUnit(kind,x,y));
-    }
-  }
-}
-function showWaveFlash(n){ levelFlash.textContent="WAVE "+n; levelFlash.style.opacity=1; setTimeout(()=> levelFlash.style.opacity=0, 900); }
 
-/* ===========================
-   Pickups (Soldier/Medic/Shock mix)
-   =========================== */
-function spawnPickup(){
-  if (state.pickups.length >= MAX_ACTIVE_PICKUPS) return;
-  const margin=140, x=rand(margin,MAP_W-margin), y=rand(margin,MAP_H-margin);
-  state.pickups.push({ id:Math.random().toString(36).slice(2), x,y, r:18, born:performance.now(), life:rand(17000,26000), wobble:Math.random()*TWO_PI });
-}
-function grantReinforcements(){
-  const around = state.units.find(u=>u.alive && u.team===PLAYER) || {x:MAP_W/2,y:MAP_H/2};
-  const n = Math.min(5 + Math.floor(state.level/2), 12);
-  const ringR=110;
-  for (let i=0;i<n;i++){
-    const a=Math.random()*TWO_PI, d=rand(12, ringR);
-    const r=Math.random();
-    const kind = r < 0.55 ? UNIT_TYPES.SOLDIER : (r < 0.75 ? UNIT_TYPES.MEDIC : UNIT_TYPES.SHOCK);
-    state.units.push(makeUnit(kind,
-      clamp(around.x + Math.cos(a)*d,12,MAP_W-12),
-      clamp(around.y + Math.sin(a)*d,12,MAP_H-12)));
-  }
-}
-function checkPickupCollisions(){
-  for (let i=state.pickups.length-1;i>=0;i--){
-    const p=state.pickups[i];
-    let collected=false;
-    for (const u of state.units){
-      if (!u.alive || u.team!==PLAYER) continue;
-      const rr=u.r + p.r + 2;
-      if (dist2(u,p) <= rr*rr){ collected=true; break; }
-    }
-    if (collected){
-      grantReinforcements();
-      state.pickups.splice(i,1);
-      state.splashes.push({ x:p.x, y:p.y, r:80, t:performance.now(), dur:320 });
-    }
-  }
-}
+  // ----------------------------------------
+  // Map generation
+  // ----------------------------------------
 
-/* ===========================
-   Selection
-   =========================== */
-function worldFromScreen(x,y){ return {x:x+state.camera.x, y:y+state.camera.y}; }
-function screenFromWorld(x,y){ return {x:x-state.camera.x, y:y-state.camera.y}; }
-function clearSelection(){ for (const u of state.units) u.selected=false; }
-function selectedUnits(){ return state.units.filter(u=>u.selected && u.alive && u.team===PLAYER); }
+  const MAP_W = 40;
+  const MAP_H = 40;
 
-function selectAtPoint(wx,wy,additive=false){
-  let hit=null;
-  for (let i=state.units.length-1;i>=0;i--){
-    const u=state.units[i];
-    if (u.team!==PLAYER || !u.alive) continue;
-    const rr=u.r+4;
-    if (dist2({x:wx,y:wy}, u) <= rr*rr){ hit=u; break; }
-  }
-  if (!additive) clearSelection();
-  if (hit) hit.selected = !additive || !hit.selected;
-  refreshSelectionUI();
-  return hit;
-}
-function selectRect(wx1,wy1,wx2,wy2,additive=false){
-  const x1=Math.min(wx1,wx2), x2=Math.max(wx1,wx2), y1=Math.min(wy1,wy2), y2=Math.max(wy1,wy2);
-  if (!additive) clearSelection();
-  for (const u of state.units){
-    if (u.team!==PLAYER || !u.alive) continue;
-    if (u.x>=x1 && u.x<=x2 && u.y>=y1 && u.y<=y2) u.selected=true;
-  }
-  refreshSelectionUI();
-}
+  function generateMap(){
+    const tiles = [];
+    for(let y=0;y<MAP_H;y++){
+      const row = [];
+      for(let x=0;x<MAP_W;x++){
+        let zoneType;
+        if(y<10) zoneType = "Forest";
+        else if(y<20) zoneType="Riverlands";
+        else if(y<30) zoneType="Highlands";
+        else zoneType="Ruins";
 
-/* ===========================
-   Commands & Abilities
-   =========================== */
-function commandMove(units,wx,wy){ for (const u of units){ u.order={type:"move",x:wx,y:wy}; u.target=null; } }
-function commandAttackNearest(units){
-  for (const u of units){
-    const t=nearestEnemyInAggro(u);
-    if (t){ u.order={type:"attack", targetId:t.id}; u.target=t; }
-  }
-}
+        let zoneColorIndex;
+        if(zoneType==="Forest") zoneColorIndex=1;
+        else if(zoneType==="Riverlands") zoneColorIndex=2;
+        else if(zoneType==="Highlands") zoneColorIndex=3;
+        else zoneColorIndex=4;
 
-function doDash(units){
-  const now=performance.now();
-  for (const u of units){
-    if (u.kind!==UNIT_TYPES.SOLDIER) continue;
-    const D=UNIT_STATS.soldier.dash;
-    if (now < u.buffs.dashCdUntil) continue;
-    u.buffs.dashUntil = now + D.durMs;
-    u.buffs.dashCdUntil = now + D.cdMs;
-  }
-}
+        let feature = null;
+        const r = Math.random();
+        if(r<0.06) feature="bush";
+        else if(r<0.11) feature="rock";
 
-function doPlasmaVolley(units){
-  const now=performance.now();
-  for (const u of units){
-    if (u.kind!==UNIT_TYPES.SHOCK) continue;
-    if (now < u.buffs.plasmaCdUntil) continue;
-    // find target in range (prefer current)
-    let tgt = u.target && u.target.alive ? u.target : nearestEnemyInAggro(u);
-    if (!tgt) continue;
-    if (!isEnemyInRange(u, tgt)) continue;
-    fireProjectile(u, tgt, true); // true => plasma shot
-    u.buffs.plasmaCdUntil = now + UNIT_STATS.shock.plasma.cdMs;
-  }
-}
+        // thin line of shops + arenas
+        if((x===5 || x===34) && y%9===0) feature="shop";
+        if((x===MAP_W-6 || x===8) && (y+4)%11===0) feature="arena";
 
-function tryThrowStun(wx,wy){
-  // choose ONE shock from selection with ready cooldown
-  const now=performance.now();
-  const sel = selectedUnits().filter(u=>u.kind===UNIT_TYPES.SHOCK && now>=u.buffs.stunCdUntil);
-  if (!sel.length) return;
-  const thrower = sel[0];
-  thrower.buffs.stunCdUntil = now + UNIT_STATS.shock.stun.cdMs;
-
-  const dx=wx - thrower.x, dy=wy - thrower.y, d=Math.hypot(dx,dy)||1;
-  const vx = dx/d * STUN.throwSpeed, vy = dy/d * STUN.throwSpeed;
-  state.grenades.push({ id:Math.random().toString(36).slice(2), x:thrower.x, y:thrower.y, vx, vy, tx:wx, ty:wy, r:10, fromId:thrower.id });
-}
-
-/* ===========================
-   AI Helpers
-   =========================== */
-function nearestEnemyInAggro(u){
-  let best=null, bestD2=Infinity;
-  for (const e of state.units){
-    if (!e.alive || e.team===u.team) continue;
-    const d2=dist2(u,e);
-    if (d2 < bestD2 && d2 <= u.aggro*u.aggro){ best=e; bestD2=d2; }
-  }
-  return best;
-}
-// Return the (player) unit at a world point without changing selection
-function getUnitAt(wx, wy){
-  for (let i = state.units.length - 1; i >= 0; i--){
-    const u = state.units[i];
-    if (!u.alive || u.team !== PLAYER || u.isStructure) continue;
-    const rr = u.r + 4;
-    if (dist2({x: wx, y: wy}, u) <= rr * rr) return u;
-  }
-  return null;
-}
-
-// Select every living player unit of a given kind
-function selectAllOfKind(kind, additive = false){
-  if (!additive) clearSelection();
-  for (const u of state.units){
-    if (u.alive && u.team === PLAYER && !u.isStructure && u.kind === kind){
-      u.selected = true;
-    }
-  }
-  refreshSelectionUI();
-}
-
-function nearestOpposite(u){
-  let best=null, bestD2=Infinity;
-  for (const v of state.units){
-    if (!v.alive || v.team===u.team) continue;
-    const d2=dist2(u,v);
-    if (d2 < bestD2){ best=v; bestD2=d2; }
-  }
-  return best;
-}
-function isEnemyInRange(u,e){ const r=u.range + (e.r||0); return dist2(u,e) <= r*r; }
-
-/* ===========================
-   Combat
-   =========================== */
-function fireProjectile(shooter,target,isPlasma=false){
-  if (!target || !target.alive) return;
-  const ang=Math.atan2(target.y - shooter.y, target.x - shooter.x);
-  const spd = isPlasma ? 800 : (shooter.projSpeed || 640);
-  const dmg = isPlasma ? UNIT_STATS.shock.plasma.dmg : shooter.dmg;
-  state.projs.push({
-    id:Math.random().toString(36).slice(2),
-    team:shooter.team, fromKind:shooter.kind, plasma:isPlasma,
-    x:shooter.x, y:shooter.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
-    dmg, life:2000
-  });
-}
-
-function applySplash(x,y,radius,fn){
-  state.splashes.push({ x,y, r:radius, t:performance.now(), dur:260, color:"freeze" });
-  for (const u of state.units){ fn(u, x,y,radius); }
-}
-
-/* ===========================
-   Physics & Update
-   =========================== */
-function steerAndCollide(dt){
-  const sepStrength=1400, damp=0.86, accMul=8.0;
-
-  for (let i=0;i<state.units.length;i++){
-    const a=state.units[i];
-    if (!a.alive) continue;
-
-    const now=performance.now();
-    const frozen = now < a.buffs.frozenUntil;
-
-    let ax=0, ay=0;
-    const dashMul = (a.kind===UNIT_TYPES.SOLDIER && now < a.buffs.dashUntil) ? UNIT_STATS.soldier.dash.speedMul : 1;
-    const baseSpeed=a.speed * dashMul;
-
-    if (!frozen){
-      if (a.order && a.order.type==="move"){
-        const dx=a.order.x - a.x, dy=a.order.y - a.y, d=Math.hypot(dx,dy);
-        if (d>6){ ax += (dx/(d||1))*baseSpeed; ay += (dy/(d||1))*baseSpeed; }
-        else { a.order=null; a.vx*=0.6; a.vy*=0.6; }
-      } else if (a.target && a.target.alive){
-        const inRange=isEnemyInRange(a, a.target);
-        if (!inRange){ const dx=a.target.x - a.x, dy=a.target.y - a.y, d=Math.hypot(dx,dy)||1; ax += (dx/d)*baseSpeed; ay += (dy/d)*baseSpeed; }
-        else { a.vx*=0.7; a.vy*=0.7; }
-      } else if (a.team===ENEMY){
-        const t=nearestOpposite(a);
-        if (t){ const dx=t.x - a.x, dy=t.y - a.y, d=Math.hypot(dx,dy)||1; if (a.melee || d>(a.range*0.85)){ ax+=(dx/d)*baseSpeed; ay+=(dy/d)*baseSpeed; } else { a.vx*=0.92; a.vy*=0.92; } }
-        else { a.vx*=0.96; a.vy*=0.96; }
-      } else {
-        const e=nearestEnemyInAggro(a);
-        if (e){ const inRange=isEnemyInRange(a,e); a.target=e; if (!inRange){ const dx=e.x-a.x, dy=e.y-a.y, d=Math.hypot(dx,dy)||1; ax+=(dx/d)*baseSpeed; ay+=(dy/d)*baseSpeed; } else { a.vx*=0.8; a.vy*=0.8; } }
-        else { a.vx*=0.95; a.vy*=0.95; }
+        row.push({zoneType, zoneColorIndex, feature});
       }
+      tiles.push(row);
+    }
+    // ensure starting area is safe
+    tiles[MAP_H-2][2].feature=null;
+    return tiles;
+  }
+
+  // ----------------------------------------
+  // Global game state
+  // ----------------------------------------
+
+  let gameState = null;      // structure described below
+  let currentSaveName = null;
+  let inBattle = false;
+  let battleState = null;    // {mode, enemyTeam, playerTeamIdxs, activePlayerIdx, activeEnemyIdx, arenaReward, log:[]}
+  let lastShopPos = null;
+  let lastArenaPos = null;
+
+  // ----------------------------------------
+  // Logging helper
+  // ----------------------------------------
+  function addLog(tag, text){
+    const line = document.createElement("div");
+    line.className = "logLine";
+    const badge = document.createElement("span");
+    badge.className = "tag";
+    badge.textContent = tag;
+    line.appendChild(badge);
+    line.append(text);
+    logEl.prepend(line);
+  }
+
+  // ----------------------------------------
+  // Rendering: map & HUD
+  // ----------------------------------------
+  const mapViewEl = document.getElementById("mapView");
+
+  function renderHUD(){
+    if(!gameState){
+      invEl.innerHTML = "";
+      zoneNameEl.textContent="-";
+      posLabelEl.textContent="-";
+      modeLabelEl.textContent=inBattle?"Battle":"Exploration";
+      return;
+    }
+    const p = gameState.player;
+    invEl.innerHTML = "";
+    const chips = [
+      {icon:"💰", label:`$${p.money}`},
+      {icon:"🧪", label:`Potion x${p.potions}`},
+      {icon:"🔴", label:`Ball x${p.balls.basic}`},
+      {icon:"🔵", label:`Great x${p.balls.great}`},
+      {icon:"🟡", label:`Ultra x${p.balls.ultra}`}
+    ];
+    for(const c of chips){
+      const el = document.createElement("div");
+      el.className="chip";
+      const s = document.createElement("span");
+      s.textContent=c.icon;
+      el.appendChild(s);
+      el.append(c.label);
+      invEl.appendChild(el);
+    }
+    const tile = gameState.map.tiles[gameState.map.playerY][gameState.map.playerX];
+    zoneNameEl.textContent=tile.zoneType;
+    posLabelEl.textContent=`(${gameState.map.playerX}, ${gameState.map.playerY})`;
+    modeLabelEl.textContent=inBattle?"Battle":"Exploration";
+  }
+
+  function getVisibleWindow(){
+    if(!gameState) return {x0:0,y0:0};
+    const {playerX, playerY} = gameState.map;
+    let x0 = playerX - 7;
+    let y0 = playerY - 7;
+    if(x0<0) x0=0;
+    if(y0<0) y0=0;
+    if(x0>MAP_W-15) x0=MAP_W-15;
+    if(y0>MAP_H-15) y0=MAP_H-15;
+    return {x0,y0};
+  }
+
+  function renderMap(){
+    mapViewEl.innerHTML = "";
+    if(!gameState){
+      for(let i=0;i<225;i++){
+        const d=document.createElement("div");
+        d.className="tile zone4";
+        mapViewEl.appendChild(d);
+      }
+      return;
+    }
+    const {x0,y0} = getVisibleWindow();
+    const {playerX, playerY} = gameState.map;
+    for(let yy=0; yy<15; yy++){
+      for(let xx=0; xx<15; xx++){
+        const gx = x0+xx;
+        const gy = y0+yy;
+        const tile = gameState.map.tiles[gy][gx];
+        const d = document.createElement("div");
+        d.className = `tile zone${tile.zoneColorIndex}`;
+        if(tile.feature) d.classList.add(tile.feature);
+        d.dataset.gx = gx;
+        d.dataset.gy = gy;
+        d.addEventListener("click", ()=>onTileClick(gx,gy));
+        // player marker
+        if(gx===playerX && gy===playerY){
+          const pm = document.createElement("div");
+          pm.className="playerMarker";
+          pm.innerHTML="<span>🧍</span>";
+          d.appendChild(pm);
+        }
+        mapViewEl.appendChild(d);
+      }
+    }
+    renderHUD();
+  }
+
+  function centerOnPlayer(){
+    renderMap(); // already centers based on player
+  }
+
+  // ----------------------------------------
+  // Movement & encounters
+  // ----------------------------------------
+
+  function onTileClick(gx,gy){
+    if(!gameState || inBattle) return;
+    const {playerX, playerY} = gameState.map;
+    const dx = Math.abs(gx-playerX);
+    const dy = Math.abs(gy-playerY);
+    if(dx+dy !==1){
+      addLog("Move","You can only move one tile at a time.");
+      return;
+    }
+    movePlayerTo(gx,gy);
+  }
+
+  function movePlayerTo(gx,gy){
+    const map = gameState.map;
+    map.playerX = gx;
+    map.playerY = gy;
+    const tile = map.tiles[gy][gx];
+    addLog("Move",`You moved into the ${tile.zoneType}.`);
+    renderMap();
+    // feature triggers
+    if(tile.feature==="shop"){
+      lastShopPos = {x:gx,y:gy};
+      openShop();
+      return;
+    }
+    if(tile.feature==="arena"){
+      lastArenaPos = {x:gx,y:gy};
+      openArena();
+      return;
+    }
+    // random encounter
+    const base = tile.zoneType==="Forest" ? 0.18 :
+                 tile.zoneType==="Riverlands" ? 0.15 :
+                 tile.zoneType==="Highlands" ? 0.16 :
+                 0.20;
+    let bonus = 0;
+    if(tile.feature==="bush") bonus += 0.12;
+    if(tile.feature==="rock") bonus += 0.08;
+    const chance = base+bonus;
+    if(Math.random() < chance){
+      startWildEncounter(tile);
     } else {
-      a.vx*=0.6; a.vy*=0.6;
+      autoSaveDebounced();
     }
-
-    // Separation
-    for (let j=i+1;j<state.units.length;j++){
-      const b=state.units[j]; if (!b.alive) continue;
-      const dx=b.x - a.x, dy=b.y - a.y, d2=dx*dx+dy*dy, minDist=a.r+b.r+2;
-      if (d2>0 && d2 < minDist*minDist){
-        const d=Math.sqrt(d2), overlap=(minDist-d), ux=(dx/(d||1)), uy=(dy/(d||1)), push=(overlap*sepStrength)*dt/1000;
-        a.vx -= ux*push; a.vy -= uy*push; b.vx += ux*push; b.vy += uy*push;
-      }
-    }
-
-    // Integrate
-    a.vx += (ax - a.vx)*(accMul*dt/1000); a.vy += (ay - a.vy)*(accMul*dt/1000);
-    a.vx *= damp; a.vy *= damp;
-    const maxSpd=baseSpeed*1.1, spd=Math.hypot(a.vx,a.vy);
-    if (spd>maxSpd){ a.vx=a.vx/spd*maxSpd; a.vy=a.vy/spd*maxSpd; }
-    a.x=clamp(a.x + a.vx*dt/1000, a.r, MAP_W - a.r);
-    a.y=clamp(a.y + a.vy*dt/1000, a.r, MAP_H - a.r);
   }
 
-  // Grenades
-  for (let i=state.grenades.length-1;i>=0;i--){
-    const g=state.grenades[i];
-    g.x += g.vx*dt/1000; g.y += g.vy*dt/1000;
-    const dx=g.tx - g.x, dy=g.ty - g.y;
-    if (dx*dx + dy*dy < 12*12){
-      // explode → freeze enemies
-      const cx=g.tx, cy=g.ty;
-      applySplash(cx,cy, STUN.radius, (u,x,y,r)=>{
-        if (!u.alive || u.team!==ENEMY) return;
-        const d2=dist2(u,{x,y}); if (d2 <= r*r){ u.buffs.frozenUntil = performance.now() + STUN.freezeMs; }
+  function randomSpeciesForZone(zoneType){
+    const pool = SPECIES.filter(s=>{
+      if(zoneType==="Forest") return s.element==="Nature" || s.element==="Fire";
+      if(zoneType==="Riverlands") return s.element==="Water" || s.element==="Storm";
+      if(zoneType==="Highlands") return s.element==="Stone" || s.element==="Fire";
+      if(zoneType==="Ruins") return s.element==="Stone" || s.element==="Storm";
+      return true;
+    });
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+
+  function startWildEncounter(tile){
+    const playerAvgLvl = Math.max(1,Math.round(
+      gameState.player.roster.reduce((a,c)=>a+c.level,0)/gameState.player.roster.length
+    ));
+    const lvl = Math.max(1, Math.round(playerAvgLvl + (Math.random()*4-2)));
+    const species = randomSpeciesForZone(tile.zoneType);
+    const wild = createCritterFromSpecies(species.id,lvl);
+    addLog("Encounter",`A wild ${wild.name} (Lv ${wild.level}) appears!`);
+    const enemyTeam = [wild];
+    const playerTeamIdxs = gameState.player.roster.map((_,i)=>i);
+    startBattle({
+      mode:"wild",
+      enemyTeam,
+      playerTeamIdxs,
+      activePlayerIdx:playerTeamIdxs[0],
+      activeEnemyIdx:0,
+      arenaReward:0
+    });
+  }
+
+  // ----------------------------------------
+  // Battle system
+  // ----------------------------------------
+  const battleOverlay = document.getElementById("battleOverlay");
+  const battleTitleEl = document.getElementById("battleTitle");
+  const battleBodyEl = document.getElementById("battleBody");
+  const battleFooterEl = document.getElementById("battleFooter");
+  document.getElementById("btnBattleClose").onclick = ()=>{/* no close during battle */};
+
+  function startBattle(initialState){
+    inBattle = true;
+    modeLabelEl.textContent="Battle";
+    battleState = {
+      ...initialState,
+      log:[]
+    };
+    for(const c of gameState.player.roster){
+      for(const ab of c.abilities){
+        ab.charges = ab.maxCharges;
+      }
+    }
+    for(const e of battleState.enemyTeam){
+      for(const ab of e.abilities){
+        ab.charges = ab.maxCharges;
+      }
+    }
+    battleOverlay.classList.add("visible");
+    renderBattle();
+  }
+
+  function activePlayerCritter(){
+    return gameState.player.roster[battleState.activePlayerIdx];
+  }
+  function activeEnemyCritter(){
+    return battleState.enemyTeam[battleState.activeEnemyIdx];
+  }
+
+  function renderBattle(){
+    const pc = activePlayerCritter();
+    const ec = activeEnemyCritter();
+    if(!pc || !ec){
+      endBattle();
+      return;
+    }
+    battleTitleEl.textContent = battleState.mode==="arena" ? "Arena Battle" : "Wild Encounter";
+    battleBodyEl.innerHTML="";
+    const hero = document.createElement("div");
+    hero.innerHTML = `
+      <div class="sectionTitle">Your Critter</div>
+      <div class="battleStats">
+        <div style="flex:1;">
+          <strong>${pc.name}</strong> <span class="badge">Lv ${pc.level}</span>
+          <span class="badge">${pc.element}</span>
+          <div class="hpBar"><div class="hpFill" style="width:${Math.max(0,pc.currentHP)/pc.maxHP*100}%"></div></div>
+          <div style="font-size:11px;margin-top:2px;">HP ${pc.currentHP}/${pc.maxHP}</div>
+        </div>
+      </div>
+      <div class="sectionTitle">Enemy</div>
+      <div class="battleStats">
+        <div style="flex:1;">
+          <strong>${ec.name}</strong> <span class="badge">Lv ${ec.level}</span>
+          <span class="badge">${ec.element}</span>
+          <div class="hpBar"><div class="hpFill" style="width:${Math.max(0,ec.currentHP)/ec.maxHP*100}%"></div></div>
+          <div style="font-size:11px;margin-top:2px;">HP ${ec.currentHP}/${ec.maxHP}</div>
+        </div>
+      </div>
+    `;
+    battleBodyEl.appendChild(hero);
+
+    const histTitle = document.createElement("div");
+    histTitle.className="sectionTitle";
+    histTitle.textContent="Battle Log";
+    battleBodyEl.appendChild(histTitle);
+
+    const histBox = document.createElement("div");
+    histBox.style.maxHeight="200px";
+    histBox.style.overflowY="auto";
+    histBox.style.border="1px solid #1f2937";
+    histBox.style.borderRadius="8px";
+    histBox.style.padding="4px 6px";
+    const lines = battleState.log.slice(-8);
+    if(lines.length===0){
+      histBox.innerHTML = `<div style="font-size:11px;color:var(--muted);">Actions will appear here.</div>`;
+    }else{
+      for(const L of lines){
+        const div=document.createElement("div");
+        div.style.fontSize="11px";
+        div.textContent=L;
+        histBox.appendChild(div);
+      }
+    }
+    battleBodyEl.appendChild(histBox);
+
+    // Footer buttons
+    battleFooterEl.innerHTML="";
+    // abilities
+    pc.abilities.forEach((ab,idx)=>{
+      const btn=document.createElement("button");
+      btn.textContent = `${ab.name} (${ab.charges}/${ab.maxCharges})`;
+      btn.disabled = ab.charges<=0;
+      btn.onclick=()=>queuePlayerAction({type:"ability", index:idx});
+      battleFooterEl.appendChild(btn);
+    });
+    const invRow=document.createElement("div");
+    invRow.style.display="flex";
+    invRow.style.flexWrap="wrap";
+    invRow.style.gap="4px";
+    invRow.style.marginTop="4px";
+    const btnPotion=document.createElement("button");
+    btnPotion.className="secondary";
+    btnPotion.textContent=`Use Potion (${gameState.player.potions})`;
+    btnPotion.disabled = gameState.player.potions<=0 || pc.currentHP>=pc.maxHP;
+    btnPotion.onclick=()=>queuePlayerAction({type:"potion"});
+    invRow.appendChild(btnPotion);
+
+    const btnCapture=document.createElement("button");
+    btnCapture.className="secondary";
+    btnCapture.textContent="Capture";
+    btnCapture.onclick=()=>openCaptureMenu();
+    invRow.appendChild(btnCapture);
+
+    const btnSwitch=document.createElement("button");
+    btnSwitch.className="secondary";
+    btnSwitch.textContent="Switch";
+    btnSwitch.onclick=()=>openSwitchMenu();
+    invRow.appendChild(btnSwitch);
+
+    if(battleState.mode==="wild"){
+      const btnRun=document.createElement("button");
+      btnRun.className="danger";
+      btnRun.textContent="Run";
+      btnRun.onclick=()=>{
+        battleState.log.push("You fled from the battle.");
+        endBattle();
+      };
+      invRow.appendChild(btnRun);
+    }
+    battleFooterEl.appendChild(invRow);
+  }
+
+  function queuePlayerAction(action){
+    // Simple: resolve immediately with speed-based order vs enemy default attack
+    const pc = activePlayerCritter();
+    const ec = activeEnemyCritter();
+    if(!pc || !ec) { endBattle(); return; }
+    const enemyAction = chooseEnemyAction(ec, pc);
+    const firstPlayer = pc.spd >= ec.spd;
+
+    if(firstPlayer){
+      resolveAction("player", action, pc, ec);
+      if(ec.currentHP>0 && pc.currentHP>0){
+        resolveAction("enemy", enemyAction, ec, pc);
+      }
+    }else{
+      resolveAction("enemy", enemyAction, ec, pc);
+      if(pc.currentHP>0 && ec.currentHP>0){
+        resolveAction("player", action, pc, ec);
+      }
+    }
+    checkBattleState();
+    renderBattle();
+  }
+
+  function basicDamage(attacker, defender, ability){
+    const base = (ability.power ?? 20) + Math.floor(attacker.atk*0.6) - Math.floor(defender.def*0.4);
+    return Math.max(5, base);
+  }
+
+  function resolveAction(side, action, actor, target){
+    if(actor.currentHP<=0) return;
+    const sideLabel = side==="player" ? "Your" : "Enemy";
+    if(action.type==="ability"){
+      const idx = action.index;
+      const ab = actor.abilities[idx];
+      if(!ab || ab.charges<=0){
+        battleState.log.push(`${sideLabel} ${actor.name} fumbles and does nothing.`);
+        return;
+      }
+      ab.charges--;
+      if(ab.kind==="damage"){
+        const mult = typeMultiplier(actor.element, target.element);
+        let dmg = basicDamage(actor, target, ab);
+        dmg = Math.round(dmg*mult);
+        if(dmg<1)dmg=1;
+        target.currentHP -= dmg;
+        if(target.currentHP<0) target.currentHP=0;
+        let eff = "";
+        if(mult>1.1) eff=" It's super effective!";
+        else if(mult<0.9) eff=" It's not very effective.";
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}! It dealt ${dmg} damage.${eff}`);
+        if(target.currentHP<=0){
+          const victimSide = side==="player" ? "Enemy" : "Your";
+          battleState.log.push(`${victimSide} ${target.name} fainted!`);
+        }
+      }else if(ab.kind==="heal"){
+        const before = actor.currentHP;
+        actor.currentHP = Math.min(actor.maxHP, actor.currentHP + (ab.amount ?? 20));
+        const healed = actor.currentHP-before;
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name} and healed ${healed} HP.`);
+      }else if(ab.kind==="buffAtk"){
+        actor.atk += ab.amount ?? 4;
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}. Attack rose!`);
+      }else if(ab.kind==="buffDef"){
+        actor.def += ab.amount ?? 4;
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}. Defense rose!`);
+      }else if(ab.kind==="buffSpd"){
+        actor.spd += ab.amount ?? 4;
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}. Speed rose!`);
+      }else if(ab.kind==="debuffAtk"){
+        target.atk = Math.max(1, target.atk - (ab.amount ?? 4));
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}. Foe's Attack fell!`);
+      }else if(ab.kind==="debuffDef"){
+        target.def = Math.max(1, target.def - (ab.amount ?? 4));
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}. Foe's Defense fell!`);
+      }else{
+        battleState.log.push(`${sideLabel} ${actor.name} used ${ab.name}... but nothing happened.`);
+      }
+    }else if(action.type==="potion"){
+      const before = actor.currentHP;
+      if(gameState.player.potions<=0 || before>=actor.maxHP){
+        battleState.log.push("But it failed.");
+        return;
+      }
+      gameState.player.potions--;
+      actor.currentHP = Math.min(actor.maxHP, actor.currentHP + 40);
+      const healed = actor.currentHP-before;
+      battleState.log.push(`${sideLabel} ${actor.name} drank a potion and healed ${healed} HP.`);
+    }else if(action.type==="switch"){
+      const newIdx = action.toIndex;
+      if(side==="player"){
+        battleState.activePlayerIdx = newIdx;
+        const newC = gameState.player.roster[newIdx];
+        battleState.log.push(`You switched to ${newC.name}.`);
+      }else{
+        battleState.activeEnemyIdx = newIdx;
+        const newC = battleState.enemyTeam[newIdx];
+        battleState.log.push(`Enemy switched to ${newC.name}.`);
+      }
+    }else if(action.type==="struggle"){
+      const dmg = 15;
+      target.currentHP = Math.max(0, target.currentHP-dmg);
+      battleState.log.push(`${sideLabel} ${actor.name} struggled for ${dmg} damage.`);
+      if(target.currentHP<=0) battleState.log.push(`${target.name} fainted.`);
+    }else if(action.type==="capture"){
+      // handled separately
+    }
+  }
+
+  function chooseEnemyAction(enemy, player){
+    // if low HP and any teammate alive, small chance to switch
+    const aliveIdxs = battleState.enemyTeam
+      .map((c,i)=>({c,i}))
+      .filter(x=>x.c.currentHP>0 && x.i!==battleState.activeEnemyIdx)
+      .map(x=>x.i);
+    if(enemy.currentHP < enemy.maxHP*0.3 && aliveIdxs.length>0 && Math.random()<0.25){
+      return {type:"switch", toIndex:aliveIdxs[Math.floor(Math.random()*aliveIdxs.length)]};
+    }
+    const dam = enemy.abilities.filter(a=>a.kind==="damage" && a.charges>0);
+    if(dam.length>0){
+      // prefer ones with higher power * typeMult
+      dam.sort((a,b)=>{
+        const sa = (a.power ?? 20)*typeMultiplier(enemy.element, player.element);
+        const sb = (b.power ?? 20)*typeMultiplier(enemy.element, player.element);
+        return sb-sa;
       });
-      state.grenades.splice(i,1);
+      const ab = dam[0];
+      const idx = enemy.abilities.indexOf(ab);
+      return {type:"ability", index:idx};
+    }
+    const any = enemy.abilities.find(a=>a.charges>0);
+    if(any){
+      return {type:"ability", index:enemy.abilities.indexOf(any)};
+    }
+    return {type:"struggle"};
+  }
+
+  function openSwitchMenu(){
+    const pcIdx = battleState.activePlayerIdx;
+    const alive = gameState.player.roster
+      .map((c,i)=>({c,i}))
+      .filter(x=>x.c.currentHP>0 && x.i!==pcIdx);
+    if(alive.length===0){
+      battleState.log.push("No other healthy critters to switch to.");
+      renderBattle();
+      return;
+    }
+    battleFooterEl.innerHTML="";
+    const info=document.createElement("div");
+    info.style.fontSize="11px";
+    info.style.marginBottom="4px";
+    info.textContent="Choose a critter to switch to:";
+    battleFooterEl.appendChild(info);
+    for(const {c,i} of alive){
+      const btn=document.createElement("button");
+      btn.className="secondary";
+      btn.textContent=`${c.name} (Lv ${c.level}) HP ${c.currentHP}/${c.maxHP}`;
+      btn.onclick=()=>{
+        queuePlayerAction({type:"switch", toIndex:i});
+      };
+      battleFooterEl.appendChild(btn);
+    }
+    const cancel=document.createElement("button");
+    cancel.className="secondary";
+    cancel.textContent="Cancel";
+    cancel.onclick=()=>renderBattle();
+    battleFooterEl.appendChild(cancel);
+  }
+
+  function openCaptureMenu(){
+    const inv = gameState.player.balls;
+    battleFooterEl.innerHTML="";
+    const info=document.createElement("div");
+    info.style.fontSize="11px";
+    info.style.marginBottom="4px";
+    info.textContent="Choose which capture ball to throw:";
+    battleFooterEl.appendChild(info);
+
+    function addBallButton(label, key){
+      const count = inv[key];
+      const btn=document.createElement("button");
+      btn.className="secondary";
+      btn.textContent=`${label} (${count})`;
+      btn.disabled = count<=0;
+      btn.onclick=()=>attemptCapture(key);
+      battleFooterEl.appendChild(btn);
+    }
+    addBallButton("Capture Ball","basic");
+    addBallButton("Great Ball","great");
+    addBallButton("Ultra Ball","ultra");
+    const cancel=document.createElement("button");
+    cancel.className="secondary";
+    cancel.textContent="Cancel";
+    cancel.onclick=()=>renderBattle();
+    battleFooterEl.appendChild(cancel);
+  }
+
+  function attemptCapture(ballKey){
+    const pc = activePlayerCritter();
+    const ec = activeEnemyCritter();
+    if(gameState.player.balls[ballKey]<=0){
+      battleState.log.push("You don't have that ball.");
+      renderBattle();
+      return;
+    }
+    gameState.player.balls[ballKey]--;
+    // base from HP
+    const hpFactor = (ec.maxHP - ec.currentHP)/ec.maxHP;
+    let baseChance = 0.25 + hpFactor*0.5; // 25-75%
+    let ballMult = ballKey==="basic" ? 1 : ballKey==="great" ? 1.6 : 2.2;
+    let typeBonus = typeMultiplier(pc.element, ec.element);
+    if(typeBonus>1.1) typeBonus = 1.2;
+    else if(typeBonus<0.9) typeBonus = 0.9;
+    const catchChance = Math.min(0.95, baseChance*ballMult*typeBonus);
+    const roll = Math.random();
+    if(roll < catchChance){
+      battleState.log.push(`You threw the ball... Gotcha! ${ec.name} was captured!`);
+      // add to roster (healed a bit on capture)
+      const captured = createCritterFromSpecies(ec.speciesId, ec.level);
+      captured.currentHP = captured.maxHP;
+      gameState.player.roster.push(captured);
+      grantXP(pc, ec, true);
+      endBattle();
+    }else{
+      battleState.log.push("The critter broke free!");
+      renderBattle();
     }
   }
-}
 
-function combatAndAbilities(dt){
-  const now=performance.now();
-
-  for (const u of state.units){
-    if (!u.alive) continue;
-    u.cd=Math.max(0, u.cd - dt);
-
-    const frozen = now < u.buffs.frozenUntil;
-    if (frozen) continue;
-
-    // Target upkeep
-    if (u.team===PLAYER){
-      if (!u.target || !u.target.alive){ const e=nearestEnemyInAggro(u); if (e) u.target=e; }
-    } else {
-      u.target=nearestOpposite(u);
+  function grantXP(pc, ec, captured){
+    const base = 15 + ec.level*4;
+    const xpGain = captured ? Math.round(base*0.8) : base;
+    pc.xp += xpGain;
+    battleState.log.push(`${pc.name} gained ${xpGain} XP.`);
+    while(pc.xp >= pc.xpToNext){
+      pc.xp -= pc.xpToNext;
+      pc.level++;
+      pc.xpToNext = Math.round(pc.xpToNext*1.4);
+      // stat bumps
+      pc.maxHP = Math.round(pc.maxHP*1.08);
+      pc.currentHP = pc.maxHP;
+      pc.atk = Math.round(pc.atk*1.06);
+      pc.def = Math.round(pc.def*1.06);
+      pc.spd = Math.round(pc.spd*1.03);
+      battleState.log.push(`${pc.name} grew to level ${pc.level}!`);
     }
+  }
 
-    if (u.melee){
-      if (u.target && u.target.alive && isEnemyInRange(u,u.target) && u.cd<=0){
-        u.target.hp -= u.dmg; u.cd=1000/u.fireRate;
-        if (u.target.hp<=0) killUnit(u.target, u.team);
-        if (u.kind===UNIT_TYPES.BLING && UNIT_STATS.bling.explode){ killUnit(u, u.team); }
+  function checkBattleState(){
+    const pcAlive = gameState.player.roster.some(c=>c.currentHP>0);
+    const ecAlive = battleState.enemyTeam.some(c=>c.currentHP>0);
+    if(!pcAlive){
+      battleState.log.push("All of your critters have been defeated...");
+      // perma-death already true (we don't revive). Remove dead ones now.
+      gameState.player.roster = gameState.player.roster.filter(c=>c.currentHP>0);
+      endBattle(true);
+      return;
+    }
+    if(!ecAlive){
+      const pc = activePlayerCritter();
+      const ec = battleState.enemyTeam[0]; // coarse
+      grantXP(pc, ec, false);
+      if(battleState.mode==="arena" && battleState.arenaReward>0){
+        gameState.player.money += battleState.arenaReward;
+        battleState.log.push(`You won the arena battle and earned $${battleState.arenaReward}!`);
       }
-    } else if (u.kind===UNIT_TYPES.MEDIC){
-      // Heal lowest-HP ally in range
-      u.healTickCd -= dt;
-      if (u.healTickCd <= 0){
-        let best=null, bestRatio=1.1;
-        for (const a of state.units){
-          if (!a.alive || a.team!==PLAYER || a.id===u.id) continue;
-          const r=u.range + a.r; if (dist2(u,a) > r*r) continue;
-          const ratio=a.hp/a.maxHp;
-          if (ratio < bestRatio){ best=a; bestRatio=ratio; }
-        }
-        if (best && best.hp < best.maxHp){
-          best.hp = Math.min(best.maxHp, best.hp + UNIT_STATS.medic.healer.healAmt);
-          u.healTickCd = UNIT_STATS.medic.healer.tickMs;
-          // draw heal beam trail (store a transient line)
-          state.splashes.push({ x:u.x, y:u.y, x2:best.x, y2:best.y, heal:true, t:now, dur:120 });
-        } else {
-          u.healTickCd = 120; // check again soon
-        }
-      }
-    } else {
-      // Ranged (Soldier rifle / Shock standard plasma / Sting)
-      const moving=Math.hypot(u.vx,u.vy)>28;
-      const tgt=u.target && u.target.alive ? u.target : null;
-      if (tgt && isEnemyInRange(u,tgt) && u.cd<=0 && !moving){
-        fireProjectile(u, tgt, false);
-        u.cd = 1000/u.fireRate;
+      endBattle();
+      return;
+    }
+    // ensure active indices refer to living
+    if(activeEnemyCritter().currentHP<=0){
+      let idx = battleState.enemyTeam.findIndex(c=>c.currentHP>0);
+      if(idx===-1){ checkBattleState(); return; }
+      battleState.activeEnemyIdx = idx;
+    }
+    if(activePlayerCritter().currentHP<=0){
+      let idx = gameState.player.roster.findIndex(c=>c.currentHP>0);
+      if(idx===-1){ checkBattleState(); return; }
+      battleState.activePlayerIdx = idx;
+      battleState.log.push(`You send out ${gameState.player.roster[idx].name}!`);
+    }
+  }
+
+  function endBattle(isDeath){
+    inBattle = false;
+    battleOverlay.classList.remove("visible");
+    if(isDeath){
+      if(!gameState.player.roster.length){
+        // full game over
+        showGameOver();
       }
     }
+    renderMap();
+    autoSaveDebounced();
   }
 
-  // Projectiles
-  for (let i=state.projs.length-1;i>=0;i--){
-    const p=state.projs[i];
-    p.life -= dt; if (p.life<=0){ state.projs.splice(i,1); continue; }
-    p.x += p.vx*dt/1000; p.y += p.vy*dt/1000;
-    for (const u of state.units){
-      if (!u.alive || u.team===p.team) continue;
-      const rr=u.r+4;
-      if (dist2(p,u) <= rr*rr){
-        u.hp -= p.dmg; if (u.hp<=0) killUnit(u, p.team);
-        state.projs.splice(i,1); break;
+  function showGameOver(){
+    document.getElementById("gameOverOverlay").classList.add("visible");
+  }
+  document.getElementById("btnGameOverToMenu").onclick = ()=>{
+    document.getElementById("gameOverOverlay").classList.remove("visible");
+    openStartMenu();
+  };
+
+  // ----------------------------------------
+  // Shop
+  // ----------------------------------------
+  const shopOverlay = document.getElementById("shopOverlay");
+  const shopBody = document.getElementById("shopBody");
+  document.getElementById("btnShopClose").onclick = closeShop;
+  document.getElementById("btnShopBack").onclick = closeShop;
+
+  const SHOP_PRICES = {
+    potion:50,
+    basicBall:100,
+    greatBall:250,
+    ultraBall:500
+  };
+
+  function openShop(){
+    if(!gameState) return;
+    shopOverlay.classList.add("visible");
+    renderShop();
+  }
+
+  function closeShop(){
+    shopOverlay.classList.remove("visible");
+    // push you one tile away from the shop so you don't retrigger
+    if(lastShopPos && gameState){
+      const {x,y} = lastShopPos;
+      const neighbors = [
+        {x:x+1,y},
+        {x:x-1,y},
+        {x,y+1},
+        {x,y-1},
+      ].filter(p=>p.x>=0 && p.y>=0 && p.x<MAP_W && p.y<MAP_H);
+      if(neighbors.length){
+        const p = neighbors[0];
+        gameState.map.playerX = p.x;
+        gameState.map.playerY = p.y;
       }
+      renderMap();
+      autoSaveDebounced();
     }
   }
 
-  // HUD & wave gating
-  const anyPlayers=state.units.some(u=>u.alive && u.team===PLAYER);
-  const anyEnemies=state.units.some(u=>u.alive && u.team===ENEMY);
-  enemyCountEl.textContent = state.units.filter(u=>u.team===ENEMY && u.alive).length;
-  armyCountEl.textContent  = "("+state.units.filter(u=>u.team===PLAYER && u.alive).length+")";
+  function renderShop(){
+    const p = gameState.player;
+    shopBody.innerHTML="";
+    const moneyRow=document.createElement("div");
+    moneyRow.className="row";
+    moneyRow.innerHTML=`<strong>Money:</strong><span>$${p.money}</span>`;
+    shopBody.appendChild(moneyRow);
 
-  if (!anyPlayers && !state.gameOver){ state.gameOver=true; finalLevelEl.textContent=state.level; over.style.display="flex"; }
-  if (!anyEnemies && anyPlayers && !state.gameOver){
-    if (!state._spawnNextWaveAt) state._spawnNextWaveAt = now + 1000;
-  }
-  if (state._spawnNextWaveAt && now >= state._spawnNextWaveAt){
-    state._spawnNextWaveAt=null; state.level+=1; spawnWave(state.level);
-  }
-}
+    const itemsTitle=document.createElement("div");
+    itemsTitle.className="sectionTitle";
+    itemsTitle.textContent="Buy Items";
+    shopBody.appendChild(itemsTitle);
 
-function killUnit(u,killerTeam){
-  if (!u.alive) return;
-  u.alive=false;
-  if (u.kind===UNIT_TYPES.BLING && UNIT_STATS.bling.explode){
-    const ex=UNIT_STATS.bling.explode;
-    state.splashes.push({ x:u.x,y:u.y,r:ex.radius,t:performance.now(),dur:260, color:"boom" });
-    for (const v of state.units){
-      if (!v.alive) continue;
-      const d2=dist2(v,u); if (d2 <= ex.radius*ex.radius){ v.hp -= ex.dmg; if (v.hp<=0) killUnit(v, u.team); }
+    function addBuyRow(label, price, key){
+      const row=document.createElement("div");
+      row.className="listItem";
+      row.innerHTML=`<div>${label} <span style="color:var(--muted);font-size:11px;">$${price}</span></div>`;
+      const btn=document.createElement("button");
+      btn.className="secondary";
+      btn.textContent="Buy";
+      btn.disabled = p.money<price;
+      btn.onclick=()=>{
+        if(p.money<price) return;
+        p.money-=price;
+        if(key==="potion") p.potions++;
+        else if(key==="basicBall") p.balls.basic++;
+        else if(key==="greatBall") p.balls.great++;
+        else if(key==="ultraBall") p.balls.ultra++;
+        addLog("Shop",`Bought 1 ${label}.`);
+        renderShop();
+        renderHUD();
+        autoSaveDebounced();
+      };
+      row.appendChild(btn);
+      shopBody.appendChild(row);
+    }
+    addBuyRow("Healing Potion",SHOP_PRICES.potion,"potion");
+    addBuyRow("Capture Ball",SHOP_PRICES.basicBall,"basicBall");
+    addBuyRow("Great Capture Ball",SHOP_PRICES.greatBall,"greatBall");
+    addBuyRow("Ultra Capture Ball",SHOP_PRICES.ultraBall,"ultraBall");
+
+    const sellTitle=document.createElement("div");
+    sellTitle.className="sectionTitle";
+    sellTitle.textContent="Sell Critters";
+    sellTitle.style.marginTop="8px";
+    shopBody.appendChild(sellTitle);
+
+    if(!p.roster.length){
+      const msg=document.createElement("div");
+      msg.style.fontSize="11px";
+      msg.style.color="var(--muted)";
+      msg.textContent="You have no critters to sell.";
+      shopBody.appendChild(msg);
+    }else{
+      p.roster.forEach((c,idx)=>{
+        const base = 60 + c.level*25;
+        const elemBonus = c.element==="Fire"||c.element==="Storm" ? 20 :
+                          c.element==="Stone" ? 30 : 10;
+        const price = base+elemBonus;
+        const row=document.createElement("div");
+        row.className="listItem";
+        const left=document.createElement("div");
+        left.innerHTML=`<strong>${c.name}</strong> <span style="font-size:11px;color:var(--muted);">Lv ${c.level} • ${c.element}</span>`;
+        const right=document.createElement("div");
+        right.style.display="flex";
+        right.style.alignItems="center";
+        right.style.gap="6px";
+        const val=document.createElement("span");
+        val.style.fontSize="11px";
+        val.textContent=`$${price}`;
+        const btn=document.createElement("button");
+        btn.className="danger";
+        btn.textContent="Sell";
+        btn.onclick=()=>{
+          p.money += price;
+          p.roster.splice(idx,1);
+          addLog("Shop",`Sold ${c.name} for $${price}.`);
+          renderShop();
+          renderHUD();
+          autoSaveDebounced();
+        };
+        right.appendChild(val);
+        right.appendChild(btn);
+        row.appendChild(left);
+        row.appendChild(right);
+        shopBody.appendChild(row);
+      });
     }
   }
-}
 
-/* ===========================
-   Camera
-   =========================== */
-function updateCamera(dt){
-  if (!state.mouse.overCanvas) return;
-  const mx=state.mouse.x, my=state.mouse.y; let vx=0, vy=0;
-  if (mx < VIEWPAD) vx=-EDGE_SCROLL; else if (mx > canvas.width - VIEWPAD) vx=EDGE_SCROLL;
-  if (my < VIEWPAD) vy=-EDGE_SCROLL; else if (my > canvas.height - VIEWPAD) vy=EDGE_SCROLL;
-  const fx = mx < VIEWPAD ? (1 - mx/VIEWPAD) : (mx > canvas.width - VIEWPAD ? (mx - (canvas.width - VIEWPAD))/VIEWPAD : 0);
-  const fy = my < VIEWPAD ? (1 - my/VIEWPAD) : (my > canvas.height - VIEWPAD ? (my - (canvas.height - VIEWPAD))/VIEWPAD : 0);
-  state.camera.x = clamp(state.camera.x + vx*fx*dt/1000, 0, MAP_W - canvas.width);
-  state.camera.y = clamp(state.camera.y + vy*fy*dt/1000, 0, MAP_H - canvas.height);
-}
+  // ----------------------------------------
+  // Arena
+  // ----------------------------------------
+  const arenaOverlay=document.getElementById("arenaOverlay");
+  const arenaBody=document.getElementById("arenaBody");
+  const btnArenaStart=document.getElementById("btnArenaStart");
+  document.getElementById("btnArenaClose").onclick = closeArena;
+  document.getElementById("btnArenaCancel").onclick = closeArena;
 
-/* ===========================
-   Rendering
-   =========================== */
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  function openArena(){
+    if(!gameState) return;
+    arenaOverlay.classList.add("visible");
+    renderArenaSelection();
+  }
 
-  // Grid
-  ctx.save(); ctx.translate(-state.camera.x,-state.camera.y);
-  ctx.lineWidth=1; ctx.strokeStyle="#151a22";
-  for (let x=0;x<=MAP_W;x+=GRID){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,MAP_H); ctx.stroke(); }
-  for (let y=0;y<=MAP_H;y+=GRID){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(MAP_W,y); ctx.stroke(); }
-  ctx.restore();
-
-  // Splashes (explosions / heal beams / stun rings)
-  const now=performance.now();
-  for (let i=state.splashes.length-1;i>=0;i--){
-    const s=state.splashes[i], t=(now - s.t)/s.dur;
-    if (t>=1){ state.splashes.splice(i,1); continue; }
-    if (s.heal){
-      // beam line
-      const a=screenFromWorld(s.x,s.y), b=screenFromWorld(s.x2,s.y2);
-      ctx.lineWidth = 2; ctx.strokeStyle = COLORS.beamHeal; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-      continue;
-    }
-    if (s.r){
-      const alpha=1-t, sr=s.r*(0.94+0.18*t), sc=screenFromWorld(s.x,s.y);
-      ctx.beginPath(); ctx.arc(sc.x, sc.y, sr, 0, TWO_PI);
-      if (s.color==="freeze"){ ctx.fillStyle = `rgba(120,190,255,${0.18*alpha})`; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=`rgba(120,190,255,${0.8*alpha})`; ctx.stroke(); }
-      else { ctx.fillStyle = `rgba(51,255,136,${0.18*alpha})`; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle = `rgba(51,255,136,${0.7*alpha})`; ctx.stroke(); }
+  function closeArena(){
+    arenaOverlay.classList.remove("visible");
+    // push you away from arena tile
+    if(lastArenaPos && gameState){
+      const {x,y} = lastArenaPos;
+      const neighbors=[
+        {x:x+1,y},
+        {x:x-1,y},
+        {x,y+1},
+        {x,y-1}
+      ].filter(p=>p.x>=0 && p.y>=0 && p.x<MAP_W && p.y<MAP_H);
+      if(neighbors.length){
+        const p=neighbors[0];
+        gameState.map.playerX=p.x;
+        gameState.map.playerY=p.y;
+      }
+      renderMap();
+      autoSaveDebounced();
     }
   }
 
-  // Grenades
-  for (const g of state.grenades){
-    const sc=screenFromWorld(g.x,g.y);
-    ctx.beginPath(); ctx.arc(sc.x, sc.y, 6, 0, TWO_PI);
-    ctx.fillStyle = COLORS.freezeStroke; ctx.fill();
-  }
-
-  // Projectiles
-  for (const p of state.projs){
-    const sc=screenFromWorld(p.x,p.y);
-    ctx.fillStyle = p.plasma ? COLORS.plasma : (p.team===PLAYER ? COLORS.bullet : COLORS.stingBolt);
-    ctx.beginPath(); ctx.arc(sc.x, sc.y, p.plasma ? 3.5 : 2.5, 0, TWO_PI); ctx.fill();
-  }
-
-  // Units
-  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="20px system-ui, emoji";
-  for (const u of state.units){
-    if (!u.alive) continue;
-    const sc=screenFromWorld(u.x,u.y);
-
-    // selection ring
-    if (u.selected){
-      ctx.beginPath(); ctx.arc(sc.x, sc.y, u.r + 6, 0, TWO_PI);
-      ctx.strokeStyle=COLORS.selStroke; ctx.lineWidth=2; ctx.stroke();
+  function renderArenaSelection(){
+    const p = gameState.player;
+    arenaBody.innerHTML="";
+    if(p.roster.length<3){
+      arenaBody.innerHTML="<p>You need at least 3 critters to challenge the arena.</p>";
+      btnArenaStart.disabled = true;
+      return;
     }
+    arenaBody.innerHTML=`
+      <p style="font-size:12px;margin-bottom:6px;">
+        Choose 3 of your critters to enter the arena. You will face 3 random opponents.
+        Win to earn a cash prize.
+      </p>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+        (For now, all 3 of your first critters will enter automatically.)
+      </p>
+    `;
+    const list=document.createElement("div");
+    p.roster.slice(0,3).forEach(c=>{
+      const row=document.createElement("div");
+      row.className="listItem";
+      row.innerHTML=`<div><strong>${c.name}</strong> <span style="font-size:11px;color:var(--muted);">Lv ${c.level} • ${c.element}</span></div>`;
+      list.appendChild(row);
+    });
+    arenaBody.appendChild(list);
+    btnArenaStart.disabled=false;
+  }
 
-    // frozen halo
-    if (performance.now() < u.buffs.frozenUntil){
-      ctx.beginPath(); ctx.arc(sc.x, sc.y, u.r + 10, 0, TWO_PI);
-      ctx.strokeStyle=COLORS.freezeStroke; ctx.lineWidth=2; ctx.stroke();
+  btnArenaStart.onclick = ()=>{
+    arenaOverlay.classList.remove("visible");
+    // enemy team: 3 random scaled critters
+    const avgLvl = Math.max(3,Math.round(
+      gameState.player.roster.slice(0,3).reduce((a,c)=>a+c.level,0)/Math.min(3,gameState.player.roster.length)
+    ));
+    const enemyTeam=[];
+    for(let i=0;i<3;i++){
+      const s = SPECIES[Math.floor(Math.random()*SPECIES.length)];
+      const lvl = Math.max(2, avgLvl + (Math.random()*4-2|0));
+      enemyTeam.push(createCritterFromSpecies(s.id,lvl));
     }
+    const playerTeamIdxs = gameState.player.roster.slice(0,3).map((_,i)=>i);
+    const reward = 200 + avgLvl*25;
+    addLog("Arena",`You enter an arena battle for $${reward}!`);
+    startBattle({
+      mode:"arena",
+      enemyTeam,
+      playerTeamIdxs,
+      activePlayerIdx:playerTeamIdxs[0],
+      activeEnemyIdx:0,
+      arenaReward:reward
+    });
+  };
 
-    // team ring
-    ctx.beginPath(); ctx.arc(sc.x, sc.y, u.r + 2, 0, TWO_PI);
-    ctx.strokeStyle = u.team===PLAYER ? COLORS.ringSelf : COLORS.ringEnemy;
-    ctx.lineWidth=4; ctx.stroke();
+  // ----------------------------------------
+  // Saving & loading (Firestore /users/{uid})
+  // ----------------------------------------
+  const saveNameInput = document.getElementById("saveNameInput");
+  const startOverlay = document.getElementById("startOverlay");
+  const startStatus = document.getElementById("startStatus");
+  const btnNewGame = document.getElementById("btnNewGame");
+  const btnLoadGame = document.getElementById("btnLoadGame");
+  const btnStartClose = document.getElementById("btnStartClose");
 
-    // emoji sprite
-    ctx.fillText(UNIT_STATS[u.kind].emoji, sc.x, sc.y + 1);
+  function openStartMenu(){
+    startOverlay.classList.add("visible");
+    startStatus.textContent="";
+  }
+  btnStartClose.onclick = ()=>{ /* keep menu for now */ };
 
-    // HP bar
-    const w=Math.max(28, u.r*3), h=5, pct=clamp(u.hp/u.maxHp,0,1);
-    ctx.fillStyle="#000000aa"; ctx.fillRect(sc.x - w/2, sc.y - u.r - 16, w, h);
-    ctx.fillStyle = pct>0.5 ? COLORS.hpGood : COLORS.hpBad;
-    ctx.fillRect(sc.x - w/2, sc.y - u.r - 16, w*pct, h);
-    ctx.strokeStyle="#00000055"; ctx.lineWidth=1; ctx.strokeRect(sc.x - w/2, sc.y - u.r - 16, w, h);
+  btnNewGame.onclick = async ()=>{
+    if(!currentUser){ startStatus.textContent="Still connecting to Firebase..."; return; }
+    const name = saveNameInput.value.trim();
+    if(!name){ startStatus.textContent="Please enter a save name."; return; }
+    currentSaveName = name;
+    gameState = createNewGameState(name);
+    await saveGame();
+    startOverlay.classList.remove("visible");
+    addLog("System",`New game started with save "${name}".`);
+    renderMap();
+  };
 
-    // cooldown dots
-    const nowT=performance.now();
-    let dotX = sc.x + w/2 + 6, dotY = sc.y - u.r - 13;
-    if (u.kind===UNIT_TYPES.SOLDIER && nowT < u.buffs.dashCdUntil) drawCooldownDot(dotX, dotY, (u.buffs.dashCdUntil-nowT)/1000, "#ffd166");
-    if (u.kind===UNIT_TYPES.SHOCK && nowT < u.buffs.plasmaCdUntil) drawCooldownDot(dotX+12, dotY, (u.buffs.plasmaCdUntil-nowT)/1000, "#79aaff");
-    if (u.kind===UNIT_TYPES.SHOCK && nowT < u.buffs.stunCdUntil)   drawCooldownDot(dotX+24, dotY, (u.buffs.stunCdUntil-nowT)/1000, "#8ad1ff");
+  btnLoadGame.onclick = async ()=>{
+    if(!currentUser){ startStatus.textContent="Still connecting to Firebase..."; return; }
+    const name = saveNameInput.value.trim();
+    if(!name){ startStatus.textContent="Please enter a save name."; return; }
+    const loaded = await loadGameByName(name);
+    if(!loaded){
+      startStatus.textContent=`No save named "${name}" found for this user.`;
+    }else{
+      startOverlay.classList.remove("visible");
+    }
+  };
+
+  async function ensureUserDoc(){
+    if(!currentUser) return null;
+    const ref = doc(db,"users",currentUser.uid);
+    let snap = await getDoc(ref);
+    if(!snap.exists()){
+      await setDoc(ref,{ monsterQuestSaves:{} },{merge:true});
+      snap = await getDoc(ref);
+    }
+    return {ref, snap};
   }
 
-  // Pickups
-  for (const p of state.pickups){
-    const sc=screenFromWorld(p.x,p.y);
-    const pulse=0.6 + 0.4*Math.sin((performance.now()+p.wobble*1000)/300);
-    ctx.beginPath(); ctx.arc(sc.x, sc.y, p.r+6, 0, TWO_PI);
-    ctx.strokeStyle=`rgba(255,209,102,${0.45*pulse})`; ctx.lineWidth=3; ctx.stroke();
-    ctx.font="22px system-ui, emoji"; ctx.fillText("🎁", sc.x, sc.y+1);
+  async function loadSavesCache(){
+    const info = await ensureUserDoc();
+    if(!info) return;
+    const data = info.snap.data() || {};
+    savesCache = data.monsterQuestSaves || {};
   }
 
-  // Selection box
-  if (state.dragging && state.dragStart && state.dragEnd){
-    const s=screenFromWorld(state.dragStart.x,state.dragStart.y);
-    const e=screenFromWorld(state.dragEnd.x,state.dragEnd.y);
-    const x=Math.min(s.x,e.x), y=Math.min(s.y,e.y), w=Math.abs(s.x-e.x), h=Math.abs(s.y-e.y);
-    ctx.fillStyle=COLORS.selBox; ctx.fillRect(x,y,w,h);
-    ctx.strokeStyle=COLORS.selStroke; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
-  }
-}
-function drawCooldownDot(x,y,secs,color="#a3b1c3"){
-  const r=6; ctx.beginPath(); ctx.arc(x,y,r,0,TWO_PI); ctx.fillStyle="#000a"; ctx.fill();
-  ctx.beginPath(); ctx.arc(x,y,r-1,0,TWO_PI); ctx.fillStyle=color; ctx.fill();
-  ctx.fillStyle="#000"; ctx.font="10px ui-monospace, monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText(Math.ceil(secs), x, y);
-}
-
-/* ===========================
-   UI Refresh
-   =========================== */
-function refreshSelectionUI(){
-  const sel=selectedUnits(); selCountEl.textContent=sel.length;
-  const nS = sel.filter(u=>u.kind===UNIT_TYPES.SOLDIER).length;
-  const nM = sel.filter(u=>u.kind===UNIT_TYPES.MEDIC).length;
-  const nK = sel.filter(u=>u.kind===UNIT_TYPES.SHOCK).length;
-  selBreakdownEl.textContent = sel.length ? `🪖 ${nS}  ·  🧑‍⚕️ ${nM}  ·  ⚡️ ${nK}` : "—";
-  selListEl.innerHTML="";
-  for (const u of sel.slice(0,80)){
-    const row=document.createElement("div"); row.className="row";
-    row.innerHTML = `<div>${UNIT_STATS[u.kind].emoji} <span class="small">${u.kind}</span></div>
-                     <div class="small">${Math.ceil(u.hp)}/${u.maxHp}</div>`;
-    selListEl.appendChild(row);
-  }
-  attackBtn.disabled = sel.length===0;
-}
-function updateArmyHud(){
-  const player=state.units.filter(u=>u.team===PLAYER && u.alive);
-  const kinds=Array.from(new Set(player.map(u=>u.kind)));
-  const label = kinds.length ? kinds.map(k=>PLURAL_LABEL[k]||k).join(" + ") : "—";
-  armyTypeEl.textContent = label;
-  armyCountEl.textContent = "("+player.length+")";
-}
-
-/* ===========================
-   Input
-   =========================== */
-canvas.addEventListener("contextmenu", (e)=> e.preventDefault());
-canvas.addEventListener("mouseenter", ()=> state.mouse.overCanvas=true);
-canvas.addEventListener("mouseleave", ()=> state.mouse.overCanvas=false);
-canvas.addEventListener("mousemove", (e)=>{
-  const rect=canvas.getBoundingClientRect();
-  state.mouse.x=e.clientX - rect.left; state.mouse.y=e.clientY - rect.top;
-  const w=worldFromScreen(state.mouse.x, state.mouse.y); state.mouse.worldX=w.x; state.mouse.worldY=w.y;
-  if (state.dragging) state.dragEnd={ x:w.x, y:w.y };
-});
-canvas.addEventListener("mousedown", (e)=>{
-  const w=worldFromScreen(e.offsetX, e.offsetY);
-  if (e.button===0){
-    if (state.stunMode){ tryThrowStun(w.x, w.y); state.stunMode=false; return; }
-    state.dragging=true; state.dragStart={x:w.x,y:w.y}; state.dragEnd={x:w.x,y:w.y};
-  } else if (e.button===2){
-    const sel=selectedUnits(); if (!sel.length) return;
-    commandMove(sel, w.x, w.y);
-  }
-});
-canvas.addEventListener("dblclick", (e)=>{
-  const rect = canvas.getBoundingClientRect();
-  const sx = e.clientX - rect.left;
-  const sy = e.clientY - rect.top;
-  const w = worldFromScreen(sx, sy);
-
-  const u = getUnitAt(w.x, w.y);
-  if (u){
-    const additive = !!state.keys["ShiftLeft"] || !!state.keys["ShiftRight"];
-    selectAllOfKind(u.kind, additive);
-  }
-  e.preventDefault();
-});
-
-window.addEventListener("mouseup", (e)=>{
-  if (!state.dragging) return;
-  const additive = !!state.keys["ShiftLeft"] || !!state.keys["ShiftRight"];
-  if (!state.dragStart || !state.dragEnd) return;
-  const dx=Math.abs(state.dragEnd.x - state.dragStart.x), dy=Math.abs(state.dragEnd.y - state.dragStart.y);
-  if (dx<6 && dy<6) selectAtPoint(state.dragEnd.x, state.dragEnd.y, additive);
-  else selectRect(state.dragStart.x, state.dragStart.y, state.dragEnd.x, state.dragEnd.y, additive);
-  state.dragging=false; state.dragStart=state.dragEnd=null;
-});
-window.addEventListener("keydown", (e)=>{
-  state.keys[e.code]=true;
-  if (e.code==="KeyA"){ const sel=selectedUnits(); if (sel.length) commandAttackNearest(sel); e.preventDefault(); }
-  else if (e.code==="KeyF"){ const sel=selectedUnits(); if (sel.some(u=>u.kind===UNIT_TYPES.SOLDIER)) doDash(sel); }
-  else if (e.code==="KeyB"){ const sel=selectedUnits(); if (sel.some(u=>u.kind===UNIT_TYPES.SHOCK)) doPlasmaVolley(sel); }
-  else if (e.code==="KeyS"){ const sel=selectedUnits(); const now=performance.now(); if (sel.some(u=>u.kind===UNIT_TYPES.SHOCK && now>=u.buffs.stunCdUntil)) state.stunMode=true; }
-  else if (e.code==="Escape"){ state.stunMode=false; }
-});
-window.addEventListener("keyup", (e)=> state.keys[e.code]=false);
-
-dashBtn.addEventListener("click", ()=>{ const sel=selectedUnits(); if (sel.length) doDash(sel); });
-volleyBtn.addEventListener("click", ()=>{ const sel=selectedUnits(); if (sel.length) doPlasmaVolley(sel); });
-stunBtn.addEventListener("click", ()=>{
-  const sel=selectedUnits(); const now=performance.now();
-  if (sel.some(u=>u.kind===UNIT_TYPES.SHOCK && now>=u.buffs.stunCdUntil)) state.stunMode=true;
-});
-attackBtn.addEventListener("click", ()=> commandAttackNearest(selectedUnits()));
-clearSelBtn.addEventListener("click", ()=>{ clearSelection(); refreshSelectionUI(); });
-
-saveScoreBtn.addEventListener("click", ()=>{
-  const name=(playerNameEl.value||"").trim().slice(0,40);
-  if (!name){ saveMsgEl.textContent="Please enter a name."; return; }
-  if (!fbDb){ saveMsgEl.textContent="Firebase not initialized."; return; }
-  const entry={ game:"Micro Wars — SMS (Soldier/Medic/Shock)", name, level:state.level, ts:Date.now() };
-  fbDb.ref("Flag").push(entry).then(()=> saveMsgEl.textContent="Saved! 🎉").catch(err=> saveMsgEl.textContent="Error: "+err.message);
-});
-
-/* ===========================
-   Main Loop
-   =========================== */
-let last=nowMS(), fpsS=nowMS(), frames=0;
-function tick(){
-  const t=nowMS(); let dt=t - last; if (dt>60) dt=60; last=t;
-
-  if (!state.gameOver){
-    if (t >= state.nextPickupAt){ spawnPickup(); state.nextPickupAt = t + rand(PICKUP_INTERVAL_RANGE[0], PICKUP_INTERVAL_RANGE[1]); }
-    for (let i=state.pickups.length-1;i>=0;i--){ const p=state.pickups[i]; if (t - p.born > p.life) state.pickups.splice(i,1); }
-    checkPickupCollisions();
-
-    steerAndCollide(dt);
-    combatAndAbilities(dt);
-    updateCamera(dt);
+  async function saveGame(){
+    if(!currentUser || !gameState || !currentSaveName) return;
+    const ref = doc(db,"users",currentUser.uid);
+    // update cache
+    savesCache[currentSaveName] = gameState;
+    await setDoc(ref,{
+      monsterQuestSaves: savesCache
+    },{merge:true});
+    saveTagEl.textContent = `Saved: "${currentSaveName}"`;
   }
 
-  draw();
-  refreshSelectionUI(); updateArmyHud();
-  canvas.style.cursor = state.stunMode ? "crosshair" : "default";
+  let saveTimeout = null;
+  function autoSaveDebounced(){
+    if(!currentUser || !gameState) return;
+    if(saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
+  }
 
-  frames++; if (t - fpsS >= 500){ fpsEl.textContent=Math.round(frames * 1000/(t - fpsS)); fpsS=t; frames=0; }
-  requestAnimationFrame(tick);
-}
+  async function loadGameByName(name){
+    await loadSavesCache();
+    const gs = savesCache[name];
+    if(!gs){
+      return false;
+    }
+    currentSaveName = name;
+    gameState = gs;
+    saveTagEl.textContent = `Loaded: "${name}"`;
+    addLog("System",`Loaded game "${name}".`);
+    renderMap();
+    return true;
+  }
 
-/* ===========================
-   Start
-   =========================== */
-function init(){
-  resize();
-  spawnInitialArmy();
-  state.level=1; levelNum.textContent=1;
-  state.nextPickupAt = performance.now() + rand(4000,8000);
-  state.camera.x = MAP_W/2 - canvas.width/2;
-  state.camera.y = MAP_H/2 - canvas.height/2;
-  setTimeout(()=> spawnWave(state.level), 1200);
-  requestAnimationFrame(tick);
-}
-init();
+  function createNewGameState(name){
+    const tiles = generateMap();
+    // random starter from three base critters
+    const starters = ["blazefox","tidalfin","leafling"];
+    const starterId = starters[Math.floor(Math.random()*starters.length)];
+    const starter = createCritterFromSpecies(starterId,3);
+    return {
+      saveName:name,
+      createdAt:Date.now(),
+      lastPlayed:Date.now(),
+      player:{
+        money:300,
+        potions:3,
+        balls:{basic:10,great:3,ultra:1},
+        roster:[starter]
+      },
+      map:{
+        tiles,
+        playerX:2,
+        playerY:MAP_H-2
+      }
+    };
+  }
+
+  // Quick save/load controls on right pane
+  const quickSaveNameInput=document.getElementById("quickSaveName");
+  document.getElementById("btnQuickSave").onclick = ()=>saveGame().catch(console.error);
+  document.getElementById("btnQuickLoad").onclick = async ()=>{
+    const name = quickSaveNameInput.value.trim();
+    if(!name) return;
+    await loadGameByName(name);
+  };
+  document.getElementById("btnCenter").onclick = centerOnPlayer;
+
+  // ----------------------------------------
+  // Auth bootstrap
+  // ----------------------------------------
+  onAuthStateChanged(auth, async user=>{
+    if(user){
+      currentUser = user;
+      userTagEl.textContent = `Anon UID: ${user.uid.slice(0,8)}…`;
+      await loadSavesCache();
+      openStartMenu();
+    }else{
+      userTagEl.textContent = "Signing in anonymously…";
+      signInAnonymously(auth).catch(err=>{
+        console.error(err);
+        userTagEl.textContent = "Auth error. See console.";
+      });
+    }
+  });
+
 </script>
 </body>
 </html>
+
+
