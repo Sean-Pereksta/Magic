@@ -2197,6 +2197,74 @@
   const btnLoadGame = document.getElementById("btnLoadGame");
   const btnStartClose = document.getElementById("btnStartClose");
 
+    // ----------------------------------------
+  // Firestore-safe game state (no nested arrays)
+  // ----------------------------------------
+  function serializeGameState(gs){
+    if(!gs) return null;
+
+    // Flatten tiles into a 1D array of objects: {x,y, zoneType, zoneColorIndex, feature}
+    const flatTiles = [];
+    if(gs.map && Array.isArray(gs.map.tiles)){
+      for(let y=0; y<MAP_H; y++){
+        const row = gs.map.tiles[y];
+        if(!Array.isArray(row)) continue;
+        for(let x=0; x<MAP_W; x++){
+          const t = row[x];
+          if(!t) continue;
+          flatTiles.push({
+            x,
+            y,
+            zoneType: t.zoneType || "Forest",
+            zoneColorIndex: t.zoneColorIndex || 1,
+            feature: t.feature ?? null
+          });
+        }
+      }
+    }
+
+    return {
+      saveName: gs.saveName || "",
+      createdAt: gs.createdAt || Date.now(),
+      lastPlayed: Date.now(),
+      player: gs.player || {
+        money:0,
+        potions:0,
+        balls:{basic:0,great:0,ultra:0},
+        roster:[]
+      },
+      map:{
+        playerX: gs.map?.playerX ?? 2,
+        playerY: gs.map?.playerY ?? (MAP_H - 2),
+        tilesFlat: flatTiles    // <--- 1D; no nested arrays
+      }
+    };
+  }
+
+  function deserializeGameState(stored){
+    if(!stored){
+      // Fallback: brand new game
+      return createNewGameState("autosave");
+    }
+
+    // Build a 2D tiles array for runtime
+    const tiles2D = [];
+    for(let y=0; y<MAP_H; y++){
+      const row = [];
+      for(let x=0; x<MAP_W; x++){
+        row.push({
+          zoneType:"Forest",
+          zoneColorIndex:1,
+          feature:null
+        });
+      }
+      tiles2D.push(row);
+    }
+
+    // Preferred: tilesFlat (new format)
+    if(stored.map && Array.isArray(stored.map.
+
+
   function openStartMenu(){
     startOverlay.classList.add("visible");
     startStatus.textContent="";
@@ -2248,11 +2316,17 @@
   async function saveGame(){
     if(!currentUser || !gameState || !currentSaveName) return;
     const ref = doc(db,"users",currentUser.uid);
-    gameState.lastPlayed = Date.now();
-    savesCache[currentSaveName] = gameState;
+
+    const safeState = serializeGameState(gameState);  // <-- no nested arrays
+    if(!safeState) return;
+
+    // update cache with serialized state
+    savesCache[currentSaveName] = safeState;
+
     await setDoc(ref,{
       monsterQuestSaves: savesCache
     },{merge:true});
+
     saveTagEl.textContent = `Saved: "${currentSaveName}"`;
   }
 
@@ -2263,18 +2337,21 @@
     saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
   }
 
-  async function loadGameByName(name){
-    await loadSavesCache();
-    const gs = savesCache[name];
-    if(!gs){
-      return false;
-    }
-    currentSaveName = name;
-    gameState = gs;
-    saveTagEl.textContent = `Loaded: "${name}"`;
-    addLog("System",`Loaded game "${name}".`);
-    renderMap();
-    return true;
+  async function saveGame(){
+    if(!currentUser || !gameState || !currentSaveName) return;
+    const ref = doc(db,"users",currentUser.uid);
+
+    const safeState = serializeGameState(gameState);  // <-- no nested arrays
+    if(!safeState) return;
+
+    // update cache with serialized state
+    savesCache[currentSaveName] = safeState;
+
+    await setDoc(ref,{
+      monsterQuestSaves: savesCache
+    },{merge:true});
+
+    saveTagEl.textContent = `Saved: "${currentSaveName}"`;
   }
 
   function createNewGameState(name){
@@ -2330,6 +2407,7 @@
 </script>
 </body>
 </html>
+
 
 
 
