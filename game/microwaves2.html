@@ -2390,23 +2390,7 @@
     saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
   }
 
-  async function saveGame(){
-    if(!currentUser || !gameState || !currentSaveName) return;
-    const ref = doc(db,"users",currentUser.uid);
-
-    const safeState = serializeGameState(gameState);  // <-- no nested arrays
-    if(!safeState) return;
-
-    // update cache with serialized state
-    savesCache[currentSaveName] = safeState;
-
-    await setDoc(ref,{
-      monsterQuestSaves: savesCache
-    },{merge:true});
-
-    saveTagEl.textContent = `Saved: "${currentSaveName}"`;
-  }
-
+ 
   function createNewGameState(name){
     const tiles = generateMap();
     const starters = ["blazefox","tidalfin","leafling"];
@@ -2460,6 +2444,7 @@
 </script>
 </body>
 </html>
+
 
 
 
