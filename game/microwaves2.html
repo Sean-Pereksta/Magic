@@ -2390,6 +2390,21 @@
     saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
   }
 
+
+    async function loadGameByName(name){
+    await loadSavesCache();
+    const stored = savesCache[name];
+    if(!stored){
+      return false;
+    }
+    currentSaveName = name;
+    gameState = deserializeGameState(stored);  // <-- reconstruct runtime state
+    saveTagEl.textContent = `Loaded: "${name}"`;
+    addLog("System",`Loaded game "${name}".`);
+    renderMap();
+    return true;
+  }
+
  
   function createNewGameState(name){
     const tiles = generateMap();
@@ -2444,6 +2459,7 @@
 </script>
 </body>
 </html>
+
 
 
 
