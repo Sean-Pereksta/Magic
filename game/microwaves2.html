@@ -485,8 +485,6 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
-    const SAVE_COLLECTION = "micromon_saves";
-
 
   let currentUser = null;
   let savesCache = {}; // map of saveName -> gameState
@@ -518,734 +516,734 @@
     return 1;
   }
 
- const SPECIES = [
-  // =========================
-  // WEAK TIER (10)
-  // =========================
+  // 50 critters across 5 elements, 5 power tiers
+  const SPECIES = [
+    // =========================
+    // WEAK TIER (10)
+    // =========================
 
-  // Fire (2)
-  {
-    id:"emberkit",
-    name:"Emberkit",
-    element:"Fire",
-    baseHP:70,
-    baseAtk:14,
-    baseDef:12,
-    baseSpd:18,
-    abilities:[
-      {name:"Warm Nip", kind:"damage", power:16, maxCharges:7},
-      {name:"Tiny Ember", kind:"damage", power:18, maxCharges:5}
-    ]
-  },
-  {
-    id:"cinderchip",
-    name:"Cinderchip",
-    element:"Fire",
-    baseHP:68,
-    baseAtk:15,
-    baseDef:11,
-    baseSpd:20,
-    abilities:[
-      {name:"Cinder Peck", kind:"damage", power:17, maxCharges:7},
-      {name:"Glow Up", kind:"buffAtk", amount:4, maxCharges:3}
-    ]
-  },
+    // Fire (2)
+    {
+      id:"emberkit",
+      name:"Emberkit",
+      element:"Fire",
+      baseHP:70,
+      baseAtk:14,
+      baseDef:12,
+      baseSpd:18,
+      abilities:[
+        {name:"Warm Nip", kind:"damage", power:16, maxCharges:7},
+        {name:"Tiny Ember", kind:"damage", power:18, maxCharges:5}
+      ]
+    },
+    {
+      id:"cinderchip",
+      name:"Cinderchip",
+      element:"Fire",
+      baseHP:68,
+      baseAtk:15,
+      baseDef:11,
+      baseSpd:20,
+      abilities:[
+        {name:"Cinder Peck", kind:"damage", power:17, maxCharges:7},
+        {name:"Glow Up", kind:"buffAtk", amount:4, maxCharges:3}
+      ]
+    },
 
-  // Water (2)
-  {
-    id:"splashling",
-    name:"Splashling",
-    element:"Water",
-    baseHP:72,
-    baseAtk:13,
-    baseDef:13,
-    baseSpd:17,
-    abilities:[
-      {name:"Tiny Wave", kind:"damage", power:16, maxCharges:7},
-      {name:"Soothing Drip", kind:"heal", amount:18, maxCharges:3}
-    ]
-  },
-  {
-    id:"drizzlefin",
-    name:"Drizzlefin",
-    element:"Water",
-    baseHP:74,
-    baseAtk:15,
-    baseDef:12,
-    baseSpd:19,
-    abilities:[
-      {name:"Drizzle Shot", kind:"damage", power:18, maxCharges:6},
-      {name:"Rain Veil", kind:"buffDef", amount:4, maxCharges:3}
-    ]
-  },
+    // Water (2)
+    {
+      id:"splashling",
+      name:"Splashling",
+      element:"Water",
+      baseHP:72,
+      baseAtk:13,
+      baseDef:13,
+      baseSpd:17,
+      abilities:[
+        {name:"Tiny Wave", kind:"damage", power:16, maxCharges:7},
+        {name:"Soothing Drip", kind:"heal", amount:18, maxCharges:3}
+      ]
+    },
+    {
+      id:"drizzlefin",
+      name:"Drizzlefin",
+      element:"Water",
+      baseHP:74,
+      baseAtk:15,
+      baseDef:12,
+      baseSpd:19,
+      abilities:[
+        {name:"Drizzle Shot", kind:"damage", power:18, maxCharges:6},
+        {name:"Rain Veil", kind:"buffDef", amount:4, maxCharges:3}
+      ]
+    },
 
-  // Nature (2)
-  {
-    id:"sproutbug",
-    name:"Sproutbug",
-    element:"Nature",
-    baseHP:68,
-    baseAtk:13,
-    baseDef:12,
-    baseSpd:18,
-    abilities:[
-      {name:"Nibble Leaf", kind:"damage", power:16, maxCharges:7},
-      {name:"Green Pulse", kind:"heal", amount:16, maxCharges:3}
-    ]
-  },
-  {
-    id:"thornsprout",
-    name:"Thornsprout",
-    element:"Nature",
-    baseHP:70,
-    baseAtk:16,
-    baseDef:11,
-    baseSpd:17,
-    abilities:[
-      {name:"Thorn Prick", kind:"damage", power:18, maxCharges:6},
-      {name:"Root Slow", kind:"debuffSpd", amount:4, maxCharges:3} // treated as no-op but flavor text
-    ]
-  },
+    // Nature (2)
+    {
+      id:"sproutbug",
+      name:"Sproutbug",
+      element:"Nature",
+      baseHP:68,
+      baseAtk:13,
+      baseDef:12,
+      baseSpd:18,
+      abilities:[
+        {name:"Nibble Leaf", kind:"damage", power:16, maxCharges:7},
+        {name:"Green Pulse", kind:"heal", amount:16, maxCharges:3}
+      ]
+    },
+    {
+      id:"thornsprout",
+      name:"Thornsprout",
+      element:"Nature",
+      baseHP:70,
+      baseAtk:16,
+      baseDef:11,
+      baseSpd:17,
+      abilities:[
+        {name:"Thorn Prick", kind:"damage", power:18, maxCharges:6},
+        {name:"Root Slow", kind:"debuffSpd", amount:4, maxCharges:3}
+      ]
+    },
 
-  // Storm (2)
-  {
-    id:"gustling",
-    name:"Gustling",
-    element:"Storm",
-    baseHP:66,
-    baseAtk:14,
-    baseDef:11,
-    baseSpd:22,
-    abilities:[
-      {name:"Breeze Peck", kind:"damage", power:17, maxCharges:7},
-      {name:"Tailwind", kind:"buffSpd", amount:5, maxCharges:3}
-    ]
-  },
-  {
-    id:"sparkmite",
-    name:"Sparkmite",
-    element:"Storm",
-    baseHP:64,
-    baseAtk:15,
-    baseDef:10,
-    baseSpd:23,
-    abilities:[
-      {name:"Static Nibble", kind:"damage", power:18, maxCharges:6},
-      {name:"Charge Up", kind:"buffAtk", amount:4, maxCharges:3}
-    ]
-  },
+    // Storm (2)
+    {
+      id:"gustling",
+      name:"Gustling",
+      element:"Storm",
+      baseHP:66,
+      baseAtk:14,
+      baseDef:11,
+      baseSpd:22,
+      abilities:[
+        {name:"Breeze Peck", kind:"damage", power:17, maxCharges:7},
+        {name:"Tailwind", kind:"buffSpd", amount:5, maxCharges:3}
+      ]
+    },
+    {
+      id:"sparkmite",
+      name:"Sparkmite",
+      element:"Storm",
+      baseHP:64,
+      baseAtk:15,
+      baseDef:10,
+      baseSpd:23,
+      abilities:[
+        {name:"Static Nibble", kind:"damage", power:18, maxCharges:6},
+        {name:"Charge Up", kind:"buffAtk", amount:4, maxCharges:3}
+      ]
+    },
 
-  // Stone (2)
-  {
-    id:"pebblepup",
-    name:"Pebblepup",
-    element:"Stone",
-    baseHP:76,
-    baseAtk:13,
-    baseDef:15,
-    baseSpd:14,
-    abilities:[
-      {name:"Pebble Bop", kind:"damage", power:17, maxCharges:7},
-      {name:"Hard Shell", kind:"buffDef", amount:4, maxCharges:3}
-    ]
-  },
-  {
-    id:"dustpebble",
-    name:"Dustpebble",
-    element:"Stone",
-    baseHP:72,
-    baseAtk:15,
-    baseDef:14,
-    baseSpd:15,
-    abilities:[
-      {name:"Dust Toss", kind:"damage", power:18, maxCharges:6},
-      {name:"Dust Screen", kind:"debuffAtk", amount:4, maxCharges:3}
-    ]
-  },
+    // Stone (2)
+    {
+      id:"pebblepup",
+      name:"Pebblepup",
+      element:"Stone",
+      baseHP:76,
+      baseAtk:13,
+      baseDef:15,
+      baseSpd:14,
+      abilities:[
+        {name:"Pebble Bop", kind:"damage", power:17, maxCharges:7},
+        {name:"Hard Shell", kind:"buffDef", amount:4, maxCharges:3}
+      ]
+    },
+    {
+      id:"dustpebble",
+      name:"Dustpebble",
+      element:"Stone",
+      baseHP:72,
+      baseAtk:15,
+      baseDef:14,
+      baseSpd:15,
+      abilities:[
+        {name:"Dust Toss", kind:"damage", power:18, maxCharges:6},
+        {name:"Dust Screen", kind:"debuffAtk", amount:4, maxCharges:3}
+      ]
+    },
 
-  // =========================
-  // MODERATE TIER (10)
-  // =========================
+    // =========================
+    // MODERATE TIER (10)
+    // =========================
 
-  // Fire (2)
-  {
-    id:"flarethorn",
-    name:"Flarethorn",
-    element:"Fire",
-    baseHP:80,
-    baseAtk:19,
-    baseDef:15,
-    baseSpd:19,
-    abilities:[
-      {name:"Flare Bite", kind:"damage", power:22, maxCharges:6},
-      {name:"Heat Bloom", kind:"buffAtk", amount:5, maxCharges:3}
-    ]
-  },
-  {
-    id:"charcub",
-    name:"Charcub",
-    element:"Fire",
-    baseHP:82,
-    baseAtk:20,
-    baseDef:14,
-    baseSpd:20,
-    abilities:[
-      {name:"Char Swipe", kind:"damage", power:22, maxCharges:6},
-      {name:"Warm Fur", kind:"buffDef", amount:5, maxCharges:3}
-    ]
-  },
+    // Fire (2)
+    {
+      id:"flarethorn",
+      name:"Flarethorn",
+      element:"Fire",
+      baseHP:80,
+      baseAtk:19,
+      baseDef:15,
+      baseSpd:19,
+      abilities:[
+        {name:"Flare Bite", kind:"damage", power:22, maxCharges:6},
+        {name:"Heat Bloom", kind:"buffAtk", amount:5, maxCharges:3}
+      ]
+    },
+    {
+      id:"charcub",
+      name:"Charcub",
+      element:"Fire",
+      baseHP:82,
+      baseAtk:20,
+      baseDef:14,
+      baseSpd:20,
+      abilities:[
+        {name:"Char Swipe", kind:"damage", power:22, maxCharges:6},
+        {name:"Warm Fur", kind:"buffDef", amount:5, maxCharges:3}
+      ]
+    },
 
-  // Water (2)
-  {
-    id:"brookfin",
-    name:"Brookfin",
-    element:"Water",
-    baseHP:84,
-    baseAtk:18,
-    baseDef:17,
-    baseSpd:18,
-    abilities:[
-      {name:"Brook Jet", kind:"damage", power:22, maxCharges:6},
-      {name:"Fresh Current", kind:"heal", amount:22, maxCharges:3}
-    ]
-  },
-  {
-    id:"tideotter",
-    name:"Tideotter",
-    element:"Water",
-    baseHP:86,
-    baseAtk:20,
-    baseDef:16,
-    baseSpd:19,
-    abilities:[
-      {name:"Tide Tackle", kind:"damage", power:23, maxCharges:6},
-      {name:"Shell Rub", kind:"buffDef", amount:5, maxCharges:3}
-    ]
-  },
+    // Water (2)
+    {
+      id:"brookfin",
+      name:"Brookfin",
+      element:"Water",
+      baseHP:84,
+      baseAtk:18,
+      baseDef:17,
+      baseSpd:18,
+      abilities:[
+        {name:"Brook Jet", kind:"damage", power:22, maxCharges:6},
+        {name:"Fresh Current", kind:"heal", amount:22, maxCharges:3}
+      ]
+    },
+    {
+      id:"tideotter",
+      name:"Tideotter",
+      element:"Water",
+      baseHP:86,
+      baseAtk:20,
+      baseDef:16,
+      baseSpd:19,
+      abilities:[
+        {name:"Tide Tackle", kind:"damage", power:23, maxCharges:6},
+        {name:"Shell Rub", kind:"buffDef", amount:5, maxCharges:3}
+      ]
+    },
 
-  // Nature (2)
-  {
-    id:"mossling",
-    name:"Mossling",
-    element:"Nature",
-    baseHP:82,
-    baseAtk:18,
-    baseDef:17,
-    baseSpd:18,
-    abilities:[
-      {name:"Moss Bite", kind:"damage", power:22, maxCharges:6},
-      {name:"Soft Growth", kind:"heal", amount:22, maxCharges:3}
-    ]
-  },
-  {
-    id:"vinepup",
-    name:"Vinepup",
-    element:"Nature",
-    baseHP:80,
-    baseAtk:20,
-    baseDef:16,
-    baseSpd:20,
-    abilities:[
-      {name:"Vine Lash", kind:"damage", power:23, maxCharges:6},
-      {name:"Entangle", kind:"debuffDef", amount:5, maxCharges:3}
-    ]
-  },
+    // Nature (2)
+    {
+      id:"mossling",
+      name:"Mossling",
+      element:"Nature",
+      baseHP:82,
+      baseAtk:18,
+      baseDef:17,
+      baseSpd:18,
+      abilities:[
+        {name:"Moss Bite", kind:"damage", power:22, maxCharges:6},
+        {name:"Soft Growth", kind:"heal", amount:22, maxCharges:3}
+      ]
+    },
+    {
+      id:"vinepup",
+      name:"Vinepup",
+      element:"Nature",
+      baseHP:80,
+      baseAtk:20,
+      baseDef:16,
+      baseSpd:20,
+      abilities:[
+        {name:"Vine Lash", kind:"damage", power:23, maxCharges:6},
+        {name:"Entangle", kind:"debuffDef", amount:5, maxCharges:3}
+      ]
+    },
 
-  // Storm (2)
-  {
-    id:"breezerat",
-    name:"Breezerat",
-    element:"Storm",
-    baseHP:78,
-    baseAtk:19,
-    baseDef:14,
-    baseSpd:24,
-    abilities:[
-      {name:"Gale Scratch", kind:"damage", power:23, maxCharges:6},
-      {name:"Tail Current", kind:"buffSpd", amount:6, maxCharges:3}
-    ]
-  },
-  {
-    id:"stormkit",
-    name:"Stormkit",
-    element:"Storm",
-    baseHP:80,
-    baseAtk:20,
-    baseDef:15,
-    baseSpd:23,
-    abilities:[
-      {name:"Spark Swipe", kind:"damage", power:23, maxCharges:6},
-      {name:"Static Coat", kind:"buffDef", amount:5, maxCharges:3}
-    ]
-  },
+    // Storm (2)
+    {
+      id:"breezerat",
+      name:"Breezerat",
+      element:"Storm",
+      baseHP:78,
+      baseAtk:19,
+      baseDef:14,
+      baseSpd:24,
+      abilities:[
+        {name:"Gale Scratch", kind:"damage", power:23, maxCharges:6},
+        {name:"Tail Current", kind:"buffSpd", amount:6, maxCharges:3}
+      ]
+    },
+    {
+      id:"stormkit",
+      name:"Stormkit",
+      element:"Storm",
+      baseHP:80,
+      baseAtk:20,
+      baseDef:15,
+      baseSpd:23,
+      abilities:[
+        {name:"Spark Swipe", kind:"damage", power:23, maxCharges:6},
+        {name:"Static Coat", kind:"buffDef", amount:5, maxCharges:3}
+      ]
+    },
 
-  // Stone (2)
-  {
-    id:"rubblepup",
-    name:"Rubblepup",
-    element:"Stone",
-    baseHP:88,
-    baseAtk:19,
-    baseDef:19,
-    baseSpd:16,
-    abilities:[
-      {name:"Rubble Bash", kind:"damage", power:23, maxCharges:6},
-      {name:"Stone Guard", kind:"buffDef", amount:6, maxCharges:3}
-    ]
-  },
-  {
-    id:"stonehopper",
-    name:"Stonehopper",
-    element:"Stone",
-    baseHP:86,
-    baseAtk:20,
-    baseDef:18,
-    baseSpd:17,
-    abilities:[
-      {name:"Pebble Kick", kind:"damage", power:22, maxCharges:6},
-      {name:"Dust Leap", kind:"buffSpd", amount:5, maxCharges:3}
-    ]
-  },
+    // Stone (2)
+    {
+      id:"rubblepup",
+      name:"Rubblepup",
+      element:"Stone",
+      baseHP:88,
+      baseAtk:19,
+      baseDef:19,
+      baseSpd:16,
+      abilities:[
+        {name:"Rubble Bash", kind:"damage", power:23, maxCharges:6},
+        {name:"Stone Guard", kind:"buffDef", amount:6, maxCharges:3}
+      ]
+    },
+    {
+      id:"stonehopper",
+      name:"Stonehopper",
+      element:"Stone",
+      baseHP:86,
+      baseAtk:20,
+      baseDef:18,
+      baseSpd:17,
+      abilities:[
+        {name:"Pebble Kick", kind:"damage", power:22, maxCharges:6},
+        {name:"Dust Leap", kind:"buffSpd", amount:5, maxCharges:3}
+      ]
+    },
 
-  // =========================
-  // GOOD TIER (10)
-  // (Starters live here)
-  // =========================
+    // =========================
+    // GOOD TIER (10)
+    // (Starters live here)
+    // =========================
 
-  // Fire (2) — includes Blazefox
-  {
-    id:"blazefox",
-    name:"Blazefox",
-    element:"Fire",
-    baseHP:90,
-    baseAtk:25,
-    baseDef:15,
-    baseSpd:20,
-    abilities:[
-      {name:"Flame Bite", kind:"damage", power:24, maxCharges:6},
-      {name:"Fire Claws", kind:"damage", power:30, maxCharges:4},
-      {name:"Inferno Howl", kind:"buffAtk", amount:7, maxCharges:2}
-    ]
-  },
-  {
-    id:"emberclaw",
-    name:"Emberclaw",
-    element:"Fire",
-    baseHP:94,
-    baseAtk:26,
-    baseDef:16,
-    baseSpd:21,
-    abilities:[
-      {name:"Claw Blaze", kind:"damage", power:26, maxCharges:5},
-      {name:"Smolder Guard", kind:"buffDef", amount:6, maxCharges:3}
-    ]
-  },
+    // Fire (2) — includes Blazefox
+    {
+      id:"blazefox",
+      name:"Blazefox",
+      element:"Fire",
+      baseHP:90,
+      baseAtk:25,
+      baseDef:15,
+      baseSpd:20,
+      abilities:[
+        {name:"Flame Bite", kind:"damage", power:24, maxCharges:6},
+        {name:"Fire Claws", kind:"damage", power:30, maxCharges:4},
+        {name:"Inferno Howl", kind:"buffAtk", amount:7, maxCharges:2}
+      ]
+    },
+    {
+      id:"emberclaw",
+      name:"Emberclaw",
+      element:"Fire",
+      baseHP:94,
+      baseAtk:26,
+      baseDef:16,
+      baseSpd:21,
+      abilities:[
+        {name:"Claw Blaze", kind:"damage", power:26, maxCharges:5},
+        {name:"Smolder Guard", kind:"buffDef", amount:6, maxCharges:3}
+      ]
+    },
 
-  // Water (2) — includes Tidalfin
-  {
-    id:"tidalfin",
-    name:"Tidalfin",
-    element:"Water",
-    baseHP:95,
-    baseAtk:22,
-    baseDef:18,
-    baseSpd:18,
-    abilities:[
-      {name:"Water Jet", kind:"damage", power:24, maxCharges:6},
-      {name:"Bubble Burst", kind:"damage", power:28, maxCharges:4},
-      {name:"Splash Shield", kind:"buffDef", amount:7, maxCharges:3}
-    ]
-  },
-  {
-    id:"surfstrider",
-    name:"Surfstrider",
-    element:"Water",
-    baseHP:98,
-    baseAtk:24,
-    baseDef:18,
-    baseSpd:20,
-    abilities:[
-      {name:"Surf Crash", kind:"damage", power:26, maxCharges:5},
-      {name:"Foam Veil", kind:"heal", amount:26, maxCharges:3}
-    ]
-  },
+    // Water (2) — includes Tidalfin
+    {
+      id:"tidalfin",
+      name:"Tidalfin",
+      element:"Water",
+      baseHP:95,
+      baseAtk:22,
+      baseDef:18,
+      baseSpd:18,
+      abilities:[
+        {name:"Water Jet", kind:"damage", power:24, maxCharges:6},
+        {name:"Bubble Burst", kind:"damage", power:28, maxCharges:4},
+        {name:"Splash Shield", kind:"buffDef", amount:7, maxCharges:3}
+      ]
+    },
+    {
+      id:"surfstrider",
+      name:"Surfstrider",
+      element:"Water",
+      baseHP:98,
+      baseAtk:24,
+      baseDef:18,
+      baseSpd:20,
+      abilities:[
+        {name:"Surf Crash", kind:"damage", power:26, maxCharges:5},
+        {name:"Foam Veil", kind:"heal", amount:26, maxCharges:3}
+      ]
+    },
 
-  // Nature (2) — includes Leafling
-  {
-    id:"leafling",
-    name:"Leafling",
-    element:"Nature",
-    baseHP:88,
-    baseAtk:20,
-    baseDef:16,
-    baseSpd:20,
-    abilities:[
-      {name:"Vine Whip", kind:"damage", power:24, maxCharges:6},
-      {name:"Photosynthesis", kind:"heal", amount:26, maxCharges:4},
-      {name:"Root Bind", kind:"debuffDef", amount:6, maxCharges:3}
-    ]
-  },
-  {
-    id:"briarhorn",
-    name:"Briarhorn",
-    element:"Nature",
-    baseHP:96,
-    baseAtk:24,
-    baseDef:18,
-    baseSpd:18,
-    abilities:[
-      {name:"Briar Charge", kind:"damage", power:26, maxCharges:5},
-      {name:"Thorn Screen", kind:"debuffAtk", amount:6, maxCharges:3}
-    ]
-  },
+    // Nature (2) — includes Leafling
+    {
+      id:"leafling",
+      name:"Leafling",
+      element:"Nature",
+      baseHP:88,
+      baseAtk:20,
+      baseDef:16,
+      baseSpd:20,
+      abilities:[
+        {name:"Vine Whip", kind:"damage", power:24, maxCharges:6},
+        {name:"Photosynthesis", kind:"heal", amount:26, maxCharges:4},
+        {name:"Root Bind", kind:"debuffDef", amount:6, maxCharges:3}
+      ]
+    },
+    {
+      id:"briarhorn",
+      name:"Briarhorn",
+      element:"Nature",
+      baseHP:96,
+      baseAtk:24,
+      baseDef:18,
+      baseSpd:18,
+      abilities:[
+        {name:"Briar Charge", kind:"damage", power:26, maxCharges:5},
+        {name:"Thorn Screen", kind:"debuffAtk", amount:6, maxCharges:3}
+      ]
+    },
 
-  // Storm (2) — Stormpup & Voltwing
-  {
-    id:"stormpup",
-    name:"Stormpup",
-    element:"Storm",
-    baseHP:82,
-    baseAtk:23,
-    baseDef:14,
-    baseSpd:30,
-    abilities:[
-      {name:"Spark Pounce", kind:"damage", power:24, maxCharges:7},
-      {name:"Thunder Bark", kind:"damage", power:28, maxCharges:4},
-      {name:"Agility", kind:"buffSpd", amount:7, maxCharges:3}
-    ]
-  },
-  {
-    id:"voltwing",
-    name:"Voltwing",
-    element:"Storm",
-    baseHP:84,
-    baseAtk:24,
-    baseDef:15,
-    baseSpd:26,
-    abilities:[
-      {name:"Lightning Peck", kind:"damage", power:26, maxCharges:6},
-      {name:"Static Field", kind:"debuffAtk", amount:7, maxCharges:3}
-    ]
-  },
+    // Storm (2)
+    {
+      id:"stormpup",
+      name:"Stormpup",
+      element:"Storm",
+      baseHP:82,
+      baseAtk:23,
+      baseDef:14,
+      baseSpd:30,
+      abilities:[
+        {name:"Spark Pounce", kind:"damage", power:24, maxCharges:7},
+        {name:"Thunder Bark", kind:"damage", power:28, maxCharges:4},
+        {name:"Agility", kind:"buffSpd", amount:7, maxCharges:3}
+      ]
+    },
+    {
+      id:"voltwing",
+      name:"Voltwing",
+      element:"Storm",
+      baseHP:84,
+      baseAtk:24,
+      baseDef:15,
+      baseSpd:26,
+      abilities:[
+        {name:"Lightning Peck", kind:"damage", power:26, maxCharges:6},
+        {name:"Static Field", kind:"debuffAtk", amount:7, maxCharges:3}
+      ]
+    },
 
-  // Stone (2) — Boulderback plus a buddy
-  {
-    id:"boulderback",
-    name:"Boulderback",
-    element:"Stone",
-    baseHP:120,
-    baseAtk:20,
-    baseDef:26,
-    baseSpd:12,
-    abilities:[
-      {name:"Rock Slam", kind:"damage", power:26, maxCharges:6},
-      {name:"Earthen Wall", kind:"buffDef", amount:9, maxCharges:3},
-      {name:"Quake Stomp", kind:"damage", power:30, maxCharges:3}
-    ]
-  },
-  {
-    id:"pebblord",
-    name:"Pebblord",
-    element:"Stone",
-    baseHP:110,
-    baseAtk:23,
-    baseDef:24,
-    baseSpd:14,
-    abilities:[
-      {name:"Pebble Storm", kind:"damage", power:26, maxCharges:5},
-      {name:"Stone Crown", kind:"buffAtk", amount:6, maxCharges:3}
-    ]
-  },
+    // Stone (2)
+    {
+      id:"boulderback",
+      name:"Boulderback",
+      element:"Stone",
+      baseHP:120,
+      baseAtk:20,
+      baseDef:26,
+      baseSpd:12,
+      abilities:[
+        {name:"Rock Slam", kind:"damage", power:26, maxCharges:6},
+        {name:"Earthen Wall", kind:"buffDef", amount:9, maxCharges:3},
+        {name:"Quake Stomp", kind:"damage", power:30, maxCharges:3}
+      ]
+    },
+    {
+      id:"pebblord",
+      name:"Pebblord",
+      element:"Stone",
+      baseHP:110,
+      baseAtk:23,
+      baseDef:24,
+      baseSpd:14,
+      abilities:[
+        {name:"Pebble Storm", kind:"damage", power:26, maxCharges:5},
+        {name:"Stone Crown", kind:"buffAtk", amount:6, maxCharges:3}
+      ]
+    },
 
-  // =========================
-  // GREAT TIER (10)
-  // =========================
+    // =========================
+    // GREAT TIER (10)
+    // =========================
 
-  // Fire (2)
-  {
-    id:"magmafang",
-    name:"Magmafang",
-    element:"Fire",
-    baseHP:110,
-    baseAtk:30,
-    baseDef:20,
-    baseSpd:22,
-    abilities:[
-      {name:"Magma Maul", kind:"damage", power:32, maxCharges:4},
-      {name:"Lava Armor", kind:"buffDef", amount:8, maxCharges:3}
-    ]
-  },
-  {
-    id:"solaraptor",
-    name:"Solaraptor",
-    element:"Fire",
-    baseHP:105,
-    baseAtk:31,
-    baseDef:19,
-    baseSpd:26,
-    abilities:[
-      {name:"Solar Claw", kind:"damage", power:33, maxCharges:4},
-      {name:"Flare Halo", kind:"buffAtk", amount:8, maxCharges:3}
-    ]
-  },
+    // Fire (2)
+    {
+      id:"magmafang",
+      name:"Magmafang",
+      element:"Fire",
+      baseHP:110,
+      baseAtk:30,
+      baseDef:20,
+      baseSpd:22,
+      abilities:[
+        {name:"Magma Maul", kind:"damage", power:32, maxCharges:4},
+        {name:"Lava Armor", kind:"buffDef", amount:8, maxCharges:3}
+      ]
+    },
+    {
+      id:"solaraptor",
+      name:"Solaraptor",
+      element:"Fire",
+      baseHP:105,
+      baseAtk:31,
+      baseDef:19,
+      baseSpd:26,
+      abilities:[
+        {name:"Solar Claw", kind:"damage", power:33, maxCharges:4},
+        {name:"Flare Halo", kind:"buffAtk", amount:8, maxCharges:3}
+      ]
+    },
 
-  // Water (2)
-  {
-    id:"abysslurker",
-    name:"Abysslurker",
-    element:"Water",
-    baseHP:112,
-    baseAtk:28,
-    baseDef:22,
-    baseSpd:20,
-    abilities:[
-      {name:"Abyss Bite", kind:"damage", power:32, maxCharges:4},
-      {name:"Dark Tide", kind:"damage", power:28, maxCharges:4}
-    ]
-  },
-  {
-    id:"glacialon",
-    name:"Glacialon",
-    element:"Water",
-    baseHP:108,
-    baseAtk:27,
-    baseDef:23,
-    baseSpd:21,
-    abilities:[
-      {name:"Glacier Crash", kind:"damage", power:32, maxCharges:4},
-      {name:"Frost Heal", kind:"heal", amount:34, maxCharges:3}
-    ]
-  },
+    // Water (2)
+    {
+      id:"abysslurker",
+      name:"Abysslurker",
+      element:"Water",
+      baseHP:112,
+      baseAtk:28,
+      baseDef:22,
+      baseSpd:20,
+      abilities:[
+        {name:"Abyss Bite", kind:"damage", power:32, maxCharges:4},
+        {name:"Dark Tide", kind:"damage", power:28, maxCharges:4}
+      ]
+    },
+    {
+      id:"glacialon",
+      name:"Glacialon",
+      element:"Water",
+      baseHP:108,
+      baseAtk:27,
+      baseDef:23,
+      baseSpd:21,
+      abilities:[
+        {name:"Glacier Crash", kind:"damage", power:32, maxCharges:4},
+        {name:"Frost Heal", kind:"heal", amount:34, maxCharges:3}
+      ]
+    },
 
-  // Nature (2)
-  {
-    id:"barkback",
-    name:"Barkback",
-    element:"Nature",
-    baseHP:112,
-    baseAtk:27,
-    baseDef:24,
-    baseSpd:18,
-    abilities:[
-      {name:"Trunk Smash", kind:"damage", power:30, maxCharges:4},
-      {name:"Ancient Bark", kind:"buffDef", amount:9, maxCharges:3}
-    ]
-  },
-  {
-    id:"wildbloom",
-    name:"Wildbloom",
-    element:"Nature",
-    baseHP:104,
-    baseAtk:28,
-    baseDef:22,
-    baseSpd:22,
-    abilities:[
-      {name:"Bloom Burst", kind:"damage", power:30, maxCharges:4},
-      {name:"Verdant Pulse", kind:"heal", amount:32, maxCharges:3}
-    ]
-  },
+    // Nature (2)
+    {
+      id:"barkback",
+      name:"Barkback",
+      element:"Nature",
+      baseHP:112,
+      baseAtk:27,
+      baseDef:24,
+      baseSpd:18,
+      abilities:[
+        {name:"Trunk Smash", kind:"damage", power:30, maxCharges:4},
+        {name:"Ancient Bark", kind:"buffDef", amount:9, maxCharges:3}
+      ]
+    },
+    {
+      id:"wildbloom",
+      name:"Wildbloom",
+      element:"Nature",
+      baseHP:104,
+      baseAtk:28,
+      baseDef:22,
+      baseSpd:22,
+      abilities:[
+        {name:"Bloom Burst", kind:"damage", power:30, maxCharges:4},
+        {name:"Verdant Pulse", kind:"heal", amount:32, maxCharges:3}
+      ]
+    },
 
-  // Storm (2)
-  {
-    id:"thundraptor",
-    name:"Thundraptor",
-    element:"Storm",
-    baseHP:104,
-    baseAtk:30,
-    baseDef:20,
-    baseSpd:28,
-    abilities:[
-      {name:"Thunder Claw", kind:"damage", power:33, maxCharges:4},
-      {name:"Sky Roar", kind:"buffAtk", amount:8, maxCharges:3}
-    ]
-  },
-  {
-    id:"cloudcoil",
-    name:"Cloudcoil",
-    element:"Storm",
-    baseHP:108,
-    baseAtk:27,
-    baseDef:23,
-    baseSpd:24,
-    abilities:[
-      {name:"Cloud Lash", kind:"damage", power:30, maxCharges:4},
-      {name:"Storm Veil", kind:"debuffAtk", amount:8, maxCharges:3}
-    ]
-  },
+    // Storm (2)
+    {
+      id:"thundraptor",
+      name:"Thundraptor",
+      element:"Storm",
+      baseHP:104,
+      baseAtk:30,
+      baseDef:20,
+      baseSpd:28,
+      abilities:[
+        {name:"Thunder Claw", kind:"damage", power:33, maxCharges:4},
+        {name:"Sky Roar", kind:"buffAtk", amount:8, maxCharges:3}
+      ]
+    },
+    {
+      id:"cloudcoil",
+      name:"Cloudcoil",
+      element:"Storm",
+      baseHP:108,
+      baseAtk:27,
+      baseDef:23,
+      baseSpd:24,
+      abilities:[
+        {name:"Cloud Lash", kind:"damage", power:30, maxCharges:4},
+        {name:"Storm Veil", kind:"debuffAtk", amount:8, maxCharges:3}
+      ]
+    },
 
-  // Stone (2)
-  {
-    id:"slabtoise",
-    name:"Slabtoise",
-    element:"Stone",
-    baseHP:125,
-    baseAtk:27,
-    baseDef:28,
-    baseSpd:14,
-    abilities:[
-      {name:"Slab Crush", kind:"damage", power:32, maxCharges:4},
-      {name:"Granite Shell", kind:"buffDef", amount:10, maxCharges:3}
-    ]
-  },
-  {
-    id:"gritclaw",
-    name:"Gritclaw",
-    element:"Stone",
-    baseHP:116,
-    baseAtk:29,
-    baseDef:24,
-    baseSpd:18,
-    abilities:[
-      {name:"Rubble Rend", kind:"damage", power:31, maxCharges:4},
-      {name:"Stone Howl", kind:"buffAtk", amount:8, maxCharges:3}
-    ]
-  },
+    // Stone (2)
+    {
+      id:"slabtoise",
+      name:"Slabtoise",
+      element:"Stone",
+      baseHP:125,
+      baseAtk:27,
+      baseDef:28,
+      baseSpd:14,
+      abilities:[
+        {name:"Slab Crush", kind:"damage", power:32, maxCharges:4},
+        {name:"Granite Shell", kind:"buffDef", amount:10, maxCharges:3}
+      ]
+    },
+    {
+      id:"gritclaw",
+      name:"Gritclaw",
+      element:"Stone",
+      baseHP:116,
+      baseAtk:29,
+      baseDef:24,
+      baseSpd:18,
+      abilities:[
+        {name:"Rubble Rend", kind:"damage", power:31, maxCharges:4},
+        {name:"Stone Howl", kind:"buffAtk", amount:8, maxCharges:3}
+      ]
+    },
 
-  // =========================
-  // LEGENDARY TIER (10)
-  // =========================
+    // =========================
+    // LEGENDARY TIER (10)
+    // =========================
 
-  // Fire (2)
-  {
-    id:"infernotitan",
-    name:"Infernotitan",
-    element:"Fire",
-    baseHP:138,
-    baseAtk:38,
-    baseDef:28,
-    baseSpd:26,
-    abilities:[
-      {name:"Titan Blaze", kind:"damage", power:40, maxCharges:3},
-      {name:"Worldfire Aura", kind:"buffAtk", amount:10, maxCharges:2}
-    ]
-  },
-  {
-    id:"phoenixflare",
-    name:"Phoenixflare",
-    element:"Fire",
-    baseHP:130,
-    baseAtk:36,
-    baseDef:26,
-    baseSpd:30,
-    abilities:[
-      {name:"Phoenix Dive", kind:"damage", power:38, maxCharges:3},
-      {name:"Rebirth Flame", kind:"heal", amount:40, maxCharges:2}
-    ]
-  },
+    // Fire (2)
+    {
+      id:"infernotitan",
+      name:"Infernotitan",
+      element:"Fire",
+      baseHP:138,
+      baseAtk:38,
+      baseDef:28,
+      baseSpd:26,
+      abilities:[
+        {name:"Titan Blaze", kind:"damage", power:40, maxCharges:3},
+        {name:"Worldfire Aura", kind:"buffAtk", amount:10, maxCharges:2}
+      ]
+    },
+    {
+      id:"phoenixflare",
+      name:"Phoenixflare",
+      element:"Fire",
+      baseHP:130,
+      baseAtk:36,
+      baseDef:26,
+      baseSpd:30,
+      abilities:[
+        {name:"Phoenix Dive", kind:"damage", power:38, maxCharges:3},
+        {name:"Rebirth Flame", kind:"heal", amount:40, maxCharges:2}
+      ]
+    },
 
-  // Water (2)
-  {
-    id:"leviadrake",
-    name:"Leviadrake",
-    element:"Water",
-    baseHP:140,
-    baseAtk:37,
-    baseDef:30,
-    baseSpd:24,
-    abilities:[
-      {name:"Leviathan Crush", kind:"damage", power:40, maxCharges:3},
-      {name:"Abyssal Shield", kind:"buffDef", amount:11, maxCharges:2}
-    ]
-  },
-  {
-    id:"maelstromwyrm",
-    name:"Maelstromwyrm",
-    element:"Water",
-    baseHP:132,
-    baseAtk:36,
-    baseDef:28,
-    baseSpd:28,
-    abilities:[
-      {name:"Maelstrom Coil", kind:"damage", power:38, maxCharges:3},
-      {name:"Ocean's Grace", kind:"heal", amount:40, maxCharges:2}
-    ]
-  },
+    // Water (2)
+    {
+      id:"leviadrake",
+      name:"Leviadrake",
+      element:"Water",
+      baseHP:140,
+      baseAtk:37,
+      baseDef:30,
+      baseSpd:24,
+      abilities:[
+        {name:"Leviathan Crush", kind:"damage", power:40, maxCharges:3},
+        {name:"Abyssal Shield", kind:"buffDef", amount:11, maxCharges:2}
+      ]
+    },
+    {
+      id:"maelstromwyrm",
+      name:"Maelstromwyrm",
+      element:"Water",
+      baseHP:132,
+      baseAtk:36,
+      baseDef:28,
+      baseSpd:28,
+      abilities:[
+        {name:"Maelstrom Coil", kind:"damage", power:38, maxCharges:3},
+        {name:"Ocean's Grace", kind:"heal", amount:40, maxCharges:2}
+      ]
+    },
 
-  // Nature (2)
-  {
-    id:"worldroot",
-    name:"Worldroot",
-    element:"Nature",
-    baseHP:142,
-    baseAtk:35,
-    baseDef:32,
-    baseSpd:22,
-    abilities:[
-      {name:"Root of Ages", kind:"damage", power:38, maxCharges:3},
-      {name:"Gaia's Embrace", kind:"heal", amount:42, maxCharges:2}
-    ]
-  },
-  {
-    id:"sylphqueen",
-    name:"Sylphqueen",
-    element:"Nature",
-    baseHP:130,
-    baseAtk:34,
-    baseDef:28,
-    baseSpd:30,
-    abilities:[
-      {name:"Sylph Ray", kind:"damage", power:36, maxCharges:3},
-      {name:"Royal Bloom", kind:"buffAtk", amount:9, maxCharges:2}
-    ]
-  },
+    // Nature (2)
+    {
+      id:"worldroot",
+      name:"Worldroot",
+      element:"Nature",
+      baseHP:142,
+      baseAtk:35,
+      baseDef:32,
+      baseSpd:22,
+      abilities:[
+        {name:"Root of Ages", kind:"damage", power:38, maxCharges:3},
+        {name:"Gaia's Embrace", kind:"heal", amount:42, maxCharges:2}
+      ]
+    },
+    {
+      id:"sylphqueen",
+      name:"Sylphqueen",
+      element:"Nature",
+      baseHP:130,
+      baseAtk:34,
+      baseDef:28,
+      baseSpd:30,
+      abilities:[
+        {name:"Sylph Ray", kind:"damage", power:36, maxCharges:3},
+        {name:"Royal Bloom", kind:"buffAtk", amount:9, maxCharges:2}
+      ]
+    },
 
-  // Storm (2)
-  {
-    id:"skytyrant",
-    name:"Skytyrant",
-    element:"Storm",
-    baseHP:134,
-    baseAtk:37,
-    baseDef:27,
-    baseSpd:32,
-    abilities:[
-      {name:"Tyrant Bolt", kind:"damage", power:40, maxCharges:3},
-      {name:"Storm Dominion", kind:"buffSpd", amount:10, maxCharges:2}
-    ]
-  },
-  {
-    id:"tempestlion",
-    name:"Tempestlion",
-    element:"Storm",
-    baseHP:136,
-    baseAtk:38,
-    baseDef:29,
-    baseSpd:30,
-    abilities:[
-      {name:"Tempest Fang", kind:"damage", power:39, maxCharges:3},
-      {name:"Thunder Roar", kind:"debuffDef", amount:10, maxCharges:2}
-    ]
-  },
+    // Storm (2)
+    {
+      id:"skytyrant",
+      name:"Skytyrant",
+      element:"Storm",
+      baseHP:134,
+      baseAtk:37,
+      baseDef:27,
+      baseSpd:32,
+      abilities:[
+        {name:"Tyrant Bolt", kind:"damage", power:40, maxCharges:3},
+        {name:"Storm Dominion", kind:"buffSpd", amount:10, maxCharges:2}
+      ]
+    },
+    {
+      id:"tempestlion",
+      name:"Tempestlion",
+      element:"Storm",
+      baseHP:136,
+      baseAtk:38,
+      baseDef:29,
+      baseSpd:30,
+      abilities:[
+        {name:"Tempest Fang", kind:"damage", power:39, maxCharges:3},
+        {name:"Thunder Roar", kind:"debuffDef", amount:10, maxCharges:2}
+      ]
+    },
 
-  // Stone (2)
-  {
-    id:"colossogolem",
-    name:"Colossogolem",
-    element:"Stone",
-    baseHP:150,
-    baseAtk:36,
-    baseDef:34,
-    baseSpd:22,
-    abilities:[
-      {name:"Colossal Slam", kind:"damage", power:40, maxCharges:3},
-      {name:"Mountain Core", kind:"buffDef", amount:12, maxCharges:2}
-    ]
-  },
-  {
-    id:"aurorite",
-    name:"Aurorite",
-    element:"Stone",
-    baseHP:140,
-    baseAtk:35,
-    baseDef:32,
-    baseSpd:24,
-    abilities:[
-      {name:"Aurora Shatter", kind:"damage", power:38, maxCharges:3},
-      {name:"Crystal Radiance", kind:"buffAtk", amount:10, maxCharges:2}
-    ]
-  }
-];
-
+    // Stone (2)
+    {
+      id:"colossogolem",
+      name:"Colossogolem",
+      element:"Stone",
+      baseHP:150,
+      baseAtk:36,
+      baseDef:34,
+      baseSpd:22,
+      abilities:[
+        {name:"Colossal Slam", kind:"damage", power:40, maxCharges:3},
+        {name:"Mountain Core", kind:"buffDef", amount:12, maxCharges:2}
+      ]
+    },
+    {
+      id:"aurorite",
+      name:"Aurorite",
+      element:"Stone",
+      baseHP:140,
+      baseAtk:35,
+      baseDef:32,
+      baseSpd:24,
+      abilities:[
+        {name:"Aurora Shatter", kind:"damage", power:38, maxCharges:3},
+        {name:"Crystal Radiance", kind:"buffAtk", amount:10, maxCharges:2}
+      ]
+    }
+  ];
 
   function cloneAbilities(abilities){
     return abilities.map(a => ({
@@ -1496,15 +1494,16 @@
   }
 
   function startWildEncounter(tile){
-    const playerAvgLvl = Math.max(1,Math.round(
-      gameState.player.roster.reduce((a,c)=>a+c.level,0)/gameState.player.roster.length
-    ));
+    const roster = gameState.player.roster || [];
+    const playerAvgLvl = roster.length
+      ? Math.max(1,Math.round(roster.reduce((a,c)=>a+c.level,0)/roster.length))
+      : 3;
     const lvl = Math.max(1, Math.round(playerAvgLvl + (Math.random()*4-2)));
     const species = randomSpeciesForZone(tile.zoneType);
     const wild = createCritterFromSpecies(species.id,lvl);
     addLog("Encounter",`A wild ${wild.name} (Lv ${wild.level}) appears!`);
     const enemyTeam = [wild];
-    const playerTeamIdxs = gameState.player.roster.map((_,i)=>i);
+    const playerTeamIdxs = roster.map((_,i)=>i);
     startBattle({
       mode:"wild",
       enemyTeam,
@@ -1531,6 +1530,7 @@
       ...initialState,
       log:[]
     };
+    // reset charges
     for(const c of gameState.player.roster){
       for(const ab of c.abilities){
         ab.charges = ab.maxCharges;
@@ -1656,7 +1656,6 @@
   }
 
   function queuePlayerAction(action){
-    // Simple: resolve immediately with speed-based order vs enemy default attack
     const pc = activePlayerCritter();
     const ec = activeEnemyCritter();
     if(!pc || !ec) { endBattle(); return; }
@@ -1764,7 +1763,6 @@
   }
 
   function chooseEnemyAction(enemy, player){
-    // if low HP and any teammate alive, small chance to switch
     const aliveIdxs = battleState.enemyTeam
       .map((c,i)=>({c,i}))
       .filter(x=>x.c.currentHP>0 && x.i!==battleState.activeEnemyIdx)
@@ -1774,7 +1772,6 @@
     }
     const dam = enemy.abilities.filter(a=>a.kind==="damage" && a.charges>0);
     if(dam.length>0){
-      // prefer ones with higher power * typeMult
       dam.sort((a,b)=>{
         const sa = (a.power ?? 20)*typeMultiplier(enemy.element, player.element);
         const sb = (b.power ?? 20)*typeMultiplier(enemy.element, player.element);
@@ -1860,9 +1857,8 @@
       return;
     }
     gameState.player.balls[ballKey]--;
-    // base from HP
     const hpFactor = (ec.maxHP - ec.currentHP)/ec.maxHP;
-    let baseChance = 0.25 + hpFactor*0.5; // 25-75%
+    let baseChance = 0.25 + hpFactor*0.5; // 25–75%
     let ballMult = ballKey==="basic" ? 1 : ballKey==="great" ? 1.6 : 2.2;
     let typeBonus = typeMultiplier(pc.element, ec.element);
     if(typeBonus>1.1) typeBonus = 1.2;
@@ -1871,7 +1867,6 @@
     const roll = Math.random();
     if(roll < catchChance){
       battleState.log.push(`You threw the ball... Gotcha! ${ec.name} was captured!`);
-      // add to roster (healed a bit on capture)
       const captured = createCritterFromSpecies(ec.speciesId, ec.level);
       captured.currentHP = captured.maxHP;
       gameState.player.roster.push(captured);
@@ -1884,6 +1879,7 @@
   }
 
   function grantXP(pc, ec, captured){
+    if(!pc || !ec) return;
     const base = 15 + ec.level*4;
     const xpGain = captured ? Math.round(base*0.8) : base;
     pc.xp += xpGain;
@@ -1892,7 +1888,6 @@
       pc.xp -= pc.xpToNext;
       pc.level++;
       pc.xpToNext = Math.round(pc.xpToNext*1.4);
-      // stat bumps
       pc.maxHP = Math.round(pc.maxHP*1.08);
       pc.currentHP = pc.maxHP;
       pc.atk = Math.round(pc.atk*1.06);
@@ -1907,15 +1902,16 @@
     const ecAlive = battleState.enemyTeam.some(c=>c.currentHP>0);
     if(!pcAlive){
       battleState.log.push("All of your critters have been defeated...");
-      // perma-death already true (we don't revive). Remove dead ones now.
       gameState.player.roster = gameState.player.roster.filter(c=>c.currentHP>0);
       endBattle(true);
       return;
     }
     if(!ecAlive){
-      const pc = activePlayerCritter();
-      const ec = battleState.enemyTeam[0]; // coarse
-      grantXP(pc, ec, false);
+      // award XP to the first living critter
+      const liveIdx = gameState.player.roster.findIndex(c=>c.currentHP>0);
+      const pc = liveIdx>=0 ? gameState.player.roster[liveIdx] : gameState.player.roster[0];
+      const ecRef = battleState.enemyTeam[0];
+      grantXP(pc, ecRef, false);
       if(battleState.mode==="arena" && battleState.arenaReward>0){
         gameState.player.money += battleState.arenaReward;
         battleState.log.push(`You won the arena battle and earned $${battleState.arenaReward}!`);
@@ -1924,14 +1920,16 @@
       return;
     }
     // ensure active indices refer to living
-    if(activeEnemyCritter().currentHP<=0){
+    const curEnemy = activeEnemyCritter();
+    if(!curEnemy || curEnemy.currentHP<=0){
       let idx = battleState.enemyTeam.findIndex(c=>c.currentHP>0);
-      if(idx===-1){ checkBattleState(); return; }
+      if(idx===-1){ return; }
       battleState.activeEnemyIdx = idx;
     }
-    if(activePlayerCritter().currentHP<=0){
+    const curPlayer = activePlayerCritter();
+    if(!curPlayer || curPlayer.currentHP<=0){
       let idx = gameState.player.roster.findIndex(c=>c.currentHP>0);
-      if(idx===-1){ checkBattleState(); return; }
+      if(idx===-1){ return; }
       battleState.activePlayerIdx = idx;
       battleState.log.push(`You send out ${gameState.player.roster[idx].name}!`);
     }
@@ -1942,7 +1940,6 @@
     battleOverlay.classList.remove("visible");
     if(isDeath){
       if(!gameState.player.roster.length){
-        // full game over
         showGameOver();
       }
     }
@@ -1985,10 +1982,10 @@
     if(lastShopPos && gameState){
       const {x,y} = lastShopPos;
       const neighbors = [];
-        if (x + 1 < MAP_W) neighbors.push({ x: x + 1, y: y });
-        if (x - 1 >= 0)   neighbors.push({ x: x - 1, y: y });
-        if (y + 1 < MAP_H) neighbors.push({ x: x, y: y + 1 });
-        if (y - 1 >= 0)   neighbors.push({ x: x, y: y - 1 });
+      if (x + 1 < MAP_W) neighbors.push({ x: x + 1, y: y });
+      if (x - 1 >= 0)    neighbors.push({ x: x - 1, y: y });
+      if (y + 1 < MAP_H) neighbors.push({ x: x, y: y + 1 });
+      if (y - 1 >= 0)    neighbors.push({ x: x, y: y - 1 });
 
       if(neighbors.length){
         const p = neighbors[0];
@@ -2096,28 +2093,29 @@
   const arenaOverlay=document.getElementById("arenaOverlay");
   const arenaBody=document.getElementById("arenaBody");
   const btnArenaStart=document.getElementById("btnArenaStart");
-  document.getElementById("btnArenaClose").onclick = closeArena;
-  document.getElementById("btnArenaCancel").onclick = closeArena;
+  const btnArenaClose=document.getElementById("btnArenaClose");
+  const btnArenaCancel=document.getElementById("btnArenaCancel");
 
   function openArena(){
     if(!gameState) return;
+    if(!arenaOverlay || !arenaBody || !btnArenaStart) return;
     arenaOverlay.classList.add("visible");
     renderArenaSelection();
   }
 
   function closeArena(){
-    arenaOverlay.classList.remove("visible");
+    if(arenaOverlay) arenaOverlay.classList.remove("visible");
     // push you away from arena tile
     if(lastArenaPos && gameState){
       const {x,y} = lastArenaPos;
-      const neighbors=[
-        {x:x+1,y},
-        {x:x-1,y},
-        {x,y+1},
-        {x,y-1}
-      ].filter(p=>p.x>=0 && p.y>=0 && p.x<MAP_W && p.y<MAP_H);
+      const neighbors = [];
+      if (x + 1 < MAP_W) neighbors.push({ x: x + 1, y: y });
+      if (x - 1 >= 0)    neighbors.push({ x: x - 1, y: y });
+      if (y + 1 < MAP_H) neighbors.push({ x: x, y: y + 1 });
+      if (y - 1 >= 0)    neighbors.push({ x: x, y: y - 1 });
+
       if(neighbors.length){
-        const p=neighbors[0];
+        const p = neighbors[0];
         gameState.map.playerX=p.x;
         gameState.map.playerY=p.y;
       }
@@ -2126,7 +2124,12 @@
     }
   }
 
+  if(btnArenaClose) btnArenaClose.onclick = closeArena;
+  if(btnArenaCancel) btnArenaCancel.onclick = closeArena;
+
   function renderArenaSelection(){
+    if(!gameState || !gameState.player) return;
+    if(!arenaBody || !btnArenaStart) return;
     const p = gameState.player;
     arenaBody.innerHTML="";
     if(p.roster.length<3){
@@ -2154,30 +2157,35 @@
     btnArenaStart.disabled=false;
   }
 
-  btnArenaStart.onclick = ()=>{
-    arenaOverlay.classList.remove("visible");
-    // enemy team: 3 random scaled critters
-    const avgLvl = Math.max(3,Math.round(
-      gameState.player.roster.slice(0,3).reduce((a,c)=>a+c.level,0)/Math.min(3,gameState.player.roster.length)
-    ));
-    const enemyTeam=[];
-    for(let i=0;i<3;i++){
-      const s = SPECIES[Math.floor(Math.random()*SPECIES.length)];
-      const lvl = Math.max(2, avgLvl + (Math.random()*4-2|0));
-      enemyTeam.push(createCritterFromSpecies(s.id,lvl));
-    }
-    const playerTeamIdxs = gameState.player.roster.slice(0,3).map((_,i)=>i);
-    const reward = 200 + avgLvl*25;
-    addLog("Arena",`You enter an arena battle for $${reward}!`);
-    startBattle({
-      mode:"arena",
-      enemyTeam,
-      playerTeamIdxs,
-      activePlayerIdx:playerTeamIdxs[0],
-      activeEnemyIdx:0,
-      arenaReward:reward
-    });
-  };
+  if(btnArenaStart){
+    btnArenaStart.onclick = ()=>{
+      if(!gameState || !gameState.player) return;
+      if(arenaOverlay) arenaOverlay.classList.remove("visible");
+      const roster = gameState.player.roster || [];
+      if(roster.length<3) return;
+
+      const avgLvl = Math.max(3,Math.round(
+        roster.slice(0,3).reduce((a,c)=>a+c.level,0)/Math.min(3,roster.length)
+      ));
+      const enemyTeam=[];
+      for(let i=0;i<3;i++){
+        const s = SPECIES[Math.floor(Math.random()*SPECIES.length)];
+        const lvl = Math.max(2, avgLvl + ((Math.random()*4-2)|0));
+        enemyTeam.push(createCritterFromSpecies(s.id,lvl));
+      }
+      const playerTeamIdxs = roster.slice(0,3).map((_,i)=>i);
+      const reward = 200 + avgLvl*25;
+      addLog("Arena",`You enter an arena battle for $${reward}!`);
+      startBattle({
+        mode:"arena",
+        enemyTeam,
+        playerTeamIdxs,
+        activePlayerIdx:playerTeamIdxs[0],
+        activeEnemyIdx:0,
+        arenaReward:reward
+      });
+    };
+  }
 
   // ----------------------------------------
   // Saving & loading (Firestore /users/{uid})
@@ -2193,7 +2201,7 @@
     startOverlay.classList.add("visible");
     startStatus.textContent="";
   }
-  btnStartClose.onclick = ()=>{ /* keep menu for now */ };
+  btnStartClose.onclick = ()=>{ /* keep menu open; mainly cosmetic */ };
 
   btnNewGame.onclick = async ()=>{
     if(!currentUser){ startStatus.textContent="Still connecting to Firebase..."; return; }
@@ -2240,7 +2248,7 @@
   async function saveGame(){
     if(!currentUser || !gameState || !currentSaveName) return;
     const ref = doc(db,"users",currentUser.uid);
-    // update cache
+    gameState.lastPlayed = Date.now();
     savesCache[currentSaveName] = gameState;
     await setDoc(ref,{
       monsterQuestSaves: savesCache
@@ -2271,7 +2279,6 @@
 
   function createNewGameState(name){
     const tiles = generateMap();
-    // random starter from three base critters
     const starters = ["blazefox","tidalfin","leafling"];
     const starterId = starters[Math.floor(Math.random()*starters.length)];
     const starter = createCritterFromSpecies(starterId,3);
@@ -2320,10 +2327,10 @@
       });
     }
   });
-
 </script>
 </body>
 </html>
+
 
 
 
