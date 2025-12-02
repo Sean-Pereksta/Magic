@@ -485,6 +485,8 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+    const SAVE_COLLECTION = "micromon_saves";
+
 
   let currentUser = null;
   let savesCache = {}; // map of saveName -> gameState
@@ -1982,12 +1984,12 @@
     // push you one tile away from the shop so you don't retrigger
     if(lastShopPos && gameState){
       const {x,y} = lastShopPos;
-      const neighbors = [
-        {x:x+1,y},
-        {x:x-1,y},
-        {x,y+1},
-        {x,y-1},
-      ].filter(p=>p.x>=0 && p.y>=0 && p.x<MAP_W && p.y<MAP_H);
+      const neighbors = [];
+        if (x + 1 < MAP_W) neighbors.push({ x: x + 1, y: y });
+        if (x - 1 >= 0)   neighbors.push({ x: x - 1, y: y });
+        if (y + 1 < MAP_H) neighbors.push({ x: x, y: y + 1 });
+        if (y - 1 >= 0)   neighbors.push({ x: x, y: y - 1 });
+
       if(neighbors.length){
         const p = neighbors[0];
         gameState.map.playerX = p.x;
@@ -2322,5 +2324,6 @@
 </script>
 </body>
 </html>
+
 
 
