@@ -2241,7 +2241,7 @@
     };
   }
 
-  function deserializeGameState(stored){
+   function deserializeGameState(stored){
     if(!stored){
       // Fallback: brand new game
       return createNewGameState("autosave");
@@ -2262,8 +2262,61 @@
     }
 
     // Preferred: tilesFlat (new format)
-    if(stored.map && Array.isArray(stored.map.
+    if(stored.map && Array.isArray(stored.map.tilesFlat)){
+      for(const t of stored.map.tilesFlat){
+        if(!t) continue;
+        const x = t.x;
+        const y = t.y;
+        if(
+          typeof x==="number" && typeof y==="number" &&
+          x>=0 && x<MAP_W && y>=0 && y<MAP_H
+        ){
+          tiles2D[y][x] = {
+            zoneType: t.zoneType || "Forest",
+            zoneColorIndex: t.zoneColorIndex || 1,
+            feature: t.feature ?? null
+          };
+        }
+      }
+    }
+    // Backwards-compat: if an older save somehow has tiles as 2D array,
+    // we can still read it (this does NOT get written back as nested arrays).
+    else if(stored.map && Array.isArray(stored.map.tiles)){
+      const oldTiles = stored.map.tiles;
+      for(let y=0; y<Math.min(MAP_H, oldTiles.length); y++){
+        const rowIn = oldTiles[y];
+        if(!Array.isArray(rowIn)) continue;
+        for(let x=0; x<Math.min(MAP_W, rowIn.length); x++){
+          const t = rowIn[x];
+          if(t){
+            tiles2D[y][x] = {
+              zoneType: t.zoneType || "Forest",
+              zoneColorIndex: t.zoneColorIndex || 1,
+              feature: t.feature ?? null
+            };
+          }
+        }
+      }
+    }
+    // else: keep default Forest map
 
+    return {
+      saveName: stored.saveName || "",
+      createdAt: stored.createdAt || Date.now(),
+      lastPlayed: Date.now(),
+      player: stored.player || {
+        money:0,
+        potions:0,
+        balls:{basic:0,great:0,ultra:0},
+        roster:[]
+      },
+      map:{
+        tiles: tiles2D,
+        playerX: stored.map?.playerX ?? 2,
+        playerY: stored.map?.playerY ?? (MAP_H - 2)
+      }
+    };
+  }
 
   function openStartMenu(){
     startOverlay.classList.add("visible");
@@ -2407,6 +2460,7 @@
 </script>
 </body>
 </html>
+
 
 
 
