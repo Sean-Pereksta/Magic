@@ -5,343 +5,439 @@
   <title>Monster Quest — Firebase RPG</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{
-      --bg:#020617;
-      --panel:#0b1120;
-      --ink:#e5e7eb;
-      --muted:#9ca3af;
-      --accent:#22c55e;
-      --danger:#ef4444;
-      --zone1:#14532d;
-      --zone2:#1d4ed8;
-      --zone3:#7c2d12;
-      --zone4:#4b5563;
-      --zone5:#065f46;
-    }
-    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    body{
-      background:radial-gradient(circle at top,#0f172a,#020617);
-      color:var(--ink);
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      min-height:100vh;
-    }
+  :root{
+    --bg:#020617;
+    --panel:#0b1120;
+    --ink:#e5e7eb;
+    --muted:#9ca3af;
+    --accent:#22c55e;
+    --danger:#ef4444;
+    --zone1:#14532d;
+    --zone2:#1d4ed8;
+    --zone3:#7c2d12;
+    --zone4:#4b5563;
+    --zone5:#065f46;
+  }
+
+  *{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  }
+
+  body{
+    background:radial-gradient(circle at top,#0f172a,#020617);
+    color:var(--ink);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+  }
+
+  #app{
+    width:100%;
+    max-width:1100px;
+    height:95vh;
+    max-height:800px;
+    background:rgba(15,23,42,.95);
+    border-radius:18px;
+    box-shadow:0 30px 80px rgba(0,0,0,.7);
+    display:flex;
+    overflow:hidden;
+    border:1px solid #1f2937;
+  }
+
+  /* Left pane with centered camera window */
+  #leftPane{
+    flex:2.1;
+    border-right:1px solid #1f2937;
+    position:relative;
+    overflow:hidden;
+    background:#020617;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  /* Right pane */
+  #rightPane{
+    flex:1.2;
+    display:flex;
+    flex-direction:column;
+    background:linear-gradient(180deg,#020617,#020617,#020617);
+  }
+
+  /* Camera window (9x9 tiles) */
+  #mapView{
+    display:grid;
+    grid-template-columns:repeat(9,32px);
+    grid-template-rows:repeat(9,32px);
+    gap:2px;
+    padding:6px;
+    background:#000;
+    border-radius:8px;
+  }
+
+  .tile{
+    position:relative;
+    width:32px;
+    height:32px;
+    border-radius:4px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    color:#e5e7eb;
+    user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  .tile.zone1{background:var(--zone1);}
+  .tile.zone2{background:var(--zone2);}
+  .tile.zone3{background:var(--zone3);}
+  .tile.zone4{background:var(--zone4);}
+  .tile.zone5{background:var(--zone5);}
+
+  .tile.bush::after{
+    content:"🌿";
+    position:absolute;
+    font-size:14px;
+  }
+  .tile.rock::after{
+    content:"🪨";
+    position:absolute;
+    font-size:14px;
+  }
+  .tile.shop::after{
+    content:"🏪";
+    position:absolute;
+    font-size:16px;
+  }
+  .tile.arena::after{
+    content:"⚔️";
+    position:absolute;
+    font-size:15px;
+  }
+
+  .playerMarker{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+  }
+  .playerMarker span{
+    filter:drop-shadow(0 0 4px rgba(0,0,0,.7));
+  }
+
+  /* Right pane: header & HUD */
+  #header{
+    padding:10px 12px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  #header h1{
+    font-size:18px;
+    font-weight:600;
+    letter-spacing:.03em;
+  }
+  #header small{
+    color:var(--muted);
+    font-size:11px;
+  }
+
+  .pill{
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid #1f2937;
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  #metaRow{
+    padding:6px 10px 8px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  #inventory{
+    padding:6px 10px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    font-size:12px;
+  }
+
+  .chip{
+    padding:4px 8px;
+    border-radius:999px;
+    background:#0f172a;
+    border:1px solid #1f2937;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:11px;
+  }
+  .chip span{
+    font-size:13px;
+  }
+
+  #controls{
+    padding:8px 10px;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    font-size:12px;
+  }
+
+  button{
+    background:var(--accent);
+    border:none;
+    color:#ecfdf5;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:12px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+  }
+  button.secondary{
+    background:#0f172a;
+    color:var(--muted);
+    border:1px solid #1f2937;
+  }
+  button.danger{
+    background:var(--danger);
+  }
+  button:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+  }
+
+  input[type="text"]{
+    background:#020617;
+    color:var(--ink);
+    border-radius:999px;
+    border:1px solid #1f2937;
+    padding:4px 9px;
+    font-size:12px;
+    min-width:0;
+  }
+
+  #log{
+    flex:1;
+    padding:8px 10px;
+    font-size:12px;
+    overflow-y:auto;
+  }
+
+  .logLine{
+    margin-bottom:4px;
+    color:#e5e7eb;
+  }
+  .logLine span.tag{
+    font-size:10px;
+    padding:1px 4px;
+    border-radius:999px;
+    margin-right:4px;
+    background:#0f172a;
+    color:var(--muted);
+  }
+
+  #footer{
+    padding:6px 10px;
+    border-top:1px solid #1f2937;
+    font-size:10px;
+    color:var(--muted);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+
+  /* Overlays (battle, shop, arena, start, game over) */
+  .overlay{
+    position:absolute;
+    inset:0;
+    background:rgba(15,23,42,.96);
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    z-index:10;
+    /* allow scrolling if panel is taller than viewport */
+    overflow-y:auto;
+  }
+  .overlay.visible{
+    display:flex;
+  }
+
+  .panel{
+    background:#020617;
+    border-radius:16px;
+    border:1px solid #1f2937;
+    padding:14px 16px;
+    width:100%;
+    max-width:420px;
+    max-height:90vh; /* use viewport height */
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    overflow:hidden;
+  }
+
+  .panelHeader{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    border-bottom:1px solid #1f2937;
+    padding-bottom:6px;
+  }
+  .panelHeader h2{
+    font-size:16px;
+  }
+
+  .panelBody{
+    flex:1;
+    overflow-y:auto;
+    padding-top:4px;
+    font-size:12px;
+  }
+
+  .panelFooter{
+    padding-top:6px;
+    border-top:1px solid #1f2937;
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:6px;
+    margin-bottom:4px;
+  }
+  .row strong{
+    font-size:12px;
+  }
+
+  .battleStats{
+    display:flex;
+    gap:6px;
+    margin-bottom:6px;
+    flex-wrap:wrap;
+  }
+
+  .badge{
+    border-radius:999px;
+    padding:1px 6px;
+    font-size:10px;
+    border:1px solid #1f2937;
+    background:#020617;
+    color:var(--muted);
+  }
+
+  .hpBar{
+    width:100%;
+    height:6px;
+    background:#111827;
+    border-radius:999px;
+    overflow:hidden;
+    margin-top:2px;
+  }
+  .hpFill{
+    height:100%;
+    background:linear-gradient(90deg,#22c55e,#f97316);
+  }
+
+  .sectionTitle{
+    font-weight:600;
+    margin:4px 0 2px;
+    color:#e5e7eb;
+  }
+
+  .listItem{
+    padding:4px 4px;
+    border-radius:6px;
+    border:1px solid #1f2937;
+    margin-bottom:4px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:4px;
+  }
+
+  /* Battle footer buttons responsive behavior */
+  #battleFooter button{
+    flex:1 1 auto;
+    min-width:140px;
+    margin-bottom:4px;
+  }
+
+  @media (max-width:900px){
     #app{
-      width:100%;
-      max-width:1100px;
-      height:95vh;
-      max-height:800px;
-      background:rgba(15,23,42,.95);
-      border-radius:18px;
-      box-shadow:0 30px 80px rgba(0,0,0,.7);
-      display:flex;
-      overflow:hidden;
-      border:1px solid #1f2937;
+      flex-direction:column;
+      height:100vh;
+      max-height:none;
+      border-radius:0;
     }
     #leftPane{
-      flex:2.1;
-      border-right:1px solid #1f2937;
-      position:relative;
-      overflow:hidden;
-      background:#020617;
+      flex:1.6;
+      border-right:none;
+      border-bottom:1px solid #1f2937;
     }
     #rightPane{
-      flex:1.2;
-      display:flex;
-      flex-direction:column;
-      background:linear-gradient(180deg,#020617,#020617,#020617);
+      flex:1.4;
     }
-    #mapView{
-      width:100%;
-      height:100%;
-      display:grid;
-      grid-template-columns:repeat(15,1fr);
-      grid-template-rows:repeat(15,1fr);
-      gap:1px;
-      padding:6px;
-      background:#000;
-    }
-    .tile{
-      position:relative;
-      border-radius:4px;
-      cursor:pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:12px;
-      color:#e5e7eb;
-      user-select:none;
-      -webkit-tap-highlight-color:transparent;
-    }
-    .tile.zone1{background:var(--zone1);}
-    .tile.zone2{background:var(--zone2);}
-    .tile.zone3{background:var(--zone3);}
-    .tile.zone4{background:var(--zone4);}
-    .tile.zone5{background:var(--zone5);}
-    .tile.bush::after{
-      content:"🌿";
-      position:absolute;
-      font-size:14px;
-    }
-    .tile.rock::after{
-      content:"🪨";
-      position:absolute;
-      font-size:14px;
-    }
-    .tile.shop::after{
-      content:"🏪";
-      position:absolute;
-      font-size:16px;
-    }
-    .tile.arena::after{
-      content:"⚔️";
-      position:absolute;
-      font-size:15px;
-    }
-    .playerMarker{
-      position:absolute;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:16px;
-    }
-    .playerMarker span{
-      filter:drop-shadow(0 0 4px rgba(0,0,0,.7));
-    }
+  }
 
-    /* Right pane */
-    #header{
-      padding:10px 12px;
-      border-bottom:1px solid #1f2937;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:8px;
-    }
-    #header h1{
-      font-size:18px;
-      font-weight:600;
-      letter-spacing:.03em;
-    }
-    #header small{
-      color:var(--muted);
-      font-size:11px;
-    }
-    .pill{
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid #1f2937;
-      font-size:11px;
-      color:var(--muted);
-    }
-    #metaRow{
-      padding:6px 10px 8px;
-      border-bottom:1px solid #1f2937;
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      font-size:12px;
-      color:var(--muted);
-    }
-    #inventory{
-      padding:6px 10px;
-      border-bottom:1px solid #1f2937;
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      font-size:12px;
-    }
-    .chip{
-      padding:4px 8px;
-      border-radius:999px;
-      background:#0f172a;
-      border:1px solid #1f2937;
-      display:flex;
-      align-items:center;
-      gap:4px;
-      font-size:11px;
-    }
-    .chip span{
-      font-size:13px;
-    }
-    #controls{
-      padding:8px 10px;
-      border-bottom:1px solid #1f2937;
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      font-size:12px;
-    }
-    button{
-      background:var(--accent);
-      border:none;
-      color:#ecfdf5;
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:12px;
-      cursor:pointer;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:4px;
-    }
-    button.secondary{
-      background:#0f172a;
-      color:var(--muted);
-      border:1px solid #1f2937;
-    }
-    button.danger{
-      background:var(--danger);
-    }
-    button:disabled{
-      opacity:.5;
-      cursor:not-allowed;
-    }
-    input[type="text"]{
-      background:#020617;
-      color:var(--ink);
-      border-radius:999px;
-      border:1px solid #1f2937;
-      padding:4px 9px;
-      font-size:12px;
-      min-width:0;
-    }
-    #log{
-      flex:1;
-      padding:8px 10px;
-      font-size:12px;
-      overflow-y:auto;
-    }
-    .logLine{
-      margin-bottom:4px;
-      color:#e5e7eb;
-    }
-    .logLine span.tag{
-      font-size:10px;
-      padding:1px 4px;
-      border-radius:999px;
-      margin-right:4px;
-      background:#0f172a;
-      color:var(--muted);
-    }
-    #footer{
-      padding:6px 10px;
-      border-top:1px solid #1f2937;
-      font-size:10px;
-      color:var(--muted);
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-    }
-
-    /* Overlays (start, battle, shop, arena, game over) */
+  /* Phone-specific tweaks */
+  @media (max-width:600px){
     .overlay{
-      position:absolute;
-      inset:0;
-      background:rgba(15,23,42,.96);
-      display:none;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      padding:16px;
-      z-index:10;
+      align-items:flex-start;
+      justify-content:flex-start;
+      padding:8px 4px;
     }
-    .overlay.visible{display:flex;}
     .panel{
-      background:#020617;
-      border-radius:16px;
-      border:1px solid #1f2937;
-      padding:14px 16px;
       width:100%;
-      max-width:420px;
-      max-height:90%;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      overflow:hidden;
-    }
-    .panelHeader{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:8px;
-      border-bottom:1px solid #1f2937;
-      padding-bottom:6px;
-    }
-    .panelHeader h2{
-      font-size:16px;
+      max-width:none;
+      max-height:100vh;
+      border-radius:0;
+      border-left:none;
+      border-right:none;
     }
     .panelBody{
       flex:1;
       overflow-y:auto;
-      padding-top:4px;
-      font-size:12px;
     }
     .panelFooter{
-      padding-top:6px;
-      border-top:1px solid #1f2937;
-      display:flex;
-      justify-content:flex-end;
-      gap:8px;
       flex-wrap:wrap;
-    }
-    .row{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
       gap:6px;
-      margin-bottom:4px;
+      justify-content:flex-start;
     }
-    .row strong{font-size:12px;}
-    .battleStats{
-      display:flex;
-      gap:6px;
-      margin-bottom:6px;
-      flex-wrap:wrap;
+    #battleFooter button{
+      flex:1 1 100%;
     }
-    .badge{
-      border-radius:999px;
-      padding:1px 6px;
-      font-size:10px;
-      border:1px solid #1f2937;
-      background:#020617;
-      color:var(--muted);
-    }
-    .hpBar{
-      width:100%;
-      height:6px;
-      background:#111827;
-      border-radius:999px;
-      overflow:hidden;
-      margin-top:2px;
-    }
-    .hpFill{
-      height:100%;
-      background:linear-gradient(90deg,#22c55e,#f97316);
-    }
-    .sectionTitle{
-      font-weight:600;
-      margin:4px 0 2px;
-      color:#e5e7eb;
-    }
-    .listItem{
-      padding:4px 4px;
-      border-radius:6px;
-      border:1px solid #1f2937;
-      margin-bottom:4px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:4px;
-    }
-    @media (max-width:900px){
-      #app{flex-direction:column;height:100vh;max-height:none;border-radius:0;}
-      #leftPane{flex:1.6;border-right:none;border-bottom:1px solid #1f2937;}
-      #rightPane{flex:1.4;}
-    }
-  </style>
+  }
+</style>
 </head>
 <body>
 <div id="app">
@@ -517,733 +613,939 @@
   }
 
   // 50 critters across 5 elements, 5 power tiers
-  const SPECIES = [
-    // =========================
-    // WEAK TIER (10)
-    // =========================
+ const SPECIES = [
+  // =========================
+  // WEAK TIER (10)
+  // =========================
 
-    // Fire (2)
-    {
-      id:"emberkit",
-      name:"Emberkit",
-      element:"Fire",
-      baseHP:70,
-      baseAtk:14,
-      baseDef:12,
-      baseSpd:18,
-      abilities:[
-        {name:"Warm Nip", kind:"damage", power:16, maxCharges:7},
-        {name:"Tiny Ember", kind:"damage", power:18, maxCharges:5}
-      ]
-    },
-    {
-      id:"cinderchip",
-      name:"Cinderchip",
-      element:"Fire",
-      baseHP:68,
-      baseAtk:15,
-      baseDef:11,
-      baseSpd:20,
-      abilities:[
-        {name:"Cinder Peck", kind:"damage", power:17, maxCharges:7},
-        {name:"Glow Up", kind:"buffAtk", amount:4, maxCharges:3}
-      ]
-    },
+  // Fire (2)
+  {
+    id:"emberkit",
+    name:"Emberkit",
+    emoji:"🔥",
+    element:"Fire",
+    baseHP:70,
+    baseAtk:14,
+    baseDef:12,
+    baseSpd:18,
+    abilities:[
+      {name:"Warm Nip", kind:"damage", power:16, maxCharges:7},
+      {name:"Tiny Ember", kind:"damage", power:18, maxCharges:5}
+    ]
+  },
+  {
+    id:"cinderchip",
+    name:"Cinderchip",
+    emoji:"🐿️",
+    element:"Fire",
+    baseHP:68,
+    baseAtk:15,
+    baseDef:11,
+    baseSpd:20,
+    abilities:[
+      {name:"Cinder Peck", kind:"damage", power:17, maxCharges:7},
+      {name:"Glow Up", kind:"buffAtk", amount:4, maxCharges:3}
+    ]
+  },
 
-    // Water (2)
-    {
-      id:"splashling",
-      name:"Splashling",
-      element:"Water",
-      baseHP:72,
-      baseAtk:13,
-      baseDef:13,
-      baseSpd:17,
-      abilities:[
-        {name:"Tiny Wave", kind:"damage", power:16, maxCharges:7},
-        {name:"Soothing Drip", kind:"heal", amount:18, maxCharges:3}
-      ]
-    },
-    {
-      id:"drizzlefin",
-      name:"Drizzlefin",
-      element:"Water",
-      baseHP:74,
-      baseAtk:15,
-      baseDef:12,
-      baseSpd:19,
-      abilities:[
-        {name:"Drizzle Shot", kind:"damage", power:18, maxCharges:6},
-        {name:"Rain Veil", kind:"buffDef", amount:4, maxCharges:3}
-      ]
-    },
+  // Water (2)
+  {
+    id:"splashling",
+    name:"Splashling",
+    emoji:"💧",
+    element:"Water",
+    baseHP:72,
+    baseAtk:13,
+    baseDef:13,
+    baseSpd:17,
+    abilities:[
+      {name:"Tiny Wave", kind:"damage", power:16, maxCharges:7},
+      {name:"Soothing Drip", kind:"heal", amount:18, maxCharges:3}
+    ]
+  },
+  {
+    id:"drizzlefin",
+    name:"Drizzlefin",
+    emoji:"🐟",
+    element:"Water",
+    baseHP:74,
+    baseAtk:15,
+    baseDef:12,
+    baseSpd:19,
+    abilities:[
+      {name:"Drizzle Shot", kind:"damage", power:18, maxCharges:6},
+      {name:"Rain Veil", kind:"buffDef", amount:4, maxCharges:3}
+    ]
+  },
 
-    // Nature (2)
-    {
-      id:"sproutbug",
-      name:"Sproutbug",
-      element:"Nature",
-      baseHP:68,
-      baseAtk:13,
-      baseDef:12,
-      baseSpd:18,
-      abilities:[
-        {name:"Nibble Leaf", kind:"damage", power:16, maxCharges:7},
-        {name:"Green Pulse", kind:"heal", amount:16, maxCharges:3}
-      ]
-    },
-    {
-      id:"thornsprout",
-      name:"Thornsprout",
-      element:"Nature",
-      baseHP:70,
-      baseAtk:16,
-      baseDef:11,
-      baseSpd:17,
-      abilities:[
-        {name:"Thorn Prick", kind:"damage", power:18, maxCharges:6},
-        {name:"Root Slow", kind:"debuffSpd", amount:4, maxCharges:3}
-      ]
-    },
+  // Nature (2)
+  {
+    id:"sproutbug",
+    name:"Sproutbug",
+    emoji:"🐛",
+    element:"Nature",
+    baseHP:68,
+    baseAtk:13,
+    baseDef:12,
+    baseSpd:18,
+    abilities:[
+      {name:"Nibble Leaf", kind:"damage", power:16, maxCharges:7},
+      {name:"Green Pulse", kind:"heal", amount:16, maxCharges:3}
+    ]
+  },
+  {
+    id:"thornsprout",
+    name:"Thornsprout",
+    emoji:"🌵",
+    element:"Nature",
+    baseHP:70,
+    baseAtk:16,
+    baseDef:11,
+    baseSpd:17,
+    abilities:[
+      {name:"Thorn Prick", kind:"damage", power:18, maxCharges:6},
+      {name:"Root Slow", kind:"debuffSpd", amount:4, maxCharges:3}
+    ]
+  },
 
-    // Storm (2)
-    {
-      id:"gustling",
-      name:"Gustling",
-      element:"Storm",
-      baseHP:66,
-      baseAtk:14,
-      baseDef:11,
-      baseSpd:22,
-      abilities:[
-        {name:"Breeze Peck", kind:"damage", power:17, maxCharges:7},
-        {name:"Tailwind", kind:"buffSpd", amount:5, maxCharges:3}
-      ]
-    },
-    {
-      id:"sparkmite",
-      name:"Sparkmite",
-      element:"Storm",
-      baseHP:64,
-      baseAtk:15,
-      baseDef:10,
-      baseSpd:23,
-      abilities:[
-        {name:"Static Nibble", kind:"damage", power:18, maxCharges:6},
-        {name:"Charge Up", kind:"buffAtk", amount:4, maxCharges:3}
-      ]
-    },
+  // Storm (2)
+  {
+    id:"gustling",
+    name:"Gustling",
+    emoji:"🕊️",
+    element:"Storm",
+    baseHP:66,
+    baseAtk:14,
+    baseDef:11,
+    baseSpd:22,
+    abilities:[
+      {name:"Breeze Peck", kind:"damage", power:17, maxCharges:7},
+      {name:"Tailwind", kind:"buffSpd", amount:5, maxCharges:3}
+    ]
+  },
+  {
+    id:"sparkmite",
+    name:"Sparkmite",
+    emoji:"🐝",
+    element:"Storm",
+    baseHP:64,
+    baseAtk:15,
+    baseDef:10,
+    baseSpd:23,
+    abilities:[
+      {name:"Static Nibble", kind:"damage", power:18, maxCharges:6},
+      {name:"Charge Up", kind:"buffAtk", amount:4, maxCharges:3}
+    ]
+  },
 
-    // Stone (2)
-    {
-      id:"pebblepup",
-      name:"Pebblepup",
-      element:"Stone",
-      baseHP:76,
-      baseAtk:13,
-      baseDef:15,
-      baseSpd:14,
-      abilities:[
-        {name:"Pebble Bop", kind:"damage", power:17, maxCharges:7},
-        {name:"Hard Shell", kind:"buffDef", amount:4, maxCharges:3}
-      ]
-    },
-    {
-      id:"dustpebble",
-      name:"Dustpebble",
-      element:"Stone",
-      baseHP:72,
-      baseAtk:15,
-      baseDef:14,
-      baseSpd:15,
-      abilities:[
-        {name:"Dust Toss", kind:"damage", power:18, maxCharges:6},
-        {name:"Dust Screen", kind:"debuffAtk", amount:4, maxCharges:3}
-      ]
-    },
+  // Stone (2)
+  {
+    id:"pebblepup",
+    name:"Pebblepup",
+    emoji:"🐶",
+    element:"Stone",
+    baseHP:76,
+    baseAtk:13,
+    baseDef:15,
+    baseSpd:14,
+    abilities:[
+      {name:"Pebble Bop", kind:"damage", power:17, maxCharges:7},
+      {name:"Hard Shell", kind:"buffDef", amount:4, maxCharges:3}
+    ]
+  },
+  {
+    id:"dustpebble",
+    name:"Dustpebble",
+    emoji:"🪨",
+    element:"Stone",
+    baseHP:72,
+    baseAtk:15,
+    baseDef:14,
+    baseSpd:15,
+    abilities:[
+      {name:"Dust Toss", kind:"damage", power:18, maxCharges:6},
+      {name:"Dust Screen", kind:"debuffAtk", amount:4, maxCharges:3}
+    ]
+  },
 
-    // =========================
-    // MODERATE TIER (10)
-    // =========================
+  // =========================
+  // MODERATE TIER (10)
+  // =========================
 
-    // Fire (2)
-    {
-      id:"flarethorn",
-      name:"Flarethorn",
-      element:"Fire",
-      baseHP:80,
-      baseAtk:19,
-      baseDef:15,
-      baseSpd:19,
-      abilities:[
-        {name:"Flare Bite", kind:"damage", power:22, maxCharges:6},
-        {name:"Heat Bloom", kind:"buffAtk", amount:5, maxCharges:3}
-      ]
-    },
-    {
-      id:"charcub",
-      name:"Charcub",
-      element:"Fire",
-      baseHP:82,
-      baseAtk:20,
-      baseDef:14,
-      baseSpd:20,
-      abilities:[
-        {name:"Char Swipe", kind:"damage", power:22, maxCharges:6},
-        {name:"Warm Fur", kind:"buffDef", amount:5, maxCharges:3}
-      ]
-    },
+  // Fire (2)
+  {
+    id:"flarethorn",
+    name:"Flarethorn",
+    emoji:"🌋",
+    element:"Fire",
+    baseHP:80,
+    baseAtk:19,
+    baseDef:15,
+    baseSpd:19,
+    abilities:[
+      {name:"Flare Bite", kind:"damage", power:22, maxCharges:6},
+      {name:"Heat Bloom", kind:"buffAtk", amount:5, maxCharges:3}
+    ]
+  },
+  {
+    id:"charcub",
+    name:"Charcub",
+    emoji:"🐻",
+    element:"Fire",
+    baseHP:82,
+    baseAtk:20,
+    baseDef:14,
+    baseSpd:20,
+    abilities:[
+      {name:"Char Swipe", kind:"damage", power:22, maxCharges:6},
+      {name:"Warm Fur", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
 
-    // Water (2)
-    {
-      id:"brookfin",
-      name:"Brookfin",
-      element:"Water",
-      baseHP:84,
-      baseAtk:18,
-      baseDef:17,
-      baseSpd:18,
-      abilities:[
-        {name:"Brook Jet", kind:"damage", power:22, maxCharges:6},
-        {name:"Fresh Current", kind:"heal", amount:22, maxCharges:3}
-      ]
-    },
-    {
-      id:"tideotter",
-      name:"Tideotter",
-      element:"Water",
-      baseHP:86,
-      baseAtk:20,
-      baseDef:16,
-      baseSpd:19,
-      abilities:[
-        {name:"Tide Tackle", kind:"damage", power:23, maxCharges:6},
-        {name:"Shell Rub", kind:"buffDef", amount:5, maxCharges:3}
-      ]
-    },
+  // Water (2)
+  {
+    id:"brookfin",
+    name:"Brookfin",
+    emoji:"🐠",
+    element:"Water",
+    baseHP:84,
+    baseAtk:18,
+    baseDef:17,
+    baseSpd:18,
+    abilities:[
+      {name:"Brook Jet", kind:"damage", power:22, maxCharges:6},
+      {name:"Fresh Current", kind:"heal", amount:22, maxCharges:3}
+    ]
+  },
+  {
+    id:"tideotter",
+    name:"Tideotter",
+    emoji:"🦦",
+    element:"Water",
+    baseHP:86,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:19,
+    abilities:[
+      {name:"Tide Tackle", kind:"damage", power:23, maxCharges:6},
+      {name:"Shell Rub", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
 
-    // Nature (2)
-    {
-      id:"mossling",
-      name:"Mossling",
-      element:"Nature",
-      baseHP:82,
-      baseAtk:18,
-      baseDef:17,
-      baseSpd:18,
-      abilities:[
-        {name:"Moss Bite", kind:"damage", power:22, maxCharges:6},
-        {name:"Soft Growth", kind:"heal", amount:22, maxCharges:3}
-      ]
-    },
-    {
-      id:"vinepup",
-      name:"Vinepup",
-      element:"Nature",
-      baseHP:80,
-      baseAtk:20,
-      baseDef:16,
-      baseSpd:20,
-      abilities:[
-        {name:"Vine Lash", kind:"damage", power:23, maxCharges:6},
-        {name:"Entangle", kind:"debuffDef", amount:5, maxCharges:3}
-      ]
-    },
+  // Nature (2)
+  {
+    id:"mossling",
+    name:"Mossling",
+    emoji:"🌿",
+    element:"Nature",
+    baseHP:82,
+    baseAtk:18,
+    baseDef:17,
+    baseSpd:18,
+    abilities:[
+      {name:"Moss Bite", kind:"damage", power:22, maxCharges:6},
+      {name:"Soft Growth", kind:"heal", amount:22, maxCharges:3}
+    ]
+  },
+  {
+    id:"vinepup",
+    name:"Vinepup",
+    emoji:"🐕",
+    element:"Nature",
+    baseHP:80,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:20,
+    abilities:[
+      {name:"Vine Lash", kind:"damage", power:23, maxCharges:6},
+      {name:"Entangle", kind:"debuffDef", amount:5, maxCharges:3}
+    ]
+  },
 
-    // Storm (2)
-    {
-      id:"breezerat",
-      name:"Breezerat",
-      element:"Storm",
-      baseHP:78,
-      baseAtk:19,
-      baseDef:14,
-      baseSpd:24,
-      abilities:[
-        {name:"Gale Scratch", kind:"damage", power:23, maxCharges:6},
-        {name:"Tail Current", kind:"buffSpd", amount:6, maxCharges:3}
-      ]
-    },
-    {
-      id:"stormkit",
-      name:"Stormkit",
-      element:"Storm",
-      baseHP:80,
-      baseAtk:20,
-      baseDef:15,
-      baseSpd:23,
-      abilities:[
-        {name:"Spark Swipe", kind:"damage", power:23, maxCharges:6},
-        {name:"Static Coat", kind:"buffDef", amount:5, maxCharges:3}
-      ]
-    },
+  // Storm (2)
+  {
+    id:"breezerat",
+    name:"Breezerat",
+    emoji:"🐭",
+    element:"Storm",
+    baseHP:78,
+    baseAtk:19,
+    baseDef:14,
+    baseSpd:24,
+    abilities:[
+      {name:"Gale Scratch", kind:"damage", power:23, maxCharges:6},
+      {name:"Tail Current", kind:"buffSpd", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"stormkit",
+    name:"Stormkit",
+    emoji:"🌩️",
+    element:"Storm",
+    baseHP:80,
+    baseAtk:20,
+    baseDef:15,
+    baseSpd:23,
+    abilities:[
+      {name:"Spark Swipe", kind:"damage", power:23, maxCharges:6},
+      {name:"Static Coat", kind:"buffDef", amount:5, maxCharges:3}
+    ]
+  },
 
-    // Stone (2)
-    {
-      id:"rubblepup",
-      name:"Rubblepup",
-      element:"Stone",
-      baseHP:88,
-      baseAtk:19,
-      baseDef:19,
-      baseSpd:16,
-      abilities:[
-        {name:"Rubble Bash", kind:"damage", power:23, maxCharges:6},
-        {name:"Stone Guard", kind:"buffDef", amount:6, maxCharges:3}
-      ]
-    },
-    {
-      id:"stonehopper",
-      name:"Stonehopper",
-      element:"Stone",
-      baseHP:86,
-      baseAtk:20,
-      baseDef:18,
-      baseSpd:17,
-      abilities:[
-        {name:"Pebble Kick", kind:"damage", power:22, maxCharges:6},
-        {name:"Dust Leap", kind:"buffSpd", amount:5, maxCharges:3}
-      ]
-    },
+  // Stone (2)
+  {
+    id:"rubblepup",
+    name:"Rubblepup",
+    emoji:"🧱",
+    element:"Stone",
+    baseHP:88,
+    baseAtk:19,
+    baseDef:19,
+    baseSpd:16,
+    abilities:[
+      {name:"Rubble Bash", kind:"damage", power:23, maxCharges:6},
+      {name:"Stone Guard", kind:"buffDef", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"stonehopper",
+    name:"Stonehopper",
+    emoji:"🐸",
+    element:"Stone",
+    baseHP:86,
+    baseAtk:20,
+    baseDef:18,
+    baseSpd:17,
+    abilities:[
+      {name:"Pebble Kick", kind:"damage", power:22, maxCharges:6},
+      {name:"Dust Leap", kind:"buffSpd", amount:5, maxCharges:3}
+    ]
+  },
 
-    // =========================
-    // GOOD TIER (10)
-    // (Starters live here)
-    // =========================
+  // =========================
+  // GOOD TIER (10)
+  // (Starters live here)
+  // =========================
 
-    // Fire (2) — includes Blazefox
-    {
-      id:"blazefox",
-      name:"Blazefox",
-      element:"Fire",
-      baseHP:90,
-      baseAtk:25,
-      baseDef:15,
-      baseSpd:20,
-      abilities:[
-        {name:"Flame Bite", kind:"damage", power:24, maxCharges:6},
-        {name:"Fire Claws", kind:"damage", power:30, maxCharges:4},
-        {name:"Inferno Howl", kind:"buffAtk", amount:7, maxCharges:2}
-      ]
-    },
-    {
-      id:"emberclaw",
-      name:"Emberclaw",
-      element:"Fire",
-      baseHP:94,
-      baseAtk:26,
-      baseDef:16,
-      baseSpd:21,
-      abilities:[
-        {name:"Claw Blaze", kind:"damage", power:26, maxCharges:5},
-        {name:"Smolder Guard", kind:"buffDef", amount:6, maxCharges:3}
-      ]
-    },
+  // Fire (2) — includes Blazefox
+  {
+    id:"blazefox",
+    name:"Blazefox",
+    emoji:"🦊",
+    element:"Fire",
+    baseHP:90,
+    baseAtk:25,
+    baseDef:15,
+    baseSpd:20,
+    abilities:[
+      {name:"Flame Bite", kind:"damage", power:24, maxCharges:6},
+      {name:"Fire Claws", kind:"damage", power:30, maxCharges:4},
+      {name:"Inferno Howl", kind:"buffAtk", amount:7, maxCharges:2}
+    ]
+  },
+  {
+    id:"emberclaw",
+    name:"Emberclaw",
+    emoji:"🐈‍⬛",
+    element:"Fire",
+    baseHP:94,
+    baseAtk:26,
+    baseDef:16,
+    baseSpd:21,
+    abilities:[
+      {name:"Claw Blaze", kind:"damage", power:26, maxCharges:5},
+      {name:"Smolder Guard", kind:"buffDef", amount:6, maxCharges:3}
+    ]
+  },
 
-    // Water (2) — includes Tidalfin
-    {
-      id:"tidalfin",
-      name:"Tidalfin",
-      element:"Water",
-      baseHP:95,
-      baseAtk:22,
-      baseDef:18,
-      baseSpd:18,
-      abilities:[
-        {name:"Water Jet", kind:"damage", power:24, maxCharges:6},
-        {name:"Bubble Burst", kind:"damage", power:28, maxCharges:4},
-        {name:"Splash Shield", kind:"buffDef", amount:7, maxCharges:3}
-      ]
-    },
-    {
-      id:"surfstrider",
-      name:"Surfstrider",
-      element:"Water",
-      baseHP:98,
-      baseAtk:24,
-      baseDef:18,
-      baseSpd:20,
-      abilities:[
-        {name:"Surf Crash", kind:"damage", power:26, maxCharges:5},
-        {name:"Foam Veil", kind:"heal", amount:26, maxCharges:3}
-      ]
-    },
+  // Water (2) — includes Tidalfin
+  {
+    id:"tidalfin",
+    name:"Tidalfin",
+    emoji:"🐬",
+    element:"Water",
+    baseHP:95,
+    baseAtk:22,
+    baseDef:18,
+    baseSpd:18,
+    abilities:[
+      {name:"Water Jet", kind:"damage", power:24, maxCharges:6},
+      {name:"Bubble Burst", kind:"damage", power:28, maxCharges:4},
+      {name:"Splash Shield", kind:"buffDef", amount:7, maxCharges:3}
+    ]
+  },
+  {
+    id:"surfstrider",
+    name:"Surfstrider",
+    emoji:"🐋",
+    element:"Water",
+    baseHP:98,
+    baseAtk:24,
+    baseDef:18,
+    baseSpd:20,
+    abilities:[
+      {name:"Surf Crash", kind:"damage", power:26, maxCharges:5},
+      {name:"Foam Veil", kind:"heal", amount:26, maxCharges:3}
+    ]
+  },
 
-    // Nature (2) — includes Leafling
-    {
-      id:"leafling",
-      name:"Leafling",
-      element:"Nature",
-      baseHP:88,
-      baseAtk:20,
-      baseDef:16,
-      baseSpd:20,
-      abilities:[
-        {name:"Vine Whip", kind:"damage", power:24, maxCharges:6},
-        {name:"Photosynthesis", kind:"heal", amount:26, maxCharges:4},
-        {name:"Root Bind", kind:"debuffDef", amount:6, maxCharges:3}
-      ]
-    },
-    {
-      id:"briarhorn",
-      name:"Briarhorn",
-      element:"Nature",
-      baseHP:96,
-      baseAtk:24,
-      baseDef:18,
-      baseSpd:18,
-      abilities:[
-        {name:"Briar Charge", kind:"damage", power:26, maxCharges:5},
-        {name:"Thorn Screen", kind:"debuffAtk", amount:6, maxCharges:3}
-      ]
-    },
+  // Nature (2) — includes Leafling
+  {
+    id:"leafling",
+    name:"Leafling",
+    emoji:"🍃",
+    element:"Nature",
+    baseHP:88,
+    baseAtk:20,
+    baseDef:16,
+    baseSpd:20,
+    abilities:[
+      {name:"Vine Whip", kind:"damage", power:24, maxCharges:6},
+      {name:"Photosynthesis", kind:"heal", amount:26, maxCharges:4},
+      {name:"Root Bind", kind:"debuffDef", amount:6, maxCharges:3}
+    ]
+  },
+  {
+    id:"briarhorn",
+    name:"Briarhorn",
+    emoji:"🦌",
+    element:"Nature",
+    baseHP:96,
+    baseAtk:24,
+    baseDef:18,
+    baseSpd:18,
+    abilities:[
+      {name:"Briar Charge", kind:"damage", power:26, maxCharges:5},
+      {name:"Thorn Screen", kind:"debuffAtk", amount:6, maxCharges:3}
+    ]
+  },
 
-    // Storm (2)
-    {
-      id:"stormpup",
-      name:"Stormpup",
-      element:"Storm",
-      baseHP:82,
-      baseAtk:23,
-      baseDef:14,
-      baseSpd:30,
-      abilities:[
-        {name:"Spark Pounce", kind:"damage", power:24, maxCharges:7},
-        {name:"Thunder Bark", kind:"damage", power:28, maxCharges:4},
-        {name:"Agility", kind:"buffSpd", amount:7, maxCharges:3}
-      ]
-    },
-    {
-      id:"voltwing",
-      name:"Voltwing",
-      element:"Storm",
-      baseHP:84,
-      baseAtk:24,
-      baseDef:15,
-      baseSpd:26,
-      abilities:[
-        {name:"Lightning Peck", kind:"damage", power:26, maxCharges:6},
-        {name:"Static Field", kind:"debuffAtk", amount:7, maxCharges:3}
-      ]
-    },
+  // Storm (2)
+  {
+    id:"stormpup",
+    name:"Stormpup",
+    emoji:"🐺",
+    element:"Storm",
+    baseHP:82,
+    baseAtk:23,
+    baseDef:14,
+    baseSpd:30,
+    abilities:[
+      {name:"Spark Pounce", kind:"damage", power:24, maxCharges:7},
+      {name:"Thunder Bark", kind:"damage", power:28, maxCharges:4},
+      {name:"Agility", kind:"buffSpd", amount:7, maxCharges:3}
+    ]
+  },
+  {
+    id:"voltwing",
+    name:"Voltwing",
+    emoji:"🦅",
+    element:"Storm",
+    baseHP:84,
+    baseAtk:24,
+    baseDef:15,
+    baseSpd:26,
+    abilities:[
+      {name:"Lightning Peck", kind:"damage", power:26, maxCharges:6},
+      {name:"Static Field", kind:"debuffAtk", amount:7, maxCharges:3}
+    ]
+  },
 
-    // Stone (2)
-    {
-      id:"boulderback",
-      name:"Boulderback",
-      element:"Stone",
-      baseHP:120,
-      baseAtk:20,
-      baseDef:26,
-      baseSpd:12,
-      abilities:[
-        {name:"Rock Slam", kind:"damage", power:26, maxCharges:6},
-        {name:"Earthen Wall", kind:"buffDef", amount:9, maxCharges:3},
-        {name:"Quake Stomp", kind:"damage", power:30, maxCharges:3}
-      ]
-    },
-    {
-      id:"pebblord",
-      name:"Pebblord",
-      element:"Stone",
-      baseHP:110,
-      baseAtk:23,
-      baseDef:24,
-      baseSpd:14,
-      abilities:[
-        {name:"Pebble Storm", kind:"damage", power:26, maxCharges:5},
-        {name:"Stone Crown", kind:"buffAtk", amount:6, maxCharges:3}
-      ]
-    },
+  // Stone (2)
+  {
+    id:"boulderback",
+    name:"Boulderback",
+    emoji:"🦔",
+    element:"Stone",
+    baseHP:120,
+    baseAtk:20,
+    baseDef:26,
+    baseSpd:12,
+    abilities:[
+      {name:"Rock Slam", kind:"damage", power:26, maxCharges:6},
+      {name:"Earthen Wall", kind:"buffDef", amount:9, maxCharges:3},
+      {name:"Quake Stomp", kind:"damage", power:30, maxCharges:3}
+    ]
+  },
+  {
+    id:"pebblord",
+    name:"Pebblord",
+    emoji:"🪨",
+    element:"Stone",
+    baseHP:110,
+    baseAtk:23,
+    baseDef:24,
+    baseSpd:14,
+    abilities:[
+      {name:"Pebble Storm", kind:"damage", power:26, maxCharges:5},
+      {name:"Stone Crown", kind:"buffAtk", amount:6, maxCharges:3}
+    ]
+  },
 
-    // =========================
-    // GREAT TIER (10)
-    // =========================
+  // =========================
+  // GREAT TIER (10)
+  // =========================
 
-    // Fire (2)
-    {
-      id:"magmafang",
-      name:"Magmafang",
-      element:"Fire",
-      baseHP:110,
-      baseAtk:30,
-      baseDef:20,
-      baseSpd:22,
-      abilities:[
-        {name:"Magma Maul", kind:"damage", power:32, maxCharges:4},
-        {name:"Lava Armor", kind:"buffDef", amount:8, maxCharges:3}
-      ]
-    },
-    {
-      id:"solaraptor",
-      name:"Solaraptor",
-      element:"Fire",
-      baseHP:105,
-      baseAtk:31,
-      baseDef:19,
-      baseSpd:26,
-      abilities:[
-        {name:"Solar Claw", kind:"damage", power:33, maxCharges:4},
-        {name:"Flare Halo", kind:"buffAtk", amount:8, maxCharges:3}
-      ]
-    },
+  // Fire (2)
+  {
+    id:"magmafang",
+    name:"Magmafang",
+    emoji:"🐲",
+    element:"Fire",
+    baseHP:110,
+    baseAtk:30,
+    baseDef:20,
+    baseSpd:22,
+    abilities:[
+      {name:"Magma Maul", kind:"damage", power:32, maxCharges:4},
+      {name:"Lava Armor", kind:"buffDef", amount:8, maxCharges:3}
+    ]
+  },
+  {
+    id:"solaraptor",
+    name:"Solaraptor",
+    emoji:"🦖",
+    element:"Fire",
+    baseHP:105,
+    baseAtk:31,
+    baseDef:19,
+    baseSpd:26,
+    abilities:[
+      {name:"Solar Claw", kind:"damage", power:33, maxCharges:4},
+      {name:"Flare Halo", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
 
-    // Water (2)
-    {
-      id:"abysslurker",
-      name:"Abysslurker",
-      element:"Water",
-      baseHP:112,
-      baseAtk:28,
-      baseDef:22,
-      baseSpd:20,
-      abilities:[
-        {name:"Abyss Bite", kind:"damage", power:32, maxCharges:4},
-        {name:"Dark Tide", kind:"damage", power:28, maxCharges:4}
-      ]
-    },
-    {
-      id:"glacialon",
-      name:"Glacialon",
-      element:"Water",
-      baseHP:108,
-      baseAtk:27,
-      baseDef:23,
-      baseSpd:21,
-      abilities:[
-        {name:"Glacier Crash", kind:"damage", power:32, maxCharges:4},
-        {name:"Frost Heal", kind:"heal", amount:34, maxCharges:3}
-      ]
-    },
+  // Water (2)
+  {
+    id:"abysslurker",
+    name:"Abysslurker",
+    emoji:"🐙",
+    element:"Water",
+    baseHP:112,
+    baseAtk:28,
+    baseDef:22,
+    baseSpd:20,
+    abilities:[
+      {name:"Abyss Bite", kind:"damage", power:32, maxCharges:4},
+      {name:"Dark Tide", kind:"damage", power:28, maxCharges:4}
+    ]
+  },
+  {
+    id:"glacialon",
+    name:"Glacialon",
+    emoji:"❄️",
+    element:"Water",
+    baseHP:108,
+    baseAtk:27,
+    baseDef:23,
+    baseSpd:21,
+    abilities:[
+      {name:"Glacier Crash", kind:"damage", power:32, maxCharges:4},
+      {name:"Frost Heal", kind:"heal", amount:34, maxCharges:3}
+    ]
+  },
 
-    // Nature (2)
-    {
-      id:"barkback",
-      name:"Barkback",
-      element:"Nature",
-      baseHP:112,
-      baseAtk:27,
-      baseDef:24,
-      baseSpd:18,
-      abilities:[
-        {name:"Trunk Smash", kind:"damage", power:30, maxCharges:4},
-        {name:"Ancient Bark", kind:"buffDef", amount:9, maxCharges:3}
-      ]
-    },
-    {
-      id:"wildbloom",
-      name:"Wildbloom",
-      element:"Nature",
-      baseHP:104,
-      baseAtk:28,
-      baseDef:22,
-      baseSpd:22,
-      abilities:[
-        {name:"Bloom Burst", kind:"damage", power:30, maxCharges:4},
-        {name:"Verdant Pulse", kind:"heal", amount:32, maxCharges:3}
-      ]
-    },
+  // Nature (2)
+  {
+    id:"barkback",
+    name:"Barkback",
+    emoji:"🌳",
+    element:"Nature",
+    baseHP:112,
+    baseAtk:27,
+    baseDef:24,
+    baseSpd:18,
+    abilities:[
+      {name:"Trunk Smash", kind:"damage", power:30, maxCharges:4},
+      {name:"Ancient Bark", kind:"buffDef", amount:9, maxCharges:3}
+    ]
+  },
+  {
+    id:"wildbloom",
+    name:"Wildbloom",
+    emoji:"🌸",
+    element:"Nature",
+    baseHP:104,
+    baseAtk:28,
+    baseDef:22,
+    baseSpd:22,
+    abilities:[
+      {name:"Bloom Burst", kind:"damage", power:30, maxCharges:4},
+      {name:"Verdant Pulse", kind:"heal", amount:32, maxCharges:3}
+    ]
+  },
 
-    // Storm (2)
-    {
-      id:"thundraptor",
-      name:"Thundraptor",
-      element:"Storm",
-      baseHP:104,
-      baseAtk:30,
-      baseDef:20,
-      baseSpd:28,
-      abilities:[
-        {name:"Thunder Claw", kind:"damage", power:33, maxCharges:4},
-        {name:"Sky Roar", kind:"buffAtk", amount:8, maxCharges:3}
-      ]
-    },
-    {
-      id:"cloudcoil",
-      name:"Cloudcoil",
-      element:"Storm",
-      baseHP:108,
-      baseAtk:27,
-      baseDef:23,
-      baseSpd:24,
-      abilities:[
-        {name:"Cloud Lash", kind:"damage", power:30, maxCharges:4},
-        {name:"Storm Veil", kind:"debuffAtk", amount:8, maxCharges:3}
-      ]
-    },
+  // Storm (2)
+  {
+    id:"thundraptor",
+    name:"Thundraptor",
+    emoji:"⚡",
+    element:"Storm",
+    baseHP:104,
+    baseAtk:30,
+    baseDef:20,
+    baseSpd:28,
+    abilities:[
+      {name:"Thunder Claw", kind:"damage", power:33, maxCharges:4},
+      {name:"Sky Roar", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
+  {
+    id:"cloudcoil",
+    name:"Cloudcoil",
+    emoji:"☁️",
+    element:"Storm",
+    baseHP:108,
+    baseAtk:27,
+    baseDef:23,
+    baseSpd:24,
+    abilities:[
+      {name:"Cloud Lash", kind:"damage", power:30, maxCharges:4},
+      {name:"Storm Veil", kind:"debuffAtk", amount:8, maxCharges:3}
+    ]
+  },
 
-    // Stone (2)
-    {
-      id:"slabtoise",
-      name:"Slabtoise",
-      element:"Stone",
-      baseHP:125,
-      baseAtk:27,
-      baseDef:28,
-      baseSpd:14,
-      abilities:[
-        {name:"Slab Crush", kind:"damage", power:32, maxCharges:4},
-        {name:"Granite Shell", kind:"buffDef", amount:10, maxCharges:3}
-      ]
-    },
-    {
-      id:"gritclaw",
-      name:"Gritclaw",
-      element:"Stone",
-      baseHP:116,
-      baseAtk:29,
-      baseDef:24,
-      baseSpd:18,
-      abilities:[
-        {name:"Rubble Rend", kind:"damage", power:31, maxCharges:4},
-        {name:"Stone Howl", kind:"buffAtk", amount:8, maxCharges:3}
-      ]
-    },
+  // Stone (2)
+  {
+    id:"slabtoise",
+    name:"Slabtoise",
+    emoji:"🐢",
+    element:"Stone",
+    baseHP:125,
+    baseAtk:27,
+    baseDef:28,
+    baseSpd:14,
+    abilities:[
+      {name:"Slab Crush", kind:"damage", power:32, maxCharges:4},
+      {name:"Granite Shell", kind:"buffDef", amount:10, maxCharges:3}
+    ]
+  },
+  {
+    id:"gritclaw",
+    name:"Gritclaw",
+    emoji:"🦴",
+    element:"Stone",
+    baseHP:116,
+    baseAtk:29,
+    baseDef:24,
+    baseSpd:18,
+    abilities:[
+      {name:"Rubble Rend", kind:"damage", power:31, maxCharges:4},
+      {name:"Stone Howl", kind:"buffAtk", amount:8, maxCharges:3}
+    ]
+  },
 
-    // =========================
-    // LEGENDARY TIER (10)
-    // =========================
+  // =========================
+  // LEGENDARY TIER (10)
+  // =========================
 
-    // Fire (2)
-    {
-      id:"infernotitan",
-      name:"Infernotitan",
-      element:"Fire",
-      baseHP:138,
-      baseAtk:38,
-      baseDef:28,
-      baseSpd:26,
-      abilities:[
-        {name:"Titan Blaze", kind:"damage", power:40, maxCharges:3},
-        {name:"Worldfire Aura", kind:"buffAtk", amount:10, maxCharges:2}
-      ]
-    },
-    {
-      id:"phoenixflare",
-      name:"Phoenixflare",
-      element:"Fire",
-      baseHP:130,
-      baseAtk:36,
-      baseDef:26,
-      baseSpd:30,
-      abilities:[
-        {name:"Phoenix Dive", kind:"damage", power:38, maxCharges:3},
-        {name:"Rebirth Flame", kind:"heal", amount:40, maxCharges:2}
-      ]
-    },
+  // Fire (2)
+  {
+    id:"infernotitan",
+    name:"Infernotitan",
+    emoji:"🌋",
+    element:"Fire",
+    baseHP:138,
+    baseAtk:38,
+    baseDef:28,
+    baseSpd:26,
+    abilities:[
+      {name:"Titan Blaze", kind:"damage", power:40, maxCharges:3},
+      {name:"Worldfire Aura", kind:"buffAtk", amount:10, maxCharges:2}
+    ]
+  },
+  {
+    id:"phoenixflare",
+    name:"Phoenixflare",
+    emoji:"🔥",
+    element:"Fire",
+    baseHP:130,
+    baseAtk:36,
+    baseDef:26,
+    baseSpd:30,
+    abilities:[
+      {name:"Phoenix Dive", kind:"damage", power:38, maxCharges:3},
+      {name:"Rebirth Flame", kind:"heal", amount:40, maxCharges:2}
+    ]
+  },
 
-    // Water (2)
-    {
-      id:"leviadrake",
-      name:"Leviadrake",
-      element:"Water",
-      baseHP:140,
-      baseAtk:37,
-      baseDef:30,
-      baseSpd:24,
-      abilities:[
-        {name:"Leviathan Crush", kind:"damage", power:40, maxCharges:3},
-        {name:"Abyssal Shield", kind:"buffDef", amount:11, maxCharges:2}
-      ]
-    },
-    {
-      id:"maelstromwyrm",
-      name:"Maelstromwyrm",
-      element:"Water",
-      baseHP:132,
-      baseAtk:36,
-      baseDef:28,
-      baseSpd:28,
-      abilities:[
-        {name:"Maelstrom Coil", kind:"damage", power:38, maxCharges:3},
-        {name:"Ocean's Grace", kind:"heal", amount:40, maxCharges:2}
-      ]
-    },
+  // Water (2)
+  {
+    id:"leviadrake",
+    name:"Leviadrake",
+    emoji:"🐉",
+    element:"Water",
+    baseHP:140,
+    baseAtk:37,
+    baseDef:30,
+    baseSpd:24,
+    abilities:[
+      {name:"Leviathan Crush", kind:"damage", power:40, maxCharges:3},
+      {name:"Abyssal Shield", kind:"buffDef", amount:11, maxCharges:2}
+    ]
+  },
+  {
+    id:"maelstromwyrm",
+    name:"Maelstromwyrm",
+    emoji:"🌊",
+    element:"Water",
+    baseHP:132,
+    baseAtk:36,
+    baseDef:28,
+    baseSpd:28,
+    abilities:[
+      {name:"Maelstrom Coil", kind:"damage", power:38, maxCharges:3},
+      {name:"Ocean's Grace", kind:"heal", amount:40, maxCharges:2}
+    ]
+  },
 
-    // Nature (2)
-    {
-      id:"worldroot",
-      name:"Worldroot",
-      element:"Nature",
-      baseHP:142,
-      baseAtk:35,
-      baseDef:32,
-      baseSpd:22,
-      abilities:[
-        {name:"Root of Ages", kind:"damage", power:38, maxCharges:3},
-        {name:"Gaia's Embrace", kind:"heal", amount:42, maxCharges:2}
-      ]
-    },
-    {
-      id:"sylphqueen",
-      name:"Sylphqueen",
-      element:"Nature",
-      baseHP:130,
-      baseAtk:34,
-      baseDef:28,
-      baseSpd:30,
-      abilities:[
-        {name:"Sylph Ray", kind:"damage", power:36, maxCharges:3},
-        {name:"Royal Bloom", kind:"buffAtk", amount:9, maxCharges:2}
-      ]
-    },
+  // Nature (2)
+  {
+    id:"worldroot",
+    name:"Worldroot",
+    emoji:"🪴",
+    element:"Nature",
+    baseHP:142,
+    baseAtk:35,
+    baseDef:32,
+    baseSpd:22,
+    abilities:[
+      {name:"Root of Ages", kind:"damage", power:38, maxCharges:3},
+      {name:"Gaia's Embrace", kind:"heal", amount:42, maxCharges:2}
+    ]
+  },
+  {
+    id:"sylphqueen",
+    name:"Sylphqueen",
+    emoji:"👑",
+    element:"Nature",
+    baseHP:130,
+    baseAtk:34,
+    baseDef:28,
+    baseSpd:30,
+    abilities:[
+      {name:"Sylph Ray", kind:"damage", power:36, maxCharges:3},
+      {name:"Royal Bloom", kind:"buffAtk", amount:9, maxCharges:2}
+    ]
+  },
 
-    // Storm (2)
-    {
-      id:"skytyrant",
-      name:"Skytyrant",
-      element:"Storm",
-      baseHP:134,
-      baseAtk:37,
-      baseDef:27,
-      baseSpd:32,
-      abilities:[
-        {name:"Tyrant Bolt", kind:"damage", power:40, maxCharges:3},
-        {name:"Storm Dominion", kind:"buffSpd", amount:10, maxCharges:2}
-      ]
-    },
-    {
-      id:"tempestlion",
-      name:"Tempestlion",
-      element:"Storm",
-      baseHP:136,
-      baseAtk:38,
-      baseDef:29,
-      baseSpd:30,
-      abilities:[
-        {name:"Tempest Fang", kind:"damage", power:39, maxCharges:3},
-        {name:"Thunder Roar", kind:"debuffDef", amount:10, maxCharges:2}
-      ]
-    },
+  // Storm (2)
+  {
+    id:"skytyrant",
+    name:"Skytyrant",
+    emoji:"🌪️",
+    element:"Storm",
+    baseHP:134,
+    baseAtk:37,
+    baseDef:27,
+    baseSpd:32,
+    abilities:[
+      {name:"Tyrant Bolt", kind:"damage", power:40, maxCharges:3},
+      {name:"Storm Dominion", kind:"buffSpd", amount:10, maxCharges:2}
+    ]
+  },
+  {
+    id:"tempestlion",
+    name:"Tempestlion",
+    emoji:"🦁",
+    element:"Storm",
+    baseHP:136,
+    baseAtk:38,
+    baseDef:29,
+    baseSpd:30,
+    abilities:[
+      {name:"Tempest Fang", kind:"damage", power:39, maxCharges:3},
+      {name:"Thunder Roar", kind:"debuffDef", amount:10, maxCharges:2}
+    ]
+  },
 
-    // Stone (2)
-    {
-      id:"colossogolem",
-      name:"Colossogolem",
-      element:"Stone",
-      baseHP:150,
-      baseAtk:36,
-      baseDef:34,
-      baseSpd:22,
-      abilities:[
-        {name:"Colossal Slam", kind:"damage", power:40, maxCharges:3},
-        {name:"Mountain Core", kind:"buffDef", amount:12, maxCharges:2}
-      ]
-    },
-    {
-      id:"aurorite",
-      name:"Aurorite",
-      element:"Stone",
-      baseHP:140,
-      baseAtk:35,
-      baseDef:32,
-      baseSpd:24,
-      abilities:[
-        {name:"Aurora Shatter", kind:"damage", power:38, maxCharges:3},
-        {name:"Crystal Radiance", kind:"buffAtk", amount:10, maxCharges:2}
-      ]
-    }
-  ];
+  // Stone (2)
+  {
+    id:"colossogolem",
+    name:"Colossogolem",
+    emoji:"🏔️",
+    element:"Stone",
+    baseHP:150,
+    baseAtk:36,
+    baseDef:34,
+    baseSpd:22,
+    abilities:[
+      {name:"Colossal Slam", kind:"damage", power:40, maxCharges:3},
+      {name:"Mountain Core", kind:"buffDef", amount:12, maxCharges:2}
+    ]
+  },
+  {
+    id:"aurorite",
+    name:"Aurorite",
+    emoji:"💎",
+    element:"Stone",
+    baseHP:140,
+    baseAtk:35,
+    baseDef:32,
+    baseSpd:24,
+    abilities:[
+      {name:"Aurora Shatter", kind:"damage", power:38, maxCharges:3},
+      {name:"Crystal Radiance", kind:"buffAtk", amount:10, maxCharges:2}
+    ]
+  }
+     // =========================
+  // MYTHIC TIER (10)
+  // =========================
+
+  // Fire (2)
+  {
+    id:"starflare",
+    name:"Starflare",
+    emoji:"🌠",
+    element:"Fire",
+    baseHP:142,
+    baseAtk:40,
+    baseDef:30,
+    baseSpd:32,
+    abilities:[
+      {name:"Meteor Rush", kind:"damage", power:42, maxCharges:3},
+      {name:"Solar Mantle", kind:"buffDef", amount:11, maxCharges:2}
+    ]
+  },
+  {
+    id:"pyrorex",
+    name:"Pyrorex",
+    emoji:"🐉",
+    element:"Fire",
+    baseHP:148,
+    baseAtk:42,
+    baseDef:29,
+    baseSpd:30,
+    abilities:[
+      {name:"Royal Flame", kind:"damage", power:44, maxCharges:3},
+      {name:"Crown of Cinders", kind:"buffAtk", amount:11, maxCharges:2}
+    ]
+  },
+
+  // Water (2)
+  {
+    id:"tidalseraph",
+    name:"Tidalseraph",
+    emoji:"🔱",
+    element:"Water",
+    baseHP:146,
+    baseAtk:38,
+    baseDef:32,
+    baseSpd:30,
+    abilities:[
+      {name:"Seraph Wave", kind:"damage", power:42, maxCharges:3},
+      {name:"Ocean Blessing", kind:"heal", amount:44, maxCharges:2}
+    ]
+  },
+  {
+    id:"rimeserpent",
+    name:"Rimeserpent",
+    emoji:"🐍",
+    element:"Water",
+    baseHP:140,
+    baseAtk:39,
+    baseDef:31,
+    baseSpd:32,
+    abilities:[
+      {name:"Rime Coil", kind:"damage", power:41, maxCharges:3},
+      {name:"Glacial Scales", kind:"buffDef", amount:11, maxCharges:2}
+    ]
+  },
+
+  // Nature (2)
+  {
+    id:"heartgrove",
+    name:"Heartgrove",
+    emoji:"🌲",
+    element:"Nature",
+    baseHP:150,
+    baseAtk:37,
+    baseDef:34,
+    baseSpd:26,
+    abilities:[
+      {name:"Heartwood Crush", kind:"damage", power:41, maxCharges:3},
+      {name:"Forest’s Oath", kind:"heal", amount:44, maxCharges:2}
+    ]
+  },
+  {
+    id:"thornempress",
+    name:"Thornempress",
+    emoji:"🌹",
+    element:"Nature",
+    baseHP:144,
+    baseAtk:40,
+    baseDef:32,
+    baseSpd:30,
+    abilities:[
+      {name:"Regal Thorn", kind:"damage", power:42, maxCharges:3},
+      {name:"Briar Court", kind:"buffAtk", amount:10, maxCharges:2}
+    ]
+  },
+
+  // Storm (2)
+  {
+    id:"voltseraph",
+    name:"Voltseraph",
+    emoji:"⚡",
+    element:"Storm",
+    baseHP:140,
+    baseAtk:41,
+    baseDef:30,
+    baseSpd:34,
+    abilities:[
+      {name:"Judgment Bolt", kind:"damage", power:43, maxCharges:3},
+      {name:"Halo of Speed", kind:"buffSpd", amount:11, maxCharges:2}
+    ]
+  },
+  {
+    id:"stormchimera",
+    name:"Stormchimera",
+    emoji:"🌀",
+    element:"Storm",
+    baseHP:138,
+    baseAtk:42,
+    baseDef:29,
+    baseSpd:33,
+    abilities:[
+      {name:"Cyclone Maw", kind:"damage", power:43, maxCharges:3},
+      {name:"Tempest Shroud", kind:"debuffDef", amount:11, maxCharges:2}
+    ]
+  },
+
+  // Stone (2)
+  {
+    id:"obsidigon",
+    name:"Obsidigon",
+    emoji:"🗿",
+    element:"Stone",
+    baseHP:156,
+    baseAtk:38,
+    baseDef:36,
+    baseSpd:24,
+    abilities:[
+      {name:"Obsidian Crash", kind:"damage", power:42, maxCharges:3},
+      {name:"Blackglass Bulwark", kind:"buffDef", amount:12, maxCharges:2}
+    ]
+  },
+  {
+    id:"runebastion",
+    name:"Runebastion",
+    emoji:"🧱",
+    element:"Stone",
+    baseHP:152,
+    baseAtk:39,
+    baseDef:35,
+    baseSpd:26,
+    abilities:[
+      {name:"Runequake", kind:"damage", power:41, maxCharges:3},
+      {name:"Sigil Fortress", kind:"buffAtk", amount:11, maxCharges:2}
+    ]
+  }
+];
+
+];
+
 
   function cloneAbilities(abilities){
     return abilities.map(a => ({
@@ -1255,33 +1557,46 @@
       charges:a.maxCharges ?? 3
     }));
   }
+function getSpeciesEmoji(critter){
+  if(!critter) return "❓";
+  const spec = SPECIES.find(s => s.id === critter.speciesId);
+  return spec && spec.emoji ? spec.emoji : "❓";
+}
 
   function createCritterFromSpecies(specId, level){
-    const s = SPECIES.find(sp=>sp.id===specId);
-    if(!s) throw new Error("Unknown species "+specId);
-    const lvlFactor = 1 + (level-1)*0.08;
-    return {
-      speciesId:s.id,
-      name:s.name,
-      element:s.element,
-      level,
-      maxHP:Math.round(s.baseHP*lvlFactor),
-      currentHP:Math.round(s.baseHP*lvlFactor),
-      atk:Math.round(s.baseAtk*lvlFactor),
-      def:Math.round(s.baseDef*lvlFactor),
-      spd:Math.round(s.baseSpd*lvlFactor),
-      xp:0,
-      xpToNext:25 + level*15,
-      abilities:cloneAbilities(s.abilities)
-    };
-  }
+  const s = SPECIES.find(sp=>sp.id===specId);
+  if(!s) throw new Error("Unknown species "+specId);
+  const lvlFactor = 1 + (level-1)*0.08;
+  return {
+    speciesId:s.id,
+    name:s.name,
+    emoji:s.emoji || "❓",   // <-- add this line
+    element:s.element,
+    level,
+    maxHP:Math.round(s.baseHP*lvlFactor),
+    currentHP:Math.round(s.baseHP*lvlFactor),
+    atk:Math.round(s.baseAtk*lvlFactor),
+    def:Math.round(s.baseDef*lvlFactor),
+    spd:Math.round(s.baseSpd*lvlFactor),
+    xp:0,
+    xpToNext:25 + level*15,
+    abilities:cloneAbilities(s.abilities)
+  };
+}
+
+  
 
   // ----------------------------------------
   // Map generation
   // ----------------------------------------
 
-  const MAP_W = 40;
-  const MAP_H = 40;
+ const MAP_W = 40;
+const MAP_H = 40;
+
+// Size of the camera window in tiles
+const VIEW_W = 9;
+const VIEW_H = 9;
+
 
   function generateMap(){
     const tiles = [];
@@ -1381,52 +1696,66 @@
   }
 
   function getVisibleWindow(){
-    if(!gameState) return {x0:0,y0:0};
-    const {playerX, playerY} = gameState.map;
-    let x0 = playerX - 7;
-    let y0 = playerY - 7;
-    if(x0<0) x0=0;
-    if(y0<0) y0=0;
-    if(x0>MAP_W-15) x0=MAP_W-15;
-    if(y0>MAP_H-15) y0=MAP_H-15;
-    return {x0,y0};
+  if(!gameState) return {x0:0,y0:0};
+  const {playerX, playerY} = gameState.map;
+
+  const halfW = Math.floor(VIEW_W/2);
+  const halfH = Math.floor(VIEW_H/2);
+
+  let x0 = playerX - halfW;
+  let y0 = playerY - halfH;
+
+  if(x0 < 0) x0 = 0;
+  if(y0 < 0) y0 = 0;
+  if(x0 > MAP_W - VIEW_W) x0 = MAP_W - VIEW_W;
+  if(y0 > MAP_H - VIEW_H) y0 = MAP_H - VIEW_H;
+
+  return {x0,y0};
+}
+
+
+ function renderMap(){
+  mapViewEl.innerHTML = "";
+  if(!gameState){
+    // placeholder when no game is loaded
+    for(let i=0;i<VIEW_W*VIEW_H;i++){
+      const d=document.createElement("div");
+      d.className="tile zone4";
+      mapViewEl.appendChild(d);
+    }
+    return;
   }
 
-  function renderMap(){
-    mapViewEl.innerHTML = "";
-    if(!gameState){
-      for(let i=0;i<225;i++){
-        const d=document.createElement("div");
-        d.className="tile zone4";
-        mapViewEl.appendChild(d);
+  const {x0,y0} = getVisibleWindow();
+  const {playerX, playerY} = gameState.map;
+
+  for(let yy=0; yy<VIEW_H; yy++){
+    for(let xx=0; xx<VIEW_W; xx++){
+      const gx = x0 + xx;
+      const gy = y0 + yy;
+      const tile = gameState.map.tiles[gy][gx];
+
+      const d = document.createElement("div");
+      d.className = `tile zone${tile.zoneColorIndex}`;
+      if(tile.feature) d.classList.add(tile.feature);
+      d.dataset.gx = gx;
+      d.dataset.gy = gy;
+      d.addEventListener("click", ()=>onTileClick(gx,gy));
+
+      // player marker
+      if(gx===playerX && gy===playerY){
+        const pm = document.createElement("div");
+        pm.className="playerMarker";
+        pm.innerHTML="<span>🧍</span>";
+        d.appendChild(pm);
       }
-      return;
+
+      mapViewEl.appendChild(d);
     }
-    const {x0,y0} = getVisibleWindow();
-    const {playerX, playerY} = gameState.map;
-    for(let yy=0; yy<15; yy++){
-      for(let xx=0; xx<15; xx++){
-        const gx = x0+xx;
-        const gy = y0+yy;
-        const tile = gameState.map.tiles[gy][gx];
-        const d = document.createElement("div");
-        d.className = `tile zone${tile.zoneColorIndex}`;
-        if(tile.feature) d.classList.add(tile.feature);
-        d.dataset.gx = gx;
-        d.dataset.gy = gy;
-        d.addEventListener("click", ()=>onTileClick(gx,gy));
-        // player marker
-        if(gx===playerX && gy===playerY){
-          const pm = document.createElement("div");
-          pm.className="playerMarker";
-          pm.innerHTML="<span>🧍</span>";
-          d.appendChild(pm);
-        }
-        mapViewEl.appendChild(d);
-      }
-    }
-    renderHUD();
   }
+  renderHUD();
+}
+
 
   function centerOnPlayer(){
     renderMap(); // already centers based on player
@@ -1482,16 +1811,53 @@
     }
   }
 
-  function randomSpeciesForZone(zoneType){
-    const pool = SPECIES.filter(s=>{
-      if(zoneType==="Forest") return s.element==="Nature" || s.element==="Fire";
-      if(zoneType==="Riverlands") return s.element==="Water" || s.element==="Storm";
-      if(zoneType==="Highlands") return s.element==="Stone" || s.element==="Fire";
-      if(zoneType==="Ruins") return s.element==="Stone" || s.element==="Storm";
-      return true;
-    });
-    return pool[Math.floor(Math.random()*pool.length)];
+ function randomSpeciesForZone(zoneType){
+  // 1) Filter by zone like before
+  const pool = SPECIES.filter(s=>{
+    if(zoneType==="Forest")     return s.element==="Nature" || s.element==="Fire";
+    if(zoneType==="Riverlands") return s.element==="Water"  || s.element==="Storm";
+    if(zoneType==="Highlands")  return s.element==="Stone"  || s.element==="Fire";
+    if(zoneType==="Ruins")      return s.element==="Stone"  || s.element==="Storm";
+    return true;
+  });
+
+  // Fallback: if somehow empty, just pick any
+  if(!pool.length){
+    return SPECIES[Math.floor(Math.random()*SPECIES.length)];
   }
+
+  // 2) Compute average base stats for each species in the pool
+  let minAvg = Infinity;
+  let maxAvg = -Infinity;
+  const meta = pool.map(s=>{
+    const avg = (s.baseHP + s.baseAtk + s.baseDef + s.baseSpd) / 4;
+    if(avg < minAvg) minAvg = avg;
+    if(avg > maxAvg) maxAvg = avg;
+    return { species: s, avg };
+  });
+
+  // 3) Convert stat average into a "weakness" score:
+  //    weaker = bigger weakness = HIGHER chance
+  //    stronger = smaller weakness = LOWER chance
+  const EPS = 1; // prevents zero weight for the strongest
+  const weights = meta.map(m=>{
+    const weakness = (maxAvg - m.avg) + EPS;
+    // square it so weak mons get a big boost
+    return weakness * weakness;
+  });
+
+  // 4) Weighted random pick
+  const totalWeight = weights.reduce((a,b)=>a+b,0);
+  let r = Math.random() * totalWeight;
+  for(let i=0; i<meta.length; i++){
+    r -= weights[i];
+    if(r <= 0){
+      return meta[i].species;
+    }
+  }
+  // Safety fallback
+  return meta[meta.length-1].species;
+}
 
   function startWildEncounter(tile){
     const roster = gameState.player.roster || [];
@@ -1552,37 +1918,54 @@
     return battleState.enemyTeam[battleState.activeEnemyIdx];
   }
 
-  function renderBattle(){
-    const pc = activePlayerCritter();
-    const ec = activeEnemyCritter();
-    if(!pc || !ec){
-      endBattle();
-      return;
-    }
-    battleTitleEl.textContent = battleState.mode==="arena" ? "Arena Battle" : "Wild Encounter";
-    battleBodyEl.innerHTML="";
-    const hero = document.createElement("div");
-    hero.innerHTML = `
-      <div class="sectionTitle">Your Critter</div>
-      <div class="battleStats">
+ function renderBattle(){
+  const pc = activePlayerCritter();
+  const ec = activeEnemyCritter();
+  if(!pc || !ec){
+    endBattle();
+    return;
+  }
+
+  const pcEmoji = pc.emoji || getSpeciesEmoji(pc);
+  const ecEmoji = ec.emoji || getSpeciesEmoji(ec);
+
+  battleTitleEl.textContent = battleState.mode==="arena" ? "Arena Battle" : "Wild Encounter";
+  battleBodyEl.innerHTML="";
+  const hero = document.createElement("div");
+  hero.innerHTML = `
+    <div class="sectionTitle">Your Critter</div>
+    <div class="battleStats">
+      <div style="flex:1;display:flex;gap:8px;align-items:flex-start;">
+        <div style="font-size:26px;line-height:1;">${pcEmoji}</div>
         <div style="flex:1;">
-          <strong>${pc.name}</strong> <span class="badge">Lv ${pc.level}</span>
+          <strong>${pc.name}</strong>
+          <span class="badge">Lv ${pc.level}</span>
           <span class="badge">${pc.element}</span>
-          <div class="hpBar"><div class="hpFill" style="width:${Math.max(0,pc.currentHP)/pc.maxHP*100}%"></div></div>
+          <div class="hpBar">
+            <div class="hpFill" style="width:${Math.max(0,pc.currentHP)/pc.maxHP*100}%"></div>
+          </div>
           <div style="font-size:11px;margin-top:2px;">HP ${pc.currentHP}/${pc.maxHP}</div>
         </div>
       </div>
-      <div class="sectionTitle">Enemy</div>
-      <div class="battleStats">
+    </div>
+
+    <div class="sectionTitle">Enemy</div>
+    <div class="battleStats">
+      <div style="flex:1;display:flex;gap:8px;align-items:flex-start;">
+        <div style="font-size:26px;line-height:1;">${ecEmoji}</div>
         <div style="flex:1;">
-          <strong>${ec.name}</strong> <span class="badge">Lv ${ec.level}</span>
+          <strong>${ec.name}</strong>
+          <span class="badge">Lv ${ec.level}</span>
           <span class="badge">${ec.element}</span>
-          <div class="hpBar"><div class="hpFill" style="width:${Math.max(0,ec.currentHP)/ec.maxHP*100}%"></div></div>
+          <div class="hpBar">
+            <div class="hpFill" style="width:${Math.max(0,ec.currentHP)/ec.maxHP*100}%"></div>
+          </div>
           <div style="font-size:11px;margin-top:2px;">HP ${ec.currentHP}/${ec.maxHP}</div>
         </div>
       </div>
-    `;
-    battleBodyEl.appendChild(hero);
+    </div>
+  `;
+  battleBodyEl.appendChild(hero);
 
     const histTitle = document.createElement("div");
     histTitle.className="sectionTitle";
@@ -2459,6 +2842,7 @@
 </script>
 </body>
 </html>
+
 
 
 
