@@ -1576,42 +1576,49 @@
 
 
 
-  function cloneAbilities(abilities){
-    return abilities.map(a => ({
-      name:a.name,
-      kind:a.kind,
-      power:a.power ?? 0,
-      amount:a.amount ?? 0,
-      maxCharges:a.maxCharges ?? 3,
-      charges:a.maxCharges ?? 3
-    }));
-  }
+  function cloneAbilities(abilities, fallbackElement){
+  return abilities.map(a => ({
+    name: a.name,
+    kind: a.kind,
+    power: a.power ?? 0,
+    amount: a.amount ?? 0,
+    maxCharges: a.maxCharges ?? 3,
+    charges: a.maxCharges ?? 3,
+    // 👇 NEW: element per move; falls back to species element if provided
+    element: a.element ?? fallbackElement ?? null
+  }));
+}
 function getSpeciesEmoji(critter){
   if(!critter) return "❓";
   const spec = SPECIES.find(s => s.id === critter.speciesId);
   return spec && spec.emoji ? spec.emoji : "❓";
 }
 
-  function createCritterFromSpecies(specId, level){
-  const s = SPECIES.find(sp=>sp.id===specId);
-  if(!s) throw new Error("Unknown species "+specId);
-  const lvlFactor = 1 + (level-1)*0.08;
+function createCritterFromSpecies(specId, level){
+  const s = SPECIES.find(sp => sp.id === specId);
+  if (!s) throw new Error("Unknown species " + specId);
+
+  const lvlFactor = 1 + (level - 1) * 0.08;
+  const maxHP = Math.round(s.baseHP * lvlFactor);
+
   return {
-    speciesId:s.id,
-    name:s.name,
-    emoji:s.emoji || "❓",   // <-- add this line
-    element:s.element,
+    speciesId: s.id,
+    name: s.name,
+    emoji: s.emoji || "❓",
+    element: s.element,
     level,
-    maxHP:Math.round(s.baseHP*lvlFactor),
-    currentHP:Math.round(s.baseHP*lvlFactor),
-    atk:Math.round(s.baseAtk*lvlFactor),
-    def:Math.round(s.baseDef*lvlFactor),
-    spd:Math.round(s.baseSpd*lvlFactor),
-    xp:0,
-    xpToNext:25 + level*15,
-    abilities:cloneAbilities(s.abilities)
+    maxHP,
+    currentHP: maxHP,
+    atk: Math.round(s.baseAtk * lvlFactor),
+    def: Math.round(s.baseDef * lvlFactor),
+    spd: Math.round(s.baseSpd * lvlFactor),
+    xp: 0,
+    xpToNext: 25 + level * 15,
+    // 👇 pass the species element so abilities inherit it if they don't have their own
+    abilities: cloneAbilities(s.abilities, s.element)
   };
 }
+
 
   
 
@@ -3287,6 +3294,7 @@ onAuthStateChanged(auth, async user=>{
 </script>
 </body>
 </html>
+
 
 
 
