@@ -516,6 +516,22 @@
         </div>
       </div>
     </div>
+    <!-- Roster / Critters overlay -->
+<div id="rosterOverlay" class="overlay">
+  <div class="panel">
+    <div class="panelHeader">
+      <h2>Your Critters</h2>
+      <button class="secondary" id="btnRosterClose">X</button>
+    </div>
+    <div class="panelBody" id="rosterBody">
+      <!-- Filled by JS -->
+    </div>
+    <div class="panelFooter">
+      <button class="secondary" id="btnRosterBack">Back</button>
+    </div>
+  </div>
+</div>
+
 
     <!-- Game Over overlay -->
     <div id="gameOverOverlay" class="overlay">
@@ -555,6 +571,7 @@
       <button class="secondary" id="btnQuickLoad" style="font-size:11px;">Load</button>
       <button id="btnQuickSave" style="font-size:11px;">Save</button>
       <button class="secondary" id="btnCenter" style="font-size:11px;">Center on Player</button>
+      <button class="secondary" id="btnRoster" style="font-size:11px;">Critters</button>
     </div>
     <div id="log"></div>
     <div id="footer">
@@ -1665,6 +1682,111 @@ const VIEW_H = 9;
   // ----------------------------------------
   // Rendering: map & HUD
   // ----------------------------------------
+
+  // ----------------------------------------
+// Roster / Critters overlay
+// ----------------------------------------
+const rosterOverlay = document.getElementById("rosterOverlay");
+const rosterBody    = document.getElementById("rosterBody");
+const btnRoster     = document.getElementById("btnRoster");
+const btnRosterClose= document.getElementById("btnRosterClose");
+const btnRosterBack = document.getElementById("btnRosterBack");
+
+if(btnRoster){
+  btnRoster.onclick = () => {
+    if(!gameState || !gameState.player){
+      addLog("System","No save loaded yet.");
+      return;
+    }
+    openRoster();
+  };
+}
+if(btnRosterClose) btnRosterClose.onclick = closeRoster;
+if(btnRosterBack)  btnRosterBack.onclick  = closeRoster;
+
+function openRoster(){
+  renderRoster();
+  rosterOverlay.classList.add("visible");
+}
+
+function closeRoster(){
+  rosterOverlay.classList.remove("visible");
+}
+
+function renderRoster(){
+  if(!gameState || !gameState.player){
+    rosterBody.innerHTML = `<p style="font-size:12px;color:var(--muted);">No game loaded.</p>`;
+    return;
+  }
+  const p = gameState.player;
+  const roster = p.roster || [];
+
+  if(!roster.length){
+    rosterBody.innerHTML = `<p style="font-size:12px;color:var(--muted);">You don't have any critters yet.</p>`;
+    return;
+  }
+
+  rosterBody.innerHTML = "";
+
+  // Small summary at the top
+  const summary = document.createElement("div");
+  summary.style.fontSize = "12px";
+  summary.style.marginBottom = "6px";
+  summary.style.color = "var(--muted)";
+  summary.textContent = `Total critters: ${roster.length}`;
+  rosterBody.appendChild(summary);
+
+  // Sort: highest level first, then by name
+  const sorted = [...roster].sort((a,b)=>{
+    if(b.level !== a.level) return b.level - a.level;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+
+  sorted.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "listItem";
+    
+    const left = document.createElement("div");
+    const emoji = c.emoji || "❓";
+
+    left.innerHTML = `
+      <div>
+        <strong>${emoji} ${c.name}</strong>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+        Lv ${c.level} • ${c.element} • HP ${c.currentHP}/${c.maxHP}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+        ATK ${c.atk} • DEF ${c.def} • SPD ${c.spd}
+      </div>
+    `;
+
+    // Right: tiny list of abilities
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.flexDirection = "column";
+    right.style.alignItems = "flex-end";
+    right.style.gap = "2px";
+
+    const abilitiesLabel = document.createElement("div");
+    abilitiesLabel.style.fontSize = "10px";
+    abilitiesLabel.style.color = "var(--muted)";
+    abilitiesLabel.textContent = "Abilities:";
+    right.appendChild(abilitiesLabel);
+
+    (c.abilities || []).slice(0,3).forEach(ab => {
+      const aRow = document.createElement("div");
+      aRow.style.fontSize = "10px";
+      aRow.textContent = ab.name;
+      right.appendChild(aRow);
+    });
+
+    row.appendChild(left);
+    row.appendChild(right);
+    rosterBody.appendChild(row);
+  });
+}
+
   const mapViewEl = document.getElementById("mapView");
 
   function renderHUD(){
@@ -2897,6 +3019,7 @@ const VIEW_H = 9;
 </script>
 </body>
 </html>
+
 
 
 
