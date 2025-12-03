@@ -436,6 +436,11 @@
     #battleFooter button{
       flex:1 1 100%;
     }
+    #shopBody{
+  max-height:60vh;        /* keeps header/footer visible on most screens */
+  overflow-y:auto;
+  padding-right:4px;      /* little space for scrollbar */
+}
   }
 </style>
 </head>
@@ -2379,95 +2384,146 @@ const VIEW_H = 9;
     }
   }
 
-  function renderShop(){
-    const p = gameState.player;
-    shopBody.innerHTML="";
-    const moneyRow=document.createElement("div");
-    moneyRow.className="row";
-    moneyRow.innerHTML=`<strong>Money:</strong><span>$${p.money}</span>`;
-    shopBody.appendChild(moneyRow);
+ function renderShop(){
+  if(!gameState) return;
+  const p = gameState.player;
 
-    const itemsTitle=document.createElement("div");
-    itemsTitle.className="sectionTitle";
-    itemsTitle.textContent="Buy Items";
-    shopBody.appendChild(itemsTitle);
+  shopBody.innerHTML = "";
 
-    function addBuyRow(label, price, key){
-      const row=document.createElement("div");
-      row.className="listItem";
-      row.innerHTML=`<div>${label} <span style="color:var(--muted);font-size:11px;">$${price}</span></div>`;
-      const btn=document.createElement("button");
-      btn.className="secondary";
-      btn.textContent="Buy";
-      btn.disabled = p.money<price;
-      btn.onclick=()=>{
-        if(p.money<price) return;
-        p.money-=price;
-        if(key==="potion") p.potions++;
-        else if(key==="basicBall") p.balls.basic++;
-        else if(key==="greatBall") p.balls.great++;
-        else if(key==="ultraBall") p.balls.ultra++;
-        addLog("Shop",`Bought 1 ${label}.`);
-        renderShop();
-        renderHUD();
-        autoSaveDebounced();
-      };
-      row.appendChild(btn);
-      shopBody.appendChild(row);
-    }
-    addBuyRow("Healing Potion",SHOP_PRICES.potion,"potion");
-    addBuyRow("Capture Ball",SHOP_PRICES.basicBall,"basicBall");
-    addBuyRow("Great Capture Ball",SHOP_PRICES.greatBall,"greatBall");
-    addBuyRow("Ultra Capture Ball",SHOP_PRICES.ultraBall,"ultraBall");
+  // Money row
+  const moneyRow = document.createElement("div");
+  moneyRow.className = "row";
+  moneyRow.innerHTML = `<strong>Money:</strong><span>$${p.money}</span>`;
+  shopBody.appendChild(moneyRow);
 
-    const sellTitle=document.createElement("div");
-    sellTitle.className="sectionTitle";
-    sellTitle.textContent="Sell Critters";
-    sellTitle.style.marginTop="8px";
-    shopBody.appendChild(sellTitle);
+  // Buy items section (unchanged)
+  const itemsTitle = document.createElement("div");
+  itemsTitle.className = "sectionTitle";
+  itemsTitle.textContent = "Buy Items";
+  shopBody.appendChild(itemsTitle);
 
-    if(!p.roster.length){
-      const msg=document.createElement("div");
-      msg.style.fontSize="11px";
-      msg.style.color="var(--muted)";
-      msg.textContent="You have no critters to sell.";
-      shopBody.appendChild(msg);
-    }else{
-      p.roster.forEach((c,idx)=>{
-        const base = 60 + c.level*25;
-        const elemBonus = c.element==="Fire"||c.element==="Storm" ? 20 :
-                          c.element==="Stone" ? 30 : 10;
-        const price = base+elemBonus;
-        const row=document.createElement("div");
-        row.className="listItem";
-        const left=document.createElement("div");
-        left.innerHTML=`<strong>${c.name}</strong> <span style="font-size:11px;color:var(--muted);">Lv ${c.level} • ${c.element}</span>`;
-        const right=document.createElement("div");
-        right.style.display="flex";
-        right.style.alignItems="center";
-        right.style.gap="6px";
-        const val=document.createElement("span");
-        val.style.fontSize="11px";
-        val.textContent=`$${price}`;
-        const btn=document.createElement("button");
-        btn.className="danger";
-        btn.textContent="Sell";
-        btn.onclick=()=>{
-          p.money += price;
-          p.roster.splice(idx,1);
-          addLog("Shop",`Sold ${c.name} for $${price}.`);
-          renderShop();
-          renderHUD();
-          autoSaveDebounced();
-        };
-        right.appendChild(val);
-        right.appendChild(btn);
-        row.appendChild(left);
-        row.appendChild(right);
-        shopBody.appendChild(row);
-      });
-    }
+  function addBuyRow(label, price, key){
+    const row = document.createElement("div");
+    row.className = "listItem";
+    row.innerHTML = `<div>${label} <span style="color:var(--muted);font-size:11px;">$${price}</span></div>`;
+    const btn = document.createElement("button");
+    btn.className = "secondary";
+    btn.textContent = "Buy";
+    btn.disabled = p.money < price;
+    btn.onclick = () => {
+      if(p.money < price) return;
+      p.money -= price;
+      if(key==="potion") p.potions++;
+      else if(key==="basicBall") p.balls.basic++;
+      else if(key==="greatBall") p.balls.great++;
+      else if(key==="ultraBall") p.balls.ultra++;
+      addLog("Shop", `Bought 1 ${label}.`);
+      renderShop();
+      renderHUD();
+      autoSaveDebounced();
+    };
+    row.appendChild(btn);
+    shopBody.appendChild(row);
   }
+
+  addBuyRow("Healing Potion",      SHOP_PRICES.potion,     "potion");
+  addBuyRow("Capture Ball",        SHOP_PRICES.basicBall,  "basicBall");
+  addBuyRow("Great Capture Ball",  SHOP_PRICES.greatBall,  "greatBall");
+  addBuyRow("Ultra Capture Ball",  SHOP_PRICES.ultraBall,  "ultraBall");
+
+  // Sell / heal section
+  const sellTitle = document.createElement("div");
+  sellTitle.className = "sectionTitle";
+  sellTitle.textContent = "Manage Critters";
+  sellTitle.style.marginTop = "8px";
+  shopBody.appendChild(sellTitle);
+
+  if(!p.roster.length){
+    const msg = document.createElement("div");
+    msg.style.fontSize = "11px";
+    msg.style.color = "var(--muted)";
+    msg.textContent = "You have no critters yet.";
+    shopBody.appendChild(msg);
+    return;
+  }
+
+  // Sort critters from highest level to lowest
+  const sorted = [...p.roster].sort((a,b)=> b.level - a.level);
+
+  sorted.forEach(c => {
+    // Sell value calculation
+    const base = 60 + c.level * 25;
+    const elemBonus =
+      c.element === "Fire"  || c.element === "Storm" ? 20 :
+      c.element === "Stone" ? 30 : 10;
+    const price = base + elemBonus;
+
+    const row = document.createElement("div");
+    row.className = "listItem";
+
+    // Left: emoji + name + level + element + HP
+    const left = document.createElement("div");
+    const emoji = c.emoji || "❓";
+    left.innerHTML = `
+      <div>
+        <strong>${emoji} ${c.name}</strong>
+      </div>
+      <div style="font-size:11px;color:var(--muted);">
+        Lv ${c.level} • ${c.element} • HP ${c.currentHP}/${c.maxHP}
+      </div>
+    `;
+
+    // Right: Heal + value + Sell
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "6px";
+
+    // Heal button ($50, full heal)
+    const healBtn = document.createElement("button");
+    healBtn.className = "secondary";
+    healBtn.textContent = "Heal $50";
+    healBtn.disabled = p.money < 50 || c.currentHP >= c.maxHP;
+    healBtn.onclick = () => {
+      if(p.money < 50 || c.currentHP >= c.maxHP) return;
+      p.money -= 50;
+      c.currentHP = c.maxHP;
+      addLog("Shop", `Healed ${c.name} to full HP for $50.`);
+      renderShop();
+      renderHUD();
+      autoSaveDebounced();
+    };
+
+    // Sell value
+    const val = document.createElement("span");
+    val.style.fontSize = "11px";
+    val.textContent = `$${price}`;
+
+    // Sell button
+    const sellBtn = document.createElement("button");
+    sellBtn.className = "danger";
+    sellBtn.textContent = "Sell";
+    sellBtn.onclick = () => {
+      const idx = p.roster.indexOf(c); // find in real roster
+      if(idx === -1) return;
+      p.money += price;
+      p.roster.splice(idx, 1);
+      addLog("Shop", `Sold ${c.name} for $${price}.`);
+      renderShop();
+      renderHUD();
+      autoSaveDebounced();
+    };
+
+    right.appendChild(healBtn);
+    right.appendChild(val);
+    right.appendChild(sellBtn);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    shopBody.appendChild(row);
+  });
+}
+
 
   // ----------------------------------------
   // Arena
@@ -2841,6 +2897,7 @@ const VIEW_H = 9;
 </script>
 </body>
 </html>
+
 
 
 
