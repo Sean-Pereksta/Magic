@@ -1672,6 +1672,8 @@ const VIEW_H = 9;
   let battleState = null;    // {mode, enemyTeam, playerTeamIdxs, activePlayerIdx, activeEnemyIdx, arenaReward, log:[]}
   let lastShopPos = null;
   let lastArenaPos = null;
+  let arenaSelectedIndices = []; // roster indices chosen for arena
+
 
   // ----------------------------------------
   // Logging helper
@@ -1736,13 +1738,18 @@ function renderRoster(){
 
   rosterBody.innerHTML = "";
 
-  // Small summary at the top
-  const summary = document.createElement("div");
-  summary.style.fontSize = "12px";
-  summary.style.marginBottom = "6px";
-  summary.style.color = "var(--muted)";
-  summary.textContent = `Total critters: ${roster.length}`;
-  rosterBody.appendChild(summary);
+  // Summary row: critter count + potions
+  const summaryRow = document.createElement("div");
+  summaryRow.style.display = "flex";
+  summaryRow.style.justifyContent = "space-between";
+  summaryRow.style.alignItems = "center";
+  summaryRow.style.fontSize = "12px";
+  summaryRow.style.marginBottom = "6px";
+  summaryRow.innerHTML = `
+    <span style="color:var(--muted);">Total critters: ${roster.length}</span>
+    <span style="color:var(--muted);">🧪 Potions: ${p.potions}</span>
+  `;
+  rosterBody.appendChild(summaryRow);
 
   // Sort: highest level first, then by name
   const sorted = [...roster].sort((a,b)=>{
@@ -1769,12 +1776,30 @@ function renderRoster(){
       </div>
     `;
 
-    // Right: tiny list of abilities
+    // Right: Heal button + tiny list of abilities
     const right = document.createElement("div");
     right.style.display = "flex";
     right.style.flexDirection = "column";
     right.style.alignItems = "flex-end";
-    right.style.gap = "2px";
+    right.style.gap = "4px";
+
+    // 🔹 Heal with potion (full heal)
+    const healBtn = document.createElement("button");
+    healBtn.className = "secondary";
+    healBtn.style.fontSize = "10px";
+    healBtn.textContent = "Heal (potion)";
+    healBtn.disabled = p.potions <= 0 || c.currentHP >= c.maxHP;
+    healBtn.onclick = () => {
+      if(p.potions <= 0 || c.currentHP >= c.maxHP) return;
+      p.potions--;
+      c.currentHP = c.maxHP;
+      addLog("Roster", `You used a potion on ${c.name}. Fully healed!`);
+      renderHUD();          // update inventory chips
+      renderRoster();       // refresh this overlay
+      autoSaveDebounced();  // save to Firestore
+    };
+
+    right.appendChild(healBtn);
 
     const abilitiesLabel = document.createElement("div");
     abilitiesLabel.style.fontSize = "10px";
@@ -1794,6 +1819,7 @@ function renderRoster(){
     rosterBody.appendChild(row);
   });
 }
+
 
   const mapViewEl = document.getElementById("mapView");
 
@@ -2306,36 +2332,46 @@ function renderRoster(){
   }
 
   function openSwitchMenu(){
-    const pcIdx = battleState.activePlayerIdx;
-    const alive = gameState.player.roster
-      .map((c,i)=>({c,i}))
-      .filter(x=>x.c.currentHP>0 && x.i!==pcIdx);
-    if(alive.length===0){
-      battleState.log.push("No other healthy critters to switch to.");
-      renderBattle();
-      return;
-    }
-    battleFooterEl.innerHTML="";
-    const info=document.createElement("div");
-    info.style.fontSize="11px";
-    info.style.marginBottom="4px";
-    info.textContent="Choose a critter to switch to:";
-    battleFooterEl.appendChild(info);
-    for(const {c,i} of alive){
-      const btn=document.createElement("button");
-      btn.className="secondary";
-      btn.textContent=`${c.name} (Lv ${c.level}) HP ${c.currentHP}/${c.maxHP}`;
-      btn.onclick=()=>{
-        queuePlayerAction({type:"switch", toIndex:i});
-      };
-      battleFooterEl.appendChild(btn);
-    }
-    const cancel=document.createElement("button");
-    cancel.className="secondary";
-    cancel.textContent="Cancel";
-    cancel.onclick=()=>renderBattle();
-    battleFooterEl.appendChild(cancel);
+  const pcIdx = battleState.activePlayerIdx;
+
+  const teamIdxs = (battleState.playerTeamIdxs && battleState.playerTeamIdxs.length)
+    ? battleState.playerTeamIdxs
+    : gameState.player.roster.map((_,i)=>i);
+
+  const alive = teamIdxs
+    .map(i => ({ c: gameState.player.roster[i], i }))
+    .filter(x => x.c && x.c.currentHP > 0 && x.i !== pcIdx);
+
+  if(alive.length === 0){
+    battleState.log.push("No other healthy critters to switch to.");
+    renderBattle();
+    return;
   }
+
+  battleFooterEl.innerHTML = "";
+  const info = document.createElement("div");
+  info.style.fontSize = "11px";
+  info.style.marginBottom = "4px";
+  info.textContent = "Choose a critter to switch to:";
+  battleFooterEl.appendChild(info);
+
+  for(const {c,i} of alive){
+    const btn = document.createElement("button");
+    btn.className = "secondary";
+    btn.textContent = `${c.name} (Lv ${c.level}) HP ${c.currentHP}/${c.maxHP}`;
+    btn.onclick = () => {
+      queuePlayerAction({ type:"switch", toIndex:i });
+    };
+    battleFooterEl.appendChild(btn);
+  }
+
+  const cancel = document.createElement("button");
+  cancel.className = "secondary";
+  cancel.textContent = "Cancel";
+  cancel.onclick = () => renderBattle();
+  battleFooterEl.appendChild(cancel);
+}
+
 
   function openCaptureMenu(){
     const inv = gameState.player.balls;
@@ -2415,42 +2451,75 @@ function renderRoster(){
   }
 
   function checkBattleState(){
-    const pcAlive = gameState.player.roster.some(c=>c.currentHP>0);
-    const ecAlive = battleState.enemyTeam.some(c=>c.currentHP>0);
-    if(!pcAlive){
-      battleState.log.push("All of your critters have been defeated...");
-      gameState.player.roster = gameState.player.roster.filter(c=>c.currentHP>0);
-      endBattle(true);
-      return;
-    }
-    if(!ecAlive){
-      // award XP to the first living critter
-      const liveIdx = gameState.player.roster.findIndex(c=>c.currentHP>0);
-      const pc = liveIdx>=0 ? gameState.player.roster[liveIdx] : gameState.player.roster[0];
-      const ecRef = battleState.enemyTeam[0];
-      grantXP(pc, ecRef, false);
-      if(battleState.mode==="arena" && battleState.arenaReward>0){
-        gameState.player.money += battleState.arenaReward;
-        battleState.log.push(`You won the arena battle and earned $${battleState.arenaReward}!`);
-      }
-      endBattle();
-      return;
-    }
-    // ensure active indices refer to living
-    const curEnemy = activeEnemyCritter();
-    if(!curEnemy || curEnemy.currentHP<=0){
-      let idx = battleState.enemyTeam.findIndex(c=>c.currentHP>0);
-      if(idx===-1){ return; }
-      battleState.activeEnemyIdx = idx;
-    }
-    const curPlayer = activePlayerCritter();
-    if(!curPlayer || curPlayer.currentHP<=0){
-      let idx = gameState.player.roster.findIndex(c=>c.currentHP>0);
-      if(idx===-1){ return; }
-      battleState.activePlayerIdx = idx;
-      battleState.log.push(`You send out ${gameState.player.roster[idx].name}!`);
-    }
+  const teamIdxs = (battleState.playerTeamIdxs && battleState.playerTeamIdxs.length)
+    ? battleState.playerTeamIdxs
+    : gameState.player.roster.map((_,i)=>i);
+
+  const pcAlive = teamIdxs.some(i => {
+    const c = gameState.player.roster[i];
+    return c && c.currentHP > 0;
+  });
+
+  const ecAlive = battleState.enemyTeam.some(c => c.currentHP > 0);
+
+  if(!pcAlive){
+    battleState.log.push("All of your selected critters have been defeated...");
+    // Keep the existing hardcore behavior: remove fainted from the roster
+    gameState.player.roster = gameState.player.roster.filter(c => c.currentHP > 0);
+    endBattle(true);
+    return;
   }
+
+  if(!ecAlive){
+    // Award XP to the first living critter on the selected team
+    const firstAliveRosterIndex = teamIdxs.find(i => {
+      const c = gameState.player.roster[i];
+      return c && c.currentHP > 0;
+    });
+
+    let pc = null;
+    if(firstAliveRosterIndex != null){
+      pc = gameState.player.roster[firstAliveRosterIndex];
+    } else if(teamIdxs.length){
+      pc = gameState.player.roster[teamIdxs[0]];
+    } else {
+      pc = gameState.player.roster[0];
+    }
+
+    const ecRef = battleState.enemyTeam[0];
+    if(pc && ecRef){
+      grantXP(pc, ecRef, false);
+    }
+
+    if(battleState.mode === "arena" && battleState.arenaReward > 0){
+      gameState.player.money += battleState.arenaReward;
+      battleState.log.push(`You won the arena battle and earned $${battleState.arenaReward}!`);
+    }
+
+    endBattle();
+    return;
+  }
+
+  // ensure active indices refer to living
+  const curEnemy = activeEnemyCritter();
+  if(!curEnemy || curEnemy.currentHP <= 0){
+    let idx = battleState.enemyTeam.findIndex(c => c.currentHP > 0);
+    if(idx === -1){ return; }
+    battleState.activeEnemyIdx = idx;
+  }
+
+  const curPlayer = activePlayerCritter();
+  if(!curPlayer || curPlayer.currentHP <= 0){
+    const nextRosterIndex = teamIdxs.find(i => {
+      const c = gameState.player.roster[i];
+      return c && c.currentHP > 0;
+    });
+    if(nextRosterIndex == null) return;
+    battleState.activePlayerIdx = nextRosterIndex;
+    battleState.log.push(`You send out ${gameState.player.roster[nextRosterIndex].name}!`);
+  }
+}
+
 
   function endBattle(isDeath){
     inBattle = false;
@@ -2696,64 +2765,151 @@ function renderRoster(){
   if(btnArenaCancel) btnArenaCancel.onclick = closeArena;
 
   function renderArenaSelection(){
-    if(!gameState || !gameState.player) return;
-    if(!arenaBody || !btnArenaStart) return;
-    const p = gameState.player;
-    arenaBody.innerHTML="";
-    if(p.roster.length<3){
-      arenaBody.innerHTML="<p>You need at least 3 critters to challenge the arena.</p>";
-      btnArenaStart.disabled = true;
-      return;
-    }
-    arenaBody.innerHTML=`
-      <p style="font-size:12px;margin-bottom:6px;">
-        Choose 3 of your critters to enter the arena. You will face 3 random opponents.
-        Win to earn a cash prize.
-      </p>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">
-        (For now, all 3 of your first critters will enter automatically.)
-      </p>
-    `;
-    const list=document.createElement("div");
-    p.roster.slice(0,3).forEach(c=>{
-      const row=document.createElement("div");
-      row.className="listItem";
-      row.innerHTML=`<div><strong>${c.name}</strong> <span style="font-size:11px;color:var(--muted);">Lv ${c.level} • ${c.element}</span></div>`;
-      list.appendChild(row);
-    });
-    arenaBody.appendChild(list);
-    btnArenaStart.disabled=false;
+  if(!gameState || !gameState.player) return;
+  if(!arenaBody || !btnArenaStart) return;
+
+  const p = gameState.player;
+  const roster = p.roster || [];
+
+  arenaBody.innerHTML = "";
+
+  if(roster.length < 3){
+    arenaBody.innerHTML = `<p>You need at least 3 critters to challenge the arena.</p>`;
+    btnArenaStart.disabled = true;
+    return;
   }
+
+  // Clean up selection (drop indices that no longer exist)
+  if(!Array.isArray(arenaSelectedIndices)) arenaSelectedIndices = [];
+  arenaSelectedIndices = arenaSelectedIndices.filter(i => i >= 0 && i < roster.length);
+
+  // Default selection: first 3 if nothing chosen yet
+  if(arenaSelectedIndices.length === 0){
+    arenaSelectedIndices = [0,1,2];
+  }
+
+  arenaBody.innerHTML = `
+    <p style="font-size:12px;margin-bottom:4px;">
+      Choose <strong>3</strong> critters to enter the arena. You will face 3 random opponents.
+    </p>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+      Click a row to toggle selection. Selected critters are highlighted.
+    </p>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+      Selected: ${arenaSelectedIndices.length} / 3
+    </p>
+  `;
+
+  const list = document.createElement("div");
+
+  roster.forEach((c, idx) => {
+    const selected = arenaSelectedIndices.includes(idx);
+    const row = document.createElement("div");
+    row.className = "listItem";
+    row.style.cursor = "pointer";
+    if(selected){
+      row.style.borderColor = "var(--accent)";
+      row.style.boxShadow = "0 0 0 1px rgba(34,197,94,.6)";
+    }
+
+    const hpLabel = `HP ${c.currentHP}/${c.maxHP}${c.currentHP <= 0 ? " (fainted)" : ""}`;
+
+    row.innerHTML = `
+      <div>
+        <div><strong>${c.emoji || "❓"} ${c.name}</strong></div>
+        <div style="font-size:11px;color:var(--muted);">
+          Lv ${c.level} • ${c.element} • ${hpLabel}
+        </div>
+      </div>
+      <div style="font-size:11px;color:${selected ? "var(--accent)" : "var(--muted)"};">
+        ${selected ? "Selected" : "Tap to select"}
+      </div>
+    `;
+
+    row.onclick = () => {
+      // Toggle selection
+      const i = arenaSelectedIndices.indexOf(idx);
+      if(i !== -1){
+        arenaSelectedIndices.splice(i,1);
+      } else {
+        if(arenaSelectedIndices.length >= 3) {
+          addLog("Arena","You can only bring 3 critters.");
+          return;
+        }
+        arenaSelectedIndices.push(idx);
+      }
+      renderArenaSelection();
+    };
+
+    list.appendChild(row);
+  });
+
+  arenaBody.appendChild(list);
+
+  // Enable Start only when exactly 3 selected
+  btnArenaStart.disabled = arenaSelectedIndices.length !== 3;
+}
+
 
   if(btnArenaStart){
-    btnArenaStart.onclick = ()=>{
-      if(!gameState || !gameState.player) return;
-      if(arenaOverlay) arenaOverlay.classList.remove("visible");
-      const roster = gameState.player.roster || [];
-      if(roster.length<3) return;
+  btnArenaStart.onclick = () => {
+    if(!gameState || !gameState.player) return;
+    const roster = gameState.player.roster || [];
+    if(roster.length < 3) return;
 
-      const avgLvl = Math.max(3,Math.round(
-        roster.slice(0,3).reduce((a,c)=>a+c.level,0)/Math.min(3,roster.length)
-      ));
-      const enemyTeam=[];
-      for(let i=0;i<3;i++){
-        const s = SPECIES[Math.floor(Math.random()*SPECIES.length)];
-        const lvl = Math.max(2, avgLvl + ((Math.random()*4-2)|0));
-        enemyTeam.push(createCritterFromSpecies(s.id,lvl));
-      }
-      const playerTeamIdxs = roster.slice(0,3).map((_,i)=>i);
-      const reward = 200 + avgLvl*25;
-      addLog("Arena",`You enter an arena battle for $${reward}!`);
-      startBattle({
-        mode:"arena",
-        enemyTeam,
-        playerTeamIdxs,
-        activePlayerIdx:playerTeamIdxs[0],
-        activeEnemyIdx:0,
-        arenaReward:reward
-      });
-    };
-  }
+    if(!Array.isArray(arenaSelectedIndices) || arenaSelectedIndices.length !== 3){
+      addLog("Arena","Select exactly 3 critters first.");
+      renderArenaSelection();
+      return;
+    }
+
+    // Build the chosen team
+    const picked = arenaSelectedIndices
+      .map(i => roster[i])
+      .filter(Boolean);
+
+    if(picked.length !== 3){
+      addLog("Arena","Selection error. Try re-selecting your team.");
+      renderArenaSelection();
+      return;
+    }
+
+    // All selected must be alive
+    if(picked.some(c => c.currentHP <= 0)){
+      addLog("Arena","All selected critters must be healthy to enter the arena.");
+      return;
+    }
+
+    // Average level of chosen team
+    const avgLvl = Math.max(3, Math.round(
+      picked.reduce((a,c)=>a + c.level, 0) / picked.length
+    ));
+
+    // Generate enemy team
+    const enemyTeam = [];
+    for(let i=0;i<3;i++){
+      const s = SPECIES[Math.floor(Math.random()*SPECIES.length)];
+      const lvl = Math.max(2, avgLvl + ((Math.random()*4 - 2) | 0));
+      enemyTeam.push(createCritterFromSpecies(s.id, lvl));
+    }
+
+    const playerTeamIdxs = [...arenaSelectedIndices]; // roster indices
+    const reward = 200 + avgLvl * 25;
+
+    addLog("Arena",`You enter an arena battle for $${reward}!`);
+    if(arenaOverlay) arenaOverlay.classList.remove("visible");
+
+    startBattle({
+      mode: "arena",
+      enemyTeam,
+      playerTeamIdxs,
+      activePlayerIdx: playerTeamIdxs[0],
+      activeEnemyIdx: 0,
+      arenaReward: reward
+    });
+  };
+}
+
 
 // ----------------------------------------
 // Saving & loading (Firestore /mqUsers/{username})
@@ -3131,6 +3287,7 @@ onAuthStateChanged(auth, async user=>{
 </script>
 </body>
 </html>
+
 
 
 
