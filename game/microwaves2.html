@@ -450,27 +450,34 @@
     <div id="mapView"></div>
 
     <!-- Start / Save selection overlay -->
-    <div id="startOverlay" class="overlay visible">
-      <div class="panel">
-        <div class="panelHeader">
-          <h2>Monster Quest</h2>
-          <button class="secondary" id="btnStartClose" style="padding-inline:8px;font-size:11px;">X</button>
-        </div>
-        <div class="panelBody">
-          <p style="margin-bottom:8px;color:var(--muted);">
-            Choose a <strong>save name</strong>. You can start a new adventure or load an existing one
-            (saved under your anonymous Firebase ID).
-          </p>
-          <label style="font-size:12px;display:block;margin-bottom:4px;">Save Name</label>
-          <input type="text" id="saveNameInput" placeholder="e.g. my-first-run" style="width:100%;margin-bottom:8px;">
-          <p id="startStatus" style="font-size:11px;color:var(--muted);min-height:14px;"></p>
-        </div>
-        <div class="panelFooter">
-          <button class="secondary" id="btnLoadGame">Load Game</button>
-          <button id="btnNewGame">Start New Game</button>
-        </div>
-      </div>
+<div id="startOverlay" class="overlay visible">
+  <div class="panel">
+    <div class="panelHeader">
+      <h2>Monster Quest</h2>
+      <button class="secondary" id="btnStartClose" style="padding-inline:8px;font-size:11px;">X</button>
     </div>
+    <div class="panelBody">
+      <p style="margin-bottom:8px;color:var(--muted);">
+        Enter a <strong>Username</strong> and a <strong>Save name</strong>.  
+        New Game will create / overwrite that save for that user.  
+        Load Game will look for that username + save.
+      </p>
+
+      <label style="font-size:12px;display:block;margin-bottom:4px;">Username</label>
+      <input type="text" id="startUsernameInput" placeholder="e.g. Sean" style="width:100%;margin-bottom:8px;">
+
+      <label style="font-size:12px;display:block;margin-bottom:4px;">Save Name</label>
+      <input type="text" id="saveNameInput" placeholder="e.g. my-first-run" style="width:100%;margin-bottom:8px;">
+
+      <p id="startStatus" style="font-size:11px;color:var(--muted);min-height:14px;"></p>
+    </div>
+    <div class="panelFooter">
+      <button class="secondary" id="btnLoadGame">Load Game</button>
+      <button id="btnNewGame">Start New Game</button>
+    </div>
+  </div>
+</div>
+
 
     <!-- Battle overlay -->
     <div id="battleOverlay" class="overlay">
@@ -604,8 +611,9 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  let currentUser = null;
-  let savesCache = {}; // map of saveName -> gameState
+ let currentUser = null;
+  let currentUsername = null;  // logical username typed on menu
+  let savesCache = {};         // saveName -> serialized state for this username
   const userTagEl = document.getElementById("userTag");
   const saveTagEl = document.getElementById("saveTag");
   const logEl = document.getElementById("log");
@@ -2747,90 +2755,114 @@ function renderRoster(){
     };
   }
 
-  // ----------------------------------------
-  // Saving & loading (Firestore /users/{uid})
-  // ----------------------------------------
-  const saveNameInput = document.getElementById("saveNameInput");
-  const startOverlay = document.getElementById("startOverlay");
-  const startStatus = document.getElementById("startStatus");
-  const btnNewGame = document.getElementById("btnNewGame");
-  const btnLoadGame = document.getElementById("btnLoadGame");
-  const btnStartClose = document.getElementById("btnStartClose");
+// ----------------------------------------
+// Saving & loading (Firestore /mqUsers/{username})
+// ----------------------------------------
+const saveNameInput       = document.getElementById("saveNameInput");
+const startUsernameInput  = document.getElementById("startUsernameInput"); // <— NEW
+const startOverlay        = document.getElementById("startOverlay");
+const startStatus         = document.getElementById("startStatus");
+const btnNewGame          = document.getElementById("btnNewGame");
+const btnLoadGame         = document.getElementById("btnLoadGame");
+const btnStartClose       = document.getElementById("btnStartClose");
 
-    // ----------------------------------------
-  // Firestore-safe game state (no nested arrays)
-  // ----------------------------------------
-  function serializeGameState(gs){
-    if(!gs) return null;
+// helper to standardize usernames for the doc id
+function normalizeUsername(u){
+  return (u || "").trim().toLowerCase();
+}
 
-    // Flatten tiles into a 1D array of objects: {x,y, zoneType, zoneColorIndex, feature}
-    const flatTiles = [];
-    if(gs.map && Array.isArray(gs.map.tiles)){
-      for(let y=0; y<MAP_H; y++){
-        const row = gs.map.tiles[y];
-        if(!Array.isArray(row)) continue;
-        for(let x=0; x<MAP_W; x++){
-          const t = row[x];
-          if(!t) continue;
-          flatTiles.push({
-            x,
-            y,
-            zoneType: t.zoneType || "Forest",
-            zoneColorIndex: t.zoneColorIndex || 1,
-            feature: t.feature ?? null
-          });
-        }
-      }
-    }
+// ----------------------------------------
+// Firestore-safe game state (no nested arrays)
+// ----------------------------------------
+function serializeGameState(gs){
+  if(!gs) return null;
 
-    return {
-      saveName: gs.saveName || "",
-      createdAt: gs.createdAt || Date.now(),
-      lastPlayed: Date.now(),
-      player: gs.player || {
-        money:0,
-        potions:0,
-        balls:{basic:0,great:0,ultra:0},
-        roster:[]
-      },
-      map:{
-        playerX: gs.map?.playerX ?? 2,
-        playerY: gs.map?.playerY ?? (MAP_H - 2),
-        tilesFlat: flatTiles    // <--- 1D; no nested arrays
-      }
-    };
-  }
-
-   function deserializeGameState(stored){
-    if(!stored){
-      // Fallback: brand new game
-      return createNewGameState("autosave");
-    }
-
-    // Build a 2D tiles array for runtime
-    const tiles2D = [];
+  // Flatten tiles into a 1D array of objects: {x,y, zoneType, zoneColorIndex, feature}
+  const flatTiles = [];
+  if(gs.map && Array.isArray(gs.map.tiles)){
     for(let y=0; y<MAP_H; y++){
-      const row = [];
+      const row = gs.map.tiles[y];
+      if(!Array.isArray(row)) continue;
       for(let x=0; x<MAP_W; x++){
-        row.push({
-          zoneType:"Forest",
-          zoneColorIndex:1,
-          feature:null
+        const t = row[x];
+        if(!t) continue;
+        flatTiles.push({
+          x,
+          y,
+          zoneType: t.zoneType || "Forest",
+          zoneColorIndex: t.zoneColorIndex || 1,
+          feature: t.feature ?? null
         });
       }
-      tiles2D.push(row);
     }
+  }
 
-    // Preferred: tilesFlat (new format)
-    if(stored.map && Array.isArray(stored.map.tilesFlat)){
-      for(const t of stored.map.tilesFlat){
-        if(!t) continue;
-        const x = t.x;
-        const y = t.y;
-        if(
-          typeof x==="number" && typeof y==="number" &&
-          x>=0 && x<MAP_W && y>=0 && y<MAP_H
-        ){
+  return {
+    saveName: gs.saveName || "",
+    createdAt: gs.createdAt || Date.now(),
+    lastPlayed: Date.now(),
+    player: gs.player || {
+      money:0,
+      potions:0,
+      balls:{basic:0,great:0,ultra:0},
+      roster:[]
+    },
+    map:{
+      playerX: gs.map?.playerX ?? 2,
+      playerY: gs.map?.playerY ?? (MAP_H - 2),
+      tilesFlat: flatTiles    // <--- 1D; no nested arrays
+    }
+  };
+}
+
+function deserializeGameState(stored){
+  if(!stored){
+    // Fallback: brand new game
+    return createNewGameState("autosave");
+  }
+
+  // Build a 2D tiles array for runtime
+  const tiles2D = [];
+  for(let y=0; y<MAP_H; y++){
+    const row = [];
+    for(let x=0; x<MAP_W; x++){
+      row.push({
+        zoneType:"Forest",
+        zoneColorIndex:1,
+        feature:null
+      });
+    }
+    tiles2D.push(row);
+  }
+
+  // Preferred: tilesFlat (new format)
+  if(stored.map && Array.isArray(stored.map.tilesFlat)){
+    for(const t of stored.map.tilesFlat){
+      if(!t) continue;
+      const x = t.x;
+      const y = t.y;
+      if(
+        typeof x==="number" && typeof y==="number" &&
+        x>=0 && x<MAP_W && y>=0 && y<MAP_H
+      ){
+        tiles2D[y][x] = {
+          zoneType: t.zoneType || "Forest",
+          zoneColorIndex: t.zoneColorIndex || 1,
+          feature: t.feature ?? null
+        };
+      }
+    }
+  }
+  // Backwards-compat: if an older save somehow has tiles as 2D array,
+  // we can still read it (this does NOT get written back as nested arrays).
+  else if(stored.map && Array.isArray(stored.map.tiles)){
+    const oldTiles = stored.map.tiles;
+    for(let y=0; y<Math.min(MAP_H, oldTiles.length); y++){
+      const rowIn = oldTiles[y];
+      if(!Array.isArray(rowIn)) continue;
+      for(let x=0; x<Math.min(MAP_W, rowIn.length); x++){
+        const t = rowIn[x];
+        if(t){
           tiles2D[y][x] = {
             zoneType: t.zoneType || "Forest",
             zoneColorIndex: t.zoneColorIndex || 1,
@@ -2839,186 +2871,267 @@ function renderRoster(){
         }
       }
     }
-    // Backwards-compat: if an older save somehow has tiles as 2D array,
-    // we can still read it (this does NOT get written back as nested arrays).
-    else if(stored.map && Array.isArray(stored.map.tiles)){
-      const oldTiles = stored.map.tiles;
-      for(let y=0; y<Math.min(MAP_H, oldTiles.length); y++){
-        const rowIn = oldTiles[y];
-        if(!Array.isArray(rowIn)) continue;
-        for(let x=0; x<Math.min(MAP_W, rowIn.length); x++){
-          const t = rowIn[x];
-          if(t){
-            tiles2D[y][x] = {
-              zoneType: t.zoneType || "Forest",
-              zoneColorIndex: t.zoneColorIndex || 1,
-              feature: t.feature ?? null
-            };
-          }
-        }
-      }
+  }
+  // else: keep default Forest map
+
+  return {
+    saveName: stored.saveName || "",
+    createdAt: stored.createdAt || Date.now(),
+    lastPlayed: Date.now(),
+    player: stored.player || {
+      money:0,
+      potions:0,
+      balls:{basic:0,great:0,ultra:0},
+      roster:[]
+    },
+    map:{
+      tiles: tiles2D,
+      playerX: stored.map?.playerX ?? 2,
+      playerY: stored.map?.playerY ?? (MAP_H - 2)
     }
-    // else: keep default Forest map
+  };
+}
 
-    return {
-      saveName: stored.saveName || "",
-      createdAt: stored.createdAt || Date.now(),
-      lastPlayed: Date.now(),
-      player: stored.player || {
-        money:0,
-        potions:0,
-        balls:{basic:0,great:0,ultra:0},
-        roster:[]
-      },
-      map:{
-        tiles: tiles2D,
-        playerX: stored.map?.playerX ?? 2,
-        playerY: stored.map?.playerY ?? (MAP_H - 2)
-      }
-    };
+function openStartMenu(){
+  startOverlay.classList.add("visible");
+  startStatus.textContent="";
+
+  // if we already have a username, keep it filled in
+  if(typeof currentUsername === "string" && currentUsername.trim()){
+    startUsernameInput.value = currentUsername;
+  }
+}
+btnStartClose.onclick = ()=>{ /* keep menu open; mainly cosmetic */ };
+
+// NEW GAME — username + save name
+btnNewGame.onclick = async ()=>{
+  if(!currentUser){
+    startStatus.textContent = "Still connecting to Firebase...";
+    return;
+  }
+  const usernameRaw = startUsernameInput.value.trim();
+  const name        = saveNameInput.value.trim();
+
+  if(!usernameRaw){
+    startStatus.textContent = "Please enter a username.";
+    return;
+  }
+  if(!name){
+    startStatus.textContent = "Please enter a save name.";
+    return;
   }
 
-  function openStartMenu(){
-    startOverlay.classList.add("visible");
-    startStatus.textContent="";
+  const userKey = normalizeUsername(usernameRaw);
+  if(!userKey){
+    startStatus.textContent = "Invalid username.";
+    return;
   }
-  btnStartClose.onclick = ()=>{ /* keep menu open; mainly cosmetic */ };
 
-  btnNewGame.onclick = async ()=>{
-    if(!currentUser){ startStatus.textContent="Still connecting to Firebase..."; return; }
-    const name = saveNameInput.value.trim();
-    if(!name){ startStatus.textContent="Please enter a save name."; return; }
-    currentSaveName = name;
-    gameState = createNewGameState(name);
-    await saveGame();
+  const ref  = doc(db, "mqUsers", userKey);
+  const snap = await getDoc(ref);
+  if(!snap.exists()){
+    // first time this username is used
+    await setDoc(ref, {
+      username: usernameRaw,
+      ownerUid: currentUser.uid,
+      createdAt: Date.now(),
+      saves: {}
+    }, { merge:true });
+    savesCache = {};
+  } else {
+    const data = snap.data() || {};
+    savesCache = data.saves || {};
+  }
+
+  currentUsername = usernameRaw;
+  currentSaveName = name;
+
+  gameState = createNewGameState(name);
+  await saveGame();
+  startOverlay.classList.remove("visible");
+  addLog("System", `New game started for "${currentUsername}" with save "${currentSaveName}".`);
+  renderMap();
+};
+
+// LOAD GAME — username + save name
+btnLoadGame.onclick = async ()=>{
+  if(!currentUser){
+    startStatus.textContent = "Still connecting to Firebase...";
+    return;
+  }
+  const usernameRaw = startUsernameInput.value.trim();
+  const name        = saveNameInput.value.trim();
+
+  if(!usernameRaw){
+    startStatus.textContent = "Please enter a username.";
+    return;
+  }
+  if(!name){
+    startStatus.textContent = "Please enter a save name.";
+    return;
+  }
+
+  const ok = await loadGameByUserAndName(usernameRaw, name);
+  if(!ok){
+    startStatus.textContent = `No save "${name}" found for user "${usernameRaw}".`;
+  } else {
     startOverlay.classList.remove("visible");
-    addLog("System",`New game started with save "${name}".`);
-    renderMap();
-  };
+  }
+};
 
-  btnLoadGame.onclick = async ()=>{
-    if(!currentUser){ startStatus.textContent="Still connecting to Firebase..."; return; }
-    const name = saveNameInput.value.trim();
-    if(!name){ startStatus.textContent="Please enter a save name."; return; }
-    const loaded = await loadGameByName(name);
-    if(!loaded){
-      startStatus.textContent=`No save named "${name}" found for this user.`;
-    }else{
-      startOverlay.classList.remove("visible");
+// Internal helper: load a save for a specific username
+async function loadGameByUserAndName(usernameRaw, saveName){
+  const userKey = normalizeUsername(usernameRaw);
+  if(!userKey || !saveName) return false;
+
+  const ref  = doc(db, "mqUsers", userKey);
+  const snap = await getDoc(ref);
+  if(!snap.exists()) return false;
+
+  const data  = snap.data() || {};
+  const saves = data.saves || {};
+  const stored = saves[saveName];
+  if(!stored) return false;
+
+  currentUsername = data.username || usernameRaw;
+  currentSaveName = saveName;
+  savesCache      = saves;
+
+  gameState = deserializeGameState(stored);
+  saveTagEl.textContent = `${currentUsername} • ${currentSaveName}`;
+  addLog("System", `Loaded "${currentSaveName}" for "${currentUsername}".`);
+  renderMap();
+  return true;
+}
+
+// Optional helper: still keep a loadSavesCache for any old calls.
+// If no username is known yet, it just clears the cache.
+async function loadSavesCache(usernameRaw){
+  const nameToUse = usernameRaw || currentUsername;
+  if(!nameToUse || !currentUser){
+    savesCache = {};
+    return;
+  }
+  const userKey = normalizeUsername(nameToUse);
+  if(!userKey){
+    savesCache = {};
+    return;
+  }
+  const ref  = doc(db, "mqUsers", userKey);
+  const snap = await getDoc(ref);
+  if(!snap.exists()){
+    savesCache = {};
+    return;
+  }
+  const data = snap.data() || {};
+  savesCache = data.saves || {};
+}
+
+// Save current game for the active username + save name
+async function saveGame(){
+  if(!currentUser || !gameState || !currentSaveName || !currentUsername) return;
+
+  const userKey = normalizeUsername(currentUsername);
+  if(!userKey) return;
+
+  const ref       = doc(db, "mqUsers", userKey);
+  const safeState = serializeGameState(gameState);  // <-- no nested arrays
+  if(!safeState) return;
+
+  // update cache with serialized state
+  savesCache[currentSaveName] = safeState;
+
+  await setDoc(ref,{
+    username: currentUsername,
+    ownerUid: currentUser.uid,
+    lastUpdated: Date.now(),
+    saves: savesCache
+  },{merge:true});
+
+  saveTagEl.textContent = `${currentUsername} • ${currentSaveName}`;
+}
+
+let saveTimeout = null;
+function autoSaveDebounced(){
+  if(!currentUser || !gameState) return;
+  if(saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
+}
+
+// Quick load by name for *current* username
+async function loadGameByName(name){
+  if(!name) return false;
+
+  // If no currentUsername yet, try to grab from the start screen input
+  if(!currentUsername && startUsernameInput){
+    const typed = startUsernameInput.value.trim();
+    if(typed) currentUsername = typed;
+  }
+  if(!currentUsername) return false;
+
+  return loadGameByUserAndName(currentUsername, name);
+}
+
+// Create a brand new game state (unchanged)
+function createNewGameState(name){
+  const tiles = generateMap();
+  const starters = ["blazefox","tidalfin","leafling"];
+  const starterId = starters[Math.floor(Math.random()*starters.length)];
+  const starter = createCritterFromSpecies(starterId,3);
+  return {
+    saveName:name,
+    createdAt:Date.now(),
+    lastPlayed:Date.now(),
+    player:{
+      money:300,
+      potions:3,
+      balls:{basic:10,great:3,ultra:1},
+      roster:[starter]
+    },
+    map:{
+      tiles,
+      playerX:2,
+      playerY:MAP_H-2
     }
   };
+}
 
-  async function ensureUserDoc(){
-    if(!currentUser) return null;
-    const ref = doc(db,"users",currentUser.uid);
-    let snap = await getDoc(ref);
-    if(!snap.exists()){
-      await setDoc(ref,{ monsterQuestSaves:{} },{merge:true});
-      snap = await getDoc(ref);
-    }
-    return {ref, snap};
-  }
+// Quick save/load controls on right pane
+const quickSaveNameInput=document.getElementById("quickSaveName");
+document.getElementById("btnQuickSave").onclick = ()=>saveGame().catch(console.error);
+document.getElementById("btnQuickLoad").onclick = async ()=>{
+  const name = quickSaveNameInput.value.trim();
+  if(!name) return;
+  await loadGameByName(name);
+};
 
-  async function loadSavesCache(){
-    const info = await ensureUserDoc();
-    if(!info) return;
-    const data = info.snap.data() || {};
-    savesCache = data.monsterQuestSaves || {};
-  }
-
-  async function saveGame(){
-    if(!currentUser || !gameState || !currentSaveName) return;
-    const ref = doc(db,"users",currentUser.uid);
-
-    const safeState = serializeGameState(gameState);  // <-- no nested arrays
-    if(!safeState) return;
-
-    // update cache with serialized state
-    savesCache[currentSaveName] = safeState;
-
-    await setDoc(ref,{
-      monsterQuestSaves: savesCache
-    },{merge:true});
-
-    saveTagEl.textContent = `Saved: "${currentSaveName}"`;
-  }
-
-  let saveTimeout = null;
-  function autoSaveDebounced(){
-    if(!currentUser || !gameState) return;
-    if(saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(()=>{ saveGame().catch(console.error); }, 800);
-  }
-
-
-    async function loadGameByName(name){
-    await loadSavesCache();
-    const stored = savesCache[name];
-    if(!stored){
-      return false;
-    }
-    currentSaveName = name;
-    gameState = deserializeGameState(stored);  // <-- reconstruct runtime state
-    saveTagEl.textContent = `Loaded: "${name}"`;
-    addLog("System",`Loaded game "${name}".`);
-    renderMap();
-    return true;
-  }
-
- 
-  function createNewGameState(name){
-    const tiles = generateMap();
-    const starters = ["blazefox","tidalfin","leafling"];
-    const starterId = starters[Math.floor(Math.random()*starters.length)];
-    const starter = createCritterFromSpecies(starterId,3);
-    return {
-      saveName:name,
-      createdAt:Date.now(),
-      lastPlayed:Date.now(),
-      player:{
-        money:300,
-        potions:3,
-        balls:{basic:10,great:3,ultra:1},
-        roster:[starter]
-      },
-      map:{
-        tiles,
-        playerX:2,
-        playerY:MAP_H-2
-      }
-    };
-  }
-
-  // Quick save/load controls on right pane
-  const quickSaveNameInput=document.getElementById("quickSaveName");
-  document.getElementById("btnQuickSave").onclick = ()=>saveGame().catch(console.error);
-  document.getElementById("btnQuickLoad").onclick = async ()=>{
-    const name = quickSaveNameInput.value.trim();
-    if(!name) return;
-    await loadGameByName(name);
-  };
   document.getElementById("btnCenter").onclick = centerOnPlayer;
 
   // ----------------------------------------
   // Auth bootstrap
   // ----------------------------------------
-  onAuthStateChanged(auth, async user=>{
-    if(user){
-      currentUser = user;
-      userTagEl.textContent = `Anon UID: ${user.uid.slice(0,8)}…`;
-      await loadSavesCache();
-      openStartMenu();
-    }else{
-      userTagEl.textContent = "Signing in anonymously…";
-      signInAnonymously(auth).catch(err=>{
-        console.error(err);
-        userTagEl.textContent = "Auth error. See console.";
-      });
-    }
-  });
+  // ----------------------------------------
+// Auth bootstrap
+// ----------------------------------------
+onAuthStateChanged(auth, async user=>{
+  if(user){
+    currentUser = user;
+    userTagEl.textContent = `Anon UID: ${user.uid.slice(0,8)}…`;
+    // Username + save are chosen on the start menu now
+    openStartMenu();
+  }else{
+    userTagEl.textContent = "Signing in anonymously…";
+    signInAnonymously(auth).catch(err=>{
+      console.error(err);
+      userTagEl.textContent = "Auth error. See console.";
+    });
+  }
+});
+
 </script>
 </body>
 </html>
+
 
 
 
