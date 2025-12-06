@@ -488,7 +488,7 @@
       font-size:.8rem;
     }
 
-    /* Tower overlay – now centered */
+    /* Tower overlay – centered */
     .tower-overlay{
       position:fixed;
       left:50%;
@@ -861,7 +861,7 @@
             cost:80, count:4, hp:30, damage:30, killGold:9, hitGold:8 }
     };
 
-    // Towers are intentionally not crazy-strong
+    // Towers intentionally not crazy-strong
     const TOWER_POWER_PER_LEVEL = [0, 30, 55, 80]; // index 1..3
     const BASE_INCOME_PER_SEC = 3.5;
 
@@ -913,11 +913,31 @@
     // ---- Board geometry + visuals ----
     let boardGeom = null;           // { boardRect, lanesGeom: [{y, baseX, spawnX}, ...] }
     let boardTowerNodes = [];       // [{ el, side, laneIndex, x, y, level, element }, ...]
-    let marchingUnits = [];         // [{ el, laneIndex, progress, duration, spawnX, baseX, x, y, hp, maxHp, hpFill }, ...]
+    let marchingUnits = [];         // [{ el, laneIndex, progress, duration, spawnX, baseX, x, y, hp, maxHp, hpFill, unitId, baseDamage }, ...]
     let lastAnimTime = null;
     let lastShotTime = 0;
     const MARCH_DURATION_MS = 6500;
     const SHOT_INTERVAL_MS = 350;
+
+    // Local base-damage batching (combat is fully local, only HP deltas are synced)
+    let pendingBaseDamage = 0;
+    let pendingDamageTimer = null;
+    const BASE_HIT_BATCH_MS = 200;
+
+    function registerBaseHit(damage){
+      if (state.isSpectator || damage <= 0) return;
+      pendingBaseDamage += damage;
+      if (!pendingDamageTimer){
+        pendingDamageTimer = setTimeout(() => {
+          const dmg = pendingBaseDamage;
+          pendingBaseDamage = 0;
+          pendingDamageTimer = null;
+          if (dmg > 0){
+            sendBaseDamage(dmg).catch(err => console.error("sendBaseDamage failed", err));
+          }
+        }, BASE_HIT_BATCH_MS);
+      }
+    }
 
     function computeBoardGeom(){
       if (!boardEl) return;
@@ -1475,6 +1495,17 @@
       hideTowerOverlay();
     }
 
+    async function sendBaseDamage(damage){
+      if (!state.cmdsRef || state.isSpectator) return;
+      const side = (state.seat === 2) ? 2 : 1; // the base that got hit (you)
+      await addDoc(state.cmdsRef, {
+        cmd: "baseHit",
+        side,
+        damage,
+        createdAt: serverTimestamp()
+      });
+    }
+
     // ---- Host/Players: process commands ----
     async function processCommand(cmd){
       // Let each non-spectator client process via transaction; lastCmdTs keeps it safe
@@ -1513,6 +1544,9 @@
           case "towerUp":
             applyTowerUpgrade(d, updates, cmd);
             break;
+          case "baseHit":
+            applyBaseHit(d, updates, cmd);
+            break;
         }
 
         updates.lastCmdTs = cmdTs;
@@ -1544,58 +1578,24 @@
       updates[lastKey] = nowMs;
     }
 
+    // SERVER: ONLY pay for the wave; combat is fully local on each client
     function applyWave(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
-      const enemy = side === 1 ? 2 : 1;
       const unit = UNITS[cmd.unitId];
       if (!unit) return;
 
       const goldKeyAtk = side === 1 ? "gold1" : "gold2";
-      const goldKeyDef = enemy === 1 ? "gold1" : "gold2";
       let goldAtk = d[goldKeyAtk] ?? 0;
-      let goldDef = d[goldKeyDef] ?? 0;
-
       const cost = unit.cost;
-      if (goldAtk < cost){
-        return;
-      }
+
+      if (goldAtk < cost) return; // not enough gold; ignore
+
       goldAtk -= cost;
-
-      const baseKeyEnemy = enemy === 1 ? "base1" : "base2";
-      const maxBase = d.maxBase ?? MAX_BASE_HP;
-      const enemyBase = d[baseKeyEnemy] ?? maxBase;
-
-      const genKeyDef = enemy === 1 ? "gen1" : "gen2";
-      const towersKeyDef = enemy === 1 ? "towers1" : "towers2";
-      const defGen = d[genKeyDef] ?? 1;
-      const towersDef = Array.isArray(d[towersKeyDef]) ? d[towersKeyDef] : [];
-
-      const defensePower = computeDefensePower(d, towersDef, unit, defGen);
-
-      let effectiveCount = unit.count;
-      const hpPerUnit = unit.hp;
-      let kills = Math.min(effectiveCount, Math.round(defensePower / (hpPerUnit || 1)));
-      if (kills < 0) kills = 0;
-      const survivors = Math.max(0, effectiveCount - kills);
-
-      let damage = survivors * unit.damage;
-      if (damage <= 0 && survivors > 0) damage = 1;
-
-      goldAtk += survivors * unit.hitGold;
-      goldDef += kills * unit.killGold;
-
-      let newEnemyBase = Math.max(0, enemyBase - damage);
-
-      d[goldKeyAtk] = goldAtk; updates[goldKeyAtk] = goldAtk;
-      d[goldKeyDef] = goldDef; updates[goldKeyDef] = goldDef;
-      d[baseKeyEnemy] = newEnemyBase; updates[baseKeyEnemy] = newEnemyBase;
-
-      if (newEnemyBase <= 0){
-        d.status = "ended";
-        updates.status = "ended";
-      }
+      d[goldKeyAtk] = goldAtk;
+      updates[goldKeyAtk] = goldAtk;
     }
 
+    // Left in place though unused now (old server-side defense calc)
     function computeDefensePower(d, towers, unit, defGen){
       let total = 0;
       for (const t of towers){
@@ -1713,6 +1713,25 @@
       d[towersKey] = towers; updates[towersKey] = towers;
     }
 
+    function applyBaseHit(d, updates, cmd){
+      // Defender reports how much damage their base took from local combat.
+      const side = cmd.side === 2 ? 2 : 1;
+      const baseKey = side === 1 ? "base1" : "base2";
+      const maxBase = d.maxBase ?? MAX_BASE_HP;
+      const current = d[baseKey] ?? maxBase;
+      const dmg = Math.max(0, cmd.damage || 0);
+      if (!dmg) return;
+
+      const next = Math.max(0, current - dmg);
+      d[baseKey] = next;
+      updates[baseKey] = next;
+
+      if (next <= 0){
+        d.status = "ended";
+        updates.status = "ended";
+      }
+    }
+
     // ---- Command visuals ----
     function handleCommandVisual(cmd){
       if (cmd.cmd === "wave"){
@@ -1752,6 +1771,7 @@
       statusEl.textContent = msg;
     }
 
+    // Incoming wave: purely visual on the defending client. Base damage only on collision.
     function spawnIncomingWave(unitId){
       const u = UNITS[unitId];
       if (!u || !boardEl) return;
@@ -1765,6 +1785,8 @@
       const laneInfo = lanesGeom[laneIndex];
 
       const count = Math.min(u.count, 7);
+      const maxHp = u.hp * 2.2; // a bit beefier so towers need a few hits
+
       for (let i = 0; i < count; i++){
         const unitDiv = document.createElement("div");
         unitDiv.className = "unit march";
@@ -1781,7 +1803,7 @@
         boardEl.appendChild(unitDiv);
 
         const offset = -0.12 * i;
-        const maxHp = u.hp * 2.2; // purely visual
+
         marchingUnits.push({
           el: unitDiv,
           laneIndex,
@@ -1793,7 +1815,9 @@
           y: laneInfo.y,
           hp: maxHp,
           maxHp,
-          hpFill
+          hpFill,
+          unitId,
+          baseDamage: u.damage || 5
         });
       }
 
@@ -1835,11 +1859,21 @@
 
         u.el.style.transform = `translate(${x - 11}px, ${laneInfo.y - 11}px)`;
 
+        // Only when a unit REACHES the base do we deal damage
         if (u.progress >= maxProgress){
           u.el.classList.add("unit-hit");
           flashBaseHit(u.laneIndex);
+
+          if (!state.isSpectator){
+            const dmg = u.baseDamage || 0;
+            if (dmg > 0){
+              registerBaseHit(dmg);
+            }
+          }
+
           setTimeout(() => u.el.remove(), 200);
           marchingUnits.splice(i,1);
+          continue;
         }
       }
 
@@ -1861,34 +1895,56 @@
       const lane = boardEl.querySelector(`.lane[data-lane="${laneIndex}"] .base-icon`);
       if (!lane) return;
       lane.classList.remove("base-hit");
-      // force reflow so animation can restart
-      void lane.offsetWidth;
+      void lane.offsetWidth; // force reflow
       lane.classList.add("base-hit");
     }
 
+    // Towers: shoot the closest enemy in their lane
     function spawnDefenderShots(){
       if (!state.gameData || !boardGeom) return;
       if (state.isSpectator) return;
+      if (!marchingUnits.length) return;
 
       const mySide = (state.seat === 2 ? 2 : 1);
-      const enemies = marchingUnits.slice();
-      if (!enemies.length) return;
 
-      const byLane = new Map();
-      enemies.forEach(u => {
-        const arr = byLane.get(u.laneIndex) || [];
+      // Group enemies by lane
+      const unitsByLane = new Map();
+      marchingUnits.forEach(u => {
+        const arr = unitsByLane.get(u.laneIndex) || [];
         arr.push(u);
-        byLane.set(u.laneIndex, arr);
+        unitsByLane.set(u.laneIndex, arr);
       });
 
-      for (const [laneIndex, units] of byLane){
-        const towers = boardTowerNodes.filter(t => t.side === mySide && t.laneIndex === laneIndex && t.level > 0 && t.element !== "none");
-        if (!towers.length) continue;
+      // Group my towers by lane
+      const myTowers = boardTowerNodes.filter(
+        t => t.side === mySide && t.level > 0 && t.element !== "none"
+      );
+      if (!myTowers.length) return;
 
-        const tower = towers[Math.floor(Math.random() * towers.length)];
-        const target = units[Math.floor(Math.random() * units.length)];
-        spawnShot(tower, target);
-        applyVisualHit(target, tower);
+      const towersByLane = new Map();
+      myTowers.forEach(t => {
+        const arr = towersByLane.get(t.laneIndex) || [];
+        arr.push(t);
+        towersByLane.set(t.laneIndex, arr);
+      });
+
+      // Each lane: ALL towers focus the single closest enemy to the base
+      for (const [laneIndex, laneTowers] of towersByLane){
+        const laneUnits = unitsByLane.get(laneIndex);
+        if (!laneUnits || !laneUnits.length) continue;
+
+        // They march from right → left; closest to base = smallest x
+        let target = laneUnits[0];
+        for (let i = 1; i < laneUnits.length; i++){
+          if (laneUnits[i].x < target.x){
+            target = laneUnits[i];
+          }
+        }
+
+        laneTowers.forEach(tower => {
+          spawnShot(tower, target);
+          applyVisualHit(target, tower);
+        });
       }
     }
 
@@ -2030,6 +2086,7 @@
   </script>
 </body>
 </html>
+
 
 
 
