@@ -1495,6 +1495,17 @@
       hideTowerOverlay();
     }
 
+    async function sendKillGold(amount){
+      if (!state.cmdsRef || state.isSpectator) return;
+      const side = (state.seat === 2) ? 2 : 1;
+      await addDoc(state.cmdsRef, {
+        cmd: "killGold",
+        side,
+        amount,
+        createdAt: serverTimestamp()
+      });
+    }
+
     async function sendBaseDamage(damage){
       if (!state.cmdsRef || state.isSpectator) return;
       const side = (state.seat === 2) ? 2 : 1; // the base that got hit (you)
@@ -1543,6 +1554,9 @@
             break;
           case "towerUp":
             applyTowerUpgrade(d, updates, cmd);
+            break;
+          case "killGold":
+            applyKillGold(d, updates, cmd);
             break;
           case "baseHit":
             applyBaseHit(d, updates, cmd);
@@ -1711,6 +1725,16 @@
 
       d[goldKey] = gold; updates[goldKey] = gold;
       d[towersKey] = towers; updates[towersKey] = towers;
+    }
+
+    function applyKillGold(d, updates, cmd){
+      const side = cmd.side === 2 ? 2 : 1;
+      const goldKey = side === 1 ? "gold1" : "gold2";
+      const amount = Math.max(0, cmd.amount || 0);
+      if (!amount) return;
+      const newGold = (d[goldKey] ?? 0) + amount;
+      d[goldKey] = newGold;
+      updates[goldKey] = newGold;
     }
 
     function applyBaseHit(d, updates, cmd){
@@ -1980,11 +2004,13 @@
         base *= 1.1;
       }
       const dmg = base * 0.45;
+      if (u.hp <= 0) return; // already dead, ignore extra hits
       u.hp -= dmg;
       if (u.hp <= 0){
         u.hp = 0;
         u.hpFill.style.width = "0%";
         u.el.classList.add("unit-dead");
+        grantKillGoldForUnit(u);
         setTimeout(() => u.el.remove(), 180);
         const idx = marchingUnits.indexOf(u);
         if (idx >= 0) marchingUnits.splice(idx,1);
@@ -1992,6 +2018,15 @@
         const pct = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100));
         u.hpFill.style.width = pct + "%";
       }
+    }
+
+    function grantKillGoldForUnit(u){
+      if (state.isSpectator) return;
+      const def = UNITS[u.unitId];
+      if (!def) return;
+      const reward = def.killGold || 0;
+      if (reward <= 0) return;
+      sendKillGold(reward).catch(err => console.error("sendKillGold failed", err));
     }
 
     // ---- Tower overlay ----
@@ -2086,6 +2121,7 @@
   </script>
 </body>
 </html>
+
 
 
 
