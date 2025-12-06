@@ -226,7 +226,7 @@
       border-top:1px dashed rgba(51,65,85,.8);
       display:flex;
       align-items:center;
-      justify-content:space-between;
+      justify-content:flex-start;
       padding:0 8px;
       pointer-events:none;
     }
@@ -245,24 +245,43 @@
       border:2px solid rgba(148,163,184,.9);
       box-shadow:0 12px 32px rgba(0,0,0,.8);
     }
-    .base-icon.enemy{
-      background:radial-gradient(circle at 30% 20%,#fee2e2,#fecaca);
-      border-color:rgba(248,113,113,.9);
+
+    /* Board towers */
+    .tower-node{
+      position:absolute;
+      width:28px;
+      height:28px;
+      border-radius:999px;
+      display:grid;
+      place-items:center;
+      font-size:16px;
+      background:radial-gradient(circle at 30% 30%,#1f2937,#020617);
+      border:1px solid rgba(148,163,184,.85);
+      box-shadow:0 8px 18px rgba(0,0,0,.7);
+      color:#f9fafb;
+      cursor:pointer;
+      z-index:5;
+    }
+    .tower-node.mine{
+      box-shadow:0 0 0 1px rgba(251,191,36,.7), 0 10px 26px rgba(0,0,0,.9);
     }
 
+    /* Marching enemy units */
     .unit{
       position:absolute;
-      width:20px;
-      height:20px;
+      width:22px;
+      height:22px;
       border-radius:999px;
       display:grid;
       place-items:center;
       font-size:13px;
       color:#0b1120;
       pointer-events:none;
-      animation-duration: 1700ms;
-      animation-timing-function: cubic-bezier(.25,.8,.25,1);
-      animation-fill-mode:forwards;
+      transform:translate(-9999px,-9999px);
+      z-index:6;
+    }
+    .unit.march{
+      transition:transform .1s linear;
     }
     .unit.fire{
       background:radial-gradient(circle at 30% 30%,#fed7aa,#fb923c,#b45309);
@@ -276,19 +295,44 @@
       background:radial-gradient(circle at 30% 30%,#e5e7eb,#9ca3af,#475569);
       box-shadow:0 0 0 2px rgba(148,163,184,.6), 0 0 20px rgba(148,163,184,.9);
     }
-    .unit.from-me{
-      animation-name:wave-out;
+    .unit-hit{
+      opacity:.75;
+      transform:scale(.85);
     }
-    .unit.from-enemy{
-      animation-name:wave-in;
+    .unit-dead{
+      opacity:0;
+      transform:scale(.35);
+      transition:opacity .18s linear, transform .18s linear;
     }
-    @keyframes wave-out{
-      from{ transform:translate3d(0,0,0); opacity:1; }
-      to{ transform:translate3d(520px,-10px,0); opacity:0; }
+
+    .unit-hp{
+      position:absolute;
+      left:50%;
+      bottom:-5px;
+      transform:translateX(-50%);
+      width:22px;
+      height:3px;
+      border-radius:999px;
+      background:rgba(15,23,42,.9);
+      overflow:hidden;
     }
-    @keyframes wave-in{
-      from{ transform:translate3d(520px,0,0); opacity:1; }
-      to{ transform:translate3d(-520px,-10px,0); opacity:0; }
+    .unit-hp-fill{
+      height:100%;
+      width:100%;
+      background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);
+    }
+
+    /* Tower shots */
+    .shot{
+      position:absolute;
+      width:6px;
+      height:6px;
+      border-radius:999px;
+      background:radial-gradient(circle at 30% 30%,#fef3c7,#facc15,#b45309);
+      box-shadow:0 0 10px rgba(250,204,21,.9);
+      pointer-events:none;
+      transition:transform .35s linear, opacity .35s linear;
+      z-index:4;
     }
 
     .board-msg{
@@ -484,6 +528,34 @@
       cursor:pointer;
     }
 
+    /* Radial tower element picker */
+    .tower-overlay.radial-mode .tower-overlay-actions{
+      position:relative;
+      height:116px;
+      justify-content:center;
+    }
+    .tower-overlay.radial-mode .tower-opt{
+      position:absolute;
+    }
+    .tower-overlay.radial-mode .tower-opt-fire{
+      top:0;
+      left:50%;
+      transform:translateX(-50%);
+    }
+    .tower-overlay.radial-mode .tower-opt-ice{
+      top:44px;
+      left:16%;
+    }
+    .tower-overlay.radial-mode .tower-opt-stone{
+      top:44px;
+      right:16%;
+    }
+    .tower-overlay.radial-mode .tower-opt-close{
+      bottom:-2px;
+      left:50%;
+      transform:translateX(-50%);
+    }
+
     /* Toast + error overlay */
     .toast{
       position:fixed;
@@ -591,7 +663,6 @@
         </div>
         <div class="meta-right">
           <span id="statusText">Connecting to lobby…</span>
-          <span id="buffText" class="tag">No buffs</span>
           <button id="fullBtn" class="btn-ghost" type="button">⛶ Fullscreen</button>
         </div>
       </div>
@@ -609,15 +680,12 @@
         <div class="board" id="board">
           <div class="lane" data-lane="0">
             <div class="base-icon">🛡️</div>
-            <div class="base-icon enemy">🔥</div>
           </div>
           <div class="lane" data-lane="1">
             <div class="base-icon">🛡️</div>
-            <div class="base-icon enemy">🔥</div>
           </div>
           <div class="lane" data-lane="2">
             <div class="base-icon">🛡️</div>
-            <div class="base-icon enemy">🔥</div>
           </div>
           <div class="board-msg" id="boardMessage">Waiting for game state…</div>
         </div>
@@ -629,7 +697,7 @@
               <span>🗼 Your Towers</span>
             </div>
             <button id="buyTowerBtn" class="tiny-btn" type="button">
-              ➕ New Tower
+              ➕ New Tower Slot
             </button>
           </div>
           <div id="towerRow" class="tower-row"><!-- towers --></div>
@@ -649,10 +717,6 @@
             <button id="genBtn" class="btn btn-secondary" type="button">
               <span>⚙️ Upgrade Generator</span>
               <span class="small" id="genCostLabel">(–)</span>
-            </button>
-            <button id="scanBtn" class="btn btn-secondary" type="button">
-              <span>📡 Scout Enemy</span>
-              <span class="small" id="scanCostLabel">(35g)</span>
             </button>
           </div>
         </div>
@@ -692,7 +756,7 @@
       getAuth, signInAnonymously, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // ---- Firebase config (same project) ----
+    // ---- Firebase config ----
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
       authDomain: "bible-game-246c0.firebaseapp.com",
@@ -726,7 +790,6 @@
     const oppHpTextEl = document.getElementById("oppHpText");
     const goldEl = document.getElementById("goldAmount");
     const genLevelEl = document.getElementById("genLevel");
-    const buffTextEl = document.getElementById("buffText");
     const boardEl = document.getElementById("board");
     const boardMsgEl = document.getElementById("boardMessage");
     const fullBtn = document.getElementById("fullBtn");
@@ -737,9 +800,7 @@
     const tier3Btn = document.getElementById("tier3Btn");
     const unitRowEl = document.getElementById("unitRow");
     const genBtn = document.getElementById("genBtn");
-    const scanBtn = document.getElementById("scanBtn");
     const genCostLabelEl = document.getElementById("genCostLabel");
-    const scanCostLabelEl = document.getElementById("scanCostLabel");
     const toastEl = document.getElementById("toast");
     const overlayEl = document.getElementById("errorOverlay");
     const overlayMsgEl = document.getElementById("errorMessage");
@@ -762,34 +823,36 @@
     const UNITS = {
       // Tier 1
       f1: { id:"f1", name:"Emberlings", emoji:"🔥", element:"fire", tier:1,
-            cost:20, count:5, hp:10, damage:5, killGold:3, hitGold:3, special:null },
+            cost:20, count:5, hp:10, damage:5, killGold:3, hitGold:3 },
       i1: { id:"i1", name:"Frost Scouts", emoji:"❄️", element:"ice", tier:1,
-            cost:22, count:4, hp:11, damage:6, killGold:3, hitGold:3, special:"heal-lite" },
+            cost:22, count:4, hp:11, damage:6, killGold:3, hitGold:3 },
       s1: { id:"s1", name:"Pebble Guard", emoji:"🪨", element:"stone", tier:1,
-            cost:25, count:3, hp:14, damage:8, killGold:4, hitGold:3, special:null },
+            cost:25, count:3, hp:14, damage:8, killGold:4, hitGold:3 },
       // Tier 2
       f2: { id:"f2", name:"Flame Knights", emoji:"⚔️", element:"fire", tier:2,
-            cost:40, count:4, hp:18, damage:15, killGold:5, hitGold:5, special:null },
+            cost:40, count:4, hp:18, damage:15, killGold:5, hitGold:5 },
       i2: { id:"i2", name:"Aurora Priests", emoji:"💧", element:"ice", tier:2,
-            cost:42, count:4, hp:18, damage:14, killGold:5, hitGold:5, special:"heal" },
+            cost:42, count:4, hp:18, damage:14, killGold:5, hitGold:5 },
       s2: { id:"s2", name:"Shard Swarm", emoji:"🌀", element:"stone", tier:2,
-            cost:45, count:4, hp:16, damage:14, killGold:5, hitGold:5, special:"split" },
+            cost:45, count:4, hp:16, damage:14, killGold:5, hitGold:5 },
       // Tier 3
       f3: { id:"f3", name:"Inferno Titan", emoji:"🌋", element:"fire", tier:3,
-            cost:70, count:3, hp:28, damage:30, killGold:8, hitGold:7, special:null },
+            cost:70, count:3, hp:28, damage:30, killGold:8, hitGold:7 },
       i3: { id:"i3", name:"Glacier Warden", emoji:"🧊", element:"ice", tier:3,
-            cost:72, count:3, hp:30, damage:28, killGold:8, hitGold:7, special:"heal-lite" },
+            cost:72, count:3, hp:30, damage:28, killGold:8, hitGold:7 },
       s3: { id:"s3", name:"Obsidian Colossus", emoji:"🗿", element:"stone", tier:3,
-            cost:80, count:4, hp:30, damage:30, killGold:9, hitGold:8, special:"split" }
+            cost:80, count:4, hp:30, damage:30, killGold:9, hitGold:8 }
     };
 
-    const TOWER_POWER_PER_LEVEL = [0, 40, 65, 95]; // index 1..3
+    // Towers are intentionally not crazy-strong
+    const TOWER_POWER_PER_LEVEL = [0, 30, 55, 80]; // index 1..3
     const BASE_INCOME_PER_SEC = 3.5;
 
-    const SCAN_COST = 35;
-    const SCAN_BUFF_DURATION_MS = 20000; // 20s
-    const MOMENTUM_DURATION_MS = 15000; // 15s
-    const TOWER_BUFF_DURATION_MS = 12000; // 12s
+    const START_TOWERS = [
+      { element:"none", level:0, lane:0 },
+      { element:"none", level:0, lane:1 },
+      { element:"none", level:0, lane:2 }
+    ];
 
     // ---- Local state ----
     const state = {
@@ -805,17 +868,7 @@
       selectedTowerIndex: null
     };
 
-    // ---- Basic helpers ----
-    function showFatal(msg){
-      overlayMsgEl.textContent = msg;
-      overlayEl.classList.remove("hidden");
-      statusEl.textContent = msg;
-      disableAllActions();
-    }
-    function disableAllActions(){
-      document.querySelectorAll(".btn, .tiny-btn, .tier-btn").forEach(b=>{ b.disabled = true; });
-    }
-
+    // ---- Toast + full-screen helpers ----
     let toastTimer = null;
     function showToast(msg){
       toastEl.textContent = msg;
@@ -823,13 +876,54 @@
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(()=> toastEl.classList.remove("show"), 1700);
     }
-
-    // ---- Fullscreen ----
+    function showFatal(msg){
+      overlayMsgEl.textContent = msg;
+      overlayEl.classList.remove("hidden");
+      statusEl.textContent = msg;
+      disableAllActions();
+    }
+    function disableAllActions(){
+      document.querySelectorAll(".btn, .tiny-btn, .tier-btn").forEach(b => b.disabled = true);
+    }
     fullBtn.addEventListener("click", () => {
       if (!document.fullscreenElement){
         document.documentElement.requestFullscreen?.();
       } else {
         document.exitFullscreen?.();
+      }
+    });
+
+    // ---- Board geometry + visuals ----
+    let boardGeom = null;           // { boardRect, lanesGeom: [{y, baseX, spawnX}, ...] }
+    let boardTowerNodes = [];       // [{ el, side, laneIndex, x, y, level }, ...]
+    let marchingUnits = [];         // [{ el, laneIndex, progress, duration, spawnX, baseX, x, y, hp, maxHp, hpFill }, ...]
+    let lastAnimTime = null;
+    let lastShotTime = 0;
+    const MARCH_DURATION_MS = 6500;
+    const SHOT_INTERVAL_MS = 350;
+
+    function computeBoardGeom(){
+      if (!boardEl) return;
+      const boardRect = boardEl.getBoundingClientRect();
+      const lanesEls = boardEl.querySelectorAll(".lane");
+      const lanesGeom = [];
+      lanesEls.forEach(lane => {
+        const base = lane.querySelector(".base-icon");
+        if (!base) return;
+        const baseRect = base.getBoundingClientRect();
+        const y = baseRect.top + baseRect.height/2 - boardRect.top;
+        const baseX = baseRect.left + baseRect.width/2 - boardRect.left;
+        const spawnX = boardRect.width - 28; // enemy spawn from far right
+        lanesGeom.push({ y, baseX, spawnX });
+      });
+      boardGeom = { boardRect, lanesGeom };
+    }
+
+    window.addEventListener("resize", ()=>{
+      boardGeom = null;
+      if (state.gameData){
+        computeBoardGeom();
+        renderBoardTowers();
       }
     });
 
@@ -871,7 +965,6 @@
         return;
       }
 
-      // Seating: first two are players, rest spectators
       if (myIndex === 0) state.seat = 1;
       else if (myIndex === 1) state.seat = 2;
       else {
@@ -894,12 +987,12 @@
         statusEl.textContent = "Connected. Build towers and send waves!";
       }
 
-      // Game doc under /games_basewar/{lobbyId}
       state.gameRef = doc(db, "games_basewar", lobbyId);
       state.cmdsRef = collection(state.gameRef, "commands");
 
       const gameSnap = await getDoc(state.gameRef);
       if (!gameSnap.exists() && state.isHost){
+        const nowMs = Date.now();
         await setDoc(state.gameRef, {
           createdAt: serverTimestamp(),
           lobbyId,
@@ -915,30 +1008,20 @@
           gen2: 1,
           incomePerSec1: BASE_INCOME_PER_SEC,
           incomePerSec2: BASE_INCOME_PER_SEC,
-          lastIncomeMs1: Date.now(),
-          lastIncomeMs2: Date.now(),
-          momentumUntil1: 0,
-          momentumUntil2: 0,
-          towerBuffUntil1: 0,
-          towerBuffUntil2: 0,
-          scanBuffUntil1: 0,
-          scanBuffUntil2: 0,
-          scanBuffElement1: null,
-          scanBuffElement2: null,
-          towers1: [],
-          towers2: [],
+          lastIncomeMs1: nowMs,
+          lastIncomeMs2: nowMs,
+          towers1: START_TOWERS.map(t => ({...t})),
+          towers2: START_TOWERS.map(t => ({...t})),
           lastCmdTs: 0
         }, { merge:true });
       }
 
-      // Listen to game state
       onSnapshot(state.gameRef, (snap) => {
         if (!snap.exists()) return;
         state.gameData = snap.data();
         updateFromGame();
       });
 
-      // Listen to commands for visuals / host effects
       onSnapshot(state.cmdsRef, (snap) => {
         snap.docChanges().forEach(ch => {
           if (ch.type !== "added") return;
@@ -966,18 +1049,14 @@
       const gen2 = d.gen2 ?? 1;
       const status = d.status || "playing";
 
-      let myBase, oppBase, myGold, myGen, side;
+      let myBase, oppBase, myGold, myGen;
       if (state.seat === 1){
-        side = 1;
         myBase = base1; oppBase = base2;
         myGold = gold1; myGen = gen1;
       } else if (state.seat === 2){
-        side = 2;
         myBase = base2; oppBase = base1;
         myGold = gold2; myGen = gen2;
       } else {
-        // spectator: mirror p1 as "left"
-        side = 1;
         myBase = base1; oppBase = base2;
         myGold = 0; myGen = gen1;
       }
@@ -997,25 +1076,9 @@
         genLevelEl.textContent = String(myGen);
       }
 
-      // Buff text
-      const now = Date.now();
-      let buffs = [];
-      if (!state.isSpectator){
-        const mKey = side === 1 ? "momentumUntil1" : "momentumUntil2";
-        if ((d[mKey] ?? 0) > now) buffs.push("Momentum +10% gold");
-        const scanKey = side === 1 ? "scanBuffUntil1" : "scanBuffUntil2";
-        const scanElKey = side === 1 ? "scanBuffElement1" : "scanBuffElement2";
-        if ((d[scanKey] ?? 0) > now && d[scanElKey]){
-          buffs.push(`Scout: ${capitalize(d[scanElKey])} units 10% cheaper`);
-        }
-      }
-      const buffText = buffs.length ? buffs.join(" • ") : "No buffs";
-      buffTextEl.textContent = buffText;
+      renderTowersList();
+      renderBoardTowers();
 
-      // Towers
-      renderTowers();
-
-      // Board status / victory
       if (status === "ended" || myBase <= 0 || oppBase <= 0){
         let msg = "Battle over.";
         if (!state.isSpectator){
@@ -1031,19 +1094,18 @@
         statusEl.textContent = msg;
         disableAllActions();
       } else {
-        boardMsgEl.textContent = "Send elemental waves and upgrade towers to break the enemy base.";
+        boardMsgEl.textContent = "Defend your base with towers and send waves at your opponent.";
       }
 
-      // Update costs labels
       updateCostLabels();
     }
 
-    function renderTowers(){
+    function renderTowersList(){
       const d = state.gameData;
       if (!d) return;
-      const side = (state.seat === 2) ? 2 : 1; // spectator sees p1's towers
-      const key = side === 1 ? "towers1" : "towers2";
-      const towers = Array.isArray(d[key]) ? d[key] : [];
+      const side = (state.seat === 2) ? 2 : 1;
+      const towersKey = side === 1 ? "towers1" : "towers2";
+      const towers = Array.isArray(d[towersKey]) ? d[towersKey] : [];
       towerRowEl.innerHTML = "";
 
       towers.forEach((t, idx) => {
@@ -1063,7 +1125,7 @@
 
         const label = document.createElement("span");
         if (!t.element || t.element === "none" || t.level === 0){
-          label.textContent = "Empty slot";
+          label.textContent = `Slot ${idx+1} (Empty)`;
         } else {
           label.textContent = `${capitalize(t.element)} Lv${t.level || 1}`;
         }
@@ -1073,55 +1135,84 @@
         towerRowEl.appendChild(pill);
       });
 
-      // If we can still buy towers, show a faint ghost slot
       if (!state.isSpectator && towers.length < MAX_TOWERS){
         const ghost = document.createElement("div");
         ghost.className = "tower-pill empty";
-        ghost.innerHTML = "<span class='tower-dot'></span><span>New slot…</span>";
+        ghost.innerHTML = "<span class='tower-dot'></span><span>Add slot…</span>";
         towerRowEl.appendChild(ghost);
       }
+    }
+
+    function renderBoardTowers(){
+      boardEl.querySelectorAll(".tower-node").forEach(n => n.remove());
+      boardTowerNodes = [];
+      if (!state.gameData) return;
+      if (!boardGeom) computeBoardGeom();
+      if (!boardGeom) return;
+
+      const lanesGeom = boardGeom.lanesGeom;
+      const laneCount = lanesGeom.length || 1;
+      const mySide = (state.seat === 2 ? 2 : 1);
+
+      const towersKey = mySide === 1 ? "towers1" : "towers2";
+      const towers = Array.isArray(state.gameData[towersKey]) ? state.gameData[towersKey] : [];
+
+      towers.forEach((t, idx) => {
+        const laneIndex = typeof t.lane === "number" ? (t.lane % laneCount) : (idx % laneCount);
+        const laneInfo = lanesGeom[laneIndex];
+        if (!laneInfo) return;
+
+        const baseX = laneInfo.baseX;
+        const offsetIndex = Math.floor(idx / laneCount);
+        const offset = 40 + offsetIndex * 24; // towers to the right of your base
+        const x = baseX + offset;
+        const y = laneInfo.y;
+
+        const node = document.createElement("div");
+        node.className = "tower-node mine";
+        node.style.left = (x - 14) + "px";
+        node.style.top = (y - 14) + "px";
+        node.dataset.side = String(mySide);
+        node.dataset.index = String(idx);
+
+        const emoji = (!t.element || t.element === "none") ? "🗼" : emojiForElement(t.element);
+        node.textContent = emoji;
+        boardEl.appendChild(node);
+
+        boardTowerNodes.push({
+          el: node,
+          side: mySide,
+          laneIndex,
+          x,
+          y,
+          level: t.level || 0,
+          element: t.element || "none"
+        });
+      });
     }
 
     function updateCostLabels(){
       const d = state.gameData;
       if (!d) return;
       const side = (state.seat === 2) ? 2 : 1;
-
-      // Gen cost
       const genCost = calcGenCost(d, side);
       genCostLabelEl.textContent = `(${genCost}g)`;
-
-      // Scan cost
-      scanCostLabelEl.textContent = `(${SCAN_COST}g)`;
-
-      // Unit buttons (if any rendered)
-      const now = Date.now();
-      const scanUntilKey = side === 1 ? "scanBuffUntil1" : "scanBuffUntil2";
-      const scanElKey = side === 1 ? "scanBuffElement1" : "scanBuffElement2";
-      const buffActive = (d[scanUntilKey] ?? 0) > now;
-      const buffElement = buffActive ? d[scanElKey] : null;
 
       document.querySelectorAll("[data-unit-id]").forEach(btn => {
         const id = btn.dataset.unitId;
         const u = UNITS[id];
         if (!u) return;
-        const baseCost = u.cost;
-        let cost = baseCost;
-        if (buffActive && buffElement && u.element === buffElement){
-          cost = Math.floor(baseCost * 0.9);
-        }
         const costSpan = btn.querySelector(".small");
-        if (costSpan) costSpan.textContent = `${cost}g`;
+        if (costSpan) costSpan.textContent = `${u.cost}g`;
       });
     }
 
+    // ---- Local UI setup ----
     function setupLocalUI(){
-      // Spectators cannot act
       if (state.isSpectator){
         disableAllActions();
       }
 
-      // Tier buttons
       function setTier(t){
         state.currentTier = t;
         tier1Btn.setAttribute("aria-pressed", t === 1 ? "true" : "false");
@@ -1135,17 +1226,15 @@
       tier3Btn.addEventListener("click", ()=> setTier(3));
       renderUnitButtons();
 
-      // Buttons
       if (!state.isSpectator){
         buyTowerBtn.addEventListener("click", onBuyTowerClick);
         towerRowEl.addEventListener("click", onTowerRowClick);
         genBtn.addEventListener("click", onGenUpgradeClick);
-        scanBtn.addEventListener("click", onScanClick);
         unitRowEl.addEventListener("click", onUnitRowClick);
+        boardEl.addEventListener("click", onBoardTowerClick);
       } else {
         buyTowerBtn.disabled = true;
         genBtn.disabled = true;
-        scanBtn.disabled = true;
       }
 
       towerOverlayCloseBtn.addEventListener("click", hideTowerOverlay);
@@ -1211,23 +1300,6 @@
       });
     }
 
-    function onScanClick(){
-      if (state.isSpectator || !state.gameData) return;
-      const d = state.gameData;
-      const side = (state.seat === 2) ? 2 : 1;
-      const goldKey = side === 1 ? "gold1" : "gold2";
-      const currentGold = d[goldKey] ?? 0;
-      if (currentGold < SCAN_COST){
-        showToast("Not enough gold to scout.");
-        return;
-      }
-      showScanInfo(); // immediate info
-      sendScan().catch(err => {
-        console.error(err);
-        showToast("Failed to send scout.");
-      });
-    }
-
     function onBuyTowerClick(){
       if (state.isSpectator || !state.gameData) return;
       const d = state.gameData;
@@ -1259,12 +1331,23 @@
       openTowerOverlay(idx);
     }
 
-    // ---- Cost helpers (use same formulas as host) ----
+    function onBoardTowerClick(ev){
+      if (state.isSpectator || !state.gameData) return;
+      const node = ev.target.closest(".tower-node");
+      if (!node) return;
+      const side = parseInt(node.dataset.side, 10);
+      const mySide = (state.seat === 2 ? 2 : 1);
+      if (side !== mySide) return;
+      const idx = parseInt(node.dataset.index, 10);
+      openTowerOverlay(idx);
+    }
+
+    // ---- Cost helpers ----
     function calcGenCost(d, side){
       const genKey = side === 1 ? "gen1" : "gen2";
       const gen = d[genKey] ?? 1;
       if (gen >= 4) return Infinity;
-      return 60 + (gen - 1) * 40; // 60,100,140
+      return 50 + (gen - 1) * 40; // 50,90,130
     }
 
     function calcTowerSlotCost(d, side){
@@ -1281,26 +1364,16 @@
       if (!t) return Infinity;
       const lvl = t.level || 0;
       if (lvl >= 3) return Infinity;
-      return lvl === 0 ? 30 : (lvl === 1 ? 50 : 80); // if someone path-set with 0, treat as 30
+      return lvl === 0 ? 30 : (lvl === 1 ? 50 : 80);
     }
 
     function calcWaveCost(d, side, unitId){
       const u = UNITS[unitId];
       if (!u) return Infinity;
-      const baseCost = u.cost;
-      const now = Date.now();
-      const scanUntilKey = side === 1 ? "scanBuffUntil1" : "scanBuffUntil2";
-      const scanElKey = side === 1 ? "scanBuffElement1" : "scanBuffElement2";
-      const buffActive = (d[scanUntilKey] ?? 0) > now;
-      const buffElement = buffActive ? d[scanElKey] : null;
-      let cost = baseCost;
-      if (buffActive && buffElement && u.element === buffElement){
-        cost = Math.floor(baseCost * 0.9);
-      }
-      return cost;
+      return u.cost;
     }
 
-    // ---- Commands: send from client ----
+    // ---- Commands: client → Firestore ----
     async function sendWave(unitId){
       if (!state.cmdsRef || state.isSpectator) return;
       const side = (state.seat === 2) ? 2 : 1;
@@ -1310,7 +1383,6 @@
         unitId,
         createdAt: serverTimestamp()
       });
-      spawnUnitVisual(unitId, side, /*fromMe*/ true);
     }
 
     async function sendGenUpgrade(){
@@ -1318,16 +1390,6 @@
       const side = (state.seat === 2) ? 2 : 1;
       await addDoc(state.cmdsRef, {
         cmd: "gen",
-        side,
-        createdAt: serverTimestamp()
-      });
-    }
-
-    async function sendScan(){
-      if (!state.cmdsRef || state.isSpectator) return;
-      const side = (state.seat === 2) ? 2 : 1;
-      await addDoc(state.cmdsRef, {
-        cmd: "scan",
         side,
         createdAt: serverTimestamp()
       });
@@ -1368,7 +1430,7 @@
       hideTowerOverlay();
     }
 
-    // ---- Host: process commands on gameRef ----
+    // ---- Host: process commands ----
     async function processCommand(cmd){
       if (!state.isHost || !state.gameRef) return;
 
@@ -1378,32 +1440,29 @@
         const d = snap.data();
         const cmdTs = cmd.createdAt && cmd.createdAt.toMillis ? cmd.createdAt.toMillis() : 0;
         const lastTs = d.lastCmdTs ?? 0;
-        if (cmdTs <= lastTs) return; // already processed
+        if (cmdTs <= lastTs) return;
 
         const nowMs = Date.now();
         const updates = {};
-        // Tick passive income for both sides
+
         applyIncome(d, updates, 1, nowMs);
         applyIncome(d, updates, 2, nowMs);
 
         switch (cmd.cmd){
           case "wave":
-            applyWave(d, updates, cmd, nowMs);
+            applyWave(d, updates, cmd);
             break;
           case "gen":
-            applyGenUpgrade(d, updates, cmd, nowMs);
+            applyGenUpgrade(d, updates, cmd);
             break;
           case "towerSlot":
-            applyTowerSlot(d, updates, cmd, nowMs);
+            applyTowerSlot(d, updates, cmd);
             break;
           case "towerPath":
-            applyTowerPath(d, updates, cmd, nowMs);
+            applyTowerPath(d, updates, cmd);
             break;
           case "towerUp":
-            applyTowerUpgrade(d, updates, cmd, nowMs);
-            break;
-          case "scan":
-            applyScan(d, updates, cmd, nowMs);
+            applyTowerUpgrade(d, updates, cmd);
             break;
         }
 
@@ -1416,7 +1475,6 @@
       const goldKey = side === 1 ? "gold1" : "gold2";
       const incomeKey = side === 1 ? "incomePerSec1" : "incomePerSec2";
       const lastKey = side === 1 ? "lastIncomeMs1" : "lastIncomeMs2";
-      const momentumKey = side === 1 ? "momentumUntil1" : "momentumUntil2";
 
       const last = d[lastKey] ?? nowMs;
       let dt = (nowMs - last) / 1000;
@@ -1425,13 +1483,9 @@
         d[lastKey] = nowMs;
         return;
       }
-      dt = Math.min(dt, 30); // clamp
+      dt = Math.min(dt, 30);
       const baseRate = d[incomeKey] ?? BASE_INCOME_PER_SEC;
-      let rate = baseRate;
-      const hasMomentum = (d[momentumKey] ?? 0) > nowMs;
-      if (hasMomentum) rate *= 1.1; // 10% momentum bonus
-
-      const delta = Math.floor(rate * dt);
+      const delta = Math.floor(baseRate * dt);
       if (delta > 0){
         const newGold = (d[goldKey] ?? 0) + delta;
         d[goldKey] = newGold;
@@ -1441,7 +1495,7 @@
       updates[lastKey] = nowMs;
     }
 
-    function applyWave(d, updates, cmd, nowMs){
+    function applyWave(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
       const enemy = side === 1 ? 2 : 1;
       const unit = UNITS[cmd.unitId];
@@ -1452,58 +1506,34 @@
       let goldAtk = d[goldKeyAtk] ?? 0;
       let goldDef = d[goldKeyDef] ?? 0;
 
-      const cost = getWaveCostFromData(d, side, unit, nowMs);
+      const cost = unit.cost;
       if (goldAtk < cost){
-        // Not enough gold; ignore
         return;
       }
       goldAtk -= cost;
 
       const baseKeyEnemy = enemy === 1 ? "base1" : "base2";
-      const baseKeyAtk = side === 1 ? "base1" : "base2";
-      const genKeyAtk = side === 1 ? "gen1" : "gen2";
+      const maxBase = d.maxBase ?? MAX_BASE_HP;
+      const enemyBase = d[baseKeyEnemy] ?? maxBase;
+
       const genKeyDef = enemy === 1 ? "gen1" : "gen2";
       const towersKeyDef = enemy === 1 ? "towers1" : "towers2";
-
-      const maxBase = d.maxBase ?? MAX_BASE_HP;
-      const oldEnemyBase = d[baseKeyEnemy] ?? maxBase;
-      const myBase = d[baseKeyAtk] ?? maxBase;
-      const enemyBase = oldEnemyBase;
-
-      const atkGen = d[genKeyAtk] ?? 1;
       const defGen = d[genKeyDef] ?? 1;
       const towersDef = Array.isArray(d[towersKeyDef]) ? d[towersKeyDef] : [];
 
-      // Defense power from towers
-      let defensePower = computeDefensePower(d, towersDef, unit, defGen, enemy, nowMs);
+      const defensePower = computeDefensePower(d, towersDef, unit, defGen);
 
-      // Effective wave stats
       let effectiveCount = unit.count;
-      let hpPerUnit = unit.hp;
-      if (unit.special === "split"){
-        effectiveCount = Math.round(effectiveCount * 1.6);
-      }
-      let rawKills = Math.round(defensePower / (hpPerUnit || 1));
-      let kills = Math.min(effectiveCount, rawKills);
-      if (unit.special === "heal" || unit.special === "heal-lite"){
-        kills = Math.max(0, Math.round(kills * (unit.special === "heal" ? 0.7 : 0.8)));
-      }
+      const hpPerUnit = unit.hp;
+      let kills = Math.min(effectiveCount, Math.round(defensePower / (hpPerUnit || 1)));
+      if (kills < 0) kills = 0;
       const survivors = Math.max(0, effectiveCount - kills);
 
-      // Damage
-      let dmgMult = 1 + (atkGen - 1) * 0.2;
-      // mild underdog help: if my base far behind, slight more damage
-      if (myBase + 60 < enemyBase){
-        dmgMult *= 1.1;
-      }
-      let damage = Math.round(survivors * unit.damage * dmgMult);
+      let damage = survivors * unit.damage;
       if (damage <= 0 && survivors > 0) damage = 1;
 
-      // Gold rewards
-      const killGold = kills * unit.killGold;
-      const hitGold = survivors * unit.hitGold;
-      goldAtk += hitGold;
-      goldDef += killGold;
+      goldAtk += survivors * unit.hitGold;
+      goldDef += kills * unit.killGold;
 
       let newEnemyBase = Math.max(0, enemyBase - damage);
 
@@ -1511,75 +1541,34 @@
       d[goldKeyDef] = goldDef; updates[goldKeyDef] = goldDef;
       d[baseKeyEnemy] = newEnemyBase; updates[baseKeyEnemy] = newEnemyBase;
 
-      // Momentum buff for attacker
-      if (damage > 0){
-        const mKey = side === 1 ? "momentumUntil1" : "momentumUntil2";
-        const until = nowMs + MOMENTUM_DURATION_MS;
-        d[mKey] = until;
-        updates[mKey] = until;
-      }
-
-      // Tower buff when base crosses 10% thresholds
-      if (damage > 0 && newEnemyBase > 0){
-        const chunk = maxBase / 10;
-        const oldBucket = Math.floor(oldEnemyBase / chunk);
-        const newBucket = Math.floor(newEnemyBase / chunk);
-        if (newBucket < oldBucket){
-          const buffKey = enemy === 1 ? "towerBuffUntil1" : "towerBuffUntil2";
-          const until = nowMs + TOWER_BUFF_DURATION_MS;
-          d[buffKey] = until;
-          updates[buffKey] = until;
-        }
-      }
-
       if (newEnemyBase <= 0){
         d.status = "ended";
         updates.status = "ended";
       }
     }
 
-    function computeDefensePower(d, towers, unit, genDef, side, nowMs){
+    function computeDefensePower(d, towers, unit, defGen){
       let total = 0;
       for (const t of towers){
         const lvl = t.level || 0;
-        if (!lvl) continue;
+        if (!lvl || !t.element || t.element === "none") continue;
         let p = TOWER_POWER_PER_LEVEL[lvl] || 0;
         const te = t.element;
         const ue = unit.element;
         if (te && ue){
           if (te === ELEMENT_COUNTER[ue]){
-            p *= 1.25; // tower strong vs this unit
+            p *= 1.35; // strong vs that element
           } else if (ue === ELEMENT_COUNTER[te]){
-            p *= 0.8; // tower weak vs this unit
+            p *= 0.75; // weak vs that element
           }
         }
         total += p;
       }
-      // scale by defender generator
-      total *= 1 + (genDef - 1) * 0.18;
-
-      // tower buff from low HP
-      const buffKey = side === 1 ? "towerBuffUntil1" : "towerBuffUntil2";
-      if ((d[buffKey] ?? 0) > nowMs){
-        total *= 1.25;
-      }
+      total *= 1 + (defGen - 1) * 0.18;
       return total;
     }
 
-    function getWaveCostFromData(d, side, unit, nowMs){
-      const baseCost = unit.cost;
-      const scanUntilKey = side === 1 ? "scanBuffUntil1" : "scanBuffUntil2";
-      const scanElKey = side === 1 ? "scanBuffElement1" : "scanBuffElement2";
-      const buffActive = (d[scanUntilKey] ?? 0) > nowMs;
-      const buffElement = buffActive ? d[scanElKey] : null;
-      let cost = baseCost;
-      if (buffActive && buffElement && unit.element === buffElement){
-        cost = Math.floor(baseCost * 0.9);
-      }
-      return cost;
-    }
-
-    function applyGenUpgrade(d, updates, cmd, nowMs){
+    function applyGenUpgrade(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
       const goldKey = side === 1 ? "gold1" : "gold2";
       const genKey = side === 1 ? "gen1" : "gen2";
@@ -1588,8 +1577,9 @@
       let gold = d[goldKey] ?? 0;
       let gen = d[genKey] ?? 1;
       if (gen >= 4) return;
-      const cost = 60 + (gen - 1) * 40;
+      const cost = 50 + (gen - 1) * 40;
       if (gold < cost) return;
+
       gold -= cost;
       gen += 1;
       const income = (d[incomeKey] ?? BASE_INCOME_PER_SEC) + 1.3;
@@ -1599,7 +1589,7 @@
       d[incomeKey] = income; updates[incomeKey] = income;
     }
 
-    function applyTowerSlot(d, updates, cmd, nowMs){
+    function applyTowerSlot(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
       const goldKey = side === 1 ? "gold1" : "gold2";
       const towersKey = side === 1 ? "towers1" : "towers2";
@@ -1612,12 +1602,15 @@
       if (gold < cost) return;
       gold -= cost;
 
-      towers.push({ element:"none", level:0 });
+      const laneCount = 3;
+      const lane = towers.length % laneCount;
+      towers.push({ element:"none", level:0, lane });
+
       d[goldKey] = gold; updates[goldKey] = gold;
       d[towersKey] = towers; updates[towersKey] = towers;
     }
 
-    function applyTowerPath(d, updates, cmd, nowMs){
+    function applyTowerPath(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
       const towersKey = side === 1 ? "towers1" : "towers2";
       const towers = Array.isArray(d[towersKey]) ? d[towersKey].slice() : [];
@@ -1628,7 +1621,6 @@
 
       const t = towers[idx];
       if (t.element && t.element !== "none" && t.level >= 1){
-        // already pathed; ignore
         return;
       }
       t.element = element;
@@ -1638,7 +1630,7 @@
       updates[towersKey] = towers;
     }
 
-    function applyTowerUpgrade(d, updates, cmd, nowMs){
+    function applyTowerUpgrade(d, updates, cmd){
       const side = cmd.side === 2 ? 2 : 1;
       const goldKey = side === 1 ? "gold1" : "gold2";
       const towersKey = side === 1 ? "towers1" : "towers2";
@@ -1661,94 +1653,194 @@
       d[towersKey] = towers; updates[towersKey] = towers;
     }
 
-    function applyScan(d, updates, cmd, nowMs){
-      const side = cmd.side === 2 ? 2 : 1;
-      const enemy = side === 1 ? 2 : 1;
-      const goldKey = side === 1 ? "gold1" : "gold2";
-      let gold = d[goldKey] ?? 0;
-      if (gold < SCAN_COST) return;
-      gold -= SCAN_COST;
-
-      const towersKeyEnemy = enemy === 1 ? "towers1" : "towers2";
-      const towersEnemy = Array.isArray(d[towersKeyEnemy]) ? d[towersKeyEnemy] : [];
-
-      // Count enemy towers by element
-      const counts = {fire:0,ice:0,stone:0};
-      for (const t of towersEnemy){
-        if (t.element === "fire") counts.fire++;
-        else if (t.element === "ice") counts.ice++;
-        else if (t.element === "stone") counts.stone++;
-      }
-      let dominant = null;
-      let best = 0;
-      for (const k of ["fire","ice","stone"]){
-        if (counts[k] > best){
-          best = counts[k];
-          dominant = k;
-        }
-      }
-
-      let buffElement = null;
-      if (dominant){
-        buffElement = ELEMENT_COUNTER[dominant] || null;
-      }
-
-      const scanBuffUntilKey = side === 1 ? "scanBuffUntil1" : "scanBuffUntil2";
-      const scanBuffElementKey = side === 1 ? "scanBuffElement1" : "scanBuffElement2";
-
-      const until = nowMs + SCAN_BUFF_DURATION_MS;
-      d[goldKey] = gold; updates[goldKey] = gold;
-      d[scanBuffUntilKey] = until; updates[scanBuffUntilKey] = until;
-      d[scanBuffElementKey] = buffElement; updates[scanBuffElementKey] = buffElement;
-    }
-
-    // ---- Command visuals for all clients ----
+    // ---- Command visuals ----
     function handleCommandVisual(cmd){
       if (cmd.cmd === "wave"){
-        const fromSide = cmd.side === 2 ? 2 : 1;
-        const fromMe = (!state.isSpectator &&
-                        ((state.seat === 1 && fromSide === 1) ||
-                         (state.seat === 2 && fromSide === 2)));
-        spawnUnitVisual(cmd.unitId, fromSide, fromMe);
-      }
-      if (cmd.cmd === "scan"){
-        // Small flavor: show scan text
-        if (!state.isSpectator){
-          const mySide = (state.seat === 2) ? 2 : 1;
-          if (cmd.side === mySide){
-            showToast("Scout launched — counter window open!");
-          } else {
-            // enemy scanned you
-            showToast("Enemy scout is scanning your defenses…");
-          }
+        const attackerSide = cmd.side === 2 ? 2 : 1;
+        const targetSide = attackerSide === 1 ? 2 : 1;
+
+        if (!state.isSpectator && state.seat === targetSide){
+          spawnIncomingWave(cmd.unitId);
+          showToast("Enemy wave incoming!");
+        } else if (!state.isSpectator && state.seat === attackerSide){
+          showToast("Wave sent!");
         }
       }
     }
 
-    function spawnUnitVisual(unitId, fromSide, fromMe){
+    function spawnIncomingWave(unitId){
       const u = UNITS[unitId];
-      if (!u) return;
-      const lanes = boardEl.querySelectorAll(".lane");
-      if (!lanes.length) return;
-      const idx = Math.floor(Math.random()*lanes.length);
-      const lane = lanes[idx];
+      if (!u || !boardEl) return;
+      if (!boardGeom) computeBoardGeom();
+      if (!boardGeom) return;
 
-      const unitDiv = document.createElement("div");
-      unitDiv.className = "unit";
-      unitDiv.classList.add(u.element || "fire");
-      unitDiv.classList.add(fromSide === 1 ? "from-me" : "from-enemy");
-      unitDiv.textContent = u.emoji;
+      const lanesGeom = boardGeom.lanesGeom;
+      if (!lanesGeom || !lanesGeom.length) return;
 
-      const boardRect = boardEl.getBoundingClientRect();
-      const laneRect = lane.getBoundingClientRect();
-      const y = laneRect.top + laneRect.height/2 - boardRect.top - 10;
-      const x = fromSide === 1 ? 10 : (boardRect.width - 30);
+      const laneIndex = Math.floor(Math.random() * lanesGeom.length);
+      const laneInfo = lanesGeom[laneIndex];
 
-      unitDiv.style.top = y + "px";
-      unitDiv.style.left = x + "px";
+      const count = Math.min(u.count, 7);
+      for (let i = 0; i < count; i++){
+        const unitDiv = document.createElement("div");
+        unitDiv.className = "unit march";
+        unitDiv.classList.add(u.element || "fire");
+        unitDiv.textContent = u.emoji;
 
-      boardEl.appendChild(unitDiv);
-      setTimeout(()=> unitDiv.remove(), 1800);
+        const hpWrap = document.createElement("div");
+        hpWrap.className = "unit-hp";
+        const hpFill = document.createElement("div");
+        hpFill.className = "unit-hp-fill";
+        hpWrap.appendChild(hpFill);
+        unitDiv.appendChild(hpWrap);
+
+        boardEl.appendChild(unitDiv);
+
+        const offset = -0.12 * i;
+        const maxHp = u.hp * 2.2; // purely visual
+        marchingUnits.push({
+          el: unitDiv,
+          laneIndex,
+          progress: offset,
+          duration: MARCH_DURATION_MS,
+          spawnX: laneInfo.spawnX,
+          baseX: laneInfo.baseX,
+          x: laneInfo.spawnX,
+          y: laneInfo.y,
+          hp: maxHp,
+          maxHp,
+          hpFill
+        });
+      }
+
+      if (!lastAnimTime){
+        requestAnimationFrame(animateUnits);
+      }
+    }
+
+    function animateUnits(timestamp){
+      if (!lastAnimTime) lastAnimTime = timestamp;
+      const dt = timestamp - lastAnimTime;
+      lastAnimTime = timestamp;
+
+      if (!boardGeom) computeBoardGeom();
+      if (!boardGeom){
+        marchingUnits.forEach(u => u.el.remove());
+        marchingUnits = [];
+        lastAnimTime = null;
+        return;
+      }
+      const lanesGeom = boardGeom.lanesGeom;
+      const maxProgress = 1.05;
+
+      for (let i = marchingUnits.length - 1; i >= 0; i--){
+        const u = marchingUnits[i];
+        const laneInfo = lanesGeom[u.laneIndex];
+        if (!laneInfo){
+          u.el.remove();
+          marchingUnits.splice(i,1);
+          continue;
+        }
+
+        u.progress += dt / u.duration;
+        const clamped = Math.min(maxProgress, u.progress);
+
+        const x = u.spawnX + (u.baseX - u.spawnX) * clamped;
+        u.x = x;
+        u.y = laneInfo.y;
+
+        u.el.style.transform = `translate(${x - 11}px, ${laneInfo.y - 11}px)`;
+
+        if (u.progress >= maxProgress){
+          u.el.classList.add("unit-hit");
+          setTimeout(() => u.el.remove(), 200);
+          marchingUnits.splice(i,1);
+        }
+      }
+
+      const now = performance.now();
+      if (now - lastShotTime > SHOT_INTERVAL_MS && marchingUnits.length > 0){
+        lastShotTime = now;
+        spawnDefenderShots();
+      }
+
+      if (marchingUnits.length > 0){
+        requestAnimationFrame(animateUnits);
+      } else {
+        lastAnimTime = null;
+      }
+    }
+
+    function spawnDefenderShots(){
+      if (!state.gameData || !boardGeom) return;
+      if (state.isSpectator) return;
+
+      const mySide = (state.seat === 2 ? 2 : 1);
+      const enemies = marchingUnits.slice();
+      if (!enemies.length) return;
+
+      const byLane = new Map();
+      enemies.forEach(u => {
+        const arr = byLane.get(u.laneIndex) || [];
+        arr.push(u);
+        byLane.set(u.laneIndex, arr);
+      });
+
+      for (const [laneIndex, units] of byLane){
+        const towers = boardTowerNodes.filter(t => t.side === mySide && t.laneIndex === laneIndex && t.level > 0 && t.element !== "none");
+        if (!towers.length) continue;
+
+        const tower = towers[Math.floor(Math.random() * towers.length)];
+        const target = units[Math.floor(Math.random() * units.length)];
+        spawnShot(tower, target);
+        applyVisualHit(target, tower);
+      }
+    }
+
+    function spawnShot(tower, unit){
+      const shot = document.createElement("div");
+      shot.className = "shot";
+
+      const sx = tower.x;
+      const sy = tower.y;
+      const ux = unit.x;
+      const uy = unit.y;
+
+      shot.style.left = (sx - 3) + "px";
+      shot.style.top = (sy - 3) + "px";
+      boardEl.appendChild(shot);
+
+      const dx = ux - sx;
+      const dy = uy - sy;
+
+      requestAnimationFrame(() => {
+        shot.style.transform = `translate(${dx}px, ${dy}px)`;
+        shot.style.opacity = "0";
+      });
+
+      setTimeout(() => shot.remove(), 360);
+    }
+
+    function applyVisualHit(u, tower){
+      const lvl = tower.level || 1;
+      let base = TOWER_POWER_PER_LEVEL[lvl] || 30;
+      if (tower.element && u.el.classList.contains(tower.element)){
+        // same element, small bonus
+        base *= 1.1;
+      }
+      const dmg = base * 0.45;
+      u.hp -= dmg;
+      if (u.hp <= 0){
+        u.hp = 0;
+        u.hpFill.style.width = "0%";
+        u.el.classList.add("unit-dead");
+        setTimeout(() => u.el.remove(), 180);
+        const idx = marchingUnits.indexOf(u);
+        if (idx >= 0) marchingUnits.splice(idx,1);
+      } else {
+        const pct = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100));
+        u.hpFill.style.width = pct + "%";
+      }
     }
 
     // ---- Tower overlay ----
@@ -1767,30 +1859,43 @@
       if (!t.element || t.element === "none" || !t.level){
         towerOverlayTitleEl.textContent = `Tower Slot #${index+1}`;
         towerOverlayBodyEl.textContent = "Choose an element path for this tower.";
+        towerOverlayEl.classList.add("radial-mode");
+
         ["fire","ice","stone"].forEach(el => {
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "tiny-btn";
-          btn.innerHTML = `${emojiForElement(el)} ${capitalize(el)} Path`;
-          btn.addEventListener("click", ()=> sendTowerPath(index, el).catch(err => {
-            console.error(err);
-            showToast("Failed to set tower path.");
-          }));
+          btn.className = "tiny-btn tower-opt tower-opt-" + el;
+          btn.innerHTML = `${emojiForElement(el)} ${capitalize(el)}`;
+          btn.addEventListener("click", () => {
+            sendTowerPath(index, el).catch(err => {
+              console.error(err);
+              showToast("Failed to set tower path.");
+            });
+          });
           towerOverlayActionsEl.appendChild(btn);
         });
+
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "tiny-btn tower-opt tower-opt-close";
+        closeBtn.textContent = "Close";
+        closeBtn.addEventListener("click", hideTowerOverlay);
+        towerOverlayActionsEl.appendChild(closeBtn);
       } else {
+        towerOverlayEl.classList.remove("radial-mode");
         towerOverlayTitleEl.textContent = `${capitalize(t.element)} Tower #${index+1}`;
         const lvl = t.level || 1;
         towerOverlayBodyEl.textContent = lvl >= 3
           ? "This tower is max level."
           : `Current level: ${lvl}. Upgrade to level ${lvl+1}?`;
+
         if (lvl < 3){
           const cost = calcTowerUpgradeCost(d, side, index);
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "tiny-btn";
           btn.innerHTML = `⬆️ Upgrade (${cost}g)`;
-          btn.addEventListener("click", ()=> {
+          btn.addEventListener("click", () => {
             const goldKey = side === 1 ? "gold1" : "gold2";
             const currentGold = d[goldKey] ?? 0;
             if (currentGold < cost){
@@ -1811,28 +1916,8 @@
 
     function hideTowerOverlay(){
       towerOverlayEl.classList.remove("show");
+      towerOverlayEl.classList.remove("radial-mode");
       state.selectedTowerIndex = null;
-    }
-
-    // ---- Scan info ----
-    function showScanInfo(){
-      const d = state.gameData;
-      if (!d) return;
-      const side = (state.seat === 2) ? 2 : 1;
-      const enemy = side === 1 ? 2 : 1;
-      const towersKeyEnemy = enemy === 1 ? "towers1" : "towers2";
-      const towersEnemy = Array.isArray(d[towersKeyEnemy]) ? d[towersKeyEnemy] : [];
-      const genEnemy = enemy === 1 ? (d.gen1 ?? 1) : (d.gen2 ?? 1);
-
-      const counts = {fire:0,ice:0,stone:0};
-      for (const t of towersEnemy){
-        if (t.element === "fire") counts.fire++;
-        else if (t.element === "ice") counts.ice++;
-        else if (t.element === "stone") counts.stone++;
-      }
-
-      const msg = `Enemy generator Lv${genEnemy}. Towers — Fire: ${counts.fire}, Ice: ${counts.ice}, Stone: ${counts.stone}.`;
-      showToast(msg);
     }
 
     // ---- Small helpers ----
@@ -1850,6 +1935,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
