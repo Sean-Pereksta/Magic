@@ -2,1360 +2,1926 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🪳 Roach Run — Online Pac Maze (2P, Firebase)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <title>⚔️ Base War Duel (Prototype)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <style>
     :root{
       --bg:#020617;
-      --panel:#0b1120;
+      --panel:#020617;
+      --panel-soft:#0b1120;
+      --card:#020617;
       --ink:#e5e7eb;
       --muted:#9ca3af;
-      --accent:#38bdf8;
-      --accent-soft:#0ea5e9;
-      --good:#22c55e;
-      --bad:#ef4444;
+      --accent:#22c55e;
+      --accent-soft:#4ade80;
+      --danger:#ef4444;
+      --warn:#eab308;
+      --line:#1f2937;
       --radius:14px;
-      --shadow:0 18px 40px rgba(0,0,0,.7);
+      --shadow:0 18px 40px rgba(15,23,42,.75);
+      --fire:#f97316;
+      --ice:#38bdf8;
+      --stone:#a3a3a3;
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     html,body{
       margin:0;
       padding:0;
       height:100%;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background:radial-gradient(circle at top,#0f172a 0,#020617 55%);
+      background:radial-gradient(circle at top,#0f172a 0,#020617 50%,#000 100%);
       color:var(--ink);
-      overflow:hidden;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     }
     body{
       display:flex;
-      flex-direction:column;
-      align-items:center;
       justify-content:center;
+      align-items:stretch;
     }
-    .shell{
-      flex:1;
-      display:flex;
-      flex-direction:column;
+    #gameShell{
       width:100%;
-      max-width:900px;
-      padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+      max-width:520px;
+      padding:10px 10px 18px;
+      display:flex;
+      flex-direction:column;
       gap:8px;
     }
-
-    .top-bar{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:8px;
-      padding:8px 12px;
+    header#topBar{
+      background:linear-gradient(135deg,#020617,#020617,#020617);
       border-radius:var(--radius);
-      background:rgba(15,23,42,.95);
-      border:1px solid #1f2937;
       box-shadow:var(--shadow);
-      font-size:.85rem;
-    }
-    .top-left{
+      padding:6px 10px;
       display:flex;
-      flex-direction:column;
-      gap:4px;
+      align-items:center;
+      justify-content:space-between;
+      gap:6px;
+      border:1px solid #111827;
+      position:relative;
+      z-index:5;
+    }
+    #hpBars{
       flex:1;
-      min-width:0;
-    }
-    .title-row{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    .game-title{
-      font-weight:700;
-      display:flex;
-      align-items:center;
-      gap:6px;
-    }
-    .pill-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-    }
-    .pill{
-      border-radius:999px;
-      border:1px solid #1f2937;
-      padding:3px 9px;
-      background:#020617;
-      display:inline-flex;
-      align-items:center;
-      gap:5px;
-      font-size:.78rem;
-      color:var(--muted);
-      white-space:nowrap;
-    }
-    .pill strong{color:var(--ink);font-weight:600;}
-    .description{
-      font-size:.75rem;
-      color:var(--muted);
-    }
-
-    .top-right{
       display:flex;
       flex-direction:column;
-      align-items:flex-end;
       gap:4px;
+      font-size:11px;
+      color:var(--muted);
+    }
+    .hpRow{
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .hpLabel{
+      min-width:34px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-weight:600;
+      font-size:10px;
+    }
+    .hpBarOuter{
+      flex:1;
+      height:8px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+      border:1px solid #111827;
+    }
+    .hpBarFill{
+      height:100%;
+      width:100%;
+      border-radius:999px;
+      transform-origin:left center;
+      transition:transform .2s ease-out,background .2s ease-out;
+    }
+    .hpPlayer{background:linear-gradient(90deg,#22c55e,#4ade80);}
+    .hpEnemy{background:linear-gradient(90deg,#ef4444,#f97316);}
+    #timerLabel{
+      min-width:60px;
+      text-align:right;
+      font-size:12px;
+      font-weight:600;
+      color:var(--muted);
     }
     #fullscreenBtn{
-      border-radius:999px;
-      border:1px solid #1f2937;
+      border:none;
       background:#020617;
+      color:var(--muted);
       padding:4px 8px;
-      font-size:.78rem;
-      color:var(--ink);
-      cursor:pointer;
-      display:inline-flex;
+      border-radius:999px;
+      font-size:11px;
+      display:flex;
       align-items:center;
       gap:4px;
+      box-shadow:0 0 0 1px #1f2937;
+      cursor:pointer;
     }
-    #fullscreenBtn:active{
-      transform:scale(.97);
-    }
-    .mini-label{
-      font-size:.75rem;
-      color:var(--muted);
-      margin-bottom:2px;
-    }
-    #oppMini{
-      border-radius:10px;
-      border:1px solid #1f2937;
-      background:#020617;
-      box-shadow:0 10px 25px rgba(0,0,0,.6);
-      width:140px;
-      height:110px;
+    #fullscreenBtn span{
+      font-size:14px;
     }
 
-    .main-game{
-      flex:1;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      min-height:0;
-    }
-    .game-panel{
-      flex:1;
-      border-radius:var(--radius);
-      background:rgba(15,23,42,.96);
-      border:1px solid #1f2937;
-      box-shadow:var(--shadow);
-      padding:8px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      min-height:0;
-    }
-    #gameCanvas{
-      width:100%;
-      max-width:600px;
-      aspect-ratio:11/9;
-      border-radius:10px;
-      border:1px solid #111827;
-      background:#020617;
-      touch-action:none;
-    }
-
-    .joystick-bar{
-      height:140px;
-      border-radius:var(--radius);
-      background:rgba(15,23,42,.96);
-      border:1px solid #1f2937;
-      box-shadow:var(--shadow);
-      padding:6px 12px 10px;
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-    }
-    .joystick-label{
-      font-size:.78rem;
-      color:var(--muted);
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-    }
-    .joystick-area{
-      flex:1;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    .joystick-outer{
+    #battleAreaWrapper{
+      flex:0 0 auto;
       position:relative;
-      width:100px;
-      height:100px;
-      border-radius:999px;
-      border:2px solid #1f2937;
-      background:radial-gradient(circle at 30% 30%,#1f2937,#020617);
-      box-shadow:0 10px 30px rgba(0,0,0,.8) inset;
-      touch-action:none;
     }
-    .joystick-inner{
+    #battleWindow{
+      position:relative;
+      width:100%;
+      max-width:520px;
+      aspect-ratio:16/9;
+      margin:0 auto;
+      border-radius:18px;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 20% 0%,rgba(56,189,248,.2) 0,transparent 60%),
+        radial-gradient(circle at 80% 100%,rgba(248,250,252,.12) 0,transparent 60%),
+        linear-gradient(180deg,#0b1120,#020617 40%,#020617);
+      box-shadow:var(--shadow);
+      border:1px solid rgba(15,23,42,.9);
+    }
+    #laneTrack{
       position:absolute;
-      width:44px;
-      height:44px;
+      left:6%;
+      right:6%;
+      top:52%;
+      height:16px;
+      transform:translateY(-50%);
       border-radius:999px;
-      background:radial-gradient(circle at 30% 30%,#38bdf8,#0ea5e9);
-      left:50%;
-      top:50%;
-      transform:translate(-50%,-50%);
-      box-shadow:0 0 12px rgba(56,189,248,.7);
+      background:linear-gradient(90deg,#111827,#020617,#111827);
+      box-shadow:0 0 0 1px rgba(15,23,42,.9),0 0 24px rgba(0,0,0,.8) inset;
+    }
+    #laneGlow{
+      position:absolute;
+      left:6%;
+      right:6%;
+      top:52%;
+      height:30px;
+      transform:translateY(-50%);
+      background:radial-gradient(ellipse at center,rgba(56,189,248,.25),transparent 60%);
+      pointer-events:none;
+      opacity:.7;
+    }
+    .base{
+      position:absolute;
+      width:48px;
+      height:48px;
+      border-radius:16px;
+      top:52%;
+      transform:translateY(-50%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      font-weight:700;
+      text-shadow:0 2px 6px rgba(0,0,0,.8);
+    }
+    #playerBase{
+      left:2%;
+      background:radial-gradient(circle at 30% 20%,#bbf7d0,#22c55e);
+      box-shadow:0 0 0 2px rgba(21,128,61,.9),0 0 30px rgba(34,197,94,.75);
+    }
+    #enemyBase{
+      right:2%;
+      background:radial-gradient(circle at 30% 20%,#fecaca,#ef4444);
+      box-shadow:0 0 0 2px rgba(185,28,28,.9),0 0 30px rgba(239,68,68,.75);
+    }
+
+    #towerRow{
+      position:absolute;
+      left:12%;
+      right:12%;
+      top:36%;
+      height:20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      pointer-events:none;
+    }
+    .towerSlot{
+      width:22px;
+      height:22px;
+      border-radius:8px;
+      border:1px dashed rgba(148,163,184,.6);
+      background:rgba(15,23,42,.8);
+      box-shadow:0 0 0 1px rgba(15,23,42,.9),0 4px 10px rgba(0,0,0,.8);
+      position:relative;
+      pointer-events:auto;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--muted);
+      font-size:12px;
+      transition:transform .1s ease-out,box-shadow .1s ease-out,border-color .1s ease-out;
+    }
+    .towerSlot.hasTower{
+      border-style:solid;
+      border-width:1px;
+    }
+    .towerSlot.selected{
+      transform:translateY(-2px) scale(1.05);
+      box-shadow:0 0 0 1px rgba(56,189,248,.8),0 0 20px rgba(56,189,248,.5);
+      border-color:#38bdf8 !important;
+    }
+    .towerIcon{
+      font-size:13px;
+    }
+    .towerAura{
+      position:absolute;
+      inset:-8px;
+      border-radius:50%;
+      border:1px solid rgba(148,163,184,.2);
       pointer-events:none;
     }
 
-    @media (min-width:900px){
-      .joystick-bar{
-        max-width:480px;
-        align-self:center;
-      }
-    }
-
-    .overlay{
-      position:fixed;
+    #entityLayer{
+      position:absolute;
       inset:0;
-      background:rgba(15,23,42,.96);
-      display:none;
+      pointer-events:none;
+    }
+    .enemyUnit{
+      position:absolute;
+      width:18px;
+      height:18px;
+      border-radius:999px;
+      box-shadow:0 0 0 1px rgba(15,23,42,.9),0 4px 8px rgba(0,0,0,.85);
+      display:flex;
       align-items:center;
       justify-content:center;
-      z-index:40;
+      font-size:11px;
+      color:#0b1120;
+      transform:translate(-50%,-50%);
     }
-    .overlay-card{
-      border-radius:18px;
-      padding:18px 22px;
-      border:1px solid #1f2937;
-      background:radial-gradient(circle at top,#0f172a,#020617);
-      box-shadow:var(--shadow);
-      text-align:center;
-      max-width:320px;
-      color:var(--ink);
-    }
-    .overlay-card h2{
-      margin:0 0 6px;
-    }
-    .overlay-card p{
-      margin:4px 0;
-      font-size:.9rem;
-      color:var(--muted);
-    }
-    .overlay-card button{
-      margin-top:10px;
+    .enemyHp{
+      position:absolute;
+      top:-8px;
+      left:50%;
+      width:20px;
+      height:3px;
+      transform:translateX(-50%);
       border-radius:999px;
-      border:1px solid #1f2937;
-      padding:7px 14px;
-      font-size:.85rem;
-      cursor:pointer;
-      background:linear-gradient(135deg,#0ea5e9,#22c55e);
-      color:#020617;
-      font-weight:600;
+      overflow:hidden;
+      background:#020617;
+    }
+    .enemyHpFill{
+      height:100%;
+      width:100%;
+      background:linear-gradient(90deg,#22c55e,#a3e635);
+      transform-origin:left center;
     }
 
-    .waiting{
-      font-size:.8rem;
+    #scanOverlay{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      overflow:hidden;
+      opacity:0;
+      transition:opacity .2s ease-out;
+    }
+    #scanOverlay.active{
+      opacity:1;
+    }
+    .scanBeam{
+      position:absolute;
+      top:0;
+      bottom:0;
+      width:60px;
+      background:linear-gradient(90deg,transparent,rgba(59,130,246,.45),transparent);
+      filter:blur(1px);
+      animation:scanMove 1.8s linear infinite;
+    }
+    .scanLabel{
+      position:absolute;
+      top:6px;
+      right:10px;
+      font-size:10px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      padding:3px 6px;
+      border-radius:999px;
+      background:rgba(15,23,42,.85);
+      color:#60a5fa;
+      border:1px solid rgba(37,99,235,.8);
+    }
+    @keyframes scanMove{
+      0%{left:-60px;}
+      100%{left:100%;}
+    }
+
+    #controlPanel{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-top:8px;
+    }
+    .panel{
+      background:linear-gradient(145deg,#020617,#020617,#020617);
+      border-radius:var(--radius);
+      padding:6px 8px;
+      box-shadow:var(--shadow);
+      border:1px solid #111827;
+    }
+    #statusRow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:6px;
+      font-size:12px;
       color:var(--muted);
+    }
+    #goldDisplay{
+      font-weight:600;
+      font-size:13px;
+      color:#facc15;
+      display:flex;
+      align-items:center;
+      gap:4px;
+    }
+    #goldDisplay span{
+      font-size:16px;
+    }
+    #ecoDisplay{
+      font-size:11px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    #ecoDisplay strong{
+      color:#22c55e;
+      font-size:12px;
+    }
+    #aggroTag{
+      font-size:10px;
+      padding:2px 5px;
+      border-radius:999px;
+      border:1px solid rgba(248,250,252,.1);
+      background:rgba(34,197,94,.1);
+      color:#bbf7d0;
+      display:none;
+    }
+    #towerBuffTag{
+      font-size:10px;
+      padding:2px 5px;
+      border-radius:999px;
+      border:1px solid rgba(248,250,252,.1);
+      background:rgba(59,130,246,.1);
+      color:#93c5fd;
+      display:none;
+    }
+
+    #buttonRows{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-top:4px;
+    }
+    .btnRow{
+      display:flex;
+      gap:6px;
+    }
+    button.gameBtn{
+      flex:1;
+      border:none;
+      border-radius:10px;
+      padding:6px 4px;
+      font-size:11px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      cursor:pointer;
+      color:#e5e7eb;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:2px;
+      box-shadow:0 0 0 1px #1f2937,0 6px 14px rgba(0,0,0,.75);
+      background:radial-gradient(circle at 20% 0%,rgba(248,250,252,.08),transparent 40%),linear-gradient(180deg,#0f172a,#020617);
+    }
+    .gameBtn span.cost{
+      font-size:10px;
+      color:#facc15;
+    }
+    .gameBtn span.label{
+      font-size:10px;
+      color:#e5e7eb;
+    }
+    .gameBtn.small{
+      flex:0 0 auto;
+      padding:4px 6px;
+      font-size:10px;
+      min-width:80px;
+    }
+    .gameBtn.cooldown{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+
+    #towerDetail{
+      margin-top:4px;
+      font-size:11px;
+      color:var(--muted);
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      align-items:center;
+    }
+    #towerDetailMain{
+      flex:1;
+    }
+    #towerActions{
+      display:flex;
+      gap:4px;
+    }
+    #towerActions button{
+      border:none;
+      border-radius:8px;
+      padding:3px 6px;
+      font-size:10px;
+      cursor:pointer;
+      background:#111827;
+      color:#e5e7eb;
+      box-shadow:0 0 0 1px #1f2937;
+    }
+
+    #logPanel{
+      font-size:11px;
+      color:var(--muted);
+      max-height:70px;
+      overflow-y:auto;
+      padding-right:2px;
+    }
+    #logPanel::-webkit-scrollbar{
+      width:4px;
+    }
+    #logPanel::-webkit-scrollbar-thumb{
+      background:#1f2937;
+      border-radius:999px;
+    }
+    .logEntry{
+      margin-bottom:2px;
+    }
+    .logEntry span.tag{
+      font-size:9px;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:#64748b;
+    }
+
+    #overlay{
+      position:fixed;
+      inset:0;
+      background:radial-gradient(circle at top,#020617 0,#000 55%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:50;
+    }
+    #overlayCard{
+      width:100%;
+      max-width:360px;
+      background:#020617;
+      border-radius:18px;
+      padding:14px 14px 12px;
+      box-shadow:0 24px 60px rgba(0,0,0,.9);
+      border:1px solid #111827;
+      color:#e5e7eb;
+    }
+    #overlayTitle{
+      font-size:16px;
+      font-weight:700;
+      margin-bottom:4px;
+    }
+    #overlayText{
+      font-size:12px;
+      color:#9ca3af;
+      margin-bottom:10px;
+    }
+    #matchForm{
+      display:flex;
+      gap:6px;
+      margin-bottom:8px;
+    }
+    #matchIdInput{
+      flex:1;
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#020617;
+      color:#e5e7eb;
+      font-size:12px;
+    }
+    #matchBtn{
+      flex:0 0 auto;
+      padding:6px 10px;
+      border-radius:10px;
+      border:none;
+      cursor:pointer;
+      background:linear-gradient(90deg,#22c55e,#16a34a);
+      color:#022c22;
+      font-size:12px;
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      box-shadow:0 8px 20px rgba(22,163,74,.8);
+    }
+    #overlayStatus{
+      font-size:11px;
+      color:#9ca3af;
+      min-height:14px;
+    }
+    #startBtn{
+      margin-top:8px;
+      width:100%;
+      padding:6px;
+      border-radius:10px;
+      border:none;
+      cursor:pointer;
+      font-size:12px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      background:linear-gradient(90deg,#38bdf8,#0ea5e9);
+      color:#0b1120;
+      display:none;
+    }
+    #startBtn.disabled{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+    #overlaySmall{
+      font-size:10px;
+      color:#6b7280;
+      margin-top:4px;
+    }
+
+    #resultBanner{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      pointer-events:none;
+      opacity:0;
+      transition:opacity .25s ease-out;
+      z-index:10;
+    }
+    #resultBannerInner{
+      padding:10px 16px;
+      border-radius:999px;
+      background:rgba(15,23,42,.9);
+      border:1px solid #facc15;
+      box-shadow:0 0 40px rgba(250,204,21,.5);
+      font-size:13px;
+      text-transform:uppercase;
+      letter-spacing:.16em;
+      color:#facc15;
+    }
+    #resultBanner.visible{
+      opacity:1;
     }
   </style>
 </head>
 <body>
-<div class="shell">
-  <div class="top-bar">
-    <div class="top-left">
-      <div class="title-row">
-        <div class="game-title">
-          🪳 <span>Roach Run — Online Pac Maze</span>
-        </div>
-        <div class="pill"><span>You:</span> <strong id="youLabel">…</strong></div>
-        <div class="pill">
-          <span>Score</span>
-          <strong id="scoreLabel">0</strong>
-        </div>
-        <div class="pill">
-          <span>Opponent</span>
-          <strong id="oppScoreLabel">—</strong>
+<div id="gameShell">
+  <header id="topBar">
+    <div id="hpBars">
+      <div class="hpRow">
+        <div class="hpLabel">Enemy</div>
+        <div class="hpBarOuter">
+          <div id="enemyHpFill" class="hpBarFill hpEnemy" style="transform:scaleX(1);"></div>
         </div>
       </div>
-      <div class="pill-row">
-        <div class="pill">
-          <span>Level</span> <strong id="levelLabel">1</strong>
+      <div class="hpRow">
+        <div class="hpLabel">You</div>
+        <div class="hpBarOuter">
+          <div id="playerHpFill" class="hpBarFill hpPlayer" style="transform:scaleX(1);"></div>
         </div>
-        <div class="pill">
-          <span>Lives</span> <strong id="livesLabel">3</strong>
-        </div>
-        <div class="pill">
-          <span>Wins</span> <strong id="winsLabel">0</strong>
-        </div>
-        <div class="pill" id="statusPill">
-          <span>Status:</span> <strong id="statusLabel">Waiting for Firebase…</strong>
-        </div>
-      </div>
-      <div class="description">
-        Clear pellets for points (+50 each cleared board). Pickups attack the <strong>other</strong> player:
-        extra spiders, slime that slows, and blocked tunnels. Camera follows your roach.
       </div>
     </div>
-    <div class="top-right">
-      <button id="fullscreenBtn">⛶ Fullscreen</button>
-      <div class="mini-label">
-        Other Player View
-        <span id="oppMiniStatus" class="waiting">(waiting…)</span>
+    <div id="timerLabel">--:--</div>
+    <button id="fullscreenBtn" type="button">
+      <span>⛶</span> Full
+    </button>
+  </header>
+
+  <div id="battleAreaWrapper">
+    <div id="battleWindow">
+      <div id="laneGlow"></div>
+      <div id="laneTrack"></div>
+      <div id="towerRow"></div>
+      <div id="entityLayer"></div>
+      <div id="scanOverlay">
+        <div class="scanBeam"></div>
+        <div class="scanLabel">SCAN INCOMING</div>
       </div>
-      <canvas id="oppMini" width="140" height="110"></canvas>
+      <div id="resultBanner">
+        <div id="resultBannerInner">VICTORY</div>
+      </div>
+      <div id="playerBase" class="base">🏰</div>
+      <div id="enemyBase" class="base">🏰</div>
     </div>
   </div>
 
-  <div class="main-game">
-    <div class="game-panel">
-      <canvas id="gameCanvas"></canvas>
+  <section id="controlPanel" class="panel">
+    <div id="statusRow">
+      <div id="goldDisplay"><span>🪙</span><span id="goldText">0</span></div>
+      <div id="ecoDisplay">
+        <span>Gen Lvl <strong id="genLevelText">1</strong></span>
+        <span>+/s <strong id="goldPerSecText">0</strong></span>
+      </div>
+      <div id="aggroTag">Aggression +10%</div>
+      <div id="towerBuffTag">Emergency Turrets</div>
     </div>
-    <div class="joystick-bar">
-      <div class="joystick-label">
-        <span>Touch Joystick (mobile) • WASD / Arrow keys (desktop)</span>
-        <span id="connectionLabel" class="waiting"></span>
+
+    <div id="buttonRows">
+      <div class="btnRow">
+        <button id="btnSendTier1" class="gameBtn" type="button">
+          <span class="label">Tier 1 Wave</span>
+          <span class="cost" id="costTier1">15g</span>
+        </button>
+        <button id="btnSendTier2" class="gameBtn" type="button">
+          <span class="label">Tier 2 Wave</span>
+          <span class="cost" id="costTier2">40g</span>
+        </button>
+        <button id="btnSendTier3" class="gameBtn" type="button">
+          <span class="label">Tier 3 Wave</span>
+          <span class="cost" id="costTier3">80g</span>
+        </button>
       </div>
-      <div class="joystick-area">
-        <div class="joystick-outer" id="joystickOuter">
-          <div class="joystick-inner" id="joystickInner"></div>
-        </div>
+      <div class="btnRow">
+        <button id="btnBuyTower" class="gameBtn" type="button">
+          <span class="label">Buy Tower Slot</span>
+          <span class="cost" id="towerCostText">40g</span>
+        </button>
+        <button id="btnUpgradeGen" class="gameBtn" type="button">
+          <span class="label">Upgrade Generator</span>
+          <span class="cost" id="genCostText">60g</span>
+        </button>
+        <button id="btnScout" class="gameBtn small" type="button">
+          <span class="label">Scout</span>
+          <span class="cost" id="scoutCostText">25g</span>
+        </button>
       </div>
+    </div>
+
+    <div id="towerDetail">
+      <div id="towerDetailMain">
+        <strong id="towerTitle">No tower selected</strong><br>
+        <span id="towerDesc">Tap a tower slot above to build or upgrade.</span>
+      </div>
+      <div id="towerActions">
+        <!-- buttons populated dynamically -->
+      </div>
+    </div>
+
+    <div id="logPanel"></div>
+  </section>
+</div>
+
+<div id="overlay">
+  <div id="overlayCard">
+    <div id="overlayTitle">⚔️ Base War Duel</div>
+    <div id="overlayText">
+      Send weak early waves to farm gold, build and evolve elemental towers, and hit the enemy base to earn bonuses.
+      When a base drops below 10% HP thresholds, their towers power up briefly for a last stand.
+    </div>
+    <div id="matchForm">
+      <input id="matchIdInput" placeholder="Match ID (e.g. base123)" />
+      <button id="matchBtn" type="button">Join / Create</button>
+    </div>
+    <div id="overlayStatus">Connecting…</div>
+    <button id="startBtn" class="" type="button">Start Match</button>
+    <div id="overlaySmall">
+      • You’ll be auto-assigned as Player 1 or Player 2 based on who enters the ID first.<br>
+      • Uses anonymous Firebase auth.
     </div>
   </div>
 </div>
 
-<div id="gameOverOverlay" class="overlay">
-  <div class="overlay-card">
-    <h2 id="gameOverTitle">Game Over</h2>
-    <p id="gameOverText"></p>
-    <button onclick="location.reload()">🔁 Play Again</button>
-  </div>
-</div>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
-<script type="module">
-  // ---------- FIREBASE ----------
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore, doc, collection, setDoc, updateDoc,
-    onSnapshot, serverTimestamp, arrayUnion
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import {
-    getAuth, signInAnonymously, onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
+<script>
+  // === Firebase Init ===
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
+    databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
     projectId: "bible-game-246c0",
-    storageBucket: "bible-game-246c0.appspot.com",
+    storageBucket: "bible-game-246c0.firebasestorage.app",
     messagingSenderId: "959619818996",
-    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+    measurementId: "G-8PR6LVKSH3"
   };
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const auth = getAuth(app);
 
-  // ---------- DOM ----------
-  const youLabel = document.getElementById("youLabel");
-  const scoreLabel = document.getElementById("scoreLabel");
-  const oppScoreLabel = document.getElementById("oppScoreLabel");
-  const levelLabel = document.getElementById("levelLabel");
-  const livesLabel = document.getElementById("livesLabel");
-  const winsLabel = document.getElementById("winsLabel");
-  const statusLabel = document.getElementById("statusLabel");
-  const statusPill = document.getElementById("statusPill");
-  const connectionLabel = document.getElementById("connectionLabel");
-  const oppMiniStatus = document.getElementById("oppMiniStatus");
-  const fullscreenBtn = document.getElementById("fullscreenBtn");
-  const gameCanvas = document.getElementById("gameCanvas");
-  const oppMiniCanvas = document.getElementById("oppMini");
-  const gameOverOverlay = document.getElementById("gameOverOverlay");
-  const gameOverTitle = document.getElementById("gameOverTitle");
-  const gameOverText = document.getElementById("gameOverText");
-  const joystickOuter = document.getElementById("joystickOuter");
-  const joystickInner = document.getElementById("joystickInner");
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-  const gCtx = gameCanvas.getContext("2d");
-  const miniCtx = oppMiniCanvas.getContext("2d");
+  // === DOM refs ===
+  const overlay = document.getElementById('overlay');
+  const overlayStatus = document.getElementById('overlayStatus');
+  const matchIdInput = document.getElementById('matchIdInput');
+  const matchBtn = document.getElementById('matchBtn');
+  const startBtn = document.getElementById('startBtn');
+  const timerLabel = document.getElementById('timerLabel');
+  const goldText = document.getElementById('goldText');
+  const genLevelText = document.getElementById('genLevelText');
+  const goldPerSecText = document.getElementById('goldPerSecText');
+  const enemyHpFill = document.getElementById('enemyHpFill');
+  const playerHpFill = document.getElementById('playerHpFill');
+  const towerRowEl = document.getElementById('towerRow');
+  const entityLayer = document.getElementById('entityLayer');
+  const scanOverlay = document.getElementById('scanOverlay');
+  const resultBanner = document.getElementById('resultBanner');
+  const resultBannerInner = document.getElementById('resultBannerInner');
+  const btnTier1 = document.getElementById('btnSendTier1');
+  const btnTier2 = document.getElementById('btnSendTier2');
+  const btnTier3 = document.getElementById('btnSendTier3');
+  const btnBuyTower = document.getElementById('btnBuyTower');
+  const btnUpgradeGen = document.getElementById('btnUpgradeGen');
+  const btnScout = document.getElementById('btnScout');
+  const towerTitle = document.getElementById('towerTitle');
+  const towerDesc = document.getElementById('towerDesc');
+  const towerActions = document.getElementById('towerActions');
+  const towerCostText = document.getElementById('towerCostText');
+  const genCostText = document.getElementById('genCostText');
+  const scoutCostText = document.getElementById('scoutCostText');
+  const logPanel = document.getElementById('logPanel');
+  const aggroTag = document.getElementById('aggroTag');
+  const towerBuffTag = document.getElementById('towerBuffTag');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const costTier1 = document.getElementById('costTier1');
+  const costTier2 = document.getElementById('costTier2');
+  const costTier3 = document.getElementById('costTier3');
+  const battleWindow = document.getElementById('battleWindow');
 
-  // ---------- GAME CONFIG ----------
-  const GAME_COLLECTION = "roach_race_games"; // new game collection, same project
-  const params = new URLSearchParams(window.location.search);
-  const gameId = params.get("gameId") || "dev-roach-run";
-  const displayName = (params.get("username") || "Guest").trim() || "Guest";
+  // === Game constants ===
+  const MAX_BASE_HP = 1000;
+  const BASE_MATCH_SECONDS = 240; // 4 mins
+  const GOLD_BASE_PER_SEC = 5;
+  const GOLD_PER_GEN_LEVEL = 2;
+  const AGGRO_BUFF_MULT = 1.10;
+  const AGGRO_BUFF_SECONDS = 10;
+  const TOWER_BUFF_MULT = 1.35;
+  const TOWER_BUFF_SECONDS = 8;
+  const SCOUT_COST = 25;
+  const SCOUT_COOLDOWN_SEC = 25;
 
-  const MAZE_ROWS = 15;
-  const MAZE_COLS = 19;
-  const TILE_SIZE = 32; // internal render tile size
-  const VIEW_COLS = 11;
-  const VIEW_ROWS = 9;
+  const TOWER_SLOT_COSTS = [40, 70, 110, 160];
 
-  const MAZE = [
-    "###################",
-    "#........#........#",
-    "#.####.#.#.####.#.#",
-    "#.#..#.#.#.#..#.#.#",
-    "#.#..#.#.#.#..#.#.#",
-    "#.####.#.#.####.#.#",
-    "...................",
-    "###.###.###.###.###",
-    "#........#........#",
-    "#.####.#.#.####.#.#",
-    "#.#..#.#.#.#..#.#.#",
-    "#.#..#.#.#.#..#.#.#",
-    "#.####.#.#.####.#.#",
-    "#........#........#",
-    "###################"
-  ];
+  // element relationships: who is strong vs whom
+  const ELEMENT_COUNTER = {
+    fire: 'stone',  // fire strong vs stone
+    stone: 'ice',   // stone strong vs ice
+    ice: 'fire'     // ice strong vs fire
+  };
+  const ELEMENT_DAMAGE_MULT = {
+    fire: { fire:1, ice:0.75, stone:1.5 },
+    ice:  { fire:1.5, ice:1, stone:0.75 },
+    stone:{ fire:0.9, ice:1.5, stone:1 }
+  };
 
-  // Teleport tiles (wrap left/right)
-  const TELEPORTS = [
-    {x:0, y:6},
-    {x:18, y:6}
-  ];
+  // Troop definitions (simplified but covers requested ideas)
+  const TROOPS = {
+    // Tier 1: very weak
+    fireling: {
+      name:'Fireling', element:'fire', tier:1,
+      maxHp:28, baseDamage:4, speed:0.22,
+      cost:15, canSplit:false, canHeal:false, emoji:'🔥'
+    },
+    frostling: {
+      name:'Frostling', element:'ice', tier:1,
+      maxHp:32, baseDamage:3, speed:0.20,
+      cost:15, canSplit:false, canHeal:false, emoji:'❄️'
+    },
+    pebbleguard: {
+      name:'Pebbleguard', element:'stone', tier:1,
+      maxHp:40, baseDamage:2, speed:0.18,
+      cost:16, canSplit:false, canHeal:false, emoji:'🪨'
+    },
+    // Tier 2: moderate, some abilities
+    flameKnight: {
+      name:'Flame Knight', element:'fire', tier:2,
+      maxHp:70, baseDamage:10, speed:0.20,
+      cost:38, canSplit:false, canHeal:false, emoji:'🔥'
+    },
+    glacierHealer: {
+      name:'Glacier Healer', element:'ice', tier:2,
+      maxHp:60, baseDamage:4, speed:0.18,
+      cost:40, canSplit:false, canHeal:true, healPerSec:6, emoji:'💧'
+    },
+    shardSplitter: {
+      name:'Shard Splitter', element:'stone', tier:2,
+      maxHp:55, baseDamage:7, speed:0.22,
+      cost:40, canSplit:true, splitInto:'pebbleguard', emoji:'🪓'
+    },
+    // Tier 3: strong finishers
+    infernoBeast: {
+      name:'Inferno Beast', element:'fire', tier:3,
+      maxHp:130, baseDamage:20, speed:0.20,
+      cost:80, canSplit:false, canHeal:false, emoji:'🐲'
+    },
+    glacierTitan: {
+      name:'Glacier Titan', element:'ice', tier:3,
+      maxHp:150, baseDamage:15, speed:0.16,
+      cost:82, canSplit:false, canHeal:true, healPerSec:10, emoji:'🧊'
+    },
+    obsidianColossus: {
+      name:'Obsidian Colossus', element:'stone', tier:3,
+      maxHp:200, baseDamage:18, speed:0.14,
+      cost:88, canSplit:false, canHeal:false, emoji:'🗿'
+    }
+  };
 
-  // ---------- FIREBASE STATE ----------
+  const TIER1_KEYS = ['fireling','frostling','pebbleguard'];
+  const TIER2_KEYS = ['flameKnight','glacierHealer','shardSplitter'];
+  const TIER3_KEYS = ['infernoBeast','glacierTitan','obsidianColossus'];
+
+  // Tower definitions
+  const TOWER_TYPES = {
+    empty: { key:'empty', name:'Empty Slot', baseDps:0, element:null, tier:0, emoji:'+' },
+    basic: { key:'basic', name:'Basic Tower', baseDps:18, element:null, tier:0, emoji:'🛡️' },
+    fire1: { key:'fire1', name:'Fire Tower I', baseDps:32, element:'fire', tier:1, emoji:'🔥' },
+    fire2: { key:'fire2', name:'Fire Tower II', baseDps:48, element:'fire', tier:2, emoji:'🔥' },
+    ice1: { key:'ice1', name:'Ice Tower I', baseDps:22, element:'ice', tier:1, slow:0.35, emoji:'❄️' },
+    ice2: { key:'ice2', name:'Ice Tower II', baseDps:30, element:'ice', tier:2, slow:0.5, emoji:'❄️' },
+    stone1: { key:'stone1', name:'Stone Tower I', baseDps:24, element:'stone', tier:1, emoji:'🪨' },
+    stone2: { key:'stone2', name:'Stone Tower II', baseDps:34, element:'stone', tier:2, emoji:'🪨' }
+  };
+
+  // === Firebase game state ===
   let currentUser = null;
-  let gameRef = null;
-  let playersCol = null;
-  let playerRef = null;
-  let myData = null;
-  let opponentData = null;
-  let opponentId = null;
+  let currentGameRef = null;
+  let commandsUnsub = null;
+  let gameUnsub = null;
+  let mySide = null; // 'p1' or 'p2'
+  let enemySide = null;
+  let isHost = false;
 
-  let snapshotIntervalId = null;
-  const processedEffectIds = new Set();
+  // === Local game state ===
+  let gameRunning = false;
+  let matchSecondsLeft = BASE_MATCH_SECONDS;
+  let localBaseHp = MAX_BASE_HP;
+  let enemyBaseHp = MAX_BASE_HP;
+  let baseMaxHpLocal = MAX_BASE_HP;
+  let lastTowerBuffThreshold = 1.0; // track 1.0 -> 0.9 -> 0.8 etc.
+  let towerBuffActive = false;
+  let towerBuffUntil = 0;
 
-  // ---------- LOCAL GAME STATE ----------
-  let roach = null;
-  let spiders = [];
-  let pellets = [];
-  let pelletsLeft = 0;
-  let slimeTiles = []; // {x,y,expiresAt}
-  let powerups = [];   // {x,y,type,expiresAt}
-  let powerupTimer = 0;
+  let gold = 50;
+  let generatorLevel = 1;
+  let towerSlots = []; // { typeKey, dom, xNorm }
+  let selectedTowerIndex = -1;
 
-  let score = 0;
-  let level = 1;
-  let lives = 3;
-  let wins = 0;
-  let isDead = false;
-  let gameOver = false;
-  let victory = false;
-  let winRecorded = false;
+  let enemies = []; // active enemy units
+  let nextEnemyId = 1;
 
-  let teleportBlockedUntil = 0;
-  let nowMs = performance.now();
-
-  // movement / input
   let lastFrameTime = performance.now();
-  let gameStarted = false;
 
-  // keyboard next direction
-  const nextDir = {x:0, y:0};
+  let aggroBuffActive = false;
+  let aggroBuffUntil = 0;
 
-  // ---------- HELPER: MAZE ----------
-  function isWall(x,y){
-    if(x < 0 || x >= MAZE_COLS || y < 0 || y >= MAZE_ROWS) return true;
-    return MAZE[y][x] === "#";
-  }
-  function isTeleportTile(x,y){
-    return TELEPORTS.some(t => t.x === x && t.y === y);
-  }
-  function otherTeleport(x,y){
-    const idx = TELEPORTS.findIndex(t => t.x === x && t.y === y);
-    if(idx === -1) return null;
-    const other = TELEPORTS[1-idx];
-    return {x:other.x, y:other.y};
-  }
+  let scoutCooldownUntil = 0;
+  let scoutBuffActive = false;
+  let scoutBuffUntil = 0;
+  let scoutCounterElement = null;
 
-  function initPellets(){
-    pellets = [];
-    pelletsLeft = 0;
-    for(let y=0;y<MAZE_ROWS;y++){
-      const row = [];
-      for(let x=0;x<MAZE_COLS;x++){
-        const ch = MAZE[y][x];
-        if(ch === "."){
-          row.push(true);
-          pelletsLeft++;
-        }else{
-          row.push(false);
-        }
-      }
-      pellets.push(row);
+  let pendingRewardGoldForEnemy = 0; // we send to enemy
+  let lastRewardSendTime = 0;
+
+  // For tower summary (for scout)
+  let lastSummaryUpdateTime = 0;
+
+  // === Utility ===
+  function log(msg, tag='sys'){
+    const entry = document.createElement('div');
+    entry.className = 'logEntry';
+    entry.innerHTML = `<span class="tag">[${tag}]</span> ${msg}`;
+    logPanel.prepend(entry);
+    // keep size reasonable
+    while(logPanel.children.length > 40){
+      logPanel.removeChild(logPanel.lastChild);
     }
   }
 
-  function resetGameBoard(){
-    level = 1;
-    score = 0;
-    lives = 3;
-    teleportBlockedUntil = 0;
-    slimeTiles = [];
-    powerups = [];
-    powerupTimer = 0;
-
-    initPellets();
-
-    roach = {
-      tileX: 9,
-      tileY: 6,
-      dirX: 0,
-      dirY: 0,
-      speed: 5,     // tiles per second
-      slowFactor: 1,
-      slowUntil: 0
-    };
-
-    spiders = [
-      {tileX:3, tileY:6, dirX:1, dirY:0, speed:4, color:"#ef4444", ai:"chaser"},   // red
-      {tileX:15,tileY:6, dirX:-1,dirY:0, speed:4, color:"#0ea5e9", ai:"ambush"},  // blue
-      {tileX:1, tileY:5, dirX:1, dirY:0, speed:3.5, color:"#a855f7", ai:"wander"},// purple
-      {tileX:17,tileY:5, dirX:-1,dirY:0, speed:3.5, color:"#facc15", ai:"patrol"} // yellow
-    ];
-
-    gameStarted = true;
-    isDead = false;
-    gameOver = false;
-    victory = false;
-    winRecorded = false;
-
-    updateHud();
+  function formatTime(sec){
+    if (sec < 0) sec = 0;
+    const m = Math.floor(sec/60);
+    const s = Math.floor(sec%60);
+    return `${m}:${s.toString().padStart(2,'0')}`;
   }
 
-  function newLevel(){
-    level++;
-    score += 50; // bonus per cleared board
-    initPellets();
-
-    // tweak speeds slightly
-    roach.speed *= 1.03;
-    spiders.forEach(s => s.speed *= 1.06);
-
-    slimeTiles = [];
-    powerups = [];
-    powerupTimer = 0;
-    teleportBlockedUntil = 0;
-
-    // reset roach position
-    roach.tileX = 9;
-    roach.tileY = 6;
-    roach.dirX = 0;
-    roach.dirY = 0;
-    roach.slowFactor = 1;
-    roach.slowUntil = 0;
-
-    updateHud();
+  function randomChoice(arr){
+    return arr[Math.floor(Math.random()*arr.length)];
   }
 
-  // ---------- MOVEMENT ----------
-  function setNextDir(dx,dy){
-    nextDir.x = dx;
-    nextDir.y = dy;
-  }
-
-  function canMoveFrom(tileX,tileY,dx,dy){
-    let nx = tileX + dx;
-    let ny = tileY + dy;
-
-    // teleports: treat as passable even if at edge
-    if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS){
-      return true;
-    }
-    return !isWall(nx,ny);
-  }
-
-  function applyTeleportIfNeeded(entity){
-    if(!isTeleportTile(entity.tileX, entity.tileY)) return;
-    if(nowMs < teleportBlockedUntil){
-      // tile is just a cul-de-sac while blocked
-      return;
-    }
-    const other = otherTeleport(entity.tileX, entity.tileY);
-    if(other){
-      entity.tileX = other.x;
-      entity.tileY = other.y;
-    }
-  }
-
-  function handleRoachTileEvents(){
-    const tx = roach.tileX;
-    const ty = roach.tileY;
-
-    // pellet
-    if(ty>=0 && ty<MAZE_ROWS && tx>=0 && tx<MAZE_COLS){
-      if(pellets[ty][tx]){
-        pellets[ty][tx] = false;
-        pelletsLeft--;
-        score += 10;
-        if(pelletsLeft <= 0){
-          newLevel();
-        }
-      }
-    }
-
-    // slime
-    for(const s of slimeTiles){
-      if(s.x === tx && s.y === ty){
-        roach.slowFactor = 0.4;
-        roach.slowUntil = nowMs + 1500; // 1.5s slow
-        break;
-      }
-    }
-
-    // powerups
-    for(let i=powerups.length-1;i>=0;i--){
-      const p = powerups[i];
-      if(p.x === tx && p.y === ty){
-        powerups.splice(i,1);
-        triggerPowerup(p.type);
-      }
-    }
-  }
-
-  function triggerPowerup(type){
-    if(!opponentId) return; // nothing to hit yet
-    const oppRef = doc(playersCol, opponentId);
-    const effect = {
-      id: "e_"+Date.now()+"_"+Math.random().toString(16).slice(2,7),
-      type,
-      createdAt: Date.now()
-    };
-    updateDoc(oppRef,{
-      incomingEffects: arrayUnion(effect)
-    }).catch(console.error);
-  }
-
-  function updateRoach(dt){
-    if(isDead || !roach) return;
-
-    // slow logic
-    if(roach.slowFactor < 1 && nowMs > roach.slowUntil){
-      roach.slowFactor = 1;
-    }
-
-    // attempt to change dir if we have input
-    if((nextDir.x !== roach.dirX || nextDir.y !== roach.dirY)){
-      if(canMoveFrom(roach.tileX, roach.tileY, nextDir.x, nextDir.y)){
-        roach.dirX = nextDir.x;
-        roach.dirY = nextDir.y;
-      }
-    }
-
-    if(roach.dirX === 0 && roach.dirY === 0) return;
-
-    const speedTilesPerSec = roach.speed * roach.slowFactor;
-    let moveAmount = speedTilesPerSec * dt;
-    // move in discrete steps of <=1 tile
-    while(moveAmount > 0){
-      const step = Math.min(moveAmount, 1);
-      let nx = roach.tileX + roach.dirX;
-      let ny = roach.tileY + roach.dirY;
-
-      // teleport wrap attempt
-      let tentativeX = nx;
-      let tentativeY = ny;
-
-      // allow stepping into teleport tile even if at edge
-      if(tentativeX < 0 || tentativeX >= MAZE_COLS || tentativeY < 0 || tentativeY >= MAZE_ROWS){
-        // wrap will be applied when entity sits in teleport tile; here just move
-      }else if(isWall(tentativeX,tentativeY)){
-        // hit wall, stop moving
-        roach.dirX = 0;
-        roach.dirY = 0;
-        break;
-      }
-
-      roach.tileX = tentativeX;
-      roach.tileY = tentativeY;
-      applyTeleportIfNeeded(roach);
-      handleRoachTileEvents();
-      moveAmount -= step;
-      // only one tile per frame effectively; small dt means 1 step
-      break;
-    }
-  }
-
-  function availableDirs(tileX,tileY,currentDir){
-    const dirs = [
-      {x:1,y:0},
-      {x:-1,y:0},
-      {x:0,y:-1},
-      {x:0,y:1}
-    ];
-    const out = [];
-    for(const d of dirs){
-      // avoid going out-of-bounds into walls
-      const nx = tileX + d.x;
-      const ny = tileY + d.y;
-      if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS){
-        continue;
-      }
-      if(isWall(nx,ny)) continue;
-      // don't backtrack unless there's no other choice
-      if(currentDir && d.x === -currentDir.x && d.y === -currentDir.y) continue;
-      out.push(d);
-    }
-    if(!out.length && currentDir){
-      // forced to backtrack
-      out.push({x:-currentDir.x, y:-currentDir.y});
-    }
-    return out;
-  }
-
-  function updateSpiders(dt){
-    for(const s of spiders){
-      if(!s) continue;
-      const speedTilesPerSec = s.speed;
-      let moveAmount = speedTilesPerSec * dt;
-      while(moveAmount > 0){
-        const step = Math.min(moveAmount, 1);
-
-        // choose direction at intersections (approx: whenever previous step finished)
-        const dirs = availableDirs(s.tileX, s.tileY, {x:s.dirX,y:s.dirY});
-        if(dirs.length){
-          let chosen = dirs[0];
-          if(s.ai === "chaser"){
-            // minimize manhattan distance to roach
-            let best = Infinity;
-            for(const d of dirs){
-              const nx = s.tileX + d.x;
-              const ny = s.tileY + d.y;
-              const dist = Math.abs(nx - roach.tileX) + Math.abs(ny - roach.tileY);
-              if(dist < best){
-                best = dist;
-                chosen = d;
-              }
-            }
-          }else if(s.ai === "wander"){
-            chosen = dirs[Math.floor(Math.random()*dirs.length)];
-          }else if(s.ai === "ambush"){
-            // aim towards tile slightly ahead of roach
-            const targetX = roach.tileX + roach.dirX*2;
-            const targetY = roach.tileY + roach.dirY*2;
-            let best = Infinity;
-            for(const d of dirs){
-              const nx = s.tileX + d.x;
-              const ny = s.tileY + d.y;
-              const dist = Math.abs(nx - targetX) + Math.abs(ny - targetY);
-              if(dist < best){
-                best = dist;
-                chosen = d;
-              }
-            }
-          }else if(s.ai === "patrol"){
-            // favor horizontal moves
-            const horiz = dirs.filter(d=>d.y===0);
-            if(horiz.length){
-              chosen = horiz[Math.floor(Math.random()*horiz.length)];
-            }else{
-              chosen = dirs[Math.floor(Math.random()*dirs.length)];
-            }
-          }
-          s.dirX = chosen.x;
-          s.dirY = chosen.y;
-        }
-
-        const nx = s.tileX + s.dirX;
-        const ny = s.tileY + s.dirY;
-
-        if(nx < 0 || nx >= MAZE_COLS || ny < 0 || ny >= MAZE_ROWS || isWall(nx,ny)){
-          // reverse
-          s.dirX = -s.dirX;
-          s.dirY = -s.dirY;
-          break;
-        }
-
-        s.tileX = nx;
-        s.tileY = ny;
-        applyTeleportIfNeeded(s);
-
-        moveAmount -= step;
-        break;
-      }
-    }
-  }
-
-  function checkCollisions(){
-    if(isDead) return;
-    for(const s of spiders){
-      if(!s) continue;
-      if(s.tileX === roach.tileX && s.tileY === roach.tileY){
-        // hit!
-        lives--;
-        if(lives <= 0){
-          lives = 0;
-          isDead = true;
-          statusLabel.textContent = "You are out!";
-        }else{
-          // respawn in center row
-          roach.tileX = 9;
-          roach.tileY = 6;
-          roach.dirX = 0;
-          roach.dirY = 0;
-          roach.slowFactor = 1;
-        }
-        updateHud();
-        break;
-      }
-    }
-  }
-
-  // ---------- SLIME & POWERUPS ----------
-  function updateSlimeAndPowerups(dt){
-    // remove expired slime
-    const t = nowMs;
-    slimeTiles = slimeTiles.filter(s => s.expiresAt > t);
-    powerups = powerups.filter(p => p.expiresAt > t);
-
-    // spawn occasional powerups
-    powerupTimer += dt;
-    if(powerupTimer > 6 && powerups.length < 3){
-      powerupTimer = 0;
-      // random walkable tile
-      const candidates = [];
-      for(let y=0;y<MAZE_ROWS;y++){
-        for(let x=0;x<MAZE_COLS;x++){
-          if(isWall(x,y)) continue;
-          // avoid spawn on teleports
-          if(isTeleportTile(x,y)) continue;
-          candidates.push({x,y});
-        }
-      }
-      if(candidates.length){
-        const spot = candidates[Math.floor(Math.random()*candidates.length)];
-        const types = ["EXTRA_SPIDER","SLIME","BLOCK_TUNNELS"];
-        const type = types[Math.floor(Math.random()*types.length)];
-        powerups.push({
-          x:spot.x,
-          y:spot.y,
-          type,
-          expiresAt: t + 15000 // 15s lifetime
-        });
-      }
-    }
-  }
-
-  function applyEffect(effect){
-    if(processedEffectIds.has(effect.id)) return;
-    processedEffectIds.add(effect.id);
-
-    if(effect.type === "EXTRA_SPIDER"){
-      // spawn new spider near center row
-      spiders.push({
-        tileX:9,
-        tileY:6,
-        dirX: (Math.random() < 0.5 ? 1 : -1),
-        dirY:0,
-        speed:3.8 + Math.random()*1.2,
-        color:"#f97316",
-        ai:"wander"
+  // === Towers ===
+  function initTowerSlots(){
+    towerRowEl.innerHTML = '';
+    towerSlots = [];
+    const numSlots = 4;
+    for(let i=0;i<numSlots;i++){
+      const div = document.createElement('div');
+      div.className = 'towerSlot';
+      div.dataset.index = i;
+      div.innerHTML = `<span class="towerIcon">+</span><div class="towerAura"></div>`;
+      towerRowEl.appendChild(div);
+      const xNorm = (i+0.5)/numSlots; // normalized 0-1 between bases
+      towerSlots.push({
+        typeKey:'empty',
+        element:null,
+        tier:0,
+        xNorm,
+        dom:div
       });
-    }else if(effect.type === "SLIME"){
-      // spawn some slime tiles in random corridors
-      const tNow = Date.now();
-      for(let i=0;i<5;i++){
-        const x = Math.floor(Math.random()*MAZE_COLS);
-        const y = Math.floor(Math.random()*MAZE_ROWS);
-        if(isWall(x,y)) continue;
-        slimeTiles.push({
-          x,y,
-          expiresAt: tNow + 10000
-        });
-      }
-    }else if(effect.type === "BLOCK_TUNNELS"){
-      teleportBlockedUntil = Date.now() + 10000; // 10s
+      div.addEventListener('click', ()=>{
+        onTowerSlotClicked(i);
+      });
     }
+    updateTowerUI();
   }
 
-  // ---------- RENDER ----------
-  function renderGame(){
-    const canvasWidth = VIEW_COLS * TILE_SIZE;
-    const canvasHeight = VIEW_ROWS * TILE_SIZE;
-    gameCanvas.width = canvasWidth;
-    gameCanvas.height = canvasHeight;
-
-    const ctx = gCtx;
-    ctx.clearRect(0,0,canvasWidth,canvasHeight);
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(0,0,canvasWidth,canvasHeight);
-
-    if(!roach){
-      ctx.fillStyle = "#9ca3af";
-      ctx.font = "16px system-ui";
-      ctx.textAlign = "center";
-      ctx.fillText("Connecting to Firebase…", canvasWidth/2, canvasHeight/2);
-      return;
-    }
-
-    // camera centered on roach
-    let camX = roach.tileX + 0.5 - VIEW_COLS/2;
-    let camY = roach.tileY + 0.5 - VIEW_ROWS/2;
-    camX = Math.max(0, Math.min(MAZE_COLS - VIEW_COLS, camX));
-    camY = Math.max(0, Math.min(MAZE_ROWS - VIEW_ROWS, camY));
-    const startX = Math.floor(camX);
-    const startY = Math.floor(camY);
-
-    // draw tiles
-    for(let vy=0;vy<VIEW_ROWS;vy++){
-      const my = startY + vy;
-      if(my < 0 || my >= MAZE_ROWS) continue;
-      for(let vx=0;vx<VIEW_COLS;vx++){
-        const mx = startX + vx;
-        if(mx < 0 || mx >= MAZE_COLS) continue;
-        const ch = MAZE[my][mx];
-        const x = vx * TILE_SIZE;
-        const y = vy * TILE_SIZE;
-
-        if(ch === "#"){
-          ctx.fillStyle = "#020617";
-          ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE);
-          ctx.fillStyle = "#1f2937";
-          ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
-        }else{
-          ctx.fillStyle = "#020617";
-          ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE);
-          ctx.fillStyle = "#030712";
-          ctx.fillRect(x+2,y+2,TILE_SIZE-4,TILE_SIZE-4);
-        }
-      }
-    }
-
-    // pellets
-    ctx.fillStyle = "#facc15";
-    for(let vy=0;vy<VIEW_ROWS;vy++){
-      const my = startY + vy;
-      if(my < 0 || my >= MAZE_ROWS) continue;
-      for(let vx=0;vx<VIEW_COLS;vx++){
-        const mx = startX + vx;
-        if(mx < 0 || mx >= MAZE_COLS) continue;
-        if(pellets[my] && pellets[my][mx]){
-          const cx = (vx+0.5)*TILE_SIZE;
-          const cy = (vy+0.5)*TILE_SIZE;
-          ctx.beginPath();
-          ctx.arc(cx,cy,3,0,Math.PI*2);
-          ctx.fill();
-        }
-      }
-    }
-
-    // slime tiles
-    ctx.fillStyle = "rgba(34,197,94,0.6)";
-    for(const s of slimeTiles){
-      const vx = s.x - startX;
-      const vy = s.y - startY;
-      if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
-      const x = vx * TILE_SIZE;
-      const y = vy * TILE_SIZE;
-      ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
-    }
-
-    // powerups
-    for(const p of powerups){
-      const vx = p.x - startX;
-      const vy = p.y - startY;
-      if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
-      const x = vx * TILE_SIZE;
-      const y = vy * TILE_SIZE;
-      ctx.save();
-      ctx.translate(x + TILE_SIZE/2, y + TILE_SIZE/2);
-      ctx.font = "18px system-ui";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      let emoji = "⭐";
-      if(p.type === "EXTRA_SPIDER") emoji = "🕷️";
-      else if(p.type === "SLIME") emoji = "🟢";
-      else if(p.type === "BLOCK_TUNNELS") emoji = "🚫";
-      ctx.fillText(emoji,0,1);
-      ctx.restore();
-    }
-
-    // roach
-    const r_vx = roach.tileX - camX;
-    const r_vy = roach.tileY - camY;
-    const rx = r_vx * TILE_SIZE + TILE_SIZE/2;
-    const ry = r_vy * TILE_SIZE + TILE_SIZE/2;
-    ctx.font = "22px system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("🪳", rx, ry + 1);
-
-    // spiders
-    for(const s of spiders){
-      const svx = s.tileX - camX;
-      const svy = s.tileY - camY;
-      if(svx < 0 || svx >= VIEW_COLS || svy < 0 || svy >= VIEW_ROWS) continue;
-      const sx = svx*TILE_SIZE + TILE_SIZE/2;
-      const sy = svy*TILE_SIZE + TILE_SIZE/2;
-      ctx.beginPath();
-      ctx.fillStyle = s.color || "#e5e7eb";
-      ctx.arc(sx,sy,10,0,Math.PI*2);
-      ctx.fill();
-      ctx.font = "16px system-ui";
-      ctx.fillStyle = "#020617";
-      ctx.fillText("🕷️",sx,sy+1);
-    }
-
-    // teleports highlight if blocked
-    if(nowMs < teleportBlockedUntil){
-      ctx.fillStyle = "rgba(248,113,113,0.55)";
-      for(const t of TELEPORTS){
-        const vx = t.x - camX;
-        const vy = t.y - camY;
-        if(vx < 0 || vx >= VIEW_COLS || vy < 0 || vy >= VIEW_ROWS) continue;
-        const x = vx*TILE_SIZE;
-        const y = vy*TILE_SIZE;
-        ctx.fillRect(x+4,y+4,TILE_SIZE-8,TILE_SIZE-8);
-      }
-    }
+  function getBuiltTowerCount(){
+    return towerSlots.filter(t=>t.typeKey!=='empty').length;
   }
 
-  function renderOpponentMini(){
-    const ctx = miniCtx;
-    const w = oppMiniCanvas.width;
-    const h = oppMiniCanvas.height;
-    ctx.clearRect(0,0,w,h);
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(0,0,w,h);
-
-    if(!opponentData || !opponentData.snapshot){
-      ctx.fillStyle = "#64748b";
-      ctx.font = "11px system-ui";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("No opponent yet", w/2, h/2);
-      oppMiniStatus.textContent = "(waiting…)";
-      return;
-    }
-    oppMiniStatus.textContent = "";
-
-    const tileW = w / MAZE_COLS;
-    const tileH = h / MAZE_ROWS;
-
-    // walls
-    for(let y=0;y<MAZE_ROWS;y++){
-      for(let x=0;x<MAZE_COLS;x++){
-        if(MAZE[y][x] === "#"){
-          ctx.fillStyle = "#020617";
-          ctx.fillRect(x*tileW,y*tileH,tileW,tileH);
-          ctx.fillStyle = "#111827";
-          ctx.fillRect(x*tileW+1,y*tileH+1,tileW-2,tileH-2);
-        }else{
-          ctx.fillStyle = "#020617";
-          ctx.fillRect(x*tileW,y*tileH,tileW,tileH);
-          ctx.fillStyle = "#030712";
-          ctx.fillRect(x*tileW+1,y*tileH+1,tileW-2,tileH-2);
-        }
-      }
-    }
-
-    // roach
-    const snap = opponentData.snapshot;
-    if(snap.roach){
-      const rx = (snap.roach.x + 0.5)*tileW;
-      const ry = (snap.roach.y + 0.5)*tileH;
-      ctx.font = "13px system-ui";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("🪳",rx,ry+0.5);
-    }
-
-    // spiders
-    if(Array.isArray(snap.spiders)){
-      for(const s of snap.spiders){
-        const sx = (s.x+0.5)*tileW;
-        const sy = (s.y+0.5)*tileH;
-        ctx.beginPath();
-        ctx.fillStyle = s.color || "#e5e7eb";
-        ctx.arc(sx,sy,Math.min(tileW,tileH)*0.35,0,Math.PI*2);
-        ctx.fill();
-      }
-    }
+  function getNextTowerSlotCost(){
+    const built = getBuiltTowerCount();
+    return TOWER_SLOT_COSTS[Math.min(built,TOWER_SLOT_COSTS.length-1)];
   }
 
-  // ---------- HUD ----------
-  function updateHud(){
-    scoreLabel.textContent = score;
-    levelLabel.textContent = level;
-    livesLabel.textContent = lives;
-    winsLabel.textContent = wins;
+  function onTowerSlotClicked(index){
+    selectedTowerIndex = index;
+    updateTowerUI();
   }
 
-  function updateStatus(text,color){
-    statusLabel.textContent = text;
-    if(color === "good"){
-      statusPill.style.borderColor = "#16a34a";
-    }else if(color === "bad"){
-      statusPill.style.borderColor = "#dc2626";
-    }else{
-      statusPill.style.borderColor = "#1f2937";
-    }
-  }
-
-  // ---------- GAME LOOP ----------
-  function gameLoop(ts){
-    const dt = Math.min(0.05, (ts - lastFrameTime)/1000);
-    lastFrameTime = ts;
-    nowMs = ts;
-
-    if(gameStarted && !gameOver){
-      updateSlimeAndPowerups(dt);
-      updateRoach(dt);
-      updateSpiders(dt);
-      checkCollisions();
-    }
-
-    renderGame();
-    renderOpponentMini();
-    requestAnimationFrame(gameLoop);
-  }
-  requestAnimationFrame(gameLoop);
-
-  // ---------- JOYSTICK ----------
-  let joyActive = false;
-  let joyOrigin = {x:0,y:0};
-
-  joystickOuter.addEventListener("touchstart",(e)=>{
-    const t = e.touches[0];
-    const rect = joystickOuter.getBoundingClientRect();
-    joyActive = true;
-    joyOrigin = {
-      x: t.clientX - rect.left,
-      y: t.clientY - rect.top
-    };
-    joystickInner.style.transform = `translate(${joyOrigin.x-22}px,${joyOrigin.y-22}px)`;
-    e.preventDefault();
-  },{passive:false});
-
-  joystickOuter.addEventListener("touchmove",(e)=>{
-    if(!joyActive) return;
-    const rect = joystickOuter.getBoundingClientRect();
-    const t = e.touches[0];
-    let dx = (t.clientX - rect.left) - joyOrigin.x;
-    let dy = (t.clientY - rect.top) - joyOrigin.y;
-    const dist = Math.hypot(dx,dy);
-    const max = 32;
-    if(dist > max){
-      dx = dx / dist * max;
-      dy = dy / dist * max;
-    }
-    joystickInner.style.transform = `translate(${joyOrigin.x+dx-22}px,${joyOrigin.y+dy-22}px)`;
-
-    const threshold = 6;
-    let dirX = 0, dirY = 0;
-    if(Math.abs(dx) > Math.abs(dy)){
-      if(dx > threshold) dirX = 1;
-      else if(dx < -threshold) dirX = -1;
-    }else{
-      if(dy > threshold) dirY = 1;
-      else if(dy < -threshold) dirY = -1;
-    }
-    setNextDir(dirX,dirY);
-    e.preventDefault();
-  },{passive:false});
-
-  joystickOuter.addEventListener("touchend",()=>{
-    joyActive = false;
-    joystickInner.style.transform = "translate(-50%,-50%)";
-  });
-
-  // Keyboard controls
-  window.addEventListener("keydown",(e)=>{
-    let dx=0,dy=0;
-    if(e.key === "ArrowUp" || e.key === "w" || e.key === "W") dy = -1;
-    else if(e.key === "ArrowDown" || e.key === "s" || e.key === "S") dy = 1;
-    else if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A") dx = -1;
-    else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D") dx = 1;
-    else return;
-    setNextDir(dx,dy);
-    e.preventDefault();
-  });
-
-  // ---------- FULLSCREEN ----------
-  fullscreenBtn.addEventListener("click",()=>{
-    const el = document.documentElement;
-    if(!document.fullscreenElement){
-      el.requestFullscreen?.();
-    }else{
-      document.exitFullscreen?.();
-    }
-  });
-
-  // ---------- FIREBASE JOIN ----------
-  function showGameOver(title,text,isWin){
-    gameOver = true;
-    victory = !!isWin;
-    gameOverTitle.textContent = title;
-    gameOverText.textContent = text;
-    gameOverOverlay.style.display = "flex";
-
-    if(victory && !winRecorded && playerRef){
-      winRecorded = true;
-      const newWins = (myData && typeof myData.wins === "number") ? (myData.wins+1) : (wins+1);
-      wins = newWins;
-      updateDoc(playerRef,{wins:newWins}).catch(console.error);
-      updateHud();
-    }
-  }
-
-  function determineWinner(){
-    if(!myData) return;
-    const myDead = isDead || !!myData.dead;
-    const oppDead = opponentData && opponentData.dead;
-    const myScore = score;
-    const oppScore = opponentData ? (opponentData.score || 0) : 0;
-
-    if(gameOver) return;
-
-    if(myDead && oppDead){
-      if(myScore > oppScore){
-        showGameOver("Victory!","You outscored your opponent.",true);
-      }else if(myScore < oppScore){
-        showGameOver("Defeat","Your opponent outscored you.",false);
+  function updateTowerUI(){
+    // visuals
+    towerSlots.forEach((slot,i)=>{
+      const div = slot.dom;
+      div.classList.toggle('selected', i===selectedTowerIndex);
+      const type = TOWER_TYPES[slot.typeKey];
+      if (slot.typeKey==='empty'){
+        div.classList.remove('hasTower');
+        div.querySelector('.towerIcon').textContent = '+';
+        div.style.borderColor = 'rgba(148,163,184,.6)';
       }else{
-        showGameOver("Tie","Both roaches fell with equal score.",false);
+        div.classList.add('hasTower');
+        div.querySelector('.towerIcon').textContent = type.emoji || '🛡️';
+        let color = '#64748b';
+        if (type.element==='fire') color = 'var(--fire)';
+        else if (type.element==='ice') color = 'var(--ice)';
+        else if (type.element==='stone') color = 'var(--stone)';
+        div.style.borderColor = color;
       }
-    }else if(myDead && !oppDead){
-      if(oppScore > myScore){
-        showGameOver("Defeat","You ran out of lives while already behind.",false);
+    });
+
+    towerCostText.textContent = getNextTowerSlotCost() + 'g';
+    const genCost = getGeneratorCost();
+    genCostText.textContent = genCost + 'g';
+
+    // detail box
+    if (selectedTowerIndex === -1){
+      towerTitle.textContent = 'No tower selected';
+      towerDesc.textContent = 'Tap a tower slot above to build or upgrade.';
+      towerActions.innerHTML = '';
+      return;
+    }
+    const slot = towerSlots[selectedTowerIndex];
+    const type = TOWER_TYPES[slot.typeKey];
+
+    towerTitle.textContent = type.name;
+    let descParts = [];
+    if (type.element){
+      descParts.push(`Element: ${type.element.toUpperCase()} (Tier ${type.tier})`);
+    }
+    if (type.baseDps>0){
+      descParts.push(`DPS: ${Math.round(getTowerEffectiveDps(type))}`);
+    }
+    if (!descParts.length) descParts.push('Empty slot ready for a tower.');
+    towerDesc.textContent = descParts.join(' • ');
+
+    towerActions.innerHTML = '';
+
+    if (slot.typeKey === 'empty'){
+      // build basic tower here (cost already paid by "Buy Tower Slot")
+      const btn = document.createElement('button');
+      btn.textContent = 'Fill with Basic';
+      btn.onclick = ()=>{
+        buildBasicTowerAt(selectedTowerIndex);
+      };
+      towerActions.appendChild(btn);
+    }else if (slot.typeKey === 'basic'){
+      ['fire','ice','stone'].forEach(elem=>{
+        const btn = document.createElement('button');
+        btn.textContent = elem.charAt(0).toUpperCase()+elem.slice(1);
+        btn.onclick = ()=>{
+          upgradeTowerToElement(selectedTowerIndex, elem);
+        };
+        towerActions.appendChild(btn);
+      });
+    }else{
+      // element towers
+      const t = TOWER_TYPES[slot.typeKey];
+      if (t.tier===1){
+        const btnU = document.createElement('button');
+        btnU.textContent = `Upgrade ${t.element.toUpperCase()} II (${60}g)`;
+        btnU.onclick = ()=>{
+          upgradeTowerTier2(selectedTowerIndex);
+        };
+        towerActions.appendChild(btnU);
       }
-    }else if(!myDead && oppDead){
-      if(myScore > oppScore){
-        showGameOver("Victory!","Opponent ran out of lives while you were ahead.",true);
+      const btnSell = document.createElement('button');
+      btnSell.textContent = 'Sell (+25g)';
+      btnSell.onclick = ()=>{
+        sellTower(selectedTowerIndex);
+      };
+      towerActions.appendChild(btnSell);
+    }
+  }
+
+  function buildBasicTowerAt(index){
+    const slot = towerSlots[index];
+    if (slot.typeKey !== 'empty') return;
+    slot.typeKey = 'basic';
+    slot.element = null;
+    slot.tier = 0;
+    updateTowerUI();
+    sendMyTowerSummarySoon();
+    log('Built a basic tower.','tower');
+  }
+
+  function upgradeTowerToElement(index, elem){
+    const slot = towerSlots[index];
+    if (slot.typeKey !== 'basic') return;
+    const typeKey = elem+'1';
+    const type = TOWER_TYPES[typeKey];
+    const cost = 40;
+    if (gold < cost){
+      log('Not enough gold to infuse tower.','warn');
+      return;
+    }
+    gold -= cost;
+    slot.typeKey = typeKey;
+    slot.element = type.element;
+    slot.tier = type.tier;
+    updateResourcesUI();
+    updateTowerUI();
+    sendMyTowerSummarySoon();
+    log(`Upgraded tower to ${type.name}.`,'tower');
+  }
+
+  function upgradeTowerTier2(index){
+    const slot = towerSlots[index];
+    const from = TOWER_TYPES[slot.typeKey];
+    if (!from || from.tier!==1) return;
+    const typeKey = from.element+'2';
+    const type = TOWER_TYPES[typeKey];
+    const cost = 60;
+    if (gold < cost){
+      log('Not enough gold to upgrade tower.','warn');
+      return;
+    }
+    gold -= cost;
+    slot.typeKey = typeKey;
+    slot.element = type.element;
+    slot.tier = type.tier;
+    updateResourcesUI();
+    updateTowerUI();
+    sendMyTowerSummarySoon();
+    log(`Upgraded tower to ${type.name}.`,'tower');
+  }
+
+  function sellTower(index){
+    const slot = towerSlots[index];
+    if (slot.typeKey==='empty') return;
+    gold += 25;
+    slot.typeKey = 'basic'; // keep basic shell instead of empty to keep path simple
+    slot.element = null;
+    slot.tier = 0;
+    updateResourcesUI();
+    updateTowerUI();
+    sendMyTowerSummarySoon();
+    log('Sold tower for 25g.','tower');
+  }
+
+  function getTowerEffectiveDps(type){
+    let dps = type.baseDps;
+    if (towerBuffActive) dps *= TOWER_BUFF_MULT;
+    return dps;
+  }
+
+  function getGeneratorCost(){
+    if (generatorLevel === 1) return 60;
+    if (generatorLevel === 2) return 110;
+    return 180;
+  }
+
+  function upgradeGenerator(){
+    const cost = getGeneratorCost();
+    if (gold < cost){
+      log('Not enough gold to upgrade generator.','warn');
+      return;
+    }
+    if (generatorLevel >= 3){
+      log('Generator is at max level.','sys');
+      return;
+    }
+    gold -= cost;
+    generatorLevel++;
+    updateResourcesUI();
+    sendMyTowerSummarySoon();
+    log(`Upgraded generator to level ${generatorLevel}.`,'eco');
+  }
+
+  // Build next tower slot
+  function buyTowerSlot(){
+    const cost = getNextTowerSlotCost();
+    if (gold < cost){
+      log('Not enough gold to buy tower slot.','warn');
+      return;
+    }
+    // find first empty slot
+    const index = towerSlots.findIndex(s=>s.typeKey==='empty');
+    if (index===-1){
+      log('All tower slots are already available.','sys');
+      return;
+    }
+    gold -= cost;
+    // auto convert this empty slot to basic tower
+    buildBasicTowerAt(index);
+    selectedTowerIndex = index;
+    updateResourcesUI();
+    updateTowerUI();
+    log('Unlocked & built a new tower.','tower');
+  }
+
+  // === Enemies ===
+  function spawnEnemyWave(troopKeys, countPerKey, fromSide){
+    // Enemy units always move from right->left toward our base
+    const now = performance.now();
+    const laneY = 0.52; // normalized
+    troopKeys.forEach((key,idx)=>{
+      const def = TROOPS[key];
+      for(let i=0;i<countPerKey;i++){
+        const enemy = {
+          id: nextEnemyId++,
+          typeKey:key,
+          element:def.element,
+          tier:def.tier,
+          maxHp:def.maxHp,
+          hp:def.maxHp,
+          baseDamage:def.baseDamage,
+          speed:def.speed, // normalized per second along lane
+          pos:1 + (i*0.02) + idx*0.03, // stagger
+          yNorm: laneY,
+          ownerSide: fromSide, // 'p1' or 'p2'
+          canSplit: !!def.canSplit,
+          splitInto: def.splitInto || null,
+          canHeal: !!def.canHeal,
+          healPerSec: def.healPerSec || 0,
+          slowFactor:1,
+          lastHitTime:now,
+          dom:null
+        };
+        createEnemyDom(enemy);
+        enemies.push(enemy);
+      }
+    });
+  }
+
+  function createEnemyDom(enemy){
+    const el = document.createElement('div');
+    el.className = 'enemyUnit';
+    const def = TROOPS[enemy.typeKey];
+    let bg = '#f97316';
+    if (enemy.element==='ice') bg = '#38bdf8';
+    else if (enemy.element==='stone') bg = '#9ca3af';
+    el.style.background = bg;
+    el.textContent = def.emoji || '•';
+
+    const hpBar = document.createElement('div');
+    hpBar.className = 'enemyHp';
+    const hpFill = document.createElement('div');
+    hpFill.className = 'enemyHpFill';
+    hpBar.appendChild(hpFill);
+    el.appendChild(hpBar);
+
+    enemy.dom = el;
+    enemy.hpFillDom = hpFill;
+    entityLayer.appendChild(el);
+  }
+
+  function removeEnemy(enemy){
+    if (enemy.dom && enemy.dom.parentNode){
+      enemy.dom.parentNode.removeChild(enemy.dom);
+    }
+  }
+
+  function killRewardFor(enemy){
+    const tier = enemy.tier;
+    if (tier===1) return 3;
+    if (tier===2) return 7;
+    return 15;
+  }
+
+  function baseHitRewardFor(enemy){
+    const tier = enemy.tier;
+    if (tier===1) return 4;
+    if (tier===2) return 10;
+    return 20;
+  }
+
+  // === Buffs ===
+  function triggerTowerBuffIfNeeded(oldHp, newHp){
+    const pctOld = oldHp / baseMaxHpLocal;
+    const pctNew = newHp / baseMaxHpLocal;
+    // thresholds at 0.9,0.8,0.7,...0.1
+    const thresholds = [0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1];
+    for (const th of thresholds){
+      if (pctOld > th && pctNew <= th){ // crossed downward
+        towerBuffActive = true;
+        towerBuffUntil = performance.now() + TOWER_BUFF_SECONDS*1000;
+        towerBuffTag.style.display = 'inline-block';
+        log('Emergency tower power up!','buff');
+        break;
       }
     }
   }
 
-  async function pushSnapshot(){
-    if(!playerRef || !myData || !roach) return;
-    const snap = {
-      score,
-      level,
-      lives,
-      dead:isDead,
-      roach:{x:roach.tileX, y:roach.tileY},
-      spiders: spiders.map(s=>({x:s.tileX,y:s.tileY,color:s.color})),
-      pelletsLeft
-    };
+  function updateBuffs(now){
+    if (towerBuffActive && now > towerBuffUntil){
+      towerBuffActive = false;
+      towerBuffTag.style.display = 'none';
+    }
+    if (aggroBuffActive && now > aggroBuffUntil){
+      aggroBuffActive = false;
+      aggroTag.style.display = 'none';
+    }
+    if (scoutBuffActive && now > scoutBuffUntil){
+      scoutBuffActive = false;
+      scoutCounterElement = null;
+    }
+    // Scout cooldown button visuals
+    const nowSec = now/1000;
+    const onCd = nowSec < scoutCooldownUntil;
+    btnScout.classList.toggle('cooldown', onCd);
+  }
+
+  // === Economy ===
+  function getGoldPerSec(){
+    let gps = GOLD_BASE_PER_SEC + (generatorLevel-1)*GOLD_PER_GEN_LEVEL;
+    if (aggroBuffActive) gps *= AGGRO_BUFF_MULT;
+    return gps;
+  }
+
+  function updateResourcesUI(){
+    goldText.textContent = Math.floor(gold);
+    genLevelText.textContent = generatorLevel;
+    goldPerSecText.textContent = getGoldPerSec().toFixed(1);
+
+    costTier1.textContent = getCompositeTierCost(1)+'g';
+    costTier2.textContent = getCompositeTierCost(2)+'g';
+    costTier3.textContent = getCompositeTierCost(3)+'g';
+  }
+
+  function getCompositeTierCost(tier){
+    const baseArr = tier===1?TIER1_KEYS:(tier===2?TIER2_KEYS:TIER3_KEYS);
+    // approximate: average cost of these units as a wave
+    let sum=0;
+    baseArr.forEach(k=>sum+=TROOPS[k].cost);
+    return Math.round(sum/baseArr.length);
+  }
+
+  function sendWaveForTier(tier){
+    let keys;
+    if (tier===1) keys = TIER1_KEYS;
+    else if (tier===2) keys = TIER2_KEYS;
+    else keys = TIER3_KEYS;
+    const cost = getCompositeTierCost(tier);
+    const discountedCost = applyScoutDiscountToWaveCost(keys, cost);
+
+    if (gold < discountedCost){
+      log('Not enough gold to send that wave.','warn');
+      return;
+    }
+    gold -= discountedCost;
+    updateResourcesUI();
+
+    if (!currentGameRef || !enemySide){
+      log('No enemy connected; wave sent locally for testing.','sys');
+      // for local solo test: spawn enemies against us as if enemy sent
+      spawnEnemyWave(keys,1,'p2');
+      return;
+    }
+
+    currentGameRef.collection('commands').add({
+      type:'wave',
+      fromSide: mySide,
+      toSide: enemySide,
+      tier: tier,
+      troopKeys: keys,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(console.error);
+
+    log(`Sent Tier ${tier} wave. (Cost ${discountedCost}g)`, 'send');
+  }
+
+  function applyScoutDiscountToWaveCost(keys, baseCost){
+    if (!scoutBuffActive || !scoutCounterElement) return baseCost;
+    // if majority of this wave shares counter element, discount
+    let countCounter = 0;
+    keys.forEach(k=>{
+      if (TROOPS[k].element===scoutCounterElement) countCounter++;
+    });
+    if (countCounter >= 2){ // majority of 3
+      return Math.round(baseCost * 0.9);
+    }
+    return baseCost;
+  }
+
+  // === Scout ===
+  async function performScout(){
+    const nowSec = performance.now()/1000;
+    if (nowSec < scoutCooldownUntil){
+      log('Scout is on cooldown.','warn');
+      return;
+    }
+    if (gold < SCOUT_COST){
+      log('Not enough gold to scout.','warn');
+      return;
+    }
+    if (!currentGameRef || !enemySide){
+      log('No enemy to scout yet.','sys');
+      return;
+    }
+    gold -= SCOUT_COST;
+    scoutCooldownUntil = nowSec + SCOUT_COOLDOWN_SEC;
+    updateResourcesUI();
+    btnScout.classList.add('cooldown');
+    log('Launching scout drone…','scout');
+
+    // Visual ping on enemy side
+    currentGameRef.collection('commands').add({
+      type:'scoutPing',
+      fromSide: mySide,
+      toSide: enemySide,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(console.error);
+
+    // Read enemy summary
     try{
-      await updateDoc(playerRef,{
-        score,
-        level,
-        lives,
-        dead:isDead,
-        snapshot:snap,
-        lastSnapshot: serverTimestamp()
+      const snap = await currentGameRef.get();
+      if (!snap.exists) return;
+      const data = snap.data();
+      const genField = enemySide + 'GeneratorLevel';
+      const summField = enemySide + 'TowerSummary';
+      const genLvl = data[genField] || 1;
+      const summ = data[summField] || {};
+      const fire = summ.fire || 0;
+      const ice = summ.ice || 0;
+      const stone = summ.stone || 0;
+      const highestTier = summ.highestTier || 0;
+
+      const parts = [];
+      parts.push(`Enemy generator level ${genLvl}.`);
+      parts.push(`Towers: Fire ${fire}, Ice ${ice}, Stone ${stone}. Highest tier ${highestTier}.`);
+      log(parts.join(' '),'scout');
+
+      // Determine dominant element and set counter discount buff
+      let dominant = null;
+      let max = -1;
+      [['fire',fire],['ice',ice],['stone',stone]].forEach(([e,val])=>{
+        if (val > max){
+          max = val;
+          dominant = e;
+        }
       });
+      if (dominant){
+        const counter = ELEMENT_COUNTER[dominant];
+        scoutBuffActive = true;
+        scoutBuffUntil = performance.now() + 15000;
+        scoutCounterElement = counter;
+        log(`For a short time, ${counter.toUpperCase()} troops are 10% cheaper vs their ${dominant.toUpperCase()} towers.`,'buff');
+      }
+
     }catch(e){
       console.error(e);
     }
   }
 
-  function handleMyDocUpdate(data){
-    myData = data;
-    if(typeof data.score === "number") score = data.score;
-    if(typeof data.level === "number") level = data.level;
-    if(typeof data.lives === "number") lives = data.lives;
-    if(typeof data.wins === "number") wins = data.wins;
+  function sendMyTowerSummarySoon(){
+    // throttle a bit
+    const now = performance.now();
+    if (now - lastSummaryUpdateTime < 500) return;
+    lastSummaryUpdateTime = now;
+    if (!currentGameRef || !mySide) return;
 
-    youLabel.textContent = data.name || displayName;
-    updateHud();
+    const summary = { fire:0, ice:0, stone:0, highestTier:0 };
+    towerSlots.forEach(slot=>{
+      const t = TOWER_TYPES[slot.typeKey];
+      if (t && t.element){
+        summary[t.element] = (summary[t.element]||0)+1;
+        if (t.tier > summary.highestTier) summary.highestTier = t.tier;
+      }
+    });
 
-    // apply new effects
-    if(Array.isArray(data.incomingEffects)){
-      for(const eff of data.incomingEffects){
-        if(eff && eff.id){
-          applyEffect(eff);
+    const update = {};
+    update[mySide+'GeneratorLevel'] = generatorLevel;
+    update[mySide+'TowerSummary'] = summary;
+    currentGameRef.update(update).catch(console.error);
+  }
+
+  // === Firebase handling ===
+  async function joinOrCreateMatch(matchId){
+    if (!currentUser){
+      overlayStatus.textContent = 'Waiting for anonymous auth…';
+      return;
+    }
+    const trimmed = matchId.trim();
+    if (!trimmed){
+      overlayStatus.textContent = 'Enter a match ID.';
+      return;
+    }
+    overlayStatus.textContent = 'Joining/creating match…';
+
+    const ref = db.collection('games_basewar').doc(trimmed);
+    currentGameRef = ref;
+
+    try{
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(ref);
+        if (!snap.exists){
+          mySide = 'p1';
+          enemySide = 'p2';
+          isHost = true;
+          tx.set(ref,{
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status:'waiting',
+            hostUid: currentUser.uid,
+            p1Uid: currentUser.uid,
+            p2Uid: null,
+            p1BaseHp: MAX_BASE_HP,
+            p2BaseHp: MAX_BASE_HP,
+            p1MaxHp: MAX_BASE_HP,
+            p2MaxHp: MAX_BASE_HP,
+            p1GeneratorLevel:1,
+            p2GeneratorLevel:1
+          });
+        }else{
+          const data = snap.data();
+          if (!data.p1Uid){
+            mySide = 'p1'; enemySide='p2'; isHost = true;
+            tx.update(ref,{p1Uid: currentUser.uid, hostUid:currentUser.uid});
+          }else if (!data.p2Uid && data.p1Uid !== currentUser.uid){
+            mySide = 'p2'; enemySide='p1'; isHost = false;
+            tx.update(ref,{p2Uid: currentUser.uid});
+          }else if (data.p1Uid === currentUser.uid){
+            mySide = 'p1'; enemySide='p2'; isHost = (data.hostUid===currentUser.uid);
+          }else if (data.p2Uid === currentUser.uid){
+            mySide = 'p2'; enemySide='p1'; isHost = (data.hostUid===currentUser.uid);
+          }else{
+            throw new Error('Match is full.');
+          }
+        }
+      });
+
+      overlayStatus.textContent = `Joined as ${mySide.toUpperCase()}. Waiting for opponent…`;
+      if (isHost){
+        startBtn.style.display = 'block';
+        startBtn.classList.add('disabled');
+        startBtn.textContent = 'Waiting for Player 2…';
+      }
+
+      // Subscribe to game doc and commands
+      if (gameUnsub) gameUnsub();
+      gameUnsub = ref.onSnapshot(snap=>{
+        if (!snap.exists) return;
+        const data = snap.data();
+        handleGameDocUpdate(data);
+      });
+
+      if (commandsUnsub) commandsUnsub();
+      commandsUnsub = ref.collection('commands')
+        .where('toSide','==', mySide)
+        .onSnapshot(snap=>{
+          snap.docChanges().forEach(change=>{
+            if (change.type === 'added'){
+              handleIncomingCommand(change.doc);
+            }
+          });
+        });
+
+    }catch(e){
+      console.error(e);
+      overlayStatus.textContent = e.message || 'Failed to join match.';
+    }
+  }
+
+  function handleGameDocUpdate(data){
+    // enemy presence
+    const opponentPresent = (mySide==='p1'? !!data.p2Uid : !!data.p1Uid);
+    if (isHost){
+      if (opponentPresent){
+        startBtn.style.display = 'block';
+        if (data.status==='waiting'){
+          startBtn.classList.remove('disabled');
+          startBtn.textContent = 'Start Match';
+        }else{
+          startBtn.classList.add('disabled');
+          startBtn.textContent = 'Match running…';
+        }
+      }else{
+        startBtn.classList.add('disabled');
+        startBtn.textContent = 'Waiting for Player 2…';
+      }
+    }
+
+    // Base HP from shared doc (other side updates theirs)
+    const enemyHpField = enemySide + 'BaseHp';
+    const myHpField = mySide + 'BaseHp';
+    if (typeof data[enemyHpField] === 'number'){
+      enemyBaseHp = data[enemyHpField];
+    }
+    if (typeof data[myHpField] === 'number'){
+      const oldHp = localBaseHp;
+      const newHp = data[myHpField];
+      if (newHp < oldHp){
+        triggerTowerBuffIfNeeded(oldHp, newHp);
+      }
+      localBaseHp = newHp;
+    }
+
+    // status/time
+    if (data.status === 'running' && !gameRunning){
+      overlay.style.display = 'none';
+      startGameLoop();
+      log('Match started.','sys');
+    }
+    if (data.status === 'ended'){
+      // we might show result if not already
+    }
+  }
+
+  function handleIncomingCommand(doc){
+    const data = doc.data();
+    const type = data.type;
+    if (type === 'wave'){
+      const keys = data.troopKeys || [];
+      const fromSide = data.fromSide || enemySide;
+      // spawn 1 of each key as wave
+      spawnEnemyWave(keys,1,fromSide);
+      log('Incoming enemy wave!','alert');
+      // delete command
+      doc.ref.delete().catch(console.error);
+    }else if (type === 'scoutPing'){
+      // Show scan effect
+      showScanIncoming();
+      doc.ref.delete().catch(console.error);
+    }else if (type === 'reward'){
+      const goldGain = data.gold || 0;
+      if (goldGain>0){
+        gold += goldGain;
+        aggroBuffActive = true;
+        aggroBuffUntil = performance.now() + AGGRO_BUFF_SECONDS*1000;
+        aggroTag.style.display = 'inline-block';
+        updateResourcesUI();
+        log(`Your last attacks earned ${goldGain}g and a temporary +10% income.`,'buff');
+      }
+      doc.ref.delete().catch(console.error);
+    }
+  }
+
+  function showScanIncoming(){
+    scanOverlay.classList.add('active');
+    setTimeout(()=>scanOverlay.classList.remove('active'), 2000);
+    log('Enemy drone is scanning your defenses…','alert');
+  }
+
+  function startMatchOnServer(){
+    if (!currentGameRef) return;
+    currentGameRef.update({
+      status:'running',
+      p1BaseHp: MAX_BASE_HP,
+      p2BaseHp: MAX_BASE_HP,
+      p1MaxHp: MAX_BASE_HP,
+      p2MaxHp: MAX_BASE_HP,
+      p1GeneratorLevel:1,
+      p2GeneratorLevel:1
+    }).then(()=>{
+      overlay.style.display = 'none';
+    }).catch(console.error);
+  }
+
+  function sendMyBaseHp(){
+    if (!currentGameRef || !mySide) return;
+    const field = mySide+'BaseHp';
+    const update = {};
+    update[field] = Math.round(localBaseHp);
+    currentGameRef.update(update).catch(console.error);
+  }
+
+  function sendRewardBucketToEnemy(){
+    if (!currentGameRef || !enemySide) return;
+    const amt = Math.floor(pendingRewardGoldForEnemy);
+    if (amt <= 0) return;
+    pendingRewardGoldForEnemy = 0;
+    currentGameRef.collection('commands').add({
+      type:'reward',
+      toSide: enemySide,
+      gold: amt,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(console.error);
+  }
+
+  // === Game loop ===
+  function startGameLoop(){
+    gameRunning = true;
+    lastFrameTime = performance.now();
+    initTowerSlots();
+    updateResourcesUI();
+
+    function frame(now){
+      const dt = (now - lastFrameTime)/1000;
+      lastFrameTime = now;
+      if (gameRunning){
+        updateGame(dt, now);
+        renderGame();
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // Economy tick & server sync
+    setInterval(()=>{
+      if (!gameRunning) return;
+      const gps = getGoldPerSec();
+      gold += gps;
+      if (gold > 250) gold = 250;
+      updateResourcesUI();
+
+      // reward bucket flushing (roughly every second)
+      const now = performance.now();
+      if (now - lastRewardSendTime > 900){
+        lastRewardSendTime = now;
+        if (pendingRewardGoldForEnemy > 0){
+          sendRewardBucketToEnemy();
         }
       }
-    }
 
-    determineWinner();
+      // sync base HP to Firestore
+      sendMyBaseHp();
+      sendMyTowerSummarySoon();
+
+    },1000);
+
+    // match timer
+    setInterval(()=>{
+      if (!gameRunning) return;
+      matchSecondsLeft -= 1;
+      if (matchSecondsLeft < 0) matchSecondsLeft = 0;
+      timerLabel.textContent = formatTime(matchSecondsLeft);
+
+      if (matchSecondsLeft === 0){
+        endMatchByTime();
+      }
+    },1000);
   }
 
-  function handlePlayersSnapshot(snap){
-    opponentData = null;
-    opponentId = null;
-    snap.forEach(docSnap=>{
-      const d = docSnap.data();
-      if(docSnap.id === currentUser.uid){
-        myData = d;
-      }else if(!opponentData){
-        opponentData = d;
-        opponentId = docSnap.id;
+  function endMatchByTime(){
+    if (!gameRunning) return;
+    gameRunning = false;
+    // Determine winner by HP
+    let result;
+    if (localBaseHp > enemyBaseHp) result = 'VICTORY';
+    else if (localBaseHp < enemyBaseHp) result = 'DEFEAT';
+    else result = 'DRAW';
+
+    showResult(result);
+    if (currentGameRef){
+      currentGameRef.update({status:'ended'}).catch(console.error);
+    }
+  }
+
+  function showResult(text){
+    resultBannerInner.textContent = text;
+    resultBanner.classList.add('visible');
+    setTimeout(()=>resultBanner.classList.remove('visible'), 5000);
+  }
+
+  function updateGame(dt, nowMs){
+    const laneLength = 0.96; // from base to spawn normalized
+
+    // buffs
+    updateBuffs(nowMs);
+
+    // enemies move & interact
+    for (let i=enemies.length-1;i>=0;i--){
+      const e = enemies[i];
+      // healing allies
+      if (e.canHeal && e.hp>0){
+        const healAmount = e.healPerSec * dt;
+        if (healAmount>0){
+          for (let j=0;j<enemies.length;j++){
+            if (i===j) continue;
+            const other = enemies[j];
+            if (other.hp<=0) continue;
+            if (other.element !== e.element) continue;
+            const dist = Math.abs(other.pos - e.pos);
+            if (dist < 0.12){ // small radius
+              other.hp = Math.min(other.maxHp, other.hp+healAmount);
+            }
+          }
+        }
+      }
+
+      // movement
+      const effSpeed = e.speed * e.slowFactor;
+      e.pos -= effSpeed * dt;
+      if (e.pos <= 0){
+        // hit the base
+        const damage = e.baseDamage;
+        const oldHp = localBaseHp;
+        localBaseHp = Math.max(0, localBaseHp - damage);
+        triggerTowerBuffIfNeeded(oldHp, localBaseHp);
+
+        // reward attacker
+        const reward = baseHitRewardFor(e);
+        pendingRewardGoldForEnemy += reward;
+
+        if (localBaseHp <= 0){
+          gameRunning = false;
+          showResult('DEFEAT');
+          if (currentGameRef) currentGameRef.update({status:'ended'}).catch(console.error);
+        }
+
+        removeEnemy(e);
+        enemies.splice(i,1);
+        continue;
+      }
+
+      // reset slowFactor (will be applied by towers again)
+      e.slowFactor = 1;
+    }
+
+    // towers attack
+    towerSlots.forEach(slot=>{
+      const type = TOWER_TYPES[slot.typeKey];
+      if (!type || type.baseDps<=0) return;
+      // find nearest enemy in front of base within range
+      let closest = null;
+      let closestDist = Infinity;
+      enemies.forEach(e=>{
+        if (e.hp<=0) return;
+        const dist = Math.abs(e.pos - slot.xNorm);
+        if (dist < closestDist && dist < 0.4){
+          closestDist = dist;
+          closest = e;
+        }
+      });
+      if (!closest) return;
+
+      let dps = getTowerEffectiveDps(type);
+      if (type.element && closest.element){
+        const mult = ELEMENT_DAMAGE_MULT[type.element][closest.element] || 1;
+        dps *= mult;
+      }
+      const damage = dps * dt;
+      closest.hp -= damage;
+
+      // slow from ice towers
+      if (type.element==='ice'){
+        const slow = type.slow || 0.3;
+        closest.slowFactor = Math.max(0.4, 1-slow);
+      }
+
+      if (closest.hp <= 0){
+        // death
+        const reward = killRewardFor(closest);
+        gold += reward;
+        updateResourcesUI();
+
+        // splitting mechanic
+        if (closest.canSplit && closest.splitInto){
+          const childKey = closest.splitInto;
+          const def = TROOPS[childKey];
+          for(let i=0;i<2;i++){
+            const child = {
+              id: nextEnemyId++,
+              typeKey: childKey,
+              element:def.element,
+              tier:def.tier,
+              maxHp:def.maxHp*0.6,
+              hp:def.maxHp*0.6,
+              baseDamage:def.baseDamage,
+              speed:def.speed,
+              pos: closest.pos + (i===0?-0.02:0.02),
+              yNorm: closest.yNorm,
+              ownerSide: closest.ownerSide,
+              canSplit:false,
+              splitInto:null,
+              canHeal:false,
+              healPerSec:0,
+              slowFactor:1,
+              lastHitTime:nowMs,
+              dom:null
+            };
+            createEnemyDom(child);
+            enemies.push(child);
+          }
+        }
+
+        removeEnemy(closest);
+        enemies = enemies.filter(en=>en.hp>0);
       }
     });
 
-    if(myData){
-      handleMyDocUpdate(myData);
-    }
+    // match HP sync already handled via interval; update local HP bars and enemy from last known
+    const enemyPct = enemyBaseHp/baseMaxHpLocal;
+    const playerPct = localBaseHp/baseMaxHpLocal;
+    enemyHpFill.style.transform = `scaleX(${Math.max(0,Math.min(1,enemyPct))})`;
+    playerHpFill.style.transform = `scaleX(${Math.max(0,Math.min(1,playerPct))})`;
+  }
 
-    if(opponentData){
-      oppScoreLabel.textContent = opponentData.score ?? 0;
-      connectionLabel.textContent = "Opponent connected";
-      updateStatus("In match", "good");
+  function renderGame(){
+    const rect = battleWindow.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const baseX = 0.08*w;
+    const spawnX = 0.92*w;
+    const laneY = 0.52*h;
+
+    // position bases
+    const playerBase = document.getElementById('playerBase');
+    const enemyBase = document.getElementById('enemyBase');
+    playerBase.style.left = (2)+'%';
+    enemyBase.style.right = (2)+'%';
+
+    enemies.forEach(e=>{
+      if (!e.dom) return;
+      const x = baseX + e.pos*(spawnX-baseX);
+      const y = laneY;
+      e.dom.style.left = x+'px';
+      e.dom.style.top = y+'px';
+      const pct = Math.max(0,Math.min(1,e.hp/e.maxHp));
+      if (e.hpFillDom){
+        e.hpFillDom.style.transform = `scaleX(${pct})`;
+      }
+    });
+  }
+
+  // === Fullscreen ===
+  fullscreenBtn.addEventListener('click',()=>{
+    if (!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(()=>{});
     }else{
-      oppScoreLabel.textContent = "—";
-      connectionLabel.textContent = "Waiting for second player…";
-      updateStatus("Waiting for opponent", null);
+      document.exitFullscreen().catch(()=>{});
     }
-
-    determineWinner();
-  }
-
-  async function joinGame(user){
-    currentUser = user;
-    gameRef = doc(db, GAME_COLLECTION, gameId);
-    playersCol = collection(gameRef,"players");
-    playerRef = doc(playersCol, user.uid);
-
-    youLabel.textContent = displayName;
-    connectionLabel.textContent = "Joining game…";
-
-    await setDoc(playerRef,{
-      uid:user.uid,
-      name:displayName,
-      score:0,
-      level:1,
-      lives:3,
-      wins:0,
-      dead:false,
-      createdAt:serverTimestamp()
-    },{merge:true});
-
-    onSnapshot(playersCol, handlePlayersSnapshot);
-    onSnapshot(playerRef,(snap)=>{
-      if(snap.exists()){
-        handleMyDocUpdate(snap.data());
-      }
-    });
-
-    if(snapshotIntervalId) clearInterval(snapshotIntervalId);
-    snapshotIntervalId = setInterval(pushSnapshot, 3000);
-
-    resetGameBoard();
-    updateStatus("In match (or waiting for opponent)", "good");
-  }
-
-  // ---------- AUTH ----------
-  signInAnonymously(auth).catch(err=>{
-    console.error(err);
-    updateStatus("Auth failed", "bad");
-    alert("Failed to sign in anonymously to Firebase: "+err.message);
   });
 
-  onAuthStateChanged(auth,(user)=>{
-    if(!user) return;
-    joinGame(user).catch(e=>{
-      console.error(e);
-      updateStatus("Error joining game", "bad");
-    });
+  // === Wire UI ===
+  btnTier1.addEventListener('click',()=>sendWaveForTier(1));
+  btnTier2.addEventListener('click',()=>sendWaveForTier(2));
+  btnTier3.addEventListener('click',()=>sendWaveForTier(3));
+  btnBuyTower.addEventListener('click',buyTowerSlot);
+  btnUpgradeGen.addEventListener('click',upgradeGenerator);
+  btnScout.addEventListener('click',performScout);
+
+  matchBtn.addEventListener('click',()=>{
+    joinOrCreateMatch(matchIdInput.value);
   });
+
+  startBtn.addEventListener('click',()=>{
+    if (startBtn.classList.contains('disabled')) return;
+    startMatchOnServer();
+  });
+
+  // === Auth init ===
+  auth.signInAnonymously()
+    .then(cred=>{
+      currentUser = cred.user;
+      overlayStatus.textContent = 'Authed anonymously. Enter a match ID.';
+      log('Signed in anonymously.','sys');
+    })
+    .catch(err=>{
+      console.error(err);
+      overlayStatus.textContent = 'Failed to auth anonymously.';
+    });
+
+  // Init UI
+  initTowerSlots();
+  updateResourcesUI();
+  timerLabel.textContent = formatTime(matchSecondsLeft);
+  scoutCostText.textContent = SCOUT_COST + 'g';
+
 </script>
 </body>
 </html>
+
 
 
 
