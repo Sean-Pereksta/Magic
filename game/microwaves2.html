@@ -3171,50 +3171,48 @@ const VIEW_W = 9;
 const VIEW_H = 9;
 
 
-  function generateMap(){
-    const tiles = [];
-    for(let y=0;y<MAP_H;y++){
-      const row = [];
-      for(let x=0;x<MAP_W;x++){
-        let zoneType;
-        if(y<10) zoneType = "Forest";
-        else if(y<20) zoneType="Riverlands";
-        else if(y<30) zoneType="Highlands";
-        else zoneType="Ruins";
+function generateMap(){
+  const tiles = [];
+  for(let y=0;y<MAP_H;y++){
+    const row = [];
+    for(let x=0;x<MAP_W;x++){
+      let zoneType;
+      if(y<10) zoneType = "Forest";
+      else if(y<20) zoneType="Riverlands";
+      else if(y<30) zoneType="Highlands";
+      else zoneType="Ruins";
 
-        let zoneColorIndex;
-        if(zoneType==="Forest") zoneColorIndex=1;
-        else if(zoneType==="Riverlands") zoneColorIndex=2;
-        else if(zoneType==="Highlands") zoneColorIndex=3;
-        else zoneColorIndex=4;
+      let zoneColorIndex;
+      if(zoneType==="Forest") zoneColorIndex=1;
+      else if(zoneType==="Riverlands") zoneColorIndex=2;
+      else if(zoneType==="Highlands") zoneColorIndex=3;
+      else zoneColorIndex=4;
 
-               let feature = null;
-        const r = Math.random();
-        if(r<0.06) feature="bush";
-        else if(r<0.11) feature="rock";
+      let feature = null;
+      const r = Math.random();
+      if(r<0.06) feature="bush";
+      else if(r<0.11) feature="rock";
 
-        // thin line of shops + arenas
-        if((x===5 || x===34) && y%9===0) feature="shop";
+      // thin line of shops
+      if((x===5 || x===34) && y%9===0) feature="shop";
 
-        // Arenas: tier by zone
-        if((x===MAP_W-6 || x===8) && (y+4)%11===0){
-          // Forest / Riverlands = base arenas (difficulty up to 3)
-          // Highlands = level 4 arenas
-          // Ruins     = level 5 arenas
-          if(zoneType==="Highlands")      feature = "arena4";
-          else if(zoneType==="Ruins")     feature = "arena5";
-          else                            feature = "arena3";
-        }
-
-
-        row.push({zoneType, zoneColorIndex, feature});
+      // Arenas: tier by zone
+      // y = 6,16,26,36,... -> one band per zone
+      if((x===MAP_W-6 || x===8) && y % 10 === 6){
+        if(zoneType === "Forest")        feature = "arena5"; // hardest
+        else if(zoneType === "Riverlands") feature = "arena4";
+        else                              feature = "arena3"; // Highlands + Ruins
       }
-      tiles.push(row);
+
+      row.push({zoneType, zoneColorIndex, feature});
     }
-    // ensure starting area is safe
-    tiles[MAP_H-2][2].feature=null;
-    return tiles;
+    tiles.push(row);
   }
+  // ensure starting area is safe
+  tiles[MAP_H-2][2].feature = null;
+  return tiles;
+}
+
 
   // ----------------------------------------
   // Global game state
@@ -4916,6 +4914,7 @@ onAuthStateChanged(auth, async user=>{
 </script>
 </body>
 </html>
+
 
 
 
