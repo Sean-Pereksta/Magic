@@ -374,26 +374,44 @@ function moveTo(u, gx, gy, occ, reserved){
 }
 function neighborStepToward(u, goalGX, goalGY, occ, reserved){
   if(u.gx===goalGX && u.gy===goalGY) return null;
-  const dx = goalGX - u.gx, dy = goalGY - u.gy;
-  const cand = [
-    {gx:u.gx+Math.sign(dx), gy:u.gy},
-    {gx:u.gx, gy:u.gy+Math.sign(dy)},
-  ];
-  cand.sort((a,b)=>{
-    const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
-    const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
-    return pa - pb;
-  });
-  let best=null, bd=1e9;
-  for(const c of cand){
-    if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
-    if(isWallBlocking(u, c.gx, c.gy)) continue;
-    const k=c.gx+"|"+c.gy;
-    if(occ.has(k) || reserved.has(k)) continue;
-    const d = manh(c.gx,c.gy, goalGX, goalGY);
-    if(d<bd){ bd=d; best=c; }
+  const resolvedGoal = nearestOpenAround(goalGX, goalGY, occ, reserved) || {gx:goalGX, gy:goalGY};
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  const q = [{gx:u.gx, gy:u.gy}], seen = new Set([u.gx+"|"+u.gy]), prev = new Map();
+
+  while(q.length){
+    const cur = q.shift();
+    if(cur.gx===resolvedGoal.gx && cur.gy===resolvedGoal.gy) break;
+    const ord = (u.axisPref==="x") ? dirs : [dirs[2],dirs[3],dirs[0],dirs[1]];
+    for(const [dx,dy] of ord){
+      const nx=cur.gx+dx, ny=cur.gy+dy;
+      if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
+      if(isWallBlocking(u, nx, ny)) continue;
+      const k=nx+"|"+ny;
+      if(seen.has(k)) continue;
+      if((occ.has(k) || reserved.has(k)) && !(nx===resolvedGoal.gx && ny===resolvedGoal.gy)) continue;
+      seen.add(k);
+      prev.set(k, cur.gx+"|"+cur.gy);
+      q.push({gx:nx, gy:ny});
+    }
   }
-  return best;
+
+  const goalKey = resolvedGoal.gx+"|"+resolvedGoal.gy;
+  if(!seen.has(goalKey)){
+    const dx = resolvedGoal.gx - u.gx, dy = resolvedGoal.gy - u.gy;
+    const cand = [{gx:u.gx+Math.sign(dx), gy:u.gy},{gx:u.gx, gy:u.gy+Math.sign(dy)}];
+    for(const c of cand){
+      if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
+      if(isWallBlocking(u, c.gx, c.gy)) continue;
+      const k=c.gx+"|"+c.gy;
+      if(!occ.has(k) && !reserved.has(k)) return c;
+    }
+    return null;
+  }
+
+  let walk = goalKey;
+  while(prev.get(walk) && prev.get(walk)!==(u.gx+"|"+u.gy)) walk = prev.get(walk);
+  const [sx,sy] = walk.split("|").map(Number);
+  return {gx:sx, gy:sy};
 }
 function nearestFree(gx,gy, occ){
   const seen = new Set([gx+"|"+gy]); const q=[{gx,gy}]; let qi=0;
@@ -977,11 +995,22 @@ function draw(){
   }
   cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
 
-  ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
-  // grid
-  ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
-  for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+  // Castle battle terrain: trampled siege field with dirt lanes
+  const gx0 = Math.max(0, Math.floor(cam.x / TILE) - 1), gy0 = Math.max(0, Math.floor(cam.y / TILE) - 1);
+  const gx1 = Math.min(GRID_W - 1, Math.ceil((cam.x + cv.width) / TILE) + 1), gy1 = Math.min(GRID_H - 1, Math.ceil((cam.y + cv.height) / TILE) + 1);
+  for(let gy=gy0; gy<=gy1; gy++){
+    for(let gx=gx0; gx<=gx1; gx++){
+      const n = Math.sin(gx*0.33 + gy*0.18) + Math.cos(gx*0.19 - gy*0.27);
+      let fill = "#6f7f45";
+      if(n > 0.8) fill = "#6a4f34";
+      if(n < -0.7) fill = "#9f8657";
+      const px = gx*TILE-cam.x, py = gy*TILE-cam.y;
+      ctx.fillStyle = fill; ctx.fillRect(px, py, TILE, TILE);
+    }
+  }
+  ctx.strokeStyle="rgba(40,31,20,.22)"; ctx.lineWidth=1;
+  for(let x=-cam.x%TILE; x<cv.width; x+=TILE){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
+  for(let y=-cam.y%TILE; y<cv.height; y+=TILE){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
   // wall
   if(WALL.alive){
