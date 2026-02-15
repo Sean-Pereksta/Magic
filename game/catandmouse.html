@@ -1,2507 +1,2230 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>🐭 Cat vs Mouse</title>
 
-<style>
-  body {
-    font-family: sans-serif;
-    text-align: center;
-    background: #f4f4f4;
-    margin: 0;
-    padding: 0;
-  }
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    h1 { margin: 10px 0; }
 
-  h1 {
-    margin: 10px 0;
-  }
-
-  #cheeseDisplay {
-    font-size: 18px;
-    font-weight: bold;
-    margin: 10px 0;
-    color: #333;
-  }
-
-  #grid {
-    display: grid;
-    justify-content: center;
-    grid-template-columns: repeat(30, 20px);
-    grid-template-rows: repeat(30, 20px);
-    margin: 0 auto;
-    position: relative;
-    z-index: 0;
-  }
-  #gridWrapper {
-  width: 400px;  /* 20 columns * 20px each */
-  height: 400px; /* 20 rows * 20px each */
-  border: 3px solid black;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-  background: #eaeaea;
-}
-
-#grid {
-  display: grid;
-  /* These will still be set dynamically */
-}
-
-
-  .cell {
-    width: 20px;
-    height: 20px;
-    text-align: center;
-    font-size: 16px;
-    position: relative;
-    background: #c8f7c5;
-  }
-
-  .name {
-    font-size: 10px;
-    position: absolute;
-    top: -12px;
-    left: 0;
-    right: 0;
-    text-align: center;
-  }
-
-  .health-bar {
-    position: absolute;
-    top: -6px;
-    left: 0;
-    height: 3px;
-    background-color: red;
-    border-radius: 1px;
-  }
-
-  #catHealthContainer {
-    margin-top: 10px;
-  }
-
-  #catHealthBar {
-    height: 20px;
-    width: 300px;
-    background: lightgray;
-    position: relative;
-    border-radius: 8px;
-    margin: 0 auto;
-  }
-
-  #catHealthFill {
-    height: 100%;
-    width: 100%;
-    background: red;
-    border-radius: 8px;
-  }
-
-  #catHealthText {
-    position: absolute;
-    width: 100%;
-    top: 0;
-    text-align: center;
-    font-weight: bold;
-  }
-
-  #mobileControls {
-    display: none;
-    margin: 15px auto;
-    z-index: 10;
-    position: relative;
-  }
-
-   button, select {
-    font-size: 20px;       /* 🔍 Bigger text */
-    padding: 14px 20px;    /* 🔳 Larger tap area */
-    margin: 6px;
-  }
-
-  html, body {
-  touch-action: manipulation;
-}
-  
-  @media (max-width: 768px) {
-    #mobileControls {
-      display: block;
+    #gridWrapper{
+      width: 400px;
+      height: 400px;
+      border: 3px solid black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+      background: #eaeaea;
+    }
+    #grid{
+      display: grid;
+      justify-content: center;
+      margin: 0 auto;
+      position: relative;
+      z-index: 0;
     }
 
-    #grid {
-      margin-top: 10px;
+    .cell{
+      width: 20px;
+      height: 20px;
+      text-align: center;
+      font-size: 16px;
+      position: relative;
+      background: #c8f7c5;
+    }
+    .name{
+      font-size: 10px;
+      position: absolute;
+      top: -12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      pointer-events:none;
+      user-select:none;
+    }
+    .health-bar{
+      position: absolute;
+      top: -6px;
+      left: 0;
+      height: 3px;
+      background-color: red;
+      border-radius: 1px;
+      pointer-events:none;
+      user-select:none;
     }
 
-    #cheeseDisplay {
+    #catHealthContainer{ margin-top: 10px; }
+    #catHealthBar{
+      height: 20px;
+      width: 300px;
+      background: lightgray;
+      position: relative;
+      border-radius: 8px;
+      margin: 0 auto;
+    }
+    #catHealthFill{
+      height: 100%;
+      width: 100%;
+      background: red;
+      border-radius: 8px;
+    }
+    #catHealthText{
+      position: absolute;
+      width: 100%;
+      top: 0;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    #mobileControls{
+      display: none;
+      margin: 15px auto;
+      z-index: 10;
+      position: relative;
+    }
+
+    button, select{
       font-size: 20px;
+      padding: 14px 20px;
+      margin: 6px;
     }
-  }
-</style>
 
+    html, body { touch-action: manipulation; }
+
+    @media (max-width: 768px){
+      #mobileControls{ display: block; }
+      #grid{ margin-top: 10px; }
+    }
+
+    #waveCountdown{
+      margin-top: 8px;
+      font-weight: 700;
+      font-size: 16px;
+    }
+  </style>
+</head>
 
 <body>
-<h1 style="text-align: center;">🐱 Cat vs 🐭 Mouse</h1>
+  <h1 style="text-align:center;">🐱 Cat vs 🐭 Mouse</h1>
 
-<!-- 🧰 Build Options & Controls -->
-<div style="text-align: center; margin-bottom: 10px;">
-  <p style="margin: 5px 0; font-size: 14px; color: #444;">
-    🎮 Arrow keys to move | A/W/S/D to build | 1–7 to select building | Space = Upgrade Menu
-  </p>
-  <p style="margin: 10px 0; font-size: 13px; font-weight: bold; color: #333;">
-    🧱 Wall (1, 🧀1) &nbsp; | &nbsp;
-    🔫 Turret (2, 🧀3) &nbsp; | &nbsp;
-    🪳 Flea Nest (3, 🧀5) &nbsp; | &nbsp;
-    🏭 Generator (4, 🧀4) &nbsp; | &nbsp;
-    💎 Super Wall (5, 🧀6) &nbsp; | &nbsp;
-    🗼 Beacon (6, 🧀24) &nbsp; | &nbsp;
-    🐦‍🔥 Phoenix Cheese (7, 🧀40) &nbsp; | &nbsp;
-  🚀 Rocket Tower (8, 🧀30)
-  </p>
-</div>
-<!-- 🔙 Return Button -->
-<div id="returnButton" style="display:none; margin-top: 20px; text-align: center;">
-  <button onclick="returnToLobby()" style="padding: 10px 20px; font-size: 16px;">🔙 Return to Lobby</button>
-</div>
-
-<!-- 🐀 Wave Countdown -->
-<div id="waveCountdown">🐀 Next wave: ?</div>
-
-
-
-<!-- 🔲 Main Game + Sidebar Layout -->
-<div style="display: flex; justify-content: center; align-items: flex-start; gap: 20px; margin-top: 20px;">
-
-  <!-- 📊 Left Sidebar -->
-  <div style="width: 200px; font-size: 14px;">
-    <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
-    <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
-    <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
-    <div id="abilityStatus" style="margin-top: 10px;"></div>
-    <p id="advPointMessage" style="color: green; font-weight: bold; display: none; margin: 5px 0;">
-      🟢 You gained an advancement point!
+  <div style="text-align:center; margin-bottom:10px;">
+    <p style="margin:5px 0; font-size:14px; color:#444;">
+      🎮 Arrow keys to move | A/W/S/D to build | 1–8 to select building | Space = Upgrade Menu
     </p>
-    <p id="status"></p>
-    <div id="playerStatus" style="margin-top: 10px;"></div>
-    <div id="hostDisplay" style="margin-top: 10px; font-weight: bold; color: #333;"></div>
-
-
-    <!-- 🔧 Upgrade Menu -->
-    <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
-      <h3>🔧 Upgrade Menu</h3>
-      <div id="mobileUpgradeButtons" style="margin: 10px 0;"></div>
-      <p><b>1</b> – 🏃 <strong>Speedster</strong><br>
-         <b>2</b> – 🧀 <strong>Scavenger</strong><br>
-         <b>3</b> – 🐞 <strong>Flea Master</strong><br>
-         <b>4</b> – 🧱 <strong>Wall Master</strong><br>
-         <b>5</b> – 🪤 <strong>Trapmaster</strong><br>
-         <b>6</b> – 🌀 <strong>Blink</strong></p>
-      <p>Chosen: <span id="chosenUpgrades"></span></p>
-    </div>
+    <p style="margin:10px 0; font-size:13px; font-weight:bold; color:#333;">
+      🧱 Wall (1, 🧀1) &nbsp; | &nbsp;
+      🔫 Turret (2, 🧀3) &nbsp; | &nbsp;
+      🪳 Flea Nest (3, 🧀5) &nbsp; | &nbsp;
+      🏭 Generator (4, 🧀4) &nbsp; | &nbsp;
+      💎 Super Wall (5, 🧀6) &nbsp; | &nbsp;
+      🗼 Beacon (6, 🧀24) &nbsp; | &nbsp;
+      🐦‍🔥 Phoenix Cheese (7, 🧀40) &nbsp; | &nbsp;
+      🚀 Rocket Tower (8, 🧀30)
+    </p>
   </div>
 
-  <!-- 🎮 Main Game Grid + Controls -->
-  <div>
-    <div id="gridWrapper">
-  <div id="grid"></div>
-</div>
+  <div id="returnButton" style="display:none; margin-top:20px; text-align:center;">
+    <button onclick="returnToLobby()" style="padding:10px 20px; font-size:16px;">🔙 Return to Lobby</button>
+  </div>
 
+  <div id="waveCountdown">🐀 Next wave: ?</div>
 
-  <!-- 📱 Mobile Controls -->
-<div id="mobileControls" style="margin-top: 20px; display: none;">
-  <!-- Movement -->
-  <div style="margin-bottom: 12px;">
+  <div style="display:flex; justify-content:center; align-items:flex-start; gap:20px; margin-top:20px;">
+    <div style="width:200px; font-size:14px;">
+      <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
+      <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
+      <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
+
+      <div id="abilityStatus" style="margin-top:10px;"></div>
+
+      <p id="advPointMessage" style="color:green; font-weight:bold; display:none; margin:5px 0;">
+        🟢 You gained an advancement point!
+      </p>
+
+      <p id="status"></p>
+
+      <div id="playerStatus" style="margin-top:10px;"></div>
+      <div id="hostDisplay" style="margin-top:10px; font-weight:bold; color:#333;"></div>
+
+      <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
+        <h3>🔧 Upgrade Menu</h3>
+        <div id="mobileUpgradeButtons" style="margin:10px 0;"></div>
+        <p>
+          <b>1</b> – 🏃 <strong>Speedster</strong><br>
+          <b>2</b> – 🧀 <strong>Scavenger</strong><br>
+          <b>3</b> – 🐞 <strong>Flea Master</strong><br>
+          <b>4</b> – 🧱 <strong>Wall Master</strong><br>
+          <b>5</b> – 🪤 <strong>Trapmaster</strong><br>
+          <b>6</b> – 🌀 <strong>Blink</strong>
+        </p>
+        <p>Chosen: <span id="chosenUpgrades"></span></p>
+      </div>
+    </div>
+
     <div>
-      <button data-move="up" aria-label="Move Up">⬆️</button><br>
-      <button data-move="left" aria-label="Move Left">⬅️</button>
-      <button data-move="down" aria-label="Move Down">⬇️</button>
-      <button data-move="right" aria-label="Move Right">➡️</button>
-    </div>
-  </div>
+      <div id="gridWrapper"><div id="grid"></div></div>
 
-  <!-- Build Placement -->
-  <div style="margin-bottom: 12px;">
-    <div>
-      <button data-place="w" aria-label="Build Up">⬆️ Build</button>
-      <button data-place="a" aria-label="Build Left">⬅️</button>
-      <button data-place="s" aria-label="Build Down">⬇️</button>
-      <button data-place="d" aria-label="Build Right">➡️</button>
-    </div>
-  </div>
+      <div id="mobileControls" style="margin-top:20px; display:none;">
+        <div style="margin-bottom:12px;">
+          <div>
+            <button data-move="up" aria-label="Move Up">⬆️</button><br>
+            <button data-move="left" aria-label="Move Left">⬅️</button>
+            <button data-move="down" aria-label="Move Down">⬇️</button>
+            <button data-move="right" aria-label="Move Right">➡️</button>
+          </div>
+        </div>
 
-  <!-- Mode Toggle -->
-  <div style="margin-bottom: 12px;">
-    <button onclick="toggleMobileMode()">🔁 Switch to Upgrades</button>
-  </div>
+        <div style="margin-bottom:12px;">
+          <div>
+            <button data-place="w" aria-label="Build Up">⬆️ Build</button>
+            <button data-place="a" aria-label="Build Left">⬅️</button>
+            <button data-place="s" aria-label="Build Down">⬇️</button>
+            <button data-place="d" aria-label="Build Right">➡️</button>
+          </div>
+        </div>
 
-  <!-- Structure Buttons -->
- <div id="structureButtons" style="margin-top: 10px;">
-  <strong>Select Structure:</strong><br>
-  <button>🧱</button>
-  <button>🔫</button>
-  <button>🪳</button>
-  <button>🏭</button>
-  <button>💎</button>
-  <button>🗼</button>
-  <button>🐦‍🔥</button>
-</div>
+        <div style="margin-bottom:12px;">
+          <button onclick="toggleMobileMode()">🔁 Switch to Upgrades</button>
+        </div>
 
+        <div id="structureButtons" style="margin-top:10px;">
+          <strong>Select Structure:</strong><br>
+          <button data-struct="1">🧱</button>
+          <button data-struct="2">🔫</button>
+          <button data-struct="3">🪳</button>
+          <button data-struct="4">🏭</button>
+          <button data-struct="5">💎</button>
+          <button data-struct="6">🗼</button>
+          <button data-struct="7">🐦‍🔥</button>
+          <button data-struct="8">🚀</button>
+        </div>
 
-  <!-- Upgrade Buttons -->
-  <div id="upgradeButtons" style="display: none; margin-bottom: 12px;">
-    <strong>Upgrades:</strong><br>
-    <button onclick="selectUpgrade('1')">1 – Speedster</button>
-    <button onclick="selectUpgrade('2')">2 – Scavenger</button>
-    <button onclick="selectUpgrade('3')">3 – Flea Master</button>
-    <button onclick="selectUpgrade('4')">4 – Wall Master</button>
-    <button onclick="selectUpgrade('5')">5 – Trapmaster</button>
-    <button onclick="selectUpgrade('6')">6 – Blink</button>
-  </div>
+        <div id="upgradeButtons" style="display:none; margin-bottom:12px;">
+          <strong>Upgrades:</strong><br>
+          <button onclick="selectUpgrade('1')">1 – Speedster</button>
+          <button onclick="selectUpgrade('2')">2 – Scavenger</button>
+          <button onclick="selectUpgrade('3')">3 – Flea Master</button>
+          <button onclick="selectUpgrade('4')">4 – Wall Master</button>
+          <button onclick="selectUpgrade('5')">5 – Trapmaster</button>
+          <button onclick="selectUpgrade('6')">6 – Blink</button>
+        </div>
 
-  <!-- Special Actions -->
-  <div>
-    <button data-upgrade>🛠️ Upgrades</button>
-    <button data-blink>🌀 Blink</button>
-    <button data-trap>🪤 Trap</button>
-  </div>
-</div>
+        <div>
+          <button data-upgrade>🛠️ Upgrades</button>
+          <button data-blink>🌀 Blink</button>
+          <button data-trap>🪤 Trap</button>
+        </div>
+      </div>
 
-
-    <!-- ❤️ Cat Health Bar -->
-    <div id="catHealthContainer" style="margin-top: 10px;">
-      <div id="catHealthBar" style="height: 20px; width: 300px; background: lightgray; position: relative; margin: 0 auto; border-radius: 8px;">
-        <div id="catHealthFill" style="height: 100%; width: 100%; background: red; border-radius: 8px;"></div>
-        <div id="catHealthText" style="position: absolute; width: 100%; top: 0; text-align: center; font-weight: bold;">
-          ❤️ 1000 / 1000
+      <div id="catHealthContainer" style="margin-top:10px;">
+        <div id="catHealthBar">
+          <div id="catHealthFill"></div>
+          <div id="catHealthText">❤️ 1000 / 1000</div>
         </div>
       </div>
     </div>
   </div>
-</div>
-
-
-
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc, // 👈 ADD THIS
-  onSnapshot,
-  collection,
-  getDocs,
-  increment
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  // ============================================================
+  // Firebase (UPDATED to work with YOUR rules)
+  // - Your rules allow: /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/{docId}
+  // - Your rules require auth: request.auth != null
+  // So we:
+  //   ✅ sign in anonymously
+  //   ✅ move all game docs from /games/... to /lobbies/{gameId}/crowncouncil/...
+  // ============================================================
 
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    onSnapshot,
+    collection,
+    getDocs,
+    runTransaction
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  projectId: "bible-game-246c0"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0"
+  };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
 
-const urlParams = new URLSearchParams(window.location.search);
-const gameId = urlParams.get("gameId");
-let username = urlParams.get("username");
-  username = username.trim().toLowerCase(); // ✅ Normalize once
+  // ✅ Auth required by your rules
+  const auth = getAuth(app);
+  await signInAnonymously(auth);
+  const uid = auth.currentUser.uid;
 
+  // ============================================================
+  // Routing (use lobbies + crowncouncil so rules allow it)
+  // ============================================================
+  const urlParams = new URLSearchParams(window.location.search);
+  const gameId = urlParams.get("gameId") || "default";
+  let username = (urlParams.get("username") || "guest").trim();
+  const usernameNorm = username.toLowerCase();
 
-const gridSize = 30;
-const gridElement = document.getElementById("grid");
-let grid = [];
-  let gameData = {};
+  const lobbyRef = doc(db, `lobbies/${gameId}`);
+  const ccCol    = collection(db, `lobbies/${gameId}/crowncouncil`);
+  const ccRef    = (id) => doc(db, `lobbies/${gameId}/crowncouncil/${id}`);
 
-let playerPos = { x: 1, y: 1 };
-let catPos = { x: 15, y: 15 };
-let gameStarted = false;
-let selectedBuild = null;
-let cheeseCount = 0;
-let isAlive = true;
-let catHealth = 1000;
-let players = {};
-let isHost = false;
-let canMove = true;
-const moveCooldown = 225;
-let catPower = 0;
-let catMoveInterval = null;
-let ratPower = 1;
+  const ID = {
+    STATE: "state",
+    player: (uid) => `player_${uid}`,
+    structure: (x,y) => `structure_${x}_${y}`,
+    trap: (x,y) => `trap_${x}_${y}`,
+    rat: (id) => `rat_${id}`,
+    ox: (id) => `ox_${id}`,
+    termite: (id) => `termite_${id}`,
+    flea: (id) => `flea_${id}`,
+    // Player-fleas (so a player can “own” their flea docs; host moves them)
+    pflea: (uid, i) => `pflea_${uid}_${i}`
+  };
 
-let advancementPoints = 0;
-let upgradeMenuOpen = false;
-let selectedUpgrades = []; // ✅ Only one declaration
-let fleaSpawnCooldown = 1500;
-let fleaMasterActive = false;
-let cheesePickupBonus = 0;
-let wallMasterActive = false;
-let hostInitialized = false;
+  // ============================================================
+  // Game state
+  // ============================================================
+  const gridSize = 30;
+  const gridElement = document.getElementById("grid");
+  const grid = Array.from({length:gridSize}, () => Array.from({length:gridSize}, () => ""));
+
+  let gameStarted = false;
+
+  let playerPos = { x: 1, y: 1 };
+  let catPos    = { x: 15, y: 15 };
+
+  let selectedBuild = null;
+  let cheeseCount = 0;
+  let isAlive = true;
+
+  let catHealth = 1000;
+  let catPower  = 0;
+  let ratPower  = 1;
+
+  let canMove = true;
+  let moveCooldown = 225; // ✅ was const before; upgrades change it
+
+  let advancementPoints = 0;
+  let upgradeMenuOpen = false;
+  let selectedUpgrades = [];
+
+  let fleaSpawnCooldown = 1500;
+  let fleaMasterActive = false;
+  let cheesePickupBonus = 0;
+  let wallMasterActive = false;
   let trapmasterActive = false;
-let lastTrapTime = 0;
+  let blinkActive = false;
 
-let blinkActive = false;
-let lastBlinkTime = 0;
-let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
+  let lastTrapTime = 0;
+  let lastBlinkTime = 0;
+  let lastDirection = { dx: 0, dy: 0 };
+
   let showingUpgrades = false;
-  let localRatTimer = 40;
-  let ratSpawnIntervalStarted = false;
-  let currentRatWave = null;
 
+  let isHost = false;
+  let hostInitialized = false;
+  let catMoveInterval = null;
 
+  // “Remote” objects pulled from Firestore
+  let players = {}; // uid -> {x,y,cheese,alive,displayName}
+  let structureHealth = {}; // key "x_y" -> hp
+  let structures = new Map(); // key -> {x,y,type,health}
 
+  let traps = [];     // {x,y,placedAt}
+  let rats = [];      // {id,x,y,health,...}
+  let oxen = [];      // {id,x,y,health}
+  let termites = [];  // {id,x,y}
+  let fleas = [];     // {id,x,y,lifetime,...}
 
-
-
-
-
-
-
-
-
-let structureHealth = {}; // key: "x_y", value: health
-let fleas = [];
-  let rats = []; // 🐀
-  let termites = []; // 🐛
-  let traps = []; // Each: {x, y, placedAt}
-  let oxen = [];
-  let isRatSpawning = false;
-
-
-
-
-
-
-
-
-for (let y = 0; y < gridSize; y++) {
-  grid[y] = [];
-  for (let x = 0; x < gridSize; x++) {
-    const cell = document.createElement("div");
-    cell.className = "cell";
-    cell.id = `cell-${x}-${y}`;
-    gridElement.appendChild(cell);
-    grid[y][x] = "";
+  // ============================================================
+  // UI helpers
+  // ============================================================
+  function updateHostDisplay(hostName){
+    document.getElementById("hostDisplay").textContent = `👑 Host: ${hostName || "Unknown"}`;
   }
-}
 
-function renderGrid() {
-  const viewSize = 20;
-  const halfView = Math.floor(viewSize / 2);
-  const viewport = document.getElementById("grid");
-  viewport.innerHTML = ""; // Clear old cells
+  function updateCatHealthBar(){
+    const bar  = document.getElementById("catHealthFill");
+    const text = document.getElementById("catHealthText");
+    const percent = Math.min(100, (catHealth / 1000) * 100);
+    bar.style.width = percent + "%";
+    text.textContent = `❤️ ${catHealth}`;
+  }
 
-  // Force grid to always be 20x20 visual size
-  viewport.style.gridTemplateColumns = `repeat(${viewSize}, 20px)`;
-  viewport.style.gridTemplateRows = `repeat(${viewSize}, 20px)`;
-  viewport.style.width = "400px";
-  viewport.style.height = "400px";
+  function toggleMobileMode(){
+    showingUpgrades = !showingUpgrades;
+    document.getElementById("structureButtons").style.display = showingUpgrades ? "none" : "block";
+    document.getElementById("upgradeButtons").style.display   = showingUpgrades ? "block" : "none";
+  }
+  window.toggleMobileMode = toggleMobileMode;
 
-  const centerX = playerPos.x;
-  const centerY = playerPos.y;
-  const startX = centerX - halfView;
-  const startY = centerY - halfView;
+  function toggleUpgradeMenu(){
+    upgradeMenuOpen = !upgradeMenuOpen;
+    document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
+  }
 
-  const generatorTriggers = new Set();
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🏭") {
-        for (const p of Object.values(players)) {
-          if (p.alive !== false) {
-            const dx = Math.abs(p.x - x);
-            const dy = Math.abs(p.y - y);
-            if (dx + dy <= 9) {
-              generatorTriggers.add(`${x}_${y}`);
-              break;
-            }
+  function selectBuild(value){
+    selectedBuild = parseInt(value, 10);
+    const buildNames = {
+      1: "Wall 🧱 (Cost: 1)",
+      2: "Turret 🔫 (Cost: 3)",
+      3: "Flea Nest 🪳 (Cost: 5)",
+      4: "Cheese Generator 🏭 (Cost: 4)",
+      5: "Super Wall 💎 (Cost: 6)",
+      6: "Cheese Beacon 🗼 (Cost: 24)",
+      7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
+      8: "Rocket Tower 🚀 (Cost: 30)"
+    };
+    document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
+  }
+
+  function selectUpgrade(key){
+    if (!upgradeMenuOpen || advancementPoints <= 0) return;
+
+    const upgradeMap = {
+      "1": "Speedster",
+      "2": "Scavenger",
+      "3": "Flea Master",
+      "4": "Wall Master",
+      "5": "Trapmaster",
+      "6": "Blink"
+    };
+
+    const upgrade = upgradeMap[key];
+    if (!upgrade || selectedUpgrades.includes(upgrade)) return;
+
+    selectedUpgrades.push(upgrade);
+    advancementPoints--;
+
+    document.getElementById("advPoints").textContent = advancementPoints;
+    document.getElementById("chosenUpgrades").textContent = selectedUpgrades.join(", ");
+
+    if (upgrade === "Speedster") moveCooldown = 50;
+    if (upgrade === "Scavenger") cheesePickupBonus = 7;
+    if (upgrade === "Flea Master") fleaMasterActive = true;
+    if (upgrade === "Wall Master") wallMasterActive = true;
+    if (upgrade === "Trapmaster") trapmasterActive = true;
+    if (upgrade === "Blink") blinkActive = true;
+  }
+  window.selectUpgrade = selectUpgrade;
+
+  function renderMobileUpgradeButtons(){
+    const container = document.getElementById("mobileUpgradeButtons");
+    container.innerHTML = "";
+    const upgrades = [
+      { key:"1", name:"Speedster" },
+      { key:"2", name:"Scavenger" },
+      { key:"3", name:"Flea Master" },
+      { key:"4", name:"Wall Master" },
+      { key:"5", name:"Trapmaster" },
+      { key:"6", name:"Blink" }
+    ];
+    for (const u of upgrades){
+      const btn = document.createElement("button");
+      btn.textContent = `${u.key} – ${u.name}`;
+      btn.style.margin = "4px";
+      btn.onclick = () => {
+        const event = new KeyboardEvent("keydown", { key: u.key });
+        window.dispatchEvent(event);
+      };
+      container.appendChild(btn);
+    }
+  }
+
+  function updateAbilityStatus(){
+    const statusDiv = document.getElementById("abilityStatus");
+    let content = "";
+    const now = Date.now();
+
+    if (blinkActive){
+      const cooldown = 8000;
+      const remaining = Math.max(0, cooldown - (now - lastBlinkTime));
+      const ready = remaining === 0;
+      content += `🌀 Blink [B]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining/1000)+"s")}</span><br>`;
+    }
+
+    if (trapmasterActive){
+      const cooldown = 20000;
+      const remaining = Math.max(0, cooldown - (now - lastTrapTime));
+      const ready = remaining === 0;
+      content += `🪤 Trap [T]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining/1000)+"s")}</span><br>`;
+    }
+
+    statusDiv.innerHTML = content;
+  }
+
+  // ============================================================
+  // Rendering
+  // ============================================================
+  function renderGrid(){
+    const viewSize = 20;
+    const halfView = Math.floor(viewSize/2);
+    const viewport = document.getElementById("grid");
+    viewport.innerHTML = "";
+
+    viewport.style.gridTemplateColumns = `repeat(${viewSize}, 20px)`;
+    viewport.style.gridTemplateRows    = `repeat(${viewSize}, 20px)`;
+    viewport.style.width = "400px";
+    viewport.style.height = "400px";
+
+    const centerX = playerPos.x;
+    const centerY = playerPos.y;
+    const startX = centerX - halfView;
+    const startY = centerY - halfView;
+
+    // generator trigger highlighting
+    const generatorTriggers = new Set();
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] === "🏭"){
+          for (const p of Object.values(players)){
+            if ((p.alive ?? true) === false) continue;
+            const dx = Math.abs((p.x ?? 0) - x);
+            const dy = Math.abs((p.y ?? 0) - y);
+            if (dx + dy <= 9){ generatorTriggers.add(`${x}_${y}`); break; }
           }
         }
       }
     }
-  }
 
-  const beaconBoosted = new Set();
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🗼") {
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const tx = x + dx;
-            const ty = y + dy;
-            if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
-              const tSymbol = grid[ty][tx];
-              if (["🔫", "🏭", "🪳", "🚀"].includes(tSymbol)) {
-                beaconBoosted.add(`${tx}_${ty}`);
+    // beacon boosted tiles
+    const beaconBoosted = new Set();
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] === "🗼"){
+          for (let dy=-2; dy<=2; dy++){
+            for (let dx=-2; dx<=2; dx++){
+              const tx = x+dx, ty = y+dy;
+              if (tx>=0 && tx<gridSize && ty>=0 && ty<gridSize){
+                const tSymbol = grid[ty][tx];
+                if (["🔫","🏭","🪳","🚀"].includes(tSymbol)){
+                  beaconBoosted.add(`${tx}_${ty}`);
+                }
               }
             }
           }
         }
       }
     }
-  }
 
-  for (let row = 0; row < viewSize; row++) {
-    for (let col = 0; col < viewSize; col++) {
-      const x = startX + col;
-      const y = startY + row;
-      const cell = document.createElement("div");
-      cell.className = "cell";
-      cell.id = `cell-${x}-${y}`;
+    // base tiles
+    for (let row=0; row<viewSize; row++){
+      for (let col=0; col<viewSize; col++){
+        const x = startX + col;
+        const y = startY + row;
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.id = `cell-${x}-${y}`;
 
-      if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
-        const key = `${x}_${y}`;
-        const symbol = grid[y][x];
+        if (x>=0 && x<gridSize && y>=0 && y<gridSize){
+          const key = `${x}_${y}`;
+          const symbol = grid[y][x];
 
-        if (beaconBoosted.has(key)) {
-          cell.style.background = "#ff8a8a";
-        } else if (generatorTriggers.has(key)) {
-          cell.style.background = "#fff977";
+          if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
+          else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
+          else cell.style.background = "#c8f7c5";
+
+          cell.textContent = symbol || "";
         } else {
-          cell.style.background = "#c8f7c5";
+          cell.style.background = "#888";
+          cell.textContent = "";
         }
 
-        cell.textContent = symbol === "🗼" ? "🗼" : symbol;
-      } else {
-        cell.style.background = "#888"; // Out-of-bounds
-        cell.textContent = "";
+        viewport.appendChild(cell);
       }
-
-      viewport.appendChild(cell);
     }
-  }
 
-  // 🐭 Players
-  for (const name in players) {
-    const p = players[name];
-    if (!p.alive) continue;
-    const cell = document.getElementById(`cell-${p.x}-${p.y}`);
-    if (cell) {
-      cell.textContent = "🐭";
-      const nameTag = document.createElement("div");
-      nameTag.className = "name";
-      nameTag.textContent = name;
-      cell.appendChild(nameTag);
+    // players
+    for (const [pu, p] of Object.entries(players)){
+      if ((p.alive ?? true) === false) continue;
+      const cell = document.getElementById(`cell-${p.x}-${p.y}`);
+      if (cell){
+        cell.textContent = "🐭";
+        const nameTag = document.createElement("div");
+        nameTag.className = "name";
+        nameTag.textContent = (p.displayName || "mouse").toLowerCase();
+        cell.appendChild(nameTag);
+      }
     }
-  }
 
-  // 🐞 Fleas
-  for (const flea of fleas) {
-    const cell = document.getElementById(`cell-${flea.x}-${flea.y}`);
-    if (cell) cell.textContent = "🐞";
-  }
-
-  // 🐀 Rats
-  for (const rat of rats) {
-    if (rat.health <= 0) continue;
-const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
-
-    if (cell) {
-      cell.textContent = "🐀";
-      const healthTag = document.createElement("div");
-      healthTag.className = "name";
-      healthTag.style.color = "brown";
-      healthTag.textContent = `❤️${rat.health}`;
-      cell.appendChild(healthTag);
+    // fleas
+    for (const f of fleas){
+      const cell = document.getElementById(`cell-${f.x}-${f.y}`);
+      if (cell) cell.textContent = "🐞";
     }
-  }
 
-  // 🐂 Oxen
-for (const ox of oxen) {
-  const cell = document.getElementById(`cell-${ox.x}-${ox.y}`);
-  if (cell) {
-    cell.textContent = "🐂";
-    const hpTag = document.createElement("div");
-    hpTag.className = "name";
-    hpTag.style.color = "orange";
-    hpTag.textContent = `❤️${ox.health}`;
-    cell.appendChild(hpTag);
-  }
-}
+    // rats
+    for (const r of rats){
+      if ((r.health ?? 0) <= 0) continue;
+      const cell = document.getElementById(`cell-${r.x}-${r.y}`);
+      if (cell){
+        cell.textContent = "🐀";
+        const hpTag = document.createElement("div");
+        hpTag.className = "name";
+        hpTag.style.color = "brown";
+        hpTag.textContent = `❤️${r.health}`;
+        cell.appendChild(hpTag);
+      }
+    }
 
+    // oxen
+    for (const o of oxen){
+      if ((o.health ?? 0) <= 0) continue;
+      const cell = document.getElementById(`cell-${o.x}-${o.y}`);
+      if (cell){
+        cell.textContent = "🐂";
+        const hpTag = document.createElement("div");
+        hpTag.className = "name";
+        hpTag.style.color = "orange";
+        hpTag.textContent = `❤️${o.health}`;
+        cell.appendChild(hpTag);
+      }
+    }
 
-  // 🐛 Termites
-  for (const termite of termites) {
-    const cell = document.getElementById(`cell-${termite.x}-${termite.y}`);
+    // termites
+    for (const t of termites){
+      const cell = document.getElementById(`cell-${t.x}-${t.y}`);
+      if (cell) cell.textContent = "🐛";
+    }
 
-    if (cell) cell.textContent = "🐛";
-  }
+    // structure health bars
+    for (const key in structureHealth){
+      const [xs, ys] = key.split("_");
+      const x = parseInt(xs,10), y = parseInt(ys,10);
+      if (!(x>=0 && x<gridSize && y>=0 && y<gridSize)) continue;
 
-  // 🧱 🪳 💎 Structure health bars
-  for (let key in structureHealth) {
-    const [xStr, yStr] = key.split("_");
-    const x = parseInt(xStr), y = parseInt(yStr);
-    const symbol = grid[y][x];
-    const cell = document.getElementById(`cell-${x}-${y}`);
-    if (cell && ["🧱", "🪳", "💎", "🚀"].includes(symbol)) {
+      const symbol = grid[y][x];
+      const cell = document.getElementById(`cell-${x}-${y}`);
+      if (cell && ["🧱","🪳","💎","🚀"].includes(symbol)){
+        const bar = document.createElement("div");
+        bar.className = "health-bar";
+        const hp = structureHealth[key] ?? 0;
+        bar.style.width = `${Math.max(10, Math.min(100, hp * 3))}%`;
+        bar.style.background = (symbol==="💎") ? "blue" : (symbol==="🧱" ? "gray" : (symbol==="🚀" ? "black" : "purple"));
+        bar.style.height = "3px";
+        bar.style.marginTop = "-10px";
+        cell.appendChild(bar);
+      }
+    }
+
+    // cat
+    const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
+    if (catCell){
+      catCell.textContent = "🐱";
+      const levelTag = document.createElement("div");
+      levelTag.className = "name";
+      levelTag.style.color = "red";
+      levelTag.innerHTML = `⚡Lv.${catPower}`;
+      catCell.appendChild(levelTag);
+
       const bar = document.createElement("div");
       bar.className = "health-bar";
-      const hp = structureHealth[key];
-      bar.style.width = `${Math.max(10, Math.min(100, hp * 3))}%`;
-      bar.style.background = symbol === "💎" ? "blue" : (symbol === "🧱" ? "gray" : "purple");
+      const denom = Math.max(1, (catPower * 10));
+      const barWidth = Math.max(10, Math.min(100, (catHealth/denom)*100));
+      bar.style.width = `${barWidth}%`;
+      bar.style.background = "red";
       bar.style.height = "3px";
       bar.style.marginTop = "-10px";
-      cell.appendChild(bar);
+      catCell.appendChild(bar);
+    }
+
+    // status list
+    const statusDiv = document.getElementById("playerStatus");
+    statusDiv.innerHTML = "";
+    for (const p of Object.values(players)){
+      const sp = document.createElement("span");
+      sp.style.marginRight = "10px";
+      sp.style.fontWeight = "bold";
+      sp.style.color = ((p.alive ?? true) ? "green" : "red");
+      sp.textContent = `${(p.displayName||"mouse").toLowerCase()}: ${((p.alive ?? true) ? "ALIVE" : "DEAD")}`;
+      statusDiv.appendChild(sp);
     }
   }
 
-  // 🐱 Cat
-const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
-  if (catCell) {
-    catCell.textContent = "🐱";
-    const levelTag = document.createElement("div");
-    levelTag.className = "name";
-    levelTag.style.color = "red";
-    levelTag.innerHTML = `⚡Lv.${catPower}`;
-    catCell.appendChild(levelTag);
-
-    const bar = document.createElement("div");
-    bar.className = "health-bar";
-    const barWidth = Math.max(10, Math.min(100, (catHealth / (catPower * 10)) * 100));
-    bar.style.width = `${barWidth}%`;
-    bar.style.background = "red";
-    bar.style.height = "3px";
-    bar.style.marginTop = "-10px";
-    catCell.appendChild(bar);
+  // ============================================================
+  // Movement / cooldown
+  // ============================================================
+  function triggerMoveCooldown(){
+    canMove = false;
+    setTimeout(() => canMove = true, moveCooldown);
   }
 
-  // 🧍 Player Status
-  const statusDiv = document.getElementById("playerStatus");
-  statusDiv.innerHTML = "";
-  for (const name in players) {
-    const p = players[name];
-    const statusSpan = document.createElement("span");
-    statusSpan.style.marginRight = "10px";
-    statusSpan.style.fontWeight = "bold";
-    statusSpan.style.color = p.alive ? "green" : "red";
-    statusSpan.textContent = `${name}: ${p.alive ? "ALIVE" : "DEAD"}`;
-    statusDiv.appendChild(statusSpan);
-  }
-}
-
-
-function updateHostDisplay() {
-  const hostName = gameData?.host || "Unknown";
-  document.getElementById("hostDisplay").textContent = `👑 Host: ${hostName}`;
-}
-
-
-function movePlayer(dx, dy) {
-  if (!gameStarted || !isAlive) return;
-  const newX = Math.max(0, Math.min(gridSize - 1, playerPos.x + dx));
-  const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
-  playerPos = { x: newX, y: newY };
-  savePosition();
-  checkCheese();
-  renderGrid();
-}
-async function spawnRatWave() {
-  if (!isHost || catPower <= 0) return;
-
-  const waveTag = Date.now();
-  currentRatWave = waveTag;
-
- const allOffsets = [
-  { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
-  { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
-  { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
-  { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
-  { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
-  { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
-];
-
-  const availableSpots = allOffsets
-    .map(offset => ({ x: catPos.x + offset.x, y: catPos.y + offset.y }))
-    .filter(pos =>
-      pos.x >= 0 && pos.x < gridSize &&
-      pos.y >= 0 && pos.y < gridSize &&
-      grid[pos.y][pos.x] === "" &&
-      !rats.some(r => r.x === pos.x && r.y === pos.y) &&
-      !oxen.some(o => o.x === pos.x && o.y === pos.y)
-    );
-
-  const usedKeys = new Set();
-
-  // 🐂 OXEN
-  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
-  let oxSpawned = 0;
-  for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
-    const spot = availableSpots[i];
-    const key = `${spot.x}_${spot.y}`;
-    if (usedKeys.has(key)) continue;
-    usedKeys.add(key);
-
-    const id = `ox_${crypto.randomUUID()}`;
-    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
-    await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
-    oxSpawned++;
-  }
-
-  // 🐀 RATS
-  const maxRats = catPower;
-  let ratsSpawned = 0;
-  for (let i = 0; i < availableSpots.length && ratsSpawned < maxRats; i++) {
-    const spot = availableSpots[i];
-    const key = `${spot.x}_${spot.y}`;
-    if (usedKeys.has(key)) continue;
-    usedKeys.add(key);
-
-    const id = `rat_${crypto.randomUUID()}`;
-    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id, wave: waveTag };
-    await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
-    ratsSpawned++;
-  }
-
-  console.log(`✅ Wave spawned: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
-}
-
-async function returnToLobby() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const username = urlParams.get("username") || "";
-  console.log("🔁 Returning to lobby with username:", username);
-  const safeUsername = encodeURIComponent(username.trim());
-
-  // 🏆 Award win if cat is defeated
-  if (catHealth <= 0) {
-    try {
-      const usersSnap = await getDocs(collection(db, "users"));
-      let matched = null;
-
-      usersSnap.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.username?.toLowerCase() === username.trim().toLowerCase()) {
-          matched = { id: docSnap.id, wins: data.wins || 0 };
-        }
-      });
-
-      if (matched) {
-        await updateDoc(doc(db, "users", matched.id), {
-          wins: matched.wins + 1
-        });
-        console.log(`🏆 Win awarded to ${matched.id}`);
-      } else {
-        console.warn("⚠️ No matching user found to award win.");
-      }
-    } catch (err) {
-      console.error("🔥 Error awarding win:", err);
-    }
-  }
-
-  window.location.href = `/lobby/lobby.html?username=${safeUsername}`;
-}
-
-window.returnToLobby = returnToLobby;
-
-function updateCatHealthBar() {
-  const bar = document.getElementById("catHealthFill");
-  const text = document.getElementById("catHealthText");
-
-  // Set a constant visual bar width (e.g., 300px) and fill percentage capped at 100%
-  const percent = Math.min(100, (catHealth / 1000) * 100); // Optional visual scale
-
-  bar.style.width = percent + "%";
-  text.textContent = `❤️ ${catHealth}`; // Just show current value
-}
-
-
-function move(dir) {
-  if (!canMove || !isAlive) return;
-  if (dir === 'up') movePlayer(0, -1);
-  else if (dir === 'down') movePlayer(0, 1);
-  else if (dir === 'left') movePlayer(-1, 0);
-  else if (dir === 'right') movePlayer(1, 0);
-  triggerMoveCooldown();
-}
-
-
-
-function place(dir) {
-  if (!canMove || !isAlive || selectedBuild === null) {
-    console.log("🚫 Can't place: either dead, can't move, or no build selected.");
-    return;
-  }
-  console.log("🛠️ Building", selectedBuild, "towards", dir);
-  placeStructure(dir);
-}
-
-
-function selectBuild(value) {
-  selectedBuild = parseInt(value);
-  const buildNames = {
-    1: "Wall 🧱 (Cost: 1)", 2: "Turret 🔫 (Cost: 3)", 3: "Flea Nest 🪳 (Cost: 5)",
-    4: "Cheese Generator 🏭 (Cost: 4)", 5: "Super Wall 💎 (Cost: 6)",
-    6: "Cheese Beacon 🗼 (Cost: 24)", 7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)",  8: "Rocket Tower 🚀 (Cost: 30)"
-  };
-  document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
-}
-function toggleMobileMode() {
-  showingUpgrades = !showingUpgrades;
-  document.getElementById("structureButtons").style.display = showingUpgrades ? "none" : "block";
-  document.getElementById("upgradeButtons").style.display = showingUpgrades ? "block" : "none";
-}
-function toggleUpgradeMenu() {
-  upgradeMenuOpen = !upgradeMenuOpen;
-  document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
-}
-function selectUpgrade(key) {
-  if (!upgradeMenuOpen || advancementPoints <= 0) return;
-
-  const upgradeMap = {
-    "1": "Speedster",
-    "2": "Scavenger",
-    "3": "Flea Master",
-    "4": "Wall Master",
-    "5": "Trapmaster",
-    "6": "Blink"
-  };
-
-  const upgrade = upgradeMap[key];
-  if (!selectedUpgrades.includes(upgrade)) {
-    selectedUpgrades.push(upgrade);
-    advancementPoints--;
-
-    document.getElementById("advPoints").textContent = advancementPoints;
-    document.getElementById("chosenUpgrades").textContent = selectedUpgrades.join(", ");
-    console.log(`🆙 Chose upgrade: ${upgrade}`);
-
-    // Effects
-    if (upgrade === "Speedster") moveCooldown = 50;
-    if (upgrade === "Scavenger") cheesePickupBonus = 3;
-    if (upgrade === "Flea Master") fleaMasterActive = true;
-    if (upgrade === "Wall Master") wallMasterActive = true;
-    if (upgrade === "Trapmaster") trapmasterActive = true;
-    if (upgrade === "Blink") blinkActive = true;
-  }
-}
-function tryBlink() {
-  const event = new KeyboardEvent('keydown', { key: 'b' });
-  window.dispatchEvent(event);
-}
-function setupMobileControls() {
-  // Movement buttons
-  document.querySelectorAll('[data-move]').forEach(btn => {
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const dir = btn.getAttribute('data-move');
-      move(dir);
-    });
-  });
-
-  // Build/place buttons
-  document.querySelectorAll('[data-place]').forEach(btn => {
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const dir = btn.getAttribute('data-place');
-      place(dir);
-    });
-  });
-
-const structureKeys = ["1", "2", "3", "4", "5", "6", "7"];
-structureKeys.forEach(key => {
-  // Since first two children are <strong> and <br>, buttons start at 3rd child
-  const nthChildIndex = parseInt(key, 10) + 2; // Add 2 to shift past <strong> and <br>
-
-  const emojiButton = document.querySelector(`#structureButtons :nth-child(${nthChildIndex})`);
-  if (emojiButton) {
-    emojiButton.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      console.log("📱 Selected structure:", key);
-      selectBuild(key);
-    });
-  }
-});
-
-
-
-  // Upgrade menu toggle
-  const upgradeBtn = document.querySelector('[data-upgrade]');
-  if (upgradeBtn) {
-    upgradeBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      toggleUpgradeMenu();
-    });
-  }
-
-  // Blink ability
-  const blinkBtn = document.querySelector('[data-blink]');
-  if (blinkBtn) {
-    blinkBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      tryBlink();
-    });
-  }
-
-  // Trap placement
-  const trapBtn = document.querySelector('[data-trap]');
-  if (trapBtn) {
-    trapBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      placeTrap();
-    });
-  }
-}
-
-
-
-  function renderMobileUpgradeButtons() {
-  const container = document.getElementById("mobileUpgradeButtons");
-  container.innerHTML = "";
-
-  const upgrades = [
-    { key: "1", name: "Speedster" },
-    { key: "2", name: "Scavenger" },
-    { key: "3", name: "Flea Master" },
-    { key: "4", name: "Wall Master" },
-    { key: "5", name: "Trapmaster" },
-    { key: "6", name: "Blink" },
-  ];
-
-  for (let u of upgrades) {
-    const btn = document.createElement("button");
-    btn.textContent = `${u.key} – ${u.name}`;
-    btn.style.margin = "4px";
-    btn.onclick = () => {
-      const event = new KeyboardEvent("keydown", { key: u.key });
-      window.dispatchEvent(event);
-    };
-    container.appendChild(btn);
-  }
-}
-
-
-function updateAbilityStatus() {
-  const statusDiv = document.getElementById("abilityStatus");
-  let content = "";
-
-  const now = Date.now();
-
-  if (blinkActive) {
-    const cooldown = 8000;
-    const remaining = Math.max(0, cooldown - (now - lastBlinkTime));
-    const ready = remaining === 0;
-    content += `🌀 Blink [B]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining / 1000) + "s")}</span><br>`;
-  }
-
-  if (trapmasterActive) {
-    const cooldown = 20000;
-    const remaining = Math.max(0, cooldown - (now - lastTrapTime));
-    const ready = remaining === 0;
-    content += `🪤 Trap [T]: <span style="color:${ready ? 'green' : 'gray'}">${ready ? "Ready!" : (Math.ceil(remaining / 1000) + "s")}</span><br>`;
-  }
-
-  statusDiv.innerHTML = content;
-}
-
-
-function savePosition() {
-  const cleanUsername = username.trim().toLowerCase();
-  const playerRef = doc(db, `games/${gameId}/players/${cleanUsername}`);
-
-  const payload = {
-    x: playerPos.x,
-    y: playerPos.y,
-    cheese: cheeseCount
-  };
-  setDoc(playerRef, payload, { merge: true });
-}
-
-
-function startCatBehaviorLoop() {
-  if (catMoveInterval) clearInterval(catMoveInterval);
-
-  // 🕒 Speed = faster interval as power increases
-  const speed = Math.max(200, 1300 - catPower * 40); // e.g. power 10 = 500ms
-  catMoveInterval = setInterval(() => {
-    if (gameStarted) catBehavior();
-  }, speed);
-}
-
-
-function checkCheese() {
-  if (grid[playerPos.y][playerPos.x] === "🧀") {
-    grid[playerPos.y][playerPos.x] = "";
-    cheeseCount += 3 + cheesePickupBonus;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
+  function movePlayer(dx, dy){
+    if (!gameStarted || !isAlive) return;
+    const newX = Math.max(0, Math.min(gridSize-1, playerPos.x + dx));
+    const newY = Math.max(0, Math.min(gridSize-1, playerPos.y + dy));
+    playerPos = { x: newX, y: newY };
     savePosition();
+    checkCheese();
     renderGrid();
   }
-}
 
-function placeStructure(dir) {
-  if (!gameStarted || !isAlive || !selectedBuild) return;
-
-  // Set cost based on structure type
-  let cost = 0;
-  if (selectedBuild === 1) cost = 1;
-  else if (selectedBuild === 2) cost = 3;
-  else if (selectedBuild === 3) cost = 5;
-  else if (selectedBuild === 4) cost = 4;
-  else if (selectedBuild === 5) cost = 6;
-  else if (selectedBuild === 6) cost = 24;
-  else if (selectedBuild === 7) cost = 40;
-  else if (selectedBuild === 8) cost = 30; // 🚀 Rocket Tower
-
-  if (cheeseCount < cost) return;
-
-  let tx = playerPos.x, ty = playerPos.y;
-  if (dir === 'w') ty--;
-  if (dir === 'a') tx--;
-  if (dir === 's') ty++;
-  if (dir === 'd') tx++;
-  if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
-
-  let symbol = "";
-  let health = 1;
-
-  if (selectedBuild === 1) {
-    symbol = "🧱";
-    health = 15;
-  } else if (selectedBuild === 2) {
-    symbol = "🔫";
-    health = 5;
-  } else if (selectedBuild === 3) {
-    symbol = "🪳";
-    health = 10;
-  } else if (selectedBuild === 4) {
-    symbol = "🏭";
-    health = 5;
-  } else if (selectedBuild === 5) {
-    symbol = "💎";
-    health = 75;
-  } else if (selectedBuild === 6) {
-    symbol = "🗼";
-    health = 25;
-  } else if (selectedBuild === 7) {
-    symbol = "🐦‍🔥";
-    health = 20;
-  } else if (selectedBuild === 8) {
-    symbol = "🚀";
-    health = 20
+  function move(dir){
+    if (!canMove || !isAlive) return;
+    if (dir==="up") movePlayer(0,-1);
+    else if (dir==="down") movePlayer(0,1);
+    else if (dir==="left") movePlayer(-1,0);
+    else if (dir==="right") movePlayer(1,0);
+    triggerMoveCooldown();
   }
 
-  const key = `${tx}_${ty}`;
-  if (grid[ty][tx] === "") {
+  function place(dir){
+    if (!canMove || !isAlive || selectedBuild === null) return;
+    placeStructure(dir);
+  }
+
+  // ============================================================
+  // Cheese
+  // ============================================================
+  function spawnCheese(){
+    let spawned = 0;
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    while (spawned < 4 && attempts < maxAttempts){
+      const x = Math.floor(Math.random()*gridSize);
+      const y = Math.floor(Math.random()*gridSize);
+      if (grid[y][x] === ""){
+        grid[y][x] = "🧀";
+        spawned++;
+      }
+      attempts++;
+    }
+    renderGrid();
+  }
+
+  function checkCheese(){
+    if (grid[playerPos.y][playerPos.x] === "🧀"){
+      grid[playerPos.y][playerPos.x] = "";
+      cheeseCount += 3 + cheesePickupBonus;
+      document.getElementById("cheeseCount").textContent = cheeseCount;
+      savePosition();
+      renderGrid();
+    }
+  }
+
+  // ============================================================
+  // Firestore writes (UPDATED paths)
+  // ============================================================
+  async function savePosition(){
+    const pRef = ccRef(ID.player(uid));
+    const payload = {
+      kind: "player",
+      uid,
+      displayName: username,
+      nameKey: usernameNorm,
+      x: playerPos.x,
+      y: playerPos.y,
+      cheese: cheeseCount,
+      alive: isAlive,
+      updatedAt: Date.now()
+    };
+    await setDoc(pRef, payload, { merge:true });
+  }
+
+  async function upsertMyPlayerDoc(){
+    const pRef = ccRef(ID.player(uid));
+    await setDoc(pRef, {
+      kind: "player",
+      uid,
+      displayName: username,
+      nameKey: usernameNorm,
+      x: playerPos.x,
+      y: playerPos.y,
+      cheese: 0,
+      alive: true,
+      updatedAt: Date.now()
+    }, { merge:true });
+  }
+
+  // ============================================================
+  // Structures
+  // ============================================================
+  async function placeStructure(dir){
+    if (!gameStarted || !isAlive || !selectedBuild) return;
+
+    let cost = 0;
+    if (selectedBuild===1) cost=1;
+    else if (selectedBuild===2) cost=3;
+    else if (selectedBuild===3) cost=5;
+    else if (selectedBuild===4) cost=4;
+    else if (selectedBuild===5) cost=6;
+    else if (selectedBuild===6) cost=24;
+    else if (selectedBuild===7) cost=40;
+    else if (selectedBuild===8) cost=30;
+
+    if (cheeseCount < cost) return;
+
+    let tx = playerPos.x, ty = playerPos.y;
+    if (dir==="w") ty--;
+    if (dir==="a") tx--;
+    if (dir==="s") ty++;
+    if (dir==="d") tx++;
+    if (tx<0 || ty<0 || tx>=gridSize || ty>=gridSize) return;
+
+    if (grid[ty][tx] !== "") return;
+
+    let symbol = "";
+    let health = 1;
+
+    if (selectedBuild===1){ symbol="🧱"; health=15; }
+    else if (selectedBuild===2){ symbol="🔫"; health=5; }
+    else if (selectedBuild===3){ symbol="🪳"; health=10; }
+    else if (selectedBuild===4){ symbol="🏭"; health=5; }
+    else if (selectedBuild===5){ symbol="💎"; health=75; }
+    else if (selectedBuild===6){ symbol="🗼"; health=25; }
+    else if (selectedBuild===7){ symbol="🐦‍🔥"; health=20; }
+    else if (selectedBuild===8){ symbol="🚀"; health=20; }
+
+    const key = `${tx}_${ty}`;
     grid[ty][tx] = symbol;
     structureHealth[key] = health;
+
     cheeseCount -= cost;
     document.getElementById("cheeseCount").textContent = cheeseCount;
     savePosition();
 
-    setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+    // ✅ store under crowncouncil
+    await setDoc(ccRef(ID.structure(tx,ty)), {
+      kind: "structure",
       x: tx,
       y: ty,
       type: symbol,
-      health: structureHealth[key]
-    });
+      health,
+      placedBy: uid,
+      placedAt: Date.now()
+    }, { merge:true });
 
     renderGrid();
   }
-}
 
+  async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower/3))){
+    const key = `${x}_${y}`;
+    if (structureHealth[key] === undefined) return;
 
-
-function spawnCheese() {
-  let spawned = 0;
-  let attempts = 0;
-  const maxAttempts = 100; // avoid infinite loop if grid is full
-
-  while (spawned < 4 && attempts < maxAttempts) {
-    const x = Math.floor(Math.random() * gridSize);
-    const y = Math.floor(Math.random() * gridSize);
-    if (grid[y][x] === "") {
-      grid[y][x] = "🧀";
-      spawned++;
-    }
-    attempts++;
-  }
-
-  renderGrid();
-}
-
-
-async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3))) {
-  const key = `${x}_${y}`;
-  if (structureHealth[key] !== undefined) {
     structureHealth[key] -= damageAmount;
-    if (structureHealth[key] <= 0) {
+    if (structureHealth[key] <= 0){
       grid[y][x] = "";
       delete structureHealth[key];
-      await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+      await deleteDoc(ccRef(ID.structure(x,y)));
     } else {
-      updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
-        health: structureHealth[key]
-      });
+      await updateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key] });
     }
     renderGrid();
   }
-}
 
-async function syncMyFleas() {
-  const fleasRef = collection(db, `games/${gameId}/fleas`);
-  const snapshot = await getDocs(fleasRef);
+  // ============================================================
+  // Traps (stored under crowncouncil)
+  // ============================================================
+  async function placeTrap(){
+    const now = Date.now();
+    if (now - lastTrapTime < 20000) return;
 
-  const batchDeletes = [];
-  snapshot.forEach(docSnap => {
-    if (docSnap.id.startsWith(username)) {
-      batchDeletes.push(deleteDoc(docSnap.ref));
-    }
-  });
-  await Promise.all(batchDeletes);
+    const {x,y} = playerPos;
+    if (grid[y][x] !== "") return;
 
-  for (let i = 0; i < fleas.length; i++) {
-    await setDoc(doc(db, `games/${gameId}/fleas/${username}_${i}`), fleas[i]);
+    grid[y][x] = "🪤";
+    lastTrapTime = now;
+
+    await setDoc(ccRef(ID.trap(x,y)), {
+      kind: "trap",
+      x, y,
+      placedAt: now,
+      placedBy: uid
+    }, { merge:true });
+
+    renderGrid();
   }
-}
 
-async function syncMyRats() {
-  const ratsRef = collection(db, `games/${gameId}/rats`);
-  const snapshot = await getDocs(ratsRef);
+  // ============================================================
+  // Player flea syncing (player-owned flea docs)
+  // ============================================================
+  async function syncMyFleas(){
+    // delete old player flea docs
+    const snap = await getDocs(ccCol);
+    const deletions = [];
+    snap.forEach(d => {
+      if (d.id.startsWith(`pflea_${uid}_`)){
+        deletions.push(deleteDoc(d.ref));
+      }
+    });
+    await Promise.all(deletions);
 
-  const batchDeletes = [];
-  snapshot.forEach(docSnap => {
-    if (docSnap.id.startsWith(username)) {
-      batchDeletes.push(deleteDoc(docSnap.ref));
+    // write current player fleas (the “near me” fleas)
+    // we store minimal; host moves/attacks them too
+    const now = Date.now();
+    let i=0;
+    for (const f of fleas.filter(ff => ff.ownerUid === uid && ff.origin === "player")){
+      const docId = ID.pflea(uid, i++);
+      await setDoc(ccRef(docId), {
+        kind: "flea",
+        id: docId,
+        x: f.x, y: f.y,
+        lifetime: f.lifetime ?? 15,
+        ownerUid: uid,
+        origin: "player",
+        updatedAt: now
+      }, { merge:true });
     }
-  });
-  await Promise.all(batchDeletes);
-
-  for (let i = 0; i < rats.length; i++) {
-    await setDoc(doc(db, `games/${gameId}/rats/${username}_${i}`), rats[i]);
   }
-}
 
+  // ============================================================
+  // Turrets / Rocket tower (host writes cat state to state doc)
+  // ============================================================
+  async function turretAttack(){
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🔫") continue;
 
-async function turretAttack() {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🔫") {
         let attacked = false;
 
-        // 🔋 Count nearby cheese beacons (within 2 tiles)
+        // beacon bonus within 2 tiles
         let bonusDamage = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (
-              nx >= 0 && nx < gridSize &&
-              ny >= 0 && ny < gridSize &&
-              grid[ny][nx] === "🗼"
-            ) {
-              bonusDamage++;
-            }
+        for (let dy=-2; dy<=2; dy++){
+          for (let dx=-2; dx<=2; dx++){
+            const nx = x+dx, ny=y+dy;
+            if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize && grid[ny][nx]==="🗼") bonusDamage++;
           }
         }
-
-        // 💥 Base turret damage is 2
         const damage = 2 + bonusDamage;
 
-        // 🔫 First check if cat is within 5 tiles
+        // cat within 5
         const dxCat = Math.abs(catPos.x - x);
         const dyCat = Math.abs(catPos.y - y);
-        if (dxCat <= 5 && dyCat <= 5) {
+        if (dxCat<=5 && dyCat<=5){
           catHealth -= damage;
-          updateDoc(doc(db, `games/${gameId}`), {
-            cat: { x: catPos.x, y: catPos.y, health: catHealth }
-          });
-          if (catHealth <= 0) {
+          await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+          if (catHealth <= 0){
             document.getElementById("status").textContent = "🎉 Mice win!";
             document.getElementById("returnButton").style.display = "block";
           }
           attacked = true;
         }
 
-        // 🔫 If cat not hit, try to hit a rat
-        if (!attacked) {
-          for (let rat of rats) {
-            if (rat.health <= 0) continue;
-
-            const dxRat = Math.abs(rat.x - x);
-            const dyRat = Math.abs(rat.y - y);
-            if (dxRat <= 5 && dyRat <= 5) {
-              rat.health -= damage;
+        // else rat
+        if (!attacked){
+          for (const r of rats){
+            if ((r.health ?? 0) <= 0) continue;
+            const dxRat = Math.abs(r.x - x);
+            const dyRat = Math.abs(r.y - y);
+            if (dxRat<=5 && dyRat<=5){
+              r.health -= damage;
               attacked = true;
+              if (r.health <= 0){
+                await deleteDoc(ccRef(ID.rat(r.id)));
+              } else {
+                await updateDoc(ccRef(ID.rat(r.id)), { health: r.health });
+              }
               break;
             }
           }
         }
 
-        // 🔫 If still not hit, try to hit an ox
-        if (!attacked) {
-          for (let ox of oxen) {
-            if (ox.health <= 0) continue;
-
-            const dxOx = Math.abs(ox.x - x);
-            const dyOx = Math.abs(ox.y - y);
-            if (dxOx <= 5 && dyOx <= 5) {
-              ox.health -= damage;
+        // else ox
+        if (!attacked){
+          for (const o of oxen){
+            if ((o.health ?? 0) <= 0) continue;
+            const dxOx = Math.abs(o.x - x);
+            const dyOx = Math.abs(o.y - y);
+            if (dxOx<=5 && dyOx<=5){
+              o.health -= damage;
               attacked = true;
+              if (o.health <= 0){
+                await deleteDoc(ccRef(ID.ox(o.id)));
+              } else {
+                await updateDoc(ccRef(ID.ox(o.id)), { health: o.health });
+              }
               break;
             }
           }
         }
       }
     }
+    renderGrid();
   }
 
-for (let i = rats.length - 1; i >= 0; i--) {
-  if (rats[i].health <= 0) {
-    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-    rats.splice(i, 1);
-  }
-}
+  async function rocketTowerAttack(){
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🚀") continue;
 
-for (let i = oxen.length - 1; i >= 0; i--) {
-  if (oxen[i].health <= 0) {
-    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-    oxen.splice(i, 1);
-  }
-}
-
-
-  renderGrid();
-}
-
-
-async function rocketTowerAttack() {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🚀") {
-        // 🔋 Check for nearby beacon boost
+        // beacon boost?
         let boosted = false;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const bx = x + dx;
-            const by = y + dy;
-            if (
-              bx >= 0 && bx < gridSize &&
-              by >= 0 && by < gridSize &&
-              grid[by][bx] === "🗼"
-            ) {
-              boosted = true;
-              break;
+        for (let dy=-2; dy<=2; dy++){
+          for (let dx=-2; dx<=2; dx++){
+            const bx = x+dx, by=y+dy;
+            if (bx>=0 && bx<gridSize && by>=0 && by<gridSize && grid[by][bx]==="🗼"){
+              boosted = true; break;
             }
           }
           if (boosted) break;
         }
 
-        // 🔍 Find farthest rat within 8 tiles
+        // farthest rat within 8
         let target = null;
         let maxDist = -1;
-        for (let rat of rats) {
-          const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
-          if (dist <= 8 && dist > maxDist && rat.health > 0) {
+        for (const r of rats){
+          if ((r.health ?? 0) <= 0) continue;
+          const dist = Math.abs(r.x - x) + Math.abs(r.y - y);
+          if (dist <= 8 && dist > maxDist){
             maxDist = dist;
-            target = rat;
+            target = r;
           }
         }
+        if (!target) continue;
 
-        if (target) {
-          const mainDamage = boosted ? 20 : 15;
-          const splashDamage = boosted ? 15 : 10;
+        const mainDamage   = boosted ? 20 : 15;
+        const splashDamage = boosted ? 15 : 10;
 
-          // 🎯 Main target takes boosted or base damage
-          target.health -= mainDamage;
+        target.health -= mainDamage;
+        if (target.health <= 0){
+          await deleteDoc(ccRef(ID.rat(target.id)));
+        } else {
+          await updateDoc(ccRef(ID.rat(target.id)), { health: target.health });
+        }
 
-          // 💥 Splash damage to surrounding
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const sx = target.x + dx;
-              const sy = target.y + dy;
-              if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
-              if (dx === 0 && dy === 0) continue; // skip center
+        for (let dy=-1; dy<=1; dy++){
+          for (let dx=-1; dx<=1; dx++){
+            const sx = target.x + dx;
+            const sy = target.y + dy;
+            if (sx<0 || sy<0 || sx>=gridSize || sy>=gridSize) continue;
+            if (dx===0 && dy===0) continue;
 
-              // 🐀 Splash rats
-              for (let rat of rats) {
-                if (rat.x === sx && rat.y === sy && rat.health > 0) {
-                  rat.health -= splashDamage;
-                }
-              }
-
-              // 🐂 Splash oxen
-              for (let ox of oxen) {
-                if (ox.x === sx && ox.y === sy && ox.health > 0) {
-                  ox.health -= splashDamage;
-                }
-              }
-
-              // 🐱 Splash cat
-              if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
-                catHealth -= splashDamage;
-                updateDoc(doc(db, `games/${gameId}`), {
-                  cat: { ...catPos, health: catHealth }
-                });
+            for (const r of rats){
+              if (r.id !== target.id && r.x===sx && r.y===sy && (r.health ?? 0) > 0){
+                r.health -= splashDamage;
+                if (r.health <= 0) await deleteDoc(ccRef(ID.rat(r.id)));
+                else await updateDoc(ccRef(ID.rat(r.id)), { health: r.health });
               }
             }
-          }
-        }
-      }
-    }
-  }
-
-  // 🧹 Cleanup
-for (let i = rats.length - 1; i >= 0; i--) {
-  if (rats[i].health <= 0) {
-    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-    rats.splice(i, 1);
-  }
-}
-
-for (let i = oxen.length - 1; i >= 0; i--) {
-  if (oxen[i].health <= 0) {
-    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-    oxen.splice(i, 1);
-  }
-}
-
-  renderGrid();
-}
-
-
-
-
-function findPath(startX, startY, targetX, targetY, allowTargetWall = false) {
-  const queue = [[startX, startY, []]];
-  const visited = new Set();
-  visited.add(`${startX},${startY}`);
-
-  const directions = [
-    [1, 0], [-1, 0], [0, 1], [0, -1]
-  ];
-
-  while (queue.length > 0) {
-    const [x, y, path] = queue.shift();
-    if (x === targetX && y === targetY) return path;
-
-    for (const [dx, dy] of directions) {
-      const nx = x + dx;
-      const ny = y + dy;
-      const key = `${nx},${ny}`;
-
-      if (
-        nx >= 0 && nx < gridSize &&
-        ny >= 0 && ny < gridSize &&
-        !visited.has(key)
-      ) {
-        const isTarget = nx === targetX && ny === targetY;
-        const cell = grid[ny][nx];
-
-        const isWall = cell === "🧱" || cell === "💎";
-        const isWalkable = !isWall || (allowTargetWall && isTarget);
-
-        if (isWalkable) {
-          visited.add(key);
-          queue.push([nx, ny, [...path, { x: nx, y: ny }]]);
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function triggerMoveCooldown() {
-  canMove = false;
-  setTimeout(() => canMove = true, moveCooldown);
-}
-
-  async function placeTrap() {
-  const now = Date.now();
-  if (now - lastTrapTime >= 20000) {
-    const { x, y } = playerPos;
-    const trapKey = `${x}_${y}`;
-    if (grid[y][x] === "") {
-      grid[y][x] = "🪤";
-      lastTrapTime = now;
-
-      await setDoc(doc(db, `games/${gameId}/traps/${trapKey}`), {
-        x,
-        y,
-        placedAt: now
-      });
-
-      renderGrid();
-    }
-  }
-}
-
-
-async function catBehavior() {
-  console.log("🐱 Cat behavior running");
-
-  // 🪤 Check for traps
-  for (let trap of traps) {
-    if (trap.x === catPos.x && trap.y === catPos.y) {
-      console.log("🪤 Cat stepped on a trap!");
-
-      clearInterval(catMoveInterval);
-
-      setTimeout(() => {
-        startCatBehaviorLoop();
-      }, 5000);
-
-      const trapKey = `${catPos.x}_${catPos.y}`;
-      await deleteDoc(doc(db, `games/${gameId}/traps/${trapKey}`));
-
-      const cell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
-      if (cell) {
-        cell.style.backgroundColor = "#ffaaaa";
-        setTimeout(() => {
-          cell.style.backgroundColor = "#c8f7c5";
-        }, 300);
-      }
-
-      renderGrid();
-      return;
-    }
-  }
-
-  const aliveMice = Object.entries(players).filter(([_, p]) => p.alive);
-  let target = null;
-  let path = null;
-
-  let mouseBlocked = true;
-
-  // 🐭 Priority 1: Closest reachable mouse
-  for (const [_, p] of aliveMice) {
-    const dist = Math.abs(p.x - catPos.x) + Math.abs(p.y - catPos.y);
-
-    const pPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
-    if (pPath) {
-      if (!path || pPath.length < path.length) {
-        target = { x: p.x, y: p.y, type: "mouse" };
-        path = pPath;
-      }
-      mouseBlocked = false;
-    }
-  }
-
-  // 🧱 Priority 2: Break walls around blocked mice
-  if (!target && mouseBlocked) {
-    for (const [_, p] of aliveMice) {
-      const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-      for (const [dx, dy] of directions) {
-        const wx = p.x + dx;
-        const wy = p.y + dy;
-        if (
-          wx >= 0 && wx < gridSize &&
-          wy >= 0 && wy < gridSize &&
-          ["🧱", "🏭", "💎", "🗼"].includes(grid[wy][wx])
-        ) {
-          const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
-          if (wPath) {
-            if (!path || wPath.length < path.length) {
-              target = { x: wx, y: wy, type: "wallToBreak" };
-              path = wPath;
+            for (const o of oxen){
+              if (o.x===sx && o.y===sy && (o.health ?? 0) > 0){
+                o.health -= splashDamage;
+                if (o.health <= 0) await deleteDoc(ccRef(ID.ox(o.id)));
+                else await updateDoc(ccRef(ID.ox(o.id)), { health: o.health });
+              }
             }
-          } else {
-            console.log(`🚫 Cannot reach wall at (${wx}, ${wy})`);
-          }
-        }
-      }
-    }
-  }
-
-  // 🔫 Priority 3: Attack structures
-  if (!target) {
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const symbol = grid[y][x];
-        if (["🔫", "🪳", "🗼", "🚀"].includes(symbol)) {
-          const sPath = findPath(catPos.x, catPos.y, x, y, false);
-          if (sPath) {
-            if (!path || sPath.length < path.length) {
-              target = { x, y, type: "structure" };
-              path = sPath;
+            if (catPos.x===sx && catPos.y===sy && catHealth>0){
+              catHealth -= splashDamage;
+              await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
             }
           }
         }
       }
     }
-  }
-
-  // 🧱 Priority 4: Final fallback to any grid target
-  if (!target) {
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const symbol = grid[y][x];
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(symbol)) {
-          const fPath = findPath(catPos.x, catPos.y, x, y, false);
-          if (fPath) {
-            if (!path || fPath.length < path.length) {
-              target = { x, y, type: "fallback" };
-              path = fPath;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 🐭 Priority 5: Re-check mice just in case
-  if (!target) {
-    for (const [_, p] of aliveMice) {
-      const fPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
-      if (fPath) {
-        console.log(`⬅️ Fallback mouse at (${p.x}, ${p.y}) - ${fPath.length} steps`);
-        if (!path || fPath.length < path.length) {
-          target = { x: p.x, y: p.y, type: "fallbackMouse" };
-          path = fPath;
-        }
-      }
-    }
-  }
-
-  if (target && path) {
-    console.log(`🎯 Final target: ${target.type} at (${target.x}, ${target.y}) — Path length: ${path.length}`);
-  } else {
-    console.log("❌ No target found. Cat is frozen.");
-  }
-
-  // 🐾 Move toward target
-  if (target && path.length > 1) {
-    const next = path[1];
-    const symbol = grid[next.y][next.x];
-    const isBlocked = ["🧱", "💎"].includes(symbol);
-
-    if (!isBlocked) {
-      catPos.x = next.x;
-      catPos.y = next.y;
-      console.log(`✅ Cat moved to (${catPos.x}, ${catPos.y}) toward ${target.type}`);
-    } else {
-      console.log(`🚫 Cat blocked at (${next.x}, ${next.y}) by ${symbol}`);
-    }
-  }
-
-  // 💥 Attack nearby structure
-  let attacked = false;
-  for (let dy = -1; dy <= 1 && !attacked; dy++) {
-    for (let dx = -1; dx <= 1 && !attacked; dx++) {
-      const tx = catPos.x + dx;
-      const ty = catPos.y + dy;
-      if (
-        tx >= 0 && tx < gridSize &&
-        ty >= 0 && ty < gridSize &&
-        ["🧱", "🔫", "🪳", "🏭", "💎", "🗼"].includes(grid[ty][tx])
-      ) {
-        console.log(`💥 Cat attacked ${grid[ty][tx]} at (${tx}, ${ty})`);
-        damageStructure(tx, ty);
-        attacked = true;
-      }
-    }
-  }
-
-  // 💀 Kill players on cat’s tile
-  for (const [name, p] of Object.entries(players)) {
-    if ((p.alive ?? true) && catPos.x === p.x && catPos.y === p.y) {
-      console.log(`💀 Cat killed ${name}`);
-      updateDoc(doc(db, `games/${gameId}/players/${name}`), { alive: false });
-
-      if (name === username) {
-        isAlive = false;
-        document.getElementById("status").textContent = "💀 You are dead!";
-      }
-    }
-  }
-
-  await updateDoc(doc(db, `games/${gameId}`), {
-    cat: { x: catPos.x, y: catPos.y, health: catHealth }
-  });
-
-  updateCatHealthBar();
-  renderGrid();
-}
-
-
-
-async function listenToGame() {
-
-onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
-  // 🧹 Clear old structures from grid
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (["🧱", "🔫"].includes(grid[y][x])) {
-        grid[y][x] = "";
-      }
-    }
-  }
-
-  structureHealth = {};
-
-  // 🧱 Re-populate grid with structure data
-  snap.forEach((docSnap) => {
-    const data = docSnap.data(); // ✅ Correct variable
-    const { x, y, type, health } = data;
-
-    if (x !== undefined && y !== undefined && type) {
-      grid[y][x] = type;
-      structureHealth[`${x}_${y}`] = health;
-    }
-  });
-
-  renderGrid();
-});
-
-  onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
-  fleas = snap.docs.map(doc => doc.data());
-  renderGrid();
-});
-onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
-  const updatedRats = [];
-
-  snap.forEach(doc => {
-    const data = doc.data();
-
-    // 🧠 If rat already exists in local array, update it
-    const existing = rats.find(r => r.id === data.id);
-    if (existing) {
-      Object.assign(existing, data);
-    } else {
-      updatedRats.push(data); // new rat
-    }
-  });
-
-  // 🔁 Add any new ones without wiping existing living rats
-  rats = [
-    ...rats.filter(r => snap.docs.some(d => d.id === r.id)), // keep only those still in Firebase
-    ...updatedRats
-  ];
-
-  renderGrid();
-});
-
-
-  onSnapshot(collection(db, `games/${gameId}/oxen`), (snap) => {
-  oxen = snap.docs.map(doc => doc.data());
-  renderGrid();
-});
-
-
-
-onSnapshot(doc(db, `games/${gameId}`), (docSnap) => {
-  if (docSnap.exists()) {
-    const data = docSnap.data();
-    gameData = data;
-    updateHostDisplay();
-
-    // 🐱 Host-only cat initialization
-    if (
-      isHost &&
-      (!data.cat || typeof data.cat.x !== "number" || typeof data.cat.y !== "number")
-    ) {
-      const initialCat = {
-        x: gridSize - 1,
-        y: gridSize - 1,
-        health: 1000
-      };
-      updateDoc(doc(db, `games/${gameId}`), { cat: initialCat });
-    }
-
-    // 🐱 Sync cat state from Firebase
-    const cat = data.cat || {};
-    catPower = data.catPower || 0;
-    catPos = { x: cat.x ?? 15, y: cat.y ?? 15 };
-
-    if (typeof cat.health === "number") {
-      catHealth = cat.health; // ✅ Don't override 0
-    }
-
-    updateCatHealthBar();     // ✅ Visually reflect latest health
     renderGrid();
   }
-});
 
-onSnapshot(collection(db, `games/${gameId}/termites`), (snap) => {
-  termites = snap.docs.map(doc => doc.data());
-  renderGrid();
-});
+  // ============================================================
+  // Pathfinding (kept compatible with your calls)
+  // ============================================================
+  function findPath(startX, startY, targetX, targetY, allowTargetWallOrPassable = false){
+    const queue = [[startX, startY, []]];
+    const visited = new Set([`${startX},${startY}`]);
 
+    const directions = [[1,0],[-1,0],[0,1],[0,-1]];
 
-onSnapshot(collection(db, `games/${gameId}/traps`), (snap) => {
-  // 🧹 Clear all existing trap symbols from grid
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🪤") {
-        grid[y][x] = ""; // ✅ Clear old traps
+    const passableFn = (typeof allowTargetWallOrPassable === "function") ? allowTargetWallOrPassable : null;
+    const allowTargetWall = (typeof allowTargetWallOrPassable === "boolean") ? allowTargetWallOrPassable : false;
+
+    while (queue.length){
+      const [x,y,path] = queue.shift();
+      if (x===targetX && y===targetY) return path;
+
+      for (const [dx,dy] of directions){
+        const nx = x+dx, ny=y+dy;
+        const k = `${nx},${ny}`;
+        if (nx<0 || nx>=gridSize || ny<0 || ny>=gridSize) continue;
+        if (visited.has(k)) continue;
+
+        const isTarget = (nx===targetX && ny===targetY);
+        const cell = grid[ny][nx];
+        const isWall = (cell==="🧱" || cell==="💎");
+
+        let ok;
+        if (passableFn){
+          ok = !!passableFn(nx, ny);
+        } else {
+          ok = !isWall || (allowTargetWall && isTarget);
+        }
+
+        if (!ok) continue;
+        visited.add(k);
+        queue.push([nx, ny, [...path, {x:nx,y:ny}]]);
       }
     }
+    return null;
   }
 
-  traps = []; // clear and rebuild trap list
-  for (let docSnap of snap.docs) {
-    const data = docSnap.data();
-    traps.push({ x: data.x, y: data.y, placedAt: data.placedAt });
-    grid[data.y][data.x] = "🪤";
+  // ============================================================
+  // Cat AI
+  // ============================================================
+  function startCatBehaviorLoop(){
+    if (catMoveInterval) clearInterval(catMoveInterval);
+    const speed = Math.max(200, 1300 - catPower * 40);
+    catMoveInterval = setInterval(() => {
+      if (gameStarted) catBehavior();
+    }, speed);
   }
 
-  renderGrid();
-});
+  async function catBehavior(){
+    // traps check
+    for (const t of traps){
+      if (t.x===catPos.x && t.y===catPos.y){
+        clearInterval(catMoveInterval);
+        setTimeout(() => startCatBehaviorLoop(), 5000);
 
-
-
-  onSnapshot(collection(db, `games/${gameId}/players`), (snap) => {
-  players = {};
-  snap.forEach((docSnap) => {
-    players[docSnap.id.toLowerCase()] = docSnap.data(); // ✅ force lowercase key
-  });
-  renderGrid();
-});
-
-  const playerRef = doc(db, `games/${gameId}/players/${username}`);
-  await setDoc(playerRef, {
-  x: playerPos.x,
-  y: playerPos.y,
-  cheese: 0,
-  alive: true,
-  displayName: urlParams.get("username").trim()
-}, { merge: true });
-
-
-  onSnapshot(playerRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      playerPos = { x: data.x, y: data.y };
-      isAlive = data.alive !== false;
-      cheeseCount = data.cheese || 0;
-      document.getElementById("cheeseCount").textContent = cheeseCount;
-      console.log("🔥 Player isAlive = ", isAlive);
-      document.getElementById("status").textContent = isAlive
-        ? ""
-        : "💀 You are dead!";
-      renderGrid();
-    }
-  });
-}
-window.addEventListener("keydown", (e) => {
-  if (!isAlive) return;
-
-  // Prevent arrow key scrolling
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
-
-  // Toggle upgrade menu
-  if (e.key === " ") {
-    upgradeMenuOpen = !upgradeMenuOpen;
-    document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
-    return;
-  }
-
-  // 💡 Upgrade selection ONLY when menu is open
-  if (upgradeMenuOpen && ["1", "2", "3", "4", "5", "6"].includes(e.key) && advancementPoints > 0) {
-    let upgrade = "";
-    if (e.key === "1") upgrade = "Speedster";
-    else if (e.key === "2") upgrade = "Scavenger";
-    else if (e.key === "3") upgrade = "Flea Master";
-    else if (e.key === "4") upgrade = "Wall Master";
-    else if (e.key === "5") upgrade = "Trapmaster";
-    else if (e.key === "6") upgrade = "Blink";
-
-    if (!selectedUpgrades.includes(upgrade)) {
-      selectedUpgrades.push(upgrade);
-      advancementPoints--;
-
-      document.getElementById("advPoints").textContent = advancementPoints;
-      document.getElementById("chosenUpgrades").textContent = selectedUpgrades.join(", ");
-      console.log(`🆙 Chose upgrade: ${upgrade}`);
-
-      // Effects
-      if (upgrade === "Speedster") moveCooldown = 50;
-      if (upgrade === "Scavenger") cheesePickupBonus = 7;
-      if (upgrade === "Flea Master") fleaMasterActive = true;
-      if (upgrade === "Wall Master") wallMasterActive = true;
-      if (upgrade === "Trapmaster") trapmasterActive = true;
-      if (upgrade === "Blink") blinkActive = true;
-    }
-    return;
-  }
-
-  // ✅ Movement (always allowed)
-  if (canMove) {
-    switch (e.key) {
-      case "ArrowUp": lastDirection = { dx: 0, dy: -1 }; movePlayer(0, -1); triggerMoveCooldown(); break;
-      case "ArrowDown": lastDirection = { dx: 0, dy: 1 }; movePlayer(0, 1); triggerMoveCooldown(); break;
-      case "ArrowLeft": lastDirection = { dx: -1, dy: 0 }; movePlayer(-1, 0); triggerMoveCooldown(); break;
-      case "ArrowRight": lastDirection = { dx: 1, dy: 0 }; movePlayer(1, 0); triggerMoveCooldown(); break;
-    }
-  }
-
-  // 🌀 Blink (always works if active)
-  if (blinkActive && e.key.toLowerCase() === "b") {
-    const now = Date.now();
-    if (now - lastBlinkTime >= 8000) {
-      const dx = lastDirection.dx;
-      const dy = lastDirection.dy;
-      const nx = playerPos.x + dx * 5;
-      const ny = playerPos.y + dy * 5;
-
-      if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && grid[ny][nx] === "") {
-        playerPos = { x: nx, y: ny };
-        lastBlinkTime = now;
-        console.log("🌀 Blink activated!");
-        savePosition();
+        await deleteDoc(ccRef(ID.trap(catPos.x, catPos.y)));
+        const cell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
+        if (cell){
+          cell.style.backgroundColor = "#ffaaaa";
+          setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
+        }
         renderGrid();
-
-        const cell = document.getElementById(`cell-${nx}-${ny}`);
-        if (cell) {
-          cell.style.backgroundColor = "#b3f0ff";
-          setTimeout(() => {
-            cell.style.backgroundColor = "#c8f7c5";
-          }, 300);
-        }
-      } else {
-        console.log("🚫 Blink failed – tile blocked or out of bounds.");
-      }
-    } else {
-      console.log("⌛ Blink on cooldown");
-    }
-  }
-
-  // ✅ Trap placement (only if unlocked, always allowed regardless of menu state)
-  if (trapmasterActive && e.key.toLowerCase() === "t") {
-    placeTrap();
-  }
-
-  // ✅ Structure selection (ONLY if upgrade menu is closed)
-// ✅ Structure selection (ONLY if upgrade menu is closed)
-if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7", "8"].includes(e.key)) {
-  selectBuild(e.key);
-}
-
-
-
-  // ✅ Build placement (always allowed)
-  if (["w", "a", "s", "d"].includes(e.key)) {
-    placeStructure(e.key);
-  }
-});
-
-
-
-
-
-// After listenToGame():
-listenToGame();
-gameStarted = true;
- if (/Mobi|Android/i.test(navigator.userAgent)) {
-  document.getElementById("mobileControls").style.display = "block";
-  renderMobileUpgradeButtons();
-  setupMobileControls(); // 🔧 This is critical
-}
-
-// Place initial structures
-grid[24][15] = "🧱";
-grid[25][14] = "🧱";
-grid[25][16] = "🧱";
-renderGrid();
-
-// Start cheese spawn and turret attack globally
-setInterval(async () => {
-  const gameSnap = await getDoc(doc(db, `games/${gameId}`));
-  const gameData = gameSnap.data();
-
-  if (!gameData?.nextRatWave || !gameStarted) return;
-
-  const now = Date.now();
-
-  if (isHost && now >= gameData.nextRatWave) {
-    console.log("🎬 Time to spawn a new rat wave!");
-    spawnRatWave(); // your wave logic
-    const nextTime = now + 40000; // next wave in 40s
-    await updateDoc(doc(db, `games/${gameId}`), { nextRatWave: nextTime });
-  }
-
-  const secondsLeft = Math.max(0, Math.floor((gameData.nextRatWave - now) / 1000));
-  document.getElementById("waveCountdown").textContent = `🐀 Next wave: ${secondsLeft}s`;
-}, 1000);
-
-  setInterval(() => {
-  if (!gameStarted) return;
-
-  // 1. Check if any players are alive
-  const anyAlive = Object.values(players).some(p => p.alive !== false);
-
-  // 2. Check if any Phoenix Cheese exists on the board
-  let phoenixExists = false;
-  for (let y = 0; y < gridSize && !phoenixExists; y++) {
-    for (let x = 0; x < gridSize && !phoenixExists; x++) {
-      if (grid[y][x] === "🐦‍🔥") {
-        phoenixExists = true;
+        return;
       }
     }
-  }
 
-  // 3. If no players and no phoenixes → Game Over
-  if (!anyAlive && !phoenixExists) {
-    document.getElementById("status").textContent = "💀 All mice are dead. Game Over!";
-    document.getElementById("returnButton").style.display = "block";
-    document.getElementById("status").style.color = "red";
-    document.getElementById("status").style.fontSize = "24px";
-    document.getElementById("status").style.fontWeight = "bold";
-    document.getElementById("status").style.background = "#fff0f0";
-    document.getElementById("status").style.padding = "10px";
-    document.getElementById("status").style.border = "2px solid red";
-    document.getElementById("status").style.marginTop = "10px";
-
-    gameStarted = false; // Optionally stop the game logic
-  }
-}, 1000);
-if (!isHost) {
-  setInterval(async () => {
-    const gameSnap = await getDoc(doc(db, `games/${gameId}`));
-    const data = gameSnap.data();
-    if (data && data.cat && typeof data.cat.health === "number") {
-      catHealth = data.cat.health;
-      updateCatHealthBar();
-    }
-  }, 3000); // check every 3 seconds
-}
-
-setInterval(() => {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🏭") {
-        // 🌟 Visual flash
-        const cell = document.getElementById(`cell-${x}-${y}`);
-        if (cell) {
-          cell.style.backgroundColor = "#fff977";
-          setTimeout(() => {
-            cell.style.backgroundColor = "#c8f7c5";
-          }, 300);
-        }
-
-        // 🔋 Count nearby beacons within 2 tiles
-        let bonusCheese = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (
-              nx >= 0 && nx < gridSize &&
-              ny >= 0 && ny < gridSize &&
-              grid[ny][nx] === "🗼"
-            ) {
-              bonusCheese++;
-            }
-          }
-        }
-
-        // 🧀 Reward each alive player nearby
-        for (const [name, p] of Object.entries(players)) {
-          if (p.alive !== false) {
-            const dx = Math.abs(p.x - x);
-            const dy = Math.abs(p.y - y);
-            if (dx + dy <= 9) {
-              if (name === username.trim().toLowerCase()) {
-                const totalCheese = 1 + bonusCheese;
-                cheeseCount += totalCheese;
-                document.getElementById("cheeseCount").textContent = cheeseCount;
-                updateDoc(doc(db, `games/${gameId}/players/${name}`), {
-                  cheese: cheeseCount
-                });
-                console.log(`💰 Generator at (${x},${y}) gave ${totalCheese} cheese to ${name}`);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}, 15000); // ⏲ Every 10 seconds
-  setInterval(() => {
-  if (fleaMasterActive && isAlive) {
-    syncMyFleas();
-  }
-}, 500);
-setInterval(updateAbilityStatus, 1000);
-setInterval(() => {
-  if (!gameStarted || !isAlive) return;
-
-  advancementPoints++;
-  document.getElementById("advPoints").textContent = advancementPoints;
-
-  const msg = document.getElementById("advPointMessage");
-  msg.textContent = "🟢 You gained an advancement point!";
-  msg.style.display = "block";
-
-  setTimeout(() => {
-    msg.style.display = "none";
-  }, 2500); // Hide after 2.5 seconds
-}, 180000); // every 3 minutes
-
-
-setInterval(() => {
-  if (!fleaMasterActive || !isAlive) return;
-
-  // 🐞 Spawn up to 2 fleas near the player
-  const offsets = [
-    { dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
-  ];
-
-  let spawned = 0;
-
-  for (let offset of offsets) {
-    const fx = playerPos.x + offset.dx;
-    const fy = playerPos.y + offset.dy;
-
-    if (
-      fx >= 0 && fx < gridSize &&
-      fy >= 0 && fy < gridSize &&
-      !fleas.some(f => f.x === fx && f.y === fy)
-    ) {
-      fleas.push({ x: fx, y: fy, lifetime: 15 });
-      spawned++;
-      if (spawned >= 2) break; // 🛑 Stop after 2 fleas
-    }
-  }
-
-  renderGrid();
-}, fleaSpawnCooldown);
-  setInterval(spawnCheese, 10000);
-
-
-// ✅ Wrap host logic in an async function
-(async () => {
-  const cleanUsername = username.trim().toLowerCase();
-  const gameRef = doc(db, `games/${gameId}`);
-
-  const docSnap = await getDoc(gameRef);
-  const data = docSnap.exists() ? docSnap.data() : {};
-  if (!data.host) {
-    await setDoc(gameRef, { host: cleanUsername }, { merge: true });
-  }
-
-  const updatedSnap = await getDoc(gameRef);
-  const host = updatedSnap.data().host;
-
-if (host === cleanUsername && !hostInitialized) {
-  hostInitialized = true;
-  console.log("👑 Confirmed host. Starting rat/termite spawning once.");
-  isHost = true;
-  console.log("👑 You are host. Starting cat AI.");
-  gameStarted = true;
-
-  // 👇 Wrap this in an async block
-  (async () => {
-    const nextWaveTime = Date.now() + 30000; // first wave in 30s
-    await updateDoc(doc(db, `games/${gameId}`), {
-      nextRatWave: nextWaveTime
-    });
-    console.log("🕒 Scheduled first rat wave at", new Date(nextWaveTime).toLocaleTimeString());
-  })();
-
-
-
-
-  // Start initial cat behavior loop
-  startCatBehaviorLoop();
-
-  setInterval(async () => {
-  if (gameStarted) {
-    catPower++;
-
-    const playerCount = Object.keys(players).length;
-    catHealth += 15 * playerCount;
-
-    console.log(`🔋 Cat power increased to ${catPower} | Health +${15 * playerCount} → ${catHealth}`);
-
-    await updateDoc(doc(db, `games/${gameId}`), {
-      catPower,
-      cat: { ...catPos, health: catHealth }
-    });
-
-    startCatBehaviorLoop();
-  }
-}, 20000);
-   setInterval(() => {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🪳") {
-        // 🔍 Count nearby cheese beacons
-        let beaconBonus = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (
-              nx >= 0 && nx < gridSize &&
-              ny >= 0 && ny < gridSize &&
-              grid[ny][nx] === "🗼"
-            ) {
-              beaconBonus++;
-            }
-          }
-        }
-
-        // 💥 Total fleas to spawn
-        const spawnCount = 1 + beaconBonus;
-
-        for (let i = 0; i < spawnCount; i++) {
-          // 🌀 Try to spawn in a random nearby offset from the nest
-          const offsets = [
-            { dx: 0, dy: 0 },
-            { dx: 1, dy: 0 },
-            { dx: -1, dy: 0 },
-            { dx: 0, dy: 1 },
-            { dx: 0, dy: -1 },
-            { dx: 1, dy: 1 },
-            { dx: -1, dy: -1 },
-            { dx: 1, dy: -1 },
-            { dx: -1, dy: 1 }
-          ];
-
-          const offset = offsets[Math.floor(Math.random() * offsets.length)];
-          const fx = x + offset.dx;
-          const fy = y + offset.dy;
-
-          if (
-            fx >= 0 && fx < gridSize &&
-            fy >= 0 && fy < gridSize &&
-            !fleas.some(f => f.x === fx && f.y === fy) // no overlap
-          ) {
-            fleas.push({ x: fx, y: fy, lifetime: 15 });
-          }
-        }
-      }
-    }
-  }
-}, 4000);
-  setInterval(async () => {
-  for (let i = fleas.length - 1; i >= 0; i--) {
-    const flea = fleas[i];
+    const aliveMice = Object.values(players).filter(p => (p.alive ?? true) !== false);
     let target = null;
-    let minDist = Infinity;
+    let path = null;
+    let mouseBlocked = true;
 
-    // 🔍 Target cat
-    const distToCat = Math.abs(catPos.x - flea.x) + Math.abs(catPos.y - flea.y);
-    if (distToCat < minDist) {
-      minDist = distToCat;
-      target = { x: catPos.x, y: catPos.y, type: "cat" };
-    }
-
-    // 🔍 Target nearest rat
-    for (let rat of rats) {
-      const dist = Math.abs(rat.x - flea.x) + Math.abs(rat.y - flea.y);
-      if (dist < minDist && rat.health > 0) {
-        minDist = dist;
-        target = { x: rat.x, y: rat.y, type: "rat", rat };
+    // closest reachable mouse
+    for (const p of aliveMice){
+      const pPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
+      if (pPath){
+        mouseBlocked = false;
+        if (!path || pPath.length < path.length){
+          target = {x:p.x,y:p.y,type:"mouse"};
+          path = pPath;
+        }
       }
     }
 
-    // 🔍 Target nearest ox
-    for (let ox of oxen) {
-      const dist = Math.abs(ox.x - flea.x) + Math.abs(ox.y - flea.y);
-      if (dist < minDist && ox.health > 0) {
-        minDist = dist;
-        target = { x: ox.x, y: ox.y, type: "ox", ox };
-      }
-    }
-
-    // 🚶 Move flea
-    if (target) {
-      let dx = 0, dy = 0;
-      const xDiff = target.x - flea.x;
-      const yDiff = target.y - flea.y;
-
-      if (Math.abs(xDiff) > Math.abs(yDiff)) {
-        dx = Math.sign(xDiff);
-      } else {
-        dy = Math.sign(yDiff);
-      }
-
-      const newX = flea.x + dx;
-      const newY = flea.y + dy;
-
-      if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
-        flea.x = newX;
-        flea.y = newY;
-      }
-
-      // 💥 Attack if reached
-      if (flea.x === target.x && flea.y === target.y) {
-        flea.lifetime = 0;
-
-        if (target.type === "cat") {
-          catHealth -= 1;
-          await updateDoc(doc(db, `games/${gameId}`), {
-            cat: { ...catPos, health: catHealth }
-          });
-        } else if (target.type === "rat" && target.rat) {
-          target.rat.health -= 5;
-          if (target.rat.health <= 0) {
-            const index = rats.indexOf(target.rat);
-            if (index !== -1) rats.splice(index, 1);
-            const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
-            await deleteDoc(ratRef);
-          }
-        } else if (target.type === "ox" && target.ox) {
-          target.ox.health -= 5;
-          if (target.ox.health <= 0) {
-            const index = oxen.indexOf(target.ox);
-            if (index !== -1) oxen.splice(index, 1);
-            const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
-            await deleteDoc(oxRef);
+    // break walls around blocked mice
+    if (!target && mouseBlocked){
+      for (const p of aliveMice){
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        for (const [dx,dy] of dirs){
+          const wx = p.x+dx, wy=p.y+dy;
+          if (wx<0||wy<0||wx>=gridSize||wy>=gridSize) continue;
+          if (["🧱","🏭","💎","🗼","🔫","🪳","🚀"].includes(grid[wy][wx])){
+            const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
+            if (wPath && (!path || wPath.length < path.length)){
+              target = {x:wx,y:wy,type:"wallToBreak"};
+              path = wPath;
+            }
           }
         }
       }
     }
 
-    // 🧼 Decrease lifetime and remove dead flea
-    flea.lifetime--;
-    if (flea.lifetime <= 0) {
-      const fleaRef = doc(db, `games/${gameId}/fleas/${flea.id}`);
-      await deleteDoc(fleaRef);
-      fleas.splice(i, 1);
-    }
-  }
-
-  renderGrid();
-}, 400);
-
-
-
-  setInterval(() => {
-  if (!wallMasterActive || !isAlive) return;
-
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const tx = playerPos.x + dx;
-      const ty = playerPos.y + dy;
-      const key = `${tx}_${ty}`;
-      if (
-        tx >= 0 && tx < gridSize &&
-        ty >= 0 && ty < gridSize &&
-        (grid[ty][tx] === "🧱" || grid[ty][tx] === "💎") &&
-        structureHealth[key] < 80
-      ) {
-        structureHealth[key] += 4;
-        updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
-          health: structureHealth[key]
-        });
+    // attack structures
+    if (!target){
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          if (!["🔫","🪳","🗼","🚀","🏭"].includes(grid[y][x])) continue;
+          const sPath = findPath(catPos.x, catPos.y, x, y, false);
+          if (sPath && (!path || sPath.length < path.length)){
+            target = {x,y,type:"structure"};
+            path = sPath;
+          }
+        }
       }
     }
-  }
-}, 1000);
- setInterval(async () => {
-  for (let i = termites.length - 1; i >= 0; i--) {
-    let termite = termites[i];
-    let closestWall = null;
-    let minDist = Infinity;
 
-    // 🔍 Find nearest wall
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
-          const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
-          if (dist < minDist) {
+    // move
+    if (target && path && path.length > 0){
+      const next = path[0];
+      const symbol = grid[next.y][next.x];
+      const isBlocked = (symbol==="🧱" || symbol==="💎");
+      if (!isBlocked){
+        catPos.x = next.x;
+        catPos.y = next.y;
+      }
+    }
+
+    // attack nearby
+    let attacked = false;
+    for (let dy=-1; dy<=1 && !attacked; dy++){
+      for (let dx=-1; dx<=1 && !attacked; dx++){
+        const tx = catPos.x+dx, ty=catPos.y+dy;
+        if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
+        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[ty][tx])){
+          await damageStructure(tx,ty);
+          attacked = true;
+        }
+      }
+    }
+
+    // kill players on cat tile
+    for (const [pu, p] of Object.entries(players)){
+      if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
+        await updateDoc(ccRef(ID.player(pu)), { alive:false, updatedAt: Date.now() });
+        if (pu === uid){
+          isAlive = false;
+          document.getElementById("status").textContent = "💀 You are dead!";
+        }
+      }
+    }
+
+    // write cat state
+    await updateDoc(ccRef(ID.STATE), {
+      cat: { x: catPos.x, y: catPos.y, health: catHealth },
+      updatedAt: Date.now()
+    });
+
+    updateCatHealthBar();
+    renderGrid();
+  }
+
+  // ============================================================
+  // Host spawning
+  // ============================================================
+  async function spawnRatWave(){
+    if (!isHost || catPower <= 0) return;
+
+    const waveTag = Date.now();
+    const allOffsets = [
+      { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
+      { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
+      { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
+      { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
+      { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
+      { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
+    ];
+
+    const availableSpots = allOffsets
+      .map(o => ({x:catPos.x+o.x,y:catPos.y+o.y}))
+      .filter(p =>
+        p.x>=0 && p.x<gridSize && p.y>=0 && p.y<gridSize &&
+        grid[p.y][p.x] === "" &&
+        !rats.some(r => r.x===p.x && r.y===p.y) &&
+        !oxen.some(o => o.x===p.x && o.y===p.y)
+      );
+
+    const usedKeys = new Set();
+
+    // oxen
+    const oxCount = (catPower>=15) ? (Math.floor((catPower-15)/10)+1) : 0;
+    let oxSpawned = 0;
+    for (let i=0; i<availableSpots.length && oxSpawned<oxCount; i++){
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
+
+      const id = `ox_${crypto.randomUUID()}`;
+      await setDoc(ccRef(ID.ox(id)), {
+        kind: "ox",
+        id,
+        x: spot.x,
+        y: spot.y,
+        health: ratPower * 30,
+        wave: waveTag,
+        createdAt: Date.now()
+      }, { merge:true });
+      oxSpawned++;
+    }
+
+    // rats
+    const maxRats = catPower;
+    let ratsSpawned = 0;
+    for (let i=0; i<availableSpots.length && ratsSpawned<maxRats; i++){
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
+
+      const id = `rat_${crypto.randomUUID()}`;
+      await setDoc(ccRef(ID.rat(id)), {
+        kind: "rat",
+        id,
+        x: spot.x,
+        y: spot.y,
+        health: ratPower * 5,
+        wave: waveTag,
+        createdAt: Date.now()
+      }, { merge:true });
+      ratsSpawned++;
+    }
+  }
+
+  // ============================================================
+  // Host enemies movement / logic (kept from your gameplay)
+  // ============================================================
+  async function hostMoveRats(){
+    for (const rat of rats){
+      if ((rat.health ?? 0) <= 0) continue;
+
+      if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
+
+      // trap check
+      for (const t of traps){
+        if (t.x===rat.x && t.y===rat.y){
+          rat.trappedUntil = Date.now() + 3000;
+          await deleteDoc(ccRef(ID.trap(rat.x, rat.y)));
+          const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
+          if (cell){
+            cell.style.backgroundColor = "#ffcccc";
+            setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
+          }
+          renderGrid();
+          continue;
+        }
+      }
+
+      let closestTarget = null;
+      let minDist = Infinity;
+
+      // closest player
+      for (const [pu, p] of Object.entries(players)){
+        if ((p.alive ?? true) !== false){
+          const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
+          if (dist < minDist){
             minDist = dist;
-            closestWall = { x, y };
+            closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
+          }
+        }
+      }
+
+      // closest structure
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[y][x])){
+            const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
+            if (dist < minDist){
+              minDist = dist;
+              closestTarget = { x, y, type:"structure" };
+            }
+          }
+        }
+      }
+
+      if (closestTarget){
+        const centerX = Math.floor(gridSize/2);
+        const centerY = Math.floor(gridSize/2);
+
+        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
+          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const isReviveCenter = (x===centerX && y===centerY);
+          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          return !isBlocked && !isReviveCenter && !ratOccupied;
+        });
+
+        if (path && path.length > 0){
+          const next = path[0];
+          const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
+          if (!ratInWay){
+            rat.x = next.x; rat.y = next.y;
+            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y });
+          }
+        }
+
+        if (rat.x===closestTarget.x && rat.y===closestTarget.y){
+          if (closestTarget.type==="structure"){
+            await damageStructure(rat.x, rat.y, ratPower);
+          } else if (closestTarget.type==="mouse"){
+            await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
+            if (closestTarget.uid === uid){
+              isAlive = false;
+              document.getElementById("status").textContent = "💀 You are dead!";
+            }
           }
         }
       }
     }
 
-    if (closestWall) {
-      const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-        return !["🧱", "🔫", "🪳", "🏭", "💎"].includes(grid[y][x]);
+    // cleanup dead rats
+    for (let i=rats.length-1; i>=0; i--){
+      if ((rats[i].health ?? 0) <= 0){
+        await deleteDoc(ccRef(ID.rat(rats[i].id)));
+        rats.splice(i,1);
+      }
+    }
+  }
+
+  async function hostMoveOxen(){
+    for (let i=oxen.length-1; i>=0; i--){
+      const ox = oxen[i];
+      if ((ox.health ?? 0) <= 0){
+        await deleteDoc(ccRef(ID.ox(ox.id)));
+        oxen.splice(i,1);
+        continue;
+      }
+
+      let bestTarget = null;
+      let minDist = Infinity;
+
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          const symbol = grid[y][x];
+          if (symbol==="💎" || symbol==="🧱"){
+            const dist = Math.abs(x-ox.x) + Math.abs(y-ox.y);
+            const priority = symbol==="💎" ? 0 : 1;
+            if (dist < minDist || (dist===minDist && priority < (bestTarget?.priority ?? 1))){
+              minDist = dist;
+              bestTarget = { x, y, symbol, priority };
+            }
+          }
+        }
+      }
+
+      if (bestTarget){
+        const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
+        if (path && path.length>0){
+          const next = path[0];
+          ox.x = next.x; ox.y = next.y;
+          await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y });
+        }
+
+        const dx = Math.abs(ox.x - bestTarget.x);
+        const dy = Math.abs(ox.y - bestTarget.y);
+        if (dx+dy === 1){
+          await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
+          ox.health -= 1;
+          await updateDoc(ccRef(ID.ox(ox.id)), { health: ox.health });
+        }
+      }
+    }
+  }
+
+  async function hostMoveTermites(){
+    for (let i=termites.length-1; i>=0; i--){
+      const termite = termites[i];
+
+      let closestWall = null;
+      let minDist = Infinity;
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          if (grid[y][x]==="🧱" || grid[y][x]==="💎"){
+            const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
+            if (dist < minDist){
+              minDist = dist;
+              closestWall = { x, y };
+            }
+          }
+        }
+      }
+      if (!closestWall) continue;
+
+      const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x,y) => {
+        return !["🧱","🔫","🪳","🏭","💎","🗼","🚀"].includes(grid[y][x]);
       });
 
-      if (path && path.length > 0) {
+      if (path && path.length>0){
         const next = path[0];
-        termite.x = next.x;
-        termite.y = next.y;
-
-        // ✅ Update termite position in Firestore
-        if (termite.id) {
-          await updateDoc(doc(db, `games/${gameId}/termites/${termite.id}`), {
-            x: termite.x,
-            y: termite.y
-          });
-        }
+        termite.x = next.x; termite.y = next.y;
+        await updateDoc(ccRef(ID.termite(termite.id)), { x: termite.x, y: termite.y });
       }
 
-      // 💥 If on wall, damage it and self-destruct
-      if (termite.x === closestWall.x && termite.y === closestWall.y) {
-        await damageStructure(termite.x, termite.y, 40); // 🛠 40 damage to wall
-        console.log("💥 Termite hit wall and died");
-
-        if (termite.id) {
-          await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
-        }
-
-        termites.splice(i, 1); // remove locally
+      if (termite.x===closestWall.x && termite.y===closestWall.y){
+        await damageStructure(termite.x, termite.y, 40);
+        await deleteDoc(ccRef(ID.termite(termite.id)));
+        termites.splice(i,1);
       }
     }
   }
 
-  renderGrid();
-}, 400);
+  async function hostMoveFleas(){
+    // Fleas are stored as docs in crowncouncil (both nest fleas + player fleas)
+    for (let i=fleas.length-1; i>=0; i--){
+      const flea = fleas[i];
+      let target = null;
+      let minDist = Infinity;
 
+      // target cat
+      const distToCat = Math.abs(catPos.x - flea.x) + Math.abs(catPos.y - flea.y);
+      if (distToCat < minDist){
+        minDist = distToCat;
+        target = { x: catPos.x, y: catPos.y, type:"cat" };
+      }
 
- setInterval(async () => {
-  if (!gameStarted) return;
+      // target rat
+      for (const r of rats){
+        if ((r.health ?? 0) <= 0) continue;
+        const dist = Math.abs(r.x - flea.x) + Math.abs(r.y - flea.y);
+        if (dist < minDist){
+          minDist = dist;
+          target = { x:r.x, y:r.y, type:"rat", rat:r };
+        }
+      }
 
-  // 🔍 Find a Phoenix Cheese tile
-  let phoenixSpot = null;
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🐦‍🔥") {
-        phoenixSpot = { x, y };
+      // target ox
+      for (const o of oxen){
+        if ((o.health ?? 0) <= 0) continue;
+        const dist = Math.abs(o.x - flea.x) + Math.abs(o.y - flea.y);
+        if (dist < minDist){
+          minDist = dist;
+          target = { x:o.x, y:o.y, type:"ox", ox:o };
+        }
+      }
+
+      // move flea
+      if (target){
+        let dx=0, dy=0;
+        const xDiff = target.x - flea.x;
+        const yDiff = target.y - flea.y;
+        if (Math.abs(xDiff) > Math.abs(yDiff)) dx = Math.sign(xDiff);
+        else dy = Math.sign(yDiff);
+
+        const newX = flea.x + dx;
+        const newY = flea.y + dy;
+        if (newX>=0 && newX<gridSize && newY>=0 && newY<gridSize){
+          flea.x = newX; flea.y = newY;
+        }
+
+        // attack if reached
+        if (flea.x===target.x && flea.y===target.y){
+          flea.lifetime = 0;
+
+          if (target.type==="cat"){
+            catHealth -= 1;
+            await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+          } else if (target.type==="rat" && target.rat){
+            target.rat.health -= 5;
+            if (target.rat.health <= 0){
+              await deleteDoc(ccRef(ID.rat(target.rat.id)));
+            } else {
+              await updateDoc(ccRef(ID.rat(target.rat.id)), { health: target.rat.health });
+            }
+          } else if (target.type==="ox" && target.ox){
+            target.ox.health -= 5;
+            if (target.ox.health <= 0){
+              await deleteDoc(ccRef(ID.ox(target.ox.id)));
+            } else {
+              await updateDoc(ccRef(ID.ox(target.ox.id)), { health: target.ox.health });
+            }
+          }
+        }
+      }
+
+      flea.lifetime = (flea.lifetime ?? 15) - 1;
+      if (flea.lifetime <= 0){
+        await deleteDoc(ccRef(flea.docId));
+        fleas.splice(i,1);
+      } else {
+        await updateDoc(ccRef(flea.docId), { x: flea.x, y: flea.y, lifetime: flea.lifetime, updatedAt: Date.now() });
+      }
+    }
+  }
+
+  // ============================================================
+  // Phoenix revive (host runs; removes Phoenix structure)
+  // ============================================================
+  async function hostPhoenixRevive(){
+    // find phoenix tile in grid
+    let phoenixSpot = null;
+    for (let y=0; y<gridSize && !phoenixSpot; y++){
+      for (let x=0; x<gridSize && !phoenixSpot; x++){
+        if (grid[y][x] === "🐦‍🔥") phoenixSpot = {x,y};
+      }
+    }
+    if (!phoenixSpot) return;
+
+    let revived = false;
+    for (const [pu, p] of Object.entries(players)){
+      if ((p.alive ?? true) === false){
+        await updateDoc(ccRef(ID.player(pu)), { alive:true, x: phoenixSpot.x, y: phoenixSpot.y, updatedAt: Date.now() });
+        revived = true;
         break;
       }
     }
-    if (phoenixSpot) break;
-  }
 
-  if (!phoenixSpot) return; // No Phoenix Cheese exists
+    if (revived){
+      const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
+      grid[phoenixSpot.y][phoenixSpot.x] = "";
+      delete structureHealth[key];
+      await deleteDoc(ccRef(ID.structure(phoenixSpot.x, phoenixSpot.y)));
 
-  // 🔍 Find a dead player
-  let revivedSomeone = false;
-  for (const [name, p] of Object.entries(players)) {
-    if (p.alive === false) {
-      console.log(`🔥 Phoenix Cheese revived ${name} at (${phoenixSpot.x}, ${phoenixSpot.y})`);
-
-      // Revive the player and move them to the Phoenix
-      await updateDoc(doc(db, `games/${gameId}/players/${name}`), {
-        alive: true,
-        x: phoenixSpot.x,
-        y: phoenixSpot.y
-      });
-
-      revivedSomeone = true;
-      break; // Only revive one player per check
+      const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
+      if (cell){
+        cell.style.backgroundColor = "#ff4d4d";
+        setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
+      }
+      renderGrid();
     }
   }
 
-  // ✅ Always remove Phoenix Cheese after use
-  if (revivedSomeone) {
-    const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
-    grid[phoenixSpot.y][phoenixSpot.x] = "";
-    delete structureHealth[key];
-    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+  // ============================================================
+  // Generators payout (client-side for “me” like your original)
+  // ============================================================
+  async function generatorPayoutTick(){
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🏭") continue;
 
-    const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
-    if (cell) {
-      cell.style.backgroundColor = "#ff4d4d";
-      setTimeout(() => {
-        cell.style.backgroundColor = "#c8f7c5";
-      }, 300);
-    }
+        const cell = document.getElementById(`cell-${x}-${y}`);
+        if (cell){
+          cell.style.backgroundColor = "#fff977";
+          setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
+        }
 
-    renderGrid();
-  }
-}, 2000);
+        let bonusCheese = 0;
+        for (let dy=-2; dy<=2; dy++){
+          for (let dx=-2; dx<=2; dx++){
+            const nx = x+dx, ny=y+dy;
+            if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize && grid[ny][nx]==="🗼") bonusCheese++;
+          }
+        }
 
-setInterval(turretAttack, 1500);
-   setInterval(rocketTowerAttack, 3500);
-
-  setInterval(() => {
-  ratPower++;
-  console.log(`🐀 Rat Power increased! New base health: ${ratPower}`);
-}, 120000); // 2 minutes = 120,000 ms 
-setInterval(async () => {
-  if (!gameStarted || catPower <= 0) return;
-
-  const centerX = Math.floor(gridSize / 2);
-  const centerY = Math.floor(gridSize / 2);
-  const numToSpawn = Math.ceil(catPower / 2);
-  const offsets = [
-    { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-    { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-    { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 }
-  ];
-
-  let spawned = 0;
-  for (let i = 0; i < offsets.length && spawned < numToSpawn; i++) {
-    const ox = centerX + offsets[i].x;
-    const oy = centerY + offsets[i].y;
-
-    if (
-      ox >= 0 && ox < gridSize &&
-      oy >= 0 && oy < gridSize &&
-      !termites.some(t => t.x === ox && t.y === oy)
-    ) {
-      const id = `termite_${Date.now()}_${i}`;
-      const termite = { x: ox, y: oy, id };
-      await setDoc(doc(db, `games/${gameId}/termites/${id}`), termite);
-      termites.push(termite); // ✅ push with id
-      spawned++;
-    }
-  }
-
-  console.log(`🐛 Spawned ${spawned} termites in center`);
-}, 60000);
- setInterval(() => {
-  for (let i = oxen.length - 1; i >= 0; i--) {
-    const ox = oxen[i];
-
-    let bestTarget = null;
-    let minDist = Infinity;
-
-    // 🎯 Find nearest wall or super wall
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const symbol = grid[y][x];
-        if (symbol === "💎" || symbol === "🧱") {
-          const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
-          const priority = symbol === "💎" ? 0 : 1;
-
-          if (dist < minDist || (dist === minDist && priority < (bestTarget?.priority ?? 1))) {
-            minDist = dist;
-            bestTarget = { x, y, symbol, priority };
+        // only pay me if I'm nearby and alive (same as your original)
+        const me = players[uid];
+        if (me && (me.alive ?? true) !== false){
+          const dx = Math.abs(me.x - x);
+          const dy = Math.abs(me.y - y);
+          if (dx + dy <= 9){
+            const totalCheese = 1 + bonusCheese;
+            cheeseCount += totalCheese;
+            document.getElementById("cheeseCount").textContent = cheeseCount;
+            await updateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
           }
         }
       }
     }
+  }
 
-    if (bestTarget) {
-      // 🔁 Only path through non-walls
-      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
-      if (path && path.length > 0) {
-        const next = path[0];
-        ox.x = next.x;
-        ox.y = next.y;
-      }
+  // ============================================================
+  // Wave scheduler (host updates state.nextRatWave)
+  // ============================================================
+  async function waveSchedulerTick(){
+    const stateSnap = await getDoc(ccRef(ID.STATE));
+    const s = stateSnap.exists() ? stateSnap.data() : null;
+    if (!s || !gameStarted) return;
 
-      // 💥 Attack if adjacent (not same tile)
-      const dx = Math.abs(ox.x - bestTarget.x);
-      const dy = Math.abs(ox.y - bestTarget.y);
-      if (dx + dy === 1) {
-        damageStructure(bestTarget.x, bestTarget.y, ratPower * 10); // Heavy damage
-        ox.health -= 1;
-        console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
+    const now = Date.now();
+    const next = s.nextRatWave;
+
+    if (isHost && typeof next === "number" && now >= next){
+      await spawnRatWave();
+      const nextTime = now + 40000;
+      await updateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
+    }
+
+    const secondsLeft = (typeof next === "number") ? Math.max(0, Math.floor((next - now)/1000)) : "?";
+    document.getElementById("waveCountdown").textContent = `🐀 Next wave: ${secondsLeft}s`;
+  }
+
+  // ============================================================
+  // Return to lobby (unchanged paths for /users, allowed by your rules)
+  // ============================================================
+  async function returnToLobby(){
+    const safeUsername = encodeURIComponent(username.trim());
+
+    // award win if cat defeated
+    if (catHealth <= 0){
+      try{
+        const usersSnap = await getDocs(collection(db, "users"));
+        let matched = null;
+
+        usersSnap.forEach(docSnap => {
+          const data = docSnap.data();
+          if ((data.username || "").toLowerCase() === usernameNorm){
+            matched = { id: docSnap.id, wins: data.wins || 0 };
+          }
+        });
+
+        if (matched){
+          await updateDoc(doc(db, "users", matched.id), { wins: matched.wins + 1 });
+        }
+      } catch (err){
+        console.error("🔥 Error awarding win:", err);
       }
     }
 
-    if (ox.health <= 0) oxen.splice(i, 1);
+    window.location.href = `/lobby/lobby.html?username=${safeUsername}`;
+  }
+  window.returnToLobby = returnToLobby;
+
+  // ============================================================
+  // Mobile controls
+  // ============================================================
+  function tryBlink(){
+    const event = new KeyboardEvent('keydown', { key: 'b' });
+    window.dispatchEvent(event);
   }
 
-  renderGrid();
-}, 800);
- setInterval(async () => {
-    if (!gameStarted) return;
-
-    await updateDoc(doc(db, `games/${gameId}`), {
-      cat: { ...catPos, health: catHealth }
+  function setupMobileControls(){
+    document.querySelectorAll('[data-move]').forEach(btn => {
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        move(btn.getAttribute('data-move'));
+      });
     });
 
-    console.log("🔁 Cat health sync:", catHealth);
-  }, 3000);
+    document.querySelectorAll('[data-place]').forEach(btn => {
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        place(btn.getAttribute('data-place'));
+      });
+    });
 
- setInterval(async () => {
-  for (let rat of rats) {
-    if (rat.health <= 0) continue;
+    document.querySelectorAll('#structureButtons [data-struct]').forEach(btn => {
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        selectBuild(btn.getAttribute('data-struct'));
+      });
+    });
 
-    // ⏱ Skip if currently trapped
-    if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
-
-    // 🪤 Check if stepped on a trap
-    for (let trap of traps) {
-      if (trap.x === rat.x && trap.y === rat.y) {
-        console.log("🪤 Rat trapped!");
-        rat.trappedUntil = Date.now() + 3000;
-
-        // 🧹 Remove trap from Firestore
-        const trapKey = `${rat.x}_${rat.y}`;
-        await deleteDoc(doc(db, `games/${gameId}/traps/${trapKey}`));
-
-        // 🎨 Optional trap visual flash
-        const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
-        if (cell) {
-          cell.style.backgroundColor = "#ffcccc";
-          setTimeout(() => {
-            cell.style.backgroundColor = "#c8f7c5";
-          }, 300);
-        }
-
-        renderGrid();
-        continue; // Skip movement this cycle
-      }
+    const upgradeBtn = document.querySelector('[data-upgrade]');
+    if (upgradeBtn){
+      upgradeBtn.addEventListener('touchstart', (e)=>{
+        e.preventDefault();
+        toggleUpgradeMenu();
+      });
     }
 
-    let closestTarget = null;
-    let minDist = Infinity;
-
-    // 🔍 Find closest player
-    for (const [name, p] of Object.entries(players)) {
-      if (p.alive !== false) {
-        const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
-        if (dist < minDist) {
-          minDist = dist;
-          closestTarget = { x: p.x, y: p.y, type: "mouse", name };
-        }
-      }
+    const blinkBtn = document.querySelector('[data-blink]');
+    if (blinkBtn){
+      blinkBtn.addEventListener('touchstart', (e)=>{
+        e.preventDefault();
+        tryBlink();
+      });
     }
 
-    // 🔍 Find closest structure including 🗼 beacon
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(grid[y][x])) {
-          const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
-          if (dist < minDist) {
-            minDist = dist;
-            closestTarget = { x, y, type: "structure" };
-          }
-        }
-      }
-    }
-
-    // 🧭 Pathfind toward target
-if (closestTarget) {
-  const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-    const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
-    const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
-    const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
-    return !isBlocked && !isReviveCenter && !ratOccupied;
-  });
-
-  if (path && path.length > 0) {
-    const next = path[0];
-    const ratInTheWay = rats.some(r => r !== rat && r.x === next.x && r.y === next.y);
-
-    if (!ratInTheWay) {
-      rat.x = next.x;
-      rat.y = next.y;
-
-      // 🧠 Push updated rat position to Firestore
-      await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-        x: rat.x,
-        y: rat.y
+    const trapBtn = document.querySelector('[data-trap]');
+    if (trapBtn){
+      trapBtn.addEventListener('touchstart', (e)=>{
+        e.preventDefault();
+        placeTrap();
       });
     }
   }
-}
 
-      // 💥 Attack logic
-      if (rat.x === closestTarget.x && rat.y === closestTarget.y) {
-        if (closestTarget.type === "structure") {
-          damageStructure(rat.x, rat.y, ratPower);
-        } else if (closestTarget.type === "mouse") {
-          const playerRef = doc(db, `games/${gameId}/players/${closestTarget.name}`);
-          updateDoc(playerRef, { alive: false });
-          if (closestTarget.name === username) {
-            isAlive = false;
-            document.getElementById("status").textContent = "💀 You are dead!";
+  // ============================================================
+  // Listen to crowncouncil docs (this replaces all /games/... listeners)
+  // ============================================================
+  function listenToCrownCouncil(){
+    onSnapshot(ccCol, (snap) => {
+      for (const ch of snap.docChanges()){
+        const id = ch.doc.id;
+        const data = ch.doc.data();
+
+        // removed
+        if (ch.type === "removed"){
+          if (id === ID.STATE){
+            // ignore
+          } else if (id.startsWith("player_")){
+            delete players[data?.uid || id.replace("player_","")];
+          } else if (id.startsWith("structure_")){
+            const x = data?.x, y = data?.y;
+            if (Number.isInteger(x) && Number.isInteger(y)){
+              const key = `${x}_${y}`;
+              structures.delete(key);
+              delete structureHealth[key];
+              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🐦‍🔥","🚀"].includes(grid[y][x])){
+                grid[y][x] = "";
+              }
+            }
+          } else if (id.startsWith("trap_")){
+            const x = data?.x, y = data?.y;
+            traps = traps.filter(t => !(t.x===x && t.y===y));
+            if (Number.isInteger(x) && Number.isInteger(y) && grid[y][x] === "🪤") grid[y][x] = "";
+          } else if (id.startsWith("rat_")){
+            rats = rats.filter(r => r.id !== data?.id);
+          } else if (id.startsWith("ox_")){
+            oxen = oxen.filter(o => o.id !== data?.id);
+          } else if (id.startsWith("termite_")){
+            termites = termites.filter(t => t.id !== data?.id);
+          } else if (id.startsWith("flea_") || id.startsWith("pflea_")){
+            fleas = fleas.filter(f => f.docId !== id);
+          }
+          continue;
+        }
+
+        // added / modified
+        if (id === ID.STATE){
+          const hostUid = data.hostUid;
+          const hostName = data.hostName;
+          isHost = (hostUid === uid);
+
+          catPower = data.catPower ?? catPower;
+          ratPower = data.ratPower ?? ratPower;
+
+          const cat = data.cat || {};
+          catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
+          if (typeof cat.health === "number") catHealth = cat.health;
+
+          updateHostDisplay(hostName);
+          updateCatHealthBar();
+        }
+        else if (id.startsWith("player_")){
+          // keep players keyed by uid
+          const pu = data.uid || id.replace("player_","");
+          players[pu] = {
+            uid: pu,
+            displayName: data.displayName || "mouse",
+            x: data.x ?? 1,
+            y: data.y ?? 1,
+            cheese: data.cheese ?? 0,
+            alive: (data.alive !== false)
+          };
+
+          // update my local copies from firestore (so multiple tabs stay consistent)
+          if (pu === uid){
+            playerPos = { x: players[pu].x, y: players[pu].y };
+            isAlive = players[pu].alive;
+            cheeseCount = players[pu].cheese ?? 0;
+            document.getElementById("cheeseCount").textContent = cheeseCount;
+            document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
+          }
+        }
+        else if (id.startsWith("structure_")){
+          const x = data.x, y = data.y;
+          if (Number.isInteger(x) && Number.isInteger(y) && data.type){
+            const key = `${x}_${y}`;
+            structures.set(key, {x,y,type:data.type,health:data.health ?? 1});
+            structureHealth[key] = data.health ?? 1;
+            grid[y][x] = data.type;
+          }
+        }
+        else if (id.startsWith("trap_")){
+          const x = data.x, y = data.y;
+          if (Number.isInteger(x) && Number.isInteger(y)){
+            traps = traps.filter(t => !(t.x===x && t.y===y));
+            traps.push({x,y,placedAt:data.placedAt ?? Date.now()});
+            grid[y][x] = "🪤";
+          }
+        }
+        else if (id.startsWith("rat_")){
+          const r = { ...data };
+          if (!r.id) r.id = data.id || id;
+          const existing = rats.find(rr => rr.id === r.id);
+          if (existing) Object.assign(existing, r);
+          else rats.push(r);
+        }
+        else if (id.startsWith("ox_")){
+          const o = { ...data };
+          if (!o.id) o.id = data.id || id;
+          const existing = oxen.find(oo => oo.id === o.id);
+          if (existing) Object.assign(existing, o);
+          else oxen.push(o);
+        }
+        else if (id.startsWith("termite_")){
+          const t = { ...data };
+          if (!t.id) t.id = data.id || id;
+          const existing = termites.find(tt => tt.id === t.id);
+          if (existing) Object.assign(existing, t);
+          else termites.push(t);
+        }
+        else if (id.startsWith("flea_") || id.startsWith("pflea_")){
+          const f = { ...data };
+          f.docId = id;
+          if (!f.id) f.id = id;
+          const existing = fleas.find(ff => ff.docId === id);
+          if (existing) Object.assign(existing, f);
+          else fleas.push(f);
+        }
+      }
+
+      renderGrid();
+    });
+  }
+
+  // ============================================================
+  // Ensure lobby + state doc exist (host selection)
+  // ============================================================
+  async function ensureLobbyAndState(){
+    // lobby doc (your rules allow it)
+    await setDoc(lobbyRef, {
+      gameType: "catvsmouse",
+      updatedAt: Date.now()
+    }, { merge:true });
+
+    // state doc inside crowncouncil (your rules allow it)
+    await runTransaction(db, async (tx) => {
+      const sRef = ccRef(ID.STATE);
+      const snap = await tx.get(sRef);
+
+      if (!snap.exists()){
+        // first joiner becomes host
+        tx.set(sRef, {
+          kind: "state",
+          hostUid: uid,
+          hostName: username,
+          cat: { x: gridSize-1, y: gridSize-1, health: 1000 },
+          catPower: 0,
+          ratPower: 1,
+          nextRatWave: Date.now() + 30000,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }, { merge:true });
+      }
+    });
+
+    // read state once to set isHost early
+    const sSnap = await getDoc(ccRef(ID.STATE));
+    if (sSnap.exists()){
+      const s = sSnap.data();
+      isHost = (s.hostUid === uid);
+      catPower = s.catPower ?? 0;
+      ratPower = s.ratPower ?? 1;
+      const cat = s.cat || {};
+      catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
+      catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
+      updateHostDisplay(s.hostName);
+      updateCatHealthBar();
+    }
+  }
+
+  // ============================================================
+  // Keyboard input (kept with your behavior)
+  // ============================================================
+  window.addEventListener("keydown", async (e) => {
+    if (!isAlive) return;
+
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault();
+
+    if (e.key === " "){
+      toggleUpgradeMenu();
+      return;
+    }
+
+    if (upgradeMenuOpen && ["1","2","3","4","5","6"].includes(e.key) && advancementPoints > 0){
+      selectUpgrade(e.key);
+      return;
+    }
+
+    // movement
+    if (canMove){
+      switch (e.key){
+        case "ArrowUp":    lastDirection={dx:0,dy:-1}; movePlayer(0,-1); triggerMoveCooldown(); break;
+        case "ArrowDown":  lastDirection={dx:0,dy:1};  movePlayer(0,1);  triggerMoveCooldown(); break;
+        case "ArrowLeft":  lastDirection={dx:-1,dy:0}; movePlayer(-1,0); triggerMoveCooldown(); break;
+        case "ArrowRight": lastDirection={dx:1,dy:0};  movePlayer(1,0);  triggerMoveCooldown(); break;
+      }
+    }
+
+    // blink
+    if (blinkActive && e.key.toLowerCase() === "b"){
+      const now = Date.now();
+      if (now - lastBlinkTime >= 8000){
+        const dx = lastDirection.dx;
+        const dy = lastDirection.dy;
+        const nx = playerPos.x + dx * 5;
+        const ny = playerPos.y + dy * 5;
+
+        if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize && grid[ny][nx] === ""){
+          playerPos = { x:nx, y:ny };
+          lastBlinkTime = now;
+          await savePosition();
+          renderGrid();
+          const cell = document.getElementById(`cell-${nx}-${ny}`);
+          if (cell){
+            cell.style.backgroundColor = "#b3f0ff";
+            setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
           }
         }
       }
     }
 
-  // 🧹 Remove dead rats
-   for (let i = rats.length - 1; i >= 0; i--) {
-  if (rats[i].health <= 0) {
-    const ratRef = doc(db, `games/${gameId}/rats/${rats[i].id}`);
-    await deleteDoc(ratRef);
-    rats.splice(i, 1);
+    if (trapmasterActive && e.key.toLowerCase() === "t"){
+      await placeTrap();
+    }
+
+    if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8"].includes(e.key)){
+      selectBuild(e.key);
+    }
+
+    if (["w","a","s","d"].includes(e.key)){
+      await placeStructure(e.key);
+    }
+  });
+
+  // ============================================================
+  // Global loops (kept gameplay)
+  // ============================================================
+  function startGlobalLoops(){
+    // mobile setup
+    if (/Mobi|Android/i.test(navigator.userAgent)){
+      document.getElementById("mobileControls").style.display = "block";
+      renderMobileUpgradeButtons();
+      setupMobileControls();
+    }
+
+    // initial placements (local only, same as your original)
+    grid[24][15] = "🧱";
+    grid[25][14] = "🧱";
+    grid[25][16] = "🧱";
+    renderGrid();
+
+    // cheese spawn (local only, same as your original)
+    setInterval(spawnCheese, 10000);
+
+    // ability cooldown UI
+    setInterval(updateAbilityStatus, 1000);
+
+    // adv point every 3 mins
+    setInterval(() => {
+      if (!gameStarted || !isAlive) return;
+      advancementPoints++;
+      document.getElementById("advPoints").textContent = advancementPoints;
+
+      const msg = document.getElementById("advPointMessage");
+      msg.textContent = "🟢 You gained an advancement point!";
+      msg.style.display = "block";
+      setTimeout(()=>msg.style.display="none", 2500);
+    }, 180000);
+
+    // player flea master spawns near player (local list; host will move if these are synced)
+    setInterval(() => {
+      if (!fleaMasterActive || !isAlive) return;
+
+      // spawn up to 2 “player fleas” near player
+      const offsets = [{dx:0,dy:0},{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+      let spawned = 0;
+
+      for (const o of offsets){
+        const fx = playerPos.x + o.dx;
+        const fy = playerPos.y + o.dy;
+        if (fx<0||fy<0||fx>=gridSize||fy>=gridSize) continue;
+
+        // prevent overlap
+        if (fleas.some(f => f.x===fx && f.y===fy && f.ownerUid===uid && f.origin==="player")) continue;
+
+        fleas.push({
+          docId: ID.pflea(uid, Date.now()+spawned),
+          x: fx,
+          y: fy,
+          lifetime: 15,
+          ownerUid: uid,
+          origin: "player"
+        });
+
+        spawned++;
+        if (spawned >= 2) break;
+      }
+      renderGrid();
+    }, fleaSpawnCooldown);
+
+    // keep player fleas synced if active (like your original)
+    setInterval(() => {
+      if (fleaMasterActive && isAlive){
+        syncMyFleas().catch(()=>{});
+      }
+    }, 500);
+
+    // generator payout
+    setInterval(() => { if (gameStarted) generatorPayoutTick(); }, 15000);
+
+    // game over check
+    setInterval(() => {
+      if (!gameStarted) return;
+
+      const anyAlive = Object.values(players).some(p => (p.alive ?? true) !== false);
+
+      let phoenixExists = false;
+      for (let y=0; y<gridSize && !phoenixExists; y++){
+        for (let x=0; x<gridSize && !phoenixExists; x++){
+          if (grid[y][x] === "🐦‍🔥") phoenixExists = true;
+        }
+      }
+
+      if (!anyAlive && !phoenixExists){
+        const st = document.getElementById("status");
+        st.textContent = "💀 All mice are dead. Game Over!";
+        document.getElementById("returnButton").style.display = "block";
+        st.style.color = "red";
+        st.style.fontSize = "24px";
+        st.style.fontWeight = "bold";
+        st.style.background = "#fff0f0";
+        st.style.padding = "10px";
+        st.style.border = "2px solid red";
+        st.style.marginTop = "10px";
+        gameStarted = false;
+      }
+    }, 1000);
+
+    // wave countdown + host wave scheduling
+    setInterval(() => { waveSchedulerTick().catch(()=>{}); }, 1000);
   }
-}
-  renderGrid();
-}, 400);
-}
-})();
 
+  // ============================================================
+  // Host loops (cat AI + spawns + enemy sim)
+  // ============================================================
+  function startHostLoops(){
+    if (!isHost || hostInitialized) return;
+    hostInitialized = true;
 
+    gameStarted = true;
+    startCatBehaviorLoop();
+
+    // power ramp
+    setInterval(async () => {
+      if (!gameStarted) return;
+
+      catPower++;
+      const playerCount = Object.keys(players).length;
+      catHealth += 15 * playerCount;
+
+      await updateDoc(ccRef(ID.STATE), {
+        catPower,
+        cat: { x: catPos.x, y: catPos.y, health: catHealth },
+        updatedAt: Date.now()
+      });
+
+      startCatBehaviorLoop();
+    }, 20000);
+
+    // turret + rocket
+    setInterval(() => turretAttack().catch(()=>{}), 1500);
+    setInterval(() => rocketTowerAttack().catch(()=>{}), 3500);
+
+    // rat power ramp
+    setInterval(async () => {
+      ratPower++;
+      await updateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
+    }, 120000);
+
+    // flea nests spawn fleas (now actually writes them, so everyone sees)
+    setInterval(async () => {
+      // count nests and spawn fleas in Firestore
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          if (grid[y][x] !== "🪳") continue;
+
+          let beaconBonus = 0;
+          for (let dy=-2; dy<=2; dy++){
+            for (let dx=-2; dx<=2; dx++){
+              const nx = x+dx, ny=y+dy;
+              if (nx>=0&&nx<gridSize&&ny>=0&&ny<gridSize && grid[ny][nx]==="🗼") beaconBonus++;
+            }
+          }
+          const spawnCount = 1 + beaconBonus;
+
+          const offsets = [
+            {dx:0,dy:0},{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},
+            {dx:1,dy:1},{dx:-1,dy:-1},{dx:1,dy:-1},{dx:-1,dy:1}
+          ];
+
+          for (let i=0; i<spawnCount; i++){
+            const off = offsets[Math.floor(Math.random()*offsets.length)];
+            const fx = x + off.dx;
+            const fy = y + off.dy;
+            if (fx<0||fy<0||fx>=gridSize||fy>=gridSize) continue;
+
+            const fid = `nest_${crypto.randomUUID()}`;
+            await setDoc(ccRef(ID.flea(fid)), {
+              kind: "flea",
+              id: fid,
+              x: fx, y: fy,
+              lifetime: 15,
+              origin: "nest",
+              createdAt: Date.now()
+            }, { merge:true });
+          }
+        }
+      }
+    }, 4000);
+
+    // wall master heal (runs host-side; writes structure hp)
+    setInterval(async () => {
+      // apply to all players who have wall master? (kept close to your behavior: only local player toggles)
+      // Since upgrades are local-only in your original, we keep it local-only:
+      // host will not try to “guess” who has wall master. We keep your original behavior by letting
+      // each client do their own wall heal writes if they have it.
+    }, 1000);
+
+    // termites spawn center
+    setInterval(async () => {
+      if (!gameStarted || catPower <= 0) return;
+
+      const centerX = Math.floor(gridSize/2);
+      const centerY = Math.floor(gridSize/2);
+      const numToSpawn = Math.ceil(catPower/2);
+
+      const offsets = [
+        {x:0,y:0},{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1},
+        {x:1,y:1},{x:-1,y:-1},{x:1,y:-1},{x:-1,y:1}
+      ];
+
+      let spawned = 0;
+      for (let i=0; i<offsets.length && spawned<numToSpawn; i++){
+        const ox = centerX + offsets[i].x;
+        const oy = centerY + offsets[i].y;
+        if (ox<0||oy<0||ox>=gridSize||oy>=gridSize) continue;
+        if (termites.some(t => t.x===ox && t.y===oy)) continue;
+
+        const id = `termite_${Date.now()}_${i}`;
+        await setDoc(ccRef(ID.termite(id)), {
+          kind: "termite",
+          id,
+          x: ox,
+          y: oy,
+          createdAt: Date.now()
+        }, { merge:true });
+        spawned++;
+      }
+    }, 60000);
+
+    // enemy sim ticks
+    setInterval(() => hostMoveRats().catch(()=>{}), 400);
+    setInterval(() => hostMoveOxen().catch(()=>{}), 800);
+    setInterval(() => hostMoveTermites().catch(()=>{}), 400);
+    setInterval(() => hostMoveFleas().catch(()=>{}), 400);
+
+    // phoenix revive
+    setInterval(() => hostPhoenixRevive().catch(()=>{}), 2000);
+
+    // keep cat health synced (state already updated often; this keeps it in case)
+    setInterval(async () => {
+      if (!gameStarted) return;
+      await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+    }, 3000);
+  }
+
+  // ============================================================
+  // Client-only wall master healing (kept from your original)
+  // ============================================================
+  setInterval(async () => {
+    if (!wallMasterActive || !isAlive) return;
+
+    for (let dy=-1; dy<=1; dy++){
+      for (let dx=-1; dx<=1; dx++){
+        const tx = playerPos.x + dx;
+        const ty = playerPos.y + dy;
+        if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
+
+        const key = `${tx}_${ty}`;
+        if ((grid[ty][tx]==="🧱" || grid[ty][tx]==="💎") && (structureHealth[key] ?? 0) < 80){
+          structureHealth[key] = (structureHealth[key] ?? 0) + 4;
+          await updateDoc(ccRef(ID.structure(tx,ty)), { health: structureHealth[key] });
+        }
+      }
+    }
+  }, 1000);
+
+  // ============================================================
+  // Boot
+  // ============================================================
+  await ensureLobbyAndState();
+  await upsertMyPlayerDoc();
+  listenToCrownCouncil();
+
+  // start game
+  gameStarted = true;
+  startGlobalLoops();
+
+  // start host loops if host
+  startHostLoops();
 
 </script>
 </body>
