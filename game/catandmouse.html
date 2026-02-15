@@ -331,6 +331,17 @@
       <div id="playerStatus" style="margin-top:10px;"></div>
       <div id="hostDisplay" style="margin-top:10px; font-weight:bold; color:#333;"></div>
 
+      <div id="difficultyPanel" style="margin-top:10px; padding:8px; border:1px solid #bbb; border-radius:8px; background:#f8fafc;">
+        <div style="font-weight:bold; margin-bottom:4px;">🎚️ Difficulty Vote</div>
+        <div id="difficultyStatus" style="font-size:12px; color:#333; margin-bottom:6px;">Current: Medium</div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          <button class="difficulty-vote" data-diff="easy">Easy</button>
+          <button class="difficulty-vote" data-diff="medium">Medium</button>
+          <button class="difficulty-vote" data-diff="hard">Hard</button>
+          <button class="difficulty-vote" data-diff="insane">Insane</button>
+        </div>
+      </div>
+
       <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
         <h3>🔧 Upgrade Menu</h3>
         <div id="mobileUpgradeButtons" style="margin:10px 0;"></div>
@@ -463,12 +474,14 @@
 
   const ID = {
     STATE: "state",
+    difficultyVote: (uid) => `difficultyvote_${uid}`,
     player: (uid) => `player_${uid}`,
     structure: (x,y) => `structure_${x}_${y}`,
     trap: (x,y) => `trap_${x}_${y}`,
     rat: (id) => `rat_${id}`,
     ox: (id) => `ox_${id}`,
     rabbit: (id) => `rabbit_${id}`,
+    ratKing: (id) => `ratking_${id}`,
     vulture: (id) => `vulture_${id}`,
     termite: (id) => `termite_${id}`,
     flea: (id) => `flea_${id}`,
@@ -493,8 +506,20 @@
   let isAlive = true;
 
   let catHealth = 1000;
+  let maxCatHealth = 1000;
   let catPower  = 0;
   let ratPower  = 1;
+  let currentDifficulty = "medium";
+  let myDifficultyVote = "";
+  let difficultyVotes = {};
+
+  const DIFFICULTY_ORDER = ["easy", "medium", "hard", "insane"];
+  const DIFFICULTY_SETTINGS = {
+    easy:   { label:"Easy",   catStartHealth:900,  ratBaseHealth:4, oxBaseHealth:18 },
+    medium: { label:"Medium", catStartHealth:1200, ratBaseHealth:5, oxBaseHealth:26 },
+    hard:   { label:"Hard",   catStartHealth:1800, ratBaseHealth:6, oxBaseHealth:34 },
+    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44 }
+  };
 
   let canMove = true;
   let canBuild = true;
@@ -533,7 +558,10 @@
     12:{symbol:"⚡",name:"Tesla Tower",cost:25,hp:18,minWins:12},
     13:{symbol:"☄️",name:"Ultra Laser",cost:35,hp:18,minWins:15},
     14:{symbol:"🛡️",name:"Shield Tower",cost:28,hp:22,minWins:20},
-    15:{symbol:"🟢",name:"Slime Tower",cost:26,hp:20,minWins:25}
+    15:{symbol:"🟢",name:"Slime Tower",cost:26,hp:20,minWins:25},
+    16:{symbol:"🔮",name:"Teleporter Crystal",cost:20,hp:16,minWins:15},
+    17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
+    18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12}
   };
   const BASE_BUILD_ORDER = [1,2,3,4,5,6,7];
   let mobileBuildOrder = [...BASE_BUILD_ORDER];
@@ -558,6 +586,7 @@
   let oxen = [];      // {id,x,y,health}
   let rabbits = [];   // {id,x,y,health}
   let vultures = [];  // {id,x,y,health}
+  let ratKings = [];  // {id,x,y,health}
   let termites = [];  // {id,x,y}
   let fleas = [];     // {id,x,y,lifetime,...}
 
@@ -567,6 +596,8 @@
   let combatVfx = [];
   let lastGeneratorPayoutAt = Date.now();
   let lastAdvPointAt = Date.now();
+  let lastAcornShotAt = 0;
+  let lastFanBurstAt = 0;
 
   const GENERATOR_PAYOUT_MS = 15000;
   const ADV_POINT_MS = 180000;
@@ -574,7 +605,7 @@
   const STRUCTURE_MAX_HP = {
     "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
     "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
-    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20
+    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20
   };
 
   const localTileSeed = Math.floor(Math.random() * 9973);
@@ -602,7 +633,7 @@
   function updateCatHealthBar(){
     const bar  = document.getElementById("catHealthFill");
     const text = document.getElementById("catHealthText");
-    const percent = Math.min(100, (catHealth / 1000) * 100);
+    const percent = Math.min(100, (catHealth / Math.max(1, maxCatHealth)) * 100);
     bar.style.width = percent + "%";
     text.textContent = `❤️ ${catHealth}`;
   }
@@ -649,6 +680,135 @@
 
   function getLobbyParticipants(){
     return Object.entries(players).filter(([,p]) => p && p.uid);
+  }
+
+  function getActiveParticipantIds(){
+    return getLobbyParticipants()
+      .filter(([,p]) => (p?.alive ?? true) !== false)
+      .map(([pu]) => pu);
+  }
+
+  function applyDifficulty(mode){
+    const resolved = DIFFICULTY_SETTINGS[mode] ? mode : "medium";
+    currentDifficulty = resolved;
+    const cfg = DIFFICULTY_SETTINGS[resolved];
+    maxCatHealth = cfg.catStartHealth;
+    catHealth = Math.min(catHealth, maxCatHealth);
+    updateCatHealthBar();
+    updateDifficultyUI();
+  }
+
+  function computeDifficultyFromVotes(voteMap){
+    const counts = { easy:0, medium:0, hard:0, insane:0 };
+    const active = getActiveParticipantIds();
+    for (const pu of active){
+      const vote = voteMap?.[pu];
+      if (counts[vote] !== undefined) counts[vote]++;
+    }
+
+    let best = "easy";
+    let bestCount = -1;
+    for (const key of DIFFICULTY_ORDER){
+      const c = counts[key];
+      if (c > bestCount){
+        best = key;
+        bestCount = c;
+      }
+    }
+    if (bestCount <= 0) return "easy";
+    return best;
+  }
+
+  function updateDifficultyUI(){
+    const el = document.getElementById("difficultyStatus");
+    if (!el) return;
+    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";
+    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";
+    const activeVotes = getActiveParticipantIds().reduce((acc, pu) => {
+      const vote = difficultyVotes[pu];
+      if (vote) acc++;
+      return acc;
+    }, 0);
+    el.textContent = `Current: ${label} • Your vote: ${myVoteLabel} • Active votes: ${activeVotes}`;
+
+    document.querySelectorAll(".difficulty-vote").forEach(btn => {
+      const key = btn.dataset.diff;
+      btn.style.opacity = key === myDifficultyVote ? "1" : "0.75";
+      btn.style.fontWeight = key === myDifficultyVote ? "700" : "500";
+    });
+  }
+
+  async function castDifficultyVote(mode){
+    if (!DIFFICULTY_SETTINGS[mode]) return;
+    myDifficultyVote = mode;
+    updateDifficultyUI();
+    await setDoc(ccRef(ID.difficultyVote(uid)), {
+      kind: "difficultyvote",
+      uid,
+      vote: mode,
+      updatedAt: Date.now()
+    }, { merge:true });
+  }
+
+  async function hostSyncDifficultyVote(){
+    if (!isHost) return;
+    const selected = computeDifficultyFromVotes(difficultyVotes);
+    if (selected === currentDifficulty) return;
+    const nextHealth = (gameStarted ? Math.min(catHealth, DIFFICULTY_SETTINGS[selected].catStartHealth) : DIFFICULTY_SETTINGS[selected].catStartHealth);
+    await updateDoc(ccRef(ID.STATE), {
+      difficulty: selected,
+      cat: { x: catPos.x, y: catPos.y, health: nextHealth },
+      updatedAt: Date.now()
+    });
+  }
+
+
+  function getRatHealthForDifficulty(){
+    const cfg = DIFFICULTY_SETTINGS[currentDifficulty] || DIFFICULTY_SETTINGS.medium;
+    return cfg.ratBaseHealth * ratPower;
+  }
+
+  function getOxHealthForDifficulty(){
+    const cfg = DIFFICULTY_SETTINGS[currentDifficulty] || DIFFICULTY_SETTINGS.medium;
+    return cfg.oxBaseHealth * ratPower;
+  }
+
+  function listCombatEnemies(){
+    return [
+      ...rats.filter(r => (r.health ?? 0) > 0).map(r => ({ kind:"rat", enemy:r })),
+      ...oxen.filter(o => (o.health ?? 0) > 0).map(o => ({ kind:"ox", enemy:o })),
+      ...ratKings.filter(k => (k.health ?? 0) > 0).map(k => ({ kind:"ratking", enemy:k })),
+      ...vultures.filter(v => (v.health ?? 0) > 0).map(v => ({ kind:"vulture", enemy:v }))
+    ];
+  }
+
+  function getNearestCrystalTarget(fromX, fromY){
+    let best = null;
+    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++){
+      if (grid[y][x] !== "🔮") continue;
+      const d = Math.abs(x-fromX)+Math.abs(y-fromY);
+      if (d===0) continue;
+      if (!best || d < best.d) best = { x, y, d };
+    }
+    return best;
+  }
+
+  async function maybeTeleportOnCrystal(){
+    if (grid[playerPos.y]?.[playerPos.x] !== "🔮") return;
+    const target = getNearestCrystalTarget(playerPos.x, playerPos.y);
+    if (!target) return;
+    playerPos = { x: target.x, y: target.y };
+    await savePosition();
+    addCombatVfx(target.x, target.y, "✨", "vfx-pop", 520, 14);
+  }
+
+  function randomPushDestination(srcX, srcY, targetX, targetY, minPush=1, maxPush=2){
+    const jitter = Math.floor(Math.random()*3)-1;
+    const dx = Math.sign(targetX-srcX) + jitter;
+    const dy = Math.sign(targetY-srcY) + (Math.floor(Math.random()*3)-1);
+    const nx = Math.max(0, Math.min(gridSize-1, targetX + Math.sign(dx || 1) * (minPush + Math.floor(Math.random()*(maxPush-minPush+1)))));
+    const ny = Math.max(0, Math.min(gridSize-1, targetY + Math.sign(dy) * (minPush + Math.floor(Math.random()*(maxPush-minPush+1)))));
+    return {x:nx,y:ny};
   }
 
   async function fetchPlayerWins(){
@@ -942,6 +1102,20 @@
       }
     }
 
+    // rat kings
+    for (const k of ratKings){
+      if ((k.health ?? 0) <= 0) continue;
+      const cell = document.getElementById(`cell-${k.x}-${k.y}`);
+      if (cell){
+        cell.textContent = "👑";
+        const hpTag = document.createElement("div");
+        hpTag.className = "name";
+        hpTag.style.color = "#7c2d12";
+        hpTag.textContent = `❤️${k.health}`;
+        cell.appendChild(hpTag);
+      }
+    }
+
     // rabbits
     for (const r of rabbits){
       if ((r.health ?? 0) <= 0) continue;
@@ -970,7 +1144,7 @@
 
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
-      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️"].includes(symbol)){
+      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
 
@@ -1007,7 +1181,7 @@
 
       const bar = document.createElement("div");
       bar.className = "health-bar";
-      const denom = Math.max(1, (catPower * 10));
+      const denom = Math.max(1, maxCatHealth);
       const barWidth = Math.max(10, Math.min(100, (catHealth/denom)*100));
       bar.style.width = `${barWidth}%`;
       bar.style.background = "red";
@@ -1066,6 +1240,7 @@
     playerPos = { x: newX, y: newY };
     savePosition();
     checkCheese();
+    maybeTeleportOnCrystal().catch(()=>{});
     renderGrid();
   }
 
@@ -1519,7 +1694,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(symbol)) continue;
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
 
         const targetIsWall = (symbol === "🧱" || symbol === "💎");
         const passable = passableFn
@@ -1553,7 +1728,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(symbol)) continue;
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
 
         for (const cell of structureTargetCells(x,y)){
           if (grid[cell.y][cell.x] !== "") continue;
@@ -1669,7 +1844,7 @@
       for (let dx=-1; dx<=1 && !attacked; dx++){
         const tx = catPos.x+dx, ty=catPos.y+dy;
         if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
-        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(grid[ty][tx])){
+        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[ty][tx])){
           await damageStructure(tx,ty);
           attacked = true;
         }
@@ -1748,11 +1923,33 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: ratPower * 30,
+        health: getOxHealthForDifficulty(),
         wave: waveTag,
         createdAt: Date.now()
       }, { merge:true });
       oxSpawned++;
+    }
+
+
+    // rat king: late rounds random spawn
+    if (catPower >= 22 && Math.random() < 0.35){
+      const livingKings = ratKings.filter(k => (k.health ?? 0) > 0).length;
+      if (livingKings < 2){
+        const openSpot = availableSpots.find(s => !usedKeys.has(`${s.x}_${s.y}`));
+        if (openSpot){
+          usedKeys.add(`${openSpot.x}_${openSpot.y}`);
+          const id = `ratking_${crypto.randomUUID()}`;
+          await setDoc(ccRef(ID.ratKing(id)), {
+            kind: "ratking",
+            id,
+            x: openSpot.x,
+            y: openSpot.y,
+            health: Math.max(120, getRatHealthForDifficulty() * 10),
+            wave: waveTag,
+            createdAt: Date.now()
+          }, { merge:true });
+        }
+      }
     }
 
     // rats
@@ -1770,7 +1967,7 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: ratPower * 5,
+        health: getRatHealthForDifficulty(),
         wave: waveTag,
         createdAt: Date.now()
       }, { merge:true });
@@ -1786,7 +1983,8 @@
       if ((rat.health ?? 0) <= 0) continue;
 
       if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
-      if (rat.slowedUntil && Date.now() < rat.slowedUntil && Math.random() < 0.6) continue;
+      const kingNearby = ratKings.some(k => (k.health ?? 0) > 0 && (Math.abs(k.x-rat.x)+Math.abs(k.y-rat.y) <= 4));
+      if (rat.slowedUntil && Date.now() < rat.slowedUntil && Math.random() < (kingNearby ? 0.35 : 0.6)) continue;
 
       // trap check
       for (const t of traps){
@@ -1870,9 +2068,9 @@
 
         const distance = Math.abs(rat.x-closestTarget.x) + Math.abs(rat.y-closestTarget.y);
         if (closestTarget.type==="structure" && distance===1){
-          await damageStructure(closestTarget.x, closestTarget.y, ratPower);
+          await damageStructure(closestTarget.x, closestTarget.y, kingNearby ? Math.ceil(ratPower * 1.8) : ratPower);
         } else if (closestTarget.type==="rabbit" && distance===0){
-          closestTarget.rabbit.health -= ratPower * 3;
+          closestTarget.rabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
           if (closestTarget.rabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)));
           else await updateDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)), { health: closestTarget.rabbit.health, updatedAt: Date.now() });
         } else if (closestTarget.type==="mouse" && distance===0){
@@ -1951,6 +2149,37 @@
     }
   }
 
+  async function hostMoveRatKings(){
+    for (let i=ratKings.length-1; i>=0; i--){
+      const king = ratKings[i];
+      if ((king.health ?? 0) <= 0){
+        await deleteDoc(ccRef(ID.ratKing(king.id)));
+        ratKings.splice(i,1);
+        continue;
+      }
+
+      const mouseTarget = getNearestMouseTarget(king.x, king.y, false);
+      const target = mouseTarget ? {x:mouseTarget.x,y:mouseTarget.y,type:"mouse",uid:mouseTarget.uid,path:mouseTarget.path} : null;
+      const structureTarget = !target ? getNearestStructureContactTarget(king.x, king.y, false) : null;
+      const bestPath = target?.path || structureTarget?.path || null;
+      const finalTarget = target || (structureTarget ? {x:structureTarget.structureX,y:structureTarget.structureY,type:"structure"} : null);
+      if (!finalTarget) continue;
+
+      if (bestPath && bestPath.length>0){
+        king.x = bestPath[0].x;
+        king.y = bestPath[0].y;
+        await updateDoc(ccRef(ID.ratKing(king.id)), { x: king.x, y: king.y, updatedAt: Date.now() });
+      }
+
+      const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
+      if (finalTarget.type === "structure" && d===1){
+        await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
+      } else if (finalTarget.type === "mouse" && d===0){
+        await updateDoc(ccRef(ID.player(finalTarget.uid)), { alive:false, updatedAt: Date.now() });
+      }
+    }
+  }
+
   async function hostMoveVultures(){
     for (let i=vultures.length-1; i>=0; i--){
       const v = vultures[i];
@@ -2022,7 +2251,7 @@
       for (const cell of structureTargetCells(closestWall.x, closestWall.y)){
         if (grid[cell.y][cell.x] !== "") continue;
         const path = findPath(termite.x, termite.y, cell.x, cell.y, (x,y) => {
-          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(grid[y][x]);
+          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[y][x]);
         });
         if (path && (!bestPath || path.length < bestPath.length)){
           bestPath = path;
@@ -2180,7 +2409,7 @@
         for (let ty=0; ty<gridSize; ty++){
           for (let tx=0; tx<gridSize; tx++){
             const symbol = grid[ty][tx];
-            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(symbol)) continue;
+            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
             if (tx===x && ty===y) continue;
 
             const key = `${tx}_${ty}`;
@@ -2269,9 +2498,24 @@
     if (enemy.health <= 0){
       if (enemy.kind === "rat") await deleteDoc(ccRef(ID.rat(enemy.id)));
       else if (enemy.kind === "ox") await deleteDoc(ccRef(ID.ox(enemy.id)));
+      else if (enemy.kind === "ratking"){
+        await deleteDoc(ccRef(ID.ratKing(enemy.id)));
+        let dropped = 0;
+        for (let dy=-2; dy<=2 && dropped<5; dy++) for (let dx=-2; dx<=2 && dropped<5; dx++){
+          const nx = enemy.x + dx;
+          const ny = enemy.y + dy;
+          if (nx<0||ny<0||nx>=gridSize||ny>=gridSize) continue;
+          if (grid[ny][nx] !== "") continue;
+          grid[ny][nx] = "🧀";
+          dropped++;
+        }
+      }
+      else if (enemy.kind === "vulture") await deleteDoc(ccRef(ID.vulture(enemy.id)));
     } else {
       if (enemy.kind === "rat") await updateDoc(ccRef(ID.rat(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
       else if (enemy.kind === "ox") await updateDoc(ccRef(ID.ox(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
+      else if (enemy.kind === "ratking") await updateDoc(ccRef(ID.ratKing(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
+      else if (enemy.kind === "vulture") await updateDoc(ccRef(ID.vulture(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
     }
   }
 
@@ -2286,6 +2530,16 @@
       if ((o.health ?? 0) <= 0) continue;
       const d = Math.abs(o.x - x) + Math.abs(o.y - y);
       if (d <= range && (!best || d < best.d)) best = { kind:"ox", enemy:o, d };
+    }
+    for (const k of ratKings){
+      if ((k.health ?? 0) <= 0) continue;
+      const d = Math.abs(k.x - x) + Math.abs(k.y - y);
+      if (d <= range && (!best || d < best.d)) best = { kind:"ratking", enemy:k, d };
+    }
+    for (const v of vultures){
+      if ((v.health ?? 0) <= 0) continue;
+      const d = Math.abs(v.x - x) + Math.abs(v.y - y);
+      if (d <= range && (!best || d < best.d)) best = { kind:"vulture", enemy:v, d };
     }
     if (catHealth > 0){
       const d = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
@@ -2337,6 +2591,8 @@
               rabbitShots.push({x:cx,y:cy});
               for (const r of rats){ if (r.x===cx && r.y===cy && (r.health??0)>0){ await damageEnemyUnit({...r,kind:"rat"}, 18); } }
               for (const o of oxen){ if (o.x===cx && o.y===cy && (o.health??0)>0){ await damageEnemyUnit({...o,kind:"ox"}, 18); } }
+              for (const k of ratKings){ if (k.x===cx && k.y===cy && (k.health??0)>0){ await damageEnemyUnit({...k,kind:"ratking"}, 18); } }
+              for (const v of vultures){ if (v.x===cx && v.y===cy && (v.health??0)>0){ await damageEnemyUnit({...v,kind:"vulture"}, 18); } }
               if (catPos.x===cx&&catPos.y===cy){ catHealth -= 18; await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() }); }
               cx += dx; cy += dy;
             }
@@ -2348,7 +2604,7 @@
             const hit = [];
             if (first.kind==="cat") hit.push({kind:"cat",x:catPos.x,y:catPos.y});
             else hit.push({kind:first.kind,enemy:first.enemy,x:first.enemy.x,y:first.enemy.y});
-            const pool=[...rats.map(r=>({kind:"rat",enemy:r,x:r.x,y:r.y})),...oxen.map(o=>({kind:"ox",enemy:o,x:o.x,y:o.y})),{kind:"cat",x:catPos.x,y:catPos.y}];
+            const pool=[...rats.map(r=>({kind:"rat",enemy:r,x:r.x,y:r.y})),...oxen.map(o=>({kind:"ox",enemy:o,x:o.x,y:o.y})),...ratKings.map(k=>({kind:"ratking",enemy:k,x:k.x,y:k.y})),...vultures.map(v=>({kind:"vulture",enemy:v,x:v.x,y:v.y})),{kind:"cat",x:catPos.x,y:catPos.y}];
             for (const h of [...hit]){
               const next=pool.filter(p=>!hit.some(q=>q.x===p.x&&q.y===p.y)).sort((a,b)=>(Math.abs(a.x-h.x)+Math.abs(a.y-h.y))-(Math.abs(b.x-h.x)+Math.abs(b.y-h.y)))[0];
               if (next && (Math.abs(next.x-h.x)+Math.abs(next.y-h.y)<=3)) hit.push(next);
@@ -2361,6 +2617,46 @@
         if (sym === "🟢"){
           for (const r of rats){ const d=Math.abs(r.x-x)+Math.abs(r.y-y); if (d<=6){ r.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.rat(r.id)), { slowedUntil:r.slowedUntil, updatedAt:Date.now() }); } }
           for (const o of oxen){ const d=Math.abs(o.x-x)+Math.abs(o.y-y); if (d<=6){ o.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.ox(o.id)), { slowedUntil:o.slowedUntil, updatedAt:Date.now() }); } }
+          for (const k of ratKings){ const d=Math.abs(k.x-x)+Math.abs(k.y-y); if (d<=6){ k.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.ratKing(k.id)), { slowedUntil:k.slowedUntil, updatedAt:Date.now() }); } }
+        }
+        if (sym === "🌰" && Date.now() - lastAcornShotAt >= 10000){
+          const enemies = listCombatEnemies();
+          const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
+          if (target){
+            rabbitShots.push({x:target.enemy.x,y:target.enemy.y});
+            await damageEnemyUnit({ ...target.enemy, kind: target.kind }, 55);
+            lastAcornShotAt = Date.now();
+          } else if (catHealth > 0){
+            catHealth -= 45;
+            lastAcornShotAt = Date.now();
+            await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+          }
+        }
+        if (sym === "🪭" && Date.now() - lastFanBurstAt >= 3000){
+          const beaconBoost = isWithinBeaconAura(x, y, 2) ? 2 : 0;
+          const burstCount = 2 + beaconBoost;
+          const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1]];
+          for (let i=0; i<burstCount; i++){
+            const [dx,dy] = dirs[(i + Math.floor(Math.random()*dirs.length)) % dirs.length];
+            let wx=x, wy=y;
+            for (let step=0; step<5; step++){
+              wx += dx + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
+              wy += dy + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
+              wx = Math.max(0, Math.min(gridSize-1, wx));
+              wy = Math.max(0, Math.min(gridSize-1, wy));
+              rabbitShots.push({x:wx,y:wy});
+
+              for (const unit of listCombatEnemies()){
+                if (unit.enemy.x===wx && unit.enemy.y===wy){
+                  await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
+                  const pushed = randomPushDestination(x, y, unit.enemy.x, unit.enemy.y, 1, 2);
+                  const docFn = unit.kind==="rat"?ID.rat:unit.kind==="ox"?ID.ox:unit.kind==="ratking"?ID.ratKing:ID.vulture;
+                  await updateDoc(ccRef(docFn(unit.enemy.id)), { x:pushed.x, y:pushed.y, updatedAt:Date.now() });
+                }
+              }
+            }
+          }
+          lastFanBurstAt = Date.now();
         }
       }
     }
@@ -2410,6 +2706,8 @@
     if (!gameStarted) return;
     const now = Date.now();
     const next = nextRatWaveAt;
+
+    if (isHost) await hostSyncDifficultyVote();
 
     if (isHost && typeof next === "number" && now >= next){
       await spawnRatWave();
@@ -2634,7 +2932,7 @@
               structures.delete(key);
               delete structureHealth[key];
               delete structureShields[key];
-              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢"].includes(grid[y][x])){
+              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[y][x])){
                 grid[y][x] = "";
               }
             }
@@ -2655,6 +2953,11 @@
             termites = termites.filter(t => t.id !== data?.id);
           } else if (id.startsWith("flea_") || id.startsWith("pflea_")){
             fleas = fleas.filter(f => f.docId !== id);
+          } else if (id.startsWith("difficultyvote_")){
+            delete difficultyVotes[data?.uid || id.replace("difficultyvote_","")];
+            updateDifficultyUI();
+          } else if (id.startsWith("ratking_")){
+            ratKings = ratKings.filter(k => k.id !== (data?.id || id));
           }
           continue;
         }
@@ -2668,6 +2971,7 @@
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
           nextRatWaveAt = (typeof data.nextRatWave === "number") ? data.nextRatWave : nextRatWaveAt;
+          applyDifficulty(data.difficulty || currentDifficulty || "medium");
 
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
@@ -2685,6 +2989,7 @@
 
           updateHostDisplay(hostName);
           updateCatHealthBar();
+          updateDifficultyUI();
           renderSelectionOverlay();
         }
         else if (id.startsWith("player_")){
@@ -2769,6 +3074,21 @@
           if (existing) Object.assign(existing, f);
           else fleas.push(f);
         }
+        else if (id.startsWith("difficultyvote_")){
+          const vu = data.uid || id.replace("difficultyvote_","");
+          if (DIFFICULTY_SETTINGS[data.vote]){
+            difficultyVotes[vu] = data.vote;
+            if (vu === uid) myDifficultyVote = data.vote;
+          }
+          updateDifficultyUI();
+        }
+        else if (id.startsWith("ratking_")){
+          const rk = { ...data };
+          if (!rk.id) rk.id = data.id || id;
+          const existing = ratKings.find(rr => rr.id === rk.id);
+          if (existing) Object.assign(existing, rk);
+          else ratKings.push(rk);
+        }
       }
 
       renderGrid();
@@ -2796,7 +3116,8 @@
           kind: "state",
           hostUid: uid,
           hostName: username,
-          cat: { x: gridSize-1, y: gridSize-1, health: 1000 },
+          difficulty: "medium",
+          cat: { x: gridSize-1, y: gridSize-1, health: DIFFICULTY_SETTINGS.medium.catStartHealth },
           catPower: 0,
           ratPower: 1,
           nextRatWave: Date.now() + 30000,
@@ -2816,6 +3137,7 @@
       catPower = s.catPower ?? 0;
       ratPower = s.ratPower ?? 1;
       nextRatWaveAt = (typeof s.nextRatWave === "number") ? s.nextRatWave : nextRatWaveAt;
+      applyDifficulty(s.difficulty || "medium");
       const cat = s.cat || {};
       catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
       catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
@@ -2823,6 +3145,7 @@
       gameStarted = s.phase === "playing";
       updateHostDisplay(s.hostName);
       updateCatHealthBar();
+      updateDifficultyUI();
     }
   }
 
@@ -2837,7 +3160,7 @@
     const slotsEl = document.getElementById("selectedSlots");
     const now = Date.now();
     const left = selectionDeadlineAt ? Math.max(0, Math.ceil((selectionDeadlineAt - now)/1000)) : 45;
-    info.textContent = `Wins: ${playerWins}. Time left: ${left}s`;
+    info.textContent = `Wins: ${playerWins}. Time left: ${left}s. Difficulty: ${DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium"}`;
 
     const slots = Array.from({length:7}, (_,i) => `#${i+1} ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
     slotsEl.textContent = `Your slots: ${slots}`;
@@ -2964,6 +3287,11 @@
       setupMobileControls();
     }
 
+    document.querySelectorAll('.difficulty-vote').forEach(btn => {
+      btn.onclick = () => castDifficultyVote(btn.dataset.diff).catch(()=>{});
+    });
+    updateDifficultyUI();
+
     const finishBtn = document.getElementById("finishSelectionBtn");
     if (finishBtn){
       finishBtn.onclick = async () => {
@@ -2978,6 +3306,9 @@
     setInterval(() => {
       if (gameStarted) return;
       renderSelectionOverlay();
+      if (isHost){
+        hostSyncDifficultyVote().catch(()=>{});
+      }
       if (isHost && selectionDeadlineAt && Date.now() >= selectionDeadlineAt){
         tryHostFinalizeSelection(true).catch(()=>{});
       }
@@ -3235,6 +3566,7 @@
     scheduleRatTick();
 
     setInterval(() => hostMoveOxen().catch(()=>{}), 800);
+    setInterval(() => hostMoveRatKings().catch(()=>{}), 700);
     setInterval(() => hostMoveVultures().catch(()=>{}), 600);
     setInterval(() => hostMoveTermites().catch(()=>{}), 400);
     setInterval(() => hostMoveFleas().catch(()=>{}), 400);
