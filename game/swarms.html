@@ -236,6 +236,31 @@
     margin-top:4px;
     text-align:center;
   }
+  #roundPanel{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  #roundPanel button{
+    background:var(--card);
+    border:1px solid #1f2937;
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:11px;
+    color:#e5e7eb;
+    cursor:pointer;
+  }
+  #btnStartRound{
+    background:linear-gradient(180deg,#22c55e,#16a34a);
+    border-color:rgba(34,197,94,.6);
+    color:#052e16;
+    font-weight:800;
+  }
+  #btnStartRound:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+  }
 
   #modePicker{
     position:absolute;
@@ -325,12 +350,21 @@
     <span class="label">Next Spell</span>
     <span class="value" id="nextSpellTimer">15.0s</span>
   </div>
+  <div id="roundPanel">
+    <span class="label">Round Goal</span>
+    <span class="value" id="roundProgress">0 / 20</span>
+    <span class="value" id="roundState">Combat</span>
+    <button id="btnStartRound" disabled>Start Next Round</button>
+  </div>
   <div id="upgrades">
     <button id="btnSpawnRate"><strong>Spawn Rate</strong> <span class="cost" id="costSpawnRate"></span></button>
     <button id="btnGroupSize"><strong>Spawn Group</strong> <span class="cost" id="costGroupSize"></span></button>
     <button id="btnHP"><strong>Health</strong> <span class="cost" id="costHP"></span></button>
     <button id="btnDMG"><strong>Damage</strong> <span class="cost" id="costDMG"></span></button>
     <button id="btnSPD"><strong>Speed</strong> <span class="cost" id="costSPD"></span></button>
+    <button id="btnShot"><strong>Shot Core</strong> <span class="cost" id="costShot"></span></button>
+    <button id="btnPierce"><strong>Pierce</strong> <span class="cost" id="costPierce"></span></button>
+    <button id="btnBurst"><strong>Burst</strong> <span class="cost" id="costBurst"></span></button>
   </div>
   <div id="workerPanel">
     <button id="btnWorker"><strong>Buy Worker</strong> <span class="cost" id="costWorker"></span></button>
@@ -380,6 +414,14 @@
   const VIEW_H = canvas.height;
   const WORLD_W = 2400;
   const WORLD_H = 1600;
+  const MAP_BORDER = 32;
+  const mapWalls = [
+    {x:WORLD_W*0.5-110, y:WORLD_H*0.5-220, w:220, h:440},
+    {x:WORLD_W*0.3-80, y:WORLD_H*0.5-40, w:160, h:80},
+    {x:WORLD_W*0.7-80, y:WORLD_H*0.5-40, w:160, h:80},
+    {x:WORLD_W*0.5-300, y:WORLD_H*0.25-28, w:600, h:56},
+    {x:WORLD_W*0.5-300, y:WORLD_H*0.75-28, w:600, h:56}
+  ];
 
   const goldEl = document.getElementById('gold');
   const mineralsEl = document.getElementById('minerals');
@@ -392,6 +434,9 @@
   const bannerEl = document.getElementById('messageBanner');
   const spellsListEl = document.getElementById('spellsList');
   const spellHintEl = document.getElementById('spellHint');
+  const roundProgressEl = document.getElementById('roundProgress');
+  const roundStateEl = document.getElementById('roundState');
+  const btnStartRound = document.getElementById('btnStartRound');
 
   const btnSpawnRate = document.getElementById('btnSpawnRate');
   const btnGroupSize = document.getElementById('btnGroupSize');
@@ -400,6 +445,9 @@
   const btnSPD = document.getElementById('btnSPD');
   const btnWorker = document.getElementById('btnWorker');
   const btnCarry = document.getElementById('btnCarry');
+  const btnShot = document.getElementById('btnShot');
+  const btnPierce = document.getElementById('btnPierce');
+  const btnBurst = document.getElementById('btnBurst');
 
   const costSpawnRateEl = document.getElementById('costSpawnRate');
   const costGroupSizeEl = document.getElementById('costGroupSize');
@@ -408,6 +456,9 @@
   const costSPEl = document.getElementById('costSPD');
   const costWorkerEl = document.getElementById('costWorker');
   const costCarryEl = document.getElementById('costCarry');
+  const costShotEl = document.getElementById('costShot');
+  const costPierceEl = document.getElementById('costPierce');
+  const costBurstEl = document.getElementById('costBurst');
 
   const btnLoadRun = document.getElementById('btnLoadRun');
   const btnSaveRun = document.getElementById('btnSaveRun');
@@ -449,6 +500,7 @@
   // game state
   let troops = [];       // soldiers, reapers, workers, god
   let effects = [];      // visual + spells
+  let projectiles = [];  // unit shots
   let structures = [];   // HQ + outposts
   let minerals = [];     // mineral patches
 
@@ -485,12 +537,17 @@
     dmgLevel: 1,
     speedLevel: 1,
     workerCarryLevel: 1,
+    shotLevel: 1,
+    pierceLevel: 0,
+    burstLevel: 0,
     get spawnRate(){ return 3 * this.spawnRateLevel; }, // groups/sec
     get groupSize(){ return this.groupSizeLevel; },
     get troopHpMult(){ return 1 + 0.35*(this.hpLevel-1); },
     get troopDmgMult(){ return 1 + 0.35*(this.dmgLevel-1); },
     get troopSpeedMult(){ return 1 + 0.18*(this.speedLevel-1); },
-    get workerCarryAmount(){ return 20 + (this.workerCarryLevel-1)*6; }
+    get workerCarryAmount(){ return 20 + (this.workerCarryLevel-1)*6; },
+    get shotSpeed(){ return 340 + (this.shotLevel-1)*35; },
+    get shotSize(){ return 2.4 + (this.shotLevel-1)*0.8; }
   };
 
   const enemyStats = {
@@ -544,6 +601,22 @@
     const l = playerStats.workerCarryLevel;
     return Math.round(70 * l * Math.pow(1.5, l-1));
   }
+  function costShot(){
+    const l = playerStats.shotLevel;
+    return Math.round(110 * l * l * 1.2);
+  }
+  function costPierce(){
+    const l = playerStats.pierceLevel + 1;
+    return Math.round(180 * l * l * 1.15);
+  }
+  function costBurst(){
+    const l = playerStats.burstLevel + 1;
+    return Math.round(140 * l * l * 1.2);
+  }
+
+  function computeRoundGoal(){
+    return 16 + level * 8;
+  }
 
   // spells
   const SPELL_TYPES = ['catapult','napalm','laser','summon','god'];
@@ -559,6 +632,11 @@
 
   // enemy outpost tech timer
   let enemyTechTimer = 0;
+  let enemyAbilityTimer = 0;
+
+  let roundGoal = 20;
+  let roundKills = 0;
+  let isUpgradePhase = false;
 
   // helpers
   function showMessage(text){
@@ -580,6 +658,38 @@
     return dx*dx+dy*dy;
   }
   function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+
+  function resolveWallCollision(entity){
+    for(const w of mapWalls){
+      const r = entity.radius || 4;
+      const nearestX = clamp(entity.x, w.x, w.x + w.w);
+      const nearestY = clamp(entity.y, w.y, w.y + w.h);
+      const dx = entity.x - nearestX;
+      const dy = entity.y - nearestY;
+      const d2 = dx*dx + dy*dy;
+      if(d2 < r*r){
+        const d = Math.sqrt(d2) || 1;
+        const push = (r - d) + 0.1;
+        entity.x += (dx/d) * push;
+        entity.y += (dy/d) * push;
+        entity.vx *= 0.75;
+        entity.vy *= 0.75;
+      }
+    }
+  }
+
+  function hitWall(x,y,r=2){
+    for(const w of mapWalls){
+      if(x+r>=w.x && x-r<=w.x+w.w && y+r>=w.y && y-r<=w.y+w.h) return true;
+    }
+    return false;
+  }
+
+  function playerShotPalette(){
+    if(playerStats.shotLevel>=5) return {core:'#a78bfa', trail:'#c4b5fd'};
+    if(playerStats.shotLevel>=3) return {core:'#22d3ee', trail:'#67e8f9'};
+    return {core:'#38bdf8', trail:'#7dd3fc'};
+  }
 
   function centerCamera(){
     cam.x = WORLD_W/2 - VIEW_W/(2*zoom);
@@ -908,6 +1018,29 @@
     playerTroopCount++;
   }
 
+  function spawnProjectile(shooter, target){
+    if(!target || target.hp<=0) return;
+    const dx = target.x - shooter.x;
+    const dy = target.y - shooter.y;
+    const d = Math.hypot(dx,dy) || 1;
+    const speed = shooter.side==='player' ? playerStats.shotSpeed : 310;
+    const p = {
+      x: shooter.x,
+      y: shooter.y,
+      vx: dx / d * speed,
+      vy: dy / d * speed,
+      r: shooter.side==='player' ? playerStats.shotSize : 2.6,
+      side: shooter.side,
+      damage: shooter.dmg,
+      life: 1.1,
+      pierce: shooter.side==='player' ? playerStats.pierceLevel : 0,
+      hitIds: [],
+      style: shooter.side==='player' ? playerShotPalette() : {core:'#fb7185', trail:'#fca5a5'}
+    };
+    projectiles.push(p);
+    effects.push({kind:'muzzle', x:shooter.x, y:shooter.y, t:0, duration:0.14, color:p.style.core});
+  }
+
   function applyDamage(target, amount, sourceSide){
     if(!target || target.hp<=0) return;
     target.hp -= amount;
@@ -915,6 +1048,17 @@
     if(target.hp <= 0){
       if(target.side === 'enemy' && sourceSide === 'player'){
         playerStats.gold += 1;
+        roundKills += 1;
+        if(!isUpgradePhase && roundKills >= roundGoal){
+          isUpgradePhase = true;
+          btnStartRound.disabled = false;
+          playerStats.gold += 90 + level * 25;
+          showMessage('Round cleared! Spend upgrades, then press Start Next Round.');
+          for(const t of troops){
+            if(t.side==='enemy') t.dead = true;
+          }
+          enemyTroopCount = 0;
+        }
       }
       target.hp = 0;
       target.dead = true;
@@ -993,8 +1137,10 @@
     if(s.type==='hq'){
       if(t.side==='player' && s.side==='enemy'){
         s.capture += 1;
-        if(s.capture>=s.captureNeeded && !pendingOutcome){
-          pendingOutcome='win';
+        if(s.capture>=s.captureNeeded){
+          s.capture = 0;
+          playerStats.gold += 25;
+          showMessage('Enemy HQ breached! Bonus gold awarded.');
         }
       }else if(t.side==='enemy' && s.side==='player'){
         s.capture -= 1;
@@ -1154,9 +1300,10 @@
 
     t.x += t.vx*dt;
     t.y += t.vy*dt;
-    const margin=10;
+    const margin=MAP_BORDER+6;
     t.x = clamp(t.x, margin, WORLD_W-margin);
     t.y = clamp(t.y, margin, WORLD_H-margin);
+    resolveWallCollision(t);
     if(t.flash>0){
       t.flash -= dt;
       if(t.flash<0) t.flash=0;
@@ -1194,9 +1341,10 @@
 
     t.x += t.vx*dt;
     t.y += t.vy*dt;
-    const margin=10;
+    const margin=MAP_BORDER+6;
     t.x = clamp(t.x, margin, WORLD_W-margin);
     t.y = clamp(t.y, margin, WORLD_H-margin);
+    resolveWallCollision(t);
     if(t.flash>0){
       t.flash -= dt;
       if(t.flash<0) t.flash=0;
@@ -1238,7 +1386,7 @@
       if(a.dead || a.hp<=0) continue;
       if(a.unitClass==='worker') continue;
       a.attackCooldown -= dt;
-      const range=15;
+      const range = a.isGod ? 220 : (a.unitClass==='reaper' ? 115 : 130);
       if(a.attackCooldown<=0){
         let victim=null, bestD2=range*range;
         for(const b of troops){
@@ -1251,38 +1399,11 @@
           }
         }
         if(victim){
-          applyDamage(victim,a.dmg,a.side);
-          a.attackCooldown=0.45;
-        }
-      }
-    }
-
-    for(const t of troops){
-      if(!t.isGod || t.dead || t.hp<=0) continue;
-      t.shootCooldown -= dt;
-      if(t.shootCooldown<=0){
-        const range=180;
-        let victim=null, bestD2=range*range;
-        for(const b of troops){
-          if(b.dead || b.hp<=0 || b.side===t.side) continue;
-          const d2=dist2(t.x,t.y,b.x,b.y);
-          if(d2<bestD2){
-            bestD2=d2;
-            victim=b;
+          const shots = a.side==='player' ? (1 + Math.min(2, playerStats.burstLevel)) : 1;
+          for(let i=0;i<shots;i++){
+            spawnProjectile(a,victim);
           }
-        }
-        if(victim){
-          effects.push({
-            kind:'godLaser',
-            x1:t.x,y1:t.y,
-            x2:victim.x,y2:victim.y,
-            t:0,
-            duration:0.25
-          });
-          applyDamage(victim,t.dmg*2.5,'player');
-          t.shootCooldown=0.8;
-        }else{
-          t.shootCooldown=0.3;
+          a.attackCooldown = a.isGod ? 0.55 : 0.45;
         }
       }
     }
@@ -1322,6 +1443,71 @@
     enemyTroopCount=eC;
     playerWorkerCount=wCPlayer;
     enemyWorkerCount=wCEnemy;
+  }
+
+  function updateProjectiles(dt){
+    const alive=[];
+    for(const p of projectiles){
+      p.life -= dt;
+      if(p.life<=0) continue;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if(p.x<MAP_BORDER || p.y<MAP_BORDER || p.x>WORLD_W-MAP_BORDER || p.y>WORLD_H-MAP_BORDER) continue;
+      if(hitWall(p.x,p.y,p.r)){
+        effects.push({kind:'impact', x:p.x, y:p.y, t:0, duration:0.18, color:p.style.core});
+        continue;
+      }
+      let hit=false;
+      for(const t of troops){
+        if(t.dead || t.hp<=0 || t.side===p.side) continue;
+        if(p.hitIds.includes(t)) continue;
+        const rr = (t.radius + p.r + 2);
+        if(dist2(p.x,p.y,t.x,t.y) <= rr*rr){
+          p.hitIds.push(t);
+          const dmg = p.side==='player' ? p.damage * (1 + (playerStats.shotLevel-1)*0.2) : p.damage;
+          applyDamage(t,dmg,p.side);
+          effects.push({kind:'impact', x:p.x, y:p.y, t:0, duration:0.16, color:p.style.core});
+          if(p.pierce>0){
+            p.pierce -= 1;
+          }else{
+            hit=true;
+            break;
+          }
+        }
+      }
+      if(!hit) alive.push(p);
+    }
+    projectiles = alive;
+  }
+
+  function updateEnemyAbilities(dt){
+    enemyAbilityTimer += dt;
+    const interval = Math.max(6, 12 - level*0.35);
+    if(enemyAbilityTimer < interval) return;
+    enemyAbilityTimer = 0;
+
+    const roll = Math.random();
+    if(roll < 0.34){
+      effects.push({kind:'enemyRage', x:enemyHQ.x+enemyHQ.w/2, y:enemyHQ.y+enemyHQ.h/2, radius:220, t:0, duration:2});
+      for(const t of troops){
+        if(t.side==='enemy' && t.hp>0){
+          t.speed *= 1.12;
+          t.flash = 0.2;
+        }
+      }
+      showMessage('Enemy Rage Surge!');
+    }else if(roll < 0.67){
+      const ex = enemyHQ.x + enemyHQ.w/2;
+      const ey = enemyHQ.y + enemyHQ.h/2;
+      spawnTroop('enemy', ex, ey, 8 + Math.floor(level/2), 'spell');
+      effects.push({kind:'summonPulse', x:ex, y:ey, radius:90, t:0, duration:0.6, color:'#fb7185'});
+      showMessage('Enemy Reinforcements deployed!');
+    }else{
+      const tx = WORLD_W*0.25 + Math.random()*WORLD_W*0.5;
+      const ty = WORLD_H*0.2 + Math.random()*WORLD_H*0.6;
+      effects.push({kind:'poisonField', x:tx, y:ty, radius:85, t:0, duration:4.5});
+      showMessage('Toxic field deployed!');
+    }
   }
 
   // ---------- Turrets & worker outposts ----------
@@ -1508,6 +1694,14 @@
             applyDamage(t,10*dt,'player');
           }
         }
+      }else if(e.kind==='poisonField'){
+        for(const t of troops){
+          if(t.hp<=0 || t.side!=='player') continue;
+          const dx=t.x-e.x, dy=t.y-e.y;
+          if(dx*dx+dy*dy < e.radius*e.radius){
+            applyDamage(t,6*dt,'enemy');
+          }
+        }
       }
       if(e.t<e.duration){
         next.push(e);
@@ -1533,20 +1727,37 @@
     ctx.fillStyle='#020617';
     ctx.fillRect(0,0,VIEW_W,VIEW_H);
 
+    const g = ctx.createLinearGradient(0,0,VIEW_W,VIEW_H);
+    g.addColorStop(0,'rgba(56,189,248,0.08)');
+    g.addColorStop(1,'rgba(248,113,113,0.08)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  }
+
+  function drawMapFrame(){
     ctx.save();
-    ctx.strokeStyle='rgba(15,23,42,0.9)';
-    ctx.lineWidth=1;
-    ctx.setLineDash([6,8]);
-    const worldCenterX=WORLD_W/2;
-    const screenCenterX=(worldCenterX - cam.x)*zoom;
-    if(screenCenterX>=0 && screenCenterX<=VIEW_W){
-      ctx.beginPath();
-      ctx.moveTo(screenCenterX,20);
-      ctx.lineTo(screenCenterX,VIEW_H-20);
-      ctx.stroke();
-    }
+    ctx.strokeStyle='rgba(148,163,184,0.35)';
+    ctx.lineWidth=4;
+    ctx.strokeRect(MAP_BORDER, MAP_BORDER, WORLD_W-MAP_BORDER*2, WORLD_H-MAP_BORDER*2);
+    ctx.setLineDash([10,8]);
+    ctx.strokeStyle='rgba(56,189,248,0.35)';
+    ctx.lineWidth=2;
+    ctx.strokeRect(MAP_BORDER+10, MAP_BORDER+10, WORLD_W-(MAP_BORDER+10)*2, WORLD_H-(MAP_BORDER+10)*2);
     ctx.setLineDash([]);
     ctx.restore();
+  }
+
+  function drawWalls(){
+    for(const w of mapWalls){
+      const grad = ctx.createLinearGradient(w.x,w.y,w.x+w.w,w.y+w.h);
+      grad.addColorStop(0,'#334155');
+      grad.addColorStop(1,'#1e293b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(w.x,w.y,w.w,w.h);
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(w.x,w.y,w.w,w.h);
+    }
   }
 
   function drawMinerals(){
@@ -1704,6 +1915,25 @@
     }
   }
 
+  function drawProjectiles(){
+    for(const p of projectiles){
+      ctx.save();
+      ctx.strokeStyle = p.style.trail;
+      ctx.lineWidth = p.r*1.4;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(p.x - p.vx*0.022, p.y - p.vy*0.022);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = p.style.core;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function drawEffects(){
     for(const e of effects){
       if(e.kind==='catapult'){
@@ -1731,7 +1961,7 @@
         ctx.arc(e.x,e.y,e.radius,0,Math.PI*2);
         ctx.fill();
         ctx.restore();
-      }else if(e.kind==='laser' || e.kind==='godLaser' || e.kind==='turret'){
+      }else if(e.kind==='laser' || e.kind==='turret'){
         const alpha=1-e.t/e.duration;
         ctx.save();
         ctx.globalAlpha=0.7*alpha;
@@ -1745,17 +1975,39 @@
           grad.addColorStop(0.5,'#facc15');
           grad.addColorStop(1,'#f97316');
           ctx.strokeStyle=grad;
-        }else{
-          ctx.lineWidth=5;
-          const grad=ctx.createLinearGradient(e.x1,e.y1,e.x2,e.y2);
-          grad.addColorStop(0,'#a855f7');
-          grad.addColorStop(1,'#38bdf8');
-          ctx.strokeStyle=grad;
         }
         ctx.beginPath();
         ctx.moveTo(e.x1,e.y1);
         ctx.lineTo(e.x2,e.y2);
         ctx.stroke();
+        ctx.restore();
+      }else if(e.kind==='impact' || e.kind==='muzzle' || e.kind==='summonPulse'){
+        const alpha=1-e.t/e.duration;
+        const radius = e.kind==='muzzle' ? 10 : (e.kind==='summonPulse' ? e.radius*(e.t/e.duration) : 12*(e.t/e.duration+0.25));
+        ctx.save();
+        ctx.globalAlpha=alpha;
+        ctx.strokeStyle=e.color || '#e2e8f0';
+        ctx.lineWidth=e.kind==='muzzle' ? 2 : 3;
+        ctx.beginPath();
+        ctx.arc(e.x,e.y,radius,0,Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+      }else if(e.kind==='poisonField' || e.kind==='enemyRage'){
+        const pulse = 0.65 + 0.25*Math.sin(e.t*5);
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.radius);
+        if(e.kind==='poisonField'){
+          g.addColorStop(0,'rgba(132,204,22,.3)');
+          g.addColorStop(1,'rgba(21,128,61,0)');
+        }else{
+          g.addColorStop(0,'rgba(248,113,113,.28)');
+          g.addColorStop(1,'rgba(153,27,27,0)');
+        }
+        ctx.fillStyle=g;
+        ctx.beginPath();
+        ctx.arc(e.x,e.y,e.radius,0,Math.PI*2);
+        ctx.fill();
         ctx.restore();
       }
     }
@@ -1774,9 +2026,12 @@
     ctx.save();
     ctx.scale(zoom, zoom);
     ctx.translate(-cam.x, -cam.y);
+    drawMapFrame();
+    drawWalls();
     drawMinerals();
     drawStructures();
     drawEffects();
+    drawProjectiles();
     drawTroops();
     ctx.restore();
     drawScreenOverlay();
@@ -1804,6 +2059,9 @@
     const cWMin = costWorkerMinerals();
     const cWGold= costWorkerGold();
     const cCarry= costCarry();
+    const cShot = costShot();
+    const cPierce = costPierce();
+    const cBurst = costBurst();
 
     costSpawnRateEl.textContent = `-${cSR}g`;
     costGroupSizeEl.textContent = `-${cGS}g`;
@@ -1812,15 +2070,26 @@
     costSPEl.textContent       = `-${cSPD}g`;
     costWorkerEl.textContent   = `-${cWMin}m / ${cWGold}g`;
     costCarryEl.textContent    = `-${cCarry}g`;
+    costShotEl.textContent     = `-${cShot}g`;
+    costPierceEl.textContent   = `-${cPierce}g`;
+    costBurstEl.textContent    = `-${cBurst}g`;
 
-    btnSpawnRate.disabled = g < cSR;
-    btnGroupSize.disabled = g < cGS;
-    btnHP.disabled        = g < cHP;
-    btnDMG.disabled       = g < cDMG;
-    btnSPD.disabled       = g < cSPD;
-    btnCarry.disabled     = g < cCarry;
+    roundProgressEl.textContent = `${roundKills} / ${roundGoal}`;
+    roundStateEl.textContent = isUpgradePhase ? 'Upgrade Phase' : 'Combat';
+    btnStartRound.disabled = !isUpgradePhase;
 
-    btnWorker.disabled = !(playerMinerals >= cWMin || g >= cWGold);
+    const canUpgrade = isUpgradePhase;
+    btnSpawnRate.disabled = !canUpgrade || g < cSR;
+    btnGroupSize.disabled = !canUpgrade || g < cGS;
+    btnHP.disabled        = !canUpgrade || g < cHP;
+    btnDMG.disabled       = !canUpgrade || g < cDMG;
+    btnSPD.disabled       = !canUpgrade || g < cSPD;
+    btnCarry.disabled     = !canUpgrade || g < cCarry;
+    btnShot.disabled      = !canUpgrade || g < cShot;
+    btnPierce.disabled    = !canUpgrade || g < cPierce;
+    btnBurst.disabled     = !canUpgrade || g < cBurst;
+
+    btnWorker.disabled = !canUpgrade || !(playerMinerals >= cWMin || g >= cWGold);
   }
 
   btnSpawnRate.onclick=()=>{
@@ -1891,6 +2160,54 @@
       updateUI();
     }
   };
+  btnShot.onclick=()=>{
+    const c=costShot();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.shotLevel++;
+      showMessage('Shot core upgraded: brighter and stronger projectiles.');
+      updateUI();
+    }
+  };
+  btnPierce.onclick=()=>{
+    const c=costPierce();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.pierceLevel++;
+      showMessage('Pierce upgraded: shots travel through more enemies.');
+      updateUI();
+    }
+  };
+  btnBurst.onclick=()=>{
+    const c=costBurst();
+    if(playerStats.gold>=c){
+      playerStats.gold-=c;
+      playerStats.burstLevel = Math.min(2, playerStats.burstLevel + 1);
+      showMessage('Burst upgraded: fire extra projectiles each shot.');
+      updateUI();
+    }
+  };
+
+  function startNextRound(){
+    level++;
+    applyDifficulty();
+    roundGoal = computeRoundGoal();
+    roundKills = 0;
+    isUpgradePhase = false;
+    btnStartRound.disabled = true;
+    effects = [];
+    projectiles = [];
+    for(const t of troops){
+      if(t.side==='enemy') t.dead = true;
+    }
+    playerMinerals += 60 + level*10;
+    enemyMinerals = 100 + level*10;
+    showMessage(`Round ${level} started! Defeat ${roundGoal} enemies.`);
+    saveGame();
+    updateUI();
+  }
+
+  btnStartRound.onclick = startNextRound;
 
   // zoom button events
   zoomInBtn.onclick = () => setZoom(zoom + ZOOM_STEP);
@@ -1948,7 +2265,10 @@
           hpLevel: playerStats.hpLevel,
           dmgLevel: playerStats.dmgLevel,
           speedLevel: playerStats.speedLevel,
-          workerCarryLevel: playerStats.workerCarryLevel
+          workerCarryLevel: playerStats.workerCarryLevel,
+          shotLevel: playerStats.shotLevel,
+          pierceLevel: playerStats.pierceLevel,
+          burstLevel: playerStats.burstLevel
         },
         playerMinerals,
         enemyMinerals,
@@ -1956,10 +2276,15 @@
         structures,
         troops,
         effects,
+        projectiles,
         spellTimer,
         availableSpells,
         cam,
         enemyTechTimer,
+        enemyAbilityTimer,
+        roundGoal,
+        roundKills,
+        isUpgradePhase,
         zoom
       };
       updateBestLevelMaybe();
@@ -1996,6 +2321,9 @@
     playerStats.dmgLevel        = ps.dmgLevel || 1;
     playerStats.speedLevel      = ps.speedLevel || 1;
     playerStats.workerCarryLevel= ps.workerCarryLevel || 1;
+    playerStats.shotLevel       = ps.shotLevel || 1;
+    playerStats.pierceLevel     = ps.pierceLevel || 0;
+    playerStats.burstLevel      = ps.burstLevel || 0;
 
     playerMinerals = save.playerMinerals ?? 100;
     enemyMinerals  = save.enemyMinerals ?? 100;
@@ -2004,9 +2332,14 @@
     structures = save.structures || [];
     troops     = save.troops     || [];
     effects    = save.effects    || [];
+    projectiles = save.projectiles || [];
     spellTimer = save.spellTimer || 0;
     availableSpells = (save.availableSpells || []).map(sp=>({type:sp.type || sp}));
     enemyTechTimer = save.enemyTechTimer || 0;
+    enemyAbilityTimer = save.enemyAbilityTimer || 0;
+    roundGoal = save.roundGoal || computeRoundGoal();
+    roundKills = save.roundKills || 0;
+    isUpgradePhase = !!save.isUpgradePhase;
 
     zoom = typeof save.zoom === 'number' ? clamp(save.zoom, MIN_ZOOM, MAX_ZOOM) : 1;
     if(zoomLabelEl) zoomLabelEl.textContent = Math.round(zoom*100)+'%';
@@ -2032,6 +2365,10 @@
       if(t.attackCooldown==null) t.attackCooldown=0;
       if(t.vx==null) t.vx=0;
       if(t.vy==null) t.vy=0;
+    }
+    for(const p of projectiles){
+      if(!Array.isArray(p.hitIds)) p.hitIds = [];
+      if(!p.style) p.style = p.side==='player' ? playerShotPalette() : {core:'#fb7185', trail:'#fca5a5'};
     }
 
     let pC=0,eC=0,wCPlayer=0,wCEnemy=0;
@@ -2068,6 +2405,9 @@
     playerStats.dmgLevel = 1;
     playerStats.speedLevel = 1;
     playerStats.workerCarryLevel = 1;
+    playerStats.shotLevel = 1;
+    playerStats.pierceLevel = 0;
+    playerStats.burstLevel = 0;
 
     zoom = 1;
     if(zoomLabelEl) zoomLabelEl.textContent = '100%';
@@ -2078,7 +2418,12 @@
     availableSpells=[];
     spellTimer=0;
     effects=[];
+    projectiles=[];
     enemyTechTimer=0;
+    enemyAbilityTimer=0;
+    roundGoal = computeRoundGoal();
+    roundKills = 0;
+    isUpgradePhase = false;
     pendingOutcome=null;
     autoSaveTimer=0;
 
@@ -2302,21 +2647,7 @@
   // ---------- Outcome ----------
   function handlePendingOutcome(){
     if(!pendingOutcome) return;
-    if(pendingOutcome==='win'){
-      level++;
-      applyDifficulty();
-      playerStats.gold += 120 + level*40;
-      showMessage(`Enemy HQ captured! Level ${level} – enemy economy ramps up.`);
-      setupLevel(true);
-      initRoundEconomy();
-      spellTimer=0;
-      availableSpells=[];
-      effects=[];
-      enemyTechTimer=0;
-      autoSaveTimer=0;
-      updateBestLevelMaybe();
-      saveGame();
-    }else if(pendingOutcome==='lose'){
+    if(pendingOutcome==='lose'){
       level = Math.max(1, level-1);
       applyDifficulty();
       showMessage('Your HQ fell! Enemy pushes reset – hold the line.');
@@ -2325,7 +2656,12 @@
       spellTimer=0;
       availableSpells=[];
       effects=[];
+      projectiles=[];
       enemyTechTimer=0;
+      enemyAbilityTimer=0;
+      roundGoal = computeRoundGoal();
+      roundKills = 0;
+      isUpgradePhase = false;
       autoSaveTimer=0;
       saveGame();
     }
@@ -2335,13 +2671,17 @@
   // ---------- Loop ----------
   function update(dt){
     handlePendingOutcome();
-    updateSpawning(dt);
-    updateTroops(dt);
-    updateTurrets(dt);
-    updateWorkerOutposts(dt);
-    updateEnemyOutpostAI(dt);
-    updateEffects(dt);
-    updateSpells(dt);
+    if(!isUpgradePhase){
+      updateSpawning(dt);
+      updateTroops(dt);
+      updateProjectiles(dt);
+      updateTurrets(dt);
+      updateWorkerOutposts(dt);
+      updateEnemyOutpostAI(dt);
+      updateEnemyAbilities(dt);
+      updateEffects(dt);
+      updateSpells(dt);
+    }
     updateBanner(dt);
     updateUI();
 
