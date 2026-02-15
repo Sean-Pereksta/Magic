@@ -87,9 +87,30 @@
 
     #mobileControls{
       display: none;
-      margin: 15px auto;
-      z-index: 10;
-      position: relative;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 25;
+      background: rgba(245,245,245,0.96);
+      border-top: 2px solid #bbb;
+      padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+      box-shadow: 0 -8px 18px rgba(0,0,0,0.2);
+    }
+
+    .mobile-row{ display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:6px 0; }
+    #mobileControls .pad{ background:#fff; border:1px solid #999; border-radius:10px; }
+    #mobileControls .active{ background:#d4e8ff; border-color:#5591d3; }
+
+    #fullscreenBtn{
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 30;
+      display: none;
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 10px;
     }
 
     button, select{
@@ -102,7 +123,11 @@
 
     @media (max-width: 768px){
       #mobileControls{ display: block; }
+      #fullscreenBtn{ display: inline-block; }
       #grid{ margin-top: 10px; }
+      body{ padding-bottom: 245px; }
+      #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
+      .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
     }
 
     #waveCountdown{
@@ -110,10 +135,31 @@
       font-weight: 700;
       font-size: 16px;
     }
+
+    .structure-health-shell{
+      position:absolute;
+      left:3px;
+      right:3px;
+      top:-4px;
+      height:3px;
+      background:rgba(20,20,20,0.32);
+      border-radius:8px;
+      overflow:hidden;
+      border:1px solid rgba(0,0,0,0.25);
+      pointer-events:none;
+    }
+
+    .structure-health-fill{
+      height:100%;
+      border-radius:8px;
+      transition:width 0.2s ease;
+      background:linear-gradient(90deg,#ef4444,#f59e0b,#22c55e);
+    }
   </style>
 </head>
 
 <body>
+  <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
   <h1 style="text-align:center;">🐱 Cat vs 🐭 Mouse</h1>
 
   <div style="text-align:center; margin-bottom:10px;">
@@ -174,8 +220,25 @@
       <div id="gridWrapper"><div id="grid"></div></div>
 
       <div id="mobileControls" style="margin-top:20px; display:none;">
-        <div style="margin-bottom:12px;">
-          <div>
+        <div class="mobile-row">
+          <select id="mobileBuildSelect" aria-label="Select building type">
+            <option value="">🏗️ Select Build</option>
+            <option value="1">🧱 Wall (1)</option>
+            <option value="2">🔫 Turret (3)</option>
+            <option value="3">🪳 Flea Nest (5)</option>
+            <option value="4">🏭 Generator (4)</option>
+            <option value="5">💎 Super Wall (6)</option>
+            <option value="6">🗼 Beacon (24)</option>
+            <option value="7">🐦‍🔥 Phoenix Cheese (40)</option>
+            <option value="8">🚀 Rocket Tower (30)</option>
+          </select>
+          <button data-upgrade>🛠️ Upgrades</button>
+          <button data-blink>🌀 Blink</button>
+          <button data-trap>🪤 Trap</button>
+        </div>
+
+        <div class="mobile-row">
+          <div class="pad">
             <button data-move="up" aria-label="Move Up">⬆️</button><br>
             <button data-move="left" aria-label="Move Left">⬅️</button>
             <button data-move="down" aria-label="Move Down">⬇️</button>
@@ -183,17 +246,13 @@
           </div>
         </div>
 
-        <div style="margin-bottom:12px;">
-          <div>
+        <div class="mobile-row">
+          <div class="pad">
             <button data-place="w" aria-label="Build Up">⬆️ Build</button>
             <button data-place="a" aria-label="Build Left">⬅️</button>
             <button data-place="s" aria-label="Build Down">⬇️</button>
             <button data-place="d" aria-label="Build Right">➡️</button>
           </div>
-        </div>
-
-        <div style="margin-bottom:12px;">
-          <button onclick="toggleMobileMode()">🔁 Switch to Upgrades</button>
         </div>
 
         <div id="structureButtons" style="margin-top:10px;">
@@ -218,11 +277,6 @@
           <button onclick="selectUpgrade('6')">6 – Blink</button>
         </div>
 
-        <div>
-          <button data-upgrade>🛠️ Upgrades</button>
-          <button data-blink>🌀 Blink</button>
-          <button data-trap>🪤 Trap</button>
-        </div>
       </div>
 
       <div id="catHealthContainer" style="margin-top:10px;">
@@ -292,6 +346,7 @@
     trap: (x,y) => `trap_${x}_${y}`,
     rat: (id) => `rat_${id}`,
     ox: (id) => `ox_${id}`,
+    vulture: (id) => `vulture_${id}`,
     termite: (id) => `termite_${id}`,
     flea: (id) => `flea_${id}`,
     // Player-fleas (so a player can “own” their flea docs; host moves them)
@@ -350,8 +405,18 @@
   let traps = [];     // {x,y,placedAt}
   let rats = [];      // {id,x,y,health,...}
   let oxen = [];      // {id,x,y,health}
+  let vultures = [];  // {id,x,y,health}
   let termites = [];  // {id,x,y}
   let fleas = [];     // {id,x,y,lifetime,...}
+
+  let lastPlayerWriteAt = 0;
+  let lastPlayerPayload = null;
+  let nextRatWaveAt = null;
+
+  const STRUCTURE_MAX_HP = {
+    "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
+    "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20
+  };
 
   // ============================================================
   // UI helpers
@@ -375,6 +440,13 @@
   }
   window.toggleMobileMode = toggleMobileMode;
 
+  async function toggleFullscreen(){
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch {}
+  }
+
   function toggleUpgradeMenu(){
     upgradeMenuOpen = !upgradeMenuOpen;
     document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
@@ -393,6 +465,8 @@
       8: "Rocket Tower 🚀 (Cost: 30)"
     };
     document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
+    const mobileBuildSelect = document.getElementById("mobileBuildSelect");
+    if (mobileBuildSelect) mobileBuildSelect.value = String(selectedBuild || "");
   }
 
   function selectUpgrade(key){
@@ -612,16 +686,29 @@
 
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
-      if (cell && ["🧱","🪳","💎","🚀"].includes(symbol)){
+      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥"].includes(symbol)){
+        const shell = document.createElement("div");
+        shell.className = "structure-health-shell";
+
         const bar = document.createElement("div");
-        bar.className = "health-bar";
+        bar.className = "structure-health-fill";
         const hp = structureHealth[key] ?? 0;
-        bar.style.width = `${Math.max(10, Math.min(100, hp * 3))}%`;
-        bar.style.background = (symbol==="💎") ? "blue" : (symbol==="🧱" ? "gray" : (symbol==="🚀" ? "black" : "purple"));
-        bar.style.height = "3px";
-        bar.style.marginTop = "-10px";
-        cell.appendChild(bar);
+        const maxHp = STRUCTURE_MAX_HP[symbol] ?? Math.max(1, hp);
+        const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+        bar.style.width = `${pct}%`;
+        if (pct > 66) bar.style.background = "linear-gradient(90deg,#22c55e,#16a34a)";
+        else if (pct > 33) bar.style.background = "linear-gradient(90deg,#f59e0b,#f97316)";
+        else bar.style.background = "linear-gradient(90deg,#ef4444,#dc2626)";
+        shell.appendChild(bar);
+        cell.appendChild(shell);
       }
+    }
+
+    // vultures
+    for (const v of vultures){
+      if ((v.health ?? 0) <= 0) continue;
+      const cell = document.getElementById(`cell-${v.x}-${v.y}`);
+      if (cell) cell.textContent = "🦅";
     }
 
     // cat
@@ -724,6 +811,7 @@
   // Firestore writes (UPDATED paths)
   // ============================================================
   async function savePosition(){
+    const now = Date.now();
     const pRef = ccRef(ID.player(uid));
     const payload = {
       kind: "player",
@@ -734,8 +822,18 @@
       y: playerPos.y,
       cheese: cheeseCount,
       alive: isAlive,
-      updatedAt: Date.now()
+      updatedAt: now
     };
+
+    const unchanged = lastPlayerPayload &&
+      lastPlayerPayload.x === payload.x &&
+      lastPlayerPayload.y === payload.y &&
+      lastPlayerPayload.cheese === payload.cheese &&
+      lastPlayerPayload.alive === payload.alive;
+    if (unchanged && (now - lastPlayerWriteAt) < 200) return;
+
+    lastPlayerWriteAt = now;
+    lastPlayerPayload = { x: payload.x, y: payload.y, cheese: payload.cheese, alive: payload.alive };
     await setDoc(pRef, payload, { merge:true });
   }
 
@@ -1073,6 +1171,27 @@
     return null;
   }
 
+  function getNearestReachableStructureTarget(startX, startY, passableFn = null){
+    let best = null;
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        const symbol = grid[y][x];
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(symbol)) continue;
+
+        const targetIsWall = (symbol === "🧱" || symbol === "💎");
+        const passable = passableFn
+          ? ((nx, ny) => (nx===x && ny===y) ? true : passableFn(nx, ny))
+          : targetIsWall;
+
+        const path = findPath(startX, startY, x, y, passable);
+        if (path && (!best || path.length < best.path.length)){
+          best = { x, y, path };
+        }
+      }
+    }
+    return best;
+  }
+
   // ============================================================
   // Cat AI
   // ============================================================
@@ -1119,35 +1238,12 @@
       }
     }
 
-    // break walls around blocked mice
+    // if mice are blocked/unreachable, attack nearest reachable structure
     if (!target && mouseBlocked){
-      for (const p of aliveMice){
-        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-        for (const [dx,dy] of dirs){
-          const wx = p.x+dx, wy=p.y+dy;
-          if (wx<0||wy<0||wx>=gridSize||wy>=gridSize) continue;
-          if (["🧱","🏭","💎","🗼","🔫","🪳","🚀"].includes(grid[wy][wx])){
-            const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
-            if (wPath && (!path || wPath.length < path.length)){
-              target = {x:wx,y:wy,type:"wallToBreak"};
-              path = wPath;
-            }
-          }
-        }
-      }
-    }
-
-    // attack structures
-    if (!target){
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          if (!["🔫","🪳","🗼","🚀","🏭"].includes(grid[y][x])) continue;
-          const sPath = findPath(catPos.x, catPos.y, x, y, false);
-          if (sPath && (!path || sPath.length < path.length)){
-            target = {x,y,type:"structure"};
-            path = sPath;
-          }
-        }
+      const structureTarget = getNearestReachableStructureTarget(catPos.x, catPos.y, false);
+      if (structureTarget){
+        target = { x: structureTarget.x, y: structureTarget.y, type: "structure" };
+        path = structureTarget.path;
       }
     }
 
@@ -1295,40 +1391,56 @@
       let closestTarget = null;
       let minDist = Infinity;
 
+      // reachable nearby player first
+      for (const [pu, p] of Object.entries(players)){
+        if ((p.alive ?? true) === false) continue;
+        const manhattan = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
+        if (manhattan > 7) continue;
+
+        const pPath = findPath(rat.x, rat.y, p.x, p.y, (x, y) => {
+          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          return !isBlocked && !ratOccupied;
+        });
+
+        if (pPath && pPath.length > 0){
+          minDist = pPath.length;
+          closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu, priority: 0 };
+          break;
+        }
+      }
+
       // closest player
       for (const [pu, p] of Object.entries(players)){
         if ((p.alive ?? true) !== false){
           const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
           if (dist < minDist){
             minDist = dist;
-            closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
+            closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu, priority: 1 };
           }
         }
       }
 
-      // closest structure
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[y][x])){
-            const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
-            if (dist < minDist){
-              minDist = dist;
-              closestTarget = { x, y, type:"structure" };
-            }
-          }
+      const centerX = Math.floor(gridSize/2);
+      const centerY = Math.floor(gridSize/2);
+      const ratPassable = (x, y) => {
+        const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+        const isReviveCenter = (x===centerX && y===centerY);
+        const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+        return !isBlocked && !isReviveCenter && !ratOccupied;
+      };
+
+      // if no reachable mouse target, attack nearest reachable structure
+      if (!closestTarget || closestTarget.priority > 0){
+        const structureTarget = getNearestReachableStructureTarget(rat.x, rat.y, ratPassable);
+        if (structureTarget && (closestTarget?.priority ?? 99) > 0){
+          minDist = structureTarget.path.length;
+          closestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure", priority: 2 };
         }
       }
 
       if (closestTarget){
-        const centerX = Math.floor(gridSize/2);
-        const centerY = Math.floor(gridSize/2);
-
-        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-          const isReviveCenter = (x===centerX && y===centerY);
-          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-          return !isBlocked && !isReviveCenter && !ratOccupied;
-        });
+        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, ratPassable);
 
         if (path && path.length > 0){
           const next = path[0];
@@ -1372,37 +1484,89 @@
       }
 
       let bestTarget = null;
-      let minDist = Infinity;
+      let bestPath = null;
 
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          const symbol = grid[y][x];
-          if (symbol==="💎" || symbol==="🧱"){
-            const dist = Math.abs(x-ox.x) + Math.abs(y-ox.y);
-            const priority = symbol==="💎" ? 0 : 1;
-            if (dist < minDist || (dist===minDist && priority < (bestTarget?.priority ?? 1))){
-              minDist = dist;
-              bestTarget = { x, y, symbol, priority };
-            }
-          }
+      // prioritize nearest reachable mouse first
+      for (const [pu, p] of Object.entries(players)){
+        if ((p.alive ?? true) === false) continue;
+        const pPath = findPath(ox.x, ox.y, p.x, p.y, false);
+        if (pPath && (!bestPath || pPath.length < bestPath.length)){
+          bestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
+          bestPath = pPath;
+        }
+      }
+
+      // if no mouse path, attack nearest reachable structure (walls included)
+      if (!bestTarget){
+        const structureTarget = getNearestReachableStructureTarget(ox.x, ox.y, false);
+        if (structureTarget){
+          bestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
+          bestPath = structureTarget.path;
         }
       }
 
       if (bestTarget){
-        const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
-        if (path && path.length>0){
-          const next = path[0];
+        if (bestPath && bestPath.length>0){
+          const next = bestPath[0];
           ox.x = next.x; ox.y = next.y;
           await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y });
         }
 
         const dx = Math.abs(ox.x - bestTarget.x);
         const dy = Math.abs(ox.y - bestTarget.y);
-        if (dx+dy === 1){
+        const touching = (dx + dy <= 1);
+        if (touching && bestTarget.type === "structure"){
           await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
           ox.health -= 1;
           await updateDoc(ccRef(ID.ox(ox.id)), { health: ox.health });
+        } else if (touching && bestTarget.type === "mouse"){
+          await updateDoc(ccRef(ID.player(bestTarget.uid)), { alive:false, updatedAt: Date.now() });
         }
+      }
+    }
+  }
+
+  async function hostMoveVultures(){
+    for (let i=vultures.length-1; i>=0; i--){
+      const v = vultures[i];
+      if ((v.health ?? 0) <= 0){
+        await deleteDoc(ccRef(ID.vulture(v.id)));
+        vultures.splice(i,1);
+        continue;
+      }
+
+      let bestTarget = null;
+      let minDist = Infinity;
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          const symbol = grid[y][x];
+          let priority = 99;
+          if (symbol === "🏭") priority = 0;
+          else if (["🔫","🪳","🧱","💎","🗼","🚀","🐦‍🔥"].includes(symbol)) priority = 1;
+          if (priority === 99) continue;
+
+          const dist = Math.abs(x-v.x) + Math.abs(y-v.y);
+          if (priority < (bestTarget?.priority ?? 99) || (priority === (bestTarget?.priority ?? 99) && dist < minDist)){
+            minDist = dist;
+            bestTarget = { x, y, priority };
+          }
+        }
+      }
+      if (!bestTarget) continue;
+
+      let nx = v.x;
+      let ny = v.y;
+      if (Math.abs(bestTarget.x - v.x) >= Math.abs(bestTarget.y - v.y)) nx += Math.sign(bestTarget.x - v.x);
+      else ny += Math.sign(bestTarget.y - v.y);
+
+      if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize){
+        v.x = nx;
+        v.y = ny;
+        await updateDoc(ccRef(ID.vulture(v.id)), { x: v.x, y: v.y, updatedAt: Date.now() });
+      }
+
+      if (v.x===bestTarget.x && v.y===bestTarget.y){
+        await damageStructure(v.x, v.y, ratPower * 4);
       }
     }
   }
@@ -1427,6 +1591,8 @@
       if (!closestWall) continue;
 
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x,y) => {
+        const isTargetWall = (x===closestWall.x && y===closestWall.y);
+        if (isTargetWall) return true;
         return !["🧱","🔫","🪳","🏭","💎","🗼","🚀"].includes(grid[y][x]);
       });
 
@@ -1606,16 +1772,14 @@
   // Wave scheduler (host updates state.nextRatWave)
   // ============================================================
   async function waveSchedulerTick(){
-    const stateSnap = await getDoc(ccRef(ID.STATE));
-    const s = stateSnap.exists() ? stateSnap.data() : null;
-    if (!s || !gameStarted) return;
-
+    if (!gameStarted) return;
     const now = Date.now();
-    const next = s.nextRatWave;
+    const next = nextRatWaveAt;
 
     if (isHost && typeof next === "number" && now >= next){
       await spawnRatWave();
       const nextTime = now + 40000;
+      nextRatWaveAt = nextTime;
       await updateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
     }
 
@@ -1663,7 +1827,26 @@
   }
 
   function setupMobileControls(){
+    const mobileBuildSelect = document.getElementById("mobileBuildSelect");
+    if (mobileBuildSelect){
+      const handleBuildSelect = () => {
+        if (mobileBuildSelect.value) selectBuild(mobileBuildSelect.value);
+      };
+      mobileBuildSelect.addEventListener("change", handleBuildSelect);
+      mobileBuildSelect.addEventListener("touchend", handleBuildSelect);
+    }
+
+    const fsBtn = document.getElementById("fullscreenBtn");
+    if (fsBtn){
+      fsBtn.addEventListener("click", () => toggleFullscreen());
+      fsBtn.addEventListener("touchstart", (e)=>{
+        e.preventDefault();
+        toggleFullscreen();
+      });
+    }
+
     document.querySelectorAll('[data-move]').forEach(btn => {
+      btn.addEventListener('click', () => move(btn.getAttribute('data-move')));
       btn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         move(btn.getAttribute('data-move'));
@@ -1671,6 +1854,7 @@
     });
 
     document.querySelectorAll('[data-place]').forEach(btn => {
+      btn.addEventListener('click', () => place(btn.getAttribute('data-place')));
       btn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         place(btn.getAttribute('data-place'));
@@ -1678,6 +1862,7 @@
     });
 
     document.querySelectorAll('#structureButtons [data-struct]').forEach(btn => {
+      btn.addEventListener('click', () => selectBuild(btn.getAttribute('data-struct')));
       btn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         selectBuild(btn.getAttribute('data-struct'));
@@ -1686,6 +1871,7 @@
 
     const upgradeBtn = document.querySelector('[data-upgrade]');
     if (upgradeBtn){
+      upgradeBtn.addEventListener('click', ()=> toggleUpgradeMenu());
       upgradeBtn.addEventListener('touchstart', (e)=>{
         e.preventDefault();
         toggleUpgradeMenu();
@@ -1694,6 +1880,7 @@
 
     const blinkBtn = document.querySelector('[data-blink]');
     if (blinkBtn){
+      blinkBtn.addEventListener('click', ()=> tryBlink());
       blinkBtn.addEventListener('touchstart', (e)=>{
         e.preventDefault();
         tryBlink();
@@ -1702,6 +1889,7 @@
 
     const trapBtn = document.querySelector('[data-trap]');
     if (trapBtn){
+      trapBtn.addEventListener('click', ()=> placeTrap());
       trapBtn.addEventListener('touchstart', (e)=>{
         e.preventDefault();
         placeTrap();
@@ -1742,6 +1930,9 @@
             rats = rats.filter(r => r.id !== data?.id);
           } else if (id.startsWith("ox_")){
             oxen = oxen.filter(o => o.id !== data?.id);
+          } else if (id.startsWith("vulture_")){
+            const vId = data?.id || id;
+            vultures = vultures.filter(v => v.id !== vId);
           } else if (id.startsWith("termite_")){
             termites = termites.filter(t => t.id !== data?.id);
           } else if (id.startsWith("flea_") || id.startsWith("pflea_")){
@@ -1758,6 +1949,7 @@
 
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
+          nextRatWaveAt = (typeof data.nextRatWave === "number") ? data.nextRatWave : nextRatWaveAt;
 
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
@@ -1818,6 +2010,13 @@
           if (existing) Object.assign(existing, o);
           else oxen.push(o);
         }
+        else if (id.startsWith("vulture_")){
+          const v = { ...data };
+          if (!v.id) v.id = data.id || id;
+          const existing = vultures.find(vv => vv.id === v.id);
+          if (existing) Object.assign(existing, v);
+          else vultures.push(v);
+        }
         else if (id.startsWith("termite_")){
           const t = { ...data };
           if (!t.id) t.id = data.id || id;
@@ -1877,6 +2076,7 @@
       isHost = (s.hostUid === uid);
       catPower = s.catPower ?? 0;
       ratPower = s.ratPower ?? 1;
+      nextRatWaveAt = (typeof s.nextRatWave === "number") ? s.nextRatWave : nextRatWaveAt;
       const cat = s.cat || {};
       catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
       catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
@@ -1954,8 +2154,10 @@
   // ============================================================
   function startGlobalLoops(){
     // mobile setup
-    if (/Mobi|Android/i.test(navigator.userAgent)){
+    const mobileLike = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.matchMedia("(max-width: 768px)").matches;
+    if (mobileLike){
       document.getElementById("mobileControls").style.display = "block";
+      document.getElementById("fullscreenBtn").style.display = "inline-block";
       renderMobileUpgradeButtons();
       setupMobileControls();
     }
@@ -2020,7 +2222,7 @@
       if (fleaMasterActive && isAlive){
         syncMyFleas().catch(()=>{});
       }
-    }, 500);
+    }, 1200);
 
     // generator payout
     setInterval(() => { if (gameStarted) generatorPayoutTick(); }, 15000);
@@ -2175,9 +2377,33 @@
       }
     }, 60000);
 
+    // late game vultures (after oxen phase)
+    setInterval(async () => {
+      if (!gameStarted || catPower < 25) return;
+      const desired = Math.min(6, 1 + Math.floor((catPower - 25) / 6));
+      const living = vultures.filter(v => (v.health ?? 0) > 0).length;
+      const toSpawn = Math.max(0, desired - living);
+      if (toSpawn <= 0) return;
+
+      for (let i=0; i<toSpawn; i++){
+        const vx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
+        const vy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
+        const id = `vulture_${crypto.randomUUID()}`;
+        await setDoc(ccRef(ID.vulture(id)), {
+          kind: "vulture",
+          id,
+          x: vx,
+          y: vy,
+          health: ratPower * 20,
+          createdAt: Date.now()
+        }, { merge:true });
+      }
+    }, 8000);
+
     // enemy sim ticks
     setInterval(() => hostMoveRats().catch(()=>{}), 400);
     setInterval(() => hostMoveOxen().catch(()=>{}), 800);
+    setInterval(() => hostMoveVultures().catch(()=>{}), 600);
     setInterval(() => hostMoveTermites().catch(()=>{}), 400);
     setInterval(() => hostMoveFleas().catch(()=>{}), 400);
 
