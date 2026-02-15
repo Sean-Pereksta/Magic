@@ -167,6 +167,47 @@
   .flashDesc{font-size:12px; color:#475569}
   @keyframes flashIn{ to{transform:translateX(0); opacity:1;} }
 
+
+  .clarityHint{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#f8fafc;font-size:12px;color:#334155}
+  .hintChip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:#ffffff;border:1px solid #dbeafe;font-weight:700}
+  .hintBeam{width:24px;height:3px;border-radius:99px;background:#14b8a6;box-shadow:0 0 0 1px rgba(20,184,166,.2)}
+
+  .influenceBeam{
+    position:fixed;height:4px;border-radius:999px;transform-origin:left center;
+    box-shadow:0 0 0 1px rgba(255,255,255,.35),0 0 12px rgba(15,23,42,.2);
+    pointer-events:none;z-index:10000;opacity:.95;animation:beamFade 700ms ease-out forwards;
+  }
+  .influenceTag{
+    position:fixed;transform:translate(-50%,-50%);font-size:11px;font-weight:900;
+    color:#0f172a;background:#fff;border:1px solid var(--line);border-radius:999px;
+    padding:2px 7px;pointer-events:none;z-index:10001;box-shadow:0 6px 18px rgba(15,23,42,.12);
+    animation:beamTag 700ms ease-out forwards;
+  }
+  @keyframes beamFade{0%{opacity:0;filter:blur(1px)}12%{opacity:1}100%{opacity:0;filter:blur(.5px)}}
+  @keyframes beamTag{0%{opacity:0;transform:translate(-50%,-36%)}15%{opacity:1}100%{opacity:0;transform:translate(-50%,-80%)}}
+
+  @media (hover:none){
+    .card:hover{transform:none;box-shadow:var(--shadow)}
+  }
+
+  @media (max-width: 720px){
+    header{padding:8px 10px}
+    .pill{font-size:11px;padding:5px 8px}
+    .scoreNum{font-size:15px;padding:0 4px}
+    #root{padding:10px;gap:10px}
+    .laneWrap{padding:8px}
+    .lane{gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));min-height:0}
+    .card{min-height:104px;padding:6px;gap:4px}
+    .emoji{font-size:23px;line-height:23px}
+    .name{font-size:12px}
+    .rar{font-size:10px;padding:1px 5px}
+    .statline{font-size:11px;gap:4px}
+    .tag{font-size:9px;padding:1px 5px}
+    #deckBar{gap:6px;padding:6px}
+    #deckBar .card{min-width:102px}
+    #battleFlash{left:10px;right:10px;top:auto;bottom:10px;width:auto}
+    .clarityHint{font-size:11px;gap:6px;padding:7px 8px}
+  }
   .wait{padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:#fff7ed;color:#7c2d12;font-weight:700}
 </style>
 </head>
@@ -212,6 +253,11 @@
       </div>
       <div id="foe" class="lane"></div>
     </div>
+  </div>
+
+  <div class="clarityHint" aria-label="Effect clarity legend">
+    <span class="hintChip"><span class="hintBeam"></span> beam = card affecting another card</span>
+    <span class="hintChip">🛡️/❄️/☠ badges = active status effects</span>
   </div>
 
   <div>
@@ -516,6 +562,39 @@ function renderDeckBar(myDeck){
 function elCenter(el){const rct = el.getBoundingClientRect(); return { x: rct.left + rct.width/2, y: rct.top + rct.height*0.15 }; }
 function findCardEl(id){return document.querySelector(`.card[data-id="${id}"]`);}
 
+function influenceBeam(fromCard, toCard, label='Effect', color='#14b8a6'){
+  const fromEl = findCardEl(fromCard?.id);
+  const toEl = findCardEl(toCard?.id);
+  if(!fromEl || !toEl) return;
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+  const startX = a.left + a.width/2;
+  const startY = a.top + a.height/2;
+  const endX = b.left + b.width/2;
+  const endY = b.top + b.height/2;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const len = Math.hypot(dx,dy);
+  const beam = document.createElement('div');
+  beam.className = 'influenceBeam';
+  beam.style.left = startX + 'px';
+  beam.style.top = startY + 'px';
+  beam.style.width = len + 'px';
+  beam.style.transform = `rotate(${Math.atan2(dy,dx)}rad)`;
+  beam.style.background = `linear-gradient(90deg, ${color}, rgba(255,255,255,.75))`;
+  ui.fxRoot.appendChild(beam);
+
+  const tag = document.createElement('div');
+  tag.className = 'influenceTag';
+  tag.textContent = label;
+  tag.style.left = (startX + dx*0.52) + 'px';
+  tag.style.top = (startY + dy*0.52) + 'px';
+  ui.fxRoot.appendChild(tag);
+
+  setTimeout(()=>{beam.remove(); tag.remove();}, 720/speed);
+}
+
+
 function gFloat(card, txt, color='#111827'){
   const targetEl = findCardEl(card.id); if(!targetEl) return;
   const {x,y} = elCenter(targetEl);
@@ -753,6 +832,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
         const ally = shuffled[i];
         ally.effects.push({kind:'dmg', bonus:2, dur:1});
         gFloat(ally, '⚔+', '#ea580c');
+        influenceBeam(u, ally, 'Buff', '#f97316');
         impactBurst(ally, false);
       }
       log(`${u.name} rallies nearby allies!`);
@@ -768,6 +848,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
       const target = allies[0];
       target.effects.push({kind:'maxhp', bonus:2, dur:null});
       healCard(target, 2);
+      influenceBeam(u, target, 'Fortify', '#2563eb');
       gFloat(target, '🛡+', '#2563eb');
       log(`${u.name} reinforces ${target.name}!`);
     }
@@ -780,6 +861,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
     if (allies.length){
       const tgt = allies[Math.floor(r() * allies.length)];
       applyShield(tgt, 1 + (flags.relicShieldPlus || 0));
+      influenceBeam(u, tgt, 'Ward', '#0ea5e9');
       gFloat(tgt, '♪ Ward', '#0ea5e9');
     }
   }
@@ -795,6 +877,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
       const bonus  = syn.healPlus || 0;
       const amt    = (u.heal2.amt || 0) + bonus;
       healCard(target, amt);
+      influenceBeam(u, target, `+${amt} HP`, '#22c55e');
       log(`${u.name} heals ${target.name} for ${amt}`);
     }
     return;
@@ -856,12 +939,14 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
       const pDmg     = (u.applyPoison.dmg || 0) + extra;
       const pDur     = (u.applyPoison.dur || 0) + durPlus;
       addPoison(target, pDmg, pDur);
+      influenceBeam(u, target, 'Poison', '#7c3aed');
       gFloat(target, '☠', '#7c3aed');
     }
 
     // On-hit bleed
     if (tags.includes('bleed')){
       addBleed(target, 2, 2);
+      influenceBeam(u, target, 'Bleed', '#b91c1c');
       gFloat(target, '🩸', '#b91c1c');
     }
 
@@ -869,6 +954,7 @@ function actUnit(u, myDeck, foeDeck, synYou, synFoe, flagsYou, flagsFoe){
     if (u.freeze){
       const dur = 1 + (syn.freezePlus || 0);
       addFreeze(target, dur);
+      influenceBeam(u, target, 'Freeze', '#60a5fa');
       gFloat(target, '❄', '#60a5fa');
     }
   }
@@ -900,6 +986,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
         const tgt = allies.sort((a,b)=>b.hpNow-a.hpNow)[0];
         const extra = (relicFlags?.relicShieldPlus||0);
         applyShield(tgt, (sp.dur||1) + extra);
+        influenceBeam(s, tgt, 'Shield', '#2563eb');
         bigExplosion(tgt,'var(--shield)',18);
         gFloat(tgt, `Shield`, 'var(--shield)');
         log(`${ownerLabel} 🛡️ Shield on ${tgt.name}`);
@@ -912,6 +999,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
         const add = (relicFlags?.relicPoisonPlus||0) + (synergyBuffs.poisonPlus||0);
         const durPlus = (synergyBuffs.poisonDurPlus||0);
         addPoison(opp[i], Math.round(sp.dmg*pow)+add, (sp.dur||3)+durPlus);
+        influenceBeam(s, opp[i], 'Plague', '#7c3aed');
         plagueSplash(opp[i]); gFloat(opp[i], `☣`, '#7c3aed');
       }
       log(`${ownerLabel} ☣️ Plague spreads`);
@@ -927,6 +1015,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
       for (const t of opp){
         blizzardBurst(t);
         addFreeze(t, 1 + (synergyBuffs.freezePlus||0));
+        influenceBeam(s, t, 'Blizzard', '#60a5fa');
         dealDamage(s,t,Math.round((sp.dmg||3)*pow));
       }
       log(`${ownerLabel} ❄️ Blizzard chills two`);
@@ -962,6 +1051,7 @@ function castSpellsOnce(deck, enemyDeck, ownerLabel, relicFlags, synergyBuffs){
       const dur   = sp.dur   || 3;
       for (const a of targets){
         a.effects.push({kind:'maxhp', bonus, dur});
+        influenceBeam(s, a, 'Bulwark', '#2563eb');
         healCard(a, bonus);
         gFloat(a, '🧱', '#2563eb');
       }
