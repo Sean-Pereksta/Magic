@@ -187,6 +187,7 @@
       <div class="tot">Team A: <span id="teamAScore">0</span></div>
       <div class="tot">Team B: <span id="teamBScore">0</span></div>
     </div>
+    <div id="teamsLastSubmit" class="sm muted" style="display:none; margin:-2px 0 8px"></div>
 
     <!-- Chat + Teammate Typing -->
     <div id="chatWrap" style="display:none; margin-bottom:8px">
@@ -294,6 +295,7 @@
   let iTypedDebounce = null;
   let iJustSubmitted = false; // prevent external re-renders from clearing my inputs
   let lastSubmittedInfo = null; // for classic local notice
+  let hostTickBusy = false;
   const myHistory = []; // per-player recent answers
 
   // ---------- FS REFS ----------
@@ -366,6 +368,9 @@
     let pts = base;
     if (mode==='speed'){ if (!bookOK && !chapOK && !verOK) pts -= 1; }
     return {pts, full: (bookOK && chapOK && verOK)};
+  }
+  function getRoundKey(g){
+    return Number(g?.roundKey || 0);
   }
 
   function pickRandomVerse(filterFn=null, excludeSet=null){
@@ -449,11 +454,13 @@
         mode:null,
         deadline: now()+30000,
         round:0,
+        roundKey: 0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
         lives: Object.fromEntries(players.map(p=>[p,3])),
         sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
+        lastTeamSubmission:{A:null,B:null},
         chosenShared: [],
         options: [],
         endAt: 0,
@@ -524,11 +531,13 @@
         mode:null,
         deadline: now()+30000,
         round:0,
+        roundKey: 0,
         scores: Object.fromEntries(players.map(p=>[p,0])),
         lives: Object.fromEntries(players.map(p=>[p,3])),
         sharedLives: 3,
         teamTotals:{A:0,B:0},
         teamLocks:{},
+        lastTeamSubmission:{A:null,B:null},
         chosenShared: [],
         options: [],
         endAt: 0,
@@ -651,13 +660,24 @@
         $('chatWrap').style.display = 'block';
         $('chatLabel').textContent = 'Team chat';
         $('typePanel').style.display = 'block';
+        const myTeam = getMyTeam();
+        const last = (GAME.lastTeamSubmission || {})[myTeam || ''];
+        if (myTeam && last){
+          $('teamsLastSubmit').style.display = 'block';
+          $('teamsLastSubmit').textContent = `Last ${myTeam} submission: ${last.by} → ${last.ref}`;
+        } else {
+          $('teamsLastSubmit').style.display = 'none';
+          $('teamsLastSubmit').textContent = '';
+        }
       } else if (GAME.mode === 'coop'){
         $('teamsBar').style.display = 'none';
+        $('teamsLastSubmit').style.display = 'none';
         $('chatWrap').style.display = 'block';
         $('chatLabel').textContent = 'Chat';
         $('typePanel').style.display = 'none';
       } else {
         $('teamsBar').style.display = 'none';
+        $('teamsLastSubmit').style.display = 'none';
         $('chatWrap').style.display = 'none';
         $('typePanel').style.display = 'none';
       }
@@ -743,12 +763,14 @@
 
   // ---------- HOST DRIVER ----------
   async function hostDrive(){
-    if (!GAME) return;
-    updateCountdownUI();
-    const tnow = now();
+    if (!GAME || hostTickBusy) return;
+    hostTickBusy = true;
+    try {
+      updateCountdownUI();
+      const tnow = now();
 
-    if (GAME.status === 'voting'){
-      if (tnow >= (GAME.deadline || 0)){
+      if (GAME.status === 'voting'){
+        if (tnow < (GAME.deadline || 0)) return;
         const vSnap = await getDocs(votesCol);
         const counts = {traditional:0, speed:0, teams:0, coop:0};
         vSnap.forEach((snapDoc)=>{ const m=snapDoc.data().mode; if (counts[m]!==undefined) counts[m]++; });
@@ -757,85 +779,122 @@
         const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
         const chosen = top[Math.floor(Math.random()*top.length)]; // random tie-break
 
-        const baseUpdate = {
-          mode: chosen, round: 0,
-          scores: Object.fromEntries((GAME.players||[]).map(p=>[p,0])),
-          chosenShared: []
-        };
+        await runTransaction(db, async (tx)=>{
+          const g = await tx.get(gameRef); if (!g.exists()) return;
+          const G = g.data();
+          if (G.status!=='voting' || tnow < (G.deadline||0)) return;
 
-        if (chosen === 'teams'){
-          const ps = (GAME.players||[]).slice();
-          const A=[], B=[]; ps.forEach((p,i)=> (i%2===0?A:B).push(p));
-          await updateDoc(gameRef, {
-            status:'playing', ...baseUpdate,
-            teamA:A, teamB:B, teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false},
-            round:1,
-            currentSharedId: pickRandomVerse().id,
-            deadline: tnow + 60000 // <-- one minute
-          });
-        } else if (chosen === 'speed'){
-          await updateDoc(gameRef, { status:'playing', ...baseUpdate, endAt: tnow + 90000 });
-          await seedPerPlayerVerses();
-        } else if (chosen === 'coop'){
-          const v = pickRandomVerse(); const opts = genCoopOptions(v.id);
-          await updateDoc(gameRef, {
-            status:'playing', ...baseUpdate,
-            sharedLives: 3,
+          const shared = pickRandomVerse();
+          if (!shared) return;
+          const baseUpdate = {
+            status:'playing',
+            mode: chosen,
+            round: 1,
+            roundKey: getRoundKey(G) + 1,
+            scores: Object.fromEntries((G.players||[]).map(p=>[p,0])),
+            chosenShared: [shared.id],
+            currentSharedId: shared.id,
+            endAt: 0,
             coopLocked: false,
             coopNextAt: 0,
             coopAnsweredBy: "",
             coopWasRight: null,
-            coopStartAt: tnow,
-            currentSharedId: v.id,
-            options: opts
-          });
-        } else { // traditional
-          await updateDoc(gameRef, {
-            status:'playing', ...baseUpdate,
-            round:1,
-            currentSharedId: pickRandomVerse().id,
-            deadline: tnow + 30000
-          });
-        }
-      }
-    }
-    else if (GAME.status === 'playing'){
-      const mode = GAME.mode;
-      if (mode === 'coop'){
-        if ((GAME.sharedLives||0) <= 0){ await updateDoc(gameRef, {status:'ended'}); return; }
-        if (GAME.coopLocked && tnow >= (GAME.coopNextAt || 0)){
-          const chosenSet = new Set(GAME.chosenShared || []);
-          let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
-          chosenSet.add(v.id);
-          await updateDoc(gameRef, {
-            currentSharedId: v.id,
-            options: genCoopOptions(v.id),
-            chosenShared: Array.from(chosenSet),
-            coopLocked: false,
-            coopAnsweredBy: "",
-            coopWasRight: null
-          });
-        }
-      } else if (mode === 'traditional' || mode === 'teams'){
-        if (tnow >= (GAME.deadline || 0)){
-          const nextRound = (GAME.round||1) + 1;
-          if (nextRound > 6){ await updateDoc(gameRef, {status:'ended', deadline:0}); }
-          else {
-            const chosenSet = new Set(GAME.chosenShared || []);
-            let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
-            chosenSet.add(v.id);
-            await updateDoc(gameRef, {
-              round: nextRound,
-              currentSharedId: v.id,
-              chosenShared: Array.from(chosenSet),
-              deadline: tnow + (mode==='teams' ? 60000 : 30000), // 60s teams, 30s classic
-              teamLocks: mode==='teams' ? {A:false,B:false} : (GAME.teamLocks||{})
+            options: [],
+            teamLocks: {A:false,B:false},
+            teamTotals: {A:0,B:0},
+            lastTeamSubmission:{A:null,B:null}
+          };
+
+          if (chosen === 'teams'){
+            const ps = (G.players||[]).slice();
+            const A=[], B=[]; ps.forEach((p,i)=> (i%2===0?A:B).push(p));
+            tx.update(gameRef, {
+              ...baseUpdate,
+              teamA:A,
+              teamB:B,
+              deadline: tnow + 60000
+            });
+          } else if (chosen === 'speed'){
+            tx.update(gameRef, {
+              ...baseUpdate,
+              deadline: 0,
+              endAt: tnow + 90000
+            });
+          } else if (chosen === 'coop'){
+            tx.update(gameRef, {
+              ...baseUpdate,
+              sharedLives: 3,
+              coopStartAt: tnow,
+              options: genCoopOptions(shared.id),
+              deadline: 0
+            });
+          } else {
+            tx.update(gameRef, {
+              ...baseUpdate,
+              deadline: tnow + 30000
             });
           }
-        }
-      } else if (mode === 'speed'){
-        if (tnow >= (GAME.endAt || 0)){ await updateDoc(gameRef, {status:'ended'}); }
+        });
+
+        if (chosen === 'speed') await seedPerPlayerVerses();
       }
+      else if (GAME.status === 'playing'){
+        const mode = GAME.mode;
+        if (mode === 'coop'){
+          if ((GAME.sharedLives||0) <= 0){ await updateDoc(gameRef, {status:'ended'}); return; }
+          if (GAME.coopLocked && tnow >= (GAME.coopNextAt || 0)){
+            await runTransaction(db, async (tx)=>{
+              const g = await tx.get(gameRef); if (!g.exists()) return;
+              const G = g.data();
+              if (G.status!=='playing' || G.mode!=='coop') return;
+              if (!G.coopLocked || tnow < (G.coopNextAt || 0)) return;
+              const chosenSet = new Set(G.chosenShared || []);
+              let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
+              if (!v) return;
+              chosenSet.add(v.id);
+              tx.update(gameRef, {
+                currentSharedId: v.id,
+                options: genCoopOptions(v.id),
+                chosenShared: Array.from(chosenSet),
+                coopLocked: false,
+                coopAnsweredBy: "",
+                coopWasRight: null,
+                roundKey: getRoundKey(G) + 1
+              });
+            });
+          }
+        } else if (mode === 'traditional' || mode === 'teams'){
+          if (tnow >= (GAME.deadline || 0)){
+            await runTransaction(db, async (tx)=>{
+              const g = await tx.get(gameRef); if (!g.exists()) return;
+              const G = g.data();
+              if (G.status!=='playing' || (G.mode!=='traditional' && G.mode!=='teams')) return;
+              if (tnow < (G.deadline || 0)) return;
+              const nextRound = (G.round||1) + 1;
+              if (nextRound > 6){
+                tx.update(gameRef, {status:'ended', deadline:0});
+                return;
+              }
+              const chosenSet = new Set(G.chosenShared || []);
+              let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
+              if (!v) return;
+              chosenSet.add(v.id);
+              tx.update(gameRef, {
+                round: nextRound,
+                roundKey: getRoundKey(G) + 1,
+                currentSharedId: v.id,
+                chosenShared: Array.from(chosenSet),
+                deadline: tnow + (G.mode==='teams' ? 60000 : 30000),
+                teamLocks: G.mode==='teams' ? {A:false,B:false} : (G.teamLocks||{})
+              });
+            });
+          }
+        } else if (mode === 'speed'){
+          if (tnow >= (GAME.endAt || 0)){ await updateDoc(gameRef, {status:'ended'}); }
+        }
+      }
+    } finally {
+      hostTickBusy = false;
     }
   }
 
@@ -919,19 +978,32 @@
     if (mode==='traditional' || mode==='teams'){
       const v = verses.find(x=> x.id === GAME.currentSharedId); if (!v) return;
       const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
-      lastMyWasCorrectFull = full;
+      const roundKeyAtSubmit = getRoundKey(GAME);
+      let accepted = false;
 
       if (mode==='teams'){
         const team = getMyTeam(); if (!team) return;
         await runTransaction(db, async (tx)=>{
           const g = await tx.get(gameRef); if (!g.exists()) return;
-          const G = g.data(); const locks = G.teamLocks || {A:false,B:false};
+          const G = g.data();
+          if (G.status!=='playing' || G.mode!=='teams') return;
+          if (getRoundKey(G) !== roundKeyAtSubmit) return;
+          const locks = G.teamLocks || {A:false,B:false};
           if (locks[team]) return;
           locks[team] = true;
           const scs = G.scores || {}; scs[username] = (scs[username]||0) + Math.max(0,pts);
           const tots = G.teamTotals || {A:0,B:0}; tots[team] = (tots[team]||0) + Math.max(0,pts);
-          tx.update(gameRef, { teamLocks: locks, scores: scs, teamTotals: tots });
+          const submits = G.lastTeamSubmission || {A:null,B:null};
+          submits[team] = {
+            by: username,
+            ref: `${book} ${chapter}:${verseNum}`,
+            at: now()
+          };
+          tx.update(gameRef, { teamLocks: locks, scores: scs, teamTotals: tots, lastTeamSubmission: submits });
+          accepted = true;
         });
+        if (!accepted) return;
+        lastMyWasCorrectFull = full;
         // Announce who submitted what for teams
         await addDoc(chatCol, {
           name: username,
@@ -940,7 +1012,18 @@
           ts: serverTimestamp()
         });
       } else {
-        await updateDoc(gameRef, { [`scores.${username}`]: increment(Math.max(0, pts)) });
+        await runTransaction(db, async (tx)=>{
+          const g = await tx.get(gameRef); if (!g.exists()) return;
+          const G = g.data();
+          if (G.status!=='playing' || G.mode!=='traditional') return;
+          if (getRoundKey(G) !== roundKeyAtSubmit) return;
+          const scs = G.scores || {};
+          scs[username] = (scs[username]||0) + Math.max(0, pts);
+          tx.update(gameRef, { scores: scs });
+          accepted = true;
+        });
+        if (!accepted) return;
+        lastMyWasCorrectFull = full;
         // Classic: show immediate local submitted result
         lastSubmittedInfo = {
           ok: full,
