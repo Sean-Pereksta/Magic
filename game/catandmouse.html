@@ -234,13 +234,13 @@
   <!-- Structure Buttons -->
  <div id="structureButtons" style="margin-top: 10px;">
   <strong>Select Structure:</strong><br>
-  <button>🧱</button>
-  <button>🔫</button>
-  <button>🪳</button>
-  <button>🏭</button>
-  <button>💎</button>
-  <button>🗼</button>
-  <button>🐦‍🔥</button>
+  <button data-build-key="1">1</button>
+  <button data-build-key="2">2</button>
+  <button data-build-key="3">3</button>
+  <button data-build-key="4">4</button>
+  <button data-build-key="5">5</button>
+  <button data-build-key="6">6</button>
+  <button data-build-key="7">7</button>
 </div>
 
 
@@ -391,7 +391,7 @@ let catHealth = 1000;
 let players = {};
 let isHost = false;
 let canMove = true;
-const moveCooldown = 225;
+let moveCooldown = 225;
 let catPower = 0;
 let catMoveInterval = null;
 let ratPower = 1;
@@ -426,6 +426,9 @@ let fleas = [];
   let oxen = [];
   let catcherBots = [];
   let isRatSpawning = false;
+let lastSavedPlayerState = null;
+let pendingSaveTimeout = null;
+const POSITION_WRITE_DEBOUNCE_MS = 140;
 
 
 
@@ -534,7 +537,10 @@ function renderGrid() {
   for (const name in players) {
     const p = players[name];
     if (!p.alive) continue;
-    const cell = document.getElementById(`cell-${p.x}-${p.y}`);
+    const renderPos = name === username
+      ? { x: playerPos.x, y: playerPos.y }
+      : { x: p.x, y: p.y };
+    const cell = document.getElementById(`cell-${renderPos.x}-${renderPos.y}`);
     if (cell) {
       cell.textContent = "🐭";
       const nameTag = document.createElement("div");
@@ -910,6 +916,12 @@ async function movePlayer(dx, dy) {
   const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
 
   playerPos = { x: newX, y: newY };
+  players[username] = {
+    ...(players[username] || {}),
+    x: newX,
+    y: newY,
+    alive: true
+  };
   savePosition();
 
   // 🌿 Destroy vine on contact
@@ -1115,6 +1127,18 @@ const costMap = {
   // Remove final separator
   html = html.replace(/&nbsp; \| &nbsp; $/, "");
   document.getElementById("buildInfo").innerHTML = html;
+
+  document.querySelectorAll("#structureButtons button[data-build-key]").forEach((button) => {
+    const key = button.getAttribute("data-build-key");
+    const emoji = map[key];
+    button.textContent = emoji ? `${key}: ${emoji}` : `${key}: ❌`;
+    button.title = emoji && buildNames[emoji] ? buildNames[emoji] : "Unavailable";
+    button.disabled = !emoji;
+  });
+
+  if (selectedBuild === null && map["1"]) {
+    selectBuild("1");
+  }
 }
 
 
@@ -1182,10 +1206,7 @@ function setupMobileControls() {
 
 const structureKeys = ["1", "2", "3", "4", "5", "6", "7"];
 structureKeys.forEach(key => {
-  // Since first two children are <strong> and <br>, buttons start at 3rd child
-  const nthChildIndex = parseInt(key, 10) + 2; // Add 2 to shift past <strong> and <br>
-
-  const emojiButton = document.querySelector(`#structureButtons :nth-child(${nthChildIndex})`);
+  const emojiButton = document.querySelector(`#structureButtons button[data-build-key="${key}"]`);
   if (emojiButton) {
     emojiButton.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -1286,7 +1307,19 @@ function savePosition() {
     y: playerPos.y,
     cheese: cheeseCount
   };
-  setDoc(playerRef, payload, { merge: true });
+
+  const nextState = JSON.stringify(payload);
+  if (nextState === lastSavedPlayerState) return;
+
+  if (pendingSaveTimeout) {
+    clearTimeout(pendingSaveTimeout);
+  }
+
+  pendingSaveTimeout = setTimeout(() => {
+    setDoc(playerRef, payload, { merge: true });
+    lastSavedPlayerState = nextState;
+    pendingSaveTimeout = null;
+  }, POSITION_WRITE_DEBOUNCE_MS);
 }
 
 
@@ -2340,6 +2373,13 @@ onSnapshot(playerRef, (docSnap) => {
 
   const data = docSnap.data();
   playerPos = { x: data.x, y: data.y };
+  players[username] = {
+    ...(players[username] || {}),
+    ...data,
+    x: data.x,
+    y: data.y,
+    alive: data.alive !== false
+  };
   isAlive = data.alive !== false;
   cheeseCount = data.cheese || 0;
   document.getElementById("cheeseCount").textContent = cheeseCount;
