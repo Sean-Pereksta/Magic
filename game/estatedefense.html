@@ -73,12 +73,25 @@
     #vScroll::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--violet); border: none; }
     #vScroll::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--violet); border: none; }
     #centerBtn{ position:absolute; left:12px; bottom:12px; }
+    #mobileHud{display:none;position:absolute;left:10px;right:10px;bottom:10px;z-index:5;pointer-events:none}
+    #mobileIncomeBar,#mobileActions{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:12px;padding:8px 10px;backdrop-filter:blur(4px)}
+    #mobileIncomeBar{margin-bottom:8px}
+    #mobileIncomeBar .item{font-size:13px;color:var(--muted)}
+    #mobileIncomeBar b{color:var(--ink)}
+    .mobileBtn{flex:1;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px 10px;font-weight:600;font-size:13px}
     #leaveBtn{color:#fff;background:var(--danger);border:none}
     @media (max-width: 1200px){
+      body{height:100dvh;overflow:hidden;background:#e9eef3}
       #left{display:none}
       #right{display:none}
-      #center{gap:0}
-      header{flex-wrap:wrap;gap:6px}
+      #center{gap:0;height:100%}
+      header{position:absolute;top:0;left:0;right:0;z-index:4;background:linear-gradient(to bottom, rgba(255,255,255,.98), rgba(255,255,255,.85));gap:6px}
+      header .small{display:none}
+      #stats{font-size:15px;font-weight:600}
+      #canvasWrap{border:none;height:100%;padding-top:68px}
+      #vScroll{right:6px;top:76px;height:calc(100% - 168px)}
+      #centerBtn{display:none}
+      #mobileHud{display:block}
     }
   </style>
 </head>
@@ -124,6 +137,17 @@
       <div id="toast" class="toast" style="display:none"></div>
       <input id="vScroll" type="range" min="0" value="0" step="1">
       <button id="centerBtn" class="chip">Center on Core</button>
+      <div id="mobileHud">
+        <div id="mobileIncomeBar">
+          <div class="item">Funds <b id="mobileFundsLbl">0</b></div>
+          <div class="item">Income <b id="mobileIncomeLbl">0</b>/15s</div>
+        </div>
+        <div id="mobileActions">
+          <button id="mobileTowerBtn" class="mobileBtn">🗼 Next Tower</button>
+          <button id="mobileCoreBtn" class="mobileBtn">💎 Core</button>
+          <button id="mobileFullscreenBtn" class="mobileBtn">⛶ Fullscreen</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -189,6 +213,8 @@
     // ----- UI -----
     const fundsLbl = document.getElementById('fundsLbl');
     const baseLbl  = document.getElementById('baseLbl');
+    const mobileFundsLbl = document.getElementById('mobileFundsLbl');
+    const mobileIncomeLbl = document.getElementById('mobileIncomeLbl');
     const hostLbl  = document.getElementById('hostLbl');
     const leaseLbl = document.getElementById('leaseLbl');
     const levelLbl = document.getElementById('levelLbl');
@@ -203,6 +229,9 @@
     const leaveBtn = document.getElementById('leaveBtn');
     const vScroll = document.getElementById('vScroll');
     const centerBtn = document.getElementById('centerBtn');
+    const mobileTowerBtn = document.getElementById('mobileTowerBtn');
+    const mobileCoreBtn = document.getElementById('mobileCoreBtn');
+    const mobileFullscreenBtn = document.getElementById('mobileFullscreenBtn');
     const CRYSTAL_HIT_R_T = 0.65;
     const RENDER_DELAY_MS = 100;   // how far behind "now" we render
 const MAX_EXTRAP_MS   = 120;   // tiny safety extrapolation window
@@ -254,6 +283,7 @@ const enqueueIntent = (() => {
     let lastShop = { funds:-1, seeded:false, active:true };
     let _projPrev = new Map();   // id -> {x,y}
     let _projCurr = new Map();   // id -> {x,y}
+    let _towerCycleIndex = 0;
     let _lastSnapAt = Date.now();
     let _lastVer = -1;
 
@@ -949,8 +979,10 @@ function maybeRenderShop(){
       if (typeof meP.baseIncome === 'number') myBaseIncome = meP.baseIncome;
       const myInc = (myBaseIncome || 1) + (meP.baseIncomeDelta || 0);
       baseLbl.textContent = fmt3(myInc);
+      if (mobileIncomeLbl) mobileIncomeLbl.textContent = fmt3(myInc);
     }
     fundsLbl.textContent = Math.floor(myFunds);
+    if (mobileFundsLbl) mobileFundsLbl.textContent = Math.floor(myFunds);
 
     // Seed gate + shop refresh
     const wasSeeded = amSeeded;
@@ -2254,9 +2286,35 @@ function addLightningArc(x1,y1,x2,y2, segs=4, jitterT=0.25, dur=90, color="#ffd5
     // ----- Scrolling -----
     function syncSlider(){ vScroll.value = Math.round(camY); }
     function centerOnCore(){ if (!state || !state.crystal) return; camY = clamp(state.crystal.y * TILE - H/2, 0, MAP_H - H); syncSlider(); }
+    function centerOnTowerCycle(){
+      if (!state || !state.towers || !state.towers.length) { toast('No towers yet'); return; }
+      const myTowers = state.towers.filter(t => t.owner === me);
+      const towers = myTowers.length ? myTowers : state.towers;
+      const t = towers[_towerCycleIndex % towers.length];
+      _towerCycleIndex++;
+      camY = clamp(t.y * TILE - H/2, 0, MAP_H - H);
+      syncSlider();
+      toast(`Viewing ${t.name || t.key || 'tower'}`);
+    }
+    async function toggleFullscreen(){
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          if (mobileFullscreenBtn) mobileFullscreenBtn.textContent = '🗗 Exit';
+        } else {
+          await document.exitFullscreen();
+          if (mobileFullscreenBtn) mobileFullscreenBtn.textContent = '⛶ Fullscreen';
+        }
+      } catch {
+        toast('Fullscreen unavailable');
+      }
+    }
     vScroll.max = Math.max(0, MAP_H - H); vScroll.value = camY;
     vScroll.addEventListener('input', ()=>{ camY = clamp(parseInt(vScroll.value,10)||0, 0, MAP_H - H); });
     centerBtn.onclick = centerOnCore;
+    if (mobileCoreBtn) mobileCoreBtn.onclick = centerOnCore;
+    if (mobileTowerBtn) mobileTowerBtn.onclick = centerOnTowerCycle;
+    if (mobileFullscreenBtn) mobileFullscreenBtn.onclick = toggleFullscreen;
     canvas.addEventListener('wheel', (ev)=>{ ev.preventDefault(); camY = clamp(camY + ev.deltaY, 0, MAP_H - H); syncSlider(); }, { passive:false });
     window.addEventListener('keydown', (e)=>{ if (e.key==='ArrowUp'||e.key==='w'||e.key==='W') camY=clamp(camY-50,0,MAP_H-H); if (e.key==='ArrowDown'||e.key==='s'||e.key==='S') camY=clamp(camY+50,0,MAP_H-H); if (e.key==='c'||e.key==='C') centerOnCore(); syncSlider(); });
 
