@@ -100,6 +100,7 @@
       <div class="row"><div>Level:</div><b id="levelLbl">1</b></div>
       <div class="row"><div>Kills to next:</div><b id="killsLbl">—</b></div>
       <div class="row"><div>Core HP:</div><b id="coreHpLbl">—</b></div>
+      <div class="row"><div>High Score:</div><b id="highScoreLbl">0</b></div>
     </div>
     <div class="panel">
       <h3>Enemies this level</h3>
@@ -150,8 +151,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import {
       getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-      collection, addDoc, query, orderBy, limit, getDocs, onSnapshot, deleteDoc,
-      serverTimestamp, arrayUnion, arrayRemove
+      collection, addDoc, query, orderBy, limit, getDocs, onSnapshot,
+      serverTimestamp, arrayUnion, arrayRemove, where
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -169,8 +170,9 @@
 
     // ----- Params -----
     const LOBBY_ROUTE = "/lobby.html";
+    const SHARED_LOBBY_ID = "estate-defense-global";
     const params = new URLSearchParams(location.search);
-    const lobbyId = params.get("gameId");
+    const lobbyId = SHARED_LOBBY_ID;
     const me = params.get("username") || "anon";
     document.getElementById('youName').textContent = me;
     document.getElementById('lobbyId').textContent = lobbyId || '—';
@@ -192,6 +194,7 @@
     const levelLbl = document.getElementById('levelLbl');
     const killsLbl = document.getElementById('killsLbl');
     const coreHpLbl= document.getElementById('coreHpLbl');
+    const highScoreLbl= document.getElementById('highScoreLbl');
     const playersBox = document.getElementById('playersBox');
     const shopBox = document.getElementById('shop');
     const selInfo = document.getElementById('selInfo');
@@ -212,7 +215,7 @@ const ENEMY_RADIUS_T         = 0.48; // enemy "size" in tiles
 const PHYS_MAX_ADVANCE_T     = 0.40; // max tiles advanced per micro-step (prevents tunneling)
 const PHYS_MAX_DT            = 0.35; // clamp dt to avoid giant jumps on hiccups
     // Host publish tuning
-const PUBLISH_MIN_MS = 200;  // publish at ~3.5 Hz (sim still runs every 200ms)
+    const PUBLISH_MIN_MS = 350;  // publish at ~2.8 Hz (lighter Firebase load)
 const MAX_PROJECTILES_PUBLISH = 120; // cap transmitted bullets to keep doc small
 let _lastPublishAt = 0;
     const USER_GROW_MS = 15000;  // every 15s
@@ -566,8 +569,6 @@ const TOWER_PRIORITY_PRESETS = {
     const lobbyRef  = doc(db, "lobbies", lobbyId);
     const intentsCol = collection(db, "lobbies", lobbyId, "intents");
 
-    if (!lobbyId) throw new Error("Missing gameId in URL");
-
     // Presence
     const presenceCol = collection(db, "lobbies", lobbyId, "presence");
     let presentNames = [];
@@ -577,17 +578,18 @@ const TOWER_PRIORITY_PRESETS = {
       const nowMs = Date.now();
       presentNames = snap.docs
         .filter(d => {
-          const ts = d.data()?.lastSeen;
+          const data = d.data() || {};
+          const ts = data.lastSeen;
           const ms = ts?.toMillis ? ts.toMillis() : 0;
-          return nowMs - ms < STALE_MS;
+          return data.active !== false && (nowMs - ms < STALE_MS);
         })
         .map(d => d.id)
         .sort();
     });
 
-    await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp() }, { merge: true });
+    await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp(), active: true }, { merge: true });
     const _presenceBeat = setInterval(() => {
-      updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp() }).catch(()=>{});
+      updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp(), active: true }).catch(()=>{});
     }, 15000);
 
     // Also mirror to root `players`
@@ -595,7 +597,7 @@ const TOWER_PRIORITY_PRESETS = {
 
     function cleanupPresence(){
       try { clearInterval(_presenceBeat); } catch {}
-      deleteDoc(doc(presenceCol, me)).catch(()=>{});
+      updateDoc(doc(presenceCol, me), { active: false, leftAt: serverTimestamp() }).catch(()=>{});
       updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
     }
     window.addEventListener('beforeunload', cleanupPresence);
@@ -843,16 +845,7 @@ function maybeRenderShop(){
       _leaving = true;
       leaveBtn.disabled = true;
       try{
-        if (typeof cleanupPresence === 'function') {
-          cleanupPresence();
-        } else {
-          await deleteDoc(doc(presenceCol, me)).catch(()=>{});
-          await updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
-        }
-        const pres = await getDocs(presenceCol);
-        if (pres.empty){
-          try{ await deleteDoc(lobbyRef); }catch(e){}
-        }
+        cleanupPresence();
       } finally {
         location.href = `${LOBBY_ROUTE}?username=${encodeURIComponent(me)}`;
       }
@@ -947,6 +940,7 @@ function maybeRenderShop(){
     const killsLeft = Math.max(0, (state.killsToAdvance || 10) - (state.killsThisLevel || 0));
     killsLbl.textContent = `${killsLeft}`;
     coreHpLbl.textContent = `${Math.max(0, Math.round(state.crystal?.hp || 0))}/${Math.round(state.crystal?.maxHp || 0)}`;
+    highScoreLbl.textContent = Math.max(0, Math.round(state.highScore || 0));
 
     // Me / funds / base income
     const meP = (state.players || []).find(p => p.name === me) || null;
@@ -1071,6 +1065,7 @@ function beginHosting(){
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
         crystal:{ x:cx, y:cy, hp:100, maxHp:100 },
+        highScore: 0,
         players: seededPlayers,
         towers:[], enemies:[], projectiles:[]
       };
@@ -1196,9 +1191,10 @@ function sanitizeForFirestore(input){
     const nowMs = Date.now();
     let anyFresh = false;
     presSnap.forEach(docu => {
-      const ts = docu.data()?.lastSeen;
+      const pdata = docu.data() || {};
+      const ts = pdata.lastSeen;
       const ms = ts?.toMillis ? ts.toMillis() : 0;
-      if (nowMs - ms < STALE_MS) anyFresh = true;
+      if (pdata.active !== false && (nowMs - ms < STALE_MS)) anyFresh = true;
     });
 
     if (!anyFresh){
@@ -1220,26 +1216,36 @@ function sanitizeForFirestore(input){
       ? presentNames
       : (d.players || []);
     g = restartGameInPlace(g, rootPlayers);
-    nextIncomeAt: now() + 15000;
     incomeTickAt = 0;      // reset local income cadence
     _finalizeOnce = false; // allow next defeat to finalize again
-    incomeTickAt = 0;
-    _finalizeOnce = false;
   }
 
   // --- Read & apply intents (do NOT delete yet) ---
-  const Q = query(intentsCol, orderBy('ts','asc'), limit(100));
+  const lastIntentTs = Number(g._lastIntentTs || 0);
+  const Q = query(
+    intentsCol,
+    where('ts', '>', lastIntentTs),
+    orderBy('ts','asc'),
+    limit(100)
+  );
   const snap = await getDocs(Q);
-  const processedIds = [];
+  let newestIntentTs = lastIntentTs;
   for (const docu of snap.docs){
     const mv = docu.data();
     try { g = await applyIntent(g, mv); } catch {}
-    processedIds.push(docu.id);
+    newestIntentTs = Math.max(newestIntentTs, Number(mv?.ts || 0));
   }
+  g._lastIntentTs = newestIntentTs;
 
   // --- Tick the sim ---
   if (g.status === 'active'){
     g = simulate(g);   // your simulate() already contains abilities + slower spawns
+  }
+
+  if (g.status === 'defeat' && !g._finalized && !_finalizeOnce){
+    _finalizeOnce = true;
+    await finalizeAndMarkDefeat(g);
+    return;
   }
 
   // --- Throttled publish to Firestore (CAS with throw-to-abort) ---
@@ -1264,7 +1270,6 @@ function sanitizeForFirestore(input){
 
       const curVer = (cur.game && typeof cur.game.ver === 'number') ? cur.game.ver : 0;
       if (curVer !== verStart) throw new Error('ABORT_STALE'); // someone else advanced
-      if (curVer !== verStart) throw new Error('ABORT_STALE');
 
       // ✅ Only if still current do we write
       tx.update(lobbyRef, { game: gNext, leaseUntil: now() + LEASE_MS });
@@ -1315,16 +1320,6 @@ function sanitizeForFirestore(input){
     console.warn('live income growth error', e);
   }
 
-  // ✅ Delete processed intents ONLY after a successful write
-  if (processedIds.length){
-    try{
-      const batch = writeBatch(db);
-      for (const id of processedIds){
-        batch.delete(doc(db, 'lobbies', lobbyId, 'intents', id));
-      }
-      await batch.commit();
-    } catch {}
-  }
 }
 }
 
@@ -1428,6 +1423,7 @@ function applyEnemyDamage(g, e, rawDmg, elem){
         level:1, killsThisLevel:0, killsToAdvance:20,
         lastTick:now(), nextSpawnAt:now()+1000,
         crystal:{ x:cx, y:cy, hp:100, maxHp:100 },
+        highScore: Math.max(g?.highScore || 0, g?.level || 1),
         players: nextPlayers,
         towers:[], enemies:[], projectiles:[]
       };
@@ -2136,9 +2132,13 @@ while (tNow >= g.nextIncomeAt && safety < 10) { // catch up if host stalled
   g.nextIncomeAt += 15000;
   safety++;
 }
-// Instant hard reset when crystal drops below 1 HP
+// Mark defeat. Host loop finalizes and restarts after a short pause.
 if (g.crystal.hp < 1) {
-  return hardResetRun(g);
+  return {
+    ...g,
+    status: 'defeat',
+    highScore: Math.max(g.highScore || 0, g.level || 1)
+  };
 }
   return g;
 }
@@ -2189,14 +2189,26 @@ if (g.crystal.hp < 1) {
       }
 
       // ---- Mark defeat + schedule restart (do not deactivate lobby) ----
+      const runHigh = Math.max(cur?.highScore || 0, cur?.level || 1);
       const updated = {
         ...cur,
         status: 'defeat',
+        highScore: runHigh,
         _finalized: true,
         _restartAt: now() + 2500, // ~2.5s pause before restart
       };
 
-      tx.update(lobbyRef, { game: updated });
+      tx.update(lobbyRef, { game: updated, estateHighScore: runHigh });
+
+      for (const p of players){
+        const uref = doc(db, 'users', p.name);
+        const us = await tx.get(uref);
+        const estate = us.exists() ? (us.data().estate || {}) : {};
+        const prevHigh = (typeof estate.highScore === 'number') ? estate.highScore : 0;
+        if (runHigh > prevHigh){
+          tx.set(uref, { estate: { highScore: runHigh } }, { merge: true });
+        }
+      }
     });
   } catch(e){
     // Only log unexpected issues; "ABORT_*" are normal control-flow exits
@@ -2308,6 +2320,10 @@ function draw(){
     const tpct = Math.max(0, Math.min(1, (t.hp / t.maxHp)));
     ctx.fillStyle="#111"; ctx.fillRect(x-14,y+12,28,4);
     ctx.fillStyle="#16a34a"; ctx.fillRect(x-14,y+12, 28*tpct, 4);
+    ctx.fillStyle = "#111";
+    ctx.font = "11px Segoe UI";
+    ctx.textAlign = "center";
+    ctx.fillText(`👷 ${t.owner || 'unknown'}`, x, y - 16);
   }
 
   // ===== Buffered rendering (enemies only) =====
