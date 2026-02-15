@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>⚔️ Battle</title>
   <style>
     body { font-family: Arial, sans-serif; background: #eef2f5; margin: 0; padding: 0; display: flex; }
+    #mobileTopBar{ display:none; position:fixed; top:8px; left:8px; right:8px; z-index:1200; gap:8px; }
+    #mobileTopBar button{ border:1px solid #334155; background:#0f172a; color:#fff; border-radius:10px; padding:8px 10px; font-weight:700; }
+    #selectedTroopChip{ margin-left:auto; background:#111827; color:#fff; border:1px solid #334155; border-radius:10px; padding:8px 10px; font-size:12px; }
     #sidebar { width: 180px; background: #ddd; padding: 10px; border-right: 2px solid #aaa; }
     #grid { display: grid; grid-template-columns: repeat(16, 30px); gap: 2px; margin: 20px; position: relative; }
     .cell { width: 30px; height: 30px; background: #fff; border: 1px solid #ccc; position: relative; }
@@ -51,6 +55,7 @@
       display:block; margin:5px 0; padding:6px; width:100%; background:gray; border:none; color:white; font-weight:bold; cursor:pointer;
     }
     #backLobbyBtn{ background:#0f172a; }
+    .troop-tray button.active{ outline:2px solid #2563eb; background:#1d4ed8; }
 
     #resultPopup {
       display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
@@ -141,9 +146,24 @@
       from{ opacity:1; transform:translate(-50%,-50%) scale(1); }
       to{ opacity:0; transform:translate(-50%,-50%) scale(2); }
     }
+
+    @media (max-width: 900px), (pointer: coarse){
+      body{ flex-direction:column; }
+      #sidebar{ width:100%; border-right:0; border-bottom:2px solid #aaa; position:sticky; top:0; z-index:1000; }
+      #grid{ margin:10px auto 20px; grid-template-columns: repeat(16, minmax(16px, 1fr)); width:min(96vw, 620px); gap:1px; touch-action:manipulation; }
+      .cell{ width:100%; aspect-ratio:1/1; height:auto; }
+      #mobileTopBar{ display:flex; align-items:center; }
+      .troop-tray{ display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:6px; }
+      .troop-tray button{ margin:0; padding:8px 4px; font-size:12px; }
+    }
+
   </style>
 </head>
 <body>
+  <div id="mobileTopBar">
+    <button id="mobileFullscreenBtn">⛶ Fullscreen</button>
+    <div id="selectedTroopChip">Selected: 🗡️ Swordsman</div>
+  </div>
   <div id="sidebar">
     <h4>🛡️ Troops</h4>
     <div class="troop-tray">
@@ -523,7 +543,18 @@
     }
 
     /* =================== TROOPS =================== */
-    function selectTroopType(type){ selectedTroopType = type; }
+    const TROOP_LABELS = {
+      base:"🗡️ Swordsman", archer:"🏹 Archer", guardian:"🛡️ Guardian", raider:"🐎 Raider",
+      bomber:"💣 Bomber", golem:"💎 Golem", dragon:"🐉 Dragon", cthulu:"🐙 Cthulu"
+    };
+    function updateSelectedTroopUI(){
+      document.querySelectorAll('.troop-tray button').forEach(btn=>btn.classList.remove('active'));
+      const btn = document.querySelector(`.troop-tray button[onclick="selectTroopType('${selectedTroopType}')"]`);
+      if (btn) btn.classList.add('active');
+      const chip = document.getElementById('selectedTroopChip');
+      if (chip) chip.textContent = `Selected: ${TROOP_LABELS[selectedTroopType] || selectedTroopType}`;
+    }
+    function selectTroopType(type){ selectedTroopType = type; updateSelectedTroopUI(); }
     window.selectTroopType = selectTroopType;
 
     function createTroopDiv(emoji, cls, hp){
@@ -1164,6 +1195,7 @@
       document.getElementById("troopCount").textContent = troopsLeft;
 
       createGrid();
+      updateSelectedTroopUI();
 
       for (const b of defenderData.grid || []) {
         const key = `${b.x},${b.y}`;
@@ -1202,6 +1234,13 @@
         const base = "/game/villagelobby.html";
         location.href = u ? `${base}?username=${encodeURIComponent(u)}` : base;
       };
+
+      document.getElementById("mobileFullscreenBtn")?.addEventListener("click", async ()=>{
+        try{
+          if (document.fullscreenElement) await document.exitFullscreen();
+          else await (document.documentElement.requestFullscreen?.());
+        }catch(e){ console.warn("fullscreen failed", e); }
+      });
     }
 
     init();
