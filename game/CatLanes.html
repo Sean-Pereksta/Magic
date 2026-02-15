@@ -600,8 +600,8 @@ function setupWorld(stage, heroClass){
   // Apply persistent shop items
   applyAllShopItems(me);
 
-  state.camera.x = clamp(me.x - 200, 0, MAP_W - canvas.width);
-  state.camera.y = 0;
+  state.camera.x = clamp(me.x - canvas.width/2, 0, MAP_W - canvas.width);
+  state.camera.y = clamp(me.y - canvas.height/2, 0, MAP_H - canvas.height);
 
   stageEl.textContent = state.stage;
   flashBanner("STAGE "+state.stage);
@@ -1375,14 +1375,15 @@ function physics(dt){
 }
 
 function updateCamera(dt){
-  if (!state.mouse.over) return;
-  const mx=state.mouse.x;
-  let vx=0;
-  if (mx < VIEWPAD_X) vx = -EDGE_SCROLL_X;
-  else if (mx > canvas.width - VIEWPAD_X) vx = EDGE_SCROLL_X;
-  const fx = mx < VIEWPAD_X ? (1 - mx/VIEWPAD_X)
-           : (mx > canvas.width - VIEWPAD_X ? (mx - (canvas.width - VIEWPAD_X))/VIEWPAD_X : 0);
-  state.camera.x = clamp(state.camera.x + vx*fx*dt/1000, 0, MAP_W - canvas.width);
+  const me = playerHero();
+  if (!me || !me.alive) return;
+
+  const targetX = clamp(me.x - canvas.width/2, 0, MAP_W - canvas.width);
+  const targetY = clamp(me.y - canvas.height/2, 0, MAP_H - canvas.height);
+  const followStrength = Math.min(1, dt * 0.02);
+
+  state.camera.x += (targetX - state.camera.x) * followStrength;
+  state.camera.y += (targetY - state.camera.y) * followStrength;
 }
 
 /* ========================= Abilities (Player Cast) ========================= */
@@ -1865,7 +1866,6 @@ init();
 </script>
 </body>
 </html>
-
 
 
 
