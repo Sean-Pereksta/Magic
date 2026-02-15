@@ -237,11 +237,17 @@
     .vfx-pop{ animation:vfxPop 0.45s ease-out forwards; }
     .vfx-claw{ animation:vfxClaw 0.55s ease-out forwards; color:#a30f0f; }
 
-    #selectionOverlay{ position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:40; display:none; align-items:center; justify-content:center; padding:14px; }
-    #selectionCard{ background:#fff; border-radius:12px; padding:12px; max-width:860px; width:100%; }
-    #selectionGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; max-height:42vh; overflow:auto; }
-    .sel-btn{ border:1px solid #bbb; background:#f8fafc; border-radius:8px; padding:8px; font-size:13px; }
-    .sel-btn.locked{ opacity:0.6; background:#e5e7eb; }
+    #selectionOverlay{ position:fixed; inset:0; background:rgba(2,6,23,0.78); backdrop-filter: blur(3px); z-index:40; display:none; align-items:center; justify-content:center; padding:14px; }
+    #selectionCard{ background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%); border-radius:14px; padding:14px; max-width:940px; width:100%; max-height:90vh; overflow:auto; border:1px solid #dbeafe; box-shadow:0 10px 30px rgba(15,23,42,0.25); }
+    #selectionGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:8px; max-height:40vh; overflow:auto; padding-right:4px; }
+    #slotList{ display:grid; grid-template-columns:repeat(auto-fit,minmax(115px,1fr)); gap:8px; margin-bottom:10px; }
+    .slot-chip{ border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; padding:7px 8px; font-size:13px; text-align:left; min-height:44px; }
+    .slot-chip.filled{ border-color:#60a5fa; background:#dbeafe; }
+    .slot-chip.done{ opacity:0.9; }
+    .sel-btn{ border:1px solid #bfdbfe; background:#f8fbff; border-radius:10px; padding:8px; font-size:13px; text-align:left; }
+    .sel-btn.locked{ opacity:0.55; background:#e5e7eb; }
+    .sel-btn.chosen{ border-color:#22c55e; background:#dcfce7; }
+    #selectedBuildSlotsTop{ max-width:900px; margin:6px auto 0; font-size:13px; color:#1f2937; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:6px 10px; }
 
     @keyframes vfxFlame{
       0% { opacity:1; transform:translate(-50%, -50%) scale(0.4) rotate(-10deg); }
@@ -292,11 +298,27 @@
     <div id="selectionCard">
       <h3 style="margin:0 0 8px;">🏗️ Select up to 7 Structures (in order)</h3>
       <div id="selectionInfo" style="font-size:13px; margin-bottom:8px;"></div>
-      <div id="selectedSlots" style="font-size:13px; margin-bottom:8px;"></div>
+      <div id="difficultyPanel" style="margin:0 0 10px; padding:8px; border:1px solid #bbb; border-radius:8px; background:#f8fafc;">
+        <div style="font-weight:bold; margin-bottom:4px;">🎚️ Difficulty Vote (locks when selection ends)</div>
+        <div id="difficultyStatus" style="font-size:12px; color:#333; margin-bottom:6px;">Current: Medium</div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          <button class="difficulty-vote" data-diff="easy">Easy</button>
+          <button class="difficulty-vote" data-diff="medium">Medium</button>
+          <button class="difficulty-vote" data-diff="hard">Hard</button>
+          <button class="difficulty-vote" data-diff="insane">Insane</button>
+        </div>
+      </div>
+      <div id="selectedSlots" style="font-size:13px; margin-bottom:6px;"></div>
+      <div id="slotList"></div>
       <div id="selectionGrid"></div>
-      <div style="margin-top:8px;"><button id="finishSelectionBtn" style="font-size:15px; padding:8px 12px;">✅ Finish Selection</button></div>
+      <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <button id="finishSelectionBtn" style="font-size:15px; padding:8px 12px;">✅ Finalize Selection</button>
+        <div id="selectionFinalizeMeta" style="font-size:13px; color:#374151;"></div>
+      </div>
     </div>
   </div>
+
+  <div id="selectedBuildSlotsTop">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _</div>
 
   <div id="waveCountdown">🐀 Next wave: ?</div>
 
@@ -330,17 +352,6 @@
 
       <div id="playerStatus" style="margin-top:10px;"></div>
       <div id="hostDisplay" style="margin-top:10px; font-weight:bold; color:#333;"></div>
-
-      <div id="difficultyPanel" style="margin-top:10px; padding:8px; border:1px solid #bbb; border-radius:8px; background:#f8fafc;">
-        <div style="font-weight:bold; margin-bottom:4px;">🎚️ Difficulty Vote</div>
-        <div id="difficultyStatus" style="font-size:12px; color:#333; margin-bottom:6px;">Current: Medium</div>
-        <div style="display:flex; flex-wrap:wrap; gap:4px;">
-          <button class="difficulty-vote" data-diff="easy">Easy</button>
-          <button class="difficulty-vote" data-diff="medium">Medium</button>
-          <button class="difficulty-vote" data-diff="hard">Hard</button>
-          <button class="difficulty-vote" data-diff="insane">Insane</button>
-        </div>
-      </div>
 
       <div id="upgradeMenu" style="display:none; background:#eee; border:2px solid #888; padding:10px; margin-top:10px;">
         <h3>🔧 Upgrade Menu</h3>
@@ -515,9 +526,9 @@
 
   const DIFFICULTY_ORDER = ["easy", "medium", "hard", "insane"];
   const DIFFICULTY_SETTINGS = {
-    easy:   { label:"Easy",   catStartHealth:900,  ratBaseHealth:4, oxBaseHealth:18 },
-    medium: { label:"Medium", catStartHealth:1200, ratBaseHealth:5, oxBaseHealth:26 },
-    hard:   { label:"Hard",   catStartHealth:1800, ratBaseHealth:6, oxBaseHealth:34 },
+    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18 },
+    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26 },
+    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34 },
     insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44 }
   };
 
@@ -568,6 +579,7 @@
   let playerWins = 0;
   let selectedBuildSlots = [];
   let mySelectionDone = false;
+  let selectionStates = {};
   let selectionDeadlineAt = null;
   let rabbitShots = [];
   let structureShields = {};
@@ -735,6 +747,7 @@
       const key = btn.dataset.diff;
       btn.style.opacity = key === myDifficultyVote ? "1" : "0.75";
       btn.style.fontWeight = key === myDifficultyVote ? "700" : "500";
+      btn.disabled = gameStarted;
     });
   }
 
@@ -752,9 +765,10 @@
 
   async function hostSyncDifficultyVote(){
     if (!isHost) return;
+    if (gameStarted) return;
     const selected = computeDifficultyFromVotes(difficultyVotes);
     if (selected === currentDifficulty) return;
-    const nextHealth = (gameStarted ? Math.min(catHealth, DIFFICULTY_SETTINGS[selected].catStartHealth) : DIFFICULTY_SETTINGS[selected].catStartHealth);
+    const nextHealth = DIFFICULTY_SETTINGS[selected].catStartHealth;
     await updateDoc(ccRef(ID.STATE), {
       difficulty: selected,
       cat: { x: catPos.x, y: catPos.y, health: nextHealth },
@@ -2956,6 +2970,10 @@
           } else if (id.startsWith("difficultyvote_")){
             delete difficultyVotes[data?.uid || id.replace("difficultyvote_","")];
             updateDifficultyUI();
+          } else if (id.startsWith("selection_")){
+            const su = data?.uid || id.replace("selection_","");
+            delete selectionStates[su];
+            renderSelectionOverlay();
           } else if (id.startsWith("ratking_")){
             ratKings = ratKings.filter(k => k.id !== (data?.id || id));
           }
@@ -3082,6 +3100,19 @@
           }
           updateDifficultyUI();
         }
+        else if (id.startsWith("selection_")){
+          const su = data.uid || id.replace("selection_","");
+          selectionStates[su] = {
+            uid: su,
+            done: data.done === true,
+            picks: Array.isArray(data.picks) ? data.picks.slice(0,7) : []
+          };
+          if (su === uid){
+            mySelectionDone = data.done === true;
+            if (Array.isArray(data.picks)) selectedBuildSlots = data.picks.slice(0,7);
+          }
+          renderSelectionOverlay();
+        }
         else if (id.startsWith("ratking_")){
           const rk = { ...data };
           if (!rk.id) rk.id = data.id || id;
@@ -3150,6 +3181,10 @@
   }
 
   function renderSelectionOverlay(){
+    const slots = Array.from({length:7}, (_,i) => `${i+1}: ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
+    const topSlots = document.getElementById("selectedBuildSlotsTop");
+    if (topSlots) topSlots.textContent = `Slots — ${slots}`;
+
     const overlay = document.getElementById("selectionOverlay");
     if (!overlay) return;
     if (gameStarted){ overlay.style.display = "none"; return; }
@@ -3158,12 +3193,33 @@
     const info = document.getElementById("selectionInfo");
     const gridEl = document.getElementById("selectionGrid");
     const slotsEl = document.getElementById("selectedSlots");
+    const slotListEl = document.getElementById("slotList");
+    const finalizeMeta = document.getElementById("selectionFinalizeMeta");
     const now = Date.now();
     const left = selectionDeadlineAt ? Math.max(0, Math.ceil((selectionDeadlineAt - now)/1000)) : 45;
     info.textContent = `Wins: ${playerWins}. Time left: ${left}s. Difficulty: ${DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium"}`;
 
-    const slots = Array.from({length:7}, (_,i) => `#${i+1} ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
     slotsEl.textContent = `Your slots: ${slots}`;
+
+    slotListEl.innerHTML = "";
+    for (let i=0; i<7; i++){
+      const buildId = selectedBuildSlots[i];
+      const chip = document.createElement("button");
+      chip.className = `slot-chip ${buildId ? "filled" : ""} ${mySelectionDone ? "done" : ""}`;
+      chip.type = "button";
+      chip.innerHTML = buildId
+        ? `<div><strong>${i+1}:</strong> ${BUILD_DEFS[buildId]?.symbol || ""} ${BUILD_DEFS[buildId]?.name || ""}</div><div style="font-size:12px;opacity:0.8;">Tap to remove</div>`
+        : `<div><strong>${i+1}:</strong> Empty</div><div style="font-size:12px;opacity:0.7;">Tap a building below</div>`;
+      chip.disabled = mySelectionDone || !buildId;
+      chip.onclick = async () => {
+        if (mySelectionDone || !buildId) return;
+        selectedBuildSlots.splice(i, 1);
+        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,7);
+        await publishMySelection(false);
+        renderSelectionOverlay();
+      };
+      slotListEl.appendChild(chip);
+    }
 
     const unlocked = new Set(getUnlockedBuildIds());
     gridEl.innerHTML = "";
@@ -3172,20 +3228,42 @@
       b.className = "sel-btn";
       const winsTxt = `${Math.min(playerWins, def.minWins || 0)}/${def.minWins || 0}`;
       const locked = !unlocked.has(Number(id));
+      const alreadyChosen = selectedBuildSlots.includes(Number(id));
       b.innerHTML = `<div>${def.symbol} ${def.name}</div><div>🧀${def.cost}</div>${locked ? `<div>🔒 ${winsTxt}</div>` : ""}`;
       if (locked) b.classList.add("locked");
-      b.disabled = locked;
+      if (alreadyChosen) b.classList.add("chosen");
+      b.disabled = locked || mySelectionDone;
       b.onclick = async () => {
         if (mySelectionDone) return;
-        if (selectedBuildSlots.length >= 7) return;
-        selectedBuildSlots = [...selectedBuildSlots, Number(id)];
+        const buildId = Number(id);
+        const alreadyIdx = selectedBuildSlots.indexOf(buildId);
+        if (alreadyIdx !== -1){
+          selectedBuildSlots.splice(alreadyIdx, 1);
+        } else {
+          const emptyIndex = selectedBuildSlots.findIndex(v => !v);
+          if (emptyIndex !== -1) selectedBuildSlots[emptyIndex] = buildId;
+          else if (selectedBuildSlots.length < 7) selectedBuildSlots.push(buildId);
+          else return;
+        }
+        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,7);
+        await publishMySelection(false);
         renderSelectionOverlay();
       };
       gridEl.appendChild(b);
     });
+
+    const participantIds = getLobbyParticipants().map(([pu]) => pu);
+    const doneCount = participantIds.reduce((acc, pu) => acc + (selectionStates[pu]?.done ? 1 : 0), 0);
+    const stillNeeded = Math.max(0, participantIds.length - doneCount);
+    if (finalizeMeta) finalizeMeta.textContent = `${stillNeeded} player(s) still need to finalize.`;
   }
 
   async function publishMySelection(done=false){
+    selectionStates[uid] = {
+      uid,
+      done,
+      picks: selectedBuildSlots.slice(0,7)
+    };
     await setDoc(ccRef(getSelectionDocId(uid)), {
       kind:"selection", uid, done, picks:selectedBuildSlots.slice(0,7), updatedAt:Date.now()
     }, { merge:true });
@@ -3204,7 +3282,13 @@
     });
     const allDone = participantIds.length>0 && participantIds.every(pu => doneBy.has(pu));
     if (allDone || force){
-      await updateDoc(ccRef(ID.STATE), { phase:"playing", updatedAt:Date.now() });
+      const finalDifficulty = computeDifficultyFromVotes(difficultyVotes);
+      await updateDoc(ccRef(ID.STATE), {
+        difficulty: finalDifficulty,
+        cat: { x: catPos.x, y: catPos.y, health: DIFFICULTY_SETTINGS[finalDifficulty].catStartHealth },
+        phase:"playing",
+        updatedAt:Date.now()
+      });
     }
   }
 
@@ -3296,7 +3380,9 @@
     if (finishBtn){
       finishBtn.onclick = async () => {
         if (selectedBuildSlots.length < 7){
-          selectedBuildSlots = [...selectedBuildSlots, ...BASE_BUILD_ORDER].slice(0,7);
+          const used = new Set(selectedBuildSlots);
+          const fills = BASE_BUILD_ORDER.filter(id => !used.has(id));
+          selectedBuildSlots = [...selectedBuildSlots, ...fills].slice(0,7);
         }
         await publishMySelection(true);
         await tryHostFinalizeSelection(false);
