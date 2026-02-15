@@ -123,6 +123,22 @@
     filter:brightness(1.05) saturate(1.1);
   }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
+  .unit.attacking{ animation:unitAttack .35s ease-out; }
+  .unit.casting{ animation:unitCast .5s ease-out; }
+  .unit .troop-art{ width:88%; height:88%; filter:drop-shadow(0 0 7px rgba(0,0,0,.55)); }
+  .unit.big .troop-art{ width:96%; height:96%; }
+  .unit svg{ width:100%; height:100%; overflow:visible; }
+  .unit .stroke{ stroke:rgba(15,23,42,.95); stroke-width:2; }
+  @keyframes unitAttack{
+    0%{ transform:translateY(0) scale(1); }
+    40%{ transform:translateY(-2px) scale(1.12); }
+    100%{ transform:translateY(0) scale(1); }
+  }
+  @keyframes unitCast{
+    0%{ transform:scale(1); filter:brightness(1); }
+    50%{ transform:scale(1.08); filter:brightness(1.35); }
+    100%{ transform:scale(1); filter:brightness(1); }
+  }
   .unit.team0{
     filter:drop-shadow(0 0 1px rgba(15,23,42,.95)) drop-shadow(0 0 4px var(--team0)) drop-shadow(0 0 1px var(--team0b));
   }
@@ -273,6 +289,55 @@
     box-shadow:0 0 14px rgba(248,113,113,.9);
     animation:impact .32s ease-out forwards;
   }
+  .storm{
+    position:absolute;
+    width:calc(var(--cell) * 2.3);
+    height:calc(var(--cell) * 2.3);
+    border-radius:50%;
+    background:
+      radial-gradient(circle, rgba(96,165,250,.45) 0%, rgba(37,99,235,.22) 45%, rgba(15,23,42,0) 75%);
+    border:2px solid rgba(56,189,248,.7);
+    box-shadow:0 0 24px rgba(56,189,248,.7), inset 0 0 20px rgba(59,130,246,.6);
+    animation:stormPulse .6s ease-out forwards;
+    pointer-events:none;
+  }
+  .storm:before, .storm:after{
+    content:"";
+    position:absolute;
+    width:3px;
+    height:70%;
+    left:48%;
+    top:15%;
+    background:linear-gradient(180deg,#dbeafe,#60a5fa,#1d4ed8);
+    box-shadow:0 0 10px rgba(147,197,253,.95);
+    transform-origin:50% 0;
+  }
+  .storm:before{ transform:rotate(-20deg); }
+  .storm:after{ transform:rotate(22deg); }
+  @keyframes stormPulse{
+    0%{ opacity:0; transform:translate(-50%,-50%) scale(.65); }
+    30%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+    100%{ opacity:0; transform:translate(-50%,-50%) scale(1.2); }
+  }
+
+  .nameBronze{color:#cd7f32}
+  .nameSilver{color:#c0c0c0}
+  .nameGold{color:#fbbf24}
+  .nameDiamond{color:#60a5fa}
+  .nameMasters{
+    background:linear-gradient(90deg,#f43f5e,#f59e0b,#22d3ee,#a78bfa,#f43f5e);
+    background-size:250% 100%;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:rankShift 2s linear infinite;
+  }
+  .nameGrandmaster{
+    background:linear-gradient(90deg,#f59e0b,#ef4444,#fbbf24,#dc2626,#f59e0b);
+    background-size:260% 100%;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:rankShift 1.4s linear infinite;
+    text-shadow:0 0 8px rgba(239,68,68,.6);
+  }
+  @keyframes rankShift{ from{background-position:0 0} to{background-position:220% 0} }
   @keyframes impact{
     from{ opacity:.95; transform:translate(-50%,-50%) scale(.5); }
     to{ opacity:0; transform:translate(-50%,-50%) scale(1.7); }
@@ -802,6 +867,50 @@ function weightedPick(pool, n){
   return out;
 }
 function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
+function troopBodyClass(type){
+  if (["storm","wardmaker","architect","runebinder","medic","carrion"].includes(type)) return "caster";
+  return "fighter";
+}
+function troopArt(type, u){
+  const hpPct = Math.max(0, Math.min(1, (u.hp||1)/Math.max(1,u.maxhp||1)));
+  const hpGlow = hpPct < 0.35 ? "drop-shadow(0 0 6px rgba(248,113,113,.85))" : "none";
+  const teamFill = u.p===0 ? "#f87171" : "#60a5fa";
+  const lvlGem = (u.lvl||1) >= 3 ? '<circle cx="39" cy="10" r="4" fill="#fde047" class="stroke" />' : '';
+  const ART = {
+    rifleman:'<rect x="8" y="16" width="28" height="22" rx="8" fill="#9ca3af" class="stroke"/><rect x="24" y="10" width="18" height="5" rx="2" fill="#374151" class="stroke"/><circle cx="14" cy="14" r="5" fill="'+teamFill+'" class="stroke"/>',
+    vrocket:'<path d="M10 35 L24 8 L37 35 Z" fill="#94a3b8" class="stroke"/><rect x="20" y="22" width="8" height="14" fill="#ef4444"/>',
+    vguard:'<path d="M24 8 L38 13 V25 C38 33 31 38 24 40 C17 38 10 33 10 25 V13 Z" fill="#64748b" class="stroke"/><rect x="20" y="17" width="8" height="16" fill="#e2e8f0"/>',
+    miner:'<rect x="9" y="16" width="24" height="22" rx="8" fill="#71717a" class="stroke"/><path d="M25 12 L38 25 L33 30 L20 17 Z" fill="#a3a3a3" class="stroke"/>',
+    medic:'<rect x="8" y="12" width="30" height="28" rx="8" fill="#0f766e" class="stroke"/><rect x="19" y="17" width="8" height="18" fill="#e2e8f0"/><rect x="14" y="22" width="18" height="8" fill="#e2e8f0"/>',
+    suppressor:'<rect x="8" y="14" width="30" height="26" rx="8" fill="#52525b" class="stroke"/><path d="M30 12 L40 15 L36 32 L28 29 Z" fill="#ef4444" class="stroke"/>',
+    shieldcap:'<path d="M24 7 L39 12 V24 C39 33 31 38 24 41 C17 38 9 33 9 24 V12 Z" fill="#475569" class="stroke"/><circle cx="24" cy="23" r="6" fill="#fde68a" class="stroke"/>',
+    marksman:'<rect x="9" y="16" width="24" height="22" rx="8" fill="#94a3b8" class="stroke"/><circle cx="32" cy="14" r="7" fill="none" stroke="#ef4444" stroke-width="3"/><line x1="32" y1="8" x2="32" y2="20" stroke="#ef4444"/><line x1="26" y1="14" x2="38" y2="14" stroke="#ef4444"/>',
+    emp:'<rect x="9" y="14" width="24" height="24" rx="9" fill="#475569" class="stroke"/><circle cx="32" cy="18" r="7" fill="#38bdf8" class="stroke"/><path d="M32 12 L29 19 H34 L31 25" stroke="#dbeafe" fill="none" stroke-width="2"/>',
+    phaser:'<ellipse cx="24" cy="24" rx="13" ry="16" fill="#f1f5f9" class="stroke"/><path d="M16 16 Q24 8 32 16" fill="#93c5fd" class="stroke"/>',
+    blade:'<rect x="10" y="14" width="22" height="26" rx="8" fill="#f8fafc" class="stroke"/><path d="M31 10 L38 17 L27 29 L22 24 Z" fill="#cbd5e1" class="stroke"/>',
+    storm:'<rect x="9" y="12" width="30" height="28" rx="12" fill="#fde68a" class="stroke"/><path d="M26 10 L20 24 H27 L22 38 L34 20 H27 Z" fill="#3b82f6" class="stroke"/>',
+    guardian:'<circle cx="24" cy="24" r="16" fill="#d4af37" class="stroke"/><circle cx="24" cy="24" r="7" fill="#60a5fa" class="stroke"/>',
+    wardmaker:'<rect x="10" y="12" width="18" height="28" rx="8" fill="#fef3c7" class="stroke"/><circle cx="33" cy="18" r="7" fill="#38bdf8" class="stroke"/>',
+    architect:'<rect x="8" y="14" width="31" height="25" rx="5" fill="#d4af37" class="stroke"/><rect x="13" y="19" width="21" height="15" fill="#93c5fd" class="stroke"/>',
+    golem:'<rect x="6" y="8" width="36" height="32" rx="8" fill="#94a3b8" class="stroke"/><circle cx="18" cy="23" r="3" fill="#0ea5e9"/><circle cx="30" cy="23" r="3" fill="#0ea5e9"/>',
+    runebinder:'<circle cx="18" cy="26" r="11" fill="#e2e8f0" class="stroke"/><path d="M29 14 L39 24 L30 34" stroke="#a78bfa" stroke-width="4" fill="none"/>',
+    hellspawn:'<ellipse cx="22" cy="25" rx="13" ry="10" fill="#7f1d1d" class="stroke"/><path d="M10 24 L4 20 M34 24 L40 20" stroke="#b91c1c" stroke-width="3"/><circle cx="17" cy="23" r="2" fill="#fee2e2"/><circle cx="27" cy="23" r="2" fill="#fee2e2"/>',
+    roach:'<ellipse cx="23" cy="24" rx="14" ry="10" fill="#581c87" class="stroke"/><path d="M12 30 L6 36 M34 30 L40 36" stroke="#9333ea" stroke-width="3"/>',
+    defiler:'<ellipse cx="20" cy="25" rx="14" ry="12" fill="#3f3f46" class="stroke"/><path d="M30 25 Q41 18 37 10" stroke="#22c55e" stroke-width="4" fill="none"/><circle cx="37" cy="9" r="3" fill="#86efac"/>',
+    blood:'<circle cx="22" cy="24" r="12" fill="#b91c1c" class="stroke"/><circle cx="30" cy="16" r="5" fill="#ef4444" class="stroke"/>',
+    matron:'<ellipse cx="23" cy="24" rx="14" ry="12" fill="#4c1d95" class="stroke"/><path d="M11 30 L5 36 M17 33 L12 39 M29 33 L34 39 M35 30 L41 36" stroke="#7c3aed" stroke-width="2"/>',
+    viper:'<path d="M8 28 Q20 12 34 24 Q27 34 11 34 Z" fill="#14532d" class="stroke"/><circle cx="33" cy="23" r="2" fill="#dcfce7"/>',
+    spitter:'<ellipse cx="22" cy="24" rx="14" ry="10" fill="#6d28d9" class="stroke"/><circle cx="34" cy="24" r="5" fill="#c4b5fd" class="stroke"/>',
+    carrion:'<rect x="10" y="12" width="24" height="28" rx="8" fill="#7f1d1d" class="stroke"/><path d="M24 12 L30 5 L34 12" fill="#b91c1c" class="stroke"/>',
+    burrower:'<path d="M8 30 Q22 10 38 30 Q22 40 8 30 Z" fill="#78350f" class="stroke"/><path d="M20 23 L24 19 L28 23" stroke="#fbbf24" stroke-width="2" fill="none"/>'
+  };
+  const body = ART[type] || ('<text x="24" y="30" text-anchor="middle" font-size="20">'+unitEmoji(type)+'</text>');
+  return '<div class="troop-art" style="filter:'+hpGlow+'">\n    <svg viewBox="0 0 48 48" aria-label="'+(TROOPS[type]?.name||type)+'">'+body+lvlGem+'</svg>\n  </div>';
+}
+function unitActionClass(u, now){
+  if ((u.animUntil||0) <= now) return "";
+  return u.animType === "cast" ? "casting" : "attacking";
+}
 function packFor(roster, faction){
   const poolTypes = FACTIONS[faction] || [];
 
@@ -866,6 +975,7 @@ function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1:
 function fxBurst(cx,cy){     return { id:crypto.randomUUID(), type:"burst", cx:cx,cy:cy, at:Date.now(), ttl:700 }; }
 function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:450 }; }
 function fxImpact(x,y){ return { id:crypto.randomUUID(), type:"impact", x:x, y:y, at:Date.now(), ttl:320 }; }
+function fxStorm(cx,cy){ return { id:crypto.randomUUID(), type:"storm", cx:cx, cy:cy, at:Date.now(), ttl:620 }; }
 function fxStatus(x,y,emoji){ return { id:crypto.randomUUID(), type:"status", x:x, y:y, emoji:emoji, at:Date.now(), ttl:620 }; }
 
 function centerPx(x,y){
@@ -916,6 +1026,16 @@ function renderImpact(ev){
   el.style.top = a.top + "px";
   partsEl.appendChild(el);
   setTimeout(()=>el.remove(), ev.ttl||320);
+}
+function renderStorm(ev){
+  const a=centerPx(ev.cx, ev.cy);
+  const el=document.createElement("div");
+  el.className="storm";
+  el.style.left = a.left + "px";
+  el.style.top = a.top + "px";
+  el.style.transform = "translate(-50%,-50%)";
+  partsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl||620);
 }
 function renderStatusPop(ev){
   const a=centerPx(ev.x, ev.y);
@@ -1228,10 +1348,13 @@ function paint(units, field){
     if (uni){
       uni.style.zIndex = "3";
       uni.style.fontSize = s===2 ? "32px" : "26px";
-      uni.classList.remove("team0","team1");
+      uni.classList.remove("team0","team1","attacking","casting","big");
       uni.classList.toggle("team0", u.p === 0);
       uni.classList.toggle("team1", u.p === 1);
-      uni.textContent = unitEmoji(u.type);
+      uni.classList.toggle("big", s===2);
+      const actClass = unitActionClass(u, now);
+      if (actClass) uni.classList.add(actClass);
+      uni.innerHTML = troopArt(u.type, u);
     }
 
     const hpFill = d0.querySelector(".hp>i");
@@ -1619,6 +1742,8 @@ function attack(u, t, now, st){
   if (now < (u.nextAtk||0)) return true;
 
   const ranged = (u.range||1) > 1;
+  u.animUntil = now + 320;
+  u.animType = troopBodyClass(u.type) === "caster" ? "cast" : "attack";
 
   function deal(victim, raw, isRanged){
     let dmg = raw|0;
@@ -1650,6 +1775,7 @@ function attack(u, t, now, st){
 
   } else if (u.chain3){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    if (u.type === "storm") st.field.fx.push(fxStorm(t.x,t.y));
     chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg);
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
@@ -1763,11 +1889,20 @@ function calcMMRChange(st, winnerName){
   return { mmr:next, delta:delta };
 }
 function rankLabel(m){
-  if (m >= 1600) return "Diamond";
-  if (m >= 1400) return "Platinum";
-  if (m >= 1200) return "Gold";
-  if (m >= 1050) return "Silver";
+  if (m >= 3000) return "Grandmaster";
+  if (m >= 2500) return "Masters";
+  if (m >= 2000) return "Diamond";
+  if (m >= 1600) return "Gold";
+  if (m >= 1300) return "Silver";
   return "Bronze";
+}
+function rankClass(m){
+  if (m >= 3000) return "nameGrandmaster";
+  if (m >= 2500) return "nameMasters";
+  if (m >= 2000) return "nameDiamond";
+  if (m >= 1600) return "nameGold";
+  if (m >= 1300) return "nameSilver";
+  return "nameBronze";
 }
 
 let hostTick=null, battleTick=null;
@@ -2206,8 +2341,8 @@ function render(){
   const lives=(S && S.lives) || [4,4];
   const mmr = (S && S.mmr) || [1000,1000];
 
-  $("p0Badge").textContent = p0n+" ["+rankLabel(mmr[0])+" "+mmr[0]+"] — "+("❤".repeat(lives[0]));
-  $("p1Badge").textContent = p1n+" ["+rankLabel(mmr[1])+" "+mmr[1]+"] — "+("❤".repeat(lives[1]));
+  $("p0Badge").innerHTML = '<span class="'+rankClass(mmr[0])+'">'+p0n+'</span> ['+rankLabel(mmr[0])+' '+mmr[0]+'] — <span class="'+rankClass(mmr[0])+'">'+("❤".repeat(lives[0]))+'</span>';
+  $("p1Badge").innerHTML = '<span class="'+rankClass(mmr[1])+'">'+p1n+'</span> ['+rankLabel(mmr[1])+' '+mmr[1]+'] — <span class="'+rankClass(mmr[1])+'">'+("❤".repeat(lives[1]))+'</span>';
 
   const phase=(S && S.phase) || "waiting";
   $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
@@ -2438,6 +2573,7 @@ onSnapshot(stateRef,(snap)=>{
     if (ev.type==="burst") renderBurst(ev);
     if (ev.type==="transport") renderTransport(ev);
     if (ev.type==="impact") renderImpact(ev);
+    if (ev.type==="storm") renderStorm(ev);
     if (ev.type==="status") renderStatusPop(ev);
     setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
   }
@@ -2465,7 +2601,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
