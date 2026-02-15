@@ -296,7 +296,7 @@
 
   <div style="text-align:center; margin-bottom:10px;">
     <p style="margin:5px 0; font-size:14px; color:#444;">
-      🎮 Arrow keys to move | A/W/S/D to build | 1–7 to select building | Space = Upgrade Menu
+      🎮 Arrow keys to move | A/W/S/D to build | 1–8 to select building | Space = Upgrade Menu
     </p>
     <p style="margin:10px 0; font-size:13px; font-weight:bold; color:#333;">
       🧱 Wall | 🔫 Turret | 🪳 Flea Nest | 🏭 Generator | 💎 Super Wall | 🗼 Beacon | 🐦‍🔥 Phoenix | 🚀 Rocket | 🛠️ Repair
@@ -310,7 +310,7 @@
 
   <div id="selectionOverlay">
     <div id="selectionCard">
-      <h3 style="margin:0 0 8px;">🏗️ Select up to 7 Structures (in order)</h3>
+      <h3 style="margin:0 0 8px;">🏗️ Select up to 8 Structures (in order)</h3>
       <div id="selectionInfo" style="font-size:13px; margin-bottom:8px;"></div>
       <div id="difficultyPanel" style="margin:0 0 10px; padding:8px; border:1px solid #bbb; border-radius:8px; background:#f8fafc;">
         <div style="font-weight:bold; margin-bottom:4px;">🎚️ Difficulty Vote (locks when selection ends)</div>
@@ -332,7 +332,7 @@
     </div>
   </div>
 
-  <div id="selectedBuildSlotsTop">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _</div>
+  <div id="selectedBuildSlotsTop">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _ | 8: _</div>
 
   <div id="waveCountdown">🐀 Next wave: ?</div>
 
@@ -590,7 +590,8 @@
     17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
     18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12}
   };
-  const BASE_BUILD_ORDER = [1,2,3,4,5,6,7];
+  const MAX_BUILD_SLOTS = 8;
+  const BASE_BUILD_ORDER = [1,2,3,4,5,6,7,8];
   let mobileBuildOrder = [...BASE_BUILD_ORDER];
   let playerWins = 0;
   let selectedBuildSlots = [];
@@ -3039,10 +3040,10 @@
           if (typeof cat.health === "number") catHealth = cat.health;
           if (typeof data.selectionDeadline === "number") selectionDeadlineAt = data.selectionDeadline;
           if (data.phase === "playing" && !gameStarted){
-            if (!(Array.isArray(selectedBuildSlots) && selectedBuildSlots.length===7)){
+            if (!(Array.isArray(selectedBuildSlots) && selectedBuildSlots.length===MAX_BUILD_SLOTS)){
               selectedBuildSlots = [...BASE_BUILD_ORDER];
             }
-            mobileBuildOrder = selectedBuildSlots.slice(0,7);
+            mobileBuildOrder = selectedBuildSlots.slice(0,MAX_BUILD_SLOTS);
             if (!selectedBuild && mobileBuildOrder[0]) selectBuild(String(mobileBuildOrder[0]));
             gameStarted = true;
             startHostLoops();
@@ -3148,11 +3149,11 @@
           selectionStates[su] = {
             uid: su,
             done: data.done === true,
-            picks: Array.isArray(data.picks) ? data.picks.slice(0,7) : []
+            picks: Array.isArray(data.picks) ? data.picks.slice(0,MAX_BUILD_SLOTS) : []
           };
           if (su === uid){
             mySelectionDone = data.done === true;
-            if (Array.isArray(data.picks)) selectedBuildSlots = data.picks.slice(0,7);
+            if (Array.isArray(data.picks)) selectedBuildSlots = data.picks.slice(0,MAX_BUILD_SLOTS);
           }
           renderSelectionOverlay();
         }
@@ -3224,7 +3225,7 @@
   }
 
   function renderSelectionOverlay(){
-    const slots = Array.from({length:7}, (_,i) => `${i+1}: ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
+    const slots = Array.from({length:MAX_BUILD_SLOTS}, (_,i) => `${i+1}: ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
     const topSlots = document.getElementById("selectedBuildSlotsTop");
     if (topSlots) topSlots.textContent = `Slots — ${slots}`;
 
@@ -3245,7 +3246,7 @@
     slotsEl.textContent = `Your slots: ${slots}`;
 
     slotListEl.innerHTML = "";
-    for (let i=0; i<7; i++){
+    for (let i=0; i<MAX_BUILD_SLOTS; i++){
       const buildId = selectedBuildSlots[i];
       const chip = document.createElement("button");
       chip.className = `slot-chip ${buildId ? "filled" : ""} ${mySelectionDone ? "done" : ""}`;
@@ -3257,7 +3258,7 @@
       chip.onclick = async () => {
         if (mySelectionDone || !buildId) return;
         selectedBuildSlots.splice(i, 1);
-        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,7);
+        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,MAX_BUILD_SLOTS);
         await publishMySelection(false);
         renderSelectionOverlay();
       };
@@ -3285,10 +3286,10 @@
         } else {
           const emptyIndex = selectedBuildSlots.findIndex(v => !v);
           if (emptyIndex !== -1) selectedBuildSlots[emptyIndex] = buildId;
-          else if (selectedBuildSlots.length < 7) selectedBuildSlots.push(buildId);
+          else if (selectedBuildSlots.length < MAX_BUILD_SLOTS) selectedBuildSlots.push(buildId);
           else return;
         }
-        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,7);
+        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,MAX_BUILD_SLOTS);
         await publishMySelection(false);
         renderSelectionOverlay();
       };
@@ -3305,10 +3306,10 @@
     selectionStates[uid] = {
       uid,
       done,
-      picks: selectedBuildSlots.slice(0,7)
+      picks: selectedBuildSlots.slice(0,MAX_BUILD_SLOTS)
     };
     await setDoc(ccRef(getSelectionDocId(uid)), {
-      kind:"selection", uid, done, picks:selectedBuildSlots.slice(0,7), updatedAt:Date.now()
+      kind:"selection", uid, done, picks:selectedBuildSlots.slice(0,MAX_BUILD_SLOTS), updatedAt:Date.now()
     }, { merge:true });
     mySelectionDone = done;
   }
@@ -3390,7 +3391,7 @@
       await placeTrap();
     }
 
-    if (!upgradeMenuOpen && ["1","2","3","4","5","6","7"].includes(e.key)){
+    if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8"].includes(e.key)){
       const idx = Number(e.key) - 1;
       const buildId = mobileBuildOrder[idx];
       if (buildId) selectBuild(String(buildId));
@@ -3422,10 +3423,10 @@
     const finishBtn = document.getElementById("finishSelectionBtn");
     if (finishBtn){
       finishBtn.onclick = async () => {
-        if (selectedBuildSlots.length < 7){
+        if (selectedBuildSlots.length < MAX_BUILD_SLOTS){
           const used = new Set(selectedBuildSlots);
           const fills = BASE_BUILD_ORDER.filter(id => !used.has(id));
-          selectedBuildSlots = [...selectedBuildSlots, ...fills].slice(0,7);
+          selectedBuildSlots = [...selectedBuildSlots, ...fills].slice(0,MAX_BUILD_SLOTS);
         }
         await publishMySelection(true);
         await tryHostFinalizeSelection(false);
@@ -3686,7 +3687,7 @@
 
     // enemy sim ticks
     const scheduleRatTick = () => {
-      const ratTickMs = Math.max(650, 1200 - (catPower * 12));
+      const ratTickMs = Math.max(550, 1050 - (catPower * 12));
       setTimeout(async () => {
         await hostMoveRats().catch(()=>{});
         scheduleRatTick();
