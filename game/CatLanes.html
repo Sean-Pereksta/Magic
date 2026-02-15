@@ -789,9 +789,42 @@ canvas.addEventListener("mousedown",(e)=>{
     }
     cancelTargeting();
   } else if (e.button===0){
-    if (state.targeting){ tryCast(state.targeting, w); }
+    if (state.targeting){
+      tryCast(state.targeting, w);
+      return;
+    }
+    const me=playerHero(); if (!me || !me.alive) return;
+    const enemyHit = unitAtPoint(w.x, w.y, ENEMY);
+    if (enemyHit){
+      me.explicitTargetId = enemyHit.id;
+      me.target = enemyHit;
+      say("Target set.");
+    }
   }
 });
+
+canvas.addEventListener("touchstart",(e)=>{
+  const touch=e.changedTouches?.[0];
+  if (!touch) return;
+  const rect=canvas.getBoundingClientRect();
+  const worldX=(touch.clientX-rect.left) + state.camera.x;
+  const worldY=(touch.clientY-rect.top) + state.camera.y;
+  const w={x:worldX, y:clamp(worldY, LANE_Y-LANE_HALF, LANE_Y+LANE_HALF)};
+
+  if (state.targeting){
+    e.preventDefault();
+    tryCast(state.targeting, w);
+    return;
+  }
+  const me=playerHero(); if (!me || !me.alive) return;
+  const enemyHit = unitAtPoint(w.x, w.y, ENEMY);
+  if (enemyHit){
+    e.preventDefault();
+    me.explicitTargetId = enemyHit.id;
+    me.target = enemyHit;
+    say("Target set.");
+  }
+},{passive:false});
 
 window.addEventListener("keydown",(e)=>{
   state.keys[e.code]=true;
@@ -1033,31 +1066,29 @@ function aiTick(dt){
       const hasMove   = !!(u.order && u.order.type === "move");
       const isChasing = hasMove && !!u.order.chase;
 
-      if (!(isPlayer && hasMove && !isChasing)){
-        if (isPlayer && u.explicitTargetId){
-          const ex = getUnit(u.explicitTargetId);
-          if (ex && ex.alive) u.target = ex; else u.explicitTargetId = null;
-        }
-        if (!u.target || !u.target.alive){
-          const scanRange = (isPlayer && hasMove && !isChasing)
-            ? (u.range + 90)
-            : Math.max(u.range + 200, 520);
-          u.target = nearestEnemyTo(u, scanRange);
-        }
-        if (u.target){
-          const needDist = u.range + (u.target.r||0) - 2;
-          const d = Math.hypot(u.target.x - u.x, u.target.y - u.y);
-          if (d > needDist){
-            if (!isPlayer || isChasing || !hasMove){
-              u.order = { type:"move", x:u.target.x, y:u.target.y, chase: (isPlayer && !!u.explicitTargetId) };
-            }
-          } else {
-            if (isChasing) u.order = null;
+      if (isPlayer && u.explicitTargetId){
+        const ex = getUnit(u.explicitTargetId);
+        if (ex && ex.alive) u.target = ex; else u.explicitTargetId = null;
+      }
+      if (!u.target || !u.target.alive){
+        const scanRange = (isPlayer && hasMove && !isChasing)
+          ? (u.range + 90)
+          : Math.max(u.range + 200, 520);
+        u.target = nearestEnemyTo(u, scanRange);
+      }
+      if (u.target){
+        const needDist = u.range + (u.target.r||0) - 2;
+        const d = Math.hypot(u.target.x - u.x, u.target.y - u.y);
+        if (d > needDist){
+          if (!isPlayer || isChasing || !hasMove){
+            u.order = { type:"move", x:u.target.x, y:u.target.y, chase: (isPlayer && !!u.explicitTargetId) };
           }
-        } else if (!isPlayer){
-          const obj = nextObjective(u.team);
-          u.order = { type:"move", x: obj.x + (u.team===PLAYER? -120:120), y: LANE_Y };
+        } else {
+          if (isChasing) u.order = null;
         }
+      } else if (!isPlayer){
+        const obj = nextObjective(u.team);
+        u.order = { type:"move", x: obj.x + (u.team===PLAYER? -120:120), y: LANE_Y };
       }
 
       // Auto-fire
@@ -1824,6 +1855,12 @@ function resetStick(){
   moveStickInner.style.top="50%";
   state.moveDir.x = 0;
   state.moveDir.y = 0;
+  const me = playerHero();
+  if (me && me.order && me.order.type === "move" && !me.order.chase){
+    me.order = null;
+    me.vx = 0;
+    me.vy = 0;
+  }
 }
 function stickStart(evt){
   evt.preventDefault();
@@ -1868,7 +1905,6 @@ init();
 </script>
 </body>
 </html>
-
 
 
 
