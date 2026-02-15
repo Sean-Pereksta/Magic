@@ -603,92 +603,93 @@ const M = (hp,dmg,cd)=>({hp:hp,dmg:dmg,range:1,cd:cd});
 
 const TROOPS = {
   /* Vanir */
-  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:R(7,3,6,1050), spawn:2 },
-  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(8,6,10,2100),{splash1:true,knock:true}) },
-  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(22,5,800),{splash1:true}) },
-  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(16,3,800),{spd:2,hunterRanged:true}), spawn:2 },
+  rifleman: { faction:"Vanir", name:"Riflemen",    emoji:"🔫", role:"back",  base:Object.assign({},R(7,3,6,1050),{armor:0}), spawn:2 },
+  vrocket:  { faction:"Vanir", name:"Rockets",     emoji:"🚀", role:"back",  base:Object.assign({},R(8,6,10,2100),{splash1:true,knock:true,armor:0}) },
+  vguard:   { faction:"Vanir", name:"Vanir Guard", emoji:"🛡️", role:"front", base:Object.assign({},M(22,5,800),{splash1:true,armor:3}) },
+  miner:    { faction:"Vanir", name:"Miners",      emoji:"⛏️", role:"front", base:Object.assign({},M(16,3,800),{spd:2,hunterRanged:true,armor:1}), spawn:2 },
   medic:    { faction:"Vanir", name:"Field Medic", emoji:"🧰", role:"back",
-    base:{ hp:11, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200 }
+    base:{ hp:11, dmg:0, range:3, cd:1100, heal:true, healAmt:3, healRange:3, healCd:1200, armor:0 }
   },
 
   suppressor:{ faction:"Vanir", name:"Suppressor", emoji:"🧯", role:"back",
-    base:{ hp:8, dmg:1, range:3, cd:850, spd:1 },
+    base:{ hp:8, dmg:1, range:3, cd:850, spd:1, armor:0 },
     suppress:true,
     suppressDur:900,
     slowFactor:2
   },
 
   shieldcap:{ faction:"Vanir", name:"Shield Captain", emoji:"🛡️⭐", role:"front",
-    base:{ hp:19, dmg:3, range:1, cd:800, spd:1 },
+    base:{ hp:19, dmg:3, range:1, cd:800, spd:1, armor:2 },
     auraReduce:1,
     auraRange:2
   },
   marksman:{ faction:"Vanir", name:"Marksman", emoji:"🎯", role:"back",
-    base:{ hp:8, dmg:5, range:6, cd:1450, spd:1 },
+    base:{ hp:8, dmg:5, range:6, cd:1450, spd:1, armor:0 },
     antiSupport:true,
     supportBonus:4,
     executePct:0.35
   },
   emp:{ faction:"Vanir", name:"EMP Grenadier", emoji:"🧲", role:"back",
-    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1 },
+    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1, armor:0 },
     empShock:true,
     shockDur:1500
   },
 
   /* Aesir */
-  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,3,4,800),{blink50:true}), spawn:2 },
-  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(14,6,700),{spd:2}), spawn:2 },
-  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(7,3,3,1100),{chain3:true}) },
-  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(24,6,900),{splash1:true,knock:true,strongKnock:true}), size:1 },
+  phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,3,4,800),{blink50:true,armor:0}), spawn:2 },
+  blade:    { faction:"Aesir", name:"Blademasters", emoji:"⚔️", role:"front", base:Object.assign({},M(14,6,700),{spd:2,armor:1}), spawn:2 },
+  storm:    { faction:"Aesir", name:"Storm Seer", emoji:"🌩️", role:"back",  base:Object.assign({},R(7,3,3,1100),{chain3:true,armor:0}) },
+  guardian: { faction:"Aesir", name:"Guardian",  emoji:"🌀", role:"front", base:Object.assign({},M(24,6,900),{splash1:true,knock:true,strongKnock:true,armor:3}), size:1 },
   wardmaker:{ faction:"Aesir", name:"Wardmaker", emoji:"🔮", role:"back",
-    base:{ hp:7, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:5100, wardHp:4 },
+    base:{ hp:7, dmg:0, range:3, cd:1500, ward:true, wardCd:1900, wardDur:5100, wardHp:4, armor:0 },
     wardHealAmt:2, wardHealRange:3, wardHealCd:2500
   },
   architect:{
     faction:"Aesir", name:"Aegis Architect", emoji:"🧱", role:"back",
-    base:{ hp:8, dmg:0, range:3, cd:1600, ward:true, wardCd:2200, wardDur:7000, wardHp:4 },
+    base:{ hp:8, dmg:0, range:3, cd:1600, ward:true, wardCd:2200, wardDur:7000, wardHp:4, armor:1 },
     wardShooter:true,
     wardDmg:2,
     wardRange:3,
     wardCdShoot:1400
   },
   golem:{ faction:"Aesir", name:"Sentinel Golem", emoji:"🗿", role:"front",
-    base:{ hp:34, dmg:5, range:1, cd:1050, spd:1 }, size:2,
+    base:{ hp:34, dmg:5, range:1, cd:1050, spd:1, armor:4 }, size:2,
     rangedReduce:2
   },
   runebinder:{ faction:"Aesir", name:"Rune Binder", emoji:"🪄", role:"back",
-    base:{ hp:8, dmg:2, range:4, cd:1250, spd:1 },
+    base:{ hp:8, dmg:2, range:4, cd:1250, spd:1, armor:0 },
     bind:true,
     bindDur:1200
   },
 
   /* Helions */
-  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(9,2,500),{spd:3}), spawn:4 },
-  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(11,4,3,1000),{}), spawn:2 },
-  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(22,4,900),{splash1:true,toxicSplash:true}), size:1 },
-  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,3,0),{kamikaze:true,paints:true}), spawn:2 },
+  hellspawn:{ faction:"Helions", name:"Hell Spawn", emoji:"🐜", role:"front", base:Object.assign({},M(9,2,500),{spd:3,armor:0}), spawn:4 },
+  roach:    { faction:"Helions", name:"Roaches",  emoji:"👾", role:"back",  base:Object.assign({},R(11,4,3,1000),{armor:1}), spawn:2 },
+  defiler:  { faction:"Helions", name:"Defiler",  emoji:"🦂", role:"front", base:Object.assign({},M(22,4,900),{splash1:true,toxicSplash:true,armor:2}), size:1 },
+  blood:    { faction:"Helions", name:"BloodBurst", emoji:"🐞", role:"front", base:Object.assign({},M(9,3,0),{kamikaze:true,paints:true,armor:0}), spawn:2 },
   matron:{
     faction:"Helions", name:"Brood Matron", emoji:"🕷️", role:"back",
-    base:{ hp:18, dmg:1, range:3, cd:1200 },
+    base:{ hp:18, dmg:1, range:3, cd:1200, armor:1 },
     brood:true,
     broodType:"hellspawn",
     broodCd:3500
   },
   viper:{
     faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
-    base:{ hp:8, dmg:14, range:1, cd:2000, spd:2 },
+    base:{ hp:8, dmg:14, range:1, cd:2000, spd:2, armor:0 },
     hunterRanged:true,
+    trueDamage:true,
     viperLeap:true,
     leapDist:2, spawn:2
   },
-  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(9,4,5,1200),{acid:true,acidDur:3500}) },
+  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(9,4,5,1200),{acid:true,acidDur:3500,armor:0}) },
   carrion:{ faction:"Helions", name:"Carrion Priest", emoji:"🩸", role:"back",
-    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1 },
+    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1, armor:0 },
     wound:true,
     woundDur:2600
   },
   burrower:{ faction:"Helions", name:"Burrower", emoji:"🪱", role:"front",
-    base:{ hp:7, dmg:7, range:1, cd:1200, spd:2 },
+    base:{ hp:7, dmg:7, range:1, cd:1200, spd:2, armor:0 },
     burrow:true,
     burrowDist:2,
     burrowCd:2200
@@ -796,7 +797,7 @@ function placeUnit(state,p,key,lvl){
     const u={
       id:crypto.randomUUID(), p:p, type:key, x:pos.x, y:pos.y, lvl:lvl,
       maxhp:maxhp, hp:maxhp,
-      dmg:dmg, spd:spd, range:range,
+      dmg:dmg, spd:spd, range:range, armor:(b.armor|0),
       cd:cd,
       splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
@@ -806,7 +807,7 @@ function placeUnit(state,p,key,lvl){
       acid:!!b.acid, acidDur:b.acidDur||0,
       toxicSplash:!!b.toxicSplash,
       brood:!!t.brood, broodType:t.broodType||null, broodCd:t.broodCd||0,
-      viperLeap:!!t.viperLeap, leapDist:t.leapDist||0,
+      viperLeap:!!t.viperLeap, leapDist:t.leapDist||0, trueDamage:!!t.trueDamage,
       suppress:!!t.suppress, suppressDur:t.suppressDur||0, slowFactor:t.slowFactor||2,
       auraReduce:t.auraReduce||0, auraRange:t.auraRange||0,
       wardShooter:!!t.wardShooter, wardDmg:t.wardDmg||0, wardRange:t.wardRange||0, wardCdShoot:t.wardCdShoot||0,
@@ -877,32 +878,32 @@ function troopArt(type, u){
   const teamFill = u.p===0 ? "#f87171" : "#60a5fa";
   const lvlGem = (u.lvl||1) >= 3 ? '<circle cx="39" cy="10" r="4" fill="#fde047" class="stroke" />' : '';
   const ART = {
-    rifleman:'<rect x="8" y="16" width="28" height="22" rx="8" fill="#9ca3af" class="stroke"/><rect x="24" y="10" width="18" height="5" rx="2" fill="#374151" class="stroke"/><circle cx="14" cy="14" r="5" fill="'+teamFill+'" class="stroke"/>',
-    vrocket:'<path d="M10 35 L24 8 L37 35 Z" fill="#94a3b8" class="stroke"/><rect x="20" y="22" width="8" height="14" fill="#ef4444"/>',
-    vguard:'<path d="M24 8 L38 13 V25 C38 33 31 38 24 40 C17 38 10 33 10 25 V13 Z" fill="#64748b" class="stroke"/><rect x="20" y="17" width="8" height="16" fill="#e2e8f0"/>',
-    miner:'<rect x="9" y="16" width="24" height="22" rx="8" fill="#71717a" class="stroke"/><path d="M25 12 L38 25 L33 30 L20 17 Z" fill="#a3a3a3" class="stroke"/>',
-    medic:'<rect x="8" y="12" width="30" height="28" rx="8" fill="#0f766e" class="stroke"/><rect x="19" y="17" width="8" height="18" fill="#e2e8f0"/><rect x="14" y="22" width="18" height="8" fill="#e2e8f0"/>',
-    suppressor:'<rect x="8" y="14" width="30" height="26" rx="8" fill="#52525b" class="stroke"/><path d="M30 12 L40 15 L36 32 L28 29 Z" fill="#ef4444" class="stroke"/>',
-    shieldcap:'<path d="M24 7 L39 12 V24 C39 33 31 38 24 41 C17 38 9 33 9 24 V12 Z" fill="#475569" class="stroke"/><circle cx="24" cy="23" r="6" fill="#fde68a" class="stroke"/>',
-    marksman:'<rect x="9" y="16" width="24" height="22" rx="8" fill="#94a3b8" class="stroke"/><circle cx="32" cy="14" r="7" fill="none" stroke="#ef4444" stroke-width="3"/><line x1="32" y1="8" x2="32" y2="20" stroke="#ef4444"/><line x1="26" y1="14" x2="38" y2="14" stroke="#ef4444"/>',
-    emp:'<rect x="9" y="14" width="24" height="24" rx="9" fill="#475569" class="stroke"/><circle cx="32" cy="18" r="7" fill="#38bdf8" class="stroke"/><path d="M32 12 L29 19 H34 L31 25" stroke="#dbeafe" fill="none" stroke-width="2"/>',
-    phaser:'<ellipse cx="24" cy="24" rx="13" ry="16" fill="#f1f5f9" class="stroke"/><path d="M16 16 Q24 8 32 16" fill="#93c5fd" class="stroke"/>',
-    blade:'<rect x="10" y="14" width="22" height="26" rx="8" fill="#f8fafc" class="stroke"/><path d="M31 10 L38 17 L27 29 L22 24 Z" fill="#cbd5e1" class="stroke"/>',
-    storm:'<rect x="9" y="12" width="30" height="28" rx="12" fill="#fde68a" class="stroke"/><path d="M26 10 L20 24 H27 L22 38 L34 20 H27 Z" fill="#3b82f6" class="stroke"/>',
-    guardian:'<circle cx="24" cy="24" r="16" fill="#d4af37" class="stroke"/><circle cx="24" cy="24" r="7" fill="#60a5fa" class="stroke"/>',
-    wardmaker:'<rect x="10" y="12" width="18" height="28" rx="8" fill="#fef3c7" class="stroke"/><circle cx="33" cy="18" r="7" fill="#38bdf8" class="stroke"/>',
-    architect:'<rect x="8" y="14" width="31" height="25" rx="5" fill="#d4af37" class="stroke"/><rect x="13" y="19" width="21" height="15" fill="#93c5fd" class="stroke"/>',
-    golem:'<rect x="6" y="8" width="36" height="32" rx="8" fill="#94a3b8" class="stroke"/><circle cx="18" cy="23" r="3" fill="#0ea5e9"/><circle cx="30" cy="23" r="3" fill="#0ea5e9"/>',
-    runebinder:'<circle cx="18" cy="26" r="11" fill="#e2e8f0" class="stroke"/><path d="M29 14 L39 24 L30 34" stroke="#a78bfa" stroke-width="4" fill="none"/>',
-    hellspawn:'<ellipse cx="22" cy="25" rx="13" ry="10" fill="#7f1d1d" class="stroke"/><path d="M10 24 L4 20 M34 24 L40 20" stroke="#b91c1c" stroke-width="3"/><circle cx="17" cy="23" r="2" fill="#fee2e2"/><circle cx="27" cy="23" r="2" fill="#fee2e2"/>',
-    roach:'<ellipse cx="23" cy="24" rx="14" ry="10" fill="#581c87" class="stroke"/><path d="M12 30 L6 36 M34 30 L40 36" stroke="#9333ea" stroke-width="3"/>',
-    defiler:'<ellipse cx="20" cy="25" rx="14" ry="12" fill="#3f3f46" class="stroke"/><path d="M30 25 Q41 18 37 10" stroke="#22c55e" stroke-width="4" fill="none"/><circle cx="37" cy="9" r="3" fill="#86efac"/>',
-    blood:'<circle cx="22" cy="24" r="12" fill="#b91c1c" class="stroke"/><circle cx="30" cy="16" r="5" fill="#ef4444" class="stroke"/>',
-    matron:'<ellipse cx="23" cy="24" rx="14" ry="12" fill="#4c1d95" class="stroke"/><path d="M11 30 L5 36 M17 33 L12 39 M29 33 L34 39 M35 30 L41 36" stroke="#7c3aed" stroke-width="2"/>',
-    viper:'<path d="M8 28 Q20 12 34 24 Q27 34 11 34 Z" fill="#14532d" class="stroke"/><circle cx="33" cy="23" r="2" fill="#dcfce7"/>',
-    spitter:'<ellipse cx="22" cy="24" rx="14" ry="10" fill="#6d28d9" class="stroke"/><circle cx="34" cy="24" r="5" fill="#c4b5fd" class="stroke"/>',
-    carrion:'<rect x="10" y="12" width="24" height="28" rx="8" fill="#7f1d1d" class="stroke"/><path d="M24 12 L30 5 L34 12" fill="#b91c1c" class="stroke"/>',
-    burrower:'<path d="M8 30 Q22 10 38 30 Q22 40 8 30 Z" fill="#78350f" class="stroke"/><path d="M20 23 L24 19 L28 23" stroke="#fbbf24" stroke-width="2" fill="none"/>'
+    rifleman:'<rect x="7" y="10" width="20" height="28" rx="7" fill="#9ca3af" class="stroke"/><rect x="25" y="13" width="16" height="7" rx="3" fill="#1f2937" class="stroke"/><rect x="29" y="21" width="14" height="4" rx="2" fill="#374151"/><rect x="12" y="16" width="10" height="4" fill="'+teamFill+'" opacity=".9"/><circle cx="13" cy="28" r="3" fill="#d1d5db"/><circle cx="21" cy="28" r="3" fill="#d1d5db"/>',
+    vrocket:'<path d="M10 36 L24 7 L38 36 Z" fill="#64748b" class="stroke"/><path d="M24 10 L31 24 L24 27 L17 24 Z" fill="#e2e8f0"/><rect x="20" y="24" width="8" height="12" fill="#ef4444"/><path d="M14 33 L18 38 L10 38 Z" fill="#fb7185"/><path d="M34 33 L38 38 L30 38 Z" fill="#fb7185"/>',
+    vguard:'<path d="M24 6 L39 12 V24 C39 33 31 39 24 42 C17 39 9 33 9 24 V12 Z" fill="#334155" class="stroke"/><path d="M24 11 L34 15 V24 C34 30 29 34 24 36 C19 34 14 30 14 24 V15 Z" fill="#cbd5e1" class="stroke"/><rect x="21" y="17" width="6" height="16" fill="'+teamFill+'"/><rect x="16" y="21" width="16" height="5" fill="'+teamFill+'"/>',
+    miner:'<rect x="8" y="13" width="23" height="26" rx="8" fill="#52525b" class="stroke"/><path d="M24 10 L40 24 L34 30 L18 16 Z" fill="#a1a1aa" class="stroke"/><rect x="10" y="20" width="12" height="3" fill="#facc15"/><circle cx="16" cy="30" r="3" fill="#d4d4d8"/><rect x="32" y="21" width="5" height="10" rx="2" fill="#78716c"/>',
+    medic:'<rect x="8" y="10" width="31" height="30" rx="8" fill="#0f766e" class="stroke"/><rect x="13" y="16" width="21" height="18" rx="4" fill="#115e59"/><rect x="20" y="14" width="7" height="22" fill="#ecfeff"/><rect x="13" y="21" width="21" height="7" fill="#ecfeff"/><circle cx="34" cy="14" r="4" fill="#99f6e4"/>',
+    suppressor:'<rect x="8" y="12" width="30" height="28" rx="8" fill="#3f3f46" class="stroke"/><path d="M29 10 L41 14 L36 34 L25 30 Z" fill="#ef4444" class="stroke"/><rect x="12" y="18" width="12" height="5" fill="#a1a1aa"/><rect x="12" y="26" width="14" height="3" fill="#f97316"/><circle cx="33" cy="22" r="3" fill="#fecaca"/>',
+    shieldcap:'<path d="M24 5 L40 11 V23 C40 33 32 40 24 43 C16 40 8 33 8 23 V11 Z" fill="#1e293b" class="stroke"/><path d="M24 10 L34 14 V23 C34 29 29 34 24 37 C19 34 14 29 14 23 V14 Z" fill="#475569" class="stroke"/><circle cx="24" cy="24" r="6" fill="#fde68a" class="stroke"/><circle cx="24" cy="24" r="2" fill="#f59e0b"/>',
+    marksman:'<rect x="8" y="12" width="23" height="27" rx="8" fill="#94a3b8" class="stroke"/><circle cx="34" cy="15" r="8" fill="none" stroke="#ef4444" stroke-width="3"/><line x1="34" y1="8" x2="34" y2="22" stroke="#ef4444"/><line x1="27" y1="15" x2="41" y2="15" stroke="#ef4444"/><rect x="12" y="19" width="12" height="4" fill="#1f2937"/>',
+    emp:'<rect x="9" y="12" width="24" height="27" rx="9" fill="#334155" class="stroke"/><circle cx="34" cy="18" r="8" fill="#0ea5e9" class="stroke"/><path d="M34 11 L30 18 H35 L31 26" stroke="#dbeafe" fill="none" stroke-width="2.5"/><rect x="13" y="28" width="15" height="5" fill="#64748b"/>',
+    phaser:'<ellipse cx="24" cy="24" rx="13" ry="17" fill="#e2e8f0" class="stroke"/><path d="M14 18 Q24 6 34 18" fill="#93c5fd" class="stroke"/><circle cx="24" cy="24" r="4" fill="#60a5fa"/><path d="M10 24 H38" stroke="#bfdbfe" stroke-width="2" opacity=".8"/>',
+    blade:'<rect x="10" y="12" width="20" height="28" rx="8" fill="#f8fafc" class="stroke"/><path d="M30 8 L40 18 L28 31 L22 25 Z" fill="#cbd5e1" class="stroke"/><path d="M19 18 L23 10 L27 18" fill="#93c5fd"/><rect x="13" y="28" width="12" height="4" fill="#94a3b8"/>',
+    storm:'<rect x="9" y="11" width="30" height="29" rx="12" fill="#fde68a" class="stroke"/><path d="M25 9 L19 23 H26 L21 39 L34 21 H27 Z" fill="#3b82f6" class="stroke"/><circle cx="15" cy="16" r="3" fill="#fef3c7"/><circle cx="33" cy="31" r="2" fill="#fef3c7"/>',
+    guardian:'<circle cx="24" cy="24" r="17" fill="#d4af37" class="stroke"/><circle cx="24" cy="24" r="11" fill="#1d4ed8" class="stroke"/><circle cx="24" cy="24" r="5" fill="#93c5fd"/><path d="M24 7 L24 41 M7 24 L41 24" stroke="#fef08a" stroke-width="1.5"/>',
+    wardmaker:'<rect x="9" y="11" width="18" height="29" rx="8" fill="#fef3c7" class="stroke"/><circle cx="33" cy="18" r="8" fill="#38bdf8" class="stroke"/><circle cx="33" cy="18" r="3" fill="#e0f2fe"/><path d="M14 21 L22 21 M14 27 L22 27" stroke="#ca8a04" stroke-width="2"/>',
+    architect:'<rect x="7" y="12" width="32" height="27" rx="5" fill="#d4af37" class="stroke"/><rect x="12" y="18" width="22" height="15" fill="#93c5fd" class="stroke"/><path d="M10 17 L24 8 L38 17" fill="#fef3c7" class="stroke"/><rect x="17" y="22" width="6" height="9" fill="#1e3a8a"/>',
+    golem:'<rect x="6" y="7" width="36" height="33" rx="8" fill="#6b7280" class="stroke"/><rect x="12" y="12" width="24" height="8" fill="#9ca3af"/><circle cx="18" cy="24" r="3" fill="#0ea5e9"/><circle cx="30" cy="24" r="3" fill="#0ea5e9"/><rect x="15" y="29" width="18" height="4" fill="#4b5563"/>',
+    runebinder:'<circle cx="18" cy="26" r="11" fill="#e2e8f0" class="stroke"/><path d="M29 14 L39 24 L30 34" stroke="#a78bfa" stroke-width="4" fill="none"/><path d="M14 21 L21 21 L18 27 Z" fill="#7c3aed"/><circle cx="34" cy="24" r="2" fill="#ddd6fe"/>',
+    hellspawn:'<ellipse cx="22" cy="25" rx="13" ry="10" fill="#7f1d1d" class="stroke"/><path d="M10 24 L4 20 M34 24 L40 20" stroke="#b91c1c" stroke-width="3"/><path d="M10 28 L4 32 M34 28 L40 32" stroke="#b91c1c" stroke-width="2"/><circle cx="17" cy="23" r="2" fill="#fee2e2"/><circle cx="27" cy="23" r="2" fill="#fee2e2"/>',
+    roach:'<ellipse cx="23" cy="24" rx="14" ry="10" fill="#581c87" class="stroke"/><path d="M12 30 L6 36 M34 30 L40 36" stroke="#9333ea" stroke-width="3"/><path d="M13 19 L8 14 M33 19 L38 14" stroke="#a855f7" stroke-width="2"/><rect x="18" y="19" width="10" height="9" fill="#7e22ce"/>',
+    defiler:'<ellipse cx="20" cy="25" rx="14" ry="12" fill="#27272a" class="stroke"/><path d="M30 25 Q41 18 37 10" stroke="#22c55e" stroke-width="4" fill="none"/><circle cx="37" cy="9" r="3" fill="#86efac"/><path d="M8 26 L3 30 M12 33 L6 38 M28 34 L34 39" stroke="#4ade80" stroke-width="2"/>',
+    blood:'<circle cx="22" cy="24" r="12" fill="#b91c1c" class="stroke"/><circle cx="30" cy="16" r="5" fill="#ef4444" class="stroke"/><circle cx="17" cy="20" r="3" fill="#fecaca"/><path d="M15 33 L19 38 L23 33" fill="#f87171"/>',
+    matron:'<ellipse cx="23" cy="24" rx="14" ry="12" fill="#4c1d95" class="stroke"/><path d="M11 30 L5 36 M17 33 L12 39 M29 33 L34 39 M35 30 L41 36" stroke="#7c3aed" stroke-width="2"/><circle cx="18" cy="22" r="2" fill="#ddd6fe"/><circle cx="28" cy="22" r="2" fill="#ddd6fe"/>',
+    viper:'<path d="M7 30 Q16 10 34 20 Q42 25 35 33 Q25 38 16 34 Q11 32 7 30 Z" fill="#14532d" class="stroke"/><path d="M16 30 Q23 23 31 27" stroke="#86efac" stroke-width="2" fill="none"/><circle cx="34" cy="23" r="2" fill="#dcfce7"/><path d="M36 24 L40 23 L37 26" fill="#f87171"/>',
+    spitter:'<ellipse cx="22" cy="24" rx="14" ry="10" fill="#6d28d9" class="stroke"/><circle cx="34" cy="24" r="5" fill="#c4b5fd" class="stroke"/><circle cx="33" cy="24" r="2" fill="#ede9fe"/><path d="M10 25 L5 28 M13 30 L8 35" stroke="#8b5cf6" stroke-width="2"/>',
+    carrion:'<rect x="10" y="11" width="24" height="29" rx="8" fill="#7f1d1d" class="stroke"/><path d="M24 11 L30 4 L34 11" fill="#b91c1c" class="stroke"/><path d="M14 20 L30 20 M14 27 L30 27" stroke="#fca5a5" stroke-width="2" opacity=".8"/><circle cx="22" cy="33" r="3" fill="#ef4444"/>',
+    burrower:'<path d="M7 31 Q22 8 39 31 Q22 41 7 31 Z" fill="#78350f" class="stroke"/><path d="M20 22 L24 17 L28 22" stroke="#fbbf24" stroke-width="2" fill="none"/><path d="M12 32 Q22 35 34 32" stroke="#a16207" stroke-width="2" fill="none"/><circle cx="22" cy="27" r="2" fill="#fde68a"/>'
   };
   const body = ART[type] || ('<text x="24" y="30" text-anchor="middle" font-size="20">'+unitEmoji(type)+'</text>');
   return '<div class="troop-art" style="filter:'+hpGlow+'">\n    <svg viewBox="0 0 48 48" aria-label="'+(TROOPS[type]?.name||type)+'">'+body+lvlGem+'</svg>\n  </div>';
@@ -1104,7 +1105,7 @@ function spawnAdjacentUnit(st, parent, typeKey){
       const u={
         id:crypto.randomUUID(), p:parent.p, type:typeKey, x:x, y:y, lvl:1,
         maxhp:Math.round(b.hp||8), hp:Math.round(b.hp||8),
-        dmg:Math.round(b.dmg||2), spd: b.spd || 1, range:b.range || 1,
+        dmg:Math.round(b.dmg||2), spd: b.spd || 1, range:b.range || 1, armor:(b.armor|0),
         cd: Math.round((b.cd || 700)*PACE.atkMult),
         splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
         blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
@@ -1112,7 +1113,7 @@ function spawnAdjacentUnit(st, parent, typeKey){
         heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
         ward:false, acid:!!b.acid, acidDur:b.acidDur||0, toxicSplash:!!b.toxicSplash,
         brood:!!t.brood, broodType:t.broodType||null, broodCd:t.broodCd||0,
-        viperLeap:!!t.viperLeap, leapDist:t.leapDist||0,
+        viperLeap:!!t.viperLeap, leapDist:t.leapDist||0, trueDamage:!!t.trueDamage,
         suppress:!!t.suppress, suppressDur:t.suppressDur||0, slowFactor:t.slowFactor||2,
         auraReduce:t.auraReduce||0, auraRange:t.auraRange||0,
         wardShooter:!!t.wardShooter, wardDmg:t.wardDmg||0, wardRange:t.wardRange||0, wardCdShoot:t.wardCdShoot||0,
@@ -1206,10 +1207,15 @@ function broodTick(st, now){
   }
 }
 
-function reduceDamageForTarget(baseDmg, target, field){
+function reduceDamageForTarget(baseDmg, target, field, opts){
   let dmg = baseDmg|0;
-  const reduce = auraDamageReduceFor(target, field);
-  if (reduce > 0) dmg = Math.max(1, dmg - reduce);
+  const ignoreArmor = !!(opts && opts.ignoreArmor);
+  if (ignoreArmor) return Math.max(1, dmg);
+
+  const auraReduce = auraDamageReduceFor(target, field);
+  const armor = target && target.armor ? (target.armor|0) : 0;
+  const totalReduce = Math.max(0, auraReduce + armor);
+  if (totalReduce > 0) dmg = Math.max(1, dmg - totalReduce);
   return dmg;
 }
 function healScale(v, now){
@@ -1699,13 +1705,13 @@ function applyDamage(victim, dmg, st){
   flashAt(victim.x, victim.y, dmg);
   if (st && st.field && st.field.fx) st.field.fx.push(fxImpact(victim.x, victim.y));
 }
-function splash(units, field, x,y,dmg,srcP,kn,strong){
+function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
       const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
       if(hit){
-        const rd = reduceDamageForTarget(dmg, hit, field);
+        const rd = reduceDamageForTarget(dmg, hit, field, opts);
         applyDamage(hit, rd, {field:field});
         if(kn) tryKnock(x,y,hit,units,strong);
       }
@@ -1721,10 +1727,10 @@ function tryKnock(cx,cy,t,units,strong){
     if (canMoveTo(t, units, nx, ny)){ t.x=nx; t.y=ny; steps--; } else break;
   }
 }
-function chainLightning(units, field, startTarget, srcP, hops, dmg){
+function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   let cur = startTarget; let left=hops; const hit=new Set();
   while(cur && left>0){
-    applyDamage(cur, reduceDamageForTarget(dmg, cur, field), {field:field});
+    applyDamage(cur, reduceDamageForTarget(dmg, cur, field, opts), {field:field});
     hit.add(cur.id);
     let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
     for(let i=0;i<units.length;i++){
@@ -1751,7 +1757,7 @@ function attack(u, t, now, st){
       dmg = applyWardShields(u, victim, dmg, st.field);
       if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
     }
-    dmg = reduceDamageForTarget(dmg, victim, st.field);
+    dmg = reduceDamageForTarget(dmg, victim, st.field, {ignoreArmor:!!u.trueDamage});
     applyDamage(victim, dmg, st);
   }
 
@@ -1761,7 +1767,7 @@ function attack(u, t, now, st){
 
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false);
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
     }
     if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
@@ -1771,12 +1777,12 @@ function attack(u, t, now, st){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false);
+    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.chain3){
     st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
     if (u.type === "storm") st.field.fx.push(fxStorm(t.x,t.y));
-    chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg);
+    chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
     if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
@@ -1794,7 +1800,7 @@ function attack(u, t, now, st){
     const strong = !!u.strongKnock;
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, !!u.knock, strong);
+      splash(st.field.units, st.field, t.x, t.y, sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage});
     }
     if (u.toxicSplash){
       addToxicSplash(st, t.x, t.y, 7000, u.p);
@@ -2456,10 +2462,12 @@ function render(){
     const el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
       const tro = TROOPS[c.key];
+      const armor = Math.max(0, (tro.base && tro.base.armor) ? (tro.base.armor|0) : 0);
+      const trueTag = tro.trueDamage ? ' · true dmg' : '';
       el.innerHTML=''+
-        '<div class="meta">'+tro.faction+' · '+(tro.role==="back"?"Backline":"Frontline")+'</div>'+
+        '<div class="meta">'+tro.faction+' · '+(tro.role==="back"?"Backline":"Frontline")+' · Armor '+armor+trueTag+'</div>'+
         '<div class="title">'+c.emoji+' '+c.name+'</div>'+
-        '<div class="desc">Solid '+(tro.role==="back"?"support / ranged":"frontline pressure")+' unit from '+tro.faction+'.</div>';
+        '<div class="desc">'+(tro.role==="back"?"Support / ranged":"Frontline pressure")+' from '+tro.faction+'. Armor reduces incoming hit damage.</div>';
     }else{
       const nn=TROOPS[c.for]?.name||"Type";
       el.innerHTML=''+
@@ -2601,7 +2609,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
