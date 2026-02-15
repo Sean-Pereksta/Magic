@@ -138,10 +138,10 @@
 
     .structure-health-shell{
       position:absolute;
-      left:3px;
-      right:3px;
-      top:-4px;
-      height:3px;
+      left:1px;
+      right:1px;
+      top:-8px;
+      height:5px;
       background:rgba(20,20,20,0.32);
       border-radius:8px;
       overflow:hidden;
@@ -1421,26 +1421,29 @@
         }
       }
 
-      const centerX = Math.floor(gridSize/2);
-      const centerY = Math.floor(gridSize/2);
-      const ratPassable = (x, y) => {
-        const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-        const isReviveCenter = (x===centerX && y===centerY);
-        const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-        return !isBlocked && !isReviveCenter && !ratOccupied;
-      };
-
-      // if no reachable mouse target, attack nearest reachable structure
-      if (!closestTarget || closestTarget.priority > 0){
-        const structureTarget = getNearestReachableStructureTarget(rat.x, rat.y, ratPassable);
-        if (structureTarget && (closestTarget?.priority ?? 99) > 0){
-          minDist = structureTarget.path.length;
-          closestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure", priority: 2 };
+      // closest structure
+      for (let y=0; y<gridSize; y++){
+        for (let x=0; x<gridSize; x++){
+          if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[y][x])){
+            const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
+            if (dist < minDist || (dist===minDist && (closestTarget?.priority ?? 99) > 2)){
+              minDist = dist;
+              closestTarget = { x, y, type:"structure", priority: 2 };
+            }
+          }
         }
       }
 
       if (closestTarget){
-        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, ratPassable);
+        const centerX = Math.floor(gridSize/2);
+        const centerY = Math.floor(gridSize/2);
+
+        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
+          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const isReviveCenter = (x===centerX && y===centerY);
+          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          return !isBlocked && !isReviveCenter && !ratOccupied;
+        });
 
         if (path && path.length > 0){
           const next = path[0];
