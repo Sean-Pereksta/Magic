@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -35,6 +35,18 @@
   .slot .emoji{ font-size:24px } .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; line-height:1.1; padding:0 4px }
   .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); border-radius:10px }
   .cd-badge{ position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008; border:1px solid #345; border-radius:6px; padding:1px 5px }
+  #mobileBar{ position:absolute; left:10px; right:10px; top:46px; display:none; gap:8px; z-index:8; pointer-events:auto; flex-wrap:wrap }
+  .mbtn{ border:1px solid #3f5575; background:#13243ade; color:#eaf1ff; border-radius:10px; padding:8px 10px; font-weight:700; font-size:12px }
+  .mbtn.active{ outline:2px solid #8fd3ff }
+  .mobile-only{ display:none }
+  @media (max-width: 900px), (pointer: coarse){
+    body{ place-items:stretch }
+    .frame{ width:100vw; height:100dvh; border-radius:0; border:0 }
+    #mobileBar,.mobile-only{ display:flex }
+    #legend{ display:none }
+    #hud{ height:120px }
+    #selInfo{ min-width:180px; font-size:13px }
+  }
 </style>
 </head>
 <body>
@@ -47,10 +59,15 @@
       <canvas id="cv"></canvas>
       <div id="ui">
         <div id="timer">⚔️ Breach the wall and defeat the defenders</div>
-        <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> (enemy = focus) • Q/W/E/R: ability • A: attack nearest • H: hold • Double-click: select same type</div>
+        <div id="legend">Left-drag: select • Right-click: <b>attack-move</b> (enemy = focus) • Tap ground: command • Hold+drag: pan • Q/W/E/R: ability</div>
         <div id="board"><h3>Armies on field</h3><div id="boardRows"></div></div>
         <div id="hint"></div>
         <div id="banner"></div>
+        <div id="mobileBar" class="mobile-only">
+          <button id="btnFS" class="mbtn">⛶ Fullscreen</button>
+          <button id="btnBox" class="mbtn">⬚ Box Select</button>
+          <button id="btnCancelSel" class="mbtn">✖ Cancel Select</button>
+        </div>
         <div id="hud">
           <div id="selInfo">Select units</div>
           <div id="abilities"></div>
@@ -173,6 +190,25 @@ function rel(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.l
 let dragging=false, dragStart=null, selection=new Set(), targeting=null;
 const localFX=[];
 let lastClickAt=0, lastClickCell=null;
+const isCoarse = window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+let mobileMode = { boxSelect:false, pointerDown:false, pointerMoved:false, panActive:false, holdTimer:null, startWorld:null, startClient:null, justPanned:false };
+const commandMarkers=[];
+
+function nearestOpenAround(gx, gy, occ, reserved){
+  if(!occupiedOrReserved(gx,gy,occ,reserved)) return {gx,gy};
+  const q=[{gx,gy}], seen=new Set([gx+"|"+gy]);
+  for(let qi=0; qi<q.length && qi<GRID_W*GRID_H; qi++){
+    const cur=q[qi];
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]){
+      const nx=cur.gx+dx, ny=cur.gy+dy;
+      if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
+      const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
+      if(!occupiedOrReserved(nx,ny,occ,reserved)) return {gx:nx,gy:ny};
+      q.push({gx:nx,gy:ny});
+    }
+  }
+  return null;
+}
 
 /* ---------- UI helpers ---------- */
 function flash(t){ const h=document.getElementById("hint"); h.textContent=t; h.style.display="block"; clearTimeout(flash._t); flash._t=setTimeout(()=>h.style.display="none",900); }
@@ -373,7 +409,20 @@ function nearestFree(gx,gy, occ){
 
 /* ---------- Orders ---------- */
 function orderAttackMove(ids, gx, gy){
-  for (const u of state.units){ if (ids.includes(u.id) && u.o !== "Defenders"){ u.goalGX=gx; u.goalGY=gy; } }
+  const occ = occupancy(state.units);
+  const reserved = new Set();
+  let idx = 0;
+  for (const u of state.units){
+    if (!ids.includes(u.id) || u.o === "Defenders") continue;
+    const ring = Math.ceil(Math.sqrt(ids.length));
+    const ox = (idx % ring) - Math.floor(ring/2);
+    const oy = Math.floor(idx / ring) - Math.floor(ring/2);
+    const desired = nearestOpenAround(gx+ox, gy+oy, occ, reserved) || nearestOpenAround(gx, gy, occ, reserved) || {gx,gy};
+    u.goalGX=desired.gx; u.goalGY=desired.gy;
+    reserved.add(desired.gx+"|"+desired.gy);
+    idx++;
+  }
+  commandMarkers.push({gx,gy,until:Date.now()+1200});
 }
 function orderFocus(ids, targetId){
   const t = state.units.find(x=>x.id===targetId);
@@ -601,7 +650,7 @@ function simulate(g, dt){
 
   // projectiles
   {
-    const keep=[]; 
+    const keep=[];
     for(const pr of (g.projs||[])){
       if(pr.type==="bolt"){
         if(now>=pr.nextHopAt){
@@ -610,7 +659,7 @@ function simulate(g, dt){
           pr.idx=Math.min(pr.idx+hops, pr.path.length-1);
         }
         const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
-        let hit=null; 
+        let hit=null;
         for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
         if(hit){ applyDamage(g,hit,pr.dmg,pr.ap||0.5,pr.who); continue; }
         if(pr.idx<pr.path.length-1) keep.push(pr);
@@ -741,7 +790,7 @@ function simulate(g, dt){
   const survivors=[]; const deaths=[];
   for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
   if(deaths.length){
-    g.stats = g.stats || {}; 
+    g.stats = g.stats || {};
     if(!g.stats.Attackers) g.stats.Attackers={killsByType:{}, lostByType:{}};
     if(!g.stats.Defenders) g.stats.Defenders={killsByType:{}, lostByType:{}};
     for(const dead of deaths){
@@ -844,6 +893,54 @@ window.addEventListener("mouseup",(e)=>{
   }
 });
 cv.addEventListener("contextmenu", e=>e.preventDefault());
+
+function setBoxSelect(v){ mobileMode.boxSelect=v; const b=document.getElementById("btnBox"); if(b) b.classList.toggle("active", v); }
+async function enterFullscreen(){ const root=document.querySelector('.frame'); try{ if(document.fullscreenElement) await document.exitFullscreen(); else await (root.requestFullscreen?.()||document.documentElement.requestFullscreen?.()); }catch(e){} }
+(function setupMobileButtons(){
+  const fs=document.getElementById("btnFS"), box=document.getElementById("btnBox"), cancel=document.getElementById("btnCancelSel");
+  fs && fs.addEventListener('click', enterFullscreen);
+  box && box.addEventListener('click', ()=> setBoxSelect(!mobileMode.boxSelect));
+  cancel && cancel.addEventListener('click', ()=>{ selection.clear(); renderHUD(); });
+})();
+
+function handleTapCommand(wx, wy){
+  const ids=Array.from(selection); if(!ids.length) return;
+  const enemy=pickEnemyAt(wx,wy,"Attackers");
+  if(enemy) orderFocus(ids, enemy.id);
+  else { const {gx,gy}=worldToGrid(wx,wy); orderAttackMove(ids,gx,gy); }
+}
+
+cv.addEventListener('pointerdown',(e)=>{
+  if(!isCoarse) return;
+  cv.setPointerCapture(e.pointerId);
+  const r=rel(cv,e); mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+r.x; mouse.worldY=cam.y+r.y;
+  mobileMode.pointerDown=true; mobileMode.pointerMoved=false; mobileMode.panActive=false; mobileMode.justPanned=false;
+  mobileMode.startWorld={x:mouse.worldX,y:mouse.worldY}; mobileMode.startClient={x:e.clientX,y:e.clientY};
+  clearTimeout(mobileMode.holdTimer);
+  mobileMode.holdTimer=setTimeout(()=>{ mobileMode.panActive=true; },180);
+});
+cv.addEventListener('pointermove',(e)=>{
+  if(!isCoarse || !mobileMode.pointerDown) return;
+  const dx=e.clientX-mobileMode.startClient.x, dy=e.clientY-mobileMode.startClient.y;
+  if(Math.hypot(dx,dy)>8) mobileMode.pointerMoved=true;
+  if(mobileMode.panActive){
+    cam.x=clamp(cam.x-dx,0,WORLD.w-cv.width); cam.y=clamp(cam.y-dy,0,WORLD.h-cv.height);
+    mobileMode.startClient={x:e.clientX,y:e.clientY}; mobileMode.justPanned=true;
+  }
+});
+cv.addEventListener('pointerup',(e)=>{
+  if(!isCoarse) return;
+  clearTimeout(mobileMode.holdTimer);
+  const r=rel(cv,e); const wx=cam.x+r.x, wy=cam.y+r.y;
+  const unit=pickUnitAt(wx,wy,"Attackers");
+  if(mobileMode.panActive || mobileMode.justPanned){ mobileMode.pointerDown=false; mobileMode.panActive=false; return; }
+  if(unit){ selection.clear(); selection.add(unit.id); renderHUD(); mobileMode.pointerDown=false; return; }
+  if(mobileMode.boxSelect){
+    const x0=Math.min(mobileMode.startWorld.x,wx), x1=Math.max(mobileMode.startWorld.x,wx), y0=Math.min(mobileMode.startWorld.y,wy), y1=Math.max(mobileMode.startWorld.y,wy);
+    const ids=pickInRect(x0,y0,x1,y1,"Attackers"); selection.clear(); ids.forEach(id=>selection.add(id)); renderHUD();
+  }else handleTapCommand(wx,wy);
+  mobileMode.pointerDown=false;
+});
 
 window.addEventListener("keydown",(e)=>{
   const k=e.key.toLowerCase();
@@ -996,6 +1093,15 @@ for (let i = localFX.length - 1; i >= 0; i--) {
   }
 }
 
+  }
+
+  // command markers
+  for(let i=commandMarkers.length-1;i>=0;i--){
+    const m=commandMarkers[i];
+    if(Date.now()>m.until){ commandMarkers.splice(i,1); continue; }
+    const cx=m.gx*TILE+TILE/2-cam.x, cy=m.gy*TILE+TILE/2-cam.y;
+    ctx.save(); ctx.strokeStyle="#9bf"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,cy-18); ctx.lineTo(cx+6,cy-8); ctx.lineTo(cx-6,cy-8); ctx.closePath(); ctx.fillStyle="#9bf"; ctx.fill(); ctx.restore();
   }
 
   // drag box
