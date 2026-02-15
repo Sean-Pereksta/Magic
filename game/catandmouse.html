@@ -94,13 +94,61 @@
       z-index: 25;
       background: rgba(245,245,245,0.96);
       border-top: 2px solid #bbb;
-      padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
       box-shadow: 0 -8px 18px rgba(0,0,0,0.2);
     }
 
-    .mobile-row{ display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:6px 0; }
+    .mobile-row{ display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:nowrap; margin:4px 0; }
     #mobileControls .pad{ background:#fff; border:1px solid #999; border-radius:10px; }
     #mobileControls .active{ background:#d4e8ff; border-color:#5591d3; }
+
+    .mobile-mini-btn{
+      font-size: 13px;
+      padding: 7px 9px;
+      margin: 0;
+      border-radius: 8px;
+    }
+
+    #analogStick{
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      border: 2px solid #778;
+      background: radial-gradient(circle at 35% 35%, #fefefe, #d9dce5);
+      position: relative;
+      touch-action: none;
+      flex-shrink: 0;
+    }
+
+    #analogThumb{
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #667;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: inset 0 2px 4px rgba(255,255,255,0.35);
+    }
+
+    #mobileBuildPicker{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      background:#fff;
+      border:1px solid #999;
+      border-radius:10px;
+      padding:4px 5px;
+      max-width: 185px;
+    }
+
+    #mobileBuildDisplay{
+      min-width: 92px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.15;
+    }
 
     #fullscreenBtn{
       position: fixed;
@@ -125,7 +173,7 @@
       #mobileControls{ display: block; }
       #fullscreenBtn{ display: inline-block; }
       #grid{ margin-top: 10px; }
-      body{ padding-bottom: 245px; }
+      body{ padding-bottom: 165px; }
       #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
       .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
     }
@@ -222,42 +270,24 @@
 
       <div id="mobileControls" style="margin-top:20px; display:none;">
         <div class="mobile-row">
-          <select id="mobileBuildSelect" aria-label="Select building type">
-            <option value="">🏗️ Select Build</option>
-            <option value="1">🧱 Wall (1)</option>
-            <option value="2">🔫 Turret (3)</option>
-            <option value="3">🪳 Flea Nest (5)</option>
-            <option value="4">🏭 Generator (4)</option>
-            <option value="5">💎 Super Wall (6)</option>
-            <option value="6">🗼 Beacon (24)</option>
-            <option value="7">🐦‍🔥 Phoenix Cheese (40)</option>
-            <option value="8">🚀 Rocket Tower (30)</option>
-            <option value="9">🛠️ Repair Station (12)</option>
-          </select>
-          <button data-upgrade>🛠️ Upgrades</button>
-          <button data-blink>🌀 Blink</button>
-          <button data-trap>🪤 Trap</button>
+          <button class="mobile-mini-btn" data-upgrade>🛠️</button>
+          <button class="mobile-mini-btn" data-blink>🌀</button>
+          <button class="mobile-mini-btn" data-trap>🪤</button>
+          <button class="mobile-mini-btn" id="mobileControlMode" data-mode="move">🚶 Move</button>
         </div>
 
         <div class="mobile-row">
-          <div class="pad">
-            <button data-move="up" aria-label="Move Up">⬆️</button><br>
-            <button data-move="left" aria-label="Move Left">⬅️</button>
-            <button data-move="down" aria-label="Move Down">⬇️</button>
-            <button data-move="right" aria-label="Move Right">➡️</button>
+          <div id="analogStick" aria-label="Analog stick control">
+            <div id="analogThumb"></div>
+          </div>
+          <div id="mobileBuildPicker">
+            <button class="mobile-mini-btn" id="mobileBuildPrev" aria-label="Previous building">⬅️</button>
+            <div id="mobileBuildDisplay">🧱 Wall</div>
+            <button class="mobile-mini-btn" id="mobileBuildNext" aria-label="Next building">➡️</button>
           </div>
         </div>
 
-        <div class="mobile-row">
-          <div class="pad">
-            <button data-place="w" aria-label="Build Up">⬆️ Build</button>
-            <button data-place="a" aria-label="Build Left">⬅️</button>
-            <button data-place="s" aria-label="Build Down">⬇️</button>
-            <button data-place="d" aria-label="Build Right">➡️</button>
-          </div>
-        </div>
-
-        <div id="structureButtons" style="margin-top:10px;">
+        <div id="structureButtons" style="margin-top:10px; display:none;">
           <strong>Select Structure:</strong><br>
           <button data-struct="1">🧱</button>
           <button data-struct="2">🔫</button>
@@ -396,6 +426,9 @@
 
   let showingUpgrades = false;
 
+  const mobileBuildOrder = [1,2,3,4,5,6,7,8,9];
+  let mobileControlMode = "move";
+
   let isHost = false;
   let hostInitialized = false;
   let catMoveInterval = null;
@@ -457,6 +490,29 @@
     document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
   }
 
+  function updateMobileBuildDisplay(){
+    const display = document.getElementById("mobileBuildDisplay");
+    const modeBtn = document.getElementById("mobileControlMode");
+    if (!display) return;
+
+    const shortNames = {
+      1: "🧱 Wall",
+      2: "🔫 Turret",
+      3: "🪳 Flea",
+      4: "🏭 Gen",
+      5: "💎 S-Wall",
+      6: "🗼 Beacon",
+      7: "🐦‍🔥 Phoenix",
+      8: "🚀 Rocket",
+      9: "🛠️ Repair"
+    };
+
+    display.textContent = shortNames[selectedBuild] || "Select";
+    if (modeBtn){
+      modeBtn.textContent = mobileControlMode === "move" ? "🚶 Move" : "🏗️ Build";
+    }
+  }
+
   function selectBuild(value){
     selectedBuild = parseInt(value, 10);
     const buildNames = {
@@ -471,8 +527,14 @@
       9: "Repair Station 🛠️ (Cost: 12)"
     };
     document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
-    const mobileBuildSelect = document.getElementById("mobileBuildSelect");
-    if (mobileBuildSelect) mobileBuildSelect.value = String(selectedBuild || "");
+    updateMobileBuildDisplay();
+  }
+
+  function cycleMobileBuild(direction){
+    const current = mobileBuildOrder.indexOf(selectedBuild);
+    const start = current === -1 ? 0 : current;
+    const next = (start + direction + mobileBuildOrder.length) % mobileBuildOrder.length;
+    selectBuild(String(mobileBuildOrder[next]));
   }
 
   function selectUpgrade(key){
@@ -787,6 +849,16 @@
   function place(dir){
     if (!canMove || !isAlive || selectedBuild === null) return;
     placeStructure(dir);
+  }
+
+  function runAnalogDirection(dir){
+    if (mobileControlMode === "move"){
+      move(dir);
+      return;
+    }
+
+    const buildDirMap = { up:"w", down:"s", left:"a", right:"d" };
+    place(buildDirMap[dir]);
   }
 
   // ============================================================
@@ -1928,15 +2000,6 @@
   }
 
   function setupMobileControls(){
-    const mobileBuildSelect = document.getElementById("mobileBuildSelect");
-    if (mobileBuildSelect){
-      const handleBuildSelect = () => {
-        if (mobileBuildSelect.value) selectBuild(mobileBuildSelect.value);
-      };
-      mobileBuildSelect.addEventListener("change", handleBuildSelect);
-      mobileBuildSelect.addEventListener("touchend", handleBuildSelect);
-    }
-
     const fsBtn = document.getElementById("fullscreenBtn");
     if (fsBtn){
       fsBtn.addEventListener("click", () => toggleFullscreen());
@@ -1946,22 +2009,6 @@
       });
     }
 
-    document.querySelectorAll('[data-move]').forEach(btn => {
-      btn.addEventListener('click', () => move(btn.getAttribute('data-move')));
-      btn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        move(btn.getAttribute('data-move'));
-      });
-    });
-
-    document.querySelectorAll('[data-place]').forEach(btn => {
-      btn.addEventListener('click', () => place(btn.getAttribute('data-place')));
-      btn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        place(btn.getAttribute('data-place'));
-      });
-    });
-
     document.querySelectorAll('#structureButtons [data-struct]').forEach(btn => {
       btn.addEventListener('click', () => selectBuild(btn.getAttribute('data-struct')));
       btn.addEventListener('touchstart', (e) => {
@@ -1969,6 +2016,108 @@
         selectBuild(btn.getAttribute('data-struct'));
       });
     });
+
+    const modeBtn = document.getElementById("mobileControlMode");
+    if (modeBtn){
+      const toggleMode = (e) => {
+        if (e) e.preventDefault();
+        mobileControlMode = mobileControlMode === "move" ? "build" : "move";
+        updateMobileBuildDisplay();
+      };
+      modeBtn.addEventListener("click", toggleMode);
+      modeBtn.addEventListener("touchstart", toggleMode);
+    }
+
+    const prevBtn = document.getElementById("mobileBuildPrev");
+    const nextBtn = document.getElementById("mobileBuildNext");
+    if (prevBtn){
+      const prev = (e)=>{ if (e) e.preventDefault(); cycleMobileBuild(-1); };
+      prevBtn.addEventListener("click", prev);
+      prevBtn.addEventListener("touchstart", prev);
+    }
+    if (nextBtn){
+      const next = (e)=>{ if (e) e.preventDefault(); cycleMobileBuild(1); };
+      nextBtn.addEventListener("click", next);
+      nextBtn.addEventListener("touchstart", next);
+    }
+
+    const stick = document.getElementById("analogStick");
+    const thumb = document.getElementById("analogThumb");
+    if (stick && thumb){
+      let stickPointerId = null;
+      let intervalId = null;
+      let lastDirection = null;
+      const radius = 34;
+
+      const resetThumb = () => {
+        thumb.style.transform = "translate(-50%, -50%)";
+      };
+
+      const getDirection = (dx, dy) => {
+        if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
+        return dy > 0 ? "down" : "up";
+      };
+
+      const updateFromPoint = (clientX, clientY) => {
+        const rect = stick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > radius){
+          const scale = radius / dist;
+          dx *= scale;
+          dy *= scale;
+        }
+
+        thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        if (dist < 10){
+          lastDirection = null;
+          return;
+        }
+
+        const dir = getDirection(dx, dy);
+        if (dir !== lastDirection){
+          runAnalogDirection(dir);
+          lastDirection = dir;
+        }
+      };
+
+      const startStick = (e) => {
+        e.preventDefault();
+        stickPointerId = e.pointerId;
+        lastDirection = null;
+        stick.setPointerCapture(stickPointerId);
+        updateFromPoint(e.clientX, e.clientY);
+        intervalId = setInterval(() => {
+          if (lastDirection) runAnalogDirection(lastDirection);
+        }, 160);
+      };
+
+      const moveStick = (e) => {
+        if (e.pointerId !== stickPointerId) return;
+        e.preventDefault();
+        updateFromPoint(e.clientX, e.clientY);
+      };
+
+      const endStick = (e) => {
+        if (e.pointerId !== stickPointerId) return;
+        e.preventDefault();
+        if (intervalId) clearInterval(intervalId);
+        intervalId = null;
+        stickPointerId = null;
+        lastDirection = null;
+        resetThumb();
+      };
+
+      stick.addEventListener("pointerdown", startStick);
+      stick.addEventListener("pointermove", moveStick);
+      stick.addEventListener("pointerup", endStick);
+      stick.addEventListener("pointercancel", endStick);
+      stick.addEventListener("pointerleave", endStick);
+    }
 
     const upgradeBtn = document.querySelector('[data-upgrade]');
     if (upgradeBtn){
@@ -1996,7 +2145,10 @@
         placeTrap();
       });
     }
+
+    updateMobileBuildDisplay();
   }
+
 
   // ============================================================
   // Listen to crowncouncil docs (this replaces all /games/... listeners)
