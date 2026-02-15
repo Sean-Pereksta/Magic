@@ -61,6 +61,16 @@
   .actions{ display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid var(--br) }
 
   .legend{ position:absolute; right:12px; bottom:12px; background:rgba(7,12,20,.6); border:1px solid var(--br); border-radius:12px; padding:6px 8px; font-size:12px }
+
+  #mobileControls{ position:absolute; left:10px; right:10px; bottom:12px; display:none; justify-content:space-between; align-items:flex-end; pointer-events:none }
+  #mobileControls .cluster{ display:grid; grid-template-columns:52px 52px 52px; grid-template-rows:52px 52px 52px; gap:6px; pointer-events:auto }
+  .mctl{ border:1px solid var(--br); background:#13243de6; color:var(--ink); border-radius:12px; font-weight:800; font-size:18px }
+  #mobileTop{ position:absolute; right:12px; top:76px; display:none; gap:8px; pointer-events:auto }
+  @media (max-width: 900px), (pointer: coarse){
+    #mobileControls,#mobileTop{ display:flex }
+    .legend{ display:none }
+  }
+
 </style>
 </head>
 <body>
@@ -99,6 +109,18 @@
       <div>Villages: recruit/trade (cooldowns)</div>
       <div>Castles: trade/attack • Owners shown</div>
     </div>
+
+    <div id="mobileTop">
+      <button class="mctl" id="btnFS">⛶</button>
+    </div>
+    <div id="mobileControls">
+      <div class="cluster">
+        <span></span><button class="mctl" data-move="w">▲</button><span></span>
+        <button class="mctl" data-move="a">◀</button><span></span><button class="mctl" data-move="d">▶</button>
+        <span></span><button class="mctl" data-move="s">▼</button><span></span>
+      </div>
+    </div>
+</div>
   </div>
 
   <div id="right">
@@ -243,6 +265,13 @@ const EMOJI = {
   player:  "🧍",
   raider:  "🏴‍☠️"
 };
+const ALLY_FLAGS=["🚩","🏴","🏳️","⚑","⚐","🎌","🛡️","🔱","⭐","🌙"];
+function allyFlag(allyId){
+  if(!allyId) return "";
+  let h=0; for(let i=0;i<allyId.length;i++) h=(h*31 + allyId.charCodeAt(i))>>>0;
+  return ALLY_FLAGS[h % ALLY_FLAGS.length];
+}
+
 
 /* DOM refs */
 const $ = sel => document.querySelector(sel);
@@ -275,6 +304,7 @@ const state = {
   allegiance: null,           // your allegiance doc (if any)
   castleCountByPlayer: new Map(),
   castleCountByAlly: new Map(),
+  prevCastleOwners: new Map(),
 
 
   subscriptions: [],
@@ -699,6 +729,15 @@ async function listenWorld(){
   });
   sub(moCol("castles"), snap=>{
   state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  for(const c of state.castles){
+    const prev = state.prevCastleOwners.get(c.id);
+    const nowO = c.owner || null;
+    if(prev !== undefined && prev !== nowO){
+      if(nowO) log(`🏰 ${c.ownerName||nowO} captured a castle at (${c.x},${c.y})`);
+      else log(`🏰 A castle at (${c.x},${c.y}) is now unclaimed.`);
+    }
+    state.prevCastleOwners.set(c.id, nowO);
+  }
   recomputeCastleOwnership();
   // === GARRISON: lazily seed for any unowned castle missing a garrison
   snap.forEach(ds=>{
@@ -1509,6 +1548,41 @@ addEventListener("mousemove", e=>{
   state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, state.dragStart.cy - dy));
 });
 addEventListener("mouseup", ()=> state.dragStart=null);
+const isCoarse = window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+let touchPan={active:false,startX:0,startY:0,camX:0,camY:0,holdTimer:null,moved:false};
+function mobileStep(key){ state.keys[key]=true; setTimeout(()=> state.keys[key]=false, 120); }
+for(const b of document.querySelectorAll('[data-move]')){ b.addEventListener('click', ()=>mobileStep(b.dataset.move)); }
+document.getElementById('btnFS')?.addEventListener('click', async ()=>{
+  const root=document.querySelector('#stageWrap');
+  try{ if(document.fullscreenElement) await document.exitFullscreen(); else await (root.requestFullscreen?.()||document.documentElement.requestFullscreen?.()); }catch(e){}
+});
+canvas.addEventListener('pointerdown', e=>{
+  if(!isCoarse) return;
+  touchPan.active=true; touchPan.moved=false;
+  touchPan.startX=e.clientX; touchPan.startY=e.clientY; touchPan.camX=state.cam.x; touchPan.camY=state.cam.y;
+  clearTimeout(touchPan.holdTimer);
+  touchPan.holdTimer=setTimeout(()=>{ state.drag=true; },180);
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!isCoarse || !touchPan.active || !state.drag) return;
+  const dx=e.clientX-touchPan.startX, dy=e.clientY-touchPan.startY;
+  if(Math.hypot(dx,dy)>6) touchPan.moved=true;
+  state.cam.x = Math.max(0, Math.min(WORLD_W*TILE - state.cam.w, touchPan.camX - dx));
+  state.cam.y = Math.max(0, Math.min(WORLD_H*TILE - state.cam.h, touchPan.camY - dy));
+});
+canvas.addEventListener('pointerup', e=>{
+  if(!isCoarse) return;
+  clearTimeout(touchPan.holdTimer);
+  if(!touchPan.moved && !state.drag){
+    const r=canvas.getBoundingClientRect();
+    const wx=state.cam.x + (e.clientX-r.left), wy=state.cam.y + (e.clientY-r.top);
+    const gx=Math.floor(wx/TILE), gy=Math.floor(wy/TILE);
+    const dx=Math.sign(gx-state.player.x), dy=Math.sign(gy-state.player.y);
+    if(dx||dy) tryMove(dx,dy);
+  }
+  touchPan.active=false; state.drag=false;
+});
+
 function tickInput(){
   if (state.drag) return;
   let dx=0, dy=0;
@@ -1751,6 +1825,8 @@ function draw(){
     const gtxt = (c.garrison != null) ? `🪖 ${c.garrison}` : "🪖 ?";
     drawNameplate(gtxt, cx, cy + TILE*0.55, 0, "#f8fafc");
     if (c.ownerColor){ drawStripe(cx, cy - TILE*0.6, TILE*0.6, 6, c.ownerColor); }
+    const flag = allyFlag(castleAllyId(c));
+    if(flag) drawNameplate(flag, cx, cy - TILE*0.88, 0, "#f8fafc");
   }
 
   // Raiders 🏴‍☠️ (skip engaged)
