@@ -1,4 +1,4 @@
-<!DOCTYPE html>  
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -113,8 +113,23 @@
   /* Mobile controls */
   #mobileControls{
     position:absolute;left:0;right:calc(var(--panel-w));bottom:0;
-    padding:10px;display:flex;justify-content:space-between;align-items:flex-end;
+    padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+    display:flex;justify-content:space-between;align-items:flex-end;
     gap:10px;pointer-events:none;
+    background:linear-gradient(180deg,transparent 0%, #02061788 30%, #020617dd 100%);
+    backdrop-filter:blur(3px);
+  }
+  .mobileLeft{display:flex;flex-direction:column;gap:8px;align-items:flex-start;pointer-events:none}
+  .mobileTopButtons{display:flex;gap:8px;pointer-events:auto}
+  .mobileActionBtn{
+    background:#111827;border:1px solid #2a3240;color:#e5e7eb;
+    border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;
+    box-shadow:0 1px 0 #0008,inset 0 1px 0 #ffffff10;
+  }
+  #mobileGuide{
+    color:#e2e8f0;font-size:12px;line-height:1.35;max-width:260px;
+    background:#020617bf;border:1px solid #1e293b;border-radius:10px;padding:8px;
+    pointer-events:auto;
   }
   .joystick{
     width:110px;height:110px;border-radius:999px;
@@ -127,14 +142,26 @@
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   }
   #spellButtons{
-    display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;
+    display:grid;grid-template-columns:repeat(3,minmax(58px,1fr));gap:6px;justify-content:flex-end;
     pointer-events:auto;
   }
   .spellBtn{
-    min-width:52px;min-height:52px;border-radius:12px;
+    min-width:58px;min-height:58px;border-radius:12px;
     border:1px solid #2a3240;background:#111827;color:#e5e7eb;
-    font-weight:700;font-size:15px;box-shadow:0 1px 0 #0006;
+    font-weight:700;font-size:13px;box-shadow:0 1px 0 #0006;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;
   }
+  .spellBtn small{font-size:10px;color:#93c5fd;max-width:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .spellBtn.locked{opacity:.55}
+  .spellBtn.ready{box-shadow:0 0 0 1px #60a5fa,inset 0 0 0 1px #60a5fa66,0 1px 0 #0006}
+  .spellBtn.cooling small{color:#fca5a5}
+  #mobileCastHint{
+    position:absolute;left:10px;right:10px;bottom:170px;z-index:4;
+    color:#e2e8f0;font-size:12px;text-align:center;
+    background:#020617cc;border:1px solid #1e293b;border-radius:999px;
+    padding:6px 10px;pointer-events:none;opacity:0;transition:opacity .2s;
+  }
+  #mobileCastHint.show{opacity:1}
   #shopButton{
     position:absolute;bottom:140px;left:10px;
     padding:6px 10px;border-radius:999px;
@@ -144,8 +171,21 @@
     pointer-events:auto;
   }
 
+  @media (max-width: 899px){
+    :root{ --panel-w: 0px; }
+    #panel, #abilityBar, #corner{ display:none; }
+    #hud{ right:10px; gap:6px; }
+    .chip{ padding:5px 8px; font-size:12px; }
+    #xpBarWrap{ right:10px; top:102px; }
+    #fpsChip{ right:10px; top:10px; }
+    #fsBtn{ display:none; }
+    #shopButton{ display:none; }
+    #mobileControls{ right:0; }
+  }
+
   @media (min-width: 900px){
     #mobileControls{display:none;}
+    #mobileCastHint{display:none;}
   }
 
   /* Shop panel */
@@ -219,7 +259,7 @@
     </div>
 
     <div id="corner">
-      Right-click ground (desktop) or move joystick (mobile): move (cancels target).  
+      Right-click ground (desktop) or move joystick (mobile): move (cancels target).
       Right-click enemy: hard-target & chase. Q/W/E/R/T to aim/cast (or use spell buttons). <span class="kbd">Esc</span> cancels.
     </div>
     <div id="msg"></div>
@@ -271,17 +311,26 @@
 
     <!-- Mobile controls -->
     <div id="mobileControls">
-      <div id="moveStick" class="joystick">
-        <div id="moveStickInner" class="stickInner"></div>
+      <div class="mobileLeft">
+        <div class="mobileTopButtons">
+          <button id="mobileFsBtn" class="mobileActionBtn">⛶ Full</button>
+          <button id="mobileShopBtn" class="mobileActionBtn">🛒 Shop</button>
+        </div>
+        <div id="mobileGuide">Move with joystick. Tap spell buttons to aim, then tap battlefield to cast.</div>
+        <div id="moveStick" class="joystick">
+          <div id="moveStickInner" class="stickInner"></div>
+        </div>
       </div>
       <div id="spellButtons">
-        <button class="spellBtn" data-key="Q">Q</button>
-        <button class="spellBtn" data-key="W">W</button>
-        <button class="spellBtn" data-key="E">E</button>
-        <button class="spellBtn" data-key="R">R</button>
-        <button class="spellBtn" data-key="T">T</button>
+        <button class="spellBtn" data-key="Q">Q <small>Spell 1</small></button>
+        <button class="spellBtn" data-key="W">W <small>Spell 2</small></button>
+        <button class="spellBtn" data-key="E">E <small>Spell 3</small></button>
+        <button class="spellBtn" data-key="R">R <small>Ultimate</small></button>
+        <button class="spellBtn" data-key="T">T <small>Talent</small></button>
+        <button class="spellBtn" data-key="ESC">✕ <small>Cancel</small></button>
       </div>
     </div>
+    <div id="mobileCastHint">Aim active ability on battlefield, then tap to cast.</div>
 
     <!-- Shop panel -->
     <div id="shopPanel">
@@ -306,7 +355,7 @@
     <div style="margin-top:8px;color:#9fb2c7">• Talents: Lv4 (W), Lv7 (E), Lv13 (T). AI picks automatically.</div>
     <h3 style="margin-top:14px;">Shop Hints</h3>
     <div style="font-size:13px;color:#9ca3af">
-      • Damage / CDR for Mage, HP / Armor for Tank, Range / Move speed for Healer.  
+      • Damage / CDR for Mage, HP / Armor for Tank, Range / Move speed for Healer.
       • Items are permanent until page refresh.
     </div>
   </aside>
@@ -412,6 +461,7 @@ const talentOverlay=$("talentOverlay"), talentTitle=$("talentTitle"),
 const fsBtn = $("fsBtn"), shopButton = $("shopButton"), shopPanel = $("shopPanel"), shopClose=$("shopClose");
 const moveStick = $("moveStick"), moveStickInner=$("moveStickInner");
 const spellButtons = document.querySelectorAll(".spellBtn");
+const mobileFsBtn = $("mobileFsBtn"), mobileShopBtn = $("mobileShopBtn"), mobileCastHint = $("mobileCastHint");
 const shopItemsContainer = $("shopItems");
 
 /* ========================= Data ========================= */
@@ -770,6 +820,10 @@ abT.addEventListener("click", ()=>{
 spellButtons.forEach(btn=>{
   btn.addEventListener("click", ()=>{
     const k = btn.dataset.key;
+    if (k === "ESC"){
+      cancelTargeting();
+      return;
+    }
     primeAbility(k);
   });
 });
@@ -794,9 +848,13 @@ function primeAbility(key){
   else if (A.target==="debuff-dot-area") targetText="area (enemy slow + DoT)";
   else if (A.target==="debuff-area-self") targetText="self area (debuff enemies)";
   state.targeting={key, A};
+  mobileCastHint.classList.add("show");
   say(`Target ${targetText} for ${A.name}. Tap/Click to cast.`);
 }
-function cancelTargeting(){ state.targeting=null; }
+function cancelTargeting(){
+  state.targeting=null;
+  mobileCastHint.classList.remove("show");
+}
 
 /* ========================= Waves ========================= */
 function spawnWave(team){
@@ -1581,6 +1639,8 @@ function updateAbilityUI(){
   const me=playerHero(); if (!me) return;
   const S=abilitySetFor(me), now=nowMS();
 
+  const mobileMeta = {};
+
   function setBlock(block, nameEl, infoEl, progEl, key){
     const need=AB_UNLOCKS[key];
 
@@ -1588,18 +1648,21 @@ function updateAbilityUI(){
       const H=S.raw; nameEl.textContent=`Choose: ${H.W1.name} / ${H.W2.name}`;
       infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click/tap W)";
       progEl.style.width="0%";
+      mobileMeta[key] = {label:"Pick W", locked:me.level < need, cooling:false};
       block.classList.toggle("locked", me.level < need); return;
     }
     if (key==="E" && !me.pickE){
       const H=S.raw; nameEl.textContent=`Choose: ${H.E1.name} / ${H.E2.name}`;
       infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click/tap E)";
       progEl.style.width="0%";
+      mobileMeta[key] = {label:"Pick E", locked:me.level < need, cooling:false};
       block.classList.toggle("locked", me.level < need); return;
     }
     if (key==="T" && !me.pickT){
       const H=S.raw; nameEl.textContent=`Choose: ${H.T1.name} / ${H.T2.name}`;
       infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : "Pick one (click/tap T)";
       progEl.style.width="0%";
+      mobileMeta[key] = {label:"Pick T", locked:me.level < need, cooling:false};
       block.classList.toggle("locked", me.level < need); return;
     }
 
@@ -1612,12 +1675,24 @@ function updateAbilityUI(){
     block.classList.toggle("locked", me.level < need);
     infoEl.textContent = me.level < need ? `Unlock at Lv${need}` : (remS>0 ? `CD: ${remS}s` : "Ready");
     progEl.style.width = (remS>0 ? (pct*100) : 0).toFixed(1) + "%";
+    mobileMeta[key] = {label:data.name, locked:me.level < need, cooling:remS>0};
   }
   setBlock(abQ, qName, qInfo, qProg, "Q");
   setBlock(abW, wName, wInfo, wProg, "W");
   setBlock(abE, eName, eInfo, eProg, "E");
   setBlock(abR, rName, rInfo, rProg, "R");
   setBlock(abT, tName, tInfo, tProg, "T");
+
+  spellButtons.forEach(btn=>{
+    const key = btn.dataset.key;
+    if (key === "ESC") return;
+    const small = btn.querySelector("small");
+    const data = mobileMeta[key];
+    if (small && data?.label) small.textContent = data.label;
+    btn.classList.toggle("locked", !!data?.locked);
+    btn.classList.toggle("cooling", !!data?.cooling);
+    btn.classList.toggle("ready", !!data && !data.locked && !data.cooling);
+  });
 }
 
 /* ========================= Talent Picker ========================= */
@@ -1684,21 +1759,27 @@ function tick(){
 }
 
 /* ========================= Fullscreen & Shop Events ========================= */
-fsBtn.onclick = ()=>{
+function toggleFullscreen(){
   if (!document.fullscreenElement){
     (document.documentElement.requestFullscreen && document.documentElement.requestFullscreen()).catch?.(()=>{});
   } else {
     document.exitFullscreen && document.exitFullscreen();
   }
-};
+}
+fsBtn.onclick = toggleFullscreen;
+mobileFsBtn.onclick = toggleFullscreen;
 document.addEventListener("fullscreenchange", ()=>{
-  fsBtn.textContent = document.fullscreenElement ? "⤢ Exit Fullscreen" : "⛶ Fullscreen";
+  const isFs = !!document.fullscreenElement;
+  fsBtn.textContent = isFs ? "⤢ Exit Fullscreen" : "⛶ Fullscreen";
+  mobileFsBtn.textContent = isFs ? "⤢ Exit" : "⛶ Full";
   resize();
 });
 
-shopButton.onclick = ()=>{
+function toggleShop(){
   shopPanel.style.display = (shopPanel.style.display==="none"||!shopPanel.style.display) ? "block" : "none";
-};
+}
+shopButton.onclick = toggleShop;
+mobileShopBtn.onclick = toggleShop;
 shopClose.onclick = ()=>{ shopPanel.style.display="none"; };
 
 /* ========================= Joystick Logic ========================= */
