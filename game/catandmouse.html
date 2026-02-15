@@ -295,6 +295,20 @@
     <div style="width:200px; font-size:14px;">
       <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
       <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
+      <div style="margin:8px 0 10px;">
+        <div style="font-weight:bold; margin-bottom:3px;">🏭 Generator Cheese Timer</div>
+        <div style="height:10px; border:1px solid #666; border-radius:8px; overflow:hidden; background:#f3f4f6;">
+          <div id="generatorTimerFill" style="height:100%; width:0%; background:linear-gradient(90deg,#facc15,#f59e0b);"></div>
+        </div>
+        <div id="generatorTimerText" style="font-size:12px; color:#444; margin-top:2px;">No generators built.</div>
+      </div>
+      <div style="margin:6px 0 10px;">
+        <div style="font-weight:bold; margin-bottom:3px;">🏆 Achievement Point Countdown</div>
+        <div style="height:10px; border:1px solid #666; border-radius:8px; overflow:hidden; background:#f3f4f6;">
+          <div id="advPointTimerFill" style="height:100%; width:0%; background:linear-gradient(90deg,#22c55e,#16a34a);"></div>
+        </div>
+        <div id="advPointTimerText" style="font-size:12px; color:#444; margin-top:2px;">Waiting for game start…</div>
+      </div>
       <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
 
       <div id="abilityStatus" style="margin-top:10px;"></div>
@@ -515,6 +529,11 @@
   let lastPlayerPayload = null;
   let nextRatWaveAt = null;
   let combatVfx = [];
+  let lastGeneratorPayoutAt = Date.now();
+  let lastAdvPointAt = Date.now();
+
+  const GENERATOR_PAYOUT_MS = 15000;
+  const ADV_POINT_MS = 180000;
 
   const STRUCTURE_MAX_HP = {
     "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
@@ -686,6 +705,53 @@
     }
 
     statusDiv.innerHTML = content;
+  }
+
+  function updateEconomyTimersUI(){
+    const now = Date.now();
+
+    const genFill = document.getElementById("generatorTimerFill");
+    const genText = document.getElementById("generatorTimerText");
+    const me = players[uid] || { x: playerPos.x, y: playerPos.y, alive: isAlive };
+    const nearbyGenerators = [];
+
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🏭") continue;
+        const dist = Math.abs((me.x ?? playerPos.x) - x) + Math.abs((me.y ?? playerPos.y) - y);
+        if (dist <= 9) nearbyGenerators.push({x,y});
+      }
+    }
+
+    const genElapsed = (now - lastGeneratorPayoutAt) % GENERATOR_PAYOUT_MS;
+    const genProgress = Math.max(0, Math.min(100, (genElapsed / GENERATOR_PAYOUT_MS) * 100));
+    const genRemaining = Math.max(0, Math.ceil((GENERATOR_PAYOUT_MS - genElapsed) / 1000));
+    genFill.style.width = `${genProgress}%`;
+
+    if (nearbyGenerators.length > 0){
+      genText.textContent = `${nearbyGenerators.length} active near you • payout in ${genRemaining}s`;
+    } else if (grid.some(row => row.includes("🏭"))){
+      genText.textContent = `Generators exist, move within 9 tiles • ${genRemaining}s`;
+    } else {
+      genText.textContent = "No generators built.";
+    }
+
+    const advFill = document.getElementById("advPointTimerFill");
+    const advText = document.getElementById("advPointTimerText");
+    if (!gameStarted || !isAlive){
+      advFill.style.width = "0%";
+      advText.textContent = !gameStarted ? "Waiting for game start…" : "Respawn/revive to resume countdown.";
+      return;
+    }
+
+    const advElapsed = (now - lastAdvPointAt) % ADV_POINT_MS;
+    const advProgress = Math.max(0, Math.min(100, (advElapsed / ADV_POINT_MS) * 100));
+    const advRemainingMs = Math.max(0, ADV_POINT_MS - advElapsed);
+    const advRemainingMin = Math.floor(advRemainingMs / 60000);
+    const advRemainingSec = Math.ceil((advRemainingMs % 60000) / 1000).toString().padStart(2, "0");
+
+    advFill.style.width = `${advProgress}%`;
+    advText.textContent = `Next point in ${advRemainingMin}:${advRemainingSec}`;
   }
 
   // ============================================================
@@ -1990,8 +2056,11 @@
       for (let x=0; x<gridSize; x++){
         if (grid[y][x] !== "🛠️") continue;
 
-        let target = null;
-        let bestDist = Infinity;
+        const boostedByBeacon = isWithinBeaconAura(x, y, 2);
+        const repairRange = boostedByBeacon ? 8 : 6;
+        const repairMultiplier = boostedByBeacon ? 0.4 : 0.25;
+        const repairsPerTick = boostedByBeacon ? 2 : 1;
+        const candidates = [];
 
         for (let ty=0; ty<gridSize; ty++){
           for (let tx=0; tx<gridSize; tx++){
@@ -2006,31 +2075,36 @@
             if (usedTargets.has(key)) continue;
 
             const dist = Math.abs(tx - x) + Math.abs(ty - y);
-            if (dist > 6) continue;
-            if (dist < bestDist){
-              bestDist = dist;
-              target = { tx, ty, key, symbol, hp, maxHp };
-            }
+            if (dist > repairRange) continue;
+            candidates.push({ tx, ty, key, symbol, hp, maxHp, dist });
           }
         }
 
-        if (!target) continue;
+        if (!candidates.length) continue;
+        candidates.sort((a,b) => a.dist - b.dist);
 
-        const healAmount = Math.max(1, Math.ceil(target.maxHp * 0.25));
-        const healedHp = Math.min(target.maxHp, target.hp + healAmount);
-        structureHealth[target.key] = healedHp;
-        usedTargets.add(target.key);
-
+        const selectedTargets = candidates.slice(0, repairsPerTick);
         const fromCell = document.getElementById(`cell-${x}-${y}`);
-        const toCell = document.getElementById(`cell-${target.tx}-${target.ty}`);
-        if (fromCell) fromCell.style.backgroundColor = "#a7f3d0";
-        if (toCell) toCell.style.backgroundColor = "#86efac";
+        if (fromCell) fromCell.style.backgroundColor = boostedByBeacon ? "#67e8f9" : "#a7f3d0";
+
+        for (const target of selectedTargets){
+          const healAmount = Math.max(1, Math.ceil(target.maxHp * repairMultiplier));
+          const healedHp = Math.min(target.maxHp, target.hp + healAmount);
+          structureHealth[target.key] = healedHp;
+          usedTargets.add(target.key);
+
+          const toCell = document.getElementById(`cell-${target.tx}-${target.ty}`);
+          if (toCell) toCell.style.backgroundColor = boostedByBeacon ? "#22d3ee" : "#86efac";
+          setTimeout(() => {
+            if (toCell) toCell.style.backgroundColor = "";
+          }, 220);
+
+          await updateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
+        }
+
         setTimeout(() => {
           if (fromCell) fromCell.style.backgroundColor = "";
-          if (toCell) toCell.style.backgroundColor = "";
         }, 220);
-
-        await updateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
       }
     }
     renderGrid();
@@ -2040,6 +2114,7 @@
   // Generators payout (client-side for “me” like your original)
   // ============================================================
   async function generatorPayoutTick(){
+    lastGeneratorPayoutAt = Date.now();
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         if (grid[y][x] !== "🏭") continue;
@@ -2556,10 +2631,13 @@
 
     // ability cooldown UI
     setInterval(updateAbilityStatus, 1000);
+    setInterval(updateEconomyTimersUI, 500);
+    updateEconomyTimersUI();
 
     // adv point every 3 mins
     setInterval(() => {
       if (!gameStarted || !isAlive) return;
+      lastAdvPointAt = Date.now();
       advancementPoints++;
       document.getElementById("advPoints").textContent = advancementPoints;
 
