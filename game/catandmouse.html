@@ -193,6 +193,20 @@
       body{ padding-bottom: 210px; }
       #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
       .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
+
+      #selectionOverlay{
+        align-items:flex-start;
+        justify-content:center;
+        padding:8px;
+      }
+      #selectionCard{
+        margin-top:6px;
+        max-height:calc(100vh - 16px);
+        border-radius:12px;
+        overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
+      }
+      #selectionGrid{ max-height:30vh; }
     }
 
     #waveCountdown{
@@ -553,6 +567,8 @@
   let lastDirection = { dx: 0, dy: 0 };
 
   let showingUpgrades = false;
+  const CHEESE_PICKUP = "__CHEESE_PICKUP__";
+  const CHEESE_PICKUP_SYMBOL = "🧀";
 
   const BUILD_DEFS = {
     1:{symbol:"🧱",name:"Wall",cost:1,hp:15,minWins:0},
@@ -619,6 +635,21 @@
     "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
     "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20
   };
+
+  function isCheesePickupCell(value){
+    return value === CHEESE_PICKUP;
+  }
+
+  function canPlaceCheesePickupAt(x, y){
+    if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
+    return grid[y][x] === "";
+  }
+
+  function tryPlaceCheesePickupAt(x, y){
+    if (!canPlaceCheesePickupAt(x, y)) return false;
+    grid[y][x] = CHEESE_PICKUP;
+    return true;
+  }
 
   const localTileSeed = Math.floor(Math.random() * 9973);
 
@@ -1054,7 +1085,7 @@
             else cell.style.background = "#b7e8b5";
           }
 
-          cell.textContent = symbol || "";
+          cell.textContent = isCheesePickupCell(symbol) ? CHEESE_PICKUP_SYMBOL : (symbol || "");
 
           if (beaconWallBoosted.has(key)){
             cell.style.outline = "2px solid #22d3ee";
@@ -1292,24 +1323,33 @@
   // Cheese
   // ============================================================
   function spawnCheese(){
+    let existingPickups = 0;
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (isCheesePickupCell(grid[y][x])) existingPickups++;
+      }
+    }
+
+    const maxPickups = 14;
+    if (existingPickups >= maxPickups) return;
+
+    const spawnTarget = Math.min(maxPickups - existingPickups, 1 + Math.floor(Math.random() * 2));
     let spawned = 0;
     let attempts = 0;
-    const maxAttempts = 100;
+    const maxAttempts = 120;
 
-    while (spawned < 4 && attempts < maxAttempts){
+    while (spawned < spawnTarget && attempts < maxAttempts){
       const x = Math.floor(Math.random()*gridSize);
       const y = Math.floor(Math.random()*gridSize);
-      if (grid[y][x] === ""){
-        grid[y][x] = "🧀";
-        spawned++;
-      }
+      if (tryPlaceCheesePickupAt(x, y)) spawned++;
       attempts++;
     }
-    renderGrid();
+
+    if (spawned > 0) renderGrid();
   }
 
   function checkCheese(){
-    if (grid[playerPos.y][playerPos.x] === "🧀"){
+    if (isCheesePickupCell(grid[playerPos.y][playerPos.x])){
       grid[playerPos.y][playerPos.x] = "";
       cheeseCount += 3 + cheesePickupBonus;
       document.getElementById("cheeseCount").textContent = cheeseCount;
@@ -2519,8 +2559,7 @@
           const nx = enemy.x + dx;
           const ny = enemy.y + dy;
           if (nx<0||ny<0||nx>=gridSize||ny>=gridSize) continue;
-          if (grid[ny][nx] !== "") continue;
-          grid[ny][nx] = "🧀";
+          if (!tryPlaceCheesePickupAt(nx, ny)) continue;
           dropped++;
         }
       }
@@ -2564,13 +2603,17 @@
 
   async function specialStructureTick(){
     rabbitShots = [];
-    // cheese farm spawn near every 20s
+    // cheese farm spawn: every 20s each farm can create one nearby pickup
     if (!window.__lastFarmSpawn || Date.now() - window.__lastFarmSpawn > 20000){
       window.__lastFarmSpawn = Date.now();
-      for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (grid[y][x] === "🧀"){
-        for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
-          const nx=x+dx, ny=y+dy;
-          if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]==="") { grid[ny][nx] = "🧀"; break; }
+      const neighborOffsets = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+      for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🧀") continue;
+        const shuffled = [...neighborOffsets].sort(() => Math.random() - 0.5);
+        for (const [dx,dy] of shuffled){
+          const nx = x + dx;
+          const ny = y + dy;
+          if (tryPlaceCheesePickupAt(nx, ny)) break;
         }
       }
     }
