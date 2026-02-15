@@ -164,6 +164,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
+const MO_ROOT = ["games_rogueduel", "mountandblade_online"];
+const moCol = (name) => collection(db, ...MO_ROOT, name);
+const moDoc = (name, id) => doc(db, ...MO_ROOT, name, id);
+
 /* =================== Constants & Helpers =================== */
 const TILE = 48;
 const WORLD_W = 180; // tiles
@@ -317,7 +321,7 @@ function drawStripe(cx, cy, w, h, color){
 
 /* =================== Seeding World (villages/castles) =================== */
 async function seedWorldOnce(){
-  const metaRef = doc(db, "mountonline_meta", "world");
+  const metaRef = moDoc("meta", "world");
   const metaSnap = await getDoc(metaRef);
   if (metaSnap.exists()) return;
 
@@ -344,10 +348,10 @@ async function seedWorldOnce(){
 
   await setDoc(metaRef, { seededAt: serverTimestamp(), worldW:WORLD_W, worldH:WORLD_H });
 
-  const vcol = collection(db,"mountonline_villages");
+  const vcol = moCol("villages");
   for (const v of villages){ await addDoc(vcol, { x:v.x, y:v.y }); }
 
-  const ccol = collection(db,"mountonline_castles");
+  const ccol = moCol("castles");
   for (const c of castles){ await addDoc(ccol, { x:c.x, y:c.y, owner:null, ownerName:null, ownerAlly:null, ownerColor:null }); }
 }
 
@@ -367,7 +371,7 @@ function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0
 
   try{
     await runTransaction(db, async (tx)=>{
-      const cRef = doc(db,"mountonline_castles", castleId);
+      const cRef = moDoc("castles", castleId);
       const pRef = state.youDocRef;
 
       const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
@@ -413,7 +417,7 @@ function castlesForAlly(allyId){ return state.castleCountByAlly.get(allyId) || 0
 }
 
 async function dailyTributeOnLogin(){
-  const youRef = state.youDocRef || doc(db,"mountonline", username);
+  const youRef = state.youDocRef || moDoc("players", username);
   const youSnap = await getDoc(youRef);
   if (!youSnap.exists()) return;
 
@@ -422,7 +426,7 @@ async function dailyTributeOnLogin(){
   if (me.lastDailyRewardKey === todayKey) return; // already paid today
 
   // --- Personal castles (support ownerName or owner)
-  const cCol = collection(db,"mountonline_castles");
+  const cCol = moCol("castles");
   const [mineByName, mineByOwner] = await Promise.all([
     getDocs(query(cCol, where("ownerName","==", username))),
     getDocs(query(cCol, where("owner","==", username)))
@@ -441,7 +445,7 @@ async function dailyTributeOnLogin(){
 
   const aid = me.allegianceId || null;
   if (aid){
-    const allyRef = doc(db,"mountonline_allegiances", aid);
+    const allyRef = moDoc("allegiances", aid);
     const allySnap = await getDoc(allyRef);
     if (allySnap.exists()){
       const A = allySnap.data();
@@ -579,7 +583,7 @@ async function gainXP(amount){
 async function seedNeutralGarrison(castleId){
   try{
     await runTransaction(db, async (tx)=>{
-      const cref = doc(db,"mountonline_castles", castleId);
+      const cref = moDoc("castles", castleId);
       const snap = await tx.get(cref);
       if (!snap.exists()) return;
       const d = snap.data();
@@ -594,14 +598,14 @@ async function seedNeutralGarrison(castleId){
 
 /* =================== Player Doc Setup =================== */
 async function ensurePlayer(){
-  state.youDocRef = doc(db, "mountonline", username);
+  state.youDocRef = moDoc("players", username);
   const snap = await getDoc(state.youDocRef);
   if (!snap.exists()){
     // pick a random free tile not on village/castle
     let px=0, py=0;
     const [vSnap, cSnap] = await Promise.all([
-      getDocs(collection(db,"mountonline_villages")),
-      getDocs(collection(db,"mountonline_castles"))
+      getDocs(moCol("villages")),
+      getDocs(moCol("castles"))
     ]);
     state.villages = vSnap.docs.map(d=>({id:d.id, ...d.data()}));
     state.castles  = cSnap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -671,7 +675,7 @@ setInterval(()=>{ if(state.youDocRef) updateDoc(state.youDocRef, { lastSeen: Dat
 function sub(ref, cb){ const u = onSnapshot(ref, cb); state.subscriptions.push(u); return u; }
 function freshActive(p){ return p.active && (Date.now() - (p.lastSeen||0)) < ACTIVE_STALE_MS; }
 function listenPlayers(){
-  sub(collection(db,"mountonline"), snap=>{
+  sub(moCol("players"), snap=>{
     state.others.clear();
     state.playersAll.clear();                    // <-- ADD
 
@@ -690,12 +694,12 @@ function listenPlayers(){
 }
 
 async function listenWorld(){
-  sub(collection(db,"mountonline_villages"), snap=>{
+  sub(moCol("villages"), snap=>{
     state.villages = snap.docs.map(d=>({id:d.id, ...d.data()}));
   });
-  sub(collection(db,"mountonline_castles"), snap=>{
+  sub(moCol("castles"), snap=>{
   state.castles = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  recomputeCastleOwnership(); 
+  recomputeCastleOwnership();
   // === GARRISON: lazily seed for any unowned castle missing a garrison
   snap.forEach(ds=>{
     const c = ds.data();
@@ -834,7 +838,7 @@ async function logRaiderEncounter(raider){
       encounteredAt: serverTimestamp()
     };
     // global stream (analytics / admin views)
-    await addDoc(collection(db,"mountonline_raider_encounters"), data);
+    await addDoc(moCol("raider_encounters"), data);
     // per-user quick peek (your own doc)
     await updateDoc(state.youDocRef, {
       lastRaiderEncounter: {
@@ -850,7 +854,7 @@ async function logRaiderEncounter(raider){
 
 function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 80% 55%)`; }
 async function loadAllegiances(){
-  sub(collection(db,"mountonline_allegiances"), snap=>{
+  sub(moCol("allegiances"), snap=>{
     state.allyMap.clear();
     const list = [];
     snap.forEach(d => {
@@ -871,7 +875,7 @@ $("#btnCreateAlly").addEventListener("click", async ()=>{
   const name = $("#newAllyName").value.trim(); if (!name) return;
   const snap = await getDoc(state.youDocRef); if(!snap.exists()) return;
   const me = snap.data(); if ((me.gold||0) < 100){ alert("Not enough gold (100 required)."); return; }
-  const col = collection(db,"mountonline_allegiances");
+  const col = moCol("allegiances");
   const ally = await addDoc(col, { name, color: randomColor(), leader: username, members:[username], requests:[], createdAt: serverTimestamp() });
   await updateDoc(state.youDocRef, { gold: (me.gold||0)-100, allegianceId: ally.id });
   state.player.gold = (me.gold||0)-100; hudGold.textContent = state.player.gold;
@@ -972,7 +976,7 @@ function renderAllyList(list){
 // Player requests to join an allegiance
 async function requestJoinAlly(allyId){
   await runTransaction(db, async (tx)=>{
-    const aref = doc(db,"mountonline_allegiances", allyId);
+    const aref = moDoc("allegiances", allyId);
     const cur = await tx.get(aref); if(!cur.exists()) throw "no-ally";
     const a = cur.data();
     const req = new Set(a.requests || []);
@@ -985,7 +989,7 @@ async function requestJoinAlly(allyId){
 // Leader accepts or denies
 async function approveRequester(userId, accept){
   const aid = state.allegiance?.id; if(!aid) return;
-  const aref = doc(db,"mountonline_allegiances", aid);
+  const aref = moDoc("allegiances", aid);
 
   await runTransaction(db, async (tx)=>{
     const cur = await tx.get(aref); if(!cur.exists()) throw "gone";
@@ -997,7 +1001,7 @@ async function approveRequester(userId, accept){
     if (accept) members.add(userId);
 
     tx.update(aref, { requests: remaining, members: Array.from(members) });
-    tx.update(doc(db,"mountonline", userId), {
+    tx.update(moDoc("players", userId), {
       allegianceId: accept ? aid : null,
       pendingRequestId: null
     });
@@ -1153,7 +1157,7 @@ async function toggleEquip(id){
 async function depositToGarrison(castleId, amount){
   if (!amount || amount < 1) return;
   await runTransaction(db, async (tx)=>{
-    const cRef = doc(db,"mountonline_castles", castleId);
+    const cRef = moDoc("castles", castleId);
     const pRef = state.youDocRef;
 
     const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
@@ -1175,7 +1179,7 @@ async function depositToGarrison(castleId, amount){
 async function withdrawFromGarrison(castleId, amount){
   if (!amount || amount < 1) return;
   await runTransaction(db, async (tx)=>{
-    const cRef = doc(db,"mountonline_castles", castleId);
+    const cRef = moDoc("castles", castleId);
     const pRef = state.youDocRef;
 
     const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
@@ -1448,7 +1452,7 @@ async function openCastle(c){
   });
 
   // Live update garrison value in modal while open
-  sub(doc(db,"mountonline_castles", c.id), s=>{
+  sub(moDoc("castles", c.id), s=>{
     if (!s.exists()) return;
     const g = (s.data().garrison ?? 0);
     const tag = document.getElementById("gar_val");
@@ -1520,7 +1524,7 @@ function tickInput(){
   // === SIEGE: create a battle seeded with castle garrison
 async function startCastleSiege(castleId){
   const siegeId = await runTransaction(db, async (tx)=>{
-    const cRef = doc(db,"mountonline_castles", castleId);
+    const cRef = moDoc("castles", castleId);
     const pRef = state.youDocRef;
 
     const [cSnap, pSnap] = await Promise.all([tx.get(cRef), tx.get(pRef)]);
@@ -1537,7 +1541,7 @@ async function startCastleSiege(castleId){
       tx.update(cRef, { garrison: g });
     }
 
-    const sRef = doc(collection(db,"mountonline_sieges"));
+    const sRef = doc(moCol("sieges"));
     tx.set(sRef, {
       castleId,
       castle: { x:c.x, y:c.y, owner: c.owner||null, ownerName: c.ownerName||null, ownerColor: c.ownerColor||null },
@@ -1583,7 +1587,7 @@ if (raider && !inPreparedness){
 
   // Log encounter for analytics and self
   await logRaiderEncounter(raider);
-  await setDoc(doc(db, "mountonline_encounters", username), {
+  await setDoc(moDoc("encounters", username), {
     user: username,
     type: raider.type,   // "recruits" | "footmen" | "archers"
     size: raider.size,   // number
@@ -1612,7 +1616,7 @@ if (raider && !inPreparedness){
 
 /* Battles listen + start */
 function listenBattles(){
-  const qy = query(collection(db, "mountonline_battles"), where("participants","array-contains", username));
+  const qy = query(moCol("battles"), where("participants","array-contains", username));
   sub(qy, snap=>{
     snap.forEach(s=>{
       const d = s.data();
@@ -1625,7 +1629,7 @@ function listenBattles(){
   });
 }
 async function startPvPBattle(other){
-  const ref = await addDoc(collection(db,"mountonline_battles"), {
+  const ref = await addDoc(moCol("battles"), {
     participants: [username, other], createdAt: serverTimestamp(), status:"started"
   });
   await updateDoc(state.youDocRef, { active:false, inBattle:true, battleId: ref.id, lastSeen: Date.now() }).catch(()=>{});
@@ -1806,7 +1810,7 @@ draw(); loop();
 hudStatus.textContent = "Active";
 setInterval(()=>{ hudStatus.textContent = document.hidden ? "Inactive" : "Active"; }, 500);
 
-sub(doc(db,"mountonline", username), s=>{
+sub(moDoc("players", username), s=>{
   if (!s.exists()) return;
   const d = s.data(); state.player = {id:username, ...d};
   if (d.allegianceId) state.allegiance = state.allyMap.get(d.allegianceId)||null; else state.allegiance=null;

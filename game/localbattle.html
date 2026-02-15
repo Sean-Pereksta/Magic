@@ -69,6 +69,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
+const MO_ROOT = ["games_rogueduel", "mountandblade_online"];
+const moDoc = (name, id) => doc(db, ...MO_ROOT, name, id);
+
 /* ---------- Params ---------- */
 const Q = new URLSearchParams(location.search);
 const ME  = Q.get("username") || "anon";
@@ -218,7 +221,7 @@ async function getRaidersSpec(){
 
   if (!t || isNaN(n)){
     try{
-      const enc = await getDoc(doc(db,"mountonline_encounters", ME));
+      const enc = await getDoc(moDoc("encounters", ME));
       if (enc.exists()){
         const d = enc.data();
         if (!t) t = normalizeEnemyType(d.type);
@@ -239,9 +242,9 @@ function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1,
 
 /* ---------- Army build ---------- */
 async function seedBattle(){
-  updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+  updateDoc(moDoc("players", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
 
-  const meSnap = await getDoc(doc(db,"mountonline", ME));
+  const meSnap = await getDoc(moDoc("players", ME));
   if(!meSnap.exists()){ alert("Your profile was not found."); return false; }
   ownerMods[ME] = bannerMods();
 
@@ -703,7 +706,7 @@ function simulate(g, dt){
 
   // projectiles
   {
-    const keep=[]; 
+    const keep=[];
     for(const pr of (g.projs||[])){
       if(pr.type==="bolt"){
         if(now>=pr.nextHopAt){
@@ -712,7 +715,7 @@ function simulate(g, dt){
           pr.idx=Math.min(pr.idx+hops, pr.path.length-1);
         }
         const tile=pr.path[pr.idx]||pr.path[pr.path.length-1];
-        let hit=null; 
+        let hit=null;
         for(const u of g.units){ if(u.o===pr.who) continue; if(u.gx===tile.gx&&u.gy===tile.gy){hit=u;break;} }
         if(hit){ applyDamage(g,hit,pr.dmg,pr.ap||0.5,pr.who); continue; }
         if(pr.idx<pr.path.length-1) keep.push(pr);
@@ -821,8 +824,8 @@ function simulate(g, dt){
   const survivors=[]; const deaths=[];
   for(const u of g.units){ if(u.hp>0) survivors.push(u); else deaths.push(u); }
   if(deaths.length){
-    g.stats = g.stats || {}; 
-    if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}}; 
+    g.stats = g.stats || {};
+    if(!g.stats[ME]) g.stats[ME]={killsByType:{}, lostByType:{}};
     if(!g.stats.Raiders) g.stats.Raiders={killsByType:{}, lostByType:{}};
     for(const dead of deaths){
       const killer = dead._lastBy;
@@ -978,7 +981,7 @@ async function settleAndExit(){
   const lost = stats[ME]?.lostByType || {};
 
   await runTransaction(db, async (tx)=>{
-    const pref = doc(db,"mountonline", ME);
+    const pref = moDoc("players", ME);
     const snap = await tx.get(pref); if(!snap.exists()) return;
     const me = snap.data();
     const army = {...(me.army||{})};
@@ -1020,7 +1023,7 @@ function loop(){
 
 /* ---------- Safety ---------- */
 window.addEventListener("beforeunload", ()=>{
-  updateDoc(doc(db,"mountonline", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
+  updateDoc(moDoc("players", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
 });
 </script>
 </body>
