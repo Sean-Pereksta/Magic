@@ -109,7 +109,7 @@
       border-radius: 8px;
     }
 
-    #analogStick{
+    .analog-stick{
       width: 92px;
       height: 92px;
       border-radius: 50%;
@@ -120,7 +120,7 @@
       flex-shrink: 0;
     }
 
-    #analogThumb{
+    .analog-thumb{
       width: 34px;
       height: 34px;
       border-radius: 50%;
@@ -130,6 +130,23 @@
       top: 50%;
       transform: translate(-50%, -50%);
       box-shadow: inset 0 2px 4px rgba(255,255,255,0.35);
+    }
+
+    #mobileHud{
+      display:none;
+      position:fixed;
+      top:8px;
+      left:8px;
+      right:92px;
+      z-index:28;
+      background:rgba(255,255,255,0.95);
+      border:1px solid #999;
+      border-radius:10px;
+      padding:6px 10px;
+      text-align:left;
+      font-size:14px;
+      font-weight:700;
+      box-shadow:0 4px 12px rgba(0,0,0,0.18);
     }
 
     #mobileBuildPicker{
@@ -172,10 +189,12 @@
     @media (max-width: 768px){
       #mobileControls{ display: block; }
       #fullscreenBtn{ display: inline-block; }
+      #mobileHud{ display:block; }
       #grid{ margin-top: 10px; }
-      body{ padding-bottom: 165px; }
+      body{ padding: 58px 0 175px; }
       #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
       .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
+      #mobileBuildDisplay{ min-width: 82px; }
     }
 
     #waveCountdown{
@@ -209,6 +228,7 @@
 <body>
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
   <h1 style="text-align:center;">🐱 Cat vs 🐭 Mouse</h1>
+  <div id="mobileHud">🧀 Cheese: <span id="mobileCheeseCount">0</span></div>
 
   <div style="text-align:center; margin-bottom:10px;">
     <p style="margin:5px 0; font-size:14px; color:#444;">
@@ -273,17 +293,20 @@
           <button class="mobile-mini-btn" data-upgrade>🛠️</button>
           <button class="mobile-mini-btn" data-blink>🌀</button>
           <button class="mobile-mini-btn" data-trap>🪤</button>
-          <button class="mobile-mini-btn" id="mobileControlMode" data-mode="move">🚶 Move</button>
-        </div>
-
-        <div class="mobile-row">
-          <div id="analogStick" aria-label="Analog stick control">
-            <div id="analogThumb"></div>
-          </div>
           <div id="mobileBuildPicker">
             <button class="mobile-mini-btn" id="mobileBuildPrev" aria-label="Previous building">⬅️</button>
             <div id="mobileBuildDisplay">🧱 Wall</div>
             <button class="mobile-mini-btn" id="mobileBuildNext" aria-label="Next building">➡️</button>
+          </div>
+        </div>
+
+        <div class="mobile-row">
+          <div id="moveAnalogStick" class="analog-stick" aria-label="Move analog stick control">
+            <div id="moveAnalogThumb" class="analog-thumb"></div>
+          </div>
+          <div style="font-size:12px; font-weight:700; color:#445; min-width:78px;">🚶 Move &nbsp;|&nbsp; 🏗️ Build</div>
+          <div id="buildAnalogStick" class="analog-stick" aria-label="Build analog stick control">
+            <div id="buildAnalogThumb" class="analog-thumb"></div>
           </div>
         </div>
 
@@ -427,7 +450,6 @@
   let showingUpgrades = false;
 
   const mobileBuildOrder = [1,2,3,4,5,6,7,8,9];
-  let mobileControlMode = "move";
 
   let isHost = false;
   let hostInitialized = false;
@@ -490,9 +512,15 @@
     document.getElementById("upgradeMenu").style.display = upgradeMenuOpen ? "block" : "none";
   }
 
+  function updateCheeseDisplay(){
+    const cheeseEl = document.getElementById("cheeseCount");
+    const mobileCheeseEl = document.getElementById("mobileCheeseCount");
+    if (cheeseEl) cheeseEl.textContent = cheeseCount;
+    if (mobileCheeseEl) mobileCheeseEl.textContent = cheeseCount;
+  }
+
   function updateMobileBuildDisplay(){
     const display = document.getElementById("mobileBuildDisplay");
-    const modeBtn = document.getElementById("mobileControlMode");
     if (!display) return;
 
     const shortNames = {
@@ -508,9 +536,6 @@
     };
 
     display.textContent = shortNames[selectedBuild] || "Select";
-    if (modeBtn){
-      modeBtn.textContent = mobileControlMode === "move" ? "🚶 Move" : "🏗️ Build";
-    }
   }
 
   function selectBuild(value){
@@ -851,12 +876,11 @@
     placeStructure(dir);
   }
 
-  function runAnalogDirection(dir){
-    if (mobileControlMode === "move"){
-      move(dir);
-      return;
-    }
+  function runMoveAnalogDirection(dir){
+    move(dir);
+  }
 
+  function runBuildAnalogDirection(dir){
     const buildDirMap = { up:"w", down:"s", left:"a", right:"d" };
     place(buildDirMap[dir]);
   }
@@ -885,7 +909,7 @@
     if (grid[playerPos.y][playerPos.x] === "🧀"){
       grid[playerPos.y][playerPos.x] = "";
       cheeseCount += 3 + cheesePickupBonus;
-      document.getElementById("cheeseCount").textContent = cheeseCount;
+      updateCheeseDisplay();
       savePosition();
       renderGrid();
     }
@@ -982,7 +1006,7 @@
     structureHealth[key] = health;
 
     cheeseCount -= cost;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
+    updateCheeseDisplay();
     savePosition();
 
     // ✅ store under crowncouncil
@@ -1933,7 +1957,7 @@
           if (dx + dy <= 9){
             const totalCheese = 1 + bonusCheese;
             cheeseCount += totalCheese;
-            document.getElementById("cheeseCount").textContent = cheeseCount;
+            updateCheeseDisplay();
             await updateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
           }
         }
@@ -2016,18 +2040,6 @@
         selectBuild(btn.getAttribute('data-struct'));
       });
     });
-
-    const modeBtn = document.getElementById("mobileControlMode");
-    if (modeBtn){
-      const toggleMode = (e) => {
-        if (e) e.preventDefault();
-        mobileControlMode = mobileControlMode === "move" ? "build" : "move";
-        updateMobileBuildDisplay();
-      };
-      modeBtn.addEventListener("click", toggleMode);
-      modeBtn.addEventListener("touchstart", toggleMode);
-    }
-
     const prevBtn = document.getElementById("mobileBuildPrev");
     const nextBtn = document.getElementById("mobileBuildNext");
     if (prevBtn){
@@ -2041,9 +2053,11 @@
       nextBtn.addEventListener("touchstart", next);
     }
 
-    const stick = document.getElementById("analogStick");
-    const thumb = document.getElementById("analogThumb");
-    if (stick && thumb){
+    const setupAnalogStick = (stickId, thumbId, onDirection) => {
+      const stick = document.getElementById(stickId);
+      const thumb = document.getElementById(thumbId);
+      if (!stick || !thumb) return;
+
       let stickPointerId = null;
       let intervalId = null;
       let lastDirection = null;
@@ -2080,7 +2094,7 @@
 
         const dir = getDirection(dx, dy);
         if (dir !== lastDirection){
-          runAnalogDirection(dir);
+          onDirection(dir);
           lastDirection = dir;
         }
       };
@@ -2092,7 +2106,7 @@
         stick.setPointerCapture(stickPointerId);
         updateFromPoint(e.clientX, e.clientY);
         intervalId = setInterval(() => {
-          if (lastDirection) runAnalogDirection(lastDirection);
+          if (lastDirection) onDirection(lastDirection);
         }, 160);
       };
 
@@ -2117,7 +2131,10 @@
       stick.addEventListener("pointerup", endStick);
       stick.addEventListener("pointercancel", endStick);
       stick.addEventListener("pointerleave", endStick);
-    }
+    };
+
+    setupAnalogStick("moveAnalogStick", "moveAnalogThumb", runMoveAnalogDirection);
+    setupAnalogStick("buildAnalogStick", "buildAnalogThumb", runBuildAnalogDirection);
 
     const upgradeBtn = document.querySelector('[data-upgrade]');
     if (upgradeBtn){
@@ -2228,7 +2245,7 @@
             playerPos = { x: players[pu].x, y: players[pu].y };
             isAlive = players[pu].alive;
             cheeseCount = players[pu].cheese ?? 0;
-            document.getElementById("cheeseCount").textContent = cheeseCount;
+            updateCheeseDisplay();
             document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
           }
         }
