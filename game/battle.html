@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>⚔️ Battle</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #eef2f5; margin: 0; padding: 0; display: flex; }
+    body { font-family: Arial, sans-serif; background: radial-gradient(circle at 20% 20%, #7e6a4a, #5d4b35 45%, #3f3324 100%); margin: 0; padding: 0; display: flex; }
     #mobileTopBar{ display:none; position:fixed; top:8px; left:8px; right:8px; z-index:1200; gap:8px; }
     #mobileTopBar button{ border:1px solid #334155; background:#0f172a; color:#fff; border-radius:10px; padding:8px 10px; font-weight:700; }
     #selectedTroopChip{ margin-left:auto; background:#111827; color:#fff; border:1px solid #334155; border-radius:10px; padding:8px 10px; font-size:12px; }
     #sidebar { width: 180px; background: #ddd; padding: 10px; border-right: 2px solid #aaa; }
     #grid { display: grid; grid-template-columns: repeat(16, 30px); gap: 2px; margin: 20px; position: relative; }
-    .cell { width: 30px; height: 30px; background: #fff; border: 1px solid #ccc; position: relative; }
+    .cell { width: 30px; height: 30px; background: linear-gradient(145deg, #c3a977, #b5955f); border: 1px solid #8f7448; position: relative; }
 
     /* Structures */
     .wall{ background:black; }
@@ -359,6 +359,36 @@
         }
       }
       return best;
+    }
+
+    function nextStepTowardTarget(unit, tx, ty){
+      const start = {x: unit.x, y: unit.y};
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      const q=[start], seen=new Set([`${start.x},${start.y}`]), prev=new Map();
+      while(q.length){
+        const cur=q.shift();
+        if(cur.x===tx && cur.y===ty) break;
+        for(const [dx,dy] of dirs){
+          const nx=cur.x+dx, ny=cur.y+dy;
+          if(!inBounds(nx,ny)) continue;
+          const key=`${nx},${ny}`;
+          if(seen.has(key)) continue;
+          if(isBlocked(nx,ny) && !(nx===tx && ny===ty)) continue;
+          seen.add(key);
+          prev.set(key, `${cur.x},${cur.y}`);
+          q.push({x:nx,y:ny});
+        }
+      }
+      const goalKey=`${tx},${ty}`;
+      if(!seen.has(goalKey)){
+        const nx=unit.x+Math.sign(tx-unit.x), ny=unit.y+Math.sign(ty-unit.y);
+        if(inBounds(nx,ny) && !isBlocked(nx,ny)) return {x:nx,y:ny};
+        return null;
+      }
+      let walk=goalKey;
+      while(prev.get(walk) && prev.get(walk)!==`${unit.x},${unit.y}`) walk=prev.get(walk);
+      const [sx,sy]=walk.split(',').map(Number);
+      return {x:sx,y:sy};
     }
 
     /* ======== CTHULU: now supports diagonal beams (8-way) and still hurts skeletons ======== */
@@ -732,50 +762,28 @@
           }
 
         } else if (!inRange) {
-          // Move toward target
-          if (troop.type==='archer'){
-            troop.x += Math.sign(dx);
-            troop.y += Math.sign(dy);
-
-          } else if (troop.type==='dragon'){
-            const steps = troop.speed;
-            for (let s=0; s<steps; s++){
-              troop.x += Math.sign(dx);
-              troop.y += Math.sign(dy);
-            }
-
-          } else if (troop.type==='golem' || troop.type==='minigolem' || troop.type==='cthulu'){
-            const nx = troop.x + Math.sign(dx);
-            const ny = troop.y + Math.sign(dy);
-            if (inBounds(nx,ny) && !isBlocked(nx,ny)){
-              troop.x=nx; troop.y=ny;
-            } else {
-              const bdx = Math.sign(dx), bdy = Math.sign(dy);
-              const bx = troop.x + bdx, by = troop.y + bdy;
-              if (inBounds(bx,by) && isBlocked(bx,by) && (Math.abs(dx)+Math.abs(dy) <= troop.range+1)){
-                const block = enemyStructures.find(s=>s.x===bx && s.y===by);
+          // Move toward target with obstacle-aware pathing
+          const steps = troop.type==='raider' ? 2 : Math.max(1, troop.speed||1);
+          for (let s=0; s<steps; s++){
+            const step = nextStepTowardTarget(troop, tx, ty);
+            if (!step) break;
+            const blocked = isBlocked(step.x, step.y) && troop.type!=='raider';
+            if (blocked) {
+              if (Math.abs(dx)+Math.abs(dy) <= troop.range+1){
+                const block = enemyStructures.find(st=>st.x===step.x && st.y===step.y);
                 if (block){
                   if (troop.type==='cthulu'){
-                    const { dirX, dirY } = chooseBeamDirection8(troop.x, troop.y, bx, by);
+                    const { dirX, dirY } = chooseBeamDirection8(troop.x, troop.y, step.x, step.y);
                     castBeam8(troop.x, troop.y, dirX, dirY, troop.damage, troop.range);
                   } else {
                     doDamageToTarget(block, troop.damage);
                   }
-                  spawnFX(bx,by,"splash");
+                  spawnFX(step.x,step.y,"splash");
                 }
               }
+              break;
             }
-
-          } else {
-            const steps = troop.type==='raider' ? 2 : 1;
-            for (let s=0; s<steps; s++){
-              const nx = troop.x + Math.sign(dx);
-              const ny = troop.y + Math.sign(dy);
-              if (!inBounds(nx,ny)) break;
-              const blocked = isBlocked(nx,ny) && troop.type!=='raider';
-              if (blocked) break;
-              troop.x = nx; troop.y = ny;
-            }
+            troop.x = step.x; troop.y = step.y;
           }
         }
 
