@@ -109,7 +109,7 @@
       border-radius: 8px;
     }
 
-    #analogStick{
+    .analog-stick{
       width: 92px;
       height: 92px;
       border-radius: 50%;
@@ -120,7 +120,7 @@
       flex-shrink: 0;
     }
 
-    #analogThumb{
+    .analog-thumb{
       width: 34px;
       height: 34px;
       border-radius: 50%;
@@ -130,6 +130,19 @@
       top: 50%;
       transform: translate(-50%, -50%);
       box-shadow: inset 0 2px 4px rgba(255,255,255,0.35);
+    }
+
+    .analog-control{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:4px;
+    }
+
+    .analog-label{
+      font-size:11px;
+      font-weight:700;
+      color:#333;
     }
 
     #mobileBuildPicker{
@@ -314,12 +327,20 @@
           <button class="mobile-mini-btn" data-upgrade>🛠️</button>
           <button class="mobile-mini-btn" data-blink>🌀</button>
           <button class="mobile-mini-btn" data-trap>🪤</button>
-          <button class="mobile-mini-btn" id="mobileControlMode" data-mode="move">🚶 Move</button>
         </div>
 
         <div class="mobile-row">
-          <div id="analogStick" aria-label="Analog stick control">
-            <div id="analogThumb"></div>
+          <div class="analog-control">
+            <div class="analog-label">🚶 Move</div>
+            <div id="moveAnalogStick" class="analog-stick" aria-label="Movement analog stick">
+              <div id="moveAnalogThumb" class="analog-thumb"></div>
+            </div>
+          </div>
+          <div class="analog-control">
+            <div class="analog-label">🏗️ Build</div>
+            <div id="buildAnalogStick" class="analog-stick" aria-label="Build analog stick">
+              <div id="buildAnalogThumb" class="analog-thumb"></div>
+            </div>
           </div>
           <div id="mobileBuildPicker">
             <button class="mobile-mini-btn" id="mobileBuildPrev" aria-label="Previous building">⬅️</button>
@@ -448,7 +469,9 @@
   let ratPower  = 1;
 
   let canMove = true;
+  let canBuild = true;
   let moveCooldown = 225; // ✅ was const before; upgrades change it
+  let buildCooldown = 225;
 
   let advancementPoints = 0;
   let upgradeMenuOpen = false;
@@ -468,8 +491,6 @@
   let showingUpgrades = false;
 
   const mobileBuildOrder = [1,2,3,4,5,6,7,8,9];
-  let mobileControlMode = "move";
-
   let isHost = false;
   let hostInitialized = false;
   let catMoveInterval = null;
@@ -547,7 +568,6 @@
 
   function updateMobileBuildDisplay(){
     const display = document.getElementById("mobileBuildDisplay");
-    const modeBtn = document.getElementById("mobileControlMode");
     if (!display) return;
 
     const shortNames = {
@@ -563,9 +583,6 @@
     };
 
     display.textContent = shortNames[selectedBuild] || "Select";
-    if (modeBtn){
-      modeBtn.textContent = mobileControlMode === "move" ? "🚶 Move" : "🏗️ Build";
-    }
   }
 
   function selectBuild(value){
@@ -915,13 +932,19 @@
     triggerMoveCooldown();
   }
 
-  function place(dir){
-    if (!canMove || !isAlive || selectedBuild === null) return;
-    placeStructure(dir);
+  function triggerBuildCooldown(){
+    canBuild = false;
+    setTimeout(() => canBuild = true, buildCooldown);
   }
 
-  function runAnalogDirection(dir){
-    if (mobileControlMode === "move"){
+  function place(dir){
+    if (!canBuild || !isAlive || selectedBuild === null) return;
+    placeStructure(dir);
+    triggerBuildCooldown();
+  }
+
+  function runAnalogDirection(dir, action){
+    if (action === "move"){
       move(dir);
       return;
     }
@@ -2101,17 +2124,6 @@
       });
     });
 
-    const modeBtn = document.getElementById("mobileControlMode");
-    if (modeBtn){
-      const toggleMode = (e) => {
-        if (e) e.preventDefault();
-        mobileControlMode = mobileControlMode === "move" ? "build" : "move";
-        updateMobileBuildDisplay();
-      };
-      modeBtn.addEventListener("click", toggleMode);
-      modeBtn.addEventListener("touchstart", toggleMode);
-    }
-
     const prevBtn = document.getElementById("mobileBuildPrev");
     const nextBtn = document.getElementById("mobileBuildNext");
     if (prevBtn){
@@ -2125,9 +2137,8 @@
       nextBtn.addEventListener("touchstart", next);
     }
 
-    const stick = document.getElementById("analogStick");
-    const thumb = document.getElementById("analogThumb");
-    if (stick && thumb){
+    const setupAnalogStick = (stick, thumb, action) => {
+      if (!stick || !thumb) return;
       let stickPointerId = null;
       let intervalId = null;
       let lastDirection = null;
@@ -2164,7 +2175,7 @@
 
         const dir = getDirection(dx, dy);
         if (dir !== lastDirection){
-          runAnalogDirection(dir);
+          runAnalogDirection(dir, action);
           lastDirection = dir;
         }
       };
@@ -2176,7 +2187,7 @@
         stick.setPointerCapture(stickPointerId);
         updateFromPoint(e.clientX, e.clientY);
         intervalId = setInterval(() => {
-          if (lastDirection) runAnalogDirection(lastDirection);
+          if (lastDirection) runAnalogDirection(lastDirection, action);
         }, 160);
       };
 
@@ -2201,7 +2212,19 @@
       stick.addEventListener("pointerup", endStick);
       stick.addEventListener("pointercancel", endStick);
       stick.addEventListener("pointerleave", endStick);
-    }
+    };
+
+    setupAnalogStick(
+      document.getElementById("moveAnalogStick"),
+      document.getElementById("moveAnalogThumb"),
+      "move"
+    );
+
+    setupAnalogStick(
+      document.getElementById("buildAnalogStick"),
+      document.getElementById("buildAnalogThumb"),
+      "build"
+    );
 
     const upgradeBtn = document.querySelector('[data-upgrade]');
     if (upgradeBtn){
