@@ -727,6 +727,7 @@
 
     // beacon boosted tiles
     const beaconBoosted = new Set();
+    const beaconWallBoosted = new Set();
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         if (grid[y][x] === "🗼"){
@@ -735,9 +736,8 @@
               const tx = x+dx, ty = y+dy;
               if (tx>=0 && tx<gridSize && ty>=0 && ty<gridSize){
                 const tSymbol = grid[ty][tx];
-                if (["🔫","🏭","🪳","🚀"].includes(tSymbol)){
-                  beaconBoosted.add(`${tx}_${ty}`);
-                }
+                if (["🔫","🏭","🪳","🚀"].includes(tSymbol)) beaconBoosted.add(`${tx}_${ty}`);
+                if (["🧱","💎"].includes(tSymbol)) beaconWallBoosted.add(`${tx}_${ty}`);
               }
             }
           }
@@ -761,6 +761,8 @@
           if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
           else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
           else {
+            cell.style.boxShadow = "";
+            cell.style.outline = "";
             const tone = (Math.abs((x * 13) + (y * 17) + localTileSeed) % 4);
             if (tone === 0) cell.style.background = "#c8f7c5";
             else if (tone === 1) cell.style.background = "#bfeeb9";
@@ -769,6 +771,11 @@
           }
 
           cell.textContent = symbol || "";
+
+          if (beaconWallBoosted.has(key)){
+            cell.style.outline = "2px solid #22d3ee";
+            cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.75), 0 0 8px rgba(34,211,238,0.8)";
+          }
         } else {
           cell.style.background = "#888";
           cell.textContent = "";
@@ -1095,13 +1102,28 @@
     renderGrid();
   }
 
+
+  function isWithinBeaconAura(x, y, range = 2){
+    for (let by=0; by<gridSize; by++){
+      for (let bx=0; bx<gridSize; bx++){
+        if (grid[by][bx] !== "🗼") continue;
+        if (Math.abs(bx - x) <= range && Math.abs(by - y) <= range) return true;
+      }
+    }
+    return false;
+  }
+
   async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower/3))){
     const key = `${x}_${y}`;
     if (structureHealth[key] === undefined) return;
 
     showClawHit(x, y);
 
-    structureHealth[key] -= damageAmount;
+    const symbol = grid[y]?.[x] || "";
+    const wallNearBeacon = ["🧱","💎"].includes(symbol) && isWithinBeaconAura(x, y, 2);
+    const finalDamage = wallNearBeacon ? (damageAmount * 0.5) : damageAmount;
+
+    structureHealth[key] -= finalDamage;
     if (structureHealth[key] <= 0){
       grid[y][x] = "";
       delete structureHealth[key];
@@ -2763,7 +2785,15 @@
     }, 8000);
 
     // enemy sim ticks
-    setInterval(() => hostMoveRats().catch(()=>{}), 400);
+    const scheduleRatTick = () => {
+      const ratTickMs = Math.max(650, 1200 - (catPower * 12));
+      setTimeout(async () => {
+        await hostMoveRats().catch(()=>{});
+        scheduleRatTick();
+      }, ratTickMs);
+    };
+    scheduleRatTick();
+
     setInterval(() => hostMoveOxen().catch(()=>{}), 800);
     setInterval(() => hostMoveVultures().catch(()=>{}), 600);
     setInterval(() => hostMoveTermites().catch(()=>{}), 400);
