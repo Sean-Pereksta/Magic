@@ -234,13 +234,13 @@
   <!-- Structure Buttons -->
  <div id="structureButtons" style="margin-top: 10px;">
   <strong>Select Structure:</strong><br>
-  <button data-build-key="1">1</button>
-  <button data-build-key="2">2</button>
-  <button data-build-key="3">3</button>
-  <button data-build-key="4">4</button>
-  <button data-build-key="5">5</button>
-  <button data-build-key="6">6</button>
-  <button data-build-key="7">7</button>
+  <button>🧱</button>
+  <button>🔫</button>
+  <button>🪳</button>
+  <button>🏭</button>
+  <button>💎</button>
+  <button>🗼</button>
+  <button>🐦‍🔥</button>
 </div>
 
 
@@ -332,17 +332,14 @@ const structureClasses = {
     label: "⚔ Striker",
     defense: ["🧱", "💎", "🌳", "🌿"],
     economic: ["🐦‍🔥", "🏭"],
-    attack: [ "🚀", "🪳", "🔥", "❄️"]
+    attack: ["🔫", "🚀", "🪳"]
   }
 };
-
   const structureCategories = {
   defense: ["🧱", "💎", "🌿"],
-  attack: ["🔫", "🪳", "🚀", "🌳", "🔥", "❄️"],
+  attack: ["🔫", "🪳", "🚀", "🌳"],
   economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"]
 };
-
-
 
   const structureInfo = {
   "🧱": { cost: 1, health: 15 },
@@ -354,14 +351,10 @@ const structureClasses = {
   "🐦‍🔥": { cost: 40, health: 20 },
   "🚀": { cost: 30, health: 20 },
   "🌳": { cost: 20, health: 20 },
-  "🌿": { cost: 5, health: 15 },
-  "⚙️": { cost: 12, health: 15 },
-  "🔥": { cost: 4, health: 1 },  // Flame Strike
-  "❄️": { cost: 4, health: 1 }   // Ice Strike
+  "🌿": { cost: 6, health: 15 },
+  "⚙️": { cost: 12, health: 15 }
 };
-
-
-const buildNames = {
+  const buildNames = {
   "🧱": "Wall 🧱 (Cost: 1)",
   "🔫": "Turret 🔫 (Cost: 3)",
   "🪳": "Flea Nest 🪳 (Cost: 5)",
@@ -371,18 +364,14 @@ const buildNames = {
   "🐦‍🔥": "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
   "🚀": "Rocket Tower 🚀 (Cost: 30)",
   "🌳": "Oak Tree 🌳 (Cost: 20)",
-  "🌿": "Vine Wall 🌿 (Cost: 5)",
-  "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)",
-  "🔥": "Flame Strike 🔥 (Cost: 4)",
-  "❄️": "Ice Strike ❄️ (Cost: 4)"
+  "🌿": "Vine Wall 🌿 (Cost: 6)",
+  "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)"
 };
-
 
 
 
 let playerPos = { x: 1, y: 1 };
 let catPos = { x: 15, y: 15 };
-  let catFrozenUntil = 0;
 let gameStarted = false;
 let selectedBuild = null;
 let cheeseCount = 0;
@@ -391,7 +380,7 @@ let catHealth = 1000;
 let players = {};
 let isHost = false;
 let canMove = true;
-let moveCooldown = 225;
+const moveCooldown = 225;
 let catPower = 0;
 let catMoveInterval = null;
 let ratPower = 1;
@@ -426,9 +415,6 @@ let fleas = [];
   let oxen = [];
   let catcherBots = [];
   let isRatSpawning = false;
-let lastSavedPlayerState = null;
-let pendingSaveTimeout = null;
-const POSITION_WRITE_DEBOUNCE_MS = 140;
 
 
 
@@ -537,10 +523,7 @@ function renderGrid() {
   for (const name in players) {
     const p = players[name];
     if (!p.alive) continue;
-    const renderPos = name === username
-      ? { x: playerPos.x, y: playerPos.y }
-      : { x: p.x, y: p.y };
-    const cell = document.getElementById(`cell-${renderPos.x}-${renderPos.y}`);
+    const cell = document.getElementById(`cell-${p.x}-${p.y}`);
     if (cell) {
       cell.textContent = "🐭";
       const nameTag = document.createElement("div");
@@ -674,240 +657,6 @@ function updateHostDisplay() {
   document.getElementById("hostDisplay").textContent = `👑 Host: ${hostName}`;
 }
 
-async function performFlameStrike(x, y, direction) {
-  const flameOffsets = [];
-  const dx = direction.dx;
-  const dy = direction.dy;
-
-  // 🔥 Include 5 tiles in the direction, starting 1 tile ahead
-  for (let i = 1; i <= 6; i++) {
-    const fx = x + dx * i;
-    const fy = y + dy * i;
-
-    if (fx >= 0 && fx < gridSize && fy >= 0 && fy < gridSize) {
-      flameOffsets.push({ x: fx, y: fy });
-    }
-  }
-
-  // 🔥 Set flames and deal initial damage
-  for (const { x: fx, y: fy } of flameOffsets) {
-    const key = `${fx}_${fy}`;
-    grid[fy][fx] = "🔥";
-    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
-      x: fx,
-      y: fy,
-      type: "🔥"
-    });
-
-    // 🐀 Damage rats
-    for (let i = rats.length - 1; i >= 0; i--) {
-      const rat = rats[i];
-      if (rat.x === fx && rat.y === fy) {
-        rat.health -= 9;
-        if (rat.health <= 0) {
-          await deleteDoc(doc(db, `games/${gameId}/rats/${rat.id}`));
-          rats.splice(i, 1);
-        } else {
-          await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-            health: rat.health
-          });
-        }
-      }
-    }
-
-    // 🐂 Damage oxen
-    for (let i = oxen.length - 1; i >= 0; i--) {
-      const ox = oxen[i];
-      if (ox.x === fx && ox.y === fy) {
-        ox.health -= 9;
-        if (ox.health <= 0) {
-          await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
-          oxen.splice(i, 1);
-        } else {
-          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-            health: ox.health
-          });
-        }
-      }
-    }
-
-    // 🐈 Damage cat
-    if (catPos.x === fx && catPos.y === fy) {
-      catHealth -= 9;
-      await updateDoc(doc(db, `games/${gameId}`), {
-        cat: {
-          x: catPos.x,
-          y: catPos.y,
-          health: catHealth
-        }
-      });
-    }
-  }
-
-  renderGrid();
-
-  // 🔥 After 1 second: second damage pass and remove flames
-  setTimeout(async () => {
-    for (const { x: fx, y: fy } of flameOffsets) {
-      // 🐀 Damage rats again
-      for (let i = rats.length - 1; i >= 0; i--) {
-        const rat = rats[i];
-        if (rat.x === fx && rat.y === fy) {
-          rat.health -= 9;
-          if (rat.health <= 0) {
-            await deleteDoc(doc(db, `games/${gameId}/rats/${rat.id}`));
-            rats.splice(i, 1);
-          } else {
-            await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-              health: rat.health
-            });
-          }
-        }
-      }
-
-      // 🐂 Damage oxen again
-      for (let i = oxen.length - 1; i >= 0; i--) {
-        const ox = oxen[i];
-        if (ox.x === fx && ox.y === fy) {
-          ox.health -= 9;
-          if (ox.health <= 0) {
-            await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
-            oxen.splice(i, 1);
-          } else {
-            await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-              health: ox.health
-            });
-          }
-        }
-      }
-
-      // 🐈 Damage cat again
-      if (catPos.x === fx && catPos.y === fy) {
-        catHealth -= 9;
-        await updateDoc(doc(db, `games/${gameId}`), {
-          cat: {
-            x: catPos.x,
-            y: catPos.y,
-            health: catHealth
-          }
-        });
-      }
-
-      // 🔥 Remove flame from tile
-      const key = `${fx}_${fy}`;
-      if (grid[fy][fx] === "🔥") {
-        grid[fy][fx] = "";
-        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
-      }
-    }
-
-    renderGrid();
-  }, 300);
-}
-
-async function performIceStrike(x, y, direction) {
-  const iceOffsets = [];
-  const dx = direction.dx;
-  const dy = direction.dy;
-
-  for (let i = 0; i < 6; i++) {
-    const fx = x + dx * i;
-    const fy = y + dy * i;
-
-    if (fx >= 0 && fx < gridSize && fy >= 0 && fy < gridSize) {
-      iceOffsets.push({ x: fx, y: fy });
-    }
-  }
-
-  const now = Date.now();
-  const freezeDuration = 5000;
-
-  for (const { x: fx, y: fy } of iceOffsets) {
-    const key = `${fx}_${fy}`;
-    grid[fy][fx] = "❄️";
-    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
-      x: fx,
-      y: fy,
-      type: "❄️"
-    });
-
-    // ❄️ Freeze rats
-    for (let rat of rats) {
-      if (rat.x === fx && rat.y === fy) {
-        rat.frozenUntil = now + freezeDuration;
-        await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-          frozenUntil: rat.frozenUntil
-        });
-      }
-    }
-
-    // ❄️ Freeze oxen
-    for (let ox of oxen) {
-      if (ox.x === fx && ox.y === fy) {
-        ox.frozenUntil = now + freezeDuration;
-        await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-          frozenUntil: ox.frozenUntil
-        });
-      }
-    }
-
-    // ❄️ Freeze cat
-    if (catPos.x === fx && catPos.y === fy) {
-      catFrozenUntil = now + freezeDuration;
-      await updateDoc(doc(db, `games/${gameId}`), {
-        catFrozenUntil
-      });
-    }
-  }
-
-  renderGrid();
-
-  // ❄️ After 1 second: freeze again if not already frozen
-  setTimeout(async () => {
-    const lateNow = Date.now();
-    for (const { x: fx, y: fy } of iceOffsets) {
-      // 🐀 Freeze rats if not already frozen
-      for (let rat of rats) {
-        if (rat.x === fx && rat.y === fy && (!rat.frozenUntil || rat.frozenUntil < lateNow)) {
-          rat.frozenUntil = lateNow + freezeDuration;
-          await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-            frozenUntil: rat.frozenUntil
-          });
-        }
-      }
-
-      // 🐂 Freeze oxen if not already frozen
-      for (let ox of oxen) {
-        if (ox.x === fx && ox.y === fy && (!ox.frozenUntil || ox.frozenUntil < lateNow)) {
-          ox.frozenUntil = lateNow + freezeDuration;
-          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-            frozenUntil: ox.frozenUntil
-          });
-        }
-      }
-
-      // 🐈 Freeze cat if not already frozen
-      if (catPos.x === fx && catPos.y === fy && (!catFrozenUntil || catFrozenUntil < lateNow)) {
-        catFrozenUntil = lateNow + freezeDuration;
-        await updateDoc(doc(db, `games/${gameId}`), {
-          catFrozenUntil
-        });
-      }
-
-      // ❄️ Remove ice visual
-      const key = `${fx}_${fy}`;
-      if (grid[fy][fx] === "❄️") {
-        grid[fy][fx] = "";
-        await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
-      }
-    }
-
-    renderGrid();
-  }, 300);
-}
-
-
-
 
 async function movePlayer(dx, dy) {
   if (!gameStarted || !isAlive) return;
@@ -916,12 +665,6 @@ async function movePlayer(dx, dy) {
   const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
 
   playerPos = { x: newX, y: newY };
-  players[username] = {
-    ...(players[username] || {}),
-    x: newX,
-    y: newY,
-    alive: true
-  };
   savePosition();
 
   // 🌿 Destroy vine on contact
@@ -973,13 +716,7 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `ox_${crypto.randomUUID()}`;
-    const ox = {
-      x: spot.x,
-      y: spot.y,
-      health: ratPower * 35,
-      id,
-      frozenUntil: 0 // ❄️ initialized
-    };
+    const ox = { x: spot.x, y: spot.y, health: ratPower * 35, id };
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
@@ -994,21 +731,13 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `rat_${crypto.randomUUID()}`;
-    const rat = {
-      x: spot.x,
-      y: spot.y,
-      health: ratPower * 5,
-      id,
-      wave: waveTag,
-      frozenUntil: 0 // ❄️ initialized
-    };
+    const rat = { x: spot.x, y: spot.y, health: ratPower * 5, id, wave: waveTag };
     await setDoc(doc(db, `games/${gameId}/rats/${id}`), rat);
     ratsSpawned++;
   }
 
   console.log(`✅ Wave spawned: 🐂 ${oxSpawned} oxen, 🐀 ${ratsSpawned} rats`);
 }
-
 
 async function returnToLobby() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -1097,7 +826,7 @@ function showBuildKeys() {
   const map = window.myBuildKeys;
   if (!map || !playerClass || !structureClasses[playerClass]) return;
 
-const costMap = {
+ const costMap = {
   "🧱": 1,
   "🔫": 3,
   "🪳": 5,
@@ -1107,12 +836,9 @@ const costMap = {
   "🐦‍🔥": 40,
   "🚀": 30,
   "🌳": 20,
-  "🌿": 5,
-  "⚙️": 12,
-  "❄️": 4,  // Ice Strike
-  "🔥": 4   // Flame Strike
+  "🌿": 4,
+  "⚙️": 12 
 };
-
 
 
   let html = `<strong>🎓 ${structureClasses[playerClass].label}</strong><br><br>`;
@@ -1127,18 +853,6 @@ const costMap = {
   // Remove final separator
   html = html.replace(/&nbsp; \| &nbsp; $/, "");
   document.getElementById("buildInfo").innerHTML = html;
-
-  document.querySelectorAll("#structureButtons button[data-build-key]").forEach((button) => {
-    const key = button.getAttribute("data-build-key");
-    const emoji = map[key];
-    button.textContent = emoji ? `${key}: ${emoji}` : `${key}: ❌`;
-    button.title = emoji && buildNames[emoji] ? buildNames[emoji] : "Unavailable";
-    button.disabled = !emoji;
-  });
-
-  if (selectedBuild === null && map["1"]) {
-    selectBuild("1");
-  }
 }
 
 
@@ -1206,7 +920,10 @@ function setupMobileControls() {
 
 const structureKeys = ["1", "2", "3", "4", "5", "6", "7"];
 structureKeys.forEach(key => {
-  const emojiButton = document.querySelector(`#structureButtons button[data-build-key="${key}"]`);
+  // Since first two children are <strong> and <br>, buttons start at 3rd child
+  const nthChildIndex = parseInt(key, 10) + 2; // Add 2 to shift past <strong> and <br>
+
+  const emojiButton = document.querySelector(`#structureButtons :nth-child(${nthChildIndex})`);
   if (emojiButton) {
     emojiButton.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -1307,19 +1024,7 @@ function savePosition() {
     y: playerPos.y,
     cheese: cheeseCount
   };
-
-  const nextState = JSON.stringify(payload);
-  if (nextState === lastSavedPlayerState) return;
-
-  if (pendingSaveTimeout) {
-    clearTimeout(pendingSaveTimeout);
-  }
-
-  pendingSaveTimeout = setTimeout(() => {
-    setDoc(playerRef, payload, { merge: true });
-    lastSavedPlayerState = nextState;
-    pendingSaveTimeout = null;
-  }, POSITION_WRITE_DEBOUNCE_MS);
+  setDoc(playerRef, payload, { merge: true });
 }
 
 
@@ -1328,14 +1033,8 @@ function startCatBehaviorLoop() {
 
   // 🕒 Speed = faster interval as power increases
   const speed = Math.max(200, 1300 - catPower * 40); // e.g. power 10 = 500ms
-
   catMoveInterval = setInterval(() => {
-    if (!gameStarted) return;
-
-    // ❄️ Skip cat behavior if frozen
-    if (catFrozenUntil && Date.now() < catFrozenUntil) return;
-
-    catBehavior();
+    if (gameStarted) catBehavior();
   }, speed);
 }
 
@@ -1358,7 +1057,6 @@ async function placeStructure(dir) {
   if (dir === 'a') tx--;
   if (dir === 's') ty++;
   if (dir === 'd') tx++;
-
   if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
 
   const symbol = myBuildKeys[selectedBuild];
@@ -1366,31 +1064,6 @@ async function placeStructure(dir) {
 
   const { cost, health } = structureInfo[symbol];
   if (cheeseCount < cost) return;
-
-  // 🔥 Block Flame/Ice Strike if first tile has a structure
-  if (symbol === "🔥" || symbol === "❄️") {
-    let fx = playerPos.x;
-    let fy = playerPos.y;
-    if (lastDirection === "w") fy--;
-    if (lastDirection === "a") fx--;
-    if (lastDirection === "s") fy++;
-    if (lastDirection === "d") fx++;
-
-    if (fx < 0 || fy < 0 || fx >= gridSize || fy >= gridSize) return;
-
-    // Block if a structure is on the first strike tile
-    if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "🐦‍🔥"].includes(grid[fy][fx])) return;
-
-    cheeseCount -= cost;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
-
-    if (symbol === "🔥") {
-      await performFlameStrike(playerPos.x, playerPos.y, lastDirection);
-    } else {
-      await performIceStrike(playerPos.x, playerPos.y, lastDirection);
-    }
-    return;
-  }
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
@@ -2181,31 +1854,30 @@ async function catBehavior() {
 async function listenToGame() {
 
 onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
-  // 1. Clear old structure symbols from the grid — only the visual representation in memory:
+  // 🧹 Clear old structures from grid
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
-      if (structureInfo[grid[y][x]]) {
+      if (["🧱", "🔫"].includes(grid[y][x])) {
         grid[y][x] = "";
       }
     }
   }
 
-  // 2. Reset local health tracking
   structureHealth = {};
 
-  // 3. Rebuild current structures from Firestore snapshot
+  // 🧱 Re-populate grid with structure data
   snap.forEach((docSnap) => {
-    const { x, y, type, health } = docSnap.data();
+    const data = docSnap.data(); // ✅ Correct variable
+    const { x, y, type, health } = data;
+
     if (x !== undefined && y !== undefined && type) {
       grid[y][x] = type;
       structureHealth[`${x}_${y}`] = health;
     }
   });
 
-  // 4. Redraw the grid on screen
   renderGrid();
 });
-
 
 onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
@@ -2373,13 +2045,6 @@ onSnapshot(playerRef, (docSnap) => {
 
   const data = docSnap.data();
   playerPos = { x: data.x, y: data.y };
-  players[username] = {
-    ...(players[username] || {}),
-    ...data,
-    x: data.x,
-    y: data.y,
-    alive: data.alive !== false
-  };
   isAlive = data.alive !== false;
   cheeseCount = data.cheese || 0;
   document.getElementById("cheeseCount").textContent = cheeseCount;
@@ -2982,7 +2647,7 @@ if (host === cleanUsername && !hostInitialized) {
     // 🔍 Find nearest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "💎", "🌿"].includes(grid[y][x])) {
+        if (grid[y][x] === "🧱" || grid[y][x] === "💎" || grid[y][x] === "🌿") {
           const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
           if (dist < minDist) {
             minDist = dist;
@@ -2994,9 +2659,7 @@ if (host === cleanUsername && !hostInitialized) {
 
     if (closestWall) {
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-        // ⛔ Only avoid other structures — allow path to walk **onto the wall** as goal
-        return (x !== closestWall.x || y !== closestWall.y) &&
-          ["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]) === false;
+     return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]);
       });
 
       if (path && path.length > 0) {
@@ -3004,31 +2667,31 @@ if (host === cleanUsername && !hostInitialized) {
         termite.x = next.x;
         termite.y = next.y;
 
+        // ✅ Update termite position in Firestore
         if (termite.id) {
           await updateDoc(doc(db, `games/${gameId}/termites/${termite.id}`), {
             x: termite.x,
             y: termite.y
           });
         }
+      }
 
-        // 💥 Check if termite reached wall after moving
-        if (termite.x === closestWall.x && termite.y === closestWall.y) {
-          await damageStructure(termite.x, termite.y, 40);
-          console.log("💥 Termite hit wall and died");
+      // 💥 If on wall, damage it and self-destruct
+      if (termite.x === closestWall.x && termite.y === closestWall.y) {
+        await damageStructure(termite.x, termite.y, 40); // 🛠 40 damage to wall
+        console.log("💥 Termite hit wall and died");
 
-          if (termite.id) {
-            await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
-          }
-
-          termites.splice(i, 1); // remove from array
+        if (termite.id) {
+          await deleteDoc(doc(db, `games/${gameId}/termites/${termite.id}`));
         }
+
+        termites.splice(i, 1); // remove locally
       }
     }
   }
 
   renderGrid();
 }, 400);
-
 
 
  setInterval(async () => {
@@ -3181,8 +2844,6 @@ setInterval(async () => {
 
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
-      // ❄️ Skip if frozen
-  if (ox.frozenUntil && Date.now() < ox.frozenUntil) continue;
     const isRaging = ox.rageUntil && Date.now() < ox.rageUntil;
 
     let target = null;
@@ -3268,88 +2929,58 @@ if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
       }
     }
 
-        // ☠️ Death cleanup
+    // ☠️ Death cleanup
     if (ox.health <= 0) {
       if (ox.id) {
         await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
       }
       oxen.splice(i, 1);
-    } // ✅ properly closes the `if` block here
-  } // ✅ this closes the `for` loop
-}, 500); // ✅ closes the setInterval
+    }
+  }
 
-
-
- setInterval(async () => {
+  renderGrid();
+}, 800);
+setInterval(async () => {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "⚙️") {
-        const hasBot = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
-        if (hasBot) continue;
+        const homeKey = `${x}_${y}`;
 
-        const rat = findNearestRat(x, y);
-
-        const newBot = {
-          x,
-          y,
-          homeX: x,
-          homeY: y,
-          phase: rat ? "toRat" : "patrol",
-          targetX: rat ? rat.x : x + 1,
-          targetY: rat ? rat.y : y,
-          patrolIndex: 0
-        };
-
-        const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
-        await setDoc(botRef, newBot);
+        // Check if bot already exists for this catcher
+        const botExists = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
+        if (!botExists) {
+          const rat = findNearestRat(x, y);
+          if (rat) {
+            const newBot = {
+              x,
+              y,
+              homeX: x,
+              homeY: y,
+              targetX: rat.x,
+              targetY: rat.y,
+              phase: "toRat"
+            };
+            const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
+            await setDoc(botRef, newBot);
+          }
+        }
       }
     }
   }
 }, 20000);
 
-
-
-
 setInterval(async () => {
   for (const bot of [...catcherBots]) {
     const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
-    let { x, y, targetX, targetY, homeX, homeY, phase, patrolIndex = 0 } = bot;
+    let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
 
-    // 🎯 Handle missing rat if in 'toRat' mode
-    if (phase === "toRat") {
-      const ratStillExists = rats.some(r => r.x === targetX && r.y === targetY);
-      if (!ratStillExists) {
-        const newRat = findNearestRat(x, y);
-        if (newRat) {
-          targetX = newRat.x;
-          targetY = newRat.y;
-        } else {
-          // No rats left — switch to patrol
-          phase = "patrol";
-          targetX = homeX + 1;
-          targetY = homeY;
-          patrolIndex = 0;
-        }
-      }
-    }
-
-    // 🔁 Only patrol bots can retarget if a rat appears
-    if (phase === "patrol") {
-      const newRat = findNearestRat(x, y);
-      if (newRat) {
-        targetX = newRat.x;
-        targetY = newRat.y;
-        phase = "toRat";
-      }
-    }
-
-    // 🧭 Move 1 step toward target
     const dx = Math.sign(targetX - x);
     const dy = Math.sign(targetY - y);
+
     if (dx !== 0) x += dx;
     else if (dy !== 0) y += dy;
 
-    // 🐀 Arrived at rat
+    // 🐀 Arrived at Rat
     if (phase === "toRat" && x === targetX && y === targetY) {
       const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
       if (ratIndex !== -1) {
@@ -3358,32 +2989,25 @@ setInterval(async () => {
         await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
       }
 
-      // 🍽 Deliver cheese — go straight home, no distractions
-      targetX = homeX;
-      targetY = homeY;
-      phase = "returning";
+      await updateDoc(botRef, {
+        x, y,
+        targetX: homeX,
+        targetY: homeY,
+        phase: "returning"
+      });
     }
 
-    // 🏠 Arrived home after delivery — self destruct
+    // 🏠 Arrived home
     else if (phase === "returning" && x === homeX && y === homeY) {
-      await deleteDoc(botRef); // ✅ Bot is done
-      continue;
+      await deleteDoc(botRef); // Clients will handle cheese block spawn
     }
 
-    // 🔁 Patrol movement (square around base)
-    else if (phase === "patrol" && x === targetX && y === targetY) {
-      patrolIndex = (patrolIndex + 1) % 4;
-      if (patrolIndex === 0) { targetX = homeX + 1; targetY = homeY; }
-      if (patrolIndex === 1) { targetX = homeX; targetY = homeY + 1; }
-      if (patrolIndex === 2) { targetX = homeX - 1; targetY = homeY; }
-      if (patrolIndex === 3) { targetX = homeX; targetY = homeY - 1; }
+    // 🚶‍♂️ Still moving
+    else {
+      await updateDoc(botRef, { x, y });
     }
-
-    await updateDoc(botRef, { x, y, targetX, targetY, phase, patrolIndex });
   }
 }, 300);
-
-
 
 
 
@@ -3499,7 +3123,7 @@ setInterval(async () => {
   if (grid[y][x] === "") {
     grid[y][x] = "🌿";
 
-    const health = structureInfo["🌿"]?.health || 4; // fallback if not defined
+    const health = structureInfo["🌿"]?.health || 3; // fallback if not defined
 
     structureHealth[key] = health; // Update local tracking
     await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
@@ -3519,7 +3143,7 @@ setInterval(async () => {
 setInterval(async () => {
   for (let rat of rats) {
     if (rat.health <= 0) continue;
-  if (rat.frozenUntil && Date.now() < rat.frozenUntil) continue;
+
     // ⏱ Skip if currently trapped
     if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
 
@@ -3649,3 +3273,4 @@ setInterval(async () => {
 </script>
 </body>
 </html>
+
