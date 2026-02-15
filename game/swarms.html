@@ -108,6 +108,11 @@
     white-space:nowrap;
   }
 
+  #sessionControls button.primary{
+    border-color:rgba(56,189,248,.55);
+    box-shadow:0 0 0 1px rgba(56,189,248,.2),0 6px 16px rgba(15,23,42,.85);
+  }
+
   /* Zoom controls */
   #zoomControls{
     margin-top:6px;
@@ -231,6 +236,57 @@
     margin-top:4px;
     text-align:center;
   }
+
+  #modePicker{
+    position:absolute;
+    width:0;
+    height:0;
+    pointer-events:none;
+    z-index:4;
+    opacity:0;
+    transform:scale(.9);
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  #modePicker.open{
+    opacity:1;
+    transform:scale(1);
+  }
+  .modeOption{
+    --x:0px;
+    --y:0px;
+    position:absolute;
+    left:var(--x);
+    top:var(--y);
+    transform:translate(-50%,-50%);
+    pointer-events:auto;
+    min-width:78px;
+    border:1px solid rgba(148,163,184,.35);
+    border-radius:12px;
+    padding:7px 10px;
+    background:linear-gradient(180deg,rgba(30,41,59,.95),rgba(15,23,42,.95));
+    color:#e2e8f0;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    box-shadow:0 12px 26px rgba(2,6,23,.7);
+    cursor:pointer;
+  }
+  .modeOption.active{
+    border-color:rgba(56,189,248,.75);
+    box-shadow:0 0 0 1px rgba(56,189,248,.35),0 12px 26px rgba(2,6,23,.82);
+    color:#7dd3fc;
+  }
+
+  @media (max-width: 760px){
+    body{ padding:8px; gap:8px; }
+    h1{ font-size:16px; }
+    #hud{ gap:6px 10px; padding:8px; }
+    #upgrades button, #workerPanel button, #sessionControls button{ padding:7px 11px; font-size:12px; }
+    #zoomControls button{ padding:6px 12px; font-size:14px; }
+    #zoomControls{ width:100%; max-width:960px; justify-content:space-between; border-radius:14px; }
+    canvas{ border-radius:12px; }
+    .modeOption{ min-width:86px; padding:9px 10px; font-size:12px; }
+  }
 </style>
 </head>
 <body>
@@ -281,7 +337,8 @@
     <button id="btnCarry"><strong>Worker Carry</strong> <span class="cost" id="costCarry"></span></button>
   </div>
   <div id="sessionControls">
-    <button id="btnLoadRun">Open Save</button>
+    <button id="btnSaveRun" class="primary">Save Local</button>
+    <button id="btnLoadRun" class="primary">Load Local</button>
     <button id="btnRestartRun">Restart</button>
   </div>
 </div>
@@ -290,10 +347,18 @@
   <button id="zoomOut">−</button>
   <span id="zoomLabel">100%</span>
   <button id="zoomIn">+</button>
+  <button id="btnCenterCam">Center</button>
+  <button id="btnFullscreen">Fullscreen</button>
 </div>
 
 <div id="gameWrapper">
   <canvas id="game" width="960" height="540"></canvas>
+  <div id="modePicker">
+    <button class="modeOption" data-mode="spawn" style="--x:0px;--y:-78px;">Spawn</button>
+    <button class="modeOption" data-mode="turret" style="--x:78px;--y:0px;">Turret</button>
+    <button class="modeOption" data-mode="reaper" style="--x:0px;--y:78px;">Reaper</button>
+    <button class="modeOption" data-mode="worker" style="--x:-78px;--y:0px;">Worker</button>
+  </div>
   <div id="messageBanner"></div>
 </div>
 
@@ -345,7 +410,13 @@
   const costCarryEl = document.getElementById('costCarry');
 
   const btnLoadRun = document.getElementById('btnLoadRun');
+  const btnSaveRun = document.getElementById('btnSaveRun');
   const btnRestartRun = document.getElementById('btnRestartRun');
+  const btnCenterCam = document.getElementById('btnCenterCam');
+  const btnFullscreen = document.getElementById('btnFullscreen');
+
+  const modePickerEl = document.getElementById('modePicker');
+  const modeOptionEls = Array.from(document.querySelectorAll('.modeOption'));
 
   const zoomOutBtn = document.getElementById('zoomOut');
   const zoomInBtn = document.getElementById('zoomIn');
@@ -371,6 +442,9 @@
   let lastTouchClientX = 0;
   let lastTouchClientY = 0;
   let touchMoved = false;
+  let pointerDownClientX = 0;
+  let pointerDownClientY = 0;
+  let pointerMoved = false;
 
   // game state
   let troops = [];       // soldiers, reapers, workers, god
@@ -478,6 +552,8 @@
   let pendingSpellIndex = null;
   let pendingSpellType = null;
 
+  let selectedOutpost = null;
+
   // outcome
   let pendingOutcome = null; // 'win' | 'lose'
 
@@ -504,6 +580,45 @@
     return dx*dx+dy*dy;
   }
   function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+
+  function centerCamera(){
+    cam.x = WORLD_W/2 - VIEW_W/(2*zoom);
+    cam.y = WORLD_H/2 - VIEW_H/(2*zoom);
+    clampCam();
+  }
+
+  function closeModePicker(){
+    selectedOutpost = null;
+    if(modePickerEl) modePickerEl.classList.remove('open');
+  }
+
+  function positionModePickerFor(outpost){
+    if(!outpost || !modePickerEl) return;
+    const sx = (outpost.x + outpost.w/2 - cam.x) * zoom;
+    const sy = (outpost.y + outpost.h/2 - cam.y) * zoom;
+    modePickerEl.style.left = `${sx}px`;
+    modePickerEl.style.top = `${sy}px`;
+    for(const el of modeOptionEls){
+      el.classList.toggle('active', el.dataset.mode === outpost.mode);
+    }
+    modePickerEl.classList.add('open');
+  }
+
+  function openModePicker(outpost){
+    selectedOutpost = outpost;
+    positionModePickerFor(outpost);
+  }
+
+  function outpostAt(wx,wy){
+    for(const s of structures){
+      if(s.type!=='outpost') continue;
+      if(s.owner!=='player') continue;
+      if(wx>=s.x && wx<=s.x+s.w && wy>=s.y && wy<=s.y+s.h){
+        return s;
+      }
+    }
+    return null;
+  }
 
   // camera clamping and zoom
   function clampCam(){
@@ -534,6 +649,9 @@
 
     if(zoomLabelEl){
       zoomLabelEl.textContent = Math.round(zoom * 100) + '%';
+    }
+    if(selectedOutpost){
+      positionModePickerFor(selectedOutpost);
     }
   }
 
@@ -1662,6 +1780,9 @@
     drawTroops();
     ctx.restore();
     drawScreenOverlay();
+    if(selectedOutpost){
+      positionModePickerFor(selectedOutpost);
+    }
   }
 
   // ---------- UI / Upgrades ----------
@@ -1774,6 +1895,25 @@
   // zoom button events
   zoomInBtn.onclick = () => setZoom(zoom + ZOOM_STEP);
   zoomOutBtn.onclick = () => setZoom(zoom - ZOOM_STEP);
+  btnCenterCam.onclick = () => {
+    centerCamera();
+    showMessage('Camera centered.');
+  };
+  btnFullscreen.onclick = async () => {
+    if(!document.fullscreenElement){
+      try{
+        await document.documentElement.requestFullscreen();
+      }catch(e){
+        showMessage('Fullscreen unavailable on this device.');
+      }
+    }else{
+      try{ await document.exitFullscreen(); }catch(e){}
+    }
+  };
+
+  document.addEventListener('fullscreenchange', () => {
+    btnFullscreen.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  });
 
   // ---------- Save / Load ----------
   function loadBestLevel(){
@@ -1965,6 +2105,10 @@
       showMessage('No saved run found.');
     }
   };
+  btnSaveRun.onclick = () => {
+    saveGame();
+    showMessage('Run saved locally on this device.');
+  };
 
   // ---------- Canvas interaction ----------
   function worldFromEvent(ev){
@@ -1978,6 +2122,7 @@
 
   function handleCanvasAction(wx,wy){
     if(pendingSpellType!=null && pendingSpellIndex!=null){
+      closeModePicker();
       castSpellAt(pendingSpellType,wx,wy);
       availableSpells.splice(pendingSpellIndex,1);
       pendingSpellIndex=null;
@@ -1989,28 +2134,32 @@
       return;
     }
 
-    let clicked=null;
-    for(const s of structures){
-      if(s.type!=='outpost') continue;
-      if(s.owner!=='player') continue;
-      if(wx>=s.x && wx<=s.x+s.w && wy>=s.y && wy<=s.y+s.h){
-        clicked=s;
-        break;
-      }
-    }
+    const clicked = outpostAt(wx,wy);
     if(clicked){
-      if(!clicked.mode) clicked.mode='spawn';
-      if(clicked.mode==='spawn') clicked.mode='turret';
-      else if(clicked.mode==='turret') clicked.mode='reaper';
-      else if(clicked.mode==='reaper') clicked.mode='worker';
-      else clicked.mode='spawn';
-      showMessage(`Outpost mode: ${clicked.mode.toUpperCase()}`);
-      saveGame();
+      if(selectedOutpost===clicked){
+        closeModePicker();
+      }else{
+        openModePicker(clicked);
+      }
+    }else{
+      closeModePicker();
+    }
+  }
+
+  function pointerDown(clientX,clientY){
+    pointerDownClientX = clientX;
+    pointerDownClientY = clientY;
+    pointerMoved = false;
+  }
+  function pointerMove(clientX,clientY){
+    if(Math.abs(clientX-pointerDownClientX)>6 || Math.abs(clientY-pointerDownClientY)>6){
+      pointerMoved = true;
     }
   }
 
   // mouse dragging
   canvas.addEventListener('mousedown',(ev)=>{
+    pointerDown(ev.clientX, ev.clientY);
     dragging=true;
     canvas.classList.add('dragging');
     const rect=canvas.getBoundingClientRect();
@@ -2021,6 +2170,7 @@
   });
   window.addEventListener('mousemove',(ev)=>{
     if(!dragging) return;
+    pointerMove(ev.clientX, ev.clientY);
     const rect=canvas.getBoundingClientRect();
     const mx=ev.clientX-rect.left;
     const my=ev.clientY-rect.top;
@@ -2045,10 +2195,8 @@
     }
   });
 
-  // mouse click for desktop
-  canvas.addEventListener('click',(ev)=>{
-    // On touch devices we handle via touchend (preventDefault on touch),
-    // so this is mainly for mouse / desktop.
+  canvas.addEventListener('mouseup',(ev)=>{
+    if(pointerMoved) return;
     const {wx,wy}=worldFromEvent(ev);
     handleCanvasAction(wx,wy);
   });
@@ -2060,6 +2208,7 @@
     const t = ev.touches[0];
     const rect=canvas.getBoundingClientRect();
     dragging=true;
+    pointerDown(t.clientX, t.clientY);
     canvas.classList.add('dragging');
     dragStartX=t.clientX-rect.left;
     dragStartY=t.clientY-rect.top;
@@ -2082,6 +2231,7 @@
     if(Math.abs(dx)>6 || Math.abs(dy)>6){
       touchMoved=true;
     }
+    pointerMove(t.clientX, t.clientY);
     cam.x = dragStartCamX - dx/zoom;
     cam.y = dragStartCamY - dy/zoom;
     clampCam();
@@ -2093,7 +2243,7 @@
     ev.preventDefault();
     dragging=false;
     canvas.classList.remove('dragging');
-    if(!touchMoved){
+    if(!touchMoved && !pointerMoved){
       // treat as tap
       const fakeEv = {clientX:lastTouchClientX, clientY:lastTouchClientY};
       const {wx,wy}=worldFromEvent(fakeEv);
@@ -2115,6 +2265,39 @@
   canvas.addEventListener('touchmove', onTouchMove, {passive:false});
   canvas.addEventListener('touchend', onTouchEnd, {passive:false});
   canvas.addEventListener('touchcancel', onTouchCancel, {passive:false});
+
+  for(const optionEl of modeOptionEls){
+    optionEl.addEventListener('click',(ev)=>{
+      ev.stopPropagation();
+      if(!selectedOutpost) return;
+      const nextMode = optionEl.dataset.mode;
+      if(!nextMode) return;
+      selectedOutpost.mode = nextMode;
+      showMessage(`Outpost mode: ${nextMode.toUpperCase()}`);
+      saveGame();
+      closeModePicker();
+    });
+  }
+
+  document.addEventListener('mousedown',(ev)=>{
+    if(!selectedOutpost) return;
+    if(modePickerEl && modePickerEl.contains(ev.target)) return;
+    if(ev.target===canvas) return;
+    closeModePicker();
+  });
+
+  document.addEventListener('touchstart',(ev)=>{
+    if(!selectedOutpost) return;
+    if(modePickerEl && modePickerEl.contains(ev.target)) return;
+    if(ev.target===canvas) return;
+    closeModePicker();
+  }, {passive:true});
+
+  window.addEventListener('resize', () => {
+    if(selectedOutpost){
+      positionModePickerFor(selectedOutpost);
+    }
+  });
 
   // ---------- Outcome ----------
   function handlePendingOutcome(){
