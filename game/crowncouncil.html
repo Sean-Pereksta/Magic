@@ -267,6 +267,26 @@
   .p{ position:absolute; width:6px; height:6px; border-radius:50%; background:#ef4444; opacity:.95; animation:pfade .7s ease-out forwards; box-shadow:0 0 10px rgba(248,113,113,.7);}
   .p.purple{ background:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.9);}
   @keyframes pfade{ to{ opacity:0; transform:translateY(-8px) scale(.7) } }
+  .impact{
+    position:absolute; width:16px; height:16px; border-radius:50%;
+    border:2px solid rgba(248,113,113,.92);
+    box-shadow:0 0 14px rgba(248,113,113,.9);
+    animation:impact .32s ease-out forwards;
+  }
+  @keyframes impact{
+    from{ opacity:.95; transform:translate(-50%,-50%) scale(.5); }
+    to{ opacity:0; transform:translate(-50%,-50%) scale(1.7); }
+  }
+  .statusPop{
+    position:absolute;
+    font-size:14px;
+    text-shadow:0 1px 2px rgba(0,0,0,.9);
+    animation:statusFloat .6s ease-out forwards;
+  }
+  @keyframes statusFloat{
+    from{ opacity:.95; transform:translate(-50%,-50%); }
+    to{ opacity:0; transform:translate(-50%,-130%); }
+  }
 
   .endSummary{
     position:fixed;
@@ -538,6 +558,17 @@ const TROOPS = {
     auraReduce:1,
     auraRange:2
   },
+  marksman:{ faction:"Vanir", name:"Marksman", emoji:"🎯", role:"back",
+    base:{ hp:8, dmg:5, range:6, cd:1450, spd:1 },
+    antiSupport:true,
+    supportBonus:4,
+    executePct:0.35
+  },
+  emp:{ faction:"Vanir", name:"EMP Grenadier", emoji:"🧲", role:"back",
+    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1 },
+    empShock:true,
+    shockDur:1500
+  },
 
   /* Aesir */
   phaser:   { faction:"Aesir", name:"Phasers",   emoji:"✨", role:"back",  base:Object.assign({},R(6,3,4,800),{blink50:true}), spawn:2 },
@@ -555,6 +586,15 @@ const TROOPS = {
     wardDmg:2,
     wardRange:3,
     wardCdShoot:1400
+  },
+  golem:{ faction:"Aesir", name:"Sentinel Golem", emoji:"🗿", role:"front",
+    base:{ hp:34, dmg:5, range:1, cd:1050, spd:1 }, size:2,
+    rangedReduce:2
+  },
+  runebinder:{ faction:"Aesir", name:"Rune Binder", emoji:"🪄", role:"back",
+    base:{ hp:8, dmg:2, range:4, cd:1250, spd:1 },
+    bind:true,
+    bindDur:1200
   },
 
   /* Helions */
@@ -576,12 +616,23 @@ const TROOPS = {
     viperLeap:true,
     leapDist:2, spawn:2
   },
-  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(9,4,5,1200),{acid:true,acidDur:3500}) }
+  spitter:  { faction:"Helions", name:"Spitter Brood", emoji:"🟣", role:"back", base:Object.assign({},R(9,4,5,1200),{acid:true,acidDur:3500}) },
+  carrion:{ faction:"Helions", name:"Carrion Priest", emoji:"🩸", role:"back",
+    base:{ hp:9, dmg:3, range:4, cd:1200, spd:1 },
+    wound:true,
+    woundDur:2600
+  },
+  burrower:{ faction:"Helions", name:"Burrower", emoji:"🪱", role:"front",
+    base:{ hp:7, dmg:7, range:1, cd:1200, spd:2 },
+    burrow:true,
+    burrowDist:2,
+    burrowCd:2200
+  }
 };
 const FACTIONS = {
-  Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap"],
-  Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect"],
-  Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper"]
+  Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap","marksman","emp"],
+  Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect","golem","runebinder"],
+  Helions:["hellspawn","roach","defiler","blood","spitter","matron","viper","carrion","burrower"]
 };
 const ALL_FACTIONS = ["Helions","Aesir","Vanir"];
 
@@ -689,6 +740,17 @@ function placeUnit(state,p,key,lvl){
       ward:!!b.ward, wardCd:b.wardCd||0, wardDur:b.wardDur||0, wardHp:b.wardHp||1,
       acid:!!b.acid, acidDur:b.acidDur||0,
       toxicSplash:!!b.toxicSplash,
+      brood:!!t.brood, broodType:t.broodType||null, broodCd:t.broodCd||0,
+      viperLeap:!!t.viperLeap, leapDist:t.leapDist||0,
+      suppress:!!t.suppress, suppressDur:t.suppressDur||0, slowFactor:t.slowFactor||2,
+      auraReduce:t.auraReduce||0, auraRange:t.auraRange||0,
+      wardShooter:!!t.wardShooter, wardDmg:t.wardDmg||0, wardRange:t.wardRange||0, wardCdShoot:t.wardCdShoot||0,
+      wardHealAmt:t.wardHealAmt||0, wardHealRange:t.wardHealRange||0, wardHealCd:t.wardHealCd||0,
+      antiSupport:!!t.antiSupport, supportBonus:t.supportBonus||0, executePct:t.executePct||0,
+      empShock:!!t.empShock, shockDur:t.shockDur||0,
+      rangedReduce:t.rangedReduce||0, bind:!!t.bind, bindDur:t.bindDur||0,
+      wound:!!t.wound, woundDur:t.woundDur||0,
+      burrow:!!t.burrow, burrowDist:t.burrowDist||0, burrowCd:t.burrowCd||0, nextBurrow:0,
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
@@ -803,6 +865,8 @@ function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1:x
 function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
 function fxBurst(cx,cy){     return { id:crypto.randomUUID(), type:"burst", cx:cx,cy:cy, at:Date.now(), ttl:700 }; }
 function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:450 }; }
+function fxImpact(x,y){ return { id:crypto.randomUUID(), type:"impact", x:x, y:y, at:Date.now(), ttl:320 }; }
+function fxStatus(x,y,emoji){ return { id:crypto.randomUUID(), type:"status", x:x, y:y, emoji:emoji, at:Date.now(), ttl:620 }; }
 
 function centerPx(x,y){
   const left = x*(CELL+GAP) + CELL/2;
@@ -843,6 +907,27 @@ function renderBurst(ev){
     setTimeout(()=>dot.remove(), ev.ttl);
   }
 }
+
+function renderImpact(ev){
+  const a=centerPx(ev.x, ev.y);
+  const el=document.createElement("div");
+  el.className="impact";
+  el.style.left = a.left + "px";
+  el.style.top = a.top + "px";
+  partsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl||320);
+}
+function renderStatusPop(ev){
+  const a=centerPx(ev.x, ev.y);
+  const el=document.createElement("div");
+  el.className="statusPop";
+  el.textContent = ev.emoji || "⚡";
+  el.style.left = a.left + "px";
+  el.style.top = a.top + "px";
+  partsEl.appendChild(el);
+  setTimeout(()=>el.remove(), ev.ttl||620);
+}
+
 function groundTickParticles(x,y, purple){
   const a=centerPx(x,y);
   for(let i=0;i<4;i++){
@@ -906,6 +991,17 @@ function spawnAdjacentUnit(st, parent, typeKey){
         kamikaze:!!b.kamikaze, paints:!!b.paints, size:size,
         heal:!!b.heal, healAmt:b.healAmt||0, healRange:b.healRange||0, healCd:b.healCd||0,
         ward:false, acid:!!b.acid, acidDur:b.acidDur||0, toxicSplash:!!b.toxicSplash,
+        brood:!!t.brood, broodType:t.broodType||null, broodCd:t.broodCd||0,
+        viperLeap:!!t.viperLeap, leapDist:t.leapDist||0,
+        suppress:!!t.suppress, suppressDur:t.suppressDur||0, slowFactor:t.slowFactor||2,
+        auraReduce:t.auraReduce||0, auraRange:t.auraRange||0,
+        wardShooter:!!t.wardShooter, wardDmg:t.wardDmg||0, wardRange:t.wardRange||0, wardCdShoot:t.wardCdShoot||0,
+        wardHealAmt:t.wardHealAmt||0, wardHealRange:t.wardHealRange||0, wardHealCd:t.wardHealCd||0,
+        antiSupport:!!t.antiSupport, supportBonus:t.supportBonus||0, executePct:t.executePct||0,
+        empShock:!!t.empShock, shockDur:t.shockDur||0,
+        rangedReduce:t.rangedReduce||0, bind:!!t.bind, bindDur:t.bindDur||0,
+        wound:!!t.wound, woundDur:t.woundDur||0,
+        burrow:!!t.burrow, burrowDist:t.burrowDist||0, burrowCd:t.burrowCd||0, nextBurrow:0,
         nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
       };
       st.field.units.push(u);
@@ -953,6 +1049,27 @@ function attemptViperLeap(u, units, st){
   return false;
 }
 
+function attemptBurrow(u, units, st, now){
+  if (!u.burrow || u.hp<=0) return false;
+  if (!u.nextBurrow) u.nextBurrow = 0;
+  if (now < u.nextBurrow) return false;
+  const dir = (u.p===0? -1 : +1);
+  const dist = Math.max(1, u.burrowDist || 2);
+  const fromX=u.x, fromY=u.y;
+  for (let d=dist; d>=1; d--){
+    const nx=u.x, ny=u.y + dir*d;
+    if (!inside(nx,ny)) continue;
+    if (canMoveTo(u, units, nx, ny)){
+      u.x=nx; u.y=ny;
+      u.nextBurrow = now + (u.burrowCd || 2200);
+      if (st && st.field && st.field.fx) st.field.fx.push(fxTransport(fromX, fromY, nx, ny));
+      return true;
+    }
+  }
+  u.nextBurrow = now + 500;
+  return false;
+}
+
 function broodTick(st, now){
   const units = st.field.units || [];
   for (let i=0;i<units.length;i++){
@@ -974,6 +1091,25 @@ function reduceDamageForTarget(baseDmg, target, field){
   const reduce = auraDamageReduceFor(target, field);
   if (reduce > 0) dmg = Math.max(1, dmg - reduce);
   return dmg;
+}
+function healScale(v, now){
+  return (v.woundUntil && v.woundUntil > now) ? 0.5 : 1;
+}
+function isSupportUnit(v){
+  return !!(v.heal || v.ward || v.wardShooter);
+}
+function applyShockDebuff(st, target, now, dur){
+  const d = dur || 1500;
+  target.statusShockUntil = Math.max(target.statusShockUntil||0, now + d);
+  target.slowUntil = Math.max(target.slowUntil||0, now + d);
+  if (st && st.field && st.field.fx) st.field.fx.push(fxStatus(target.x, target.y, "⚡"));
+  const wards = (st && st.field && st.field.wards) ? st.field.wards : [];
+  for (let i=0;i<wards.length;i++){
+    const w=wards[i];
+    if (w.p===target.p && (w.shoot || w.heal)){
+      w.disabledUntil = Math.max(w.disabledUntil||0, now + d);
+    }
+  }
 }
 
 /* ward shields vs ranged */
@@ -1113,6 +1249,8 @@ function paint(units, field){
       if (u.statusPoisonUntil && u.statusPoisonUntil > now) icons.push("☠");
       if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
       if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
+      if (u.woundUntil && u.woundUntil > now) icons.push("🩸");
+      if (u.bindUntil && u.bindUntil > now) icons.push("⚡");
       if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
       statusEl.innerHTML = icons.map(i=>"<span>"+i+"</span>").join("");
     }
@@ -1319,6 +1457,7 @@ function wardsHeal(st, now){
   for (let i=0;i<wards.length;i++){
     const w = wards[i];
     if (!w.heal || w.hp<=0 || w.until<=now) continue;
+    if (w.disabledUntil && w.disabledUntil > now) continue;
     if (now < (w.nextHeal||0)) continue;
 
     let tgt = null, minRatio = 1.01;
@@ -1334,7 +1473,8 @@ function wardsHeal(st, now){
     }
     if (!tgt) continue;
 
-    const amt = Math.max(1, w.hAmt|0);
+    const raw = Math.max(1, w.hAmt|0);
+    const amt = Math.max(1, Math.round(raw * healScale(tgt, now)));
     tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
     st.field.fx.push(fxHeal(w.x, w.y, tgt.x, tgt.y));
     w.nextHeal = now + (w.hCd || 1500);
@@ -1346,6 +1486,7 @@ function wardsShoot(st, now){
   for (let i=0;i<wards.length;i++){
     const w = wards[i];
     if (!w.shoot || w.hp<=0 || w.until<=now) continue;
+    if (w.disabledUntil && w.disabledUntil > now) continue;
     if (now < (w.next||0)) continue;
 
     const maxT = w.maxTargets || 1;
@@ -1366,7 +1507,7 @@ function wardsShoot(st, now){
       st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
       const raw = w.wDmg || 1;
       const dmg = reduceDamageForTarget(raw, tgt, st.field);
-      applyDamage(tgt, dmg);
+      applyDamage(tgt, dmg, st);
     }
     w.next = now + (w.wCd || 1400);
   }
@@ -1388,7 +1529,8 @@ function healAction(u, st, now){
     }
   }
   if (!target) return false;
-  const amt = Math.max(1, u.healAmt|0);
+  const raw = Math.max(1, u.healAmt|0);
+  const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
   st.field.fx.push(fxHeal(u.x,u.y,target.x,target.y));
   u.nextHeal = now + (u.healCd||1200);
@@ -1429,9 +1571,10 @@ function wardAction(u, st, now){
   return false;
 }
 
-function applyDamage(victim, dmg){
+function applyDamage(victim, dmg, st){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
+  if (st && st.field && st.field.fx) st.field.fx.push(fxImpact(victim.x, victim.y));
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong){
   for(let dy=-1;dy<=1;dy++){
@@ -1440,7 +1583,7 @@ function splash(units, field, x,y,dmg,srcP,kn,strong){
       const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
       if(hit){
         const rd = reduceDamageForTarget(dmg, hit, field);
-        applyDamage(hit, rd);
+        applyDamage(hit, rd, {field:field});
         if(kn) tryKnock(x,y,hit,units,strong);
       }
     }
@@ -1458,7 +1601,7 @@ function tryKnock(cx,cy,t,units,strong){
 function chainLightning(units, field, startTarget, srcP, hops, dmg){
   let cur = startTarget; let left=hops; const hit=new Set();
   while(cur && left>0){
-    applyDamage(cur, reduceDamageForTarget(dmg, cur, field));
+    applyDamage(cur, reduceDamageForTarget(dmg, cur, field), {field:field});
     hit.add(cur.id);
     let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
     for(let i=0;i<units.length;i++){
@@ -1481,9 +1624,10 @@ function attack(u, t, now, st){
     let dmg = raw|0;
     if (isRanged){
       dmg = applyWardShields(u, victim, dmg, st.field);
+      if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
     }
     dmg = reduceDamageForTarget(dmg, victim, st.field);
-    applyDamage(victim, dmg);
+    applyDamage(victim, dmg, st);
   }
 
   if (u.kamikaze){
@@ -1537,6 +1681,27 @@ function attack(u, t, now, st){
     }
   }
 
+  if (u.antiSupport && t.hp > 0 && isSupportUnit(t)){
+    const bonus = Math.max(1, u.supportBonus||3);
+    applyDamage(t, bonus, st);
+  }
+  if (u.executePct && t.hp > 0 && t.hp <= Math.floor(t.maxhp * u.executePct)){
+    applyDamage(t, t.hp, st);
+  }
+  if (u.empShock && t.hp > 0){
+    applyShockDebuff(st, t, now, u.shockDur || 1500);
+  }
+  if (u.bind && t.hp > 0){
+    const bd = u.bindDur || 1200;
+    t.bindUntil = Math.max(t.bindUntil||0, now + bd);
+    t.statusShockUntil = Math.max(t.statusShockUntil||0, now + bd);
+    st.field.fx.push(fxStatus(t.x, t.y, "⚡"));
+  }
+  if (u.wound && t.hp > 0){
+    const wd = u.woundDur || 2400;
+    t.woundUntil = Math.max(t.woundUntil||0, now + wd);
+    st.field.fx.push(fxStatus(t.x, t.y, "🩸"));
+  }
   if (u.suppress && t.hp > 0){
     t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
     t.slowFactor = u.slowFactor || 2;
@@ -1552,7 +1717,8 @@ function applyVguardRegen(u, st, now){
     if (!u.regenCd) u.regenCd = 2000;
     if (!u.nextRegen) u.nextRegen = 0;
     if (now >= u.nextRegen){
-      const amt = 2;
+      const raw = 2;
+      const amt = Math.max(1, Math.round(raw * healScale(u, now)));
       const before = u.hp;
       u.hp = Math.min(u.maxhp, u.hp + amt);
       if (u.hp > before){
@@ -1918,12 +2084,15 @@ function runBattle(){
       if (!attacked && doLogic){
         if (canStepNow(u, now)) {
           const slowed = (u.slowUntil && u.slowUntil > now);
-          const steps = slowed ? 1 : PACE.moveSteps;
+          const bound = (u.bindUntil && u.bindUntil > now);
+          const steps = bound ? 0 : (slowed ? 1 : PACE.moveSteps);
 
           for (let s=0; s<steps; s++){
             const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
                                       : nearestEnemy(u,units,st.field);
             if (!t2) break;
+
+            if (u.burrow) attemptBurrow(u, units, st, now);
 
             const targetIsBack = isBacklineUnit(t2);
             if (u.viperLeap && targetIsBack && frontBlocked(u, units)){
@@ -2268,6 +2437,8 @@ onSnapshot(stateRef,(snap)=>{
     if (ev.type==="hbeam") renderBeam(ev,true);
     if (ev.type==="burst") renderBurst(ev);
     if (ev.type==="transport") renderTransport(ev);
+    if (ev.type==="impact") renderImpact(ev);
+    if (ev.type==="status") renderStatusPop(ev);
     setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
   }
 }, (err)=>{
@@ -2294,7 +2465,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
