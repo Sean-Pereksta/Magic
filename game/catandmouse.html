@@ -164,7 +164,7 @@
 
   <div style="text-align:center; margin-bottom:10px;">
     <p style="margin:5px 0; font-size:14px; color:#444;">
-      🎮 Arrow keys to move | A/W/S/D to build | 1–8 to select building | Space = Upgrade Menu
+      🎮 Arrow keys to move | A/W/S/D to build | 1–9 to select building | Space = Upgrade Menu
     </p>
     <p style="margin:10px 0; font-size:13px; font-weight:bold; color:#333;">
       🧱 Wall (1, 🧀1) &nbsp; | &nbsp;
@@ -174,7 +174,8 @@
       💎 Super Wall (5, 🧀6) &nbsp; | &nbsp;
       🗼 Beacon (6, 🧀24) &nbsp; | &nbsp;
       🐦‍🔥 Phoenix Cheese (7, 🧀40) &nbsp; | &nbsp;
-      🚀 Rocket Tower (8, 🧀30)
+      🚀 Rocket Tower (8, 🧀30) &nbsp; | &nbsp;
+      🛠️ Repair Station (9, 🧀12)
     </p>
   </div>
 
@@ -231,6 +232,7 @@
             <option value="6">🗼 Beacon (24)</option>
             <option value="7">🐦‍🔥 Phoenix Cheese (40)</option>
             <option value="8">🚀 Rocket Tower (30)</option>
+            <option value="9">🛠️ Repair Station (12)</option>
           </select>
           <button data-upgrade>🛠️ Upgrades</button>
           <button data-blink>🌀 Blink</button>
@@ -265,6 +267,7 @@
           <button data-struct="6">🗼</button>
           <button data-struct="7">🐦‍🔥</button>
           <button data-struct="8">🚀</button>
+          <button data-struct="9">🛠️</button>
         </div>
 
         <div id="upgradeButtons" style="display:none; margin-bottom:12px;">
@@ -415,7 +418,7 @@
 
   const STRUCTURE_MAX_HP = {
     "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
-    "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20
+    "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24
   };
 
   const localTileSeed = Math.floor(Math.random() * 9973);
@@ -464,7 +467,8 @@
       5: "Super Wall 💎 (Cost: 6)",
       6: "Cheese Beacon 🗼 (Cost: 24)",
       7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
-      8: "Rocket Tower 🚀 (Cost: 30)"
+      8: "Rocket Tower 🚀 (Cost: 30)",
+      9: "Repair Station 🛠️ (Cost: 12)"
     };
     document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
     const mobileBuildSelect = document.getElementById("mobileBuildSelect");
@@ -694,7 +698,7 @@
 
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
-      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥"].includes(symbol)){
+      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️"].includes(symbol)){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
 
@@ -875,6 +879,7 @@
     else if (selectedBuild===6) cost=24;
     else if (selectedBuild===7) cost=40;
     else if (selectedBuild===8) cost=30;
+    else if (selectedBuild===9) cost=12;
 
     if (cheeseCount < cost) return;
 
@@ -898,6 +903,7 @@
     else if (selectedBuild===6){ symbol="🗼"; health=25; }
     else if (selectedBuild===7){ symbol="🐦‍🔥"; health=20; }
     else if (selectedBuild===8){ symbol="🚀"; health=20; }
+    else if (selectedBuild===9){ symbol="🛠️"; health=24; }
 
     const key = `${tx}_${ty}`;
     grid[ty][tx] = symbol;
@@ -1184,7 +1190,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(symbol)) continue;
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(symbol)) continue;
 
         const targetIsWall = (symbol === "🧱" || symbol === "💎");
         const passable = passableFn
@@ -1200,6 +1206,49 @@
     return best;
   }
 
+
+
+  function structureTargetCells(x, y){
+    const cells = [];
+    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx<0 || ny<0 || nx>=gridSize || ny>=gridSize) continue;
+      cells.push({ x:nx, y:ny });
+    }
+    return cells;
+  }
+
+  function getNearestStructureContactTarget(startX, startY, passableFn){
+    let best = null;
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        const symbol = grid[y][x];
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(symbol)) continue;
+
+        for (const cell of structureTargetCells(x,y)){
+          if (grid[cell.y][cell.x] !== "") continue;
+          const path = findPath(startX, startY, cell.x, cell.y, passableFn);
+          if (path && (!best || path.length < best.path.length)){
+            best = { structureX:x, structureY:y, moveX:cell.x, moveY:cell.y, path };
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  function getNearestMouseTarget(startX, startY, passableFn){
+    let best = null;
+    for (const [pu, p] of Object.entries(players)){
+      if ((p.alive ?? true) === false) continue;
+      const pPath = findPath(startX, startY, p.x, p.y, passableFn);
+      if (pPath && (!best || pPath.length < best.path.length)){
+        best = { x:p.x, y:p.y, uid:pu, path:pPath };
+      }
+    }
+    return best;
+  }
   // ============================================================
   // Cat AI
   // ============================================================
@@ -1272,7 +1321,7 @@
       for (let dx=-1; dx<=1 && !attacked; dx++){
         const tx = catPos.x+dx, ty=catPos.y+dy;
         if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
-        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[ty][tx])){
+        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(grid[ty][tx])){
           await damageStructure(tx,ty);
           attacked = true;
         }
@@ -1399,25 +1448,19 @@
       let closestTarget = null;
       let bestPath = null;
 
-      // always prioritize nearest reachable player (no aggro range)
-      for (const [pu, p] of Object.entries(players)){
-        if ((p.alive ?? true) === false) continue;
+      const mouseTarget = getNearestMouseTarget(rat.x, rat.y, (x, y) => {
+        const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+        const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+        return !isBlocked && !ratOccupied;
+      });
 
-        const pPath = findPath(rat.x, rat.y, p.x, p.y, (x, y) => {
-          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-          return !isBlocked && !ratOccupied;
-        });
-
-        if (pPath && (!bestPath || pPath.length < bestPath.length)){
-          bestPath = pPath;
-          closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
-        }
+      if (mouseTarget){
+        closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid:mouseTarget.uid };
+        bestPath = mouseTarget.path;
       }
 
-      // if mouse is unpathable (behind walls/structures), attack nearest reachable structure
       if (!closestTarget){
-        const structureTarget = getNearestReachableStructureTarget(
+        const structureTarget = getNearestStructureContactTarget(
           rat.x,
           rat.y,
           (x, y) => {
@@ -1430,7 +1473,7 @@
 
         if (structureTarget){
           bestPath = structureTarget.path;
-          closestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
+          closestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
         }
       }
 
@@ -1456,15 +1499,14 @@
           }
         }
 
-        if (rat.x===closestTarget.x && rat.y===closestTarget.y){
-          if (closestTarget.type==="structure"){
-            await damageStructure(rat.x, rat.y, ratPower);
-          } else if (closestTarget.type==="mouse"){
-            await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
-            if (closestTarget.uid === uid){
-              isAlive = false;
-              document.getElementById("status").textContent = "💀 You are dead!";
-            }
+        const distance = Math.abs(rat.x-closestTarget.x) + Math.abs(rat.y-closestTarget.y);
+        if (closestTarget.type==="structure" && distance===1){
+          await damageStructure(closestTarget.x, closestTarget.y, ratPower);
+        } else if (closestTarget.type==="mouse" && distance===0){
+          await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
+          if (closestTarget.uid === uid){
+            isAlive = false;
+            document.getElementById("status").textContent = "💀 You are dead!";
           }
         }
       }
@@ -1491,21 +1533,16 @@
       let bestTarget = null;
       let bestPath = null;
 
-      // prioritize nearest reachable mouse first
-      for (const [pu, p] of Object.entries(players)){
-        if ((p.alive ?? true) === false) continue;
-        const pPath = findPath(ox.x, ox.y, p.x, p.y, false);
-        if (pPath && (!bestPath || pPath.length < bestPath.length)){
-          bestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
-          bestPath = pPath;
-        }
+      const mouseTarget = getNearestMouseTarget(ox.x, ox.y, false);
+      if (mouseTarget){
+        bestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid: mouseTarget.uid };
+        bestPath = mouseTarget.path;
       }
 
-      // if no mouse path, attack nearest reachable structure (walls included)
       if (!bestTarget){
-        const structureTarget = getNearestReachableStructureTarget(ox.x, ox.y, false);
+        const structureTarget = getNearestStructureContactTarget(ox.x, ox.y, false);
         if (structureTarget){
-          bestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
+          bestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
           bestPath = structureTarget.path;
         }
       }
@@ -1517,14 +1554,12 @@
           await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y });
         }
 
-        const dx = Math.abs(ox.x - bestTarget.x);
-        const dy = Math.abs(ox.y - bestTarget.y);
-        const touching = (dx + dy <= 1);
-        if (touching && bestTarget.type === "structure"){
+        const distance = Math.abs(ox.x - bestTarget.x) + Math.abs(ox.y - bestTarget.y);
+        if (distance===1 && bestTarget.type === "structure"){
           await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
           ox.health -= 1;
           await updateDoc(ccRef(ID.ox(ox.id)), { health: ox.health });
-        } else if (touching && bestTarget.type === "mouse"){
+        } else if (distance===0 && bestTarget.type === "mouse"){
           await updateDoc(ccRef(ID.player(bestTarget.uid)), { alive:false, updatedAt: Date.now() });
         }
       }
@@ -1541,37 +1576,40 @@
       }
 
       let bestTarget = null;
-      let minDist = Infinity;
+      let bestPath = null;
       for (let y=0; y<gridSize; y++){
         for (let x=0; x<gridSize; x++){
           const symbol = grid[y][x];
           let priority = 99;
           if (symbol === "🏭") priority = 0;
-          else if (["🔫","🪳","🧱","💎","🗼","🚀","🐦‍🔥"].includes(symbol)) priority = 1;
+          else if (["🔫","🪳","🧱","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(symbol)) priority = 1;
           if (priority === 99) continue;
 
-          const dist = Math.abs(x-v.x) + Math.abs(y-v.y);
-          if (priority < (bestTarget?.priority ?? 99) || (priority === (bestTarget?.priority ?? 99) && dist < minDist)){
-            minDist = dist;
-            bestTarget = { x, y, priority };
+          const contactPath = findPath(v.x, v.y, x, y, (nx, ny) => {
+            if (nx===x && ny===y) return false;
+            return !["🧱","🏭","💎","🗼"].includes(grid[ny][nx]);
+          });
+          if (!contactPath || contactPath.length===0) continue;
+
+          const distance = Math.abs(x-v.x) + Math.abs(y-v.y);
+          if (priority < (bestTarget?.priority ?? 99) || (priority === (bestTarget?.priority ?? 99) && distance < (bestTarget?.distance ?? Infinity))){
+            bestTarget = { x, y, priority, distance };
+            bestPath = contactPath;
           }
         }
       }
       if (!bestTarget) continue;
 
-      let nx = v.x;
-      let ny = v.y;
-      if (Math.abs(bestTarget.x - v.x) >= Math.abs(bestTarget.y - v.y)) nx += Math.sign(bestTarget.x - v.x);
-      else ny += Math.sign(bestTarget.y - v.y);
-
-      if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize){
-        v.x = nx;
-        v.y = ny;
+      if (bestPath && bestPath.length>0){
+        const next = bestPath[0];
+        v.x = next.x;
+        v.y = next.y;
         await updateDoc(ccRef(ID.vulture(v.id)), { x: v.x, y: v.y, updatedAt: Date.now() });
       }
 
-      if (v.x===bestTarget.x && v.y===bestTarget.y){
-        await damageStructure(v.x, v.y, ratPower * 4);
+      const distance = Math.abs(v.x-bestTarget.x) + Math.abs(v.y-bestTarget.y);
+      if (distance===1){
+        await damageStructure(bestTarget.x, bestTarget.y, ratPower * 4);
       }
     }
   }
@@ -1595,20 +1633,26 @@
       }
       if (!closestWall) continue;
 
-      const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x,y) => {
-        const isTargetWall = (x===closestWall.x && y===closestWall.y);
-        if (isTargetWall) return true;
-        return !["🧱","🔫","🪳","🏭","💎","🗼","🚀"].includes(grid[y][x]);
-      });
+      let bestPath = null;
+      for (const cell of structureTargetCells(closestWall.x, closestWall.y)){
+        if (grid[cell.y][cell.x] !== "") continue;
+        const path = findPath(termite.x, termite.y, cell.x, cell.y, (x,y) => {
+          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🛠️"].includes(grid[y][x]);
+        });
+        if (path && (!bestPath || path.length < bestPath.length)){
+          bestPath = path;
+        }
+      }
 
-      if (path && path.length>0){
-        const next = path[0];
+      if (bestPath && bestPath.length>0){
+        const next = bestPath[0];
         termite.x = next.x; termite.y = next.y;
         await updateDoc(ccRef(ID.termite(termite.id)), { x: termite.x, y: termite.y });
       }
 
-      if (termite.x===closestWall.x && termite.y===closestWall.y){
-        await damageStructure(termite.x, termite.y, 40);
+      const distance = Math.abs(termite.x-closestWall.x) + Math.abs(termite.y-closestWall.y);
+      if (distance===1){
+        await damageStructure(closestWall.x, closestWall.y, 40);
         await deleteDoc(ccRef(ID.termite(termite.id)));
         termites.splice(i,1);
       }
@@ -1733,6 +1777,58 @@
       }
       renderGrid();
     }
+  }
+
+  async function repairStationTick(){
+    const usedTargets = new Set();
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (grid[y][x] !== "🛠️") continue;
+
+        let target = null;
+        let bestDist = Infinity;
+
+        for (let ty=0; ty<gridSize; ty++){
+          for (let tx=0; tx<gridSize; tx++){
+            const symbol = grid[ty][tx];
+            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(symbol)) continue;
+            if (tx===x && ty===y) continue;
+
+            const key = `${tx}_${ty}`;
+            const maxHp = STRUCTURE_MAX_HP[symbol] ?? 1;
+            const hp = structureHealth[key] ?? maxHp;
+            if (hp >= maxHp) continue;
+            if (usedTargets.has(key)) continue;
+
+            const dist = Math.abs(tx - x) + Math.abs(ty - y);
+            if (dist > 6) continue;
+            if (dist < bestDist){
+              bestDist = dist;
+              target = { tx, ty, key, symbol, hp, maxHp };
+            }
+          }
+        }
+
+        if (!target) continue;
+
+        const healAmount = Math.max(1, Math.ceil(target.maxHp * 0.25));
+        const healedHp = Math.min(target.maxHp, target.hp + healAmount);
+        structureHealth[target.key] = healedHp;
+        usedTargets.add(target.key);
+
+        const fromCell = document.getElementById(`cell-${x}-${y}`);
+        const toCell = document.getElementById(`cell-${target.tx}-${target.ty}`);
+        if (fromCell) fromCell.style.backgroundColor = "#a7f3d0";
+        if (toCell) toCell.style.backgroundColor = "#86efac";
+        setTimeout(() => {
+          if (fromCell) fromCell.style.backgroundColor = "";
+          if (toCell) toCell.style.backgroundColor = "";
+        }, 220);
+
+        await updateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
+      }
+    }
+    renderGrid();
   }
 
   // ============================================================
@@ -1923,7 +2019,7 @@
               const key = `${x}_${y}`;
               structures.delete(key);
               delete structureHealth[key];
-              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🐦‍🔥","🚀"].includes(grid[y][x])){
+              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🐦‍🔥","🚀","🛠️"].includes(grid[y][x])){
                 grid[y][x] = "";
               }
             }
@@ -2145,7 +2241,7 @@
       await placeTrap();
     }
 
-    if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8"].includes(e.key)){
+    if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8","9"].includes(e.key)){
       selectBuild(e.key);
     }
 
@@ -2167,10 +2263,7 @@
       setupMobileControls();
     }
 
-    // initial placements (local only, same as your original)
-    grid[24][15] = "🧱";
-    grid[25][14] = "🧱";
-    grid[25][16] = "🧱";
+    // no pre-placed walls on match start
     renderGrid();
 
     // cheese spawn (local only, same as your original)
@@ -2294,6 +2387,7 @@
     // turret + rocket
     setInterval(() => turretAttack().catch(()=>{}), 1500);
     setInterval(() => rocketTowerAttack().catch(()=>{}), 3500);
+    setInterval(() => repairStationTick().catch(()=>{}), 3000);
 
     // rat power ramp
     setInterval(async () => {
@@ -2460,4 +2554,3 @@
 </script>
 </body>
 </html>
-
