@@ -344,13 +344,6 @@ signInAnonymously(auth).catch((error) => {
   console.error("Anon sign-in failed", error);
 });
 
-// Optional: don’t start listeners until we’re signed in
-onAuthStateChanged(auth, (user) => {
-  if (!user) return;
-  console.log("Signed in as anon uid:", user.uid);
-  // you can start lobby/state listeners here if you want to be strict
-});
-
 
 /* --------- safe deep clone ---------- */
 function deepClone(obj){
@@ -423,21 +416,43 @@ viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
 
 let didEnsure = false;
 let ensureInFlight = false;
+let listenersStarted = false;
+
+async function fetchPlayerMMR(players){
+  const p = Array.isArray(players) ? players.slice(0,2) : [];
+  const out = [1000,1000];
+  for (let i=0;i<2;i++){
+    const name = p[i];
+    if (!name) continue;
+    try{
+      const us = await getDoc(doc(db, "users", name));
+      if (us.exists()){
+        const val = Number(us.data()?.crowncouncilElo);
+        if (Number.isFinite(val) && val > 0) out[i] = Math.round(val);
+      }
+    }catch(e){
+      console.warn("fetchPlayerMMR failed for", name, e);
+    }
+  }
+  return out;
+}
 
 /* -------- transactional state creation (host only) -------- */
 async function ensureStateExists(){
   if (didEnsure || ensureInFlight) return;
   ensureInFlight = true;
   try {
+    const lobSnap = await getDoc(lobbyRef);
+    const lob = lobSnap.exists() ? lobSnap.data() : {};
+    const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
+    const seededMMR = await fetchPlayerMMR(players);
+
     await runTransaction(db, async (tx)=>{
       const stSnap = await tx.get(stateRef);
       if (stSnap.exists()) {
         didEnsure = true;
         return;
       }
-      const lobSnap = await tx.get(lobbyRef);
-      const lob = lobSnap.exists() ? lobSnap.data() : {};
-      const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
       const now = Date.now();
 
       tx.set(stateRef, {
@@ -453,8 +468,9 @@ async function ensureStateExists(){
         bonusFor: null,
         draftIndex: 0,
         winner: null,
-        mmr: [1000, 1000],
-        mmrChange: [0, 0]
+        mmr: seededMMR,
+        mmrChange: [0, 0],
+        eloCommitted: false
       });
       didEnsure = true;
     });
@@ -1589,7 +1605,12 @@ async function syncPlayersIntoStateIfNeeded(){
   const want = lobbyPlayers.slice(0,2);
   const cur = Array.isArray(st.players)? st.players : [];
   if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
-    await updateDoc(stateRef, { players: want });
+    const next = { players: want };
+    if ((st.phase === "waiting" || st.phase === "faction-select") && !st.eloCommitted){
+      next.mmr = await fetchPlayerMMR(want);
+      next.mmrChange = [0,0];
+    }
+    await updateDoc(stateRef, next);
   }
 }
 
@@ -1807,16 +1828,30 @@ function startHostLoops(){
 
     if (d.phase==="battle" && !battleTick) runBattle();
 
-    /* cleanup FX + terrain */
+    /* cleanup FX + terrain (skip during battle; battle loop owns the field) */
+    if (d.phase === "battle") return;
+
     const nf = d.field || fieldEmpty();
     const now2=Date.now();
+    const beforeFx = (nf.fx||[]).length;
+    const beforePoison = (nf.poison||[]).length;
+    const beforeToxic = (nf.toxic||[]).length;
+    const beforeAcid = (nf.acid||[]).length;
+    const beforeWards = (nf.wards||[]).length;
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
     nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
 
-    await updateDoc(stateRef, { field: nf });
+    const changed =
+      beforeFx !== nf.fx.length ||
+      beforePoison !== nf.poison.length ||
+      beforeToxic !== nf.toxic.length ||
+      beforeAcid !== nf.acid.length ||
+      beforeWards !== nf.wards.length;
+
+    if (changed) await updateDoc(stateRef, { field: nf });
   }, 260);
 }
 
@@ -1841,7 +1876,8 @@ function runBattle(){
     const now = Date.now();
 
     const doLogic = (now - lastLogic) >= LOGIC_MS;
-    if (doLogic) lastLogic = now;
+    if (!doLogic) return;
+    lastLogic = now;
 
     if (doLogic) applyTerrain(st.field, units);
     if (doLogic){
@@ -1928,13 +1964,32 @@ function runBattle(){
 
       if (winnerName){
         const mmrInfo = calcMMRChange(st, winnerName);
-        await updateDoc(stateRef, {
-          lives: lives,
-          phase: "game-over",
-          phaseEndsAt: 0,
-          winner: winnerName,
-          mmr: mmrInfo.mmr,
-          mmrChange: mmrInfo.delta
+        await runTransaction(db, async (tx)=>{
+          const latest = await tx.get(stateRef);
+          if (!latest.exists()) return;
+          const live = latest.data();
+          if (live.phase === "game-over" && live.eloCommitted) return;
+
+          const names = Array.isArray(st.players) ? st.players.slice(0,2) : [];
+          for (let i=0;i<2;i++){
+            const nm = names[i];
+            if (!nm) continue;
+            tx.set(doc(db, "users", nm), {
+              crowncouncilElo: mmrInfo.mmr[i],
+              crowncouncilLastDelta: mmrInfo.delta[i],
+              crowncouncilLastMatchAt: Date.now()
+            }, { merge:true });
+          }
+
+          tx.update(stateRef, {
+            lives: lives,
+            phase: "game-over",
+            phaseEndsAt: 0,
+            winner: winnerName,
+            mmr: mmrInfo.mmr,
+            mmrChange: mmrInfo.delta,
+            eloCommitted: true
+          });
         });
       } else {
         const loserKey  = pKey(loser);
@@ -2157,7 +2212,11 @@ async function chooseCard(i){
 }
 
 /* Listeners */
-onSnapshot(lobbyRef, async (snap)=>{
+function startListeners(){
+  if (listenersStarted) return;
+  listenersStarted = true;
+
+  onSnapshot(lobbyRef, async (snap)=>{
   if (!snap.exists()) return;
 
   const lob = snap.data() || {};
@@ -2177,6 +2236,8 @@ onSnapshot(lobbyRef, async (snap)=>{
 
   fitBoard();
   render();
+}, (err)=>{
+  console.error("lobby listener failed", err);
 });
 
 let lastFxSeen=new Set();
@@ -2200,6 +2261,15 @@ onSnapshot(stateRef,(snap)=>{
     if (ev.type==="transport") renderTransport(ev);
     setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
   }
+}, (err)=>{
+  console.error("state listener failed", err);
+});
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) return;
+  console.log("Signed in as anon uid:", user.uid);
+  startListeners();
 });
 
 /* Fullscreen */
