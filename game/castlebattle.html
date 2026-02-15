@@ -74,6 +74,8 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
+const MO_ROOT = ["games_rogueduel", "mountandblade_online"];
+const moDoc = (name, id) => doc(db, ...MO_ROOT, name, id);
 
 /* ---------- Params ---------- */
 const Q = new URLSearchParams(location.search);
@@ -218,7 +220,7 @@ function bannerMods(){ return { melee:1, ranged:1, speed:1, armorMul:1, magic:1,
 /* ---------- Firebase load ---------- */
 async function loadSiege(){
   if(!SIEGE_ID){ alert("Missing siegeId."); history.back(); return null; }
-  const s = await getDoc(doc(db,"mountonline_sieges", SIEGE_ID));
+  const s = await getDoc(moDoc("sieges", SIEGE_ID));
   if(!s.exists()){ alert("Siege not found."); history.back(); return null; }
   return s.data();
 }
@@ -1017,8 +1019,8 @@ async function tryFinalizeSiege(attackerWon){
   if(!SIEGE_ID || !siege) return;
   try{
     await runTransaction(db, async (tx)=>{
-      const sRef = doc(db,"mountonline_sieges", SIEGE_ID);
-      const cRef = doc(db,"mountonline_castles", siege.castleId);
+      const sRef = moDoc("sieges", SIEGE_ID);
+      const cRef = moDoc("castles", siege.castleId);
       const sSnap = await tx.get(sRef);
       if(!sSnap.exists()) return;
       const outcome = { attackerWon, remainingGarrison: Math.max(0, state.units.filter(u=>u.o==="Defenders" && u.tt!=="wall" && u.tt!=="ballista").length) };
@@ -1043,7 +1045,7 @@ async function settleAndExit(attackerWon){
   const lost = stats[myTag]?.lostByType || {};
 
   await runTransaction(db, async (tx)=>{
-    const pref = doc(db,"mountonline", ME);
+    const pref = moDoc("players", ME);
     const snap = await tx.get(pref); if(!snap.exists()) return;
     const me = snap.data();
     const army = {...(me.army||{})};
@@ -1080,12 +1082,12 @@ function loop(){
 /* ---------- Init ---------- */
 (async function init(){
   resizeCanvas();
-  updateDoc(doc(db,"mountonline", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
+  updateDoc(moDoc("players", ME), { active:false, inBattle:true, lastSeen: Date.now() }).catch(()=>{});
   siege = await loadSiege(); if(!siege) return;
 
   ownerMods[ME] = bannerMods();
 
-  const meSnap = await getDoc(doc(db,"mountonline", ME));
+  const meSnap = await getDoc(moDoc("players", ME));
   if(!meSnap.exists()){ alert("Your profile was not found."); return; }
 
   const units=[];
@@ -1117,7 +1119,7 @@ function loop(){
 
 /* ---------- Safety ---------- */
 window.addEventListener("beforeunload", ()=>{
-  updateDoc(doc(db,"mountonline", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
+  updateDoc(moDoc("players", ME), { active:true, inBattle:false, lastSeen: Date.now() }).catch(()=>{});
 });
 </script>
 </body>
