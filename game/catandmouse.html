@@ -37,61 +37,9 @@
       width: 20px;
       height: 20px;
       text-align: center;
+      font-size: 16px;
       position: relative;
       background: #c8f7c5;
-      overflow: hidden;
-    }
-
-    .sprite{
-      position:absolute;
-      inset:2px;
-      border-radius:4px;
-      pointer-events:none;
-      transform-origin:center;
-    }
-    .sprite.entity::after{
-      content:"";
-      position:absolute;
-      width:0;
-      height:0;
-      border-left:4px solid transparent;
-      border-right:4px solid transparent;
-      border-bottom:6px solid rgba(15,23,42,0.65);
-      left:50%;
-      top:-2px;
-      transform:translateX(-50%);
-    }
-    .dir-right::after{ transform:translateX(-50%) rotate(90deg); }
-    .dir-down::after{ transform:translateX(-50%) rotate(180deg); }
-    .dir-left::after{ transform:translateX(-50%) rotate(270deg); }
-
-    .mouse-sprite{ background: radial-gradient(circle at 35% 35%, #f8fafc 20%, #cbd5e1 65%, #64748b 100%); }
-    .rat-sprite{ background: radial-gradient(circle at 30% 35%, #d6b2a0 15%, #8b5e4a 65%, #5b3a2e 100%); }
-    .cat-sprite{ background: radial-gradient(circle at 35% 35%, #fde68a 15%, #f59e0b 65%, #b45309 100%); box-shadow: inset 0 0 0 1px rgba(146,64,14,.6); }
-    .ox-sprite{ background: radial-gradient(circle at 40% 35%, #fde68a 15%, #d97706 70%, #78350f 100%); }
-    .vulture-sprite{ background: radial-gradient(circle at 35% 35%, #d1d5db 15%, #6b7280 70%, #1f2937 100%); }
-    .termite-sprite{ background: radial-gradient(circle at 40% 40%, #fde68a 10%, #a16207 70%, #422006 100%); }
-    .flea-sprite{ background: radial-gradient(circle at 40% 35%, #fde047 10%, #65a30d 70%, #365314 100%); }
-
-    .structure-sprite{ inset:1px; border-radius:2px; }
-    .wall-sprite{ background: repeating-linear-gradient(0deg,#9ca3af 0 4px,#6b7280 4px 8px); }
-    .super-wall-sprite{ background: linear-gradient(135deg,#c4b5fd,#7c3aed,#4c1d95); }
-    .turret-sprite{ background: radial-gradient(circle at 35% 35%, #e2e8f0 10%, #64748b 55%, #0f172a 100%); }
-    .nest-sprite{ background: radial-gradient(circle at 50% 50%, #facc15 8%, #92400e 65%, #451a03 100%); }
-    .generator-sprite{ background: linear-gradient(135deg,#86efac,#16a34a,#14532d); }
-    .beacon-sprite{ background: linear-gradient(180deg,#38bdf8,#0ea5e9,#0369a1); }
-    .rocket-sprite{ background: linear-gradient(180deg,#fca5a5,#ef4444,#7f1d1d); }
-    .phoenix-sprite{ background: linear-gradient(135deg,#fdba74,#f97316,#dc2626); }
-
-    .cheese-sprite{ background: linear-gradient(135deg,#fde047,#facc15,#ca8a04); inset:4px; border-radius:3px; }
-    .trap-sprite{ background: linear-gradient(135deg,#d1d5db,#6b7280); inset:4px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
-    .terrain-accent{
-      position:absolute;
-      width:5px;
-      height:5px;
-      border-radius:50%;
-      opacity:0.35;
-      pointer-events:none;
     }
     .name{
       font-size: 10px;
@@ -414,8 +362,8 @@
 
   let gameStarted = false;
 
-  let playerPos = { x: 1, y: 1, dir: "down" };
-  let catPos    = { x: 15, y: 15, dir: "down" };
+  let playerPos = { x: 1, y: 1 };
+  let catPos    = { x: 15, y: 15 };
 
   let selectedBuild = null;
   let cheeseCount = 0;
@@ -601,57 +549,6 @@
   // ============================================================
   // Rendering
   // ============================================================
-  function getDirectionClass(entity){
-    const dir = entity?.dir || "up";
-    return `dir-${dir}`;
-  }
-
-  function addSprite(cell, classes){
-    const sprite = document.createElement("div");
-    sprite.className = `sprite ${classes}`;
-    cell.appendChild(sprite);
-    return sprite;
-  }
-
-  function applyTerrainTexture(cell, x, y, key, beaconBoosted, generatorTriggers){
-    if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
-    else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
-    else {
-      const tone = Math.abs((x*37)+(y*71)+localTileSeed) % 6;
-      if (tone===0) cell.style.background = "#c8f7c5";
-      else if (tone===1) cell.style.background = "#b5e48c";
-      else if (tone===2) cell.style.background = "#99d98c";
-      else if (tone===3) cell.style.background = "#76c893";
-      else if (tone===4) cell.style.background = "#d9ed92";
-      else cell.style.background = "#b7e4c7";
-
-      if ((x+y+localTileSeed) % 3 === 0){
-        const accent = document.createElement("div");
-        accent.className = "terrain-accent";
-        accent.style.left = `${(Math.abs(x*11+y*7)%12)+2}px`;
-        accent.style.top = `${(Math.abs(x*5+y*13)%12)+2}px`;
-        accent.style.background = ((x*3+y+localTileSeed)%2===0) ? "#3f6212" : "#166534";
-        cell.appendChild(accent);
-      }
-    }
-  }
-
-  function renderStaticSymbol(cell, symbol){
-    const map = {
-      "🧱": "structure-sprite wall-sprite",
-      "💎": "structure-sprite super-wall-sprite",
-      "🔫": "structure-sprite turret-sprite",
-      "🪳": "structure-sprite nest-sprite",
-      "🏭": "structure-sprite generator-sprite",
-      "🗼": "structure-sprite beacon-sprite",
-      "🚀": "structure-sprite rocket-sprite",
-      "🐦‍🔥": "structure-sprite phoenix-sprite",
-      "🧀": "cheese-sprite",
-      "🪤": "trap-sprite"
-    };
-    if (map[symbol]) addSprite(cell, map[symbol]);
-  }
-
   function renderGrid(){
     const viewSize = 20;
     const halfView = Math.floor(viewSize/2);
@@ -668,6 +565,7 @@
     const startX = centerX - halfView;
     const startY = centerY - halfView;
 
+    // generator trigger highlighting
     const generatorTriggers = new Set();
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
@@ -682,6 +580,7 @@
       }
     }
 
+    // beacon boosted tiles
     const beaconBoosted = new Set();
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
@@ -691,7 +590,9 @@
               const tx = x+dx, ty = y+dy;
               if (tx>=0 && tx<gridSize && ty>=0 && ty<gridSize){
                 const tSymbol = grid[ty][tx];
-                if (["🔫","🏭","🪳","🚀"].includes(tSymbol)) beaconBoosted.add(`${tx}_${ty}`);
+                if (["🔫","🏭","🪳","🚀"].includes(tSymbol)){
+                  beaconBoosted.add(`${tx}_${ty}`);
+                }
               }
             }
           }
@@ -699,6 +600,7 @@
       }
     }
 
+    // base tiles
     for (let row=0; row<viewSize; row++){
       for (let col=0; col<viewSize; col++){
         const x = startX + col;
@@ -710,21 +612,33 @@
         if (x>=0 && x<gridSize && y>=0 && y<gridSize){
           const key = `${x}_${y}`;
           const symbol = grid[y][x];
-          applyTerrainTexture(cell, x, y, key, beaconBoosted, generatorTriggers);
-          renderStaticSymbol(cell, symbol);
+
+          if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
+          else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
+          else {
+            const tone = (Math.abs((x * 13) + (y * 17) + localTileSeed) % 4);
+            if (tone === 0) cell.style.background = "#c8f7c5";
+            else if (tone === 1) cell.style.background = "#bfeeb9";
+            else if (tone === 2) cell.style.background = "#d5f9d3";
+            else cell.style.background = "#b7e8b5";
+          }
+
+          cell.textContent = symbol || "";
         } else {
-          cell.style.background = "#6b7280";
+          cell.style.background = "#888";
+          cell.textContent = "";
         }
 
         viewport.appendChild(cell);
       }
     }
 
+    // players
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) === false) continue;
       const cell = document.getElementById(`cell-${p.x}-${p.y}`);
       if (cell){
-        addSprite(cell, `entity mouse-sprite ${getDirectionClass(p)}`);
+        cell.textContent = "🐭";
         const nameTag = document.createElement("div");
         nameTag.className = "name";
         nameTag.textContent = (p.displayName || "mouse").toLowerCase();
@@ -732,16 +646,18 @@
       }
     }
 
+    // fleas
     for (const f of fleas){
       const cell = document.getElementById(`cell-${f.x}-${f.y}`);
-      if (cell) addSprite(cell, "entity flea-sprite dir-up");
+      if (cell) cell.textContent = "🐞";
     }
 
+    // rats
     for (const r of rats){
       if ((r.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        addSprite(cell, `entity rat-sprite ${getDirectionClass(r)}`);
+        cell.textContent = "🐀";
         const hpTag = document.createElement("div");
         hpTag.className = "name";
         hpTag.style.color = "brown";
@@ -750,11 +666,12 @@
       }
     }
 
+    // oxen
     for (const o of oxen){
       if ((o.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${o.x}-${o.y}`);
       if (cell){
-        addSprite(cell, `entity ox-sprite ${getDirectionClass(o)}`);
+        cell.textContent = "🐂";
         const hpTag = document.createElement("div");
         hpTag.className = "name";
         hpTag.style.color = "orange";
@@ -763,20 +680,24 @@
       }
     }
 
+    // termites
     for (const t of termites){
       const cell = document.getElementById(`cell-${t.x}-${t.y}`);
-      if (cell) addSprite(cell, `entity termite-sprite ${getDirectionClass(t)}`);
+      if (cell) cell.textContent = "🐛";
     }
 
+    // structure health bars
     for (const key in structureHealth){
       const [xs, ys] = key.split("_");
       const x = parseInt(xs,10), y = parseInt(ys,10);
       if (!(x>=0 && x<gridSize && y>=0 && y<gridSize)) continue;
+
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
       if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥"].includes(symbol)){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
+
         const bar = document.createElement("div");
         bar.className = "structure-health-fill";
         const hp = structureHealth[key] ?? 0;
@@ -791,15 +712,17 @@
       }
     }
 
+    // vultures
     for (const v of vultures){
       if ((v.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${v.x}-${v.y}`);
-      if (cell) addSprite(cell, `entity vulture-sprite ${getDirectionClass(v)}`);
+      if (cell) cell.textContent = "🦅";
     }
 
+    // cat
     const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
     if (catCell){
-      addSprite(catCell, `entity cat-sprite ${getDirectionClass(catPos)}`);
+      catCell.textContent = "🐱";
       const levelTag = document.createElement("div");
       levelTag.className = "name";
       levelTag.style.color = "red";
@@ -817,6 +740,7 @@
       catCell.appendChild(bar);
     }
 
+    // status list
     const statusDiv = document.getElementById("playerStatus");
     statusDiv.innerHTML = "";
     for (const p of Object.values(players)){
@@ -829,20 +753,6 @@
     }
   }
 
-  function directionFromDelta(dx, dy){
-    if (Math.abs(dx) >= Math.abs(dy)){
-      if (dx > 0) return "right";
-      if (dx < 0) return "left";
-    }
-    if (dy > 0) return "down";
-    if (dy < 0) return "up";
-    return "up";
-  }
-
-  function setEntityDirection(entity, fromX, fromY, toX, toY){
-    entity.dir = directionFromDelta(toX - fromX, toY - fromY);
-  }
-
   // ============================================================
   // Movement / cooldown
   // ============================================================
@@ -853,13 +763,9 @@
 
   function movePlayer(dx, dy){
     if (!gameStarted || !isAlive) return;
-    const oldX = playerPos.x;
-    const oldY = playerPos.y;
-    const newX = Math.max(0, Math.min(gridSize-1, oldX + dx));
-    const newY = Math.max(0, Math.min(gridSize-1, oldY + dy));
-    setEntityDirection(playerPos, oldX, oldY, newX, newY);
-    playerPos.x = newX;
-    playerPos.y = newY;
+    const newX = Math.max(0, Math.min(gridSize-1, playerPos.x + dx));
+    const newY = Math.max(0, Math.min(gridSize-1, playerPos.y + dy));
+    playerPos = { x: newX, y: newY };
     savePosition();
     checkCheese();
     renderGrid();
@@ -924,7 +830,6 @@
       y: playerPos.y,
       cheese: cheeseCount,
       alive: isAlive,
-      dir: playerPos.dir || "up",
       updatedAt: now
     };
 
@@ -932,12 +837,11 @@
       lastPlayerPayload.x === payload.x &&
       lastPlayerPayload.y === payload.y &&
       lastPlayerPayload.cheese === payload.cheese &&
-      lastPlayerPayload.alive === payload.alive &&
-      lastPlayerPayload.dir === payload.dir;
+      lastPlayerPayload.alive === payload.alive;
     if (unchanged && (now - lastPlayerWriteAt) < 200) return;
 
     lastPlayerWriteAt = now;
-    lastPlayerPayload = { x: payload.x, y: payload.y, cheese: payload.cheese, alive: payload.alive, dir: payload.dir };
+    lastPlayerPayload = { x: payload.x, y: payload.y, cheese: payload.cheese, alive: payload.alive };
     await setDoc(pRef, payload, { merge:true });
   }
 
@@ -952,7 +856,6 @@
       y: playerPos.y,
       cheese: 0,
       alive: true,
-      dir: playerPos.dir || "up",
       updatedAt: Date.now()
     }, { merge:true });
   }
@@ -1276,20 +1179,6 @@
     return null;
   }
 
-  function findPathToAdjacentTarget(startX, startY, targetX, targetY, passableFn){
-    let best = null;
-    const spots = [[1,0],[-1,0],[0,1],[0,-1]];
-    for (const [dx,dy] of spots){
-      const ax = targetX + dx;
-      const ay = targetY + dy;
-      if (ax<0 || ax>=gridSize || ay<0 || ay>=gridSize) continue;
-      if (passableFn && !passableFn(ax, ay)) continue;
-      const path = findPath(startX, startY, ax, ay, passableFn || false);
-      if (path && (!best || path.length < best.length)) best = path;
-    }
-    return best;
-  }
-
   function getNearestReachableStructureTarget(startX, startY, passableFn = null){
     let best = null;
     for (let y=0; y<gridSize; y++){
@@ -1372,7 +1261,6 @@
       const symbol = grid[next.y][next.x];
       const isBlocked = (symbol==="🧱" || symbol==="💎");
       if (!isBlocked){
-        setEntityDirection(catPos, catPos.x, catPos.y, next.x, next.y);
         catPos.x = next.x;
         catPos.y = next.y;
       }
@@ -1404,7 +1292,7 @@
 
     // write cat state
     await updateDoc(ccRef(ID.STATE), {
-      cat: { x: catPos.x, y: catPos.y, health: catHealth, dir: catPos.dir || "up" },
+      cat: { x: catPos.x, y: catPos.y, health: catHealth },
       updatedAt: Date.now()
     });
 
@@ -1456,8 +1344,7 @@
         y: spot.y,
         health: ratPower * 30,
         wave: waveTag,
-        createdAt: Date.now(),
-        dir: "down"
+        createdAt: Date.now()
       }, { merge:true });
       oxSpawned++;
     }
@@ -1479,8 +1366,7 @@
         y: spot.y,
         health: ratPower * 5,
         wave: waveTag,
-        createdAt: Date.now(),
-        dir: "down"
+        createdAt: Date.now()
       }, { merge:true });
       ratsSpawned++;
     }
@@ -1513,7 +1399,7 @@
       let closestTarget = null;
       let bestPath = null;
 
-      // Mouse is a unique target: rats can jump directly onto mice.
+      // always prioritize nearest reachable player (no aggro range)
       for (const [pu, p] of Object.entries(players)){
         if ((p.alive ?? true) === false) continue;
 
@@ -1529,7 +1415,7 @@
         }
       }
 
-      // For structures, stop adjacent (don't jump onto the structure tile).
+      // if mouse is unpathable (behind walls/structures), attack nearest reachable structure
       if (!closestTarget){
         const structureTarget = getNearestReachableStructureTarget(
           rat.x,
@@ -1543,12 +1429,7 @@
         );
 
         if (structureTarget){
-          bestPath = findPathToAdjacentTarget(rat.x, rat.y, structureTarget.x, structureTarget.y, (x, y) => {
-            const symbol = grid[y][x];
-            const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
-            const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-            return !isBlocked && !ratOccupied;
-          });
+          bestPath = structureTarget.path;
           closestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
         }
       }
@@ -1558,32 +1439,27 @@
         const centerY = Math.floor(gridSize/2);
 
         if (!bestPath){
-          const passable = (x, y) => {
+          bestPath = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
             const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
             const isReviveCenter = (x===centerX && y===centerY);
             const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
             return !isBlocked && !isReviveCenter && !ratOccupied;
-          };
-          bestPath = (closestTarget.type === "structure")
-            ? findPathToAdjacentTarget(rat.x, rat.y, closestTarget.x, closestTarget.y, passable)
-            : findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, passable);
+          });
         }
 
         if (bestPath && bestPath.length > 0){
           const next = bestPath[0];
           const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
           if (!ratInWay){
-            setEntityDirection(rat, rat.x, rat.y, next.x, next.y);
             rat.x = next.x; rat.y = next.y;
-            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y, dir: rat.dir || "up" });
+            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y });
           }
         }
 
-        if (closestTarget.type==="structure"){
-          const touching = (Math.abs(rat.x - closestTarget.x) + Math.abs(rat.y - closestTarget.y)) <= 1;
-          if (touching) await damageStructure(closestTarget.x, closestTarget.y, ratPower);
-        } else if (rat.x===closestTarget.x && rat.y===closestTarget.y){
-          if (closestTarget.type==="mouse"){
+        if (rat.x===closestTarget.x && rat.y===closestTarget.y){
+          if (closestTarget.type==="structure"){
+            await damageStructure(rat.x, rat.y, ratPower);
+          } else if (closestTarget.type==="mouse"){
             await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
             if (closestTarget.uid === uid){
               isAlive = false;
@@ -1630,16 +1506,15 @@
         const structureTarget = getNearestReachableStructureTarget(ox.x, ox.y, false);
         if (structureTarget){
           bestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
-          bestPath = findPathToAdjacentTarget(ox.x, ox.y, structureTarget.x, structureTarget.y, null);
+          bestPath = structureTarget.path;
         }
       }
 
       if (bestTarget){
         if (bestPath && bestPath.length>0){
           const next = bestPath[0];
-          setEntityDirection(ox, ox.x, ox.y, next.x, next.y);
           ox.x = next.x; ox.y = next.y;
-          await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y, dir: ox.dir || "up" });
+          await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y });
         }
 
         const dx = Math.abs(ox.x - bestTarget.x);
@@ -1649,7 +1524,7 @@
           await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
           ox.health -= 1;
           await updateDoc(ccRef(ID.ox(ox.id)), { health: ox.health });
-        } else if (bestTarget.type === "mouse" && ox.x===bestTarget.x && ox.y===bestTarget.y){
+        } else if (touching && bestTarget.type === "mouse"){
           await updateDoc(ccRef(ID.player(bestTarget.uid)), { alive:false, updatedAt: Date.now() });
         }
       }
@@ -1684,24 +1559,19 @@
       }
       if (!bestTarget) continue;
 
-      const alreadyTouching = (Math.abs(v.x - bestTarget.x) + Math.abs(v.y - bestTarget.y)) <= 1;
       let nx = v.x;
       let ny = v.y;
-      if (!alreadyTouching){
-        if (Math.abs(bestTarget.x - v.x) >= Math.abs(bestTarget.y - v.y)) nx += Math.sign(bestTarget.x - v.x);
-        else ny += Math.sign(bestTarget.y - v.y);
-      }
+      if (Math.abs(bestTarget.x - v.x) >= Math.abs(bestTarget.y - v.y)) nx += Math.sign(bestTarget.x - v.x);
+      else ny += Math.sign(bestTarget.y - v.y);
 
-      if (!alreadyTouching && nx>=0 && nx<gridSize && ny>=0 && ny<gridSize){
-        setEntityDirection(v, v.x, v.y, nx, ny);
+      if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize){
         v.x = nx;
         v.y = ny;
-        await updateDoc(ccRef(ID.vulture(v.id)), { x: v.x, y: v.y, dir: v.dir || "up", updatedAt: Date.now() });
+        await updateDoc(ccRef(ID.vulture(v.id)), { x: v.x, y: v.y, updatedAt: Date.now() });
       }
 
-      const vTouching = (Math.abs(v.x - bestTarget.x) + Math.abs(v.y - bestTarget.y)) <= 1;
-      if (vTouching){
-        await damageStructure(bestTarget.x, bestTarget.y, ratPower * 4);
+      if (v.x===bestTarget.x && v.y===bestTarget.y){
+        await damageStructure(v.x, v.y, ratPower * 4);
       }
     }
   }
@@ -1725,20 +1595,20 @@
       }
       if (!closestWall) continue;
 
-      const path = findPathToAdjacentTarget(termite.x, termite.y, closestWall.x, closestWall.y, (x,y) => {
+      const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x,y) => {
+        const isTargetWall = (x===closestWall.x && y===closestWall.y);
+        if (isTargetWall) return true;
         return !["🧱","🔫","🪳","🏭","💎","🗼","🚀"].includes(grid[y][x]);
       });
 
       if (path && path.length>0){
         const next = path[0];
-        setEntityDirection(termite, termite.x, termite.y, next.x, next.y);
         termite.x = next.x; termite.y = next.y;
-        await updateDoc(ccRef(ID.termite(termite.id)), { x: termite.x, y: termite.y, dir: termite.dir || "up" });
+        await updateDoc(ccRef(ID.termite(termite.id)), { x: termite.x, y: termite.y });
       }
 
-      const termiteTouching = (Math.abs(termite.x - closestWall.x) + Math.abs(termite.y - closestWall.y)) <= 1;
-      if (termiteTouching){
-        await damageStructure(closestWall.x, closestWall.y, 40);
+      if (termite.x===closestWall.x && termite.y===closestWall.y){
+        await damageStructure(termite.x, termite.y, 40);
         await deleteDoc(ccRef(ID.termite(termite.id)));
         termites.splice(i,1);
       }
@@ -1790,7 +1660,6 @@
         const newX = flea.x + dx;
         const newY = flea.y + dy;
         if (newX>=0 && newX<gridSize && newY>=0 && newY<gridSize){
-          setEntityDirection(flea, flea.x, flea.y, newX, newY);
           flea.x = newX; flea.y = newY;
         }
 
@@ -2088,7 +1957,7 @@
           nextRatWaveAt = (typeof data.nextRatWave === "number") ? data.nextRatWave : nextRatWaveAt;
 
           const cat = data.cat || {};
-          catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y), dir: cat.dir || catPos.dir || "up" };
+          catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
 
           updateHostDisplay(hostName);
@@ -2103,13 +1972,12 @@
             x: data.x ?? 1,
             y: data.y ?? 1,
             cheese: data.cheese ?? 0,
-            alive: (data.alive !== false),
-            dir: data.dir || "up"
+            alive: (data.alive !== false)
           };
 
           // update my local copies from firestore (so multiple tabs stay consistent)
           if (pu === uid){
-            playerPos = { x: players[pu].x, y: players[pu].y, dir: players[pu].dir || playerPos.dir || "up" };
+            playerPos = { x: players[pu].x, y: players[pu].y };
             isAlive = players[pu].alive;
             cheeseCount = players[pu].cheese ?? 0;
             document.getElementById("cheeseCount").textContent = cheeseCount;
@@ -2260,7 +2128,7 @@
         const ny = playerPos.y + dy * 5;
 
         if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize && grid[ny][nx] === ""){
-          playerPos = { x:nx, y:ny, dir: playerPos.dir || "up" };
+          playerPos = { x:nx, y:ny };
           lastBlinkTime = now;
           await savePosition();
           renderGrid();
@@ -2299,7 +2167,10 @@
       setupMobileControls();
     }
 
-    // no forced starter walls
+    // initial placements (local only, same as your original)
+    grid[24][15] = "🧱";
+    grid[25][14] = "🧱";
+    grid[25][16] = "🧱";
     renderGrid();
 
     // cheese spawn (local only, same as your original)
@@ -2413,7 +2284,7 @@
 
       await updateDoc(ccRef(ID.STATE), {
         catPower,
-        cat: { x: catPos.x, y: catPos.y, health: catHealth, dir: catPos.dir || "up" },
+        cat: { x: catPos.x, y: catPos.y, health: catHealth },
         updatedAt: Date.now()
       });
 
@@ -2589,3 +2460,4 @@
 </script>
 </body>
 </html>
+
