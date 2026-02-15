@@ -105,11 +105,6 @@
     text-align: center;
     font-weight: bold;
   }
-  .ox-raging {
-  box-shadow: 0 0 10px 4px red;
-  border-radius: 4px;
-}
-
 
   #mobileControls {
     display: none;
@@ -152,9 +147,16 @@
   <p style="margin: 5px 0; font-size: 14px; color: #444;">
     🎮 Arrow keys to move | A/W/S/D to build | 1–7 to select building | Space = Upgrade Menu
   </p>
-<p id="buildInfo" style="margin: 10px 0; font-size: 13px; font-weight: bold; color: #333;"></p>
-
-
+  <p style="margin: 10px 0; font-size: 13px; font-weight: bold; color: #333;">
+    🧱 Wall (1, 🧀1) &nbsp; | &nbsp;
+    🔫 Turret (2, 🧀3) &nbsp; | &nbsp;
+    🪳 Flea Nest (3, 🧀5) &nbsp; | &nbsp;
+    🏭 Generator (4, 🧀4) &nbsp; | &nbsp;
+    💎 Super Wall (5, 🧀6) &nbsp; | &nbsp;
+    🗼 Beacon (6, 🧀24) &nbsp; | &nbsp;
+    🐦‍🔥 Phoenix Cheese (7, 🧀40) &nbsp; | &nbsp;
+  🚀 Rocket Tower (8, 🧀30)
+  </p>
 </div>
 <!-- 🔙 Return Button -->
 <div id="returnButton" style="display:none; margin-top: 20px; text-align: center;">
@@ -315,61 +317,6 @@ const gridElement = document.getElementById("grid");
 let grid = [];
   let gameData = {};
 
-const structureClasses = {
-  defender: {
-    label: "🛡 Defender",
-    defense: ["💎", "🧱", "🌳", "🌿"],
-    economic: ["🗼", "🏭"],
-    attack: ["🔫"]
-  },
-  engineer: {
-    label: "🔧 Engineer",
-    defense: ["🧱", "💎"],
-    economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"],
-    attack: ["🪳", "🚀"]
-  },
-  striker: {
-    label: "⚔ Striker",
-    defense: ["🧱", "💎", "🌳", "🌿"],
-    economic: ["🐦‍🔥", "🏭"],
-    attack: ["🔫", "🚀", "🪳"]
-  }
-};
-  const structureCategories = {
-  defense: ["🧱", "💎", "🌿"],
-  attack: ["🔫", "🪳", "🚀", "🌳"],
-  economic: ["🏭", "🗼", "🐦‍🔥", "⚙️"]
-};
-
-  const structureInfo = {
-  "🧱": { cost: 1, health: 15 },
-  "🔫": { cost: 3, health: 5 },
-  "🪳": { cost: 5, health: 10 },
-  "🏭": { cost: 4, health: 5 },
-  "💎": { cost: 6, health: 75 },
-  "🗼": { cost: 24, health: 25 },
-  "🐦‍🔥": { cost: 40, health: 20 },
-  "🚀": { cost: 30, health: 20 },
-  "🌳": { cost: 20, health: 20 },
-  "🌿": { cost: 6, health: 15 },
-  "⚙️": { cost: 12, health: 15 }
-};
-  const buildNames = {
-  "🧱": "Wall 🧱 (Cost: 1)",
-  "🔫": "Turret 🔫 (Cost: 3)",
-  "🪳": "Flea Nest 🪳 (Cost: 5)",
-  "🏭": "Cheese Generator 🏭 (Cost: 4)",
-  "💎": "Super Wall 💎 (Cost: 6)",
-  "🗼": "Cheese Beacon 🗼 (Cost: 24)",
-  "🐦‍🔥": "Phoenix Cheese 🐦‍🔥 (Cost: 40)",
-  "🚀": "Rocket Tower 🚀 (Cost: 30)",
-  "🌳": "Oak Tree 🌳 (Cost: 20)",
-  "🌿": "Vine Wall 🌿 (Cost: 6)",
-  "⚙️": "Rat Catcher Base ⚙️ (Cost: 12)"
-};
-
-
-
 let playerPos = { x: 1, y: 1 };
 let catPos = { x: 15, y: 15 };
 let gameStarted = false;
@@ -388,15 +335,13 @@ let ratPower = 1;
 let advancementPoints = 0;
 let upgradeMenuOpen = false;
 let selectedUpgrades = []; // ✅ Only one declaration
-let fleaSpawnCooldown = 4500;
+let fleaSpawnCooldown = 1500;
 let fleaMasterActive = false;
 let cheesePickupBonus = 0;
 let wallMasterActive = false;
 let hostInitialized = false;
   let trapmasterActive = false;
 let lastTrapTime = 0;
-  let squirrels = []; // 🐿️ Friendly units
-
 
 let blinkActive = false;
 let lastBlinkTime = 0;
@@ -407,13 +352,22 @@ let lastDirection = { dx: 0, dy: 0 }; // Tracks arrow key direction
   let currentRatWave = null;
 
 
+
+
+
+
+
+
+
+
+
+
 let structureHealth = {}; // key: "x_y", value: health
 let fleas = [];
   let rats = []; // 🐀
   let termites = []; // 🐛
   let traps = []; // Each: {x, y, placedAt}
   let oxen = [];
-  let catcherBots = [];
   let isRatSpawning = false;
 
 
@@ -538,20 +492,6 @@ function renderGrid() {
     const cell = document.getElementById(`cell-${flea.x}-${flea.y}`);
     if (cell) cell.textContent = "🐞";
   }
-  for (const s of squirrels) {
-  const cell = document.getElementById(`cell-${s.x}-${s.y}`);
-  if (cell) cell.textContent = "🐿️";
-}
-// 🤖 Catcher Bots (colored by phase)
-for (const bot of catcherBots) {
-  const cell = document.getElementById(`cell-${bot.x}-${bot.y}`);
-  if (cell) {
-    cell.textContent = "🤖";
-    cell.style.backgroundColor = bot.phase === "toRat" ? "#ff9999" : "#99ccff"; // red or blue
-  }
-}
-
-
 
   // 🐀 Rats
   for (const rat of rats) {
@@ -573,15 +513,6 @@ for (const ox of oxen) {
   const cell = document.getElementById(`cell-${ox.x}-${ox.y}`);
   if (cell) {
     cell.textContent = "🐂";
-
-    // 🔥 Add red aura if raging
-    if (ox.rageUntil && Date.now() < ox.rageUntil) {
-      cell.classList.add("ox-raging");
-    } else {
-      cell.classList.remove("ox-raging");
-    }
-
-    // ❤️ Health display
     const hpTag = document.createElement("div");
     hpTag.className = "name";
     hpTag.style.color = "orange";
@@ -589,7 +520,6 @@ for (const ox of oxen) {
     cell.appendChild(hpTag);
   }
 }
-
 
 
   // 🐛 Termites
@@ -658,41 +588,29 @@ function updateHostDisplay() {
 }
 
 
-async function movePlayer(dx, dy) {
+function movePlayer(dx, dy) {
   if (!gameStarted || !isAlive) return;
-
   const newX = Math.max(0, Math.min(gridSize - 1, playerPos.x + dx));
   const newY = Math.max(0, Math.min(gridSize - 1, playerPos.y + dy));
-
   playerPos = { x: newX, y: newY };
   savePosition();
-
-  // 🌿 Destroy vine on contact
-  if (grid[newY][newX] === "🌿") {
-    grid[newY][newX] = "";
-    const key = `${newX}_${newY}`;
-    delete structureHealth[key];
-    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
-  }
-
   checkCheese();
   renderGrid();
 }
-
 async function spawnRatWave() {
   if (!isHost || catPower <= 0) return;
 
   const waveTag = Date.now();
   currentRatWave = waveTag;
 
-  const allOffsets = [
-    { x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 },
-    { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 1 },
-    { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 },
-    { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }, { x: 0, y: -2 },
-    { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 1 },
-    { x: -2, y: -1 }, { x: -1, y: -2 }, { x: 1, y: -2 }, { x: 2, y: -1 }
-  ];
+ const allOffsets = [
+  { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
+  { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
+  { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
+  { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
+  { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
+  { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
+];
 
   const availableSpots = allOffsets
     .map(offset => ({ x: catPos.x + offset.x, y: catPos.y + offset.y }))
@@ -706,8 +624,8 @@ async function spawnRatWave() {
 
   const usedKeys = new Set();
 
-  // 🐂 OXEN – spawn earlier at catPower >= 14
-  const oxCount = catPower >= 14 ? Math.floor((catPower - 5) / 10) + 1 : 0;
+  // 🐂 OXEN
+  const oxCount = catPower >= 15 ? Math.floor((catPower - 15) / 10) + 1 : 0;
   let oxSpawned = 0;
   for (let i = 0; i < availableSpots.length && oxSpawned < oxCount; i++) {
     const spot = availableSpots[i];
@@ -716,7 +634,7 @@ async function spawnRatWave() {
     usedKeys.add(key);
 
     const id = `ox_${crypto.randomUUID()}`;
-    const ox = { x: spot.x, y: spot.y, health: ratPower * 35, id };
+    const ox = { x: spot.x, y: spot.y, health: ratPower * 30, id };
     await setDoc(doc(db, `games/${gameId}/oxen/${id}`), ox);
     oxSpawned++;
   }
@@ -809,53 +727,15 @@ function place(dir) {
 }
 
 
-function selectBuild(key) {
-  const symbol = window.myBuildKeys?.[key];
-  if (!symbol) {
-    console.warn("🚫 No structure assigned to this key.");
-    selectedBuild = null;
-    document.getElementById("buildType").textContent = "Unavailable";
-    return;
-  }
-
-  selectedBuild = key;
-  document.getElementById("buildType").textContent = buildNames[symbol] || "Unknown Structure";
+function selectBuild(value) {
+  selectedBuild = parseInt(value);
+  const buildNames = {
+    1: "Wall 🧱 (Cost: 1)", 2: "Turret 🔫 (Cost: 3)", 3: "Flea Nest 🪳 (Cost: 5)",
+    4: "Cheese Generator 🏭 (Cost: 4)", 5: "Super Wall 💎 (Cost: 6)",
+    6: "Cheese Beacon 🗼 (Cost: 24)", 7: "Phoenix Cheese 🐦‍🔥 (Cost: 40)",  8: "Rocket Tower 🚀 (Cost: 30)"
+  };
+  document.getElementById("buildType").textContent = buildNames[selectedBuild] || "None";
 }
-
-function showBuildKeys() {
-  const map = window.myBuildKeys;
-  if (!map || !playerClass || !structureClasses[playerClass]) return;
-
- const costMap = {
-  "🧱": 1,
-  "🔫": 3,
-  "🪳": 5,
-  "🏭": 4,
-  "💎": 6,
-  "🗼": 24,
-  "🐦‍🔥": 40,
-  "🚀": 30,
-  "🌳": 20,
-  "🌿": 4,
-  "⚙️": 12 
-};
-
-
-  let html = `<strong>🎓 ${structureClasses[playerClass].label}</strong><br><br>`;
-
-  for (let i = 1; i <= 7; i++) {
-    const emoji = map[i];
-    if (emoji) {
-      html += `${emoji} (${i}, 🧀${costMap[emoji] || "?"}) &nbsp; | &nbsp; `;
-    }
-  }
-
-  // Remove final separator
-  html = html.replace(/&nbsp; \| &nbsp; $/, "");
-  document.getElementById("buildInfo").innerHTML = html;
-}
-
-
 function toggleMobileMode() {
   showingUpgrades = !showingUpgrades;
   document.getElementById("structureButtons").style.display = showingUpgrades ? "none" : "block";
@@ -1049,8 +929,21 @@ function checkCheese() {
   }
 }
 
-async function placeStructure(dir) {
+function placeStructure(dir) {
   if (!gameStarted || !isAlive || !selectedBuild) return;
+
+  // Set cost based on structure type
+  let cost = 0;
+  if (selectedBuild === 1) cost = 1;
+  else if (selectedBuild === 2) cost = 3;
+  else if (selectedBuild === 3) cost = 5;
+  else if (selectedBuild === 4) cost = 4;
+  else if (selectedBuild === 5) cost = 6;
+  else if (selectedBuild === 6) cost = 24;
+  else if (selectedBuild === 7) cost = 40;
+  else if (selectedBuild === 8) cost = 30; // 🚀 Rocket Tower
+
+  if (cheeseCount < cost) return;
 
   let tx = playerPos.x, ty = playerPos.y;
   if (dir === 'w') ty--;
@@ -1059,11 +952,34 @@ async function placeStructure(dir) {
   if (dir === 'd') tx++;
   if (tx < 0 || ty < 0 || tx >= gridSize || ty >= gridSize) return;
 
-  const symbol = myBuildKeys[selectedBuild];
-  if (!symbol || !structureInfo[symbol]) return;
+  let symbol = "";
+  let health = 1;
 
-  const { cost, health } = structureInfo[symbol];
-  if (cheeseCount < cost) return;
+  if (selectedBuild === 1) {
+    symbol = "🧱";
+    health = 15;
+  } else if (selectedBuild === 2) {
+    symbol = "🔫";
+    health = 5;
+  } else if (selectedBuild === 3) {
+    symbol = "🪳";
+    health = 10;
+  } else if (selectedBuild === 4) {
+    symbol = "🏭";
+    health = 5;
+  } else if (selectedBuild === 5) {
+    symbol = "💎";
+    health = 75;
+  } else if (selectedBuild === 6) {
+    symbol = "🗼";
+    health = 25;
+  } else if (selectedBuild === 7) {
+    symbol = "🐦‍🔥";
+    health = 20;
+  } else if (selectedBuild === 8) {
+    symbol = "🚀";
+    health = 20
+  }
 
   const key = `${tx}_${ty}`;
   if (grid[ty][tx] === "") {
@@ -1073,17 +989,16 @@ async function placeStructure(dir) {
     document.getElementById("cheeseCount").textContent = cheeseCount;
     savePosition();
 
-    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
+    setDoc(doc(db, `games/${gameId}/structures/${key}`), {
       x: tx,
       y: ty,
       type: symbol,
-      health
+      health: structureHealth[key]
     });
 
     renderGrid();
   }
 }
-
 
 
 
@@ -1108,32 +1023,20 @@ function spawnCheese() {
 
 async function damageStructure(x, y, damageAmount = (1 + Math.floor(catPower / 3))) {
   const key = `${x}_${y}`;
-  const symbol = grid[y][x];
-
   if (structureHealth[key] !== undefined) {
     structureHealth[key] -= damageAmount;
-    console.log(`💥 Damaged ${symbol} at (${x}, ${y}) → HP: ${structureHealth[key]}`);
-    
     if (structureHealth[key] <= 0) {
       grid[y][x] = "";
       delete structureHealth[key];
       await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
     } else {
-      await updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
+      updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
         health: structureHealth[key]
       });
     }
-  } else if (["🧱", "💎", "🌿"].includes(symbol)) {
-    // 💣 Untracked structure fallback
-    console.warn(`⚠️ Destroying untracked wall at (${x}, ${y})`);
-    grid[y][x] = "";
-    await deleteDoc(doc(db, `games/${gameId}/structures/${key}`));
+    renderGrid();
   }
-
-  renderGrid();
 }
-
-
 
 async function syncMyFleas() {
   const fleasRef = collection(db, `games/${gameId}/fleas`);
@@ -1171,11 +1074,12 @@ async function syncMyRats() {
 
 
 async function turretAttack() {
-  const hitLocations = [];
-
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       if (grid[y][x] === "🔫") {
+        let attacked = false;
+
+        // 🔋 Count nearby cheese beacons (within 2 tiles)
         let bonusDamage = 0;
         for (let dy = -2; dy <= 2; dy++) {
           for (let dx = -2; dx <= 2; dx++) {
@@ -1191,199 +1095,74 @@ async function turretAttack() {
           }
         }
 
+        // 💥 Base turret damage is 2
         const damage = 2 + bonusDamage;
-        const targets = [];
 
-        const distToCat = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
-        if (distToCat <= 5 && catHealth > 0) {
-          targets.push({
-            type: "cat",
-            x: catPos.x,
-            y: catPos.y,
-            health: catHealth
-          });
-        }
-
-        for (let rat of rats) {
-          const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
-          if (dist <= 5 && rat.health > 0) {
-            targets.push({ ...rat, type: "rat" });
-          }
-        }
-
-        for (let ox of oxen) {
-          const dist = Math.abs(ox.x - x) + Math.abs(ox.y - y);
-          if (dist <= 5 && ox.health > 0) {
-            targets.push({ ...ox, type: "ox" });
-          }
-        }
-
-        if (targets.length === 0) continue;
-
-        targets.sort((a, b) => {
-          const da = Math.abs(a.x - x) + Math.abs(a.y - y);
-          const db = Math.abs(b.x - x) + Math.abs(b.y - y);
-          return da - db;
-        });
-
-        const target = targets[0];
-        target.health -= damage;
-        hitLocations.push({ x: target.x, y: target.y });
-
-        // 🔁 Sync to Firebase
-        if (target.type === "cat") {
-          catHealth = target.health;
-          await updateDoc(doc(db, `games/${gameId}`), {
+        // 🔫 First check if cat is within 5 tiles
+        const dxCat = Math.abs(catPos.x - x);
+        const dyCat = Math.abs(catPos.y - y);
+        if (dxCat <= 5 && dyCat <= 5) {
+          catHealth -= damage;
+          updateDoc(doc(db, `games/${gameId}`), {
             cat: { x: catPos.x, y: catPos.y, health: catHealth }
           });
           if (catHealth <= 0) {
             document.getElementById("status").textContent = "🎉 Mice win!";
             document.getElementById("returnButton").style.display = "block";
           }
-        } else if (target.type === "rat") {
-          const rat = rats.find(r => r.id === target.id);
-          if (rat) rat.health = target.health;
-          if (target.id) {
-            await updateDoc(doc(db, `games/${gameId}/rats/${target.id}`), {
-              health: target.health
-            });
+          attacked = true;
+        }
+
+        // 🔫 If cat not hit, try to hit a rat
+        if (!attacked) {
+          for (let rat of rats) {
+            if (rat.health <= 0) continue;
+
+            const dxRat = Math.abs(rat.x - x);
+            const dyRat = Math.abs(rat.y - y);
+            if (dxRat <= 5 && dyRat <= 5) {
+              rat.health -= damage;
+              attacked = true;
+              break;
+            }
           }
-        } else if (target.type === "ox") {
-          const ox = oxen.find(o => o.id === target.id);
-          if (ox) ox.health = target.health;
-          if (target.id) {
-            await updateDoc(doc(db, `games/${gameId}/oxen/${target.id}`), {
-              health: target.health
-            });
+        }
+
+        // 🔫 If still not hit, try to hit an ox
+        if (!attacked) {
+          for (let ox of oxen) {
+            if (ox.health <= 0) continue;
+
+            const dxOx = Math.abs(ox.x - x);
+            const dyOx = Math.abs(ox.y - y);
+            if (dxOx <= 5 && dyOx <= 5) {
+              ox.health -= damage;
+              attacked = true;
+              break;
+            }
           }
         }
       }
     }
   }
 
-  // 🧹 Cleanup
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-      rats.splice(i, 1);
-    }
-  }
-
-  for (let i = oxen.length - 1; i >= 0; i--) {
-    if (oxen[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-      oxen.splice(i, 1);
-    }
-  }
-
-  // 🧱 Re-render updated grid
-  renderGrid();
-
-  // 💥 Visual bang effect AFTER grid update
-  for (const { x, y } of hitLocations) {
-    const cell = document.getElementById(`cell-${x}-${y}`);
-    if (cell) {
-      const original = cell.textContent;
-      cell.textContent = "💥";
-      setTimeout(() => {
-        cell.textContent = original;
-      }, 200);
-    }
+for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
+    rats.splice(i, 1);
   }
 }
-  async function squirrelAcornAttack() {
-  if (!isHost) return;
 
-  const hitLocations = [];
-
-  for (let squirrel of squirrels) {
-    const { x, y, health } = squirrel;
-
-    const targets = [
-      ...rats.map(r => ({ ...r, type: "rat" })),
-      ...oxen.map(o => ({ ...o, type: "ox" })),
-      ...(catPos ? [{ x: catPos.x, y: catPos.y, type: "cat", health: catHealth }] : [])
-    ];
-
-    const validTargets = targets.filter(t => {
-      const dist = Math.abs(t.x - x) + Math.abs(t.y - y);
-      return dist === 1 || dist === 2;
-    });
-
-    if (validTargets.length === 0) continue;
-
-    // Find closest
-    validTargets.sort((a, b) => {
-      const da = Math.abs(a.x - x) + Math.abs(a.y - y);
-      const db = Math.abs(b.x - x) + Math.abs(b.y - y);
-      return da - db;
-    });
-
-    const target = validTargets[0];
-    const damage = 5;
-    hitLocations.push({ x: target.x, y: target.y });
-
-    if (target.type === "cat") {
-      catHealth -= damage;
-      await updateDoc(doc(db, `games/${gameId}`), {
-        cat: { x: catPos.x, y: catPos.y, health: catHealth }
-      });
-      if (catHealth <= 0) {
-        document.getElementById("status").textContent = "🎉 Mice win!";
-        document.getElementById("returnButton").style.display = "block";
-      }
-    } else if (target.type === "rat") {
-      const rat = rats.find(r => r.id === target.id);
-      if (rat) rat.health = target.health - damage;
-      if (target.id) {
-        await updateDoc(doc(db, `games/${gameId}/rats/${target.id}`), {
-          health: target.health - damage
-        });
-      }
-    } else if (target.type === "ox") {
-      const ox = oxen.find(o => o.id === target.id);
-      if (ox) ox.health = target.health - damage;
-      if (target.id) {
-        await updateDoc(doc(db, `games/${gameId}/oxen/${target.id}`), {
-          health: target.health - damage
-        });
-      }
-    }
-  }
-
-  // Cleanup defeated rats/oxen
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-      rats.splice(i, 1);
-    }
-  }
-  for (let i = oxen.length - 1; i >= 0; i--) {
-    if (oxen[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-      oxen.splice(i, 1);
-    }
-  }
-
-  renderGrid();
-
-  // 🌰 Visual acorn impact effect
-  for (const { x, y } of hitLocations) {
-    const cell = document.getElementById(`cell-${x}-${y}`);
-    if (cell) {
-      const original = cell.textContent;
-      cell.textContent = "🌰";
-      setTimeout(() => {
-        cell.textContent = original;
-      }, 200);
-    }
+for (let i = oxen.length - 1; i >= 0; i--) {
+  if (oxen[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
+    oxen.splice(i, 1);
   }
 }
 
 
-
-
-
+  renderGrid();
+}
 
 
 async function rocketTowerAttack() {
@@ -1408,32 +1187,14 @@ async function rocketTowerAttack() {
           if (boosted) break;
         }
 
-        // 🔍 Find farthest valid enemy (rat, ox, cat) within 8 tiles
+        // 🔍 Find farthest rat within 8 tiles
         let target = null;
         let maxDist = -1;
-
-        // Check cat
-        const distToCat = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
-        if (catHealth > 0 && distToCat <= 8 && distToCat > maxDist) {
-          maxDist = distToCat;
-          target = { type: "cat", x: catPos.x, y: catPos.y };
-        }
-
-        // Check rats
         for (let rat of rats) {
           const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
-          if (rat.health > 0 && dist <= 8 && dist > maxDist) {
+          if (dist <= 8 && dist > maxDist && rat.health > 0) {
             maxDist = dist;
-            target = { ...rat, type: "rat" };
-          }
-        }
-
-        // Check oxen
-        for (let ox of oxen) {
-          const dist = Math.abs(ox.x - x) + Math.abs(ox.y - y);
-          if (ox.health > 0 && dist <= 8 && dist > maxDist) {
-            maxDist = dist;
-            target = { ...ox, type: "ox" };
+            target = rat;
           }
         }
 
@@ -1441,127 +1202,62 @@ async function rocketTowerAttack() {
           const mainDamage = boosted ? 20 : 15;
           const splashDamage = boosted ? 15 : 10;
 
-          // 🎯 Main target takes damage
-          if (target.type === "cat") {
-            catHealth -= mainDamage;
-            await updateDoc(doc(db, `games/${gameId}`), {
-              cat: { ...catPos, health: catHealth }
-            });
-          } else if (target.type === "rat") {
-            target.health -= mainDamage;
-            if (target.id) {
-              await updateDoc(doc(db, `games/${gameId}/rats/${target.id}`), {
-                health: target.health
-              });
-            }
-          } else if (target.type === "ox") {
-            target.health -= mainDamage;
-            if (target.id) {
-              await updateDoc(doc(db, `games/${gameId}/oxen/${target.id}`), {
-                health: target.health
-              });
-            }
-          }
+          // 🎯 Main target takes boosted or base damage
+          target.health -= mainDamage;
 
-          // 💥 Splash damage to all enemies in 3x3
+          // 💥 Splash damage to surrounding
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const sx = target.x + dx;
               const sy = target.y + dy;
               if (sx < 0 || sy < 0 || sx >= gridSize || sy >= gridSize) continue;
+              if (dx === 0 && dy === 0) continue; // skip center
 
-              // Skip main target
-              if (sx === target.x && sy === target.y) continue;
-
+              // 🐀 Splash rats
               for (let rat of rats) {
                 if (rat.x === sx && rat.y === sy && rat.health > 0) {
                   rat.health -= splashDamage;
-                  if (rat.id) {
-                    await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-                      health: rat.health
-                    });
-                  }
                 }
               }
 
+              // 🐂 Splash oxen
               for (let ox of oxen) {
                 if (ox.x === sx && ox.y === sy && ox.health > 0) {
                   ox.health -= splashDamage;
-                  if (ox.id) {
-                    await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-                      health: ox.health
-                    });
-                  }
                 }
               }
 
+              // 🐱 Splash cat
               if (catPos.x === sx && catPos.y === sy && catHealth > 0) {
                 catHealth -= splashDamage;
-                await updateDoc(doc(db, `games/${gameId}`), {
+                updateDoc(doc(db, `games/${gameId}`), {
                   cat: { ...catPos, health: catHealth }
                 });
               }
             }
           }
-
-          // 🧹 Cleanup
-          for (let i = rats.length - 1; i >= 0; i--) {
-            if (rats[i].health <= 0) {
-              await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-              rats.splice(i, 1);
-            }
-          }
-
-          for (let i = oxen.length - 1; i >= 0; i--) {
-            if (oxen[i].health <= 0) {
-              await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
-              oxen.splice(i, 1);
-            }
-          }
-
-          // 🎨 Visual Effects
-          renderGrid();
-
-          const visuals = [];
-
-          // Smoke trail
-          const steps = Math.max(Math.abs(target.x - x), Math.abs(target.y - y));
-          for (let i = 0; i <= steps; i++) {
-            const sx = Math.round(x + (target.x - x) * (i / steps));
-            const sy = Math.round(y + (target.y - y) * (i / steps));
-            const cell = document.getElementById(`cell-${sx}-${sy}`);
-            if (cell) {
-              visuals.push({ cell, original: cell.textContent });
-              cell.textContent = "💨";
-            }
-          }
-
-          // Explosion effect
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const fx = target.x + dx;
-              const fy = target.y + dy;
-              if (fx < 0 || fy < 0 || fx >= gridSize || fy >= gridSize) continue;
-              const cell = document.getElementById(`cell-${fx}-${fy}`);
-              if (cell) {
-                visuals.push({ cell, original: cell.textContent });
-                cell.textContent = "💥";
-              }
-            }
-          }
-
-          // ♻️ Restore visuals after delay
-          setTimeout(() => {
-            for (const { cell, original } of visuals) {
-              cell.textContent = original;
-            }
-          }, 300);
         }
       }
     }
   }
+
+  // 🧹 Cleanup
+for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
+    rats.splice(i, 1);
+  }
 }
 
+for (let i = oxen.length - 1; i >= 0; i--) {
+  if (oxen[i].health <= 0) {
+    await deleteDoc(doc(db, `games/${gameId}/oxen/${oxen[i].id}`));
+    oxen.splice(i, 1);
+  }
+}
+
+  renderGrid();
+}
 
 
 
@@ -1592,7 +1288,7 @@ function findPath(startX, startY, targetX, targetY, allowTargetWall = false) {
         const isTarget = nx === targetX && ny === targetY;
         const cell = grid[ny][nx];
 
-        const isWall = cell === "🧱" || cell === "💎" || cell === "🌿";
+        const isWall = cell === "🧱" || cell === "💎";
         const isWalkable = !isWall || (allowTargetWall && isTarget);
 
         if (isWalkable) {
@@ -1631,69 +1327,15 @@ function triggerMoveCooldown() {
   }
 }
 
-function findSquirrelPath(sx, sy, tx, ty, stayAway = 2) {
-  if (Math.abs(sx - tx) + Math.abs(sy - ty) <= stayAway) return null;
-
-  const visited = new Set();
-  const queue = [{ x: sx, y: sy, path: [] }];
-
-  while (queue.length) {
-    const { x, y, path } = queue.shift();
-    const key = `${x}_${y}`;
-    if (visited.has(key)) continue;
-    visited.add(key);
-
-    if (Math.abs(tx - x) + Math.abs(ty - y) <= stayAway) {
-      return path[0]; // First step to closest allowed distance
-    }
-
-    const dirs = [
-      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
-    ];
-
-    for (let { dx, dy } of dirs) {
-      const nx = x + dx;
-      const ny = y + dy;
-      const nextKey = `${nx}_${ny}`;
-
-      if (
-        nx >= 0 && ny >= 0 &&
-        nx < gridSize && ny < gridSize &&
-        !visited.has(nextKey)
-      ) {
-        queue.push({ x: nx, y: ny, path: [...path, { x: nx, y: ny }] });
-      }
-    }
-  }
-
-  return null;
-}
-function findNearestRat(x, y) {
-  let minDist = Infinity;
-  let closest = null;
-  for (const rat of rats) {
-    const dist = Math.abs(rat.x - x) + Math.abs(rat.y - y);
-    if (dist < minDist) {
-      minDist = dist;
-      closest = rat;
-    }
-  }
-  return closest;
-}
-
-
-function shuffle(arr) {
-  return [...arr].sort(() => Math.random() - 0.5);
-}
 
 async function catBehavior() {
   console.log("🐱 Cat behavior running");
 
-  // 🪤 Trap check
+  // 🪤 Check for traps
   for (let trap of traps) {
     if (trap.x === catPos.x && trap.y === catPos.y) {
       console.log("🪤 Cat stepped on a trap!");
+
       clearInterval(catMoveInterval);
 
       setTimeout(() => {
@@ -1719,10 +1361,13 @@ async function catBehavior() {
   const aliveMice = Object.entries(players).filter(([_, p]) => p.alive);
   let target = null;
   let path = null;
+
   let mouseBlocked = true;
 
-  // 🐭 Priority 1: Reachable mouse
+  // 🐭 Priority 1: Closest reachable mouse
   for (const [_, p] of aliveMice) {
+    const dist = Math.abs(p.x - catPos.x) + Math.abs(p.y - catPos.y);
+
     const pPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
     if (pPath) {
       if (!path || pPath.length < path.length) {
@@ -1733,107 +1378,127 @@ async function catBehavior() {
     }
   }
 
-  // 🧱 Priority 2: Break wall near blocked mice
+  // 🧱 Priority 2: Break walls around blocked mice
   if (!target && mouseBlocked) {
     for (const [_, p] of aliveMice) {
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const wx = p.x + dx, wy = p.y + dy;
-        if (["🧱", "🏭", "💎", "🗼", "🌿"].includes(grid[wy]?.[wx])) {
+      const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const [dx, dy] of directions) {
+        const wx = p.x + dx;
+        const wy = p.y + dy;
+        if (
+          wx >= 0 && wx < gridSize &&
+          wy >= 0 && wy < gridSize &&
+          ["🧱", "🏭", "💎", "🗼"].includes(grid[wy][wx])
+        ) {
           const wPath = findPath(catPos.x, catPos.y, wx, wy, true);
-          if (wPath && (!path || wPath.length < path.length)) {
-            target = { x: wx, y: wy, type: "wallToBreak" };
-            path = wPath;
+          if (wPath) {
+            if (!path || wPath.length < path.length) {
+              target = { x: wx, y: wy, type: "wallToBreak" };
+              path = wPath;
+            }
+          } else {
+            console.log(`🚫 Cannot reach wall at (${wx}, ${wy})`);
           }
         }
       }
     }
   }
 
-  // 🔫 Priority 3: Reach structure
+  // 🔫 Priority 3: Attack structures
   if (!target) {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🔫", "🪳", "🗼", "🚀", "🌳"].includes(grid[y][x])) {
+        const symbol = grid[y][x];
+        if (["🔫", "🪳", "🗼", "🚀"].includes(symbol)) {
           const sPath = findPath(catPos.x, catPos.y, x, y, false);
-          if (sPath && (!path || sPath.length < path.length)) {
-            target = { x, y, type: "structure" };
-            path = sPath;
+          if (sPath) {
+            if (!path || sPath.length < path.length) {
+              target = { x, y, type: "structure" };
+              path = sPath;
+            }
           }
         }
       }
     }
   }
 
-  // 🌰 Priority 4: Reach squirrel
-  if (!target) {
-    for (let squirrel of squirrels) {
-      if (squirrel.health > 0) {
-        const sPath = findPath(catPos.x, catPos.y, squirrel.x, squirrel.y, false);
-        if (sPath && (!path || sPath.length < path.length)) {
-          target = { x: squirrel.x, y: squirrel.y, type: "squirrel", id: squirrel.id };
-          path = sPath;
-        }
-      }
-    }
-  }
-
-  // 🧱 Fallback: Anything
+  // 🧱 Priority 4: Final fallback to any grid target
   if (!target) {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-       if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x])) {
+        const symbol = grid[y][x];
+        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(symbol)) {
           const fPath = findPath(catPos.x, catPos.y, x, y, false);
-          if (fPath && (!path || fPath.length < path.length)) {
-            target = { x, y, type: "fallback" };
-            path = fPath;
+          if (fPath) {
+            if (!path || fPath.length < path.length) {
+              target = { x, y, type: "fallback" };
+              path = fPath;
+            }
           }
+        }
+      }
+    }
+  }
+
+  // 🐭 Priority 5: Re-check mice just in case
+  if (!target) {
+    for (const [_, p] of aliveMice) {
+      const fPath = findPath(catPos.x, catPos.y, p.x, p.y, false);
+      if (fPath) {
+        console.log(`⬅️ Fallback mouse at (${p.x}, ${p.y}) - ${fPath.length} steps`);
+        if (!path || fPath.length < path.length) {
+          target = { x: p.x, y: p.y, type: "fallbackMouse" };
+          path = fPath;
         }
       }
     }
   }
 
   if (target && path) {
+    console.log(`🎯 Final target: ${target.type} at (${target.x}, ${target.y}) — Path length: ${path.length}`);
+  } else {
+    console.log("❌ No target found. Cat is frozen.");
+  }
+
+  // 🐾 Move toward target
+  if (target && path.length > 1) {
     const next = path[1];
-    if (next && !["🧱", "💎", "🌿"].includes(grid[next.y][next.x])) {
+    const symbol = grid[next.y][next.x];
+    const isBlocked = ["🧱", "💎"].includes(symbol);
+
+    if (!isBlocked) {
       catPos.x = next.x;
       catPos.y = next.y;
       console.log(`✅ Cat moved to (${catPos.x}, ${catPos.y}) toward ${target.type}`);
+    } else {
+      console.log(`🚫 Cat blocked at (${next.x}, ${next.y}) by ${symbol}`);
     }
   }
 
-  // 💥 Attack adjacent structures or squirrels
+  // 💥 Attack nearby structure
   let attacked = false;
   for (let dy = -1; dy <= 1 && !attacked; dy++) {
     for (let dx = -1; dx <= 1 && !attacked; dx++) {
-      const tx = catPos.x + dx, ty = catPos.y + dy;
-      if (tx < 0 || tx >= gridSize || ty < 0 || ty >= gridSize) continue;
-
-      const symbol = grid[ty][tx];
-      if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(symbol)) {
-        console.log(`💥 Cat attacked ${symbol} at (${tx}, ${ty})`);
+      const tx = catPos.x + dx;
+      const ty = catPos.y + dy;
+      if (
+        tx >= 0 && tx < gridSize &&
+        ty >= 0 && ty < gridSize &&
+        ["🧱", "🔫", "🪳", "🏭", "💎", "🗼"].includes(grid[ty][tx])
+      ) {
+        console.log(`💥 Cat attacked ${grid[ty][tx]} at (${tx}, ${ty})`);
         damageStructure(tx, ty);
         attacked = true;
-      } else {
-        for (let squirrel of squirrels) {
-          if (squirrel.x === tx && squirrel.y === ty && squirrel.health > 0) {
-            console.log(`💥 Cat attacked squirrel at (${tx}, ${ty})`);
-            squirrel.health -= 3; // adjust cat's damage to squirrel here
-            await updateDoc(doc(db, `games/${gameId}/squirrels/${squirrel.id}`), {
-              health: squirrel.health
-            });
-            attacked = true;
-            break;
-          }
-        }
       }
     }
   }
 
-  // 💀 Kill mice
+  // 💀 Kill players on cat’s tile
   for (const [name, p] of Object.entries(players)) {
     if ((p.alive ?? true) && catPos.x === p.x && catPos.y === p.y) {
       console.log(`💀 Cat killed ${name}`);
       updateDoc(doc(db, `games/${gameId}/players/${name}`), { alive: false });
+
       if (name === username) {
         isAlive = false;
         document.getElementById("status").textContent = "💀 You are dead!";
@@ -1879,52 +1544,10 @@ onSnapshot(collection(db, `games/${gameId}/structures`), (snap) => {
   renderGrid();
 });
 
-onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
+  onSnapshot(collection(db, `games/${gameId}/fleas`), (snap) => {
   fleas = snap.docs.map(doc => doc.data());
   renderGrid();
 });
-
-onSnapshot(collection(db, `games/${gameId}/squirrels`), (snapshot) => {
-  squirrels = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
-  renderGrid();
-});
-
-onSnapshot(collection(db, `games/${gameId}/catcherBots`), (snap) => {
-  const newBots = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  const newIds = newBots.map(b => b.id);
-  const oldIds = catcherBots.map(b => b.id);
-
-  const removed = catcherBots.filter(b => !newIds.includes(b.id) && b.phase === "returning");
-
-  for (let bot of removed) {
-    const { homeX, homeY } = bot;
-
-    const directions = [
-      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
-    ];
-
-    for (let { dx, dy } of directions) {
-      const cx = homeX + dx;
-      const cy = homeY + dy;
-      if (
-        cx >= 0 && cx < gridSize &&
-        cy >= 0 && cy < gridSize &&
-        grid[cy][cx] === ""
-      ) {
-        grid[cy][cx] = "🧀";
-        break;
-      }
-    }
-  }
-
-  catcherBots = newBots;
-  renderGrid();
-});
-
 onSnapshot(collection(db, `games/${gameId}/rats`), (snap) => {
   const updatedRats = [];
 
@@ -2027,70 +1650,29 @@ onSnapshot(collection(db, `games/${gameId}/traps`), (snap) => {
 });
 
   const playerRef = doc(db, `games/${gameId}/players/${username}`);
-const assignedClass = Object.keys(structureClasses)[Math.floor(Math.random() * 3)];
-
-await setDoc(playerRef, {
+  await setDoc(playerRef, {
   x: playerPos.x,
   y: playerPos.y,
   cheese: 0,
   alive: true,
-  displayName: urlParams.get("username").trim(),
-  playerClass: assignedClass
+  displayName: urlParams.get("username").trim()
 }, { merge: true });
 
 
-
-onSnapshot(playerRef, (docSnap) => {
-  if (!docSnap.exists()) return;
-
-  const data = docSnap.data();
-  playerPos = { x: data.x, y: data.y };
-  isAlive = data.alive !== false;
-  cheeseCount = data.cheese || 0;
-  document.getElementById("cheeseCount").textContent = cheeseCount;
-
-  // 🎓 Load class info
-  const classKey = data.playerClass || "defender";
-  window.playerClass = classKey;
-  const classInfo = structureClasses[classKey];
-
-  // ✅ Assign build keys once with no duplicates
-  if (!window.myBuildKeys) {
-    // 👇 Class-specific category priority
-    const primary = classKey === "engineer" ? "economic"
-                 : classKey === "striker" ? "attack"
-                 : "defense";
-
-    const secondary1 = primary === "defense" ? "attack" : "defense";
-    const secondary2 = ["defense", "attack", "economic"].find(c => c !== primary && c !== secondary1);
-
-    // 🎲 Shuffle and assign keys
-    const picks = {
-      ...shuffle(structureCategories[primary]).slice(0, 3).reduce((obj, e, i) => ({ ...obj, [i + 1]: e }), {}),
-      ...shuffle(structureCategories[secondary1]).slice(0, 2).reduce((obj, e, i) => ({ ...obj, [i + 4]: e }), {}),
-      ...shuffle(structureCategories[secondary2]).slice(0, 2).reduce((obj, e, i) => ({ ...obj, [i + 6]: e }), {})
-    };
-
-    window.myBuildKeys = picks;
-
-    console.log("🎯 Key assignment:", window.myBuildKeys);
-
-    // 📋 Display build info
-    let buildDisplay = `<strong>🎓 ${classInfo.label}</strong><br>`;
-    for (let i = 1; i <= 7; i++) {
-      const emoji = window.myBuildKeys[i];
-      if (emoji && buildNames[emoji]) {
-        buildDisplay += `${i}: ${buildNames[emoji]}<br>`;
-      }
+  onSnapshot(playerRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      playerPos = { x: data.x, y: data.y };
+      isAlive = data.alive !== false;
+      cheeseCount = data.cheese || 0;
+      document.getElementById("cheeseCount").textContent = cheeseCount;
+      console.log("🔥 Player isAlive = ", isAlive);
+      document.getElementById("status").textContent = isAlive
+        ? ""
+        : "💀 You are dead!";
+      renderGrid();
     }
-    showBuildKeys();
-  }
-
-  document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
-  renderGrid();
-});
-
-
+  });
 }
 window.addEventListener("keydown", (e) => {
   if (!isAlive) return;
@@ -2125,7 +1707,7 @@ window.addEventListener("keydown", (e) => {
 
       // Effects
       if (upgrade === "Speedster") moveCooldown = 50;
-      if (upgrade === "Scavenger") cheesePickupBonus = 3;
+      if (upgrade === "Scavenger") cheesePickupBonus = 7;
       if (upgrade === "Flea Master") fleaMasterActive = true;
       if (upgrade === "Wall Master") wallMasterActive = true;
       if (upgrade === "Trapmaster") trapmasterActive = true;
@@ -2182,7 +1764,7 @@ window.addEventListener("keydown", (e) => {
 
   // ✅ Structure selection (ONLY if upgrade menu is closed)
 // ✅ Structure selection (ONLY if upgrade menu is closed)
-if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7", "8", "9"].includes(e.key)) {
+if (!upgradeMenuOpen && ["1", "2", "3", "4", "5", "6", "7", "8"].includes(e.key)) {
   selectBuild(e.key);
 }
 
@@ -2274,33 +1856,6 @@ if (!isHost) {
     }
   }, 3000); // check every 3 seconds
 }
-setInterval(() => {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🌳") {
-        // Try to drop cheese in nearby empty tiles
-        const offsets = [
-          { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 },
-          { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 }
-        ];
-
-        for (let offset of offsets) {
-          const cx = x + offset.dx;
-          const cy = y + offset.dy;
-          if (
-            cx >= 0 && cx < gridSize &&
-            cy >= 0 && cy < gridSize &&
-            grid[cy][cx] === ""
-          ) {
-            grid[cy][cx] = "🧀";
-            break; // Drop only 1 cheese per tree per interval
-          }
-        }
-      }
-    }
-  }
-  renderGrid();
-}, 15000);
 
 setInterval(() => {
   for (let y = 0; y < gridSize; y++) {
@@ -2378,6 +1933,7 @@ setInterval(() => {
 setInterval(() => {
   if (!fleaMasterActive || !isAlive) return;
 
+  // 🐞 Spawn up to 2 fleas near the player
   const offsets = [
     { dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
     { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
@@ -2394,20 +1950,14 @@ setInterval(() => {
       fy >= 0 && fy < gridSize &&
       !fleas.some(f => f.x === fx && f.y === fy)
     ) {
-      const fleaId = `${fx}_${fy}_${Date.now()}`;
-      setDoc(doc(db, `games/${gameId}/fleas/${fleaId}`), {
-        x: fx,
-        y: fy,
-        lifetime: 15,
-        createdBy: username
-      });
-
+      fleas.push({ x: fx, y: fy, lifetime: 15 });
       spawned++;
-      if (spawned >= 3) break;
+      if (spawned >= 2) break; // 🛑 Stop after 2 fleas
     }
   }
-}, fleaSpawnCooldown);
 
+  renderGrid();
+}, fleaSpawnCooldown);
   setInterval(spawnCheese, 10000);
 
 
@@ -2578,27 +2128,22 @@ if (host === cleanUsername && !hostInitialized) {
             cat: { ...catPos, health: catHealth }
           });
         } else if (target.type === "rat" && target.rat) {
-  target.rat.health -= 5;
-  const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
-  if (target.rat.health <= 0) {
-    const index = rats.indexOf(target.rat);
-    if (index !== -1) rats.splice(index, 1);
-    await deleteDoc(ratRef);
-  } else {
-    await updateDoc(ratRef, { health: target.rat.health });
-  }
-} else if (target.type === "ox" && target.ox) {
-  target.ox.health -= 5;
-  const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
-  if (target.ox.health <= 0) {
-    const index = oxen.indexOf(target.ox);
-    if (index !== -1) oxen.splice(index, 1);
-    await deleteDoc(oxRef);
-  } else {
-    await updateDoc(oxRef, { health: target.ox.health });
-  }
-}
-
+          target.rat.health -= 5;
+          if (target.rat.health <= 0) {
+            const index = rats.indexOf(target.rat);
+            if (index !== -1) rats.splice(index, 1);
+            const ratRef = doc(db, `games/${gameId}/rats/${target.rat.id}`);
+            await deleteDoc(ratRef);
+          }
+        } else if (target.type === "ox" && target.ox) {
+          target.ox.health -= 5;
+          if (target.ox.health <= 0) {
+            const index = oxen.indexOf(target.ox);
+            if (index !== -1) oxen.splice(index, 1);
+            const oxRef = doc(db, `games/${gameId}/oxen/${target.ox.id}`);
+            await deleteDoc(oxRef);
+          }
+        }
       }
     }
 
@@ -2628,9 +2173,9 @@ if (host === cleanUsername && !hostInitialized) {
         tx >= 0 && tx < gridSize &&
         ty >= 0 && ty < gridSize &&
         (grid[ty][tx] === "🧱" || grid[ty][tx] === "💎") &&
-        structureHealth[key] < 180
+        structureHealth[key] < 80
       ) {
-        structureHealth[key] += 5;
+        structureHealth[key] += 4;
         updateDoc(doc(db, `games/${gameId}/structures/${key}`), {
           health: structureHealth[key]
         });
@@ -2647,7 +2192,7 @@ if (host === cleanUsername && !hostInitialized) {
     // 🔍 Find nearest wall
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (grid[y][x] === "🧱" || grid[y][x] === "💎" || grid[y][x] === "🌿") {
+        if (grid[y][x] === "🧱" || grid[y][x] === "💎") {
           const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
           if (dist < minDist) {
             minDist = dist;
@@ -2659,7 +2204,7 @@ if (host === cleanUsername && !hostInitialized) {
 
     if (closestWall) {
       const path = findPath(termite.x, termite.y, closestWall.x, closestWall.y, (x, y) => {
-     return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]);
+        return !["🧱", "🔫", "🪳", "🏭", "💎"].includes(grid[y][x]);
       });
 
       if (path && path.length > 0) {
@@ -2748,52 +2293,7 @@ if (host === cleanUsername && !hostInitialized) {
   }
 }, 2000);
 
-setInterval(async () => {
-  const usedKeys = new Set();
-
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🌳") {
-        const offsets = [
-          { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 },
-          { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 }
-        ];
-
-        for (let offset of offsets) {
-          const sx = x + offset.dx;
-          const sy = y + offset.dy;
-          const key = `${sx}_${sy}`;
-
-          if (
-            sx >= 0 && sx < gridSize &&
-            sy >= 0 && sy < gridSize &&
-            grid[sy][sx] === "" &&
-            !usedKeys.has(key)
-          ) {
-            usedKeys.add(key);
-
-            const id = `squirrel_${crypto.randomUUID()}`;
-            const squirrel = {
-              id,
-              x: sx,
-              y: sy,
-              health: 10,
-              createdAt: Date.now()
-            };
-
-            await setDoc(doc(db, `games/${gameId}/squirrels/${id}`), squirrel);
-            break; // spawn only 1 squirrel per tree per cycle
-          }
-        }
-      }
-    }
-  }
-}, 30000);
-
-
-
 setInterval(turretAttack, 1500);
-  setInterval(squirrelAcornAttack, 3000);
    setInterval(rocketTowerAttack, 3500);
 
   setInterval(() => {
@@ -2832,185 +2332,53 @@ setInterval(async () => {
 
   console.log(`🐛 Spawned ${spawned} termites in center`);
 }, 60000);
-setInterval(async () => {
-  const now = Date.now();
-
-  // 🔁 Trigger rage mode every 60s
-  if (now % 60000 < 800) {
-    for (const ox of oxen) {
-      ox.rageUntil = now + 10000; // Rage for 10 seconds
-    }
-  }
-
+ setInterval(() => {
   for (let i = oxen.length - 1; i >= 0; i--) {
     const ox = oxen[i];
-    const isRaging = ox.rageUntil && Date.now() < ox.rageUntil;
 
-    let target = null;
+    let bestTarget = null;
+    let minDist = Infinity;
 
-    if (isRaging) {
-      // 🎯 Rage mode: chase nearest player
-      let minDist = Infinity;
-      for (const name in players) {
-        const player = players[name];
-        if (player.alive) {
-          const dist = Math.abs(ox.x - player.x) + Math.abs(ox.y - player.y);
-          if (dist < minDist) {
+    // 🎯 Find nearest wall or super wall
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const symbol = grid[y][x];
+        if (symbol === "💎" || symbol === "🧱") {
+          const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
+          const priority = symbol === "💎" ? 0 : 1;
+
+          if (dist < minDist || (dist === minDist && priority < (bestTarget?.priority ?? 1))) {
             minDist = dist;
-            target = { x: player.x, y: player.y, type: "player", name };
-          }
-        }
-      }
-    } else {
-      // 🎯 Normal mode: target walls
-      let minDist = Infinity;
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          const symbol = grid[y][x];
-      if (symbol === "💎" || symbol === "🧱" || symbol === "🌳" || symbol === "🌿") {
-            const dist = Math.abs(x - ox.x) + Math.abs(y - ox.y);
-            const priority = symbol === "💎" ? 0 : 1;
-            if (
-              dist < minDist ||
-              (dist === minDist && priority < (target?.priority ?? 1))
-            ) {
-              minDist = dist;
-              target = { x, y, symbol, priority, type: "structure" };
-            }
+            bestTarget = { x, y, symbol, priority };
           }
         }
       }
     }
 
-    if (target) {
-      const walkable = (x, y) => {
-        if (isRaging) return grid[y][x] === "";
-return !["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x]);
-      };
-
-      const path = findPath(ox.x, ox.y, target.x, target.y, walkable);
-
+    if (bestTarget) {
+      // 🔁 Only path through non-walls
+      const path = findPath(ox.x, ox.y, bestTarget.x, bestTarget.y, false);
       if (path && path.length > 0) {
         const next = path[0];
-        const blockingSymbol = grid[next.y][next.x];
-if (isRaging && ["🧱", "💎", "🌿"].includes(blockingSymbol)) {
-          // 🔨 Attack blocking wall during rage
-          await damageStructure(next.x, next.y, 20);
-          console.log(`🟥 Ox smashes wall at (${next.x}, ${next.y})`);
-        } else {
-          ox.x = next.x;
-          ox.y = next.y;
-        }
-
-        // 🔄 Sync position
-        if (ox.id) {
-          await updateDoc(doc(db, `games/${gameId}/oxen/${ox.id}`), {
-            x: ox.x,
-            y: ox.y,
-            health: ox.health,
-            rageUntil: ox.rageUntil || 0
-          });
-        }
+        ox.x = next.x;
+        ox.y = next.y;
       }
 
-      // 💥 Attack if at or adjacent to target
-      const dx = Math.abs(ox.x - target.x);
-      const dy = Math.abs(ox.y - target.y);
-      if ((dx === 0 && dy === 0) || dx + dy === 1) {
-        if (target.type === "structure") {
-          await damageStructure(target.x, target.y, 30);
-          console.log(`💥 Ox attacks ${target.symbol} at (${target.x}, ${target.y})`);
-        } else if (target.type === "player") {
-          const playerRef = doc(db, `games/${gameId}/players/${target.name}`);
-          await updateDoc(playerRef, { alive: false });
-          console.log(`☠️ Ox kills player ${target.name}`);
-        }
+      // 💥 Attack if adjacent (not same tile)
+      const dx = Math.abs(ox.x - bestTarget.x);
+      const dy = Math.abs(ox.y - bestTarget.y);
+      if (dx + dy === 1) {
+        damageStructure(bestTarget.x, bestTarget.y, ratPower * 10); // Heavy damage
         ox.health -= 1;
+        console.log(`💥 Ox attacked ${bestTarget.symbol} at (${bestTarget.x}, ${bestTarget.y})`);
       }
     }
 
-    // ☠️ Death cleanup
-    if (ox.health <= 0) {
-      if (ox.id) {
-        await deleteDoc(doc(db, `games/${gameId}/oxen/${ox.id}`));
-      }
-      oxen.splice(i, 1);
-    }
+    if (ox.health <= 0) oxen.splice(i, 1);
   }
 
   renderGrid();
 }, 800);
-setInterval(async () => {
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "⚙️") {
-        const homeKey = `${x}_${y}`;
-
-        // Check if bot already exists for this catcher
-        const botExists = catcherBots.some(bot => bot.homeX === x && bot.homeY === y);
-        if (!botExists) {
-          const rat = findNearestRat(x, y);
-          if (rat) {
-            const newBot = {
-              x,
-              y,
-              homeX: x,
-              homeY: y,
-              targetX: rat.x,
-              targetY: rat.y,
-              phase: "toRat"
-            };
-            const botRef = doc(collection(db, `games/${gameId}/catcherBots`));
-            await setDoc(botRef, newBot);
-          }
-        }
-      }
-    }
-  }
-}, 20000);
-
-setInterval(async () => {
-  for (const bot of [...catcherBots]) {
-    const botRef = doc(db, `games/${gameId}/catcherBots/${bot.id}`);
-    let { x, y, targetX, targetY, homeX, homeY, phase } = bot;
-
-    const dx = Math.sign(targetX - x);
-    const dy = Math.sign(targetY - y);
-
-    if (dx !== 0) x += dx;
-    else if (dy !== 0) y += dy;
-
-    // 🐀 Arrived at Rat
-    if (phase === "toRat" && x === targetX && y === targetY) {
-      const ratIndex = rats.findIndex(r => r.x === x && r.y === y);
-      if (ratIndex !== -1) {
-        const ratToRemove = rats[ratIndex];
-        rats.splice(ratIndex, 1);
-        await deleteDoc(doc(db, `games/${gameId}/rats/${ratToRemove.id}`));
-      }
-
-      await updateDoc(botRef, {
-        x, y,
-        targetX: homeX,
-        targetY: homeY,
-        phase: "returning"
-      });
-    }
-
-    // 🏠 Arrived home
-    else if (phase === "returning" && x === homeX && y === homeY) {
-      await deleteDoc(botRef); // Clients will handle cheese block spawn
-    }
-
-    // 🚶‍♂️ Still moving
-    else {
-      await updateDoc(botRef, { x, y });
-    }
-  }
-}, 300);
-
-
-
  setInterval(async () => {
     if (!gameStarted) return;
 
@@ -3020,127 +2388,8 @@ setInterval(async () => {
 
     console.log("🔁 Cat health sync:", catHealth);
   }, 3000);
-setInterval(async () => {
-  for (let squirrel of squirrels) {
-    if (squirrel.health <= 0) continue;
 
-    const { x: sx, y: sy } = squirrel;
-
-    let target = null;
-    let minDist = Infinity;
-
-    // 🎯 Look for nearby enemies within 5 tiles
-    const enemies = [...rats, ...oxen];
-    if (catPos && catHealth > 0) enemies.push({ ...catPos, type: "cat" });
-
-    for (let e of enemies) {
-      const dist = Math.abs(e.x - sx) + Math.abs(e.y - sy);
-      if (dist <= 5 && dist < minDist) {
-        minDist = dist;
-        target = { x: e.x, y: e.y, type: "enemy" };
-      }
-    }
-
-    // 🐭 If no enemy, follow closest alive mouse
-    if (!target) {
-      for (const [name, p] of Object.entries(players)) {
-        if (p.alive !== false) {
-          const dist = Math.abs(p.x - sx) + Math.abs(p.y - sy);
-          if (dist < minDist) {
-            minDist = dist;
-            target = { x: p.x, y: p.y, type: "mouse" };
-          }
-        }
-      }
-    }
-
-    if (!target) continue;
-
-    const dist = Math.abs(target.x - sx) + Math.abs(target.y - sy);
-    if (dist <= 2) continue; // Stay 2 tiles away from target
-
-    // 🧭 Path toward target (ignore obstacles, stay 2 away)
-    const step = findSquirrelPath(sx, sy, target.x, target.y, 2);
-    if (!step) continue;
-    console.log(`🐿 Moving squirrel ${squirrel.id} from (${sx}, ${sy}) to (${step.x}, ${step.y})`);
-
-
-    // 🐿 Update local squirrel
-    squirrel.x = step.x;
-    squirrel.y = step.y;
-
-    // 🔁 Update only x/y in Firebase (preserve health)
-    const squirrelRef = doc(db, `games/${gameId}/squirrels/${squirrel.id}`);
-    await updateDoc(squirrelRef, {
-      x: step.x,
-      y: step.y
-    });
-  }
-
-  // 🧹 Remove dead squirrels
-  for (let i = squirrels.length - 1; i >= 0; i--) {
-    if (squirrels[i].health <= 0) {
-      const squirrelRef = doc(db, `games/${gameId}/squirrels/${squirrels[i].id}`);
-      await deleteDoc(squirrelRef);
-      squirrels.splice(i, 1);
-    }
-  }
-
-  renderGrid();
-}, 500);
-setInterval(async () => {
-  if (!isHost) return;
-
-  const newVines = [];
-
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      if (grid[y][x] === "🌿") {
-        const directions = shuffle([
-          { dx: 1, dy: 0 },
-          { dx: -1, dy: 0 },
-          { dx: 0, dy: 1 },
-          { dx: 0, dy: -1 }
-        ]);
-
-        for (const { dx, dy } of directions) {
-          const nx = x + dx, ny = y + dy;
-          if (
-            nx >= 0 && nx < gridSize &&
-            ny >= 0 && ny < gridSize &&
-            grid[ny][nx] === ""
-          ) {
-            newVines.push({ x: nx, y: ny });
-            break; // ✅ Only spawn ONE vine per existing vine wall
-          }
-        }
-      }
-    }
-  }
-
-  for (const { x, y } of newVines) {
-  const key = `${x}_${y}`;
-  if (grid[y][x] === "") {
-    grid[y][x] = "🌿";
-
-    const health = structureInfo["🌿"]?.health || 3; // fallback if not defined
-
-    structureHealth[key] = health; // Update local tracking
-    await setDoc(doc(db, `games/${gameId}/structures/${key}`), {
-      x,
-      y,
-      type: "🌿",
-      health
-    });
-  }
-}
-
-
-  renderGrid();
-}, 25000);
-
-
-setInterval(async () => {
+ setInterval(async () => {
   for (let rat of rats) {
     if (rat.health <= 0) continue;
 
@@ -3167,14 +2416,14 @@ setInterval(async () => {
         }
 
         renderGrid();
-        continue;
+        continue; // Skip movement this cycle
       }
     }
 
     let closestTarget = null;
     let minDist = Infinity;
 
-    // 🔍 Closest mouse
+    // 🔍 Find closest player
     for (const [name, p] of Object.entries(players)) {
       if (p.alive !== false) {
         const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
@@ -3185,10 +2434,10 @@ setInterval(async () => {
       }
     }
 
-    // 🔍 Closest structure
+    // 🔍 Find closest structure including 🗼 beacon
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀", "🌳", "🌿", "⚙️"].includes(grid[y][x])) {
+        if (["🧱", "🔫", "🪳", "🏭", "💎", "🗼", "🚀"].includes(grid[y][x])) {
           const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
           if (dist < minDist) {
             minDist = dist;
@@ -3198,73 +2447,57 @@ setInterval(async () => {
       }
     }
 
-    // 🔍 Closest squirrel
-    for (let squirrel of squirrels) {
-      const dist = Math.abs(squirrel.x - rat.x) + Math.abs(squirrel.y - rat.y);
-      if (dist < minDist && squirrel.health > 0) {
-        minDist = dist;
-        closestTarget = { x: squirrel.x, y: squirrel.y, type: "squirrel", id: squirrel.id };
-      }
-    }
+    // 🧭 Pathfind toward target
+if (closestTarget) {
+  const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
+    const isBlocked = ["🧱", "🏭", "💎", "🗼"].includes(grid[y][x]);
+    const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
+    const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
+    return !isBlocked && !isReviveCenter && !ratOccupied;
+  });
 
-    // 🧭 Pathfind
-    if (closestTarget) {
-      const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-      const isBlocked = ["🧱", "🏭", "💎", "🗼", "🌿"].includes(grid[y][x]);
-        const isReviveCenter = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
-        const ratOccupied = rats.some(r => r !== rat && r.x === x && r.y === y);
-        return !isBlocked && !isReviveCenter && !ratOccupied;
+  if (path && path.length > 0) {
+    const next = path[0];
+    const ratInTheWay = rats.some(r => r !== rat && r.x === next.x && r.y === next.y);
+
+    if (!ratInTheWay) {
+      rat.x = next.x;
+      rat.y = next.y;
+
+      // 🧠 Push updated rat position to Firestore
+      await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
+        x: rat.x,
+        y: rat.y
       });
+    }
+  }
+}
 
-      if (path && path.length > 0) {
-        const next = path[0];
-        const ratInTheWay = rats.some(r => r !== rat && r.x === next.x && r.y === next.y);
-        if (!ratInTheWay) {
-          rat.x = next.x;
-          rat.y = next.y;
-
-          // 🔄 Sync position
-          await updateDoc(doc(db, `games/${gameId}/rats/${rat.id}`), {
-            x: rat.x,
-            y: rat.y
-          });
+      // 💥 Attack logic
+      if (rat.x === closestTarget.x && rat.y === closestTarget.y) {
+        if (closestTarget.type === "structure") {
+          damageStructure(rat.x, rat.y, ratPower);
+        } else if (closestTarget.type === "mouse") {
+          const playerRef = doc(db, `games/${gameId}/players/${closestTarget.name}`);
+          updateDoc(playerRef, { alive: false });
+          if (closestTarget.name === username) {
+            isAlive = false;
+            document.getElementById("status").textContent = "💀 You are dead!";
+          }
         }
       }
     }
 
-    // 💥 Attack
-    if (rat.x === closestTarget.x && rat.y === closestTarget.y) {
-      if (closestTarget.type === "structure") {
-        damageStructure(rat.x, rat.y, ratPower);
-      } else if (closestTarget.type === "mouse") {
-        const playerRef = doc(db, `games/${gameId}/players/${closestTarget.name}`);
-        await updateDoc(playerRef, { alive: false });
-        if (closestTarget.name === username) {
-          isAlive = false;
-          document.getElementById("status").textContent = "💀 You are dead!";
-        }
-      } else if (closestTarget.type === "squirrel") {
-        const squirrel = squirrels.find(s => s.id === closestTarget.id);
-        if (squirrel) {
-          squirrel.health -= ratPower;
-          const squirrelRef = doc(db, `games/${gameId}/squirrels/${squirrel.id}`);
-          await updateDoc(squirrelRef, { health: squirrel.health });
-        }
-      }
-    }
+  // 🧹 Remove dead rats
+   for (let i = rats.length - 1; i >= 0; i--) {
+  if (rats[i].health <= 0) {
+    const ratRef = doc(db, `games/${gameId}/rats/${rats[i].id}`);
+    await deleteDoc(ratRef);
+    rats.splice(i, 1);
   }
-
-  // 🧹 Clean up dead rats
-  for (let i = rats.length - 1; i >= 0; i--) {
-    if (rats[i].health <= 0) {
-      await deleteDoc(doc(db, `games/${gameId}/rats/${rats[i].id}`));
-      rats.splice(i, 1);
-    }
-  }
-
+}
   renderGrid();
 }, 400);
-
 }
 })();
 
