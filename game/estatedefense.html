@@ -597,29 +597,35 @@ const TOWER_PRIORITY_PRESETS = {
     let isHost = false;
     let simInt = null;
     const lobbyRef  = doc(db, "lobbies", lobbyId);
-    const intentsCol = collection(db, "lobbies", lobbyId, "intents");
+    // Firestore rules only allow lobby subcollection access under /crowncouncil/*.
+    // Estate Defense stores both intents and presence docs in this shared channel.
+    const syncCol = collection(db, "lobbies", lobbyId, "crowncouncil");
+    const intentsCol = syncCol;
 
     // Presence
-    const presenceCol = collection(db, "lobbies", lobbyId, "presence");
+    const presenceCol = syncCol;
     let presentNames = [];
     const STALE_MS = 45_000;
+
+    const presenceDocId = (name) => `presence_${name}`;
 
     onSnapshot(presenceCol, snap => {
       const nowMs = Date.now();
       presentNames = snap.docs
         .filter(d => {
+          if (!d.id.startsWith("presence_")) return false;
           const data = d.data() || {};
           const ts = data.lastSeen;
           const ms = ts?.toMillis ? ts.toMillis() : 0;
           return data.active !== false && (nowMs - ms < STALE_MS);
         })
-        .map(d => d.id)
+        .map(d => d.id.slice("presence_".length))
         .sort();
     });
 
-    await setDoc(doc(presenceCol, me), { name: me, lastSeen: serverTimestamp(), active: true }, { merge: true });
+    await setDoc(doc(presenceCol, presenceDocId(me)), { name: me, lastSeen: serverTimestamp(), active: true }, { merge: true });
     const _presenceBeat = setInterval(() => {
-      updateDoc(doc(presenceCol, me), { lastSeen: serverTimestamp(), active: true }).catch(()=>{});
+      updateDoc(doc(presenceCol, presenceDocId(me)), { lastSeen: serverTimestamp(), active: true }).catch(()=>{});
     }, 15000);
 
     // Also mirror to root `players`
@@ -627,7 +633,7 @@ const TOWER_PRIORITY_PRESETS = {
 
     function cleanupPresence(){
       try { clearInterval(_presenceBeat); } catch {}
-      updateDoc(doc(presenceCol, me), { active: false, leftAt: serverTimestamp() }).catch(()=>{});
+      updateDoc(doc(presenceCol, presenceDocId(me)), { active: false, leftAt: serverTimestamp() }).catch(()=>{});
       updateDoc(lobbyRef, { players: arrayRemove(me) }).catch(()=>{});
     }
     window.addEventListener('beforeunload', cleanupPresence);
@@ -2662,7 +2668,6 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
-
 
 
 
