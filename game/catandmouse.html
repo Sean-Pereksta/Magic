@@ -94,11 +94,15 @@
       z-index: 25;
       background: rgba(245,245,245,0.96);
       border-top: 2px solid #bbb;
-      padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+      padding: 6px 8px calc(20px + env(safe-area-inset-bottom));
       box-shadow: 0 -8px 18px rgba(0,0,0,0.2);
     }
 
     .mobile-row{ display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:nowrap; margin:4px 0; }
+    .mobile-row.controls-top{
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     #mobileControls .pad{ background:#fff; border:1px solid #999; border-radius:10px; }
     #mobileControls .active{ background:#d4e8ff; border-color:#5591d3; }
 
@@ -110,8 +114,8 @@
     }
 
     .analog-stick{
-      width: 92px;
-      height: 92px;
+      width: 106px;
+      height: 106px;
       border-radius: 50%;
       border: 2px solid #778;
       background: radial-gradient(circle at 35% 35%, #fefefe, #d9dce5);
@@ -121,8 +125,8 @@
     }
 
     .analog-thumb{
-      width: 34px;
-      height: 34px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: #667;
       position: absolute;
@@ -186,7 +190,7 @@
       #mobileControls{ display: block; }
       #fullscreenBtn{ display: inline-block; }
       #grid{ margin-top: 10px; }
-      body{ padding-bottom: 165px; }
+      body{ padding-bottom: 210px; }
       #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
       .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
     }
@@ -323,10 +327,15 @@
       <div id="gridWrapper"><div id="grid"></div></div>
 
       <div id="mobileControls" style="margin-top:20px; display:none;">
-        <div class="mobile-row">
+        <div class="mobile-row controls-top">
           <button class="mobile-mini-btn" data-upgrade>🛠️</button>
           <button class="mobile-mini-btn" data-blink>🌀</button>
           <button class="mobile-mini-btn" data-trap>🪤</button>
+          <div id="mobileBuildPicker">
+            <button class="mobile-mini-btn" id="mobileBuildPrev" aria-label="Previous building">⬅️</button>
+            <div id="mobileBuildDisplay">🧱 Wall</div>
+            <button class="mobile-mini-btn" id="mobileBuildNext" aria-label="Next building">➡️</button>
+          </div>
         </div>
 
         <div class="mobile-row">
@@ -335,11 +344,6 @@
             <div id="moveAnalogStick" class="analog-stick" aria-label="Movement analog stick">
               <div id="moveAnalogThumb" class="analog-thumb"></div>
             </div>
-          </div>
-          <div id="mobileBuildPicker">
-            <button class="mobile-mini-btn" id="mobileBuildPrev" aria-label="Previous building">⬅️</button>
-            <div id="mobileBuildDisplay">🧱 Wall</div>
-            <button class="mobile-mini-btn" id="mobileBuildNext" aria-label="Next building">➡️</button>
           </div>
           <div class="analog-control">
             <div class="analog-label">🏗️ Build</div>
