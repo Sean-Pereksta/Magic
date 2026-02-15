@@ -140,12 +140,12 @@
       position:absolute;
       left:1px;
       right:1px;
-      top:-8px;
-      height:5px;
+      top:-5px;
+      height:3px;
       background:rgba(20,20,20,0.32);
       border-radius:8px;
       overflow:hidden;
-      border:1px solid rgba(0,0,0,0.25);
+      border:1px solid rgba(0,0,0,0.2);
       pointer-events:none;
     }
 
@@ -418,6 +418,8 @@
     "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20
   };
 
+  const localTileSeed = Math.floor(Math.random() * 9973);
+
   // ============================================================
   // UI helpers
   // ============================================================
@@ -613,7 +615,13 @@
 
           if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
           else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
-          else cell.style.background = "#c8f7c5";
+          else {
+            const tone = (Math.abs((x * 13) + (y * 17) + localTileSeed) % 4);
+            if (tone === 0) cell.style.background = "#c8f7c5";
+            else if (tone === 1) cell.style.background = "#bfeeb9";
+            else if (tone === 2) cell.style.background = "#d5f9d3";
+            else cell.style.background = "#b7e8b5";
+          }
 
           cell.textContent = symbol || "";
         } else {
@@ -1389,13 +1397,11 @@
       }
 
       let closestTarget = null;
-      let minDist = Infinity;
+      let bestPath = null;
 
-      // reachable nearby player first
+      // always prioritize nearest reachable player (no aggro range)
       for (const [pu, p] of Object.entries(players)){
         if ((p.alive ?? true) === false) continue;
-        const manhattan = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
-        if (manhattan > 7) continue;
 
         const pPath = findPath(rat.x, rat.y, p.x, p.y, (x, y) => {
           const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
@@ -1403,34 +1409,28 @@
           return !isBlocked && !ratOccupied;
         });
 
-        if (pPath && pPath.length > 0){
-          minDist = pPath.length;
-          closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu, priority: 0 };
-          break;
+        if (pPath && (!bestPath || pPath.length < bestPath.length)){
+          bestPath = pPath;
+          closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu };
         }
       }
 
-      // closest player
-      for (const [pu, p] of Object.entries(players)){
-        if ((p.alive ?? true) !== false){
-          const dist = Math.abs(p.x - rat.x) + Math.abs(p.y - rat.y);
-          if (dist < minDist){
-            minDist = dist;
-            closestTarget = { x:p.x, y:p.y, type:"mouse", uid: pu, priority: 1 };
+      // if mouse is unpathable (behind walls/structures), attack nearest reachable structure
+      if (!closestTarget){
+        const structureTarget = getNearestReachableStructureTarget(
+          rat.x,
+          rat.y,
+          (x, y) => {
+            const symbol = grid[y][x];
+            const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
+            const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+            return !isBlocked && !ratOccupied;
           }
-        }
-      }
+        );
 
-      // closest structure
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥"].includes(grid[y][x])){
-            const dist = Math.abs(x - rat.x) + Math.abs(y - rat.y);
-            if (dist < minDist || (dist===minDist && (closestTarget?.priority ?? 99) > 2)){
-              minDist = dist;
-              closestTarget = { x, y, type:"structure", priority: 2 };
-            }
-          }
+        if (structureTarget){
+          bestPath = structureTarget.path;
+          closestTarget = { x: structureTarget.x, y: structureTarget.y, type:"structure" };
         }
       }
 
@@ -1438,15 +1438,17 @@
         const centerX = Math.floor(gridSize/2);
         const centerY = Math.floor(gridSize/2);
 
-        const path = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-          const isReviveCenter = (x===centerX && y===centerY);
-          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-          return !isBlocked && !isReviveCenter && !ratOccupied;
-        });
+        if (!bestPath){
+          bestPath = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
+            const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+            const isReviveCenter = (x===centerX && y===centerY);
+            const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+            return !isBlocked && !isReviveCenter && !ratOccupied;
+          });
+        }
 
-        if (path && path.length > 0){
-          const next = path[0];
+        if (bestPath && bestPath.length > 0){
+          const next = bestPath[0];
           const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
