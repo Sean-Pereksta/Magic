@@ -2723,26 +2723,42 @@
 
   async function rabbitDenTick(){
     // spawn rabbits from dens
+    if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};
     for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (grid[y][x] === "🐇"){
       const local = rabbits.filter(r => Math.abs(r.x-x)+Math.abs(r.y-y)<=2 && (r.health??0)>0);
       if (local.length >= 3) continue;
+      const denKey = `${x},${y}`;
+      const lastSpawn = window.__lastRabbitSpawnAt[denKey] || 0;
+      if (Date.now() - lastSpawn < 15000) continue;
       const id = `rabbit_${crypto.randomUUID()}`;
-      await setDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:22, createdAt:Date.now() }, { merge:true });
+      await setDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });
+      window.__lastRabbitSpawnAt[denKey] = Date.now();
     }
 
     for (const rb of rabbits){
       if ((rb.health ?? 0) <= 0) continue;
-      const target = nearestEnemyFrom(rb.x, rb.y, 4);
+      const target = nearestEnemyFrom(rb.x, rb.y, Number.POSITIVE_INFINITY);
       if (target){
         const tx = target.kind==="cat" ? catPos.x : target.enemy.x;
         const ty = target.kind==="cat" ? catPos.y : target.enemy.y;
-        let cx = rb.x, cy = rb.y;
-        while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); rabbitShots.push({x:cx,y:cy}); }
-        if (target.kind==="cat"){
-          catHealth -= 7;
-          await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+        const distance = Math.abs(tx - rb.x) + Math.abs(ty - rb.y);
+        if (distance <= 4){
+          let cx = rb.x, cy = rb.y;
+          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); rabbitShots.push({x:cx,y:cy}); }
+          if (target.kind==="cat"){
+            catHealth -= 7;
+            await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+          } else {
+            await damageEnemyUnit({...target.enemy,kind:target.kind}, 7);
+          }
         } else {
-          await damageEnemyUnit({...target.enemy,kind:target.kind}, 7);
+          const nx = rb.x + Math.sign(tx - rb.x);
+          const ny = rb.y + Math.sign(ty - rb.y);
+          if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
+            rb.x = nx;
+            rb.y = ny;
+            await updateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
+          }
         }
       } else {
         const opts=[[1,0],[-1,0],[0,1],[0,-1]];
