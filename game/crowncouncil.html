@@ -123,6 +123,12 @@
     filter:brightness(1.05) saturate(1.1);
   }
   .unit{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; z-index:3; pointer-events:none; }
+  .unit.team0{
+    filter:drop-shadow(0 0 1px rgba(15,23,42,.95)) drop-shadow(0 0 4px var(--team0)) drop-shadow(0 0 1px var(--team0b));
+  }
+  .unit.team1{
+    filter:drop-shadow(0 0 1px rgba(15,23,42,.95)) drop-shadow(0 0 4px var(--team1)) drop-shadow(0 0 1px var(--team1b));
+  }
 
   .hp{
     position:absolute;left:6px;right:6px;bottom:4px;height:7px;border-radius:999px;
@@ -1086,6 +1092,9 @@ function paint(units, field){
     if (uni){
       uni.style.zIndex = "3";
       uni.style.fontSize = s===2 ? "32px" : "26px";
+      uni.classList.remove("team0","team1");
+      uni.classList.toggle("team0", u.p === 0);
+      uni.classList.toggle("team1", u.p === 1);
       uni.textContent = unitEmoji(u.type);
     }
 
@@ -2285,7 +2294,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
