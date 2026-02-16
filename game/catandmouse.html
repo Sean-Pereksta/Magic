@@ -588,7 +588,8 @@
     15:{symbol:"🟢",name:"Slime Tower",cost:26,hp:20,minWins:25},
     16:{symbol:"🔮",name:"Teleporter Crystal",cost:20,hp:16,minWins:15},
     17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
-    18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12}
+    18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12},
+    19:{symbol:"🕸️",name:"Web Launcher",cost:27,hp:20,minWins:15}
   };
   const MAX_BUILD_SLOTS = 8;
   const BASE_BUILD_ORDER = [1,2,3,4,5,6,7,8];
@@ -627,6 +628,16 @@
   let lastAdvPointAt = Date.now();
   let lastAcornShotAt = 0;
   let lastFanBurstAt = 0;
+  let lastWebShotAt = 0;
+
+  let catWebTrappedUntil = 0;
+  let catFacing = { dx: 1, dy: 0 };
+  let catAbilityLoadout = [];
+  const catAbilityState = {
+    pouncePending: null,
+    cooldowns: {}
+  };
+  const towerSilencedUntil = {};
 
   const GENERATOR_PAYOUT_MS = 15000;
   const ADV_POINT_MS = 180000;
@@ -634,7 +645,14 @@
   const STRUCTURE_MAX_HP = {
     "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
     "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
-    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20
+    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20
+  };
+
+  const CAT_ABILITY_DEFS = {
+    pounce: { name: "Pounce", cooldownMs: 26000 },
+    rend: { name: "Rend", cooldownMs: 24000 },
+    fatalMeow: { name: "Fatal Meow", cooldownMs: 22000 },
+    silentLanding: { name: "Silent Landing", cooldownMs: 30000 }
   };
 
   function isCheesePickupCell(value){
@@ -1190,7 +1208,7 @@
 
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
-      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)){
+      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
 
@@ -1236,6 +1254,18 @@
       catCell.appendChild(bar);
     }
 
+    const pounceMark = catAbilityState.pouncePending;
+    if (pounceMark){
+      const telegraphCell = document.getElementById(`cell-${pounceMark.x}-${pounceMark.y}`);
+      if (telegraphCell){
+        const t = document.createElement("div");
+        t.className = "combat-vfx vfx-pop";
+        t.textContent = "🎯";
+        t.style.fontSize = "12px";
+        telegraphCell.appendChild(t);
+      }
+    }
+
     // rabbit laser overlays
     for (const shot of rabbitShots){
       const cell = document.getElementById(`cell-${shot.x}-${shot.y}`);
@@ -1274,9 +1304,18 @@
   // ============================================================
   // Movement / cooldown
   // ============================================================
+  function getCurrentMoveCooldown(){
+    const me = players[uid];
+    if (me && me.slowedUntil && Date.now() < me.slowedUntil){
+      const mult = Math.max(1, 1 / Math.max(0.1, me.slowMult ?? 0.75));
+      return Math.floor(moveCooldown * mult);
+    }
+    return moveCooldown;
+  }
+
   function triggerMoveCooldown(){
     canMove = false;
-    setTimeout(() => canMove = true, moveCooldown);
+    setTimeout(() => canMove = true, getCurrentMoveCooldown());
   }
 
   function movePlayer(dx, dy){
@@ -1553,6 +1592,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         if (grid[y][x] !== "🔫") continue;
+        if (isTowerSilenced(x, y)) continue;
 
         let attacked = false;
 
@@ -1631,6 +1671,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         if (grid[y][x] !== "🚀") continue;
+        if (isTowerSilenced(x, y)) continue;
 
         // beacon boost?
         let boosted = false;
@@ -1749,7 +1790,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
 
         const targetIsWall = (symbol === "🧱" || symbol === "💎");
         const passable = passableFn
@@ -1783,7 +1824,7 @@
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
         const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
+        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
 
         for (const cell of structureTargetCells(x,y)){
           if (grid[cell.y][cell.x] !== "") continue;
@@ -1822,6 +1863,166 @@
   // ============================================================
   // Cat AI
   // ============================================================
+  function canCatLandOnCell(x, y){
+    if (x<0 || y<0 || x>=gridSize || y>=gridSize) return false;
+    if (grid[y][x] !== "") return false;
+    if (rats.some(r => r.x===x && r.y===y && (r.health ?? 0) > 0)) return false;
+    if (oxen.some(o => o.x===x && o.y===y && (o.health ?? 0) > 0)) return false;
+    if (ratKings.some(k => k.x===x && k.y===y && (k.health ?? 0) > 0)) return false;
+    if (vultures.some(v => v.x===x && v.y===y && (v.health ?? 0) > 0)) return false;
+    return true;
+  }
+
+  function setCatAbilityCooldown(key){
+    const def = CAT_ABILITY_DEFS[key];
+    if (!def) return;
+    catAbilityState.cooldowns[key] = Date.now() + def.cooldownMs;
+  }
+
+  function isCatAbilityReady(key){
+    return Date.now() >= (catAbilityState.cooldowns[key] ?? 0);
+  }
+
+  function selectCatAbilitiesForDifficulty(mode){
+    const all = Object.keys(CAT_ABILITY_DEFS);
+    if (mode === "hard") return [all[Math.floor(Math.random() * all.length)]];
+    if (mode === "insane") return [...all].sort(() => Math.random() - 0.5).slice(0, 2);
+    return [];
+  }
+
+  function initializeCatAbilityLoadout(mode){
+    catAbilityLoadout = selectCatAbilitiesForDifficulty(mode);
+    catAbilityState.pouncePending = null;
+    catAbilityState.cooldowns = {};
+    for (const key of catAbilityLoadout) catAbilityState.cooldowns[key] = 0;
+  }
+
+  async function useCatPounce(){
+    if (catAbilityState.pouncePending) return false;
+
+    let best = null;
+    for (const p of Object.values(players)){
+      if ((p.alive ?? true) === false) continue;
+      for (let oy=-2; oy<=2; oy++) for (let ox=-2; ox<=2; ox++){
+        const tx = p.x + ox;
+        const ty = p.y + oy;
+        if (!canCatLandOnCell(tx, ty)) continue;
+        const d = Math.abs(tx-catPos.x) + Math.abs(ty-catPos.y);
+        const path = findPath(catPos.x, catPos.y, tx, ty, false);
+        const blockedByWalls = !path;
+        const score = (blockedByWalls ? 1000 : 0) - d;
+        if (!best || score > best.score) best = { x: tx, y: ty, score, d, blockedByWalls };
+      }
+    }
+
+    if (!best) return false;
+
+    catAbilityState.pouncePending = {
+      x: best.x,
+      y: best.y,
+      executeAt: Date.now() + 5000
+    };
+    addCombatVfx(best.x, best.y, "🎯", "vfx-pop", 5200, 14);
+    setCatAbilityCooldown("pounce");
+    return true;
+  }
+
+  async function resolvePendingPounce(){
+    const pending = catAbilityState.pouncePending;
+    if (!pending) return false;
+    if (Date.now() < pending.executeAt) return false;
+
+    if (canCatLandOnCell(pending.x, pending.y)){
+      catFacing = { dx: Math.sign(pending.x - catPos.x) || catFacing.dx || 1, dy: Math.sign(pending.y - catPos.y) || catFacing.dy || 0 };
+      catPos = { x: pending.x, y: pending.y };
+      addCombatVfx(catPos.x, catPos.y, "💨", "vfx-hit", 650, 17);
+    }
+
+    catAbilityState.pouncePending = null;
+    return true;
+  }
+
+  async function useCatRend(){
+    let dir = { dx: catFacing.dx || 1, dy: catFacing.dy || 0 };
+    if (dir.dx === 0 && dir.dy === 0) dir = { dx: 1, dy: 0 };
+
+    const cells = [];
+    for (let step=1; step<=3; step++){
+      cells.push({ x: catPos.x + dir.dx * step, y: catPos.y + dir.dy * step });
+    }
+
+    let didHit = false;
+    for (const c of cells){
+      if (c.x<0 || c.y<0 || c.x>=gridSize || c.y>=gridSize) continue;
+      if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[c.y][c.x])){
+        await damageStructure(c.x, c.y, 30);
+        addCombatVfx(c.x, c.y, "🩸", "vfx-claw", 620, 14);
+        didHit = true;
+      }
+    }
+
+    if (didHit) setCatAbilityCooldown("rend");
+    return didHit;
+  }
+
+  async function useCatFatalMeow(){
+    const until = Date.now() + 5000;
+    let changed = false;
+    for (const [pu, p] of Object.entries(players)){
+      if ((p.alive ?? true) === false) continue;
+      const d = Math.abs((p.x ?? 0) - catPos.x) + Math.abs((p.y ?? 0) - catPos.y);
+      if (d <= 6){
+        await updateDoc(ccRef(ID.player(pu)), { slowedUntil: until, slowMult: 0.75, updatedAt: Date.now() });
+        changed = true;
+      }
+    }
+    if (changed){
+      addCombatVfx(catPos.x, catPos.y, "😾", "vfx-pop", 600, 16);
+      setCatAbilityCooldown("fatalMeow");
+    }
+    return changed;
+  }
+
+  function getTowerKey(x, y){
+    return `${x}_${y}`;
+  }
+
+  function isTowerSilenced(x, y){
+    return Date.now() < (towerSilencedUntil[getTowerKey(x,y)] ?? 0);
+  }
+
+  async function useCatSilentLanding(){
+    const until = Date.now() + 4000;
+    let affected = false;
+    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++){
+      if (!["🔫","🚀","⚡","☄️","🌰","🪭","🕸️"].includes(grid[y][x])) continue;
+      const d = Math.abs(x-catPos.x)+Math.abs(y-catPos.y);
+      if (d <= 6){
+        towerSilencedUntil[getTowerKey(x,y)] = until;
+        affected = true;
+      }
+    }
+    if (affected){
+      addCombatVfx(catPos.x, catPos.y, "🤫", "vfx-pop", 560, 15);
+      setCatAbilityCooldown("silentLanding");
+    }
+    return affected;
+  }
+
+  async function maybeUseCatAbilities(){
+    if (!catAbilityLoadout.length) return;
+    await resolvePendingPounce();
+
+    const ready = catAbilityLoadout.filter(isCatAbilityReady);
+    if (!ready.length) return;
+
+    const chosen = ready[Math.floor(Math.random() * ready.length)];
+    if (chosen === "pounce") await useCatPounce();
+    else if (chosen === "rend") await useCatRend();
+    else if (chosen === "fatalMeow") await useCatFatalMeow();
+    else if (chosen === "silentLanding") await useCatSilentLanding();
+  }
+
   function startCatBehaviorLoop(){
     if (catMoveInterval) clearInterval(catMoveInterval);
     const speed = Math.max(200, 1300 - catPower * 40);
@@ -1831,6 +2032,18 @@
   }
 
   async function catBehavior(){
+    if (Date.now() < catWebTrappedUntil){
+      addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
+      await updateDoc(ccRef(ID.STATE), {
+        cat: { x: catPos.x, y: catPos.y, health: catHealth },
+        updatedAt: Date.now()
+      });
+      renderGrid();
+      return;
+    }
+
+    await maybeUseCatAbilities();
+
     // traps check
     for (const t of traps){
       if (t.x===catPos.x && t.y===catPos.y){
@@ -1888,6 +2101,7 @@
       const symbol = grid[next.y][next.x];
       const isBlocked = (symbol==="🧱" || symbol==="💎");
       if (!isBlocked){
+        catFacing = { dx: Math.sign(next.x - catPos.x), dy: Math.sign(next.y - catPos.y) };
         catPos.x = next.x;
         catPos.y = next.y;
       }
@@ -1899,7 +2113,7 @@
       for (let dx=-1; dx<=1 && !attacked; dx++){
         const tx = catPos.x+dx, ty=catPos.y+dy;
         if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
-        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[ty][tx])){
+        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[ty][tx])){
           await damageStructure(tx,ty);
           attacked = true;
         }
@@ -2306,7 +2520,7 @@
       for (const cell of structureTargetCells(closestWall.x, closestWall.y)){
         if (grid[cell.y][cell.x] !== "") continue;
         const path = findPath(termite.x, termite.y, cell.x, cell.y, (x,y) => {
-          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[y][x]);
+          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[y][x]);
         });
         if (path && (!bestPath || path.length < bestPath.length)){
           bestPath = path;
@@ -2464,7 +2678,7 @@
         for (let ty=0; ty<gridSize; ty++){
           for (let tx=0; tx<gridSize; tx++){
             const symbol = grid[ty][tx];
-            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(symbol)) continue;
+            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
             if (tx===x && ty===y) continue;
 
             const key = `${tx}_${ty}`;
@@ -2638,6 +2852,7 @@
           }
         }
         if (sym === "☄️"){
+          if (isTowerSilenced(x, y)) continue;
           const target = nearestEnemyFrom(x,y,8);
           if (target){
             let dx=0,dy=0;
@@ -2657,6 +2872,7 @@
           }
         }
         if (sym === "⚡"){
+          if (isTowerSilenced(x, y)) continue;
           const first = nearestEnemyFrom(x,y,5);
           if (first){
             const hit = [];
@@ -2678,6 +2894,7 @@
           for (const k of ratKings){ const d=Math.abs(k.x-x)+Math.abs(k.y-y); if (d<=6){ k.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.ratKing(k.id)), { slowedUntil:k.slowedUntil, updatedAt:Date.now() }); } }
         }
         if (sym === "🌰" && Date.now() - lastAcornShotAt >= 10000){
+          if (isTowerSilenced(x, y)) continue;
           const enemies = listCombatEnemies();
           const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
           if (target){
@@ -2690,7 +2907,25 @@
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
+        if (sym === "🕸️" && Date.now() - lastWebShotAt >= 30000){
+          if (isTowerSilenced(x, y)) continue;
+          const target = nearestEnemyFrom(x,y,6);
+          if (target){
+            if (target.kind === "cat"){
+              catWebTrappedUntil = Date.now() + 3000;
+              addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 700, 16);
+            } else if (target.enemy?.id){
+              const until = Date.now() + 3000;
+              target.enemy.trappedUntil = until;
+              const docFn = target.kind==="rat"?ID.rat:target.kind==="ox"?ID.ox:target.kind==="ratking"?ID.ratKing:ID.vulture;
+              await updateDoc(ccRef(docFn(target.enemy.id)), { trappedUntil: until, updatedAt: Date.now() });
+              addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 700, 16);
+            }
+            lastWebShotAt = Date.now();
+          }
+        }
         if (sym === "🪭" && Date.now() - lastFanBurstAt >= 3000){
+          if (isTowerSilenced(x, y)) continue;
           const beaconBoost = isWithinBeaconAura(x, y, 2) ? 2 : 0;
           const burstCount = 2 + beaconBoost;
           const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1]];
@@ -3006,7 +3241,7 @@
               structures.delete(key);
               delete structureHealth[key];
               delete structureShields[key];
-              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭"].includes(grid[y][x])){
+              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[y][x])){
                 grid[y][x] = "";
               }
             }
@@ -3565,6 +3800,7 @@
     hostInitialized = true;
 
     gameStarted = true;
+    initializeCatAbilityLoadout(currentDifficulty);
     startCatBehaviorLoop();
 
     // power ramp
