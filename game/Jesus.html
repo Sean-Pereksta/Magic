@@ -744,6 +744,36 @@ if(!ignoreOneWay && ent.vy >= 0){
     }
   }
 
+  function triggerHolyPlatformBlast(platform){
+    if(!platform || platform.kind !== 'blessed' || platform.holySpent) return;
+    platform.holySpent = true;
+    platform.dead = true;
+
+    const cx = platform.x + platform.w*0.5;
+    const cy = platform.y + platform.h*0.5;
+    const blastR = 320;
+
+    let vaporized = 0;
+    for(const e of enemies){
+      if(e.hp <= 0) continue;
+      const ex = e.x + e.w*0.5;
+      const ey = e.y + e.h*0.5;
+      if(Math.hypot(ex-cx, ey-cy) <= blastR){
+        e.hp = 0;
+        vaporized++;
+        spawnSparkle(ex, ey);
+      }
+    }
+
+    for(let i=0;i<20;i++){
+      fx.push({kind:"chip", x:cx+rand(-24,24), y:cy+rand(-14,14), vx:rand(-260,260), vy:rand(-420,-120), t:0.7, theme:"spark"});
+    }
+    popFX(vaporized>0 ? `HOLY BLAST! x${vaporized}` : "HOLY BLAST!", cx, platform.y-10, "#d4b43d");
+    player.vy = Math.min(player.vy, -700);
+    player.onGround = false;
+    player.groundSolid = null;
+  }
+
   function exitHeaven(success){
     // leave heaven -> return to earth
     realm = "earth";
@@ -963,20 +993,20 @@ if(!ignoreOneWay && ent.vy >= 0){
   // =========================
   function makeEnemy(type, x, y, region, diff){
     const base = {x,y, vx:0, vy:0, w:40, h:52, onGround:false, onMoverId:null, groundSolid:null, hp:1, t:rand(0,10), region, type, hurtT:0, patrol:1};
-    if(type==="legionary") return Object.assign(base, {w:50,h:62, speed: clamp(130+diff*24,130,240), hp: 2, name:"Legionary"});
-    if(type==="centurion") return Object.assign(base, {w:54,h:66, speed: clamp(138+diff*22,138,260), hp: 3, name:"Centurion"});
-    if(type==="javelin") return Object.assign(base, {w:52,h:64, speed: clamp(124+diff*18,124,230), hp: 2, ranged:true, cd:rand(0,1.0), name:"Javelin"});
+    if(type==="legionary") return Object.assign(base, {w:50,h:62, speed: clamp(130+diff*24,130,240), hp: 1, name:"Legionary"});
+    if(type==="centurion") return Object.assign(base, {w:54,h:66, speed: clamp(138+diff*22,138,260), hp: 2, name:"Centurion"});
+    if(type==="javelin") return Object.assign(base, {w:52,h:64, speed: clamp(124+diff*18,124,230), hp: 1, ranged:true, cd:rand(0,1.0), name:"Javelin"});
     if(type==="hound") return Object.assign(base, {w:40,h:42, speed: clamp(190+diff*28,190,320), hp: 1, name:"Hound"});
-    if(type==="templeGuard") return Object.assign(base, {w:46,h:62, speed: clamp(150+diff*22,150,265), hp: 2, name:"Temple Guard"});
-    if(type==="slinger") return Object.assign(base, {w:44,h:60, speed: clamp(132+diff*18,132,240), hp: 2, ranged:true, cd:rand(0,1.1), name:"Slinger"});
-    if(type==="zealot") return Object.assign(base, {w:50,h:64, speed: clamp(168+diff*22,168,300), hp: 3, name:"Zealot"});
-    if(type==="stoneGolem") return Object.assign(base, {w:64,h:72, speed: clamp(96+diff*14,96,160), hp: 6, heavy:true, name:"Stone Golem"});
-    if(type==="imp") return Object.assign(base, {w:44,h:50, speed: clamp(190+diff*26,190,340), hp: 2, name:"Imp"});
-    if(type==="fireSkull") return Object.assign(base, {w:42,h:46, speed: clamp(158+diff*22,158,290), hp: 2, hover:true, name:"Fire Skull"});
-    if(type==="brimHound") return Object.assign(base, {w:48,h:46, speed: clamp(220+diff*30,220,380), hp: 3, name:"Brim Hound"});
-    if(type==="wraith") return Object.assign(base, {w:48,h:62, speed: clamp(170+diff*26,170,320), hp: 3, name:"Wraith"});
-    if(type==="warlord") return Object.assign(base, {w:62,h:72, speed: clamp(118+diff*16,118,220), hp: 7, heavy:true, name:"Warlord"});
-    if(type==="fallenKnight") return Object.assign(base, {w:58,h:68, speed: clamp(148+diff*24,148,280), hp: 5, ranged:true, cd:rand(0,1.0), name:"Fallen Knight"});
+    if(type==="templeGuard") return Object.assign(base, {w:46,h:62, speed: clamp(150+diff*22,150,265), hp: 1, name:"Temple Guard"});
+    if(type==="slinger") return Object.assign(base, {w:44,h:60, speed: clamp(132+diff*18,132,240), hp: 1, ranged:true, cd:rand(0,1.1), name:"Slinger"});
+    if(type==="zealot") return Object.assign(base, {w:50,h:64, speed: clamp(168+diff*22,168,300), hp: 2, name:"Zealot"});
+    if(type==="stoneGolem") return Object.assign(base, {w:64,h:72, speed: clamp(96+diff*14,96,160), hp: 4, heavy:true, name:"Stone Golem"});
+    if(type==="imp") return Object.assign(base, {w:44,h:50, speed: clamp(190+diff*26,190,340), hp: 1, name:"Imp"});
+    if(type==="fireSkull") return Object.assign(base, {w:42,h:46, speed: clamp(158+diff*22,158,290), hp: 1, hover:true, name:"Fire Skull"});
+    if(type==="brimHound") return Object.assign(base, {w:48,h:46, speed: clamp(220+diff*30,220,380), hp: 1, name:"Brim Hound"});
+    if(type==="wraith") return Object.assign(base, {w:48,h:62, speed: clamp(170+diff*26,170,320), hp: 2, name:"Wraith"});
+    if(type==="warlord") return Object.assign(base, {w:62,h:72, speed: clamp(118+diff*16,118,220), hp: 4, heavy:true, name:"Warlord"});
+    if(type==="fallenKnight") return Object.assign(base, {w:58,h:68, speed: clamp(148+diff*24,148,280), hp: 3, ranged:true, cd:rand(0,1.0), name:"Fallen Knight"});
 
     // Heaven angels
     if(type==="angelV"){
@@ -1080,6 +1110,28 @@ if(!ignoreOneWay && ent.vy >= 0){
           }
         }
       }
+
+      if(e.hellShooter){
+        e.fireCd -= dt;
+        if(e.fireCd <= 0){
+          const dx = (player.x + player.w*0.5) - (e.x + e.w*0.5);
+          const dy = (player.y + player.h*0.45) - (e.y + e.h*0.38);
+          const len = Math.hypot(dx, dy) || 1;
+          const sp = 440;
+          hazards.push({
+            x:e.x + e.w*0.5,
+            y:e.y + e.h*0.38,
+            w:12,
+            h:12,
+            kind:"fireball",
+            vx:(dx/len)*sp,
+            vy:(dy/len)*sp,
+            t:1.8,
+            theme:"Hell"
+          });
+          e.fireCd = rand(1.3, 2.2);
+        }
+      }
     }
 
     // projectiles (earth)
@@ -1100,6 +1152,18 @@ if(!ignoreOneWay && ent.vy >= 0){
         const hit = {x:h.x-4, y:h.y-4, w:h.w+8, h:h.h+8};
         if(aabb(player, hit)) takeHit();
         if(h.y > FLOOR_Y+240 || h.t<=0) hazards.splice(i,1);
+      }
+      if(h.kind==="fireball"){
+        h.x += h.vx * dt;
+        h.y += h.vy * dt;
+        h.t -= dt;
+        const hit = {x:h.x-6, y:h.y-6, w:h.w+12, h:h.h+12};
+        if(aabb(player, hit)){
+          takeHit();
+          hazards.splice(i,1);
+          continue;
+        }
+        if(h.t<=0) hazards.splice(i,1);
       }
     }
 
@@ -1177,7 +1241,12 @@ if(!ignoreOneWay && ent.vy >= 0){
         type = weightedPick(pool);
       }
 
-      placeEnemy(makeEnemy(type, ex, ySurf-44, region, diff));
+      const enemy = makeEnemy(type, ex, ySurf-44, region, diff);
+      if(region === "Hell" && world >= 5 && !enemy.angel){
+        enemy.hellShooter = true;
+        enemy.fireCd = rand(0.45, 1.55);
+      }
+      placeEnemy(enemy);
 
       // more traps deeper
       if(world>=2 && region==="Rome" && Math.random()<0.12*diff){
@@ -1300,7 +1369,8 @@ if(!ignoreOneWay && ent.vy >= 0){
       if(world>=2 && Math.random() < 0.18){
         const kind = Math.random()<0.5 ? 'slippery' : 'blessed';
         const sw = rndi(120, 220);
-        const sr = {x:px + rand(0, Math.max(8,pw-sw)), y: py - rndi(68,118), w: sw, h: 18, kind, theme:region};
+        const sx = px + rand(0, Math.max(8,pw-sw));
+        const sr = {x:sx, y: py - rndi(68,118), w: sw, h: 18, kind, theme:region, baseX:sx, slideT:rand(0,Math.PI*2), holyCharge:0, holySpent:false};
         if(canPlaceRect(sr, 16)) placeSolid(sr);
       }
     }
@@ -1594,6 +1664,35 @@ if(!ignoreOneWay && ent.vy >= 0){
       m.dy = (m.y - prevY);
       m.vx = m.dx/dt;
       m.vy = m.dy/dt;
+    }
+
+    // special one-way platforms
+    for(const s of solids){
+      if(s.dead) continue;
+      if(s.kind==='slippery'){
+        const wasX = s.x;
+        const active = player.onGround && player.groundSolid===s;
+        s.slideT = (s.slideT || 0);
+        if(active) s.slideT += dt * 1.8;
+        if(active){
+          const swing = 66;
+          s.x = (s.baseX ?? s.x) + Math.sin(s.slideT) * swing;
+        }
+        s.dx = s.x - wasX;
+        if(active && Math.abs(s.dx) > 0.0001){
+          player.x += s.dx;
+        }
+      } else if(s.kind==='blessed'){
+        const active = player.onGround && player.groundSolid===s;
+        if(active){
+          s.holyCharge = (s.holyCharge || 0) + dt;
+          if(s.holyCharge > 1.45){
+            triggerHolyPlatformBlast(s);
+          }
+        } else {
+          s.holyCharge = Math.max(0, (s.holyCharge || 0) - dt*0.55);
+        }
+      }
     }
 
     // carry player if riding mover
@@ -2080,6 +2179,14 @@ if(!ignoreOneWay && ent.vy >= 0){
       drawIceBlock(x,y,w,h);
     } else if(s.kind==='blessed'){
       drawBlessedBlock(x,y,w,h);
+      const t = clamp((s.holyCharge||0)/1.45, 0, 1);
+      if(t>0){
+        ctx.globalAlpha = 0.16 + t*0.28;
+        ctx.fillStyle = "rgba(255,215,120,.95)";
+        roundRect(ctx, x-4, y-4, w+8, h+8, 12);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     } else if(theme === HEAVEN){
       drawCloudBlock(x,y,w,h);
     } else if(s.kind==="ground"){
@@ -2156,6 +2263,7 @@ if(!ignoreOneWay && ent.vy >= 0){
       else if(h.kind==="radiant") drawRadiant(h);
       else if(h.kind==="proj") drawJavelin(h);
       else if(h.kind==="orb") drawOrb(h);
+      else if(h.kind==="fireball") drawFireball(h);
     }
   }
 
@@ -3181,6 +3289,19 @@ function drawJesus(p){
     ctx.globalAlpha = 0.25;
     ctx.beginPath(); ctx.arc(h.x, h.y, 18, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+  function drawFireball(h){
+    ctx.save();
+    const r = 7;
+    const g = ctx.createRadialGradient(h.x, h.y, 1, h.x, h.y, r*2.3);
+    g.addColorStop(0,"rgba(255,240,180,.95)");
+    g.addColorStop(0.45,"rgba(255,140,60,.92)");
+    g.addColorStop(1,"rgba(140,20,10,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(h.x, h.y, r*2.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,120,40,.95)";
+    ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 
