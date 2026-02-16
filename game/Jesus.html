@@ -135,6 +135,7 @@
     <div id="banner"><div id="bannerMain">WORLD 1-1</div><small id="bannerSub">ROME</small></div>
 
     <div id="topButtons">
+      <button id="startBtn" class="uiBtn">Start Game</button>
       <button id="fullscreenBtn" class="uiBtn">Fullscreen</button>
     </div>
 
@@ -189,6 +190,7 @@
   const banner = document.getElementById('banner');
   const bannerMain = document.getElementById('bannerMain');
   const bannerSub  = document.getElementById('bannerSub');
+  const startBtn = document.getElementById('startBtn');
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const joystick = document.getElementById('joystick');
   const stick = document.getElementById('stick');
@@ -241,12 +243,26 @@
   let highScores = [];
   let topTenEligible = false;
   const LOCAL_SCORES_KEY = 'jesusRunHighscores';
+
+  function setGameStarted(started){
+    gameStarted = started;
+    if(startBtn) startBtn.style.display = started ? 'none' : 'inline-flex';
+    updateMobileRotateHint();
+  }
+
+  function startGame(){
+    if(GAME_OVER) return;
+    setGameStarted(true);
+  }
+
+  startBtn.addEventListener('click', startGame);
+
   addEventListener('keydown', e => {
     if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
     const k = e.key.toLowerCase();
     keys.add(k);
     if(!e.repeat) pressed.add(k);
-    gameStarted = true;
+    startGame();
   });
   addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
   fullscreenBtn.addEventListener('click', async () => {
@@ -275,12 +291,12 @@
     mobileInput.xAxis = clamp(nx/maxR,-1,1);
     mobileInput.down = ny > maxR*0.40;
   }
-  joystick.addEventListener('pointerdown', e=>{ gameStarted = true; joystick.setPointerCapture(e.pointerId); setJoystickFromEvent(e); });
+  joystick.addEventListener('pointerdown', e=>{ startGame(); joystick.setPointerCapture(e.pointerId); setJoystickFromEvent(e); });
   joystick.addEventListener('pointermove', e=>{ if(e.pressure>0) setJoystickFromEvent(e); });
   joystick.addEventListener('pointerup', resetStick);
   joystick.addEventListener('pointercancel', resetStick);
 
-  jumpBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); gameStarted = true; mobileInput.jumpHeld = true; mobileInput.jumpQueued = true; });
+  jumpBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); startGame(); mobileInput.jumpHeld = true; mobileInput.jumpQueued = true; });
   jumpBtn.addEventListener('pointerup', ()=> mobileInput.jumpHeld = false);
   jumpBtn.addEventListener('pointercancel', ()=> mobileInput.jumpHeld = false);
 
@@ -518,9 +534,8 @@ function triggerGameOver(){
 function restartGame(){
   GAME_OVER = false;
   gameOverModal.style.display = 'none';
-  gameStarted = false;
+  setGameStarted(false);
   resetWorld();
-  updateMobileRotateHint();
 }
 
 function loadLocalScores(){
@@ -3363,7 +3378,7 @@ function drawJesus(p){
     acc += dt;
 
     let steps = 0;
-    while(acc >= FIXED_DT && steps < MAX_STEPS){
+    while(gameStarted && acc >= FIXED_DT && steps < MAX_STEPS){
       perfT += FIXED_DT;
       update(FIXED_DT);
       acc -= FIXED_DT;
@@ -3374,7 +3389,7 @@ function drawJesus(p){
   }
 
   resetWorld();
-  updateMobileRotateHint();
+  setGameStarted(false);
   requestAnimationFrame(loop);
 })();
 </script>
