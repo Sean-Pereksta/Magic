@@ -403,6 +403,8 @@
     pointer-events:none;
     z-index:30;
     left:0; top:0;
+    width:100%;
+    height:100%;
   }
   .fxPop{
     position:absolute;
@@ -413,10 +415,40 @@
     animation: pop 700ms ease-out forwards;
     white-space:nowrap;
   }
+  .fxPop.impact{ font-size:16px; filter: drop-shadow(0 0 10px rgba(251,191,36,.8)); }
+  .fxPop.slash{ font-size:20px; animation: slashPop 420ms ease-out forwards; }
+  .fxPop.spell{ font-size:18px; animation-duration: 900ms; }
+  .fxPop.explosion{ font-size:30px; animation: explodePop 760ms ease-out forwards; }
+  .fxPop.hit{ font-size:15px; }
+
+  .fxProjectile{
+    position:absolute;
+    left:var(--sx, 0px);
+    top:var(--sy, 0px);
+    transform: translate(-50%,-50%);
+    font-size:18px;
+    text-shadow:0 0 12px rgba(255,255,255,.4), 0 0 20px currentColor;
+    animation: travel var(--dur, 280ms) linear forwards;
+  }
+
   @keyframes pop{
     0%{opacity:0; transform:translate(-50%,-35%) scale(.85)}
     20%{opacity:1; transform:translate(-50%,-50%) scale(1)}
     100%{opacity:0; transform:translate(-50%,-120%) scale(1.05)}
+  }
+  @keyframes slashPop{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(.45) rotate(-26deg)}
+    35%{opacity:1; transform:translate(-50%,-50%) scale(1.16) rotate(12deg)}
+    100%{opacity:0; transform:translate(-50%,-60%) scale(1.4) rotate(20deg)}
+  }
+  @keyframes explodePop{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(.3)}
+    25%{opacity:1; transform:translate(-50%,-50%) scale(1.25)}
+    100%{opacity:0; transform:translate(-50%,-70%) scale(1.8)}
+  }
+  @keyframes travel{
+    0%{ opacity:1; transform:translate(-50%,-50%) translate(0,0) scale(.8); }
+    100%{ opacity:1; transform:translate(-50%,-50%) translate(var(--dx, 0px), var(--dy, 0px)) scale(1.1); }
   }
 
   @media (max-width: 520px){
@@ -882,22 +914,44 @@ function getCell(x,y){
   const i = y*W + x;
   return gridEl.children[i] || null;
 }
-function fxPop(x,y,text,color){
+function getCellCenter(x,y){
   const cell = getCell(x,y);
-  if(!cell) return;
+  if(!cell) return null;
   const rect = cell.getBoundingClientRect();
   const vr = viewport.getBoundingClientRect();
-  const cx = rect.left - vr.left + rect.width/2;
-  const cy = rect.top  - vr.top  + rect.height/2;
+  return {
+    x: rect.left - vr.left + rect.width/2,
+    y: rect.top  - vr.top  + rect.height/2
+  };
+}
+function fxPop(x,y,text,color,cls="",ttl=750){
+  const c = getCellCenter(x,y);
+  if(!c) return;
 
   const el = document.createElement("div");
-  el.className = "fxPop";
+  el.className = `fxPop ${cls}`.trim();
   el.textContent = text;
-  el.style.left = cx + "px";
-  el.style.top  = cy + "px";
+  el.style.left = c.x + "px";
+  el.style.top  = c.y + "px";
   el.style.color = color || "#e5e7eb";
   fxEl.appendChild(el);
-  setTimeout(()=>el.remove(), 750);
+  setTimeout(()=>el.remove(), ttl);
+}
+function fxProjectile(fromX,fromY,toX,toY,text,color,dur=280){
+  const src = getCellCenter(fromX,fromY);
+  const dst = getCellCenter(toX,toY);
+  if(!src || !dst) return;
+  const el = document.createElement("div");
+  el.className = "fxProjectile";
+  el.textContent = text || "•";
+  el.style.color = color || "#e5e7eb";
+  el.style.setProperty("--sx", src.x + "px");
+  el.style.setProperty("--sy", src.y + "px");
+  el.style.setProperty("--dx", (dst.x-src.x) + "px");
+  el.style.setProperty("--dy", (dst.y-src.y) + "px");
+  el.style.setProperty("--dur", dur + "ms");
+  fxEl.appendChild(el);
+  setTimeout(()=>el.remove(), dur + 40);
 }
 
 /* ---------------- Lobby join + state create ---------------- */
@@ -1184,6 +1238,14 @@ function applySpell(st, p, cardId, tx, ty){
   const units = st.units;
   const structs= st.structures;
   const r = spec.radius|0;
+  const spellColor = ({ fireball:"#fb7185", zap:"#fde68a", heal:"#86efac", log:"#f59e0b", blizzard:"#93c5fd", haste:"#bae6fd", armor:"#c4b5fd", healingAura:"#67e8f9" })[cardId] || "#e5e7eb";
+
+  pushFx(st, tx,ty, CARDS[cardId]?.emoji || "✨", spellColor, 0, 900, "spell");
+  if (r > 0){
+    for (let rr=1; rr<=r; rr++){
+      pushFx(st, tx,ty, "◌", spellColor, rr*70, 650, "spell");
+    }
+  }
 
   if (spec.dmg){
     for (const u of units){
@@ -1191,16 +1253,18 @@ function applySpell(st, p, cardId, tx, ty){
       if (!inRadius(tx,ty,u.x,u.y,r)) continue;
       if (u.p===p) continue;
       u.hp -= spec.dmg;
+      pushFx(st, u.x,u.y, "✹", "#fca5a5", 40, 560, "impact");
     }
     for (const s of structs){
       if (s.hp<=0) continue;
       if (!inRadius(tx,ty,s.x,s.y,r)) continue;
       if (s.p===p) continue;
       s.hp -= spec.dmg;
+      pushFx(st, s.x,s.y, "💥", "#fb7185", 60, 620, "explosion");
     }
-    pushFx(st, tx,ty, "💥", "#fb7185");
-    pushFx(st, tx,ty, "🔥", "#fb7185", 120);
-    pushFx(st, tx,ty, "🟠", "#fdba74", 220);
+    pushFx(st, tx,ty, "💥", "#fb7185", 0, 760, "explosion");
+    pushFx(st, tx,ty, "🔥", "#fb7185", 120, 720, "spell");
+    pushFx(st, tx,ty, "🟠", "#fdba74", 220, 700, "spell");
   }
 
   if (spec.stunMs){
@@ -1210,8 +1274,9 @@ function applySpell(st, p, cardId, tx, ty){
       if (!inRadius(tx,ty,u.x,u.y,r)) continue;
       if (u.p===p) continue;
       u.stunUntil = Math.max(u.stunUntil||0, now + spec.stunMs);
+      pushFx(st, u.x,u.y, "⚡", "#fde68a", 80, 650, "spell");
     }
-    pushFx(st, tx,ty, "⚡", "#fde68a");
+    pushFx(st, tx,ty, "⚡", "#fde68a", 0, 750, "spell");
   }
 
   if (spec.heal){
@@ -1220,14 +1285,16 @@ function applySpell(st, p, cardId, tx, ty){
       if (!inRadius(tx,ty,u.x,u.y,r)) continue;
       if (u.p!==p) continue;
       u.hp = Math.min(u.maxhp, u.hp + spec.heal);
+      pushFx(st, u.x,u.y, "+", "#bbf7d0", 90, 560, "spell");
     }
     for (const s of structs){
       if (s.hp<=0) continue;
       if (!inRadius(tx,ty,s.x,s.y,r)) continue;
       if (s.p!==p) continue;
       s.hp = Math.min(s.maxhp, s.hp + Math.floor(spec.heal*0.6));
+      pushFx(st, s.x,s.y, "✨", "#86efac", 90, 560, "spell");
     }
-    pushFx(st, tx,ty, "💚", "#86efac");
+    pushFx(st, tx,ty, "💚", "#86efac", 0, 760, "spell");
   }
 
   if (spec.lineDmg){
@@ -1235,13 +1302,18 @@ function applySpell(st, p, cardId, tx, ty){
       if (u.hp<=0 || u.p===p) continue;
       if (u.x!==tx) continue;
       applyDamageToUnit(st, null, u, spec.lineDmg, Date.now());
+      pushFx(st, u.x,u.y, "🪵", "#f59e0b", 0, 640, "impact");
     }
     for (const s of structs){
       if (s.hp<=0 || s.p===p) continue;
       if (s.x!==tx) continue;
       s.hp -= Math.max(1, Math.floor(spec.lineDmg * damageTakenMult(st, s.x,s.y)));
+      pushFx(st, s.x,s.y, "💥", "#fdba74", 0, 700, "explosion");
     }
-    for (let yy=0;yy<H;yy++){ pushFx(st, tx, yy, "🪵", "#f59e0b", yy*35, 650); }
+    for (let yy=0;yy<H;yy++){
+      pushFx(st, tx, yy, "🪵", "#f59e0b", yy*35, 650, "spell");
+      pushFx(st, tx, yy, "✦", "#fdba74", yy*35+60, 500, "spell");
+    }
   }
 
   if (spec.aura){
@@ -1253,17 +1325,21 @@ function applySpell(st, p, cardId, tx, ty){
       ...spec.aura,
       until: Date.now() + (spec.aura.ttlMs||0)
     });
-    pushFx(st, tx,ty, "✨", "#a78bfa");
+    pushFx(st, tx,ty, "✨", "#a78bfa", 0, 820, "spell");
+    pushFx(st, tx,ty, "◍", "#c4b5fd", 130, 760, "spell");
   }
 }
 
 /* ---------------- Tick simulation (HOST ONLY, GRID-STEP) ---------------- */
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL){
-  st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl});
+function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL, cls="", source=null, icon=null){
+  st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl, cls, source, icon});
 }
 function attackGlyph(type){
   return ({ knight:"⚔️", archers:"🏹", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥" })[type] || "⚔️";
+}
+function projectileGlyph(type){
+  return ({ archers:"🏹", musketeer:"🎯", wizard:"🔮", dragon:"🔥", drake:"🌪️", bomber:"💣", necromancer:"☠️" })[type] || "•";
 }
 function awardCrown(st, destroyedStructure){
   const scorer = (destroyedStructure.p===0) ? 1 : 0;
@@ -1399,38 +1475,65 @@ function tickSim(st){
     if (targetUnit || targetStruct){
       if (now >= (u.nextAtk||0)){
         const dmg = u.dmg|0;
-        pushFx(st, u.x, u.y, attackGlyph(u.type), (u.p===0?"#60a5fa":"#f87171"), 0, 520);
+        const dist = targetUnit
+          ? (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))
+          : (Math.abs(targetStruct.x-u.x)+Math.abs(targetStruct.y-u.y));
+        const ranged = (u.range||1) > 1 || !!u.splash || ["archers","musketeer","wizard","dragon","drake","wyvern","bomber"].includes(u.type);
+        const tColor = (u.p===0?"#60a5fa":"#f87171");
+        pushFx(st, u.x, u.y, attackGlyph(u.type), tColor, 0, 520, ranged ? "impact" : "slash");
+
         if (targetUnit){
-          if (u.chargeDmg && u.chargeRange && (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))<=u.chargeRange){
+          if (ranged){
+            pushFx(st, targetUnit.x, targetUnit.y, projectileGlyph(u.type), tColor, 0, 300, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
+          }
+          if (u.chargeDmg && u.chargeRange && dist<=u.chargeRange){
             applyDamageToUnit(st, u, targetUnit, u.chargeDmg, now);
             u.stunUntil = Math.max(u.stunUntil||0, now + (u.chargeSelfStunMs||0));
-            pushFx(st, targetUnit.x, targetUnit.y, "💢", "#fca5a5");
-            pushFx(st, targetUnit.x, targetUnit.y, "-", "#fca5a5", 120, 500);
+            pushFx(st, targetUnit.x, targetUnit.y, "🗡️", "#fca5a5", 0, 430, "slash");
+            pushFx(st, targetUnit.x, targetUnit.y, "💢", "#fca5a5", 60, 560, "impact");
           } else if (u.cleaveRadius){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
               if (!canTarget(u,v)) continue;
-              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.cleaveRadius|0)) applyDamageToUnit(st, u, v, dmg, now);
+              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.cleaveRadius|0)){
+                applyDamageToUnit(st, u, v, dmg, now);
+                pushFx(st, v.x, v.y, "✦", "#fde68a", 40, 480, "hit");
+              }
             }
-            pushFx(st, targetUnit.x, targetUnit.y, "🪓", "#fde68a");
-            pushFx(st, targetUnit.x, targetUnit.y, "✴️", "#fde68a", 110, 500);
+            pushFx(st, targetUnit.x, targetUnit.y, "╱", "#fde68a", 0, 420, "slash");
+            pushFx(st, targetUnit.x, targetUnit.y, "╲", "#fde68a", 60, 420, "slash");
           } else if (u.splash){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
               if (!canTarget(u,v)) continue;
-              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)) applyDamageToUnit(st, u, v, dmg, now);
+              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)){
+                applyDamageToUnit(st, u, v, dmg, now);
+                pushFx(st, v.x, v.y, "✹", "#fdba74", 70, 520, "impact");
+              }
             }
-            pushFx(st, targetUnit.x, targetUnit.y, "🔥", "#fdba74");
-            pushFx(st, targetUnit.x, targetUnit.y, "💫", "#fdba74", 90, 520);
+            pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fdba74", 0, 720, "explosion");
           } else {
             applyDamageToUnit(st, u, targetUnit, dmg, now);
-            pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fde68a");
-            pushFx(st, targetUnit.x, targetUnit.y, "-", "#fef3c7", 100, 480);
+            if (ranged){
+              pushFx(st, targetUnit.x, targetUnit.y, "✹", "#fde68a", 40, 500, "impact");
+              pushFx(st, targetUnit.x, targetUnit.y, "•", "#fef3c7", 100, 420, "hit");
+            } else {
+              pushFx(st, targetUnit.x, targetUnit.y, "╱", "#fde68a", 0, 400, "slash");
+              pushFx(st, targetUnit.x, targetUnit.y, "✦", "#fef3c7", 90, 450, "hit");
+            }
           }
         } else if (targetStruct){
           targetStruct.hp -= Math.max(1, Math.floor(dmg * damageTakenMult(st, targetStruct.x,targetStruct.y)));
-          pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb");
-          pushFx(st, targetStruct.x, targetStruct.y, "-", "#f3f4f6", 120, 480);
+          if (u.type === "balloon"){
+            pushFx(st, targetStruct.x, targetStruct.y, "💣", "#fca5a5", 0, 380, "impact", {x:u.x,y:u.y}, "💣");
+            pushFx(st, targetStruct.x, targetStruct.y, "🧨", "#fb7185", 170, 760, "explosion");
+            pushFx(st, targetStruct.x, targetStruct.y, "☁️", "#fda4af", 220, 740, "explosion");
+          } else {
+            if (ranged){
+              pushFx(st, targetStruct.x, targetStruct.y, projectileGlyph(u.type), tColor, 0, 320, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
+            }
+            pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb", 80, 580, ranged ? "impact" : "slash");
+          }
         }
         u.nextAtk = now + (u.cdMs||1000);
       }
@@ -1479,8 +1582,11 @@ function tickSim(st){
     if (!enemy) continue;
     enemy.hp -= (s.dmg|0);
     s.nextAtk = now + (s.cdMs||1100);
-    pushFx(st, s.x, s.y, "🏹", (s.p===0 ? "#60a5fa" : "#f87171"), 0, 500);
-    pushFx(st, enemy.x, enemy.y, "💥", (s.p===0 ? "#60a5fa" : "#f87171"));
+    const sColor = (s.p===0 ? "#60a5fa" : "#f87171");
+    pushFx(st, s.x, s.y, "🏹", sColor, 0, 500, "impact");
+    pushFx(st, enemy.x, enemy.y, "🏹", sColor, 0, 280, "impact", {x:s.x,y:s.y}, "🏹");
+    pushFx(st, enemy.x, enemy.y, "✶", sColor, 80, 520, "hit");
+    pushFx(st, enemy.x, enemy.y, "•", "#e2e8f0", 130, 420, "hit");
   }
 
   // clamp hp + remove dead units
@@ -1839,7 +1945,10 @@ function paintFx(){
   const now = Date.now();
   for (const f of (S.fx||[])){
     if (f.at + (f.ttl||FX_TTL) <= now) continue;
-    fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb");
+    if (f.source && Number.isFinite(f.source.x) && Number.isFinite(f.source.y)){
+      fxProjectile(f.source.x, f.source.y, f.x, f.y, f.icon || "•", f.color || "#e5e7eb", Math.min(420, Math.max(180, (f.ttl||FX_TTL)-120)));
+    }
+    fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
   }
 }
 
@@ -1941,7 +2050,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
