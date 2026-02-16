@@ -439,7 +439,9 @@ if (!gameId || !username) alert("Missing gameId or username in URL.");
 
 /* Lobby + state refs */
 const lobbyRef = doc(db, "lobbies", gameId);
-const stateRef = doc(db, "lobbies", gameId, "royale", "state");
+// Firestore rules for this project allow game docs under /lobbies/{gameId}/crowncouncil/*
+// (other game modes also use this path), so keep Forge Royale state there.
+const stateRef = doc(db, "lobbies", gameId, "crowncouncil", "forgeroyale_state");
 
 /* ---------------- DOM ---------------- */
 const $ = (id)=>document.getElementById(id);
@@ -1733,7 +1735,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
