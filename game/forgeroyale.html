@@ -16,11 +16,11 @@
     --p0:#60a5fa; /* blue side */
     --p1:#f87171; /* red side */
 
-    --cell:36px;
+    --cell:34px;
     --gap:4px;
 
     --topH:52px;
-    --hudH:100px;
+    --hudH:148px;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -313,8 +313,44 @@
     padding:7px 9px;
     display:grid;
     grid-template-columns: 1fr;
-    gap:10px;
+    gap:8px;
   }
+  .selectedTray{
+    min-height:44px;
+    border:1px solid rgba(56,189,248,.35);
+    border-radius:12px;
+    background:rgba(2,6,23,.68);
+    box-shadow:0 0 0 1px rgba(56,189,248,.18) inset;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:5px 8px;
+    overflow-x:auto;
+    touch-action:pan-x;
+  }
+  .trayHint{
+    font-size:.74rem;
+    font-weight:800;
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .trayCard{
+    flex:0 0 auto;
+    min-width:58px;
+    border:1px solid rgba(148,163,184,.35);
+    border-radius:10px;
+    background:rgba(15,23,42,.85);
+    color:#dbe8f8;
+    display:grid;
+    place-items:center;
+    gap:1px;
+    padding:4px 7px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .trayCard .emoji{font-size:18px;line-height:1;}
+  .trayCard .name{font-size:.57rem;max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .trayCard .cost{font-size:.62rem; color:#c4b5fd;}
   .hudTop{display:flex; align-items:center; justify-content:space-between; gap:10px;}
   .elixirWrap{
     display:flex; align-items:center; gap:10px; width:100%;
@@ -352,13 +388,13 @@
     border-right:1px solid rgba(255,255,255,.10);
   }
 
-  .cards{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:5px; }
+  .cards{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; }
   .card{
     min-width: 0;
     background: radial-gradient(circle at top, rgba(15,23,42,.95), rgba(2,6,23,.95));
     border:1px solid rgba(148,163,184,.25);
     border-radius:12px;
-    padding:6px 5px;
+    padding:8px 6px;
     box-shadow: 0 12px 30px rgba(0,0,0,.35);
     cursor:pointer;
     user-select:none;
@@ -366,6 +402,7 @@
     touch-action:manipulation;
   }
   .card.sel{outline:2px solid var(--accent); border-color: rgba(56,189,248,.45);}
+  .trayCard.queued{ outline:2px solid rgba(251,191,36,.95); border-color: rgba(251,191,36,.55); }
   .card .top{display:flex; align-items:center; justify-content:center;}
   .card .name{
     margin-top:3px;
@@ -537,16 +574,18 @@
   }
 
   @media (max-width: 720px){
-    :root{ --cell:30px; --gap:3px; --topH:48px; --hudH:90px; }
+    :root{ --cell:28px; --gap:2px; --topH:46px; --hudH:176px; }
     .badge{font-size:.72rem; padding:4px 8px}
     .btn{font-size:.72rem; padding:5px 8px}
-    .wrap{height: calc(100dvh - var(--topH) - var(--hudH) - 18px);}
-    .hud{transform:translateY(-18px);}
+    .wrap{height: calc(100dvh - var(--topH) - var(--hudH));}
+    .hud{transform:none; padding:6px; gap:6px;}
     .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
-    .card{padding:5px 4px;}
+    .card{padding:9px 5px; min-height:84px;}
     .card .emoji{font-size:21px}
     .card .name{display:block; font-size:.59rem;}
-    .sprite, .sprite svg{width:34px; height:34px}
+    .sprite, .sprite svg{width:30px; height:30px}
+    .selectedTray{min-height:52px;}
+    .trayCard{min-width:62px; min-height:42px;}
     .topbar{
       padding:5px 48px 5px 6px;
       gap:4px;
@@ -606,7 +645,10 @@
           </div>
         </div>
       </div>
-      <button id="cancelBtn" class="btn" style="display:none">✖ Cancel</button>
+      <button id="cancelBtn" class="btn" style="display:none">✖ Clear</button>
+    </div>
+    <div class="selectedTray" id="selectedTray">
+      <span class="trayHint">Tap cards below to queue. Tap here to unselect.</span>
     </div>
 
     <div class="draftBar" id="draftBar">
@@ -693,13 +735,14 @@ const fullscreenBtn = $("fullscreenBtn");
 const hintEl    = $("hint");
 const toastEl   = $("toast");
 const cancelBtn = $("cancelBtn");
+const selectedTray = $("selectedTray");
 const fxEl      = $("fx");
 
 /* ---------------- Board / grid (MOVES IN GRID SPACES ONLY) ---------------- */
-let W=9, H=14;
+let W=9, H=12;
 gridEl.style.setProperty("--w", W);
 
-const RIVER_Y0 = 6, RIVER_Y1 = 7;
+const RIVER_Y0 = 5, RIVER_Y1 = 6;
 const BRIDGES = new Set([ keyXY(2,RIVER_Y0), keyXY(2,RIVER_Y1), keyXY(6,RIVER_Y0), keyXY(6,RIVER_Y1) ]);
 function keyXY(x,y){ return `${x},${y}`; }
 function inside(x,y){ return x>=0 && x<W && y>=0 && y<H; }
@@ -931,6 +974,7 @@ let meIndex = 0;
 let isHost = false;
 let started = false;
 let selectedCard = null;
+let selectedQueue = [];
 
 let lobbyMeta = { eloMap:{}, deckMap:{} };
 let localDraftDeck = null;
@@ -1000,7 +1044,7 @@ function fitBoard(){
   const vh = viewport.clientHeight;
   const s = Math.min(vw/boardW, vh/boardH);
   const isMobile = window.matchMedia("(max-width: 720px)").matches;
-  const mobileScaleFactor = 0.7; // 30% smaller on mobile
+  const mobileScaleFactor = 0.92; // keep board centered but large on mobile
   const baseFactor = isMobile ? mobileScaleFactor : 1;
   scale = Math.min(1.5, Math.max(0.3, s * baseFactor));
   pan.x = Math.round((vw - boardW*scale)/2);
@@ -1147,9 +1191,9 @@ function initialStructures(){
     {id:"p1_tR", p:1, kind:"tower",  x:6, y:2,  hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
     {id:"p1_c",  p:1, kind:"castle", x:4, y:1,  hp:220, maxhp:220, range:5, dmg:4, cdMs:1300, nextAtk:0},
 
-    {id:"p0_tL", p:0, kind:"tower",  x:2, y:11, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
-    {id:"p0_tR", p:0, kind:"tower",  x:6, y:11, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
-    {id:"p0_c",  p:0, kind:"castle", x:4, y:12, hp:220, maxhp:220, range:5, dmg:4, cdMs:1300, nextAtk:0},
+    {id:"p0_tL", p:0, kind:"tower",  x:2, y:9, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p0_tR", p:0, kind:"tower",  x:6, y:9, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p0_c",  p:0, kind:"castle", x:4, y:10, hp:220, maxhp:220, range:5, dmg:4, cdMs:1300, nextAtk:0},
   ];
 }
 
@@ -2011,6 +2055,38 @@ function fmtMMSS(ms){
   return `${m}:${pad2(r)}`;
 }
 
+function renderSelectedTray(isDrafting=false, hand=[]){
+  if (!selectedTray) return;
+  if (isDrafting || S?.phase !== "battle"){
+    selectedTray.innerHTML = '<span class="trayHint">Tap cards below to queue. Tap here to unselect.</span>';
+    return;
+  }
+  selectedQueue = selectedQueue.filter(cid=>hand.includes(cid));
+  if (selectedCard && !selectedQueue.includes(selectedCard)) selectedCard = null;
+
+  if (!selectedQueue.length){
+    selectedTray.innerHTML = '<span class="trayHint">No queued cards yet. Tap any troop/spell below.</span>';
+    return;
+  }
+
+  selectedTray.innerHTML = '';
+  for (const cid of selectedQueue){
+    const c = CARDS[cid];
+    if (!c) continue;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'trayCard' + (selectedCard===cid ? ' queued' : '');
+    b.innerHTML = `<span class="emoji">${c.emoji}</span><span class="name">${c.name}</span><span class="cost">${c.cost} elixir</span>`;
+    b.addEventListener('click', ()=>{
+      const idx = selectedQueue.indexOf(cid);
+      if (idx>=0) selectedQueue.splice(idx,1);
+      if (selectedCard===cid) selectedCard = selectedQueue[0] || null;
+      render();
+    });
+    selectedTray.appendChild(b);
+  }
+}
+
 function render(){
   if (!S){
     timerText.textContent = "—";
@@ -2049,7 +2125,7 @@ function render(){
   if (S.phase === "waiting"){
     hint("30s draft: pick up to 8, tap again to remove, then press ready.");
   } else if (S.phase === "battle"){
-    hint(selectedCard ? `Selected: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a card, then tap a tile to play.");
+    hint(selectedCard ? `Queued: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a troop or spell to add it to the top queue, then tap a tile to play.");
   } else if (S.phase === "gameover"){
     let msg = "Game Over.";
     if (S.winReason === "castle"){
@@ -2068,7 +2144,7 @@ function render(){
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
   elixirWrap.style.display = (S.phase==="battle") ? "flex" : "none";
   const isDrafting = (S.phase==="waiting" && players.length>=2);
-  if (isDrafting) selectedCard = null;
+  if (isDrafting){ selectedCard = null; selectedQueue = []; }
   draftBar.style.display = isDrafting ? "none" : "none";
   draftOverlay.classList.toggle("show", isDrafting);
   if (!isDrafting) localDraftDeck = null;
@@ -2126,7 +2202,7 @@ function render(){
       }
       if (S.phase !== "battle"){ toast("Match not active."); return; }
       if (!hand.includes(cid)){ toast("Card not in hand."); return; }
-      if (selectedCard === cid){ selectedCard = null; cancelBtn.style.display="none"; render(); return; }
+      if (!selectedQueue.includes(cid)) selectedQueue.push(cid);
       selectedCard = cid;
       cancelBtn.style.display="inline-block";
       render();
@@ -2135,7 +2211,8 @@ function render(){
     activeCardsEl.appendChild(el);
   }
 
-  cancelBtn.style.display = (S.phase==="battle" && selectedCard) ? "inline-block" : "none";
+  renderSelectedTray(isDrafting, hand);
+  cancelBtn.style.display = (S.phase==="battle" && selectedQueue.length) ? "inline-block" : "none";
 
   paintBoard();
   paintFx();
@@ -2165,6 +2242,7 @@ fullscreenBtn.addEventListener("click", async ()=>{
 
 cancelBtn.addEventListener("click", ()=>{
   selectedCard = null;
+  selectedQueue = [];
   cancelBtn.style.display="none";
   render();
 });
@@ -2263,7 +2341,8 @@ async function onCellClick(x,y){
   if (!S || S.phase !== "battle") return;
   if (selectedCard == null){ toast("Pick a card first."); return; }
 
-  const card = CARDS[selectedCard];
+  const cardId = selectedCard;
+  const card = CARDS[cardId];
   if (!card) return;
 
   const myE = S.elixir?.[meIndex] ?? 0;
@@ -2284,7 +2363,7 @@ async function onCellClick(x,y){
     return;
   }
 
-  const order = { id: crypto.randomUUID(), p: meIndex, card: selectedCard, x, y, at: Date.now() };
+  const order = { id: crypto.randomUUID(), p: meIndex, card: cardId, x, y, at: Date.now() };
   try{
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(stateRef);
@@ -2300,8 +2379,9 @@ async function onCellClick(x,y){
     return;
   }
 
-  selectedCard = null;
-  cancelBtn.style.display="none";
+  selectedQueue = selectedQueue.filter(cid=>cid!==cardId);
+  selectedCard = selectedQueue[0] || null;
+  cancelBtn.style.display = selectedQueue.length ? "inline-block" : "none";
   render();
 }
 
@@ -2361,7 +2441,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
