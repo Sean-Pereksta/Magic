@@ -933,6 +933,10 @@
     async function startLobby() {
       const gameType = document.getElementById("gameType").value;
 
+      if (!authUser) {
+        return showError("⏳ Connecting to server, please try again in a moment.");
+      }
+
       if (gameType === "mountonline" || gameType === "rock") {
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES[gameType];
@@ -944,12 +948,18 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','castledefense','rogueduel','trumprev'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','castledefense','rogueduel','trumprev'].includes(gameType)) {
         return showError("Invalid game type.");
       }
-      const lobby = await addDoc(collection(db, "lobbies"), {
-        name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
-      });
+      let lobby;
+      try {
+        lobby = await addDoc(collection(db, "lobbies"), {
+          name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
+        });
+      } catch (error) {
+        const msg = (error && typeof error.message === "string") ? error.message : "Unable to create lobby.";
+        return showError(`❌ ${msg}`);
+      }
       currentLobbyId = lobby.id; isHost = true;
       save(SK.lastLobby, currentLobbyId);
       save(SK.lastGame, gameType);
