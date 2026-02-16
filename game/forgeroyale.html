@@ -13,8 +13,8 @@
     --muted: rgba(231,238,247,.70);
     --accent:#38bdf8;
 
-    --p0:#60a5fa; /* you (bottom) */
-    --p1:#f87171; /* opponent (top) */
+    --p0:#60a5fa; /* blue side */
+    --p1:#f87171; /* red side */
 
     --cell:56px;
     --gap:4px;
@@ -58,6 +58,8 @@
     backdrop-filter: blur(10px);
     white-space:nowrap;
   }
+  .badge.blue{ border-color: rgba(96,165,250,.5); box-shadow:0 0 0 1px rgba(96,165,250,.2) inset; }
+  .badge.red{ border-color: rgba(248,113,113,.5); box-shadow:0 0 0 1px rgba(248,113,113,.2) inset; }
   .badge small{opacity:.8; font-weight:800}
   .btn{
     appearance:none;
@@ -122,6 +124,18 @@
     overflow:hidden;
     cursor:pointer;
   }
+  .cell.side0{
+    background:
+      radial-gradient(circle at 30% 26%, rgba(59,130,246,.20), transparent 45%),
+      radial-gradient(circle at 72% 60%, rgba(14,116,144,.18), transparent 55%),
+      linear-gradient(145deg, rgba(15,23,42,.35), rgba(2,6,23,.55));
+  }
+  .cell.side1{
+    background:
+      radial-gradient(circle at 30% 26%, rgba(239,68,68,.18), transparent 45%),
+      radial-gradient(circle at 72% 60%, rgba(244,114,182,.14), transparent 55%),
+      linear-gradient(145deg, rgba(15,23,42,.35), rgba(2,6,23,.55));
+  }
   .cell.river{
     background:
       radial-gradient(circle at 30% 30%, rgba(125,211,252,.28), transparent 55%),
@@ -141,6 +155,25 @@
     background: linear-gradient(135deg, rgba(148,163,184,.08), rgba(0,0,0,.0));
     opacity:.55;
     pointer-events:none;
+  }
+  .cell.placeHint::before{
+    content:"";
+    position:absolute; inset:3px;
+    border-radius:10px;
+    border:2px dashed rgba(110,231,183,.9);
+    background: rgba(16,185,129,.16);
+    box-shadow:0 0 18px rgba(16,185,129,.35);
+    pointer-events:none;
+    z-index:2;
+  }
+  .cell.placeBlocked::before{
+    content:"";
+    position:absolute; inset:3px;
+    border-radius:10px;
+    border:2px dashed rgba(248,113,113,.7);
+    background: rgba(239,68,68,.12);
+    pointer-events:none;
+    z-index:2;
   }
 
   .under{
@@ -268,57 +301,36 @@
     border-right:1px solid rgba(255,255,255,.10);
   }
 
-  .cards{
-    display:flex;
-    gap:10px;
-    overflow-x:auto;
-    padding-bottom:4px;
-    -webkit-overflow-scrolling: touch;
-  }
+  .cards{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; }
   .card{
-    min-width: 150px;
-    max-width: 200px;
-    flex: 0 0 auto;
+    min-width: 0;
     background: radial-gradient(circle at top, rgba(15,23,42,.95), rgba(2,6,23,.95));
     border:1px solid rgba(148,163,184,.25);
     border-radius:14px;
-    padding:10px 10px;
+    padding:8px 6px;
     box-shadow: 0 12px 30px rgba(0,0,0,.35);
     cursor:pointer;
     user-select:none;
     position:relative;
   }
   .card.sel{outline:2px solid var(--accent); border-color: rgba(56,189,248,.45);}
-  .card .top{display:flex; align-items:center; justify-content:space-between; gap:8px;}
-  .card .name{font-weight:1000; font-size:.92rem}
+  .card .top{display:flex; align-items:center; justify-content:center;}
+  .card .name{display:none;}
   .card .cost{
     font-weight:1000;
     padding:3px 8px;
     border-radius:999px;
     background: rgba(168,85,247,.20);
     border:1px solid rgba(168,85,247,.35);
-    font-size:.78rem;
+    font-size:.70rem;
   }
-  .card .mid{
-    margin-top:8px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-  }
-  .card .emoji{font-size:26px}
-  .card .type{
-    font-size:.78rem;
-    color:rgba(231,238,247,.72);
-    text-transform:uppercase;
-    letter-spacing:.08em;
-    font-weight:900;
-  }
-  .card .rule{
-    margin-top:8px;
-    font-size:.78rem;
-    color:rgba(231,238,247,.70);
-  }
+  .card .mid{ margin-top:2px; display:grid; place-items:center; }
+  .card .emoji{font-size:30px; line-height:1;}
+  .card .type,.card .rule{display:none;}
+  .card .lock{ font-size:.65rem; text-align:center; color:#fca5a5; font-weight:800; margin-top:4px; }
+
+  .draftBar{ display:none; align-items:center; justify-content:space-between; gap:10px; }
+  .draftInfo{ font-size:.84rem; color:var(--muted); font-weight:800; }
 
   .toast{
     position:fixed;
@@ -362,7 +374,9 @@
     :root{ --cell:46px; --gap:3px; --topH:60px; --hudH:132px; }
     .badge{font-size:.80rem; padding:6px 10px}
     .btn{font-size:.80rem; padding:7px 10px}
-    .card{min-width: 140px}
+    .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
+    .card{padding:7px 6px;}
+    .card .emoji{font-size:26px}
     .sprite, .sprite svg{width:40px; height:40px}
   }
 </style>
@@ -391,7 +405,7 @@
 
   <div class="hud">
     <div class="hudTop">
-      <div class="elixirWrap">
+      <div class="elixirWrap" id="elixirWrap">
         <div class="elixirLabel">💠 Elixir <span id="elixirNum">0</span>/10</div>
         <div class="elixirBar">
           <div class="elixirFill" id="elixirFill"></div>
@@ -401,6 +415,11 @@
         </div>
       </div>
       <button id="cancelBtn" class="btn" style="display:none">✖ Cancel</button>
+    </div>
+
+    <div class="draftBar" id="draftBar">
+      <div class="draftInfo" id="draftInfo">Pick 8 cards, then ready up.</div>
+      <button id="readyBtn" class="btn">✅ Ready</button>
     </div>
 
     <div class="cards" id="cards"></div>
@@ -457,6 +476,10 @@ const viewport  = $("viewport");
 const cardsEl   = $("cards");
 const elixirNum = $("elixirNum");
 const elixirFill= $("elixirFill");
+const elixirWrap= $("elixirWrap");
+const draftBar = $("draftBar");
+const draftInfo= $("draftInfo");
+const readyBtn  = $("readyBtn");
 const hintEl    = $("hint");
 const toastEl   = $("toast");
 const cancelBtn = $("cancelBtn");
@@ -702,6 +725,8 @@ function buildGrid(){
     for (let x=0;x<W;x++){
       const d = document.createElement("div");
       d.className = "cell";
+      if (y < RIVER_Y0) d.classList.add("side1");
+      if (y > RIVER_Y1) d.classList.add("side0");
       if (isRiver(x,y)) d.classList.add("river","blocked");
       if (isBridge(x,y)) d.classList.add("bridge");
       d.dataset.x = String(x);
@@ -823,13 +848,13 @@ function seededShuffle(arr, seedStr){
 
 function initialStructures(){
   return [
-    {id:"p1_tL", p:1, kind:"tower",  x:2, y:2,  hp:120, maxhp:120, range:4, dmg:10, cdMs:1100, nextAtk:0},
-    {id:"p1_tR", p:1, kind:"tower",  x:6, y:2,  hp:120, maxhp:120, range:4, dmg:10, cdMs:1100, nextAtk:0},
-    {id:"p1_c",  p:1, kind:"castle", x:4, y:1,  hp:220, maxhp:220, range:5, dmg:12, cdMs:1050, nextAtk:0},
+    {id:"p1_tL", p:1, kind:"tower",  x:2, y:2,  hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p1_tR", p:1, kind:"tower",  x:6, y:2,  hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p1_c",  p:1, kind:"castle", x:4, y:1,  hp:220, maxhp:220, range:5, dmg:4, cdMs:1300, nextAtk:0},
 
-    {id:"p0_tL", p:0, kind:"tower",  x:2, y:11, hp:120, maxhp:120, range:4, dmg:10, cdMs:1100, nextAtk:0},
-    {id:"p0_tR", p:0, kind:"tower",  x:6, y:11, hp:120, maxhp:120, range:4, dmg:10, cdMs:1100, nextAtk:0},
-    {id:"p0_c",  p:0, kind:"castle", x:4, y:12, hp:220, maxhp:220, range:5, dmg:12, cdMs:1050, nextAtk:0},
+    {id:"p0_tL", p:0, kind:"tower",  x:2, y:11, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p0_tR", p:0, kind:"tower",  x:6, y:11, hp:120, maxhp:120, range:4, dmg:3, cdMs:1300, nextAtk:0},
+    {id:"p0_c",  p:0, kind:"castle", x:4, y:12, hp:220, maxhp:220, range:5, dmg:4, cdMs:1300, nextAtk:0},
   ];
 }
 
@@ -841,6 +866,7 @@ function isStructureTile(structs, x,y){
 }
 
 const MATCH_MS = 3*60*1000;
+const DRAFT_MS = 30*1000;
 
 async function ensureStateExists(){
   await runTransaction(db, async (tx)=>{
@@ -859,11 +885,13 @@ async function ensureStateExists(){
 
     tx.set(stateRef, {
       v:1,
-      phase: (players.length>=2) ? "battle" : "waiting",
+      phase: (players.length>=2) ? "waiting" : "waiting",
       players,
-      startedAt: now,
+      startedAt: null,
+      draftEndsAt: (players.length>=2) ? (now + DRAFT_MS) : null,
+      readyMap: {},
       lastTickAt: now,
-      endsAt: (players.length>=2) ? (now + MATCH_MS) : null,
+      endsAt: null,
       winner: null,      // 0 or 1, or null for draw
       winReason: null,   // "castle" | "crowns" | "draw"
 
@@ -897,10 +925,11 @@ async function syncPlayersIntoStateIfNeeded(){
 
 /* ---------------- Gameplay constants ---------------- */
 let hostTimer = null;
-const TICK_MS = 260;
+const TICK_MS = 320;
 const ELIXIR_MS_PER = 2800;
 const MAX_ELIXIR = 10;
-const FX_TTL = 800;
+const FX_TTL = 900;
+const MAX_FX = 120;
 
 /* ---------------- BFS pathing on grid ---------------- */
 function neighbors4(x,y){
@@ -1066,7 +1095,9 @@ function applySpell(st, p, cardId, tx, ty){
       if (s.p===p) continue;
       s.hp -= spec.dmg;
     }
-    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"🔥", color:"#fb7185", at:Date.now(), ttl:FX_TTL});
+    pushFx(st, tx,ty, "💥", "#fb7185");
+    pushFx(st, tx,ty, "🔥", "#fb7185", 120);
+    pushFx(st, tx,ty, "🟠", "#fdba74", 220);
   }
 
   if (spec.stunMs){
@@ -1077,7 +1108,7 @@ function applySpell(st, p, cardId, tx, ty){
       if (u.p===p) continue;
       u.stunUntil = Math.max(u.stunUntil||0, now + spec.stunMs);
     }
-    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"⚡", color:"#fde68a", at:Date.now(), ttl:FX_TTL});
+    pushFx(st, tx,ty, "⚡", "#fde68a");
   }
 
   if (spec.heal){
@@ -1093,7 +1124,7 @@ function applySpell(st, p, cardId, tx, ty){
       if (s.p!==p) continue;
       s.hp = Math.min(s.maxhp, s.hp + Math.floor(spec.heal*0.6));
     }
-    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"💚", color:"#86efac", at:Date.now(), ttl:FX_TTL});
+    pushFx(st, tx,ty, "💚", "#86efac");
   }
 
   if (spec.lineDmg){
@@ -1107,7 +1138,7 @@ function applySpell(st, p, cardId, tx, ty){
       if (s.x!==tx) continue;
       s.hp -= Math.max(1, Math.floor(spec.lineDmg * damageTakenMult(st, s.x,s.y)));
     }
-    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"🪵", color:"#f59e0b", at:Date.now(), ttl:FX_TTL});
+    for (let yy=0;yy<H;yy++){ pushFx(st, tx, yy, "🪵", "#f59e0b", yy*35, 650); }
   }
 
   if (spec.aura){
@@ -1119,14 +1150,17 @@ function applySpell(st, p, cardId, tx, ty){
       ...spec.aura,
       until: Date.now() + (spec.aura.ttlMs||0)
     });
-    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"✨", color:"#a78bfa", at:Date.now(), ttl:FX_TTL});
+    pushFx(st, tx,ty, "✨", "#a78bfa");
   }
 }
 
 /* ---------------- Tick simulation (HOST ONLY, GRID-STEP) ---------------- */
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function pushFx(st, x,y, text, color){
-  st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now(), ttl:FX_TTL});
+function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL){
+  st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl});
+}
+function attackGlyph(type){
+  return ({ knight:"⚔️", archers:"🏹", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴" })[type] || "⚔️";
 }
 function awardCrown(st, destroyedStructure){
   const scorer = (destroyedStructure.p===0) ? 1 : 0;
@@ -1214,7 +1248,7 @@ function tickSim(st){
   st.orders = [];
 
   // clean fx
-  st.fx = (st.fx||[]).filter(f=> (f.at + (f.ttl||FX_TTL)) > now);
+  st.fx = (st.fx||[]).filter(f=> (f.at + (f.ttl||FX_TTL)) > now).slice(-MAX_FX);
 
   // remove dead (deferred until after split logic)
 
@@ -1227,6 +1261,7 @@ function tickSim(st){
       if (!inRadius(a.x,a.y,u.x,u.y,a.radius||0)) continue;
       const amt = Math.max(1, Math.floor((u.maxhp||1) * (a.healPctPerSec||0) * (dt/1000)));
       u.hp = Math.min(u.maxhp, u.hp + amt);
+      if (Math.random() < 0.35) pushFx(st, u.x,u.y, "+", "#fde047", 0, 500);
     }
   }
 
@@ -1261,11 +1296,13 @@ function tickSim(st){
     if (targetUnit || targetStruct){
       if (now >= (u.nextAtk||0)){
         const dmg = u.dmg|0;
+        pushFx(st, u.x, u.y, attackGlyph(u.type), (u.p===0?"#60a5fa":"#f87171"), 0, 520);
         if (targetUnit){
           if (u.chargeDmg && u.chargeRange && (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))<=u.chargeRange){
             applyDamageToUnit(st, u, targetUnit, u.chargeDmg, now);
             u.stunUntil = Math.max(u.stunUntil||0, now + (u.chargeSelfStunMs||0));
             pushFx(st, targetUnit.x, targetUnit.y, "💢", "#fca5a5");
+            pushFx(st, targetUnit.x, targetUnit.y, "-", "#fca5a5", 120, 500);
           } else if (u.cleaveRadius){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
@@ -1273,6 +1310,7 @@ function tickSim(st){
               if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.cleaveRadius|0)) applyDamageToUnit(st, u, v, dmg, now);
             }
             pushFx(st, targetUnit.x, targetUnit.y, "🪓", "#fde68a");
+            pushFx(st, targetUnit.x, targetUnit.y, "✴️", "#fde68a", 110, 500);
           } else if (u.splash){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
@@ -1280,13 +1318,16 @@ function tickSim(st){
               if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)) applyDamageToUnit(st, u, v, dmg, now);
             }
             pushFx(st, targetUnit.x, targetUnit.y, "🔥", "#fdba74");
+            pushFx(st, targetUnit.x, targetUnit.y, "💫", "#fdba74", 90, 520);
           } else {
             applyDamageToUnit(st, u, targetUnit, dmg, now);
             pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fde68a");
+            pushFx(st, targetUnit.x, targetUnit.y, "-", "#fef3c7", 100, 480);
           }
         } else if (targetStruct){
           targetStruct.hp -= Math.max(1, Math.floor(dmg * damageTakenMult(st, targetStruct.x,targetStruct.y)));
           pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb");
+          pushFx(st, targetStruct.x, targetStruct.y, "-", "#f3f4f6", 120, 480);
         }
         u.nextAtk = now + (u.cdMs||1000);
       }
@@ -1335,7 +1376,8 @@ function tickSim(st){
     if (!enemy) continue;
     enemy.hp -= (s.dmg|0);
     s.nextAtk = now + (s.cdMs||1100);
-    pushFx(st, enemy.x, enemy.y, "🏹", (s.p===0 ? "#60a5fa" : "#f87171"));
+    pushFx(st, s.x, s.y, "🏹", (s.p===0 ? "#60a5fa" : "#f87171"), 0, 500);
+    pushFx(st, enemy.x, enemy.y, "💥", (s.p===0 ? "#60a5fa" : "#f87171"));
   }
 
   // clamp hp + remove dead units
@@ -1381,9 +1423,17 @@ function startHostLoop(){
 
         const players = Array.isArray(st.players) ? st.players.slice(0,2) : [];
 
-        // waiting -> battle (fresh 3-min match)
+        // waiting draft phase
         if (st.phase === "waiting" && players.length>=2){
           const now = Date.now();
+          const readyMap = st.readyMap || {};
+          const bothReady = !!readyMap[players[0]] && !!readyMap[players[1]];
+          const draftEndsAt = st.draftEndsAt || (now + DRAFT_MS);
+          if (!st.draftEndsAt){
+            tx.set(stateRef, { draftEndsAt }, { merge:true });
+            return;
+          }
+          if (!(bothReady || now >= draftEndsAt)) return;
           const p0Name = players[0] || "p0";
           const p1Name = players[1] || "p1";
           const deck0 = seededShuffle(deckForPlayer(p0Name), gameId + ":p0");
@@ -1394,6 +1444,8 @@ function startHostLoop(){
             winner:null,
             winReason:null,
             startedAt: now,
+            draftEndsAt:null,
+            readyMap:{},
             lastTickAt: now,
             endsAt: now + MATCH_MS,
             crowns:[0,0],
@@ -1468,8 +1520,14 @@ function render(){
   oppNameEl.textContent = opp;
   const meElo = lobbyMeta.eloMap?.[me] || 1000;
   const oppElo = lobbyMeta.eloMap?.[opp] || 1000;
-  meEloEl.textContent = `ELO ${meElo}`;
-  oppEloEl.textContent = `ELO ${oppElo}`;
+  const meSide = meIndex===0 ? "Bottom" : "Top";
+  const oppSide = meIndex===0 ? "Top" : "Bottom";
+  meEloEl.textContent = `ELO ${meElo} • ${meSide} • ${meIndex===0?"Blue":"Red"}`;
+  oppEloEl.textContent = `ELO ${oppElo} • ${oppSide} • ${meIndex===0?"Red":"Blue"}`;
+  $("meBadge").classList.toggle("blue", meIndex===0);
+  $("meBadge").classList.toggle("red", meIndex===1);
+  $("oppBadge").classList.toggle("blue", meIndex===1);
+  $("oppBadge").classList.toggle("red", meIndex===0);
 
 
   // timer + crowns
@@ -1480,13 +1538,13 @@ function render(){
   if (S.phase === "battle" && S.endsAt){
     timerText.textContent = fmtMMSS(S.endsAt - Date.now());
   } else if (S.phase === "waiting"){
-    timerText.textContent = "3:00";
+    timerText.textContent = fmtMMSS((S.draftEndsAt||Date.now()) - Date.now());
   } else {
     timerText.textContent = "—";
   }
 
   if (S.phase === "waiting"){
-    hint("Build your 8-card deck below while waiting for opponent.");
+    hint("30s draft: pick up to 8, tap again to remove, then press ready.");
   } else if (S.phase === "battle"){
     hint(selectedCard ? `Selected: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a card, then tap a tile to play.");
   } else if (S.phase === "gameover"){
@@ -1505,12 +1563,19 @@ function render(){
   const e = S.elixir?.[meIndex] ?? 0;
   elixirNum.textContent = String(Math.floor(e));
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
+  elixirWrap.style.display = (S.phase==="battle") ? "flex" : "none";
+  draftBar.style.display = (S.phase==="waiting" && players.length>=2) ? "flex" : "none";
+  const myDeck = deckForPlayer(username);
+  const deckCount = myDeck.length;
+  const rm = S.readyMap || {};
+  const readyCount = players.filter(n=>rm[n]).length;
+  draftInfo.textContent = `Deck ${deckCount}/8 • Ready ${readyCount}/${Math.min(players.length,2)} • ${fmtMMSS((S.draftEndsAt||Date.now())-Date.now())}`;
+  readyBtn.textContent = rm[username] ? "✅ Ready" : "Ready";
 
   // cards / deck builder
   const pk = (meIndex===0) ? "p0" : "p1";
   const hand = (S.hand && S.hand[pk]) ? S.hand[pk] : [];
   const myElo = lobbyMeta.eloMap?.[username] || 1000;
-  const myDeck = deckForPlayer(username);
   cardsEl.innerHTML = "";
 
   const sourceCards = (S.phase === "waiting") ? CARD_POOL : hand;
@@ -1524,15 +1589,9 @@ function render(){
     const selected = (S.phase === "waiting") ? inDeck : selectedCard===cid;
     el.className = "card" + (selected ? " sel" : "");
     el.innerHTML = `
-      <div class="top">
-        <div class="name">${c.name}</div>
-        <div class="cost">${c.cost}</div>
-      </div>
-      <div class="mid">
-        <div class="emoji">${c.emoji}</div>
-        <div class="type">${c.kind} • ${c.place==="friendly" ? "your side" : "anywhere"}</div>
-      </div>
-      <div class="rule">${locked ? `Requires ELO ${req}` : (S.phase==="waiting" ? (inDeck?"Tap to remove from deck":"Tap to add to deck") : (c.kind==="troop" ? "Spawns units that march + fight." : "Tap card, then tap board to cast."))}</div>
+      <div class="top"><div class="cost">${c.cost}</div></div>
+      <div class="mid"><div class="emoji" title="${c.name}">${c.emoji}</div></div>
+      ${locked ? `<div class="lock">ELO ${req}</div>` : ""}
     `;
     el.style.opacity = locked ? ".45" : "1";
     el.addEventListener("click", async ()=>{
@@ -1541,7 +1600,6 @@ function render(){
         const next = myDeck.slice();
         const i = next.indexOf(cid);
         if (i>=0) next.splice(i,1); else if (next.length<8) next.push(cid);
-        if (next.length===0){ toast("Deck needs at least 1 card"); return; }
         try{ await updateDoc(lobbyRef, { [`deckMap.${username}`]: next, updatedAt: Date.now() }); }
         catch(e){ console.warn(e); }
         return;
@@ -1561,6 +1619,14 @@ function render(){
   paintBoard();
   paintFx();
 }
+
+readyBtn.addEventListener("click", async ()=>{
+  if (!S || S.phase!=="waiting") return;
+  if ((S.players||[]).length<2){ toast("Waiting for opponent"); return; }
+  try{
+    await updateDoc(stateRef, { [`readyMap.${username}`]: !(S.readyMap?.[username]), lastReadyAt: Date.now() });
+  }catch(e){ console.warn(e); toast("Ready update failed"); }
+});
 
 cancelBtn.addEventListener("click", ()=>{
   selectedCard = null;
@@ -1585,6 +1651,7 @@ function paintBoard(){
       const cell = getCell(x,y);
       const under = cell.querySelector(".under");
       const piece = cell.querySelector(".piece");
+      cell.classList.remove("placeHint","placeBlocked");
       const hpFill= cell.querySelector(".hp>i");
 
       under.style.background = "transparent";
@@ -1592,6 +1659,17 @@ function paintBoard(){
       piece.style.opacity = "1";
       hpFill.style.width = "0%";
       hpFill.className = "neutral";
+
+      if (S.phase==="battle" && selectedCard){
+        const c = CARDS[selectedCard];
+        if (c){
+          let valid = true;
+          if (c.place === "friendly" && !onMySide(meIndex,x,y)) valid = false;
+          if (c.place === "friendly" && isRiver(x,y)) valid = false;
+          if (c.place === "friendly" && isStructureTile(S.structures,x,y)) valid = false;
+          cell.classList.add(valid ? "placeHint" : "placeBlocked");
+        }
+      }
 
       const s = structureAt(structs,x,y);
       if (s && s.hp>0){
@@ -1714,6 +1792,9 @@ function startListeners(){
       if (S && S.phase==="battle" && S.endsAt){
         timerText.textContent = fmtMMSS(S.endsAt - Date.now());
       }
+      if (S && S.phase==="waiting" && S.draftEndsAt){
+        timerText.textContent = fmtMMSS(S.draftEndsAt - Date.now());
+      }
     }, 250);
   }
 }
@@ -1735,7 +1816,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
