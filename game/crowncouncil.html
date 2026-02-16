@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
-    --bg:#020617; --ink:#0f172a; --muted:#64748b; --line:#e5e7eb;
+    --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#d1d5db;
     --shadow:0 10px 30px rgba(2,6,23,.18);
     --cell:64px; /* bigger tiles for closer view */
     --gap:4px;
@@ -30,8 +30,8 @@
   body{
     margin:0;
     background:
-      radial-gradient(circle at top,#0b1120 0,#020617 55%,#000 100%);
-    color:#e5e7eb;
+      radial-gradient(circle at top,#ffffff 0,#f8fafc 55%,#eef2f7 100%);
+    color:#0f172a;
     font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
   }
 
@@ -87,10 +87,10 @@
     position:relative;
     width:100%;
     height:calc(100dvh - 70px);
-    border-top:1px solid rgba(15,23,42,.8);
+    border-top:1px solid rgba(15,23,42,.2);
     border-radius:18px 18px 0 0;
     overflow:hidden;
-    background:radial-gradient(circle at top,#020617,#020617,#020617);
+    background:linear-gradient(180deg,#ffffff,#f8fafc);
     cursor:grab;
     user-select:none;
     touch-action:none;
@@ -109,11 +109,16 @@
   .cell{
     width:var(--cell);height:var(--cell);
     border-radius:12px;
-    background:radial-gradient(circle at top,#0f172a,#020617);
-    border:1px solid rgba(30,64,175,.5);
-    position:relative;overflow:hidden;
-    box-shadow:0 0 0 1px rgba(15,23,42,.6),0 18px 40px rgba(15,23,42,.7) inset;
+    background:
+      radial-gradient(circle at 28% 26%, rgba(34,197,94,.28), transparent 40%),
+      radial-gradient(circle at 70% 60%, rgba(120,53,15,.24), transparent 42%),
+      linear-gradient(145deg,#d9f99d,#bbf7d0 55%,#86efac);
+    border:1px solid rgba(22,101,52,.28);
+    position:relative;
+    overflow:hidden;
+    box-shadow:0 1px 0 rgba(255,255,255,.75) inset, 0 2px 8px rgba(15,23,42,.12);
   }
+  .cell.multi-origin{ overflow:visible; z-index:8; }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) < status(6) */
   .under{
@@ -126,7 +131,8 @@
   .unit.attacking{ animation:unitAttack .35s ease-out; }
   .unit.casting{ animation:unitCast .5s ease-out; }
   .unit .troop-art{ width:88%; height:88%; filter:drop-shadow(0 0 7px rgba(0,0,0,.55)); }
-  .unit.big .troop-art{ width:96%; height:96%; }
+  .unit.big{ width:calc(200% + var(--gap)); height:calc(200% + var(--gap)); place-items:stretch; }
+  .unit.big .troop-art{ width:100%; height:100%; }
   .unit svg{ width:100%; height:100%; overflow:visible; }
   .unit .stroke{ stroke:rgba(15,23,42,.95); stroke-width:2; }
   @keyframes unitAttack{
@@ -150,6 +156,11 @@
     position:absolute;left:6px;right:6px;bottom:4px;height:7px;border-radius:999px;
     background:rgba(15,23,42,.9);overflow:hidden;z-index:4;
     box-shadow:0 0 0 1px rgba(15,23,42,.85),0 0 18px rgba(15,23,42,.9) inset;
+  }
+  .hp.big{
+    width:calc(200% + var(--gap));
+    right:auto;
+    bottom:calc(4px - var(--cell) - var(--gap));
   }
   /* default (fallback) fill is green; team classes override it */
   .hp>i{
@@ -625,6 +636,7 @@ const TROOPS = {
   },
   marksman:{ faction:"Vanir", name:"Marksman", emoji:"🎯", role:"back",
     base:{ hp:8, dmg:5, range:6, cd:1450, spd:1, armor:0 },
+    strongVs:["light"],
     antiSupport:true,
     supportBonus:4,
     executePct:0.35
@@ -653,7 +665,7 @@ const TROOPS = {
     wardCdShoot:1400
   },
   golem:{ faction:"Aesir", name:"Sentinel Golem", emoji:"🗿", role:"front",
-    base:{ hp:34, dmg:5, range:1, cd:1050, spd:1, armor:4 }, size:2,
+    base:{ hp:34, dmg:5, range:1, cd:1050, spd:1, armor:3 }, size:2,
     rangedReduce:2
   },
   runebinder:{ faction:"Aesir", name:"Rune Binder", emoji:"🪄", role:"back",
@@ -677,6 +689,7 @@ const TROOPS = {
   viper:{
     faction:"Helions", name:"Viper", emoji:"🐍", role:"front",
     base:{ hp:8, dmg:14, range:1, cd:2000, spd:2, armor:0 },
+    strongVs:["armored"],
     hunterRanged:true,
     trueDamage:true,
     viperLeap:true,
@@ -721,6 +734,19 @@ const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]
 
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
+function armorTypeFor(type, unit){
+  const t = TROOPS[type] || {};
+  if (t.armorType) return t.armorType;
+  if (unit && unit.size===2) return "armored";
+  const armorVal = (unit && typeof unit.armor === "number") ? unit.armor : ((t.base && t.base.armor) || 0);
+  if (armorVal >= 3) return "armored";
+  if (t.role === "back") return "light";
+  return "balanced";
+}
+function unitStrongVs(type){
+  if (type === "guardian") return ["light"];
+  return (TROOPS[type] && TROOPS[type].strongVs) ? TROOPS[type].strongVs : [];
+}
 function rectangleFree(units,x,y,size){
   for(let yy=0; yy<size; yy++){
     for(let xx=0; xx<size; xx++){
@@ -798,6 +824,8 @@ function placeUnit(state,p,key,lvl){
       id:crypto.randomUUID(), p:p, type:key, x:pos.x, y:pos.y, lvl:lvl,
       maxhp:maxhp, hp:maxhp,
       dmg:dmg, spd:spd, range:range, armor:(b.armor|0),
+      armorType:armorTypeFor(key, {size:size, armor:(b.armor|0)}),
+      strongVs:unitStrongVs(key),
       cd:cd,
       splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
       blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
@@ -1106,6 +1134,8 @@ function spawnAdjacentUnit(st, parent, typeKey){
         id:crypto.randomUUID(), p:parent.p, type:typeKey, x:x, y:y, lvl:1,
         maxhp:Math.round(b.hp||8), hp:Math.round(b.hp||8),
         dmg:Math.round(b.dmg||2), spd: b.spd || 1, range:b.range || 1, armor:(b.armor|0),
+        armorType:armorTypeFor(typeKey, {size:size, armor:(b.armor|0)}),
+        strongVs:unitStrongVs(typeKey),
         cd: Math.round((b.cd || 700)*PACE.atkMult),
         splash1:!!b.splash1, knock:!!b.knock, strongKnock:!!b.strongKnock, hunterRanged:!!b.hunterRanged,
         blink50:!!b.blink50, blinked:false, chain3:!!b.chain3,
@@ -1291,8 +1321,14 @@ function paint(units, field){
     if (!d) continue;
 
     const under = d.querySelector(".under"); if (under) under.style.background = "transparent";
-    const uni = d.querySelector(".unit"); if (uni) uni.textContent = "";
+    const uni = d.querySelector(".unit");
+    if (uni){
+      uni.textContent = "";
+      uni.classList.remove("team0","team1","attacking","casting","big");
+    }
     const statusEl = d.querySelector(".status"); if (statusEl) statusEl.textContent = "";
+    d.classList.remove("multi-origin");
+    const hpWrap = d.querySelector(".hp"); if (hpWrap) hpWrap.classList.remove("big");
 
     const hpFill = d.querySelector(".hp>i");
     if (hpFill){
@@ -1349,6 +1385,7 @@ function paint(units, field){
     }
 
     const d0 = cellsEl.children[idx(u.x, u.y)]; if (!d0) continue;
+    d0.classList.toggle("multi-origin", s===2);
 
     const uni = d0.querySelector(".unit");
     if (uni){
@@ -1364,6 +1401,8 @@ function paint(units, field){
     }
 
     const hpFill = d0.querySelector(".hp>i");
+    const hpWrap = d0.querySelector(".hp");
+    if (hpWrap) hpWrap.classList.toggle("big", s===2);
     if (hpFill){
       hpFill.classList.toggle("team0", u.p === 0);
       hpFill.classList.toggle("team1", u.p === 1);
@@ -1408,6 +1447,29 @@ function nearestEnemy(u,units,field){
     consider(w,true);
   }
   return best;
+}
+function strongestArmorTargetInRange(u, units){
+  const strongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
+  if (!strongVs.length) return null;
+  const c = unitCenter(u);
+  const range = (u.range||1);
+  let best=null, bd=1e9;
+  for (let i=0;i<units.length;i++){
+    const v = units[i];
+    if (!v || v.p===u.p || v.hp<=0) continue;
+    const d = Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y);
+    if (d > range) continue;
+    const armorType = v.armorType || armorTypeFor(v.type, v);
+    if (!strongVs.includes(armorType)) continue;
+    if (d < bd){ bd=d; best=v; }
+  }
+  return best;
+}
+function pickTarget(u, units, field){
+  const priority = strongestArmorTargetInRange(u, units);
+  if (priority) return priority;
+  return u.hunterRanged ? nearestEnemyRangedPriority(u,units,field)
+                        : nearestEnemy(u,units,field);
 }
 function nearestEnemyRangedPriority(u,units,field){
   const wards = field.wards || [];
@@ -1753,6 +1815,9 @@ function attack(u, t, now, st){
 
   function deal(victim, raw, isRanged){
     let dmg = raw|0;
+    const attackerStrongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
+    const victimArmor = victim.armorType || armorTypeFor(victim.type, victim);
+    if (attackerStrongVs.includes(victimArmor)) dmg += 2;
     if (isRanged){
       dmg = applyWardShields(u, victim, dmg, st.field);
       if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
@@ -2216,8 +2281,7 @@ function runBattle(){
         applyVguardRegen(u, st, now);
       }
 
-      const t = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
-                               : nearestEnemy(u,units,st.field);
+      const t = pickTarget(u, units, st.field);
       if (!t) continue;
 
       const attacked = attack(u, t, now, st);
@@ -2229,8 +2293,7 @@ function runBattle(){
           const steps = bound ? 0 : (slowed ? 1 : PACE.moveSteps);
 
           for (let s=0; s<steps; s++){
-            const t2 = u.hunterRanged ? nearestEnemyRangedPriority(u,units,st.field)
-                                      : nearestEnemy(u,units,st.field);
+            const t2 = pickTarget(u, units, st.field);
             if (!t2) break;
 
             if (u.burrow) attemptBurrow(u, units, st, now);
@@ -2609,7 +2672,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
