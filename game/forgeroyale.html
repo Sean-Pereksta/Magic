@@ -363,6 +363,7 @@
     cursor:pointer;
     user-select:none;
     position:relative;
+    touch-action:manipulation;
   }
   .card.sel{outline:2px solid var(--accent); border-color: rgba(56,189,248,.45);}
   .card .top{display:flex; align-items:center; justify-content:center;}
@@ -403,6 +404,7 @@
     padding:12px;
     background: rgba(2,6,23,.62);
     backdrop-filter: blur(8px);
+    touch-action:auto;
   }
   .draftOverlay.show{ display:flex; }
   .draftPanel{
@@ -416,6 +418,7 @@
     display:grid;
     grid-template-rows:auto auto 1fr;
     gap:10px;
+    pointer-events:auto;
   }
   .draftHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;}
   .draftTitle{font-size:1rem; font-weight:1000; letter-spacing:.03em;}
@@ -537,6 +540,8 @@
     :root{ --cell:30px; --gap:3px; --topH:48px; --hudH:90px; }
     .badge{font-size:.72rem; padding:4px 8px}
     .btn{font-size:.72rem; padding:5px 8px}
+    .wrap{height: calc(100dvh - var(--topH) - var(--hudH) - 18px);}
+    .hud{transform:translateY(-18px);}
     .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
     .card{padding:5px 4px;}
     .card .emoji{font-size:21px}
@@ -928,6 +933,7 @@ let started = false;
 let selectedCard = null;
 
 let lobbyMeta = { eloMap:{}, deckMap:{} };
+let localDraftDeck = null;
 function cleanDeckForElo(deck, elo){
   const allow = (cid)=> (ELO_REQ[cid]||0) <= (elo||1000);
   const filtered = (deck||[]).filter(cid=>CARDS[cid] && !CARDS[cid].hidden && allow(cid));
@@ -940,7 +946,8 @@ function cleanDeckForElo(deck, elo){
 function editableDeckForPlayer(name){
   const elo = lobbyMeta.eloMap?.[name] || 1000;
   const allow = (cid)=> (ELO_REQ[cid]||0) <= elo;
-  const saved = lobbyMeta.deckMap?.[name] || [];
+  const source = (name===username && Array.isArray(localDraftDeck)) ? localDraftDeck : null;
+  const saved = source || lobbyMeta.deckMap?.[name] || [];
   const out = [];
   for (const cid of saved){
     if (!CARDS[cid] || CARDS[cid].hidden || !allow(cid) || out.includes(cid)) continue;
@@ -992,7 +999,10 @@ function fitBoard(){
   const vw = viewport.clientWidth;
   const vh = viewport.clientHeight;
   const s = Math.min(vw/boardW, vh/boardH);
-  scale = Math.min(1.5, Math.max(0.3, s * 0.7));
+  const isMobile = window.matchMedia("(max-width: 720px)").matches;
+  const mobileScaleFactor = 0.7; // 30% smaller on mobile
+  const baseFactor = isMobile ? mobileScaleFactor : 1;
+  scale = Math.min(1.5, Math.max(0.3, s * baseFactor));
   pan.x = Math.round((vw - boardW*scale)/2);
   pan.y = Math.round((vh - boardH*scale)/2);
   canvasEl.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${scale})`;
@@ -1107,6 +1117,7 @@ async function joinLobby(){
   const lobSnap = await getDoc(lobbyRef);
   const lob = lobSnap.exists() ? lobSnap.data() : {};
   lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
+  localDraftDeck = null;
   lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
   meIndex = lobbyPlayers.indexOf(username);
   if (meIndex < 0) meIndex = 0;
@@ -2060,6 +2071,8 @@ function render(){
   if (isDrafting) selectedCard = null;
   draftBar.style.display = isDrafting ? "none" : "none";
   draftOverlay.classList.toggle("show", isDrafting);
+  if (!isDrafting) localDraftDeck = null;
+  if (isDrafting && !Array.isArray(localDraftDeck)) localDraftDeck = editableDeckForPlayer(username);
   const myDeck = editableDeckForPlayer(username);
   const deckCount = myDeck.length;
   const rm = S.readyMap || {};
@@ -2096,14 +2109,19 @@ function render(){
       ${locked ? `<div class="lock">ELO ${req}</div>` : ""}
     `;
     el.style.opacity = locked ? ".45" : "1";
-    el.addEventListener("click", async ()=>{
+    const onCardPress = async (ev)=>{
+      ev.preventDefault();
       if (locked){ toast(`Requires ELO ${req}`); return; }
       if (S.phase === "waiting"){
-        const next = myDeck.slice();
-        const i = next.indexOf(cid);
-        if (i>=0) next.splice(i,1); else if (next.length<8) next.push(cid);
-        try{ await updateDoc(lobbyRef, { [`deckMap.${username}`]: next, updatedAt: Date.now() }); }
-        catch(e){ console.warn(e); }
+        const current = Array.isArray(localDraftDeck) ? localDraftDeck.slice() : myDeck.slice();
+        const i = current.indexOf(cid);
+        if (i>=0) current.splice(i,1);
+        else if (current.length<8) current.push(cid);
+        else { toast("Deck already has 8 cards."); return; }
+        localDraftDeck = current;
+        render();
+        try{ await updateDoc(lobbyRef, { [`deckMap.${username}`]: current, updatedAt: Date.now() }); }
+        catch(e){ console.warn(e); toast("Deck sync failed. Retrying from server..."); localDraftDeck = null; render(); }
         return;
       }
       if (S.phase !== "battle"){ toast("Match not active."); return; }
@@ -2112,7 +2130,8 @@ function render(){
       selectedCard = cid;
       cancelBtn.style.display="inline-block";
       render();
-    });
+    };
+    el.addEventListener("pointerdown", onCardPress);
     activeCardsEl.appendChild(el);
   }
 
@@ -2294,6 +2313,11 @@ function startListeners(){
   onSnapshot(lobbyRef, async (snap)=>{
     const lob = snap.exists() ? snap.data() : {};
     lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
+    if (Array.isArray(localDraftDeck)){
+      const serverDeck = editableDeckForPlayer(username);
+      const sameDeck = localDraftDeck.length===serverDeck.length && localDraftDeck.every((cid, i)=>cid===serverDeck[i]);
+      if (sameDeck) localDraftDeck = null;
+    }
     lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : lobbyPlayers;
     isHost = (lobbyPlayers[0] === username);
     await syncPlayersIntoStateIfNeeded();
@@ -2337,7 +2361,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
