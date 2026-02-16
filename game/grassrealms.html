@@ -1447,7 +1447,7 @@ async function hostApplyIntents(){
   _processingIntents = true;
 
   try {
-    const movesRef = collection(db, 'lobbies', lobbyId, 'intents');
+    const movesRef = collection(db, 'lobbies', lobbyId, 'crowncouncil');
 
     // --- Build list of unprocessed intents with a server-ordered query,
     // --- and gracefully fall back if the composite index isn't created yet.
@@ -1455,6 +1455,7 @@ async function hostApplyIntents(){
     try {
       const snap = await getDocs(query(
         movesRef,
+        where('kind','==','intent'),
         where('processed','==',false),
         orderBy('ts','asc'),
         orderBy('__name__','asc'),
@@ -1466,6 +1467,7 @@ async function hostApplyIntents(){
       // Fallback path: filter by processed and sort in JS by ts then id
       const snap = await getDocs(query(
         movesRef,
+        where('kind','==','intent'),
         where('processed','==',false),
         limit(100)
       ));
@@ -1531,7 +1533,7 @@ async function hostApplyIntents(){
           if (rd.phase === 'resolving' && !(rd.resolveQueue?.length)) rd.phase = 'buy';
 
           tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
           return;
         }
 
@@ -1542,7 +1544,7 @@ async function hostApplyIntents(){
           if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
 
           tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
           return;
         }
 
@@ -1558,7 +1560,7 @@ async function hostApplyIntents(){
           if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
 
           tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
           return;
         }
 
@@ -1581,7 +1583,7 @@ async function hostApplyIntents(){
           rd.phase = 'buy';
 
           tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
           return;
         }
 
@@ -1606,7 +1608,7 @@ async function hostApplyIntents(){
           if (alive.length <= 1) rd.phase = 'finished';
 
           tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'intents', d.id), { processed: true });
+          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
           return;
         }
 
@@ -1619,7 +1621,7 @@ async function hostApplyIntents(){
         const isCurrentActor = isActor;
 
         if (!isValidType || !isCurrentActor){
-          tx.update(doc(db,'lobbies', lobbyId, 'intents', d.id), { processed:true });
+          tx.update(doc(db,'lobbies', lobbyId, 'crowncouncil', d.id), { processed:true });
           return;
         }
         // else: known + current actor + wrong phase → do nothing (leave unprocessed)
@@ -1630,7 +1632,7 @@ async function hostApplyIntents(){
   }
 }
     // ---------- Intents ----------
-    async function pushIntent(type, payload={}){ if (!lobbyId||!myName) return; await addDoc(collection(db,'lobbies',lobbyId,'intents'),{type,from:myName,payload,ts:serverTimestamp(),processed:false}); }
+    async function pushIntent(type, payload={}){ if (!lobbyId||!myName) return; await addDoc(collection(db,'lobbies',lobbyId,'crowncouncil'),{kind:'intent',type,from:myName,payload,ts:serverTimestamp(),processed:false}); }
     function intentRoll(mode){ pushIntent('ROLL',{mode}); }
     function intentResolve(){ pushIntent('RESOLVE_NEXT',{}); }
     function intentResolveWithTarget(){
@@ -1703,7 +1705,7 @@ async function hostApplyIntents(){
         }
       });
 
-      unsubIntents = onSnapshot(collection(db,'lobbies',lobbyId,'intents'), ()=>{
+      unsubIntents = onSnapshot(query(collection(db,'lobbies',lobbyId,'crowncouncil'), where('kind','==','intent')), ()=>{
         if (isHost) hostApplyIntents();
       });
     }
