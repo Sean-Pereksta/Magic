@@ -8,7 +8,7 @@
   :root{
     --bg:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#d1d5db;
     --shadow:0 10px 30px rgba(2,6,23,.18);
-    --cell:64px; /* bigger tiles for closer view */
+    --cell:46px; /* condensed board for mobile fit */
     --gap:4px;
 
     /* team fills kept around but unused now (rank colors used instead) */
@@ -86,7 +86,7 @@
   .viewport{
     position:relative;
     width:100%;
-    height:calc(100dvh - 70px);
+    height:calc((100dvh - 70px) * 0.7);
     border-top:1px solid rgba(15,23,42,.2);
     border-radius:18px 18px 0 0;
     overflow:hidden;
@@ -96,7 +96,7 @@
     touch-action:none;
   }
   .viewport:active{ cursor:grabbing; }
-  .canvas{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+  .canvas{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; overflow:visible; }
 
   .cells{
     position:relative;
@@ -119,6 +119,34 @@
     box-shadow:0 1px 0 rgba(255,255,255,.75) inset, 0 2px 8px rgba(15,23,42,.12);
   }
   .cell.multi-origin{ overflow:visible; z-index:8; }
+  .cell.water{
+    background:
+      radial-gradient(circle at 20% 20%, rgba(191,219,254,.45), transparent 38%),
+      repeating-linear-gradient(115deg, rgba(125,211,252,.55) 0 8px, rgba(56,189,248,.35) 8px 16px),
+      linear-gradient(145deg,#0284c7,#0369a1 50%,#075985);
+    border-color:rgba(14,116,144,.55);
+    animation:waterFlow 1.3s linear infinite;
+  }
+  .cell.bridge{
+    background:
+      repeating-linear-gradient(90deg, #7c4a1f 0 7px, #8f5a2b 7px 14px),
+      linear-gradient(180deg,#a16207,#78350f);
+    border-color:rgba(68,38,12,.75);
+    box-shadow:0 1px 0 rgba(255,255,255,.2) inset, 0 3px 8px rgba(0,0,0,.35);
+  }
+  .cell.bridge::before,
+  .cell.bridge::after{
+    content:"";
+    position:absolute;
+    top:7%;
+    bottom:7%;
+    width:4px;
+    border-radius:3px;
+    background:linear-gradient(180deg,#b08968,#6b3f1b);
+  }
+  .cell.bridge::before{ left:6px; }
+  .cell.bridge::after{ right:6px; }
+  @keyframes waterFlow{ from{ background-position:0 0,0 0,0 0; } to{ background-position:0 0,48px 0,0 0; } }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) < status(6) */
   .under{
@@ -208,6 +236,14 @@
 
   .acid{ position:absolute; inset:0; background:#1d4ed8; opacity:.85; z-index:1; animation:acidpulse 1s ease-in-out infinite; }
   @keyframes acidpulse{ 0%,100%{filter:saturate(1)} 50%{filter:saturate(1.2)} }
+  .fire{ position:absolute; inset:0; z-index:1;
+    background:
+      radial-gradient(circle at 50% 70%, rgba(251,146,60,.9), rgba(249,115,22,.7) 50%, rgba(239,68,68,.2) 80%),
+      radial-gradient(circle at 35% 30%, rgba(254,240,138,.95), rgba(251,191,36,.15) 45%, transparent 70%);
+    animation:fireflicker .45s ease-in-out infinite;
+    mix-blend-mode:screen;
+  }
+  @keyframes fireflicker{ 0%,100%{opacity:.75; transform:scale(1);} 50%{opacity:.98; transform:scale(1.06);} }
   .ward{ position:absolute; inset:0; background:#8ec5ff33; border:1px solid #4ea3ff; z-index:1; box-shadow:0 0 20px rgba(59,130,246,.7) inset; }
 
   /* Draft overlay */
@@ -257,6 +293,11 @@
     box-shadow:0 22px 50px rgba(15,23,42,1);
     border-color:#38bdf8;
   }
+  .card.selected{
+    border-color:#facc15;
+    transform:translateY(-3px) scale(1.02);
+    box-shadow:0 0 0 1px rgba(250,204,21,.65),0 22px 50px rgba(15,23,42,1);
+  }
 
   .pickNote{
     position:absolute;left:50%;top:12%;transform:translateX(-50%);
@@ -270,11 +311,15 @@
   }
 
   /* VFX */
-  .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
+  .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; overflow:visible; z-index:22; }
   .beam{
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.98),rgba(239,68,68,.98));
     opacity:.98; transform-origin:0 50%; animation:beamfade .35s ease-out forwards; box-shadow:0 0 16px rgba(59,130,246,.8);
   }
+  .beam.fire{ background:linear-gradient(90deg,#f97316,#ef4444,#facc15); box-shadow:0 0 16px rgba(249,115,22,.95); }
+  .beam.nature{ background:linear-gradient(90deg,#84cc16,#22c55e,#4ade80); box-shadow:0 0 16px rgba(74,222,128,.9); }
+  .beam.void{ background:linear-gradient(90deg,#a855f7,#7c3aed,#c084fc); box-shadow:0 0 16px rgba(192,132,252,.9); }
+  .beam.steel{ background:linear-gradient(90deg,#e2e8f0,#94a3b8,#64748b); box-shadow:0 0 16px rgba(226,232,240,.9); }
   .hbeam{
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(34,197,94,1),rgba(134,239,172,1));
     opacity:1; transform-origin:0 50%; animation:beamfade .35s ease-out forwards; box-shadow:0 0 16px rgba(34,197,94,.9);
@@ -300,6 +345,20 @@
     box-shadow:0 0 14px rgba(248,113,113,.9);
     animation:impact .32s ease-out forwards;
   }
+  .impact.melee{
+    border-color:rgba(248,250,252,.95);
+    box-shadow:0 0 18px rgba(255,255,255,.95);
+  }
+  .spark{
+    position:absolute;
+    width:4px;
+    height:12px;
+    border-radius:99px;
+    background:linear-gradient(180deg,#fde68a,#f97316,rgba(239,68,68,.2));
+    transform-origin:50% 0;
+    animation:spark .35s ease-out forwards;
+  }
+  @keyframes spark{ from{opacity:1; transform:translate(-50%,-50%) scale(1);} to{opacity:0; transform:translate(-50%,-95%) scale(.25);} }
   .storm{
     position:absolute;
     width:calc(var(--cell) * 2.3);
@@ -477,7 +536,11 @@ const VIEW_MS  = 120;   // publish + render cadence
 const LOGIC_MS = 560;   // core logic cadence
 const MOVE_MS  = 560;   // gate movement per unit
 
-let CELL=64, GAP=4, W=8, H=16;
+const RIVER_Y0 = 7;
+const RIVER_Y1 = 8;
+const BRIDGE_X = new Set([3,4]);
+
+let CELL=46, GAP=4, W=8, H=16;
 
 /* ---------------- DOM ---------------- */
 const $ = (id)=>document.getElementById(id);
@@ -494,7 +557,7 @@ function fitBoard(){
   const vw = viewport.clientWidth, vh=viewport.clientHeight;
 
   const fitScale = Math.min(vw/boardW, vh/boardH);
-  boardScale = Math.min(2.2, fitScale * 1.25);
+  boardScale = Math.min(1.7, fitScale * 0.95);
 
   pan.x = Math.round((vw - boardW*boardScale) / 2);
   pan.y = Math.round((vh - boardH*boardScale) / 2);
@@ -564,7 +627,7 @@ async function ensureStateExists(){
         phaseEndsAt: players.length < 2 ? 0 : now + 20000,
         roster:   { p0: [], p1: [] },
         factions: { p0: null, p1: null },
-        field:    { units: [], poison: [], toxic: [], acid: [], wards: [], fx: [] },
+        field:    { units: [], poison: [], toxic: [], acid: [], fire: [], wards: [], fx: [] },
         selections:   { p0: [], p1: [] },
         currentPacks: { p0: [], p1: [] },
         bonusFor: null,
@@ -584,6 +647,12 @@ async function ensureStateExists(){
 }
 
 /* ---------------- Build cells ---------------- */
+function tileTerrainClass(x,y){
+  if (y>=RIVER_Y0 && y<=RIVER_Y1){
+    return BRIDGE_X.has(x) ? "bridge" : "water";
+  }
+  return "";
+}
 function buildBoard(){
   cellsEl.style.setProperty("--w", W);
   cellsEl.style.setProperty("--cell", CELL + "px");
@@ -592,7 +661,8 @@ function buildBoard(){
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
       const d=document.createElement("div");
-      d.className="cell";
+      const terrain = tileTerrainClass(x,y);
+      d.className = terrain ? ("cell "+terrain) : "cell";
       d.dataset.x=String(x); d.dataset.y=String(y);
       d.innerHTML = `
         <div class="under"></div>
@@ -730,7 +800,7 @@ function rankColor(lvl){
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
-const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], fire:[], wards:[], fx:[]});
 
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
@@ -867,6 +937,7 @@ function rebuildFieldFromRoster(state){
   if (!state.field.poison) state.field.poison = [];
   if (!state.field.toxic)  state.field.toxic  = [];
   if (!state.field.acid)   state.field.acid   = [];
+  if (!state.field.fire)   state.field.fire   = [];
   if (!state.field.wards)  state.field.wards  = [];
 
   for(let p=0;p<2;p++){
@@ -999,14 +1070,21 @@ function rosterUpgradeOneSpecific(roster, type){
 }
 
 /* VFX helpers */
-function fxBeam(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"beam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
+function fxBeam(x1,y1,x2,y2,style){ return { id:crypto.randomUUID(), type:"beam", x1:x1,y1:y1,x2:x2,y2:y2, style:style||"steel", at:Date.now(), ttl:350 }; }
 function fxHeal(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"hbeam", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:350 }; }
 function fxBurst(cx,cy){     return { id:crypto.randomUUID(), type:"burst", cx:cx,cy:cy, at:Date.now(), ttl:700 }; }
 function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transport", x1:x1,y1:y1,x2:x2,y2:y2, at:Date.now(), ttl:450 }; }
-function fxImpact(x,y){ return { id:crypto.randomUUID(), type:"impact", x:x, y:y, at:Date.now(), ttl:320 }; }
+function fxImpact(x,y,kind){ return { id:crypto.randomUUID(), type:"impact", x:x, y:y, kind:kind||"hit", at:Date.now(), ttl:320 }; }
 function fxStorm(cx,cy){ return { id:crypto.randomUUID(), type:"storm", cx:cx, cy:cy, at:Date.now(), ttl:620 }; }
 function fxStatus(x,y,emoji){ return { id:crypto.randomUUID(), type:"status", x:x, y:y, emoji:emoji, at:Date.now(), ttl:620 }; }
 
+
+function beamStyleFor(type){
+  if (["vrocket"].includes(type)) return "fire";
+  if (["storm","runebinder","phaser","roach","spitter","carrion"].includes(type)) return "void";
+  if (["medic","wardmaker"].includes(type)) return "nature";
+  return "steel";
+}
 function centerPx(x,y){
   const left = x*(CELL+GAP) + CELL/2;
   const top  = y*(CELL+GAP) + CELL/2;
@@ -1015,7 +1093,9 @@ function centerPx(x,y){
 function renderBeam(ev, heal){
   const a = centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
   const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
-  const el=document.createElement("div"); el.className= heal? "hbeam" : "beam";
+  const el=document.createElement("div");
+  if (heal) el.className = "hbeam";
+  else el.className = "beam "+(ev.style||"steel");
   el.style.left = a.left + "px";
   el.style.top  = a.top  + "px";
   el.style.width = Math.max(1,len) + "px";
@@ -1050,10 +1130,24 @@ function renderBurst(ev){
 function renderImpact(ev){
   const a=centerPx(ev.x, ev.y);
   const el=document.createElement("div");
-  el.className="impact";
+  el.className="impact" + (ev.kind==="melee" ? " melee" : "");
   el.style.left = a.left + "px";
   el.style.top = a.top + "px";
   partsEl.appendChild(el);
+
+  if (ev.kind === "melee"){
+    for(let i=0;i<7;i++){
+      const sp=document.createElement("div");
+      sp.className="spark";
+      const ang = (Math.PI*2*i)/7 + (Math.random()*0.4);
+      const r = 8 + Math.random()*10;
+      sp.style.left = (a.left + Math.cos(ang)*r) + "px";
+      sp.style.top = (a.top + Math.sin(ang)*r) + "px";
+      sp.style.transform = `translate(-50%,-50%) rotate(${ang}rad)`;
+      partsEl.appendChild(sp);
+      setTimeout(()=>sp.remove(), 360);
+    }
+  }
   setTimeout(()=>el.remove(), ev.ttl||320);
 }
 function renderStorm(ev){
@@ -1339,6 +1433,7 @@ function paint(units, field){
     d.querySelector(".poison")?.remove();
     d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
+    d.querySelector(".fire")?.remove();
     d.querySelector(".ward")?.remove();
   }
 
@@ -1361,6 +1456,13 @@ function paint(units, field){
     const d = cellsEl.children[idx(a.x,a.y)]; if (!d) return;
     const el = document.createElement("div");
     el.className="acid";
+    d.appendChild(el);
+  });
+  (field.fire||[]).forEach(f=>{
+    if (f.until <= now) return;
+    const d = cellsEl.children[idx(f.x,f.y)]; if (!d) return;
+    const el = document.createElement("div");
+    el.className="fire";
     d.appendChild(el);
   });
   (field.wards||[]).forEach(w=>{
@@ -1416,6 +1518,7 @@ function paint(units, field){
       if (u.slowUntil && u.slowUntil > now) icons.push("🐢");
       if (u.statusPoisonUntil && u.statusPoisonUntil > now) icons.push("☠");
       if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
+      if (u.statusBurnUntil && u.statusBurnUntil > now) icons.push("🔥");
       if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
       if (u.woundUntil && u.woundUntil > now) icons.push("🩸");
       if (u.bindUntil && u.bindUntil > now) icons.push("⚡");
@@ -1555,6 +1658,16 @@ function addAcid(state, x,y, durMs){
   if (!state.field.acid) state.field.acid = [];
   state.field.acid.push({x:x,y:y,until:Date.now()+durMs});
 }
+function addFire(state, cx,cy, durMs){
+  if (!state.field.fire) state.field.fire = [];
+  const until = Date.now()+durMs;
+  for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++){
+      const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
+      state.field.fire.push({x:x,y:y,until:until});
+    }
+  }
+}
 function placeWard(state, x, y, hp, dur, opts){
   if (!inside(x,y)) return false;
   if (state.field.wards && state.field.wards.some(w=>w.x===x && w.y===y)) return false;
@@ -1640,6 +1753,21 @@ function applyTerrain(field, units){
     }
     if (ticked) groundTickParticles(a.x,a.y,true);
   });
+
+  (field.fire||[]).forEach(f=>{
+    if (f.until<=now) return;
+    let ticked=false;
+    for(let i=0;i<units.length;i++){
+      const u=units[i];
+      if (u.x<=f.x && f.x<u.x+unitSize(u) && u.y<=f.y && f.y<u.y+unitSize(u)){
+        u.statusBurnUntil = Math.max(u.statusBurnUntil||0, now + 1800);
+        if (!u._fireTick || now - u._fireTick >= 900){
+          u._fireTick = now; u.hp = u.hp - 1; flashAt(u.x,u.y,1); ticked=true;
+        }
+      }
+    }
+    if (ticked) groundTickParticles(f.x,f.y,false);
+  });
 }
 
 /* wards heal/shoot */
@@ -1695,7 +1823,7 @@ function wardsShoot(st, now){
 
     for (let j=0;j<targets.length;j++){
       const tgt = targets[j];
-      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
+      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y, "steel"));
       const raw = w.wDmg || 1;
       const dmg = reduceDamageForTarget(raw, tgt, st.field);
       applyDamage(tgt, dmg, st);
@@ -1762,10 +1890,11 @@ function wardAction(u, st, now){
   return false;
 }
 
-function applyDamage(victim, dmg, st){
+function applyDamage(victim, dmg, st, opts){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
-  if (st && st.field && st.field.fx) st.field.fx.push(fxImpact(victim.x, victim.y));
+  const kind = (opts && opts.melee) ? "melee" : "hit";
+  if (st && st.field && st.field.fx) st.field.fx.push(fxImpact(victim.x, victim.y, kind));
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   for(let dy=-1;dy<=1;dy++){
@@ -1823,7 +1952,7 @@ function attack(u, t, now, st){
       if (victim.rangedReduce) dmg = Math.max(1, dmg - (victim.rangedReduce|0));
     }
     dmg = reduceDamageForTarget(dmg, victim, st.field, {ignoreArmor:!!u.trueDamage});
-    applyDamage(victim, dmg, st);
+    applyDamage(victim, dmg, st, {melee:!isRanged});
   }
 
   if (u.kamikaze){
@@ -1839,28 +1968,29 @@ function attack(u, t, now, st){
     u.hp = 0;
 
   } else if (u.type === "vrocket"){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y, beamStyleFor(u.type)));
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
     splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
+    addFire(st, t.x, t.y, 2600);
 
   } else if (u.chain3){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y, beamStyleFor(u.type)));
     if (u.type === "storm") st.field.fx.push(fxStorm(t.x,t.y));
     chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
-    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y, beamStyleFor(u.type)));
     deal(t, u.dmg, true);
     paintPoison(st, t.x, t.y, 5000, u.p);
 
   } else if (u.acid){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y, beamStyleFor(u.type)));
     deal(t, u.dmg, true);
     addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur || 3500);
 
   } else {
-    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y, beamStyleFor(u.type)));
     deal(t, u.dmg, ranged);
     const strong = !!u.strongKnock;
     if (u.splash1){
@@ -1880,10 +2010,10 @@ function attack(u, t, now, st){
 
   if (u.antiSupport && t.hp > 0 && isSupportUnit(t)){
     const bonus = Math.max(1, u.supportBonus||3);
-    applyDamage(t, bonus, st);
+    applyDamage(t, bonus, st, {melee:false});
   }
   if (u.executePct && t.hp > 0 && t.hp <= Math.floor(t.maxhp * u.executePct)){
-    applyDamage(t, t.hp, st);
+    applyDamage(t, t.hp, st, {melee:false});
   }
   if (u.empShock && t.hp > 0){
     applyShockDebuff(st, t, now, u.shockDur || 1500);
@@ -2218,11 +2348,13 @@ function startHostLoops(){
     const beforePoison = (nf.poison||[]).length;
     const beforeToxic = (nf.toxic||[]).length;
     const beforeAcid = (nf.acid||[]).length;
+    const beforeFire = (nf.fire||[]).length;
     const beforeWards = (nf.wards||[]).length;
     nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
     nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
+    nf.fire  = (nf.fire  ||[]).filter(f=>f.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
 
     const changed =
@@ -2230,6 +2362,7 @@ function startHostLoops(){
       beforePoison !== nf.poison.length ||
       beforeToxic !== nf.toxic.length ||
       beforeAcid !== nf.acid.length ||
+      beforeFire !== nf.fire.length ||
       beforeWards !== nf.wards.length;
 
     if (changed) await updateDoc(stateRef, { field: nf });
@@ -2506,23 +2639,23 @@ function render(){
   }
 
   const pack=(S && S.currentPacks && S.currentPacks[sk]) ? S.currentPacks[sk] : [];
+  row.style.display="flex"; row.innerHTML="";
   if (pickedIndex!=null){
-    row.style.display="none"; row.innerHTML="";
     const picked = pack[pickedIndex];
     const label = picked
       ? (picked.type==="troop"
           ? picked.name
           : ((picked.special==="upgrade"?"Upgrade ":"Double ")+(TROOPS[picked.for] ? TROOPS[picked.for].name : "")))
       : "(auto)";
-    note.textContent="Selected: "+label;
+    note.textContent="Selected: "+label+" (tap again to unselect)";
     note.style.display="block";
-    return;
+  } else {
+    note.style.display="none";
   }
-
-  row.style.display="flex"; row.innerHTML=""; note.style.display="none";
   for(let i=0;i<pack.length;i++){
     const c=pack[i];
     const el=document.createElement("div"); el.className="card";
+    if (pickedIndex===i) el.classList.add("selected");
     if (c.type==="troop"){
       const tro = TROOPS[c.key];
       const armor = Math.max(0, (tro.base && tro.base.armor) ? (tro.base.armor|0) : 0);
@@ -2582,12 +2715,13 @@ async function chooseCard(i){
       if (!selections.p1) selections.p1 = [];
 
       const curSel = selections[sk][di];
-      if (curSel!=null) return;
 
       const pack = (data.currentPacks && data.currentPacks[sk]) ? data.currentPacks[sk] : [];
       if (!pack || !pack.length) return;
+      if (i < 0 || i >= pack.length) return;
 
-      selections[sk][di] = i;
+      if (curSel===i) selections[sk][di] = null;
+      else selections[sk][di] = i;
       tx.update(stateRef, { selections: selections });
     });
   }catch(e){
@@ -2672,8 +2806,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
 
 
 
