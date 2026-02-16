@@ -639,6 +639,8 @@ const CARDS = {
              unit:{ hp:22, dmg:5, range:1, cdMs:900, spdMs:520, targets:"all", canHitAir:false } },
   archers: { id:"archers", name:"Archers", emoji:"🏹", kind:"troop", cost:3, place:"friendly", spawn:2,
              unit:{ hp:12, dmg:4, range:3, cdMs:1100, spdMs:560, targets:"all", canHitAir:true } },
+  flameArchers: { id:"flameArchers", name:"Flame Archers", emoji:"🔥", kind:"troop", cost:4, place:"friendly", spawn:2,
+             unit:{ hp:12, dmg:3, range:3, cdMs:1450, spdMs:580, targets:"all", canHitAir:true, burnMs:3000, burnDps:2 } },
   goblins: { id:"goblins", name:"Goblins", emoji:"🟢", kind:"troop", cost:2, place:"friendly", spawn:3,
              unit:{ hp:8,  dmg:3, range:1, cdMs:700, spdMs:480, targets:"all", canHitAir:false } },
   giant:   { id:"giant",   name:"Giant",   emoji:"🪨", kind:"troop", cost:5, place:"friendly", spawn:1,
@@ -675,6 +677,12 @@ const CARDS = {
              unit:{ hp:16, dmg:7, range:4, cdMs:1200, spdMs:620, targets:"all", canHitAir:true } },
   bomber:{ id:"bomber", name:"Bomber", emoji:"💣", kind:"troop", cost:3, place:"friendly", spawn:1,
              unit:{ hp:11, dmg:6, range:3, cdMs:1100, spdMs:640, targets:"ground", canHitAir:false, splash:1 } },
+  lavaElemental:{ id:"lavaElemental", name:"Lava Elemental", emoji:"🌋", kind:"troop", cost:6, place:"friendly", spawn:1,
+             unit:{ hp:36, dmg:5, range:3, cdMs:1500, spdMs:700, targets:"all", canHitAir:false, lavaWaveRange:4, pushBack:1, burnMs:3500, burnDps:2 } },
+  poisonDartBlower:{ id:"poisonDartBlower", name:"Poison Dart Blower", emoji:"☠️", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:13, dmg:2, range:4, cdMs:1000, spdMs:560, targets:"all", canHitAir:true, poisonMs:4500, poisonDps:2 } },
+  priest:{ id:"priest", name:"Priest", emoji:"⛪", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:18, dmg:0, range:1, cdMs:1150, spdMs:520, targets:"none", canHitAir:false, healAmount:5, healOnlyTroops:true } },
 
   fireball:{ id:"fireball",name:"Fireball",emoji:"🔥", kind:"spell", cost:4, place:"any",
              spell:{ dmg:18, radius:1 } },
@@ -1162,6 +1170,30 @@ function damageTakenMult(st, x,y){
   if (!list.length) return 1;
   return Math.min(...list.map(a=>a.dmgTakenMult||1));
 }
+function healUnit(st, u, amount, curePoison=true){
+  if (!u || u.hp<=0 || amount<=0) return;
+  u.hp = Math.min(u.maxhp, u.hp + amount);
+  if (curePoison){
+    u.poisonUntil = 0;
+    u.poisonDps = 0;
+    u.poisonAcc = 0;
+  }
+}
+function pushUnitBack(st, attacker, target, steps=1){
+  if (!target || target.hp<=0 || !steps) return;
+  const dx = target.x - attacker.x;
+  const dy = target.y - attacker.y;
+  let stepX = 0, stepY = 0;
+  if (Math.abs(dx) >= Math.abs(dy)) stepX = Math.sign(dx||1);
+  else stepY = Math.sign(dy||1);
+  for (let i=0;i<steps;i++){
+    const nx = target.x + stepX;
+    const ny = target.y + stepY;
+    if (!inside(nx,ny) || !walkable(st.structures, nx, ny, !!target.flying)) break;
+    target.x = nx;
+    target.y = ny;
+  }
+}
 function applyDamageToUnit(st, attacker, target, baseDmg, now){
   if (!target || target.hp<=0) return;
   let dmg = Math.max(1, Math.floor(baseDmg * damageTakenMult(st, target.x, target.y)));
@@ -1171,12 +1203,31 @@ function applyDamageToUnit(st, attacker, target, baseDmg, now){
   }
   target.hp -= dmg;
   if (attacker?.slowMs) target.stunUntil = Math.max(target.stunUntil||0, now + attacker.slowMs);
+  if (attacker?.burnMs && attacker?.burnDps){
+    target.burnUntil = Math.max(target.burnUntil||0, now + attacker.burnMs);
+    target.burnDps = Math.max(target.burnDps||0, attacker.burnDps);
+  }
+  if (attacker?.poisonMs && attacker?.poisonDps){
+    target.poisonUntil = Math.max(target.poisonUntil||0, now + attacker.poisonMs);
+    target.poisonDps = Math.max(target.poisonDps||0, attacker.poisonDps);
+  }
 }
 function findNearestEnemyUnit(units, meP, from, range){
   let best=null, bd=1e9;
   for (const u of (units||[])){
     if (u.hp<=0 || u.p===meP) continue;
     if (!canTarget(from, u)) continue;
+    const d = Math.abs(u.x-from.x)+Math.abs(u.y-from.y);
+    if (d<=range && d<bd){ bd=d; best=u; }
+  }
+  return best;
+}
+function findNearestDamagedAllyUnit(units, meP, from, range=Infinity){
+  let best=null, bd=1e9;
+  for (const u of (units||[])){
+    if (u.hp<=0 || u.p!==meP) continue;
+    if (u.id===from.id) continue;
+    if (u.hp>=u.maxhp) continue;
     const d = Math.abs(u.x-from.x)+Math.abs(u.y-from.y);
     if (d<=range && d<bd){ bd=d; best=u; }
   }
@@ -1225,9 +1276,21 @@ function newUnit(p, cardId, x,y){
     revealed: !u.stealth,
     firstHitDmg: u.firstHitDmg || 0,
     airPriority: !!u.airPriority,
+    lavaWaveRange: u.lavaWaveRange || 0,
+    pushBack: u.pushBack || 0,
+    burnMs: u.burnMs || 0,
+    burnDps: u.burnDps || 0,
+    poisonMs: u.poisonMs || 0,
+    poisonDps: u.poisonDps || 0,
+    healAmount: u.healAmount || 0,
+    healOnlyTroops: !!u.healOnlyTroops,
     nextAtk: 0,
     nextMove: 0,
-    stunUntil: 0
+    stunUntil: 0,
+    burnUntil: 0,
+    burnAcc: 0,
+    poisonUntil: 0,
+    poisonAcc: 0
   };
 }
 function inRadius(cx,cy,x,y,r){
@@ -1284,7 +1347,7 @@ function applySpell(st, p, cardId, tx, ty){
       if (u.hp<=0) continue;
       if (!inRadius(tx,ty,u.x,u.y,r)) continue;
       if (u.p!==p) continue;
-      u.hp = Math.min(u.maxhp, u.hp + spec.heal);
+      healUnit(st, u, spec.heal, true);
       pushFx(st, u.x,u.y, "+", "#bbf7d0", 90, 560, "spell");
     }
     for (const s of structs){
@@ -1336,10 +1399,10 @@ function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL, cls="", source=null
   st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl, cls, source, icon});
 }
 function attackGlyph(type){
-  return ({ knight:"⚔️", archers:"🏹", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥" })[type] || "⚔️";
+  return ({ knight:"⚔️", archers:"🏹", flameArchers:"🔥", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥", lavaElemental:"🌋", poisonDartBlower:"☠️", priest:"✨" })[type] || "⚔️";
 }
 function projectileGlyph(type){
-  return ({ archers:"🏹", musketeer:"🎯", wizard:"🔮", dragon:"🔥", drake:"🌪️", bomber:"💣", necromancer:"☠️" })[type] || "•";
+  return ({ archers:"🏹", flameArchers:"🔥", musketeer:"🎯", wizard:"🔮", dragon:"🔥", drake:"🌪️", bomber:"💣", necromancer:"☠️", poisonDartBlower:"☠️", lavaElemental:"🌋" })[type] || "•";
 }
 function awardCrown(st, destroyedStructure){
   const scorer = (destroyedStructure.p===0) ? 1 : 0;
@@ -1439,8 +1502,35 @@ function tickSim(st){
       if (u.hp<=0 || u.p!==a.p) continue;
       if (!inRadius(a.x,a.y,u.x,u.y,a.radius||0)) continue;
       const amt = Math.max(1, Math.floor((u.maxhp||1) * (a.healPctPerSec||0) * (dt/1000)));
-      u.hp = Math.min(u.maxhp, u.hp + amt);
+      healUnit(st, u, amt, true);
       if (Math.random() < 0.35) pushFx(st, u.x,u.y, "+", "#fde047", 0, 500);
+    }
+  }
+
+  // burn + poison tick
+  for (const u of (st.units||[])){
+    if (u.hp<=0) continue;
+    if ((u.burnUntil||0) > now && (u.burnDps||0) > 0){
+      u.burnAcc = (u.burnAcc||0) + (u.burnDps * dt / 1000);
+      const burnDmg = Math.floor(u.burnAcc||0);
+      if (burnDmg > 0){
+        u.hp -= burnDmg;
+        u.burnAcc -= burnDmg;
+        pushFx(st, u.x,u.y, "🔥", "#fb923c", 0, 520, "impact");
+      }
+    } else {
+      u.burnAcc = 0;
+    }
+    if ((u.poisonUntil||0) > now && (u.poisonDps||0) > 0){
+      u.poisonAcc = (u.poisonAcc||0) + (u.poisonDps * dt / 1000);
+      const poisonDmg = Math.floor(u.poisonAcc||0);
+      if (poisonDmg > 0){
+        u.hp -= poisonDmg;
+        u.poisonAcc -= poisonDmg;
+        pushFx(st, u.x,u.y, "☠️", "#86efac", 0, 520, "impact");
+      }
+    } else {
+      u.poisonAcc = 0;
     }
   }
 
@@ -1460,6 +1550,34 @@ function tickSim(st){
 
     if ((u.stunUntil||0) > now) continue;
 
+    if (u.healAmount){
+      const allyInRange = findNearestDamagedAllyUnit(st.units, u.p, u, u.range||1);
+      if (allyInRange && now >= (u.nextAtk||0)){
+        healUnit(st, allyInRange, u.healAmount, true);
+        pushFx(st, u.x, u.y, "✨", "#86efac", 0, 520, "spell");
+        pushFx(st, allyInRange.x, allyInRange.y, "+", "#86efac", 60, 560, "spell");
+        u.nextAtk = now + (u.cdMs||1000);
+        continue;
+      }
+      if (now >= (u.nextMove||0)){
+        u.nextMove = now + Math.max(180, Math.floor((u.spdMs||560) * speedMult(st, u)));
+        const allyToHelp = findNearestDamagedAllyUnit(st.units, u.p, u, Infinity);
+        if (allyToHelp){
+          const goals = new Set();
+          for (let yy=0;yy<H;yy++){
+            for (let xx=0;xx<W;xx++){
+              if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
+              const d = Math.abs(xx-allyToHelp.x)+Math.abs(yy-allyToHelp.y);
+              if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
+            }
+          }
+          const step = bfsNextStep(st.structures, {x:u.x,y:u.y}, goals, !!u.flying);
+          if (step){ u.x = step.x; u.y = step.y; }
+        }
+      }
+      continue;
+    }
+
     let targetUnit = null;
     let targetStruct = null;
 
@@ -1478,7 +1596,7 @@ function tickSim(st){
         const dist = targetUnit
           ? (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))
           : (Math.abs(targetStruct.x-u.x)+Math.abs(targetStruct.y-u.y));
-        const ranged = (u.range||1) > 1 || !!u.splash || ["archers","musketeer","wizard","dragon","drake","wyvern","bomber"].includes(u.type);
+        const ranged = (u.range||1) > 1 || !!u.splash || ["archers","flameArchers","musketeer","wizard","dragon","drake","wyvern","bomber","poisonDartBlower","lavaElemental"].includes(u.type);
         const tColor = (u.p===0?"#60a5fa":"#f87171");
         pushFx(st, u.x, u.y, attackGlyph(u.type), tColor, 0, 520, ranged ? "impact" : "slash");
 
@@ -1486,7 +1604,25 @@ function tickSim(st){
           if (ranged){
             pushFx(st, targetUnit.x, targetUnit.y, projectileGlyph(u.type), tColor, 0, 300, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
           }
-          if (u.chargeDmg && u.chargeRange && dist<=u.chargeRange){
+          if (u.lavaWaveRange){
+            const axisX = Math.abs(targetUnit.x-u.x) >= Math.abs(targetUnit.y-u.y);
+            const dirX = axisX ? Math.sign(targetUnit.x-u.x || (u.p===0 ? -1 : 1)) : 0;
+            const dirY = axisX ? 0 : Math.sign(targetUnit.y-u.y || (u.p===0 ? -1 : 1));
+            for (let i=1;i<=u.lavaWaveRange;i++){
+              const wx = u.x + dirX*i;
+              const wy = u.y + dirY*i;
+              if (!inside(wx,wy)) break;
+              pushFx(st, wx, wy, "🌊", "#fb923c", i*55, 620, "spell");
+              for (const v of st.units){
+                if (v.hp<=0 || v.p===u.p) continue;
+                if (v.x!==wx || v.y!==wy) continue;
+                if (!canTarget(u,v)) continue;
+                applyDamageToUnit(st, u, v, dmg, now);
+                pushUnitBack(st, u, v, u.pushBack||1);
+                pushFx(st, v.x, v.y, "🔥", "#fb923c", 40, 620, "impact");
+              }
+            }
+          } else if (u.chargeDmg && u.chargeRange && dist<=u.chargeRange){
             applyDamageToUnit(st, u, targetUnit, u.chargeDmg, now);
             u.stunUntil = Math.max(u.stunUntil||0, now + (u.chargeSelfStunMs||0));
             pushFx(st, targetUnit.x, targetUnit.y, "🗡️", "#fca5a5", 0, 430, "slash");
@@ -2050,7 +2186,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
