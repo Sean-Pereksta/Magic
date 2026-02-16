@@ -16,7 +16,7 @@
     --p0:#60a5fa; /* blue side */
     --p1:#f87171; /* red side */
 
-    --cell:50px;
+    --cell:36px;
     --gap:4px;
 
     --topH:52px;
@@ -111,6 +111,7 @@
   .canvas{
     transform-origin: 0 0;
     will-change: transform;
+    position:relative;
   }
 
   .grid{
@@ -152,16 +153,52 @@
   }
   .cell.river{
     background:
-      radial-gradient(circle at 30% 30%, rgba(125,211,252,.28), transparent 55%),
-      radial-gradient(circle at 75% 65%, rgba(59,130,246,.22), transparent 60%),
+      linear-gradient(100deg, rgba(14,116,144,.9), rgba(56,189,248,.72) 45%, rgba(14,165,233,.85)),
+      radial-gradient(circle at 20% 20%, rgba(186,230,253,.45), transparent 55%),
       linear-gradient(145deg, rgba(2,6,23,.72), rgba(15,23,42,.82));
-    border-color: rgba(56,189,248,.25);
+    border-color: rgba(56,189,248,.48);
+  }
+  .cell.river::before{
+    content:"";
+    position:absolute;
+    inset:-20% -120%;
+    background:repeating-linear-gradient(95deg, rgba(186,230,253,.28) 0 8px, rgba(14,116,144,0) 8px 20px);
+    animation:streamFlow 1.2s linear infinite;
+    opacity:.8;
+    pointer-events:none;
+  }
+  .cell.river::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 45%, rgba(8,47,73,.36));
+    mix-blend-mode:screen;
+    pointer-events:none;
   }
   .cell.bridge{
     background:
-      radial-gradient(circle at 30% 30%, rgba(245,158,11,.22), transparent 55%),
-      linear-gradient(145deg, rgba(2,6,23,.72), rgba(15,23,42,.82));
-    border-color: rgba(245,158,11,.35);
+      linear-gradient(180deg, rgba(92,51,23,.92), rgba(55,31,13,.96)),
+      repeating-linear-gradient(90deg, rgba(120,72,34,.95) 0 8px, rgba(76,41,18,.95) 8px 16px);
+    border-color: rgba(180,83,9,.75);
+    box-shadow: 0 0 0 1px rgba(251,191,36,.22) inset, 0 10px 18px rgba(0,0,0,.35);
+  }
+  .cell.bridge::before{
+    content:"";
+    position:absolute;
+    inset:5px 2px;
+    border-radius:9px;
+    background:repeating-linear-gradient(180deg, rgba(217,119,6,.35) 0 3px, rgba(146,64,14,.1) 3px 8px);
+    box-shadow:0 0 0 1px rgba(251,191,36,.28) inset;
+    pointer-events:none;
+  }
+  .cell.bridge::after{
+    content:"";
+    position:absolute;
+    left:4px; right:4px; top:4px; bottom:4px;
+    border-top:2px solid rgba(254,215,170,.45);
+    border-bottom:2px solid rgba(254,215,170,.45);
+    border-radius:8px;
+    pointer-events:none;
   }
   .cell.blocked::after{
     content:"";
@@ -412,10 +449,11 @@
   .fx{
     position:absolute;
     pointer-events:none;
-    z-index:30;
+    z-index:120;
     left:0; top:0;
     width:100%;
     height:100%;
+    overflow:visible;
   }
   .fxPop{
     position:absolute;
@@ -436,10 +474,35 @@
     position:absolute;
     left:var(--sx, 0px);
     top:var(--sy, 0px);
-    transform: translate(-50%,-50%);
-    font-size:18px;
-    text-shadow:0 0 12px rgba(255,255,255,.4), 0 0 20px currentColor;
-    animation: travel var(--dur, 280ms) linear forwards;
+    width:var(--len, 22px);
+    height:3px;
+    transform: translate(-50%,-50%) rotate(var(--ang,0deg));
+    transform-origin:0 50%;
+    border-radius:999px;
+    background:linear-gradient(90deg, rgba(255,255,255,.05), currentColor 45%, rgba(255,255,255,.98));
+    box-shadow:0 0 12px currentColor, 0 0 20px color-mix(in srgb, currentColor 55%, white);
+    animation: projectileLine var(--dur, 280ms) linear forwards;
+  }
+  .fxProjectile::after{
+    content:var(--tip, "");
+    position:absolute;
+    right:-10px;
+    top:50%;
+    transform:translateY(-50%);
+    font-size:14px;
+    text-shadow:0 0 10px currentColor;
+  }
+  .fxSpark{
+    position:absolute;
+    left:var(--x,0px);
+    top:var(--y,0px);
+    width:7px;
+    height:7px;
+    border-radius:999px;
+    background:radial-gradient(circle, rgba(255,255,255,.95), rgba(251,191,36,.9) 45%, rgba(245,158,11,0));
+    box-shadow:0 0 16px rgba(251,191,36,.75);
+    transform:translate(-50%,-50%);
+    animation:sparkBurst var(--dur,460ms) ease-out forwards;
   }
 
   @keyframes pop{
@@ -457,13 +520,21 @@
     25%{opacity:1; transform:translate(-50%,-50%) scale(1.25)}
     100%{opacity:0; transform:translate(-50%,-70%) scale(1.8)}
   }
-  @keyframes travel{
-    0%{ opacity:1; transform:translate(-50%,-50%) translate(0,0) scale(.8); }
-    100%{ opacity:1; transform:translate(-50%,-50%) translate(var(--dx, 0px), var(--dy, 0px)) scale(1.1); }
+    @keyframes projectileLine{
+    0%{ opacity:.95; transform:translate(-50%,-50%) rotate(var(--ang,0deg)) scaleX(.35); }
+    100%{ opacity:1; transform:translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) rotate(var(--ang,0deg)) scaleX(1); }
+  }
+  @keyframes sparkBurst{
+    0%{opacity:1; transform:translate(-50%,-50%) scale(.4);}
+    100%{opacity:0; transform:translate(calc(-50% + var(--sx,0px)), calc(-50% + var(--sy,0px))) scale(1.6);}
+  }
+  @keyframes streamFlow{
+    0%{ transform:translateX(0);}
+    100%{ transform:translateX(80px);}
   }
 
   @media (max-width: 720px){
-    :root{ --cell:42px; --gap:3px; --topH:48px; --hudH:90px; }
+    :root{ --cell:30px; --gap:3px; --topH:48px; --hudH:90px; }
     .badge{font-size:.72rem; padding:4px 8px}
     .btn{font-size:.72rem; padding:5px 8px}
     .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
@@ -869,7 +940,7 @@ function cleanDeckForElo(deck, elo){
 function editableDeckForPlayer(name){
   const elo = lobbyMeta.eloMap?.[name] || 1000;
   const allow = (cid)=> (ELO_REQ[cid]||0) <= elo;
-  const saved = lobbyMeta.deckMap?.[name] || BASE_DECK;
+  const saved = lobbyMeta.deckMap?.[name] || [];
   const out = [];
   for (const cid of saved){
     if (!CARDS[cid] || CARDS[cid].hidden || !allow(cid) || out.includes(cid)) continue;
@@ -921,7 +992,7 @@ function fitBoard(){
   const vw = viewport.clientWidth;
   const vh = viewport.clientHeight;
   const s = Math.min(vw/boardW, vh/boardH);
-  scale = Math.min(2.0, Math.max(0.4, s));
+  scale = Math.min(1.5, Math.max(0.3, s * 0.7));
   pan.x = Math.round((vw - boardW*scale)/2);
   pan.y = Math.round((vh - boardH*scale)/2);
   canvasEl.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${scale})`;
@@ -972,17 +1043,42 @@ function fxProjectile(fromX,fromY,toX,toY,text,color,dur=280){
   const src = getCellCenter(fromX,fromY);
   const dst = getCellCenter(toX,toY);
   if(!src || !dst) return;
+  const dx = (dst.x-src.x);
+  const dy = (dst.y-src.y);
+  const len = Math.hypot(dx,dy);
+  const ang = Math.atan2(dy,dx) * 180/Math.PI;
   const el = document.createElement("div");
   el.className = "fxProjectile";
-  el.textContent = text || "•";
   el.style.color = color || "#e5e7eb";
   el.style.setProperty("--sx", src.x + "px");
   el.style.setProperty("--sy", src.y + "px");
-  el.style.setProperty("--dx", (dst.x-src.x) + "px");
-  el.style.setProperty("--dy", (dst.y-src.y) + "px");
+  el.style.setProperty("--dx", dx + "px");
+  el.style.setProperty("--dy", dy + "px");
+  el.style.setProperty("--len", Math.max(12, len) + "px");
+  el.style.setProperty("--ang", ang + "deg");
   el.style.setProperty("--dur", dur + "ms");
+  el.style.setProperty("--tip", JSON.stringify(text || ""));
   fxEl.appendChild(el);
-  setTimeout(()=>el.remove(), dur + 40);
+  setTimeout(()=>el.remove(), dur + 60);
+}
+
+function fxSparks(x,y,color="#fde68a",count=7,dur=450){
+  const c = getCellCenter(x,y);
+  if(!c) return;
+  for (let i=0;i<count;i++){
+    const el = document.createElement("div");
+    el.className = "fxSpark";
+    const ang = (Math.PI*2*i)/count;
+    const dist = 8 + Math.random()*16;
+    el.style.setProperty("--x", c.x + "px");
+    el.style.setProperty("--y", c.y + "px");
+    el.style.setProperty("--sx", (Math.cos(ang)*dist) + "px");
+    el.style.setProperty("--sy", (Math.sin(ang)*dist) + "px");
+    el.style.setProperty("--dur", (dur + Math.random()*140) + "ms");
+    el.style.background = `radial-gradient(circle, rgba(255,255,255,.95), ${color} 46%, rgba(245,158,11,0))`;
+    fxEl.appendChild(el);
+    setTimeout(()=>el.remove(), dur + 220);
+  }
 }
 
 /* ---------------- Lobby join + state create ---------------- */
@@ -997,7 +1093,7 @@ async function joinLobby(){
     const eloMap = { ...(lob.eloMap||{}) };
     if (!eloMap[username]) eloMap[username] = 1000;
     const deckMap = { ...(lob.deckMap||{}) };
-    if (!deckMap[username]) deckMap[username] = BASE_DECK.slice();
+    if (!deckMap[username]) deckMap[username] = [];
     tx.set(lobbyRef, {
       ...lob,
       players,
@@ -1333,6 +1429,22 @@ function applySpell(st, p, cardId, tx, ty){
     }
   }
 
+  if (cardId === "fireball"){
+    pushFx(st, tx,ty, "🔥", "#fb923c", 0, 920, "explosion");
+    pushFx(st, tx,ty, "☄️", "#fb7185", 90, 880, "explosion");
+    for (let i=0;i<8;i++) pushFx(st, tx,ty, "", "#fdba74", i*45, 420, "sparks");
+  }
+  if (cardId === "zap"){
+    pushFx(st, tx,ty, "⚡", "#fde047", 0, 700, "spell");
+    pushFx(st, tx,ty, "✧", "#fef3c7", 90, 600, "impact");
+  }
+  if (cardId === "blizzard"){
+    pushFx(st, tx,ty, "❄️", "#bfdbfe", 0, 920, "spell");
+  }
+  if (cardId === "quake"){
+    pushFx(st, tx,ty, "🌎", "#d6d3d1", 0, 760, "impact");
+  }
+
   if (spec.dmg){
     for (const u of units){
       if (u.hp<=0) continue;
@@ -1425,7 +1537,16 @@ function attackGlyph(type){
   return ({ knight:"⚔️", archers:"🏹", flameArchers:"🔥", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", berserker:"🪓", frostMage:"🧊", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥", lavaElemental:"🌋", poisonDartBlower:"☠️", priest:"✨" })[type] || "⚔️";
 }
 function projectileGlyph(type){
-  return ({ archers:"🏹", flameArchers:"🔥", musketeer:"🎯", wizard:"🔮", dragon:"🔥", drake:"🌪️", bomber:"💣", necromancer:"☠️", poisonDartBlower:"☠️", lavaElemental:"🌋", frostMage:"🧊" })[type] || "•";
+  return ({ archers:"➶", flameArchers:"🔥", musketeer:"✦", wizard:"✧", dragon:"🔥", drake:"🌀", bomber:"💣", necromancer:"☠️", poisonDartBlower:"☠️", lavaElemental:"🌋", frostMage:"❄" })[type] || "•";
+}
+function projectileColorFor(type, base){
+  return ({
+    archers:"#fef08a", flameArchers:"#fb923c", musketeer:"#e2e8f0", wizard:"#c4b5fd", dragon:"#fb923c", drake:"#7dd3fc",
+    bomber:"#fda4af", necromancer:"#c4b5fd", poisonDartBlower:"#86efac", lavaElemental:"#fdba74", frostMage:"#bfdbfe", wyvern:"#93c5fd"
+  })[type] || base;
+}
+function isRangedTroop(u){
+  return (u.range||1) > 1 || !!u.splash || ["archers","flameArchers","musketeer","wizard","dragon","drake","wyvern","bomber","poisonDartBlower","lavaElemental","necromancer","frostMage","priest"].includes(u.type);
 }
 function awardCrown(st, destroyedStructure){
   const scorer = (destroyedStructure.p===0) ? 1 : 0;
@@ -1540,6 +1661,7 @@ function tickSim(st){
         u.hp -= burnDmg;
         u.burnAcc -= burnDmg;
         pushFx(st, u.x,u.y, "🔥", "#fb923c", 0, 520, "impact");
+        if (Math.random() < 0.5) pushFx(st, u.x,u.y, "", "#fb923c", 50, 420, "sparks");
       }
     } else {
       u.burnAcc = 0;
@@ -1551,6 +1673,7 @@ function tickSim(st){
         u.hp -= poisonDmg;
         u.poisonAcc -= poisonDmg;
         pushFx(st, u.x,u.y, "☠️", "#86efac", 0, 520, "impact");
+        if (Math.random() < 0.55) pushFx(st, u.x,u.y, "✣", "#4ade80", 40, 520, "spell");
       }
     } else {
       u.poisonAcc = 0;
@@ -1619,8 +1742,9 @@ function tickSim(st){
         const dist = targetUnit
           ? (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))
           : (Math.abs(targetStruct.x-u.x)+Math.abs(targetStruct.y-u.y));
-        const ranged = (u.range||1) > 1 || !!u.splash || ["archers","flameArchers","musketeer","wizard","dragon","drake","wyvern","bomber","poisonDartBlower","lavaElemental"].includes(u.type);
-        const tColor = (u.p===0?"#60a5fa":"#f87171");
+        const ranged = isRangedTroop(u);
+        const baseColor = (u.p===0?"#60a5fa":"#f87171");
+        const tColor = projectileColorFor(u.type, baseColor);
         pushFx(st, u.x, u.y, attackGlyph(u.type), tColor, 0, 520, ranged ? "impact" : "slash");
 
         if (targetUnit){
@@ -1679,6 +1803,7 @@ function tickSim(st){
             } else {
               pushFx(st, targetUnit.x, targetUnit.y, "╱", "#fde68a", 0, 400, "slash");
               pushFx(st, targetUnit.x, targetUnit.y, "✦", "#fef3c7", 90, 450, "hit");
+              pushFx(st, targetUnit.x, targetUnit.y, "", "#facc15", 70, 460, "sparks");
             }
           }
         } else if (targetStruct){
@@ -1692,6 +1817,7 @@ function tickSim(st){
               pushFx(st, targetStruct.x, targetStruct.y, projectileGlyph(u.type), tColor, 0, 320, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
             }
             pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb", 80, 580, ranged ? "impact" : "slash");
+            if (!ranged) pushFx(st, targetStruct.x, targetStruct.y, "", "#facc15", 70, 460, "sparks");
           }
         }
         u.nextAtk = now + (u.cdMs||1000);
@@ -1931,6 +2057,7 @@ function render(){
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
   elixirWrap.style.display = (S.phase==="battle") ? "flex" : "none";
   const isDrafting = (S.phase==="waiting" && players.length>=2);
+  if (isDrafting) selectedCard = null;
   draftBar.style.display = isDrafting ? "none" : "none";
   draftOverlay.classList.toggle("show", isDrafting);
   const myDeck = editableDeckForPlayer(username);
@@ -2102,11 +2229,13 @@ function paintFx(){
   fxEl.innerHTML = "";
   const now = Date.now();
   for (const f of (S.fx||[])){
+    if ((f.at||0) > now) continue;
     if (f.at + (f.ttl||FX_TTL) <= now) continue;
     if (f.source && Number.isFinite(f.source.x) && Number.isFinite(f.source.y)){
-      fxProjectile(f.source.x, f.source.y, f.x, f.y, f.icon || "•", f.color || "#e5e7eb", Math.min(420, Math.max(180, (f.ttl||FX_TTL)-120)));
+      fxProjectile(f.source.x, f.source.y, f.x, f.y, f.icon || "", f.color || "#e5e7eb", Math.min(420, Math.max(180, (f.ttl||FX_TTL)-120)));
     }
-    fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
+    if (f.cls === "sparks" || f.cls === "slash" || f.cls === "hit") fxSparks(f.x, f.y, f.color || "#fde68a", 7, 420);
+    if ((f.text||"").trim()) fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
   }
 }
 
