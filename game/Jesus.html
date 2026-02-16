@@ -82,6 +82,25 @@
   #banner small{display:block;font-weight:800;color:var(--muted);letter-spacing:.2px;margin-top:2px}
   #help{position:absolute;right:10px;bottom:10px;pointer-events:none}
   #help .panel{font-size:12px;color:var(--muted)}
+  #topButtons{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:12}
+  .uiBtn{pointer-events:auto;border:1px solid var(--line);background:rgba(255,255,255,.86);border-radius:10px;padding:8px 10px;font-weight:700;cursor:pointer}
+  #mobileControls{
+    position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:end;
+    padding:14px;z-index:8;pointer-events:none;
+  }
+  #joystick,#jumpBtn{pointer-events:auto}
+  #joystick{width:124px;height:124px;border-radius:999px;background:rgba(15,23,42,.20);border:1px solid rgba(255,255,255,.4);position:relative;touch-action:none}
+  #stick{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:999px;background:rgba(255,255,255,.85);border:1px solid var(--line)}
+  #jumpBtn{width:96px;height:96px;border-radius:999px;border:1px solid rgba(255,255,255,.48);background:rgba(43,134,255,.75);color:#fff;font-size:18px;font-weight:800;touch-action:none}
+  #gameOverModal{position:absolute;inset:0;background:rgba(15,23,42,.76);z-index:15;display:none;align-items:center;justify-content:center;padding:18px}
+  #gameOverCard{width:min(520px,92vw);background:rgba(255,255,255,.95);border-radius:16px;padding:18px;border:1px solid var(--line)}
+  #scoreList{margin:8px 0 14px;padding-left:20px;max-height:200px;overflow:auto}
+  #nameRow{display:flex;gap:8px;margin-bottom:10px}
+  #nameInput{flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+  @media (hover:none) and (pointer:coarse){
+    #mobileControls{display:flex}
+    #help{bottom:160px}
+  }
   kbd{font:inherit;background:rgba(255,255,255,.8);border:1px solid var(--line);border-bottom-color:rgba(15,23,42,.22);
     padding:1px 6px;border-radius:7px;color:var(--ink)}
 </style>
@@ -113,14 +132,42 @@
 
     <div id="banner"><div id="bannerMain">WORLD 1-1</div><small id="bannerSub">ROME</small></div>
 
+    <div id="topButtons">
+      <button id="fullscreenBtn" class="uiBtn">Fullscreen</button>
+    </div>
+
     <div id="help">
       <div class="panel">
         Move: <kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> · Jump: <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>Space</kbd><br/>
         Drop through platforms: <kbd>S</kbd>/<kbd>↓</kbd> while standing on them · Heaven clear: +5 levels
       </div>
     </div>
+
+    <div id="mobileControls">
+      <div id="joystick"><div id="stick"></div></div>
+      <button id="jumpBtn">JUMP</button>
+    </div>
+
+    <div id="gameOverModal">
+      <div id="gameOverCard">
+        <h2 style="margin:0 0 8px">Game Over</h2>
+        <div id="finalScoreText"></div>
+        <ol id="scoreList"></ol>
+        <div id="nameWrap" style="display:none">
+          <div style="font-weight:700;margin-bottom:6px">Top 10! Enter your name:</div>
+          <div id="nameRow">
+            <input id="nameInput" maxlength="20" placeholder="Disciple name" />
+            <button id="saveScoreBtn" class="uiBtn">Save</button>
+          </div>
+        </div>
+        <button id="restartBtn" class="uiBtn">Restart</button>
+      </div>
+    </div>
   </div>
 </div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <script>
 (() => {
@@ -139,6 +186,17 @@
   const banner = document.getElementById('banner');
   const bannerMain = document.getElementById('bannerMain');
   const bannerSub  = document.getElementById('bannerSub');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const joystick = document.getElementById('joystick');
+  const stick = document.getElementById('stick');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const gameOverModal = document.getElementById('gameOverModal');
+  const scoreList = document.getElementById('scoreList');
+  const finalScoreText = document.getElementById('finalScoreText');
+  const nameWrap = document.getElementById('nameWrap');
+  const nameInput = document.getElementById('nameInput');
+  const saveScoreBtn = document.getElementById('saveScoreBtn');
+  const restartBtn = document.getElementById('restartBtn');
 
   const W = canvas.width, H = canvas.height;
 
@@ -171,6 +229,10 @@
   // =========================
   const keys = new Set();
   const pressed = new Set();
+  const mobileInput = {xAxis:0, down:false, jumpHeld:false, jumpQueued:false};
+  let gameScore = 0;
+  let highScores = [];
+  let topTenEligible = false;
   addEventListener('keydown', e => {
     if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
     const k = e.key.toLowerCase();
@@ -178,11 +240,52 @@
     if(!e.repeat) pressed.add(k);
   });
   addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+  fullscreenBtn.addEventListener('click', async () => {
+    try{
+      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(_e){}
+  });
+
+  function resetStick(){
+    mobileInput.xAxis = 0; mobileInput.down = false;
+    stick.style.transform = 'translate(0px,0px)';
+  }
+  function setJoystickFromEvent(e){
+    const t = (e.touches && e.touches[0]) || e;
+    const rect = joystick.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const dx = t.clientX - cx;
+    const dy = t.clientY - cy;
+    const maxR = rect.width*0.34;
+    const len = Math.hypot(dx,dy) || 1;
+    const nx = (dx/len) * Math.min(maxR,len);
+    const ny = (dy/len) * Math.min(maxR,len);
+    stick.style.transform = `translate(${nx}px,${ny}px)`;
+    mobileInput.xAxis = clamp(nx/maxR,-1,1);
+    mobileInput.down = ny > maxR*0.40;
+  }
+  joystick.addEventListener('pointerdown', e=>{ joystick.setPointerCapture(e.pointerId); setJoystickFromEvent(e); });
+  joystick.addEventListener('pointermove', e=>{ if(e.pressure>0) setJoystickFromEvent(e); });
+  joystick.addEventListener('pointerup', resetStick);
+  joystick.addEventListener('pointercancel', resetStick);
+
+  jumpBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); mobileInput.jumpHeld = true; mobileInput.jumpQueued = true; });
+  jumpBtn.addEventListener('pointerup', ()=> mobileInput.jumpHeld = false);
+  jumpBtn.addEventListener('pointercancel', ()=> mobileInput.jumpHeld = false);
+
   const kDown = (k)=>keys.has(k);
   const consume = (k)=>{ if(pressed.has(k)){ pressed.delete(k); return true; } return false; };
-  const jumpJustPressed = () => consume('w') || consume('arrowup') || consume(' ');
-  const jumpHeld = () => kDown('w') || kDown('arrowup') || kDown(' ');
-  const downHeld = () => kDown('s') || kDown('arrowdown');
+  const jumpJustPressed = () => {
+    if(mobileInput.jumpQueued){
+      mobileInput.jumpQueued = false;
+      return true;
+    }
+    return consume('w') || consume('arrowup') || consume(' ');
+  };
+  const jumpHeld = () => mobileInput.jumpHeld || kDown('w') || kDown('arrowup') || kDown(' ');
+  const downHeld = () => mobileInput.down || kDown('s') || kDown('arrowdown');
 
   // =========================
   // World/region progression
@@ -232,6 +335,7 @@
     dropT: 0,
     hearts: 3,
     hasSandals: false,
+    hasAngelWings: false,
     hasShield: false,
     hasBread: false,
     armT: 0,
@@ -290,8 +394,24 @@
   let heavenGoalX = 0;
   let heavenDiff = 2.0;
 let GAME_OVER = false;
-let GAME_OVER_AT = 0;
-const RESTART_DELAY_MS = 1200;
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.firebasestorage.app",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+    measurementId: "G-8PR6LVKSH3"
+  };
+  let db = null;
+  try{
+    if(window.firebase){
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+    }
+  }catch(_e){ db = null; }
 
   // =========================
   // Objects + helpers
@@ -303,7 +423,7 @@ const RESTART_DELAY_MS = 1200;
   let bannerT = 0;
 
   const isGround = (s)=>s.kind === 'ground';
-  const isOneWay = (s)=>s.kind === 'platform' || s.kind === 'crumble' || s.kind === 'cloud';
+  const isOneWay = (s)=>s.kind === 'platform' || s.kind === 'crumble' || s.kind === 'cloud' || s.kind==='slippery' || s.kind==='blessed';
 
   function moverSweepBox(m, pad=30){
     const ax = Math.abs(m.ax||0), ay = Math.abs(m.ay||0);
@@ -370,78 +490,69 @@ const RESTART_DELAY_MS = 1200;
     return best;
   }
 function triggerGameOver(){
-  if (GAME_OVER) return;              // guard: only trigger once
+  if (GAME_OVER) return;
   GAME_OVER = true;
-  GAME_OVER_AT = performance.now();
-
-  // Easiest “restart” option:
-  // setTimeout(() => location.reload(), RESTART_DELAY_MS);
-
-  // Better: reset without reloading the page:
-  setTimeout(() => restartGame(), RESTART_DELAY_MS);
+  showGameOverUI();
 }
 
 function restartGame(){
   GAME_OVER = false;
-
-  // ✅ CALL YOUR EXISTING GAME INIT/RESET LOGIC HERE
-  // Pick ONE of these that matches your codebase:
-
-  // init();                 // if you already have an init()
-  // resetWorld();           // if you already have a reset function
-  // startGame();            // if you already have a start function
-
-  // If you DON'T have one, do something like:
-  // reset all globals + recreate player + recreate enemies + reset camera + reset score
-
-  resetAllGameState(); // <-- rename to whatever you implement
+  gameOverModal.style.display = 'none';
+  resetWorld();
 }
-function resetAllGameState(){
-  // reset score (only if you use it)
-  if (typeof score !== "undefined") score = 0;
 
-  // Clear common arrays safely (won't throw if missing)
-  const maybeClear = (name) => {
-    if (typeof window[name] !== "undefined" && Array.isArray(window[name])) {
-      window[name].length = 0;
-    }
-  };
+async function fetchHighScores(){
+  if(!db) return [];
+  try{
+    const snap = await db.collection('highscores').orderBy('score','desc').limit(10).get();
+    return snap.docs.map(d=>d.data());
+  }catch(_e){ return []; }
+}
 
-  // Add/remove names to match your game
-  maybeClear("enemies");
-  maybeClear("particles");
-  maybeClear("bullets");        // only clears if it exists
-  maybeClear("projectiles");    // common alt name
-  maybeClear("shots");          // common alt name
-  maybeClear("enemyBullets");   // common alt name
-  maybeClear("pickups");        // common
-  maybeClear("hazards");        // common
+async function saveHighScore(name, score){
+  if(!db) return false;
+  try{
+    await db.collection('highscores').add({name, score, createdAt: Date.now()});
+    return true;
+  }catch(_e){ return false; }
+}
 
-  // Reset player (use spawn vars if present)
-  if (typeof player !== "undefined" && player){
-    if (typeof spawnX !== "undefined") player.x = spawnX;
-    if (typeof spawnY !== "undefined") player.y = spawnY;
-
-    player.vx = 0;
-    player.vy = 0;
-
-    // Life/Hearts compatibility:
-    // If your game uses hearts, keep hearts.
-    if (typeof player.hearts !== "undefined"){
-      player.hearts = (typeof player.maxHearts !== "undefined") ? player.maxHearts : player.hearts;
-    } else {
-      // Otherwise use life/maxLife if present
-      if (typeof player.maxLife !== "undefined") player.life = player.maxLife;
-      else if (typeof player.life !== "undefined") player.life = player.life; // no-op
-    }
-
-    player.invT = 0;
+function renderHighScoreList(){
+  scoreList.innerHTML = '';
+  highScores.forEach((row, i)=>{
+    const li = document.createElement('li');
+    li.textContent = `${row.name || 'Anonymous'} — ${row.score || 0}`;
+    scoreList.appendChild(li);
+  });
+  if(!highScores.length){
+    const li = document.createElement('li');
+    li.textContent = 'No scores yet';
+    scoreList.appendChild(li);
   }
-
-  // Any other state flags your game uses
-  if (typeof gameOver !== "undefined") gameOver = false;
-  if (typeof gameOverT !== "undefined") gameOverT = 0;
 }
+
+async function showGameOverUI(){
+  gameOverModal.style.display = 'flex';
+  finalScoreText.textContent = `Distance score: ${gameScore}`;
+  highScores = await fetchHighScores();
+  const cutoff = highScores.length < 10 ? 0 : (highScores[highScores.length-1]?.score || 0);
+  topTenEligible = gameScore >= cutoff || highScores.length < 10;
+  nameWrap.style.display = topTenEligible ? 'block' : 'none';
+  nameInput.value = '';
+  renderHighScoreList();
+}
+
+saveScoreBtn.addEventListener('click', async ()=>{
+  const raw = nameInput.value.trim();
+  const safeName = raw.replace(/[^\w\s.-]/g,'').slice(0,20) || 'Anonymous';
+  const ok = await saveHighScore(safeName, gameScore);
+  if(ok){
+    highScores = await fetchHighScores();
+    renderHighScoreList();
+    nameWrap.style.display = 'none';
+  }
+});
+restartBtn.addEventListener('click', restartGame);
 
   // =========================
   // Collision & movement (same rules)
@@ -595,6 +706,11 @@ if(!ignoreOneWay && ent.vy >= 0){
       camX = Math.max(camX, player.x - 360);
 
       const ws = getWorldStage(targetSI);
+      if(player.hasAngelWings){
+        player.hasAngelWings = false;
+        player.hasSandals = true;
+        popFX("Wings faded to Sandals", player.x+player.w/2, player.y-12, "#1d56c9");
+      }
       showBanner("ASCENSION COMPLETE", `+${HEAVEN_REWARD} Levels → ${ws.world}-${ws.stage} (${ws.region})`, 2.0);
     } else {
       const backX = Math.max(heavenEntryX, camX + 140);
@@ -649,6 +765,12 @@ if(!ignoreOneWay && ent.vy >= 0){
       popFX("Shield broken!", player.x+player.w/2, player.y-10, "#8d6a18");
       return;
     }
+    if(player.hasAngelWings){
+      player.hasAngelWings = false;
+      player.invT = 0.85;
+      popFX("Wings torn!", player.x+player.w/2, player.y-10, "#7d5ad6");
+      return;
+    }
     if(player.hasSandals){
       player.hasSandals = false;
       player.invT = 0.85;
@@ -696,7 +818,12 @@ if(!ignoreOneWay && ent.vy >= 0){
   // Pickups
   // =========================
   function applyPickup(kind){
-    if(kind==="sandals"){
+    if(kind==="angelWings"){
+      player.hasAngelWings = true;
+      player.hasSandals = false;
+      popFX("Angel Wings! Quad Jump", player.x+player.w/2, player.y-10, "#7d5ad6");
+    } else if(kind==="sandals"){
+      player.hasAngelWings = false;
       player.hasSandals = true;
       popFX("Double Jump!", player.x+player.w/2, player.y-10, "#1d56c9");
     } else if(kind==="shield"){
@@ -738,6 +865,12 @@ if(!ignoreOneWay && ent.vy >= 0){
         const hit = {x:h.x, y:h.y, w:h.w, h:h.h};
         if(aabb(player, hit)) takeHit();
       }
+      if(h.kind==="saw"){
+        h.t = (h.t||0) + dt*(h.sp||1.7);
+        h.x += Math.sin(h.t)*((h.amp||26)*dt);
+        const hit = {x:h.x-10, y:h.y-10, w:20, h:20};
+        if(aabb(player, hit)) takeHit();
+      }
       if(h.kind==="radiant"){
         // Heaven beam: pulses
         h.t = (h.t||0) + dt;
@@ -768,6 +901,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     if(type==="fireSkull") return Object.assign(base, {w:42,h:46, speed: clamp(158+diff*22,158,290), hp: 2, hover:true, name:"Fire Skull"});
     if(type==="brimHound") return Object.assign(base, {w:48,h:46, speed: clamp(220+diff*30,220,380), hp: 3, name:"Brim Hound"});
     if(type==="wraith") return Object.assign(base, {w:48,h:62, speed: clamp(170+diff*26,170,320), hp: 3, name:"Wraith"});
+    if(type==="warlord") return Object.assign(base, {w:62,h:72, speed: clamp(118+diff*16,118,220), hp: 7, heavy:true, name:"Warlord"});
+    if(type==="fallenKnight") return Object.assign(base, {w:58,h:68, speed: clamp(148+diff*24,148,280), hp: 5, ranged:true, cd:rand(0,1.0), name:"Fallen Knight"});
 
     // Heaven angels
     if(type==="angelV"){
@@ -960,6 +1095,8 @@ if(!ignoreOneWay && ent.vy >= 0){
           {t:"fireSkull", w:0.60},
           ...(world>=3 ? [{t:"brimHound", w:0.34}] : []),
           ...(world>=4 ? [{t:"wraith", w:0.26}] : []),
+          ...(world>=5 ? [{t:"fallenKnight", w:0.22}] : []),
+          ...(world>=6 ? [{t:"warlord", w:0.18}] : []),
         ];
         type = weightedPick(pool);
       }
@@ -1080,6 +1217,16 @@ if(!ignoreOneWay && ent.vy >= 0){
           placeHazard({x:sx, y:py-16, w:spikesW, h:16, kind:'spikesTop', theme:region});
         }
       }
+      if(world>=2 && Math.random() < 0.16*diff){
+        placeHazard({x:px+pw*0.5, y:py-14, kind:'saw', amp:rndi(10,30), sp:rand(1.0,2.1), t:rand(0,10), theme:region});
+      }
+
+      if(world>=2 && Math.random() < 0.18){
+        const kind = Math.random()<0.5 ? 'slippery' : 'blessed';
+        const sw = rndi(120, 220);
+        const sr = {x:px + rand(0, Math.max(8,pw-sw)), y: py - rndi(68,118), w: sw, h: 18, kind, theme:region};
+        if(canPlaceRect(sr, 16)) placeSolid(sr);
+      }
     }
 
     // --- movers (more + faster deeper)
@@ -1127,7 +1274,7 @@ if(!ignoreOneWay && ent.vy >= 0){
 
     // --- powerup
     if(Math.random()<0.56){
-      const kinds = ["bread","sandals","shield"];
+      const kinds = ["bread","sandals","shield",...(world>=2?["angelWings"]:[])];
       const kind = kinds[Math.floor(Math.random()*kinds.length)];
       placePickup({x: rand(startX+450, endX-450), y: rand(210, 320), w: 24, h: 24, kind, theme:region, bobT: rand(0,10)});
     }
@@ -1269,6 +1416,7 @@ if(!ignoreOneWay && ent.vy >= 0){
       icon.appendChild(c);
       drawPowerIcon(c.getContext('2d'), kind);
     };
+    if(player.hasAngelWings) addPow("Angel Wings (Quad Jump)", "ic-blue", "angelWings");
     if(player.hasSandals) addPow("Holy Sandals (Double Jump)", "ic-blue", "sandals");
     if(player.hasShield)  addPow("Shield (1 hit)", "ic-gold", "shield");
     if(player.hasBread)   addPow("Loaves & Fish (+1 heart)", "ic-green", "bread");
@@ -1285,7 +1433,7 @@ if(!ignoreOneWay && ent.vy >= 0){
   // Update loop
   // =========================
   function update(dt){
-	if (GAME_OVER) return; 
+	if (GAME_OVER) return;
     // generate ahead in current realm
     if(realm === "heaven"){
       ensureGeneratedHeaven(player.x + 1600);
@@ -1359,8 +1507,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     player.dropT = Math.max(0, player.dropT - dt);
 
     // input
-    const wantL = kDown('a') || kDown('arrowleft');
-    const wantR = kDown('d') || kDown('arrowright');
+    const wantL = mobileInput.xAxis < -0.25 || kDown('a') || kDown('arrowleft');
+    const wantR = mobileInput.xAxis > 0.25 || kDown('d') || kDown('arrowright');
     const wantDown = downHeld();
 
     let ax = 0;
@@ -1369,8 +1517,10 @@ if(!ignoreOneWay && ent.vy >= 0){
     if(ax !== 0) player.facing = sign(ax);
 
     // accel / friction
-    const accel = player.onGround ? ACC_GROUND : ACC_AIR;
-    const maxSp = player.onGround ? RUN : RUN*AIR_MAX;
+    const onSlippery = player.onGround && player.groundSolid && player.groundSolid.kind==='slippery';
+    const onBlessed = player.onGround && player.groundSolid && player.groundSolid.kind==='blessed';
+    const accel = player.onGround ? (onSlippery ? ACC_GROUND*0.82 : ACC_GROUND) : ACC_AIR;
+    const maxSp = player.onGround ? (onBlessed ? RUN*1.10 : RUN) : RUN*AIR_MAX;
 
     if(ax !== 0 && Math.sign(player.vx) !== 0 && Math.sign(player.vx) !== ax){
       player.vx *= 0.90;
@@ -1380,7 +1530,7 @@ if(!ignoreOneWay && ent.vy >= 0){
     player.vx += ax * accel * dt;
     player.vx = clamp(player.vx, -maxSp, maxSp);
 
-    const fric = player.onGround ? FRICTION_GROUND : FRICTION_AIR;
+    const fric = player.onGround ? (onSlippery ? FRICTION_GROUND*0.35 : FRICTION_GROUND) : FRICTION_AIR;
     player.vx *= Math.exp(-fric*dt);
 
     // jump buffer + coyote
@@ -1391,7 +1541,7 @@ if(!ignoreOneWay && ent.vy >= 0){
     else player.coyote = Math.max(0, player.coyote - dt);
 
     if(player.onGround){
-      player.jumpsLeft = player.hasSandals ? 1 : 0;
+      player.jumpsLeft = player.hasAngelWings ? 3 : (player.hasSandals ? 1 : 0);
     }
 
     // drop through one-way
@@ -1421,7 +1571,7 @@ if(!ignoreOneWay && ent.vy >= 0){
           popFX("Hop!", player.x+player.w/2, player.y-10, "#1d56c9");
         }
 
-        player.vy = -JUMP_V;
+        player.vy = -(onBlessed ? JUMP_V*1.08 : JUMP_V);
         player.vx += player.facing * 55;
         spawnDust(player.x+player.w/2, player.y+player.h);
       }
@@ -1497,6 +1647,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     if(realm === "heaven" && player.x > heavenGoalX){
       exitHeaven(true);
     }
+
+    gameScore = Math.max(gameScore, Math.floor(player.x/10));
 
     // fall out
     if(player.y > H + 240){
@@ -1598,23 +1750,6 @@ if(!ignoreOneWay && ent.vy >= 0){
         ctx.globalAlpha = 1;
       }
     }
-	if (GAME_OVER){
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "bold 56px system-ui, Segoe UI, Arial";
-    ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2 - 10);
-
-    ctx.font = "18px system-ui, Segoe UI, Arial";
-    ctx.globalAlpha = 0.9;
-    ctx.fillText("Restarting...", canvas.width/2, canvas.height/2 + 38);
-    ctx.restore();
-  }
-
     ctx.restore();
   }
 
@@ -1818,7 +1953,11 @@ if(!ignoreOneWay && ent.vy >= 0){
     ctx.save();
     ctx.translate(shake,0);
 
-    if(theme === HEAVEN){
+    if(s.kind==='slippery'){
+      drawIceBlock(x,y,w,h);
+    } else if(s.kind==='blessed'){
+      drawBlessedBlock(x,y,w,h);
+    } else if(theme === HEAVEN){
       drawCloudBlock(x,y,w,h);
     } else if(s.kind==="ground"){
       if(theme==="Rome") drawMarbleBlock(x,y,w,h, true);
@@ -1890,10 +2029,28 @@ if(!ignoreOneWay && ent.vy >= 0){
       else if(h.kind==="lava") drawLava(h.x,h.y,h.w,h.h);
       else if(h.kind==="spearTrap") drawSpearTrap(h);
       else if(h.kind==="fireJet") drawFireJet(h);
+      else if(h.kind==="saw") drawSawTrap(h);
       else if(h.kind==="radiant") drawRadiant(h);
       else if(h.kind==="proj") drawJavelin(h);
       else if(h.kind==="orb") drawOrb(h);
     }
+  }
+
+  function drawIceBlock(x,y,w,h){
+    const g = ctx.createLinearGradient(x,y,x,y+h);
+    g.addColorStop(0,"rgba(225,245,255,.95)");
+    g.addColorStop(1,"rgba(165,220,255,.95)");
+    ctx.fillStyle = g;
+    roundRect(ctx,x,y,w,h,10); ctx.fill();
+    ctx.strokeStyle = "rgba(120,170,220,.45)"; ctx.lineWidth = 2; roundRect(ctx,x,y,w,h,10); ctx.stroke();
+  }
+  function drawBlessedBlock(x,y,w,h){
+    const g = ctx.createLinearGradient(x,y,x,y+h);
+    g.addColorStop(0,"rgba(255,250,220,.98)");
+    g.addColorStop(1,"rgba(245,215,135,.96)");
+    ctx.fillStyle = g;
+    roundRect(ctx,x,y,w,h,10); ctx.fill();
+    ctx.strokeStyle = "rgba(175,130,50,.48)"; ctx.lineWidth = 2; roundRect(ctx,x,y,w,h,10); ctx.stroke();
   }
 
   function drawRadiant(h){
@@ -1937,7 +2094,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     ctx.strokeStyle = "rgba(15,23,42,.12)";
     ctx.stroke();
 
-    if(p.kind==="sandals") drawSandalsIcon(ctx, x+2, y+2, p.w-4, p.h-4);
+    if(p.kind==="angelWings") drawAngelWingsIcon(ctx, x+2, y+2, p.w-4, p.h-4);
+    else if(p.kind==="sandals") drawSandalsIcon(ctx, x+2, y+2, p.w-4, p.h-4);
     else if(p.kind==="shield") drawShieldIcon(ctx, x+2, y+2, p.w-4, p.h-4);
     else drawBreadFishIcon(ctx, x+2, y+2, p.w-4, p.h-4);
 
@@ -2067,10 +2225,10 @@ function drawJesus(p){
   if (p.invT > 0 && Math.floor(p.invT * 18) % 2 === 0) ctx.globalAlpha = 0.55;
 
   // aura glow for power-ups
-  if (p.hasShield || p.hasSandals){
+  if (p.hasShield || p.hasSandals || p.hasAngelWings){
     ctx.save();
     ctx.globalAlpha = 0.18;
-    ctx.fillStyle = p.hasShield ? "rgba(202,162,74,.60)" : "rgba(43,134,255,.55)";
+    ctx.fillStyle = p.hasShield ? "rgba(202,162,74,.60)" : p.hasAngelWings ? "rgba(125,90,214,.55)" : "rgba(43,134,255,.55)";
     ctx.beginPath();
     ctx.ellipse(cx, y + h * 0.56, 34, 48, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -2145,6 +2303,14 @@ function drawJesus(p){
   // Back then front
   drawLeg(legB, true);
   drawLeg(legA, false);
+
+  if(p.hasAngelWings){
+    ctx.fillStyle = "rgba(250,250,255,.92)";
+    ctx.strokeStyle = "rgba(120,120,145,.25)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx-w*0.34, y+h*0.48, w*0.24, h*0.22, -0.35, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx+w*0.34, y+h*0.48, w*0.24, h*0.22, 0.35, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  }
 
   // -----------------
   // ROBE / TUNIC
@@ -2348,9 +2514,18 @@ function drawJesus(p){
   // =========================
   function drawPowerIcon(g, kind){
     g.clearRect(0,0,20,20);
-    if(kind==="sandals") drawSandalsIcon(g, 2,2,16,16);
+    if(kind==="angelWings") drawAngelWingsIcon(g, 2,2,16,16);
+    else if(kind==="sandals") drawSandalsIcon(g, 2,2,16,16);
     else if(kind==="shield") drawShieldIcon(g, 2,2,16,16);
     else drawBreadFishIcon(g, 2,2,16,16);
+  }
+
+  function drawAngelWingsIcon(g, x,y,w,h){
+    g.fillStyle = "rgba(250,250,255,.96)";
+    g.beginPath(); g.ellipse(x+w*0.3,y+h*0.55,w*0.26,h*0.38,0,0,Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(x+w*0.7,y+h*0.55,w*0.26,h*0.38,0,0,Math.PI*2); g.fill();
+    g.fillStyle = "rgba(125,90,214,.9)";
+    g.beginPath(); g.arc(x+w*0.5,y+h*0.55,w*0.12,0,Math.PI*2); g.fill();
   }
   function drawSandalsIcon(g, x,y,w,h){
     g.save();
@@ -2756,6 +2931,23 @@ function drawJesus(p){
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
+  }
+  function drawSawTrap(h){
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate((h.t||0)*5.2);
+    ctx.fillStyle = "rgba(190,195,210,.95)";
+    for(let i=0;i<8;i++){
+      const a = (Math.PI*2/8)*i;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*3, Math.sin(a)*3);
+      ctx.lineTo(Math.cos(a+0.16)*12, Math.sin(a+0.16)*12);
+      ctx.lineTo(Math.cos(a-0.16)*12, Math.sin(a-0.16)*12);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fillStyle = "rgba(120,125,150,.98)"; ctx.fill();
     ctx.restore();
   }
   function drawLava(x,y,w,h){
