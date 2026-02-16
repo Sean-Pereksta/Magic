@@ -80,8 +80,11 @@
     transition:opacity .2s ease;
   }
   #banner small{display:block;font-weight:800;color:var(--muted);letter-spacing:.2px;margin-top:2px}
-  #help{position:absolute;right:10px;bottom:10px;pointer-events:none}
-  #help .panel{font-size:12px;color:var(--muted)}
+  #mobileRotateHint{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:14;
+    background:rgba(15,23,42,.58);padding:20px;
+  }
+  #mobileRotateHint .panel{font-size:14px;color:var(--ink);max-width:360px;text-align:center;line-height:1.4}
   #topButtons{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:12}
   .uiBtn{pointer-events:auto;border:1px solid var(--line);background:rgba(255,255,255,.86);border-radius:10px;padding:8px 10px;font-weight:700;cursor:pointer}
   #mobileControls{
@@ -99,7 +102,6 @@
   #nameInput{flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
   @media (hover:none) and (pointer:coarse){
     #mobileControls{display:flex}
-    #help{bottom:160px}
   }
   kbd{font:inherit;background:rgba(255,255,255,.8);border:1px solid var(--line);border-bottom-color:rgba(15,23,42,.22);
     padding:1px 6px;border-radius:7px;color:var(--ink)}
@@ -136,16 +138,16 @@
       <button id="fullscreenBtn" class="uiBtn">Fullscreen</button>
     </div>
 
-    <div id="help">
-      <div class="panel">
-        Move: <kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> · Jump: <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>Space</kbd><br/>
-        Drop through platforms: <kbd>S</kbd>/<kbd>↓</kbd> while standing on them · Heaven clear: +5 levels
-      </div>
-    </div>
-
     <div id="mobileControls">
       <div id="joystick"><div id="stick"></div></div>
       <button id="jumpBtn">JUMP</button>
+    </div>
+
+    <div id="mobileRotateHint">
+      <div class="panel">
+        <div style="font-weight:900;font-size:18px;margin-bottom:8px">Best in Landscape</div>
+        Turn your phone sideways before starting for better controls and visibility.
+      </div>
     </div>
 
     <div id="gameOverModal">
@@ -159,6 +161,7 @@
             <input id="nameInput" maxlength="20" placeholder="Disciple name" />
             <button id="saveScoreBtn" class="uiBtn">Save</button>
           </div>
+          <div id="saveStatus" style="font-size:12px;color:var(--muted)"></div>
         </div>
         <button id="restartBtn" class="uiBtn">Restart</button>
       </div>
@@ -190,12 +193,14 @@
   const joystick = document.getElementById('joystick');
   const stick = document.getElementById('stick');
   const jumpBtn = document.getElementById('jumpBtn');
+  const mobileRotateHint = document.getElementById('mobileRotateHint');
   const gameOverModal = document.getElementById('gameOverModal');
   const scoreList = document.getElementById('scoreList');
   const finalScoreText = document.getElementById('finalScoreText');
   const nameWrap = document.getElementById('nameWrap');
   const nameInput = document.getElementById('nameInput');
   const saveScoreBtn = document.getElementById('saveScoreBtn');
+  const saveStatus = document.getElementById('saveStatus');
   const restartBtn = document.getElementById('restartBtn');
 
   const W = canvas.width, H = canvas.height;
@@ -230,14 +235,18 @@
   const keys = new Set();
   const pressed = new Set();
   const mobileInput = {xAxis:0, down:false, jumpHeld:false, jumpQueued:false};
+  const isMobileDevice = matchMedia('(hover:none) and (pointer:coarse)').matches;
+  let gameStarted = false;
   let gameScore = 0;
   let highScores = [];
   let topTenEligible = false;
+  const LOCAL_SCORES_KEY = 'jesusRunHighscores';
   addEventListener('keydown', e => {
     if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
     const k = e.key.toLowerCase();
     keys.add(k);
     if(!e.repeat) pressed.add(k);
+    gameStarted = true;
   });
   addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
   fullscreenBtn.addEventListener('click', async () => {
@@ -266,12 +275,12 @@
     mobileInput.xAxis = clamp(nx/maxR,-1,1);
     mobileInput.down = ny > maxR*0.40;
   }
-  joystick.addEventListener('pointerdown', e=>{ joystick.setPointerCapture(e.pointerId); setJoystickFromEvent(e); });
+  joystick.addEventListener('pointerdown', e=>{ gameStarted = true; joystick.setPointerCapture(e.pointerId); setJoystickFromEvent(e); });
   joystick.addEventListener('pointermove', e=>{ if(e.pressure>0) setJoystickFromEvent(e); });
   joystick.addEventListener('pointerup', resetStick);
   joystick.addEventListener('pointercancel', resetStick);
 
-  jumpBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); mobileInput.jumpHeld = true; mobileInput.jumpQueued = true; });
+  jumpBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); gameStarted = true; mobileInput.jumpHeld = true; mobileInput.jumpQueued = true; });
   jumpBtn.addEventListener('pointerup', ()=> mobileInput.jumpHeld = false);
   jumpBtn.addEventListener('pointercancel', ()=> mobileInput.jumpHeld = false);
 
@@ -286,6 +295,14 @@
   };
   const jumpHeld = () => mobileInput.jumpHeld || kDown('w') || kDown('arrowup') || kDown(' ');
   const downHeld = () => mobileInput.down || kDown('s') || kDown('arrowdown');
+
+  function updateMobileRotateHint(){
+    if(!isMobileDevice || !mobileRotateHint) return;
+    const portrait = window.innerHeight > window.innerWidth;
+    mobileRotateHint.style.display = (!gameStarted && portrait) ? 'flex' : 'none';
+  }
+  addEventListener('resize', updateMobileRotateHint);
+  addEventListener('orientationchange', updateMobileRotateHint);
 
   // =========================
   // World/region progression
@@ -338,6 +355,9 @@
     hasAngelWings: false,
     hasShield: false,
     hasBread: false,
+    holyLightT: 0,
+    fireRainShots: 0,
+    fireRainCd: 0,
     armT: 0,
   };
 
@@ -498,28 +518,64 @@ function triggerGameOver(){
 function restartGame(){
   GAME_OVER = false;
   gameOverModal.style.display = 'none';
+  gameStarted = false;
   resetWorld();
+  updateMobileRotateHint();
 }
 
-async function fetchHighScores(){
-  if(!db) return [];
+function loadLocalScores(){
   try{
-    const snap = await db.collection('highscores').orderBy('score','desc').limit(10).get();
-    return snap.docs.map(d=>d.data());
+    const raw = localStorage.getItem(LOCAL_SCORES_KEY);
+    if(!raw) return [];
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed)) return [];
+    return parsed.filter(r=>r && typeof r.score === 'number').slice(0, 20);
   }catch(_e){ return []; }
 }
 
-async function saveHighScore(name, score){
-  if(!db) return false;
+function writeLocalScores(rows){
   try{
-    await db.collection('highscores').add({name, score, createdAt: Date.now()});
+    localStorage.setItem(LOCAL_SCORES_KEY, JSON.stringify(rows));
     return true;
   }catch(_e){ return false; }
 }
 
+function mergeTopScores(rows){
+  return rows
+    .map(r=>({name: (r.name || 'Anonymous').toString().slice(0,20), score: Math.max(0, Math.floor(r.score||0)), createdAt: r.createdAt || Date.now()}))
+    .sort((a,b)=> (b.score-a.score) || (a.createdAt-b.createdAt))
+    .slice(0,10);
+}
+
+async function fetchHighScores(){
+  const local = loadLocalScores();
+  if(!db) return mergeTopScores(local);
+  try{
+    const snap = await db.collection('highscores').orderBy('score','desc').limit(10).get();
+    const remote = snap.docs.map(d=>d.data());
+    return mergeTopScores([...local, ...remote]);
+  }catch(_e){
+    return mergeTopScores(local);
+  }
+}
+
+async function saveHighScore(name, score){
+  const row = {name, score: Math.max(0, Math.floor(score||0)), createdAt: Date.now()};
+  const combined = mergeTopScores([row, ...loadLocalScores()]);
+  const localOk = writeLocalScores(combined);
+
+  if(!db) return {ok: localOk, source: localOk ? 'local' : 'none'};
+  try{
+    await db.collection('highscores').add(row);
+    return {ok: true, source: 'cloud'};
+  }catch(_e){
+    return {ok: localOk, source: localOk ? 'local' : 'none'};
+  }
+}
+
 function renderHighScoreList(){
   scoreList.innerHTML = '';
-  highScores.forEach((row, i)=>{
+  highScores.forEach((row)=>{
     const li = document.createElement('li');
     li.textContent = `${row.name || 'Anonymous'} — ${row.score || 0}`;
     scoreList.appendChild(li);
@@ -539,17 +595,25 @@ async function showGameOverUI(){
   topTenEligible = gameScore >= cutoff || highScores.length < 10;
   nameWrap.style.display = topTenEligible ? 'block' : 'none';
   nameInput.value = '';
+  if(saveStatus) saveStatus.textContent = '';
   renderHighScoreList();
 }
 
 saveScoreBtn.addEventListener('click', async ()=>{
   const raw = nameInput.value.trim();
   const safeName = raw.replace(/[^\w\s.-]/g,'').slice(0,20) || 'Anonymous';
-  const ok = await saveHighScore(safeName, gameScore);
-  if(ok){
+  const result = await saveHighScore(safeName, gameScore);
+  if(result.ok){
     highScores = await fetchHighScores();
     renderHighScoreList();
     nameWrap.style.display = 'none';
+    if(saveStatus){
+      saveStatus.style.color = 'var(--green)';
+      saveStatus.textContent = result.source === 'cloud' ? 'Saved to global highscores.' : 'Saved on this device (offline mode).';
+    }
+  } else if(saveStatus){
+    saveStatus.style.color = 'var(--red)';
+    saveStatus.textContent = 'Could not save score. Please try again.';
   }
 });
 restartBtn.addEventListener('click', restartGame);
@@ -809,6 +873,9 @@ if(!ignoreOneWay && ent.vy >= 0){
     player.hasSandals = false;
     player.hasShield = false;
     player.hasBread = false;
+    player.holyLightT = 0;
+    player.fireRainShots = 0;
+    player.fireRainCd = 0;
     player.invT = 1.2;
     player.dropT = 0;
     popFX("Respawn", player.x+player.w/2, player.y-14, "#0f172a");
@@ -838,6 +905,13 @@ if(!ignoreOneWay && ent.vy >= 0){
         player.hasBread = true;
         popFX("Strength renewed!", player.x+player.w/2, player.y-10, "#1f7a37");
       }
+    } else if(kind==="fireRain"){
+      player.fireRainShots = Math.max(player.fireRainShots, 5);
+      player.fireRainCd = 0;
+      popFX("Raining Fire! 5 enemies burn", player.x+player.w/2, player.y-10, "#d33636");
+    } else if(kind==="holyLight"){
+      player.holyLightT = Math.max(player.holyLightT, 5);
+      popFX("Holy Light! Enemies retreat", player.x+player.w/2, player.y-10, "#d4b43d");
     }
     spawnSparkle(player.x+player.w/2, player.y+player.h/2);
   }
@@ -970,7 +1044,9 @@ if(!ignoreOneWay && ent.vy >= 0){
       const d = px - ex;
 
       let dir = e.patrol || 1;
-      if(Math.abs(d) < 280 && Math.abs(player.y - e.y) < 140){
+      if(player.holyLightT > 0 && Math.abs(d) < 460 && Math.abs(player.y - e.y) < 180){
+        dir = -sign(d || dir);
+      } else if(Math.abs(d) < 280 && Math.abs(player.y - e.y) < 140){
         dir = sign(d);
       }
       if(e.onGround){
@@ -1161,7 +1237,7 @@ if(!ignoreOneWay && ent.vy >= 0){
 
         if(chasm){
           // Build moving-platform bridge inside the pit
-          const n = clamp(2 + Math.floor(diff*0.55), 2, 4);
+          const n = clamp(3 + Math.floor(diff*0.7), 3, 5);
           for(let j=0;j<n;j++){
             const mw = rndi(140, 210) - Math.floor(diff*6);
             const mh = 18;
@@ -1230,7 +1306,7 @@ if(!ignoreOneWay && ent.vy >= 0){
     }
 
     // --- movers (more + faster deeper)
-    const moverCount = rndi(deep?3:2, deep?6:4) + Math.floor(diff*0.8);
+    const moverCount = rndi(deep?5:4, deep?8:6) + Math.floor(diff*1.0);
     for(let i=0;i<moverCount;i++){
       const mw = rndi(150, 250);
       const mh = 18;
@@ -1273,9 +1349,22 @@ if(!ignoreOneWay && ent.vy >= 0){
     spawnEnemiesForEarthSection(startX, endX, world, stage, region, diff);
 
     // --- powerup
-    if(Math.random()<0.56){
-      const kinds = ["bread","sandals","shield",...(world>=2?["angelWings"]:[])];
-      const kind = kinds[Math.floor(Math.random()*kinds.length)];
+    if(Math.random()<0.70){
+      const weightedKinds = [
+        {kind:"bread", w:1.0},
+        {kind:"sandals", w:0.82},
+        {kind:"shield", w:0.78},
+        ...(world>=2?[{kind:"holyLight", w:0.62}]:[]),
+        ...(world>=3?[{kind:"fireRain", w:0.48}]:[]),
+        ...(world>=2?[{kind:"angelWings", w:0.18}]:[]),
+      ];
+      const total = weightedKinds.reduce((sum, it)=>sum+it.w, 0);
+      let roll = Math.random()*total;
+      let kind = weightedKinds[0].kind;
+      for(const it of weightedKinds){
+        roll -= it.w;
+        if(roll<=0){ kind = it.kind; break; }
+      }
       placePickup({x: rand(startX+450, endX-450), y: rand(210, 320), w: 24, h: 24, kind, theme:region, bobT: rand(0,10)});
     }
 
@@ -1369,8 +1458,21 @@ if(!ignoreOneWay && ent.vy >= 0){
     }
 
     // sparse powerups to tempt risk
-    if(Math.random() < 0.22){
-      const kind = (Math.random()<0.45) ? "shield" : (Math.random()<0.75) ? "sandals" : "bread";
+    if(Math.random() < 0.24){
+      const heavens = [
+        {kind:"shield", w:0.8},
+        {kind:"sandals", w:0.7},
+        {kind:"holyLight", w:0.55},
+        {kind:"fireRain", w:0.5},
+        {kind:"angelWings", w:0.12},
+      ];
+      const total = heavens.reduce((sum, it)=>sum+it.w, 0);
+      let roll = Math.random()*total;
+      let kind = heavens[0].kind;
+      for(const it of heavens){
+        roll -= it.w;
+        if(roll<=0){ kind = it.kind; break; }
+      }
       placePickup({x: rand(startX+240, endX-240), y: rand(120, 260), w: 24, h: 24, kind, theme:HEAVEN, bobT: rand(0,10)});
     }
 
@@ -1420,6 +1522,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     if(player.hasSandals) addPow("Holy Sandals (Double Jump)", "ic-blue", "sandals");
     if(player.hasShield)  addPow("Shield (1 hit)", "ic-gold", "shield");
     if(player.hasBread)   addPow("Loaves & Fish (+1 heart)", "ic-green", "bread");
+    if(player.holyLightT > 0) addPow(`Holy Light (${player.holyLightT.toFixed(1)}s)`, "ic-gold", "holyLight");
+    if(player.fireRainShots > 0) addPow(`Raining Fire (${player.fireRainShots} left)`, "ic-gold", "fireRain");
 
     if(realm==="heaven"){
       const d = document.createElement('div');
@@ -1637,6 +1741,25 @@ if(!ignoreOneWay && ent.vy >= 0){
 
     // enemies
     updateEnemies(dt);
+
+    if(player.holyLightT > 0) player.holyLightT = Math.max(0, player.holyLightT - dt);
+    if(player.fireRainShots > 0){
+      player.fireRainCd -= dt;
+      if(player.fireRainCd <= 0){
+        const target = enemies
+          .filter(e=>e.hp>0)
+          .sort((a,b)=>Math.abs((a.x+a.w*0.5)-(player.x+player.w*0.5)) - Math.abs((b.x+b.w*0.5)-(player.x+player.w*0.5)))[0];
+        if(target){
+          target.hp = 0;
+          spawnSparkle(target.x+target.w/2, target.y+target.h/2);
+          popFX("Holy fire!", target.x+target.w/2, target.y-8, "#d33636");
+          player.fireRainShots -= 1;
+          player.fireRainCd = 0.32;
+        } else {
+          player.fireRainCd = 0.12;
+        }
+      }
+    }
 
     // Heaven entry: jump above ceiling in earth
     if(realm === "earth" && player.y < -34){
@@ -2097,6 +2220,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     if(p.kind==="angelWings") drawAngelWingsIcon(ctx, x+2, y+2, p.w-4, p.h-4);
     else if(p.kind==="sandals") drawSandalsIcon(ctx, x+2, y+2, p.w-4, p.h-4);
     else if(p.kind==="shield") drawShieldIcon(ctx, x+2, y+2, p.w-4, p.h-4);
+    else if(p.kind==="holyLight") drawHolyLightIcon(ctx, x+2, y+2, p.w-4, p.h-4);
+    else if(p.kind==="fireRain") drawFireRainIcon(ctx, x+2, y+2, p.w-4, p.h-4);
     else drawBreadFishIcon(ctx, x+2, y+2, p.w-4, p.h-4);
 
     ctx.restore();
@@ -2517,6 +2642,8 @@ function drawJesus(p){
     if(kind==="angelWings") drawAngelWingsIcon(g, 2,2,16,16);
     else if(kind==="sandals") drawSandalsIcon(g, 2,2,16,16);
     else if(kind==="shield") drawShieldIcon(g, 2,2,16,16);
+    else if(kind==="holyLight") drawHolyLightIcon(g, 2,2,16,16);
+    else if(kind==="fireRain") drawFireRainIcon(g, 2,2,16,16);
     else drawBreadFishIcon(g, 2,2,16,16);
   }
 
@@ -2540,6 +2667,40 @@ function drawJesus(p){
     g.moveTo(x+4, y+10); g.lineTo(x+w*0.38, y+8);
     g.moveTo(x+w*0.60, y+8); g.lineTo(x+w*0.96, y+10);
     g.stroke();
+    g.restore();
+  }
+
+  function drawHolyLightIcon(g, x,y,w,h){
+    g.save();
+    const cx = x + w/2, cy = y + h/2;
+    g.strokeStyle = "rgba(212,180,61,.85)";
+    g.lineWidth = 1.8;
+    for(let i=0;i<8;i++){
+      const a = (Math.PI*2*i)/8;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a)*2, cy + Math.sin(a)*2);
+      g.lineTo(cx + Math.cos(a)*(w*0.46), cy + Math.sin(a)*(h*0.46));
+      g.stroke();
+    }
+    g.fillStyle = "rgba(255,240,140,.95)";
+    g.beginPath(); g.arc(cx, cy, w*0.22, 0, Math.PI*2); g.fill();
+    g.restore();
+  }
+
+  function drawFireRainIcon(g, x,y,w,h){
+    g.save();
+    g.fillStyle = "rgba(211,54,54,.92)";
+    for(let i=0;i<3;i++){
+      const fx = x + w*(0.2 + i*0.3);
+      g.beginPath();
+      g.moveTo(fx, y+1);
+      g.lineTo(fx+w*0.10, y+h*0.52);
+      g.lineTo(fx-w*0.10, y+h*0.52);
+      g.closePath();
+      g.fill();
+    }
+    g.fillStyle = "rgba(255,170,70,.95)";
+    g.beginPath(); g.arc(x+w*0.5, y+h*0.72, w*0.22, 0, Math.PI*2); g.fill();
     g.restore();
   }
   function drawShieldIcon(g, x,y,w,h){
@@ -3058,6 +3219,10 @@ function drawJesus(p){
     player.vx = 0; player.vy = 0;
     player.hearts = 3;
     player.hasSandals = player.hasShield = player.hasBread = false;
+    player.hasAngelWings = false;
+    player.holyLightT = 0;
+    player.fireRainShots = 0;
+    player.fireRainCd = 0;
     player.invT = 0; player.dropT = 0;
 
     showBannerForSection(0);
@@ -3088,6 +3253,7 @@ function drawJesus(p){
   }
 
   resetWorld();
+  updateMobileRotateHint();
   requestAnimationFrame(loop);
 })();
 </script>
