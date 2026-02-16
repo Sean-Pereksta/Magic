@@ -26,7 +26,10 @@
   html,body{height:100%}
   body{
     margin:0;
-    background: radial-gradient(circle at top,#0b1020 0,#07090c 55%,#05060a 100%);
+    background:
+      radial-gradient(circle at 15% 10%, rgba(99,102,241,.25), transparent 40%),
+      radial-gradient(circle at 85% 20%, rgba(236,72,153,.22), transparent 40%),
+      radial-gradient(circle at 50% 100%, #090b14 0, #05060a 60%, #02030a 100%);
     color:var(--txt);
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
     overflow:hidden;
@@ -99,7 +102,12 @@
     grid-template-columns: repeat(var(--w), var(--cell));
     grid-auto-rows: var(--cell);
     gap:var(--gap);
-    padding:10px;
+    padding:12px;
+    border-radius:22px;
+    background:
+      linear-gradient(180deg, rgba(22,163,74,.28), rgba(101,67,33,.25) 38%, rgba(22,163,74,.22) 100%),
+      linear-gradient(160deg, rgba(15,23,42,.85), rgba(2,6,23,.92));
+    box-shadow: 0 25px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(148,163,184,.25) inset;
   }
   .cell{
     width:var(--cell); height:var(--cell);
@@ -362,15 +370,12 @@
 <body>
   <div class="topbar">
     <div class="row">
-      <span class="badge">🏰 Royale Grid</span>
-      <span id="phaseBadge" class="badge"><small>Phase</small> <span id="phaseText">—</span></span>
-      <span id="timerBadge" class="badge"><small>⏱</small> <span id="timerText">—</span></span>
       <span id="crownBadge" class="badge"><small>👑</small> <span id="crownText">0–0</span></span>
+      <span id="timerBadge" class="badge"><small>⏱</small> <span id="timerText">—</span></span>
     </div>
     <div class="row">
-      <span id="meBadge" class="badge"><small>You</small> <span id="meName">—</span></span>
-      <span id="oppBadge" class="badge"><small>Opp</small> <span id="oppName">—</span></span>
-      <button id="fsBtn" class="btn">⛶ Fullscreen</button>
+      <span id="meBadge" class="badge"><small>You</small> <span id="meName">—</span> <small id="meElo">ELO —</small></span>
+      <span id="oppBadge" class="badge"><small>Opp</small> <span id="oppName">—</span> <small id="oppElo">ELO —</small></span>
     </div>
   </div>
 
@@ -438,11 +443,12 @@ const stateRef = doc(db, "lobbies", gameId, "royale", "state");
 
 /* ---------------- DOM ---------------- */
 const $ = (id)=>document.getElementById(id);
-const phaseText = $("phaseText");
 const timerText = $("timerText");
 const crownText = $("crownText");
 const meNameEl  = $("meName");
 const oppNameEl = $("oppName");
+const meEloEl   = $("meElo");
+const oppEloEl  = $("oppElo");
 const gridEl    = $("grid");
 const canvasEl  = $("canvas");
 const viewport  = $("viewport");
@@ -453,7 +459,6 @@ const hintEl    = $("hint");
 const toastEl   = $("toast");
 const cancelBtn = $("cancelBtn");
 const fxEl      = $("fx");
-const fsBtn     = $("fsBtn");
 
 /* ---------------- Board / grid (MOVES IN GRID SPACES ONLY) ---------------- */
 let W=9, H=14;
@@ -478,25 +483,57 @@ function onMySide(p, x, y){
 /* ---------------- Cards ---------------- */
 const CARDS = {
   knight:  { id:"knight",  name:"Knight",  emoji:"🗡️", kind:"troop", cost:3, place:"friendly", spawn:1,
-             unit:{ hp:22, dmg:5, range:1, cdMs:900, spdMs:520, targets:"all" } },
+             unit:{ hp:22, dmg:5, range:1, cdMs:900, spdMs:520, targets:"all", canHitAir:false } },
   archers: { id:"archers", name:"Archers", emoji:"🏹", kind:"troop", cost:3, place:"friendly", spawn:2,
-             unit:{ hp:12, dmg:4, range:3, cdMs:1100, spdMs:560, targets:"all" } },
+             unit:{ hp:12, dmg:4, range:3, cdMs:1100, spdMs:560, targets:"all", canHitAir:true } },
   goblins: { id:"goblins", name:"Goblins", emoji:"🟢", kind:"troop", cost:2, place:"friendly", spawn:3,
-             unit:{ hp:8,  dmg:3, range:1, cdMs:700, spdMs:480, targets:"all" } },
+             unit:{ hp:8,  dmg:3, range:1, cdMs:700, spdMs:480, targets:"all", canHitAir:false } },
   giant:   { id:"giant",   name:"Giant",   emoji:"🪨", kind:"troop", cost:5, place:"friendly", spawn:1,
-             unit:{ hp:48, dmg:6, range:1, cdMs:1200, spdMs:620, targets:"buildings" } },
+             unit:{ hp:48, dmg:6, range:1, cdMs:1200, spdMs:620, targets:"buildings", canHitAir:false } },
   wizard:  { id:"wizard",  name:"Wizard",  emoji:"🧙", kind:"troop", cost:4, place:"friendly", spawn:1,
-             unit:{ hp:16, dmg:5, range:3, cdMs:1200, spdMs:600, targets:"all", splash:1 } },
+             unit:{ hp:16, dmg:5, range:3, cdMs:1200, spdMs:600, targets:"all", splash:1, canHitAir:true } },
+  golem:   { id:"golem", name:"Golem", emoji:"🪨", kind:"troop", cost:6, place:"friendly", spawn:1,
+             unit:{ hp:64, dmg:8, range:1, cdMs:1500, spdMs:760, targets:"all", canHitAir:false, splitInto:"miniGolem", splitCount:2 } },
+  miniGolem:{ id:"miniGolem", name:"Mini Golem", emoji:"🧱", kind:"troop", cost:0, place:"friendly", spawn:1, hidden:true,
+             unit:{ hp:18, dmg:4, range:1, cdMs:900, spdMs:540, targets:"all", canHitAir:false } },
+  barbarian:{ id:"barbarian", name:"Barbarian", emoji:"🪓", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:26, dmg:5, range:1, cdMs:1100, spdMs:510, targets:"all", canHitAir:false, cleaveRadius:1 } },
+  necromancer:{ id:"necromancer", name:"Necromancer", emoji:"☠️", kind:"troop", cost:5, place:"friendly", spawn:1,
+             unit:{ hp:20, dmg:3, range:3, cdMs:1300, spdMs:620, targets:"all", canHitAir:true, summonCard:"skeleton", summonEveryMs:10000, summonCount:1 } },
+  skeleton:{ id:"skeleton", name:"Skeleton", emoji:"🦴", kind:"troop", cost:0, place:"friendly", spawn:1, hidden:true,
+             unit:{ hp:5, dmg:2, range:1, cdMs:900, spdMs:430, targets:"all", canHitAir:false } },
+  darkprince:{ id:"darkprince", name:"Dark Prince", emoji:"🐎", kind:"troop", cost:5, place:"friendly", spawn:1,
+             unit:{ hp:30, dmg:5, range:1, cdMs:1100, spdMs:580, targets:"all", canHitAir:false, chargeDmg:14, chargeRange:3, chargeSelfStunMs:4000 } },
+  slime:{ id:"slime", name:"Slime", emoji:"🟣", kind:"troop", cost:3, place:"friendly", spawn:1,
+             unit:{ hp:20, dmg:3, range:1, cdMs:900, spdMs:600, targets:"all", canHitAir:false, slowMs:1800 } },
+  assassin:{ id:"assassin", name:"Assassin", emoji:"🗡️", kind:"troop", cost:4, place:"any", spawn:1, rareEnemySide:true,
+             unit:{ hp:14, dmg:4, range:1, cdMs:700, spdMs:450, targets:"all", canHitAir:false, stealth:true, firstHitDmg:12 } },
+  dragon:{ id:"dragon", name:"Dragon", emoji:"🐉", kind:"troop", cost:6, place:"friendly", spawn:1,
+             unit:{ hp:32, dmg:6, range:3, cdMs:1200, spdMs:600, targets:"all", canHitAir:true, flying:true, splash:1 } },
+  balloon:{ id:"balloon", name:"Balloon", emoji:"🎈", kind:"troop", cost:5, place:"friendly", spawn:1,
+             unit:{ hp:34, dmg:14, range:1, cdMs:1800, spdMs:900, targets:"buildings", canHitAir:false, flying:true } },
+  drake:{ id:"drake", name:"Drake", emoji:"🐲", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:22, dmg:5, range:3, cdMs:1000, spdMs:560, targets:"all", canHitAir:true, flying:true, airPriority:true } },
+  wyvern:{ id:"wyvern", name:"Wyvern", emoji:"🪶", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:20, dmg:4, range:3, cdMs:900, spdMs:540, targets:"all", canHitAir:false, flying:true } },
 
   fireball:{ id:"fireball",name:"Fireball",emoji:"🔥", kind:"spell", cost:4, place:"any",
              spell:{ dmg:18, radius:1 } },
   zap:     { id:"zap",     name:"Zap",     emoji:"⚡", kind:"spell", cost:2, place:"any",
              spell:{ dmg:9, radius:1, stunMs:1200 } },
   heal:    { id:"heal",    name:"Heal",    emoji:"💚", kind:"spell", cost:3, place:"any",
-             spell:{ heal:16, radius:1 } }
+             spell:{ heal:16, radius:1 } },
+  log:     { id:"log", name:"Log", emoji:"🪵", kind:"spell", cost:2, place:"any", spell:{ lineDmg:10 } },
+  haste:   { id:"haste", name:"Haste", emoji:"💨", kind:"spell", cost:3, place:"any", spell:{ aura:{ type:"haste", radius:1, ttlMs:7000, speedMult:.65 } } },
+  armor:   { id:"armor", name:"Armor", emoji:"🛡️", kind:"spell", cost:3, place:"any", spell:{ aura:{ type:"armor", radius:1, ttlMs:7000, dmgTakenMult:.5 } } },
+  healingAura:{ id:"healingAura", name:"Healing Aura", emoji:"✨", kind:"spell", cost:4, place:"any", spell:{ aura:{ type:"heal", radius:1, ttlMs:8000, healPctPerSec:.05 } } }
 };
 
+const CARD_POOL = Object.values(CARDS).filter(c=>!c.hidden).map(c=>c.id);
 const BASE_DECK = ["knight","archers","goblins","giant","wizard","fireball","zap","heal"];
+const ELO_REQ = { dragon: 1050, darkprince: 1100, assassin: 1150, balloon: 1200 };
+const ELO_K = 28;
+
 
 /* ---------------- Pretty SVG sprites ---------------- */
 function wrapSprite(svg, p){
@@ -640,6 +677,22 @@ let isHost = false;
 let started = false;
 let selectedCard = null;
 
+let lobbyMeta = { eloMap:{}, deckMap:{} };
+function cleanDeckForElo(deck, elo){
+  const allow = (cid)=> (ELO_REQ[cid]||0) <= (elo||1000);
+  const filtered = (deck||[]).filter(cid=>CARDS[cid] && !CARDS[cid].hidden && allow(cid));
+  const fill = CARD_POOL.filter(allow);
+  const out = [];
+  for (const c of filtered){ if (!out.includes(c)) out.push(c); if (out.length>=8) break; }
+  for (const c of fill){ if (!out.includes(c)) out.push(c); if (out.length>=8) break; }
+  return out.slice(0,8);
+}
+function deckForPlayer(name){
+  const elo = lobbyMeta.eloMap?.[name] || 1000;
+  const saved = lobbyMeta.deckMap?.[name] || BASE_DECK;
+  return cleanDeckForElo(saved, elo);
+}
+
 /* ---------------- Build grid DOM ---------------- */
 function buildGrid(){
   const frag = document.createDocumentFragment();
@@ -682,14 +735,6 @@ function fitBoard(){
 }
 new ResizeObserver(fitBoard).observe(viewport);
 fitBoard();
-
-/* ---------------- Fullscreen ---------------- */
-fsBtn.addEventListener("click", async ()=>{
-  try{
-    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
-    else await document.exitFullscreen();
-  }catch(e){ console.warn(e); }
-});
 
 /* ---------------- UI helpers ---------------- */
 function toast(msg, ms=1400){
@@ -734,9 +779,15 @@ async function joinLobby(){
     if (!players.includes(username)){
       if (players.length < 2) players.push(username);
     }
+    const eloMap = { ...(lob.eloMap||{}) };
+    if (!eloMap[username]) eloMap[username] = 1000;
+    const deckMap = { ...(lob.deckMap||{}) };
+    if (!deckMap[username]) deckMap[username] = BASE_DECK.slice();
     tx.set(lobbyRef, {
       ...lob,
       players,
+      eloMap,
+      deckMap,
       updatedAt: Date.now(),
       createdAt: lob.createdAt || Date.now()
     }, { merge:true });
@@ -744,6 +795,7 @@ async function joinLobby(){
 
   const lobSnap = await getDoc(lobbyRef);
   const lob = lobSnap.exists() ? lobSnap.data() : {};
+  lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
   lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
   meIndex = lobbyPlayers.indexOf(username);
   if (meIndex < 0) meIndex = 0;
@@ -798,8 +850,10 @@ async function ensureStateExists(){
     const players = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
 
     const now = Date.now();
-    const deck0 = seededShuffle(BASE_DECK, gameId + ":p0");
-    const deck1 = seededShuffle(BASE_DECK, gameId + ":p1");
+    const p0Name = players[0] || "p0";
+    const p1Name = players[1] || "p1";
+    const deck0 = seededShuffle(deckForPlayer(p0Name), gameId + ":p0");
+    const deck1 = seededShuffle(deckForPlayer(p1Name), gameId + ":p1");
 
     tx.set(stateRef, {
       v:1,
@@ -820,7 +874,9 @@ async function ensureStateExists(){
       structures: initialStructures(),
       units: [],
       orders: [],
-      fx: []
+      fx: [],
+      auras: [],
+      eloApplied: false
     });
   });
 }
@@ -850,13 +906,13 @@ function neighbors4(x,y){
     {x:x+1,y},{x:x-1,y},{x,y:y+1},{x,y:y-1}
   ].filter(p=>inside(p.x,p.y));
 }
-function walkable(structs, x,y){
+function walkable(structs, x,y, flying=false){
   if (!inside(x,y)) return false;
-  if (isRiver(x,y)) return false;
+  if (!flying && isRiver(x,y)) return false;
   if (isStructureTile(structs,x,y)) return false;
   return true;
 }
-function bfsNextStep(structs, start, goals){
+function bfsNextStep(structs, start, goals, flying=false){
   const q = [];
   const prev = new Map();
   const startK = keyXY(start.x,start.y);
@@ -880,7 +936,7 @@ function bfsNextStep(structs, start, goals){
     for (const nb of neighbors4(cur.x,cur.y)){
       const nk = keyXY(nb.x,nb.y);
       if (prev.has(nk)) continue;
-      if (!walkable(structs, nb.x, nb.y)) continue;
+      if (!walkable(structs, nb.x, nb.y, flying)) continue;
       prev.set(nk, ck);
       q.push(nb);
     }
@@ -898,10 +954,41 @@ function enemyStructPriority(structs, enemyP){
   const castle = aliveStructsForP(structs, enemyP).find(s=>s.kind==="castle");
   return castle ? [castle] : [];
 }
+function isFlying(u){ return !!u.flying; }
+function canTarget(attacker, target){
+  if (!target) return false;
+  if (isFlying(target) && !attacker.canHitAir) return false;
+  return true;
+}
+function activeAurasAt(st, x,y){
+  const now = Date.now();
+  return (st.auras||[]).filter(a=>a.until>now && inRadius(a.x,a.y,x,y,a.radius||0));
+}
+function speedMult(st, u){
+  const list = activeAurasAt(st, u.x,u.y).filter(a=>a.type==="haste");
+  if (!list.length) return 1;
+  return Math.min(...list.map(a=>a.speedMult||1));
+}
+function damageTakenMult(st, x,y){
+  const list = activeAurasAt(st, x,y).filter(a=>a.type==="armor");
+  if (!list.length) return 1;
+  return Math.min(...list.map(a=>a.dmgTakenMult||1));
+}
+function applyDamageToUnit(st, attacker, target, baseDmg, now){
+  if (!target || target.hp<=0) return;
+  let dmg = Math.max(1, Math.floor(baseDmg * damageTakenMult(st, target.x, target.y)));
+  if (attacker?.type === "assassin" && !attacker.revealed){
+    dmg = attacker.firstHitDmg || dmg;
+    attacker.revealed = true;
+  }
+  target.hp -= dmg;
+  if (attacker?.slowMs) target.stunUntil = Math.max(target.stunUntil||0, now + attacker.slowMs);
+}
 function findNearestEnemyUnit(units, meP, from, range){
   let best=null, bd=1e9;
   for (const u of (units||[])){
     if (u.hp<=0 || u.p===meP) continue;
+    if (!canTarget(from, u)) continue;
     const d = Math.abs(u.x-from.x)+Math.abs(u.y-from.y);
     if (d<=range && d<bd){ bd=d; best=u; }
   }
@@ -934,6 +1021,22 @@ function newUnit(p, cardId, x,y){
     spdMs: u.spdMs,
     splash: u.splash || 0,
     targets: u.targets || "all",
+    canHitAir: !!u.canHitAir,
+    flying: !!u.flying,
+    cleaveRadius: u.cleaveRadius || 0,
+    summonCard: u.summonCard || null,
+    summonEveryMs: u.summonEveryMs || 0,
+    summonCount: u.summonCount || 0,
+    nextSummon: u.summonEveryMs ? (Date.now() + u.summonEveryMs) : 0,
+    splitInto: u.splitInto || null,
+    splitCount: u.splitCount || 0,
+    chargeDmg: u.chargeDmg || 0,
+    chargeRange: u.chargeRange || 0,
+    chargeSelfStunMs: u.chargeSelfStunMs || 0,
+    slowMs: u.slowMs || 0,
+    revealed: !u.stealth,
+    firstHitDmg: u.firstHitDmg || 0,
+    airPriority: !!u.airPriority,
     nextAtk: 0,
     nextMove: 0,
     stunUntil: 0
@@ -989,6 +1092,32 @@ function applySpell(st, p, cardId, tx, ty){
       s.hp = Math.min(s.maxhp, s.hp + Math.floor(spec.heal*0.6));
     }
     st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"💚", color:"#86efac", at:Date.now(), ttl:FX_TTL});
+  }
+
+  if (spec.lineDmg){
+    for (const u of units){
+      if (u.hp<=0 || u.p===p) continue;
+      if (u.x!==tx) continue;
+      applyDamageToUnit(st, null, u, spec.lineDmg, Date.now());
+    }
+    for (const s of structs){
+      if (s.hp<=0 || s.p===p) continue;
+      if (s.x!==tx) continue;
+      s.hp -= Math.max(1, Math.floor(spec.lineDmg * damageTakenMult(st, s.x,s.y)));
+    }
+    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"🪵", color:"#f59e0b", at:Date.now(), ttl:FX_TTL});
+  }
+
+  if (spec.aura){
+    st.auras = st.auras || [];
+    st.auras.push({
+      id: crypto.randomUUID(),
+      p,
+      x:tx,y:ty,
+      ...spec.aura,
+      until: Date.now() + (spec.aura.ttlMs||0)
+    });
+    st.fx.push({id:crypto.randomUUID(), x:tx,y:ty, text:"✨", color:"#a78bfa", at:Date.now(), ttl:FX_TTL});
   }
 }
 
@@ -1085,45 +1214,76 @@ function tickSim(st){
   // clean fx
   st.fx = (st.fx||[]).filter(f=> (f.at + (f.ttl||FX_TTL)) > now);
 
-  // remove dead
-  st.units = (st.units||[]).filter(u=>u.hp>0);
+  // remove dead (deferred until after split logic)
+
+  // aura upkeep + heal aura
+  st.auras = (st.auras||[]).filter(a=>a.until>now);
+  for (const a of st.auras){
+    if (a.type!=="heal") continue;
+    for (const u of st.units||[]){
+      if (u.hp<=0 || u.p!==a.p) continue;
+      if (!inRadius(a.x,a.y,u.x,u.y,a.radius||0)) continue;
+      const amt = Math.max(1, Math.floor((u.maxhp||1) * (a.healPctPerSec||0) * (dt/1000)));
+      u.hp = Math.min(u.maxhp, u.hp + amt);
+    }
+  }
 
   // unit actions (grid-step)
   for (const u of st.units){
     if (u.hp<=0) continue;
+
+    if (u.summonCard && u.summonEveryMs && now >= (u.nextSummon||0)){
+      u.nextSummon = now + u.summonEveryMs;
+      for (let i=0;i<(u.summonCount||1);i++){
+        const spots = neighbors4(u.x,u.y).concat([{x:u.x,y:u.y}]).filter(s=>inside(s.x,s.y) && walkable(st.structures,s.x,s.y,false));
+        const spot = spots[i % Math.max(1,spots.length)] || {x:u.x,y:u.y};
+        st.units.push(newUnit(u.p, u.summonCard, spot.x, spot.y));
+      }
+      pushFx(st, u.x, u.y, "☠️", "#c4b5fd");
+    }
+
     if ((u.stunUntil||0) > now) continue;
 
     let targetUnit = null;
     let targetStruct = null;
 
-    if (u.targets !== "buildings"){
-      targetUnit = findNearestEnemyUnit(st.units, u.p, u, u.range);
+    if (u.airPriority){
+      const enemies = (st.units||[]).filter(v=>v.hp>0 && v.p!==u.p && v.flying && canTarget(u,v));
+      enemies.sort((a,b)=> (Math.abs(a.x-u.x)+Math.abs(a.y-u.y))-(Math.abs(b.x-u.x)+Math.abs(b.y-u.y)));
+      if (enemies[0] && Math.abs(enemies[0].x-u.x)+Math.abs(enemies[0].y-u.y)<=u.range) targetUnit = enemies[0];
     }
-    if (!targetUnit){
-      targetStruct = findNearestEnemyStructure(st.structures, u.p, u, u.range);
-    }
+
+    if (!targetUnit && u.targets !== "buildings") targetUnit = findNearestEnemyUnit(st.units, u.p, u, u.range);
+    if (!targetUnit) targetStruct = findNearestEnemyStructure(st.structures, u.p, u, u.range);
 
     if (targetUnit || targetStruct){
       if (now >= (u.nextAtk||0)){
         const dmg = u.dmg|0;
         if (targetUnit){
-          if (u.splash){
+          if (u.chargeDmg && u.chargeRange && (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))<=u.chargeRange){
+            applyDamageToUnit(st, u, targetUnit, u.chargeDmg, now);
+            u.stunUntil = Math.max(u.stunUntil||0, now + (u.chargeSelfStunMs||0));
+            pushFx(st, targetUnit.x, targetUnit.y, "💢", "#fca5a5");
+          } else if (u.cleaveRadius){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
-              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)) v.hp -= dmg;
+              if (!canTarget(u,v)) continue;
+              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.cleaveRadius|0)) applyDamageToUnit(st, u, v, dmg, now);
             }
+            pushFx(st, targetUnit.x, targetUnit.y, "🪓", "#fde68a");
+          } else if (u.splash){
+            for (const v of st.units){
+              if (v.hp<=0 || v.p===u.p) continue;
+              if (!canTarget(u,v)) continue;
+              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)) applyDamageToUnit(st, u, v, dmg, now);
+            }
+            pushFx(st, targetUnit.x, targetUnit.y, "🔥", "#fdba74");
           } else {
-            targetUnit.hp -= dmg;
+            applyDamageToUnit(st, u, targetUnit, dmg, now);
+            pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fde68a");
           }
-          pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fde68a");
         } else if (targetStruct){
-          if (u.splash){
-            for (const v of st.units){
-              if (v.hp<=0 || v.p===u.p) continue;
-              if (inRadius(targetStruct.x,targetStruct.y,v.x,v.y,u.splash|0)) v.hp -= Math.max(1, Math.floor(dmg*0.7));
-            }
-          }
-          targetStruct.hp -= dmg;
+          targetStruct.hp -= Math.max(1, Math.floor(dmg * damageTakenMult(st, targetStruct.x,targetStruct.y)));
           pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb");
         }
         u.nextAtk = now + (u.cdMs||1000);
@@ -1132,7 +1292,7 @@ function tickSim(st){
     }
 
     if (now < (u.nextMove||0)) continue;
-    u.nextMove = now + (u.spdMs||560);
+    u.nextMove = now + Math.max(180, Math.floor((u.spdMs||560) * speedMult(st, u)));
 
     const enemyP = u.p===0 ? 1 : 0;
     const candidates = enemyStructPriority(st.structures, enemyP);
@@ -1144,16 +1304,25 @@ function tickSim(st){
     const goals = new Set();
     for (let yy=0;yy<H;yy++){
       for (let xx=0;xx<W;xx++){
-        if (!walkable(st.structures, xx,yy)) continue;
+        if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
         const d = Math.abs(xx-tgt.x)+Math.abs(yy-tgt.y);
         if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
       }
     }
-    const step = bfsNextStep(st.structures, {x:u.x,y:u.y}, goals);
-    if (step){
-      u.x = step.x;
-      u.y = step.y;
+    const step = bfsNextStep(st.structures, {x:u.x,y:u.y}, goals, !!u.flying);
+    if (step){ u.x = step.x; u.y = step.y; }
+  }
+
+  // split deaths
+  const splitAdds = [];
+  for (const u of st.units||[]){
+    if (u.hp>0 || !u.splitInto || !u.splitCount) continue;
+    for (let i=0;i<u.splitCount;i++){
+      const spots = neighbors4(u.x,u.y).concat([{x:u.x,y:u.y}]).filter(s=>inside(s.x,s.y) && walkable(st.structures,s.x,s.y,false));
+      const spot = spots[i % Math.max(1,spots.length)] || {x:u.x,y:u.y};
+      splitAdds.push(newUnit(u.p, u.splitInto, spot.x, spot.y));
     }
+    pushFx(st, u.x, u.y, "🪨", "#93c5fd");
   }
 
   // structure AI: shoot nearest enemy unit
@@ -1170,6 +1339,7 @@ function tickSim(st){
   // clamp hp + remove dead units
   for (const s of (st.structures||[])) s.hp = Math.max(0, s.hp|0);
   st.units = (st.units||[]).filter(u=>u.hp>0);
+  if (typeof splitAdds !== "undefined" && splitAdds.length) st.units.push(...splitAdds);
 
   // crown awards on structure death transitions
   for (const s of (st.structures||[])){
@@ -1212,8 +1382,10 @@ function startHostLoop(){
         // waiting -> battle (fresh 3-min match)
         if (st.phase === "waiting" && players.length>=2){
           const now = Date.now();
-          const deck0 = seededShuffle(BASE_DECK, gameId + ":p0");
-          const deck1 = seededShuffle(BASE_DECK, gameId + ":p1");
+          const p0Name = players[0] || "p0";
+          const p1Name = players[1] || "p1";
+          const deck0 = seededShuffle(deckForPlayer(p0Name), gameId + ":p0");
+          const deck1 = seededShuffle(deckForPlayer(p1Name), gameId + ":p1");
           tx.set(stateRef, {
             ...st,
             phase:"battle",
@@ -1229,7 +1401,9 @@ function startHostLoop(){
             structures: initialStructures(),
             units:[],
             orders:[],
-            fx:[]
+            fx:[],
+            auras:[],
+            eloApplied:false
           }, { merge:true });
           return;
         }
@@ -1246,6 +1420,28 @@ function startHostLoop(){
   }, TICK_MS);
 }
 
+
+function expectedScore(a,b){ return 1/(1+Math.pow(10,(b-a)/400)); }
+async function applyEloIfNeeded(st){
+  if (!isHost || !st || st.phase!=="gameover" || st.eloApplied) return;
+  const p0 = st.players?.[0], p1 = st.players?.[1];
+  if (!p0 || !p1) return;
+  const w = st.winner;
+  await runTransaction(db, async (tx)=>{
+    const lobSnap = await tx.get(lobbyRef);
+    const lob = lobSnap.exists()?lobSnap.data():{};
+    const eloMap = { ...(lob.eloMap||{}) };
+    const r0 = eloMap[p0]||1000, r1 = eloMap[p1]||1000;
+    const e0 = expectedScore(r0,r1), e1 = expectedScore(r1,r0);
+    const s0 = w===0?1:w===1?0:0.5;
+    const s1 = w===1?1:w===0?0:0.5;
+    eloMap[p0] = Math.max(600, Math.round(r0 + ELO_K*(s0-e0)));
+    eloMap[p1] = Math.max(600, Math.round(r1 + ELO_K*(s1-e1)));
+    tx.set(lobbyRef, { eloMap, updatedAt: Date.now() }, { merge:true });
+    tx.set(stateRef, { eloApplied:true }, { merge:true });
+  });
+}
+
 /* ---------------- Rendering ---------------- */
 let uiClock = null;
 function pad2(n){ return String(n).padStart(2,"0"); }
@@ -1258,7 +1454,6 @@ function fmtMMSS(ms){
 
 function render(){
   if (!S){
-    phaseText.textContent = "—";
     timerText.textContent = "—";
     crownText.textContent = "0–0";
     return;
@@ -1269,8 +1464,11 @@ function render(){
   const opp = players[1-meIndex] || (players.length<2 ? "Waiting…" : "Opponent");
   meNameEl.textContent = me;
   oppNameEl.textContent = opp;
+  const meElo = lobbyMeta.eloMap?.[me] || 1000;
+  const oppElo = lobbyMeta.eloMap?.[opp] || 1000;
+  meEloEl.textContent = `ELO ${meElo}`;
+  oppEloEl.textContent = `ELO ${oppElo}`;
 
-  phaseText.textContent = S.phase || "—";
 
   // timer + crowns
   const c0 = S.crowns?.[0] ?? 0;
@@ -1286,7 +1484,7 @@ function render(){
   }
 
   if (S.phase === "waiting"){
-    hint("Waiting for a second player to join…");
+    hint("Build your 8-card deck below while waiting for opponent.");
   } else if (S.phase === "battle"){
     hint(selectedCard ? `Selected: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a card, then tap a tile to play.");
   } else if (S.phase === "gameover"){
@@ -1306,15 +1504,23 @@ function render(){
   elixirNum.textContent = String(Math.floor(e));
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
 
-  // cards
+  // cards / deck builder
   const pk = (meIndex===0) ? "p0" : "p1";
   const hand = (S.hand && S.hand[pk]) ? S.hand[pk] : [];
+  const myElo = lobbyMeta.eloMap?.[username] || 1000;
+  const myDeck = deckForPlayer(username);
   cardsEl.innerHTML = "";
-  for (const cid of hand){
+
+  const sourceCards = (S.phase === "waiting") ? CARD_POOL : hand;
+  for (const cid of sourceCards){
     const c = CARDS[cid];
     if (!c) continue;
+    const req = ELO_REQ[cid] || 0;
+    const locked = req > myElo;
+    const inDeck = myDeck.includes(cid);
     const el = document.createElement("div");
-    el.className = "card" + (selectedCard===cid ? " sel" : "");
+    const selected = (S.phase === "waiting") ? inDeck : selectedCard===cid;
+    el.className = "card" + (selected ? " sel" : "");
     el.innerHTML = `
       <div class="top">
         <div class="name">${c.name}</div>
@@ -1324,15 +1530,23 @@ function render(){
         <div class="emoji">${c.emoji}</div>
         <div class="type">${c.kind} • ${c.place==="friendly" ? "your side" : "anywhere"}</div>
       </div>
-      <div class="rule">${c.kind==="troop" ? "Spawns units that march + fight." : "Instant effect at target tile."}</div>
+      <div class="rule">${locked ? `Requires ELO ${req}` : (S.phase==="waiting" ? (inDeck?"Tap to remove from deck":"Tap to add to deck") : (c.kind==="troop" ? "Spawns units that march + fight." : "Tap card, then tap board to cast."))}</div>
     `;
-    el.addEventListener("click", ()=>{
-      if (S.phase !== "battle"){ toast("Match not active."); return; }
-      if (selectedCard === cid){
-        selectedCard = null;
-        cancelBtn.style.display="none";
-        render(); return;
+    el.style.opacity = locked ? ".45" : "1";
+    el.addEventListener("click", async ()=>{
+      if (locked){ toast(`Requires ELO ${req}`); return; }
+      if (S.phase === "waiting"){
+        const next = myDeck.slice();
+        const i = next.indexOf(cid);
+        if (i>=0) next.splice(i,1); else if (next.length<8) next.push(cid);
+        if (next.length===0){ toast("Deck needs at least 1 card"); return; }
+        try{ await updateDoc(lobbyRef, { [`deckMap.${username}`]: next, updatedAt: Date.now() }); }
+        catch(e){ console.warn(e); }
+        return;
       }
+      if (S.phase !== "battle"){ toast("Match not active."); return; }
+      if (!hand.includes(cid)){ toast("Card not in hand."); return; }
+      if (selectedCard === cid){ selectedCard = null; cancelBtn.style.display="none"; render(); return; }
       selectedCard = cid;
       cancelBtn.style.display="inline-block";
       render();
@@ -1340,7 +1554,7 @@ function render(){
     cardsEl.appendChild(el);
   }
 
-  cancelBtn.style.display = selectedCard ? "inline-block" : "none";
+  cancelBtn.style.display = (S.phase==="battle" && selectedCard) ? "inline-block" : "none";
 
   paintBoard();
   paintFx();
@@ -1373,6 +1587,7 @@ function paintBoard(){
 
       under.style.background = "transparent";
       piece.innerHTML = "";
+      piece.style.opacity = "1";
       hpFill.style.width = "0%";
       hpFill.className = "neutral";
 
@@ -1393,6 +1608,11 @@ function paintBoard(){
         const top = g[0];
         const svg = spriteForUnit(top.type);
         piece.innerHTML = wrapSprite(svg, top.p);
+        if (top.type==="assassin" && !top.revealed && top.p!==meIndex){
+          piece.style.opacity = ".25";
+        } else {
+          piece.style.opacity = "1";
+        }
 
         if (g.length > 1){
           const badge = document.createElement("div");
@@ -1472,6 +1692,7 @@ function startListeners(){
 
   onSnapshot(lobbyRef, async (snap)=>{
     const lob = snap.exists() ? snap.data() : {};
+    lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
     lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : lobbyPlayers;
     isHost = (lobbyPlayers[0] === username);
     await syncPlayersIntoStateIfNeeded();
@@ -1481,6 +1702,7 @@ function startListeners(){
   onSnapshot(stateRef, (snap)=>{
     if (!snap.exists()) return;
     S = snap.data();
+    applyEloIfNeeded(S).catch(console.warn);
     render();
   });
 
@@ -1511,7 +1733,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
