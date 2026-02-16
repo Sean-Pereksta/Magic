@@ -84,7 +84,15 @@
     position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:14;
     background:rgba(15,23,42,.58);padding:20px;
   }
+  #mobileRotateHint .panelWrap{position:relative;max-width:360px}
   #mobileRotateHint .panel{font-size:14px;color:var(--ink);max-width:360px;text-align:center;line-height:1.4}
+  #closeRotateHintBtn{
+    position:absolute;top:-8px;right:-8px;
+    width:32px;height:32px;border-radius:999px;
+    border:1px solid var(--line);background:rgba(255,255,255,.95);
+    color:var(--ink);font-size:20px;line-height:1;cursor:pointer;
+    display:grid;place-items:center;padding:0;
+  }
   #topButtons{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:12}
   .uiBtn{pointer-events:auto;border:1px solid var(--line);background:rgba(255,255,255,.86);border-radius:10px;padding:8px 10px;font-weight:700;cursor:pointer}
   #mobileControls{
@@ -145,9 +153,12 @@
     </div>
 
     <div id="mobileRotateHint">
-      <div class="panel">
-        <div style="font-weight:900;font-size:18px;margin-bottom:8px">Best in Landscape</div>
-        Turn your phone sideways before starting for better controls and visibility.
+      <div class="panelWrap">
+        <button id="closeRotateHintBtn" aria-label="Close rotate phone hint">×</button>
+        <div class="panel">
+          <div style="font-weight:900;font-size:18px;margin-bottom:8px">Best in Landscape</div>
+          Turn your phone sideways before starting for better controls and visibility.
+        </div>
       </div>
     </div>
 
@@ -196,6 +207,7 @@
   const stick = document.getElementById('stick');
   const jumpBtn = document.getElementById('jumpBtn');
   const mobileRotateHint = document.getElementById('mobileRotateHint');
+  const closeRotateHintBtn = document.getElementById('closeRotateHintBtn');
   const gameOverModal = document.getElementById('gameOverModal');
   const scoreList = document.getElementById('scoreList');
   const finalScoreText = document.getElementById('finalScoreText');
@@ -238,6 +250,12 @@
   const pressed = new Set();
   const mobileInput = {xAxis:0, down:false, jumpHeld:false, jumpQueued:false};
   const isMobileDevice = matchMedia('(hover:none) and (pointer:coarse)').matches;
+  let hideRotateHintUntilLandscape = false;
+
+  closeRotateHintBtn?.addEventListener('click', ()=>{
+    hideRotateHintUntilLandscape = true;
+    updateMobileRotateHint();
+  });
   let gameStarted = false;
   let gameScore = 0;
   let highScores = [];
@@ -315,7 +333,8 @@
   function updateMobileRotateHint(){
     if(!isMobileDevice || !mobileRotateHint) return;
     const portrait = window.innerHeight > window.innerWidth;
-    mobileRotateHint.style.display = (!gameStarted && portrait) ? 'flex' : 'none';
+    if(!portrait) hideRotateHintUntilLandscape = false;
+    mobileRotateHint.style.display = (!gameStarted && portrait && !hideRotateHintUntilLandscape) ? 'flex' : 'none';
   }
   addEventListener('resize', updateMobileRotateHint);
   addEventListener('orientationchange', updateMobileRotateHint);
