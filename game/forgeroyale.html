@@ -38,13 +38,26 @@
 
   .topbar{
     height:var(--topH);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:10px 12px;
+    display:grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items:center;
+    padding:8px 12px;
     background: linear-gradient(90deg,#020617,#070a12,#0b1020);
     border-bottom:1px solid rgba(148,163,184,.25);
     box-shadow:0 16px 40px rgba(0,0,0,.55);
     gap:10px;
+    position:relative;
+    z-index:50;
   }
+  .leftTools{justify-self:start; display:flex; align-items:center; gap:8px;}
+  .centerHud{
+    justify-self:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .playerMeta{justify-self:end; display:flex; align-items:center; gap:8px;}
   .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
   .badge{
     display:inline-flex; align-items:center; gap:8px;
@@ -74,6 +87,10 @@
   }
   .btn:hover{border-color:var(--accent)}
   .btn:active{transform:translateY(1px)}
+  .btn.fullscreenBtn{
+    border-color: rgba(56,189,248,.65);
+    box-shadow: 0 0 0 1px rgba(56,189,248,.25) inset;
+  }
 
   .wrap{
     height: calc(100dvh - var(--topH) - var(--hudH));
@@ -332,6 +349,38 @@
   .draftBar{ display:none; align-items:center; justify-content:space-between; gap:10px; }
   .draftInfo{ font-size:.84rem; color:var(--muted); font-weight:800; }
 
+  .draftOverlay{
+    position:fixed;
+    inset:0;
+    z-index:80;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:12px;
+    background: rgba(2,6,23,.62);
+    backdrop-filter: blur(8px);
+  }
+  .draftOverlay.show{ display:flex; }
+  .draftPanel{
+    width:min(920px, 96vw);
+    max-height:min(78dvh, 700px);
+    border-radius:18px;
+    background: linear-gradient(180deg, rgba(8,13,26,.94), rgba(2,6,23,.96));
+    border:1px solid rgba(148,163,184,.30);
+    box-shadow:0 28px 70px rgba(0,0,0,.6);
+    padding:12px;
+    display:grid;
+    grid-template-rows:auto auto 1fr;
+    gap:10px;
+  }
+  .draftHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+  .draftTitle{font-size:1rem; font-weight:1000; letter-spacing:.03em;}
+  .draftCardScroll{
+    overflow:auto;
+    padding-right:4px;
+  }
+  .draftCardScroll .cards{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+
   .toast{
     position:fixed;
     left:50%;
@@ -371,23 +420,52 @@
   }
 
   @media (max-width: 520px){
-    :root{ --cell:46px; --gap:3px; --topH:60px; --hudH:132px; }
+    :root{ --cell:46px; --gap:3px; --topH:70px; --hudH:132px; }
     .badge{font-size:.80rem; padding:6px 10px}
     .btn{font-size:.80rem; padding:7px 10px}
     .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
     .card{padding:7px 6px;}
     .card .emoji{font-size:26px}
     .sprite, .sprite svg{width:40px; height:40px}
+    .topbar{
+      grid-template-columns: 1fr;
+      justify-items:center;
+      padding:8px 58px 8px 58px;
+      height:auto;
+      min-height:var(--topH);
+    }
+    .leftTools,
+    .playerMeta{justify-self:center;}
+    .playerMeta{
+      width:100%;
+      justify-content:center;
+      overflow:auto;
+      padding-bottom:2px;
+    }
+    .btn.fullscreenBtn{
+      position:fixed;
+      left:10px;
+      top:50%;
+      transform:translateY(-50%);
+      z-index:85;
+      background:rgba(2,6,23,.9);
+      padding:10px 12px;
+    }
+    .draftPanel{max-height:min(82dvh, 760px);}
+    .draftCardScroll .cards{ grid-template-columns:repeat(3,minmax(0,1fr)); }
   }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <div class="row">
+    <div class="leftTools">
+      <button id="fullscreenBtn" class="btn fullscreenBtn" title="Toggle fullscreen">⛶ Full</button>
+    </div>
+    <div class="centerHud">
       <span id="crownBadge" class="badge"><small>👑</small> <span id="crownText">0–0</span></span>
       <span id="timerBadge" class="badge"><small>⏱</small> <span id="timerText">—</span></span>
     </div>
-    <div class="row">
+    <div class="playerMeta">
       <span id="meBadge" class="badge"><small>You</small> <span id="meName">—</span> <small id="meElo">ELO —</small></span>
       <span id="oppBadge" class="badge"><small>Opp</small> <span id="oppName">—</span> <small id="oppElo">ELO —</small></span>
     </div>
@@ -426,6 +504,19 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="draftOverlay" id="draftOverlay">
+    <div class="draftPanel">
+      <div class="draftHeader">
+        <div class="draftTitle">⚔️ Draft your 8-card battle deck</div>
+        <button id="readyBtnOverlay" class="btn">✅ Ready</button>
+      </div>
+      <div class="draftInfo" id="draftInfoOverlay">Pick up to 8 cards.</div>
+      <div class="draftCardScroll">
+        <div class="cards" id="draftCards"></div>
+      </div>
+    </div>
+  </div>
 
 <script type="module">
 /* ---------------- Firebase ---------------- */
@@ -480,6 +571,11 @@ const elixirWrap= $("elixirWrap");
 const draftBar = $("draftBar");
 const draftInfo= $("draftInfo");
 const readyBtn  = $("readyBtn");
+const draftOverlay = $("draftOverlay");
+const draftInfoOverlay = $("draftInfoOverlay");
+const readyBtnOverlay = $("readyBtnOverlay");
+const draftCardsEl = $("draftCards");
+const fullscreenBtn = $("fullscreenBtn");
 const hintEl    = $("hint");
 const toastEl   = $("toast");
 const cancelBtn = $("cancelBtn");
@@ -541,6 +637,12 @@ const CARDS = {
              unit:{ hp:22, dmg:5, range:3, cdMs:1000, spdMs:560, targets:"all", canHitAir:true, flying:true, airPriority:true } },
   wyvern:{ id:"wyvern", name:"Wyvern", emoji:"🪶", kind:"troop", cost:4, place:"friendly", spawn:1,
              unit:{ hp:20, dmg:4, range:3, cdMs:900, spdMs:540, targets:"all", canHitAir:false, flying:true } },
+  paladin:{ id:"paladin", name:"Paladin", emoji:"🛡️", kind:"troop", cost:5, place:"friendly", spawn:1,
+             unit:{ hp:34, dmg:4, range:1, cdMs:1000, spdMs:560, targets:"all", canHitAir:false, auraArmor:true } },
+  musketeer:{ id:"musketeer", name:"Musketeer", emoji:"🎯", kind:"troop", cost:4, place:"friendly", spawn:1,
+             unit:{ hp:16, dmg:7, range:4, cdMs:1200, spdMs:620, targets:"all", canHitAir:true } },
+  bomber:{ id:"bomber", name:"Bomber", emoji:"💣", kind:"troop", cost:3, place:"friendly", spawn:1,
+             unit:{ hp:11, dmg:6, range:3, cdMs:1100, spdMs:640, targets:"ground", canHitAir:false, splash:1 } },
 
   fireball:{ id:"fireball",name:"Fireball",emoji:"🔥", kind:"spell", cost:4, place:"any",
              spell:{ dmg:18, radius:1 } },
@@ -549,6 +651,7 @@ const CARDS = {
   heal:    { id:"heal",    name:"Heal",    emoji:"💚", kind:"spell", cost:3, place:"any",
              spell:{ heal:16, radius:1 } },
   log:     { id:"log", name:"Log", emoji:"🪵", kind:"spell", cost:2, place:"any", spell:{ lineDmg:10 } },
+  blizzard:{ id:"blizzard", name:"Blizzard", emoji:"❄️", kind:"spell", cost:4, place:"any", spell:{ dmg:10, radius:2, stunMs:1800 } },
   haste:   { id:"haste", name:"Haste", emoji:"💨", kind:"spell", cost:3, place:"any", spell:{ aura:{ type:"haste", radius:1, ttlMs:7000, speedMult:.65 } } },
   armor:   { id:"armor", name:"Armor", emoji:"🛡️", kind:"spell", cost:3, place:"any", spell:{ aura:{ type:"armor", radius:1, ttlMs:7000, dmgTakenMult:.5 } } },
   healingAura:{ id:"healingAura", name:"Healing Aura", emoji:"✨", kind:"spell", cost:4, place:"any", spell:{ aura:{ type:"heal", radius:1, ttlMs:8000, healPctPerSec:.05 } } }
@@ -1160,7 +1263,7 @@ function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL){
   st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl});
 }
 function attackGlyph(type){
-  return ({ knight:"⚔️", archers:"🏹", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴" })[type] || "⚔️";
+  return ({ knight:"⚔️", archers:"🏹", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥" })[type] || "⚔️";
 }
 function awardCrown(st, destroyedStructure){
   const scorer = (destroyedStructure.p===0) ? 1 : 0;
@@ -1564,19 +1667,27 @@ function render(){
   elixirNum.textContent = String(Math.floor(e));
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
   elixirWrap.style.display = (S.phase==="battle") ? "flex" : "none";
-  draftBar.style.display = (S.phase==="waiting" && players.length>=2) ? "flex" : "none";
+  const isDrafting = (S.phase==="waiting" && players.length>=2);
+  draftBar.style.display = isDrafting ? "none" : "none";
+  draftOverlay.classList.toggle("show", isDrafting);
   const myDeck = deckForPlayer(username);
   const deckCount = myDeck.length;
   const rm = S.readyMap || {};
   const readyCount = players.filter(n=>rm[n]).length;
-  draftInfo.textContent = `Deck ${deckCount}/8 • Ready ${readyCount}/${Math.min(players.length,2)} • ${fmtMMSS((S.draftEndsAt||Date.now())-Date.now())}`;
-  readyBtn.textContent = rm[username] ? "✅ Ready" : "Ready";
+  const draftText = `Deck ${deckCount}/8 • Ready ${readyCount}/${Math.min(players.length,2)} • ${fmtMMSS((S.draftEndsAt||Date.now())-Date.now())}`;
+  draftInfo.textContent = draftText;
+  draftInfoOverlay.textContent = draftText;
+  const readyLabel = rm[username] ? "✅ Ready" : "Ready";
+  readyBtn.textContent = readyLabel;
+  readyBtnOverlay.textContent = readyLabel;
 
   // cards / deck builder
   const pk = (meIndex===0) ? "p0" : "p1";
   const hand = (S.hand && S.hand[pk]) ? S.hand[pk] : [];
   const myElo = lobbyMeta.eloMap?.[username] || 1000;
   cardsEl.innerHTML = "";
+  draftCardsEl.innerHTML = "";
+  const activeCardsEl = isDrafting ? draftCardsEl : cardsEl;
 
   const sourceCards = (S.phase === "waiting") ? CARD_POOL : hand;
   for (const cid of sourceCards){
@@ -1611,7 +1722,7 @@ function render(){
       cancelBtn.style.display="inline-block";
       render();
     });
-    cardsEl.appendChild(el);
+    activeCardsEl.appendChild(el);
   }
 
   cancelBtn.style.display = (S.phase==="battle" && selectedCard) ? "inline-block" : "none";
@@ -1626,6 +1737,20 @@ readyBtn.addEventListener("click", async ()=>{
   try{
     await updateDoc(stateRef, { [`readyMap.${username}`]: !(S.readyMap?.[username]), lastReadyAt: Date.now() });
   }catch(e){ console.warn(e); toast("Ready update failed"); }
+});
+readyBtnOverlay.addEventListener("click", async ()=>{
+  if (!S || S.phase!=="waiting") return;
+  if ((S.players||[]).length<2){ toast("Waiting for opponent"); return; }
+  try{
+    await updateDoc(stateRef, { [`readyMap.${username}`]: !(S.readyMap?.[username]), lastReadyAt: Date.now() });
+  }catch(e){ console.warn(e); toast("Ready update failed"); }
+});
+
+fullscreenBtn.addEventListener("click", async ()=>{
+  try{
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  }catch(e){ console.warn(e); toast("Fullscreen unavailable on this device."); }
 });
 
 cancelBtn.addEventListener("click", ()=>{
@@ -1816,7 +1941,6 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
 
