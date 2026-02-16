@@ -86,7 +86,7 @@
     background:rgba(255,255,255,.86);border:1px solid var(--line);border-radius:999px;
     box-shadow:0 8px 22px rgba(15,23,42,.10);pointer-events:none;
   }
-  #topButtons{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:12}
+  #topButtons{position:absolute;top:24px;right:10px;display:flex;gap:8px;z-index:12}
   .uiBtn{pointer-events:auto;border:1px solid var(--line);background:rgba(255,255,255,.86);border-radius:10px;padding:8px 10px;font-weight:700;cursor:pointer}
   #mobileControls{
     position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:end;
@@ -245,6 +245,8 @@
 
   function startGame(){
     if(GAME_OVER) return;
+    last = performance.now()/1000;
+    acc = 0;
     setGameStarted(true);
   }
 
@@ -3360,7 +3362,8 @@ function drawJesus(p){
     last = now;
 
     dt = Math.min(0.06, Math.max(0, dt));
-    acc += dt;
+    if(gameStarted) acc += dt;
+    else acc = 0;
 
     let steps = 0;
     while(gameStarted && acc >= FIXED_DT && steps < MAX_STEPS){
