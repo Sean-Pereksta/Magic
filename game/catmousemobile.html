@@ -1,4 +1,4 @@
-<!DOCTYPE html>  
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -928,7 +928,21 @@ function listen(){
   onSnapshot(structsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>{ const v=d.data(); m.set(key(v.x,v.y),v); }); structures=m; render(); });
   onSnapshot(ratsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); rats=m; render(); });
   onSnapshot(bearsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); bears=m; render(); });
-  onSnapshot(catsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); caterpillars=m; render(); });
+  onSnapshot(catsCol,(snap)=>{
+    const m=new Map();
+    snap.forEach(d=>{
+      const data=d.data();
+      const hostOwner = data.host || gameDoc.host;
+      if (I_AM_HOST && data.host && data.host!==myName){
+        safeDelete(doc(catsCol,d.id));
+        return;
+      }
+      if (hostOwner && gameDoc.host && hostOwner!==gameDoc.host) return;
+      m.set(d.id,data);
+    });
+    caterpillars=m;
+    render();
+  });
   onSnapshot(crowsCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); crows=m; render(); });
   onSnapshot(corpsesCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(key(d.data().x,d.data().y), d.id)); corpses=m; render(); });
   onSnapshot(fleasCol,(snap)=>{ const m=new Map(); snap.forEach(d=>m.set(d.id,d.data())); fleas=m; render(); });
@@ -1189,12 +1203,50 @@ async function hostBearsThink(){
 }
 async function hostCaterpillarsThink(){
   if (!I_AM_HOST) return;
+  const reservedTargets = new Set();
+  const reservedMoves = new Set();
+
   for(const [id,c] of caterpillars){
     if (isFrozen(c)) continue;
-    const st=nearestStructureFrom(c.x,c.y); if (!st) continue;
+
+    const st=nearestStructureFrom(c.x,c.y);
+    if (!st) continue;
+
+    const targetKey = key(st.x, st.y);
+    if (reservedTargets.has(targetKey)) continue;
+
     const p=findPath(c.x,c.y,st.x,st.y,true);
-    if (p && p.length>1){ const s=p[1]; await safeUpdate(doc(catsCol,id),{x:s[0],y:s[1]}); }
-    if (c.x===st.x && c.y===st.y){ await damageStructureHost(c.x,c.y,20); await safeDelete(doc(catsCol,id)); }
+    let nextX = c.x;
+    let nextY = c.y;
+    if (p && p.length>1){
+      const s1=p[1];
+      const moveKey = key(s1[0], s1[1]);
+      if (!reservedMoves.has(moveKey)){
+        nextX = s1[0];
+        nextY = s1[1];
+        reservedMoves.add(moveKey);
+      }
+    }
+
+    const distAfterMove = manhattan(nextX,nextY,st.x,st.y);
+    const reachedTarget = (nextX===st.x && nextY===st.y);
+    const canStrike = distAfterMove<=1 || reachedTarget;
+
+    if (nextX!==c.x || nextY!==c.y){
+      await safeUpdate(doc(catsCol,id),{x:nextX,y:nextY,lastHostTick:Date.now()});
+    }
+
+    if (canStrike){
+      reservedTargets.add(targetKey);
+      await damageStructureHost(st.x,st.y,20);
+
+      const hpNow = Math.max(0, (c.hp||12) - 6);
+      if (hpNow<=0){
+        await safeDelete(doc(catsCol,id));
+      } else {
+        await safeUpdate(doc(catsCol,id),{hp:hpNow,lastHostTick:Date.now()});
+      }
+    }
   }
 }
 async function hostCrowsThink(){
@@ -1803,7 +1855,8 @@ async function hostSpawnCaterpillars(){
   if (Math.random()<0.5){
     const x = 2 + Math.floor(Math.random()*(gridSize-4));
     const y = 2 + Math.floor(Math.random()*(gridSize-4));
-    if (!isBlocked(x,y)) await addDoc(catsCol,{x,y,hp:12,max:12});
+    const occupied = [...caterpillars].some(([,c])=>c.x===x && c.y===y);
+    if (!isBlocked(x,y) && !occupied) await addDoc(catsCol,{x,y,hp:12,max:12,host:myName,spawnedAt:Date.now()});
   }
 }
 async function hostSpawnCrows(){
