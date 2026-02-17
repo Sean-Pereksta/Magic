@@ -671,7 +671,10 @@ signInAnonymously(auth).catch(console.error);
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
-if (!gameId || !username) alert("Missing gameId or username in URL.");
+if (!gameId || !username){
+  alert("Missing gameId or username in URL.");
+  throw new Error("Forge Royale requires both gameId and username query params.");
+}
 
 /* Lobby + state refs */
 const lobbyRef = doc(db, "lobbies", gameId);
@@ -1223,8 +1226,8 @@ function getCellCenter(x,y){
   const cell = getCell(x,y);
   if(!cell) return null;
   const rect = cell.getBoundingClientRect();
-  const vr = viewport.getBoundingClientRect();
-  return { x: rect.left - vr.left + rect.width/2, y: rect.top - vr.top + rect.height/2 };
+  const fxRect = fxEl.getBoundingClientRect();
+  return { x: rect.left - fxRect.left + rect.width/2, y: rect.top - fxRect.top + rect.height/2 };
 }
 function fxPop(x,y,text,color,cls="",ttl=750){
   const c = getCellCenter(x,y);
@@ -2464,4 +2467,3 @@ readyBtnOverlay.addEventListener("click", async ()=>{
 </script>
 </body>
 </html>
-
