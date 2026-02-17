@@ -2201,7 +2201,7 @@ function render(){
 
     const onCardPress = async (ev)=>{
       ev.preventDefault();
-      if (locked){ toast(\`Requires ELO ${req}\`); return; }
+      if (locked){ toast(`Requires ELO ${req}`); return; }
 
       if (S.phase === "waiting"){
         const current = Array.isArray(localDraftDeck) ? localDraftDeck.slice() : myDeck.slice();
@@ -2410,31 +2410,47 @@ onAuthStateChanged(auth, async (user)=>{
   await ensureStateExists();
 
   // lobby listener
-  onSnapshot(lobbyRef, (snap)=>{
-    const lob = snap.exists()?snap.data():{};
-    lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
-    lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
-    meIndex = lobbyPlayers.indexOf(username);
-    if (meIndex<0) meIndex=0;
-    const newHost = (lobbyPlayers[0] === username);
-    if (newHost !== isHost){
-      isHost = newHost;
+  onSnapshot(
+    lobbyRef,
+    (snap)=>{
+      const lob = snap.exists()?snap.data():{};
+      lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
+      lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
+      meIndex = lobbyPlayers.indexOf(username);
+      if (meIndex<0) meIndex=0;
+      const newHost = (lobbyPlayers[0] === username);
+      if (newHost !== isHost){
+        isHost = newHost;
+        stopHostLoop();
+        if (isHost) startHostLoop();
+      } else {
+        if (isHost) startHostLoop();
+      }
+      render();
+    },
+    (err)=>{
+      console.warn(err);
+      toast("Lobby permission denied. Rejoin from the lobby link.");
       stopHostLoop();
-      if (isHost) startHostLoop();
-    } else {
-      if (isHost) startHostLoop();
     }
-    render();
-  });
+  );
 
   // state listener
-  onSnapshot(stateRef, async (snap)=>{
-    if (!snap.exists()) return;
-    S = snap.data();
-    render();
-    if (isHost) applyEloIfNeeded(S);
-    if (isHost) startHostLoop();
-  });
+  onSnapshot(
+    stateRef,
+    async (snap)=>{
+      if (!snap.exists()) return;
+      S = snap.data();
+      render();
+      if (isHost) applyEloIfNeeded(S);
+      if (isHost) startHostLoop();
+    },
+    (err)=>{
+      console.warn(err);
+      toast("Game state access denied. Refresh or rejoin this match.");
+      stopHostLoop();
+    }
+  );
 });
 
 /* ---------------- Draft ready button ---------------- */
@@ -2448,5 +2464,4 @@ readyBtnOverlay.addEventListener("click", async ()=>{
 </script>
 </body>
 </html>
-
 
