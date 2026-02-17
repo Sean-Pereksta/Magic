@@ -16,8 +16,8 @@
     --p0:#60a5fa; /* blue side */
     --p1:#f87171; /* red side */
 
-    /* IMPORTANT: board sizing now comes ONLY from these vars (no inline overrides) */
-    --cell:32px;
+    /* IMPORTANT: board sizing */
+    --cell:34px;
     --gap:4px;
 
     --topH:52px;
@@ -34,7 +34,7 @@
     color:var(--txt);
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
     overflow:hidden;
-    touch-action:none;
+    touch-action:none; /* we do our own pan */
   }
 
   .topbar{
@@ -50,9 +50,7 @@
     position:relative;
     z-index:50;
   }
-  .leftTools,
-  .centerHud,
-  .playerMeta{display:flex; align-items:center; gap:8px;}
+  .playerMeta,.centerHud,.leftTools{display:flex; align-items:center; gap:8px;}
   .centerHud{flex:1; justify-content:center;}
   .badge{
     display:inline-flex; align-items:center; gap:8px;
@@ -109,22 +107,23 @@
     padding:6px;
   }
 
+  /* IMPORTANT: make viewport a normal positioned box so pan uses top-left origin (not centered grid placement) */
   .viewport{
     width:100%;
     height:100%;
     position:relative;
     overflow:hidden;
-    display:grid;
-    place-items:center;
     user-select:none;
     border-radius:14px;
-    touch-action:none; /* we handle panning + pinch ourselves */
+    touch-action:none;
   }
 
+  /* canvas is absolute so transforms are exact */
   .canvas{
+    position:absolute;
+    left:0; top:0;
     transform-origin: 0 0;
     will-change: transform;
-    position:relative;
   }
 
   .grid{
@@ -240,12 +239,9 @@
     z-index:2;
   }
 
-  .under{
-    position:absolute; inset:0;
-    opacity:.95;
-  }
+  .under{ position:absolute; inset:0; opacity:.95; }
 
-  /* --- SPRITES (SVG) --- */
+  /* --- SPRITES --- */
   .piece{
     position:absolute; inset:0;
     display:grid; place-items:center;
@@ -253,10 +249,7 @@
     pointer-events:none;
     filter: drop-shadow(0 0 10px rgba(0,0,0,.65));
   }
-  .sprite{
-    width:44px; height:44px;
-    display:grid; place-items:center;
-  }
+  .sprite{ width:44px; height:44px; display:grid; place-items:center; }
   .sprite svg{width:44px; height:44px}
   .team0{ --team: var(--p0); }
   .team1{ --team: var(--p1); }
@@ -270,23 +263,13 @@
   .sprite .stone2{ fill:#64748b; }
   .sprite .wood{ fill:#a16207; }
   .sprite .cloth{ fill:#a855f7; }
-  .sprite .cloth2{ fill:#7c3aed; }
   .sprite .skin{ fill:#fde68a; }
-  .sprite .gob{ fill:#22c55e; }
-  .sprite .gob2{ fill:#16a34a; }
-  .sprite .giant{ fill:#c084fc; }
-  .sprite .giant2{ fill:#a855f7; }
-  .sprite .bone{ fill:#e2e8f0; }
-  .sprite .bone2{ fill:#cbd5e1; }
-  .sprite .slime{ fill:#c4b5fd; }
-  .sprite .slime2{ fill:#a78bfa; }
-  .sprite .fire{ fill:#fb923c; }
-  .sprite .fire2{ fill:#f97316; }
-  .sprite .ice{ fill:#bfdbfe; }
-  .sprite .ice2{ fill:#93c5fd; }
-  .sprite .poison{ fill:#86efac; }
-  .sprite .poison2{ fill:#4ade80; }
-  .sprite .gold{ fill:#fbbf24; }
+  .sprite .leaf{ fill:#22c55e; }
+  .sprite .leaf2{ fill:#16a34a; }
+  .sprite .magma{ fill:#fb923c; }
+  .sprite .ice{ fill:#93c5fd; }
+  .sprite .poison{ fill:#4ade80; }
+  .sprite .bone{ fill:#e5e7eb; }
 
   .piece .stack{
     position:absolute;
@@ -368,48 +351,26 @@
     color:#dbe8f8;
     display:grid;
     place-items:center;
-    gap:2px;
+    gap:1px;
     padding:4px 7px;
     font-weight:900;
     cursor:pointer;
   }
-  .trayCard .name{font-size:.57rem;max-width:84px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .trayCard .emoji{font-size:18px;line-height:1;}
+  .trayCard .name{font-size:.57rem;max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .trayCard .cost{font-size:.62rem; color:#c4b5fd;}
-  .trayCard .icon svg{width:26px;height:26px; display:block}
   .hudTop{display:flex; align-items:center; justify-content:space-between; gap:10px;}
-  .elixirWrap{
-    display:flex; align-items:center; gap:10px; width:100%;
-    max-width: 820px;
-  }
-  .elixirLabel{
-    font-weight:1000; letter-spacing:.02em;
-    color:#e5e7eb;
-    display:flex; align-items:center; gap:8px;
-    white-space:nowrap;
-  }
+  .elixirWrap{display:flex; align-items:center; gap:10px; width:100%; max-width: 820px;}
+  .elixirLabel{font-weight:1000; letter-spacing:.02em; color:#e5e7eb; display:flex; align-items:center; gap:8px; white-space:nowrap;}
   .elixirBar{
-    flex:1;
-    height:14px;
-    border-radius:999px;
+    flex:1; height:14px; border-radius:999px;
     background:rgba(255,255,255,.06);
     border:1px solid rgba(148,163,184,.18);
-    overflow:hidden;
-    position:relative;
+    overflow:hidden; position:relative;
   }
-  .elixirFill{
-    height:100%;
-    width:0%;
-    background: linear-gradient(90deg, rgba(168,85,247,.92), rgba(236,72,153,.92));
-    box-shadow:0 0 18px rgba(168,85,247,.45);
-  }
-  .elixirTicks{
-    position:absolute; inset:0;
-    display:grid;
-    grid-template-columns: repeat(10,1fr);
-    pointer-events:none;
-    opacity:.45;
-  }
-  .elixirTicks i{ border-right:1px solid rgba(255,255,255,.10); }
+  .elixirFill{height:100%; width:0%; background: linear-gradient(90deg, rgba(168,85,247,.92), rgba(236,72,153,.92)); box-shadow:0 0 18px rgba(168,85,247,.45);}
+  .elixirTicks{position:absolute; inset:0; display:grid; grid-template-columns: repeat(10,1fr); pointer-events:none; opacity:.45;}
+  .elixirTicks i{border-right:1px solid rgba(255,255,255,.10);}
 
   .cards{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; }
   .card{
@@ -447,7 +408,7 @@
     font-size:.70rem;
   }
   .card .mid{ margin-top:2px; display:grid; place-items:center; }
-  .card .icon svg{width:34px;height:34px; display:block}
+  .card .emoji{font-size:26px; line-height:1;}
   .card .lock{ font-size:.65rem; text-align:center; color:#fca5a5; font-weight:800; margin-top:4px; }
 
   .draftOverlay{
@@ -506,7 +467,6 @@
     font-weight:900;
   }
 
-  /* FX overlay */
   .fx{
     position:absolute;
     pointer-events:none;
@@ -541,7 +501,7 @@
     transform-origin:0 50%;
     border-radius:999px;
     background:linear-gradient(90deg, rgba(255,255,255,.05), currentColor 45%, rgba(255,255,255,.98));
-    box-shadow:0 0 12px currentColor;
+    box-shadow:0 0 12px currentColor, 0 0 20px color-mix(in srgb, currentColor 55%, white);
     animation: projectileLine var(--dur, 280ms) linear forwards;
   }
   .fxProjectile::after{
@@ -594,31 +554,28 @@
     100%{ transform:translateX(80px);}
   }
 
-  /* Mobile: significantly smaller tiles + default zoomed-out fit */
   @media (max-width: 720px){
-    :root{ --cell:22px; --gap:2px; --topH:46px; --hudH:182px; }
-    .grid{ padding:8px; border-radius:18px; }
+    /* smaller tiles so more board fits */
+    :root{ --cell:26px; --gap:2px; --topH:46px; --hudH:176px; }
     .badge{font-size:.72rem; padding:4px 8px}
     .btn{font-size:.72rem; padding:5px 8px}
     .wrap{height: calc(100dvh - var(--topH) - var(--hudH));}
     .hud{padding:6px; gap:6px;}
     .cards{grid-template-columns:repeat(4,minmax(0,1fr));}
-    .card{padding:9px 5px; min-height:86px;}
+    .card{padding:9px 5px; min-height:84px;}
+    .card .emoji{font-size:21px}
     .card .name{display:block; font-size:.59rem;}
     .sprite, .sprite svg{width:30px; height:30px}
-    .card .icon svg{width:28px;height:28px}
-    .selectedTray{min-height:54px;}
-    .trayCard{min-width:66px; min-height:42px;}
-    .topbar{
-      padding:5px 48px 5px 6px;
-      gap:4px;
-    }
+    .selectedTray{min-height:52px;}
+    .trayCard{min-width:62px; min-height:42px;}
+    .topbar{ padding:5px 48px 5px 6px; gap:4px; }
     .leftTools{position:absolute; right:6px; top:5px;}
     .playerMeta,.centerHud{gap:4px;}
     .playerBadgeName{max-width:72px;}
     #timerBadge{display:none;}
     #meBadge small:first-child,
     #oppBadge small:first-child{display:none;}
+    .btn.fullscreenBtn{ padding:5px 8px; }
     .draftPanel{max-height:min(82dvh, 760px);}
     .draftCardScroll .cards{ grid-template-columns:repeat(3,minmax(0,1fr)); }
   }
@@ -637,7 +594,6 @@
       <span id="oppBadge" class="badge"><small>Opp</small> <span id="oppName" class="playerBadgeName">—</span> <small id="oppElo">(1000)</small></span>
     </div>
     <div class="leftTools">
-      <button id="fitBtn" class="btn" title="Re-center + fit">⤢ Fit</button>
       <button id="fullscreenBtn" class="btn fullscreenBtn" title="Toggle fullscreen">⛶ Full</button>
     </div>
   </div>
@@ -647,8 +603,7 @@
       <div class="viewport" id="viewport">
         <div class="hint" id="hint"></div>
         <div class="canvas" id="canvas">
-          <!-- IMPORTANT: no inline --cell overrides anymore -->
-          <div class="grid" id="grid" style="--w:9"></div>
+          <div class="grid" id="grid" style="--w:9;"></div>
           <div class="fx" id="fx"></div>
         </div>
       </div>
@@ -669,7 +624,7 @@
       <button id="cancelBtn" class="btn" style="display:none">✖ Clear</button>
     </div>
 
-    <div class="selectedTray" id="selectedTray" title="Tap empty tray area to clear selection">
+    <div class="selectedTray" id="selectedTray">
       <span class="trayHint">Tap cards below to queue. Tap here to unselect.</span>
     </div>
 
@@ -694,10 +649,8 @@
 <script type="module">
 /* ---------------- Firebase ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -744,7 +697,6 @@ const draftInfoOverlay = $("draftInfoOverlay");
 const readyBtnOverlay = $("readyBtnOverlay");
 const draftCardsEl = $("draftCards");
 const fullscreenBtn = $("fullscreenBtn");
-const fitBtn = $("fitBtn");
 const hintEl    = $("hint");
 const toastEl   = $("toast");
 const cancelBtn = $("cancelBtn");
@@ -755,33 +707,29 @@ const fxEl      = $("fx");
 let W=9, H=12;
 gridEl.style.setProperty("--w", W);
 
-function keyXY(x,y){ return `${x},${y}`; }
-function inside(x,y){ return x>=0 && x<W && y>=0 && y<H; }
-
 const RIVER_Y0 = 5, RIVER_Y1 = 6;
+function keyXY(x,y){ return `${x},${y}`; }
 const BRIDGES = new Set([ keyXY(2,RIVER_Y0), keyXY(2,RIVER_Y1), keyXY(6,RIVER_Y0), keyXY(6,RIVER_Y1) ]);
-
-function isRiver(x,y){
-  return (y===RIVER_Y0 || y===RIVER_Y1) && !BRIDGES.has(keyXY(x,y));
-}
+function inside(x,y){ return x>=0 && x<W && y>=0 && y<H; }
+function isRiver(x,y){ return (y===RIVER_Y0 || y===RIVER_Y1) && !BRIDGES.has(keyXY(x,y)); }
 function isBridge(x,y){ return BRIDGES.has(keyXY(x,y)); }
 
 /* Deploy zones */
 function onMySide(p, x, y){
-  if (p===0) return y >= (RIVER_Y1+1);   // bottom
-  return y <= (RIVER_Y0-1);             // top
+  if (p===0) return y >= (RIVER_Y1+1);
+  return y <= (RIVER_Y0-1);
 }
 
 /* ---------------- Cards ---------------- */
 const CARDS = {
   knight:  { id:"knight",  name:"Knight",  emoji:"🗡️", kind:"troop", cost:3, place:"friendly", spawn:1,
-             unit:{ hp:22, dmg:5, range:1, cdMs:900,  spdMs:520, targets:"all", canHitAir:false } },
+             unit:{ hp:22, dmg:5, range:1, cdMs:900, spdMs:520, targets:"all", canHitAir:false } },
   archers: { id:"archers", name:"Archers", emoji:"🏹", kind:"troop", cost:3, place:"friendly", spawn:2,
              unit:{ hp:12, dmg:4, range:3, cdMs:1100, spdMs:560, targets:"all", canHitAir:true } },
   flameArchers: { id:"flameArchers", name:"Flame Archers", emoji:"🔥", kind:"troop", cost:4, place:"friendly", spawn:2,
              unit:{ hp:12, dmg:3, range:3, cdMs:1450, spdMs:580, targets:"all", canHitAir:true, burnMs:3000, burnDps:2 } },
   goblins: { id:"goblins", name:"Goblins", emoji:"🟢", kind:"troop", cost:2, place:"friendly", spawn:3,
-             unit:{ hp:8,  dmg:3, range:1, cdMs:700,  spdMs:480, targets:"all", canHitAir:false } },
+             unit:{ hp:8,  dmg:3, range:1, cdMs:700, spdMs:480, targets:"all", canHitAir:false } },
   giant:   { id:"giant",   name:"Giant",   emoji:"🪨", kind:"troop", cost:5, place:"friendly", spawn:1,
              unit:{ hp:48, dmg:6, range:1, cdMs:1200, spdMs:620, targets:"buildings", canHitAir:false } },
   wizard:  { id:"wizard",  name:"Wizard",  emoji:"🧙", kind:"troop", cost:4, place:"friendly", spawn:1,
@@ -789,7 +737,7 @@ const CARDS = {
   golem:   { id:"golem", name:"Golem", emoji:"🪨", kind:"troop", cost:6, place:"friendly", spawn:1,
              unit:{ hp:64, dmg:8, range:1, cdMs:1500, spdMs:760, targets:"all", canHitAir:false, splitInto:"miniGolem", splitCount:2 } },
   miniGolem:{ id:"miniGolem", name:"Mini Golem", emoji:"🧱", kind:"troop", cost:0, place:"friendly", spawn:1, hidden:true,
-             unit:{ hp:18, dmg:4, range:1, cdMs:900,  spdMs:540, targets:"all", canHitAir:false } },
+             unit:{ hp:18, dmg:4, range:1, cdMs:900, spdMs:540, targets:"all", canHitAir:false } },
   barbarian:{ id:"barbarian", name:"Barbarian", emoji:"🪓", kind:"troop", cost:4, place:"friendly", spawn:1,
              unit:{ hp:26, dmg:5, range:1, cdMs:1100, spdMs:510, targets:"all", canHitAir:false, cleaveRadius:1 } },
   necromancer:{ id:"necromancer", name:"Necromancer", emoji:"☠️", kind:"troop", cost:5, place:"friendly", spawn:1,
@@ -804,7 +752,7 @@ const CARDS = {
              unit:{ hp:24, dmg:4, range:1, cdMs:820, spdMs:520, targets:"all", canHitAir:false } },
   frostMage:{ id:"frostMage", name:"Frost Mage", emoji:"🧊", kind:"troop", cost:4, place:"friendly", spawn:1,
              unit:{ hp:15, dmg:3, range:3, cdMs:1050, spdMs:610, targets:"all", canHitAir:true, slowMs:2200 } },
-  assassin:{ id:"assassin", name:"Assassin", emoji:"🗡️", kind:"troop", cost:4, place:"any", spawn:1,
+  assassin:{ id:"assassin", name:"Assassin", emoji:"🗡️", kind:"troop", cost:4, place:"any", spawn:1, rareEnemySide:true,
              unit:{ hp:14, dmg:4, range:1, cdMs:700, spdMs:450, targets:"all", canHitAir:false, stealth:true, firstHitDmg:12 } },
   dragon:{ id:"dragon", name:"Dragon", emoji:"🐉", kind:"troop", cost:6, place:"friendly", spawn:1,
              unit:{ hp:32, dmg:6, range:3, cdMs:1200, spdMs:600, targets:"all", canHitAir:true, flying:true, splash:1 } },
@@ -827,12 +775,9 @@ const CARDS = {
   priest:{ id:"priest", name:"Priest", emoji:"⛪", kind:"troop", cost:4, place:"friendly", spawn:1,
              unit:{ hp:18, dmg:0, range:1, cdMs:1150, spdMs:520, targets:"none", canHitAir:false, healAmount:5, healOnlyTroops:true } },
 
-  fireball:{ id:"fireball",name:"Fireball",emoji:"🔥", kind:"spell", cost:4, place:"any",
-             spell:{ dmg:18, radius:1 } },
-  zap:     { id:"zap",     name:"Zap",     emoji:"⚡", kind:"spell", cost:2, place:"any",
-             spell:{ dmg:9, radius:1, stunMs:1200 } },
-  heal:    { id:"heal",    name:"Heal",    emoji:"💚", kind:"spell", cost:3, place:"any",
-             spell:{ heal:16, radius:1 } },
+  fireball:{ id:"fireball",name:"Fireball",emoji:"🔥", kind:"spell", cost:4, place:"any", spell:{ dmg:18, radius:1 } },
+  zap:     { id:"zap",     name:"Zap",     emoji:"⚡", kind:"spell", cost:2, place:"any", spell:{ dmg:9, radius:1, stunMs:1200 } },
+  heal:    { id:"heal",    name:"Heal",    emoji:"💚", kind:"spell", cost:3, place:"any", spell:{ heal:16, radius:1 } },
   log:     { id:"log", name:"Log", emoji:"🪵", kind:"spell", cost:2, place:"any", spell:{ lineDmg:10 } },
   blizzard:{ id:"blizzard", name:"Blizzard", emoji:"❄️", kind:"spell", cost:4, place:"any", spell:{ dmg:10, radius:2, stunMs:1800 } },
   quake:   { id:"quake", name:"Quake", emoji:"🌎", kind:"spell", cost:4, place:"any", spell:{ dmg:12, radius:2, stunMs:800 } },
@@ -840,372 +785,228 @@ const CARDS = {
   armor:   { id:"armor", name:"Armor", emoji:"🛡️", kind:"spell", cost:3, place:"any", spell:{ aura:{ type:"armor", radius:1, ttlMs:7000, dmgTakenMult:.5 } } },
   healingAura:{ id:"healingAura", name:"Healing Aura", emoji:"✨", kind:"spell", cost:4, place:"any", spell:{ aura:{ type:"heal", radius:1, ttlMs:8000, healPctPerSec:.05 } } }
 };
-
 const CARD_POOL = Object.values(CARDS).filter(c=>!c.hidden).map(c=>c.id);
 const BASE_DECK = ["knight","archers","goblins","giant","wizard","fireball","zap","heal"];
 const ELO_REQ = { dragon: 1050, darkprince: 1100, assassin: 1150, balloon: 1200 };
 const ELO_K = 28;
 
-/* ---------------- Unique SVG art for EVERY troop ---------------- */
+/* ---------------- Sprite system: UNIQUE ART FOR EVERY TROOP ---------------- */
 function wrapSprite(svg, p){
   const cls = (p===0) ? "sprite team0" : "sprite team1";
   return `<div class="${cls}">${svg}</div>`;
 }
+function svgBadgeBase(){
+  return `
+    <defs>
+      <linearGradient id="shineG" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="rgba(255,255,255,.18)"/>
+        <stop offset="1" stop-color="rgba(255,255,255,0)"/>
+      </linearGradient>
+    </defs>
+    <circle cx="32" cy="33" r="18" fill="rgba(2,6,23,.38)" />
+    <circle cx="32" cy="33" r="16" class="teamFill" opacity=".18"/>
+    <circle cx="32" cy="33" r="14" fill="rgba(255,255,255,.08)"/>
+    <path d="M18 28c6-12 22-16 30-6" fill="none" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".85"/>
+    <path d="M18 24c8-10 26-12 34-1" fill="none" stroke="url(#shineG)" stroke-width="4" stroke-linecap="round" opacity=".9"/>
+  `;
+}
+function svgUnitToken(type){
+  // Each unit gets a distinct overlay + silhouette tweak.
+  const overlays = {
+    knight: `
+      <path d="M30 18h4v18h6l-8 10-8-10h6z" class="steel" stroke="rgba(2,6,23,.75)" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M27 36h10" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+    `,
+    archers: `
+      <path d="M20 22c10 10 10 20 0 30" fill="none" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M20 22c-6 10-6 20 0 30" fill="none" stroke="#fde68a" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+      <path d="M26 30h18" class="steel2" stroke="rgba(2,6,23,.7)" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M44 30l-5-4v8z" class="teamFill" opacity=".9"/>
+    `,
+    flameArchers: `
+      <path d="M20 22c10 10 10 20 0 30" fill="none" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M27 30h17" class="steel2" stroke="rgba(2,6,23,.7)" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M44 30l-5-4v8z" class="teamFill" opacity=".9"/>
+      <path d="M48 28c3 3 2 7-1 10 6-2 8-6 6-10-2-4-5-6-5-6s-1 3 0 6z" class="magma" stroke="rgba(2,6,23,.65)" stroke-width="1.2" opacity=".95"/>
+    `,
+    goblins: `
+      <path d="M24 22l-8-6 6-4 6 7z" class="leaf2" stroke="rgba(2,6,23,.75)" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M40 22l8-6-6-4-6 7z" class="leaf2" stroke="rgba(2,6,23,.75)" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M36 40l10-4 2 6-10 4z" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+      <circle cx="28" cy="34" r="2" class="ink"/><circle cx="36" cy="34" r="2" class="ink"/>
+    `,
+    giant: `
+      <rect x="19" y="20" width="26" height="22" rx="10" class="stone" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
+      <path d="M22 24h20" class="stone2" opacity=".9"/>
+      <path d="M44 42l10 4-2 6-10-4z" class="stone2" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
+      <circle cx="27" cy="33" r="2.1" class="ink"/><circle cx="37" cy="33" r="2.1" class="ink"/>
+    `,
+    wizard: `
+      <path d="M22 18l10-12 10 12-10 6z" class="cloth" stroke="rgba(2,6,23,.75)" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M44 46l10-10 3 3-10 10z" class="teamFill" opacity=".85" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+      <circle cx="57" cy="33" r="3.8" fill="#fbbf24" opacity=".85"/>
+      <circle cx="57" cy="33" r="2.1" fill="#fff" opacity=".55"/>
+    `,
+    golem: `
+      <path d="M18 26l8-8h12l8 8v18l-8 8H26l-8-8z" class="stone" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
+      <path d="M24 26h16" class="stone2" opacity=".9"/>
+      <path d="M26 44l12-8" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+    `,
+    miniGolem: `
+      <path d="M22 30l6-6h8l6 6v10l-6 6h-8l-6-6z" class="stone2" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
+      <circle cx="29" cy="35" r="1.8" class="ink"/><circle cx="35" cy="35" r="1.8" class="ink"/>
+    `,
+    barbarian: `
+      <path d="M22 18l6 8-6 6-6-6z" class="teamFill" opacity=".75" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M42 18l6 8-6 6-6-6z" class="teamFill" opacity=".75" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M44 44l10-6 3 5-10 6z" class="steel" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+      <path d="M41 46l6-14 5 2-6 14z" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+    `,
+    necromancer: `
+      <path d="M44 22l8 14-8 14-8-14z" class="cloth" opacity=".85" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M18 46l10-18" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M27 26c2-4 8-4 10 0 2 4-2 10-5 10s-7-6-5-10z" class="bone" stroke="rgba(2,6,23,.75)" stroke-width="1.2" opacity=".95"/>
+      <circle cx="29" cy="30" r="1.6" class="ink"/><circle cx="35" cy="30" r="1.6" class="ink"/>
+    `,
+    skeleton: `
+      <path d="M26 22c0-4 12-4 12 0s-2 8-6 8-6-4-6-8z" class="bone" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <path d="M26 34h12M32 34v14" stroke="rgba(229,231,235,.9)" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M26 42l-6 6M38 42l6 6" stroke="rgba(229,231,235,.9)" stroke-width="2.2" stroke-linecap="round"/>
+    `,
+    darkprince: `
+      <path d="M18 44c6-12 22-12 28 0" fill="rgba(2,6,23,.35)"/>
+      <path d="M22 46c3-10 17-10 20 0" class="teamFill" opacity=".25"/>
+      <path d="M22 26c6-10 18-10 24 0l-6 6H28z" class="cloth" opacity=".8" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M42 40l14-8 3 5-14 8z" class="steel2" stroke="rgba(2,6,23,.75)" stroke-width="1.3"/>
+    `,
+    slime: `
+      <path d="M18 40c0-10 6-18 14-18s14 8 14 18c0 8-6 14-14 14S18 48 18 40z" fill="rgba(168,85,247,.35)" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
+      <path d="M24 40c0-6 4-10 8-10s8 4 8 10" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <circle cx="28" cy="41" r="2" class="ink"/><circle cx="36" cy="41" r="2" class="ink"/>
+    `,
+    berserker: `
+      <path d="M22 18l6 10-6 4-6-4z" class="teamFill" opacity=".75" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M42 18l6 10-6 4-6-4z" class="teamFill" opacity=".75" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M30 22h4v24h-4z" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="1.3"/>
+      <path d="M26 26h12l-2 8H28z" class="steel" stroke="rgba(2,6,23,.75)" stroke-width="1.3"/>
+    `,
+    frostMage: `
+      <path d="M22 18l10-12 10 12-10 6z" class="ice" opacity=".85" stroke="rgba(2,6,23,.75)" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M44 46l10-14" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M54 30l4 4-4 4-4-4z" class="ice" stroke="rgba(2,6,23,.65)" stroke-width="1.2"/>
+    `,
+    assassin: `
+      <path d="M22 24c4-10 16-10 20 0l-10 6z" fill="rgba(2,6,23,.75)" stroke="rgba(2,6,23,.9)" stroke-width="1.4"/>
+      <path d="M28 38l8-12 4 2-8 12z" class="steel" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <circle cx="30" cy="33" r="1.8" class="teamFill" opacity=".85"/>
+    `,
+    dragon: `
+      <path d="M18 38c4-10 24-10 28 0-6 6-22 6-28 0z" class="magma" opacity=".25"/>
+      <path d="M22 26l10 6 10-6-10-10z" class="magma" opacity=".7" stroke="rgba(2,6,23,.75)" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M14 30l10 6-10 6z" class="teamFill" opacity=".55" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+      <path d="M50 30l-10 6 10 6z" class="teamFill" opacity=".55" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+    `,
+    balloon: `
+      <path d="M32 16c10 0 14 10 10 18-4 8-16 8-20 0-4-8 0-18 10-18z" fill="rgba(248,113,113,.25)" stroke="rgba(2,6,23,.75)" stroke-width="1.8"/>
+      <path d="M32 34v10" class="teamStroke" stroke-width="2.6" stroke-linecap="round" opacity=".85"/>
+      <path d="M28 46h8l-2 6h-4z" class="steel2" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+    `,
+    drake: `
+      <path d="M22 28l10 6 10-6-10-12z" class="teamFill" opacity=".55" stroke="rgba(2,6,23,.75)" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M16 30l10 3-10 9z" class="ice" opacity=".45" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <path d="M48 30l-10 3 10 9z" class="ice" opacity=".45" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <circle cx="32" cy="34" r="2" class="ink"/>
+    `,
+    wyvern: `
+      <path d="M20 28l12 8 12-8-12-10z" fill="rgba(255,255,255,.10)" stroke="rgba(2,6,23,.75)" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M14 34l12 4-12 8z" class="teamFill" opacity=".35" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <path d="M50 34l-12 4 12 8z" class="teamFill" opacity=".35" stroke="rgba(2,6,23,.75)" stroke-width="1.2"/>
+      <path d="M32 22l2 4-2 4-2-4z" class="shine" opacity=".9"/>
+    `,
+    paladin: `
+      <path d="M32 18c8 0 14 6 14 14 0 12-8 20-14 20s-14-8-14-20c0-8 6-14 14-14z" fill="rgba(255,255,255,.08)" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M32 24v22" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M24 34h16" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+    `,
+    musketeer: `
+      <path d="M20 40h26l6-6-6-6H20z" class="steel2" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M18 38h12" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="2.8" stroke-linecap="round"/>
+      <circle cx="48" cy="34" r="3" class="teamFill" opacity=".8"/>
+    `,
+    bomber: `
+      <circle cx="32" cy="34" r="9" fill="rgba(255,255,255,.08)" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+      <path d="M32 25v-6" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M32 19c4 2 5 6 2 10 6-2 8-6 6-10-2-4-5-6-5-6s-1 3 0 6z" class="magma" opacity=".9"/>
+    `,
+    lavaElemental: `
+      <path d="M20 44c0-14 8-24 12-24s12 10 12 24c0 6-6 10-12 10s-12-4-12-10z" fill="rgba(251,146,60,.22)" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
+      <path d="M26 38h12" class="magma" opacity=".9"/>
+      <path d="M22 30l6 6-6 6-6-6z" class="magma" opacity=".85"/>
+      <path d="M42 30l6 6-6 6-6-6z" class="magma" opacity=".85"/>
+    `,
+    poisonDartBlower: `
+      <path d="M18 34h30" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M48 34h12" class="steel2" stroke="rgba(2,6,23,.75)" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M60 34l-5-4v8z" class="poison" opacity=".9"/>
+      <circle cx="28" cy="28" r="3.4" class="poison" opacity=".35"/>
+    `,
+    priest: `
+      <circle cx="32" cy="22" r="7" fill="rgba(255,255,255,.10)" stroke="rgba(2,6,23,.75)" stroke-width="1.4"/>
+      <path d="M32 30v18" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M26 38h12" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+      <path d="M24 20c4-6 12-6 16 0" fill="none" stroke="rgba(134,239,172,.85)" stroke-width="2.2" stroke-linecap="round"/>
+    `,
+  };
 
-function svgKnight(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 52c2-10 7-18 16-18s14 8 16 18" fill="rgba(2,6,23,.50)"/>
-  <path d="M24 52v-8c0-8 5-14 8-14s8 6 8 14v8" class="steel" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <path d="M26 26c2-8 8-12 12-12s10 4 12 12l-6 6H32z" class="steel2" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <path d="M38 14c6 2 10 6 12 10" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
-  <rect x="30" y="28" width="12" height="6" rx="3" class="ink" opacity=".65"/>
-  <path d="M44 40l10-10 3 3-10 10z" class="steel" stroke="rgba(2,6,23,.80)" stroke-width="1.5"/>
-  <path d="M51 27l6-6 3 3-6 6z" class="teamFill" stroke="rgba(2,6,23,.80)" stroke-width="1.2"/>
-  <circle cx="30" cy="46" r="3" class="teamFill" opacity=".9"/>
-</svg>`; }
+  const overlay = overlays[type] || `
+    <path d="M24 26h16v16H24z" fill="rgba(255,255,255,.08)" stroke="rgba(2,6,23,.75)" stroke-width="1.6"/>
+    <path d="M28 30h8" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+  `;
 
-function svgArchers(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 52c2-12 6-20 16-20s14 8 16 20" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 28c4-10 10-16 14-16s10 6 14 16l-6 6H24z" class="teamFill" opacity=".80" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 34c0-8 7-14 10-14s10 6 10 14v12H22z" fill="rgba(2,6,23,.35)" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <circle cx="28" cy="30" r="2.5" class="ink"/><circle cx="36" cy="30" r="2.5" class="ink"/>
-  <path d="M48 18c6 10 6 22 0 34" fill="none" stroke="#a16207" stroke-width="4" stroke-linecap="round"/>
-  <path d="M48 18c-6 10-6 22 0 34" fill="none" stroke="#fde68a" stroke-width="2" stroke-linecap="round" opacity=".65"/>
-  <path d="M46 22h14" stroke="#cbd5e1" stroke-width="2.8" stroke-linecap="round"/>
-  <path d="M60 22l-4-3v6z" class="teamFill" opacity=".9"/>
-</svg>`; }
-
-function svgFlameArchers(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 52c2-12 6-20 16-20s14 8 16 20" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 28c4-10 10-16 14-16s10 6 14 16l-6 6H24z" class="teamFill" opacity=".78" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 34c0-8 7-14 10-14s10 6 10 14v12H22z" class="cloth2" opacity=".45" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <circle cx="28" cy="30" r="2.5" class="ink"/><circle cx="36" cy="30" r="2.5" class="ink"/>
-  <path d="M48 18c6 10 6 22 0 34" fill="none" stroke="#a16207" stroke-width="4" stroke-linecap="round"/>
-  <path d="M46 22h14" stroke="#cbd5e1" stroke-width="2.8" stroke-linecap="round"/>
-  <path d="M60 22l-4-3v6z" class="teamFill" opacity=".9"/>
-  <path d="M55 18c2 2 2 4 0 6c-2-2-2-4 0-6z" class="fire" opacity=".9"/>
-  <path d="M53 16c3 3 3 6 0 9c-3-3-3-6 0-9z" class="fire2" opacity=".65"/>
-</svg>`; }
-
-function svgGoblin(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 50c2-11 6-18 16-18s14 7 16 18" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 30c0-10 8-18 12-18s12 8 12 18v10H20z" class="gob" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <path d="M18 26l-8-6 6-4 6 7z" class="gob2" stroke="rgba(2,6,23,.80)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M46 26l8-6-6-4-6 7z" class="gob2" stroke="rgba(2,6,23,.80)" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="28" cy="28" r="2.6" class="ink"/><circle cx="36" cy="28" r="2.6" class="ink"/>
-  <path d="M28 34c3 3 5 3 8 0" fill="none" stroke="rgba(2,6,23,.85)" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M18 44l10-2 1 5-10 2z" class="wood" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
-  <path d="M34 42l12 6-2 4-12-6z" class="teamFill" opacity=".65"/>
-</svg>`; }
-
-function svgGiant(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M10 54c3-16 10-26 22-26s19 10 22 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 30c0-12 10-20 14-20s14 8 14 20v10H18z" class="giant" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <path d="M20 24c3-8 9-12 12-12s9 4 12 12" class="giant2" opacity=".85"/>
-  <circle cx="28" cy="30" r="2.8" class="ink"/><circle cx="36" cy="30" r="2.8" class="ink"/>
-  <path d="M44 44l10 4-2 6-10-4z" class="stone2" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
-  <path d="M46 42l6-14 5 2-6 14z" class="stone" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
-  <path d="M24 44h16" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".8"/>
-</svg>`; }
-
-function svgWizard(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 40c2-14 8-24 14-24s12 10 14 24v12H18z" fill="rgba(2,6,23,.35)" stroke="rgba(2,6,23,.80)" stroke-width="2"/>
-  <path d="M22 22l10-14 10 14-10 6z" class="cloth" opacity=".88" stroke="rgba(2,6,23,.80)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M24 30c0-6 5-10 8-10s8 4 8 10v6H24z" class="skin" opacity=".95" stroke="rgba(2,6,23,.75)" stroke-width="2"/>
-  <circle cx="29" cy="32" r="2.5" class="ink"/><circle cx="35" cy="32" r="2.5" class="ink"/>
-  <path d="M46 44l10-10 3 3-10 10z" class="teamFill" opacity=".85" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
-  <circle cx="57" cy="31" r="4" class="gold" opacity=".85"/><circle cx="57" cy="31" r="2.2" fill="#fff" opacity=".55"/>
-</svg>`; }
-
-function svgGolem(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M10 56c3-18 12-28 22-28s19 10 22 28" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 30c0-10 8-18 14-18s14 8 14 18v14H18z" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 22l10-10 10 10-10 6z" class="stone2" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M24 36l6-6M34 44l8-8M26 46l10-10" stroke="rgba(2,6,23,.45)" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="27" cy="30" r="2.4" class="ink"/><circle cx="37" cy="30" r="2.4" class="ink"/>
-  <path d="M26 40h12" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".7"/>
-</svg>`; }
-
-function svgMiniGolem(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 56c2-14 8-22 16-22s14 8 16 22" fill="rgba(2,6,23,.55)"/>
-  <path d="M22 34c0-8 6-14 10-14s10 6 10 14v14H22z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M24 30l8-8 8 8-8 4z" class="stone" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="28" cy="34" r="2.2" class="ink"/><circle cx="36" cy="34" r="2.2" class="ink"/>
-  <path d="M26 44h12" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".65"/>
-</svg>`; }
-
-function svgBarbarian(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 34c0-10 8-18 12-18s12 8 12 18v16H20z" class="steel2" opacity=".65" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 22l10-10 10 10-10 6z" class="teamFill" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="28" cy="30" r="2.5" class="ink"/><circle cx="36" cy="30" r="2.5" class="ink"/>
-  <path d="M44 44l12-6 3 6-12 6z" class="wood" stroke="rgba(2,6,23,.80)" stroke-width="1.4"/>
-  <path d="M54 30l8 4-6 10-8-4z" class="steel" stroke="rgba(2,6,23,.80)" stroke-width="1.4"/>
-</svg>`; }
-
-function svgNecromancer(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 56c2-18 8-28 18-28s16 10 18 28" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 44c2-16 8-26 14-26s12 10 14 26v12H18z" class="cloth2" opacity=".82" stroke="rgba(2,6,23,.88)" stroke-width="2"/>
-  <path d="M22 22l10-12 10 12-10 6z" class="cloth" opacity=".9" stroke="rgba(2,6,23,.88)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M46 18v34" stroke="#cbd5e1" stroke-width="3.2" stroke-linecap="round"/>
-  <circle cx="46" cy="16" r="5" class="bone" stroke="rgba(2,6,23,.85)" stroke-width="1.6"/>
-  <circle cx="44" cy="16" r="1.4" class="ink"/><circle cx="48" cy="16" r="1.4" class="ink"/>
-  <path d="M28 34h8" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".7"/>
-</svg>`; }
-
-function svgSkeleton(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 56c2-14 7-22 16-22s14 8 16 22" fill="rgba(2,6,23,.55)"/>
-  <circle cx="32" cy="22" r="10" class="bone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="28" cy="22" r="2.5" class="ink"/><circle cx="36" cy="22" r="2.5" class="ink"/>
-  <path d="M28 28c3 2 5 2 8 0" fill="none" stroke="rgba(2,6,23,.85)" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M24 52V34h16v18" class="bone2" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M20 40h24" stroke="rgba(2,6,23,.50)" stroke-width="3" stroke-linecap="round"/>
-  <path d="M28 36v16M36 36v16" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
-  <path d="M24 34l-8 8M40 34l8 8" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
-</svg>`; }
-
-function svgDarkPrince(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M10 56c3-18 10-26 22-26s19 8 22 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 44c0-10 10-18 14-18s14 8 14 18v12H20z" class="steel" opacity=".65" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M18 40c0-12 8-20 14-20s14 8 14 20" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".75"/>
-  <path d="M16 46c-2-8 2-16 10-18l-2 10z" class="stone2" opacity=".8"/>
-  <path d="M46 24c6 2 10 8 10 16l-10-4z" class="stone2" opacity=".8"/>
-  <path d="M38 20l10-8 6 8-10 6z" class="teamFill" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-</svg>`; }
-
-function svgSlime(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M12 54c2-18 10-28 20-28s18 10 20 28" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 52c0-18 6-32 14-32s14 14 14 32v2H18z" class="slime" opacity=".92" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 46c2-4 6-6 10-6s8 2 10 6" class="slime2" opacity=".75"/>
-  <circle cx="28" cy="34" r="2.6" class="ink"/><circle cx="36" cy="34" r="2.6" class="ink"/>
-  <path d="M26 40c3 2 9 2 12 0" fill="none" stroke="rgba(2,6,23,.78)" stroke-width="2.5" stroke-linecap="round"/>
-</svg>`; }
-
-function svgBerserker(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 36c0-10 8-18 12-18s12 8 12 18v14H20z" class="steel2" opacity=".6" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 22l10-10 10 10-10 6z" class="teamFill" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M14 44l12-6 3 6-12 6z" class="wood" stroke="rgba(2,6,23,.8)" stroke-width="1.4"/>
-  <path d="M38 38l12-6 3 6-12 6z" class="wood" stroke="rgba(2,6,23,.8)" stroke-width="1.4"/>
-  <circle cx="28" cy="30" r="2.3" class="ink"/><circle cx="36" cy="30" r="2.3" class="ink"/>
-</svg>`; }
-
-function svgFrostMage(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 44c2-16 8-26 14-26s12 10 14 26v12H18z" class="ice2" opacity=".35" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 22l10-14 10 14-10 6z" class="ice" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M46 18v34" stroke="#cbd5e1" stroke-width="3.2" stroke-linecap="round"/>
-  <path d="M46 16m-6 0h12M46 10v12M42 12l8 8M50 12l-8 8" class="ice" stroke-width="2.5" stroke-linecap="round"/>
-  <circle cx="29" cy="32" r="2.4" class="ink"/><circle cx="35" cy="32" r="2.4" class="ink"/>
-</svg>`; }
-
-function svgAssassin(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 46c2-16 8-28 14-28s12 12 14 28v10H18z" fill="rgba(2,6,23,.55)" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 24l10-14 10 14-10 6z" class="teamFill" opacity=".35" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M28 34l-10 10 4 4 10-10z" class="steel" stroke="rgba(2,6,23,.85)" stroke-width="1.4"/>
-  <path d="M36 34l10 10-4 4-10-10z" class="steel" stroke="rgba(2,6,23,.85)" stroke-width="1.4"/>
-  <circle cx="29" cy="33" r="2.2" class="ink"/><circle cx="35" cy="33" r="2.2" class="ink"/>
-</svg>`; }
-
-function svgDragon(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M12 56c2-16 8-24 20-24s18 8 20 24" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 40c6-10 14-16 22-16c6 0 10 4 12 10c-6 2-10 6-12 12c-8-2-16-2-22 0c-1-2-2-4-2-6c0-0 0-0 0-0z" class="fire2" opacity=".55" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M18 30l-10 8 8 6 8-8z" class="fire" opacity=".8" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M46 30l10 8-8 6-8-8z" class="fire" opacity=".8" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M26 22c4-6 16-6 20 0c-2 8-6 12-10 12s-8-4-10-12z" class="teamFill" opacity=".75" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="30" cy="26" r="2.2" class="ink"/><circle cx="42" cy="26" r="2.2" class="ink"/>
-  <path d="M44 20l6-6" class="teamStroke" stroke-width="3" stroke-linecap="round"/>
-</svg>`; }
-
-function svgBalloon(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M20 56h24v-8H20z" class="wood" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 48l-6-10M42 48l6-10" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M32 8c10 0 18 8 18 18c0 12-10 20-18 22c-8-2-18-10-18-22C14 16 22 8 32 8z" class="teamFill" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M24 18c4-5 12-7 16-3" class="shine" opacity=".8"/>
-  <circle cx="32" cy="52" r="4" class="fire" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-</svg>`; }
-
-function svgDrake(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M12 56c2-16 8-24 20-24s18 8 20 24" fill="rgba(2,6,23,.55)"/>
-  <path d="M22 44c2-10 8-16 10-16s8 6 10 16" class="teamFill" opacity=".35"/>
-  <path d="M24 26c4-10 18-10 22 0c-2 10-8 14-11 14s-9-4-11-14z" class="ice2" opacity=".55" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M18 30l-8 8 10 4z" class="ice" opacity=".65" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M46 30l8 8-10 4z" class="ice" opacity=".65" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="30" cy="28" r="2.2" class="ink"/><circle cx="40" cy="28" r="2.2" class="ink"/>
-  <path d="M44 18c4 2 6 6 6 10" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".9"/>
-</svg>`; }
-
-function svgWyvern(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M12 56c2-16 8-24 20-24s18 8 20 24" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 30l-10 10 14 4 6-10z" class="steel2" opacity=".55" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M44 30l10 10-14 4-6-10z" class="steel2" opacity=".55" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M26 24c4-8 16-8 20 0c-2 10-6 14-10 14s-8-4-10-14z" class="teamFill" opacity=".7" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="30" cy="26" r="2.2" class="ink"/><circle cx="42" cy="26" r="2.2" class="ink"/>
-  <path d="M36 38c4 6 10 10 16 12" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".75"/>
-</svg>`; }
-
-function svgPaladin(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 34c0-10 8-18 12-18s12 8 12 18v16H20z" class="steel" opacity=".8" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 22l10-10 10 10-10 6z" class="teamFill" opacity=".8" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M44 30l10 6v14l-10 6-10-6V36z" class="steel2" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M44 34v18M39 43h10" class="teamStroke" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="28" cy="30" r="2.2" class="ink"/><circle cx="36" cy="30" r="2.2" class="ink"/>
-</svg>`; }
-
-function svgMusketeer(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 36c0-10 8-18 12-18s12 8 12 18v14H20z" class="cloth" opacity=".55" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M22 20h20l-4-10H26z" class="teamFill" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M44 38h18" stroke="#cbd5e1" stroke-width="3.2" stroke-linecap="round"/>
-  <path d="M58 35v6" class="teamStroke" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="28" cy="30" r="2.2" class="ink"/><circle cx="36" cy="30" r="2.2" class="ink"/>
-</svg>`; }
-
-function svgBomber(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 30c0-10 8-18 12-18s12 8 12 18v14H20z" class="gob" opacity=".95" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="28" cy="28" r="2.4" class="ink"/><circle cx="36" cy="28" r="2.4" class="ink"/>
-  <path d="M44 44l10-10 4 4-10 10z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="1.6"/>
-  <circle cx="54" cy="34" r="5" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M54 28c2-4 6-4 6 0c-3 1-5 3-6 6c-1-3-3-5-6-6c0-4 4-4 6 0z" class="fire" opacity=".85"/>
-</svg>`; }
-
-function svgLavaElemental(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M12 56c2-18 10-28 20-28s18 10 20 28" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 30c0-10 8-18 14-18s14 8 14 18v16H18z" class="stone2" opacity=".85" stroke="rgba(2,6,23,.9)" stroke-width="2"/>
-  <path d="M22 36h20M24 28h16M24 44h16" class="fire" stroke-width="3" stroke-linecap="round" opacity=".9"/>
-  <circle cx="28" cy="30" r="2.4" class="fire"/><circle cx="36" cy="30" r="2.4" class="fire"/>
-  <path d="M26 22l6-10 6 10-6 6z" class="fire2" opacity=".75"/>
-</svg>`; }
-
-function svgPoisonDart(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 30c0-10 8-18 12-18s12 8 12 18v14H20z" class="gob2" opacity=".85" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="28" cy="28" r="2.4" class="ink"/><circle cx="36" cy="28" r="2.4" class="ink"/>
-  <path d="M44 34h18" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
-  <path d="M60 34l-5-4v8z" class="poison" opacity=".95"/>
-  <path d="M46 40c2 2 4 4 6 6" class="poison2" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="46" cy="40" r="3.5" class="poison" opacity=".85"/>
-</svg>`; }
-
-function svgPriest(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 54c2-16 8-26 18-26s16 10 18 26" fill="rgba(2,6,23,.55)"/>
-  <path d="M18 44c2-16 8-26 14-26s12 10 14 26v12H18z" class="cloth" opacity=".35" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <circle cx="32" cy="18" r="10" class="skin" opacity=".9" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M24 10c3-4 13-4 16 0" class="gold" opacity=".65"/>
-  <circle cx="28" cy="18" r="2.4" class="ink"/><circle cx="36" cy="18" r="2.4" class="ink"/>
-  <path d="M32 28v18M26 36h12" class="teamStroke" stroke-width="3" stroke-linecap="round" opacity=".85"/>
-</svg>`; }
-
-function spriteForUnit(type){
-  switch(type){
-    case "knight": return svgKnight();
-    case "archers": return svgArchers();
-    case "flameArchers": return svgFlameArchers();
-    case "goblins": return svgGoblin();
-    case "giant": return svgGiant();
-    case "wizard": return svgWizard();
-    case "golem": return svgGolem();
-    case "miniGolem": return svgMiniGolem();
-    case "barbarian": return svgBarbarian();
-    case "necromancer": return svgNecromancer();
-    case "skeleton": return svgSkeleton();
-    case "darkprince": return svgDarkPrince();
-    case "slime": return svgSlime();
-    case "berserker": return svgBerserker();
-    case "frostMage": return svgFrostMage();
-    case "assassin": return svgAssassin();
-    case "dragon": return svgDragon();
-    case "balloon": return svgBalloon();
-    case "drake": return svgDrake();
-    case "wyvern": return svgWyvern();
-    case "paladin": return svgPaladin();
-    case "musketeer": return svgMusketeer();
-    case "bomber": return svgBomber();
-    case "lavaElemental": return svgLavaElemental();
-    case "poisonDartBlower": return svgPoisonDart();
-    case "priest": return svgPriest();
-    default:
-      return `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="16" class="teamFill"/><circle cx="32" cy="32" r="6" class="shine"/></svg>`;
-  }
+  return `
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    ${svgBadgeBase()}
+    ${overlay}
+  </svg>`;
 }
 
-/* Structures */
-function svgTower(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M16 56h32v-6H16z" class="stone2" opacity=".9"/>
-  <path d="M18 52V22h28v30z" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M18 22h28l-4-10H22z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M24 12v6M32 12v6M40 12v6" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
-  <path d="M26 52V36h12v16z" fill="rgba(2,6,23,.55)"/>
-  <path d="M20 30h6M38 30h6" stroke="rgba(2,6,23,.45)" stroke-width="3" stroke-linecap="round"/>
-  <path d="M18 24h28" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
-</svg>`; }
-
-function svgCastle(){ return `
-<svg viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M10 56h44v-7H10z" class="stone2" opacity=".9"/>
-  <path d="M12 50V20h40v30z" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
-  <path d="M12 20h40l-4-10H16z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M18 10v8M26 10v8M34 10v8M42 10v8" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
-  <path d="M22 50V34h20v16z" fill="rgba(2,6,23,.55)"/>
-  <path d="M12 24h40" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
-  <path d="M50 30l6 6-6 6-6-6z" class="teamFill" opacity=".8" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
-</svg>`; }
-
-function spriteForStructure(kind){
-  if (kind==="tower") return svgTower();
-  if (kind==="castle") return svgCastle();
-  return svgTower();
+function svgTower(){
+  return `
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M16 56h32v-6H16z" class="stone2" opacity=".9"/>
+    <path d="M18 52V22h28v30z" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
+    <path d="M18 22h28l-4-10H22z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M24 12v6M32 12v6M40 12v6" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M26 52V36h12v16z" fill="rgba(2,6,23,.55)"/>
+    <path d="M20 30h6M38 30h6" stroke="rgba(2,6,23,.45)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M18 24h28" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
+  </svg>`;
 }
-
-function cardIconHTML(cid, pForColor=0){
-  const c = CARDS[cid];
-  if(!c) return `<div class="icon">?</div>`;
-  if (c.kind==="troop") return `<div class="icon">${wrapSprite(spriteForUnit(c.id), pForColor)}</div>`;
-  // spells: simple icon
-  return `<div class="icon"><div class="sprite team0"><svg viewBox="0 0 64 64">
-    <circle cx="32" cy="32" r="18" class="teamFill" opacity=".35"/>
-    <path d="M22 44c10-3 16-9 20-18" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
-    <text x="32" y="40" text-anchor="middle" font-size="20" fill="#fff">${c.emoji || "✨"}</text>
-  </svg></div></div>`;
+function svgCastle(){
+  return `
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M10 56h44v-7H10z" class="stone2" opacity=".9"/>
+    <path d="M12 50V20h40v30z" class="stone" stroke="rgba(2,6,23,.85)" stroke-width="2"/>
+    <path d="M12 20h40l-4-10H16z" class="stone2" stroke="rgba(2,6,23,.85)" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M18 10v8M26 10v8M34 10v8M42 10v8" stroke="rgba(2,6,23,.55)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M22 50V34h20v16z" fill="rgba(2,6,23,.55)"/>
+    <path d="M22 34c0-8 5-14 10-14s10 6 10 14" fill="rgba(2,6,23,.35)"/>
+    <path d="M12 24h40" class="teamStroke" stroke-width="4" stroke-linecap="round" opacity=".9"/>
+    <path d="M50 30l6 6-6 6-6-6z" class="teamFill" opacity=".8" stroke="rgba(2,6,23,.75)" stroke-width="1.5"/>
+  </svg>`;
 }
+function spriteForUnit(type){ return svgUnitToken(type); }
+function spriteForStructure(kind){ return (kind==="castle") ? svgCastle() : svgTower(); }
 
 /* ---------------- Game state local cache ---------------- */
 let S = null;
 let lobbyPlayers = [];
 let meIndex = 0;
 let isHost = false;
+
 let selectedCard = null;
 let selectedQueue = [];
+
 let lobbyMeta = { eloMap:{}, deckMap:{} };
 let localDraftDeck = null;
 
@@ -1239,6 +1040,7 @@ function deckForPlayer(name){
 
 /* ---------------- Build grid DOM ---------------- */
 function buildGrid(){
+  gridEl.style.setProperty("--w", W);
   const frag = document.createDocumentFragment();
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
@@ -1264,25 +1066,31 @@ function buildGrid(){
 }
 buildGrid();
 
-/* ---------------- View: pan + (optional) pinch zoom ---------------- */
-let scale=1, pan={x:0,y:0};
+/* ---------------- Pan + Zoom (FIXED) ----------------
+   - board starts TOP-RIGHT
+   - drag pans (pointer events)
+   - board is zoomed out more on mobile
+*/
+let scale = 1;
+let pan = { x: 0, y: 0 };
 let boardMetrics = { width: 0, height: 0 };
 let isPanDrag = false;
-const PAN_DRAG_THRESHOLD = 7;
+let suppressClickUntil = 0;
+const PAN_DRAG_THRESHOLD = 5;
 
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-
-function computeBoardMetrics(){
-  const root = getComputedStyle(document.documentElement);
-  const cell = parseFloat(root.getPropertyValue("--cell")) || 32;
-  const gap  = parseFloat(root.getPropertyValue("--gap"))  || 4;
-
+function getBoardMetrics(){
+  // measure from CSS vars & padding so it matches mobile correctly
   const gs = getComputedStyle(gridEl);
-  const padX = (parseFloat(gs.paddingLeft)||0) + (parseFloat(gs.paddingRight)||0);
-  const padY = (parseFloat(gs.paddingTop)||0) + (parseFloat(gs.paddingBottom)||0);
+  const cell = parseFloat(gs.getPropertyValue("--cell")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cell")) || 34;
+  const gap  = parseFloat(gs.getPropertyValue("--gap"))  || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap"))  || 4;
+  const padL = parseFloat(gs.paddingLeft)  || 12;
+  const padR = parseFloat(gs.paddingRight) || 12;
+  const padT = parseFloat(gs.paddingTop)   || 12;
+  const padB = parseFloat(gs.paddingBottom)|| 12;
 
-  const boardW = W*cell + (W-1)*gap + padX;
-  const boardH = H*cell + (H-1)*gap + padY;
+  const boardW = W*(cell+gap) - gap + padL + padR;
+  const boardH = H*(cell+gap) - gap + padT + padB;
+
   boardMetrics.width = boardW;
   boardMetrics.height = boardH;
 }
@@ -1293,163 +1101,107 @@ function panBounds(){
   const scaledW = boardMetrics.width * scale;
   const scaledH = boardMetrics.height * scale;
 
-  const lockX = scaledW <= vw;
-  const lockY = scaledH <= vh;
+  // If board is smaller than viewport, allow it to be anywhere inside (0..extraSpace)
+  // If larger, allow scroll-style (negative..0)
+  const minX = Math.min(0, vw - scaledW);
+  const maxX = Math.max(0, vw - scaledW);
+  const minY = Math.min(0, vh - scaledH);
+  const maxY = Math.max(0, vh - scaledH);
 
-  return {
-    minX: lockX ? Math.round((vw - scaledW) / 2) : Math.round(vw - scaledW),
-    maxX: lockX ? Math.round((vw - scaledW) / 2) : 0,
-    minY: lockY ? Math.round((vh - scaledH) / 2) : Math.round(vh - scaledH),
-    maxY: lockY ? Math.round((vh - scaledH) / 2) : 0
-  };
+  return { minX, maxX, minY, maxY, vw, vh, scaledW, scaledH };
 }
 function clampPan(){
   const b = panBounds();
-  pan.x = Math.max(b.minX, Math.min(b.maxX, Math.round(pan.x)));
-  pan.y = Math.max(b.minY, Math.min(b.maxY, Math.round(pan.y)));
+  pan.x = Math.max(b.minX, Math.min(b.maxX, pan.x));
+  pan.y = Math.max(b.minY, Math.min(b.maxY, pan.y));
 }
 function applyCanvasTransform(){
   clampPan();
-  canvasEl.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${scale})`;
+  canvasEl.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
 }
-
-/* More aggressive zoom-out on mobile */
 function fitBoard(){
-  computeBoardMetrics();
+  getBoardMetrics();
   const vw = viewport.clientWidth;
   const vh = viewport.clientHeight;
+
   const sFit = Math.min(vw/boardMetrics.width, vh/boardMetrics.height);
-
   const isMobile = window.matchMedia("(max-width: 720px)").matches;
-  const minScale = isMobile ? 0.52 : 0.88;
-  const maxScale = isMobile ? 1.25 : 1.7;
 
-  // Mobile gets extra zoom-out so more fits at once
-  const bias = isMobile ? 0.80 : 1.02;
-  scale = clamp(sFit * bias, minScale, maxScale);
+  // more zoomed-out on mobile
+  const minScale = isMobile ? 0.45 : 0.85;
+  const maxScale = isMobile ? 1.20 : 1.60;
+  const target = sFit * (isMobile ? 0.62 : 1.02);
+  scale = Math.max(minScale, Math.min(maxScale, target));
 
-  pan.x = Math.round((vw - boardMetrics.width*scale)/2);
-  pan.y = Math.round((vh - boardMetrics.height*scale)/2);
+  // place TOP-RIGHT by default
+  const b = panBounds();
+  const margin = isMobile ? 6 : 10;
+  pan.x = (b.vw - b.scaledW) - margin; // right
+  pan.y = margin;                     // top
   applyCanvasTransform();
 }
 new ResizeObserver(fitBoard).observe(viewport);
 fitBoard();
 
-fitBtn.addEventListener("click", ()=> fitBoard());
-
-/* Pointer pan + pinch */
-const pointers = new Map(); // id -> {x,y}
-let gesture = {
-  mode: "none", // "pan" | "pinch"
-  startPan: {x:0,y:0},
-  startScale: 1,
-  startDist: 0,
-  startMid: {x:0,y:0},
-  startMidWorld: {x:0,y:0}, // mid in "canvas space" (pre-transform)
+const pointerPan = {
+  active:false,
+  engaged:false,
+  pointerId:null,
+  startX:0,
+  startY:0,
+  baseX:0,
+  baseY:0
 };
-
-function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
-function midpoint(a,b){ return { x:(a.x+b.x)/2, y:(a.y+b.y)/2 }; }
-
-function toCanvasWorld(clientX, clientY){
-  // convert viewport-local point to "canvas world" (before translate/scale)
-  const vr = viewport.getBoundingClientRect();
-  const vx = clientX - vr.left;
-  const vy = clientY - vr.top;
-  return {
-    x: (vx - pan.x) / scale,
-    y: (vy - pan.y) / scale
-  };
+function endPointerPan(){
+  pointerPan.active=false;
+  pointerPan.engaged=false;
+  pointerPan.pointerId=null;
 }
 
 viewport.addEventListener("pointerdown", (e)=>{
-  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  // Only start panning inside the board viewport
+  pointerPan.active = true;
+  pointerPan.engaged = false;
+  pointerPan.pointerId = e.pointerId;
+  pointerPan.startX = e.clientX;
+  pointerPan.startY = e.clientY;
+  pointerPan.baseX = pan.x;
+  pointerPan.baseY = pan.y;
+  isPanDrag = false;
   viewport.setPointerCapture?.(e.pointerId);
-
-  if (pointers.size === 1){
-    gesture.mode = "pan";
-    gesture.startPan = {x:pan.x, y:pan.y};
-    gesture.startScale = scale;
-    gesture.startMid = {x:e.clientX, y:e.clientY};
-  } else if (pointers.size === 2){
-    // start pinch
-    const pts = [...pointers.values()];
-    gesture.mode = "pinch";
-    gesture.startScale = scale;
-    gesture.startDist = dist(pts[0], pts[1]);
-    gesture.startMid = midpoint(pts[0], pts[1]);
-    gesture.startPan = {x:pan.x, y:pan.y};
-    gesture.startMidWorld = toCanvasWorld(gesture.startMid.x, gesture.startMid.y);
-  }
-}, {passive:false});
+  e.preventDefault();
+}, { passive:false });
 
 viewport.addEventListener("pointermove", (e)=>{
-  if (!pointers.has(e.pointerId)) return;
-  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  const dx = e.clientX - pointerPan.startX;
+  const dy = e.clientY - pointerPan.startY;
 
-  if (pointers.size === 1 && gesture.mode === "pan"){
-    const p0 = [...pointers.values()][0];
-    const dx = p0.x - gesture.startMid.x;
-    const dy = p0.y - gesture.startMid.y;
-
-    if (!isPanDrag && Math.hypot(dx,dy) >= PAN_DRAG_THRESHOLD) isPanDrag = true;
-    if (!isPanDrag) return;
-
-    pan.x = gesture.startPan.x + dx;
-    pan.y = gesture.startPan.y + dy;
-    applyCanvasTransform();
-    e.preventDefault();
-  } else if (pointers.size === 2){
-    // pinch (and also pan with midpoint)
-    const pts = [...pointers.values()];
-    const d = dist(pts[0], pts[1]);
-    const mid = midpoint(pts[0], pts[1]);
-
-    const isMobile = window.matchMedia("(max-width: 720px)").matches;
-    const minScale = isMobile ? 0.45 : 0.75;
-    const maxScale = isMobile ? 1.35 : 1.8;
-
-    const nextScale = clamp(gesture.startScale * (d / Math.max(1, gesture.startDist)), minScale, maxScale);
-    scale = nextScale;
-
-    // Keep the same world point under the midpoint
-    const vr = viewport.getBoundingClientRect();
-    const vx = mid.x - vr.left;
-    const vy = mid.y - vr.top;
-
-    pan.x = vx - gesture.startMidWorld.x * scale;
-    pan.y = vy - gesture.startMidWorld.y * scale;
-
-    isPanDrag = true;
-    applyCanvasTransform();
-    e.preventDefault();
+  if (!pointerPan.engaged && Math.hypot(dx,dy) >= PAN_DRAG_THRESHOLD){
+    pointerPan.engaged = true;
   }
-}, {passive:false});
+  if (!pointerPan.engaged) return;
 
-function endPointer(e){
-  pointers.delete(e.pointerId);
-  if (pointers.size === 0){
-    // reset drag flag after click-cancel can run
-    setTimeout(()=>{ isPanDrag = false; }, 0);
-    gesture.mode = "none";
-  } else if (pointers.size === 1){
-    // drop from pinch to pan smoothly
-    const p0 = [...pointers.values()][0];
-    gesture.mode = "pan";
-    gesture.startPan = {x:pan.x, y:pan.y};
-    gesture.startMid = {x:p0.x, y:p0.y};
-    gesture.startScale = scale;
-  }
-}
-
-viewport.addEventListener("pointerup", endPointer, {passive:false});
-viewport.addEventListener("pointercancel", endPointer, {passive:true});
-
-gridEl.addEventListener("click", (e)=>{
-  if (!isPanDrag) return;
+  isPanDrag = true;
+  pan.x = pointerPan.baseX + dx;
+  pan.y = pointerPan.baseY + dy;
+  applyCanvasTransform();
   e.preventDefault();
-  e.stopPropagation();
-}, true);
+}, { passive:false });
+
+viewport.addEventListener("pointerup", (e)=>{
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  if (pointerPan.engaged){
+    suppressClickUntil = Date.now() + 150; // prevent tap-after-drag placements
+  }
+  endPointerPan();
+  e.preventDefault();
+}, { passive:false });
+
+viewport.addEventListener("pointercancel", (e)=>{
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  endPointerPan();
+}, { passive:true });
 
 /* ---------------- UI helpers ---------------- */
 function toast(msg, ms=1400){
@@ -1472,10 +1224,7 @@ function getCellCenter(x,y){
   if(!cell) return null;
   const rect = cell.getBoundingClientRect();
   const vr = viewport.getBoundingClientRect();
-  return {
-    x: rect.left - vr.left + rect.width/2,
-    y: rect.top  - vr.top  + rect.height/2
-  };
+  return { x: rect.left - vr.left + rect.width/2, y: rect.top - vr.top + rect.height/2 };
 }
 function fxPop(x,y,text,color,cls="",ttl=750){
   const c = getCellCenter(x,y);
@@ -1592,12 +1341,8 @@ function initialStructures(){
   ];
 }
 
-function structureAt(structs, x,y){
-  return (structs||[]).find(s=>s.hp>0 && s.x===x && s.y===y) || null;
-}
-function isStructureTile(structs, x,y){
-  return !!structureAt(structs,x,y);
-}
+function structureAt(structs, x,y){ return (structs||[]).find(s=>s.hp>0 && s.x===x && s.y===y) || null; }
+function isStructureTile(structs, x,y){ return !!structureAt(structs,x,y); }
 
 const MATCH_MS = 3*60*1000;
 const DRAFT_MS = 30*1000;
@@ -1622,18 +1367,16 @@ async function ensureStateExists(){
       phase: "waiting",
       players,
       startedAt: null,
-      draftEndsAt: (players.length>=2) ? (now + DRAFT_MS) : null,
+      draftEndsAt: (players.length>=2) ? (now + DRAFT_MS) : (now + DRAFT_MS),
       readyMap: {},
       lastTickAt: now,
       endsAt: null,
       winner: null,
       winReason: null,
-
       crowns: [0,0],
       elixir: [0,0],
       hand: { p0: deck0.slice(0,4), p1: deck1.slice(0,4) },
       queue:{ p0: deck0.slice(4),  p1: deck1.slice(4) },
-
       structures: initialStructures(),
       units: [],
       orders: [],
@@ -1644,7 +1387,7 @@ async function ensureStateExists(){
   });
 }
 
-/* ---------------- Gameplay constants + sim ---------------- */
+/* ---------------- Gameplay constants ---------------- */
 let hostTimer = null;
 const TICK_MS = 320;
 const ELIXIR_MS_PER = 2800;
@@ -1652,7 +1395,7 @@ const MAX_ELIXIR = 10;
 const FX_TTL = 900;
 const MAX_FX = 120;
 
-/* BFS pathing */
+/* ---------------- BFS pathing ---------------- */
 function neighbors4(x,y){
   return [{x:x+1,y},{x:x-1,y},{x,y:y+1},{x,y:y-1}].filter(p=>inside(p.x,p.y));
 }
@@ -1694,25 +1437,9 @@ function bfsNextStep(structs, start, goals, flying=false){
   return null;
 }
 
-/* Targeting helpers */
-function aliveStructsForP(structs, p){
-  return (structs||[]).filter(s=>s.p===p && s.hp>0);
-}
-function enemyStructPriority(structs, enemyP){
-  const towers = aliveStructsForP(structs, enemyP).filter(s=>s.kind==="tower");
-  if (towers.length) return towers;
-  const castle = aliveStructsForP(structs, enemyP).find(s=>s.kind==="castle");
-  return castle ? [castle] : [];
-}
+/* ---------------- Targeting helpers ---------------- */
 function isFlying(u){ return !!u.flying; }
-function canTarget(attacker, target){
-  if (!target) return false;
-  if (isFlying(target) && !attacker.canHitAir) return false;
-  return true;
-}
-function inRadius(cx,cy,x,y,r){
-  return Math.abs(cx-x)+Math.abs(cy-y) <= r;
-}
+function inRadius(cx,cy,x,y,r){ return Math.abs(cx-x)+Math.abs(cy-y) <= r; }
 function activeAurasAt(st, x,y){
   const now = Date.now();
   return (st.auras||[]).filter(a=>a.until>now && inRadius(a.x,a.y,x,y,a.radius||0));
@@ -1727,6 +1454,11 @@ function damageTakenMult(st, x,y){
   if (!list.length) return 1;
   return Math.min(...list.map(a=>a.dmgTakenMult||1));
 }
+function canTarget(attacker, target){
+  if (!target) return false;
+  if (isFlying(target) && !attacker.canHitAir) return false;
+  return true;
+}
 function healUnit(st, u, amount, curePoison=true){
   if (!u || u.hp<=0 || amount<=0) return;
   u.hp = Math.min(u.maxhp, u.hp + amount);
@@ -1734,20 +1466,6 @@ function healUnit(st, u, amount, curePoison=true){
     u.poisonUntil = 0;
     u.poisonDps = 0;
     u.poisonAcc = 0;
-  }
-}
-function pushUnitBack(st, attacker, target, steps=1){
-  if (!target || target.hp<=0 || !steps) return;
-  const dx = target.x - attacker.x;
-  const dy = target.y - attacker.y;
-  let stepX = 0, stepY = 0;
-  if (Math.abs(dx) >= Math.abs(dy)) stepX = Math.sign(dx||1);
-  else stepY = Math.sign(dy||1);
-  for (let i=0;i<steps;i++){
-    const nx = target.x + stepX;
-    const ny = target.y + stepY;
-    if (!inside(nx,ny) || !walkable(st.structures, nx, ny, !!target.flying)) break;
-    target.x = nx; target.y = ny;
   }
 }
 function applyDamageToUnit(st, attacker, target, baseDmg, now){
@@ -1768,7 +1486,6 @@ function applyDamageToUnit(st, attacker, target, baseDmg, now){
     target.poisonDps = Math.max(target.poisonDps||0, attacker.poisonDps);
   }
 }
-
 function findNearestEnemyUnit(units, meP, from, range){
   let best=null, bd=1e9;
   for (const u of (units||[])){
@@ -1799,22 +1516,24 @@ function findNearestEnemyStructure(structs, meP, from, range){
   }
   return best;
 }
+function aliveStructsForP(structs, p){ return (structs||[]).filter(s=>s.p===p && s.hp>0); }
+function enemyStructPriority(structs, enemyP){
+  const towers = aliveStructsForP(structs, enemyP).filter(s=>s.kind==="tower");
+  if (towers.length) return towers;
+  const castle = aliveStructsForP(structs, enemyP).find(s=>s.kind==="castle");
+  return castle ? [castle] : [];
+}
 
-/* Spawn / spell application */
+/* ---------------- Spawn / spells ---------------- */
 function newUnit(p, cardId, x,y){
   const c = CARDS[cardId];
   const u = c.unit;
   return {
     id: crypto.randomUUID(),
-    p,
-    type: cardId,
-    x, y,
-    hp: u.hp,
-    maxhp: u.hp,
-    dmg: u.dmg,
-    range: u.range,
-    cdMs: u.cdMs,
-    spdMs: u.spdMs,
+    p, type: cardId, x, y,
+    hp: u.hp, maxhp: u.hp,
+    dmg: u.dmg, range: u.range,
+    cdMs: u.cdMs, spdMs: u.spdMs,
     splash: u.splash || 0,
     targets: u.targets || "all",
     canHitAir: !!u.canHitAir,
@@ -1851,35 +1570,9 @@ function newUnit(p, cardId, x,y){
   };
 }
 
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL, cls="", source=null, icon=null){
   st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl, cls, source, icon});
-}
-function attackGlyph(type){
-  return ({ knight:"⚔️", archers:"🏹", flameArchers:"🔥", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨",
-    miniGolem:"🧱", barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", berserker:"🪓", frostMage:"🧊",
-    assassin:"🗡️", dragon:"🔥", balloon:"💣", drake:"🌀", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯",
-    bomber:"💥", lavaElemental:"🌋", poisonDartBlower:"☠️", priest:"✨" })[type] || "⚔️";
-}
-function projectileGlyph(type){
-  return ({ archers:"➶", flameArchers:"🔥", musketeer:"✦", wizard:"✧", dragon:"🔥", drake:"🌀", bomber:"💣",
-    necromancer:"☠️", poisonDartBlower:"☠️", lavaElemental:"🌋", frostMage:"❄" })[type] || "•";
-}
-function projectileColorFor(type, base){
-  return ({
-    archers:"#fef08a", flameArchers:"#fb923c", musketeer:"#e2e8f0", wizard:"#c4b5fd", dragon:"#fb923c", drake:"#7dd3fc",
-    bomber:"#fda4af", necromancer:"#c4b5fd", poisonDartBlower:"#86efac", lavaElemental:"#fdba74", frostMage:"#bfdbfe",
-    wyvern:"#93c5fd"
-  })[type] || base;
-}
-function isRangedTroop(u){
-  return (u.range||1) > 1 || !!u.splash || ["archers","flameArchers","musketeer","wizard","dragon","drake","wyvern",
-    "bomber","poisonDartBlower","lavaElemental","necromancer","frostMage","priest"].includes(u.type);
-}
-function awardCrown(st, destroyedStructure){
-  const scorer = (destroyedStructure.p===0) ? 1 : 0;
-  st.crowns = st.crowns || [0,0];
-  if (destroyedStructure.kind==="tower") st.crowns[scorer] = (st.crowns[scorer]||0) + 1;
-  if (destroyedStructure.kind==="castle") st.crowns[scorer] = (st.crowns[scorer]||0) + 3;
 }
 
 function applySpell(st, p, cardId, tx, ty){
@@ -1895,14 +1588,6 @@ function applySpell(st, p, cardId, tx, ty){
       pushFx(st, tx,ty, "◌", spellColor, rr*70, 650, "spell");
     }
   }
-
-  if (cardId === "fireball"){
-    pushFx(st, tx,ty, "🔥", "#fb923c", 0, 920, "explosion");
-    for (let i=0;i<8;i++) pushFx(st, tx,ty, "", "#fdba74", i*45, 420, "sparks");
-  }
-  if (cardId === "zap"){ pushFx(st, tx,ty, "⚡", "#fde047", 0, 700, "spell"); }
-  if (cardId === "blizzard"){ pushFx(st, tx,ty, "❄️", "#bfdbfe", 0, 920, "spell"); }
-  if (cardId === "quake"){ pushFx(st, tx,ty, "🌎", "#d6d3d1", 0, 760, "impact"); }
 
   if (spec.dmg){
     for (const u of units){
@@ -1981,6 +1666,37 @@ function applySpell(st, p, cardId, tx, ty){
   }
 }
 
+/* ---------------- Combat FX helpers ---------------- */
+function attackGlyph(type){
+  return ({ knight:"⚔️", archers:"🏹", flameArchers:"🔥", goblins:"🔪", giant:"👊", wizard:"✨", golem:"🪨", miniGolem:"🧱",
+            barbarian:"🪓", necromancer:"☠️", darkprince:"🐎", slime:"🧪", berserker:"🪓", frostMage:"🧊", assassin:"🗡️",
+            dragon:"🔥", balloon:"💣", drake:"🌪️", wyvern:"🪶", skeleton:"🦴", paladin:"🛡️", musketeer:"🎯", bomber:"💥",
+            lavaElemental:"🌋", poisonDartBlower:"☠️", priest:"✨" })[type] || "⚔️";
+}
+function projectileGlyph(type){
+  return ({ archers:"➶", flameArchers:"🔥", musketeer:"✦", wizard:"✧", dragon:"🔥", drake:"🌀", bomber:"💣", necromancer:"☠️",
+            poisonDartBlower:"☠️", lavaElemental:"🌋", frostMage:"❄", wyvern:"🪶" })[type] || "•";
+}
+function projectileColorFor(type, base){
+  return ({
+    archers:"#fef08a", flameArchers:"#fb923c", musketeer:"#e2e8f0", wizard:"#c4b5fd", dragon:"#fb923c", drake:"#7dd3fc",
+    bomber:"#fda4af", necromancer:"#c4b5fd", poisonDartBlower:"#86efac", lavaElemental:"#fdba74", frostMage:"#bfdbfe", wyvern:"#93c5fd"
+  })[type] || base;
+}
+function isRangedTroop(u){
+  return (u.range||1) > 1 || !!u.splash ||
+    ["archers","flameArchers","musketeer","wizard","dragon","drake","wyvern","bomber","poisonDartBlower","lavaElemental","necromancer","frostMage","priest"].includes(u.type);
+}
+
+/* ---------------- Crown scoring ---------------- */
+function awardCrown(st, destroyedStructure){
+  const scorer = (destroyedStructure.p===0) ? 1 : 0;
+  st.crowns = st.crowns || [0,0];
+  if (destroyedStructure.kind==="tower") st.crowns[scorer] = (st.crowns[scorer]||0) + 1;
+  if (destroyedStructure.kind==="castle") st.crowns[scorer] = (st.crowns[scorer]||0) + 3;
+}
+
+/* ---------------- Tick simulation (HOST) ---------------- */
 function tickSim(st){
   const now = Date.now();
 
@@ -1995,16 +1711,13 @@ function tickSim(st){
   }
 
   const dt = clamp(now - (st.lastTickAt||now), 0, 800);
-
   const prevHP = new Map((st.structures||[]).map(s=>[s.id, s.hp]));
 
-  // elixir regen
   for (let p=0;p<2;p++){
     const e = (st.elixir?.[p] ?? 0) + dt/ELIXIR_MS_PER;
     st.elixir[p] = clamp(e, 0, MAX_ELIXIR);
   }
 
-  // process orders
   const orders = Array.isArray(st.orders) ? st.orders : [];
   for (const o of orders){
     const p = o.p|0;
@@ -2023,10 +1736,6 @@ function tickSim(st){
       if (!onMySide(p, x, y)) continue;
       if (isRiver(x,y)) continue;
       if (isStructureTile(st.structures, x, y)) continue;
-    } else if (card.kind==="troop"){
-      // "any" troop placement still can't be on structures / blocked river (unless flying)
-      if (isStructureTile(st.structures, x, y)) continue;
-      if (isRiver(x,y) && !card.unit?.flying) continue;
     }
 
     st.elixir[p] = clamp((st.elixir[p] ?? 0) - cost, 0, MAX_ELIXIR);
@@ -2034,9 +1743,8 @@ function tickSim(st){
     if (card.kind === "troop"){
       const spawn = Math.max(1, card.spawn|0);
       for (let i=0;i<spawn;i++){
-        const spots = [
-          {x,y},{x:x-1,y},{x:x+1,y},{x,y:y-1},{x,y:y+1}
-        ].filter(s=>inside(s.x,s.y) && (!isRiver(s.x,s.y) || !!card.unit?.flying) && !isStructureTile(st.structures,s.x,s.y));
+        const spots = [{x,y},{x:x-1,y},{x:x+1,y},{x,y:y-1},{x,y:y+1}]
+          .filter(s=>inside(s.x,s.y) && !isRiver(s.x,s.y) && !isStructureTile(st.structures,s.x,s.y));
         const spot = spots[i % spots.length] || {x,y};
         st.units.push(newUnit(p, cardId, spot.x, spot.y));
       }
@@ -2045,7 +1753,6 @@ function tickSim(st){
       applySpell(st, p, cardId, x, y);
     }
 
-    // hand cycling
     const pk = p===0 ? "p0" : "p1";
     const hand = st.hand?.[pk] ? st.hand[pk].slice() : [];
     const queue= st.queue?.[pk] ? st.queue[pk].slice() : [];
@@ -2062,10 +1769,8 @@ function tickSim(st){
   }
   st.orders = [];
 
-  // fx cleanup
   st.fx = (st.fx||[]).filter(f=> (f.at + (f.ttl||FX_TTL)) > now).slice(-MAX_FX);
 
-  // aura upkeep + heal aura
   st.auras = (st.auras||[]).filter(a=>a.until>now);
   for (const a of st.auras){
     if (a.type!=="heal") continue;
@@ -2078,9 +1783,9 @@ function tickSim(st){
     }
   }
 
-  // burn + poison tick
   for (const u of (st.units||[])){
     if (u.hp<=0) continue;
+
     if ((u.burnUntil||0) > now && (u.burnDps||0) > 0){
       u.burnAcc = (u.burnAcc||0) + (u.burnDps * dt / 1000);
       const burnDmg = Math.floor(u.burnAcc||0);
@@ -2088,7 +1793,6 @@ function tickSim(st){
         u.hp -= burnDmg;
         u.burnAcc -= burnDmg;
         pushFx(st, u.x,u.y, "🔥", "#fb923c", 0, 520, "impact");
-        if (Math.random() < 0.5) pushFx(st, u.x,u.y, "", "#fb923c", 50, 420, "sparks");
       }
     } else u.burnAcc = 0;
 
@@ -2099,12 +1803,12 @@ function tickSim(st){
         u.hp -= poisonDmg;
         u.poisonAcc -= poisonDmg;
         pushFx(st, u.x,u.y, "☠️", "#86efac", 0, 520, "impact");
-        if (Math.random() < 0.55) pushFx(st, u.x,u.y, "✣", "#4ade80", 40, 520, "spell");
       }
     } else u.poisonAcc = 0;
   }
 
-  // unit actions
+  const splitAdds = [];
+
   for (const u of st.units){
     if (u.hp<=0) continue;
 
@@ -2120,7 +1824,6 @@ function tickSim(st){
 
     if ((u.stunUntil||0) > now) continue;
 
-    // healer behavior
     if (u.healAmount){
       const allyInRange = findNearestDamagedAllyUnit(st.units, u.p, u, u.range||1);
       if (allyInRange && now >= (u.nextAtk||0)){
@@ -2135,12 +1838,10 @@ function tickSim(st){
         const allyToHelp = findNearestDamagedAllyUnit(st.units, u.p, u, Infinity);
         if (allyToHelp){
           const goals = new Set();
-          for (let yy=0;yy<H;yy++){
-            for (let xx=0;xx<W;xx++){
-              if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
-              const d = Math.abs(xx-allyToHelp.x)+Math.abs(yy-allyToHelp.y);
-              if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
-            }
+          for (let yy=0;yy<H;yy++) for (let xx=0;xx<W;xx++){
+            if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
+            const d = Math.abs(xx-allyToHelp.x)+Math.abs(yy-allyToHelp.y);
+            if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
           }
           const step = bfsNextStep(st.structures, {x:u.x,y:u.y}, goals, !!u.flying);
           if (step){ u.x = step.x; u.y = step.y; }
@@ -2164,42 +1865,25 @@ function tickSim(st){
     if (targetUnit || targetStruct){
       if (now >= (u.nextAtk||0)){
         const dmg = u.dmg|0;
-        const dist = targetUnit
-          ? (Math.abs(targetUnit.x-u.x)+Math.abs(targetUnit.y-u.y))
-          : (Math.abs(targetStruct.x-u.x)+Math.abs(targetStruct.y-u.y));
         const ranged = isRangedTroop(u);
         const baseColor = (u.p===0?"#60a5fa":"#f87171");
         const tColor = projectileColorFor(u.type, baseColor);
 
-        // local FX entries (synced)
         pushFx(st, u.x, u.y, attackGlyph(u.type), tColor, 0, 520, ranged ? "impact" : "slash");
 
         if (targetUnit){
           if (ranged){
             pushFx(st, targetUnit.x, targetUnit.y, projectileGlyph(u.type), tColor, 0, 300, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
           }
-          if (u.lavaWaveRange){
-            const axisX = Math.abs(targetUnit.x-u.x) >= Math.abs(targetUnit.y-u.y);
-            const dirX = axisX ? Math.sign(targetUnit.x-u.x || (u.p===0 ? -1 : 1)) : 0;
-            const dirY = axisX ? 0 : Math.sign(targetUnit.y-u.y || (u.p===0 ? -1 : 1));
-            for (let i=1;i<=u.lavaWaveRange;i++){
-              const wx = u.x + dirX*i;
-              const wy = u.y + dirY*i;
-              if (!inside(wx,wy)) break;
-              pushFx(st, wx, wy, "🌊", "#fb923c", i*55, 620, "spell");
-              for (const v of st.units){
-                if (v.hp<=0 || v.p===u.p) continue;
-                if (v.x!==wx || v.y!==wy) continue;
-                if (!canTarget(u,v)) continue;
+          if (u.splash){
+            for (const v of st.units){
+              if (v.hp<=0 || v.p===u.p) continue;
+              if (!canTarget(u,v)) continue;
+              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)){
                 applyDamageToUnit(st, u, v, dmg, now);
-                pushUnitBack(st, u, v, u.pushBack||1);
-                pushFx(st, v.x, v.y, "🔥", "#fb923c", 40, 620, "impact");
+                pushFx(st, v.x, v.y, "💥", "#fdba74", 40, 520, "explosion");
               }
             }
-          } else if (u.chargeDmg && u.chargeRange && dist<=u.chargeRange){
-            applyDamageToUnit(st, u, targetUnit, u.chargeDmg, now);
-            u.stunUntil = Math.max(u.stunUntil||0, now + (u.chargeSelfStunMs||0));
-            pushFx(st, targetUnit.x, targetUnit.y, "💢", "#fca5a5", 60, 560, "impact");
           } else if (u.cleaveRadius){
             for (const v of st.units){
               if (v.hp<=0 || v.p===u.p) continue;
@@ -2209,29 +1893,10 @@ function tickSim(st){
                 pushFx(st, v.x, v.y, "✦", "#fde68a", 40, 480, "hit");
               }
             }
-            pushFx(st, targetUnit.x, targetUnit.y, "╱", "#fde68a", 0, 420, "slash");
-            pushFx(st, targetUnit.x, targetUnit.y, "╲", "#fde68a", 60, 420, "slash");
-            pushFx(st, targetUnit.x, targetUnit.y, "", "#facc15", 80, 420, "sparks");
-          } else if (u.splash){
-            for (const v of st.units){
-              if (v.hp<=0 || v.p===u.p) continue;
-              if (!canTarget(u,v)) continue;
-              if (inRadius(targetUnit.x,targetUnit.y,v.x,v.y,u.splash|0)){
-                applyDamageToUnit(st, u, v, dmg, now);
-                pushFx(st, v.x, v.y, "✹", "#fdba74", 70, 520, "impact");
-              }
-            }
-            pushFx(st, targetUnit.x, targetUnit.y, "💥", "#fdba74", 0, 720, "explosion");
-            pushFx(st, targetUnit.x, targetUnit.y, "", "#fdba74", 60, 420, "sparks");
           } else {
             applyDamageToUnit(st, u, targetUnit, dmg, now);
-            if (ranged){
-              pushFx(st, targetUnit.x, targetUnit.y, "✹", "#fde68a", 40, 500, "impact");
-            } else {
-              pushFx(st, targetUnit.x, targetUnit.y, "╱", "#fde68a", 0, 400, "slash");
-              pushFx(st, targetUnit.x, targetUnit.y, "✦", "#fef3c7", 90, 450, "hit");
-              pushFx(st, targetUnit.x, targetUnit.y, "", "#facc15", 70, 460, "sparks");
-            }
+            pushFx(st, targetUnit.x, targetUnit.y, ranged ? "✹" : "╱", "#fde68a", 40, 520, ranged ? "impact" : "slash");
+            pushFx(st, targetUnit.x, targetUnit.y, "", "#facc15", 60, 460, "sparks");
           }
         } else if (targetStruct){
           targetStruct.hp -= Math.max(1, Math.floor(dmg * damageTakenMult(st, targetStruct.x,targetStruct.y)));
@@ -2239,8 +1904,9 @@ function tickSim(st){
             pushFx(st, targetStruct.x, targetStruct.y, projectileGlyph(u.type), tColor, 0, 320, "impact", {x:u.x,y:u.y}, projectileGlyph(u.type));
           }
           pushFx(st, targetStruct.x, targetStruct.y, "💥", "#e5e7eb", 80, 580, ranged ? "impact" : "slash");
-          pushFx(st, targetStruct.x, targetStruct.y, "", "#facc15", 70, 460, "sparks");
+          if (!ranged) pushFx(st, targetStruct.x, targetStruct.y, "", "#facc15", 70, 460, "sparks");
         }
+
         u.nextAtk = now + (u.cdMs||1000);
       }
       continue;
@@ -2257,19 +1923,15 @@ function tickSim(st){
     const tgt = candidates[0];
 
     const goals = new Set();
-    for (let yy=0;yy<H;yy++){
-      for (let xx=0;xx<W;xx++){
-        if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
-        const d = Math.abs(xx-tgt.x)+Math.abs(yy-tgt.y);
-        if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
-      }
+    for (let yy=0;yy<H;yy++) for (let xx=0;xx<W;xx++){
+      if (!walkable(st.structures, xx,yy, !!u.flying)) continue;
+      const d = Math.abs(xx-tgt.x)+Math.abs(yy-tgt.y);
+      if (d <= (u.range||1)) goals.add(keyXY(xx,yy));
     }
     const step = bfsNextStep(st.structures, {x:u.x,y:u.y}, goals, !!u.flying);
     if (step){ u.x = step.x; u.y = step.y; }
   }
 
-  // split deaths
-  const splitAdds = [];
   for (const u of st.units||[]){
     if (u.hp>0 || !u.splitInto || !u.splitCount) continue;
     for (let i=0;i<u.splitCount;i++){
@@ -2280,7 +1942,6 @@ function tickSim(st){
     pushFx(st, u.x, u.y, "🪨", "#93c5fd");
   }
 
-  // structure AI
   for (const s of (st.structures||[])){
     if (s.hp<=0) continue;
     if (now < (s.nextAtk||0)) continue;
@@ -2294,12 +1955,10 @@ function tickSim(st){
     pushFx(st, enemy.x, enemy.y, "✶", sColor, 80, 520, "hit");
   }
 
-  // clamp + remove dead + add split
   for (const s of (st.structures||[])) s.hp = Math.max(0, s.hp|0);
   st.units = (st.units||[]).filter(u=>u.hp>0);
   if (splitAdds.length) st.units.push(...splitAdds);
 
-  // crown awards on structure death transitions
   for (const s of (st.structures||[])){
     const before = prevHP.get(s.id);
     if (before > 0 && s.hp <= 0){
@@ -2309,7 +1968,6 @@ function tickSim(st){
     }
   }
 
-  // win if castle destroyed
   const p0Castle = st.structures.find(x=>x.id==="p0_c");
   const p1Castle = st.structures.find(x=>x.id==="p1_c");
   if (p0Castle && p0Castle.hp<=0){
@@ -2330,7 +1988,6 @@ function startHostLoop(){
         const snap = await tx.get(stateRef);
         if (!snap.exists()) return;
         const st = snap.data();
-
         const players = Array.isArray(st.players) ? st.players.slice(0,2) : [];
 
         if (st.phase === "waiting" && players.length>=2){
@@ -2338,10 +1995,6 @@ function startHostLoop(){
           const readyMap = st.readyMap || {};
           const bothReady = !!readyMap[players[0]] && !!readyMap[players[1]];
           const draftEndsAt = st.draftEndsAt || (now + DRAFT_MS);
-          if (!st.draftEndsAt){
-            tx.set(stateRef, { draftEndsAt }, { merge:true });
-            return;
-          }
           if (!(bothReady || now >= draftEndsAt)) return;
 
           const p0Name = players[0] || "p0";
@@ -2374,7 +2027,6 @@ function startHostLoop(){
         }
 
         if (st.phase !== "battle") return;
-
         const next = JSON.parse(JSON.stringify(st));
         tickSim(next);
         tx.set(stateRef, next, { merge:true });
@@ -2385,6 +2037,7 @@ function startHostLoop(){
   }, TICK_MS);
 }
 
+/* ---------------- ELO update (host) ---------------- */
 function expectedScore(a,b){ return 1/(1+Math.pow(10,(b-a)/400)); }
 async function applyEloIfNeeded(st){
   if (!isHost || !st || st.phase!=="gameover" || st.eloApplied) return;
@@ -2417,12 +2070,10 @@ function fmtMMSS(ms){
 
 function renderSelectedTray(isDrafting=false, hand=[]){
   if (!selectedTray) return;
-
   if (isDrafting || S?.phase !== "battle"){
     selectedTray.innerHTML = '<span class="trayHint">Tap cards below to queue. Tap here to unselect.</span>';
     return;
   }
-
   selectedQueue = selectedQueue.filter(cid=>hand.includes(cid));
   if (selectedCard && !selectedQueue.includes(selectedCard)) selectedCard = null;
 
@@ -2438,13 +2089,8 @@ function renderSelectedTray(isDrafting=false, hand=[]){
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'trayCard' + (selectedCard===cid ? ' queued' : '');
-    b.innerHTML = `
-      ${cardIconHTML(cid, meIndex)}
-      <span class="name">${c.name}</span>
-      <span class="cost">${c.cost} elixir</span>
-    `;
-    b.addEventListener('click', (ev)=>{
-      ev.preventDefault();
+    b.innerHTML = `<span class="emoji">${c.emoji}</span><span class="name">${c.name}</span><span class="cost">${c.cost} elixir</span>`;
+    b.addEventListener('click', ()=>{
       const idx = selectedQueue.indexOf(cid);
       if (idx>=0) selectedQueue.splice(idx,1);
       if (selectedCard===cid) selectedCard = selectedQueue[0] || null;
@@ -2453,16 +2099,6 @@ function renderSelectedTray(isDrafting=false, hand=[]){
     selectedTray.appendChild(b);
   }
 }
-
-selectedTray.addEventListener("click", (e)=>{
-  // clicking empty area clears selection
-  if (e.target === selectedTray || e.target.classList.contains("trayHint")){
-    selectedCard = null;
-    selectedQueue = [];
-    cancelBtn.style.display="none";
-    render();
-  }
-});
 
 function render(){
   if (!S){
@@ -2495,12 +2131,14 @@ function render(){
     timerText.textContent = fmtMMSS(S.endsAt - Date.now());
   } else if (S.phase === "waiting"){
     timerText.textContent = fmtMMSS((S.draftEndsAt||Date.now()) - Date.now());
-  } else timerText.textContent = "—";
+  } else {
+    timerText.textContent = "—";
+  }
 
   if (S.phase === "waiting"){
     hint("30s draft: pick up to 8, tap again to remove, then press ready.");
   } else if (S.phase === "battle"){
-    hint(selectedCard ? `Queued: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a troop or spell to add it to the queue, then tap a tile to play. Drag to pan, pinch to zoom.");
+    hint(selectedCard ? `Queued: ${CARDS[selectedCard].emoji} ${CARDS[selectedCard].name} — tap a tile to play` : "Tap a troop or spell to add it to the queue, then tap a tile to play.");
   } else if (S.phase === "gameover"){
     let msg = "Game Over.";
     if (S.winReason === "castle"){
@@ -2513,7 +2151,6 @@ function render(){
     hint(msg);
   }
 
-  // my elixir
   const e = S.elixir?.[meIndex] ?? 0;
   elixirNum.textContent = String(Math.floor(e));
   elixirFill.style.width = (100 * (e/MAX_ELIXIR)) + "%";
@@ -2521,32 +2158,34 @@ function render(){
 
   const isDrafting = (S.phase==="waiting" && players.length>=2);
   draftOverlay.classList.toggle("show", isDrafting);
-  if (!isDrafting) localDraftDeck = null;
+
   if (isDrafting && !Array.isArray(localDraftDeck)) localDraftDeck = editableDeckForPlayer(username);
+  if (!isDrafting) localDraftDeck = null;
 
   const myDeck = editableDeckForPlayer(username);
   const rm = S.readyMap || {};
+  const readyCount = players.filter(n=>rm[n]).length;
+  const draftText = `Deck ${myDeck.length}/8 • Ready ${readyCount}/${Math.min(players.length,2)} • ${fmtMMSS((S.draftEndsAt||Date.now())-Date.now())}`;
+  draftInfoOverlay.textContent = draftText;
+
   const readyLabel = rm[username] ? "✅ Ready" : "Ready";
   readyBtnOverlay.textContent = readyLabel;
 
-  const draftText = `Deck ${myDeck.length}/8 • Ready ${players.filter(n=>rm[n]).length}/${Math.min(players.length,2)} • ${fmtMMSS((S.draftEndsAt||Date.now())-Date.now())}`;
-  draftInfoOverlay.textContent = draftText;
-
-  // cards / deck builder
   const pk = (meIndex===0) ? "p0" : "p1";
   const hand = (S.hand && S.hand[pk]) ? S.hand[pk] : [];
-  const myEloNow = lobbyMeta.eloMap?.[username] || 1000;
+  const myElo2 = lobbyMeta.eloMap?.[username] || 1000;
 
   cardsEl.innerHTML = "";
   draftCardsEl.innerHTML = "";
-  const activeCardsEl = isDrafting ? draftCardsEl : cardsEl;
 
+  const activeCardsEl = isDrafting ? draftCardsEl : cardsEl;
   const sourceCards = (S.phase === "waiting") ? CARD_POOL : hand;
+
   for (const cid of sourceCards){
     const c = CARDS[cid];
     if (!c) continue;
     const req = ELO_REQ[cid] || 0;
-    const locked = req > myEloNow;
+    const locked = req > myElo2;
     const inDeck = myDeck.includes(cid);
 
     const el = document.createElement("div");
@@ -2554,7 +2193,7 @@ function render(){
     el.className = "card" + (selected ? " sel" : "");
     el.innerHTML = `
       <div class="top"><div class="cost">${c.cost}</div></div>
-      <div class="mid">${cardIconHTML(cid, meIndex)}</div>
+      <div class="mid"><div class="emoji" title="${c.name}">${c.emoji}</div></div>
       <div class="name">${c.name}</div>
       ${locked ? `<div class="lock">ELO ${req}</div>` : ""}
     `;
@@ -2562,7 +2201,7 @@ function render(){
 
     const onCardPress = async (ev)=>{
       ev.preventDefault();
-      if (locked){ toast(`Requires ELO ${req}`); return; }
+      if (locked){ toast(\`Requires ELO ${req}\`); return; }
 
       if (S.phase === "waiting"){
         const current = Array.isArray(localDraftDeck) ? localDraftDeck.slice() : myDeck.slice();
@@ -2572,13 +2211,20 @@ function render(){
         else { toast("Deck already has 8 cards."); return; }
         localDraftDeck = current;
         render();
-        try{ await updateDoc(lobbyRef, { [`deckMap.${username}`]: current, updatedAt: Date.now() }); }
-        catch(e){ console.warn(e); toast("Deck sync failed. Retrying..."); localDraftDeck = null; render(); }
+        try{
+          await updateDoc(lobbyRef, { [`deckMap.${username}`]: current, updatedAt: Date.now() });
+        }catch(e){
+          console.warn(e);
+          toast("Deck sync failed. Retrying from server...");
+          localDraftDeck = null;
+          render();
+        }
         return;
       }
 
       if (S.phase !== "battle"){ toast("Match not active."); return; }
       if (!hand.includes(cid)){ toast("Card not in hand."); return; }
+
       if (!selectedQueue.includes(cid)) selectedQueue.push(cid);
       selectedCard = cid;
       cancelBtn.style.display="inline-block";
@@ -2593,7 +2239,7 @@ function render(){
   cancelBtn.style.display = (S.phase==="battle" && selectedQueue.length) ? "inline-block" : "none";
 
   paintBoard();
-  scheduleFxFromState();
+  paintFx();
 }
 
 readyBtnOverlay.addEventListener("click", async ()=>{
@@ -2618,7 +2264,6 @@ cancelBtn.addEventListener("click", ()=>{
   render();
 });
 
-/* ---------------- Board paint ---------------- */
 function paintBoard(){
   const structs = S.structures || [];
   const units = S.units || [];
@@ -2631,16 +2276,13 @@ function paintBoard(){
     groups.get(k).push(u);
   }
 
-  // show placement hints if queued
-  const queued = (S.phase==="battle" && selectedCard && CARDS[selectedCard]);
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
       const cell = getCell(x,y);
       const under = cell.querySelector(".under");
       const piece = cell.querySelector(".piece");
-      const hpFill= cell.querySelector(".hp>i");
-
       cell.classList.remove("placeHint","placeBlocked");
+      const hpFill= cell.querySelector(".hp>i");
 
       under.style.background = "transparent";
       piece.innerHTML = "";
@@ -2648,127 +2290,98 @@ function paintBoard(){
       hpFill.style.width = "0%";
       hpFill.className = "neutral";
 
-      // subtle aura visuals
-      if (S.auras?.length){
-        const aHere = (S.auras||[]).filter(a=>a.until>Date.now() && inRadius(a.x,a.y,x,y,a.radius||0));
-        if (aHere.length){
-          const hasHaste = aHere.some(a=>a.type==="haste");
-          const hasArmor = aHere.some(a=>a.type==="armor");
-          const hasHeal  = aHere.some(a=>a.type==="heal");
-          const col = hasHeal ? "rgba(34,197,94,.18)" : hasHaste ? "rgba(56,189,248,.18)" : hasArmor ? "rgba(168,85,247,.18)" : "rgba(255,255,255,.12)";
-          under.style.background = `radial-gradient(circle at 50% 50%, ${col}, transparent 60%)`;
+      if (S.phase==="battle" && selectedCard){
+        const c = CARDS[selectedCard];
+        if (c){
+          let valid = true;
+          if (c.place === "friendly" && !onMySide(meIndex,x,y)) valid = false;
+          if (c.place === "friendly" && isRiver(x,y)) valid = false;
+          if (c.place === "friendly" && isStructureTile(S.structures,x,y)) valid = false;
+          cell.classList.add(valid ? "placeHint" : "placeBlocked");
         }
       }
 
-      // structures
-      const s = structureAt(structs, x,y);
-      if (s){
-        piece.innerHTML = wrapSprite(spriteForStructure(s.kind), s.p);
-        const pct = Math.max(0, Math.min(1, s.hp / (s.maxhp||1)));
-        hpFill.style.width = (pct*100) + "%";
-        hpFill.className = (s.p===0?"p0":"p1");
+      const s = structureAt(structs,x,y);
+      if (s && s.hp>0){
+        const svg = spriteForStructure(s.kind);
+        piece.innerHTML = wrapSprite(svg, s.p);
+        under.style.background = `radial-gradient(circle at top, rgba(255,255,255,.12), rgba(0,0,0,0))`;
+        const pct = Math.round(100 * (s.hp/s.maxhp));
+        hpFill.style.width = pct + "%";
+        hpFill.className = (s.p===0) ? "p0" : "p1";
         continue;
       }
 
-      // units
       const g = groups.get(keyXY(x,y));
       if (g && g.length){
-        g.sort((a,b)=>b.hp-a.hp); // most alive first
         const top = g[0];
-        piece.innerHTML = wrapSprite(spriteForUnit(top.type), top.p) + (g.length>1 ? `<div class="stack">${g.length}</div>` : "");
-        const pct = Math.max(0, Math.min(1, top.hp / (top.maxhp||1)));
-        hpFill.style.width = (pct*100) + "%";
-        hpFill.className = (top.p===0?"p0":"p1");
-        // stealth: if enemy assassin not revealed, fade a bit
-        if (top.type==="assassin" && top.p!==meIndex && !top.revealed){
-          piece.style.opacity = ".45";
-        }
-      }
-    }
-  }
+        const svg = spriteForUnit(top.type);
+        piece.innerHTML = wrapSprite(svg, top.p);
 
-  if (queued){
-    const card = CARDS[selectedCard];
-    for (let y=0;y<H;y++){
-      for (let x=0;x<W;x++){
-        const cell = getCell(x,y);
-        if (!cell) continue;
+        if (top.type==="assassin" && !top.revealed && top.p!==meIndex) piece.style.opacity = ".25";
 
-        let ok = true;
-        if (!inside(x,y)) ok=false;
-
-        if (card.kind==="troop"){
-          const flying = !!card.unit?.flying;
-          if (isStructureTile(S.structures, x,y)) ok=false;
-          if (isRiver(x,y) && !flying) ok=false;
-          if (card.place==="friendly" && !onMySide(meIndex, x,y)) ok=false;
-        } else {
-          // spells: can be anywhere
-          ok = inside(x,y);
+        if (g.length > 1){
+          const badge = document.createElement("div");
+          badge.className = "stack";
+          badge.textContent = `+${g.length-1}`;
+          piece.appendChild(badge);
         }
 
-        cell.classList.add(ok ? "placeHint" : "placeBlocked");
+        const pct = Math.round(100 * (top.hp/top.maxhp));
+        hpFill.style.width = pct + "%";
+        hpFill.className = (top.p===0) ? "p0" : "p1";
       }
     }
   }
 }
 
-/* ---------------- FX render (from synced state) ---------------- */
-const fxTimers = new Map();
-function scheduleFxFromState(){
-  if (!S || !Array.isArray(S.fx)) return;
+function paintFx(){
+  fxEl.innerHTML = "";
   const now = Date.now();
+  for (const f of (S.fx||[])){
+    if ((f.at||0) > now) continue;
+    if (f.at + (f.ttl||FX_TTL) <= now) continue;
 
-  for (const f of S.fx){
-    if (fxTimers.has(f.id)) continue;
-
-    const delay = Math.max(0, (f.at||now) - now);
-    const ttl = f.ttl || FX_TTL;
-
-    const t = setTimeout(()=>{
-      // show
-      if (f.cls === "sparks"){
-        fxSparks(f.x, f.y, f.color || "#fde68a", 7, 420);
-      } else if (f.source && typeof f.source.x==="number"){
-        fxProjectile(f.source.x, f.source.y, f.x, f.y, f.icon || f.text || "", f.color || "#e5e7eb", 260);
-      } else {
-        fxPop(f.x, f.y, f.text || "", f.color || "#e5e7eb", f.cls || "", Math.min(900, ttl));
-      }
-      // cleanup after TTL buffer
-      setTimeout(()=>{ fxTimers.delete(f.id); }, ttl + 120);
-    }, delay);
-
-    fxTimers.set(f.id, t);
-  }
-
-  // prune timers for fx no longer in state (optional)
-  if (fxTimers.size > 260){
-    for (const [id, t] of fxTimers){
-      if (!S.fx.some(x=>x.id===id)){
-        clearTimeout(t);
-        fxTimers.delete(id);
-      }
+    if (f.source && Number.isFinite(f.source.x) && Number.isFinite(f.source.y)){
+      fxProjectile(f.source.x, f.source.y, f.x, f.y, f.icon || "", f.color || "#e5e7eb",
+        Math.min(420, Math.max(180, (f.ttl||FX_TTL)-120)));
     }
+
+    if (f.cls === "sparks" || f.cls === "slash" || f.cls === "hit") fxSparks(f.x, f.y, f.color || "#fde68a", 7, 420);
+    if ((f.text||"").trim()) fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
   }
 }
 
-/* ---------------- Client play: place troop/spell ---------------- */
+/* ---------------- Input: card -> click tile -> send order ---------------- */
 async function onCellClick(x,y){
+  // prevent accidental placements immediately after dragging
+  if (Date.now() < suppressClickUntil) return;
   if (isPanDrag) return;
-  if (!S || S.phase!=="battle") return;
-  if (!selectedQueue.length || !selectedCard) return;
 
-  const cid = selectedCard;
-  const card = CARDS[cid];
+  if (!S || S.phase !== "battle") return;
+  if (!selectedQueue.length) return;
+
+  const pk = (meIndex===0) ? "p0" : "p1";
+  const hand = (S.hand && S.hand[pk]) ? S.hand[pk] : [];
+
+  const cardId = selectedCard && selectedQueue.includes(selectedCard) ? selectedCard : selectedQueue[0];
+  if (!cardId || !hand.includes(cardId)) { toast("That card isn't in your hand."); return; }
+
+  const card = CARDS[cardId];
   if (!card) return;
 
-  // client-side placement guard (host also validates)
-  if (card.kind==="troop"){
-    const flying = !!card.unit?.flying;
-    if (isStructureTile(S.structures, x,y)) { toast("Can't place on a structure."); return; }
-    if (isRiver(x,y) && !flying) { toast("Can't place on river."); return; }
-    if (card.place==="friendly" && !onMySide(meIndex, x,y)) { toast("Place on your side."); return; }
+  if (card.place === "friendly"){
+    if (!onMySide(meIndex, x, y)){ toast("Place on your side."); return; }
+    if (isRiver(x,y)){ toast("Can't place in river."); return; }
+    if (isStructureTile(S.structures, x, y)){ toast("Tile occupied."); return; }
   }
+
+  // optimistic dequeue locally
+  const idx = selectedQueue.indexOf(cardId);
+  if (idx>=0) selectedQueue.splice(idx,1);
+  selectedCard = selectedQueue[0] || null;
+  if (!selectedQueue.length) cancelBtn.style.display="none";
+  render();
 
   try{
     await runTransaction(db, async (tx)=>{
@@ -2776,70 +2389,64 @@ async function onCellClick(x,y){
       if (!snap.exists()) return;
       const st = snap.data();
       if (st.phase !== "battle") return;
-
-      const orders = Array.isArray(st.orders) ? st.orders.slice(0,50) : [];
-      orders.push({ id: crypto.randomUUID(), p: meIndex, card: cid, x, y, t: Date.now() });
+      const orders = Array.isArray(st.orders) ? st.orders.slice() : [];
+      orders.push({ id: crypto.randomUUID(), at: Date.now(), p: meIndex, card: cardId, x, y });
       tx.set(stateRef, { orders }, { merge:true });
     });
-
-    // locally pop from queue immediately
-    const idx = selectedQueue.indexOf(cid);
-    if (idx>=0) selectedQueue.splice(idx,1);
-    selectedCard = selectedQueue[0] || null;
-    if (!selectedQueue.length) cancelBtn.style.display="none";
-    render();
-
   }catch(e){
     console.warn(e);
-    toast("Play failed (sync). Try again.");
+    toast("Play failed (network).");
   }
 }
 
-/* ---------------- Snapshots + boot ---------------- */
-function updateFromLobbyDoc(lob){
-  lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
-  lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
-  meIndex = lobbyPlayers.indexOf(username);
-  if (meIndex < 0) meIndex = 0;
-  isHost = (lobbyPlayers[0] === username);
-  if (isHost) startHostLoop();
+/* ---------------- Main: subscribe ---------------- */
+function stopHostLoop(){
+  if (hostTimer){ clearInterval(hostTimer); hostTimer=null; }
 }
 
-let uiTimer = null;
-
-async function boot(){
+onAuthStateChanged(auth, async (user)=>{
+  if (!user) return;
   await joinLobby();
   await ensureStateExists();
-  if (isHost) startHostLoop();
 
+  // lobby listener
   onSnapshot(lobbyRef, (snap)=>{
-    if (!snap.exists()) return;
-    updateFromLobbyDoc(snap.data());
-    render();
-  });
-
-  onSnapshot(stateRef, (snap)=>{
-    if (!snap.exists()) return;
-    S = snap.data();
-    if (isHost) startHostLoop();
-    if (!uiTimer){
-      uiTimer = setInterval(()=>{
-        // keep timer + hint feeling alive even between snapshots
-        if (S && (S.phase==="battle" || S.phase==="waiting")) render();
-      }, 250);
+    const lob = snap.exists()?snap.data():{};
+    lobbyMeta = { eloMap: lob.eloMap||{}, deckMap: lob.deckMap||{} };
+    lobbyPlayers = Array.isArray(lob.players) ? lob.players.slice(0,2) : [];
+    meIndex = lobbyPlayers.indexOf(username);
+    if (meIndex<0) meIndex=0;
+    const newHost = (lobbyPlayers[0] === username);
+    if (newHost !== isHost){
+      isHost = newHost;
+      stopHostLoop();
+      if (isHost) startHostLoop();
+    } else {
+      if (isHost) startHostLoop();
     }
     render();
-    applyEloIfNeeded(S).catch(()=>{});
   });
 
-  // initial render fallback
-  render();
-}
-boot().catch(e=>{ console.error(e); toast("Boot failed. Check console."); });
+  // state listener
+  onSnapshot(stateRef, async (snap)=>{
+    if (!snap.exists()) return;
+    S = snap.data();
+    render();
+    if (isHost) applyEloIfNeeded(S);
+    if (isHost) startHostLoop();
+  });
+});
 
+/* ---------------- Draft ready button ---------------- */
+readyBtnOverlay.addEventListener("click", async ()=>{
+  if (!S || S.phase!=="waiting") return;
+  if ((S.players||[]).length<2){ toast("Waiting for opponent"); return; }
+  try{
+    await updateDoc(stateRef, { [`readyMap.${username}`]: !(S.readyMap?.[username]), lastReadyAt: Date.now() });
+  }catch(e){ console.warn(e); toast("Ready update failed"); }
+});
 </script>
 </body>
 </html>
-
 
 
