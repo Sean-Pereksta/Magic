@@ -603,7 +603,6 @@
   let structureShields = {};
 
   let isHost = false;
-  let hostUid = null;
   let hostInitialized = false;
   let catMoveInterval = null;
 
@@ -630,12 +629,6 @@
   let lastAcornShotAt = 0;
   let lastFanBurstAt = 0;
   let lastWebShotAt = 0;
-
-  function isHostOwnedEnemyDoc(data){
-    if (!data) return false;
-    if (!hostUid) return true;
-    return data.hostUid === hostUid;
-  }
 
   let catWebTrappedUntil = 0;
   let catFacing = { dx: 1, dy: 0 };
@@ -1178,8 +1171,7 @@
       if ((k.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${k.x}-${k.y}`);
       if (cell){
-        cell.textContent = "🐀👑";
-        cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.65), 0 0 10px rgba(250,204,21,0.9)";
+        cell.textContent = "👑";
         const hpTag = document.createElement("div");
         hpTag.className = "name";
         hpTag.style.color = "#7c2d12";
@@ -2165,7 +2157,6 @@
     if (!isHost || catPower <= 0) return;
 
     const waveTag = Date.now();
-    const hostOwner = hostUid || uid;
     const allOffsets = [
       { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
       { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
@@ -2175,40 +2166,25 @@
       { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
     ];
 
-    const occupiedByEnemy = (x, y) => (
-      rats.some(r => r.x===x && r.y===y && (r.health ?? 0) > 0) ||
-      oxen.some(o => o.x===x && o.y===y && (o.health ?? 0) > 0) ||
-      ratKings.some(k => k.x===x && k.y===y && (k.health ?? 0) > 0)
-    );
-
     const availableSpots = allOffsets
       .map(o => ({x:catPos.x+o.x,y:catPos.y+o.y}))
       .filter(p =>
         p.x>=0 && p.x<gridSize && p.y>=0 && p.y<gridSize &&
         grid[p.y][p.x] === "" &&
-        !occupiedByEnemy(p.x, p.y)
+        !rats.some(r => r.x===p.x && r.y===p.y) &&
+        !oxen.some(o => o.x===p.x && o.y===p.y)
       );
 
-    if (availableSpots.length === 0) return;
-
     const usedKeys = new Set();
-    const claimSpot = () => {
-      const openSpot = availableSpots.find(s => !usedKeys.has(`${s.x}_${s.y}`));
-      if (!openSpot) return null;
-      usedKeys.add(`${openSpot.x}_${openSpot.y}`);
-      return openSpot;
-    };
 
-    // Keep scaling controlled and avoid runaway late-game growth.
-    const ratCapByPower = Math.min(12, Math.max(3, Math.floor(catPower * 0.55) + 2));
-    const oxCapByPower = Math.min(4, Math.max(0, Math.floor((catPower - 12) / 9) + 1));
-    const ratSpawnBudget = Math.min(availableSpots.length, ratCapByPower);
-    const oxSpawnBudget = Math.min(Math.max(0, availableSpots.length - ratSpawnBudget), oxCapByPower);
-
+    // oxen
+    const oxCount = (catPower>=15) ? (Math.floor((catPower-15)/10)+1) : 0;
     let oxSpawned = 0;
-    while (oxSpawned < oxSpawnBudget){
-      const spot = claimSpot();
-      if (!spot) break;
+    for (let i=0; i<availableSpots.length && oxSpawned<oxCount; i++){
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
 
       const id = `ox_${crypto.randomUUID()}`;
       await setDoc(ccRef(ID.ox(id)), {
@@ -2218,39 +2194,41 @@
         y: spot.y,
         health: getOxHealthForDifficulty(),
         wave: waveTag,
-        hostUid: hostOwner,
         createdAt: Date.now()
       }, { merge:true });
       oxSpawned++;
     }
 
-    // rat king: host-owned aura unit, capped to one at a time.
-    if (catPower >= 22){
+
+    // rat king: late rounds random spawn
+    if (catPower >= 22 && Math.random() < 0.35){
       const livingKings = ratKings.filter(k => (k.health ?? 0) > 0).length;
-      if (livingKings < 1 && Math.random() < 0.3){
-        const spot = claimSpot();
-        if (spot){
+      if (livingKings < 2){
+        const openSpot = availableSpots.find(s => !usedKeys.has(`${s.x}_${s.y}`));
+        if (openSpot){
+          usedKeys.add(`${openSpot.x}_${openSpot.y}`);
           const id = `ratking_${crypto.randomUUID()}`;
           await setDoc(ccRef(ID.ratKing(id)), {
             kind: "ratking",
             id,
-            x: spot.x,
-            y: spot.y,
-            health: Math.max(120, getRatHealthForDifficulty() * 9),
-            auraRange: 4,
-            auraBoost: 1.8,
+            x: openSpot.x,
+            y: openSpot.y,
+            health: Math.max(120, getRatHealthForDifficulty() * 10),
             wave: waveTag,
-            hostUid: hostOwner,
             createdAt: Date.now()
           }, { merge:true });
         }
       }
     }
 
+    // rats
+    const maxRats = catPower;
     let ratsSpawned = 0;
-    while (ratsSpawned < ratSpawnBudget){
-      const spot = claimSpot();
-      if (!spot) break;
+    for (let i=0; i<availableSpots.length && ratsSpawned<maxRats; i++){
+      const spot = availableSpots[i];
+      const key = `${spot.x}_${spot.y}`;
+      if (usedKeys.has(key)) continue;
+      usedKeys.add(key);
 
       const id = `rat_${crypto.randomUUID()}`;
       await setDoc(ccRef(ID.rat(id)), {
@@ -2260,7 +2238,6 @@
         y: spot.y,
         health: getRatHealthForDifficulty(),
         wave: waveTag,
-        hostUid: hostOwner,
         createdAt: Date.now()
       }, { merge:true });
       ratsSpawned++;
@@ -2450,83 +2427,24 @@
         continue;
       }
 
-      if (king.trappedUntil && Date.now() < king.trappedUntil) continue;
-      if (king.slowedUntil && Date.now() < king.slowedUntil && Math.random() < 0.3) continue;
+      const mouseTarget = getNearestMouseTarget(king.x, king.y, false);
+      const target = mouseTarget ? {x:mouseTarget.x,y:mouseTarget.y,type:"mouse",uid:mouseTarget.uid,path:mouseTarget.path} : null;
+      const structureTarget = !target ? getNearestStructureContactTarget(king.x, king.y, false) : null;
+      const bestPath = target?.path || structureTarget?.path || null;
+      const finalTarget = target || (structureTarget ? {x:structureTarget.structureX,y:structureTarget.structureY,type:"structure"} : null);
+      if (!finalTarget) continue;
 
-      let closestTarget = null;
-      const rabbitTarget = getNearestRabbitTarget(king.x, king.y, (x, y) => {
-        const isBlocked = ["🧱","💎","🪤"].includes(grid[y][x]);
-        const kingOccupied = ratKings.some(k => k.id !== king.id && k.x===x && k.y===y);
-        return !isBlocked && !kingOccupied;
-      });
-      if (rabbitTarget){
-        closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", rabbit:rabbitTarget.rabbit, path:rabbitTarget.path };
+      if (bestPath && bestPath.length>0){
+        king.x = bestPath[0].x;
+        king.y = bestPath[0].y;
+        await updateDoc(ccRef(ID.ratKing(king.id)), { x: king.x, y: king.y, updatedAt: Date.now() });
       }
 
-      const mouseTarget = !closestTarget ? getNearestMouseTarget(king.x, king.y, (x, y) => {
-        const isBlocked = ["🧱","💎","🪤"].includes(grid[y][x]);
-        const kingOccupied = ratKings.some(k => k.id !== king.id && k.x===x && k.y===y);
-        return !isBlocked && !kingOccupied;
-      }) : null;
-      if (mouseTarget){
-        closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid:mouseTarget.uid, path:mouseTarget.path };
-      }
-
-      if (!closestTarget){
-        const structureTarget = getNearestStructureContactTarget(king.x, king.y, (x, y) => {
-          const isBlocked = ["🧱","💎","🪤"].includes(grid[y][x]);
-          const isReviveCenter = (x===Math.floor(gridSize/2) && y===Math.floor(gridSize/2));
-          const kingOccupied = ratKings.some(k => k.id !== king.id && k.x===x && k.y===y);
-          return !isBlocked && !isReviveCenter && !kingOccupied;
-        });
-        if (structureTarget){
-          closestTarget = {
-            x: structureTarget.structureX,
-            y: structureTarget.structureY,
-            type: "structure",
-            path: structureTarget.path
-          };
-        }
-      }
-
-      if (!closestTarget) continue;
-
-      let bestPath = closestTarget.path;
-      if (!bestPath || bestPath.length === 0){
-        bestPath = findPath(
-          king.x,
-          king.y,
-          closestTarget.x,
-          closestTarget.y,
-          (x, y) => {
-            const isBlocked = ["🧱","💎","🪤"].includes(grid[y][x]);
-            const isReviveCenter = (x===Math.floor(gridSize/2) && y===Math.floor(gridSize/2));
-            const kingOccupied = ratKings.some(k => k.id !== king.id && k.x===x && k.y===y);
-            return !isBlocked && !isReviveCenter && !kingOccupied;
-          }
-        ) || [];
-      }
-
-      if (bestPath.length > 0){
-        const next = bestPath[0];
-        const kingInWay = ratKings.some(k => k.id !== king.id && k.x===next.x && k.y===next.y);
-        if (!kingInWay){
-          king.x = next.x;
-          king.y = next.y;
-          await updateDoc(ccRef(ID.ratKing(king.id)), { x: king.x, y: king.y, updatedAt: Date.now() });
-        }
-      }
-
-      const d = Math.abs(king.x-closestTarget.x)+Math.abs(king.y-closestTarget.y);
-      if (closestTarget.type === "structure" && d===1){
-        await damageStructure(closestTarget.x, closestTarget.y, Math.max(10, ratPower * 2));
-      } else if (closestTarget.type === "rabbit" && d===0){
-        closestTarget.rabbit.health -= Math.max(10, ratPower * 5);
-        if (closestTarget.rabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)));
-        else await updateDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)), { health: closestTarget.rabbit.health, updatedAt: Date.now() });
-      } else if (closestTarget.type === "mouse" && d===0){
-        showClawHit(closestTarget.x, closestTarget.y);
-        await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
+      const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
+      if (finalTarget.type === "structure" && d===1){
+        await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
+      } else if (finalTarget.type === "mouse" && d===0){
+        await updateDoc(ccRef(ID.player(finalTarget.uid)), { alive:false, updatedAt: Date.now() });
       }
     }
   }
@@ -3359,10 +3277,9 @@
 
         // added / modified
         if (id === ID.STATE){
-          const stateHostUid = data.hostUid || null;
+          const hostUid = data.hostUid;
           const hostName = data.hostName;
-          hostUid = stateHostUid;
-          isHost = (stateHostUid === uid);
+          isHost = (hostUid === uid);
 
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
@@ -3428,10 +3345,6 @@
           }
         }
         else if (id.startsWith("rat_")){
-          if (!isHostOwnedEnemyDoc(data)){
-            if (isHost) await deleteDoc(ccRef(id)).catch(()=>{});
-            continue;
-          }
           const r = { ...data };
           if (!r.id) r.id = data.id || id;
           const existing = rats.find(rr => rr.id === r.id);
@@ -3439,10 +3352,6 @@
           else rats.push(r);
         }
         else if (id.startsWith("ox_")){
-          if (!isHostOwnedEnemyDoc(data)){
-            if (isHost) await deleteDoc(ccRef(id)).catch(()=>{});
-            continue;
-          }
           const o = { ...data };
           if (!o.id) o.id = data.id || id;
           const existing = oxen.find(oo => oo.id === o.id);
@@ -3500,10 +3409,6 @@
           renderSelectionOverlay();
         }
         else if (id.startsWith("ratking_")){
-          if (!isHostOwnedEnemyDoc(data)){
-            if (isHost) await deleteDoc(ccRef(id)).catch(()=>{});
-            continue;
-          }
           const rk = { ...data };
           if (!rk.id) rk.id = data.id || id;
           const existing = ratKings.find(rr => rr.id === rk.id);
@@ -3554,8 +3459,7 @@
     const sSnap = await getDoc(ccRef(ID.STATE));
     if (sSnap.exists()){
       const s = sSnap.data();
-      hostUid = s.hostUid || null;
-      isHost = (hostUid === uid);
+      isHost = (s.hostUid === uid);
       catPower = s.catPower ?? 0;
       ratPower = s.ratPower ?? 1;
       nextRatWaveAt = (typeof s.nextRatWave === "number") ? s.nextRatWave : nextRatWaveAt;
