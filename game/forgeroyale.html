@@ -96,6 +96,17 @@
     justify-content:center;
     position:relative;
     overflow:hidden;
+    padding:10px;
+  }
+
+  .arenaWindow{
+    width:100%;
+    height:100%;
+    border-radius:20px;
+    border:1px solid rgba(148,163,184,.35);
+    background:linear-gradient(180deg, rgba(2,6,23,.72), rgba(2,6,23,.52));
+    box-shadow:0 22px 48px rgba(0,0,0,.45), 0 0 0 1px rgba(56,189,248,.2) inset;
+    padding:6px;
   }
 
   .viewport{
@@ -106,6 +117,8 @@
     display:grid;
     place-items:center;
     user-select:none;
+    border-radius:14px;
+    touch-action:none;
   }
 
   .canvas{
@@ -625,11 +638,13 @@
   </div>
 
   <div class="wrap">
-    <div class="viewport" id="viewport">
-      <div class="hint" id="hint"></div>
-      <div class="canvas" id="canvas">
-        <div class="grid" id="grid" style="--w:9; --cell:56px; --gap:4px"></div>
-        <div class="fx" id="fx"></div>
+    <div class="arenaWindow">
+      <div class="viewport" id="viewport">
+        <div class="hint" id="hint"></div>
+        <div class="canvas" id="canvas">
+          <div class="grid" id="grid" style="--w:9; --cell:56px; --gap:4px"></div>
+          <div class="fx" id="fx"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1037,6 +1052,7 @@ buildGrid();
 let scale=1, pan={x:0,y:0};
 let boardMetrics = { width: 0, height: 0 };
 let isPanDrag = false;
+const PAN_DRAG_THRESHOLD = 7;
 
 function panBounds(){
   const vw = viewport.clientWidth;
@@ -1077,10 +1093,9 @@ function fitBoard(){
   const vh = viewport.clientHeight;
   const s = Math.min(vw/boardW, vh/boardH);
   const isMobile = window.matchMedia("(max-width: 720px)").matches;
-  const mobileScaleFactor = 0.72; // show noticeably more board on phones
-  const baseFactor = isMobile ? mobileScaleFactor : 1;
-  const maxScale = isMobile ? 1.15 : 1.5;
-  scale = Math.min(maxScale, Math.max(0.3, s * baseFactor));
+  const minScale = isMobile ? 0.76 : 0.95;
+  const maxScale = isMobile ? 1.2 : 1.6;
+  scale = Math.min(maxScale, Math.max(minScale, s * (isMobile ? 0.9 : 1.03)));
   pan.x = Math.round((vw - boardW*scale)/2);
   pan.y = Math.round((vh - boardH*scale)/2);
   applyCanvasTransform();
@@ -1088,70 +1103,66 @@ function fitBoard(){
 new ResizeObserver(fitBoard).observe(viewport);
 fitBoard();
 
-const touchPan = {
+const pointerPan = {
   active:false,
   engaged:false,
   pointerId:null,
+  pointerType:null,
   startX:0,
   startY:0,
   baseX:0,
-  baseY:0,
-  holdTimer:null
+  baseY:0
 };
 
-function endTouchPan(){
-  clearTimeout(touchPan.holdTimer);
-  touchPan.active = false;
-  touchPan.engaged = false;
-  touchPan.pointerId = null;
+function endPointerPan(){
+  pointerPan.active = false;
+  pointerPan.engaged = false;
+  pointerPan.pointerId = null;
+  pointerPan.pointerType = null;
 }
 
 viewport.addEventListener("pointerdown", (e)=>{
-  if (e.pointerType !== "touch") return;
-  touchPan.active = true;
-  touchPan.engaged = false;
-  touchPan.pointerId = e.pointerId;
-  touchPan.startX = e.clientX;
-  touchPan.startY = e.clientY;
-  touchPan.baseX = pan.x;
-  touchPan.baseY = pan.y;
-  clearTimeout(touchPan.holdTimer);
-  touchPan.holdTimer = setTimeout(()=>{
-    if (!touchPan.active) return;
-    touchPan.engaged = true;
-  }, 180);
-}, { passive:true });
+  if (pointerPan.active) return;
+  pointerPan.active = true;
+  pointerPan.engaged = false;
+  pointerPan.pointerId = e.pointerId;
+  pointerPan.pointerType = e.pointerType;
+  pointerPan.startX = e.clientX;
+  pointerPan.startY = e.clientY;
+  pointerPan.baseX = pan.x;
+  pointerPan.baseY = pan.y;
+  viewport.setPointerCapture?.(e.pointerId);
+}, { passive:false });
 
 viewport.addEventListener("pointermove", (e)=>{
-  if (e.pointerType !== "touch" || !touchPan.active || touchPan.pointerId !== e.pointerId) return;
-  const dx = e.clientX - touchPan.startX;
-  const dy = e.clientY - touchPan.startY;
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  const dx = e.clientX - pointerPan.startX;
+  const dy = e.clientY - pointerPan.startY;
 
-  if (!touchPan.engaged && Math.hypot(dx,dy) > 12){
-    endTouchPan();
-    return;
+  if (!pointerPan.engaged && Math.hypot(dx,dy) >= PAN_DRAG_THRESHOLD){
+    pointerPan.engaged = true;
   }
-  if (!touchPan.engaged) return;
+  if (!pointerPan.engaged) return;
 
   isPanDrag = true;
-  pan.x = touchPan.baseX + dx;
-  pan.y = touchPan.baseY + dy;
+  pan.x = pointerPan.baseX + dx;
+  pan.y = pointerPan.baseY + dy;
   applyCanvasTransform();
   e.preventDefault();
 }, { passive:false });
 
 viewport.addEventListener("pointerup", (e)=>{
-  if (e.pointerType !== "touch" || touchPan.pointerId !== e.pointerId) return;
-  if (touchPan.engaged){
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  if (pointerPan.engaged){
     e.preventDefault();
     setTimeout(()=>{ isPanDrag = false; }, 0);
   }
-  endTouchPan();
+  endPointerPan();
 }, { passive:false });
 
 viewport.addEventListener("pointercancel", (e)=>{
-  if (e.pointerType !== "touch" || touchPan.pointerId !== e.pointerId) return;
-  endTouchPan();
+  if (!pointerPan.active || pointerPan.pointerId !== e.pointerId) return;
+  endPointerPan();
 }, { passive:true });
 
 gridEl.addEventListener("click", (e)=>{
@@ -2547,6 +2558,5 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
 
 
