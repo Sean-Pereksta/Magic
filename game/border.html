@@ -24,13 +24,14 @@
     .pause{position:absolute;right:12px;bottom:12px;z-index:10}
     .screen{position:absolute;right:12px;top:62px;z-index:10}
 
-    .mobile-controls{position:absolute;inset:auto 0 10px 0;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:15;padding:0 12px}
+    .mobile-controls{position:absolute;inset:auto 0 10px 0;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:15;padding:0 12px;gap:12px}
     .stickWrap{position:relative;width:140px;height:140px;pointer-events:auto;touch-action:none}
     .stickBase{position:absolute;inset:0;border-radius:999px;background:rgba(9,18,28,.55);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(4px)}
     .stickKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:999px;background:rgba(96,165,250,.85);transform:translate(-50%,-50%)}
+    .shootStick .stickKnob{background:rgba(34,197,94,.9)}
+    .mobileRight{display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none}
     .mobileBtns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;pointer-events:auto;touch-action:none}
     .mobileBtn{min-width:88px;min-height:50px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(9,18,28,.7);color:#e5efff;font-weight:700}
-    .mobileBtn.primary{background:rgba(34,197,94,.35);border-color:rgba(134,239,172,.8)}
 
     .overlay{position:absolute;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5);z-index:20}
     .card{width:min(960px,92vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid #24364f;border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -95,11 +96,16 @@
       <div class="stickBase"></div>
       <div class="stickKnob" id="stickKnob"></div>
     </div>
-    <div class="mobileBtns">
-      <button class="mobileBtn primary" id="btnFireMobile">🔥 Fire</button>
-      <button class="mobileBtn" id="btnReloadMobile">↻ Reload</button>
-      <button class="mobileBtn" id="btnSlot1Mobile">1️⃣ Slot 1</button>
-      <button class="mobileBtn" id="btnSlot2Mobile">2️⃣ Slot 2</button>
+    <div class="mobileRight">
+      <div class="stickWrap shootStick" id="shootStick" aria-label="Shoot stick">
+        <div class="stickBase"></div>
+        <div class="stickKnob" id="shootKnob"></div>
+      </div>
+      <div class="mobileBtns">
+        <button class="mobileBtn" id="btnReloadMobile">↻ Reload</button>
+        <button class="mobileBtn" id="btnSlot1Mobile">1️⃣ Slot 1</button>
+        <button class="mobileBtn" id="btnSlot2Mobile">2️⃣ Slot 2</button>
+      </div>
     </div>
   </div>
 
@@ -179,6 +185,7 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 
 <!-- ALL GAME CODE IN ONE SCRIPT BLOCK -->
 <script>
@@ -194,7 +201,7 @@ const firebaseConfig = {
   measurementId: "G-8PR6LVKSH3"
 };
 firebase.initializeApp(firebaseConfig);
-loadProfileList();
+const auth = firebase.auth();
 const db = firebase.database();
 
 /*** ========= Helpers ========= ***/
@@ -587,10 +594,13 @@ canvas.addEventListener('mouseleave', ()=> mouse.down=false);
 
 const mobileState = {
   enabled: matchMedia('(pointer: coarse)').matches,
-  active:false,
+  moveActive:false,
+  shootActive:false,
   moveX:0,
   moveY:0,
-  fire:false
+  shootX:0,
+  shootY:0,
+  shootFire:false
 };
 
 /*** ========= UI Hooks ========= ***/
@@ -631,7 +641,8 @@ const profileHint = document.getElementById('profileHint');
 const mobileControls = document.getElementById('mobileControls');
 const moveStick = document.getElementById('moveStick');
 const stickKnob = document.getElementById('stickKnob');
-const btnFireMobile = document.getElementById('btnFireMobile');
+const shootStick = document.getElementById('shootStick');
+const shootKnob = document.getElementById('shootKnob');
 const btnReloadMobile = document.getElementById('btnReloadMobile');
 const btnSlot1Mobile = document.getElementById('btnSlot1Mobile');
 const btnSlot2Mobile = document.getElementById('btnSlot2Mobile');
@@ -673,9 +684,9 @@ btnLogout.onclick = ()=> { saveProgress().finally(()=>{ currentUser=''; location
 btnStart.onclick = startWithUsername;
 usernameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') startWithUsername(); });
 
-function updateMoveStick(clientX, clientY){
-  if(!moveStick || !stickKnob) return;
-  const r = moveStick.getBoundingClientRect();
+function updateStick(stickEl, knobEl, clientX, clientY){
+  if(!stickEl || !knobEl) return {x:0,y:0};
+  const r = stickEl.getBoundingClientRect();
   const cx = r.left + r.width/2;
   const cy = r.top + r.height/2;
   const dx = clientX - cx;
@@ -683,31 +694,59 @@ function updateMoveStick(clientX, clientY){
   const maxR = r.width * 0.34;
   const d = Math.hypot(dx,dy) || 1;
   const clamped = Math.min(maxR, d);
-  mobileState.moveX = dx / d * (clamped / maxR);
-  mobileState.moveY = dy / d * (clamped / maxR);
-  stickKnob.style.transform = `translate(calc(-50% + ${mobileState.moveX*maxR}px), calc(-50% + ${mobileState.moveY*maxR}px))`;
+  const x = dx / d * (clamped / maxR);
+  const y = dy / d * (clamped / maxR);
+  knobEl.style.transform = `translate(calc(-50% + ${x*maxR}px), calc(-50% + ${y*maxR}px))`;
+  return {x, y};
 }
 function resetMoveStick(){
-  mobileState.active = false;
+  mobileState.moveActive = false;
   mobileState.moveX = 0;
   mobileState.moveY = 0;
   if(stickKnob) stickKnob.style.transform = 'translate(-50%,-50%)';
 }
 if(moveStick){
   moveStick.addEventListener('pointerdown', (e)=>{
-    mobileState.active = true;
+    mobileState.moveActive = true;
     moveStick.setPointerCapture(e.pointerId);
-    updateMoveStick(e.clientX, e.clientY);
+    const v = updateStick(moveStick, stickKnob, e.clientX, e.clientY);
+    mobileState.moveX = v.x;
+    mobileState.moveY = v.y;
   });
-  moveStick.addEventListener('pointermove', (e)=>{ if(mobileState.active) updateMoveStick(e.clientX, e.clientY); });
+  moveStick.addEventListener('pointermove', (e)=>{
+    if(!mobileState.moveActive) return;
+    const v = updateStick(moveStick, stickKnob, e.clientX, e.clientY);
+    mobileState.moveX = v.x;
+    mobileState.moveY = v.y;
+  });
   moveStick.addEventListener('pointerup', resetMoveStick);
   moveStick.addEventListener('pointercancel', resetMoveStick);
 }
-if(btnFireMobile){
-  btnFireMobile.addEventListener('pointerdown', ()=>{ mobileState.fire=true; mouse.down=true; });
-  const stopFire=()=>{ mobileState.fire=false; mouse.down=false; };
-  btnFireMobile.addEventListener('pointerup', stopFire);
-  btnFireMobile.addEventListener('pointercancel', stopFire);
+function resetShootStick(){
+  mobileState.shootActive = false;
+  mobileState.shootX = 0;
+  mobileState.shootY = 0;
+  mobileState.shootFire = false;
+  if(shootKnob) shootKnob.style.transform = 'translate(-50%,-50%)';
+}
+if(shootStick){
+  shootStick.addEventListener('pointerdown', (e)=>{
+    mobileState.shootActive = true;
+    shootStick.setPointerCapture(e.pointerId);
+    const v = updateStick(shootStick, shootKnob, e.clientX, e.clientY);
+    mobileState.shootX = v.x;
+    mobileState.shootY = v.y;
+    mobileState.shootFire = Math.hypot(v.x, v.y) > 0.2;
+  });
+  shootStick.addEventListener('pointermove', (e)=>{
+    if(!mobileState.shootActive) return;
+    const v = updateStick(shootStick, shootKnob, e.clientX, e.clientY);
+    mobileState.shootX = v.x;
+    mobileState.shootY = v.y;
+    mobileState.shootFire = Math.hypot(v.x, v.y) > 0.2;
+  });
+  shootStick.addEventListener('pointerup', resetShootStick);
+  shootStick.addEventListener('pointercancel', resetShootStick);
 }
 btnReloadMobile?.addEventListener('click', ()=> tryReload());
 btnSlot1Mobile?.addEventListener('click', ()=>{ player.activeSlot=0; updateGunHUD(); });
@@ -819,6 +858,10 @@ async function saveProgress(){
 async function loadProfileList(){
   const list = document.getElementById('profileList');
   if (!list) return;
+  if(!authReady){
+    list.innerHTML = '<div class="kv">Connecting to Firebase…</div>';
+    return;
+  }
 
   try {
     const snap = await db.ref('shooter/users').get();
@@ -860,6 +903,10 @@ async function loadProfileList(){
 }
 
 async function selectProfile(name){
+  if(!authReady){
+    toast('Connecting to Firebase…');
+    return;
+  }
   currentUser = name;
   ovLogin.style.display='none';
   loadedOnce=false;
@@ -874,6 +921,10 @@ async function selectProfile(name){
   }
 }
 async function startWithUsername(){
+  if(!authReady){
+    toast('Connecting to Firebase…');
+    return;
+  }
   const u = (usernameInput.value || '').trim();
   if (!/^[A-Za-z0-9_]{2,24}$/.test(u)){
     toast('Use letters/numbers/_ (2–24 chars)');
@@ -922,7 +973,16 @@ async function startWithUsername(){
   }
 }
 
-loadProfileList();
+let authReady = false;
+auth.signInAnonymously()
+  .then(()=>{
+    authReady = true;
+    loadProfileList();
+  })
+  .catch((err)=>{
+    console.error('Anonymous auth failed:', err);
+    toast('Firebase auth failed. Check project auth settings.');
+  });
 
 /*** ========= Game Model ========= ***/
 let player = {
@@ -1442,8 +1502,8 @@ function movePlayer(dt){
   player.vx=ax*spd; player.vy=ay*spd;
   player.x+=player.vx*dt; player.y+=player.vy*dt;
   resolveCircleWalls(player, PLAYER_R);
-  if(mobileState.enabled && (Math.abs(mobileState.moveX) > 0.05 || Math.abs(mobileState.moveY) > 0.05)){
-    player.ang = Math.atan2(mobileState.moveY, mobileState.moveX);
+  if(mobileState.enabled && (Math.abs(mobileState.shootX) > 0.05 || Math.abs(mobileState.shootY) > 0.05)){
+    player.ang = Math.atan2(mobileState.shootY, mobileState.shootX);
     mouse.wx = player.x + Math.cos(player.ang)*800;
     mouse.wy = player.y + Math.sin(player.ang)*800;
   } else {
@@ -1492,7 +1552,8 @@ function fireLogic(dt, t){
     return;
   }
   const delay=1/(g.def.rof||1);
-  if(mouse.down && t - g.lastShot >= delay){
+  const shouldFire = mouse.down || (mobileState.enabled && mobileState.shootFire);
+  if(shouldFire && t - g.lastShot >= delay){
     let shots=g.def.burst? g.def.burst : 1;
     for(let i=0;i<shots;i++){ if(g.ammo<=0){ tryReload(); break; } shootBullet(g); g.ammo--; }
     g.lastShot=t; ammoText.textContent=`${g.ammo} / ${g.def.mag}`; if(g.ammo<=0) tryReload();
@@ -2517,10 +2578,28 @@ requestAnimationFrame(loop);
 canvas.addEventListener('click', ()=> canvas.focus());
 </script>
 
-<!-- Manage RTDB rules in Firebase Console. -->
+<!-- Realtime Database rules for this file:
+{
+  "rules": {
+    "shooter": {
+      "users": {
+        ".read": "auth != null",
+        "$username": {
+          ".write": "auth != null",
+          ".validate": "$username.matches(/^[A-Za-z0-9_]{2,24}$/)"
+        }
+      }
+    }
+  }
+}
+
+Firestore note for a username-based collection used by this game:
+match /pointclick_users/{username} {
+  allow read, write: if request.auth != null;
+}
+-->
 </body>
 </html>
-
 
 
 
