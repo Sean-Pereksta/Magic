@@ -835,7 +835,7 @@ function applySave(d){
 }
 async function loadProgress(){
   const snap = await userRef().get();
-  if(!snap.exists()){
+  if(!snap.exists){
     toast('Profile not found.');
     throw new Error('Profile missing');
   }
@@ -877,7 +877,7 @@ async function loadProfileList(){
     selectedProfileName = '';
     if(profileHint) profileHint.textContent = 'Select a player, then press Load Game.';
 
-    if (!snap.exists()) {
+    if (snap.empty) {
       list.innerHTML = '<div class="kv">No profiles yet.</div>';
       selectedProfileName = '';
       if(profileHint) profileHint.textContent = 'No players found. Create a new one.';
@@ -946,8 +946,14 @@ async function startWithUsername(){
   seedNewProfile();
 
   try {
-    // Firestore create() is atomic and fails if the doc already exists.
-    await ref.create(packSave());
+    // Transaction keeps creation atomic for the compat SDK.
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(ref);
+      if (existing.exists) {
+        throw new Error('already-exists');
+      }
+      tx.set(ref, packSave());
+    });
 
     // Created successfully — enter the game
     ovLogin.style.display = 'none';
@@ -957,7 +963,7 @@ async function startWithUsername(){
   } catch (e) {
     console.error(e);
     currentUser = '';
-    toast(e?.code === 'already-exists'
+    toast((e?.code === 'already-exists' || e?.message === 'already-exists')
       ? 'That name already exists — select it above.'
       : (e?.code === 'permission-denied'
         ? 'Cloud save blocked by Firestore rules (auth?).'
@@ -2592,7 +2598,6 @@ match /pointclick_users/{username} {
 -->
 </body>
 </html>
-
 
 
 
