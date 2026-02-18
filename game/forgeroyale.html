@@ -744,7 +744,7 @@ const CARDS = {
   barbarian:{ id:"barbarian", name:"Barbarian", emoji:"🪓", kind:"troop", cost:4, place:"friendly", spawn:1,
              unit:{ hp:26, dmg:5, range:1, cdMs:1100, spdMs:510, targets:"all", canHitAir:false, cleaveRadius:1 } },
   necromancer:{ id:"necromancer", name:"Necromancer", emoji:"☠️", kind:"troop", cost:5, place:"friendly", spawn:1,
-             unit:{ hp:20, dmg:3, range:3, cdMs:1300, spdMs:620, targets:"all", canHitAir:true, summonCard:"skeleton", summonEveryMs:10000, summonCount:1 } },
+             unit:{ hp:20, dmg:3, range:3, cdMs:1300, spdMs:620, targets:"all", canHitAir:true, summonCard:"skeleton", summonEveryMs:6500, summonCount:2 } },
   skeleton:{ id:"skeleton", name:"Skeleton", emoji:"🦴", kind:"troop", cost:0, place:"friendly", spawn:1, hidden:true,
              unit:{ hp:5, dmg:2, range:1, cdMs:900, spdMs:430, targets:"all", canHitAir:false } },
   darkprince:{ id:"darkprince", name:"Dark Prince", emoji:"🐎", kind:"troop", cost:5, place:"friendly", spawn:1,
@@ -1349,6 +1349,7 @@ function isStructureTile(structs, x,y){ return !!structureAt(structs,x,y); }
 
 const MATCH_MS = 3*60*1000;
 const DRAFT_MS = 30*1000;
+const TROOP_HP_MULT = 1.2;
 
 async function ensureStateExists(){
   await runTransaction(db, async (tx)=>{
@@ -1392,7 +1393,7 @@ async function ensureStateExists(){
 
 /* ---------------- Gameplay constants ---------------- */
 let hostTimer = null;
-const TICK_MS = 320;
+const TICK_MS = 200;
 const ELIXIR_MS_PER = 2800;
 const MAX_ELIXIR = 10;
 const FX_TTL = 900;
@@ -1534,10 +1535,12 @@ function enemyStructPriority(structs, enemyP){
 function newUnit(p, cardId, x,y){
   const c = CARDS[cardId];
   const u = c.unit;
+  const buffedHp = Math.max(1, Math.round((u.hp || 1) * TROOP_HP_MULT));
+  const firstSummonDelay = u.summonEveryMs ? Math.min(2500, u.summonEveryMs) : 0;
   return {
     id: crypto.randomUUID(),
     p, type: cardId, x, y,
-    hp: u.hp, maxhp: u.hp,
+    hp: buffedHp, maxhp: buffedHp,
     dmg: u.dmg, range: u.range,
     cdMs: u.cdMs, spdMs: u.spdMs,
     splash: u.splash || 0,
@@ -1548,7 +1551,7 @@ function newUnit(p, cardId, x,y){
     summonCard: u.summonCard || null,
     summonEveryMs: u.summonEveryMs || 0,
     summonCount: u.summonCount || 0,
-    nextSummon: u.summonEveryMs ? (Date.now() + u.summonEveryMs) : 0,
+    nextSummon: u.summonEveryMs ? (Date.now() + firstSummonDelay) : 0,
     splitInto: u.splitInto || null,
     splitCount: u.splitCount || 0,
     chargeDmg: u.chargeDmg || 0,
@@ -1579,6 +1582,10 @@ function newUnit(p, cardId, x,y){
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 function pushFx(st, x,y, text, color, delayMs=0, ttl=FX_TTL, cls="", source=null, icon=null){
   st.fx.push({id:crypto.randomUUID(), x,y, text, color, at:Date.now()+delayMs, ttl, cls, source, icon});
+}
+const localFx = [];
+function pushLocalFx(x,y, text, color, delayMs=0, ttl=FX_TTL, cls="", source=null, icon=null){
+  localFx.push({id:`local-${crypto.randomUUID()}`, x,y, text, color, at:Date.now()+delayMs, ttl, cls, source, icon});
 }
 
 function applySpell(st, p, cardId, tx, ty){
@@ -1824,6 +1831,7 @@ function tickSim(st){
         const spots = neighbors4(u.x,u.y).concat([{x:u.x,y:u.y}]).filter(s=>inside(s.x,s.y) && walkable(st.structures,s.x,s.y,false));
         const spot = spots[i % Math.max(1,spots.length)] || {x:u.x,y:u.y};
         st.units.push(newUnit(u.p, u.summonCard, spot.x, spot.y));
+        pushFx(st, spot.x, spot.y, CARDS[u.summonCard]?.emoji || "✨", "#c4b5fd", 60, 620, "spell");
       }
       pushFx(st, u.x, u.y, "☠️", "#c4b5fd");
     }
@@ -2344,7 +2352,10 @@ function paintBoard(){
 function paintFx(){
   fxEl.innerHTML = "";
   const now = Date.now();
-  const allFx = (S.fx||[]).concat(predictedRangeFx(now));
+  const visibleLocalFx = localFx.filter(f=> (f.at + (f.ttl||FX_TTL)) > now);
+  localFx.length = 0;
+  localFx.push(...visibleLocalFx);
+  const allFx = (S.fx||[]).concat(predictedRangeFx(now), visibleLocalFx);
   for (const f of allFx){
     if ((f.at||0) > now) continue;
     if (f.at + (f.ttl||FX_TTL) <= now) continue;
@@ -2356,6 +2367,27 @@ function paintFx(){
 
     if (f.cls === "sparks" || f.cls === "slash" || f.cls === "hit") fxSparks(f.x, f.y, f.color || "#fde68a", 7, 420);
     if ((f.text||"").trim()) fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
+  }
+}
+
+function addClientDeltaFx(prev, next){
+  if (!next) return;
+  const prevUnits = new Map(((prev?.units)||[]).map(u=>[u.id, u]));
+  const nextUnits = new Map(((next?.units)||[]).map(u=>[u.id, u]));
+
+  for (const [id, u] of nextUnits){
+    if (prevUnits.has(id)) continue;
+    const color = (u.p===0 ? "#60a5fa" : "#f87171");
+    const glyph = CARDS[u.type]?.emoji || "✨";
+    pushLocalFx(u.x, u.y, glyph, color, 0, 600, "spell");
+  }
+
+  const prevStructs = new Map(((prev?.structures)||[]).map(s=>[s.id, s.hp||0]));
+  for (const s of (next.structures||[])){
+    const before = prevStructs.get(s.id);
+    if (typeof before === "number" && before > 0 && (s.hp||0) <= 0){
+      pushLocalFx(s.x, s.y, s.kind === "castle" ? "💥🏰" : "👑", "#fbbf24", 0, 820, "explosion");
+    }
   }
 }
 
@@ -2443,6 +2475,10 @@ async function onCellClick(x,y){
   if (!selectedQueue.length) cancelBtn.style.display="none";
   render();
 
+  const localColor = (meIndex===0 ? "#60a5fa" : "#f87171");
+  if (card.kind === "troop") pushLocalFx(x, y, card.emoji, localColor, 0, 620, "spell");
+  else pushLocalFx(x, y, card.emoji, "#e5e7eb", 0, 760, "spell");
+
   try{
     await runTransaction(db, async (tx)=>{
       const snap = await tx.get(stateRef);
@@ -2500,7 +2536,10 @@ onAuthStateChanged(auth, async (user)=>{
     stateRef,
     async (snap)=>{
       if (!snap.exists()) return;
-      S = snap.data();
+      const prev = S;
+      const next = snap.data();
+      addClientDeltaFx(prev, next);
+      S = next;
       render();
       if (isHost) applyEloIfNeeded(S);
       if (isHost) startHostLoop();
