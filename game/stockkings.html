@@ -39,6 +39,8 @@
     .boost{width:120px;height:120px;display:grid;place-items:center;font-weight:900}
     .boost.onCd{background:rgba(45,18,18,.86);border-color:#8b3f3f}
     .msg{font-size:13px;color:var(--muted)}
+    .fullBtn{pointer-events:auto;position:absolute;right:12px;bottom:12px;z-index:12;background:rgba(9,16,27,.92);border:1px solid #4a77b5}
+    .board.hidden{display:none}
     @media (max-width:920px){.controls{display:flex}.board{max-width:none}}
   </style>
 </head>
@@ -53,7 +55,7 @@
       <div class="chip"><small>Boost</small><span id="boostText">Ready</span></div>
       <div class="chip"><small>Status</small><span id="statusText">Connecting to race…</span></div>
     </div>
-    <div class="board">
+    <div class="board" id="resultsBoard">
       <h3 style="margin:0 0 8px">🏁 Round Results</h3>
       <table>
         <thead><tr><th>Player</th><th>L1</th><th>L2</th><th>L3</th><th>Avg</th></tr></thead>
@@ -67,6 +69,8 @@
     <div class="pad" id="pad"><div class="padDot" id="padDot"></div></div>
     <button class="boost" id="boostBtn">BOOST</button>
   </div>
+
+  <button id="fullscreenBtn" class="fullBtn">⛶ Fullscreen</button>
 
   <div class="modalWrap show" id="overlay">
     <div class="modal">
@@ -104,6 +108,7 @@ const el=id=>document.getElementById(id);
 
 let uid="",isHost=false,raceState=null,lobbyState=null,lapStart=0,currentLap=1,isRacing=false;
 let firstCheckpoint=false,lastParam=0,stunUntil=0,boostReadyAt=0,lastHitAt=0;
+let useLocalRace=false;
 const keys={forward:false,left:false,right:false,boost:false};
 
 const renderer=new THREE.WebGLRenderer({canvas:el("scene"),antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -136,6 +141,12 @@ const car=buildCar(); car.position.set(0,.1,-6); scene.add(car);
 
 const trackCenter=(t)=>new THREE.Vector3(36*Math.sin(t),0,18*Math.sin(t)*Math.cos(t));
 function nearestParam(x,z){ let bestT=0,best=1e9; for(let i=0;i<trackPath.length;i++){ const p=trackPath[i],d=(p.x-x)**2+(p.z-z)**2; if(d<best){best=d;bestT=(i/trackPath.length)*Math.PI*2;}} return {t:bestT,d:Math.sqrt(best)}; }
+function isBetweenRoundsPhase(phase){return phase==="lap_wait"||phase==="obstacle_select"||phase==="finished";}
+function chooseObstacle(type){
+  if(useLocalRace){applyObstaclePick(type,false); return;}
+  if(!RACE_REF) return;
+  updateDoc(RACE_REF,{pickedObstacle:type,updatedAt:serverTimestamp()});
+}
 
 const threats=[];
 function spawnThreats(){ threats.splice(0).forEach(t=>scene.remove(t.mesh));
@@ -175,6 +186,7 @@ function renderBoard(){
   const players=raceState?.players||{}; const rows=Object.entries(players).sort((a,b)=>((a[1].avg??999)-(b[1].avg??999)));
   el("scoreRows").innerHTML=rows.map(([id,p])=>`<tr><td>${p.name||id}${id===uid?" (you)":""}</td><td>${fmt(p.laps?.[0])}</td><td>${fmt(p.laps?.[1])}</td><td>${fmt(p.laps?.[2])}</td><td>${fmt(p.avg)}</td></tr>`).join("");
   const ph=raceState?.phase||"pregame";
+  el("resultsBoard").classList.toggle("hidden",!isBetweenRoundsPhase(ph));
   el("phaseText").textContent=ph.replaceAll("_"," ");
   el("lapText").textContent=`${raceState?.round||1} / 3`;
   if(ph==="lap_wait"&&raceState?.deadlineAt){const sec=Math.max(0,Math.ceil((raceState.deadlineAt-Date.now())/1000));el("waitingMsg").textContent=`Waiting for racers. ${sec}s deadline remains.`;} else {
@@ -184,10 +196,12 @@ function renderBoard(){
 }
 
 async function hostMaybeStart(){ if(!isHost||!RACE_REF||!raceState) return;
+  if(useLocalRace) return;
   if(raceState.phase==="pregame"){ await updateDoc(RACE_REF,{phase:"countdown",countdownEndsAt:Date.now()+10000,updatedAt:serverTimestamp()}); }
 }
 
 async function hostTick(){
+  if(useLocalRace) return;
   if(!isHost||!raceState||!RACE_REF) return;
   const now=Date.now();
   if(raceState.phase==="countdown"&&now>raceState.countdownEndsAt){ await updateDoc(RACE_REF,{phase:"racing",updatedAt:serverTimestamp()}); return; }
@@ -205,6 +219,17 @@ async function hostTick(){
 }
 
 async function applyObstaclePick(type,auto=false){
+  if(useLocalRace&&raceState){
+    const obs=[...(raceState.obstacles||[])]; if(!obs.includes(type))obs.push(type);
+    const round=(raceState.round||1)+1;
+    if(round>3){
+      const players=structuredClone(raceState.players||{}); let bestId=null,best=1e9; Object.entries(players).forEach(([id,p])=>{p.avg=avg(p.laps||[]); if((p.avg??999)<best){best=p.avg;bestId=id;}});
+      raceState={...raceState,obstacles:obs,phase:"finished",winnerUid:bestId};
+    } else {
+      raceState={...raceState,obstacles:obs,round,phase:"countdown",countdownEndsAt:Date.now()+4500,selectorUid:null,lastSelectorReason:auto?"Auto-picked due to timeout.":""};
+    }
+    return;
+  }
   if(!isHost||!RACE_REF||!raceState)return;
   const obs=[...(raceState.obstacles||[])]; if(!obs.includes(type))obs.push(type);
   const round=(raceState.round||1)+1;
@@ -217,7 +242,7 @@ async function applyObstaclePick(type,auto=false){
 }
 
 async function submitLap(){
-  if(!RACE_REF||!raceState||!uid||!isRacing) return;
+  if(!raceState||!uid||!isRacing) return;
   isRacing=false;
   const lap=((Date.now()-lapStart)/1000); const players=structuredClone(raceState.players||{}); const me=players[uid]||{name:username,laps:[]};
   me.laps=me.laps||[]; me.laps[raceState.round-1]=Math.min(30,lap); me.lastLap=me.laps[raceState.round-1]; me.avg=avg(me.laps); players[uid]=me;
@@ -230,6 +255,12 @@ async function submitLap(){
     const vals=Object.entries(players).map(([id,p])=>({id,t:p.laps[raceState.round-1]??30})); const maxT=Math.max(...vals.map(v=>v.t)); const bottoms=vals.filter(v=>v.t===maxT);
     patch.phase="obstacle_select"; patch.selectorUid=bottoms[Math.floor(Math.random()*bottoms.length)].id; patch.selectEndsAt=Date.now()+15000; patch.lastSelectorReason=bottoms.length>1?"Tie on slowest; random bottom performer selected.":"Slowest lap selects next threat.";
   }
+  if(useLocalRace){
+    raceState={...raceState,...patch};
+    if(everyoneDone&&!raceState.selectEndsAt){raceState.selectEndsAt=Date.now()+2500;}
+    return;
+  }
+  if(!RACE_REF) return;
   await updateDoc(RACE_REF,patch);
 }
 
@@ -276,7 +307,7 @@ function render(){
   if(raceState?.phase==="racing"&&!isRacing){hideModal();startLapLocal();}
   if(raceState?.phase==="obstacle_select"){
     const canPick=raceState.selectorUid===uid; const opts=obstacleOrder.filter(o=>!(raceState.obstacles||[]).includes(o));
-    showModal(canPick?"Choose the next threat":"Waiting for slowest racer","<b>"+(raceState.lastSelectorReason||"Slowest racer chooses.")+"</b>",canPick?opts.map(o=>({label:OBSTACLES[o].name,onClick:()=>updateDoc(RACE_REF,{pickedObstacle:o,updatedAt:serverTimestamp()})})).concat([{label:"Random",className:"ghost",onClick:()=>updateDoc(RACE_REF,{pickedObstacle:opts[Math.floor(Math.random()*opts.length)]})}]):[{label:"Waiting...",className:"ghost",onClick:()=>{}}]);
+    showModal(canPick?"Choose the next threat":"Waiting for slowest racer","<b>"+(raceState.lastSelectorReason||"Slowest racer chooses.")+"</b>",canPick?opts.map(o=>({label:OBSTACLES[o].name,onClick:()=>chooseObstacle(o)})).concat([{label:"Random",className:"ghost",onClick:()=>chooseObstacle(opts[Math.floor(Math.random()*opts.length)]||obstacleOrder[0])}]):[{label:"Waiting...",className:"ghost",onClick:()=>{}}]);
   }
   const lapElapsed=isRacing?((Date.now()-lapStart)/1000):0;
   el("lapTimer").textContent=lapElapsed.toFixed(3);
@@ -284,12 +315,32 @@ function render(){
   const bLeft=Math.max(0,(boostReadyAt-Date.now())/1000); el("boostText").textContent=bLeft?`Cooldown ${bLeft.toFixed(1)}s`:"Ready";
 }
 
+function startLocalFallback(reason=""){
+  if(useLocalRace) return;
+  useLocalRace=true;
+  const localPlayerId=uid||"local-player";
+  raceState={game:"stockkings-racer",phase:"countdown",round:1,maxRounds:3,players:{[localPlayerId]:{name:username,laps:[],avg:null,lastLap:null}},obstacles:[],selectorUid:null,lastSelectorReason:"",winnerUid:null,countdownEndsAt:Date.now()+5000};
+  isHost=true;
+  el("statusText").textContent="Local mode";
+  showModal("Local Mode Enabled",`Multiplayer sync is unavailable right now${reason?` (${reason})`:""}. You can still race solo.`,[{label:"Enter Fullscreen",onClick:()=>document.documentElement.requestFullscreen?.(),className:"warn"},{label:"Race",onClick:hideModal}]);
+  setInterval(()=>{
+    if(!raceState) return;
+    const now=Date.now();
+    if(raceState.phase==="countdown"&&now>raceState.countdownEndsAt){raceState={...raceState,phase:"racing"};}
+    if(raceState.phase==="obstacle_select"&&raceState.selectEndsAt&&now>raceState.selectEndsAt){const used=raceState.obstacles||[]; const opts=obstacleOrder.filter(o=>!used.includes(o)); const pick=opts[0]||obstacleOrder[0]; applyObstaclePick(pick,true);}
+  },220);
+}
+
 let prev=performance.now();
 function loop(t){
   const dt=Math.min(.033,(t-prev)/1000); prev=t;
   updateThreats(dt); if(raceState?.phase==="racing")updateCar(dt);
-  const follow=new THREE.Vector3(car.position.x+Math.sin(car.rotation.y)*13,15,car.position.z+Math.cos(car.rotation.y)*13);
-  camera.position.lerp(follow,.08); camera.lookAt(car.position.x,1.2,car.position.z);
+  const forward=new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
+  const follow=new THREE.Vector3().copy(car.position).addScaledVector(forward,-7.2);
+  follow.y=3.2;
+  const lookAt=new THREE.Vector3().copy(car.position).addScaledVector(forward,12);
+  lookAt.y=1.1;
+  camera.position.lerp(follow,.18); camera.lookAt(lookAt);
   renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.render(scene,camera); render(); requestAnimationFrame(loop);
 }
@@ -307,16 +358,29 @@ function setupControls(){
 }
 setupControls();
 
+const fullscreenBtn=el("fullscreenBtn");
+function syncFullscreenLabel(){fullscreenBtn.textContent=document.fullscreenElement?"⤢ Exit Fullscreen":"⛶ Fullscreen";}
+fullscreenBtn.addEventListener("click",async()=>{if(document.fullscreenElement){await document.exitFullscreen?.();} else {await document.documentElement.requestFullscreen?.();} syncFullscreenLabel();});
+document.addEventListener("fullscreenchange",syncFullscreenLabel);
+syncFullscreenLabel();
+
 onAuthStateChanged(auth, async user=>{
   if(!user){await signInAnonymously(auth); return;}
   uid=user.uid; el("statusText").textContent="Connected";
   if(!gameId){showModal("Missing gameId","Open from lobby to use multiplayer syncing.",[ {label:"Back to lobby",onClick:()=>location.href="/lobby/lobby.html"} ]); return;}
-  const lobbySnap=await getDoc(LOBBY_REF); lobbyState=lobbySnap.data()||{}; isHost=lobbyState.hostUid===uid;
-  await ensureRaceDoc(); await joinRacePlayer();
+  try{
+    const lobbySnap=await getDoc(LOBBY_REF); lobbyState=lobbySnap.data()||{}; isHost=lobbyState.hostUid===uid;
+    await ensureRaceDoc(); await joinRacePlayer();
+  }catch(err){
+    if(err?.code==="permission-denied"){startLocalFallback("permission denied"); return;}
+    throw err;
+  }
   onSnapshot(RACE_REF, snap=>{
     if(!snap.exists()) return; raceState=snap.data();
     if(raceState.pickedObstacle&&isHost){applyObstaclePick(raceState.pickedObstacle,false).then(()=>updateDoc(RACE_REF,{pickedObstacle:null}));}
     spawnThreats(); renderBoard(); hostMaybeStart();
+  }, err=>{
+    if(err?.code==="permission-denied") startLocalFallback("permission denied");
   });
   setInterval(hostTick,400);
 });
