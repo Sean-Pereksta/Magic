@@ -38,10 +38,10 @@
         radial-gradient(900px 500px at 80% 15%, rgba(210,140,255,.12), transparent 55%),
         radial-gradient(900px 700px at 50% 100%, rgba(140,255,190,.10), transparent 55%),
         linear-gradient(180deg, #070a10, var(--bg));
-      overflow:hidden;
+      overflow:auto;
     }
     .app{
-      height:100%;
+      min-height:100%;
       display:grid;
       grid-template-columns: 360px 1fr 360px;
       grid-template-rows: auto 1fr;
@@ -279,7 +279,7 @@
 
     .slots{
       display:grid;
-      grid-template-columns: repeat(7, minmax(120px, 1fr));
+      grid-template-columns: repeat(7, minmax(180px, 1fr));
       gap:8px;
       padding:10px;
       align-items:stretch;
@@ -288,11 +288,14 @@
       border-radius:12px;
       border:1px dashed rgba(255,255,255,.16);
       background: rgba(255,255,255,.03);
-      min-height:92px;
+      min-height:250px;
       position:relative;
-      padding:6px;
+      padding:24px 8px 8px;
       box-sizing:border-box;
-      overflow:hidden;
+      overflow:visible;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
     }
     .slot.locked{
       opacity:.42;
@@ -313,12 +316,14 @@
       font-weight:1000;
     }
     .slot .benefit{
-      position:absolute;
-      bottom:6px; left:8px; right:8px;
+      position:static;
       font-size:11px;
       color: rgba(234,242,255,.65);
       font-weight:900;
       line-height:1.15;
+      margin-top:auto;
+      min-height:2.7em;
+      padding-top:2px;
     }
     .slot.actionHere{
       border-color: rgba(120,190,255,.55);
@@ -330,6 +335,18 @@
       top:6px; right:8px;
       font-size:14px;
       opacity:.9;
+    }
+    .slot.nextAction{
+      border-color: rgba(255,210,120,.72);
+      box-shadow: inset 0 0 0 2px rgba(255,210,120,.75);
+    }
+    .slot.nextAction::before{
+      content:"";
+      position:absolute;
+      inset:4px;
+      border-radius:10px;
+      border:2px solid rgba(255,210,120,.85);
+      pointer-events:none;
     }
 
     /* card visuals */
@@ -343,7 +360,7 @@
       display:flex;
       flex-direction:column;
       gap:6px;
-      height:100%;
+      min-height:170px;
       box-sizing:border-box;
     }
     .card .top{
@@ -419,7 +436,7 @@
       display:grid;
       gap:8px;
     }
-    #marketList{ grid-template-columns: 1fr; }
+    #marketList{ grid-template-columns: 1fr; max-height:44vh; overflow:auto; }
     #handList{ grid-template-columns: 1fr; }
     .miniRow{
       display:flex;
@@ -1195,6 +1212,7 @@ function initGame(playerNames, seedStr){
     battlePlan: [],
     battleWinners: Array(5).fill(null),
     lastActionSlot: { Forage:0, Recruit:0, Raid:0, Train:0 },
+    turnSummary: null,
     actionLock: false,
   };
 
@@ -1269,6 +1287,76 @@ function sumCardPoints(p){
 }
 function calcScore(p){
   return sumCardPoints(p) + p.battlePts + p.bonusPts;
+}
+function cloneRes(res){
+  return { wood:res.wood||0, wheat:res.wheat||0, stone:res.stone||0, gold:res.gold||0 };
+}
+function snapshotPlayerState(p){
+  return {
+    score: calcScore(p),
+    battlePts: p.battlePts,
+    bonusPts: p.bonusPts,
+    hand: p.hand.length,
+    unlocked: p.unlocked,
+    res: cloneRes(p.res),
+  };
+}
+function ensureTurnSummary(actionName){
+  if(G.turnSummary) return;
+  const p=curP();
+  G.turnSummary = {
+    playerIdx: G.currentPlayer,
+    playerName: p.name,
+    action: actionName || "Action",
+    before: snapshotPlayerState(p),
+  };
+}
+function buildTurnSummaryModal(summary, onOk){
+  const p = G.players[summary.playerIdx];
+  const after = snapshotPlayerState(p);
+  const diffScore = after.score - summary.before.score;
+  const diffBattle = after.battlePts - summary.before.battlePts;
+  const diffBonus = after.bonusPts - summary.before.bonusPts;
+  const diffUnlocked = after.unlocked - summary.before.unlocked;
+  const body=[];
+
+  const head=document.createElement("div");
+  head.className="smallNote";
+  head.innerHTML = `<b>${summary.playerName}</b> completed <b>${summary.action}</b>. Review turn results before passing to next player.`;
+  body.push(head);
+
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+
+  const scoreBox=document.createElement("div");
+  scoreBox.className="choice";
+  scoreBox.innerHTML = `
+    <div class="h">Score <span class="pill">${after.score} (${diffScore>=0?'+':''}${diffScore})</span></div>
+    <div class="p">Battle points: <b>${after.battlePts}</b> (${diffBattle>=0?'+':''}${diffBattle})</div>
+    <div class="p">Bonus points: <b>${after.bonusPts}</b> (${diffBonus>=0?'+':''}${diffBonus})</div>
+    <div class="p">Unlocked columns: <b>${after.unlocked}</b> (${diffUnlocked>=0?'+':''}${diffUnlocked})</div>
+    <div class="p">Hand size: <b>${after.hand}</b> (${after.hand-summary.before.hand>=0?'+':''}${after.hand-summary.before.hand})</div>
+  `;
+  grid.appendChild(scoreBox);
+
+  const resBox=document.createElement("div");
+  resBox.className="choice";
+  const resLines = RES.map(r=>{
+    const delta = after.res[r]-summary.before.res[r];
+    const sign = delta>=0?'+':'';
+    return `<div class="p">${RES_EMOJI[r]} ${RES_LABEL[r]}: <b>${after.res[r]}</b> (${sign}${delta})</div>`;
+  }).join("");
+  resBox.innerHTML = `<div class="h">Resources <span class="pill">Total: ${sumRes(p)}</span></div>${resLines}`;
+  grid.appendChild(resBox);
+
+  body.push(grid);
+
+  showModal({
+    title:`Turn Summary • ${summary.playerName}`,
+    sub:"Press OK to pass to the next player.",
+    bodyNodes: body,
+    actions:[{label:"OK", kind:"primary", onClick:()=>{ closeModal(); onOk(); }}]
+  });
 }
 
 /* ============================================================
@@ -1499,12 +1587,14 @@ function renderBoard(){
 
     const cards=p.tableau[rowName];
     const actionSlot = G.lastActionSlot[rowName] || 0;
+    const nextActionSlot = computeActionSlot(p,rowName);
 
     for(let i=1;i<=7;i++){
       const slot=document.createElement("div");
       slot.className="slot";
       if(i>p.unlocked) slot.classList.add("locked");
       if(actionSlot===i) slot.classList.add("actionHere");
+      if(i===nextActionSlot && i<=p.unlocked) slot.classList.add("nextAction");
 
       const num=document.createElement("div");
       num.className="slotNum";
@@ -1641,21 +1731,31 @@ function endTurn(){
   p.lastForageBaseGained=0;
   p.unlockedThisTrain=false;
 
-  // If round over (all 0), resolve battle
-  const anyLeft = G.turnsLeft.some(x=>x>0);
-  if(!anyLeft){
-    resolveBattleForRound(G.round);
+  const finishAdvance = ()=>{
+    // If round over (all 0), resolve battle
+    const anyLeft = G.turnsLeft.some(x=>x>0);
+    if(!anyLeft){
+      resolveBattleForRound(G.round);
+      return;
+    }
+
+    // Otherwise advance to next player with turns
+    G.currentPlayer = nextPlayerIdx(G.currentPlayer);
+    G.lastActionSlot = { Forage:0, Recruit:0, Raid:0, Train:0 };
+    G.turnSummary = null;
+    renderAll();
+  };
+
+  if(G.turnSummary){
+    buildTurnSummaryModal(G.turnSummary, finishAdvance);
     return;
   }
-
-  // Otherwise advance to next player with turns
-  G.currentPlayer = nextPlayerIdx(G.currentPlayer);
-  G.lastActionSlot = { Forage:0, Recruit:0, Raid:0, Train:0 };
-  renderAll();
+  finishAdvance();
 }
 
 function takeAction(rowName){
   if(G.actionLock) return;
+  ensureTurnSummary(rowName);
   const p=curP();
   const slot = computeActionSlot(p,rowName);
   G.lastActionSlot[rowName]=slot;
@@ -1757,6 +1857,7 @@ function attemptPlayFromHand(handIdx){
 }
 
 function doPlayCard(p, handIdx, rowName){
+  ensureTurnSummary(`Play Card (${rowName})`);
   const ci=p.hand.splice(handIdx,1)[0];
   const d=instToDef(ci);
 
