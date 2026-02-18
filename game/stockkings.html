@@ -492,13 +492,25 @@ function updateFullscreenBtn(){
    AUTH-SAFE BOOTSTRAP
 ============================================================ */
 async function ensureAuthed(){
-  try{ await setPersistence(auth, browserLocalPersistence); }catch(e){}
+  let signInErr = null;
+
+  try { await setPersistence(auth, browserLocalPersistence); }
+  catch(e){ console.warn("setPersistence failed:", e); }
+
   if(auth.currentUser) return auth.currentUser;
 
-  try{ await signInAnonymously(auth); }catch(e){}
+  try{
+    await signInAnonymously(auth);
+  }catch(e){
+    signInErr = e;
+    console.error("signInAnonymously failed:", e);
+  }
 
   return await new Promise((resolve, reject)=>{
-    const timeout=setTimeout(()=>reject(new Error("auth-timeout")), 9000);
+    const timeout=setTimeout(()=>{
+      reject(signInErr || new Error("auth-timeout"));
+    }, 9000);
+
     const unsub=onAuthStateChanged(auth, (u)=>{
       if(u){
         clearTimeout(timeout);
@@ -508,6 +520,7 @@ async function ensureAuthed(){
     });
   });
 }
+
 
 /* ============================================================
    RACE STATE
@@ -1803,13 +1816,14 @@ function tickStateMachine(){
   try{
     await ensureAuthed();
   }catch(e){
-    showOverlay("authFail","Auth failed",
-      `Could not establish Firebase Auth.<br/><br/>
-       If you’re running on a custom domain, add it to <b>Firebase Auth → Authorized domains</b>.`,
-      [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-    );
-    return;
-  }
+  showOverlay("authFail","Auth failed",
+    `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}<br/><br/>
+     Origin: <b>${location.origin}</b><br/>
+     (Common fixes: enable Anonymous Auth, add your domain/localhost to Authorized domains.)`,
+    [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+  );
+  return;
+}
 
   attachLobbyListeners();
   setInterval(tickStateMachine, 250);
