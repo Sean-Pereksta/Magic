@@ -22,6 +22,15 @@
     .ammo .fill{height:100%;background:linear-gradient(90deg,#5eead4,#60a5fa);width:0%}
     .stage{position:absolute;left:12px;bottom:12px;z-index:10}
     .pause{position:absolute;right:12px;bottom:12px;z-index:10}
+    .screen{position:absolute;right:12px;top:62px;z-index:10}
+
+    .mobile-controls{position:absolute;inset:auto 0 10px 0;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:15;padding:0 12px}
+    .stickWrap{position:relative;width:140px;height:140px;pointer-events:auto;touch-action:none}
+    .stickBase{position:absolute;inset:0;border-radius:999px;background:rgba(9,18,28,.55);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(4px)}
+    .stickKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:999px;background:rgba(96,165,250,.85);transform:translate(-50%,-50%)}
+    .mobileBtns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;pointer-events:auto;touch-action:none}
+    .mobileBtn{min-width:88px;min-height:50px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(9,18,28,.7);color:#e5efff;font-weight:700}
+    .mobileBtn.primary{background:rgba(34,197,94,.35);border-color:rgba(134,239,172,.8)}
 
     .overlay{position:absolute;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5);z-index:20}
     .card{width:min(960px,92vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid #24364f;border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -39,8 +48,21 @@
     .login{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(180deg,#081725,#050f1a)}
     .login .pane{width:min(640px,92vw);background:var(--panel);border:1px solid #22344e;border-radius:16px;padding:18px;box-shadow:var(--shadow)}
     .login input{width:100%;padding:12px 14px;font-size:1rem;border-radius:10px;border:1px solid #2a3a55;background:#0c1b2d;color:#e5efff}
+    .profile-card{border:1px solid #22344e;border-radius:12px;padding:8px;background:#0a1624}
+    .profile-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-height:170px;overflow:auto}
+    .profile-btn{text-align:left}
+    .profile-btn.selected{border-color:#60a5fa;background:#17304d}
 
     .toast{position:absolute;left:50%;transform:translateX(-50%);top:20px;z-index:30;background:#0b1b2e;border:1px solid #264468;color:#d2e9ff;padding:10px 14px;border-radius:12px;box-shadow:var(--shadow);display:none}
+
+    @media (max-width: 920px){
+      .profile-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .screen{top:114px}
+    }
+    @media (pointer: coarse){
+      .mobile-controls{display:flex}
+      .pause{bottom:168px}
+    }
   </style>
 </head>
 <body>
@@ -64,7 +86,22 @@
 
   <div class="stage chip" id="stageChip">Stage 1-1</div>
 
+  <div class="screen"><button class="btn" id="btnFullscreen">⛶ Fullscreen</button></div>
+
   <div class="pause"><button class="btn" id="btnPause">⏸️ Pause</button></div>
+
+  <div class="mobile-controls" id="mobileControls" aria-hidden="true">
+    <div class="stickWrap" id="moveStick">
+      <div class="stickBase"></div>
+      <div class="stickKnob" id="stickKnob"></div>
+    </div>
+    <div class="mobileBtns">
+      <button class="mobileBtn primary" id="btnFireMobile">🔥 Fire</button>
+      <button class="mobileBtn" id="btnReloadMobile">↻ Reload</button>
+      <button class="mobileBtn" id="btnSlot1Mobile">1️⃣ Slot 1</button>
+      <button class="mobileBtn" id="btnSlot2Mobile">2️⃣ Slot 2</button>
+    </div>
+  </div>
 
   <!-- Store -->
   <div class="overlay" id="store">
@@ -114,12 +151,17 @@
       <div class="title" style="margin-bottom:8px">🔫 Point & Click — Firebase Shooter</div>
       <p class="kv">Pick an existing profile or create a new one. Progress saves to Firebase at the start of each level.</p>
 
-      <h4 style="margin:.5rem 0 .25rem 0">Existing profiles</h4>
+      <h4 style="margin:.5rem 0 .25rem 0">Load game</h4>
+      <div class="profile-card">
       <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div class="kv" id="profileHint">Tap a name to continue</div>
+        <div class="kv" id="profileHint">Select a profile, then press Load Selected.</div>
         <button class="btn" id="btnRefreshList">Refresh</button>
       </div>
-      <div class="grid3" id="profileList"></div>
+      <div class="profile-list" id="profileList"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button class="btn" id="btnLoadSelected">Load Selected</button>
+      </div>
+      </div>
 
       <hr style="border:0;border-top:1px solid #22344e;margin:14px 0">
 
@@ -543,6 +585,14 @@ canvas.addEventListener('mousedown', ()=> mouse.down=true);
 canvas.addEventListener('mouseup', ()=> mouse.down=false);
 canvas.addEventListener('mouseleave', ()=> mouse.down=false);
 
+const mobileState = {
+  enabled: matchMedia('(pointer: coarse)').matches,
+  active:false,
+  moveX:0,
+  moveY:0,
+  fire:false
+};
+
 /*** ========= UI Hooks ========= ***/
 const hpChip = document.getElementById('hpChip');
 const goldChip = document.getElementById('goldChip');
@@ -553,6 +603,7 @@ const reloadText = document.getElementById('reloadText');
 const reloadFill = document.getElementById('reloadFill');
 const stageChip = document.getElementById('stageChip');
 const btnPause = document.getElementById('btnPause');
+const btnFullscreen = document.getElementById('btnFullscreen');
 const ovStore = document.getElementById('store');
 const ovPause = document.getElementById('pause');
 const btnResume = document.getElementById('btnResume');
@@ -575,10 +626,44 @@ function updateKillHUD(k, target){
 const ovLogin = document.getElementById('login');
 const usernameInput = document.getElementById('username');
 const btnStart = document.getElementById('btnStart');
+const btnLoadSelected = document.getElementById('btnLoadSelected');
+const profileHint = document.getElementById('profileHint');
+const mobileControls = document.getElementById('mobileControls');
+const moveStick = document.getElementById('moveStick');
+const stickKnob = document.getElementById('stickKnob');
+const btnFireMobile = document.getElementById('btnFireMobile');
+const btnReloadMobile = document.getElementById('btnReloadMobile');
+const btnSlot1Mobile = document.getElementById('btnSlot1Mobile');
+const btnSlot2Mobile = document.getElementById('btnSlot2Mobile');
 
 const profileList = document.getElementById('profileList');
 const btnRefreshList = document.getElementById('btnRefreshList');
+let selectedProfileName = '';
 btnRefreshList.onclick = loadProfileList;
+btnLoadSelected.onclick = ()=>{
+  if(!selectedProfileName){
+    toast('Select a profile first.');
+    return;
+  }
+  selectProfile(selectedProfileName);
+};
+
+if(mobileState.enabled && mobileControls){
+  mobileControls.setAttribute('aria-hidden', 'false');
+}
+
+btnFullscreen.onclick = async ()=>{
+  try{
+    if(document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  }catch(err){
+    console.warn('Fullscreen not available', err);
+    toast('Fullscreen unavailable on this browser.');
+  }
+};
+document.addEventListener('fullscreenchange', ()=>{
+  btnFullscreen.textContent = document.fullscreenElement ? '🡼 Exit Fullscreen' : '⛶ Fullscreen';
+});
 
 btnPause.onclick = ()=> togglePause(true);
 btnResume.onclick = ()=> togglePause(false);
@@ -587,6 +672,46 @@ btnLogout.onclick = ()=> { saveProgress().finally(()=>{ currentUser=''; location
 
 btnStart.onclick = startWithUsername;
 usernameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') startWithUsername(); });
+
+function updateMoveStick(clientX, clientY){
+  if(!moveStick || !stickKnob) return;
+  const r = moveStick.getBoundingClientRect();
+  const cx = r.left + r.width/2;
+  const cy = r.top + r.height/2;
+  const dx = clientX - cx;
+  const dy = clientY - cy;
+  const maxR = r.width * 0.34;
+  const d = Math.hypot(dx,dy) || 1;
+  const clamped = Math.min(maxR, d);
+  mobileState.moveX = dx / d * (clamped / maxR);
+  mobileState.moveY = dy / d * (clamped / maxR);
+  stickKnob.style.transform = `translate(calc(-50% + ${mobileState.moveX*maxR}px), calc(-50% + ${mobileState.moveY*maxR}px))`;
+}
+function resetMoveStick(){
+  mobileState.active = false;
+  mobileState.moveX = 0;
+  mobileState.moveY = 0;
+  if(stickKnob) stickKnob.style.transform = 'translate(-50%,-50%)';
+}
+if(moveStick){
+  moveStick.addEventListener('pointerdown', (e)=>{
+    mobileState.active = true;
+    moveStick.setPointerCapture(e.pointerId);
+    updateMoveStick(e.clientX, e.clientY);
+  });
+  moveStick.addEventListener('pointermove', (e)=>{ if(mobileState.active) updateMoveStick(e.clientX, e.clientY); });
+  moveStick.addEventListener('pointerup', resetMoveStick);
+  moveStick.addEventListener('pointercancel', resetMoveStick);
+}
+if(btnFireMobile){
+  btnFireMobile.addEventListener('pointerdown', ()=>{ mobileState.fire=true; mouse.down=true; });
+  const stopFire=()=>{ mobileState.fire=false; mouse.down=false; };
+  btnFireMobile.addEventListener('pointerup', stopFire);
+  btnFireMobile.addEventListener('pointercancel', stopFire);
+}
+btnReloadMobile?.addEventListener('click', ()=> tryReload());
+btnSlot1Mobile?.addEventListener('click', ()=>{ player.activeSlot=0; updateGunHUD(); });
+btnSlot2Mobile?.addEventListener('click', ()=>{ player.activeSlot=1; updateGunHUD(); });
 
 /*** ========= Profiles (Firebase only; no local storage) ========= ***/
 const SAVE_VERSION = 2;
@@ -698,9 +823,13 @@ async function loadProfileList(){
   try {
     const snap = await db.ref('shooter/users').get();
     list.innerHTML = '';
+    selectedProfileName = '';
+    if(profileHint) profileHint.textContent = 'Select a profile, then press Load Selected.';
 
     if (!snap.exists()) {
       list.innerHTML = '<div class="kv">No profiles yet.</div>';
+      selectedProfileName = '';
+      if(profileHint) profileHint.textContent = 'No profiles found. Create a new one below.';
       return;
     }
 
@@ -712,13 +841,20 @@ async function loadProfileList(){
     // render
     for (const name of names) {
       const b = document.createElement('button');
-      b.className = 'btn';
+      b.className = 'btn profile-btn';
       b.textContent = name;
-      b.onclick = () => selectProfile(name);
+      b.onclick = () => {
+        selectedProfileName = name;
+        document.querySelectorAll('#profileList .profile-btn').forEach(el => el.classList.remove('selected'));
+        b.classList.add('selected');
+        if(profileHint) profileHint.textContent = `Selected: ${name}`;
+      };
       list.appendChild(b);
     }
   } catch (e) {
     console.warn('Could not load profiles:', e);
+    selectedProfileName = '';
+    if(profileHint) profileHint.textContent = 'Profiles unavailable. Create a new profile below.';
     list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
   }
 }
@@ -1297,12 +1433,22 @@ function movePlayer(dt){
   if(keys['arrowright']||keys['d']) ax+=1;
   if(keys['arrowup']||keys['w']) ay-=1;
   if(keys['arrowdown']||keys['s']) ay+=1;
+  if(mobileState.enabled){
+    ax += mobileState.moveX;
+    ay += mobileState.moveY;
+  }
   const mag=Math.hypot(ax,ay)||1; ax/=mag; ay/=mag;
   const spd=player.speed + player.spdLvl*18;
   player.vx=ax*spd; player.vy=ay*spd;
   player.x+=player.vx*dt; player.y+=player.vy*dt;
   resolveCircleWalls(player, PLAYER_R);
-  player.ang = angleTo(player.x, player.y, mouse.wx, mouse.wy);
+  if(mobileState.enabled && (Math.abs(mobileState.moveX) > 0.05 || Math.abs(mobileState.moveY) > 0.05)){
+    player.ang = Math.atan2(mobileState.moveY, mobileState.moveX);
+    mouse.wx = player.x + Math.cos(player.ang)*800;
+    mouse.wy = player.y + Math.sin(player.ang)*800;
+  } else {
+    player.ang = angleTo(player.x, player.y, mouse.wx, mouse.wy);
+  }
   if(keys['1']){ player.activeSlot=0; keys['1']=false; updateGunHUD(); }
   if(keys['2']){ player.activeSlot=1; keys['2']=false; updateGunHUD(); }
 }
