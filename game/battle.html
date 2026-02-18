@@ -287,19 +287,25 @@
       const gridRect = gridElement.getBoundingClientRect();
       return { x: rect.left - gridRect.left + rect.width/2, y: rect.top - gridRect.top + rect.height/2 };
     }
+    function impactCenterAt(x,y){
+      const c = cellAt(x,y);
+      if(!c) return null;
+      // Prefer the exact visual center of the thing being hit.
+      const anchor = c.querySelector('.troop, .structure-icon');
+      return gridCenter(anchor || c);
+    }
     function spawnFX(x,y,cls="hit"){
-      const c = cellAt(x,y); if(!c) return;
+      const p = impactCenterAt(x,y); if(!p) return;
       const fx = document.createElement("div");
       fx.className = `fx ${cls}`;
-      const p = gridCenter(c);
       fx.style.left = p.x + "px"; fx.style.top = p.y + "px";
       gridElement.appendChild(fx);
       setTimeout(()=> fx.remove(), 460);
     }
     function shootProjectile(fromX,fromY,toX,toY,cls,onHit,travelMs=250){
-      const from = cellAt(fromX,fromY), to = cellAt(toX,toY);
-      if(!from || !to){ onHit?.(); return; }
-      const pFrom = gridCenter(from), pTo = gridCenter(to);
+      const pFrom = impactCenterAt(fromX,fromY);
+      const pTo = impactCenterAt(toX,toY);
+      if(!pFrom || !pTo){ onHit?.(); return; }
       const dot = document.createElement("div");
       dot.className = `proj ${cls}`;
       dot.style.left = pFrom.x + "px";
@@ -1291,7 +1297,6 @@
   </script>
 </body>
 </html>
-
 
 
 
