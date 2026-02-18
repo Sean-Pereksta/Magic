@@ -657,6 +657,7 @@ const mobileTopBar = document.getElementById('mobileTopBar');
 const profileList = document.getElementById('profileList');
 const btnRefreshList = document.getElementById('btnRefreshList');
 let selectedProfileName = '';
+let profileListingDenied = false;
 btnRefreshList.onclick = loadProfileList;
 btnLoadSelected.onclick = ()=>{
   if(!selectedProfileName){
@@ -872,6 +873,12 @@ async function loadProfileList(){
     list.innerHTML = '<div class="kv">Connecting to Firebase…</div>';
     return;
   }
+  if(profileListingDenied){
+    list.innerHTML = '<div class="kv">Profile browsing is blocked by Firestore rules. Type your username below to load/create directly.</div>';
+    selectedProfileName = '';
+    if(profileHint) profileHint.textContent = 'Profile list is disabled by rules. Use the username field below.';
+    return;
+  }
 
   try {
     const snap = await db.collection(PROFILE_COLLECTION).get();
@@ -905,11 +912,25 @@ async function loadProfileList(){
       list.appendChild(b);
     }
   } catch (e) {
-    console.warn('Could not load profiles:', e);
+    if (e?.code === 'permission-denied') {
+      profileListingDenied = true;
+      btnRefreshList.disabled = true;
+    } else {
+      console.warn('Could not load profiles:', e);
+    }
     selectedProfileName = '';
-    if(profileHint) profileHint.textContent = 'Players unavailable. Start a new game.';
-    list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
+    if(profileHint) profileHint.textContent = 'Players unavailable. Use the username field to load/create.';
+    list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter your username below to load/create directly.</div>';
   }
+}
+
+function enterGame(){
+  ovLogin.style.display = 'none';
+  player.x = ROOM_W/2;
+  player.y = ROOM_H/2;
+  buildRoom();
+  spawnLevel();
+  updateGunHUD();
 }
 
 async function selectProfile(name){
@@ -945,28 +966,32 @@ async function startWithUsername(){
 
   // Prepare local defaults so packSave() has the right initial data
   currentUser = u;
-  seedNewProfile();
+  loadedOnce = false;
 
   try {
-    // Transaction keeps creation atomic for the compat SDK.
-    await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
-      if (existing.exists) {
-        throw new Error('already-exists');
-      }
-      tx.set(ref, packSave());
-    });
-
-    // Created successfully — enter the game
-    ovLogin.style.display = 'none';
-    player.x = ROOM_W/2; player.y = ROOM_H/2;
-    buildRoom(); spawnLevel(); updateGunHUD();
-    toast(`New profile created for ${u}`);
+    const existing = await ref.get();
+    if (existing.exists) {
+      applySave(existing.data());
+      loadedOnce = true;
+      toast(`Loaded ${u} at Stage ${stage}-${level}`);
+    } else {
+      // Transaction keeps creation atomic for the compat SDK.
+      seedNewProfile();
+      await db.runTransaction(async (tx) => {
+        const check = await tx.get(ref);
+        if (check.exists) {
+          throw new Error('already-exists');
+        }
+        tx.set(ref, packSave());
+      });
+      toast(`New profile created for ${u}`);
+    }
+    enterGame();
   } catch (e) {
     console.error(e);
     currentUser = '';
     toast((e?.code === 'already-exists' || e?.message === 'already-exists')
-      ? 'That name already exists — select it above.'
+      ? 'That name was created elsewhere. Try again to load it.'
       : (e?.code === 'permission-denied'
         ? 'Cloud save blocked by Firestore rules (auth?).'
         : 'Could not create profile.'));
@@ -977,7 +1002,7 @@ let authReady = false;
 auth.signInAnonymously()
   .then(()=>{
     authReady = true;
-    loadProfileList();
+    if(profileHint) profileHint.textContent = 'Type your username to load/create. Refresh list only if rules allow it.';
   })
   .catch((err)=>{
     console.error('Anonymous auth failed:', err);
@@ -2600,7 +2625,6 @@ match /pointclick_users/{username} {
 -->
 </body>
 </html>
-
 
 
 
