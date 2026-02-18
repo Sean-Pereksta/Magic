@@ -43,23 +43,41 @@
     .app{
       min-height:100%;
       display:grid;
-      grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-      grid-template-rows: auto auto minmax(360px, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(320px, 1fr) auto auto;
       grid-template-areas:
-        "topbar topbar"
-        "left right"
-        "board board"
-        "hand hand";
-      gap:10px;
+        "resource"
+        "topbar"
+        "market"
+        "board"
+        "hand"
+        "log";
+      gap:8px;
       padding:10px;
       box-sizing:border-box;
+    }
+    .resourceBanner{
+      grid-area: resource;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    .resourceBody{
+      padding:8px 10px;
+    }
+    .resourceGrid{
+      display:grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap:6px;
     }
     .topbar{
       grid-area: topbar;
       display:flex;
-      gap:10px;
+      gap:8px;
       align-items:stretch;
     }
+    .market{ grid-area: market; }
+    .logPanel{ grid-area: log; }
     .panel{
       background: var(--panel);
       border:1px solid var(--stroke);
@@ -122,14 +140,12 @@
       filter:saturate(.6);
     }
 
-    .left, .right, .center, .bottomHand{
+    .center, .bottomHand{
       display:flex;
       flex-direction:column;
-      gap:10px;
+      gap:8px;
       min-height:0;
     }
-    .left{ grid-area:left; }
-    .right{ grid-area:right; }
     .center{ grid-area:board; min-width:0; }
     .bottomHand{ grid-area:hand; min-height:180px; }
 
@@ -140,9 +156,9 @@
     }
     #battlePlan{
       display:grid;
-      grid-template-columns: repeat(5, minmax(140px, 1fr));
-      gap:8px;
-      padding:10px;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap:6px;
+      padding:8px;
     }
     .battleCard{
       border-radius: 12px;
@@ -187,13 +203,12 @@
       opacity:.75;
     }
 
-    /* player summary */
-    .pblock{
-      padding:10px 12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+    .toggleBtn{
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:10px;
     }
+    .collapsed{ display:none !important; }
     .row{
       display:flex;
       gap:8px;
@@ -213,20 +228,16 @@
     .kv .k{ font-size:11px; color: var(--muted); font-weight:900; }
     .kv .v{ font-size:16px; font-weight:1000; }
 
-    .resGrid{
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap:8px;
-    }
     .res{
       border-radius:12px;
       border:1px solid rgba(255,255,255,.12);
       background: rgba(0,0,0,.16);
-      padding:8px 10px;
+      padding:7px 9px;
       display:flex;
       justify-content:space-between;
       align-items:center;
       font-weight:1000;
+      font-size:13px;
     }
     .res small{ color: var(--muted); font-weight:900; }
     .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
@@ -238,10 +249,10 @@
     /* board */
     #boardWrap{ flex:1; min-height:0; display:flex; flex-direction:column; }
     #board{
-      padding:10px;
+      padding:8px;
       display:grid;
       grid-template-rows: repeat(4, auto);
-      gap:10px;
+      gap:8px;
       overflow:auto;
     }
     .lane{
@@ -254,7 +265,7 @@
       display:flex;
       justify-content:space-between;
       align-items:center;
-      padding:8px 10px;
+      padding:7px 9px;
       border-bottom:1px solid rgba(255,255,255,.10);
       font-weight:1000;
     }
@@ -282,18 +293,18 @@
 
     .slots{
       display:grid;
-      grid-template-columns: repeat(7, minmax(155px, 1fr));
-      gap:8px;
-      padding:10px;
+      grid-template-columns: repeat(7, minmax(130px, 1fr));
+      gap:6px;
+      padding:8px;
       align-items:stretch;
     }
     .slot{
       border-radius:12px;
       border:1px dashed rgba(255,255,255,.16);
       background: rgba(255,255,255,.03);
-      min-height:188px;
+      min-height:170px;
       position:relative;
-      padding:24px 8px 8px;
+      padding:22px 7px 7px;
       box-sizing:border-box;
       overflow:visible;
       display:flex;
@@ -363,7 +374,7 @@
       display:flex;
       flex-direction:column;
       gap:6px;
-      min-height:118px;
+      min-height:102px;
       box-sizing:border-box;
       cursor:pointer;
     }
@@ -444,7 +455,15 @@
       display:grid;
       gap:8px;
     }
-    #marketList{ grid-template-columns: 1fr; max-height:32vh; overflow:auto; }
+    #marketList{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      white-space:nowrap;
+      padding:8px;
+      max-height:none;
+    }
     #handList{
       display:flex;
       gap:8px;
@@ -455,15 +474,13 @@
       min-height:0;
     }
     .miniRow{
-      display:flex;
-      gap:8px;
-      align-items:stretch;
+      min-width:190px;
+      max-width:210px;
     }
-    .miniRow .cardWrap{ flex:1; min-height:88px; }
-    .miniRow .act{ display:flex; flex-direction:column; gap:6px; justify-content:center; }
+    .miniRow .cardWrap{ min-height:88px; }
     .handCard{
-      min-width:230px;
-      max-width:260px;
+      min-width:210px;
+      max-width:230px;
       display:flex;
       gap:6px;
       flex-direction:column;
@@ -481,7 +498,7 @@
       flex-direction:column;
       gap:6px;
       overflow:auto;
-      height: 260px;
+      height: 220px;
       border-top:1px solid rgba(255,255,255,.10);
       background: rgba(0,0,0,.12);
     }
@@ -718,12 +735,32 @@
 </div>
 
 <div class="app" id="app" style="display:none;">
+  <div class="panel resourceBanner">
+    <div class="hd">
+      <div class="title">📦 Resources & Turn Status</div>
+      <div class="row" style="gap:8px;">
+        <span class="pill" id="playerPill">Current: —</span>
+        <button class="btn toggleBtn" id="btnToggleResource">Hide</button>
+      </div>
+    </div>
+    <div class="resourceBody" id="resourceBody">
+      <div class="resourceGrid">
+        <div class="res"><span><span class="dot wood"></span> Wood</span><span id="rWood">0</span></div>
+        <div class="res"><span><span class="dot wheat"></span> Wheat</span><span id="rWheat">0</span></div>
+        <div class="res"><span><span class="dot stone"></span> Stone</span><span id="rStone">0</span></div>
+        <div class="res"><span><span class="dot gold"></span> Gold</span><span id="rGold">0</span></div>
+        <div class="res"><span>⭐ Score</span><span id="scoreVal">0</span></div>
+        <div class="res"><span>⏳ Turns Left</span><span id="turnsVal">6</span></div>
+      </div>
+    </div>
+  </div>
+
   <div class="topbar">
     <div class="panel" id="battlePlanWrap">
       <div class="hd">
         <div class="title">⚔️ Battle Plan <span class="pill" id="roundPill">Round 1 • Turns: 6</span></div>
         <div class="row" style="gap:8px;">
-          <span class="pill" id="playerPill">Current: —</span>
+          <span class="pill" id="turnOrderPill">—</span>
           <button class="btn" id="btnFullscreen">⛶ Fullscreen</button>
           <button class="btn" id="btnHelp">Help</button>
           <button class="btn warn" id="btnRestart">Restart</button>
@@ -733,53 +770,15 @@
     </div>
   </div>
 
-  <div class="left">
-    <div class="panel">
-      <div class="hd">
-        <div class="title">👤 Current Player</div>
-        <span class="pill" id="turnOrderPill">—</span>
-      </div>
-      <div class="pblock">
-        <div class="row">
-          <div class="kv">
-            <div class="k">Score</div>
-            <div class="v" id="scoreVal">0</div>
-          </div>
-          <div class="kv">
-            <div class="k">Battle Points</div>
-            <div class="v" id="battleVal">0</div>
-          </div>
-          <div class="kv">
-            <div class="k">Unlocked Cols</div>
-            <div class="v" id="unlockVal">2</div>
-          </div>
-          <div class="kv">
-            <div class="k">Turns Left</div>
-            <div class="v" id="turnsVal">6</div>
-          </div>
-        </div>
-
-        <div class="resGrid">
-          <div class="res"><span><span class="dot wood"></span> Wood</span><span id="rWood">0</span></div>
-          <div class="res"><span><span class="dot wheat"></span> Wheat</span><span id="rWheat">0</span></div>
-          <div class="res"><span><span class="dot stone"></span> Stone</span><span id="rStone">0</span></div>
-          <div class="res"><span><span class="dot gold"></span> Gold</span><span id="rGold">0</span></div>
-        </div>
-
-        <div class="row" style="gap:8px; margin-top:2px;">
-          <button class="btn good" id="btnForage">🌿 Forage</button>
-          <button class="btn" id="btnRecruit">📜 Recruit</button>
-          <button class="btn bad" id="btnRaid">🔥 Raid</button>
-          <button class="btn" id="btnTrain">🎖️ Train</button>
-          <button class="btn primary" id="btnPlay">🃏 Play Card</button>
-        </div>
-
-        <div class="smallNote" id="actionHint">
-          Choose one action per turn. Your row strength is the slot after your rightmost card (capped by unlocked columns).
-        </div>
-      </div>
-      <div class="log" id="log"></div>
+  <div class="panel market">
+    <div class="hd">
+      <div class="title">🛒 Shared Recruit Market</div>
+      <span class="pill" id="deckPill">Deck: —</span>
     </div>
+    <div class="smallNote">
+      Recruit draws from the shared 5-card market or from the deck. Market refills instantly.
+    </div>
+    <div id="marketList"></div>
   </div>
 
   <div class="center">
@@ -792,20 +791,6 @@
     </div>
   </div>
 
-  <div class="right">
-    <div class="panel">
-      <div class="hd">
-        <div class="title">🛒 Shared Recruit Market</div>
-        <span class="pill" id="deckPill">Deck: —</span>
-      </div>
-      <div class="smallNote">
-        Recruit draws from the shared 5-card market or from the deck. Market refills instantly.
-      </div>
-      <div class="gridList" id="marketList"></div>
-    </div>
-
-  </div>
-
   <div class="bottomHand">
     <div class="panel" style="min-height:0; display:flex; flex-direction:column;">
       <div class="hd">
@@ -814,6 +799,14 @@
       </div>
       <div id="handList"></div>
     </div>
+  </div>
+
+  <div class="panel logPanel" style="min-height:0; display:flex; flex-direction:column;">
+    <div class="hd">
+      <div class="title">📜 Log</div>
+      <button class="btn toggleBtn" id="btnToggleLog">Hide</button>
+    </div>
+    <div class="log" id="log"></div>
   </div>
 </div>
 
@@ -1603,6 +1596,14 @@ function renderBattlePlan(){
     card.appendChild(desc);
     card.appendChild(sub);
 
+    if(G.battleWinners[i]){
+      const winner=document.createElement("div");
+      winner.className="pill";
+      winner.style.marginTop="4px";
+      winner.textContent=`Winner: ${G.battleWinners[i]}`;
+      card.appendChild(winner);
+    }
+
     wrap.appendChild(card);
   }
 
@@ -1616,8 +1617,6 @@ function renderPlayerPanel(){
   document.getElementById("turnOrderPill").textContent = `Start player this round: ${G.players[G.startingPlayer].name}`;
 
   document.getElementById("scoreVal").textContent = calcScore(p);
-  document.getElementById("battleVal").textContent = p.battlePts;
-  document.getElementById("unlockVal").textContent = p.unlocked;
   document.getElementById("turnsVal").textContent = G.turnsLeft[G.currentPlayer];
 
   document.getElementById("rWood").textContent=p.res.wood;
@@ -1654,12 +1653,19 @@ function renderBoard(){
     const right=document.createElement("div");
     right.className="row";
     right.style.gap="6px";
-    const hint=document.createElement("span");
-    hint.className="pill";
-    hint.textContent = rowName==="Train"
-      ? `Captains: ${countCaptains(p)}`
-      : "—";
-    right.appendChild(hint);
+    const actionBtn=document.createElement("button");
+    actionBtn.className="btn toggleBtn";
+    actionBtn.textContent=`Choose ${rowName}`;
+    actionBtn.onclick=()=>takeAction(rowName);
+    const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock;
+    actionBtn.disabled=disabled;
+    right.appendChild(actionBtn);
+    if(rowName==="Train"){
+      const hint=document.createElement("span");
+      hint.className="pill";
+      hint.textContent=`Captains: ${countCaptains(p)}`;
+      right.appendChild(hint);
+    }
 
     hd.appendChild(left);
     hd.appendChild(right);
@@ -1716,35 +1722,9 @@ function renderMarket(){
     cw.className="cardWrap";
     cw.appendChild(cardNode(ci));
 
-    const act=document.createElement("div");
-    act.className="act";
-    const b=document.createElement("button");
-    b.className="btn";
-    b.textContent="Take (Recruit)";
-    b.onclick=()=>attemptRecruitTakeMarket(i);
-    act.appendChild(b);
-
     row.appendChild(cw);
-    row.appendChild(act);
     list.appendChild(row);
   }
-
-  const extra=document.createElement("div");
-  extra.className="miniRow";
-  const note=document.createElement("div");
-  note.className="smallNote";
-  note.style.flex="1";
-  note.innerHTML = `<b>Deck draw</b><br><span class="tiny">Recruit can also draw random from the deck.</span>`;
-  const act=document.createElement("div");
-  act.className="act";
-  const b=document.createElement("button");
-  b.className="btn";
-  b.textContent="Draw Random (Recruit)";
-  b.onclick=()=>attemptRecruitDrawDeck();
-  act.appendChild(b);
-  extra.appendChild(note);
-  extra.appendChild(act);
-  list.appendChild(extra);
 }
 
 function renderHand(){
@@ -1768,16 +1748,6 @@ function renderHand(){
     b.onclick=()=>attemptPlayFromHand(i);
     act.appendChild(b);
 
-    const b2=document.createElement("button");
-    b2.className="btn";
-    b2.textContent="Discard";
-    b2.onclick=()=>{
-      const gone=p.hand.splice(i,1)[0];
-      G.discard.push(gone);
-      log(`🗑️ <b>${p.name}</b> discarded <b>${instToDef(gone).name}</b>.`);
-      renderAll();
-    };
-    act.appendChild(b2);
 
     row.appendChild(cw);
     row.appendChild(act);
@@ -2737,6 +2707,7 @@ function resolveBattleForRound(roundNum){
   winners.forEach(w=>{
     w.p.battlePts += bonus;
   });
+  G.battleWinners[roundNum-1] = winners.map(w=>w.p.name).join(", ");
 
   const body=[];
   const summary=document.createElement("div");
@@ -2831,12 +2802,19 @@ function endGame(){
 /* ============================================================
    Wiring
    ============================================================ */
-document.getElementById("btnForage").onclick=()=>takeAction("Forage");
-document.getElementById("btnRecruit").onclick=()=>takeAction("Recruit");
-document.getElementById("btnRaid").onclick=()=>takeAction("Raid");
-document.getElementById("btnTrain").onclick=()=>takeAction("Train");
-document.getElementById("btnPlay").onclick=()=>{
-  log(`ℹ️ Use the <b>Play</b> button on a card in your hand.`);
+document.getElementById("btnToggleResource").onclick=()=>{
+  const body=document.getElementById("resourceBody");
+  const btn=document.getElementById("btnToggleResource");
+  const hide=!body.classList.contains("collapsed");
+  body.classList.toggle("collapsed", hide);
+  btn.textContent = hide ? "Show" : "Hide";
+};
+document.getElementById("btnToggleLog").onclick=()=>{
+  const body=document.getElementById("log");
+  const btn=document.getElementById("btnToggleLog");
+  const hide=!body.classList.contains("collapsed");
+  body.classList.toggle("collapsed", hide);
+  btn.textContent = hide ? "Show" : "Hide";
 };
 
 document.getElementById("btnHelp").onclick=()=>{
@@ -2898,21 +2876,8 @@ document.getElementById("btnStart").onclick=()=>{
   initGame(names, seedStr);
 };
 
-/* ============================================================
-   Small UX: disable action buttons if no turns left
-   ============================================================ */
-setInterval(()=>{
-  if(!G) return;
-  const t=G.turnsLeft[G.currentPlayer];
-  const disabled = (t<=0) || G.actionLock;
-  ["btnForage","btnRecruit","btnRaid","btnTrain","btnPlay"].forEach(id=>{
-    const b=document.getElementById(id);
-    if(b) b.disabled=disabled;
-  });
-}, 200);
 
 </script>
 </body>
 </html>
-
 
