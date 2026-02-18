@@ -1586,54 +1586,72 @@
     // tag action id for discard synergies
     G._actionId = (G._actionId||0)+1;
 
-    if(row==="resources") startForaging(p);
-    if(row==="recruiting") startRecruiting(p);
-    if(row==="training") startTraining(p);
+    const continueAction=()=>{
+      if(row==="resources") startForaging(p);
+      if(row==="recruiting") startRecruiting(p);
+      if(row==="training") startTraining(p);
+    };
+
+    // "When Activated" effects should trigger as soon as the action is chosen.
+    openActivationQueue(
+      p,
+      row,
+      `${prettyRow(row)} (On Select)`,
+      continueAction,
+      { includeRowActivations:true, includeAfterRecruiting:false }
+    );
   }
 
-  function buildActivationItems(p, row){
+  function buildActivationItems(p, row, opts={}){
+    const {
+      includeRowActivations=true,
+      includeAfterRecruiting=true,
+    } = opts;
+
     // Create a list of "click to resolve" items for this row.
     // Includes commander triggers and card triggers in that row (non-exhausted).
     const items=[];
 
-    // commander triggers
-    for(const cmd of p.commanders){
-      if(!cmd) continue;
-      const list=(cmd.triggers?.[row]||[]);
-      for(const t of list){
-        items.push({
-          type:"commander",
-          label:`${cmd.name} — ${t.label}`,
-          detail:t.detail,
-          resolve:(ctx,p,done)=> t.resolve(ctx,p,done)
-        });
+    if(includeRowActivations){
+      // commander triggers
+      for(const cmd of p.commanders){
+        if(!cmd) continue;
+        const list=(cmd.triggers?.[row]||[]);
+        for(const t of list){
+          items.push({
+            type:"commander",
+            label:`${cmd.name} — ${t.label}`,
+            detail:t.detail,
+            resolve:(ctx,p,done)=> t.resolve(ctx,p,done)
+          });
+        }
       }
-    }
 
-    // row cards
-    for(let col=0; col<5; col++){
-      if(!isCommanderActive(p,col)) continue;
-      if(slotLockedByCommander(p,col,row)) continue;
-      const c=p.columns[col].slots[row];
-      if(!c) continue;
-      if(c.exhausted){ continue; }
-      if(c.fx?.onActivate){
-        items.push({
-          type:"card",
-          label:`${c.name} — Activate`,
-          detail:c.text || "",
-          resolve:(ctx,pp,done)=>{
-            c.fx.onActivate(ctx,pp,c,()=>{
-              c.exhausted=true;
-              done();
-            });
-          }
-        });
+      // row cards
+      for(let col=0; col<5; col++){
+        if(!isCommanderActive(p,col)) continue;
+        if(slotLockedByCommander(p,col,row)) continue;
+        const c=p.columns[col].slots[row];
+        if(!c) continue;
+        if(c.exhausted){ continue; }
+        if(c.fx?.onActivate){
+          items.push({
+            type:"card",
+            label:`${c.name} — Activate`,
+            detail:c.text || "",
+            resolve:(ctx,pp,done)=>{
+              c.fx.onActivate(ctx,pp,c,()=>{
+                c.exhausted=true;
+                done();
+              });
+            }
+          });
+        }
       }
     }
 
     // after recruiting: some troops may have afterRecruiting triggers
-    if(row==="recruiting"){
+    if(includeAfterRecruiting && row==="recruiting"){
       const enemy=otherPlayer(p);
       forEachCardOnBoard(p,(c)=>{
         if(c.fx?.afterRecruiting){
@@ -1650,14 +1668,14 @@
     return items;
   }
 
-  function openActivationQueue(p, row, titlePrefix, onDone){
-    const items=buildActivationItems(p,row);
+  function openActivationQueue(p, row, titlePrefix, onDone, opts={}){
+    const items=buildActivationItems(p,row,opts);
     if(!items.length){ onDone(); return; }
 
     G.pending=true;
     $("#modalTitle").textContent = `${titlePrefix} — Resolve Activations (Choose the order)`;
     $("#modalBody").innerHTML = `
-      Click effects in any order. When you’re done, press <b>Finish</b>.
+      Click effects in any order. All listed effects must be resolved.
       <div class="hr"></div>
       <div class="small">
         Cards in this row will <b>exhaust</b> when resolved (once per round). Hover items for details.
@@ -1718,10 +1736,7 @@
       };
       step();
     };
-    const btnFinish=el("button","btn primary","Finish");
-    btnFinish.onclick=()=>{ closeModal(); onDone(); };
     $("#modalChoices").appendChild(btnAuto);
-    $("#modalChoices").appendChild(btnFinish);
 
     $("#modalBack").style.display="flex";
   }
@@ -1873,9 +1888,15 @@
 
     openRecruitPickModal(p, revealed, picks, ()=>{
       // after picks, resolve recruiting activations order
-      openActivationQueue(p,"recruiting","Recruiting", ()=>{
-        finishActionAdvance();
-      });
+      openActivationQueue(
+        p,
+        "recruiting",
+        "Recruiting (After Picks)",
+        ()=>{
+          finishActionAdvance();
+        },
+        { includeRowActivations:false, includeAfterRecruiting:true }
+      );
     });
   }
 
