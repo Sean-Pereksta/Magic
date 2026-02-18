@@ -190,7 +190,7 @@
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 
 <!-- ALL GAME CODE IN ONE SCRIPT BLOCK -->
@@ -208,7 +208,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.database();
+const db = firebase.firestore();
 
 /*** ========= Helpers ========= ***/
 const rand = (a,b)=> Math.random()*(b-a)+a;
@@ -789,7 +789,7 @@ function setKillGoalForLevel(){
 
 function userRef(){
   if(!currentUser) throw new Error('No current user');
-  return db.ref('shooter/users/'+currentUser);
+  return db.collection('users').doc(currentUser);
 }
 
 function packSave(){
@@ -839,7 +839,7 @@ async function loadProgress(){
     toast('Profile not found.');
     throw new Error('Profile missing');
   }
-  applySave(snap.val());
+  applySave(snap.data());
   loadedOnce = true;
   toast(`Loaded ${currentUser} at Stage ${stage}-${level}`);
   player.x = ROOM_W/2; player.y = ROOM_H/2;
@@ -872,7 +872,7 @@ async function loadProfileList(){
   }
 
   try {
-    const snap = await db.ref('shooter/users').get();
+    const snap = await db.collection('users').get();
     list.innerHTML = '';
     selectedProfileName = '';
     if(profileHint) profileHint.textContent = 'Select a player, then press Load Game.';
@@ -886,7 +886,7 @@ async function loadProfileList(){
 
     // FIX: use a block body so the callback returns undefined (not the truthy result of push)
     const names = [];
-    snap.forEach(ch => { names.push(ch.key); });
+    snap.forEach((doc) => { names.push(doc.id); });
     names.sort((a,b) => a.localeCompare(b));
 
     // render
@@ -939,33 +939,15 @@ async function startWithUsername(){
     return;
   }
 
-  const ref = db.ref('shooter/users/' + u);
+  const ref = db.collection('users').doc(u);
 
   // Prepare local defaults so packSave() has the right initial data
   currentUser = u;
   seedNewProfile();
 
   try {
-    // Wrap compat transaction in a Promise
-    const { committed } = await new Promise((resolve, reject) => {
-      ref.transaction(
-        (curr) => {
-          if (curr !== null) return;     // already taken -> abort write
-          return packSave();             // write initial save atomically
-        },
-        (err, committed, snap) => {
-          if (err) reject(err);
-          else resolve({ committed, snap });
-        },
-        /* applyLocally */ false
-      );
-    });
-
-    if (!committed){
-      toast('That name already exists — select it above.');
-      currentUser = '';
-      return;
-    }
+    // Firestore create() is atomic and fails if the doc already exists.
+    await ref.create(packSave());
 
     // Created successfully — enter the game
     ovLogin.style.display = 'none';
@@ -975,9 +957,11 @@ async function startWithUsername(){
   } catch (e) {
     console.error(e);
     currentUser = '';
-    toast(e?.code === 'PERMISSION_DENIED'
-      ? 'Cloud save blocked by rules (auth?).'
-      : 'Could not create profile.');
+    toast(e?.code === 'already-exists'
+      ? 'That name already exists — select it above.'
+      : (e?.code === 'permission-denied'
+        ? 'Cloud save blocked by Firestore rules (auth?).'
+        : 'Could not create profile.'));
   }
 }
 
@@ -2608,7 +2592,6 @@ match /pointclick_users/{username} {
 -->
 </body>
 </html>
-
 
 
 
