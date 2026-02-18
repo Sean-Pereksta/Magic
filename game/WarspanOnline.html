@@ -1,0 +1,3378 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🛡️ Forage • Recruit • Raid • Train (Wingspan-like Prototype)</title>
+  <style>
+    :root{
+      --bg:#0b0f16;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.04);
+      --stroke: rgba(255,255,255,.12);
+      --txt:#eaf2ff;
+      --muted: rgba(234,242,255,.72);
+      --good: rgba(140,255,190,.9);
+      --warn: rgba(255,210,120,.9);
+      --bad: rgba(255,110,130,.9);
+      --accent: rgba(120,190,255,.95);
+      --r: 14px;
+      --r2: 10px;
+      --shadow: rgba(0,0,0,.35);
+      --wood:#b07a4b;
+      --wheat:#d6c56c;
+      --stone:#8aa0b3;
+      --gold:#f5d36a;
+      --forage:#7bd389;
+      --recruit:#7cc7ff;
+      --raid:#ff7a93;
+      --train:#d5a7ff;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--txt);
+      background:
+        radial-gradient(1200px 600px at 20% 0%, rgba(120,190,255,.14), transparent 60%),
+        radial-gradient(900px 500px at 80% 15%, rgba(210,140,255,.12), transparent 55%),
+        radial-gradient(900px 700px at 50% 100%, rgba(140,255,190,.10), transparent 55%),
+        linear-gradient(180deg, #070a10, var(--bg));
+      overflow:auto;
+    }
+    .app{
+      min-height:100%;
+      display:grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(320px, 1fr) auto auto;
+      grid-template-areas:
+        "resource"
+        "topbar"
+        "market"
+        "board"
+        "hand"
+        "log";
+      gap:8px;
+      padding:10px;
+      box-sizing:border-box;
+    }
+    .resourceBanner{
+      grid-area: resource;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: rgba(8, 12, 20, .94);
+      border-color: rgba(160, 195, 255, .28);
+      box-shadow: 0 12px 28px rgba(0,0,0,.5);
+      backdrop-filter: blur(6px);
+    }
+    .resourceBanner .hd{
+      background: linear-gradient(180deg, rgba(28, 40, 63, .96), rgba(14, 21, 35, .92));
+      border-bottom-color: rgba(255,255,255,.18);
+    }
+    .resourceBody{
+      padding:8px 10px;
+      background: rgba(10, 15, 24, .9);
+    }
+    .resourceGrid{
+      display:grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap:6px;
+    }
+    .topbar{
+      grid-area: topbar;
+      display:flex;
+      gap:8px;
+      align-items:stretch;
+    }
+    .market{ grid-area: market; }
+    .logPanel{ grid-area: log; }
+    .panel{
+      background: var(--panel);
+      border:1px solid var(--stroke);
+      border-radius: var(--r);
+      box-shadow: 0 10px 30px var(--shadow);
+      overflow:hidden;
+    }
+    .panel .hd{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:10px 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+    .panel .hd .title{
+      font-weight:900;
+      letter-spacing:.2px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 8px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+      color: var(--muted);
+      font-size:12px;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .btn{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.20);
+      color: var(--txt);
+      border-radius: 12px;
+      padding:10px 12px;
+      font-weight:900;
+      cursor:pointer;
+      transition: transform .08s ease, background .12s ease, border-color .12s ease;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); }
+    .btn:active{ transform: translateY(1px) scale(.99); }
+    .btn.primary{
+      border-color: rgba(120,190,255,.45);
+      background: rgba(120,190,255,.14);
+    }
+    .btn.good{ border-color: rgba(140,255,190,.40); background: rgba(140,255,190,.12); }
+    .btn.bad{ border-color: rgba(255,110,130,.40); background: rgba(255,110,130,.12); }
+    .btn.warn{ border-color: rgba(255,210,120,.45); background: rgba(255,210,120,.12); }
+    .btn:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+      filter:saturate(.6);
+    }
+
+    .center, .bottomHand{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-height:0;
+    }
+    .center{ grid-area:board; min-width:0; }
+    .bottomHand{ grid-area:hand; min-height:180px; }
+
+    /* battle plan */
+    #battlePlanWrap{
+      flex:1;
+      min-width:0;
+    }
+    #battlePlan{
+      display:grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap:6px;
+      padding:8px;
+    }
+    .battleCard{
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-height:74px;
+    }
+    .battleCard .r{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+    }
+    .battleCard .r .round{
+      font-weight:1000;
+      font-size:12px;
+      color: var(--muted);
+    }
+    .battleCard .r .tag{
+      font-weight:1000;
+      font-size:11px;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      white-space:nowrap;
+    }
+    .battleCard .desc{
+      font-weight:900;
+      line-height:1.15;
+    }
+    .battleCard.current{
+      border-color: rgba(120,190,255,.45);
+      background: rgba(120,190,255,.12);
+    }
+    .battleCard.done{
+      opacity:.75;
+    }
+
+    .toggleBtn{
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:10px;
+    }
+    .collapsed{ display:none !important; }
+    .row{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .kv{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.16);
+      min-width: 96px;
+    }
+    .kv .k{ font-size:11px; color: var(--muted); font-weight:900; }
+    .kv .v{ font-size:16px; font-weight:1000; }
+
+    .res{
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.16);
+      padding:7px 9px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-weight:1000;
+      font-size:13px;
+    }
+    .res small{ color: var(--muted); font-weight:900; }
+    .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .wood{ background: var(--wood); }
+    .wheat{ background: var(--wheat); }
+    .stone{ background: var(--stone); }
+    .gold{ background: var(--gold); }
+
+    /* board */
+    #boardWrap{ flex:1; min-height:0; display:flex; flex-direction:column; }
+    #board{
+      padding:8px;
+      display:grid;
+      grid-template-rows: repeat(4, auto);
+      gap:8px;
+      overflow:auto;
+    }
+    .lane{
+      border-radius: var(--r);
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.14);
+      overflow:hidden;
+    }
+    .lane .laneHd{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:7px 9px;
+      border-bottom:1px solid rgba(255,255,255,.10);
+      font-weight:1000;
+    }
+    .lane .laneHd .name{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .lane .laneHd .badge{
+      font-size:11px;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      color: var(--muted);
+      background: rgba(255,255,255,.06);
+      font-weight:1000;
+    }
+    .lane .laneHd .name .stripe{
+      width:10px; height:10px; border-radius:3px;
+    }
+    .stripe.forage{ background: var(--forage); }
+    .stripe.recruit{ background: var(--recruit); }
+    .stripe.raid{ background: var(--raid); }
+    .stripe.train{ background: var(--train); }
+
+    .slots{
+      display:grid;
+      grid-template-columns: repeat(7, minmax(130px, 1fr));
+      gap:6px;
+      padding:8px;
+      align-items:stretch;
+    }
+    .slot{
+      border-radius:12px;
+      border:1px dashed rgba(255,255,255,.16);
+      background: rgba(255,255,255,.03);
+      min-height:170px;
+      position:relative;
+      padding:22px 7px 7px;
+      box-sizing:border-box;
+      overflow:visible;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .slot.locked{
+      opacity:.42;
+      filter:saturate(.6);
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(0,0,0,.18),
+        rgba(0,0,0,.18) 8px,
+        rgba(255,255,255,.02) 8px,
+        rgba(255,255,255,.02) 16px
+      );
+    }
+    .slot .slotNum{
+      position:absolute;
+      top:6px; left:8px;
+      font-size:11px;
+      color: rgba(234,242,255,.55);
+      font-weight:1000;
+    }
+    .slot .benefit{
+      position:static;
+      font-size:11px;
+      color: rgba(234,242,255,.65);
+      font-weight:900;
+      line-height:1.15;
+      margin-top:auto;
+      min-height:2.7em;
+      padding-top:2px;
+    }
+    .slot.actionHere{
+      border-color: rgba(120,190,255,.55);
+      background: rgba(120,190,255,.10);
+    }
+    .slot.actionHere::after{
+      content:"⚡";
+      position:absolute;
+      top:6px; right:8px;
+      font-size:14px;
+      opacity:.9;
+    }
+    .slot.nextAction{
+      border-color: rgba(255,210,120,.72);
+      box-shadow: inset 0 0 0 2px rgba(255,210,120,.75);
+    }
+    .slot.nextAction::before{
+      content:"";
+      position:absolute;
+      inset:4px;
+      border-radius:10px;
+      border:2px solid rgba(255,210,120,.85);
+      pointer-events:none;
+    }
+
+    /* card visuals */
+    .card{
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.18);
+      background:
+        radial-gradient(220px 120px at 70% 0%, rgba(255,255,255,.08), transparent 60%),
+        rgba(0,0,0,.28);
+      padding:8px 8px 7px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-height:102px;
+      box-sizing:border-box;
+      cursor:pointer;
+    }
+    .card .top{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      align-items:flex-start;
+    }
+    .card .nm{
+      font-weight:1000;
+      font-size:11px;
+      line-height:1.1;
+    }
+    .card .pts{
+      font-weight:1000;
+      font-size:11px;
+      padding:2px 7px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      white-space:nowrap;
+    }
+    .card .tags{
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+    }
+    .tagPill{
+      font-size:10px;
+      padding:2px 6px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.16);
+      color: rgba(234,242,255,.68);
+      font-weight:900;
+      white-space:nowrap;
+    }
+    .card .mid{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      align-items:center;
+    }
+    .cost{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .cost .c{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-weight:1000;
+      font-size:11px;
+      padding:3px 7px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      color: rgba(234,242,255,.78);
+    }
+    .card .txt{
+      font-size:11px;
+      color: rgba(234,242,255,.70);
+      line-height:1.2;
+      margin-top:auto;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    /* market & hand */
+    .gridList{
+      padding:10px;
+      display:grid;
+      gap:8px;
+    }
+    #marketList{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      white-space:nowrap;
+      padding:8px;
+      max-height:none;
+    }
+    #handList{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      white-space:nowrap;
+      padding:10px;
+      min-height:0;
+    }
+    .miniRow{
+      min-width:190px;
+      max-width:210px;
+    }
+    .miniRow .cardWrap{ min-height:88px; }
+    .handCard{
+      min-width:210px;
+      max-width:230px;
+      display:flex;
+      gap:6px;
+      flex-direction:column;
+    }
+    .handCard .cardWrap{ min-height:88px; }
+    .smallNote{
+      padding:10px 12px;
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+    .log{
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      overflow:auto;
+      height: 220px;
+      border-top:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.12);
+    }
+    .logLine{
+      font-size:12px;
+      color: rgba(234,242,255,.74);
+      line-height:1.25;
+    }
+    .logLine b{ color: rgba(234,242,255,.92); }
+
+    /* modal */
+    #modal{
+      position:fixed;
+      inset:0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:14px;
+      z-index: 9999;
+    }
+    #modal.show{ display:flex; }
+    .modalBox{
+      width:min(820px, 96vw);
+      max-height: 92vh;
+      overflow:auto;
+      border-radius: 16px;
+      border:1px solid rgba(255,255,255,.14);
+      background:
+        radial-gradient(800px 400px at 30% 0%, rgba(120,190,255,.12), transparent 55%),
+        rgba(10,12,18,.92);
+      box-shadow: 0 25px 60px rgba(0,0,0,.55);
+    }
+    .modalHd{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:10px;
+    }
+    .modalHd .t{
+      font-weight:1000;
+      font-size:14px;
+    }
+    .modalHd .s{
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.35;
+      margin-top:4px;
+    }
+    .modalBd{
+      padding:12px 14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .modalActions{
+      padding:12px 14px;
+      border-top:1px solid rgba(255,255,255,.12);
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .choiceGrid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap:10px;
+    }
+    .choice{
+      border:1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      background: rgba(255,255,255,.04);
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .choice .h{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      font-weight:1000;
+    }
+    .choice .p{
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+
+    /* start screen */
+    #startScreen{
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index: 10000;
+      background:
+        radial-gradient(1200px 600px at 20% 0%, rgba(120,190,255,.14), transparent 60%),
+        radial-gradient(900px 500px at 80% 15%, rgba(210,140,255,.12), transparent 55%),
+        radial-gradient(900px 700px at 50% 100%, rgba(140,255,190,.10), transparent 55%),
+        linear-gradient(180deg, #070a10, var(--bg));
+    }
+    .startBox{
+      width:min(860px, 96vw);
+      border-radius: 18px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.28);
+      box-shadow: 0 25px 60px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    .startBox .hd{
+      padding:14px 16px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .startBox .hd .big{
+      font-weight:1100;
+      font-size:18px;
+    }
+    .startBox .bd{
+      padding:14px 16px;
+      display:grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap:12px;
+    }
+    .startBox .rules{
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      padding:12px;
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .startBox label{ font-weight:1000; font-size:12px; color: var(--muted); }
+    .startBox input, .startBox select{
+      width:100%;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+      color: var(--txt);
+      font-weight:900;
+      outline:none;
+      box-sizing:border-box;
+    }
+    .startBox .form{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .startBox .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    .tiny{
+      font-size:11px;
+      color: rgba(234,242,255,.62);
+      line-height:1.35;
+    }
+  </style>
+</head>
+<body>
+
+<div id="startScreen">
+  <div class="startBox">
+    <div class="hd">
+      <div>
+        <div class="big">🛡️ Forage • Recruit • Raid • Train</div>
+        <div class="tiny" style="margin-top:6px;">
+          A Wingspan-like tableau builder: 5 rounds • 6 turns/round • shared market • battles each round.
+        </div>
+      </div>
+      <button class="btn" id="btnQuickRules">Rules</button>
+    </div>
+    <div class="bd">
+      <div class="rules">
+        <b>Core loop:</b> On your turn, choose exactly <b>one</b> action:
+        <b>Forage</b>, <b>Recruit</b>, <b>Raid</b>, <b>Train</b>, or <b>Play a card</b>.<br><br>
+
+        <b>Row strength:</b> Like Wingspan, the action “strength” is determined by the <b>slot after your rightmost card</b> in that row,
+        but it’s capped by how many columns you’ve unlocked. (Starts at 2 columns unlocked.)<br><br>
+
+        <b>Train unlocks columns:</b> You place <b>Captains</b> into Train. When you take <b>Train</b>, if your Captain count is high enough,
+        you unlock the next column (up to 7). Requirement is simple: if you have <b>at least as many Captains as your current unlocked columns</b>,
+        unlock +1. (So: 2 Captains unlock column 3, 3 Captains unlock column 4, etc.)<br><br>
+
+        <b>Triggered abilities:</b> When you take an action (Forage/Recruit/Raid/Train), <b>every card in that same row</b> with an
+        “On [Action]” ability triggers (left-to-right), then the row’s base benefit happens.<br><br>
+
+        <b>Recruit market:</b> There are <b>5 face-up troops</b> shared by all players. When one is taken, it refills instantly.
+        Recruit does not cost resources (unless a card ability says so).<br><br>
+
+        <b>Battles:</b> At the end of each round, a randomized battle criterion is scored. Winner(s) gain <b>+4 points</b>.<br><br>
+
+        <b>Scoring:</b> Card points + battle points + any bonus points from abilities.
+      </div>
+
+      <div class="form">
+        <div class="grid2">
+          <div>
+            <label>Players</label>
+            <select id="numPlayers">
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+          <div>
+            <label>Seed (optional)</label>
+            <input id="seed" placeholder="leave blank for random" />
+          </div>
+        </div>
+
+        <div id="nameInputs"></div>
+
+        <div class="tiny">
+          Tip: this is a prototype. It plays “hotseat-style” on one screen.
+        </div>
+
+        <button class="btn primary" id="btnStart">Start Game</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none;">
+  <div class="panel resourceBanner">
+    <div class="hd">
+      <div class="title">📦 Resources & Turn Status</div>
+      <div class="row" style="gap:8px;">
+        <span class="pill" id="playerPill">Current: —</span>
+        <button class="btn toggleBtn" id="btnToggleResource">Hide</button>
+      </div>
+    </div>
+    <div class="resourceBody" id="resourceBody">
+      <div class="resourceGrid">
+        <div class="res"><span><span class="dot wood"></span> Wood</span><span id="rWood">0</span></div>
+        <div class="res"><span><span class="dot wheat"></span> Wheat</span><span id="rWheat">0</span></div>
+        <div class="res"><span><span class="dot stone"></span> Stone</span><span id="rStone">0</span></div>
+        <div class="res"><span><span class="dot gold"></span> Gold</span><span id="rGold">0</span></div>
+        <div class="res"><span>⭐ Score</span><span id="scoreVal">0</span></div>
+        <div class="res"><span>⏳ Turns Left</span><span id="turnsVal">6</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="topbar">
+    <div class="panel" id="battlePlanWrap">
+      <div class="hd">
+        <div class="title">⚔️ Battle Plan <span class="pill" id="roundPill">Round 1 • Turns: 6</span></div>
+        <div class="row" style="gap:8px;">
+          <span class="pill" id="turnOrderPill">—</span>
+          <button class="btn" id="btnFullscreen">⛶ Fullscreen</button>
+          <button class="btn" id="btnHelp">Help</button>
+          <button class="btn warn" id="btnRestart">Restart</button>
+        </div>
+      </div>
+      <div id="battlePlan"></div>
+    </div>
+  </div>
+
+  <div class="panel market">
+    <div class="hd">
+      <div class="title">🛒 Shared Recruit Market</div>
+      <span class="pill" id="deckPill">Deck: —</span>
+    </div>
+    <div class="smallNote">
+      Recruit draws from the shared 5-card market or from the deck. Market refills instantly.
+    </div>
+    <div id="marketList"></div>
+  </div>
+
+  <div class="center">
+    <div class="panel" id="boardWrap">
+      <div class="hd">
+        <div class="title">🗺️ Tableau</div>
+        <span class="pill" id="tableauPill">—</span>
+      </div>
+      <div id="board"></div>
+    </div>
+  </div>
+
+  <div class="bottomHand">
+    <div class="panel" style="min-height:0; display:flex; flex-direction:column;">
+      <div class="hd">
+        <div class="title">🖐️ Your Hand</div>
+        <span class="pill" id="handPill">0 cards</span>
+      </div>
+      <div id="handList"></div>
+    </div>
+  </div>
+
+  <div class="panel logPanel" style="min-height:0; display:flex; flex-direction:column;">
+    <div class="hd">
+      <div class="title">📜 Log</div>
+      <button class="btn toggleBtn" id="btnToggleLog">Hide</button>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="modalBox">
+    <div class="modalHd">
+      <div>
+        <div class="t" id="modalTitle">Modal</div>
+        <div class="s" id="modalSub">—</div>
+      </div>
+      <button class="btn" id="modalX">Close</button>
+    </div>
+    <div class="modalBd" id="modalBody"></div>
+    <div class="modalActions" id="modalActions"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Utility: seeded RNG (optional)
+   ============================================================ */
+function xmur3(str){
+  let h=1779033703 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return (h ^= (h >>> 16)) >>> 0;
+  };
+}
+function sfc32(a,b,c,d){
+  return function(){
+    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+    let t = (a + b) | 0;
+    a = b ^ (b >>> 9);
+    b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11);
+    d = (d + 1) | 0;
+    t = (t + d) | 0;
+    c = (c + t) | 0;
+    return (t >>> 0) / 4294967296;
+  };
+}
+function makeRng(seedStr){
+  if(!seedStr) return Math.random;
+  const seed = xmur3(seedStr);
+  return sfc32(seed(), seed(), seed(), seed());
+}
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const deepCopy=o=>JSON.parse(JSON.stringify(o));
+
+/* ============================================================
+   Card system
+   ============================================================ */
+const ROWS = ["Forage","Recruit","Raid","Train"];
+const RES = ["wood","wheat","stone","gold"];
+const RES_LABEL = { wood:"Wood", wheat:"Wheat", stone:"Stone", gold:"Gold" };
+const RES_EMOJI = { wood:"🪵", wheat:"🌾", stone:"🪨", gold:"🪙" };
+const ROW_COLOR = { Forage:"var(--forage)", Recruit:"var(--recruit)", Raid:"var(--raid)", Train:"var(--train)" };
+
+const CardDB = [
+  // Forage engines
+  {
+    id:"lumberjack",
+    name:"Lumberjack",
+    tags:["Worker","Forager","Infantry"],
+    allowed:["Forage","Recruit"],
+    cost:{ wheat:1 },
+    points:2,
+    text:"On Forage: +1 🪵 Wood. (Triggers every Forage action if in Forage row.)",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"gain", res:"wood", amt:1}] }
+  },
+  {
+    id:"harvester",
+    name:"Field Harvester",
+    tags:["Worker","Forager"],
+    allowed:["Forage","Recruit"],
+    cost:{ wood:1 },
+    points:2,
+    text:"On Forage: +1 🌾 Wheat.",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"gain", res:"wheat", amt:1}] }
+  },
+  {
+    id:"stonemason",
+    name:"Stonemason",
+    tags:["Worker","Builder"],
+    allowed:["Forage","Train"],
+    cost:{ wheat:1, wood:1 },
+    points:3,
+    text:"On Play: gain 1 🪨 Stone. On Train: gain 1 🪨 Stone.",
+    onPlay:[{type:"gain", res:"stone", amt:1}],
+    onActivate:{ Train:[{type:"gain", res:"stone", amt:1}] }
+  },
+  {
+    id:"prospector",
+    name:"Gold Prospector",
+    tags:["Worker","Forager"],
+    allowed:["Forage","Recruit"],
+    cost:{ stone:1 },
+    points:3,
+    text:"On Forage: +1 🪙 Gold (if you gained any resources from the base Forage this turn).",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"conditionalBaseGained", res:"gold", amt:1}] }
+  },
+
+  // Recruit engines
+  {
+    id:"scout",
+    name:"Scout",
+    tags:["Infantry","Support"],
+    allowed:["Recruit","Raid"],
+    cost:{ wheat:1 },
+    points:2,
+    text:"On Recruit: draw +1 extra card, then discard 1 at random.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"modRecruit", addDraw:1, addKeep:1, thenRandomDiscard:1}] }
+  },
+  {
+    id:"scribe",
+    name:"War Scribe",
+    tags:["Support"],
+    allowed:["Recruit","Train"],
+    cost:{ wood:1 },
+    points:2,
+    text:"On Recruit: If you recruited from the market, +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"bonusIfMarketRecruit", pts:1}] }
+  },
+
+  // Raid engines / attackers
+  {
+    id:"cutpurse",
+    name:"Cutpurse",
+    tags:["Raider"],
+    allowed:["Raid"],
+    cost:{ wheat:1 },
+    points:2,
+    text:"On Raid: steal +1 random resource from the targeted player (if any).",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"stealRandomRes", extra:1}] }
+  },
+  {
+    id:"saboteur",
+    name:"Saboteur",
+    tags:["Raider","Infantry"],
+    allowed:["Raid","Recruit"],
+    cost:{ wood:1, wheat:1 },
+    points:3,
+    text:"On Raid: target discards 1 extra card (if possible).",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"targetDiscard", n:1}] }
+  },
+  {
+    id:"blackmailer",
+    name:"Blackmailer",
+    tags:["Raider","Support"],
+    allowed:["Raid"],
+    cost:{ gold:1 },
+    points:4,
+    text:"On Play: gain +1 bonus point. On Raid: if target has ≥2 resources total, steal 1 chosen resource instead of random.",
+    onPlay:[{type:"bonus", pts:1}],
+    onActivate:{ Raid:[{type:"stealChosenIfRich"}] }
+  },
+  {
+    id:"spyNetwork",
+    name:"Spy Network",
+    tags:["Raider","Support"],
+    allowed:["Raid","Recruit"],
+    cost:{ stone:1, gold:1 },
+    points:5,
+    text:"On Raid: look at target hand; choose 1 card — they discard it or pay you 2 resources (their choice).",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidSpyDiscardOrPay", pay:2}] }
+  },
+  {
+    id:"supplyRaid",
+    name:"Supply Raid (Random)",
+    tags:["Raider"],
+    allowed:["Raid"],
+    cost:{ wheat:1, stone:1 },
+    points:4,
+    text:"On Raid: steal 1 random resource; if it was Stone or Gold, gain +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidStealRandomBonusOn", resources:["stone","gold"], pts:1}] }
+  },
+  {
+    id:"highwaymen",
+    name:"Highwaymen",
+    tags:["Raider","Infantry"],
+    allowed:["Raid"],
+    cost:{ wood:1, wheat:1, gold:1 },
+    points:5,
+    text:"On Raid: steal 1 random resource; if it was Gold, steal 1 more random resource.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidStealRandomThenExtraIf", res:"gold", extra:1}] }
+  },
+  {
+    id:"propagandist",
+    name:"Propagandist",
+    tags:["Raider","Support"],
+    allowed:["Raid","Recruit"],
+    cost:{ wheat:1, gold:1 },
+    points:4,
+    text:"On Raid: each opponent with 4+ cards in hand discards 1 random.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"eachOpponentDiscardIfHandAtLeast", need:4, n:1}] }
+  },
+
+  // Train / Captains
+  {
+    id:"captain",
+    name:"Captain of Arms",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ wood:1, stone:1 },
+    points:4,
+    text:"Captain (counts for unlocking). On Train: gain 1 🪙 Gold.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"gain", res:"gold", amt:1}] }
+  },
+  {
+    id:"drillmaster",
+    name:"Drillmaster Captain",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ wheat:2 },
+    points:4,
+    text:"Captain. On Train: +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"bonus", pts:1}] }
+  },
+  {
+    id:"quartermaster",
+    name:"Quartermaster Captain",
+    tags:["Captain","Leader","Support"],
+    allowed:["Train"],
+    cost:{ wood:1, wheat:1 },
+    points:5,
+    text:"Captain. On Train: gain 1 resource of your choice.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"chooseGain", amt:1}] }
+  },
+
+  // Fighters you can place in various rows (but Train requires Captain tag)
+  {
+    id:"infantry",
+    name:"Infantry Squad",
+    tags:["Infantry","Troop"],
+    allowed:["Forage","Recruit","Raid"],
+    cost:{ wheat:1, wood:1 },
+    points:3,
+    text:"On Play: +1 bonus point if you have any Captain.",
+    onPlay:[{type:"bonusIfCaptain", pts:1}],
+    onActivate:{}
+  },
+  {
+    id:"archers",
+    name:"Archer Volley",
+    tags:["Archer","Troop"],
+    allowed:["Recruit","Raid"],
+    cost:{ wood:2 },
+    points:4,
+    text:"On Raid: if any opponent has cards in hand, they discard 1 at random.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"eachOpponentDiscardRandom", n:1}] }
+  },
+  {
+    id:"cavalry",
+    name:"Cavalry Riders",
+    tags:["Cavalry","Troop"],
+    allowed:["Raid","Forage"],
+    cost:{ wheat:2 },
+    points:4,
+    text:"On Raid: steal 1 random resource from each opponent (if possible).",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"eachOpponentStealRes", n:1}] }
+  },
+  {
+    id:"siege",
+    name:"Siege Crew",
+    tags:["Siege","Troop"],
+    allowed:["Raid"],
+    cost:{ wood:1, stone:2 },
+    points:6,
+    text:"On Play: each opponent discards 1 card (if possible).",
+    onPlay:[{type:"eachOpponentDiscardRandom", n:1}],
+    onActivate:{}
+  },
+  {
+    id:"scorchedTrail",
+    name:"Scorched Trail",
+    tags:["Raider","Tactic"],
+    allowed:["Raid"],
+    cost:{ wood:1, stone:1, gold:1 },
+    points:6,
+    text:"On Play: each opponent loses 1 random resource.",
+    onPlay:[{type:"eachOpponentLoseRandomRes", n:1}],
+    onActivate:{}
+  },
+  {
+    id:"decoyCaravan",
+    name:"Decoy Caravan",
+    tags:["Defense","Support"],
+    allowed:["Recruit","Forage"],
+    cost:{ wood:2, wheat:1 },
+    points:4,
+    text:"Defense: the first time each round you are targeted by a Raid effect, cancel that Raid effect against you.",
+    onPlay:[],
+    onActivate:{}
+  },
+
+  // Utility / economy
+  {
+    id:"merchant",
+    name:"Travelling Merchant",
+    tags:["Support"],
+    allowed:["Forage","Recruit"],
+    cost:{ gold:1 },
+    points:4,
+    text:"On Forage: convert 1 🪵 Wood into 1 🪙 Gold (if you have wood).",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"convert", from:"wood", to:"gold", amt:1}] }
+  },
+  {
+    id:"mineOperator",
+    name:"Mine Operator",
+    tags:["Worker","Forager","Support"],
+    allowed:["Forage","Recruit"],
+    cost:{ wheat:1, stone:1 },
+    points:5,
+    text:"On Forage: you may convert up to 2 resources → 2 Gold (1:1 each).",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"convertAnyToGold", max:2}] }
+  },
+  {
+    id:"granaryKeeper",
+    name:"Granary Keeper",
+    tags:["Worker","Support"],
+    allowed:["Forage","Recruit"],
+    cost:{ wood:1, wheat:1 },
+    points:4,
+    text:"On Play: store 1 resource on this card; stored resources can’t be stolen.",
+    onPlay:[{type:"storeProtected", amt:1}],
+    onActivate:{}
+  },
+  {
+    id:"stoneQuarryCrew",
+    name:"Stone Quarry Crew",
+    tags:["Worker","Builder","Forager"],
+    allowed:["Forage","Train"],
+    cost:{ wood:1, wheat:1 },
+    points:4,
+    text:"On Forage: gain +1 Stone, and if you have 2+ Workers, gain +1 Stone more.",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"gain", res:"stone", amt:1},{type:"gainIfTagAtLeast", tag:"Worker", count:2, gain:{stone:1}}] }
+  },
+  {
+    id:"alchemist",
+    name:"Alchemist",
+    tags:["Support"],
+    allowed:["Recruit","Forage"],
+    cost:{ stone:1, gold:1 },
+    points:5,
+    text:"On Recruit: gain 1 random resource.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"gainRandomRes", amt:1}] }
+  },
+  {
+    id:"quartermasterManager",
+    name:"Quartermaster (Market Manager)",
+    tags:["Support","Leader"],
+    allowed:["Recruit","Train"],
+    cost:{ wood:1, wheat:1, stone:1 },
+    points:6,
+    text:"On Recruit: look at top 3 of deck, replace up to 2 market cards with them.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"marketReplaceFromDeck", look:3, maxReplace:2}] }
+  },
+  {
+    id:"bountyBroker",
+    name:"Bounty Broker",
+    tags:["Support","Trader"],
+    allowed:["Recruit","Raid"],
+    cost:{ wheat:1, gold:1 },
+    points:4,
+    text:"On Recruit: if you recruited from the deck, gain +1 random resource.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"gainRandomIfDeckRecruit", amt:1}] }
+  },
+  {
+    id:"bannerman",
+    name:"Bannerman",
+    tags:["Support","Infantry"],
+    allowed:["Recruit","Train"],
+    cost:{ wheat:1 },
+    points:2,
+    text:"Endgame: +1 bonus point for each Captain you have (counted immediately as bonus).",
+    onPlay:[{type:"bonusPerCaptain", ptsEach:1}],
+    onActivate:{}
+  },
+
+  // More Captains for testing unlock speed
+  {
+    id:"rangerCaptain",
+    name:"Ranger Captain",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ wood:2 },
+    points:4,
+    text:"Captain. On Train: draw 1 card.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"draw", n:1}] }
+  },
+  {
+    id:"warCaptain",
+    name:"War Captain",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ stone:1, wheat:1 },
+    points:5,
+    text:"Captain. On Train: steal 1 random resource from a chosen opponent (if any).",
+    onPlay:[],
+    onActivate:{ Train:[{type:"stealRandomResOnTrain", n:1}] }
+  },
+  {
+    id:"bannerCaptain",
+    name:"Banner Captain",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ wood:1, stone:1, gold:1 },
+    points:6,
+    text:"Captain. On Train: if you unlocked a column this Train, draw 2 keep 1.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"trainDrawKeepIfUnlocked", draw:2, keep:1}] }
+  },
+  {
+    id:"engineerCaptain",
+    name:"Engineer Captain",
+    tags:["Captain","Leader","Builder"],
+    allowed:["Train"],
+    cost:{ wood:1, stone:2 },
+    points:6,
+    text:"Captain. On Train: gain +1 Stone; if you unlocked a column this Train, gain +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"gain", res:"stone", amt:1},{type:"bonusIfUnlockedThisTrain", pts:1}] }
+  },
+
+  // Simple filler troops
+  { id:"spearmen", name:"Spearmen", tags:["Infantry","Troop"], allowed:["Recruit","Forage"], cost:{ wheat:1 }, points:2,
+    text:"On Forage: +1 🪨 Stone if you have ≥2 🪵 Wood.", onPlay:[], onActivate:{ Forage:[{type:"gainIfResAtLeast", need:{wood:2}, gain:{stone:1}}] } },
+  { id:"miners", name:"Miners", tags:["Worker","Forager"], allowed:["Forage"], cost:{ wood:1 }, points:2,
+    text:"On Forage: +1 🪨 Stone.", onPlay:[], onActivate:{ Forage:[{type:"gain", res:"stone", amt:1}] } },
+  { id:"taxCollector", name:"Tax Collector", tags:["Support","Raider"], allowed:["Raid"], cost:{ gold:1 }, points:3,
+    text:"On Raid: if target has 🪙 Gold, steal 1 🪙 Gold.", onPlay:[], onActivate:{ Raid:[{type:"stealSpecificIfHave", res:"gold", amt:1}] } },
+  { id:"trainer", name:"Weapon Trainer", tags:["Support"], allowed:["Train","Recruit"], cost:{ wheat:1, stone:1 }, points:4,
+    text:"On Train: +1 bonus point if you unlocked a column this Train action.", onPlay:[], onActivate:{ Train:[{type:"bonusIfUnlockedThisTrain", pts:1}] } },
+];
+
+/* ============================================================
+   Battles
+   ============================================================ */
+const BattleDB = [
+  { id:"mostTroops", name:"Most Troops", desc:"Player with the most troops in their tableau.", tag:"Tableau",
+    score:(p)=>totalTroops(p) },
+  { id:"mostRaidCards", name:"Most Raiders", desc:"Player with the most cards in Raid row.", tag:"Raid Row",
+    score:(p)=>p.tableau.Raid.length },
+  { id:"mostCaptains", name:"Most Captains", desc:"Player with the most Captains (Train row).", tag:"Train Row",
+    score:(p)=>countCaptains(p) },
+  { id:"mostResources", name:"Most Resources", desc:"Player with the most total resources right now.", tag:"Economy",
+    score:(p)=>sumRes(p) },
+  { id:"mostGold", name:"Gold Hoard", desc:"Player with the most Gold right now.", tag:"Economy",
+    score:(p)=>p.res.gold },
+  { id:"mostInfantry", name:"Infantry Pride", desc:"Player with the most Infantry troops.", tag:"Type",
+    score:(p)=>countTag(p,"Infantry") },
+  { id:"mostCavalry", name:"Fastest Riders", desc:"Player with the most Cavalry troops.", tag:"Type",
+    score:(p)=>countTag(p,"Cavalry") },
+  { id:"mostArchers", name:"Ranged Dominance", desc:"Player with the most Archer troops.", tag:"Type",
+    score:(p)=>countTag(p,"Archer") },
+  { id:"mostPointsOnCards", name:"Might on the Board", desc:"Highest total points printed on played cards.", tag:"Score",
+    score:(p)=>sumCardPoints(p) },
+];
+
+/* ============================================================
+   Game state
+   ============================================================ */
+let rng = Math.random;
+let G = null;
+
+function uid(){
+  return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
+}
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(rng()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+function drawFromDeck(n=1){
+  const out=[];
+  for(let i=0;i<n;i++){
+    if(G.deck.length===0){
+      if(G.discard.length===0) break;
+      G.deck = shuffle(G.discard.splice(0));
+      log(`🔄 Shuffled discard into deck.`);
+    }
+    if(G.deck.length===0) break;
+    out.push(G.deck.pop());
+  }
+  return out;
+}
+function defById(id){ return CardDB.find(c=>c.id===id); }
+function instToDef(inst){ return defById(inst.id); }
+
+function newCardInst(defId){
+  return { id:defId, u:uid() };
+}
+
+function buildDeck(){
+  // Multiple copies for a decent test deck
+  const ids = CardDB.map(c=>c.id);
+  const deck=[];
+  for(const id of ids){
+    const copies = (() => {
+      const d=defById(id);
+      if(d.tags.includes("Captain")) return 3;
+      if(d.tags.includes("Raider")) return 3;
+      if(d.tags.includes("Worker")) return 3;
+      return 2;
+    })();
+    for(let i=0;i<copies;i++) deck.push(newCardInst(id));
+  }
+  return shuffle(deck);
+}
+
+function makePlayer(name){
+  return {
+    name,
+    res:{ wood:2, wheat:2, stone:0, gold:0 },
+    hand:[],
+    tableau:{ Forage:[], Recruit:[], Raid:[], Train:[] },
+    unlocked:2,
+    battlePts:0,
+    bonusPts:0,
+    protectedRes:{ wood:0, wheat:0, stone:0, gold:0 },
+    lastRecruitWasMarket:false,
+    lastRecruitUsedDeck:false,
+    lastForageBaseGained:0,
+    unlockedThisTrain:false,
+    _raidDeflectUsedRound:false,
+  };
+}
+
+function initGame(playerNames, seedStr){
+  rng = makeRng(seedStr);
+  G = {
+    players: playerNames.map(n=>makePlayer(n)),
+    round:1,
+    startingPlayer:0,
+    currentPlayer:0,
+    turnsLeft: [],
+    deck: buildDeck(),
+    discard: [],
+    market: [],
+    battlePlan: [],
+    battleWinners: Array(5).fill(null),
+    lastActionSlot: { Forage:0, Recruit:0, Raid:0, Train:0 },
+    turnSummary: null,
+    actionLock: false,
+  };
+
+  // initial hands
+  for(const p of G.players){
+    p.hand.push(...drawFromDeck(5));
+  }
+
+  // market: 5
+  refillMarketTo5();
+
+  // battle plan: 5 unique battles
+  const pool = shuffle(BattleDB.slice());
+  G.battlePlan = pool.slice(0,5).map(b=>b.id);
+
+  // turns
+  resetRoundTurns();
+
+  log(`🎲 Game start! Round 1 begins.`);
+  renderAll();
+}
+
+function resetRoundTurns(){
+  G.turnsLeft = G.players.map(()=>6);
+  G.startingPlayer = (G.round-1) % G.players.length;
+  G.currentPlayer = G.startingPlayer;
+  G.lastActionSlot = { Forage:0, Recruit:0, Raid:0, Train:0 };
+  for(const p of G.players) p._raidDeflectUsedRound = false;
+}
+
+function refillMarketTo5(){
+  while(G.market.length<5){
+    const c = drawFromDeck(1)[0];
+    if(!c) break;
+    G.market.push(c);
+  }
+}
+
+function curP(){ return G.players[G.currentPlayer]; }
+function nextPlayerIdx(i){
+  const n=G.players.length;
+  for(let step=1; step<=n; step++){
+    const j=(i+step)%n;
+    if(G.turnsLeft[j]>0) return j;
+  }
+  return i;
+}
+
+function totalTroops(p){
+  return ROWS.reduce((s,r)=>s + p.tableau[r].length, 0);
+}
+function countCaptains(p){
+  return p.tableau.Train.filter(ci=>instToDef(ci).tags.includes("Captain")).length;
+}
+function countTag(p, tag){
+  let c=0;
+  for(const r of ROWS){
+    for(const ci of p.tableau[r]){
+      if(instToDef(ci).tags.includes(tag)) c++;
+    }
+  }
+  return c;
+}
+function sumRes(p){
+  return RES.reduce((s,k)=>s + (p.res[k]||0), 0);
+}
+function stealableResAmount(p, res){
+  const protectedAmt = ((p.protectedRes||{})[res]||0);
+  return Math.max(0, (p.res[res]||0) - protectedAmt);
+}
+function hasCardInTableau(p, cardId){
+  for(const r of ROWS){
+    for(const ci of p.tableau[r]) if(ci.id===cardId) return true;
+  }
+  return false;
+}
+function sumCardPoints(p){
+  let s=0;
+  for(const r of ROWS){
+    for(const ci of p.tableau[r]) s += instToDef(ci).points;
+  }
+  return s;
+}
+function calcScore(p){
+  return sumCardPoints(p) + p.battlePts + p.bonusPts;
+}
+function cloneRes(res){
+  return { wood:res.wood||0, wheat:res.wheat||0, stone:res.stone||0, gold:res.gold||0 };
+}
+function snapshotPlayerState(p){
+  return {
+    score: calcScore(p),
+    battlePts: p.battlePts,
+    bonusPts: p.bonusPts,
+    hand: p.hand.length,
+    unlocked: p.unlocked,
+    res: cloneRes(p.res),
+  };
+}
+function ensureTurnSummary(actionName){
+  if(G.turnSummary) return;
+  const p=curP();
+  G.turnSummary = {
+    playerIdx: G.currentPlayer,
+    playerName: p.name,
+    action: actionName || "Action",
+    before: snapshotPlayerState(p),
+  };
+}
+function buildTurnSummaryModal(summary, onOk){
+  const p = G.players[summary.playerIdx];
+  const after = snapshotPlayerState(p);
+  const diffScore = after.score - summary.before.score;
+  const diffBattle = after.battlePts - summary.before.battlePts;
+  const diffBonus = after.bonusPts - summary.before.bonusPts;
+  const diffUnlocked = after.unlocked - summary.before.unlocked;
+  const body=[];
+
+  const head=document.createElement("div");
+  head.className="smallNote";
+  head.innerHTML = `<b>${summary.playerName}</b> completed <b>${summary.action}</b>. Review turn results before passing to next player.`;
+  body.push(head);
+
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+
+  const scoreBox=document.createElement("div");
+  scoreBox.className="choice";
+  scoreBox.innerHTML = `
+    <div class="h">Score <span class="pill">${after.score} (${diffScore>=0?'+':''}${diffScore})</span></div>
+    <div class="p">Battle points: <b>${after.battlePts}</b> (${diffBattle>=0?'+':''}${diffBattle})</div>
+    <div class="p">Bonus points: <b>${after.bonusPts}</b> (${diffBonus>=0?'+':''}${diffBonus})</div>
+    <div class="p">Unlocked columns: <b>${after.unlocked}</b> (${diffUnlocked>=0?'+':''}${diffUnlocked})</div>
+    <div class="p">Hand size: <b>${after.hand}</b> (${after.hand-summary.before.hand>=0?'+':''}${after.hand-summary.before.hand})</div>
+  `;
+  grid.appendChild(scoreBox);
+
+  const resBox=document.createElement("div");
+  resBox.className="choice";
+  const resLines = RES.map(r=>{
+    const delta = after.res[r]-summary.before.res[r];
+    const sign = delta>=0?'+':'';
+    return `<div class="p">${RES_EMOJI[r]} ${RES_LABEL[r]}: <b>${after.res[r]}</b> (${sign}${delta})</div>`;
+  }).join("");
+  resBox.innerHTML = `<div class="h">Resources <span class="pill">Total: ${sumRes(p)}</span></div>${resLines}`;
+  grid.appendChild(resBox);
+
+  body.push(grid);
+
+  showModal({
+    title:`Turn Summary • ${summary.playerName}`,
+    sub:"Press OK to pass to the next player.",
+    bodyNodes: body,
+    actions:[{label:"OK", kind:"primary", onClick:()=>{ closeModal(); onOk(); }}]
+  });
+}
+
+/* ============================================================
+   Logging
+   ============================================================ */
+function log(msg){
+  const el=document.getElementById("log");
+  if(!el) return;
+  const line=document.createElement("div");
+  line.className="logLine";
+  line.innerHTML = msg;
+  el.prepend(line);
+  // keep last ~80 lines
+  while(el.childNodes.length>80) el.removeChild(el.lastChild);
+}
+
+/* ============================================================
+   Modal helpers
+   ============================================================ */
+function showModal({title, sub="", bodyNodes=[], actions=[]}){
+  const m=document.getElementById("modal");
+  document.getElementById("modalTitle").textContent=title;
+  document.getElementById("modalSub").textContent=sub;
+  const bd=document.getElementById("modalBody");
+  const ac=document.getElementById("modalActions");
+  bd.innerHTML=""; ac.innerHTML="";
+  for(const n of bodyNodes) bd.appendChild(n);
+  for(const a of actions){
+    const b=document.createElement("button");
+    b.className="btn " + (a.kind||"");
+    b.textContent=a.label;
+    b.onclick=()=>a.onClick?.();
+    ac.appendChild(b);
+  }
+  m.classList.add("show");
+}
+function closeModal(){
+  document.getElementById("modal").classList.remove("show");
+}
+document.getElementById("modalX").onclick=closeModal;
+document.getElementById("modal").addEventListener("click",(e)=>{
+  if(e.target.id==="modal") closeModal();
+});
+
+document.getElementById("btnFullscreen").onclick=async()=>{
+  const btn=document.getElementById("btnFullscreen");
+  try{
+    if(!document.fullscreenElement){
+      await document.documentElement.requestFullscreen();
+    }else{
+      await document.exitFullscreen();
+    }
+  }catch(err){
+    log(`⚠️ Fullscreen unavailable in this browser.`);
+  }
+  btn.textContent = document.fullscreenElement ? "🡼 Exit Fullscreen" : "⛶ Fullscreen";
+};
+document.addEventListener("fullscreenchange",()=>{
+  const btn=document.getElementById("btnFullscreen");
+  if(btn) btn.textContent = document.fullscreenElement ? "🡼 Exit Fullscreen" : "⛶ Fullscreen";
+});
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+function benefitText(row, slot){
+  // slot: 1..7
+  if(row==="Forage"){
+    if(slot<=2) return "Gain 1 resource (choose).";
+    if(slot===3) return "Gain 2 resources (choose).";
+    if(slot===4||slot===5) return "Gain 3 resources (choose).";
+    return "Gain 4 resources (choose).";
+  }
+  if(row==="Recruit"){
+    if(slot<=2) return "Draw 1 card (market or deck).";
+    if(slot===3) return "Draw 2, keep 1.";
+    if(slot===4) return "Draw 2.";
+    if(slot===5) return "Draw 3, keep 2.";
+    return "Draw 3.";
+  }
+  if(row==="Raid"){
+    if(slot<=2) return "No base effect (build your raid line).";
+    if(slot===3) return "Steal 1 resource from target.";
+    if(slot===4) return "Each opponent discards 1 card.";
+    if(slot===5) return "Steal 1 card from target hand.";
+    if(slot===6) return "Each opponent sacrifices 1 troop.";
+    return "Do ALL raid effects (3→6).";
+  }
+  if(row==="Train"){
+    if(slot<=2) return "Train triggers row abilities + unlock check.";
+    if(slot===3) return "Train triggers + unlock check (stronger cap).";
+    if(slot===4) return "Train triggers + unlock check (stronger cap).";
+    if(slot===5) return "Train triggers + unlock check (stronger cap).";
+    if(slot===6) return "Train triggers + unlock check (stronger cap).";
+    return "Train triggers + unlock check (maximum cap).";
+  }
+  return "";
+}
+
+function cardNode(ci){
+  const d=instToDef(ci);
+  const wrap=document.createElement("div");
+  wrap.className="card";
+  const top=document.createElement("div");
+  top.className="top";
+  const nm=document.createElement("div");
+  nm.className="nm";
+  nm.textContent=d.name;
+  const pts=document.createElement("div");
+  pts.className="pts";
+  pts.textContent=`⭐ ${d.points}`;
+  top.appendChild(nm); top.appendChild(pts);
+
+  const tags=document.createElement("div");
+  tags.className="tags";
+  d.tags.slice(0,4).forEach(t=>{
+    const p=document.createElement("span");
+    p.className="tagPill";
+    p.textContent=t;
+    tags.appendChild(p);
+  });
+
+  const mid=document.createElement("div");
+  mid.className="mid";
+  const cost=document.createElement("div");
+  cost.className="cost";
+  const costKeys=Object.keys(d.cost||{});
+  if(costKeys.length===0){
+    const c=document.createElement("span");
+    c.className="c";
+    c.textContent="Cost: —";
+    cost.appendChild(c);
+  }else{
+    for(const k of costKeys){
+      const c=document.createElement("span");
+      c.className="c";
+      c.textContent=`${RES_EMOJI[k]} ${d.cost[k]}`;
+      cost.appendChild(c);
+    }
+  }
+  const txt=document.createElement("div");
+  txt.className="txt";
+  txt.textContent=d.text;
+
+  wrap.title="Click for full card details";
+  wrap.onclick=()=>showCardDetails(ci);
+
+  mid.appendChild(cost);
+  wrap.appendChild(top);
+  wrap.appendChild(tags);
+  wrap.appendChild(mid);
+  wrap.appendChild(txt);
+  return wrap;
+}
+
+function showCardDetails(ci){
+  const d=instToDef(ci);
+  const body=[];
+
+  const text=document.createElement("div");
+  text.className="choice";
+  const allowed=(d.allowed||[]).join(", ") || "Any";
+  text.innerHTML=`
+    <div class="h">${d.name} <span class="pill">⭐ ${d.points}</span></div>
+    <div class="p"><b>Allowed rows:</b> ${allowed}</div>
+    <div class="p"><b>Tags:</b> ${(d.tags||[]).join(", ") || "—"}</div>
+    <div class="p"><b>Rules text:</b> ${d.text}</div>
+  `;
+  body.push(text);
+
+  const cost=document.createElement("div");
+  cost.className="choice";
+  const costKeys=Object.keys(d.cost||{});
+  if(costKeys.length===0){
+    cost.innerHTML='<div class="h">Cost</div><div class="p">No resource cost.</div>';
+  }else{
+    cost.innerHTML=`<div class="h">Cost</div>${costKeys.map(k=>`<div class="p">${RES_EMOJI[k]} ${RES_LABEL[k]}: <b>${d.cost[k]}</b></div>`).join("")}`;
+  }
+  body.push(cost);
+
+  showModal({
+    title:`Card Details`,
+    sub:`Click outside, X, or Close to return.`,
+    bodyNodes:body,
+    actions:[{label:"Close", kind:"primary", onClick:closeModal}]
+  });
+}
+
+function renderBattlePlan(){
+  const wrap=document.getElementById("battlePlan");
+  wrap.innerHTML="";
+  for(let i=0;i<5;i++){
+    const bid=G.battlePlan[i];
+    const b=BattleDB.find(x=>x.id===bid);
+    const card=document.createElement("div");
+    card.className="battleCard" + (G.round===i+1 ? " current" : "") + (G.round>i+1 ? " done":"");
+    const r=document.createElement("div");
+    r.className="r";
+    const round=document.createElement("div");
+    round.className="round";
+    round.textContent=`ROUND ${i+1}`;
+    const tag=document.createElement("div");
+    tag.className="tag";
+    tag.textContent=b.tag;
+    r.appendChild(round); r.appendChild(tag);
+
+    const desc=document.createElement("div");
+    desc.className="desc";
+    desc.textContent=b.name;
+
+    const sub=document.createElement("div");
+    sub.className="tiny";
+    sub.textContent=b.desc;
+
+    card.appendChild(r);
+    card.appendChild(desc);
+    card.appendChild(sub);
+
+    if(G.battleWinners[i]){
+      const winner=document.createElement("div");
+      winner.className="pill";
+      winner.style.marginTop="4px";
+      winner.textContent=`Winner: ${G.battleWinners[i]}`;
+      card.appendChild(winner);
+    }
+
+    wrap.appendChild(card);
+  }
+
+  document.getElementById("roundPill").textContent = `Round ${G.round} • Turns: ${G.turnsLeft[G.currentPlayer]}`;
+}
+
+function renderPlayerPanel(){
+  const p=curP();
+  document.getElementById("playerPill").textContent = `Current: ${p.name}`;
+  document.getElementById("tableauPill").textContent = `Viewing: ${p.name}`;
+  document.getElementById("turnOrderPill").textContent = `Start player this round: ${G.players[G.startingPlayer].name}`;
+
+  document.getElementById("scoreVal").textContent = calcScore(p);
+  document.getElementById("turnsVal").textContent = G.turnsLeft[G.currentPlayer];
+
+  document.getElementById("rWood").textContent=p.res.wood;
+  document.getElementById("rWheat").textContent=p.res.wheat;
+  document.getElementById("rStone").textContent=p.res.stone;
+  document.getElementById("rGold").textContent=p.res.gold;
+
+  document.getElementById("deckPill").textContent = `Deck: ${G.deck.length} • Discard: ${G.discard.length}`;
+  document.getElementById("handPill").textContent = `${p.hand.length} cards`;
+}
+
+function renderBoard(){
+  const p=curP();
+  const board=document.getElementById("board");
+  board.innerHTML="";
+
+  for(const rowName of ROWS){
+    const lane=document.createElement("div");
+    lane.className="lane";
+
+    const hd=document.createElement("div");
+    hd.className="laneHd";
+    const left=document.createElement("div");
+    left.className="name";
+    const stripe=document.createElement("div");
+    stripe.className="stripe " + rowName.toLowerCase();
+    const nm=document.createElement("div");
+    nm.textContent=rowName;
+    const badge=document.createElement("div");
+    badge.className="badge";
+    badge.textContent = `Cards: ${p.tableau[rowName].length} • Action slot: ${computeActionSlot(p,rowName)} / ${p.unlocked}`;
+    left.appendChild(stripe); left.appendChild(nm); left.appendChild(badge);
+
+    const right=document.createElement("div");
+    right.className="row";
+    right.style.gap="6px";
+    const actionBtn=document.createElement("button");
+    actionBtn.className="btn toggleBtn";
+    actionBtn.textContent=`Choose ${rowName}`;
+    actionBtn.onclick=()=>takeAction(rowName);
+    const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock;
+    actionBtn.disabled=disabled;
+    right.appendChild(actionBtn);
+    if(rowName==="Train"){
+      const hint=document.createElement("span");
+      hint.className="pill";
+      hint.textContent=`Captains: ${countCaptains(p)}`;
+      right.appendChild(hint);
+    }
+
+    hd.appendChild(left);
+    hd.appendChild(right);
+
+    const slots=document.createElement("div");
+    slots.className="slots";
+
+    const cards=p.tableau[rowName];
+    const actionSlot = G.lastActionSlot[rowName] || 0;
+    const nextActionSlot = computeActionSlot(p,rowName);
+
+    for(let i=1;i<=7;i++){
+      const slot=document.createElement("div");
+      slot.className="slot";
+      if(i>p.unlocked) slot.classList.add("locked");
+      if(actionSlot===i) slot.classList.add("actionHere");
+      if(i===nextActionSlot && i<=p.unlocked) slot.classList.add("nextAction");
+
+      const num=document.createElement("div");
+      num.className="slotNum";
+      num.textContent=i;
+
+      const benefit=document.createElement("div");
+      benefit.className="benefit";
+      benefit.textContent = benefitText(rowName, i);
+
+      slot.appendChild(num);
+
+      const cardIndex=i-1;
+      if(cards[cardIndex]){
+        const cn=cardNode(cards[cardIndex]);
+        slot.appendChild(cn);
+      }
+
+      slot.appendChild(benefit);
+      slots.appendChild(slot);
+    }
+
+    lane.appendChild(hd);
+    lane.appendChild(slots);
+    board.appendChild(lane);
+  }
+}
+
+function renderMarket(){
+  const list=document.getElementById("marketList");
+  list.innerHTML="";
+  for(let i=0;i<G.market.length;i++){
+    const ci=G.market[i];
+    const row=document.createElement("div");
+    row.className="miniRow";
+
+    const cw=document.createElement("div");
+    cw.className="cardWrap";
+    cw.appendChild(cardNode(ci));
+
+    row.appendChild(cw);
+    list.appendChild(row);
+  }
+}
+
+function renderHand(){
+  const p=curP();
+  const list=document.getElementById("handList");
+  list.innerHTML="";
+  for(let i=0;i<p.hand.length;i++){
+    const ci=p.hand[i];
+    const row=document.createElement("div");
+    row.className="handCard";
+
+    const cw=document.createElement("div");
+    cw.className="cardWrap";
+    cw.appendChild(cardNode(ci));
+
+    const act=document.createElement("div");
+    act.className="act";
+    const b=document.createElement("button");
+    b.className="btn primary";
+    b.textContent="Play";
+    b.onclick=()=>attemptPlayFromHand(i);
+    act.appendChild(b);
+
+
+    row.appendChild(cw);
+    row.appendChild(act);
+    list.appendChild(row);
+  }
+}
+
+function renderAll(){
+  renderBattlePlan();
+  renderPlayerPanel();
+  renderBoard();
+  renderMarket();
+  renderHand();
+}
+
+/* ============================================================
+   Core mechanics: actions
+   ============================================================ */
+function computeActionSlot(p, rowName){
+  // “slot after your furthest right card”, capped by unlocked columns
+  const slot = clamp(p.tableau[rowName].length + 1, 1, p.unlocked);
+  return slot;
+}
+
+function endTurn(){
+  if(G.actionLock) return;
+  const p=curP();
+  G.turnsLeft[G.currentPlayer]--;
+  if(G.turnsLeft[G.currentPlayer]<0) G.turnsLeft[G.currentPlayer]=0;
+
+  // Clear per-turn markers
+  p.lastRecruitWasMarket=false;
+  p.lastForageBaseGained=0;
+  p.unlockedThisTrain=false;
+
+  const finishAdvance = ()=>{
+    // If round over (all 0), resolve battle
+    const anyLeft = G.turnsLeft.some(x=>x>0);
+    if(!anyLeft){
+      resolveBattleForRound(G.round);
+      return;
+    }
+
+    // Otherwise advance to next player with turns
+    G.currentPlayer = nextPlayerIdx(G.currentPlayer);
+    G.lastActionSlot = { Forage:0, Recruit:0, Raid:0, Train:0 };
+    G.turnSummary = null;
+    renderAll();
+  };
+
+  if(G.turnSummary){
+    buildTurnSummaryModal(G.turnSummary, finishAdvance);
+    return;
+  }
+  finishAdvance();
+}
+
+function takeAction(rowName){
+  if(G.actionLock) return;
+  ensureTurnSummary(rowName);
+  const p=curP();
+  const slot = computeActionSlot(p,rowName);
+  G.lastActionSlot[rowName]=slot;
+
+  // triggers then base benefit
+  triggerRowAbilities(p, rowName);
+
+  if(rowName==="Forage") return doForage(p, slot);
+  if(rowName==="Recruit") return doRecruit(p, slot);
+  if(rowName==="Raid") return doRaid(p, slot);
+  if(rowName==="Train") return doTrain(p, slot);
+
+  renderAll();
+}
+
+function canAfford(p, cost){
+  for(const k of Object.keys(cost||{})){
+    if((p.res[k]||0) < cost[k]) return false;
+  }
+  return true;
+}
+function payCost(p, cost){
+  for(const k of Object.keys(cost||{})){
+    p.res[k] -= cost[k];
+    if(p.res[k]<0) p.res[k]=0;
+  }
+}
+
+function attemptPlayFromHand(handIdx){
+  const p=curP();
+  const ci=p.hand[handIdx];
+  const d=instToDef(ci);
+
+  if(!canAfford(p, d.cost||{})){
+    log(`❌ <b>${p.name}</b> cannot afford <b>${d.name}</b>.`);
+    return;
+  }
+
+  // Choose row (only allowed rows, and Train requires Captain tag)
+  const allowed = d.allowed.slice().filter(r=>{
+    if(r==="Train" && !d.tags.includes("Captain")) return false;
+    return true;
+  });
+
+  if(allowed.length===0){
+    log(`❌ <b>${d.name}</b> has no valid row to be played in.`);
+    return;
+  }
+
+  const body=[];
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+
+  for(const rowName of allowed){
+    const choice=document.createElement("div");
+    choice.className="choice";
+
+    const h=document.createElement("div");
+    h.className="h";
+    const left=document.createElement("div");
+    left.textContent=rowName;
+    const right=document.createElement("span");
+    right.className="pill";
+    right.textContent = `Unlocked: ${p.unlocked} • Cards: ${p.tableau[rowName].length}`;
+    h.appendChild(left); h.appendChild(right);
+
+    const ok = p.tableau[rowName].length < p.unlocked && p.tableau[rowName].length < 7;
+
+    const desc=document.createElement("div");
+    desc.className="p";
+    desc.innerHTML = ok
+      ? `Plays into slot <b>${p.tableau[rowName].length+1}</b> (left-to-right).`
+      : `Row is <b>full</b> up to unlocked columns. Train more to expand.`;
+
+    const btn=document.createElement("button");
+    btn.className="btn primary";
+    btn.textContent="Play here";
+    btn.disabled = !ok;
+    btn.onclick=()=>{
+      closeModal();
+      doPlayCard(p, handIdx, rowName);
+    };
+
+    choice.appendChild(h);
+    choice.appendChild(desc);
+    choice.appendChild(btn);
+    grid.appendChild(choice);
+  }
+  body.push(grid);
+
+  showModal({
+    title:`Play: ${d.name}`,
+    sub:`Choose which row to place it in. Costs will be paid now.`,
+    bodyNodes: body,
+    actions:[
+      {label:"Cancel", onClick: closeModal}
+    ]
+  });
+}
+
+function doPlayCard(p, handIdx, rowName){
+  ensureTurnSummary(`Play Card (${rowName})`);
+  const ci=p.hand.splice(handIdx,1)[0];
+  const d=instToDef(ci);
+
+  // pay cost
+  payCost(p, d.cost||{});
+  p.tableau[rowName].push(ci);
+
+  log(`🃏 <b>${p.name}</b> played <b>${d.name}</b> into <b>${rowName}</b>.`);
+
+  // on-play effects
+  runEffects(p, d.onPlay || [], { row: rowName });
+
+  renderAll();
+  endTurn();
+}
+
+/* ============================================================
+   Abilities engine
+   ============================================================ */
+function triggerRowAbilities(p, rowName){
+  const cards = p.tableau[rowName];
+  for(const ci of cards){
+    const d=instToDef(ci);
+    const eff = (d.onActivate && d.onActivate[rowName]) ? d.onActivate[rowName] : [];
+    if(eff && eff.length){
+      runEffects(p, eff, { row: rowName });
+    }
+  }
+}
+
+function runEffects(p, effects, ctx){
+  for(const e of effects){
+    switch(e.type){
+      case "gain":{
+        p.res[e.res] = (p.res[e.res]||0) + e.amt;
+        log(`✨ <b>${p.name}</b> gained ${RES_EMOJI[e.res]} <b>${e.amt}</b>.`);
+      } break;
+
+      case "chooseGain":{
+        chooseResourceModal(`Choose resource (+${e.amt})`, (res)=>{
+          p.res[res] = (p.res[res]||0) + e.amt;
+          log(`✨ <b>${p.name}</b> chose ${RES_EMOJI[res]} <b>${e.amt}</b>.`);
+          renderAll();
+        });
+      } break;
+
+      case "draw":{
+        const drawn=drawFromDeck(e.n||1);
+        p.hand.push(...drawn);
+        if(drawn.length) log(`📜 <b>${p.name}</b> drew <b>${drawn.length}</b> card(s).`);
+      } break;
+
+      case "bonus":{
+        p.bonusPts += e.pts;
+        log(`🏅 <b>${p.name}</b> gained <b>+${e.pts}</b> bonus point(s).`);
+      } break;
+
+      case "bonusIfCaptain":{
+        if(countCaptains(p)>0){
+          p.bonusPts += e.pts;
+          log(`🏅 <b>${p.name}</b> gained <b>+${e.pts}</b> bonus (has a Captain).`);
+        }
+      } break;
+
+      case "bonusPerCaptain":{
+        const n=countCaptains(p);
+        if(n>0){
+          const pts=n*e.ptsEach;
+          p.bonusPts += pts;
+          log(`🏅 <b>${p.name}</b> gained <b>+${pts}</b> bonus (${n} Captain × ${e.ptsEach}).`);
+        }
+      } break;
+
+      case "conditionalBaseGained":{
+        if(p.lastForageBaseGained>0){
+          p.res[e.res]=(p.res[e.res]||0)+e.amt;
+          log(`✨ <b>${p.name}</b> gained ${RES_EMOJI[e.res]} <b>${e.amt}</b> (because base Forage gained resources).`);
+        }
+      } break;
+
+      case "convert":{
+        if((p.res[e.from]||0) >= e.amt){
+          p.res[e.from]-=e.amt;
+          p.res[e.to]=(p.res[e.to]||0)+e.amt;
+          log(`🔁 <b>${p.name}</b> converted ${RES_EMOJI[e.from]}${e.amt} → ${RES_EMOJI[e.to]}${e.amt}.`);
+        }
+      } break;
+
+      case "gainRandomRes":{
+        const r = RES[Math.floor(rng()*RES.length)];
+        p.res[r]=(p.res[r]||0)+(e.amt||1);
+        log(`🎁 <b>${p.name}</b> gained random ${RES_EMOJI[r]} <b>${e.amt||1}</b>.`);
+      } break;
+
+      case "gainIfResAtLeast":{
+        const need=e.need||{};
+        let ok=true;
+        for(const k of Object.keys(need)){
+          if((p.res[k]||0) < need[k]) ok=false;
+        }
+        if(ok){
+          for(const k of Object.keys(e.gain||{})){
+            p.res[k]=(p.res[k]||0)+e.gain[k];
+            log(`✨ <b>${p.name}</b> gained ${RES_EMOJI[k]} <b>${e.gain[k]}</b> (condition met).`);
+          }
+        }
+      } break;
+
+      case "gainIfTagAtLeast":{
+        if(countTag(p, e.tag) >= (e.count||1)){
+          for(const k of Object.keys(e.gain||{})){
+            p.res[k]=(p.res[k]||0)+e.gain[k];
+            log(`✨ <b>${p.name}</b> gained ${RES_EMOJI[k]} <b>${e.gain[k]}</b> (${e.tag} condition).`);
+          }
+        }
+      } break;
+
+      case "convertAnyToGold":{
+        const max = Math.max(0, e.max||1);
+        const options = RES.filter(r=>r!=="gold" && (p.res[r]||0)>0);
+        const total = options.reduce((s,r)=>s+(p.res[r]||0),0);
+        if(total<=0 || max<=0) break;
+        let left = Math.min(max, total);
+        const convertStep = ()=>{
+          const usable = RES.filter(r=>r!=="gold" && (p.res[r]||0)>0);
+          if(left<=0 || usable.length===0){ renderAll(); return; }
+          const body=[];
+          const row=document.createElement("div");
+          row.className="row";
+          for(const r of usable){
+            const b=document.createElement("button");
+            b.className="btn";
+            b.textContent=`Convert 1 ${RES_EMOJI[r]} ${RES_LABEL[r]}`;
+            b.onclick=()=>{
+              p.res[r]--; p.res.gold=(p.res.gold||0)+1; left--;
+              closeModal();
+              log(`🔁 <b>${p.name}</b> converted ${RES_EMOJI[r]}1 → ${RES_EMOJI.gold}1.`);
+              convertStep();
+            };
+            row.appendChild(b);
+          }
+          body.push(row);
+          showModal({
+            title:`Mine Operator (${left} conversion${left===1?"":"s"} left)`,
+            sub:"Convert or stop.",
+            bodyNodes: body,
+            actions:[{label:"Done", onClick: ()=>{ closeModal(); renderAll(); }}]
+          });
+        };
+        convertStep();
+      } break;
+
+      case "storeProtected":{
+        const total = sumRes(p);
+        if(total<=0) break;
+        chooseResourceModal(`Store 1 protected resource on Granary Keeper`, (res)=>{
+          if((p.res[res]||0)<=0){ renderAll(); return; }
+          p.protectedRes[res]=(p.protectedRes[res]||0)+1;
+          log(`🛡️ <b>${p.name}</b> protected ${RES_EMOJI[res]} <b>1</b> from theft.`);
+          renderAll();
+        });
+      } break;
+
+      case "modRecruit":{
+        // applied on Recruit resolution (we store modifiers on player for the action)
+        // We'll implement by attaching temporary fields on ctx object in doRecruit.
+        // Here: stash into p._recruitMod
+        p._recruitMod = p._recruitMod || { addDraw:0, addKeep:0, thenRandomDiscard:0 };
+        p._recruitMod.addDraw += (e.addDraw||0);
+        p._recruitMod.addKeep += (e.addKeep||0);
+        p._recruitMod.thenRandomDiscard += (e.thenRandomDiscard||0);
+        log(`🧠 <b>${p.name}</b> modified Recruit: +${e.addDraw||0} draw, +${e.addKeep||0} keep, then discard ${e.thenRandomDiscard||0}.`);
+      } break;
+
+      case "bonusIfMarketRecruit":{
+        // Applied after recruit choice
+        p._bonusIfMarketRecruit = (p._bonusIfMarketRecruit||0) + (e.pts||1);
+      } break;
+
+      case "gainRandomIfDeckRecruit":{
+        p._gainRandomIfDeckRecruit = (p._gainRandomIfDeckRecruit||0) + (e.amt||1);
+      } break;
+
+      case "marketReplaceFromDeck":{
+        p._marketReplaceFromDeck = {
+          look: Math.max(0, e.look||0),
+          maxReplace: Math.max(0, e.maxReplace||0)
+        };
+      } break;
+
+      case "stealRandomRes":{
+        // extra steal on Raid (handled during doRaid with a counter)
+        p._extraRaidSteal = (p._extraRaidSteal||0) + (e.extra||1);
+      } break;
+
+      case "stealChosenIfRich":{
+        p._raidStealChosenIfRich = true;
+      } break;
+
+      case "targetDiscard":{
+        p._raidTargetExtraDiscard = (p._raidTargetExtraDiscard||0) + (e.n||1);
+      } break;
+
+      case "eachOpponentDiscardIfHandAtLeast":{
+        p._raidEachOppDiscardIfHand = p._raidEachOppDiscardIfHand || [];
+        p._raidEachOppDiscardIfHand.push({ need:e.need||4, n:e.n||1 });
+      } break;
+
+      case "raidStealRandomBonusOn":{
+        p._raidStealRandomBonusOn = p._raidStealRandomBonusOn || [];
+        p._raidStealRandomBonusOn.push({ resources:e.resources||[], pts:e.pts||1 });
+      } break;
+
+      case "raidStealRandomThenExtraIf":{
+        p._raidRandomChain = p._raidRandomChain || [];
+        p._raidRandomChain.push({ res:e.res, extra:e.extra||1 });
+      } break;
+
+      case "raidSpyDiscardOrPay":{
+        p._raidSpyDiscardOrPay = p._raidSpyDiscardOrPay || [];
+        p._raidSpyDiscardOrPay.push({ pay:e.pay||2 });
+      } break;
+
+      case "eachOpponentDiscardRandom":{
+        p._raidEachOppDiscard = (p._raidEachOppDiscard||0) + (e.n||1);
+      } break;
+
+      case "eachOpponentStealRes":{
+        p._raidEachOppSteal = (p._raidEachOppSteal||0) + (e.n||1);
+      } break;
+
+      case "stealSpecificIfHave":{
+        p._raidStealSpecific = p._raidStealSpecific || [];
+        p._raidStealSpecific.push({res:e.res, amt:e.amt||1});
+      } break;
+
+      case "stealRandomResOnTrain":{
+        p._trainSteal = (p._trainSteal||0) + (e.n||1);
+      } break;
+
+      case "bonusIfUnlockedThisTrain":{
+        p._bonusIfUnlockedThisTrain = (p._bonusIfUnlockedThisTrain||0) + (e.pts||1);
+      } break;
+
+      case "trainDrawKeepIfUnlocked":{
+        p._trainDrawKeepIfUnlocked = p._trainDrawKeepIfUnlocked || [];
+        p._trainDrawKeepIfUnlocked.push({ draw:e.draw||2, keep:e.keep||1 });
+      } break;
+
+      case "eachOpponentLoseRandomRes":{
+        for(let i=0;i<G.players.length;i++){
+          if(G.players[i]===p) continue;
+          const t=G.players[i];
+          const pool=RES.filter(r=>stealableResAmount(t,r)>0);
+          if(!pool.length) continue;
+          const res=pool[Math.floor(rng()*pool.length)];
+          t.res[res]--;
+          log(`🔥 <b>${t.name}</b> lost ${RES_EMOJI[res]} <b>1</b> from Scorched Trail.`);
+        }
+      } break;
+    }
+  }
+}
+
+/* ============================================================
+   Action: Forage
+   ============================================================ */
+function doForage(p, slot){
+  const amt = (slot<=2) ? 1 : (slot===3) ? 2 : (slot===4||slot===5) ? 3 : 4;
+
+  chooseResourceModal(`Forage base: gain ${amt}. Choose a resource.`, (res)=>{
+    p.res[res] = (p.res[res]||0) + amt;
+    p.lastForageBaseGained = amt;
+    log(`🌿 <b>${p.name}</b> foraged base: gained ${RES_EMOJI[res]} <b>${amt}</b>.`);
+    renderAll();
+    endTurn();
+  });
+}
+
+function chooseResourceModal(title, onPick){
+  const body=[];
+  const row=document.createElement("div");
+  row.className="row";
+  row.style.gap="8px";
+  for(const r of RES){
+    const b=document.createElement("button");
+    b.className="btn";
+    b.textContent = `${RES_EMOJI[r]} ${RES_LABEL[r]}`;
+    b.onclick=()=>{
+      closeModal();
+      onPick(r);
+    };
+    row.appendChild(b);
+  }
+  body.push(row);
+  showModal({
+    title,
+    sub:"Pick one.",
+    bodyNodes: body,
+    actions:[{label:"Cancel", onClick: closeModal}]
+  });
+}
+
+/* ============================================================
+   Action: Recruit
+   ============================================================ */
+function doRecruit(p, slot){
+  // modifiers are prepared by Recruit triggers right before this action
+  p._recruitMod = p._recruitMod || { addDraw:0, addKeep:0, thenRandomDiscard:0 };
+  p._bonusIfMarketRecruit = p._bonusIfMarketRecruit || 0;
+  p._gainRandomIfDeckRecruit = p._gainRandomIfDeckRecruit || 0;
+  p._marketReplaceFromDeck = p._marketReplaceFromDeck || null;
+  p.lastRecruitWasMarket = false;
+  p.lastRecruitUsedDeck = false;
+
+  // Run triggers already happened before calling doRecruit; they may have set p._recruitMod.
+  const baseDraw = (slot<=2) ? 1 : (slot===3) ? 2 : (slot===4) ? 2 : (slot===5) ? 3 : 3;
+  const baseKeep = (slot<=2) ? 1 : (slot===3) ? 1 : (slot===4) ? 2 : (slot===5) ? 2 : 3;
+
+  const mod = p._recruitMod || { addDraw:0, addKeep:0, thenRandomDiscard:0 };
+  const drawN = Math.max(0, baseDraw + mod.addDraw);
+  const keepN = clamp(baseKeep + mod.addKeep, 0, drawN);
+
+  // Recruit stepper: choose sources for drawn cards (market or deck)
+  const picked=[];
+  let step=0;
+
+  function stepPick(){
+    if(step>=drawN){
+      // choose which to keep (if keepN < drawN)
+      if(drawN===0){
+        log(`📜 <b>${p.name}</b> recruited: nothing to draw.`);
+        finalize();
+        return;
+      }
+      if(keepN===drawN){
+        p.hand.push(...picked);
+        log(`📜 <b>${p.name}</b> recruited: kept <b>${picked.length}</b> card(s).`);
+        finalize();
+        return;
+      }
+      // choose keeps
+      chooseKeepModal(picked, keepN, (kept, discarded)=>{
+        p.hand.push(...kept);
+        G.discard.push(...discarded);
+        log(`📜 <b>${p.name}</b> recruited: kept <b>${kept.length}</b>, discarded <b>${discarded.length}</b>.`);
+        finalize();
+      });
+      return;
+    }
+
+    const body=[];
+    const grid=document.createElement("div");
+    grid.className="choiceGrid";
+
+    // Market choice
+    const c1=document.createElement("div");
+    c1.className="choice";
+    const h1=document.createElement("div");
+    h1.className="h";
+    h1.textContent="Take from Market";
+    const p1=document.createElement("div");
+    p1.className="p";
+    p1.textContent=`Pick 1 card from the shared 5. (Step ${step+1} of ${drawN})`;
+    const list=document.createElement("div");
+    list.className="gridList";
+    list.style.gridTemplateColumns="repeat(auto-fit, minmax(210px, 1fr))";
+    for(let i=0;i<G.market.length;i++){
+      const ci=G.market[i];
+      const box=document.createElement("div");
+      box.className="choice";
+      box.appendChild(cardNode(ci));
+      const b=document.createElement("button");
+      b.className="btn primary";
+      b.textContent="Take this";
+      b.onclick=()=>{
+        const taken = G.market.splice(i,1)[0];
+        picked.push(taken);
+        p.lastRecruitWasMarket=true;
+        refillMarketTo5();
+        closeModal();
+        renderAll();
+        step++;
+        stepPick();
+      };
+      box.appendChild(b);
+      list.appendChild(box);
+    }
+    c1.appendChild(h1); c1.appendChild(p1); c1.appendChild(list);
+
+    // Deck choice
+    const c2=document.createElement("div");
+    c2.className="choice";
+    const h2=document.createElement("div");
+    h2.className="h";
+    h2.textContent="Draw Random from Deck";
+    const p2=document.createElement("div");
+    p2.className="p";
+    p2.textContent=`Draw 1 random card from the deck. (Step ${step+1} of ${drawN})`;
+    const b2=document.createElement("button");
+    b2.className="btn";
+    b2.textContent="Draw";
+    b2.onclick=()=>{
+      const got = drawFromDeck(1)[0];
+      if(!got){
+        log(`⚠️ Deck empty. Can't draw.`);
+        closeModal();
+        stepPick();
+        return;
+      }
+      picked.push(got);
+      p.lastRecruitUsedDeck = true;
+      closeModal();
+      renderAll();
+      step++;
+      stepPick();
+    };
+    c2.appendChild(h2); c2.appendChild(p2); c2.appendChild(b2);
+
+    grid.appendChild(c1);
+    grid.appendChild(c2);
+    body.push(grid);
+
+    showModal({
+      title:`Recruit (${keepN} keep / ${drawN} draw)`,
+      sub:`Choose how to draw each card (market or deck).`,
+      bodyNodes: body,
+      actions:[
+        {label:"Cancel Action", kind:"bad", onClick: ()=>{
+          closeModal();
+          log(`❎ <b>${p.name}</b> cancelled Recruit.`);
+          // cancelling still consumes the action? We'll treat cancel as not allowed.
+          // So we just do nothing and return to game.
+        }}
+      ]
+    });
+  }
+
+  function finalize(){
+    if(p._marketReplaceFromDeck && p._marketReplaceFromDeck.look>0 && p._marketReplaceFromDeck.maxReplace>0){
+      doRecruitMarketReplace(p, p._marketReplaceFromDeck.look, p._marketReplaceFromDeck.maxReplace);
+      return;
+    }
+    finalizeAfterMarketEffects();
+  }
+
+  function finalizeAfterMarketEffects(){
+    // apply "bonus if market recruit"
+    if(p.lastRecruitWasMarket && (p._bonusIfMarketRecruit||0)>0){
+      p.bonusPts += p._bonusIfMarketRecruit;
+      log(`🏅 <b>${p.name}</b> gained <b>+${p._bonusIfMarketRecruit}</b> bonus (market recruit).`);
+    }
+    if(p.lastRecruitUsedDeck && (p._gainRandomIfDeckRecruit||0)>0){
+      for(let i=0;i<p._gainRandomIfDeckRecruit;i++){
+        const r = RES[Math.floor(rng()*RES.length)];
+        p.res[r]=(p.res[r]||0)+1;
+        log(`🎁 <b>${p.name}</b> gained random ${RES_EMOJI[r]} <b>1</b> (deck recruit).`);
+      }
+    }
+    // discard random after recruit if a mod requested it
+    const discN = (mod.thenRandomDiscard||0);
+    for(let i=0;i<discN;i++){
+      if(p.hand.length===0) break;
+      const idx=Math.floor(rng()*p.hand.length);
+      const gone=p.hand.splice(idx,1)[0];
+      G.discard.push(gone);
+      log(`🗑️ <b>${p.name}</b> discarded (post-recruit) <b>${instToDef(gone).name}</b>.`);
+    }
+    renderAll();
+    p._recruitMod = null;
+    p._bonusIfMarketRecruit = 0;
+    p._gainRandomIfDeckRecruit = 0;
+    p._marketReplaceFromDeck = null;
+    endTurn();
+  }
+
+  function doRecruitMarketReplace(player, look, maxReplace){
+    const seen = drawFromDeck(look);
+    if(!seen.length){
+      finalizeAfterMarketEffects();
+      return;
+    }
+    const keep=[];
+    let replaced=0;
+    let idx=0;
+    const step=()=>{
+      if(idx>=seen.length || replaced>=maxReplace){
+        keep.push(...seen.slice(idx));
+        G.discard.push(...keep);
+        refillMarketTo5();
+        finalizeAfterMarketEffects();
+        return;
+      }
+      const ci=seen[idx];
+      const body=[];
+      const wrap=document.createElement("div");
+      wrap.className="choiceGrid";
+      for(let i=0;i<G.market.length;i++){
+        const box=document.createElement("div");
+        box.className="choice";
+        box.appendChild(cardNode(G.market[i]));
+        const b=document.createElement("button");
+        b.className="btn";
+        b.textContent=`Replace with ${instToDef(ci).name}`;
+        b.onclick=()=>{
+          const old=G.market[i];
+          G.market[i]=ci;
+          keep.push(old);
+          replaced++;
+          idx++;
+          closeModal();
+          step();
+        };
+        box.appendChild(b);
+        wrap.appendChild(box);
+      }
+      body.push(wrap);
+      showModal({
+        title:`Quartermaster: replace market? (${replaced}/${maxReplace})`,
+        sub:`Top-deck card: ${instToDef(ci).name}`,
+        bodyNodes: body,
+        actions:[{label:"Keep top card in discard", onClick:()=>{ keep.push(ci); idx++; closeModal(); step(); }}]
+      });
+    };
+    step();
+  }
+
+  stepPick();
+}
+
+function chooseKeepModal(cards, keepN, onDone){
+  const chosen=new Set();
+  const body=[];
+  const info=document.createElement("div");
+  info.className="smallNote";
+  info.innerHTML = `Select <b>${keepN}</b> to keep. The rest will be discarded.`;
+  body.push(info);
+
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+
+  function render(){
+    grid.innerHTML="";
+    cards.forEach((ci, idx)=>{
+      const box=document.createElement("div");
+      box.className="choice";
+      box.style.borderColor = chosen.has(idx) ? "rgba(140,255,190,.45)" : "rgba(255,255,255,.14)";
+      box.style.background = chosen.has(idx) ? "rgba(140,255,190,.10)" : "rgba(255,255,255,.04)";
+      box.appendChild(cardNode(ci));
+      const b=document.createElement("button");
+      b.className="btn " + (chosen.has(idx) ? "good" : "primary");
+      b.textContent = chosen.has(idx) ? "Selected" : "Select";
+      b.onclick=()=>{
+        if(chosen.has(idx)) chosen.delete(idx);
+        else{
+          if(chosen.size>=keepN) return;
+          chosen.add(idx);
+        }
+        render();
+      };
+      box.appendChild(b);
+      grid.appendChild(box);
+    });
+  }
+  render();
+  body.push(grid);
+
+  showModal({
+    title:`Keep ${keepN}`,
+    sub:`Pick your keeps.`,
+    bodyNodes: body,
+    actions:[
+      {label:"Confirm", kind:"primary", onClick: ()=>{
+        if(chosen.size!==keepN) return;
+        const kept=[], disc=[];
+        cards.forEach((ci, idx)=> (chosen.has(idx) ? kept : disc).push(ci));
+        closeModal();
+        onDone(kept, disc);
+      }},
+      {label:"Cancel", onClick: closeModal}
+    ]
+  });
+}
+
+/* ============================================================
+   Action: Raid
+   ============================================================ */
+function doRaid(p, slot){
+  // modifiers are prepared by Raid triggers right before this action
+  p._extraRaidSteal = p._extraRaidSteal || 0;
+  p._raidStealChosenIfRich = p._raidStealChosenIfRich || false;
+  p._raidTargetExtraDiscard = p._raidTargetExtraDiscard || 0;
+  p._raidEachOppDiscard = p._raidEachOppDiscard || 0;
+  p._raidEachOppDiscardIfHand = p._raidEachOppDiscardIfHand || [];
+  p._raidEachOppSteal = p._raidEachOppSteal || 0;
+  p._raidStealSpecific = p._raidStealSpecific || [];
+  p._raidStealRandomBonusOn = p._raidStealRandomBonusOn || [];
+  p._raidRandomChain = p._raidRandomChain || [];
+  p._raidSpyDiscardOrPay = p._raidSpyDiscardOrPay || [];
+
+  if(slot<=2){
+    log(`🔥 <b>${p.name}</b> raided: no base effect (slots 1–2).`);
+    p._extraRaidSteal = 0;
+    p._raidStealChosenIfRich = false;
+    p._raidTargetExtraDiscard = 0;
+    p._raidEachOppDiscard = 0;
+    p._raidEachOppDiscardIfHand = [];
+    p._raidEachOppSteal = 0;
+    p._raidStealSpecific = [];
+    p._raidStealRandomBonusOn = [];
+    p._raidRandomChain = [];
+    p._raidSpyDiscardOrPay = [];
+    renderAll();
+    endTurn();
+    return;
+  }
+
+  const opponents = G.players.map((x,i)=>({x,i})).filter(o=>o.i!==G.currentPlayer);
+
+  const needTarget = (slot===3 || slot===5 || slot===7);
+
+  if(needTarget){
+    chooseTargetModal(`Choose a raid target`, opponents, (tIdx)=>{
+      resolveRaidAgainstTarget(p, slot, tIdx);
+    });
+  }else{
+    // slot 4 or 6 => affects everyone
+    resolveRaidAgainstTarget(p, slot, null);
+  }
+}
+
+function chooseTargetModal(title, opponents, onPick){
+  const body=[];
+  const wrap=document.createElement("div");
+  wrap.className="choiceGrid";
+  opponents.forEach(o=>{
+    const p=o.x;
+    const box=document.createElement("div");
+    box.className="choice";
+    const h=document.createElement("div");
+    h.className="h";
+    h.textContent=p.name;
+
+    const stats=document.createElement("div");
+    stats.className="p";
+    stats.innerHTML = `Resources: <b>${sumRes(p)}</b> • Hand: <b>${p.hand.length}</b> • Troops: <b>${totalTroops(p)}</b>`;
+
+    const b=document.createElement("button");
+    b.className="btn bad";
+    b.textContent="Target";
+    b.onclick=()=>{
+      closeModal();
+      onPick(o.i);
+    };
+
+    box.appendChild(h);
+    box.appendChild(stats);
+    box.appendChild(b);
+    wrap.appendChild(box);
+  });
+  body.push(wrap);
+
+  showModal({
+    title,
+    sub:"Pick who gets hit.",
+    bodyNodes: body,
+    actions:[{label:"Cancel", onClick: closeModal}]
+  });
+}
+
+function resolveRaidAgainstTarget(attacker, slot, targetIdx){
+  // Apply base raid effects
+  const isSlot7 = (slot===7);
+
+  function doStealRes(tIdx, count=1, allowChosenIfRich=false){
+    const target = G.players[tIdx];
+    if(!target) return;
+
+    if(hasCardInTableau(target, "decoyCaravan") && !target._raidDeflectUsedRound){
+      target._raidDeflectUsedRound = true;
+      log(`🛡️ <b>${target.name}</b> used <b>Decoy Caravan</b> to cancel a targeted Raid effect.`);
+      return;
+    }
+    for(let k=0;k<count;k++){
+      const total = sumRes(target);
+      if(total<=0){ log(`💨 ${target.name} has no resources to steal.`); return; }
+
+      // Specific steals first if any
+      if(attacker._raidStealSpecific && attacker._raidStealSpecific.length){
+        const spec = attacker._raidStealSpecific.shift();
+        if((target.res[spec.res]||0) >= (spec.amt||1)){
+          target.res[spec.res]-=(spec.amt||1);
+          attacker.res[spec.res]=(attacker.res[spec.res]||0)+(spec.amt||1);
+          log(`🫳 <b>${attacker.name}</b> stole ${RES_EMOJI[spec.res]} <b>${spec.amt||1}</b> from <b>${target.name}</b>.`);
+          continue;
+        }
+      }
+
+      // Rich-target chosen steal
+      if(allowChosenIfRich && sumRes(target)>=2){
+        chooseResourceModal(`Steal chosen resource from ${target.name}`, (res)=>{
+          if((target.res[res]||0) > 0){
+            target.res[res]--;
+            attacker.res[res]=(attacker.res[res]||0)+1;
+            log(`🫳 <b>${attacker.name}</b> stole ${RES_EMOJI[res]} <b>1</b> from <b>${target.name}</b>.`);
+          }else{
+            log(`💨 ${target.name} had no ${RES_LABEL[res]} to steal.`);
+          }
+          renderAll();
+        });
+        return;
+      }
+
+      // random steal
+      const pool=RES.filter(r=>stealableResAmount(target,r)>0);
+      if(pool.length===0){ log(`💨 ${target.name} has no resources to steal.`); return; }
+      const res=pool[Math.floor(rng()*pool.length)];
+      target.res[res]--;
+      attacker.res[res]=(attacker.res[res]||0)+1;
+      log(`🫳 <b>${attacker.name}</b> stole ${RES_EMOJI[res]} <b>1</b> from <b>${target.name}</b>.`);
+
+      if(attacker._raidStealRandomBonusOn && attacker._raidStealRandomBonusOn.length){
+        for(const cfg of attacker._raidStealRandomBonusOn){
+          if((cfg.resources||[]).includes(res)){
+            attacker.bonusPts += (cfg.pts||1);
+            log(`🏅 <b>${attacker.name}</b> gained <b>+${cfg.pts||1}</b> bonus (raid hit ${RES_LABEL[res]}).`);
+          }
+        }
+      }
+
+      if(attacker._raidRandomChain && attacker._raidRandomChain.length){
+        for(const cfg of attacker._raidRandomChain){
+          if(res===cfg.res && (cfg.extra||0)>0){
+            doStealRes(tIdx, cfg.extra, false);
+          }
+        }
+      }
+    }
+  }
+
+  function doEachOppDiscard(n=1){
+    for(let i=0;i<G.players.length;i++){
+      if(i===G.currentPlayer) continue;
+      const t=G.players[i];
+      for(let k=0;k<n;k++){
+        if(t.hand.length===0) continue;
+        const idx=Math.floor(rng()*t.hand.length);
+        const gone=t.hand.splice(idx,1)[0];
+        G.discard.push(gone);
+        log(`🗑️ <b>${t.name}</b> discarded <b>${instToDef(gone).name}</b> (raid).`);
+      }
+    }
+  }
+
+  function doStealCard(tIdx){
+    const t=G.players[tIdx];
+    if(t && hasCardInTableau(t, "decoyCaravan") && !t._raidDeflectUsedRound){
+      t._raidDeflectUsedRound = true;
+      log(`🛡️ <b>${t.name}</b> used <b>Decoy Caravan</b> to cancel a targeted Raid effect.`);
+      return;
+    }
+    if(!t || t.hand.length===0){
+      log(`💨 No card to steal from ${t ? t.name : "target"}.`);
+      return;
+    }
+    // Let attacker pick a card (hotseat)
+    const body=[];
+    const grid=document.createElement("div");
+    grid.className="choiceGrid";
+    t.hand.forEach((ci, idx)=>{
+      const box=document.createElement("div");
+      box.className="choice";
+      box.appendChild(cardNode(ci));
+      const b=document.createElement("button");
+      b.className="btn bad";
+      b.textContent="Steal";
+      b.onclick=()=>{
+        const stolen = t.hand.splice(idx,1)[0];
+        attacker.hand.push(stolen);
+        closeModal();
+        log(`🧤 <b>${attacker.name}</b> stole <b>${instToDef(stolen).name}</b> from <b>${t.name}</b>.`);
+        renderAll();
+        endTurn();
+      };
+      box.appendChild(b);
+      grid.appendChild(box);
+    });
+    body.push(grid);
+    showModal({
+      title:`Steal a card from ${t.name}`,
+      sub:`Pick 1 from their hand.`,
+      bodyNodes: body,
+      actions:[{label:"Cancel", onClick: closeModal}]
+    });
+  }
+
+  function doEachOppSacrifice(){
+    // each opponent chooses a troop from tableau to discard (hotseat)
+    const oppIdx = [];
+    for(let i=0;i<G.players.length;i++) if(i!==G.currentPlayer) oppIdx.push(i);
+
+    let k=0;
+    function next(){
+      if(k>=oppIdx.length){
+        renderAll();
+        endTurn();
+        return;
+      }
+      const ti=oppIdx[k++];
+      const t=G.players[ti];
+      const all = [];
+      for(const r of ROWS){
+        for(let i=0;i<t.tableau[r].length;i++){
+          all.push({r, i, ci:t.tableau[r][i]});
+        }
+      }
+      if(all.length===0){
+        log(`💨 <b>${t.name}</b> has no troops to sacrifice.`);
+        next();
+        return;
+      }
+
+      const body=[];
+      const grid=document.createElement("div");
+      grid.className="choiceGrid";
+      all.forEach(item=>{
+        const box=document.createElement("div");
+        box.className="choice";
+        const h=document.createElement("div");
+        h.className="h";
+        h.textContent=`${t.name} sacrifices (${item.r})`;
+        box.appendChild(h);
+        box.appendChild(cardNode(item.ci));
+        const b=document.createElement("button");
+        b.className="btn bad";
+        b.textContent="Sacrifice this";
+        b.onclick=()=>{
+          // remove and collapse row
+          const gone = t.tableau[item.r].splice(item.i,1)[0];
+          G.discard.push(gone);
+          closeModal();
+          log(`💥 <b>${t.name}</b> sacrificed <b>${instToDef(gone).name}</b> from <b>${item.r}</b>.`);
+          renderAll();
+          next();
+        };
+        box.appendChild(b);
+        grid.appendChild(box);
+      });
+      body.push(grid);
+
+      showModal({
+        title:`Raid: Sacrifice a troop`,
+        sub:`${t.name}, choose a troop to lose.`,
+        bodyNodes: body,
+        actions:[{label:"Random", kind:"warn", onClick: ()=>{
+          closeModal();
+          const pick = all[Math.floor(rng()*all.length)];
+          const gone = t.tableau[pick.r].splice(pick.i,1)[0];
+          G.discard.push(gone);
+          log(`🎲 <b>${t.name}</b> randomly sacrificed <b>${instToDef(gone).name}</b> from <b>${pick.r}</b>.`);
+          renderAll();
+          next();
+        }}]
+      });
+    }
+    next();
+  }
+
+  // slot 3: steal 1 resource from target
+  // slot 4: each opponent discards 1
+  // slot 5: steal 1 card from target hand
+  // slot 6: each opponent sacrifices 1 troop
+  // slot 7: all
+  const extraSteals = attacker._extraRaidSteal || 0;
+  const extraTargetDiscards = attacker._raidTargetExtraDiscard || 0;
+  const extraEachOppDiscard = attacker._raidEachOppDiscard || 0;
+  const eachOppDiscardIfHand = attacker._raidEachOppDiscardIfHand || [];
+  const eachOppSteal = attacker._raidEachOppSteal || 0;
+  const spyEffects = attacker._raidSpyDiscardOrPay || [];
+
+  // Apply effects (non-modal first, then if a modal step is needed, it ends the turn there)
+  if(slot===3 || isSlot7){
+    if(targetIdx==null){
+      log(`⚠️ Raid needed a target but none was provided.`);
+    }else{
+      doStealRes(targetIdx, 1 + extraSteals, attacker._raidStealChosenIfRich);
+    }
+    // also each-opponent steal from cavalry-like triggers
+    if(eachOppSteal>0){
+      for(let t=0;t<G.players.length;t++){
+        if(t===G.currentPlayer) continue;
+        doStealRes(t, eachOppSteal, false);
+      }
+    }
+  }
+
+  if(slot===4 || isSlot7){
+    doEachOppDiscard(1 + extraEachOppDiscard);
+    for(const cond of eachOppDiscardIfHand){
+      for(let i=0;i<G.players.length;i++){
+        if(i===G.currentPlayer) continue;
+        const t=G.players[i];
+        if(t.hand.length < (cond.need||4)) continue;
+        for(let n=0;n<(cond.n||1);n++){
+          if(t.hand.length===0) break;
+          const idx=Math.floor(rng()*t.hand.length);
+          const gone=t.hand.splice(idx,1)[0];
+          G.discard.push(gone);
+          log(`🗑️ <b>${t.name}</b> discarded <b>${instToDef(gone).name}</b> (propaganda).`);
+        }
+      }
+    }
+    // target extra discards (if we have a target, apply to them)
+    if(targetIdx!=null && extraTargetDiscards>0){
+      const t=G.players[targetIdx];
+      for(let i=0;i<extraTargetDiscards;i++){
+        if(!t || t.hand.length===0) break;
+        const idx=Math.floor(rng()*t.hand.length);
+        const gone=t.hand.splice(idx,1)[0];
+        G.discard.push(gone);
+        log(`🗑️ <b>${t.name}</b> discarded extra <b>${instToDef(gone).name}</b> (raid).`);
+      }
+    }
+  }
+
+  if(slot===6 || isSlot7){
+    // sacrifice involves modal chain; return early
+    doEachOppSacrifice();
+    return;
+  }
+
+  if(slot===5 || isSlot7){
+    if(targetIdx==null){
+      log(`⚠️ Raid needed a target but none was provided.`);
+      renderAll();
+      endTurn();
+      return;
+    }
+    // steal card opens a modal and ends the turn inside that callback
+    doStealCard(targetIdx);
+    return;
+  }
+
+  if((slot===3 || isSlot7) && targetIdx!=null && spyEffects.length){
+    const t=G.players[targetIdx];
+    if(!(hasCardInTableau(t, "decoyCaravan") && t._raidDeflectUsedRound)){
+      for(const spy of spyEffects){
+        if(!t || t.hand.length===0) continue;
+        const body=[];
+        const grid=document.createElement("div");
+        grid.className="choiceGrid";
+        t.hand.forEach((ci,idx)=>{
+          const box=document.createElement("div");
+          box.className="choice";
+          box.appendChild(cardNode(ci));
+          const b=document.createElement("button");
+          b.className="btn bad";
+          b.textContent="Mark this card";
+          b.onclick=()=>{
+            closeModal();
+            const payable=RES.reduce((s,r)=>s+stealableResAmount(t,r),0) >= (spy.pay||2);
+            const body2=[];
+            const row=document.createElement("div");
+            row.className="row";
+            const dBtn=document.createElement("button");
+            dBtn.className="btn bad";
+            dBtn.textContent="Discard marked card";
+            dBtn.onclick=()=>{
+              const realIdx=t.hand.findIndex(x=>x.u===ci.u);
+              if(realIdx>=0){
+                const gone=t.hand.splice(realIdx,1)[0];
+                G.discard.push(gone);
+                log(`🕵️ <b>${t.name}</b> discarded <b>${instToDef(gone).name}</b> (Spy Network).`);
+              }
+              closeModal(); renderAll(); endTurn();
+            };
+            row.appendChild(dBtn);
+            const pBtn=document.createElement("button");
+            pBtn.className="btn warn";
+            pBtn.textContent=`Pay ${spy.pay||2} resources`;
+            pBtn.disabled=!payable;
+            pBtn.onclick=()=>{
+              let left=spy.pay||2;
+              while(left>0){
+                const pool=RES.filter(r=>stealableResAmount(t,r)>0);
+                if(!pool.length) break;
+                const r=pool[Math.floor(rng()*pool.length)];
+                t.res[r]--; attacker.res[r]=(attacker.res[r]||0)+1; left--;
+              }
+              log(`💰 <b>${t.name}</b> paid <b>${spy.pay||2}</b> resources to <b>${attacker.name}</b> (Spy Network).`);
+              closeModal(); renderAll(); endTurn();
+            };
+            row.appendChild(pBtn);
+            body2.push(row);
+            showModal({ title:`Spy Network on ${t.name}`, sub:`Discard chosen card or pay.`, bodyNodes: body2, actions:[{label:"Discard", onClick:dBtn.onclick}] });
+          };
+          box.appendChild(b);
+          grid.appendChild(box);
+        });
+        body.push(grid);
+        showModal({ title:`Spy Network: choose a card in ${t.name}'s hand`, sub:`They choose discard or payment.`, bodyNodes: body, actions:[{label:"Cancel", onClick:closeModal}] });
+        return;
+      }
+    }
+  }
+
+  renderAll();
+  attacker._extraRaidSteal = 0;
+  attacker._raidStealChosenIfRich = false;
+  attacker._raidTargetExtraDiscard = 0;
+  attacker._raidEachOppDiscard = 0;
+  attacker._raidEachOppDiscardIfHand = [];
+  attacker._raidEachOppSteal = 0;
+  attacker._raidStealSpecific = [];
+  attacker._raidStealRandomBonusOn = [];
+  attacker._raidRandomChain = [];
+  attacker._raidSpyDiscardOrPay = [];
+  endTurn();
+}
+
+/* ============================================================
+   Action: Train
+   ============================================================ */
+function doTrain(p, slot){
+  // modifiers are prepared by Train triggers right before this action
+  p._trainSteal = p._trainSteal || 0;
+  p._bonusIfUnlockedThisTrain = p._bonusIfUnlockedThisTrain || 0;
+  p._trainDrawKeepIfUnlocked = p._trainDrawKeepIfUnlocked || [];
+
+  // triggers already ran and may have set these.
+
+  // Unlock check
+  const caps=countCaptains(p);
+  if(p.unlocked < 7 && caps >= p.unlocked){
+    p.unlocked++;
+    p.unlockedThisTrain=true;
+    log(`🔓 <b>${p.name}</b> unlocked a new column! Now <b>${p.unlocked}</b> columns unlocked.`);
+  }else{
+    log(`🎖️ <b>${p.name}</b> trained. (Captains: ${caps} • Unlocked: ${p.unlocked})`);
+  }
+
+  // train steal effect (from War Captain) if any
+  if((p._trainSteal||0)>0){
+    const opponents = G.players.map((x,i)=>({x,i})).filter(o=>o.i!==G.currentPlayer);
+    if(opponents.length){
+      chooseTargetModal(`Train effect: steal 1 resource`, opponents, (tIdx)=>{
+        // steal random resource
+        const t=G.players[tIdx];
+        const pool=RES.filter(r=>(t.res[r]||0)>0);
+        if(pool.length){
+          const res=pool[Math.floor(rng()*pool.length)];
+          t.res[res]--;
+          p.res[res]=(p.res[res]||0)+1;
+          log(`🫳 <b>${p.name}</b> stole ${RES_EMOJI[res]} <b>1</b> from <b>${t.name}</b> (Train).`);
+        }else{
+          log(`💨 ${t.name} had no resources to steal (Train).`);
+        }
+        // bonus if unlocked this train
+        if(p.unlockedThisTrain && (p._bonusIfUnlockedThisTrain||0)>0){
+          p.bonusPts += p._bonusIfUnlockedThisTrain;
+          log(`🏅 <b>${p.name}</b> gained <b>+${p._bonusIfUnlockedThisTrain}</b> bonus (unlocked this Train).`);
+        }
+        renderAll();
+        endTurn();
+      });
+      return; // endTurn after modal
+    }
+  }
+
+  if(p.unlockedThisTrain && (p._bonusIfUnlockedThisTrain||0)>0){
+    p.bonusPts += p._bonusIfUnlockedThisTrain;
+    log(`🏅 <b>${p.name}</b> gained <b>+${p._bonusIfUnlockedThisTrain}</b> bonus (unlocked this Train).`);
+  }
+
+  if(p.unlockedThisTrain && p._trainDrawKeepIfUnlocked && p._trainDrawKeepIfUnlocked.length){
+    const cfg = p._trainDrawKeepIfUnlocked[0];
+    const drawn = drawFromDeck(cfg.draw||2);
+    if(drawn.length){
+      if((cfg.keep||1) >= drawn.length){
+        p.hand.push(...drawn);
+      }else{
+        chooseKeepModal(drawn, cfg.keep||1, (kept, discarded)=>{
+          p.hand.push(...kept);
+          G.discard.push(...discarded);
+          renderAll();
+          endTurn();
+        });
+        return;
+      }
+    }
+  }
+
+  renderAll();
+  p._trainSteal = 0;
+  p._bonusIfUnlockedThisTrain = 0;
+  p._trainDrawKeepIfUnlocked = [];
+  endTurn();
+}
+
+/* ============================================================
+   Recruit market buttons (only valid during Recruit action)
+   We allow quick take ONLY if player is currently in a Recruit modal/action.
+   For simplicity, these buttons just open a message telling user to press Recruit action.
+   ============================================================ */
+function attemptRecruitTakeMarket(idx){
+  log(`ℹ️ Use <b>Recruit</b> action to take from market (shared 5).`);
+}
+function attemptRecruitDrawDeck(){
+  log(`ℹ️ Use <b>Recruit</b> action to draw from deck.`);
+}
+
+/* ============================================================
+   Battle resolution
+   ============================================================ */
+function resolveBattleForRound(roundNum){
+  G.actionLock = true;
+
+  const bid=G.battlePlan[roundNum-1];
+  const b=BattleDB.find(x=>x.id===bid);
+  const scores = G.players.map(p=>({p, v:b.score(p)}));
+  const max = Math.max(...scores.map(s=>s.v));
+  const winners = scores.filter(s=>s.v===max);
+  const bonus=4;
+
+  winners.forEach(w=>{
+    w.p.battlePts += bonus;
+  });
+  G.battleWinners[roundNum-1] = winners.map(w=>w.p.name).join(", ");
+
+  const body=[];
+  const summary=document.createElement("div");
+  summary.className="smallNote";
+  summary.innerHTML = `<b>Battle:</b> ${b.name}<br><span class="tiny">${b.desc}</span><br><br>
+    <b>Bonus:</b> +${bonus} points to winner(s).`;
+  body.push(summary);
+
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+  scores.sort((a,b)=>b.v-a.v).forEach(s=>{
+    const box=document.createElement("div");
+    box.className="choice";
+    const h=document.createElement("div");
+    h.className="h";
+    h.innerHTML = `${s.p.name} <span class="pill">Battle Score: ${s.v}</span>`;
+    const p=document.createElement("div");
+    p.className="p";
+    const win = winners.some(w=>w.p===s.p);
+    p.innerHTML = win ? `<b style="color:rgba(140,255,190,.95)">WINNER</b> • +${bonus} pts` : `—`;
+    const p2=document.createElement("div");
+    p2.className="p";
+    p2.innerHTML = `Total Score now: <b>${calcScore(s.p)}</b> (Cards ${sumCardPoints(s.p)} + Battle ${s.p.battlePts} + Bonus ${s.p.bonusPts})`;
+    box.appendChild(h); box.appendChild(p); box.appendChild(p2);
+    grid.appendChild(box);
+  });
+  body.push(grid);
+
+  showModal({
+    title:`End of Round ${roundNum}`,
+    sub:`Battle resolved. Prepare for next round.`,
+    bodyNodes: body,
+    actions:[
+      {label: (roundNum<5 ? "Next Round" : "Finish Game"), kind:"primary", onClick: ()=>{
+        closeModal();
+        if(roundNum<5){
+          G.round++;
+          resetRoundTurns();
+          G.actionLock=false;
+          log(`➡️ Round <b>${G.round}</b> begins. Starting player: <b>${G.players[G.startingPlayer].name}</b>.`);
+          renderAll();
+        }else{
+          G.actionLock=false;
+          endGame();
+        }
+      }}
+    ]
+  });
+}
+
+function endGame(){
+  // final standings
+  const scores=G.players.map(p=>({p, s:calcScore(p)})).sort((a,b)=>b.s-a.s);
+  const winner = scores[0];
+
+  const body=[];
+  const summary=document.createElement("div");
+  summary.className="smallNote";
+  summary.innerHTML = `<b>Game Over!</b><br>Winner: <b>${winner.p.name}</b> with <b>${winner.s}</b> points.`;
+  body.push(summary);
+
+  const grid=document.createElement("div");
+  grid.className="choiceGrid";
+  scores.forEach((x, idx)=>{
+    const box=document.createElement("div");
+    box.className="choice";
+    const h=document.createElement("div");
+    h.className="h";
+    h.innerHTML = `#${idx+1} ${x.p.name} <span class="pill">Score: ${x.s}</span>`;
+    const p=document.createElement("div");
+    p.className="p";
+    p.innerHTML = `Cards: <b>${sumCardPoints(x.p)}</b> • Battle: <b>${x.p.battlePts}</b> • Bonus: <b>${x.p.bonusPts}</b><br>
+                   Troops: <b>${totalTroops(x.p)}</b> • Captains: <b>${countCaptains(x.p)}</b> • Resources: <b>${sumRes(x.p)}</b>`;
+    box.appendChild(h); box.appendChild(p);
+    grid.appendChild(box);
+  });
+  body.push(grid);
+
+  showModal({
+    title:"🏁 Final Results",
+    sub:"Thanks for testing this prototype.",
+    bodyNodes: body,
+    actions:[
+      {label:"Restart", kind:"warn", onClick: ()=>{
+        closeModal();
+        location.reload();
+      }}
+    ]
+  });
+}
+
+/* ============================================================
+   Wiring
+   ============================================================ */
+document.getElementById("btnToggleResource").onclick=()=>{
+  const body=document.getElementById("resourceBody");
+  const btn=document.getElementById("btnToggleResource");
+  const hide=!body.classList.contains("collapsed");
+  body.classList.toggle("collapsed", hide);
+  btn.textContent = hide ? "Show" : "Hide";
+};
+document.getElementById("btnToggleLog").onclick=()=>{
+  const body=document.getElementById("log");
+  const btn=document.getElementById("btnToggleLog");
+  const hide=!body.classList.contains("collapsed");
+  body.classList.toggle("collapsed", hide);
+  btn.textContent = hide ? "Show" : "Hide";
+};
+
+document.getElementById("btnHelp").onclick=()=>{
+  showModal({
+    title:"Help / Rules",
+    sub:"Quick reference",
+    bodyNodes:[
+      (()=>{ const d=document.createElement("div"); d.className="smallNote"; d.innerHTML=`
+        <b>Actions:</b> Forage / Recruit / Raid / Train / Play Card.<br><br>
+        <b>Row strength:</b> action slot = <b>(cards in row + 1)</b> capped by <b>unlocked columns</b>.<br>
+        <b>Triggered abilities:</b> when you take a row action, all cards in that row with “On [Action]” trigger, then base effect happens.<br><br>
+        <b>Train unlock:</b> If <b>Captains ≥ unlocked columns</b>, unlock +1 column (max 7). Captains are cards in Train row with tag “Captain”.<br><br>
+        <b>Recruit market:</b> 5 shared face-up. Taking one refills immediately. Recruit doesn’t cost resources.<br><br>
+        <b>Rounds:</b> 5 rounds, 6 turns each. Battle at end of each round gives +4 points to winner(s).<br>
+      `; return d; })()
+    ],
+    actions:[{label:"Close", onClick: closeModal}]
+  });
+};
+document.getElementById("btnRestart").onclick=()=>location.reload();
+
+document.getElementById("btnQuickRules").onclick=()=>document.getElementById("btnHelp").click();
+
+/* ============================================================
+   Start screen name inputs
+   ============================================================ */
+function rebuildNameInputs(){
+  const n=+document.getElementById("numPlayers").value;
+  const wrap=document.getElementById("nameInputs");
+  wrap.innerHTML="";
+  const grid=document.createElement("div");
+  grid.className="grid2";
+  for(let i=0;i<n;i++){
+    const box=document.createElement("div");
+    const lab=document.createElement("label");
+    lab.textContent=`Player ${i+1} name`;
+    const inp=document.createElement("input");
+    inp.id=`pname${i}`;
+    inp.value = ["Avery","Blake","Casey","Drew"][i] || `Player ${i+1}`;
+    box.appendChild(lab);
+    box.appendChild(inp);
+    grid.appendChild(box);
+  }
+  wrap.appendChild(grid);
+}
+document.getElementById("numPlayers").addEventListener("change", rebuildNameInputs);
+rebuildNameInputs();
+
+document.getElementById("btnStart").onclick=()=>{
+  const n=+document.getElementById("numPlayers").value;
+  const seedStr=document.getElementById("seed").value.trim();
+  const names=[];
+  for(let i=0;i<n;i++){
+    const v=document.getElementById(`pname${i}`).value.trim();
+    names.push(v || `Player ${i+1}`);
+  }
+  document.getElementById("startScreen").style.display="none";
+  document.getElementById("app").style.display="grid";
+  initGame(names, seedStr);
+};
+
+
+</script>
+</body>
+</html>
