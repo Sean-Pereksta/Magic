@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuthed();
+    }
+
+    match /lobbies/{gameId} {
+      allow read, write: if isAuthed();
+
+      match /crowncouncil/{docId} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /metrics_dailyUsers/{dateKey} {
+      match /users/{uid} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /grid_overlord_games/{gameId} {
+      allow read, write: if isAuthed();
+
+      match /players/{playerId} {
+        allow read: if isAuthed();
+        allow write: if isAuthed() && request.auth.uid == playerId;
+      }
+
+      match /nodes/{nodeId} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /castlepanic_games/{gameId} {
+      allow read, write: if isAuthed();
+
+      match /players/{playerId} {
+        allow read: if isAuthed();
+        allow write: if isAuthed() && request.auth.uid == playerId;
+      }
+
+      match /nodes/{nodeId} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /micromon_saves/{saveId} {
+      allow read, write: if isAuthed();
+    }
+
+    match /mqUsers/{username} {
+      allow read, write: if isAuthed();
+    }
+
+    match /games_rogueduel/{gameId} {
+      allow read, write: if isAuthed();
+
+      match /{sub=**} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /games_basewar/{gameId} {
+      allow read, write: if isAuthed();
+
+      match /commands/{cmdId} {
+        allow read, write: if isAuthed();
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
