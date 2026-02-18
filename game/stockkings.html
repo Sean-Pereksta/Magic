@@ -95,11 +95,23 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 
-const params=new URLSearchParams(location.search);
-const gameId=(params.get("gameId")||"").trim();
-const username=(params.get("username")||"Racer").trim();
-const LOBBY_REF=gameId?doc(db,"lobbies",gameId):null;
-const RACE_REF=gameId?doc(db,"lobbies",gameId,"crowncouncil","stockkingsRace"):null;
+const params = new URLSearchParams(location.search);
+
+// Same keys your lobby uses
+const LS_USER  = "gh.username";
+const LS_LOBBY = "gh.lastLobbyId";
+
+// ✅ robust fallback: if someone reloads the page, still works
+const gameId = (params.get("gameId") || localStorage.getItem(LS_LOBBY) || "").trim();
+const username = (params.get("username") || localStorage.getItem(LS_USER) || "Racer").trim();
+
+if (gameId) localStorage.setItem(LS_LOBBY, gameId);
+if (username) localStorage.setItem(LS_USER, username);
+
+const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
+// keep your existing path
+const RACE_REF  = gameId ? doc(db, "lobbies", gameId, "crowncouncil", "stockkingsRace") : null;
+
 
 const TOTAL_ROUNDS = 3;
 
@@ -814,6 +826,46 @@ function hideModal(){
   el("overlay").classList.remove("show");
   overlayMode=null;
 }
+  let lobbyUnsub = null;
+let raceUnsub  = null;
+let hostClaimed = false;
+
+function computeIsHost(){
+  // Lobby uses "host" (username). Some older lobbies might have hostUid.
+  const lobbyHostByName = lobbyState?.host && lobbyState.host === username;
+  const lobbyHostByUid  = lobbyState?.hostUid && lobbyState.hostUid === uid;
+
+  // Race doc may store hostUid/hostName (we will set these)
+  const raceHostByUid   = raceState?.hostUid && raceState.hostUid === uid;
+  const raceHostByName  = raceState?.hostName && raceState.hostName === username;
+
+  isHost = !!(raceHostByUid || raceHostByName || lobbyHostByName || lobbyHostByUid);
+}
+
+async function maybeClaimRaceHost(){
+  // Only the lobby host should claim host on the race doc
+  if(!RACE_REF || !uid || !lobbyState) return;
+  const iAmLobbyHost = (lobbyState.host === username) || (lobbyState.hostUid === uid);
+  if(!iAmLobbyHost) return;
+
+  // Avoid spamming writes
+  if(hostClaimed) return;
+
+  // If already set correctly, don’t rewrite
+  if(raceState?.hostUid === uid || raceState?.hostName === username){
+    hostClaimed = true;
+    return;
+  }
+
+  try{
+    hostClaimed = true;
+    await setDoc(RACE_REF, { hostUid: uid, hostName: username }, { merge: true });
+  }catch(e){
+    // if it fails, allow retry later
+    hostClaimed = false;
+  }
+}
+
 function setOverlayCountdown(seconds){
   el("overlayTitle").textContent = "Race starts in…";
   el("overlayBody").innerHTML =
@@ -1402,34 +1454,119 @@ setupControls();
 // ---------- Auth + Firestore wiring ----------
 onAuthStateChanged(auth, async user=>{
   if(!user){ await signInAnonymously(auth); return; }
-
-  uid=user.uid;
-  el("statusText").textContent="Connected";
+  uid = user.uid;
 
   if(!gameId){
-    showModal("Missing gameId","Open from lobby so the race can sync multiplayer state.",[
-      {label:"Back to Lobby",onClick:()=>location.href="/lobby/lobby.html"}
-    ]);
-    overlayMode="info";
+    showModal(
+      "Missing gameId",
+      "Open StockKings from the Lobby so the race can sync.<br/><br/>Tip: if you refreshed and lost the URL, the page will also try to recover from localStorage.",
+      [{label:"Back to lobby", onClick:()=>location.href="/lobby/lobby.html"}]
+    );
     return;
   }
 
-  const lobbySnap=await getDoc(LOBBY_REF);
-  lobbyState=lobbySnap.data()||{};
-  isHost=(lobbyState.hostUid===uid);
+  el("statusText").textContent = "Connecting to lobby…";
 
-  await ensureRaceDoc();
+  // -------------------------
+  // LIVE LOBBY SUBSCRIPTION
+  // -------------------------
+  if(lobbyUnsub) lobbyUnsub();
+  lobbyUnsub = onSnapshot(
+    LOBBY_REF,
+    async snap=>{
+      if(!snap.exists()){
+        lobbyState = null;
+        el("statusText").textContent = "Lobby not found.";
+        showModal(
+          "Lobby not found",
+          "That lobby no longer exists (or you don't have access).<br/><br/>Return to the lobby and start again.",
+          [{label:"Back to lobby", onClick:()=>location.href="/lobby/lobby.html"}]
+        );
+        return;
+      }
+
+      lobbyState = snap.data() || {};
+
+      // ✅ sanity check: prevent “wrong game opened”
+      if(lobbyState.gameType && lobbyState.gameType !== "stockkings"){
+        showModal(
+          "Wrong lobby type",
+          `This lobby is for <b>${lobbyState.gameType}</b>, not StockKings.<br/><br/>Return to lobby and rejoin the correct game.`,
+          [{label:"Back to lobby", onClick:()=>location.href="/lobby/lobby.html"}]
+        );
+        return;
+      }
+
+      computeIsHost();
+
+      // Ensure race doc exists after we confirm lobby is valid
+      await ensureRaceDoc();
+
+      // Subscribe to race doc once
+      if(!raceUnsub){
+        raceUnsub = onSnapshot(
+          RACE_REF,
+          async rsnap=>{
+            if(!rsnap.exists()) return;
+            raceState = rsnap.data();
+
+            // host determination can depend on race doc host fields too
+            computeIsHost();
+
+            // If I'm the lobby host, stamp hostUid/hostName into race doc
+            await maybeClaimRaceHost();
+
+            // Handle pickedObstacle relay
+            if(raceState.pickedObstacle && isHost){
+              await applyObstaclePick(raceState.pickedObstacle, false);
+              await updateDoc(RACE_REF, { pickedObstacle: null, updatedAt: serverTimestamp() });
+            }
+
+            // Only respawn threats if obstacle list actually changed (avoids jitter)
+            const sig = JSON.stringify(raceState.obstacles || []);
+            if(loop.__lastObsSig !== sig){
+              loop.__lastObsSig = sig;
+              spawnThreats();
+            }
+
+            renderBoard();
+            hostMaybeStart();
+          },
+          err=>{
+            console.error("Race snapshot error:", err);
+            showModal(
+              "Race connection error",
+              "Unable to subscribe to the race state. This is usually auth or rules related.<br/><br/>Return to lobby and try again.",
+              [{label:"Back to lobby", onClick:()=>location.href="/lobby/lobby.html"}]
+            );
+          }
+        );
+      }
+
+      // If lobby isn't started yet, show “waiting”
+      if(lobbyState.status && lobbyState.status !== "started"){
+        el("statusText").textContent = "Waiting for host to start…";
+      }else{
+        el("statusText").textContent = "Race online.";
+      }
+    },
+    err=>{
+      console.error("Lobby snapshot error:", err);
+      showModal(
+        "Lobby connection error",
+        "Unable to subscribe to the lobby document. If this persists, your rules/auth aren’t passing.<br/><br/>Return to lobby and try again.",
+        [{label:"Back to lobby", onClick:()=>location.href="/lobby/lobby.html"}]
+      );
+    }
+  );
+
+  // Join player after auth (safe even if race doc is created later because setDoc merge)
   await joinRacePlayer();
 
-  onSnapshot(RACE_REF, snap=>{
-    if(!snap.exists()) return;
-    raceState=snap.data();
-    renderBoard();
-    hostMaybeStart();
-  });
-
-  setInterval(hostTick, 350);
+  // Host tick loop — now works because host detection is correct
+  setInterval(hostTick, 400);
 });
+
 </script>
 </body>
 </html>
