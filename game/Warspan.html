@@ -1,0 +1,3135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>WarSpan (Prototype v3) — Investment Scaling • Recruit-Pick UI • Morale Synergies • Many Commanders</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --panel:#ffffff;
+      --soft:#f7f8fb;
+      --ink:#0f172a;
+      --muted:#64748b;
+      --line:rgba(15,23,42,.14);
+      --shadow:0 14px 30px rgba(2,6,23,.10);
+      --r:14px;
+
+      --good:#16a34a;
+      --warn:#f59e0b;
+      --bad:#dc2626;
+      --accent:#2563eb;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    button{font:inherit}
+    #app{max-width:1480px;margin:0 auto;padding:14px}
+
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+    }
+    header{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    .top{padding:12px;display:flex;gap:12px;flex:1;min-width:360px;align-items:stretch}
+    .top .block{flex:1;min-width:280px}
+
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .title{font-weight:900;letter-spacing:.2px}
+    .muted{color:var(--muted)}
+    .spacer{flex:1}
+    .pill{
+      padding:6px 10px;border-radius:999px;border:1px solid var(--line);
+      background:var(--soft);color:var(--muted);font-size:12px
+    }
+
+    .btn{
+      border:1px solid var(--line);border-radius:12px;background:#fff;
+      color:var(--ink);padding:10px 12px;cursor:pointer;
+      transition:transform .05s ease, background .15s ease;
+      user-select:none;
+      box-shadow:0 8px 18px rgba(2,6,23,.06);
+    }
+    .btn:hover{transform:translateY(-1px);background:var(--soft)}
+    .btn:active{transform:translateY(0)}
+    .btn.primary{border-color:rgba(37,99,235,.30);background:rgba(37,99,235,.08)}
+    .btn.warn{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.10)}
+    .btn.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08)}
+    .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+
+    .hint{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.35}
+    .hr{height:1px;background:var(--line);margin:10px 0}
+
+    .grid{display:grid;grid-template-columns: 1fr 1fr;gap:12px}
+    .board{padding:12px;min-height:560px}
+    .board.active{
+      outline:2px solid rgba(37,99,235,.35);
+      box-shadow:0 0 0 6px rgba(37,99,235,.10), var(--shadow);
+    }
+    .board h2{margin:0 0 10px 0;font-size:14px}
+
+    .stats{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 12px 0}
+    .stat{
+      padding:8px 10px;border:1px solid var(--line);border-radius:12px;
+      background:var(--soft);font-size:12px;color:var(--muted)
+    }
+    .stat b{color:var(--ink)}
+
+    .cols{display:grid;grid-template-columns: repeat(5, minmax(140px,1fr));gap:10px}
+    .col{
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:var(--soft);
+      overflow:hidden;
+      min-height:350px;
+      position:relative;
+    }
+    .cmdTop{
+      padding:8px;border-bottom:1px solid var(--line);
+      min-height:86px;
+      background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,0));
+    }
+    .slotWrap{padding:8px;display:grid;gap:8px}
+    .slot{
+      border:1px dashed rgba(15,23,42,.22);
+      border-radius:12px;
+      padding:8px;
+      min-height:68px;
+      background:#fff;
+      position:relative;
+      cursor:pointer;
+      transition:background .15s ease, border-color .15s ease, transform .05s ease;
+      box-shadow:0 10px 20px rgba(2,6,23,.06);
+    }
+    .slot:hover{background:rgba(2,6,23,.02)}
+    .slot:active{transform:translateY(1px)}
+    .slot.locked{
+      opacity:.50;cursor:not-allowed;background:rgba(2,6,23,.03);
+      border-style:solid;box-shadow:none
+    }
+    .slotLabel{
+      position:absolute;top:6px;right:8px;
+      font-size:10px;color:rgba(15,23,42,.55);
+      letter-spacing:.15em;text-transform:uppercase
+    }
+    .slot.legal{border-color:rgba(22,163,74,.55);background:rgba(22,163,74,.06)}
+    .slot.illegal{border-color:rgba(220,38,38,.50);background:rgba(220,38,38,.04)}
+
+    .cardMini{
+      background:#fff;border:1px solid rgba(15,23,42,.12);
+      border-radius:12px;padding:8px;box-shadow:0 10px 20px rgba(2,6,23,.08);
+    }
+    .cardMini .name{font-weight:900;font-size:12px;margin-bottom:4px}
+    .cardMini .meta{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .tag{
+      padding:2px 6px;border-radius:999px;border:1px solid var(--line);
+      font-size:10px;color:var(--muted);background:#fff
+    }
+    .tag.good{border-color:rgba(22,163,74,.35);color:rgba(22,163,74,.95)}
+    .tag.warn{border-color:rgba(245,158,11,.35);color:rgba(245,158,11,.95)}
+    .tag.bad{border-color:rgba(220,38,38,.35);color:rgba(220,38,38,.95)}
+    .tag.accent{border-color:rgba(37,99,235,.35);color:rgba(37,99,235,.95)}
+    .power{margin-left:auto;font-weight:900;color:var(--ink)}
+    .small{font-size:11px;color:var(--muted)}
+    .clickable{cursor:pointer}
+    .clickable:hover{outline:2px solid rgba(37,99,235,.25)}
+    .exh{opacity:.6}
+
+    .handRow{
+      margin-top:12px;
+      display:grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap:12px;
+      align-items:stretch;
+    }
+    .hand,.side{padding:12px}
+    .hand h3,.side h3{margin:0 0 10px 0;font-size:13px}
+    .cards{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+    .card{
+      width:220px;background:#fff;border:1px solid rgba(15,23,42,.14);
+      border-radius:14px;padding:10px;box-shadow:0 14px 30px rgba(2,6,23,.10);
+      cursor:pointer;transition:transform .06s ease, background .15s ease;
+      user-select:none;position:relative;overflow:hidden;
+    }
+    .card:hover{transform:translateY(-2px);background:rgba(2,6,23,.01)}
+    .card.selected{
+      outline:2px solid rgba(37,99,235,.45);
+      box-shadow:0 0 0 6px rgba(37,99,235,.10), 0 16px 35px rgba(2,6,23,.12);
+    }
+    .head{display:flex;gap:8px;align-items:center}
+    .badge{
+      font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+      padding:2px 7px;border-radius:999px;border:1px solid var(--line);
+      color:var(--muted);background:#fff
+    }
+    .badge.cmd{border-color:rgba(37,99,235,.35);color:rgba(37,99,235,.95)}
+    .badge.trp{border-color:rgba(2,132,199,.35);color:rgba(2,132,199,.95)}
+    .badge.rog{border-color:rgba(220,38,38,.35);color:rgba(220,38,38,.95)}
+    .badge.str{border-color:rgba(245,158,11,.35);color:rgba(245,158,11,.95)}
+    .badge.trn{border-color:rgba(22,163,74,.35);color:rgba(22,163,74,.95)}
+    .name{font-weight:950;margin-top:6px}
+    .meta{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);align-items:center}
+    .cost{display:flex;gap:6px}
+    .res{
+      display:inline-flex;align-items:center;gap:5px;padding:2px 6px;
+      border-radius:999px;border:1px solid var(--line);background:var(--soft);
+    }
+    .res i{font-style:normal}
+
+    .actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+    .logBox{
+      height:230px;overflow:auto;border:1px solid var(--line);border-radius:12px;
+      padding:10px;background:var(--soft)
+    }
+    .logLine{font-size:12px;color:rgba(15,23,42,.92);margin:6px 0;line-height:1.25}
+    .logLine .t{color:var(--muted);font-size:10px;margin-right:8px}
+
+    details{border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--soft)}
+    summary{cursor:pointer;font-weight:800}
+
+    /* Modal */
+    #modalBack{
+      position:fixed;inset:0;background:rgba(2,6,23,.40);
+      display:none;align-items:center;justify-content:center;z-index:50;padding:18px
+    }
+    #modal{
+      width:min(980px, 96vw);
+      background:#fff;border:1px solid rgba(15,23,42,.16);
+      border-radius:18px;box-shadow:0 22px 70px rgba(2,6,23,.25);
+      padding:14px;
+    }
+    #modal h3{margin:0 0 8px 0}
+    #modal .body{color:rgba(15,23,42,.90);font-size:13px;line-height:1.4}
+    #modal .choices{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
+    #modal .choices .btn{min-width:180px}
+    .modalGrid{display:grid;grid-template-columns:repeat(4, minmax(210px,1fr));gap:10px;margin-top:12px}
+    .pickCard{
+      border:1px solid rgba(15,23,42,.14);border-radius:14px;background:#fff;
+      padding:10px;box-shadow:0 10px 20px rgba(2,6,23,.10);cursor:pointer;
+      transition:transform .06s ease, background .15s ease;
+    }
+    .pickCard:hover{transform:translateY(-2px);background:var(--soft)}
+    .pickCard.selected{outline:2px solid rgba(37,99,235,.45)}
+    .pickCard .t{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+    .pickCard .n{font-weight:900;margin-top:4px}
+    .pickCard .d{color:rgba(15,23,42,.85);font-size:12px;margin-top:6px;line-height:1.3}
+    .topline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .kpi{
+      padding:6px 10px;border-radius:999px;border:1px solid var(--line);
+      background:var(--soft);font-size:12px;color:var(--muted)
+    }
+
+    /* Tooltip */
+    #tip{
+      position:fixed;z-index:80;pointer-events:none;
+      display:none;
+      width:min(420px, 80vw);
+      background:#fff;border:1px solid rgba(15,23,42,.16);
+      border-radius:14px;box-shadow:0 18px 55px rgba(2,6,23,.22);
+      padding:10px;
+    }
+    #tip .tt{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+    #tip .tn{font-weight:950;margin-top:4px}
+    #tip .td{margin-top:8px;color:rgba(15,23,42,.88);font-size:12px;line-height:1.35}
+    #tip .tm{margin-top:8px;color:var(--muted);font-size:11px;line-height:1.35}
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header class="panel top">
+    <div class="block">
+      <div class="row">
+        <div class="title">WarSpan — Prototype v3</div>
+        <span class="pill" id="phasePill">Phase: Setup</span>
+        <span class="pill" id="roundPill">Round: —</span>
+        <span class="pill" id="turnPill">Turn: —</span>
+        <span class="spacer"></span>
+        <button class="btn primary" id="btnNew">New Game</button>
+        <button class="btn" id="btnReset">Reset</button>
+      </div>
+      <div class="hint">
+        <b>Core updates:</b>
+        Recruiting is the <b>draw/pick</b> action (you get a pick UI).
+        Rows have <b>investment scaling</b> (2+ cards / 4+ cards).
+        Training generates bigger morale based on <b>troops on your board</b>.
+        Morale unlocks big effects on many troops (hover for details).
+        Commanders are <b>much more common</b> and have <b>auto triggers</b> that modify actions.
+      </div>
+    </div>
+
+    <div class="block panel" style="padding:12px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="title" style="font-size:13px">Current Battlefield</div>
+          <div class="muted" id="bfName" style="margin-top:4px">—</div>
+          <div class="small" id="bfDesc" style="margin-top:6px;line-height:1.35">—</div>
+        </div>
+        <div>
+          <div class="pill" id="bfBanner">Banner: —</div>
+          <div class="pill" id="bfPreview" style="margin-top:8px">Preview: —</div>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="row">
+        <button class="btn primary" id="btnActRes">Activate: Foraging (Resources)</button>
+        <button class="btn primary" id="btnActRec">Activate: Recruiting (Pick Cards)</button>
+        <button class="btn primary" id="btnActTrn">Activate: Training (Morale)</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn warn" id="btnEndTurn">End Turn</button>
+        <button class="btn bad" id="btnForceRoundEnd">Force End Round</button>
+        <button class="btn" id="btnHelp">Rules</button>
+      </div>
+      <div class="small" style="margin-top:10px">
+        Tip: Hover any card for full text. Select a hand card → click a green slot to deploy. Commanders deploy from hand and unlock columns.
+      </div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="panel board" id="board0"></div>
+    <div class="panel board" id="board1"></div>
+  </div>
+
+  <div class="handRow">
+    <div class="panel hand">
+      <h3>Active Player Hand</h3>
+      <div class="cards" id="handCards"></div>
+      <div class="actions">
+        <button class="btn" id="btnClearSel">Clear Selection</button>
+        <button class="btn" id="btnShowLegal">Show Legal Slots</button>
+        <span class="spacer"></span>
+        <span class="pill" id="investPill">Investment: —</span>
+      </div>
+      <div class="hint">
+        <b>Deploy:</b> Select a card → click a legal slot (green).<br/>
+        <b>Recruiting:</b> Click “Recruiting” to reveal cards and choose picks. Unchosen cards are discarded (and may trigger discard synergies).<br/>
+        <b>Activations:</b> After the popup, you can choose the order you resolve your activated effects.
+      </div>
+    </div>
+
+    <div class="panel side">
+      <h3>Camp (Free Take — costs 1 action)</h3>
+      <div class="cards" id="marketCards"></div>
+      <div class="hr"></div>
+      <h3>Game Log</h3>
+      <div class="logBox" id="logBox"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px">
+    <details class="panel" id="rulesBox">
+      <summary>WarSpan rules (prototype summary)</summary>
+      <div class="hint">
+        <ul>
+          <li><b>Draft:</b> You and AI draft 2 commanders. Commanders are also <b>common in the deck</b>.</li>
+          <li>Each commander column has 3 slots: <b>Foraging</b>, <b>Recruiting</b>, <b>Training</b>. Some commanders <b>lock</b> certain slots entirely.</li>
+          <li><b>Investment scaling:</b>
+            <ul>
+              <li>Foraging action base gain is 1 resource. If you have <b>2+</b> cards in Foraging row total → gain 2. If <b>4+</b> → gain 3.</li>
+              <li>Recruiting action base picks is 1. If you have <b>2+</b> cards in Recruiting row total → pick 2. If <b>4+</b> → pick 3.</li>
+              <li>Training action generates morale based on your board: base 1 + training investment bonus + <b>+1 per troop you have deployed</b>.</li>
+            </ul>
+          </li>
+          <li><b>Morale:</b> Place morale on troops. Many abilities only trigger if the troop has morale (or has 2 morale).</li>
+          <li><b>Recruiting UI:</b> reveals a set of cards; you pick your allowed number; the rest are discarded (discard synergies can trigger).</li>
+          <li><b>After each round</b>, a battle resolves on the shown battlefield. Winner gets glory + picks a negative effect.</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<div id="modalBack">
+  <div id="modal">
+    <h3 id="modalTitle">Choose</h3>
+    <div class="body" id="modalBody"></div>
+    <div id="modalExtra"></div>
+    <div class="choices" id="modalChoices"></div>
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const el = (tag, cls, html) => {
+    const n=document.createElement(tag);
+    if(cls) n.className=cls;
+    if(html!=null) n.innerHTML=html;
+    return n;
+  };
+  const nowT = () => new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+  // --------- utils ----------
+  const shuffle = (arr) => {
+    for(let i=arr.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  };
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const esc=(s)=>String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+  const prettyRow=(r)=>({resources:"Foraging", recruiting:"Recruiting", training:"Training", commander:"Commander"}[r]||r);
+
+  const uid = (()=>{ let n=1; return ()=>"c"+(n++); })();
+  const cost = (w,s,g)=>({wood:w, stone:s, gold:g});
+
+  // --------- game state ----------
+  let G=null;
+
+  function makePlayer(name, ai){
+    return {
+      name, ai,
+      resources:{wood:1,stone:1,gold:1},
+      glory:0, banners:0,
+      shields:0,
+      hand:[], discard:[],
+      commanders:[null,null,null,null,null],
+      columns:Array.from({length:5}, ()=>({ slots:{resources:null,recruiting:null,training:null} })),
+      actionsLeft:0,
+      moraleSupply:0,
+      track:{
+        spentThisRound:{wood:0,stone:0,gold:0},
+        raidsThisRound:0,
+        playedThisRound:0,
+        discardedThisAction:0
+      }
+    };
+  }
+
+  function canAfford(p,c){
+    return p.resources.wood>=(c.wood||0) && p.resources.stone>=(c.stone||0) && p.resources.gold>=(c.gold||0);
+  }
+  function payCost(p,c){
+    p.resources.wood -= (c.wood||0); p.track.spentThisRound.wood += (c.wood||0);
+    p.resources.stone -= (c.stone||0); p.track.spentThisRound.stone += (c.stone||0);
+    p.resources.gold -= (c.gold||0); p.track.spentThisRound.gold += (c.gold||0);
+  }
+  function log(ctx,msg){ (ctx.log||(ctx.log=[])).push({t:nowT(), msg}); }
+  function toast(msg){ log(G, `<span class="muted">[Hint]</span> ${esc(msg)}`); renderLog(); }
+
+  function otherPlayer(p){
+    const i=G.players.indexOf(p);
+    return i===0 ? G.players[1] : G.players[0];
+  }
+
+  // --------- template helpers ----------
+  function makeCard(template){
+    const c = JSON.parse(JSON.stringify(template));
+    c.uid = uid();
+    c.exhausted = false;
+    c.played = false;      // for "onPlay once"
+    c.morale = c.morale || 0; // troops/raiders can hold morale
+    c.upgrades = 0;
+    return c;
+  }
+
+  // --------- commanders (many; common) ----------
+  // Commander schema:
+  // {
+  //  kind:"Commander", name, cost, desc,
+  //  disabledRows:{resources?:true,recruiting?:true,training?:true},
+  //  permissions:{resources:[cats], recruiting:[cats], training:[cats]},
+  //  passives:{
+  //    preForage:{add:number, notes:string},         // adds to base forage amount
+  //    preRecruit:{addPicks?:number, minPicks?:number, addReveal?:number, notes:string},
+  //    preTraining:{addMorale?:number, notes:string}
+  //  },
+  //  triggers:{ resources:[trigger], recruiting:[trigger], training:[trigger] }  // resolved in activation-order UI
+  // }
+  function commander(name, costObj, disabledRows, permissions, passives, triggers, desc){
+    return {
+      kind:"Commander",
+      category:"Commander",
+      row:"commander",
+      name,
+      cost:costObj,
+      disabledRows:disabledRows||{},
+      permissions,
+      passives:passives||{},
+      triggers:triggers||{resources:[],recruiting:[],training:[]},
+      desc
+    };
+  }
+
+  function trig(label, detail, resolve){
+    return { id: uid(), label, detail, resolve };
+  }
+
+  const CommanderTemplates = [
+    commander(
+      "Quartermaster General", cost(0,0,2),
+      {}, // no locked rows
+      {
+        resources:["Forager","Structure","Scout"],
+        recruiting:["Troop","Raider","Recruiter","Structure"],
+        training:["Trainer","Tactic","Structure"]
+      },
+      {
+        preForage:{ add:1, notes:"+1 to your Forage gain (always)."},
+        preRecruit:{ minPicks:2, notes:"Recruiting: you always pick at least 2."}
+      },
+      {
+        resources:[
+          trig("Quartermaster: Choose 1 resource",
+              "Gain 1 chosen resource (🪵/🪨/🪙).",
+              (ctx,p,done)=> chooseResourceModal(ctx,p,"Quartermaster", (r)=>{ gain(p,r,1,ctx,"Quartermaster"); done(); }) )
+        ],
+        recruiting:[],
+        training:[
+          trig("Quartermaster: +1 Morale Supply",
+              "Gain +1 morale to supply.",
+              (ctx,p,done)=>{ p.moraleSupply+=1; log(ctx, `${p.name} gains +1 morale (Quartermaster).`); done(); })
+        ]
+      },
+      "Logistics monster. Makes foraging stronger and recruiting smoother."
+    ),
+
+    commander(
+      "Scout Captain", cost(0,0,2),
+      {},
+      {
+        resources:["Forager","Scout"],
+        recruiting:["Troop","Raider","Recruiter","Scout"],
+        training:["Trainer","Tactic"]
+      },
+      {
+        preRecruit:{ addReveal:2, notes:"Recruiting reveals +2 cards."}
+      },
+      {
+        recruiting:[
+          trig("Scout: If you have any morale troop, +1 pick",
+              "If ANY of your troops has morale, you gain +1 recruiting pick (this activation only).",
+              (ctx,p,done)=>{ /* already applied in preRecruit calc; keep as info trigger */ done(); })
+        ]
+      },
+      "More info. More options. (Morale squads recruit better.)"
+    ),
+
+    commander(
+      "Raider Chieftain", cost(0,0,2),
+      { training:true }, // locks training slot entirely
+      {
+        resources:["Forager","Scout"],
+        recruiting:["Raider","Troop","Recruiter"],
+        training:[]
+      },
+      {
+        preRecruit:{ addPicks:1, notes:"+1 pick when recruiting (always)."}
+      },
+      {
+        resources:[
+          trig("Chieftain: Convert 🪵→🪙",
+            "If you have 1 wood, spend it to gain 1 gold.",
+            (ctx,p,done)=>{
+              if(p.resources.wood>=1){ p.resources.wood-=1; p.track.spentThisRound.wood+=1; gain(p,"gold",1,ctx,"Chieftain convert"); }
+              else log(ctx, `${p.name} can't convert (needs 1 wood).`);
+              done();
+            })
+        ],
+        recruiting:[
+          trig("Chieftain: Raid 1",
+            "Attempt to steal 1 resource from the enemy (blocked by shields).",
+            (ctx,p,done)=>{ attemptRaid(ctx,p,1,"Chieftain"); done(); })
+        ]
+      },
+      "Fast pressure. You sacrifice training space for stronger recruiting + raids."
+    ),
+
+    commander(
+      "Fortress Warden", cost(0,1,1),
+      {},
+      {
+        resources:["Structure","Forager"],
+        recruiting:["Troop","Structure"],
+        training:["Trainer","Structure","Tactic"]
+      },
+      {
+        preTraining:{ addMorale:1, notes:"+1 morale generated on Training."}
+      },
+      {
+        resources:[
+          trig("Warden: +1 Shield",
+            "Gain 1 shield (blocks a raid).",
+            (ctx,p,done)=>{ p.shields=(p.shields||0)+1; log(ctx, `${p.name} gains +1 shield (Warden).`); done(); })
+        ]
+      },
+      "Defense. Keeps you safe from raiders and boosts your training output."
+    ),
+
+    commander(
+      "Siege Marshal", cost(1,1,1),
+      { resources:true }, // locks foraging slot
+      {
+        resources:[],
+        recruiting:["Troop","Structure"],
+        training:["Trainer","Structure","Tactic"]
+      },
+      {
+        preRecruit:{ minPicks:2, notes:"Recruiting: minimum 2 picks (siege logistics)."}
+      },
+      {
+        recruiting:[
+          trig("Marshal: Next troop -1 🪨",
+            "Your next troop deployed this round costs -1 stone (min 0).",
+            (ctx,p,done)=>{ p.flags=p.flags||{}; p.flags.nextTroopStoneDiscount=(p.flags.nextTroopStoneDiscount||0)+1;
+              log(ctx, `${p.name} gains: Next troop -1 stone (Siege Marshal).`); done(); })
+        ],
+        training:[
+          trig("Marshal: Upgrade troop (+1 power) for 1 🪨",
+            "If you have 1 stone, spend it to upgrade a troop (+1 power).",
+            (ctx,p,done)=>{
+              if(p.resources.stone<1){ log(ctx, `${p.name} needs 1 stone.`); done(); return; }
+              const troops=listTroops(p);
+              if(!troops.length){ log(ctx, `${p.name} has no troops to upgrade.`); done(); return; }
+              pickTroopModal(ctx,p,"Upgrade which troop? (+1 power, costs 1 🪨)", troops, (t)=>{
+                if(p.resources.stone<1) return;
+                p.resources.stone-=1; p.track.spentThisRound.stone+=1;
+                t.upgrades=(t.upgrades||0)+1;
+                log(ctx, `${p.name} upgrades ${t.name} (+1 power).`);
+                done();
+              });
+            })
+        ]
+      },
+      "You give up foraging space, but your army quality ramps fast."
+    ),
+
+    commander(
+      "Drillmaster", cost(1,0,1),
+      {},
+      {
+        resources:["Forager","Scout"],
+        recruiting:["Troop","Raider","Recruiter"],
+        training:["Trainer","Tactic","Structure"]
+      },
+      {
+        preTraining:{ addMorale:2, notes:"+2 morale generated on Training."}
+      },
+      {
+        training:[
+          trig("Drillmaster: If a troop gains morale, it also gains +1 power (once this activation)",
+            "After you place morale during this Training action, your first troop that received morale also gains +1 power.",
+            (ctx,p,done)=>{ p.flags=p.flags||{}; p.flags.drillmasterPowerOnFirstMorale=true; done(); })
+        ]
+      },
+      "Big morale engine. Turns morale into damage."
+    ),
+
+    commander(
+      "Merchant Prince", cost(0,0,2),
+      { training:true }, // locks training
+      {
+        resources:["Forager","Structure"],
+        recruiting:["Recruiter","Structure","Scout","Troop"],
+        training:[]
+      },
+      {
+        preForage:{ add:1, notes:"+1 Forage gain."},
+        preRecruit:{ addPicks:1, notes:"+1 pick on Recruiting."}
+      },
+      {
+        recruiting:[
+          trig("Merchant: Discard 1 → Gain 1 🪙",
+            "You may discard 1 card from hand to gain 1 gold.",
+            (ctx,p,done)=>{
+              if(!p.hand.length){ log(ctx, `${p.name} has no hand to discard.`); done(); return; }
+              pickHandCardModal(ctx,p,"Discard 1 to gain 1 gold (optional)", true, (c)=>{
+                if(!c){ done(); return; }
+                discardFromHand(ctx,p,c.uid,"Merchant discard");
+                gain(p,"gold",1,ctx,"Merchant");
+                done();
+              });
+            })
+        ]
+      },
+      "Economy bully: strong Foraging + Recruiting, but you sacrifice Training space."
+    ),
+
+    commander(
+      "Wild Huntsman", cost(0,1,1),
+      { recruiting:true }, // locks recruiting slot
+      {
+        resources:["Forager","Scout"],
+        recruiting:[],
+        training:["Trainer","Tactic"]
+      },
+      {
+        preForage:{ add:2, notes:"+2 Forage gain."}
+      },
+      {
+        resources:[
+          trig("Huntsman: If you gained 3+ resources this forage, gain +1 extra (chosen)",
+            "If your Forage total this action is 3 or more, gain +1 chosen resource.",
+            (ctx,p,done)=>{
+              // We'll check a flag set by forage popup.
+              if((p.flags?.lastForageTotal||0) >= 3){
+                chooseResourceModal(ctx,p,"Huntsman bonus", (r)=>{ gain(p,r,1,ctx,"Huntsman"); done(); });
+              } else {
+                log(ctx, `${p.name} doesn't meet huntsman threshold.`);
+                done();
+              }
+            })
+        ]
+      },
+      "Insane foraging column, but no recruiting slot in this column."
+    ),
+
+    commander(
+      "War Sage", cost(0,0,2),
+      { resources:true }, // locks resources
+      {
+        resources:[],
+        recruiting:["Recruiter","Scout","Tactic","Troop"],
+        training:["Trainer","Tactic","Scout"]
+      },
+      {
+        preRecruit:{ addReveal:2, notes:"Recruiting reveals +2."},
+        preTraining:{ addMorale:1, notes:"+1 training morale."}
+      },
+      {
+        training:[
+          trig("War Sage: If you have 2+ morale on any troop, draw 1",
+            "If ANY troop has 2 morale, draw 1 card.",
+            (ctx,p,done)=>{
+              const ok=listTroops(p).some(t=>(t.morale||0)>=2);
+              if(ok){ draw(p,ctx,1,"War Sage"); } else log(ctx, `${p.name} has no 2-morale troop.`);
+              done();
+            })
+        ]
+      },
+      "No foraging slot here — but your recruiting/training plans get smarter."
+    ),
+
+    commander(
+      "Iron Captain", cost(1,0,0),
+      {},
+      {
+        resources:["Structure","Forager"],
+        recruiting:["Troop","Raider","Structure"],
+        training:["Trainer","Tactic","Structure"]
+      },
+      {
+        preRecruit:{ addPicks:1, notes:"+1 pick if you already have 2+ troops deployed."}
+      },
+      {
+        recruiting:[
+          trig("Iron Captain: If you have 2+ troops, gain +1 pick (info)",
+            "This bonus is applied to your picks automatically if you have 2+ troops.",
+            (ctx,p,done)=>done()
+          )
+        ]
+      },
+      "Board-presence commander. Rewards you for already being on the field."
+    ),
+
+    commander(
+      "Engineer Captain", cost(0,2,0),
+      { recruiting:true }, // locks recruiting
+      {
+        resources:["Structure","Forager"],
+        recruiting:[],
+        training:["Structure","Trainer","Tactic"]
+      },
+      {
+        preForage:{ add:1, notes:"+1 forage."}
+      },
+      {
+        training:[
+          trig("Engineer: Ready 1 exhausted card",
+            "Choose 1 exhausted card on your board and ready it.",
+            (ctx,p,done)=>{
+              const ex=listBoardCards(p).filter(c=>c.exhausted);
+              if(!ex.length){ log(ctx, `${p.name} has no exhausted cards.`); done(); return; }
+              pickBoardCardModal(ctx,p,"Ready which exhausted card?", ex, (c)=>{
+                c.exhausted=false; log(ctx, `${p.name} readies ${c.name} (Engineer).`); done();
+              });
+            })
+        ]
+      },
+      "Build column. No recruiting slot, but training re-uses engines."
+    ),
+
+    commander(
+      "Blood Banner", cost(0,0,2),
+      {}, // open
+      {
+        resources:["Forager","Scout"],
+        recruiting:["Troop","Raider","Recruiter"],
+        training:["Trainer","Tactic"]
+      },
+      {
+        preRecruit:{ addPicks:1, notes:"+1 pick if you have ANY morale troop."}
+      },
+      {
+        recruiting:[
+          trig("Blood Banner: After recruiting, place 1 morale for free",
+            "After you finish recruiting picks, place +1 morale on a troop (free).",
+            (ctx,p,done)=>{
+              const troops=listTroops(p);
+              if(!troops.length){ log(ctx, `${p.name} has no troops.`); done(); return; }
+              pickTroopModal(ctx,p,"Free morale: choose a troop", troops, (t)=>{
+                placeMoraleOnTroop(ctx,p,t,1,"Blood Banner (free)");
+                done();
+              });
+            })
+        ]
+      },
+      "Morale-driven recruiting. Turns card flow into pressure."
+    )
+  ];
+
+  // --------- cards (more variety + morale/discard/onPlay) ----------
+  // Card schema:
+  // { kind:"Card", category, row, name, cost, power, tags, text, fx:{ onPlay?, onActivate?, preRecruitBonus?, onAnyDiscard?, onSelfDiscard?, battleBonus? }, oncePerRound?:true }
+  function card(name, category, row, costObj, power, tags, text, fx){
+    return {
+      kind:"Card",
+      category, row,
+      name,
+      cost:costObj,
+      power:power||0,
+      tags:tags||[],
+      text:text||"",
+      fx:fx||{}
+    };
+  }
+
+  // Helpful: define frequent triggers
+  const FX = {
+    // common morale-gated battle bonus
+    moraleBattleBonus: (m1, bonus1, m2, bonus2) => (ctx,p,enemy,self)=>{
+      const m=self.morale||0;
+      let b=0;
+      if(m>=m1) b+=bonus1;
+      if(m>=m2) b+=bonus2;
+      return b;
+    }
+  };
+
+  // Foraging row
+  const CardTemplates = [
+    card("Woodcutters", "Forager", "resources", cost(1,0,0), 0, ["Economy"],
+      "Activate(Foraging): Gain +1 🪵.",
+      { onActivate:(ctx,p,self,done)=>{ gain(p,"wood",1,ctx,"Woodcutters"); done(); } }),
+
+    card("Quarry Crew", "Forager", "resources", cost(0,1,0), 0, ["Economy"],
+      "Activate(Foraging): Gain +1 🪨.",
+      { onActivate:(ctx,p,self,done)=>{ gain(p,"stone",1,ctx,"Quarry"); done(); } }),
+
+    card("Gold Panners", "Forager", "resources", cost(1,0,1), 0, ["Economy"],
+      "Activate(Foraging): Gain +1 🪙. If you have any morale troop, gain +1 🪙 more.",
+      { onActivate:(ctx,p,self,done)=>{
+        gain(p,"gold",1,ctx,"Panners");
+        if(anyMoraleTroop(p)) gain(p,"gold",1,ctx,"Panners (morale bonus)");
+        done();
+      }}),
+
+    card("Workshop", "Structure", "resources", cost(1,1,0), 0, ["Structure"],
+      "Activate(Foraging): Gain +1 🪵. Then you may convert 1 🪵 → 1 🪨.",
+      { onActivate:(ctx,p,self,done)=>{
+        gain(p,"wood",1,ctx,"Workshop");
+        if(p.resources.wood>=1){
+          promptYesNo(ctx,"Workshop Convert", "Convert 1 🪵 to 1 🪨?", (yes)=>{
+            if(yes){ p.resources.wood-=1; p.track.spentThisRound.wood+=1; gain(p,"stone",1,ctx,"Workshop convert"); }
+            done();
+          });
+        } else done();
+      }}),
+
+    card("Supply Cache", "Structure", "resources", cost(0,1,0), 0, ["Structure","Discard-Synergy"],
+      "Passive: Whenever you discard any card, gain +1 🪵 (once per action).",
+      { onAnyDiscard:(ctx,p,info,self)=>{
+        if(self._discTrigActId === info.actionId) return;
+        self._discTrigActId = info.actionId;
+        gain(p,"wood",1,ctx,"Supply Cache (discard)");
+      }}),
+
+    card("Trade Post", "Structure", "resources", cost(0,0,2), 0, ["Structure"],
+      "Activate(Foraging): Choose 1 resource to gain. If you have 2+ morale on any troop, gain +1 of that same resource.",
+      { onActivate:(ctx,p,self,done)=>{
+        const bonus = anyTroopWithMorale(p,2);
+        chooseResourceModal(ctx,p,"Trade Post: choose a resource", (r)=>{
+          gain(p,r,1,ctx,"Trade Post");
+          if(bonus) gain(p,r,1,ctx,"Trade Post (2-morale bonus)");
+          done();
+        });
+      }}),
+
+    card("Scavenger Crew", "Scout", "resources", cost(0,0,1), 0, ["Scout","Discard-Synergy"],
+      "Activate(Foraging): You may discard 1 card. If you do, gain +1 🪙 and draw 1.",
+      { onActivate:(ctx,p,self,done)=>{
+        if(!p.hand.length){ done(); return; }
+        pickHandCardModal(ctx,p,"Discard 1 to gain +1 🪙 and draw 1 (optional)", true, (c)=>{
+          if(!c){ done(); return; }
+          discardFromHand(ctx,p,c.uid,"Scavenger discard");
+          gain(p,"gold",1,ctx,"Scavenger");
+          draw(p,ctx,1,"Scavenger");
+          done();
+        });
+      }}),
+
+    // Recruiting row (troops / recruiters / raiders)
+    card("Infantry Squad", "Troop", "recruiting", cost(1,0,0), 2, ["Infantry","Morale-Synergy"],
+      "Battle: +2 power. If it has morale: +1 battle power (per morale). If it has 2 morale: on win, loot 1 resource.",
+      { battleBonus:(ctx,p,enemy,self)=> (self.morale||0), // morale adds directly
+        onBattleWin:(ctx,p,enemy,self)=>{
+          if((self.morale||0)>=2) stealResources(ctx,p,enemy,1,"Infantry (2 morale win)");
+        }
+      }),
+
+    card("Veteran Archers", "Troop", "recruiting", cost(1,0,1), 2, ["Ranged","Morale-Synergy"],
+      "If it has morale: Recruiting gives +1 pick (auto). If it has 2 morale: on win, enemy loses 1 morale (random).",
+      { preRecruitBonus:(ctx,p,self)=> (self.morale||0)>=1 ? 1 : 0,
+        onBattleWin:(ctx,p,enemy,self)=>{
+          if((self.morale||0)>=2) removeRandomMorale(enemy,ctx,1,"Veteran Archers (2 morale win)");
+        }
+      }),
+
+    card("Cavalry Riders", "Troop", "recruiting", cost(0,0,2), 2, ["Cavalry","Morale-Synergy"],
+      "If it has morale: Battle bonus +2. If it has 2 morale: after recruiting, free raid 1.",
+      { battleBonus: FX.moraleBattleBonus(1,2,2,0),
+        afterRecruiting:(ctx,p,enemy,self)=>{
+          if((self.morale||0)>=2) attemptRaid(ctx,p,1,"Cavalry (2 morale after recruiting)");
+        }
+      }),
+
+    card("Siege Engine", "Troop", "recruiting", cost(1,2,0), 3, ["Siege"],
+      "Battle: +3 power. (No morale scaling.)",
+      {}),
+
+    card("Raider Band", "Raider", "recruiting", cost(1,0,0), 1, ["Raider","Discard-Synergy"],
+      "Activate(Recruiting): Raid 1. If it has morale: raid 1 again.",
+      { onActivate:(ctx,p,self,done)=>{
+        attemptRaid(ctx,p,1,"Raider Band");
+        if((self.morale||0)>=1) attemptRaid(ctx,p,1,"Raider Band (morale bonus)");
+        done();
+      }}),
+
+    card("Ambush Party", "Raider", "recruiting", cost(0,1,0), 1, ["Raider","OnPlay"],
+      "ON PLAY: Immediately raid 1. If it has morale later, its Recruiting activation gains +1 raid.",
+      { onPlay:(ctx,p,self,done)=>{
+          attemptRaid(ctx,p,1,"Ambush (on play)");
+          done();
+        },
+        onActivate:(ctx,p,self,done)=>{
+          if((self.morale||0)>=1) attemptRaid(ctx,p,1,"Ambush (morale raid)");
+          done();
+        }
+      }),
+
+    card("Recruiter", "Recruiter", "recruiting", cost(0,0,1), 0, ["Recruit"],
+      "Recruiting (auto): +1 pick.",
+      { preRecruitBonus:(ctx,p,self)=> 1 }),
+
+    card("Field Scribe", "Scout", "recruiting", cost(0,0,1), 0, ["Scout","Discard-Synergy"],
+      "Recruiting (auto): +1 reveal. If you discard during this action, draw 1 (once per action).",
+      { preRecruitReveal:(ctx,p,self)=> 1,
+        onAnyDiscard:(ctx,p,info,self)=>{
+          if(self._discTrigActId === info.actionId) return;
+          self._discTrigActId = info.actionId;
+          draw(p,ctx,1,"Field Scribe (discard)");
+        }
+      }),
+
+    card("Barracks", "Structure", "recruiting", cost(1,1,0), 0, ["Structure"],
+      "Activate(Recruiting): Draw 1. If you have any 2-morale troop, draw 1 more.",
+      { onActivate:(ctx,p,self,done)=>{
+        draw(p,ctx,1,"Barracks");
+        if(anyTroopWithMorale(p,2)) draw(p,ctx,1,"Barracks (2-morale bonus)");
+        done();
+      }}),
+
+    // Training row
+    card("Drill Sergeant", "Trainer", "training", cost(1,0,0), 0, ["Trainer","Morale"],
+      "Activate(Training): Place +1 morale on a troop.",
+      { onActivate:(ctx,p,self,done)=>{
+        const troops=listTroops(p);
+        if(!troops.length){ log(ctx, `${p.name} has no troops.`); done(); return; }
+        pickTroopModal(ctx,p,"Drill Sergeant: choose a troop to gain +1 morale", troops, (t)=>{
+          placeMoraleOnTroop(ctx,p,t,1,"Drill Sergeant");
+          done();
+        });
+      }}),
+
+    card("Armorer", "Trainer", "training", cost(0,1,0), 0, ["Trainer"],
+      "Activate(Training): Spend 1 🪨 to upgrade a troop (+1 power).",
+      { onActivate:(ctx,p,self,done)=>{
+        if(p.resources.stone<1){ log(ctx, `${p.name} needs 1 stone.`); done(); return; }
+        const troops=listTroops(p);
+        if(!troops.length){ log(ctx, `${p.name} has no troops.`); done(); return; }
+        pickTroopModal(ctx,p,"Armorer: upgrade which troop? (+1 power, costs 1 🪨)", troops, (t)=>{
+          if(p.resources.stone<1) return;
+          p.resources.stone-=1; p.track.spentThisRound.stone+=1;
+          t.upgrades=(t.upgrades||0)+1;
+          log(ctx, `${p.name} upgrades ${t.name} (+1 power).`);
+          done();
+        });
+      }}),
+
+    card("Tactician", "Tactic", "training", cost(0,0,1), 0, ["Tactic","Discard-Synergy"],
+      "Activate(Training): You may discard 1. If you do: draw 2. If you have any morale troop: also gain +1 🪙.",
+      { onActivate:(ctx,p,self,done)=>{
+        if(!p.hand.length){ done(); return; }
+        pickHandCardModal(ctx,p,"Tactician: Discard 1 to draw 2 (optional)", true, (c)=>{
+          if(!c){ done(); return; }
+          discardFromHand(ctx,p,c.uid,"Tactician discard");
+          draw(p,ctx,2,"Tactician");
+          if(anyMoraleTroop(p)) gain(p,"gold",1,ctx,"Tactician (morale bonus)");
+          done();
+        });
+      }}),
+
+    card("War Song", "Tactic", "training", cost(0,0,1), 0, ["Tactic","Morale-Synergy"],
+      "Battle: If you have 3+ total morale on troops, gain +3 battle score. Then exhaust this card.",
+      { battleBonus:(ctx,p,enemy,self)=>{
+          const tm=totalMorale(p);
+          return tm>=3 && !self.exhausted ? 3 : 0;
+        },
+        exhaustAfterBattle:true
+      }),
+
+    card("Rally Standard", "Structure", "training", cost(0,1,1), 1, ["Structure","OnPlay","Morale"],
+      "ON PLAY: Place +1 morale on up to 2 troops (split).",
+      { onPlay:(ctx,p,self,done)=>{
+          const troops=listTroops(p);
+          if(!troops.length){ done(); return; }
+          placeMoraleSplitModal(ctx,p,"Rally Standard: place 2 morale (split)", 2, troops, ()=>{
+            done();
+          });
+        }
+      }),
+
+    card("Meditation Circle", "Tactic", "training", cost(0,0,1), 0, ["Tactic","Morale-Synergy"],
+      "Activate(Training): If any troop has 2 morale, draw 1 and gain +1 morale supply.",
+      { onActivate:(ctx,p,self,done)=>{
+        if(anyTroopWithMorale(p,2)){
+          draw(p,ctx,1,"Meditation");
+          p.moraleSupply+=1;
+          log(ctx, `${p.name} gains +1 morale supply (Meditation).`);
+        } else {
+          log(ctx, `${p.name} has no 2-morale troop (Meditation).`);
+        }
+        done();
+      }}),
+
+    card("Watchtower", "Structure", "resources", cost(0,1,1), 0, ["Structure","Shield"],
+      "Start of Round: +1 shield. Activate(Foraging): +1 🪵.",
+      { onRoundStart:(ctx,p,self)=>{ p.shields=(p.shields||0)+1; log(ctx, `${p.name} gains +1 shield (Watchtower).`); },
+        onActivate:(ctx,p,self,done)=>{ gain(p,"wood",1,ctx,"Watchtower"); done(); }
+      }),
+
+    card("Spy Ring", "Scout", "recruiting", cost(0,0,1), 0, ["Scout","Discard-Synergy"],
+      "Passive: The first time you discard during an action, attempt a raid 1 (once per action).",
+      { onAnyDiscard:(ctx,p,info,self)=>{
+        if(self._discTrigActId === info.actionId) return;
+        self._discTrigActId = info.actionId;
+        attemptRaid(ctx,p,1,"Spy Ring (discard)");
+      }}),
+
+    card("Press Gang", "Recruiter", "recruiting", cost(0,1,0), 0, ["OnPlay","Discard-Synergy"],
+      "ON PLAY: Discard 1 card from hand. If you do, draw 2.",
+      { onPlay:(ctx,p,self,done)=>{
+        if(!p.hand.length){ done(); return; }
+        pickHandCardModal(ctx,p,"Press Gang: discard 1 to draw 2 (optional)", true, (c)=>{
+          if(!c){ done(); return; }
+          discardFromHand(ctx,p,c.uid,"Press Gang");
+          draw(p,ctx,2,"Press Gang");
+          done();
+        });
+      }}),
+  ];
+
+  // copies/rarity-ish
+  const CARD_COPIES = (t) => {
+    if(t.category==="Commander") return 0;
+    if(t.category==="Troop" || t.category==="Raider") return 3;
+    if(t.category==="Structure") return 2;
+    if(t.category==="Recruiter") return 3;
+    if(t.category==="Trainer" || t.category==="Tactic" || t.category==="Scout") return 2;
+    return 2;
+  };
+
+  // --------- battlefields ----------
+  function battlefield(name,banner,desc,scoreFn,effects){
+    return {name,banner,desc,scoreFn,effects};
+  }
+  const BattlefieldTemplates = [
+    battlefield("Raid the Supply Lines", 6,
+      "Score: (#Raiders) + (2 × raids this round) + total power + morale.",
+      (p)=> countTag(p,"Raider") + p.track.raidsThisRound*2,
+      ["Loot 2 resources", "Sabotage 1 enemy card", "Rout 1 morale"]),
+    battlefield("Siege the Gate", 6,
+      "Score: (#Siege) + (stone spent this round) + total power + morale.",
+      (p)=> countTag(p,"Siege") + p.track.spentThisRound.stone,
+      ["Sabotage 1 enemy card", "Loot 2 resources", "Rout 1 morale"]),
+    battlefield("Hold the Line", 5,
+      "Score: (#Fort/Shield tags) + shields + total power + morale.",
+      (p)=> countTag(p,"Shield") + (p.shields||0),
+      ["Rout 2 morale", "Sabotage 1 enemy card", "Loot 1 resource + Exhaust 1"]),
+    battlefield("Cavalry Charge", 5,
+      "Score: (2×#Cavalry) + morale on cavalry + total power + morale.",
+      (p)=> countTag(p,"Cavalry")*2 + moraleOnTag(p,"Cavalry"),
+      ["Loot 2 resources", "Rout 1 morale", "Sabotage 1 enemy card"]),
+  ];
+
+  // --------- deck building / draft ----------
+  function newGame(){
+    const p0=makePlayer("You",false);
+    const p1=makePlayer("AI",true);
+
+    G={
+      phase:"draft",
+      round:1,
+      current:0,
+      players:[p0,p1],
+      log:[],
+      selected:{uid:null},
+      pending:false,
+      market:[],
+      deck:[],
+      battlefields: shuffle(BattlefieldTemplates.map(b=>({...b}))).slice(0,4),
+      draft:{ pool:[], picks:{0:[],1:[]}, turn:0, count:{0:0,1:0} }
+    };
+
+    // Commander pool: make a lot (commanders are common)
+    // We'll put 2 copies of each commander in "commander stock", draft from a slice, and dump the rest into deck.
+    const commanderStock=[];
+    for(const ct of CommanderTemplates){
+      commanderStock.push(makeCard(ct));
+      commanderStock.push(makeCard(ct));
+    }
+    shuffle(commanderStock);
+
+    // Draft: show 10 commanders
+    G.draft.pool = commanderStock.splice(0,10);
+    G.draft.remaining = commanderStock; // very large remainder
+
+    log(G,"New game started. Commander Draft begins (pick 2).");
+    renderAll();
+    beginDraftPick();
+  }
+
+  function beginDraftPick(){
+    if(G.phase!=="draft") return;
+    const d=G.draft;
+    const done = (d.count[0]>=2 && d.count[1]>=2);
+    if(done){ finishDraft(); return; }
+
+    const turn = d.turn; // 0 user, 1 AI
+    if(turn===1){
+      const choice = aiPickDraft(d.pool);
+      takeDraftPick(1,choice.uid);
+      renderAll();
+      setTimeout(beginDraftPick, 200);
+      return;
+    }
+    openDraftModal();
+  }
+
+  function openDraftModal(){
+    const d=G.draft;
+    G.pending=true;
+    $("#modalTitle").textContent="Commander Draft — Pick a Commander";
+    $("#modalBody").innerHTML = `
+      Pick <b>${2-d.count[0]}</b> more.
+      <div class="hr"></div>
+      <div class="small">
+        Commanders can <b>lock slots</b> and also grant <b>auto bonuses</b> to actions (like minimum 2 picks on Recruiting).
+      </div>
+    `;
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    d.pool.forEach(cmd=>{
+      const pc=el("div","pickCard");
+      pc.innerHTML = commanderPickHTML(cmd);
+      pc.onmouseenter=(e)=>showTipForCard(cmd,e);
+      pc.onmousemove=(e)=>moveTip(e);
+      pc.onmouseleave=hideTip;
+      pc.onclick=()=>{
+        takeDraftPick(0,cmd.uid);
+        closeModal();
+        renderAll();
+        setTimeout(beginDraftPick, 150);
+      };
+      grid.appendChild(pc);
+    });
+    $("#modalExtra").appendChild(grid);
+    $("#modalChoices").innerHTML = `<button class="btn" onclick="(${closeModal.toString()})()">Close</button>`;
+    $("#modalBack").style.display="flex";
+  }
+
+  function takeDraftPick(playerIdx, uidCard){
+    const d=G.draft;
+    const i=d.pool.findIndex(c=>c.uid===uidCard);
+    if(i<0) return;
+    const cmd=d.pool.splice(i,1)[0];
+    d.picks[playerIdx].push(cmd);
+    d.count[playerIdx]+=1;
+    log(G, `${G.players[playerIdx].name} drafts Commander: ${cmd.name}.`);
+    d.turn = (d.turn===0?1:0);
+  }
+
+  function aiPickDraft(pool){
+    // heuristic: prefer pick-min commanders, then pick-reveal commanders, else random
+    const best = pool.find(c=>c.passives?.preRecruit?.minPicks>=2) ||
+                 pool.find(c=>c.passives?.preRecruit?.addPicks) ||
+                 pool.find(c=>c.passives?.preRecruit?.addReveal) ||
+                 pool[Math.floor(Math.random()*pool.length)];
+    return best;
+  }
+
+  function finishDraft(){
+    const p0=G.players[0], p1=G.players[1];
+    const d=G.draft;
+
+    // Place drafted commanders into first 2 columns
+    for(let i=0;i<2;i++){
+      p0.commanders[i]=d.picks[0][i] || null;
+      p1.commanders[i]=d.picks[1][i] || null;
+    }
+
+    // Build deck with MANY commanders + normal cards
+    const deck=[];
+
+    // commanders: dump ALL remaining draft pool + remaining stock into deck
+    const remainingCmds = [...d.pool, ...(d.remaining||[])];
+    remainingCmds.forEach(c=>deck.push(c));
+
+    // normal cards with copies
+    for(const t of CardTemplates){
+      const copies = CARD_COPIES(t);
+      for(let k=0;k<copies;k++) deck.push(makeCard(t));
+    }
+
+    G.deck = shuffle(deck);
+
+    // starting hand: more commanders show up because they are abundant in deck
+    draw(p0,G,6,"Starting hand");
+    draw(p1,G,6,"Starting hand");
+
+    // morale supply small start
+    p0.moraleSupply=1;
+    p1.moraleSupply=1;
+
+    // market
+    G.market=[];
+    refillMarketTo(4);
+
+    // start actions
+    G.phase="actions";
+    startRound(1);
+    log(G,"Draft complete. Commanders are common in the deck.");
+    renderAll();
+    maybeAIMove();
+  }
+
+  // --------- round mgmt ----------
+  const ACTIONS_BY_ROUND={1:8,2:7,3:6,4:5};
+
+  function startRound(r){
+    G.round=r;
+    G.players.forEach(p=>{
+      p.actionsLeft=ACTIONS_BY_ROUND[r]||0;
+      p.track.spentThisRound={wood:0,stone:0,gold:0};
+      p.track.raidsThisRound=0;
+      p.track.playedThisRound=0;
+      p.shields=0;
+      p.flags={};
+
+      // ready all cards
+      forEachCardOnBoard(p,(c)=>{ c.exhausted=false; });
+
+      // round start triggers
+      forEachCardOnBoard(p,(c)=>{
+        if(c.fx?.onRoundStart) c.fx.onRoundStart(G,p,c);
+      });
+    });
+
+    // market refresh each round
+    refillMarketTo(4);
+
+    // alternate starting player
+    G.current = (r%2===1)?0:1;
+    updateBattlefieldUI();
+    log(G, `Round ${r} begins. Actions: ${ACTIONS_BY_ROUND[r]} each.`);
+  }
+
+  function endRound(){
+    G.phase="battle";
+    log(G, `— End of Round ${G.round}: Battle begins —`);
+    resolveBattle();
+  }
+
+  function advanceRoundOrEnd(){
+    if(G.round<4){
+      G.phase="actions";
+      startRound(G.round+1);
+      renderAll();
+      maybeAIMove();
+    }else{
+      G.phase="final";
+      log(G,"— Final War begins —");
+      resolveFinalWar();
+    }
+  }
+
+  // --------- deck helpers ----------
+  function draw(p,ctx,n,why){
+    for(let i=0;i<n;i++){
+      if(!G.deck.length) reshuffle(p);
+      const c=G.deck.pop();
+      if(!c) break;
+      p.hand.push(c);
+    }
+    log(ctx, `${p.name} draws ${n} card(s).${why?(" ("+why+")"):""}`);
+  }
+
+  function reshuffle(p){
+    // quick reshuffle: combine both discards into deck if deck empty
+    const pile=[];
+    G.players.forEach(pl=> pile.push(...pl.discard.splice(0)));
+    if(pile.length){
+      shuffle(pile);
+      G.deck.unshift(...pile);
+      log(G, "Deck reshuffled from discards.");
+    }
+  }
+
+  function refillMarketTo(n){
+    while(G.market.length<n){
+      if(!G.deck.length) reshuffle(G.players[0]);
+      const c=G.deck.pop();
+      if(!c) break;
+      G.market.push(c);
+    }
+  }
+
+  // --------- board scanning ----------
+  function isCommanderActive(p,col){ return !!p.commanders[col]; }
+
+  function slotLockedByCommander(p,col,row){
+    const cmd=p.commanders[col];
+    if(!cmd) return true;
+    return !!(cmd.disabledRows && cmd.disabledRows[row]);
+  }
+
+  function forEachCardOnBoard(p, fn){
+    for(let col=0; col<5; col++){
+      if(!isCommanderActive(p,col)) continue;
+      for(const row of ["resources","recruiting","training"]){
+        const c=p.columns[col].slots[row];
+        if(c) fn(c,row,col);
+      }
+    }
+  }
+  function listBoardCards(p){ const a=[]; forEachCardOnBoard(p,(c)=>a.push(c)); return a; }
+  function listTroops(p){
+    const a=[];
+    forEachCardOnBoard(p,(c)=>{ if(c.category==="Troop"||c.category==="Raider") a.push(c); });
+    return a;
+  }
+  function countRowCards(p,row){
+    let n=0;
+    for(let col=0; col<5; col++){
+      if(!isCommanderActive(p,col)) continue;
+      if(p.columns[col].slots[row]) n++;
+    }
+    return n;
+  }
+  function countTroops(p){ return listTroops(p).length; }
+  function totalPower(p){
+    let n=0;
+    forEachCardOnBoard(p,(c)=>{
+      n += (c.power||0) + (c.upgrades||0);
+    });
+    return n;
+  }
+  function totalMorale(p){
+    let n=0;
+    forEachCardOnBoard(p,(c)=>{ n += (c.morale||0); });
+    return n;
+  }
+  function anyMoraleTroop(p){ return listTroops(p).some(t=>(t.morale||0)>=1); }
+  function anyTroopWithMorale(p, m){ return listTroops(p).some(t=>(t.morale||0)>=m); }
+
+  function countTag(p, tag){
+    let n=0;
+    forEachCardOnBoard(p,(c)=>{ if((c.tags||[]).includes(tag)) n++; });
+    return n;
+  }
+  function moraleOnTag(p, tag){
+    let n=0;
+    forEachCardOnBoard(p,(c)=>{
+      if((c.tags||[]).includes(tag) && (c.category==="Troop"||c.category==="Raider")) n += (c.morale||0);
+    });
+    return n;
+  }
+
+  // --------- investment scaling ----------
+  function forageBaseAmount(p){
+    const k=countRowCards(p,"resources");
+    return 1 + (k>=2?1:0) + (k>=4?1:0);
+  }
+  function recruitBasePicks(p){
+    const k=countRowCards(p,"recruiting");
+    return 1 + (k>=2?1:0) + (k>=4?1:0);
+  }
+  function trainingGeneratedMorale(p){
+    const train=countRowCards(p,"training");
+    const invest = (train>=2?1:0) + (train>=4?1:0); // 0/1/2
+    const troops=countTroops(p);
+    const base=1;
+    return base + invest + troops;
+  }
+
+  function commanderPassivesFor(p, phaseKey){
+    // returns summary object of total passives
+    const out={};
+    for(const cmd of p.commanders){
+      if(!cmd) continue;
+      const pass=cmd.passives||{};
+      if(phaseKey==="forage" && pass.preForage){
+        out.add = (out.add||0) + (pass.preForage.add||0);
+        (out.notes||(out.notes=[])).push(`${cmd.name}: ${pass.preForage.notes||""}`);
+      }
+      if(phaseKey==="recruit" && pass.preRecruit){
+        out.addPicks = (out.addPicks||0) + (pass.preRecruit.addPicks||0);
+        out.minPicks = Math.max(out.minPicks||0, pass.preRecruit.minPicks||0);
+        out.addReveal = (out.addReveal||0) + (pass.preRecruit.addReveal||0);
+        (out.notes||(out.notes=[])).push(`${cmd.name}: ${pass.preRecruit.notes||""}`);
+      }
+      if(phaseKey==="training" && pass.preTraining){
+        out.addMorale = (out.addMorale||0) + (pass.preTraining.addMorale||0);
+        (out.notes||(out.notes=[])).push(`${cmd.name}: ${pass.preTraining.notes||""}`);
+      }
+    }
+    return out;
+  }
+
+  // --------- raid / morale / resources ----------
+  function gain(p, type, amt, ctx, reason){
+    p.resources[type]+=amt;
+    log(ctx, `${p.name} gains ${amt} ${type}${amt===1?"":"s"}${reason?(" ("+reason+")"):""}.`);
+  }
+
+  function attemptRaid(ctx, raiderPlayer, amt, reason){
+    const target=otherPlayer(raiderPlayer);
+    if((target.shields||0)>0){
+      target.shields-=1;
+      log(ctx, `${raiderPlayer.name} raids but ${target.name} blocks with 1 shield. (${reason})`);
+      return;
+    }
+    raiderPlayer.track.raidsThisRound += 1;
+
+    let pick=null;
+    if(target.resources.gold>0) pick="gold";
+    else if(target.resources.stone>0) pick="stone";
+    else if(target.resources.wood>0) pick="wood";
+
+    if(!pick){ log(ctx, `${raiderPlayer.name} raids but ${target.name} has no resources. (${reason})`); return; }
+    target.resources[pick]-=1;
+    raiderPlayer.resources[pick]+=1;
+    log(ctx, `${raiderPlayer.name} steals 1 ${pick} from ${target.name}. (${reason})`);
+  }
+
+  function stealResources(ctx,winner,loser,amt,reason){
+    for(let i=0;i<amt;i++){
+      let pick=null;
+      if(loser.resources.gold>0) pick="gold";
+      else if(loser.resources.stone>0) pick="stone";
+      else if(loser.resources.wood>0) pick="wood";
+      if(!pick){ log(ctx, `${loser.name} has no resources left to loot.`); break; }
+      loser.resources[pick]-=1;
+      winner.resources[pick]+=1;
+      log(ctx, `${winner.name} loots 1 ${pick} from ${loser.name}${reason?(" ("+reason+")"):""}.`);
+    }
+  }
+
+  function placeMoraleOnTroop(ctx,p,troop,amt,reason){
+    // no hard cap here; you can cap if you want later
+    const add=Math.min(amt, p.moraleSupply);
+    if(add<=0){ log(ctx, `${p.name} has no morale in supply.`); return; }
+    p.moraleSupply -= add;
+    troop.morale = (troop.morale||0) + add;
+    log(ctx, `${p.name} places ${add} morale on ${troop.name}${reason?(" ("+reason+")"):""}.`);
+
+    // Drillmaster flag: first morale placement gives +1 power
+    if(p.flags?.drillmasterPowerOnFirstMorale){
+      troop.upgrades=(troop.upgrades||0)+1;
+      log(ctx, `${troop.name} gains +1 power (Drillmaster).`);
+      p.flags.drillmasterPowerOnFirstMorale=false;
+    }
+  }
+
+  function removeRandomMorale(p,ctx,amt,reason){
+    const troops=listTroops(p).filter(t=>(t.morale||0)>0);
+    if(!troops.length){ log(ctx, `${p.name} has no morale to lose.`); return; }
+    for(let i=0;i<amt;i++){
+      const opts=listTroops(p).filter(t=>(t.morale||0)>0);
+      if(!opts.length) break;
+      const t=opts[Math.floor(Math.random()*opts.length)];
+      t.morale-=1;
+      log(ctx, `${p.name} loses 1 morale from ${t.name} (${reason}).`);
+    }
+  }
+
+  // --------- discard helpers + discard triggers ----------
+  function discardFromHand(ctx,p,uidCard,reason){
+    const i=p.hand.findIndex(c=>c.uid===uidCard);
+    if(i<0) return;
+    const c=p.hand.splice(i,1)[0];
+    p.discard.push(c);
+    log(ctx, `${p.name} discards ${c.name}${reason?(" ("+reason+")"):""}.`);
+    triggerDiscardSynergies(ctx,p,[c]);
+  }
+
+  function triggerDiscardSynergies(ctx,p,cards){
+    p.track.discardedThisAction = (p.track.discardedThisAction||0) + cards.length;
+    const info={ cards, actionId: ctx._actionId };
+    // board passives
+    forEachCardOnBoard(p,(c)=>{
+      if(c.fx?.onAnyDiscard) c.fx.onAnyDiscard(ctx,p,info,c);
+    });
+    // self discard effects for discarded cards (from hand)
+    for(const d of cards){
+      if(d.fx?.onSelfDiscard) d.fx.onSelfDiscard(ctx,p,info,d);
+    }
+  }
+
+  // --------- legality / placement ----------
+  function isLegalPlacement(p,col,row,card){
+    if(!isCommanderActive(p,col)) return false;
+    if(slotLockedByCommander(p,col,row)) return false;
+    if(p.columns[col].slots[row]) return false;
+    if(card.category==="Commander") return false;
+    if(card.row!==row) return false;
+
+    const cmd=p.commanders[col];
+    const allowed=(cmd.permissions?.[row]||[]);
+    return allowed.includes(card.category);
+  }
+
+  function deployCard(p, card, target){
+    const ctx=G;
+
+    // commander deploy
+    if(card.category==="Commander"){
+      const idx=p.commanders.findIndex(x=>x==null);
+      if(idx===-1) return {ok:false,msg:"You already have 5 commanders."};
+      if(!canAfford(p,card.cost)) return {ok:false,msg:"Not enough resources for that commander."};
+      payCost(p,card.cost);
+      p.commanders[idx]=card;
+      log(ctx, `${p.name} deploys Commander: ${card.name}.`);
+      p.track.playedThisRound += 1;
+
+      // onPlay triggers don't apply to commanders (but you could add)
+      p.actionsLeft--;
+      return {ok:true};
+    }
+
+    const {col,row}=target;
+    if(!isCommanderActive(p,col)) return {ok:false,msg:"No commander in that column."};
+    if(slotLockedByCommander(p,col,row)) return {ok:false,msg:"That slot is locked by the commander."};
+    if(p.columns[col].slots[row]) return {ok:false,msg:"Slot already filled."};
+
+    if(card.row!==row) return {ok:false,msg:`This card must be placed in ${prettyRow(card.row)}.`};
+
+    const cmd=p.commanders[col];
+    const allowed=cmd.permissions[row]||[];
+    if(!allowed.includes(card.category)) return {ok:false,msg:`Commander won't allow ${card.category} there.`};
+
+    // Siege Marshal discount
+    let eff={...card.cost};
+    if(card.category==="Troop" && (p.flags?.nextTroopStoneDiscount||0)>0){
+      eff.stone=Math.max(0,(eff.stone||0)-1);
+    }
+    if(!canAfford(p,eff)) return {ok:false,msg:"Not enough resources."};
+    payCost(p,eff);
+    if(card.category==="Troop" && (p.flags?.nextTroopStoneDiscount||0)>0){
+      p.flags.nextTroopStoneDiscount -= 1;
+      log(ctx, `${p.name} uses -1 🪨 troop discount.`);
+    }
+
+    p.columns[col].slots[row]=card;
+    log(ctx, `${p.name} deploys ${card.name} into ${prettyRow(row)} (Col ${col+1}).`);
+    p.track.playedThisRound += 1;
+
+    // onPlay (first-play-only)
+    if(card.fx?.onPlay && !card.played){
+      card.played=true;
+      // Resolve immediately with a small modal so you SEE what happened
+      runImmediateEffect(ctx,p,`${card.name} — On Play`, card.text, (done)=> card.fx.onPlay(ctx,p,card,done));
+    } else {
+      card.played=true;
+    }
+
+    p.actionsLeft--;
+    return {ok:true};
+  }
+
+  // --------- action resolution (popups + choose activation order) ----------
+  function startAction(p, row){
+    if(G.phase!=="actions") return;
+    if(G.pending) return;
+    if(G.players[G.current]!==p) return;
+    if(p.actionsLeft<=0) return;
+
+    // tag action id for discard synergies
+    G._actionId = (G._actionId||0)+1;
+
+    if(row==="resources") startForaging(p);
+    if(row==="recruiting") startRecruiting(p);
+    if(row==="training") startTraining(p);
+  }
+
+  function buildActivationItems(p, row){
+    // Create a list of "click to resolve" items for this row.
+    // Includes commander triggers and card triggers in that row (non-exhausted).
+    const items=[];
+
+    // commander triggers
+    for(const cmd of p.commanders){
+      if(!cmd) continue;
+      const list=(cmd.triggers?.[row]||[]);
+      for(const t of list){
+        items.push({
+          type:"commander",
+          label:`${cmd.name} — ${t.label}`,
+          detail:t.detail,
+          resolve:(ctx,p,done)=> t.resolve(ctx,p,done)
+        });
+      }
+    }
+
+    // row cards
+    for(let col=0; col<5; col++){
+      if(!isCommanderActive(p,col)) continue;
+      if(slotLockedByCommander(p,col,row)) continue;
+      const c=p.columns[col].slots[row];
+      if(!c) continue;
+      if(c.exhausted){ continue; }
+      if(c.fx?.onActivate){
+        items.push({
+          type:"card",
+          label:`${c.name} — Activate`,
+          detail:c.text || "",
+          resolve:(ctx,pp,done)=>{
+            c.fx.onActivate(ctx,pp,c,()=>{
+              c.exhausted=true;
+              done();
+            });
+          }
+        });
+      }
+    }
+
+    // after recruiting: some troops may have afterRecruiting triggers
+    if(row==="recruiting"){
+      const enemy=otherPlayer(p);
+      forEachCardOnBoard(p,(c)=>{
+        if(c.fx?.afterRecruiting){
+          items.push({
+            type:"card",
+            label:`${c.name} — After Recruiting`,
+            detail:"Triggers after the recruiting pick step.",
+            resolve:(ctx,pp,done)=>{ c.fx.afterRecruiting(ctx,pp,enemy,c); done(); }
+          });
+        }
+      });
+    }
+
+    return items;
+  }
+
+  function openActivationQueue(p, row, titlePrefix, onDone){
+    const items=buildActivationItems(p,row);
+    if(!items.length){ onDone(); return; }
+
+    G.pending=true;
+    $("#modalTitle").textContent = `${titlePrefix} — Resolve Activations (Choose the order)`;
+    $("#modalBody").innerHTML = `
+      Click effects in any order. When you’re done, press <b>Finish</b>.
+      <div class="hr"></div>
+      <div class="small">
+        Cards in this row will <b>exhaust</b> when resolved (once per round). Hover items for details.
+      </div>
+    `;
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    const remaining = new Set(items.map((_,i)=>i));
+
+    const renderButtons=()=>{
+      grid.innerHTML="";
+      items.forEach((it,idx)=>{
+        if(!remaining.has(idx)) return;
+        const b=el("div","pickCard");
+        b.innerHTML = `
+          <div class="t">${it.type==="commander"?"Commander Trigger":"Card Trigger"}</div>
+          <div class="n">${esc(it.label)}</div>
+          <div class="d">${esc(it.detail||"")}</div>
+        `;
+        b.onmouseenter=(e)=>showTipText(it.label,it.detail,e);
+        b.onmousemove=moveTip;
+        b.onmouseleave=hideTip;
+        b.onclick=()=>{
+          it.resolve(G,p,()=>{
+            remaining.delete(idx);
+            renderButtons();
+            if(!remaining.size){
+              // auto close if finished
+              closeModal();
+              onDone();
+            }
+          });
+        };
+        grid.appendChild(b);
+      });
+      $("#modalExtra").appendChild(grid);
+    };
+
+    renderButtons();
+
+    $("#modalChoices").innerHTML="";
+    const btnAuto=el("button","btn warn","Resolve Remaining (Auto)");
+    btnAuto.onclick=()=>{
+      // resolve in listed order
+      const idxs=[...remaining];
+      const step=()=>{
+        if(!idxs.length){
+          closeModal();
+          onDone();
+          return;
+        }
+        const i=idxs.shift();
+        if(!remaining.has(i)) return step();
+        items[i].resolve(G,p,()=>{
+          remaining.delete(i);
+          step();
+        });
+      };
+      step();
+    };
+    const btnFinish=el("button","btn primary","Finish");
+    btnFinish.onclick=()=>{ closeModal(); onDone(); };
+    $("#modalChoices").appendChild(btnAuto);
+    $("#modalChoices").appendChild(btnFinish);
+
+    $("#modalBack").style.display="flex";
+  }
+
+  function startForaging(p){
+    // compute total forage gain
+    const base = forageBaseAmount(p);
+    const pass = commanderPassivesFor(p,"forage");
+    const total = base + (pass.add||0);
+
+    // choose resource mix (simple: choose one resource per unit, can mix)
+    // Show popup of what you got (and show deterministic additions preview)
+    const predicted = predictResourceAdditionsFromRow(p);
+
+    p.flags=p.flags||{};
+    p.flags.lastForageTotal = total;
+
+    const investmentTxt = `Base ${base} (row cards: ${countRowCards(p,"resources")}) + Commander ${pass.add||0} = <b>${total}</b>`;
+
+    openModal(
+      "Foraging Results",
+      `
+        <div class="topline">
+          <span class="kpi">Forage Gain: <b>${total}</b></span>
+          <span class="kpi">Investment: ${investmentTxt}</span>
+        </div>
+        <div class="hr"></div>
+        <div class="small">
+          Choose how to split your ${total} gains across 🪵/🪨/🪙.
+        </div>
+        ${predicted.html}
+      `,
+      (extra)=>{
+        // build split chooser
+        const wrap=el("div","");
+        wrap.style.marginTop="12px";
+        wrap.innerHTML = `
+          <div class="row">
+            <span class="pill">🪵 Wood</span>
+            <button class="btn" data-k="wood" data-d="-1">-</button>
+            <span class="pill" id="pickWood">0</span>
+            <button class="btn" data-k="wood" data-d="1">+</button>
+
+            <span class="pill">🪨 Stone</span>
+            <button class="btn" data-k="stone" data-d="-1">-</button>
+            <span class="pill" id="pickStone">0</span>
+            <button class="btn" data-k="stone" data-d="1">+</button>
+
+            <span class="pill">🪙 Gold</span>
+            <button class="btn" data-k="gold" data-d="-1">-</button>
+            <span class="pill" id="pickGold">0</span>
+            <button class="btn" data-k="gold" data-d="1">+</button>
+
+            <span class="spacer"></span>
+            <span class="pill">Remaining: <b id="pickRem">${total}</b></span>
+          </div>
+        `;
+        extra.appendChild(wrap);
+
+        const counts={wood:0,stone:0,gold:0};
+        const update=()=>{
+          $("#pickWood").textContent=counts.wood;
+          $("#pickStone").textContent=counts.stone;
+          $("#pickGold").textContent=counts.gold;
+          $("#pickRem").textContent = total - (counts.wood+counts.stone+counts.gold);
+        };
+        update();
+
+        wrap.querySelectorAll("button.btn").forEach(b=>{
+          b.onclick=()=>{
+            const k=b.dataset.k;
+            const d=Number(b.dataset.d);
+            const next=counts[k]+d;
+            const used=counts.wood+counts.stone+counts.gold;
+            if(next<0) return;
+            if(d>0 && used>=total) return;
+            counts[k]=next;
+            update();
+          };
+        });
+
+        return { counts, total };
+      },
+      [
+        {
+          label:"Take Resources → Then Resolve Activations",
+          cls:"primary",
+          onPick:(state)=>{
+            const used = state.counts.wood+state.counts.stone+state.counts.gold;
+            if(used!==state.total){
+              toast("Allocate all forage points first.");
+              return;
+            }
+            // apply gains
+            if(state.counts.wood) gain(p,"wood",state.counts.wood,G,"Forage");
+            if(state.counts.stone) gain(p,"stone",state.counts.stone,G,"Forage");
+            if(state.counts.gold) gain(p,"gold",state.counts.gold,G,"Forage");
+
+            closeModal();
+            // resolve activated effects in chosen order
+            openActivationQueue(p,"resources","Foraging", ()=>{
+              finishActionAdvance();
+            });
+          }
+        },
+        { label:"Cancel", cls:"", onPick:()=>{ closeModal(); } }
+      ]
+    );
+  }
+
+  function startRecruiting(p){
+    // picks & reveal
+    const base = recruitBasePicks(p);
+    const pass = commanderPassivesFor(p,"recruit");
+
+    // preRecruit bonuses from board cards (morale-gated etc)
+    let bonusPicks=0, bonusReveal=0;
+    forEachCardOnBoard(p,(c)=>{
+      if(c.fx?.preRecruitBonus) bonusPicks += (c.fx.preRecruitBonus(G,p,c) || 0);
+      if(c.fx?.preRecruitReveal) bonusReveal += (c.fx.preRecruitReveal(G,p,c) || 0);
+    });
+
+    // special commander conditional: Iron Captain +1 pick if 2+ troops
+    const ironCap = p.commanders.find(c=>c?.name==="Iron Captain");
+    if(ironCap && countTroops(p)>=2) bonusPicks += 1;
+
+    // Scout Captain morale conditional trigger: +1 pick if any morale troop
+    const scout = p.commanders.find(c=>c?.name==="Scout Captain");
+    if(scout && anyMoraleTroop(p)) bonusPicks += 1;
+
+    // Blood Banner conditional: +1 pick if ANY morale troop
+    const blood = p.commanders.find(c=>c?.name==="Blood Banner");
+    if(blood && anyMoraleTroop(p)) bonusPicks += 1;
+
+    let picks = base + (pass.addPicks||0) + bonusPicks;
+    const minP = pass.minPicks||0;
+    picks = Math.max(picks, minP);
+
+    let reveal = 5 + (pass.addReveal||0) + bonusReveal;
+
+    // reveal cards
+    const revealed=[];
+    for(let i=0;i<reveal;i++){
+      if(!G.deck.length) reshuffle(p);
+      const c=G.deck.pop();
+      if(!c) break;
+      revealed.push(c);
+    }
+
+    openRecruitPickModal(p, revealed, picks, ()=>{
+      // after picks, resolve recruiting activations order
+      openActivationQueue(p,"recruiting","Recruiting", ()=>{
+        finishActionAdvance();
+      });
+    });
+  }
+
+  function openRecruitPickModal(p, revealed, picks, afterDone){
+    G.pending=true;
+
+    const notes=[];
+    notes.push(`Picks: base ${recruitBasePicks(p)} (row cards: ${countRowCards(p,"recruiting")})`);
+    const pass=commanderPassivesFor(p,"recruit");
+    if(pass.addPicks) notes.push(`+ Commander picks: ${pass.addPicks}`);
+    if(pass.minPicks) notes.push(`Minimum picks: ${pass.minPicks}`);
+    if(pass.addReveal) notes.push(`Reveal bonus: +${pass.addReveal}`);
+    if(pass.notes?.length) notes.push(...pass.notes.map(n=>`• ${n}`));
+
+    $("#modalTitle").textContent="Recruiting — Pick Cards";
+    $("#modalBody").innerHTML = `
+      <div class="topline">
+        <span class="kpi">Picks Remaining: <b id="pickRemain">${picks}</b></span>
+        <span class="kpi">Revealed: <b>${revealed.length}</b></span>
+        <span class="kpi">Unchosen → Discard (triggers discard synergies)</span>
+      </div>
+      <div class="hr"></div>
+      <div class="small"><b>Why your pick count is what it is:</b><br/>${esc(notes.join(" • "))}</div>
+    `;
+
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    $("#modalExtra").appendChild(grid);
+
+    const chosen=new Set();
+
+    const render=()=>{
+      grid.innerHTML="";
+      revealed.forEach(c=>{
+        const pc=el("div","pickCard");
+        pc.classList.toggle("selected", chosen.has(c.uid));
+        pc.innerHTML = cardPickHTML(c);
+        pc.onmouseenter=(e)=>showTipForCard(c,e);
+        pc.onmousemove=moveTip;
+        pc.onmouseleave=hideTip;
+        pc.onclick=()=>{
+          if(chosen.has(c.uid)){
+            chosen.delete(c.uid);
+          }else{
+            if(chosen.size>=picks){ toast("No picks left."); return; }
+            chosen.add(c.uid);
+          }
+          $("#pickRemain").textContent = String(picks - chosen.size);
+          render();
+        };
+        grid.appendChild(pc);
+      });
+    };
+    render();
+
+    $("#modalChoices").innerHTML="";
+    const btnDone=el("button","btn primary","Confirm Picks");
+    btnDone.onclick=()=>{
+      if(chosen.size!==picks){
+        toast("Use all your picks first.");
+        return;
+      }
+      // move chosen to hand, rest to discard
+      const picked=[], discarded=[];
+      for(const c of revealed){
+        if(chosen.has(c.uid)) picked.push(c);
+        else discarded.push(c);
+      }
+      p.hand.push(...picked);
+      p.discard.push(...discarded);
+      log(G, `${p.name} recruits ${picked.length} card(s): ${picked.map(x=>x.name).join(", ")}.`);
+      if(discarded.length) log(G, `${p.name} discards ${discarded.length} unchosen: ${discarded.map(x=>x.name).join(", ")}.`);
+      triggerDiscardSynergies(G,p,discarded);
+
+      closeModal();
+
+      // After recruiting: apply any afterRecruiting hooks might be in activation queue,
+      // but some commanders want immediate “after recruiting” (Blood Banner trigger is in queue).
+      afterDone();
+    };
+
+    const btnCancel=el("button","btn","Cancel");
+    btnCancel.onclick=()=>{ closeModal(); };
+
+    $("#modalChoices").appendChild(btnDone);
+    $("#modalChoices").appendChild(btnCancel);
+
+    $("#modalBack").style.display="flex";
+  }
+
+  function startTraining(p){
+    const base = trainingGeneratedMorale(p);
+    const pass = commanderPassivesFor(p,"training");
+    const total = base + (pass.addMorale||0);
+
+    openModal(
+      "Training Results",
+      `
+        <div class="topline">
+          <span class="kpi">Morale Generated: <b>${total}</b></span>
+          <span class="kpi">Troops on board: <b>${countTroops(p)}</b></span>
+          <span class="kpi">Training row cards: <b>${countRowCards(p,"training")}</b></span>
+        </div>
+        <div class="hr"></div>
+        <div class="small">
+          You will gain <b>${total}</b> morale into supply, then you can place morale on troops now.
+          <br/>After placement, you can resolve Training-row activations in any order.
+        </div>
+      `,
+      ()=>({ total }),
+      [
+        {
+          label:"Gain Morale → Place → Activations",
+          cls:"primary",
+          onPick:(state)=>{
+            p.moraleSupply += state.total;
+            log(G, `${p.name} gains +${state.total} morale to supply (Training).`);
+            closeModal();
+
+            // place step
+            openPlaceMoraleModal(p, state.total, ()=>{
+              // then activations
+              openActivationQueue(p,"training","Training", ()=>{
+                finishActionAdvance();
+              });
+            });
+          }
+        },
+        { label:"Cancel", cls:"", onPick:()=> closeModal() }
+      ]
+    );
+  }
+
+  function openPlaceMoraleModal(p, suggested, after){
+    const troops=listTroops(p);
+    if(!troops.length){ after(); return; }
+
+    G.pending=true;
+    $("#modalTitle").textContent="Place Morale (Now)";
+    $("#modalBody").innerHTML = `
+      <div class="topline">
+        <span class="kpi">Morale in Supply: <b id="ms">${p.moraleSupply}</b></span>
+        <span class="kpi">Tip: Many troop abilities unlock at <b>1 morale</b> and <b>2 morale</b>.</span>
+      </div>
+      <div class="hr"></div>
+      <div class="small">Click a troop to place 1 morale. You can stop anytime.</div>
+    `;
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    $("#modalExtra").appendChild(grid);
+
+    const render=()=>{
+      grid.innerHTML="";
+      troops.forEach(t=>{
+        const pc=el("div","pickCard");
+        pc.innerHTML=`
+          <div class="t">Troop</div>
+          <div class="n">${esc(t.name)}</div>
+          <div class="d">Power ${t.power+(t.upgrades||0)} • Morale ${t.morale||0}</div>
+        `;
+        pc.onmouseenter=(e)=>showTipForCard(t,e);
+        pc.onmousemove=moveTip;
+        pc.onmouseleave=hideTip;
+        pc.onclick=()=>{
+          if(p.moraleSupply<=0){ toast("No morale left."); return; }
+          placeMoraleOnTroop(G,p,t,1,"Manual placement");
+          $("#ms").textContent=String(p.moraleSupply);
+          render();
+        };
+        grid.appendChild(pc);
+      });
+    };
+    render();
+
+    $("#modalChoices").innerHTML="";
+    const btnDone=el("button","btn primary","Done Placing");
+    btnDone.onclick=()=>{ closeModal(); after(); };
+    const btnSkip=el("button","btn","Skip");
+    btnSkip.onclick=()=>{ closeModal(); after(); };
+    $("#modalChoices").appendChild(btnDone);
+    $("#modalChoices").appendChild(btnSkip);
+
+    $("#modalBack").style.display="flex";
+  }
+
+  function predictResourceAdditionsFromRow(p){
+    // look at deterministic resource gains from resources-row activations
+    const lines=[];
+    for(let col=0; col<5; col++){
+      if(!isCommanderActive(p,col)) continue;
+      if(slotLockedByCommander(p,col,"resources")) continue;
+      const c=p.columns[col].slots.resources;
+      if(!c || c.exhausted) continue;
+      // very rough preview: scan text for "Gain +1 🪵/🪨/🪙"
+      if(c.text.includes("+1 🪵")) lines.push(`${c.name}: +🪵`);
+      if(c.text.includes("+1 🪨")) lines.push(`${c.name}: +🪨`);
+      if(c.text.includes("+1 🪙")) lines.push(`${c.name}: +🪙`);
+      if(/Choose 1 resource/i.test(c.text)) lines.push(`${c.name}: (choice resource)`);
+      if(/discard/i.test(c.text.toLowerCase())) lines.push(`${c.name}: (may discard → bonus)`);
+    }
+    const html = lines.length
+      ? `<div class="hr"></div><div class="small"><b>Preview:</b> These activations can add to your forage result: <br/>• ${esc(lines.join("<br/>• "))}</div>`
+      : `<div class="hr"></div><div class="small"><b>Preview:</b> No obvious resource-add activations detected this row.</div>`;
+    return { html };
+  }
+
+  // --------- end-action / turn rotation ----------
+  function finishActionAdvance(){
+    // check end of round
+    if(G.players.every(pl=>pl.actionsLeft<=0)){
+      endRound();
+      renderAll();
+      return;
+    }
+    // rotate to next player with actions
+    let next=G.current;
+    for(let tries=0; tries<3; tries++){
+      next = (next+1) % G.players.length;
+      if(G.players[next].actionsLeft>0) break;
+    }
+    if(G.players[next].actionsLeft>0) G.current=next;
+
+    G.selected.uid=null;
+    renderAll();
+    maybeAIMove();
+  }
+
+  // --------- battle resolution ----------
+  function currentBattlefield(){
+    return G.battlefields[G.round-1] || null;
+  }
+
+  function computeBattleScore(me, enemy, bf){
+    let score = bf.scoreFn(me);
+    score += totalPower(me) + totalMorale(me);
+
+    // troop battle bonuses
+    forEachCardOnBoard(me,(c)=>{
+      if(c.exhausted) return;
+      if(c.fx?.battleBonus) score += (c.fx.battleBonus(G,me,enemy,c) || 0);
+    });
+
+    return score;
+  }
+
+  function resolveBattle(){
+    const bf=currentBattlefield();
+    const pA=G.players[0], pB=G.players[1];
+    const sA=computeBattleScore(pA,pB,bf);
+    const sB=computeBattleScore(pB,pA,bf);
+
+    log(G, `Battlefield: ${bf.name}. Scores → You: ${sA} | AI: ${sB}`);
+
+    let winner=null, loser=null;
+    if(sA===sB){
+      // tiebreak by glory
+      if(pA.glory===pB.glory){ log(G,"Battle tie. Both gain 2 glory."); pA.glory+=2; pB.glory+=2; advanceRoundOrEnd(); renderAll(); return; }
+      winner = (pA.glory>pB.glory) ? pA : pB;
+      loser = (winner===pA)?pB:pA;
+    } else {
+      winner = (sA>sB)?pA:pB;
+      loser = (winner===pA)?pB:pA;
+    }
+
+    winner.glory += bf.banner;
+    winner.banners += 1;
+
+    // onBattleWin triggers
+    forEachCardOnBoard(winner,(c)=>{
+      if(c.fx?.onBattleWin) c.fx.onBattleWin(G,winner,loser,c);
+      if(c.fx?.exhaustAfterBattle) c.exhausted=true;
+    });
+
+    const effects=bf.effects.slice();
+
+    if(winner.ai){
+      const pick = aiPickEffect(winner,loser,effects);
+      applyVictoryEffect(winner,loser,pick);
+      advanceRoundOrEnd();
+      renderAll();
+      return;
+    }
+
+    promptChoice(G,
+      "Victory! Choose a battle effect",
+      `You gain <b>+${bf.banner} glory</b>. Pick one negative effect to apply to the enemy:`,
+      effects.map(e=>({ label:e, onPick:()=>{ applyVictoryEffect(winner,loser,e); closeModal(); advanceRoundOrEnd(); renderAll(); maybeAIMove(); } }))
+    );
+  }
+
+  function aiPickEffect(winner, loser, effects){
+    if(effects.includes("Rout 2 morale") && totalMorale(loser)>=2) return "Rout 2 morale";
+    if(effects.includes("Rout 1 morale") && totalMorale(loser)>=1) return "Rout 1 morale";
+    if(effects.includes("Sabotage 1 enemy card") && listBoardCards(loser).length>=3) return "Sabotage 1 enemy card";
+    if(effects.includes("Loot 2 resources")) return "Loot 2 resources";
+    return effects[0];
+  }
+
+  function applyVictoryEffect(winner, loser, effect){
+    log(G, `${winner.name} chooses: ${effect}`);
+    if(effect==="Loot 2 resources") stealResources(G,winner,loser,2,"Battle loot");
+    if(effect==="Loot 1 resource + Exhaust 1"){
+      stealResources(G,winner,loser,1,"Battle loot");
+      exhaustOneEnemyCard(G,winner,loser);
+    }
+    if(effect==="Sabotage 1 enemy card") exhaustOneEnemyCard(G,winner,loser);
+    if(effect==="Rout 1 morale") removeRandomMorale(loser,G,1,"Rout");
+    if(effect==="Rout 2 morale") { removeRandomMorale(loser,G,1,"Rout"); removeRandomMorale(loser,G,1,"Rout"); }
+  }
+
+  function exhaustOneEnemyCard(ctx, winner, loser){
+    const cards=listBoardCards(loser);
+    if(!cards.length){ log(ctx, `${loser.name} has no cards to sabotage.`); return; }
+    if(winner.ai){
+      cards.sort((a,b)=>((b.power+b.upgrades)-(a.power+a.upgrades)));
+      cards[0].exhausted=true;
+      log(ctx, `${winner.name} sabotages ${loser.name}'s ${cards[0].name} (exhausted).`);
+      return;
+    }
+    pickBoardCardModal(ctx,winner,`Sabotage: exhaust 1 enemy card`, cards, (c)=>{
+      c.exhausted=true;
+      log(ctx, `${winner.name} sabotages ${loser.name}'s ${c.name}.`);
+    }, loser);
+  }
+
+  function resolveFinalWar(){
+    const pA=G.players[0], pB=G.players[1];
+    const totA = totalPower(pA) + totalMorale(pA) + pA.banners + pA.glory*0; // keep simple
+    const totB = totalPower(pB) + totalMorale(pB) + pB.banners + pB.glory*0;
+
+    let winner=null;
+    if(totA>totB) winner=pA;
+    else if(totB>totA) winner=pB;
+
+    if(winner){
+      winner.glory += 12;
+      (winner===pA?pB:pA).glory += 6;
+      log(G, `Final War totals → You: ${totA} | AI: ${totB}. Winner: ${winner.name}.`);
+    } else {
+      pA.glory+=8; pB.glory+=8;
+      log(G, `Final War tie → both get +8 glory.`);
+    }
+
+    G.phase="ended";
+    renderAll();
+
+    promptChoice(G,"Game Over",
+      `Final Glory — You: <b>${pA.glory}</b> • AI: <b>${pB.glory}</b><div class="hr"></div>
+       Final War power totals — You ${totA} • AI ${totB}`,
+      [
+        {label:"New Game", onPick:()=>{ closeModal(); newGame(); }},
+        {label:"Close", onPick:()=>closeModal()}
+      ]
+    );
+  }
+
+  // --------- AI ----------
+  function maybeAIMove(){
+    if(!G || G.pending) return;
+    if(G.phase!=="actions") return;
+    const p=G.players[G.current];
+    if(!p.ai) return;
+
+    if(p.actionsLeft<=0){ finishActionAdvance(); return; }
+
+    setTimeout(()=> aiTakeAction(p), 220);
+  }
+
+  function aiTakeAction(p){
+    if(G.pending || G.phase!=="actions") return;
+
+    // If hand low -> recruiting
+    if(p.hand.length<=3){
+      startRecruitingAI(p);
+      return;
+    }
+
+    // If low resources -> foraging
+    const sum=p.resources.wood+p.resources.stone+p.resources.gold;
+    if(sum<=2){
+      startForagingAI(p);
+      return;
+    }
+
+    // Try deploy a commander if open slot and can afford
+    const cmd=p.hand.find(c=>c.category==="Commander");
+    if(cmd && p.commanders.some(x=>x==null) && canAfford(p,cmd.cost)){
+      deployCard(p,cmd,{commander:true});
+      p.hand=p.hand.filter(x=>x.uid!==cmd.uid);
+      finishActionAdvance();
+      return;
+    }
+
+    // Try deploy best legal normal card
+    const best = aiPickBestDeploy(p);
+    if(best){
+      const idx=p.hand.findIndex(x=>x.uid===best.card.uid);
+      const res=deployCard(p,best.card,best.target);
+      if(res.ok){ p.hand.splice(idx,1); finishActionAdvance(); return; }
+    }
+
+    // Else train for morale
+    startTrainingAI(p);
+  }
+
+  function aiPickBestDeploy(p){
+    const cards=p.hand.filter(c=>c.category!=="Commander");
+    cards.sort((a,b)=> ((b.power||0)-(a.power||0)));
+    for(const c of cards){
+      for(let col=0; col<5; col++){
+        if(!isCommanderActive(p,col)) continue;
+        if(slotLockedByCommander(p,col,c.row)) continue;
+        if(isLegalPlacement(p,col,c.row,c) && canAfford(p,c.cost)) return {card:c, target:{col,row:c.row}};
+      }
+    }
+    return null;
+  }
+
+  function startForagingAI(p){
+    // auto pick: prioritize stone then gold then wood
+    const base=forageBaseAmount(p);
+    const pass=commanderPassivesFor(p,"forage");
+    const total=base+(pass.add||0);
+    // apply all as stone then gold
+    let rem=total;
+    const add=(k,n)=>{ if(n<=0) return; gain(p,k,n,G,"AI Forage"); rem-=n; };
+    const s=Math.min(rem,2); add("stone",s);
+    if(rem) add("gold",Math.min(rem,1));
+    if(rem) add("wood",rem);
+
+    // resolve activations auto
+    const items=buildActivationItems(p,"resources");
+    resolveItemsAuto(p,items, ()=>{
+      finishActionAdvance();
+    });
+  }
+
+  function startRecruitingAI(p){
+    // compute picks/reveal as player does
+    const base=recruitBasePicks(p);
+    const pass=commanderPassivesFor(p,"recruit");
+    let bonusP=0, bonusR=0;
+    forEachCardOnBoard(p,(c)=>{
+      if(c.fx?.preRecruitBonus) bonusP += (c.fx.preRecruitBonus(G,p,c)||0);
+      if(c.fx?.preRecruitReveal) bonusR += (c.fx.preRecruitReveal(G,p,c)||0);
+    });
+    const iron=p.commanders.find(c=>c?.name==="Iron Captain");
+    if(iron && countTroops(p)>=2) bonusP+=1;
+    const scout=p.commanders.find(c=>c?.name==="Scout Captain");
+    if(scout && anyMoraleTroop(p)) bonusP+=1;
+    const blood=p.commanders.find(c=>c?.name==="Blood Banner");
+    if(blood && anyMoraleTroop(p)) bonusP+=1;
+
+    let picks=base+(pass.addPicks||0)+bonusP;
+    picks=Math.max(picks, pass.minPicks||0);
+    const reveal=5+(pass.addReveal||0)+bonusR;
+
+    const revealed=[];
+    for(let i=0;i<reveal;i++){
+      if(!G.deck.length) reshuffle(p);
+      const c=G.deck.pop();
+      if(!c) break;
+      revealed.push(c);
+    }
+    // pick highest value: troops/commanders first, then others
+    revealed.sort((a,b)=> aiCardValue(b)-aiCardValue(a));
+    const picked=revealed.slice(0,picks);
+    const discarded=revealed.slice(picks);
+
+    p.hand.push(...picked);
+    p.discard.push(...discarded);
+    log(G, `AI recruits ${picked.length}: ${picked.map(x=>x.name).join(", ")}.`);
+    if(discarded.length) log(G, `AI discards ${discarded.length} unchosen.`);
+    triggerDiscardSynergies(G,p,discarded);
+
+    // resolve recruiting activations auto
+    const items=buildActivationItems(p,"recruiting");
+    resolveItemsAuto(p,items, ()=>{
+      finishActionAdvance();
+    });
+  }
+
+  function startTrainingAI(p){
+    const base=trainingGeneratedMorale(p);
+    const pass=commanderPassivesFor(p,"training");
+    const total=base+(pass.addMorale||0);
+    p.moraleSupply+=total;
+    log(G, `AI gains +${total} morale to supply (Training).`);
+
+    // place morale on strongest troops first (up to 2 placements)
+    const troops=listTroops(p).sort((a,b)=> (b.power+b.upgrades)-(a.power+a.upgrades));
+    for(let i=0;i<Math.min(2,troops.length);i++){
+      if(p.moraleSupply<=0) break;
+      placeMoraleOnTroop(G,p,troops[i],1,"AI placement");
+    }
+
+    const items=buildActivationItems(p,"training");
+    resolveItemsAuto(p,items, ()=>{
+      finishActionAdvance();
+    });
+  }
+
+  function resolveItemsAuto(p, items, done){
+    const step=()=>{
+      if(!items.length){ done(); return; }
+      const it=items.shift();
+      it.resolve(G,p, step);
+    };
+    step();
+  }
+
+  function aiCardValue(c){
+    let v=0;
+    if(c.category==="Commander") v+=8;
+    if(c.category==="Troop") v+=6+(c.power||0);
+    if(c.category==="Raider") v+=5;
+    if(c.category==="Recruiter") v+=4;
+    if(c.category==="Structure") v+=3;
+    if(c.category==="Trainer"||c.category==="Tactic") v+=2;
+    // prefer discard synergies slightly
+    if((c.tags||[]).includes("Discard-Synergy")) v+=1;
+    return v;
+  }
+
+  // --------- modal helpers ----------
+  function openModal(title, bodyHtml, buildExtra, buttons){
+    G.pending=true;
+    $("#modalTitle").textContent=title;
+    $("#modalBody").innerHTML=bodyHtml;
+    $("#modalExtra").innerHTML="";
+    const state = buildExtra ? buildExtra($("#modalExtra")) : null;
+
+    $("#modalChoices").innerHTML="";
+    for(const b of buttons){
+      const btn=el("button","btn "+(b.cls||""), b.label);
+      btn.onclick=()=> b.onPick(state);
+      $("#modalChoices").appendChild(btn);
+    }
+
+    $("#modalBack").style.display="flex";
+  }
+
+  function closeModal(){
+    $("#modalBack").style.display="none";
+    G.pending=false;
+    hideTip();
+  }
+
+  $("#modalBack").addEventListener("click",(e)=>{
+    if(e.target.id==="modalBack"){
+      closeModal();
+      renderAll();
+      maybeAIMove();
+    }
+  });
+
+  function promptChoice(ctx,title,bodyHtml,options){
+    G.pending=true;
+    $("#modalTitle").innerHTML=title;
+    $("#modalBody").innerHTML=bodyHtml;
+    $("#modalExtra").innerHTML="";
+    const box=$("#modalChoices");
+    box.innerHTML="";
+    for(const opt of options){
+      const b=el("button","btn primary",opt.label);
+      b.onclick=opt.onPick;
+      box.appendChild(b);
+    }
+    $("#modalBack").style.display="flex";
+  }
+
+  function promptYesNo(ctx,title,body,onDone){
+    promptChoice(ctx,title,body,[
+      {label:"Yes", onPick:()=>{ closeModal(); onDone(true); }},
+      {label:"No", onPick:()=>{ closeModal(); onDone(false); }}
+    ]);
+  }
+
+  function chooseResourceModal(ctx,p,title,onPick){
+    promptChoice(ctx,title,"Choose a resource:",[
+      {label:"🪵 Wood", onPick:()=>{ closeModal(); onPick("wood"); }},
+      {label:"🪨 Stone", onPick:()=>{ closeModal(); onPick("stone"); }},
+      {label:"🪙 Gold", onPick:()=>{ closeModal(); onPick("gold"); }},
+    ]);
+  }
+
+  function pickTroopModal(ctx,p,title,troops,onPick){
+    if(p.ai){ onPick(troops[0]); return; }
+    promptChoice(ctx,title,"Pick one:", troops.map(t=>({
+      label:`${t.name} (P ${t.power+(t.upgrades||0)} / M ${t.morale||0})`,
+      onPick:()=>{ closeModal(); onPick(t); }
+    })));
+  }
+
+  function pickBoardCardModal(ctx,p,title,cards,onPick,ownerOverride=null){
+    // ownerOverride is optional: show as enemy card selection; still just picks from array
+    if(p.ai){ onPick(cards[0]); return; }
+    promptChoice(ctx,title,"Pick one:", cards.map(c=>({
+      label:`${c.name} (${prettyRow(c.row)}${c.exhausted?" • Exhausted":""})`,
+      onPick:()=>{ closeModal(); onPick(c); }
+    })));
+  }
+
+  function pickHandCardModal(ctx,p,title,optional,onPick){
+    if(p.ai){ onPick(p.hand[0]||null); return; }
+    const opts = p.hand.map(c=>({
+      label:`${c.name} (${prettyRow(c.row)} • ${c.category})`,
+      onPick:()=>{ closeModal(); onPick(c); }
+    }));
+    if(optional) opts.unshift({label:"Skip", onPick:()=>{ closeModal(); onPick(null); }});
+    promptChoice(ctx,title,"Pick one:", opts);
+  }
+
+  function placeMoraleSplitModal(ctx,p,title,amt,troops,onDone){
+    // simple: allocate by clicking troops
+    G.pending=true;
+    $("#modalTitle").textContent=title;
+    $("#modalBody").innerHTML = `
+      <div class="topline">
+        <span class="kpi">Morale in Supply: <b id="ms2">${p.moraleSupply}</b></span>
+        <span class="kpi">To place: <b id="pl2">${amt}</b></span>
+      </div>
+      <div class="hr"></div>
+      <div class="small">Click a troop to place 1. You can split across troops.</div>
+    `;
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    $("#modalExtra").appendChild(grid);
+
+    let remaining=amt;
+
+    const render=()=>{
+      grid.innerHTML="";
+      troops.forEach(t=>{
+        const pc=el("div","pickCard");
+        pc.innerHTML = `
+          <div class="t">Troop</div>
+          <div class="n">${esc(t.name)}</div>
+          <div class="d">Power ${t.power+(t.upgrades||0)} • Morale ${t.morale||0}</div>
+        `;
+        pc.onmouseenter=(e)=>showTipForCard(t,e);
+        pc.onmousemove=moveTip;
+        pc.onmouseleave=hideTip;
+        pc.onclick=()=>{
+          if(remaining<=0) return;
+          if(p.moraleSupply<=0){ toast("No morale in supply."); return; }
+          placeMoraleOnTroop(ctx,p,t,1,"Rally Standard");
+          remaining--;
+          $("#ms2").textContent=String(p.moraleSupply);
+          $("#pl2").textContent=String(remaining);
+          if(remaining<=0){
+            closeModal();
+            onDone();
+          }else render();
+        };
+        grid.appendChild(pc);
+      });
+    };
+    render();
+
+    $("#modalChoices").innerHTML="";
+    const btn=el("button","btn primary","Done");
+    btn.onclick=()=>{ closeModal(); onDone(); };
+    $("#modalChoices").appendChild(btn);
+
+    $("#modalBack").style.display="flex";
+  }
+
+  function runImmediateEffect(ctx,p,title,desc,runner){
+    // small modal that runs an effect and then closes (so user "sees" on-play effects)
+    G.pending=true;
+    $("#modalTitle").textContent=title;
+    $("#modalBody").innerHTML = `<div class="small">${esc(desc||"")}</div><div class="hr"></div><div class="small">Resolving…</div>`;
+    $("#modalExtra").innerHTML="";
+    $("#modalChoices").innerHTML="";
+    $("#modalBack").style.display="flex";
+    runner(()=>{ closeModal(); renderAll(); maybeAIMove(); });
+  }
+
+  // --------- tooltip ----------
+  function showTipText(title, detail, e){
+    const tip=$("#tip");
+    tip.style.display="block";
+    tip.innerHTML = `
+      <div class="tt">Effect</div>
+      <div class="tn">${esc(title)}</div>
+      <div class="td">${esc(detail||"")}</div>
+    `;
+    moveTip(e);
+  }
+
+  function cardRulesText(c){
+    const lines=[];
+    lines.push(c.text||"");
+    // show hidden fx keywords
+    if(c.fx?.preRecruitBonus) lines.push("AUTO: Adds recruiting picks (condition may apply).");
+    if(c.fx?.preRecruitReveal) lines.push("AUTO: Adds recruiting reveal (condition may apply).");
+    if(c.fx?.onAnyDiscard) lines.push("PASSIVE: Triggers when you discard.");
+    if(c.fx?.onPlay) lines.push("ON PLAY: Triggers immediately when deployed.");
+    if(c.fx?.battleBonus) lines.push("BATTLE: Provides a bonus when scoring.");
+    if(c.fx?.onBattleWin) lines.push("ON WIN: Triggers if you win the battle.");
+    if(c.kind==="Commander"){
+      const pass=c.passives||{};
+      if(pass.preForage) lines.push(`AUTO Forage: ${pass.preForage.notes||""}`);
+      if(pass.preRecruit) lines.push(`AUTO Recruiting: ${pass.preRecruit.notes||""}`);
+      if(pass.preTraining) lines.push(`AUTO Training: ${pass.preTraining.notes||""}`);
+      const dis=c.disabledRows||{};
+      const locked = Object.keys(dis).filter(k=>dis[k]).map(prettyRow);
+      if(locked.length) lines.push(`LOCKS: ${locked.join(", ")}`);
+    }
+    return lines.filter(Boolean).join("\n• ");
+  }
+
+  function showTipForCard(c, e){
+    const tip=$("#tip");
+    tip.style.display="block";
+    const meta = [
+      `${c.kind==="Commander"?"Commander":"Card"} • ${c.category} • ${prettyRow(c.row)}`,
+      `Cost: ${fmtCost(c.cost)}${(c.category==="Troop"||c.category==="Raider")?` • Power ${c.power+(c.upgrades||0)} • Morale ${c.morale||0}`:""}`
+    ].join("\n");
+    tip.innerHTML = `
+      <div class="tt">${esc(c.kind==="Commander"?"Commander":"Card")}</div>
+      <div class="tn">${esc(c.name)}</div>
+      <div class="td">• ${esc(cardRulesText(c))}</div>
+      <div class="tm">${esc(meta)}</div>
+    `;
+    moveTip(e);
+  }
+  function moveTip(e){
+    const tip=$("#tip");
+    const pad=16;
+    let x=e.clientX+pad, y=e.clientY+pad;
+    const w=tip.offsetWidth, h=tip.offsetHeight;
+    if(x+w>window.innerWidth-8) x = window.innerWidth - w - 8;
+    if(y+h>window.innerHeight-8) y = window.innerHeight - h - 8;
+    tip.style.left = x+"px";
+    tip.style.top  = y+"px";
+  }
+  function hideTip(){ $("#tip").style.display="none"; }
+
+  // --------- render ----------
+  function updateBattlefieldUI(){
+    const bf = (G && G.phase!=="draft") ? currentBattlefield() : null;
+    if(!bf){
+      $("#bfName").textContent = (G && G.phase==="draft") ? "Draft Phase" : "—";
+      $("#bfDesc").textContent = (G && G.phase==="draft") ? "Pick your starting commanders." : "—";
+      $("#bfBanner").textContent="Banner: —";
+      $("#bfPreview").textContent="Preview: —";
+      return;
+    }
+    $("#bfName").textContent=bf.name;
+    $("#bfDesc").textContent=bf.desc;
+    $("#bfBanner").textContent=`Banner: ${bf.banner}`;
+
+    if(G.phase==="actions"){
+      const p0=G.players[0], p1=G.players[1];
+      const s0=computeBattleScore(p0,p1,bf);
+      const s1=computeBattleScore(p1,p0,bf);
+      $("#bfPreview").textContent=`Preview: You ${s0} | AI ${s1}`;
+    } else $("#bfPreview").textContent="Preview: —";
+  }
+
+  function fmtCost(c){
+    const w=c.wood||0,s=c.stone||0,g=c.gold||0;
+    const parts=[];
+    if(w) parts.push(`🪵${w}`);
+    if(s) parts.push(`🪨${s}`);
+    if(g) parts.push(`🪙${g}`);
+    if(!parts.length) parts.push("0");
+    return parts.join(" ");
+  }
+
+  function badgeClass(c){
+    if(c.category==="Commander") return "cmd";
+    if(c.category==="Troop") return "trp";
+    if(c.category==="Raider") return "rog";
+    if(c.category==="Structure") return "str";
+    if(c.category==="Trainer"||c.category==="Tactic"||c.category==="Scout"||c.category==="Recruiter") return "trn";
+    return "";
+  }
+
+  function cardPickHTML(c){
+    return `
+      <div class="t">${esc(c.category)}</div>
+      <div class="n">${esc(c.name)}</div>
+      <div class="d">${esc(c.text||"")}</div>
+      <div class="hr"></div>
+      <div class="small"><b>${prettyRow(c.row)}</b> • Cost: ${esc(fmtCost(c.cost))} ${
+        (c.category==="Troop"||c.category==="Raider") ? ` • Power ${c.power+(c.upgrades||0)} • Morale ${c.morale||0}` : ""
+      }</div>
+    `;
+  }
+
+  function commanderPickHTML(c){
+    const dis=c.disabledRows||{};
+    const locked = Object.keys(dis).filter(k=>dis[k]).map(prettyRow);
+    const pass=c.passives||{};
+    const passLines=[];
+    if(pass.preForage) passLines.push(`Forage: ${pass.preForage.notes||""}`);
+    if(pass.preRecruit) passLines.push(`Recruit: ${pass.preRecruit.notes||""}`);
+    if(pass.preTraining) passLines.push(`Train: ${pass.preTraining.notes||""}`);
+
+    return `
+      <div class="t">Commander</div>
+      <div class="n">${esc(c.name)}</div>
+      <div class="d">${esc(c.desc||"")}</div>
+      <div class="hr"></div>
+      <div class="small">
+        Cost: ${esc(fmtCost(c.cost))}<br/>
+        ${locked.length?`<b>Locks:</b> ${esc(locked.join(", "))}<br/>`:""}
+        ${passLines.length?`<b>Auto bonuses:</b><br/>• ${esc(passLines.join("\n• "))}`:""}
+      </div>
+    `;
+  }
+
+  function renderBoard(idx){
+    const p=G.players[idx];
+    const root=$("#board"+idx);
+    root.classList.toggle("active", idx===G.current && G.phase==="actions");
+    root.innerHTML="";
+    root.appendChild(el("h2",null,`${p.name} — Army Board`));
+
+    const st=el("div","stats");
+    st.appendChild(statPill("Actions", `<b>${p.actionsLeft}</b>`));
+    st.appendChild(statPill("Glory", `<b>${p.glory}</b>`));
+    st.appendChild(statPill("Banners", `<b>${p.banners}</b>`));
+    st.appendChild(statPill("Morale Supply", `<b>${p.moraleSupply}</b>`));
+    st.appendChild(statPill("Shields", `<b>${p.shields||0}</b>`));
+    st.appendChild(statPill("🪵", `<b>${p.resources.wood}</b>`));
+    st.appendChild(statPill("🪨", `<b>${p.resources.stone}</b>`));
+    st.appendChild(statPill("🪙", `<b>${p.resources.gold}</b>`));
+    root.appendChild(st);
+
+    const cols=el("div","cols");
+    for(let col=0; col<5; col++){
+      const box=el("div","col");
+      const top=el("div","cmdTop");
+      const cmd=p.commanders[col];
+
+      if(cmd){
+        const mini=renderMini(cmd,true,p,col,idx);
+        top.appendChild(mini);
+      } else {
+        top.innerHTML = `<div class="muted" style="font-size:12px;padding:10px">
+          <b>No Commander</b><br/><span class="small">Deploy a Commander to unlock this column.</span>
+        </div>`;
+      }
+      box.appendChild(top);
+
+      const sw=el("div","slotWrap");
+      sw.appendChild(renderSlot(p,idx,col,"resources"));
+      sw.appendChild(renderSlot(p,idx,col,"recruiting"));
+      sw.appendChild(renderSlot(p,idx,col,"training"));
+      box.appendChild(sw);
+
+      cols.appendChild(box);
+    }
+    root.appendChild(cols);
+  }
+
+  function statPill(label, valueHtml){
+    const d=el("div","stat");
+    d.innerHTML = `${label}: ${valueHtml}`;
+    return d;
+  }
+
+  function renderMini(c, isCommander, owner, col, ownerIdx){
+    const wrap=el("div","cardMini");
+    if(c.exhausted) wrap.classList.add("exh");
+
+    if(isCommander){
+      wrap.classList.add("clickable");
+    }
+
+    const locked = Object.keys(c.disabledRows||{}).filter(k=>c.disabledRows[k]).map(prettyRow);
+    const pass=c.passives||{};
+    const passTxt=[];
+    if(pass.preForage) passTxt.push(`Forage: ${pass.preForage.notes||""}`);
+    if(pass.preRecruit) passTxt.push(`Recruit: ${pass.preRecruit.notes||""}`);
+    if(pass.preTraining) passTxt.push(`Train: ${pass.preTraining.notes||""}`);
+
+    wrap.innerHTML=`
+      <div class="name">${esc(c.name)}</div>
+      <div class="meta">
+        <span class="tag accent">Commander</span>
+        <span class="tag">Cost ${esc(fmtCost(c.cost))}</span>
+        ${locked.length?`<span class="tag bad">Locks: ${esc(locked.join(","))}</span>`:""}
+      </div>
+      <div class="small" style="margin-top:6px;line-height:1.25">
+        ${esc((c.desc||""))}
+        ${passTxt.length?`<br/><b>Auto:</b> ${esc(passTxt.join(" | "))}`:""}
+      </div>
+    `;
+
+    wrap.onmouseenter=(e)=>showTipForCard(c,e);
+    wrap.onmousemove=moveTip;
+    wrap.onmouseleave=hideTip;
+
+    // Commander click: just show details in log (keeps it simple)
+    wrap.onclick=()=>{
+      if(G.phase!=="actions") return;
+      if(ownerIdx!==G.current) return;
+      if(G.players[G.current].ai) return;
+      toast("Commander passives are automatic. Their extra triggers resolve in the activation order popup.");
+    };
+
+    return wrap;
+  }
+
+  function renderSlot(p, playerIdx, col, row){
+    const slot=el("div","slot");
+    slot.innerHTML = `<div class="slotLabel">${prettyRow(row)}</div>`;
+
+    const locked = !isCommanderActive(p,col) || slotLockedByCommander(p,col,row);
+    if(locked){
+      slot.classList.add("locked");
+      if(isCommanderActive(p,col) && slotLockedByCommander(p,col,row)){
+        slot.appendChild(el("div","small", `<b>LOCKED</b> by commander.`));
+      }
+      return slot;
+    }
+
+    const c=p.columns[col].slots[row];
+    if(c){
+      const mini=renderMini(c,false,p,col,playerIdx);
+      slot.appendChild(mini);
+    } else {
+      const cmd=p.commanders[col];
+      const allowed = (cmd.permissions?.[row]||[]);
+      const hint=el("div","small",`Allowed: <b>${esc(allowed.join(", ")||"—")}</b>`);
+      hint.style.marginTop="20px";
+      slot.appendChild(hint);
+    }
+
+    // legal highlighting for selected card
+    const isActive = (playerIdx===G.current) && (G.phase==="actions");
+    if(isActive && G.selected.uid){
+      const sel=getSelectedCard();
+      if(sel && sel.category!=="Commander" && !c){
+        const legal=isLegalPlacement(p,col,row,sel);
+        slot.classList.add(legal?"legal":"illegal");
+      }
+    }
+
+    slot.onclick=()=>{
+      if(G.phase!=="actions") return;
+      if(playerIdx!==G.current) return;
+      const active=G.players[G.current];
+      if(active.ai) return;
+      if(active.actionsLeft<=0) return;
+      if(G.pending) return;
+
+      const sel=getSelectedCard();
+      if(!sel) return;
+      if(sel.category==="Commander"){
+        toast("Click a Commander in your hand to deploy it.");
+        return;
+      }
+      if(!isLegalPlacement(active,col,row,sel)){
+        toast("Illegal slot for that card.");
+        return;
+      }
+      const idxH=active.hand.findIndex(x=>x.uid===sel.uid);
+      if(idxH<0) return;
+
+      const res=deployCard(active, sel, {col,row});
+      if(!res.ok){ toast(res.msg||"Can't deploy."); return; }
+      active.hand.splice(idxH,1);
+      G.selected.uid=null;
+      renderAll();
+      finishActionAdvance();
+    };
+
+    return slot;
+  }
+
+  function renderHand(){
+    const p=G.players[G.current];
+    const box=$("#handCards");
+    box.innerHTML="";
+    p.hand.forEach(c=>{
+      const cardEl=el("div","card");
+      if(G.selected.uid===c.uid) cardEl.classList.add("selected");
+
+      cardEl.innerHTML=`
+        <div class="head">
+          <span class="badge ${badgeClass(c)}">${esc(c.category)}</span>
+          <span class="small">${prettyRow(c.row)}</span>
+        </div>
+        <div class="name">${esc(c.name)}</div>
+        <div class="meta">
+          <div class="cost">${costHtml(c)}</div>
+          ${(c.category==="Troop"||c.category==="Raider"||c.category==="Structure") ? `<span class="tag good">Power ${c.power+(c.upgrades||0)}</span>` : ""}
+          ${(c.category==="Troop"||c.category==="Raider") ? `<span class="tag warn">Morale ${c.morale||0}</span>` : ""}
+          ${(c.tags||[]).slice(0,2).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}
+        </div>
+        <div class="small" style="margin-top:8px;line-height:1.3">${esc(c.text||c.desc||"")}</div>
+      `;
+
+      cardEl.onmouseenter=(e)=>showTipForCard(c,e);
+      cardEl.onmousemove=moveTip;
+      cardEl.onmouseleave=hideTip;
+
+      cardEl.onclick=()=>{
+        if(G.phase!=="actions") return;
+        if(p.ai) return;
+        if(G.pending) return;
+        if(p.actionsLeft<=0) return;
+
+        if(c.category==="Commander"){
+          const res=deployCard(p,c,{commander:true});
+          if(!res.ok){ toast(res.msg||"Can't deploy commander."); return; }
+          p.hand=p.hand.filter(x=>x.uid!==c.uid);
+          renderAll();
+          finishActionAdvance();
+          return;
+        }
+
+        G.selected.uid = (G.selected.uid===c.uid ? null : c.uid);
+        renderAll();
+      };
+
+      box.appendChild(cardEl);
+    });
+  }
+
+  function costHtml(c){
+    const w=c.cost.wood||0, s=c.cost.stone||0, g=c.cost.gold||0;
+    const parts=[];
+    if(w) parts.push(`<span class="res"><i>🪵</i>${w}</span>`);
+    if(s) parts.push(`<span class="res"><i>🪨</i>${s}</span>`);
+    if(g) parts.push(`<span class="res"><i>🪙</i>${g}</span>`);
+    if(!parts.length) parts.push(`<span class="res"><i>—</i>0</span>`);
+    return parts.join("");
+  }
+
+  function renderMarket(){
+    const p=G.players[G.current];
+    const box=$("#marketCards");
+    box.innerHTML="";
+    G.market.forEach((c,i)=>{
+      const cardEl=el("div","card");
+      cardEl.innerHTML=`
+        <div class="head">
+          <span class="badge ${badgeClass(c)}">${esc(c.category)}</span>
+          <span class="small">${prettyRow(c.row)}</span>
+        </div>
+        <div class="name">${esc(c.name)}</div>
+        <div class="meta"><div class="cost">${costHtml(c)}</div></div>
+        <div class="small" style="margin-top:8px;line-height:1.3">${esc(c.text||c.desc||"")}</div>
+        <div class="hint"><b>Take:</b> free (costs 1 action)</div>
+      `;
+
+      cardEl.onmouseenter=(e)=>showTipForCard(c,e);
+      cardEl.onmousemove=moveTip;
+      cardEl.onmouseleave=hideTip;
+
+      cardEl.onclick=()=>{
+        if(G.phase!=="actions") return;
+        if(G.pending) return;
+        if(p.ai) return;
+        if(p.actionsLeft<=0) return;
+
+        // free take
+        p.hand.push(c);
+        G.market.splice(i,1);
+        refillMarketTo(4);
+        p.actionsLeft--;
+        log(G, `${p.name} takes ${c.name} from camp (free).`);
+        renderAll();
+        finishActionAdvance();
+      };
+
+      box.appendChild(cardEl);
+    });
+  }
+
+  function renderLog(){
+    const box=$("#logBox");
+    box.innerHTML="";
+    (G.log||[]).slice(-90).forEach(line=>{
+      box.appendChild(el("div","logLine", `<span class="t">${line.t}</span>${line.msg}`));
+    });
+    box.scrollTop=box.scrollHeight;
+  }
+
+  function renderAll(){
+    if(!G){
+      $("#phasePill").textContent="Phase: Setup";
+      $("#roundPill").textContent="Round: —";
+      $("#turnPill").textContent="Turn: —";
+      $("#investPill").textContent="Investment: —";
+      $("#handCards").innerHTML="";
+      $("#marketCards").innerHTML="";
+      $("#board0").innerHTML="";
+      $("#board1").innerHTML="";
+      $("#logBox").innerHTML="";
+      updateBattlefieldUI();
+      updateButtons();
+      return;
+    }
+
+    $("#phasePill").textContent=`Phase: ${G.phase}`;
+    $("#roundPill").textContent=`Round: ${G.round}`;
+    $("#turnPill").textContent=`Turn: ${G.players[G.current].name}`;
+
+    // show investment summary for active player
+    const p=G.players[G.current];
+    if(G.phase==="actions"){
+      const f=countRowCards(p,"resources");
+      const r=countRowCards(p,"recruiting");
+      const t=countRowCards(p,"training");
+      $("#investPill").textContent = `Investment — Forage row: ${f} • Recruit row: ${r} • Train row: ${t}`;
+    } else $("#investPill").textContent="Investment: —";
+
+    updateBattlefieldUI();
+    renderBoard(0);
+    renderBoard(1);
+    renderHand();
+    renderMarket();
+    renderLog();
+    updateButtons();
+  }
+
+  function updateButtons(){
+    if(!G){
+      $("#btnActRes").disabled=true;
+      $("#btnActRec").disabled=true;
+      $("#btnActTrn").disabled=true;
+      $("#btnEndTurn").disabled=true;
+      $("#btnForceRoundEnd").disabled=true;
+      return;
+    }
+    const p=G.players[G.current];
+    const disabled = G.pending || G.phase!=="actions" || p.actionsLeft<=0 || p.ai;
+
+    $("#btnActRes").disabled = disabled;
+    $("#btnActRec").disabled = disabled;
+    $("#btnActTrn").disabled = disabled;
+    $("#btnEndTurn").disabled = G.pending || G.phase!=="actions";
+    $("#btnForceRoundEnd").disabled = G.pending || G.phase!=="actions";
+  }
+
+  // --------- UI buttons ----------
+  $("#btnNew").onclick=()=>newGame();
+  $("#btnReset").onclick=()=>{ G=null; renderAll(); };
+
+  $("#btnActRes").onclick=()=>{
+    const p=G.players[G.current];
+    startAction(p,"resources");
+  };
+  $("#btnActRec").onclick=()=>{
+    const p=G.players[G.current];
+    startAction(p,"recruiting");
+  };
+  $("#btnActTrn").onclick=()=>{
+    const p=G.players[G.current];
+    startAction(p,"training");
+  };
+
+  $("#btnEndTurn").onclick=()=>{
+    if(!G || G.pending || G.phase!=="actions") return;
+    finishActionAdvance();
+  };
+  $("#btnForceRoundEnd").onclick=()=>{
+    if(!G || G.pending || G.phase!=="actions") return;
+    G.players.forEach(p=>p.actionsLeft=0);
+    endRound();
+    renderAll();
+  };
+
+  $("#btnHelp").onclick=()=>{
+    const d=$("#rulesBox"); d.open=!d.open;
+    d.scrollIntoView({behavior:"smooth", block:"start"});
+  };
+
+  $("#btnClearSel").onclick=()=>{ if(G){ G.selected.uid=null; renderAll(); } };
+  $("#btnShowLegal").onclick=()=>{ if(!G) return; if(!G.selected.uid) toast("Select a hand card first."); else toast("Green slots = legal placements for selected card."); renderAll(); };
+
+  function getSelectedCard(){
+    const p=G.players[G.current];
+    return p.hand.find(c=>c.uid===G.selected.uid) || null;
+  }
+
+  // --------- helper: html for cards/commanders in pick grids ----------
+  // (already above)
+
+  // --------- resolve some missing refs ----------
+  function placeMoraleSplitModal(ctx,p,title,amt,troops,onDone){ /* overwritten above but needs ctx */ }
+
+  // small fix: above we referenced placeMoraleSplitModal with ctx variable not in scope
+  // We'll provide a wrapper with ctx=G.
+  function placeMoraleSplitModal(ctx,p,title,amt,troops,onDone){
+    // (same as earlier but with ctx passed)
+    G.pending=true;
+    $("#modalTitle").textContent=title;
+    $("#modalBody").innerHTML = `
+      <div class="topline">
+        <span class="kpi">Morale in Supply: <b id="ms2">${p.moraleSupply}</b></span>
+        <span class="kpi">To place: <b id="pl2">${amt}</b></span>
+      </div>
+      <div class="hr"></div>
+      <div class="small">Click a troop to place 1. You can split across troops.</div>
+    `;
+    $("#modalExtra").innerHTML="";
+    const grid=el("div","modalGrid");
+    $("#modalExtra").appendChild(grid);
+
+    let remaining=amt;
+
+    const render=()=>{
+      grid.innerHTML="";
+      troops.forEach(t=>{
+        const pc=el("div","pickCard");
+        pc.innerHTML = `
+          <div class="t">Troop</div>
+          <div class="n">${esc(t.name)}</div>
+          <div class="d">Power ${t.power+(t.upgrades||0)} • Morale ${t.morale||0}</div>
+        `;
+        pc.onmouseenter=(e)=>showTipForCard(t,e);
+        pc.onmousemove=moveTip;
+        pc.onmouseleave=hideTip;
+        pc.onclick=()=>{
+          if(remaining<=0) return;
+          if(p.moraleSupply<=0){ toast("No morale in supply."); return; }
+          placeMoraleOnTroop(ctx,p,t,1,"Rally Standard");
+          remaining--;
+          $("#ms2").textContent=String(p.moraleSupply);
+          $("#pl2").textContent=String(remaining);
+          if(remaining<=0){
+            closeModal();
+            onDone();
+          } else render();
+        };
+        grid.appendChild(pc);
+      });
+    };
+    render();
+
+    $("#modalChoices").innerHTML="";
+    const btn=el("button","btn primary","Done");
+    btn.onclick=()=>{ closeModal(); onDone(); };
+    $("#modalChoices").appendChild(btn);
+
+    $("#modalBack").style.display="flex";
+  }
+
+  // --------- missing function referenced in Supply Cache preview etc ----------
+  function listBoardCards(p){ const a=[]; forEachCardOnBoard(p,(c)=>a.push(c)); return a; }
+
+  // --------- init ----------
+  renderAll();
+
+})();
+</script>
+</body>
+</html>
