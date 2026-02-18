@@ -1,1075 +1,1519 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>🗿 Stoney's Relic</title>
-  <style>
-    html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-    #ui{
-      position:fixed; inset:0; pointer-events:none; color:#fff;
-    }
-    .topbar{
-      position:absolute; left:10px; right:10px; top:10px;
-      display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
-      pointer-events:none;
-    }
-    .pill{
-      pointer-events:none;
-      display:inline-flex; gap:8px; align-items:center;
-      padding:8px 10px; border-radius:999px;
-      background:rgba(0,0,0,.45);
-      border:1px solid rgba(255,255,255,.16);
-      backdrop-filter: blur(8px);
-      font-weight:900; font-size:13px;
-    }
-    .hint{
-      position:absolute; left:10px; bottom:10px; right:10px;
-      background:rgba(0,0,0,.45);
-      border:1px solid rgba(255,255,255,.16);
-      border-radius:14px;
-      padding:10px 12px;
-      pointer-events:none;
-      backdrop-filter: blur(8px);
-      max-width:760px;
-    }
-    .muted{opacity:.78; font-weight:700}
-    #centerMsg{
-      position:absolute; left:50%; top:50%;
-      transform:translate(-50%,-50%);
-      background:rgba(0,0,0,.55);
-      border:1px solid rgba(255,255,255,.18);
-      border-radius:16px;
-      padding:14px 16px;
-      font-weight:900;
-      text-align:center;
-      pointer-events:auto;
-      backdrop-filter: blur(10px);
-      min-width:min(520px, 92vw);
-    }
-    #centerMsg button{
-      margin-top:10px;
-      cursor:pointer;
-      border:none;
-      padding:10px 12px;
-      border-radius:12px;
-      font-weight:900;
-      background:#22c55e;
-      color:#07110a;
-    }
-    #overlayFog{
-      position:absolute; inset:0;
-      background:radial-gradient(circle at 50% 50%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.72) 58%, rgba(0,0,0,.88) 100%);
-      opacity:0;
-      transition:opacity .12s linear;
-      pointer-events:none;
-      mix-blend-mode:multiply;
-    }
-    #overlayDead{
-      position:absolute; inset:0;
-      background:radial-gradient(circle at 50% 35%, rgba(0,0,0,.15) 0%, rgba(0,0,0,.92) 70%);
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .12s linear;
-    }
-    #toast{
-      position:absolute; left:50%; top:70px; transform:translateX(-50%);
-      background:rgba(0,0,0,.55);
-      border:1px solid rgba(255,255,255,.18);
-      border-radius:999px;
-      padding:8px 12px;
-      font-weight:900;
-      pointer-events:none;
-      backdrop-filter: blur(10px);
-      opacity:0;
-      transition:opacity .18s;
-      max-width:min(820px, 92vw);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-  </style>
-</head>
-<body>
-  <div id="ui">
-    <div class="topbar">
-      <div class="pill">👤 <span id="meName">—</span></div>
-      <div class="pill">⏱️ <span id="timerText">—</span></div>
-      <div class="pill">👑 <span id="crownText">—</span></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>🗿 Stoney's Relic</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial;
+      }
+      #ui {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: #fff;
+      }
+      .topbar {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        top: 10px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        pointer-events: none;
+      }
+      .pill {
+        pointer-events: none;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(8px);
+        font-weight: 900;
+        font-size: 13px;
+      }
+      .hint {
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
+        padding: 10px 12px;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+        max-width: 760px;
+      }
+      .muted {
+        opacity: 0.78;
+        font-weight: 700;
+      }
+      #centerMsg {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-weight: 900;
+        text-align: center;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        min-width: min(520px, 92vw);
+      }
+      #centerMsg button {
+        margin-top: 10px;
+        cursor: pointer;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-weight: 900;
+        background: #22c55e;
+        color: #07110a;
+      }
+      #overlayFog {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 50%,
+          rgba(0, 0, 0, 0) 0%,
+          rgba(0, 0, 0, 0.72) 58%,
+          rgba(0, 0, 0, 0.88) 100%
+        );
+        opacity: 0;
+        transition: opacity 0.12s linear;
+        pointer-events: none;
+        mix-blend-mode: multiply;
+      }
+      #overlayDead {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 35%,
+          rgba(0, 0, 0, 0.15) 0%,
+          rgba(0, 0, 0, 0.92) 70%
+        );
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s linear;
+      }
+      #toast {
+        position: absolute;
+        left: 50%;
+        top: 70px;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-weight: 900;
+        pointer-events: none;
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        transition: opacity 0.18s;
+        max-width: min(820px, 92vw);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #mobileControls {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: none;
+      }
+      #joystickWrap {
+        position: absolute;
+        left: 16px;
+        bottom: 20px;
+        width: 132px;
+        height: 132px;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.36);
+        border: 2px solid rgba(255, 255, 255, 0.28);
+        backdrop-filter: blur(8px);
+        pointer-events: auto;
+        touch-action: none;
+      }
+      #joystickKnob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 64px;
+        height: 64px;
+        margin-left: -32px;
+        margin-top: -32px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.75);
+        border: 2px solid rgba(0, 0, 0, 0.2);
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+        transition: transform 0.05s linear;
+        pointer-events: none;
+      }
+      #fsBtn {
+        position: absolute;
+        right: 14px;
+        top: 84px;
+        pointer-events: auto;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-weight: 900;
+        font-size: 15px;
+        background: rgba(34, 197, 94, 0.95);
+        color: #04120a;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+      }
+      @media (pointer: coarse) {
+        #mobileControls {
+          display: block;
+        }
+        #fsBtn {
+          top: 16px;
+          padding: 13px 15px;
+          font-size: 16px;
+        }
+        .hint {
+          bottom: 170px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div class="topbar">
+        <div class="pill">👤 <span id="meName">—</span></div>
+        <div class="pill">⏱️ <span id="timerText">—</span></div>
+        <div class="pill">👑 <span id="crownText">—</span></div>
+      </div>
+
+      <div id="toast"></div>
+
+      <div class="hint">
+        <div style="font-weight: 900">Controls</div>
+        <div class="muted">
+          Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) •
+          ESC unlock
+        </div>
+        <div class="muted">
+          Mobile: hold joystick to move forward and steer left/right • tap
+          fullscreen button for full view
+        </div>
+        <div class="muted">
+          Find the 👑 crown, then escape out the entrance room within 5 minutes.
+        </div>
+      </div>
+
+      <button id="fsBtn" type="button">⛶ Fullscreen</button>
+
+      <div id="mobileControls">
+        <div id="joystickWrap" aria-label="Movement joystick">
+          <div id="joystickKnob"></div>
+        </div>
+      </div>
+
+      <div id="overlayFog"></div>
+      <div id="overlayDead"></div>
+
+      <div id="centerMsg">
+        <div style="font-size: 18px">Waiting for the Dungeon Master…</div>
+        <div class="muted" style="margin-top: 6px">
+          The dungeon opens when the DM clicks Ready or the setup timer ends.
+        </div>
+        <button id="lockBtn" style="display: none">Click to Play</button>
+      </div>
     </div>
 
-    <div id="toast"></div>
-
-    <div class="hint">
-      <div style="font-weight:900">Controls</div>
-      <div class="muted">Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) • ESC unlock</div>
-      <div class="muted">Find the 👑 crown, then escape out the entrance room within 5 minutes.</div>
-    </div>
-
-    <div id="overlayFog"></div>
-    <div id="overlayDead"></div>
-
-    <div id="centerMsg">
-      <div style="font-size:18px">Waiting for the Dungeon Master…</div>
-      <div class="muted" style="margin-top:6px">The dungeon opens when the DM clicks Ready or the setup timer ends.</div>
-      <button id="lockBtn" style="display:none">Click to Play</button>
-    </div>
-  </div>
-
-<script type="module">
-  import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
-
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-    collection, onSnapshot, serverTimestamp, query, orderBy
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-  // --- Firebase (your project) ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-    authDomain: "bible-game-246c0.firebaseapp.com",
-    projectId: "bible-game-246c0",
-    storageBucket: "bible-game-246c0.appspot.com",
-    messagingSenderId: "959619818996",
-    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-  };
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const auth = getAuth(app);
-
-  // --- URL params ---
-  const qs = new URLSearchParams(location.search);
-  const gameId = qs.get("gameId") || "";
-  const username = (qs.get("username") || "").trim();
-
-  const $ = (id)=>document.getElementById(id);
-  $("meName").textContent = username || "Player";
-
-  const centerMsg = $("centerMsg");
-  const lockBtn = $("lockBtn");
-  const overlayFog = $("overlayFog");
-  const overlayDead = $("overlayDead");
-  const timerText = $("timerText");
-  const crownText = $("crownText");
-  const toast = $("toast");
-
-  function showToast(msg, ms=2200){
-    toast.textContent = msg;
-    toast.style.opacity = "1";
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(()=> toast.style.opacity="0", ms);
-  }
-
-  // --- Seeded RNG ---
-  function xorshift32(seed){
-    let x = (seed|0) || 123456789;
-    return ()=> {
-      x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
-      return ((x>>>0) / 4294967296);
-    };
-  }
-
-  // --- Maze generation (perfect maze) ---
-  function makeMaze(w,h,seed){
-    const rnd = xorshift32(seed);
-    const N=1,E=2,S=4,W=8;
-    const dx = { [N]:0,[E]:1,[S]:0,[W]:-1 };
-    const dy = { [N]:-1,[E]:0,[S]:1,[W]:0 };
-    const opp= { [N]:S,[E]:W,[S]:N,[W]:E };
-
-    const cells = Array.from({length:w*h}, ()=> ({v:false, walls:N|E|S|W}));
-    const idx = (x,y)=> y*w+x;
-
-    const stack=[];
-    let cx=0, cy=0;
-    cells[idx(cx,cy)].v=true;
-    stack.push([cx,cy]);
-
-    const dirs=[N,E,S,W];
-    while(stack.length){
-      const [x,y]=stack[stack.length-1];
-      const options=[];
-      for(const d of dirs){
-        const nx=x+dx[d], ny=y+dy[d];
-        if(nx<0||ny<0||nx>=w||ny>=h) continue;
-        if(!cells[idx(nx,ny)].v) options.push(d);
-      }
-      if(!options.length){ stack.pop(); continue; }
-      const d = options[Math.floor(rnd()*options.length)];
-      const nx=x+dx[d], ny=y+dy[d];
-      const a=cells[idx(x,y)], b=cells[idx(nx,ny)];
-      a.walls &= ~d;
-      b.walls &= ~opp[d];
-      b.v=true;
-      stack.push([nx,ny]);
-    }
-    // entrance: south edge middle (open south wall)
-    const ex = Math.floor(w/2), ey = h-1;
-    cells[idx(ex,ey)].walls &= ~S;
-    return { w,h, cells, entrance:{x:ex,y:ey} };
-  }
-
-  // --- World mapping helpers ---
-  function cellCenterWorld(maze, cellSize, cx, cy){
-    const ox = -maze.w*cellSize/2;
-    const oz = -maze.h*cellSize/2;
-    return {
-      x: ox + (cx+0.5)*cellSize,
-      z: oz + (cy+0.5)*cellSize
-    };
-  }
-
-  // --- Game constants ---
-  const WALL_H = 7.0;         // high walls
-  const WALL_T = 0.35;
-  const PLAYER_H = 1.72;
-  const PLAYER_R = 0.34;
-  const ROOM_DEPTH = 9.0;     // room outside entrance
-  const NO_TRAP_RADIUS = 6.0; // DM enforcement is primary; client is lenient
-
-  // Enemy tuning
-  const ENEMY = {
-    ghost: { speed: 2.4, killDist: 0.9 },
-    demon: { speed: 3.6, killDist: 1.0 }
-  };
-  const FIRE_KILL_RADIUS = 1.6;
-  const FOG_RADIUS = 6.5;
-
-  // Respawn
-  const RESPAWN_MS = 15000;
-
-  // --- Firebase refs ---
-  let lobbyRef=null, stoney=null, maze=null;
-  let playersCol=null, trapsCol=null;
-  let amReadyToRender=false;
-
-  // --- Multiplayer caches ---
-  const others = new Map();   // name -> {mesh, x,z, tx,tz, alive, deadUntil, lastSeen}
-  let myDocRef=null;
-
-  // Traps snapshot cache
-  const trapMap = new Map();  // id -> trapObj
-
-  // --- Local state ---
-  let phase="setup";
-  let gameStartAt=0, gameEndAt=0;
-  let winner=null, winnerName=null;
-  let lastEventAt=0;
-
-  // Crown state
-  let crown = null;           // {x,z}
-  let carrier = null;         // username or null
-  let iHaveCrown = false;
-
-  // Death state
-  let deadUntil = 0;
-  let alive = true;
-
-  // --- Three.js scene ---
-  const renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio||1));
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setClearColor(0x0b0f16, 1);
-  document.body.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 220);
-  camera.position.set(0, PLAYER_H, 0);
-
-  // lighting
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x202838, 0.9));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
-  dir.position.set(7, 18, 10);
-  scene.add(dir);
-
-  // floor group
-  const world = new THREE.Group();
-  scene.add(world);
-
-  // local player physics
-  const me = {
-    x:0, y:PLAYER_H, z:0,
-    vx:0, vz:0,
-    vy:0,
-    yaw:0, pitch:0,
-    grounded:true
-  };
-
-  // pointer lock look
-  let pointerLocked=false;
-  function requestLock(){
-    renderer.domElement.requestPointerLock?.();
-  }
-  document.addEventListener("pointerlockchange", ()=>{
-    pointerLocked = (document.pointerLockElement === renderer.domElement);
-    lockBtn.style.display = pointerLocked ? "none" : (phase==="play" ? "block" : "none");
-  });
-
-  document.addEventListener("mousemove", (e)=>{
-    if(!pointerLocked || !alive) return;
-    const sens = 0.0022;
-    me.yaw   -= e.movementX * sens;
-    me.pitch -= e.movementY * sens;
-    me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
-  });
-
-  // keys
-  const keys = {};
-  addEventListener("keydown", (e)=>{ keys[e.key.toLowerCase()] = true; if(e.key===" ") e.preventDefault(); });
-  addEventListener("keyup",   (e)=>{ keys[e.key.toLowerCase()] = false; });
-
-  // --- Geometry helpers ---
-  const matWall = new THREE.MeshStandardMaterial({ color:0x000000, roughness:0.95, metalness:0.0 });
-  const matFloor = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:1.0, metalness:0.0 });
-  const matRoom = new THREE.MeshStandardMaterial({ color:0xf8fafc, roughness:1.0, metalness:0.0 });
-
-  let wallAABBs = []; // {minX,maxX,minZ,maxZ}
-
-  function addWallBox(cx, cz, sx, sz){
-    const geo = new THREE.BoxGeometry(sx, WALL_H, sz);
-    const m = new THREE.Mesh(geo, matWall);
-    m.position.set(cx, WALL_H/2, cz);
-    world.add(m);
-    wallAABBs.push({
-      minX: cx - sx/2, maxX: cx + sx/2,
-      minZ: cz - sz/2, maxZ: cz + sz/2
-    });
-  }
-
-  function buildWorldFromMaze(){
-    // clear
-    while(world.children.length) world.remove(world.children[0]);
-    wallAABBs = [];
-
-    const cellSize = stoney.cellSize;
-    const m = maze;
-
-    // floor under maze
-    const floorGeo = new THREE.PlaneGeometry(m.w*cellSize + 20, m.h*cellSize + 28);
-    const floor = new THREE.Mesh(floorGeo, matFloor);
-    floor.rotation.x = -Math.PI/2;
-    floor.position.y = 0;
-    world.add(floor);
-
-    // room floor (outside entrance south)
-    const ox = -m.w*cellSize/2;
-    const oz = -m.h*cellSize/2;
-    const mazeMinX = ox, mazeMaxX = ox + m.w*cellSize;
-    const mazeMinZ = oz, mazeMaxZ = oz + m.h*cellSize;
-
-    const roomGeo = new THREE.PlaneGeometry(m.w*cellSize*0.9, ROOM_DEPTH);
-    const room = new THREE.Mesh(roomGeo, matRoom);
-    room.rotation.x = -Math.PI/2;
-    room.position.set((mazeMinX+mazeMaxX)/2, 0.001, mazeMaxZ + ROOM_DEPTH/2);
-    world.add(room);
-
-    // outer boundary walls (with entrance gap)
-    // We'll derive from cell walls to keep consistent.
-
-    const N=1,E=2,S=4,W=8;
-    const idx=(x,y)=>y*m.w+x;
-
-    for(let y=0;y<m.h;y++){
-      for(let x=0;x<m.w;x++){
-        const c = m.cells[idx(x,y)];
-        const center = cellCenterWorld(m, cellSize, x,y);
-
-        // draw north + west always; south for last row; east for last col
-        if(c.walls & N){
-          addWallBox(center.x, center.z - cellSize/2, cellSize + WALL_T, WALL_T);
-        }
-        if(c.walls & W){
-          addWallBox(center.x - cellSize/2, center.z, WALL_T, cellSize + WALL_T);
-        }
-        if(y===m.h-1 && (c.walls & S)){
-          addWallBox(center.x, center.z + cellSize/2, cellSize + WALL_T, WALL_T);
-        }
-        if(x===m.w-1 && (c.walls & E)){
-          addWallBox(center.x + cellSize/2, center.z, WALL_T, cellSize + WALL_T);
-        }
-      }
-    }
-
-    // walls enclosing the room sides/back (leave opening at maze entrance)
-    const entranceCell = m.entrance;
-    const ent = cellCenterWorld(m, cellSize, entranceCell.x, entranceCell.y);
-
-    // Side walls for room
-    addWallBox(mazeMinX - WALL_T/2, mazeMaxZ + ROOM_DEPTH/2, WALL_T, ROOM_DEPTH + 0.01);
-    addWallBox(mazeMaxX + WALL_T/2, mazeMaxZ + ROOM_DEPTH/2, WALL_T, ROOM_DEPTH + 0.01);
-    // Back wall of room
-    addWallBox((mazeMinX+mazeMaxX)/2, mazeMaxZ + ROOM_DEPTH + WALL_T/2, (mazeMaxX-mazeMinX)+WALL_T, WALL_T);
-
-    // Add a short "threshold" frame near entrance for drama (doesn't block)
-    const frameGeo = new THREE.BoxGeometry(cellSize*0.85, 2.8, 0.25);
-    const frameMat = new THREE.MeshStandardMaterial({ color:0x111827, emissive:0x111827, emissiveIntensity:0.25 });
-    const frame = new THREE.Mesh(frameGeo, frameMat);
-    frame.position.set(ent.x, 1.4, mazeMaxZ + 0.20);
-    world.add(frame);
-
-    // Spawn point in room, facing entrance
-    me.x = ent.x;
-    me.z = mazeMaxZ + ROOM_DEPTH*0.72;
-    me.yaw = Math.PI; // face north-ish into maze
-    me.pitch = 0;
-    me.vx = me.vz = me.vy = 0;
-    me.grounded = true;
-
-    // Crown mesh (spawn later)
-    makeCrownMesh();
-  }
-
-  // --- Collision ---
-  function hitsWall(nx,nz){
-    for(const b of wallAABBs){
-      const minX = b.minX - PLAYER_R, maxX = b.maxX + PLAYER_R;
-      const minZ = b.minZ - PLAYER_R, maxZ = b.maxZ + PLAYER_R;
-      if(nx>=minX && nx<=maxX && nz>=minZ && nz<=maxZ) return true;
-    }
-    return false;
-  }
-
-  // --- Crown mesh ---
-  let crownMesh=null;
-  function makeCrownMesh(){
-    if(crownMesh) { world.remove(crownMesh); crownMesh=null; }
-    const g = new THREE.TorusKnotGeometry(0.25, 0.09, 90, 10);
-    const m = new THREE.MeshStandardMaterial({ color:0xffd700, emissive:0x553300, emissiveIntensity:0.6, roughness:0.35 });
-    crownMesh = new THREE.Mesh(g,m);
-    crownMesh.position.set(0, 1.0, 0);
-    world.add(crownMesh);
-  }
-
-  // --- Trap visuals / local enemies ---
-  const enemyMeshes = new Map(); // trapId -> mesh + local state
-  function ensureTrapMesh(t){
-    if(enemyMeshes.has(t.id)) return enemyMeshes.get(t.id);
-
-    if(t.type==="fire"){
-      const g = new THREE.SphereGeometry(0.55, 16, 16);
-      const m = new THREE.MeshStandardMaterial({ color:0xff3b30, emissive:0xff1a1a, emissiveIntensity:1.0, roughness:0.4 });
-      const s = new THREE.Mesh(g,m);
-      s.position.set(t.x, 0.55, t.z);
-      world.add(s);
-      enemyMeshes.set(t.id, { mesh:s, kind:"fire" });
-      return enemyMeshes.get(t.id);
-    }
-
-    if(t.type==="fog"){
-      const g = new THREE.SphereGeometry(FOG_RADIUS*0.35, 20, 16);
-      const m = new THREE.MeshStandardMaterial({ color:0x94a3b8, transparent:true, opacity:0.18, roughness:1.0 });
-      const s = new THREE.Mesh(g,m);
-      s.position.set(t.x, 1.7, t.z);
-      world.add(s);
-      enemyMeshes.set(t.id, { mesh:s, kind:"fog" });
-      return enemyMeshes.get(t.id);
-    }
-
-    if(t.type==="ghost" || t.type==="demon"){
-      const color = (t.type==="ghost") ? 0x22d3ee : 0xfb7185;
-      const emiss = (t.type==="ghost") ? 0x0ea5e9 : 0xef4444;
-      const g = new THREE.SphereGeometry(0.55, 18, 16);
-      const m = new THREE.MeshStandardMaterial({ color, emissive:emiss, emissiveIntensity:1.25, roughness:0.22 });
-      const s = new THREE.Mesh(g,m);
-      s.position.set(t.x, 1.1, t.z);
-      world.add(s);
-
-      // spooky "aura"
-      const auraG = new THREE.SphereGeometry(1.05, 18, 14);
-      const auraM = new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.16, emissive:emiss, emissiveIntensity:0.6 });
-      const aura = new THREE.Mesh(auraG, auraM);
-      aura.position.set(0,0,0);
-      s.add(aura);
-
-      enemyMeshes.set(t.id, { mesh:s, kind:t.type, x:t.x, z:t.z, bob:Math.random()*10 });
-      return enemyMeshes.get(t.id);
-    }
-
-    return null;
-  }
-
-  function removeTrapMesh(id){
-    const e = enemyMeshes.get(id);
-    if(!e) return;
-    world.remove(e.mesh);
-    enemyMeshes.delete(id);
-  }
-
-  // --- Firebase wiring ---
-  let authReady=false;
-
-  async function ensurePlayerDoc(){
-    lobbyRef = doc(db, "lobbies", gameId);
-    playersCol = collection(db, "lobbies", gameId, "players");
-    trapsCol   = collection(db, "lobbies", gameId, "traps");
-    myDocRef = doc(db, "lobbies", gameId, "players", username);
-
-    // Create/merge a player doc (doesn't start moving until phase=play)
-    await setDoc(myDocRef, {
-      name: username,
-      x: 0, z: 0,
-      yaw: 0,
-      alive: true,
-      deadUntil: 0,
-      updatedAt: Date.now()
-    }, { merge:true });
-  }
-
-  function listenLobby(){
-    onSnapshot(lobbyRef, async (snap)=>{
-      if(!snap.exists()) return;
-      const d = snap.data();
-      stoney = d.stoney;
-      if(!stoney) return;
-
-      phase = stoney.phase || "setup";
-      winner = stoney.winner || null;
-      winnerName = stoney.winnerName || null;
-      gameStartAt = Number(stoney.startAt||0);
-      gameEndAt   = Number(stoney.endAt||0);
-
-      crown = stoney.crown || null;
-      carrier = stoney.carrier || null;
-      iHaveCrown = (carrier === username);
-
-      if(stoney.lastEventAt && stoney.lastEventAt !== lastEventAt){
-        lastEventAt = stoney.lastEventAt;
-        if(stoney.lastEvent) showToast(stoney.lastEvent, 2600);
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
+
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import {
+        getFirestore,
+        doc,
+        getDoc,
+        setDoc,
+        updateDoc,
+        runTransaction,
+        collection,
+        onSnapshot,
+        serverTimestamp,
+        query,
+        orderBy,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+      import {
+        getAuth,
+        signInAnonymously,
+        onAuthStateChanged,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+      // --- Firebase (your project) ---
+      const firebaseConfig = {
+        apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+        authDomain: "bible-game-246c0.firebaseapp.com",
+        projectId: "bible-game-246c0",
+        storageBucket: "bible-game-246c0.appspot.com",
+        messagingSenderId: "959619818996",
+        appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+      };
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const auth = getAuth(app);
+
+      // --- URL params ---
+      const qs = new URLSearchParams(location.search);
+      const gameId = qs.get("gameId") || "";
+      const username = (qs.get("username") || "").trim();
+
+      const $ = (id) => document.getElementById(id);
+      $("meName").textContent = username || "Player";
+
+      const centerMsg = $("centerMsg");
+      const lockBtn = $("lockBtn");
+      const overlayFog = $("overlayFog");
+      const overlayDead = $("overlayDead");
+      const timerText = $("timerText");
+      const crownText = $("crownText");
+      const toast = $("toast");
+      const fsBtn = $("fsBtn");
+      const joystickWrap = $("joystickWrap");
+      const joystickKnob = $("joystickKnob");
+
+      const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
+      const mobile = {
+        enabled: isCoarsePointer,
+        turn: 0,
+        forward: 0,
+        active: false,
+        pointerId: null,
+      };
+
+      function showToast(msg, ms = 2200) {
+        toast.textContent = msg;
+        toast.style.opacity = "1";
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => (toast.style.opacity = "0"), ms);
       }
 
-      if(!maze && typeof stoney.seed==="number"){
-        maze = makeMaze(stoney.w, stoney.h, stoney.seed);
+      // --- Seeded RNG ---
+      function xorshift32(seed) {
+        let x = seed | 0 || 123456789;
+        return () => {
+          x ^= x << 13;
+          x ^= x >>> 17;
+          x ^= x << 5;
+          return (x >>> 0) / 4294967296;
+        };
       }
 
-      // Update HUD text
-      if(phase==="setup"){
-        const t = Math.max(0, (stoney.setupDeadline||0) - Date.now());
-        timerText.textContent = `Setup ${Math.ceil(t/1000)}s`;
-        crownText.textContent = "Not placed";
-        centerMsg.style.display = "block";
-        lockBtn.style.display = "none";
-      } else if(phase==="play"){
-        const t = Math.max(0, (gameEndAt||0) - Date.now());
-        const mm = Math.floor(t/60000), ss = Math.floor((t%60000)/1000);
-        timerText.textContent = `${mm}m ${ss}s`;
-        crownText.textContent = iHaveCrown ? "You have it!" : (carrier ? `Carried by ${carrier}` : "On ground");
-        centerMsg.style.display = pointerLocked ? "none" : "block";
-        lockBtn.style.display = pointerLocked ? "none" : "block";
-        lockBtn.textContent = "Click to Play";
-        lockBtn.onclick = requestLock;
+      // --- Maze generation (perfect maze) ---
+      function makeMaze(w, h, seed) {
+        const rnd = xorshift32(seed);
+        const N = 1,
+          E = 2,
+          S = 4,
+          W = 8;
+        const dx = { [N]: 0, [E]: 1, [S]: 0, [W]: -1 };
+        const dy = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
+        const opp = { [N]: S, [E]: W, [S]: N, [W]: E };
 
-        if(!amReadyToRender && maze){
-          amReadyToRender = true;
-          buildWorldFromMaze();
-          showToast("The dungeon opens…", 2000);
+        const cells = Array.from({ length: w * h }, () => ({
+          v: false,
+          walls: N | E | S | W,
+        }));
+        const idx = (x, y) => y * w + x;
+
+        const stack = [];
+        let cx = 0,
+          cy = 0;
+        cells[idx(cx, cy)].v = true;
+        stack.push([cx, cy]);
+
+        const dirs = [N, E, S, W];
+        while (stack.length) {
+          const [x, y] = stack[stack.length - 1];
+          const options = [];
+          for (const d of dirs) {
+            const nx = x + dx[d],
+              ny = y + dy[d];
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            if (!cells[idx(nx, ny)].v) options.push(d);
+          }
+          if (!options.length) {
+            stack.pop();
+            continue;
+          }
+          const d = options[Math.floor(rnd() * options.length)];
+          const nx = x + dx[d],
+            ny = y + dy[d];
+          const a = cells[idx(x, y)],
+            b = cells[idx(nx, ny)];
+          a.walls &= ~d;
+          b.walls &= ~opp[d];
+          b.v = true;
+          stack.push([nx, ny]);
         }
-      } else if(phase==="ended"){
-        timerText.textContent = "Ended";
-        crownText.textContent = "—";
-        centerMsg.style.display = "block";
-        lockBtn.style.display = "none";
-        centerMsg.querySelector("div").textContent =
-          (winner === "players")
-            ? `🏆 Players win! ${winnerName||"Someone"} escaped with the crown.`
-            : `😈 Dungeon Master wins! Time ran out.`;
+        // entrance: south edge middle (open south wall)
+        const ex = Math.floor(w / 2),
+          ey = h - 1;
+        cells[idx(ex, ey)].walls &= ~S;
+        return { w, h, cells, entrance: { x: ex, y: ey } };
       }
 
-      // If time is up and not ended, any client can finalize (best-effort)
-      if(phase==="play" && gameEndAt && Date.now() > gameEndAt + 200 && !winner){
-        try{
-          await updateDoc(lobbyRef, {
-            "stoney.phase":"ended",
-            "stoney.winner":"dm",
-            "stoney.winnerName": d.dm || "Dungeon Master",
-            "stoney.lastEvent":"Time is up. The Dungeon Master wins!",
-            "stoney.lastEventAt": Date.now()
-          });
-        }catch(e){}
+      // --- World mapping helpers ---
+      function cellCenterWorld(maze, cellSize, cx, cy) {
+        const ox = (-maze.w * cellSize) / 2;
+        const oz = (-maze.h * cellSize) / 2;
+        return {
+          x: ox + (cx + 0.5) * cellSize,
+          z: oz + (cy + 0.5) * cellSize,
+        };
       }
-    });
-  }
 
-  function listenPlayers(){
-    onSnapshot(playersCol, (snap)=>{
-      const now = Date.now();
+      // --- Game constants ---
+      const WALL_H = 7.0; // high walls
+      const WALL_T = 0.35;
+      const PLAYER_H = 1.72;
+      const PLAYER_R = 0.34;
+      const ROOM_DEPTH = 9.0; // room outside entrance
+      const NO_TRAP_RADIUS = 6.0; // DM enforcement is primary; client is lenient
 
-      // mark seen
-      const seen = new Set();
-      snap.forEach(docSnap=>{
-        const name = docSnap.id;
-        const v = docSnap.data();
-        seen.add(name);
-        if(name === username) return; // me
+      // Enemy tuning
+      const ENEMY = {
+        ghost: { speed: 2.4, killDist: 0.9 },
+        demon: { speed: 3.6, killDist: 1.0 },
+      };
+      const FIRE_KILL_RADIUS = 1.6;
+      const FOG_RADIUS = 6.5;
 
-        const tx = Number(v.x||0), tz = Number(v.z||0);
-        const alive = v.alive !== false;
-        const deadUntil = Number(v.deadUntil||0);
+      // Respawn
+      const RESPAWN_MS = 15000;
 
-        if(!others.has(name)){
-          // create remote mesh
-          const g = new THREE.CapsuleGeometry(0.35, 0.9, 8, 14);
-          const m = new THREE.MeshStandardMaterial({ color:0x60a5fa, emissive:0x0b3a7a, emissiveIntensity:0.55, roughness:0.8 });
-          const mesh = new THREE.Mesh(g,m);
-          mesh.position.set(tx, 0.95, tz);
-          world.add(mesh);
-          others.set(name, { mesh, x:tx, z:tz, tx, tz, alive, deadUntil, lastSeen:now });
-        } else {
-          const o = others.get(name);
-          o.tx = tx; o.tz = tz; o.alive = alive; o.deadUntil = deadUntil; o.lastSeen = now;
-        }
+      // --- Firebase refs ---
+      let lobbyRef = null,
+        stoney = null,
+        maze = null;
+      let playersCol = null,
+        trapsCol = null;
+      let amReadyToRender = false;
+
+      // --- Multiplayer caches ---
+      const others = new Map(); // name -> {mesh, x,z, tx,tz, alive, deadUntil, lastSeen}
+      let myDocRef = null;
+
+      // Traps snapshot cache
+      const trapMap = new Map(); // id -> trapObj
+
+      // --- Local state ---
+      let phase = "setup";
+      let gameStartAt = 0,
+        gameEndAt = 0;
+      let winner = null,
+        winnerName = null;
+      let lastEventAt = 0;
+
+      // Crown state
+      let crown = null; // {x,z}
+      let carrier = null; // username or null
+      let iHaveCrown = false;
+
+      // Death state
+      let deadUntil = 0;
+      let alive = true;
+
+      // --- Three.js scene ---
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setClearColor(0x0b0f16, 1);
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        innerWidth / innerHeight,
+        0.05,
+        220,
+      );
+      camera.position.set(0, PLAYER_H, 0);
+
+      // lighting
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x202838, 0.9));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.55);
+      dir.position.set(7, 18, 10);
+      scene.add(dir);
+
+      // floor group
+      const world = new THREE.Group();
+      scene.add(world);
+
+      // local player physics
+      const me = {
+        x: 0,
+        y: PLAYER_H,
+        z: 0,
+        vx: 0,
+        vz: 0,
+        vy: 0,
+        yaw: 0,
+        pitch: 0,
+        grounded: true,
+      };
+
+      // pointer lock look
+      let pointerLocked = false;
+      function requestLock() {
+        renderer.domElement.requestPointerLock?.();
+      }
+      document.addEventListener("pointerlockchange", () => {
+        pointerLocked = document.pointerLockElement === renderer.domElement;
+        lockBtn.style.display = pointerLocked
+          ? "none"
+          : phase === "play"
+            ? "block"
+            : "none";
       });
 
-      // fade/remove missing
-      for(const [name,o] of others){
-        if(seen.has(name)) continue;
-        if(now - o.lastSeen > 8000){
-          world.remove(o.mesh);
-          others.delete(name);
+      document.addEventListener("mousemove", (e) => {
+        if (!pointerLocked || !alive) return;
+        const sens = 0.0022;
+        me.yaw -= e.movementX * sens;
+        me.pitch -= e.movementY * sens;
+        me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
+      });
+
+      // keys
+      const keys = {};
+      addEventListener("keydown", (e) => {
+        keys[e.key.toLowerCase()] = true;
+        if (e.key === " ") e.preventDefault();
+      });
+      addEventListener("keyup", (e) => {
+        keys[e.key.toLowerCase()] = false;
+      });
+
+      fsBtn.addEventListener("click", async () => {
+        try {
+          if (!document.fullscreenElement)
+            await document.documentElement.requestFullscreen?.();
+          else await document.exitFullscreen?.();
+        } catch (e) {}
+      });
+
+      function setJoystick(dx, dy, r) {
+        const len = Math.hypot(dx, dy);
+        const k = len > r && len > 0 ? r / len : 1;
+        const cx = dx * k,
+          cy = dy * k;
+        joystickKnob.style.transform = `translate(${cx}px, ${cy}px)`;
+
+        mobile.turn = Math.max(-1, Math.min(1, cx / r));
+        mobile.forward = Math.max(0, Math.min(1, -cy / r));
+        mobile.active = mobile.forward > 0.04;
+      }
+
+      function resetJoystick() {
+        joystickKnob.style.transform = "translate(0px, 0px)";
+        mobile.turn = 0;
+        mobile.forward = 0;
+        mobile.active = false;
+        mobile.pointerId = null;
+      }
+
+      if (joystickWrap) {
+        joystickWrap.addEventListener("pointerdown", (e) => {
+          if (!mobile.enabled) return;
+          mobile.pointerId = e.pointerId;
+          joystickWrap.setPointerCapture(e.pointerId);
+          const r = joystickWrap.getBoundingClientRect();
+          setJoystick(
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.35,
+          );
+        });
+
+        joystickWrap.addEventListener("pointermove", (e) => {
+          if (!mobile.enabled || mobile.pointerId !== e.pointerId) return;
+          const r = joystickWrap.getBoundingClientRect();
+          setJoystick(
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.35,
+          );
+        });
+
+        const endJoy = (e) => {
+          if (mobile.pointerId !== e.pointerId) return;
+          resetJoystick();
+        };
+        joystickWrap.addEventListener("pointerup", endJoy);
+        joystickWrap.addEventListener("pointercancel", endJoy);
+      }
+
+      // --- Geometry helpers ---
+      const matWall = new THREE.MeshStandardMaterial({
+        color: 0x000000,
+        roughness: 0.95,
+        metalness: 0.0,
+      });
+      const matFloor = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      const matRoom = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+
+      let wallAABBs = []; // {minX,maxX,minZ,maxZ}
+
+      function addWallBox(cx, cz, sx, sz) {
+        const geo = new THREE.BoxGeometry(sx, WALL_H, sz);
+        const m = new THREE.Mesh(geo, matWall);
+        m.position.set(cx, WALL_H / 2, cz);
+        world.add(m);
+        wallAABBs.push({
+          minX: cx - sx / 2,
+          maxX: cx + sx / 2,
+          minZ: cz - sz / 2,
+          maxZ: cz + sz / 2,
+        });
+      }
+
+      function buildWorldFromMaze() {
+        // clear
+        while (world.children.length) world.remove(world.children[0]);
+        wallAABBs = [];
+
+        const cellSize = stoney.cellSize;
+        const m = maze;
+
+        // floor under maze
+        const floorGeo = new THREE.PlaneGeometry(
+          m.w * cellSize + 20,
+          m.h * cellSize + 28,
+        );
+        const floor = new THREE.Mesh(floorGeo, matFloor);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0;
+        world.add(floor);
+
+        // room floor (outside entrance south)
+        const ox = (-m.w * cellSize) / 2;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMinX = ox,
+          mazeMaxX = ox + m.w * cellSize;
+        const mazeMinZ = oz,
+          mazeMaxZ = oz + m.h * cellSize;
+
+        const roomGeo = new THREE.PlaneGeometry(
+          m.w * cellSize * 0.9,
+          ROOM_DEPTH,
+        );
+        const room = new THREE.Mesh(roomGeo, matRoom);
+        room.rotation.x = -Math.PI / 2;
+        room.position.set(
+          (mazeMinX + mazeMaxX) / 2,
+          0.001,
+          mazeMaxZ + ROOM_DEPTH / 2,
+        );
+        world.add(room);
+
+        // outer boundary walls (with entrance gap)
+        // We'll derive from cell walls to keep consistent.
+
+        const N = 1,
+          E = 2,
+          S = 4,
+          W = 8;
+        const idx = (x, y) => y * m.w + x;
+
+        for (let y = 0; y < m.h; y++) {
+          for (let x = 0; x < m.w; x++) {
+            const c = m.cells[idx(x, y)];
+            const center = cellCenterWorld(m, cellSize, x, y);
+
+            // draw north + west always; south for last row; east for last col
+            if (c.walls & N) {
+              addWallBox(
+                center.x,
+                center.z - cellSize / 2,
+                cellSize + WALL_T,
+                WALL_T,
+              );
+            }
+            if (c.walls & W) {
+              addWallBox(
+                center.x - cellSize / 2,
+                center.z,
+                WALL_T,
+                cellSize + WALL_T,
+              );
+            }
+            if (y === m.h - 1 && c.walls & S) {
+              addWallBox(
+                center.x,
+                center.z + cellSize / 2,
+                cellSize + WALL_T,
+                WALL_T,
+              );
+            }
+            if (x === m.w - 1 && c.walls & E) {
+              addWallBox(
+                center.x + cellSize / 2,
+                center.z,
+                WALL_T,
+                cellSize + WALL_T,
+              );
+            }
+          }
+        }
+
+        // walls enclosing the room sides/back (leave opening at maze entrance)
+        const entranceCell = m.entrance;
+        const ent = cellCenterWorld(
+          m,
+          cellSize,
+          entranceCell.x,
+          entranceCell.y,
+        );
+
+        // Side walls for room
+        addWallBox(
+          mazeMinX - WALL_T / 2,
+          mazeMaxZ + ROOM_DEPTH / 2,
+          WALL_T,
+          ROOM_DEPTH + 0.01,
+        );
+        addWallBox(
+          mazeMaxX + WALL_T / 2,
+          mazeMaxZ + ROOM_DEPTH / 2,
+          WALL_T,
+          ROOM_DEPTH + 0.01,
+        );
+        // Back wall of room
+        addWallBox(
+          (mazeMinX + mazeMaxX) / 2,
+          mazeMaxZ + ROOM_DEPTH + WALL_T / 2,
+          mazeMaxX - mazeMinX + WALL_T,
+          WALL_T,
+        );
+
+        // Add a short "threshold" frame near entrance for drama (doesn't block)
+        const frameGeo = new THREE.BoxGeometry(cellSize * 0.85, 2.8, 0.25);
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: 0x111827,
+          emissive: 0x111827,
+          emissiveIntensity: 0.25,
+        });
+        const frame = new THREE.Mesh(frameGeo, frameMat);
+        frame.position.set(ent.x, 1.4, mazeMaxZ + 0.2);
+        world.add(frame);
+
+        // Spawn point in room, facing entrance
+        me.x = ent.x;
+        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
+        me.yaw = Math.PI; // face north-ish into maze
+        me.pitch = 0;
+        me.vx = me.vz = me.vy = 0;
+        me.grounded = true;
+
+        // Crown mesh (spawn later)
+        makeCrownMesh();
+      }
+
+      // --- Collision ---
+      function hitsWall(nx, nz) {
+        for (const b of wallAABBs) {
+          const minX = b.minX - PLAYER_R,
+            maxX = b.maxX + PLAYER_R;
+          const minZ = b.minZ - PLAYER_R,
+            maxZ = b.maxZ + PLAYER_R;
+          if (nx >= minX && nx <= maxX && nz >= minZ && nz <= maxZ) return true;
+        }
+        return false;
+      }
+
+      // --- Crown mesh ---
+      let crownMesh = null;
+      function makeCrownMesh() {
+        if (crownMesh) {
+          world.remove(crownMesh);
+          crownMesh = null;
+        }
+        const g = new THREE.TorusKnotGeometry(0.25, 0.09, 90, 10);
+        const m = new THREE.MeshStandardMaterial({
+          color: 0xffd700,
+          emissive: 0x553300,
+          emissiveIntensity: 0.6,
+          roughness: 0.35,
+        });
+        crownMesh = new THREE.Mesh(g, m);
+        crownMesh.position.set(0, 1.0, 0);
+        world.add(crownMesh);
+      }
+
+      // --- Trap visuals / local enemies ---
+      const enemyMeshes = new Map(); // trapId -> mesh + local state
+      function ensureTrapMesh(t) {
+        if (enemyMeshes.has(t.id)) return enemyMeshes.get(t.id);
+
+        if (t.type === "fire") {
+          const g = new THREE.SphereGeometry(0.55, 16, 16);
+          const m = new THREE.MeshStandardMaterial({
+            color: 0xff3b30,
+            emissive: 0xff1a1a,
+            emissiveIntensity: 1.0,
+            roughness: 0.4,
+          });
+          const s = new THREE.Mesh(g, m);
+          s.position.set(t.x, 0.55, t.z);
+          world.add(s);
+          enemyMeshes.set(t.id, { mesh: s, kind: "fire" });
+          return enemyMeshes.get(t.id);
+        }
+
+        if (t.type === "fog") {
+          const g = new THREE.SphereGeometry(FOG_RADIUS * 0.35, 20, 16);
+          const m = new THREE.MeshStandardMaterial({
+            color: 0x94a3b8,
+            transparent: true,
+            opacity: 0.18,
+            roughness: 1.0,
+          });
+          const s = new THREE.Mesh(g, m);
+          s.position.set(t.x, 1.7, t.z);
+          world.add(s);
+          enemyMeshes.set(t.id, { mesh: s, kind: "fog" });
+          return enemyMeshes.get(t.id);
+        }
+
+        if (t.type === "ghost" || t.type === "demon") {
+          const color = t.type === "ghost" ? 0x22d3ee : 0xfb7185;
+          const emiss = t.type === "ghost" ? 0x0ea5e9 : 0xef4444;
+          const g = new THREE.SphereGeometry(0.55, 18, 16);
+          const m = new THREE.MeshStandardMaterial({
+            color,
+            emissive: emiss,
+            emissiveIntensity: 1.25,
+            roughness: 0.22,
+          });
+          const s = new THREE.Mesh(g, m);
+          s.position.set(t.x, 1.1, t.z);
+          world.add(s);
+
+          // spooky "aura"
+          const auraG = new THREE.SphereGeometry(1.05, 18, 14);
+          const auraM = new THREE.MeshStandardMaterial({
+            color,
+            transparent: true,
+            opacity: 0.16,
+            emissive: emiss,
+            emissiveIntensity: 0.6,
+          });
+          const aura = new THREE.Mesh(auraG, auraM);
+          aura.position.set(0, 0, 0);
+          s.add(aura);
+
+          enemyMeshes.set(t.id, {
+            mesh: s,
+            kind: t.type,
+            x: t.x,
+            z: t.z,
+            bob: Math.random() * 10,
+          });
+          return enemyMeshes.get(t.id);
+        }
+
+        return null;
+      }
+
+      function removeTrapMesh(id) {
+        const e = enemyMeshes.get(id);
+        if (!e) return;
+        world.remove(e.mesh);
+        enemyMeshes.delete(id);
+      }
+
+      // --- Firebase wiring ---
+      let authReady = false;
+
+      async function ensurePlayerDoc() {
+        lobbyRef = doc(db, "lobbies", gameId);
+        playersCol = collection(db, "lobbies", gameId, "players");
+        trapsCol = collection(db, "lobbies", gameId, "traps");
+        myDocRef = doc(db, "lobbies", gameId, "players", username);
+
+        // Create/merge a player doc (doesn't start moving until phase=play)
+        await setDoc(
+          myDocRef,
+          {
+            name: username,
+            x: 0,
+            z: 0,
+            yaw: 0,
+            alive: true,
+            deadUntil: 0,
+            updatedAt: Date.now(),
+          },
+          { merge: true },
+        );
+      }
+
+      function listenLobby() {
+        onSnapshot(lobbyRef, async (snap) => {
+          if (!snap.exists()) return;
+          const d = snap.data();
+          stoney = d.stoney;
+          if (!stoney) return;
+
+          phase = stoney.phase || "setup";
+          winner = stoney.winner || null;
+          winnerName = stoney.winnerName || null;
+          gameStartAt = Number(stoney.startAt || 0);
+          gameEndAt = Number(stoney.endAt || 0);
+
+          crown = stoney.crown || null;
+          carrier = stoney.carrier || null;
+          iHaveCrown = carrier === username;
+
+          if (stoney.lastEventAt && stoney.lastEventAt !== lastEventAt) {
+            lastEventAt = stoney.lastEventAt;
+            if (stoney.lastEvent) showToast(stoney.lastEvent, 2600);
+          }
+
+          if (!maze && typeof stoney.seed === "number") {
+            maze = makeMaze(stoney.w, stoney.h, stoney.seed);
+          }
+
+          // Update HUD text
+          if (phase === "setup") {
+            const t = Math.max(0, (stoney.setupDeadline || 0) - Date.now());
+            timerText.textContent = `Setup ${Math.ceil(t / 1000)}s`;
+            crownText.textContent = "Not placed";
+            centerMsg.style.display = "block";
+            lockBtn.style.display = "none";
+          } else if (phase === "play") {
+            const t = Math.max(0, (gameEndAt || 0) - Date.now());
+            const mm = Math.floor(t / 60000),
+              ss = Math.floor((t % 60000) / 1000);
+            timerText.textContent = `${mm}m ${ss}s`;
+            crownText.textContent = iHaveCrown
+              ? "You have it!"
+              : carrier
+                ? `Carried by ${carrier}`
+                : "On ground";
+            centerMsg.style.display = pointerLocked ? "none" : "block";
+            lockBtn.style.display = pointerLocked ? "none" : "block";
+            lockBtn.textContent = "Click to Play";
+            lockBtn.onclick = requestLock;
+
+            if (!amReadyToRender && maze) {
+              amReadyToRender = true;
+              buildWorldFromMaze();
+              showToast("The dungeon opens…", 2000);
+            }
+          } else if (phase === "ended") {
+            timerText.textContent = "Ended";
+            crownText.textContent = "—";
+            centerMsg.style.display = "block";
+            lockBtn.style.display = "none";
+            centerMsg.querySelector("div").textContent =
+              winner === "players"
+                ? `🏆 Players win! ${winnerName || "Someone"} escaped with the crown.`
+                : `😈 Dungeon Master wins! Time ran out.`;
+          }
+
+          // If time is up and not ended, any client can finalize (best-effort)
+          if (
+            phase === "play" &&
+            gameEndAt &&
+            Date.now() > gameEndAt + 200 &&
+            !winner
+          ) {
+            try {
+              await updateDoc(lobbyRef, {
+                "stoney.phase": "ended",
+                "stoney.winner": "dm",
+                "stoney.winnerName": d.dm || "Dungeon Master",
+                "stoney.lastEvent": "Time is up. The Dungeon Master wins!",
+                "stoney.lastEventAt": Date.now(),
+              });
+            } catch (e) {}
+          }
+        });
+      }
+
+      function listenPlayers() {
+        onSnapshot(playersCol, (snap) => {
+          const now = Date.now();
+
+          // mark seen
+          const seen = new Set();
+          snap.forEach((docSnap) => {
+            const name = docSnap.id;
+            const v = docSnap.data();
+            seen.add(name);
+            if (name === username) return; // me
+
+            const tx = Number(v.x || 0),
+              tz = Number(v.z || 0);
+            const alive = v.alive !== false;
+            const deadUntil = Number(v.deadUntil || 0);
+
+            if (!others.has(name)) {
+              // create remote mesh
+              const g = new THREE.CapsuleGeometry(0.35, 0.9, 8, 14);
+              const m = new THREE.MeshStandardMaterial({
+                color: 0x60a5fa,
+                emissive: 0x0b3a7a,
+                emissiveIntensity: 0.55,
+                roughness: 0.8,
+              });
+              const mesh = new THREE.Mesh(g, m);
+              mesh.position.set(tx, 0.95, tz);
+              world.add(mesh);
+              others.set(name, {
+                mesh,
+                x: tx,
+                z: tz,
+                tx,
+                tz,
+                alive,
+                deadUntil,
+                lastSeen: now,
+              });
+            } else {
+              const o = others.get(name);
+              o.tx = tx;
+              o.tz = tz;
+              o.alive = alive;
+              o.deadUntil = deadUntil;
+              o.lastSeen = now;
+            }
+          });
+
+          // fade/remove missing
+          for (const [name, o] of others) {
+            if (seen.has(name)) continue;
+            if (now - o.lastSeen > 8000) {
+              world.remove(o.mesh);
+              others.delete(name);
+            }
+          }
+        });
+      }
+
+      function listenTraps() {
+        onSnapshot(trapsCol, (snap) => {
+          const now = Date.now();
+          const seen = new Set();
+          snap.forEach((docSnap) => {
+            const id = docSnap.id;
+            const v = docSnap.data();
+            const t = {
+              id,
+              type: v.type,
+              x: Number(v.x || 0),
+              z: Number(v.z || 0),
+              placedAt: Number(v.placedAt || 0),
+              expiresAt: Number(v.expiresAt || 0),
+              radius: Number(v.radius || 0),
+            };
+            seen.add(id);
+
+            // only keep unexpired
+            if (t.expiresAt && t.expiresAt < now) {
+              trapMap.delete(id);
+              removeTrapMesh(id);
+              return;
+            }
+
+            trapMap.set(id, t);
+            ensureTrapMesh(t);
+          });
+
+          // remove disappeared
+          for (const [id, t] of trapMap) {
+            if (seen.has(id)) continue;
+            trapMap.delete(id);
+            removeTrapMesh(id);
+          }
+        });
+      }
+
+      // --- Crown interactions (best-effort authoritative) ---
+      async function tryPickupCrown() {
+        if (!crown || carrier) return;
+        const dx = me.x - crown.x,
+          dz = me.z - crown.z;
+        if (dx * dx + dz * dz > 1.6 * 1.6) return;
+
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s) return;
+            if (s.carrier) return; // someone else already got it
+            tx.update(lobbyRef, {
+              "stoney.carrier": username,
+              "stoney.lastEvent": `👑 ${username} grabbed the crown!`,
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch (e) {}
+      }
+
+      async function dropCrownAt(x, z, reason) {
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s) return;
+            if (s.carrier !== username) return;
+            tx.update(lobbyRef, {
+              "stoney.carrier": null,
+              "stoney.crown": { x, z },
+              "stoney.lastEvent": `💥 ${username} dropped the crown (${reason}).`,
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch (e) {}
+      }
+
+      // --- Death / Respawn ---
+      async function killMe(reason) {
+        if (!alive) return;
+        alive = false;
+        deadUntil = Date.now() + RESPAWN_MS;
+
+        overlayDead.style.opacity = "1";
+        showToast(`💀 You were caught (${reason}). Respawn in 15s.`, 2200);
+
+        if (iHaveCrown) {
+          await dropCrownAt(me.x, me.z, reason);
+        }
+
+        try {
+          await setDoc(
+            myDocRef,
+            {
+              alive: false,
+              deadUntil,
+              updatedAt: Date.now(),
+            },
+            { merge: true },
+          );
+        } catch (e) {}
+      }
+
+      function respawnIfReady() {
+        if (alive) return;
+        if (Date.now() < deadUntil) return;
+
+        // respawn at entrance room
+        const cellSize = stoney.cellSize;
+        const m = maze;
+        const ox = (-m.w * cellSize) / 2;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMaxZ = oz + m.h * cellSize;
+        const ent = cellCenterWorld(m, cellSize, m.entrance.x, m.entrance.y);
+
+        me.x = ent.x;
+        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
+        me.vx = me.vz = me.vy = 0;
+        alive = true;
+        overlayDead.style.opacity = "0";
+        showToast("🟩 Respawned at entrance.", 1600);
+
+        setDoc(
+          myDocRef,
+          {
+            x: me.x,
+            z: me.z,
+            yaw: me.yaw,
+            alive: true,
+            deadUntil: 0,
+            updatedAt: Date.now(),
+          },
+          { merge: true },
+        ).catch(() => {});
+      }
+
+      // --- Win condition ---
+      async function checkEscapeWin() {
+        if (!iHaveCrown || phase !== "play" || winner) return;
+        const cellSize = stoney.cellSize;
+        const m = maze;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMaxZ = oz + m.h * cellSize;
+
+        // If player is in the entrance room area (outside maze boundary), win
+        if (me.z > mazeMaxZ + 1.8) {
+          try {
+            await updateDoc(lobbyRef, {
+              "stoney.phase": "ended",
+              "stoney.winner": "players",
+              "stoney.winnerName": username,
+              "stoney.lastEvent": `🏆 ${username} escaped with the crown! Players win!`,
+              "stoney.lastEventAt": Date.now(),
+            });
+          } catch (e) {}
         }
       }
-    });
-  }
 
-  function listenTraps(){
-    onSnapshot(trapsCol, (snap)=>{
-      const now=Date.now();
-      const seen = new Set();
-      snap.forEach(docSnap=>{
-        const id = docSnap.id;
-        const v = docSnap.data();
-        const t = {
-          id,
-          type: v.type,
-          x: Number(v.x||0),
-          z: Number(v.z||0),
-          placedAt: Number(v.placedAt||0),
-          expiresAt: Number(v.expiresAt||0),
-          radius: Number(v.radius||0)
-        };
-        seen.add(id);
+      // --- Local sim: update enemies and hazards ---
+      function nearestAlivePlayerPos(ex, ez) {
+        // include me + others (use their target positions)
+        let best = null,
+          bestD = 1e18;
 
-        // only keep unexpired
-        if(t.expiresAt && t.expiresAt < now){
-          trapMap.delete(id);
-          removeTrapMesh(id);
+        if (alive) {
+          const d = (me.x - ex) * (me.x - ex) + (me.z - ez) * (me.z - ez);
+          bestD = d;
+          best = { x: me.x, z: me.z };
+        }
+        for (const [name, o] of others) {
+          const isAlive = o.alive && (o.deadUntil || 0) < Date.now();
+          if (!isAlive) continue;
+          const px = o.tx,
+            pz = o.tz;
+          const d = (px - ex) * (px - ex) + (pz - ez) * (pz - ez);
+          if (d < bestD) {
+            bestD = d;
+            best = { x: px, z: pz };
+          }
+        }
+        return best;
+      }
+
+      function tickTraps(dt) {
+        const now = Date.now();
+        let fogOn = false;
+
+        for (const [id, t] of trapMap) {
+          if (t.expiresAt && t.expiresAt < now) {
+            trapMap.delete(id);
+            removeTrapMesh(id);
+            continue;
+          }
+
+          const e = ensureTrapMesh(t);
+          if (!e) continue;
+
+          if (t.type === "fog") {
+            const dx = me.x - t.x,
+              dz = me.z - t.z;
+            if (dx * dx + dz * dz < FOG_RADIUS * FOG_RADIUS) fogOn = true;
+            continue;
+          }
+
+          if (t.type === "fire") {
+            // pulse
+            e.mesh.scale.setScalar(1.0 + 0.15 * Math.sin(now * 0.012));
+            if (alive) {
+              const dx = me.x - t.x,
+                dz = me.z - t.z;
+              if (dx * dx + dz * dz < FIRE_KILL_RADIUS * FIRE_KILL_RADIUS) {
+                killMe("fire");
+              }
+            }
+            continue;
+          }
+
+          if (t.type === "ghost" || t.type === "demon") {
+            // bob + chase nearest player
+            e.bob = (e.bob || 0) + dt * 3.2;
+            e.mesh.position.y = 1.1 + Math.sin(e.bob) * 0.12;
+
+            const target = nearestAlivePlayerPos(
+              e.mesh.position.x,
+              e.mesh.position.z,
+            );
+            if (!target) continue;
+
+            const dx = target.x - e.mesh.position.x;
+            const dz = target.z - e.mesh.position.z;
+            const len = Math.hypot(dx, dz) || 1;
+            const sp =
+              t.type === "demon" ? ENEMY.demon.speed : ENEMY.ghost.speed;
+
+            const nx = e.mesh.position.x + (dx / len) * sp * dt;
+            const nz = e.mesh.position.z + (dz / len) * sp * dt;
+
+            // simple wall avoidance: don't move into walls
+            if (!hitsWall(nx, nz)) {
+              e.mesh.position.x = nx;
+              e.mesh.position.z = nz;
+            } else {
+              // try sliding
+              if (!hitsWall(nx, e.mesh.position.z)) e.mesh.position.x = nx;
+              else if (!hitsWall(e.mesh.position.x, nz)) e.mesh.position.z = nz;
+            }
+
+            if (alive) {
+              const k =
+                t.type === "demon"
+                  ? ENEMY.demon.killDist
+                  : ENEMY.ghost.killDist;
+              const ddx = me.x - e.mesh.position.x,
+                ddz = me.z - e.mesh.position.z;
+              if (ddx * ddx + ddz * ddz < k * k) {
+                killMe(t.type);
+              }
+            }
+          }
+        }
+
+        overlayFog.style.opacity = fogOn ? "1" : "0";
+      }
+
+      // --- Movement / camera update ---
+      function tickMove(dt) {
+        if (phase !== "play") return;
+
+        if (!alive) {
+          respawnIfReady();
           return;
         }
 
-        trapMap.set(id, t);
-        ensureTrapMesh(t);
-      });
+        // movement input (desktop)
+        const forward = keys["w"] || keys["arrowup"] ? 1 : 0;
+        const back = keys["s"] || keys["arrowdown"] ? 1 : 0;
+        const left = keys["a"] || keys["arrowleft"] ? 1 : 0;
+        const right = keys["d"] || keys["arrowright"] ? 1 : 0;
 
-      // remove disappeared
-      for(const [id,t] of trapMap){
-        if(seen.has(id)) continue;
-        trapMap.delete(id);
-        removeTrapMesh(id);
-      }
-    });
-  }
+        const sprint = !!keys["shift"];
+        const speed = sprint ? 5.4 : 3.9;
 
-  // --- Crown interactions (best-effort authoritative) ---
-  async function tryPickupCrown(){
-    if(!crown || carrier) return;
-    const dx = me.x - crown.x, dz = me.z - crown.z;
-    if(dx*dx + dz*dz > 1.6*1.6) return;
+        let mx = right - left;
+        let mz = forward - back;
 
-    try{
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(lobbyRef);
-        if(!snap.exists()) return;
-        const d = snap.data();
-        const s = d.stoney;
-        if(!s) return;
-        if(s.carrier) return; // someone else already got it
-        tx.update(lobbyRef, {
-          "stoney.carrier": username,
-          "stoney.lastEvent": `👑 ${username} grabbed the crown!`,
-          "stoney.lastEventAt": Date.now()
-        });
-      });
-    }catch(e){}
-  }
+        if (mobile.enabled) {
+          const turnRate = 2.2;
+          const steering = mobile.active ? mobile.turn : 0;
+          me.yaw -= steering * turnRate * dt;
+          mx = 0;
+          mz = mobile.active ? mobile.forward : 0;
+        }
 
-  async function dropCrownAt(x,z, reason){
-    try{
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(lobbyRef);
-        if(!snap.exists()) return;
-        const d = snap.data();
-        const s = d.stoney;
-        if(!s) return;
-        if(s.carrier !== username) return;
-        tx.update(lobbyRef, {
-          "stoney.carrier": null,
-          "stoney.crown": { x, z },
-          "stoney.lastEvent": `💥 ${username} dropped the crown (${reason}).`,
-          "stoney.lastEventAt": Date.now()
-        });
-      });
-    }catch(e){}
-  }
+        const mlen = Math.hypot(mx, mz);
+        if (mlen > 0) {
+          mx /= mlen;
+          mz /= mlen;
+        }
 
-  // --- Death / Respawn ---
-  async function killMe(reason){
-    if(!alive) return;
-    alive=false;
-    deadUntil = Date.now() + RESPAWN_MS;
+        // rotate by yaw
+        const sy = Math.sin(me.yaw),
+          cy = Math.cos(me.yaw);
+        const vx = (mx * cy + mz * sy) * speed;
+        const vz = (mz * cy - mx * sy) * speed;
 
-    overlayDead.style.opacity = "1";
-    showToast(`💀 You were caught (${reason}). Respawn in 15s.`, 2200);
+        // accel + friction
+        const accel = 18;
+        me.vx += (vx - me.vx) * Math.min(1, accel * dt);
+        me.vz += (vz - me.vz) * Math.min(1, accel * dt);
 
-    if(iHaveCrown){
-      await dropCrownAt(me.x, me.z, reason);
-    }
+        // tiny jump
+        if (keys[" "] && me.grounded) {
+          me.vy = 3.6;
+          me.grounded = false;
+        }
 
-    try{
-      await setDoc(myDocRef, {
-        alive:false,
-        deadUntil,
-        updatedAt: Date.now()
-      }, { merge:true });
-    }catch(e){}
-  }
+        // gravity
+        me.vy -= 10.5 * dt;
+        me.y += me.vy * dt;
+        if (me.y <= PLAYER_H) {
+          me.y = PLAYER_H;
+          me.vy = 0;
+          me.grounded = true;
+        }
 
-  function respawnIfReady(){
-    if(alive) return;
-    if(Date.now() < deadUntil) return;
+        // attempt move with collision
+        let nx = me.x + me.vx * dt;
+        let nz = me.z + me.vz * dt;
 
-    // respawn at entrance room
-    const cellSize = stoney.cellSize;
-    const m = maze;
-    const ox = -m.w*cellSize/2;
-    const oz = -m.h*cellSize/2;
-    const mazeMaxZ = oz + m.h*cellSize;
-    const ent = cellCenterWorld(m, cellSize, m.entrance.x, m.entrance.y);
+        // separate axis to allow sliding
+        if (!hitsWall(nx, me.z)) me.x = nx;
+        else me.vx = 0;
 
-    me.x = ent.x;
-    me.z = mazeMaxZ + ROOM_DEPTH*0.72;
-    me.vx = me.vz = me.vy = 0;
-    alive=true;
-    overlayDead.style.opacity = "0";
-    showToast("🟩 Respawned at entrance.", 1600);
+        if (!hitsWall(me.x, nz)) me.z = nz;
+        else me.vz = 0;
 
-    setDoc(myDocRef, {
-      x: me.x, z: me.z,
-      yaw: me.yaw,
-      alive:true,
-      deadUntil: 0,
-      updatedAt: Date.now()
-    }, { merge:true }).catch(()=>{});
-  }
-
-  // --- Win condition ---
-  async function checkEscapeWin(){
-    if(!iHaveCrown || phase!=="play" || winner) return;
-    const cellSize = stoney.cellSize;
-    const m = maze;
-    const oz = -m.h*cellSize/2;
-    const mazeMaxZ = oz + m.h*cellSize;
-
-    // If player is in the entrance room area (outside maze boundary), win
-    if(me.z > mazeMaxZ + 1.8){
-      try{
-        await updateDoc(lobbyRef, {
-          "stoney.phase":"ended",
-          "stoney.winner":"players",
-          "stoney.winnerName": username,
-          "stoney.lastEvent": `🏆 ${username} escaped with the crown! Players win!`,
-          "stoney.lastEventAt": Date.now()
-        });
-      }catch(e){}
-    }
-  }
-
-  // --- Local sim: update enemies and hazards ---
-  function nearestAlivePlayerPos(ex,ez){
-    // include me + others (use their target positions)
-    let best=null, bestD=1e18;
-
-    if(alive){
-      const d = (me.x-ex)*(me.x-ex) + (me.z-ez)*(me.z-ez);
-      bestD=d; best={x:me.x, z:me.z};
-    }
-    for(const [name,o] of others){
-      const isAlive = o.alive && (o.deadUntil||0) < Date.now();
-      if(!isAlive) continue;
-      const px = o.tx, pz = o.tz;
-      const d = (px-ex)*(px-ex) + (pz-ez)*(pz-ez);
-      if(d<bestD){ bestD=d; best={x:px, z:pz}; }
-    }
-    return best;
-  }
-
-  function tickTraps(dt){
-    const now = Date.now();
-    let fogOn = false;
-
-    for(const [id,t] of trapMap){
-      if(t.expiresAt && t.expiresAt < now){
-        trapMap.delete(id);
-        removeTrapMesh(id);
-        continue;
+        // camera transform
+        camera.position.set(me.x, me.y, me.z);
+        camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
       }
 
-      const e = ensureTrapMesh(t);
-      if(!e) continue;
-
-      if(t.type==="fog"){
-        const dx = me.x - t.x, dz = me.z - t.z;
-        if(dx*dx + dz*dz < (FOG_RADIUS*FOG_RADIUS)) fogOn = true;
-        continue;
+      // --- Other players interpolation ---
+      function tickOthers(dt) {
+        for (const [name, o] of others) {
+          const isAlive = o.alive && (o.deadUntil || 0) < Date.now();
+          o.mesh.visible = isAlive;
+          // gentle interpolation (stuttery updates are fine per your request)
+          o.x += (o.tx - o.x) * Math.min(1, dt * 6);
+          o.z += (o.tz - o.z) * Math.min(1, dt * 6);
+          o.mesh.position.set(o.x, 0.95, o.z);
+        }
       }
 
-      if(t.type==="fire"){
-        // pulse
-        e.mesh.scale.setScalar(1.0 + 0.15*Math.sin(now*0.012));
-        if(alive){
-          const dx = me.x - t.x, dz = me.z - t.z;
-          if(dx*dx + dz*dz < FIRE_KILL_RADIUS*FIRE_KILL_RADIUS){
-            killMe("fire");
+      // --- Crown visuals ---
+      function tickCrown(dt) {
+        if (!crownMesh) return;
+
+        if (phase !== "play") {
+          crownMesh.visible = false;
+          return;
+        }
+
+        if (carrier) {
+          // carried: attach above carrier’s head (approx)
+          if (carrier === username) {
+            crownMesh.visible = true;
+            crownMesh.position.set(me.x, PLAYER_H + 0.55, me.z);
+          } else {
+            const o = others.get(carrier);
+            if (o && o.mesh.visible) {
+              crownMesh.visible = true;
+              crownMesh.position.set(o.x, 1.9, o.z);
+            } else {
+              crownMesh.visible = false;
+            }
           }
-        }
-        continue;
-      }
+        } else if (crown) {
+          crownMesh.visible = true;
+          crownMesh.position.set(crown.x, 1.0, crown.z);
+          crownMesh.rotation.y += dt * 1.6;
+          crownMesh.position.y =
+            1.0 + Math.sin(performance.now() * 0.003) * 0.1;
 
-      if(t.type==="ghost" || t.type==="demon"){
-        // bob + chase nearest player
-        e.bob = (e.bob||0) + dt*3.2;
-        e.mesh.position.y = 1.1 + Math.sin(e.bob)*0.12;
-
-        const target = nearestAlivePlayerPos(e.mesh.position.x, e.mesh.position.z);
-        if(!target) continue;
-
-        const dx = target.x - e.mesh.position.x;
-        const dz = target.z - e.mesh.position.z;
-        const len = Math.hypot(dx,dz) || 1;
-        const sp = (t.type==="demon") ? ENEMY.demon.speed : ENEMY.ghost.speed;
-
-        const nx = e.mesh.position.x + (dx/len)*sp*dt;
-        const nz = e.mesh.position.z + (dz/len)*sp*dt;
-
-        // simple wall avoidance: don't move into walls
-        if(!hitsWall(nx,nz)){
-          e.mesh.position.x = nx;
-          e.mesh.position.z = nz;
+          // pickup attempt
+          tryPickupCrown();
         } else {
-          // try sliding
-          if(!hitsWall(nx, e.mesh.position.z)) e.mesh.position.x = nx;
-          else if(!hitsWall(e.mesh.position.x, nz)) e.mesh.position.z = nz;
-        }
-
-        if(alive){
-          const k = (t.type==="demon") ? ENEMY.demon.killDist : ENEMY.ghost.killDist;
-          const ddx = me.x - e.mesh.position.x, ddz = me.z - e.mesh.position.z;
-          if(ddx*ddx + ddz*ddz < k*k){
-            killMe(t.type);
-          }
+          crownMesh.visible = false;
         }
       }
-    }
 
-    overlayFog.style.opacity = fogOn ? "1" : "0";
-  }
+      // --- Network: update my position once per second ---
+      async function postMyPosition() {
+        if (!myDocRef) return;
+        if (phase !== "play") return;
 
-  // --- Movement / camera update ---
-  function tickMove(dt){
-    if(phase!=="play") return;
-
-    if(!alive){
-      respawnIfReady();
-      return;
-    }
-
-    // movement input
-    const forward = (keys["w"]||keys["arrowup"]) ? 1 : 0;
-    const back    = (keys["s"]||keys["arrowdown"]) ? 1 : 0;
-    const left    = (keys["a"]||keys["arrowleft"]) ? 1 : 0;
-    const right   = (keys["d"]||keys["arrowright"]) ? 1 : 0;
-
-    const sprint = !!keys["shift"];
-    const speed = sprint ? 5.4 : 3.9;
-
-    let mx = (right - left);
-    let mz = (forward - back);
-    const mlen = Math.hypot(mx,mz);
-    if(mlen>0){ mx/=mlen; mz/=mlen; }
-
-    // rotate by yaw
-    const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
-    const vx = (mx*cy + mz*sy) * speed;
-    const vz = (mz*cy - mx*sy) * speed;
-
-    // accel + friction
-    const accel = 18;
-    me.vx += (vx - me.vx) * Math.min(1, accel*dt);
-    me.vz += (vz - me.vz) * Math.min(1, accel*dt);
-
-    // tiny jump
-    if(keys[" "] && me.grounded){
-      me.vy = 3.6;
-      me.grounded=false;
-    }
-
-    // gravity
-    me.vy -= 10.5*dt;
-    me.y += me.vy*dt;
-    if(me.y <= PLAYER_H){
-      me.y = PLAYER_H;
-      me.vy = 0;
-      me.grounded=true;
-    }
-
-    // attempt move with collision
-    let nx = me.x + me.vx*dt;
-    let nz = me.z + me.vz*dt;
-
-    // separate axis to allow sliding
-    if(!hitsWall(nx, me.z)) me.x = nx;
-    else me.vx = 0;
-
-    if(!hitsWall(me.x, nz)) me.z = nz;
-    else me.vz = 0;
-
-    // camera transform
-    camera.position.set(me.x, me.y, me.z);
-    camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
-  }
-
-  // --- Other players interpolation ---
-  function tickOthers(dt){
-    for(const [name,o] of others){
-      const isAlive = o.alive && (o.deadUntil||0) < Date.now();
-      o.mesh.visible = isAlive;
-      // gentle interpolation (stuttery updates are fine per your request)
-      o.x += (o.tx - o.x) * Math.min(1, dt*6);
-      o.z += (o.tz - o.z) * Math.min(1, dt*6);
-      o.mesh.position.set(o.x, 0.95, o.z);
-    }
-  }
-
-  // --- Crown visuals ---
-  function tickCrown(dt){
-    if(!crownMesh) return;
-
-    if(phase!=="play"){
-      crownMesh.visible=false;
-      return;
-    }
-
-    if(carrier){
-      // carried: attach above carrier’s head (approx)
-      if(carrier === username){
-        crownMesh.visible=true;
-        crownMesh.position.set(me.x, PLAYER_H + 0.55, me.z);
-      } else {
-        const o = others.get(carrier);
-        if(o && o.mesh.visible){
-          crownMesh.visible=true;
-          crownMesh.position.set(o.x, 1.9, o.z);
-        } else {
-          crownMesh.visible=false;
-        }
+        try {
+          await setDoc(
+            myDocRef,
+            {
+              x: me.x,
+              z: me.z,
+              yaw: me.yaw,
+              alive,
+              deadUntil: alive ? 0 : deadUntil,
+              updatedAt: Date.now(),
+            },
+            { merge: true },
+          );
+        } catch (e) {}
       }
-    } else if(crown){
-      crownMesh.visible=true;
-      crownMesh.position.set(crown.x, 1.0, crown.z);
-      crownMesh.rotation.y += dt*1.6;
-      crownMesh.position.y = 1.0 + Math.sin(performance.now()*0.003)*0.10;
 
-      // pickup attempt
-      tryPickupCrown();
-    } else {
-      crownMesh.visible=false;
-    }
-  }
+      // --- Resize ---
+      addEventListener("resize", () => {
+        renderer.setSize(innerWidth, innerHeight);
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+      });
 
-  // --- Network: update my position once per second ---
-  async function postMyPosition(){
-    if(!myDocRef) return;
-    if(phase!=="play") return;
+      // --- Main loop ---
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
 
-    try{
-      await setDoc(myDocRef, {
-        x: me.x,
-        z: me.z,
-        yaw: me.yaw,
-        alive,
-        deadUntil: alive ? 0 : deadUntil,
-        updatedAt: Date.now()
-      }, { merge:true });
-    }catch(e){}
-  }
+        // timer HUD
+        if (phase === "play" && gameEndAt) {
+          const t = Math.max(0, gameEndAt - Date.now());
+          const mm = Math.floor(t / 60000),
+            ss = Math.floor((t % 60000) / 1000);
+          timerText.textContent = `${mm}m ${ss}s`;
+        }
 
-  // --- Resize ---
-  addEventListener("resize", ()=>{
-    renderer.setSize(innerWidth, innerHeight);
-    camera.aspect = innerWidth/innerHeight;
-    camera.updateProjectionMatrix();
-  });
+        tickMove(dt);
+        tickOthers(dt);
+        tickTraps(dt);
+        tickCrown(dt);
 
-  // --- Main loop ---
-  let last = performance.now();
-  function loop(now){
-    const dt = Math.min(0.033, (now-last)/1000);
-    last = now;
+        if (alive) {
+          checkEscapeWin();
+        }
 
-    // timer HUD
-    if(phase==="play" && gameEndAt){
-      const t = Math.max(0, gameEndAt - Date.now());
-      const mm = Math.floor(t/60000), ss = Math.floor((t%60000)/1000);
-      timerText.textContent = `${mm}m ${ss}s`;
-    }
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
 
-    tickMove(dt);
-    tickOthers(dt);
-    tickTraps(dt);
-    tickCrown(dt);
+      // --- Click to lock (only during play) ---
+      renderer.domElement.addEventListener("click", () => {
+        if (phase === "play" && !pointerLocked) requestLock();
+      });
 
-    if(alive){
-      checkEscapeWin();
-    }
+      // --- Boot ---
+      async function boot() {
+        if (!gameId || !username) {
+          centerMsg.querySelector("div").textContent =
+            "Missing gameId/username.";
+          return;
+        }
+        await ensurePlayerDoc();
+        listenLobby();
+        listenPlayers();
+        listenTraps();
 
-    renderer.render(scene, camera);
-    requestAnimationFrame(loop);
-  }
+        // send positions every second (as requested: “skip along slowly”)
+        setInterval(postMyPosition, 1000);
 
-  // --- Click to lock (only during play) ---
-  renderer.domElement.addEventListener("click", ()=>{
-    if(phase==="play" && !pointerLocked) requestLock();
-  });
+        requestAnimationFrame(loop);
+      }
 
-  // --- Boot ---
-  async function boot(){
-    if(!gameId || !username){
-      centerMsg.querySelector("div").textContent = "Missing gameId/username.";
-      return;
-    }
-    await ensurePlayerDoc();
-    listenLobby();
-    listenPlayers();
-    listenTraps();
-
-    // send positions every second (as requested: “skip along slowly”)
-    setInterval(postMyPosition, 1000);
-
-    requestAnimationFrame(loop);
-  }
-
-  signInAnonymously(auth).catch(()=>{});
-  onAuthStateChanged(auth, (user)=>{
-    if(!user){
-      centerMsg.querySelector("div").textContent = "Auth failed.";
-      return;
-    }
-    authReady=true;
-    boot().catch(e=>{
-      centerMsg.querySelector("div").textContent = "Error loading game.";
-      showToast("Error: " + (e?.message||"unknown"));
-    });
-  });
-</script>
-</body>
+      signInAnonymously(auth).catch(() => {});
+      onAuthStateChanged(auth, (user) => {
+        if (!user) {
+          centerMsg.querySelector("div").textContent = "Auth failed.";
+          return;
+        }
+        authReady = true;
+        boot().catch((e) => {
+          centerMsg.querySelector("div").textContent = "Error loading game.";
+          showToast("Error: " + (e?.message || "unknown"));
+        });
+      });
+    </script>
+  </body>
 </html>
