@@ -1642,8 +1642,8 @@ function showModal({title, sub="", bodyNodes=[], actions=[], dismissible=true, h
   const closeBtn=document.getElementById("modalX");
   modalState = { dismissible };
   clearTimeout(remotePromptTimer);
-  const autoPrompt = !isLocalTurn() && actions.length > 0;
-  const autoMs = Number.isFinite(autoActionMs) ? autoActionMs : (autoPrompt ? 20000 : null);
+  const autoPrompt = isLocalTurn() && actions.length > 0;
+  const autoMs = Number.isFinite(autoActionMs) ? (isLocalTurn() ? autoActionMs : null) : (autoPrompt ? 20000 : null);
   const subText = autoMs ? `${sub ? sub + " • " : ""}Auto-select in ${Math.ceil(autoMs/1000)}s.` : sub;
   document.getElementById("modalTitle").textContent=title;
   document.getElementById("modalSub").textContent=subText;
@@ -2038,7 +2038,7 @@ function renderHand(){
     const b=document.createElement("button");
     b.className="btn primary";
     b.textContent="Play";
-    b.onclick=()=>attemptPlayFromHand(i);
+    b.onclick=()=>attemptPlayFromHand(ci.u);
     b.disabled = !isLocalTurn() || G.actionLock;
     act.appendChild(b);
 
@@ -2135,10 +2135,11 @@ function payCost(p, cost){
   }
 }
 
-function attemptPlayFromHand(handIdx){
+function attemptPlayFromHand(cardUid){
   if(!isLocalTurn() || G.actionLock || G.turnSummary) return;
   const p=curP();
-  const ci=p.hand[handIdx];
+  const handIdx = p.hand.findIndex(card=>card && card.u===cardUid);
+  const ci= handIdx>=0 ? p.hand[handIdx] : null;
   if(!ci){
     log(`❌ <b>${p.name}</b> tried to play a missing hand card. Please try again.`);
     renderAll();
@@ -2193,7 +2194,7 @@ function attemptPlayFromHand(handIdx){
     btn.disabled = !ok;
     btn.onclick=()=>{
       closeModal();
-      doPlayCard(p, handIdx, rowName);
+      doPlayCard(cardUid, rowName);
     };
 
     choice.appendChild(h);
@@ -2213,17 +2214,35 @@ function attemptPlayFromHand(handIdx){
   });
 }
 
-function doPlayCard(p, handIdx, rowName){
+function doPlayCard(cardUid, rowName){
+  const p=curP();
   ensureTurnSummary(`Play Card (${rowName})`);
-  const ci=p.hand.splice(handIdx,1)[0];
+  const handIdx = p.hand.findIndex(card=>card && card.u===cardUid);
+  if(handIdx<0){
+    log(`❌ <b>${p.name}</b> could not play a card because it was not found in hand.`);
+    renderAll();
+    return;
+  }
+  if(!p.tableau[rowName] || p.tableau[rowName].length >= p.unlocked || p.tableau[rowName].length >= 7){
+    log(`❌ <b>${p.name}</b> cannot play into <b>${rowName}</b> because the row is full.`);
+    renderAll();
+    return;
+  }
+  const ci=p.hand[handIdx];
   if(!ci){
     log(`❌ <b>${p.name}</b> could not play a card because it was not found in hand.`);
     renderAll();
     return;
   }
   const d=instToDef(ci);
+  if(!canAfford(p, d.cost||{})){
+    log(`❌ <b>${p.name}</b> cannot afford <b>${d.name}</b> anymore.`);
+    renderAll();
+    return;
+  }
 
   // pay cost
+  p.hand.splice(handIdx,1);
   payCost(p, d.cost||{});
   p.tableau[rowName].push(ci);
 
@@ -3594,10 +3613,14 @@ async function bootstrapFromLobby(){
     if(!snap.exists) return;
     const data = snap.data() || {};
     if(!data.game) return;
+    const prevCurrent = G && Number.isFinite(G.currentPlayer) ? G.currentPlayer : null;
     lastSyncedSignature = JSON.stringify(data.game);
     suppressSync = true;
     G = data.game;
     suppressSync = false;
+    if(prevCurrent !== G.currentPlayer){
+      forceCloseModal();
+    }
     renderAll();
   }, (err)=>{
     console.error("State listener failed", err);
