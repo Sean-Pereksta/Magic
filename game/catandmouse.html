@@ -3805,7 +3805,7 @@
 
     // power ramp
     setInterval(async () => {
-      if (!gameStarted) return;
+      if (!isHost || !gameStarted) return;
 
       catPower++;
       const playerCount = Object.keys(players).length;
@@ -3829,12 +3829,14 @@
 
     // rat power ramp
     setInterval(async () => {
+      if (!isHost) return;
       ratPower++;
       await updateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
     }, 120000);
 
     // flea nests spawn fleas (now actually writes them, so everyone sees)
     setInterval(async () => {
+      if (!isHost) return;
       // count nests and spawn fleas in Firestore
       for (let y=0; y<gridSize; y++){
         for (let x=0; x<gridSize; x++){
@@ -3884,7 +3886,7 @@
 
     // termites spawn center
     setInterval(async () => {
-      if (!gameStarted || catPower <= 0) return;
+      if (!isHost || !gameStarted || catPower <= 0) return;
 
       const centerX = Math.floor(gridSize/2);
       const centerY = Math.floor(gridSize/2);
@@ -3916,7 +3918,7 @@
 
     // late game vultures (after oxen phase)
     setInterval(async () => {
-      if (!gameStarted || catPower < 25) return;
+      if (!isHost || !gameStarted || catPower < 25) return;
       const desired = Math.min(6, 1 + Math.floor((catPower - 25) / 6));
       const living = vultures.filter(v => (v.health ?? 0) > 0).length;
       const toSpawn = Math.max(0, desired - living);
@@ -3939,8 +3941,10 @@
 
     // enemy sim ticks
     const scheduleRatTick = () => {
+      if (!isHost) return;
       const ratTickMs = Math.max(550, 1050 - (catPower * 12));
       setTimeout(async () => {
+        if (!isHost) return;
         await hostMoveRats().catch(()=>{});
         scheduleRatTick();
       }, ratTickMs);
