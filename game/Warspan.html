@@ -984,6 +984,50 @@ const CardDB = [
     onPlay:[{type:"bonus", pts:1}],
     onActivate:{ Raid:[{type:"stealChosenIfRich"}] }
   },
+  {
+    id:"spyNetwork",
+    name:"Spy Network",
+    tags:["Raider","Support"],
+    allowed:["Raid","Recruit"],
+    cost:{ stone:1, gold:1 },
+    points:5,
+    text:"On Raid: look at target hand; choose 1 card — they discard it or pay you 2 resources (their choice).",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidSpyDiscardOrPay", pay:2}] }
+  },
+  {
+    id:"supplyRaid",
+    name:"Supply Raid (Random)",
+    tags:["Raider"],
+    allowed:["Raid"],
+    cost:{ wheat:1, stone:1 },
+    points:4,
+    text:"On Raid: steal 1 random resource; if it was Stone or Gold, gain +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidStealRandomBonusOn", resources:["stone","gold"], pts:1}] }
+  },
+  {
+    id:"highwaymen",
+    name:"Highwaymen",
+    tags:["Raider","Infantry"],
+    allowed:["Raid"],
+    cost:{ wood:1, wheat:1, gold:1 },
+    points:5,
+    text:"On Raid: steal 1 random resource; if it was Gold, steal 1 more random resource.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"raidStealRandomThenExtraIf", res:"gold", extra:1}] }
+  },
+  {
+    id:"propagandist",
+    name:"Propagandist",
+    tags:["Raider","Support"],
+    allowed:["Raid","Recruit"],
+    cost:{ wheat:1, gold:1 },
+    points:4,
+    text:"On Raid: each opponent with 4+ cards in hand discards 1 random.",
+    onPlay:[],
+    onActivate:{ Raid:[{type:"eachOpponentDiscardIfHandAtLeast", need:4, n:1}] }
+  },
 
   // Train / Captains
   {
@@ -1065,6 +1109,28 @@ const CardDB = [
     onPlay:[{type:"eachOpponentDiscardRandom", n:1}],
     onActivate:{}
   },
+  {
+    id:"scorchedTrail",
+    name:"Scorched Trail",
+    tags:["Raider","Tactic"],
+    allowed:["Raid"],
+    cost:{ wood:1, stone:1, gold:1 },
+    points:6,
+    text:"On Play: each opponent loses 1 random resource.",
+    onPlay:[{type:"eachOpponentLoseRandomRes", n:1}],
+    onActivate:{}
+  },
+  {
+    id:"decoyCaravan",
+    name:"Decoy Caravan",
+    tags:["Defense","Support"],
+    allowed:["Recruit","Forage"],
+    cost:{ wood:2, wheat:1 },
+    points:4,
+    text:"Defense: the first time each round you are targeted by a Raid effect, cancel that Raid effect against you.",
+    onPlay:[],
+    onActivate:{}
+  },
 
   // Utility / economy
   {
@@ -1079,6 +1145,39 @@ const CardDB = [
     onActivate:{ Forage:[{type:"convert", from:"wood", to:"gold", amt:1}] }
   },
   {
+    id:"mineOperator",
+    name:"Mine Operator",
+    tags:["Worker","Forager","Support"],
+    allowed:["Forage","Recruit"],
+    cost:{ wheat:1, stone:1 },
+    points:5,
+    text:"On Forage: you may convert up to 2 resources → 2 Gold (1:1 each).",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"convertAnyToGold", max:2}] }
+  },
+  {
+    id:"granaryKeeper",
+    name:"Granary Keeper",
+    tags:["Worker","Support"],
+    allowed:["Forage","Recruit"],
+    cost:{ wood:1, wheat:1 },
+    points:4,
+    text:"On Play: store 1 resource on this card; stored resources can’t be stolen.",
+    onPlay:[{type:"storeProtected", amt:1}],
+    onActivate:{}
+  },
+  {
+    id:"stoneQuarryCrew",
+    name:"Stone Quarry Crew",
+    tags:["Worker","Builder","Forager"],
+    allowed:["Forage","Train"],
+    cost:{ wood:1, wheat:1 },
+    points:4,
+    text:"On Forage: gain +1 Stone, and if you have 2+ Workers, gain +1 Stone more.",
+    onPlay:[],
+    onActivate:{ Forage:[{type:"gain", res:"stone", amt:1},{type:"gainIfTagAtLeast", tag:"Worker", count:2, gain:{stone:1}}] }
+  },
+  {
     id:"alchemist",
     name:"Alchemist",
     tags:["Support"],
@@ -1088,6 +1187,28 @@ const CardDB = [
     text:"On Recruit: gain 1 random resource.",
     onPlay:[],
     onActivate:{ Recruit:[{type:"gainRandomRes", amt:1}] }
+  },
+  {
+    id:"quartermasterManager",
+    name:"Quartermaster (Market Manager)",
+    tags:["Support","Leader"],
+    allowed:["Recruit","Train"],
+    cost:{ wood:1, wheat:1, stone:1 },
+    points:6,
+    text:"On Recruit: look at top 3 of deck, replace up to 2 market cards with them.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"marketReplaceFromDeck", look:3, maxReplace:2}] }
+  },
+  {
+    id:"bountyBroker",
+    name:"Bounty Broker",
+    tags:["Support","Trader"],
+    allowed:["Recruit","Raid"],
+    cost:{ wheat:1, gold:1 },
+    points:4,
+    text:"On Recruit: if you recruited from the deck, gain +1 random resource.",
+    onPlay:[],
+    onActivate:{ Recruit:[{type:"gainRandomIfDeckRecruit", amt:1}] }
   },
   {
     id:"bannerman",
@@ -1123,6 +1244,28 @@ const CardDB = [
     text:"Captain. On Train: steal 1 random resource from a chosen opponent (if any).",
     onPlay:[],
     onActivate:{ Train:[{type:"stealRandomResOnTrain", n:1}] }
+  },
+  {
+    id:"bannerCaptain",
+    name:"Banner Captain",
+    tags:["Captain","Leader"],
+    allowed:["Train"],
+    cost:{ wood:1, stone:1, gold:1 },
+    points:6,
+    text:"Captain. On Train: if you unlocked a column this Train, draw 2 keep 1.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"trainDrawKeepIfUnlocked", draw:2, keep:1}] }
+  },
+  {
+    id:"engineerCaptain",
+    name:"Engineer Captain",
+    tags:["Captain","Leader","Builder"],
+    allowed:["Train"],
+    cost:{ wood:1, stone:2 },
+    points:6,
+    text:"Captain. On Train: gain +1 Stone; if you unlocked a column this Train, gain +1 bonus point.",
+    onPlay:[],
+    onActivate:{ Train:[{type:"gain", res:"stone", amt:1},{type:"bonusIfUnlockedThisTrain", pts:1}] }
   },
 
   // Simple filler troops
@@ -1222,9 +1365,12 @@ function makePlayer(name){
     unlocked:2,
     battlePts:0,
     bonusPts:0,
+    protectedRes:{ wood:0, wheat:0, stone:0, gold:0 },
     lastRecruitWasMarket:false,
+    lastRecruitUsedDeck:false,
     lastForageBaseGained:0,
     unlockedThisTrain:false,
+    _raidDeflectUsedRound:false,
   };
 }
 
@@ -1270,6 +1416,7 @@ function resetRoundTurns(){
   G.startingPlayer = (G.round-1) % G.players.length;
   G.currentPlayer = G.startingPlayer;
   G.lastActionSlot = { Forage:0, Recruit:0, Raid:0, Train:0 };
+  for(const p of G.players) p._raidDeflectUsedRound = false;
 }
 
 function refillMarketTo5(){
@@ -1307,6 +1454,16 @@ function countTag(p, tag){
 }
 function sumRes(p){
   return RES.reduce((s,k)=>s + (p.res[k]||0), 0);
+}
+function stealableResAmount(p, res){
+  const protectedAmt = ((p.protectedRes||{})[res]||0);
+  return Math.max(0, (p.res[res]||0) - protectedAmt);
+}
+function hasCardInTableau(p, cardId){
+  for(const r of ROWS){
+    for(const ci of p.tableau[r]) if(ci.id===cardId) return true;
+  }
+  return false;
 }
 function sumCardPoints(p){
   let s=0;
@@ -2027,6 +2184,61 @@ function runEffects(p, effects, ctx){
         }
       } break;
 
+      case "gainIfTagAtLeast":{
+        if(countTag(p, e.tag) >= (e.count||1)){
+          for(const k of Object.keys(e.gain||{})){
+            p.res[k]=(p.res[k]||0)+e.gain[k];
+            log(`✨ <b>${p.name}</b> gained ${RES_EMOJI[k]} <b>${e.gain[k]}</b> (${e.tag} condition).`);
+          }
+        }
+      } break;
+
+      case "convertAnyToGold":{
+        const max = Math.max(0, e.max||1);
+        const options = RES.filter(r=>r!=="gold" && (p.res[r]||0)>0);
+        const total = options.reduce((s,r)=>s+(p.res[r]||0),0);
+        if(total<=0 || max<=0) break;
+        let left = Math.min(max, total);
+        const convertStep = ()=>{
+          const usable = RES.filter(r=>r!=="gold" && (p.res[r]||0)>0);
+          if(left<=0 || usable.length===0){ renderAll(); return; }
+          const body=[];
+          const row=document.createElement("div");
+          row.className="row";
+          for(const r of usable){
+            const b=document.createElement("button");
+            b.className="btn";
+            b.textContent=`Convert 1 ${RES_EMOJI[r]} ${RES_LABEL[r]}`;
+            b.onclick=()=>{
+              p.res[r]--; p.res.gold=(p.res.gold||0)+1; left--;
+              closeModal();
+              log(`🔁 <b>${p.name}</b> converted ${RES_EMOJI[r]}1 → ${RES_EMOJI.gold}1.`);
+              convertStep();
+            };
+            row.appendChild(b);
+          }
+          body.push(row);
+          showModal({
+            title:`Mine Operator (${left} conversion${left===1?"":"s"} left)`,
+            sub:"Convert or stop.",
+            bodyNodes: body,
+            actions:[{label:"Done", onClick: ()=>{ closeModal(); renderAll(); }}]
+          });
+        };
+        convertStep();
+      } break;
+
+      case "storeProtected":{
+        const total = sumRes(p);
+        if(total<=0) break;
+        chooseResourceModal(`Store 1 protected resource on Granary Keeper`, (res)=>{
+          if((p.res[res]||0)<=0){ renderAll(); return; }
+          p.protectedRes[res]=(p.protectedRes[res]||0)+1;
+          log(`🛡️ <b>${p.name}</b> protected ${RES_EMOJI[res]} <b>1</b> from theft.`);
+          renderAll();
+        });
+      } break;
+
       case "modRecruit":{
         // applied on Recruit resolution (we store modifiers on player for the action)
         // We'll implement by attaching temporary fields on ctx object in doRecruit.
@@ -2043,6 +2255,17 @@ function runEffects(p, effects, ctx){
         p._bonusIfMarketRecruit = (p._bonusIfMarketRecruit||0) + (e.pts||1);
       } break;
 
+      case "gainRandomIfDeckRecruit":{
+        p._gainRandomIfDeckRecruit = (p._gainRandomIfDeckRecruit||0) + (e.amt||1);
+      } break;
+
+      case "marketReplaceFromDeck":{
+        p._marketReplaceFromDeck = {
+          look: Math.max(0, e.look||0),
+          maxReplace: Math.max(0, e.maxReplace||0)
+        };
+      } break;
+
       case "stealRandomRes":{
         // extra steal on Raid (handled during doRaid with a counter)
         p._extraRaidSteal = (p._extraRaidSteal||0) + (e.extra||1);
@@ -2054,6 +2277,26 @@ function runEffects(p, effects, ctx){
 
       case "targetDiscard":{
         p._raidTargetExtraDiscard = (p._raidTargetExtraDiscard||0) + (e.n||1);
+      } break;
+
+      case "eachOpponentDiscardIfHandAtLeast":{
+        p._raidEachOppDiscardIfHand = p._raidEachOppDiscardIfHand || [];
+        p._raidEachOppDiscardIfHand.push({ need:e.need||4, n:e.n||1 });
+      } break;
+
+      case "raidStealRandomBonusOn":{
+        p._raidStealRandomBonusOn = p._raidStealRandomBonusOn || [];
+        p._raidStealRandomBonusOn.push({ resources:e.resources||[], pts:e.pts||1 });
+      } break;
+
+      case "raidStealRandomThenExtraIf":{
+        p._raidRandomChain = p._raidRandomChain || [];
+        p._raidRandomChain.push({ res:e.res, extra:e.extra||1 });
+      } break;
+
+      case "raidSpyDiscardOrPay":{
+        p._raidSpyDiscardOrPay = p._raidSpyDiscardOrPay || [];
+        p._raidSpyDiscardOrPay.push({ pay:e.pay||2 });
       } break;
 
       case "eachOpponentDiscardRandom":{
@@ -2075,6 +2318,23 @@ function runEffects(p, effects, ctx){
 
       case "bonusIfUnlockedThisTrain":{
         p._bonusIfUnlockedThisTrain = (p._bonusIfUnlockedThisTrain||0) + (e.pts||1);
+      } break;
+
+      case "trainDrawKeepIfUnlocked":{
+        p._trainDrawKeepIfUnlocked = p._trainDrawKeepIfUnlocked || [];
+        p._trainDrawKeepIfUnlocked.push({ draw:e.draw||2, keep:e.keep||1 });
+      } break;
+
+      case "eachOpponentLoseRandomRes":{
+        for(let i=0;i<G.players.length;i++){
+          if(G.players[i]===p) continue;
+          const t=G.players[i];
+          const pool=RES.filter(r=>stealableResAmount(t,r)>0);
+          if(!pool.length) continue;
+          const res=pool[Math.floor(rng()*pool.length)];
+          t.res[res]--;
+          log(`🔥 <b>${t.name}</b> lost ${RES_EMOJI[res]} <b>1</b> from Scorched Trail.`);
+        }
       } break;
     }
   }
@@ -2123,9 +2383,13 @@ function chooseResourceModal(title, onPick){
    Action: Recruit
    ============================================================ */
 function doRecruit(p, slot){
-  // clear per-action modifiers
-  p._recruitMod = null;
-  p._bonusIfMarketRecruit = 0;
+  // modifiers are prepared by Recruit triggers right before this action
+  p._recruitMod = p._recruitMod || { addDraw:0, addKeep:0, thenRandomDiscard:0 };
+  p._bonusIfMarketRecruit = p._bonusIfMarketRecruit || 0;
+  p._gainRandomIfDeckRecruit = p._gainRandomIfDeckRecruit || 0;
+  p._marketReplaceFromDeck = p._marketReplaceFromDeck || null;
+  p.lastRecruitWasMarket = false;
+  p.lastRecruitUsedDeck = false;
 
   // Run triggers already happened before calling doRecruit; they may have set p._recruitMod.
   const baseDraw = (slot<=2) ? 1 : (slot===3) ? 2 : (slot===4) ? 2 : (slot===5) ? 3 : 3;
@@ -2223,6 +2487,7 @@ function doRecruit(p, slot){
         return;
       }
       picked.push(got);
+      p.lastRecruitUsedDeck = true;
       closeModal();
       renderAll();
       step++;
@@ -2250,10 +2515,25 @@ function doRecruit(p, slot){
   }
 
   function finalize(){
+    if(p._marketReplaceFromDeck && p._marketReplaceFromDeck.look>0 && p._marketReplaceFromDeck.maxReplace>0){
+      doRecruitMarketReplace(p, p._marketReplaceFromDeck.look, p._marketReplaceFromDeck.maxReplace);
+      return;
+    }
+    finalizeAfterMarketEffects();
+  }
+
+  function finalizeAfterMarketEffects(){
     // apply "bonus if market recruit"
     if(p.lastRecruitWasMarket && (p._bonusIfMarketRecruit||0)>0){
       p.bonusPts += p._bonusIfMarketRecruit;
       log(`🏅 <b>${p.name}</b> gained <b>+${p._bonusIfMarketRecruit}</b> bonus (market recruit).`);
+    }
+    if(p.lastRecruitUsedDeck && (p._gainRandomIfDeckRecruit||0)>0){
+      for(let i=0;i<p._gainRandomIfDeckRecruit;i++){
+        const r = RES[Math.floor(rng()*RES.length)];
+        p.res[r]=(p.res[r]||0)+1;
+        log(`🎁 <b>${p.name}</b> gained random ${RES_EMOJI[r]} <b>1</b> (deck recruit).`);
+      }
     }
     // discard random after recruit if a mod requested it
     const discN = (mod.thenRandomDiscard||0);
@@ -2265,7 +2545,62 @@ function doRecruit(p, slot){
       log(`🗑️ <b>${p.name}</b> discarded (post-recruit) <b>${instToDef(gone).name}</b>.`);
     }
     renderAll();
+    p._recruitMod = null;
+    p._bonusIfMarketRecruit = 0;
+    p._gainRandomIfDeckRecruit = 0;
+    p._marketReplaceFromDeck = null;
     endTurn();
+  }
+
+  function doRecruitMarketReplace(player, look, maxReplace){
+    const seen = drawFromDeck(look);
+    if(!seen.length){
+      finalizeAfterMarketEffects();
+      return;
+    }
+    const keep=[];
+    let replaced=0;
+    let idx=0;
+    const step=()=>{
+      if(idx>=seen.length || replaced>=maxReplace){
+        keep.push(...seen.slice(idx));
+        G.discard.push(...keep);
+        refillMarketTo5();
+        finalizeAfterMarketEffects();
+        return;
+      }
+      const ci=seen[idx];
+      const body=[];
+      const wrap=document.createElement("div");
+      wrap.className="choiceGrid";
+      for(let i=0;i<G.market.length;i++){
+        const box=document.createElement("div");
+        box.className="choice";
+        box.appendChild(cardNode(G.market[i]));
+        const b=document.createElement("button");
+        b.className="btn";
+        b.textContent=`Replace with ${instToDef(ci).name}`;
+        b.onclick=()=>{
+          const old=G.market[i];
+          G.market[i]=ci;
+          keep.push(old);
+          replaced++;
+          idx++;
+          closeModal();
+          step();
+        };
+        box.appendChild(b);
+        wrap.appendChild(box);
+      }
+      body.push(wrap);
+      showModal({
+        title:`Quartermaster: replace market? (${replaced}/${maxReplace})`,
+        sub:`Top-deck card: ${instToDef(ci).name}`,
+        bodyNodes: body,
+        actions:[{label:"Keep top card in discard", onClick:()=>{ keep.push(ci); idx++; closeModal(); step(); }}]
+      });
+    };
+    step();
   }
 
   stepPick();
@@ -2329,17 +2664,30 @@ function chooseKeepModal(cards, keepN, onDone){
    Action: Raid
    ============================================================ */
 function doRaid(p, slot){
-  // clear raid modifiers (set by raid-row triggers)
-  p._extraRaidSteal = 0;
-  p._raidStealChosenIfRich = false;
-  p._raidTargetExtraDiscard = 0;
-  p._raidEachOppDiscard = 0;
-  p._raidEachOppSteal = 0;
-  p._raidStealSpecific = [];
-  // (triggers already ran and may have populated these)
+  // modifiers are prepared by Raid triggers right before this action
+  p._extraRaidSteal = p._extraRaidSteal || 0;
+  p._raidStealChosenIfRich = p._raidStealChosenIfRich || false;
+  p._raidTargetExtraDiscard = p._raidTargetExtraDiscard || 0;
+  p._raidEachOppDiscard = p._raidEachOppDiscard || 0;
+  p._raidEachOppDiscardIfHand = p._raidEachOppDiscardIfHand || [];
+  p._raidEachOppSteal = p._raidEachOppSteal || 0;
+  p._raidStealSpecific = p._raidStealSpecific || [];
+  p._raidStealRandomBonusOn = p._raidStealRandomBonusOn || [];
+  p._raidRandomChain = p._raidRandomChain || [];
+  p._raidSpyDiscardOrPay = p._raidSpyDiscardOrPay || [];
 
   if(slot<=2){
     log(`🔥 <b>${p.name}</b> raided: no base effect (slots 1–2).`);
+    p._extraRaidSteal = 0;
+    p._raidStealChosenIfRich = false;
+    p._raidTargetExtraDiscard = 0;
+    p._raidEachOppDiscard = 0;
+    p._raidEachOppDiscardIfHand = [];
+    p._raidEachOppSteal = 0;
+    p._raidStealSpecific = [];
+    p._raidStealRandomBonusOn = [];
+    p._raidRandomChain = [];
+    p._raidSpyDiscardOrPay = [];
     renderAll();
     endTurn();
     return;
@@ -2405,6 +2753,12 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
   function doStealRes(tIdx, count=1, allowChosenIfRich=false){
     const target = G.players[tIdx];
     if(!target) return;
+
+    if(hasCardInTableau(target, "decoyCaravan") && !target._raidDeflectUsedRound){
+      target._raidDeflectUsedRound = true;
+      log(`🛡️ <b>${target.name}</b> used <b>Decoy Caravan</b> to cancel a targeted Raid effect.`);
+      return;
+    }
     for(let k=0;k<count;k++){
       const total = sumRes(target);
       if(total<=0){ log(`💨 ${target.name} has no resources to steal.`); return; }
@@ -2436,12 +2790,29 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
       }
 
       // random steal
-      const pool=RES.filter(r=>(target.res[r]||0)>0);
+      const pool=RES.filter(r=>stealableResAmount(target,r)>0);
       if(pool.length===0){ log(`💨 ${target.name} has no resources to steal.`); return; }
       const res=pool[Math.floor(rng()*pool.length)];
       target.res[res]--;
       attacker.res[res]=(attacker.res[res]||0)+1;
       log(`🫳 <b>${attacker.name}</b> stole ${RES_EMOJI[res]} <b>1</b> from <b>${target.name}</b>.`);
+
+      if(attacker._raidStealRandomBonusOn && attacker._raidStealRandomBonusOn.length){
+        for(const cfg of attacker._raidStealRandomBonusOn){
+          if((cfg.resources||[]).includes(res)){
+            attacker.bonusPts += (cfg.pts||1);
+            log(`🏅 <b>${attacker.name}</b> gained <b>+${cfg.pts||1}</b> bonus (raid hit ${RES_LABEL[res]}).`);
+          }
+        }
+      }
+
+      if(attacker._raidRandomChain && attacker._raidRandomChain.length){
+        for(const cfg of attacker._raidRandomChain){
+          if(res===cfg.res && (cfg.extra||0)>0){
+            doStealRes(tIdx, cfg.extra, false);
+          }
+        }
+      }
     }
   }
 
@@ -2461,6 +2832,11 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
 
   function doStealCard(tIdx){
     const t=G.players[tIdx];
+    if(t && hasCardInTableau(t, "decoyCaravan") && !t._raidDeflectUsedRound){
+      t._raidDeflectUsedRound = true;
+      log(`🛡️ <b>${t.name}</b> used <b>Decoy Caravan</b> to cancel a targeted Raid effect.`);
+      return;
+    }
     if(!t || t.hand.length===0){
       log(`💨 No card to steal from ${t ? t.name : "target"}.`);
       return;
@@ -2576,7 +2952,9 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
   const extraSteals = attacker._extraRaidSteal || 0;
   const extraTargetDiscards = attacker._raidTargetExtraDiscard || 0;
   const extraEachOppDiscard = attacker._raidEachOppDiscard || 0;
+  const eachOppDiscardIfHand = attacker._raidEachOppDiscardIfHand || [];
   const eachOppSteal = attacker._raidEachOppSteal || 0;
+  const spyEffects = attacker._raidSpyDiscardOrPay || [];
 
   // Apply effects (non-modal first, then if a modal step is needed, it ends the turn there)
   if(slot===3 || isSlot7){
@@ -2596,6 +2974,20 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
 
   if(slot===4 || isSlot7){
     doEachOppDiscard(1 + extraEachOppDiscard);
+    for(const cond of eachOppDiscardIfHand){
+      for(let i=0;i<G.players.length;i++){
+        if(i===G.currentPlayer) continue;
+        const t=G.players[i];
+        if(t.hand.length < (cond.need||4)) continue;
+        for(let n=0;n<(cond.n||1);n++){
+          if(t.hand.length===0) break;
+          const idx=Math.floor(rng()*t.hand.length);
+          const gone=t.hand.splice(idx,1)[0];
+          G.discard.push(gone);
+          log(`🗑️ <b>${t.name}</b> discarded <b>${instToDef(gone).name}</b> (propaganda).`);
+        }
+      }
+    }
     // target extra discards (if we have a target, apply to them)
     if(targetIdx!=null && extraTargetDiscards>0){
       const t=G.players[targetIdx];
@@ -2627,7 +3019,80 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
     return;
   }
 
+  if((slot===3 || isSlot7) && targetIdx!=null && spyEffects.length){
+    const t=G.players[targetIdx];
+    if(!(hasCardInTableau(t, "decoyCaravan") && t._raidDeflectUsedRound)){
+      for(const spy of spyEffects){
+        if(!t || t.hand.length===0) continue;
+        const body=[];
+        const grid=document.createElement("div");
+        grid.className="choiceGrid";
+        t.hand.forEach((ci,idx)=>{
+          const box=document.createElement("div");
+          box.className="choice";
+          box.appendChild(cardNode(ci));
+          const b=document.createElement("button");
+          b.className="btn bad";
+          b.textContent="Mark this card";
+          b.onclick=()=>{
+            closeModal();
+            const payable=RES.reduce((s,r)=>s+stealableResAmount(t,r),0) >= (spy.pay||2);
+            const body2=[];
+            const row=document.createElement("div");
+            row.className="row";
+            const dBtn=document.createElement("button");
+            dBtn.className="btn bad";
+            dBtn.textContent="Discard marked card";
+            dBtn.onclick=()=>{
+              const realIdx=t.hand.findIndex(x=>x.u===ci.u);
+              if(realIdx>=0){
+                const gone=t.hand.splice(realIdx,1)[0];
+                G.discard.push(gone);
+                log(`🕵️ <b>${t.name}</b> discarded <b>${instToDef(gone).name}</b> (Spy Network).`);
+              }
+              closeModal(); renderAll(); endTurn();
+            };
+            row.appendChild(dBtn);
+            const pBtn=document.createElement("button");
+            pBtn.className="btn warn";
+            pBtn.textContent=`Pay ${spy.pay||2} resources`;
+            pBtn.disabled=!payable;
+            pBtn.onclick=()=>{
+              let left=spy.pay||2;
+              while(left>0){
+                const pool=RES.filter(r=>stealableResAmount(t,r)>0);
+                if(!pool.length) break;
+                const r=pool[Math.floor(rng()*pool.length)];
+                t.res[r]--; attacker.res[r]=(attacker.res[r]||0)+1; left--;
+              }
+              log(`💰 <b>${t.name}</b> paid <b>${spy.pay||2}</b> resources to <b>${attacker.name}</b> (Spy Network).`);
+              closeModal(); renderAll(); endTurn();
+            };
+            row.appendChild(pBtn);
+            body2.push(row);
+            showModal({ title:`Spy Network on ${t.name}`, sub:`Discard chosen card or pay.`, bodyNodes: body2, actions:[{label:"Discard", onClick:dBtn.onclick}] });
+          };
+          box.appendChild(b);
+          grid.appendChild(box);
+        });
+        body.push(grid);
+        showModal({ title:`Spy Network: choose a card in ${t.name}'s hand`, sub:`They choose discard or payment.`, bodyNodes: body, actions:[{label:"Cancel", onClick:closeModal}] });
+        return;
+      }
+    }
+  }
+
   renderAll();
+  attacker._extraRaidSteal = 0;
+  attacker._raidStealChosenIfRich = false;
+  attacker._raidTargetExtraDiscard = 0;
+  attacker._raidEachOppDiscard = 0;
+  attacker._raidEachOppDiscardIfHand = [];
+  attacker._raidEachOppSteal = 0;
+  attacker._raidStealSpecific = [];
+  attacker._raidStealRandomBonusOn = [];
+  attacker._raidRandomChain = [];
+  attacker._raidSpyDiscardOrPay = [];
   endTurn();
 }
 
@@ -2635,9 +3100,10 @@ function resolveRaidAgainstTarget(attacker, slot, targetIdx){
    Action: Train
    ============================================================ */
 function doTrain(p, slot){
-  // clear train modifiers
-  p._trainSteal = 0;
-  p._bonusIfUnlockedThisTrain = 0;
+  // modifiers are prepared by Train triggers right before this action
+  p._trainSteal = p._trainSteal || 0;
+  p._bonusIfUnlockedThisTrain = p._bonusIfUnlockedThisTrain || 0;
+  p._trainDrawKeepIfUnlocked = p._trainDrawKeepIfUnlocked || [];
 
   // triggers already ran and may have set these.
 
@@ -2684,7 +3150,28 @@ function doTrain(p, slot){
     log(`🏅 <b>${p.name}</b> gained <b>+${p._bonusIfUnlockedThisTrain}</b> bonus (unlocked this Train).`);
   }
 
+  if(p.unlockedThisTrain && p._trainDrawKeepIfUnlocked && p._trainDrawKeepIfUnlocked.length){
+    const cfg = p._trainDrawKeepIfUnlocked[0];
+    const drawn = drawFromDeck(cfg.draw||2);
+    if(drawn.length){
+      if((cfg.keep||1) >= drawn.length){
+        p.hand.push(...drawn);
+      }else{
+        chooseKeepModal(drawn, cfg.keep||1, (kept, discarded)=>{
+          p.hand.push(...kept);
+          G.discard.push(...discarded);
+          renderAll();
+          endTurn();
+        });
+        return;
+      }
+    }
+  }
+
   renderAll();
+  p._trainSteal = 0;
+  p._bonusIfUnlockedThisTrain = 0;
+  p._trainDrawKeepIfUnlocked = [];
   endTurn();
 }
 
