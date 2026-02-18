@@ -678,6 +678,9 @@
       line-height:1.35;
     }
   </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -834,6 +837,27 @@
 </div>
 
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const qp = new URLSearchParams(location.search);
+const lobbyId = qp.get("gameId") || "";
+const username = qp.get("username") || localStorage.getItem("gh.username") || "Guest";
+const stateRef = lobbyId ? db.doc(`lobbies/${lobbyId}/crowncouncil/warspan_state`) : null;
+const lobbyRef = lobbyId ? db.doc(`lobbies/${lobbyId}`) : null;
+let suppressSync = false;
+let remotePromptTimer = null;
+let wroteWin = false;
+
 /* ============================================================
    Utility: seeded RNG (optional)
    ============================================================ */
@@ -1565,8 +1589,11 @@ function log(msg){
    ============================================================ */
 function showModal({title, sub="", bodyNodes=[], actions=[]}){
   const m=document.getElementById("modal");
+  clearTimeout(remotePromptTimer);
+  const autoPrompt = !isLocalTurn() && actions.length > 0;
+  const subText = autoPrompt ? `${sub ? sub + " • " : ""}Auto-select in 20s for remote turn.` : sub;
   document.getElementById("modalTitle").textContent=title;
-  document.getElementById("modalSub").textContent=sub;
+  document.getElementById("modalSub").textContent=subText;
   const bd=document.getElementById("modalBody");
   const ac=document.getElementById("modalActions");
   bd.innerHTML=""; ac.innerHTML="";
@@ -1579,8 +1606,17 @@ function showModal({title, sub="", bodyNodes=[], actions=[]}){
     ac.appendChild(b);
   }
   m.classList.add("show");
+
+  if(autoPrompt){
+    remotePromptTimer = setTimeout(()=>{
+      if(actions[0] && typeof actions[0].onClick === "function"){
+        actions[0].onClick();
+      }
+    }, 20000);
+  }
 }
 function closeModal(){
+  clearTimeout(remotePromptTimer);
   document.getElementById("modal").classList.remove("show");
 }
 document.getElementById("modalX").onclick=closeModal;
@@ -1778,8 +1814,8 @@ function renderBattlePlan(){
 
 function renderPlayerPanel(){
   const p=curP();
-  document.getElementById("playerPill").textContent = `Current: ${p.name}`;
-  document.getElementById("tableauPill").textContent = `Viewing: ${p.name}`;
+  document.getElementById("playerPill").textContent = `Current Turn: ${p.name}`;
+  document.getElementById("tableauPill").textContent = `Viewing: ${p.name}${isLocalTurn()?" (Your turn)":" (Spectating)"}`;
   document.getElementById("turnOrderPill").textContent = `Start player this round: ${G.players[G.startingPlayer].name}`;
 
   document.getElementById("scoreVal").textContent = calcScore(p);
@@ -1823,7 +1859,7 @@ function renderBoard(){
     actionBtn.className="btn toggleBtn";
     actionBtn.textContent=`Choose ${rowName}`;
     actionBtn.onclick=()=>takeAction(rowName);
-    const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock;
+    const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock || !isLocalTurn();
     actionBtn.disabled=disabled;
     right.appendChild(actionBtn);
     if(rowName==="Train"){
@@ -1912,6 +1948,7 @@ function renderHand(){
     b.className="btn primary";
     b.textContent="Play";
     b.onclick=()=>attemptPlayFromHand(i);
+    b.disabled = !isLocalTurn() || G.actionLock;
     act.appendChild(b);
 
 
@@ -1927,6 +1964,7 @@ function renderAll(){
   renderBoard();
   renderMarket();
   renderHand();
+  scheduleStateSync();
 }
 
 /* ============================================================
@@ -1972,7 +2010,7 @@ function endTurn(){
 }
 
 function takeAction(rowName){
-  if(G.actionLock) return;
+  if(G.actionLock || !isLocalTurn()) return;
   ensureTurnSummary(rowName);
   const p=curP();
   const slot = computeActionSlot(p,rowName);
@@ -2003,6 +2041,7 @@ function payCost(p, cost){
 }
 
 function attemptPlayFromHand(handIdx){
+  if(!isLocalTurn()) return;
   const p=curP();
   const ci=p.hand[handIdx];
   const d=instToDef(ci);
@@ -3282,9 +3321,14 @@ function endGame(){
   });
   body.push(grid);
 
+  if(!wroteWin){
+    wroteWin = true;
+    incrementWinnerWins(winner.p.name);
+  }
+
   showModal({
     title:"🏁 Final Results",
-    sub:"Thanks for testing this prototype.",
+    sub:"Winner saved to Firebase profile wins.",
     bodyNodes: body,
     actions:[
       {label:"Restart", kind:"warn", onClick: ()=>{
@@ -3335,42 +3379,85 @@ document.getElementById("btnRestart").onclick=()=>location.reload();
 document.getElementById("btnQuickRules").onclick=()=>document.getElementById("btnHelp").click();
 
 /* ============================================================
-   Start screen name inputs
+   Firebase multiplayer bootstrap + sync
    ============================================================ */
-function rebuildNameInputs(){
-  const n=+document.getElementById("numPlayers").value;
-  const wrap=document.getElementById("nameInputs");
-  wrap.innerHTML="";
-  const grid=document.createElement("div");
-  grid.className="grid2";
-  for(let i=0;i<n;i++){
-    const box=document.createElement("div");
-    const lab=document.createElement("label");
-    lab.textContent=`Player ${i+1} name`;
-    const inp=document.createElement("input");
-    inp.id=`pname${i}`;
-    inp.value = ["Avery","Blake","Casey","Drew"][i] || `Player ${i+1}`;
-    box.appendChild(lab);
-    box.appendChild(inp);
-    grid.appendChild(box);
-  }
-  wrap.appendChild(grid);
+function isLocalTurn(){
+  if(!G || !G.players || G.currentPlayer == null) return false;
+  return G.players[G.currentPlayer] && G.players[G.currentPlayer].name === username;
 }
-document.getElementById("numPlayers").addEventListener("change", rebuildNameInputs);
-rebuildNameInputs();
 
-document.getElementById("btnStart").onclick=()=>{
-  const n=+document.getElementById("numPlayers").value;
-  const seedStr=document.getElementById("seed").value.trim();
-  const names=[];
-  for(let i=0;i<n;i++){
-    const v=document.getElementById(`pname${i}`).value.trim();
-    names.push(v || `Player ${i+1}`);
+async function incrementWinnerWins(winnerName){
+  if(!winnerName) return;
+  try{
+    await db.runTransaction(async (tx)=>{
+      const ref = db.doc(`users/${winnerName}`);
+      const snap = await tx.get(ref);
+      const prev = snap.exists ? (snap.data().wins || 0) : 0;
+      tx.set(ref, { wins: prev + 1 }, { merge:true });
+    });
+  }catch(err){
+    console.error("Failed to increment wins", err);
   }
+}
+
+function scheduleStateSync(){
+  if(!stateRef || !G || suppressSync || !isLocalTurn()) return;
+  stateRef.set({
+    game: deepCopy(G),
+    updatedAt: Date.now(),
+    updatedBy: username
+  }, { merge:true }).catch((err)=>console.error("State sync failed", err));
+}
+
+function parseLobbyPlayers(data){
+  const source = Array.isArray(data?.players) ? data.players : [];
+  const clean = Array.from(new Set(source.filter(Boolean))).slice(0,4);
+  return clean;
+}
+
+async function bootstrapFromLobby(){
+  if(!stateRef || !lobbyRef){
+    alert("Missing gameId in URL. Open from lobby.");
+    return;
+  }
+
+  await auth.signInAnonymously();
+  const lobbySnap = await lobbyRef.get();
+  if(!lobbySnap.exists){
+    alert("Lobby not found.");
+    return;
+  }
+
+  const lobbyData = lobbySnap.data() || {};
+  const players = parseLobbyPlayers(lobbyData);
+  if(!players.includes(username)) players.push(username);
+  const finalPlayers = players.slice(0,4);
+
   document.getElementById("startScreen").style.display="none";
   document.getElementById("app").style.display="grid";
-  initGame(names, seedStr);
-};
+
+  const existing = await stateRef.get();
+  if(!existing.exists){
+    const seed = String(Date.now());
+    initGame(finalPlayers, seed);
+    G.startingPlayer = Math.floor(Math.random() * G.players.length);
+    G.currentPlayer = G.startingPlayer;
+    G.turnsLeft = G.players.map(()=>6);
+    await stateRef.set({ game: deepCopy(G), createdAt: Date.now(), createdBy: username }, { merge:true });
+  }
+
+  stateRef.onSnapshot((snap)=>{
+    if(!snap.exists) return;
+    const data = snap.data() || {};
+    if(!data.game) return;
+    suppressSync = true;
+    G = data.game;
+    suppressSync = false;
+    renderAll();
+  });
+}
+
+bootstrapFromLobby();
 
 
 </script>

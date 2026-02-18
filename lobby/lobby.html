@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -528,6 +528,7 @@
                   <option value="castledefense">🏰 Castle Defense (4P)</option>
                   <!-- NEW MULTIPLAYER -->
                   <option value="trumprev">🏰 Base Defense: Revenge (4P)</option>
+                  <option value="warspan">⚔️🃏 Warspan Online (4P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -629,13 +630,13 @@
       castledefense: "/game/castlepanic.html",
       // NEW multiplayer alias for former Micro Wars Nexus
       trumprev:   "/game/donrevenge.html",
-      warspan:    "/game/Warspan.html"
+      warspan:    "/game/WarspanOnline.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
       "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
-      "forgeroyale","castledefense","rogueduel","trumprev"
+      "forgeroyale","castledefense","rogueduel","trumprev","warspan"
     ]);
 
     const MAX_PLAYERS = {
@@ -653,7 +654,8 @@
       forgeroyale: 2,
       rogueduel: 2,
       castledefense: 4,
-      trumprev: 4
+      trumprev: 4,
+      warspan: 4
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
@@ -912,6 +914,7 @@
              type==='castledefense'?'🏰 Castle Defense (4P)' :
              type==='rogueduel'?'🂡 Rogue Duel (2P)' :
              type==='trumprev'?'🏰 Base Defense: Revenge (4P)' :
+             type==='warspan'?'⚔️🃏 Warspan Online (4P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -950,7 +953,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','castledefense','rogueduel','trumprev'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','castledefense','rogueduel','trumprev','warspan'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       let lobby;
