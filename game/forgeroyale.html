@@ -1397,6 +1397,9 @@ const ELIXIR_MS_PER = 2800;
 const MAX_ELIXIR = 10;
 const FX_TTL = 900;
 const MAX_FX = 120;
+const RANGE_VIS_FX_TTL = 320;
+const RANGE_VIS_FX_COOLDOWN = 240;
+const rangeFxLastAt = new Map();
 
 /* ---------------- BFS pathing ---------------- */
 function neighbors4(x,y){
@@ -2341,7 +2344,8 @@ function paintBoard(){
 function paintFx(){
   fxEl.innerHTML = "";
   const now = Date.now();
-  for (const f of (S.fx||[])){
+  const allFx = (S.fx||[]).concat(predictedRangeFx(now));
+  for (const f of allFx){
     if ((f.at||0) > now) continue;
     if (f.at + (f.ttl||FX_TTL) <= now) continue;
 
@@ -2353,6 +2357,59 @@ function paintFx(){
     if (f.cls === "sparks" || f.cls === "slash" || f.cls === "hit") fxSparks(f.x, f.y, f.color || "#fde68a", 7, 420);
     if ((f.text||"").trim()) fxPop(f.x, f.y, f.text || "✨", f.color || "#e5e7eb", f.cls || "", Math.min(1200, f.ttl || FX_TTL));
   }
+}
+
+function predictedRangeFx(now){
+  if (isHost || !S || S.phase !== "battle") return [];
+
+  const out = [];
+  const units = (S.units||[]).filter(u=>u.hp>0);
+  for (const u of units){
+    const range = u.range || 1;
+    const target = findNearestEnemyUnit(units, u.p, u, range);
+    if (!target) continue;
+
+    const k = `${u.id}->${target.id}`;
+    const last = rangeFxLastAt.get(k) || 0;
+    if ((now - last) < RANGE_VIS_FX_COOLDOWN) continue;
+    rangeFxLastAt.set(k, now);
+
+    const baseColor = (u.p===0 ? "#60a5fa" : "#f87171");
+    const ranged = isRangedTroop(u);
+    const tColor = projectileColorFor(u.type, baseColor);
+
+    if (ranged){
+      out.push({
+        id: `rf-${crypto.randomUUID()}`,
+        x: target.x,
+        y: target.y,
+        text: projectileGlyph(u.type),
+        color: tColor,
+        at: now,
+        ttl: RANGE_VIS_FX_TTL,
+        cls: "impact",
+        source: {x:u.x,y:u.y},
+        icon: projectileGlyph(u.type)
+      });
+    } else {
+      out.push({
+        id: `rf-${crypto.randomUUID()}`,
+        x: target.x,
+        y: target.y,
+        text: "╱",
+        color: "#fde68a",
+        at: now,
+        ttl: RANGE_VIS_FX_TTL,
+        cls: "slash"
+      });
+    }
+  }
+
+  for (const k of rangeFxLastAt.keys()){
+    if ((now - (rangeFxLastAt.get(k)||0)) > 2200) rangeFxLastAt.delete(k);
+  }
+
+  return out;
 }
 
 /* ---------------- Input: card -> click tile -> send order ---------------- */
