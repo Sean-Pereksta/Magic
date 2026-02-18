@@ -763,6 +763,8 @@ btnSlot2Mobile?.addEventListener('click', ()=>{ player.activeSlot=1; updateGunHU
 /*** ========= Profiles (Firebase only; no local storage) ========= ***/
 const SAVE_VERSION = 2;
 
+const PROFILE_COLLECTION = 'pointclick_users';
+
 let currentUser = '';
 let loadedOnce = false;
 // --- Kill-to-win state ---
@@ -789,7 +791,7 @@ function setKillGoalForLevel(){
 
 function userRef(){
   if(!currentUser) throw new Error('No current user');
-  return db.collection('users').doc(currentUser);
+  return db.collection(PROFILE_COLLECTION).doc(currentUser);
 }
 
 function packSave(){
@@ -872,7 +874,7 @@ async function loadProfileList(){
   }
 
   try {
-    const snap = await db.collection('users').get();
+    const snap = await db.collection(PROFILE_COLLECTION).get();
     list.innerHTML = '';
     selectedProfileName = '';
     if(profileHint) profileHint.textContent = 'Select a player, then press Load Game.';
@@ -939,7 +941,7 @@ async function startWithUsername(){
     return;
   }
 
-  const ref = db.collection('users').doc(u);
+  const ref = db.collection(PROFILE_COLLECTION).doc(u);
 
   // Prepare local defaults so packSave() has the right initial data
   currentUser = u;
