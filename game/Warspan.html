@@ -422,8 +422,19 @@
   }
 
   // --------- template helpers ----------
+  function cloneWithFunctions(value){
+    if(Array.isArray(value)) return value.map(cloneWithFunctions);
+    if(value && typeof value === "object"){
+      const out={};
+      for(const [k,v] of Object.entries(value)) out[k]=cloneWithFunctions(v);
+      return out;
+    }
+    return value;
+  }
+
   function makeCard(template){
-    const c = JSON.parse(JSON.stringify(template));
+    // Keep function references (card fx / commander triggers) while still cloning mutable data.
+    const c = cloneWithFunctions(template);
     c.uid = uid();
     c.exhausted = false;
     c.played = false;      // for "onPlay once"
@@ -1213,8 +1224,8 @@
     G.deck = shuffle(deck);
 
     // starting hand: more commanders show up because they are abundant in deck
-    draw(p0,G,6,"Starting hand");
-    draw(p1,G,6,"Starting hand");
+    draw(p0,G,5,"Starting hand");
+    draw(p1,G,5,"Starting hand");
 
     // morale supply small start
     p0.moraleSupply=1;
@@ -1622,7 +1633,14 @@
             type:"commander",
             label:`${cmd.name} — ${t.label}`,
             detail:t.detail,
-            resolve:(ctx,p,done)=> t.resolve(ctx,p,done)
+            resolve:(ctx,p,done)=>{
+              if(typeof t.resolve !== "function"){
+                log(ctx, `${p.name} could not resolve \"${t.label||"trigger"}\" (missing resolver).`);
+                done();
+                return;
+              }
+              t.resolve(ctx,p,done);
+            }
           });
         }
       }
