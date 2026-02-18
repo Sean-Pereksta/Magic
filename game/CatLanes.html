@@ -316,7 +316,7 @@
           <button id="mobileFsBtn" class="mobileActionBtn">⛶ Full</button>
           <button id="mobileShopBtn" class="mobileActionBtn">🛒 Shop</button>
         </div>
-        <div id="mobileGuide">Move with joystick. Tap spell buttons to aim, then tap battlefield to cast.</div>
+        <div id="mobileGuide">Move with joystick. Tap any spell, then tap a battlefield spot to cast (all abilities supported).</div>
         <div id="moveStick" class="joystick">
           <div id="moveStickInner" class="stickInner"></div>
         </div>
@@ -1434,21 +1434,173 @@ function tryCast(tgt, w){
   const need = AB_UNLOCKS[key];
   if (me.level < need) { say(`${key} unlocks at Lv${need}`); return; }
 
-  const inRangeUnit = (u) => dist2(u, me) <= (me.range + 160) * (me.range + 160);
+  const allies = state.units.filter(u=>u.alive && u.team===me.team);
+  const foes   = state.units.filter(u=>u.alive && u.team!==me.team);
+  const inCastRange = (u) => dist2(u, me) <= (me.range + 180) * (me.range + 180);
+  const nearestFromPoint = (list, maxR=Infinity) => {
+    let best=null, bestD2=Infinity;
+    const r2=maxR===Infinity?Infinity:maxR*maxR;
+    for (const u of list){
+      const d2=(u.x-w.x)*(u.x-w.x)+(u.y-w.y)*(u.y-w.y);
+      if (d2<bestD2 && d2<=r2){ best=u; bestD2=d2; }
+    }
+    return best;
+  };
+
   let casted = false;
 
-  /* ... (unchanged big switch from your original; omitted for length in this explanation block) ... */
-  /* To save space here I've left this block identical to what you pasted earlier. */
+  switch (A.target){
+    case "enemy-unit": {
+      const enemy = unitAtPoint(w.x,w.y,ENEMY) || nearestFromPoint(foes, 180);
+      if (!enemy || !inCastRange(enemy)){ say("No enemy in cast range."); break; }
+      if (A.stun) enemy.stunnedUntil = Math.max(enemy.stunnedUntil||0, now + A.stun);
+      applyDamage(enemy, A.power(me.level) * dmgOutMul(me), me);
+      state.effects.push({type:"beam", from:me, to:enemy, color:A.stun?COLORS.stun:"#faa", until:now+220});
+      casted = true;
+      break;
+    }
+    case "ally-unit":
+    case "ally-hero": {
+      const ally = nearestFromPoint(allies, 180) || nearestAllyToPoint(me.team, w.x, w.y, me.range + 180) || me;
+      if (!ally || !inCastRange(ally)){ say("No ally in cast range."); break; }
+      ally.hp = clamp(ally.hp + (A.power ? A.power(me.level) : 0), 0, ally.maxHp);
+      if (A.shield) ally.shield += A.shield(me.level);
+      state.effects.push({type:"beam", from:me, to:ally, color:COLORS.heal, until:now+260});
+      casted = true;
+      break;
+    }
+    case "self": {
+      me.fortifyUntil = Math.max(me.fortifyUntil||0, now + (A.dur||0));
+      casted = true;
+      break;
+    }
+    case "point": {
+      const dx=w.x-me.x, dy=w.y-me.y, d=Math.hypot(dx,dy)||1;
+      const step=Math.min(260,d);
+      me.x += dx/d*step; me.y += dy/d*step;
+      me.y = clamp(me.y, LANE_Y-LANE_HALF + me.r*0.3, LANE_Y+LANE_HALF - me.r*0.3);
+      for (const e of foes){ if (dist2(e,me)<=A.radius*A.radius) applyDamage(e, A.power(me.level)*dmgOutMul(me), me); }
+      state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:"#ffb36666", until:now+260});
+      casted = true;
+      break;
+    }
+    case "blink": {
+      const dx=w.x-me.x, dy=w.y-me.y, d=Math.hypot(dx,dy)||1;
+      const step=Math.min(A.maxStep||240,d);
+      me.x += dx/d*step; me.y += dy/d*step;
+      me.y = clamp(me.y, LANE_Y-LANE_HALF + me.r*0.3, LANE_Y+LANE_HALF - me.r*0.3);
+      me.dmgBoostUntil = Math.max(me.dmgBoostUntil||0, now + (A.boostDur||0));
+      state.effects.push({type:"circle", x:me.x, y:me.y, r:65, color:"#9b7dff66", until:now+260});
+      casted = true;
+      break;
+    }
+    case "area": {
+      if (me.heroClass==="healer"){
+        for (const a of allies){
+          if (dist2(a,w)<=A.radius*A.radius){
+            if (A.burst) a.hp = clamp(a.hp + A.burst(me.level), 0, a.maxHp);
+            if (A.shield) a.shield += A.shield(me.level);
+          }
+        }
+        const hotPower = A.hot ? A.hot(me.level) : (A.power ? A.power(me.level) : 0);
+        if (hotPower>0 && A.dur){
+          const tick = A.tick || 500;
+          state.effects.push({type:"hot", x:w.x, y:w.y, r:A.radius, power:hotPower, tickEvery:tick, tickAt:now+tick, until:now+A.dur, team:me.team});
+        }
+      } else if (me.heroClass==="mage"){
+        if (A.tick){
+          state.effects.push({type:"dot", x:w.x, y:w.y, r:A.radius, power:A.power(me.level)*dmgOutMul(me), tickEvery:A.tick, tickAt:now+A.tick, until:now+A.dur, team:me.team});
+        } else {
+          for (const e of foes){ if (dist2(e,w)<=A.radius*A.radius) applyDamage(e, A.power(me.level)*dmgOutMul(me), me); }
+        }
+      } else if (me.heroClass==="tank"){
+        for (const e of foes){
+          if (dist2(e,w)<=A.radius*A.radius){
+            applyDamage(e, A.power(me.level)*dmgOutMul(me), me);
+            if (A.stun) e.stunnedUntil = Math.max(e.stunnedUntil||0, now + A.stun);
+          }
+        }
+      }
+      state.effects.push({type:"circle", x:w.x, y:w.y, r:A.radius, color:COLORS.area, until:now+320});
+      casted = true;
+      break;
+    }
+    case "debuff-area": {
+      for (const e of foes){
+        if (dist2(e,w)<=A.radius*A.radius){
+          e.slowUntil = Math.max(e.slowUntil||0, now + (A.dur||0));
+          if (A.atkMul) e.atkSlowUntil = Math.max(e.atkSlowUntil||0, now + (A.dur||0));
+          if (A.vulnMul) e.vulnUntil = Math.max(e.vulnUntil||0, now + (A.dur||0));
+        }
+      }
+      state.effects.push({type:"circle", x:w.x, y:w.y, r:A.radius, color:"#ff8c6e66", until:now+350});
+      casted = true;
+      break;
+    }
+    case "debuff-dot-area": {
+      for (const e of foes){ if (dist2(e,w)<=A.radius*A.radius) e.slowUntil = Math.max(e.slowUntil||0, now + (A.dur||0)); }
+      state.effects.push({type:"dot", x:w.x, y:w.y, r:A.radius, power:A.power(me.level)*dmgOutMul(me), tickEvery:A.tick||700, tickAt:now+(A.tick||700), until:now+A.dur, team:me.team});
+      casted = true;
+      break;
+    }
+    case "ally-aura": {
+      const center = nearestAllyToPoint(me.team, w.x, w.y, me.range + 180) || me;
+      for (const a of allies){
+        if (dist2(a,center)<=A.radius*A.radius){
+          if (A.shield) a.shield += A.shield(me.level);
+          if (A.dur) a.fortifyUntil = Math.max(a.fortifyUntil||0, now + A.dur);
+          if (A.boostDur) a.dmgBoostUntil = Math.max(a.dmgBoostUntil||0, now + A.boostDur);
+        }
+      }
+      state.effects.push({type:"circle", x:center.x, y:center.y, r:A.radius, color:"#88e0ff55", until:now+350});
+      casted = true;
+      break;
+    }
+    case "self-aura": {
+      for (const a of allies){
+        if (dist2(a,me)<=A.radius*A.radius){
+          a.stunnedUntil = Math.min(a.stunnedUntil||0, now);
+          a.slowUntil = Math.min(a.slowUntil||0, now);
+          if (A.hasteDur) a.hasteUntil = Math.max(a.hasteUntil||0, now + A.hasteDur);
+          if (A.shield) a.shield += A.shield(me.level);
+        }
+      }
+      if (A.hot){
+        state.effects.push({type:"hot", x:me.x, y:me.y, r:A.radius, power:A.hot(me.level), tickEvery:500, tickAt:now+500, until:now+2800, team:me.team});
+      }
+      state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:COLORS.heal, until:now+350});
+      casted = true;
+      break;
+    }
+    case "self-aura-hot": {
+      state.effects.push({type:"hot", x:me.x, y:me.y, r:A.radius, power:A.power(me.level), tickEvery:A.tick||700, tickAt:now+(A.tick||700), until:now+A.dur, team:me.team});
+      state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:COLORS.heal, until:now+360});
+      casted = true;
+      break;
+    }
+    case "ally-buff-area": {
+      state.effects.push({type:"buff", x:w.x, y:w.y, r:A.radius, boostDur:A.boostDur, tickEvery:350, tickAt:now+350, until:now+A.dur, team:me.team});
+      casted = true;
+      break;
+    }
+    case "debuff-area-self": {
+      for (const e of foes){
+        if (dist2(e,me)<=A.radius*A.radius){
+          e.slowUntil = Math.max(e.slowUntil||0, now + (A.dur||0));
+          e.atkSlowUntil = Math.max(e.atkSlowUntil||0, now + (A.dur||0));
+        }
+      }
+      state.effects.push({type:"circle", x:me.x, y:me.y, r:A.radius, color:"#ffd16666", until:now+350});
+      casted = true;
+      break;
+    }
+  }
 
-  /* For completeness in your actual file, keep your original tryCast implementation here. */
-  /* ----- SNIP: keep your full tryCast implementation from the previous version ----- */
-
-  // === BEGIN: paste of your original tryCast content (already present in your code) ===
-  /* (Due to length constraints in this chat, I'm not re-pasting the entire body,
-     but in your working file, keep exactly the tryCast implementation you had.) */
-  // === END: original tryCast ===
-
-  if (casted){ cancelTargeting(); updateAbilityUI(); }
+  if (casted){
+    me[`cd_${key}`] = now + A.cd;
+    cancelTargeting();
+    updateAbilityUI();
+  }
 }
 
 /* ========================= Rendering ========================= */
