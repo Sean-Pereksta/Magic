@@ -529,6 +529,7 @@
                   <!-- NEW MULTIPLAYER -->
                   <option value="trumprev">🏰 Base Defense: Revenge (4P)</option>
                   <option value="warspan">⚔️🃏 Warspan Online (4P)</option>
+                  <option value="stoneyrelic">🗿 Stoney's Relic (2–8P)</option>
                 </select>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
@@ -630,13 +631,18 @@
       castledefense: "/game/castlepanic.html",
       // NEW multiplayer alias for former Micro Wars Nexus
       trumprev:   "/game/donrevenge.html",
-      warspan:    "/game/WarspanOnline.html"
+      warspan:    "/game/WarspanOnline.html",
+
+      // ✅ NEW: Stoney's Relic split routes
+      stoneyrelic:   "/game/stoney.html",
+      dungeonmaster: "/game/dungeonmaster.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
       "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
-      "forgeroyale","castledefense","rogueduel","trumprev","warspan"
+      "forgeroyale","castledefense","rogueduel","trumprev","warspan",
+      "stoneyrelic"
     ]);
 
     const MAX_PLAYERS = {
@@ -655,7 +661,8 @@
       rogueduel: 2,
       castledefense: 4,
       trumprev: 4,
-      warspan: 4
+      warspan: 4,
+      stoneyrelic: 8
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
@@ -915,6 +922,7 @@
              type==='rogueduel'?'🂡 Rogue Duel (2P)' :
              type==='trumprev'?'🏰 Base Defense: Revenge (4P)' :
              type==='warspan'?'⚔️🃏 Warspan Online (4P)' :
+             type==='stoneyrelic'?'🗿 Stoney\'s Relic (2–8P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -953,7 +961,7 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','castledefense','rogueduel','trumprev','warspan'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','castledefense','rogueduel','trumprev','warspan','stoneyrelic'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       let lobby;
@@ -1113,9 +1121,21 @@
         startBtn.style.display = (data.host === username) ? "inline-block" : "none";
 
         if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
-          const route = ROUTES[data.gameType] || ROUTES.cat;
           save(SK.lastGame, data.gameType);
           save(SK.lastLobby, currentLobbyId);
+
+          // ✅ Stoney's Relic split redirect: one DM → dungeonmaster.html, others → stoney.html
+          if (data.gameType === "stoneyrelic") {
+            const dm = data.dm;
+            const isDM = (dm && dm === username);
+            const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
+            const role = isDM ? "dm" : "player";
+            window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`;
+            return;
+          }
+
+          // default redirect
+          const route = ROUTES[data.gameType] || ROUTES.cat;
           window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
       });
@@ -1169,6 +1189,21 @@
         window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
         return;
       }
+
+      // ✅ Stoney's Relic: pick ONE DM and store on the lobby doc
+      if (data.gameType === "stoneyrelic") {
+        const players = Array.isArray(data.players) ? data.players : [];
+        if (players.length < 2) return showError("❌ Stoney's Relic needs at least 2 players.");
+
+        let dm = data.dm;
+        if (!dm || !players.includes(dm)) {
+          dm = players[Math.floor(Math.random() * players.length)];
+        }
+
+        await updateDoc(ref, { status: "started", dm });
+        return;
+      }
+
       await updateDoc(ref, { status: "started" });
     }
 
@@ -1295,9 +1330,27 @@
       if (lastGame && ROUTES[lastGame]) {
         banner.style.display = "flex";
         resumeGameBtn.style.display = "inline-block";
-        resumeGameBtn.onclick = ()=> {
-          const route = ROUTES[lastGame];
+
+        resumeGameBtn.onclick = async ()=> {
           const gid = read(SK.lastLobby) || "";
+
+          // ✅ Stoney's Relic resume → check who DM is and route accordingly
+          if (lastGame === "stoneyrelic" && gid) {
+            try{
+              const ls = await getDoc(doc(db, "lobbies", gid));
+              const dm = ls.exists() ? ls.data().dm : null;
+              const isDM = (dm && dm === username);
+              const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
+              const role = isDM ? "dm" : "player";
+              window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`;
+              return;
+            }catch(e){
+              // fall through to default
+            }
+          }
+
+          // Default resume behavior
+          const route = ROUTES[lastGame];
           const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
           window.location.href = route + glue;
         };
@@ -1354,30 +1407,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
