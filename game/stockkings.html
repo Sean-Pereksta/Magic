@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>StockKings: Figure-8 Rush (Multiplayer)</title>
+  <title>📈 StockKings — Donut Rush (1–8P)</title>
   <style>
-    :root{--bg:#060910;--panel:#0f1726;--line:#2f4468;--ink:#ecf3ff;--muted:#9fb0cc;--accent:#57b2ff;--good:#60f0a1;--warn:#ffd972;--bad:#ff6f89}
+    :root{--bg:#050812;--panel:#0e1726;--line:#2b4369;--ink:#ecf3ff;--muted:#9fb0cc;--accent:#57b2ff;--good:#60f0a1;--warn:#ffd972;--bad:#ff6f89}
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
     #app{position:relative;height:100%;overflow:hidden}
@@ -15,7 +15,7 @@
     .chip{pointer-events:auto;background:rgba(10,15,25,.82);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-weight:800}
     .chip small{display:block;color:var(--muted);font-weight:650}
     .big{font-size:24px;font-weight:950}
-    .board{pointer-events:auto;background:rgba(8,11,19,.9);border:1px solid var(--line);border-radius:14px;padding:10px;max-width:520px;max-height:48vh;overflow:auto}
+    .board{pointer-events:auto;background:rgba(8,11,19,.9);border:1px solid var(--line);border-radius:14px;padding:10px;max-width:560px;max-height:48vh;overflow:auto}
     table{width:100%;border-collapse:collapse;font-size:13px}
     th,td{padding:6px;border-bottom:1px solid #21324e;text-align:left}
     .msg{font-size:13px;color:var(--muted);margin-top:8px}
@@ -73,7 +73,7 @@
 
   <div class="modalWrap show" id="overlay">
     <div class="modal">
-      <h2 id="overlayTitle">StockKings: Figure-8 Rush</h2>
+      <h2 id="overlayTitle">StockKings — Donut Rush</h2>
       <p id="overlayBody">Connecting…</p>
       <div class="btns" id="overlayButtons"></div>
     </div>
@@ -83,13 +83,11 @@
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ============================================================
-   CONFIG
+   FIREBASE INIT
 ============================================================ */
 const firebaseConfig={
   apiKey:"AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -103,30 +101,33 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 
-const LS_USER  = "gh.username";
-const LS_LOBBY = "gh.lastLobbyId";
+const LS_USER="gh.username";
+const LS_LOBBY="gh.lastLobbyId";
 
 const params=new URLSearchParams(location.search);
 const gameId=(params.get("gameId")||localStorage.getItem(LS_LOBBY)||"").trim();
 const username=(params.get("username")||localStorage.getItem(LS_USER)||"Racer").trim();
-
 if(gameId) localStorage.setItem(LS_LOBBY, gameId);
 if(username) localStorage.setItem(LS_USER, username);
 
 const LOBBY_REF = gameId ? doc(db,"lobbies",gameId) : null;
 const RACE_REF  = gameId ? doc(db,"lobbies",gameId,"crowncouncil","stockkingsRace") : null;
 
-const COUNTDOWN_MS = 10000;
+/* ============================================================
+   GAME CONFIG
+============================================================ */
+const COUNTDOWN_MS = 9000;
 const DEADLINE_MS  = 30000;
 const SELECT_MS    = 15000;
 const MAX_ROUNDS   = 3;
+const MAX_PLAYERS  = 8;
 
 const OBSTACLES={
   meteorites:{name:"Meteorites",desc:"Telegraphed impacts that stun briefly.",stunMs:2200},
-  monsters:{name:"Track Monsters",desc:"Slam side-to-side and body-check racers."},
-  eggs:{name:"Egg Storm",desc:"Bouncy eggs spill out and knock racers backward."},
-  towers:{name:"Lightning Towers",desc:"Periodic zaps near the tower ring."},
-  rhinos:{name:"Rhino Stampede",desc:"Stampede along the track and shove racers back."}
+  monsters:{name:"Track Monsters",desc:"Roam the road and body-check racers."},
+  eggs:{name:"Egg Storm",desc:"Bouncy eggs spill out and knock racers back."},
+  towers:{name:"Lightning Towers",desc:"Periodic zaps near the ring."},
+  rhinos:{name:"Rhino Stampede",desc:"Stampede around the donut and shove racers back."}
 };
 const obstacleOrder=Object.keys(OBSTACLES);
 
@@ -137,25 +138,19 @@ const el=id=>document.getElementById(id);
 
 let overlayKey="";
 function showOverlay(key,title,body,buttons){
-  if(overlayKey!==key){
-    overlayKey=key;
-    el("overlayTitle").textContent=title;
-    el("overlayBody").innerHTML=body;
-    const wrap=el("overlayButtons"); wrap.innerHTML="";
-    (buttons||[]).forEach(b=>{
-      const bt=document.createElement("button");
-      bt.textContent=b.label;
-      if(b.className) bt.className=b.className;
-      if(b.disabled) bt.disabled=true;
-      bt.onclick=b.onClick||(()=>{});
-      wrap.appendChild(bt);
-    });
-    el("overlay").classList.add("show");
-  }else{
-    // Update body if same mode but dynamic text (countdown)
-    el("overlayTitle").textContent=title;
-    el("overlayBody").innerHTML=body;
-  }
+  overlayKey=key;
+  el("overlayTitle").textContent=title;
+  el("overlayBody").innerHTML=body;
+  const wrap=el("overlayButtons"); wrap.innerHTML="";
+  (buttons||[]).forEach(b=>{
+    const bt=document.createElement("button");
+    bt.textContent=b.label;
+    if(b.className) bt.className=b.className;
+    if(b.disabled) bt.disabled=true;
+    bt.onclick=b.onClick||(()=>{});
+    wrap.appendChild(bt);
+  });
+  el("overlay").classList.add("show");
 }
 function hideOverlay(){
   overlayKey="";
@@ -163,15 +158,53 @@ function hideOverlay(){
 }
 
 /* ============================================================
+   AUTH-SAFE BOOTSTRAP (THIS FIXES YOUR PERMISSION-DENIED)
+============================================================ */
+async function ensureAuthed(){
+  // Strongly persist auth across pages
+  try{ await setPersistence(auth, browserLocalPersistence); }catch(e){}
+
+  if(auth.currentUser) return auth.currentUser;
+
+  // Kick anon sign-in
+  try{ await signInAnonymously(auth); }catch(e){}
+
+  // Wait until request.auth is definitely non-null
+  return await new Promise((resolve, reject)=>{
+    const timeout=setTimeout(()=>reject(new Error("auth-timeout")), 9000);
+    const unsub=onAuthStateChanged(auth, (u)=>{
+      if(u){
+        clearTimeout(timeout);
+        unsub();
+        resolve(u);
+      }
+    });
+  });
+}
+
+/* ============================================================
    RACE STATE
 ============================================================ */
-let uid="";
 let lobbyState=null;
 let raceState=null;
 let lobbyUnsub=null;
 let raceUnsub=null;
-
 let pendingTxn=false;
+
+function now(){ return Date.now(); }
+function avg(arr){
+  const v=(arr||[]).filter(n=>typeof n==="number");
+  return v.length ? (v.reduce((a,b)=>a+b,0)/v.length) : null;
+}
+function fmt(n){ return typeof n==="number" ? n.toFixed(2)+"s" : "—"; }
+
+function expectedPlayers(){
+  return (raceState?.expectedPlayers && Array.isArray(raceState.expectedPlayers) && raceState.expectedPlayers.length)
+    ? raceState.expectedPlayers
+    : (lobbyState?.players || [username]);
+}
+function lobbyStarted(){ return (lobbyState?.status === "started"); }
+
 async function txn(mutator){
   if(!RACE_REF) return;
   if(pendingTxn) return;
@@ -186,45 +219,25 @@ async function txn(mutator){
       tx.set(RACE_REF, out, {merge:false});
     });
   }catch(e){
-    // console.warn("txn failed", e);
+    // surface errors
+    showOverlay("txerr","Sync error",
+      `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}`,
+      [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+    );
   }finally{
     pendingTxn=false;
   }
 }
 
-function now(){ return Date.now(); }
-function avg(arr){
-  const v=(arr||[]).filter(n=>typeof n==="number");
-  return v.length ? (v.reduce((a,b)=>a+b,0)/v.length) : null;
-}
-function fmt(n){ return typeof n==="number" ? n.toFixed(2)+"s" : "—"; }
-
-function expectedPlayers(){
-  return (raceState?.expectedPlayers && Array.isArray(raceState.expectedPlayers) && raceState.expectedPlayers.length)
-    ? raceState.expectedPlayers
-    : (lobbyState?.players || [username]);
-}
-
-function getPlayer(name){
-  const p=(raceState?.players||{})[name];
-  if(!p) return null;
-  return p;
-}
-
-/* ============================================================
-   ENSURE DOCS
-============================================================ */
 async function ensureRaceDoc(){
   if(!RACE_REF) return;
   const snap=await getDoc(RACE_REF);
   if(snap.exists()) return;
 
-  const exp = (lobbyState?.players && lobbyState.players.length) ? lobbyState.players.slice(0,8) : [username];
-  const basePlayers = {};
-  exp.forEach(n=>{
-    basePlayers[n]={name:n,laps:[],avg:null,lastLap:null};
-  });
-  basePlayers[username] = basePlayers[username] || {name:username,laps:[],avg:null,lastLap:null};
+  const exp = (lobbyState?.players && lobbyState.players.length) ? lobbyState.players.slice(0,MAX_PLAYERS) : [username];
+  const players = {};
+  exp.forEach(n=>players[n]={name:n,laps:[],avg:null,lastLap:null});
+  players[username]=players[username]||{name:username,laps:[],avg:null,lastLap:null};
 
   await setDoc(RACE_REF,{
     game:"stockkings-race",
@@ -232,137 +245,76 @@ async function ensureRaceDoc(){
     round:1,
     maxRounds:MAX_ROUNDS,
     expectedPlayers:exp,
-    players:basePlayers,
-    obstacles:[], // stacked cumulatively
+    players,
+    obstacles:[],                 // stacked cumulatively
     countdownEndsAt:null,
     deadlineAt:null,
     selector:null,
     selectEndsAt:null,
-    lastSelectorReason:"",
     winnerName:null,
+    lastSelectorReason:"",
     updatedAtMs: now(),
     createdAtMs: now()
   }, {merge:false});
 }
 
 async function ensureMeInPlayers(){
-  if(!RACE_REF) return;
   await txn((d)=>{
-    const exp = (Array.isArray(d.expectedPlayers) && d.expectedPlayers.length) ? d.expectedPlayers.slice(0,8) : (lobbyState?.players||[username]).slice(0,8);
+    const exp = (Array.isArray(d.expectedPlayers)&&d.expectedPlayers.length)
+      ? d.expectedPlayers.slice(0,MAX_PLAYERS)
+      : (lobbyState?.players||[username]).slice(0,MAX_PLAYERS);
+
     if(!exp.includes(username)) exp.push(username);
-    exp.splice(8);
+    exp.splice(MAX_PLAYERS);
 
-    const players = d.players || {};
-    if(!players[username]){
-      players[username]={name:username,laps:[],avg:null,lastLap:null};
-    }else{
-      players[username].name = players[username].name || username;
-      players[username].laps = players[username].laps || [];
-      players[username].avg  = (typeof players[username].avg === "number") ? players[username].avg : avg(players[username].laps);
-    }
-
-    // add any expected players missing
+    d.players = d.players || {};
     exp.forEach(n=>{
-      if(!players[n]) players[n]={name:n,laps:[],avg:null,lastLap:null};
+      if(!d.players[n]) d.players[n]={name:n,laps:[],avg:null,lastLap:null};
+      d.players[n].laps = d.players[n].laps || [];
+      d.players[n].avg  = (typeof d.players[n].avg==="number") ? d.players[n].avg : avg(d.players[n].laps);
     });
 
     d.expectedPlayers = exp;
-    d.players = players;
     d.updatedAtMs = now();
     return d;
   });
 }
 
-function lobbyStarted(){
-  return (lobbyState?.status === "started");
-}
-
-async function maybeStartFromLobby(){
-  if(!raceState) return;
-  if(!lobbyStarted()) return;
-
-  // If race is lobby_wait/pregame → start countdown
-  if(raceState.phase==="lobby_wait"){
-    await txn((d)=>{
-      if(d.phase!=="lobby_wait") return null;
-      d.phase="countdown";
-      d.countdownEndsAt = now() + COUNTDOWN_MS;
-      d.deadlineAt = null;
-      d.selector = null;
-      d.selectEndsAt = null;
-      d.lastSelectorReason = "";
-      d.updatedAtMs = now();
-      return d;
-    });
-  }
-}
-
-/* ============================================================
-   ROUND LOGIC (NO HOST REQUIRED)
-============================================================ */
 function computeBottomSelector(d){
-  const exp = (d.expectedPlayers||[]).slice(0,8);
-  const round = d.round||1;
-  const players = d.players||{};
-  const entries = exp.map(n=>{
-    const t = players[n]?.laps?.[round-1];
-    return {name:n, t: (typeof t==="number") ? t : 30};
+  const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
+  const round=d.round||1;
+  const players=d.players||{};
+  const entries=exp.map(n=>{
+    const t=players[n]?.laps?.[round-1];
+    return {name:n, t:(typeof t==="number")?t:30};
   });
-  const maxT = Math.max(...entries.map(e=>e.t));
-  const bottoms = entries.filter(e=>e.t===maxT);
+  const maxT=Math.max(...entries.map(e=>e.t));
+  const bottoms=entries.filter(e=>e.t===maxT);
   return bottoms[Math.floor(Math.random()*bottoms.length)].name;
 }
 
 function computeWinner(d){
-  const exp = (d.expectedPlayers||[]).slice(0,8);
-  const players = d.players||{};
-  let bestName=null, best=1e18;
+  const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
+  const players=d.players||{};
+  let bestName=null,best=1e18;
   exp.forEach(n=>{
-    const a = avg(players[n]?.laps||[]);
-    if(typeof a==="number" && a<best){ best=a; bestName=n; }
+    const a=avg(players[n]?.laps||[]);
+    if(typeof a==="number" && a<best){best=a;bestName=n;}
   });
   return bestName || exp[0] || null;
 }
 
-async function finalizeDeadlineIfNeeded(){
-  if(!raceState) return;
-  if(raceState.phase!=="lap_wait") return;
-  if(!raceState.deadlineAt) return;
-  const t=now();
-  if(t<raceState.deadlineAt) return;
-
-  await txn((d)=>{
-    if(d.phase!=="lap_wait") return null;
-    if(!d.deadlineAt || now()<d.deadlineAt) return null;
-
-    const round=d.round||1;
-    const exp=(d.expectedPlayers||[]).slice(0,8);
-    d.players = d.players || {};
-    exp.forEach(n=>{
-      const p=d.players[n] || (d.players[n]={name:n,laps:[],avg:null,lastLap:null});
-      p.laps = p.laps || [];
-      if(typeof p.laps[round-1] !== "number"){
-        p.laps[round-1]=30;
-        p.lastLap=30;
-        p.avg=avg(p.laps);
-      }
-    });
-
-    // Everyone done now
-    if(round >= (d.maxRounds||MAX_ROUNDS)){
-      d.phase="finished";
-      d.winnerName = computeWinner(d);
-      d.updatedAtMs = now();
+async function maybeStartFromLobby(){
+  if(!raceState || !lobbyStarted()) return;
+  if(raceState.phase==="lobby_wait"){
+    await txn((d)=>{
+      if(d.phase!=="lobby_wait") return null;
+      d.phase="countdown";
+      d.countdownEndsAt=now()+COUNTDOWN_MS;
+      d.updatedAtMs=now();
       return d;
-    }
-
-    d.phase="obstacle_select";
-    d.selector = computeBottomSelector(d);
-    d.selectEndsAt = now() + SELECT_MS;
-    d.lastSelectorReason = "Deadline reached — slowest lap chooses next threat.";
-    d.updatedAtMs = now();
-    return d;
-  });
+    });
+  }
 }
 
 async function advanceCountdownIfNeeded(){
@@ -373,73 +325,96 @@ async function advanceCountdownIfNeeded(){
 
   await txn((d)=>{
     if(d.phase!=="countdown") return null;
-    if(!d.countdownEndsAt || now() < d.countdownEndsAt) return null;
+    if(now() < (d.countdownEndsAt||0)) return null;
     d.phase="racing";
-    d.deadlineAt = null;
-    d.selector = null;
-    d.selectEndsAt = null;
-    d.lastSelectorReason = "";
-    d.updatedAtMs = now();
+    d.deadlineAt=null;
+    d.selector=null;
+    d.selectEndsAt=null;
+    d.lastSelectorReason="";
+    d.updatedAtMs=now();
     return d;
   });
 }
 
-function pickFromAvailable(used){
-  const all=obstacleOrder;
-  const avail=all.filter(o=>!used.includes(o));
-  if(avail.length) return avail[Math.floor(Math.random()*avail.length)];
-  return all[Math.floor(Math.random()*all.length)];
+async function finalizeDeadlineIfNeeded(){
+  if(!raceState) return;
+  if(raceState.phase!=="lap_wait") return;
+  if(!raceState.deadlineAt) return;
+  if(now() < raceState.deadlineAt) return;
+
+  await txn((d)=>{
+    if(d.phase!=="lap_wait") return null;
+    if(now() < (d.deadlineAt||0)) return null;
+
+    const round=d.round||1;
+    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
+    d.players=d.players||{};
+    exp.forEach(n=>{
+      const p=d.players[n]||(d.players[n]={name:n,laps:[],avg:null,lastLap:null});
+      p.laps=p.laps||[];
+      if(typeof p.laps[round-1]!=="number"){
+        p.laps[round-1]=30;
+        p.lastLap=30;
+        p.avg=avg(p.laps);
+      }
+    });
+
+    if(round >= (d.maxRounds||MAX_ROUNDS)){
+      d.phase="finished";
+      d.winnerName=computeWinner(d);
+      d.updatedAtMs=now();
+      return d;
+    }
+
+    d.phase="obstacle_select";
+    d.selector=computeBottomSelector(d);
+    d.selectEndsAt=now()+SELECT_MS;
+    d.lastSelectorReason="Deadline reached — slowest lap chooses next threat.";
+    d.deadlineAt=null;
+    d.updatedAtMs=now();
+    return d;
+  });
 }
 
 async function chooseThreat(type=null, auto=false){
   if(!raceState) return;
   if(raceState.phase!=="obstacle_select") return;
 
-  const t=now();
-  const exp = expectedPlayers();
-  const single = exp.length<=1;
+  const exp=expectedPlayers();
+  const single=exp.length<=1;
 
   await txn((d)=>{
     if(d.phase!=="obstacle_select") return null;
 
-    const exp=(d.expectedPlayers||[]).slice(0,8);
+    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
     const single = exp.length<=1;
-
     const canPick = single || auto || (d.selector===username);
     if(!canPick) return null;
 
-    const used = Array.isArray(d.obstacles) ? d.obstacles.slice() : [];
-    let pick = (type && obstacleOrder.includes(type)) ? type : null;
-
+    const used=Array.isArray(d.obstacles)?d.obstacles.slice():[];
     const all=obstacleOrder;
     const avail=all.filter(o=>!used.includes(o));
 
-    if(!pick){
-      pick = avail.length ? avail[Math.floor(Math.random()*avail.length)] : pickFromAvailable(used);
-    }else{
-      // If we still have unused types, prevent repeats until exhausted
-      if(avail.length && used.includes(pick)){
-        pick = avail[Math.floor(Math.random()*avail.length)];
-      }
-    }
+    let pick=(type && all.includes(type))?type:null;
+    if(!pick) pick = (avail.length ? avail : all)[Math.floor(Math.random()*(avail.length?avail.length:all.length))];
+    if(avail.length && used.includes(pick)) pick = avail[Math.floor(Math.random()*avail.length)];
 
+    // stack cumulatively; avoid repeats until exhausted, then allow repeats
     if(avail.length){
       if(!used.includes(pick)) used.push(pick);
     }else{
-      // after exhaustion allow repeats (stack chaos mode)
       used.push(pick);
     }
 
-    const nextRound = (d.round||1) + 1;
-    d.obstacles = used;
-    d.round = nextRound;
-    d.phase = "countdown";
-    d.countdownEndsAt = now() + COUNTDOWN_MS;
-    d.deadlineAt = null;
-    d.selector = null;
-    d.selectEndsAt = null;
+    d.obstacles=used;
+    d.round=(d.round||1)+1;
+    d.phase="countdown";
+    d.countdownEndsAt=now()+COUNTDOWN_MS;
+    d.selector=null;
+    d.selectEndsAt=null;
+    d.deadlineAt=null;
     d.lastSelectorReason = auto ? "Auto-picked (timeout / solo)." : "";
-    d.updatedAtMs = now();
+    d.updatedAtMs=now();
     return d;
   });
 }
@@ -447,11 +422,11 @@ async function chooseThreat(type=null, auto=false){
 async function autoPickIfNeeded(){
   if(!raceState) return;
   if(raceState.phase!=="obstacle_select") return;
-  const exp = expectedPlayers();
-  const single = exp.length<=1;
+
+  const exp=expectedPlayers();
+  const single=exp.length<=1;
 
   if(single){
-    // immediate auto pick in solo to keep flow
     await chooseThreat(null,true);
     return;
   }
@@ -460,140 +435,328 @@ async function autoPickIfNeeded(){
   }
 }
 
-/* ============================================================
-   SUBMIT LAP (TXN)
-============================================================ */
 async function submitLap(lapSeconds){
-  if(!raceState) return;
-  const t=now();
-
   await txn((d)=>{
-    const exp=(d.expectedPlayers||[]).slice(0,8);
-    if(!exp.includes(username)) exp.push(username);
-
     const round=d.round||1;
     const maxRounds=d.maxRounds||MAX_ROUNDS;
+    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
+    if(!exp.includes(username)) exp.push(username);
+    exp.splice(MAX_PLAYERS);
 
-    // Only accept during racing / lap_wait, and if deadline not passed
     if(!(d.phase==="racing" || d.phase==="lap_wait")) return null;
-    if(d.deadlineAt && t > d.deadlineAt) return null;
+    if(d.deadlineAt && now() > d.deadlineAt) return null;
 
-    d.players = d.players || {};
-    const me = d.players[username] || (d.players[username]={name:username,laps:[],avg:null,lastLap:null});
-    me.laps = me.laps || [];
-    if(typeof me.laps[round-1] === "number") return null; // already submitted
+    d.players=d.players||{};
+    const me=d.players[username]||(d.players[username]={name:username,laps:[],avg:null,lastLap:null});
+    me.laps=me.laps||[];
+    if(typeof me.laps[round-1]==="number") return null;
 
-    const time = Math.min(30, Math.max(0.5, lapSeconds));
+    const time=Math.min(30, Math.max(0.5, lapSeconds));
     me.laps[round-1]=time;
     me.lastLap=time;
     me.avg=avg(me.laps);
 
-    // Ensure everyone has player objects
     exp.forEach(n=>{
-      const p=d.players[n] || (d.players[n]={name:n,laps:[],avg:null,lastLap:null});
-      p.laps = p.laps || [];
-      p.avg = (typeof p.avg==="number") ? p.avg : avg(p.laps);
+      const p=d.players[n]||(d.players[n]={name:n,laps:[],avg:null,lastLap:null});
+      p.laps=p.laps||[];
+      p.avg=(typeof p.avg==="number")?p.avg:avg(p.laps);
     });
+    d.expectedPlayers=exp;
 
-    d.expectedPlayers = exp;
-
-    // Determine completion
-    const doneForRound = exp.map(n => typeof d.players[n]?.laps?.[round-1] === "number");
-    const anyFinished = doneForRound.some(Boolean);
-    const everyoneDone = doneForRound.every(Boolean);
+    const done=exp.map(n=>typeof d.players[n]?.laps?.[round-1]==="number");
+    const anyFinished=done.some(Boolean);
+    const everyoneDone=done.every(Boolean);
 
     if(everyoneDone){
-      // End of round
       if(round >= maxRounds){
         d.phase="finished";
-        d.winnerName = computeWinner(d);
-        d.updatedAtMs = now();
+        d.winnerName=computeWinner(d);
+        d.updatedAtMs=now();
         return d;
       }
       d.phase="obstacle_select";
-      d.selector = computeBottomSelector(d);
-      d.selectEndsAt = now() + SELECT_MS;
-      d.lastSelectorReason = "Slowest lap chooses next threat.";
-      d.deadlineAt = null;
-      d.updatedAtMs = now();
+      d.selector=computeBottomSelector(d);
+      d.selectEndsAt=now()+SELECT_MS;
+      d.lastSelectorReason="Slowest lap chooses next threat.";
+      d.deadlineAt=null;
+      d.updatedAtMs=now();
       return d;
     }
 
-    // Not everyone done — if first finisher triggers waiting window
     if(!d.deadlineAt && anyFinished){
       d.phase="lap_wait";
-      d.deadlineAt = now() + DEADLINE_MS;
-      d.updatedAtMs = now();
+      d.deadlineAt=now()+DEADLINE_MS;
+      d.updatedAtMs=now();
       return d;
     }
 
-    d.updatedAtMs = now();
+    d.updatedAtMs=now();
     return d;
   });
 }
 
 /* ============================================================
-   THREE SETUP
+   THREE WORLD — WIDE DONUT ROAD + INNER/OUTER WALLS
 ============================================================ */
 const renderer=new THREE.WebGLRenderer({canvas:el("scene"),antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x68b5ff);
+scene.background=new THREE.Color(0x69b8ff);
+scene.fog=new THREE.FogExp2(0x69b8ff, 0.010);
 
-const camera=new THREE.PerspectiveCamera(62,1,0.1,1200);
-camera.position.set(0,23,22);
+const camera=new THREE.PerspectiveCamera(62,1,0.1,1400);
 
-scene.add(new THREE.HemisphereLight(0xcde8ff,0x274b22,1.1));
+scene.add(new THREE.HemisphereLight(0xcfeaff,0x244b25,1.1));
 const sun=new THREE.DirectionalLight(0xffffff,1);
-sun.position.set(18,40,20);
-sun.castShadow=false;
+sun.position.set(20,40,20);
 scene.add(sun);
 
+// Ground
 const ground=new THREE.Mesh(
-  new THREE.PlaneGeometry(280,280),
-  new THREE.MeshStandardMaterial({color:0x2e8a3f,roughness:.95})
+  new THREE.PlaneGeometry(420,420),
+  new THREE.MeshStandardMaterial({color:0x2f8d44,roughness:.96})
 );
 ground.rotation.x=-Math.PI/2;
 scene.add(ground);
 
-// Subtle fog
-scene.fog = new THREE.FogExp2(0x68b5ff, 0.012);
+// ROAD GEOMETRY (wide)
+const ROAD_R = 52;          // centerline radius
+const ROAD_W = 34;          // WIDENED A TON
+const INNER_R = ROAD_R - ROAD_W/2;
+const OUTER_R = ROAD_R + ROAD_W/2;
 
-/* Track */
-const trackPath=[];
-for(let i=0;i<760;i++){
-  const t=(i/760)*Math.PI*2;
-  const x=36*Math.sin(t);
-  const z=18*Math.sin(t)*Math.cos(t);
-  trackPath.push(new THREE.Vector3(x,0.03,z));
-}
-for(let i=1;i<trackPath.length;i++){
-  const a=trackPath[i-1],b=trackPath[i];
-  const len=a.distanceTo(b);
-  const mid=new THREE.Vector3().addVectors(a,b).multiplyScalar(.5);
-  const mesh=new THREE.Mesh(
-    new THREE.BoxGeometry(8,0.25,len+1),
-    new THREE.MeshStandardMaterial({color:0x8a5d30,roughness:.85,metalness:0.02})
+const road = new THREE.Mesh(
+  new THREE.RingGeometry(INNER_R, OUTER_R, 140, 1),
+  new THREE.MeshStandardMaterial({color:0x8a5d30,roughness:.86,metalness:.02})
+);
+road.rotation.x=-Math.PI/2;
+road.position.y=0.02;
+scene.add(road);
+
+// Lane stripe ring
+const stripe = new THREE.Mesh(
+  new THREE.RingGeometry(ROAD_R-0.35, ROAD_R+0.35, 140, 1),
+  new THREE.MeshBasicMaterial({color:0xe9f2ff,transparent:true,opacity:0.45})
+);
+stripe.rotation.x=-Math.PI/2;
+stripe.position.y=0.03;
+scene.add(stripe);
+
+// WALLS (visual rings)
+function wallCylinder(radius, color){
+  const m=new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, 2.1, 160, 1, true),
+    new THREE.MeshStandardMaterial({color,roughness:.8,metalness:.05,side:THREE.DoubleSide})
   );
-  mesh.position.copy(mid);
-  mesh.lookAt(b.x,mid.y,b.z);
-  mesh.rotateY(Math.PI/2);
-  scene.add(mesh);
+  m.position.y=1.05;
+  return m;
+}
+const innerWall = wallCylinder(INNER_R, 0x354155);
+const outerWall = wallCylinder(OUTER_R, 0x354155);
+scene.add(innerWall, outerWall);
+
+// Start line
+const startLine = new THREE.Mesh(
+  new THREE.PlaneGeometry(ROAD_W, 2.8),
+  new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.6,side:THREE.DoubleSide})
+);
+startLine.rotation.x=-Math.PI/2;
+startLine.position.set(ROAD_R, 0.031, 0);
+startLine.rotation.z=Math.PI/2;
+scene.add(startLine);
+
+/* ============================================================
+   CAR (smaller) + BOOST FLAME (blue burst)
+============================================================ */
+function buildCar(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(
+    new THREE.BoxGeometry(2.4,.85,3.8),
+    new THREE.MeshStandardMaterial({color:0x1f74ff,metalness:.25,roughness:.35})
+  );
+  body.position.y=.9;
+  const top=new THREE.Mesh(
+    new THREE.BoxGeometry(1.6,.65,1.7),
+    new THREE.MeshStandardMaterial({color:0xd8e8ff,metalness:.05,roughness:.5})
+  );
+  top.position.set(0,1.38,-.15);
+  g.add(body,top);
+
+  [[-.9,.35,-1.15],[.9,.35,-1.15],[-.9,.35,1.15],[.9,.35,1.15]].forEach(([x,y,z])=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(.40,.40,.36,16),
+      new THREE.MeshStandardMaterial({color:0x101218,roughness:.9})
+    );
+    w.rotation.z=Math.PI/2;
+    w.position.set(x,y,z);
+    g.add(w);
+  });
+
+  const flameMat=new THREE.MeshBasicMaterial({color:0xff7a22,transparent:true,opacity:.9});
+  const flame=new THREE.Mesh(new THREE.ConeGeometry(.26,1.28,10), flameMat);
+  flame.position.set(0,.9,2.3);
+  flame.rotation.x=Math.PI/2;
+  g.add(flame);
+  g.flame=flame; g.flameMat=flameMat;
+
+  // make it a bit smaller overall
+  g.scale.set(0.82,0.82,0.82);
+  return g;
+}
+const car=buildCar();
+scene.add(car);
+
+const START_A = 0; // start at (ROAD_R, 0)
+function setCarAtStart(){
+  const x=Math.cos(START_A)*ROAD_R;
+  const z=Math.sin(START_A)*ROAD_R;
+  car.position.set(x,0.1,z);
+
+  // CCW direction tangent at angle a is (-sin(a), cos(a)) => (0,1) here (toward +Z)
+  car.rotation.set(0, 0, 0);
+  car.rotation.y = Math.atan2(0, 1) + Math.PI; // face "forward" along -Z local, so rotate 180 from +Z
+}
+setCarAtStart();
+
+/* ============================================================
+   TRACK HELPERS + WALL COLLISION
+============================================================ */
+const CAR_R = 1.05; // collision radius-ish for walls/rocks
+
+function normAngle(a){
+  const two=Math.PI*2;
+  a%=two; if(a<0) a+=two;
+  return a;
+}
+const startTheta = normAngle(START_A);
+
+function roadInfo(x,z){
+  const r=Math.hypot(x,z);
+  const onRoad = (r>INNER_R+0.25 && r<OUTER_R-0.25);
+  const distToEdge = Math.min(Math.abs(r-INNER_R), Math.abs(OUTER_R-r));
+  return {r,onRoad,distToEdge};
 }
 
-const trackCenter=(t)=>new THREE.Vector3(36*Math.sin(t),0,18*Math.sin(t)*Math.cos(t));
-function nearestParam(x,z){
-  let bestT=0,best=1e18;
-  for(let i=0;i<trackPath.length;i++){
-    const p=trackPath[i];
-    const d=(p.x-x)**2+(p.z-z)**2;
-    if(d<best){ best=d; bestT=(i/trackPath.length)*Math.PI*2; }
+function enforceWalls(){
+  const r=Math.hypot(car.position.x, car.position.z) || 0.0001;
+  const nx=car.position.x/r;
+  const nz=car.position.z/r;
+
+  // inner
+  const minR = INNER_R + CAR_R;
+  if(r < minR){
+    car.position.x = nx*minR;
+    car.position.z = nz*minR;
+    return true;
   }
-  return {t:bestT,d:Math.sqrt(best)};
+  // outer
+  const maxR = OUTER_R - CAR_R;
+  if(r > maxR){
+    car.position.x = nx*maxR;
+    car.position.z = nz*maxR;
+    return true;
+  }
+  return false;
 }
 
-/* Seeded rocks (deterministic per gameId) */
+/* ============================================================
+   THREATS + FX (happen throughout the lap, not just at the start)
+============================================================ */
+const threats=[];
+const boomFX=[];
+function addBoom(pos, colorHex){
+  const ring=new THREE.Mesh(
+    new THREE.RingGeometry(0.2,0.7,32),
+    new THREE.MeshBasicMaterial({color:colorHex,transparent:true,opacity:0.85,side:THREE.DoubleSide})
+  );
+  ring.rotation.x=-Math.PI/2;
+  ring.position.set(pos.x,0.07,pos.z);
+  scene.add(ring);
+  boomFX.push({mesh:ring,life:0.5});
+}
+function clearThreats(){
+  threats.splice(0).forEach(t=>scene.remove(t.mesh));
+  boomFX.splice(0).forEach(b=>scene.remove(b.mesh));
+}
+function spawnThreats(){
+  clearThreats();
+  const active=(raceState?.obstacles||[]);
+  if(!active.length) return;
+
+  const pickR = ()=> (INNER_R+4) + Math.random()*(ROAD_W-8);
+  active.forEach((type,stackIdx)=>{
+    // spawn a few instances per stacked threat
+    const n = 3 + Math.min(2, stackIdx);
+    for(let i=0;i<n;i++){
+      const a = normAngle((stackIdx*0.95 + i*(Math.PI*2/n) + (Math.random()-.5)*0.22));
+      const r = pickR();
+      const x=Math.cos(a)*r;
+      const z=Math.sin(a)*r;
+
+      let mesh=null;
+
+      if(type==="meteorites"){
+        mesh=new THREE.Mesh(
+          new THREE.CylinderGeometry(2.2,2.2,.06,28),
+          new THREE.MeshBasicMaterial({color:0xffc266,transparent:true,opacity:0.33})
+        );
+        mesh.position.set(x,0.06,z);
+        threats.push({type,mesh,rad:2.3,timer:1.8+Math.random()*3.2,hot:0});
+      }
+
+      if(type==="monsters"){
+        mesh=new THREE.Mesh(
+          new THREE.BoxGeometry(1.6,1.7,1.6),
+          new THREE.MeshStandardMaterial({color:0x6f32a8,roughness:.65,metalness:.05,emissive:0x1a0830,emissiveIntensity:.35})
+        );
+        mesh.position.set(x,0.95,z);
+        threats.push({type,mesh,rad:1.8,da:(Math.random()>.5?1:-1)*(0.5+Math.random()*0.7),a, r});
+      }
+
+      if(type==="eggs"){
+        mesh=new THREE.Mesh(
+          new THREE.SphereGeometry(.82,18,12),
+          new THREE.MeshStandardMaterial({color:0xf4efe5,roughness:.4,metalness:0})
+        );
+        mesh.position.set(x,.82,z);
+        threats.push({type,mesh,rad:1.25,v:new THREE.Vector2((Math.random()-.5)*2.6,(Math.random()-.5)*2.6)});
+      }
+
+      if(type==="towers"){
+        mesh=new THREE.Group();
+        const p=new THREE.Mesh(new THREE.CylinderGeometry(.75,1.05,4.3,10),
+          new THREE.MeshStandardMaterial({color:0x3e4b63,roughness:.85})
+        );
+        p.position.y=2.1;
+        const ring=new THREE.Mesh(
+          new THREE.RingGeometry(2.8,3.4,28),
+          new THREE.MeshBasicMaterial({color:0x9ec9ff,side:THREE.DoubleSide,transparent:true,opacity:.55})
+        );
+        ring.rotation.x=-Math.PI/2;
+        const core=new THREE.Mesh(new THREE.SphereGeometry(.28,14,10), new THREE.MeshBasicMaterial({color:0xbfe0ff}));
+        core.position.y=4.15;
+        mesh.add(p,ring,core);
+        mesh.position.set(x,0,z);
+        threats.push({type,mesh,rad:3.2,flash:0,cool:0.9+Math.random()*2.1});
+      }
+
+      if(type==="rhinos"){
+        mesh=new THREE.Mesh(
+          new THREE.BoxGeometry(2.2,1.4,3.2),
+          new THREE.MeshStandardMaterial({color:0x7b7f86,roughness:.8,metalness:.08})
+        );
+        mesh.position.set(x,.7,z);
+        threats.push({type,mesh,rad:2.1,a, r: ROAD_R + (Math.random()-.5)*(ROAD_W*0.2)});
+      }
+
+      if(mesh) scene.add(mesh);
+    }
+  });
+}
+
+/* ============================================================
+   ROAD ROCKS (bumps that slow you)
+============================================================ */
 function hashSeed(s){
   let h=2166136261>>>0;
   for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h,16777619); }
@@ -611,280 +774,149 @@ const rand = mulberry32(hashSeed(gameId||"solo"));
 const roadRocks=[];
 function spawnRoadRocks(){
   roadRocks.splice(0).forEach(r=>scene.remove(r.mesh));
-  const rockMat = new THREE.MeshStandardMaterial({color:0x5a5f66,roughness:.95,metalness:0.0});
-  for(let i=0;i<22;i++){
-    const t = (i/22)*Math.PI*2 + (rand()-0.5)*0.12;
-    const c = trackCenter(t);
-    // place within track width
-    const off = (rand()-0.5)*6.0;
-    const n = new THREE.Vector3().subVectors(trackCenter(t+0.02), trackCenter(t-0.02)).normalize();
-    const right = new THREE.Vector3(n.z,0,-n.x).normalize();
-    const pos = new THREE.Vector3(c.x,0.15,c.z).addScaledVector(right, off);
+  const rockMat=new THREE.MeshStandardMaterial({color:0x5a5f66,roughness:.95});
+  for(let i=0;i<26;i++){
+    const a=normAngle(rand()*Math.PI*2);
+    const r=(INNER_R+4) + rand()*(ROAD_W-8);
+    const x=Math.cos(a)*r, z=Math.sin(a)*r;
 
-    const s = 0.5 + rand()*0.9;
-    const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), rockMat);
-    mesh.position.copy(pos);
-    mesh.rotation.set(rand()*3, rand()*3, rand()*3);
+    const s=0.55 + rand()*0.95;
+    const mesh=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), rockMat);
+    mesh.position.set(x,0.15,z);
+    mesh.rotation.set(rand()*3,rand()*3,rand()*3);
     scene.add(mesh);
-    roadRocks.push({mesh, r: s*0.95, hitCd:0});
+    roadRocks.push({mesh,rad:s*0.95,hitCd:0});
   }
 }
 spawnRoadRocks();
-
-/* Car */
-function buildCar(){
-  const g=new THREE.Group();
-  const body=new THREE.Mesh(
-    new THREE.BoxGeometry(2.6,.9,4.2),
-    new THREE.MeshStandardMaterial({color:0x1f74ff,metalness:.25,roughness:.35})
-  );
-  body.position.y=.9;
-
-  const top=new THREE.Mesh(
-    new THREE.BoxGeometry(1.8,.7,2),
-    new THREE.MeshStandardMaterial({color:0xd8e8ff,metalness:.05,roughness:.5})
-  );
-  top.position.set(0,1.45,-.2);
-
-  g.add(body,top);
-
-  [[-1,.35,-1.3],[1,.35,-1.3],[-1,.35,1.3],[1,.35,1.3]].forEach(([x,y,z])=>{
-    const w=new THREE.Mesh(
-      new THREE.CylinderGeometry(.45,.45,.4,16),
-      new THREE.MeshStandardMaterial({color:0x101218,roughness:.9})
-    );
-    w.rotation.z=Math.PI/2;
-    w.position.set(x,y,z);
-    g.add(w);
-  });
-
-  // Boost flame (will shift orange->blue)
-  const flameMat = new THREE.MeshBasicMaterial({color:0xff7a22,transparent:true,opacity:.9});
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(.28,1.35,10), flameMat);
-  flame.position.set(0,.9,2.7);
-  flame.rotation.x=Math.PI/2;
-  g.add(flame);
-  g.flame = flame;
-  g.flameMat = flameMat;
-
-  return g;
-}
-const car=buildCar();
-scene.add(car);
-
-function resetCarToStart(){
-  car.position.set(0,.1,-6);
-  car.rotation.set(0,0,0);
-}
-resetCarToStart();
-
-/* ============================================================
-   THREATS (STACKED)
-============================================================ */
-const threats=[];
-const boomFX=[];
-
-function addBoom(pos, colorHex){
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.2,0.6,28),
-    new THREE.MeshBasicMaterial({color:colorHex,transparent:true,opacity:0.85,side:THREE.DoubleSide})
-  );
-  ring.rotation.x=-Math.PI/2;
-  ring.position.set(pos.x,0.08,pos.z);
-  scene.add(ring);
-  boomFX.push({mesh:ring, life:0.45});
-}
-
-function spawnThreats(){
-  threats.splice(0).forEach(t=>scene.remove(t.mesh));
-  boomFX.splice(0).forEach(b=>scene.remove(b.mesh));
-
-  const active=(raceState?.obstacles||[]);
-  active.forEach((type,idx)=>{
-    for(let i=0;i<3;i++){
-      const tt=((idx*3+i+1)/11)*Math.PI*2;
-      const c=trackCenter(tt);
-      let mesh=null;
-
-      if(type==="meteorites"){
-        mesh=new THREE.Mesh(
-          new THREE.CylinderGeometry(1.8,1.8,.05,24),
-          new THREE.MeshBasicMaterial({color:0xffc266,transparent:true,opacity:.33})
-        );
-        mesh.position.set(c.x,.06,c.z);
-        threats.push({type,mesh,r:2.2,timer:2+Math.random()*4, hot:0});
-      }
-
-      if(type==="monsters"){
-        mesh=new THREE.Mesh(
-          new THREE.BoxGeometry(1.5,1.8,1.5),
-          new THREE.MeshStandardMaterial({color:0x6f32a8,roughness:.65,metalness:.05,emissive:0x1a0830,emissiveIntensity:.35})
-        );
-        mesh.position.set(c.x,1,c.z);
-        threats.push({type,mesh,r:1.7,vx:Math.random()>.5?1:-1});
-      }
-
-      if(type==="eggs"){
-        mesh=new THREE.Mesh(
-          new THREE.SphereGeometry(.82,18,12),
-          new THREE.MeshStandardMaterial({color:0xf4efe5,roughness:.4,metalness:.0})
-        );
-        mesh.position.set(c.x,.82,c.z);
-        threats.push({type,mesh,r:1.25,v:new THREE.Vector3((Math.random()-.5)*3,0,(Math.random()-.5)*3)});
-      }
-
-      if(type==="towers"){
-        mesh=new THREE.Group();
-        const p=new THREE.Mesh(
-          new THREE.CylinderGeometry(.8,1.1,4,10),
-          new THREE.MeshStandardMaterial({color:0x3e4b63,roughness:.85})
-        );
-        p.position.y=2;
-
-        const ring=new THREE.Mesh(
-          new THREE.RingGeometry(2.4,3.0,26),
-          new THREE.MeshBasicMaterial({color:0x9ec9ff,side:THREE.DoubleSide,transparent:true,opacity:.55})
-        );
-        ring.rotation.x=-Math.PI/2;
-
-        const core=new THREE.Mesh(
-          new THREE.SphereGeometry(.28,14,10),
-          new THREE.MeshBasicMaterial({color:0xbfe0ff})
-        );
-        core.position.y=3.9;
-
-        mesh.add(p,ring,core);
-        mesh.position.set(c.x,0,c.z);
-        threats.push({type,mesh,r:2.9,flash:0, cool: 1.0+Math.random()*2.2});
-      }
-
-      if(type==="rhinos"){
-        mesh=new THREE.Mesh(
-          new THREE.BoxGeometry(2.2,1.4,3.4),
-          new THREE.MeshStandardMaterial({color:0x7b7f86,roughness:.8,metalness:.08,emissive:0x0c0c0c,emissiveIntensity:.15})
-        );
-        mesh.position.set(c.x,.7,c.z);
-        threats.push({type,mesh,r:2.0,t:tt});
-      }
-
-      if(mesh) scene.add(mesh);
-    }
-  });
-}
 
 /* ============================================================
    GAMEPLAY (LOCAL)
 ============================================================ */
 let isRacing=false;
 let lapStart=0;
-let firstCheckpoint=false;
-let lastParam=0;
-
 let stunUntil=0;
 let boostReadyAt=0;
 let lastHitAt=0;
 let bumpSlowUntil=0;
 
+let halfWay=false;
+let lastProgress=0;
+
 const keys={forward:false,left:false,right:false,boost:false};
 
 function startLapLocal(){
-  resetCarToStart();
+  setCarAtStart();
   isRacing=true;
   lapStart=now();
-  firstCheckpoint=false;
-  lastParam=nearestParam(car.position.x,car.position.z).t;
   stunUntil=0;
   bumpSlowUntil=0;
+  halfWay=false;
+  lastProgress=0;
 }
 
-function updateThreats(dt){
-  const sec=performance.now()/1000;
+function lapProgress(theta){
+  // CCW progress from startTheta in [0, 2π)
+  const t=normAngle(theta);
+  const p=normAngle(t - startTheta);
+  return p;
+}
 
-  // boom FX
+function updateFX(dt){
   for(let i=boomFX.length-1;i>=0;i--){
     const b=boomFX[i];
     b.life-=dt;
-    const s = 1 + (0.45-b.life)*5.0;
+    const s=1+(0.5-b.life)*5.2;
     b.mesh.scale.set(s,s,s);
-    b.mesh.material.opacity = Math.max(0, b.life/0.45) * 0.85;
+    b.mesh.material.opacity=Math.max(0,b.life/0.5)*0.85;
     if(b.life<=0){ scene.remove(b.mesh); boomFX.splice(i,1); }
   }
+}
+
+function updateThreats(dt){
+  updateFX(dt);
 
   threats.forEach(t=>{
     if(t.type==="meteorites"){
       t.timer -= dt;
       t.hot = Math.max(0, t.hot - dt);
-      if(t.timer < 0){
-        t.timer = 3 + Math.random()*4;
-        t.hot = 0.28; // boom window
+      if(t.timer <= 0){
+        t.timer = 2.6 + Math.random()*3.2;     // throughout the lap
+        t.hot   = 0.28;
         t.mesh.material.color.setHex(0xff4b4b);
         addBoom(t.mesh.position, 0xff4b4b);
-        setTimeout(()=>{ // revert to warn
-          if(performance.now()/1000 - sec < .25) return;
-          if(t.mesh && t.mesh.material) t.mesh.material.color.setHex(0xffc266);
-        }, 210);
+        setTimeout(()=>{ if(t.mesh?.material) t.mesh.material.color.setHex(0xffc266); }, 220);
       }
     }
+
     if(t.type==="monsters"){
-      t.mesh.position.x += t.vx*dt*4;
-      if(Math.abs(t.mesh.position.x)>45) t.vx*=-1;
+      t.a = normAngle(t.a + t.da*dt*0.45);
+      const x=Math.cos(t.a)*t.r, z=Math.sin(t.a)*t.r;
+      t.mesh.position.set(x,0.95,z);
     }
+
     if(t.type==="eggs"){
-      t.mesh.position.addScaledVector(t.v,dt);
-      t.v.multiplyScalar(.985);
+      t.mesh.position.x += t.v.x*dt;
+      t.mesh.position.z += t.v.y*dt;
+      t.v.multiplyScalar(0.985);
     }
+
     if(t.type==="towers"){
       t.flash = Math.max(0, t.flash-dt);
       t.cool -= dt;
       if(t.cool<=0){
-        t.cool = 1.0 + Math.random()*2.2;
+        t.cool = 0.9 + Math.random()*2.1;
         t.flash = 0.22;
         addBoom(t.mesh.position, 0x9ec9ff);
       }
       const ring=t.mesh.children[1];
       ring.material.opacity = 0.42 + (t.flash*2.0);
     }
+
     if(t.type==="rhinos"){
-      t.t = (t.t + dt*0.92)%(Math.PI*2);
-      const c=trackCenter(t.t);
-      t.mesh.position.set(c.x,.7,c.z);
+      t.a = normAngle(t.a + dt*0.9);
+      const x=Math.cos(t.a)*t.r, z=Math.sin(t.a)*t.r;
+      t.mesh.position.set(x,0.7,z);
     }
 
-    // collision checks
+    // collisions
     const d=t.mesh.position.distanceTo(car.position);
-    if(d<t.r+1.05 && now()-lastHitAt>1200){
-      // Meteorites only punish during boom window (feels fairer)
-      if(t.type==="meteorites" && t.hot<=0) return;
+    if(d < t.rad + CAR_R && now()-lastHitAt>1200){
+      if(t.type==="meteorites" && t.hot<=0) return; // only punish on boom window
 
       lastHitAt=now();
       if(t.type==="meteorites"||t.type==="towers"){
         stunUntil=Math.max(stunUntil, now() + (t.type==="meteorites"?2200:1700));
       }
       if(t.type==="eggs"){
-        const dir=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-        car.position.addScaledVector(dir,-2.1);
-        scene.remove(t.mesh); t.dead=true;
+        const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
+        car.position.addScaledVector(back, 2.6);
+        t.dead=true;
+        addBoom(t.mesh.position, 0xffffff);
       }
       if(t.type==="rhinos"||t.type==="monsters"){
-        const dir=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-        car.position.addScaledVector(dir,-5.6);
+        const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
+        car.position.addScaledVector(back, 6.0);
         stunUntil=Math.max(stunUntil, now()+900);
+        addBoom(car.position, 0xff6f89);
       }
     }
   });
 
-  for(let i=threats.length-1;i>=0;i--) if(threats[i].dead) threats.splice(i,1);
+  for(let i=threats.length-1;i>=0;i--){
+    if(threats[i].dead){ scene.remove(threats[i].mesh); threats.splice(i,1); }
+  }
 }
 
 function updateRoadRocks(dt){
   for(const r of roadRocks){
-    r.hitCd = Math.max(0, r.hitCd - dt);
-    const d = r.mesh.position.distanceTo(car.position);
-    if(d < r.r + 1.05 && r.hitCd<=0){
-      r.hitCd = 1.2;
-      bumpSlowUntil = Math.max(bumpSlowUntil, now()+650);
+    r.hitCd=Math.max(0,r.hitCd-dt);
+    const d=r.mesh.position.distanceTo(car.position);
+    if(d < r.rad + CAR_R && r.hitCd<=0){
+      r.hitCd=1.1;
+      bumpSlowUntil=Math.max(bumpSlowUntil, now()+650);
       const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-      car.position.addScaledVector(back,-0.9);
+      car.position.addScaledVector(back, 1.0);
       addBoom(r.mesh.position, 0x5a5f66);
     }
   }
@@ -894,115 +926,135 @@ function updateCar(dt){
   const t=now();
   const stunned = t < stunUntil;
 
-  // Base speed auto-drive; holding forward increases
-  let speed=11;
-  if(keys.forward && !stunned) speed=18;
+  // on-road = faster; off-road = slower
+  const ri = roadInfo(car.position.x, car.position.z);
+  const onRoad = ri.onRoad;
 
-  // bump slow
+  let speed = onRoad ? 22 : 12;
+  if(keys.forward && !stunned) speed = onRoad ? 30 : 16;
+
+  // bumps
   if(t < bumpSlowUntil) speed *= 0.72;
 
   // boost
   const boosting = keys.boost && (t > boostReadyAt) && !stunned;
   if(boosting){
-    speed=30;
-    boostReadyAt=t+8000;
+    speed = onRoad ? 46 : 26;
+    boostReadyAt = t + 8000;
+    addBoom(car.position, 0x3bd7ff); // blue burst pop
   }
-
-  // off-track penalty
-  const near=nearestParam(car.position.x,car.position.z);
-  if(near.d>4.2) speed*=0.54;
 
   // steering
   const turn=(keys.left?-1:0)+(keys.right?1:0);
-  car.rotation.y -= turn*dt*2.2;
+  car.rotation.y -= turn * dt * 2.3;
 
   // move forward along car direction
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
   car.position.addScaledVector(forward, speed*dt);
-  car.position.y=.1;
+  car.position.y=0.1;
 
-  // flame visuals: orange idle, blue burst on boost press, blue fade on cooldown
-  const cdLeft = Math.max(0, (boostReadyAt - t)/1000);
-  const blueBurst = boosting ? 1 : Math.max(0, 1 - (cdLeft/8)); // fades after use
-  const baseColor = new THREE.Color(0xff7a22);
-  const boostColor = new THREE.Color(0x3bd7ff);
-  car.flameMat.color.copy(baseColor).lerp(boostColor, Math.min(1, blueBurst));
-  const flameScale = boosting ? 1.9 : (t < boostReadyAt ? 1.0 : 0.75);
+  // enforce inner/outer walls physically
+  const hitWall = enforceWalls();
+  if(hitWall){
+    bumpSlowUntil=Math.max(bumpSlowUntil, now()+350);
+  }
+
+  // flame visuals: blue while boosting, otherwise orange
+  const cdLeft=Math.max(0,(boostReadyAt - t)/1000);
+  el("boostBtn").classList.toggle("onCd", cdLeft>0.01);
+
+  const baseColor=new THREE.Color(0xff7a22);
+  const boostColor=new THREE.Color(0x3bd7ff);
+  car.flameMat.color.copy(baseColor).lerp(boostColor, boosting ? 1 : 0.15);
+  const flameScale = boosting ? 2.0 : (cdLeft>0.01 ? 1.05 : 0.8);
   car.flame.scale.set(1, flameScale, flameScale);
 
-  // lap detection
-  const p=nearestParam(car.position.x,car.position.z).t;
-  if(p>Math.PI*.9 && p<Math.PI*1.1) firstCheckpoint=true;
-  if(firstCheckpoint && lastParam>5.7 && p<.5){
-    // completed a lap for this round
-    const lapSec = (t - lapStart)/1000;
+  // lap detection using angle progress
+  const theta = Math.atan2(car.position.z, car.position.x);
+  const prog = lapProgress(theta);
+
+  if(prog > Math.PI) halfWay=true;
+
+  // completed loop when we pass near start again after halfway
+  if(halfWay && lastProgress > 6.0 && prog < 0.25){
+    const lapSec=(t-lapStart)/1000;
     isRacing=false;
     submitLap(lapSec);
   }
-  lastParam=p;
+  lastProgress=prog;
 }
 
 /* ============================================================
-   UI RENDER
+   CAMERA (mobile-friendly: slight downward, above & behind)
+============================================================ */
+function updateCamera(){
+  const mobile = innerWidth < 920;
+  const height = mobile ? 24 : 18;
+  const behind = mobile ? 22 : 16;
+
+  const back = new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion); // behind (since forward is -Z)
+  const desired = new THREE.Vector3(
+    car.position.x + back.x*behind,
+    height,
+    car.position.z + back.z*behind
+  );
+  camera.position.lerp(desired, 0.10);
+  camera.lookAt(car.position.x, 1.2, car.position.z);
+}
+
+/* ============================================================
+   UI
 ============================================================ */
 function renderBoard(){
-  const exp = expectedPlayers().slice(0,8);
-  const players = raceState?.players || {};
-  const rows = exp.map(n=>{
-    const p = players[n] || {name:n,laps:[],avg:null};
-    const laps = p.laps || [];
-    return {name:n, l1:laps[0], l2:laps[1], l3:laps[2], avg: avg(laps)};
+  const exp=expectedPlayers().slice(0,MAX_PLAYERS);
+  const players=raceState?.players||{};
+  const rows=exp.map(n=>{
+    const p=players[n]||{laps:[]};
+    const laps=p.laps||[];
+    return {name:n,l1:laps[0],l2:laps[1],l3:laps[2],avg:avg(laps)};
   }).sort((a,b)=>((a.avg??999)-(b.avg??999)));
 
   el("scoreRows").innerHTML = rows.map(r=>`
     <tr>
-      <td>${r.name}${r.name===username ? " (you)" : ""}</td>
+      <td>${r.name}${r.name===username?" (you)":""}</td>
       <td>${fmt(r.l1)}</td>
       <td>${fmt(r.l2)}</td>
       <td>${fmt(r.l3)}</td>
       <td>${fmt(r.avg)}</td>
-    </tr>
-  `).join("");
+    </tr>`).join("");
 
-  const phase = raceState?.phase || "—";
-  el("phaseText").textContent = phase.replaceAll("_"," ");
+  el("phaseText").textContent = (raceState?.phase||"—").replaceAll("_"," ");
   el("roundText").textContent = `${raceState?.round||1} / ${raceState?.maxRounds||MAX_ROUNDS}`;
 
-  const used = (raceState?.obstacles||[]);
-  const tagBox = el("threatTags");
-  tagBox.innerHTML = used.length ? used.map(o=>`<span class="tag">⚠️ ${OBSTACLES[o]?.name||o}</span>`).join("") : `<span class="tag">No threats yet</span>`;
+  const used=(raceState?.obstacles||[]);
+  el("threatTags").innerHTML = used.length
+    ? used.map(o=>`<span class="tag">⚠️ ${OBSTACLES[o]?.name||o}</span>`).join("")
+    : `<span class="tag">No threats yet</span>`;
 
+  const phase=raceState?.phase||"";
   const t=now();
-  const expCount = expectedPlayers().length;
-
-  if(!lobbyState){
-    el("waitingMsg").textContent = "Connecting to lobby…";
-  }else if(!lobbyStarted()){
-    el("waitingMsg").textContent = "Waiting for lobby host to start the match…";
-  }else if(phase==="countdown"){
-    const s = Math.max(0, Math.ceil(((raceState?.countdownEndsAt||t)-t)/1000));
-    el("waitingMsg").textContent = `Round starts in ${s}s.`;
+  if(!lobbyState) el("waitingMsg").textContent="Connecting to lobby…";
+  else if(!lobbyStarted()) el("waitingMsg").textContent="Waiting for lobby host to start…";
+  else if(phase==="countdown"){
+    const s=Math.max(0, Math.ceil(((raceState?.countdownEndsAt||t)-t)/1000));
+    el("waitingMsg").textContent=`Round starts in ${s}s.`;
   }else if(phase==="lap_wait"){
-    const s = Math.max(0, Math.ceil(((raceState?.deadlineAt||t)-t)/1000));
-    el("waitingMsg").textContent = `Waiting for racers… ${s}s remaining before timeouts. (${expCount} players)`;
+    const s=Math.max(0, Math.ceil(((raceState?.deadlineAt||t)-t)/1000));
+    el("waitingMsg").textContent=`Waiting for racers… ${s}s until timeouts.`;
   }else if(phase==="obstacle_select"){
-    el("waitingMsg").textContent = (raceState?.selector===username)
+    el("waitingMsg").textContent=(raceState?.selector===username)
       ? "You were slowest — choose the next threat!"
-      : `Waiting for ${raceState?.selector||"slowest racer"} to choose the next threat…`;
+      : `Waiting for ${raceState?.selector||"slowest racer"} to choose threat…`;
   }else if(phase==="racing"){
-    el("waitingMsg").textContent = "Race!";
+    el("waitingMsg").textContent="Race!";
   }else if(phase==="finished"){
-    const w = raceState?.winnerName || "Winner";
-    el("waitingMsg").textContent = `🏆 Winner: ${w}`;
+    el("waitingMsg").textContent=`🏆 Winner: ${raceState?.winnerName||"—"}`;
   }else{
-    el("waitingMsg").textContent = "Syncing…";
+    el("waitingMsg").textContent="Syncing…";
   }
 }
 
 function renderOverlay(){
-  const t=now();
-  const phase = raceState?.phase;
-
   if(!gameId){
     showOverlay("nogame","Missing gameId",
       "Open StockKings from the Lobby so multiplayer syncing works.",
@@ -1013,7 +1065,7 @@ function renderOverlay(){
 
   if(!lobbyState){
     showOverlay("connLobby","Connecting to Lobby…",
-      "Establishing lobby connection. If this hangs, your rules/auth aren't passing.",
+      "Waiting for Firestore lobby doc access…",
       []
     );
     return;
@@ -1021,54 +1073,49 @@ function renderOverlay(){
 
   if(!lobbyStarted()){
     showOverlay("waitStart","Waiting for Lobby Start",
-      "The host hasn’t started the match yet.<br/><br/>Go back to the lobby and press <b>Start Game</b>.",
+      "Host hasn’t started the match yet. Go back and press <b>Start Game</b>.",
       [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
     );
     return;
   }
 
   if(!raceState){
-    showOverlay("connRace","Connecting to Race State…",
-      "Joining the race document and syncing players…",
-      []
-    );
+    showOverlay("connRace","Connecting to Race State…","Creating/reading race doc…",[]);
     return;
   }
 
+  const phase=raceState.phase;
+  const t=now();
+
   if(phase==="countdown"){
-    const s = Math.max(0, Math.ceil(((raceState.countdownEndsAt||t)-t)/1000));
+    const s=Math.max(0, Math.ceil(((raceState.countdownEndsAt||t)-t)/1000));
     showOverlay("countdown","Race starts soon",
       `<b style="font-size:28px">${s}</b> seconds until launch.<br/>Boost cooldown: <b>8s</b>.<br/>Threats stack each round.`,
-      [{label:"Fullscreen", className:"warn", onClick:()=>document.documentElement.requestFullscreen?.()},{label:"Ready", className:"ghost", onClick:hideOverlay}]
+      [
+        {label:"Fullscreen", className:"warn", onClick:()=>document.documentElement.requestFullscreen?.()},
+        {label:"Ready", className:"ghost", onClick:hideOverlay}
+      ]
     );
     return;
   }
 
   if(phase==="obstacle_select"){
-    const exp = expectedPlayers();
-    const single = exp.length<=1;
+    const exp=expectedPlayers();
+    const single=exp.length<=1;
 
-    const used = raceState.obstacles||[];
-    const all = obstacleOrder;
-    const avail = all.filter(o=>!used.includes(o));
-    const options = avail.length ? avail : all;
+    const used=raceState.obstacles||[];
+    const avail=obstacleOrder.filter(o=>!used.includes(o));
+    const options=(avail.length?avail:obstacleOrder);
 
     const canPick = single || (raceState.selector===username);
+    const end=raceState.selectEndsAt || (t+SELECT_MS);
+    const s=Math.max(0, Math.ceil((end-t)/1000));
+    const reason=raceState.lastSelectorReason || "Slowest lap chooses the next threat.";
 
     const buttons = canPick
-      ? options.map(o=>({
-          label:OBSTACLES[o].name,
-          onClick:()=>chooseThreat(o,false)
-        })).concat([{
-          label:"Random",
-          className:"ghost",
-          onClick:()=>chooseThreat(null,false)
-        }])
+      ? options.map(o=>({label:OBSTACLES[o].name, onClick:()=>chooseThreat(o,false)}))
+        .concat([{label:"Random", className:"ghost", onClick:()=>chooseThreat(null,false)}])
       : [{label:"Waiting…", className:"ghost", disabled:true}];
-
-    const reason = raceState.lastSelectorReason || "Slowest lap chooses the next threat.";
-    const end = raceState.selectEndsAt || (t+SELECT_MS);
-    const s = Math.max(0, Math.ceil((end - t)/1000));
 
     showOverlay("pickThreat", canPick ? "Choose the next threat" : "Waiting for threat choice",
       `<b>${reason}</b><br/>Selection closes in <b>${s}s</b>.`,
@@ -1078,40 +1125,40 @@ function renderOverlay(){
   }
 
   if(phase==="finished"){
-    const w = raceState.winnerName || "Winner";
-    const players = raceState.players || {};
-    const a = avg(players[w]?.laps||[]);
+    const w=raceState.winnerName||"Winner";
+    const a=avg((raceState.players?.[w]?.laps)||[]);
     showOverlay("finished","🏆 Race Complete",
-      `<b>${w}</b> wins with the lowest average time (${typeof a==="number"?a.toFixed(2)+"s":"—"}).<br/><br/>Return to lobby for another match.`,
+      `<b>${w}</b> wins with the lowest average time (${typeof a==="number"?a.toFixed(2)+"s":"—"}).`,
       [{label:"Return to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
     );
     return;
   }
 
-  // racing / lap_wait: no overlay
   hideOverlay();
 }
 
 function renderHUD(){
   const t=now();
-  const lapElapsed = isRacing ? ((t - lapStart)/1000) : 0;
+  const lapElapsed = isRacing ? ((t-lapStart)/1000) : 0;
   el("lapTimer").textContent = lapElapsed.toFixed(3);
 
-  const cdLeft = Math.max(0,(boostReadyAt - t)/1000);
+  const cdLeft=Math.max(0,(boostReadyAt-t)/1000);
   el("boostText").textContent = cdLeft ? `Cooldown ${cdLeft.toFixed(1)}s` : "Ready";
-  el("boostBtn").classList.toggle("onCd", cdLeft>0.01);
 
+  const phase=raceState?.phase||"";
   let status =
-    !uid ? "Auth…" :
     !lobbyState ? "Connecting to lobby…" :
-    !lobbyStarted() ? "Waiting for lobby start…" :
+    !lobbyStarted() ? "Waiting for start…" :
     !raceState ? "Connecting to race…" :
     (t < stunUntil) ? "Stunned!" :
-    (raceState.phase==="lap_wait") ? "Waiting…" :
-    (raceState.phase==="racing") ? "Racing" :
+    (phase==="racing") ? "Racing" :
+    (phase==="lap_wait") ? "Waiting…" :
+    (phase==="countdown") ? "Countdown…" :
+    (phase==="obstacle_select") ? "Choosing threat…" :
+    (phase==="finished") ? "Finished" :
     "Syncing…";
 
-  el("statusText").textContent = status;
+  el("statusText").textContent=status;
 }
 
 /* ============================================================
@@ -1121,7 +1168,6 @@ let prev=performance.now();
 function loop(ts){
   const dt=Math.min(.033,(ts-prev)/1000); prev=ts;
 
-  // threats always animate for visuals
   updateThreats(dt);
   updateRoadRocks(dt);
 
@@ -1132,14 +1178,7 @@ function loop(ts){
     isRacing=false;
   }
 
-  // camera follow
-  const follow=new THREE.Vector3(
-    car.position.x+Math.sin(car.rotation.y)*13,
-    15,
-    car.position.z+Math.cos(car.rotation.y)*13
-  );
-  camera.position.lerp(follow,.08);
-  camera.lookAt(car.position.x,1.2,car.position.z);
+  updateCamera();
 
   renderer.setSize(innerWidth,innerHeight,false);
   camera.aspect=innerWidth/innerHeight;
@@ -1159,19 +1198,18 @@ requestAnimationFrame(loop);
 ============================================================ */
 function setupControls(){
   addEventListener("keydown",e=>{
-    if(e.key==='ArrowUp'||e.key==='w') keys.forward=true;
-    if(e.key==='ArrowLeft'||e.key==='a') keys.left=true;
-    if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
-    if(e.key===' ') keys.boost=true;
+    if(e.key==="ArrowUp"||e.key==="w") keys.forward=true;
+    if(e.key==="ArrowLeft"||e.key==="a") keys.left=true;
+    if(e.key==="ArrowRight"||e.key==="d") keys.right=true;
+    if(e.key===" ") keys.boost=true;
   });
   addEventListener("keyup",e=>{
-    if(e.key==='ArrowUp'||e.key==='w') keys.forward=false;
-    if(e.key==='ArrowLeft'||e.key==='a') keys.left=false;
-    if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
-    if(e.key===' ') keys.boost=false;
+    if(e.key==="ArrowUp"||e.key==="w") keys.forward=false;
+    if(e.key==="ArrowLeft"||e.key==="a") keys.left=false;
+    if(e.key==="ArrowRight"||e.key==="d") keys.right=false;
+    if(e.key===" ") keys.boost=false;
   });
 
-  // Mobile pad
   const pad=el("pad"), dot=el("padDot");
   function movePad(ev){
     const r=pad.getBoundingClientRect();
@@ -1193,12 +1231,10 @@ function setupControls(){
   ["touchend","mouseup","mouseleave"].forEach(evt=>{
     pad.addEventListener(evt, ()=>{
       keys.forward=keys.left=keys.right=false;
-      dot.style.left="62px";
-      dot.style.top="62px";
+      dot.style.left="62px"; dot.style.top="62px";
     });
   });
 
-  // Boost
   const boost=el("boostBtn");
   const down=()=>keys.boost=true, up=()=>keys.boost=false;
   boost.addEventListener("touchstart",down,{passive:true});
@@ -1210,77 +1246,85 @@ function setupControls(){
 setupControls();
 
 /* ============================================================
-   NETWORK BOOTSTRAP
+   NETWORK: LISTENERS ATTACH ONLY AFTER AUTH IS READY
 ============================================================ */
-function attachLobby(){
+function attachLobbyListeners(){
   if(!LOBBY_REF) return;
-  if(lobbyUnsub) lobbyUnsub();
 
-  lobbyUnsub = onSnapshot(LOBBY_REF, async (snap)=>{
-    if(!snap.exists()){
-      lobbyState=null;
-      showOverlay("nolobby","Lobby not found",
-        "This lobby no longer exists. Return to the lobby and start again.",
+  if(lobbyUnsub) lobbyUnsub();
+  lobbyUnsub = onSnapshot(
+    LOBBY_REF,
+    async (snap)=>{
+      if(!snap.exists()){
+        lobbyState=null;
+        showOverlay("nolobby","Lobby not found",
+          "This lobby doc doesn't exist anymore.",
+          [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+        );
+        return;
+      }
+      lobbyState=snap.data()||{};
+      await ensureRaceDoc();
+      await ensureMeInPlayers();
+      await maybeStartFromLobby();
+
+      // attach race once
+      if(!raceUnsub){
+        raceUnsub = onSnapshot(
+          RACE_REF,
+          (rsnap)=>{
+            if(!rsnap.exists()) return;
+            const prevObsSig=JSON.stringify(raceState?.obstacles||[]);
+            raceState=rsnap.data();
+            const nextObsSig=JSON.stringify(raceState?.obstacles||[]);
+            if(nextObsSig!==prevObsSig) spawnThreats();
+          },
+          (err)=>{
+            showOverlay("racePerm","Race permission error",
+              `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}`,
+              [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+            );
+          }
+        );
+      }
+    },
+    (err)=>{
+      showOverlay("lobbyPerm","Lobby permission error",
+        `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}<br/><br/>
+        This usually means <b>request.auth is null</b> when the listener was created.`,
         [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
       );
-      return;
     }
-
-    lobbyState = snap.data() || {};
-
-    // Ensure race doc exists and is sane
-    await ensureRaceDoc();
-    await ensureMeInPlayers();
-
-    // Attach race snapshot once
-    if(!raceUnsub){
-      raceUnsub = onSnapshot(RACE_REF, (rsnap)=>{
-        if(!rsnap.exists()) return;
-        const prevObsSig = JSON.stringify(raceState?.obstacles||[]);
-        const next = rsnap.data();
-        raceState = next;
-
-        // respawn threats only if obstacle stack changed
-        const nextObsSig = JSON.stringify(raceState?.obstacles||[]);
-        if(nextObsSig !== prevObsSig){
-          spawnThreats();
-        }
-      });
-    }
-
-    // start flow when lobby starts
-    await maybeStartFromLobby();
-  });
+  );
 }
 
 function tickStateMachine(){
-  // any client can advance time-based phases (transactions make it safe)
   if(!raceState) return;
   advanceCountdownIfNeeded();
   finalizeDeadlineIfNeeded();
   autoPickIfNeeded();
 }
 
-onAuthStateChanged(auth, async (user)=>{
-  if(!user){
-    await signInAnonymously(auth);
+(async function main(){
+  if(!gameId){
+    renderOverlay();
     return;
   }
-  uid=user.uid;
-
-  if(!gameId){
-    showOverlay("nogame","Missing gameId",
-      "Open StockKings from the Lobby so multiplayer syncing works.",
+  try{
+    await ensureAuthed();
+  }catch(e){
+    showOverlay("authFail","Auth failed",
+      `Could not establish Firebase Auth.<br/><br/>
+       If you’re running on a custom domain, add it to <b>Firebase Auth → Authorized domains</b>.`,
       [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
     );
     return;
   }
 
-  attachLobby();
+  attachLobbyListeners();
   setInterval(tickStateMachine, 250);
-});
-
-signInAnonymously(auth).catch(()=>{});
+})();
 </script>
 </body>
 </html>
+
