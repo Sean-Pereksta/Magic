@@ -79,6 +79,32 @@
       grid-template-columns: repeat(6, minmax(0, 1fr));
       gap:6px;
     }
+    .leaderboard{
+      margin-top:8px;
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap:6px;
+    }
+    .leaderEntry{
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.16);
+      padding:7px 9px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .leaderEntry .nm{ color:var(--muted); }
+    .leaderEntry.active{
+      border-color: rgba(120,190,255,.45);
+      background: rgba(120,190,255,.10);
+    }
+    .leaderEntry.you{
+      box-shadow: inset 0 0 0 1px rgba(140,255,190,.45);
+    }
     .topbar{
       grid-area: topbar;
       display:flex;
@@ -771,6 +797,7 @@
         <div class="res"><span>⭐ Score</span><span id="scoreVal">0</span></div>
         <div class="res"><span>⏳ Turns Left</span><span id="turnsVal">6</span></div>
       </div>
+      <div class="leaderboard" id="leaderboard"></div>
     </div>
   </div>
 
@@ -1823,105 +1850,122 @@ function renderBattlePlan(){
 }
 
 function renderPlayerPanel(){
-  const p=curP();
-  document.getElementById("playerPill").textContent = `Current Turn: ${p.name}`;
-  document.getElementById("tableauPill").textContent = `Viewing: ${p.name}${isLocalTurn()?" (Your turn)":" (Spectating)"}`;
+  const activeP=curP();
+  const me=localP();
+  const meIdx=localPlayerIdx();
+  document.getElementById("playerPill").textContent = `Current Turn: ${activeP.name}`;
+  document.getElementById("tableauPill").textContent = `Viewing all boards • You: ${me.name}${isLocalTurn()?" (Your turn)":""}`;
   document.getElementById("turnOrderPill").textContent = `Start player this round: ${G.players[G.startingPlayer].name}`;
 
-  document.getElementById("scoreVal").textContent = calcScore(p);
-  document.getElementById("turnsVal").textContent = G.turnsLeft[G.currentPlayer];
+  document.getElementById("scoreVal").textContent = calcScore(me);
+  document.getElementById("turnsVal").textContent = G.turnsLeft[meIdx];
 
-  document.getElementById("rWood").textContent=p.res.wood;
-  document.getElementById("rWheat").textContent=p.res.wheat;
-  document.getElementById("rStone").textContent=p.res.stone;
-  document.getElementById("rGold").textContent=p.res.gold;
+  document.getElementById("rWood").textContent=me.res.wood;
+  document.getElementById("rWheat").textContent=me.res.wheat;
+  document.getElementById("rStone").textContent=me.res.stone;
+  document.getElementById("rGold").textContent=me.res.gold;
 
   document.getElementById("deckPill").textContent = `Deck: ${G.deck.length} • Discard: ${G.discard.length}`;
-  document.getElementById("handPill").textContent = `${p.hand.length} cards`;
-}
+  document.getElementById("handPill").textContent = `${me.hand.length} cards`;
 
+  const leaderboard=document.getElementById("leaderboard");
+  leaderboard.innerHTML="";
+  G.players
+    .map((pl, idx)=>({ idx, name:pl.name, score:calcScore(pl), turns:G.turnsLeft[idx] || 0 }))
+    .sort((a,b)=>b.score-a.score)
+    .forEach((entry)=>{
+      const row=document.createElement("div");
+      row.className="leaderEntry";
+      if(entry.idx===G.currentPlayer) row.classList.add("active");
+      if(entry.name===username) row.classList.add("you");
+      row.innerHTML=`<span class="nm">${entry.name}</span><span>⭐ ${entry.score} • ⏳ ${entry.turns}</span>`;
+      leaderboard.appendChild(row);
+    });
+}
 function renderBoard(){
-  const p=curP();
   const board=document.getElementById("board");
   board.innerHTML="";
+  const meIdx = localPlayerIdx();
 
-  for(const rowName of ROWS){
-    const lane=document.createElement("div");
-    lane.className="lane";
+  G.players.forEach((p, playerIdx)=>{
+    for(const rowName of ROWS){
+      const lane=document.createElement("div");
+      lane.className="lane";
 
-    const hd=document.createElement("div");
-    hd.className="laneHd";
-    const left=document.createElement("div");
-    left.className="name";
-    const stripe=document.createElement("div");
-    stripe.className="stripe " + rowName.toLowerCase();
-    const nm=document.createElement("div");
-    nm.textContent=rowName;
-    const badge=document.createElement("div");
-    badge.className="badge";
-    badge.textContent = `Cards: ${p.tableau[rowName].length} • Action slot: ${computeActionSlot(p,rowName)} / ${p.unlocked}`;
-    left.appendChild(stripe); left.appendChild(nm); left.appendChild(badge);
+      const hd=document.createElement("div");
+      hd.className="laneHd";
+      const left=document.createElement("div");
+      left.className="name";
+      const stripe=document.createElement("div");
+      stripe.className="stripe " + rowName.toLowerCase();
+      const nm=document.createElement("div");
+      nm.textContent=`${p.name} • ${rowName}`;
+      const badge=document.createElement("div");
+      badge.className="badge";
+      badge.textContent = `Cards: ${p.tableau[rowName].length} • Action slot: ${computeActionSlot(p,rowName)} / ${p.unlocked}`;
+      left.appendChild(stripe); left.appendChild(nm); left.appendChild(badge);
 
-    const right=document.createElement("div");
-    right.className="row";
-    right.style.gap="6px";
-    const actionBtn=document.createElement("button");
-    actionBtn.className="btn toggleBtn";
-    actionBtn.textContent=`Choose ${rowName}`;
-    actionBtn.onclick=()=>takeAction(rowName);
-    const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock || !isLocalTurn();
-    actionBtn.disabled=disabled;
-    right.appendChild(actionBtn);
-    if(rowName==="Train"){
-      const hint=document.createElement("span");
-      hint.className="pill";
-      hint.textContent=`Captains: ${countCaptains(p)}`;
-      right.appendChild(hint);
-    }
-
-    hd.appendChild(left);
-    hd.appendChild(right);
-
-    const slots=document.createElement("div");
-    slots.className="slots";
-
-    const cards=p.tableau[rowName];
-    const actionSlot = G.lastActionSlot[rowName] || 0;
-    const nextActionSlot = computeActionSlot(p,rowName);
-
-    for(let i=1;i<=7;i++){
-      const slot=document.createElement("div");
-      slot.className="slot";
-      if(i>p.unlocked) slot.classList.add("locked");
-      if(actionSlot===i) slot.classList.add("actionHere");
-      if(i===nextActionSlot && i<=p.unlocked) slot.classList.add("nextAction");
-
-      const num=document.createElement("div");
-      num.className="slotNum";
-      num.textContent=i;
-
-      const benefit=document.createElement("div");
-      benefit.className="benefit";
-      benefit.textContent = benefitText(rowName, i);
-
-      slot.appendChild(num);
-
-      const cardIndex=i-1;
-      if(cards[cardIndex]){
-        const cn=cardNode(cards[cardIndex]);
-        slot.appendChild(cn);
+      const right=document.createElement("div");
+      right.className="row";
+      right.style.gap="6px";
+      const actionBtn=document.createElement("button");
+      actionBtn.className="btn toggleBtn";
+      actionBtn.textContent=`Choose ${rowName}`;
+      actionBtn.onclick=()=>takeAction(rowName);
+      const isActiveLocalLane = playerIdx===G.currentPlayer && playerIdx===meIdx;
+      const disabled = (G.turnsLeft[G.currentPlayer]<=0) || G.actionLock || !isActiveLocalLane;
+      actionBtn.disabled=disabled;
+      right.appendChild(actionBtn);
+      if(rowName==="Train"){
+        const hint=document.createElement("span");
+        hint.className="pill";
+        hint.textContent=`Captains: ${countCaptains(p)}`;
+        right.appendChild(hint);
       }
 
-      slot.appendChild(benefit);
-      slots.appendChild(slot);
+      hd.appendChild(left);
+      hd.appendChild(right);
+
+      const slots=document.createElement("div");
+      slots.className="slots";
+
+      const cards=p.tableau[rowName];
+      const actionSlot = (playerIdx===G.currentPlayer) ? (G.lastActionSlot[rowName] || 0) : 0;
+      const nextActionSlot = computeActionSlot(p,rowName);
+
+      for(let i=1;i<=7;i++){
+        const slot=document.createElement("div");
+        slot.className="slot";
+        if(i>p.unlocked) slot.classList.add("locked");
+        if(actionSlot===i) slot.classList.add("actionHere");
+        if(playerIdx===G.currentPlayer && i===nextActionSlot && i<=p.unlocked) slot.classList.add("nextAction");
+
+        const num=document.createElement("div");
+        num.className="slotNum";
+        num.textContent=i;
+
+        const benefit=document.createElement("div");
+        benefit.className="benefit";
+        benefit.textContent = benefitText(rowName, i);
+
+        slot.appendChild(num);
+
+        const cardIndex=i-1;
+        if(cards[cardIndex]){
+          const cn=cardNode(cards[cardIndex]);
+          slot.appendChild(cn);
+        }
+
+        slot.appendChild(benefit);
+        slots.appendChild(slot);
+      }
+
+      lane.appendChild(hd);
+      lane.appendChild(slots);
+      board.appendChild(lane);
     }
-
-    lane.appendChild(hd);
-    lane.appendChild(slots);
-    board.appendChild(lane);
-  }
+  });
 }
-
 function renderMarket(){
   const list=document.getElementById("marketList");
   list.innerHTML="";
@@ -1940,7 +1984,7 @@ function renderMarket(){
 }
 
 function renderHand(){
-  const p=curP();
+  const p=localP();
   const list=document.getElementById("handList");
   list.innerHTML="";
   for(let i=0;i<p.hand.length;i++){
@@ -3396,6 +3440,16 @@ function isLocalTurn(){
   return G.players[G.currentPlayer] && G.players[G.currentPlayer].name === username;
 }
 
+function localPlayerIdx(){
+  if(!G || !Array.isArray(G.players)) return 0;
+  const i = G.players.findIndex(p=>p && p.name===username);
+  return i >= 0 ? i : 0;
+}
+
+function localP(){
+  return G.players[localPlayerIdx()] || curP();
+}
+
 async function incrementWinnerWins(winnerName){
   if(!winnerName) return;
   try{
@@ -3411,14 +3465,14 @@ async function incrementWinnerWins(winnerName){
 }
 
 function scheduleStateSync(){
-  if(!stateRef || !G || suppressSync || !isLocalTurn()) return;
+  if(!stateRef || !G || suppressSync) return;
   const signature = JSON.stringify(G);
   if(signature === lastSyncedSignature) return;
   if(syncInFlight) return;
 
   if(syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(async ()=>{
-    if(!stateRef || !G || suppressSync || !isLocalTurn()) return;
+    if(!stateRef || !G || suppressSync) return;
     const nextSignature = JSON.stringify(G);
     if(nextSignature === lastSyncedSignature) return;
 
