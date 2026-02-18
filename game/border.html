@@ -24,14 +24,19 @@
     .pause{position:absolute;right:12px;bottom:12px;z-index:10}
     .screen{position:absolute;right:12px;top:62px;z-index:10}
 
-    .mobile-controls{position:absolute;inset:auto 0 10px 0;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:15;padding:0 12px;gap:12px}
+    .mobile-controls{position:absolute;inset:auto 0 2px 0;display:none;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:15;padding:0 12px;gap:12px}
     .stickWrap{position:relative;width:140px;height:140px;pointer-events:auto;touch-action:none}
     .stickBase{position:absolute;inset:0;border-radius:999px;background:rgba(9,18,28,.55);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(4px)}
     .stickKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:999px;background:rgba(96,165,250,.85);transform:translate(-50%,-50%)}
     .shootStick .stickKnob{background:rgba(34,197,94,.9)}
+    .mobileTopBar{position:absolute;left:50%;top:8px;transform:translateX(-50%);display:none;z-index:16;pointer-events:none}
+    .mobileTopBtns{display:flex;align-items:center;gap:8px;pointer-events:auto;touch-action:none}
     .mobileRight{display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none}
-    .mobileBtns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;pointer-events:auto;touch-action:none}
+    .mobileBtns{display:none}
     .mobileBtn{min-width:88px;min-height:50px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(9,18,28,.7);color:#e5efff;font-weight:700}
+
+    .login-actions{display:flex;justify-content:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+    .player-list-wrap{margin-top:10px}
 
     .overlay{position:absolute;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5);z-index:20}
     .card{width:min(960px,92vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid #24364f;border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -62,6 +67,7 @@
     }
     @media (pointer: coarse){
       .mobile-controls{display:flex}
+      .mobileTopBar{display:block}
       .pause{bottom:168px}
     }
   </style>
@@ -91,6 +97,14 @@
 
   <div class="pause"><button class="btn" id="btnPause">⏸️ Pause</button></div>
 
+  <div class="mobileTopBar" id="mobileTopBar" aria-hidden="true">
+    <div class="mobileTopBtns">
+      <button class="mobileBtn" id="btnSlot1MobileTop">1️⃣ Slot 1</button>
+      <button class="mobileBtn" id="btnReloadMobileTop">↻ Reload</button>
+      <button class="mobileBtn" id="btnSlot2MobileTop">2️⃣ Slot 2</button>
+    </div>
+  </div>
+
   <div class="mobile-controls" id="mobileControls" aria-hidden="true">
     <div class="stickWrap" id="moveStick">
       <div class="stickBase"></div>
@@ -101,11 +115,7 @@
         <div class="stickBase"></div>
         <div class="stickKnob" id="shootKnob"></div>
       </div>
-      <div class="mobileBtns">
-        <button class="mobileBtn" id="btnReloadMobile">↻ Reload</button>
-        <button class="mobileBtn" id="btnSlot1Mobile">1️⃣ Slot 1</button>
-        <button class="mobileBtn" id="btnSlot2Mobile">2️⃣ Slot 2</button>
-      </div>
+      <div class="mobileBtns"></div>
     </div>
   </div>
 
@@ -160,22 +170,18 @@
       <h4 style="margin:.5rem 0 .25rem 0">Load game</h4>
       <div class="profile-card">
       <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div class="kv" id="profileHint">Select a profile, then press Load Selected.</div>
+        <div class="kv" id="profileHint">Select a player, then press Load Game.</div>
         <button class="btn" id="btnRefreshList">Refresh</button>
       </div>
-      <div class="profile-list" id="profileList"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:8px">
-        <button class="btn" id="btnLoadSelected">Load Selected</button>
+      <div class="login-actions">
+        <button class="btn" id="btnLoadSelected">Load Game</button>
+        <button class="btn" id="btnStart">Start New Game</button>
+      </div>
+      <div class="player-list-wrap">
+        <div class="profile-list" id="profileList"></div>
       </div>
       </div>
-
-      <hr style="border:0;border-top:1px solid #22344e;margin:14px 0">
-
-      <h4 style="margin:.5rem 0 .25rem 0">Create new</h4>
       <input id="username" placeholder="Username (letters/numbers/_ only)"/>
-      <div class="row" style="margin-top:10px;justify-content:flex-end">
-        <button class="btn" id="btnStart">Create New</button>
-      </div>
     </div>
   </div>
 
@@ -643,9 +649,10 @@ const moveStick = document.getElementById('moveStick');
 const stickKnob = document.getElementById('stickKnob');
 const shootStick = document.getElementById('shootStick');
 const shootKnob = document.getElementById('shootKnob');
-const btnReloadMobile = document.getElementById('btnReloadMobile');
-const btnSlot1Mobile = document.getElementById('btnSlot1Mobile');
-const btnSlot2Mobile = document.getElementById('btnSlot2Mobile');
+const btnReloadMobile = document.getElementById('btnReloadMobileTop');
+const btnSlot1Mobile = document.getElementById('btnSlot1MobileTop');
+const btnSlot2Mobile = document.getElementById('btnSlot2MobileTop');
+const mobileTopBar = document.getElementById('mobileTopBar');
 
 const profileList = document.getElementById('profileList');
 const btnRefreshList = document.getElementById('btnRefreshList');
@@ -653,7 +660,7 @@ let selectedProfileName = '';
 btnRefreshList.onclick = loadProfileList;
 btnLoadSelected.onclick = ()=>{
   if(!selectedProfileName){
-    toast('Select a profile first.');
+    toast('Select a player first.');
     return;
   }
   selectProfile(selectedProfileName);
@@ -661,6 +668,7 @@ btnLoadSelected.onclick = ()=>{
 
 if(mobileState.enabled && mobileControls){
   mobileControls.setAttribute('aria-hidden', 'false');
+  if(mobileTopBar) mobileTopBar.setAttribute('aria-hidden', 'false');
 }
 
 btnFullscreen.onclick = async ()=>{
@@ -867,12 +875,12 @@ async function loadProfileList(){
     const snap = await db.ref('shooter/users').get();
     list.innerHTML = '';
     selectedProfileName = '';
-    if(profileHint) profileHint.textContent = 'Select a profile, then press Load Selected.';
+    if(profileHint) profileHint.textContent = 'Select a player, then press Load Game.';
 
     if (!snap.exists()) {
       list.innerHTML = '<div class="kv">No profiles yet.</div>';
       selectedProfileName = '';
-      if(profileHint) profileHint.textContent = 'No profiles found. Create a new one below.';
+      if(profileHint) profileHint.textContent = 'No players found. Create a new one.';
       return;
     }
 
@@ -897,7 +905,7 @@ async function loadProfileList(){
   } catch (e) {
     console.warn('Could not load profiles:', e);
     selectedProfileName = '';
-    if(profileHint) profileHint.textContent = 'Profiles unavailable. Create a new profile below.';
+    if(profileHint) profileHint.textContent = 'Players unavailable. Start a new game.';
     list.innerHTML = '<div class="kv">Profiles list is unavailable (rules). Enter a new name below.</div>';
   }
 }
@@ -2600,7 +2608,6 @@ match /pointclick_users/{username} {
 -->
 </body>
 </html>
-
 
 
 
