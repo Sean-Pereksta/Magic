@@ -161,7 +161,16 @@ function buildCar(){
   const flame=new THREE.Mesh(new THREE.ConeGeometry(.25,1.2,9),new THREE.MeshBasicMaterial({color:0xff7a22,transparent:true,opacity:.85})); flame.position.set(0,.9,2.7); flame.rotation.x=Math.PI/2; g.add(flame); g.flame=flame;
   return g;
 }
-const car=buildCar(); car.position.set(0,.1,-6); scene.add(car);
+const car=buildCar(); scene.add(car);
+
+function placeCarOnTrackStart(){
+  const startPoint=trackCenter(0);
+  const nextPoint=trackCenter(0.03);
+  car.position.set(startPoint.x,.1,startPoint.z);
+  car.lookAt(nextPoint.x,.1,nextPoint.z);
+}
+
+placeCarOnTrackStart();
 
 function nearestParam(x,z){
   let bestT=0,best=1e9,bestIdx=0;
@@ -297,7 +306,15 @@ async function submitLap(){
   await updateDoc(RACE_REF,patch);
 }
 
-function startLapLocal(){currentLap=raceState?.round||1;lapStart=Date.now();isRacing=true;firstCheckpoint=false;lastParam=nearestParam(car.position.x,car.position.z).t;stunUntil=0;}
+function startLapLocal(){
+  currentLap=raceState?.round||1;
+  placeCarOnTrackStart();
+  lapStart=Date.now();
+  isRacing=true;
+  firstCheckpoint=false;
+  lastParam=nearestParam(car.position.x,car.position.z).t;
+  stunUntil=0;
+}
 
 function updateThreats(dt){
   const now=performance.now()/1000;
@@ -344,7 +361,14 @@ function updateCar(dt){
 
 function render(){
   const now=Date.now();
-  if(raceState?.phase==="countdown"&&raceState.countdownEndsAt){ const s=Math.max(0,Math.ceil((raceState.countdownEndsAt-now)/1000)); showModal("Race starts soon",`<b>${s}</b> seconds until launch.<br/>Use fullscreen for best control.`,[{label:"Enter Fullscreen",onClick:()=>document.documentElement.requestFullscreen?.(),className:"warn"},{label:"Ready",onClick:hideModal,className:"ghost"}]); }
+  if(raceState?.phase==="countdown"&&raceState.countdownEndsAt){
+    const s=Math.max(0,Math.ceil((raceState.countdownEndsAt-now)/1000));
+    if(s>0){
+      showModal("Get ready",`Race starts in <b>${s}</b> seconds.<br/>Use fullscreen for best control.`,[{label:"Enter Fullscreen",onClick:()=>document.documentElement.requestFullscreen?.(),className:"warn"},{label:"Ready",onClick:hideModal,className:"ghost"}]);
+    } else {
+      hideModal();
+    }
+  }
   if(raceState?.phase==="racing"&&!isRacing){hideModal();startLapLocal();}
   if(raceState?.phase==="obstacle_select"){
     const canPick=raceState.selectorUid===uid; const opts=obstacleOrder.filter(o=>!(raceState.obstacles||[]).includes(o));
@@ -360,7 +384,7 @@ function startLocalFallback(reason=""){
   if(useLocalRace) return;
   useLocalRace=true;
   const localPlayerId=uid||"local-player";
-  raceState={game:"stockkings-racer",phase:"countdown",round:1,maxRounds:3,players:{[localPlayerId]:{name:username,laps:[],avg:null,lastLap:null}},obstacles:[],selectorUid:null,lastSelectorReason:"",winnerUid:null,countdownEndsAt:Date.now()+5000};
+  raceState={game:"stockkings-racer",phase:"countdown",round:1,maxRounds:3,players:{[localPlayerId]:{name:username,laps:[],avg:null,lastLap:null}},obstacles:[],selectorUid:null,lastSelectorReason:"",winnerUid:null,countdownEndsAt:Date.now()+10000};
   isHost=true;
   el("statusText").textContent="Local mode";
   showModal("Local Mode Enabled",`Multiplayer sync is unavailable right now${reason?` (${reason})`:""}. You can still race solo.`,[{label:"Enter Fullscreen",onClick:()=>document.documentElement.requestFullscreen?.(),className:"warn"},{label:"Race",onClick:hideModal}]);
