@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>📈 StockKings — Donut Rush (1–8P)</title>
   <style>
     :root{--bg:#050812;--panel:#0e1726;--line:#2b4369;--ink:#ecf3ff;--muted:#9fb0cc;--accent:#57b2ff;--good:#60f0a1;--warn:#ffd972;--bad:#ff6f89}
@@ -39,12 +39,15 @@
     .padDot{position:absolute;width:26px;height:26px;border-radius:50%;background:#68b8ff;left:62px;top:62px;pointer-events:none;box-shadow:0 0 14px rgba(104,184,255,.45)}
     .boost{width:120px;height:120px;display:grid;place-items:center;font-weight:1000;letter-spacing:.4px}
     .boost.onCd{background:rgba(45,18,18,.86);border-color:#8b3f3f}
-    @media (max-width:920px){.controls{display:flex}.board{max-width:none}}
+    .mobileFsBtn{position:absolute;right:10px;top:10px;z-index:12;display:none;padding:9px 12px;border-radius:10px;background:rgba(8,14,24,.78);border:1px solid #35517a;color:#fff;font-weight:850}
+    .mobileFsBtn.show{display:block}
+    @media (max-width:920px){html,body{touch-action:none}.controls{display:flex}.board{max-width:none}}
   </style>
 </head>
 <body>
 <div id="app">
   <canvas id="scene"></canvas>
+  <button id="mobileFsBtn" class="mobileFsBtn" type="button">⛶ Fullscreen</button>
 
   <div class="hud">
     <div class="top">
@@ -83,7 +86,7 @@
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ============================================================
@@ -157,6 +160,26 @@ function hideOverlay(){
   el("overlay").classList.remove("show");
 }
 
+function isMobile(){ return innerWidth < 920; }
+
+async function requestFullscreen(){
+  try{
+    const root=document.documentElement;
+    if(document.fullscreenElement){
+      await document.exitFullscreen?.();
+      return;
+    }
+    await root.requestFullscreen?.();
+  }catch(e){}
+}
+
+function updateFullscreenBtn(){
+  const btn=el("mobileFsBtn");
+  if(!btn) return;
+  btn.classList.toggle("show", isMobile());
+  btn.textContent=document.fullscreenElement?"🗗 Exit Fullscreen":"⛶ Fullscreen";
+}
+
 /* ============================================================
    AUTH-SAFE BOOTSTRAP (THIS FIXES YOUR PERMISSION-DENIED)
 ============================================================ */
@@ -190,6 +213,7 @@ let raceState=null;
 let lobbyUnsub=null;
 let raceUnsub=null;
 let pendingTxn=false;
+let retriedWithoutAuth=false;
 
 function now(){ return Date.now(); }
 function avg(arr){
@@ -988,9 +1012,11 @@ function updateCar(dt){
    CAMERA (mobile-friendly: slight downward, above & behind)
 ============================================================ */
 function updateCamera(){
-  const mobile = innerWidth < 920;
-  const height = mobile ? 24 : 18;
-  const behind = mobile ? 22 : 16;
+  const mobile = isMobile();
+  const height = mobile ? 56 : 18;
+  const behind = mobile ? 8 : 16;
+
+  camera.fov = mobile ? 84 : 62;
 
   const back = new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion); // behind (since forward is -Z)
   const desired = new THREE.Vector3(
@@ -998,7 +1024,7 @@ function updateCamera(){
     height,
     car.position.z + back.z*behind
   );
-  camera.position.lerp(desired, 0.10);
+  camera.position.lerp(desired, mobile ? 0.2 : 0.10);
   camera.lookAt(car.position.x, 1.2, car.position.z);
 }
 
@@ -1092,7 +1118,7 @@ function renderOverlay(){
     showOverlay("countdown","Race starts soon",
       `<b style="font-size:28px">${s}</b> seconds until launch.<br/>Boost cooldown: <b>8s</b>.<br/>Threats stack each round.`,
       [
-        {label:"Fullscreen", className:"warn", onClick:()=>document.documentElement.requestFullscreen?.()},
+        {label:"Fullscreen", className:"warn", onClick:requestFullscreen},
         {label:"Ready", className:"ghost", onClick:hideOverlay}
       ]
     );
@@ -1197,6 +1223,12 @@ requestAnimationFrame(loop);
    CONTROLS
 ============================================================ */
 function setupControls(){
+  const fsBtn=el("mobileFsBtn");
+  fsBtn?.addEventListener("click", requestFullscreen);
+  updateFullscreenBtn();
+  addEventListener("resize", updateFullscreenBtn);
+  document.addEventListener("fullscreenchange", updateFullscreenBtn);
+
   addEventListener("keydown",e=>{
     if(e.key==="ArrowUp"||e.key==="w") keys.forward=true;
     if(e.key==="ArrowLeft"||e.key==="a") keys.left=true;
@@ -1288,10 +1320,18 @@ function attachLobbyListeners(){
         );
       }
     },
-    (err)=>{
+    async (err)=>{
+      const code=String(err?.code||"");
+      const msg=String(err?.message||err||"");
+      if(!retriedWithoutAuth && (code.includes("permission-denied") || msg.includes("permission-denied"))){
+        retriedWithoutAuth=true;
+        try{ await signOut(auth); }catch(e){}
+        attachLobbyListeners();
+        return;
+      }
       showOverlay("lobbyPerm","Lobby permission error",
-        `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}<br/><br/>
-        This usually means <b>request.auth is null</b> when the listener was created.`,
+        `<b>${code||"error"}</b><br/>${msg}<br/><br/>
+        Retried once with signed-out auth=null mode. If this still fails, check Firestore rules for this lobby path.`,
         [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
       );
     }
@@ -1327,4 +1367,3 @@ function tickStateMachine(){
 </script>
 </body>
 </html>
-
