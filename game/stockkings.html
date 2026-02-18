@@ -113,20 +113,44 @@ const keys={forward:false,left:false,right:false,boost:false};
 
 const renderer=new THREE.WebGLRenderer({canvas:el("scene"),antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 const scene=new THREE.Scene(); scene.background=new THREE.Color(0x6fb5ff);
-const camera=new THREE.PerspectiveCamera(62,1,0.1,1000); camera.position.set(0,23,22);
+const camera=new THREE.PerspectiveCamera(62,1,0.1,1000); camera.position.set(0,30,32);
 scene.add(new THREE.HemisphereLight(0xcde8ff,0x32551c,1.2));
 const sun=new THREE.DirectionalLight(0xffffff,1); sun.position.set(18,40,20); scene.add(sun);
 
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(220,220),new THREE.MeshStandardMaterial({color:0x3a8b35}));
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(320,320),new THREE.MeshStandardMaterial({color:0x3a8b35}));
 ground.rotation.x=-Math.PI/2; scene.add(ground);
 
-const trackPath=[]; for(let i=0;i<700;i++){const t=(i/700)*Math.PI*2; const x=36*Math.sin(t), z=18*Math.sin(t)*Math.cos(t); trackPath.push(new THREE.Vector3(x,0.03,z));}
-for(let i=1;i<trackPath.length;i++){
-  const a=trackPath[i-1],b=trackPath[i];
-  const len=a.distanceTo(b),mid=new THREE.Vector3().addVectors(a,b).multiplyScalar(.5);
-  const mesh=new THREE.Mesh(new THREE.BoxGeometry(8,0.25,len+1),new THREE.MeshStandardMaterial({color:0x8e6a3a}));
-  mesh.position.copy(mid); mesh.lookAt(b.x,mid.y,b.z); mesh.rotateY(Math.PI/2); scene.add(mesh);
+const TRACK={samples:920,roadWidth:12,grassShoulder:10,wallThickness:1.4,wallHeight:2.3};
+const trackRadius=t=>50+8*Math.sin(t*3)+4*Math.sin(t*7+0.8);
+const trackCenter=t=>new THREE.Vector3(Math.cos(t)*trackRadius(t),0,Math.sin(t)*trackRadius(t));
+const trackPath=[];
+for(let i=0;i<TRACK.samples;i++){const t=(i/TRACK.samples)*Math.PI*2; trackPath.push(trackCenter(t).setY(0.04));}
+
+function buildTrack(){
+  const roadMat=new THREE.MeshStandardMaterial({color:0x8e6a3a});
+  const shoulderMat=new THREE.MeshStandardMaterial({color:0x3f8d39});
+  const wallMat=new THREE.MeshStandardMaterial({color:0xcfd8e5,metalness:.15,roughness:.7});
+  for(let i=0;i<trackPath.length;i++){
+    const a=trackPath[i],b=trackPath[(i+1)%trackPath.length];
+    const len=a.distanceTo(b),mid=new THREE.Vector3().addVectors(a,b).multiplyScalar(.5);
+    const tangent=new THREE.Vector3().subVectors(b,a).normalize();
+    const normal=new THREE.Vector3(-tangent.z,0,tangent.x);
+
+    const shoulderMesh=new THREE.Mesh(new THREE.BoxGeometry(TRACK.roadWidth+TRACK.grassShoulder*2,0.14,len+1.2),shoulderMat);
+    shoulderMesh.position.set(mid.x,0.06,mid.z); shoulderMesh.lookAt(b.x,mid.y,b.z); shoulderMesh.rotateY(Math.PI/2); scene.add(shoulderMesh);
+
+    const roadMesh=new THREE.Mesh(new THREE.BoxGeometry(TRACK.roadWidth,0.25,len+1),roadMat);
+    roadMesh.position.copy(mid); roadMesh.lookAt(b.x,mid.y,b.z); roadMesh.rotateY(Math.PI/2); scene.add(roadMesh);
+
+    const outerWallPos=mid.clone().addScaledVector(normal,TRACK.roadWidth*.5+TRACK.grassShoulder+TRACK.wallThickness*.6);
+    const innerWallPos=mid.clone().addScaledVector(normal,-(TRACK.roadWidth*.5+TRACK.grassShoulder+TRACK.wallThickness*.6));
+    [outerWallPos,innerWallPos].forEach(pos=>{
+      const wall=new THREE.Mesh(new THREE.BoxGeometry(TRACK.wallThickness,TRACK.wallHeight,len+1.5),wallMat);
+      wall.position.set(pos.x,TRACK.wallHeight*.5,pos.z); wall.lookAt(pos.x+tangent.x,pos.y,pos.z+tangent.z); wall.rotateY(Math.PI/2); scene.add(wall);
+    });
+  }
 }
+buildTrack();
 
 function buildCar(){
   const g=new THREE.Group();
@@ -139,8 +163,17 @@ function buildCar(){
 }
 const car=buildCar(); car.position.set(0,.1,-6); scene.add(car);
 
-const trackCenter=(t)=>new THREE.Vector3(36*Math.sin(t),0,18*Math.sin(t)*Math.cos(t));
-function nearestParam(x,z){ let bestT=0,best=1e9; for(let i=0;i<trackPath.length;i++){ const p=trackPath[i],d=(p.x-x)**2+(p.z-z)**2; if(d<best){best=d;bestT=(i/trackPath.length)*Math.PI*2;}} return {t:bestT,d:Math.sqrt(best)}; }
+function nearestParam(x,z){
+  let bestT=0,best=1e9,bestIdx=0;
+  for(let i=0;i<trackPath.length;i++){
+    const p=trackPath[i],d=(p.x-x)**2+(p.z-z)**2;
+    if(d<best){best=d;bestT=(i/trackPath.length)*Math.PI*2;bestIdx=i;}
+  }
+  const p=trackPath[bestIdx],next=trackPath[(bestIdx+1)%trackPath.length],prev=trackPath[(bestIdx-1+trackPath.length)%trackPath.length];
+  const tangent=new THREE.Vector3().subVectors(next,prev).normalize();
+  const normal=new THREE.Vector3(-tangent.z,0,tangent.x);
+  return {t:bestT,d:Math.sqrt(best),point:p,normal};
+}
 function isBetweenRoundsPhase(phase){return phase==="lap_wait"||phase==="obstacle_select"||phase==="finished";}
 function chooseObstacle(type){
   if(useLocalRace){applyObstaclePick(type,false); return;}
@@ -288,11 +321,19 @@ function updateCar(dt){
   let speed=11;
   if(keys.forward&&!stunned)speed=18;
   if(keys.boost&&Date.now()>boostReadyAt&&!stunned){speed=30;boostReadyAt=Date.now()+8000;}
-  const near=nearestParam(car.position.x,car.position.z); if(near.d>4.2)speed*=0.54;
+  const near=nearestParam(car.position.x,car.position.z); if(near.d>TRACK.roadWidth*.5)speed*=0.54;
   const turn=(keys.left?-1:0)+(keys.right?1:0);
   car.rotation.y-=turn*dt*2.2;
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
   car.position.addScaledVector(forward,speed*dt);
+  const lane=nearestParam(car.position.x,car.position.z);
+  const toCar=new THREE.Vector3().subVectors(car.position,lane.point);
+  const lateral=toCar.dot(lane.normal);
+  const maxLateral=(TRACK.roadWidth*.5+TRACK.grassShoulder)-(TRACK.wallThickness*.8);
+  if(Math.abs(lateral)>maxLateral){
+    const clamped=THREE.MathUtils.clamp(lateral,-maxLateral,maxLateral);
+    car.position.copy(lane.point).addScaledVector(lane.normal,clamped);
+  }
   car.position.y=.1;
   car.flame.scale.set(1,keys.boost?1.7:.7,keys.boost?1.7:.7);
   const p=nearestParam(car.position.x,car.position.z).t;
@@ -336,10 +377,10 @@ function loop(t){
   const dt=Math.min(.033,(t-prev)/1000); prev=t;
   updateThreats(dt); if(raceState?.phase==="racing")updateCar(dt);
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
-  const follow=new THREE.Vector3().copy(car.position).addScaledVector(forward,-7.2);
-  follow.y=3.2;
+  const follow=new THREE.Vector3().copy(car.position).addScaledVector(forward,-10.5);
+  follow.y=6.6;
   const lookAt=new THREE.Vector3().copy(car.position).addScaledVector(forward,12);
-  lookAt.y=1.1;
+  lookAt.y=0.5;
   camera.position.lerp(follow,.18); camera.lookAt(lookAt);
   renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.render(scene,camera); render(); requestAnimationFrame(loop);
