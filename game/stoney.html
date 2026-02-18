@@ -863,6 +863,47 @@
 
       // --- Firebase wiring ---
       let authReady = false;
+      let booted = false;
+
+      function handleSnapshotError(where, err) {
+        const msg = err?.message || "unknown";
+        console.error(`[stoney] ${where} listener error`, err);
+        centerMsg.style.display = "block";
+        centerMsg.querySelector("div").textContent = "Connection issue: " + msg;
+        lockBtn.style.display = "none";
+      }
+
+      async function ensureAuthed() {
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken();
+          return auth.currentUser;
+        }
+
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.warn("Anonymous sign-in failed", e);
+        }
+
+        return await new Promise((resolve, reject) => {
+          let unsub = null;
+          const timeout = setTimeout(() => {
+            unsub?.();
+            reject(new Error("Anonymous auth timed out."));
+          }, 12000);
+          unsub = onAuthStateChanged(auth, async (user) => {
+            if (!user) return;
+            clearTimeout(timeout);
+            unsub();
+            try {
+              await user.getIdToken();
+              resolve(user);
+            } catch (err) {
+              reject(err);
+            }
+          });
+        });
+      }
 
       async function ensurePlayerDoc() {
         lobbyRef = doc(db, "lobbies", gameId);
@@ -887,7 +928,9 @@
       }
 
       function listenLobby() {
-        onSnapshot(lobbyRef, async (snap) => {
+        onSnapshot(
+          lobbyRef,
+          async (snap) => {
           if (!snap.exists()) return;
           const d = snap.data();
           stoney = d.stoney;
@@ -967,11 +1010,15 @@
               });
             } catch (e) {}
           }
-        });
+          },
+          (err) => handleSnapshotError("lobby", err),
+        );
       }
 
       function listenPlayers() {
-        onSnapshot(playersCol, (snap) => {
+        onSnapshot(
+          playersCol,
+          (snap) => {
           const now = Date.now();
 
           // mark seen
@@ -1027,11 +1074,15 @@
               others.delete(name);
             }
           }
-        });
+          },
+          (err) => handleSnapshotError("players", err),
+        );
       }
 
       function listenTraps() {
-        onSnapshot(trapsCol, (snap) => {
+        onSnapshot(
+          trapsCol,
+          (snap) => {
           const now = Date.now();
           const seen = new Set();
           snap.forEach((docSnap) => {
@@ -1065,7 +1116,9 @@
             trapMap.delete(id);
             removeTrapMesh(id);
           }
-        });
+          },
+          (err) => handleSnapshotError("traps", err),
+        );
       }
 
       // --- Crown interactions (best-effort authoritative) ---
@@ -1502,18 +1555,19 @@
         requestAnimationFrame(loop);
       }
 
-      signInAnonymously(auth).catch(() => {});
-      onAuthStateChanged(auth, (user) => {
-        if (!user) {
-          centerMsg.querySelector("div").textContent = "Auth failed.";
-          return;
-        }
-        authReady = true;
-        boot().catch((e) => {
-          centerMsg.querySelector("div").textContent = "Error loading game.";
+      ensureAuthed()
+        .then(() => {
+          if (booted) return;
+          booted = true;
+          authReady = true;
+          return boot();
+        })
+        .catch((e) => {
+          centerMsg.querySelector("div").textContent =
+            "Auth failed. Enable anonymous sign-in in Firebase Authentication.";
+          lockBtn.style.display = "none";
           showToast("Error: " + (e?.message || "unknown"));
         });
-      });
     </script>
   </body>
 </html>
