@@ -174,6 +174,10 @@
       cursor:not-allowed;
       filter:saturate(.6);
     }
+    .btn.selected{
+      border-color: rgba(120,190,255,.55);
+      background: rgba(120,190,255,.18);
+    }
 
     .center, .bottomHand{
       display:flex;
@@ -831,7 +835,11 @@
     <div class="panel" id="boardWrap">
       <div class="hd">
         <div class="title">🗺️ Tableau</div>
-        <span class="pill" id="tableauPill">—</span>
+        <div class="row">
+          <button class="btn toggleBtn" id="btnViewCurrent">Current Player Board</button>
+          <button class="btn toggleBtn" id="btnViewMine">My Board</button>
+          <span class="pill" id="tableauPill">—</span>
+        </div>
       </div>
       <div id="board"></div>
     </div>
@@ -894,6 +902,8 @@ let wroteWin = false;
 let syncTimer = null;
 let syncInFlight = false;
 let lastSyncedSignature = "";
+let modalState = { dismissible: true };
+let boardViewMode = "current";
 
 /* ============================================================
    Utility: seeded RNG (optional)
@@ -1603,7 +1613,10 @@ function buildTurnSummaryModal(summary, onOk){
     title:`Turn Summary • ${summary.playerName}`,
     sub:"Press OK to pass to the next player.",
     bodyNodes: body,
-    actions:[{label:"OK", kind:"primary", onClick:()=>{ closeModal(); onOk(); }}]
+    actions:[{label:"OK", kind:"primary", onClick:()=>{ forceCloseModal(); onOk(); }}],
+    dismissible:false,
+    hideClose:true,
+    autoActionMs:5000
   });
 }
 
@@ -1624,11 +1637,14 @@ function log(msg){
 /* ============================================================
    Modal helpers
    ============================================================ */
-function showModal({title, sub="", bodyNodes=[], actions=[]}){
+function showModal({title, sub="", bodyNodes=[], actions=[], dismissible=true, hideClose=false, autoActionMs=null, autoActionIndex=0}){
   const m=document.getElementById("modal");
+  const closeBtn=document.getElementById("modalX");
+  modalState = { dismissible };
   clearTimeout(remotePromptTimer);
   const autoPrompt = !isLocalTurn() && actions.length > 0;
-  const subText = autoPrompt ? `${sub ? sub + " • " : ""}Auto-select in 20s for remote turn.` : sub;
+  const autoMs = Number.isFinite(autoActionMs) ? autoActionMs : (autoPrompt ? 20000 : null);
+  const subText = autoMs ? `${sub ? sub + " • " : ""}Auto-select in ${Math.ceil(autoMs/1000)}s.` : sub;
   document.getElementById("modalTitle").textContent=title;
   document.getElementById("modalSub").textContent=subText;
   const bd=document.getElementById("modalBody");
@@ -1642,19 +1658,30 @@ function showModal({title, sub="", bodyNodes=[], actions=[]}){
     b.onclick=()=>a.onClick?.();
     ac.appendChild(b);
   }
+  closeBtn.style.display = hideClose ? "none" : "inline-flex";
   m.classList.add("show");
 
-  if(autoPrompt){
+  if(autoMs){
     remotePromptTimer = setTimeout(()=>{
-      if(actions[0] && typeof actions[0].onClick === "function"){
-        actions[0].onClick();
+      const action = actions[autoActionIndex] || actions[0];
+      if(action && typeof action.onClick === "function"){
+        action.onClick();
       }
-    }, 20000);
+    }, autoMs);
   }
 }
 function closeModal(){
+  if(!modalState.dismissible) return;
   clearTimeout(remotePromptTimer);
   document.getElementById("modal").classList.remove("show");
+  document.getElementById("modalX").style.display = "inline-flex";
+  modalState = { dismissible: true };
+}
+function forceCloseModal(){
+  clearTimeout(remotePromptTimer);
+  document.getElementById("modal").classList.remove("show");
+  document.getElementById("modalX").style.display = "inline-flex";
+  modalState = { dismissible: true };
 }
 document.getElementById("modalX").onclick=closeModal;
 document.getElementById("modal").addEventListener("click",(e)=>{
@@ -1853,8 +1880,15 @@ function renderPlayerPanel(){
   const activeP=curP();
   const me=localP();
   const meIdx=localPlayerIdx();
+  const btnCurrent=document.getElementById("btnViewCurrent");
+  const btnMine=document.getElementById("btnViewMine");
   document.getElementById("playerPill").textContent = `Current Turn: ${activeP.name}`;
-  document.getElementById("tableauPill").textContent = `Viewing all boards • You: ${me.name}${isLocalTurn()?" (Your turn)":""}`;
+  const viewText = boardViewMode === "current" ? `Viewing current board (${activeP.name})` : `Viewing your board (${me.name})`;
+  document.getElementById("tableauPill").textContent = `${viewText}${isLocalTurn()?" • Your turn":""}`;
+  if(btnCurrent && btnMine){
+    btnCurrent.classList.toggle("selected", boardViewMode === "current");
+    btnMine.classList.toggle("selected", boardViewMode === "mine");
+  }
   document.getElementById("turnOrderPill").textContent = `Start player this round: ${G.players[G.startingPlayer].name}`;
 
   document.getElementById("scoreVal").textContent = calcScore(me);
@@ -1886,8 +1920,11 @@ function renderBoard(){
   const board=document.getElementById("board");
   board.innerHTML="";
   const meIdx = localPlayerIdx();
+  const selectedPlayerIdx = boardViewMode === "current" ? G.currentPlayer : meIdx;
+  const selectedPlayer = G.players[selectedPlayerIdx];
+  if(!selectedPlayer) return;
 
-  G.players.forEach((p, playerIdx)=>{
+  [{ p:selectedPlayer, playerIdx:selectedPlayerIdx }].forEach(({ p, playerIdx })=>{
     for(const rowName of ROWS){
       const lane=document.createElement("div");
       lane.className="lane";
@@ -2057,14 +2094,18 @@ function endTurn(){
   };
 
   if(G.turnSummary){
-    buildTurnSummaryModal(G.turnSummary, finishAdvance);
+    G.actionLock = true;
+    buildTurnSummaryModal(G.turnSummary, ()=>{
+      G.actionLock = false;
+      finishAdvance();
+    });
     return;
   }
   finishAdvance();
 }
 
 function takeAction(rowName){
-  if(G.actionLock || !isLocalTurn()) return;
+  if(G.actionLock || G.turnSummary || !isLocalTurn()) return;
   ensureTurnSummary(rowName);
   const p=curP();
   const slot = computeActionSlot(p,rowName);
@@ -2095,9 +2136,14 @@ function payCost(p, cost){
 }
 
 function attemptPlayFromHand(handIdx){
-  if(!isLocalTurn()) return;
+  if(!isLocalTurn() || G.actionLock || G.turnSummary) return;
   const p=curP();
   const ci=p.hand[handIdx];
+  if(!ci){
+    log(`❌ <b>${p.name}</b> tried to play a missing hand card. Please try again.`);
+    renderAll();
+    return;
+  }
   const d=instToDef(ci);
 
   if(!canAfford(p, d.cost||{})){
@@ -2170,6 +2216,11 @@ function attemptPlayFromHand(handIdx){
 function doPlayCard(p, handIdx, rowName){
   ensureTurnSummary(`Play Card (${rowName})`);
   const ci=p.hand.splice(handIdx,1)[0];
+  if(!ci){
+    log(`❌ <b>${p.name}</b> could not play a card because it was not found in hand.`);
+    renderAll();
+    return;
+  }
   const d=instToDef(ci);
 
   // pay cost
@@ -3431,6 +3482,14 @@ document.getElementById("btnHelp").onclick=()=>{
 document.getElementById("btnRestart").onclick=()=>location.reload();
 
 document.getElementById("btnQuickRules").onclick=()=>document.getElementById("btnHelp").click();
+document.getElementById("btnViewCurrent").onclick=()=>{
+  boardViewMode = "current";
+  renderAll();
+};
+document.getElementById("btnViewMine").onclick=()=>{
+  boardViewMode = "mine";
+  renderAll();
+};
 
 /* ============================================================
    Firebase multiplayer bootstrap + sync
