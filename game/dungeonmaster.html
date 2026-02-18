@@ -368,6 +368,45 @@
 
   const modeButtons = [...document.querySelectorAll("[data-set-mode]")];
 
+  function handleSnapshotError(where, err){
+    const msg = err?.message || "unknown";
+    console.error(`[dungeonmaster] ${where} listener error`, err);
+    statusLine.textContent = "Permission error";
+    warnLine.textContent = "❌ " + msg;
+  }
+
+  async function ensureAuthed(){
+    if(auth.currentUser){
+      await auth.currentUser.getIdToken();
+      return auth.currentUser;
+    }
+
+    try{
+      await signInAnonymously(auth);
+    }catch(e){
+      console.warn("Anonymous sign-in failed", e);
+    }
+
+    return await new Promise((resolve, reject)=>{
+      let unsub = null;
+      const timeout = setTimeout(()=>{
+        unsub?.();
+        reject(new Error("Anonymous auth timed out."));
+      }, 12000);
+      unsub = onAuthStateChanged(auth, async (user)=>{
+        if(!user) return;
+        clearTimeout(timeout);
+        unsub();
+        try{
+          await user.getIdToken();
+          resolve(user);
+        }catch(err){
+          reject(err);
+        }
+      });
+    });
+  }
+
   function setMode(m){
     mode=m;
     for(const btn of modeButtons){
@@ -710,7 +749,7 @@
 
       tickHUD();
       drawMap();
-    });
+    }, (err)=>handleSnapshotError("lobby", err));
 
     // players
     onSnapshot(playersCol, (snap)=>{
@@ -725,7 +764,7 @@
         });
       });
       drawMap();
-    });
+    }, (err)=>handleSnapshotError("players", err));
 
     // traps
     onSnapshot(trapsCol, (snap)=>{
@@ -742,7 +781,7 @@
         });
       });
       drawMap();
-    });
+    }, (err)=>handleSnapshotError("traps", err));
   }
 
   // --- UI wiring ---
@@ -790,19 +829,17 @@
   }, { passive:false });
 
   // --- Auth + boot ---
-  signInAnonymously(auth).catch(()=>{});
-  onAuthStateChanged(auth, async (user)=>{
-    if(!user){ statusLine.textContent="Auth failed"; return; }
-    try{
+  ensureAuthed()
+    .then(async ()=>{
       await ensureInit();
       listen();
       statusLine.textContent = "Online";
       setInterval(()=>{ tickHUD(); drawMap(); }, 160);
-    }catch(e){
-      statusLine.textContent = "Error";
-      warnLine.textContent = "❌ " + (e?.message || "Could not init.");
-    }
-  });
+    })
+    .catch((e)=>{
+      statusLine.textContent = "Auth failed";
+      warnLine.textContent = "❌ Enable anonymous sign-in in Firebase Authentication. " + (e?.message || "");
+    });
 </script>
 </body>
 </html>
