@@ -966,23 +966,26 @@ async function startWithUsername(){
 
   try {
     const existing = await ref.get();
-    if (!existing.exists) {
-      toast('That username does not exist in Firebase. Pick an existing player.');
-      return;
-    }
-
     currentUser = u;
     loadedOnce = false;
-    applySave(existing.data());
-    loadedOnce = true;
-    toast(`Loaded ${u} at Stage ${stage}-${level}`);
+
+    if (existing.exists) {
+      applySave(existing.data());
+      loadedOnce = true;
+      toast(`Loaded ${u} at Stage ${stage}-${level}`);
+    } else {
+      seedNewProfile();
+      await saveProgress();
+      toast(`Started new game for ${u}`);
+    }
+
     enterGame();
   } catch (e) {
     console.error(e);
     currentUser = '';
     toast(e?.code === 'permission-denied'
       ? 'Cloud save blocked by Firestore rules (auth?).'
-      : 'Could not load that player.');
+      : 'Could not start that player.');
   }
 }
 
