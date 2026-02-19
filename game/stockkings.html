@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <title>📈 StockKings — Donut Rush (1–8P)</title>
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>📈 StockKings — Donut Rush (Ready Race)</title>
+
   <style>
     :root{
       --bg0:#050812;
@@ -20,7 +22,6 @@
       --good:#60f0a1;
       --warn:#ffd972;
       --bad:#ff6f89;
-
       --shadow: 0 18px 60px rgba(0,0,0,.45);
       --r: 14px;
       --r2: 12px;
@@ -38,6 +39,8 @@
         radial-gradient(900px 700px at 50% 100%, rgba(255,111,137,.10), transparent 55%),
         linear-gradient(180deg, var(--bg2), var(--bg0));
       overflow:hidden;
+      overscroll-behavior:none;
+      touch-action:none;
     }
 
     /* subtle film grain */
@@ -70,6 +73,7 @@
         calc(12px + env(safe-area-inset-bottom))
         calc(12px + env(safe-area-inset-left));
       gap:12px;
+      z-index:5;
     }
 
     .top{
@@ -123,8 +127,8 @@
       border: 1px solid var(--line);
       border-radius: var(--r);
       padding: 12px;
-      max-width: 580px;
-      max-height: 50vh;
+      max-width: 620px;
+      max-height: 52vh;
       overflow:auto;
       box-shadow: var(--shadow);
       backdrop-filter: blur(10px);
@@ -216,7 +220,6 @@
       width: min(780px, 95vw);
       padding: 16px 16px 14px;
       box-shadow: 0 26px 90px rgba(0,0,0,.55);
-      transform: translateY(0);
       animation: pop .14s ease-out;
       position:relative;
       overflow:hidden;
@@ -232,12 +235,10 @@
       mix-blend-mode:screen;
     }
     .modal > *{ position:relative; z-index:1; }
-
     @keyframes pop{
       from{ transform: translateY(8px) scale(.985); opacity:.0; }
       to  { transform: translateY(0) scale(1); opacity:1; }
     }
-
     .modal h2{ margin:0 0 8px; font-weight: 1050; letter-spacing:.2px; }
     .modal p{ margin:6px 0; color: var(--muted); line-height:1.35; }
 
@@ -343,39 +344,40 @@
     .mobileFsBtn.show{ display:block; }
 
     @media (max-width:920px){
-      html,body{ touch-action:none; }
       .controls{ display:flex; pointer-events:auto; }
-      .board{ max-width:none; }
-      .chip{ min-width: 118px; }
     }
+
+    /* ✅ Hide UI until AFTER the race (except lap time chip) */
+    body.uiMinimal .top .chip:not(#lapChip){ display:none; }
+    body.uiMinimal .board{ display:none; }
   </style>
 </head>
-<body>
+
+<body class="uiMinimal">
 <div id="app">
   <canvas id="scene"></canvas>
   <button id="mobileFsBtn" class="mobileFsBtn" type="button">⛶ Fullscreen</button>
 
   <div class="hud">
     <div class="top">
+      <div class="chip" id="lapChip"><small>Lap Timer</small><span class="big" id="lapTimer">00.000</span></div>
       <div class="chip"><small>Status</small><span id="statusText">Connecting…</span></div>
-      <div class="chip"><small>Phase</small><span id="phaseText">—</span></div>
-      <div class="chip"><small>Round</small><span id="roundText">—</span></div>
-      <div class="chip"><small>Lap Timer</small><span class="big" id="lapTimer">00.000</span></div>
+      <div class="chip"><small>Players</small><span id="playersText">—</span></div>
       <div class="chip"><small>Boost</small><span id="boostText">Ready</span></div>
+      <div class="chip"><small>Room</small><span id="roomText">—</span></div>
     </div>
 
     <div class="board">
-      <h3>🏁 Round Results</h3>
+      <h3>🏁 Results</h3>
       <table>
-        <thead><tr><th>Player</th><th>R1</th><th>R2</th><th>R3</th><th>Avg</th></tr></thead>
+        <thead><tr><th>Player</th><th>Time</th><th>Note</th></tr></thead>
         <tbody id="scoreRows"></tbody>
       </table>
-      <div class="tags" id="threatTags"></div>
-      <div class="msg" id="waitingMsg">—</div>
+      <div class="tags" id="tags"></div>
+      <div class="msg" id="msg">—</div>
     </div>
   </div>
 
-  <!-- Mobile controls only. (No extra UI for desktop controls, per request.) -->
   <div class="controls">
     <div class="pad" id="pad"><div class="padDot" id="padDot"></div></div>
     <button class="boost" id="boostBtn" type="button">BOOST</button>
@@ -393,8 +395,8 @@
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, runTransaction, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* ============================================================
    FIREBASE INIT
@@ -411,38 +413,30 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 
+/* ============================================================
+   URL + LOCAL STORAGE (auto-create room if missing)
+============================================================ */
 const LS_USER="gh.username";
 const LS_LOBBY="gh.lastLobbyId";
-
 const params=new URLSearchParams(location.search);
-const gameId=(params.get("gameId")||localStorage.getItem(LS_LOBBY)||"").trim();
-const username=(params.get("username")||localStorage.getItem(LS_USER)||"Racer").trim();
-if(gameId) localStorage.setItem(LS_LOBBY, gameId);
-if(username) localStorage.setItem(LS_USER, username);
 
-const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
+function randId(){
+  return "sk-" + Math.random().toString(36).slice(2,8) + "-" + Math.random().toString(36).slice(2,6);
+}
 
-// Put StockKings state under its own subcollection
-const RACE_REF  = gameId ? doc(db, "lobbies", gameId, "stockkings", "race") : null;
-;
+let gameId=(params.get("gameId")||localStorage.getItem(LS_LOBBY)||"").trim();
+let username=(params.get("username")||localStorage.getItem(LS_USER)||"Racer").trim();
 
-/* ============================================================
-   GAME CONFIG
-============================================================ */
-const COUNTDOWN_MS = 9000;
-const DEADLINE_MS  = 30000;
-const SELECT_MS    = 15000;
-const MAX_ROUNDS   = 3;
-const MAX_PLAYERS  = 8;
+if(!gameId){
+  gameId = randId();
+  params.set("gameId", gameId);
+  history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+}
+if(!username) username="Racer";
+localStorage.setItem(LS_LOBBY, gameId);
+localStorage.setItem(LS_USER, username);
 
-const OBSTACLES={
-  meteorites:{name:"Meteorites",desc:"Telegraphed impacts that stun briefly.",stunMs:2200},
-  monsters:{name:"Track Monsters",desc:"Roam the road and body-check racers."},
-  eggs:{name:"Egg Storm",desc:"Bouncy eggs spill out and knock racers back."},
-  towers:{name:"Lightning Towers",desc:"Periodic zaps near the ring."},
-  rhinos:{name:"Rhino Stampede",desc:"Stampede around the donut and shove racers back."}
-};
-const obstacleOrder=Object.keys(OBSTACLES);
+const RACE_REF = doc(db, "lobbies", gameId, "stockkings", "race");
 
 /* ============================================================
    DOM
@@ -483,7 +477,6 @@ async function requestFullscreen(){
     await root.requestFullscreen?.();
   }catch(e){}
 }
-
 function updateFullscreenBtn(){
   const btn=el("mobileFsBtn");
   if(!btn) return;
@@ -492,7 +485,7 @@ function updateFullscreenBtn(){
 }
 
 /* ============================================================
-   AUTH-SAFE BOOTSTRAP
+   AUTH (Anonymous)
 ============================================================ */
 async function ensureAuthed(){
   let signInErr = null;
@@ -512,7 +505,7 @@ async function ensureAuthed(){
   return await new Promise((resolve, reject)=>{
     const timeout=setTimeout(()=>{
       reject(signInErr || new Error("auth-timeout"));
-    }, 9000);
+    }, 10000);
 
     const unsub=onAuthStateChanged(auth, (u)=>{
       if(u){
@@ -524,30 +517,72 @@ async function ensureAuthed(){
   });
 }
 
-
 /* ============================================================
-   RACE STATE
+   READY-RACE STATE (no lobby dependency)
 ============================================================ */
-let lobbyState=null;
 let raceState=null;
-let lobbyUnsub=null;
 let raceUnsub=null;
 let pendingTxn=false;
-let retriedWithoutAuth=false;
+let myUid="";
+let offlineMode=false;
+
+const ACTIVE_WINDOW_MS = 20000;
+const PRESENCE_PING_MS = 3500;
+const READY_START_DELAY_MS = 1300;  // shared start delay
+const DEADLINE_MS = 30000;          // auto-finish timeout
+const MAX_PLAYERS = 8;
 
 function now(){ return Date.now(); }
-function avg(arr){
-  const v=(arr||[]).filter(n=>typeof n==="number");
-  return v.length ? (v.reduce((a,b)=>a+b,0)/v.length) : null;
-}
 function fmt(n){ return typeof n==="number" ? n.toFixed(2)+"s" : "—"; }
 
-function expectedPlayers(){
-  return (raceState?.expectedPlayers && Array.isArray(raceState.expectedPlayers) && raceState.expectedPlayers.length)
-    ? raceState.expectedPlayers
-    : (lobbyState?.players || [username]);
+function ensurePlayerObj(d, uid, name){
+  d.players = d.players || {};
+  d.players[uid] = d.players[uid] || {
+    uid, name,
+    ready:false,
+    lastSeenMs:0,
+    lapTime:null
+  };
+  d.players[uid].name = name || d.players[uid].name || "Racer";
+  if(typeof d.players[uid].ready !== "boolean") d.players[uid].ready=false;
+  if(typeof d.players[uid].lastSeenMs !== "number") d.players[uid].lastSeenMs=0;
+  if(typeof d.players[uid].lapTime !== "number") d.players[uid].lapTime = (d.players[uid].lapTime===null ? null : null);
 }
-function lobbyStarted(){ return (lobbyState?.status === "started"); }
+
+function pruneParticipants(d){
+  const parts = Array.isArray(d.participants) ? d.participants.slice() : [];
+  const players = d.players || {};
+  const keep = parts.filter(uid => (now() - (players[uid]?.lastSeenMs||0)) < (5*60*1000));
+  const uniq=[];
+  for(const uid of keep){ if(!uniq.includes(uid)) uniq.push(uid); }
+  d.participants = uniq.slice(0, MAX_PLAYERS);
+}
+
+function activeParticipants(d){
+  pruneParticipants(d);
+  const parts = Array.isArray(d.participants) ? d.participants : [];
+  const players = d.players || {};
+  const t=now();
+  const act = parts.filter(uid => (t - (players[uid]?.lastSeenMs||0)) < ACTIVE_WINDOW_MS);
+  if(myUid && parts.includes(myUid) && !act.includes(myUid)) act.push(myUid);
+  return act.slice(0, MAX_PLAYERS);
+}
+
+function roster(d){
+  return (Array.isArray(d.roundPlayers) && d.roundPlayers.length)
+    ? d.roundPlayers.slice(0, MAX_PLAYERS)
+    : activeParticipants(d);
+}
+
+function computeWinnerUid(d){
+  const r = roster(d);
+  let bestUid=null, best=1e18;
+  for(const uid of r){
+    const t = d.players?.[uid]?.lapTime;
+    if(typeof t==="number" && t<best){ best=t; bestUid=uid; }
+  }
+  return bestUid;
+}
 
 async function txn(mutator){
   if(!RACE_REF) return;
@@ -558,14 +593,14 @@ async function txn(mutator){
       const snap=await tx.get(RACE_REF);
       if(!snap.exists()) return;
       const d=snap.data();
-      const out = mutator(d);
+      const out=mutator(d);
       if(!out) return;
       tx.set(RACE_REF, out, {merge:false});
     });
   }catch(e){
     showOverlay("txerr","Sync error",
       `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}`,
-      [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+      [{label:"Reload", className:"warn", onClick:()=>location.reload()}]
     );
   }finally{
     pendingTxn=false;
@@ -573,269 +608,216 @@ async function txn(mutator){
 }
 
 async function ensureRaceDoc(){
-  if(!RACE_REF) return;
-  const snap=await getDoc(RACE_REF);
-  if(snap.exists()) return;
-
-  const exp = (lobbyState?.players && lobbyState.players.length) ? lobbyState.players.slice(0,MAX_PLAYERS) : [username];
-  const players = {};
-  exp.forEach(n=>players[n]={name:n,laps:[],avg:null,lastLap:null});
-  players[username]=players[username]||{name:username,laps:[],avg:null,lastLap:null};
-
-  await setDoc(RACE_REF,{
-    game:"stockkings-race",
-    phase:"lobby_wait",
-    round:1,
-    maxRounds:MAX_ROUNDS,
-    expectedPlayers:exp,
-    players,
-    obstacles:[],
-    countdownEndsAt:null,
-    deadlineAt:null,
-    selector:null,
-    selectEndsAt:null,
-    winnerName:null,
-    lastSelectorReason:"",
-    updatedAtMs: now(),
-    createdAtMs: now()
-  }, {merge:false});
+  await runTransaction(db, async (tx)=>{
+    const snap=await tx.get(RACE_REF);
+    if(snap.exists()) return;
+    tx.set(RACE_REF, {
+      game:"stockkings-ready-race",
+      phase:"ready",            // ready | countdown | racing | finished
+      participants:[],
+      players:{},
+      roundPlayers:[],
+      startAtMs:null,
+      deadlineAt:null,
+      winnerUid:null,
+      updatedAtMs: now(),
+      createdAtMs: now()
+    }, {merge:false});
+  });
 }
 
-async function ensureMeInPlayers(){
+async function joinRace(){
   await txn((d)=>{
-    const exp = (Array.isArray(d.expectedPlayers)&&d.expectedPlayers.length)
-      ? d.expectedPlayers.slice(0,MAX_PLAYERS)
-      : (lobbyState?.players||[username]).slice(0,MAX_PLAYERS);
+    pruneParticipants(d);
+    d.participants = Array.isArray(d.participants) ? d.participants : [];
+    if(myUid && !d.participants.includes(myUid)) d.participants.push(myUid);
+    d.participants = d.participants.slice(0, MAX_PLAYERS);
 
-    if(!exp.includes(username)) exp.push(username);
-    exp.splice(MAX_PLAYERS);
+    ensurePlayerObj(d, myUid, username);
+    d.players[myUid].lastSeenMs = now();
+    d.players[myUid].name = username;
 
-    d.players = d.players || {};
-    exp.forEach(n=>{
-      if(!d.players[n]) d.players[n]={name:n,laps:[],avg:null,lastLap:null};
-      d.players[n].laps = d.players[n].laps || [];
-      d.players[n].avg  = (typeof d.players[n].avg==="number") ? d.players[n].avg : avg(d.players[n].laps);
-    });
-
-    d.expectedPlayers = exp;
     d.updatedAtMs = now();
     return d;
   });
 }
 
-function computeBottomSelector(d){
-  const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
-  const round=d.round||1;
-  const players=d.players||{};
-  const entries=exp.map(n=>{
-    const t=players[n]?.laps?.[round-1];
-    return {name:n, t:(typeof t==="number")?t:30};
-  });
-  const maxT=Math.max(...entries.map(e=>e.t));
-  const bottoms=entries.filter(e=>e.t===maxT);
-  return bottoms[Math.floor(Math.random()*bottoms.length)].name;
-}
-
-function computeWinner(d){
-  const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
-  const players=d.players||{};
-  let bestName=null,best=1e18;
-  exp.forEach(n=>{
-    const a=avg(players[n]?.laps||[]);
-    if(typeof a==="number" && a<best){best=a;bestName=n;}
-  });
-  return bestName || exp[0] || null;
-}
-
-async function maybeStartFromLobby(){
-  if(!raceState || !lobbyStarted()) return;
-  if(raceState.phase==="lobby_wait"){
-    await txn((d)=>{
-      if(d.phase!=="lobby_wait") return null;
-      d.phase="countdown";
-      d.countdownEndsAt=now()+COUNTDOWN_MS;
-      d.updatedAtMs=now();
-      return d;
-    });
+async function presencePing(){
+  if(!myUid) return;
+  try{
+    await setDoc(RACE_REF, {
+      players: { [myUid]: { name: username, lastSeenMs: now() } }
+    }, {merge:true});
+  }catch(e){
+    console.warn("presencePing failed:", e);
   }
 }
 
-async function advanceCountdownIfNeeded(){
-  if(!raceState) return;
-  if(raceState.phase!=="countdown") return;
-  if(!raceState.countdownEndsAt) return;
-  if(now() < raceState.countdownEndsAt) return;
+async function setMyReady(ready){
+  await txn((d)=>{
+    if(!["ready","countdown"].includes(d.phase)) return null;
 
+    pruneParticipants(d);
+    d.participants = Array.isArray(d.participants) ? d.participants : [];
+    if(myUid && !d.participants.includes(myUid)) d.participants.push(myUid);
+    d.participants = d.participants.slice(0, MAX_PLAYERS);
+
+    ensurePlayerObj(d, myUid, username);
+    d.players[myUid].ready = !!ready;
+    d.players[myUid].lastSeenMs = now();
+    d.players[myUid].name = username;
+
+    // If someone unreadies during countdown, revert to ready
+    if(d.phase==="countdown"){
+      d.phase="ready";
+      d.startAtMs=null;
+      d.deadlineAt=null;
+      d.roundPlayers=[];
+    }
+
+    d.updatedAtMs=now();
+    return d;
+  });
+}
+
+async function maybeStartIfAllReady(){
+  await txn((d)=>{
+    if(d.phase!=="ready") return null;
+
+    const act = activeParticipants(d);
+    if(!act.length) return null;
+
+    act.forEach(uid => ensurePlayerObj(d, uid, d.players?.[uid]?.name || "Racer"));
+    const allReady = act.every(uid => !!d.players?.[uid]?.ready);
+    if(!allReady) return null;
+
+    d.roundPlayers = act.slice(0, MAX_PLAYERS);
+    d.phase = "countdown";
+    d.startAtMs = now() + READY_START_DELAY_MS;
+    d.deadlineAt = d.startAtMs + DEADLINE_MS;
+    d.winnerUid = null;
+
+    // clear lapTimes for roster (fresh run)
+    d.roundPlayers.forEach(uid=>{
+      ensurePlayerObj(d, uid, d.players?.[uid]?.name || "Racer");
+      d.players[uid].lapTime = null;
+    });
+
+    d.updatedAtMs = now();
+    return d;
+  });
+}
+
+async function maybeFlipCountdownToRacing(){
   await txn((d)=>{
     if(d.phase!=="countdown") return null;
-    if(now() < (d.countdownEndsAt||0)) return null;
+    if(!d.startAtMs) return null;
+    if(now() < d.startAtMs) return null;
     d.phase="racing";
-    d.deadlineAt=null;
-    d.selector=null;
-    d.selectEndsAt=null;
-    d.lastSelectorReason="";
     d.updatedAtMs=now();
+    return d;
+  });
+}
+
+async function submitLap(timeSec){
+  await txn((d)=>{
+    if(d.phase!=="racing") return null;
+
+    const r = roster(d);
+    ensurePlayerObj(d, myUid, username);
+    if(!r.includes(myUid)) return null;
+
+    const me = d.players[myUid];
+    if(typeof me.lapTime === "number") return null;
+
+    const t = Math.min(30, Math.max(0.5, timeSec));
+    me.lapTime = t;
+    me.lastSeenMs = now();
+
+    // If everyone finished, end
+    const allDone = r.every(uid => typeof d.players?.[uid]?.lapTime === "number");
+    if(allDone){
+      d.phase="finished";
+      d.winnerUid = computeWinnerUid(d);
+      d.updatedAtMs = now();
+      return d;
+    }
+
+    d.updatedAtMs = now();
     return d;
   });
 }
 
 async function finalizeDeadlineIfNeeded(){
-  if(!raceState) return;
-  if(raceState.phase!=="lap_wait") return;
-  if(!raceState.deadlineAt) return;
-  if(now() < raceState.deadlineAt) return;
-
   await txn((d)=>{
-    if(d.phase!=="lap_wait") return null;
-    if(now() < (d.deadlineAt||0)) return null;
+    if(!["countdown","racing"].includes(d.phase)) return null;
+    if(!d.deadlineAt) return null;
+    if(now() < d.deadlineAt) return null;
 
-    const round=d.round||1;
-    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
-    d.players=d.players||{};
-    exp.forEach(n=>{
-      const p=d.players[n]||(d.players[n]={name:n,laps:[],avg:null,lastLap:null});
-      p.laps=p.laps||[];
-      if(typeof p.laps[round-1]!=="number"){
-        p.laps[round-1]=30;
-        p.lastLap=30;
-        p.avg=avg(p.laps);
+    // Force any missing lapTimes to 30
+    const r = roster(d);
+    r.forEach(uid=>{
+      ensurePlayerObj(d, uid, d.players?.[uid]?.name || "Racer");
+      if(typeof d.players[uid].lapTime !== "number"){
+        d.players[uid].lapTime = 30;
       }
     });
 
-    if(round >= (d.maxRounds||MAX_ROUNDS)){
-      d.phase="finished";
-      d.winnerName=computeWinner(d);
-      d.updatedAtMs=now();
-      return d;
-    }
-
-    d.phase="obstacle_select";
-    d.selector=computeBottomSelector(d);
-    d.selectEndsAt=now()+SELECT_MS;
-    d.lastSelectorReason="Deadline reached — slowest lap chooses next threat.";
-    d.deadlineAt=null;
-    d.updatedAtMs=now();
+    d.phase="finished";
+    d.winnerUid = computeWinnerUid(d);
+    d.updatedAtMs = now();
     return d;
   });
 }
 
-async function chooseThreat(type=null, auto=false){
-  if(!raceState) return;
-  if(raceState.phase!=="obstacle_select") return;
-
+async function rematch(){
   await txn((d)=>{
-    if(d.phase!=="obstacle_select") return null;
-
-    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
-    const single = exp.length<=1;
-    const canPick = single || auto || (d.selector===username);
-    if(!canPick) return null;
-
-    const used=Array.isArray(d.obstacles)?d.obstacles.slice():[];
-    const all=obstacleOrder;
-    const avail=all.filter(o=>!used.includes(o));
-
-    let pick=(type && all.includes(type))?type:null;
-    if(!pick) pick = (avail.length ? avail : all)[Math.floor(Math.random()*(avail.length?avail.length:all.length))];
-    if(avail.length && used.includes(pick)) pick = avail[Math.floor(Math.random()*avail.length)];
-
-    if(avail.length){
-      if(!used.includes(pick)) used.push(pick);
-    }else{
-      used.push(pick);
-    }
-
-    d.obstacles=used;
-    d.round=(d.round||1)+1;
-    d.phase="countdown";
-    d.countdownEndsAt=now()+COUNTDOWN_MS;
-    d.selector=null;
-    d.selectEndsAt=null;
+    // New run: ready up again
+    pruneParticipants(d);
+    d.phase="ready";
+    d.startAtMs=null;
     d.deadlineAt=null;
-    d.lastSelectorReason = auto ? "Auto-picked (timeout / solo)." : "";
-    d.updatedAtMs=now();
-    return d;
-  });
-}
+    d.roundPlayers=[];
+    d.winnerUid=null;
 
-async function autoPickIfNeeded(){
-  if(!raceState) return;
-  if(raceState.phase!=="obstacle_select") return;
-
-  const exp=expectedPlayers();
-  const single=exp.length<=1;
-
-  if(single){
-    await chooseThreat(null,true);
-    return;
-  }
-  if(raceState.selectEndsAt && now() >= raceState.selectEndsAt){
-    await chooseThreat(null,true);
-  }
-}
-
-async function submitLap(lapSeconds){
-  await txn((d)=>{
-    const round=d.round||1;
-    const maxRounds=d.maxRounds||MAX_ROUNDS;
-    const exp=(d.expectedPlayers||[]).slice(0,MAX_PLAYERS);
-    if(!exp.includes(username)) exp.push(username);
-    exp.splice(MAX_PLAYERS);
-
-    if(!(d.phase==="racing" || d.phase==="lap_wait")) return null;
-    if(d.deadlineAt && now() > d.deadlineAt) return null;
-
-    d.players=d.players||{};
-    const me=d.players[username]||(d.players[username]={name:username,laps:[],avg:null,lastLap:null});
-    me.laps=me.laps||[];
-    if(typeof me.laps[round-1]==="number") return null;
-
-    const time=Math.min(30, Math.max(0.5, lapSeconds));
-    me.laps[round-1]=time;
-    me.lastLap=time;
-    me.avg=avg(me.laps);
-
-    exp.forEach(n=>{
-      const p=d.players[n]||(d.players[n]={name:n,laps:[],avg:null,lastLap:null});
-      p.laps=p.laps||[];
-      p.avg=(typeof p.avg==="number")?p.avg:avg(p.laps);
+    d.players = d.players || {};
+    (d.participants||[]).forEach(uid=>{
+      ensurePlayerObj(d, uid, d.players?.[uid]?.name || "Racer");
+      d.players[uid].ready = false;
+      d.players[uid].lapTime = null;
     });
-    d.expectedPlayers=exp;
 
-    const done=exp.map(n=>typeof d.players[n]?.laps?.[round-1]==="number");
-    const anyFinished=done.some(Boolean);
-    const everyoneDone=done.every(Boolean);
-
-    if(everyoneDone){
-      if(round >= maxRounds){
-        d.phase="finished";
-        d.winnerName=computeWinner(d);
-        d.updatedAtMs=now();
-        return d;
-      }
-      d.phase="obstacle_select";
-      d.selector=computeBottomSelector(d);
-      d.selectEndsAt=now()+SELECT_MS;
-      d.lastSelectorReason="Slowest lap chooses next threat.";
-      d.deadlineAt=null;
-      d.updatedAtMs=now();
-      return d;
-    }
-
-    if(!d.deadlineAt && anyFinished){
-      d.phase="lap_wait";
-      d.deadlineAt=now()+DEADLINE_MS;
-      d.updatedAtMs=now();
-      return d;
-    }
-
-    d.updatedAtMs=now();
+    ensurePlayerObj(d, myUid, username);
+    d.players[myUid].lastSeenMs = now();
+    d.updatedAtMs = now();
     return d;
   });
+}
+
+function attachRaceListener(){
+  if(raceUnsub) raceUnsub();
+  raceUnsub = onSnapshot(
+    RACE_REF,
+    (snap)=>{
+      try{
+        if(!snap.exists()){ raceState=null; return; }
+        raceState=snap.data();
+      }catch(e){
+        console.error("snapshot error:", e);
+      }
+    },
+    (err)=>{
+      showOverlay("raceErr","Sync error",
+        `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}<br/><br/>
+         If this is GitHub Pages, make sure Anonymous Auth is enabled in Firebase Console.`,
+        [{label:"Reload", className:"warn", onClick:()=>location.reload()}]
+      );
+    }
+  );
 }
 
 /* ============================================================
-   THREE WORLD — polished look (procedural textures)
+   THREE WORLD (Donut track)
 ============================================================ */
 const renderer=new THREE.WebGLRenderer({canvas:el("scene"), antialias:true, alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -864,8 +846,6 @@ const skyTex = makeCanvasTexture((g,w,h)=>{
   grd.addColorStop(.45, "#69b8ff");
   grd.addColorStop(1, "#2a5c9b");
   g.fillStyle=grd; g.fillRect(0,0,w,h);
-
-  // soft clouds
   for(let i=0;i<70;i++){
     const x=Math.random()*w, y=Math.random()*h*0.55;
     const r=30+Math.random()*90;
@@ -894,7 +874,6 @@ const grassTex = makeCanvasTexture((g,w,h)=>{
     g.fillStyle=`rgba(${10+v/3|0},${110+v|0},${30+v/4|0},${.08+Math.random()*.12})`;
     g.fillRect(x,y,1,1);
   }
-  // faint mowing bands
   g.globalAlpha=.08;
   for(let y=0;y<h;y+=20){
     g.fillStyle = (y/20)%2 ? "#000" : "#fff";
@@ -912,7 +891,6 @@ ground.rotation.x=-Math.PI/2;
 scene.add(ground);
 
 const roadTex = makeCanvasTexture((g,w,h)=>{
-  // baked dirt + specks
   g.fillStyle="#8a5d30"; g.fillRect(0,0,w,h);
   for(let i=0;i<14000;i++){
     const x=(Math.random()*w)|0, y=(Math.random()*h)|0;
@@ -920,19 +898,6 @@ const roadTex = makeCanvasTexture((g,w,h)=>{
     g.fillStyle=`rgba(${v|0},${(v*0.72)|0},${(v*0.40)|0},${.09+Math.random()*.12})`;
     g.fillRect(x,y,1,1);
   }
-  // subtle tire streak arcs
-  g.globalAlpha=.12;
-  g.strokeStyle="#000";
-  g.lineWidth=6;
-  for(let i=0;i<24;i++){
-    g.beginPath();
-    const y=h*(i/24);
-    g.arc(w/2, y, 260+Math.random()*110, 0, Math.PI*2);
-    g.stroke();
-  }
-  g.globalAlpha=1;
-
-  // lane stripe (center) - we draw a horizontal stripe so it repeats nicely
   g.globalAlpha=.10;
   g.fillStyle="#ffffff";
   g.fillRect(0, h*0.49, w, h*0.02);
@@ -940,8 +905,8 @@ const roadTex = makeCanvasTexture((g,w,h)=>{
 }, 768, 768);
 roadTex.repeat.set(2, 2);
 
-const ROAD_R = 52;   // centerline radius
-const ROAD_W = 34;   // width
+const ROAD_R = 52;
+const ROAD_W = 34;
 const INNER_R = ROAD_R - ROAD_W/2;
 const OUTER_R = ROAD_R + ROAD_W/2;
 
@@ -953,7 +918,6 @@ road.rotation.x=-Math.PI/2;
 road.position.y=0.02;
 scene.add(road);
 
-// lane stripe ring (nice bright)
 const stripe = new THREE.Mesh(
   new THREE.RingGeometry(ROAD_R-0.35, ROAD_R+0.35, 180, 1),
   new THREE.MeshBasicMaterial({color:0xe9f2ff, transparent:true, opacity:0.50})
@@ -962,7 +926,6 @@ stripe.rotation.x=-Math.PI/2;
 stripe.position.y=0.03;
 scene.add(stripe);
 
-// walls (visual)
 function wallCylinder(radius, color){
   const m=new THREE.Mesh(
     new THREE.CylinderGeometry(radius, radius, 2.1, 180, 1, true),
@@ -971,11 +934,8 @@ function wallCylinder(radius, color){
   m.position.y=1.05;
   return m;
 }
-const innerWall = wallCylinder(INNER_R, 0x2e3a4d);
-const outerWall = wallCylinder(OUTER_R, 0x2e3a4d);
-scene.add(innerWall, outerWall);
+scene.add(wallCylinder(INNER_R, 0x2e3a4d), wallCylinder(OUTER_R, 0x2e3a4d));
 
-// start line
 const startLine = new THREE.Mesh(
   new THREE.PlaneGeometry(ROAD_W, 3.0),
   new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.62, side:THREE.DoubleSide})
@@ -995,6 +955,7 @@ function buildCar(){
     new THREE.MeshStandardMaterial({color:0x1f74ff, metalness:.28, roughness:.34})
   );
   body.position.y=.9;
+
   const top=new THREE.Mesh(
     new THREE.BoxGeometry(1.6,.65,1.7),
     new THREE.MeshStandardMaterial({color:0xd8e8ff, metalness:.06, roughness:.45})
@@ -1019,18 +980,18 @@ function buildCar(){
   g.add(flame);
   g.flame=flame; g.flameMat=flameMat;
 
-  g.scale.set(0.82,0.82,0.82);
+  // Slightly smaller car (helps “zoomed out” feel on mobile too)
+  g.scale.set(0.76,0.76,0.76);
   return g;
 }
 const car=buildCar();
 scene.add(car);
 
-const START_A = 0; // start at (ROAD_R, 0)
+const START_A = 0;
 function setCarAtStart(){
   const x=Math.cos(START_A)*ROAD_R;
   const z=Math.sin(START_A)*ROAD_R;
   car.position.set(x,0.1,z);
-
   car.rotation.set(0,0,0);
   car.rotation.y = Math.atan2(0,1) + Math.PI;
 }
@@ -1076,105 +1037,7 @@ function enforceWalls(){
 }
 
 /* ============================================================
-   THREATS + FX
-============================================================ */
-const threats=[];
-const boomFX=[];
-function addBoom(pos, colorHex){
-  const ring=new THREE.Mesh(
-    new THREE.RingGeometry(0.2,0.7,36),
-    new THREE.MeshBasicMaterial({color:colorHex, transparent:true, opacity:0.86, side:THREE.DoubleSide})
-  );
-  ring.rotation.x=-Math.PI/2;
-  ring.position.set(pos.x,0.07,pos.z);
-  scene.add(ring);
-  boomFX.push({mesh:ring,life:0.5});
-}
-function clearThreats(){
-  threats.splice(0).forEach(t=>scene.remove(t.mesh));
-  boomFX.splice(0).forEach(b=>scene.remove(b.mesh));
-}
-function spawnThreats(){
-  clearThreats();
-  const active=(raceState?.obstacles||[]);
-  if(!active.length) return;
-
-  const pickR = ()=> (INNER_R+4) + Math.random()*(ROAD_W-8);
-  active.forEach((type,stackIdx)=>{
-    const n = 3 + Math.min(2, stackIdx);
-    for(let i=0;i<n;i++){
-      const a = normAngle((stackIdx*0.95 + i*(Math.PI*2/n) + (Math.random()-.5)*0.22));
-      const r = pickR();
-      const x=Math.cos(a)*r;
-      const z=Math.sin(a)*r;
-
-      let mesh=null;
-
-      if(type==="meteorites"){
-        mesh=new THREE.Mesh(
-          new THREE.CylinderGeometry(2.2,2.2,.06,30),
-          new THREE.MeshBasicMaterial({color:0xffc266, transparent:true, opacity:0.34})
-        );
-        mesh.position.set(x,0.06,z);
-        threats.push({type,mesh,rad:2.3,timer:1.8+Math.random()*3.2,hot:0});
-      }
-
-      if(type==="monsters"){
-        mesh=new THREE.Mesh(
-          new THREE.BoxGeometry(1.6,1.7,1.6),
-          new THREE.MeshStandardMaterial({color:0x6f32a8, roughness:.62, metalness:.06, emissive:0x1a0830, emissiveIntensity:.35})
-        );
-        mesh.position.set(x,0.95,z);
-        threats.push({type,mesh,rad:1.8,da:(Math.random()>.5?1:-1)*(0.5+Math.random()*0.7),a, r});
-      }
-
-      if(type==="eggs"){
-        mesh=new THREE.Mesh(
-          new THREE.SphereGeometry(.82,18,12),
-          new THREE.MeshStandardMaterial({color:0xf4efe5, roughness:.45, metalness:0})
-        );
-        mesh.position.set(x,.82,z);
-        threats.push({type,mesh,rad:1.25,v:new THREE.Vector2((Math.random()-.5)*2.6,(Math.random()-.5)*2.6)});
-      }
-
-      if(type==="towers"){
-        mesh=new THREE.Group();
-        const p=new THREE.Mesh(
-          new THREE.CylinderGeometry(.75,1.05,4.3,10),
-          new THREE.MeshStandardMaterial({color:0x3e4b63, roughness:.85})
-        );
-        p.position.y=2.1;
-        const ring=new THREE.Mesh(
-          new THREE.RingGeometry(2.8,3.4,30),
-          new THREE.MeshBasicMaterial({color:0x9ec9ff, side:THREE.DoubleSide, transparent:true, opacity:.55})
-        );
-        ring.rotation.x=-Math.PI/2;
-        const core=new THREE.Mesh(
-          new THREE.SphereGeometry(.28,14,10),
-          new THREE.MeshBasicMaterial({color:0xbfe0ff})
-        );
-        core.position.y=4.15;
-        mesh.add(p,ring,core);
-        mesh.position.set(x,0,z);
-        threats.push({type,mesh,rad:3.2,flash:0,cool:0.9+Math.random()*2.1});
-      }
-
-      if(type==="rhinos"){
-        mesh=new THREE.Mesh(
-          new THREE.BoxGeometry(2.2,1.4,3.2),
-          new THREE.MeshStandardMaterial({color:0x7b7f86, roughness:.82, metalness:.08})
-        );
-        mesh.position.set(x,.7,z);
-        threats.push({type,mesh,rad:2.1,a, r: ROAD_R + (Math.random()-.5)*(ROAD_W*0.2)});
-      }
-
-      if(mesh) scene.add(mesh);
-    }
-  });
-}
-
-/* ============================================================
-   ROAD ROCKS
+   ROAD ROCKS (local-only bumps)
 ============================================================ */
 function hashSeed(s){
   let h=2166136261>>>0;
@@ -1198,7 +1061,6 @@ function spawnRoadRocks(){
     const a=normAngle(rand()*Math.PI*2);
     const r=(INNER_R+4) + rand()*(ROAD_W-8);
     const x=Math.cos(a)*r, z=Math.sin(a)*r;
-
     const s=0.55 + rand()*0.95;
     const mesh=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), rockMat);
     mesh.position.set(x,0.15,z);
@@ -1214,6 +1076,8 @@ spawnRoadRocks();
 ============================================================ */
 let isRacing=false;
 let lapStart=0;
+let raceGoAtMs=0;
+
 let stunUntil=0;
 let boostReadyAt=0;
 let lastHitAt=0;
@@ -1222,113 +1086,22 @@ let bumpSlowUntil=0;
 let halfWay=false;
 let lastProgress=0;
 
-// Desktop + mobile input state (NO extra UI added for desktop)
-const keys={
-  forward:false,
-  left:false,
-  right:false,
-  brake:false,   // S / ArrowDown (adds real WASD)
-  boost:false
-};
-
-function startLapLocal(){
-  setCarAtStart();
-  isRacing=true;
-  lapStart=now();
-  stunUntil=0;
-  bumpSlowUntil=0;
-  halfWay=false;
-  lastProgress=0;
-}
+const keys={ forward:false,left:false,right:false,brake:false,boost:false };
 
 function lapProgress(theta){
   const t=normAngle(theta);
   return normAngle(t - startTheta);
 }
 
-function updateFX(dt){
-  for(let i=boomFX.length-1;i>=0;i--){
-    const b=boomFX[i];
-    b.life-=dt;
-    const s=1+(0.5-b.life)*5.2;
-    b.mesh.scale.set(s,s,s);
-    b.mesh.material.opacity=Math.max(0,b.life/0.5)*0.86;
-    if(b.life<=0){ scene.remove(b.mesh); boomFX.splice(i,1); }
-  }
-}
-
-function updateThreats(dt){
-  updateFX(dt);
-
-  threats.forEach(t=>{
-    if(t.type==="meteorites"){
-      t.timer -= dt;
-      t.hot = Math.max(0, t.hot - dt);
-      if(t.timer <= 0){
-        t.timer = 2.6 + Math.random()*3.2;
-        t.hot   = 0.28;
-        t.mesh.material.color.setHex(0xff4b4b);
-        addBoom(t.mesh.position, 0xff4b4b);
-        setTimeout(()=>{ if(t.mesh?.material) t.mesh.material.color.setHex(0xffc266); }, 220);
-      }
-    }
-
-    if(t.type==="monsters"){
-      t.a = normAngle(t.a + t.da*dt*0.45);
-      const x=Math.cos(t.a)*t.r, z=Math.sin(t.a)*t.r;
-      t.mesh.position.set(x,0.95,z);
-    }
-
-    if(t.type==="eggs"){
-      t.mesh.position.x += t.v.x*dt;
-      t.mesh.position.z += t.v.y*dt;
-      t.v.multiplyScalar(0.985);
-    }
-
-    if(t.type==="towers"){
-      t.flash = Math.max(0, t.flash-dt);
-      t.cool -= dt;
-      if(t.cool<=0){
-        t.cool = 0.9 + Math.random()*2.1;
-        t.flash = 0.22;
-        addBoom(t.mesh.position, 0x9ec9ff);
-      }
-      const ring=t.mesh.children[1];
-      ring.material.opacity = 0.42 + (t.flash*2.0);
-    }
-
-    if(t.type==="rhinos"){
-      t.a = normAngle(t.a + dt*0.9);
-      const x=Math.cos(t.a)*t.r, z=Math.sin(t.a)*t.r;
-      t.mesh.position.set(x,0.7,z);
-    }
-
-    const d=t.mesh.position.distanceTo(car.position);
-    if(d < t.rad + CAR_R && now()-lastHitAt>1200){
-      if(t.type==="meteorites" && t.hot<=0) return;
-
-      lastHitAt=now();
-      if(t.type==="meteorites"||t.type==="towers"){
-        stunUntil=Math.max(stunUntil, now() + (t.type==="meteorites"?2200:1700));
-      }
-      if(t.type==="eggs"){
-        const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-        car.position.addScaledVector(back, 2.6);
-        t.dead=true;
-        addBoom(t.mesh.position, 0xffffff);
-      }
-      if(t.type==="rhinos"||t.type==="monsters"){
-        const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-        car.position.addScaledVector(back, 6.0);
-        stunUntil=Math.max(stunUntil, now()+900);
-        addBoom(car.position, 0xff6f89);
-      }
-    }
-  });
-
-  for(let i=threats.length-1;i>=0;i--){
-    if(threats[i].dead){ scene.remove(threats[i].mesh); threats.splice(i,1); }
-  }
+function armLocalRace(goAtMs){
+  setCarAtStart();
+  isRacing=true;
+  raceGoAtMs = goAtMs || now();
+  lapStart   = raceGoAtMs;
+  stunUntil=0;
+  bumpSlowUntil=0;
+  halfWay=false;
+  lastProgress=0;
 }
 
 function updateRoadRocks(dt){
@@ -1340,59 +1113,48 @@ function updateRoadRocks(dt){
       bumpSlowUntil=Math.max(bumpSlowUntil, now()+650);
       const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
       car.position.addScaledVector(back, 1.0);
-      addBoom(r.mesh.position, 0x5a5f66);
     }
   }
 }
 
 function updateCar(dt){
   const t=now();
-  const stunned = t < stunUntil;
 
+  // ✅ hard gate: nobody moves until shared go-time
+  if(t < raceGoAtMs){
+    car.position.y=0.1;
+    return;
+  }
+
+  const stunned = t < stunUntil;
   const ri = roadInfo(car.position.x, car.position.z);
   const onRoad = ri.onRoad;
 
-  // base speed (coast)
   let speed = onRoad ? 22 : 12;
-
-  // forward (W / ArrowUp) accelerates
   if(keys.forward && !stunned) speed = onRoad ? 30 : 16;
-
-  // brake (S / ArrowDown) slows hard (adds full WASD)
   if(keys.brake && !stunned) speed *= 0.38;
-
-  // bumps
   if(t < bumpSlowUntil) speed *= 0.72;
 
-  // boost (Space or mobile button)
   const boosting = keys.boost && (t > boostReadyAt) && !stunned;
   if(boosting){
     speed = onRoad ? 46 : 26;
     boostReadyAt = t + 8000;
-    addBoom(car.position, 0x3bd7ff);
   }
 
-  // steering (slightly tighter while braking)
   const turn=(keys.left?-1:0)+(keys.right?1:0);
   const turnRate = (keys.brake ? 2.85 : 2.30);
   car.rotation.y -= turn * dt * turnRate;
 
-  // move forward along car direction
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
   car.position.addScaledVector(forward, speed*dt);
   car.position.y=0.1;
 
-  // inner/outer walls
   const hitWall = enforceWalls();
-  if(hitWall){
-    bumpSlowUntil=Math.max(bumpSlowUntil, now()+350);
-  }
+  if(hitWall) bumpSlowUntil=Math.max(bumpSlowUntil, now()+350);
 
-  // boost button cooldown UI (mobile)
   const cdLeft=Math.max(0,(boostReadyAt - t)/1000);
   el("boostBtn").classList.toggle("onCd", cdLeft>0.01);
 
-  // flame visuals
   const baseColor=new THREE.Color(0xff7a22);
   const boostColor=new THREE.Color(0x3bd7ff);
   car.flameMat.color.copy(baseColor).lerp(boostColor, boosting ? 1 : 0.15);
@@ -1407,7 +1169,7 @@ function updateCar(dt){
 
   // completed loop when we pass near start again after halfway
   if(halfWay && lastProgress > 6.0 && prog < 0.25){
-    const lapSec=(t-lapStart)/1000;
+    const lapSec = (t - lapStart)/1000;
     isRacing=false;
     submitLap(lapSec);
   }
@@ -1415,14 +1177,16 @@ function updateCar(dt){
 }
 
 /* ============================================================
-   CAMERA
+   CAMERA (✅ zoom out on mobile + car lower in frame)
 ============================================================ */
 function updateCamera(){
-  const mobile = isMobile();
-  const height = mobile ? 56 : 18;
-  const behind = mobile ? 8 : 16;
+  const mobile=isMobile();
 
-  camera.fov = mobile ? 84 : 62;
+  // ✅ significantly zoomed out on mobile
+  const height = mobile ? 86 : 18;
+  const behind = mobile ? 14 : 16;
+
+  camera.fov = mobile ? 96 : 62;
 
   const back = new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
   const desired = new THREE.Vector3(
@@ -1430,138 +1194,189 @@ function updateCamera(){
     height,
     car.position.z + back.z*behind
   );
-  camera.position.lerp(desired, mobile ? 0.2 : 0.10);
-  camera.lookAt(car.position.x, 1.2, car.position.z);
+
+  camera.position.lerp(desired, mobile ? 0.22 : 0.10);
+
+  // ✅ look slightly ABOVE car so the car sits a bit LOWER on screen (mobile especially)
+  const lookY = mobile ? 2.8 : 1.2;
+  camera.lookAt(car.position.x, lookY, car.position.z);
 }
 
 /* ============================================================
-   UI
+   UI (Minimal until finished; lap timer always visible)
 ============================================================ */
-function renderBoard(){
-  const exp=expectedPlayers().slice(0,MAX_PLAYERS);
-  const players=raceState?.players||{};
-  const rows=exp.map(n=>{
-    const p=players[n]||{laps:[]};
-    const laps=p.laps||[];
-    return {name:n,l1:laps[0],l2:laps[1],l3:laps[2],avg:avg(laps)};
-  }).sort((a,b)=>((a.avg??999)-(b.avg??999)));
-
-  el("scoreRows").innerHTML = rows.map(r=>`
-    <tr class="${r.name===username ? "youRow" : ""}">
-      <td>${r.name}${r.name===username?" (you)":""}</td>
-      <td>${fmt(r.l1)}</td>
-      <td>${fmt(r.l2)}</td>
-      <td>${fmt(r.l3)}</td>
-      <td>${fmt(r.avg)}</td>
-    </tr>`).join("");
-
-  el("phaseText").textContent = (raceState?.phase||"—").replaceAll("_"," ");
-  el("roundText").textContent = `${raceState?.round||1} / ${raceState?.maxRounds||MAX_ROUNDS}`;
-
-  const used=(raceState?.obstacles||[]);
-  el("threatTags").innerHTML = used.length
-    ? used.map(o=>`<span class="tag">⚠️ ${OBSTACLES[o]?.name||o}</span>`).join("")
-    : `<span class="tag">No threats yet</span>`;
-
-  const phase=raceState?.phase||"";
-  const t=now();
-  if(!lobbyState) el("waitingMsg").textContent="Connecting to lobby…";
-  else if(!lobbyStarted()) el("waitingMsg").textContent="Waiting for lobby host to start…";
-  else if(phase==="countdown"){
-    const s=Math.max(0, Math.ceil(((raceState?.countdownEndsAt||t)-t)/1000));
-    el("waitingMsg").textContent=`Round starts in ${s}s.`;
-  }else if(phase==="lap_wait"){
-    const s=Math.max(0, Math.ceil(((raceState?.deadlineAt||t)-t)/1000));
-    el("waitingMsg").textContent=`Waiting for racers… ${s}s until timeouts.`;
-  }else if(phase==="obstacle_select"){
-    el("waitingMsg").textContent=(raceState?.selector===username)
-      ? "You were slowest — choose the next threat!"
-      : `Waiting for ${raceState?.selector||"slowest racer"} to choose threat…`;
-  }else if(phase==="racing"){
-    el("waitingMsg").textContent="Race!";
-  }else if(phase==="finished"){
-    el("waitingMsg").textContent=`🏆 Winner: ${raceState?.winnerName||"—"}`;
-  }else{
-    el("waitingMsg").textContent="Syncing…";
-  }
+function updateUIMode(){
+  const phase = raceState?.phase || "ready";
+  // show full UI only after finished
+  const minimal = (phase !== "finished");
+  document.body.classList.toggle("uiMinimal", minimal);
 }
 
+function renderHUD(){
+  const t=now();
+  const lapElapsed = isRacing ? Math.max(0, ((t - lapStart)/1000)) : 0;
+  el("lapTimer").textContent = lapElapsed.toFixed(3);
+
+  el("roomText").textContent = (gameId||"—").slice(0, 14);
+
+  const cdLeft=Math.max(0,(boostReadyAt-t)/1000);
+  el("boostText").textContent = cdLeft ? `Cooldown ${cdLeft.toFixed(1)}s` : "Ready";
+
+  const d=raceState;
+  const phase=d?.phase||"—";
+  let status="Connecting…";
+  if(offlineMode) status="Offline";
+  else if(!d) status="Connecting…";
+  else if(phase==="ready") status="Ready-up";
+  else if(phase==="countdown") status="Starting…";
+  else if(phase==="racing") status=(t < raceGoAtMs) ? "Get set…" : "Racing";
+  else if(phase==="finished") status="Finished";
+
+  el("statusText").textContent=status;
+
+  const parts=(d?.participants||[]).slice(0,MAX_PLAYERS);
+  const players=d?.players||{};
+  const act = (()=>{ try{ return activeParticipants(structuredClone(d)); }catch{ return parts; } })();
+  const readyCount = act.filter(uid => !!players?.[uid]?.ready).length;
+  el("playersText").textContent = d ? `${readyCount}/${act.length} ready` : "—";
+
+  updateUIMode();
+}
+
+function renderResultsBoard(){
+  if(!raceState) return;
+
+  const d=raceState;
+  const players=d.players||{};
+  const parts=(d.participants||[]).slice(0,MAX_PLAYERS);
+
+  const r = roster(d);
+  const show = (d.phase==="finished") ? r : [];
+
+  if(d.phase==="finished"){
+    const winnerUid=d.winnerUid;
+    el("tags").innerHTML = winnerUid
+      ? `<span class="tag">🏆 Winner: ${players[winnerUid]?.name||winnerUid.slice(0,6)}</span>`
+      : `<span class="tag">🏁 Finished</span>`;
+    el("msg").textContent = "Results are shown below. Hit Rematch to run it again.";
+  }else{
+    el("tags").innerHTML = `<span class="tag">Room: ${(gameId||"").slice(0,14)}</span>`;
+    el("msg").textContent = "UI stays hidden during the race — only the lap timer shows.";
+  }
+
+  if(d.phase!=="finished"){
+    el("scoreRows").innerHTML = "";
+    return;
+  }
+
+  const rows = show.map(uid=>{
+    const p=players[uid]||{};
+    const time=p.lapTime;
+    return {
+      uid,
+      name:p.name||uid.slice(0,6),
+      time,
+      note:(uid===d.winnerUid) ? "🏆 Winner" : (typeof time==="number" ? "" : "—")
+    };
+  }).sort((a,b)=>((a.time??999)-(b.time??999)));
+
+  el("scoreRows").innerHTML = rows.map(r=>`
+    <tr class="${r.uid===myUid ? "youRow" : ""}">
+      <td>${r.name}${r.uid===myUid?" (you)":""}</td>
+      <td>${fmt(r.time)}</td>
+      <td>${r.note}</td>
+    </tr>
+  `).join("");
+}
+
+async function copyInviteLink(){
+  const u = new URL(location.href);
+  u.searchParams.set("gameId", gameId);
+  u.searchParams.set("username", username);
+  try{
+    await navigator.clipboard.writeText(u.toString());
+  }catch(e){}
+}
+
+/* ============================================================
+   OVERLAY (Ready -> Countdown -> Racing -> Finished)
+============================================================ */
 function renderOverlay(){
-  if(!gameId){
-    showOverlay("nogame","Missing gameId",
-      "Open StockKings from the Lobby so multiplayer syncing works.",
-      [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-    );
-    return;
-  }
-
-  if(!lobbyState){
-    showOverlay("connLobby","Connecting to Lobby…",
-      "Waiting for Firestore lobby doc access…",
-      []
-    );
-    return;
-  }
-
-  if(!lobbyStarted()){
-    showOverlay("waitStart","Waiting for Lobby Start",
-      "Host hasn’t started the match yet. Go back and press <b>Start Game</b>.",
-      [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+  if(offlineMode){
+    showOverlay("offline","Offline / Auth Failed",
+      `Firebase auth/sync failed.<br/><br/>
+       If this is GitHub Pages, make sure <b>Anonymous Auth</b> is enabled in Firebase Console.`,
+      [{label:"Reload", className:"warn", onClick:()=>location.reload()}]
     );
     return;
   }
 
   if(!raceState){
-    showOverlay("connRace","Connecting to Race State…","Creating/reading race doc…",[]);
+    showOverlay("conn","Connecting…",
+      "Syncing room state…",
+      [{label:"Fullscreen", className:"ghost", onClick:requestFullscreen}]
+    );
     return;
   }
 
-  const phase=raceState.phase;
+  const d=raceState;
   const t=now();
+  const phase=d.phase;
 
-  if(phase==="countdown"){
-    const s=Math.max(0, Math.ceil(((raceState.countdownEndsAt||t)-t)/1000));
-    showOverlay("countdown","Race starts soon",
-      `<b style="font-size:28px">${s}</b> seconds until launch.<br/>Boost cooldown: <b>8s</b>.<br/>Threats stack each round.`,
+  if(phase==="ready"){
+    const act = (()=>{ try{ return activeParticipants(structuredClone(d)); }catch{ return (d.participants||[]); } })();
+    const readyCount = act.filter(uid => !!d.players?.[uid]?.ready).length;
+    const amReady = !!d.players?.[myUid]?.ready;
+
+    showOverlay("ready","Ready Up",
+      `Room: <b>${(gameId||"").slice(0,18)}</b><br/>
+       Active ready: <b>${readyCount}/${act.length}</b><br/><br/>
+       The race starts <b>as soon as everyone active hits Ready</b>.`,
       [
-        {label:"Fullscreen", className:"warn", onClick:requestFullscreen},
-        {label:"Ready", className:"ghost", onClick:hideOverlay}
+        {label: amReady ? "✅ Ready (click to unready)" : "🏁 Ready", onClick:()=>setMyReady(!amReady)},
+        {label:"Copy Invite Link", className:"ghost", onClick:copyInviteLink},
+        {label:"Fullscreen", className:"ghost", onClick:requestFullscreen}
       ]
     );
     return;
   }
 
-  if(phase==="obstacle_select"){
-    const exp=expectedPlayers();
-    const single=exp.length<=1;
-
-    const used=raceState.obstacles||[];
-    const avail=obstacleOrder.filter(o=>!used.includes(o));
-    const options=(avail.length?avail:obstacleOrder);
-
-    const canPick = single || (raceState.selector===username);
-    const end=raceState.selectEndsAt || (t+SELECT_MS);
-    const s=Math.max(0, Math.ceil((end-t)/1000));
-    const reason=raceState.lastSelectorReason || "Slowest lap chooses the next threat.";
-
-    const buttons = canPick
-      ? options.map(o=>({label:OBSTACLES[o].name, onClick:()=>chooseThreat(o,false)}))
-        .concat([{label:"Random", className:"ghost", onClick:()=>chooseThreat(null,false)}])
-      : [{label:"Waiting…", className:"ghost", disabled:true}];
-
-    showOverlay("pickThreat", canPick ? "Choose the next threat" : "Waiting for threat choice",
-      `<b>${reason}</b><br/>Selection closes in <b>${s}s</b>.`,
-      buttons
+  if(phase==="countdown"){
+    const go=d.startAtMs||t;
+    const s=Math.max(0, Math.ceil((go - t)/1000));
+    showOverlay("countdown","Starting…",
+      `Race begins in <b style="font-size:28px">${s}</b> seconds.`,
+      [{label:"Fullscreen", className:"ghost", onClick:requestFullscreen}]
     );
     return;
   }
 
+  if(phase==="racing"){
+    // hide overlay once start time passes
+    if(t < (d.startAtMs||t)){
+      const s=Math.max(0, Math.ceil(((d.startAtMs||t)-t)/1000));
+      showOverlay("countdown2","Get set…",
+        `Starting in <b style="font-size:28px">${s}</b>`,
+        []
+      );
+      return;
+    }
+    hideOverlay();
+    return;
+  }
+
   if(phase==="finished"){
-    const w=raceState.winnerName||"Winner";
-    const a=avg((raceState.players?.[w]?.laps)||[]);
-    showOverlay("finished","🏆 Race Complete",
-      `<b>${w}</b> wins with the lowest average time (${typeof a==="number"?a.toFixed(2)+"s":"—"}).`,
-      [{label:"Return to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
+    const w=d.winnerUid;
+    const name=d.players?.[w]?.name || "—";
+    const time=d.players?.[w]?.lapTime;
+    showOverlay("finished","🏆 Finished",
+      `<b>${name}</b> wins (${fmt(time)}).<br/><br/>
+       UI is now visible with results.`,
+      [
+        {label:"Rematch", onClick:rematch},
+        {label:"Copy Invite Link", className:"ghost", onClick:copyInviteLink},
+        {label:"Fullscreen", className:"ghost", onClick:requestFullscreen}
+      ]
     );
     return;
   }
@@ -1569,45 +1384,29 @@ function renderOverlay(){
   hideOverlay();
 }
 
-function renderHUD(){
-  const t=now();
-  const lapElapsed = isRacing ? ((t-lapStart)/1000) : 0;
-  el("lapTimer").textContent = lapElapsed.toFixed(3);
-
-  const cdLeft=Math.max(0,(boostReadyAt-t)/1000);
-  el("boostText").textContent = cdLeft ? `Cooldown ${cdLeft.toFixed(1)}s` : "Ready";
-
-  const phase=raceState?.phase||"";
-  let status =
-    !lobbyState ? "Connecting to lobby…" :
-    !lobbyStarted() ? "Waiting for start…" :
-    !raceState ? "Connecting to race…" :
-    (t < stunUntil) ? "Stunned!" :
-    (phase==="racing") ? "Racing" :
-    (phase==="lap_wait") ? "Waiting…" :
-    (phase==="countdown") ? "Countdown…" :
-    (phase==="obstacle_select") ? "Choosing threat…" :
-    (phase==="finished") ? "Finished" :
-    "Syncing…";
-
-  el("statusText").textContent=status;
-}
-
 /* ============================================================
-   MAIN LOOP (opt: only resize renderer when needed)
+   MAIN LOOP
 ============================================================ */
 let prev=performance.now();
 let lastW=0, lastH=0;
+let armedStartAt=0;
 
 function loop(ts){
   const dt=Math.min(.033,(ts-prev)/1000); prev=ts;
 
-  updateThreats(dt);
   updateRoadRocks(dt);
 
-  if(raceState?.phase==="racing"){
-    if(!isRacing) startLapLocal();
-    updateCar(dt);
+  // local race start/stop based on synced phase
+  const phase=raceState?.phase;
+  if(phase==="countdown" || phase==="racing"){
+    const go=raceState?.startAtMs || now();
+    if(!isRacing || armedStartAt!==go){
+      armedStartAt=go;
+      armLocalRace(go);
+    }
+    if(phase==="racing"){
+      updateCar(dt);
+    }
   }else{
     isRacing=false;
   }
@@ -1625,7 +1424,7 @@ function loop(ts){
   renderer.render(scene,camera);
 
   renderHUD();
-  renderBoard();
+  renderResultsBoard();
   renderOverlay();
 
   requestAnimationFrame(loop);
@@ -1634,9 +1433,6 @@ requestAnimationFrame(loop);
 
 /* ============================================================
    CONTROLS
-   - Desktop: WASD + Arrow keys + Space (boost) + S/ArrowDown (brake)
-   - Mobile: joystick pad + boost button
-   - No extra desktop control UI added.
 ============================================================ */
 function setupControls(){
   const fsBtn=el("mobileFsBtn");
@@ -1645,42 +1441,31 @@ function setupControls(){
   addEventListener("resize", updateFullscreenBtn);
   document.addEventListener("fullscreenchange", updateFullscreenBtn);
 
-  // Clear inputs when tab loses focus
-  addEventListener("blur", ()=>{
-    keys.forward=keys.left=keys.right=keys.brake=keys.boost=false;
-  });
+  addEventListener("blur", ()=>{ keys.forward=keys.left=keys.right=keys.brake=keys.boost=false; });
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) keys.forward=keys.left=keys.right=keys.brake=keys.boost=false;
   });
 
-  // Keyboard (desktop)
   function keyDown(e){
     const code=e.code;
-
     if(code==="ArrowUp" || code==="KeyW") { keys.forward=true; e.preventDefault(); }
     if(code==="ArrowLeft"|| code==="KeyA") { keys.left=true; e.preventDefault(); }
     if(code==="ArrowRight"||code==="KeyD") { keys.right=true; e.preventDefault(); }
     if(code==="ArrowDown"||code==="KeyS") { keys.brake=true; e.preventDefault(); }
-
-    if(code==="Space"){
-      keys.boost=true;
-      e.preventDefault();
-    }
+    if(code==="Space"){ keys.boost=true; e.preventDefault(); }
   }
   function keyUp(e){
     const code=e.code;
-
     if(code==="ArrowUp" || code==="KeyW") keys.forward=false;
     if(code==="ArrowLeft"|| code==="KeyA") keys.left=false;
     if(code==="ArrowRight"||code==="KeyD") keys.right=false;
     if(code==="ArrowDown"||code==="KeyS") keys.brake=false;
-
     if(code==="Space") keys.boost=false;
   }
   addEventListener("keydown", keyDown, {passive:false});
   addEventListener("keyup", keyUp, {passive:false});
 
-  // Mobile pad (pointer events unify touch + mouse)
+  // Mobile pad
   const pad=el("pad"), dot=el("padDot");
   let padActive=false;
 
@@ -1695,7 +1480,6 @@ function setupControls(){
     keys.forward = y < r.height*0.82;
     keys.left    = x < r.width*0.40;
     keys.right   = x > r.width*0.60;
-    // (no brake on mobile pad to keep it simple)
   }
 
   pad.addEventListener("pointerdown", (e)=>{
@@ -1721,7 +1505,7 @@ function setupControls(){
   pad.addEventListener("pointercancel", endPad);
   pad.addEventListener("pointerleave", ()=>{ if(padActive) endPad(); });
 
-  // Boost button (pointer events)
+  // Boost button
   const boost=el("boostBtn");
   boost.addEventListener("pointerdown", (e)=>{ keys.boost=true; e.preventDefault(); }, {passive:false});
   boost.addEventListener("pointerup",   ()=>{ keys.boost=false; });
@@ -1731,107 +1515,51 @@ function setupControls(){
 setupControls();
 
 /* ============================================================
-   NETWORK: LISTENERS ATTACH ONLY AFTER AUTH IS READY
-   (also: catch inside snapshot callback so it can't "uncaught" and hang)
+   STATE MACHINE TICK (prevents “syncing” stalls)
 ============================================================ */
-function attachLobbyListeners(){
-  if(!LOBBY_REF) return;
-
-  if(lobbyUnsub) lobbyUnsub();
-  lobbyUnsub = onSnapshot(
-    LOBBY_REF,
-    async (snap)=>{
-      try{
-        if(!snap.exists()){
-          lobbyState=null;
-          showOverlay("nolobby","Lobby not found",
-            "This lobby doc doesn't exist anymore.",
-            [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-          );
-          return;
-        }
-
-        lobbyState=snap.data()||{};
-
-        // Ensure race doc exists + join players list
-        await ensureRaceDoc();
-        await ensureMeInPlayers();
-        await maybeStartFromLobby();
-
-        // attach race once
-        if(!raceUnsub){
-          raceUnsub = onSnapshot(
-            RACE_REF,
-            (rsnap)=>{
-              if(!rsnap.exists()) return;
-              const prevObsSig=JSON.stringify(raceState?.obstacles||[]);
-              raceState=rsnap.data();
-              const nextObsSig=JSON.stringify(raceState?.obstacles||[]);
-              if(nextObsSig!==prevObsSig) spawnThreats();
-            },
-            (err)=>{
-              showOverlay("racePerm","Race permission error",
-                `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}<br/><br/>
-                 Make sure your rules allow <b>/lobbies/${gameId}/stockkings/race</b> read/write and that Anonymous Auth is enabled.`,
-                [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-              );
-            }
-          );
-        }
-      }catch(e){
-        showOverlay("snapErr","Sync error",
-          `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}<br/><br/>
-           This usually means Firestore rules blocked a read/write in the lobby callback.`,
-          [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-        );
-      }
-    },
-    async (err)=>{
-      const code=String(err?.code||"");
-      const msg=String(err?.message||err||"");
-      if(!retriedWithoutAuth && (code.includes("permission-denied") || msg.includes("permission-denied"))){
-        retriedWithoutAuth=true;
-        try{ await signOut(auth); }catch(e){}
-        attachLobbyListeners();
-        return;
-      }
-      showOverlay("lobbyPerm","Lobby permission error",
-        `<b>${code||"error"}</b><br/>${msg}<br/><br/>
-         If you just updated rules, refresh after deploy completes. Also verify Anonymous Auth is enabled.`,
-        [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-      );
-    }
-  );
-}
-
 function tickStateMachine(){
   if(!raceState) return;
-  advanceCountdownIfNeeded();
-  finalizeDeadlineIfNeeded();
-  autoPickIfNeeded();
+
+  if(raceState.phase==="ready"){
+    maybeStartIfAllReady();
+  }
+  if(raceState.phase==="countdown"){
+    maybeFlipCountdownToRacing();
+  }
+  if(raceState.phase==="countdown" || raceState.phase==="racing"){
+    finalizeDeadlineIfNeeded();
+  }
 }
 
+/* ============================================================
+   BOOT
+============================================================ */
 (async function main(){
-  if(!gameId){
-    renderOverlay();
+  el("roomText").textContent = (gameId||"—").slice(0, 14);
+
+  try{
+    const u = await ensureAuthed();
+    myUid = u.uid;
+  }catch(e){
+    offlineMode=true;
+    showOverlay("authFail","Auth failed",
+      `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}<br/><br/>
+       Common fix: enable <b>Anonymous Auth</b> in Firebase Console.`,
+      [{label:"Reload", className:"warn", onClick:()=>location.reload()}]
+    );
     return;
   }
-  try{
-    await ensureAuthed();
-  }catch(e){
-  showOverlay("authFail","Auth failed",
-    `<b>${String(e?.code||"error")}</b><br/>${String(e?.message||e)}<br/><br/>
-     Origin: <b>${location.origin}</b><br/>
-     (Common fixes: enable Anonymous Auth, add your domain/localhost to Authorized domains.)`,
-    [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
-  );
-  return;
-}
 
-  attachLobbyListeners();
-  setInterval(tickStateMachine, 250);
+  await ensureRaceDoc();
+  attachRaceListener();
+
+  await joinRace();
+  await presencePing();
+  setInterval(presencePing, PRESENCE_PING_MS);
+  setInterval(tickStateMachine, 800);
 })();
 </script>
 </body>
 </html>
+
 
