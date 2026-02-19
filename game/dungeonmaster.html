@@ -557,21 +557,47 @@
     const cellSize = Number(stoney?.cellSize || 4);
     return NO_TRAP_RADIUS_CELLS * cellSize;
   }
+  function getCrownWorldPos(){
+  if(!stoney) return null;
 
-  function isTooCloseToAnyPlayer(wx,wz){
-    const now = Date.now();
-    const R = noTrapRadiusWorld();
-    const R2 = R*R;
-
-    for(const [pid,p] of players){
-      const online = now - (p.updatedAt||0) <= ONLINE_GRACE_MS;
-      if(!online) continue;
-      const alive = !!p.alive && (p.deadUntil||0) < now;
-      if(!alive) continue;
-      if(dist2(wx,wz, p.x||0, p.z||0) <= R2) return p.name || "Player";
-    }
-    return null;
+  // If someone is carrying it, use the carrier position
+  if(stoney.carrierId){
+    const p = players.get(stoney.carrierId);
+    if(p) return { x: Number(p.x||0), z: Number(p.z||0), carried:true };
   }
+
+  // Otherwise use the crown ground position
+  if(stoney.crown && typeof stoney.crown.x==="number" && typeof stoney.crown.z==="number"){
+    return { x: Number(stoney.crown.x), z: Number(stoney.crown.z), carried:false };
+  }
+
+  return null;
+}
+
+
+ function isTooCloseToAnyPlayer(wx,wz){
+  const now = Date.now();
+  const R = noTrapRadiusWorld();
+  const R2 = R*R;
+
+  // Block near ONLINE + ALIVE players
+  for(const [pid,p] of players){
+    const online = now - (p.updatedAt||0) <= ONLINE_GRACE_MS;
+    if(!online) continue;
+    const alive = !!p.alive && (p.deadUntil||0) < now;
+    if(!alive) continue;
+    if(dist2(wx,wz, p.x||0, p.z||0) <= R2) return p.name || "Player";
+  }
+
+  // Block near the crown (ground or carried)
+  const crownPos = getCrownWorldPos();
+  if(crownPos){
+    if(dist2(wx,wz, crownPos.x, crownPos.z) <= R2) return "Crown";
+  }
+
+  return null;
+}
+
 
   function computeTrapWindow(t){
     if(!stoney) return {armedAt: t.placedAt||0, expiresAt: (t.placedAt||0) + (t.ttlMs||0)};
@@ -707,6 +733,45 @@
 
       ctx.restore();
     }
+
+    // CROWN NO-TRAP ZONE (4-cell radius)
+const crownPos = getCrownWorldPos();
+if(crownPos){
+  const cCrown = worldToCell(crownPos.x, crownPos.z);
+  if(cCrown){
+    const px = x0 + cCrown.cx*cellPx + cellPx*0.5;
+    const py = y0 + cCrown.cy*cellPx + cellPx*0.5;
+
+    const rPx = cellPx * NO_TRAP_RADIUS_CELLS;
+
+    ctx.save();
+
+    // soft gold fill
+    ctx.fillStyle = "rgba(245,158,11,.10)";
+    ctx.beginPath();
+    ctx.arc(px, py, rPx, 0, Math.PI*2);
+    ctx.fill();
+
+    // dashed gold ring
+    ctx.strokeStyle = "rgba(245,158,11,.55)";
+    ctx.lineWidth = Math.max(2, cellPx*0.06);
+    ctx.setLineDash([Math.max(6, cellPx*0.18), Math.max(6, cellPx*0.18)]);
+    ctx.beginPath();
+    ctx.arc(px, py, rPx, 0, Math.PI*2);
+    ctx.stroke();
+
+    // small inner ring
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(245,158,11,.25)";
+    ctx.lineWidth = Math.max(1.5, cellPx*0.04);
+    ctx.beginPath();
+    ctx.arc(px, py, rPx*0.82, 0, Math.PI*2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
 
     // traps
     const now=Date.now();
