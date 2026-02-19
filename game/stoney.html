@@ -140,10 +140,8 @@
         pointer-events: none;
         display: none;
       }
-      #joystickWrap {
+      .joystick {
         position: absolute;
-        left: 16px;
-        bottom: 20px;
         width: 132px;
         height: 132px;
         border-radius: 50%;
@@ -153,7 +151,15 @@
         pointer-events: auto;
         touch-action: none;
       }
-      #joystickKnob {
+      #moveStick {
+        left: 16px;
+        bottom: 20px;
+      }
+      #lookStick {
+        right: 16px;
+        bottom: 20px;
+      }
+      .joystickKnob {
         position: absolute;
         left: 50%;
         top: 50%;
@@ -215,7 +221,7 @@
           Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) • ESC unlock
         </div>
         <div class="muted">
-          Mobile: hold joystick to move forward and steer • tap fullscreen for full view
+          Mobile: left stick moves • right stick looks • tap fullscreen for full view
         </div>
         <div class="muted">
           Find the 👑 crown, then escape out the entrance room within 5 minutes.
@@ -225,8 +231,11 @@
       <button id="fsBtn" type="button">⛶ Fullscreen</button>
 
       <div id="mobileControls">
-        <div id="joystickWrap" aria-label="Movement joystick">
-          <div id="joystickKnob"></div>
+        <div id="moveStick" class="joystick" aria-label="Movement joystick">
+          <div id="moveKnob" class="joystickKnob"></div>
+        </div>
+        <div id="lookStick" class="joystick" aria-label="Look joystick">
+          <div id="lookKnob" class="joystickKnob"></div>
         </div>
       </div>
 
@@ -297,8 +306,10 @@
       const toast = $("toast");
       const fsBtn = $("fsBtn");
       const netText = $("netText");
-      const joystickWrap = $("joystickWrap");
-      const joystickKnob = $("joystickKnob");
+      const moveStick = $("moveStick");
+      const moveKnob = $("moveKnob");
+      const lookStick = $("lookStick");
+      const lookKnob = $("lookKnob");
 
       // ---------------- UX helpers ----------------
       function showToast(msg, ms = 2200) {
@@ -505,60 +516,105 @@
       const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
       const mobile = {
         enabled: isCoarsePointer,
-        turn: 0,
-        forward: 0,
-        active: false,
-        pointerId: null,
+        moveX: 0,
+        moveY: 0,
+        lookX: 0,
+        lookY: 0,
+        movePointerId: null,
+        lookPointerId: null,
       };
 
-      function setJoystick(dx, dy, r) {
+      function setJoystick(knob, dx, dy, r) {
         const len = Math.hypot(dx, dy);
         const k = len > r && len > 0 ? r / len : 1;
         const cx = dx * k, cy = dy * k;
-        joystickKnob.style.transform = `translate(${cx}px, ${cy}px)`;
+        knob.style.transform = `translate(${cx}px, ${cy}px)`;
 
-        mobile.turn = Math.max(-1, Math.min(1, cx / r));
-        mobile.forward = Math.max(0, Math.min(1, -cy / r));
-        mobile.active = mobile.forward > 0.04;
+        return { x: Math.max(-1, Math.min(1, cx / r)), y: Math.max(-1, Math.min(1, cy / r)) };
       }
 
-      function resetJoystick() {
-        joystickKnob.style.transform = "translate(0px, 0px)";
-        mobile.turn = 0;
-        mobile.forward = 0;
-        mobile.active = false;
-        mobile.pointerId = null;
+      function resetJoystick(knob) {
+        knob.style.transform = "translate(0px, 0px)";
       }
 
-      if (joystickWrap) {
-        joystickWrap.addEventListener("pointerdown", (e) => {
+      if (moveStick) {
+        moveStick.addEventListener("pointerdown", (e) => {
           if (!mobile.enabled) return;
-          mobile.pointerId = e.pointerId;
-          joystickWrap.setPointerCapture(e.pointerId);
-          const r = joystickWrap.getBoundingClientRect();
-          setJoystick(
+          mobile.movePointerId = e.pointerId;
+          moveStick.setPointerCapture(e.pointerId);
+          const r = moveStick.getBoundingClientRect();
+          const joy = setJoystick(
+            moveKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
             r.width * 0.35
           );
+          mobile.moveX = joy.x;
+          mobile.moveY = joy.y;
         });
 
-        joystickWrap.addEventListener("pointermove", (e) => {
-          if (!mobile.enabled || mobile.pointerId !== e.pointerId) return;
-          const r = joystickWrap.getBoundingClientRect();
-          setJoystick(
+        moveStick.addEventListener("pointermove", (e) => {
+          if (!mobile.enabled || mobile.movePointerId !== e.pointerId) return;
+          const r = moveStick.getBoundingClientRect();
+          const joy = setJoystick(
+            moveKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
             r.width * 0.35
           );
+          mobile.moveX = joy.x;
+          mobile.moveY = joy.y;
         });
 
         const endJoy = (e) => {
-          if (mobile.pointerId !== e.pointerId) return;
-          resetJoystick();
+          if (mobile.movePointerId !== e.pointerId) return;
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
         };
-        joystickWrap.addEventListener("pointerup", endJoy);
-        joystickWrap.addEventListener("pointercancel", endJoy);
+        moveStick.addEventListener("pointerup", endJoy);
+        moveStick.addEventListener("pointercancel", endJoy);
+      }
+
+      if (lookStick) {
+        lookStick.addEventListener("pointerdown", (e) => {
+          if (!mobile.enabled) return;
+          mobile.lookPointerId = e.pointerId;
+          lookStick.setPointerCapture(e.pointerId);
+          const r = lookStick.getBoundingClientRect();
+          const joy = setJoystick(
+            lookKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.35
+          );
+          mobile.lookX = joy.x;
+          mobile.lookY = joy.y;
+        });
+
+        lookStick.addEventListener("pointermove", (e) => {
+          if (!mobile.enabled || mobile.lookPointerId !== e.pointerId) return;
+          const r = lookStick.getBoundingClientRect();
+          const joy = setJoystick(
+            lookKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.35
+          );
+          mobile.lookX = joy.x;
+          mobile.lookY = joy.y;
+        });
+
+        const endLook = (e) => {
+          if (mobile.lookPointerId !== e.pointerId) return;
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        };
+        lookStick.addEventListener("pointerup", endLook);
+        lookStick.addEventListener("pointercancel", endLook);
       }
 
       // ---------------- Geometry + collision ----------------
@@ -1144,11 +1200,14 @@
         let mz = forward - back;
 
         if (mobile.enabled) {
-          const turnRate = 2.2;
-          const steering = mobile.active ? mobile.turn : 0;
-          me.yaw -= steering * turnRate * dt;
-          mx = 0;
-          mz = mobile.active ? mobile.forward : 0;
+          const turnRate = 2.8;
+          const lookRate = 2.2;
+          me.yaw -= mobile.lookX * turnRate * dt;
+          me.pitch -= mobile.lookY * lookRate * dt;
+          me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
+
+          mx = mobile.moveX;
+          mz = -mobile.moveY;
         }
 
         const mlen = Math.hypot(mx, mz);
@@ -1629,4 +1688,3 @@
     </script>
   </body>
 </html>
-
