@@ -221,7 +221,7 @@
           Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) • ESC unlock
         </div>
         <div class="muted">
-          Mobile: left stick moves • right stick looks • tap fullscreen for full view
+          Mobile: left stick moves (camera-relative) • right stick looks • tap fullscreen for full view
         </div>
         <div class="muted">
           Find the 👑 crown, then escape out the entrance room within 5 minutes.
@@ -315,6 +315,7 @@
 
       // ---------------- UX helpers ----------------
       function showToast(msg, ms = 2200) {
+        // (kept as-is: game hides UI during play for immersion)
         if (phase === "play") return;
         toast.textContent = msg;
         toast.style.opacity = "1";
@@ -463,15 +464,21 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
       renderer.setSize(innerWidth, innerHeight);
-      renderer.setClearColor(0x0b0f16, 1);
+      renderer.setClearColor(0x070a10, 1);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
+
+      // light atmospheric fog (subtle)
+      scene.fog = new THREE.FogExp2(0x070a10, 0.012);
+
       const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 220);
       camera.position.set(0, PLAYER_H, 0);
 
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x202838, 0.95));
-      const dir = new THREE.DirectionalLight(0xffffff, 0.55);
+      // Base ambient so it never goes pitch black; most light comes from ceiling lamps
+      scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1b2030, 0.35));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.22);
       dir.position.set(7, 18, 10);
       scene.add(dir);
 
@@ -546,8 +553,10 @@
         const k = len > r && len > 0 ? r / len : 1;
         const cx = dx * k, cy = dy * k;
         knob.style.transform = `translate(${cx}px, ${cy}px)`;
-
-        return { x: Math.max(-1, Math.min(1, cx / r)), y: Math.max(-1, Math.min(1, cy / r)) };
+        return {
+          x: Math.max(-1, Math.min(1, cx / r)),
+          y: Math.max(-1, Math.min(1, cy / r)),
+        };
       }
 
       function resetJoystick(knob) {
@@ -661,24 +670,176 @@
         }
       });
 
-      // ---------------- Geometry + collision ----------------
-      const matWall = new THREE.MeshStandardMaterial({
-        color: 0x000000,
-        roughness: 0.95,
-        metalness: 0.0,
-      });
-      const matFloor = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 1.0,
-        metalness: 0.0,
-      });
-      const matRoom = new THREE.MeshStandardMaterial({
-        color: 0xf8fafc,
-        roughness: 1.0,
-        metalness: 0.0,
+      // ---------------- Procedural textures (walls/floor/ceiling + props) ----------------
+      function makeCanvasTexture(drawFn, size = 256) {
+        const c = document.createElement("canvas");
+        c.width = c.height = size;
+        const g = c.getContext("2d");
+        drawFn(g, size);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 8);
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      function rand01From(x, y, s) {
+        // cheap hash -> 0..1
+        const n = Math.sin((x * 127.1 + y * 311.7 + s * 74.7)) * 43758.5453123;
+        return n - Math.floor(n);
+      }
+
+      const wallTex = makeCanvasTexture((g, n) => {
+        // stone wall with blocks + grime
+        g.fillStyle = "#1f2937";
+        g.fillRect(0, 0, n, n);
+
+        // block pattern
+        const rowH = n / 8;
+        for (let r = 0; r < 8; r++) {
+          const y = r * rowH;
+          const offset = (r % 2) * (n / 16);
+          const colW = n / 4;
+          for (let c = 0; c < 5; c++) {
+            const x = (c * colW + offset) % n;
+            const w = colW * (0.9 + 0.2 * rand01From(c, r, 2));
+            const h = rowH * (0.86 + 0.18 * rand01From(r, c, 3));
+            const shade = 26 + Math.floor(25 * rand01From(c, r, 5));
+            g.fillStyle = `rgb(${shade},${shade + 6},${shade + 12})`;
+            g.fillRect(x, y, w, h);
+
+            g.strokeStyle = "rgba(0,0,0,0.35)";
+            g.lineWidth = 2;
+            g.strokeRect(x + 1, y + 1, w - 2, h - 2);
+          }
+        }
+
+        // speckles / grime
+        for (let i = 0; i < 5000; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          const a = 0.06 + Math.random() * 0.10;
+          const v = 20 + (Math.random() * 40) | 0;
+          g.fillStyle = `rgba(${v},${v + 6},${v + 10},${a})`;
+          g.fillRect(x, y, 1, 1);
+        }
+
+        // subtle vertical streaks
+        for (let i = 0; i < 60; i++) {
+          const x = (Math.random() * n) | 0;
+          const w = 1 + (Math.random() * 2) | 0;
+          g.fillStyle = `rgba(0,0,0,${0.04 + Math.random() * 0.07})`;
+          g.fillRect(x, 0, w, n);
+        }
       });
 
+      const floorTex = makeCanvasTexture((g, n) => {
+        g.fillStyle = "#cbd5e1";
+        g.fillRect(0, 0, n, n);
+
+        // tiles
+        const step = n / 10;
+        for (let y = 0; y < n; y += step) {
+          for (let x = 0; x < n; x += step) {
+            const t = rand01From(x, y, 11);
+            const v = 175 + Math.floor(t * 25);
+            g.fillStyle = `rgb(${v},${v + 4},${v + 8})`;
+            g.fillRect(x, y, step, step);
+          }
+        }
+
+        // grout lines
+        g.strokeStyle = "rgba(15,23,42,0.25)";
+        g.lineWidth = 2;
+        for (let i = 0; i <= 10; i++) {
+          const p = i * step;
+          g.beginPath();
+          g.moveTo(p, 0);
+          g.lineTo(p, n);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(0, p);
+          g.lineTo(n, p);
+          g.stroke();
+        }
+
+        // dirt
+        for (let i = 0; i < 3500; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          const a = 0.04 + Math.random() * 0.08;
+          g.fillStyle = `rgba(30,30,30,${a})`;
+          g.fillRect(x, y, 1, 1);
+        }
+      });
+
+      const ceilTex = makeCanvasTexture((g, n) => {
+        g.fillStyle = "#0b1220";
+        g.fillRect(0, 0, n, n);
+
+        // subtle panels
+        const step = n / 8;
+        g.strokeStyle = "rgba(255,255,255,0.06)";
+        g.lineWidth = 2;
+        for (let i = 0; i <= 8; i++) {
+          const p = i * step;
+          g.beginPath();
+          g.moveTo(p, 0);
+          g.lineTo(p, n);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(0, p);
+          g.lineTo(n, p);
+          g.stroke();
+        }
+
+        // noise
+        for (let i = 0; i < 3000; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          g.fillStyle = `rgba(255,255,255,${0.015 + Math.random() * 0.02})`;
+          g.fillRect(x, y, 1, 1);
+        }
+      });
+
+      // ---------------- Geometry + collision ----------------
+      const matWall = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: wallTex,
+        roughness: 0.96,
+        metalness: 0.02,
+      });
+      matWall.map.repeat.set(2, 2);
+
+      const matFloor = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: floorTex,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      matFloor.map.repeat.set(10, 10);
+
+      const matCeil = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: ceilTex,
+        roughness: 1.0,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
+      matCeil.map.repeat.set(8, 8);
+
+      const matRoom = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: floorTex,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      matRoom.map.repeat.set(6, 4);
+
       let wallAABBs = []; // {minX,maxX,minZ,maxZ}
+      const lampMeshes = [];
+      const propMeshes = [];
 
       function addWallBox(cx, cz, sx, sz) {
         const geo = new THREE.BoxGeometry(sx, WALL_H, sz);
@@ -704,6 +865,95 @@
         return false;
       }
 
+      // ---------------- Decorative lights & props ----------------
+      function clearDecor() {
+        for (const l of lampMeshes) world.remove(l);
+        lampMeshes.length = 0;
+        for (const p of propMeshes) world.remove(p);
+        propMeshes.length = 0;
+      }
+
+      function addCeilingLamp(x, z, intensity = 1.2, radius = 10) {
+        // fixture
+        const group = new THREE.Group();
+        group.position.set(x, WALL_H - 0.25, z);
+
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16, 0.16, 0.10, 16),
+          new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.8, metalness: 0.15 })
+        );
+        group.add(base);
+
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 16, 12),
+          new THREE.MeshStandardMaterial({
+            color: 0xfff3d6,
+            emissive: 0xfff0c8,
+            emissiveIntensity: 1.2,
+            roughness: 0.2,
+          })
+        );
+        bulb.position.y = -0.16;
+        group.add(bulb);
+
+        const light = new THREE.PointLight(0xfff2cc, intensity, radius, 2);
+        light.position.y = -0.25;
+        group.add(light);
+
+        world.add(group);
+        lampMeshes.push(group);
+        return group;
+      }
+
+      function addPottedPlant(x, z, rot = 0) {
+        const g = new THREE.Group();
+        g.position.set(x, 0, z);
+        g.rotation.y = rot;
+
+        const pot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.28, 0.34, 0.35, 14),
+          new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.95, metalness: 0.0 })
+        );
+        pot.position.y = 0.18;
+        g.add(pot);
+
+        const dirt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.24, 0.28, 0.08, 12),
+          new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 1.0 })
+        );
+        dirt.position.y = 0.36;
+        g.add(dirt);
+
+        const plant = new THREE.Mesh(
+          new THREE.ConeGeometry(0.34, 0.75, 10),
+          new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.95 })
+        );
+        plant.position.y = 0.78;
+        g.add(plant);
+
+        const leaf2 = new THREE.Mesh(
+          new THREE.ConeGeometry(0.26, 0.55, 10),
+          new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.95 })
+        );
+        leaf2.position.set(0.06, 0.70, -0.08);
+        leaf2.rotation.y = 0.5;
+        g.add(leaf2);
+
+        world.add(g);
+        propMeshes.push(g);
+        return g;
+      }
+
+      function addCrate(x, z, s = 0.6, rot = 0) {
+        const m = new THREE.MeshStandardMaterial({ color: 0x6b4f2a, roughness: 0.95 });
+        const box = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), m);
+        box.position.set(x, s / 2, z);
+        box.rotation.y = rot;
+        world.add(box);
+        propMeshes.push(box);
+        return box;
+      }
+
       // crown mesh
       let crownMesh = null;
       function makeCrownMesh() {
@@ -726,6 +976,7 @@
       function buildWorldFromMaze() {
         while (world.children.length) world.remove(world.children[0]);
         wallAABBs = [];
+        clearDecor();
 
         const cellSize = stoney.cellSize;
         const m = maze;
@@ -740,6 +991,13 @@
         const oz = (-m.h * cellSize) / 2;
         const mazeMinX = ox, mazeMaxX = ox + m.w * cellSize;
         const mazeMinZ = oz, mazeMaxZ = oz + m.h * cellSize;
+
+        // ceiling (covers maze + entrance room) for lamps to feel natural
+        const ceilGeo = new THREE.PlaneGeometry(m.w * cellSize + 22, m.h * cellSize + ROOM_DEPTH + 30);
+        const ceil = new THREE.Mesh(ceilGeo, matCeil);
+        ceil.rotation.x = Math.PI / 2; // face downward
+        ceil.position.set((mazeMinX + mazeMaxX) / 2, WALL_H, mazeMaxZ + ROOM_DEPTH / 2);
+        world.add(ceil);
 
         const roomGeo = new THREE.PlaneGeometry(m.w * cellSize * 0.9, ROOM_DEPTH);
         const room = new THREE.Mesh(roomGeo, matRoom);
@@ -789,6 +1047,99 @@
         frame.position.set(ent.x, 1.4, mazeMaxZ + 0.2);
         world.add(frame);
 
+        // ---------------- Lighting pass ----------------
+        // fewer lights for big mazes
+        const totalCells = m.w * m.h;
+        const step = totalCells > 350 ? 4 : totalCells > 220 ? 3 : 2;
+
+        // seeded placements so all players see the same decor
+        const decorRnd = xorshift32((stoney.seed | 0) ^ 0x6acaa36d);
+
+        // Ceiling lamps in a sparse grid
+        let lampCount = 0;
+        const maxLamps = Math.min(140, Math.floor(totalCells / 2) + 20);
+
+        for (let y = 0; y < m.h; y += step) {
+          for (let x = 0; x < m.w; x += step) {
+            if (lampCount >= maxLamps) break;
+            const c = m.cells[idx(x, y)];
+            // only place if not a dead-locked cell (helps avoid lamps right inside tiny corners)
+            const walls = c.walls;
+            const openSides = 4 - ((walls & N ? 1 : 0) + (walls & E ? 1 : 0) + (walls & S ? 1 : 0) + (walls & W ? 1 : 0));
+            if (openSides <= 1 && decorRnd() < 0.65) continue;
+
+            if (decorRnd() < 0.92) {
+              const center = cellCenterWorld(m, cellSize, x, y);
+              addCeilingLamp(center.x, center.z, 1.0 + decorRnd() * 0.6, 10 + decorRnd() * 5);
+              lampCount++;
+            }
+          }
+        }
+
+        // Extra lamps for the entrance room
+        addCeilingLamp(ent.x, mazeMaxZ + ROOM_DEPTH * 0.40, 2.1, 18);
+        addCeilingLamp(ent.x - cellSize * 0.30, mazeMaxZ + ROOM_DEPTH * 0.72, 1.8, 16);
+        addCeilingLamp(ent.x + cellSize * 0.30, mazeMaxZ + ROOM_DEPTH * 0.72, 1.8, 16);
+
+        // ---------------- Props pass (plants in corners + a few crates) ----------------
+        // Place plants where two walls meet (a "corner") and tuck them near the wall.
+        const plantChance = totalCells > 320 ? 0.05 : 0.08;
+        for (let y = 0; y < m.h; y++) {
+          for (let x = 0; x < m.w; x++) {
+            if (decorRnd() > plantChance) continue;
+
+            const c = m.cells[idx(x, y)];
+            const center = cellCenterWorld(m, cellSize, x, y);
+
+            // avoid placing too close to entrance spawn area (room)
+            if (y >= m.h - 2 && Math.abs(x - m.entrance.x) <= 2) continue;
+
+            const pad = 0.55; // distance from cell center towards corner
+            const corners = [];
+
+            // NW corner
+            if ((c.walls & N) && (c.walls & W)) corners.push({ dx: -pad, dz: -pad, rot: 0.2 });
+            // NE
+            if ((c.walls & N) && (c.walls & E)) corners.push({ dx: +pad, dz: -pad, rot: 1.2 });
+            // SW
+            if ((c.walls & S) && (c.walls & W)) corners.push({ dx: -pad, dz: +pad, rot: 4.2 });
+            // SE
+            if ((c.walls & S) && (c.walls & E)) corners.push({ dx: +pad, dz: +pad, rot: 5.2 });
+
+            if (!corners.length) continue;
+            const pick = corners[Math.floor(decorRnd() * corners.length)];
+
+            const px = center.x + pick.dx * (cellSize * 0.45);
+            const pz = center.z + pick.dz * (cellSize * 0.45);
+            addPottedPlant(px, pz, pick.rot + decorRnd() * 0.4);
+          }
+        }
+
+        // a few crates sprinkled around (also tucked near walls)
+        const crateCount = Math.min(18, Math.floor(totalCells / 35));
+        for (let i = 0; i < crateCount; i++) {
+          const x = Math.floor(decorRnd() * m.w);
+          const y = Math.floor(decorRnd() * m.h);
+          const c = m.cells[idx(x, y)];
+          const center = cellCenterWorld(m, cellSize, x, y);
+
+          // pick a wall to tuck against
+          const dirs = [];
+          if (c.walls & N) dirs.push({ dx: 0, dz: -1 });
+          if (c.walls & S) dirs.push({ dx: 0, dz: +1 });
+          if (c.walls & W) dirs.push({ dx: -1, dz: 0 });
+          if (c.walls & E) dirs.push({ dx: +1, dz: 0 });
+          if (!dirs.length) continue;
+
+          const d = dirs[Math.floor(decorRnd() * dirs.length)];
+          const px = center.x + d.dx * (cellSize * 0.28);
+          const pz = center.z + d.dz * (cellSize * 0.28);
+
+          // keep crates out of the entrance room + immediate entrance cell
+          if (y === m.entrance.y && x === m.entrance.x) continue;
+          addCrate(px, pz, 0.55 + decorRnd() * 0.18, decorRnd() * Math.PI);
+        }
+
         // spawn in room
         me.x = ent.x;
         me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
@@ -827,6 +1178,11 @@
           const s = new THREE.Mesh(g, m);
           s.position.set(t.x, 0.55, t.z);
           world.add(s);
+
+          const light = new THREE.PointLight(0xff4d2d, 1.2, 10, 2);
+          light.position.set(0, 0.8, 0);
+          s.add(light);
+
           enemyMeshes.set(t.id, { mesh: s, kind: "fire" });
           return enemyMeshes.get(t.id);
         }
@@ -871,6 +1227,10 @@
           const aura = new THREE.Mesh(auraG, auraM);
           s.add(aura);
 
+          const light = new THREE.PointLight(emiss, t.type === "ghost" ? 1.0 : 1.4, 12, 2);
+          light.position.set(0, 0, 0);
+          s.add(light);
+
           enemyMeshes.set(t.id, {
             mesh: s,
             kind: t.type,
@@ -908,7 +1268,6 @@
         if (startAt > 0) {
           armedAt = placedAt < startAt ? startAt : placedAt;
         } else if (phaseNow === "setup" && setupDeadline > 0) {
-          // during setup, treat traps as arming at the setup deadline (or earlier if DM hits Ready)
           armedAt = setupDeadline;
         } else {
           armedAt = placedAt || now;
@@ -1221,7 +1580,6 @@
         if (!stoney) return;
 
         if (phase !== "play") {
-          // keep camera where spawn is
           camera.position.set(me.x, me.y, me.z);
           camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
           return;
@@ -1251,6 +1609,7 @@
           me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
 
           mx = mobile.moveX;
+          // up on stick should be forward:
           mz = -mobile.moveY;
         }
 
@@ -1260,13 +1619,16 @@
           mz /= mlen;
         }
 
+        // ✅ FIX: camera-relative movement (correct handedness for Three.js camera forward)
+        // Right vector: (cos(yaw), 0, -sin(yaw))
+        // Forward vector: (-sin(yaw), 0, -cos(yaw))  (camera looks down -Z)
         const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
-        const vx = (mx * cy + mz * sy) * speed;
-        const vz = (mx * sy - mz * cy) * speed;
+        const targetVx = (mx * cy - mz * sy) * speed;
+        const targetVz = (-mx * sy - mz * cy) * speed;
 
         const accel = 18;
-        me.vx += (vx - me.vx) * Math.min(1, accel * dt);
-        me.vz += (vz - me.vz) * Math.min(1, accel * dt);
+        me.vx += (targetVx - me.vx) * Math.min(1, accel * dt);
+        me.vz += (targetVz - me.vz) * Math.min(1, accel * dt);
 
         if (keys[" "] && me.grounded) {
           me.vy = 3.6;
@@ -1305,14 +1667,12 @@
         const now = Date.now();
         if (!force && now - lastPostAt < 950) return;
 
-        // only post if meaningful change (or force)
         const moved =
           Math.hypot(me.x - lastPosted.x, me.z - lastPosted.z) > 0.08 ||
           Math.abs(me.yaw - lastPosted.yaw) > 0.04 ||
           alive !== lastPosted.alive;
 
         if (!force && !moved) {
-          // still keep presence alive every ~3s
           if (now - lastPostAt < 2800) return;
         }
 
@@ -1410,7 +1770,6 @@
 
         myPlayerRef = doc(db, "lobbies", gameId, "players", uid);
 
-        // initial spawn (if we already know maze later, we'll update again)
         await setDoc(
           myPlayerRef,
           {
@@ -1475,11 +1834,9 @@
               maze = makeMaze(stoney.w, stoney.h, stoney.seed);
             }
 
-            // build world early (as soon as seed exists) to avoid "hitch" at phase switch
             if (maze && !builtWorld) {
               builtWorld = true;
               buildWorldFromMaze();
-              // post real spawn location so DM sees you properly in setup
               const sp = entranceSpawnWorld();
               me.x = sp.x;
               me.z = sp.z;
@@ -1589,7 +1946,6 @@
               }
             });
 
-            // remove missing
             for (const [pid, o] of others) {
               if (seen.has(pid)) continue;
               if (now - o.lastSeen > 8000) {
@@ -1627,7 +1983,6 @@
 
               seen.add(id);
 
-              // ignore traps that are fully expired
               if (expiresAt && expiresAt < now) {
                 trapMap.delete(id);
                 removeTrapMesh(id);
@@ -1636,7 +1991,6 @@
 
               trapMap.set(id, { id, type, x, z, placedAt, ttlMs, armedAt, expiresAt });
 
-              // only create visuals once trap is armed (prevents “setup burning out”)
               if (now >= armedAt) ensureTrapMesh({ id, type, x, z });
             });
 
@@ -1675,7 +2029,6 @@
 
         if (alive && phase === "play") checkEscapeWin();
 
-        // keep presence alive even if player not moving much
         postMyPosition(false);
 
         renderer.render(scene, camera);
