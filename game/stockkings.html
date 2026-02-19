@@ -1890,16 +1890,15 @@ function updateCar(dt){
 }
 
 /* ============================================================
-   CAMERA (zoomed out on mobile + car lower)
+   CAMERA
 ============================================================ */
 function updateCamera(){
   const mobile=isMobile();
 
-  const height = mobile ? 86 : 18;   // ✅ zoom out significantly on mobile
-const behind = mobile ? 9.5 : 16;
+  const height = mobile ? 11.5 : 18;
+  const behind = mobile ? 6.6 : 16;
 
-
-camera.fov = mobile ? 82 : 62;
+  camera.fov = mobile ? 66 : 62;
 
   const back = new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
   const desired = new THREE.Vector3(
@@ -1918,9 +1917,15 @@ camera.fov = mobile ? 82 : 62;
     camera.position.z += (Math.random()-0.5)*s;
   }
 
-  // ✅ look slightly above car so it sits lower on screen
-  const lookY = mobile ? 2.8 : 1.2;
-  camera.lookAt(car.position.x, lookY, car.position.z);
+  // On mobile, look ahead of the car so the view favors what's in front.
+  const forward = new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
+  const lookAhead = mobile ? 16 : 0;
+  const lookY = mobile ? 1.7 : 1.2;
+  camera.lookAt(
+    car.position.x + forward.x * lookAhead,
+    lookY,
+    car.position.z + forward.z * lookAhead
+  );
 }
 
 /* ============================================================
