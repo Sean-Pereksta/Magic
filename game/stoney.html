@@ -310,9 +310,12 @@
       const moveKnob = $("moveKnob");
       const lookStick = $("lookStick");
       const lookKnob = $("lookKnob");
+      const topbar = document.querySelector(".topbar");
+      const hint = document.querySelector(".hint");
 
       // ---------------- UX helpers ----------------
       function showToast(msg, ms = 2200) {
+        if (phase === "play") return;
         toast.textContent = msg;
         toast.style.opacity = "1";
         clearTimeout(showToast._t);
@@ -321,6 +324,18 @@
 
       function setNet(s) {
         netText.textContent = s;
+      }
+
+      function syncPlayUi() {
+        const inPlay = phase === "play";
+        if (topbar) topbar.style.display = inPlay ? "none" : "flex";
+        if (hint) hint.style.display = inPlay ? "none" : "block";
+        toast.style.display = inPlay ? "none" : "block";
+        fsBtn.style.display = inPlay ? "none" : "block";
+        if (inPlay) {
+          centerMsg.style.display = "none";
+          lockBtn.style.display = "none";
+        }
       }
 
       // ---------------- Seeded RNG + Maze ----------------
@@ -484,6 +499,7 @@
         pointerLocked = document.pointerLockElement === renderer.domElement;
         lockBtn.style.display =
           pointerLocked || phase !== "play" ? "none" : "block";
+        syncPlayUi();
       });
 
       document.addEventListener("mousemove", (e) => {
@@ -525,6 +541,7 @@
       };
 
       function setJoystick(knob, dx, dy, r) {
+        if (r <= 0) return { x: 0, y: 0 };
         const len = Math.hypot(dx, dy);
         const k = len > r && len > 0 ? r / len : 1;
         const cx = dx * k, cy = dy * k;
@@ -547,7 +564,7 @@
             moveKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35
+            r.width * 0.5
           );
           mobile.moveX = joy.x;
           mobile.moveY = joy.y;
@@ -560,7 +577,7 @@
             moveKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35
+            r.width * 0.5
           );
           mobile.moveX = joy.x;
           mobile.moveY = joy.y;
@@ -575,6 +592,12 @@
         };
         moveStick.addEventListener("pointerup", endJoy);
         moveStick.addEventListener("pointercancel", endJoy);
+        moveStick.addEventListener("lostpointercapture", () => {
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
+        });
       }
 
       if (lookStick) {
@@ -587,7 +610,7 @@
             lookKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35
+            r.width * 0.5
           );
           mobile.lookX = joy.x;
           mobile.lookY = joy.y;
@@ -600,7 +623,7 @@
             lookKnob,
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35
+            r.width * 0.5
           );
           mobile.lookX = joy.x;
           mobile.lookY = joy.y;
@@ -615,7 +638,28 @@
         };
         lookStick.addEventListener("pointerup", endLook);
         lookStick.addEventListener("pointercancel", endLook);
+        lookStick.addEventListener("lostpointercapture", () => {
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        });
       }
+
+      addEventListener("pointerup", (e) => {
+        if (mobile.movePointerId === e.pointerId) {
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
+        }
+        if (mobile.lookPointerId === e.pointerId) {
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        }
+      });
 
       // ---------------- Geometry + collision ----------------
       const matWall = new THREE.MeshStandardMaterial({
@@ -1407,6 +1451,7 @@
               lockBtn.style.display = "none";
               timerText.textContent = "—";
               crownText.textContent = "—";
+              syncPlayUi();
               return;
             }
 
@@ -1463,17 +1508,6 @@
                     ? "On ground"
                     : "Not placed";
 
-              // show click-to-play if pointer not locked (desktop)
-              lockBtn.textContent = "Click to Play";
-              lockBtn.onclick = requestLock;
-              lockBtn.style.display = pointerLocked ? "none" : "block";
-              centerMsg.style.display = pointerLocked ? "none" : "block";
-              centerTitle.textContent = pointerLocked
-                ? ""
-                : "Dungeon open!";
-              centerSub.textContent =
-                "Click to lock mouse (desktop) — or use joystick (mobile).";
-
               tryFinalizeByTimeout();
             } else if (phase === "ended") {
               timerText.textContent = "Ended";
@@ -1489,6 +1523,8 @@
                   ? `${winnerName || "Someone"} escaped with the crown.`
                   : `Time ran out.`;
             }
+
+            syncPlayUi();
           },
           (err) => snapshotError("lobby", err)
         );
