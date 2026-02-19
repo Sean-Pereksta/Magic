@@ -11,13 +11,20 @@
       --good:#22c55e; --bad:#ef4444; --warn:#f59e0b;
       --br:rgba(255,255,255,.10); --shadow:0 18px 55px rgba(0,0,0,.35);
       --r:16px;
+
+      --sel:#a855f7;
+      --sel2:#3b82f6;
     }
     *{box-sizing:border-box}
     body{
-      margin:0; background:radial-gradient(900px 520px at 20% -10%, rgba(168,85,247,.22), transparent 55%),
-                          radial-gradient(900px 520px at 90% 0%, rgba(59,130,246,.18), transparent 55%),
-                          var(--bg);
-      color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      margin:0;
+      background:
+        radial-gradient(900px 520px at 20% -10%, rgba(168,85,247,.22), transparent 55%),
+        radial-gradient(900px 520px at 90% 0%, rgba(59,130,246,.18), transparent 55%),
+        radial-gradient(900px 520px at 55% 120%, rgba(34,197,94,.10), transparent 60%),
+        var(--bg);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
       min-height:100svh;
     }
     header{
@@ -33,9 +40,21 @@
     .brand{ display:flex; gap:10px; align-items:center; }
     .logo{
       width:44px; height:44px; display:grid; place-items:center; border-radius:14px;
-      background:rgba(255,255,255,.08); border:1px solid var(--br); box-shadow:var(--shadow);
+      background:rgba(255,255,255,.08);
+      border:1px solid var(--br);
+      box-shadow:var(--shadow);
       font-size:22px;
+      position:relative;
+      overflow:hidden;
     }
+    .logo:after{
+      content:"";
+      position:absolute; inset:-40%;
+      background:conic-gradient(from 180deg, rgba(168,85,247,.22), rgba(59,130,246,.20), rgba(34,197,94,.12), rgba(168,85,247,.22));
+      filter:blur(14px);
+      opacity:.55;
+    }
+    .logo > span{ position:relative; z-index:2; }
     .title{ font-weight:900; letter-spacing:.2px; }
     .sub{ color:var(--muted); font-size:.9rem; }
     .pill{
@@ -45,26 +64,42 @@
       font-weight:800; font-size:.85rem;
     }
     .wrap{ max-width:1200px; margin:12px auto 22px; padding:0 12px calc(18px + env(safe-area-inset-bottom)); }
-    .grid{
-      display:grid; grid-template-columns: 1.45fr .85fr; gap:14px;
-    }
+    .grid{ display:grid; grid-template-columns: 1.45fr .85fr; gap:14px; }
     @media (max-width:980px){ .grid{ grid-template-columns:1fr; } }
     .card{
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.04));
-      border:1px solid var(--br); border-radius:var(--r); box-shadow:var(--shadow);
+      background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+      border:1px solid var(--br);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
       overflow:hidden;
+      position:relative;
+    }
+    .card:before{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        radial-gradient(700px 260px at 30% 0%, rgba(168,85,247,.10), transparent 60%),
+        radial-gradient(620px 240px at 85% 10%, rgba(59,130,246,.10), transparent 60%);
+      pointer-events:none;
+      opacity:.7;
     }
     .head{
       padding:12px 14px; border-bottom:1px solid var(--br);
       display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
       background:rgba(0,0,0,.18);
+      position:relative;
+      z-index:1;
     }
     .head b{ font-size:.98rem; }
-    .body{ padding:12px 14px; }
+    .body{ padding:12px 14px; position:relative; z-index:1; }
     canvas{
       width:100%; height:auto; aspect-ratio: 1 / 1;
-      display:block; border-radius:14px;
-      background:#fff; border:1px solid rgba(0,0,0,.12);
+      display:block;
+      border-radius:14px;
+      background:
+        linear-gradient(180deg, #ffffff, #fbfdff);
+      border:1px solid rgba(0,0,0,.12);
+      box-shadow: 0 14px 35px rgba(0,0,0,.25);
       touch-action:none;
       max-height:min(76vh, 82svh);
     }
@@ -75,19 +110,19 @@
       border:1px solid rgba(255,255,255,.16);
       background:rgba(255,255,255,.06);
       color:var(--ink); font-weight:900;
-      transition:.15s transform, .15s background;
+      transition:.15s transform, .15s background, .15s box-shadow, .15s border-color;
+      position:relative;
     }
     .btn:hover{ background:rgba(255,255,255,.10); transform:translateY(-1px); }
     .btn:active{ transform:translateY(0); }
-    .btn.primary{
-      background:linear-gradient(180deg, rgba(168,85,247,.95), rgba(139,92,246,.92));
-      border-color:rgba(255,255,255,.22);
-    }
     .btn.good{
       background:linear-gradient(180deg, rgba(34,197,94,.92), rgba(22,163,74,.92));
       border-color:rgba(255,255,255,.22);
+      box-shadow: 0 10px 26px rgba(34,197,94,.18);
     }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
     .muted{ color:var(--muted); font-size:.9rem; line-height:1.35; }
+
     .bar{
       height:10px; border-radius:999px; background:rgba(255,255,255,.08);
       border:1px solid rgba(255,255,255,.14);
@@ -110,9 +145,11 @@
       border:1px solid rgba(255,255,255,.14);
       background:rgba(0,0,0,.18);
       font-weight:900; font-size:.78rem;
+      white-space:nowrap;
     }
     #statusLine{ font-weight:900; }
-    #warnLine{ color:#ffd1d1; font-weight:900; }
+    #warnLine{ color:#ffd1d1; font-weight:900; min-height: 1.2em; }
+
     .mode-grid{
       display:grid;
       grid-template-columns:repeat(3,minmax(0,1fr));
@@ -121,10 +158,77 @@
     }
     .mode-btn{
       text-align:center;
-      min-height:44px;
+      min-height:46px;
       font-size:.95rem;
-      padding:10px 8px;
+      padding:10px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
     }
+    .mode-btn .cost{
+      font-size:.78rem;
+      font-weight:1000;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.18);
+      opacity:.95;
+    }
+    .mode-btn.selected{
+      border-color: rgba(255,255,255,.28);
+      box-shadow:
+        0 0 0 2px rgba(255,255,255,.12),
+        0 14px 34px rgba(0,0,0,.26);
+      transform: translateY(-1px);
+    }
+    .mode-btn.selected::after{
+      content:"✓";
+      position:absolute;
+      top:6px;
+      right:8px;
+      width:18px; height:18px;
+      border-radius:6px;
+      display:grid; place-items:center;
+      font-size:12px;
+      font-weight:1000;
+      color:#061018;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 10px 20px rgba(0,0,0,.25);
+    }
+
+    /* Per-mode selection color */
+    .mode-btn.selected[data-set-mode="crown"]{
+      background: linear-gradient(180deg, rgba(168,85,247,.92), rgba(139,92,246,.90));
+      border-color: rgba(255,255,255,.26);
+    }
+    .mode-btn.selected[data-set-mode="fire"]{
+      background: linear-gradient(180deg, rgba(245,158,11,.94), rgba(239,68,68,.88));
+      border-color: rgba(255,255,255,.22);
+    }
+    .mode-btn.selected[data-set-mode="fog"]{
+      background: linear-gradient(180deg, rgba(148,163,184,.45), rgba(100,116,139,.38));
+      border-color: rgba(255,255,255,.20);
+    }
+    .mode-btn.selected[data-set-mode="ghost"]{
+      background: linear-gradient(180deg, rgba(34,211,238,.46), rgba(14,165,233,.40));
+      border-color: rgba(255,255,255,.20);
+    }
+    .mode-btn.selected[data-set-mode="demon"]{
+      background: linear-gradient(180deg, rgba(251,113,133,.48), rgba(239,68,68,.40));
+      border-color: rgba(255,255,255,.20);
+    }
+
+    .mode-btn.cantAfford{
+      opacity:.68;
+      border-color: rgba(239,68,68,.28);
+      box-shadow: inset 0 0 0 1px rgba(239,68,68,.22);
+    }
+    .mode-btn.cantAfford .cost{
+      background: rgba(239,68,68,.18);
+      border-color: rgba(239,68,68,.28);
+    }
+
     .mobile-toolbar{
       display:none;
       margin-top:12px;
@@ -154,7 +258,7 @@
 <header>
   <div class="top">
     <div class="brand">
-      <div class="logo">🗺️</div>
+      <div class="logo"><span>🗺️</span></div>
       <div>
         <div class="title">Dungeon Master</div>
         <div class="sub">Place the crown + traps. Traps can’t be placed near online living players.</div>
@@ -173,22 +277,24 @@
     <div class="card">
       <div class="head">
         <b>Maze Map</b>
-        <span class="tag" id="modeTag">Mode: Crown</span>
+        <span class="tag" id="modeTag">Mode: —</span>
       </div>
       <div class="body">
         <canvas id="map" width="900" height="900"></canvas>
+
         <div class="muted" style="margin-top:10px">
           Tap a mode, then tap the map. Traps placed during setup will <b>arm when the dungeon opens</b>.
+          <span class="muted small" style="display:inline-block; margin-left:6px">Red rings show the <b>no-trap zone</b> around living players.</span>
         </div>
 
         <div class="mobile-toolbar">
           <div class="small muted" style="margin-bottom:8px">Tap a power, then tap the map.</div>
           <div class="mode-grid" style="margin:0">
-            <button class="btn mode-btn primary" data-set-mode="crown">👑 Crown</button>
-            <button class="btn mode-btn" data-set-mode="fire">🔥 Fire</button>
-            <button class="btn mode-btn" data-set-mode="fog">🌫️ Fog</button>
-            <button class="btn mode-btn" data-set-mode="ghost">👻 Ghost</button>
-            <button class="btn mode-btn" data-set-mode="demon">😈 Demon</button>
+            <button class="btn mode-btn" data-set-mode="crown">👑 Crown <span class="cost">FREE</span></button>
+            <button class="btn mode-btn" data-set-mode="fire">🔥 Fire <span class="cost">20</span></button>
+            <button class="btn mode-btn" data-set-mode="fog">🌫️ Fog <span class="cost">15</span></button>
+            <button class="btn mode-btn" data-set-mode="ghost">👻 Ghost <span class="cost">50</span></button>
+            <button class="btn mode-btn" data-set-mode="demon">😈 Demon <span class="cost">75</span></button>
           </div>
         </div>
 
@@ -211,25 +317,26 @@
         </div>
 
         <div class="mode-grid desktop-modes">
-          <button class="btn mode-btn primary" data-set-mode="crown">👑 Crown</button>
-          <button class="btn mode-btn" data-set-mode="fire">🔥 Fire</button>
-          <button class="btn mode-btn" data-set-mode="fog">🌫️ Fog</button>
-          <button class="btn mode-btn" data-set-mode="ghost">👻 Ghost</button>
-          <button class="btn mode-btn" data-set-mode="demon">😈 Demon</button>
+          <button class="btn mode-btn" data-set-mode="crown">👑 Crown <span class="cost">FREE</span></button>
+          <button class="btn mode-btn" data-set-mode="fire">🔥 Fire <span class="cost">20</span></button>
+          <button class="btn mode-btn" data-set-mode="fog">🌫️ Fog <span class="cost">15</span></button>
+          <button class="btn mode-btn" data-set-mode="ghost">👻 Ghost <span class="cost">50</span></button>
+          <button class="btn mode-btn" data-set-mode="demon">😈 Demon <span class="cost">75</span></button>
         </div>
 
-        <div class="muted small" id="costLine">Costs: Fire 15 • Fog 20 • Ghost 30 • Demon 55</div>
+        <div class="muted small" id="costLine">Costs: —</div>
 
         <div style="margin:12px 0 8px; font-weight:900">Energy</div>
         <div class="bar"><i id="energyBar"></i></div>
         <div class="row" style="margin-top:8px; justify-content:space-between">
-          <div class="muted small">Regen: 8/sec • Max: 100</div>
+          <div class="muted small" id="regenLine">Regen: — • Max: 100</div>
           <div class="tag" id="phaseTag">Phase: —</div>
         </div>
 
         <div style="margin-top:14px; font-weight:900">Legend</div>
         <div class="muted small" style="margin-top:6px; line-height:1.5">
           <div>🟦 Players (online)</div>
+          <div>⭕ No-trap zone (≈ 4 squares)</div>
           <div>👑 Crown</div>
           <div>🔥 Fire</div>
           <div>🌫️ Fog</div>
@@ -250,7 +357,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
+    getFirestore, doc, setDoc, runTransaction,
     collection, onSnapshot, addDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -281,6 +388,8 @@
   const phaseTag = $("phaseTag");
   const modeTag = $("modeTag");
   const readyBtn = $("readyBtn");
+  const costLine = $("costLine");
+  const regenLine = $("regenLine");
 
   const canvas = $("map");
   const ctx = canvas.getContext("2d");
@@ -341,7 +450,8 @@
 
   // ---------- Energy model (stored only when spending) ----------
   const ENERGY_MAX=100;
-  const ENERGY_REGEN_PER_SEC=8;
+  // slowed down a bit (was 8/sec)
+  const ENERGY_REGEN_PER_SEC=6;
 
   function energyNow(stoney){
     const base = Number(stoney?.dmEnergyBase ?? 0);
@@ -351,9 +461,12 @@
   }
 
   // ---------- Costs + TTL ----------
-  const COST = { fire:15, fog:20, ghost:30, demon:55 };
+  const COST = { fire:20, fog:15, ghost:50, demon:75 };
   const TTL  = { fire:10_000, fog:18_000, ghost:300_000, demon:300_000 };
-  const NO_TRAP_RADIUS = 6.0;
+
+  // No-trap zone: ~4 squares (cells) radius
+  const NO_TRAP_RADIUS_CELLS = 4;
+
   const ONLINE_GRACE_MS = 12000;
 
   // ---------- State ----------
@@ -397,25 +510,65 @@
     });
   }
 
+  function modeLabel(m){
+    return m === "crown" ? "Crown" : m[0].toUpperCase() + m.slice(1);
+  }
+
+  function updateModeTag(){
+    if(mode === "crown"){
+      modeTag.textContent = `Mode: Crown (FREE)`;
+    } else {
+      modeTag.textContent = `Mode: ${modeLabel(mode)} (${COST[mode] ?? "?"})`;
+    }
+  }
+
+  function updateCostLine(){
+    costLine.textContent = `Costs: Fire ${COST.fire} • Fog ${COST.fog} • Ghost ${COST.ghost} • Demon ${COST.demon}`;
+    regenLine.textContent = `Regen: ${ENERGY_REGEN_PER_SEC}/sec • Max: ${ENERGY_MAX}`;
+  }
+
+  function updateAffordability(){
+    const e = energyNow(stoney);
+    for(const btn of modeButtons){
+      const m = btn.dataset.setMode;
+      if(m === "crown"){
+        btn.classList.remove("cantAfford");
+        continue;
+      }
+      const need = COST[m] || 0;
+      btn.classList.toggle("cantAfford", (stoney && e < need));
+    }
+  }
+
   function setMode(m){
     mode=m;
+
     for(const btn of modeButtons){
-      btn.classList.toggle("primary", btn.dataset.setMode === m);
+      btn.classList.toggle("selected", btn.dataset.setMode === m);
     }
-    modeTag.textContent = "Mode: " + (m==="crown" ? "Crown" : m[0].toUpperCase()+m.slice(1));
+    updateModeTag();
+    updateAffordability();
     warnLine.textContent = "";
   }
 
   function dist2(ax,az,bx,bz){ const dx=ax-bx, dz=az-bz; return dx*dx+dz*dz; }
 
+  function noTrapRadiusWorld(){
+    const cellSize = Number(stoney?.cellSize || 4);
+    return NO_TRAP_RADIUS_CELLS * cellSize;
+  }
+
   function isTooCloseToAnyPlayer(wx,wz){
     const now = Date.now();
+    const R = noTrapRadiusWorld();
+    const R2 = R*R;
+
     for(const [pid,p] of players){
       const online = now - (p.updatedAt||0) <= ONLINE_GRACE_MS;
       if(!online) continue;
       const alive = !!p.alive && (p.deadUntil||0) < now;
       if(!alive) continue;
-      if(dist2(wx,wz, p.x||0, p.z||0) <= NO_TRAP_RADIUS*NO_TRAP_RADIUS) return p.name || "Player";
+      if(dist2(wx,wz, p.x||0, p.z||0) <= R2) return p.name || "Player";
     }
     return null;
   }
@@ -450,7 +603,10 @@
   }
 
   function drawMap(){
-    if(!maze){ ctx.clearRect(0,0,canvas.width,canvas.height); return; }
+    if(!maze){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      return;
+    }
     const W=canvas.width, H=canvas.height;
     ctx.fillStyle="#fff";
     ctx.fillRect(0,0,W,H);
@@ -462,6 +618,26 @@
     const x0 = (W - maze.w*cellPx)/2;
     const y0 = (H - maze.h*cellPx)/2;
 
+    // soft paper grid
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    ctx.strokeStyle = "#0b1220";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0;i<=maze.w;i++){
+      const x = x0 + i*cellPx;
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y0 + maze.h*cellPx);
+    }
+    for(let i=0;i<=maze.h;i++){
+      const y = y0 + i*cellPx;
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x0 + maze.w*cellPx, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // maze walls
     ctx.strokeStyle="#000";
     ctx.lineWidth = Math.max(2, cellPx*0.12);
     ctx.lineCap="square";
@@ -489,7 +665,50 @@
     ctx.fillStyle="rgba(34,197,94,.18)";
     ctx.fillRect(epx+cellPx*0.2, epy+cellPx*0.8, cellPx*0.6, cellPx*0.25);
 
-    // traps (only show “armed” or planned depending on phase)
+    // NO-TRAP ZONES (circles around online living players)
+    const now2 = Date.now();
+    const rPx = cellPx * NO_TRAP_RADIUS_CELLS;
+
+    for(const [pid,p] of players){
+      const online = now2 - (p.updatedAt||0) <= ONLINE_GRACE_MS;
+      if(!online) continue;
+      const alive = !!p.alive && (p.deadUntil||0) < now2;
+      if(!alive) continue;
+
+      const c = worldToCell(p.x||0, p.z||0);
+      if(!c) continue;
+      const px = x0 + c.cx*cellPx + cellPx*0.5;
+      const py = y0 + c.cy*cellPx + cellPx*0.5;
+
+      ctx.save();
+      ctx.globalAlpha = 1;
+
+      // subtle fill
+      ctx.fillStyle = "rgba(239,68,68,.08)";
+      ctx.beginPath();
+      ctx.arc(px, py, rPx, 0, Math.PI*2);
+      ctx.fill();
+
+      // dashed ring
+      ctx.strokeStyle = "rgba(239,68,68,.35)";
+      ctx.lineWidth = Math.max(2, cellPx*0.06);
+      ctx.setLineDash([Math.max(6, cellPx*0.18), Math.max(6, cellPx*0.18)]);
+      ctx.beginPath();
+      ctx.arc(px, py, rPx, 0, Math.PI*2);
+      ctx.stroke();
+
+      // inner ring
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(239,68,68,.22)";
+      ctx.lineWidth = Math.max(1.5, cellPx*0.04);
+      ctx.beginPath();
+      ctx.arc(px, py, rPx*0.82, 0, Math.PI*2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // traps
     const now=Date.now();
     for(const t of traps){
       const {armedAt, expiresAt} = computeTrapWindow(t);
@@ -497,6 +716,7 @@
 
       const c = worldToCell(t.x,t.z);
       if(!c) continue;
+
       const px = x0 + c.cx*cellPx + cellPx*0.5;
       const py = y0 + c.cy*cellPx + cellPx*0.5;
 
@@ -513,6 +733,7 @@
       ctx.arc(px,py, Math.max(3, cellPx*(armed ? 0.18 : 0.14)), 0, Math.PI*2);
       ctx.fill();
 
+      // subtle ring to indicate "planned"
       if(!armed){
         ctx.strokeStyle="rgba(0,0,0,.35)";
         ctx.lineWidth=Math.max(1.5, cellPx*0.06);
@@ -535,8 +756,7 @@
       }
     }
 
-    // players (online)
-    const now2 = Date.now();
+    // players
     for(const [pid,p] of players){
       const online = now2 - (p.updatedAt||0) <= ONLINE_GRACE_MS;
       if(!online) continue;
@@ -544,6 +764,7 @@
       const alive = !!p.alive && (p.deadUntil||0) < now2;
       const c = worldToCell(p.x||0, p.z||0);
       if(!c) continue;
+
       const px = x0 + c.cx*cellPx + cellPx*0.5;
       const py = y0 + c.cy*cellPx + cellPx*0.5;
 
@@ -552,6 +773,7 @@
       ctx.arc(px,py, Math.max(3, cellPx*0.20), 0, Math.PI*2);
       ctx.fill();
 
+      // label
       ctx.font = `${Math.max(9, cellPx*0.22)}px system-ui`;
       ctx.textAlign="center";
       ctx.textBaseline="top";
@@ -623,7 +845,6 @@
       const d = snap.data() || {};
       const patch = {};
 
-      // claim DM if empty
       if(!d.dm) patch["dm"] = username;
 
       if(!d.stoney){
@@ -784,6 +1005,8 @@
     energyT.textContent = Math.floor(e) + "/" + ENERGY_MAX;
     energyBar.style.width = Math.round((e/ENERGY_MAX)*100) + "%";
 
+    updateAffordability();
+
     if(stoney.phase==="setup"){
       const t = Math.max(0, (stoney.setupDeadline||0) - Date.now());
       setupT.textContent = t>0 ? (t/1000).toFixed(0) + "s" : "0s";
@@ -836,6 +1059,7 @@
       statusLine.textContent = amDM ? `Online • DM: ${username}` : `Viewer • DM is ${dmName || "?"}`;
       readyBtn.disabled = !amDM;
 
+      updateModeTag();
       tickHUD();
       drawMap();
     }, (err)=>snapshotError("lobby", err));
@@ -877,6 +1101,8 @@
   for(const btn of modeButtons){
     btn.addEventListener("click", ()=> setMode(btn.dataset.setMode));
   }
+
+  updateCostLine();
   setMode("crown");
 
   readyBtn.onclick=()=>forceReady().catch(e=> warnLine.textContent = "❌ " + (e?.message||"Ready failed"));
@@ -933,4 +1159,5 @@
 </script>
 </body>
 </html>
+
 
