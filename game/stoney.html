@@ -14,12 +14,7 @@
         height: 100%;
         background: #000;
         overflow: hidden;
-        font-family:
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          Roboto,
-          Arial;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
       }
       #ui {
         position: fixed;
@@ -202,10 +197,12 @@
       }
     </style>
   </head>
+
   <body>
     <div id="ui">
       <div class="topbar">
         <div class="pill">👤 <span id="meName">—</span></div>
+        <div class="pill">📡 <span id="netText">Connecting…</span></div>
         <div class="pill">⏱️ <span id="timerText">—</span></div>
         <div class="pill">👑 <span id="crownText">—</span></div>
       </div>
@@ -215,12 +212,10 @@
       <div class="hint">
         <div style="font-weight: 900">Controls</div>
         <div class="muted">
-          Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) •
-          ESC unlock
+          Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) • ESC unlock
         </div>
         <div class="muted">
-          Mobile: hold joystick to move forward and steer left/right • tap
-          fullscreen button for full view
+          Mobile: hold joystick to move forward and steer • tap fullscreen for full view
         </div>
         <div class="muted">
           Find the 👑 crown, then escape out the entrance room within 5 minutes.
@@ -239,9 +234,9 @@
       <div id="overlayDead"></div>
 
       <div id="centerMsg">
-        <div style="font-size: 18px">Waiting for the Dungeon Master…</div>
-        <div class="muted" style="margin-top: 6px">
-          The dungeon opens when the DM clicks Ready or the setup timer ends.
+        <div id="centerTitle" style="font-size: 18px">Connecting…</div>
+        <div id="centerSub" class="muted" style="margin-top: 6px">
+          Signing in and joining the lobby.
         </div>
         <button id="lockBtn" style="display: none">Click to Play</button>
       </div>
@@ -254,15 +249,11 @@
       import {
         getFirestore,
         doc,
-        getDoc,
         setDoc,
-        updateDoc,
+        getDoc,
         runTransaction,
         collection,
         onSnapshot,
-        serverTimestamp,
-        query,
-        orderBy,
       } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
       import {
         getAuth,
@@ -270,7 +261,7 @@
         onAuthStateChanged,
       } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-      // --- Firebase (your project) ---
+      // ---------------- Firebase ----------------
       const firebaseConfig = {
         apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
         authDomain: "bible-game-246c0.firebaseapp.com",
@@ -283,15 +274,21 @@
       const db = getFirestore(app);
       const auth = getAuth(app);
 
-      // --- URL params ---
+      // ---------------- URL params ----------------
       const qs = new URLSearchParams(location.search);
-      const gameId = qs.get("gameId") || "";
-      const username = (qs.get("username") || "").trim();
+      const gameId = (qs.get("gameId") || "").trim();
+      const usernameRaw = (qs.get("username") || "").trim();
 
+      const username =
+        usernameRaw.length > 0 ? usernameRaw.slice(0, 22) : "Player";
+
+      // ---------------- DOM ----------------
       const $ = (id) => document.getElementById(id);
-      $("meName").textContent = username || "Player";
+      $("meName").textContent = username;
 
       const centerMsg = $("centerMsg");
+      const centerTitle = $("centerTitle");
+      const centerSub = $("centerSub");
       const lockBtn = $("lockBtn");
       const overlayFog = $("overlayFog");
       const overlayDead = $("overlayDead");
@@ -299,18 +296,11 @@
       const crownText = $("crownText");
       const toast = $("toast");
       const fsBtn = $("fsBtn");
+      const netText = $("netText");
       const joystickWrap = $("joystickWrap");
       const joystickKnob = $("joystickKnob");
 
-      const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
-      const mobile = {
-        enabled: isCoarsePointer,
-        turn: 0,
-        forward: 0,
-        active: false,
-        pointerId: null,
-      };
-
+      // ---------------- UX helpers ----------------
       function showToast(msg, ms = 2200) {
         toast.textContent = msg;
         toast.style.opacity = "1";
@@ -318,7 +308,11 @@
         showToast._t = setTimeout(() => (toast.style.opacity = "0"), ms);
       }
 
-      // --- Seeded RNG ---
+      function setNet(s) {
+        netText.textContent = s;
+      }
+
+      // ---------------- Seeded RNG + Maze ----------------
       function xorshift32(seed) {
         let x = seed | 0 || 123456789;
         return () => {
@@ -329,13 +323,9 @@
         };
       }
 
-      // --- Maze generation (perfect maze) ---
       function makeMaze(w, h, seed) {
         const rnd = xorshift32(seed);
-        const N = 1,
-          E = 2,
-          S = 4,
-          W = 8;
+        const N = 1, E = 2, S = 4, W = 8;
         const dx = { [N]: 0, [E]: 1, [S]: 0, [W]: -1 };
         const dy = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
         const opp = { [N]: S, [E]: W, [S]: N, [W]: E };
@@ -347,8 +337,7 @@
         const idx = (x, y) => y * w + x;
 
         const stack = [];
-        let cx = 0,
-          cy = 0;
+        let cx = 0, cy = 0;
         cells[idx(cx, cy)].v = true;
         stack.push([cx, cy]);
 
@@ -357,8 +346,7 @@
           const [x, y] = stack[stack.length - 1];
           const options = [];
           for (const d of dirs) {
-            const nx = x + dx[d],
-              ny = y + dy[d];
+            const nx = x + dx[d], ny = y + dy[d];
             if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
             if (!cells[idx(nx, ny)].v) options.push(d);
           }
@@ -367,23 +355,21 @@
             continue;
           }
           const d = options[Math.floor(rnd() * options.length)];
-          const nx = x + dx[d],
-            ny = y + dy[d];
-          const a = cells[idx(x, y)],
-            b = cells[idx(nx, ny)];
+          const nx = x + dx[d], ny = y + dy[d];
+          const a = cells[idx(x, y)], b = cells[idx(nx, ny)];
           a.walls &= ~d;
           b.walls &= ~opp[d];
           b.v = true;
           stack.push([nx, ny]);
         }
-        // entrance: south edge middle (open south wall)
-        const ex = Math.floor(w / 2),
-          ey = h - 1;
+
+        // entrance: south edge middle
+        const ex = Math.floor(w / 2), ey = h - 1;
         cells[idx(ex, ey)].walls &= ~S;
+
         return { w, h, cells, entrance: { x: ex, y: ey } };
       }
 
-      // --- World mapping helpers ---
       function cellCenterWorld(maze, cellSize, cx, cy) {
         const ox = (-maze.w * cellSize) / 2;
         const oz = (-maze.h * cellSize) / 2;
@@ -393,58 +379,61 @@
         };
       }
 
-      // --- Game constants ---
-      const WALL_H = 7.0; // high walls
+      // ---------------- Game constants ----------------
+      const WALL_H = 7.0;
       const WALL_T = 0.35;
       const PLAYER_H = 1.72;
       const PLAYER_R = 0.34;
-      const ROOM_DEPTH = 9.0; // room outside entrance
-      const NO_TRAP_RADIUS = 6.0; // DM enforcement is primary; client is lenient
+      const ROOM_DEPTH = 9.0;
 
-      // Enemy tuning
       const ENEMY = {
         ghost: { speed: 2.4, killDist: 0.9 },
         demon: { speed: 3.6, killDist: 1.0 },
       };
       const FIRE_KILL_RADIUS = 1.6;
       const FOG_RADIUS = 6.5;
-
-      // Respawn
       const RESPAWN_MS = 15000;
 
-      // --- Firebase refs ---
-      let lobbyRef = null,
-        stoney = null,
-        maze = null;
-      let playersCol = null,
-        trapsCol = null;
-      let amReadyToRender = false;
+      const ONLINE_GRACE_MS = 12000; // stale players ignored after this
 
-      // --- Multiplayer caches ---
-      const others = new Map(); // name -> {mesh, x,z, tx,tz, alive, deadUntil, lastSeen}
-      let myDocRef = null;
+      // trap TTL defaults (ms)
+      const TTL = {
+        fire: 10_000,
+        fog: 18_000,
+        ghost: 300_000,
+        demon: 300_000,
+      };
 
-      // Traps snapshot cache
-      const trapMap = new Map(); // id -> trapObj
+      // ---------------- Firebase refs / ids ----------------
+      let uid = "";
+      let lobbyRef = null;
+      let playersCol = null;
+      let trapsCol = null;
+      let myPlayerRef = null;
 
-      // --- Local state ---
+      // Lobby/game state cache
+      let stoney = null;
+      let maze = null;
+
       let phase = "setup";
-      let gameStartAt = 0,
-        gameEndAt = 0;
-      let winner = null,
-        winnerName = null;
-      let lastEventAt = 0;
+      let gameStartAt = 0;
+      let gameEndAt = 0;
+      let winner = null;
+      let winnerName = null;
 
-      // Crown state
+      // crown
       let crown = null; // {x,z}
-      let carrier = null; // username or null
+      let carrierId = null; // uid
+      let carrierName = null; // display name
       let iHaveCrown = false;
 
-      // Death state
-      let deadUntil = 0;
-      let alive = true;
+      // traps cache (active only)
+      const trapMap = new Map(); // id -> {id,type,x,z,armedAt,expiresAt}
 
-      // --- Three.js scene ---
+      // other players
+      const others = new Map(); // uid -> {mesh,name,x,z,tx,tz,alive,deadUntil,updatedAt,lastSeen}
+
+      // ---------------- Scene ----------------
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
       renderer.setSize(innerWidth, innerHeight);
@@ -452,25 +441,17 @@
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
-        75,
-        innerWidth / innerHeight,
-        0.05,
-        220,
-      );
+      const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 220);
       camera.position.set(0, PLAYER_H, 0);
 
-      // lighting
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x202838, 0.9));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x202838, 0.95));
       const dir = new THREE.DirectionalLight(0xffffff, 0.55);
       dir.position.set(7, 18, 10);
       scene.add(dir);
 
-      // floor group
       const world = new THREE.Group();
       scene.add(world);
 
-      // local player physics
       const me = {
         x: 0,
         y: PLAYER_H,
@@ -483,18 +464,15 @@
         grounded: true,
       };
 
-      // pointer lock look
+      // pointer lock
       let pointerLocked = false;
       function requestLock() {
         renderer.domElement.requestPointerLock?.();
       }
       document.addEventListener("pointerlockchange", () => {
         pointerLocked = document.pointerLockElement === renderer.domElement;
-        lockBtn.style.display = pointerLocked
-          ? "none"
-          : phase === "play"
-            ? "block"
-            : "none";
+        lockBtn.style.display =
+          pointerLocked || phase !== "play" ? "none" : "block";
       });
 
       document.addEventListener("mousemove", (e) => {
@@ -520,14 +498,23 @@
           if (!document.fullscreenElement)
             await document.documentElement.requestFullscreen?.();
           else await document.exitFullscreen?.();
-        } catch (e) {}
+        } catch {}
       });
+
+      // mobile joystick
+      const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
+      const mobile = {
+        enabled: isCoarsePointer,
+        turn: 0,
+        forward: 0,
+        active: false,
+        pointerId: null,
+      };
 
       function setJoystick(dx, dy, r) {
         const len = Math.hypot(dx, dy);
         const k = len > r && len > 0 ? r / len : 1;
-        const cx = dx * k,
-          cy = dy * k;
+        const cx = dx * k, cy = dy * k;
         joystickKnob.style.transform = `translate(${cx}px, ${cy}px)`;
 
         mobile.turn = Math.max(-1, Math.min(1, cx / r));
@@ -552,7 +539,7 @@
           setJoystick(
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35,
+            r.width * 0.35
           );
         });
 
@@ -562,7 +549,7 @@
           setJoystick(
             e.clientX - (r.left + r.width / 2),
             e.clientY - (r.top + r.height / 2),
-            r.width * 0.35,
+            r.width * 0.35
           );
         });
 
@@ -574,7 +561,7 @@
         joystickWrap.addEventListener("pointercancel", endJoy);
       }
 
-      // --- Geometry helpers ---
+      // ---------------- Geometry + collision ----------------
       const matWall = new THREE.MeshStandardMaterial({
         color: 0x000000,
         roughness: 0.95,
@@ -606,149 +593,6 @@
         });
       }
 
-      function buildWorldFromMaze() {
-        // clear
-        while (world.children.length) world.remove(world.children[0]);
-        wallAABBs = [];
-
-        const cellSize = stoney.cellSize;
-        const m = maze;
-
-        // floor under maze
-        const floorGeo = new THREE.PlaneGeometry(
-          m.w * cellSize + 20,
-          m.h * cellSize + 28,
-        );
-        const floor = new THREE.Mesh(floorGeo, matFloor);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = 0;
-        world.add(floor);
-
-        // room floor (outside entrance south)
-        const ox = (-m.w * cellSize) / 2;
-        const oz = (-m.h * cellSize) / 2;
-        const mazeMinX = ox,
-          mazeMaxX = ox + m.w * cellSize;
-        const mazeMinZ = oz,
-          mazeMaxZ = oz + m.h * cellSize;
-
-        const roomGeo = new THREE.PlaneGeometry(
-          m.w * cellSize * 0.9,
-          ROOM_DEPTH,
-        );
-        const room = new THREE.Mesh(roomGeo, matRoom);
-        room.rotation.x = -Math.PI / 2;
-        room.position.set(
-          (mazeMinX + mazeMaxX) / 2,
-          0.001,
-          mazeMaxZ + ROOM_DEPTH / 2,
-        );
-        world.add(room);
-
-        // outer boundary walls (with entrance gap)
-        // We'll derive from cell walls to keep consistent.
-
-        const N = 1,
-          E = 2,
-          S = 4,
-          W = 8;
-        const idx = (x, y) => y * m.w + x;
-
-        for (let y = 0; y < m.h; y++) {
-          for (let x = 0; x < m.w; x++) {
-            const c = m.cells[idx(x, y)];
-            const center = cellCenterWorld(m, cellSize, x, y);
-
-            // draw north + west always; south for last row; east for last col
-            if (c.walls & N) {
-              addWallBox(
-                center.x,
-                center.z - cellSize / 2,
-                cellSize + WALL_T,
-                WALL_T,
-              );
-            }
-            if (c.walls & W) {
-              addWallBox(
-                center.x - cellSize / 2,
-                center.z,
-                WALL_T,
-                cellSize + WALL_T,
-              );
-            }
-            if (y === m.h - 1 && c.walls & S) {
-              addWallBox(
-                center.x,
-                center.z + cellSize / 2,
-                cellSize + WALL_T,
-                WALL_T,
-              );
-            }
-            if (x === m.w - 1 && c.walls & E) {
-              addWallBox(
-                center.x + cellSize / 2,
-                center.z,
-                WALL_T,
-                cellSize + WALL_T,
-              );
-            }
-          }
-        }
-
-        // walls enclosing the room sides/back (leave opening at maze entrance)
-        const entranceCell = m.entrance;
-        const ent = cellCenterWorld(
-          m,
-          cellSize,
-          entranceCell.x,
-          entranceCell.y,
-        );
-
-        // Side walls for room
-        addWallBox(
-          mazeMinX - WALL_T / 2,
-          mazeMaxZ + ROOM_DEPTH / 2,
-          WALL_T,
-          ROOM_DEPTH + 0.01,
-        );
-        addWallBox(
-          mazeMaxX + WALL_T / 2,
-          mazeMaxZ + ROOM_DEPTH / 2,
-          WALL_T,
-          ROOM_DEPTH + 0.01,
-        );
-        // Back wall of room
-        addWallBox(
-          (mazeMinX + mazeMaxX) / 2,
-          mazeMaxZ + ROOM_DEPTH + WALL_T / 2,
-          mazeMaxX - mazeMinX + WALL_T,
-          WALL_T,
-        );
-
-        // Add a short "threshold" frame near entrance for drama (doesn't block)
-        const frameGeo = new THREE.BoxGeometry(cellSize * 0.85, 2.8, 0.25);
-        const frameMat = new THREE.MeshStandardMaterial({
-          color: 0x111827,
-          emissive: 0x111827,
-          emissiveIntensity: 0.25,
-        });
-        const frame = new THREE.Mesh(frameGeo, frameMat);
-        frame.position.set(ent.x, 1.4, mazeMaxZ + 0.2);
-        world.add(frame);
-
-        // Spawn point in room, facing entrance
-        me.x = ent.x;
-        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
-        me.yaw = Math.PI; // face north-ish into maze
-        me.pitch = 0;
-        me.vx = me.vz = me.vy = 0;
-        me.grounded = true;
-
-        // Crown mesh (spawn later)
-        makeCrownMesh();
-      }
-
-      // --- Collision ---
       function hitsWall(nx, nz) {
         for (const b of wallAABBs) {
           const minX = b.minX - PLAYER_R,
@@ -760,7 +604,7 @@
         return false;
       }
 
-      // --- Crown mesh ---
+      // crown mesh
       let crownMesh = null;
       function makeCrownMesh() {
         if (crownMesh) {
@@ -779,8 +623,96 @@
         world.add(crownMesh);
       }
 
-      // --- Trap visuals / local enemies ---
-      const enemyMeshes = new Map(); // trapId -> mesh + local state
+      function buildWorldFromMaze() {
+        while (world.children.length) world.remove(world.children[0]);
+        wallAABBs = [];
+
+        const cellSize = stoney.cellSize;
+        const m = maze;
+
+        const floorGeo = new THREE.PlaneGeometry(m.w * cellSize + 20, m.h * cellSize + 28);
+        const floor = new THREE.Mesh(floorGeo, matFloor);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0;
+        world.add(floor);
+
+        const ox = (-m.w * cellSize) / 2;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMinX = ox, mazeMaxX = ox + m.w * cellSize;
+        const mazeMinZ = oz, mazeMaxZ = oz + m.h * cellSize;
+
+        const roomGeo = new THREE.PlaneGeometry(m.w * cellSize * 0.9, ROOM_DEPTH);
+        const room = new THREE.Mesh(roomGeo, matRoom);
+        room.rotation.x = -Math.PI / 2;
+        room.position.set((mazeMinX + mazeMaxX) / 2, 0.001, mazeMaxZ + ROOM_DEPTH / 2);
+        world.add(room);
+
+        const N = 1, E = 2, S = 4, W = 8;
+        const idx = (x, y) => y * m.w + x;
+
+        for (let y = 0; y < m.h; y++) {
+          for (let x = 0; x < m.w; x++) {
+            const c = m.cells[idx(x, y)];
+            const center = cellCenterWorld(m, cellSize, x, y);
+
+            if (c.walls & N) {
+              addWallBox(center.x, center.z - cellSize / 2, cellSize + WALL_T, WALL_T);
+            }
+            if (c.walls & W) {
+              addWallBox(center.x - cellSize / 2, center.z, WALL_T, cellSize + WALL_T);
+            }
+            if (y === m.h - 1 && c.walls & S) {
+              addWallBox(center.x, center.z + cellSize / 2, cellSize + WALL_T, WALL_T);
+            }
+            if (x === m.w - 1 && c.walls & E) {
+              addWallBox(center.x + cellSize / 2, center.z, WALL_T, cellSize + WALL_T);
+            }
+          }
+        }
+
+        // room enclosing walls
+        const entranceCell = m.entrance;
+        const ent = cellCenterWorld(m, cellSize, entranceCell.x, entranceCell.y);
+
+        addWallBox(mazeMinX - WALL_T / 2, mazeMaxZ + ROOM_DEPTH / 2, WALL_T, ROOM_DEPTH + 0.01);
+        addWallBox(mazeMaxX + WALL_T / 2, mazeMaxZ + ROOM_DEPTH / 2, WALL_T, ROOM_DEPTH + 0.01);
+        addWallBox((mazeMinX + mazeMaxX) / 2, mazeMaxZ + ROOM_DEPTH + WALL_T / 2, mazeMaxX - mazeMinX + WALL_T, WALL_T);
+
+        // entrance frame (non-blocking)
+        const frameGeo = new THREE.BoxGeometry(cellSize * 0.85, 2.8, 0.25);
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: 0x111827,
+          emissive: 0x111827,
+          emissiveIntensity: 0.25,
+        });
+        const frame = new THREE.Mesh(frameGeo, frameMat);
+        frame.position.set(ent.x, 1.4, mazeMaxZ + 0.2);
+        world.add(frame);
+
+        // spawn in room
+        me.x = ent.x;
+        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
+        me.yaw = Math.PI;
+        me.pitch = 0;
+        me.vx = me.vz = me.vy = 0;
+        me.grounded = true;
+
+        makeCrownMesh();
+      }
+
+      function entranceSpawnWorld() {
+        if (!stoney || !maze) return { x: 0, z: 0 };
+        const cellSize = stoney.cellSize;
+        const m = maze;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMaxZ = oz + m.h * cellSize;
+        const ent = cellCenterWorld(m, cellSize, m.entrance.x, m.entrance.y);
+        return { x: ent.x, z: mazeMaxZ + ROOM_DEPTH * 0.72 };
+      }
+
+      // ---------------- Trap visuals + local sim ----------------
+      const enemyMeshes = new Map(); // trapId -> {mesh,kind,bob}
+
       function ensureTrapMesh(t) {
         if (enemyMeshes.has(t.id)) return enemyMeshes.get(t.id);
 
@@ -828,7 +760,6 @@
           s.position.set(t.x, 1.1, t.z);
           world.add(s);
 
-          // spooky "aura"
           const auraG = new THREE.SphereGeometry(1.05, 18, 14);
           const auraM = new THREE.MeshStandardMaterial({
             color,
@@ -838,14 +769,11 @@
             emissiveIntensity: 0.6,
           });
           const aura = new THREE.Mesh(auraG, auraM);
-          aura.position.set(0, 0, 0);
           s.add(aura);
 
           enemyMeshes.set(t.id, {
             mesh: s,
             kind: t.type,
-            x: t.x,
-            z: t.z,
             bob: Math.random() * 10,
           });
           return enemyMeshes.get(t.id);
@@ -861,271 +789,39 @@
         enemyMeshes.delete(id);
       }
 
-      // --- Firebase wiring ---
-      let authReady = false;
-      let booted = false;
+      // ---------------- State ----------------
+      let alive = true;
+      let deadUntil = 0;
 
-      function handleSnapshotError(where, err) {
-        const msg = err?.message || "unknown";
-        console.error(`[stoney] ${where} listener error`, err);
-        centerMsg.style.display = "block";
-        centerMsg.querySelector("div").textContent = "Connection issue: " + msg;
-        lockBtn.style.display = "none";
-      }
+      // ---------------- Trap timing (important) ----------------
+      function computeTrapWindow(trap, st) {
+        const now = Date.now();
+        const placedAt = Number(trap.placedAt || 0);
+        const ttlMs = Number(trap.ttlMs || TTL[trap.type] || 15000);
 
-      async function ensureAuthed() {
-        if (auth.currentUser) {
-          await auth.currentUser.getIdToken();
-          return auth.currentUser;
+        const startAt = Number(st?.startAt || 0);
+        const setupDeadline = Number(st?.setupDeadline || 0);
+        const phaseNow = (st?.phase || "setup");
+
+        let armedAt = 0;
+
+        if (startAt > 0) {
+          armedAt = placedAt < startAt ? startAt : placedAt;
+        } else if (phaseNow === "setup" && setupDeadline > 0) {
+          // during setup, treat traps as arming at the setup deadline (or earlier if DM hits Ready)
+          armedAt = setupDeadline;
+        } else {
+          armedAt = placedAt || now;
         }
 
-        try {
-          await signInAnonymously(auth);
-        } catch (e) {
-          console.warn("Anonymous sign-in failed", e);
-        }
-
-        return await new Promise((resolve, reject) => {
-          let unsub = null;
-          const timeout = setTimeout(() => {
-            unsub?.();
-            reject(new Error("Anonymous auth timed out."));
-          }, 12000);
-          unsub = onAuthStateChanged(auth, async (user) => {
-            if (!user) return;
-            clearTimeout(timeout);
-            unsub();
-            try {
-              await user.getIdToken();
-              resolve(user);
-            } catch (err) {
-              reject(err);
-            }
-          });
-        });
+        const expiresAt = armedAt + ttlMs;
+        return { armedAt, expiresAt };
       }
 
-      async function ensurePlayerDoc() {
-        lobbyRef = doc(db, "lobbies", gameId);
-        playersCol = collection(db, "lobbies", gameId, "players");
-        trapsCol = collection(db, "lobbies", gameId, "traps");
-        myDocRef = doc(db, "lobbies", gameId, "players", username);
-
-        // Create/merge a player doc (doesn't start moving until phase=play)
-        await setDoc(
-          myDocRef,
-          {
-            name: username,
-            x: 0,
-            z: 0,
-            yaw: 0,
-            alive: true,
-            deadUntil: 0,
-            updatedAt: Date.now(),
-          },
-          { merge: true },
-        );
-      }
-
-      function listenLobby() {
-        onSnapshot(
-          lobbyRef,
-          async (snap) => {
-          if (!snap.exists()) return;
-          const d = snap.data();
-          stoney = d.stoney;
-          if (!stoney) return;
-
-          phase = stoney.phase || "setup";
-          winner = stoney.winner || null;
-          winnerName = stoney.winnerName || null;
-          gameStartAt = Number(stoney.startAt || 0);
-          gameEndAt = Number(stoney.endAt || 0);
-
-          crown = stoney.crown || null;
-          carrier = stoney.carrier || null;
-          iHaveCrown = carrier === username;
-
-          if (stoney.lastEventAt && stoney.lastEventAt !== lastEventAt) {
-            lastEventAt = stoney.lastEventAt;
-            if (stoney.lastEvent) showToast(stoney.lastEvent, 2600);
-          }
-
-          if (!maze && typeof stoney.seed === "number") {
-            maze = makeMaze(stoney.w, stoney.h, stoney.seed);
-          }
-
-          // Update HUD text
-          if (phase === "setup") {
-            const t = Math.max(0, (stoney.setupDeadline || 0) - Date.now());
-            timerText.textContent = `Setup ${Math.ceil(t / 1000)}s`;
-            crownText.textContent = "Not placed";
-            centerMsg.style.display = "block";
-            lockBtn.style.display = "none";
-          } else if (phase === "play") {
-            const t = Math.max(0, (gameEndAt || 0) - Date.now());
-            const mm = Math.floor(t / 60000),
-              ss = Math.floor((t % 60000) / 1000);
-            timerText.textContent = `${mm}m ${ss}s`;
-            crownText.textContent = iHaveCrown
-              ? "You have it!"
-              : carrier
-                ? `Carried by ${carrier}`
-                : "On ground";
-            centerMsg.style.display = pointerLocked ? "none" : "block";
-            lockBtn.style.display = pointerLocked ? "none" : "block";
-            lockBtn.textContent = "Click to Play";
-            lockBtn.onclick = requestLock;
-
-            if (!amReadyToRender && maze) {
-              amReadyToRender = true;
-              buildWorldFromMaze();
-              showToast("The dungeon opens…", 2000);
-            }
-          } else if (phase === "ended") {
-            timerText.textContent = "Ended";
-            crownText.textContent = "—";
-            centerMsg.style.display = "block";
-            lockBtn.style.display = "none";
-            centerMsg.querySelector("div").textContent =
-              winner === "players"
-                ? `🏆 Players win! ${winnerName || "Someone"} escaped with the crown.`
-                : `😈 Dungeon Master wins! Time ran out.`;
-          }
-
-          // If time is up and not ended, any client can finalize (best-effort)
-          if (
-            phase === "play" &&
-            gameEndAt &&
-            Date.now() > gameEndAt + 200 &&
-            !winner
-          ) {
-            try {
-              await updateDoc(lobbyRef, {
-                "stoney.phase": "ended",
-                "stoney.winner": "dm",
-                "stoney.winnerName": d.dm || "Dungeon Master",
-                "stoney.lastEvent": "Time is up. The Dungeon Master wins!",
-                "stoney.lastEventAt": Date.now(),
-              });
-            } catch (e) {}
-          }
-          },
-          (err) => handleSnapshotError("lobby", err),
-        );
-      }
-
-      function listenPlayers() {
-        onSnapshot(
-          playersCol,
-          (snap) => {
-          const now = Date.now();
-
-          // mark seen
-          const seen = new Set();
-          snap.forEach((docSnap) => {
-            const name = docSnap.id;
-            const v = docSnap.data();
-            seen.add(name);
-            if (name === username) return; // me
-
-            const tx = Number(v.x || 0),
-              tz = Number(v.z || 0);
-            const alive = v.alive !== false;
-            const deadUntil = Number(v.deadUntil || 0);
-
-            if (!others.has(name)) {
-              // create remote mesh
-              const g = new THREE.CapsuleGeometry(0.35, 0.9, 8, 14);
-              const m = new THREE.MeshStandardMaterial({
-                color: 0x60a5fa,
-                emissive: 0x0b3a7a,
-                emissiveIntensity: 0.55,
-                roughness: 0.8,
-              });
-              const mesh = new THREE.Mesh(g, m);
-              mesh.position.set(tx, 0.95, tz);
-              world.add(mesh);
-              others.set(name, {
-                mesh,
-                x: tx,
-                z: tz,
-                tx,
-                tz,
-                alive,
-                deadUntil,
-                lastSeen: now,
-              });
-            } else {
-              const o = others.get(name);
-              o.tx = tx;
-              o.tz = tz;
-              o.alive = alive;
-              o.deadUntil = deadUntil;
-              o.lastSeen = now;
-            }
-          });
-
-          // fade/remove missing
-          for (const [name, o] of others) {
-            if (seen.has(name)) continue;
-            if (now - o.lastSeen > 8000) {
-              world.remove(o.mesh);
-              others.delete(name);
-            }
-          }
-          },
-          (err) => handleSnapshotError("players", err),
-        );
-      }
-
-      function listenTraps() {
-        onSnapshot(
-          trapsCol,
-          (snap) => {
-          const now = Date.now();
-          const seen = new Set();
-          snap.forEach((docSnap) => {
-            const id = docSnap.id;
-            const v = docSnap.data();
-            const t = {
-              id,
-              type: v.type,
-              x: Number(v.x || 0),
-              z: Number(v.z || 0),
-              placedAt: Number(v.placedAt || 0),
-              expiresAt: Number(v.expiresAt || 0),
-              radius: Number(v.radius || 0),
-            };
-            seen.add(id);
-
-            // only keep unexpired
-            if (t.expiresAt && t.expiresAt < now) {
-              trapMap.delete(id);
-              removeTrapMesh(id);
-              return;
-            }
-
-            trapMap.set(id, t);
-            ensureTrapMesh(t);
-          });
-
-          // remove disappeared
-          for (const [id, t] of trapMap) {
-            if (seen.has(id)) continue;
-            trapMap.delete(id);
-            removeTrapMesh(id);
-          }
-          },
-          (err) => handleSnapshotError("traps", err),
-        );
-      }
-
-      // --- Crown interactions (best-effort authoritative) ---
+      // ---------------- Crown transactions ----------------
       async function tryPickupCrown() {
-        if (!crown || carrier) return;
-        const dx = me.x - crown.x,
-          dz = me.z - crown.z;
+        if (!crown || carrierId) return;
+        const dx = me.x - crown.x, dz = me.z - crown.z;
         if (dx * dx + dz * dz > 1.6 * 1.6) return;
 
         try {
@@ -1134,15 +830,17 @@
             if (!snap.exists()) return;
             const d = snap.data();
             const s = d.stoney;
-            if (!s) return;
-            if (s.carrier) return; // someone else already got it
+            if (!s || s.phase !== "play") return;
+            if (s.carrierId) return;
+
             tx.update(lobbyRef, {
-              "stoney.carrier": username,
+              "stoney.carrierId": uid,
+              "stoney.carrierName": username,
               "stoney.lastEvent": `👑 ${username} grabbed the crown!`,
               "stoney.lastEventAt": Date.now(),
             });
           });
-        } catch (e) {}
+        } catch {}
       }
 
       async function dropCrownAt(x, z, reason) {
@@ -1153,18 +851,20 @@
             const d = snap.data();
             const s = d.stoney;
             if (!s) return;
-            if (s.carrier !== username) return;
+            if (s.carrierId !== uid) return;
+
             tx.update(lobbyRef, {
-              "stoney.carrier": null,
+              "stoney.carrierId": null,
+              "stoney.carrierName": null,
               "stoney.crown": { x, z },
               "stoney.lastEvent": `💥 ${username} dropped the crown (${reason}).`,
               "stoney.lastEventAt": Date.now(),
             });
           });
-        } catch (e) {}
+        } catch {}
       }
 
-      // --- Death / Respawn ---
+      // ---------------- Death / Respawn ----------------
       async function killMe(reason) {
         if (!alive) return;
         alive = false;
@@ -1179,38 +879,32 @@
 
         try {
           await setDoc(
-            myDocRef,
+            myPlayerRef,
             {
               alive: false,
               deadUntil,
               updatedAt: Date.now(),
             },
-            { merge: true },
+            { merge: true }
           );
-        } catch (e) {}
+        } catch {}
       }
 
       function respawnIfReady() {
         if (alive) return;
         if (Date.now() < deadUntil) return;
 
-        // respawn at entrance room
-        const cellSize = stoney.cellSize;
-        const m = maze;
-        const ox = (-m.w * cellSize) / 2;
-        const oz = (-m.h * cellSize) / 2;
-        const mazeMaxZ = oz + m.h * cellSize;
-        const ent = cellCenterWorld(m, cellSize, m.entrance.x, m.entrance.y);
-
-        me.x = ent.x;
-        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
+        const sp = entranceSpawnWorld();
+        me.x = sp.x;
+        me.z = sp.z;
         me.vx = me.vz = me.vy = 0;
+
         alive = true;
         overlayDead.style.opacity = "0";
         showToast("🟩 Respawned at entrance.", 1600);
 
         setDoc(
-          myDocRef,
+          myPlayerRef,
           {
             x: me.x,
             z: me.z,
@@ -1219,48 +913,85 @@
             deadUntil: 0,
             updatedAt: Date.now(),
           },
-          { merge: true },
+          { merge: true }
         ).catch(() => {});
       }
 
-      // --- Win condition ---
+      // ---------------- Win condition ----------------
       async function checkEscapeWin() {
-        if (!iHaveCrown || phase !== "play" || winner) return;
+        if (!iHaveCrown || phase !== "play") return;
+
         const cellSize = stoney.cellSize;
         const m = maze;
         const oz = (-m.h * cellSize) / 2;
         const mazeMaxZ = oz + m.h * cellSize;
 
-        // If player is in the entrance room area (outside maze boundary), win
         if (me.z > mazeMaxZ + 1.8) {
           try {
-            await updateDoc(lobbyRef, {
-              "stoney.phase": "ended",
-              "stoney.winner": "players",
-              "stoney.winnerName": username,
-              "stoney.lastEvent": `🏆 ${username} escaped with the crown! Players win!`,
-              "stoney.lastEventAt": Date.now(),
+            await runTransaction(db, async (tx) => {
+              const snap = await tx.get(lobbyRef);
+              if (!snap.exists()) return;
+              const d = snap.data();
+              const s = d.stoney;
+              if (!s || s.phase !== "play") return;
+              if (s.winner) return;
+
+              tx.update(lobbyRef, {
+                "stoney.phase": "ended",
+                "stoney.winner": "players",
+                "stoney.winnerId": uid,
+                "stoney.winnerName": username,
+                "stoney.lastEvent": `🏆 ${username} escaped with the crown! Players win!`,
+                "stoney.lastEventAt": Date.now(),
+              });
             });
-          } catch (e) {}
+          } catch {}
         }
       }
 
-      // --- Local sim: update enemies and hazards ---
+      async function tryFinalizeByTimeout() {
+        if (phase !== "play" || !gameEndAt) return;
+        if (Date.now() <= gameEndAt + 250) return;
+
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s || s.phase !== "play") return;
+            if (s.winner) return;
+
+            tx.update(lobbyRef, {
+              "stoney.phase": "ended",
+              "stoney.winner": "dm",
+              "stoney.winnerName": d.dm || "Dungeon Master",
+              "stoney.lastEvent": "Time is up. The Dungeon Master wins!",
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch {}
+      }
+
+      // ---------------- Local sim: trap hazards ----------------
       function nearestAlivePlayerPos(ex, ez) {
-        // include me + others (use their target positions)
-        let best = null,
-          bestD = 1e18;
+        let best = null, bestD = 1e18;
 
         if (alive) {
           const d = (me.x - ex) * (me.x - ex) + (me.z - ez) * (me.z - ez);
           bestD = d;
           best = { x: me.x, z: me.z };
         }
-        for (const [name, o] of others) {
-          const isAlive = o.alive && (o.deadUntil || 0) < Date.now();
+
+        const now = Date.now();
+        for (const [pid, o] of others) {
+          const online = now - (o.updatedAt || 0) <= ONLINE_GRACE_MS;
+          if (!online) continue;
+
+          const isAlive = o.alive && (o.deadUntil || 0) < now;
           if (!isAlive) continue;
-          const px = o.tx,
-            pz = o.tz;
+
+          const px = o.tx, pz = o.tz;
           const d = (px - ex) * (px - ex) + (pz - ez) * (pz - ez);
           if (d < bestD) {
             bestD = d;
@@ -1271,10 +1002,12 @@
       }
 
       function tickTraps(dt) {
+        if (!stoney) return;
         const now = Date.now();
         let fogOn = false;
 
         for (const [id, t] of trapMap) {
+          if (now < t.armedAt) continue;
           if (t.expiresAt && t.expiresAt < now) {
             trapMap.delete(id);
             removeTrapMesh(id);
@@ -1285,18 +1018,15 @@
           if (!e) continue;
 
           if (t.type === "fog") {
-            const dx = me.x - t.x,
-              dz = me.z - t.z;
+            const dx = me.x - t.x, dz = me.z - t.z;
             if (dx * dx + dz * dz < FOG_RADIUS * FOG_RADIUS) fogOn = true;
             continue;
           }
 
           if (t.type === "fire") {
-            // pulse
             e.mesh.scale.setScalar(1.0 + 0.15 * Math.sin(now * 0.012));
             if (alive) {
-              const dx = me.x - t.x,
-                dz = me.z - t.z;
+              const dx = me.x - t.x, dz = me.z - t.z;
               if (dx * dx + dz * dz < FIRE_KILL_RADIUS * FIRE_KILL_RADIUS) {
                 killMe("fire");
               }
@@ -1305,42 +1035,31 @@
           }
 
           if (t.type === "ghost" || t.type === "demon") {
-            // bob + chase nearest player
             e.bob = (e.bob || 0) + dt * 3.2;
             e.mesh.position.y = 1.1 + Math.sin(e.bob) * 0.12;
 
-            const target = nearestAlivePlayerPos(
-              e.mesh.position.x,
-              e.mesh.position.z,
-            );
+            const target = nearestAlivePlayerPos(e.mesh.position.x, e.mesh.position.z);
             if (!target) continue;
 
             const dx = target.x - e.mesh.position.x;
             const dz = target.z - e.mesh.position.z;
             const len = Math.hypot(dx, dz) || 1;
-            const sp =
-              t.type === "demon" ? ENEMY.demon.speed : ENEMY.ghost.speed;
 
+            const sp = t.type === "demon" ? ENEMY.demon.speed : ENEMY.ghost.speed;
             const nx = e.mesh.position.x + (dx / len) * sp * dt;
             const nz = e.mesh.position.z + (dz / len) * sp * dt;
 
-            // simple wall avoidance: don't move into walls
             if (!hitsWall(nx, nz)) {
               e.mesh.position.x = nx;
               e.mesh.position.z = nz;
             } else {
-              // try sliding
               if (!hitsWall(nx, e.mesh.position.z)) e.mesh.position.x = nx;
               else if (!hitsWall(e.mesh.position.x, nz)) e.mesh.position.z = nz;
             }
 
             if (alive) {
-              const k =
-                t.type === "demon"
-                  ? ENEMY.demon.killDist
-                  : ENEMY.ghost.killDist;
-              const ddx = me.x - e.mesh.position.x,
-                ddz = me.z - e.mesh.position.z;
+              const k = t.type === "demon" ? ENEMY.demon.killDist : ENEMY.ghost.killDist;
+              const ddx = me.x - e.mesh.position.x, ddz = me.z - e.mesh.position.z;
               if (ddx * ddx + ddz * ddz < k * k) {
                 killMe(t.type);
               }
@@ -1351,16 +1070,68 @@
         overlayFog.style.opacity = fogOn ? "1" : "0";
       }
 
-      // --- Movement / camera update ---
+      // ---------------- Other players interpolation ----------------
+      function tickOthers(dt) {
+        const now = Date.now();
+
+        for (const [pid, o] of others) {
+          const online = now - (o.updatedAt || 0) <= ONLINE_GRACE_MS;
+          o.mesh.visible = online && o.alive && (o.deadUntil || 0) < now;
+
+          o.x += (o.tx - o.x) * Math.min(1, dt * 6);
+          o.z += (o.tz - o.z) * Math.min(1, dt * 6);
+          o.mesh.position.set(o.x, 0.95, o.z);
+        }
+      }
+
+      // ---------------- Crown visuals ----------------
+      function tickCrown(dt) {
+        if (!crownMesh) return;
+        if (phase !== "play") {
+          crownMesh.visible = false;
+          return;
+        }
+
+        if (carrierId) {
+          if (carrierId === uid) {
+            crownMesh.visible = true;
+            crownMesh.position.set(me.x, PLAYER_H + 0.55, me.z);
+          } else {
+            const o = others.get(carrierId);
+            if (o && o.mesh.visible) {
+              crownMesh.visible = true;
+              crownMesh.position.set(o.x, 1.9, o.z);
+            } else {
+              crownMesh.visible = false;
+            }
+          }
+        } else if (crown) {
+          crownMesh.visible = true;
+          crownMesh.position.set(crown.x, 1.0, crown.z);
+          crownMesh.rotation.y += dt * 1.6;
+          crownMesh.position.y = 1.0 + Math.sin(performance.now() * 0.003) * 0.1;
+          tryPickupCrown();
+        } else {
+          crownMesh.visible = false;
+        }
+      }
+
+      // ---------------- Movement / camera ----------------
       function tickMove(dt) {
-        if (phase !== "play") return;
+        if (!stoney) return;
+
+        if (phase !== "play") {
+          // keep camera where spawn is
+          camera.position.set(me.x, me.y, me.z);
+          camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
+          return;
+        }
 
         if (!alive) {
           respawnIfReady();
           return;
         }
 
-        // movement input (desktop)
         const forward = keys["w"] || keys["arrowup"] ? 1 : 0;
         const back = keys["s"] || keys["arrowdown"] ? 1 : 0;
         const left = keys["a"] || keys["arrowleft"] ? 1 : 0;
@@ -1386,24 +1157,19 @@
           mz /= mlen;
         }
 
-        // rotate by yaw
-        const sy = Math.sin(me.yaw),
-          cy = Math.cos(me.yaw);
+        const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
         const vx = (mx * cy + mz * sy) * speed;
         const vz = (mz * cy - mx * sy) * speed;
 
-        // accel + friction
         const accel = 18;
         me.vx += (vx - me.vx) * Math.min(1, accel * dt);
         me.vz += (vz - me.vz) * Math.min(1, accel * dt);
 
-        // tiny jump
         if (keys[" "] && me.grounded) {
           me.vy = 3.6;
           me.grounded = false;
         }
 
-        // gravity
         me.vy -= 10.5 * dt;
         me.y += me.vy * dt;
         if (me.y <= PLAYER_H) {
@@ -1412,106 +1178,394 @@
           me.grounded = true;
         }
 
-        // attempt move with collision
-        let nx = me.x + me.vx * dt;
-        let nz = me.z + me.vz * dt;
+        const nx = me.x + me.vx * dt;
+        const nz = me.z + me.vz * dt;
 
-        // separate axis to allow sliding
         if (!hitsWall(nx, me.z)) me.x = nx;
         else me.vx = 0;
 
         if (!hitsWall(me.x, nz)) me.z = nz;
         else me.vz = 0;
 
-        // camera transform
         camera.position.set(me.x, me.y, me.z);
         camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
       }
 
-      // --- Other players interpolation ---
-      function tickOthers(dt) {
-        for (const [name, o] of others) {
-          const isAlive = o.alive && (o.deadUntil || 0) < Date.now();
-          o.mesh.visible = isAlive;
-          // gentle interpolation (stuttery updates are fine per your request)
-          o.x += (o.tx - o.x) * Math.min(1, dt * 6);
-          o.z += (o.tz - o.z) * Math.min(1, dt * 6);
-          o.mesh.position.set(o.x, 0.95, o.z);
+      // ---------------- Network posting (throttled) ----------------
+      let lastPostAt = 0;
+      let lastPosted = { x: 1e9, z: 1e9, yaw: 1e9, alive: true };
+
+      async function postMyPosition(force = false) {
+        if (!myPlayerRef) return;
+        if (!stoney) return;
+
+        const now = Date.now();
+        if (!force && now - lastPostAt < 950) return;
+
+        // only post if meaningful change (or force)
+        const moved =
+          Math.hypot(me.x - lastPosted.x, me.z - lastPosted.z) > 0.08 ||
+          Math.abs(me.yaw - lastPosted.yaw) > 0.04 ||
+          alive !== lastPosted.alive;
+
+        if (!force && !moved) {
+          // still keep presence alive every ~3s
+          if (now - lastPostAt < 2800) return;
         }
-      }
 
-      // --- Crown visuals ---
-      function tickCrown(dt) {
-        if (!crownMesh) return;
-
-        if (phase !== "play") {
-          crownMesh.visible = false;
-          return;
-        }
-
-        if (carrier) {
-          // carried: attach above carrier’s head (approx)
-          if (carrier === username) {
-            crownMesh.visible = true;
-            crownMesh.position.set(me.x, PLAYER_H + 0.55, me.z);
-          } else {
-            const o = others.get(carrier);
-            if (o && o.mesh.visible) {
-              crownMesh.visible = true;
-              crownMesh.position.set(o.x, 1.9, o.z);
-            } else {
-              crownMesh.visible = false;
-            }
-          }
-        } else if (crown) {
-          crownMesh.visible = true;
-          crownMesh.position.set(crown.x, 1.0, crown.z);
-          crownMesh.rotation.y += dt * 1.6;
-          crownMesh.position.y =
-            1.0 + Math.sin(performance.now() * 0.003) * 0.1;
-
-          // pickup attempt
-          tryPickupCrown();
-        } else {
-          crownMesh.visible = false;
-        }
-      }
-
-      // --- Network: update my position once per second ---
-      async function postMyPosition() {
-        if (!myDocRef) return;
-        if (phase !== "play") return;
+        lastPostAt = now;
+        lastPosted = { x: me.x, z: me.z, yaw: me.yaw, alive };
 
         try {
           await setDoc(
-            myDocRef,
+            myPlayerRef,
             {
+              uid,
+              name: username,
               x: me.x,
               z: me.z,
               yaw: me.yaw,
               alive,
               deadUntil: alive ? 0 : deadUntil,
-              updatedAt: Date.now(),
+              updatedAt: now,
             },
-            { merge: true },
+            { merge: true }
           );
-        } catch (e) {}
+        } catch {}
       }
 
-      // --- Resize ---
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          postMyPosition(true);
+        }
+      });
+
+      // ---------------- Resize ----------------
       addEventListener("resize", () => {
         renderer.setSize(innerWidth, innerHeight);
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
       });
 
-      // --- Main loop ---
+      // ---------------- Firebase boot helpers ----------------
+      function snapshotError(where, err) {
+        console.error(`[stoney] ${where} snapshot error`, err);
+        setNet("Error");
+        centerTitle.textContent = "Connection issue";
+        centerSub.textContent =
+          (err?.message || "Unknown error") +
+          " — Make sure Anonymous Auth is enabled and Firestore rules allow authed reads.";
+        lockBtn.style.display = "none";
+        centerMsg.style.display = "block";
+      }
+
+      async function ensureAuthed() {
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken();
+          return auth.currentUser;
+        }
+
+        await signInAnonymously(auth).catch(() => {});
+        return await new Promise((resolve, reject) => {
+          let unsub = null;
+          const timeout = setTimeout(() => {
+            unsub?.();
+            reject(new Error("Anonymous auth timed out."));
+          }, 12000);
+
+          unsub = onAuthStateChanged(auth, async (user) => {
+            if (!user) return;
+            clearTimeout(timeout);
+            unsub();
+            try {
+              await user.getIdToken();
+              resolve(user);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+      }
+
+      async function ensureLobbyExistsMinimal() {
+        lobbyRef = doc(db, "lobbies", gameId);
+
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(lobbyRef);
+          if (!snap.exists()) {
+            tx.set(lobbyRef, {
+              createdAt: Date.now(),
+              gameType: "stoney",
+            });
+          }
+        });
+      }
+
+      async function ensurePlayerDoc() {
+        playersCol = collection(db, "lobbies", gameId, "players");
+        trapsCol = collection(db, "lobbies", gameId, "traps");
+
+        myPlayerRef = doc(db, "lobbies", gameId, "players", uid);
+
+        // initial spawn (if we already know maze later, we'll update again)
+        await setDoc(
+          myPlayerRef,
+          {
+            uid,
+            name: username,
+            x: 0,
+            z: 0,
+            yaw: 0,
+            alive: true,
+            deadUntil: 0,
+            updatedAt: Date.now(),
+            joinedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      }
+
+      // ---------------- Listeners ----------------
+      let lastEventAt = 0;
+      let builtWorld = false;
+
+      function listenLobby() {
+        onSnapshot(
+          lobbyRef,
+          (snap) => {
+            setNet("Online");
+            if (!snap.exists()) return;
+
+            const d = snap.data();
+            stoney = d.stoney || null;
+
+            if (!stoney) {
+              phase = "setup";
+              centerTitle.textContent = "Waiting for the Dungeon Master…";
+              centerSub.textContent =
+                "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+              timerText.textContent = "—";
+              crownText.textContent = "—";
+              return;
+            }
+
+            phase = stoney.phase || "setup";
+            gameStartAt = Number(stoney.startAt || 0);
+            gameEndAt = Number(stoney.endAt || 0);
+            winner = stoney.winner || null;
+            winnerName = stoney.winnerName || null;
+
+            crown = stoney.crown || null;
+            carrierId = stoney.carrierId || null;
+            carrierName = stoney.carrierName || null;
+            iHaveCrown = carrierId === uid;
+
+            if (stoney.lastEventAt && stoney.lastEventAt !== lastEventAt) {
+              lastEventAt = stoney.lastEventAt;
+              if (stoney.lastEvent) showToast(stoney.lastEvent, 2600);
+            }
+
+            if (!maze && typeof stoney.seed === "number") {
+              maze = makeMaze(stoney.w, stoney.h, stoney.seed);
+            }
+
+            // build world early (as soon as seed exists) to avoid "hitch" at phase switch
+            if (maze && !builtWorld) {
+              builtWorld = true;
+              buildWorldFromMaze();
+              // post real spawn location so DM sees you properly in setup
+              const sp = entranceSpawnWorld();
+              me.x = sp.x;
+              me.z = sp.z;
+              postMyPosition(true);
+            }
+
+            if (phase === "setup") {
+              const t = Math.max(0, (stoney.setupDeadline || 0) - Date.now());
+              timerText.textContent = `Setup ${Math.ceil(t / 1000)}s`;
+              crownText.textContent = stoney.crown ? "Placed" : "Not placed";
+              centerTitle.textContent = "Waiting for the Dungeon Master…";
+              centerSub.textContent =
+                "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+            } else if (phase === "play") {
+              const t = Math.max(0, (gameEndAt || 0) - Date.now());
+              const mm = Math.floor(t / 60000),
+                ss = Math.floor((t % 60000) / 1000);
+              timerText.textContent = `${mm}m ${ss}s`;
+              crownText.textContent = iHaveCrown
+                ? "You have it!"
+                : carrierName
+                  ? `Carried by ${carrierName}`
+                  : crown
+                    ? "On ground"
+                    : "Not placed";
+
+              // show click-to-play if pointer not locked (desktop)
+              lockBtn.textContent = "Click to Play";
+              lockBtn.onclick = requestLock;
+              lockBtn.style.display = pointerLocked ? "none" : "block";
+              centerMsg.style.display = pointerLocked ? "none" : "block";
+              centerTitle.textContent = pointerLocked
+                ? ""
+                : "Dungeon open!";
+              centerSub.textContent =
+                "Click to lock mouse (desktop) — or use joystick (mobile).";
+
+              tryFinalizeByTimeout();
+            } else if (phase === "ended") {
+              timerText.textContent = "Ended";
+              crownText.textContent = "—";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+              centerTitle.textContent =
+                winner === "players"
+                  ? `🏆 Players win!`
+                  : `😈 Dungeon Master wins!`;
+              centerSub.textContent =
+                winner === "players"
+                  ? `${winnerName || "Someone"} escaped with the crown.`
+                  : `Time ran out.`;
+            }
+          },
+          (err) => snapshotError("lobby", err)
+        );
+      }
+
+      function listenPlayers() {
+        onSnapshot(
+          playersCol,
+          (snap) => {
+            const now = Date.now();
+            const seen = new Set();
+
+            snap.forEach((docSnap) => {
+              const pid = docSnap.id;
+              const v = docSnap.data() || {};
+              const name = String(v.name || "Player").slice(0, 22);
+
+              seen.add(pid);
+
+              if (pid === uid) return;
+
+              const tx = Number(v.x || 0);
+              const tz = Number(v.z || 0);
+
+              const alive = v.alive !== false;
+              const deadUntil = Number(v.deadUntil || 0);
+              const updatedAt = Number(v.updatedAt || 0);
+
+              if (!others.has(pid)) {
+                const g = new THREE.CapsuleGeometry(0.35, 0.9, 8, 14);
+                const m = new THREE.MeshStandardMaterial({
+                  color: 0x60a5fa,
+                  emissive: 0x0b3a7a,
+                  emissiveIntensity: 0.55,
+                  roughness: 0.8,
+                });
+                const mesh = new THREE.Mesh(g, m);
+                mesh.position.set(tx, 0.95, tz);
+                world.add(mesh);
+
+                others.set(pid, {
+                  mesh,
+                  name,
+                  x: tx,
+                  z: tz,
+                  tx,
+                  tz,
+                  alive,
+                  deadUntil,
+                  updatedAt,
+                  lastSeen: now,
+                });
+              } else {
+                const o = others.get(pid);
+                o.name = name;
+                o.tx = tx;
+                o.tz = tz;
+                o.alive = alive;
+                o.deadUntil = deadUntil;
+                o.updatedAt = updatedAt;
+                o.lastSeen = now;
+              }
+            });
+
+            // remove missing
+            for (const [pid, o] of others) {
+              if (seen.has(pid)) continue;
+              if (now - o.lastSeen > 8000) {
+                world.remove(o.mesh);
+                others.delete(pid);
+              }
+            }
+          },
+          (err) => snapshotError("players", err)
+        );
+      }
+
+      function listenTraps() {
+        onSnapshot(
+          trapsCol,
+          (snap) => {
+            const now = Date.now();
+            const seen = new Set();
+
+            snap.forEach((docSnap) => {
+              const id = docSnap.id;
+              const v = docSnap.data() || {};
+              const type = v.type;
+              if (!type) return;
+
+              const placedAt = Number(v.placedAt || 0);
+              const ttlMs = Number(v.ttlMs || TTL[type] || 15000);
+              const x = Number(v.x || 0);
+              const z = Number(v.z || 0);
+
+              const { armedAt, expiresAt } = computeTrapWindow(
+                { type, placedAt, ttlMs },
+                stoney
+              );
+
+              seen.add(id);
+
+              // ignore traps that are fully expired
+              if (expiresAt && expiresAt < now) {
+                trapMap.delete(id);
+                removeTrapMesh(id);
+                return;
+              }
+
+              trapMap.set(id, { id, type, x, z, placedAt, ttlMs, armedAt, expiresAt });
+
+              // only create visuals once trap is armed (prevents “setup burning out”)
+              if (now >= armedAt) ensureTrapMesh({ id, type, x, z });
+            });
+
+            for (const [id] of trapMap) {
+              if (seen.has(id)) continue;
+              trapMap.delete(id);
+              removeTrapMesh(id);
+            }
+          },
+          (err) => snapshotError("traps", err)
+        );
+      }
+
+      // ---------------- UI click-to-lock ----------------
+      renderer.domElement.addEventListener("click", () => {
+        if (phase === "play" && !pointerLocked) requestLock();
+      });
+
+      // ---------------- Main loop ----------------
       let last = performance.now();
       function loop(now) {
         const dt = Math.min(0.033, (now - last) / 1000);
         last = now;
 
-        // timer HUD
         if (phase === "play" && gameEndAt) {
           const t = Math.max(0, gameEndAt - Date.now());
           const mm = Math.floor(t / 60000),
@@ -1524,50 +1578,55 @@
         tickTraps(dt);
         tickCrown(dt);
 
-        if (alive) {
-          checkEscapeWin();
-        }
+        if (alive && phase === "play") checkEscapeWin();
+
+        // keep presence alive even if player not moving much
+        postMyPosition(false);
 
         renderer.render(scene, camera);
         requestAnimationFrame(loop);
       }
 
-      // --- Click to lock (only during play) ---
-      renderer.domElement.addEventListener("click", () => {
-        if (phase === "play" && !pointerLocked) requestLock();
-      });
-
-      // --- Boot ---
+      // ---------------- Boot ----------------
       async function boot() {
-        if (!gameId || !username) {
-          centerMsg.querySelector("div").textContent =
-            "Missing gameId/username.";
+        if (!gameId) {
+          centerTitle.textContent = "Missing gameId";
+          centerSub.textContent = "Open with ?gameId=YOURLOBBYID&username=NAME";
           return;
         }
+
+        setNet("Signing in…");
+        centerTitle.textContent = "Signing in…";
+        centerSub.textContent = "Connecting to Firebase (anonymous).";
+
+        const user = await ensureAuthed();
+        uid = user.uid;
+
+        setNet("Joining…");
+        await ensureLobbyExistsMinimal();
         await ensurePlayerDoc();
+
+        setNet("Syncing…");
+        centerTitle.textContent = "Waiting for the Dungeon Master…";
+        centerSub.textContent =
+          "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+
         listenLobby();
         listenPlayers();
         listenTraps();
 
-        // send positions every second (as requested: “skip along slowly”)
-        setInterval(postMyPosition, 1000);
-
         requestAnimationFrame(loop);
       }
 
-      ensureAuthed()
-        .then(() => {
-          if (booted) return;
-          booted = true;
-          authReady = true;
-          return boot();
-        })
-        .catch((e) => {
-          centerMsg.querySelector("div").textContent =
-            "Auth failed. Enable anonymous sign-in in Firebase Authentication.";
-          lockBtn.style.display = "none";
-          showToast("Error: " + (e?.message || "unknown"));
-        });
+      boot().catch((e) => {
+        console.error(e);
+        setNet("Error");
+        centerTitle.textContent = "Auth / Firebase error";
+        centerSub.textContent =
+          (e?.message || "Unknown") +
+          " — Ensure Anonymous Auth is enabled in Firebase Authentication.";
+      });
     </script>
   </body>
 </html>
+
