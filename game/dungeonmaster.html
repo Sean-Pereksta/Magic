@@ -87,10 +87,6 @@
       background:linear-gradient(180deg, rgba(34,197,94,.92), rgba(22,163,74,.92));
       border-color:rgba(255,255,255,.22);
     }
-    .btn.danger{
-      background:linear-gradient(180deg, rgba(239,68,68,.92), rgba(220,38,38,.92));
-      border-color:rgba(255,255,255,.22);
-    }
     .muted{ color:var(--muted); font-size:.9rem; line-height:1.35; }
     .bar{
       height:10px; border-radius:999px; background:rgba(255,255,255,.08);
@@ -153,6 +149,7 @@
     }
   </style>
 </head>
+
 <body>
 <header>
   <div class="top">
@@ -160,11 +157,11 @@
       <div class="logo">🗺️</div>
       <div>
         <div class="title">Dungeon Master</div>
-        <div class="sub">Place the crown + traps. You cannot trap near players.</div>
+        <div class="sub">Place the crown + traps. Traps can’t be placed near online living players.</div>
       </div>
     </div>
     <div class="row">
-      <div class="pill">⏱️ Setup: <span id="setupT">—</span></div>
+      <div class="pill">⏱️ <span id="setupT">—</span></div>
       <div class="pill">🔥 Energy: <span id="energyT">—</span></div>
       <button id="readyBtn" class="btn good">✅ Ready</button>
     </div>
@@ -181,8 +178,9 @@
       <div class="body">
         <canvas id="map" width="900" height="900"></canvas>
         <div class="muted" style="margin-top:10px">
-          Click to place <b>crown</b> or a <b>trap</b>. Traps are blocked if too close to any player.
+          Tap a mode, then tap the map. Traps placed during setup will <b>arm when the dungeon opens</b>.
         </div>
+
         <div class="mobile-toolbar">
           <div class="small muted" style="margin-bottom:8px">Tap a power, then tap the map.</div>
           <div class="mode-grid" style="margin:0">
@@ -193,17 +191,21 @@
             <button class="btn mode-btn" data-set-mode="demon">😈 Demon</button>
           </div>
         </div>
+
         <div id="warnLine" style="margin-top:8px"></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="head"><b>Controls</b><span id="statusLine" class="small">Connecting…</span></div>
+      <div class="head">
+        <b>Controls</b>
+        <span id="statusLine" class="small">Connecting…</span>
+      </div>
       <div class="body">
         <div class="kv">
           <div>
             <div style="font-weight:900">Placement</div>
-            <div class="muted">Crown is the win objective. Traps appear instantly for players.</div>
+            <div class="muted">Crown is the win objective. Traps arm when play begins (or immediately if already playing).</div>
           </div>
           <div class="tag">🧠 DM</div>
         </div>
@@ -227,12 +229,12 @@
 
         <div style="margin-top:14px; font-weight:900">Legend</div>
         <div class="muted small" style="margin-top:6px; line-height:1.5">
-          <div>🟦 Players</div>
+          <div>🟦 Players (online)</div>
           <div>👑 Crown</div>
-          <div>🔥 Fire (10s)</div>
-          <div>🌫️ Fog (18s)</div>
-          <div>👻 Ghost (persistent)</div>
-          <div>😈 Demon (persistent)</div>
+          <div>🔥 Fire</div>
+          <div>🌫️ Fog</div>
+          <div>👻 Ghost</div>
+          <div>😈 Demon</div>
         </div>
 
         <div style="margin-top:14px; font-weight:900">Notes</div>
@@ -249,11 +251,10 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-    collection, onSnapshot, addDoc, serverTimestamp, getDocs
+    collection, onSnapshot, addDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-  // --- Firebase (your project) ---
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
@@ -266,10 +267,10 @@
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // --- URL params ---
   const qs = new URLSearchParams(location.search);
-  const gameId = qs.get("gameId") || "";
-  const username = (qs.get("username") || "").trim();
+  const gameId = (qs.get("gameId") || "").trim();
+  const usernameRaw = (qs.get("username") || "").trim();
+  const username = usernameRaw.length ? usernameRaw.slice(0, 22) : "Dungeon Master";
 
   const $ = (id)=>document.getElementById(id);
   const statusLine = $("statusLine");
@@ -279,11 +280,12 @@
   const energyBar = $("energyBar");
   const phaseTag = $("phaseTag");
   const modeTag = $("modeTag");
+  const readyBtn = $("readyBtn");
 
   const canvas = $("map");
   const ctx = canvas.getContext("2d");
 
-  // --- Seeded RNG ---
+  // ---------- Maze helpers (must match stoney.html) ----------
   function xorshift32(seed){
     let x = (seed|0) || 123456789;
     return ()=> {
@@ -291,8 +293,6 @@
       return ((x>>>0) / 4294967296);
     };
   }
-
-  // --- Maze generation (perfect maze) ---
   function makeMaze(w,h,seed){
     const rnd = xorshift32(seed);
     const N=1,E=2,S=4,W=8;
@@ -326,14 +326,11 @@
       b.v=true;
       stack.push([nx,ny]);
     }
-    // Clear entrance: south edge middle
+
     const ex = Math.floor(w/2), ey = h-1;
     cells[idx(ex,ey)].walls &= ~S;
-
     return { w,h, cells, entrance:{x:ex,y:ey} };
   }
-
-  // --- World mapping ---
   function cellCenterWorld(maze, cellSize, cx, cy){
     const ox = -maze.w*cellSize/2;
     const oz = -maze.h*cellSize/2;
@@ -342,9 +339,9 @@
     return {x,z};
   }
 
-  // --- Energy model (stored only when spending) ---
+  // ---------- Energy model (stored only when spending) ----------
   const ENERGY_MAX=100;
-  const ENERGY_REGEN_PER_SEC=8; // 8/sec
+  const ENERGY_REGEN_PER_SEC=8;
 
   function energyNow(stoney){
     const base = Number(stoney?.dmEnergyBase ?? 0);
@@ -353,26 +350,28 @@
     return Math.min(ENERGY_MAX, base + dt*ENERGY_REGEN_PER_SEC);
   }
 
-  // --- Costs / durations ---
+  // ---------- Costs + TTL ----------
   const COST = { fire:15, fog:20, ghost:30, demon:55 };
-  const DUR  = { fire:10_000, fog:18_000, ghost:300_000, demon:300_000 }; // ghost/demon effectively persistent (<= 5m)
-  const NO_TRAP_RADIUS = 6.0; // "immediate surroundings"
+  const TTL  = { fire:10_000, fog:18_000, ghost:300_000, demon:300_000 };
+  const NO_TRAP_RADIUS = 6.0;
+  const ONLINE_GRACE_MS = 12000;
 
-  // --- State ---
+  // ---------- State ----------
   let lobbyRef=null, playersCol=null, trapsCol=null;
   let lobbyData=null, stoney=null, maze=null;
-  let players = new Map(); // name -> {x,z,alive,deadUntil}
-  let traps = []; // list from snapshot
-  let mode="crown"; // crown|fire|fog|ghost|demon
-  let readyArmed=false;
+  let players = new Map(); // uid -> {name,x,z,alive,deadUntil,updatedAt}
+  let traps = []; // [{id,type,x,z,placedAt,ttlMs}]
+  let mode="crown";
+
+  let amDM=false;
+  let purgeAt=0;
 
   const modeButtons = [...document.querySelectorAll("[data-set-mode]")];
 
-  function handleSnapshotError(where, err){
-    const msg = err?.message || "unknown";
-    console.error(`[dungeonmaster] ${where} listener error`, err);
-    statusLine.textContent = "Permission error";
-    warnLine.textContent = "❌ " + msg;
+  function snapshotError(where, err){
+    console.error(`[dungeonmaster] ${where} snapshot error`, err);
+    statusLine.textContent = "Error";
+    warnLine.textContent = "❌ " + (err?.message || "Unknown error");
   }
 
   async function ensureAuthed(){
@@ -380,29 +379,20 @@
       await auth.currentUser.getIdToken();
       return auth.currentUser;
     }
-
-    try{
-      await signInAnonymously(auth);
-    }catch(e){
-      console.warn("Anonymous sign-in failed", e);
-    }
-
+    await signInAnonymously(auth).catch(()=>{});
     return await new Promise((resolve, reject)=>{
-      let unsub = null;
-      const timeout = setTimeout(()=>{
-        unsub?.();
-        reject(new Error("Anonymous auth timed out."));
+      let unsub=null;
+      const timeout=setTimeout(()=>{
+        unsub?.(); reject(new Error("Anonymous auth timed out."));
       }, 12000);
-      unsub = onAuthStateChanged(auth, async (user)=>{
+      unsub=onAuthStateChanged(auth, async (user)=>{
         if(!user) return;
         clearTimeout(timeout);
         unsub();
         try{
           await user.getIdToken();
           resolve(user);
-        }catch(err){
-          reject(err);
-        }
+        }catch(e){ reject(e); }
       });
     });
   }
@@ -419,16 +409,46 @@
   function dist2(ax,az,bx,bz){ const dx=ax-bx, dz=az-bz; return dx*dx+dz*dz; }
 
   function isTooCloseToAnyPlayer(wx,wz){
-    for(const [name,p] of players){
-      if(!p) continue;
-      const alive = !!p.alive && (p.deadUntil||0) < Date.now();
+    const now = Date.now();
+    for(const [pid,p] of players){
+      const online = now - (p.updatedAt||0) <= ONLINE_GRACE_MS;
+      if(!online) continue;
+      const alive = !!p.alive && (p.deadUntil||0) < now;
       if(!alive) continue;
-      if(dist2(wx,wz, p.x||0, p.z||0) <= NO_TRAP_RADIUS*NO_TRAP_RADIUS) return name;
+      if(dist2(wx,wz, p.x||0, p.z||0) <= NO_TRAP_RADIUS*NO_TRAP_RADIUS) return p.name || "Player";
     }
     return null;
   }
 
-  // --- Drawing ---
+  function computeTrapWindow(t){
+    if(!stoney) return {armedAt: t.placedAt||0, expiresAt: (t.placedAt||0) + (t.ttlMs||0)};
+    const placedAt = Number(t.placedAt||0);
+    const ttlMs = Number(t.ttlMs||TTL[t.type]||15000);
+
+    const startAt = Number(stoney.startAt||0);
+    const setupDeadline = Number(stoney.setupDeadline||0);
+    const phaseNow = stoney.phase || "setup";
+
+    let armedAt = 0;
+    if(startAt > 0) armedAt = placedAt < startAt ? startAt : placedAt;
+    else if(phaseNow === "setup" && setupDeadline > 0) armedAt = setupDeadline;
+    else armedAt = placedAt;
+
+    return { armedAt, expiresAt: armedAt + ttlMs };
+  }
+
+  // ---------- Drawing ----------
+  function worldToCell(wx,wz){
+    if(!maze || !stoney) return null;
+    const cellSize = stoney.cellSize;
+    const ox = -maze.w*cellSize/2;
+    const oz = -maze.h*cellSize/2;
+    const cx = Math.floor((wx - ox) / cellSize);
+    const cy = Math.floor((wz - oz) / cellSize);
+    if(cx<0||cy<0||cx>=maze.w||cy>=maze.h) return null;
+    return {cx,cy};
+  }
+
   function drawMap(){
     if(!maze){ ctx.clearRect(0,0,canvas.width,canvas.height); return; }
     const W=canvas.width, H=canvas.height;
@@ -442,7 +462,6 @@
     const x0 = (W - maze.w*cellPx)/2;
     const y0 = (H - maze.h*cellPx)/2;
 
-    // walls
     ctx.strokeStyle="#000";
     ctx.lineWidth = Math.max(2, cellPx*0.12);
     ctx.lineCap="square";
@@ -458,8 +477,6 @@
 
         if(c.walls & N){ ctx.moveTo(px,py); ctx.lineTo(px+cellPx,py); }
         if(c.walls & Ww){ ctx.moveTo(px,py); ctx.lineTo(px,py+cellPx); }
-
-        // draw south/east only on boundary to avoid double lines
         if(y===maze.h-1 && (c.walls & S)){ ctx.moveTo(px,py+cellPx); ctx.lineTo(px+cellPx,py+cellPx); }
         if(x===maze.w-1 && (c.walls & E)){ ctx.moveTo(px+cellPx,py); ctx.lineTo(px+cellPx,py+cellPx); }
       }
@@ -472,27 +489,41 @@
     ctx.fillStyle="rgba(34,197,94,.18)";
     ctx.fillRect(epx+cellPx*0.2, epy+cellPx*0.8, cellPx*0.6, cellPx*0.25);
 
-    // traps
+    // traps (only show “armed” or planned depending on phase)
     const now=Date.now();
     for(const t of traps){
-      if(t.expiresAt && t.expiresAt < now) continue;
+      const {armedAt, expiresAt} = computeTrapWindow(t);
+      if(expiresAt < now) continue;
+
       const c = worldToCell(t.x,t.z);
       if(!c) continue;
       const px = x0 + c.cx*cellPx + cellPx*0.5;
       const py = y0 + c.cy*cellPx + cellPx*0.5;
+
       let fill="#000";
       if(t.type==="fire") fill="#ef4444";
       if(t.type==="fog") fill="#94a3b8";
       if(t.type==="ghost") fill="#22d3ee";
       if(t.type==="demon") fill="#fb7185";
+
+      const armed = now >= armedAt;
+
       ctx.beginPath();
-      ctx.fillStyle=fill;
-      ctx.arc(px,py, Math.max(3, cellPx*0.18), 0, Math.PI*2);
+      ctx.fillStyle = armed ? fill : "rgba(0,0,0,.22)";
+      ctx.arc(px,py, Math.max(3, cellPx*(armed ? 0.18 : 0.14)), 0, Math.PI*2);
       ctx.fill();
+
+      if(!armed){
+        ctx.strokeStyle="rgba(0,0,0,.35)";
+        ctx.lineWidth=Math.max(1.5, cellPx*0.06);
+        ctx.beginPath();
+        ctx.arc(px,py, Math.max(5, cellPx*0.28), 0, Math.PI*2);
+        ctx.stroke();
+      }
     }
 
-    // crown
-    if(stoney?.crown && !stoney?.carrier){
+    // crown (on ground)
+    if(stoney?.crown && !stoney?.carrierId){
       const c = worldToCell(stoney.crown.x, stoney.crown.z);
       if(c){
         const px = x0 + c.cx*cellPx + cellPx*0.5;
@@ -504,9 +535,13 @@
       }
     }
 
-    // players
-    for(const [name,p] of players){
-      const alive = !!p.alive && (p.deadUntil||0) < Date.now();
+    // players (online)
+    const now2 = Date.now();
+    for(const [pid,p] of players){
+      const online = now2 - (p.updatedAt||0) <= ONLINE_GRACE_MS;
+      if(!online) continue;
+
+      const alive = !!p.alive && (p.deadUntil||0) < now2;
       const c = worldToCell(p.x||0, p.z||0);
       if(!c) continue;
       const px = x0 + c.cx*cellPx + cellPx*0.5;
@@ -517,17 +552,16 @@
       ctx.arc(px,py, Math.max(3, cellPx*0.20), 0, Math.PI*2);
       ctx.fill();
 
-      // tiny name
       ctx.font = `${Math.max(9, cellPx*0.22)}px system-ui`;
       ctx.textAlign="center";
       ctx.textBaseline="top";
       ctx.fillStyle="rgba(0,0,0,.75)";
-      ctx.fillText(name, px, py + Math.max(5, cellPx*0.22));
+      ctx.fillText(p.name || "Player", px, py + Math.max(5, cellPx*0.22));
     }
 
     // carrier marker
-    if(stoney?.carrier){
-      const p = players.get(stoney.carrier);
+    if(stoney?.carrierId){
+      const p = players.get(stoney.carrierId);
       if(p){
         const c = worldToCell(p.x||0,p.z||0);
         if(c){
@@ -542,20 +576,133 @@
     }
   }
 
-  function worldToCell(wx,wz){
-    if(!maze || !stoney) return null;
-    const cellSize = stoney.cellSize;
-    const ox = -maze.w*cellSize/2;
-    const oz = -maze.h*cellSize/2;
-    const cx = Math.floor((wx - ox) / cellSize);
-    const cy = Math.floor((wz - oz) / cellSize);
-    if(cx<0||cy<0||cx>=maze.w||cy>=maze.h) return null;
-    return {cx,cy};
+  // ---------- Setup / Init ----------
+  async function ensureInit(){
+    if(!gameId){
+      statusLine.textContent = "Missing gameId";
+      throw new Error("Missing gameId. Use ?gameId=YOURLOBBYID&username=NAME");
+    }
+
+    lobbyRef = doc(db, "lobbies", gameId);
+    playersCol = collection(db, "lobbies", gameId, "players");
+    trapsCol = collection(db, "lobbies", gameId, "traps");
+
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(lobbyRef);
+      const now = Date.now();
+
+      const seedDefault = Math.floor(Math.random()*2_000_000_000);
+      const w=21, h=21, cellSize=4;
+
+      if(!snap.exists()){
+        tx.set(lobbyRef, {
+          createdAt: now,
+          gameType: "stoney",
+          dm: username,
+          stoney: {
+            seed: seedDefault,
+            w, h, cellSize,
+            phase: "setup",
+            setupDeadline: now + 30_000,
+            crown: null,
+            carrierId: null,
+            carrierName: null,
+            dmEnergyBase: 0,
+            dmEnergyStamp: now,
+            startAt: null,
+            endAt: null,
+            winner: null,
+            winnerName: null,
+            lastEvent: "Dungeon Master is preparing the dungeon…",
+            lastEventAt: now
+          }
+        }, { merge: true });
+        return;
+      }
+
+      const d = snap.data() || {};
+      const patch = {};
+
+      // claim DM if empty
+      if(!d.dm) patch["dm"] = username;
+
+      if(!d.stoney){
+        patch["stoney"] = {
+          seed: seedDefault,
+          w, h, cellSize,
+          phase: "setup",
+          setupDeadline: now + 30_000,
+          crown: null,
+          carrierId: null,
+          carrierName: null,
+          dmEnergyBase: 0,
+          dmEnergyStamp: now,
+          startAt: null,
+          endAt: null,
+          winner: null,
+          winnerName: null,
+          lastEvent: "Dungeon Master is preparing the dungeon…",
+          lastEventAt: now
+        };
+      } else {
+        const s = d.stoney;
+        if(typeof s.seed!=="number") patch["stoney.seed"]=seedDefault;
+        if(typeof s.w!=="number") patch["stoney.w"]=w;
+        if(typeof s.h!=="number") patch["stoney.h"]=h;
+        if(typeof s.cellSize!=="number") patch["stoney.cellSize"]=cellSize;
+        if(typeof s.phase!=="string") patch["stoney.phase"]="setup";
+        if(typeof s.setupDeadline!=="number") patch["stoney.setupDeadline"]=now+30_000;
+        if(typeof s.dmEnergyBase!=="number") patch["stoney.dmEnergyBase"]=0;
+        if(typeof s.dmEnergyStamp!=="number") patch["stoney.dmEnergyStamp"]=now;
+        if(s.carrierId === undefined) patch["stoney.carrierId"]=null;
+        if(s.carrierName === undefined) patch["stoney.carrierName"]=null;
+      }
+
+      if(Object.keys(patch).length) tx.set(lobbyRef, patch, { merge: true });
+    });
   }
 
-  // --- Placement handler ---
+  async function forceReady(){
+    if(!amDM){ warnLine.textContent = "❌ Only the DM can start the dungeon."; return; }
+
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(lobbyRef);
+      if(!snap.exists()) return;
+      const d = snap.data() || {};
+      const s = d.stoney;
+      if(!s) return;
+      if(s.phase !== "setup") return;
+
+      const m = makeMaze(s.w, s.h, s.seed);
+      let crown = s.crown;
+
+      if(!crown){
+        const center = { x: Math.floor(s.w/2), y: Math.floor(s.h/2) };
+        const centerWorld = cellCenterWorld(m, s.cellSize, center.x, center.y);
+        crown = { x: centerWorld.x, z: centerWorld.z };
+      }
+
+      const startAt = Date.now();
+      const endAt = startAt + 5*60*1000;
+
+      tx.update(lobbyRef, {
+        "stoney.phase": "play",
+        "stoney.crown": crown,
+        "stoney.carrierId": null,
+        "stoney.carrierName": null,
+        "stoney.startAt": startAt,
+        "stoney.endAt": endAt,
+        "stoney.lastEvent": "The dungeon doors open… Find the crown!",
+        "stoney.lastEventAt": startAt
+      });
+    });
+  }
+
+  // ---------- Placement ----------
   async function placeAtCell(cx,cy){
+    if(!amDM){ warnLine.textContent = "❌ Only the DM can place items."; return; }
     if(!stoney || !maze) return;
+
     if(stoney.phase !== "setup" && stoney.phase !== "play"){
       warnLine.textContent = "Game is not active.";
       return;
@@ -573,154 +720,74 @@
     }
 
     if(mode==="crown"){
-      await updateDoc(lobbyRef, {
-        "stoney.crown": { x, z },
-        "stoney.carrier": null,
-        "stoney.lastEvent": `${username} placed the crown.`,
-        "stoney.lastEventAt": Date.now()
-      });
+      await setDoc(lobbyRef, {
+        stoney: {
+          crown: { x, z },
+          carrierId: null,
+          carrierName: null,
+          lastEvent: `${username} placed the crown.`,
+          lastEventAt: Date.now()
+        }
+      }, { merge:true });
       warnLine.textContent = "";
       return;
     }
 
-    // energy + cost
-    const curE = energyNow(stoney);
+    // energy spend (transaction)
     const need = COST[mode] || 0;
-    if(curE < need){
-      warnLine.textContent = `❌ Not enough energy (${Math.floor(curE)}/${need}).`;
-      return;
-    }
+    await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(lobbyRef);
+      if(!snap.exists()) throw new Error("Lobby missing");
+      const d = snap.data() || {};
+      const s = d.stoney || {};
+      const curE = energyNow(s);
+      if(curE < need) throw new Error(`Not enough energy (${Math.floor(curE)}/${need}).`);
 
-    // spend energy (store only on spend)
-    const remain = curE - need;
-    await updateDoc(lobbyRef, {
-      "stoney.dmEnergyBase": remain,
-      "stoney.dmEnergyStamp": Date.now()
+      const remain = curE - need;
+      tx.update(lobbyRef, {
+        "stoney.dmEnergyBase": remain,
+        "stoney.dmEnergyStamp": Date.now()
+      });
+    }).catch((e)=>{
+      warnLine.textContent = "❌ " + (e?.message || "Energy spend failed");
+      throw e;
     });
 
     // place trap doc
     const placedAt = Date.now();
-    const expiresAt = placedAt + (DUR[mode] || 15000);
+    const ttlMs = TTL[mode] || 15000;
+
     await addDoc(trapsCol, {
       type: mode,
       x, z,
       placedBy: username,
       placedAt,
-      expiresAt,
-      // gameplay tuning
-      radius: (mode==="fog" ? 6.5 : mode==="fire" ? 3.0 : 1.2)
+      ttlMs
     });
 
     warnLine.textContent = "";
   }
 
-  // --- Setup + Ready ---
-  async function ensureInit(){
-    if(!gameId || !username){
-      statusLine.textContent = "Missing gameId/username.";
-      throw new Error("missing params");
-    }
-    lobbyRef = doc(db, "lobbies", gameId);
-    playersCol = collection(db, "lobbies", gameId, "players");
-    trapsCol = collection(db, "lobbies", gameId, "traps");
-
-    await runTransaction(db, async (tx)=>{
-      const snap = await tx.get(lobbyRef);
-      if(!snap.exists()) throw new Error("Lobby not found.");
-      const d = snap.data();
-
-      // Must be the chosen DM
-      const dmName = d.dm;
-      if(dmName && dmName !== username){
-        // Not DM → allow viewing but block writing by UI
-      }
-
-      const now = Date.now();
-      const seed = Math.floor(Math.random()*2_000_000_000);
-      const w=21, h=21, cellSize=4;
-
-      if(!d.stoney){
-        tx.update(lobbyRef, {
-          "stoney": {
-            seed,
-            w, h,
-            cellSize,
-            phase: "setup",
-            setupDeadline: now + 30_000,
-            crown: null,
-            carrier: null,
-            dmEnergyBase: 0,
-            dmEnergyStamp: now,
-            startAt: null,
-            endAt: null,
-            winner: null,
-            winnerName: null,
-            lastEvent: "Dungeon Master is preparing the dungeon…",
-            lastEventAt: now
-          }
-        });
-      } else {
-        // if missing some fields, patch softly
-        const s = d.stoney;
-        const patch = {};
-        if(typeof s.seed!=="number") patch["stoney.seed"]=seed;
-        if(typeof s.w!=="number") patch["stoney.w"]=w;
-        if(typeof s.h!=="number") patch["stoney.h"]=h;
-        if(typeof s.cellSize!=="number") patch["stoney.cellSize"]=cellSize;
-        if(typeof s.phase!=="string") patch["stoney.phase"]="setup";
-        if(typeof s.setupDeadline!=="number") patch["stoney.setupDeadline"]=now+30_000;
-        if(Object.keys(patch).length) tx.update(lobbyRef, patch);
-      }
-    });
-  }
-
-  async function forceReady(){
-    if(!lobbyRef) return;
-    const snap = await getDoc(lobbyRef);
-    if(!snap.exists()) return;
-    const d = snap.data();
-    const s = d.stoney;
-    if(!s) return;
-    if(s.phase !== "setup") return;
-
-    // ensure crown exists
-    let crown = s.crown;
-    const m = makeMaze(s.w, s.h, s.seed);
-    const center = { x: Math.floor(s.w/2), y: Math.floor(s.h/2) };
-    const centerWorld = cellCenterWorld(m, s.cellSize, center.x, center.y);
-    if(!crown) crown = { x: centerWorld.x, z: centerWorld.z };
-
-    const startAt = Date.now();
-    const endAt = startAt + 5*60*1000;
-
-    await updateDoc(lobbyRef, {
-      "stoney.phase": "play",
-      "stoney.crown": crown,
-      "stoney.carrier": null,
-      "stoney.startAt": startAt,
-      "stoney.endAt": endAt,
-      "stoney.lastEvent": "The dungeon doors open… Find the crown!",
-      "stoney.lastEventAt": startAt
-    });
-  }
-
+  // ---------- HUD + purge ----------
   function tickHUD(){
     if(!stoney){
       setupT.textContent="—";
       energyT.textContent="—";
       energyBar.style.width="0%";
+      phaseTag.textContent="Phase: —";
       return;
     }
+
     phaseTag.textContent = "Phase: " + stoney.phase;
+
     const e = energyNow(stoney);
     energyT.textContent = Math.floor(e) + "/" + ENERGY_MAX;
     energyBar.style.width = Math.round((e/ENERGY_MAX)*100) + "%";
 
     if(stoney.phase==="setup"){
       const t = Math.max(0, (stoney.setupDeadline||0) - Date.now());
-      setupT.textContent = (t/1000).toFixed(0) + "s";
-      if(t<=0 && !readyArmed){
-        readyArmed=true;
+      setupT.textContent = t>0 ? (t/1000).toFixed(0) + "s" : "0s";
+      if(t<=0 && amDM){
         forceReady().catch(()=>{});
       }
     } else if(stoney.phase==="play"){
@@ -730,67 +797,89 @@
     } else {
       setupT.textContent="—";
     }
+
+    // purge expired traps periodically (DM only)
+    const now = Date.now();
+    if(amDM && now > purgeAt){
+      purgeAt = now + 12_000;
+      purgeExpiredTraps().catch(()=>{});
+    }
   }
 
-  // --- Live listeners ---
+  async function purgeExpiredTraps(){
+    if(!stoney) return;
+    const now = Date.now();
+    const kill = [];
+
+    for(const t of traps){
+      const {expiresAt} = computeTrapWindow(t);
+      if(expiresAt < now - 1500) kill.push(t.id);
+      if(kill.length >= 24) break;
+    }
+
+    await Promise.all(kill.map((id)=> deleteDoc(doc(db,"lobbies",gameId,"traps",id)).catch(()=>{})));
+  }
+
+  // ---------- Live listeners ----------
   function listen(){
-    // lobby
     onSnapshot(lobbyRef, (snap)=>{
       if(!snap.exists()) return;
-      lobbyData = snap.data();
-      stoney = lobbyData.stoney;
-      if(stoney && !maze){
+      lobbyData = snap.data() || {};
+      stoney = lobbyData.stoney || null;
+
+      if(stoney && !maze && typeof stoney.seed === "number"){
         maze = makeMaze(stoney.w, stoney.h, stoney.seed);
       }
+
       const dmName = lobbyData.dm;
-      const amDM = !dmName || dmName === username;
-      statusLine.textContent = amDM ? `DM: ${username}` : `Viewer (DM is ${dmName || "?"})`;
-      $("readyBtn").disabled = !amDM;
+      amDM = !dmName || dmName === username;
+      statusLine.textContent = amDM ? `Online • DM: ${username}` : `Viewer • DM is ${dmName || "?"}`;
+      readyBtn.disabled = !amDM;
 
       tickHUD();
       drawMap();
-    }, (err)=>handleSnapshotError("lobby", err));
+    }, (err)=>snapshotError("lobby", err));
 
-    // players
     onSnapshot(playersCol, (snap)=>{
       players.clear();
       snap.forEach(d=>{
-        const v = d.data();
+        const v = d.data() || {};
         players.set(d.id, {
+          name: String(v.name || "Player").slice(0,22),
           x: Number(v.x||0),
           z: Number(v.z||0),
           alive: v.alive !== false,
-          deadUntil: Number(v.deadUntil||0)
+          deadUntil: Number(v.deadUntil||0),
+          updatedAt: Number(v.updatedAt||0),
         });
       });
       drawMap();
-    }, (err)=>handleSnapshotError("players", err));
+    }, (err)=>snapshotError("players", err));
 
-    // traps
     onSnapshot(trapsCol, (snap)=>{
       traps = [];
       snap.forEach(d=>{
-        const v = d.data();
+        const v = d.data() || {};
         traps.push({
           id:d.id,
           type:v.type,
           x:Number(v.x||0),
           z:Number(v.z||0),
           placedAt:Number(v.placedAt||0),
-          expiresAt:Number(v.expiresAt||0)
+          ttlMs:Number(v.ttlMs||TTL[v.type]||15000),
         });
       });
       drawMap();
-    }, (err)=>handleSnapshotError("traps", err));
+    }, (err)=>snapshotError("traps", err));
   }
 
-  // --- UI wiring ---
+  // ---------- UI wiring ----------
   for(const btn of modeButtons){
     btn.addEventListener("click", ()=> setMode(btn.dataset.setMode));
   }
   setMode("crown");
 
-  $("readyBtn").onclick=()=>forceReady().catch(e=> warnLine.textContent = "❌ " + (e?.message||"Ready failed"));
+  readyBtn.onclick=()=>forceReady().catch(e=> warnLine.textContent = "❌ " + (e?.message||"Ready failed"));
 
   function getCanvasCell(clientX, clientY){
     if(!maze || !stoney) return null;
@@ -816,7 +905,7 @@
     try{
       await placeAtCell(cell.cx, cell.cy);
     }catch(e){
-      warnLine.textContent = "❌ " + (e?.message||"Placement failed");
+      // warnLine already set
     }
   }
 
@@ -828,12 +917,13 @@
     }
   }, { passive:false });
 
-  // --- Auth + boot ---
+  // ---------- Boot ----------
   ensureAuthed()
     .then(async ()=>{
+      statusLine.textContent = "Signing in…";
       await ensureInit();
-      listen();
       statusLine.textContent = "Online";
+      listen();
       setInterval(()=>{ tickHUD(); drawMap(); }, 160);
     })
     .catch((e)=>{
@@ -843,3 +933,4 @@
 </script>
 </body>
 </html>
+
