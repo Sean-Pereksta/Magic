@@ -522,7 +522,7 @@ const MAX_PLAYERS=8;
 const MAX_LAPS=3;
 const READY_START_DELAY_MS=1300;
 const DEADLINE_MS=30000;
-const SELECT_MS=15000;
+const SELECT_MS=10000;
 
 const OBSTACLES={
   meteorites:{
@@ -1774,6 +1774,7 @@ let isRacing=false;
 let lapStart=0;
 let raceGoAtMs=0;
 let currentLapLocal=1;
+let lastSubmittedLap=0;
 
 let stunUntil=0;
 let boostReadyAt=0;
@@ -1795,6 +1796,7 @@ function armLocalLap(goAtMs, lapNumber){
   raceGoAtMs = goAtMs || now();
   lapStart   = raceGoAtMs;
   currentLapLocal = lapNumber || 1;
+  lastSubmittedLap = 0;
 
   stunUntil=0;
   bumpSlowUntil=0;
@@ -1878,7 +1880,9 @@ function updateCar(dt){
   if(prog > Math.PI) halfWay=true;
 
   if(halfWay && lastProgress > 6.0 && prog < 0.25){
+    if(lastSubmittedLap===currentLapLocal) return;
     const lapSec = (t - lapStart)/1000;
+    lastSubmittedLap=currentLapLocal;
     isRacing=false;
     submitLap(lapSec);
   }
@@ -1951,7 +1955,14 @@ function renderHUD(){
   else if(phase==="finished") status="Finished";
   el("statusText").textContent=status;
 
-  const lapText = d ? `${d.lap||1} / ${d.maxLaps||MAX_LAPS}` : "—";
+  let lapText = "—";
+  if(d){
+    const lap=d.lap||1;
+    const maxLaps=d.maxLaps||MAX_LAPS;
+    if(d.phase==="obstacle_select") lapText = `Lap ${lap} complete • Picking threat for lap ${Math.min(maxLaps, lap+1)}`;
+    else if(d.phase==="finished") lapText = `Complete (${maxLaps}/${maxLaps})`;
+    else lapText = `Lap ${lap} / ${maxLaps}`;
+  }
   el("lapText").textContent = lapText;
 
   const act = d ? (()=>{ try{ return activeParticipants(structuredClone(d)); }catch{ return (d.participants||[]); } })() : [];
@@ -2163,7 +2174,7 @@ function loop(ts){
   updateRoadRocks(dt);
 
   const phase=raceState?.phase;
-  if(phase==="countdown" || phase==="racing" || phase==="lap_wait"){
+  if(phase==="countdown" || phase==="racing"){
     const go=raceState?.startAtMs || now();
     const lap=raceState?.lap || 1;
     if(!isRacing || armedStartAt!==go || armedLap!==lap){
@@ -2171,7 +2182,7 @@ function loop(ts){
       armedLap=lap;
       armLocalLap(go, lap);
     }
-    if(phase==="racing" || phase==="lap_wait"){
+    if(phase==="racing"){
       updateCar(dt);
     }
   }else{
@@ -2337,4 +2348,3 @@ function tickStateMachine(){
 </script>
 </body>
 </html>
-
