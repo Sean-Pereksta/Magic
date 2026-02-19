@@ -420,8 +420,11 @@ const username=(params.get("username")||localStorage.getItem(LS_USER)||"Racer").
 if(gameId) localStorage.setItem(LS_LOBBY, gameId);
 if(username) localStorage.setItem(LS_USER, username);
 
-const LOBBY_REF = gameId ? doc(db,"lobbies",gameId) : null;
-const RACE_REF  = gameId ? doc(db,"lobbies",gameId,"crowncouncil","stockkingsRace") : null;
+const LOBBY_REF = gameId ? doc(db, "lobbies", gameId) : null;
+
+// Put StockKings state under its own subcollection
+const RACE_REF  = gameId ? doc(db, "lobbies", gameId, "stockkings", "race") : null;
+;
 
 /* ============================================================
    GAME CONFIG
@@ -1769,7 +1772,7 @@ function attachLobbyListeners(){
             (err)=>{
               showOverlay("racePerm","Race permission error",
                 `<b>${String(err?.code||"error")}</b><br/>${String(err?.message||err)}<br/><br/>
-                 Make sure your rules allow <b>/lobbies/${gameId}/crowncouncil/stockkingsRace</b> read/write and that Anonymous Auth is enabled.`,
+                 Make sure your rules allow <b>/lobbies/${gameId}/stockkings/race</b> read/write and that Anonymous Auth is enabled.`,
                 [{label:"Back to Lobby", className:"warn", onClick:()=>location.href="/lobby/lobby.html"}]
               );
             }
