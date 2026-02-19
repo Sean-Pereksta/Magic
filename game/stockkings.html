@@ -521,31 +521,22 @@ async function ensureAuthed(){
 const MAX_PLAYERS=8;
 const MAX_LAPS=3;
 const READY_START_DELAY_MS=1300;
-const DEADLINE_MS=30000;
+
+// ✅ Bigger track means longer lap → longer deadline
+const DEADLINE_MS=45000;
+
 const SELECT_MS=10000;
 
 const OBSTACLES={
-  meteorites:{
-    name:"Meteorite Strikes",
-    desc:"Telegraphed impacts. Big blast + knockback + stun.",
-  },
-  monsters:{
-    name:"Track Monsters",
-    desc:"They roam the road. Hit = bounce back.",
-  },
-  rhinos:{
-    name:"Rhino Stampede",
-    desc:"Run opposite direction. Hit = stun 3s + shove.",
-  },
-  towers:{
-    name:"Lightning Towers",
-    desc:"Every 5s they zap inside their circle. Stun 1s.",
-  }
+  meteorites:{ name:"Meteorite Strikes", desc:"Telegraphed impacts. Big blast + knockback + stun." },
+  monsters:{   name:"Track Monsters",   desc:"They roam the road. Hit = bounce back." },
+  rhinos:{     name:"Rhino Stampede",   desc:"Run opposite direction. Hit = stun 3s + shove." },
+  towers:{     name:"Lightning Towers", desc:"Every 5s they zap inside their circle. Stun 1s." }
 };
 const obstacleOrder=["meteorites","monsters","rhinos","towers"];
 
 /* ============================================================
-   READY-RACE STATE (3 laps, slowest picks next threat)
+   READY-RACE STATE
 ============================================================ */
 let raceState=null;
 let raceUnsub=null;
@@ -649,28 +640,46 @@ async function txn(mutator){
   }
 }
 
+/* ✅ Create OR migrate existing docs so Lap 2 always pauses (maxLaps=3) */
 async function ensureRaceDoc(){
   await runTransaction(db, async (tx)=>{
     const snap=await tx.get(RACE_REF);
-    if(snap.exists()) return;
-    tx.set(RACE_REF, {
-      game:"stockkings-3lap-threatstack",
-      phase:"ready",            // ready | countdown | racing | lap_wait | obstacle_select | finished
-      participants:[],
-      players:{},
-      roundPlayers:[],
-      lap:1,
-      maxLaps:MAX_LAPS,
-      obstacles:[],             // stacked types
-      obstacleHistory:[],       // [{lap:2,type,chosenByUid}]
-      selectorUid:null,
-      selectEndsAt:null,
-      startAtMs:null,
-      deadlineAt:null,
-      winnerUid:null,
-      updatedAtMs: now(),
-      createdAtMs: now()
-    }, {merge:false});
+
+    if(!snap.exists()){
+      tx.set(RACE_REF, {
+        game:"stockkings-3lap-threatstack",
+        phase:"ready",            // ready | countdown | racing | obstacle_select | finished
+        participants:[],
+        players:{},
+        roundPlayers:[],
+        lap:1,
+        maxLaps:MAX_LAPS,
+        obstacles:[],
+        obstacleHistory:[],
+        selectorUid:null,
+        selectEndsAt:null,
+        startAtMs:null,
+        deadlineAt:null,
+        winnerUid:null,
+        updatedAtMs: now(),
+        createdAtMs: now()
+      }, {merge:false});
+      return;
+    }
+
+    const d=snap.data();
+    let changed=false;
+
+    if(d.game!=="stockkings-3lap-threatstack"){ d.game="stockkings-3lap-threatstack"; changed=true; }
+    if(d.maxLaps!==MAX_LAPS){ d.maxLaps=MAX_LAPS; changed=true; }
+
+    if(typeof d.lap!=="number" || d.lap<1){ d.lap=1; changed=true; }
+    if(d.lap>MAX_LAPS){ d.lap=MAX_LAPS; changed=true; }
+
+    if(changed){
+      d.updatedAtMs=now();
+      tx.set(RACE_REF, d, {merge:false});
+    }
   });
 }
 
@@ -715,7 +724,7 @@ async function setMyReady(ready){
     d.players[myUid].lastSeenMs = now();
     d.players[myUid].name = username;
 
-    // If someone unreadies during countdown, revert to ready
+    // If someone unreadies during countdown, revert to ready and reset run
     if(d.phase==="countdown"){
       d.phase="ready";
       d.startAtMs=null;
@@ -727,7 +736,6 @@ async function setMyReady(ready){
       d.obstacles=[];
       d.obstacleHistory=[];
       d.winnerUid=null;
-      // keep laps but they won't matter; we reset on start
     }
 
     d.updatedAtMs=now();
@@ -756,6 +764,7 @@ async function maybeStartIfAllReady(){
     });
 
     d.lap=1;
+    d.maxLaps=MAX_LAPS;
     d.obstacles=[];
     d.obstacleHistory=[];
     d.selectorUid=null;
@@ -792,9 +801,11 @@ async function ensureDeadlineIfNeeded(){
   });
 }
 
+/* ✅ Lap submit: freezes ONLY the finisher locally; race continues for others.
+   When everyone is done (or deadline finalizes), room pauses for threat pick (lap 1 & 2 only). */
 async function submitLap(timeSec){
   await txn((d)=>{
-    if(!(d.phase==="racing" || d.phase==="lap_wait")) return null;
+    if(d.phase!=="racing") return null;
 
     const lap = (d.lap||1);
     const lapIdx = lap-1;
@@ -810,21 +821,14 @@ async function submitLap(timeSec){
     me.laps = Array.isArray(me.laps) ? me.laps : [];
     if(typeof me.laps[lapIdx] === "number") return null;
 
-    const t = clamp(timeSec, 0.5, 30);
+    const t = clamp(timeSec, 0.5, 60);
     me.laps[lapIdx]=t;
     me.avg = avg(me.laps);
     me.lastSeenMs = now();
 
-    // if first finisher, go into lap_wait with hard deadline
-    const anyFinished = r.some(uid=>typeof d.players?.[uid]?.laps?.[lapIdx]==="number");
-    if(anyFinished && !d.deadlineAt){
-      d.phase="lap_wait";
-      d.deadlineAt = now() + DEADLINE_MS;
-    }
-
     const everyoneDone = r.every(uid=>typeof d.players?.[uid]?.laps?.[lapIdx]==="number");
     if(everyoneDone){
-      // move to obstacle select or finished
+      // Lap complete for all → pause and select threat (for lap 1 & 2), or finish after lap 3
       if(lap >= (d.maxLaps||MAX_LAPS)){
         d.phase="finished";
         d.winnerUid = computeWinnerUid(d);
@@ -835,7 +839,10 @@ async function submitLap(timeSec){
       d.phase="obstacle_select";
       d.selectorUid = computeSlowestUidForLap(d, lapIdx);
       d.selectEndsAt = now() + SELECT_MS;
+
+      // clear deadline so it doesn't keep expiring while selecting
       d.deadlineAt = null;
+
       d.updatedAtMs=now();
       return d;
     }
@@ -847,7 +854,7 @@ async function submitLap(timeSec){
 
 async function finalizeDeadlineIfNeeded(){
   await txn((d)=>{
-    if(!(d.phase==="lap_wait" || d.phase==="racing")) return null;
+    if(d.phase!=="racing") return null;
     if(!d.deadlineAt) return null;
     if(now() < d.deadlineAt) return null;
 
@@ -855,6 +862,8 @@ async function finalizeDeadlineIfNeeded(){
     const lapIdx = lap-1;
     const r = roster(d);
     d.players=d.players||{};
+
+    // finalize missing as 30
     r.forEach(uid=>{
       ensurePlayerObj(d, uid, d.players?.[uid]?.name||"Racer");
       const p=d.players[uid];
@@ -863,7 +872,6 @@ async function finalizeDeadlineIfNeeded(){
       p.avg = avg(p.laps);
     });
 
-    // advance
     if(lap >= (d.maxLaps||MAX_LAPS)){
       d.phase="finished";
       d.winnerUid = computeWinnerUid(d);
@@ -882,7 +890,6 @@ async function finalizeDeadlineIfNeeded(){
 
 function pickRandomObstacle(d){
   const all=obstacleOrder;
-  // prefer unused first, then anything (stack can repeat if you want)
   const used=Array.isArray(d.obstacles)?d.obstacles:[];
   const avail=all.filter(o=>!used.includes(o));
   const pool = avail.length ? avail : all;
@@ -892,6 +899,7 @@ function pickRandomObstacle(d){
 async function chooseObstacle(type=null, auto=false){
   await txn((d)=>{
     if(d.phase!=="obstacle_select") return null;
+
     const lap = (d.lap||1);
     const nextLap = lap+1;
 
@@ -972,10 +980,18 @@ function attachRaceListener(){
         const prevSig = JSON.stringify(raceState?.obstacles||[]);
         const prevLap = raceState?.lap||1;
         raceState=snap.data();
+
+        // Always keep maxLaps correct, even if someone loads an old room
+        if(raceState?.maxLaps !== MAX_LAPS){
+          // best-effort non-blocking migrate
+          txn(d=>{ d.maxLaps=MAX_LAPS; d.updatedAtMs=now(); return d; });
+        }
+
         const nextSig = JSON.stringify(raceState?.obstacles||[]);
         const nextLap = raceState?.lap||1;
+
         if(nextSig!==prevSig || nextLap!==prevLap){
-          spawnThreats(); // visuals update when stacking changes or lap changes
+          spawnThreats();
         }
       }catch(e){
         console.error("snapshot error:", e);
@@ -992,7 +1008,7 @@ function attachRaceListener(){
 }
 
 /* ============================================================
-   THREE WORLD (spectacular FX)
+   THREE WORLD
 ============================================================ */
 const renderer=new THREE.WebGLRenderer({canvas:el("scene"), antialias:true, alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -1001,7 +1017,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.10;
 
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(62,1,0.1,1400);
+const camera=new THREE.PerspectiveCamera(62,1,0.1,1600);
 
 function makeCanvasTexture(drawFn, w=512, h=512){
   const c=document.createElement("canvas");
@@ -1021,10 +1037,10 @@ const skyTex = makeCanvasTexture((g,w,h)=>{
   grd.addColorStop(.45, "#69b8ff");
   grd.addColorStop(1, "#2a5c9b");
   g.fillStyle=grd; g.fillRect(0,0,w,h);
-  for(let i=0;i<80;i++){
+  for(let i=0;i<90;i++){
     const x=Math.random()*w, y=Math.random()*h*0.55;
-    const r=30+Math.random()*110;
-    const a=.03+Math.random()*.07;
+    const r=30+Math.random()*120;
+    const a=.03+Math.random()*.08;
     const rg=g.createRadialGradient(x,y,0,x,y,r);
     rg.addColorStop(0, `rgba(255,255,255,${a})`);
     rg.addColorStop(1, "rgba(255,255,255,0)");
@@ -1034,20 +1050,21 @@ const skyTex = makeCanvasTexture((g,w,h)=>{
 }, 1024, 1024);
 scene.background = skyTex;
 
-scene.fog = new THREE.FogExp2(0x6aaef5, 0.009);
+// Slightly lighter fog for the bigger world
+scene.fog = new THREE.FogExp2(0x6aaef5, 0.0066);
 
 scene.add(new THREE.HemisphereLight(0xd8f1ff, 0x1e4a2b, 1.05));
 const sun=new THREE.DirectionalLight(0xffffff, 1.05);
 sun.position.set(30, 55, 25);
 scene.add(sun);
 
-const glowLight = new THREE.PointLight(0x6fd1ff, 0.45, 280, 2.0);
+const glowLight = new THREE.PointLight(0x6fd1ff, 0.45, 420, 2.0);
 glowLight.position.set(0, 28, 0);
 scene.add(glowLight);
 
 const grassTex = makeCanvasTexture((g,w,h)=>{
   g.fillStyle="#2f8d44"; g.fillRect(0,0,w,h);
-  for(let i=0;i<14000;i++){
+  for(let i=0;i<19000;i++){
     const x=(Math.random()*w)|0, y=(Math.random()*h)|0;
     const v=40+Math.random()*60;
     g.fillStyle=`rgba(${10+v/3|0},${110+v|0},${30+v/4|0},${.08+Math.random()*.14})`;
@@ -1060,10 +1077,10 @@ const grassTex = makeCanvasTexture((g,w,h)=>{
   }
   g.globalAlpha=1;
 }, 768, 768);
-grassTex.repeat.set(4,4);
+grassTex.repeat.set(7,7);
 
 const ground=new THREE.Mesh(
-  new THREE.PlaneGeometry(420,420),
+  new THREE.PlaneGeometry(820,820),
   new THREE.MeshStandardMaterial({map:grassTex, roughness:.98, metalness:0})
 );
 ground.rotation.x=-Math.PI/2;
@@ -1071,35 +1088,34 @@ scene.add(ground);
 
 const roadTex = makeCanvasTexture((g,w,h)=>{
   g.fillStyle="#8a5d30"; g.fillRect(0,0,w,h);
-  for(let i=0;i<16000;i++){
+  for(let i=0;i<17000;i++){
     const x=(Math.random()*w)|0, y=(Math.random()*h)|0;
     const v=120+Math.random()*90;
     g.fillStyle=`rgba(${v|0},${(v*0.72)|0},${(v*0.40)|0},${.08+Math.random()*.14})`;
     g.fillRect(x,y,1,1);
   }
-  // subtle stripe
   g.globalAlpha=.10;
   g.fillStyle="#ffffff";
   g.fillRect(0, h*0.49, w, h*0.02);
   g.globalAlpha=1;
 
-  // sparkly flecks
-  for(let i=0;i<350;i++){
+  for(let i=0;i<420;i++){
     const x=Math.random()*w, y=Math.random()*h;
     const a=.06+Math.random()*.10;
     g.fillStyle=`rgba(255,255,255,${a})`;
     g.fillRect(x,y,1,1);
   }
 }, 768, 768);
-roadTex.repeat.set(2, 2);
+roadTex.repeat.set(3, 3);
 
-const ROAD_R = 52;
-const ROAD_W = 34;
+// ✅ SIGNIFICANTLY BIGGER DONUT
+const ROAD_R = 86;
+const ROAD_W = 46;
 const INNER_R = ROAD_R - ROAD_W/2;
 const OUTER_R = ROAD_R + ROAD_W/2;
 
 const road = new THREE.Mesh(
-  new THREE.RingGeometry(INNER_R, OUTER_R, 220, 1),
+  new THREE.RingGeometry(INNER_R, OUTER_R, 260, 1),
   new THREE.MeshStandardMaterial({map:roadTex, roughness:.86, metalness:.05})
 );
 road.rotation.x=-Math.PI/2;
@@ -1108,15 +1124,15 @@ scene.add(road);
 
 // luminous edge rings
 const edgeMat = new THREE.MeshBasicMaterial({color:0x7bd7ff, transparent:true, opacity:0.14, side:THREE.DoubleSide});
-const innerEdge = new THREE.Mesh(new THREE.RingGeometry(INNER_R-0.20, INNER_R+0.15, 240, 1), edgeMat);
-const outerEdge = new THREE.Mesh(new THREE.RingGeometry(OUTER_R-0.15, OUTER_R+0.20, 240, 1), edgeMat);
+const innerEdge = new THREE.Mesh(new THREE.RingGeometry(INNER_R-0.22, INNER_R+0.18, 280, 1), edgeMat);
+const outerEdge = new THREE.Mesh(new THREE.RingGeometry(OUTER_R-0.18, OUTER_R+0.22, 280, 1), edgeMat);
 innerEdge.rotation.x=-Math.PI/2; outerEdge.rotation.x=-Math.PI/2;
 innerEdge.position.y=0.028; outerEdge.position.y=0.028;
 scene.add(innerEdge, outerEdge);
 
 // center stripe
 const stripe = new THREE.Mesh(
-  new THREE.RingGeometry(ROAD_R-0.45, ROAD_R+0.45, 240, 1),
+  new THREE.RingGeometry(ROAD_R-0.55, ROAD_R+0.55, 280, 1),
   new THREE.MeshBasicMaterial({color:0xe9f2ff, transparent:true, opacity:0.46})
 );
 stripe.rotation.x=-Math.PI/2;
@@ -1126,23 +1142,194 @@ scene.add(stripe);
 // walls
 function wallCylinder(radius, color){
   const m=new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, 2.1, 220, 1, true),
-    new THREE.MeshStandardMaterial({color, roughness:.74, metalness:.10, side:THREE.DoubleSide, emissive:0x071524, emissiveIntensity:0.25})
+    new THREE.CylinderGeometry(radius, radius, 2.2, 260, 1, true),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness:.74,
+      metalness:.10,
+      side:THREE.DoubleSide,
+      emissive:0x071524,
+      emissiveIntensity:0.25
+    })
   );
-  m.position.y=1.05;
+  m.position.y=1.1;
   return m;
 }
 scene.add(wallCylinder(INNER_R, 0x2e3a4d), wallCylinder(OUTER_R, 0x2e3a4d));
 
 // start line
 const startLine = new THREE.Mesh(
-  new THREE.PlaneGeometry(ROAD_W, 3.0),
+  new THREE.PlaneGeometry(ROAD_W, 3.2),
   new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.62, side:THREE.DoubleSide})
 );
 startLine.rotation.x=-Math.PI/2;
 startLine.position.set(ROAD_R, 0.031, 0);
 startLine.rotation.z=Math.PI/2;
 scene.add(startLine);
+
+/* ============================================================
+   EXTRA TERRAIN (lake + trees + hills + boulders)
+============================================================ */
+const terrainGroup = new THREE.Group();
+scene.add(terrainGroup);
+
+function seededRng(seedStr){
+  let seed=2166136261>>>0;
+  for(let i=0;i<seedStr.length;i++){ seed ^= seedStr.charCodeAt(i); seed = Math.imul(seed,16777619); }
+  return function(){
+    seed = (seed + 0x6D2B79F5)|0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function clearGroup(g){
+  while(g.children.length){
+    const c=g.children.pop();
+    g.remove(c);
+    if(c.geometry) c.geometry.dispose?.();
+    if(c.material){
+      if(Array.isArray(c.material)) c.material.forEach(m=>m.dispose?.());
+      else c.material.dispose?.();
+    }
+  }
+}
+function spawnTerrain(){
+  clearGroup(terrainGroup);
+  const rnd = seededRng(gameId + "|terrain|v3|" + ROAD_R + "|" + ROAD_W);
+
+  // center lake
+  const waterTex = makeCanvasTexture((g,w,h)=>{
+    const grd=g.createLinearGradient(0,0,0,h);
+    grd.addColorStop(0,"#2aa8ff");
+    grd.addColorStop(1,"#1f66c9");
+    g.fillStyle=grd; g.fillRect(0,0,w,h);
+
+    for(let i=0;i<2400;i++){
+      const x=Math.random()*w, y=Math.random()*h;
+      const a=0.03+Math.random()*0.14;
+      g.fillStyle=`rgba(255,255,255,${a})`;
+      g.fillRect(x,y,1,1);
+    }
+
+    g.globalAlpha=0.22;
+    for(let i=0;i<26;i++){
+      const x=Math.random()*w, y=Math.random()*h;
+      const r=30+Math.random()*140;
+      const rg=g.createRadialGradient(x,y,0,x,y,r);
+      rg.addColorStop(0,"rgba(255,255,255,.55)");
+      rg.addColorStop(1,"rgba(255,255,255,0)");
+      g.fillStyle=rg; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill();
+    }
+    g.globalAlpha=1;
+  }, 768, 768);
+  waterTex.repeat.set(1.6,1.6);
+
+  const lakeR = Math.max(22, INNER_R - 22);
+  const lake = new THREE.Mesh(
+    new THREE.CircleGeometry(lakeR, 108),
+    new THREE.MeshStandardMaterial({
+      map: waterTex,
+      color: 0x3aa0ff,
+      roughness: 0.22,
+      metalness: 0.10,
+      transparent:true,
+      opacity:0.92
+    })
+  );
+  lake.rotation.x=-Math.PI/2;
+  lake.position.y=0.012;
+  terrainGroup.add(lake);
+
+  const shore = new THREE.Mesh(
+    new THREE.RingGeometry(lakeR, lakeR+3.2, 108),
+    new THREE.MeshStandardMaterial({color:0x2b6b3c, roughness:0.98, metalness:0})
+  );
+  shore.rotation.x=-Math.PI/2;
+  shore.position.y=0.013;
+  terrainGroup.add(shore);
+
+  // trees (instanced)
+  const TREE_N = 560;
+  const trunkGeom = new THREE.CylinderGeometry(0.16, 0.28, 2.3, 6);
+  const leafGeom  = new THREE.ConeGeometry(1.15, 3.4, 7);
+  const trunkMat  = new THREE.MeshStandardMaterial({color:0x4a3323, roughness:0.95});
+  const leafMat   = new THREE.MeshStandardMaterial({color:0x2f8d44, roughness:0.92, emissive:0x061a0e, emissiveIntensity:0.08});
+
+  const trunks = new THREE.InstancedMesh(trunkGeom, trunkMat, TREE_N);
+  const leaves = new THREE.InstancedMesh(leafGeom,  leafMat,  TREE_N);
+
+  const m = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
+
+  for(let i=0;i<TREE_N;i++){
+    const outside = rnd() < 0.68;
+    const a = rnd()*Math.PI*2;
+
+    let r;
+    if(outside) r = (OUTER_R + 16) + rnd()*220;
+    else        r = 10 + rnd()*(Math.max(12, INNER_R - 22));
+
+    pos.set(Math.cos(a)*r, 0, Math.sin(a)*r);
+
+    // keep trees away from road edges
+    const rr = Math.hypot(pos.x,pos.z);
+    if(rr > INNER_R-8 && rr < OUTER_R+8){
+      const push = rr < ROAD_R ? (INNER_R-14) : (OUTER_R+22);
+      pos.set(pos.x/rr*push, 0, pos.z/rr*push);
+    }
+
+    const s = 0.75 + rnd()*1.55;
+    scl.set(s, s, s);
+
+    quat.setFromAxisAngle(new THREE.Vector3(0,1,0), rnd()*Math.PI*2);
+
+    // trunk
+    m.compose(new THREE.Vector3(pos.x, 1.15*s, pos.z), quat, scl);
+    trunks.setMatrixAt(i, m);
+
+    // leaves
+    m.compose(new THREE.Vector3(pos.x, (1.15*s) + 2.35*s, pos.z), quat, new THREE.Vector3(s, s, s));
+    leaves.setMatrixAt(i, m);
+  }
+
+  trunks.instanceMatrix.needsUpdate = true;
+  leaves.instanceMatrix.needsUpdate = true;
+  terrainGroup.add(trunks, leaves);
+
+  // hills / boulders
+  const hillMat = new THREE.MeshStandardMaterial({color:0x2a6f38, roughness:0.98, emissive:0x06110b, emissiveIntensity:0.06});
+  const rockMat = new THREE.MeshStandardMaterial({color:0x4f545b, roughness:0.97, emissive:0x0a0c10, emissiveIntensity:0.10});
+
+  for(let i=0;i<44;i++){
+    const a=rnd()*Math.PI*2;
+    const r=(OUTER_R+28) + rnd()*240;
+    const x=Math.cos(a)*r, z=Math.sin(a)*r;
+    const s=6 + rnd()*22;
+
+    const hill=new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), hillMat);
+    hill.scale.set(s, 0.42*s, s);
+    hill.position.set(x, 0.2*s*0.42, z);
+    hill.rotation.set(rnd()*3, rnd()*3, rnd()*3);
+    terrainGroup.add(hill);
+  }
+
+  for(let i=0;i<110;i++){
+    const a=rnd()*Math.PI*2;
+    const r=(OUTER_R+12) + rnd()*140;
+    const x=Math.cos(a)*r, z=Math.sin(a)*r;
+    const s=1.0 + rnd()*2.8;
+
+    const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
+    rock.position.set(x, 0.15, z);
+    rock.rotation.set(rnd()*3, rnd()*3, rnd()*3);
+    terrainGroup.add(rock);
+  }
+}
+spawnTerrain();
 
 /* ============================================================
    CAR
@@ -1243,7 +1430,7 @@ function enforceWalls(){
 }
 
 /* ============================================================
-   SPECTACULAR FX (shockwaves, sparks, lightning)
+   FX
 ============================================================ */
 const shockwaves=[];
 const sparks=[];
@@ -1333,7 +1520,7 @@ function updateFX(dt){
     const b=boltFX[i];
     b.t += dt;
     b.line.material.opacity = Math.max(0, 1 - (b.t/b.life));
-    if(b.t>=b.life){
+    if(b.t>=1){
       scene.remove(b.line);
       boltFX.splice(i,1);
     }
@@ -1367,7 +1554,6 @@ function spawnThreats(){
   const active = (raceState?.obstacles||[]).slice();
   if(!active.length) return;
 
-  // deterministic-ish seeding based on room + lap + active signature
   const seedStr = gameId + "|" + (raceState?.lap||1) + "|" + JSON.stringify(active);
   let seed=2166136261>>>0;
   for(let i=0;i<seedStr.length;i++){ seed ^= seedStr.charCodeAt(i); seed = Math.imul(seed,16777619); }
@@ -1379,13 +1565,12 @@ function spawnThreats(){
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
-  const pickR = ()=> (INNER_R+4) + rnd()*(ROAD_W-8);
+  const pickR = ()=> (INNER_R+6) + rnd()*(ROAD_W-12);
   const pickA = ()=> rnd()*Math.PI*2;
 
-  // Each stacked obstacle adds more instances
   active.forEach((type, stackIdx)=>{
     if(type==="meteorites"){
-      const count = 2 + stackIdx; // grows with stack
+      const count = 2 + stackIdx;
       for(let i=0;i<count;i++){
         const a=pickA();
         const r=pickR();
@@ -1417,10 +1602,10 @@ function spawnThreats(){
           warnRing, pillar,
           state:"idle",
           t: 0,
-          next: 2.0 + rnd()*2.2,     // time to telegraph
-          tele: 2.2 + rnd()*1.0,     // telegraph duration
-          hot: 0,                    // explosion hot window
-          blastR: 6.5 + stackIdx*0.6,
+          next: 2.0 + rnd()*2.2,
+          tele: 2.2 + rnd()*1.0,
+          hot: 0,
+          blastR: 7.4 + stackIdx*0.75,
           hitCd: 0
         });
       }
@@ -1449,7 +1634,7 @@ function spawnThreats(){
         core.position.y=4.85;
 
         const ring=new THREE.Mesh(
-          new THREE.RingGeometry(6.0, 6.45, 72),
+          new THREE.RingGeometry(6.7, 7.15, 72),
           new THREE.MeshBasicMaterial({color:0x9ec9ff, transparent:true, opacity:0.26, side:THREE.DoubleSide, depthWrite:false})
         );
         ring.rotation.x=-Math.PI/2;
@@ -1470,7 +1655,7 @@ function spawnThreats(){
           type, root,
           ring, core, halo,
           pos:new THREE.Vector3(x,0,z),
-          rad: 6.2,
+          rad: 6.9,
           cd: 2.0 + rnd()*2.2,
           fireEvery: 5.0,
           flash: 0,
@@ -1501,7 +1686,7 @@ function spawnThreats(){
         eye.position.set(0.35,1.25,0.75);
 
         const aura=new THREE.Mesh(
-          new THREE.RingGeometry(0.9, 1.8, 42),
+          new THREE.RingGeometry(0.9, 1.9, 42),
           new THREE.MeshBasicMaterial({color:0xc07cff, transparent:true, opacity:0.22, side:THREE.DoubleSide, depthWrite:false})
         );
         aura.rotation.x=-Math.PI/2;
@@ -1516,7 +1701,7 @@ function spawnThreats(){
           a, r,
           da: (rnd()>.5?1:-1) * (0.55 + rnd()*0.9),
           dr: (rnd()>.5?1:-1) * (0.8 + rnd()*1.4),
-          rad: 1.9,
+          rad: 2.1,
           hitCd: 0
         });
       }
@@ -1543,7 +1728,7 @@ function spawnThreats(){
         horn.rotation.x=Math.PI/2;
 
         const glow=new THREE.Mesh(
-          new THREE.RingGeometry(0.8, 2.4, 52),
+          new THREE.RingGeometry(0.8, 2.6, 52),
           new THREE.MeshBasicMaterial({color:0xff6f89, transparent:true, opacity:0.14, side:THREE.DoubleSide, depthWrite:false})
         );
         glow.rotation.x=-Math.PI/2;
@@ -1557,8 +1742,8 @@ function spawnThreats(){
         threats.push({
           type, root,
           a, r,
-          speed: 1.05 + rnd()*0.65, // radians/sec
-          rad: 2.15,
+          speed: 1.05 + rnd()*0.65,
+          rad: 2.25,
           hitCd: 0
         });
       }
@@ -1577,8 +1762,6 @@ function updateThreats(dt){
 
     if(t.type==="meteorites"){
       t.t += dt;
-
-      // visual: gentle hover shimmer
       t.root.position.y = 0.0 + Math.sin((t.t*2.0) + t.pos.x*0.07)*0.02;
 
       if(t.state==="idle"){
@@ -1593,7 +1776,6 @@ function updateThreats(dt){
         }
       }else if(t.state==="tele"){
         t.warnLeft -= dt;
-        // pulse ring
         const p = Math.max(0, t.warnLeft / t.tele);
         const pulse = 0.7 + (1-p)*6.0;
         t.warnRing.scale.set(pulse, pulse, pulse);
@@ -1602,17 +1784,15 @@ function updateThreats(dt){
 
         if(t.warnLeft<=0){
           t.state="impact";
-          t.hot = 0.35; // hot window
+          t.hot = 0.35;
           t.warnRing.material.opacity = 0.0;
           t.pillar.material.opacity = 0.0;
 
-          // impact FX
           shake = Math.max(shake, 0.65);
           addShockwave(t.pos, 0xff4b4b, 0.75, 0.7, t.blastR*1.35, 0.78);
           addSparks(t.pos, 0xffe3a0, 46, 15, 0.85);
-          addImpactLight(t.pos, 0xff8b3d, 3.8, 70, 0.40);
+          addImpactLight(t.pos, 0xff8b3d, 3.8, 90, 0.40);
 
-          // reset
           t.next = 2.4 + Math.random()*2.6;
         }
       }else if(t.state==="impact"){
@@ -1624,16 +1804,14 @@ function updateThreats(dt){
       }
 
       if(canHit){
-        // explosion effect if within blast radius during hot window
         if(t.state==="impact" && t.hot>0 && t.hitCd<=0){
           const dx=car.position.x - t.pos.x;
           const dz=car.position.z - t.pos.z;
           const dist=Math.hypot(dx,dz);
           if(dist < t.blastR + CAR_R){
             t.hitCd=1.2;
-            // knock away + stun
             const dir=new THREE.Vector3(dx,0,dz).normalize();
-            car.position.addScaledVector(dir, 4.5 + (t.blastR - dist)*0.25);
+            car.position.addScaledVector(dir, 5.5 + (t.blastR - dist)*0.25);
             stunUntil = Math.max(stunUntil, now() + 1800);
             bumpSlowUntil = Math.max(bumpSlowUntil, now() + 900);
           }
@@ -1642,21 +1820,19 @@ function updateThreats(dt){
     }
 
     if(t.type==="towers"){
-      // subtle pulsing aura
       t.flash = Math.max(0, (t.flash||0) - dt);
       t.halo.material.opacity = 0.35 + t.flash*0.75;
 
       t.cd -= dt;
       if(t.cd<=0){
-        t.cd = t.fireEvery; // every 5s
+        t.cd = t.fireEvery;
         t.flash = 0.32;
 
-        // strike FX
         const from = new THREE.Vector3(t.pos.x, 8.5, t.pos.z);
         const to   = new THREE.Vector3(t.pos.x, 0.1, t.pos.z);
         addLightningBolt(from, to, 0x9ec9ff, 0.22);
         addShockwave(t.pos, 0x9ec9ff, 0.55, 0.6, t.rad*1.05, 0.55);
-        addImpactLight(t.pos, 0x9ec9ff, 2.8, 85, 0.28);
+        addImpactLight(t.pos, 0x9ec9ff, 2.8, 100, 0.28);
         shake = Math.max(shake, 0.35);
 
         if(canHit){
@@ -1664,7 +1840,6 @@ function updateThreats(dt){
           const dz=car.position.z - t.pos.z;
           const dist=Math.hypot(dx,dz);
           if(dist < t.rad + CAR_R){
-            // stun 1s
             stunUntil = Math.max(stunUntil, now() + 1000);
           }
         }
@@ -1672,20 +1847,15 @@ function updateThreats(dt){
     }
 
     if(t.type==="monsters"){
-      // roam (angle and radius wander)
       t.a = normAngle(t.a + t.da*dt*0.45);
-      t.r = clamp(t.r + t.dr*dt*0.35, INNER_R+4, OUTER_R-4);
+      t.r = clamp(t.r + t.dr*dt*0.35, INNER_R+6, OUTER_R-6);
       const x=Math.cos(t.a)*t.r;
       const z=Math.sin(t.a)*t.r;
       t.root.position.set(x,0,z);
       t.root.rotation.y = -t.a + Math.PI/2;
 
-      if(Math.random()<0.01){
-        t.da *= (Math.random()>.5?1:-1);
-      }
-      if(Math.random()<0.01){
-        t.dr *= (Math.random()>.5?1:-1);
-      }
+      if(Math.random()<0.01) t.da *= (Math.random()>.5?1:-1);
+      if(Math.random()<0.01) t.dr *= (Math.random()>.5?1:-1);
 
       if(canHit && t.hitCd<=0){
         const dx=car.position.x - x;
@@ -1693,11 +1863,10 @@ function updateThreats(dt){
         const dist=Math.hypot(dx,dz);
         if(dist < t.rad + CAR_R){
           t.hitCd=1.0;
-          // bounce back strongly
           const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-          car.position.addScaledVector(back, 6.0);
+          car.position.addScaledVector(back, 7.2);
           bumpSlowUntil = Math.max(bumpSlowUntil, now() + 900);
-          addShockwave(new THREE.Vector3(x,0,z), 0xc07cff, 0.55, 0.5, 5.8, 0.55);
+          addShockwave(new THREE.Vector3(x,0,z), 0xc07cff, 0.55, 0.5, 6.6, 0.55);
           addSparks(new THREE.Vector3(x,0,z), 0xc07cff, 22, 10, 0.55);
           shake = Math.max(shake, 0.38);
         }
@@ -1705,7 +1874,6 @@ function updateThreats(dt){
     }
 
     if(t.type==="rhinos"){
-      // run opposite direction (negative angle)
       t.a = normAngle(t.a - dt*t.speed);
       const x=Math.cos(t.a)*t.r;
       const z=Math.sin(t.a)*t.r;
@@ -1718,13 +1886,12 @@ function updateThreats(dt){
         const dist=Math.hypot(dx,dz);
         if(dist < t.rad + CAR_R){
           t.hitCd=1.6;
-          // stun 3s + shove
           stunUntil = Math.max(stunUntil, now() + 3000);
           const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-          car.position.addScaledVector(back, 8.5);
+          car.position.addScaledVector(back, 10.0);
           bumpSlowUntil = Math.max(bumpSlowUntil, now() + 1200);
-          addShockwave(new THREE.Vector3(x,0,z), 0xff6f89, 0.65, 0.6, 7.4, 0.65);
-          addImpactLight(new THREE.Vector3(x,0,z), 0xff6f89, 2.8, 65, 0.35);
+          addShockwave(new THREE.Vector3(x,0,z), 0xff6f89, 0.65, 0.6, 8.4, 0.65);
+          addImpactLight(new THREE.Vector3(x,0,z), 0xff6f89, 2.8, 85, 0.35);
           shake = Math.max(shake, 0.75);
         }
       }
@@ -1743,9 +1910,9 @@ function hashSeed(s){
 function mulberry32(a){
   return function(){
     let t = a += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 }
 const rand = mulberry32(hashSeed(gameId||"solo"));
@@ -1753,11 +1920,11 @@ const roadRocks=[];
 function spawnRoadRocks(){
   roadRocks.splice(0).forEach(r=>scene.remove(r.mesh));
   const rockMat=new THREE.MeshStandardMaterial({color:0x565b62, roughness:.97, emissive:0x0a0c10, emissiveIntensity:0.10});
-  for(let i=0;i<26;i++){
+  for(let i=0;i<42;i++){
     const a=normAngle(rand()*Math.PI*2);
-    const r=(INNER_R+4) + rand()*(ROAD_W-8);
+    const r=(INNER_R+6) + rand()*(ROAD_W-12);
     const x=Math.cos(a)*r, z=Math.sin(a)*r;
-    const s=0.55 + rand()*0.95;
+    const s=0.55 + rand()*1.15;
     const mesh=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), rockMat);
     mesh.position.set(x,0.15,z);
     mesh.rotation.set(rand()*3,rand()*3,rand()*3);
@@ -1775,6 +1942,10 @@ let lapStart=0;
 let raceGoAtMs=0;
 let currentLapLocal=1;
 let lastSubmittedLap=0;
+
+// ✅ local lap pause once YOU finish (others still racing)
+let myLapFrozen=false;
+let myLapTimeSec=0;
 
 let stunUntil=0;
 let boostReadyAt=0;
@@ -1798,6 +1969,10 @@ function armLocalLap(goAtMs, lapNumber){
   currentLapLocal = lapNumber || 1;
   lastSubmittedLap = 0;
 
+  // ✅ reset "pause after finish" per lap
+  myLapFrozen=false;
+  myLapTimeSec=0;
+
   stunUntil=0;
   bumpSlowUntil=0;
   halfWay=false;
@@ -1816,8 +1991,8 @@ function updateRoadRocks(dt){
       r.hitCd=1.1;
       bumpSlowUntil=Math.max(bumpSlowUntil, now()+650);
       const back=new THREE.Vector3(0,0,1).applyQuaternion(car.quaternion);
-      car.position.addScaledVector(back, 1.0);
-      addShockwave(r.mesh.position, 0x5a5f66, 0.45, 0.4, 3.0, 0.35);
+      car.position.addScaledVector(back, 1.1);
+      addShockwave(r.mesh.position, 0x5a5f66, 0.45, 0.4, 3.3, 0.35);
     }
   }
 }
@@ -1825,9 +2000,23 @@ function updateRoadRocks(dt){
 function updateCar(dt){
   const t=now();
 
-  // ✅ hard gate: nobody moves until shared go-time
+  // hard gate: nobody moves until shared go-time
   if(t < raceGoAtMs){
     car.position.y=0.1;
+    return;
+  }
+
+  // ✅ if I already finished this lap, hard-freeze my car locally
+  if(myLapFrozen){
+    car.position.y=0.1;
+
+    const cdLeft=Math.max(0,(boostReadyAt - t)/1000);
+    el("boostBtn").classList.toggle("onCd", cdLeft>0.01);
+
+    const baseColor=new THREE.Color(0xff7a22);
+    car.flameMat.color.copy(baseColor);
+    car.flame.scale.set(1, 0.85, 0.85);
+    car.under.material.opacity = 0.18;
     return;
   }
 
@@ -1835,14 +2024,15 @@ function updateCar(dt){
   const ri = roadInfo(car.position.x, car.position.z);
   const onRoad = ri.onRoad;
 
-  let speed = onRoad ? 22 : 12;
-  if(keys.forward && !stunned) speed = onRoad ? 30 : 16;
+  // ✅ Faster baseline for bigger donut
+  let speed = onRoad ? 30 : 14;
+  if(keys.forward && !stunned) speed = onRoad ? 40 : 20;
   if(keys.brake && !stunned) speed *= 0.38;
   if(t < bumpSlowUntil) speed *= 0.72;
 
   const boosting = keys.boost && (t > boostReadyAt) && !stunned;
   if(boosting){
-    speed = onRoad ? 46 : 26;
+    speed = onRoad ? 60 : 32;
     boostReadyAt = t + 8000;
     shake = Math.max(shake, 0.12);
     addShockwave(new THREE.Vector3(car.position.x,0,car.position.z), 0x3bd7ff, 0.32, 0.4, 2.2, 0.45);
@@ -1873,7 +2063,7 @@ function updateCar(dt){
   car.flame.scale.set(1, flameScale, flameScale);
   car.under.material.opacity = boosting ? 0.34 : 0.18;
 
-  // lap completion detection (one full loop)
+  // lap completion detection
   const theta = Math.atan2(car.position.z, car.position.x);
   const prog = lapProgress(theta);
 
@@ -1883,7 +2073,11 @@ function updateCar(dt){
     if(lastSubmittedLap===currentLapLocal) return;
     const lapSec = (t - lapStart)/1000;
     lastSubmittedLap=currentLapLocal;
-    isRacing=false;
+
+    // ✅ pause THIS player until room advances
+    myLapFrozen=true;
+    myLapTimeSec=lapSec;
+
     submitLap(lapSec);
   }
   lastProgress=prog;
@@ -1895,8 +2089,8 @@ function updateCar(dt){
 function updateCamera(){
   const mobile=isMobile();
 
-  const height = mobile ? 11.5 : 18;
-  const behind = mobile ? 6.6 : 16;
+  const height = mobile ? 12.2 : 19;
+  const behind = mobile ? 7.2 : 17.5;
 
   camera.fov = mobile ? 66 : 62;
 
@@ -1909,7 +2103,6 @@ function updateCamera(){
 
   camera.position.lerp(desired, mobile ? 0.22 : 0.10);
 
-  // camera shake
   if(shake>0.0001){
     const s = shake * 0.65;
     camera.position.x += (Math.random()-0.5)*s;
@@ -1917,9 +2110,8 @@ function updateCamera(){
     camera.position.z += (Math.random()-0.5)*s;
   }
 
-  // On mobile, look ahead of the car so the view favors what's in front.
   const forward = new THREE.Vector3(0,0,-1).applyQuaternion(car.quaternion);
-  const lookAhead = mobile ? 16 : 0;
+  const lookAhead = mobile ? 18 : 0;
   const lookY = mobile ? 1.7 : 1.2;
   camera.lookAt(
     car.position.x + forward.x * lookAhead,
@@ -1929,7 +2121,7 @@ function updateCamera(){
 }
 
 /* ============================================================
-   UI (minimal until finished)
+   UI
 ============================================================ */
 function updateUIMode(){
   const phase = raceState?.phase || "ready";
@@ -1938,7 +2130,9 @@ function updateUIMode(){
 
 function renderHUD(){
   const t=now();
-  const lapElapsed = isRacing ? Math.max(0, ((t - lapStart)/1000)) : 0;
+  const lapElapsed = isRacing
+    ? (myLapFrozen ? myLapTimeSec : Math.max(0, ((t - lapStart)/1000)))
+    : 0;
   el("lapTimer").textContent = lapElapsed.toFixed(3);
 
   el("roomText").textContent = (gameId||"—").slice(0, 14);
@@ -1954,8 +2148,7 @@ function renderHUD(){
   else if(!d) status="Connecting…";
   else if(phase==="ready") status="Ready-up";
   else if(phase==="countdown") status="Starting…";
-  else if(phase==="racing") status=(t < (d.startAtMs||t)) ? "Get set…" : "Racing";
-  else if(phase==="lap_wait") status="Waiting…";
+  else if(phase==="racing") status=(t < (d.startAtMs||t)) ? "Get set…" : (myLapFrozen ? "Waiting…" : "Racing");
   else if(phase==="obstacle_select") status="Threat Pick";
   else if(phase==="finished") status="Finished";
   el("statusText").textContent=status;
@@ -2033,9 +2226,7 @@ function renderResultsBoard(){
     return `Lap ${h.lap}: ${OBSTACLES[h.type]?.name||h.type} (picked by ${by})`;
   });
 
-  el("msg").textContent = pickLines.length
-    ? pickLines.join(" • ")
-    : "—";
+  el("msg").textContent = pickLines.length ? pickLines.join(" • ") : "—";
 }
 
 async function copyInviteLink(){
@@ -2046,7 +2237,7 @@ async function copyInviteLink(){
 }
 
 /* ============================================================
-   OVERLAY (Ready -> Lap flow -> Threat selection)
+   OVERLAY (Ready -> Countdown -> Racing -> Pause -> Threat Pick)
 ============================================================ */
 function renderOverlay(){
   if(offlineMode){
@@ -2099,16 +2290,6 @@ function renderOverlay(){
     return;
   }
 
-  if(d.phase==="lap_wait"){
-    const s=Math.max(0, Math.ceil(((d.deadlineAt||t)-t)/1000));
-    showOverlay("wait","Waiting for racers…",
-      `Lap <b>${d.lap||1}</b> in progress.<br/>
-       Timeouts in <b>${s}s</b>.`,
-      []
-    );
-    return;
-  }
-
   if(d.phase==="obstacle_select"){
     const selectorName = d.players?.[d.selectorUid]?.name || "Slowest racer";
     const end=d.selectEndsAt || (t+SELECT_MS);
@@ -2135,12 +2316,28 @@ function renderOverlay(){
   }
 
   if(d.phase==="racing"){
-    // hide overlay once start time passes
     if(t < (d.startAtMs||t)){
       const s=Math.max(0, Math.ceil(((d.startAtMs||t)-t)/1000));
       showOverlay("getset","Get set…",`Starting in <b style="font-size:28px">${s}</b>`, []);
       return;
     }
+
+    // ✅ pause screen ONLY for racers who finished this lap
+    if(myLapFrozen){
+      const lapIdx=(d.lap||1)-1;
+      const r = roster(d);
+      const done = r.filter(uid=>typeof d.players?.[uid]?.laps?.[lapIdx]==="number").length;
+      const left = d.deadlineAt ? Math.max(0, Math.ceil((d.deadlineAt - t)/1000)) : 0;
+
+      showOverlay("myDone", `✅ Lap ${d.lap||1} Complete`,
+        `Waiting for others… <b>${done}/${r.length}</b> finished.<br/>
+         Auto-finalize in <b>${left}s</b> if someone doesn’t finish.<br/><br/>
+         Next: slowest time picks a threat for the next lap.`,
+        [{label:"Fullscreen", className:"ghost", onClick:requestFullscreen}]
+      );
+      return;
+    }
+
     hideOverlay();
     return;
   }
@@ -2298,7 +2495,7 @@ function setupControls(){
 setupControls();
 
 /* ============================================================
-   STATE MACHINE TICK (keeps sync progressing)
+   STATE MACHINE TICK
 ============================================================ */
 function tickStateMachine(){
   if(!raceState) return;
@@ -2311,8 +2508,6 @@ function tickStateMachine(){
   }
   if(raceState.phase==="racing"){
     ensureDeadlineIfNeeded();
-  }
-  if(raceState.phase==="lap_wait" || raceState.phase==="racing"){
     finalizeDeadlineIfNeeded();
   }
   if(raceState.phase==="obstacle_select"){
@@ -2347,7 +2542,6 @@ function tickStateMachine(){
   setInterval(presencePing, PRESENCE_PING_MS);
   setInterval(tickStateMachine, 800);
 
-  // initial spawn (in case threats already selected)
   spawnThreats();
 })();
 </script>
