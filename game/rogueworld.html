@@ -313,7 +313,18 @@
       #mobileControls{ display:block; }
       .topBtns{ top:16px; }
       .btn{ padding:13px 15px; font-size:16px; }
-      #mobileInteract{ display:block; }
+      #mobileInteract{ display:none; }
+
+      #modal{
+        width:min(98vw, 980px);
+        max-height:88vh;
+      }
+      .grid2{ grid-template-columns:1fr; }
+      .panel{
+        max-height:36vh;
+        overflow:auto;
+      }
+      .recipes{ grid-template-columns:1fr; }
     }
   </style>
 </head>
@@ -461,9 +472,9 @@
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x070a10, 0.010);
+    scene.fog = new THREE.FogExp2(0x070a10, 0.013);
 
-    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 520);
+    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 380);
     const world = new THREE.Group();
     scene.add(world);
 
@@ -503,7 +514,7 @@
     const GRAVITY  = 11.0;
 
     const CHUNK = 64;
-    const CHUNK_R = 3; // render radius in chunks (7x7 = 49 chunks)
+    const CHUNK_R = 2; // render radius in chunks (5x5 = 25 chunks)
     const ENEMY_CAP_BASE = 18;
 
     // ============================================================
@@ -2636,7 +2647,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       if(spawnCooldown > 0) return false;
 
       const rnd = xorshift32(((worldSeed^0xBADC0DE) + (me.level*99173)|0) ^ ((Date.now()/1000)|0));
-      const packSize = clamp(3 + (rnd()*4|0) + Math.floor(me.level*0.22), 3, 14);
+      const packSize = clamp(2 + (rnd()*3|0) + Math.floor(me.level*0.16), 2, 10);
 
       // spawn 48..86 units away
       const dist = 48 + rnd()*38;
@@ -2659,7 +2670,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       }
 
       travelMeter = 0;
-      spawnCooldown = 5.9 + rnd()*2.8;
+      spawnCooldown = 8.4 + rnd()*3.6;
       return true;
     }
 
@@ -4525,8 +4536,9 @@ e.mesh.userData.anim?.(e, dt, now);
       scene.fog.color.setHex(reg.fog);
       renderer.setClearColor(reg.sky, 1);
 
-      // forge prompt for mobile button text
+      // forge prompt for mobile button visibility
       const nf = nearestForge();
+      const canUseForge = !!(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none");
       if(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none"){
         mobileInteract.style.opacity = "1";
         mobileInteract.textContent = "⚒️ Use Forge";
@@ -4534,13 +4546,14 @@ e.mesh.userData.anim?.(e, dt, now);
         mobileInteract.style.opacity = "0.55";
         mobileInteract.textContent = "⚒️ Use Forge";
       }
+      mobileInteract.style.display = (mobile.enabled && canUseForge) ? "block" : "none";
     }
 
     // ============================================================
     // Spawn pacing
     // ============================================================
     let travelMeter = 0;
-    let spawnCooldown = 3.2;
+    let spawnCooldown = 4.8;
 
     function tickSpawning(dt){
       if(paused || !alive) return;
