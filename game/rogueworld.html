@@ -912,21 +912,31 @@
       }
 
       if(reg.id==="snow"){
-        addInstanced(group, GEO.trunk, MAT.wood, baseCount(prop.pine||18), rnd, (d,i,rr)=>{
-          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
+        const pineCount = baseCount(prop.pine||18);
+        const pineSpots = [];
+        for(let i=0;i<pineCount;i++){
+          const px=(rnd()-0.5)*(CHUNK*0.9), pz=(rnd()-0.5)*(CHUNK*0.9);
           const y=heightAt(wx+px, wz+pz, reg.id);
-          d.position.set(px, y+1.0, pz);
-          d.rotation.y=rr()*Math.PI*2;
-          const s=0.6+rr()*0.9;
-          d.scale.set(s, 0.8+rr()*1.0, s);
+          const rot=rnd()*Math.PI*2;
+          const trunkS=0.6+rnd()*0.9;
+          const trunkSy=0.8+rnd()*1.0;
+          const crownS=0.8+rnd()*1.1;
+          const crownSy=0.9+rnd()*1.0;
+          pineSpots.push({ px,pz,y,rot,trunkS,trunkSy,crownS,crownSy });
+        }
+        addInstanced(group, GEO.trunk, MAT.wood, pineCount, rnd, (d,i)=>{
+          const t = pineSpots[i];
+          d.position.set(t.px, t.y+1.0, t.pz);
+          d.rotation.y=t.rot;
+          d.scale.set(t.trunkS, t.trunkSy, t.trunkS);
         });
-        addInstanced(group, GEO.pine, MAT.pine, baseCount(prop.pine||18), rnd, (d,i,rr)=>{
-          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
-          const y=heightAt(wx+px, wz+pz, reg.id);
-          d.position.set(px, y+2.8, pz);
-          d.rotation.y=rr()*Math.PI*2;
-          const s=0.8+rr()*1.1;
-          d.scale.set(s, 0.9+rr()*1.0, s);
+        addInstanced(group, GEO.pine, MAT.pine, pineCount, rnd, (d,i)=>{
+          const t = pineSpots[i];
+          const trunkTop = t.y + 1.0 + (1.1 * t.trunkSy);
+          const crownY = trunkTop + (1.3 * t.crownSy);
+          d.position.set(t.px, crownY, t.pz);
+          d.rotation.y=t.rot;
+          d.scale.set(t.crownS, t.crownSy, t.crownS);
         });
         addInstanced(group, GEO.ice, MAT.ice, baseCount(prop.rock||12), rnd, (d,i,rr)=>{
           const px=(rr()-0.5)*(CHUNK*0.95), pz=(rr()-0.5)*(CHUNK*0.95);
@@ -1044,10 +1054,15 @@
       glowRing.position.y = 0.08;
       g.add(glowRing);
 
-      const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.0, 10), MAT.forgeGlow);
-      beacon.position.y = 3.2;
-      beacon.material.transparent = true;
-      beacon.material.opacity = 0.18;
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: 0x6ee7b7,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.65, 90, 12, 1, true), beaconMat);
+      beacon.position.y = 45.0;
       g.add(beacon);
 
       const light = new THREE.PointLight(0x22c55e, 1.25, 16, 2.0);
@@ -1063,61 +1078,45 @@
     function genForges(){
       forges.length = 0;
       const rnd = xorshift32(worldSeed ^ 0xC0FFEE);
-      const total = 34;
+      const activeRegionIndexes = [];
+      for(let i=0;i<REGIONS.length;i+=2) activeRegionIndexes.push(i);
+      const ringCount = 4;
 
-      let tries = 0;
-      while(forges.length < total && tries < 8000){
-        tries++;
-        const r = (SAFE_MARGIN + rnd()*(WORLD_RADIUS-SAFE_MARGIN)) ** 1.0;
-        const a = rnd()*Math.PI*2;
-        const x = Math.cos(a)*r;
-        const z = Math.sin(a)*r;
-
-        // avoid too close to center (keep some travel)
-        if((x*x+z*z) < 260*260) continue;
-
-        // avoid clustering forges
-        let ok = true;
-        for(const f of forges){
-          if(dist2(x,z,f.x,f.z) < 180*180){ ok=false; break; }
+      for(let ring=0; ring<ringCount; ring++){
+        const ringT = (ring+1)/(ringCount+1);
+        const radius = 320 + ringT*(WORLD_RADIUS-420);
+        for(let i=0;i<activeRegionIndexes.length;i++){
+          const regionIdx = activeRegionIndexes[i];
+          const regionStart = (regionIdx / REGIONS.length) * Math.PI*2 - Math.PI;
+          const regionEnd = ((regionIdx+1) / REGIONS.length) * Math.PI*2 - Math.PI;
+          const slice = regionEnd - regionStart;
+          const angle = regionStart + slice*(0.24 + 0.52*(i+1)/(activeRegionIndexes.length+1)) + (rnd()-0.5)*slice*0.22;
+          const x = Math.cos(angle)*radius;
+          const z = Math.sin(angle)*radius;
+          const reg = regionAt(x,z);
+          forges.push({ x, z, regionId: reg.id, mesh:null });
         }
-        if(!ok) continue;
-
-        const reg = regionAt(x,z);
-        forges.push({ x, z, regionId: reg.id, mesh:null });
       }
     }
 
     function tickForges(now){
-      // spawn / despawn forge meshes by distance
-      const nearDist2 = 220*220;
+      // spawn + animate (kept active so distant beacon columns remain visible)
       for(const f of forges){
-        const d2 = dist2(me.x, me.z, f.x, f.z);
-        if(d2 < nearDist2){
-          if(!f.mesh){
-            const m = buildForgeMesh();
-            const y = heightAt(f.x, f.z, f.regionId);
-            m.position.set(f.x, y, f.z);
-            world.add(m);
-            f.mesh = m;
-          }
-          // animate glow
-          const t = now*0.001;
-          const pulse = 0.65 + 0.35*Math.sin(t*2.2 + (f.x+f.z)*0.01);
-          f.mesh.userData.glowRing.material.opacity = 0.30 + 0.55*pulse;
-          f.mesh.userData.light.intensity = 0.7 + 0.9*pulse;
-          f.mesh.rotation.y += 0.002;
-
-        }else if(f.mesh){
-          world.remove(f.mesh);
-          f.mesh.traverse((o)=>{
-            if(o.geometry?.dispose) o.geometry.dispose();
-            const m = o.material;
-            if(Array.isArray(m)) m.forEach(mm=>mm?.dispose?.());
-            else m?.dispose?.();
-          });
-          f.mesh = null;
+        if(!f.mesh){
+          const m = buildForgeMesh();
+          const y = heightAt(f.x, f.z, f.regionId);
+          m.position.set(f.x, y, f.z);
+          world.add(m);
+          f.mesh = m;
         }
+
+        // animate glow
+        const t = now*0.001;
+        const pulse = 0.65 + 0.35*Math.sin(t*2.2 + (f.x+f.z)*0.01);
+        f.mesh.userData.glowRing.material.opacity = 0.30 + 0.55*pulse;
+        f.mesh.userData.beacon.material.opacity = 0.18 + 0.14*pulse;
+        f.mesh.userData.light.intensity = 0.7 + 0.9*pulse;
+        f.mesh.rotation.y += 0.002;
       }
     }
 
@@ -2696,6 +2695,15 @@
       const nz = me.z + me.vz*dt;
 
       me.x = nx; me.z = nz;
+
+      // never clip into rising terrain after horizontal movement
+      const nextReg = regionAt(me.x, me.z);
+      const nextGround = heightAt(me.x, me.z, nextReg.id) + PLAYER_H;
+      if(me.y < nextGround){
+        me.y = nextGround;
+        if(me.vy < 0) me.vy = 0;
+        me.grounded = true;
+      }
 
       // world boundary push-back
       const rr = Math.hypot(me.x, me.z);
