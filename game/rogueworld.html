@@ -48,6 +48,39 @@
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
 
+    #regionBanner{
+      position:absolute;
+      left:50%;
+      top:44px;
+      transform:translateX(-50%);
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.4px;
+      color:rgba(255,255,255,.95);
+      text-shadow:0 2px 8px rgba(0,0,0,.65);
+      opacity:0;
+      transition:opacity .35s;
+      pointer-events:none;
+      z-index:5;
+    }
+
+    #fxLayer{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      overflow:hidden;
+    }
+    .floatText{
+      position:absolute;
+      transform:translate(-50%,-50%);
+      font-weight:1000;
+      font-size:13px;
+      color:#fde68a;
+      text-shadow:0 2px 6px rgba(0,0,0,.6);
+      white-space:nowrap;
+      pointer-events:none;
+    }
+
     .muted{ opacity:.78; font-weight:700; }
 
     #centerMsg{
@@ -299,6 +332,8 @@
     </div>
 
     <div id="toast"></div>
+    <div id="regionBanner"></div>
+    <div id="fxLayer"></div>
 
     <div class="topBtns">
       <button id="loadBtn" class="btn secondary" type="button">⬆ Load</button>
@@ -355,6 +390,51 @@
       showToast._t = setTimeout(()=>toast.style.opacity="0", ms);
     }
 
+    function showRegionBanner(reg, band){
+      const key = `${reg.id}:${band.id}`;
+      if(key===lastRegionBannerKey) return;
+      lastRegionBannerKey = key;
+      regionBanner.textContent = `${reg.name} — Difficulty ${difficultyText(band)}`;
+      regionBanner.style.opacity = "1";
+      clearTimeout(showRegionBanner._t);
+      showRegionBanner._t = setTimeout(()=>{ regionBanner.style.opacity = "0"; }, 3000);
+    }
+
+    function spawnFloatingText(text, x, y, z, color="#fde68a"){
+      const el = document.createElement("div");
+      el.className = "floatText";
+      el.textContent = text;
+      el.style.color = color;
+      fxLayer.appendChild(el);
+      floatingTexts.push({ el, x, y, z, life:0, maxLife:1.2 });
+    }
+
+    function tickFloatingTexts(dt){
+      for(let i=floatingTexts.length-1;i>=0;i--){
+        const f = floatingTexts[i];
+        f.life += dt;
+        f.y += dt*0.95;
+
+        const p = _v3.set(f.x, f.y, f.z).project(camera);
+        const onScreen = p.z < 1;
+        if(onScreen){
+          const sx = (p.x*0.5 + 0.5) * innerWidth;
+          const sy = (-p.y*0.5 + 0.5) * innerHeight;
+          f.el.style.display = "block";
+          f.el.style.left = `${sx}px`;
+          f.el.style.top = `${sy}px`;
+          f.el.style.opacity = String(clamp(1 - f.life/f.maxLife, 0, 1));
+        }else{
+          f.el.style.display = "none";
+        }
+
+        if(f.life >= f.maxLife){
+          f.el.remove();
+          floatingTexts.splice(i,1);
+        }
+      }
+    }
+
     function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
     function lerp(a,b,t){ return a + (b-a)*t; }
     function smoothstep(t){ t=clamp(t,0,1); return t*t*(3-2*t); }
@@ -399,16 +479,23 @@
     const WORLD_RADIUS = 2200;
     const SAFE_MARGIN  = 60;
     const DANGER_BANDS = [
-      { id:"inner", min:0, max:900, hpMul:1.0, dmgMul:1.0, terrainMul:1.0 },
-      { id:"mid", min:900, max:1600, hpMul:1.4, dmgMul:1.25, terrainMul:1.2 },
-      { id:"outer", min:1600, max:WORLD_RADIUS, hpMul:1.9, dmgMul:1.55, terrainMul:1.4 },
+      { id:"inner", min:0, max:480, hpMul:1.0, dmgMul:1.0, terrainMul:1.0, dropChance:0.40, xpMul:1.0, label:"I" },
+      { id:"low", min:480, max:900, hpMul:1.28, dmgMul:1.14, terrainMul:1.10, dropChance:0.52, xpMul:1.2, label:"II" },
+      { id:"mid", min:900, max:1300, hpMul:1.62, dmgMul:1.30, terrainMul:1.22, dropChance:0.64, xpMul:1.45, label:"III" },
+      { id:"high", min:1300, max:1750, hpMul:2.05, dmgMul:1.55, terrainMul:1.34, dropChance:0.78, xpMul:1.8, label:"IV" },
+      { id:"outer", min:1750, max:WORLD_RADIUS, hpMul:2.6, dmgMul:1.9, terrainMul:1.5, dropChance:0.92, xpMul:2.25, label:"V" },
     ];
 
     function dangerBandAt(x,z){
       const r = Math.hypot(x,z);
-      if(r < DANGER_BANDS[1].min) return DANGER_BANDS[0];
-      if(r < DANGER_BANDS[2].min) return DANGER_BANDS[1];
-      return DANGER_BANDS[2];
+      for(const band of DANGER_BANDS){
+        if(r >= band.min && r < band.max) return band;
+      }
+      return DANGER_BANDS[DANGER_BANDS.length-1];
+    }
+
+    function difficultyText(band){
+      return `Ring ${band.label} • Drop ${(band.dropChance*100)|0}% • XP x${band.xpMul.toFixed(2)}`;
     }
 
     const PLAYER_H = 1.72;
@@ -437,6 +524,8 @@
     const regionText = $("regionText");
     const weaponText = $("weaponText");
     const matsText = $("matsText");
+    const regionBanner = $("regionBanner");
+    const fxLayer = $("fxLayer");
 
     const modalShade = $("modalShade");
     const modal = $("modal");
@@ -1111,6 +1200,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     // Forge placement (pre-generated, highlighted, interact pauses)
     // ============================================================
     const forges = []; // {x,z, regionId, mesh, beacon}
+    let lastRegionBannerKey = "";
+    const floatingTexts = [];
     function buildForgeMesh(){
       const g = new THREE.Group();
       const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.5, 16), MAT.forge);
@@ -1155,23 +1246,24 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     function genForges(){
       forges.length = 0;
       const rnd = xorshift32(worldSeed ^ 0xC0FFEE);
-      const activeRegionIndexes = [];
-      for(let i=0;i<REGIONS.length;i+=2) activeRegionIndexes.push(i);
-      const ringCount = 4;
+      const ringCount = 8;
 
       for(let ring=0; ring<ringCount; ring++){
         const ringT = (ring+1)/(ringCount+1);
-        const radius = 320 + ringT*(WORLD_RADIUS-420);
-        for(let i=0;i<activeRegionIndexes.length;i++){
-          const regionIdx = activeRegionIndexes[i];
+        const radius = 240 + ringT*(WORLD_RADIUS-330);
+        for(let regionIdx=0; regionIdx<REGIONS.length; regionIdx++){
           const regionStart = (regionIdx / REGIONS.length) * Math.PI*2 - Math.PI;
           const regionEnd = ((regionIdx+1) / REGIONS.length) * Math.PI*2 - Math.PI;
           const slice = regionEnd - regionStart;
-          const angle = regionStart + slice*(0.24 + 0.52*(i+1)/(activeRegionIndexes.length+1)) + (rnd()-0.5)*slice*0.22;
-          const x = Math.cos(angle)*radius;
-          const z = Math.sin(angle)*radius;
-          const reg = regionAt(x,z);
-          forges.push({ x, z, regionId: reg.id, mesh:null });
+          const perSlice = 2 + Math.floor(ring/2);
+          for(let j=0;j<perSlice;j++){
+            const lane = (j+1)/(perSlice+1);
+            const angle = regionStart + slice*(0.10 + 0.80*lane) + (rnd()-0.5)*slice*0.10;
+            const x = Math.cos(angle)*radius;
+            const z = Math.sin(angle)*radius;
+            const reg = regionAt(x,z);
+            forges.push({ x, z, regionId: reg.id, mesh:null });
+          }
         }
       }
     }
@@ -1358,6 +1450,25 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       { name:"Night Drill", req:{ iron:38, ember:24, crystal:24, essence:20 } },
     ];
 
+    const MAT_KEYS = ["iron","hide","essence","crystal","ember"];
+    for(let i=0;i<WEAPON_RECIPES.length;i++){
+      const r = WEAPON_RECIPES[i];
+      const tier = i+1;
+      const growth = 1 + tier*0.22 + tier*tier*0.018;
+      const w = WEAPONS[r.name];
+      if(w){
+        if(w.dmg!=null) w.dmg = Math.round(w.dmg * (1 + tier*0.030));
+        if(w.dps!=null) w.dps = Math.round((w.dps * (1 + tier*0.026))*10)/10;
+      }
+      const scaledReq = {};
+      for(const k of MAT_KEYS){
+        if(r.req[k]){
+          scaledReq[k] = Math.max(1, Math.round(r.req[k] * growth));
+        }
+      }
+      r.req = scaledReq;
+    }
+
     const RECIPES = [
       ...WEAPON_RECIPES.map((w)=>({ type:"weapon", name:w.name, req:w.req, equip:true })),
       {
@@ -1400,7 +1511,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       // stats
       level: 1,
       xp: 0,
-      nextXp: 18,
+      nextXp: 24,
 
       maxHp: 100,
       hp: 100,
@@ -1444,7 +1555,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       me.vx=me.vz=me.vy=0;
       me.yaw = 0; me.pitch = 0;
 
-      me.level=1; me.xp=0; me.nextXp=18;
+      me.level=1; me.xp=0; me.nextXp=24;
 
       me.maxHp=100; me.hp=100;
       me.speedMul=1.0; me.damageMul=1.0; me.rangeMul=1.0; me.hpRegen=1.4;
@@ -1463,6 +1574,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
       // clear entities
       clearEntities();
+      lastRegionBannerKey = "";
 
       // regen forges + chunks
       genForges();
@@ -1514,7 +1626,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         me.yaw = +p.yaw || 0; me.pitch = clamp(+p.pitch||0, -1.32, 1.32);
         me.level = +p.level||1;
         me.xp = +p.xp||0;
-        me.nextXp = +p.nextXp || Math.max(18, me.level*18);
+        me.nextXp = +p.nextXp || Math.round(24 + me.level*18 + me.level*me.level*1.35);
 
         me.maxHp = +p.maxHp||100;
         me.hp = clamp(+p.hp||me.maxHp, 0, me.maxHp);
@@ -1540,6 +1652,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         overlayDead.style.opacity = "0";
 
         clearEntities();
+        lastRegionBannerKey = "";
         genForges();
         showToast("⬆ Loaded save.");
         return true;
@@ -1589,6 +1702,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       for(const p of projectiles) world.remove(p.mesh);
       for(const d of drops) world.remove(d.mesh);
       for(const t of turrets) world.remove(t.mesh);
+      for(const f of floatingTexts) f.el.remove();
+      floatingTexts.length = 0;
       enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0;
     }
 
@@ -2440,36 +2555,37 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
     function enemyStats(type, level, x=0, z=0){
       // base stats per archetype (inner ring baseline)
-      let baseHp=26, baseDmg=8, spd=2.1, range=1.3, flying=false, yOff=0.0, kind="melee";
+      let baseHp=26, baseDmg=8, spd=2.1, range=1.3, flying=false, yOff=0.0, kind="melee", modelLift=0.78;
       if(type==="scarab"){ baseHp=22; baseDmg=7; spd=2.9; range=1.15; kind="melee"; }
       if(type==="scorpion"){ baseHp=30; baseDmg=9; spd=2.3; range=1.35; kind="melee"; }
-      if(type==="sandwisp"){ baseHp=18; baseDmg=6; spd=2.3; range=12; kind="ranged"; flying=true; yOff=1.2; }
+      if(type==="sandwisp"){ baseHp=18; baseDmg=6; spd=2.3; range=12; kind="ranged"; flying=true; yOff=1.2; modelLift=1.65; }
       if(type==="boar"){ baseHp=32; baseDmg=10; spd=2.7; range=1.45; kind="melee"; }
       if(type==="spriggan"){ baseHp=48; baseDmg=11; spd=1.85; range=1.5; kind="melee"; }
-      if(type==="spitter"){ baseHp=26; baseDmg=8; spd=2.35; range=12.5; kind="ranged"; flying=true; yOff=1.4; }
+      if(type==="spitter"){ baseHp=26; baseDmg=8; spd=2.35; range=12.5; kind="ranged"; flying=true; yOff=1.4; modelLift=1.9; }
       if(type==="wolf"){ baseHp=26; baseDmg=9; spd=3.2; range=1.25; kind="melee"; }
       if(type==="icegolem"){ baseHp=75; baseDmg=14; spd=1.5; range=1.7; kind="melee"; }
       if(type==="frostling"){ baseHp=22; baseDmg=7; spd=3.2; range=7.5; kind="ranged"; }
-      if(type==="drone"){ baseHp=28; baseDmg=10; spd=2.5; range=13; kind="ranged"; flying=true; yOff=1.35; }
-      if(type==="floater"){ baseHp=38; baseDmg=9; spd=2.0; range=14; kind="ranged"; flying=true; yOff=1.6; }
+      if(type==="drone"){ baseHp=28; baseDmg=10; spd=2.5; range=13; kind="ranged"; flying=true; yOff=1.35; modelLift=1.85; }
+      if(type==="floater"){ baseHp=38; baseDmg=9; spd=2.0; range=14; kind="ranged"; flying=true; yOff=1.6; modelLift=2.1; }
       if(type==="shardling"){ baseHp=34; baseDmg=11; spd=2.2; range=1.35; kind="melee"; }
       if(type==="imp"){ baseHp=28; baseDmg=10; spd=2.8; range=1.3; kind="melee"; }
       if(type==="brute"){ baseHp=95; baseDmg=16; spd=1.7; range=1.9; kind="melee"; }
       if(type==="mortar"){ baseHp=45; baseDmg=14; spd=1.6; range=18; kind="mortar"; }
       if(type==="goblin"){ baseHp=30; baseDmg=12; spd=2.5; range=16.5; kind="lobber"; }
-      if(type==="mirebat"){ baseHp=24; baseDmg=8; spd=3.1; range=11.5; kind="ranged"; flying=true; yOff=1.1; }
-      if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; }
+      if(type==="mirebat"){ baseHp=24; baseDmg=8; spd=3.1; range=11.5; kind="ranged"; flying=true; yOff=1.1; modelLift=1.55; }
+      if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; modelLift=0.62; }
 
       const band = dangerBandAt(x,z);
       const hp = Math.round(baseHp * band.hpMul * (1 + 0.14*(level-1)));
       const dmg = Math.round(baseDmg * band.dmgMul * (1 + 0.09*(level-1)));
-      return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind, band:band.id, bandMul:band };
+      return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind, modelLift, band:band.id, bandMul:band };
     }
 
     function spawnEnemy(type, x, z, regId){
       const st = enemyStats(type, me.level, x, z);
       const mesh = makeEnemyMesh(type, regId);
-      const y = heightAt(x,z, regId) + (st.flying ? (1.5+st.yOff) : 0.0);
+      const yBase = heightAt(x,z, regId);
+      const y = yBase + st.modelLift + (st.flying ? (1.0+st.yOff) : 0.0);
       mesh.position.set(x, y, z);
 
       const e = {
@@ -2478,8 +2594,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         regId,
         mesh,
         x, z,
-        yBase: heightAt(x,z, regId),
-        yOff: st.flying ? (1.4+st.yOff) : 0.0,
+        yBase: yBase,
+        yOff: st.flying ? (1.0+st.yOff) : 0.0,
+        modelLift: st.modelLift,
         flying: st.flying,
         hp: st.hp,
         maxHp: st.hp,
@@ -2936,11 +3053,13 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       const ex = e.mesh?.position.x ?? e.x;
       const ez = e.mesh?.position.z ?? e.z;
       const reg = regionAt(ex, ez);
+      const band = dangerBandAt(ex, ez);
       const dropsHere = reg.drops;
-      // 1-2 items
       const rnd = xorshift32((worldSeed ^ (e.id*2654435761))|0);
-      const count = (rnd()<0.65) ? 1 : 2;
 
+      if(rnd() > band.dropChance) return;
+
+      const count = (rnd()<0.72) ? 1 : 2;
       for(let i=0;i<count;i++){
         const matName = dropsHere[(rnd()*dropsHere.length)|0];
         const c = MAT_COL[matName] || 0xffffff;
@@ -2958,6 +3077,13 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
         drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0 });
       }
+    }
+
+    function xpFromEnemy(e){
+      const band = dangerBandAt(e.mesh.position.x, e.mesh.position.z);
+      const typeBonus = ({ brute:7, icegolem:6, mortar:5, floater:4, goblin:4, drone:3 })[e.type] || 0;
+      const base = 5 + Math.floor(me.level*0.75) + typeBonus;
+      return Math.max(2, Math.round(base * band.xpMul));
     }
 
     function pickupDrops(dt){
@@ -3011,7 +3137,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       while(me.xp >= me.nextXp){
         me.xp -= me.nextXp;
         me.level++;
-        me.nextXp = Math.round(18 + me.level*14 + me.level*me.level*0.8);
+        me.nextXp = Math.round(24 + me.level*18 + me.level*me.level*1.35);
         // small heal on level
         me.hp = Math.min(me.maxHp, me.hp + 12);
         showToast(`⭐ Level ${me.level}! Choose an upgrade.`);
@@ -3060,7 +3186,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
         // drops + xp
         dropFromEnemy(e);
-        gainXp(6 + Math.floor(me.level*0.8));
+        const xpGain = xpFromEnemy(e);
+        gainXp(xpGain);
+        spawnFloatingText(`+${xpGain} XP`, e.mesh.position.x, e.mesh.position.y+1.3, e.mesh.position.z, "#86efac");
       }
     }
 
@@ -3329,7 +3457,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         .join("");
 
       const recipesHtml = RECIPES.map((r)=>{
-        const ok = canAfford(r.req);
+        const ownedWeapon = r.type==="weapon" && me.ownedWeapons.has(r.name);
+        const ok = !ownedWeapon && canAfford(r.req);
         const reqHtml = Object.entries(r.req).map(([k,v])=>`<span class="reqItem">${k} ×${v}</span>`).join("");
         const desc = (r.type==="weapon")
           ? (WEAPONS[r.name]?.desc || "Weapon")
@@ -3345,8 +3474,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
             ${extra}
             <div class="req">${reqHtml}</div>
             <div class="rowBtns">
-              <button data-craft="${r.name}" ${ok ? "" : "disabled"}>${ok ? "Craft" : "Need Mats"}</button>
-              ${r.type==="weapon" && me.ownedWeapons.has(r.name) ? `<button class="secondary" data-equip="${r.name}">Equip</button>` : ""}
+              <button data-craft="${r.name}" ${ok ? "" : "disabled"}>${ownedWeapon ? "Owned" : (ok ? "Craft" : "Need Mats")}</button>
+              ${r.type==="weapon" && me.ownedWeapons.has(r.name) ? `<button class="secondary" data-equip="${r.name}">Equip</button><span class="muted" style="font-size:12px">Owned permanently</span>` : ""}
             </div>
           </div>
         `;
@@ -3688,7 +3817,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         e.yBase = heightAt(e.mesh.position.x, e.mesh.position.z, reg.id);
 
         e.bob += dt * (e.flying ? 2.4 : 1.5);
-        const flyY = e.flying ? (e.yBase + e.yOff + Math.sin(e.bob)*0.18) : (e.yBase + 0.0);
+        const flyY = e.flying ? (e.yBase + e.modelLift + e.yOff + Math.sin(e.bob)*0.18) : (e.yBase + e.modelLift);
         e.mesh.position.y = flyY;
 
         // health bar faces camera
@@ -4386,7 +4515,9 @@ e.mesh.userData.anim?.(e, dt, now);
       weaponText.textContent = me.weapon;
 
       const reg = regionAt(me.x, me.z);
-      regionText.textContent = reg.name;
+      const band = dangerBandAt(me.x, me.z);
+      regionText.textContent = `${reg.name} [${band.label}]`;
+      showRegionBanner(reg, band);
 
       matsText.textContent = fmtMats();
 
@@ -4503,6 +4634,7 @@ e.mesh.userData.anim?.(e, dt, now);
         pickupDrops(dt);
         tickForgeHint();
         tickHUD();
+        tickFloatingTexts(dt);
 
         // autosave
         if(!paused && alive){
