@@ -211,6 +211,8 @@
         <div class="pill">📡 <span id="netText">Connecting…</span></div>
         <div class="pill">⏱️ <span id="timerText">—</span></div>
         <div class="pill">👑 <span id="crownText">—</span></div>
+        <div class="pill">❤️ <span id="hpText">100 / 100</span></div>
+        <div class="pill">🔫 <span id="gunText">Rust Pistol</span></div>
       </div>
 
       <div id="toast"></div>
@@ -300,6 +302,8 @@
       const overlayDead = $("overlayDead");
       const timerText = $("timerText");
       const crownText = $("crownText");
+      const hpText = $("hpText");
+      const gunText = $("gunText");
       const toast = $("toast");
       const fsBtn = $("fsBtn");
       const netText = $("netText");
@@ -417,6 +421,8 @@
       const FOG_RADIUS = 6.5;
       const RESPAWN_MS = 15000;
       const ONLINE_GRACE_MS = 12000; // stale players ignored after this
+      const REGEN_DELAY_MS = 5000;
+      const BASE_HP = 100;
 
       // trap TTL defaults (ms)
       const TTL = {
@@ -490,6 +496,59 @@
         pitch: 0,
         grounded: true,
       };
+
+      const playerCombat = {
+        hp: BASE_HP,
+        maxHp: BASE_HP,
+        regenPerSec: 1.4,
+        level: 1,
+        xp: 0,
+        xpToNext: 120,
+        lastHitAt: 0,
+        pendingLevelUps: 0,
+        stunResist: 0,
+      };
+
+      const levelUpPool = [
+        { id: "maxHp", name: "Bulk Plating", apply: () => { playerCombat.maxHp += 18; playerCombat.hp = Math.min(playerCombat.maxHp, playerCombat.hp + 18); } },
+        { id: "regen", name: "Nanite Recovery", apply: () => { playerCombat.regenPerSec += 0.7; } },
+        { id: "stunResist", name: "Nerve Firewall", apply: () => { playerCombat.stunResist = Math.min(0.7, playerCombat.stunResist + 0.12); } },
+      ];
+
+      const gunRecipes = [
+        { name:"Rust Pistol", cost:40, recipe:["scrap","powder"], tags:["starter"] },
+        { name:"Spark Carbine", cost:110, recipe:["copper coil","steel","powder"], tags:["chain:1","bounce:1"] },
+        { name:"Warden Knock Rifle", cost:130, recipe:["steel","gyro spring","resin"], tags:["knockback"] },
+        { name:"Hex Poison SMG", cost:150, recipe:["toxin sac","steel","powder"], tags:["poison","fast"] },
+        { name:"Stasis Tapper", cost:170, recipe:["frost cell","servo","steel"], tags:["stun","slow"] },
+        { name:"Shatter Cannon", cost:190, recipe:["powder","heavy barrel","steel"], tags:["explosion"] },
+        { name:"Tri-Vector Burst", cost:220, recipe:["target lens","steel","powder"], tags:["trishot-nearest"] },
+        { name:"Chainline Mk II", cost:235, recipe:["copper coil","ion core","steel"], tags:["chain:2","bounce:2"] },
+        { name:"Splinter Ram", cost:250, recipe:["fragment core","steel","powder"], tags:["splinter:2"] },
+        { name:"Splinter Ram+", cost:285, recipe:["fragment core","fragment core","alloy"], tags:["splinter:3"] },
+        { name:"Storm Repeater", cost:300, recipe:["ion core","coil","powder"], tags:["chain:2","fast"] },
+        { name:"Venom Loom", cost:325, recipe:["toxin sac","catalyst","alloy"], tags:["poison++"] },
+        { name:"Riot Maulgun", cost:340, recipe:["mass driver","steel","resin"], tags:["knockback++"] },
+        { name:"Flash Pike", cost:360, recipe:["strobe crystal","servo","alloy"], tags:["stun++","slow"] },
+        { name:"Blast Bloom", cost:390, recipe:["volatile gel","steel","powder"], tags:["explosion++"] },
+        { name:"Hydra Tap", cost:420, recipe:["trident node","target lens","alloy"], tags:["trishot-nearest","splinter:2"] },
+        { name:"Arc Lattice", cost:460, recipe:["ion core","arc wire","alloy"], tags:["chain:3","bounce:2"] },
+        { name:"Arc Lattice Prime", cost:510, recipe:["ion core","arc wire","arc wire"], tags:["chain:4","bounce:3"] },
+        { name:"Seismic Bolter", cost:530, recipe:["mass driver","shock gel","alloy"], tags:["knockback","explosion"] },
+        { name:"Mire Injector", cost:560, recipe:["toxin sac","toxin sac","catalyst"], tags:["poison+++","slow"] },
+        { name:"Paralyzer Lance", cost:600, recipe:["stasis prism","servo","alloy"], tags:["stun+++","slow"] },
+        { name:"Thunder Gospel", cost:650, recipe:["ion core","relic shard","alloy"], tags:["chain:5","bounce:4"] },
+        { name:"Tempest Choir", cost:700, recipe:["ion core","trident node","relic shard"], tags:["trishot-nearest","chain:3"] },
+        { name:"Cataclysm Mortar", cost:760, recipe:["volatile gel","heavy barrel","relic shard"], tags:["explosion+++","knockback"] },
+        { name:"Gorgon Needler", cost:820, recipe:["toxin sac","nano tube","relic shard"], tags:["poison++++","splinter:3"] },
+        { name:"Aegis Breaker", cost:900, recipe:["mass driver","heavy barrel","relic shard"], tags:["knockback+++","pierce"] },
+        { name:"Volt Hydra", cost:980, recipe:["trident node","ion core","relic shard"], tags:["trishot-nearest","chain:4","bounce:3"] },
+        { name:"Solar Collapse", cost:1050, recipe:["sun shard","volatile gel","relic shard"], tags:["explosion++++","burn"] },
+        { name:"Oblivion String", cost:1150, recipe:["void filament","arc wire","relic shard"], tags:["chain:6","bounce:5"] },
+        { name:"Emperor's Verdict", cost:1300, recipe:["sun shard","void filament","crown alloy"], tags:["trishot-nearest","explosion+++","chain:4","knockback++"] },
+        { name:"Storm Tyrant", cost:1450, recipe:["ion core","sun shard","crown alloy"], tags:["chain:7","bounce:6","splinter:4"] },
+      ];
+      let equippedGunIndex = 0;
 
       // ---------------- Pointer lock ----------------
       let pointerLocked = false;
@@ -1591,6 +1650,61 @@
         } catch {}
       }
 
+      function addXp(amount) {
+        playerCombat.xp += amount;
+        while (playerCombat.xp >= playerCombat.xpToNext) {
+          playerCombat.xp -= playerCombat.xpToNext;
+          playerCombat.level += 1;
+          playerCombat.pendingLevelUps += 1;
+          playerCombat.xpToNext = Math.round(playerCombat.xpToNext * 1.22);
+        }
+      }
+
+      function applyDamage(amount, source = "hazard") {
+        if (!alive || amount <= 0) return;
+        playerCombat.lastHitAt = Date.now();
+        playerCombat.hp = Math.max(0, playerCombat.hp - amount);
+        if (playerCombat.hp <= 0) {
+          killMe(source);
+        }
+      }
+
+      function tickRegen(dt) {
+        if (!alive || phase !== "play") return;
+        if (Date.now() - playerCombat.lastHitAt < REGEN_DELAY_MS) return;
+        playerCombat.hp = Math.min(playerCombat.maxHp, playerCombat.hp + playerCombat.regenPerSec * dt);
+      }
+
+      function updateCombatHud() {
+        hpText.textContent = `${Math.round(playerCombat.hp)} / ${Math.round(playerCombat.maxHp)}`;
+        gunText.textContent = gunRecipes[equippedGunIndex]?.name || "Rust Pistol";
+      }
+
+      function maybeShowLevelUp() {
+        if (phase !== "play" || !alive || playerCombat.pendingLevelUps <= 0) return;
+        if (levelOverlayOpen) return;
+        levelOverlayOpen = true;
+        const picks = [...levelUpPool].sort(() => Math.random() - 0.5).slice(0, 3);
+        centerTitle.textContent = `Level ${playerCombat.level} upgrade`;
+        centerSub.innerHTML = "Choose one: " + picks.map((p, i) => `<button data-upg="${i}" style="margin:6px;padding:8px 10px;border-radius:10px;border:none;font-weight:800;cursor:pointer">${p.name}</button>`).join(" ");
+        lockBtn.style.display = "none";
+        centerMsg.style.display = "block";
+        centerSub.querySelectorAll("button").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const idx = Number(btn.getAttribute("data-upg"));
+            picks[idx]?.apply();
+            playerCombat.pendingLevelUps = Math.max(0, playerCombat.pendingLevelUps - 1);
+            playerCombat.hp = Math.min(playerCombat.maxHp, playerCombat.hp + 10);
+            if (Math.random() < 0.45) equippedGunIndex = Math.min(gunRecipes.length - 1, equippedGunIndex + 1);
+            levelOverlayOpen = false;
+            centerMsg.style.display = "none";
+            syncPlayUi();
+          });
+        });
+      }
+
+      let levelOverlayOpen = false;
+
       // ---------------- Death / Respawn ----------------
       async function killMe(reason) {
         if (!alive) return;
@@ -1623,6 +1737,8 @@
         me.vx = me.vz = me.vy = 0;
 
         alive = true;
+        playerCombat.hp = playerCombat.maxHp;
+        playerCombat.lastHitAt = Date.now();
         overlayDead.style.opacity = "0";
         showToast("🟩 Respawned at entrance.", 1600);
 
@@ -1762,7 +1878,7 @@
             if (alive) {
               const dx = me.x - t.x, dz = me.z - t.z;
               if (dx * dx + dz * dz < FIRE_KILL_RADIUS * FIRE_KILL_RADIUS) {
-                killMe("fire");
+                applyDamage(22 * dt, "fire");
               }
             }
             continue;
@@ -2280,6 +2396,10 @@
         tickOthers(dt);
         tickTraps(dt);
         tickCrown(dt);
+        tickRegen(dt);
+        addXp(dt * 4);
+        maybeShowLevelUp();
+        updateCombatHud();
 
         if (alive && phase === "play") checkEscapeWin();
 
