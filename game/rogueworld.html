@@ -1,0 +1,2333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>🗿 Stoney's Relic</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      }
+      #ui {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: #fff;
+      }
+      .topbar {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        top: 10px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        pointer-events: none;
+      }
+      .pill {
+        pointer-events: none;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(8px);
+        font-weight: 900;
+        font-size: 13px;
+      }
+      .hint {
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
+        padding: 10px 12px;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+        max-width: 760px;
+      }
+      .muted {
+        opacity: 0.78;
+        font-weight: 700;
+      }
+      #centerMsg {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-weight: 900;
+        text-align: center;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        min-width: min(520px, 92vw);
+      }
+      #centerMsg button {
+        margin-top: 10px;
+        cursor: pointer;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-weight: 900;
+        background: #22c55e;
+        color: #07110a;
+      }
+      #overlayFog {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 50%,
+          rgba(0, 0, 0, 0) 0%,
+          rgba(0, 0, 0, 0.72) 58%,
+          rgba(0, 0, 0, 0.88) 100%
+        );
+        opacity: 0;
+        transition: opacity 0.12s linear;
+        pointer-events: none;
+        mix-blend-mode: multiply;
+      }
+      #overlayDead {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 35%,
+          rgba(0, 0, 0, 0.15) 0%,
+          rgba(0, 0, 0, 0.92) 70%
+        );
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s linear;
+      }
+      #toast {
+        position: absolute;
+        left: 50%;
+        top: 70px;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-weight: 900;
+        pointer-events: none;
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        transition: opacity 0.18s;
+        max-width: min(820px, 92vw);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #mobileControls {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: none;
+      }
+      .joystick {
+        position: absolute;
+        width: 132px;
+        height: 132px;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.36);
+        border: 2px solid rgba(255, 255, 255, 0.28);
+        backdrop-filter: blur(8px);
+        pointer-events: auto;
+        touch-action: none;
+      }
+      #moveStick {
+        left: 16px;
+        bottom: 20px;
+      }
+      #lookStick {
+        right: 16px;
+        bottom: 20px;
+      }
+      .joystickKnob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 64px;
+        height: 64px;
+        margin-left: -32px;
+        margin-top: -32px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.75);
+        border: 2px solid rgba(0, 0, 0, 0.2);
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+        transition: transform 0.05s linear;
+        pointer-events: none;
+      }
+      #fsBtn {
+        position: absolute;
+        right: 14px;
+        top: 84px;
+        pointer-events: auto;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-weight: 900;
+        font-size: 15px;
+        background: rgba(34, 197, 94, 0.95);
+        color: #04120a;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+      }
+      @media (pointer: coarse) {
+        #mobileControls {
+          display: block;
+        }
+        #fsBtn {
+          top: 16px;
+          padding: 13px 15px;
+          font-size: 16px;
+        }
+        .hint {
+          bottom: 170px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="ui">
+      <div class="topbar">
+        <div class="pill">👤 <span id="meName">—</span></div>
+        <div class="pill">📡 <span id="netText">Connecting…</span></div>
+        <div class="pill">⏱️ <span id="timerText">—</span></div>
+        <div class="pill">👑 <span id="crownText">—</span></div>
+      </div>
+
+      <div id="toast"></div>
+
+      <div class="hint">
+        <div style="font-weight: 900">Controls</div>
+        <div class="muted">
+          Click to lock mouse • WASD move • Shift sprint • Space jump (tiny) • ESC unlock
+        </div>
+        <div class="muted">
+          Mobile: left stick moves (camera-relative) • right stick looks • tap fullscreen for full view
+        </div>
+        <div class="muted">
+          Find the 👑 crown, then escape out the entrance room within 5 minutes.
+        </div>
+      </div>
+
+      <button id="fsBtn" type="button">⛶ Fullscreen</button>
+
+      <div id="mobileControls">
+        <div id="moveStick" class="joystick" aria-label="Movement joystick">
+          <div id="moveKnob" class="joystickKnob"></div>
+        </div>
+        <div id="lookStick" class="joystick" aria-label="Look joystick">
+          <div id="lookKnob" class="joystickKnob"></div>
+        </div>
+      </div>
+
+      <div id="overlayFog"></div>
+      <div id="overlayDead"></div>
+
+      <div id="centerMsg">
+        <div id="centerTitle" style="font-size: 18px">Connecting…</div>
+        <div id="centerSub" class="muted" style="margin-top: 6px">
+          Signing in and joining the lobby.
+        </div>
+        <button id="lockBtn" style="display: none">Click to Play</button>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
+
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import {
+        getFirestore,
+        doc,
+        setDoc,
+        runTransaction,
+        collection,
+        onSnapshot,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+      import {
+        getAuth,
+        signInAnonymously,
+        onAuthStateChanged,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+      // ---------------- Firebase ----------------
+      const firebaseConfig = {
+        apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+        authDomain: "bible-game-246c0.firebaseapp.com",
+        projectId: "bible-game-246c0",
+        storageBucket: "bible-game-246c0.appspot.com",
+        messagingSenderId: "959619818996",
+        appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+      };
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const auth = getAuth(app);
+
+      // ---------------- URL params ----------------
+      const qs = new URLSearchParams(location.search);
+      const gameId = (qs.get("gameId") || "").trim();
+      const usernameRaw = (qs.get("username") || "").trim();
+      const username = usernameRaw.length > 0 ? usernameRaw.slice(0, 22) : "Player";
+
+      // ---------------- DOM ----------------
+      const $ = (id) => document.getElementById(id);
+      $("meName").textContent = username;
+
+      const centerMsg = $("centerMsg");
+      const centerTitle = $("centerTitle");
+      const centerSub = $("centerSub");
+      const lockBtn = $("lockBtn");
+      const overlayFog = $("overlayFog");
+      const overlayDead = $("overlayDead");
+      const timerText = $("timerText");
+      const crownText = $("crownText");
+      const toast = $("toast");
+      const fsBtn = $("fsBtn");
+      const netText = $("netText");
+      const moveStick = $("moveStick");
+      const moveKnob = $("moveKnob");
+      const lookStick = $("lookStick");
+      const lookKnob = $("lookKnob");
+      const topbar = document.querySelector(".topbar");
+      const hint = document.querySelector(".hint");
+
+      // ---------------- Game state (declare early for UI helpers) ----------------
+      let phase = "setup";
+
+      // ---------------- UX helpers ----------------
+      function showToast(msg, ms = 2200) {
+        // game hides UI during play for immersion
+        if (phase === "play") return;
+        toast.textContent = msg;
+        toast.style.opacity = "1";
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => (toast.style.opacity = "0"), ms);
+      }
+
+      function setNet(s) {
+        netText.textContent = s;
+      }
+
+      function syncPlayUi() {
+        const inPlay = phase === "play";
+        if (topbar) topbar.style.display = inPlay ? "none" : "flex";
+        if (hint) hint.style.display = inPlay ? "none" : "block";
+        toast.style.display = inPlay ? "none" : "block";
+        fsBtn.style.display = inPlay ? "none" : "block";
+        if (inPlay) {
+          centerMsg.style.display = "none";
+          lockBtn.style.display = "none";
+        }
+      }
+
+      // ---------------- Seeded RNG + Maze ----------------
+      function xorshift32(seed) {
+        let x = (seed | 0) || 123456789;
+        return () => {
+          x ^= x << 13;
+          x ^= x >>> 17;
+          x ^= x << 5;
+          return (x >>> 0) / 4294967296;
+        };
+      }
+
+      function makeMaze(w, h, seed) {
+        const rnd = xorshift32(seed);
+        const N = 1, E = 2, S = 4, W = 8;
+        const dx = { [N]: 0, [E]: 1, [S]: 0, [W]: -1 };
+        const dy = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
+        const opp = { [N]: S, [E]: W, [S]: N, [W]: E };
+
+        const cells = Array.from({ length: w * h }, () => ({
+          v: false,
+          walls: N | E | S | W,
+        }));
+        const idx = (x, y) => y * w + x;
+
+        const stack = [];
+        let cx = 0, cy = 0;
+        cells[idx(cx, cy)].v = true;
+        stack.push([cx, cy]);
+
+        const dirs = [N, E, S, W];
+        while (stack.length) {
+          const [x, y] = stack[stack.length - 1];
+          const options = [];
+          for (const d of dirs) {
+            const nx = x + dx[d], ny = y + dy[d];
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            if (!cells[idx(nx, ny)].v) options.push(d);
+          }
+          if (!options.length) {
+            stack.pop();
+            continue;
+          }
+          const d = options[Math.floor(rnd() * options.length)];
+          const nx = x + dx[d], ny = y + dy[d];
+          const a = cells[idx(x, y)], b = cells[idx(nx, ny)];
+          a.walls &= ~d;
+          b.walls &= ~opp[d];
+          b.v = true;
+          stack.push([nx, ny]);
+        }
+
+        // entrance: south edge middle
+        const ex = Math.floor(w / 2), ey = h - 1;
+        cells[idx(ex, ey)].walls &= ~S;
+
+        return { w, h, cells, entrance: { x: ex, y: ey } };
+      }
+
+      function cellCenterWorld(maze, cellSize, cx, cy) {
+        const ox = (-maze.w * cellSize) / 2;
+        const oz = (-maze.h * cellSize) / 2;
+        return {
+          x: ox + (cx + 0.5) * cellSize,
+          z: oz + (cy + 0.5) * cellSize,
+        };
+      }
+
+      // ---------------- Game constants ----------------
+      const WALL_H = 7.0;
+      const WALL_T = 0.35;
+      const PLAYER_H = 1.72;
+      const PLAYER_R = 0.34;
+      const ROOM_DEPTH = 9.0;
+
+      const FIRE_KILL_RADIUS = 1.6;
+      const FOG_RADIUS = 6.5;
+      const RESPAWN_MS = 15000;
+      const ONLINE_GRACE_MS = 12000; // stale players ignored after this
+
+      // trap TTL defaults (ms)
+      const TTL = {
+        fire: 10_000,
+        fog: 18_000,
+        ghost: 300_000,
+        demon: 300_000,
+      };
+
+      // ---------------- Firebase refs / ids ----------------
+      let uid = "";
+      let lobbyRef = null;
+      let playersCol = null;
+      let trapsCol = null;
+      let myPlayerRef = null;
+
+      // Lobby/game state cache
+      let stoney = null;
+      let maze = null;
+
+      let gameStartAt = 0;
+      let gameEndAt = 0;
+      let winner = null;
+      let winnerName = null;
+
+      // crown
+      let crown = null; // {x,z}
+      let carrierId = null; // uid
+      let carrierName = null; // display name
+      let iHaveCrown = false;
+
+      // traps cache (active only)
+      const trapMap = new Map(); // id -> {id,type,x,z,placedAt,ttlMs,armedAt,expiresAt}
+
+      // other players
+      const others = new Map(); // uid -> {mesh,name,x,z,tx,tz,alive,deadUntil,updatedAt,lastSeen}
+
+      // ---------------- Scene ----------------
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setClearColor(0x070a10, 1);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+
+      // light atmospheric fog (subtle)
+      scene.fog = new THREE.FogExp2(0x070a10, 0.012);
+
+      const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 220);
+      camera.position.set(0, PLAYER_H, 0);
+
+      // Base ambient so it never goes pitch black; most light comes from ceiling lamps
+      scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1b2030, 0.35));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.22);
+      dir.position.set(7, 18, 10);
+      scene.add(dir);
+
+      const world = new THREE.Group();
+      scene.add(world);
+
+      const me = {
+        x: 0,
+        y: PLAYER_H,
+        z: 0,
+        vx: 0,
+        vz: 0,
+        vy: 0,
+        yaw: 0,
+        pitch: 0,
+        grounded: true,
+      };
+
+      // ---------------- Pointer lock ----------------
+      let pointerLocked = false;
+      function requestLock() {
+        renderer.domElement.requestPointerLock?.();
+      }
+      document.addEventListener("pointerlockchange", () => {
+        pointerLocked = document.pointerLockElement === renderer.domElement;
+        lockBtn.style.display = pointerLocked || phase !== "play" ? "none" : "block";
+        syncPlayUi();
+      });
+
+      // ---------------- State ----------------
+      let alive = true;
+      let deadUntil = 0;
+
+      document.addEventListener("mousemove", (e) => {
+        if (!pointerLocked || !alive) return;
+        const sens = 0.0022;
+        me.yaw -= e.movementX * sens;
+        me.pitch -= e.movementY * sens;
+        me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
+      });
+
+      // keys
+      const keys = {};
+      addEventListener("keydown", (e) => {
+        keys[e.key.toLowerCase()] = true;
+        if (e.key === " ") e.preventDefault();
+      });
+      addEventListener("keyup", (e) => {
+        keys[e.key.toLowerCase()] = false;
+      });
+
+      fsBtn.addEventListener("click", async () => {
+        try {
+          if (!document.fullscreenElement) {
+            await document.documentElement.requestFullscreen?.();
+          } else {
+            await document.exitFullscreen?.();
+          }
+        } catch {}
+      });
+
+      // ---------------- Mobile joystick ----------------
+      const isCoarsePointer = matchMedia("(pointer: coarse)").matches;
+      const mobile = {
+        enabled: isCoarsePointer,
+        moveX: 0,
+        moveY: 0,
+        lookX: 0,
+        lookY: 0,
+        movePointerId: null,
+        lookPointerId: null,
+      };
+
+      function setJoystick(knob, dx, dy, r) {
+        if (r <= 0) return { x: 0, y: 0 };
+        const len = Math.hypot(dx, dy);
+        const k = len > r && len > 0 ? r / len : 1;
+        const cx = dx * k, cy = dy * k;
+        knob.style.transform = `translate(${cx}px, ${cy}px)`;
+        return {
+          x: Math.max(-1, Math.min(1, cx / r)),
+          y: Math.max(-1, Math.min(1, cy / r)),
+        };
+      }
+
+      function resetJoystick(knob) {
+        knob.style.transform = "translate(0px, 0px)";
+      }
+
+      if (moveStick) {
+        moveStick.addEventListener("pointerdown", (e) => {
+          if (!mobile.enabled) return;
+          mobile.movePointerId = e.pointerId;
+          moveStick.setPointerCapture(e.pointerId);
+          const r = moveStick.getBoundingClientRect();
+          const joy = setJoystick(
+            moveKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.5
+          );
+          mobile.moveX = joy.x;
+          mobile.moveY = joy.y;
+        });
+
+        moveStick.addEventListener("pointermove", (e) => {
+          if (!mobile.enabled || mobile.movePointerId !== e.pointerId) return;
+          const r = moveStick.getBoundingClientRect();
+          const joy = setJoystick(
+            moveKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.5
+          );
+          mobile.moveX = joy.x;
+          mobile.moveY = joy.y;
+        });
+
+        const endJoy = (e) => {
+          if (mobile.movePointerId !== e.pointerId) return;
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
+        };
+        moveStick.addEventListener("pointerup", endJoy);
+        moveStick.addEventListener("pointercancel", endJoy);
+        moveStick.addEventListener("lostpointercapture", () => {
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
+        });
+      }
+
+      if (lookStick) {
+        lookStick.addEventListener("pointerdown", (e) => {
+          if (!mobile.enabled) return;
+          mobile.lookPointerId = e.pointerId;
+          lookStick.setPointerCapture(e.pointerId);
+          const r = lookStick.getBoundingClientRect();
+          const joy = setJoystick(
+            lookKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.5
+          );
+          mobile.lookX = joy.x;
+          mobile.lookY = joy.y;
+        });
+
+        lookStick.addEventListener("pointermove", (e) => {
+          if (!mobile.enabled || mobile.lookPointerId !== e.pointerId) return;
+          const r = lookStick.getBoundingClientRect();
+          const joy = setJoystick(
+            lookKnob,
+            e.clientX - (r.left + r.width / 2),
+            e.clientY - (r.top + r.height / 2),
+            r.width * 0.5
+          );
+          mobile.lookX = joy.x;
+          mobile.lookY = joy.y;
+        });
+
+        const endLook = (e) => {
+          if (mobile.lookPointerId !== e.pointerId) return;
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        };
+        lookStick.addEventListener("pointerup", endLook);
+        lookStick.addEventListener("pointercancel", endLook);
+        lookStick.addEventListener("lostpointercapture", () => {
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        });
+      }
+
+      addEventListener("pointerup", (e) => {
+        if (mobile.movePointerId === e.pointerId) {
+          mobile.movePointerId = null;
+          mobile.moveX = 0;
+          mobile.moveY = 0;
+          resetJoystick(moveKnob);
+        }
+        if (mobile.lookPointerId === e.pointerId) {
+          mobile.lookPointerId = null;
+          mobile.lookX = 0;
+          mobile.lookY = 0;
+          resetJoystick(lookKnob);
+        }
+      });
+
+      // ---------------- Procedural textures (walls/floor/ceiling + props) ----------------
+      function makeCanvasTexture(drawFn, size = 256) {
+        const c = document.createElement("canvas");
+        c.width = c.height = size;
+        const g = c.getContext("2d");
+        drawFn(g, size);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 8);
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      // separate helper for FX sprite textures (no repeat wrapping)
+      function makeFXCanvasTexture(drawFn, size = 128) {
+        const c = document.createElement("canvas");
+        c.width = c.height = size;
+        const ctx = c.getContext("2d");
+        drawFn(ctx, size);
+        const tex = new THREE.CanvasTexture(c);
+        if ("colorSpace" in tex) tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      function rand01From(x, y, s) {
+        const n = Math.sin((x * 127.1 + y * 311.7 + s * 74.7)) * 43758.5453123;
+        return n - Math.floor(n);
+      }
+
+      const wallTex = makeCanvasTexture((g, n) => {
+        g.fillStyle = "#1f2937";
+        g.fillRect(0, 0, n, n);
+
+        const rowH = n / 8;
+        for (let r = 0; r < 8; r++) {
+          const y = r * rowH;
+          const offset = (r % 2) * (n / 16);
+          const colW = n / 4;
+          for (let c = 0; c < 5; c++) {
+            const x = (c * colW + offset) % n;
+            const w = colW * (0.9 + 0.2 * rand01From(c, r, 2));
+            const h = rowH * (0.86 + 0.18 * rand01From(r, c, 3));
+            const shade = 26 + Math.floor(25 * rand01From(c, r, 5));
+            g.fillStyle = `rgb(${shade},${shade + 6},${shade + 12})`;
+            g.fillRect(x, y, w, h);
+
+            g.strokeStyle = "rgba(0,0,0,0.35)";
+            g.lineWidth = 2;
+            g.strokeRect(x + 1, y + 1, w - 2, h - 2);
+          }
+        }
+
+        for (let i = 0; i < 5000; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          const a = 0.06 + Math.random() * 0.10;
+          const v = 20 + ((Math.random() * 40) | 0);
+          g.fillStyle = `rgba(${v},${v + 6},${v + 10},${a})`;
+          g.fillRect(x, y, 1, 1);
+        }
+
+        for (let i = 0; i < 60; i++) {
+          const x = (Math.random() * n) | 0;
+          const w = 1 + ((Math.random() * 2) | 0);
+          g.fillStyle = `rgba(0,0,0,${0.04 + Math.random() * 0.07})`;
+          g.fillRect(x, 0, w, n);
+        }
+      });
+
+      const floorTex = makeCanvasTexture((g, n) => {
+        g.fillStyle = "#cbd5e1";
+        g.fillRect(0, 0, n, n);
+
+        const step = n / 10;
+        for (let y = 0; y < n; y += step) {
+          for (let x = 0; x < n; x += step) {
+            const t = rand01From(x, y, 11);
+            const v = 175 + Math.floor(t * 25);
+            g.fillStyle = `rgb(${v},${v + 4},${v + 8})`;
+            g.fillRect(x, y, step, step);
+          }
+        }
+
+        g.strokeStyle = "rgba(15,23,42,0.25)";
+        g.lineWidth = 2;
+        for (let i = 0; i <= 10; i++) {
+          const p = i * step;
+          g.beginPath();
+          g.moveTo(p, 0);
+          g.lineTo(p, n);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(0, p);
+          g.lineTo(n, p);
+          g.stroke();
+        }
+
+        for (let i = 0; i < 3500; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          const a = 0.04 + Math.random() * 0.08;
+          g.fillStyle = `rgba(30,30,30,${a})`;
+          g.fillRect(x, y, 1, 1);
+        }
+      });
+
+      const ceilTex = makeCanvasTexture((g, n) => {
+        g.fillStyle = "#0b1220";
+        g.fillRect(0, 0, n, n);
+
+        const step = n / 8;
+        g.strokeStyle = "rgba(255,255,255,0.06)";
+        g.lineWidth = 2;
+        for (let i = 0; i <= 8; i++) {
+          const p = i * step;
+          g.beginPath();
+          g.moveTo(p, 0);
+          g.lineTo(p, n);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(0, p);
+          g.lineTo(n, p);
+          g.stroke();
+        }
+
+        for (let i = 0; i < 3000; i++) {
+          const x = (Math.random() * n) | 0;
+          const y = (Math.random() * n) | 0;
+          g.fillStyle = `rgba(255,255,255,${0.015 + Math.random() * 0.02})`;
+          g.fillRect(x, y, 1, 1);
+        }
+      });
+
+      // ---------------- Geometry + collision ----------------
+      const matWall = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: wallTex,
+        roughness: 0.96,
+        metalness: 0.02,
+      });
+      matWall.map.repeat.set(2, 2);
+
+      const matFloor = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: floorTex,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      matFloor.map.repeat.set(10, 10);
+
+      const matCeil = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: ceilTex,
+        roughness: 1.0,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
+      matCeil.map.repeat.set(8, 8);
+
+      const matRoom = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: floorTex,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      matRoom.map.repeat.set(6, 4);
+
+      let wallAABBs = []; // {minX,maxX,minZ,maxZ}
+      const lampMeshes = [];
+      const propMeshes = [];
+
+      function addWallBox(cx, cz, sx, sz) {
+        const geo = new THREE.BoxGeometry(sx, WALL_H, sz);
+        const m = new THREE.Mesh(geo, matWall);
+        m.position.set(cx, WALL_H / 2, cz);
+        world.add(m);
+        wallAABBs.push({
+          minX: cx - sx / 2,
+          maxX: cx + sx / 2,
+          minZ: cz - sz / 2,
+          maxZ: cz + sz / 2,
+        });
+      }
+
+      function hitsWall(nx, nz) {
+        for (const b of wallAABBs) {
+          const minX = b.minX - PLAYER_R,
+            maxX = b.maxX + PLAYER_R;
+          const minZ = b.minZ - PLAYER_R,
+            maxZ = b.maxZ + PLAYER_R;
+          if (nx >= minX && nx <= maxX && nz >= minZ && nz <= maxZ) return true;
+        }
+        return false;
+      }
+
+      // ---------------- Decorative lights & props ----------------
+      function clearDecor() {
+        for (const l of lampMeshes) world.remove(l);
+        lampMeshes.length = 0;
+        for (const p of propMeshes) world.remove(p);
+        propMeshes.length = 0;
+      }
+
+      function addCeilingLamp(x, z, intensity = 1.2, radius = 10) {
+        const group = new THREE.Group();
+        group.position.set(x, WALL_H - 0.25, z);
+
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16, 0.16, 0.10, 16),
+          new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.8, metalness: 0.15 })
+        );
+        group.add(base);
+
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 16, 12),
+          new THREE.MeshStandardMaterial({
+            color: 0xfff3d6,
+            emissive: 0xfff0c8,
+            emissiveIntensity: 1.2,
+            roughness: 0.2,
+          })
+        );
+        bulb.position.y = -0.16;
+        group.add(bulb);
+
+        const light = new THREE.PointLight(0xfff2cc, intensity, radius, 2);
+        light.position.y = -0.25;
+        group.add(light);
+
+        world.add(group);
+        lampMeshes.push(group);
+        return group;
+      }
+
+      function addPottedPlant(x, z, rot = 0) {
+        const g = new THREE.Group();
+        g.position.set(x, 0, z);
+        g.rotation.y = rot;
+
+        const pot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.28, 0.34, 0.35, 14),
+          new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.95, metalness: 0.0 })
+        );
+        pot.position.y = 0.18;
+        g.add(pot);
+
+        const dirt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.24, 0.28, 0.08, 12),
+          new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 1.0 })
+        );
+        dirt.position.y = 0.36;
+        g.add(dirt);
+
+        const plant = new THREE.Mesh(
+          new THREE.ConeGeometry(0.34, 0.75, 10),
+          new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.95 })
+        );
+        plant.position.y = 0.78;
+        g.add(plant);
+
+        const leaf2 = new THREE.Mesh(
+          new THREE.ConeGeometry(0.26, 0.55, 10),
+          new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.95 })
+        );
+        leaf2.position.set(0.06, 0.70, -0.08);
+        leaf2.rotation.y = 0.5;
+        g.add(leaf2);
+
+        world.add(g);
+        propMeshes.push(g);
+        return g;
+      }
+
+      function addCrate(x, z, s = 0.6, rot = 0) {
+        const m = new THREE.MeshStandardMaterial({ color: 0x6b4f2a, roughness: 0.95 });
+        const box = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), m);
+        box.position.set(x, s / 2, z);
+        box.rotation.y = rot;
+        world.add(box);
+        propMeshes.push(box);
+        return box;
+      }
+
+      // ---------------- Crown mesh ----------------
+      let crownMesh = null;
+      function makeCrownMesh() {
+        if (crownMesh) {
+          world.remove(crownMesh);
+          crownMesh = null;
+        }
+        const g = new THREE.TorusKnotGeometry(0.25, 0.09, 90, 10);
+        const m = new THREE.MeshStandardMaterial({
+          color: 0xffd700,
+          emissive: 0x553300,
+          emissiveIntensity: 0.6,
+          roughness: 0.35,
+        });
+        crownMesh = new THREE.Mesh(g, m);
+        crownMesh.position.set(0, 1.0, 0);
+        world.add(crownMesh);
+      }
+
+      function buildWorldFromMaze() {
+        while (world.children.length) world.remove(world.children[0]);
+        wallAABBs = [];
+        clearDecor();
+
+        const cellSize = stoney.cellSize;
+        const m = maze;
+
+        const floorGeo = new THREE.PlaneGeometry(m.w * cellSize + 20, m.h * cellSize + 28);
+        const floor = new THREE.Mesh(floorGeo, matFloor);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0;
+        world.add(floor);
+
+        const ox = (-m.w * cellSize) / 2;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMinX = ox, mazeMaxX = ox + m.w * cellSize;
+        const mazeMinZ = oz, mazeMaxZ = oz + m.h * cellSize;
+
+        const ceilGeo = new THREE.PlaneGeometry(
+          m.w * cellSize + 22,
+          m.h * cellSize + ROOM_DEPTH + 30
+        );
+        const ceil = new THREE.Mesh(ceilGeo, matCeil);
+        ceil.rotation.x = Math.PI / 2; // face downward
+        ceil.position.set((mazeMinX + mazeMaxX) / 2, WALL_H, mazeMaxZ + ROOM_DEPTH / 2);
+        world.add(ceil);
+
+        const roomGeo = new THREE.PlaneGeometry(m.w * cellSize * 0.9, ROOM_DEPTH);
+        const room = new THREE.Mesh(roomGeo, matRoom);
+        room.rotation.x = -Math.PI / 2;
+        room.position.set((mazeMinX + mazeMaxX) / 2, 0.001, mazeMaxZ + ROOM_DEPTH / 2);
+        world.add(room);
+
+        const N = 1, E = 2, S = 4, W = 8;
+        const idx = (x, y) => y * m.w + x;
+
+        for (let y = 0; y < m.h; y++) {
+          for (let x = 0; x < m.w; x++) {
+            const c = m.cells[idx(x, y)];
+            const center = cellCenterWorld(m, cellSize, x, y);
+
+            if (c.walls & N) addWallBox(center.x, center.z - cellSize / 2, cellSize + WALL_T, WALL_T);
+            if (c.walls & W) addWallBox(center.x - cellSize / 2, center.z, WALL_T, cellSize + WALL_T);
+            if (y === m.h - 1 && (c.walls & S))
+              addWallBox(center.x, center.z + cellSize / 2, cellSize + WALL_T, WALL_T);
+            if (x === m.w - 1 && (c.walls & E))
+              addWallBox(center.x + cellSize / 2, center.z, WALL_T, cellSize + WALL_T);
+          }
+        }
+
+        // room enclosing walls
+        const entranceCell = m.entrance;
+        const ent = cellCenterWorld(m, cellSize, entranceCell.x, entranceCell.y);
+
+        addWallBox(mazeMinX - WALL_T / 2, mazeMaxZ + ROOM_DEPTH / 2, WALL_T, ROOM_DEPTH + 0.01);
+        addWallBox(mazeMaxX + WALL_T / 2, mazeMaxZ + ROOM_DEPTH / 2, WALL_T, ROOM_DEPTH + 0.01);
+        addWallBox(
+          (mazeMinX + mazeMaxX) / 2,
+          mazeMaxZ + ROOM_DEPTH + WALL_T / 2,
+          mazeMaxX - mazeMinX + WALL_T,
+          WALL_T
+        );
+
+        // entrance frame (non-blocking)
+        const frameGeo = new THREE.BoxGeometry(cellSize * 0.85, 2.8, 0.25);
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: 0x111827,
+          emissive: 0x111827,
+          emissiveIntensity: 0.25,
+        });
+        const frame = new THREE.Mesh(frameGeo, frameMat);
+        frame.position.set(ent.x, 1.4, mazeMaxZ + 0.2);
+        world.add(frame);
+
+        // Lighting pass
+        const totalCells = m.w * m.h;
+        const step = totalCells > 350 ? 4 : totalCells > 220 ? 3 : 2;
+
+        const decorRnd = xorshift32((stoney.seed | 0) ^ 0x6acaa36d);
+
+        let lampCount = 0;
+        const maxLamps = Math.min(140, Math.floor(totalCells / 2) + 20);
+
+        for (let y = 0; y < m.h; y += step) {
+          for (let x = 0; x < m.w; x += step) {
+            if (lampCount >= maxLamps) break;
+            const c = m.cells[idx(x, y)];
+            const walls = c.walls;
+            const openSides =
+              4 -
+              ((walls & N ? 1 : 0) +
+                (walls & E ? 1 : 0) +
+                (walls & S ? 1 : 0) +
+                (walls & W ? 1 : 0));
+            if (openSides <= 1 && decorRnd() < 0.65) continue;
+
+            if (decorRnd() < 0.92) {
+              const center = cellCenterWorld(m, cellSize, x, y);
+              addCeilingLamp(center.x, center.z, 1.0 + decorRnd() * 0.6, 10 + decorRnd() * 5);
+              lampCount++;
+            }
+          }
+        }
+
+        // Extra lamps for the entrance room
+        addCeilingLamp(ent.x, mazeMaxZ + ROOM_DEPTH * 0.40, 2.1, 18);
+        addCeilingLamp(ent.x - cellSize * 0.30, mazeMaxZ + ROOM_DEPTH * 0.72, 1.8, 16);
+        addCeilingLamp(ent.x + cellSize * 0.30, mazeMaxZ + ROOM_DEPTH * 0.72, 1.8, 16);
+
+        // Props pass
+        const plantChance = totalCells > 320 ? 0.05 : 0.08;
+        for (let y = 0; y < m.h; y++) {
+          for (let x = 0; x < m.w; x++) {
+            if (decorRnd() > plantChance) continue;
+
+            const c = m.cells[idx(x, y)];
+            const center = cellCenterWorld(m, cellSize, x, y);
+
+            if (y >= m.h - 2 && Math.abs(x - m.entrance.x) <= 2) continue;
+
+            const pad = 0.55;
+            const corners = [];
+
+            if ((c.walls & N) && (c.walls & W)) corners.push({ dx: -pad, dz: -pad, rot: 0.2 });
+            if ((c.walls & N) && (c.walls & E)) corners.push({ dx: +pad, dz: -pad, rot: 1.2 });
+            if ((c.walls & S) && (c.walls & W)) corners.push({ dx: -pad, dz: +pad, rot: 4.2 });
+            if ((c.walls & S) && (c.walls & E)) corners.push({ dx: +pad, dz: +pad, rot: 5.2 });
+
+            if (!corners.length) continue;
+            const pick = corners[Math.floor(decorRnd() * corners.length)];
+
+            const px = center.x + pick.dx * (cellSize * 0.45);
+            const pz = center.z + pick.dz * (cellSize * 0.45);
+            addPottedPlant(px, pz, pick.rot + decorRnd() * 0.4);
+          }
+        }
+
+        const crateCount = Math.min(18, Math.floor(totalCells / 35));
+        for (let i = 0; i < crateCount; i++) {
+          const x = Math.floor(decorRnd() * m.w);
+          const y = Math.floor(decorRnd() * m.h);
+          const c = m.cells[idx(x, y)];
+          const center = cellCenterWorld(m, cellSize, x, y);
+
+          const dirs = [];
+          if (c.walls & N) dirs.push({ dx: 0, dz: -1 });
+          if (c.walls & S) dirs.push({ dx: 0, dz: +1 });
+          if (c.walls & W) dirs.push({ dx: -1, dz: 0 });
+          if (c.walls & E) dirs.push({ dx: +1, dz: 0 });
+          if (!dirs.length) continue;
+
+          const d = dirs[Math.floor(decorRnd() * dirs.length)];
+          const px = center.x + d.dx * (cellSize * 0.28);
+          const pz = center.z + d.dz * (cellSize * 0.28);
+
+          if (y === m.entrance.y && x === m.entrance.x) continue;
+          addCrate(px, pz, 0.55 + decorRnd() * 0.18, decorRnd() * Math.PI);
+        }
+
+        // spawn in room
+        me.x = ent.x;
+        me.z = mazeMaxZ + ROOM_DEPTH * 0.72;
+        me.yaw = Math.PI;
+        me.pitch = 0;
+        me.vx = me.vz = me.vy = 0;
+        me.grounded = true;
+
+        makeCrownMesh();
+      }
+
+      function entranceSpawnWorld() {
+        if (!stoney || !maze) return { x: 0, z: 0 };
+        const cellSize = stoney.cellSize;
+        const m = maze;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMaxZ = oz + m.h * cellSize;
+        const ent = cellCenterWorld(m, cellSize, m.entrance.x, m.entrance.y);
+        return { x: ent.x, z: mazeMaxZ + ROOM_DEPTH * 0.72 };
+      }
+
+      // ---------------- Trap visuals + local sim (UPGRADED FX) ----------------
+      const enemyMeshes = new Map(); // trapId -> {mesh,kind,fx,bob}
+
+      function disposeObject3D(root) {
+        try {
+          root.traverse?.((obj) => {
+            if (obj.geometry?.dispose) obj.geometry.dispose();
+            const mat = obj.material;
+            if (Array.isArray(mat)) {
+              for (const m of mat) m?.dispose?.();
+            } else {
+              mat?.dispose?.();
+            }
+          });
+        } catch {}
+      }
+
+      // FX texture set (uses makeFXCanvasTexture to avoid repeat-wrapping artifacts)
+      const FXTEX = (() => {
+        const ghostGlow = makeFXCanvasTexture((ctx, s) => {
+          ctx.clearRect(0, 0, s, s);
+          const g = ctx.createRadialGradient(
+            s * 0.5,
+            s * 0.45,
+            s * 0.05,
+            s * 0.5,
+            s * 0.5,
+            s * 0.5
+          );
+          g.addColorStop(0.0, "rgba(255,255,255,0.95)");
+          g.addColorStop(0.25, "rgba(170,245,255,0.55)");
+          g.addColorStop(0.55, "rgba(40,210,255,0.18)");
+          g.addColorStop(1.0, "rgba(0,0,0,0.0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, s, s);
+
+          for (let i = 0; i < 18; i++) {
+            const x = (Math.random() * 0.9 + 0.05) * s;
+            const y = (Math.random() * 0.9 + 0.05) * s;
+            const r = (Math.random() * 0.12 + 0.06) * s;
+            const a = Math.random() * 0.08;
+            ctx.fillStyle = `rgba(180,245,255,${a})`;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }, 192);
+
+        const demonGlow = makeFXCanvasTexture((ctx, s) => {
+          ctx.clearRect(0, 0, s, s);
+          const g = ctx.createRadialGradient(
+            s * 0.5,
+            s * 0.5,
+            s * 0.06,
+            s * 0.5,
+            s * 0.5,
+            s * 0.52
+          );
+          g.addColorStop(0.0, "rgba(255,120,120,0.95)");
+          g.addColorStop(0.25, "rgba(255,40,60,0.55)");
+          g.addColorStop(0.6, "rgba(150,0,20,0.22)");
+          g.addColorStop(1.0, "rgba(0,0,0,0.0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, s, s);
+
+          for (let i = 0; i < 30; i++) {
+            const x = Math.random() * s;
+            const y = Math.random() * s;
+            const r = (Math.random() * 0.04 + 0.01) * s;
+            ctx.fillStyle = `rgba(255,120,80,${Math.random() * 0.25})`;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }, 192);
+
+        const flame = makeFXCanvasTexture((ctx, s) => {
+          ctx.clearRect(0, 0, s, s);
+
+          const lg = ctx.createLinearGradient(0, s, 0, 0);
+          lg.addColorStop(0.0, "rgba(255,240,160,0.95)");
+          lg.addColorStop(0.25, "rgba(255,170,40,0.90)");
+          lg.addColorStop(0.55, "rgba(255,70,20,0.60)");
+          lg.addColorStop(1.0, "rgba(0,0,0,0.0)");
+
+          ctx.fillStyle = lg;
+          ctx.beginPath();
+          ctx.moveTo(s * 0.5, s * 0.06);
+          ctx.bezierCurveTo(s * 0.78, s * 0.25, s * 0.80, s * 0.62, s * 0.5, s * 0.94);
+          ctx.bezierCurveTo(s * 0.20, s * 0.62, s * 0.22, s * 0.25, s * 0.5, s * 0.06);
+          ctx.closePath();
+          ctx.fill();
+
+          for (let i = 0; i < 55; i++) {
+            const x = (Math.random() * 0.6 + 0.2) * s;
+            const y = (Math.random() * 0.75 + 0.15) * s;
+            const r = (Math.random() * 0.04 + 0.01) * s;
+            const a = Math.random() * 0.25;
+            ctx.fillStyle = `rgba(255,200,120,${a})`;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }, 192);
+
+        return { ghostGlow, demonGlow, flame };
+      })();
+
+      function makeGhostFX() {
+        const g = new THREE.Group();
+
+        const bodyMat = new THREE.MeshStandardMaterial({
+          color: 0xcff6ff,
+          emissive: 0x20d5ff,
+          emissiveIntensity: 0.45,
+          transparent: true,
+          opacity: 0.55,
+          roughness: 0.95,
+          metalness: 0.0,
+          depthWrite: false,
+        });
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), bodyMat);
+        head.position.y = 0.35;
+        g.add(head);
+
+        const torso = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.46, 0.42, 0.62, 18, 1, true),
+          bodyMat
+        );
+        torso.position.y = -0.02;
+        g.add(torso);
+
+        const tailMat = bodyMat.clone();
+        tailMat.opacity = 0.32;
+        const tail = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 18, 1, true), tailMat);
+        tail.position.y = -0.62;
+        tail.rotation.x = Math.PI;
+        g.add(tail);
+
+        const eyeMat = new THREE.MeshStandardMaterial({
+          color: 0x020617,
+          emissive: 0x020617,
+          roughness: 0.9,
+        });
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), eyeMat);
+        const eyeR = eyeL.clone();
+        eyeL.position.set(-0.12, 0.40, 0.36);
+        eyeR.position.set(+0.12, 0.40, 0.36);
+        g.add(eyeL, eyeR);
+
+        const auraMat = new THREE.SpriteMaterial({
+          map: FXTEX.ghostGlow,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const aura = new THREE.Sprite(auraMat);
+        aura.scale.set(2.6, 3.2, 1);
+        aura.position.y = 0.05;
+        g.add(aura);
+
+        const under = new THREE.Sprite(auraMat.clone());
+        under.material.opacity = 0.35;
+        under.scale.set(2.1, 1.2, 1);
+        under.position.y = -0.85;
+        g.add(under);
+
+        return { group: g, aura, tail };
+      }
+
+      function makeDemonFX() {
+        const g = new THREE.Group();
+
+        const coreMat = new THREE.MeshStandardMaterial({
+          color: 0x3b0a12,
+          emissive: 0xff1a1a,
+          emissiveIntensity: 0.85,
+          roughness: 0.45,
+          metalness: 0.1,
+        });
+
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.52, 20, 16), coreMat);
+        core.position.y = 0.1;
+        g.add(core);
+
+        const hornMat = new THREE.MeshStandardMaterial({
+          color: 0x120309,
+          emissive: 0x25000a,
+          emissiveIntensity: 0.4,
+          roughness: 0.9,
+        });
+        const hornGeo = new THREE.ConeGeometry(0.12, 0.42, 12);
+        const hornL = new THREE.Mesh(hornGeo, hornMat);
+        const hornR = new THREE.Mesh(hornGeo, hornMat);
+        hornL.position.set(-0.22, 0.55, 0.05);
+        hornR.position.set(+0.22, 0.55, 0.05);
+        hornL.rotation.z = 0.35;
+        hornR.rotation.z = -0.35;
+        hornL.rotation.x = -0.25;
+        hornR.rotation.x = -0.25;
+        g.add(hornL, hornR);
+
+        const wingMat = new THREE.MeshStandardMaterial({
+          color: 0x12040a,
+          emissive: 0x4a0010,
+          emissiveIntensity: 0.35,
+          transparent: true,
+          opacity: 0.42,
+          roughness: 0.9,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const wingGeo = new THREE.PlaneGeometry(0.85, 0.55);
+        const wingL = new THREE.Mesh(wingGeo, wingMat);
+        const wingR = new THREE.Mesh(wingGeo, wingMat);
+        wingL.position.set(-0.65, 0.15, -0.10);
+        wingR.position.set(+0.65, 0.15, -0.10);
+        wingL.rotation.y = 0.55;
+        wingR.rotation.y = -0.55;
+        wingL.rotation.z = 0.18;
+        wingR.rotation.z = -0.18;
+        g.add(wingL, wingR);
+
+        const eyeMat = new THREE.MeshStandardMaterial({
+          color: 0xff2a2a,
+          emissive: 0xff2a2a,
+          emissiveIntensity: 2.0,
+          roughness: 0.25,
+        });
+        const eyeGeo = new THREE.SphereGeometry(0.06, 10, 10);
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeL.position.set(-0.14, 0.18, 0.46);
+        eyeR.position.set(+0.14, 0.18, 0.46);
+        g.add(eyeL, eyeR);
+
+        const auraMat = new THREE.SpriteMaterial({
+          map: FXTEX.demonGlow,
+          transparent: true,
+          opacity: 0.8,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const aura = new THREE.Sprite(auraMat);
+        aura.scale.set(3.0, 2.6, 1);
+        aura.position.y = 0.1;
+        g.add(aura);
+
+        return { group: g, aura, core, eyeL, eyeR };
+      }
+
+      function makeFireFX() {
+        const g = new THREE.Group();
+
+        const flameMat = new THREE.SpriteMaterial({
+          map: FXTEX.flame,
+          transparent: true,
+          opacity: 0.95,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const s1 = new THREE.Sprite(flameMat);
+        s1.scale.set(1.5, 2.2, 1);
+        s1.position.y = 0.85;
+        g.add(s1);
+
+        const s2 = new THREE.Sprite(flameMat.clone());
+        s2.material.opacity = 0.70;
+        s2.scale.set(1.1, 1.7, 1);
+        s2.position.y = 0.75;
+        s2.position.x = 0.12;
+        s2.position.z = -0.08;
+        g.add(s2);
+
+        const count = 80;
+        const pos = new Float32Array(count * 3);
+        const vel = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const rx = (Math.random() - 0.5) * 0.55;
+          const rz = (Math.random() - 0.5) * 0.55;
+          pos[i * 3 + 0] = rx;
+          pos[i * 3 + 1] = Math.random() * 0.35;
+          pos[i * 3 + 2] = rz;
+
+          vel[i * 3 + 0] = (Math.random() - 0.5) * 0.25;
+          vel[i * 3 + 1] = 0.8 + Math.random() * 1.6;
+          vel[i * 3 + 2] = (Math.random() - 0.5) * 0.25;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+
+        const pm = new THREE.PointsMaterial({
+          map: FXTEX.flame,
+          transparent: true,
+          opacity: 0.55,
+          size: 0.35,
+          sizeAttenuation: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const pts = new THREE.Points(geo, pm);
+        pts.position.y = 0.15;
+        g.add(pts);
+
+        const light = new THREE.PointLight(0xff8a3d, 1.6, 7.5, 2.0);
+        light.position.y = 1.05;
+        g.add(light);
+
+        return { group: g, s1, s2, pts, pos, vel, light };
+      }
+
+      function ensureTrapMesh(t) {
+        if (enemyMeshes.has(t.id)) return enemyMeshes.get(t.id);
+
+        if (t.type === "fire") {
+          const fx = makeFireFX();
+          fx.group.position.set(t.x, 0.0, t.z);
+          world.add(fx.group);
+          enemyMeshes.set(t.id, { mesh: fx.group, kind: "fire", fx });
+          return enemyMeshes.get(t.id);
+        }
+
+        if (t.type === "fog") {
+          const g = new THREE.SphereGeometry(FOG_RADIUS * 0.38, 22, 16);
+          const m = new THREE.MeshStandardMaterial({
+            color: 0xa3b0c2,
+            transparent: true,
+            opacity: 0.16,
+            roughness: 1.0,
+            depthWrite: false,
+          });
+          const s = new THREE.Mesh(g, m);
+          s.position.set(t.x, 1.7, t.z);
+          world.add(s);
+          enemyMeshes.set(t.id, { mesh: s, kind: "fog" });
+          return enemyMeshes.get(t.id);
+        }
+
+        if (t.type === "ghost") {
+          const fx = makeGhostFX();
+          fx.group.position.set(t.x, 1.15, t.z);
+          world.add(fx.group);
+          enemyMeshes.set(t.id, { mesh: fx.group, kind: "ghost", fx, bob: Math.random() * 10 });
+          return enemyMeshes.get(t.id);
+        }
+
+        if (t.type === "demon") {
+          const fx = makeDemonFX();
+          fx.group.position.set(t.x, 1.15, t.z);
+          world.add(fx.group);
+          enemyMeshes.set(t.id, { mesh: fx.group, kind: "demon", fx, bob: Math.random() * 10 });
+          return enemyMeshes.get(t.id);
+        }
+
+        return null;
+      }
+
+      function removeTrapMesh(id) {
+        const e = enemyMeshes.get(id);
+        if (!e) return;
+        world.remove(e.mesh);
+        disposeObject3D(e.mesh);
+        enemyMeshes.delete(id);
+      }
+
+      // ---------------- Trap timing (important) ----------------
+      function computeTrapWindow(trap, st) {
+        const now = Date.now();
+        const placedAt = Number(trap.placedAt || 0);
+        const ttlMs = Number(trap.ttlMs || TTL[trap.type] || 15000);
+
+        const startAt = Number(st?.startAt || 0);
+        const setupDeadline = Number(st?.setupDeadline || 0);
+        const phaseNow = st?.phase || "setup";
+
+        let armedAt = 0;
+        if (startAt > 0) {
+          armedAt = placedAt < startAt ? startAt : placedAt;
+        } else if (phaseNow === "setup" && setupDeadline > 0) {
+          armedAt = setupDeadline;
+        } else {
+          armedAt = placedAt || now;
+        }
+
+        const expiresAt = armedAt + ttlMs;
+        return { armedAt, expiresAt };
+      }
+
+      // ---------------- Crown transactions ----------------
+      async function tryPickupCrown() {
+        if (!crown || carrierId) return;
+        const dx = me.x - crown.x, dz = me.z - crown.z;
+        if (dx * dx + dz * dz > 1.6 * 1.6) return;
+
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s || s.phase !== "play") return;
+            if (s.carrierId) return;
+
+            tx.update(lobbyRef, {
+              "stoney.carrierId": uid,
+              "stoney.carrierName": username,
+              "stoney.lastEvent": `👑 ${username} grabbed the crown!`,
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch {}
+      }
+
+      async function dropCrownAt(x, z, reason) {
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s) return;
+            if (s.carrierId !== uid) return;
+
+            tx.update(lobbyRef, {
+              "stoney.carrierId": null,
+              "stoney.carrierName": null,
+              "stoney.crown": { x, z },
+              "stoney.lastEvent": `💥 ${username} dropped the crown (${reason}).`,
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch {}
+      }
+
+      // ---------------- Death / Respawn ----------------
+      async function killMe(reason) {
+        if (!alive) return;
+        alive = false;
+        deadUntil = Date.now() + RESPAWN_MS;
+
+        overlayDead.style.opacity = "1";
+        showToast(`💀 You were caught (${reason}). Respawn in 15s.`, 2200);
+
+        if (iHaveCrown) {
+          await dropCrownAt(me.x, me.z, reason);
+        }
+
+        try {
+          await setDoc(
+            myPlayerRef,
+            { alive: false, deadUntil, updatedAt: Date.now() },
+            { merge: true }
+          );
+        } catch {}
+      }
+
+      function respawnIfReady() {
+        if (alive) return;
+        if (Date.now() < deadUntil) return;
+
+        const sp = entranceSpawnWorld();
+        me.x = sp.x;
+        me.z = sp.z;
+        me.vx = me.vz = me.vy = 0;
+
+        alive = true;
+        overlayDead.style.opacity = "0";
+        showToast("🟩 Respawned at entrance.", 1600);
+
+        setDoc(
+          myPlayerRef,
+          {
+            x: me.x,
+            z: me.z,
+            yaw: me.yaw,
+            alive: true,
+            deadUntil: 0,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+
+      // ---------------- Win condition ----------------
+      async function checkEscapeWin() {
+        if (!iHaveCrown || phase !== "play") return;
+
+        const cellSize = stoney.cellSize;
+        const m = maze;
+        const oz = (-m.h * cellSize) / 2;
+        const mazeMaxZ = oz + m.h * cellSize;
+
+        if (me.z > mazeMaxZ + 1.8) {
+          try {
+            await runTransaction(db, async (tx) => {
+              const snap = await tx.get(lobbyRef);
+              if (!snap.exists()) return;
+              const d = snap.data();
+              const s = d.stoney;
+              if (!s || s.phase !== "play") return;
+              if (s.winner) return;
+
+              tx.update(lobbyRef, {
+                "stoney.phase": "ended",
+                "stoney.winner": "players",
+                "stoney.winnerId": uid,
+                "stoney.winnerName": username,
+                "stoney.lastEvent": `🏆 ${username} escaped with the crown! Players win!`,
+                "stoney.lastEventAt": Date.now(),
+              });
+            });
+          } catch {}
+        }
+      }
+
+      async function tryFinalizeByTimeout() {
+        if (phase !== "play" || !gameEndAt) return;
+        if (Date.now() <= gameEndAt + 250) return;
+
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(lobbyRef);
+            if (!snap.exists()) return;
+            const d = snap.data();
+            const s = d.stoney;
+            if (!s || s.phase !== "play") return;
+            if (s.winner) return;
+
+            tx.update(lobbyRef, {
+              "stoney.phase": "ended",
+              "stoney.winner": "dm",
+              "stoney.winnerName": d.dm || "Dungeon Master",
+              "stoney.lastEvent": "Time is up. The Dungeon Master wins!",
+              "stoney.lastEventAt": Date.now(),
+            });
+          });
+        } catch {}
+      }
+
+      // ---------------- Local sim: trap hazards ----------------
+      function tickTraps(dt) {
+        if (!stoney) return;
+        const now = Date.now();
+        let fogOn = false;
+
+        for (const [id, t] of trapMap) {
+          if (now < t.armedAt) continue;
+
+          if (t.expiresAt && t.expiresAt < now) {
+            trapMap.delete(id);
+            removeTrapMesh(id);
+            continue;
+          }
+
+          const e = ensureTrapMesh(t);
+          if (!e) continue;
+
+          if (t.type === "fog") {
+            const dx = me.x - t.x, dz = me.z - t.z;
+            if (dx * dx + dz * dz < FOG_RADIUS * FOG_RADIUS) fogOn = true;
+            continue;
+          }
+
+          if (t.type === "fire") {
+            const fx = e.fx;
+            if (fx) {
+              const wob = 1.0 + 0.10 * Math.sin(now * 0.020) + 0.05 * Math.sin(now * 0.037);
+              fx.s1.scale.set(1.5 * wob, 2.2 * (0.95 + wob * 0.08), 1);
+              fx.s2.scale.set(
+                1.1 * (1.0 + 0.12 * Math.sin(now * 0.028 + 2.1)),
+                1.7 * wob,
+                1
+              );
+              fx.s2.position.x = 0.12 + 0.06 * Math.sin(now * 0.006);
+
+              const arr = fx.pos;
+              const vel = fx.vel;
+              for (let i = 0; i < arr.length; i += 3) {
+                arr[i + 0] += vel[i + 0] * dt;
+                arr[i + 1] += vel[i + 1] * dt;
+                arr[i + 2] += vel[i + 2] * dt;
+
+                if (
+                  arr[i + 1] > 1.55 ||
+                  Math.abs(arr[i + 0]) > 0.9 ||
+                  Math.abs(arr[i + 2]) > 0.9
+                ) {
+                  arr[i + 0] = (Math.random() - 0.5) * 0.55;
+                  arr[i + 1] = Math.random() * 0.25;
+                  arr[i + 2] = (Math.random() - 0.5) * 0.55;
+                  vel[i + 0] = (Math.random() - 0.5) * 0.25;
+                  vel[i + 1] = 0.8 + Math.random() * 1.6;
+                  vel[i + 2] = (Math.random() - 0.5) * 0.25;
+                }
+              }
+              fx.pts.geometry.attributes.position.needsUpdate = true;
+
+              fx.light.intensity =
+                1.3 + 0.55 * Math.sin(now * 0.022) + 0.25 * Math.sin(now * 0.061);
+              fx.light.intensity = Math.max(0.6, fx.light.intensity);
+            }
+
+            if (alive) {
+              const dx = me.x - t.x, dz = me.z - t.z;
+              if (dx * dx + dz * dz < FIRE_KILL_RADIUS * FIRE_KILL_RADIUS) {
+                killMe("fire");
+              }
+            }
+            continue;
+          }
+
+          if (e.kind === "ghost" && e.fx) {
+            e.bob = (e.bob || 0) + dt * 2.6;
+            e.mesh.position.y = 1.15 + Math.sin(e.bob) * 0.14;
+
+            const p = 0.75 + 0.18 * Math.sin(now * 0.004 + e.bob);
+            e.fx.aura.material.opacity = 0.65 + 0.25 * Math.sin(now * 0.006 + 1.7);
+            e.fx.aura.scale.set(2.6 * p, 3.2 * (0.92 + p * 0.12), 1);
+            e.fx.tail.scale.y = 1.0 + 0.08 * Math.sin(now * 0.009 + 0.8);
+          }
+
+          if (e.kind === "demon" && e.fx) {
+            e.bob = (e.bob || 0) + dt * 3.2;
+            e.mesh.position.y = 1.15 + Math.sin(e.bob) * 0.10;
+
+            const rage = 0.85 + 0.20 * Math.sin(now * 0.006 + e.bob);
+            e.fx.aura.material.opacity = 0.55 + 0.25 * Math.sin(now * 0.011 + 0.4);
+            e.fx.aura.scale.set(3.0 * rage, 2.6 * rage, 1);
+
+            const flick = 1.6 + 0.9 * Math.abs(Math.sin(now * 0.018));
+            e.fx.eyeL.material.emissiveIntensity = flick;
+            e.fx.eyeR.material.emissiveIntensity = flick;
+            e.fx.core.material.emissiveIntensity = 0.75 + 0.35 * Math.sin(now * 0.009);
+          }
+        }
+
+        overlayFog.style.opacity = fogOn ? "1" : "0";
+      }
+
+      // ---------------- Other players interpolation ----------------
+      function tickOthers(dt) {
+        const now = Date.now();
+        for (const [pid, o] of others) {
+          const online = now - (o.updatedAt || 0) <= ONLINE_GRACE_MS;
+          o.mesh.visible = online && o.alive && (o.deadUntil || 0) < now;
+
+          o.x += (o.tx - o.x) * Math.min(1, dt * 6);
+          o.z += (o.tz - o.z) * Math.min(1, dt * 6);
+          o.mesh.position.set(o.x, 0.95, o.z);
+        }
+      }
+
+      // ---------------- Crown visuals ----------------
+      function tickCrown(dt) {
+        if (!crownMesh) return;
+        if (phase !== "play") {
+          crownMesh.visible = false;
+          return;
+        }
+
+        if (carrierId) {
+          if (carrierId === uid) {
+            crownMesh.visible = true;
+            crownMesh.position.set(me.x, PLAYER_H + 0.55, me.z);
+          } else {
+            const o = others.get(carrierId);
+            if (o && o.mesh.visible) {
+              crownMesh.visible = true;
+              crownMesh.position.set(o.x, 1.9, o.z);
+            } else {
+              crownMesh.visible = false;
+            }
+          }
+        } else if (crown) {
+          crownMesh.visible = true;
+          crownMesh.position.set(crown.x, 1.0, crown.z);
+          crownMesh.rotation.y += dt * 1.6;
+          crownMesh.position.y = 1.0 + Math.sin(performance.now() * 0.003) * 0.1;
+          tryPickupCrown();
+        } else {
+          crownMesh.visible = false;
+        }
+      }
+
+      // ---------------- Movement / camera ----------------
+      function tickMove(dt) {
+        if (!stoney) return;
+
+        if (phase !== "play") {
+          camera.position.set(me.x, me.y, me.z);
+          camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
+          return;
+        }
+
+        if (!alive) {
+          respawnIfReady();
+          return;
+        }
+
+        const forward = keys["w"] || keys["arrowup"] ? 1 : 0;
+        const back = keys["s"] || keys["arrowdown"] ? 1 : 0;
+        const left = keys["a"] || keys["arrowleft"] ? 1 : 0;
+        const right = keys["d"] || keys["arrowright"] ? 1 : 0;
+
+        const sprint = !!keys["shift"];
+        const speed = sprint ? 5.4 : 3.9;
+
+        let mx = right - left;
+        let mz = forward - back;
+
+        if (mobile.enabled) {
+          const turnRate = 2.8;
+          const lookRate = 2.2;
+          me.yaw -= mobile.lookX * turnRate * dt;
+          me.pitch -= mobile.lookY * lookRate * dt;
+          me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch));
+
+          mx = mobile.moveX;
+          mz = -mobile.moveY; // up on stick should be forward
+        }
+
+        const mlen = Math.hypot(mx, mz);
+        if (mlen > 0) {
+          mx /= mlen;
+          mz /= mlen;
+        }
+
+        // camera-relative movement (Three.js camera looks down -Z)
+        const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
+        const targetVx = (mx * cy - mz * sy) * speed;
+        const targetVz = (-mx * sy - mz * cy) * speed;
+
+        const accel = 18;
+        me.vx += (targetVx - me.vx) * Math.min(1, accel * dt);
+        me.vz += (targetVz - me.vz) * Math.min(1, accel * dt);
+
+        if (keys[" "] && me.grounded) {
+          me.vy = 3.6;
+          me.grounded = false;
+        }
+
+        me.vy -= 10.5 * dt;
+        me.y += me.vy * dt;
+        if (me.y <= PLAYER_H) {
+          me.y = PLAYER_H;
+          me.vy = 0;
+          me.grounded = true;
+        }
+
+        const nx = me.x + me.vx * dt;
+        const nz = me.z + me.vz * dt;
+
+        if (!hitsWall(nx, me.z)) me.x = nx;
+        else me.vx = 0;
+
+        if (!hitsWall(me.x, nz)) me.z = nz;
+        else me.vz = 0;
+
+        camera.position.set(me.x, me.y, me.z);
+        camera.rotation.set(me.pitch, me.yaw, 0, "YXZ");
+      }
+
+      // ---------------- Network posting (throttled) ----------------
+      let lastPostAt = 0;
+      let lastPosted = { x: 1e9, z: 1e9, yaw: 1e9, alive: true };
+
+      async function postMyPosition(force = false) {
+        if (!myPlayerRef) return;
+        if (!stoney) return;
+
+        const now = Date.now();
+        if (!force && now - lastPostAt < 950) return;
+
+        const moved =
+          Math.hypot(me.x - lastPosted.x, me.z - lastPosted.z) > 0.08 ||
+          Math.abs(me.yaw - lastPosted.yaw) > 0.04 ||
+          alive !== lastPosted.alive;
+
+        if (!force && !moved) {
+          if (now - lastPostAt < 2800) return;
+        }
+
+        lastPostAt = now;
+        lastPosted = { x: me.x, z: me.z, yaw: me.yaw, alive };
+
+        try {
+          await setDoc(
+            myPlayerRef,
+            {
+              uid,
+              name: username,
+              x: me.x,
+              z: me.z,
+              yaw: me.yaw,
+              alive,
+              deadUntil: alive ? 0 : deadUntil,
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+        } catch {}
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") postMyPosition(true);
+      });
+
+      // ---------------- Resize ----------------
+      addEventListener("resize", () => {
+        renderer.setSize(innerWidth, innerHeight);
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+      });
+
+      // ---------------- Firebase boot helpers ----------------
+      function snapshotError(where, err) {
+        console.error(`[stoney] ${where} snapshot error`, err);
+        setNet("Error");
+        centerTitle.textContent = "Connection issue";
+        centerSub.textContent =
+          (err?.message || "Unknown error") +
+          " — Make sure Anonymous Auth is enabled and Firestore rules allow authed reads.";
+        lockBtn.style.display = "none";
+        centerMsg.style.display = "block";
+      }
+
+      async function ensureAuthed() {
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken();
+          return auth.currentUser;
+        }
+
+        await signInAnonymously(auth).catch(() => {});
+        return await new Promise((resolve, reject) => {
+          let unsub = null;
+          const timeout = setTimeout(() => {
+            unsub?.();
+            reject(new Error("Anonymous auth timed out."));
+          }, 12000);
+
+          unsub = onAuthStateChanged(auth, async (user) => {
+            if (!user) return;
+            clearTimeout(timeout);
+            unsub();
+            try {
+              await user.getIdToken();
+              resolve(user);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+      }
+
+      async function ensureLobbyExistsMinimal() {
+        lobbyRef = doc(db, "lobbies", gameId);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(lobbyRef);
+          if (!snap.exists()) {
+            tx.set(lobbyRef, {
+              createdAt: Date.now(),
+              gameType: "stoney",
+            });
+          }
+        });
+      }
+
+      async function ensurePlayerDoc() {
+        playersCol = collection(db, "lobbies", gameId, "players");
+        trapsCol = collection(db, "lobbies", gameId, "traps");
+
+        myPlayerRef = doc(db, "lobbies", gameId, "players", uid);
+
+        await setDoc(
+          myPlayerRef,
+          {
+            uid,
+            name: username,
+            x: 0,
+            z: 0,
+            yaw: 0,
+            alive: true,
+            deadUntil: 0,
+            updatedAt: Date.now(),
+            joinedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      }
+
+      // ---------------- Listeners ----------------
+      let lastEventAt = 0;
+      let builtWorld = false;
+
+      function listenLobby() {
+        onSnapshot(
+          lobbyRef,
+          (snap) => {
+            setNet("Online");
+            if (!snap.exists()) return;
+
+            const d = snap.data();
+            stoney = d.stoney || null;
+
+            if (!stoney) {
+              phase = "setup";
+              centerTitle.textContent = "Waiting for the Dungeon Master…";
+              centerSub.textContent =
+                "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+              timerText.textContent = "—";
+              crownText.textContent = "—";
+              syncPlayUi();
+              return;
+            }
+
+            phase = stoney.phase || "setup";
+            gameStartAt = Number(stoney.startAt || 0);
+            gameEndAt = Number(stoney.endAt || 0);
+            winner = stoney.winner || null;
+            winnerName = stoney.winnerName || null;
+
+            crown = stoney.crown || null;
+            carrierId = stoney.carrierId || null;
+            carrierName = stoney.carrierName || null;
+            iHaveCrown = carrierId === uid;
+
+            if (stoney.lastEventAt && stoney.lastEventAt !== lastEventAt) {
+              lastEventAt = stoney.lastEventAt;
+              if (stoney.lastEvent) showToast(stoney.lastEvent, 2600);
+            }
+
+            if (!maze && typeof stoney.seed === "number") {
+              maze = makeMaze(stoney.w, stoney.h, stoney.seed);
+            }
+
+            if (maze && !builtWorld) {
+              builtWorld = true;
+              buildWorldFromMaze();
+              const sp = entranceSpawnWorld();
+              me.x = sp.x;
+              me.z = sp.z;
+              postMyPosition(true);
+            }
+
+            if (phase === "setup") {
+              const t = Math.max(0, (stoney.setupDeadline || 0) - Date.now());
+              timerText.textContent = `Setup ${Math.ceil(t / 1000)}s`;
+              crownText.textContent = stoney.crown ? "Placed" : "Not placed";
+              centerTitle.textContent = "Waiting for the Dungeon Master…";
+              centerSub.textContent =
+                "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+            } else if (phase === "play") {
+              const t = Math.max(0, (gameEndAt || 0) - Date.now());
+              const mm = Math.floor(t / 60000);
+              const ss = Math.floor((t % 60000) / 1000);
+              timerText.textContent = `${mm}m ${ss}s`;
+              crownText.textContent = iHaveCrown
+                ? "You have it!"
+                : carrierName
+                ? `Carried by ${carrierName}`
+                : crown
+                ? "On ground"
+                : "Not placed";
+
+              tryFinalizeByTimeout();
+            } else if (phase === "ended") {
+              timerText.textContent = "Ended";
+              crownText.textContent = "—";
+              centerMsg.style.display = "block";
+              lockBtn.style.display = "none";
+              centerTitle.textContent =
+                winner === "players" ? `🏆 Players win!` : `😈 Dungeon Master wins!`;
+              centerSub.textContent =
+                winner === "players"
+                  ? `${winnerName || "Someone"} escaped with the crown.`
+                  : `Time ran out.`;
+            }
+
+            syncPlayUi();
+          },
+          (err) => snapshotError("lobby", err)
+        );
+      }
+
+      function listenPlayers() {
+        onSnapshot(
+          playersCol,
+          (snap) => {
+            const now = Date.now();
+            const seen = new Set();
+
+            snap.forEach((docSnap) => {
+              const pid = docSnap.id;
+              const v = docSnap.data() || {};
+              const name = String(v.name || "Player").slice(0, 22);
+
+              seen.add(pid);
+              if (pid === uid) return;
+
+              const tx = Number(v.x || 0);
+              const tz = Number(v.z || 0);
+
+              const isAlive = v.alive !== false;
+              const otherDeadUntil = Number(v.deadUntil || 0);
+              const updatedAt = Number(v.updatedAt || 0);
+
+              if (!others.has(pid)) {
+                const g = new THREE.CapsuleGeometry(0.35, 0.9, 8, 14);
+                const m = new THREE.MeshStandardMaterial({
+                  color: 0x60a5fa,
+                  emissive: 0x0b3a7a,
+                  emissiveIntensity: 0.55,
+                  roughness: 0.8,
+                });
+                const mesh = new THREE.Mesh(g, m);
+                mesh.position.set(tx, 0.95, tz);
+                world.add(mesh);
+
+                others.set(pid, {
+                  mesh,
+                  name,
+                  x: tx,
+                  z: tz,
+                  tx,
+                  tz,
+                  alive: isAlive,
+                  deadUntil: otherDeadUntil,
+                  updatedAt,
+                  lastSeen: now,
+                });
+              } else {
+                const o = others.get(pid);
+                o.name = name;
+                o.tx = tx;
+                o.tz = tz;
+                o.alive = isAlive;
+                o.deadUntil = otherDeadUntil;
+                o.updatedAt = updatedAt;
+                o.lastSeen = now;
+              }
+            });
+
+            for (const [pid, o] of others) {
+              if (seen.has(pid)) continue;
+              if (now - o.lastSeen > 8000) {
+                world.remove(o.mesh);
+                others.delete(pid);
+              }
+            }
+          },
+          (err) => snapshotError("players", err)
+        );
+      }
+
+      function listenTraps() {
+        onSnapshot(
+          trapsCol,
+          (snap) => {
+            const now = Date.now();
+            const seen = new Set();
+
+            snap.forEach((docSnap) => {
+              const id = docSnap.id;
+              const v = docSnap.data() || {};
+              const type = v.type;
+              if (!type) return;
+
+              const placedAt = Number(v.placedAt || 0);
+              const ttlMs = Number(v.ttlMs || TTL[type] || 15000);
+              const x = Number(v.x || 0);
+              const z = Number(v.z || 0);
+
+              const { armedAt, expiresAt } = computeTrapWindow({ type, placedAt, ttlMs }, stoney);
+
+              seen.add(id);
+
+              if (expiresAt && expiresAt < now) {
+                trapMap.delete(id);
+                removeTrapMesh(id);
+                return;
+              }
+
+              trapMap.set(id, { id, type, x, z, placedAt, ttlMs, armedAt, expiresAt });
+
+              if (now >= armedAt) ensureTrapMesh({ id, type, x, z });
+            });
+
+            for (const [id] of trapMap) {
+              if (seen.has(id)) continue;
+              trapMap.delete(id);
+              removeTrapMesh(id);
+            }
+          },
+          (err) => snapshotError("traps", err)
+        );
+      }
+
+      // ---------------- UI click-to-lock ----------------
+      renderer.domElement.addEventListener("click", () => {
+        if (phase === "play" && !pointerLocked) requestLock();
+      });
+
+      // ---------------- Main loop ----------------
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+
+        if (phase === "play" && gameEndAt) {
+          const t = Math.max(0, gameEndAt - Date.now());
+          const mm = Math.floor(t / 60000);
+          const ss = Math.floor((t % 60000) / 1000);
+          timerText.textContent = `${mm}m ${ss}s`;
+        }
+
+        tickMove(dt);
+        tickOthers(dt);
+        tickTraps(dt);
+        tickCrown(dt);
+
+        if (alive && phase === "play") checkEscapeWin();
+
+        postMyPosition(false);
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+
+      // ---------------- Boot ----------------
+      async function boot() {
+        if (!gameId) {
+          centerTitle.textContent = "Missing gameId";
+          centerSub.textContent = "Open with ?gameId=YOURLOBBYID&username=NAME";
+          return;
+        }
+
+        setNet("Signing in…");
+        centerTitle.textContent = "Signing in…";
+        centerSub.textContent = "Connecting to Firebase (anonymous).";
+
+        const user = await ensureAuthed();
+        uid = user.uid;
+
+        setNet("Joining…");
+        await ensureLobbyExistsMinimal();
+        await ensurePlayerDoc();
+
+        setNet("Syncing…");
+        centerTitle.textContent = "Waiting for the Dungeon Master…";
+        centerSub.textContent =
+          "The dungeon opens when the DM clicks Ready or the setup timer ends.";
+
+        listenLobby();
+        listenPlayers();
+        listenTraps();
+
+        requestAnimationFrame(loop);
+      }
+
+      boot().catch((e) => {
+        console.error(e);
+        setNet("Error");
+        centerTitle.textContent = "Auth / Firebase error";
+        centerSub.textContent =
+          (e?.message || "Unknown") +
+          " — Ensure Anonymous Auth is enabled in Firebase Authentication.";
+      });
+    </script>
+  </body>
+</html>
