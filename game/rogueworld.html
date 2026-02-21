@@ -416,6 +416,18 @@
     const SAVE_KEY = "circleRogueSave_v1";
     const WORLD_RADIUS = 2200;
     const SAFE_MARGIN  = 60;
+    const DANGER_BANDS = [
+      { id:"inner", min:0, max:900, hpMul:1.0, dmgMul:1.0, terrainMul:1.0 },
+      { id:"mid", min:900, max:1600, hpMul:1.4, dmgMul:1.25, terrainMul:1.2 },
+      { id:"outer", min:1600, max:WORLD_RADIUS, hpMul:1.9, dmgMul:1.55, terrainMul:1.4 },
+    ];
+
+    function dangerBandAt(x,z){
+      const r = Math.hypot(x,z);
+      if(r < DANGER_BANDS[1].min) return DANGER_BANDS[0];
+      if(r < DANGER_BANDS[2].min) return DANGER_BANDS[1];
+      return DANGER_BANDS[2];
+    }
 
     const PLAYER_H = 1.72;
     const PLAYER_R = 0.35;
@@ -699,15 +711,15 @@
     // ============================================================
     const REGIONS = [
       { id:"desert", name:"Desert Expanse",   fog:0xcaa46f, sky:0x0a1018, tex:"desert", ground:0xffffff,
-        props:{ cactus:22, rock:16 }, drops:["iron","hide"], enemies:["scarab","scorpion","sandwisp"] },
-      { id:"forest", name:"Verdant Wilds",    fog:0x224b31, sky:0x071018, tex:"forest", ground:0xffffff,
-        props:{ tree:20, rock:10 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter"] },
+        props:{ cactus:18, rock:12 }, drops:["iron","hide"], enemies:["scarab","scorpion","sandwisp"] },
+      { id:"forest", name:"Forest Wilds",     fog:0x224b31, sky:0x071018, tex:"forest", ground:0xffffff,
+        props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter"] },
       { id:"snow",   name:"Frost Crown",      fog:0xbcd5ff, sky:0x050812, tex:"snow", ground:0xffffff,
-        props:{ pine:20, rock:14 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"] },
+        props:{ pine:16, rock:12 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"] },
       { id:"alien",  name:"Neon Bloom",       fog:0x5be3ff, sky:0x070610, tex:"alien", ground:0xffffff,
-        props:{ crystal:22, shroom:14 }, drops:["crystal","essence"], enemies:["drone","floater","shardling"] },
+        props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling"] },
       { id:"hell",   name:"Ash & Ember",      fog:0x4a0010, sky:0x050306, tex:"hell",  ground:0xffffff,
-        props:{ spire:18, lava:14 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
+        props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
     ];
 
     function regionAt(x,z){
@@ -855,7 +867,8 @@
 
       // Props by region (instanced, low overhead)
       const prop = reg.props || {};
-      const baseCount = (a)=>Math.max(0, (a + ((rnd()*6)|0))|0);
+      const chunkCenterBand = dangerBandAt(wx + CHUNK*0.5, wz + CHUNK*0.5);
+      const baseCount = (a)=>Math.max(0, Math.round((a + ((rnd()*6)|0)) * chunkCenterBand.terrainMul));
 
       if(reg.id==="desert"){
         addInstanced(group, GEO.cactus, MAT.cactus, baseCount(prop.cactus||18), rnd, (d,i,rr)=>{
@@ -879,23 +892,29 @@
       }
 
       if(reg.id==="forest"){
+        const treeCount = baseCount(prop.tree||18);
+        const treeSpots = [];
+        for(let i=0;i<treeCount;i++){
+          const px=(rnd()-0.5)*(CHUNK*0.9), pz=(rnd()-0.5)*(CHUNK*0.9);
+          const y=heightAt(wx+px, wz+pz, reg.id);
+          const s=0.7+rnd()*1.1;
+          treeSpots.push({ px, pz, y, s, rot:rnd()*Math.PI*2 });
+        }
+
         // trunks
-        addInstanced(group, GEO.trunk, MAT.wood, baseCount(prop.tree||18), rnd, (d,i,rr)=>{
-          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
-          const y=heightAt(wx+px, wz+pz, reg.id);
-          d.position.set(px, y+1.1, pz);
-          d.rotation.y=rr()*Math.PI*2;
-          const s=0.7+rr()*1.1;
-          d.scale.set(s, 1.0+rr()*1.0, s);
+        addInstanced(group, GEO.trunk, MAT.wood, treeCount, rnd, (d,i)=>{
+          const t = treeSpots[i];
+          d.position.set(t.px, t.y+1.1, t.pz);
+          d.rotation.y=t.rot;
+          d.scale.set(t.s, 1.0+rnd()*1.0, t.s);
         });
-        // leaves cones
-        addInstanced(group, GEO.cone, MAT.leaf, baseCount((prop.tree||18)), rnd, (d,i,rr)=>{
-          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
-          const y=heightAt(wx+px, wz+pz, reg.id);
-          d.position.set(px, y+3.0, pz);
-          d.rotation.y=rr()*Math.PI*2;
-          const s=0.7+rr()*1.2;
-          d.scale.set(s, 0.9+rr()*1.0, s);
+        // leaves cones (aligned with trunks)
+        addInstanced(group, GEO.cone, MAT.leaf, treeCount, rnd, (d,i)=>{
+          const t = treeSpots[i];
+          d.position.set(t.px, t.y+2.55, t.pz);
+          d.rotation.y=t.rot;
+          const crown = t.s * (1.25 + rnd()*0.2);
+          d.scale.set(crown, 1.2+rnd()*0.7, crown);
         });
         addInstanced(group, GEO.rock, MAT.rock, baseCount(prop.rock||10), rnd, (d,i,rr)=>{
           const px=(rr()-0.5)*(CHUNK*0.95), pz=(rr()-0.5)*(CHUNK*0.95);
@@ -1303,6 +1322,9 @@
       lifeGripT: 0,
       meteorT: 0,
       lastHitAt: -999,
+      slowT: 0,
+      slowMul: 1.0,
+      turnSlowT: 0,
     };
 
     function resetRun(newSeed=true){
@@ -1317,6 +1339,7 @@
       me.speedMul=1.0; me.damageMul=1.0; me.rangeMul=1.0; me.hpRegen=1.4;
 
       me.weapon="Arc Bolt";
+      me.slowT=0; me.slowMul=1.0; me.turnSlowT=0;
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
 
@@ -1627,32 +1650,33 @@
       return g;
     }
 
-    function enemyStats(type, level){
-      // base stats per archetype
+    function enemyStats(type, level, x=0, z=0){
+      // base stats per archetype (inner ring baseline)
       let baseHp=26, baseDmg=8, spd=2.1, range=1.3, flying=false, yOff=0.0, kind="melee";
-      if(type==="scarab"){ baseHp=22; baseDmg=7; spd=2.5; range=1.2; kind="melee"; }
-      if(type==="scorpion"){ baseHp=28; baseDmg=9; spd=2.2; range=1.35; kind="melee"; }
-      if(type==="sandwisp"){ baseHp=18; baseDmg=7; spd=2.6; range=10; kind="ranged"; flying=true; yOff=1.2; }
-      if(type==="boar"){ baseHp=30; baseDmg=9; spd=2.4; range=1.35; kind="melee"; }
-      if(type==="spriggan"){ baseHp=38; baseDmg=10; spd=1.9; range=1.45; kind="melee"; }
-      if(type==="spitter"){ baseHp=24; baseDmg=8; spd=2.0; range=12; kind="ranged"; }
-      if(type==="wolf"){ baseHp=22; baseDmg=8; spd=2.9; range=1.25; kind="melee"; }
-      if(type==="icegolem"){ baseHp=52; baseDmg=12; spd=1.6; range=1.6; kind="melee"; }
-      if(type==="frostling"){ baseHp=18; baseDmg=7; spd=3.1; range=1.15; kind="melee"; }
-      if(type==="drone"){ baseHp=22; baseDmg=9; spd=2.3; range=12; kind="ranged"; flying=true; yOff=1.35; }
-      if(type==="floater"){ baseHp=30; baseDmg=10; spd=2.0; range=14; kind="ranged"; flying=true; yOff=1.6; }
-      if(type==="shardling"){ baseHp=26; baseDmg=9; spd=2.2; range=1.2; kind="melee"; }
-      if(type==="imp"){ baseHp=24; baseDmg=9; spd=2.6; range=1.3; kind="melee"; }
-      if(type==="brute"){ baseHp=72; baseDmg=15; spd=1.7; range=1.8; kind="melee"; }
-      if(type==="mortar"){ baseHp=34; baseDmg=12; spd=1.7; range=18; kind="mortar"; }
+      if(type==="scarab"){ baseHp=22; baseDmg=7; spd=2.9; range=1.15; kind="melee"; }
+      if(type==="scorpion"){ baseHp=30; baseDmg=9; spd=2.3; range=1.35; kind="melee"; }
+      if(type==="sandwisp"){ baseHp=18; baseDmg=6; spd=2.3; range=12; kind="ranged"; flying=true; yOff=1.2; }
+      if(type==="boar"){ baseHp=32; baseDmg=10; spd=2.7; range=1.45; kind="melee"; }
+      if(type==="spriggan"){ baseHp=48; baseDmg=11; spd=1.85; range=1.5; kind="melee"; }
+      if(type==="spitter"){ baseHp=26; baseDmg=8; spd=2.35; range=12.5; kind="ranged"; flying=true; yOff=1.4; }
+      if(type==="wolf"){ baseHp=26; baseDmg=9; spd=3.2; range=1.25; kind="melee"; }
+      if(type==="icegolem"){ baseHp=75; baseDmg=14; spd=1.5; range=1.7; kind="melee"; }
+      if(type==="frostling"){ baseHp=22; baseDmg=7; spd=3.2; range=7.5; kind="ranged"; }
+      if(type==="drone"){ baseHp=28; baseDmg=10; spd=2.5; range=13; kind="ranged"; flying=true; yOff=1.35; }
+      if(type==="floater"){ baseHp=38; baseDmg=9; spd=2.0; range=14; kind="ranged"; flying=true; yOff=1.6; }
+      if(type==="shardling"){ baseHp=34; baseDmg=11; spd=2.2; range=1.35; kind="melee"; }
+      if(type==="imp"){ baseHp=28; baseDmg=10; spd=2.8; range=1.3; kind="melee"; }
+      if(type==="brute"){ baseHp=95; baseDmg=16; spd=1.7; range=1.9; kind="melee"; }
+      if(type==="mortar"){ baseHp=45; baseDmg=14; spd=1.6; range=18; kind="mortar"; }
 
-      const hp = Math.round(baseHp * (1 + 0.14*(level-1)));
-      const dmg = Math.round(baseDmg * (1 + 0.09*(level-1)));
-      return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind };
+      const band = dangerBandAt(x,z);
+      const hp = Math.round(baseHp * band.hpMul * (1 + 0.14*(level-1)));
+      const dmg = Math.round(baseDmg * band.dmgMul * (1 + 0.09*(level-1)));
+      return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind, band:band.id, bandMul:band };
     }
 
     function spawnEnemy(type, x, z, regId){
-      const st = enemyStats(type, me.level);
+      const st = enemyStats(type, me.level, x, z);
       const mesh = makeEnemyMesh(type, regId);
       const y = heightAt(x,z, regId) + (st.flying ? (1.5+st.yOff) : 0.0);
       mesh.position.set(x, y, z);
@@ -1672,6 +1696,8 @@
         dmg: st.dmg,
         range: st.range,
         kind: st.kind,
+        dangerBand: st.band,
+        inOuter: st.band==="outer",
 
         state: "chase", // chase -> windup -> attack -> recover
         cd: 0,
@@ -1683,6 +1709,8 @@
         poisonDps: 0,
         kbX: 0,
         kbZ: 0,
+        burstLeft: 0,
+        data: {},
       };
 
       world.add(mesh);
@@ -1867,21 +1895,59 @@
       return m;
     }
 
-    function spawnEnemyBolt(e, toX, toY, toZ){
+    function distanceBandMultiplier(x,z){
+      return dangerBandAt(x,z);
+    }
+
+    function enemyWindupFor(e){
+      const b = e.dangerBand;
+      if(e.type==="scorpion") return 0.72;
+      if(e.type==="boar") return (b==="outer" && e.data.doubleChargeReady) ? 0.34 : 0.55;
+      if(e.type==="icegolem") return 0.95;
+      if(e.type==="brute") return 0.78;
+      if(e.kind==="mortar") return 0.9;
+      if(e.kind==="ranged") return 0.6;
+      return 0.52;
+    }
+
+    function spawnEnemyBolt(e, toX, toY, toZ, opts={}){
       const fromX = e.mesh.position.x;
       const fromZ = e.mesh.position.z;
-      const fromY = e.mesh.position.y + (e.flying?0.2:0.9);
+      const fromY = e.mesh.position.y + (e.flying?0.25:0.9);
 
       const dir = _v2.set(toX-fromX, toY-fromY, toZ-fromZ);
       const len = dir.length(); if(len<=0.0001) return;
       dir.multiplyScalar(1/len);
 
-      const speed = 18;
+      let speed = opts.speed ?? 18;
+      let color = opts.color ?? 0xef4444;
+      let rad = opts.rad ?? 0.55;
+      let life = opts.life ?? 2.2;
+      let kind = opts.kind ?? "bolt";
+      let aoe = opts.aoe ?? 0;
+      let puddle = opts.puddle || 0;
+      let slow = opts.slow || 0;
+
+      if(e.type==="sandwisp"){
+        speed = opts.speed ?? 8.2;
+        color = 0xfbbf24;
+        life = opts.life ?? 4.2;
+        rad = 0.62;
+      }else if(e.type==="frostling"){
+        speed = opts.speed ?? 21;
+        color = 0x93c5fd;
+        life = opts.life ?? 1.7;
+        rad = 0.35;
+        slow = Math.max(slow, 0.28);
+      }
+
       const mesh = new THREE.Mesh(GEO.ember, new THREE.MeshStandardMaterial({
-        color: 0xef4444,
-        emissive: 0xef4444,
+        color,
+        emissive: color,
         emissiveIntensity: 1.3,
-        roughness:0.25
+        roughness:0.25,
+        transparent: true,
+        opacity: kind==="sandOrb" ? 0.92 : 1
       }));
       mesh.position.set(fromX, fromY, fromZ);
       world.add(mesh);
@@ -1890,15 +1956,17 @@
         mesh,
         x:fromX, y:fromY, z:fromZ,
         vx:dir.x*speed, vy:dir.y*speed, vz:dir.z*speed,
-        life: 2.2,
-        rad: 0.55,
+        life,
+        rad,
         dmg: e.dmg,
         from:"enemy",
-        kind:"bolt",
-        color:0xef4444,
+        kind,
+        color,
         splinter:false,
         explode:false,
-        aoe:0
+        aoe,
+        puddle,
+        slow
       });
     }
 
@@ -1977,7 +2045,9 @@
     };
 
     function dropFromEnemy(e){
-      const reg = regionAt(e.x, e.z);
+      const ex = e.mesh?.position.x ?? e.x;
+      const ez = e.mesh?.position.z ?? e.z;
+      const reg = regionAt(ex, ez);
       const dropsHere = reg.drops;
       // 1-2 items
       const rnd = xorshift32((worldSeed ^ (e.id*2654435761))|0);
@@ -1993,12 +2063,12 @@
         m.material.emissiveIntensity = 0.8;
         m.material.roughness = 0.35;
 
-        const y = heightAt(e.x, e.z, reg.id);
-        const ox = (rnd()-0.5)*1.6, oz=(rnd()-0.5)*1.6;
-        m.position.set(e.x+ox, y+0.35, e.z+oz);
+        const y = heightAt(ex, ez, reg.id);
+        const ox = (rnd()-0.5)*0.24, oz=(rnd()-0.5)*0.24;
+        m.position.set(ex+ox, y+0.35, ez+oz);
         world.add(m);
 
-        drops.push({ x:e.x+ox, y:y+0.35, z:e.z+oz, mesh:m, mat:matName, spin: rnd()*10 });
+        drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0 });
       }
     }
 
@@ -2012,7 +2082,16 @@
         const dx = me.x - d.mesh.position.x;
         const dz = me.z - d.mesh.position.z;
         const dy = me.y - d.mesh.position.y;
-        if(dx*dx+dz*dz+dy*dy < 1.55*1.55){
+        const d2 = dx*dx+dz*dz+dy*dy;
+        if(d2 < 5.2*5.2){
+          const dd = Math.sqrt(d2)||1;
+          const pull = clamp((5.2-dd)/5.2, 0, 1);
+          d.pull = Math.min(1.6, (d.pull||0) + dt*(0.9 + pull*2.1));
+          d.mesh.position.x += (dx/dd) * d.pull * dt * 6.0;
+          d.mesh.position.z += (dz/dd) * d.pull * dt * 6.0;
+          d.mesh.position.y += (dy/dd) * d.pull * dt * 4.0;
+        }
+        if(d2 < 1.7*1.7){
           me.mats[d.mat] = (me.mats[d.mat]||0) + 1;
           showToast(`+1 ${d.mat}`);
           world.remove(d.mesh);
@@ -2060,6 +2139,36 @@
         // cleanup telegraphs
         if(e.tele?.marker){ world.remove(e.tele.marker); }
         if(e.tele?.ring){ world.remove(e.tele.ring); }
+
+        if(e.type==="scarab" && e.inOuter && !e.data.splitSpawned){
+          e.data.splitSpawned = true;
+          for(let i=0;i<2;i++){
+            const a = (Math.PI*i) + Math.random()*0.5;
+            const sx = e.mesh.position.x + Math.cos(a)*0.85;
+            const sz = e.mesh.position.z + Math.sin(a)*0.85;
+            const tiny = spawnEnemy("scarab", sx, sz, e.regId);
+            tiny.maxHp = Math.max(8, Math.round(e.maxHp*0.28));
+            tiny.hp = tiny.maxHp;
+            tiny.dmg = Math.max(3, Math.round(e.dmg*0.45));
+            tiny.spd *= 1.22;
+          }
+        }
+
+        if(e.type==="shardling" && e.inOuter && !e.data.fractured){
+          e.data.fractured = true;
+          for(let i=0;i<2;i++){
+            const a = i*Math.PI + 0.4;
+            const sx = e.mesh.position.x + Math.cos(a)*1.05;
+            const sz = e.mesh.position.z + Math.sin(a)*1.05;
+            const f = spawnEnemy("shardling", sx, sz, e.regId);
+            f.maxHp = Math.max(10, Math.round(e.maxHp*0.35));
+            f.hp = f.maxHp;
+            f.dmg = Math.round(e.dmg*0.68);
+            f.spd *= 1.18;
+            f.inOuter = false;
+          }
+        }
+
         // drops + xp
         dropFromEnemy(e);
         gainXp(6 + Math.floor(me.level*0.8));
@@ -2532,8 +2641,8 @@
       if(phase!=="play") return;
 
       if(mobile.enabled && !paused){
-        const turnRate = 2.8;
-        const lookRate = 2.2;
+        const turnRate = 2.8 * (me.turnSlowT>0 ? 0.72 : 1.0);
+        const lookRate = 2.2 * (me.turnSlowT>0 ? 0.72 : 1.0);
         me.yaw   -= mobile.lookX * turnRate * dt;
         me.pitch -= mobile.lookY * lookRate * dt;
         me.pitch = clamp(me.pitch, -1.32, 1.32);
@@ -2559,7 +2668,12 @@
 
       const sprint = !!keys["shift"];
       const baseSpeed = sprint ? 5.6 : 4.0;
-      const speed = baseSpeed * me.speedMul;
+      if(me.slowT>0){
+        me.slowT = Math.max(0, me.slowT - dt);
+        if(me.slowT<=0) me.slowMul = 1.0;
+      }
+      if(me.turnSlowT>0) me.turnSlowT = Math.max(0, me.turnSlowT-dt);
+      const speed = baseSpeed * me.speedMul * me.slowMul;
 
       if(mobile.enabled){
         mx = mobile.moveX;
@@ -2672,6 +2786,7 @@
           });
         }
         if(e.stunT>0) e.stunT -= dt;
+        if(e.data.turretCd>0) e.data.turretCd -= dt;
 
         // state machine
         e.cd -= dt;
@@ -2698,7 +2813,11 @@
         const d = Math.hypot(dx,dz) || 1;
 
         // for ranged, stop a bit farther
-        const want = (e.kind==="melee") ? 1.2 : (e.kind==="mortar" ? 14.5 : 10.5);
+        let want = (e.kind==="melee") ? 1.2 : (e.kind==="mortar" ? 14.5 : 10.5);
+        if(e.type==="boar") want = 2.6;
+        if(e.type==="icegolem") want = 2.0;
+        if(e.type==="frostling") want = 7.0;
+        if(e.type==="sandwisp") want = 11.5;
         const go = (d > want) ? 1 : 0;
 
         // attacks
@@ -2707,21 +2826,31 @@
           e.tele = e.tele?.marker ? e.tele : null;
           e.state = "chase";
         }
+        if(e.type==="wolf" && e.inOuter && !e.data.howlCd){
+          e.data.howlCd = 6.0;
+          for(const ally of enemies){
+            if(ally.type!=="wolf" && ally.type!=="frostling") continue;
+            const a2 = dist2(ally.mesh.position.x, ally.mesh.position.z, e.mesh.position.x, e.mesh.position.z);
+            if(a2 < 13*13){ ally.spd *= 1.08; }
+          }
+        }
+        if(e.data.howlCd>0) e.data.howlCd -= dt;
+
         if(e.state==="chase"){
           // decide to attack
           if(e.cd <= 0){
             if(e.kind==="melee" && d <= e.range+0.6){
               e.state="windup";
-              e.wind = 0.55;
-              e.cd = 1.0 + Math.random()*0.6;
+              e.wind = enemyWindupFor(e);
+              e.cd = 0.9 + Math.random()*0.9;
               const ring = makeTeleCircle(0xff2a2a);
               ring.position.set(ex, e.yBase+0.04, ez);
               world.add(ring);
               e.tele = { ring };
             }else if(e.kind==="ranged" && d <= e.range){
               e.state="windup";
-              e.wind = 0.65;
-              e.cd = 1.2 + Math.random()*0.8;
+              e.wind = enemyWindupFor(e);
+              e.cd = 1.0 + Math.random()*0.9;
               const ring = makeTeleCircle(0x60a5fa);
               ring.position.set(ex, e.yBase+0.04, ez);
               ring.scale.set(0.8,0.8,0.8);
@@ -2729,12 +2858,17 @@
               e.tele = { ring };
             }else if(e.kind==="mortar" && d <= e.range){
               e.state="windup";
-              e.wind = 0.9;
-              e.cd = 2.2 + Math.random()*0.9;
+              e.wind = enemyWindupFor(e);
+              e.cd = 2.1 + Math.random()*0.9;
               // telegraph landing zone near player's current position
               const tx = me.x + (Math.random()-0.5)*2.2;
               const tz = me.z + (Math.random()-0.5)*2.2;
               spawnMortar(e, tx, tz);
+              if(e.inOuter){
+                const tx2 = me.x + (me.vx*0.45) + (Math.random()-0.5)*1.4;
+                const tz2 = me.z + (me.vz*0.45) + (Math.random()-0.5)*1.4;
+                spawnMortar(e, tx2, tz2);
+              }
             }
           }
         }
@@ -2759,18 +2893,83 @@
             // if still close, hit
             if(d <= e.range+0.9){
               takeDamage(e.dmg, "Melee");
+              if(e.type==="scorpion"){ me.slowT = Math.max(me.slowT, 3.0); me.slowMul = Math.min(me.slowMul, 0.82); }
+              if(e.type==="wolf"){ me.slowT = Math.max(me.slowT, 1.2); me.slowMul = Math.min(me.slowMul, 0.86); }
+            }
+            if(e.type==="boar" && e.inOuter && !e.data.doubleChargeUsed){
+              e.data.doubleChargeUsed = true;
+              e.data.doubleChargeReady = true;
+              e.state = "windup";
+              e.wind = 0.3;
+            }else{
+              if(e.tele?.ring){ world.remove(e.tele.ring); }
+              e.tele = null;
+              e.state="recover";
+              e.wind = 0.25;
+              e.data.doubleChargeReady = false;
+              e.data.doubleChargeUsed = false;
+            }
+
+          }else if(e.kind==="ranged"){
+            if(e.type==="drone"){
+              e.burstLeft = e.burstLeft || 3;
+              spawnEnemyBolt(e, me.x, me.y, me.z, { speed:20, color:0x22d3ee, rad:0.42, life:1.8 });
+              e.burstLeft--;
+              if(e.inOuter && d < e.range && e.burstLeft===1){
+                e.mesh.position.x += (-dz/d)*2.6;
+                e.mesh.position.z += (dx/d)*2.6;
+              }
+              if(e.burstLeft>0){
+                e.state="recover";
+                e.wind = 0.12;
+              }else{
+                e.burstLeft = 0;
+                e.state="recover";
+                e.wind = 0.3;
+              }
+            }else if(e.type==="sandwisp"){
+              const fan = (e.inOuter ? [-0.26,0,0.26] : [0]);
+              for(const aOff of fan){
+                const tx = me.x + Math.cos(Math.atan2(dz,dx)+aOff)*d;
+                const tz = me.z + Math.sin(Math.atan2(dz,dx)+aOff)*d;
+                spawnEnemyBolt(e, tx, me.y, tz, { kind:"sandOrb", puddle:1.2, speed:8.2, color:0xfbbf24, life:4.5 });
+              }
+              e.state="recover";
+              e.wind = 0.3;
+            }else if(e.type==="spitter"){
+              const shots = e.inOuter ? 3 : 1;
+              for(let s=0;s<shots;s++){
+                const off = (s-(shots-1)/2)*1.1;
+                spawnEnemyBolt(e, me.x+off, me.y, me.z+off, { kind:"toxic", puddle:2.4, speed:15, color:0x84cc16, life:2.3 });
+              }
+              e.state="recover";
+              e.wind = 0.28;
+            }else if(e.type==="floater"){
+              spawnEnemyBolt(e, me.x, me.y, me.z, { speed:14, color:0xa78bfa, rad:0.5, slow:0.22 });
+              if(e.inOuter && !e.data.turretCd){
+                e.data.turretCd = 6.0;
+                const tx = e.mesh.position.x + (Math.random()-0.5)*5;
+                const tz = e.mesh.position.z + (Math.random()-0.5)*5;
+                spawnEnemy("drone", tx, tz, reg.id);
+              }
+              me.turnSlowT = Math.max(me.turnSlowT, 0.7);
+              e.state="recover";
+              e.wind = 0.3;
+            }else if(e.type==="frostling"){
+              spawnEnemyBolt(e, me.x, me.y, me.z, { kind:"iceShard", speed:21, color:0x93c5fd, life:1.7, slow:0.28 });
+              if(e.inOuter){
+                e.mesh.position.x += (-dz/d)*1.8;
+                e.mesh.position.z += (dx/d)*1.8;
+              }
+              e.state="recover";
+              e.wind = 0.23;
+            }else{
+              spawnEnemyBolt(e, me.x, me.y, me.z);
+              e.state="recover";
+              e.wind = 0.25;
             }
             if(e.tele?.ring){ world.remove(e.tele.ring); }
             e.tele = null;
-            e.state="recover";
-            e.wind = 0.25;
-
-          }else if(e.kind==="ranged"){
-            spawnEnemyBolt(e, me.x, me.y, me.z);
-            if(e.tele?.ring){ world.remove(e.tele.ring); }
-            e.tele = null;
-            e.state="recover";
-            e.wind = 0.25;
 
           }else if(e.kind==="mortar"){
             // handled via e.tele marker tick below
@@ -2857,6 +3056,20 @@
 
         if(p.kind==="fxLine"){
           p.mesh.material.opacity *= 0.85;
+          if(p.life<=0){
+            world.remove(p.mesh);
+            projectiles.splice(i,1);
+          }
+          continue;
+        }
+
+        if(p.kind==="hazard"){
+          p.mesh.material.opacity *= 0.985;
+          const dd2 = (me.x-p.x)*(me.x-p.x)+(me.z-p.z)*(me.z-p.z);
+          if(dd2 < (p.aoe||1.1)*(p.aoe||1.1)){
+            takeDamage((p.dmg||1.5)*dt, "Hazard");
+            if(p.slow>0){ me.slowT = Math.max(me.slowT, 0.45); me.slowMul = Math.min(me.slowMul, 1.0-p.slow); }
+          }
           if(p.life<=0){
             world.remove(p.mesh);
             projectiles.splice(i,1);
@@ -2954,6 +3167,24 @@
           const d2 = (me.x-p.x)*(me.x-p.x) + (me.z-p.z)*(me.z-p.z) + (me.y-p.y)*(me.y-p.y);
           if(d2 < 1.05*1.05){
             takeDamage(p.dmg, "Bolt");
+            if(p.slow>0){
+              me.slowT = Math.max(me.slowT, 1.5 + p.slow*2.0);
+              me.slowMul = Math.min(me.slowMul, 1.0-p.slow);
+            }
+            world.remove(p.mesh);
+            projectiles.splice(i,1);
+            continue;
+          }
+          const preg = regionAt(p.x,p.z);
+          const py = heightAt(p.x,p.z,preg.id);
+          if(p.y <= py+0.1){
+            if(p.puddle>0){
+              const puddle = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.95, 22), new THREE.MeshBasicMaterial({ color:p.color||0xfbbf24, transparent:true, opacity:0.75, side:THREE.DoubleSide }));
+              puddle.rotation.x = -Math.PI/2;
+              puddle.position.set(p.x, py+0.04, p.z);
+              world.add(puddle);
+              projectiles.push({ mesh:puddle, x:p.x, y:py+0.04, z:p.z, life:p.puddle, from:"fx", kind:"hazard", dmg:p.dmg*0.22, aoe:1.1, slow:p.kind==="toxic" ? 0.18 : 0.0 });
+            }
             world.remove(p.mesh);
             projectiles.splice(i,1);
             continue;
