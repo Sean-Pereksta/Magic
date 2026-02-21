@@ -771,11 +771,11 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       { id:"desert", name:"Desert Expanse",   fog:0xcaa46f, sky:0x0a1018, tex:"desert", ground:0xffffff,
         props:{ cactus:18, rock:12 }, drops:["iron","hide"], enemies:["scarab","scorpion","sandwisp"] },
       { id:"forest", name:"Forest Wilds",     fog:0x224b31, sky:0x071018, tex:"forest", ground:0xffffff,
-        props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter"] },
+        props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter","goblin","mirebat"] },
       { id:"snow",   name:"Frost Crown",      fog:0xbcd5ff, sky:0x050812, tex:"snow", ground:0xffffff,
         props:{ pine:16, rock:12 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"] },
       { id:"alien",  name:"Neon Bloom",       fog:0x5be3ff, sky:0x070610, tex:"alien", ground:0xffffff,
-        props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling"] },
+        props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling","skitter"] },
       { id:"hell",   name:"Ash & Ember",      fog:0x4a0010, sky:0x050306, tex:"hell",  ground:0xffffff,
         props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
     ];
@@ -1269,7 +1269,31 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       "Thunderclap Mortar": { kind:"bolt", desc:"Slow cannon with shockwave explosion + stun.", dmg:27, range:26, fireRate:1.45, color:0xfcd34d, explode:true, aoe:3.4, stun:0.7 },
       "Rift Trident": { kind:"bolt", desc:"Triple-lock chaos bolts with chain sparks.", dmg:15, range:31, fireRate:3.4, color:0xa78bfa, volleyTargets:3, chainBounces:2, chainRange:6.8 },
       "Oracle Splitter": { kind:"bolt", desc:"High-end splitter with long bounce chains.", dmg:24, range:34, fireRate:2.1, color:0xe879f9, splinter:4, chainBounces:4, chainRange:8.6 },
-      "Kingbreaker": { kind:"bolt", desc:"Boss-tier cannon, massive hit and control effects.", dmg:45, range:35, fireRate:1.05, color:0xffd166, explode:true, aoe:4.6, stun:0.9, knockback:12.0, chainBounces:3, chainRange:8.8 }
+      "Kingbreaker": { kind:"bolt", desc:"Boss-tier cannon, massive hit and control effects.", dmg:45, range:35, fireRate:1.05, color:0xffd166, explode:true, aoe:4.6, stun:0.9, knockback:12.0, chainBounces:3, chainRange:8.8 },
+      "Irradiator": { kind:"bolt", desc:"Low fire rate mutagen round; irradiated foes hurt nearby enemies while bugs swarm them.", dmg:24, range:29, fireRate:1.2, color:0x84cc16, irradiate:{ duration:4.8, dps:5.0, radius:3.4 } },
+      "Longshot Sniper": { kind:"bolt", desc:"Very long range precision rifle with slow cadence.", dmg:52, range:48, fireRate:0.85, color:0xe2e8f0 },
+      "Needle Pierce": { kind:"bolt", desc:"Pierces one enemy and hits another target behind it.", dmg:19, range:33, fireRate:3.4, color:0x67e8f9, pierce:1 },
+      "Drillline": { kind:"bolt", desc:"Deep-penetration drill round that can cut through many enemies.", dmg:17, range:34, fireRate:2.2, color:0x22d3ee, pierce:4 },
+      "Quartz Pin": { kind:"bolt", desc:"Light crystal rounds that pierce once.", dmg:13, range:30, fireRate:5.2, color:0xa5b4fc, pierce:1 },
+      "Needle Gale": { kind:"bolt", desc:"Fast needle stream with light piercing.", dmg:9, range:29, fireRate:9.4, color:0x5eead4, pierce:1 },
+      "Wyrm Borer": { kind:"bolt", desc:"Burrowing payload with deep penetration and poison.", dmg:21, range:33, fireRate:2.0, color:0x4d7c0f, pierce:3, poison:2.6 },
+      "Volt Lance": { kind:"bolt", desc:"Punchy bolt that pierces and then chains.", dmg:20, range:32, fireRate:2.5, color:0x38bdf8, pierce:2, chainBounces:2, chainRange:6.8 },
+      "Comet Spear": { kind:"bolt", desc:"Explosive piercing comet projectile.", dmg:27, range:31, fireRate:1.7, color:0xfb7185, pierce:1, explode:true, aoe:2.7 },
+      "Pulse Needle": { kind:"bolt", desc:"Precise low recoil needle with stun jab.", dmg:14, range:35, fireRate:4.4, color:0x93c5fd, pierce:1, stun:0.35 },
+      "Blight Sprayer": { kind:"bolt", desc:"Irradiates on impact with weak direct damage.", dmg:11, range:27, fireRate:4.8, color:0x65a30d, irradiate:{ duration:3.6, dps:3.2, radius:2.8 } },
+      "Hive Driver": { kind:"bolt", desc:"Heavy mutagen driver with chain arcs.", dmg:29, range:32, fireRate:1.5, color:0xa3e635, irradiate:{ duration:5.2, dps:5.8, radius:3.6 }, chainBounces:2, chainRange:6.4 },
+      "Atlas Sniper": { kind:"bolt", desc:"Ultra-long sniper platform with huge punch.", dmg:64, range:54, fireRate:0.62, color:0xf8fafc, knockback:8.5 },
+      "Glassline": { kind:"bolt", desc:"Long bolt that pierces deep targets.", dmg:23, range:41, fireRate:1.8, color:0xc4b5fd, pierce:5 },
+      "Rupture Rail": { kind:"bolt", desc:"Rail slug with piercing and explosion.", dmg:35, range:40, fireRate:1.2, color:0x94a3b8, pierce:2, explode:true, aoe:3.1 },
+      "Bog Repeater": { kind:"bolt", desc:"Forest repeater with poison and pierce.", dmg:12, range:28, fireRate:7.5, color:0x22c55e, pierce:1, poison:2.0 },
+      "Vortex Drill": { kind:"bolt", desc:"Spinning drill slugs penetrate clustered enemies.", dmg:18, range:33, fireRate:3.0, color:0x0ea5e9, pierce:3 },
+      "Rime Longbow": { kind:"bolt", desc:"Slow frost sniper bolt with stun.", dmg:37, range:46, fireRate:0.95, color:0xbfdbfe, stun:0.5 },
+      "Prism Borer": { kind:"bolt", desc:"Crystalline deep-pierce weapon with splinters.", dmg:22, range:36, fireRate:2.4, color:0xe879f9, pierce:4, splinter:2 },
+      "Deepcore Spike": { kind:"bolt", desc:"Extreme penetration spike for thick lines.", dmg:26, range:38, fireRate:1.9, color:0xf59e0b, pierce:6 },
+      "Leech Sniper": { kind:"bolt", desc:"Long-range toxic sniper with irradiate splash.", dmg:41, range:50, fireRate:0.78, color:0x84cc16, poison:4.0, irradiate:{ duration:4.0, dps:4.3, radius:3.1 } },
+      "Razor Choir": { kind:"bolt", desc:"Multi-target piercing harmonics.", dmg:16, range:31, fireRate:4.3, color:0x22d3ee, pierce:2, volleyTargets:3 },
+      "Aether Harpoon": { kind:"bolt", desc:"Harpoon cannon with long range and knockback.", dmg:33, range:44, fireRate:1.15, color:0xfef08a, pierce:2, knockback:10.0 },
+      "Night Drill": { kind:"bolt", desc:"Darkmatter drill cannon, very deep piercing.", dmg:28, range:39, fireRate:1.6, color:0x6366f1, pierce:7 }
     };
 
     const WEAPON_RECIPES = [
@@ -1308,6 +1332,30 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       { name:"Rift Trident", req:{ crystal:24, essence:21, ember:14, iron:14 } },
       { name:"Oracle Splitter", req:{ crystal:28, essence:26, ember:18, iron:16 } },
       { name:"Kingbreaker", req:{ iron:42, crystal:38, essence:34, ember:34, hide:20 } },
+      { name:"Irradiator", req:{ essence:28, ember:22, hide:18, crystal:16 } },
+      { name:"Longshot Sniper", req:{ iron:30, crystal:24, essence:14 } },
+      { name:"Needle Pierce", req:{ iron:17, crystal:12, hide:10 } },
+      { name:"Drillline", req:{ iron:24, crystal:16, ember:12 } },
+      { name:"Quartz Pin", req:{ crystal:12, essence:10, iron:8 } },
+      { name:"Needle Gale", req:{ iron:15, hide:12, essence:8 } },
+      { name:"Wyrm Borer", req:{ ember:18, iron:18, essence:14 } },
+      { name:"Volt Lance", req:{ crystal:18, essence:14, iron:14 } },
+      { name:"Comet Spear", req:{ ember:20, crystal:15, iron:14 } },
+      { name:"Pulse Needle", req:{ crystal:14, iron:12, essence:9 } },
+      { name:"Blight Sprayer", req:{ essence:16, hide:14, ember:8 } },
+      { name:"Hive Driver", req:{ essence:30, ember:22, crystal:18, hide:15 } },
+      { name:"Atlas Sniper", req:{ iron:40, crystal:34, essence:20 } },
+      { name:"Glassline", req:{ crystal:26, essence:20, iron:14 } },
+      { name:"Rupture Rail", req:{ iron:34, crystal:28, ember:22 } },
+      { name:"Bog Repeater", req:{ hide:16, essence:14, iron:12 } },
+      { name:"Vortex Drill", req:{ iron:24, crystal:18, ember:12 } },
+      { name:"Rime Longbow", req:{ crystal:28, essence:20, iron:16 } },
+      { name:"Prism Borer", req:{ crystal:30, essence:24, ember:16 } },
+      { name:"Deepcore Spike", req:{ iron:32, ember:20, crystal:20 } },
+      { name:"Leech Sniper", req:{ essence:32, hide:22, crystal:26, ember:18 } },
+      { name:"Razor Choir", req:{ crystal:22, essence:18, iron:14 } },
+      { name:"Aether Harpoon", req:{ iron:36, crystal:28, essence:22 } },
+      { name:"Night Drill", req:{ iron:38, ember:24, crystal:24, essence:20 } },
     ];
 
     const RECIPES = [
@@ -1375,6 +1423,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         lifeGrip:false,
         meteorite:false,
         firebolt:false,
+        turretTotem:false,
       },
 
       // cooldowns/timers
@@ -1386,6 +1435,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       slowT: 0,
       slowMul: 1.0,
       turnSlowT: 0,
+      turretCd: 0,
     };
 
     function resetRun(newSeed=true){
@@ -1404,8 +1454,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
 
-      me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false };
-      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0;
+      me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false };
+      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0;
       me.lastHitAt = -999;
 
       alive = true;
@@ -1530,6 +1580,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     const enemies = [];     // {id,type,mesh,hp,maxHp,spd,dmg,range, yOff, flying, state, t, cd, wind, targetMarker}
     const projectiles = []; // {x,y,z,vx,vy,vz,life,rad,dmg,from,kind,color, splinter, explode, aoe, poison, stun, knockback, chainBounces, chainRange}
     const drops = [];       // {x,y,z,mesh,mat,spin}
+    const turrets = [];     // {mesh,life,fireCd}
 
     let nextEnemyId = 1;
 
@@ -1537,7 +1588,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       for(const e of enemies) world.remove(e.mesh);
       for(const p of projectiles) world.remove(p.mesh);
       for(const d of drops) world.remove(d.mesh);
-      enemies.length=0; projectiles.length=0; drops.length=0;
+      for(const t of turrets) world.remove(t.mesh);
+      enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0;
     }
 
     function makeHealthBar(){
@@ -1585,7 +1637,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     boar:0x8b5a3a, spriggan:0x22c55e, spitter:0x84cc16,
     wolf:0x64748b, icegolem:0xdbeafe, frostling:0xbfdbfe,
     drone:0x22d3ee, floater:0xa78bfa, shardling:0xff3ad7,
-    imp:0xff2a2a, brute:0xdc2626, mortar:0xf97316
+    imp:0xff2a2a, brute:0xdc2626, mortar:0xf97316, goblin:0x65a30d, mirebat:0x4ade80, skitter:0x67e8f9
   };
   const typeTint = TYPE_TINT[type] ?? baseCol;
 
@@ -2404,6 +2456,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       if(type==="imp"){ baseHp=28; baseDmg=10; spd=2.8; range=1.3; kind="melee"; }
       if(type==="brute"){ baseHp=95; baseDmg=16; spd=1.7; range=1.9; kind="melee"; }
       if(type==="mortar"){ baseHp=45; baseDmg=14; spd=1.6; range=18; kind="mortar"; }
+      if(type==="goblin"){ baseHp=30; baseDmg=12; spd=2.5; range=16.5; kind="lobber"; }
+      if(type==="mirebat"){ baseHp=24; baseDmg=8; spd=3.1; range=11.5; kind="ranged"; flying=true; yOff=1.1; }
+      if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; }
 
       const band = dangerBandAt(x,z);
       const hp = Math.round(baseHp * band.hpMul * (1 + 0.14*(level-1)));
@@ -2460,7 +2515,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       if(enemies.length >= cap) return false;
 
       // require travel between spawns
-      if(travelMeter < 22) return false;
+      if(travelMeter < 28) return false;
       if(spawnCooldown > 0) return false;
 
       const rnd = xorshift32(((worldSeed^0xBADC0DE) + (me.level*99173)|0) ^ ((Date.now()/1000)|0));
@@ -2487,7 +2542,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       }
 
       travelMeter = 0;
-      spawnCooldown = 4.5 + rnd()*2.2;
+      spawnCooldown = 5.9 + rnd()*2.8;
       return true;
     }
 
@@ -2571,7 +2626,10 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         stun: cfg.stun || 0,
         knockback: cfg.knockback || 0,
         chainBounces: cfg.chainBounces || 0,
-        chainRange: cfg.chainRange || 7.0
+        chainRange: cfg.chainRange || 7.0,
+        pierceLeft: cfg.pierce || 0,
+        hitIds: new Set(),
+        irradiate: cfg.irradiate || null
       });
     }
 
@@ -2642,6 +2700,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       if(e.type==="icegolem") return 0.95;
       if(e.type==="brute") return 0.78;
       if(e.kind==="mortar") return 0.9;
+      if(e.kind==="lobber") return 0.75;
       if(e.kind==="ranged") return 0.6;
       return 0.52;
     }
@@ -2799,6 +2858,16 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       // schedule a projectile that "falls" after delay
       const delay = 0.95;
       e.tele = { marker, t:0, delay, x:targetX, z:targetZ };
+    }
+
+    function spawnGoblinSpear(targetX, targetZ, dmg){
+      const reg = regionAt(targetX, targetZ);
+      const gy = heightAt(targetX, targetZ, reg.id);
+      const marker = makeMarker(0xfbbf24);
+      marker.position.set(targetX, gy+0.05, targetZ);
+      marker.scale.set(0.8,0.8,0.8);
+      world.add(marker);
+      projectiles.push({ mesh:marker, x:targetX, y:gy+0.05, z:targetZ, life:1.1, from:"enemy", kind:"goblinSpear", dmg, aoe:1.8 });
     }
 
     function explodeAt(x,y,z, rad, dmg, from="player"){
@@ -2973,17 +3042,18 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           }
         }
 
-        if(e.type==="shardling" && e.inOuter && !e.data.fractured){
+        if(e.type==="shardling" && !e.data.fractured){
           e.data.fractured = true;
           for(let i=0;i<2;i++){
             const a = i*Math.PI + 0.4;
             const sx = e.mesh.position.x + Math.cos(a)*1.05;
             const sz = e.mesh.position.z + Math.sin(a)*1.05;
             const f = spawnEnemy("shardling", sx, sz, e.regId);
-            f.maxHp = Math.max(10, Math.round(e.maxHp*0.35));
+            f.maxHp = Math.max(7, Math.round(e.maxHp*0.26));
             f.hp = f.maxHp;
-            f.dmg = Math.round(e.dmg*0.68);
-            f.spd *= 1.18;
+            f.dmg = Math.max(4, Math.round(e.dmg*0.5));
+            f.spd *= 1.55;
+            f.mesh.scale.setScalar(0.72);
             f.inOuter = false;
           }
         }
@@ -3002,6 +3072,11 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       }
       if(p.stun>0){
         e.stunT = Math.max(e.stunT||0, p.stun);
+      }
+      if(p.irradiate){
+        e.data.irradiateT = Math.max(e.data.irradiateT||0, p.irradiate.duration||3.5);
+        e.data.irradiateDps = Math.max(e.data.irradiateDps||0, p.irradiate.dps||3.5);
+        e.data.irradiateRad = Math.max(e.data.irradiateRad||0, p.irradiate.radius||2.8);
       }
       if(p.knockback>0){
         const dx = e.mesh.position.x - p.x;
@@ -3172,6 +3247,35 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           }
         }
       }
+
+      if(me.abil.turretTotem){
+        me.turretCd -= dt;
+        if(me.turretCd <= 0){
+          me.turretCd = 13.0;
+          const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.34,1.1,10), new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x38bdf8, emissiveIntensity:0.9, roughness:0.35 }));
+          m.position.set(me.x + Math.cos(me.yaw)*1.5, heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.55, me.z + Math.sin(me.yaw)*1.5);
+          world.add(m);
+          turrets.push({ mesh:m, life:5.0, fireCd:0.08 });
+        }
+      }
+
+      for(let i=turrets.length-1;i>=0;i--){
+        const t = turrets[i];
+        t.life -= dt;
+        t.fireCd -= dt;
+        const reg = regionAt(t.mesh.position.x, t.mesh.position.z);
+        t.mesh.position.y = heightAt(t.mesh.position.x, t.mesh.position.z, reg.id) + 0.55;
+        const target = enemies.filter(e=>e.hp>0).sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z))[0];
+        if(target){
+          t.mesh.lookAt(target.mesh.position.x, t.mesh.position.y+0.12, target.mesh.position.z);
+          if(t.fireCd<=0){
+            t.fireCd = 0.22;
+            spawnBolt(t.mesh.position.x, t.mesh.position.y+0.35, t.mesh.position.z, target.mesh.position.x, target.mesh.position.y+0.6, target.mesh.position.z, { dmg:7.5, color:0x93c5fd, chainBounces:1, chainRange:4.6 });
+          }
+        }
+        if(t.life<=0){ world.remove(t.mesh); turrets.splice(i,1); }
+      }
+
     }
 
     // ============================================================
@@ -3368,6 +3472,13 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           title:"🔥 Firebolt",
           sub:"On cooldown, fires a bolt at the enemy you’re aiming at and explodes.",
           apply:()=>{ me.abil.firebolt=true; me.fireboltCd = 2.0; }
+        });
+      }
+      if(!me.abil.turretTotem){
+        pool.push({
+          title:"🛡️ Turret Totem",
+          sub:"Periodically spawns a 5-second auto-firing turret.",
+          apply:()=>{ me.abil.turretTotem=true; me.turretCd = 1.5; }
         });
       }
 
@@ -3613,6 +3724,33 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
             }
           });
         }
+        if(e.data.irradiateT>0){
+          e.data.irradiateT -= dt;
+          const dps = e.data.irradiateDps||3.5;
+          dealDamageEnemy(e, dps*dt);
+          const rad = e.data.irradiateRad||2.8;
+          for(const o of enemies){
+            if(o===e || o.hp<=0) continue;
+            if(dist2(o.mesh.position.x,o.mesh.position.z,e.mesh.position.x,e.mesh.position.z) <= rad*rad){
+              dealDamageEnemy(o, dps*0.45*dt);
+            }
+          }
+          if(!e.data.bugSwarm){
+            const swarm = new THREE.Group();
+            for(let b=0;b<5;b++) swarm.add(new THREE.Mesh(new THREE.SphereGeometry(0.05,6,5), new THREE.MeshBasicMaterial({ color:0x84cc16 })));
+            e.mesh.add(swarm);
+            e.data.bugSwarm = swarm;
+          }
+          let bi=0;
+          for(const bug of e.data.bugSwarm.children){
+            const a = now*0.006 + bi*1.25;
+            bug.position.set(Math.cos(a)*0.55,0.8+Math.sin(a*2.1)*0.2,Math.sin(a)*0.55);
+            bi++;
+          }
+        }else if(e.data.bugSwarm){
+          e.mesh.remove(e.data.bugSwarm);
+          e.data.bugSwarm = null;
+        }
         if(e.stunT>0) e.stunT -= dt;
         if(e.data.turretCd>0) e.data.turretCd -= dt;
 
@@ -3646,6 +3784,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         if(e.type==="icegolem") want = 2.0;
         if(e.type==="frostling") want = 7.0;
         if(e.type==="sandwisp") want = 11.5;
+        if(e.type==="goblin") want = 13.5;
+        if(e.type==="mirebat") want = 9.2;
         const go = (d > want) ? 1 : 0;
 
         // attacks
@@ -3665,6 +3805,16 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         if(e.data.howlCd>0) e.data.howlCd -= dt;
 
         if(e.state==="chase"){
+          if(e.type==="boar" && !e.data.chargeState && d<11.5 && e.cd<=0){
+            const ln = new THREE.Mesh(new THREE.PlaneGeometry(1.2, d), new THREE.MeshBasicMaterial({ color:0xff2a2a, transparent:true, opacity:0.45, side:THREE.DoubleSide }));
+            ln.rotation.x = -Math.PI/2;
+            ln.rotation.z = Math.atan2(dx,dz);
+            ln.position.set(e.mesh.position.x + (dx/d)*(d*0.5), e.yBase+0.06, e.mesh.position.z + (dz/d)*(d*0.5));
+            world.add(ln);
+            e.data.chargeState = { t:2.0, dirx:dx/d, dirz:dz/d, line:ln, dash:0.65, dmg:e.dmg*1.9 };
+            e.state="recover";
+            e.wind=2.0;
+          }
           // decide to attack
           if(e.cd <= 0){
             if(e.kind==="melee" && d <= e.range+0.6){
@@ -3682,6 +3832,15 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
               const ring = makeTeleCircle(0x60a5fa);
               ring.position.set(ex, e.yBase+0.04, ez);
               ring.scale.set(0.8,0.8,0.8);
+              world.add(ring);
+              e.tele = { ring };
+            }else if(e.kind==="lobber" && d <= e.range){
+              e.state="windup";
+              e.wind = enemyWindupFor(e);
+              e.cd = 1.2 + Math.random()*0.8;
+              const ring = makeTeleCircle(0xfbbf24);
+              ring.position.set(ex, e.yBase+0.04, ez);
+              ring.scale.set(0.95,0.95,0.95);
               world.add(ring);
               e.tele = { ring };
             }else if(e.kind==="mortar" && d <= e.range){
@@ -3799,6 +3958,18 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
             if(e.tele?.ring){ world.remove(e.tele.ring); }
             e.tele = null;
 
+          }else if(e.kind==="lobber"){
+            const leadX = me.x + me.vx*0.55;
+            const leadZ = me.z + me.vz*0.55;
+            spawnGoblinSpear(leadX + (Math.random()-0.5)*1.3, leadZ + (Math.random()-0.5)*1.3, e.dmg*1.25);
+            if(e.inOuter) spawnGoblinSpear(leadX + (Math.random()-0.5)*2.2, leadZ + (Math.random()-0.5)*2.2, e.dmg*1.15);
+            e.mesh.position.x -= (dx/d)*1.8;
+            e.mesh.position.z -= (dz/d)*1.8;
+            e.state="recover";
+            e.wind = 0.44;
+            if(e.tele?.ring){ world.remove(e.tele.ring); }
+            e.tele = null;
+
           }else if(e.kind==="mortar"){
             // handled via e.tele marker tick below
             e.state="recover";
@@ -3829,12 +4000,28 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
             e.tele = null;
           }
         }
+        if(e.data.chargeState){
+          const c = e.data.chargeState;
+          c.t -= dt;
+          if(c.line){ c.line.material.opacity = 0.25 + 0.5*Math.sin(now*0.02); }
+          if(c.t<=0 && c.dash>0){
+            e.mesh.position.x += c.dirx * (e.spd*7.0) * dt;
+            e.mesh.position.z += c.dirz * (e.spd*7.0) * dt;
+            c.dash -= dt;
+            const pd2 = dist2(me.x,me.z,e.mesh.position.x,e.mesh.position.z);
+            if(pd2 < 1.7*1.7){ takeDamage(c.dmg, "Boar Charge"); c.dash = 0; }
+          }
+          if(c.t<=0 && c.dash<=0){ if(c.line) world.remove(c.line); e.data.chargeState=null; e.cd = 1.8; }
+        }
+
         // run custom enemy animations (wings, tails, rings, pulses)
 e.mesh.userData.anim?.(e, dt, now);
 
         // movement integrate (with separation)
         const dirx = dx/d, dirz = dz/d;
         const moveScale = e.stunT>0 ? 0.08 : 1.0;
+        if(e.type==="mirebat"){ rx += (-dirz)*0.9; rz += (dirx)*0.9; }
+        if(e.type==="skitter"){ const jig = Math.sin(now*0.016 + e.id)*0.9; rx += (-dirz)*jig; rz += (dirx)*jig; }
         const vx = (dirx*go + rx*0.9) * e.spd * moveScale + (e.kbX||0);
         const vz = (dirz*go + rz*0.9) * e.spd * moveScale + (e.kbZ||0);
 
@@ -3842,6 +4029,7 @@ e.mesh.userData.anim?.(e, dt, now);
         e.mesh.position.z += vz*dt;
         e.kbX *= 0.84;
         e.kbZ *= 0.84;
+        e.mesh.lookAt(me.x, e.mesh.position.y, me.z);
 
         // keep enemies in world
         const rr2 = e.mesh.position.x*e.mesh.position.x + e.mesh.position.z*e.mesh.position.z;
@@ -3907,6 +4095,17 @@ e.mesh.userData.anim?.(e, dt, now);
       continue;
     }
 
+    if(p.kind==="goblinSpear"){
+      p.mesh.material.opacity = 0.35 + 0.45*Math.sin((1.1-p.life)*13.0);
+      p.mesh.scale.setScalar(0.8 + (1.1-p.life)*0.45);
+      if(p.life<=0){
+        explodeAt(p.x, p.y+0.22, p.z, p.aoe||1.8, p.dmg||12, "enemy");
+        world.remove(p.mesh);
+        projectiles.splice(i,1);
+      }
+      continue;
+    }
+
     if(p.kind==="meteor"){
       p.x += p.vx*dt;
       p.y += p.vy*dt;
@@ -3934,10 +4133,16 @@ e.mesh.userData.anim?.(e, dt, now);
         if(e.hp<=0) continue;
         const ex=e.mesh.position.x, ez=e.mesh.position.z, ey=e.mesh.position.y+(e.flying?0.15:0.65);
         const d2 = (ex-p.x)*(ex-p.x)+(ez-p.z)*(ez-p.z)+(ey-p.y)*(ey-p.y);
+        if(p.hitIds && p.hitIds.has(e.id)) continue;
         if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
       }
       if(hit){
         explodeAt(p.x, p.y, p.z, p.aoe, p.hitDmg, "player");
+        if((p.pierceLeft||0) > 0){
+          p.pierceLeft--;
+          p.dmg *= 0.86;
+          continue;
+        }
         world.remove(p.mesh);
         projectiles.splice(i,1);
         continue;
@@ -3972,9 +4177,11 @@ e.mesh.userData.anim?.(e, dt, now);
         if(e.hp<=0) continue;
         const ex=e.mesh.position.x, ez=e.mesh.position.z, ey=e.mesh.position.y+(e.flying?0.2:0.65);
         const d2 = (ex-p.x)*(ex-p.x)+(ez-p.z)*(ez-p.z)+(ey-p.y)*(ey-p.y);
+        if(p.hitIds && p.hitIds.has(e.id)) continue;
         if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
       }
       if(hit){
+        if(p.hitIds) p.hitIds.add(hit.id);
         dealDamageEnemy(hit, p.dmg);
 
         if(p.explode){
@@ -4116,7 +4323,9 @@ e.mesh.userData.anim?.(e, dt, now);
                 stun: w.stun||0,
                 knockback: w.knockback||0,
                 chainBounces: w.chainBounces||0,
-                chainRange: w.chainRange||7.0
+                chainRange: w.chainRange||7.0,
+                pierce: w.pierce||0,
+                irradiate: w.irradiate||null
               });
             }
           }else if(w.kind==="wave"){
@@ -4200,7 +4409,7 @@ e.mesh.userData.anim?.(e, dt, now);
     // Spawn pacing
     // ============================================================
     let travelMeter = 0;
-    let spawnCooldown = 2.0;
+    let spawnCooldown = 3.2;
 
     function tickSpawning(dt){
       if(paused || !alive) return;
