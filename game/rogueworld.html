@@ -48,16 +48,6 @@
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
 
-    .hint{
-      position:absolute; left:10px; right:10px; bottom:10px;
-      background:rgba(0,0,0,.45);
-      border:1px solid rgba(255,255,255,.16);
-      border-radius:14px;
-      padding:10px 12px;
-      pointer-events:none;
-      backdrop-filter:blur(8px);
-      max-width:820px;
-    }
     .muted{ opacity:.78; font-weight:700; }
 
     #centerMsg{
@@ -290,7 +280,6 @@
       #mobileControls{ display:block; }
       .topBtns{ top:16px; }
       .btn{ padding:13px 15px; font-size:16px; }
-      .hint{ bottom:170px; }
       #mobileInteract{ display:block; }
     }
   </style>
@@ -310,13 +299,6 @@
     </div>
 
     <div id="toast"></div>
-
-    <div class="hint" id="hintBox">
-      <div style="font-weight:1000">Controls</div>
-      <div class="muted">Click to lock mouse • WASD move • Shift sprint • Space jump • ESC unlock</div>
-      <div class="muted">Mobile: left stick moves (camera-relative) • right stick looks • center crosshair auto-fires when target is in-cone</div>
-      <div class="muted">Find ⚒️ Forges to craft. Level up pauses and offers 3 upgrades. Packs spawn by region — travel to find them.</div>
-    </div>
 
     <div class="topBtns">
       <button id="loadBtn" class="btn secondary" type="button">⬆ Load</button>
@@ -449,7 +431,6 @@
     const overlayDead = $("overlayDead");
     const fsBtn = $("fsBtn");
     const loadBtn = $("loadBtn");
-    const hintBox = $("hintBox");
 
     const hpText = $("hpText");
     const lvlText = $("lvlText");
@@ -898,7 +879,10 @@
           const px=(rnd()-0.5)*(CHUNK*0.9), pz=(rnd()-0.5)*(CHUNK*0.9);
           const y=heightAt(wx+px, wz+pz, reg.id);
           const s=0.7+rnd()*1.1;
-          treeSpots.push({ px, pz, y, s, rot:rnd()*Math.PI*2 });
+          const trunkSy = 1.0 + rnd()*1.0;
+          const crownSy = 1.2 + rnd()*0.7;
+          const crown = s * (1.25 + rnd()*0.2);
+          treeSpots.push({ px, pz, y, s, rot:rnd()*Math.PI*2, trunkSy, crownSy, crown });
         }
 
         // trunks
@@ -906,15 +890,16 @@
           const t = treeSpots[i];
           d.position.set(t.px, t.y+1.1, t.pz);
           d.rotation.y=t.rot;
-          d.scale.set(t.s, 1.0+rnd()*1.0, t.s);
+          d.scale.set(t.s, t.trunkSy, t.s);
         });
         // leaves cones (aligned with trunks)
         addInstanced(group, GEO.cone, MAT.leaf, treeCount, rnd, (d,i)=>{
           const t = treeSpots[i];
-          d.position.set(t.px, t.y+2.55, t.pz);
+          const trunkTop = t.y + 1.1 + (1.1 * t.trunkSy);
+          const crownY = trunkTop + (1.2 * t.crownSy);
+          d.position.set(t.px, crownY, t.pz);
           d.rotation.y=t.rot;
-          const crown = t.s * (1.25 + rnd()*0.2);
-          d.scale.set(crown, 1.2+rnd()*0.7, crown);
+          d.scale.set(t.crown, t.crownSy, t.crown);
         });
         addInstanced(group, GEO.rock, MAT.rock, baseCount(prop.rock||10), rnd, (d,i,rr)=>{
           const px=(rr()-0.5)*(CHUNK*0.95), pz=(rr()-0.5)*(CHUNK*0.95);
@@ -1442,7 +1427,6 @@
       if(loadGame()){
         phase = "play";
         centerMsg.style.display="none";
-        hintBox.style.display = "block";
         uiMode="none";
         paused=false;
         saveGame(true);
@@ -1452,7 +1436,6 @@
     newBtn.addEventListener("click", ()=>{
       phase = "play";
       centerMsg.style.display="none";
-      hintBox.style.display = "block";
       resetRun(true);
       paused=false; uiMode="none";
     });
@@ -1461,7 +1444,6 @@
       const ok = loadGame();
       phase = "play";
       centerMsg.style.display="none";
-      hintBox.style.display = "block";
       if(!ok) resetRun(true);
       paused=false; uiMode="none";
     });
@@ -3478,7 +3460,6 @@
     function enterPlay(){
       phase="play";
       centerMsg.style.display="none";
-      hintBox.style.display="block";
       lockBtn.style.display = (!pointerLocked) ? "inline-block" : "none";
       saveT = 8;
     }
