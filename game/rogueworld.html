@@ -400,7 +400,7 @@
       <div id="lookStick" class="joystick" aria-label="Look joystick">
         <div id="lookKnob" class="joystickKnob"></div>
       </div>
-      <button id="mobileInteract" type="button">⚒️ Use Forge</button>
+      <button id="mobileInteract" type="button">⚒️ Interact</button>
     </div>
 
     <div id="overlayVignette"></div>
@@ -620,8 +620,8 @@
         if(uiMode !== "none") closeModal();
       }
       if((e.key==="e" || e.key==="E") && phase==="play"){
-        if(uiMode==="forge") closeModal();
-        else tryOpenForge();
+        if(uiMode==="forge" || uiMode==="quest") closeModal();
+        else tryOpenInteraction();
       }
     });
     addEventListener("keyup", (e)=>{ keys[e.key.toLowerCase()] = false; });
@@ -724,8 +724,8 @@
 
     mobileInteract.addEventListener("click", ()=>{
       if(phase!=="play") return;
-      if(uiMode==="forge") closeModal();
-      else tryOpenForge();
+      if(uiMode==="forge" || uiMode==="quest") closeModal();
+      else tryOpenInteraction();
     });
 
     // ============================================================
@@ -1006,6 +1006,29 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           }
           g.stroke();
         }
+      }),
+      city: makeCanvasTexture((g,n)=>{
+        g.fillStyle = "#3f3f46";
+        g.fillRect(0,0,n,n);
+        g.fillStyle = "#2a2a31";
+        for(let i=0;i<n;i+=32){
+          g.fillRect(i,0,8,n);
+          g.fillRect(0,i,n,8);
+        }
+        g.strokeStyle = "rgba(255,255,255,0.42)";
+        g.lineWidth = 2;
+        for(let i=16;i<n;i+=32){
+          for(let j=0;j<n;j+=16){
+            g.beginPath();
+            g.moveTo(i, j+3);
+            g.lineTo(i+8, j+3);
+            g.stroke();
+            g.beginPath();
+            g.moveTo(j+3, i);
+            g.lineTo(j+9, i);
+            g.stroke();
+          }
+        }
       })
     };
 
@@ -1023,6 +1046,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling","skitter"] },
       { id:"hell",   name:"Ash & Ember",      fog:0x4a0010, sky:0x050306, tex:"hell",  ground:0xffffff,
         props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
+      { id:"city",   name:"Skyline City",     fog:0x5b6472, sky:0x06080f, tex:"city",  ground:0xffffff,
+        props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"] },
     ];
 
     const REGION_PATCH_SIZE = 130;
@@ -1082,6 +1107,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       if(sampleRegionId==="snow")   amp = 0.75;
       if(sampleRegionId==="alien")  amp = 0.85;
       if(sampleRegionId==="hell")   amp = 0.95;
+      if(sampleRegionId==="city")   amp = 0.12;
 
       const h = (n1-0.5)*0.8 + (n2-0.5)*1.2 + (n3-0.5)*1.8;
       return h * amp;
@@ -1101,6 +1127,10 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       shroom: new THREE.MeshStandardMaterial({ color:0x22d3ee, roughness:0.75, emissive:0x0ea5e9, emissiveIntensity:0.22 }),
       spire:  new THREE.MeshStandardMaterial({ color:0x1f0a10, roughness:0.95, emissive:0x3b0a12, emissiveIntensity:0.20 }),
       lava:   new THREE.MeshStandardMaterial({ color:0xff3b1a, roughness:0.35, emissive:0xff3b1a, emissiveIntensity:1.20 }),
+      tower:  new THREE.MeshStandardMaterial({ color:0x1f2937, roughness:0.72, metalness:0.22, emissive:0x0b1220, emissiveIntensity:0.15 }),
+      roadMark:new THREE.MeshStandardMaterial({ color:0xf8fafc, roughness:0.5, metalness:0.0, emissive:0xe5e7eb, emissiveIntensity:0.12 }),
+      board:  new THREE.MeshStandardMaterial({ color:0x8b5a2b, roughness:0.82, metalness:0.0 }),
+      boardGlow:new THREE.MeshStandardMaterial({ color:0x60a5fa, roughness:0.28, metalness:0.0, emissive:0x60a5fa, emissiveIntensity:0.9, transparent:true, opacity:0.62 }),
       forge:  new THREE.MeshStandardMaterial({ color:0x111827, roughness:0.7, metalness:0.25, emissive:0x0b1020, emissiveIntensity:0.2 }),
       forgeGlow: new THREE.MeshStandardMaterial({ color:0x22c55e, roughness:0.25, metalness:0.0, emissive:0x22c55e, emissiveIntensity:1.2, transparent:true, opacity:0.7 }),
       drop:   new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.35, metalness:0.05, emissive:0xffffff, emissiveIntensity:0.45 }),
@@ -1123,6 +1153,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       cap:    new THREE.SphereGeometry(0.55, 10, 10),
       spire:  new THREE.ConeGeometry(0.55, 2.8, 7),
       lava:   new THREE.SphereGeometry(0.45, 12, 10),
+      tower:  new THREE.BoxGeometry(1, 1, 1),
+      board:  new THREE.BoxGeometry(1.2, 1.0, 0.16),
+      boardPost: new THREE.CylinderGeometry(0.08, 0.1, 1.2, 8),
       bolt:   new THREE.SphereGeometry(0.08, 10, 8),
       ember:  new THREE.SphereGeometry(0.12, 10, 8),
       drop:   new THREE.OctahedronGeometry(0.16, 0),
@@ -1330,6 +1363,23 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         });
       }
 
+      if(reg.id==="city"){
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(CHUNK*0.95, CHUNK*0.95), new THREE.MeshStandardMaterial({ map:TEX.city, color:0xffffff, roughness:0.92, metalness:0.0 }));
+        road.rotation.x = -Math.PI/2;
+        road.position.y = heightAt(wx, wz, reg.id) + 0.02;
+        group.add(road);
+
+        const towerCount = Math.max(10, baseCount(prop.tower||16));
+        addInstanced(group, GEO.tower, MAT.tower, towerCount, rnd, (d,i,rr)=>{
+          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
+          const y=heightAt(wx+px, wz+pz, reg.id);
+          const sx=1.8+rr()*4.8, sz=1.8+rr()*4.8, sy=6.5+rr()*22;
+          d.position.set(px, y+sy*0.5, pz);
+          d.scale.set(sx, sy, sz);
+          d.rotation.y=rr()*Math.PI*2;
+        });
+      }
+
       if(reg.id==="hell"){
         addInstanced(group, GEO.spire, MAT.spire, baseCount(prop.spire||16), rnd, (d,i,rr)=>{
           const px=(rr()-0.5)*(CHUNK*0.92), pz=(rr()-0.5)*(CHUNK*0.92);
@@ -1392,6 +1442,10 @@ function tickChunks(){
     // Forge placement (pre-generated, highlighted, interact pauses)
     // ============================================================
     const forges = []; // {x,z, regionId, mesh, beacon}
+    const cityBoards = []; // {x,z, regionId, mesh, beacon}
+    let worldQuest = null;
+    const QUEST_TARGETS = ["scarab","scorpion","sandwisp","boar","spriggan","spitter","goblin","wolf","frostling","drone","shardling","imp","brute","mortar"];
+
     const FORGE_ACTIVE_MAX = 18;          // how many full forge meshes to keep alive
 const FORGE_ACTIVE_DIST = 320;        // only consider forges within this distance
 const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
@@ -1448,6 +1502,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function genForges(){
       forges.length = 0;
+      cityBoards.length = 0;
       const rnd = xorshift32(worldSeed ^ 0xC0FFEE);
       const ringCount = 8;
 
@@ -1466,6 +1521,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             const z = Math.sin(angle)*radius;
             const reg = regionAt(x,z);
             forges.push({ x, z, regionId: reg.id, mesh:null });
+            if(reg.id==="city") cityBoards.push({ x:x+4.5, z:z+3.2, regionId:reg.id, mesh:null, beacon:null });
           }
         }
       }
@@ -1526,6 +1582,60 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     }
   }
 }
+
+    function buildCityBoardMesh(){
+      const g = new THREE.Group();
+      const postL = new THREE.Mesh(GEO.boardPost, MAT.board); postL.position.set(-0.35,0.6,0);
+      const postR = new THREE.Mesh(GEO.boardPost, MAT.board); postR.position.set(0.35,0.6,0);
+      const board = new THREE.Mesh(GEO.board, MAT.board); board.position.set(0,1.35,0);
+      const glow = new THREE.Mesh(new THREE.RingGeometry(0.75,1.05,24), MAT.boardGlow);
+      glow.rotation.x = -Math.PI/2; glow.position.y = 0.08;
+      g.add(postL,postR,board,glow);
+      g.userData.glow = glow;
+      return g;
+    }
+
+    function tickCityBoards(now){
+      const t = now*0.001;
+      for(const b of cityBoards){
+        const d2 = dist2(me.x, me.z, b.x, b.z);
+        const active = d2 < (FORGE_ACTIVE_DIST2*0.75);
+        if(active && !b.mesh){
+          b.mesh = buildCityBoardMesh();
+          const y = heightAt(b.x,b.z,b.regionId);
+          b.mesh.position.set(b.x,y,b.z);
+          world.add(b.mesh);
+        }else if(!active && b.mesh){
+          world.remove(b.mesh);
+          b.mesh.traverse(o=>{ if(o.geometry?.dispose) o.geometry.dispose(); const m=o.material; if(Array.isArray(m)) m.forEach(mm=>mm?.dispose?.()); else m?.dispose?.(); });
+          b.mesh = null;
+        }
+        if(b.mesh){
+          const pulse = 0.6 + 0.4*Math.sin(t*2.5 + (b.x+b.z)*0.03);
+          b.mesh.userData.glow.material.opacity = 0.35 + pulse*0.45;
+          b.mesh.rotation.y = Math.sin(t*0.5 + b.x*0.01)*0.04;
+        }
+      }
+    }
+
+    function nearestCityBoard(){
+      let best=null, bestD=1e18;
+      for(const b of cityBoards){
+        const d2 = dist2(me.x, me.z, b.x, b.z);
+        if(d2 < bestD){ bestD = d2; best = b; }
+      }
+      return best ? { board:best, d:Math.sqrt(bestD) } : null;
+    }
+
+    function generateQuest(){
+      const enemy = QUEST_TARGETS[(Math.random()*QUEST_TARGETS.length)|0];
+      const need = 4 + (Math.random()*5|0) + Math.floor(me.level*0.28);
+      const xpReward = Math.round((42 + need*9 + me.level*6) * dangerBandAt(me.x, me.z).xpMul);
+      const matPool = ["iron","hide","essence","crystal","ember"];
+      const mat = matPool[(Math.random()*matPool.length)|0];
+      const qty = 2 + (need/3|0);
+      return { id:(Date.now()+Math.random()).toString(36), enemy, need, progress:0, xpReward, itemReward:{ mat, qty }, completed:false, turnedIn:false };
+    }
 
     function nearestForge(){
       let best=null, bestD=1e18;
@@ -4384,6 +4494,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         const xpGain = xpFromEnemy(e);
         gainXp(xpGain);
         spawnFloatingText(`+${xpGain} XP`, e.mesh.position.x, e.mesh.position.y+1.3, e.mesh.position.z, "#86efac");
+        if(worldQuest && !worldQuest.turnedIn && e.type===worldQuest.enemy){
+          worldQuest.progress = Math.min(worldQuest.need, worldQuest.progress + 1);
+          if(worldQuest.progress>=worldQuest.need) showToast("✅ Quest target complete! Return to any city board.");
+        }
       }
     }
 
@@ -4614,7 +4728,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     // ============================================================
     // Modals (forge / level-up / death)
     // ============================================================
-    let uiMode = "none"; // none | forge | level | death
+    let uiMode = "none"; // none | forge | quest | level | death
     let paused = false;
 
     function openModal(html){
@@ -4892,10 +5006,59 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function tryOpenForge(){
       if(paused || !alive) return;
       const nf = nearestForge();
-      if(!nf) return;
-      if(nf.d <= 3.2){
-        openForgeModal();
+      if(nf && nf.d <= 3.2) openForgeModal();
+    }
+
+    function openQuestBoardModal(){
+      if(!worldQuest || worldQuest.turnedIn) worldQuest = generateQuest();
+      uiMode = "quest";
+      paused = true;
+
+      const q = worldQuest;
+      const done = q.progress >= q.need;
+      q.completed = done;
+      const state = q.turnedIn ? "Quest complete. Claim reward!" : (done ? "Objective complete — turn in now!" : `Progress: ${q.progress}/${q.need}`);
+      openModal(`
+        <h2>📜 City Quest Board</h2>
+        <div class="sub">Paused. All cities share this same quest until you turn it in.</div>
+        <div class="panel">
+          <div class="panelTitle">Current Contract</div>
+          <div class="chipRow">
+            <span class="chip">🎯 Eliminate <b>${q.need}</b> ${q.enemy}</span>
+            <span class="chip">📈 ${q.progress}/${q.need}</span>
+            <span class="chip">⭐ Reward XP: ${q.xpReward}</span>
+            <span class="chip">🎁 Reward: ${q.itemReward.qty} ${q.itemReward.mat}</span>
+          </div>
+          <div class="muted" style="margin-top:10px">${state}</div>
+          <div class="row" style="margin-top:14px; justify-content:flex-start; gap:10px">
+            <button id="questTurnIn" class="btn" type="button" ${done && !q.turnedIn ? "" : "disabled"}>Claim Reward</button>
+            <button id="questClose" class="btn secondary" type="button">Close (E / ESC)</button>
+          </div>
+        </div>
+      `);
+
+      $("questClose").addEventListener("click", closeModal);
+      $("questTurnIn").addEventListener("click", ()=>{
+        if(!worldQuest) return;
+        if(worldQuest.progress < worldQuest.need || worldQuest.turnedIn) return;
+        worldQuest.turnedIn = true;
+        gainXp(worldQuest.xpReward);
+        me.mats[worldQuest.itemReward.mat] = (me.mats[worldQuest.itemReward.mat]||0) + worldQuest.itemReward.qty;
+        showToast(`📦 Quest complete! +${worldQuest.xpReward} XP, +${worldQuest.itemReward.qty} ${worldQuest.itemReward.mat}`);
+        worldQuest = generateQuest();
+        saveGame(true);
+        openQuestBoardModal();
+      });
+    }
+
+    function tryOpenInteraction(){
+      if(paused || !alive) return;
+      const nb = nearestCityBoard();
+      if(nb && nb.d <= 3.4){
+        openQuestBoardModal();
+        return;
       }
+      tryOpenForge();
     }
 
     // ============================================================
@@ -6157,7 +6320,7 @@ e.mesh.userData.anim?.(e, dt, now);
         if(b.cdB<=0){ b.cdB=6.0; const safe=(Math.random()*3)|0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3 + Math.random()*0.35; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const mk=makeTeleCircle(i===safe?0x22c55e:0x60a5fa); mk.position.set(tx,heightAt(tx,tz,"snow")+0.05,tz); mk.scale.set(i===safe?(outer?0.42:0.6):0.7,1,i===safe?(outer?0.42:0.6):0.7); world.add(mk); b.sigils.push({mesh:mk,t:0,delay:1.2,safe:i===safe,x:tx,z:tz}); } }
         if(b.cdC<=0){ b.cdC=9.0; b.mesh.position.x = me.x + (Math.random()-0.5)*9; b.mesh.position.z = me.z + (Math.random()-0.5)*9; explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"snow")+0.2,b.mesh.position.z,2.4,12,"enemy"); }
       }else if(b.regionId==="hell"){
-        if(b.cdA<=0){ b.cdA=2.5; const tx=me.x+me.vx*0.5, tz=me.z+me.vz*0.5; const mark=makeMarker(0xff3b1a); mark.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mark); b.telegraphs.push({mesh:mark,t:0,delay:0.5,do:()=>{ const dx=me.x-b.mesh.position.x, dz=me.z-b.mesh.position.z, d=Math.hypot(dx,dz)||1; b.mesh.position.x += dx/d*7.5; b.mesh.position.z += dz/d*7.5; if((me.x-b.mesh.position.x)**2+(me.z-b.mesh.position.z)**2<2.5*2.5) takeDamage(22,"Hammer Chase"); if(outer) explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"hell")+0.1,b.mesh.position.z,2.6,10,"enemy"); }}); }
+        if(b.cdA<=0){ b.cdA=7.8; const tx=me.x+me.vx*1.1, tz=me.z+me.vz*1.1; const ty=heightAt(tx,tz,"hell")+0.08; const tele=new THREE.Group(); const bigRing = new THREE.Mesh(new THREE.RingGeometry(1.2,4.3,48), new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xff6b3d,transparent:true,opacity:0.68,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); bigRing.rotation.x=-Math.PI/2; const glow = makeBossFxSprite(FX_TEX.softGlow,0xff8a65,2.8,0.36); glow.position.y=0.22; tele.add(bigRing,glow); tele.position.set(tx,ty,tz); world.add(tele); b.telegraphs.push({mesh:tele,t:0,delay:3.0,do:()=>{ b.mesh.position.x = tx; b.mesh.position.z = tz; const hy=heightAt(tx,tz,"hell")+0.18; const blast = new THREE.Mesh(new THREE.RingGeometry(0.7,1.2,36), new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xff3b1a,transparent:true,opacity:0.82,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); blast.rotation.x=-Math.PI/2; blast.position.set(tx,hy,tz); world.add(blast); b.burst.push({mesh:blast,t:0,max:0.7,rad:7.2,dmg:outer?30:22,knock:outer?14:10}); if((me.x-tx)**2+(me.z-tz)**2<3.6*3.6) takeDamage(outer?30:22,"Ash Teleport Impact"); }}); }
         if(b.cdB<=0){ b.cdB=6.0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const y=heightAt(tx,tz,"hell")+0.22; const an=new THREE.Group(); const ring=makeTeleCircle(0xf97316); an.add(ring); const ember=makeBossFxSprite(FX_TEX.spark,0xff7a1a,0.62,0.4); ember.position.y=0.25; an.add(ember); an.position.set(tx,y,tz); world.add(an); projectiles.push({mesh:an,x:tx,y,z:tz,vx:0,vy:0,vz:0,life:outer?9:7,rad:1.55,dmg:4.4,from:"enemy",kind:"hazard"}); } }
         if(b.cdC<=0){ b.cdC=4.2; const tx=me.x-me.vx*0.35, tz=me.z-me.vz*0.35; const mk=makeMarker(0xff8a65); mk.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.5,do:()=>explodeAt(tx,heightAt(tx,tz,"hell")+0.12,tz,2.2,11,"enemy")}); }
       }
@@ -6165,7 +6328,7 @@ e.mesh.userData.anim?.(e, dt, now);
       for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t += dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.55*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
       for(let i=b.ribbons.length-1;i>=0;i--){ const r=b.ribbons[i]; r.life -= dt; r.mesh.position.x += Math.cos(r.ang+Math.PI/2)*r.speed; r.mesh.position.z += Math.sin(r.ang+Math.PI/2)*r.speed; r.trail=(r.trail||0)-dt; if(r.trail<=0){ r.trail=0.08; const tr=takeBossFx('spark', ()=>makeBossFxSprite(FX_TEX.softGlow,0x93c5fd,0.35,0.38)); tr.material.color.setHex(0x93c5fd); tr.position.set(r.mesh.position.x, r.mesh.position.y+0.35, r.mesh.position.z); world.add(tr); projectiles.push({mesh:tr,kind:'bossFx',fxType:'spark',x:tr.position.x,y:tr.position.y,z:tr.position.z,vx:(Math.random()-0.5)*0.5,vy:0.15,vz:(Math.random()-0.5)*0.5,life:0.45,maxLife:0.45}); } if((me.x-r.mesh.position.x)**2 + (me.z-r.mesh.position.z)**2 < 2.2*2.2){ me.slowT=Math.max(me.slowT,1.6); me.slowMul=Math.min(me.slowMul,0.58); takeDamage(6*dt,"Aurora Ribbon"); } if(r.life<=0){ world.remove(r.mesh); b.ribbons.splice(i,1);} }
       for(let i=b.sigils.length-1;i>=0;i--){ const r=b.sigils[i]; r.t+=dt; if(r.t>=r.delay){ if(!r.safe && (me.x-r.x)**2 + (me.z-r.z)**2 < 2.3*2.3) takeDamage(17,"Sigil Collapse"); if(!r.safe) explodeAt(r.x,heightAt(r.x,r.z,b.regionId)+0.2,r.z,2.2,12,"enemy"); world.remove(r.mesh); b.sigils.splice(i,1);} }
-      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; r.mesh.scale.setScalar(1+t*5.4); if(t<1 && Math.abs(Math.hypot(me.x-b.mesh.position.x,me.z-b.mesh.position.z)-t*r.rad)<0.55){ takeDamage(r.dmg*dt*2.2,"Bloom Pulse"); if(r.slow) me.turnSlowT=Math.max(me.turnSlowT,1.2); } if(r.t>=r.max){ world.remove(r.mesh); b.burst.splice(i,1);} }
+      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; const ringR = 0.8 + t*r.rad; r.mesh.scale.setScalar(ringR); const pdx = me.x-r.mesh.position.x, pdz = me.z-r.mesh.position.z; const pd = Math.hypot(pdx,pdz)||1; if(t<1 && Math.abs(pd-ringR)<0.75){ takeDamage(r.dmg*dt*2.2,"Bloom Pulse"); if(r.knock){ me.vx += (pdx/pd)*r.knock*dt*2.4; me.vz += (pdz/pd)*r.knock*dt*2.4; } if(r.slow) me.turnSlowT=Math.max(me.turnSlowT,1.2); } if(r.t>=r.max){ world.remove(r.mesh); b.burst.splice(i,1);} }
     }
 
     function tickTitanBoss(dt){
@@ -6327,8 +6490,11 @@ function tickHUD(dt){
   }
 
   const nf = nearestForge();
+  const nb = nearestCityBoard();
   const canUseForge = !!(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none");
-  mobileInteract.style.display = (mobile.enabled && canUseForge) ? "block" : "none";
+  const canUseBoard = !!(nb && nb.d <= 3.4 && phase==="play" && uiMode==="none");
+  mobileInteract.style.display = (mobile.enabled && (canUseForge || canUseBoard)) ? "block" : "none";
+  mobileInteract.textContent = canUseBoard ? "📜 Use Quest Board" : "⚒️ Interact";
 }
     // ============================================================
     // Spawn pacing
@@ -6373,11 +6539,15 @@ function tickHUD(dt){
       if(phase!=="play") return;
       if(uiMode!=="none") return;
 
-      const nf = nearestForge();
-      if(!nf) return;
+      const nb = nearestCityBoard();
+      if(nb && nb.d <= 3.4){
+        showHintOnce("📜 Quest board nearby — press E (or tap Interact) to accept/turn in city quests.");
+        return;
+      }
 
-      if(nf.d <= 3.2){
-        showHintOnce("⚒️ Forge nearby — press E (or tap Use Forge) to craft. Game pauses inside.");
+      const nf = nearestForge();
+      if(nf && nf.d <= 3.2){
+        showHintOnce("⚒️ Forge nearby — press E (or tap Interact) to craft. Game pauses inside.");
       }
     }
     const _hintSeen = new Set();
@@ -6439,6 +6609,7 @@ function tickHUD(dt){
         tickSpawning(dt);
         tickAbilities(dt);
         tickPlayerRegen(dt, now*0.001);
+        tickCityBoards(now);
         tickEnemies(dt, now);
         tickAlienBoss(dt);
         tickRegionBoss(dt);
