@@ -1509,6 +1509,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     ];
 
     const MAT_KEYS = ["iron","hide","essence","crystal","ember"];
+    const recipeCost = (req)=>MAT_KEYS.reduce((sum,k)=>sum + (req[k]||0), 0);
     for(let i=0;i<WEAPON_RECIPES.length;i++){
       const r = WEAPON_RECIPES[i];
       const tier = i+1;
@@ -1525,7 +1526,36 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
       }
       r.req = scaledReq;
+
+      const cost = recipeCost(r.req);
+      const costPower = 1 + Math.pow(cost/80, 1.2);
+      const effectPower = 1 + Math.pow(cost/120, 1.08);
+      if(w){
+        if(w.dmg!=null) w.dmg = Math.max(2, Math.round(w.dmg * costPower));
+        if(w.dps!=null) w.dps = Math.round((w.dps * (0.55 + costPower*0.52))*10)/10;
+        if(w.aoe!=null) w.aoe = Math.round(w.aoe * (0.9 + effectPower*0.24) * 10) / 10;
+        if(w.poison!=null) w.poison = Math.round(w.poison * (0.92 + effectPower*0.28) * 10) / 10;
+        if(w.stun!=null) w.stun = Math.round(w.stun * (0.92 + effectPower*0.18) * 100) / 100;
+        if(w.knockback!=null) w.knockback = Math.round(w.knockback * (0.9 + effectPower*0.22) * 10) / 10;
+        if(w.chainRange!=null) w.chainRange = Math.round(w.chainRange * (0.96 + effectPower*0.12) * 10) / 10;
+        if(w.chainBounces!=null) w.chainBounces = Math.min(12, Math.max(1, Math.round(w.chainBounces * (0.9 + effectPower*0.13))));
+        if(w.splinter!=null) w.splinter = Math.min(8, Math.max(1, Math.round(w.splinter * (0.92 + effectPower*0.12))));
+        if(w.pierce!=null) w.pierce = Math.min(10, Math.max(1, Math.round(w.pierce * (0.9 + effectPower*0.12))));
+        if(w.volleyTargets!=null) w.volleyTargets = Math.min(6, Math.max(2, Math.round(w.volleyTargets * (0.94 + effectPower*0.08))));
+        if(w.irradiate){
+          w.irradiate = {
+            duration: Math.round((w.irradiate.duration||3.5) * (0.95 + effectPower*0.11) * 10)/10,
+            dps: Math.round((w.irradiate.dps||3.5) * (0.9 + effectPower*0.24) * 10)/10,
+            radius: Math.round((w.irradiate.radius||2.8) * (0.95 + effectPower*0.14) * 10)/10,
+          };
+        }
+      }
     }
+
+    WEAPON_RECIPES.sort((a,b)=>{
+      const diff = recipeCost(a.req) - recipeCost(b.req);
+      return diff!==0 ? diff : a.name.localeCompare(b.name);
+    });
 
     const RECIPES = [
       ...WEAPON_RECIPES.map((w)=>({ type:"weapon", name:w.name, req:w.req, equip:true })),
@@ -1813,6 +1843,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     imp:0xff2a2a, brute:0xdc2626, mortar:0xf97316, goblin:0x65a30d, mirebat:0x4ade80, skitter:0x67e8f9
   };
   const typeTint = TYPE_TINT[type] ?? baseCol;
+  g.userData.typeTint = typeTint;
 
   const matBody = new THREE.MeshStandardMaterial({
     color: typeTint,
@@ -3204,6 +3235,34 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
     }
 
+    function spawnEnemyDeathBurst(e){
+      if(!e?.mesh) return;
+      const tint = new THREE.Color((e.mesh.userData?.typeTint ?? 0xffffff));
+      const pieces = 12 + Math.floor(Math.random()*7);
+      for(let i=0;i<pieces;i++){
+        const spark = glowSprite(tint.getHex(), 0.12 + Math.random()*0.12, 0.8, FX_TEX.spark);
+        spark.position.copy(e.mesh.position);
+        spark.position.y += (e.flying?0.55:0.35) + (Math.random()-0.5)*0.35;
+        world.add(spark);
+        const v = 3.2 + Math.random()*3.4;
+        const ang = Math.random()*Math.PI*2;
+        projectiles.push({
+          mesh:spark,
+          x:spark.position.x,
+          y:spark.position.y,
+          z:spark.position.z,
+          vx:Math.cos(ang)*v,
+          vy:(Math.random()*2.2)+0.8,
+          vz:Math.sin(ang)*v,
+          life:0.35 + Math.random()*0.25,
+          rad:0,
+          dmg:0,
+          from:"fx",
+          kind:"enemyDeathFx"
+        });
+      }
+    }
+
     function dealDamageEnemy(e, dmg){
       e.hp -= dmg;
       if(e.hp <= 0){
@@ -3211,6 +3270,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         // cleanup telegraphs
         if(e.tele?.marker){ world.remove(e.tele.marker); }
         if(e.tele?.ring){ world.remove(e.tele.ring); }
+        spawnEnemyDeathBurst(e);
 
         if(e.type==="scarab" && e.inOuter && !e.data.splitSpawned){
           e.data.splitSpawned = true;
@@ -3233,11 +3293,13 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             const sx = e.mesh.position.x + Math.cos(a)*1.05;
             const sz = e.mesh.position.z + Math.sin(a)*1.05;
             const f = spawnEnemy("shardling", sx, sz, e.regId);
-            f.maxHp = Math.max(7, Math.round(e.maxHp*0.26));
+            f.maxHp = Math.max(7, Math.round(e.maxHp*0.24));
             f.hp = f.maxHp;
-            f.dmg = Math.max(4, Math.round(e.dmg*0.5));
-            f.spd *= 1.55;
-            f.mesh.scale.setScalar(0.72);
+            f.dmg = Math.max(4, Math.round(e.dmg*0.48));
+            f.spd *= 1.95;
+            f.mesh.scale.setScalar(0.62);
+            f.data.fractured = true;
+            f.data.miniShard = true;
             f.inOuter = false;
           }
         }
@@ -4262,6 +4324,23 @@ e.mesh.userData.anim?.(e, dt, now);
     if(p.kind==="fxLine"){
       p.mesh.material.opacity *= 0.85;
       if(p.life<=0){
+        world.remove(p.mesh);
+        projectiles.splice(i,1);
+      }
+      continue;
+    }
+
+    if(p.kind==="enemyDeathFx"){
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.z += p.vz*dt;
+      p.vx *= 0.9;
+      p.vz *= 0.9;
+      p.vy -= 9.8*dt*0.55;
+      p.mesh.position.set(p.x,p.y,p.z);
+      p.mesh.material.opacity *= 0.9;
+      p.mesh.scale.multiplyScalar(0.985);
+      if(p.life<=0 || p.y<=heightAt(p.x,p.z,regionAt(p.x,p.z).id)+0.05){
         world.remove(p.mesh);
         projectiles.splice(i,1);
       }
