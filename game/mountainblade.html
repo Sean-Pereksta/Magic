@@ -2,136 +2,58 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>🗻 Mountain Blade — Grid Tactics (POP Units + Short Aggro)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>🗻 Mountain Blade (Prototype)</title>
 <style>
-  :root{ --win-w: 1024px; --win-h: 640px; }
-  *{ box-sizing:border-box }
-  body{
-    margin:0; background:#0b1014; color:#eef;
-    font-family:system-ui,Segoe UI,Arial;
-    display:flex; align-items:center; justify-content:center; min-height:100vh;
-  }
-  .game-wrap{ width:var(--win-w); }
-  .frame{
-    position:relative; width:var(--win-w); height:var(--win-h);
-    border:1px solid #21324a; border-radius:12px; overflow:hidden;
-    box-shadow:0 10px 40px rgba(0,0,0,.35); background:#0e1726;
-  }
-  .titlebar{
-    height:38px; display:flex; align-items:center; gap:8px; padding:0 10px;
-    background:#0f1a2b; border-bottom:1px solid #203049; font-weight:700;
-  }
-  .titlebar .dot{ width:10px; height:10px; border-radius:50%; }
-  .dot.red{ background:#ff5f57 } .dot.yellow{ background:#ffbd2e } .dot.green{ background:#28c840 }
+  html,body { margin:0; height:100%; background:#0d1117; color:#eef; font-family:system-ui,Segoe UI,Arial; }
+  #ui { position:fixed; inset:0; pointer-events:none; }
 
-  .viewport{ position:absolute; inset:38px 0 0 0; }
-  /* ⛔ Remove the old green grass overlay completely so it never tints units */
-  .viewport::before{ display:none !important; }
+  /* Top overlays */
+  #timerBox { position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; pointer-events:auto; }
+  #leader { position:fixed; top:10px; right:10px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; pointer-events:auto; }
+  #leader h3 { margin:0 0 6px 0; font-size:14px; color:#cfe; }
+  #leader .row { display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
 
-  /* Canvas sits ABOVE any backgrounds */
-  canvas{
-    position:relative; z-index:1;
-    width:100%; height:100%; display:block;
-    background:#0d1020; /* deep navy, no green tint */
-    cursor:crosshair;
-  }
-
-  /* UI overlay sits above canvas */
-  #ui{ pointer-events:none; position:absolute; inset:0; z-index:2; }
-  #timerBox{
-    position:absolute; top:8px; left:50%; transform:translateX(-50%);
-    background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px;
-    padding:6px 12px; font-weight:700;
-  }
-  #leader{
-    position:absolute; top:8px; right:8px; min-width:220px;
-    background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px;
-  }
-  #leader h3{ margin:0 0 6px 0; font-size:14px; color:#cfe; }
-  #leader .row{ display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
-  #hint{
-    position:absolute; top:44px; left:50%; transform:translateX(-50%);
-    background:#15243dcc; border:1px solid #355; border-radius:10px; padding:6px 10px;
-    font-size:13px; display:none;
-  }
-  #banner{
-    position:absolute; left:50%; top:24%; transform:translateX(-50%);
-    font-size:28px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none;
-  }
-
-  #cpPanel{
-    position:absolute; right:10px; top:64px; background:#0d1423e6; border:1px solid #345; border-radius:12px;
-    padding:8px; display:none; pointer-events:auto;
-  }
-  #cpPanel h3{ margin:0 0 6px 0; font-size:14px; }
-  #cpPanel .row{ display:flex; gap:6px; flex-wrap:wrap; }
-  .cpBtn{ padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; pointer-events:auto; }
-
-  #hud{
-    position:absolute; left:0; right:0; bottom:0; height:108px;
-    background:rgba(0,0,0,.35); backdrop-filter:blur(4px);
-    border-top:1px solid #263042; display:flex; align-items:center; gap:16px; padding:10px 16px;
-    pointer-events:auto; z-index:3;
-  }
-  #selInfo{ min-width:280px; line-height:1.25; }
-  #abilities{ display:flex; gap:10px; }
-  .slot{
-    width:72px; height:72px; border:1px solid #445; border-radius:10px;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    background:#1a2232; position:relative; cursor:pointer; pointer-events:auto;
-  }
-  .slot .key{ position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
-  .slot .emoji{ font-size:24px; }
-  .slot .name{ font-size:11px; color:#c9d4e3; margin-top:4px; text-align:center; line-height:1.1; padding:0 4px; }
-  .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); border-radius:10px; }
-  .cd-badge{
-    position:absolute; top:4px; right:6px; font-size:11px; color:#cfe; background:#0008;
-    border:1px solid #345; border-radius:6px; padding:1px 5px;
-  }
-  .chip{ display:inline-block; padding:4px 8px; border:1px solid #3a4a62; border-radius:8px; font-size:12px; margin-top:6px; background:#0f1828; }
-
-  .legend{
-    position:absolute; left:8px; top:8px; background:#0f1a2bcc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 10px; font-size:12px;
-  }
+  #hud { position:fixed; left:0; right:0; bottom:0; height:110px; background:rgba(0,0,0,.35); backdrop-filter: blur(4px); border-top:1px solid #263042; pointer-events:auto; display:flex; align-items:center; gap:10px; padding:10px 16px; }
+  #abilities { display:flex; gap:8px; }
+  .slot { width:64px; height:64px; border:1px solid #445; border-radius:8px; display:flex; align-items:center; justify-content:center; background:#1a2232; position:relative; }
+  .slot .key { position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
+  .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); }
+  #banner { position:fixed; left:50%; top:16%; transform:translateX(-50%); font-size:32px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
+  #cpPanel { position:fixed; right:12px; top:56px; background:#111a; border:1px solid #345; border-radius:12px; padding:8px; pointer-events:auto; display:none; }
+  #cpPanel h3 { margin:0 0 6px 0; font-size:14px; }
+  #cpPanel .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .cpBtn { padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
+  canvas { display:block; width:100vw; height:100vh; }
 </style>
 </head>
 <body>
-  <div class="game-wrap">
-    <div class="frame">
-      <div class="titlebar">
-        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
-        <span>🗻 Mountain Blade — Grid</span>
-      </div>
-      <div class="viewport">
-        <canvas id="cv" width="1024" height="602"></canvas>
-        <div id="ui">
-          <div id="timerBox">⏱️ 05:00</div>
-          <div class="legend">Left-drag: select • Right-click: attack-move • Q/W/E: abilities • A: attack nearest • H: hold</div>
-          <div id="leader"><h3>Units on field</h3><div id="leaderRows"></div></div>
-          <div id="hint"></div>
-          <div id="banner"></div>
+<canvas id="cv" width="1280" height="720"></canvas>
 
-          <div id="cpPanel">
-            <h3>Spawn at <span id="cpName">CP</span></h3>
-            <div class="row" id="cpBtns"></div>
-          </div>
+<div id="ui">
+  <div id="timerBox">⏱️ 05:00</div>
+  <div id="leader">
+    <h3>Units on field</h3>
+    <div id="leaderRows"></div>
+  </div>
+  <div id="banner"></div>
 
-          <div id="hud">
-            <div id="selInfo">Select units</div>
-            <div id="abilities"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div id="cpPanel">
+    <h3>Spawn from <span id="cpName">CP</span></h3>
+    <div class="row" id="cpBtns"></div>
   </div>
 
+  <div id="hud">
+    <div id="selInfo"></div>
+    <div id="abilities"></div>
+  </div>
+</div>
+
 <script type="module">
-/* --------------- Firebase --------------- */
+/* ------------ Firebase ------------ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, setDoc, collection, addDoc, onSnapshot,
-  query, orderBy, limit, getDocs, deleteDoc
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, onSnapshot,
+  query, orderBy, limit, getDocs, deleteDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -145,1100 +67,680 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-/* --------------- Params --------------- */
+/* ------------ Params & routes ------------ */
 const Q = new URLSearchParams(location.search);
-const GAME_ID  = Q.get("gameId") || "local";
+const GAME_ID  = Q.get("gameId");
 const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html";
+const HUB_ROUTE = "/game/index.html"; // set to your hub
 
-/* --------------- Canvas & camera --------------- */
+/* ------------ Canvas & camera ------------ */
 const cv = document.getElementById("cv");
-const ctx = cv.getContext("2d", { alpha: false });
-const viewportEl = document.querySelector(".viewport");
+const ctx = cv.getContext("2d");
+function resize(){ cv.width = innerWidth; cv.height = innerHeight; }
+addEventListener("resize", resize); resize();
 
-const TILE = 48;
-const GRID_W = 50, GRID_H = 50;
-const WORLD = { w: GRID_W*TILE, h: GRID_H*TILE };
-const cam = { x:0, y:0, speed: 1400 };
-function clampCam(){ cam.x=Math.max(0,Math.min(WORLD.w-cv.width,cam.x)); cam.y=Math.max(0,Math.min(WORLD.h-cv.height,cam.y)); }
+const WORLD = { w: 5000, h: 5000 };
+const cam = { x:0, y:0, speed: 850 }; // px/s
+function clampCam(){
+  cam.x = Math.max(0, Math.min(WORLD.w - cv.width,  cam.x));
+  cam.y = Math.max(0, Math.min(WORLD.h - cv.height, cam.y));
+}
 
-/* --------------- Colors & helpers --------------- */
-const TEAM_COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"];
-function tint(owner){ return TEAM_COLORS[(hash(owner)%TEAM_COLORS.length)]; }
-function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-function short(n){ return n.length>8? n.slice(0,8)+"…" : n; }
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
-function cheby(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by)); }
-
-/* --------------- Game constants --------------- */
-const MATCH_MS = 5*60*1000;
-const INTERP_DELAY = 100;
-const CP_CAPTURE_SETTLE_MS = 500;
-const AGGRO_TILES = 7;
-
-/* --------------- Units / Types --------------- */
-const PX_PER_S_TO_SQUARES_PER_S = 1 / (TILE * 0.9);
-const TYPES = {
-  guardian: { name:"Guardian", emoji:"🛡️", hp:110, dmg:10, rangeTiles:1, atkSpd:1.0, moveSpd:260, armor:5,
-    abilities:[{slot:1,key:"Q",id:"shieldwall",label:"Shield Wall",target:"self",cd:12,dur:5}]},
-  lancer:   { name:"Lancer",   emoji:"🗡️", hp:85,  dmg:9,  rangeTiles:1, atkSpd:1.2, moveSpd:270, armor:3,
-    abilities:[{slot:2,key:"W",id:"brace",label:"Brace",target:"self",cd:10,dur:4}]},
-  archer:   { name:"Archer",   emoji:"🏹", hp:65,  dmg:7,  rangeTiles:4, atkSpd:1.0, moveSpd:250, armor:1,
-    abilities:[{slot:1,key:"Q",id:"volley",label:"Volley (3 pulses)",target:"point",cd:12,size:3,channel:6000}]},
-  cavalry:  { name:"Cavalry",  emoji:"🐎", hp:95,  dmg:12, rangeTiles:1, atkSpd:0.9, moveSpd:440, armor:2,
-    abilities:[{slot:1,key:"Q",id:"charge",label:"Charge (line)",target:"pointOrUnit",cd:6}]},
-  mage:     { name:"Mage",     emoji:"🔮", hp:55,  dmg:15, rangeTiles:3, atkSpd:0.7, moveSpd:255, armor:0,
-    abilities:[
-      {slot:1,key:"Q",id:"fireburst",label:"Fireburst (square)",target:"point",cd:12,size:2},
-      {slot:2,key:"W",id:"arcaneBolt",label:"Arcane Bolt (line)",target:"pointOrUnit",cd:6,speedTiles:10,rangeTiles:10, dmg:34, armorPierce:0.5}
-    ]},
-  priest:   { name:"Priest",   emoji:"✝️", hp:70,  dmg:3,  rangeTiles:2, atkSpd:0.7, moveSpd:252, armor:1,
-    abilities:[{slot:1,key:"Q",id:"mend",label:"Mend (self)",target:"self",cd:10,dur:5,healPerSec:8}]},
+/* ------------ Data defs ------------ */
+const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"]; // owner tint
+const UNIT_TYPES = {
+  swordsman:{ hp:100, dmg:10, range:40, atkSpd:0.9, moveSpd:120, armor:4,  size:12, class:"melee",
+    abilities:[{slot:1, key:"Q", name:"Shield Wall", cd:15, apply:(u)=>{ u._buff={armor:+6, ms:-40, t:5}; }}] },
+  spearman: { hp:85,  dmg:8,  range:60, atkSpd:1.0, moveSpd:120, armor:3,  size:12, class:"melee",
+    abilities:[{slot:2, key:"W", name:"Brace", cd:12, apply:(u)=>{ u._buff={range:+30, t:4}; }}] },
+  archer:   { hp:65,  dmg:7,  range:200,atkSpd:0.8, moveSpd:110, armor:1,  size:10, class:"ranged",
+    abilities:[{slot:1, key:"Q", name:"Volley", cd:12, apply:(u)=>{ u._burst=3; }}] },
+  cavalry:  { hp:95,  dmg:12, range:40, atkSpd:0.7, moveSpd:180, armor:2,  size:14, class:"charge",
+    abilities:[{slot:1, key:"Q", name:"Charge", cd:14, apply:(u)=>{ u._charge=1.8; }}] },
+  mage:     { hp:55,  dmg:15, range:180,atkSpd:0.5, moveSpd:115, armor:0,  size:10, class:"caster",
+    abilities:[{slot:1, key:"Q", name:"Fireburst", cd:16, apply:(u)=>{ u._aoe=3; }}] },
+  priest:   { hp:70,  dmg:3,  range:80, atkSpd:0.6, moveSpd:110, armor:1,  size:10, class:"support",
+    abilities:[{slot:1, key:"Q", name:"Mend", cd:12, apply:(u)=>{ u._hot=6; }}] }
 };
-const SPAWN_CHOICES = Object.keys(TYPES);
+const SPAWN_CHOICES = Object.keys(UNIT_TYPES);
+const MATCH_MS = 5 * 60 * 1000; // 5 minutes
 
-/* --------------- Spawns & Control Points --------------- */
 const TEAM_SPAWNS = [
-  { gx:2, gy:2 }, { gx: GRID_W-3, gy:2 }, { gx:2, gy:GRID_H-3 }, { gx:GRID_W-3, gy:GRID_H-3 }
+  { x:200, y:200 }, { x: WORLD.w-200, y:200 }, { x:200, y:WORLD.h-200 }, { x:WORLD.w-200, y:WORLD.h-200 }
 ];
-const CTRL_POINTS = [
-  { id:"CP1", gx:12, gy:12 },
-  { id:"CP2", gx:GRID_W-13, gy:12 },
-  { id:"CP3", gx:Math.floor(GRID_W/2), gy:Math.floor(GRID_H/2) },
-  { id:"CP4", gx:12, gy:GRID_H-13 },
-  { id:"CP5", gx:GRID_W-13, gy:GRID_H-13 },
+const CMD_POINTS = [
+  { id:"P1", x: WORLD.w*0.25, y: WORLD.h*0.28, r: 160 },
+  { id:"P2", x: WORLD.w*0.70, y: WORLD.h*0.30, r: 160 },
+  { id:"P3", x: WORLD.w*0.50, y: WORLD.h*0.55, r: 160 },
 ];
 
-/* --------------- State / networking --------------- */
-let isHost=false, lobbyPlayers=[], myTeamIdx=0, state=null;
-let selection=new Set();
-let dragging=false, dragStart=null;
-let targeting=null;
-const groups={};
+/* ------------ Local client state ------------ */
+let isHost = false;
+let hostName = null;
+let lobbyPlayers = [];
+let myTeamIdx = 0;
+let state = null;
+let selection = new Set();
+let drag = { active:false, x0:0, y0:0, x1:0, y1:0 };
+let cpPanelFor = null;
+const groupSlots = {}; // "1".."9" -> Set(ids)
 
-let snapBuf = [];
-let hostClockOffset = 0;
+/* ------------ Firestore refs ------------ */
+const lobbyRef = doc(db, "lobbies", GAME_ID);
+const gameRef  = doc(db, "games",  GAME_ID, "meta", "state");
 
-// Firestore refs
-const lobbyRef = doc(db,"lobbies",GAME_ID);
-const gameRef  = doc(db,"games",GAME_ID,"meta","state");
-const snapsCol = collection(db,"games",GAME_ID,"snaps");
-
-async function pushIntent(kind,payload){
-  const col=collection(db,"games",GAME_ID,"intents");
-  await addDoc(col,{ts:Date.now(),user:ME,kind,payload});
+/* ------------ Intents ------------ */
+async function pushIntent(kind, payload){
+  const intentsCol = collection(db, "games", GAME_ID, "intents");
+  await addDoc(intentsCol, { ts: Date.now(), user: ME, kind, payload });
 }
 
-/* --------------- UI Cooldowns & Local FX --------------- */
-const uiCooldowns = { 1:0, 2:0, 3:0, 4:0 }; // per slot (Q/W/E/R)
-const localFX = []; // {kind:'ring'|'tile', gx, gy, color, until}
-function startCooldown(slot, seconds){
-  uiCooldowns[slot] = Date.now() + Math.round(seconds*1000);
-  updateCooldownBadges();
-}
-function updateCooldownBadges(){
-  const abil = document.getElementById("abilities");
-  if(!abil) return;
-  for(let s=1;s<=4;s++){
-    const el = abil.querySelector(`[data-slot="${s}"]`);
-    if(!el) continue;
-    const remMs = uiCooldowns[s] - Date.now();
-    const onCd = remMs > 0;
-    el.classList.toggle("oncd", onCd);
-    let badge = el.querySelector(".cd-badge");
-    if(onCd){
-      const secs = Math.max(0, Math.ceil(remMs/1000));
-      if(!badge){
-        badge = document.createElement("div");
-        badge.className = "cd-badge";
-        el.appendChild(badge);
-      }
-      badge.textContent = secs + "s";
-    }else if(badge){
-      badge.remove();
-    }
-  }
-}
-setInterval(updateCooldownBadges, 200);
-
-/* --------------- Init --------------- */
-(async function init(){
-  const s=await getDoc(lobbyRef); if(!s.exists()){ alert("Lobby not found"); return; }
-  const L=s.data(); isHost=(L.host===ME);
-  lobbyPlayers = (Array.isArray(L.players) ? L.players.slice(0,4) : []);
+/* ------------ Host setup / join ------------ */
+async function init(){
+  const s = await getDoc(lobbyRef);
+  if (!s.exists()) { alert("Lobby not found"); return; }
+  const ld = s.data();
+  hostName = ld.host || null;
+  isHost = (hostName === ME);
+  lobbyPlayers = Array.isArray(ld.players) ? ld.players.slice(0,4) : [];
   myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
 
-  const sp=TEAM_SPAWNS[myTeamIdx%TEAM_SPAWNS.length];
-  cam.x = sp.gx*TILE - cv.width/2 + TILE/2; cam.y = sp.gy*TILE - cv.height/2 + TILE/2; clampCam();
+  // center camera on my spawn
+  const sp = TEAM_SPAWNS[myTeamIdx % TEAM_SPAWNS.length];
+  cam.x = sp.x - cv.width/2; cam.y = sp.y - cv.height/2; clampCam();
 
-  const g=await getDoc(gameRef);
-  if(isHost && !g.exists()){
-    const units=[];
-    lobbyPlayers.forEach((name,idx)=>{
-      const base=TEAM_SPAWNS[idx];
-      const pack=["guardian","lancer","archer","cavalry","mage","priest"];
-      for(let i=0;i<8;i++){
-        const t=pack[i%pack.length];
-        const offx=(i%4), offy=Math.floor(i/4);
-        units.push(mkUnit(t,name, base.gx+offx, base.gy+offy));
+  // Host: create/reset state if absent
+  const g = await getDoc(gameRef);
+  if (isHost && !g.exists()){
+    const units = [];
+    lobbyPlayers.forEach((name, idx)=>{
+      const base = TEAM_SPAWNS[idx];
+      const pack = ["swordsman","spearman","archer","cavalry"];
+      for (let i=0;i<8;i++){
+        const t = pack[i%pack.length];
+        const jitter = (n)=> (Math.random()*n - n/2);
+        units.push(mkUnit(t, name, base.x + (i%4)*24 + jitter(10), base.y + Math.floor(i/4)*24 + jitter(10)));
       }
     });
-
-    const points=CTRL_POINTS.map(p=>({
-      id:p.id, gx:p.gx, gy:p.gy,
-      owner:null, uncontestedSince: 0,
-      spawnType:"guardian", nextSpawnAt:0
-    }));
-
-    const now=Date.now();
-    await setDoc(gameRef,{
-      tick:0, startedAt:now, endAt:now+MATCH_MS, winner:null,
-      map:{w:WORLD.w, h:WORLD.h, tile:TILE, gridW:GRID_W, gridH:GRID_H},
-      players:lobbyPlayers, points, units, effects:[]
+    const points = CMD_POINTS.map(p => ({ ...p, owner:null, cap:0, spawnType:"swordsman", nextSpawnAt:0 }));
+    const now = Date.now();
+    await setDoc(gameRef, {
+      tick:0, startedAt: now, endAt: now + MATCH_MS, winner: null, map:{w:WORLD.w, h:WORLD.h},
+      players: lobbyPlayers, points, units
     });
   }
 
-  // meta
-  onSnapshot(gameRef,(snap)=>{ if(!snap.exists()) return; state=snap.data(); renderHUD(); renderTimer(); renderBoard(); maybeWinner(); });
-
-  // motion
-  onSnapshot(query(snapsCol, orderBy("ts","asc"), limit(32)), (qs) => {
-    snapBuf = qs.docs.map(d=>d.data());
-    if (snapBuf.length){
-      const hostTs = snapBuf[snapBuf.length-1].ts;
-      const sample = hostTs - Date.now();
-      hostClockOffset = hostClockOffset===0 ? sample : (hostClockOffset*0.9 + sample*0.1);
-    }
+  // Live state
+  onSnapshot(gameRef, (snap)=>{
+    if (!snap.exists()) return;
+    state = snap.data();
+    renderAbilitiesPanel();
+    renderTimer();
+    renderLeaderboard();
+    maybeShowWinner();
   });
 
-  if(isHost) hostLoop();
-})();
+  // Host loop
+  if (isHost) { hostLoop(); }
+}
+init();
 
-/* --------------- Units --------------- */
-function mkUnit(type,owner,gx,gy){
-  const b=TYPES[type], id=owner.slice(0,2).toUpperCase()+Math.random().toString(36).slice(2,7);
+/* ------------ Unit helpers ------------ */
+function mkUnit(type, owner, x, y){
+  const base = UNIT_TYPES[type];
+  const id = owner.slice(0,2).toUpperCase() + Math.random().toString(36).slice(2,7);
   return {
-    id, tt:type, o:owner,
-    gx: clamp(gx,0,GRID_W-1), gy: clamp(gy,0,GRID_H-1),
-    x: 0, y: 0,
-    hp:b.hp, maxHp:b.hp,
-    cd:0, acd:{}, _aura:null, _channel:null, _charge:null, _hold:false,
-    goalGX:null, goalGY:null,
-    nextStepAt:0, axisPref: (Math.random()<.5)?"x":"y"
+    id, t:type, o:owner,
+    x: Math.round(x), y: Math.round(y),
+    hp: base.hp, maxHp: base.hp,
+    cd: 0, // attack cooldown
+    acd:{}, // ability cooldowns
+    _order:null
   };
 }
-function unitCenterPx(u){ return { x: u.gx*TILE + TILE/2, y: u.gy*TILE + TILE/2 }; }
+function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+function len(x,y){ return Math.hypot(x,y); }
 
-/* --------------- Input --------------- */
-const mouse={x:0,y:0,worldX:0,worldY:0,inside:false, clientX:0, clientY:0, inViewport:false};
-const viewportElRect = ()=>viewportEl.getBoundingClientRect();
-function relTo(el,e){ const r=el.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top, w:r.width, h:r.height }; }
-function worldToGrid(wx,wy){ return { gx: clamp(Math.floor(wx/TILE),0,GRID_W-1), gy: clamp(Math.floor(wy/TILE),0,GRID_H-1) }; }
-
-window.addEventListener("mousemove",(e)=>{
-  mouse.clientX=e.clientX; mouse.clientY=e.clientY;
-  const vr=viewportElRect();
-  mouse.inViewport = e.clientX>=vr.left && e.clientX<=vr.right && e.clientY<=vr.bottom && e.clientY>=vr.top;
+/* ------------ Inputs ------------ */
+let mouse = { x:0, y:0, worldX:0, worldY:0, down:false };
+cv.addEventListener("mousemove", (e)=>{
+  mouse.x = e.offsetX; mouse.y = e.offsetY;
+  mouse.worldX = cam.x + mouse.x;
+  mouse.worldY = cam.y + mouse.y;
 });
-cv.addEventListener("mousemove",(e)=>{
-  const r=relTo(cv,e);
-  mouse.inside = r.x>=0&&r.y>=0&&r.x<=r.w&&r.y<=r.h;
-  mouse.x=r.x; mouse.y=r.y; mouse.worldX=cam.x+mouse.x; mouse.worldY=cam.y+mouse.y;
-});
-
-cv.addEventListener("mousedown",(e)=>{
-  if(e.button===2){
+cv.addEventListener("mousedown", (e)=>{
+  if (e.button === 2){ // right: attack-move
     e.preventDefault();
-    const ids=Array.from(selection); if(!ids.length) return;
-    const {gx,gy} = worldToGrid(mouse.worldX, mouse.worldY);
-    pushIntent("order",{type:"attackMove",ids,gx,gy,wipe:true});
+    issueAttackMove(mouse.worldX, mouse.worldY);
     return;
   }
-  dragging=true; dragStart={x:mouse.x,y:mouse.y};
+  mouse.down = true;
+  drag.active = true; drag.x0 = mouse.x; drag.y0 = mouse.y; drag.x1 = mouse.x; drag.y1 = mouse.y;
 });
-addEventListener("mouseup",(e)=>{
-  if(!dragging) return; dragging=false;
-  const dx=mouse.x-dragStart.x, dy=mouse.y-dragStart.y, tiny=Math.hypot(dx,dy)<6;
-  if(tiny){
-    const picked = pickUnitAt(mouse.worldX,mouse.worldY, ME);
-    if(picked){ if(!e.shiftKey) selection.clear(); selection.add(picked.id); renderHUD(); }
-  }else{
-    const minx=Math.min(dragStart.x,mouse.x)+cam.x, maxx=Math.max(dragStart.x,mouse.x)+cam.x;
-    const miny=Math.min(dragStart.y,mouse.y)+cam.y, maxy=Math.max(dragStart.y,mouse.y)+cam.y;
-    const ids = pickInRect(minx,miny,maxx,maxy,ME);
-    if(!e.shiftKey) selection.clear();
-    for(const id of ids) selection.add(id);
-    renderHUD();
-  }
+cv.addEventListener("mouseup", (e)=>{
+  if (e.button === 2) return;
+  mouse.down = false;
+  if (!drag.active) return;
+  const minx = Math.min(drag.x0, drag.x1), maxx = Math.max(drag.x0, drag.x1);
+  const miny = Math.min(drag.y0, drag.y1), maxy = Math.max(drag.y0, drag.y1);
+  const picked = pickUnitsInRect(minx+cam.x, miny+cam.y, maxx+cam.x, maxy+cam.y, ME);
+  if (!e.shiftKey) selection.clear();
+  for (const id of picked) selection.add(id);
+  drag.active = false;
+  renderAbilitiesPanel();
 });
-cv.addEventListener("contextmenu",e=>e.preventDefault());
+cv.addEventListener("contextmenu", e=> e.preventDefault());
 
-addEventListener("keydown",(e)=>{
-  const k=e.key.toLowerCase();
-  if(k==="escape"){ targeting=null; document.getElementById("hint").style.display="none"; return; }
-  if(["q","w","e","r"].includes(k)){ e.preventDefault(); return castSlot({q:1,w:2,e:3,r:4}[k]); }
-  if(k==="a"){
-    e.preventDefault();
-    const ids=Array.from(selection); if(!ids.length) return;
-    pushIntent("orderNearest",{ids});
-    return;
+function pickUnitsInRect(x0,y0,x1,y1, owner){
+  const out = [];
+  if (!state || !state.units) return out;
+  const tiny = Math.hypot((x1-x0),(y1-y0)) < 6;
+  if (tiny){
+    let best=null, bd=1e12;
+    for (const u of state.units){ if (u.o!==owner) continue;
+      const d = dist2(u.x,u.y, mouse.worldX, mouse.worldY);
+      if (d<bd){bd=d; best=u;}
+    }
+    return best ? [best.id] : [];
   }
-  if(k==="h"){
-    e.preventDefault();
-    const ids=Array.from(selection); if(!ids.length) return;
-    pushIntent("hold",{ids,toggle:true});
-    return;
+  for (const u of state.units){
+    if (u.o !== owner) continue;
+    const s = UNIT_TYPES[u.t];
+    if (u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1) out.push(u.id);
   }
-  if(k>="1"&&k<="9"){
-    e.preventDefault();
-    if(e.ctrlKey){ groups[k]=new Set(Array.from(selection)); }
-    else if(e.shiftKey){ if(groups[k]) for(const id of groups[k]) selection.add(id); }
-    else { selection.clear(); if(groups[k]) for(const id of groups[k]) selection.add(id); }
-    renderHUD();
-  }
-});
-
-/* --------------- Picking --------------- */
-function getUnitsView(){
-  if (snapBuf.length){
-    const last = snapBuf[snapBuf.length-1];
-    return last.units || [];
-  }
-  return state?.units || [];
-}
-function pickUnitAt(wx,wy, ownerFilter){
-  const units=getUnitsView();
-  const {gx,gy}=worldToGrid(wx,wy);
-  for(const u of units){
-    if(ownerFilter && u.o!==ownerFilter) continue;
-    if(u.gx===gx && u.gy===gy) return u;
-  }
-  return null;
-}
-function pickInRect(x0,y0,x1,y1,owner){
-  const units=getUnitsView();
-  const g0=worldToGrid(x0,y0), g1=worldToGrid(x1,y1);
-  const minGX=Math.min(g0.gx,g1.gx), maxGX=Math.max(g0.gx,g1.gx);
-  const minGY=Math.min(g0.gy,g1.gy), maxGY=Math.max(g0.gy,g1.gy);
-  const out=[];
-  for(const u of units){ if(u.o!==owner) continue; if(u.gx>=minGX&&u.gx<=maxGX&&u.gy>=minGY&&u.gy<=maxGY) out.push(u.id); }
   return out;
 }
 
-/* --------------- Orders & abilities --------------- */
-function slotAbility(slot){
-  const sel=getUnitsView().filter(u=>selection.has(u.id));
-  for(const u of sel){ const t=TYPES[u.tt]; const a=t?.abilities?.find(x=>x.slot===slot); if(a) return a; }
-  return null;
+async function issueAttackMove(wx,wy){
+  const ids = Array.from(selection);
+  if (ids.length === 0) return;
+  await pushIntent("order", { type:"attackMove", ids, x:Math.round(wx), y:Math.round(wy) });
 }
-async function castSlot(slot){
-  const ids=Array.from(selection); if(!ids.length) return;
-  // local cooldown gate
-  if(Date.now() < uiCooldowns[slot]){ flashHint("⏳ Ability on cooldown"); return; }
-  const ab=slotAbility(slot); if(!ab){ flashHint("No ability on this slot for selection"); return; }
 
-  if(ab.target==="self"){
-    await pushIntent("ability",{slot,ids,mode:"self",wipe:true});
-    startCooldown(slot, ab.cd);
-    // Local feedback: rings on selected units
-    for(const u of getUnitsView().filter(u=>selection.has(u.id))){
-      localFX.push({kind:"ring", gx:u.gx, gy:u.gy, color:"#9bf", until: Date.now()+550});
-    }
-    flashHint(`✅ ${ab.label} activated`);
-  } else {
-    targeting={slot,ability:ab,ids,type:ab.target,label:ab.label};
-    const hint=document.getElementById("hint");
-    hint.textContent=`🎯 ${ab.label}: click a tile (Esc to cancel)`;
-    hint.style.display="block";
-    const once=async (e)=>{
-      if(e.button!==0){ cv.removeEventListener("click",once); document.getElementById("hint").style.display="none"; targeting=null; return; }
-      const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-      await finalizeTarget(slot, ab, ids, {gx,gy});
-      cv.removeEventListener("click",once);
-      document.getElementById("hint").style.display="none";
-      targeting=null;
-    };
-    cv.addEventListener("click",once);
+/* ------------ Abilities UI (Q/W/E/R) ------------ */
+function renderAbilitiesPanel(){
+  const abil = document.getElementById("abilities");
+  const selInfo = document.getElementById("selInfo");
+  if (!state) return;
+  const mySelUnits = state.units?.filter(u=>selection.has(u.id)) ?? [];
+  selInfo.textContent = mySelUnits.length ? `${mySelUnits.length} unit(s) selected` : "Select units";
+
+  // Aggregate up to 4 slots → map to Q/W/E/R display
+  const slotMap = new Map(); // slot -> name
+  for (const u of mySelUnits){
+    (UNIT_TYPES[u.t].abilities||[]).forEach(a=>{
+      slotMap.set(a.slot, a.name);
+    });
+  }
+  const keyLabels = {1:"Q",2:"W",3:"E",4:"R"};
+  abil.innerHTML = "";
+  for (let s=1;s<=4;s++){
+    const div = document.createElement("div");
+    div.className = "slot";
+    const name = slotMap.get(s) || "—";
+    div.innerHTML = `<span>${name}</span><span class="key">${keyLabels[s]}</span>`;
+    div.onclick = ()=> castAbilitySlot(s);
+    abil.appendChild(div);
   }
 }
-async function finalizeTarget(slot,ab,ids,{gx,gy}){
-  if(ab.target==="pointOrUnit"){
-    const enemy = nearestEnemyAtOrNear(gx,gy, 1.5);
-    if(enemy){ await pushIntent("ability",{slot,ids,mode:"unit",targetId:enemy.id,wipe:true}); }
-    else     { await pushIntent("ability",{slot,ids,mode:"point",gx,gy,wipe:true}); }
-  } else {
-    await pushIntent("ability",{slot,ids,mode:"point",gx,gy,wipe:true});
+async function castAbilitySlot(slot){
+  const ids = Array.from(selection);
+  if (!ids.length) return;
+  await pushIntent("ability", { slot, ids });
+}
+
+/* ------------ Group binds (Ctrl+1..9 assign, 1..9 recall, Shift+1..9 add) ------------ */
+addEventListener("keydown", (e)=>{
+  const k = e.key.toLowerCase();
+
+  // Abilities Q/W/E/R
+  if (["q","w","e","r"].includes(k)){ e.preventDefault(); castAbilitySlot({q:1,w:2,e:3,r:4}[k]); return; }
+
+  // Group binds 1..9
+  if (k>="1" && k<="9"){
+    e.preventDefault();
+    const slot = k;
+    if (e.ctrlKey){ // assign
+      groupSlots[slot] = new Set([...selection].filter(id=>{
+        const u = state?.units?.find(x=>x.id===id);
+        return u && u.o===ME;
+      }));
+    } else if (e.shiftKey){ // add
+      const set = groupSlots[slot];
+      if (!set) return;
+      for (const id of set){
+        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
+        if (alive) selection.add(id);
+      }
+      renderAbilitiesPanel();
+    } else { // recall
+      selection.clear();
+      const set = groupSlots[slot];
+      if (!set) return;
+      for (const id of set){
+        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
+        if (alive) selection.add(id);
+      }
+      renderAbilitiesPanel();
+    }
   }
-  startCooldown(slot, ab.cd);
-  // Local target feedback
-  localFX.push({kind:"tile", gx, gy, color:"#aef", until: Date.now()+600});
-  flashHint(`✅ ${ab.label} cast`);
-}
-function nearestEnemyAtOrNear(gx,gy, rTiles){
-  const units=getUnitsView(); let best=null, bd=1e9;
-  for(const u of units){ if(u.o===ME) continue; const d=manhattan(gx,gy,u.gx,u.gy); if(d<=rTiles && d<bd){ bd=d; best=u; } }
-  return best;
-}
+});
 
-/* --------------- Ability handlers (grid AOE) --------------- */
-const AbilityHandlers = {
-  shieldwall: { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"shield", until: now + ab.dur*1000}; return true; } },
-  brace:      { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"brace",  until: now + ab.dur*1000}; return true; } },
-  mend:       { cast(g,u,ab,{mode},now){ if(mode!=="self") return false; u._aura={kind:"mend",   until: now + ab.dur*1000, healPerSec: ab.healPerSec||8}; return true; } },
+/* ------------ CP panel ------------ */
+const cpPanel = document.getElementById("cpPanel");
+const cpName  = document.getElementById("cpName");
+const cpBtns  = document.getElementById("cpBtns");
 
-  volley: { cast(g,u,ab,{mode,gx,gy},now){
-    if(mode!=="point") return false;
-    const size = ab.size||3;
-    const until = now + (ab.channel||6000);
-    u._channel = { kind:"volley", until };
-    g.effects.push({
-      type:"squarePulse", who:u.o, xgx:gx, xgy:gy, size, pulses:[now+1000, now+3000, now+5000], next:0, until,
-      color:"#aef", dmg:7, pierce:0
-    });
-    return true;
-  }},
-  fireburst: { cast(g,u,ab,{mode,gx,gy},now){
-    if(mode!=="point") return false;
-    const size=ab.size||2;
-    g.effects.push({ type:"squareOnce", who:u.o, xgx:gx, xgy:gy, size, when:now+120, did:false, until:now+500, color:"#f88", dmg:20, pierce:0 });
-    return true;
-  }},
-  arcaneBolt: { cast(g,u,ab,{mode,gx,gy,targetId},now){
-    let tx=gx, ty=gy;
-    if(mode==="unit"){
-      const tgt=g.units.find(v=>v.id===targetId);
-      if(!tgt) return false;
-      tx=tgt.gx; ty=tgt.gy;
-    }
-    const range=ab.rangeTiles||10, speed=ab.speedTiles||10;
-    const line = bresenham(u.gx,u.gy,tx,ty).slice(1, range+1);
-    g.projs = g.projs || [];
-    g.projs.push({
-      type:"bolt", who:u.o, path: line, idx:0, speedTiles:speed, nextHopAt: now, hopMs: Math.max(40, Math.floor(1000/speed)),
-      dmg:ab.dmg||34, ap:ab.armorPierce??0.5, color:"#baf"
-    });
-    return true;
-  }},
-  charge: { cast(g,u,ab,{mode,gx,gy,targetId},now){
-    let tx=gx, ty=gy;
-    if(mode==="unit"){
-      const tgt=g.units.find(v=>v.id===targetId); if(!tgt) return false; tx=tgt.gx; ty=tgt.gy;
-    }
-    u._charge = { path: bresenham(u.gx,u.gy,tx,ty).slice(1,6), idx:0, until: now+2500, impacted:false };
-    return true;
-  }},
-};
-
-/* --------------- CP panel --------------- */
-const cpPanel=document.getElementById("cpPanel"), cpName=document.getElementById("cpName"), cpBtns=document.getElementById("cpBtns");
-function showCP(point){
-  if(!point){ cpPanel.style.display="none"; return; }
-  cpName.textContent=point.id; cpBtns.innerHTML="";
-  for(const t of SPAWN_CHOICES){
-    const b=document.createElement("button"); b.className="cpBtn"; b.textContent=`${TYPES[t].emoji} ${TYPES[t].name}`;
-    b.onclick=()=>pushIntent("spawnChoice",{pointId:point.id,troop:t});
+function showCpPanelFor(point){
+  if (!point){ cpPanel.style.display="none"; return; }
+  cpName.textContent = point.id;
+  cpBtns.innerHTML = "";
+  for (const t of SPAWN_CHOICES){
+    const b = document.createElement("button");
+    b.className="cpBtn"; b.textContent = t;
+    b.onclick = async ()=>{ await pushIntent("spawnChoice", { pointId: point.id, troop: t }); };
     cpBtns.appendChild(b);
   }
   cpPanel.style.display="block";
 }
-cv.addEventListener("click",()=>{
-  if(!state) return;
-  const {gx,gy}=worldToGrid(mouse.worldX,mouse.worldY);
-  for(const p of state.points){
-    if(p.gx===gx && p.gy===gy){ return p.owner===ME ? showCP(p) : showCP(null); }
-  }
-  showCP(null);
-});
 
-/* --------------- Edge pan --------------- */
-function edgePan(dt){
-  if(!mouse.inViewport) return;
-  const r=viewportEl.getBoundingClientRect();
-  const mx=mouse.clientX, my=mouse.clientY;
-  const marginX = 60, marginTop = 80, marginBot = 160;
-
+/* ------------ Camera edge pan ------------ */
+function updateCamera(dt){
+  const margin = 18;
   let vx=0, vy=0;
-  if(mx<=r.left+marginX) vx-=1; else if(mx>=r.right-marginX) vx+=1;
-  if(my<=r.top+marginTop) vy-=1; else if(my>=r.bottom-marginBot) vy+=1;
-
-  cam.x += vx*cam.speed*dt; cam.y += vy*cam.speed*dt; clampCam();
+  if (mouse.x <= margin) vx -= 1;
+  else if (mouse.x >= cv.width - margin) vx += 1;
+  if (mouse.y <= margin) vy -= 1;
+  else if (mouse.y >= cv.height - margin) vy += 1;
+  cam.x += vx * cam.speed * dt;
+  cam.y += vy * cam.speed * dt;
+  clampCam();
 }
 
-/* --------------- Host loop --------------- */
+/* ------------ Host simulation ------------ */
 async function hostLoop(){
-  const intentsCol = collection(db, "games", GAME_ID, "intents");
-  const snapsCol   = collection(db, "games", GAME_ID, "snaps");
-
-  const s = await getDoc(gameRef); if (!s.exists()) return;
-  let g = s.data();
-  g.projs = g.projs || [];
-
-  let last = performance.now(), acc = 0;
-  const FIXED   = 1/20;
-  const PUB_MS  = 120;
-  const META_MS = 250;
-  let lastPub  = performance.now();
-  let lastMeta = performance.now();
-
-  const MAX_SNAPS = 8;
-
-  function compactUnits(units){
-    // include only render-critical info
-    return units.map(u => {
-      const c = unitCenterPx(u);
-      return { id:u.id, tt:u.tt, o:u.o, gx:u.gx, gy:u.gy, x:Math.round(c.x), y:Math.round(u.y), hp:Math.round(u.hp) };
-    });
-  }
-  function compactProjs(projs){ return (projs||[]).map(p=>({ ...p })); }
-
-  async function consumeIntents(){
-    const snap = await getDocs(query(intentsCol, orderBy("ts","asc"), limit(200)));
-    if (!snap.size) return;
-    const intents = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-    g = applyIntents(g, intents);
-    for (const d of snap.docs) await deleteDoc(d.ref);
-  }
-
-  async function publishSnapshot(){
-    await addDoc(snapsCol, {
-      ts: Date.now(),
-      tick: g.tick|0,
-      units: compactUnits(g.units),
-      projs: compactProjs(g.projs)
-    });
-    const qSn = await getDocs(query(snapsCol, orderBy("ts","desc"), limit(MAX_SNAPS + 4)));
-    const extras = qSn.docs.slice(MAX_SNAPS);
-    for (const d of extras) await deleteDoc(d.ref);
-  }
-  async function publishMeta(){
-    const meta = { tick:g.tick|0, startedAt:g.startedAt, endAt:g.endAt, winner:g.winner, map:g.map, players:g.players, points:g.points, effects:g.effects };
-    await setDoc(gameRef, meta, { merge:false });
-  }
-
-  if (window.__MB_GRID_HOST_LOOP_RUNNING__) return;
-  window.__MB_GRID_HOST_LOOP_RUNNING__ = true;
-
+  let last = performance.now();
   async function step(){
     const now = performance.now();
-    acc += Math.min(0.25, (now - last)/1000);
+    const dt = Math.min(0.05, (now-last)/1000);
     last = now;
 
-    await consumeIntents();
-    while (acc >= FIXED){
-      g = simulate(g, FIXED);
-      g.tick++;
-      acc -= FIXED;
-    }
+    const intentsCol = collection(db, "games", GAME_ID, "intents");
+    const intentsSnap = await getDocs(query(intentsCol, orderBy("ts","asc"), limit(60)));
+    const intents = intentsSnap.docs.map(d=>({id:d.id,...d.data()}));
 
-    if (now - lastPub >= PUB_MS){ await publishSnapshot(); lastPub = now; }
-    if (now - lastMeta >= META_MS){ await publishMeta(); lastMeta = now; }
+    const snap = await getDoc(gameRef);
+    if (!snap.exists()){ requestAnimationFrame(step); return; }
+    let g = snap.data();
 
-    requestAnimationFrame(step);
+    g = applyIntents(g, intents);
+    g = simulate(g, dt);
+    g.tick++;
+
+    await setDoc(gameRef, g, { merge:false });
+    for (const d of intentsSnap.docs){ await deleteDoc(d.ref); }
+
+    setTimeout(()=>requestAnimationFrame(step), 110); // ~9 Hz publish
   }
   step();
 }
 
-/* --------------- Intent application --------------- */
-function bresenham(x0,y0,x1,y1){
-  const pts=[]; let dx=Math.abs(x1-x0), sx=x0<x1?1:-1; let dy=-Math.abs(y1-y0), sy=y0<y1?1:-1; let err=dx+dy, x=x0,y=y0;
-  while(true){ pts.push({gx:x,gy:y}); if(x===x1&&y===y1) break; const e2=2*err; if(e2>=dy){ err+=dy; x+=sx; } if(e2<=dx){ err+=dx; y+=sy; } }
-  return pts;
-}
-function assignFormationTargets(g, ids, centerGX, centerGY){
-  const occ = occupancyFromUnits(g.units);
-  const reserved = new Set();
-  const result = new Map();
-  const q = [{gx:centerGX, gy:centerGY}];
-  const seen = new Set([centerGX+"|"+centerGY]);
-
-  function push(gx,gy){
-    if(gx<0||gy<0||gx>=GRID_W||gy>=GRID_H) return;
-    const k=gx+"|"+gy; if(seen.has(k)) return; seen.add(k); q.push({gx,gy});
-  }
-
-  let qi=0;
-  while(result.size < ids.length && qi<q.length+GRID_W*GRID_H){
-    const cur = q[qi++] || {gx:centerGX, gy:centerGY};
-    push(cur.gx+1,cur.gy); push(cur.gx-1,cur.gy); push(cur.gx,cur.gy+1); push(cur.gx,cur.gy-1);
-
-    const k = cur.gx+"|"+cur.gy;
-    if(occ.has(k) || reserved.has(k)) continue;
-    const nextId = ids[result.size];
-    result.set(nextId, {gx:cur.gx, gy:cur.gy});
-    reserved.add(k);
-  }
-  return result;
-}
-function applyIntents(g,intents){
-  const byId=new Map(g.units.map(u=>[u.id,u]));
-  for(const it of intents){
-    const {kind,user,payload}=it;
-
-    if(kind==="hold"){
-      const {ids,toggle,enabled}=payload;
-      for(const id of ids){ const u=byId.get(id); if(!u||u.o!==user) continue; u._hold = toggle ? !u._hold : !!enabled; }
-    }
-
-    if(kind==="order"){
-      const {ids,wipe}=payload;
-      if(payload.type==="attackMove"){
-        const {gx,gy}=payload;
-        const targets = assignFormationTargets(g, ids, gx, gy);
-        for(const id of ids){
-          const u=byId.get(id); if(!u||u.o!==user) continue;
-          if(wipe){ u._aura=null; u._channel=null; }
-          const t=targets.get(id) || {gx,gy};
-          u.goalGX=t.gx; u.goalGY=t.gy;
+function applyIntents(g, intents){
+  const byId = new Map(g.units.map(u=>[u.id,u]));
+  for (const it of intents){
+    const { kind, user, payload } = it;
+    if (kind === "order"){
+      const { type, ids, x, y } = payload;
+      if (type==="attackMove"){
+        for (const id of ids){
+          const u = byId.get(id); if (!u || u.o !== user) continue;
+          u._order = { type, x, y, ts: Date.now() };
         }
       }
     }
-
-    if(kind==="orderNearest"){
-      const {ids}=payload;
-      for(const id of ids){
-        const u=byId.get(id); if(!u||u.o!==user) continue;
-        let best=null, bd=1e9;
-        for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; best=v; } }
-        if(best){ u.goalGX=best.gx; u.goalGY=best.gy; }
+    if (kind === "ability"){
+      const { slot, ids } = payload;
+      for (const id of ids){
+        const u = byId.get(id); if (!u || u.o !== user) continue;
+        const def = UNIT_TYPES[u.t];
+        const abil = (def.abilities||[]).find(a=>a.slot===slot);
+        if (!abil) continue;
+        const ready = !(u.acd && u.acd[slot] > 0);
+        if (ready){
+          abil.apply(u);
+          u.acd[slot] = abil.cd;
+        }
       }
     }
-
-    if(kind==="ability"){
-      const {slot,ids,mode,gx,gy,targetId,wipe}=payload;
-      for(const id of ids){
-        const u=byId.get(id); if(!u||u.o!==user) continue;
-        if(u._channel) continue;
-        const t=TYPES[u.tt]; const ab=t?.abilities?.find(a=>a.slot===slot); if(!ab) continue;
-        const ready=!(u.acd && u.acd[slot]>0); if(!ready) continue;
-        if(wipe){ /* no-op */ }
-        const handler = AbilityHandlers[ab.id];
-        const ok = handler && handler.cast(g,u,ab,{mode,gx,gy,targetId},Date.now());
-        if(ok){ u.acd[slot]=ab.cd; }
-      }
-    }
-
-    if(kind==="spawnChoice"){
-      const {pointId,troop}=payload; const p=g.points.find(p=>p.id===pointId);
-      if(p && p.owner===user && TYPES[troop]) p.spawnType=troop;
+    if (kind === "spawnChoice"){
+      const { pointId, troop } = payload;
+      const p = g.points.find(p=>p.id===pointId);
+      if (p && p.owner === user && UNIT_TYPES[troop]) p.spawnType = troop;
     }
   }
   return g;
 }
 
-/* --------------- Effects & projectiles --------------- */
-function processEffects(g, now){
-  for(const e of (g.effects||[])){
-    if(e.type==="squarePulse"){
-      while(e.next < e.pulses.length && now >= e.pulses[e.next]){
-        pulseSquareDamage(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0);
-        e.next++;
-      }
-    } else if (e.type==="squareOnce"){
-      if(!e.did && now >= e.when){
-        pulseSquareDamage(g, e.xgx, e.xgy, e.size, e.who, e.dmg, e.pierce||0);
-        e.did = true;
-      }
-    }
-  }
-  g.effects = (g.effects||[]).filter(e=>e.until > now);
-}
-function pulseSquareDamage(g, cx, cy, size, owner, dmg, pierce){
-  const half = Math.floor(size/2);
-  for(const v of g.units){
-    if(v.o===owner) continue;
-    if(Math.abs(v.gx - cx)<=half && Math.abs(v.gy - cy)<=half){
-      const baseArmor = (TYPES[v.tt].armor || 0);
-      const auraArmor =
-        (v._aura?.kind === "shield" ? 3 : 0) +
-        (v._aura?.kind === "brace"  ? 2 : 0);
-      const totalArmor = baseArmor + auraArmor;
-      const effArmor = Math.max(0, totalArmor - totalArmor*(pierce||0));
-      v.hp -= Math.max(1, dmg - effArmor);
-    }
-  }
-}
-
-/* --------------- Simulation (grid) --------------- */
-function occupancyFromUnits(units){
-  const m=new Map();
-  for(const u of units){
-    const k=u.gx+"|"+u.gy;
-    if(!m.has(k)) m.set(k, []);
-    m.get(k).push(u);
-  }
-  return m;
-}
-function neighborStepToward(u, goalGX, goalGY, occ, reserved){
-  if(u.gx===goalGX && u.gy===goalGY) return null;
-  const dx = goalGX - u.gx, dy = goalGY - u.gy;
-  const cand = [];
-  cand.push({gx:u.gx+Math.sign(dx), gy:u.gy});
-  cand.push({gx:u.gx, gy:u.gy+Math.sign(dy)});
-  cand.sort((a,b)=>{
-    const pa = (u.axisPref==="x" ? (a.gx!==u.gx?0:1) : (a.gy!==u.gy?0:1));
-    const pb = (u.axisPref==="x" ? (b.gx!==u.gx?0:1) : (b.gy!==u.gy?0:1));
-    return pa - pb;
-  });
-  let best=null, bd=1e9;
-  for(const c of cand){
-    if(c.gx<0||c.gy<0||c.gx>=GRID_W||c.gy>=GRID_H) continue;
-    const k=c.gx+"|"+c.gy;
-    if(occ.has(k) || reserved.has(k)) continue;
-    const d = manhattan(c.gx,c.gy, goalGX, goalGY);
-    if(d<bd){ bd=d; best=c; }
-  }
-  return best;
-}
+/* ---- Core sim with autopilot, separation, collisions, timer & victory ---- */
 function simulate(g, dt){
-  const now = Date.now(), endAt = g.endAt || (g.startedAt + MATCH_MS);
+  const nowMs = Date.now();
+  const endAt = g.endAt || (g.startedAt + MATCH_MS);
 
-  // cooldowns / auras
-  for(const u of g.units){
-    if(u.cd>0) u.cd = Math.max(0, u.cd - dt);
-    for(const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k] - dt);
-    if(u._aura && u._aura.until <= now) u._aura = null;
-    if(u._aura?.kind === "mend"){ u.hp = Math.min(u.maxHp, u.hp + (u._aura.healPerSec||8)*dt); }
-    if(u._channel && u._channel.until <= now) u._channel = null;
+  // Cooldowns / buffs decay
+  for (const u of g.units){
+    if (u.cd>0) u.cd = Math.max(0, u.cd - dt);
+    for (const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k] - dt);
+    if (u._buff){ u._buff.t -= dt; if (u._buff.t<=0) delete u._buff; }
   }
 
-  processEffects(g, now);
-
-  // CP capture & spawns
-  const occ = occupancyFromUnits(g.units);
-  for(const p of g.points){
-    const k=p.gx+"|"+p.gy;
-    const present = (occ.get(k)||[]);
-    const teams = Array.from(new Set(present.map(u=>u.o)));
-    if(teams.length===1){
-      p.uncontestedSince = p.uncontestedSince ? p.uncontestedSince : now;
-      if(now - p.uncontestedSince >= CP_CAPTURE_SETTLE_MS){ p.owner = teams[0]; }
-    }else{
-      p.uncontestedSince = 0;
+  // Capture logic + spawning
+  for (const p of g.points){
+    const R2 = p.r*p.r;
+    const teams = new Map();
+    for (const u of g.units){
+      const d2 = dist2(u.x,u.y,p.x,p.y);
+      if (d2 <= R2) teams.set(u.o, (teams.get(u.o)||0)+1);
+    }
+    const present = Array.from(teams.keys());
+    if (present.length === 1){
+      const owner = present[0];
+      if (p.owner === owner){ p.cap = Math.min(1, p.cap + dt*0.2); }
+      else { p.cap += dt*0.2; if (p.cap>=1){ p.owner=owner; p.cap=1; p.nextSpawnAt=0; } }
+    } else if (present.length > 1){
+      p.cap = Math.max(0, p.cap - dt*0.08);
+      if (p.cap === 0 && present.length>1) p.owner = null;
+    } else {
+      p.cap = Math.max(0, p.cap - dt*0.02);
     }
 
-    if(p.owner){
-      const period=12000;
-      if(!p.nextSpawnAt) p.nextSpawnAt=now+period;
-      if(now>=p.nextSpawnAt){
-        const t=p.spawnType||"guardian";
-        g.units.push(mkUnit(t,p.owner, p.gx, p.gy));
-        p.nextSpawnAt=now+period;
+    if (p.owner){
+      const period = 15000;
+      if (!p.nextSpawnAt) p.nextSpawnAt = nowMs + period;
+      if (nowMs >= p.nextSpawnAt){
+        const spawnType = p.spawnType || "swordsman";
+        const jitter = (n)=> (Math.random()*n - n/2);
+        g.units.push(mkUnit(spawnType, p.owner, p.x + jitter(24), p.y + jitter(24)));
+        p.nextSpawnAt = nowMs + period;
       }
     }
   }
 
-  // Projectiles (arcane bolt)
-  {
-    const keep=[];
-    for(const pr of (g.projs||[])){
-      if(pr.type==="bolt"){
-        if(now >= pr.nextHopAt){
-          const hops = 1 + Math.floor((now - pr.nextHopAt)/pr.hopMs);
-          pr.nextHopAt += hops*pr.hopMs;
-          pr.idx = Math.min(pr.idx + hops, pr.path.length-1);
-        }
-        const tile = pr.path[pr.idx] || pr.path[pr.path.length-1];
-        let hit=null;
-        for(const u of g.units){
-          if(u.o===pr.who) continue;
-          if(u.gx===tile.gx && u.gy===tile.gy){ hit=u; break; }
-        }
-        if(hit){
-          const baseArmor=(TYPES[hit.tt].armor||0);
-          const auraArmor=(hit._aura?.kind==="shield"?3:0)+(hit._aura?.kind==="brace"?2:0);
-          const totalArmor=baseArmor+auraArmor;
-          const effArmor=Math.max(0,totalArmor-totalArmor*(pr.ap||0));
-          const dmg=Math.max(1, (pr.dmg||30)-effArmor);
-          hit.hp -= dmg;
+  // Movement / autopilot / attacks
+  // Precompute nearest enemy per unit (naive)
+  for (const u of g.units){
+    const def = UNIT_TYPES[u.t];
+    const ms = (def.moveSpd + (u._buff?.ms||0));
+    const range = (def.range + (u._buff?.range||0));
+
+    // Find nearest enemy
+    let enemy=null, ed2= 1e12;
+    for (const v of g.units){
+      if (v.o===u.o) continue;
+      const d2 = dist2(u.x,u.y,v.x,v.y);
+      if (d2 < ed2){ ed2 = d2; enemy = v; }
+    }
+
+    // Attack if in range
+    if (enemy && u.cd<=0 && ed2 <= range*range){
+      const dmg = Math.max(1, def.dmg - (UNIT_TYPES[enemy.t].armor + 0));
+      enemy.hp -= dmg;
+      u.cd = Math.max(0.05, 1/def.atkSpd);
+    }
+
+    // Decide goal: explicit order has precedence; else autopilot toward nearest enemy
+    let goal = null;
+    if (u._order){ goal = {x:u._order.x, y:u._order.y}; }
+    else if (enemy){ goal = {x:enemy.x, y:enemy.y}; }
+
+    if (goal){
+      // Steering: goal vector + separation from nearby units
+      let gx = goal.x - u.x, gy = goal.y - u.y;
+      const gLen = Math.hypot(gx,gy) || 1;
+      gx /= gLen; gy /= gLen;
+
+      // Separation
+      let sx=0, sy=0;
+      const sepRad = 28;
+      for (const v of g.units){
+        if (v===u) continue;
+        const dx = u.x - v.x, dy = u.y - v.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 > sepRad*sepRad || d2===0) continue;
+        const d = Math.sqrt(d2);
+        const push = (sepRad - d)/sepRad; // 0..1
+        sx += (dx/d) * push;
+        sy += (dy/d) * push;
+      }
+
+      const wSep = 0.9; // weight of separation
+      let vx = gx + wSep*sx, vy = gy + wSep*sy;
+      const vLen = Math.hypot(vx,vy) || 1;
+      vx /= vLen; vy /= vLen;
+
+      const step = ms * dt;
+      u.x += vx * step; u.y += vy * step;
+    }
+  }
+
+  // Collision resolution (no overlaps)
+  resolveCollisions(g.units);
+
+  // Cleanup dead
+  g.units = g.units.filter(u=>u.hp>0);
+
+  // Victory: last alive OR time up → most troops
+  const aliveByOwner = countByOwner(g.units);
+  const livingOwners = Object.keys(aliveByOwner).filter(o=>aliveByOwner[o]>0);
+
+  if (!g.winner && livingOwners.length === 1){
+    g.winner = livingOwners[0];
+  }
+
+  if (!g.winner && nowMs >= endAt){
+    const winner = decideWinnerByCounts(g, aliveByOwner);
+    if (winner) g.winner = winner;
+    else g.winner = livingOwners.sort()[0] || (g.players?.[0] ?? null); // fallback
+  }
+
+  return g;
+}
+
+/* --- Collisions: push overlapping circles apart (2 passes) --- */
+function resolveCollisions(units){
+  for (let pass=0; pass<2; pass++){
+    for (let i=0;i<units.length;i++){
+      for (let j=i+1;j<units.length;j++){
+        const u = units[i], v = units[j];
+        const ru = UNIT_TYPES[u.t].size, rv = UNIT_TYPES[v.t].size;
+        const minDist = ru + rv + 2;
+        const dx = v.x - u.x, dy = v.y - u.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 === 0){
+          // exact overlap → random tiny nudge
+          const ang = Math.random()*Math.PI*2;
+          const off = minDist/2;
+          u.x -= Math.cos(ang)*off; u.y -= Math.sin(ang)*off;
+          v.x += Math.cos(ang)*off; v.y += Math.sin(ang)*off;
           continue;
         }
-        if(pr.idx < pr.path.length-1){ keep.push(pr); }
-      } else keep.push(pr);
-    }
-    g.projs = keep;
-  }
-
-  const reserved = new Set();
-
-  // Charge
-  for(const u of g.units){
-    if(u._channel) continue;
-    if(u._charge && u._charge.until > now){
-      const step = u._charge.path[u._charge.idx];
-      if(step){
-        if(!occupiedOrReserved(step.gx,step.gy, occ, reserved)){
-          moveTo(u, step.gx, step.gy, occ, reserved);
-          u._charge.idx++;
-        }else{
-          u._charge.until = now;
-        }
-      }else{
-        u._charge.until = now;
-      }
-      if(!u._charge || u._charge.idx>= (u._charge.path?.length||0)){
-        const DMG=14;
-        for(const v of g.units){
-          if(v.o===u.o) continue;
-          if(manhattan(v.gx,v.gy,u.gx,u.gy)<=1){
-            const baseArmor=(TYPES[v.tt].armor||0);
-            const auraArmor=(v._aura?.kind==="shield"?3:0)+(v._aura?.kind==="brace"?2:0);
-            v.hp -= Math.max(1, DMG - (baseArmor+auraArmor));
-          }
+        if (d2 < minDist*minDist){
+          const d = Math.sqrt(d2);
+          const overlap = minDist - d;
+          const nx = dx/d, ny = dy/d;
+          u.x -= nx * overlap * 0.5;
+          u.y -= ny * overlap * 0.5;
+          v.x += nx * overlap * 0.5;
+          v.y += ny * overlap * 0.5;
         }
       }
     }
   }
-
-  // Targeting & attacks
-  for(const u of g.units){
-    if(u._channel) continue;
-    let target=null, bd=1e9;
-    for(const v of g.units){ if(v.o===u.o) continue; const d=manhattan(u.gx,u.gy,v.gx,v.gy); if(d<bd){ bd=d; target=v; } }
-    const tSpec=TYPES[u.tt]; const rng=tSpec.rangeTiles||1;
-    const inRange = target && (tSpec.rangeTiles>1 ? cheby(u.gx,u.gy,target.gx,target.gy) <= rng : manhattan(u.gx,u.gy,target.gx,target.gy)<=rng);
-    if(inRange && u.cd<=0){
-      const baseArmor=(TYPES[target.tt].armor||0);
-      const auraArmor=(target._aura?.kind==="shield"?3:0)+(target._aura?.kind==="brace"?2:0);
-      const armor=baseArmor+auraArmor;
-      target.hp -= Math.max(1, (tSpec.dmg||5) - armor);
-      u.cd = Math.max(.05, 1/tSpec.atkSpd);
-    }
-    const distToTarget = target ? manhattan(u.gx,u.gy,target.gx,target.gy) : 999;
-    if(!u._hold && target && !inRange && distToTarget <= AGGRO_TILES && (u.goalGX==null || u.goalGY==null)){
-      u.goalGX = target.gx;
-      u.goalGY = target.gy;
-    }
-  }
-
-  // Movement
-  for(const u of g.units){
-    if(u._channel) continue;
-    if(u.goalGX==null || u.goalGY==null) continue;
-    const speedSquares = (TYPES[u.tt].moveSpd || 200) * PX_PER_S_TO_SQUARES_PER_S * (u._aura?.kind==="brace"?0.75:1);
-    const stepEveryMs = Math.max(80, Math.floor(1000/Math.max(0.5,speedSquares)));
-    if(now < u.nextStepAt) continue;
-    u.nextStepAt = now + stepEveryMs;
-
-    if(u.gx===u.goalGX && u.gy===u.goalGY){ u.goalGX=null; u.goalGY=null; continue; }
-    const step = neighborStepToward(u, u.goalGX, u.goalGY, occ, reserved);
-    if(step){ moveTo(u, step.gx, step.gy, occ, reserved); }
-  }
-
-  // Push out overlaps
-  const occ2 = occupancyFromUnits(g.units);
-  for(const [k, list] of occ2){
-    if(list.length<=1) continue;
-    const keep = list[0];
-    for(let i=1;i<list.length;i++){
-      const u = list[i];
-      const free = nearestFree(u.gx,u.gy, occ2);
-      if(free){ u.gx=free.gx; u.gy=free.gy; const nk=free.gx+"|"+free.gy; occ2.set(nk,(occ2.get(nk)||[]).concat(u)); }
-    }
-    occ2.set(k,[keep]);
-  }
-
-  // Kill dead
-  g.units = g.units.filter(u => u.hp>0);
-
-  // Victory
-  const alive = countByOwner(g.units);
-  const owners = Object.keys(alive).filter(o => alive[o]>0);
-  if(!g.winner && owners.length===1) g.winner = owners[0];
-  if(!g.winner && now>=endAt){
-    g.winner = owners.sort((a,b)=>(alive[b]-alive[a])||(b>a?1:-1))[0] || (g.players?.[0] ?? null);
-  }
-
-  return g;
-}
-function occupiedOrReserved(gx,gy, occ, reserved){ return occ.has(gx+"|"+gy) || reserved.has(gx+"|"+gy); }
-function moveTo(u, gx, gy, occ, reserved){
-  const fromK = u.gx+"|"+u.gy; const list = occ.get(fromK)||[];
-  const idx = list.indexOf(u); if(idx>=0){ list.splice(idx,1); if(!list.length) occ.delete(fromK); }
-  u.gx=gx; u.gy=gy;
-  const toK = gx+"|"+gy; (occ.get(toK)||occ.set(toK,[]).get(toK)).push(u); reserved.add(toK);
-}
-function nearestFree(gx,gy, occ){
-  const seen = new Set([gx+"|"+gy]); const q=[{gx,gy}];
-  let qi=0;
-  while(qi<q.length && q.length<GRID_W*GRID_H){
-    const cur=q[qi++], neigh=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [dx,dy] of neigh){
-      const nx=cur.gx+dx, ny=cur.gy+dy;
-      if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) continue;
-      const k=nx+"|"+ny; if(seen.has(k)) continue; seen.add(k);
-      if(!occ.get(k) || occ.get(k).length===0) return {gx:nx,gy:ny};
-      q.push({gx:nx,gy:ny});
-    }
-  }
-  return null;
-}
-function countByOwner(units){ const m={}; for(const u of units) m[u.o]=(m[u.o]||0)+1; return m; }
-
-/* --------------- Render Helpers --------------- */
-function roundedRectPath(ctx, x, y, w, h, r){
-  const rr = Math.min(r, w/2, h/2);
-  ctx.beginPath();
-  ctx.moveTo(x+rr, y);
-  ctx.arcTo(x+w, y, x+w, y+h, rr);
-  ctx.arcTo(x+w, y+h, x, y+h, rr);
-  ctx.arcTo(x, y+h, x, y, rr);
-  ctx.arcTo(x, y, x+w, y, rr);
-  ctx.closePath();
-}
-function flashHint(text){
-  const hint = document.getElementById("hint");
-  hint.textContent = text;
-  hint.style.display = "block";
-  clearTimeout(flashHint._t);
-  flashHint._t = setTimeout(()=>{ hint.style.display="none"; }, 900);
 }
 
-/* --------------- Render --------------- */
-function renderTimer(){
-  if(!state) return;
-  const box=document.getElementById("timerBox");
-  const end=state.endAt || (state.startedAt+MATCH_MS);
-  let sec=Math.max(0,Math.floor((end-Date.now())/1000));
-  const m=String(Math.floor(sec/60)).padStart(2,"0"), s=String(sec%60).padStart(2,"0");
-  box.textContent=`⏱️ ${m}:${s}`;
+/* --- Winner helpers --- */
+function countByOwner(units){
+  const m = {};
+  for (const u of units){ m[u.o] = (m[u.o]||0)+1; }
+  return m;
 }
-function renderBoard(){
-  if(!state) return;
-  const units = getUnitsView();
-  const rows=document.getElementById("leaderRows");
-  const counts={}; for(const n of (state?.players||[])) counts[n]=0; for(const u of units) counts[u.o]=(counts[u.o]||0)+1;
-  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
-  rows.innerHTML=""; for(const [n,c] of sorted){ const d=document.createElement("div"); d.className="row"; d.innerHTML=`<span>${short(n)}</span><span>${c}</span>`; rows.appendChild(d); }
+function totalHpByOwner(units){
+  const m = {};
+  for (const u of units){ m[u.o] = (m[u.o]||0)+u.hp; }
+  return m;
 }
-function maybeWinner(){
-  if(!state?.winner) return;
-  const b=document.getElementById("banner");
-  b.textContent=`🏆 ${state.winner} wins! Returning to lobby…`;
-  b.style.display="block";
-  setTimeout(()=>{ location.href=`${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 4500);
+function cpsOwned(g){
+  const m = {};
+  for (const p of g.points){ if (p.owner){ m[p.owner]=(m[p.owner]||0)+1; } }
+  return m;
 }
-function renderHUD(){
-  if(!state) return;
-  const abil=document.getElementById("abilities"), selInfo=document.getElementById("selInfo");
-  const sel=getUnitsView().filter(u=>selection.has(u.id));
-  selInfo.innerHTML = sel.length
-    ? `${sel.length} unit(s) selected — <strong>A</strong>: attack nearest, <strong>H</strong>: toggle HOLD`
-    : "Select units";
+function decideWinnerByCounts(g, counts){
+  const owners = Object.keys(counts);
+  if (owners.length===0) return null;
+  let max = -1;
+  for (const o of owners) max = Math.max(max, counts[o]);
+  let tied = owners.filter(o=>counts[o]===max);
+  if (tied.length===1) return tied[0];
 
-  const slotMap = new Map();
-  for(const u of sel){
-    const t=TYPES[u.tt];
-    (t.abilities||[]).forEach(a=>{
-      if(!slotMap.has(a.slot)) slotMap.set(a.slot,{ name:a.label, key:a.key, emoji:t.emoji });
-    });
-  }
-  const keys={1:"Q",2:"W",3:"E",4:"R"}; abil.innerHTML="";
-  for(let s=1;s<=4;s++){
-    const spec=slotMap.get(s);
-    const div=document.createElement("div"); div.className="slot"; div.dataset.slot=String(s);
-    div.innerHTML = spec
-      ? `<div class="emoji">${spec.emoji}</div><div class="name">${spec.name}</div><span class="key">${keys[s]}</span>`
-      : `<div class="emoji">—</div><div class="name">—</div><span class="key">${keys[s]}</span>`;
-    if(spec){ div.onclick=()=>castSlot(s); }
-    abil.appendChild(div);
-  }
-  updateCooldownBadges();
+  // tie-breaker 1: total HP
+  const hp = totalHpByOwner(g.units);
+  let bestHp = -1;
+  for (const o of tied) bestHp = Math.max(bestHp, hp[o]||0);
+  tied = tied.filter(o => (hp[o]||0) === bestHp);
+  if (tied.length===1) return tied[0];
+
+  // tie-breaker 2: CPs owned
+  const cp = cpsOwned(g);
+  let bestCp = -1;
+  for (const o of tied) bestCp = Math.max(bestCp, cp[o]||0);
+  tied = tied.filter(o => (cp[o]||0) === bestCp);
+  if (tied.length===1) return tied[0];
+
+  // final: name
+  return tied.sort()[0];
 }
 
-/* --------------- Main draw --------------- */
+/* ------------ Rendering ------------ */
 function draw(){
-  const dt=16/1000; edgePan(dt);
+  const dt = 16/1000;
+  updateCamera(dt);
 
-  // Base clear
-  ctx.fillStyle="#0d1020"; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.clearRect(0,0,cv.width,cv.height);
 
-  // Major grid lines
-  ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
-  for(let x=-cam.x%(TILE*4); x<cv.width; x+=TILE*4){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for(let y=-cam.y%(TILE*4); y<cv.height; y+=TILE*4){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+  // BG
+  ctx.fillStyle = "#132235";
+  ctx.fillRect(0,0,cv.width,cv.height);
+  // Grid
+  ctx.strokeStyle = "#1a2b40"; ctx.lineWidth = 1;
+  const grid = 100;
+  for (let x = -cam.x % grid; x < cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
+  for (let y = -cam.y % grid; y < cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
 
-  if(state){
-    // Control points
-    for(const p of state.points){
-      const sx=p.gx*TILE - cam.x, sy=p.gy*TILE - cam.y;
-      ctx.fillStyle = "#7a3cff";
-      ctx.globalAlpha = .6; ctx.fillRect(sx,sy, TILE, TILE); ctx.globalAlpha=1;
-      ctx.strokeStyle="#ad82ff"; ctx.lineWidth=2; ctx.strokeRect(sx+.5,sy+.5,TILE-1,TILE-1);
+  if (state){
+    // Command points
+    for (const p of state.points){
+      const sx = p.x - cam.x, sy = p.y - cam.y;
+      ctx.beginPath(); ctx.arc(sx, sy, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = "#556f9a"; ctx.lineWidth = 2; ctx.stroke();
 
-      if(p.owner){
-        const color=tint(p.owner);
-        ctx.save();
-        ctx.shadowColor=color; ctx.shadowBlur=16;
-        ctx.strokeStyle=color; ctx.lineWidth=4; ctx.strokeRect(sx+3,sy+3,TILE-6,TILE-6);
-        ctx.restore();
+      if (p.owner){
+        const color = tintForOwner(p.owner);
+        ctx.beginPath(); ctx.arc(sx, sy, p.r * Math.max(0.12, p.cap), 0, Math.PI*2);
+        ctx.fillStyle = color+"88"; ctx.fill();
       }
 
-      ctx.fillStyle="#cde"; ctx.font="12px system-ui";
-      ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText(p.id+(p.owner?` (${short(p.owner)})`:""), sx+TILE/2, sy-6);
-    }
-
-    // Server effects — make them POP: filled alpha + stroke pulse
-    const now = Date.now();
-    for(const e of (state.effects||[])){
-      const size = (e.size||2), half=Math.floor(size/2);
-      const sx=(e.xgx-half)*TILE - cam.x, sy=(e.xgy-half)*TILE - cam.y;
-      // Fill
-      ctx.save();
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = e.color||"#fff";
-      ctx.fillRect(sx, sy, size*TILE, size*TILE);
-      // Pulsing outline
-      ctx.globalAlpha = 1;
-      const pulse = (now % 1000) / 1000;
-      ctx.lineWidth = 2 + Math.sin(pulse*Math.PI*2)*1;
-      ctx.strokeStyle = e.color||"#fff";
-      ctx.strokeRect(sx, sy, size*TILE, size*TILE);
-      ctx.restore();
-    }
-
-    // Projectiles (bolt)
-    const projs = snapBuf.length ? (snapBuf[snapBuf.length-1].projs||[]) : (state.projs||[]);
-    for(const p of projs){
-      if(p.type==="bolt"){
-        const step = p.path[Math.min(p.idx, p.path.length-1)] || p.path[p.path.length-1];
-        const sx=step.gx*TILE - cam.x, sy=step.gy*TILE - cam.y;
-        ctx.save();
-        ctx.globalAlpha=.9;
-        ctx.fillStyle = p.color || "#baf";
-        ctx.fillRect(sx+TILE*0.25, sy+TILE*0.25, TILE*0.5, TILE*0.5);
-        ctx.restore();
-      }
-    }
-
-    // ===== POP UNIT CARDS (bright, above everything) =====
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const units = getUnitsView();
-    for(const u of units){
-      const t = TYPES[u.tt];
-      const teamColor = tint(u.o);
-      const sx = u.gx*TILE + TILE/2 - cam.x;
-      const sy = u.gy*TILE + TILE/2 - cam.y;
-
-      const cardW = TILE * 0.96;
-      const cardH = TILE * 0.96;
-      const x0 = sx - cardW/2;
-      const y0 = sy - cardH/2;
-
-      // Strong drop shadow to separate from background
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,0.7)";
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 3;
-
-      // Base white card
-      roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-
-      ctx.restore();
-
-      // Team border
-      roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = teamColor;
-      ctx.stroke();
-
-      // Team banner stripe
-      ctx.fillStyle = teamColor + "66";
-      const stripeH = Math.max(10, Math.floor(TILE*0.18));
-      roundedRectPath(ctx, x0+4, y0+4, cardW-8, stripeH, 6);
-      ctx.fill();
-
-      // Emoji/unit icon centered
-      ctx.font = "24px system-ui";
-      ctx.fillStyle = "#0a0a0a";
-      ctx.fillText(t.emoji, sx, sy+2);
-
-      // Selection glow
-      if(selection.has(u.id)){
-        ctx.save();
-        ctx.shadowColor = "#ffffff";
-        ctx.shadowBlur = 14;
-        roundedRectPath(ctx, x0, y0, cardW, cardH, 8);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "#ffffff";
-        ctx.stroke();
-        ctx.restore();
+      // spawn timer ring
+      if (p.owner && p.nextSpawnAt){
+        const period = 15000;
+        const remain = Math.max(0, p.nextSpawnAt - Date.now());
+        const prog = 1 - (remain/period);
+        ctx.beginPath(); ctx.arc(sx, sy, 28, -Math.PI/2, -Math.PI/2 + prog*2*Math.PI);
+        ctx.strokeStyle = "#aef"; ctx.lineWidth = 4; ctx.stroke();
       }
 
-      // HP bar
-      const maxHp = (TYPES[u.tt].hp || 1);
-      const hpFrac = Math.max(0, Math.min(1, u.hp / maxHp));
-      const barPad = 8;
-      const barW = cardW - barPad*2;
-      const barH = 6;
-      const barX = x0 + barPad;
-      const barY = y0 + cardH - barPad - barH;
-
-      ctx.fillStyle = "#e7e7e7";
-      roundedRectPath(ctx, barX, barY, barW, barH, 3);
-      ctx.fill();
-      ctx.fillStyle = hpFrac > 0.5 ? "#35d07f" : (hpFrac > 0.25 ? "#ffd166" : "#ff6b6b");
-      roundedRectPath(ctx, barX, barY, barW*hpFrac, barH, 3);
-      ctx.fill();
+      ctx.fillStyle="#cde";
+      ctx.fillText(p.id + (p.owner? ` (${shortName(p.owner)})`:""), sx-18, sy- (p.r+6));
     }
-  }
 
-  // Local FX (instant cast feedback)
-  const now2 = Date.now();
-  for(let i=localFX.length-1;i>=0;i--){
-    const fx = localFX[i];
-    const remaining = fx.until - now2;
-    if(remaining <= 0){ localFX.splice(i,1); continue; }
-    const alpha = Math.max(0, Math.min(1, remaining/600));
-    if(fx.kind==="ring"){
-      const cx = fx.gx*TILE + TILE/2 - cam.x, cy = fx.gy*TILE + TILE/2 - cam.y;
-      ctx.save();
-      ctx.globalAlpha = 0.2 + 0.6*alpha;
-      ctx.strokeStyle = fx.color || "#9bf";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, TILE*0.45*(1+0.15*(1-alpha)), 0, Math.PI*2);
-      ctx.stroke();
-      ctx.restore();
-    } else if(fx.kind==="tile"){
-      const sx = fx.gx*TILE - cam.x, sy = fx.gy*TILE - cam.y;
-      ctx.save();
-      ctx.globalAlpha = 0.15 + 0.25*alpha;
-      ctx.fillStyle = fx.color || "#aef";
-      ctx.fillRect(sx, sy, TILE, TILE);
-      ctx.restore();
+    // Units
+    for (const u of state.units){
+      const def = UNIT_TYPES[u.t];
+      const sx = u.x - cam.x, sy = u.y - cam.y;
+      ctx.beginPath(); ctx.arc(sx, sy, def.size, 0, Math.PI*2);
+      ctx.fillStyle = tintForOwner(u.o); ctx.fill();
+      if (selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx, sy, def.size+3, 0, Math.PI*2); ctx.stroke(); }
+      // HP
+      ctx.fillStyle="#111"; ctx.fillRect(sx-16, sy-22, 32, 6);
+      const hpw = Math.max(0, 32*(u.hp/u.maxHp));
+      ctx.fillStyle="#4f8"; ctx.fillRect(sx-16, sy-22, hpw, 6);
     }
-  }
-
-  // Aim preview for targeting abilities
-  if(targeting){
-    const { gx, gy } = worldToGrid(mouse.worldX, mouse.worldY);
-    const sx = gx*TILE - cam.x, sy = gy*TILE - cam.y;
-    ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = "#e6f";
-    ctx.fillRect(sx, sy, TILE, TILE);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = "#e6f";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(sx+1, sy+1, TILE-2, TILE-2);
-    ctx.restore();
   }
 
   // Drag box
-  if(dragging){
-    const x=Math.min(dragStart.x,mouse.x), y=Math.min(dragStart.y,mouse.y), w=Math.abs(mouse.x-dragStart.x), h=Math.abs(mouse.y-dragStart.y);
+  if (drag.active){
+    drag.x1 = mouse.x; drag.y1 = mouse.y;
+    const x = Math.min(drag.x0, drag.x1), y=Math.min(drag.y0, drag.y1);
+    const w = Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
     ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
   }
 
-  renderTimer();
   requestAnimationFrame(draw);
 }
 draw();
+
+function tintForOwner(owner){
+  const idx = hash(owner) % COLORS.length;
+  return COLORS[idx];
+}
+function hash(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
+function shortName(n){ return n.length>8? n.slice(0,8)+"…" : n; }
+
+/* ------------ Timer & leaderboard UI ------------ */
+function renderTimer(){
+  if (!state) return;
+  const box = document.getElementById("timerBox");
+  const endAt = state.endAt || (state.startedAt + MATCH_MS);
+  let remain = Math.max(0, Math.floor((endAt - Date.now())/1000));
+  const m = String(Math.floor(remain/60)).padStart(2,"0");
+  const s = String(remain%60).padStart(2,"0");
+  box.textContent = `⏱️ ${m}:${s}`;
+}
+function renderLeaderboard(){
+  if (!state) return;
+  const rows = document.getElementById("leaderRows");
+  const counts = {};
+  for (const name of (state.players || [])) counts[name]=0;
+  for (const u of state.units){ counts[u.o] = (counts[u.o]||0)+1; }
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+  rows.innerHTML = "";
+  for (const [name, c] of sorted){
+    const d = document.createElement("div");
+    d.className = "row";
+    d.innerHTML = `<span>${shortName(name)}</span><span>${c}</span>`;
+    rows.appendChild(d);
+  }
+}
+
+/* ------------ Winner banner & return ------------ */
+function maybeShowWinner(){
+  if (!state || !state.winner) return;
+  const b = document.getElementById("banner");
+  b.textContent = `🏆 ${state.winner} wins! Returning to lobby…`;
+  b.style.display="block";
+  setTimeout(()=>{ location.href = `${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 5000);
+}
+
+/* ------------ Click CP to open panel (must own) ------------ */
+cv.addEventListener("click", ()=>{
+  if (!state) return;
+  for (const p of state.points){
+    const dx = (p.x - cam.x) - mouse.x, dy = (p.y - cam.y) - mouse.y;
+    if (dx*dx + dy*dy <= p.r*p.r){
+      if (p.owner === ME) showCpPanelFor(p); else cpPanel.style.display="none";
+      return;
+    }
+  }
+  cpPanel.style.display="none";
+});
 </script>
 </body>
 </html>
