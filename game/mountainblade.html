@@ -334,6 +334,7 @@
   // Gameplay tuning
   // =========================
   const SAVE_KEY = 'iso_mnb_save_v5';
+  const SAVE_VERSION = 9;
   const DAY_LEN = 180;
   const DAY_TICK = 1;
   const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
@@ -343,6 +344,13 @@
   const ARCHER_WALL_RANGE = 1.15;
   const ARCHER_WALL_RATE = 0.85;      // smaller = faster (windup+cooldown)
   const JOIN_BASE_COST = 360;
+  const UNIT_RANK_NAMES = ['Recruit','Veteran','Elite'];
+  const UNIT_RANK_THRESHOLDS = [0,60,160];
+  const UNIT_RANK_BONUS = [
+    { hp:1, dmg:1, cd:1 },
+    { hp:1.08, dmg:1.06, cd:0.96 },
+    { hp:1.16, dmg:1.12, cd:0.93 },
+  ];
 
   // =========================
   // Factions / items / units
@@ -664,10 +672,11 @@
         activeSlot: 1,
       },
       armyUnits: [
-        { unit:'inf_recruit' },
-        { unit:'inf_recruit' },
-        { unit:'arc_recruit' },
+        makeUnitInstance('inf_recruit'),
+        makeUnitInstance('inf_recruit'),
+        makeUnitInstance('arc_recruit'),
       ],
+      squads: [],
 
       mapSpeedBase: 2.65,
       attackCd: 0,
@@ -689,6 +698,29 @@
   }
 
   function armySize(p){ return p.armyUnits.length; }
+
+  function makeUnitInstance(baseUnit){
+    return { id:'u_'+Math.random().toString(36).slice(2,10), baseUnit, xp:0, rank:0, squadId:null, name:null };
+  }
+  function unitBaseKey(u){ return u?.baseUnit || u?.unit; }
+  function unitRankName(r){ return UNIT_RANK_NAMES[clamp(r||0,0,2)] || 'Recruit'; }
+  function unitRankByXp(xp){
+    if((xp||0) >= UNIT_RANK_THRESHOLDS[2]) return 2;
+    if((xp||0) >= UNIT_RANK_THRESHOLDS[1]) return 1;
+    return 0;
+  }
+  function normalizeArmyUnits(p){
+    p.armyUnits = (p.armyUnits||[]).map(u=>{
+      if(u && u.baseUnit) return { id:u.id||('u_'+Math.random().toString(36).slice(2,10)), baseUnit:u.baseUnit, xp:u.xp||0, rank:clamp(u.rank||0,0,2), squadId:u.squadId||null, name:u.name||null };
+      const k = u?.unit;
+      return makeUnitInstance(k||'inf_recruit');
+    });
+    p.squads = p.squads||[];
+  }
+  function ensureSettlementSystems(s){
+    s.contracts = s.contracts||[];
+    if(s.kind==='castle') s.storage = s.storage || { gold:0, food:0, goods:{} };
+  }
 
   function addXP(amount){
     const p = state.player;
@@ -850,6 +882,8 @@
         stock: makeCastleStock(f.id),
         garrison: seedGarrison(),
         defense: { walls:1, towers:0, traps:0 },
+        storage: { gold:0, food:0, goods:{} },
+        contracts: [],
         lastSackedT: -999,
         parentCastleId: null,
       });
@@ -864,6 +898,7 @@
           stock: makeVillageStock(),
           parentCastleId: castleId,
           village: vv,
+          contracts: [],
         });
       }
     }
@@ -901,6 +936,9 @@
       threat: 0,
       strategicClock: 0,
       nextArmySpawn: 18 + Math.random()*12,
+      caravans: [],
+      contractsClock: 0,
+      activeContract: null,
     };
   }
 
@@ -956,7 +994,7 @@
     const p = state.player;
     state.map.totalDays = state.map.day;
     let wages = 0;
-    for(const u of p.armyUnits) wages += troopWage(u.unit);
+    for(const u of p.armyUnits) wages += troopWage(unitBaseKey(u));
     for(const v of (p.vassals||[])){
       const party = partyById(v.partyId); if(!party || !party.alive) continue;
       let vw = 0; for(const cu of party.comp||[]) vw += troopWage(cu.unit);
@@ -986,7 +1024,7 @@
         const pri=[0,1,2];
         while(count>0 && p.armyUnits.length){
           let idx=-1;
-          for(const t of pri){ idx = p.armyUnits.findIndex(u=>UNIT_DB[u.unit] && UNIT_DB[u.unit].tier===t); if(idx>=0) break; }
+          for(const t of pri){ idx = p.armyUnits.findIndex(u=>UNIT_DB[unitBaseKey(u)] && UNIT_DB[unitBaseKey(u)].tier===t); if(idx>=0) break; }
           if(idx<0) idx = 0;
           p.armyUnits.splice(idx,1); count--;
         }
@@ -1031,7 +1069,7 @@
   // Save/load
   // =========================
   function serialize(){
-    return { version: 8, map: state.map, player: state.player, diplomacy: state.diplomacy };
+    return { version: SAVE_VERSION, map: state.map, player: state.player, diplomacy: state.diplomacy };
   }
 
   function save(){
@@ -1073,6 +1111,7 @@
       state.player.daysStarving = state.player.daysStarving ?? 0;
       state.player.daysUnpaid = state.player.daysUnpaid ?? 0;
       state.player.vassals = state.player.vassals || [];
+      normalizeArmyUnits(state.player);
       state.player.restedToday = state.player.restedToday || false;
       state.map.day = state.map.day || 1;
       state.map.totalDays = state.map.totalDays || state.map.day;
@@ -1094,7 +1133,10 @@
           s.defense = s.defense || { walls:1, towers:0, traps:0 };
           if(!s.garrison) s.garrison = seedGarrison();
         }
+        ensureSettlementSystems(s);
       }
+      state.map.caravans = state.map.caravans || [];
+      state.map.activeContract = state.map.activeContract || null;
       closeAllPanels();
       toast('Loaded ✅');
       syncHUD();
@@ -1116,6 +1158,7 @@
   ui.btnNewGame.onclick = () => {
     state.map = makeMap();
     state.player = makeNewPlayer();
+    normalizeArmyUnits(state.player);
     state.diplomacy = makeNewDiplomacy();
     state.mode='map';
     state.battle=null;
@@ -1241,7 +1284,8 @@
   function countUnitsArray(arr){
     const m = {};
     for(const u of arr){
-      m[u.unit] = (m[u.unit]||0)+1;
+      const k = unitBaseKey(u);
+      m[k] = (m[k]||0)+1;
     }
     return m;
   }
@@ -1286,6 +1330,9 @@
     const wCounts = {};
     for(const u of p.woundedUnits){ wCounts[u] = (wCounts[u]||0)+1; }
     const wKeys = Object.keys(wCounts);
+    let armyW=0, vassalW=0;
+    for(const u of p.armyUnits) armyW += troopWage(unitBaseKey(u));
+    for(const v of (p.vassals||[])){ const party=partyById(v.partyId); if(!party||!party.alive) continue; let vw=0; for(const cu of (party.comp||[])) vw+=troopWage(cu.unit); vassalW += vw*0.8*(v.wageMul||1); }
 
     ui.panelArmy.innerHTML = `
       <h2>Army & Upgrades</h2>
@@ -1299,6 +1346,7 @@
         <div class="chip">🤕 Wounded <b>${p.woundedUnits.length}</b></div>
         <div class="chip">🏃 Map Speed <b>${mapSpeedFor(p).toFixed(2)}</b></div>
         <div class="chip">🛡 Vassals <b>${(p.vassals||[]).length}</b></div>
+        <div class="chip">💸 Daily Wages <b>${armyW.toFixed(1)}</b> + vassals <b>${vassalW.toFixed(1)}</b></div>
       </div>
 
       <div class="hr"></div>
@@ -1343,6 +1391,11 @@
       </div>
 
       <div class="hr"></div>
+      <h2 style="margin-top:0">Squads & Veterancy</h2>
+      <div class="row"><input id="sqName" placeholder="New squad name"/><button class="btn" id="mkSq">Create Squad</button><select id="sqPick"><option value="">Assign first 5 to…</option>${(p.squads||[]).map(sq=>`<option value="${sq.id}">${sq.name}</option>`).join('')}</select><button class="btn" id="doAssign">Assign</button><button class="btn" id="promote5">Fast Promote 5</button></div>
+      <div class="list" style="margin-top:8px;">${(p.squads||[]).map(sq=>{ const us=p.armyUnits.filter(u=>u.squadId===sq.id); const avg=us.length?(us.reduce((a,b)=>a+(b.rank||0),0)/us.length).toFixed(2):'0'; const tx=us.reduce((a,b)=>a+(b.xp||0),0); return `<div class="item"><div class="meta"><b style="color:${sq.color}">${sq.name}</b><div class="tag">Count ${us.length} • Avg rank ${avg} • XP ${tx}</div></div></div>`;}).join('')||'<div class="small">No squads yet.</div>'}</div>
+
+      <div class="hr"></div>
       <h2 style="margin-top:0">Vassals</h2>
       <div class="small">Unlock at 25 renown + pledge or owning a castle. Cost: 220 gold, 6 influence, 10 renown.</div>
       <div class="row" style="margin-top:8px;"><button class="btn" id="btnCreateVassal">Create Vassal</button></div>
@@ -1360,16 +1413,23 @@
         const toKey = btn.getAttribute('data-upto');
         const cost = Number(btn.getAttribute('data-upcost'));
         if(p.gold < cost){ toast('Not enough gold for upgrade'); return; }
-        const idx = p.armyUnits.findIndex(u => u.unit===fromKey);
+        const idx = p.armyUnits.findIndex(u => unitBaseKey(u)===fromKey);
         if(idx<0){ toast('No unit available to upgrade'); return; }
         p.gold -= cost;
-        p.armyUnits[idx].unit = toKey;
+        p.armyUnits[idx].baseUnit = toKey; p.armyUnits[idx].xp = 0; p.armyUnits[idx].rank = 0;
         toast(`Upgraded → ${UNIT_DB[toKey].name}`);
         renderArmyPanel();
         syncHUD();
       };
     }
 
+
+    const mkSq = ui.panelArmy.querySelector('#mkSq');
+    if(mkSq) mkSq.onclick=()=>{ const n=(ui.panelArmy.querySelector('#sqName').value||'').trim(); if(!n){toast('Name required');return;} p.squads.push({id:'sq_'+Math.random().toString(36).slice(2,8),name:n,color:hslToHex(randi(0,359),70,62),createdDay:state.map.day}); renderArmyPanel(); };
+    const asg = ui.panelArmy.querySelector('#doAssign');
+    if(asg) asg.onclick=()=>{ const sq=ui.panelArmy.querySelector('#sqPick').value; if(!sq){toast('Pick squad');return;} let n=0; for(const u of p.armyUnits){ if(!u.squadId&&n<5){u.squadId=sq;n++;}} toast('Assigned units'); renderArmyPanel(); };
+    const pr5=ui.panelArmy.querySelector('#promote5');
+    if(pr5) pr5.onclick=()=>{ let n=0; for(const u of p.armyUnits){ if((u.rank||0)>=2) continue; const cost=[80,160,280][u.rank||0]||280; if(p.gold<cost) break; p.gold-=cost; u.rank=(u.rank||0)+1; n++; if(n>=5) break; } toast(n?`Promoted ${n} units`:'No promotions'); renderArmyPanel(); syncHUD(); };
     const bcv = ui.panelArmy.querySelector('#btnCreateVassal');
     if(bcv) bcv.onclick = ()=>{
       const hasCastle = state.map.settlements.some(s=>s.kind==='castle' && s.factionId==='player');
@@ -1639,8 +1699,40 @@
     return true;
   }
 
+  function generateContract(settlement){
+    const typePool=['clear_camp','escort_caravan','defend_siege','deliver_goods'];
+    const type = typePool[randi(0,typePool.length-1)];
+    const id='ct_'+Math.random().toString(36).slice(2,9);
+    const expiresDay = (state.map?.day||1)+randi(4,7);
+    if(type==='clear_camp'){
+      const camp={ id:'p_'+Math.random().toString(36).slice(2,9), kind:'bandit', factionId:null, x:clamp(settlement.x+rand(-4,4),2,MAP_W-3), y:clamp(settlement.y+rand(-4,4),2,MAP_H-3), roamTx:settlement.x, roamTy:settlement.y, aggro:5.4, baseSpeed:1.6, size:randi(10,18), comp:makePartyComp('bandit', randi(10,18), {day:state.map.day,threat:state.map.threat}), alive:true, targetSettlementId:null, isCamp:true };
+      state.map.parties.push(camp);
+      return { id,type,title:'Clear Bandit Camp',desc:'Destroy the nearby camp raiders.',reward:{gold:120,relation:6,volunteers:2},expiresDay,state:'available',targetId:camp.id,settlementId:settlement.id };
+    }
+    if(type==='escort_caravan') return { id,type,title:'Escort Caravan',desc:'Stay near the caravan until it arrives.',reward:{gold:90,relation:4,volunteers:1},expiresDay,state:'available',targetId:settlement.parentCastleId||settlement.id,progress:0,settlementId:settlement.id };
+    if(type==='defend_siege') return { id,type,title:'Defend Siege',desc:'Help defend a linked castle under threat.',reward:{gold:150,relation:8,volunteers:2},expiresDay,state:'available',targetId:settlement.parentCastleId||settlement.id,settlementId:settlement.id };
+    return { id,type,title:'Deliver Goods',desc:'Deliver 20 food to destination.',reward:{gold:110,relation:5,volunteers:2},expiresDay,state:'available',targetId:(state.map.settlements.find(x=>x.id!==settlement.id&&x.kind===settlement.kind)||settlement).id,needFood:20,settlementId:settlement.id };
+  }
+  function ensureContracts(settlement){
+    settlement.contracts = settlement.contracts||[];
+    const day=state.map?.day||1;
+    settlement.contracts = settlement.contracts.filter(c=>c.state==='active' || c.expiresDay>=day);
+    while(settlement.contracts.filter(c=>c.state==='available' || c.state==='active').length<2){
+      settlement.contracts.push(generateContract(settlement));
+    }
+  }
+  function applyContractReward(c){
+    const p=state.player;
+    p.gold += c.reward.gold||0;
+    if(c.reward.relation && currentSettlement && currentSettlement.factionId!=='player' && state.diplomacy[currentSettlement.factionId]) state.diplomacy[currentSettlement.factionId].standing += c.reward.relation;
+    if(c.reward.volunteers && currentSettlement && currentSettlement.kind==='village') regenVillageVolunteers(currentSettlement.village);
+    toast('📜 Contract complete');
+  }
+
   function openSettlementPanel(settlement){
     currentSettlement = settlement;
+    ensureSettlementSystems(settlement);
+    ensureContracts(settlement);
     if(settlement.factionId==='player' || (state.player.faction && settlement.factionId===state.player.faction)) state.player.restedToday = true;
     togglePanel('settlement');
     renderSettlementPanel();
@@ -1657,6 +1749,11 @@
       <div class="hr"></div>
       <h2 style="margin-top:0">Garrison</h2>
       <div class="small">Castles keep garrisons that defend sieges. You can deposit/withdraw troops.</div>
+      <div class="row" style="margin-top:8px;">
+        <div class="chip">Storage 💰 ${Math.floor((s.storage?.gold||0))} • 🍖 ${Math.floor((s.storage?.food||0))}</div>
+        <button class="btn" data-sgold="d">Deposit 50💰</button><button class="btn" data-sgold="w">Withdraw 50💰</button>
+        <button class="btn" data-sfood="d">Deposit 50🍖</button><button class="btn" data-sfood="w">Withdraw 50🍖</button>
+      </div>
 
       <div class="grid2">
         <div>
@@ -1805,7 +1902,7 @@
           if(p.armyUnits.length >= 70){ toast('Army cap reached (70)'); return; }
           p.gold -= cost;
           s.village.volunteers[key] -= 1;
-          p.armyUnits.push({ unit:key });
+          p.armyUnits.push(makeUnitInstance(key));
           toast(`Hired ${UNIT_DB[key].name}`);
           renderSettlementPanel();
           syncHUD();
@@ -1913,6 +2010,9 @@
       ${garrisonUI(s)}
 
       <div class="hr"></div>
+      <h2 style="margin-top:0">Contracts</h2>
+      <div class="list">${(s.contracts||[]).map(c=>`<div class="item"><div class="meta"><b>${c.title}</b><div class="tag">${c.desc} • Expires day ${c.expiresDay} • Reward 💰${c.reward.gold}</div></div><button class="btn" data-contract="${c.id}" ${state.map.activeContract&&state.map.activeContract.id!==c.id?"disabled":""}>${c.state==='active'?'Tracking':'Accept'}</button></div>`).join('') || "<div class=\"small\">No contracts.</div>"}</div>
+      <div class="hr"></div>
       <div class="row"><button class="btn" id="closeSet">Close</button></div>
     `;
 
@@ -1965,7 +2065,7 @@
     for(const b of ui.panelSettlement.querySelectorAll('button[data-deposit]')){
       b.onclick = () => {
         const k = b.getAttribute('data-deposit');
-        const idx = p.armyUnits.findIndex(u=>u.unit===k);
+        const idx = p.armyUnits.findIndex(u=>unitBaseKey(u)===k);
         if(idx<0){ toast('No unit to deposit'); return; }
         p.armyUnits.splice(idx,1);
         s.garrison[k] = (s.garrison[k]||0)+1;
@@ -1980,12 +2080,16 @@
         if(p.armyUnits.length>=70){ toast('Army cap reached'); return; }
         s.garrison[k] -= 1;
         normalizeGarrison(s.garrison);
-        p.armyUnits.push({ unit:k });
+        p.armyUnits.push(makeUnitInstance(k));
         toast(`Withdrew 1 ${UNIT_DB[k].name}`);
         renderSettlementPanel(); syncHUD();
       };
     }
 
+
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-sgold]')) b.onclick=()=>{ const d=b.getAttribute('data-sgold'); s.storage=s.storage||{gold:0,food:0,goods:{}}; if(d==='d'){ if(p.gold<50){toast('Not enough gold');return;} p.gold-=50; s.storage.gold+=50; } else { if((s.storage.gold||0)<50){toast('Not enough storage gold');return;} s.storage.gold-=50; p.gold+=50; } renderSettlementPanel(); syncHUD(); };
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-sfood]')) b.onclick=()=>{ const d=b.getAttribute('data-sfood'); s.storage=s.storage||{gold:0,food:0,goods:{}}; if(d==='d'){ if(p.food<50){toast('Not enough food');return;} p.food-=50; s.storage.food+=50; } else { if((s.storage.food||0)<50){toast('Not enough storage food');return;} s.storage.food-=50; p.food+=50; } renderSettlementPanel(); syncHUD(); };
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-contract]')) b.onclick=()=>{ const c=(s.contracts||[]).find(x=>x.id===b.getAttribute('data-contract')); if(!c) return; c.state='active'; state.map.activeContract={...c}; if(c.type==='escort_caravan'){ const from=s; const to=settlementById(c.targetId)||s; state.map.activeContract.escort={x:from.x,y:from.y,progress:0,fromId:from.id,toId:to.id}; } toast('Contract accepted'); renderSettlementPanel(); };
     // siege buttons
     const siegeBtn = ui.panelSettlement.querySelector('#btnSiege');
     if(siegeBtn){
@@ -2137,7 +2241,7 @@
 
     if(state.mode==='map'){
       ui.modeLabel.textContent = 'MAP';
-      ui.modeSub.textContent = 'Move, interact with settlements, and manage your army.';
+      ui.modeSub.textContent = state.map?.activeContract ? ('📜 '+state.map.activeContract.title) : 'Move, interact with settlements, and manage your army.';
       ui.modeDot.style.background = '#9ca3af';
     } else {
       ui.modeLabel.textContent = (state.battle && state.battle.type==='siege') ? 'SIEGE' : 'BATTLE';
@@ -2208,6 +2312,7 @@
       if(k==='5') setSelection('inf');
       if(k==='6') setSelection('arc');
       if(k==='t') cycleFormation();
+      if(k==='g') tryPlaceRam();
     }
   }, {passive:false});
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -2243,12 +2348,13 @@
       </div>
       <div class="row">
         <button class="btn" id="mbForm">Formation: ${form}</button>
-        <button class="btn" id="mbAtk">Attack</button>
+        <button class="btn" id="mbAtk">Attack</button><button class="btn" id="mbBreach">Breach</button>
       </div>`;
     for(const bt of ui.mobileBattlePanel.querySelectorAll('[data-cmd]')) bt.onclick=()=>applyCommandToSelected(bt.dataset.cmd);
     for(const bt of ui.mobileBattlePanel.querySelectorAll('[data-sel]')) bt.onclick=()=>setSelection(bt.dataset.sel);
     ui.mobileBattlePanel.querySelector('#mbForm').onclick = cycleFormation;
     ui.mobileBattlePanel.querySelector('#mbAtk').onclick = tryPlayerAttack;
+    const bb=ui.mobileBattlePanel.querySelector('#mbBreach'); if(bb) bb.onclick=tryPlaceRam;
   }
 
   // =========================
@@ -2280,7 +2386,7 @@
       p.woundedHealClock = 0;
       if(p.armyUnits.length<70){
         const unitKey = p.woundedUnits.shift();
-        p.armyUnits.push({ unit: unitKey });
+        p.armyUnits.push(makeUnitInstance(unitKey));
         toast(`🤕 Wounded returned: ${UNIT_DB[unitKey].name}`);
       } else {
         p.woundedHealClock = 6.5;
@@ -2299,6 +2405,19 @@
         }
       }
     }
+
+    // caravans
+    state.map.caravanClock = (state.map.caravanClock||0)+dt;
+    if(state.map.caravanClock>=7){
+      state.map.caravanClock=0;
+      for(const v of state.map.settlements.filter(x=>x.kind==='village'&&x.parentCastleId)){
+        if(Math.random()<0.7){ const c=settlementById(v.parentCastleId); if(!c) continue; state.map.caravans.push({id:'cv_'+Math.random().toString(36).slice(2,9),fromVillageId:v.id,toCastleId:c.id,x:v.x,y:v.y,progress:0,food:randi(8,20),gold:randi(8,22),factionId:v.factionId}); }
+      }
+    }
+    state.map.caravans = (state.map.caravans||[]).filter(cv=>{ const from=settlementById(cv.fromVillageId), to=settlementById(cv.toCastleId); if(!from||!to) return false; cv.progress = clamp(cv.progress + dt*0.05,0,1); cv.x = from.x + (to.x-from.x)*cv.progress; cv.y = from.y + (to.y-from.y)*cv.progress; for(const party of state.map.parties){ if(!party.alive || !isPartyHostileToSettlement(party,to)) continue; if(dist2(party.x,party.y,cv.x,cv.y)<1.2){ if(cv.factionId==='player'||(state.player.faction&&cv.factionId===state.player.faction)) toast('⚠️ Caravan raided'); from.village.regenClock=Math.max(0,(from.village.regenClock||0)-6); return false; } } if(cv.progress>=1){ to.storage=to.storage||{gold:0,food:0,goods:{}}; to.storage.gold += cv.gold; to.storage.food += cv.food; return false; } return true; });
+
+    // active contract progress
+    if(state.map.activeContract){ const c=state.map.activeContract; if(c.type==='deliver_goods'){ const dst=settlementById(c.targetId); if(dst && nearestSettlement(p.x,p.y,1.2)?.id===dst.id && p.food>=(c.needFood||20)){ p.food-=(c.needFood||20); applyContractReward(c); state.map.activeContract=null; } } if(c.type==='clear_camp'){ const camp=partyById(c.targetId); if(!camp||!camp.alive){ applyContractReward(c); state.map.activeContract=null; } } if(c.type==='escort_caravan' && c.escort){ const fr=settlementById(c.escort.fromId), to=settlementById(c.escort.toId); if(fr&&to){ c.escort.progress=clamp(c.escort.progress+dt*0.04,0,1); c.escort.x=fr.x+(to.x-fr.x)*c.escort.progress; c.escort.y=fr.y+(to.y-fr.y)*c.escort.progress; if(dist2(p.x,p.y,c.escort.x,c.escort.y)<3.2) c.progress=(c.progress||0)+dt; if(c.escort.progress>=1 && (c.progress||0)>14){ applyContractReward(c); state.map.activeContract=null; } } } if(c.type==='defend_siege'){ const target=settlementById(c.targetId); if(target&&findInvaderOnSettlement(target)){ /* tracked */ } else if((state.map.day||1)>(c.expiresDay-1)){ applyContractReward(c); state.map.activeContract=null; } } }
 
     // food drain
     const drain = state.map.dayFoodRate * dt * (1 + armySize(p)*0.12);
@@ -2570,9 +2689,11 @@
   // =========================
   // Battle systems: field + siege
   // =========================
-  function makeTroop(team, unitKey, x, y){
+  function makeTroop(team, unitRef, x, y){
+    const unitKey = (typeof unitRef==='string') ? unitRef : unitBaseKey(unitRef);
+    const unitInst = (typeof unitRef==='string') ? null : unitRef;
     const d = UNIT_DB[unitKey];
-    return {
+    const out = {
       kind:'troop',
       team,
       unitKey,
@@ -2601,7 +2722,19 @@
       diedThisBattle: false,
       _isPlayerArmy: false,
       _isGarrison: false,
+      unitId: unitInst?.id || null,
+      squadId: unitInst?.squadId || null,
+      rank: clamp(unitInst?.rank||0,0,2),
+      xp: unitInst?.xp||0,
+      kills:0,
     };
+    const rb = UNIT_RANK_BONUS[out.rank] || UNIT_RANK_BONUS[0];
+    out.maxHp = Math.round(out.maxHp * rb.hp);
+    out.hp = out.maxHp;
+    out.dmg = Math.round(out.dmg * rb.dmg);
+    out.cooldown = out.cooldown * rb.cd;
+    out.windup = out.windup * rb.cd;
+    return out;
   }
 
   function swapWeapon(){
@@ -2831,6 +2964,13 @@
     b.shake = (w.range>=2.2 ? 0.16 : 0.12);
   }
 
+  function tryPlaceRam(){
+    const b=state.battle; if(!b || b.type!=='siege' || !b.siege) return;
+    const pe=b.playerEnt; if(b.siege.breachOpen){ toast('Breach already open'); return; }
+    if(Math.abs(pe.y-b.siege.wallY)>1.8){ toast('Move closer to wall'); return; }
+    if(!b.siege.ram){ b.siege.ram={x:pe.x,y:b.siege.wallY-0.5,t:0}; toast('Ram placed! Hold the line',1800); }
+  }
+
   function nearestAlive(list, x,y){
     let best=null, bd=1e9;
     for(const u of list){
@@ -2871,21 +3011,21 @@
     playerEnt.y = frontY;
 
     // Split by role for nicer formation
-    const inf = armyUnits.filter(u=>UNIT_DB[u.unit].role==='inf');
-    const arc = armyUnits.filter(u=>UNIT_DB[u.unit].role==='arc');
+    const inf = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='inf');
+    const arc = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='arc');
 
     const allies = [];
     // infantry behind player
-    allies.push(...spawnBlock(inf.map(u=>u.unit), baseX, baseY, 6, 0.90, 0.86, 'ally'));
+    allies.push(...spawnBlock(inf, baseX, baseY, 6, 0.90, 0.86, 'ally'));
     // archers further back
-    allies.push(...spawnBlock(arc.map(u=>u.unit), baseX - dirX*1.4, baseY - dirY*1.4, 6, 0.95, 0.90, 'ally'));
+    allies.push(...spawnBlock(arc, baseX - dirX*1.4, baseY - dirY*1.4, 6, 0.95, 0.90, 'ally'));
     return allies;
   }
 
-  function spawnBlock(unitKeys, cx, cy, cols, sx, sy, team){
+  function spawnBlock(unitRefs, cx, cy, cols, sx, sy, team){
     const out = [];
-    for(let i=0;i<unitKeys.length;i++){
-      const k = unitKeys[i];
+    for(let i=0;i<unitRefs.length;i++){
+      const k = unitRefs[i];
       const r = Math.floor(i/cols);
       const c = i%cols;
       const ox = (c - (cols-1)/2) * sx;
@@ -2965,7 +3105,8 @@
     };
 
     const WALL_Y = 22;
-    const LADDER_XS = [28, 42];
+    const wallLvl = castle.defense?.walls||1;
+    const LADDER_XS = wallLvl>=5 ? [35] : (wallLvl>=3 ? [30, 40] : [28,42,50]);
     const WALL_X0 = 12, WALL_X1 = 58;
 
     const siegeTerrain = {
@@ -2976,6 +3117,7 @@
       isBlocked(x,y){
         if(x < WALL_X0 || x > WALL_X1) return false;
         if(Math.abs(y - WALL_Y) <= 0.45){
+          if(this.breachOpen && Math.abs(x-(this.breachX||-99))<=1.2) return false;
           for(const L of this.ladders){
             if(Math.abs(x - L.x) <= 0.9) return false;
           }
@@ -3141,7 +3283,7 @@
       }
     }
 
-    b.playerArmySnapshot = p.armyUnits.map(u=>u.unit);
+    b.playerArmySnapshot = p.armyUnits.map(u=>({...u}));
   }
 
   function moveWithCollision(u, nx, ny){
@@ -3170,6 +3312,38 @@
     const pe = b.playerEnt;
 
     if(b.lootPending) return;
+
+    if(b.siege){
+      b.siege.towers = b.siege.towers||[];
+      b.siege.traps = b.siege.traps||[];
+      if(!b.siege._init){
+        const tN = Math.min(3, b.castleRef?.defense?.towers||0);
+        for(let i=0;i<tN;i++) b.siege.towers.push({ x:26+i*9, y:b.siege.wallY+2.8, cd:1.3+i*0.2, flash:0 });
+        const hzN = Math.min(6, b.castleRef?.defense?.traps||0);
+        for(let i=0;i<hzN;i++) b.siege.traps.push({ x:23+i*5, y:b.siege.wallY-1.2, ttl:24, charges:120 });
+        b.siege._init=1;
+      }
+      if(b.siege.ram && !b.siege.breachOpen){
+        b.siege.ram.t += dt;
+        if(b.siege.ram.t>=7){ b.siege.breachOpen=true; b.siege.breachX=b.siege.ram.x; toast('🪵 Breach opened!'); }
+      }
+      for(const tw of b.siege.towers){
+        tw.cd -= dt; tw.flash = Math.max(0, tw.flash-dt);
+        if(tw.cd<=0){
+          const target = nearestAlive((b.attackerSide==='player')?b.allies:b.enemies, tw.x, tw.y);
+          if(target){ tw.flash=0.16; spawnProjectile('arrow', b.defenderTeam, tw.x, tw.y, target.x-tw.x, target.y-tw.y, 8+(b.castleRef?.defense?.towers||0), 12.2); }
+          tw.cd = 1.8;
+        }
+      }
+      for(const hz of b.siege.traps){
+        hz.ttl -= dt;
+        if(hz.ttl<=0 || hz.charges<=0) continue;
+        for(const u of [...b.allies,...b.enemies]){
+          if(!u.alive) continue;
+          if(dist2(u.x,u.y,hz.x,hz.y)<0.85){ applyDamage(u, dt*3.4); hz.charges--; }
+        }
+      }
+    }
 
     p.attackCd = Math.max(0, p.attackCd - dt);
     p.rangedCd = Math.max(0, p.rangedCd - dt);
@@ -3491,12 +3665,13 @@
 
     for(const u of b.allies){
       if(!u._isPlayerArmy) continue;
-      if(u.alive) survivors.push({ unit: u.unitKey });
+      if(u.alive) survivors.push({ ...(b.playerArmySnapshot.find(x=>x.id===u.unitId) || makeUnitInstance(u.unitKey)), baseUnit:u.unitKey, xp:(u.xp||0), rank:clamp(u.rank||0,0,2), squadId:u.squadId||null });
       else if(u.diedThisBattle){
         if(Math.random()<WOUNDED_CHANCE) woundedAdds.push(u.unitKey);
       }
     }
 
+    for(const su of survivors){ const gain = 12 + Math.floor((b.enemies.filter(e=>!e.alive).length)/6); const old=su.rank||0; su.xp=(su.xp||0)+gain; su.rank = Math.max(su.rank||0, unitRankByXp(su.xp)); if(su.rank>old) toast(`🏅 ${UNIT_DB[su.baseUnit].name} promoted to ${unitRankName(su.rank)}`); }
     p.armyUnits = survivors;
     p.woundedUnits.push(...woundedAdds);
   }
@@ -3769,6 +3944,7 @@
     const things = [];
     for(const s of state.map.settlements) things.push({ z:s.x+s.y+0.1, kind:'settlement', s });
     for(const party of state.map.parties) if(party.alive) things.push({ z:party.x+party.y+0.2, kind:'party', party });
+    for(const cv of (state.map.caravans||[])) things.push({ z:cv.x+cv.y+0.15, kind:'caravan', cv });
     things.push({ z:state.player.x+state.player.y+0.3, kind:'player', p:state.player });
     things.sort((a,b)=>a.z-b.z);
 
@@ -3789,6 +3965,9 @@
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(s.kind==='castle'?'🏰':'🏠', sp.x, sp.y-16);
 
+        if(state.map.activeContract && state.map.activeContract.targetId===s.id){
+          ctx.strokeStyle='rgba(250,204,21,.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sp.x, sp.y-18, 24, 0, Math.PI*2); ctx.stroke();
+        }
         if(s.kind==='castle'){
           const gN = garrisonCount(s.garrison||{});
           ctx.fillStyle = 'rgba(234,242,255,.92)';
@@ -3820,6 +3999,12 @@
         ctx.font = '12px system-ui, Arial';
         ctx.textAlign='center'; ctx.textBaseline='bottom';
         ctx.fillText(s.name, sp.x, sp.y-44);
+      }
+
+      if(t.kind==='caravan'){
+        const cv=t.cv; const sp=worldToScreen(cv.x,cv.y,camX,camY); const fp=settlementById(cv.fromVillageId), tp=settlementById(cv.toCastleId);
+        if(fp&&tp){ const a=worldToScreen(fp.x,fp.y,camX,camY); const b2=worldToScreen(tp.x,tp.y,camX,camY); ctx.strokeStyle='rgba(255,255,255,.15)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(a.x,a.y-20); ctx.lineTo(b2.x,b2.y-20); ctx.stroke();}
+        ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText('🛒',sp.x,sp.y-18);
       }
 
       if(t.kind==='party'){
@@ -3887,6 +4072,12 @@
         }
       }
     }
+
+    const ac=state.map.activeContract;
+    if(ac && ac.type==='escort_caravan' && ac.escort){
+      const sp=worldToScreen(ac.escort.x,ac.escort.y,camX,camY);
+      ctx.fillStyle='rgba(250,204,21,.95)'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText('📦',sp.x,sp.y-20);
+    }
   }
 
   function renderBattle(){
@@ -3945,6 +4136,17 @@
         ctx.font = '12px system-ui, Arial';
         ctx.textAlign='center'; ctx.textBaseline='bottom';
         ctx.fillText('🪜', sp.x, sp.y-36);
+      }
+      for(const tw of (b.siege.towers||[])){
+        const sp = worldToScreen(tw.x, tw.y, camX, camY);
+        ctx.fillStyle = tw.flash>0 ? 'rgba(251,191,36,.95)' : 'rgba(180,190,220,.9)';
+        ctx.fillRect(sp.x-8, sp.y-36, 16, 16);
+      }
+      for(const hz of (b.siege.traps||[])){
+        if(hz.ttl<=0 || hz.charges<=0) continue;
+        const sp = worldToScreen(hz.x, hz.y, camX, camY);
+        ctx.fillStyle = 'rgba(251,113,133,.22)';
+        ctx.beginPath(); ctx.ellipse(sp.x, sp.y-16, 14, 8, 0, 0, Math.PI*2); ctx.fill();
       }
     }
 
@@ -4081,7 +4283,8 @@
         ctx.fillStyle = 'rgba(234,242,255,.85)';
         ctx.font = '11px system-ui, Arial';
         ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.fillText(def.name, sp.x, sp.y-40);
+        ctx.fillText(def.name+' • '+unitRankName(e.rank||0), sp.x, sp.y-40);
+        if(e.squadId){ const sq=state.player.squads?.find(x=>x.id===e.squadId); if(sq){ ctx.fillStyle=sq.color||'rgba(255,255,255,.7)'; ctx.fillRect(sp.x-10, sp.y-33, 20, 3); } }
       }
     }
 
@@ -4137,6 +4340,7 @@
     state.t = 0;
     state.map = makeMap();
     state.player = makeNewPlayer();
+    normalizeArmyUnits(state.player);
     state.diplomacy = makeNewDiplomacy();
     state.battle = null;
     closeAllPanels();
