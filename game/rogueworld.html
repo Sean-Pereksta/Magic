@@ -2043,6 +2043,17 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         meteorite:false,
         firebolt:false,
         turretTotem:false,
+        shockNova:false,
+        riftSpear:false,
+        overheat:false,
+        gravitySnare:false,
+        orbitDrones:false,
+        decoyTotem:false,
+        spiritHounds:false,
+        markShatter:false,
+        lastStandShell:false,
+        orbitBlades:false,
+        sentryPylon:false,
       },
 
       // cooldowns/timers
@@ -2055,6 +2066,23 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       slowMul: 1.0,
       turnSlowT: 0,
       turretCd: 0,
+      shockNovaCd: 0,
+      riftSpearCd: 0,
+      overheatCd: 0,
+      overheatT: 0,
+      gravitySnareCd: 0,
+      orbitDronesCd: 0,
+      orbitDronesT: 0,
+      decoyCd: 0,
+      spiritHoundsCd: 0,
+      markCd: 0,
+      markTargetId: -1,
+      markT: 0,
+      lastStandCd: 0,
+      shellAbsorb: 0,
+      orbitBladesCd: 0,
+      orbitBladesT: 0,
+      sentryPylonCd: 0,
     };
 
     function resetRun(newSeed=true){
@@ -2073,8 +2101,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
 
-      me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false };
-      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0;
+      me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false };
+      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0; me.shockNovaCd=0; me.riftSpearCd=0; me.overheatCd=0; me.overheatT=0; me.gravitySnareCd=0; me.orbitDronesCd=0; me.orbitDronesT=0; me.decoyCd=0; me.spiritHoundsCd=0; me.markCd=0; me.markTargetId=-1; me.markT=0; me.lastStandCd=0; me.shellAbsorb=0; me.orbitBladesCd=0; me.orbitBladesT=0; me.sentryPylonCd=0;
       me.lastHitAt = -999;
 
       alive = true;
@@ -2110,7 +2138,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           ownedWeapons: Array.from(me.ownedWeapons),
           mats: me.mats,
           abil: me.abil,
-          cds: { fireboltCd: me.fireboltCd, lifeGripT: me.lifeGripT, meteorT: me.meteorT },
+          cds: { fireboltCd: me.fireboltCd, lifeGripT: me.lifeGripT, meteorT: me.meteorT, turretCd: me.turretCd, shockNovaCd: me.shockNovaCd, riftSpearCd: me.riftSpearCd, overheatCd: me.overheatCd, overheatT: me.overheatT, gravitySnareCd: me.gravitySnareCd, orbitDronesCd: me.orbitDronesCd, decoyCd: me.decoyCd, spiritHoundsCd: me.spiritHoundsCd, markCd: me.markCd, lastStandCd: me.lastStandCd, shellAbsorb: me.shellAbsorb, orbitBladesCd: me.orbitBladesCd, sentryPylonCd: me.sentryPylonCd },
           lastHitAt: me.lastHitAt
         },
         sigilsCollected,
@@ -2153,11 +2181,25 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(!me.ownedWeapons.has(me.weapon)) me.ownedWeapons.add(me.weapon);
 
         me.mats = Object.assign({ iron:0, hide:0, essence:0, crystal:0, ember:0 }, p.mats||{});
-        me.abil = Object.assign({ poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false }, p.abil||{});
+        me.abil = Object.assign({ poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false }, p.abil||{});
 
         me.fireboltCd = +(p.cds?.fireboltCd||0);
         me.lifeGripT  = +(p.cds?.lifeGripT||0);
         me.meteorT    = +(p.cds?.meteorT||0);
+        me.turretCd = +(p.cds?.turretCd||0);
+        me.shockNovaCd = +(p.cds?.shockNovaCd||0);
+        me.riftSpearCd = +(p.cds?.riftSpearCd||0);
+        me.overheatCd = +(p.cds?.overheatCd||0);
+        me.overheatT = +(p.cds?.overheatT||0);
+        me.gravitySnareCd = +(p.cds?.gravitySnareCd||0);
+        me.orbitDronesCd = +(p.cds?.orbitDronesCd||0);
+        me.decoyCd = +(p.cds?.decoyCd||0);
+        me.spiritHoundsCd = +(p.cds?.spiritHoundsCd||0);
+        me.markCd = +(p.cds?.markCd||0);
+        me.lastStandCd = +(p.cds?.lastStandCd||0);
+        me.shellAbsorb = +(p.cds?.shellAbsorb||0);
+        me.orbitBladesCd = +(p.cds?.orbitBladesCd||0);
+        me.sentryPylonCd = +(p.cds?.sentryPylonCd||0);
         me.lastHitAt = +(p.lastHitAt ?? -999);
 
         sigilsCollected = +(data.sigilsCollected||0);
@@ -2209,6 +2251,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     const projectiles = []; // {x,y,z,vx,vy,vz,life,rad,dmg,from,kind,color, splinter, explode, aoe, poison, stun, knockback, chainBounces, chainRange}
     const drops = [];       // {x,y,z,mesh,mat,spin,qty}
     const turrets = [];     // {mesh,life,fireCd}
+    const orbitDrones = []; // {mesh,life,angle,dist,fireCd}
+    const orbitBlades = []; // {mesh,life,angle,dist,dartCd}
+    const decoys = [];      // {mesh,life,x,z,radius}
+    const sentryPylons = []; // {mesh,life,beam}
+    const spiritHounds = []; // {mesh,life,spd,biteCd,rendStacks,targetId,trailCd}
 
     const ALIEN_BOSS_SPAWN_MIN = 240; // seconds in alien region
     const ALIEN_BOSS_SPAWN_MAX = 360;
@@ -2649,6 +2696,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const p of projectiles) world.remove(p.mesh);
       for(const d of drops) world.remove(d.mesh);
       for(const t of turrets) world.remove(t.mesh);
+      for(const d of orbitDrones) world.remove(d.mesh);
+      for(const b of orbitBlades) world.remove(b.mesh);
+      for(const d of decoys) world.remove(d.mesh);
+      for(const pylon of sentryPylons){ if(pylon.beam) world.remove(pylon.beam); world.remove(pylon.mesh); }
+      for(const h of spiritHounds) world.remove(h.mesh);
       if(alienBoss?.mesh) world.remove(alienBoss.mesh);
       if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ releaseAlienBossLaser(l); } }
       if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ releaseAlienStarTelegraph(t); } }
@@ -2658,7 +2710,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(titanBoss?.mesh) world.remove(titanBoss.mesh);
       for(const f of floatingTexts) f.el.remove();
       floatingTexts.length = 0;
-      enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0;
+      enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0; orbitDrones.length=0; orbitBlades.length=0; decoys.length=0; sentryPylons.length=0; spiritHounds.length=0;
       alienBoss = null;
       regionBoss = null;
       titanBoss = null;
@@ -4515,9 +4567,20 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function takeDamage(dmg, why="Hit"){
       if(!alive) return;
+      if(me.overheatT>0) dmg *= 1.15;
+      if(me.shellAbsorb>0){
+        const absorbed = Math.min(me.shellAbsorb, dmg);
+        me.shellAbsorb -= absorbed;
+        dmg -= absorbed;
+      }
       me.lastHitAt = performance.now()*0.001;
       me.hp -= dmg;
       me.hp = Math.max(0, me.hp);
+      if(me.abil.lastStandShell && me.hp>0 && (me.hp/me.maxHp)<0.25 && me.lastStandCd<=0){
+        me.lastStandCd = 45;
+        me.shellAbsorb = 25 + me.level*2;
+        showToast("🛡️ SHELL");
+      }
       if(me.hp <= 0){
         alive = false;
         overlayDead.style.opacity = "1";
@@ -4569,6 +4632,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     }
 
     function dealDamageEnemy(e, dmg, opts={}){
+      if(me.abil.markShatter && me.markT>0 && me.markTargetId===e.id) dmg *= 1.5;
       e.hp -= dmg;
       if(e.hp <= 0){
         e.hp = 0;
@@ -4607,6 +4671,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             f.data.miniShard = true;
             f.inOuter = false;
           }
+        }
+
+        if(me.abil.markShatter && me.markT>0 && me.markTargetId===e.id){
+          explodeAt(e.mesh.position.x, e.mesh.position.y+0.2, e.mesh.position.z, 2.1, 12 + me.level*0.4, "player");
+          me.markT = 0;
+          me.markTargetId = -1;
         }
 
         // drops + xp
@@ -4689,9 +4759,160 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     // ============================================================
     // Abilities (unlocked via level-up options)
     // ============================================================
+    function nearestEnemyTo(x,z,maxDist=999){
+      let best=null, bestD2=maxDist*maxDist;
+      for(const e of enemies){
+        if(e.hp<=0) continue;
+        const d2 = dist2(x,z,e.mesh.position.x,e.mesh.position.z);
+        if(d2<bestD2){ bestD2=d2; best=e; }
+      }
+      return best;
+    }
+
+    function spawnDecoyAt(x,z,duration=6.0,radius=14){
+      const y = heightAt(x,z,regionAt(x,z).id)+0.8;
+      const g = new THREE.Group();
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.34,1.4,10), new THREE.MeshStandardMaterial({ color:0x22c55e, emissive:0x86efac, emissiveIntensity:1.0, roughness:0.35 }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.7,1.2,26), new THREE.MeshBasicMaterial({ color:0x4ade80, transparent:true, opacity:0.72, side:THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI/2;
+      ring.position.y = -0.65;
+      g.add(pillar, ring);
+      g.position.set(x,y,z);
+      world.add(g);
+      decoys.push({ mesh:g, life:duration, x, z, radius, pulse:0 });
+    }
+
     function tickAbilities(dt){
       if(!alive) return;
-      // Poison aura: purple hue and drain near you
+
+      me.overheatT = Math.max(0, me.overheatT-dt);
+      me.markT = Math.max(0, me.markT-dt);
+      me.shellAbsorb = Math.max(0, me.shellAbsorb);
+      me.lastStandCd = Math.max(0, me.lastStandCd-dt);
+
+      if(me.abil.shockNova){
+        me.shockNovaCd -= dt;
+        if(me.shockNovaCd<=0){
+          const near = enemies.filter(e=>e.hp>0 && dist2(me.x,me.z,e.mesh.position.x,e.mesh.position.z) <= 4*4);
+          if(near.length>=3){
+            me.shockNovaCd = 9 + Math.random()*3;
+            const ring = makeTeleCircle(0xfde047); ring.position.set(me.x,heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.08,me.z); world.add(ring);
+            projectiles.push({mesh:ring,x:me.x,y:ring.position.y,z:me.z,vx:0,vy:0,vz:0,life:0.28,from:"fx",kind:"bossFx",fxType:"ring",maxLife:0.28,maxScale:2.0});
+            for(const e of near){
+              dealDamageEnemy(e, 6 + me.level*0.4);
+              e.stunT = Math.max(e.stunT||0, 0.35 + Math.min(0.25, me.level*0.006));
+              const dx=e.mesh.position.x-me.x, dz=e.mesh.position.z-me.z; const d=Math.hypot(dx,dz)||1;
+              e.kbX += (dx/d)*4.8; e.kbZ += (dz/d)*4.8;
+            }
+          }
+        }
+      }
+
+      if(me.abil.riftSpear){
+        me.riftSpearCd -= dt;
+        if(me.riftSpearCd<=0){
+          me.riftSpearCd = 7 + Math.random()*3;
+          const dirX=Math.cos(me.yaw), dirZ=Math.sin(me.yaw);
+          const fromX=me.x, fromY=me.y, fromZ=me.z;
+          const toX=fromX+dirX*34, toY=fromY, toZ=fromZ+dirZ*34;
+          const line = spawnTelegraphLine(fromX,fromZ,toX,toZ,0xa78bfa,0.22);
+          projectiles.push({mesh:line,x:0,y:0,z:0,vx:0,vy:0,vz:0,life:0.12,from:"fx",kind:"fxLine"});
+          spawnBolt(fromX,fromY,fromZ,toX,toY,toZ,{ dmg:16+me.level*0.9, color:0xc4b5fd, pierce:4+Math.min(4,(me.level/10)|0), stun:0.1 });
+        }
+      }
+
+      if(me.abil.overheat){
+        me.overheatCd -= dt;
+        if(me.overheatCd<=0){
+          me.overheatCd = 14 + Math.random()*4;
+          me.overheatT = 3.5;
+          showToast("🔥 Overheat!");
+        }
+      }
+
+      if(me.abil.gravitySnare){
+        me.gravitySnareCd -= dt;
+        if(me.gravitySnareCd<=0){
+          me.gravitySnareCd = 11 + Math.random()*4;
+          const t = pickTarget(28*me.rangeMul);
+          const tx = t ? t.mesh.position.x : (me.x + Math.cos(me.yaw)*6.5);
+          const tz = t ? t.mesh.position.z : (me.z + Math.sin(me.yaw)*6.5);
+          const y = heightAt(tx,tz,regionAt(tx,tz).id)+0.06;
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9,1.5,28), new THREE.MeshBasicMaterial({ color:0xc084fc, transparent:true, opacity:0.76, side:THREE.DoubleSide }));
+          ring.rotation.x = -Math.PI/2; ring.position.set(tx,y,tz); world.add(ring);
+          projectiles.push({mesh:ring,x:tx,y,z:tz,vx:0,vy:0,vz:0,life:5,rad:2.6,dmg:3.0+me.level*0.08,from:"player",kind:"gravitySnare",slow:0.35});
+        }
+      }
+
+      if(me.abil.decoyTotem){
+        me.decoyCd -= dt;
+        if(me.decoyCd<=0){
+          me.decoyCd = 16 + Math.random()*4;
+          spawnDecoyAt(me.x + Math.cos(me.yaw)*1.6, me.z + Math.sin(me.yaw)*1.6, 6.2, 14);
+        }
+      }
+
+      if(me.abil.spiritHounds){
+        me.spiritHoundsCd -= dt;
+        if(me.spiritHoundsCd<=0){
+          me.spiritHoundsCd = 18;
+          const cnt = me.level>=30 ? 2 : 1;
+          for(let i=0;i<cnt;i++){
+            const h = new THREE.Mesh(new THREE.CapsuleGeometry(0.24,0.55,6,10), new THREE.MeshStandardMaterial({ color:0xd8b4fe, emissive:0xa78bfa, emissiveIntensity:1.0, roughness:0.35 }));
+            h.position.set(me.x + Math.cos(i*Math.PI)*0.8, heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.5, me.z + Math.sin(i*Math.PI)*0.8);
+            world.add(h);
+            spiritHounds.push({ mesh:h, life:8.0, spd:10.5, biteCd:0.4, rendStacks:0, targetId:-1, trailCd:0.02 });
+          }
+        }
+      }
+
+      if(me.abil.markShatter){
+        me.markCd -= dt;
+        if(me.markCd<=0){
+          me.markCd = 6 + Math.random()*2;
+          const t = pickTarget(30*me.rangeMul);
+          if(t && t.id!=null){ me.markTargetId = t.id; me.markT = 4.0; }
+        }
+      }
+
+      if(me.abil.orbitDrones){
+        me.orbitDronesCd -= dt;
+        if(me.orbitDronesCd<=0){
+          me.orbitDronesCd = 18;
+          const cnt = me.level>=30 ? 3 : 2;
+          for(let i=0;i<cnt;i++){
+            const o = new THREE.Mesh(new THREE.SphereGeometry(0.16,10,10), new THREE.MeshStandardMaterial({ color:0x67e8f9, emissive:0x22d3ee, emissiveIntensity:1.2 }));
+            world.add(o);
+            orbitDrones.push({ mesh:o, life:8.0, angle:(Math.PI*2*i)/cnt, dist:1.15, fireCd:0.12+i*0.08 });
+          }
+        }
+      }
+
+      if(me.abil.orbitBlades){
+        me.orbitBladesCd -= dt;
+        if(me.orbitBladesCd<=0){
+          me.orbitBladesCd = 19;
+          const cnt = me.level>=40 ? 4 : 2;
+          for(let i=0;i<cnt;i++){
+            const b = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.5,0.18), new THREE.MeshStandardMaterial({ color:0xe2e8f0, emissive:0x93c5fd, emissiveIntensity:0.85 }));
+            world.add(b);
+            orbitBlades.push({ mesh:b, life:8.5, angle:(Math.PI*2*i)/cnt, dist:1.35, dartCd:0.35+i*0.12 });
+          }
+        }
+      }
+
+      if(me.abil.sentryPylon){
+        me.sentryPylonCd -= dt;
+        if(me.sentryPylonCd<=0){
+          me.sentryPylonCd = 18;
+          const m = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.3,1.35,10), new THREE.MeshStandardMaterial({ color:0x67e8f9, emissive:0x22d3ee, emissiveIntensity:1.1 }));
+          m.position.set(me.x + Math.cos(me.yaw)*1.8, heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.7, me.z + Math.sin(me.yaw)*1.8);
+          world.add(m);
+          sentryPylons.push({ mesh:m, life:6.0, beam:null });
+        }
+      }
+
+      // existing abilities
       if(me.abil.poisonAura){
         const rad = 6.0;
         const r2 = rad*rad;
@@ -4701,19 +4922,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           const dz = e.mesh.position.z-me.z;
           const d2 = dx*dx+dz*dz;
           if(d2<=r2){
-            // tint enemy
-            e.mesh.traverse((o)=>{
-              if(o.material && o.material.emissive){
-                o.material.emissive.setHex(0x7c3aed);
-                o.material.emissiveIntensity = 0.7;
-              }
-            });
+            e.mesh.traverse((o)=>{ if(o.material && o.material.emissive){ o.material.emissive.setHex(0x7c3aed); o.material.emissiveIntensity = 0.7; } });
             dealDamageEnemy(e, dt * (3.0 + 0.35*me.level) );
           }
         }
       }
-
-      // Life grip: periodically tether a random enemy and steal health
       if(me.abil.lifeGrip){
         me.lifeGripT -= dt;
         if(me.lifeGripT <= 0){
@@ -4727,8 +4940,6 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             if(e===alienBoss || e===regionBoss || e===titanBoss) damageBossEntity(e, steal);
             else dealDamageEnemy(e, steal);
             me.hp = Math.min(me.maxHp, me.hp + steal*0.45);
-
-            // line effect
             const pts = [new THREE.Vector3(me.x, me.y, me.z), new THREE.Vector3(e.mesh.position.x, bossAimY(e), e.mesh.position.z)];
             const geo = new THREE.BufferGeometry().setFromPoints(pts);
             const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x7c3aed, transparent:true, opacity:0.9 }));
@@ -4737,8 +4948,6 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           }
         }
       }
-
-      // Meteorite: periodically strike near a random enemy
       if(me.abil.meteorite){
         me.meteorT -= dt;
         if(me.meteorT <= 0){
@@ -4752,70 +4961,28 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             const tz = e.mesh.position.z + (Math.random()-0.5)*2.0;
             const reg = regionAt(tx,tz);
             const gy = heightAt(tx,tz, reg.id);
-
-            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35,0), new THREE.MeshStandardMaterial({
-              color:0xffd37a,
-              emissive:0xff3b1a,
-              emissiveIntensity:1.4,
-              roughness:0.35
-            }));
+            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35,0), new THREE.MeshStandardMaterial({ color:0xffd37a, emissive:0xff3b1a, emissiveIntensity:1.4, roughness:0.35 }));
             rock.position.set(tx, gy+18, tz);
             world.add(rock);
-            projectiles.push({
-              mesh:rock,
-              x:tx, y:gy+18, z:tz,
-              vx:0, vy:-26, vz:0,
-              life:1.2,
-              rad:0.5,
-              dmg:0,
-              from:"fx",
-              kind:"meteor",
-              targetY: gy+0.3,
-              aoe: 3.2,
-              hitDmg: 24 + me.level*1.2
-            });
+            projectiles.push({ mesh:rock, x:tx, y:gy+18, z:tz, vx:0, vy:-26, vz:0, life:1.2, rad:0.5, dmg:0, from:"fx", kind:"meteor", targetY: gy+0.3, aoe: 3.2, hitDmg: 24 + me.level*1.2 });
           }
         }
       }
-
-      // Firebolt: cooldown; fires at target you're facing, big explosion
       if(me.abil.firebolt){
         me.fireboltCd -= dt;
         if(me.fireboltCd <= 0){
           const t = pickTarget(24*me.rangeMul);
           if(t){
             me.fireboltCd = 6.5;
-            showToast("🔥 Firebolt!");
-
-            const fx = new THREE.Mesh(GEO.ember, new THREE.MeshStandardMaterial({
-              color:0xff3b1a, emissive:0xff3b1a, emissiveIntensity:1.8, roughness:0.25
-            }));
+            const fx = new THREE.Mesh(GEO.ember, new THREE.MeshStandardMaterial({ color:0xff3b1a, emissive:0xff3b1a, emissiveIntensity:1.8, roughness:0.25 }));
             const fromX=me.x, fromY=me.y, fromZ=me.z;
             const toX=t.mesh.position.x, toY=t.mesh.position.y+0.65, toZ=t.mesh.position.z;
-            fx.position.set(fromX,fromY,fromZ);
-            world.add(fx);
-
-            const dir = _v2.set(toX-fromX, toY-fromY, toZ-fromZ);
-            const len = dir.length() || 1;
-            dir.multiplyScalar(1/len);
-            const speed=34;
-
-            projectiles.push({
-              mesh:fx,
-              x:fromX, y:fromY, z:fromZ,
-              vx:dir.x*speed, vy:dir.y*speed, vz:dir.z*speed,
-              life:1.1,
-              rad:0.8,
-              dmg: 0,
-              from:"player",
-              kind:"firebolt",
-              aoe: 4.2,
-              hitDmg: 32 + me.level*1.6
-            });
+            fx.position.set(fromX,fromY,fromZ); world.add(fx);
+            const dir = _v2.set(toX-fromX, toY-fromY, toZ-fromZ); const len = dir.length() || 1; dir.multiplyScalar(1/len); const speed=34;
+            projectiles.push({ mesh:fx, x:fromX, y:fromY, z:fromZ, vx:dir.x*speed, vy:dir.y*speed, vz:dir.z*speed, life:1.1, rad:0.8, dmg:0, from:"player", kind:"firebolt", aoe:4.2, hitDmg:32 + me.level*1.6 });
           }
         }
       }
-
       if(me.abil.turretTotem){
         me.turretCd -= dt;
         if(me.turretCd <= 0){
@@ -4825,6 +4992,59 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           world.add(m);
           turrets.push({ mesh:m, life:5.0, fireCd:0.08 });
         }
+      }
+
+      for(let i=decoys.length-1;i>=0;i--){
+        const d = decoys[i]; d.life -= dt; d.pulse += dt*4.4;
+        d.mesh.position.y = heightAt(d.x,d.z,regionAt(d.x,d.z).id)+0.8;
+        const ring = d.mesh.children[1]; if(ring){ const sc = 1 + Math.sin(d.pulse)*0.2; ring.scale.set(sc,sc,sc); }
+        if(d.life<=0){ world.remove(d.mesh); decoys.splice(i,1); }
+      }
+      for(let i=orbitDrones.length-1;i>=0;i--){
+        const d = orbitDrones[i]; d.life -= dt; d.fireCd -= dt; d.angle += dt*2.8;
+        const y = heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.9;
+        d.mesh.position.set(me.x+Math.cos(d.angle)*d.dist,y+Math.sin(d.angle*2.1)*0.12,me.z+Math.sin(d.angle)*d.dist);
+        if(d.fireCd<=0){ d.fireCd = 0.35; const t=nearestEnemyTo(d.mesh.position.x,d.mesh.position.z,22); if(t) spawnBolt(d.mesh.position.x,d.mesh.position.y,d.mesh.position.z,t.mesh.position.x,t.mesh.position.y+0.5,t.mesh.position.z,{dmg:5.2+me.level*0.2,color:0x67e8f9}); }
+        if(d.life<=0){ world.remove(d.mesh); orbitDrones.splice(i,1); }
+      }
+      for(let i=orbitBlades.length-1;i>=0;i--){
+        const b = orbitBlades[i]; b.life -= dt; b.dartCd -= dt; b.angle += dt*3.6;
+        b.mesh.position.set(me.x+Math.cos(b.angle)*b.dist, heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.95, me.z+Math.sin(b.angle)*b.dist);
+        b.mesh.rotation.y += dt*11;
+        if(b.dartCd<=0){ b.dartCd = 0.65; const t=nearestEnemyTo(b.mesh.position.x,b.mesh.position.z,16); if(t) spawnBolt(b.mesh.position.x,b.mesh.position.y,b.mesh.position.z,t.mesh.position.x,t.mesh.position.y+0.6,t.mesh.position.z,{dmg:9+me.level*0.24,color:0xe2e8f0,pierce:1}); }
+        if(b.life<=0){ world.remove(b.mesh); orbitBlades.splice(i,1); }
+      }
+      for(let i=spiritHounds.length-1;i>=0;i--){
+        const h = spiritHounds[i]; h.life -= dt; h.biteCd -= dt; h.trailCd -= dt;
+        let t = enemies.find(e=>e.id===h.targetId && e.hp>0);
+        if(!t) t = nearestEnemyTo(h.mesh.position.x,h.mesh.position.z,26);
+        if(t){
+          h.targetId = t.id;
+          const dx=t.mesh.position.x-h.mesh.position.x, dz=t.mesh.position.z-h.mesh.position.z; const d=Math.hypot(dx,dz)||1;
+          h.mesh.position.x += (dx/d)*h.spd*dt; h.mesh.position.z += (dz/d)*h.spd*dt;
+          h.mesh.position.y = heightAt(h.mesh.position.x,h.mesh.position.z,regionAt(h.mesh.position.x,h.mesh.position.z).id)+0.46;
+          if(d<1.15 && h.biteCd<=0){ h.biteCd=0.6; const stacks=(t.data.rendStacks||0)+1; t.data.rendStacks=stacks; t.data.rendT=3.5; dealDamageEnemy(t, 6 + stacks*1.4 + me.level*0.2); }
+        }
+        if(h.trailCd<=0){ h.trailCd=0.06; const tr=glowSprite(0xd8b4fe,0.22,0.24,FX_TEX.softGlow); tr.position.copy(h.mesh.position); world.add(tr); projectiles.push({mesh:tr,x:tr.position.x,y:tr.position.y,z:tr.position.z,vx:0,vy:0,vz:0,life:0.22,from:"fx",kind:"bossFx",fxType:"spark",maxLife:0.22}); }
+        if(h.life<=0){ world.remove(h.mesh); spiritHounds.splice(i,1); }
+      }
+      for(let i=sentryPylons.length-1;i>=0;i--){
+        const s = sentryPylons[i]; s.life -= dt;
+        s.mesh.position.y = heightAt(s.mesh.position.x,s.mesh.position.z,regionAt(s.mesh.position.x,s.mesh.position.z).id)+0.7;
+        const target = nearestEnemyTo(s.mesh.position.x,s.mesh.position.z,20);
+        if(target){
+          if(!s.beam){
+            const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+            s.beam = new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x67e8f9, transparent:true, opacity:0.9 }));
+            world.add(s.beam);
+          }
+          const arr = s.beam.geometry.attributes.position;
+          arr.setXYZ(0,s.mesh.position.x,s.mesh.position.y+0.4,s.mesh.position.z);
+          arr.setXYZ(1,target.mesh.position.x,target.mesh.position.y+0.7,target.mesh.position.z);
+          arr.needsUpdate = true;
+          dealDamageEnemy(target, dt*(10 + me.level*0.4));
+        }else if(s.beam){ world.remove(s.beam); s.beam=null; }
+        if(s.life<=0){ if(s.beam) world.remove(s.beam); world.remove(s.mesh); sentryPylons.splice(i,1); }
       }
 
       for(let i=turrets.length-1;i>=0;i--){
@@ -4844,8 +5064,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
         if(t.life<=0){ world.remove(t.mesh); turrets.splice(i,1); }
       }
-
     }
+
 
     // ============================================================
     // Modals (forge / level-up / death)
@@ -5050,6 +5270,39 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           sub:"Periodically spawns a 5-second auto-firing turret.",
           apply:()=>{ me.abil.turretTotem=true; me.turretCd = 1.5; }
         });
+      }
+      if(!me.abil.shockNova && me.level>=5){
+        pool.push({ title:"⚡ Shock Nova", sub:"If 3+ enemies are close, emit a knockback nova with short stun.", apply:()=>{ me.abil.shockNova=true; me.shockNovaCd=1.2; } });
+      }
+      if(!me.abil.riftSpear && me.level>=8){
+        pool.push({ title:"🗡️ Rift Spear", sub:"Fires a piercing line spear forward on cooldown.", apply:()=>{ me.abil.riftSpear=true; me.riftSpearCd=0.8; } });
+      }
+      if(!me.abil.overheat && me.level>=12){
+        pool.push({ title:"🔥 Overheat", sub:"Burst mode: +30% fire rate/beam DPS, but you take +15% damage.", apply:()=>{ me.abil.overheat=true; me.overheatCd=3.0; } });
+      }
+      if(!me.abil.gravitySnare && me.level>=13){
+        pool.push({ title:"🌀 Gravity Snare", sub:"Drop a 5s slow field near your aim that also deals light DPS.", apply:()=>{ me.abil.gravitySnare=true; me.gravitySnareCd=1.6; } });
+      }
+      if(!me.abil.orbitDrones && me.level>=15){
+        pool.push({ title:"🛰️ Orbit Drones", sub:"2-3 cyan drones orbit you for 8s and fire rapid bolts.", apply:()=>{ me.abil.orbitDrones=true; me.orbitDronesCd=1.2; } });
+      }
+      if(!me.abil.decoyTotem && me.level>=18){
+        pool.push({ title:"🪵 Decoy Totem", sub:"Periodically drops a taunting decoy to pull packs.", apply:()=>{ me.abil.decoyTotem=true; me.decoyCd=1.1; } });
+      }
+      if(!me.abil.markShatter && me.level>=20){
+        pool.push({ title:"🎯 Mark & Shatter", sub:"Marks a target for +50% damage. Kill marked target to pop AoE.", apply:()=>{ me.abil.markShatter=true; me.markCd=1.0; } });
+      }
+      if(!me.abil.spiritHounds && me.level>=22){
+        pool.push({ title:"🐺 Spirit Hounds", sub:"Summon ghost hounds that bite and apply stacking rend DoT.", apply:()=>{ me.abil.spiritHounds=true; me.spiritHoundsCd=1.2; } });
+      }
+      if(!me.abil.lastStandShell && me.level>=24){
+        pool.push({ title:"🛡️ Last Stand Shell", sub:"When under 25% HP (45s CD), gain a damage-absorbing shell.", apply:()=>{ me.abil.lastStandShell=true; me.lastStandCd=0; } });
+      }
+      if(!me.abil.orbitBlades && me.level>=30){
+        pool.push({ title:"🪓 Orbit Blades", sub:"2-4 blades orbit you and dart to nearby enemies.", apply:()=>{ me.abil.orbitBlades=true; me.orbitBladesCd=1.2; } });
+      }
+      if(!me.abil.sentryPylon && me.level>=33){
+        pool.push({ title:"🔷 Sentry Pylon", sub:"Drop a pylon that beams the nearest target for 6s.", apply:()=>{ me.abil.sentryPylon=true; me.sentryPylonCd=1.1; } });
       }
 
       // pick 3
@@ -5421,6 +5674,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           e.mesh.remove(e.data.bugSwarm);
           e.data.bugSwarm = null;
         }
+        if(e.data.rendT>0){
+          e.data.rendT -= dt;
+          dealDamageEnemy(e, dt * (e.data.rendStacks||1) * 2.4);
+        }else{
+          e.data.rendStacks = 0;
+        }
         if(e.stunT>0) e.stunT -= dt;
         if(e.data.turretCd>0) e.data.turretCd -= dt;
 
@@ -5442,9 +5701,18 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           }
         }
 
-        // chase player
-        const px = me.x, pz = me.z;
+        // chase player / decoy
+        let px = me.x, pz = me.z;
         const ex = e.mesh.position.x, ez = e.mesh.position.z;
+        if(decoys.length){
+          let bestDecoy=null, bestDecoyD2=14*14;
+          for(const dcy of decoys){
+            const d2 = dist2(ex,ez,dcy.x,dcy.z);
+            if(d2<bestDecoyD2){ bestDecoyD2=d2; bestDecoy=dcy; }
+          }
+          const playerD2 = dist2(ex,ez,me.x,me.z);
+          if(bestDecoy && playerD2 > 4*4){ px = bestDecoy.x; pz = bestDecoy.z; }
+        }
         const dx = px-ex, dz = pz-ez;
         const d = Math.hypot(dx,dz) || 1;
 
@@ -5901,6 +6169,24 @@ e.mesh.userData.anim?.(e, dt, now);
       continue;
     }
 
+    if(p.kind=="gravitySnare"){
+      p.mesh.material.opacity = 0.35 + 0.35*Math.sin((5-p.life)*5.8);
+      p.mesh.scale.setScalar(1.0 + 0.08*Math.sin((5-p.life)*3.2));
+      for(const e of enemies){
+        if(e.hp<=0) continue;
+        const d2 = dist2(e.mesh.position.x,e.mesh.position.z,p.x,p.z);
+        if(d2 <= (p.rad||2.6)*(p.rad||2.6)){
+          e.spd *= (1 - (p.slow||0.35)*dt*2.2);
+          dealDamageEnemy(e, (p.dmg||3.2)*dt);
+        }
+      }
+      if(p.life<=0){
+        world.remove(p.mesh);
+        projectiles.splice(i,1);
+      }
+      continue;
+    }
+
     if(p.kind==="hazard"){
       if(p.mesh.material) p.mesh.material.opacity *= 0.985;
       if(p.mesh.children?.length){
@@ -6079,6 +6365,11 @@ e.mesh.userData.anim?.(e, dt, now);
           }
         }
 
+        if((p.pierceLeft||0)>0){
+          p.pierceLeft--;
+          p.dmg *= 0.84;
+          continue;
+        }
         world.remove(p.mesh);
         projectiles.splice(i,1);
         continue;
@@ -6158,7 +6449,7 @@ e.mesh.userData.anim?.(e, dt, now);
 
         updateBeamVisual(fromX, fromY, fromZ, toX, toY, toZ, w.color);
 
-        const dps = (w.dps||14) * me.damageMul;
+        const dps = (w.dps||14) * me.damageMul * (me.overheatT>0?1.3:1.0);
         if(t===alienBoss || t===regionBoss || t===titanBoss) damageBossEntity(t, dps*dt);
         else dealDamageEnemy(t, dps*dt);
 
@@ -6166,7 +6457,7 @@ e.mesh.userData.anim?.(e, dt, now);
         beamGroup.visible = false;
 
         me.fireCd -= dt;
-        const fireEvery = 1 / (w.fireRate || 6);
+        const fireEvery = 1 / ((w.fireRate || 6) * (me.overheatT>0?1.3:1.0));
         if(me.fireCd <= 0){
           me.fireCd = fireEvery;
 
