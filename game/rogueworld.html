@@ -1369,15 +1369,43 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         road.position.y = heightAt(wx, wz, reg.id) + 0.02;
         group.add(road);
 
+        const boardLocal = { x:0, z:0, r:5.8 };
+        cityPlazas.push({ x:wx+boardLocal.x, z:wz+boardLocal.z, r:boardLocal.r, chunkKey:key });
+
         const towerCount = Math.max(10, baseCount(prop.tower||16));
-        addInstanced(group, GEO.tower, MAT.tower, towerCount, rnd, (d,i,rr)=>{
-          const px=(rr()-0.5)*(CHUNK*0.9), pz=(rr()-0.5)*(CHUNK*0.9);
-          const y=heightAt(wx+px, wz+pz, reg.id);
-          const sx=1.8+rr()*4.8, sz=1.8+rr()*4.8, sy=6.5+rr()*22;
-          d.position.set(px, y+sy*0.5, pz);
-          d.scale.set(sx, sy, sz);
-          d.rotation.y=rr()*Math.PI*2;
-        });
+        const towerGeo = GEO.tower;
+        const towerMat = MAT.tower;
+        const im = new THREE.InstancedMesh(towerGeo, towerMat, towerCount);
+        im.castShadow = false;
+        im.receiveShadow = true;
+        const dummy = new THREE.Object3D();
+        let placed = 0;
+        let tries = 0;
+        while(placed < towerCount && tries < towerCount*18){
+          tries++;
+          const px=(rnd()-0.5)*(CHUNK*0.9), pz=(rnd()-0.5)*(CHUNK*0.9);
+          const wxp = wx+px, wzp = wz+pz;
+          if((px-boardLocal.x)*(px-boardLocal.x) + (pz-boardLocal.z)*(pz-boardLocal.z) < (boardLocal.r+2.1)*(boardLocal.r+2.1)) continue;
+          let overlap = false;
+          for(const pl of cityPlazas){
+            if(pl.chunkKey===key) continue;
+            const rr = pl.r + 2.0;
+            if((wxp-pl.x)*(wxp-pl.x) + (wzp-pl.z)*(wzp-pl.z) < rr*rr){ overlap = true; break; }
+          }
+          if(overlap) continue;
+          const y=heightAt(wxp, wzp, reg.id);
+          const sx=1.8+rnd()*4.8, sz=1.8+rnd()*4.8, sy=6.5+rnd()*22;
+          dummy.position.set(px, y+sy*0.5, pz);
+          dummy.scale.set(sx, sy, sz);
+          dummy.rotation.y=rnd()*Math.PI*2;
+          dummy.updateMatrix();
+          im.setMatrixAt(placed, dummy.matrix);
+          citySkyscrapers.push({ x:wxp, z:wzp, r:Math.max(sx,sz)*0.62 + 0.55, chunkKey:key });
+          placed++;
+        }
+        im.count = placed;
+        im.instanceMatrix.needsUpdate = true;
+        group.add(im);
       }
 
       if(reg.id==="hell"){
@@ -1413,6 +1441,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         if(Array.isArray(m)) m.forEach(mm=>mm?.dispose?.());
         else m?.dispose?.();
       });
+      for(let i=citySkyscrapers.length-1;i>=0;i--) if(citySkyscrapers[i].chunkKey===key) citySkyscrapers.splice(i,1);
+      for(let i=cityPlazas.length-1;i>=0;i--) if(cityPlazas[i].chunkKey===key) cityPlazas.splice(i,1);
+      for(let i=citySoldiers.length-1;i>=0;i--) if(citySoldiers[i].homeChunkKey===key){ if(citySoldiers[i].mesh) world.remove(citySoldiers[i].mesh); citySoldiers.splice(i,1); }
       chunks.delete(key);
     }
 
@@ -1443,6 +1474,9 @@ function tickChunks(){
     // ============================================================
     const forges = []; // {x,z, regionId, mesh, beacon}
     const cityBoards = []; // {x,z, regionId, mesh, beacon}
+    const citySkyscrapers = []; // {x,z,r,chunkKey}
+    const cityPlazas = []; // {x,z,r,chunkKey}
+    const citySoldiers = []; // {x,z,homeX,homeZ,homeChunkKey,mesh,hp,cd,patrolA,patrolR}
     let worldQuest = null;
     const QUEST_TARGETS = ["scarab","scorpion","sandwisp","boar","spriggan","spitter","goblin","wolf","frostling","drone","shardling","imp","brute","mortar"];
 
@@ -1503,6 +1537,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function genForges(){
       forges.length = 0;
       cityBoards.length = 0;
+      citySkyscrapers.length = 0;
+      cityPlazas.length = 0;
+      for(const s of citySoldiers){ if(s.mesh) world.remove(s.mesh); }
+      citySoldiers.length = 0;
       const rnd = xorshift32(worldSeed ^ 0xC0FFEE);
       const ringCount = 8;
 
@@ -1521,7 +1559,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             const z = Math.sin(angle)*radius;
             const reg = regionAt(x,z);
             forges.push({ x, z, regionId: reg.id, mesh:null });
-            if(reg.id==="city") cityBoards.push({ x:x+4.5, z:z+3.2, regionId:reg.id, mesh:null, beacon:null });
+            if(reg.id==="city") cityBoards.push({ x:x, z:z, regionId:reg.id, mesh:null, beacon:null });
           }
         }
       }
@@ -1583,14 +1621,84 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
   }
 }
 
+    function cityChunkCenter(x,z){
+      return {
+        x: Math.floor(x/CHUNK)*CHUNK + CHUNK*0.5,
+        z: Math.floor(z/CHUNK)*CHUNK + CHUNK*0.5
+      };
+    }
+
+    function nearestCityPlaza(x,z){
+      let best=null, bestD=1e18;
+      for(const pz of cityPlazas){
+        const d2 = dist2(x,z,pz.x,pz.z);
+        if(d2<bestD){ bestD=d2; best=pz; }
+      }
+      return best;
+    }
+
+    function pointBlockedByCityTower(x,z,pad=0){
+      for(const t of citySkyscrapers){
+        const rr = t.r + pad;
+        if((x-t.x)*(x-t.x) + (z-t.z)*(z-t.z) < rr*rr) return true;
+      }
+      return false;
+    }
+
+    function steerAroundCityTowers(x,z,tx,tz,pad=0.65){
+      let dirX = tx-x, dirZ = tz-z;
+      const d = Math.hypot(dirX,dirZ) || 1;
+      dirX /= d; dirZ /= d;
+      for(const t of citySkyscrapers){
+        const vx = t.x-x, vz=t.z-z;
+        const cross = vx*dirZ - vz*dirX;
+        const ahead = vx*dirX + vz*dirZ;
+        if(ahead < -0.2 || ahead > 7.0) continue;
+        const perp = Math.abs(cross);
+        const avoid = t.r + pad;
+        if(perp < avoid){
+          const side = cross > 0 ? -1 : 1;
+          dirX += (-dirZ)*side*1.28;
+          dirZ += ( dirX)*side*0.18;
+        }
+      }
+      const n = Math.hypot(dirX,dirZ) || 1;
+      return { x:dirX/n, z:dirZ/n };
+    }
+
+    function spawnCitySoldier(x,z,homeChunkKey){
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28,0.72,4,8), new THREE.MeshStandardMaterial({ color:0x374151, roughness:0.8, metalness:0.1 }));
+      body.position.y = 1.0;
+      const helm = new THREE.Mesh(new THREE.SphereGeometry(0.28,12,10), new THREE.MeshStandardMaterial({ color:0x9ca3af, roughness:0.5, metalness:0.4 }));
+      helm.position.y = 1.62;
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,0.3), new THREE.MeshBasicMaterial({ color:0x93c5fd }));
+      visor.position.set(0,1.6,0.24);
+      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.7), new THREE.MeshStandardMaterial({ color:0x111827, roughness:0.5, metalness:0.45 }));
+      rifle.position.set(0.22,1.28,0.05);
+      rifle.rotation.x = -0.22;
+      g.add(body,helm,visor,rifle);
+      const y = heightAt(x,z,"city");
+      g.position.set(x,y,z);
+      world.add(g);
+      citySoldiers.push({ x,z,homeX:x,homeZ:z,homeChunkKey,mesh:g,hp:52,cd:0,patrolA:Math.random()*Math.PI*2,patrolR:1.5+Math.random()*1.6 });
+    }
+
     function buildCityBoardMesh(){
       const g = new THREE.Group();
-      const postL = new THREE.Mesh(GEO.boardPost, MAT.board); postL.position.set(-0.35,0.6,0);
-      const postR = new THREE.Mesh(GEO.boardPost, MAT.board); postR.position.set(0.35,0.6,0);
-      const board = new THREE.Mesh(GEO.board, MAT.board); board.position.set(0,1.35,0);
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 0.28), new THREE.MeshStandardMaterial({ color:0x1f2937, roughness:0.92, metalness:0.08 }));
+      wall.position.set(0,1.35,-0.22);
+      const boardMat = new THREE.MeshStandardMaterial({ color:0x6f4c30, roughness:0.84, metalness:0.02 });
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.45, 0.12), boardMat); board.position.set(0,1.35,0);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(2.36,1.62,0.08), new THREE.MeshStandardMaterial({ color:0x3f2b1f, roughness:0.78, metalness:0.03 }));
+      frame.position.set(0,1.35,0.02);
+      const writing = new THREE.Mesh(new THREE.PlaneGeometry(1.95,1.18), new THREE.MeshBasicMaterial({ color:0xf8fafc, transparent:true, opacity:0.85 }));
+      writing.position.set(0,1.37,0.07);
+      const postL = new THREE.Mesh(GEO.boardPost, MAT.board); postL.position.set(-1.08,0.8,-0.18);
+      const postR = new THREE.Mesh(GEO.boardPost, MAT.board); postR.position.set(1.08,0.8,-0.18);
       const glow = new THREE.Mesh(new THREE.RingGeometry(0.75,1.05,24), MAT.boardGlow);
       glow.rotation.x = -Math.PI/2; glow.position.y = 0.08;
-      g.add(postL,postR,board,glow);
+      g.add(postL,postR,wall,frame,board,writing,glow);
       g.userData.glow = glow;
       return g;
     }
@@ -1598,6 +1706,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function tickCityBoards(now){
       const t = now*0.001;
       for(const b of cityBoards){
+        const c = cityChunkCenter(b.x, b.z);
+        b.x = c.x; b.z = c.z;
         const d2 = dist2(me.x, me.z, b.x, b.z);
         const active = d2 < (FORGE_ACTIVE_DIST2*0.75);
         if(active && !b.mesh){
@@ -1605,6 +1715,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           const y = heightAt(b.x,b.z,b.regionId);
           b.mesh.position.set(b.x,y,b.z);
           world.add(b.mesh);
+          const soldierCount = 3;
+          for(let i=0;i<soldierCount;i++){
+            const a = (i/soldierCount)*Math.PI*2;
+            spawnCitySoldier(b.x + Math.cos(a)*4.2, b.z + Math.sin(a)*4.2, chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)));
+          }
         }else if(!active && b.mesh){
           world.remove(b.mesh);
           b.mesh.traverse(o=>{ if(o.geometry?.dispose) o.geometry.dispose(); const m=o.material; if(Array.isArray(m)) m.forEach(mm=>mm?.dispose?.()); else m?.dispose?.(); });
@@ -1615,6 +1730,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           b.mesh.userData.glow.material.opacity = 0.35 + pulse*0.45;
           b.mesh.rotation.y = Math.sin(t*0.5 + b.x*0.01)*0.04;
         }
+      }
+      for(let i=citySoldiers.length-1;i>=0;i--){
+        const s = citySoldiers[i];
+        const d2 = dist2(me.x, me.z, s.x, s.z);
+        if(d2 > FORGE_ACTIVE_DIST2*0.95){ if(s.mesh) world.remove(s.mesh); citySoldiers.splice(i,1); }
       }
     }
 
@@ -4448,7 +4568,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
     }
 
-    function dealDamageEnemy(e, dmg){
+    function dealDamageEnemy(e, dmg, opts={}){
       e.hp -= dmg;
       if(e.hp <= 0){
         e.hp = 0;
@@ -4490,13 +4610,15 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
 
         // drops + xp
-        dropFromEnemy(e);
-        const xpGain = xpFromEnemy(e);
-        gainXp(xpGain);
-        spawnFloatingText(`+${xpGain} XP`, e.mesh.position.x, e.mesh.position.y+1.3, e.mesh.position.z, "#86efac");
-        if(worldQuest && !worldQuest.turnedIn && e.type===worldQuest.enemy){
-          worldQuest.progress = Math.min(worldQuest.need, worldQuest.progress + 1);
-          if(worldQuest.progress>=worldQuest.need) showToast("✅ Quest target complete! Return to any city board.");
+        if(!opts.noRewards){
+          dropFromEnemy(e);
+          const xpGain = xpFromEnemy(e);
+          gainXp(xpGain);
+          spawnFloatingText(`+${xpGain} XP`, e.mesh.position.x, e.mesh.position.y+1.3, e.mesh.position.z, "#86efac");
+          if(worldQuest && !worldQuest.turnedIn && e.type===worldQuest.enemy){
+            worldQuest.progress = Math.min(worldQuest.need, worldQuest.progress + 1);
+            if(worldQuest.progress>=worldQuest.need) showToast("✅ Quest target complete! Return to any city board.");
+          }
         }
       }
     }
@@ -5137,8 +5259,15 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         me.grounded = true;
       }
 
-      const nx = me.x + me.vx*dt;
-      const nz = me.z + me.vz*dt;
+      let nx = me.x + me.vx*dt;
+      let nz = me.z + me.vz*dt;
+      const nextRegion = regionAt(nx, nz);
+      if(nextRegion.id==="city" && pointBlockedByCityTower(nx, nz, 0.7)){
+        nx = me.x;
+        nz = me.z;
+        me.vx *= 0.12;
+        me.vz *= 0.12;
+      }
 
       me.x = nx; me.z = nz;
 
@@ -5612,15 +5741,32 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 e.mesh.userData.anim?.(e, dt, now);
 
         // movement integrate (with separation)
-        const dirx = dx/d, dirz = dz/d;
+        let dirx = dx/d, dirz = dz/d;
+        const enemyReg = regionAt(e.mesh.position.x, e.mesh.position.z);
+        if(enemyReg.id==="city"){
+          const steered = steerAroundCityTowers(e.mesh.position.x, e.mesh.position.z, me.x, me.z, 0.85);
+          dirx = steered.x;
+          dirz = steered.z;
+        }
         const moveScale = e.stunT>0 ? 0.08 : 1.0;
         if(e.type==="mirebat"){ rx += (-dirz)*0.9; rz += (dirx)*0.9; }
         if(e.type==="skitter"){ const jig = Math.sin(now*0.016 + e.id)*0.9; rx += (-dirz)*jig; rz += (dirx)*jig; }
         const vx = (dirx*go + rx*0.9) * e.spd * moveScale + (e.kbX||0);
         const vz = (dirz*go + rz*0.9) * e.spd * moveScale + (e.kbZ||0);
 
-        e.mesh.position.x += vx*dt;
-        e.mesh.position.z += vz*dt;
+        let nx = e.mesh.position.x + vx*dt;
+        let nz = e.mesh.position.z + vz*dt;
+        if(enemyReg.id==="city" && pointBlockedByCityTower(nx, nz, 0.8)){
+          const slideX = e.mesh.position.x + (-dirz * e.spd * moveScale)*dt;
+          const slideZ = e.mesh.position.z + ( dirx * e.spd * moveScale)*dt;
+          if(!pointBlockedByCityTower(slideX, slideZ, 0.8)){
+            nx = slideX; nz = slideZ;
+          }else{
+            nx = e.mesh.position.x; nz = e.mesh.position.z;
+          }
+        }
+        e.mesh.position.x = nx;
+        e.mesh.position.z = nz;
         e.kbX *= 0.84;
         e.kbZ *= 0.84;
         e.mesh.lookAt(me.x, e.mesh.position.y, me.z);
@@ -5641,6 +5787,50 @@ e.mesh.userData.anim?.(e, dt, now);
         if(e.hp>0) continue;
         world.remove(e.mesh);
         enemies.splice(i,1);
+      }
+    }
+
+    function tickCitySoldiers(dt, now){
+      if(paused) return;
+      for(const s of citySoldiers){
+        if(!s.mesh) continue;
+        const homeReg = regionAt(s.homeX, s.homeZ);
+        if(homeReg.id!=="city") continue;
+
+        s.cd -= dt;
+        s.patrolA += dt*0.45;
+        const anchorX = s.homeX + Math.cos(s.patrolA)*s.patrolR;
+        const anchorZ = s.homeZ + Math.sin(s.patrolA)*s.patrolR;
+
+        let target = null;
+        let bestD2 = 18*18;
+        for(const e of enemies){
+          if(e.hp<=0) continue;
+          const ereg = regionAt(e.mesh.position.x, e.mesh.position.z);
+          if(ereg.id!=="city") continue;
+          const d2 = dist2(s.x,s.z,e.mesh.position.x,e.mesh.position.z);
+          if(d2<bestD2){ bestD2=d2; target=e; }
+        }
+
+        let tx = anchorX, tz = anchorZ;
+        if(target){ tx = target.mesh.position.x; tz = target.mesh.position.z; }
+        const steered = steerAroundCityTowers(s.x,s.z,tx,tz,0.8);
+        const speed = target ? 2.9 : 1.8;
+        let nx = s.x + steered.x*speed*dt;
+        let nz = s.z + steered.z*speed*dt;
+        if(pointBlockedByCityTower(nx,nz,0.75)){ nx = s.x; nz = s.z; }
+        if(dist2(nx,nz,s.homeX,s.homeZ) > 16*16){ nx = s.homeX; nz = s.homeZ; }
+        s.x = nx; s.z = nz;
+        s.mesh.position.set(s.x, heightAt(s.x,s.z,"city"), s.z);
+        s.mesh.lookAt(tx, s.mesh.position.y+1.0, tz);
+
+        if(target && s.cd<=0){
+          s.cd = 0.46 + Math.random()*0.22;
+          const muzzleY = s.mesh.position.y + 1.35;
+          const line = spawnTelegraphLine(s.x,s.z,target.mesh.position.x,target.mesh.position.z,0x93c5fd,0.9);
+          projectiles.push({ mesh:line, kind:"fxLine", life:0.08, x:s.x, y:muzzleY, z:s.z, vx:0, vy:0, vz:0, from:"soldier" });
+          dealDamageEnemy(target, 8 + me.level*0.35, { noRewards:true });
+        }
       }
     }
 
@@ -6611,6 +6801,7 @@ function tickHUD(dt){
         tickPlayerRegen(dt, now*0.001);
         tickCityBoards(now);
         tickEnemies(dt, now);
+        tickCitySoldiers(dt, now);
         tickAlienBoss(dt);
         tickRegionBoss(dt);
         tickTitanBoss(dt);
