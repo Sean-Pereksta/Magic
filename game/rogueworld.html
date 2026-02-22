@@ -261,6 +261,41 @@
       opacity:.45; cursor:not-allowed;
     }
 
+    #bossHealthWrap{
+      position:absolute;
+      left:50%;
+      top:84px;
+      transform:translateX(-50%);
+      width:min(460px,72vw);
+      pointer-events:none;
+      display:none;
+      z-index:6;
+      filter:drop-shadow(0 5px 14px rgba(0,0,0,.45));
+    }
+    #bossHealthName{
+      font-size:12px;
+      font-weight:1000;
+      letter-spacing:.4px;
+      margin-bottom:4px;
+      text-shadow:0 2px 7px rgba(0,0,0,.65);
+    }
+    #bossHealthBar{
+      position:relative;
+      height:16px;
+      border-radius:999px;
+      background:rgba(8,10,18,.86);
+      border:2px solid #facc15;
+      outline:2px solid rgba(217,70,239,.9);
+      outline-offset:2px;
+      overflow:hidden;
+    }
+    #bossHealthFill{
+      position:absolute; inset:0 auto 0 0;
+      width:100%;
+      background:linear-gradient(90deg, #ef4444 0%, #f97316 35%, #facc15 100%);
+      box-shadow:inset 0 0 10px rgba(255,255,255,.25);
+    }
+
     /* Mobile controls */
     #mobileControls{
       position:absolute; inset:0;
@@ -340,6 +375,11 @@
         <div class="pill">🗡️ <span id="weaponText">—</span></div>
         <div class="pill">📦 <span id="matsText">—</span></div>
       </div>
+    </div>
+
+    <div id="bossHealthWrap">
+      <div id="bossHealthName">Boss</div>
+      <div id="bossHealthBar"><div id="bossHealthFill"></div></div>
     </div>
 
     <div id="toast"></div>
@@ -533,6 +573,9 @@
     const regionText = $("regionText");
     const weaponText = $("weaponText");
     const matsText = $("matsText");
+    const bossHealthWrap = $("bossHealthWrap");
+    const bossHealthName = $("bossHealthName");
+    const bossHealthFill = $("bossHealthFill");
     const regionBanner = $("regionBanner");
     const fxLayer = $("fxLayer");
 
@@ -2581,6 +2624,26 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(titanBoss.hp <= 0) killTitanBoss();
     }
 
+    function damageBossEntity(b, dmg){
+      if(!b || b.hp<=0 || dmg<=0) return;
+      if(b===alienBoss) damageAlienBoss(dmg);
+      else if(b===regionBoss) damageRegionBoss(dmg);
+      else if(b===titanBoss) damageTitanBoss(dmg);
+    }
+
+    function nearestAliveBoss(fromX=me.x, fromZ=me.z){
+      const bosses = allAliveBosses();
+      if(!bosses.length) return null;
+      bosses.sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,fromX,fromZ)-dist2(b.mesh.position.x,b.mesh.position.z,fromX,fromZ));
+      return bosses[0] || null;
+    }
+
+    function currentBossForHud(){
+      const aimed = pickTarget(42*me.rangeMul);
+      if(aimed && (aimed===alienBoss || aimed===regionBoss || aimed===titanBoss)) return aimed;
+      return nearestAliveBoss();
+    }
+
     function makeHealthBar(){
       const g = new THREE.Group();
       const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.14), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.55 }));
@@ -3578,27 +3641,40 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           best = e;
         }
       }
-      if(alienBoss && alienBoss.hp>0){
-        const bx = alienBoss.mesh.position.x;
-        const by = alienBoss.mesh.position.y;
-        const bz = alienBoss.mesh.position.z;
+      for(const b of allAliveBosses()){
+        const bx = b.mesh.position.x;
+        const by = bossAimY(b);
+        const bz = b.mesh.position.z;
         const dx = bx-ox, dy = by-oy, dz = bz-oz;
         const d2 = dx*dx + dy*dy + dz*dz;
-        if(d2 <= range2){
-          const len = Math.sqrt(d2);
-          const vx = dx/len, vy=dy/len, vz=dz/len;
-          const dot = fwd.x*vx + fwd.y*vy + fwd.z*vz;
-          const ang = Math.acos(clamp(dot, -1, 1));
-          if(ang <= aimCone){
-            const score = ang*1.8 + len*0.015;
-            if(score < bestScore){
-              bestScore = score;
-              best = alienBoss;
-            }
-          }
+        if(d2 > range2) continue;
+        const len = Math.sqrt(d2);
+        const vx = dx/len, vy=dy/len, vz=dz/len;
+        const dot = fwd.x*vx + fwd.y*vy + fwd.z*vz;
+        const ang = Math.acos(clamp(dot, -1, 1));
+        if(ang > aimCone) continue;
+        const score = ang*1.75 + len*0.014;
+        if(score < bestScore){
+          bestScore = score;
+          best = b;
         }
       }
       return best;
+    }
+
+    function allAliveBosses(){
+      const out = [];
+      if(alienBoss?.hp>0) out.push(alienBoss);
+      if(regionBoss?.hp>0) out.push(regionBoss);
+      if(titanBoss?.hp>0) out.push(titanBoss);
+      return out;
+    }
+
+    function bossAimY(b){
+      if(!b?.mesh) return 0;
+      if(b===alienBoss || b.type==="alienBoss") return b.mesh.position.y;
+      if(b===titanBoss || b.type==="titan") return b.mesh.position.y + 1.15;
+      return b.mesh.position.y + 0.95;
     }
 
     function spawnBolt(fromX, fromY, fromZ, toX, toY, toZ, cfg, isSplinter=false){
@@ -4010,6 +4086,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             dealDamageEnemy(e, dmg*fall);
           }
         }
+        for(const b of allAliveBosses()){
+          const bx=b.mesh.position.x, bz=b.mesh.position.z, by=bossAimY(b);
+          const d2 = (bx-x)*(bx-x) + (bz-z)*(bz-z) + (by-y)*(by-y);
+          if(d2<=r2){
+            const fall = 1 - Math.sqrt(d2)/rad;
+            damageBossEntity(b, dmg*fall);
+          }
+        }
       }else{
         const px=me.x, pz=me.z, py=me.y;
         const d2 = (px-x)*(px-x)+(pz-z)*(pz-z)+(py-y)*(py-y);
@@ -4303,14 +4387,17 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(me.lifeGripT <= 0){
           me.lifeGripT = 5.2 + Math.random()*2.0;
           const candidates = enemies.filter(e=>e.hp>0 && dist2(me.x,me.z,e.mesh.position.x,e.mesh.position.z) < 22*22);
-          if(candidates.length){
-            const e = candidates[(Math.random()*candidates.length)|0];
+          const bossCandidates = allAliveBosses().filter(b=>dist2(me.x,me.z,b.mesh.position.x,b.mesh.position.z) < 22*22);
+          const mixed = candidates.concat(bossCandidates);
+          if(mixed.length){
+            const e = mixed[(Math.random()*mixed.length)|0];
             const steal = 8 + me.level*0.45;
-            dealDamageEnemy(e, steal);
+            if(e===alienBoss || e===regionBoss || e===titanBoss) damageBossEntity(e, steal);
+            else dealDamageEnemy(e, steal);
             me.hp = Math.min(me.maxHp, me.hp + steal*0.45);
 
             // line effect
-            const pts = [new THREE.Vector3(me.x, me.y, me.z), new THREE.Vector3(e.mesh.position.x, e.mesh.position.y+0.6, e.mesh.position.z)];
+            const pts = [new THREE.Vector3(me.x, me.y, me.z), new THREE.Vector3(e.mesh.position.x, bossAimY(e), e.mesh.position.z)];
             const geo = new THREE.BufferGeometry().setFromPoints(pts);
             const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0x7c3aed, transparent:true, opacity:0.9 }));
             world.add(line);
@@ -4325,8 +4412,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(me.meteorT <= 0){
           me.meteorT = 6.8 + Math.random()*2.8;
           const candidates = enemies.filter(e=>e.hp>0 && dist2(me.x,me.z,e.mesh.position.x,e.mesh.position.z) < 36*36);
-          if(candidates.length){
-            const e = candidates[(Math.random()*candidates.length)|0];
+          const bossCandidates = allAliveBosses().filter(b=>dist2(me.x,me.z,b.mesh.position.x,b.mesh.position.z) < 36*36);
+          const mixed = candidates.concat(bossCandidates);
+          if(mixed.length){
+            const e = mixed[(Math.random()*mixed.length)|0];
             const tx = e.mesh.position.x + (Math.random()-0.5)*2.0;
             const tz = e.mesh.position.z + (Math.random()-0.5)*2.0;
             const reg = regionAt(tx,tz);
@@ -4412,7 +4501,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         t.fireCd -= dt;
         const reg = regionAt(t.mesh.position.x, t.mesh.position.z);
         t.mesh.position.y = heightAt(t.mesh.position.x, t.mesh.position.z, reg.id) + 0.55;
-        const target = enemies.filter(e=>e.hp>0).sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z))[0];
+        const pool = enemies.filter(e=>e.hp>0).concat(allAliveBosses());
+        const target = pool.sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z))[0];
         if(target){
           t.mesh.lookAt(target.mesh.position.x, t.mesh.position.y+0.12, target.mesh.position.z);
           if(t.fireCd<=0){
@@ -5329,6 +5419,13 @@ e.mesh.userData.anim?.(e, dt, now);
         if(p.hitIds && p.hitIds.has(e.id)) continue;
         if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
       }
+      if(!hit){
+        for(const b of allAliveBosses()){
+          const bx=b.mesh.position.x, bz=b.mesh.position.z, by=bossAimY(b);
+          const d2 = (bx-p.x)*(bx-p.x)+(bz-p.z)*(bz-p.z)+(by-p.y)*(by-p.y);
+          if(d2 < (p.rad+1.8)*(p.rad+1.8)){ hit = b; break; }
+        }
+      }
       if(hit){
         explodeAt(p.x, p.y, p.z, p.aoe, p.hitDmg, "player");
         if((p.pierceLeft||0) > 0){
@@ -5389,12 +5486,8 @@ e.mesh.userData.anim?.(e, dt, now);
         if(d2 < (p.rad+3.0)*(p.rad+3.0)) hit = titanBoss;
       }
       if(hit){
-        if(hit===alienBoss){
-          damageAlienBoss(p.dmg);
-        }else if(hit===regionBoss){
-          damageRegionBoss(p.dmg);
-        }else if(hit===titanBoss){
-          damageTitanBoss(p.dmg);
+        if(hit===alienBoss || hit===regionBoss || hit===titanBoss){
+          damageBossEntity(hit, p.dmg);
         }else{
           if(p.hitIds) p.hitIds.add(hit.id);
           dealDamageEnemy(hit, p.dmg);
@@ -5504,7 +5597,8 @@ e.mesh.userData.anim?.(e, dt, now);
         updateBeamVisual(fromX, fromY, fromZ, toX, toY, toZ, w.color);
 
         const dps = (w.dps||14) * me.damageMul;
-        dealDamageEnemy(t, dps*dt);
+        if(t===alienBoss || t===regionBoss || t===titanBoss) damageBossEntity(t, dps*dt);
+        else dealDamageEnemy(t, dps*dt);
 
       }else{
         beamGroup.visible = false;
@@ -5519,9 +5613,11 @@ e.mesh.userData.anim?.(e, dt, now);
             if((w.volleyTargets||1)>1){
               const near = enemies
                 .filter(e=>e.hp>0 && e!==t)
-                .sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z))
-                .slice(0, (w.volleyTargets||1)-1);
-              targets.push(...near);
+                .sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z));
+              const bossExtras = allAliveBosses().filter(b=>b!==t);
+              bossExtras.sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.mesh.position.x,t.mesh.position.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.mesh.position.x,t.mesh.position.z));
+              targets.push(...near.slice(0, (w.volleyTargets||1)-1));
+              for(const b of bossExtras){ if(targets.length>=(w.volleyTargets||1)) break; targets.push(b); }
             }
             for(const tar of targets){
               spawnBolt(me.x, me.y, me.z, tar.mesh.position.x, tar.mesh.position.y+0.65, tar.mesh.position.z, {
@@ -5573,6 +5669,19 @@ e.mesh.userData.anim?.(e, dt, now);
 
           wv.hit.add(e.id);
           dealDamageEnemy(e, wv.dmg);
+        }
+
+        for(const b of allAliveBosses()){
+          const dx=b.mesh.position.x-me.x, dz=b.mesh.position.z-me.z;
+          const d=Math.hypot(dx,dz);
+          if(d > r || d < r-1.2) continue;
+          const v=_v3.set(dx,0,dz).normalize();
+          const dot=fwd.x*v.x+fwd.z*v.z;
+          if(dot < 0.25) continue;
+          const key = b.type+"-"+(b.regionId||"core");
+          if(wv.hit.has(key)) continue;
+          wv.hit.add(key);
+          damageBossEntity(b, wv.dmg);
         }
 
         if(wv.life >= wv.maxLife){
@@ -5854,6 +5963,10 @@ e.mesh.userData.anim?.(e, dt, now);
       b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { phase:b.quakeTele>0 ? "quake" : (b.starPlan ? "starfall" : "core"), specialPulse:b.mesh.userData.specialPulse });
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
 
+      if((me.x-b.mesh.position.x)**2 + (me.z-b.mesh.position.z)**2 < 4.4*4.4){
+        takeDamage((12 + me.level*0.1)*dt, "Titan crush");
+      }
+
       if(b.coreCd<=0){
         b.coreCd = 0.9 + Math.random()*0.3;
         const shots = ((Math.random()*4|0)===0) ? 2 : 1;
@@ -5897,6 +6010,9 @@ e.mesh.userData.anim?.(e, dt, now);
         }
       }
 
+      if((me.x-b.mesh.position.x)**2 + (me.z-b.mesh.position.z)**2 < 2.6*2.6){
+        takeDamage((9 + me.level*0.12)*dt, `${b.name} contact`);
+      }
       for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t+=dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.6*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
       for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; const rr=0.6 + t*r.rad; r.mesh.scale.setScalar(rr); r.sparks=(r.sparks||0)-dt; if(r.sparks<=0){ r.sparks=0.09; const a=Math.random()*Math.PI*2; const sx=b.mesh.position.x+Math.cos(a)*rr, sz=b.mesh.position.z+Math.sin(a)*rr; spawnBossFxSparkBurst(sx, heightAt(sx,sz,regionAt(sx,sz).id)+0.2, sz, 0xe9d5ff, 2, 2.4, 0.35);} if(Math.abs(Math.hypot(me.x-b.mesh.position.x, me.z-b.mesh.position.z)-rr)<0.85){ takeDamage(r.dmg*dt*2.4,"Stomp Quake"); } if(r.t>=r.max){ if(r.double){ r.double=false; r.t=0; r.max=0.55; r.rad=18; continue; } world.remove(r.mesh); b.burst.splice(i,1);} }
     }
@@ -5928,6 +6044,15 @@ function tickHUD(dt){
   const band = dangerBandAt(me.x, me.z);
   regionText.textContent = `${reg.name} [${band.label}]`;
   showRegionBanner(reg, band);
+
+  const boss = currentBossForHud();
+  if(boss){
+    bossHealthWrap.style.display = "block";
+    bossHealthName.textContent = `👑 ${boss.name || (boss.type==="alienBoss" ? "Neon Mothership" : (boss.type==="titan" ? "Infinity Titan" : "Boss"))}`;
+    bossHealthFill.style.width = `${(clamp(boss.hp/Math.max(1,boss.maxHp),0,1)*100).toFixed(1)}%`;
+  }else{
+    bossHealthWrap.style.display = "none";
+  }
 
   // only change fog/clear color when region actually changes
   if(reg.id !== _lastRegId){
