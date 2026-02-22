@@ -1097,6 +1097,24 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           if(d2 < bestD2){
             bestD2 = d2;
             bestIdx = Math.floor(regionHash(cx,cz,71) * REGIONS.length) % REGIONS.length;
+            if(REGIONS[bestIdx].id === "city"){
+              const cityNeighborGap = 2;
+              let cityAllowed = true;
+              for(let ndz=-cityNeighborGap; ndz<=cityNeighborGap && cityAllowed; ndz++){
+                for(let ndx=-cityNeighborGap; ndx<=cityNeighborGap; ndx++){
+                  if(ndx===0 && ndz===0) continue;
+                  const nIdx = Math.floor(regionHash(cx+ndx, cz+ndz, 71) * REGIONS.length) % REGIONS.length;
+                  if(REGIONS[nIdx].id === "city"){
+                    cityAllowed = false;
+                    break;
+                  }
+                }
+              }
+              if(!cityAllowed){
+                const fallback = Math.floor(regionHash(cx,cz,173) * (REGIONS.length-1)) % (REGIONS.length-1);
+                bestIdx = fallback;
+              }
+            }
           }
         }
       }
@@ -6216,7 +6234,8 @@ e.mesh.userData.anim?.(e, dt, now);
         if(dist2(nx,nz,s.homeX,s.homeZ) > 12*12){ nx = s.homeX; nz = s.homeZ; }
         s.x = nx; s.z = nz;
         s.mesh.position.set(s.x, heightAt(s.x,s.z,"city"), s.z);
-        s.mesh.lookAt(tx, s.mesh.position.y+1.0, tz);
+        const yaw = Math.atan2(tx - s.x, tz - s.z);
+        s.mesh.rotation.set(0, yaw, 0);
 
         if(target && s.cd<=0){
           s.cd = 0.46 + Math.random()*0.22;
