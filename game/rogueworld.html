@@ -2351,12 +2351,50 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
     }
 
+
+    function findBossSpawnAroundPlayer(regionId, minDist=24, maxDist=40, lift=1.45){
+      const tries = 24;
+      let pick = null;
+      for(let i=0;i<tries;i++){
+        const a = Math.random()*Math.PI*2;
+        const d = minDist + Math.random()*(maxDist-minDist);
+        const x = me.x + Math.cos(a)*d;
+        const z = me.z + Math.sin(a)*d;
+        const y = heightAt(x,z,regionId) + lift;
+        pick = { x, y, z };
+        if(Math.hypot(x-me.x, z-me.z) >= minDist*0.9) return pick;
+      }
+      return pick || { x:me.x+minDist, y:heightAt(me.x+minDist, me.z, regionId)+lift, z:me.z };
+    }
+
+    function bossPreferredDistance(boss){
+      if(!boss) return 9.5;
+      if(boss.type === "titan") return 13.0;
+      if(boss.regionId === "desert") return 8.2;
+      if(boss.regionId === "forest") return 9.6;
+      if(boss.regionId === "snow") return 11.2;
+      if(boss.regionId === "hell") return 7.6;
+      return 9.5;
+    }
+
+    function moveBossAtPreferredRange(b, dx, dz, dist, dt, speedMul=1){
+      const desired = bossPreferredDistance(b);
+      const slack = 1.1;
+      const dirx = dx/dist, dirz = dz/dist;
+      let move = 0;
+      if(dist > desired + slack) move = 1;
+      else if(dist < desired - slack) move = -0.72;
+      if(move !== 0){
+        b.mesh.position.x += dirx * b.speed * speedMul * move * dt;
+        b.mesh.position.z += dirz * b.speed * speedMul * move * dt;
+      }
+      return { desired, dirx, dirz };
+    }
     function spawnAlienBoss(){
       if(alienBoss) return;
-      const ang = Math.random()*Math.PI*2;
-      const d = 34 + Math.random()*18;
-      const x = me.x + Math.cos(ang)*d;
-      const z = me.z + Math.sin(ang)*d;
+      const spawn = findBossSpawnAroundPlayer("alien", 34, 54, 17.5);
+      const x = spawn.x;
+      const z = spawn.z;
       const gy = heightAt(x,z,"alien");
 
       const g = buildAlienBossMesh();
@@ -2463,11 +2501,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function spawnRegionBoss(regionId){
       if(regionBoss || bossCycle[regionId]) return;
       const st = regionBossStyle(regionId);
-      const ang = Math.random()*Math.PI*2;
-      const d = 22 + Math.random()*10;
-      const x = me.x + Math.cos(ang)*d;
-      const z = me.z + Math.sin(ang)*d;
-      const y = heightAt(x,z,regionId) + 1.45;
+      const spawn = findBossSpawnAroundPlayer(regionId, 26, 42, 1.45);
+      const x = spawn.x;
+      const z = spawn.z;
+      const y = spawn.y;
       const g = buildRegionBossMesh(regionId);
       g.position.set(x,y,z);
       world.add(g);
@@ -2478,11 +2515,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function spawnTitanBoss(){
       if(titanBoss || sigilsCollected<5) return;
-      const x = 0, z = 0, y = heightAt(0,0,regionAt(0,0).id) + 4.6;
+      const spawn = findBossSpawnAroundPlayer(regionAt(me.x, me.z).id, 28, 44, 4.6);
+      const x = spawn.x, z = spawn.z, y = spawn.y;
       const g = buildTitanBossMesh();
       g.position.set(x,y,z); world.add(g);
-      titanBoss = { type:"titan", mesh:g, hp:Math.round(3600 + me.level*80), maxHp:Math.round(3600 + me.level*80), coreCd:0.5, quakeCd:6.5, starCd:9.5, quakeTele:0, starPlan:null, lastSpecial:0 };
-      showToast("🗿 Infinity Titan has spawned at the world center!");
+      titanBoss = { type:"titan", speed:2.1, mesh:g, hp:Math.round(3600 + me.level*80), maxHp:Math.round(3600 + me.level*80), coreCd:0.5, quakeCd:6.5, starCd:9.5, quakeTele:0, starPlan:null, lastSpecial:0, telegraphs:[], burst:[] };
+      showToast("🗿 Infinity Titan has spawned nearby!");
     }
 
     function clearBossFx(b){
@@ -5749,9 +5787,7 @@ e.mesh.userData.anim?.(e, dt, now);
       const bx=b.mesh.position.x, bz=b.mesh.position.z;
       const dx=me.x-bx, dz=me.z-bz;
       const dd=Math.hypot(dx,dz)||1;
-      const dirx=dx/dd, dirz=dz/dd;
-      b.mesh.position.x += dirx * b.speed * dt;
-      b.mesh.position.z += dirz * b.speed * dt;
+      const { dirx, dirz } = moveBossAtPreferredRange(b, dx, dz, dd, dt);
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,b.regionId)+1.45;
       b.mesh.rotation.y = Math.atan2(dirx, dirz);
       b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { regionId:b.regionId, isAttacking:b.cdA<=0.15 || b.cdB<=0.15 || b.cdC<=0.15, attackIntensity:Math.max(0, Math.min(1, 1 - Math.min(b.cdA, b.cdB, b.cdC))) });
@@ -5811,11 +5847,11 @@ e.mesh.userData.anim?.(e, dt, now);
       b.coreCd -= dt; b.quakeCd -= dt; b.starCd -= dt; b.lastSpecial -= dt;
       const bx=b.mesh.position.x, bz=b.mesh.position.z;
       const dx=me.x-bx, dz=me.z-bz; const d=Math.hypot(dx,dz)||1;
-      b.mesh.rotation.y = Math.atan2(dx,dz);
+      const { dirx, dirz } = moveBossAtPreferredRange(b, dx, dz, d, dt, 0.95);
+      b.mesh.rotation.y = Math.atan2(dirx,dirz);
       b.mesh.userData.hpNorm = b.maxHp>0 ? b.hp/b.maxHp : 1;
       b.mesh.userData.specialPulse = Math.max(0, (b.lastSpecial||0)/2.0);
       b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { phase:b.quakeTele>0 ? "quake" : (b.starPlan ? "starfall" : "core"), specialPulse:b.mesh.userData.specialPulse });
-      if(d>9){ b.mesh.position.x += dx/d*2.1*dt; b.mesh.position.z += dz/d*2.1*dt; }
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
 
       if(b.coreCd<=0){
