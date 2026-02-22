@@ -1832,30 +1832,76 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const matFrame = new THREE.MeshStandardMaterial({ color:0x22d3ee, emissive:0x06b6d4, emissiveIntensity:0.8, metalness:0.25, roughness:0.28 });
       const matCore = new THREE.MeshStandardMaterial({ color:0xff7ce6, emissive:0xff7ce6, emissiveIntensity:1.2, roughness:0.2, transparent:true, opacity:0.92 });
 
-      const hull = new THREE.Mesh(G.sphHi, matHull);
-      hull.scale.set(8.1, 2.35, 5.2);
+      const hull = new THREE.Group();
+      const hullBase = new THREE.Mesh(G.sphHi, matHull);
+      hullBase.scale.set(8.1, 1.95, 5.2);
+      hull.add(hullBase);
+      const hullTop = new THREE.Mesh(G.sphLo, matHull.clone());
+      hullTop.material.emissiveIntensity = 0.52;
+      hullTop.scale.set(5.55, 1.08, 3.65);
+      hullTop.position.y = 0.7;
+      hull.add(hullTop);
+
+      const panelSeams = [];
+      for(let i=0;i<4;i++){
+        const seam = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.28 }));
+        seam.rotation.x = Math.PI/2;
+        seam.scale.set(2.75 + i*1.0, 2.75 + i*1.0, 1);
+        seam.position.y = 0.12 - i*0.05;
+        panelSeams.push(seam);
+        hull.add(seam);
+      }
 
       const ring = new THREE.Mesh(G.torusMid, matFrame);
       ring.scale.set(6.45, 6.45, 6.45);
       ring.rotation.x = Math.PI/2;
 
+      const runePips = [];
+      for(let i=0;i<10;i++){
+        const a = i*Math.PI*2/10;
+        const pip = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color:0xe879f9, transparent:true, opacity:0.72 }));
+        pip.scale.set(0.2,0.06,0.1);
+        pip.position.set(Math.cos(a)*6.5, 0, Math.sin(a)*6.5);
+        pip.rotation.y = -a;
+        runePips.push(pip);
+        g.add(pip);
+      }
+
+      const emitters = [];
+      for(let i=0;i<6;i++){
+        const a = i*Math.PI*2/6;
+        const em = new THREE.Mesh(G.cyl, matFrame.clone());
+        em.scale.set(0.22, 0.52, 0.22);
+        em.position.set(Math.cos(a)*6.4, -0.25, Math.sin(a)*6.4);
+        em.rotation.z = Math.PI*0.5;
+        em.rotation.y = a;
+        const tip = new THREE.Mesh(G.cone, matCore.clone());
+        tip.scale.set(0.2,0.45,0.2);
+        tip.position.set(0.56, 0, 0);
+        tip.rotation.z = -Math.PI*0.5;
+        em.add(tip);
+        emitters.push(em);
+        g.add(em);
+      }
+
       const core = new THREE.Mesh(G.sphLo, matCore);
       core.scale.set(1.6,1.2,1.6);
       core.position.y = -1.55;
 
-      const dome = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x60a5fa, emissiveIntensity:0.35, metalness:0.35, roughness:0.38, transparent:true, opacity:0.55 }));
-      dome.scale.set(3.4,0.8,2.4);
-      dome.position.y = 0.72;
+      const shield = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0xc4b5fd, emissive:0x60a5fa, emissiveIntensity:0.55, metalness:0.12, roughness:0.3, transparent:true, opacity:0.32 }));
+      shield.scale.set(2.8,1.55,2.8);
+      shield.position.y = -1.58;
 
       const thrusters = [];
-      for(let i=0;i<4;i++){
-        const a = i*Math.PI*0.5;
-        const pod = new THREE.Mesh(G.cyl, matFrame);
-        pod.scale.set(0.56, 0.42, 0.56);
-        pod.position.set(Math.cos(a)*5.1, -1.25, Math.sin(a)*3.25);
-        pod.rotation.z = Math.PI*0.5;
+      for(let i=0;i<5;i++){
+        const a = i*Math.PI*2/5;
+        const pod = new THREE.Mesh(G.cone, matFrame);
+        pod.scale.set(0.35, 0.85, 0.35);
+        pod.position.set(Math.cos(a)*4.6, -1.3, Math.sin(a)*2.95);
+        pod.rotation.z = Math.PI;
+        pod.rotation.y = -a;
         const glow = glowSprite(0x67e8f9, 1.1, 0.7, FX_TEX.spark);
-        glow.position.set(0, -0.32, 0);
+        glow.position.set(0, -0.5, 0);
         pod.add(glow);
         thrusters.push(pod);
         g.add(pod);
@@ -1879,17 +1925,23 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const glow = glowSprite(0xa78bfa, 3.8, 0.32);
       glow.position.y = -1.2;
 
-      g.add(hull, ring, core, dome, glow);
-      g.userData.parts = { hull, ring, core, dome, halo, thrusters, fins, eyes, glow };
+      g.add(hull, ring, core, shield, glow);
+      g.userData.parts = { hull, ring, core, shield, halo, thrusters, fins, eyes, glow, emitters, runePips, panelSeams };
       g.userData.animBoss = (dt, now)=>{
         ring.rotation.z += dt*0.55;
         halo.rotation.y += dt*0.4;
         core.scale.setScalar(1.1 + Math.sin(now*2.1)*0.07);
-        dome.position.y = 0.72 + Math.sin(now*1.6)*0.08;
+        shield.material.opacity = 0.26 + Math.sin(now*2.3)*0.08;
+        shield.scale.set(2.8 + Math.sin(now*1.7)*0.08, 1.55 + Math.sin(now*2.1)*0.06, 2.8 + Math.sin(now*1.7)*0.08);
+        const combatBoost = g.userData.boostThrusters ? 1 : 0;
         for(let i=0;i<thrusters.length;i++){
           const p = thrusters[i];
           p.position.y = -1.25 + Math.sin(now*3.8 + i)*0.1;
-          p.children[0].material.opacity = 0.55 + 0.25*Math.sin(now*6.2 + i);
+          p.children[0].material.opacity = 0.35 + combatBoost*0.32 + 0.2*Math.sin(now*(combatBoost?14:6.2) + i*1.2);
+        }
+        for(let i=0;i<emitters.length;i++){
+          const e = emitters[i];
+          e.children[0].material.emissiveIntensity = 0.65 + 0.35*Math.sin(now*3 + i);
         }
       };
       return g;
@@ -1905,55 +1957,145 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }[regionId] || { body:0x94a3b8, em:0x334155, accent:0xe2e8f0, eye:0xffffff };
 
       const g = new THREE.Group();
-      const body = new THREE.Mesh(G.sphHi, new THREE.MeshStandardMaterial({ color:palette.body, emissive:palette.em, emissiveIntensity:0.85, roughness:0.45, metalness:0.12 }));
-      body.scale.set(2.2, 1.45, 2.05);
-      const crown = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:palette.accent, transparent:true, opacity:0.58 }));
-      crown.scale.set(1.55,1.55,1.55);
-      crown.rotation.x = Math.PI/2;
-      crown.position.y = 0.28;
+      const bodyMat = new THREE.MeshStandardMaterial({ color:palette.body, emissive:palette.em, emissiveIntensity:0.85, roughness:0.52, metalness:0.1 });
+      const accentMat = new THREE.MeshStandardMaterial({ color:palette.accent, emissive:palette.accent, emissiveIntensity:0.55, roughness:0.35, metalness:0.12, transparent:true, opacity:0.88 });
+      let parts = { eyes:[] };
 
-      const core = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:palette.accent, emissive:palette.accent, emissiveIntensity:0.7, roughness:0.28, metalness:0.15 }));
-      core.scale.set(0.72,0.9,0.72);
-      core.position.y = 0.25;
+      if(regionId === "desert"){
+        const head = new THREE.Mesh(G.cone, bodyMat);
+        head.scale.set(1.65, 2.9, 1.55);
+        head.rotation.x = Math.PI;
+        head.position.y = 0.95;
+        g.add(head);
 
-      const arms = [];
-      for(let i=0;i<4;i++){
-        const a = i*Math.PI*0.5;
-        const arm = new THREE.Mesh(G.box, new THREE.MeshStandardMaterial({ color:palette.body, emissive:palette.em, emissiveIntensity:0.5, roughness:0.5 }));
-        arm.scale.set(0.36,0.85,0.36);
-        arm.position.set(Math.cos(a)*1.72, -0.2, Math.sin(a)*1.68);
-        arm.rotation.y = a;
-        arms.push(arm);
-        g.add(arm);
+        const jaws = [];
+        for(let i=0;i<3;i++){
+          const jaw = new THREE.Mesh(G.box, accentMat);
+          jaw.scale.set(1.45 - i*0.22, 0.24, 0.54);
+          jaw.position.set(0, 0.55 - i*0.22, 1.0 + i*0.22);
+          jaws.push(jaw);
+          g.add(jaw);
+        }
+        const dorsal = [];
+        for(let i=0;i<8;i++){
+          const sp = new THREE.Mesh(G.cone, bodyMat);
+          sp.scale.set(0.16, 0.52 + (i%3)*0.14, 0.16);
+          sp.position.set((i-3.5)*0.45, 1.4 + Math.sin(i)*0.1, -0.2 - i*0.33);
+          sp.rotation.z = Math.PI;
+          dorsal.push(sp);
+          g.add(sp);
+        }
+        const halo = addAdditiveRing(g, 2.45, 0.18, 0xfbbf24, 0.38);
+        halo.rotation.x = Math.PI/2;
+        const eyes = addEyePair(g, { y:0.72, z:1.38, sep:0.58, size:0.24, color:palette.eye, opacity:0.95 });
+        parts = { head, jaws, dorsal, halo, eyes };
+      }else if(regionId === "forest"){
+        const trunk = new THREE.Mesh(G.cyl, bodyMat);
+        trunk.scale.set(1.2, 2.0, 1.1);
+        trunk.position.y = 0.95;
+        const shoulders = [];
+        for(let i=0;i<2;i++){
+          const sh = new THREE.Mesh(G.box, bodyMat);
+          sh.scale.set(0.75,0.5,0.65);
+          sh.position.set(i===0?-1.05:1.05, 1.65, 0.1);
+          shoulders.push(sh);
+          g.add(sh);
+        }
+        const cap = new THREE.Mesh(G.sphLo, accentMat);
+        cap.scale.set(2.1,0.82,2.1);
+        cap.position.y = 2.55;
+        const capStem = new THREE.Mesh(G.cyl, accentMat);
+        capStem.scale.set(0.45,0.58,0.45);
+        capStem.position.y = 2.08;
+        const sacs = [];
+        for(let i=0;i<4;i++){
+          const s = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0x86efac, emissive:0x4ade80, emissiveIntensity:0.9, transparent:true, opacity:0.62 }));
+          s.scale.setScalar(0.35 + (i%2)*0.08);
+          s.position.set((i-1.5)*0.45, 1.35 + (i%2)*0.24, -0.95 - (i%3)*0.22);
+          sacs.push(s);
+          g.add(s);
+        }
+        const mask = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.45), new THREE.MeshBasicMaterial({ map:FX_TEX.rune, color:0xbbf7d0, transparent:true, opacity:0.8, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
+        mask.position.set(0,1.3,1.15);
+        g.add(mask);
+        g.add(trunk, cap, capStem);
+        parts = { trunk, shoulders, cap, capStem, sacs, mask };
+      }else if(regionId === "snow"){
+        const core = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0xc7d2fe, emissive:0x60a5fa, emissiveIntensity:0.8, transparent:true, opacity:0.45 }));
+        core.scale.set(1.25,1.65,1.25);
+        core.position.y = 1.2;
+        const cloakPlanes = [];
+        for(let i=0;i<4;i++){
+          const p = new THREE.Mesh(new THREE.PlaneGeometry(2.8,3.6), new THREE.MeshBasicMaterial({ map:FX_TEX.softGlow, color:0xbfdbfe, transparent:true, opacity:0.26, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
+          p.position.y = 1.2;
+          p.rotation.y = i*Math.PI/4;
+          cloakPlanes.push(p);
+          g.add(p);
+        }
+        const aurora = addAdditiveRing(g, 1.75, 0.15, 0x93c5fd, 0.42);
+        aurora.position.y = 3.1;
+        aurora.rotation.x = Math.PI/2;
+        const ribbons = [];
+        for(let i=0;i<3;i++){
+          const rb = new THREE.Mesh(new THREE.PlaneGeometry(0.34,2.7), new THREE.MeshBasicMaterial({ map:FX_TEX.softGlow, color:0x93c5fd, transparent:true, opacity:0.35, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
+          rb.position.set((i-1)*0.55, 0.35, -0.35 - i*0.35);
+          ribbons.push(rb);
+          g.add(rb);
+        }
+        parts = { core, cloakPlanes, aurora, ribbons };
+        g.add(core);
+      }else if(regionId === "hell"){
+        const torso = new THREE.Mesh(G.box, bodyMat);
+        torso.scale.set(1.8,2.2,1.2);
+        torso.position.y = 1.4;
+        const helm = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0x7f1d1d, emissive:0x450a0a, emissiveIntensity:0.6, roughness:0.5 }));
+        helm.scale.set(1.15,0.95,1.02);
+        helm.position.set(0,3.0,0.1);
+        const horns = [];
+        for(let i=0;i<2;i++){
+          const h = new THREE.Mesh(G.cone, accentMat);
+          h.scale.set(0.22,0.9,0.22);
+          h.position.set(i===0?-0.7:0.7, 3.45, -0.05);
+          h.rotation.z = i===0 ? 0.45 : -0.45;
+          horns.push(h);
+          g.add(h);
+        }
+        const furnace = new THREE.Mesh(G.box, new THREE.MeshStandardMaterial({ color:0xfdba74, emissive:0xff3b1a, emissiveIntensity:1.35, roughness:0.2 }));
+        furnace.scale.set(0.8,0.65,0.45);
+        furnace.position.set(0,1.4,1.0);
+        const handle = new THREE.Mesh(G.cyl, bodyMat);
+        handle.scale.set(0.16,1.35,0.16);
+        handle.position.set(1.55,1.5,0.1);
+        handle.rotation.z = 0.65;
+        const maulHead = new THREE.Mesh(G.box, new THREE.MeshStandardMaterial({ color:0xff7849, emissive:0xff3b1a, emissiveIntensity:1.0, roughness:0.25 }));
+        maulHead.scale.set(0.62,0.44,0.92);
+        maulHead.position.set(2.25,2.16,0.22);
+        g.add(torso, helm, furnace, handle, maulHead);
+        const eyes = addEyePair(g, { y:3.0, z:0.95, sep:0.34, size:0.17, color:0xffedd5, opacity:0.92 });
+        parts = { torso, helm, horns, furnace, handle, maulHead, eyes };
+      }else{
+        const fallback = new THREE.Mesh(G.sphHi, bodyMat);
+        fallback.scale.set(2.1,1.6,2.1);
+        g.add(fallback);
+        parts = { fallback };
       }
 
-      const spikes = [];
-      for(let i=0;i<6;i++){
-        const a = (i/6)*Math.PI*2;
-        const sp = new THREE.Mesh(G.cone, new THREE.MeshStandardMaterial({ color:palette.accent, emissive:palette.em, emissiveIntensity:0.35, roughness:0.48 }));
-        sp.scale.set(0.22,0.65,0.22);
-        sp.position.set(Math.cos(a)*1.35, 0.95, Math.sin(a)*1.25);
-        sp.rotation.z = Math.PI;
-        sp.rotation.y = -a;
-        spikes.push(sp);
-        g.add(sp);
-      }
-
-      const eyes = addEyePair(g, { y:0.15, z:1.55, sep:0.4, size:0.24, color:palette.eye, opacity:0.92 });
-      const auraRing = addAdditiveRing(g, 1.58, 0.11, palette.accent, 0.35);
-      auraRing.rotation.x = Math.PI/2;
-      const auraGlow = glowSprite(palette.accent, 2.1, 0.24);
-      auraGlow.position.y = 0.2;
-
-      g.add(body, crown, core, auraGlow);
-      g.userData.parts = { body, crown, core, arms, spikes, eyes, auraRing, auraGlow };
+      g.userData.parts = parts;
       g.userData.animBoss = (dt, now)=>{
-        crown.rotation.z += dt*0.8;
-        auraRing.rotation.y -= dt*0.45;
-        core.rotation.y += dt*1.2;
-        core.position.y = 0.25 + Math.sin(now*2.5)*0.08;
-        for(let i=0;i<arms.length;i++){
-          arms[i].position.y = -0.2 + Math.sin(now*2.8 + i*0.7)*0.06;
+        if(regionId === "desert"){
+          parts.halo.rotation.y += dt*0.6;
+          for(let i=0;i<parts.jaws.length;i++) parts.jaws[i].position.z = 1.0 + i*0.22 + Math.sin(now*2.2 + i)*0.06;
+        }else if(regionId === "forest"){
+          parts.cap.rotation.y += dt*0.25;
+          for(let i=0;i<parts.sacs.length;i++) parts.sacs[i].material.opacity = 0.45 + 0.2*Math.sin(now*2.7 + i);
+          parts.mask.material.opacity = 0.65 + Math.sin(now*2.2)*0.16;
+        }else if(regionId === "snow"){
+          parts.aurora.rotation.y += dt*0.75;
+          parts.aurora.material.opacity = 0.28 + 0.18*Math.sin(now*2.6);
+          for(let i=0;i<parts.ribbons.length;i++) parts.ribbons[i].rotation.z = Math.sin(now*2.4 + i)*0.25;
+        }else if(regionId === "hell"){
+          parts.furnace.material.emissiveIntensity = 1.05 + 0.45*Math.sin(now*3.8);
+          parts.maulHead.material.emissiveIntensity = 0.8 + 0.35*Math.sin(now*4.6);
         }
       };
       return g;
@@ -1977,30 +2119,40 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       ringB.rotation.x = Math.PI*0.25;
       ringB.rotation.z = Math.PI*0.2;
 
-      const jaws = [];
-      for(let i=0;i<2;i++){
-        const jaw = new THREE.Mesh(G.box, matAccent);
-        jaw.scale.set(2.3,0.4,0.95);
-        jaw.position.set(0, i===0 ? 1.25 : -1.25, 1.1);
-        jaws.push(jaw);
-        g.add(jaw);
-      }
-
-      const arms = [];
+      const shoulderPylons = [];
       for(let i=0;i<4;i++){
         const a = i*Math.PI*0.5;
-        const arm = new THREE.Mesh(G.cyl, matAccent);
-        arm.scale.set(0.45,1.25,0.45);
-        arm.position.set(Math.cos(a)*3.05, 0, Math.sin(a)*3.05);
-        arm.rotation.z = Math.PI*0.5;
-        arm.rotation.y = a;
-        const claw = new THREE.Mesh(G.cone, matAccent);
-        claw.scale.set(0.45,0.9,0.45);
-        claw.position.set(0.85,0,0);
-        claw.rotation.z = -Math.PI*0.5;
-        arm.add(claw);
-        arms.push(arm);
-        g.add(arm);
+        const pylon = new THREE.Mesh(G.box, matAccent);
+        pylon.scale.set(0.65,1.4,0.65);
+        pylon.position.set(Math.cos(a)*2.95, 0.8, Math.sin(a)*2.95);
+        const cap = new THREE.Mesh(G.cone, matAccent);
+        cap.scale.set(0.4,0.75,0.4);
+        cap.position.y = 1.05;
+        pylon.add(cap);
+        shoulderPylons.push(pylon);
+        g.add(pylon);
+      }
+
+      const shards = [];
+      for(let i=0;i<10;i++){
+        const a = i*Math.PI*2/10;
+        const sh = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:0xc4b5fd, emissive:0xa78bfa, emissiveIntensity:0.9, roughness:0.25 }));
+        sh.scale.set(0.36,0.56,0.36);
+        sh.position.set(Math.cos(a)*4.2, Math.sin(i*0.9)*1.35, Math.sin(a)*4.2);
+        shards.push({mesh:sh,a,off:Math.random()*Math.PI*2});
+        g.add(sh);
+      }
+
+      const satellites = [];
+      for(let i=0;i<3;i++){
+        const sat = new THREE.Group();
+        const orb = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:0xe9d5ff, emissive:0xe9d5ff, emissiveIntensity:0.95, roughness:0.2 }));
+        orb.scale.set(0.42,0.58,0.42);
+        sat.add(orb);
+        const sigil = new THREE.Mesh(new THREE.PlaneGeometry(0.85,0.85), new THREE.MeshBasicMaterial({ map:FX_TEX.rune, color:0xc4b5fd, transparent:true, opacity:0.65, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false }));
+        sat.add(sigil);
+        satellites.push({root:sat, orb, sigil, a:(i/3)*Math.PI*2, h:0.8+i*0.7});
+        g.add(sat);
       }
 
       const orbitCore = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:0xe9d5ff, emissive:0xe9d5ff, emissiveIntensity:1.05, roughness:0.2 }));
@@ -2010,16 +2162,30 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const aura = glowSprite(0xa78bfa, 4.2, 0.2);
 
       g.add(core, ring, ringB, orbitCore, aura);
-      g.userData.parts = { core, ring, ringB, jaws, arms, orbitCore, eye, aura };
+      g.userData.parts = { core, ring, ringB, shoulderPylons, shards, orbitCore, eye, aura, satellites };
       g.userData.animBoss = (dt, now)=>{
         ring.rotation.z += dt*0.45;
         ringB.rotation.y -= dt*0.36;
+        const hpNorm = Math.max(0, Math.min(1, g.userData.hpNorm ?? 1));
+        ring.material.opacity = 0.4 + (1-hpNorm)*0.3 + Math.sin(now*4.8)*0.1;
         orbitCore.position.y = Math.sin(now*1.8)*0.4;
         orbitCore.rotation.x += dt*0.9;
         orbitCore.rotation.z += dt*1.3;
-        jaws[0].position.y = 1.25 + Math.sin(now*2.4)*0.12;
-        jaws[1].position.y = -1.25 - Math.sin(now*2.4)*0.12;
-        for(let i=0;i<arms.length;i++) arms[i].rotation.x = Math.sin(now*1.7 + i)*0.12;
+        for(let i=0;i<shoulderPylons.length;i++) shoulderPylons[i].rotation.z = Math.sin(now*1.2 + i)*0.06;
+        for(let i=0;i<shards.length;i++){
+          const s = shards[i];
+          const a = s.a + now*0.55 + s.off;
+          s.mesh.position.set(Math.cos(a)*4.2, Math.sin(now*1.8 + s.off)*1.45, Math.sin(a)*4.2);
+          s.mesh.rotation.x += dt*1.4;
+        }
+        const specialPulse = g.userData.specialPulse ?? 0;
+        for(let i=0;i<satellites.length;i++){
+          const s = satellites[i];
+          const a = s.a + now*0.45;
+          s.root.position.set(Math.cos(a)*5.6, s.h + Math.sin(now*1.2+i)*0.25, Math.sin(a)*5.6);
+          s.sigil.material.opacity = 0.48 + specialPulse*0.35 + Math.sin(now*3+i)*0.12;
+          s.orb.material.emissiveIntensity = 0.85 + specialPulse*0.75 + Math.sin(now*2.4+i)*0.2;
+        }
       };
       return g;
     }
@@ -5252,6 +5418,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.stateT += dt;
       b.spin += dt;
       b.mesh.rotation.y += dt*0.32;
+      b.mesh.userData.boostThrusters = b.state === "laser";
       b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
 
       const bx = b.mesh.position.x;
@@ -5398,6 +5565,8 @@ e.mesh.userData.anim?.(e, dt, now);
       const bx=b.mesh.position.x, bz=b.mesh.position.z;
       const dx=me.x-bx, dz=me.z-bz; const d=Math.hypot(dx,dz)||1;
       b.mesh.rotation.y = Math.atan2(dx,dz);
+      b.mesh.userData.hpNorm = b.maxHp>0 ? b.hp/b.maxHp : 1;
+      b.mesh.userData.specialPulse = Math.max(0, (b.lastSpecial||0)/2.0);
       b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
       if(d>9){ b.mesh.position.x += dx/d*2.1*dt; b.mesh.position.z += dz/d*2.1*dt; }
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
