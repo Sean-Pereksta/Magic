@@ -1010,7 +1010,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     };
 
     // ============================================================
-    // Regions (big pie-slices around the circle)
+    // Regions (large patchwork fields across the world)
     // ============================================================
     const REGIONS = [
       { id:"desert", name:"Desert Expanse",   fog:0xcaa46f, sky:0x0a1018, tex:"desert", ground:0xffffff,
@@ -1025,11 +1025,39 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
     ];
 
+    const REGION_PATCH_SIZE = 130;
+    function regionHash(ix, iz, seed=0){
+      let n = (ix*374761393 + iz*668265263 + seed*1442695041 + (worldSeed|0))|0;
+      n = (n ^ (n >>> 13))|0;
+      n = (n * 1274126177)|0;
+      n = (n ^ (n >>> 16)) >>> 0;
+      return n / 4294967295;
+    }
+
     function regionAt(x,z){
-      const ang = Math.atan2(z, x); // -pi..pi
-      let t = (ang + Math.PI) / (Math.PI*2); // 0..1
-      const idx = Math.floor(t * REGIONS.length) % REGIONS.length;
-      return REGIONS[idx];
+      const gx = Math.floor(x / REGION_PATCH_SIZE);
+      const gz = Math.floor(z / REGION_PATCH_SIZE);
+      let bestIdx = 0;
+      let bestD2 = 1e18;
+
+      for(let dz=-1; dz<=1; dz++){
+        for(let dx=-1; dx<=1; dx++){
+          const cx = gx + dx;
+          const cz = gz + dz;
+          const jx = (regionHash(cx,cz,11)-0.5) * REGION_PATCH_SIZE * 0.95;
+          const jz = (regionHash(cx,cz,29)-0.5) * REGION_PATCH_SIZE * 0.95;
+          const px = (cx + 0.5) * REGION_PATCH_SIZE + jx;
+          const pz = (cz + 0.5) * REGION_PATCH_SIZE + jz;
+          const ddx = x - px;
+          const ddz = z - pz;
+          const d2 = ddx*ddx + ddz*ddz;
+          if(d2 < bestD2){
+            bestD2 = d2;
+            bestIdx = Math.floor(regionHash(cx,cz,71) * REGIONS.length) % REGIONS.length;
+          }
+        }
+      }
+      return REGIONS[bestIdx];
     }
 
     // ============================================================
@@ -1542,6 +1570,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         dmg: 18, range: 26, fireRate: 3.0,
         color: 0xff3b1a, explode:true
       },
+      "Fire Rifle": { kind:"bolt", desc:"Fast fire rounds that ignite enemies for sustained burn.", dmg:7, range:31, fireRate:9.2, color:0xff7a1a, burn:{ duration:2.8, dps:12.0 } },
+      "Flamethrower": { kind:"flame", desc:"Rapid spread flames with low hit damage but intense burning.", dmg:3.2, range:20, fireRate:16.5, color:0xff5e1a, spread:0.34, pellets:5, burn:{ duration:3.8, dps:22.0 } },
       "Viper Needler": { kind:"bolt", desc:"Poisons targets with quick toxic needles.", dmg:8, range:28, fireRate:8.0, color:0x7cff6b, poison:3.0 },
       "Toxic Repeater": { kind:"bolt", desc:"Rapid poison bolts with decent pressure.", dmg:7, range:27, fireRate:9.1, color:0x52ff8f, poison:2.2 },
       "Stun Hammer": { kind:"bolt", desc:"Heavy shock rounds that briefly stun.", dmg:22, range:24, fireRate:2.0, color:0xfde047, stun:0.75 },
@@ -1604,6 +1634,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       { name:"Shock Wave", req:{ hide:8, essence:6 } },
       { name:"Shard Rifle", req:{ crystal:10, essence:6 } },
       { name:"Ember Lance", req:{ ember:10, iron:8 } },
+      { name:"Fire Rifle", req:{ ember:14, iron:10, crystal:6 } },
+      { name:"Flamethrower", req:{ ember:18, essence:12, iron:10 } },
       { name:"Viper Needler", req:{ essence:10, hide:8, ember:4 } },
       { name:"Toxic Repeater", req:{ essence:13, iron:10, hide:8 } },
       { name:"Stun Hammer", req:{ iron:16, crystal:9, ember:8 } },
@@ -1687,6 +1719,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(w.dps!=null) w.dps = Math.round((w.dps * (0.55 + costPower*0.52))*10)/10;
         if(w.aoe!=null) w.aoe = Math.round(w.aoe * (0.9 + effectPower*0.24) * 10) / 10;
         if(w.poison!=null) w.poison = Math.round(w.poison * (0.92 + effectPower*0.28) * 10) / 10;
+        if(w.burn){
+          w.burn = {
+            duration: Math.round((w.burn.duration||2.5) * (0.94 + effectPower*0.12) * 10)/10,
+            dps: Math.round((w.burn.dps||6) * (0.9 + effectPower*0.32) * 10)/10,
+          };
+        }
         if(w.stun!=null) w.stun = Math.round(w.stun * (0.92 + effectPower*0.18) * 100) / 100;
         if(w.knockback!=null) w.knockback = Math.round(w.knockback * (0.9 + effectPower*0.22) * 10) / 10;
         if(w.chainRange!=null) w.chainRange = Math.round(w.chainRange * (0.96 + effectPower*0.12) * 10) / 10;
@@ -2570,7 +2608,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const x = spawn.x, z = spawn.z, y = spawn.y;
       const g = buildTitanBossMesh();
       g.position.set(x,y,z); world.add(g);
-      titanBoss = { type:"titan", speed:2.1, mesh:g, hp:Math.round(3600 + me.level*80), maxHp:Math.round(3600 + me.level*80), coreCd:0.5, quakeCd:6.5, starCd:9.5, quakeTele:0, starPlan:null, lastSpecial:0, telegraphs:[], burst:[] };
+      titanBoss = { type:"titan", speed:2.1, mesh:g, hp:Math.round(4600 + me.level*130), maxHp:Math.round(4600 + me.level*130), coreCd:0.5, quakeCd:6.5, starCd:9.5, cageCd:8.5, quakeTele:0, starPlan:null, laserCage:null, lastSpecial:0, telegraphs:[], burst:[] };
       showToast("🗿 Infinity Titan has spawned nearby!");
     }
 
@@ -2582,6 +2620,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const t of (b.sigils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.anvils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.burst||[])){ if(t.mesh) world.remove(t.mesh); }
+      if(b.laserCage?.rays){ for(const r of b.laserCage.rays){ if(r.line) world.remove(r.line); } }
       for(const l of (b.lasers||[])){ releaseAlienBossLaser(l); }
       for(const t of (b.starTelegraphs||[])){ releaseAlienStarTelegraph(t); }
       for(let i=projectiles.length-1;i>=0;i--){
@@ -3522,7 +3561,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; modelLift=0.62; }
 
       const band = dangerBandAt(x,z);
-      const hp = Math.round(baseHp * band.hpMul * (1 + 0.14*(level-1)));
+      const hp = Math.round(baseHp * band.hpMul * (1 + 0.22*(level-1) + 0.0035*Math.max(0, level-1)*(level-1)));
       const dmg = Math.round(baseDmg * band.dmgMul * (1 + 0.09*(level-1)));
       return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind, modelLift, band:band.id, bandMul:band };
     }
@@ -3561,6 +3600,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         stunT: 0,
         poisonT: 0,
         poisonDps: 0,
+        burnT: 0,
+        burnDps: 0,
+        burnFx: null,
         kbX: 0,
         kbZ: 0,
         burstLeft: 0,
@@ -3686,13 +3728,13 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       return b.mesh.position.y + 0.95;
     }
 
-    function spawnBolt(fromX, fromY, fromZ, toX, toY, toZ, cfg, isSplinter=false){
+    function spawnBolt(fromX, fromY, fromZ, toX, toY, toZ, cfg, isSplinter=false, isFlame=false){
       const dir = _v2.set(toX-fromX, toY-fromY, toZ-fromZ);
       const len = dir.length();
       if(len<=0.0001) return;
       dir.multiplyScalar(1/len);
 
-      const speed = isSplinter ? 22 : 26;
+      const speed = isFlame ? 20 : (isSplinter ? 22 : 26);
       const vx = dir.x*speed, vy = dir.y*speed, vz = dir.z*speed;
 
       const mesh = new THREE.Mesh(GEO.bolt, new THREE.MeshStandardMaterial({
@@ -3709,8 +3751,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         mesh,
         x:fromX, y:fromY, z:fromZ,
         vx, vy, vz,
-        life: 1.6,
-        rad: 0.45,
+        life: isFlame ? 0.85 : 1.6,
+        rad: isFlame ? 0.30 : 0.45,
         dmg: cfg.dmg * me.damageMul * (isSplinter?0.65:1.0),
         from:"player",
         kind:"bolt",
@@ -3720,6 +3762,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         aoe: cfg.aoe ?? (cfg.explode ? 2.4 : 0.0),
         splinterCount: cfg.splinterCount ?? ((typeof cfg.splinter==="number") ? cfg.splinter : (cfg.splinter ? 3 : 0)),
         poison: cfg.poison || 0,
+        burn: cfg.burn || null,
         stun: cfg.stun || 0,
         knockback: cfg.knockback || 0,
         chainBounces: cfg.chainBounces || 0,
@@ -4349,6 +4392,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(p.poison>0){
         e.poisonT = Math.max(e.poisonT||0, 2.8);
         e.poisonDps = Math.max(e.poisonDps||0, p.poison * me.damageMul);
+      }
+      if(p.burn){
+        e.burnT = Math.max(e.burnT||0, p.burn.duration||2.5);
+        e.burnDps = Math.max(e.burnDps||0, (p.burn.dps||6) * me.damageMul);
       }
       if(p.stun>0){
         e.stunT = Math.max(e.stunT||0, p.stun);
@@ -5024,6 +5071,36 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
               o.material.emissiveIntensity = Math.max(o.material.emissiveIntensity||0.4, 0.85);
             }
           });
+        }
+        if(e.burnT>0){
+          e.burnT -= dt;
+          dealDamageEnemy(e, dt*(e.burnDps||0));
+          if(!e.burnFx){
+            const fx = new THREE.Group();
+            for(let fi=0;fi<4;fi++){
+              const f = glowSprite(0xff7a1a, 0.34, 0.38, FX_TEX.softGlow);
+              f.position.set((Math.random()-0.5)*0.35, 0.7+Math.random()*0.5, (Math.random()-0.5)*0.35);
+              fx.add(f);
+            }
+            e.mesh.add(fx);
+            e.burnFx = fx;
+          }
+          let fi=0;
+          for(const f of e.burnFx.children){
+            const ph = now*0.007 + fi*0.8;
+            f.position.y = 0.6 + (fi%2)*0.2 + Math.sin(ph*2.4)*0.16;
+            f.material.opacity = 0.24 + 0.3*Math.abs(Math.sin(ph*2.8));
+            fi++;
+          }
+          e.mesh.traverse((o)=>{
+            if(o.material && o.material.emissive){
+              o.material.emissive.setHex(0xff5e1a);
+              o.material.emissiveIntensity = Math.max(o.material.emissiveIntensity||0.4, 0.95);
+            }
+          });
+        }else if(e.burnFx){
+          e.mesh.remove(e.burnFx);
+          e.burnFx = null;
         }
         if(e.data.irradiateT>0){
           e.data.irradiateT -= dt;
@@ -5740,7 +5817,7 @@ e.mesh.userData.anim?.(e, dt, now);
         if(me.fireCd <= 0){
           me.fireCd = fireEvery;
 
-          if(w.kind==="bolt"){
+          if(w.kind==="bolt" || w.kind==="flame"){
             const targets = [t];
             if((w.volleyTargets||1)>1){
               const near = enemies
@@ -5751,21 +5828,28 @@ e.mesh.userData.anim?.(e, dt, now);
               targets.push(...near.slice(0, (w.volleyTargets||1)-1));
               for(const b of bossExtras){ if(targets.length>=(w.volleyTargets||1)) break; targets.push(b); }
             }
+            const isFlame = w.kind==="flame";
             for(const tar of targets){
-              spawnBolt(me.x, me.y, me.z, tar.mesh.position.x, tar.mesh.position.y+0.65, tar.mesh.position.z, {
+              const shots = isFlame ? (w.pellets||5) : 1;
+              for(let si=0; si<shots; si++){
+                const tx = tar.mesh.position.x + (isFlame ? (Math.random()-0.5)*(w.spread||0.3)*10 : 0);
+                const tz = tar.mesh.position.z + (isFlame ? (Math.random()-0.5)*(w.spread||0.3)*10 : 0);
+                spawnBolt(me.x, me.y, me.z, tx, tar.mesh.position.y+0.65, tz, {
                 dmg: (w.dmg||10),
                 color: w.color,
                 splinterCount: (typeof w.splinter==="number") ? w.splinter : (w.splinter ? 3 : 0),
                 explode: !!w.explode,
                 aoe: w.aoe,
                 poison: w.poison||0,
+                burn: w.burn||null,
                 stun: w.stun||0,
                 knockback: w.knockback||0,
                 chainBounces: w.chainBounces||0,
                 chainRange: w.chainRange||7.0,
                 pierce: w.pierce||0,
                 irradiate: w.irradiate||null
-              });
+              }, false, isFlame);
+              }
             }
           }else if(w.kind==="wave"){
             spawnWave({ dmg:w.dmg||14, range:(w.range||16), color:w.color });
@@ -6087,7 +6171,7 @@ e.mesh.userData.anim?.(e, dt, now);
     function tickTitanBoss(dt){
       if(!titanBoss || paused || !alive) return;
       const b=titanBoss;
-      b.coreCd -= dt; b.quakeCd -= dt; b.starCd -= dt; b.lastSpecial -= dt;
+      b.coreCd -= dt; b.quakeCd -= dt; b.starCd -= dt; b.cageCd -= dt; b.lastSpecial -= dt;
       const bx=b.mesh.position.x, bz=b.mesh.position.z;
       const dx=me.x-bx, dz=me.z-bz; const d=Math.hypot(dx,dz)||1;
       const { dirx, dirz } = moveBossAtPreferredRange(b, dx, dz, d, dt, 0.95);
@@ -6117,12 +6201,59 @@ e.mesh.userData.anim?.(e, dt, now);
         const qy=heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1; const ring=new THREE.Group(); const rune = new THREE.Mesh(bossGeoCache().titanQuakeRuneRing, new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xc4b5fd,transparent:true,opacity:0.65,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); rune.rotation.x=-Math.PI/2; const crack = new THREE.Mesh(bossGeoCache().titanQuakeCrackPlane, new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.48,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); crack.rotation.x=-Math.PI/2; crack.rotation.z=Math.random()*Math.PI; ring.add(rune,crack); ring.position.set(b.mesh.position.x,qy,b.mesh.position.z); world.add(ring);
         b.quakeTele = 0.85;
         b.burst.push({mesh:ring,t:0,max:0.85,rad:15,dmg:22,thin:true,double: b.hp <= b.maxHp*0.5,sparks:0});
+      }else if(canSpecial && b.cageCd<=0){
+        b.cageCd = 10.5 + Math.random()*2.5;
+        b.lastSpecial = 2.0;
+        const rays = [];
+        const baseA = Math.random()*Math.PI*2;
+        for(let i=0;i<6;i++){
+          const a = baseA + i*(Math.PI*2/6);
+          const len = 70;
+          const x1 = b.mesh.position.x, z1 = b.mesh.position.z;
+          const x2 = x1 + Math.cos(a)*len, z2 = z1 + Math.sin(a)*len;
+          const ln = spawnTelegraphLine(x1,z1,x2,z2,0x93c5fd,1.2);
+          rays.push({a,len,line:ln});
+        }
+        b.laserCage = { t:0, wind:1.15, fire:0.3, rays, hit:false };
       }else if(canSpecial && b.starCd<=0){
         b.starCd = 12 + Math.random()*4;
         b.lastSpecial = 2.0;
         const steps = 6 + (Math.random()*3|0);
         const dir = Math.random()<0.5 ? 1 : -1;
         b.starPlan = { t:0, idx:0, steps, dir, baseX:me.x, baseZ:me.z };
+      }
+
+      if(b.laserCage){
+        const lc = b.laserCage;
+        lc.t += dt;
+        const firing = lc.t >= lc.wind;
+        for(const r of lc.rays){
+          if(r.line?.material){
+            r.line.material.color.setHex(firing ? 0x67e8f9 : 0x93c5fd);
+            r.line.material.opacity = firing ? 0.9 : (0.28 + 0.58*Math.min(1, lc.t/lc.wind));
+          }
+        }
+        if(firing && !lc.hit){
+          for(const r of lc.rays){
+            const dx = me.x - b.mesh.position.x;
+            const dz = me.z - b.mesh.position.z;
+            const along = dx*Math.cos(r.a) + dz*Math.sin(r.a);
+            if(along < 0 || along > r.len) continue;
+            const off = Math.abs(dx*(-Math.sin(r.a)) + dz*Math.cos(r.a));
+            if(off <= 0.8){
+              lc.hit = true;
+              me.slowT = Math.max(me.slowT, 1.0);
+              me.slowMul = Math.min(me.slowMul, 0.01);
+              me.turnSlowT = Math.max(me.turnSlowT, 1.0);
+              takeDamage(16, "Titan freeze laser");
+              break;
+            }
+          }
+        }
+        if(lc.t >= lc.wind + lc.fire){
+          for(const r of lc.rays){ if(r.line){ world.remove(r.line); } }
+          b.laserCage = null;
+        }
       }
 
       if(b.starPlan){
