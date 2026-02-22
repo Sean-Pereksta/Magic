@@ -1050,6 +1050,8 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"] },
     ];
 
+    const REGIONS_NON_CITY = REGIONS.filter(r=>r.id!=="city");
+
     const REGION_LANDMARKS = {
       desert:{ name:"Ancient Obelisk", buff:"range", value:1.08 },
       forest:{ name:"Verdant Shrine", buff:"regen", value:1.2 },
@@ -1077,18 +1079,30 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       return n / 4294967295;
     }
 
-    function forcedCityRegionAt(x, z){
+    function forcedCityChunks(){
+      const out = [];
       for(let i=0; i<DANGER_BANDS.length; i++){
         const band = DANGER_BANDS[i];
-        const r = Math.hypot(x, z);
-        if(r < band.min || r >= band.max) continue;
-        const angle = regionHash(i, i, 911) * Math.PI * 2 - Math.PI;
-        const radius = (band.min + band.max) * 0.5;
-        const ax = Math.cos(angle) * radius;
-        const az = Math.sin(angle) * radius;
-        if(dist2(x, z, ax, az) <= (REGION_PATCH_SIZE * 1.3) ** 2){
-          return true;
+        const cityCount = 1 + (regionHash(i, i, 777) < 0.35 ? 1 : 0); // 1..2 cities per ring
+        for(let j=0; j<cityCount; j++){
+          const angle = regionHash(i, j, 911) * Math.PI * 2 - Math.PI;
+          const lane = (j+1)/(cityCount+1);
+          const radius = band.min + (band.max-band.min) * (0.25 + lane*0.5);
+          const rawX = Math.cos(angle) * radius;
+          const rawZ = Math.sin(angle) * radius;
+          const cx = Math.floor(rawX/CHUNK) * CHUNK + CHUNK*0.5;
+          const cz = Math.floor(rawZ/CHUNK) * CHUNK + CHUNK*0.5;
+          out.push({ x:cx, z:cz });
         }
+      }
+      return out;
+    }
+
+    const FORCED_CITY_CHUNKS = forcedCityChunks();
+    function forcedCityRegionAt(x, z){
+      const half = CHUNK * 0.5;
+      for(const c of FORCED_CITY_CHUNKS){
+        if(Math.abs(x-c.x) <= half && Math.abs(z-c.z) <= half) return true;
       }
       return false;
     }
@@ -1114,29 +1128,11 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
           const d2 = ddx*ddx + ddz*ddz;
           if(d2 < bestD2){
             bestD2 = d2;
-            bestIdx = Math.floor(regionHash(cx,cz,71) * REGIONS.length) % REGIONS.length;
-            if(REGIONS[bestIdx].id === "city"){
-              const cityNeighborGap = 2;
-              let cityAllowed = true;
-              for(let ndz=-cityNeighborGap; ndz<=cityNeighborGap && cityAllowed; ndz++){
-                for(let ndx=-cityNeighborGap; ndx<=cityNeighborGap; ndx++){
-                  if(ndx===0 && ndz===0) continue;
-                  const nIdx = Math.floor(regionHash(cx+ndx, cz+ndz, 71) * REGIONS.length) % REGIONS.length;
-                  if(REGIONS[nIdx].id === "city"){
-                    cityAllowed = false;
-                    break;
-                  }
-                }
-              }
-              if(!cityAllowed){
-                const fallback = Math.floor(regionHash(cx,cz,173) * (REGIONS.length-1)) % (REGIONS.length-1);
-                bestIdx = fallback;
-              }
-            }
+            bestIdx = Math.floor(regionHash(cx,cz,71) * REGIONS_NON_CITY.length) % REGIONS_NON_CITY.length;
           }
         }
       }
-      return REGIONS[bestIdx];
+      return REGIONS_NON_CITY[bestIdx];
     }
 
     // ============================================================
