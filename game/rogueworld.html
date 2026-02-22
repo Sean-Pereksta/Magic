@@ -3108,12 +3108,99 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       });
     }
 
-    // beam visual
-    const beamGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-    const beamMat = new THREE.LineBasicMaterial({ color:0xfff3a0, transparent:true, opacity:0.85 });
-    const beamLine = new THREE.Line(beamGeo, beamMat);
-    beamLine.visible = false;
-    world.add(beamLine);
+    // beam visual (core + glow + crackle segments)
+    const beamGroup = new THREE.Group();
+    beamGroup.visible = false;
+    world.add(beamGroup);
+
+    function makeBeamLine(opacity){
+      const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+      const mat = new THREE.LineBasicMaterial({ color:0xfff3a0, transparent:true, opacity });
+      return new THREE.Line(geo, mat);
+    }
+
+    const beamLineCore = makeBeamLine(0.88);
+    const beamLineGlow = makeBeamLine(0.48);
+    beamGroup.add(beamLineGlow);
+    beamGroup.add(beamLineCore);
+
+    const BEAM_CRACKLE_COUNT = 7;
+    const beamCrackleGeo = new THREE.BufferGeometry();
+    beamCrackleGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(BEAM_CRACKLE_COUNT * 2 * 3), 3));
+    const beamCrackleMat = new THREE.LineBasicMaterial({ color:0xfff7c2, transparent:true, opacity:0.56 });
+    const beamCrackle = new THREE.LineSegments(beamCrackleGeo, beamCrackleMat);
+    beamGroup.add(beamCrackle);
+
+    const _beamFrom = new THREE.Vector3();
+    const _beamTo = new THREE.Vector3();
+    const _beamDir = new THREE.Vector3();
+    const _beamSide = new THREE.Vector3();
+    const _beamUp = new THREE.Vector3();
+
+    function updateBeamVisual(fromX, fromY, fromZ, toX, toY, toZ, color){
+      _beamFrom.set(fromX, fromY, fromZ);
+      _beamTo.set(toX, toY, toZ);
+      _beamDir.subVectors(_beamTo, _beamFrom);
+      const beamLen = _beamDir.length();
+      if(beamLen < 0.001){
+        beamGroup.visible = false;
+        return;
+      }
+      _beamDir.multiplyScalar(1/beamLen);
+
+      const pulse = performance.now()*0.026;
+      const energyFlicker = 0.64 + 0.28*Math.sin(pulse);
+
+      beamGroup.visible = true;
+      beamLineCore.material.color.setHex(color);
+      beamLineGlow.material.color.setHex(color);
+      beamCrackle.material.color.setHex(color);
+      beamLineCore.material.opacity = 0.78 + 0.18*Math.sin(pulse*1.12);
+      beamLineGlow.material.opacity = 0.32 + 0.16*Math.sin(pulse*0.93 + 0.7);
+      beamCrackle.material.opacity = 0.26 + 0.24*Math.sin(pulse*1.7 + 0.4);
+
+      const coreArr = beamLineCore.geometry.attributes.position;
+      const glowArr = beamLineGlow.geometry.attributes.position;
+      coreArr.setXYZ(0, fromX, fromY, fromZ);
+      coreArr.setXYZ(1, toX, toY, toZ);
+      glowArr.setXYZ(0, fromX, fromY, fromZ);
+      glowArr.setXYZ(1, toX, toY, toZ);
+      coreArr.needsUpdate = true;
+      glowArr.needsUpdate = true;
+
+      _beamUp.set(0,1,0);
+      _beamSide.crossVectors(_beamDir, _beamUp);
+      if(_beamSide.lengthSq() < 0.0001){
+        _beamUp.set(1,0,0);
+        _beamSide.crossVectors(_beamDir, _beamUp);
+      }
+      _beamSide.normalize();
+      _beamUp.crossVectors(_beamSide, _beamDir).normalize();
+
+      const crackleArr = beamCrackle.geometry.attributes.position;
+      for(let i=0; i<BEAM_CRACKLE_COUNT; i++){
+        const t = (i + 1) / (BEAM_CRACKLE_COUNT + 1);
+        const segLen = 0.06 + Math.random()*0.14;
+        const phase = pulse + i*1.73;
+        const lateral = (Math.sin(phase*2.2)*0.11 + Math.cos(phase*1.4)*0.06) * energyFlicker;
+        const vertical = (Math.cos(phase*1.9)*0.08) * energyFlicker;
+        const baseX = fromX + _beamDir.x * beamLen * t;
+        const baseY = fromY + _beamDir.y * beamLen * t;
+        const baseZ = fromZ + _beamDir.z * beamLen * t;
+
+        const sx = baseX + _beamSide.x*lateral + _beamUp.x*vertical;
+        const sy = baseY + _beamSide.y*lateral + _beamUp.y*vertical;
+        const sz = baseZ + _beamSide.z*lateral + _beamUp.z*vertical;
+
+        const ex = sx + _beamSide.x*segLen*Math.sin(phase*2.8+0.6) + _beamUp.x*segLen*Math.cos(phase*2.1);
+        const ey = sy + _beamSide.y*segLen*Math.sin(phase*2.8+0.6) + _beamUp.y*segLen*Math.cos(phase*2.1);
+        const ez = sz + _beamSide.z*segLen*Math.sin(phase*2.8+0.6) + _beamUp.z*segLen*Math.cos(phase*2.1);
+
+        crackleArr.setXYZ(i*2, sx, sy, sz);
+        crackleArr.setXYZ(i*2+1, ex, ey, ez);
+      }
+      crackleArr.needsUpdate = true;
+    }
 
     // wave visual pool
     const waves = []; // {mesh, life, maxLife, range, dmg}
@@ -4829,7 +4916,7 @@ e.mesh.userData.anim?.(e, dt, now);
     // Player auto fire tick
     // ============================================================
     function tickPlayerFire(dt){
-      if(paused || !alive) { beamLine.visible=false; return; }
+      if(paused || !alive) { beamGroup.visible=false; return; }
 
       const w = WEAPONS[me.weapon] || WEAPONS["Arc Bolt"];
       const range = (w.range ?? 24) * me.rangeMul;
@@ -4838,7 +4925,7 @@ e.mesh.userData.anim?.(e, dt, now);
       const t = pickTarget(range);
 
       if(!t){
-        beamLine.visible = false;
+        beamGroup.visible = false;
         return;
       }
 
@@ -4849,20 +4936,13 @@ e.mesh.userData.anim?.(e, dt, now);
         const toY = t.mesh.position.y + 0.65;
         const toZ = t.mesh.position.z;
 
-        beamLine.visible = true;
-        beamLine.material.color.setHex(w.color);
-        beamLine.material.opacity = 0.65 + 0.25*Math.sin(performance.now()*0.02);
-
-        const arr = beamLine.geometry.attributes.position;
-        arr.setXYZ(0, fromX, fromY, fromZ);
-        arr.setXYZ(1, toX,   toY,   toZ);
-        arr.needsUpdate = true;
+        updateBeamVisual(fromX, fromY, fromZ, toX, toY, toZ, w.color);
 
         const dps = (w.dps||14) * me.damageMul;
         dealDamageEnemy(t, dps*dt);
 
       }else{
-        beamLine.visible = false;
+        beamGroup.visible = false;
 
         me.fireCd -= dt;
         const fireEvery = 1 / (w.fireRate || 6);
