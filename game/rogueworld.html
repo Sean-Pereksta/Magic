@@ -2460,8 +2460,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         id: -1,
         type: "alienBoss",
         mesh: g,
-        hp: Math.round(1800 * hpScale),
-        maxHp: Math.round(1800 * hpScale),
+        hp: Math.round(1500 * hpScale),
+        maxHp: Math.round(1500 * hpScale),
         state: "starfall",
         stateT: 0,
         starCd: 0,
@@ -2543,10 +2543,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     }
 
     function regionBossStyle(regionId){
-      if(regionId==="desert") return { name:"Dune Leviathan", color:0xfbbf24, emissive:0x92400e, hp:920, speed:4.9 };
-      if(regionId==="forest") return { name:"Sporefather", color:0x4ade80, emissive:0x14532d, hp:980, speed:4.4 };
-      if(regionId==="snow") return { name:"Aurora Wraith", color:0x93c5fd, emissive:0x1e3a8a, hp:940, speed:5.2 };
-      return { name:"Infernal Forge-King", color:0xff5a36, emissive:0x7f1d1d, hp:1060, speed:5.0 };
+      if(regionId==="desert") return { name:"Dune Scorpion King", color:0xfbbf24, emissive:0x92400e, hp:1620, speed:4.9 };
+      if(regionId==="forest") return { name:"Elder Boar Titan", color:0x4ade80, emissive:0x14532d, hp:1680, speed:4.4 };
+      if(regionId==="snow") return { name:"Frost Colossus", color:0x93c5fd, emissive:0x1e3a8a, hp:1660, speed:5.2 };
+      return { name:"Ash Warlord", color:0xff5a36, emissive:0x7f1d1d, hp:1760, speed:5.0 };
     }
 
     function spawnRegionBoss(regionId){
@@ -3564,7 +3564,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         kbX: 0,
         kbZ: 0,
         burstLeft: 0,
-        data: {},
+        data: { specialCd: 2.2 + Math.random()*2.5, splitDone:false },
       };
 
       world.add(mesh);
@@ -3605,7 +3605,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
 
       travelMeter = 0;
-      spawnCooldown = 8.4 + rnd()*3.6;
+      // slower group cadence (group size unchanged)
+      spawnCooldown = 12.8 + rnd()*4.8;
       return true;
     }
 
@@ -3870,6 +3871,37 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       );
       m.rotation.x = -Math.PI/2;
       return m;
+    }
+
+    let sfxCtx = null;
+    function playTelegraphSfx(freq=260, duration=0.09, type="sawtooth"){
+      try{
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        if(!sfxCtx) sfxCtx = new AC();
+        if(sfxCtx.state === "suspended") sfxCtx.resume();
+        const t0 = sfxCtx.currentTime;
+        const o = sfxCtx.createOscillator();
+        const g = sfxCtx.createGain();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, t0);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.05, t0+0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0+duration);
+        o.connect(g).connect(sfxCtx.destination);
+        o.start(t0);
+        o.stop(t0+duration+0.02);
+      }catch(_e){}
+    }
+
+    function spawnTelegraphLine(x1,z1,x2,z2,color=0xff2a2a,width=0.8){
+      const d = Math.hypot(x2-x1,z2-z1) || 0.001;
+      const ln = new THREE.Mesh(new THREE.PlaneGeometry(width, d), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.58, side:THREE.DoubleSide, depthWrite:false }));
+      ln.rotation.x = -Math.PI/2;
+      ln.rotation.z = Math.atan2(x2-x1,z2-z1);
+      ln.position.set((x1+x2)*0.5, heightAt((x1+x2)*0.5,(z1+z2)*0.5,regionAt(x1,z1).id)+0.08, (z1+z2)*0.5);
+      world.add(ln);
+      return ln;
     }
 
     function distanceBandMultiplier(x,z){
@@ -5072,6 +5104,59 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           }
         }
         if(e.data.howlCd>0) e.data.howlCd -= dt;
+        if(e.data.specialCd>0) e.data.specialCd -= dt;
+
+        if(me.level>=15 && !e.data.specialWind && e.data.specialCd<=0){
+          if(e.type==="scarab" && d<10){
+            e.data.specialWind = { kind:(me.level>=30?"scarabSplit":"scarabBurrow"), t:0.62 };
+            const ln = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,me.x,me.z,0xfbbf24,0.65);
+            e.data.specialWind.marker = ln; playTelegraphSfx(210,0.11,"square");
+          }else if(e.type==="scorpion" && d<12){
+            e.data.specialWind = { kind:(me.level>=30?"scorpionCrescent":"scorpionLine"), t:0.64 };
+            const ln = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,me.x,me.z,0xff2a2a,0.35);
+            e.data.specialWind.marker = ln; playTelegraphSfx(300,0.09);
+          }else if(e.type==="boar" && me.level>=30 && d<8){
+            e.data.specialWind = { kind:"boarGore", t:0.55 };
+            e.data.specialWind.marker = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,me.x,me.z,0xff8a65,0.85); playTelegraphSfx(180,0.12,"triangle");
+          }else if(e.type==="drone" && me.level>=30){
+            e.data.specialWind = { kind:"droneShield", t:0.48 };
+            const mk = makeTeleCircle(0x22d3ee); mk.position.set(e.mesh.position.x,e.yBase+0.08,e.mesh.position.z); world.add(mk); e.data.specialWind.marker=mk; playTelegraphSfx(420,0.08);
+          }
+        }
+
+        if(e.data.specialWind){
+          const sw = e.data.specialWind;
+          sw.t -= dt;
+          if(sw.marker?.material) sw.marker.material.opacity = 0.35 + 0.45*Math.sin(now*0.02);
+          if(sw.marker?.position) sw.marker.position.y = e.yBase+0.08;
+          if(sw.t<=0){
+            if(sw.kind==="scarabBurrow"){
+              const bx = me.x - (dx/d)*1.8, bz = me.z - (dz/d)*1.8;
+              e.mesh.position.x = bx; e.mesh.position.z = bz;
+              if(dist2(me.x,me.z,bx,bz)<2.1*2.1){ me.stunT = Math.max(me.stunT,0.55); takeDamage(e.dmg*0.8,"Burrow-Behind"); }
+            }else if(sw.kind==="scarabSplit" && !e.data.splitDone){
+              e.data.splitDone = true;
+              for(let i=0;i<2;i++){ const a=i*Math.PI; const nx=e.mesh.position.x+Math.cos(a)*1.2; const nz=e.mesh.position.z+Math.sin(a)*1.2; const n=spawnEnemy("scarab",nx,nz,e.regId); n.hp=Math.max(8,Math.round(e.hp*0.35)); n.maxHp=n.hp; n.data.specialCd=4.5; }
+            }else if(sw.kind==="scorpionLine"){
+              const lineErr = Math.abs((me.x-e.mesh.position.x)*(-dz/d) + (me.z-e.mesh.position.z)*(dx/d));
+              if(lineErr<0.9){ me.slowT=Math.max(me.slowT,2.0); me.slowMul=Math.min(me.slowMul,0.5); }
+            }else if(sw.kind==="scorpionCrescent"){
+              const hz = makeTeleCircle(0x22c55e); hz.position.set(me.x,heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.08,me.z); hz.scale.set(2.1,2.1,2.1); world.add(hz); projectiles.push({mesh:hz,x:me.x,y:hz.position.y,z:me.z,vx:0,vy:0,vz:0,life:5,rad:2.6,dmg:2.5,from:"enemy",kind:"hazard"});
+            }else if(sw.kind==="boarGore"){
+              if(d<2.2){ me.x += (dx/d)*2.2; me.z += (dz/d)*2.2; takeDamage(e.dmg*1.2,"Gore Pull"); }
+            }else if(sw.kind==="droneShield"){
+              e.data.shieldDir = Math.atan2(dz,dx); e.data.shieldT = 5.5;
+            }
+            if(sw.marker){ world.remove(sw.marker); }
+            e.data.specialWind = null;
+            e.data.specialCd = 6.0 + Math.random()*4.0;
+          }
+        }
+
+        if(e.data.shieldT>0){
+          e.data.shieldT -= dt;
+          e.data.shieldDir += dt*0.7;
+        }
 
         if(e.state==="chase"){
           if(e.type==="boar" && !e.data.chargeState && d<11.5 && e.cd<=0){
@@ -5448,7 +5533,23 @@ e.mesh.userData.anim?.(e, dt, now);
         const ex=e.mesh.position.x, ez=e.mesh.position.z, ey=e.mesh.position.y+(e.flying?0.15:0.65);
         const d2 = (ex-p.x)*(ex-p.x)+(ez-p.z)*(ez-p.z)+(ey-p.y)*(ey-p.y);
         if(p.hitIds && p.hitIds.has(e.id)) continue;
-        if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
+        if(d2 < (p.rad+0.55)*(p.rad+0.55)){
+          if(e.data?.shieldT>0){
+            const inAng = Math.atan2(p.vz,p.vx);
+            const diff = Math.abs(Math.atan2(Math.sin(inAng-e.data.shieldDir), Math.cos(inAng-e.data.shieldDir)));
+            if(diff < 0.9){
+              const spark = makeTeleCircle(0x67e8f9);
+              spark.scale.set(0.7,0.7,0.7);
+              spark.position.set(e.mesh.position.x,e.yBase+0.1,e.mesh.position.z);
+              world.add(spark);
+              projectiles.push({mesh:spark,x:e.mesh.position.x,y:e.yBase+0.1,z:e.mesh.position.z,vx:0,vy:0,vz:0,life:0.22,from:"fx",kind:"bossFx",fxType:"ring",maxLife:0.22,maxScale:0.85});
+              world.remove(p.mesh); projectiles.splice(i,1);
+              hit = null;
+              break;
+            }
+          }
+          hit = e; break;
+        }
       }
       if(!hit){
         for(const b of allAliveBosses()){
@@ -5842,6 +5943,7 @@ e.mesh.userData.anim?.(e, dt, now);
           spawnAlienStarfallTelegraph();
         }
         if(b.stateT >= 10.0){
+          const land = makeMarker(0xff4de1); land.scale.set(4.8,4.8,4.8); land.position.set(b.mesh.position.x, byGround+0.08, b.mesh.position.z); world.add(land); projectiles.push({mesh:land,x:b.mesh.position.x,y:byGround+0.08,z:b.mesh.position.z,vx:0,vy:0,vz:0,life:1.2,from:"fx",kind:"bossFx",fxType:"ring",maxLife:1.2,maxScale:1.4}); playTelegraphSfx(120,0.16,"sawtooth");
           b.state = "laser";
           b.stateT = 0;
           b.spin = 0;
@@ -5880,6 +5982,7 @@ e.mesh.userData.anim?.(e, dt, now);
           }
         }
         if(b.stateT >= 10.0){
+          const lift = makeTeleCircle(0x67e8f9); lift.scale.set(3.2,3.2,3.2); lift.position.set(cx,byGround+0.08,cz); world.add(lift); projectiles.push({mesh:lift,x:cx,y:byGround+0.08,z:cz,vx:0,vy:0,vz:0,life:0.8,from:"fx",kind:"bossFx",fxType:"ring",maxLife:0.8,maxScale:1.7}); playTelegraphSfx(420,0.12,"triangle");
           for(const l of b.lasers) releaseAlienBossLaser(l);
           b.lasers.length = 0;
           b.state = "starfall";
