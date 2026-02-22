@@ -189,9 +189,13 @@
         <div class="chip"><span class="dot" id="modeDot"></span><b id="modeLabel">MAP</b><span id="modeSub" class="tag">WASD move • E interact</span></div>
         <div class="chip"><span class="dot" id="bannerDot"></span>🏳 <b id="banner">Independent</b></div>
         <div class="chip">⭐ Lv <b id="lvl">1</b> <span class="tag mono" id="xp">0/60</span></div>
+        <div class="chip">🗓 Day <b id="day">1</b> <span class="tag mono" id="dayPct">0%</span></div>
         <div class="chip">🤕 <b id="wounded">0</b></div>
         <div class="chip">💰 <b id="gold">0</b></div>
         <div class="chip">🍖 <b id="food">0</b></div>
+        <div class="chip">🙂 <b id="morale">65</b></div>
+        <div class="chip">🏅 <b id="renown">0</b></div>
+        <div class="chip">🏛 <b id="influence">0</b></div>
         <div class="chip">👥 <b id="army">0</b></div>
         <div class="chip">❤️ <b id="hp">0</b>/<b id="hpMax">0</b></div>
       </div>
@@ -257,6 +261,11 @@
     lvl: document.getElementById('lvl'),
     xp: document.getElementById('xp'),
     wounded: document.getElementById('wounded'),
+    day: document.getElementById('day'),
+    dayPct: document.getElementById('dayPct'),
+    morale: document.getElementById('morale'),
+    renown: document.getElementById('renown'),
+    influence: document.getElementById('influence'),
 
     panelSettlement: document.getElementById('panelSettlement'),
     panelInventory: document.getElementById('panelInventory'),
@@ -325,6 +334,8 @@
   // Gameplay tuning
   // =========================
   const SAVE_KEY = 'iso_mnb_save_v5';
+  const DAY_LEN = 180;
+  const DAY_TICK = 1;
   const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
   const VILLAGE_REGEN_INTERVAL = 10;  // seconds per regen tick
   const VILLAGE_REGEN_CHANCE = 0.85;  // per tick, attempt regen
@@ -495,6 +506,30 @@
       cost:0, volunteersTier:2,
       upgrades:[]
     },
+    cav_scout: {
+      key:'cav_scout', name:'Cavalry Scout', role:'cav', tier:1,
+      hp:95, dmg:14, range:1.25, spd:3.35, windup:0.28, cooldown:0.62,
+      shield:false, blockArrow:0.05, blockMelee:0.05,
+      chargeMul:1.35, chargeMinSpeed:2.4,
+      cost:0, volunteersTier:1,
+      upgrades:[{ to:'cav_lancer', cost:190, label:'Elite → Lancer' }]
+    },
+    cav_lancer: {
+      key:'cav_lancer', name:'Cavalry Lancer', role:'cav', tier:2,
+      hp:130, dmg:22, range:1.35, spd:3.15, windup:0.26, cooldown:0.78,
+      shield:false, blockArrow:0.08, blockMelee:0.08,
+      chargeMul:1.70, chargeMinSpeed:2.3,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+    sup_banner: {
+      key:'sup_banner', name:'Banner Guard', role:'sup', tier:2,
+      hp:110, dmg:10, range:1.05, spd:2.35, windup:0.36, cooldown:0.70,
+      shield:true, blockArrow:0.25, blockMelee:0.08,
+      auraRadius:3.2,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
   };
 
   // =========================
@@ -546,6 +581,12 @@
     return f ? f.name : 'Neutral';
   }
 
+  function effectiveRelation(fid){
+    const d = state.diplomacy?.[fid];
+    if(!d) return 0;
+    return (d.standing||0) - (d.hostility||0);
+  }
+
   function relationLabel(v){
     if(v>=60) return 'ALLIED';
     if(v>=25) return 'FRIENDLY';
@@ -565,7 +606,8 @@
   // Player / leveling / wounded
   // =========================
   function makeNewDiplomacy(){
-    return { red:0, blue:0, green:0 };
+    const mk = ()=>({ standing:0, hostility:0, treaties:{ napUntil:0, tradeUntil:0, accessUntil:0 } });
+    return { red:mk(), blue:mk(), green:mk() };
   }
 
   function makeNewPlayer(){
@@ -586,6 +628,17 @@
       xp: 0,
       xpToNext: 60,
       dmgMult: 1.00,
+
+      morale: 65,
+      renown: 0,
+      influence: 0,
+      wageDebt: 0,
+      daysStarving: 0,
+      daysUnpaid: 0,
+      vassals: [],
+      lastBattleResultDay: 0,
+      lastBattleResultType: '',
+      restedToday: false,
 
       // wounded queue
       woundedUnits: [],
@@ -706,6 +759,8 @@
       arc_archer: randi(0, 2),
       arc_crossbowman: (Math.random()<0.18 ? 1 : 0),
       inf_pikeman: (Math.random()<0.15 ? 1 : 0),
+      cav_scout: (Math.random()<0.05 ? 1 : 0),
+      sup_banner: (Math.random()<0.03 ? 1 : 0),
     };
     const caps = {
       inf_recruit: 18,
@@ -715,6 +770,8 @@
       arc_archer: 3,
       arc_crossbowman: 2,
       inf_pikeman: 2,
+      cav_scout: 1,
+      sup_banner: 1,
     };
     return { volunteers, caps, regenClock: rand(0, VILLAGE_REGEN_INTERVAL) };
   }
@@ -723,27 +780,45 @@
     return Object.values(v).reduce((a,b)=>a+(b||0),0);
   }
 
-  function makePartyComp(kind, size){
+  function makePartyComp(kind, size, opts={}){
+    const threat = opts.threat ?? state.map?.threat ?? 0;
+    const day = opts.day ?? state.map?.day ?? 1;
     const comp = [];
-    const inf = Math.round(size * (kind==='bandit' ? 0.72 : 0.62));
-    const arc = Math.max(0, size - inf);
-
-    for(let i=0;i<inf;i++){
-      if(kind==='bandit' && Math.random()<0.20) comp.push({ unit:'inf_spearman' });
-      else if(kind!=='bandit' && Math.random()<0.18) comp.push({ unit:'inf_swordsman' });
-      else comp.push({ unit:'inf_recruit' });
+    const t0 = clamp(1.0 - (threat*0.08 + day*0.02), 0.10, 1.0);
+    const t1 = clamp(0.25 + (threat*0.05 + day*0.015), 0.20, 0.75);
+    const t2 = clamp(-0.05 + (threat*0.06 + day*0.02), 0.00, 0.70);
+    const tierPick = ()=>{ const r=Math.random()*(t0+t1+t2); return r<t0?0:(r<t0+t1?1:2); };
+    const pools = {
+      inf:{0:['inf_recruit'],1:['inf_swordsman','inf_spearman'],2:['inf_shield_guard','inf_shield_spear','inf_pikeman','inf_knight_gs']},
+      arc:{0:['arc_recruit'],1:['arc_archer'],2:['arc_marksman','arc_crossbowman']},
+      cav:{1:['cav_scout'],2:['cav_lancer']},
+      sup:{2:['sup_banner']}
+    };
+    const roleCfg = {
+      bandit:{inf:0.70,arc:0.30,cav:(day>=6?0.06:0),sup:0},
+      patrol:{inf:0.60,arc:0.35,cav:(day>=8?0.05:0),sup:0},
+      army:{inf:0.55,arc:0.30,cav:0.10,sup:((day>=10||threat>=6)?0.05:0)},
+      vassal:{inf:0.55,arc:0.30,cav:0.10,sup:0.05},
+      neutral:{inf:1,arc:0,cav:0,sup:0}
+    }[kind] || {inf:0.62,arc:0.33,cav:0.05,sup:0};
+    let infCount=Math.round(size*roleCfg.inf), arcCount=Math.round(size*roleCfg.arc), cavCount=Math.round(size*roleCfg.cav), supCount=Math.round(size*roleCfg.sup);
+    while(infCount+arcCount+cavCount+supCount<size) infCount++;
+    const addRole=(role,n)=>{
+      for(let i=0;i<n;i++){
+        let t=tierPick();
+        if(role==='cav') t = (t>=2 && Math.random()<0.6)?2:1;
+        if(role==='sup') t=2;
+        const pool = pools[role][t] || pools[role][1] || pools[role][0];
+        comp.push({ unit: pool[randi(0,pool.length-1)] });
+      }
+    };
+    addRole('inf', infCount); addRole('arc', arcCount); addRole('cav', cavCount); addRole('sup', supCount);
+    if(size>=24 && (day>=10||threat>=6) && (kind==='army' || kind==='vassal') && !comp.some(u=>u.unit==='sup_banner')) comp.push({unit:'sup_banner'});
+    if(size>=30 && (day>=12||threat>=7) && (kind==='army' || kind==='vassal')){
+      const cavN = comp.filter(u=>UNIT_DB[u.unit]?.role==='cav').length;
+      for(let i=cavN;i<2;i++) comp.push({unit:'cav_scout'});
     }
-    for(let i=0;i<arc;i++){
-      const roll = Math.random();
-      if(kind!=='bandit' && size>=28 && roll<0.10) comp.push({ unit:'arc_crossbowman' });
-      else if(kind==='bandit' && roll<0.12) comp.push({ unit:'arc_archer' });
-      else if(kind!=='bandit' && roll<0.18) comp.push({ unit:'arc_archer' });
-      else comp.push({ unit:'arc_recruit' });
-    }
-
-    if(size>=28 && Math.random()<0.32) comp.push({ unit:'inf_shield_guard' });
-    if(size>=32 && Math.random()<0.22) comp.push({ unit:'inf_knight_gs' });
-    return comp;
+    return comp.slice(0, Math.max(size, comp.length));
   }
 
   function makeMap(){
@@ -803,7 +878,7 @@
         aggro: (kind==='bandit') ? 5.2 : (kind==='army'? 3.8 : 4.2),
         baseSpeed: (kind==='bandit') ? 2.25 : (kind==='army'? 1.75 : 2.0),
         size,
-        comp: (kind==='neutral') ? [] : makePartyComp(kind, size),
+        comp: (kind==='neutral') ? [] : makePartyComp(kind, size, { threat:0, day:1, factionId }),
         alive: true,
         targetSettlementId: null,
       });
@@ -818,6 +893,13 @@
       settlements, parties,
       dayFoodRate: 0.02,
       invasion: {}, // partyId -> {settlementId, t}
+      day: 1,
+      totalDays: 1,
+      time: 0,
+      dayLen: DAY_LEN,
+      dayClock: 0,
+      threat: 0,
+      strategicClock: 0,
       nextArmySpawn: 18 + Math.random()*12,
     };
   }
@@ -851,11 +933,105 @@
     return Object.values(state.panelsOpen).some(Boolean);
   }
 
-  // =========================
+  
+  function treatyActive(fid, key){
+    const d = state.diplomacy?.[fid];
+    return !!(d && d.treaties && (d.treaties[key]||0) >= (state.map?.day||1));
+  }
+
+  function computeThreat(){
+    const p = state.player;
+    const holdings = state.map.settlements.filter(s=>s.kind==='castle' && (s.factionId==='player' || (p.faction && s.factionId===p.faction))).length;
+    const vN = p.vassals?.length||0;
+    const t = 0.10*(state.map.day-1) + 0.30*(p.level-1) + 0.05*armySize(p) + 0.65*holdings + 0.04*(p.renown||0) - 0.15*vN;
+    state.map.threat = clamp(t,0,12);
+  }
+
+  function troopWage(unitKey){
+    const d=UNIT_DB[unitKey]; if(!d) return 0.1;
+    return 0.10 + d.tier*0.12 + (d.role==='arc'?0.03:0) + (d.role==='cav'?0.06:0) + (d.role==='sup'?0.04:0);
+  }
+
+  function onNewDay(){
+    const p = state.player;
+    state.map.totalDays = state.map.day;
+    let wages = 0;
+    for(const u of p.armyUnits) wages += troopWage(u.unit);
+    for(const v of (p.vassals||[])){
+      const party = partyById(v.partyId); if(!party || !party.alive) continue;
+      let vw = 0; for(const cu of party.comp||[]) vw += troopWage(cu.unit);
+      wages += vw * 0.8 * (v.wageMul||1);
+      if(p.gold < wages){ v.loyalty = Math.max(0,(v.loyalty||70)-8); }
+      else v.loyalty = Math.min(95,(v.loyalty||70)+1);
+      if(v.loyalty<20 && Math.random()<0.14){ party.alive=false; toast(`⚠️ ${v.name} disbanded due to poor support.`); }
+    }
+    if(p.gold >= wages){ p.gold -= wages; p.daysUnpaid=0; p.wageDebt=0; }
+    else { const def=wages-p.gold; p.gold=0; p.wageDebt += def; p.daysUnpaid++; p.morale-=6; }
+    p.morale += (p.food>0)?2:-6;
+    if(p.food<=0) p.daysStarving++; else p.daysStarving=0;
+    if(p.daysUnpaid>0) p.morale -= Math.min(16,(4+2*p.daysUnpaid));
+    if(p.lastBattleResultDay===state.map.day-1){
+      if(p.lastBattleResultType==='field_win') p.morale +=3;
+      if(p.lastBattleResultType==='siege_win') p.morale +=6;
+      if(p.lastBattleResultType==='defeat') p.morale -=10;
+    }
+    if(p.faction && treatyActive(p.faction,'napUntil') && treatyActive(p.faction,'tradeUntil')) p.morale += 1;
+    if(p.restedToday) p.morale += 1;
+    p.restedToday = false;
+    const bad = (p.morale<35 || p.daysStarving>=2 || p.daysUnpaid>=2);
+    if(bad){
+      let desertChance = clamp((35-p.morale)/60 + 0.08*p.daysStarving + 0.06*p.daysUnpaid, 0, 0.65);
+      if(Math.random()<desertChance && p.armyUnits.length>0){
+        let count = 1 + Math.floor(rand(0, 1 + Math.max(0,(35-p.morale))/12));
+        const pri=[0,1,2];
+        while(count>0 && p.armyUnits.length){
+          let idx=-1;
+          for(const t of pri){ idx = p.armyUnits.findIndex(u=>UNIT_DB[u.unit] && UNIT_DB[u.unit].tier===t); if(idx>=0) break; }
+          if(idx<0) idx = 0;
+          p.armyUnits.splice(idx,1); count--;
+        }
+        toast('😟 Desertion in your ranks due to low morale'); p.morale -= 5;
+      }
+    }
+    p.morale = clamp(p.morale,0,100);
+    p.influence += Math.floor((p.renown||0)/25);
+    for(const f of FACTIONS){ const d=state.diplomacy[f.id]; d.hostility = Math.max(0,(d.hostility||0)-6); }
+    for(const s of state.map.settlements){
+      if(s.kind!=='castle') continue;
+      s.garrisonRegenDay = state.map.day;
+      s.defense = s.defense || {walls:1,towers:0,traps:0};
+      s.garrison = s.garrison || {};
+      const add=(k,n)=>s.garrison[k]=(s.garrison[k]||0)+n;
+      add('inf_recruit', randi(1,3));
+      if(Math.random()<clamp(0.20+state.map.day*0.01+state.map.threat*0.03,0.2,0.75)) add('inf_swordsman',1);
+      if(Math.random()<clamp(0.16+state.map.day*0.01+state.map.threat*0.02,0.1,0.65)) add('arc_archer',1);
+      if((state.map.day>=12 || state.map.threat>=7) && Math.random()<0.22) add('inf_shield_guard',1);
+      if((state.map.day>=12 || state.map.threat>=7) && Math.random()<0.18) add('cav_scout',1);
+      const upChance = clamp(0.08 + 0.01*state.map.day + 0.015*state.map.threat,0.08,0.35);
+      if(Math.random()<upChance){
+        const later = state.map.day>12 || state.map.threat>7;
+        const pick = later ? ['towers','traps','walls'][randi(0,2)] : ['walls','walls','towers','traps'][randi(0,3)];
+        const max={walls:7,towers:6,traps:6}; if((s.defense[pick]||0)<max[pick]) s.defense[pick]++;
+      }
+    }
+
+    if(state.map.day % 4 === 0){
+      const f = FACTIONS[randi(0,FACTIONS.length-1)];
+      const size = clamp(40 + Math.floor(state.map.day*0.8 + state.map.threat*2), 40, 84);
+      const x=randi(3,MAP_W-4), y=randi(3,MAP_H-4);
+      const party={ id:'p_'+Math.random().toString(36).slice(2,9), kind:'army', factionId:f.id, x,y, roamTx:x, roamTy:y, aggro:3.8, baseSpeed:1.68, size, comp:makePartyComp('army', size, {threat:state.map.threat, day:state.map.day, factionId:f.id, isElite:true}), alive:true, targetSettlementId:null };
+      const targets = state.map.settlements.filter(ss=>ss.kind==='castle' && ss.factionId!==f.id);
+      if(targets.length) party.targetSettlementId = targets[randi(0,targets.length-1)].id;
+      state.map.parties.push(party);
+    }
+    computeThreat();
+  }
+
+// =========================
   // Save/load
   // =========================
   function serialize(){
-    return { version: 6, map: state.map, player: state.player, diplomacy: state.diplomacy };
+    return { version: 8, map: state.map, player: state.player, diplomacy: state.diplomacy };
   }
 
   function save(){
@@ -878,6 +1054,31 @@
       state.map = data.map;
       state.player = data.player;
       state.diplomacy = data.diplomacy || makeNewDiplomacy();
+      // migrations
+      if(typeof state.diplomacy.red === 'number'){
+        const old = state.diplomacy;
+        state.diplomacy = makeNewDiplomacy();
+        for(const f of FACTIONS) state.diplomacy[f.id].standing = old[f.id]||0;
+      }
+      for(const f of FACTIONS){
+        state.diplomacy[f.id] = state.diplomacy[f.id] || makeNewDiplomacy()[f.id];
+        state.diplomacy[f.id].standing = state.diplomacy[f.id].standing || 0;
+        state.diplomacy[f.id].hostility = state.diplomacy[f.id].hostility || 0;
+        state.diplomacy[f.id].treaties = state.diplomacy[f.id].treaties || {napUntil:0,tradeUntil:0,accessUntil:0};
+      }
+      state.player.morale = state.player.morale ?? 65;
+      state.player.renown = state.player.renown ?? 0;
+      state.player.influence = state.player.influence ?? 0;
+      state.player.wageDebt = state.player.wageDebt ?? 0;
+      state.player.daysStarving = state.player.daysStarving ?? 0;
+      state.player.daysUnpaid = state.player.daysUnpaid ?? 0;
+      state.player.vassals = state.player.vassals || [];
+      state.player.restedToday = state.player.restedToday || false;
+      state.map.day = state.map.day || 1;
+      state.map.totalDays = state.map.totalDays || state.map.day;
+      state.map.time = state.map.time || 0;
+      state.map.dayLen = state.map.dayLen || DAY_LEN;
+      state.map.threat = state.map.threat || 0;
       if(!state.player.bannerColor) state.player.bannerColor = pickUniqueBannerColor();
       // ensure villages have volunteer structures (older saves)
       for(const s of state.map.settlements){
@@ -1097,6 +1298,7 @@
         <div class="chip">👥 Total <b>${armySize(p)}</b></div>
         <div class="chip">🤕 Wounded <b>${p.woundedUnits.length}</b></div>
         <div class="chip">🏃 Map Speed <b>${mapSpeedFor(p).toFixed(2)}</b></div>
+        <div class="chip">🛡 Vassals <b>${(p.vassals||[]).length}</b></div>
       </div>
 
       <div class="hr"></div>
@@ -1141,6 +1343,11 @@
       </div>
 
       <div class="hr"></div>
+      <h2 style="margin-top:0">Vassals</h2>
+      <div class="small">Unlock at 25 renown + pledge or owning a castle. Cost: 220 gold, 6 influence, 10 renown.</div>
+      <div class="row" style="margin-top:8px;"><button class="btn" id="btnCreateVassal">Create Vassal</button></div>
+      <div class="list" style="margin-top:8px;">${(p.vassals||[]).map(v=>{ const pp=partyById(v.partyId); return `<div class="item"><div class="meta"><b>${v.name}</b><div class="tag">Loyalty ${Math.round(v.loyalty||0)} • ${v.orders||'auto'} • Size ${pp?.size||0}</div></div><select data-vorder="${v.id}"><option value="auto" ${v.orders==='auto'?'selected':''}>auto</option><option value="defend" ${v.orders==='defend'?'selected':''}>defend</option><option value="raid" ${v.orders==='raid'?'selected':''}>raid</option><option value="patrol" ${v.orders==='patrol'?'selected':''}>patrol</option><option value="follow" ${v.orders==='follow'?'selected':''}>follow</option></select></div>`; }).join('') || '<div class="small">No vassals yet.</div>'}</div>
+      <div class="hr"></div>
       <div class="row"><button class="btn" id="btnCloseArmy">Close</button></div>
     `;
 
@@ -1162,6 +1369,22 @@
         syncHUD();
       };
     }
+
+    const bcv = ui.panelArmy.querySelector('#btnCreateVassal');
+    if(bcv) bcv.onclick = ()=>{
+      const hasCastle = state.map.settlements.some(s=>s.kind==='castle' && s.factionId==='player');
+      if((p.renown||0)<25 || (!hasCastle && !p.faction)){ toast('Need 25 renown and a realm tie first'); return; }
+      if(p.gold<220 || p.influence<6 || p.renown<10){ toast('Not enough resources for vassal'); return; }
+      p.gold-=220; p.influence-=6; p.renown-=10;
+      const id='p_'+Math.random().toString(36).slice(2,9);
+      const size = clamp(10 + Math.floor((p.renown||0)/10) + Math.floor(state.map.day/4), 10, 28);
+      const party={ id, kind:'vassal', factionId:'player', x:p.x+rand(-1.5,1.5), y:p.y+rand(-1.5,1.5), roamTx:p.x, roamTy:p.y, aggro:4.4, baseSpeed:2.0, size, comp:makePartyComp('vassal', size, {threat:state.map.threat, day:state.map.day, factionId:'player'}), alive:true, targetSettlementId:null };
+      state.map.parties.push(party);
+      p.vassals.push({ id:'v_'+Math.random().toString(36).slice(2,9), name:['Sir Rowan','Lady Mira','Sir Cedric','Dame Elara'][randi(0,3)], partyId:id, loyalty:70, wageMul:rand(0.6,1.2), orders:'auto', homeCastleId:null, lastActionDay:state.map.day });
+      renderArmyPanel(); syncHUD();
+    };
+
+    for(const sel of ui.panelArmy.querySelectorAll('select[data-vorder]')) sel.onchange=(e)=>{ const id=e.target.getAttribute('data-vorder'); const vv=p.vassals.find(v=>v.id===id); if(vv) vv.orders=e.target.value; };
 
     for(const btn of ui.panelArmy.querySelectorAll('button[data-upfocus]')){
       btn.onclick = () => {
@@ -1215,11 +1438,15 @@
     const p = state.player;
 
     function rowFor(fid){
-      const v = d[fid];
+      const relObj = d[fid];
+      const v = effectiveRelation(fid);
       const col = factionColor(fid);
       const label = relationLabel(v);
       const pct = clamp((v+100)/200, 0, 1) * 100;
       const cost = joinCost(v);
+      const napLeft = Math.max(0,(relObj.treaties.napUntil||0)-state.map.day+1);
+      const tradeLeft = Math.max(0,(relObj.treaties.tradeUntil||0)-state.map.day+1);
+      const accessLeft = Math.max(0,(relObj.treaties.accessUntil||0)-state.map.day+1);
 
       const joined = (p.faction===fid);
       const canJoin = (!p.faction && v>=0);
@@ -1229,7 +1456,7 @@
         <div class="item">
           <div class="meta">
             <b style="color:${col}">${factionName(fid)}</b>
-            <div class="tag">Relation: <span class="mono">${v}</span> • ${label}</div>
+            <div class="tag">Relation: <span class="mono">${v}</span> • ${label} (S:${relObj.standing} H:${relObj.hostility})</div>
             <div class="bar"><div style="width:${pct}%"></div></div>
             <div class="tag">Pledge Cost: 💰 <span class="mono">${cost}</span> (cheaper when friendlier)</div>
           </div>
@@ -1237,6 +1464,9 @@
             <button class="btn" data-gift="${fid}">Gift (💰50)</button>
             <button class="btn" data-war="${fid}">Declare War</button>
             <button class="btn" data-peace="${fid}">Make Peace (💰120)</button>
+            <button class="btn" data-nap="${fid}" ${(napLeft>0||v<10||p.influence<5||p.gold<120)?'disabled':''}>NAP ${napLeft>0?`(${napLeft}d)`:''}</button>
+            <button class="btn" data-trade="${fid}" ${(tradeLeft>0||v<25||p.influence<4||p.gold<160)?'disabled':''}>Trade ${tradeLeft>0?`(${tradeLeft}d)`:''}</button>
+            <button class="btn" data-access="${fid}" ${(accessLeft>0||v<15||p.influence<3||p.gold<100)?'disabled':''}>Access ${accessLeft>0?`(${accessLeft}d)`:''}</button>
             <button class="btn" data-join="${fid}" ${(!canJoin || joined || !canAfford)?'disabled':''}>${joined?'Pledged':'Pledge Allegiance'}</button>
           </div>
         </div>
@@ -1271,7 +1501,7 @@
         const fid = b.getAttribute('data-gift');
         if(p.gold < 50){ toast('Not enough gold'); return; }
         p.gold -= 50;
-        d[fid] = clamp(d[fid] + 10, -100, 100);
+        d[fid].standing = clamp((d[fid].standing||0) + 10, -100, 100);
         toast(`Relations improved with ${factionName(fid)} (+10)`);
         renderDiplomacyPanel(); syncHUD();
       };
@@ -1279,7 +1509,7 @@
     for(const b of ui.panelDiplomacy.querySelectorAll('button[data-war]')){
       b.onclick = () => {
         const fid = b.getAttribute('data-war');
-        d[fid] = clamp(Math.min(d[fid], -60), -100, 100);
+        d[fid].standing = clamp(Math.min(d[fid].standing||0, -60), -100, 100); d[fid].hostility += 30; d[fid].treaties={napUntil:0,tradeUntil:0,accessUntil:0};
         toast(`You are now at war with ${factionName(fid)}`);
         renderDiplomacyPanel();
       };
@@ -1289,23 +1519,33 @@
         const fid = b.getAttribute('data-peace');
         if(p.gold < 120){ toast('Not enough gold'); return; }
         p.gold -= 120;
-        d[fid] = 0;
+        d[fid].standing = 0; d[fid].hostility = 0;
         toast(`Peace made with ${factionName(fid)} (relation reset)`);
         renderDiplomacyPanel(); syncHUD();
       };
+    }
+
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-nap]')){
+      b.onclick = ()=>{ const fid=b.getAttribute('data-nap'); const rel=effectiveRelation(fid); if(rel<10||state.player.influence<5||state.player.gold<120) return; state.player.influence-=5; state.player.gold-=120; state.diplomacy[fid].treaties.napUntil=state.map.day+8; renderDiplomacyPanel(); syncHUD(); };
+    }
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-trade]')){
+      b.onclick = ()=>{ const fid=b.getAttribute('data-trade'); const rel=effectiveRelation(fid); if(rel<25||state.player.influence<4||state.player.gold<160) return; state.player.influence-=4; state.player.gold-=160; state.diplomacy[fid].treaties.tradeUntil=state.map.day+10; renderDiplomacyPanel(); syncHUD(); };
+    }
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-access]')){
+      b.onclick = ()=>{ const fid=b.getAttribute('data-access'); const rel=effectiveRelation(fid); if(rel<15||state.player.influence<3||state.player.gold<100) return; state.player.influence-=3; state.player.gold-=100; state.diplomacy[fid].treaties.accessUntil=state.map.day+10; renderDiplomacyPanel(); syncHUD(); };
     }
     for(const b of ui.panelDiplomacy.querySelectorAll('button[data-join]')){
       b.onclick = () => {
         const fid = b.getAttribute('data-join');
         if(p.faction){ toast('You already pledged to a kingdom'); return; }
-        const rel = d[fid] ?? 0;
+        const rel = effectiveRelation(fid);
         if(rel < 0){ toast('They won’t accept your pledge (need Neutral+)'); return; }
         const cost = joinCost(rel);
         if(p.gold < cost){ toast('Not enough gold to pledge'); return; }
 
         p.gold -= cost;
         p.faction = fid;
-        d[fid] = Math.max(d[fid], 60);
+        d[fid].standing = Math.max(d[fid].standing||0, 60);
         // convert your holdings to the pledged kingdom color
         convertPlayerHoldingsToFaction(fid);
 
@@ -1376,12 +1616,17 @@
   }
 
   function isPartyHostileToPlayer(party){
-    const p = state.player;
-    if(party.kind==='neutral') return false;
+    if(!party || !party.alive) return false;
     if(party.kind==='bandit') return true;
+    if(party.kind==='neutral' || party.kind==='vassal') return false;
+    const p = state.player;
     if(party.factionId && p.faction && party.factionId===p.faction) return false;
-    const rel = party.factionId ? (state.diplomacy[party.factionId] ?? 0) : 0;
-    return rel <= -20;
+    if(party.factionId){
+      const d = state.diplomacy[party.factionId];
+      if(d && treatyActive(party.factionId,'napUntil') && (d.hostility||0)<=40) return false;
+      return effectiveRelation(party.factionId) <= -20;
+    }
+    return false;
   }
 
   function isPartyHostileToSettlement(party, settlement){
@@ -1396,6 +1641,7 @@
 
   function openSettlementPanel(settlement){
     currentSettlement = settlement;
+    if(settlement.factionId==='player' || (state.player.faction && settlement.factionId===state.player.faction)) state.player.restedToday = true;
     togglePanel('settlement');
     renderSettlementPanel();
   }
@@ -1456,7 +1702,7 @@
     const isPlayerDomain = (fid==='player');
 
     // relation only for true factions
-    const rel = (fid==='player') ? 0 : (state.diplomacy[fid] ?? 0);
+    const rel = (fid==='player') ? 0 : effectiveRelation(fid);
     const relTag = (fid==='player') ? '—' : `${rel} • ${relationLabel(rel)}`;
     const atWar = (fid==='player') ? false : (rel <= -60);
 
@@ -1531,7 +1777,7 @@
           if(fid==='player') return;
           if(p.gold < 50){ toast('Not enough gold'); return; }
           p.gold -= 50;
-          state.diplomacy[fid] = clamp((state.diplomacy[fid]??0)+10, -100, 100);
+          state.diplomacy[fid].standing = clamp((state.diplomacy[fid].standing||0)+10, -100, 100);
           toast(`Relations +10 with ${factionName(fid)}`);
           renderSettlementPanel();
           syncHUD();
@@ -1680,7 +1926,7 @@
         if(fid==='player') return;
         if(p.gold < 80){ toast('Not enough gold'); return; }
         p.gold -= 80;
-        state.diplomacy[fid] = clamp((state.diplomacy[fid]??0)+15, -100, 100);
+        state.diplomacy[fid].standing = clamp((state.diplomacy[fid].standing||0)+15, -100, 100);
         toast(`Relations +15 with ${factionName(fid)}`);
         renderSettlementPanel();
         syncHUD();
@@ -1772,8 +2018,9 @@
 
     // if village belongs to a faction, make it cheaper when friendly, pricier when hostile
     if(village.factionId && village.factionId!=='player'){
-      const rel = state.diplomacy[village.factionId] ?? 0;
-      const mul = clamp(1.12 - rel*0.004, 0.78, 1.55);
+      const rel = effectiveRelation(village.factionId);
+      let mul = clamp(1.12 - rel*0.004, 0.78, 1.55);
+      if(treatyActive(village.factionId,'tradeUntil')) mul *= 0.90;
       base *= mul;
     }
     // if it's your domain, modest discount
@@ -1878,6 +2125,11 @@
     ui.lvl.textContent = p.level;
     ui.xp.textContent = `${Math.floor(p.xp)}/${p.xpToNext}`;
     ui.wounded.textContent = p.woundedUnits.length;
+    ui.day.textContent = state.map?.day || 1;
+    ui.dayPct.textContent = `${Math.floor(((state.map?.time||0)/DAY_LEN)*100)}%`;
+    ui.morale.textContent = Math.round(p.morale||0);
+    ui.renown.textContent = Math.floor(p.renown||0);
+    ui.influence.textContent = Math.floor(p.influence||0);
 
     ui.banner.textContent = p.faction ? factionName(p.faction) : 'Independent';
     ui.banner.style.color = playerBannerColor();
@@ -2006,6 +2258,18 @@
     const p = state.player;
     const paused = mapActionsPaused();
 
+    state.map.time += dt;
+    state.map.dayClock = (state.map.dayClock||0) + dt;
+    while(state.map.time >= DAY_LEN){
+      state.map.time -= DAY_LEN;
+      state.map.day += 1;
+      onNewDay();
+    }
+    if(state.map.dayClock >= DAY_TICK){
+      state.map.dayClock = 0;
+      computeThreat();
+    }
+
     // player regen
     const maxHp = playerMaxHp(p);
     p.hp = Math.min(maxHp, p.hp + 6.5 * dt);
@@ -2055,10 +2319,14 @@
     // spawn large armies sometimes
     if(!paused) state.map.nextArmySpawn -= dt;
     if(!paused && state.map.nextArmySpawn <= 0){
-      state.map.nextArmySpawn = 18 + Math.random()*16;
+      const baseSpawn = 18 + Math.random()*16;
+      const faster = clamp(1 - (state.map.day*0.012 + state.map.threat*0.02), 0.55, 1.0);
+      state.map.nextArmySpawn = baseSpawn * faster;
       if(Math.random() < 0.55){
         const f = FACTIONS[randi(0,FACTIONS.length-1)];
-        const size = randi(28, 46);
+        const sizeMin = clamp(26 + Math.floor(state.map.day*0.8) + Math.floor(state.map.threat*1.4), 28, 72);
+        const sizeMax = clamp(42 + Math.floor(state.map.day*1.1) + Math.floor(state.map.threat*2.2), 32, 78);
+        const size = randi(sizeMin, sizeMax);
         const x = randi(3,MAP_W-4), y = randi(3,MAP_H-4);
         const party = {
           id:'p_'+Math.random().toString(36).slice(2,9),
@@ -2067,7 +2335,7 @@
           aggro: 3.6,
           baseSpeed: 1.75,
           size,
-          comp: makePartyComp('army', size),
+          comp: makePartyComp('army', size, { threat:state.map.threat, day:state.map.day, factionId:f.id }),
           alive:true,
           targetSettlementId: null
         };
@@ -2119,6 +2387,7 @@
       }
     }
 
+    if(!paused) updateVassals(dt);
     if(!paused) updateInvasions(dt);
   }
 
@@ -2137,6 +2406,37 @@
     add1('arc_archer', 0.16);
     add1('inf_pikeman', 0.10);
     add1('arc_crossbowman', 0.08);
+    add1('cav_scout', 0.05);
+    add1('sup_banner', 0.03);
+  }
+
+
+  function updateVassals(dt){
+    const p=state.player;
+    if(!p.vassals) return;
+    state.map.strategicClock = (state.map.strategicClock||0) + dt;
+    for(const v of p.vassals){
+      const party = partyById(v.partyId);
+      if(!party || !party.alive) continue;
+      if(v.orders==='follow'){ party.roamTx = p.x; party.roamTy = p.y; continue; }
+      if((state.map.day + (v.id.length%2))%2===0){
+        let invaded=null, bd=1e9;
+        for(const pid in state.map.invasion){
+          const inv=state.map.invasion[pid]; const c=settlementById(inv.settlementId); if(!c||c.kind!=='castle') continue;
+          if(c.factionId!=='player' && (!p.faction || c.factionId!==p.faction)) continue;
+          const d=dist2(party.x,party.y,c.x,c.y); if(d<bd){bd=d; invaded=c;}
+        }
+        if(invaded){ party.targetSettlementId = invaded.id; }
+      }
+      if(!party.targetSettlementId || v.orders==='raid'){
+        const targets = state.map.settlements.filter(s=>s.kind==='castle' && s.factionId!=='player' && (!p.faction || s.factionId!==p.faction));
+        if(targets.length){
+          const t = targets[randi(0,targets.length-1)];
+          const defS = garrisonCount(t.garrison||{})*(1+(t.defense?.walls||1)*0.08+(t.defense?.towers||0)*0.05) + (t.defense?.traps||0)*2;
+          if(party.size >= defS*0.85 || state.map.threat<4) party.targetSettlementId=t.id;
+        }
+      }
+    }
   }
 
   function updateInvasions(dt){
@@ -2184,7 +2484,8 @@
         }
         inv[party.id].t += dt;
 
-        if(inv[party.id].t >= 60){
+        const invDuration = clamp(70 - state.map.day*0.4 - state.map.threat*1.2, 40, 70);
+        if(inv[party.id].t >= invDuration){
           resolveAutoInvasion(party, best);
           delete inv[party.id];
         }
@@ -2225,7 +2526,7 @@
     const lossFrac = win ? rand(0.45,0.70) : rand(0.25,0.55);
     const newSize = Math.max(3, Math.floor(atk * (1-lossFrac)));
     party.size = newSize;
-    party.comp = makePartyComp(party.kind==='bandit'?'bandit':'army', newSize);
+    party.comp = makePartyComp(party.kind==='bandit'?'bandit':'army', newSize, { threat:state.map.threat, day:state.map.day, factionId:party.factionId });
 
     const defLoss = win ? rand(0.50,0.82) : rand(0.10,0.30);
     applyGarrisonLosses(g, defLoss);
@@ -2465,9 +2766,10 @@
     });
   }
 
-  function applyDamage(unit, dmg){
+  function applyDamage(unit, dmg, source=null){
     if(!unit.alive) return;
-    unit.hp -= dmg;
+    const mul = source? (source._buffDmgMul||1) : 1;
+    unit.hp -= dmg*mul;
     if(unit.hp <= 0){
       unit.hp = 0;
       unit.alive = false;
@@ -2636,6 +2938,9 @@
       attackerSide: null
     });
 
+    state.battle.enemyKind = party.kind;
+    applyTacticsPreset(state.battle);
+
     markOwnershipForBattle(state.battle);
     toast('Battle started!');
     syncHUD();
@@ -2740,9 +3045,47 @@
     });
 
     markOwnershipForBattle(state.battle);
+    applyTacticsPreset(state.battle);
 
     toast('Siege started!');
     syncHUD();
+  }
+
+
+  function assignHoldLine(units, centerX, centerY, facingX, facingY, mode='line'){
+    const len = Math.hypot(facingX,facingY)||1;
+    const fx=facingX/len, fy=facingY/len, rx=-fy, ry=fx;
+    const offs = formationOffsets(mode, units.length);
+    const ordered = units.slice();
+    for(let i=0;i<ordered.length;i++){
+      const o=offs[i]||{ox:0,oy:0};
+      ordered[i].order='hold';
+      ordered[i].holdPos = { x:centerX + rx*(o.ox||0) + fx*(o.oy||0), y:centerY + ry*(o.ox||0) + fy*(o.oy||0) };
+    }
+  }
+
+  function applyTacticsPreset(b){
+    if(!b) return;
+    const ex = b.enemies.filter(u=>u.alive);
+    const inf = ex.filter(u=>u.role==='inf');
+    const arc = ex.filter(u=>u.role==='arc');
+    const cav = ex.filter(u=>u.role==='cav');
+    const sup = ex.filter(u=>u.role==='sup');
+    if(!ex.length) return;
+    let cx=0,cy=0; for(const u of ex){cx+=u.x;cy+=u.y;} cx/=ex.length; cy/=ex.length;
+    let tx=b.playerEnt.x-cx, ty=b.playerEnt.y-cy; const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+    if(b.type==='field'){
+      if(b.enemyKind==='bandit'){ for(const u of ex) u.order='charge'; }
+      else {
+        assignHoldLine(inf, cx, cy, tx, ty, b.enemyKind==='army'?'shieldwall':'line');
+        assignHoldLine(arc, cx-tx*1.6, cy-ty*1.6, tx, ty, 'archerline');
+        assignHoldLine(sup, cx-tx*1.8, cy-ty*1.8, tx, ty, 'line');
+        for(const c of cav){ c.order='hold'; c.holdPos={x:cx+(-ty)*(Math.random()<0.5?-3:3), y:cy+(tx)*(Math.random()<0.5?-3:3)}; c._flankTimer=2.0; }
+      }
+    } else {
+      assignHoldLine(inf, cx, cy, tx, ty, 'wedge');
+      assignHoldLine(arc, cx-tx*2.1, cy-ty*2.1, tx, ty, 'archerline');
+    }
   }
 
   function makeBattleState({ type, partyId=null, partyRef=null, castleRef=null, invaderPartyRef=null, playerEnt, allies, enemies, siege=null, attackerSide=null }){
@@ -2872,6 +3215,17 @@
     }
     b.particles = b.particles.filter(pt => pt.ttl>0);
 
+    for(const u of [...b.allies,...b.enemies]) u._buffDmgMul = 1;
+    const banners = [...b.allies,...b.enemies].filter(u=>u.alive && u.unitKey==='sup_banner');
+    for(const bn of banners){
+      const rad = (UNIT_DB[bn.unitKey]?.auraRadius)||3.2;
+      const teamList = bn.team==='ally' ? [b.playerEnt,...b.allies] : b.enemies;
+      for(const u of teamList){
+        if(!u.alive) continue;
+        if(dist2(u.x,u.y,bn.x,bn.y) <= rad*rad) u._buffDmgMul = Math.max(u._buffDmgMul||1, 1.08);
+      }
+    }
+
     for(const u of b.allies) if(u.alive) updateUnit(u, dt);
     for(const e of b.enemies) if(e.alive) updateUnit(e, dt);
 
@@ -2899,7 +3253,7 @@
           if(dist2(pr.x,pr.y, e.x,e.y) < (e.r+pr.r)*(e.r+pr.r)){
             if(isArrowOrBolt && tryBlock(e, true)){ pr.ttl=0; break; }
             const wasAlive = e.alive;
-            applyDamage(e, pr.dmg);
+            applyDamage(e, pr.dmg, null);
             spawnCombatBurst(e.x, e.y, pr.team);
             if(wasAlive && !e.alive) spawnBloodAt(e.x, e.y);
             if(wasAlive && !e.alive) b.killCountThisBattle++;
@@ -2921,7 +3275,7 @@
             if(dist2(pr.x,pr.y, a.x,a.y) < (a.r+pr.r)*(a.r+pr.r)){
               if(isArrowOrBolt && tryBlock(a, true)){ pr.ttl=0; break; }
               const wasAlive = a.alive;
-              applyDamage(a, pr.dmg);
+              applyDamage(a, pr.dmg, null);
               spawnCombatBurst(a.x, a.y, pr.team);
               if(wasAlive && !a.alive) spawnBloodAt(a.x, a.y);
               pr.ttl=0;
@@ -2941,6 +3295,8 @@
     if(!enemiesAlive && alliesAlive){
       victoryFlow();
     } else if(!alliesAlive){
+      state.player.lastBattleResultDay = state.map.day;
+      state.player.lastBattleResultType = 'defeat';
       toast('Defeat... restarting!');
       restartGame();
     }
@@ -2951,6 +3307,8 @@
     const pe = b.playerEnt;
 
     const targets = (u.team==='ally') ? b.enemies : [pe, ...b.allies];
+    if(u._flankTimer!==undefined){ u._flankTimer -= dt; if(u._flankTimer<=0){ u.order='charge'; u.holdPos=null; delete u._flankTimer; } }
+    u._chargeTime = Math.max(0,(u._chargeTime||0)-dt*0.4);
     const tgt = nearestAlive(targets, u.x, u.y);
 
     if(u.atk.state==='cooldown'){
@@ -2989,7 +3347,9 @@
                 if(t.hp<=0){ t.hp=0; t.alive=false; }
               } else {
                 const wasAlive = t.alive;
-                applyDamage(t, u.dmg);
+                const cm = (u.role==='cav' && (u._chargeTime||0)>=0.6) ? (UNIT_DB[u.unitKey]?.chargeMul||1.35) : 1;
+                applyDamage(t, u.dmg*cm, u);
+                if(cm>1){ u._retreatT=0.8; }
                 spawnCombatBurst(t.x, t.y, u.team);
                 if(wasAlive && !t.alive) spawnBloodAt(t.x, t.y);
                 if(wasAlive && !t.alive && u.team==='ally') b.killCountThisBattle++;
@@ -3076,6 +3436,19 @@
       return;
     }
 
+
+    if(u.role==='sup'){
+      const allies = u.team==='ally' ? [pe, ...b.allies.filter(x=>x!==u)] : b.enemies.filter(x=>x!==u);
+      let ax=0,ay=0,c=0; for(const a of allies){ if(!a.alive) continue; ax+=a.x; ay+=a.y; c++; }
+      if(c){ ax/=c; ay/=c; }
+      if(d>1.3){ const mx=ax-u.x,my=ay-u.y,ll=Math.hypot(mx,my)||1; u.vx=(mx/ll)*u.spd*0.85; u.vy=(my/ll)*u.spd*0.85; }
+    }
+    if(u.role==='cav'){
+      const spdNow = Math.hypot(u.vx||0,u.vy||0);
+      if(d>1.8 && d<6.0 && spdNow>(UNIT_DB[u.unitKey]?.chargeMinSpeed||2.3)) u._chargeTime = Math.min(1.2,(u._chargeTime||0)+dt);
+      if(u._retreatT>0){ u._retreatT-=dt; const mx=u.x-tgt.x,my=u.y-tgt.y,ll=Math.hypot(mx,my)||1; u.vx=(mx/ll)*u.spd; u.vy=(my/ll)*u.spd; }
+    }
+
     // infantry
     if(u.atk.state==='idle' && d <= u.range + 0.18){
       u.atk.state='windup';
@@ -3141,14 +3514,20 @@
 
       // diplomacy shifts
       if(party && (party.kind==='patrol' || party.kind==='army') && party.factionId){
-        state.diplomacy[party.factionId] = clamp((state.diplomacy[party.factionId]??0) - 25, -100, 100);
+        state.diplomacy[party.factionId].standing = clamp((state.diplomacy[party.factionId].standing||0) - 25, -100, 100); state.diplomacy[party.factionId].hostility = (state.diplomacy[party.factionId].hostility||0) + 18;
       } else {
         for(const f of FACTIONS){
-          state.diplomacy[f.id] = clamp((state.diplomacy[f.id]??0) + 2, -100, 100);
+          state.diplomacy[f.id].standing = clamp((state.diplomacy[f.id].standing||0) + 2, -100, 100);
         }
       }
 
       const size = party ? party.size : 12;
+      const allyCount = Math.max(1, state.player.armyUnits.length);
+      const ratio = size / allyCount;
+      const extra = Math.floor(clamp((ratio-1)*6,0,10));
+      p.renown += (2 + Math.floor(size/10) + extra);
+      p.lastBattleResultDay = state.map.day;
+      p.lastBattleResultType = 'field_win';
       const lootGold = randi(18, 55) + Math.floor(size * 1.25);
       const lootFood = randi(5, 15);
 
@@ -3184,7 +3563,7 @@
         castle.factionId = p.faction;
         castle.stock = makeCastleStock(castle.factionId);
         flipLinkedVillages(castle.id, castle.factionId);
-        state.diplomacy[p.faction] = clamp((state.diplomacy[p.faction]??0) + 6, -100, 100);
+        state.diplomacy[p.faction].standing = clamp((state.diplomacy[p.faction].standing||0) + 6, -100, 100);
         toast(`🏰 Captured for ${factionName(p.faction)}!`, 1600);
       } else {
         castle.factionId = 'player';
@@ -3195,9 +3574,10 @@
 
       // relations penalty with previous owner if it was a real faction
       if(oldFaction && oldFaction!=='player'){
-        state.diplomacy[oldFaction] = clamp((state.diplomacy[oldFaction]??0) - 30, -100, 100);
+        state.diplomacy[oldFaction].standing = clamp((state.diplomacy[oldFaction].standing||0) - 30, -100, 100); state.diplomacy[oldFaction].hostility = (state.diplomacy[oldFaction].hostility||0)+20;
       }
 
+      p.renown += 12; p.influence += (p.faction?5:1); p.lastBattleResultDay = state.map.day; p.lastBattleResultType = 'siege_win';
       const lootGold = randi(95, 190) + 55;
       const lootFood = randi(20, 45);
       const items = [];
@@ -3228,6 +3608,7 @@
 
     finalizePlayerArmyFromBattle();
 
+    p.renown += 6; if(p.faction && castle.factionId===p.faction) p.influence += 3; p.lastBattleResultDay = state.map.day; p.lastBattleResultType = 'siege_win';
     const lootGold = randi(20, 60);
     const lootFood = randi(8, 18);
     const items = [];
