@@ -32,6 +32,16 @@
       z-index:10;
       pointer-events:none;
     }
+    #topStats{
+      pointer-events:auto;
+      max-width:min(78vw, 1000px);
+    }
+    #topStats summary{list-style:none;cursor:pointer;}
+    #topStats summary::-webkit-details-marker{display:none;}
+    #topStats summary .chip{display:inline-flex;}
+    #topStats[open] summary{margin-bottom:8px;}
+    #topStats .statsGrid{display:none;gap:8px;flex-wrap:wrap;}
+    #topStats[open] .statsGrid{display:flex;}
     .chipRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;pointer-events:auto;}
     .chip{
       background:rgba(15,27,51,.78);
@@ -160,20 +170,27 @@
     }
     #mobileBattlePanel{
       position:absolute;left:14px;bottom:14px;
-      width:min(240px, 58vw);
+      width:min(320px, 74vw);
       background:rgba(15,27,51,.82);
       border:1px solid var(--line);
       border-radius:12px;
       padding:8px;
       display:none;
       pointer-events:auto;
+      transition:transform .2s ease, opacity .2s ease;
+      transform:translateX(0);
+      opacity:1;
     }
     #mobileBattlePanel .row{margin-bottom:6px;}
     #mobileBattlePanel .row:last-child{margin-bottom:0;}
+    #mobileBattlePanel .row.scrollRow{display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;}
+    #mobileBattlePanel .row.scrollRow .btn{flex:0 0 auto;}
+    #mobileBattlePanel.collapsed{transform:translateX(calc(-100% + 46px));opacity:.92;}
+    #mbToggle{width:34px;min-width:34px;text-align:center;padding:8px 0;}
     @media (max-width: 920px), (pointer: coarse){
       #mobileHud{display:block;}
       #topbar{right:8px;left:8px;top:8px;}
-      #topbar .chipRow:first-child{max-width:66%;overflow:auto;}
+      #topStats{max-width:64%;}
       #topbar .chipRow:last-child{gap:6px;}
       #topbar .chipRow:last-child .btn{padding:7px 8px;font-size:12px;}
     }
@@ -185,21 +202,24 @@
     <canvas id="c"></canvas>
 
     <div id="topbar">
+      <details id="topStats">
+        <summary>
+          <div class="chip">👥 <b id="army">0</b> • 💰 <b id="gold">0</b> • 🍖 <b id="food">0</b></div>
+        </summary>
+        <div class="statsGrid">
+          <div class="chip"><span class="dot" id="modeDot"></span><b id="modeLabel">MAP</b><span id="modeSub" class="tag">WASD move • E interact</span></div>
+          <div class="chip"><span class="dot" id="bannerDot"></span>🏳 <b id="banner">Independent</b></div>
+          <div class="chip">⭐ Lv <b id="lvl">1</b> <span class="tag mono" id="xp">0/60</span></div>
+          <div class="chip">🗓 Day <b id="day">1</b> <span class="tag mono" id="dayPct">0%</span></div>
+          <div class="chip">🤕 <b id="wounded">0</b></div>
+          <div class="chip">🙂 <b id="morale">65</b></div>
+          <div class="chip">🏅 <b id="renown">0</b></div>
+          <div class="chip">🏛 <b id="influence">0</b></div>
+          <div class="chip">❤️ <b id="hp">0</b>/<b id="hpMax">0</b></div>
+        </div>
+      </details>
       <div class="chipRow">
-        <div class="chip"><span class="dot" id="modeDot"></span><b id="modeLabel">MAP</b><span id="modeSub" class="tag">WASD move • E interact</span></div>
-        <div class="chip"><span class="dot" id="bannerDot"></span>🏳 <b id="banner">Independent</b></div>
-        <div class="chip">⭐ Lv <b id="lvl">1</b> <span class="tag mono" id="xp">0/60</span></div>
-        <div class="chip">🗓 Day <b id="day">1</b> <span class="tag mono" id="dayPct">0%</span></div>
-        <div class="chip">🤕 <b id="wounded">0</b></div>
-        <div class="chip">💰 <b id="gold">0</b></div>
-        <div class="chip">🍖 <b id="food">0</b></div>
-        <div class="chip">🙂 <b id="morale">65</b></div>
-        <div class="chip">🏅 <b id="renown">0</b></div>
-        <div class="chip">🏛 <b id="influence">0</b></div>
-        <div class="chip">👥 <b id="army">0</b></div>
-        <div class="chip">❤️ <b id="hp">0</b>/<b id="hpMax">0</b></div>
-      </div>
-      <div class="chipRow">
+        <button class="btn" id="btnFullscreen">Fullscreen</button>
         <button class="btn" id="btnSave">Save</button>
         <button class="btn" id="btnInv">Inventory</button>
         <button class="btn" id="btnArmy">Army</button>
@@ -280,6 +300,7 @@
     btnArmy: document.getElementById('btnArmy'),
     btnDip: document.getElementById('btnDip'),
     btnHelp: document.getElementById('btnHelp'),
+    btnFullscreen: document.getElementById('btnFullscreen'),
 
     startMenu: document.getElementById('startMenu'),
     btnNewGame: document.getElementById('btnNewGame'),
@@ -1154,6 +1175,15 @@
   ui.btnArmy.onclick = () => { togglePanel('army'); if(state.panelsOpen.army) renderArmyPanel(); };
   ui.btnDip.onclick = () => { togglePanel('diplomacy'); if(state.panelsOpen.diplomacy) renderDiplomacyPanel(); };
   ui.btnHelp.onclick = () => { togglePanel('help'); if(state.panelsOpen.help) renderHelpPanel(); };
+  ui.btnFullscreen.onclick = async () => {
+    try{
+      if(!document.fullscreenElement) await frame.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(_){ toast('Fullscreen unavailable on this device/browser'); }
+  };
+  document.addEventListener('fullscreenchange', ()=>{
+    ui.btnFullscreen.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  });
 
   ui.btnNewGame.onclick = () => {
     state.map = makeMap();
@@ -1642,6 +1672,7 @@
         You heal over time on the map. Wounded troops return over time too.<br/><br/>
 
         <b>Battle</b><br/>
+        <span class="kbd">1</span>/<span class="kbd">2</span>/<span class="kbd">3</span> troop commands • <span class="kbd">4</span>/<span class="kbd">5</span>/<span class="kbd">6</span> selection • <span class="kbd">T</span> formation<br/>
         <span class="kbd">WASD</span> move • <span class="kbd">Space</span> attack • <span class="kbd">F</span> swap weapons<br/>
         Troop orders and formations can be managed from battle controls (mobile panel or hotkeys).<br/><br/>
 
@@ -2336,17 +2367,18 @@
     const sel = b.selection || 'all';
     const form = b.formations[sel]?.mode || 'line';
     ui.mobileBattlePanel.innerHTML = `
-      <div class="row">
+      <div class="row scrollRow">
+        <button class="btn" id="mbToggle">⇤</button>
         <button class="btn" data-cmd="charge">Charge</button>
         <button class="btn" data-cmd="hold">Hold</button>
         <button class="btn" data-cmd="rally">Rally</button>
       </div>
-      <div class="row">
+      <div class="row scrollRow">
         <button class="btn" data-sel="all">All</button>
         <button class="btn" data-sel="inf">Inf</button>
         <button class="btn" data-sel="arc">Arc</button>
       </div>
-      <div class="row">
+      <div class="row scrollRow">
         <button class="btn" id="mbForm">Formation: ${form}</button>
         <button class="btn" id="mbAtk">Attack</button><button class="btn" id="mbBreach">Breach</button>
       </div>`;
@@ -2355,6 +2387,11 @@
     ui.mobileBattlePanel.querySelector('#mbForm').onclick = cycleFormation;
     ui.mobileBattlePanel.querySelector('#mbAtk').onclick = tryPlayerAttack;
     const bb=ui.mobileBattlePanel.querySelector('#mbBreach'); if(bb) bb.onclick=tryPlaceRam;
+    const toggle = ui.mobileBattlePanel.querySelector('#mbToggle');
+    toggle.onclick = ()=>{
+      const collapsed = ui.mobileBattlePanel.classList.toggle('collapsed');
+      toggle.textContent = collapsed ? '⇥' : '⇤';
+    };
   }
 
   // =========================
