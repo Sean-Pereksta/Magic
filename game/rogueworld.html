@@ -1186,29 +1186,35 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       chunks.delete(key);
     }
 
-    function tickChunks(){
-      const cx = Math.floor(me.x / CHUNK);
-      const cz = Math.floor(me.z / CHUNK);
+    let _lastChunkX = 999999;
+let _lastChunkZ = 999999;
 
-      // load
-      for(let dz=-CHUNK_R; dz<=CHUNK_R; dz++){
-        for(let dx=-CHUNK_R; dx<=CHUNK_R; dx++){
-          createChunk(cx+dx, cz+dz);
-        }
-      }
-      // unload
-      for(const key of chunks.keys()){
-        const [kx,kz] = key.split(",").map(Number);
-        if(Math.abs(kx-cx)>CHUNK_R+1 || Math.abs(kz-cz)>CHUNK_R+1){
-          disposeChunk(key);
-        }
-      }
+function tickChunks(){
+  const cx = Math.floor(me.x / CHUNK);
+  const cz = Math.floor(me.z / CHUNK);
+  if(cx === _lastChunkX && cz === _lastChunkZ) return;
+  _lastChunkX = cx; _lastChunkZ = cz;
+
+  for(let dz=-CHUNK_R; dz<=CHUNK_R; dz++){
+    for(let dx=-CHUNK_R; dx<=CHUNK_R; dx++){
+      createChunk(cx+dx, cz+dz);
     }
+  }
+  for(const key of chunks.keys()){
+    const [kx,kz] = key.split(",").map(Number);
+    if(Math.abs(kx-cx)>CHUNK_R+1 || Math.abs(kz-cz)>CHUNK_R+1){
+      disposeChunk(key);
+    }
+  }
+}
 
     // ============================================================
     // Forge placement (pre-generated, highlighted, interact pauses)
     // ============================================================
     const forges = []; // {x,z, regionId, mesh, beacon}
+    const FORGE_ACTIVE_MAX = 18;          // how many full forge meshes to keep alive
+const FORGE_ACTIVE_DIST = 320;        // only consider forges within this distance
+const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     let lastRegionBannerKey = "";
     const floatingTexts = [];
     function buildForgeMesh(){
@@ -1251,6 +1257,14 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       g.userData.light = light;
       return g;
     }
+    function ensureForgeBeacon(f){
+  if(f.beaconSprite) return;
+  const y = heightAt(f.x, f.z, f.regionId);
+  const s = glowSprite(0x6ee7b7, 3.4, 0.22, FX_TEX.softGlow); // cheap
+  s.position.set(f.x, y + 26, f.z);
+  world.add(s);
+  f.beaconSprite = s;
+}
 
     function genForges(){
       forges.length = 0;
@@ -1278,25 +1292,60 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     }
 
     function tickForges(now){
-      // spawn + animate (kept active so distant beacon columns remain visible)
-      for(const f of forges){
-        if(!f.mesh){
-          const m = buildForgeMesh();
-          const y = heightAt(f.x, f.z, f.regionId);
-          m.position.set(f.x, y, f.z);
-          world.add(m);
-          f.mesh = m;
-        }
+  // always ensure cheap beacons (they’re just sprites)
+  for(const f of forges) ensureForgeBeacon(f);
 
-        // animate glow
-        const t = now*0.001;
-        const pulse = 0.65 + 0.35*Math.sin(t*2.2 + (f.x+f.z)*0.01);
-        f.mesh.userData.glowRing.material.opacity = 0.30 + 0.55*pulse;
-        f.mesh.userData.beacon.material.opacity = 0.18 + 0.14*pulse;
-        f.mesh.userData.light.intensity = 0.7 + 0.9*pulse;
-        f.mesh.rotation.y += 0.002;
+  // pick nearest forges (within distance), keep only a small number “fully alive”
+  const near = [];
+  for(const f of forges){
+    const d2 = dist2(me.x, me.z, f.x, f.z);
+    if(d2 <= FORGE_ACTIVE_DIST2) near.push([d2, f]);
+  }
+  near.sort((a,b)=>a[0]-b[0]);
+  const activeSet = new Set(near.slice(0, FORGE_ACTIVE_MAX).map(x=>x[1]));
+
+  // spawn/animate only active; despawn the rest
+  for(const f of forges){
+    const active = activeSet.has(f);
+
+    if(active){
+      if(!f.mesh){
+        const m = buildForgeMesh();
+        const y = heightAt(f.x, f.z, f.regionId);
+        m.position.set(f.x, y, f.z);
+        world.add(m);
+        f.mesh = m;
       }
+
+      // animate nearby only
+      const t = now * 0.001;
+      const pulse = 0.65 + 0.35 * Math.sin(t*2.2 + (f.x+f.z)*0.01);
+      f.mesh.userData.glowRing.material.opacity = 0.30 + 0.55*pulse;
+      f.mesh.userData.beacon.material.opacity   = 0.18 + 0.14*pulse;
+
+      // 👇 point lights are expensive — keep them only for active forges
+      f.mesh.userData.light.intensity = 0.6 + 0.8*pulse;
+      f.mesh.rotation.y += 0.002;
+
+      // make beacon sprite a little stronger when close
+      if(f.beaconSprite) f.beaconSprite.material.opacity = 0.10;
+    }else{
+      // remove heavy mesh if it exists
+      if(f.mesh){
+        world.remove(f.mesh);
+        f.mesh.traverse(o=>{
+          if(o.geometry?.dispose) o.geometry.dispose();
+          const m = o.material;
+          if(Array.isArray(m)) m.forEach(mm=>mm?.dispose?.());
+          else m?.dispose?.();
+        });
+        f.mesh = null;
+      }
+      // beacon sprite stays (cheap)
+      if(f.beaconSprite) f.beaconSprite.material.opacity = 0.22;
     }
+  }
+}
 
     function nearestForge(){
       let best=null, bestD=1e18;
@@ -4518,35 +4567,36 @@ e.mesh.userData.anim?.(e, dt, now);
       return `Fe:${m.iron} Hi:${m.hide} Es:${m.essence} Cr:${m.crystal} Em:${m.ember}`;
     }
 
-    function tickHUD(){
-      hpText.textContent = `${Math.ceil(me.hp)} / ${me.maxHp} (+${me.hpRegen.toFixed(1)}/s)`;
-      lvlText.textContent = `Lv ${me.level} • XP ${Math.floor(me.xp)}/${me.nextXp}`;
-      weaponText.textContent = me.weapon;
+    let _hudAcc = 0;
+let _lastRegId = "";
+let _lastBandId = "";
 
-      const reg = regionAt(me.x, me.z);
-      const band = dangerBandAt(me.x, me.z);
-      regionText.textContent = `${reg.name} [${band.label}]`;
-      showRegionBanner(reg, band);
+function tickHUD(dt){
+  _hudAcc += dt;
+  if(_hudAcc < 0.10) return; // 10 Hz
+  _hudAcc = 0;
 
-      matsText.textContent = fmtMats();
+  hpText.textContent = `${Math.ceil(me.hp)} / ${me.maxHp} (+${me.hpRegen.toFixed(1)}/s)`;
+  lvlText.textContent = `Lv ${me.level} • XP ${Math.floor(me.xp)}/${me.nextXp}`;
+  weaponText.textContent = me.weapon;
+  matsText.textContent = fmtMats();
 
-      // region fog / sky feel
-      scene.fog.color.setHex(reg.fog);
-      renderer.setClearColor(reg.sky, 1);
+  const reg = regionAt(me.x, me.z);
+  const band = dangerBandAt(me.x, me.z);
+  regionText.textContent = `${reg.name} [${band.label}]`;
+  showRegionBanner(reg, band);
 
-      // forge prompt for mobile button visibility
-      const nf = nearestForge();
-      const canUseForge = !!(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none");
-      if(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none"){
-        mobileInteract.style.opacity = "1";
-        mobileInteract.textContent = "⚒️ Use Forge";
-      }else{
-        mobileInteract.style.opacity = "0.55";
-        mobileInteract.textContent = "⚒️ Use Forge";
-      }
-      mobileInteract.style.display = (mobile.enabled && canUseForge) ? "block" : "none";
-    }
+  // only change fog/clear color when region actually changes
+  if(reg.id !== _lastRegId){
+    _lastRegId = reg.id;
+    scene.fog.color.setHex(reg.fog);
+    renderer.setClearColor(reg.sky, 1);
+  }
 
+  const nf = nearestForge();
+  const canUseForge = !!(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none");
+  mobileInteract.style.display = (mobile.enabled && canUseForge) ? "block" : "none";
+}
     // ============================================================
     // Spawn pacing
     // ============================================================
@@ -4644,7 +4694,7 @@ e.mesh.userData.anim?.(e, dt, now);
         tickProjectiles(dt);
         pickupDrops(dt);
         tickForgeHint();
-        tickHUD();
+        tickHUD(dt);
         tickFloatingTexts(dt);
 
         // autosave
@@ -4675,7 +4725,7 @@ e.mesh.userData.anim?.(e, dt, now);
       // prime world
       genForges();
       tickChunks();
-      tickHUD();
+      tickHUD(dt);
 
       requestAnimationFrame(loop);
     }
