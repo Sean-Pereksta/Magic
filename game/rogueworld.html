@@ -770,6 +770,11 @@ const BOSS_FX_POOL = {
   ring: [],
 };
 
+const ALIEN_BOSS_VFX_POOL = {
+  lasers: [],
+  starTelegraphs: [],
+};
+
 function takeBossFx(type, createFn){
   const m = BOSS_FX_POOL[type]?.pop() || createFn();
   m.visible = true;
@@ -814,7 +819,7 @@ function spawnBossFxSparkBurst(x,y,z,color=0xffffff,count=8,speed=5,life=0.7){
 
 function spawnBossFxRing(x,y,z,color=0xffffff,life=0.55,maxScale=3.6,kind='shockwave'){
   const ring = takeBossFx('ring', ()=> new THREE.Mesh(
-    new THREE.RingGeometry(0.35,1.0,30),
+    bossGeoCache().bossFxRing,
     new THREE.MeshBasicMaterial({ map:FX_TEX.runeRing, color, transparent:true, opacity:0.7, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending })
   ));
   ring.material.color.setHex(color);
@@ -1918,6 +1923,16 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         torusMid: new THREE.TorusGeometry(1, 0.14, 12, 28),
         dode: new THREE.DodecahedronGeometry(1,0),
         oct: new THREE.OctahedronGeometry(1,0),
+        bossFxRing: new THREE.RingGeometry(0.35,1.0,30),
+        alienStarMarker: new THREE.RingGeometry(0.95, 1.3, 28),
+        alienStarRock: new THREE.DodecahedronGeometry(0.48, 0),
+        alienLaserCore: new THREE.CylinderGeometry(0.12, 0.12, 62, 10),
+        alienLaserAura: new THREE.PlaneGeometry(1.7, 62),
+        forestFogRing: new THREE.RingGeometry(0.25,0.95,22),
+        snowRibbonPlane: new THREE.PlaneGeometry(18,1.2),
+        titanQuakeRuneRing: new THREE.RingGeometry(0.65,1.4,36),
+        titanQuakeCrackPlane: new THREE.PlaneGeometry(2.9,1.0),
+        titanStarCrackPlane: new THREE.PlaneGeometry(2.5,1.0),
       });
     }
 
@@ -1940,7 +1955,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
       const panelSeams = [];
       for(let i=0;i<4;i++){
-        const seam = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.28 }));
+        const seam = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.28, depthWrite:false, blending:THREE.AdditiveBlending }));
         seam.rotation.x = Math.PI/2;
         seam.scale.set(2.75 + i*1.0, 2.75 + i*1.0, 1);
         seam.position.y = 0.12 - i*0.05;
@@ -1955,7 +1970,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const runePips = [];
       for(let i=0;i<10;i++){
         const a = i*Math.PI*2/10;
-        const pip = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color:0xe879f9, transparent:true, opacity:0.72 }));
+        const pip = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color:0xe879f9, transparent:true, opacity:0.72, depthWrite:false, blending:THREE.AdditiveBlending }));
         pip.scale.set(0.2,0.06,0.1);
         pip.position.set(Math.cos(a)*6.5, 0, Math.sin(a)*6.5);
         pip.rotation.y = -a;
@@ -2224,11 +2239,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const core = new THREE.Mesh(G.dode, matBody);
       core.scale.set(2.65,2.95,2.65);
 
-      const ring = new THREE.Mesh(G.torusMid, new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.56 }));
+      const ring = new THREE.Mesh(G.torusMid, new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.56, depthWrite:false, blending:THREE.AdditiveBlending }));
       ring.scale.set(3.42,3.42,3.42);
       ring.rotation.x = Math.PI/2;
 
-      const ringB = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0xc4b5fd, transparent:true, opacity:0.48 }));
+      const ringB = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0xc4b5fd, transparent:true, opacity:0.48, depthWrite:false, blending:THREE.AdditiveBlending }));
       ringB.scale.set(2.82,2.82,2.82);
       ringB.rotation.x = Math.PI*0.25;
       ringB.rotation.z = Math.PI*0.2;
@@ -2316,8 +2331,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const d of drops) world.remove(d.mesh);
       for(const t of turrets) world.remove(t.mesh);
       if(alienBoss?.mesh) world.remove(alienBoss.mesh);
-      if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ world.remove(l); } }
-      if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); if(t.comet) world.remove(t.comet); } }
+      if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ releaseAlienBossLaser(l); } }
+      if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ releaseAlienStarTelegraph(t); } }
       clearBossFx(regionBoss);
       clearBossFx(titanBoss);
       if(regionBoss?.mesh) world.remove(regionBoss.mesh);
@@ -2403,8 +2418,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       alienBoss.hp -= dmg;
       if(alienBoss.hp <= 0){
         const boss = alienBoss;
-        for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); if(t.comet) world.remove(t.comet); }
-        for(const l of alienBoss.lasers){ world.remove(l); }
+        for(const t of alienBoss.starTelegraphs){ releaseAlienStarTelegraph(t); }
+        for(const l of alienBoss.lasers){ releaseAlienBossLaser(l); }
         world.remove(alienBoss.mesh);
         alienBoss = null;
         dropBossRewards(boss);
@@ -2478,9 +2493,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const t of (b.sigils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.anvils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.burst||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const l of (b.lasers||[])){ releaseAlienBossLaser(l); }
+      for(const t of (b.starTelegraphs||[])){ releaseAlienStarTelegraph(t); }
       for(let i=projectiles.length-1;i>=0;i--){
         const p = projectiles[i];
-        if(p.kind!=="bossFx" && p.kind!=="shockwave") continue;
+        if(p.kind!=="bossFx" && p.kind!=="shockwave" && p.kind!=="alienStarTelegraph") continue;
         if(p.mesh && p.mesh.parent) p.mesh.parent.remove(p.mesh);
         if(p.fxType) releaseBossFx(p.fxType, p.mesh);
         projectiles.splice(i,1);
@@ -5527,6 +5544,82 @@ e.mesh.userData.anim?.(e, dt, now);
       }
     }
 
+    function takeAlienBossLaser(){
+      const laser = ALIEN_BOSS_VFX_POOL.lasers.pop();
+      if(laser){
+        laser.visible = true;
+        laser.userData.flick = Math.random()*10;
+        return laser;
+      }
+      const G = bossGeoCache();
+      const grp = new THREE.Group();
+      const core = new THREE.Mesh(G.alienLaserCore, new THREE.MeshBasicMaterial({ color:0xff4fe1, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false }));
+      core.rotation.z = Math.PI/2;
+      const auraA = new THREE.Mesh(G.alienLaserAura, new THREE.MeshBasicMaterial({ map:FX_TEX.softGlow, color:0xff8ae9, transparent:true, opacity:0.35, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
+      const auraB = auraA.clone();
+      auraA.rotation.y = Math.PI*0.5;
+      auraB.rotation.y = 0;
+      grp.add(core, auraA, auraB);
+      grp.userData = { core, auraA, auraB, flick:Math.random()*10 };
+      return grp;
+    }
+
+    function releaseAlienBossLaser(laser){
+      if(!laser) return;
+      laser.visible = false;
+      if(laser.parent) laser.parent.remove(laser);
+      ALIEN_BOSS_VFX_POOL.lasers.push(laser);
+    }
+
+    function takeAlienStarTelegraph(){
+      const vfx = ALIEN_BOSS_VFX_POOL.starTelegraphs.pop();
+      if(vfx){
+        const { marker, glow, rock, comet } = vfx;
+        marker.visible = glow.visible = rock.visible = comet.visible = true;
+        marker.scale.setScalar(1);
+        marker.material.opacity = marker.material.userData?.baseOpacity ?? marker.material.opacity;
+        glow.material.opacity = glow.material.userData?.baseOpacity ?? glow.material.opacity;
+        comet.material.opacity = comet.material.userData?.baseOpacity ?? comet.material.opacity;
+        return vfx;
+      }
+      const G = bossGeoCache();
+      const marker = new THREE.Mesh(
+        G.alienStarMarker,
+        new THREE.MeshBasicMaterial({ map:FX_TEX.runeRing, color:0xff8ae9, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending })
+      );
+      marker.rotation.x = -Math.PI/2;
+      marker.material.userData = { baseOpacity: marker.material.opacity };
+
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: FX_TEX.softGlow,
+        color:0x9be7ff,
+        transparent:true,
+        opacity:0.28,
+        depthWrite:false,
+        blending:THREE.AdditiveBlending
+      }));
+      glow.scale.set(1.8,1.8,1);
+      glow.material.userData = { baseOpacity: glow.material.opacity };
+
+      const rock = new THREE.Mesh(
+        G.alienStarRock,
+        new THREE.MeshStandardMaterial({ color:0x67e8f9, emissive:0x22d3ee, emissiveIntensity:0.8, roughness:0.35, metalness:0.15 })
+      );
+      const comet = makeBossFxSprite(FX_TEX.softGlow, 0x67e8f9, 0.9, 0.46);
+      comet.material.userData = { baseOpacity: comet.material.opacity };
+      return { marker, glow, rock, comet };
+    }
+
+    function releaseAlienStarTelegraph(t){
+      if(!t) return;
+      if(t.marker?.parent) t.marker.parent.remove(t.marker);
+      if(t.glow?.parent) t.glow.parent.remove(t.glow);
+      if(t.rock?.parent) t.rock.parent.remove(t.rock);
+      if(t.comet?.parent) t.comet.parent.remove(t.comet);
+      t.marker.visible = t.glow.visible = t.rock.visible = t.comet.visible = false;
+      ALIEN_BOSS_VFX_POOL.starTelegraphs.push({ marker:t.marker, glow:t.glow, rock:t.rock, comet:t.comet });
+    }
+
     function spawnAlienStarfallTelegraph(){
       if(!alienBoss) return;
       const bx = alienBoss.mesh.position.x;
@@ -5538,34 +5631,14 @@ e.mesh.userData.anim?.(e, dt, now);
       const reg = regionAt(tx,tz);
       const gy = heightAt(tx,tz,reg.id);
 
-      const marker = new THREE.Mesh(
-        new THREE.RingGeometry(0.95, 1.3, 28),
-        new THREE.MeshBasicMaterial({ map:FX_TEX.runeRing, color:0xff8ae9, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending })
-      );
-      marker.rotation.x = -Math.PI/2;
-      marker.position.set(tx, gy+0.06, tz);
-      const comet = makeBossFxSprite(FX_TEX.softGlow, 0x67e8f9, 0.9, 0.46);
-      comet.position.set(tx, gy+24.8, tz);
+      const tele = takeAlienStarTelegraph();
+      tele.marker.position.set(tx, gy+0.06, tz);
+      tele.glow.position.set(tx, gy+2.3, tz);
+      tele.rock.position.set(tx, gy+24, tz);
+      tele.comet.position.set(tx, gy+24.8, tz);
 
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: FX_TEX.softGlow,
-        color:0x9be7ff,
-        transparent:true,
-        opacity:0.28,
-        depthWrite:false,
-        blending:THREE.AdditiveBlending
-      }));
-      glow.position.set(tx, gy+2.3, tz);
-      glow.scale.set(1.8,1.8,1);
-
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.48, 0),
-        new THREE.MeshStandardMaterial({ color:0x67e8f9, emissive:0x22d3ee, emissiveIntensity:0.8, roughness:0.35, metalness:0.15 })
-      );
-      rock.position.set(tx, gy+24, tz);
-
-      world.add(marker, glow, rock, comet);
-      alienBoss.starTelegraphs.push({ marker, glow, rock, comet, x:tx, z:tz, y:gy, t:0, delay:2.0, done:false });
+      world.add(tele.marker, tele.glow, tele.rock, tele.comet);
+      alienBoss.starTelegraphs.push({ marker:tele.marker, glow:tele.glow, rock:tele.rock, comet:tele.comet, x:tx, z:tz, y:gy, t:0, delay:2.0, done:false });
     }
 
     function tickAlienBoss(dt){
@@ -5596,15 +5669,7 @@ e.mesh.userData.anim?.(e, dt, now);
           b.spin = 0;
           b.starCd = 0;
           for(let i=0;i<4;i++){
-            const grp = new THREE.Group();
-            const core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 62, 10), new THREE.MeshBasicMaterial({ color:0xff4fe1, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false }));
-            core.rotation.z = Math.PI/2;
-            const auraA = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 62), new THREE.MeshBasicMaterial({ map:FX_TEX.softGlow, color:0xff8ae9, transparent:true, opacity:0.35, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
-            const auraB = auraA.clone();
-            auraA.rotation.y = Math.PI*0.5;
-            auraB.rotation.y = 0;
-            grp.add(core, auraA, auraB);
-            grp.userData = { core, auraA, auraB, flick:Math.random()*10 };
+            const grp = takeAlienBossLaser();
             world.add(grp);
             b.lasers.push(grp);
           }
@@ -5637,7 +5702,7 @@ e.mesh.userData.anim?.(e, dt, now);
           }
         }
         if(b.stateT >= 10.0){
-          for(const l of b.lasers) world.remove(l);
+          for(const l of b.lasers) releaseAlienBossLaser(l);
           b.lasers.length = 0;
           b.state = "starfall";
           b.stateT = 0;
@@ -5671,10 +5736,7 @@ e.mesh.userData.anim?.(e, dt, now);
           scorch.material.rotation = Math.random()*Math.PI;
           world.add(scorch);
           projectiles.push({mesh:scorch,kind:'bossFx',fxType:'glow',x:t.x,y:t.y+0.04,z:t.z,vx:0,vy:0,vz:0,life:0.85,maxLife:0.85});
-          world.remove(t.marker);
-          world.remove(t.glow);
-          world.remove(t.rock);
-          if(t.comet) world.remove(t.comet);
+          releaseAlienStarTelegraph(t);
           b.starTelegraphs.splice(i,1);
         }
       }
@@ -5724,11 +5786,11 @@ e.mesh.userData.anim?.(e, dt, now);
         }
         if(b.cdC<=0){ b.cdC=12.0; b.mesh.position.x -= dirx*9; b.mesh.position.z -= dirz*9; }
       }else if(b.regionId==="forest"){
-        if(b.cdA<=0){ b.cdA=0.7; const tx=me.x+(Math.random()-0.5)*4.8, tz=me.z+(Math.random()-0.5)*4.8; const hy=heightAt(tx,tz,"forest")+0.2; const cloud=new THREE.Group(); const fog = new THREE.Mesh(new THREE.RingGeometry(0.25,0.95,22), new THREE.MeshBasicMaterial({map:FX_TEX.softGlow,color:0x65a30d,transparent:true,opacity:0.32,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); fog.rotation.x=-Math.PI/2; cloud.add(fog); for(let j=0;j<4;j++){ const mote=makeBossFxSprite(FX_TEX.spark,0x86efac,0.28,0.45); mote.position.set((Math.random()-0.5)*0.8,0.2+Math.random()*0.35,(Math.random()-0.5)*0.8); cloud.add(mote);} cloud.position.set(tx,hy,tz); world.add(cloud); projectiles.push({mesh:cloud,x:tx,y:hy,z:tz,vx:0,vy:0,vz:0,life:outer?6:4.8,rad:1.2,dmg:3.8,from:"enemy",kind:"hazard"}); }
+        if(b.cdA<=0){ b.cdA=0.7; const tx=me.x+(Math.random()-0.5)*4.8, tz=me.z+(Math.random()-0.5)*4.8; const hy=heightAt(tx,tz,"forest")+0.2; const cloud=new THREE.Group(); const fog = new THREE.Mesh(bossGeoCache().forestFogRing, new THREE.MeshBasicMaterial({map:FX_TEX.softGlow,color:0x65a30d,transparent:true,opacity:0.32,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); fog.rotation.x=-Math.PI/2; cloud.add(fog); for(let j=0;j<4;j++){ const mote=makeBossFxSprite(FX_TEX.spark,0x86efac,0.28,0.45); mote.position.set((Math.random()-0.5)*0.8,0.2+Math.random()*0.35,(Math.random()-0.5)*0.8); cloud.add(mote);} cloud.position.set(tx,hy,tz); world.add(cloud); projectiles.push({mesh:cloud,x:tx,y:hy,z:tz,vx:0,vy:0,vz:0,life:outer?6:4.8,rad:1.2,dmg:3.8,from:"enemy",kind:"hazard"}); }
         if(b.cdB<=0){ b.cdB=7.0; const cx=b.mesh.position.x, cz=b.mesh.position.z; const pulse=makeTeleCircle(0x22c55e); pulse.position.set(cx,heightAt(cx,cz,"forest")+0.08,cz); world.add(pulse); b.burst.push({mesh:pulse,t:0,max:0.9,rad:7.2,dmg:13,slow:true}); }
         if(b.cdC<=0){ b.cdC=10.0; for(let i=0;i<4+(Math.random()*2|0);i++){ const tx=me.x + me.vx*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const tz=me.z + me.vz*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const mk=makeMarker(0x65a30d); mk.position.set(tx,heightAt(tx,tz,"forest")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.9,do:()=>explodeAt(tx,heightAt(tx,tz,"forest")+0.1,tz,1.8,10,"enemy")}); } }
       }else if(b.regionId==="snow"){
-        if(b.cdA<=0){ b.cdA=1.4; const ang=Math.random()*Math.PI*2; const x0=b.mesh.position.x+Math.cos(ang)*12, z0=b.mesh.position.z+Math.sin(ang)*12; const rib=new THREE.Mesh(new THREE.PlaneGeometry(18,1.2), new THREE.MeshBasicMaterial({color:0x93c5fd,transparent:true,opacity:0.28,side:THREE.DoubleSide,blending:THREE.AdditiveBlending})); rib.position.set(x0,heightAt(x0,z0,"snow")+1.0,z0); rib.rotation.y=ang+Math.PI/2; world.add(rib); b.ribbons.push({mesh:rib,ang,speed:outer?1.6:1.1,life:6,trail:0}); }
+        if(b.cdA<=0){ b.cdA=1.4; const ang=Math.random()*Math.PI*2; const x0=b.mesh.position.x+Math.cos(ang)*12, z0=b.mesh.position.z+Math.sin(ang)*12; const rib=new THREE.Mesh(bossGeoCache().snowRibbonPlane, new THREE.MeshBasicMaterial({color:0x93c5fd,transparent:true,opacity:0.28,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false})); rib.position.set(x0,heightAt(x0,z0,"snow")+1.0,z0); rib.rotation.y=ang+Math.PI/2; world.add(rib); b.ribbons.push({mesh:rib,ang,speed:outer?1.6:1.1,life:6,trail:0}); }
         if(b.cdB<=0){ b.cdB=6.0; const safe=(Math.random()*3)|0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3 + Math.random()*0.35; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const mk=makeTeleCircle(i===safe?0x22c55e:0x60a5fa); mk.position.set(tx,heightAt(tx,tz,"snow")+0.05,tz); mk.scale.set(i===safe?(outer?0.42:0.6):0.7,1,i===safe?(outer?0.42:0.6):0.7); world.add(mk); b.sigils.push({mesh:mk,t:0,delay:1.2,safe:i===safe,x:tx,z:tz}); } }
         if(b.cdC<=0){ b.cdC=9.0; b.mesh.position.x = me.x + (Math.random()-0.5)*9; b.mesh.position.z = me.z + (Math.random()-0.5)*9; explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"snow")+0.2,b.mesh.position.z,2.4,12,"enemy"); }
       }else if(b.regionId==="hell"){
@@ -5769,7 +5831,7 @@ e.mesh.userData.anim?.(e, dt, now);
       if(canSpecial && b.quakeCd<=0){
         b.quakeCd = 7 + Math.random()*3;
         b.lastSpecial = 2.0;
-        const qy=heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1; const ring=new THREE.Group(); const rune = new THREE.Mesh(new THREE.RingGeometry(0.65,1.4,36), new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xc4b5fd,transparent:true,opacity:0.65,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); rune.rotation.x=-Math.PI/2; const crack = new THREE.Mesh(new THREE.PlaneGeometry(2.9,1.0), new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.48,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); crack.rotation.x=-Math.PI/2; crack.rotation.z=Math.random()*Math.PI; ring.add(rune,crack); ring.position.set(b.mesh.position.x,qy,b.mesh.position.z); world.add(ring);
+        const qy=heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1; const ring=new THREE.Group(); const rune = new THREE.Mesh(bossGeoCache().titanQuakeRuneRing, new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xc4b5fd,transparent:true,opacity:0.65,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); rune.rotation.x=-Math.PI/2; const crack = new THREE.Mesh(bossGeoCache().titanQuakeCrackPlane, new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.48,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); crack.rotation.x=-Math.PI/2; crack.rotation.z=Math.random()*Math.PI; ring.add(rune,crack); ring.position.set(b.mesh.position.x,qy,b.mesh.position.z); world.add(ring);
         b.quakeTele = 0.85;
         b.burst.push({mesh:ring,t:0,max:0.85,rad:15,dmg:22,thin:true,double: b.hp <= b.maxHp*0.5,sparks:0});
       }else if(canSpecial && b.starCd<=0){
@@ -5789,7 +5851,7 @@ e.mesh.userData.anim?.(e, dt, now);
           const tx = b.starPlan.baseX + Math.cos(a)*r;
           const tz = b.starPlan.baseZ + Math.sin(a)*r;
           const mk=makeMarker(0xe9d5ff); mk.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.05,tz); world.add(mk);
-          b.telegraphs.push({mesh:mk,t:0,delay:1.1+Math.random()*0.3,do:()=>{ const hy=heightAt(tx,tz,regionAt(tx,tz).id)+0.2; explodeAt(tx,hy,tz,2.1,14,"enemy"); spawnBossFxRing(tx,hy-0.08,tz,0xc084fc,0.65,4.8,"shockwave"); spawnBossFxSparkBurst(tx,hy+0.15,tz,0xe9d5ff,8,5.8,0.62); const hz=makeTeleCircle(0xc084fc); hz.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.08,tz); world.add(hz); projectiles.push({mesh:hz,x:tx,y:hz.position.y,z:tz,vx:0,vy:0,vz:0,life:1.2,rad:1.35,dmg:3.5,from:"enemy",kind:"hazard"}); const decal = new THREE.Mesh(new THREE.PlaneGeometry(2.5,1.0), new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.42,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); decal.rotation.x=-Math.PI/2; decal.rotation.z=Math.random()*Math.PI; decal.position.set(tx,hy-0.1,tz); world.add(decal); projectiles.push({mesh:decal,kind:"bossFx",fxType:"ring",x:tx,y:hy-0.1,z:tz,vx:0,vy:0,vz:0,life:1.4,maxLife:1.4}); }});
+          b.telegraphs.push({mesh:mk,t:0,delay:1.1+Math.random()*0.3,do:()=>{ const hy=heightAt(tx,tz,regionAt(tx,tz).id)+0.2; explodeAt(tx,hy,tz,2.1,14,"enemy"); spawnBossFxRing(tx,hy-0.08,tz,0xc084fc,0.65,4.8,"shockwave"); spawnBossFxSparkBurst(tx,hy+0.15,tz,0xe9d5ff,8,5.8,0.62); const hz=makeTeleCircle(0xc084fc); hz.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.08,tz); world.add(hz); projectiles.push({mesh:hz,x:tx,y:hz.position.y,z:tz,vx:0,vy:0,vz:0,life:1.2,rad:1.35,dmg:3.5,from:"enemy",kind:"hazard"}); const decal = new THREE.Mesh(bossGeoCache().titanStarCrackPlane, new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.42,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); decal.rotation.x=-Math.PI/2; decal.rotation.z=Math.random()*Math.PI; decal.position.set(tx,hy-0.1,tz); world.add(decal); projectiles.push({mesh:decal,kind:"bossFx",fxType:"ring",x:tx,y:hy-0.1,z:tz,vx:0,vy:0,vz:0,life:1.4,maxLife:1.4}); }});
         }
         if(b.starPlan.idx>=b.starPlan.steps && b.starPlan.t > b.starPlan.steps*0.22 + 0.15){
           const tx = me.x + me.vx*0.65, tz = me.z + me.vz*0.65;
