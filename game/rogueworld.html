@@ -48,6 +48,22 @@
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
 
+    #minimapWrap{
+      position:absolute;
+      left:12px;
+      top:60px;
+      width:158px;
+      height:158px;
+      border-radius:14px;
+      border:2px solid rgba(148,163,184,.65);
+      background:rgba(3,7,18,.72);
+      overflow:hidden;
+      box-shadow:0 10px 24px rgba(0,0,0,.42);
+      pointer-events:none;
+      z-index:6;
+    }
+    #minimap{ width:100%; height:100%; display:block; }
+
     #regionBanner{
       position:absolute;
       left:50%;
@@ -385,6 +401,7 @@
     <div id="toast"></div>
     <div id="regionBanner"></div>
     <div id="fxLayer"></div>
+    <div id="minimapWrap"><canvas id="minimap" width="158" height="158"></canvas></div>
 
     <div class="topBtns">
       <button id="loadBtn" class="btn secondary" type="button">⬆ Load</button>
@@ -581,6 +598,8 @@
     const bossHealthFill = $("bossHealthFill");
     const regionBanner = $("regionBanner");
     const fxLayer = $("fxLayer");
+    const minimap = $("minimap");
+    const minimapCtx = minimap?.getContext?.("2d");
 
     const modalShade = $("modalShade");
     const modal = $("modal");
@@ -1050,6 +1069,24 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"] },
     ];
 
+    const REGION_LANDMARKS = {
+      desert:{ name:"Ancient Obelisk", buff:"range", value:1.08 },
+      forest:{ name:"Verdant Shrine", buff:"regen", value:1.2 },
+      snow:{ name:"Frost Relay", buff:"slowResist", value:0.88 },
+      alien:{ name:"Ion Core", buff:"chain", value:1 },
+      hell:{ name:"Ember Crucible", buff:"burn", value:1.2 },
+      city:{ name:"Command Nexus", buff:"damage", value:1.06 }
+    };
+    const WEAPON_MOD_POOL = [
+      { id:"edge", name:"Honed Edge", rarity:"common", dmgMul:1.08 },
+      { id:"scope", name:"Long Scope", rarity:"common", rangeMul:1.1 },
+      { id:"core", name:"Overclock Core", rarity:"rare", dmgMul:1.15, fireRateMul:1.08 },
+      { id:"aoe", name:"Burst Matrix", rarity:"epic", extra:{ aoe:1.25 } },
+      { id:"lightning", name:"Lightning Coil", rarity:"epic", extra:{ chainBounces:1 } },
+      { id:"fire", name:"Incendiary Vial", rarity:"epic", extra:{ burn:true } },
+      { id:"poison", name:"Toxic Capsule", rarity:"epic", extra:{ poison:1.9 } }
+    ];
+
     const REGION_PATCH_SIZE = 130;
     function regionHash(ix, iz, seed=0){
       let n = (ix*374761393 + iz*668265263 + seed*1442695041 + (worldSeed|0))|0;
@@ -1374,7 +1411,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
         const towerCount = Math.max(10, baseCount(prop.tower||16));
         const towerGeo = GEO.tower;
-        const towerMat = MAT.tower;
+        const towerMat = MAT.tower.clone();
+        const cityOwned = !!me.cityLeader[key];
+        if(cityOwned){ towerMat.color.setHex(0x14532d); towerMat.emissive.setHex(0x16a34a); towerMat.emissiveIntensity = 0.35; }
         const im = new THREE.InstancedMesh(towerGeo, towerMat, towerCount);
         im.castShadow = false;
         im.receiveShadow = true;
@@ -1428,7 +1467,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       }
 
       world.add(group);
-      chunks.set(key, { group, ground });
+      chunks.set(key, { group, ground, regionId:reg.id, key });
     }
 
     function disposeChunk(key){
@@ -1444,6 +1483,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       for(let i=citySkyscrapers.length-1;i>=0;i--) if(citySkyscrapers[i].chunkKey===key) citySkyscrapers.splice(i,1);
       for(let i=cityPlazas.length-1;i>=0;i--) if(cityPlazas[i].chunkKey===key) cityPlazas.splice(i,1);
       for(let i=citySoldiers.length-1;i>=0;i--) if(citySoldiers[i].homeChunkKey===key){ if(citySoldiers[i].mesh) world.remove(citySoldiers[i].mesh); citySoldiers.splice(i,1); }
+      for(let i=cityTurrets.length-1;i>=0;i--) if(cityTurrets[i].homeChunkKey===key){ if(cityTurrets[i].mesh) world.remove(cityTurrets[i].mesh); cityTurrets.splice(i,1); }
       chunks.delete(key);
     }
 
@@ -1476,7 +1516,8 @@ function tickChunks(){
     const cityBoards = []; // {x,z, regionId, mesh, beacon}
     const citySkyscrapers = []; // {x,z,r,chunkKey}
     const cityPlazas = []; // {x,z,r,chunkKey}
-    const citySoldiers = []; // {x,z,homeX,homeZ,homeChunkKey,mesh,hp,cd,patrolA,patrolR}
+    const citySoldiers = []; // {x,z,homeX,homeZ,homeChunkKey,mesh,hp,cd,patrolA,patrolR,followPlayer}
+    const cityTurrets = [];
     let worldQuest = null;
     const QUEST_TARGETS = ["scarab","scorpion","sandwisp","boar","spriggan","spitter","goblin","wolf","frostling","drone","shardling","imp","brute","mortar"];
 
@@ -1540,7 +1581,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       citySkyscrapers.length = 0;
       cityPlazas.length = 0;
       for(const s of citySoldiers){ if(s.mesh) world.remove(s.mesh); }
-      citySoldiers.length = 0;
+      for(const t of cityTurrets){ if(t.mesh) world.remove(t.mesh); }
+      citySoldiers.length = 0; cityTurrets.length = 0;
       const rnd = xorshift32(worldSeed ^ 0xC0FFEE);
       const ringCount = 8;
 
@@ -1666,7 +1708,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       return { x:dirX/n, z:dirZ/n };
     }
 
-    function spawnCitySoldier(x,z,homeChunkKey){
+    function spawnCitySoldier(x,z,homeChunkKey,followPlayer=false){
       const g = new THREE.Group();
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28,0.72,4,8), new THREE.MeshStandardMaterial({ color:0x374151, roughness:0.8, metalness:0.1 }));
       body.position.y = 1.0;
@@ -1681,7 +1723,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const y = heightAt(x,z,"city");
       g.position.set(x,y,z);
       world.add(g);
-      citySoldiers.push({ x,z,homeX:x,homeZ:z,homeChunkKey,mesh:g,hp:52,cd:0,patrolA:Math.random()*Math.PI*2,patrolR:1.5+Math.random()*1.6 });
+      citySoldiers.push({ x,z,homeX:x,homeZ:z,homeChunkKey,mesh:g,hp:52,cd:0,patrolA:Math.random()*Math.PI*2,patrolR:1.5+Math.random()*1.6,followPlayer });
+    }
+
+    function spawnCityTurret(x,z,homeChunkKey){
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.42,1.4,12), new THREE.MeshStandardMaterial({ color:0x14532d, emissive:0x22c55e, emissiveIntensity:0.6, roughness:0.3 }));
+      m.position.set(x,heightAt(x,z,"city")+0.8,z);
+      world.add(m);
+      cityTurrets.push({ x,z,homeChunkKey,mesh:m,cd:0 });
     }
 
     function buildCityBoardMesh(){
@@ -1698,8 +1747,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const postR = new THREE.Mesh(GEO.boardPost, MAT.board); postR.position.set(1.08,0.8,-0.18);
       const glow = new THREE.Mesh(new THREE.RingGeometry(0.75,1.05,24), MAT.boardGlow);
       glow.rotation.x = -Math.PI/2; glow.position.y = 0.08;
-      g.add(postL,postR,wall,frame,board,writing,glow);
-      g.userData.glow = glow;
+      const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.2,0.45), new THREE.MeshBasicMaterial({ color:0x22c55e, transparent:true, opacity:0.9, side:THREE.DoubleSide }));
+      banner.position.set(0,2.35,0.06); banner.visible = false;
+      g.add(postL,postR,wall,frame,board,writing,glow,banner);
+      g.userData.glow = glow; g.userData.banner = banner;
       return g;
     }
 
@@ -1715,10 +1766,17 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           const y = heightAt(b.x,b.z,b.regionId);
           b.mesh.position.set(b.x,y,b.z);
           world.add(b.mesh);
-          const soldierCount = 3;
+          const cKey = cityKeyFromBoard(b);
+          const upg = cityData(cKey);
+          const soldierCount = 3 + (upg.squads||0)*2;
           for(let i=0;i<soldierCount;i++){
-            const a = (i/soldierCount)*Math.PI*2;
-            spawnCitySoldier(b.x + Math.cos(a)*4.2, b.z + Math.sin(a)*4.2, chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)));
+            const a = (i/Math.max(1,soldierCount))*Math.PI*2;
+            spawnCitySoldier(b.x + Math.cos(a)*4.2, b.z + Math.sin(a)*4.2, chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)), i>=3);
+          }
+          const tCount = Math.min(4, upg.turrets||0);
+          for(let i=0;i<tCount;i++){
+            const off = [[-9,-9],[9,-9],[-9,9],[9,9]][i];
+            spawnCityTurret(b.x+off[0], b.z+off[1], chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)));
           }
         }else if(!active && b.mesh){
           world.remove(b.mesh);
@@ -1727,7 +1785,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
         if(b.mesh){
           const pulse = 0.6 + 0.4*Math.sin(t*2.5 + (b.x+b.z)*0.03);
+          const cKey = cityKeyFromBoard(b);
+          const isLeader = !!me.cityLeader[cKey];
           b.mesh.userData.glow.material.opacity = 0.35 + pulse*0.45;
+          if(b.mesh.userData.banner) b.mesh.userData.banner.visible = isLeader;
           b.mesh.rotation.y = Math.sin(t*0.5 + b.x*0.01)*0.04;
         }
       }
@@ -1736,6 +1797,28 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         const d2 = dist2(me.x, me.z, s.x, s.z);
         if(d2 > FORGE_ACTIVE_DIST2*0.95){ if(s.mesh) world.remove(s.mesh); citySoldiers.splice(i,1); }
       }
+      for(let i=cityTurrets.length-1;i>=0;i--){
+        const t = cityTurrets[i];
+        const d2 = dist2(me.x, me.z, t.x, t.z);
+        if(d2 > FORGE_ACTIVE_DIST2*0.95){ if(t.mesh) world.remove(t.mesh); cityTurrets.splice(i,1); }
+      }
+    }
+
+    function cityKeyFromBoard(b){ return `${Math.floor(b.x/CHUNK)},${Math.floor(b.z/CHUNK)}`; }
+    function cityData(key){
+      if(!me.cityRep[key]) me.cityRep[key]=0;
+      if(!me.cityUpgrades[key]) me.cityUpgrades[key]={ turrets:0, squads:0, taxBays:0, taxStore:{ iron:0,hide:0,essence:0,crystal:0,ember:0 }, taxTick:0 };
+      return me.cityUpgrades[key];
+    }
+    function currentWeaponPower(){
+      const mods = me.weaponMods[me.weapon]||[];
+      let dmgMul=1, rangeMul=1, fireRateMul=1;
+      const extra = { aoe:0, chainBounces:0, poison:0, burn:false };
+      for(const m of mods){ dmgMul*=m.dmgMul||1; rangeMul*=m.rangeMul||1; fireRateMul*=m.fireRateMul||1; if(m.extra){ extra.aoe+=m.extra.aoe||0; extra.chainBounces+=m.extra.chainBounces||0; extra.poison+=m.extra.poison||0; if(m.extra.burn) extra.burn=true; } }
+      const lm = REGION_LANDMARKS[regionAt(me.x,me.z).id];
+      if(lm?.buff==="damage") dmgMul*=lm.value;
+      if(lm?.buff==="range") rangeMul*=lm.value;
+      return { dmgMul, rangeMul, fireRateMul, extra };
     }
 
     function nearestCityBoard(){
@@ -2035,6 +2118,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
       // inventory materials
       mats: { iron:0, hide:0, essence:0, crystal:0, ember:0 },
+      weaponMods: {},
+      modItems: [],
+      cityRep: {},
+      cityLeader: {},
+      cityUpgrades: {},
 
       // abilities (unlocked flags)
       abil: {
@@ -2100,6 +2188,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       me.slowT=0; me.slowMul=1.0; me.turnSlowT=0;
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
+      me.weaponMods = {}; me.modItems = []; me.cityRep = {}; me.cityLeader = {}; me.cityUpgrades = {};
 
       me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false };
       me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0; me.shockNovaCd=0; me.riftSpearCd=0; me.overheatCd=0; me.overheatT=0; me.gravitySnareCd=0; me.orbitDronesCd=0; me.orbitDronesT=0; me.decoyCd=0; me.spiritHoundsCd=0; me.markCd=0; me.markTargetId=-1; me.markT=0; me.lastStandCd=0; me.shellAbsorb=0; me.orbitBladesCd=0; me.orbitBladesT=0; me.sentryPylonCd=0;
@@ -2137,6 +2226,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           weapon: me.weapon,
           ownedWeapons: Array.from(me.ownedWeapons),
           mats: me.mats,
+          weaponMods: me.weaponMods,
+          modItems: me.modItems,
+          cityRep: me.cityRep, cityLeader: me.cityLeader, cityUpgrades: me.cityUpgrades,
           abil: me.abil,
           cds: { fireboltCd: me.fireboltCd, lifeGripT: me.lifeGripT, meteorT: me.meteorT, turretCd: me.turretCd, shockNovaCd: me.shockNovaCd, riftSpearCd: me.riftSpearCd, overheatCd: me.overheatCd, overheatT: me.overheatT, gravitySnareCd: me.gravitySnareCd, orbitDronesCd: me.orbitDronesCd, decoyCd: me.decoyCd, spiritHoundsCd: me.spiritHoundsCd, markCd: me.markCd, lastStandCd: me.lastStandCd, shellAbsorb: me.shellAbsorb, orbitBladesCd: me.orbitBladesCd, sentryPylonCd: me.sentryPylonCd },
           lastHitAt: me.lastHitAt
@@ -2181,6 +2273,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(!me.ownedWeapons.has(me.weapon)) me.ownedWeapons.add(me.weapon);
 
         me.mats = Object.assign({ iron:0, hide:0, essence:0, crystal:0, ember:0 }, p.mats||{});
+        me.weaponMods = Object.assign({}, p.weaponMods||{}); me.modItems = Array.isArray(p.modItems)? p.modItems:[]; me.cityRep = Object.assign({}, p.cityRep||{}); me.cityLeader = Object.assign({}, p.cityLeader||{}); me.cityUpgrades = Object.assign({}, p.cityUpgrades||{});
         me.abil = Object.assign({ poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false }, p.abil||{});
 
         me.fireboltCd = +(p.cds?.fireboltCd||0);
@@ -4478,7 +4571,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       essence:0x22c55e,
       crystal:0xff3ad7,
       ember:  0xff3b1a,
-      sigil:  0xfef08a
+      sigil:  0xfef08a,
+      modchip:0xa78bfa
     };
 
     function dropFromEnemy(e){
@@ -4508,6 +4602,16 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         world.add(m);
 
         drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0, qty:1 });
+      }
+
+      if(Math.random() < 0.006){
+        const mod = WEAPON_MOD_POOL[(Math.random()*WEAPON_MOD_POOL.length)|0];
+        const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.24,0), MAT.drop.clone());
+        m.material.color.setHex(0xa78bfa); m.material.emissive.setHex(0xa78bfa); m.material.emissiveIntensity=1.0;
+        const y = heightAt(ex, ez, reg.id);
+        m.position.set(ex+(Math.random()-0.5)*0.3, y+0.38, ez+(Math.random()-0.5)*0.3);
+        world.add(m);
+        drops.push({ x:m.position.x, y:m.position.y, z:m.position.z, mesh:m, mat:"modchip", spin:rnd()*10, pull:0, qty:1, modItem:mod });
       }
     }
 
@@ -4550,6 +4654,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           const qty = d.qty || 1;
           if(d.mat === "sigil"){
             showToast(`🔱 Sigil shard secured (${sigilsCollected}/5)`);
+          }else if(d.modItem){
+            me.modItems.push(d.modItem);
+            showToast(`🧩 Rare mod drop: ${d.modItem.name}`);
           }else{
             me.mats[d.mat] = (me.mats[d.mat]||0) + qty;
             showToast(`+${qty} ${d.mat}`);
@@ -4753,7 +4860,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(paused || !alive) return;
       if(me.hp >= me.maxHp) return;
       if(now - me.lastHitAt < 5.0) return;
-      me.hp = Math.min(me.maxHp, me.hp + me.hpRegen*dt);
+      const lm = REGION_LANDMARKS[regionAt(me.x,me.z).id];
+      const regenMul = lm?.buff==="regen" ? lm.value : 1;
+      me.hp = Math.min(me.maxHp, me.hp + me.hpRegen*regenMul*dt);
     }
 
     // ============================================================
@@ -5116,6 +5225,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const owned = Array.from(me.ownedWeapons)
         .map(w=>`<span class="chip">🗡️ ${w}${w===me.weapon ? " (equipped)" : ""}</span>`)
         .join("");
+      const attached = (me.weaponMods[me.weapon]||[]).map(m=>`<span class="chip">🔩 ${m.name}</span>`).join("");
+      const modInv = me.modItems.map((m,idx)=>`<div class="card"><div class="name">🧩 ${m.name}</div><div class="desc">${m.rarity.toUpperCase()} mod</div><div class="rowBtns"><button data-attachmod="${idx}">Attach to ${me.weapon}</button></div></div>`).join("");
 
       const recipesHtml = RECIPES.map((r)=>{
         const ownedWeapon = r.type==="weapon" && me.ownedWeapons.has(r.name);
@@ -5124,19 +5235,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         const desc = (r.type==="weapon")
           ? (WEAPONS[r.name]?.desc || "Weapon")
           : "Forge upgrade";
-        const extra = (r.type==="weapon")
-          ? `<div class="desc"><b>Type:</b> ${WEAPONS[r.name].kind.toUpperCase()} • <b>Range:</b> ${WEAPONS[r.name].range ?? WEAPONS[r.name].range} • <b>Dmg:</b> ${WEAPONS[r.name].dmg ?? (WEAPONS[r.name].dps+" DPS")}</div>`
-          : `<div class="desc">Permanent upgrade when crafted.</div>`;
-
         return `
           <div class="card">
             <div class="name">⚒️ ${r.name}</div>
             <div class="desc">${desc}</div>
-            ${extra}
             <div class="req">${reqHtml}</div>
             <div class="rowBtns">
               <button data-craft="${r.name}" ${ok ? "" : "disabled"}>${ownedWeapon ? "Owned" : (ok ? "Craft" : "Need Mats")}</button>
-              ${r.type==="weapon" && me.ownedWeapons.has(r.name) ? `<button class="secondary" data-equip="${r.name}">Equip</button><span class="muted" style="font-size:12px">Owned permanently</span>` : ""}
+              ${r.type==="weapon" && me.ownedWeapons.has(r.name) ? `<button class="secondary" data-equip="${r.name}">Equip</button>` : ""}
             </div>
           </div>
         `;
@@ -5144,24 +5250,25 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
       openModal(`
         <h2>⚒️ Forge</h2>
-        <div class="sub">Paused. Craft weapons/upgrades with materials you collected.</div>
+        <div class="sub">Craft gear and attach rare enemy-dropped weapon mods.</div>
         <div class="grid2">
           <div class="panel">
-            <div class="panelTitle">📦 Inventory <span class="muted">(materials)</span></div>
+            <div class="panelTitle">📦 Inventory</div>
             <div class="chipRow">${inv || `<span class="muted">No materials yet.</span>`}</div>
             <div style="height:10px"></div>
             <div class="panelTitle">🗡️ Owned Weapons</div>
             <div class="chipRow">${owned || `<span class="muted">None</span>`}</div>
             <div style="height:10px"></div>
-            <div class="muted" style="font-size:12px; line-height:1.3">
-              Tip: Higher-level regions tend to spawn tougher packs, but also better drops.
-            </div>
-            <div style="height:10px"></div>
-            <button class="btn secondary" id="closeForgeBtn" type="button" style="pointer-events:auto">Close (E / ESC)</button>
+            <div class="panelTitle">🔩 ${me.weapon} Mods</div>
+            <div class="chipRow">${attached || `<span class="muted">No mods attached.</span>`}</div>
+            <button class="btn secondary" id="closeForgeBtn" type="button" style="pointer-events:auto; margin-top:10px">Close (E / ESC)</button>
           </div>
           <div class="panel">
             <div class="panelTitle">🛠️ Recipes</div>
             <div class="recipes">${recipesHtml}</div>
+            <div style="height:12px"></div>
+            <div class="panelTitle">🧩 Rare Mod Components</div>
+            <div class="recipes">${modInv || `<span class="muted">No mod components yet. Rare enemy drops can grant permanent weapon enhancements.</span>`}</div>
           </div>
         </div>
       `);
@@ -5172,34 +5279,24 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         btn.addEventListener("click", ()=>{
           const name = btn.getAttribute("data-craft");
           const rec = RECIPES.find(r=>r.name===name);
-          if(!rec) return;
-          if(!canAfford(rec.req)) return;
-
+          if(!rec || !canAfford(rec.req)) return;
           payReq(rec.req);
-
-          if(rec.type==="weapon"){
-            me.ownedWeapons.add(name);
-            me.weapon = name;
-            showToast(`🗡️ Crafted & equipped: ${name}`);
-          }else{
-            rec.apply?.(me);
-            showToast(`✨ Crafted: ${name}`);
-          }
-          saveGame(true);
-          openForgeModal(); // refresh
+          if(rec.type==="weapon"){ me.ownedWeapons.add(name); me.weapon = name; showToast(`🗡️ Crafted & equipped: ${name}`); }
+          else { rec.apply?.(me); showToast(`✨ Crafted: ${name}`); }
+          saveGame(true); openForgeModal();
         });
       });
-
-      modal.querySelectorAll("[data-equip]").forEach(btn=>{
-        btn.addEventListener("click", ()=>{
-          const name = btn.getAttribute("data-equip");
-          if(!me.ownedWeapons.has(name)) return;
-          me.weapon = name;
-          showToast(`🗡️ Equipped: ${name}`);
-          saveGame(true);
-          openForgeModal();
-        });
-      });
+      modal.querySelectorAll("[data-equip]").forEach(btn=>btn.addEventListener("click", ()=>{ const name=btn.getAttribute("data-equip"); if(!me.ownedWeapons.has(name)) return; me.weapon=name; saveGame(true); openForgeModal(); }));
+      modal.querySelectorAll("[data-attachmod]").forEach(btn=>btn.addEventListener("click", ()=>{
+        const idx = +btn.getAttribute("data-attachmod");
+        const mod = me.modItems[idx]; if(!mod) return;
+        if(!me.weaponMods[me.weapon]) me.weaponMods[me.weapon]=[];
+        me.weaponMods[me.weapon].push(mod);
+        me.modItems.splice(idx,1);
+        showToast(`🔩 Attached ${mod.name} to ${me.weapon}`);
+        saveGame(true);
+        openForgeModal();
+      }));
     }
 
     function openLevelUpModal(){
@@ -5386,6 +5483,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function openQuestBoardModal(){
       if(!worldQuest || worldQuest.turnedIn) worldQuest = generateQuest();
+      const nb = nearestCityBoard();
+      const board = nb?.board;
+      const cityKey = board ? cityKeyFromBoard(board) : "0,0";
+      const cityName = `City ${cityKey}`;
+      const stars = Math.max(0, Math.min(5, me.cityRep[cityKey]||0));
+      const isLeader = !!me.cityLeader[cityKey];
+      const cData = cityData(cityKey);
+
       uiMode = "quest";
       paused = true;
 
@@ -5393,9 +5498,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const done = q.progress >= q.need;
       q.completed = done;
       const state = q.turnedIn ? "Quest complete. Claim reward!" : (done ? "Objective complete — turn in now!" : `Progress: ${q.progress}/${q.need}`);
+      const starLine = "⭐".repeat(stars) + "☆".repeat(5-stars);
       openModal(`
-        <h2>📜 City Quest Board</h2>
-        <div class="sub">Paused. All cities share this same quest until you turn it in.</div>
+        <h2>📜 City Quest Board — ${cityName}</h2>
+        <div class="sub">Stars: ${starLine} ${isLeader?"• 👑 You lead this city":""}</div>
         <div class="panel">
           <div class="panelTitle">Current Contract</div>
           <div class="chipRow">
@@ -5405,20 +5511,57 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             <span class="chip">🎁 Reward: ${q.itemReward.qty} ${q.itemReward.mat}</span>
           </div>
           <div class="muted" style="margin-top:10px">${state}</div>
-          <div class="row" style="margin-top:14px; justify-content:flex-start; gap:10px">
+          ${isLeader ? `<div class="muted" style="margin-top:8px">🏙️ Banner raised. Skyscrapers glow green. Planner unlocked.</div>`:""}
+          <div class="row" style="margin-top:14px; justify-content:flex-start; gap:10px; flex-wrap:wrap">
             <button id="questTurnIn" class="btn" type="button" ${done && !q.turnedIn ? "" : "disabled"}>Claim Reward</button>
+            ${isLeader ? `<button id="cityPlan" class="btn" type="button">🏗️ City Planner</button>` : ""}
+            <button id="collectTax" class="btn secondary" type="button" ${cData.taxBays>0 ? "" : "disabled"}>🏦 Collect Tax</button>
             <button id="questClose" class="btn secondary" type="button">Close (E / ESC)</button>
           </div>
         </div>
       `);
 
       $("questClose").addEventListener("click", closeModal);
+      $("collectTax").addEventListener("click", ()=>{
+        const store = cData.taxStore;
+        let gained = 0;
+        for(const k of MAT_KEYS){ const q = Math.floor(store[k]||0); if(q>0){ me.mats[k]=(me.mats[k]||0)+q; store[k]-=q; gained += q; } }
+        showToast(gained>0 ? `🏦 Collected ${gained} city tax resources.` : "🏦 Tax bays are still accumulating.");
+        saveGame(true);
+      });
+      if(isLeader){
+        $("cityPlan").addEventListener("click", ()=>{
+          const planner = cityData(cityKey);
+          openModal(`
+            <h2>🏗️ City Planner — ${cityName}</h2>
+            <div class="sub">Spend materials to expand city defenses and logistics.</div>
+            <div class="panel"><div class="chipRow">
+              <span class="chip">🛡️ Turrets: ${planner.turrets}</span>
+              <span class="chip">👥 Squadrons: ${planner.squads}</span>
+              <span class="chip">🏦 Tax Bays: ${planner.taxBays}</span>
+            </div>
+            <div class="row" style="margin-top:12px; gap:8px; flex-wrap:wrap">
+              <button id="buyTurret" class="btn">Buy Turret (20 iron, 12 essence)</button>
+              <button id="buySquad" class="btn">Buy Squadron (16 hide, 14 iron)</button>
+              <button id="buyTax" class="btn">Buy Tax Bay (14 crystal, 10 essence)</button>
+              <button id="plannerBack" class="btn secondary">Back</button>
+            </div></div>
+          `);
+          const buy=(req,cb)=>{ for(const k in req){ if((me.mats[k]||0)<req[k]) return showToast("Not enough materials."); } for(const k in req) me.mats[k]-=req[k]; cb(); saveGame(true); openQuestBoardModal(); };
+          $("buyTurret").onclick=()=>buy({iron:20, essence:12}, ()=>{ planner.turrets=Math.min(4,planner.turrets+1); });
+          $("buySquad").onclick=()=>buy({hide:16, iron:14}, ()=>{ planner.squads=Math.min(3,planner.squads+1); });
+          $("buyTax").onclick=()=>buy({crystal:14, essence:10}, ()=>{ planner.taxBays=Math.min(4,planner.taxBays+1); });
+          $("plannerBack").onclick=openQuestBoardModal;
+        });
+      }
       $("questTurnIn").addEventListener("click", ()=>{
         if(!worldQuest) return;
         if(worldQuest.progress < worldQuest.need || worldQuest.turnedIn) return;
         worldQuest.turnedIn = true;
         gainXp(worldQuest.xpReward);
         me.mats[worldQuest.itemReward.mat] = (me.mats[worldQuest.itemReward.mat]||0) + worldQuest.itemReward.qty;
+        me.cityRep[cityKey] = Math.min(5, (me.cityRep[cityKey]||0) + 1);
+        if(me.cityRep[cityKey] >= 5){ me.cityLeader[cityKey] = true; showToast(`👑 You now lead ${cityName}!`); disposeChunk(cityKey); }
         showToast(`📦 Quest complete! +${worldQuest.xpReward} XP, +${worldQuest.itemReward.qty} ${worldQuest.itemReward.mat}`);
         worldQuest = generateQuest();
         saveGame(true);
@@ -6081,13 +6224,14 @@ e.mesh.userData.anim?.(e, dt, now);
         }
 
         let tx = anchorX, tz = anchorZ;
+        if(s.followPlayer){ tx = me.x + Math.cos(s.patrolA)*1.8; tz = me.z + Math.sin(s.patrolA)*1.8; }
         if(target){ tx = target.mesh.position.x; tz = target.mesh.position.z; }
         const steered = steerAroundCityTowers(s.x,s.z,tx,tz,0.8);
         const speed = target ? 2.9 : 1.8;
         let nx = s.x + steered.x*speed*dt;
         let nz = s.z + steered.z*speed*dt;
         if(pointBlockedByCityTower(nx,nz,0.75)){ nx = s.x; nz = s.z; }
-        if(dist2(nx,nz,s.homeX,s.homeZ) > 16*16){ nx = s.homeX; nz = s.homeZ; }
+        if(!s.followPlayer && dist2(nx,nz,s.homeX,s.homeZ) > 16*16){ nx = s.homeX; nz = s.homeZ; }
         s.x = nx; s.z = nz;
         s.mesh.position.set(s.x, heightAt(s.x,s.z,"city"), s.z);
         s.mesh.lookAt(tx, s.mesh.position.y+1.0, tz);
@@ -6098,6 +6242,34 @@ e.mesh.userData.anim?.(e, dt, now);
           const line = spawnTelegraphLine(s.x,s.z,target.mesh.position.x,target.mesh.position.z,0x93c5fd,0.9);
           projectiles.push({ mesh:line, kind:"fxLine", life:0.08, x:s.x, y:muzzleY, z:s.z, vx:0, vy:0, vz:0, from:"soldier" });
           dealDamageEnemy(target, 8 + me.level*0.35, { noRewards:true });
+        }
+      }
+    }
+
+    function tickCityTurrets(dt){
+      if(paused) return;
+      for(const t of cityTurrets){
+        if(!t.mesh) continue;
+        t.cd -= dt;
+        const target = enemies.filter(e=>e.hp>0 && regionAt(e.mesh.position.x,e.mesh.position.z).id==="city").sort((a,b)=>dist2(a.mesh.position.x,a.mesh.position.z,t.x,t.z)-dist2(b.mesh.position.x,b.mesh.position.z,t.x,t.z))[0];
+        if(target){
+          t.mesh.lookAt(target.mesh.position.x, t.mesh.position.y+0.2, target.mesh.position.z);
+          if(t.cd<=0){
+            t.cd=0.25;
+            spawnBolt(t.mesh.position.x,t.mesh.position.y+0.45,t.mesh.position.z,target.mesh.position.x,target.mesh.position.y+0.7,target.mesh.position.z,{ dmg:8.5+me.level*0.25, color:0x22c55e, chainBounces:1, chainRange:5.2 }, false, false);
+          }
+        }
+      }
+      for(const key in me.cityUpgrades){
+        const c = cityData(key);
+        if((c.taxBays||0)>0){
+          c.taxTick = (c.taxTick||0) + dt;
+          if(c.taxTick>=2.5){
+            c.taxTick = 0;
+            const mats=["iron","hide","essence","crystal","ember"];
+            const pick=mats[(Math.random()*mats.length)|0];
+            c.taxStore[pick] = (c.taxStore[pick]||0) + c.taxBays;
+          }
         }
       }
     }
@@ -6430,7 +6602,10 @@ e.mesh.userData.anim?.(e, dt, now);
       if(paused || !alive) { beamGroup.visible=false; return; }
 
       const w = WEAPONS[me.weapon] || WEAPONS["Arc Bolt"];
-      const range = (w.range ?? 24) * me.rangeMul;
+      const wp = currentWeaponPower();
+      const regLm = REGION_LANDMARKS[regionAt(me.x,me.z).id];
+      const regenMul = regLm?.buff==="regen" ? regLm.value : 1;
+      const range = (w.range ?? 24) * me.rangeMul * wp.rangeMul;
 
       // find target in cone
       const t = pickTarget(range);
@@ -6449,7 +6624,7 @@ e.mesh.userData.anim?.(e, dt, now);
 
         updateBeamVisual(fromX, fromY, fromZ, toX, toY, toZ, w.color);
 
-        const dps = (w.dps||14) * me.damageMul * (me.overheatT>0?1.3:1.0);
+        const dps = (w.dps||14) * me.damageMul * wp.dmgMul * (me.overheatT>0?1.3:1.0);
         if(t===alienBoss || t===regionBoss || t===titanBoss) damageBossEntity(t, dps*dt);
         else dealDamageEnemy(t, dps*dt);
 
@@ -6457,7 +6632,7 @@ e.mesh.userData.anim?.(e, dt, now);
         beamGroup.visible = false;
 
         me.fireCd -= dt;
-        const fireEvery = 1 / ((w.fireRate || 6) * (me.overheatT>0?1.3:1.0));
+        const fireEvery = 1 / ((w.fireRate || 6) * wp.fireRateMul * (me.overheatT>0?1.3:1.0));
         if(me.fireCd <= 0){
           me.fireCd = fireEvery;
 
@@ -6479,16 +6654,16 @@ e.mesh.userData.anim?.(e, dt, now);
                 const tx = tar.mesh.position.x + (isFlame ? (Math.random()-0.5)*(w.spread||0.3)*10 : 0);
                 const tz = tar.mesh.position.z + (isFlame ? (Math.random()-0.5)*(w.spread||0.3)*10 : 0);
                 spawnBolt(me.x, me.y, me.z, tx, tar.mesh.position.y+0.65, tz, {
-                dmg: (w.dmg||10),
+                dmg: (w.dmg||10) * wp.dmgMul,
                 color: w.color,
                 splinterCount: (typeof w.splinter==="number") ? w.splinter : (w.splinter ? 3 : 0),
                 explode: !!w.explode,
-                aoe: w.aoe,
-                poison: w.poison||0,
-                burn: w.burn||null,
+                aoe: (w.aoe||0) + wp.extra.aoe,
+                poison: (w.poison||0) + wp.extra.poison,
+                burn: w.burn|| (wp.extra.burn ? { duration:2.8, dps:7.5 } : null),
                 stun: w.stun||0,
                 knockback: w.knockback||0,
-                chainBounces: w.chainBounces||0,
+                chainBounces: (w.chainBounces||0) + (wp.extra.chainBounces||0),
                 chainRange: w.chainRange||7.0,
                 pierce: w.pierce||0,
                 irradiate: w.irradiate||null
@@ -6976,7 +7151,35 @@ function tickHUD(dt){
   const canUseBoard = !!(nb && nb.d <= 3.4 && phase==="play" && uiMode==="none");
   mobileInteract.style.display = (mobile.enabled && (canUseForge || canUseBoard)) ? "block" : "none";
   mobileInteract.textContent = canUseBoard ? "📜 Use Quest Board" : "⚒️ Interact";
+  drawMinimap();
 }
+    function drawMinimap(){
+      if(!minimapCtx) return;
+      const c = minimapCtx;
+      const w=minimap.width,h=minimap.height;
+      c.clearRect(0,0,w,h);
+      c.fillStyle='rgba(2,6,23,0.85)'; c.fillRect(0,0,w,h);
+      const scale = 0.14;
+      const cx=w*0.5, cy=h*0.5;
+      const regionColors={desert:'#d6a86e',forest:'#2f855a',snow:'#cfe8ff',alien:'#67e8f9',hell:'#b91c1c',city:'#64748b'};
+      for(let i=0;i<REGIONS.length;i++){
+        const a0=(i/REGIONS.length)*Math.PI*2 + me.yaw;
+        const a1=((i+1)/REGIONS.length)*Math.PI*2 + me.yaw;
+        c.beginPath(); c.moveTo(cx,cy); c.arc(cx,cy,70,a0,a1); c.closePath(); c.fillStyle=regionColors[REGIONS[i].id]||'#334155'; c.globalAlpha=0.28; c.fill(); c.globalAlpha=1;
+      }
+      for(const b of cityBoards.slice(0,24)){
+        const dx=(b.x-me.x)*scale, dz=(b.z-me.z)*scale;
+        if(Math.abs(dx)>76||Math.abs(dz)>76) continue;
+        const key=cityKeyFromBoard(b);
+        c.fillStyle = me.cityLeader[key] ? '#22c55e' : '#60a5fa';
+        c.fillRect(cx+dx-2, cy+dz-2, 4, 4);
+      }
+      c.fillStyle='#f8fafc'; c.beginPath(); c.arc(cx,cy,3,0,Math.PI*2); c.fill();
+      c.strokeStyle='#f8fafc'; c.beginPath(); c.moveTo(cx,cy); c.lineTo(cx+Math.cos(me.yaw)*10, cy+Math.sin(me.yaw)*10); c.stroke();
+      const lm=REGION_LANDMARKS[regionAt(me.x,me.z).id];
+      c.fillStyle='rgba(255,255,255,0.85)'; c.font='10px system-ui'; c.fillText(lm?`Landmark: ${lm.name}`:'',6,h-8);
+    }
+
     // ============================================================
     // Spawn pacing
     // ============================================================
@@ -7093,6 +7296,7 @@ function tickHUD(dt){
         tickCityBoards(now);
         tickEnemies(dt, now);
         tickCitySoldiers(dt, now);
+        tickCityTurrets(dt);
         tickAlienBoss(dt);
         tickRegionBoss(dt);
         tickTitanBoss(dt);
