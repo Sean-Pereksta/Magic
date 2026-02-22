@@ -1780,7 +1780,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     // ============================================================
     const enemies = [];     // {id,type,mesh,hp,maxHp,spd,dmg,range, yOff, flying, state, t, cd, wind, targetMarker}
     const projectiles = []; // {x,y,z,vx,vy,vz,life,rad,dmg,from,kind,color, splinter, explode, aoe, poison, stun, knockback, chainBounces, chainRange}
-    const drops = [];       // {x,y,z,mesh,mat,spin}
+    const drops = [];       // {x,y,z,mesh,mat,spin,qty}
     const turrets = [];     // {mesh,life,fireCd}
 
     const ALIEN_BOSS_SPAWN_MIN = 240; // seconds in alien region
@@ -1835,35 +1835,72 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       g.position.set(x, gy+17.5, z);
       world.add(g);
 
+      const lvlScale = Math.max(1, me.level);
+      const hpScale = 1 + lvlScale*0.32;
+      const dmgScale = 1 + lvlScale*0.12;
+
       alienBoss = {
         id: -1,
         type: "alienBoss",
         mesh: g,
-        hp: 1800,
-        maxHp: 1800,
+        hp: Math.round(1800 * hpScale),
+        maxHp: Math.round(1800 * hpScale),
         state: "starfall",
         stateT: 0,
         starCd: 0,
         spin: 0,
         starTelegraphs: [],
         lasers: [],
-        laserDps: 7.5,
+        laserDps: 7.5 * dmgScale,
+        touchDmg: 16 * dmgScale,
+        projectileDmgScale: dmgScale,
         lift: 17.5,
       };
-      showToast("🛸 A Neon Mothership descends...");
+      showToast(`🛸 A Neon Mothership descends... (Lv ${me.level})`);
+    }
+
+    function dropBossRewards(boss){
+      if(!boss?.mesh) return;
+      const reg = regionAt(boss.mesh.position.x, boss.mesh.position.z);
+      const baseCount = 20 + Math.floor(me.level*1.8);
+      for(let i=0;i<baseCount;i++){
+        const matName = reg.drops[i % reg.drops.length];
+        const c = MAT_COL[matName] || 0xffffff;
+        const m = new THREE.Mesh(GEO.drop, MAT.drop.clone());
+        m.material.color.setHex(c);
+        m.material.emissive.setHex(c);
+        m.material.emissiveIntensity = 0.95;
+        m.scale.setScalar(1.25);
+
+        const a = (i/baseCount) * Math.PI*2;
+        const r = 0.8 + (i%5)*0.32;
+        const x = boss.mesh.position.x + Math.cos(a)*r;
+        const z = boss.mesh.position.z + Math.sin(a)*r;
+        const y = heightAt(x, z, reg.id) + 0.45;
+        m.position.set(x, y, z);
+        world.add(m);
+
+        const qty = 1 + Math.floor(me.level/7);
+        drops.push({ x, y, z, mesh:m, mat:matName, spin: Math.random()*10, pull:0, qty });
+      }
     }
 
     function damageAlienBoss(dmg){
       if(!alienBoss) return;
       alienBoss.hp -= dmg;
       if(alienBoss.hp <= 0){
+        const boss = alienBoss;
         for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); }
         for(const l of alienBoss.lasers){ world.remove(l); }
         world.remove(alienBoss.mesh);
         alienBoss = null;
+        dropBossRewards(boss);
+        const xpGain = Math.round((220 + me.level*34) * dangerBandAt(me.x, me.z).xpMul);
+        gainXp(xpGain);
+        spawnFloatingText(`+${xpGain} XP`, boss.mesh.position.x, boss.mesh.position.y+2.2, boss.mesh.position.z, "#86efac");
         alienRegionClock = 0;
         alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
-        showToast("✨ Alien mothership destroyed.");
+        showToast("✨ Alien mothership destroyed. Massive loot dropped!");
       }
     }
 
@@ -3256,7 +3293,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         m.position.set(ex+ox, y+0.35, ez+oz);
         world.add(m);
 
-        drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0 });
+        drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0, qty:1 });
       }
     }
 
@@ -3287,8 +3324,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           d.mesh.position.y += (dy/dd) * d.pull * dt * 4.0;
         }
         if(d2 < 1.7*1.7){
-          me.mats[d.mat] = (me.mats[d.mat]||0) + 1;
-          showToast(`+1 ${d.mat}`);
+          const qty = d.qty || 1;
+          me.mats[d.mat] = (me.mats[d.mat]||0) + qty;
+          showToast(`+${qty} ${d.mat}`);
           world.remove(d.mesh);
           drops.splice(i,1);
         }
@@ -4857,9 +4895,9 @@ e.mesh.userData.anim?.(e, dt, now);
           t.done = true;
           const d2 = (me.x-t.x)*(me.x-t.x)+(me.z-t.z)*(me.z-t.z);
           if(d2 <= 1.45*1.45){
-            takeDamage(18, "Starfall");
+            takeDamage(18 * b.projectileDmgScale, "Starfall");
           }
-          explodeAt(t.x, t.y+0.3, t.z, 2.3, 14, "enemy");
+          explodeAt(t.x, t.y+0.3, t.z, 2.3, 14 * b.projectileDmgScale, "enemy");
           world.remove(t.marker);
           world.remove(t.glow);
           world.remove(t.rock);
@@ -4917,7 +4955,9 @@ function tickHUD(dt){
       if(paused || !alive) return;
 
       const reg = regionAt(me.x, me.z);
-      if(reg.id === "alien" && !alienBoss){
+      if(reg.id !== "alien"){
+        alienRegionClock = 0;
+      }else if(!alienBoss){
         alienRegionClock += dt;
         if(alienRegionClock >= alienBossSpawnAt){
           spawnAlienBoss();
