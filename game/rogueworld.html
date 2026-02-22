@@ -1034,6 +1034,11 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     // ============================================================
     let worldSeed = (Math.random()*1e9)|0;
     function heightAt(x,z, regId){
+      // Always derive terrain region from world position so neighboring chunks
+      // sample identical edge vertices and stay stitched together.
+      const terrainRegionId = regionAt(x, z).id;
+      const sampleRegionId = regId ?? terrainRegionId;
+
       // low-cost layered noise
       const s = worldSeed;
       const n1 = hash2i(Math.floor(x*0.20), Math.floor(z*0.20), s);
@@ -1041,11 +1046,11 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       const n3 = hash2i(Math.floor(x*0.03), Math.floor(z*0.03), s^0x85ebca6b);
 
       let amp = 0.55;
-      if(regId==="desert") amp = 1.05;
-      if(regId==="forest") amp = 0.55;
-      if(regId==="snow")   amp = 0.75;
-      if(regId==="alien")  amp = 0.85;
-      if(regId==="hell")   amp = 0.95;
+      if(sampleRegionId==="desert") amp = 1.05;
+      if(sampleRegionId==="forest") amp = 0.55;
+      if(sampleRegionId==="snow")   amp = 0.75;
+      if(sampleRegionId==="alien")  amp = 0.85;
+      if(sampleRegionId==="hell")   amp = 0.95;
 
       const h = (n1-0.5)*0.8 + (n2-0.5)*1.2 + (n3-0.5)*1.8;
       return h * amp;
