@@ -532,6 +532,7 @@
     panelsOpen: { settlement:false, inventory:false, army:false, diplomacy:false, help:false, loot:false },
     started: false,
     siegeWarnings: {},
+    armyUpgradeFocus: null,
   };
 
   function factionColor(id){
@@ -1054,14 +1055,15 @@
       return A.name.localeCompare(B.name);
     });
 
-    const upgradeRows = [];
+    const upgradeRowsByFrom = {};
     for(const fromKey of keys){
       const def = UNIT_DB[fromKey];
       if(!def.upgrades || !def.upgrades.length) continue;
       const have = counts[fromKey]||0;
+      upgradeRowsByFrom[fromKey] = [];
       for(const up of def.upgrades){
         const toDef = UNIT_DB[up.to];
-        upgradeRows.push(`
+        upgradeRowsByFrom[fromKey].push(`
           <div class="item">
             <div class="meta">
               <b>${up.label}</b>
@@ -1072,6 +1074,13 @@
         `);
       }
     }
+
+    const selectableUpgradeKeys = keys.filter(k => (upgradeRowsByFrom[k]||[]).length>0);
+    if(state.armyUpgradeFocus && !selectableUpgradeKeys.includes(state.armyUpgradeFocus)){
+      state.armyUpgradeFocus = null;
+    }
+    const focusedUpgradeKey = state.armyUpgradeFocus || selectableUpgradeKeys[0] || null;
+    const focusedRows = focusedUpgradeKey ? (upgradeRowsByFrom[focusedUpgradeKey]||[]) : [];
 
     const wCounts = {};
     for(const u of p.woundedUnits){ wCounts[u] = (wCounts[u]||0)+1; }
@@ -1119,8 +1128,16 @@
 
       <div class="hr"></div>
       <h2 style="margin-top:0">Upgrades</h2>
-      <div class="list">
-        ${upgradeRows.length ? upgradeRows.join('') : `<div class="small">No upgrades available right now.</div>`}
+      <div class="small">Tap or click a troop stack to view its upgrade paths.</div>
+      <div class="row" style="margin-top:8px;">
+        ${selectableUpgradeKeys.length ? selectableUpgradeKeys.map(k=>{
+          const d = UNIT_DB[k];
+          const active = focusedUpgradeKey===k;
+          return `<button class="btn" data-upfocus="${k}" style="${active?'background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.35);':''}">${d.name} <span class="mono">x${counts[k]||0}</span></button>`;
+        }).join('') : `<div class="small">No upgrades available right now.</div>`}
+      </div>
+      <div class="list" style="margin-top:10px;">
+        ${focusedRows.length ? focusedRows.join('') : (selectableUpgradeKeys.length ? `<div class="small">Select a troop type to see available upgrades.</div>` : ``)}
       </div>
 
       <div class="hr"></div>
@@ -1144,6 +1161,49 @@
         renderArmyPanel();
         syncHUD();
       };
+    }
+
+    for(const btn of ui.panelArmy.querySelectorAll('button[data-upfocus]')){
+      btn.onclick = () => {
+        state.armyUpgradeFocus = btn.getAttribute('data-upfocus');
+        renderArmyPanel();
+      };
+    }
+  }
+
+  function mapActionsPaused(){
+    return state.mode==='map' && state.panelsOpen.settlement;
+  }
+
+  function spawnCombatBurst(x, y, team){
+    if(!state.battle) return;
+    const cnt = randi(4, 7);
+    for(let i=0;i<cnt;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = rand(1.6, 4.8);
+      state.battle.particles.push({
+        x, y,
+        vx: Math.cos(ang)*spd,
+        vy: Math.sin(ang)*spd,
+        ttl: rand(0.22, 0.46),
+        life: rand(0.22, 0.46),
+        size: rand(0.08, 0.16),
+        team
+      });
+    }
+  }
+
+  function spawnBloodAt(x, y){
+    if(!state.battle) return;
+    state.battle.blood.push({
+      x: x + rand(-0.12,0.12),
+      y: y + rand(-0.12,0.12),
+      size: rand(0.18,0.34),
+      rot: rand(0, Math.PI*2),
+      alpha: rand(0.32,0.56)
+    });
+    if(state.battle.blood.length > 220){
+      state.battle.blood.splice(0, state.battle.blood.length - 220);
     }
   }
 
@@ -1944,6 +2004,7 @@
   // =========================
   function mapTick(dt){
     const p = state.player;
+    const paused = mapActionsPaused();
 
     // player regen
     const maxHp = playerMaxHp(p);
@@ -1980,7 +2041,7 @@
     p.food = Math.max(0, p.food - drain);
 
     // movement
-    const mv = wantMove();
+    const mv = paused ? {dx:0,dy:0} : wantMove();
     const spd = mapSpeedFor(p);
     p.x = clamp(p.x + mv.dx * spd * dt, 0.5, state.map.w-0.5);
     p.y = clamp(p.y + mv.dy * spd * dt, 0.5, state.map.h-0.5);
@@ -1992,8 +2053,8 @@
     state.cam.x = p.x; state.cam.y = p.y;
 
     // spawn large armies sometimes
-    state.map.nextArmySpawn -= dt;
-    if(state.map.nextArmySpawn <= 0){
+    if(!paused) state.map.nextArmySpawn -= dt;
+    if(!paused && state.map.nextArmySpawn <= 0){
       state.map.nextArmySpawn = 18 + Math.random()*16;
       if(Math.random() < 0.55){
         const f = FACTIONS[randi(0,FACTIONS.length-1)];
@@ -2022,6 +2083,7 @@
     // parties roam/chase/target castles
     for(const party of state.map.parties){
       if(!party.alive) continue;
+      if(paused) continue;
 
       const partySpeed = party.baseSpeed / (1 + party.size*0.03);
 
@@ -2057,7 +2119,7 @@
       }
     }
 
-    updateInvasions(dt);
+    if(!paused) updateInvasions(dt);
   }
 
   function regenVillageVolunteers(v){
@@ -2696,6 +2758,8 @@
       enemies,
       projectiles: [],
       effects: [],
+      particles: [],
+      blood: [],
       selection: 'all',
       shake: 0,
       lootPending: null,
@@ -2799,6 +2863,15 @@
     for(const fx of b.effects) fx.ttl -= dt;
     b.effects = b.effects.filter(fx => fx.ttl>0);
 
+    for(const pt of b.particles){
+      pt.ttl -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= 0.9;
+      pt.vy *= 0.9;
+    }
+    b.particles = b.particles.filter(pt => pt.ttl>0);
+
     for(const u of b.allies) if(u.alive) updateUnit(u, dt);
     for(const e of b.enemies) if(e.alive) updateUnit(e, dt);
 
@@ -2827,6 +2900,8 @@
             if(isArrowOrBolt && tryBlock(e, true)){ pr.ttl=0; break; }
             const wasAlive = e.alive;
             applyDamage(e, pr.dmg);
+            spawnCombatBurst(e.x, e.y, pr.team);
+            if(wasAlive && !e.alive) spawnBloodAt(e.x, e.y);
             if(wasAlive && !e.alive) b.killCountThisBattle++;
             pr.ttl = 0;
             break;
@@ -2834,7 +2909,10 @@
         }
       } else {
         if(pe.alive && dist2(pr.x,pr.y, pe.x,pe.y) < (pe.r+pr.r)*(pe.r+pr.r)){
+          const preHp = pe.hp;
           pe.hp -= pr.dmg;
+          spawnCombatBurst(pe.x, pe.y, pr.team);
+          if(preHp>0 && pe.hp<=0) spawnBloodAt(pe.x, pe.y);
           if(pe.hp<=0){ pe.hp=0; pe.alive=false; }
           pr.ttl=0;
         } else {
@@ -2842,7 +2920,10 @@
             if(!a.alive) continue;
             if(dist2(pr.x,pr.y, a.x,a.y) < (a.r+pr.r)*(a.r+pr.r)){
               if(isArrowOrBolt && tryBlock(a, true)){ pr.ttl=0; break; }
+              const wasAlive = a.alive;
               applyDamage(a, pr.dmg);
+              spawnCombatBurst(a.x, a.y, pr.team);
+              if(wasAlive && !a.alive) spawnBloodAt(a.x, a.y);
               pr.ttl=0;
               break;
             }
@@ -2901,11 +2982,16 @@
               if(t.kind==='troop' && tryBlock(t, false)) continue;
 
               if(t.kind==='player'){
+                const preHp = t.hp;
                 t.hp -= u.dmg;
+                spawnCombatBurst(t.x, t.y, u.team);
+                if(preHp>0 && t.hp<=0) spawnBloodAt(t.x, t.y);
                 if(t.hp<=0){ t.hp=0; t.alive=false; }
               } else {
                 const wasAlive = t.alive;
                 applyDamage(t, u.dmg);
+                spawnCombatBurst(t.x, t.y, u.team);
+                if(wasAlive && !t.alive) spawnBloodAt(t.x, t.y);
                 if(wasAlive && !t.alive && u.team==='ally') b.killCountThisBattle++;
               }
             }
@@ -3481,6 +3567,18 @@
       }
     }
 
+    for(const stain of b.blood){
+      const sp = worldToScreen(stain.x, stain.y, camX, camY);
+      ctx.save();
+      ctx.translate(sp.x, sp.y-6);
+      ctx.rotate(stain.rot);
+      ctx.fillStyle = `rgba(120, 18, 24, ${stain.alpha})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, stain.size*18, stain.size*11, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     for(const fx of b.effects){
       if(fx.type==='telegraphCone') drawTelegraphCone(fx, camX, camY);
       else if(fx.type==='swingArc') drawSwingArc(fx, camX, camY);
@@ -3626,6 +3724,16 @@
       ctx.restore();
     }
 
+    for(const pt of b.particles){
+      const sp = worldToScreen(pt.x,pt.y, camX,camY);
+      const life = Math.max(0, pt.ttl / (pt.life||0.3));
+      const col = pt.team==='ally' ? `rgba(191,219,254,${0.18 + life*0.65})` : `rgba(255,179,179,${0.18 + life*0.65})`;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y-22, pt.size*22*life, 0, Math.PI*2);
+      ctx.fill();
+    }
+
     // blocks
     for(const fx of b.effects){
       if(fx.type==='block'){
@@ -3685,4 +3793,3 @@
 </script>
 </body>
 </html>
-
