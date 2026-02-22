@@ -1,746 +1,3462 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<title>🗻 Mountain Blade (Prototype)</title>
-<style>
-  html,body { margin:0; height:100%; background:#0d1117; color:#eef; font-family:system-ui,Segoe UI,Arial; }
-  #ui { position:fixed; inset:0; pointer-events:none; }
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Iso M&B-Lite v5 — Ownership + Village Volunteers + Banners + Crossbows/Pikes</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f1b33;
+      --line:rgba(255,255,255,.12);
+      --ink:#eaf2ff;
+      --muted:rgba(234,242,255,.72);
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden;}
+    #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+    #frame{
+      width:min(1280px, 96vw);
+      height:min(760px, 92vh);
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:18px;
+      box-shadow:0 30px 90px rgba(0,0,0,.45);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      position:relative;
+      overflow:hidden;
+    }
+    canvas{position:absolute;inset:0;display:block;}
 
-  /* Top overlays */
-  #timerBox { position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:6px 12px; font-weight:700; pointer-events:auto; }
-  #leader { position:fixed; top:10px; right:10px; min-width:200px; background:#101826cc; border:1px solid #2c3f5a; border-radius:10px; padding:8px 10px; pointer-events:auto; }
-  #leader h3 { margin:0 0 6px 0; font-size:14px; color:#cfe; }
-  #leader .row { display:flex; justify-content:space-between; padding:2px 0; font-size:13px; color:#bcd; }
+    #topbar{
+      position:absolute;left:14px;top:12px;right:14px;
+      display:flex;gap:10px;align-items:center;justify-content:space-between;
+      z-index:10;
+      pointer-events:none;
+    }
+    .chipRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;pointer-events:auto;}
+    .chip{
+      background:rgba(15,27,51,.78);
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:8px 12px;
+      font-size:13px;
+      display:flex;gap:10px;align-items:center;
+      backdrop-filter: blur(8px);
+      white-space:nowrap;
+    }
+    .chip b{font-weight:700}
+    .dot{width:10px;height:10px;border-radius:50%;}
+    .btn{
+      background:rgba(255,255,255,.07);
+      border:1px solid var(--line);
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:13px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .btn:hover{background:rgba(255,255,255,.11)}
+    .btn:active{transform:translateY(1px)}
+    .btn[disabled]{opacity:.45;cursor:not-allowed}
 
-  #hud { position:fixed; left:0; right:0; bottom:0; height:110px; background:rgba(0,0,0,.35); backdrop-filter: blur(4px); border-top:1px solid #263042; pointer-events:auto; display:flex; align-items:center; gap:10px; padding:10px 16px; }
-  #abilities { display:flex; gap:8px; }
-  .slot { width:64px; height:64px; border:1px solid #445; border-radius:8px; display:flex; align-items:center; justify-content:center; background:#1a2232; position:relative; }
-  .slot .key { position:absolute; right:6px; bottom:4px; font-size:12px; color:#9ab; }
-  .slot.oncd::after{ content:""; position:absolute; inset:0; background:rgba(0,0,0,.45); }
-  #banner { position:fixed; left:50%; top:16%; transform:translateX(-50%); font-size:32px; padding:10px 16px; background:#102030aa; border:1px solid #345; border-radius:12px; display:none; }
-  #cpPanel { position:fixed; right:12px; top:56px; background:#111a; border:1px solid #345; border-radius:12px; padding:8px; pointer-events:auto; display:none; }
-  #cpPanel h3 { margin:0 0 6px 0; font-size:14px; }
-  #cpPanel .row { display:flex; gap:6px; flex-wrap:wrap; }
-  .cpBtn { padding:6px 10px; border:1px solid #456; background:#1a2436; color:#cde; border-radius:8px; cursor:pointer; }
-  canvas { display:block; width:100vw; height:100vh; }
-</style>
+    #panels{position:absolute;inset:0;z-index:20;pointer-events:none;}
+    .panel{
+      position:absolute;
+      right:14px; top:62px;
+      width:min(560px, calc(100% - 28px));
+      max-height:calc(100% - 80px);
+      overflow:auto;
+      background:rgba(15,27,51,.86);
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:0 24px 70px rgba(0,0,0,.45);
+      padding:14px;
+      display:none;
+      pointer-events:auto;
+      backdrop-filter: blur(10px);
+    }
+    .panel.left{left:14px; right:auto;}
+    .panel.wide{width:min(920px, calc(100% - 28px));}
+    .panel h2{margin:0 0 10px;font-size:15px;letter-spacing:.2px;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    .hr{height:1px;background:var(--line);margin:12px 0;}
+    .small{color:var(--muted);font-size:12px;line-height:1.35}
+    .list{display:flex;flex-direction:column;gap:8px;}
+    .item{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.06);
+      border-radius:12px;
+      padding:10px;
+      display:flex;justify-content:space-between;gap:10px;align-items:center;
+    }
+    .item .meta{display:flex;flex-direction:column;gap:2px}
+    .tag{font-size:11px;color:var(--muted);}
+    select, input{
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--line);
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:10px;
+      outline:none;
+    }
+    .kbd{
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;border:1px solid var(--line);
+      background:rgba(255,255,255,.06);
+      padding:2px 7px;border-radius:8px;
+    }
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;}
+    .grid2{display:grid;grid-template-columns: 1fr 1fr;gap:12px;align-items:start;}
+    .bar{
+      height:10px;border-radius:999px;background:rgba(255,255,255,.08);
+      border:1px solid var(--line); overflow:hidden;
+    }
+    .bar > div{height:100%;background:rgba(255,255,255,.22);width:50%}
+
+    #toast{
+      position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+      background:rgba(15,27,51,.88);
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:10px 14px;
+      z-index:30;
+      display:none;
+      pointer-events:none;
+      box-shadow:0 18px 55px rgba(0,0,0,.5);
+      font-size:13px;
+      backdrop-filter: blur(10px);
+    }
+  </style>
 </head>
 <body>
-<canvas id="cv" width="1280" height="720"></canvas>
+<div id="wrap">
+  <div id="frame">
+    <canvas id="c"></canvas>
 
-<div id="ui">
-  <div id="timerBox">⏱️ 05:00</div>
-  <div id="leader">
-    <h3>Units on field</h3>
-    <div id="leaderRows"></div>
-  </div>
-  <div id="banner"></div>
+    <div id="topbar">
+      <div class="chipRow">
+        <div class="chip"><span class="dot" id="modeDot"></span><b id="modeLabel">MAP</b><span id="modeSub" class="tag">WASD move • E interact</span></div>
+        <div class="chip"><span class="dot" id="bannerDot"></span>🏳 <b id="banner">Independent</b></div>
+        <div class="chip">⭐ Lv <b id="lvl">1</b> <span class="tag mono" id="xp">0/60</span></div>
+        <div class="chip">🤕 <b id="wounded">0</b></div>
+        <div class="chip">💰 <b id="gold">0</b></div>
+        <div class="chip">🍖 <b id="food">0</b></div>
+        <div class="chip">👥 <b id="army">0</b></div>
+        <div class="chip">❤️ <b id="hp">0</b>/<b id="hpMax">0</b></div>
+      </div>
+      <div class="chipRow">
+        <button class="btn" id="btnSave">Save</button>
+        <button class="btn" id="btnLoad">Load</button>
+        <button class="btn" id="btnInv">Inventory</button>
+        <button class="btn" id="btnArmy">Army</button>
+        <button class="btn" id="btnDip">Diplomacy</button>
+        <button class="btn" id="btnHelp">Help</button>
+      </div>
+    </div>
 
-  <div id="cpPanel">
-    <h3>Spawn from <span id="cpName">CP</span></h3>
-    <div class="row" id="cpBtns"></div>
-  </div>
+    <div id="panels">
+      <div class="panel" id="panelSettlement"></div>
+      <div class="panel" id="panelInventory"></div>
+      <div class="panel" id="panelArmy"></div>
+      <div class="panel" id="panelDiplomacy"></div>
+      <div class="panel" id="panelHelp"></div>
+      <div class="panel wide left" id="panelLoot"></div>
+    </div>
 
-  <div id="hud">
-    <div id="selInfo"></div>
-    <div id="abilities"></div>
+    <div id="toast"></div>
   </div>
 </div>
 
-<script type="module">
-/* ------------ Firebase ------------ */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, onSnapshot,
-  query, orderBy, limit, getDocs, deleteDoc, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+<script>
+(() => {
+  // =========================
+  // Canvas + helpers
+  // =========================
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const frame = document.getElementById('frame');
 
-const firebaseConfig = {
-  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-  authDomain: "bible-game-246c0.firebaseapp.com",
-  projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.appspot.com",
-  messagingSenderId: "959619818996",
-  appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-};
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+  const ui = {
+    gold: document.getElementById('gold'),
+    food: document.getElementById('food'),
+    army: document.getElementById('army'),
+    hp: document.getElementById('hp'),
+    hpMax: document.getElementById('hpMax'),
+    modeLabel: document.getElementById('modeLabel'),
+    modeSub: document.getElementById('modeSub'),
+    modeDot: document.getElementById('modeDot'),
+    banner: document.getElementById('banner'),
+    bannerDot: document.getElementById('bannerDot'),
+    lvl: document.getElementById('lvl'),
+    xp: document.getElementById('xp'),
+    wounded: document.getElementById('wounded'),
 
-/* ------------ Params & routes ------------ */
-const Q = new URLSearchParams(location.search);
-const GAME_ID  = Q.get("gameId");
-const ME       = Q.get("username") || "anon";
-const HUB_ROUTE = "/game/index.html"; // set to your hub
+    panelSettlement: document.getElementById('panelSettlement'),
+    panelInventory: document.getElementById('panelInventory'),
+    panelArmy: document.getElementById('panelArmy'),
+    panelDiplomacy: document.getElementById('panelDiplomacy'),
+    panelHelp: document.getElementById('panelHelp'),
+    panelLoot: document.getElementById('panelLoot'),
+    toast: document.getElementById('toast'),
 
-/* ------------ Canvas & camera ------------ */
-const cv = document.getElementById("cv");
-const ctx = cv.getContext("2d");
-function resize(){ cv.width = innerWidth; cv.height = innerHeight; }
-addEventListener("resize", resize); resize();
-
-const WORLD = { w: 5000, h: 5000 };
-const cam = { x:0, y:0, speed: 850 }; // px/s
-function clampCam(){
-  cam.x = Math.max(0, Math.min(WORLD.w - cv.width,  cam.x));
-  cam.y = Math.max(0, Math.min(WORLD.h - cv.height, cam.y));
-}
-
-/* ------------ Data defs ------------ */
-const COLORS = ["#5bd","#e86","#7f7","#fc5","#c7f","#f77"]; // owner tint
-const UNIT_TYPES = {
-  swordsman:{ hp:100, dmg:10, range:40, atkSpd:0.9, moveSpd:120, armor:4,  size:12, class:"melee",
-    abilities:[{slot:1, key:"Q", name:"Shield Wall", cd:15, apply:(u)=>{ u._buff={armor:+6, ms:-40, t:5}; }}] },
-  spearman: { hp:85,  dmg:8,  range:60, atkSpd:1.0, moveSpd:120, armor:3,  size:12, class:"melee",
-    abilities:[{slot:2, key:"W", name:"Brace", cd:12, apply:(u)=>{ u._buff={range:+30, t:4}; }}] },
-  archer:   { hp:65,  dmg:7,  range:200,atkSpd:0.8, moveSpd:110, armor:1,  size:10, class:"ranged",
-    abilities:[{slot:1, key:"Q", name:"Volley", cd:12, apply:(u)=>{ u._burst=3; }}] },
-  cavalry:  { hp:95,  dmg:12, range:40, atkSpd:0.7, moveSpd:180, armor:2,  size:14, class:"charge",
-    abilities:[{slot:1, key:"Q", name:"Charge", cd:14, apply:(u)=>{ u._charge=1.8; }}] },
-  mage:     { hp:55,  dmg:15, range:180,atkSpd:0.5, moveSpd:115, armor:0,  size:10, class:"caster",
-    abilities:[{slot:1, key:"Q", name:"Fireburst", cd:16, apply:(u)=>{ u._aoe=3; }}] },
-  priest:   { hp:70,  dmg:3,  range:80, atkSpd:0.6, moveSpd:110, armor:1,  size:10, class:"support",
-    abilities:[{slot:1, key:"Q", name:"Mend", cd:12, apply:(u)=>{ u._hot=6; }}] }
-};
-const SPAWN_CHOICES = Object.keys(UNIT_TYPES);
-const MATCH_MS = 5 * 60 * 1000; // 5 minutes
-
-const TEAM_SPAWNS = [
-  { x:200, y:200 }, { x: WORLD.w-200, y:200 }, { x:200, y:WORLD.h-200 }, { x:WORLD.w-200, y:WORLD.h-200 }
-];
-const CMD_POINTS = [
-  { id:"P1", x: WORLD.w*0.25, y: WORLD.h*0.28, r: 160 },
-  { id:"P2", x: WORLD.w*0.70, y: WORLD.h*0.30, r: 160 },
-  { id:"P3", x: WORLD.w*0.50, y: WORLD.h*0.55, r: 160 },
-];
-
-/* ------------ Local client state ------------ */
-let isHost = false;
-let hostName = null;
-let lobbyPlayers = [];
-let myTeamIdx = 0;
-let state = null;
-let selection = new Set();
-let drag = { active:false, x0:0, y0:0, x1:0, y1:0 };
-let cpPanelFor = null;
-const groupSlots = {}; // "1".."9" -> Set(ids)
-
-/* ------------ Firestore refs ------------ */
-const lobbyRef = doc(db, "lobbies", GAME_ID);
-const gameRef  = doc(db, "games",  GAME_ID, "meta", "state");
-
-/* ------------ Intents ------------ */
-async function pushIntent(kind, payload){
-  const intentsCol = collection(db, "games", GAME_ID, "intents");
-  await addDoc(intentsCol, { ts: Date.now(), user: ME, kind, payload });
-}
-
-/* ------------ Host setup / join ------------ */
-async function init(){
-  const s = await getDoc(lobbyRef);
-  if (!s.exists()) { alert("Lobby not found"); return; }
-  const ld = s.data();
-  hostName = ld.host || null;
-  isHost = (hostName === ME);
-  lobbyPlayers = Array.isArray(ld.players) ? ld.players.slice(0,4) : [];
-  myTeamIdx = Math.max(0, lobbyPlayers.indexOf(ME));
-
-  // center camera on my spawn
-  const sp = TEAM_SPAWNS[myTeamIdx % TEAM_SPAWNS.length];
-  cam.x = sp.x - cv.width/2; cam.y = sp.y - cv.height/2; clampCam();
-
-  // Host: create/reset state if absent
-  const g = await getDoc(gameRef);
-  if (isHost && !g.exists()){
-    const units = [];
-    lobbyPlayers.forEach((name, idx)=>{
-      const base = TEAM_SPAWNS[idx];
-      const pack = ["swordsman","spearman","archer","cavalry"];
-      for (let i=0;i<8;i++){
-        const t = pack[i%pack.length];
-        const jitter = (n)=> (Math.random()*n - n/2);
-        units.push(mkUnit(t, name, base.x + (i%4)*24 + jitter(10), base.y + Math.floor(i/4)*24 + jitter(10)));
-      }
-    });
-    const points = CMD_POINTS.map(p => ({ ...p, owner:null, cap:0, spawnType:"swordsman", nextSpawnAt:0 }));
-    const now = Date.now();
-    await setDoc(gameRef, {
-      tick:0, startedAt: now, endAt: now + MATCH_MS, winner: null, map:{w:WORLD.w, h:WORLD.h},
-      players: lobbyPlayers, points, units
-    });
-  }
-
-  // Live state
-  onSnapshot(gameRef, (snap)=>{
-    if (!snap.exists()) return;
-    state = snap.data();
-    renderAbilitiesPanel();
-    renderTimer();
-    renderLeaderboard();
-    maybeShowWinner();
-  });
-
-  // Host loop
-  if (isHost) { hostLoop(); }
-}
-init();
-
-/* ------------ Unit helpers ------------ */
-function mkUnit(type, owner, x, y){
-  const base = UNIT_TYPES[type];
-  const id = owner.slice(0,2).toUpperCase() + Math.random().toString(36).slice(2,7);
-  return {
-    id, t:type, o:owner,
-    x: Math.round(x), y: Math.round(y),
-    hp: base.hp, maxHp: base.hp,
-    cd: 0, // attack cooldown
-    acd:{}, // ability cooldowns
-    _order:null
+    btnSave: document.getElementById('btnSave'),
+    btnLoad: document.getElementById('btnLoad'),
+    btnInv: document.getElementById('btnInv'),
+    btnArmy: document.getElementById('btnArmy'),
+    btnDip: document.getElementById('btnDip'),
+    btnHelp: document.getElementById('btnHelp'),
   };
-}
-function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
-function len(x,y){ return Math.hypot(x,y); }
 
-/* ------------ Inputs ------------ */
-let mouse = { x:0, y:0, worldX:0, worldY:0, down:false };
-cv.addEventListener("mousemove", (e)=>{
-  mouse.x = e.offsetX; mouse.y = e.offsetY;
-  mouse.worldX = cam.x + mouse.x;
-  mouse.worldY = cam.y + mouse.y;
-});
-cv.addEventListener("mousedown", (e)=>{
-  if (e.button === 2){ // right: attack-move
-    e.preventDefault();
-    issueAttackMove(mouse.worldX, mouse.worldY);
-    return;
+  function resize() {
+    const r = frame.getBoundingClientRect();
+    canvas.width = Math.floor(r.width * devicePixelRatio);
+    canvas.height = Math.floor(r.height * devicePixelRatio);
+    canvas.style.width = r.width + "px";
+    canvas.style.height = r.height + "px";
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   }
-  mouse.down = true;
-  drag.active = true; drag.x0 = mouse.x; drag.y0 = mouse.y; drag.x1 = mouse.x; drag.y1 = mouse.y;
-});
-cv.addEventListener("mouseup", (e)=>{
-  if (e.button === 2) return;
-  mouse.down = false;
-  if (!drag.active) return;
-  const minx = Math.min(drag.x0, drag.x1), maxx = Math.max(drag.x0, drag.x1);
-  const miny = Math.min(drag.y0, drag.y1), maxy = Math.max(drag.y0, drag.y1);
-  const picked = pickUnitsInRect(minx+cam.x, miny+cam.y, maxx+cam.x, maxy+cam.y, ME);
-  if (!e.shiftKey) selection.clear();
-  for (const id of picked) selection.add(id);
-  drag.active = false;
-  renderAbilitiesPanel();
-});
-cv.addEventListener("contextmenu", e=> e.preventDefault());
+  window.addEventListener('resize', resize);
+  resize();
 
-function pickUnitsInRect(x0,y0,x1,y1, owner){
-  const out = [];
-  if (!state || !state.units) return out;
-  const tiny = Math.hypot((x1-x0),(y1-y0)) < 6;
-  if (tiny){
-    let best=null, bd=1e12;
-    for (const u of state.units){ if (u.o!==owner) continue;
-      const d = dist2(u.x,u.y, mouse.worldX, mouse.worldY);
-      if (d<bd){bd=d; best=u;}
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+  function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function randi(a,b){ return Math.floor(rand(a,b+1)); }
+
+  // roundRect polyfill
+  if(!CanvasRenderingContext2D.prototype.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+      r = Math.min(r, w/2, h/2);
+      this.beginPath();
+      this.moveTo(x+r, y);
+      this.arcTo(x+w, y, x+w, y+h, r);
+      this.arcTo(x+w, y+h, x, y+h, r);
+      this.arcTo(x, y+h, x, y, r);
+      this.arcTo(x, y, x+w, y, r);
+      this.closePath();
+      return this;
     }
-    return best ? [best.id] : [];
   }
-  for (const u of state.units){
-    if (u.o !== owner) continue;
-    const s = UNIT_TYPES[u.t];
-    if (u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1) out.push(u.id);
+
+  // Toast
+  let toastT = 0;
+  function toast(msg, ms=1400){
+    ui.toast.textContent = msg;
+    ui.toast.style.display = 'block';
+    toastT = ms;
   }
-  return out;
-}
 
-async function issueAttackMove(wx,wy){
-  const ids = Array.from(selection);
-  if (ids.length === 0) return;
-  await pushIntent("order", { type:"attackMove", ids, x:Math.round(wx), y:Math.round(wy) });
-}
+  // =========================
+  // Gameplay tuning
+  // =========================
+  const SAVE_KEY = 'iso_mnb_save_v5';
+  const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
+  const VILLAGE_REGEN_INTERVAL = 10;  // seconds per regen tick
+  const VILLAGE_REGEN_CHANCE = 0.85;  // per tick, attempt regen
+  const ARCHER_WALL_DMG = 1.25;       // defenders behind wall
+  const ARCHER_WALL_RANGE = 1.15;
+  const ARCHER_WALL_RATE = 0.85;      // smaller = faster (windup+cooldown)
+  const JOIN_BASE_COST = 360;
 
-/* ------------ Abilities UI (Q/W/E/R) ------------ */
-function renderAbilitiesPanel(){
-  const abil = document.getElementById("abilities");
-  const selInfo = document.getElementById("selInfo");
-  if (!state) return;
-  const mySelUnits = state.units?.filter(u=>selection.has(u.id)) ?? [];
-  selInfo.textContent = mySelUnits.length ? `${mySelUnits.length} unit(s) selected` : "Select units";
+  // =========================
+  // Factions / items / units
+  // =========================
+  const FACTIONS = [
+    { id:'red',   name:'Crimson League', color:'#fb7185' },
+    { id:'blue',  name:'Azure Dominion', color:'#60a5fa' },
+    { id:'green', name:'Verdant Pact',   color:'#34d399' },
+  ];
 
-  // Aggregate up to 4 slots → map to Q/W/E/R display
-  const slotMap = new Map(); // slot -> name
-  for (const u of mySelUnits){
-    (UNIT_TYPES[u.t].abilities||[]).forEach(a=>{
-      slotMap.set(a.slot, a.name);
+  function hslToHex(h,s,l){
+    h = (h%360+360)%360;
+    s/=100; l/=100;
+    const c = (1-Math.abs(2*l-1))*s;
+    const x = c*(1-Math.abs((h/60)%2-1));
+    const m = l - c/2;
+    let r=0,g=0,b=0;
+    if(h<60){ r=c; g=x; b=0; }
+    else if(h<120){ r=x; g=c; b=0; }
+    else if(h<180){ r=0; g=c; b=x; }
+    else if(h<240){ r=0; g=x; b=c; }
+    else if(h<300){ r=x; g=0; b=c; }
+    else { r=c; g=0; b=x; }
+    const R = Math.round((r+m)*255);
+    const G = Math.round((g+m)*255);
+    const B = Math.round((b+m)*255);
+    return '#' + [R,G,B].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+
+  function pickUniqueBannerColor(){
+    // try to avoid landing too close to the main 3
+    const protectedH = [0, 210, 145]; // rough hues of red/blue/green
+    for(let i=0;i<80;i++){
+      const h = randi(0,359);
+      const ok = protectedH.every(ph => {
+        let d = Math.abs(h - ph);
+        d = Math.min(d, 360-d);
+        return d > 22;
+      });
+      if(ok) return hslToHex(h, 82, 62);
+    }
+    return hslToHex(randi(0,359), 82, 62);
+  }
+
+  const ITEM_DB = {
+    // Player weapons
+    weapon_sword:    { id:'weapon_sword',    name:'Sword',    type:'weapon', weaponKind:'melee',    dmg:18, range:1.35, speed:1.00, price:60  },
+    weapon_axe:      { id:'weapon_axe',      name:'Axe',      type:'weapon', weaponKind:'melee',    dmg:22, range:1.20, speed:0.88, price:70  },
+    weapon_spear:    { id:'weapon_spear',    name:'Spear',    type:'weapon', weaponKind:'melee',    dmg:14, range:1.95, speed:0.92, price:80  },
+    weapon_pike:     { id:'weapon_pike',     name:'Pike',     type:'weapon', weaponKind:'melee',    dmg:18, range:2.60, speed:0.55, price:140 },
+    weapon_dagger:   { id:'weapon_dagger',   name:'Dagger',   type:'weapon', weaponKind:'melee',    dmg:12, range:0.95, speed:1.35, price:40  },
+
+    weapon_bow:      { id:'weapon_bow',      name:'Bow',      type:'weapon', weaponKind:'bow',      dmg:14, range:8.2,  speed:1.00, price:90  },
+    weapon_crossbow: { id:'weapon_crossbow', name:'Crossbow', type:'weapon', weaponKind:'crossbow', dmg:28, range:9.2,  speed:0.75, price:160 },
+
+    // Armor
+    armor_cloth:     { id:'armor_cloth',     name:'Cloth Armor',  type:'armor', armor:0, maxHp:0,  price:0   },
+    armor_leather:   { id:'armor_leather',   name:'Leather Armor',type:'armor', armor:2, maxHp:20, price:80  },
+    armor_chain:     { id:'armor_chain',     name:'Chain Armor',  type:'armor', armor:4, maxHp:40, price:160 },
+    armor_scale:     { id:'armor_scale',     name:'Scale Armor',  type:'armor', armor:5, maxHp:50, price:220 },
+    armor_plate:     { id:'armor_plate',     name:'Plate Armor',  type:'armor', armor:6, maxHp:60, price:260 },
+  };
+
+  // Troops (their weapon differences are baked into windup/cooldown/range)
+  const UNIT_DB = {
+    // Infantry branch
+    inf_recruit: {
+      key:'inf_recruit', name:'Recruit', role:'inf', tier:0,
+      hp:78, dmg:11, range:1.05, spd:2.60, windup:0.32, cooldown:0.56,
+      shield:false, blockArrow:0.00, blockMelee:0.02,
+      cost:15, volunteersTier:0,
+      upgrades:[
+        { to:'inf_swordsman', cost:80, label:'Train → Swordsman' },
+        { to:'inf_spearman',  cost:80, label:'Train → Spearman' },
+      ]
+    },
+    inf_swordsman: {
+      key:'inf_swordsman', name:'Swordsman', role:'inf', tier:1,
+      hp:105, dmg:15, range:1.18, spd:2.45, windup:0.28, cooldown:0.53,
+      shield:false, blockArrow:0.00, blockMelee:0.04,
+      cost:0, volunteersTier:1,
+      upgrades:[
+        { to:'inf_knight_gs', cost:160, label:'Elite → Greatsword Knight' },
+        { to:'inf_shield_guard', cost:150, label:'Elite → Shield Guard' },
+      ]
+    },
+    inf_spearman: {
+      key:'inf_spearman', name:'Spearman', role:'inf', tier:1,
+      hp:98, dmg:13, range:1.90, spd:2.35, windup:0.34, cooldown:0.60,
+      shield:false, blockArrow:0.00, blockMelee:0.05,
+      cost:0, volunteersTier:1,
+      upgrades:[
+        { to:'inf_shield_spear', cost:160, label:'Elite → Shield Spearman' },
+        { to:'inf_pikeman', cost:170, label:'Elite → Pikeman' },
+      ]
+    },
+    inf_shield_guard: {
+      key:'inf_shield_guard', name:'Shield Guard', role:'inf', tier:2,
+      hp:160, dmg:18, range:1.15, spd:2.15, windup:0.26, cooldown:0.52,
+      shield:true, blockArrow:0.55, blockMelee:0.18,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+    inf_shield_spear: {
+      key:'inf_shield_spear', name:'Shield Spearman', role:'inf', tier:2,
+      hp:150, dmg:16, range:1.70, spd:2.15, windup:0.30, cooldown:0.58,
+      shield:true, blockArrow:0.62, blockMelee:0.14,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+    inf_pikeman: {
+      key:'inf_pikeman', name:'Pikeman', role:'inf', tier:2,
+      hp:132, dmg:17, range:2.55, spd:2.00, windup:0.44, cooldown:0.80,
+      shield:false, blockArrow:0.00, blockMelee:0.06,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+    inf_knight_gs: {
+      key:'inf_knight_gs', name:'Greatsword Knight', role:'inf', tier:2,
+      hp:170, dmg:26, range:1.45, spd:2.20, windup:0.25, cooldown:0.55,
+      shield:false, blockArrow:0.08, blockMelee:0.08,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+
+    // Archer branch
+    arc_recruit: {
+      key:'arc_recruit', name:'Recruit Archer', role:'arc', tier:0,
+      hp:64, dmg:11, range:7.2, spd:2.50, windup:0.60, cooldown:0.72,
+      shield:false, blockArrow:0.00, blockMelee:0.02,
+      projKind:'arrow', projSpeed:9.6,
+      cost:25, volunteersTier:0,
+      upgrades:[
+        { to:'arc_archer', cost:90, label:'Train → Archer' },
+      ]
+    },
+    arc_archer: {
+      key:'arc_archer', name:'Archer', role:'arc', tier:1,
+      hp:76, dmg:14, range:8.1, spd:2.40, windup:0.56, cooldown:0.70,
+      shield:false, blockArrow:0.00, blockMelee:0.03,
+      projKind:'arrow', projSpeed:9.9,
+      cost:0, volunteersTier:1,
+      upgrades:[
+        { to:'arc_marksman', cost:170, label:'Elite → Marksman' },
+        { to:'arc_crossbowman', cost:185, label:'Elite → Crossbowman' },
+      ]
+    },
+    arc_marksman: {
+      key:'arc_marksman', name:'Marksman', role:'arc', tier:2,
+      hp:90, dmg:18, range:9.0, spd:2.30, windup:0.52, cooldown:0.68,
+      shield:false, blockArrow:0.00, blockMelee:0.04,
+      projKind:'arrow', projSpeed:10.2,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+    arc_crossbowman: {
+      key:'arc_crossbowman', name:'Crossbowman', role:'arc', tier:2,
+      hp:92, dmg:26, range:8.4, spd:2.18, windup:0.72, cooldown:1.08,
+      shield:false, blockArrow:0.00, blockMelee:0.05,
+      projKind:'bolt', projSpeed:12.2,
+      cost:0, volunteersTier:2,
+      upgrades:[]
+    },
+  };
+
+  // =========================
+  // Iso + map sizes
+  // =========================
+  const TILE_W = 64;
+  const TILE_H = 32;
+  const MAP_W = 52;
+  const MAP_H = 52;
+  const BATTLE_W = 70;
+  const BATTLE_H = 70;
+
+  function worldToScreen(x, y, camX, camY){
+    const dx = x - camX;
+    const dy = y - camY;
+    const sx = (dx - dy) * (TILE_W/2);
+    const sy = (dx + dy) * (TILE_H/2);
+    return {
+      x: canvas.clientWidth/2 + sx,
+      y: canvas.clientHeight/2 + sy
+    };
+  }
+
+  // =========================
+  // State
+  // =========================
+  let state = {
+    mode: 'map', // map | battle
+    t: 0,
+    map: null,
+    battle: null,
+    player: null,
+    diplomacy: null,
+    cam: { x: 10, y: 10 },
+    panelsOpen: { settlement:false, inventory:false, army:false, diplomacy:false, help:false, loot:false },
+  };
+
+  function factionColor(id){
+    if(id==='player') return state.player?.bannerColor || 'rgba(220,220,255,.85)';
+    const f = FACTIONS.find(x=>x.id===id);
+    return f ? f.color : 'rgba(220,220,255,.8)';
+  }
+  function factionName(id){
+    if(id==='player') return 'Your Domain';
+    const f = FACTIONS.find(x=>x.id===id);
+    return f ? f.name : 'Neutral';
+  }
+
+  function relationLabel(v){
+    if(v>=60) return 'ALLIED';
+    if(v>=25) return 'FRIENDLY';
+    if(v<=-60) return 'AT WAR';
+    if(v<=-20) return 'HOSTILE';
+    return 'NEUTRAL';
+  }
+
+  function joinCost(rel){
+    // friendlier = cheaper
+    // rel in [-100..100]
+    const c = Math.round(JOIN_BASE_COST - rel*2.6);
+    return clamp(c, 80, 800);
+  }
+
+  // =========================
+  // Player / leveling / wounded
+  // =========================
+  function makeNewDiplomacy(){
+    return { red:0, blue:0, green:0 };
+  }
+
+  function makeNewPlayer(){
+    return {
+      x: 10, y: 10,
+      hp: 120,
+      baseMaxHp: 120,
+      facing: { x: 1, y: 0 },
+      gold: 200,
+      food: 30,
+
+      // faction membership
+      faction: null,            // 'red' | 'blue' | 'green' | null
+      bannerColor: pickUniqueBannerColor(), // unique independent banner color
+
+      // leveling
+      level: 1,
+      xp: 0,
+      xpToNext: 60,
+      dmgMult: 1.00,
+
+      // wounded queue
+      woundedUnits: [],
+      woundedHealClock: 0,
+
+      inventory: {
+        weapon_sword: 1,
+        weapon_bow: 0,
+        weapon_crossbow: 0,
+        weapon_axe: 0,
+        weapon_spear: 0,
+        weapon_pike: 0,
+        weapon_dagger: 0,
+        armor_leather: 0,
+        armor_chain: 0,
+        armor_scale: 0,
+        armor_plate: 0,
+      },
+      equip: {
+        armor: 'armor_cloth',
+        w1: 'weapon_sword',
+        w2: null,
+        activeSlot: 1,
+      },
+      armyUnits: [
+        { unit:'inf_recruit' },
+        { unit:'inf_recruit' },
+        { unit:'arc_recruit' },
+      ],
+
+      mapSpeedBase: 2.65,
+      attackCd: 0,
+      rangedCd: 0,
+      dead: false,
+    };
+  }
+
+  function playerMaxHp(p){
+    const armorId = p.equip.armor || 'armor_cloth';
+    const a = ITEM_DB[armorId] || ITEM_DB.armor_cloth;
+    return p.baseMaxHp + (a.maxHp||0);
+  }
+
+  function equippedWeapon(p){
+    const id = (p.equip.activeSlot===1) ? p.equip.w1 : p.equip.w2;
+    if(!id) return null;
+    return ITEM_DB[id] || null;
+  }
+
+  function armySize(p){ return p.armyUnits.length; }
+
+  function addXP(amount){
+    const p = state.player;
+    p.xp += amount;
+    while(p.xp >= p.xpToNext){
+      p.xp -= p.xpToNext;
+      p.level += 1;
+      p.baseMaxHp += 10;
+      p.dmgMult = 1 + (p.level-1)*0.06;
+      p.xpToNext = Math.round(p.xpToNext * 1.22 + 15);
+      toast(`LEVEL UP! → Lv ${p.level} (+HP, +DMG)`, 1700);
+      p.hp = Math.min(playerMaxHp(p), p.hp + 20);
+    }
+  }
+
+  // =========================
+  // Map generation (castles own villages + garrisons)
+  // =========================
+  function makeVillageStock(){
+    return { foodPrice: 5, foodBundle: 10 };
+  }
+
+  function makeCastleStock(factionId){
+    const weapons = ['weapon_sword','weapon_axe','weapon_spear','weapon_pike','weapon_bow','weapon_crossbow','weapon_dagger'];
+    const armors  = ['armor_leather','armor_chain','armor_scale','armor_plate'];
+    const markup = (factionId==='red') ? 1.05 : (factionId==='blue') ? 0.98 : 1.0;
+    return { markup, items: [...weapons, ...armors] };
+  }
+
+  function seedGarrison(){
+    const g = {};
+    const add = (k,n)=> g[k]=(g[k]||0)+n;
+    add('inf_swordsman', randi(4,8));
+    add('inf_spearman', randi(3,7));
+    add('arc_archer', randi(3,6));
+    if(Math.random()<0.30) add('inf_shield_guard', randi(1,3));
+    if(Math.random()<0.20) add('arc_crossbowman', randi(1,2));
+    return g;
+  }
+  function seedCapturedMilitia(){
+    const g = {};
+    const add = (k,n)=> g[k]=(g[k]||0)+n;
+    add('inf_recruit', randi(4,7));
+    add('arc_recruit', randi(2,5));
+    if(Math.random()<0.35) add('inf_spearman', randi(1,3));
+    if(Math.random()<0.25) add('arc_archer', randi(1,2));
+    return g;
+  }
+
+  function garrisonCount(g){
+    let n=0;
+    for(const k in g) n += g[k]||0;
+    return n;
+  }
+  function normalizeGarrison(g){
+    for(const k of Object.keys(g)){
+      if(!g[k] || g[k]<=0) delete g[k];
+    }
+  }
+
+  function makeVillageVolunteers(){
+    // limited pool + caps
+    const volunteers = {
+      inf_recruit: randi(6, 14),
+      arc_recruit: randi(4, 10),
+      inf_swordsman: randi(0, 3),
+      inf_spearman: randi(0, 3),
+      arc_archer: randi(0, 2),
+      arc_crossbowman: (Math.random()<0.18 ? 1 : 0),
+      inf_pikeman: (Math.random()<0.15 ? 1 : 0),
+    };
+    const caps = {
+      inf_recruit: 18,
+      arc_recruit: 14,
+      inf_swordsman: 4,
+      inf_spearman: 4,
+      arc_archer: 3,
+      arc_crossbowman: 2,
+      inf_pikeman: 2,
+    };
+    return { volunteers, caps, regenClock: rand(0, VILLAGE_REGEN_INTERVAL) };
+  }
+
+  function totalVolunteers(v){
+    return Object.values(v).reduce((a,b)=>a+(b||0),0);
+  }
+
+  function makePartyComp(kind, size){
+    const comp = [];
+    const inf = Math.round(size * (kind==='bandit' ? 0.72 : 0.62));
+    const arc = Math.max(0, size - inf);
+
+    for(let i=0;i<inf;i++){
+      if(kind==='bandit' && Math.random()<0.20) comp.push({ unit:'inf_spearman' });
+      else if(kind!=='bandit' && Math.random()<0.18) comp.push({ unit:'inf_swordsman' });
+      else comp.push({ unit:'inf_recruit' });
+    }
+    for(let i=0;i<arc;i++){
+      const roll = Math.random();
+      if(kind!=='bandit' && size>=28 && roll<0.10) comp.push({ unit:'arc_crossbowman' });
+      else if(kind==='bandit' && roll<0.12) comp.push({ unit:'arc_archer' });
+      else if(kind!=='bandit' && roll<0.18) comp.push({ unit:'arc_archer' });
+      else comp.push({ unit:'arc_recruit' });
+    }
+
+    if(size>=28 && Math.random()<0.32) comp.push({ unit:'inf_shield_guard' });
+    if(size>=32 && Math.random()<0.22) comp.push({ unit:'inf_knight_gs' });
+    return comp;
+  }
+
+  function makeMap(){
+    const settlements = [];
+    const taken = new Set();
+    function take(x,y){ taken.add(x+','+y); }
+
+    function pickSpot(){
+      for(let tries=0; tries<5000; tries++){
+        const x = randi(6, MAP_W-7);
+        const y = randi(6, MAP_H-7);
+        if(taken.has(x+','+y)) continue;
+        let ok = true;
+        for(const s of settlements){
+          if(dist2(x,y,s.x,s.y) < 64) { ok=false; break; }
+        }
+        if(ok){ take(x,y); return {x,y}; }
+      }
+      return {x:randi(6,MAP_W-7), y:randi(6,MAP_H-7)};
+    }
+
+    for(const f of FACTIONS){
+      const c = pickSpot();
+      const castleId = 's_'+Math.random().toString(36).slice(2,9);
+      settlements.push({
+        id: castleId,
+        kind:'castle', factionId:f.id, name:f.name+' Castle',
+        x:c.x, y:c.y,
+        stock: makeCastleStock(f.id),
+        garrison: seedGarrison(),
+        lastSackedT: -999,
+        parentCastleId: null,
+      });
+      for(let i=0;i<3;i++){
+        const v = pickSpot();
+        const vv = makeVillageVolunteers();
+        settlements.push({
+          id: 's_'+Math.random().toString(36).slice(2,9),
+          kind:'village', factionId:f.id,
+          name:f.name.split(' ')[0]+' Village '+(i+1),
+          x:v.x, y:v.y,
+          stock: makeVillageStock(),
+          parentCastleId: castleId,
+          village: vv,
+        });
+      }
+    }
+
+    const parties = [];
+    function addParty(kind, factionId, x, y, size){
+      parties.push({
+        id: 'p_' + Math.random().toString(36).slice(2,9),
+        kind, factionId,
+        x, y,
+        roamTx: x, roamTy: y,
+        aggro: (kind==='bandit') ? 5.2 : (kind==='army'? 3.8 : 4.2),
+        baseSpeed: (kind==='bandit') ? 2.25 : (kind==='army'? 1.75 : 2.0),
+        size,
+        comp: (kind==='neutral') ? [] : makePartyComp(kind, size),
+        alive: true,
+        targetSettlementId: null,
+      });
+    }
+
+    for(let i=0;i<11;i++) addParty('bandit', null, randi(4,MAP_W-5), randi(4,MAP_H-5), randi(7,20));
+    for(const f of FACTIONS) for(let i=0;i<3;i++) addParty('patrol', f.id, randi(4,MAP_W-5), randi(4,MAP_H-5), randi(8,20));
+    for(let i=0;i<6;i++) addParty('neutral', null, randi(4,MAP_W-5), randi(4,MAP_H-5), 1);
+
+    return {
+      w: MAP_W, h: MAP_H,
+      settlements, parties,
+      dayFoodRate: 0.02,
+      invasion: {}, // partyId -> {settlementId, t}
+      nextArmySpawn: 18 + Math.random()*12,
+    };
+  }
+
+  // =========================
+  // Panels plumbing
+  // =========================
+  function closeAllPanels(){
+    for(const el of [ui.panelSettlement,ui.panelInventory,ui.panelArmy,ui.panelDiplomacy,ui.panelHelp,ui.panelLoot]){
+      el.style.display = 'none';
+      el.classList.remove('left','wide');
+    }
+    for(const k of Object.keys(state.panelsOpen)) state.panelsOpen[k]=false;
+  }
+
+  function togglePanel(kind){
+    const isOpen = state.panelsOpen[kind];
+    closeAllPanels();
+    if(!isOpen){
+      state.panelsOpen[kind]=true;
+      if(kind==='settlement') ui.panelSettlement.style.display='block';
+      if(kind==='inventory')  ui.panelInventory.style.display='block';
+      if(kind==='army')       ui.panelArmy.style.display='block';
+      if(kind==='diplomacy')  ui.panelDiplomacy.style.display='block';
+      if(kind==='help')       ui.panelHelp.style.display='block';
+      if(kind==='loot')       ui.panelLoot.style.display='block';
+    }
+  }
+
+  function anyPanelOpen(){
+    return Object.values(state.panelsOpen).some(Boolean);
+  }
+
+  // =========================
+  // Save/load
+  // =========================
+  function serialize(){
+    return { version: 5, map: state.map, player: state.player, diplomacy: state.diplomacy };
+  }
+
+  function save(){
+    try{
+      localStorage.setItem(SAVE_KEY, JSON.stringify(serialize()));
+      toast('Saved ✅');
+    }catch(e){
+      toast('Save failed (localStorage blocked?)');
+      console.error(e);
+    }
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(SAVE_KEY);
+      if(!raw){ toast('No save found'); return; }
+      const data = JSON.parse(raw);
+      if(!data || !data.version){ toast('Save incompatible'); return; }
+      // basic forward compat
+      state.map = data.map;
+      state.player = data.player;
+      state.diplomacy = data.diplomacy || makeNewDiplomacy();
+      if(!state.player.bannerColor) state.player.bannerColor = pickUniqueBannerColor();
+      // ensure villages have volunteer structures (older saves)
+      for(const s of state.map.settlements){
+        if(s.kind==='village'){
+          if(!s.village || !s.village.volunteers){
+            s.village = makeVillageVolunteers();
+          }
+        }
+      }
+      state.mode='map'; state.battle=null;
+      closeAllPanels();
+      toast('Loaded ✅');
+      syncHUD();
+    }catch(e){
+      toast('Load failed');
+      console.error(e);
+    }
+  }
+
+  ui.btnSave.onclick = save;
+  ui.btnLoad.onclick = load;
+
+  ui.btnInv.onclick = () => { togglePanel('inventory'); if(state.panelsOpen.inventory) renderInventoryPanel(); };
+  ui.btnArmy.onclick = () => { togglePanel('army'); if(state.panelsOpen.army) renderArmyPanel(); };
+  ui.btnDip.onclick = () => { togglePanel('diplomacy'); if(state.panelsOpen.diplomacy) renderDiplomacyPanel(); };
+  ui.btnHelp.onclick = () => { togglePanel('help'); if(state.panelsOpen.help) renderHelpPanel(); };
+
+  // =========================
+  // UI: inventory
+  // =========================
+  function renderInventoryPanel(){
+    const p = state.player;
+    const invItems = Object.keys(p.inventory).filter(k => p.inventory[k]>0 && ITEM_DB[k]);
+    const wOptions = Object.keys(ITEM_DB).filter(k => ITEM_DB[k].type==='weapon' && (p.inventory[k]||0)>0);
+    const aOptions = ['armor_cloth', ...Object.keys(ITEM_DB).filter(k => ITEM_DB[k].type==='armor' && (p.inventory[k]||0)>0)];
+
+    function optionHTML(id, selected){
+      const it = id ? ITEM_DB[id] : null;
+      const label = it ? it.name : '(None)';
+      return `<option value="${id||''}" ${selected?'selected':''}>${label}</option>`;
+    }
+
+    const w = equippedWeapon(p);
+
+    ui.panelInventory.innerHTML = `
+      <h2>Inventory & Equipment</h2>
+      <div class="small">
+        <span class="kbd">F</span> swaps weapon slots in battle.
+        Crossbows hit hard but reload slower. Pikes have huge reach but swing slow.
+      </div>
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="chip">⭐ Lv <b>${p.level}</b> • DMG x<b>${p.dmgMult.toFixed(2)}</b></div>
+        <div class="chip">❤️ <b>${Math.round(p.hp)}</b> / <b>${playerMaxHp(p)}</b></div>
+        <div class="chip">⚔ <b>${w ? `${w.name} (DMG ${Math.round(w.dmg*p.dmgMult)}, RNG ${w.range})` : 'None'}</b></div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="item">
+        <div class="meta"><b>Armor</b><div class="tag">Changes your max HP</div></div>
+        <select id="selArmor">
+          ${aOptions.map(id => optionHTML(id, p.equip.armor===id)).join('')}
+        </select>
+      </div>
+
+      <div class="item">
+        <div class="meta"><b>Weapon Slot 1</b><div class="tag">Melee / Bow / Crossbow</div></div>
+        <select id="selW1">
+          ${['', ...wOptions].map(id => optionHTML(id||null, (p.equip.w1||'')===(id||''))).join('')}
+        </select>
+      </div>
+
+      <div class="item">
+        <div class="meta"><b>Weapon Slot 2</b><div class="tag">Optional second weapon</div></div>
+        <select id="selW2">
+          ${['', ...wOptions].map(id => optionHTML(id||null, (p.equip.w2||'')===(id||''))).join('')}
+        </select>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2 style="margin-top:0">Carried Items</h2>
+      <div class="list">
+        ${invItems.length? invItems.map(id => {
+          const it = ITEM_DB[id];
+          const qty = p.inventory[id]||0;
+          return `<div class="item">
+            <div class="meta"><b>${it.name}</b><div class="tag">${it.type.toUpperCase()}</div></div>
+            <div class="mono">x${qty}</div>
+          </div>`;
+        }).join('') : `<div class="small">No items yet (buy weapons/armor in castles).</div>`}
+      </div>
+
+      <div class="hr"></div>
+      <div class="row"><button class="btn" id="btnCloseInv">Close</button></div>
+    `;
+
+    ui.panelInventory.querySelector('#btnCloseInv').onclick = () => closeAllPanels();
+
+    ui.panelInventory.querySelector('#selArmor').onchange = (e) => {
+      p.equip.armor = e.target.value || 'armor_cloth';
+      p.hp = Math.min(p.hp, playerMaxHp(p));
+      renderInventoryPanel();
+      toast(`Equipped ${ITEM_DB[p.equip.armor].name}`);
+    };
+
+    ui.panelInventory.querySelector('#selW1').onchange = (e) => {
+      p.equip.w1 = e.target.value || null;
+      if(p.equip.w1 && p.equip.w1===p.equip.w2) p.equip.w2 = null;
+      renderInventoryPanel();
+      toast('Updated weapon slot 1');
+    };
+    ui.panelInventory.querySelector('#selW2').onchange = (e) => {
+      p.equip.w2 = e.target.value || null;
+      if(p.equip.w2 && p.equip.w2===p.equip.w1) p.equip.w1 = null;
+      renderInventoryPanel();
+      toast('Updated weapon slot 2');
+    };
+  }
+
+  // =========================
+  // Army panel (upgrades + wounded)
+  // =========================
+  function mapSpeedFor(p){
+    const n = armySize(p);
+    const slow = 1 + n * 0.035;
+    const starving = (p.food<=0) ? 1.35 : 1.0;
+    return p.mapSpeedBase / slow / starving;
+  }
+
+  function countUnitsArray(arr){
+    const m = {};
+    for(const u of arr){
+      m[u.unit] = (m[u.unit]||0)+1;
+    }
+    return m;
+  }
+
+  function renderArmyPanel(){
+    const p = state.player;
+    const counts = countUnitsArray(p.armyUnits);
+    const keys = Object.keys(counts).sort((a,b)=>{
+      const A=UNIT_DB[a], B=UNIT_DB[b];
+      if(A.role!==B.role) return A.role.localeCompare(B.role);
+      if(A.tier!==B.tier) return A.tier-B.tier;
+      return A.name.localeCompare(B.name);
     });
-  }
-  const keyLabels = {1:"Q",2:"W",3:"E",4:"R"};
-  abil.innerHTML = "";
-  for (let s=1;s<=4;s++){
-    const div = document.createElement("div");
-    div.className = "slot";
-    const name = slotMap.get(s) || "—";
-    div.innerHTML = `<span>${name}</span><span class="key">${keyLabels[s]}</span>`;
-    div.onclick = ()=> castAbilitySlot(s);
-    abil.appendChild(div);
-  }
-}
-async function castAbilitySlot(slot){
-  const ids = Array.from(selection);
-  if (!ids.length) return;
-  await pushIntent("ability", { slot, ids });
-}
 
-/* ------------ Group binds (Ctrl+1..9 assign, 1..9 recall, Shift+1..9 add) ------------ */
-addEventListener("keydown", (e)=>{
-  const k = e.key.toLowerCase();
-
-  // Abilities Q/W/E/R
-  if (["q","w","e","r"].includes(k)){ e.preventDefault(); castAbilitySlot({q:1,w:2,e:3,r:4}[k]); return; }
-
-  // Group binds 1..9
-  if (k>="1" && k<="9"){
-    e.preventDefault();
-    const slot = k;
-    if (e.ctrlKey){ // assign
-      groupSlots[slot] = new Set([...selection].filter(id=>{
-        const u = state?.units?.find(x=>x.id===id);
-        return u && u.o===ME;
-      }));
-    } else if (e.shiftKey){ // add
-      const set = groupSlots[slot];
-      if (!set) return;
-      for (const id of set){
-        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
-        if (alive) selection.add(id);
-      }
-      renderAbilitiesPanel();
-    } else { // recall
-      selection.clear();
-      const set = groupSlots[slot];
-      if (!set) return;
-      for (const id of set){
-        const alive = state?.units?.some(u=>u.id===id && u.o===ME);
-        if (alive) selection.add(id);
-      }
-      renderAbilitiesPanel();
-    }
-  }
-});
-
-/* ------------ CP panel ------------ */
-const cpPanel = document.getElementById("cpPanel");
-const cpName  = document.getElementById("cpName");
-const cpBtns  = document.getElementById("cpBtns");
-
-function showCpPanelFor(point){
-  if (!point){ cpPanel.style.display="none"; return; }
-  cpName.textContent = point.id;
-  cpBtns.innerHTML = "";
-  for (const t of SPAWN_CHOICES){
-    const b = document.createElement("button");
-    b.className="cpBtn"; b.textContent = t;
-    b.onclick = async ()=>{ await pushIntent("spawnChoice", { pointId: point.id, troop: t }); };
-    cpBtns.appendChild(b);
-  }
-  cpPanel.style.display="block";
-}
-
-/* ------------ Camera edge pan ------------ */
-function updateCamera(dt){
-  const margin = 18;
-  let vx=0, vy=0;
-  if (mouse.x <= margin) vx -= 1;
-  else if (mouse.x >= cv.width - margin) vx += 1;
-  if (mouse.y <= margin) vy -= 1;
-  else if (mouse.y >= cv.height - margin) vy += 1;
-  cam.x += vx * cam.speed * dt;
-  cam.y += vy * cam.speed * dt;
-  clampCam();
-}
-
-/* ------------ Host simulation ------------ */
-async function hostLoop(){
-  let last = performance.now();
-  async function step(){
-    const now = performance.now();
-    const dt = Math.min(0.05, (now-last)/1000);
-    last = now;
-
-    const intentsCol = collection(db, "games", GAME_ID, "intents");
-    const intentsSnap = await getDocs(query(intentsCol, orderBy("ts","asc"), limit(60)));
-    const intents = intentsSnap.docs.map(d=>({id:d.id,...d.data()}));
-
-    const snap = await getDoc(gameRef);
-    if (!snap.exists()){ requestAnimationFrame(step); return; }
-    let g = snap.data();
-
-    g = applyIntents(g, intents);
-    g = simulate(g, dt);
-    g.tick++;
-
-    await setDoc(gameRef, g, { merge:false });
-    for (const d of intentsSnap.docs){ await deleteDoc(d.ref); }
-
-    setTimeout(()=>requestAnimationFrame(step), 110); // ~9 Hz publish
-  }
-  step();
-}
-
-function applyIntents(g, intents){
-  const byId = new Map(g.units.map(u=>[u.id,u]));
-  for (const it of intents){
-    const { kind, user, payload } = it;
-    if (kind === "order"){
-      const { type, ids, x, y } = payload;
-      if (type==="attackMove"){
-        for (const id of ids){
-          const u = byId.get(id); if (!u || u.o !== user) continue;
-          u._order = { type, x, y, ts: Date.now() };
-        }
+    const upgradeRows = [];
+    for(const fromKey of keys){
+      const def = UNIT_DB[fromKey];
+      if(!def.upgrades || !def.upgrades.length) continue;
+      const have = counts[fromKey]||0;
+      for(const up of def.upgrades){
+        const toDef = UNIT_DB[up.to];
+        upgradeRows.push(`
+          <div class="item">
+            <div class="meta">
+              <b>${up.label}</b>
+              <div class="tag">${def.name} → ${toDef.name} • Cost: 💰 ${up.cost}</div>
+            </div>
+            <button class="btn" data-upfrom="${fromKey}" data-upto="${up.to}" data-upcost="${up.cost}" ${have<=0?'disabled':''}>Upgrade 1</button>
+          </div>
+        `);
       }
     }
-    if (kind === "ability"){
-      const { slot, ids } = payload;
-      for (const id of ids){
-        const u = byId.get(id); if (!u || u.o !== user) continue;
-        const def = UNIT_TYPES[u.t];
-        const abil = (def.abilities||[]).find(a=>a.slot===slot);
-        if (!abil) continue;
-        const ready = !(u.acd && u.acd[slot] > 0);
-        if (ready){
-          abil.apply(u);
-          u.acd[slot] = abil.cd;
-        }
-      }
-    }
-    if (kind === "spawnChoice"){
-      const { pointId, troop } = payload;
-      const p = g.points.find(p=>p.id===pointId);
-      if (p && p.owner === user && UNIT_TYPES[troop]) p.spawnType = troop;
-    }
-  }
-  return g;
-}
 
-/* ---- Core sim with autopilot, separation, collisions, timer & victory ---- */
-function simulate(g, dt){
-  const nowMs = Date.now();
-  const endAt = g.endAt || (g.startedAt + MATCH_MS);
+    const wCounts = {};
+    for(const u of p.woundedUnits){ wCounts[u] = (wCounts[u]||0)+1; }
+    const wKeys = Object.keys(wCounts);
 
-  // Cooldowns / buffs decay
-  for (const u of g.units){
-    if (u.cd>0) u.cd = Math.max(0, u.cd - dt);
-    for (const k in (u.acd||{})) u.acd[k] = Math.max(0, u.acd[k] - dt);
-    if (u._buff){ u._buff.t -= dt; if (u._buff.t<=0) delete u._buff; }
-  }
+    ui.panelArmy.innerHTML = `
+      <h2>Army & Upgrades</h2>
+      <div class="small">
+        Bigger armies move slower. Fallen allied troops have a <b>${Math.round(WOUNDED_CHANCE*100)}%</b> chance to be <b>wounded</b> instead of killed.
+      </div>
+      <div class="hr"></div>
 
-  // Capture logic + spawning
-  for (const p of g.points){
-    const R2 = p.r*p.r;
-    const teams = new Map();
-    for (const u of g.units){
-      const d2 = dist2(u.x,u.y,p.x,p.y);
-      if (d2 <= R2) teams.set(u.o, (teams.get(u.o)||0)+1);
-    }
-    const present = Array.from(teams.keys());
-    if (present.length === 1){
-      const owner = present[0];
-      if (p.owner === owner){ p.cap = Math.min(1, p.cap + dt*0.2); }
-      else { p.cap += dt*0.2; if (p.cap>=1){ p.owner=owner; p.cap=1; p.nextSpawnAt=0; } }
-    } else if (present.length > 1){
-      p.cap = Math.max(0, p.cap - dt*0.08);
-      if (p.cap === 0 && present.length>1) p.owner = null;
-    } else {
-      p.cap = Math.max(0, p.cap - dt*0.02);
-    }
+      <div class="row">
+        <div class="chip">👥 Total <b>${armySize(p)}</b></div>
+        <div class="chip">🤕 Wounded <b>${p.woundedUnits.length}</b></div>
+        <div class="chip">🏃 Map Speed <b>${mapSpeedFor(p).toFixed(2)}</b></div>
+      </div>
 
-    if (p.owner){
-      const period = 15000;
-      if (!p.nextSpawnAt) p.nextSpawnAt = nowMs + period;
-      if (nowMs >= p.nextSpawnAt){
-        const spawnType = p.spawnType || "swordsman";
-        const jitter = (n)=> (Math.random()*n - n/2);
-        g.units.push(mkUnit(spawnType, p.owner, p.x + jitter(24), p.y + jitter(24)));
-        p.nextSpawnAt = nowMs + period;
-      }
-    }
-  }
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Roster</h2>
+      <div class="list">
+        ${keys.length ? keys.map(k=>{
+          const d = UNIT_DB[k];
+          const qty = counts[k];
+          const shieldTag = d.shield ? ' • 🛡 Shield' : '';
+          const weaponFlavor = d.role==='arc' ? (d.projKind==='bolt'?' • Crossbow':' • Bow') : (d.range>=2.3?' • Pike':'');
+          return `<div class="item">
+            <div class="meta"><b>${d.name}</b><div class="tag">${d.role==='inf'?'Infantry':'Archers'} • Tier ${d.tier}${shieldTag}${weaponFlavor}</div></div>
+            <div class="mono">x${qty}</div>
+          </div>`;
+        }).join('') : `<div class="small">No active troops.</div>`}
+      </div>
 
-  // Movement / autopilot / attacks
-  // Precompute nearest enemy per unit (naive)
-  for (const u of g.units){
-    const def = UNIT_TYPES[u.t];
-    const ms = (def.moveSpd + (u._buff?.ms||0));
-    const range = (def.range + (u._buff?.range||0));
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Wounded (recover over time on the map)</h2>
+      <div class="list">
+        ${wKeys.length ? wKeys.map(k=>{
+          const d = UNIT_DB[k];
+          return `<div class="item">
+            <div class="meta"><b>${d.name}</b><div class="tag">Wounded stack</div></div>
+            <div class="mono">x${wCounts[k]}</div>
+          </div>`;
+        }).join('') : `<div class="small">None.</div>`}
+      </div>
 
-    // Find nearest enemy
-    let enemy=null, ed2= 1e12;
-    for (const v of g.units){
-      if (v.o===u.o) continue;
-      const d2 = dist2(u.x,u.y,v.x,v.y);
-      if (d2 < ed2){ ed2 = d2; enemy = v; }
-    }
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Upgrades</h2>
+      <div class="list">
+        ${upgradeRows.length ? upgradeRows.join('') : `<div class="small">No upgrades available right now.</div>`}
+      </div>
 
-    // Attack if in range
-    if (enemy && u.cd<=0 && ed2 <= range*range){
-      const dmg = Math.max(1, def.dmg - (UNIT_TYPES[enemy.t].armor + 0));
-      enemy.hp -= dmg;
-      u.cd = Math.max(0.05, 1/def.atkSpd);
-    }
+      <div class="hr"></div>
+      <div class="row"><button class="btn" id="btnCloseArmy">Close</button></div>
+    `;
 
-    // Decide goal: explicit order has precedence; else autopilot toward nearest enemy
-    let goal = null;
-    if (u._order){ goal = {x:u._order.x, y:u._order.y}; }
-    else if (enemy){ goal = {x:enemy.x, y:enemy.y}; }
+    ui.panelArmy.querySelector('#btnCloseArmy').onclick = () => closeAllPanels();
 
-    if (goal){
-      // Steering: goal vector + separation from nearby units
-      let gx = goal.x - u.x, gy = goal.y - u.y;
-      const gLen = Math.hypot(gx,gy) || 1;
-      gx /= gLen; gy /= gLen;
-
-      // Separation
-      let sx=0, sy=0;
-      const sepRad = 28;
-      for (const v of g.units){
-        if (v===u) continue;
-        const dx = u.x - v.x, dy = u.y - v.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 > sepRad*sepRad || d2===0) continue;
-        const d = Math.sqrt(d2);
-        const push = (sepRad - d)/sepRad; // 0..1
-        sx += (dx/d) * push;
-        sy += (dy/d) * push;
-      }
-
-      const wSep = 0.9; // weight of separation
-      let vx = gx + wSep*sx, vy = gy + wSep*sy;
-      const vLen = Math.hypot(vx,vy) || 1;
-      vx /= vLen; vy /= vLen;
-
-      const step = ms * dt;
-      u.x += vx * step; u.y += vy * step;
+    for(const btn of ui.panelArmy.querySelectorAll('button[data-upfrom]')){
+      btn.onclick = () => {
+        const p = state.player;
+        const fromKey = btn.getAttribute('data-upfrom');
+        const toKey = btn.getAttribute('data-upto');
+        const cost = Number(btn.getAttribute('data-upcost'));
+        if(p.gold < cost){ toast('Not enough gold for upgrade'); return; }
+        const idx = p.armyUnits.findIndex(u => u.unit===fromKey);
+        if(idx<0){ toast('No unit available to upgrade'); return; }
+        p.gold -= cost;
+        p.armyUnits[idx].unit = toKey;
+        toast(`Upgraded → ${UNIT_DB[toKey].name}`);
+        renderArmyPanel();
+        syncHUD();
+      };
     }
   }
 
-  // Collision resolution (no overlaps)
-  resolveCollisions(g.units);
+  // =========================
+  // Diplomacy panel (+ pledge allegiance cost by friendliness)
+  // =========================
+  function renderDiplomacyPanel(){
+    const d = state.diplomacy;
+    const p = state.player;
 
-  // Cleanup dead
-  g.units = g.units.filter(u=>u.hp>0);
+    function rowFor(fid){
+      const v = d[fid];
+      const col = factionColor(fid);
+      const label = relationLabel(v);
+      const pct = clamp((v+100)/200, 0, 1) * 100;
+      const cost = joinCost(v);
 
-  // Victory: last alive OR time up → most troops
-  const aliveByOwner = countByOwner(g.units);
-  const livingOwners = Object.keys(aliveByOwner).filter(o=>aliveByOwner[o]>0);
+      const joined = (p.faction===fid);
+      const canJoin = (!p.faction && v>=0);
+      const canAfford = (p.gold >= cost);
 
-  if (!g.winner && livingOwners.length === 1){
-    g.winner = livingOwners[0];
+      return `
+        <div class="item">
+          <div class="meta">
+            <b style="color:${col}">${factionName(fid)}</b>
+            <div class="tag">Relation: <span class="mono">${v}</span> • ${label}</div>
+            <div class="bar"><div style="width:${pct}%"></div></div>
+            <div class="tag">Pledge Cost: 💰 <span class="mono">${cost}</span> (cheaper when friendlier)</div>
+          </div>
+          <div class="row">
+            <button class="btn" data-gift="${fid}">Gift (💰50)</button>
+            <button class="btn" data-war="${fid}">Declare War</button>
+            <button class="btn" data-peace="${fid}">Make Peace (💰120)</button>
+            <button class="btn" data-join="${fid}" ${(!canJoin || joined || !canAfford)?'disabled':''}>${joined?'Pledged':'Pledge Allegiance'}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    ui.panelDiplomacy.innerHTML = `
+      <h2>Diplomacy</h2>
+      <div class="small">
+        Pledging allegiance changes your banner to that kingdom’s color.
+        If you’re independent, you carry your own unique banner color, and any castles you capture become <b>Your Domain</b>.
+      </div>
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="chip">Your Banner: <b style="color:${playerBannerColor()}">${p.faction?factionName(p.faction):'Independent'}</b></div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="list">
+        ${FACTIONS.map(f => rowFor(f.id)).join('')}
+      </div>
+
+      <div class="hr"></div>
+      <div class="row"><button class="btn" id="btnCloseDip">Close</button></div>
+    `;
+
+    ui.panelDiplomacy.querySelector('#btnCloseDip').onclick = () => closeAllPanels();
+
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-gift]')){
+      b.onclick = () => {
+        const fid = b.getAttribute('data-gift');
+        if(p.gold < 50){ toast('Not enough gold'); return; }
+        p.gold -= 50;
+        d[fid] = clamp(d[fid] + 10, -100, 100);
+        toast(`Relations improved with ${factionName(fid)} (+10)`);
+        renderDiplomacyPanel(); syncHUD();
+      };
+    }
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-war]')){
+      b.onclick = () => {
+        const fid = b.getAttribute('data-war');
+        d[fid] = clamp(Math.min(d[fid], -60), -100, 100);
+        toast(`You are now at war with ${factionName(fid)}`);
+        renderDiplomacyPanel();
+      };
+    }
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-peace]')){
+      b.onclick = () => {
+        const fid = b.getAttribute('data-peace');
+        if(p.gold < 120){ toast('Not enough gold'); return; }
+        p.gold -= 120;
+        d[fid] = 0;
+        toast(`Peace made with ${factionName(fid)} (relation reset)`);
+        renderDiplomacyPanel(); syncHUD();
+      };
+    }
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-join]')){
+      b.onclick = () => {
+        const fid = b.getAttribute('data-join');
+        if(p.faction){ toast('You already pledged to a kingdom'); return; }
+        const rel = d[fid] ?? 0;
+        if(rel < 0){ toast('They won’t accept your pledge (need Neutral+)'); return; }
+        const cost = joinCost(rel);
+        if(p.gold < cost){ toast('Not enough gold to pledge'); return; }
+
+        p.gold -= cost;
+        p.faction = fid;
+        d[fid] = Math.max(d[fid], 60);
+        // convert your holdings to the pledged kingdom color
+        convertPlayerHoldingsToFaction(fid);
+
+        toast(`Pledged to ${factionName(fid)}!`, 1600);
+        renderDiplomacyPanel(); syncHUD();
+      };
+    }
   }
 
-  if (!g.winner && nowMs >= endAt){
-    const winner = decideWinnerByCounts(g, aliveByOwner);
-    if (winner) g.winner = winner;
-    else g.winner = livingOwners.sort()[0] || (g.players?.[0] ?? null); // fallback
+  function playerBannerColor(){
+    const p = state.player;
+    return p.faction ? factionColor(p.faction) : p.bannerColor;
   }
 
-  return g;
-}
-
-/* --- Collisions: push overlapping circles apart (2 passes) --- */
-function resolveCollisions(units){
-  for (let pass=0; pass<2; pass++){
-    for (let i=0;i<units.length;i++){
-      for (let j=i+1;j<units.length;j++){
-        const u = units[i], v = units[j];
-        const ru = UNIT_TYPES[u.t].size, rv = UNIT_TYPES[v.t].size;
-        const minDist = ru + rv + 2;
-        const dx = v.x - u.x, dy = v.y - u.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 === 0){
-          // exact overlap → random tiny nudge
-          const ang = Math.random()*Math.PI*2;
-          const off = minDist/2;
-          u.x -= Math.cos(ang)*off; u.y -= Math.sin(ang)*off;
-          v.x += Math.cos(ang)*off; v.y += Math.sin(ang)*off;
-          continue;
-        }
-        if (d2 < minDist*minDist){
-          const d = Math.sqrt(d2);
-          const overlap = minDist - d;
-          const nx = dx/d, ny = dy/d;
-          u.x -= nx * overlap * 0.5;
-          u.y -= ny * overlap * 0.5;
-          v.x += nx * overlap * 0.5;
-          v.y += ny * overlap * 0.5;
-        }
+  function convertPlayerHoldingsToFaction(fid){
+    // any "player" settlements become the pledged faction (so castles/villages match kingdom color)
+    for(const s of state.map.settlements){
+      if(s.factionId==='player'){
+        s.factionId = fid;
+        if(s.kind==='castle') s.stock = makeCastleStock(fid);
       }
     }
   }
-}
 
-/* --- Winner helpers --- */
-function countByOwner(units){
-  const m = {};
-  for (const u of units){ m[u.o] = (m[u.o]||0)+1; }
-  return m;
-}
-function totalHpByOwner(units){
-  const m = {};
-  for (const u of units){ m[u.o] = (m[u.o]||0)+u.hp; }
-  return m;
-}
-function cpsOwned(g){
-  const m = {};
-  for (const p of g.points){ if (p.owner){ m[p.owner]=(m[p.owner]||0)+1; } }
-  return m;
-}
-function decideWinnerByCounts(g, counts){
-  const owners = Object.keys(counts);
-  if (owners.length===0) return null;
-  let max = -1;
-  for (const o of owners) max = Math.max(max, counts[o]);
-  let tied = owners.filter(o=>counts[o]===max);
-  if (tied.length===1) return tied[0];
+  // =========================
+  // Help panel
+  // =========================
+  function renderHelpPanel(){
+    ui.panelHelp.innerHTML = `
+      <h2>Controls</h2>
+      <div class="small">
+        <b>Map</b><br/>
+        <span class="kbd">WASD</span> move • <span class="kbd">E</span> interact • <span class="kbd">I</span> inventory • <span class="kbd">Esc</span> close panels<br/>
+        You heal over time on the map. Wounded troops return over time too.<br/><br/>
 
-  // tie-breaker 1: total HP
-  const hp = totalHpByOwner(g.units);
-  let bestHp = -1;
-  for (const o of tied) bestHp = Math.max(bestHp, hp[o]||0);
-  tied = tied.filter(o => (hp[o]||0) === bestHp);
-  if (tied.length===1) return tied[0];
+        <b>Battle</b><br/>
+        <span class="kbd">WASD</span> move • <span class="kbd">Space</span> attack • <span class="kbd">F</span> swap weapons<br/>
+        <span class="kbd">1</span> Charge • <span class="kbd">2</span> Hold • <span class="kbd">3</span> Rally<br/>
+        <span class="kbd">4</span> All • <span class="kbd">5</span> Infantry • <span class="kbd">6</span> Archers<br/>
+        <span class="kbd">T</span> Cycle formation for selected group.<br/><br/>
 
-  // tie-breaker 2: CPs owned
-  const cp = cpsOwned(g);
-  let bestCp = -1;
-  for (const o of tied) bestCp = Math.max(bestCp, cp[o]||0);
-  tied = tied.filter(o => (cp[o]||0) === bestCp);
-  if (tied.length===1) return tied[0];
+        <b>Sieges</b><br/>
+        Walls block movement except at ladders (gaps). <b>Archers behind walls fire faster and hit harder.</b>
+      </div>
+      <div class="hr"></div>
+      <div class="row"><button class="btn" id="btnCloseHelp">Close</button></div>
+    `;
+    ui.panelHelp.querySelector('#btnCloseHelp').onclick = () => closeAllPanels();
+  }
 
-  // final: name
-  return tied.sort()[0];
-}
+  // =========================
+  // Settlements / garrisons / siege entry
+  // =========================
+  let currentSettlement = null;
 
-/* ------------ Rendering ------------ */
-function draw(){
-  const dt = 16/1000;
-  updateCamera(dt);
+  function nearestSettlement(x,y, radius){
+    let best=null, bd=1e9;
+    for(const s of state.map.settlements){
+      const d = dist2(x,y,s.x,s.y);
+      if(d < radius*radius && d < bd){ bd=d; best=s; }
+    }
+    return best;
+  }
 
-  ctx.clearRect(0,0,cv.width,cv.height);
+  function settlementById(id){
+    return state.map.settlements.find(s=>s.id===id) || null;
+  }
+  function partyById(id){
+    return state.map.parties.find(p=>p.id===id) || null;
+  }
 
-  // BG
-  ctx.fillStyle = "#132235";
-  ctx.fillRect(0,0,cv.width,cv.height);
-  // Grid
-  ctx.strokeStyle = "#1a2b40"; ctx.lineWidth = 1;
-  const grid = 100;
-  for (let x = -cam.x % grid; x < cv.width; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-  for (let y = -cam.y % grid; y < cv.height; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
+  function isPartyHostileToPlayer(party){
+    const p = state.player;
+    if(party.kind==='neutral') return false;
+    if(party.kind==='bandit') return true;
+    if(party.factionId && p.faction && party.factionId===p.faction) return false;
+    const rel = party.factionId ? (state.diplomacy[party.factionId] ?? 0) : 0;
+    return rel <= -20;
+  }
 
-  if (state){
-    // Command points
-    for (const p of state.points){
-      const sx = p.x - cam.x, sy = p.y - cam.y;
-      ctx.beginPath(); ctx.arc(sx, sy, p.r, 0, Math.PI*2);
-      ctx.strokeStyle = "#556f9a"; ctx.lineWidth = 2; ctx.stroke();
+  function isPartyHostileToSettlement(party, settlement){
+    if(!party.alive) return false;
+    if(settlement.kind!=='castle') return false;
+    if(party.kind==='neutral') return false;
+    if(party.kind==='bandit') return true;
+    if(!party.factionId) return false;
+    if(party.factionId === settlement.factionId) return false;
+    return true;
+  }
 
-      if (p.owner){
-        const color = tintForOwner(p.owner);
-        ctx.beginPath(); ctx.arc(sx, sy, p.r * Math.max(0.12, p.cap), 0, Math.PI*2);
-        ctx.fillStyle = color+"88"; ctx.fill();
+  function openSettlementPanel(settlement){
+    currentSettlement = settlement;
+    togglePanel('settlement');
+    renderSettlementPanel();
+  }
+
+  function garrisonUI(s){
+    const p = state.player;
+    const g = s.garrison || {};
+    const gKeys = Object.keys(g).sort((a,b)=>UNIT_DB[a].name.localeCompare(UNIT_DB[b].name));
+    const pCounts = countUnitsArray(p.armyUnits);
+    const pKeys = Object.keys(pCounts).sort((a,b)=>UNIT_DB[a].name.localeCompare(UNIT_DB[b].name));
+
+    return `
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Garrison</h2>
+      <div class="small">Castles keep garrisons that defend sieges. You can deposit/withdraw troops.</div>
+
+      <div class="grid2">
+        <div>
+          <h2 style="margin-top:0">Castle Garrison (${garrisonCount(g)})</h2>
+          <div class="list">
+            ${gKeys.length ? gKeys.map(k=>{
+              return `<div class="item">
+                <div class="meta"><b>${UNIT_DB[k].name}</b><div class="tag">Stored defenders</div></div>
+                <div class="row">
+                  <div class="mono">x${g[k]}</div>
+                  <button class="btn" data-withdraw="${k}">Withdraw 1</button>
+                </div>
+              </div>`;
+            }).join('') : `<div class="small">Empty garrison.</div>`}
+          </div>
+        </div>
+
+        <div>
+          <h2 style="margin-top:0">Your Army</h2>
+          <div class="list">
+            ${pKeys.length ? pKeys.map(k=>{
+              return `<div class="item">
+                <div class="meta"><b>${UNIT_DB[k].name}</b><div class="tag">Available</div></div>
+                <div class="row">
+                  <div class="mono">x${pCounts[k]}</div>
+                  <button class="btn" data-deposit="${k}">Deposit 1</button>
+                </div>
+              </div>`;
+            }).join('') : `<div class="small">No troops to deposit.</div>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSettlementPanel(){
+    if(!currentSettlement) return;
+    const s = currentSettlement;
+    const p = state.player;
+
+    const fid = s.factionId;
+    const col = factionColor(fid);
+    const isPlayerDomain = (fid==='player');
+
+    // relation only for true factions
+    const rel = (fid==='player') ? 0 : (state.diplomacy[fid] ?? 0);
+    const relTag = (fid==='player') ? '—' : `${rel} • ${relationLabel(rel)}`;
+    const atWar = (fid==='player') ? false : (rel <= -60);
+
+    const header = `${s.kind==='village'?'Village':'Castle'} • <span style="color:${col}">${factionName(fid)}</span>`;
+    const isOwnFaction = (p.faction && fid===p.faction);
+    const isFriendly = isPlayerDomain || isOwnFaction;
+
+    const canSiege = (s.kind==='castle' && !isFriendly && (atWar || !p.faction || p.faction!==fid));
+    const nearbyInvader = findInvaderOnSettlement(s);
+
+    if(s.kind==='village'){
+      const vv = s.village || makeVillageVolunteers();
+      s.village = vv;
+      const vTotal = totalVolunteers(vv.volunteers);
+
+      ui.panelSettlement.classList.remove('left','wide');
+      ui.panelSettlement.innerHTML = `
+        <h2>${header}</h2>
+        <div class="small">Relations: <span class="mono">${relTag}</span> • Volunteers available: <b>${vTotal}</b></div>
+        <div class="hr"></div>
+
+        ${atWar ? `
+          <div class="small" style="color:#ffd2d2">They refuse to trade because you are <b>AT WAR</b>.</div>
+          <div class="hr"></div>
+        ` : ``}
+
+        <div class="item">
+          <div class="meta">
+            <b>Buy Food</b>
+            <div class="tag">${s.stock.foodBundle} 🍖 for 💰 ${s.stock.foodPrice}</div>
+          </div>
+          <button class="btn" id="buyFood" ${atWar?'disabled':''}>Buy</button>
+        </div>
+
+        <div class="hr"></div>
+        <h2 style="margin-top:0">Hire Volunteers (Limited)</h2>
+        <div class="small">Villages regenerate volunteers over time. Higher-tier troops are rare.</div>
+        <div class="hr"></div>
+
+        <div class="list">
+          ${Object.keys(vv.volunteers).map(k=>{
+            const qty = vv.volunteers[k]||0;
+            if(qty<=0 && (vv.caps[k]||0)<=0) return '';
+            const u = UNIT_DB[k];
+            if(!u) return '';
+            const cost = computeHireCostForVillage(u, s);
+            return `<div class="item">
+              <div class="meta">
+                <b>${u.name}</b>
+                <div class="tag">Tier ${u.tier} • Cost: 💰 ${cost} • Available: <span class="mono">${qty}</span></div>
+              </div>
+              <button class="btn" data-hire="${k}" ${atWar || qty<=0 ? 'disabled':''}>Hire 1</button>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div class="hr"></div>
+        <div class="item">
+          <div class="meta"><b>Improve Relations</b><div class="tag">Gift: 💰 50 → +10</div></div>
+          <button class="btn" id="giftBtn" ${fid==='player'?'disabled':''}>Gift</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="row"><button class="btn" id="closeSet">Close</button></div>
+      `;
+
+      ui.panelSettlement.querySelector('#closeSet').onclick = () => { closeAllPanels(); currentSettlement=null; };
+
+      const gift = ui.panelSettlement.querySelector('#giftBtn');
+      if(gift){
+        gift.onclick = () => {
+          if(fid==='player') return;
+          if(p.gold < 50){ toast('Not enough gold'); return; }
+          p.gold -= 50;
+          state.diplomacy[fid] = clamp((state.diplomacy[fid]??0)+10, -100, 100);
+          toast(`Relations +10 with ${factionName(fid)}`);
+          renderSettlementPanel();
+          syncHUD();
+        };
       }
 
-      // spawn timer ring
-      if (p.owner && p.nextSpawnAt){
-        const period = 15000;
-        const remain = Math.max(0, p.nextSpawnAt - Date.now());
-        const prog = 1 - (remain/period);
-        ctx.beginPath(); ctx.arc(sx, sy, 28, -Math.PI/2, -Math.PI/2 + prog*2*Math.PI);
-        ctx.strokeStyle = "#aef"; ctx.lineWidth = 4; ctx.stroke();
+      ui.panelSettlement.querySelector('#buyFood').onclick = () => {
+        if(atWar) return;
+        if(p.gold < s.stock.foodPrice){ toast('Not enough gold'); return; }
+        p.gold -= s.stock.foodPrice;
+        p.food += s.stock.foodBundle;
+        toast(`+${s.stock.foodBundle} food`);
+        syncHUD();
+      };
+
+      for(const b of ui.panelSettlement.querySelectorAll('button[data-hire]')){
+        b.onclick = () => {
+          if(atWar) return;
+          const key = b.getAttribute('data-hire');
+          const qty = s.village.volunteers[key]||0;
+          if(qty<=0){ toast('No volunteers available'); return; }
+          const def = UNIT_DB[key];
+          const cost = computeHireCostForVillage(def, s);
+          if(p.gold < cost){ toast('Not enough gold'); return; }
+          if(p.armyUnits.length >= 70){ toast('Army cap reached (70)'); return; }
+          p.gold -= cost;
+          s.village.volunteers[key] -= 1;
+          p.armyUnits.push({ unit:key });
+          toast(`Hired ${UNIT_DB[key].name}`);
+          renderSettlementPanel();
+          syncHUD();
+        };
       }
-
-      ctx.fillStyle="#cde";
-      ctx.fillText(p.id + (p.owner? ` (${shortName(p.owner)})`:""), sx-18, sy- (p.r+6));
-    }
-
-    // Units
-    for (const u of state.units){
-      const def = UNIT_TYPES[u.t];
-      const sx = u.x - cam.x, sy = u.y - cam.y;
-      ctx.beginPath(); ctx.arc(sx, sy, def.size, 0, Math.PI*2);
-      ctx.fillStyle = tintForOwner(u.o); ctx.fill();
-      if (selection.has(u.id)){ ctx.strokeStyle="#fffa"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx, sy, def.size+3, 0, Math.PI*2); ctx.stroke(); }
-      // HP
-      ctx.fillStyle="#111"; ctx.fillRect(sx-16, sy-22, 32, 6);
-      const hpw = Math.max(0, 32*(u.hp/u.maxHp));
-      ctx.fillStyle="#4f8"; ctx.fillRect(sx-16, sy-22, hpw, 6);
-    }
-  }
-
-  // Drag box
-  if (drag.active){
-    drag.x1 = mouse.x; drag.y1 = mouse.y;
-    const x = Math.min(drag.x0, drag.x1), y=Math.min(drag.y0, drag.y1);
-    const w = Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
-    ctx.strokeStyle="#9bf"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
-  }
-
-  requestAnimationFrame(draw);
-}
-draw();
-
-function tintForOwner(owner){
-  const idx = hash(owner) % COLORS.length;
-  return COLORS[idx];
-}
-function hash(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i))|0; return Math.abs(h); }
-function shortName(n){ return n.length>8? n.slice(0,8)+"…" : n; }
-
-/* ------------ Timer & leaderboard UI ------------ */
-function renderTimer(){
-  if (!state) return;
-  const box = document.getElementById("timerBox");
-  const endAt = state.endAt || (state.startedAt + MATCH_MS);
-  let remain = Math.max(0, Math.floor((endAt - Date.now())/1000));
-  const m = String(Math.floor(remain/60)).padStart(2,"0");
-  const s = String(remain%60).padStart(2,"0");
-  box.textContent = `⏱️ ${m}:${s}`;
-}
-function renderLeaderboard(){
-  if (!state) return;
-  const rows = document.getElementById("leaderRows");
-  const counts = {};
-  for (const name of (state.players || [])) counts[name]=0;
-  for (const u of state.units){ counts[u.o] = (counts[u.o]||0)+1; }
-  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
-  rows.innerHTML = "";
-  for (const [name, c] of sorted){
-    const d = document.createElement("div");
-    d.className = "row";
-    d.innerHTML = `<span>${shortName(name)}</span><span>${c}</span>`;
-    rows.appendChild(d);
-  }
-}
-
-/* ------------ Winner banner & return ------------ */
-function maybeShowWinner(){
-  if (!state || !state.winner) return;
-  const b = document.getElementById("banner");
-  b.textContent = `🏆 ${state.winner} wins! Returning to lobby…`;
-  b.style.display="block";
-  setTimeout(()=>{ location.href = `${HUB_ROUTE}?username=${encodeURIComponent(ME)}`; }, 5000);
-}
-
-/* ------------ Click CP to open panel (must own) ------------ */
-cv.addEventListener("click", ()=>{
-  if (!state) return;
-  for (const p of state.points){
-    const dx = (p.x - cam.x) - mouse.x, dy = (p.y - cam.y) - mouse.y;
-    if (dx*dx + dy*dy <= p.r*p.r){
-      if (p.owner === ME) showCpPanelFor(p); else cpPanel.style.display="none";
       return;
     }
+
+    // CASTLE
+    ui.panelSettlement.classList.add('wide','left');
+
+    const mk = s.stock.markup || 1.0;
+    const items = s.stock.items.map(id => {
+      const it = ITEM_DB[id];
+      const price = Math.round(it.price * mk);
+      return { id, it, price };
+    });
+
+    ui.panelSettlement.innerHTML = `
+      <h2>${header}</h2>
+      <div class="small">
+        Relations: <span class="mono">${relTag}</span> • Garrisons defend sieges.
+        ${nearbyInvader ? `<br/><span style="color:#ffd2d2"><b>UNDER INVASION</b> (progress shown on map)</span>` : ``}
+        ${isPlayerDomain ? `<br/><span class="tag">Owner: <b style="color:${playerBannerColor()}">You</b></span>` : ``}
+      </div>
+      <div class="hr"></div>
+
+      ${(atWar && !isFriendly) ? `
+        <div class="small" style="color:#ffd2d2">They refuse to trade because you are <b>AT WAR</b>.</div>
+        <div class="hr"></div>
+      ` : ``}
+
+      <div class="grid2">
+        <div>
+          <h2 style="margin-top:0">Shop</h2>
+          <div class="list">
+            ${items.map(x => `
+              <div class="item">
+                <div class="meta">
+                  <b>${x.it.name}</b>
+                  <div class="tag">${x.it.type.toUpperCase()} • Price: 💰 ${x.price}</div>
+                </div>
+                <button class="btn" data-buy="${x.id}" data-price="${x.price}" ${(atWar && !isFriendly)?'disabled':''}>Buy</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div>
+          <h2 style="margin-top:0">Castle Actions</h2>
+          <div class="item">
+            <div class="meta"><b>Open Inventory</b><div class="tag">Equip weapons/armor</div></div>
+            <button class="btn" id="openInv">Inventory</button>
+          </div>
+
+          <div class="item">
+            <div class="meta"><b>Improve Relations</b><div class="tag">Gift: 💰 80 → +15</div></div>
+            <button class="btn" id="giftBtn2" ${fid==='player'?'disabled':''}>Gift</button>
+          </div>
+
+          ${canSiege ? `
+            <div class="hr"></div>
+            <div class="item">
+              <div class="meta">
+                <b>Start Siege</b>
+                <div class="tag">Fight the garrison behind walls & ladders • Capture makes you the owner (or captures for your kingdom)</div>
+              </div>
+              <button class="btn" id="btnSiege">Siege</button>
+            </div>
+          ` : ``}
+
+          ${nearbyInvader && isFriendly ? `
+            <div class="hr"></div>
+            <div class="item">
+              <div class="meta">
+                <b>Join Defense</b>
+                <div class="tag">Defend the garrison against the invaders</div>
+              </div>
+              <button class="btn" id="btnDefend">Defend</button>
+            </div>
+          ` : ``}
+
+          <div class="hr"></div>
+          <div class="small">
+            Large armies can still invade castles over time if they sit on them.
+          </div>
+        </div>
+      </div>
+
+      ${garrisonUI(s)}
+
+      <div class="hr"></div>
+      <div class="row"><button class="btn" id="closeSet">Close</button></div>
+    `;
+
+    ui.panelSettlement.querySelector('#closeSet').onclick = () => { closeAllPanels(); currentSettlement=null; };
+
+    ui.panelSettlement.querySelector('#openInv').onclick = () => { togglePanel('inventory'); renderInventoryPanel(); };
+
+    const gift2 = ui.panelSettlement.querySelector('#giftBtn2');
+    if(gift2){
+      gift2.onclick = () => {
+        if(fid==='player') return;
+        if(p.gold < 80){ toast('Not enough gold'); return; }
+        p.gold -= 80;
+        state.diplomacy[fid] = clamp((state.diplomacy[fid]??0)+15, -100, 100);
+        toast(`Relations +15 with ${factionName(fid)}`);
+        renderSettlementPanel();
+        syncHUD();
+      };
+    }
+
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-buy]')){
+      b.onclick = () => {
+        if((atWar && !isFriendly)) return;
+        const id = b.getAttribute('data-buy');
+        const price = Number(b.getAttribute('data-price'));
+        if(p.gold < price){ toast('Not enough gold'); return; }
+        p.gold -= price;
+        p.inventory[id] = (p.inventory[id]||0) + 1;
+        toast(`Bought ${ITEM_DB[id].name}`);
+        syncHUD();
+      };
+    }
+
+    // garrison deposit/withdraw
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-deposit]')){
+      b.onclick = () => {
+        const k = b.getAttribute('data-deposit');
+        const idx = p.armyUnits.findIndex(u=>u.unit===k);
+        if(idx<0){ toast('No unit to deposit'); return; }
+        p.armyUnits.splice(idx,1);
+        s.garrison[k] = (s.garrison[k]||0)+1;
+        toast(`Deposited 1 ${UNIT_DB[k].name}`);
+        renderSettlementPanel(); syncHUD();
+      };
+    }
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-withdraw]')){
+      b.onclick = () => {
+        const k = b.getAttribute('data-withdraw');
+        if(!s.garrison[k]){ toast('None to withdraw'); return; }
+        if(p.armyUnits.length>=70){ toast('Army cap reached'); return; }
+        s.garrison[k] -= 1;
+        normalizeGarrison(s.garrison);
+        p.armyUnits.push({ unit:k });
+        toast(`Withdrew 1 ${UNIT_DB[k].name}`);
+        renderSettlementPanel(); syncHUD();
+      };
+    }
+
+    // siege buttons
+    const siegeBtn = ui.panelSettlement.querySelector('#btnSiege');
+    if(siegeBtn){
+      siegeBtn.onclick = () => {
+        closeAllPanels();
+        currentSettlement=null;
+        startSiegeBattle({ castle:s, attacker:'player', invaderParty:null });
+      };
+    }
+
+    const defBtn = ui.panelSettlement.querySelector('#btnDefend');
+    if(defBtn){
+      defBtn.onclick = () => {
+        const invader = nearbyInvader;
+        if(!invader){ toast('No invader found'); return; }
+        closeAllPanels();
+        currentSettlement=null;
+        startSiegeBattle({ castle:s, attacker:'party', invaderParty:invader });
+      };
+    }
   }
-  cpPanel.style.display="none";
-});
+
+  function computeHireCostForVillage(unitDef, village){
+    // base cost by tier + mild faction friendliness effect (if village is faction-owned)
+    const p = state.player;
+    let base = 18 + unitDef.tier*26;
+    if(unitDef.role==='arc') base += 6;
+    if(unitDef.key==='arc_crossbowman') base += 18;
+    if(unitDef.key==='inf_pikeman') base += 10;
+
+    // if village belongs to a faction, make it cheaper when friendly, pricier when hostile
+    if(village.factionId && village.factionId!=='player'){
+      const rel = state.diplomacy[village.factionId] ?? 0;
+      const mul = clamp(1.12 - rel*0.004, 0.78, 1.55);
+      base *= mul;
+    }
+    // if it's your domain, modest discount
+    if(village.factionId==='player') base *= 0.88;
+
+    return Math.max(8, Math.round(base));
+  }
+
+  // Find any party currently "invading" this settlement
+  function findInvaderOnSettlement(settlement){
+    for(const pid in state.map.invasion){
+      const inv = state.map.invasion[pid];
+      if(inv && inv.settlementId===settlement.id){
+        const party = partyById(pid);
+        if(party && party.alive) return party;
+      }
+    }
+    return null;
+  }
+
+  // =========================
+  // Loot panel
+  // =========================
+  function openLootPanel(loot){
+    togglePanel('loot');
+    ui.panelLoot.classList.add('wide','left');
+    renderLootPanel(loot);
+  }
+
+  function renderLootPanel(loot){
+    const p = state.player;
+    ui.panelLoot.innerHTML = `
+      <h2>Loot</h2>
+      <div class="small">${loot.reason || 'Victory!'} Collect loot, then return to the map.</div>
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="chip">💰 +<b>${loot.gold}</b></div>
+        <div class="chip">🍖 +<b>${loot.food}</b></div>
+        ${loot.xp ? `<div class="chip">⭐ +<b>${loot.xp}</b> XP</div>` : ``}
+      </div>
+
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Items</h2>
+      <div class="list">
+        ${loot.items.length ? loot.items.map(id => `
+          <div class="item">
+            <div class="meta"><b>${ITEM_DB[id].name}</b><div class="tag">${ITEM_DB[id].type.toUpperCase()}</div></div>
+            <div class="mono">x1</div>
+          </div>
+        `).join('') : `<div class="small">No items dropped this time.</div>`}
+      </div>
+
+      <div class="hr"></div>
+      <div class="row">
+        <button class="btn" id="takeAll">Take All</button>
+        <button class="btn" id="continue">Continue</button>
+      </div>
+    `;
+
+    ui.panelLoot.querySelector('#takeAll').onclick = () => {
+      p.gold += loot.gold;
+      p.food += loot.food;
+      if(loot.xp) addXP(loot.xp);
+      for(const id of loot.items){
+        p.inventory[id] = (p.inventory[id]||0) + 1;
+      }
+      loot.taken = true;
+      toast('Loot collected!');
+      syncHUD();
+      ui.panelLoot.querySelector('#takeAll').disabled = true;
+    };
+
+    ui.panelLoot.querySelector('#continue').onclick = () => {
+      if(!loot.taken){
+        p.gold += loot.gold;
+        p.food += loot.food;
+        if(loot.xp) addXP(loot.xp);
+        for(const id of loot.items){
+          p.inventory[id] = (p.inventory[id]||0) + 1;
+        }
+      }
+      closeAllPanels();
+      state.mode = 'map';
+      state.battle = null;
+      syncHUD();
+      toast('Back to map');
+    };
+  }
+
+  // =========================
+  // HUD
+  // =========================
+  function syncHUD(){
+    const p = state.player;
+    ui.gold.textContent = Math.floor(p.gold);
+    ui.food.textContent = Math.floor(p.food);
+    ui.army.textContent = armySize(p);
+    ui.hp.textContent = Math.max(0, Math.floor(p.hp));
+    ui.hpMax.textContent = playerMaxHp(p);
+    ui.lvl.textContent = p.level;
+    ui.xp.textContent = `${Math.floor(p.xp)}/${p.xpToNext}`;
+    ui.wounded.textContent = p.woundedUnits.length;
+
+    ui.banner.textContent = p.faction ? factionName(p.faction) : 'Independent';
+    ui.banner.style.color = playerBannerColor();
+    ui.bannerDot.style.background = playerBannerColor();
+
+    if(state.mode==='map'){
+      ui.modeLabel.textContent = 'MAP';
+      ui.modeSub.textContent = 'WASD move • E interact • villages have limited volunteers • heal over time';
+      ui.modeDot.style.background = '#9ca3af';
+    } else {
+      ui.modeLabel.textContent = (state.battle && state.battle.type==='siege') ? 'SIEGE' : 'BATTLE';
+      ui.modeSub.textContent = 'Space attack • F swap • 1/2/3 command • 4/5/6 select • T formation';
+      ui.modeDot.style.background = '#fbbf24';
+    }
+  }
+
+  // =========================
+  // Input
+  // =========================
+  const keys = new Set();
+  window.addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    if([' ', 'arrowup','arrowdown','arrowleft','arrowright'].includes(k) || e.key===' ') e.preventDefault();
+    keys.add(k);
+
+    if(k==='escape'){ closeAllPanels(); currentSettlement=null; }
+    if(k==='i'){ togglePanel('inventory'); if(state.panelsOpen.inventory) renderInventoryPanel(); }
+    if(k==='b'){ togglePanel('army'); if(state.panelsOpen.army) renderArmyPanel(); }
+    if(k==='h'){ togglePanel('help'); if(state.panelsOpen.help) renderHelpPanel(); }
+    if(k==='p'){ togglePanel('diplomacy'); if(state.panelsOpen.diplomacy) renderDiplomacyPanel(); }
+
+    if(state.mode==='map'){
+      if(k==='e') tryInteract();
+    } else if(state.mode==='battle'){
+      if(k==='f') swapWeapon();
+      if(k===' ') tryPlayerAttack();
+      if(k==='1') applyCommandToSelected('charge');
+      if(k==='2') applyCommandToSelected('hold');
+      if(k==='3') applyCommandToSelected('rally');
+      if(k==='4') setSelection('all');
+      if(k==='5') setSelection('inf');
+      if(k==='6') setSelection('arc');
+      if(k==='t') cycleFormation();
+    }
+  }, {passive:false});
+  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+
+  function wantMove(){
+    let dx=0, dy=0;
+    if(keys.has('w')) dy -= 1;
+    if(keys.has('s')) dy += 1;
+    if(keys.has('a')) dx -= 1;
+    if(keys.has('d')) dx += 1;
+    const len = Math.hypot(dx,dy);
+    if(len>0){ dx/=len; dy/=len; }
+    return {dx,dy};
+  }
+
+  // =========================
+  // Map tick: heal + wounded recovery + village regen + invasions
+  // =========================
+  function mapTick(dt){
+    const p = state.player;
+
+    // player regen
+    const maxHp = playerMaxHp(p);
+    p.hp = Math.min(maxHp, p.hp + 6.5 * dt);
+
+    // wounded recovery (one returns every ~8s)
+    p.woundedHealClock += dt;
+    if(p.woundedHealClock >= 8.0 && p.woundedUnits.length>0){
+      p.woundedHealClock = 0;
+      if(p.armyUnits.length<70){
+        const unitKey = p.woundedUnits.shift();
+        p.armyUnits.push({ unit: unitKey });
+        toast(`🤕 Wounded returned: ${UNIT_DB[unitKey].name}`);
+      } else {
+        p.woundedHealClock = 6.5;
+      }
+    }
+
+    // village volunteer regen
+    for(const s of state.map.settlements){
+      if(s.kind!=='village') continue;
+      if(!s.village) s.village = makeVillageVolunteers();
+      s.village.regenClock += dt;
+      if(s.village.regenClock >= VILLAGE_REGEN_INTERVAL){
+        s.village.regenClock = 0;
+        if(Math.random() < VILLAGE_REGEN_CHANCE){
+          regenVillageVolunteers(s.village);
+        }
+      }
+    }
+
+    // food drain
+    const drain = state.map.dayFoodRate * dt * (1 + armySize(p)*0.12);
+    p.food = Math.max(0, p.food - drain);
+
+    // movement
+    const mv = wantMove();
+    const spd = mapSpeedFor(p);
+    p.x = clamp(p.x + mv.dx * spd * dt, 0.5, state.map.w-0.5);
+    p.y = clamp(p.y + mv.dy * spd * dt, 0.5, state.map.h-0.5);
+    if(mv.dx!==0 || mv.dy!==0){
+      p.facing.x = mv.dx; p.facing.y = mv.dy;
+    }
+
+    // camera follow
+    state.cam.x = p.x; state.cam.y = p.y;
+
+    // spawn large armies sometimes
+    state.map.nextArmySpawn -= dt;
+    if(state.map.nextArmySpawn <= 0){
+      state.map.nextArmySpawn = 18 + Math.random()*16;
+      if(Math.random() < 0.55){
+        const f = FACTIONS[randi(0,FACTIONS.length-1)];
+        const size = randi(28, 46);
+        const x = randi(3,MAP_W-4), y = randi(3,MAP_H-4);
+        const party = {
+          id:'p_'+Math.random().toString(36).slice(2,9),
+          kind:'army', factionId:f.id,
+          x,y, roamTx:x, roamTy:y,
+          aggro: 3.6,
+          baseSpeed: 1.75,
+          size,
+          comp: makePartyComp('army', size),
+          alive:true,
+          targetSettlementId: null
+        };
+        const castles = state.map.settlements.filter(s=>s.kind==='castle' && s.factionId!==f.id);
+        if(castles.length){
+          const t = castles[randi(0,castles.length-1)];
+          party.targetSettlementId = t.id;
+        }
+        state.map.parties.push(party);
+      }
+    }
+
+    // parties roam/chase/target castles
+    for(const party of state.map.parties){
+      if(!party.alive) continue;
+
+      const partySpeed = party.baseSpeed / (1 + party.size*0.03);
+
+      let targetX = party.roamTx, targetY = party.roamTy;
+
+      if(party.targetSettlementId){
+        const targ = settlementById(party.targetSettlementId);
+        if(targ){ targetX = targ.x; targetY = targ.y; }
+      }
+
+      const dp = dist(p.x,p.y, party.x, party.y);
+      if(isPartyHostileToPlayer(party) && dp < party.aggro){
+        targetX = p.x; targetY = p.y;
+      } else {
+        if(!party.targetSettlementId){
+          if(dist2(party.x,party.y, party.roamTx,party.roamTy) < 1.2){
+            party.roamTx = clamp(party.x + rand(-9,9), 1, state.map.w-2);
+            party.roamTy = clamp(party.y + rand(-9,9), 1, state.map.h-2);
+          }
+        }
+      }
+
+      const vx = targetX - party.x;
+      const vy = targetY - party.y;
+      const l = Math.hypot(vx,vy) || 1;
+      party.x = clamp(party.x + (vx/l) * partySpeed * dt, 0.5, state.map.w-0.5);
+      party.y = clamp(party.y + (vy/l) * partySpeed * dt, 0.5, state.map.h-0.5);
+
+      // engage player
+      if(isPartyHostileToPlayer(party) && dp < 0.9){
+        startFieldBattle(party);
+        return;
+      }
+    }
+
+    updateInvasions(dt);
+  }
+
+  function regenVillageVolunteers(v){
+    // add toward caps; recruits common, higher tiers rare
+    const add1 = (k, chance)=>{
+      if(Math.random()>chance) return;
+      const cap = v.caps[k]||0;
+      v.volunteers[k] = v.volunteers[k]||0;
+      if(v.volunteers[k] < cap) v.volunteers[k] += 1;
+    };
+    add1('inf_recruit', 0.95);
+    add1('arc_recruit', 0.80);
+    add1('inf_swordsman', 0.22);
+    add1('inf_spearman', 0.22);
+    add1('arc_archer', 0.16);
+    add1('inf_pikeman', 0.10);
+    add1('arc_crossbowman', 0.08);
+  }
+
+  function updateInvasions(dt){
+    const inv = state.map.invasion;
+
+    for(const pid of Object.keys(inv)){
+      const party = partyById(pid);
+      const settlement = settlementById(inv[pid].settlementId);
+      if(!party || !party.alive || !settlement){
+        delete inv[pid]; continue;
+      }
+      const d = dist(party.x,party.y, settlement.x,settlement.y);
+      if(d > 1.05 || !isPartyHostileToSettlement(party, settlement)){
+        delete inv[pid];
+      }
+    }
+
+    for(const party of state.map.parties){
+      if(!party.alive) continue;
+      if(party.kind==='neutral') continue;
+
+      const isLarge = (party.size >= 28);
+      const canRaid = (party.kind==='bandit' && party.size >= 22);
+      if(!isLarge && !canRaid) continue;
+
+      let best=null, bd=1e9;
+      for(const s of state.map.settlements){
+        if(s.kind!=='castle') continue;
+        const d = dist2(party.x,party.y, s.x,s.y);
+        if(d<bd){ bd=d; best=s; }
+      }
+      if(!best) continue;
+
+      const d = Math.sqrt(bd);
+      if(d <= 1.0 && isPartyHostileToSettlement(party, best)){
+        if(!inv[party.id]) inv[party.id] = { settlementId: best.id, t: 0 };
+        inv[party.id].t += dt;
+
+        if(inv[party.id].t >= 60){
+          resolveAutoInvasion(party, best);
+          delete inv[party.id];
+        }
+      }
+    }
+  }
+
+  function applyGarrisonLosses(g, frac){
+    const total = garrisonCount(g);
+    let toLose = Math.floor(total * frac);
+    const keys = Object.keys(g);
+    while(toLose > 0 && keys.length){
+      const k = keys[randi(0, keys.length-1)];
+      if(!g[k]){ keys.splice(keys.indexOf(k),1); continue; }
+      g[k] -= 1;
+      toLose -= 1;
+      if(g[k]<=0){
+        delete g[k];
+        keys.splice(keys.indexOf(k),1);
+      }
+    }
+  }
+
+  function resolveAutoInvasion(party, castle){
+    const g = castle.garrison || {};
+    const def = garrisonCount(g);
+    const atk = party.size;
+
+    const ratio = atk / Math.max(1, def);
+    let chance = clamp(0.20 + (ratio-1)*0.22, 0.10, 0.85);
+    if(party.kind==='bandit') chance *= 0.88;
+
+    const win = (Math.random() < chance);
+
+    const lossFrac = win ? rand(0.45,0.70) : rand(0.25,0.55);
+    const newSize = Math.max(3, Math.floor(atk * (1-lossFrac)));
+    party.size = newSize;
+    party.comp = makePartyComp(party.kind==='bandit'?'bandit':'army', newSize);
+
+    const defLoss = win ? rand(0.55,0.85) : rand(0.12,0.35);
+    applyGarrisonLosses(g, defLoss);
+
+    if(win){
+      if(party.kind==='bandit'){
+        castle.lastSackedT = state.t;
+        toast(`⚠️ Bandits sacked ${castle.name}! Garrisons reduced.`, 1800);
+      } else {
+        castle.factionId = party.factionId;
+        castle.stock = makeCastleStock(castle.factionId);
+        toast(`🏰 ${castle.name} captured by ${factionName(party.factionId)}!`, 1800);
+        // flip linked villages too
+        flipLinkedVillages(castle.id, party.factionId);
+      }
+      party.targetSettlementId = null;
+    } else {
+      toast(`🛡 ${castle.name} resisted an invasion (heavy losses on attackers).`, 1600);
+      party.roamTx = clamp(party.x + rand(-10,10), 2, state.map.w-3);
+      party.roamTy = clamp(party.y + rand(-10,10), 2, state.map.h-3);
+      party.targetSettlementId = null;
+    }
+  }
+
+  function flipLinkedVillages(castleId, newFactionId){
+    for(const s of state.map.settlements){
+      if(s.kind==='village' && s.parentCastleId===castleId){
+        s.factionId = newFactionId;
+      }
+    }
+  }
+
+  function tryInteract(){
+    if(anyPanelOpen()) return;
+    const p = state.player;
+    const s = nearestSettlement(p.x,p.y, 1.25);
+    if(!s){ toast('No settlement nearby'); return; }
+    openSettlementPanel(s);
+  }
+
+  // =========================
+  // Battle systems: field + siege
+  // =========================
+  function makeTroop(team, unitKey, x, y){
+    const d = UNIT_DB[unitKey];
+    return {
+      kind:'troop',
+      team,
+      unitKey,
+      role: d.role,
+      x, y,
+      vx:0, vy:0,
+      r: 0.38,
+      hp: d.hp,
+      maxHp: d.hp,
+      dmg: d.dmg,
+      range: d.range,
+      spd: d.spd,
+      windup: d.windup,
+      cooldown: d.cooldown,
+      shield: !!d.shield,
+      blockArrowChance: d.blockArrow||0,
+      blockMeleeChance: d.blockMelee||0,
+      projKind: d.projKind || 'arrow',
+      projSpeed: d.projSpeed || 9.6,
+      atk: { state:'idle', t:0, didHit:false },
+      aim: null,
+      facingX: 1, facingY: 0,
+      order: 'charge',
+      holdPos: null,
+      alive: true,
+      diedThisBattle: false,
+      _isPlayerArmy: false,
+      _isGarrison: false,
+    };
+  }
+
+  function swapWeapon(){
+    const p = state.player;
+    p.equip.activeSlot = (p.equip.activeSlot===1) ? 2 : 1;
+    if(p.equip.activeSlot===2 && !p.equip.w2) p.equip.activeSlot = 1;
+    toast('Swapped weapon');
+  }
+
+  // formations
+  function formationOffsets(mode, n){
+    const out = [];
+    if(n<=0) return out;
+
+    if(mode==='loose'){
+      for(let i=0;i<n;i++) out.push({ loose:true });
+      return out;
+    }
+
+    if(mode==='line' || mode==='archerline'){
+      const spacing = (mode==='archerline') ? 1.05 : 0.95;
+      const start = -Math.floor((n-1)/2);
+      for(let i=0;i<n;i++){
+        const c = start + i;
+        out.push({ ox: c*spacing, oy: 0 });
+      }
+      return out;
+    }
+
+    if(mode==='shieldwall'){
+      const cols = Math.min(7, Math.max(3, Math.ceil(n/2)));
+      const spacingX = 0.90, spacingY = 0.85;
+      let i=0;
+      for(let r=0;r<2;r++){
+        for(let c=0;c<cols;c++){
+          if(i>=n) break;
+          const cx = c - (cols-1)/2;
+          out.push({ ox: cx*spacingX, oy: r*spacingY });
+          i++;
+        }
+      }
+      while(out.length<n){
+        out.push({ ox: (out.length%cols - (cols-1)/2)*spacingX, oy: 2*spacingY + Math.floor(out.length/cols)*spacingY });
+      }
+      return out;
+    }
+
+    if(mode==='wedge'){
+      const spacingX=0.90, spacingY=0.90;
+      let placed=0;
+      let row=0;
+      while(placed<n){
+        const count = row*2+1;
+        for(let i=0;i<count && placed<n;i++){
+          const cx = i - row;
+          out.push({ ox: cx*spacingX, oy: row*spacingY });
+          placed++;
+        }
+        row++;
+      }
+      return out;
+    }
+
+    for(let i=0;i<n;i++) out.push({ ox:0, oy:0 });
+    return out;
+  }
+
+  function setSelection(sel){
+    state.battle.selection = sel;
+    toast(`Selected: ${sel==='all'?'All troops':sel==='inf'?'Infantry':'Archers'}`);
+  }
+
+  function selectedAllies(){
+    const b = state.battle;
+    if(b.selection==='all') return b.allies.filter(u=>u.alive);
+    if(b.selection==='inf') return b.allies.filter(u=>u.alive && u.role==='inf');
+    return b.allies.filter(u=>u.alive && u.role==='arc');
+  }
+
+  function cycleFormation(){
+    const b = state.battle;
+    const sel = b.selection;
+    const f = b.formations[sel];
+
+    const pool = (sel==='inf')
+      ? ['loose','line','shieldwall','wedge']
+      : (sel==='arc')
+        ? ['loose','archerline','line']
+        : ['loose','line','wedge'];
+
+    const idx = pool.indexOf(f.mode);
+    f.mode = pool[(idx+1)%pool.length];
+    toast(`Formation (${sel.toUpperCase()}): ${f.mode.toUpperCase()}`);
+  }
+
+  function applyCommandToSelected(cmd){
+    const b = state.battle;
+    const pe = b.playerEnt;
+    const units = selectedAllies();
+
+    for(const u of units){
+      u.order = cmd;
+      u.holdPos = null;
+    }
+
+    if(cmd==='hold' || cmd==='rally'){
+      let ax=0, ay=0;
+      if(cmd==='rally'){
+        ax = pe.x; ay = pe.y;
+      } else {
+        for(const u of units){ ax+=u.x; ay+=u.y; }
+        ax /= Math.max(1, units.length);
+        ay /= Math.max(1, units.length);
+      }
+
+      const dirX = pe.facingX || 1, dirY = pe.facingY || 0;
+      const len = Math.hypot(dirX,dirY)||1;
+      const fx = dirX/len, fy = dirY/len;
+      const rx = -fy, ry = fx;
+
+      const mode = b.formations[b.selection].mode;
+      const offs = formationOffsets(mode, units.length);
+
+      const ordered = units.slice().sort((a,c)=> (a.x+a.y)-(c.x+c.y));
+      for(let i=0;i<ordered.length;i++){
+        const o = offs[i];
+        if(o && o.loose){
+          if(cmd==='hold') ordered[i].holdPos = { x: ordered[i].x, y: ordered[i].y };
+          else ordered[i].holdPos = { x: ax + rand(-1.2,1.2), y: ay + rand(-1.2,1.2) };
+        } else {
+          const ox = (o?.ox||0), oy=(o?.oy||0);
+          ordered[i].holdPos = { x: ax + rx*ox + fx*oy, y: ay + ry*ox + fy*oy };
+        }
+      }
+    }
+
+    toast(`Command: ${cmd.toUpperCase()} (${b.selection.toUpperCase()})`);
+  }
+
+  function inFrontCone(attX,attY, dirX,dirY, targetX,targetY, maxRange, halfAngleRad){
+    const vx = targetX - attX;
+    const vy = targetY - attY;
+    const d = Math.hypot(vx,vy);
+    if(d <= 0.0001 || d > maxRange) return false;
+    const nx = vx/d, ny = vy/d;
+    const dot = nx*dirX + ny*dirY;
+    const ang = Math.acos(clamp(dot, -1, 1));
+    return ang <= halfAngleRad;
+  }
+
+  function spawnProjectile(kind, team, x,y, dirx,diry, dmg, speed){
+    const l = Math.hypot(dirx,diry)||1;
+    state.battle.projectiles.push({
+      kind, // 'arrow' | 'bolt'
+      team,
+      x, y,
+      vx: (dirx/l)*speed,
+      vy: (diry/l)*speed,
+      r: (kind==='bolt') ? 0.14 : 0.12,
+      dmg,
+      ttl: 2.3
+    });
+  }
+
+  function applyDamage(unit, dmg){
+    if(!unit.alive) return;
+    unit.hp -= dmg;
+    if(unit.hp <= 0){
+      unit.hp = 0;
+      unit.alive = false;
+      unit.diedThisBattle = true;
+    }
+  }
+
+  function tryBlock(target, isArrowOrBolt){
+    if(!target || target.kind!=='troop' || !target.alive) return false;
+    if(!target.shield) return false;
+    const chance = isArrowOrBolt ? (target.blockArrowChance||0) : (target.blockMeleeChance||0);
+    if(Math.random() < chance){
+      state.battle.effects.push({ type:'block', x:target.x, y:target.y, ttl:0.42 });
+      return true;
+    }
+    return false;
+  }
+
+  function tryPlayerAttack(){
+    const p = state.player;
+    const b = state.battle;
+    if(b.lootPending) return;
+    const pe = b.playerEnt;
+
+    const w = equippedWeapon(p);
+    if(!w){ toast('No weapon equipped'); return; }
+
+    if(w.weaponKind==='bow' || w.weaponKind==='crossbow'){
+      if(p.rangedCd>0) return;
+
+      // crossbow slower, heavier
+      const isX = (w.weaponKind==='crossbow');
+      const baseCd = isX ? (1.15 / (w.speed||1)) : (0.65 / (w.speed||1));
+      p.rangedCd = baseCd;
+
+      pe.swingFx = { type: isX?'crossbow':'bow', t:0.22, dirX:pe.facingX, dirY:pe.facingY };
+      const dmg = Math.round(w.dmg*p.dmgMult);
+      const spd = isX ? 12.6 : 11.0;
+      spawnProjectile(isX?'bolt':'arrow', 'ally', pe.x,pe.y, pe.facingX,pe.facingY, dmg, spd);
+      b.effects.push({ type:'shotFlash', x:pe.x, y:pe.y, ttl:0.18, team:'ally' });
+      b.shake = isX ? 0.10 : 0.08;
+      return;
+    }
+
+    // melee
+    if(p.attackCd>0) return;
+    p.attackCd = 0.48 / (w.speed||1);
+    pe.swingFx = { type:'swing', t:0.18, dirX:pe.facingX, dirY:pe.facingY, range:w.range };
+    b.effects.push({ type:'swingArc', x:pe.x, y:pe.y, dirX:pe.facingX, dirY:pe.facingY, ttl:0.18, team:'ally', range:w.range });
+
+    const half = 0.85;
+    for(const e of b.enemies){
+      if(!e.alive) continue;
+      if(inFrontCone(pe.x,pe.y, pe.facingX,pe.facingY, e.x,e.y, w.range+0.35, half)){
+        if(tryBlock(e, false)) continue;
+        applyDamage(e, Math.round(w.dmg*p.dmgMult));
+      }
+    }
+    b.shake = (w.range>=2.2 ? 0.16 : 0.12);
+  }
+
+  function nearestAlive(list, x,y){
+    let best=null, bd=1e9;
+    for(const u of list){
+      if(!u.alive) continue;
+      const d = dist2(x,y,u.x,u.y);
+      if(d<bd){ bd=d; best=u; }
+    }
+    return best;
+  }
+
+  function separateUnits(units){
+    for(let i=0;i<units.length;i++){
+      const a = units[i];
+      if(!a.alive) continue;
+      for(let j=i+1;j<units.length;j++){
+        const b = units[j];
+        if(!b.alive) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx,dy);
+        const min = (a.r||0.4) + (b.r||0.4) + 0.06;
+        if(d>0 && d<min){
+          const push = (min - d) * 0.5;
+          const nx = dx/d, ny = dy/d;
+          a.x -= nx*push; a.y -= ny*push;
+          b.x += nx*push; b.y += ny*push;
+        }
+      }
+    }
+  }
+
+  function spawnAlliesWithPlayerInFront(playerEnt, armyUnits, baseX, baseY, dirX, dirY){
+    // Place player slightly ahead of infantry block so they aren't trapped
+    // "front" is in (dirX,dirY) direction
+    const frontX = baseX + dirX*2.2;
+    const frontY = baseY + dirY*2.2;
+    playerEnt.x = frontX;
+    playerEnt.y = frontY;
+
+    // Split by role for nicer formation
+    const inf = armyUnits.filter(u=>UNIT_DB[u.unit].role==='inf');
+    const arc = armyUnits.filter(u=>UNIT_DB[u.unit].role==='arc');
+
+    const allies = [];
+    // infantry behind player
+    allies.push(...spawnBlock(inf.map(u=>u.unit), baseX, baseY, 6, 0.90, 0.86, 'ally'));
+    // archers further back
+    allies.push(...spawnBlock(arc.map(u=>u.unit), baseX - dirX*1.4, baseY - dirY*1.4, 6, 0.95, 0.90, 'ally'));
+    return allies;
+  }
+
+  function spawnBlock(unitKeys, cx, cy, cols, sx, sy, team){
+    const out = [];
+    for(let i=0;i<unitKeys.length;i++){
+      const k = unitKeys[i];
+      const r = Math.floor(i/cols);
+      const c = i%cols;
+      const ox = (c - (cols-1)/2) * sx;
+      const oy = r * sy;
+      out.push(makeTroop(team, k, cx + ox, cy + oy));
+    }
+    return out;
+  }
+
+  // =========================
+  // Field battle
+  // =========================
+  function startFieldBattle(party){
+    closeAllPanels(); currentSettlement=null;
+
+    const p = state.player;
+    p.hp = clamp(p.hp, 1, playerMaxHp(p));
+
+    // enemies are down-right (near 58,58), so "front" is +x +y
+    const dirX = 0.707, dirY = 0.707;
+
+    const playerEnt = {
+      kind:'player',
+      x: 0, y: 0,
+      r: 0.45,
+      hp: p.hp,
+      maxHp: playerMaxHp(p),
+      alive: true,
+      facingX: p.facing.x, facingY: p.facing.y,
+      swingFx: null,
+    };
+
+    const allies = spawnAlliesWithPlayerInFront(playerEnt, p.armyUnits, 12.0, 12.0, dirX, dirY);
+
+    const enemies = [];
+    const spawnX = BATTLE_W - 12;
+    const spawnY = BATTLE_H - 12;
+    const enemyKeys = party.comp.map(u=>u.unit);
+    enemies.push(...spawnBlock(enemyKeys, spawnX, spawnY, 7, 0.95, 0.88, 'enemy'));
+
+    state.mode='battle';
+    state.battle = makeBattleState({
+      type:'field',
+      partyId: party.id,
+      partyRef: party,
+      playerEnt,
+      allies,
+      enemies,
+      siege: null,
+      attackerSide: null
+    });
+
+    markOwnershipForBattle(state.battle);
+    toast('Battle started!');
+    syncHUD();
+  }
+
+  // =========================
+  // Siege battle (walls + ladders + garrisons + wall archer advantage)
+  // =========================
+  function startSiegeBattle({ castle, attacker, invaderParty }){
+    const p = state.player;
+    p.hp = clamp(p.hp, 1, playerMaxHp(p));
+
+    const playerEnt = {
+      kind:'player',
+      x: 0, y: 0,
+      r: 0.45,
+      hp: p.hp,
+      maxHp: playerMaxHp(p),
+      alive: true,
+      facingX: p.facing.x, facingY: p.facing.y,
+      swingFx: null,
+    };
+
+    const WALL_Y = 22;
+    const LADDER_XS = [28, 42];
+    const WALL_X0 = 12, WALL_X1 = 58;
+
+    const siegeTerrain = {
+      wallY: WALL_Y,
+      wallX0: WALL_X0,
+      wallX1: WALL_X1,
+      ladders: LADDER_XS.map(x=>({x, y:WALL_Y})),
+      isBlocked(x,y){
+        if(x < WALL_X0 || x > WALL_X1) return false;
+        if(Math.abs(y - WALL_Y) <= 0.45){
+          for(const L of this.ladders){
+            if(Math.abs(x - L.x) <= 0.9) return false;
+          }
+          return true;
+        }
+        return false;
+      },
+      speedMul(x,y){
+        for(const L of this.ladders){
+          if(dist2(x,y, L.x, L.y) < 2.2) return 0.55;
+        }
+        return 1.0;
+      }
+    };
+
+    const allies = [];
+    const enemies = [];
+    const g = castle.garrison || {};
+
+    if(attacker==='player'){
+      // player attacks: spawn attackers outside wall, defenders behind wall
+      // "front" toward +y (down)
+      const dirX = 0.0, dirY = 1.0;
+      allies.push(...spawnAlliesWithPlayerInFront(playerEnt, p.armyUnits, 24, 11.5, dirX, dirY));
+
+      // defenders behind wall block
+      const defKeys = [];
+      for(const k of Object.keys(g)) for(let i=0;i<g[k];i++) defKeys.push(k);
+      enemies.push(...spawnBlock(defKeys, 40, 33.5, 8, 0.95, 0.86, 'enemy'));
+    } else {
+      // player defends: allies = garrison + player army behind wall; enemies outside
+      // put player in front of defenders (closer to wall), not trapped
+      playerEnt.x = 36; playerEnt.y = 27.5;
+
+      const gKeys = [];
+      for(const k of Object.keys(g)) for(let i=0;i<g[k];i++) gKeys.push(k);
+      const gTroops = spawnBlock(gKeys, 40, 34.0, 8, 0.95, 0.86, 'ally');
+      allies.push(...gTroops);
+
+      // player army behind garrison (so you’re not boxed in)
+      const dirX = 0.0, dirY = -1.0; // "front" toward wall (up)
+      const armyAllies = spawnAlliesWithPlayerInFront(
+        { ...playerEnt }, // dummy; we keep playerEnt as already placed
+        p.armyUnits,
+        34.5, 39.5,
+        dirX, dirY
+      );
+      // only take troops (not the dummy's player placement)
+      allies.push(...armyAllies);
+
+      const spawnX = 18, spawnY = 12;
+      const partyComp = invaderParty ? invaderParty.comp.map(u=>u.unit) : [];
+      enemies.push(...spawnBlock(partyComp, spawnX, spawnY, 7, 0.95, 0.88, 'enemy'));
+    }
+
+    state.mode = 'battle';
+    state.battle = makeBattleState({
+      type:'siege',
+      castleRef: castle,
+      invaderPartyRef: invaderParty || null,
+      playerEnt,
+      allies,
+      enemies,
+      siege: siegeTerrain,
+      attackerSide: attacker
+    });
+
+    markOwnershipForBattle(state.battle);
+
+    toast('Siege started!');
+    syncHUD();
+  }
+
+  function makeBattleState({ type, partyId=null, partyRef=null, castleRef=null, invaderPartyRef=null, playerEnt, allies, enemies, siege=null, attackerSide=null }){
+    return {
+      type,
+      partyId,
+      partyRef,
+      castleRef,
+      invaderPartyRef,
+      attackerSide,
+      playerEnt,
+      allies,
+      enemies,
+      projectiles: [],
+      effects: [],
+      selection: 'all',
+      shake: 0,
+      lootPending: null,
+      killCountThisBattle: 0,
+      formations: {
+        all:{ mode:'loose' },
+        inf:{ mode:'shieldwall' },
+        arc:{ mode:'archerline' },
+      },
+      siege,
+      defenderTeam: (type==='siege')
+        ? (attackerSide==='player' ? 'enemy' : 'ally')
+        : null
+    };
+  }
+
+  function markOwnershipForBattle(b){
+    const p = state.player;
+
+    for(const u of b.allies){
+      u._isPlayerArmy = true;
+      u._isGarrison = false;
+    }
+
+    if(b.type==='siege' && b.attackerSide==='party'){
+      // first N allies are garrison
+      const gN = garrisonCount(b.castleRef.garrison||{});
+      for(let i=0;i<b.allies.length;i++){
+        if(i < gN){
+          b.allies[i]._isGarrison = true;
+          b.allies[i]._isPlayerArmy = false;
+        } else {
+          b.allies[i]._isGarrison = false;
+          b.allies[i]._isPlayerArmy = true;
+        }
+      }
+    }
+
+    b.playerArmySnapshot = p.armyUnits.map(u=>u.unit);
+  }
+
+  function moveWithCollision(u, nx, ny){
+    const b = state.battle;
+    if(!b || !b.siege) { u.x=nx; u.y=ny; return; }
+    if(!b.siege.isBlocked(nx, ny)){ u.x = nx; u.y = ny; return; }
+    if(!b.siege.isBlocked(nx, u.y)){ u.x = nx; return; }
+    if(!b.siege.isBlocked(u.x, ny)){ u.y = ny; return; }
+  }
+
+  function archerWallBonus(u){
+    const b = state.battle;
+    if(!b || b.type!=='siege' || !b.siege) return { dmgMul:1, rangeAdd:0, rateMul:1 };
+    if(u.role!=='arc') return { dmgMul:1, rangeAdd:0, rateMul:1 };
+    if(u.team !== b.defenderTeam) return { dmgMul:1, rangeAdd:0, rateMul:1 };
+    // behind the wall (defender side)
+    if(u.y > b.siege.wallY + 1.0){
+      return { dmgMul:ARCHER_WALL_DMG, rangeAdd:ARCHER_WALL_RANGE, rateMul:ARCHER_WALL_RATE };
+    }
+    return { dmgMul:1, rangeAdd:0, rateMul:1 };
+  }
+
+  function battleTick(dt){
+    const b = state.battle;
+    const p = state.player;
+    const pe = b.playerEnt;
+
+    if(b.lootPending) return;
+
+    p.attackCd = Math.max(0, p.attackCd - dt);
+    p.rangedCd = Math.max(0, p.rangedCd - dt);
+
+    if(pe.swingFx){
+      pe.swingFx.t -= dt;
+      if(pe.swingFx.t<=0) pe.swingFx=null;
+    }
+
+    // player move
+    const mv = wantMove();
+    const pSpd = 3.08 * (p.food<=0 ? 0.88 : 1.0);
+    let nx = clamp(pe.x + mv.dx * pSpd * dt, 1, BATTLE_W-1);
+    let ny = clamp(pe.y + mv.dy * pSpd * dt, 1, BATTLE_H-1);
+    moveWithCollision(pe, nx, ny);
+
+    if(mv.dx!==0 || mv.dy!==0){
+      pe.facingX = mv.dx; pe.facingY = mv.dy;
+      p.facing.x = mv.dx; p.facing.y = mv.dy;
+    }
+
+    state.cam.x = pe.x; state.cam.y = pe.y;
+
+    for(const fx of b.effects) fx.ttl -= dt;
+    b.effects = b.effects.filter(fx => fx.ttl>0);
+
+    for(const u of b.allies) if(u.alive) updateUnit(u, dt);
+    for(const e of b.enemies) if(e.alive) updateUnit(e, dt);
+
+    separateUnits([pe, ...b.allies, ...b.enemies]);
+
+    // projectiles
+    for(const pr of b.projectiles){
+      pr.ttl -= dt;
+      const nx2 = pr.x + pr.vx * dt;
+      const ny2 = pr.y + pr.vy * dt;
+      if(b.siege && b.siege.isBlocked(nx2, ny2)){
+        pr.ttl = 0;
+        continue;
+      }
+      pr.x = nx2; pr.y = ny2;
+    }
+    b.projectiles = b.projectiles.filter(pr => pr.ttl>0 && pr.x>=0 && pr.y>=0 && pr.x<=BATTLE_W && pr.y<=BATTLE_H);
+
+    // collisions
+    for(const pr of b.projectiles){
+      const isArrowOrBolt = (pr.kind==='arrow' || pr.kind==='bolt');
+      if(pr.team==='ally'){
+        for(const e of b.enemies){
+          if(!e.alive) continue;
+          if(dist2(pr.x,pr.y, e.x,e.y) < (e.r+pr.r)*(e.r+pr.r)){
+            if(isArrowOrBolt && tryBlock(e, true)){ pr.ttl=0; break; }
+            const wasAlive = e.alive;
+            applyDamage(e, pr.dmg);
+            if(wasAlive && !e.alive) b.killCountThisBattle++;
+            pr.ttl = 0;
+            break;
+          }
+        }
+      } else {
+        if(pe.alive && dist2(pr.x,pr.y, pe.x,pe.y) < (pe.r+pr.r)*(pe.r+pr.r)){
+          pe.hp -= pr.dmg;
+          if(pe.hp<=0){ pe.hp=0; pe.alive=false; }
+          pr.ttl=0;
+        } else {
+          for(const a of b.allies){
+            if(!a.alive) continue;
+            if(dist2(pr.x,pr.y, a.x,a.y) < (a.r+pr.r)*(a.r+pr.r)){
+              if(isArrowOrBolt && tryBlock(a, true)){ pr.ttl=0; break; }
+              applyDamage(a, pr.dmg);
+              pr.ttl=0;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // sync player hp
+    p.hp = pe.hp;
+
+    const alliesAlive = b.allies.some(u=>u.alive) || pe.alive;
+    const enemiesAlive = b.enemies.some(u=>u.alive);
+
+    if(!enemiesAlive && alliesAlive){
+      victoryFlow();
+    } else if(!alliesAlive){
+      toast('Defeat... restarting!');
+      restartGame();
+    }
+  }
+
+  function updateUnit(u, dt){
+    const b = state.battle;
+    const pe = b.playerEnt;
+
+    const targets = (u.team==='ally') ? b.enemies : [pe, ...b.allies];
+    const tgt = nearestAlive(targets, u.x, u.y);
+
+    if(u.atk.state==='cooldown'){
+      u.atk.t -= dt;
+      if(u.atk.t<=0){ u.atk.state='idle'; u.atk.didHit=false; }
+    }
+    if(u.atk.state==='windup'){
+      u.atk.t -= dt;
+      if(u.atk.t<=0){
+        u.atk.state='swing';
+        u.atk.t = 0.12;
+        u.atk.didHit=false;
+        b.effects.push({ type:'swingArc', x:u.x, y:u.y, dirX:u.facingX, dirY:u.facingY, ttl:0.16, team:u.team, range:u.range });
+      } else {
+        if(u.role==='inf'){
+          b.effects.push({ type:'telegraphCone', x:u.x, y:u.y, dirX:u.facingX, dirY:u.facingY, ttl:0.05, team:u.team, range:u.range });
+        }
+      }
+    }
+    if(u.atk.state==='swing'){
+      if(!u.atk.didHit){
+        u.atk.didHit=true;
+
+        if(u.role==='inf'){
+          const half = 0.85;
+          for(const t of targets){
+            if(!t.alive) continue;
+            if(inFrontCone(u.x,u.y, u.facingX,u.facingY, t.x,t.y, u.range+0.30, half)){
+              if(t.kind==='troop' && tryBlock(t, false)) continue;
+
+              if(t.kind==='player'){
+                t.hp -= u.dmg;
+                if(t.hp<=0){ t.hp=0; t.alive=false; }
+              } else {
+                const wasAlive = t.alive;
+                applyDamage(t, u.dmg);
+                if(wasAlive && !t.alive && u.team==='ally') b.killCountThisBattle++;
+              }
+            }
+          }
+        } else {
+          // ranged: wall advantage for defenders
+          const wb = archerWallBonus(u);
+          const dmg = Math.round(u.dmg * wb.dmgMul);
+          const rng = u.range + wb.rangeAdd;
+
+          // if out of range, don't fire
+          if(tgt){
+            const d = dist(u.x,u.y, tgt.x,tgt.y);
+            if(d <= rng){
+              spawnProjectile(u.projKind, u.team, u.x,u.y, u.facingX,u.facingY, dmg, u.projSpeed);
+              b.effects.push({ type:'shotFlash', x:u.x, y:u.y, ttl:0.14, team:u.team });
+            }
+          }
+        }
+      }
+      u.atk.t -= dt;
+      if(u.atk.t<=0){
+        const wb = archerWallBonus(u);
+        u.atk.state='cooldown';
+        u.atk.t = (u.cooldown * wb.rateMul) + rand(-0.08,0.08);
+      }
+    }
+
+    if(!tgt) return;
+
+    const d = dist(u.x,u.y, tgt.x,tgt.y);
+    const vx = tgt.x - u.x, vy = tgt.y - u.y;
+    const l = Math.hypot(vx,vy)||1;
+    u.facingX = vx/l; u.facingY = vy/l;
+
+    // archers: keep distance
+    if(u.role==='arc'){
+      const wb = archerWallBonus(u);
+      const rng = u.range + wb.rangeAdd;
+
+      if(d <= rng && (u.atk.state==='idle' || u.atk.state==='windup')){
+        u.aim = { x:tgt.x, y:tgt.y, ttl:0.08 };
+      } else {
+        u.aim = null;
+      }
+
+      if(u.atk.state==='idle' && d <= rng){
+        u.atk.state='windup';
+        u.atk.t = u.windup * wb.rateMul;
+        u.vx=0; u.vy=0;
+      }
+
+      const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown');
+      if(canMove){
+        if(u.order==='hold' || u.order==='rally'){
+          const hp = u.holdPos;
+          if(hp){
+            const mx = hp.x - u.x, my = hp.y - u.y;
+            const ll = Math.hypot(mx,my);
+            if(ll>0.15){
+              u.vx = (mx/ll) * u.spd;
+              u.vy = (my/ll) * u.spd;
+            } else { u.vx*=0.75; u.vy*=0.75; }
+          } else { u.vx*=0.75; u.vy*=0.75; }
+        } else {
+          const desired = rng * 0.72;
+          let mx=0,my=0;
+          if(d < desired*0.75){ mx = (u.x - tgt.x); my = (u.y - tgt.y); }
+          else if(d > desired){ mx = (tgt.x - u.x); my = (tgt.y - u.y); }
+          const ll = Math.hypot(mx,my);
+          if(ll>0){ u.vx = (mx/ll) * u.spd; u.vy = (my/ll) * u.spd; }
+          else { u.vx*=0.80; u.vy*=0.80; }
+        }
+
+        const mul = (state.battle.siege) ? state.battle.siege.speedMul(u.x,u.y) : 1.0;
+        let nx = clamp(u.x + u.vx*dt*mul, 1, BATTLE_W-1);
+        let ny = clamp(u.y + u.vy*dt*mul, 1, BATTLE_H-1);
+        moveWithCollision(u, nx, ny);
+      } else {
+        u.vx*=0.6; u.vy*=0.6;
+      }
+      return;
+    }
+
+    // infantry
+    if(u.atk.state==='idle' && d <= u.range + 0.18){
+      u.atk.state='windup';
+      u.atk.t = u.windup;
+      u.vx=0; u.vy=0;
+    }
+
+    const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown');
+    if(canMove){
+      if(u.order==='hold' || u.order==='rally'){
+        const hp = u.holdPos;
+        if(hp){
+          const mx = hp.x - u.x, my = hp.y - u.y;
+          const ll = Math.hypot(mx,my);
+          if(ll>0.12){
+            u.vx = (mx/ll) * u.spd;
+            u.vy = (my/ll) * u.spd;
+          } else { u.vx*=0.78; u.vy*=0.78; }
+        } else { u.vx*=0.78; u.vy*=0.78; }
+      } else {
+        const mx = tgt.x - u.x, my = tgt.y - u.y;
+        const ll = Math.hypot(mx,my);
+        if(ll>0.001){ u.vx = (mx/ll) * u.spd; u.vy = (my/ll) * u.spd; }
+        else { u.vx*=0.82; u.vy*=0.82; }
+      }
+
+      const mul = (state.battle.siege) ? state.battle.siege.speedMul(u.x,u.y) : 1.0;
+      let nx = clamp(u.x + u.vx*dt*mul, 1, BATTLE_W-1);
+      let ny = clamp(u.y + u.vy*dt*mul, 1, BATTLE_H-1);
+      moveWithCollision(u, nx, ny);
+    }
+  }
+
+  function finalizePlayerArmyFromBattle(){
+    const b = state.battle;
+    const p = state.player;
+
+    const survivors = [];
+    const woundedAdds = [];
+
+    for(const u of b.allies){
+      if(!u._isPlayerArmy) continue;
+      if(u.alive) survivors.push({ unit: u.unitKey });
+      else if(u.diedThisBattle){
+        if(Math.random()<WOUNDED_CHANCE) woundedAdds.push(u.unitKey);
+      }
+    }
+
+    p.armyUnits = survivors;
+    p.woundedUnits.push(...woundedAdds);
+  }
+
+  function victoryFlow(){
+    const b = state.battle;
+    const p = state.player;
+    const xpGain = Math.max(10, b.killCountThisBattle * 10);
+
+    if(b.type==='field'){
+      const party = state.map.parties.find(pp => pp.id===b.partyId);
+      if(party) party.alive=false;
+
+      finalizePlayerArmyFromBattle();
+
+      // diplomacy shifts
+      if(party && (party.kind==='patrol' || party.kind==='army') && party.factionId){
+        state.diplomacy[party.factionId] = clamp((state.diplomacy[party.factionId]??0) - 25, -100, 100);
+      } else {
+        for(const f of FACTIONS){
+          state.diplomacy[f.id] = clamp((state.diplomacy[f.id]??0) + 2, -100, 100);
+        }
+      }
+
+      const size = party ? party.size : 12;
+      const lootGold = randi(18, 55) + Math.floor(size * 1.25);
+      const lootFood = randi(5, 15);
+
+      const items = [];
+      const rolls = (size>=16) ? 2 : 1;
+      for(let i=0;i<rolls;i++){
+        if(Math.random() < (0.30 + size*0.006)){
+          const pool = ['weapon_axe','weapon_spear','weapon_bow','weapon_crossbow','weapon_pike','armor_leather','armor_chain','armor_scale','armor_plate'];
+          items.push(pool[randi(0,pool.length-1)]);
+        }
+      }
+
+      b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain, reason:'Field victory!' };
+      openLootPanel(b.lootPending);
+      syncHUD();
+      return;
+    }
+
+    // siege
+    const castle = b.castleRef;
+
+    if(b.attackerSide==='player'){
+      finalizePlayerArmyFromBattle();
+
+      // wipe defenders
+      castle.garrison = seedCapturedMilitia();
+
+      // capture ownership rules:
+      // - if pledged: captures for that kingdom
+      // - if independent: becomes Your Domain (player)
+      const oldFaction = castle.factionId;
+      if(p.faction){
+        castle.factionId = p.faction;
+        castle.stock = makeCastleStock(castle.factionId);
+        flipLinkedVillages(castle.id, castle.factionId);
+        state.diplomacy[p.faction] = clamp((state.diplomacy[p.faction]??0) + 6, -100, 100);
+        toast(`🏰 Captured for ${factionName(p.faction)}!`, 1600);
+      } else {
+        castle.factionId = 'player';
+        castle.stock = makeCastleStock('player');
+        flipLinkedVillages(castle.id, 'player');
+        toast(`🏰 You captured the castle! It is now <Your Domain>.`, 1700);
+      }
+
+      // relations penalty with previous owner if it was a real faction
+      if(oldFaction && oldFaction!=='player'){
+        state.diplomacy[oldFaction] = clamp((state.diplomacy[oldFaction]??0) - 30, -100, 100);
+      }
+
+      const lootGold = randi(95, 190) + 55;
+      const lootFood = randi(20, 45);
+      const items = [];
+      const pool = ['weapon_axe','weapon_spear','weapon_bow','weapon_crossbow','weapon_pike','armor_leather','armor_chain','armor_scale','armor_plate'];
+      const rolls = 3 + (Math.random()<0.45 ? 1 : 0);
+      for(let i=0;i<rolls;i++){
+        if(Math.random()<0.72) items.push(pool[randi(0,pool.length-1)]);
+      }
+      b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain+25, reason:'Siege victory!' };
+      openLootPanel(b.lootPending);
+      syncHUD();
+      return;
+    }
+
+    // defense victory
+    const invader = b.invaderPartyRef;
+    if(invader) invader.alive = false;
+
+    // rebuild garrison from surviving garrison allies
+    const newG = {};
+    for(const u of b.allies){
+      if(!u.alive) continue;
+      if(u._isGarrison){
+        newG[u.unitKey] = (newG[u.unitKey]||0)+1;
+      }
+    }
+    castle.garrison = newG;
+
+    finalizePlayerArmyFromBattle();
+
+    const lootGold = randi(20, 60);
+    const lootFood = randi(8, 18);
+    const items = [];
+    if(Math.random()<0.40){
+      items.push(['weapon_spear','weapon_axe','weapon_bow','armor_leather','weapon_crossbow'][randi(0,4)]);
+    }
+
+    b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain, reason:'Defense victory!' };
+    openLootPanel(b.lootPending);
+    syncHUD();
+  }
+
+  // =========================
+  // Rendering
+  // =========================
+  function drawIsoTile(sx,sy, fill, stroke){
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - TILE_H/2);
+    ctx.lineTo(sx + TILE_W/2, sy);
+    ctx.lineTo(sx, sy + TILE_H/2);
+    ctx.lineTo(sx - TILE_W/2, sy);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if(stroke){
+      ctx.strokeStyle = stroke;
+      ctx.stroke();
+    }
+  }
+
+  function drawEntityShadow(x,y, r){
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath();
+    ctx.ellipse(x, y+10, 18*r/0.4, 10*r/0.4, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawHpBar(x,y, frac, col){
+    frac = clamp(frac, 0, 1);
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.beginPath(); ctx.roundRect(x-18, y, 36, 6, 3); ctx.fill();
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.roundRect(x-18, y, 36*frac, 6, 3); ctx.fill();
+  }
+
+  function drawLegs(spx, spy, moving, phase, colorA='rgba(255,255,255,.75)'){
+    if(!moving) return;
+    const step = Math.sin(phase);
+    const off1 = step * 2.6;
+    const off2 = -step * 2.6;
+
+    ctx.fillStyle = colorA;
+    ctx.beginPath(); ctx.roundRect(spx-7, spy-8 + off1, 5, 10, 2); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(spx+2, spy-8 + off2, 5, 10, 2); ctx.fill();
+  }
+
+  function drawTelegraphCone(fx, camX, camY){
+    const sp = worldToScreen(fx.x, fx.y, camX, camY);
+    const dx = fx.dirX, dy = fx.dirY;
+    const range = fx.range || 1.3;
+    const tip = worldToScreen(fx.x + dx*range, fx.y + dy*range, camX, camY);
+
+    ctx.strokeStyle = fx.team==='ally' ? 'rgba(191,219,254,.25)' : 'rgba(254,205,211,.28)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sp.x, sp.y-16);
+    ctx.lineTo(tip.x, tip.y-16);
+    ctx.stroke();
+  }
+
+  function drawSwingArc(fx, camX, camY){
+    const sp = worldToScreen(fx.x, fx.y, camX, camY);
+    const col = fx.team==='ally' ? 'rgba(191,219,254,.22)' : 'rgba(254,205,211,.22)';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    const dx = fx.dirX, dy = fx.dirY;
+    const r = 18 + (fx.range||1.2)*10;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y-22, r, Math.atan2(dy,dx)-0.9, Math.atan2(dy,dx)+0.9);
+    ctx.stroke();
+  }
+
+  function drawShotFlash(fx, camX, camY){
+    const sp = worldToScreen(fx.x, fx.y, camX, camY);
+    ctx.fillStyle = fx.team==='ally' ? 'rgba(191,219,254,.35)' : 'rgba(254,205,211,.35)';
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y-22, 10, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  let lastDt = 0;
+  let lastDtMs = 0;
+
+  function render(){
+    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
+
+    const g = ctx.createLinearGradient(0,0,0,canvas.clientHeight);
+    g.addColorStop(0, 'rgba(255,255,255,.03)');
+    g.addColorStop(1, 'rgba(0,0,0,.0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
+
+    if(state.mode==='map') renderMap();
+    else renderBattle();
+
+    if(toastT>0){
+      toastT -= lastDtMs;
+      if(toastT<=0) ui.toast.style.display='none';
+    }
+  }
+
+  function renderBannerAt(spx, spy, color){
+    // little pole + flag
+    ctx.strokeStyle = 'rgba(0,0,0,.25)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(spx+14, spy-40);
+    ctx.lineTo(spx+14, spy-16);
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(spx+14, spy-40, 14, 10, 3);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    ctx.beginPath();
+    ctx.roundRect(spx+14, spy-40, 14, 10, 3);
+    ctx.fill();
+  }
+
+  function renderMap(){
+    const camX = state.cam.x, camY = state.cam.y;
+
+    const R = 18;
+    const minX = Math.floor(camX)-R, maxX = Math.floor(camX)+R;
+    const minY = Math.floor(camY)-R, maxY = Math.floor(camY)+R;
+
+    const sMin = (minX+minY);
+    const sMax = (maxX+maxY);
+
+    for(let s=sMin; s<=sMax; s++){
+      for(let x=minX; x<=maxX; x++){
+        const y = s - x;
+        if(y<minY || y>maxY) continue;
+        if(x<0 || y<0 || x>=state.map.w || y>=state.map.h) continue;
+        const p = worldToScreen(x,y, camX,camY);
+        drawIsoTile(p.x, p.y, 'rgba(74, 222, 128, .08)', 'rgba(255,255,255,.05)');
+      }
+    }
+
+    const things = [];
+    for(const s of state.map.settlements) things.push({ z:s.x+s.y+0.1, kind:'settlement', s });
+    for(const party of state.map.parties) if(party.alive) things.push({ z:party.x+party.y+0.2, kind:'party', party });
+    things.push({ z:state.player.x+state.player.y+0.3, kind:'player', p:state.player });
+    things.sort((a,b)=>a.z-b.z);
+
+    for(const t of things){
+      if(t.kind==='settlement'){
+        const s = t.s;
+        const sp = worldToScreen(s.x,s.y, camX,camY);
+        drawEntityShadow(sp.x,sp.y,0.5);
+
+        const col = factionColor(s.factionId);
+        ctx.fillStyle = col;
+        ctx.strokeStyle = 'rgba(0,0,0,.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(sp.x-12, sp.y-26, 24, 20, 6); ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,.92)';
+        ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(s.kind==='castle'?'🏰':'🏠', sp.x, sp.y-16);
+
+        if(s.kind==='castle'){
+          const gN = garrisonCount(s.garrison||{});
+          ctx.fillStyle = 'rgba(234,242,255,.92)';
+          ctx.font = '12px system-ui, Arial';
+          ctx.textAlign='center'; ctx.textBaseline='bottom';
+          ctx.fillText(`G:${gN}`, sp.x, sp.y-30);
+        } else {
+          // village volunteers
+          const vv = s.village?.volunteers || {};
+          const n = totalVolunteers(vv);
+          ctx.fillStyle = 'rgba(234,242,255,.92)';
+          ctx.font = '12px system-ui, Arial';
+          ctx.textAlign='center'; ctx.textBaseline='bottom';
+          ctx.fillText(`👥${n}`, sp.x, sp.y-30);
+        }
+
+        const invader = findInvaderOnSettlement(s);
+        if(invader){
+          const iv = state.map.invasion[invader.id];
+          const frac = clamp((iv?.t||0)/60, 0, 1);
+          ctx.strokeStyle = 'rgba(255,220,180,.85)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y-18, 18, -Math.PI/2, -Math.PI/2 + Math.PI*2*frac);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(234,242,255,.92)';
+        ctx.font = '12px system-ui, Arial';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText(s.name, sp.x, sp.y-44);
+      }
+
+      if(t.kind==='party'){
+        const e = t.party;
+        const sp = worldToScreen(e.x,e.y, camX,camY);
+        drawEntityShadow(sp.x,sp.y,0.48);
+
+        const col = e.kind==='bandit' ? '#f59e0b' : (e.kind==='neutral' ? 'rgba(220,220,255,.65)' : factionColor(e.factionId));
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(sp.x, sp.y-14, 10, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,.95)';
+        ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(e.kind==='bandit'?'☠':(e.kind==='neutral'?'🧳':(e.kind==='army'?'🗡':'⚔')), sp.x, sp.y-14);
+
+        if(e.kind!=='neutral'){
+          ctx.fillStyle = 'rgba(234,242,255,.92)';
+          ctx.font = '12px system-ui, Arial';
+          ctx.textAlign='center'; ctx.textBaseline='bottom';
+          ctx.fillText(String(e.size), sp.x, sp.y-28);
+        }
+      }
+
+      if(t.kind==='player'){
+        const p = t.p;
+        const sp = worldToScreen(p.x,p.y, camX,camY);
+        drawEntityShadow(sp.x,sp.y,0.55);
+
+        const armor = ITEM_DB[p.equip.armor] || ITEM_DB.armor_cloth;
+        const armorTint = armor.id==='armor_plate' ? 'rgba(220,220,235,.92)'
+                        : armor.id==='armor_scale' ? 'rgba(190,210,230,.88)'
+                        : armor.id==='armor_chain' ? 'rgba(200,210,230,.85)'
+                        : armor.id==='armor_leather' ? 'rgba(210,170,120,.85)'
+                        : 'rgba(210,240,255,.70)';
+
+        ctx.fillStyle = armorTint;
+        ctx.strokeStyle = 'rgba(0,0,0,.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(sp.x-9, sp.y-36, 18, 34, 6); ctx.fill(); ctx.stroke();
+
+        const moving = keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d');
+        drawLegs(sp.x, sp.y-2, moving, state.t*12);
+
+        // banner
+        renderBannerAt(sp.x, sp.y, playerBannerColor());
+
+        // weapon glyph
+        const fx = p.facing.x, fy = p.facing.y;
+        const side = (fx - fy);
+        const wx = sp.x + (side>=0 ? 12 : -18);
+        const wy = sp.y - 26;
+        const w = equippedWeapon(p);
+        ctx.fillStyle = (w && w.weaponKind==='crossbow') ? 'rgba(255,255,255,.86)' :
+                        (w && w.weaponKind==='bow') ? 'rgba(255,255,255,.78)' :
+                        'rgba(255,255,255,.92)';
+        ctx.beginPath(); ctx.roundRect(wx, wy, 6, 22, 3); ctx.fill();
+
+        const near = nearestSettlement(p.x,p.y, 1.25);
+        if(near && !anyPanelOpen()){
+          ctx.fillStyle = 'rgba(234,242,255,.92)';
+          ctx.font = '12px system-ui, Arial';
+          ctx.textAlign='center'; ctx.textBaseline='top';
+          ctx.fillText('Press E to interact', sp.x, sp.y+8);
+        }
+      }
+    }
+  }
+
+  function renderBattle(){
+    const b = state.battle;
+    const camX = state.cam.x, camY = state.cam.y;
+
+    let shakeX=0, shakeY=0;
+    if(b.shake>0){
+      b.shake = Math.max(0, b.shake - 0.9*lastDt);
+      shakeX = rand(-6,6) * b.shake;
+      shakeY = rand(-6,6) * b.shake;
+    }
+
+    const R = 20;
+    const minX = Math.floor(camX)-R, maxX = Math.floor(camX)+R;
+    const minY = Math.floor(camY)-R, maxY = Math.floor(camY)+R;
+
+    const sMin = (minX+minY);
+    const sMax = (maxX+maxY);
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    for(let s=sMin; s<=sMax; s++){
+      for(let x=minX; x<=maxX; x++){
+        const y = s - x;
+        if(y<minY || y>maxY) continue;
+        if(x<0 || y<0 || x>=BATTLE_W || y>=BATTLE_H) continue;
+        const p = worldToScreen(x,y, camX,camY);
+        drawIsoTile(p.x, p.y, 'rgba(74, 222, 128, .10)', 'rgba(255,255,255,.04)');
+      }
+    }
+
+    if(b.siege){
+      for(let x=b.siege.wallX0; x<=b.siege.wallX1; x++){
+        const blocked = b.siege.isBlocked(x, b.siege.wallY);
+        if(!blocked) continue;
+        const sp = worldToScreen(x, b.siege.wallY, camX, camY);
+        ctx.fillStyle = 'rgba(255,255,255,.16)';
+        ctx.strokeStyle = 'rgba(255,255,255,.22)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(sp.x-16, sp.y-28, 32, 22, 6);
+        ctx.fill();
+        ctx.stroke();
+      }
+      for(const L of b.siege.ladders){
+        const sp = worldToScreen(L.x, L.y, camX, camY);
+        ctx.fillStyle = 'rgba(255,255,255,.26)';
+        ctx.strokeStyle = 'rgba(255,255,255,.35)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(sp.x-6, sp.y-34, 12, 30, 4);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(234,242,255,.95)';
+        ctx.font = '12px system-ui, Arial';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText('🪜', sp.x, sp.y-36);
+      }
+    }
+
+    for(const fx of b.effects){
+      if(fx.type==='telegraphCone') drawTelegraphCone(fx, camX, camY);
+      else if(fx.type==='swingArc') drawSwingArc(fx, camX, camY);
+      else if(fx.type==='shotFlash') drawShotFlash(fx, camX, camY);
+    }
+
+    const ents = [];
+    const pe = b.playerEnt;
+    ents.push({ z: pe.x+pe.y+0.3, e:pe });
+    for(const a of b.allies) if(a.alive) ents.push({ z:a.x+a.y+0.2, e:a });
+    for(const e of b.enemies) if(e.alive) ents.push({ z:e.x+e.y+0.2, e:e });
+    ents.sort((a,b)=>a.z-b.z);
+
+    for(const o of ents){
+      const e = o.e;
+      const sp = worldToScreen(e.x,e.y, camX,camY);
+      drawEntityShadow(sp.x, sp.y, e.r||0.4);
+
+      if(e.kind==='player'){
+        const p = state.player;
+        const armor = ITEM_DB[p.equip.armor] || ITEM_DB.armor_cloth;
+        const armorTint = armor.id==='armor_plate' ? 'rgba(220,220,235,.92)'
+                        : armor.id==='armor_scale' ? 'rgba(190,210,230,.88)'
+                        : armor.id==='armor_chain' ? 'rgba(200,210,230,.9)'
+                        : armor.id==='armor_leather' ? 'rgba(210,170,120,.9)'
+                        : 'rgba(210,240,255,.75)';
+        ctx.fillStyle = armorTint;
+        ctx.strokeStyle = 'rgba(0,0,0,.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(sp.x-10, sp.y-38, 20, 36, 6); ctx.fill(); ctx.stroke();
+
+        const mv = wantMove();
+        const moving = (Math.abs(mv.dx)+Math.abs(mv.dy))>0.01;
+        drawLegs(sp.x, sp.y-4, moving, state.t*14);
+
+        renderBannerAt(sp.x, sp.y, playerBannerColor());
+
+        const w = equippedWeapon(p);
+        if(pe.swingFx && pe.swingFx.type==='swing'){
+          const dx = pe.swingFx.dirX, dy = pe.swingFx.dirY;
+          const side = (dx - dy);
+          const baseX = sp.x + (side>=0 ? 10 : -10);
+          const baseY = sp.y - 26;
+          ctx.strokeStyle = 'rgba(255,255,255,.92)';
+          ctx.lineWidth = (w && w.range>=2.2) ? 5 : 4;
+          ctx.beginPath();
+          ctx.moveTo(baseX, baseY);
+          ctx.lineTo(baseX + dx*26, baseY + dy*18);
+          ctx.stroke();
+        } else {
+          const side = (pe.facingX - pe.facingY);
+          const wx = sp.x + (side>=0 ? 12 : -18);
+          const wy = sp.y - 30;
+          ctx.fillStyle = (w && w.weaponKind==='crossbow') ? 'rgba(255,255,255,.86)' :
+                          (w && w.weaponKind==='bow') ? 'rgba(255,255,255,.75)' :
+                          'rgba(255,255,255,.92)';
+          ctx.beginPath(); ctx.roundRect(wx, wy, 6, 24, 3); ctx.fill();
+        }
+
+        if(pe.swingFx && (pe.swingFx.type==='bow' || pe.swingFx.type==='crossbow')){
+          ctx.strokeStyle = 'rgba(255,255,255,.75)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(sp.x-10, sp.y-24);
+          ctx.lineTo(sp.x+10, sp.y-18);
+          ctx.stroke();
+        }
+
+        drawHpBar(sp.x, sp.y-52, pe.hp/pe.maxHp, '#a7f3d0');
+      } else {
+        const def = UNIT_DB[e.unitKey];
+        const col = (e.team==='ally') ? 'rgba(96,165,250,.95)' : 'rgba(251,113,133,.95)';
+        ctx.fillStyle = col;
+        ctx.strokeStyle = 'rgba(0,0,0,.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(sp.x-8, sp.y-28, 16, 26, 6); ctx.fill(); ctx.stroke();
+
+        const speed = Math.hypot(e.vx||0, e.vy||0);
+        const moving = speed > 0.12 && (e.atk.state!=='windup');
+        drawLegs(sp.x, sp.y-2, moving, state.t*12 + (e.x+e.y));
+
+        ctx.fillStyle = 'rgba(255,255,255,.92)';
+        ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(e.role==='arc' ? (def.projKind==='bolt'?'⛓':'🏹') : '🛡', sp.x, sp.y-15);
+
+        if(def.shield){
+          ctx.fillStyle = 'rgba(255,255,255,.20)';
+          ctx.strokeStyle = 'rgba(255,255,255,.35)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(sp.x-16, sp.y-22, 8, 14, 3);
+          ctx.fill(); ctx.stroke();
+        }
+
+        if(e.aim){
+          const tp = worldToScreen(e.aim.x, e.aim.y, camX, camY);
+          ctx.strokeStyle = e.team==='ally' ? 'rgba(191,219,254,.65)' : 'rgba(254,205,211,.65)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y-18);
+          ctx.lineTo(tp.x, tp.y-18);
+          ctx.stroke();
+        }
+
+        // wall archer advantage indicator
+        if(state.battle.type==='siege' && e.role==='arc'){
+          const wb = archerWallBonus(e);
+          if(wb.dmgMul>1){
+            ctx.fillStyle = 'rgba(255,255,255,.85)';
+            ctx.font = '11px system-ui, Arial';
+            ctx.textAlign='center'; ctx.textBaseline='top';
+            ctx.fillText('⬆ wall', sp.x, sp.y-60);
+          }
+        }
+
+        drawHpBar(sp.x, sp.y-38, e.hp/e.maxHp, e.team==='ally'?'#bfdbfe':'#fecdd3');
+
+        ctx.fillStyle = 'rgba(234,242,255,.85)';
+        ctx.font = '11px system-ui, Arial';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText(def.name, sp.x, sp.y-40);
+      }
+    }
+
+    // projectiles
+    for(const pr of b.projectiles){
+      const sp = worldToScreen(pr.x,pr.y, camX,camY);
+      const ang = Math.atan2(pr.vy, pr.vx);
+      const size = pr.kind==='bolt' ? 7.2 : 6.2;
+      ctx.save();
+      ctx.translate(sp.x, sp.y-18);
+      ctx.rotate(ang);
+      ctx.fillStyle = pr.team==='ally'
+        ? (pr.kind==='bolt'?'rgba(240,248,255,.95)':'rgba(234,242,255,.92)')
+        : (pr.kind==='bolt'?'rgba(255,235,235,.95)':'rgba(255,220,220,.92)');
+      ctx.beginPath();
+      ctx.moveTo(size, 0);
+      ctx.lineTo(-size*0.6, -size*0.45);
+      ctx.lineTo(-size*0.6,  size*0.45);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // blocks
+    for(const fx of b.effects){
+      if(fx.type==='block'){
+        const sp = worldToScreen(fx.x, fx.y, camX, camY);
+        ctx.fillStyle = 'rgba(255,255,255,.95)';
+        ctx.font = 'bold 12px system-ui, Arial';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText('🛡 BLOCK', sp.x, sp.y-56);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // =========================
+  // Game loop + init
+  // =========================
+  function restartGame(){
+    state.mode = 'map';
+    state.t = 0;
+    state.map = makeMap();
+    state.player = makeNewPlayer();
+    state.diplomacy = makeNewDiplomacy();
+    state.battle = null;
+    closeAllPanels();
+    state.cam.x = state.player.x;
+    state.cam.y = state.player.y;
+    syncHUD();
+    toast('New run started');
+  }
+
+  function tick(dt){
+    state.t += dt;
+    if(state.mode==='map') mapTick(dt);
+    else battleTick(dt);
+    syncHUD();
+    render();
+  }
+
+  let lastTs = performance.now();
+  function loop(ts){
+    const dt = clamp((ts - lastTs)/1000, 0, 0.05);
+    lastTs = ts;
+    lastDt = dt;
+    lastDtMs = dt*1000;
+    tick(dt);
+    requestAnimationFrame(loop);
+  }
+
+  // start
+  restartGame();
+  requestAnimationFrame(loop);
+
+})();
 </script>
 </body>
 </html>
+
