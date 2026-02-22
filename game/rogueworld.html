@@ -1660,6 +1660,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       alive = true;
       overlayDead.style.opacity = "0";
 
+      for(const k of Object.keys(bossCycle)) bossCycle[k] = false;
+      sigilsCollected = 0;
       // clear entities
       clearEntities();
       lastRegionBannerKey = "";
@@ -1690,7 +1692,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           abil: me.abil,
           cds: { fireboltCd: me.fireboltCd, lifeGripT: me.lifeGripT, meteorT: me.meteorT },
           lastHitAt: me.lastHitAt
-        }
+        },
+        sigilsCollected,
+        bossCycle
       };
       try{
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1735,6 +1739,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         me.lifeGripT  = +(p.cds?.lifeGripT||0);
         me.meteorT    = +(p.cds?.meteorT||0);
         me.lastHitAt = +(p.lastHitAt ?? -999);
+
+        sigilsCollected = +(data.sigilsCollected||0);
+        for(const k of Object.keys(bossCycle)) bossCycle[k] = !!(data.bossCycle && data.bossCycle[k]);
 
         alive = true;
         overlayDead.style.opacity = "0";
@@ -1785,9 +1792,22 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     const ALIEN_BOSS_SPAWN_MIN = 240; // seconds in alien region
     const ALIEN_BOSS_SPAWN_MAX = 360;
+    const REGION_BOSS_SPAWN_MIN = 85;
+    const REGION_BOSS_SPAWN_MAX = 130;
     let alienRegionClock = 0;
     let alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
     let alienBoss = null;
+    let regionBoss = null;
+    let titanBoss = null;
+    let sigilsCollected = 0;
+    const bossCycle = { desert:false, forest:false, snow:false, alien:false, hell:false };
+    const regionBossClock = { desert:0, forest:0, snow:0, hell:0 };
+    const regionBossSpawnAt = {
+      desert: REGION_BOSS_SPAWN_MIN + Math.random()*(REGION_BOSS_SPAWN_MAX-REGION_BOSS_SPAWN_MIN),
+      forest: REGION_BOSS_SPAWN_MIN + Math.random()*(REGION_BOSS_SPAWN_MAX-REGION_BOSS_SPAWN_MIN),
+      snow: REGION_BOSS_SPAWN_MIN + Math.random()*(REGION_BOSS_SPAWN_MAX-REGION_BOSS_SPAWN_MIN),
+      hell: REGION_BOSS_SPAWN_MIN + Math.random()*(REGION_BOSS_SPAWN_MAX-REGION_BOSS_SPAWN_MIN),
+    };
 
     let nextEnemyId = 1;
 
@@ -1799,12 +1819,22 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(alienBoss?.mesh) world.remove(alienBoss.mesh);
       if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ world.remove(l); } }
       if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); } }
+      clearBossFx(regionBoss);
+      clearBossFx(titanBoss);
+      if(regionBoss?.mesh) world.remove(regionBoss.mesh);
+      if(titanBoss?.mesh) world.remove(titanBoss.mesh);
       for(const f of floatingTexts) f.el.remove();
       floatingTexts.length = 0;
       enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0;
       alienBoss = null;
+      regionBoss = null;
+      titanBoss = null;
       alienRegionClock = 0;
       alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
+      for(const k of Object.keys(regionBossClock)){
+        regionBossClock[k] = 0;
+        regionBossSpawnAt[k] = REGION_BOSS_SPAWN_MIN + Math.random()*(REGION_BOSS_SPAWN_MAX-REGION_BOSS_SPAWN_MIN);
+      }
     }
 
     function spawnAlienBoss(){
@@ -1895,6 +1925,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         world.remove(alienBoss.mesh);
         alienBoss = null;
         dropBossRewards(boss);
+        awardBossSigil("alien", boss.mesh.position.x, boss.mesh.position.z);
         const xpGain = Math.round((220 + me.level*34) * dangerBandAt(me.x, me.z).xpMul);
         gainXp(xpGain);
         spawnFloatingText(`+${xpGain} XP`, boss.mesh.position.x, boss.mesh.position.y+2.2, boss.mesh.position.z, "#86efac");
@@ -1902,6 +1933,115 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
         showToast("✨ Alien mothership destroyed. Massive loot dropped!");
       }
+    }
+
+    function spawnSigilDrop(x, z, regionId){
+      const y = heightAt(x, z, regionId) + 0.55;
+      const m = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.34, 0),
+        new THREE.MeshStandardMaterial({ color:0xfef08a, emissive:0xfef08a, emissiveIntensity:1.35, roughness:0.2, metalness:0.05 })
+      );
+      m.position.set(x, y, z);
+      world.add(m);
+      drops.push({ x, y, z, mesh:m, mat:"sigil", spin:Math.random()*10, pull:0, qty:1, regionId });
+    }
+
+    function awardBossSigil(regionId, x, z){
+      if(bossCycle[regionId]) return;
+      bossCycle[regionId] = true;
+      sigilsCollected = Object.values(bossCycle).filter(Boolean).length;
+      spawnSigilDrop(x, z, regionId);
+      showToast(`🔱 ${regionId.toUpperCase()} sigil shard dropped! (${sigilsCollected}/5)`);
+      if(sigilsCollected >= 5) showToast("🗿 All sigils gathered. The Infinity Titan stirs...");
+    }
+
+    function regionBossStyle(regionId){
+      if(regionId==="desert") return { name:"Dune Leviathan", color:0xfbbf24, emissive:0x92400e, hp:920, speed:4.9 };
+      if(regionId==="forest") return { name:"Sporefather", color:0x4ade80, emissive:0x14532d, hp:980, speed:4.4 };
+      if(regionId==="snow") return { name:"Aurora Wraith", color:0x93c5fd, emissive:0x1e3a8a, hp:940, speed:5.2 };
+      return { name:"Infernal Forge-King", color:0xff5a36, emissive:0x7f1d1d, hp:1060, speed:5.0 };
+    }
+
+    function spawnRegionBoss(regionId){
+      if(regionBoss || bossCycle[regionId]) return;
+      const st = regionBossStyle(regionId);
+      const ang = Math.random()*Math.PI*2;
+      const d = 22 + Math.random()*10;
+      const x = me.x + Math.cos(ang)*d;
+      const z = me.z + Math.sin(ang)*d;
+      const y = heightAt(x,z,regionId) + 1.45;
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14), new THREE.MeshStandardMaterial({ color:st.color, emissive:st.emissive, emissiveIntensity:0.8, roughness:0.45 }));
+      body.scale.set(1.35,0.95,1.35);
+      const crown = new THREE.Mesh(new THREE.TorusGeometry(1.5,0.15,12,24), new THREE.MeshBasicMaterial({ color:st.color, transparent:true, opacity:0.55 }));
+      crown.rotation.x = Math.PI/2;
+      g.add(body, crown);
+      g.position.set(x,y,z);
+      world.add(g);
+      const hpMul = dangerBandAt(x,z).hpMul;
+      regionBoss = { type:"regionBoss", regionId, name:st.name, mesh:g, hp:Math.round(st.hp*hpMul), maxHp:Math.round(st.hp*hpMul), speed:st.speed, t:0, cdA:0, cdB:0, cdC:0, trails:[], telegraphs:[], ribbons:[], sigils:[], anvils:[], burst:[] };
+      showToast(`👑 ${st.name} emerges in ${regionId}!`);
+    }
+
+    function spawnTitanBoss(){
+      if(titanBoss || sigilsCollected<5) return;
+      const x = 0, z = 0, y = heightAt(0,0,regionAt(0,0).id) + 4.6;
+      const g = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6,0), new THREE.MeshStandardMaterial({ color:0xb4befe, emissive:0x7c3aed, emissiveIntensity:0.9, roughness:0.35, metalness:0.3 }));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(3.4,0.22,14,32), new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.55 }));
+      ring.rotation.x = Math.PI/2;
+      g.add(core, ring); g.position.set(x,y,z); world.add(g);
+      titanBoss = { type:"titan", mesh:g, hp:Math.round(3600 + me.level*80), maxHp:Math.round(3600 + me.level*80), coreCd:0.5, quakeCd:6.5, starCd:9.5, quakeTele:0, starPlan:null, lastSpecial:0 };
+      showToast("🗿 Infinity Titan has spawned at the world center!");
+    }
+
+    function clearBossFx(b){
+      if(!b) return;
+      for(const t of (b.trails||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const t of (b.telegraphs||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const t of (b.ribbons||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const t of (b.sigils||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const t of (b.anvils||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(const t of (b.burst||[])){ if(t.mesh) world.remove(t.mesh); }
+    }
+
+    function killRegionBoss(){
+      if(!regionBoss) return;
+      const b = regionBoss;
+      clearBossFx(b);
+      world.remove(b.mesh);
+      dropBossRewards(b);
+      awardBossSigil(b.regionId, b.mesh.position.x, b.mesh.position.z);
+      const xpGain = Math.round((180 + me.level*24) * dangerBandAt(me.x, me.z).xpMul);
+      gainXp(xpGain);
+      regionBoss = null;
+      showToast(`✨ ${b.name} defeated.`);
+    }
+
+    function killTitanBoss(){
+      if(!titanBoss) return;
+      const b = titanBoss;
+      clearBossFx(b);
+      world.remove(b.mesh);
+      titanBoss = null;
+      me.mats.iron += 80; me.mats.hide += 70; me.mats.essence += 75; me.mats.crystal += 70; me.mats.ember += 90;
+      const xpGain = Math.round((800 + me.level*80) * dangerBandAt(me.x, me.z).xpMul);
+      gainXp(xpGain);
+      for(const k of Object.keys(bossCycle)) bossCycle[k] = false;
+      sigilsCollected = 0;
+      showToast("🌌 Infinity Titan shattered! Massive resources gained. Sigils reset.");
+    }
+
+    function damageRegionBoss(dmg){
+      if(!regionBoss) return;
+      regionBoss.hp -= dmg;
+      if(regionBoss.hp <= 0) killRegionBoss();
+    }
+
+    function damageTitanBoss(dmg){
+      if(!titanBoss) return;
+      titanBoss.hp -= dmg;
+      if(titanBoss.hp <= 0) killTitanBoss();
     }
 
     function makeHealthBar(){
@@ -3264,7 +3404,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       hide:   0xf59e0b,
       essence:0x22c55e,
       crystal:0xff3ad7,
-      ember:  0xff3b1a
+      ember:  0xff3b1a,
+      sigil:  0xfef08a
     };
 
     function dropFromEnemy(e){
@@ -3325,8 +3466,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
         if(d2 < 1.7*1.7){
           const qty = d.qty || 1;
-          me.mats[d.mat] = (me.mats[d.mat]||0) + qty;
-          showToast(`+${qty} ${d.mat}`);
+          if(d.mat === "sigil"){
+            showToast(`🔱 Sigil shard secured (${sigilsCollected}/5)`);
+          }else{
+            me.mats[d.mat] = (me.mats[d.mat]||0) + qty;
+            showToast(`+${qty} ${d.mat}`);
+          }
           world.remove(d.mesh);
           drops.splice(i,1);
         }
@@ -4581,9 +4726,23 @@ e.mesh.userData.anim?.(e, dt, now);
         const d2 = (bx-p.x)*(bx-p.x)+(bz-p.z)*(bz-p.z)+(by-p.y)*(by-p.y);
         if(d2 < (p.rad+3.4)*(p.rad+3.4)) hit = alienBoss;
       }
+      if(!hit && regionBoss && regionBoss.hp>0){
+        const bx=regionBoss.mesh.position.x, bz=regionBoss.mesh.position.z, by=regionBoss.mesh.position.y;
+        const d2 = (bx-p.x)*(bx-p.x)+(bz-p.z)*(bz-p.z)+(by-p.y)*(by-p.y);
+        if(d2 < (p.rad+2.2)*(p.rad+2.2)) hit = regionBoss;
+      }
+      if(!hit && titanBoss && titanBoss.hp>0){
+        const bx=titanBoss.mesh.position.x, bz=titanBoss.mesh.position.z, by=titanBoss.mesh.position.y;
+        const d2 = (bx-p.x)*(bx-p.x)+(bz-p.z)*(bz-p.z)+(by-p.y)*(by-p.y);
+        if(d2 < (p.rad+3.0)*(p.rad+3.0)) hit = titanBoss;
+      }
       if(hit){
         if(hit===alienBoss){
           damageAlienBoss(p.dmg);
+        }else if(hit===regionBoss){
+          damageRegionBoss(p.dmg);
+        }else if(hit===titanBoss){
+          damageTitanBoss(p.dmg);
         }else{
           if(p.hitIds) p.hitIds.add(hit.id);
           dealDamageEnemy(hit, p.dmg);
@@ -4593,7 +4752,7 @@ e.mesh.userData.anim?.(e, dt, now);
           explodeAt(p.x,p.y,p.z, p.aoe||2.4, p.dmg*0.75, "player");
         }
 
-        if(hit!==alienBoss){
+        if(hit!==alienBoss && hit!==regionBoss && hit!==titanBoss){
           applyBoltEffects(hit, p);
 
           if(p.chainBounces>0){
@@ -4906,13 +5065,125 @@ e.mesh.userData.anim?.(e, dt, now);
       }
     }
 
+    function tickRegionBoss(dt){
+      if(!regionBoss || paused || !alive) return;
+      const b = regionBoss;
+      b.t += dt;
+      const bx=b.mesh.position.x, bz=b.mesh.position.z;
+      const dx=me.x-bx, dz=me.z-bz;
+      const dd=Math.hypot(dx,dz)||1;
+      const dirx=dx/dd, dirz=dz/dd;
+      b.mesh.position.x += dirx * b.speed * dt;
+      b.mesh.position.z += dirz * b.speed * dt;
+      b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,b.regionId)+1.45;
+      b.mesh.rotation.y = Math.atan2(dirx, dirz);
+
+      const outer = dangerBandAt(b.mesh.position.x,b.mesh.position.z).id === "outer";
+
+      b.cdA -= dt; b.cdB -= dt; b.cdC -= dt;
+      if(b.regionId==="desert"){
+        if(b.cdA<=0){
+          b.cdA = 1.0;
+          const tx = me.x + me.vx*0.35, tz = me.z + me.vz*0.35;
+          projectiles.push({ x:tx, y:heightAt(tx,tz,"desert")+0.2, z:tz, vx:0,vy:0,vz:0, life:6+(outer?2:0), rad:1.35, dmg:4.5, from:"enemy", kind:"hazard", mesh:new THREE.Mesh(new THREE.RingGeometry(0.3,1.0,18), new THREE.MeshBasicMaterial({color:0xf59e0b,transparent:true,opacity:0.32,side:THREE.DoubleSide})) });
+          const hz=projectiles[projectiles.length-1]; hz.mesh.rotation.x=-Math.PI/2; hz.mesh.position.set(tx,hz.y,tz); world.add(hz.mesh);
+        }
+        if(b.cdB<=0){
+          b.cdB = 3.0;
+          const lanes = outer ? 4 : 2 + (Math.random()*3|0);
+          for(let i=0;i<lanes;i++){
+            const ang = Math.atan2(me.z-b.mesh.position.z, me.x-b.mesh.position.x) + (i-(lanes-1)/2)*(outer?0.55:0.35);
+            const tx = b.mesh.position.x + Math.cos(ang)*6.5;
+            const tz = b.mesh.position.z + Math.sin(ang)*6.5;
+            const tele = makeMarker(0xfbbf24); tele.position.set(tx,heightAt(tx,tz,"desert")+0.06,tz); world.add(tele);
+            b.telegraphs.push({mesh:tele,t:0,delay:0.8,do:()=>{ explodeAt(tx,heightAt(tx,tz,"desert")+0.2,tz,2.3,12,"enemy"); }});
+          }
+        }
+        if(b.cdC<=0){ b.cdC=12.0; b.mesh.position.x -= dirx*9; b.mesh.position.z -= dirz*9; }
+      }else if(b.regionId==="forest"){
+        if(b.cdA<=0){ b.cdA=0.7; const tx=me.x+(Math.random()-0.5)*4.8, tz=me.z+(Math.random()-0.5)*4.8; const hy=heightAt(tx,tz,"forest")+0.2; const ring=makeTeleCircle(0x84cc16); ring.position.set(tx,hy,tz); ring.scale.set(0.65,0.65,0.65); world.add(ring); projectiles.push({mesh:ring,x:tx,y:hy,z:tz,vx:0,vy:0,vz:0,life:outer?6:4.8,rad:1.2,dmg:3.8,from:"enemy",kind:"hazard"}); }
+        if(b.cdB<=0){ b.cdB=7.0; const cx=b.mesh.position.x, cz=b.mesh.position.z; const pulse=makeTeleCircle(0x22c55e); pulse.position.set(cx,heightAt(cx,cz,"forest")+0.08,cz); world.add(pulse); b.burst.push({mesh:pulse,t:0,max:0.9,rad:7.2,dmg:13,slow:true}); }
+        if(b.cdC<=0){ b.cdC=10.0; for(let i=0;i<4+(Math.random()*2|0);i++){ const tx=me.x + me.vx*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const tz=me.z + me.vz*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const mk=makeMarker(0x65a30d); mk.position.set(tx,heightAt(tx,tz,"forest")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.9,do:()=>explodeAt(tx,heightAt(tx,tz,"forest")+0.1,tz,1.8,10,"enemy")}); } }
+      }else if(b.regionId==="snow"){
+        if(b.cdA<=0){ b.cdA=1.4; const ang=Math.random()*Math.PI*2; const x0=b.mesh.position.x+Math.cos(ang)*12, z0=b.mesh.position.z+Math.sin(ang)*12; const rib=new THREE.Mesh(new THREE.PlaneGeometry(18,1.2), new THREE.MeshBasicMaterial({color:0x93c5fd,transparent:true,opacity:0.28,side:THREE.DoubleSide,blending:THREE.AdditiveBlending})); rib.position.set(x0,heightAt(x0,z0,"snow")+1.0,z0); rib.rotation.y=ang+Math.PI/2; world.add(rib); b.ribbons.push({mesh:rib,ang,speed:outer?1.6:1.1,life:6}); }
+        if(b.cdB<=0){ b.cdB=6.0; const safe=(Math.random()*3)|0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3 + Math.random()*0.35; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const mk=makeTeleCircle(i===safe?0x22c55e:0x60a5fa); mk.position.set(tx,heightAt(tx,tz,"snow")+0.05,tz); mk.scale.set(i===safe?(outer?0.42:0.6):0.7,1,i===safe?(outer?0.42:0.6):0.7); world.add(mk); b.sigils.push({mesh:mk,t:0,delay:1.2,safe:i===safe,x:tx,z:tz}); } }
+        if(b.cdC<=0){ b.cdC=9.0; b.mesh.position.x = me.x + (Math.random()-0.5)*9; b.mesh.position.z = me.z + (Math.random()-0.5)*9; explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"snow")+0.2,b.mesh.position.z,2.4,12,"enemy"); }
+      }else if(b.regionId==="hell"){
+        if(b.cdA<=0){ b.cdA=2.5; const tx=me.x+me.vx*0.5, tz=me.z+me.vz*0.5; const mark=makeMarker(0xff3b1a); mark.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mark); b.telegraphs.push({mesh:mark,t:0,delay:0.5,do:()=>{ const dx=me.x-b.mesh.position.x, dz=me.z-b.mesh.position.z, d=Math.hypot(dx,dz)||1; b.mesh.position.x += dx/d*7.5; b.mesh.position.z += dz/d*7.5; if((me.x-b.mesh.position.x)**2+(me.z-b.mesh.position.z)**2<2.5*2.5) takeDamage(22,"Hammer Chase"); if(outer) explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"hell")+0.1,b.mesh.position.z,2.6,10,"enemy"); }}); }
+        if(b.cdB<=0){ b.cdB=6.0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const y=heightAt(tx,tz,"hell")+0.22; const an=makeTeleCircle(0xf97316); an.position.set(tx,y,tz); world.add(an); projectiles.push({mesh:an,x:tx,y,z:tz,vx:0,vy:0,vz:0,life:outer?9:7,rad:1.55,dmg:4.4,from:"enemy",kind:"hazard"}); } }
+        if(b.cdC<=0){ b.cdC=4.2; const tx=me.x-me.vx*0.35, tz=me.z-me.vz*0.35; const mk=makeMarker(0xff8a65); mk.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.5,do:()=>explodeAt(tx,heightAt(tx,tz,"hell")+0.12,tz,2.2,11,"enemy")}); }
+      }
+
+      for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t += dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.55*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
+      for(let i=b.ribbons.length-1;i>=0;i--){ const r=b.ribbons[i]; r.life -= dt; r.mesh.position.x += Math.cos(r.ang+Math.PI/2)*r.speed; r.mesh.position.z += Math.sin(r.ang+Math.PI/2)*r.speed; if((me.x-r.mesh.position.x)**2 + (me.z-r.mesh.position.z)**2 < 2.2*2.2){ me.slowT=Math.max(me.slowT,1.6); me.slowMul=Math.min(me.slowMul,0.58); takeDamage(6*dt,"Aurora Ribbon"); } if(r.life<=0){ world.remove(r.mesh); b.ribbons.splice(i,1);} }
+      for(let i=b.sigils.length-1;i>=0;i--){ const r=b.sigils[i]; r.t+=dt; if(r.t>=r.delay){ if(!r.safe && (me.x-r.x)**2 + (me.z-r.z)**2 < 2.3*2.3) takeDamage(17,"Sigil Collapse"); if(!r.safe) explodeAt(r.x,heightAt(r.x,r.z,b.regionId)+0.2,r.z,2.2,12,"enemy"); world.remove(r.mesh); b.sigils.splice(i,1);} }
+      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; r.mesh.scale.setScalar(1+t*5.4); if(t<1 && Math.abs(Math.hypot(me.x-b.mesh.position.x,me.z-b.mesh.position.z)-t*r.rad)<0.55){ takeDamage(r.dmg*dt*2.2,"Bloom Pulse"); if(r.slow) me.turnSlowT=Math.max(me.turnSlowT,1.2); } if(r.t>=r.max){ world.remove(r.mesh); b.burst.splice(i,1);} }
+    }
+
+    function tickTitanBoss(dt){
+      if(!titanBoss || paused || !alive) return;
+      const b=titanBoss;
+      b.coreCd -= dt; b.quakeCd -= dt; b.starCd -= dt; b.lastSpecial -= dt;
+      const bx=b.mesh.position.x, bz=b.mesh.position.z;
+      const dx=me.x-bx, dz=me.z-bz; const d=Math.hypot(dx,dz)||1;
+      b.mesh.rotation.y = Math.atan2(dx,dz);
+      if(d>9){ b.mesh.position.x += dx/d*2.1*dt; b.mesh.position.z += dz/d*2.1*dt; }
+      b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
+
+      if(b.coreCd<=0){
+        b.coreCd = 0.9 + Math.random()*0.3;
+        const shots = ((Math.random()*4|0)===0) ? 2 : 1;
+        for(let i=0;i<shots;i++){
+          const tx = me.x + me.vx*(0.25+i*0.12), tz = me.z + me.vz*(0.25+i*0.12);
+          spawnEnemyBolt({mesh:b.mesh,flying:true,dmg:16,type:"drone"}, tx, me.y, tz, { color:0xa78bfa, speed:30, rad:0.4, life:1.6 });
+        }
+      }
+
+      const canSpecial = b.lastSpecial<=0;
+      if(canSpecial && b.quakeCd<=0){
+        b.quakeCd = 7 + Math.random()*3;
+        b.lastSpecial = 2.0;
+        const ring=makeTeleCircle(0xc4b5fd); ring.position.set(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1,b.mesh.position.z); world.add(ring);
+        b.quakeTele = 0.85;
+        b.burst.push({mesh:ring,t:0,max:0.85,rad:15,dmg:22,thin:true,double: b.hp <= b.maxHp*0.5});
+      }else if(canSpecial && b.starCd<=0){
+        b.starCd = 12 + Math.random()*4;
+        b.lastSpecial = 2.0;
+        const steps = 6 + (Math.random()*3|0);
+        const dir = Math.random()<0.5 ? 1 : -1;
+        b.starPlan = { t:0, idx:0, steps, dir, baseX:me.x, baseZ:me.z };
+      }
+
+      if(b.starPlan){
+        b.starPlan.t += dt;
+        if(b.starPlan.idx < b.starPlan.steps && b.starPlan.t >= b.starPlan.idx*0.22){
+          const i=b.starPlan.idx++;
+          const a = i*0.72*b.starPlan.dir;
+          const r = 2.4 + i*1.25;
+          const tx = b.starPlan.baseX + Math.cos(a)*r;
+          const tz = b.starPlan.baseZ + Math.sin(a)*r;
+          const mk=makeMarker(0xe9d5ff); mk.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.05,tz); world.add(mk);
+          b.telegraphs.push({mesh:mk,t:0,delay:1.1+Math.random()*0.3,do:()=>{ explodeAt(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.2,tz,2.1,14,"enemy"); const hz=makeTeleCircle(0xc084fc); hz.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.08,tz); world.add(hz); projectiles.push({mesh:hz,x:tx,y:hz.position.y,z:tz,vx:0,vy:0,vz:0,life:1.2,rad:1.35,dmg:3.5,from:"enemy",kind:"hazard"}); }});
+        }
+        if(b.starPlan.idx>=b.starPlan.steps && b.starPlan.t > b.starPlan.steps*0.22 + 0.15){
+          const tx = me.x + me.vx*0.65, tz = me.z + me.vz*0.65;
+          const mk=makeMarker(0xf0abfc); mk.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.05,tz); world.add(mk);
+          b.telegraphs.push({mesh:mk,t:0,delay:1.0,do:()=>explodeAt(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.2,tz,2.4,17,"enemy")});
+          b.starPlan = null;
+        }
+      }
+
+      for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t+=dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.6*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
+      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; const rr=0.6 + t*r.rad; r.mesh.scale.setScalar(rr); if(Math.abs(Math.hypot(me.x-b.mesh.position.x, me.z-b.mesh.position.z)-rr)<0.85){ takeDamage(r.dmg*dt*2.4,"Stomp Quake"); } if(r.t>=r.max){ if(r.double){ r.double=false; r.t=0; r.max=0.55; r.rad=18; continue; } world.remove(r.mesh); b.burst.splice(i,1);} }
+    }
+
     // ============================================================
     // HUD update
     // ============================================================
     function fmtMats(){
       const m = me.mats;
       // compact quick view
-      return `Fe:${m.iron} Hi:${m.hide} Es:${m.essence} Cr:${m.crystal} Em:${m.ember}`;
+      return `Fe:${m.iron} Hi:${m.hide} Es:${m.essence} Cr:${m.crystal} Em:${m.ember} 🔱:${sigilsCollected}/5`;
     }
 
     let _hudAcc = 0;
@@ -4963,6 +5234,14 @@ function tickHUD(dt){
           spawnAlienBoss();
         }
       }
+
+      for(const k of Object.keys(regionBossClock)){
+        if(reg.id===k && !regionBoss && !bossCycle[k]){
+          regionBossClock[k] += dt;
+          if(regionBossClock[k] >= regionBossSpawnAt[k]) spawnRegionBoss(k);
+        }
+      }
+      if(!titanBoss && sigilsCollected>=5) spawnTitanBoss();
 
       spawnCooldown -= dt;
 
@@ -5048,6 +5327,8 @@ function tickHUD(dt){
         tickPlayerRegen(dt, now*0.001);
         tickEnemies(dt, now);
         tickAlienBoss(dt);
+        tickRegionBoss(dt);
+        tickTitanBoss(dt);
         tickPlayerFire(dt);
         tickWaves(dt);
         tickProjectiles(dt);
