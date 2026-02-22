@@ -48,22 +48,6 @@
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
 
-    #minimapWrap{
-      position:absolute;
-      left:12px;
-      top:60px;
-      width:158px;
-      height:158px;
-      border-radius:14px;
-      border:2px solid rgba(148,163,184,.65);
-      background:rgba(3,7,18,.72);
-      overflow:hidden;
-      box-shadow:0 10px 24px rgba(0,0,0,.42);
-      pointer-events:none;
-      z-index:6;
-    }
-    #minimap{ width:100%; height:100%; display:block; }
-
     #regionBanner{
       position:absolute;
       left:50%;
@@ -401,7 +385,6 @@
     <div id="toast"></div>
     <div id="regionBanner"></div>
     <div id="fxLayer"></div>
-    <div id="minimapWrap"><canvas id="minimap" width="158" height="158"></canvas></div>
 
     <div class="topBtns">
       <button id="loadBtn" class="btn secondary" type="button">⬆ Load</button>
@@ -598,8 +581,6 @@
     const bossHealthFill = $("bossHealthFill");
     const regionBanner = $("regionBanner");
     const fxLayer = $("fxLayer");
-    const minimap = $("minimap");
-    const minimapCtx = minimap?.getContext?.("2d");
 
     const modalShade = $("modalShade");
     const modal = $("modal");
@@ -1408,6 +1389,9 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
 
         const boardLocal = { x:0, z:0, r:5.8 };
         cityPlazas.push({ x:wx+boardLocal.x, z:wz+boardLocal.z, r:boardLocal.r, chunkKey:key });
+        if(!cityBoards.some(cb=>Math.floor(cb.x/CHUNK)===cx && Math.floor(cb.z/CHUNK)===cz)){
+          cityBoards.push({ x:wx+boardLocal.x, z:wz+boardLocal.z, regionId:reg.id, mesh:null, beacon:null });
+        }
 
         const towerCount = Math.max(10, baseCount(prop.tower||16));
         const towerGeo = GEO.tower;
@@ -1601,7 +1585,6 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             const z = Math.sin(angle)*radius;
             const reg = regionAt(x,z);
             forges.push({ x, z, regionId: reg.id, mesh:null });
-            if(reg.id==="city") cityBoards.push({ x:x, z:z, regionId:reg.id, mesh:null, beacon:null });
           }
         }
       }
@@ -1737,11 +1720,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const g = new THREE.Group();
       const wall = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 0.28), new THREE.MeshStandardMaterial({ color:0x1f2937, roughness:0.92, metalness:0.08 }));
       wall.position.set(0,1.35,-0.22);
-      const boardMat = new THREE.MeshStandardMaterial({ color:0x6f4c30, roughness:0.84, metalness:0.02 });
+      const boardMat = new THREE.MeshStandardMaterial({ color:0x7c3aed, roughness:0.52, metalness:0.05, emissive:0x4c1d95, emissiveIntensity:0.28 });
       const board = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.45, 0.12), boardMat); board.position.set(0,1.35,0);
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(2.36,1.62,0.08), new THREE.MeshStandardMaterial({ color:0x3f2b1f, roughness:0.78, metalness:0.03 }));
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(2.36,1.62,0.08), new THREE.MeshStandardMaterial({ color:0x1e1b4b, roughness:0.56, metalness:0.08, emissive:0x312e81, emissiveIntensity:0.22 }));
       frame.position.set(0,1.35,0.02);
-      const writing = new THREE.Mesh(new THREE.PlaneGeometry(1.95,1.18), new THREE.MeshBasicMaterial({ color:0xf8fafc, transparent:true, opacity:0.85 }));
+      const writing = new THREE.Mesh(new THREE.PlaneGeometry(1.95,1.18), new THREE.MeshBasicMaterial({ color:0xe0e7ff, transparent:true, opacity:0.92 }));
       writing.position.set(0,1.37,0.07);
       const postL = new THREE.Mesh(GEO.boardPost, MAT.board); postL.position.set(-1.08,0.8,-0.18);
       const postR = new THREE.Mesh(GEO.boardPost, MAT.board); postR.position.set(1.08,0.8,-0.18);
@@ -1757,8 +1740,6 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function tickCityBoards(now){
       const t = now*0.001;
       for(const b of cityBoards){
-        const c = cityChunkCenter(b.x, b.z);
-        b.x = c.x; b.z = c.z;
         const d2 = dist2(me.x, me.z, b.x, b.z);
         const active = d2 < (FORGE_ACTIVE_DIST2*0.75);
         if(active && !b.mesh){
@@ -1771,7 +1752,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           const soldierCount = 3 + (upg.squads||0)*2;
           for(let i=0;i<soldierCount;i++){
             const a = (i/Math.max(1,soldierCount))*Math.PI*2;
-            spawnCitySoldier(b.x + Math.cos(a)*4.2, b.z + Math.sin(a)*4.2, chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)), i>=3);
+            spawnCitySoldier(b.x + Math.cos(a)*4.2, b.z + Math.sin(a)*4.2, chunkKey(Math.floor(b.x/CHUNK), Math.floor(b.z/CHUNK)), false);
           }
           const tCount = Math.min(4, upg.turrets||0);
           for(let i=0;i<tCount;i++){
@@ -6231,7 +6212,8 @@ e.mesh.userData.anim?.(e, dt, now);
         let nx = s.x + steered.x*speed*dt;
         let nz = s.z + steered.z*speed*dt;
         if(pointBlockedByCityTower(nx,nz,0.75)){ nx = s.x; nz = s.z; }
-        if(!s.followPlayer && dist2(nx,nz,s.homeX,s.homeZ) > 16*16){ nx = s.homeX; nz = s.homeZ; }
+        if(regionAt(nx,nz).id!=="city"){ nx = s.homeX; nz = s.homeZ; }
+        if(dist2(nx,nz,s.homeX,s.homeZ) > 12*12){ nx = s.homeX; nz = s.homeZ; }
         s.x = nx; s.z = nz;
         s.mesh.position.set(s.x, heightAt(s.x,s.z,"city"), s.z);
         s.mesh.lookAt(tx, s.mesh.position.y+1.0, tz);
@@ -6243,6 +6225,21 @@ e.mesh.userData.anim?.(e, dt, now);
           projectiles.push({ mesh:line, kind:"fxLine", life:0.08, x:s.x, y:muzzleY, z:s.z, vx:0, vy:0, vz:0, from:"soldier" });
           dealDamageEnemy(target, 8 + me.level*0.35, { noRewards:true });
         }
+
+        let incoming = 0;
+        for(const e of enemies){
+          if(e.hp<=0) continue;
+          if(regionAt(e.mesh.position.x,e.mesh.position.z).id!=="city") continue;
+          const ed2 = dist2(s.x,s.z,e.mesh.position.x,e.mesh.position.z);
+          if(ed2 < 2.2*2.2) incoming += (e.dmg||8) * dt * 0.55;
+        }
+        if(incoming>0) s.hp -= incoming;
+      }
+      for(let i=citySoldiers.length-1;i>=0;i--){
+        const s = citySoldiers[i];
+        if(s.hp>0) continue;
+        if(s.mesh) world.remove(s.mesh);
+        citySoldiers.splice(i,1);
       }
     }
 
@@ -7151,35 +7148,7 @@ function tickHUD(dt){
   const canUseBoard = !!(nb && nb.d <= 3.4 && phase==="play" && uiMode==="none");
   mobileInteract.style.display = (mobile.enabled && (canUseForge || canUseBoard)) ? "block" : "none";
   mobileInteract.textContent = canUseBoard ? "📜 Use Quest Board" : "⚒️ Interact";
-  drawMinimap();
 }
-    function drawMinimap(){
-      if(!minimapCtx) return;
-      const c = minimapCtx;
-      const w=minimap.width,h=minimap.height;
-      c.clearRect(0,0,w,h);
-      c.fillStyle='rgba(2,6,23,0.85)'; c.fillRect(0,0,w,h);
-      const scale = 0.14;
-      const cx=w*0.5, cy=h*0.5;
-      const regionColors={desert:'#d6a86e',forest:'#2f855a',snow:'#cfe8ff',alien:'#67e8f9',hell:'#b91c1c',city:'#64748b'};
-      for(let i=0;i<REGIONS.length;i++){
-        const a0=(i/REGIONS.length)*Math.PI*2 + me.yaw;
-        const a1=((i+1)/REGIONS.length)*Math.PI*2 + me.yaw;
-        c.beginPath(); c.moveTo(cx,cy); c.arc(cx,cy,70,a0,a1); c.closePath(); c.fillStyle=regionColors[REGIONS[i].id]||'#334155'; c.globalAlpha=0.28; c.fill(); c.globalAlpha=1;
-      }
-      for(const b of cityBoards.slice(0,24)){
-        const dx=(b.x-me.x)*scale, dz=(b.z-me.z)*scale;
-        if(Math.abs(dx)>76||Math.abs(dz)>76) continue;
-        const key=cityKeyFromBoard(b);
-        c.fillStyle = me.cityLeader[key] ? '#22c55e' : '#60a5fa';
-        c.fillRect(cx+dx-2, cy+dz-2, 4, 4);
-      }
-      c.fillStyle='#f8fafc'; c.beginPath(); c.arc(cx,cy,3,0,Math.PI*2); c.fill();
-      c.strokeStyle='#f8fafc'; c.beginPath(); c.moveTo(cx,cy); c.lineTo(cx+Math.cos(me.yaw)*10, cy+Math.sin(me.yaw)*10); c.stroke();
-      const lm=REGION_LANDMARKS[regionAt(me.x,me.z).id];
-      c.fillStyle='rgba(255,255,255,0.85)'; c.font='10px system-ui'; c.fillText(lm?`Landmark: ${lm.name}`:'',6,h-8);
-    }
-
     // ============================================================
     // Spawn pacing
     // ============================================================
