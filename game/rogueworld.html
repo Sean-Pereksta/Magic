@@ -554,6 +554,9 @@
     const CHUNK = 64;
     const CHUNK_R = 1; // render radius in chunks (3x3 = 9 chunks)
     const ENEMY_CAP_BASE = 18;
+    // Cleanup range for stale entities that are well beyond the practical vision/play space.
+    const FAR_ENEMY_DESPAWN_DIST = CHUNK * (CHUNK_R + 3.5);
+    const FAR_DROP_DESPAWN_DIST  = CHUNK * (CHUNK_R + 4.0);
 
     // ============================================================
     // UI refs
@@ -4159,6 +4162,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     }
 
     function pickupDrops(dt){
+      const farDropDespawn2 = FAR_DROP_DESPAWN_DIST * FAR_DROP_DESPAWN_DIST;
       for(let i=drops.length-1;i>=0;i--){
         const d = drops[i];
         d.spin += dt*3.2;
@@ -4169,6 +4173,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         const dz = me.z - d.mesh.position.z;
         const dy = me.y - d.mesh.position.y;
         const d2 = dx*dx+dz*dz+dy*dy;
+
+        // prune old drops that are far beyond what the player can reasonably return to see
+        if(d2 > farDropDespawn2){
+          world.remove(d.mesh);
+          drops.splice(i,1);
+          continue;
+        }
+
         if(d2 < 5.2*5.2){
           const dd = Math.sqrt(d2)||1;
           const pull = clamp((5.2-dd)/5.2, 0, 1);
@@ -4922,9 +4934,23 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       // soft separation to prevent clumping
       const sepR = 2.5;
       const sepR2 = sepR*sepR;
+      const farEnemyDespawn2 = FAR_ENEMY_DESPAWN_DIST * FAR_ENEMY_DESPAWN_DIST;
 
       for(const e of enemies){
         if(e.hp<=0) continue;
+
+        // If an enemy is well outside the playable visual envelope, despawn silently.
+        const awayX = me.x - e.mesh.position.x;
+        const awayZ = me.z - e.mesh.position.z;
+        if((awayX*awayX + awayZ*awayZ) > farEnemyDespawn2){
+          e.hp = 0;
+          if(e.tele?.marker){ world.remove(e.tele.marker); }
+          if(e.tele?.ring){ world.remove(e.tele.ring); }
+          if(e.data?.chargeState?.line){ world.remove(e.data.chargeState.line); }
+          e.tele = null;
+          e.data.chargeState = null;
+          continue;
+        }
 
         // update base ground y and flight bob
         const reg = regionAt(e.mesh.position.x, e.mesh.position.z);
