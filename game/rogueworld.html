@@ -728,8 +728,104 @@ const FX_TEX = {
     g.fillStyle=grad;
     g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fill();
   }, 256),
+  runeRing: makeCanvasTexture((g,n)=>{
+    g.clearRect(0,0,n,n);
+    const cx=n/2, cy=n/2;
+    g.strokeStyle = "rgba(255,255,255,0.9)";
+    g.lineWidth = n*0.028;
+    g.beginPath(); g.arc(cx,cy,n*0.36,0,Math.PI*2); g.stroke();
+    g.lineWidth = n*0.012;
+    g.strokeStyle = "rgba(255,255,255,0.7)";
+    g.beginPath(); g.arc(cx,cy,n*0.43,0,Math.PI*2); g.stroke();
+    for(let i=0;i<20;i++){
+      const a = (i/20)*Math.PI*2;
+      const r0 = n*0.30, r1=n*0.46;
+      g.strokeStyle = `rgba(255,255,255,${0.3 + (i%2)*0.35})`;
+      g.lineWidth = n*0.008;
+      g.beginPath();
+      g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
+      g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
+      g.stroke();
+    }
+  }, 256),
+  crack: makeCanvasTexture((g,n)=>{
+    g.clearRect(0,0,n,n);
+    g.strokeStyle = "rgba(255,255,255,0.95)";
+    g.lineCap = "round";
+    g.lineWidth = n*0.045;
+    g.beginPath();
+    g.moveTo(n*0.08,n*0.48);
+    for(let i=1;i<=7;i++){
+      const x = n*(0.08 + i*0.12);
+      const y = n*(0.52 + Math.sin(i*1.45)*0.2);
+      g.lineTo(x,y);
+    }
+    g.stroke();
+  }, 256),
 };
 
+const BOSS_FX_POOL = {
+  spark: [],
+  glow: [],
+  ring: [],
+};
+
+function takeBossFx(type, createFn){
+  const m = BOSS_FX_POOL[type]?.pop() || createFn();
+  m.visible = true;
+  return m;
+}
+
+function releaseBossFx(type, mesh){
+  if(!mesh) return;
+  mesh.visible = false;
+  if(mesh.parent) mesh.parent.remove(mesh);
+  if(mesh.material){
+    if(Array.isArray(mesh.material)) mesh.material.forEach(mm=>{ if(mm.opacity!=null) mm.opacity = mm.userData?.baseOpacity ?? mm.opacity; });
+    else if(mesh.material.opacity!=null) mesh.material.opacity = mesh.material.userData?.baseOpacity ?? mesh.material.opacity;
+  }
+  BOSS_FX_POOL[type]?.push(mesh);
+}
+
+
+
+function makeBossFxSprite(tex=FX_TEX.softGlow, color=0xffffff, size=1, opacity=0.6){
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, color, transparent:true, opacity,
+    depthWrite:false, blending:THREE.AdditiveBlending
+  }));
+  sp.scale.set(size,size,1);
+  sp.material.userData = { baseOpacity: opacity };
+  return sp;
+}
+
+function spawnBossFxSparkBurst(x,y,z,color=0xffffff,count=8,speed=5,life=0.7){
+  for(let i=0;i<count;i++){
+    const a = (i/count)*Math.PI*2 + Math.random()*0.25;
+    const v = speed*(0.65+Math.random()*0.6);
+    const s = takeBossFx('spark', ()=>makeBossFxSprite(FX_TEX.spark,color,0.45,0.85));
+    s.material.color.setHex(color);
+    s.material.opacity = 0.85;
+    s.position.set(x,y + 0.08 + Math.random()*0.2,z);
+    world.add(s);
+    projectiles.push({ mesh:s, kind:'bossFx', fxType:'spark', x:s.position.x, y:s.position.y, z:s.position.z, vx:Math.cos(a)*v, vy:1.0+Math.random()*1.6, vz:Math.sin(a)*v, drag:0.88, life:life*(0.8+Math.random()*0.4), grav:7.5 });
+  }
+}
+
+function spawnBossFxRing(x,y,z,color=0xffffff,life=0.55,maxScale=3.6,kind='shockwave'){
+  const ring = takeBossFx('ring', ()=> new THREE.Mesh(
+    new THREE.RingGeometry(0.35,1.0,30),
+    new THREE.MeshBasicMaterial({ map:FX_TEX.runeRing, color, transparent:true, opacity:0.7, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending })
+  ));
+  ring.material.color.setHex(color);
+  ring.material.opacity = 0.75;
+  ring.rotation.x = -Math.PI/2;
+  ring.position.set(x,y,z);
+  ring.scale.setScalar(0.72);
+  world.add(ring);
+  projectiles.push({ mesh:ring, kind, fxType:'ring', from:'fx', x,y,z, vx:0,vy:0,vz:0, life, maxLife:life, maxScale });
+  return ring;
+}
 function glowSprite(color=0xffffff, size=0.6, opacity=0.85, tex=FX_TEX.softGlow){
   const m = new THREE.SpriteMaterial({
     map: tex,
@@ -2197,7 +2293,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const t of turrets) world.remove(t.mesh);
       if(alienBoss?.mesh) world.remove(alienBoss.mesh);
       if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ world.remove(l); } }
-      if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); } }
+      if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); if(t.comet) world.remove(t.comet); } }
       clearBossFx(regionBoss);
       clearBossFx(titanBoss);
       if(regionBoss?.mesh) world.remove(regionBoss.mesh);
@@ -2283,7 +2379,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       alienBoss.hp -= dmg;
       if(alienBoss.hp <= 0){
         const boss = alienBoss;
-        for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); }
+        for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); if(t.comet) world.remove(t.comet); }
         for(const l of alienBoss.lasers){ world.remove(l); }
         world.remove(alienBoss.mesh);
         alienBoss = null;
@@ -2358,6 +2454,13 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const t of (b.sigils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.anvils||[])){ if(t.mesh) world.remove(t.mesh); }
       for(const t of (b.burst||[])){ if(t.mesh) world.remove(t.mesh); }
+      for(let i=projectiles.length-1;i>=0;i--){
+        const p = projectiles[i];
+        if(p.kind!=="bossFx" && p.kind!=="shockwave") continue;
+        if(p.mesh && p.mesh.parent) p.mesh.parent.remove(p.mesh);
+        if(p.fxType) releaseBossFx(p.fxType, p.mesh);
+        projectiles.splice(i,1);
+      }
     }
 
     function killRegionBoss(){
@@ -5064,8 +5167,36 @@ e.mesh.userData.anim?.(e, dt, now);
       continue;
     }
 
+    if(p.kind==="bossFx" || p.kind==="shockwave"){
+      p.x += (p.vx||0)*dt;
+      p.y += (p.vy||0)*dt;
+      p.z += (p.vz||0)*dt;
+      if(p.drag!=null){ p.vx *= p.drag; p.vz *= p.drag; }
+      if(p.grav) p.vy -= p.grav*dt;
+      p.mesh.position.set(p.x,p.y,p.z);
+      if(!p.mesh.isSprite){
+        const t = 1 - (p.life/Math.max(0.0001,p.maxLife||p.life||1));
+        if(p.maxScale) p.mesh.scale.setScalar(0.72 + t*p.maxScale);
+      }
+      if(p.mesh.material) p.mesh.material.opacity *= (p.kind==="shockwave" ? 0.9 : 0.88);
+      if(p.life<=0){
+        releaseBossFx(p.fxType || (p.mesh.isSprite ? 'spark':'ring'), p.mesh);
+        projectiles.splice(i,1);
+      }
+      continue;
+    }
+
     if(p.kind==="hazard"){
-      p.mesh.material.opacity *= 0.985;
+      if(p.mesh.material) p.mesh.material.opacity *= 0.985;
+      if(p.mesh.children?.length){
+        p.spin = (p.spin||0) + dt;
+        for(let ci=0;ci<p.mesh.children.length;ci++){
+          const ch = p.mesh.children[ci];
+          if(ch.material?.opacity!=null) ch.material.opacity *= 0.992;
+          if(ch.isSprite) ch.position.y += Math.sin(p.spin*2.4 + ci)*dt*0.03;
+          if(ch.geometry?.type==="RingGeometry") ch.rotation.z += dt*(ci===0?1.8:-1.4);
+        }
+      }
       const dd2 = (me.x-p.x)*(me.x-p.x)+(me.z-p.z)*(me.z-p.z);
       if(dd2 < (p.aoe||1.1)*(p.aoe||1.1)){
         takeDamage((p.dmg||1.5)*dt, "Hazard");
@@ -5385,10 +5516,12 @@ e.mesh.userData.anim?.(e, dt, now);
 
       const marker = new THREE.Mesh(
         new THREE.RingGeometry(0.95, 1.3, 28),
-        new THREE.MeshBasicMaterial({ color:0xff8ae9, transparent:true, opacity:0.55, side:THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ map:FX_TEX.runeRing, color:0xff8ae9, transparent:true, opacity:0.55, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending })
       );
       marker.rotation.x = -Math.PI/2;
       marker.position.set(tx, gy+0.06, tz);
+      const comet = makeBossFxSprite(FX_TEX.softGlow, 0x67e8f9, 0.9, 0.46);
+      comet.position.set(tx, gy+24.8, tz);
 
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: FX_TEX.softGlow,
@@ -5407,8 +5540,8 @@ e.mesh.userData.anim?.(e, dt, now);
       );
       rock.position.set(tx, gy+24, tz);
 
-      world.add(marker, glow, rock);
-      alienBoss.starTelegraphs.push({ marker, glow, rock, x:tx, z:tz, y:gy, t:0, delay:2.0, done:false });
+      world.add(marker, glow, rock, comet);
+      alienBoss.starTelegraphs.push({ marker, glow, rock, comet, x:tx, z:tz, y:gy, t:0, delay:2.0, done:false });
     }
 
     function tickAlienBoss(dt){
@@ -5439,13 +5572,17 @@ e.mesh.userData.anim?.(e, dt, now);
           b.spin = 0;
           b.starCd = 0;
           for(let i=0;i<4;i++){
-            const beam = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.18, 0.18, 62, 12),
-              new THREE.MeshBasicMaterial({ color:0xff4fe1, transparent:true, opacity:0.62 })
-            );
-            beam.rotation.z = Math.PI/2;
-            world.add(beam);
-            b.lasers.push(beam);
+            const grp = new THREE.Group();
+            const core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 62, 10), new THREE.MeshBasicMaterial({ color:0xff4fe1, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, depthWrite:false }));
+            core.rotation.z = Math.PI/2;
+            const auraA = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 62), new THREE.MeshBasicMaterial({ map:FX_TEX.softGlow, color:0xff8ae9, transparent:true, opacity:0.35, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false }));
+            const auraB = auraA.clone();
+            auraA.rotation.y = Math.PI*0.5;
+            auraB.rotation.y = 0;
+            grp.add(core, auraA, auraB);
+            grp.userData = { core, auraA, auraB, flick:Math.random()*10 };
+            world.add(grp);
+            b.lasers.push(grp);
           }
         }
       }else if(b.state==="laser"){
@@ -5458,7 +5595,14 @@ e.mesh.userData.anim?.(e, dt, now);
           const ang = spin + i*(Math.PI*0.5);
           beam.position.set(cx, centerY, cz);
           beam.rotation.y = ang;
-          beam.rotation.z = Math.PI/2;
+          const u = beam.userData;
+          if(u?.core){
+            u.core.material.opacity = 0.72 + 0.18*Math.sin(performance.now()*0.025 + u.flick + i);
+            u.auraA.rotation.z += dt*3.2;
+            u.auraB.rotation.z -= dt*2.8;
+            u.auraA.material.opacity = 0.26 + 0.16*Math.sin(performance.now()*0.018 + i);
+            u.auraB.material.opacity = 0.22 + 0.14*Math.cos(performance.now()*0.022 + i*0.9);
+          }
 
           const vx = Math.cos(ang), vz = Math.sin(ang);
           const toPx = me.x-cx, toPz = me.z-cz;
@@ -5487,6 +5631,7 @@ e.mesh.userData.anim?.(e, dt, now);
         t.rock.position.y = (t.y+24) - 24*p;
         t.rock.rotation.x += dt*4.0;
         t.rock.rotation.y += dt*5.2;
+        if(t.comet){ t.comet.position.set(t.x, t.rock.position.y+0.65, t.z); t.comet.material.opacity = 0.28 + (1-p)*0.34; }
         if(t.t >= t.delay && !t.done){
           t.done = true;
           const d2 = (me.x-t.x)*(me.x-t.x)+(me.z-t.z)*(me.z-t.z);
@@ -5494,9 +5639,18 @@ e.mesh.userData.anim?.(e, dt, now);
             takeDamage(18 * b.projectileDmgScale, "Starfall");
           }
           explodeAt(t.x, t.y+0.3, t.z, 2.3, 14 * b.projectileDmgScale, "enemy");
+          spawnBossFxRing(t.x, t.y+0.09, t.z, 0x9be7ff, 0.55, 4.2, "shockwave");
+          spawnBossFxSparkBurst(t.x, t.y+0.2, t.z, 0xff8ae9, 10, 6.2, 0.7);
+          const scorch = takeBossFx('glow', ()=>makeBossFxSprite(FX_TEX.softGlow,0x312e81,1.3,0.35));
+          scorch.material.color.setHex(0x312e81);
+          scorch.position.set(t.x,t.y+0.04,t.z);
+          scorch.material.rotation = Math.random()*Math.PI;
+          world.add(scorch);
+          projectiles.push({mesh:scorch,kind:'bossFx',fxType:'glow',x:t.x,y:t.y+0.04,z:t.z,vx:0,vy:0,vz:0,life:0.85,maxLife:0.85});
           world.remove(t.marker);
           world.remove(t.glow);
           world.remove(t.rock);
+          if(t.comet) world.remove(t.comet);
           b.starTelegraphs.splice(i,1);
         }
       }
@@ -5523,8 +5677,15 @@ e.mesh.userData.anim?.(e, dt, now);
         if(b.cdA<=0){
           b.cdA = 1.0;
           const tx = me.x + me.vx*0.35, tz = me.z + me.vz*0.35;
-          projectiles.push({ x:tx, y:heightAt(tx,tz,"desert")+0.2, z:tz, vx:0,vy:0,vz:0, life:6+(outer?2:0), rad:1.35, dmg:4.5, from:"enemy", kind:"hazard", mesh:new THREE.Mesh(new THREE.RingGeometry(0.3,1.0,18), new THREE.MeshBasicMaterial({color:0xf59e0b,transparent:true,opacity:0.32,side:THREE.DoubleSide})) });
-          const hz=projectiles[projectiles.length-1]; hz.mesh.rotation.x=-Math.PI/2; hz.mesh.position.set(tx,hz.y,tz); world.add(hz.mesh);
+          const whirl = new THREE.Group();
+          const baseRing = new THREE.Mesh(new THREE.RingGeometry(0.3,1.0,18), new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xf59e0b,transparent:true,opacity:0.34,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+          baseRing.rotation.x=-Math.PI/2;
+          const dustA = makeBossFxSprite(FX_TEX.softGlow, 0xfbbf24, 1.2, 0.22); dustA.position.y=0.18;
+          const dustB = makeBossFxSprite(FX_TEX.spark, 0xfde68a, 0.9, 0.16); dustB.position.y=0.26;
+          whirl.add(baseRing,dustA,dustB);
+          whirl.position.set(tx,heightAt(tx,tz,"desert")+0.2,tz);
+          world.add(whirl);
+          projectiles.push({ x:tx, y:whirl.position.y, z:tz, vx:0,vy:0,vz:0, life:6+(outer?2:0), rad:1.35, dmg:4.5, from:"enemy", kind:"hazard", mesh:whirl, spin:0 });
         }
         if(b.cdB<=0){
           b.cdB = 3.0;
@@ -5539,21 +5700,21 @@ e.mesh.userData.anim?.(e, dt, now);
         }
         if(b.cdC<=0){ b.cdC=12.0; b.mesh.position.x -= dirx*9; b.mesh.position.z -= dirz*9; }
       }else if(b.regionId==="forest"){
-        if(b.cdA<=0){ b.cdA=0.7; const tx=me.x+(Math.random()-0.5)*4.8, tz=me.z+(Math.random()-0.5)*4.8; const hy=heightAt(tx,tz,"forest")+0.2; const ring=makeTeleCircle(0x84cc16); ring.position.set(tx,hy,tz); ring.scale.set(0.65,0.65,0.65); world.add(ring); projectiles.push({mesh:ring,x:tx,y:hy,z:tz,vx:0,vy:0,vz:0,life:outer?6:4.8,rad:1.2,dmg:3.8,from:"enemy",kind:"hazard"}); }
+        if(b.cdA<=0){ b.cdA=0.7; const tx=me.x+(Math.random()-0.5)*4.8, tz=me.z+(Math.random()-0.5)*4.8; const hy=heightAt(tx,tz,"forest")+0.2; const cloud=new THREE.Group(); const fog = new THREE.Mesh(new THREE.RingGeometry(0.25,0.95,22), new THREE.MeshBasicMaterial({map:FX_TEX.softGlow,color:0x65a30d,transparent:true,opacity:0.32,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); fog.rotation.x=-Math.PI/2; cloud.add(fog); for(let j=0;j<4;j++){ const mote=makeBossFxSprite(FX_TEX.spark,0x86efac,0.28,0.45); mote.position.set((Math.random()-0.5)*0.8,0.2+Math.random()*0.35,(Math.random()-0.5)*0.8); cloud.add(mote);} cloud.position.set(tx,hy,tz); world.add(cloud); projectiles.push({mesh:cloud,x:tx,y:hy,z:tz,vx:0,vy:0,vz:0,life:outer?6:4.8,rad:1.2,dmg:3.8,from:"enemy",kind:"hazard"}); }
         if(b.cdB<=0){ b.cdB=7.0; const cx=b.mesh.position.x, cz=b.mesh.position.z; const pulse=makeTeleCircle(0x22c55e); pulse.position.set(cx,heightAt(cx,cz,"forest")+0.08,cz); world.add(pulse); b.burst.push({mesh:pulse,t:0,max:0.9,rad:7.2,dmg:13,slow:true}); }
         if(b.cdC<=0){ b.cdC=10.0; for(let i=0;i<4+(Math.random()*2|0);i++){ const tx=me.x + me.vx*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const tz=me.z + me.vz*(0.7+i*0.22) + (Math.random()-0.5)*2.2; const mk=makeMarker(0x65a30d); mk.position.set(tx,heightAt(tx,tz,"forest")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.9,do:()=>explodeAt(tx,heightAt(tx,tz,"forest")+0.1,tz,1.8,10,"enemy")}); } }
       }else if(b.regionId==="snow"){
-        if(b.cdA<=0){ b.cdA=1.4; const ang=Math.random()*Math.PI*2; const x0=b.mesh.position.x+Math.cos(ang)*12, z0=b.mesh.position.z+Math.sin(ang)*12; const rib=new THREE.Mesh(new THREE.PlaneGeometry(18,1.2), new THREE.MeshBasicMaterial({color:0x93c5fd,transparent:true,opacity:0.28,side:THREE.DoubleSide,blending:THREE.AdditiveBlending})); rib.position.set(x0,heightAt(x0,z0,"snow")+1.0,z0); rib.rotation.y=ang+Math.PI/2; world.add(rib); b.ribbons.push({mesh:rib,ang,speed:outer?1.6:1.1,life:6}); }
+        if(b.cdA<=0){ b.cdA=1.4; const ang=Math.random()*Math.PI*2; const x0=b.mesh.position.x+Math.cos(ang)*12, z0=b.mesh.position.z+Math.sin(ang)*12; const rib=new THREE.Mesh(new THREE.PlaneGeometry(18,1.2), new THREE.MeshBasicMaterial({color:0x93c5fd,transparent:true,opacity:0.28,side:THREE.DoubleSide,blending:THREE.AdditiveBlending})); rib.position.set(x0,heightAt(x0,z0,"snow")+1.0,z0); rib.rotation.y=ang+Math.PI/2; world.add(rib); b.ribbons.push({mesh:rib,ang,speed:outer?1.6:1.1,life:6,trail:0}); }
         if(b.cdB<=0){ b.cdB=6.0; const safe=(Math.random()*3)|0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3 + Math.random()*0.35; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const mk=makeTeleCircle(i===safe?0x22c55e:0x60a5fa); mk.position.set(tx,heightAt(tx,tz,"snow")+0.05,tz); mk.scale.set(i===safe?(outer?0.42:0.6):0.7,1,i===safe?(outer?0.42:0.6):0.7); world.add(mk); b.sigils.push({mesh:mk,t:0,delay:1.2,safe:i===safe,x:tx,z:tz}); } }
         if(b.cdC<=0){ b.cdC=9.0; b.mesh.position.x = me.x + (Math.random()-0.5)*9; b.mesh.position.z = me.z + (Math.random()-0.5)*9; explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"snow")+0.2,b.mesh.position.z,2.4,12,"enemy"); }
       }else if(b.regionId==="hell"){
         if(b.cdA<=0){ b.cdA=2.5; const tx=me.x+me.vx*0.5, tz=me.z+me.vz*0.5; const mark=makeMarker(0xff3b1a); mark.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mark); b.telegraphs.push({mesh:mark,t:0,delay:0.5,do:()=>{ const dx=me.x-b.mesh.position.x, dz=me.z-b.mesh.position.z, d=Math.hypot(dx,dz)||1; b.mesh.position.x += dx/d*7.5; b.mesh.position.z += dz/d*7.5; if((me.x-b.mesh.position.x)**2+(me.z-b.mesh.position.z)**2<2.5*2.5) takeDamage(22,"Hammer Chase"); if(outer) explodeAt(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,"hell")+0.1,b.mesh.position.z,2.6,10,"enemy"); }}); }
-        if(b.cdB<=0){ b.cdB=6.0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const y=heightAt(tx,tz,"hell")+0.22; const an=makeTeleCircle(0xf97316); an.position.set(tx,y,tz); world.add(an); projectiles.push({mesh:an,x:tx,y,z:tz,vx:0,vy:0,vz:0,life:outer?9:7,rad:1.55,dmg:4.4,from:"enemy",kind:"hazard"}); } }
+        if(b.cdB<=0){ b.cdB=6.0; for(let i=0;i<3;i++){ const a=i*Math.PI*2/3; const tx=me.x+Math.cos(a)*4.8, tz=me.z+Math.sin(a)*4.8; const y=heightAt(tx,tz,"hell")+0.22; const an=new THREE.Group(); const ring=makeTeleCircle(0xf97316); an.add(ring); const ember=makeBossFxSprite(FX_TEX.spark,0xff7a1a,0.62,0.4); ember.position.y=0.25; an.add(ember); an.position.set(tx,y,tz); world.add(an); projectiles.push({mesh:an,x:tx,y,z:tz,vx:0,vy:0,vz:0,life:outer?9:7,rad:1.55,dmg:4.4,from:"enemy",kind:"hazard"}); } }
         if(b.cdC<=0){ b.cdC=4.2; const tx=me.x-me.vx*0.35, tz=me.z-me.vz*0.35; const mk=makeMarker(0xff8a65); mk.position.set(tx,heightAt(tx,tz,"hell")+0.05,tz); world.add(mk); b.telegraphs.push({mesh:mk,t:0,delay:0.5,do:()=>explodeAt(tx,heightAt(tx,tz,"hell")+0.12,tz,2.2,11,"enemy")}); }
       }
 
       for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t += dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.55*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
-      for(let i=b.ribbons.length-1;i>=0;i--){ const r=b.ribbons[i]; r.life -= dt; r.mesh.position.x += Math.cos(r.ang+Math.PI/2)*r.speed; r.mesh.position.z += Math.sin(r.ang+Math.PI/2)*r.speed; if((me.x-r.mesh.position.x)**2 + (me.z-r.mesh.position.z)**2 < 2.2*2.2){ me.slowT=Math.max(me.slowT,1.6); me.slowMul=Math.min(me.slowMul,0.58); takeDamage(6*dt,"Aurora Ribbon"); } if(r.life<=0){ world.remove(r.mesh); b.ribbons.splice(i,1);} }
+      for(let i=b.ribbons.length-1;i>=0;i--){ const r=b.ribbons[i]; r.life -= dt; r.mesh.position.x += Math.cos(r.ang+Math.PI/2)*r.speed; r.mesh.position.z += Math.sin(r.ang+Math.PI/2)*r.speed; r.trail=(r.trail||0)-dt; if(r.trail<=0){ r.trail=0.08; const tr=takeBossFx('spark', ()=>makeBossFxSprite(FX_TEX.softGlow,0x93c5fd,0.35,0.38)); tr.material.color.setHex(0x93c5fd); tr.position.set(r.mesh.position.x, r.mesh.position.y+0.35, r.mesh.position.z); world.add(tr); projectiles.push({mesh:tr,kind:'bossFx',fxType:'spark',x:tr.position.x,y:tr.position.y,z:tr.position.z,vx:(Math.random()-0.5)*0.5,vy:0.15,vz:(Math.random()-0.5)*0.5,life:0.45,maxLife:0.45}); } if((me.x-r.mesh.position.x)**2 + (me.z-r.mesh.position.z)**2 < 2.2*2.2){ me.slowT=Math.max(me.slowT,1.6); me.slowMul=Math.min(me.slowMul,0.58); takeDamage(6*dt,"Aurora Ribbon"); } if(r.life<=0){ world.remove(r.mesh); b.ribbons.splice(i,1);} }
       for(let i=b.sigils.length-1;i>=0;i--){ const r=b.sigils[i]; r.t+=dt; if(r.t>=r.delay){ if(!r.safe && (me.x-r.x)**2 + (me.z-r.z)**2 < 2.3*2.3) takeDamage(17,"Sigil Collapse"); if(!r.safe) explodeAt(r.x,heightAt(r.x,r.z,b.regionId)+0.2,r.z,2.2,12,"enemy"); world.remove(r.mesh); b.sigils.splice(i,1);} }
       for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; r.mesh.scale.setScalar(1+t*5.4); if(t<1 && Math.abs(Math.hypot(me.x-b.mesh.position.x,me.z-b.mesh.position.z)-t*r.rad)<0.55){ takeDamage(r.dmg*dt*2.2,"Bloom Pulse"); if(r.slow) me.turnSlowT=Math.max(me.turnSlowT,1.2); } if(r.t>=r.max){ world.remove(r.mesh); b.burst.splice(i,1);} }
     }
@@ -5584,9 +5745,9 @@ e.mesh.userData.anim?.(e, dt, now);
       if(canSpecial && b.quakeCd<=0){
         b.quakeCd = 7 + Math.random()*3;
         b.lastSpecial = 2.0;
-        const ring=makeTeleCircle(0xc4b5fd); ring.position.set(b.mesh.position.x,heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1,b.mesh.position.z); world.add(ring);
+        const qy=heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+0.1; const ring=new THREE.Group(); const rune = new THREE.Mesh(new THREE.RingGeometry(0.65,1.4,36), new THREE.MeshBasicMaterial({map:FX_TEX.runeRing,color:0xc4b5fd,transparent:true,opacity:0.65,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); rune.rotation.x=-Math.PI/2; const crack = new THREE.Mesh(new THREE.PlaneGeometry(2.9,1.0), new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.48,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); crack.rotation.x=-Math.PI/2; crack.rotation.z=Math.random()*Math.PI; ring.add(rune,crack); ring.position.set(b.mesh.position.x,qy,b.mesh.position.z); world.add(ring);
         b.quakeTele = 0.85;
-        b.burst.push({mesh:ring,t:0,max:0.85,rad:15,dmg:22,thin:true,double: b.hp <= b.maxHp*0.5});
+        b.burst.push({mesh:ring,t:0,max:0.85,rad:15,dmg:22,thin:true,double: b.hp <= b.maxHp*0.5,sparks:0});
       }else if(canSpecial && b.starCd<=0){
         b.starCd = 12 + Math.random()*4;
         b.lastSpecial = 2.0;
@@ -5604,7 +5765,7 @@ e.mesh.userData.anim?.(e, dt, now);
           const tx = b.starPlan.baseX + Math.cos(a)*r;
           const tz = b.starPlan.baseZ + Math.sin(a)*r;
           const mk=makeMarker(0xe9d5ff); mk.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.05,tz); world.add(mk);
-          b.telegraphs.push({mesh:mk,t:0,delay:1.1+Math.random()*0.3,do:()=>{ explodeAt(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.2,tz,2.1,14,"enemy"); const hz=makeTeleCircle(0xc084fc); hz.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.08,tz); world.add(hz); projectiles.push({mesh:hz,x:tx,y:hz.position.y,z:tz,vx:0,vy:0,vz:0,life:1.2,rad:1.35,dmg:3.5,from:"enemy",kind:"hazard"}); }});
+          b.telegraphs.push({mesh:mk,t:0,delay:1.1+Math.random()*0.3,do:()=>{ const hy=heightAt(tx,tz,regionAt(tx,tz).id)+0.2; explodeAt(tx,hy,tz,2.1,14,"enemy"); spawnBossFxRing(tx,hy-0.08,tz,0xc084fc,0.65,4.8,"shockwave"); spawnBossFxSparkBurst(tx,hy+0.15,tz,0xe9d5ff,8,5.8,0.62); const hz=makeTeleCircle(0xc084fc); hz.position.set(tx,heightAt(tx,tz,regionAt(tx,tz).id)+0.08,tz); world.add(hz); projectiles.push({mesh:hz,x:tx,y:hz.position.y,z:tz,vx:0,vy:0,vz:0,life:1.2,rad:1.35,dmg:3.5,from:"enemy",kind:"hazard"}); const decal = new THREE.Mesh(new THREE.PlaneGeometry(2.5,1.0), new THREE.MeshBasicMaterial({map:FX_TEX.crack,color:0xa78bfa,transparent:true,opacity:0.42,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})); decal.rotation.x=-Math.PI/2; decal.rotation.z=Math.random()*Math.PI; decal.position.set(tx,hy-0.1,tz); world.add(decal); projectiles.push({mesh:decal,kind:"bossFx",fxType:"ring",x:tx,y:hy-0.1,z:tz,vx:0,vy:0,vz:0,life:1.4,maxLife:1.4}); }});
         }
         if(b.starPlan.idx>=b.starPlan.steps && b.starPlan.t > b.starPlan.steps*0.22 + 0.15){
           const tx = me.x + me.vx*0.65, tz = me.z + me.vz*0.65;
@@ -5615,7 +5776,7 @@ e.mesh.userData.anim?.(e, dt, now);
       }
 
       for(let i=b.telegraphs.length-1;i>=0;i--){ const t=b.telegraphs[i]; t.t+=dt; if(t.mesh.material) t.mesh.material.opacity = 0.3 + 0.6*Math.min(1,t.t/t.delay); if(t.t>=t.delay){ t.do?.(); world.remove(t.mesh); b.telegraphs.splice(i,1);} }
-      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; const rr=0.6 + t*r.rad; r.mesh.scale.setScalar(rr); if(Math.abs(Math.hypot(me.x-b.mesh.position.x, me.z-b.mesh.position.z)-rr)<0.85){ takeDamage(r.dmg*dt*2.4,"Stomp Quake"); } if(r.t>=r.max){ if(r.double){ r.double=false; r.t=0; r.max=0.55; r.rad=18; continue; } world.remove(r.mesh); b.burst.splice(i,1);} }
+      for(let i=b.burst.length-1;i>=0;i--){ const r=b.burst[i]; r.t+=dt; const t=r.t/r.max; const rr=0.6 + t*r.rad; r.mesh.scale.setScalar(rr); r.sparks=(r.sparks||0)-dt; if(r.sparks<=0){ r.sparks=0.09; const a=Math.random()*Math.PI*2; const sx=b.mesh.position.x+Math.cos(a)*rr, sz=b.mesh.position.z+Math.sin(a)*rr; spawnBossFxSparkBurst(sx, heightAt(sx,sz,regionAt(sx,sz).id)+0.2, sz, 0xe9d5ff, 2, 2.4, 0.35);} if(Math.abs(Math.hypot(me.x-b.mesh.position.x, me.z-b.mesh.position.z)-rr)<0.85){ takeDamage(r.dmg*dt*2.4,"Stomp Quake"); } if(r.t>=r.max){ if(r.double){ r.double=false; r.t=0; r.max=0.55; r.rad=18; continue; } world.remove(r.mesh); b.burst.splice(i,1);} }
     }
 
     // ============================================================
