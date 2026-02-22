@@ -1811,6 +1811,219 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     let nextEnemyId = 1;
 
+    function bossGeoCache(){
+      return bossGeoCache._geo || (bossGeoCache._geo = {
+        sphHi: new THREE.SphereGeometry(1, 16, 12),
+        sphLo: new THREE.SphereGeometry(1, 10, 8),
+        box: new THREE.BoxGeometry(1,1,1),
+        cone: new THREE.ConeGeometry(1,1,10),
+        cyl: new THREE.CylinderGeometry(1,1,1,10),
+        torusThin: new THREE.TorusGeometry(1, 0.08, 10, 30),
+        torusMid: new THREE.TorusGeometry(1, 0.14, 12, 28),
+        dode: new THREE.DodecahedronGeometry(1,0),
+        oct: new THREE.OctahedronGeometry(1,0),
+      });
+    }
+
+    function buildAlienBossMesh(){
+      const G = bossGeoCache();
+      const g = new THREE.Group();
+      const matHull = new THREE.MeshStandardMaterial({ color:0x60a5fa, emissive:0x4338ca, emissiveIntensity:0.45, metalness:0.45, roughness:0.4 });
+      const matFrame = new THREE.MeshStandardMaterial({ color:0x22d3ee, emissive:0x06b6d4, emissiveIntensity:0.8, metalness:0.25, roughness:0.28 });
+      const matCore = new THREE.MeshStandardMaterial({ color:0xff7ce6, emissive:0xff7ce6, emissiveIntensity:1.2, roughness:0.2, transparent:true, opacity:0.92 });
+
+      const hull = new THREE.Mesh(G.sphHi, matHull);
+      hull.scale.set(8.1, 2.35, 5.2);
+
+      const ring = new THREE.Mesh(G.torusMid, matFrame);
+      ring.scale.set(6.45, 6.45, 6.45);
+      ring.rotation.x = Math.PI/2;
+
+      const core = new THREE.Mesh(G.sphLo, matCore);
+      core.scale.set(1.6,1.2,1.6);
+      core.position.y = -1.55;
+
+      const dome = new THREE.Mesh(G.sphLo, new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x60a5fa, emissiveIntensity:0.35, metalness:0.35, roughness:0.38, transparent:true, opacity:0.55 }));
+      dome.scale.set(3.4,0.8,2.4);
+      dome.position.y = 0.72;
+
+      const thrusters = [];
+      for(let i=0;i<4;i++){
+        const a = i*Math.PI*0.5;
+        const pod = new THREE.Mesh(G.cyl, matFrame);
+        pod.scale.set(0.56, 0.42, 0.56);
+        pod.position.set(Math.cos(a)*5.1, -1.25, Math.sin(a)*3.25);
+        pod.rotation.z = Math.PI*0.5;
+        const glow = glowSprite(0x67e8f9, 1.1, 0.7, FX_TEX.spark);
+        glow.position.set(0, -0.32, 0);
+        pod.add(glow);
+        thrusters.push(pod);
+        g.add(pod);
+      }
+
+      const fins = [];
+      for(let i=0;i<6;i++){
+        const a = (i/6)*Math.PI*2;
+        const fin = new THREE.Mesh(G.cone, matHull);
+        fin.scale.set(0.5,1.45,0.32);
+        fin.position.set(Math.cos(a)*3.7, -0.4, Math.sin(a)*2.45);
+        fin.rotation.z = Math.PI;
+        fin.rotation.y = -a;
+        fins.push(fin);
+        g.add(fin);
+      }
+
+      const eyes = addEyePair(g, { y:-0.55, z:2.6, sep:0.68, size:0.42, color:0xa5f3fc, opacity:0.95 });
+      const halo = addAdditiveRing(g, 6.1, 0.18, 0x67e8f9, 0.45);
+      halo.rotation.x = Math.PI/2;
+      const glow = glowSprite(0xa78bfa, 3.8, 0.32);
+      glow.position.y = -1.2;
+
+      g.add(hull, ring, core, dome, glow);
+      g.userData.parts = { hull, ring, core, dome, halo, thrusters, fins, eyes, glow };
+      g.userData.animBoss = (dt, now)=>{
+        ring.rotation.z += dt*0.55;
+        halo.rotation.y += dt*0.4;
+        core.scale.setScalar(1.1 + Math.sin(now*2.1)*0.07);
+        dome.position.y = 0.72 + Math.sin(now*1.6)*0.08;
+        for(let i=0;i<thrusters.length;i++){
+          const p = thrusters[i];
+          p.position.y = -1.25 + Math.sin(now*3.8 + i)*0.1;
+          p.children[0].material.opacity = 0.55 + 0.25*Math.sin(now*6.2 + i);
+        }
+      };
+      return g;
+    }
+
+    function buildRegionBossMesh(regionId){
+      const G = bossGeoCache();
+      const palette = {
+        desert:{ body:0xfbbf24, em:0x92400e, accent:0xfde68a, eye:0xfff7d6 },
+        forest:{ body:0x4ade80, em:0x14532d, accent:0x86efac, eye:0xdcfce7 },
+        snow:{ body:0x93c5fd, em:0x1e3a8a, accent:0xc7d2fe, eye:0xe0f2fe },
+        hell:{ body:0xff5a36, em:0x7f1d1d, accent:0xfdba74, eye:0xffedd5 }
+      }[regionId] || { body:0x94a3b8, em:0x334155, accent:0xe2e8f0, eye:0xffffff };
+
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(G.sphHi, new THREE.MeshStandardMaterial({ color:palette.body, emissive:palette.em, emissiveIntensity:0.85, roughness:0.45, metalness:0.12 }));
+      body.scale.set(2.2, 1.45, 2.05);
+      const crown = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:palette.accent, transparent:true, opacity:0.58 }));
+      crown.scale.set(1.55,1.55,1.55);
+      crown.rotation.x = Math.PI/2;
+      crown.position.y = 0.28;
+
+      const core = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:palette.accent, emissive:palette.accent, emissiveIntensity:0.7, roughness:0.28, metalness:0.15 }));
+      core.scale.set(0.72,0.9,0.72);
+      core.position.y = 0.25;
+
+      const arms = [];
+      for(let i=0;i<4;i++){
+        const a = i*Math.PI*0.5;
+        const arm = new THREE.Mesh(G.box, new THREE.MeshStandardMaterial({ color:palette.body, emissive:palette.em, emissiveIntensity:0.5, roughness:0.5 }));
+        arm.scale.set(0.36,0.85,0.36);
+        arm.position.set(Math.cos(a)*1.72, -0.2, Math.sin(a)*1.68);
+        arm.rotation.y = a;
+        arms.push(arm);
+        g.add(arm);
+      }
+
+      const spikes = [];
+      for(let i=0;i<6;i++){
+        const a = (i/6)*Math.PI*2;
+        const sp = new THREE.Mesh(G.cone, new THREE.MeshStandardMaterial({ color:palette.accent, emissive:palette.em, emissiveIntensity:0.35, roughness:0.48 }));
+        sp.scale.set(0.22,0.65,0.22);
+        sp.position.set(Math.cos(a)*1.35, 0.95, Math.sin(a)*1.25);
+        sp.rotation.z = Math.PI;
+        sp.rotation.y = -a;
+        spikes.push(sp);
+        g.add(sp);
+      }
+
+      const eyes = addEyePair(g, { y:0.15, z:1.55, sep:0.4, size:0.24, color:palette.eye, opacity:0.92 });
+      const auraRing = addAdditiveRing(g, 1.58, 0.11, palette.accent, 0.35);
+      auraRing.rotation.x = Math.PI/2;
+      const auraGlow = glowSprite(palette.accent, 2.1, 0.24);
+      auraGlow.position.y = 0.2;
+
+      g.add(body, crown, core, auraGlow);
+      g.userData.parts = { body, crown, core, arms, spikes, eyes, auraRing, auraGlow };
+      g.userData.animBoss = (dt, now)=>{
+        crown.rotation.z += dt*0.8;
+        auraRing.rotation.y -= dt*0.45;
+        core.rotation.y += dt*1.2;
+        core.position.y = 0.25 + Math.sin(now*2.5)*0.08;
+        for(let i=0;i<arms.length;i++){
+          arms[i].position.y = -0.2 + Math.sin(now*2.8 + i*0.7)*0.06;
+        }
+      };
+      return g;
+    }
+
+    function buildTitanBossMesh(){
+      const G = bossGeoCache();
+      const g = new THREE.Group();
+      const matBody = new THREE.MeshStandardMaterial({ color:0xb4befe, emissive:0x7c3aed, emissiveIntensity:0.95, roughness:0.34, metalness:0.34 });
+      const matAccent = new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x60a5fa, emissiveIntensity:0.75, roughness:0.25, metalness:0.25 });
+
+      const core = new THREE.Mesh(G.dode, matBody);
+      core.scale.set(2.65,2.95,2.65);
+
+      const ring = new THREE.Mesh(G.torusMid, new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.56 }));
+      ring.scale.set(3.42,3.42,3.42);
+      ring.rotation.x = Math.PI/2;
+
+      const ringB = new THREE.Mesh(G.torusThin, new THREE.MeshBasicMaterial({ color:0xc4b5fd, transparent:true, opacity:0.48 }));
+      ringB.scale.set(2.82,2.82,2.82);
+      ringB.rotation.x = Math.PI*0.25;
+      ringB.rotation.z = Math.PI*0.2;
+
+      const jaws = [];
+      for(let i=0;i<2;i++){
+        const jaw = new THREE.Mesh(G.box, matAccent);
+        jaw.scale.set(2.3,0.4,0.95);
+        jaw.position.set(0, i===0 ? 1.25 : -1.25, 1.1);
+        jaws.push(jaw);
+        g.add(jaw);
+      }
+
+      const arms = [];
+      for(let i=0;i<4;i++){
+        const a = i*Math.PI*0.5;
+        const arm = new THREE.Mesh(G.cyl, matAccent);
+        arm.scale.set(0.45,1.25,0.45);
+        arm.position.set(Math.cos(a)*3.05, 0, Math.sin(a)*3.05);
+        arm.rotation.z = Math.PI*0.5;
+        arm.rotation.y = a;
+        const claw = new THREE.Mesh(G.cone, matAccent);
+        claw.scale.set(0.45,0.9,0.45);
+        claw.position.set(0.85,0,0);
+        claw.rotation.z = -Math.PI*0.5;
+        arm.add(claw);
+        arms.push(arm);
+        g.add(arm);
+      }
+
+      const orbitCore = new THREE.Mesh(G.oct, new THREE.MeshStandardMaterial({ color:0xe9d5ff, emissive:0xe9d5ff, emissiveIntensity:1.05, roughness:0.2 }));
+      orbitCore.scale.set(0.85,0.95,0.85);
+      orbitCore.position.set(0,0,0);
+      const eye = addEyePair(g, { y:0.2, z:2.45, sep:0.6, size:0.34, color:0xe9d5ff, opacity:0.9 });
+      const aura = glowSprite(0xa78bfa, 4.2, 0.2);
+
+      g.add(core, ring, ringB, orbitCore, aura);
+      g.userData.parts = { core, ring, ringB, jaws, arms, orbitCore, eye, aura };
+      g.userData.animBoss = (dt, now)=>{
+        ring.rotation.z += dt*0.45;
+        ringB.rotation.y -= dt*0.36;
+        orbitCore.position.y = Math.sin(now*1.8)*0.4;
+        orbitCore.rotation.x += dt*0.9;
+        orbitCore.rotation.z += dt*1.3;
+        jaws[0].position.y = 1.25 + Math.sin(now*2.4)*0.12;
+        jaws[1].position.y = -1.25 - Math.sin(now*2.4)*0.12;
+        for(let i=0;i<arms.length;i++) arms[i].rotation.x = Math.sin(now*1.7 + i)*0.12;
+      };
+      return g;
+    }
+
     function clearEntities(){
       for(const e of enemies) world.remove(e.mesh);
       for(const p of projectiles) world.remove(p.mesh);
@@ -1845,23 +2058,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const z = me.z + Math.sin(ang)*d;
       const gy = heightAt(x,z,"alien");
 
-      const g = new THREE.Group();
-      const hull = new THREE.Mesh(
-        new THREE.SphereGeometry(4.6, 24, 16),
-        new THREE.MeshStandardMaterial({ color:0x60a5fa, emissive:0x4f46e5, emissiveIntensity:0.38, metalness:0.35, roughness:0.45 })
-      );
-      hull.scale.set(1.8,0.52,1.15);
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(6.4, 0.52, 14, 44),
-        new THREE.MeshStandardMaterial({ color:0x22d3ee, emissive:0x22d3ee, emissiveIntensity:0.72, metalness:0.15, roughness:0.35 })
-      );
-      ring.rotation.x = Math.PI/2;
-      const core = new THREE.Mesh(
-        new THREE.SphereGeometry(1.6, 16, 12),
-        new THREE.MeshStandardMaterial({ color:0xff7ce6, emissive:0xff7ce6, emissiveIntensity:1.15, roughness:0.25, transparent:true, opacity:0.9 })
-      );
-      core.position.y = -1.55;
-      g.add(hull, ring, core);
+      const g = buildAlienBossMesh();
       g.position.set(x, gy+17.5, z);
       world.add(g);
 
@@ -1970,12 +2167,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const x = me.x + Math.cos(ang)*d;
       const z = me.z + Math.sin(ang)*d;
       const y = heightAt(x,z,regionId) + 1.45;
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14), new THREE.MeshStandardMaterial({ color:st.color, emissive:st.emissive, emissiveIntensity:0.8, roughness:0.45 }));
-      body.scale.set(1.35,0.95,1.35);
-      const crown = new THREE.Mesh(new THREE.TorusGeometry(1.5,0.15,12,24), new THREE.MeshBasicMaterial({ color:st.color, transparent:true, opacity:0.55 }));
-      crown.rotation.x = Math.PI/2;
-      g.add(body, crown);
+      const g = buildRegionBossMesh(regionId);
       g.position.set(x,y,z);
       world.add(g);
       const hpMul = dangerBandAt(x,z).hpMul;
@@ -1986,11 +2178,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     function spawnTitanBoss(){
       if(titanBoss || sigilsCollected<5) return;
       const x = 0, z = 0, y = heightAt(0,0,regionAt(0,0).id) + 4.6;
-      const g = new THREE.Group();
-      const core = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6,0), new THREE.MeshStandardMaterial({ color:0xb4befe, emissive:0x7c3aed, emissiveIntensity:0.9, roughness:0.35, metalness:0.3 }));
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(3.4,0.22,14,32), new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.55 }));
-      ring.rotation.x = Math.PI/2;
-      g.add(core, ring); g.position.set(x,y,z); world.add(g);
+      const g = buildTitanBossMesh();
+      g.position.set(x,y,z); world.add(g);
       titanBoss = { type:"titan", mesh:g, hp:Math.round(3600 + me.level*80), maxHp:Math.round(3600 + me.level*80), coreCd:0.5, quakeCd:6.5, starCd:9.5, quakeTele:0, starPlan:null, lastSpecial:0 };
       showToast("🗿 Infinity Titan has spawned at the world center!");
     }
@@ -5063,6 +5252,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.stateT += dt;
       b.spin += dt;
       b.mesh.rotation.y += dt*0.32;
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
 
       const bx = b.mesh.position.x;
       const bz = b.mesh.position.z;
@@ -5157,6 +5347,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.mesh.position.z += dirz * b.speed * dt;
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,b.regionId)+1.45;
       b.mesh.rotation.y = Math.atan2(dirx, dirz);
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
 
       const outer = dangerBandAt(b.mesh.position.x,b.mesh.position.z).id === "outer";
 
@@ -5207,6 +5398,7 @@ e.mesh.userData.anim?.(e, dt, now);
       const bx=b.mesh.position.x, bz=b.mesh.position.z;
       const dx=me.x-bx, dz=me.z-bz; const d=Math.hypot(dx,dz)||1;
       b.mesh.rotation.y = Math.atan2(dx,dz);
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
       if(d>9){ b.mesh.position.x += dx/d*2.1*dt; b.mesh.position.z += dz/d*2.1*dt; }
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
 
