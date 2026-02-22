@@ -2023,12 +2023,20 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
       g.add(hull, ring, core, shield, glow);
       g.userData.parts = { hull, ring, core, shield, halo, thrusters, fins, eyes, glow, emitters, runePips, panelSeams };
-      g.userData.animBoss = (dt, now)=>{
+      g.userData.animBoss = (dt, now, bossState={})=>{
+        const basePulse = 0.5 + 0.5*Math.sin(now*2.1);
+        const phaseBoost = bossState.phase === "laser" ? 0.45 : (bossState.phase === "starfall" ? 0.22 : 0);
+        const bob = Math.sin(now*1.25)*0.18;
+        const sway = Math.sin(now*0.78)*0.08;
+        g.position.y = bob;
+        g.rotation.z = sway;
         ring.rotation.z += dt*0.55;
         halo.rotation.y += dt*0.4;
-        core.scale.setScalar(1.1 + Math.sin(now*2.1)*0.07);
-        shield.material.opacity = 0.26 + Math.sin(now*2.3)*0.08;
-        shield.scale.set(2.8 + Math.sin(now*1.7)*0.08, 1.55 + Math.sin(now*2.1)*0.06, 2.8 + Math.sin(now*1.7)*0.08);
+        core.scale.setScalar(1.08 + basePulse*0.12 + phaseBoost*0.04);
+        core.material.emissiveIntensity = 0.9 + basePulse*0.4 + phaseBoost*0.55;
+        core.material.emissive.setHex(bossState.phase === "laser" ? 0xff8ae9 : 0x67e8f9);
+        shield.material.opacity = 0.24 + basePulse*0.1 + phaseBoost*0.12;
+        shield.scale.set(2.76 + basePulse*0.14, 1.52 + basePulse*0.1, 2.76 + basePulse*0.14);
         const combatBoost = g.userData.boostThrusters ? 1 : 0;
         for(let i=0;i<thrusters.length;i++){
           const p = thrusters[i];
@@ -2037,7 +2045,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
         for(let i=0;i<emitters.length;i++){
           const e = emitters[i];
-          e.children[0].material.emissiveIntensity = 0.65 + 0.35*Math.sin(now*3 + i);
+          e.children[0].material.emissiveIntensity = 0.6 + 0.3*Math.sin(now*3 + i) + phaseBoost*0.45;
         }
       };
       return g;
@@ -2177,21 +2185,31 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
 
       g.userData.parts = parts;
-      g.userData.animBoss = (dt, now)=>{
+      g.userData.animBoss = (dt, now, bossState={})=>{
+        const pulse = 0.5 + 0.5*Math.sin(now*2.4);
+        const phaseBoost = Math.min(0.5, (bossState.attackIntensity || 0)*0.22 + (bossState.isAttacking ? 0.2 : 0));
+        g.position.y = Math.sin(now*1.15)*0.16;
+        g.rotation.z = Math.sin(now*0.8)*0.05;
         if(regionId === "desert"){
           parts.halo.rotation.y += dt*0.6;
+          parts.head.material.emissiveIntensity = 0.75 + pulse*0.3 + phaseBoost*0.5;
+          parts.halo.material.opacity = 0.24 + pulse*0.16 + phaseBoost*0.18;
           for(let i=0;i<parts.jaws.length;i++) parts.jaws[i].position.z = 1.0 + i*0.22 + Math.sin(now*2.2 + i)*0.06;
         }else if(regionId === "forest"){
           parts.cap.rotation.y += dt*0.25;
+          parts.trunk.material.emissiveIntensity = 0.72 + pulse*0.32 + phaseBoost*0.4;
           for(let i=0;i<parts.sacs.length;i++) parts.sacs[i].material.opacity = 0.45 + 0.2*Math.sin(now*2.7 + i);
           parts.mask.material.opacity = 0.65 + Math.sin(now*2.2)*0.16;
         }else if(regionId === "snow"){
           parts.aurora.rotation.y += dt*0.75;
-          parts.aurora.material.opacity = 0.28 + 0.18*Math.sin(now*2.6);
+          parts.core.material.emissiveIntensity = 0.8 + pulse*0.35 + phaseBoost*0.45;
+          parts.aurora.material.opacity = 0.24 + 0.2*Math.sin(now*2.6) + phaseBoost*0.2;
           for(let i=0;i<parts.ribbons.length;i++) parts.ribbons[i].rotation.z = Math.sin(now*2.4 + i)*0.25;
         }else if(regionId === "hell"){
-          parts.furnace.material.emissiveIntensity = 1.05 + 0.45*Math.sin(now*3.8);
-          parts.maulHead.material.emissiveIntensity = 0.8 + 0.35*Math.sin(now*4.6);
+          parts.torso.material.emissiveIntensity = 0.68 + pulse*0.3 + phaseBoost*0.45;
+          parts.furnace.material.emissiveIntensity = 1.0 + 0.45*Math.sin(now*3.8) + phaseBoost*0.55;
+          parts.furnace.material.color.setHex(phaseBoost > 0.25 ? 0xffedd5 : 0xfdba74);
+          parts.maulHead.material.emissiveIntensity = 0.8 + 0.35*Math.sin(now*4.6) + phaseBoost*0.35;
         }
       };
       return g;
@@ -2259,11 +2277,17 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
       g.add(core, ring, ringB, orbitCore, aura);
       g.userData.parts = { core, ring, ringB, shoulderPylons, shards, orbitCore, eye, aura, satellites };
-      g.userData.animBoss = (dt, now)=>{
+      g.userData.animBoss = (dt, now, bossState={})=>{
+        const pulse = 0.5 + 0.5*Math.sin(now*2.5);
+        const specialBoost = Math.max(0, bossState.specialPulse || 0);
+        g.position.y = Math.sin(now*1.1)*0.2;
+        g.rotation.z = Math.sin(now*0.7)*0.06;
         ring.rotation.z += dt*0.45;
         ringB.rotation.y -= dt*0.36;
         const hpNorm = Math.max(0, Math.min(1, g.userData.hpNorm ?? 1));
-        ring.material.opacity = 0.4 + (1-hpNorm)*0.3 + Math.sin(now*4.8)*0.1;
+        ring.material.opacity = 0.36 + (1-hpNorm)*0.3 + pulse*0.14 + specialBoost*0.12;
+        core.material.emissiveIntensity = 0.78 + pulse*0.35 + specialBoost*0.45;
+        core.material.emissive.setHex(bossState.phase === "quake" ? 0xe9d5ff : 0x7c3aed);
         orbitCore.position.y = Math.sin(now*1.8)*0.4;
         orbitCore.rotation.x += dt*0.9;
         orbitCore.rotation.z += dt*1.3;
@@ -5552,7 +5576,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.spin += dt;
       b.mesh.rotation.y += dt*0.32;
       b.mesh.userData.boostThrusters = b.state === "laser";
-      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { phase:b.state, hpNorm:b.maxHp>0 ? b.hp/b.maxHp : 1, isAttacking:b.state==="laser" });
 
       const bx = b.mesh.position.x;
       const bz = b.mesh.position.z;
@@ -5668,7 +5692,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.mesh.position.z += dirz * b.speed * dt;
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,b.regionId)+1.45;
       b.mesh.rotation.y = Math.atan2(dirx, dirz);
-      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { regionId:b.regionId, isAttacking:b.cdA<=0.15 || b.cdB<=0.15 || b.cdC<=0.15, attackIntensity:Math.max(0, Math.min(1, 1 - Math.min(b.cdA, b.cdB, b.cdC))) });
 
       const outer = dangerBandAt(b.mesh.position.x,b.mesh.position.z).id === "outer";
 
@@ -5728,7 +5752,7 @@ e.mesh.userData.anim?.(e, dt, now);
       b.mesh.rotation.y = Math.atan2(dx,dz);
       b.mesh.userData.hpNorm = b.maxHp>0 ? b.hp/b.maxHp : 1;
       b.mesh.userData.specialPulse = Math.max(0, (b.lastSpecial||0)/2.0);
-      b.mesh.userData.animBoss?.(dt, performance.now()*0.001);
+      b.mesh.userData.animBoss?.(dt, performance.now()*0.001, { phase:b.quakeTele>0 ? "quake" : (b.starPlan ? "starfall" : "core"), specialPulse:b.mesh.userData.specialPulse });
       if(d>9){ b.mesh.position.x += dx/d*2.1*dt; b.mesh.position.z += dz/d*2.1*dt; }
       b.mesh.position.y = heightAt(b.mesh.position.x,b.mesh.position.z,regionAt(b.mesh.position.x,b.mesh.position.z).id)+4.6;
 
