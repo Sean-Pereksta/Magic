@@ -1783,6 +1783,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     const drops = [];       // {x,y,z,mesh,mat,spin}
     const turrets = [];     // {mesh,life,fireCd}
 
+    const ALIEN_BOSS_SPAWN_MIN = 240; // seconds in alien region
+    const ALIEN_BOSS_SPAWN_MAX = 360;
+    let alienRegionClock = 0;
+    let alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
+    let alienBoss = null;
+
     let nextEnemyId = 1;
 
     function clearEntities(){
@@ -1790,9 +1796,75 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       for(const p of projectiles) world.remove(p.mesh);
       for(const d of drops) world.remove(d.mesh);
       for(const t of turrets) world.remove(t.mesh);
+      if(alienBoss?.mesh) world.remove(alienBoss.mesh);
+      if(alienBoss?.lasers){ for(const l of alienBoss.lasers){ world.remove(l); } }
+      if(alienBoss?.starTelegraphs){ for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); } }
       for(const f of floatingTexts) f.el.remove();
       floatingTexts.length = 0;
       enemies.length=0; projectiles.length=0; drops.length=0; turrets.length=0;
+      alienBoss = null;
+      alienRegionClock = 0;
+      alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
+    }
+
+    function spawnAlienBoss(){
+      if(alienBoss) return;
+      const ang = Math.random()*Math.PI*2;
+      const d = 34 + Math.random()*18;
+      const x = me.x + Math.cos(ang)*d;
+      const z = me.z + Math.sin(ang)*d;
+      const gy = heightAt(x,z,"alien");
+
+      const g = new THREE.Group();
+      const hull = new THREE.Mesh(
+        new THREE.SphereGeometry(4.6, 24, 16),
+        new THREE.MeshStandardMaterial({ color:0x60a5fa, emissive:0x4f46e5, emissiveIntensity:0.38, metalness:0.35, roughness:0.45 })
+      );
+      hull.scale.set(1.8,0.52,1.15);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(6.4, 0.52, 14, 44),
+        new THREE.MeshStandardMaterial({ color:0x22d3ee, emissive:0x22d3ee, emissiveIntensity:0.72, metalness:0.15, roughness:0.35 })
+      );
+      ring.rotation.x = Math.PI/2;
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(1.6, 16, 12),
+        new THREE.MeshStandardMaterial({ color:0xff7ce6, emissive:0xff7ce6, emissiveIntensity:1.15, roughness:0.25, transparent:true, opacity:0.9 })
+      );
+      core.position.y = -1.55;
+      g.add(hull, ring, core);
+      g.position.set(x, gy+17.5, z);
+      world.add(g);
+
+      alienBoss = {
+        id: -1,
+        type: "alienBoss",
+        mesh: g,
+        hp: 1800,
+        maxHp: 1800,
+        state: "starfall",
+        stateT: 0,
+        starCd: 0,
+        spin: 0,
+        starTelegraphs: [],
+        lasers: [],
+        laserDps: 7.5,
+        lift: 17.5,
+      };
+      showToast("🛸 A Neon Mothership descends...");
+    }
+
+    function damageAlienBoss(dmg){
+      if(!alienBoss) return;
+      alienBoss.hp -= dmg;
+      if(alienBoss.hp <= 0){
+        for(const t of alienBoss.starTelegraphs){ world.remove(t.marker); world.remove(t.glow); world.remove(t.rock); }
+        for(const l of alienBoss.lasers){ world.remove(l); }
+        world.remove(alienBoss.mesh);
+        alienBoss = null;
+        alienRegionClock = 0;
+        alienBossSpawnAt = ALIEN_BOSS_SPAWN_MIN + Math.random()*(ALIEN_BOSS_SPAWN_MAX-ALIEN_BOSS_SPAWN_MIN);
+        showToast("✨ Alien mothership destroyed.");
+      }
     }
 
     function makeHealthBar(){
@@ -2790,6 +2862,26 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(score < bestScore){
           bestScore = score;
           best = e;
+        }
+      }
+      if(alienBoss && alienBoss.hp>0){
+        const bx = alienBoss.mesh.position.x;
+        const by = alienBoss.mesh.position.y;
+        const bz = alienBoss.mesh.position.z;
+        const dx = bx-ox, dy = by-oy, dz = bz-oz;
+        const d2 = dx*dx + dy*dy + dz*dz;
+        if(d2 <= range2){
+          const len = Math.sqrt(d2);
+          const vx = dx/len, vy=dy/len, vz=dz/len;
+          const dot = fwd.x*vx + fwd.y*vy + fwd.z*vz;
+          const ang = Math.acos(clamp(dot, -1, 1));
+          if(ang <= aimCone){
+            const score = ang*1.8 + len*0.015;
+            if(score < bestScore){
+              bestScore = score;
+              best = alienBoss;
+            }
+          }
         }
       }
       return best;
@@ -4446,18 +4538,29 @@ e.mesh.userData.anim?.(e, dt, now);
         if(p.hitIds && p.hitIds.has(e.id)) continue;
         if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
       }
+      if(!hit && alienBoss && alienBoss.hp>0){
+        const bx=alienBoss.mesh.position.x, bz=alienBoss.mesh.position.z, by=alienBoss.mesh.position.y;
+        const d2 = (bx-p.x)*(bx-p.x)+(bz-p.z)*(bz-p.z)+(by-p.y)*(by-p.y);
+        if(d2 < (p.rad+3.4)*(p.rad+3.4)) hit = alienBoss;
+      }
       if(hit){
-        if(p.hitIds) p.hitIds.add(hit.id);
-        dealDamageEnemy(hit, p.dmg);
+        if(hit===alienBoss){
+          damageAlienBoss(p.dmg);
+        }else{
+          if(p.hitIds) p.hitIds.add(hit.id);
+          dealDamageEnemy(hit, p.dmg);
+        }
 
         if(p.explode){
           explodeAt(p.x,p.y,p.z, p.aoe||2.4, p.dmg*0.75, "player");
         }
 
-        applyBoltEffects(hit, p);
+        if(hit!==alienBoss){
+          applyBoltEffects(hit, p);
 
-        if(p.chainBounces>0){
-          chainLightningFrom(hit, p);
+          if(p.chainBounces>0){
+            chainLightningFrom(hit, p);
+          }
         }
 
         if((p.splinterCount||0) > 0){
@@ -4637,6 +4740,134 @@ e.mesh.userData.anim?.(e, dt, now);
       }
     }
 
+    function spawnAlienStarfallTelegraph(){
+      if(!alienBoss) return;
+      const bx = alienBoss.mesh.position.x;
+      const bz = alienBoss.mesh.position.z;
+      const a = Math.random()*Math.PI*2;
+      const r = Math.random()*22;
+      const tx = bx + Math.cos(a)*r;
+      const tz = bz + Math.sin(a)*r;
+      const reg = regionAt(tx,tz);
+      const gy = heightAt(tx,tz,reg.id);
+
+      const marker = new THREE.Mesh(
+        new THREE.RingGeometry(0.95, 1.3, 28),
+        new THREE.MeshBasicMaterial({ color:0xff8ae9, transparent:true, opacity:0.55, side:THREE.DoubleSide })
+      );
+      marker.rotation.x = -Math.PI/2;
+      marker.position.set(tx, gy+0.06, tz);
+
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: FX_TEX.softGlow,
+        color:0x9be7ff,
+        transparent:true,
+        opacity:0.28,
+        depthWrite:false,
+        blending:THREE.AdditiveBlending
+      }));
+      glow.position.set(tx, gy+2.3, tz);
+      glow.scale.set(1.8,1.8,1);
+
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.48, 0),
+        new THREE.MeshStandardMaterial({ color:0x67e8f9, emissive:0x22d3ee, emissiveIntensity:0.8, roughness:0.35, metalness:0.15 })
+      );
+      rock.position.set(tx, gy+24, tz);
+
+      world.add(marker, glow, rock);
+      alienBoss.starTelegraphs.push({ marker, glow, rock, x:tx, z:tz, y:gy, t:0, delay:2.0, done:false });
+    }
+
+    function tickAlienBoss(dt){
+      if(!alienBoss || paused || !alive) return;
+
+      const b = alienBoss;
+      b.stateT += dt;
+      b.spin += dt;
+      b.mesh.rotation.y += dt*0.32;
+
+      const bx = b.mesh.position.x;
+      const bz = b.mesh.position.z;
+      const byGround = heightAt(bx,bz,"alien");
+      const targetY = b.state==="laser" ? byGround + 3.2 : byGround + b.lift;
+      b.mesh.position.y += (targetY - b.mesh.position.y) * Math.min(1, dt*1.6);
+
+      if(b.state==="starfall"){
+        b.starCd -= dt;
+        if(b.starCd<=0){
+          b.starCd = 0.16 + Math.random()*0.2;
+          spawnAlienStarfallTelegraph();
+        }
+        if(b.stateT >= 10.0){
+          b.state = "laser";
+          b.stateT = 0;
+          b.spin = 0;
+          b.starCd = 0;
+          for(let i=0;i<4;i++){
+            const beam = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.18, 0.18, 62, 12),
+              new THREE.MeshBasicMaterial({ color:0xff4fe1, transparent:true, opacity:0.62 })
+            );
+            beam.rotation.z = Math.PI/2;
+            world.add(beam);
+            b.lasers.push(beam);
+          }
+        }
+      }else if(b.state==="laser"){
+        const centerY = b.mesh.position.y - 0.65;
+        const cx = b.mesh.position.x;
+        const cz = b.mesh.position.z;
+        const spin = b.spin * 0.26;
+        for(let i=0;i<b.lasers.length;i++){
+          const beam = b.lasers[i];
+          const ang = spin + i*(Math.PI*0.5);
+          beam.position.set(cx, centerY, cz);
+          beam.rotation.y = ang;
+          beam.rotation.z = Math.PI/2;
+
+          const vx = Math.cos(ang), vz = Math.sin(ang);
+          const toPx = me.x-cx, toPz = me.z-cz;
+          const proj = Math.abs(toPx*vz - toPz*vx);
+          const along = toPx*vx + toPz*vz;
+          if(Math.abs(along)<=31.0 && proj<=0.9){
+            takeDamage(b.laserDps*dt, "Alien Laser");
+          }
+        }
+        if(b.stateT >= 10.0){
+          for(const l of b.lasers) world.remove(l);
+          b.lasers.length = 0;
+          b.state = "starfall";
+          b.stateT = 0;
+          b.starCd = 0.25;
+        }
+      }
+
+      for(let i=b.starTelegraphs.length-1;i>=0;i--){
+        const t = b.starTelegraphs[i];
+        t.t += dt;
+        const p = Math.min(1, t.t/t.delay);
+        t.marker.material.opacity = 0.35 + 0.5*p;
+        t.marker.scale.setScalar(1 + p*0.35);
+        t.glow.material.opacity = 0.2 + 0.3*Math.sin(p*Math.PI);
+        t.rock.position.y = (t.y+24) - 24*p;
+        t.rock.rotation.x += dt*4.0;
+        t.rock.rotation.y += dt*5.2;
+        if(t.t >= t.delay && !t.done){
+          t.done = true;
+          const d2 = (me.x-t.x)*(me.x-t.x)+(me.z-t.z)*(me.z-t.z);
+          if(d2 <= 1.45*1.45){
+            takeDamage(18, "Starfall");
+          }
+          explodeAt(t.x, t.y+0.3, t.z, 2.3, 14, "enemy");
+          world.remove(t.marker);
+          world.remove(t.glow);
+          world.remove(t.rock);
+          b.starTelegraphs.splice(i,1);
+        }
+      }
+    }
+
     // ============================================================
     // HUD update
     // ============================================================
@@ -4684,6 +4915,14 @@ function tickHUD(dt){
 
     function tickSpawning(dt){
       if(paused || !alive) return;
+
+      const reg = regionAt(me.x, me.z);
+      if(reg.id === "alien" && !alienBoss){
+        alienRegionClock += dt;
+        if(alienRegionClock >= alienBossSpawnAt){
+          spawnAlienBoss();
+        }
+      }
 
       spawnCooldown -= dt;
 
@@ -4768,6 +5007,7 @@ function tickHUD(dt){
         tickAbilities(dt);
         tickPlayerRegen(dt, now*0.001);
         tickEnemies(dt, now);
+        tickAlienBoss(dt);
         tickPlayerFire(dt);
         tickWaves(dt);
         tickProjectiles(dt);
