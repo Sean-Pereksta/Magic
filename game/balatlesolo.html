@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🃏 Balatle Solo</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:rgba(255,255,255,.08); --line:rgba(255,255,255,.14);
+      --ink:#eaf2ff; --muted:rgba(234,242,255,.75); --accent:#57b2ff; --good:#31d07f; --bad:#ff5b6b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial;background:radial-gradient(1100px 800px at 20% 5%,#1a2a55 0%,#0b1020 60%,#050713 100%)}
+    .wrap{max-width:1100px;margin:0 auto;padding:14px}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 44px rgba(0,0,0,.45);overflow:hidden}
+    .ph{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .content{padding:12px 14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(0,0,0,.22)}
+    .btn{border-radius:12px;padding:10px 12px;border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--ink);cursor:pointer}
+    .btn.primary{background:linear-gradient(180deg,rgba(87,178,255,.35),rgba(87,178,255,.12));border-color:rgba(87,178,255,.45)}
+    .btn.good{background:linear-gradient(180deg,rgba(49,208,127,.35),rgba(49,208,127,.12));border-color:rgba(49,208,127,.45)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .grid{display:grid;gap:12px;grid-template-columns:1.25fr 1fr}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .box{border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.18);padding:10px}
+    .label{color:var(--muted);font-size:12px;text-transform:uppercase}
+    .val{font-size:24px;font-weight:900;margin-top:2px}
+    .small{font-size:12px;color:var(--muted)}
+    .bar{height:10px;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px;background:rgba(255,255,255,.06)}
+    .bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--accent),rgba(87,178,255,.2))}
+    .hand{display:flex;flex-wrap:wrap;gap:10px;border:1px dashed rgba(255,255,255,.2);border-radius:14px;padding:10px;min-height:116px}
+    .card{width:84px;height:112px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));padding:10px;cursor:pointer;position:relative;outline:2px solid transparent}
+    .card.sel{outline-color:rgba(87,178,255,.9);transform:translateY(-3px)}
+    .card.red .rank,.card.red .suit{color:#ff7f7f}
+    .rank{font-size:20px;font-weight:900}
+    .suit{font-size:18px}
+    .chips{position:absolute;left:10px;right:10px;bottom:8px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+    .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(0,0,0,.75);border:1px solid var(--line);padding:10px 12px;border-radius:12px;opacity:0;transition:.2s}
+    .toast.show{opacity:1}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="ph">
+        <div class="row">
+          <div class="pill">🃏 Balatle Solo</div>
+          <div class="pill">Round <b id="round">1</b>/5</div>
+          <div class="pill">Difficulty: <b id="diffLabel">Easy</b></div>
+        </div>
+        <div class="row">
+          <select id="difficulty" class="btn" aria-label="Select difficulty">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+          <button id="newRun" class="btn primary">Start New Run</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="grid">
+          <div>
+            <div class="row">
+              <div class="box" style="flex:1">
+                <div class="label">Target</div>
+                <div class="val" id="target">300</div>
+                <div class="bar" id="targetBar"><i></i></div>
+                <div class="small" id="status">Score points by playing poker hands.</div>
+              </div>
+              <div class="box" style="flex:1">
+                <div class="label">Round Score</div>
+                <div class="val" id="score">0</div>
+                <div class="small">Total: <b id="total">0</b></div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <div class="pill">Hands left: <b id="hands">4</b></div>
+              <div class="pill">Discards left: <b id="discards">3</b></div>
+              <button id="play" class="btn good">Play Selected</button>
+              <button id="discard" class="btn">Discard Selected</button>
+              <button id="finish" class="btn">Finish Round</button>
+            </div>
+            <div class="hand" id="hand"></div>
+          </div>
+          <div>
+            <div class="box">
+              <div class="label">Last Hand</div>
+              <div id="lastHand">—</div>
+              <div class="small" id="lastMath" style="margin-top:6px">Select 1-5 cards and press Play Selected.</div>
+            </div>
+            <div class="box" style="margin-top:10px">
+              <div class="label">Targets by difficulty</div>
+              <div class="small" id="targetsText"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+<script>
+(() => {
+  const BASE_TARGETS = [300,500,800,1200,1500];
+  const DIFF = { easy: 1, medium: 1.2, hard: 1.5 };
+  const SUITS = [{k:'S',sym:'♠',red:false},{k:'H',sym:'♥',red:true},{k:'D',sym:'♦',red:true},{k:'C',sym:'♣',red:false}];
+  const RANKS = [
+    {k:'2',v:2,c:2},{k:'3',v:3,c:3},{k:'4',v:4,c:4},{k:'5',v:5,c:5},{k:'6',v:6,c:6},{k:'7',v:7,c:7},{k:'8',v:8,c:8},{k:'9',v:9,c:9},
+    {k:'10',v:10,c:10},{k:'J',v:11,c:10},{k:'Q',v:12,c:10},{k:'K',v:13,c:10},{k:'A',v:14,c:11}
+  ];
+  const $ = id => document.getElementById(id);
+  const fmt = n => Math.floor(n).toLocaleString();
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const rng = {shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}};
+
+  const game = { round:1,total:0,score:0,hands:4,discards:3,difficulty:'easy',targets:[],deck:[],discardPile:[],hand:[],sel:new Set(),ended:false };
+
+  const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('show'),1700); };
+
+  function makeDeck(){
+    const d=[];
+    for(const s of SUITS) for(const r of RANKS) d.push({ id:`${r.k}${s.k}_${Math.random().toString(16).slice(2)}`, rank:r.k, rv:r.v, suit:s.k, suitSym:s.sym, red:s.red, chip:r.c });
+    return rng.shuffle(d);
+  }
+
+  function isStraight(vals){
+    if(vals.length!==5) return false;
+    let seq=true; for(let i=1;i<5;i++) if(vals[i]!==vals[0]+i) seq=false;
+    if(seq) return true;
+    return vals.join(',')==='2,3,4,5,14';
+  }
+
+  function evalHand(cards){
+    const n=cards.length, ranks=cards.map(c=>c.rv).sort((a,b)=>a-b), countR=new Map(), countS=new Map();
+    cards.forEach(c=>{countR.set(c.rv,(countR.get(c.rv)||0)+1); countS.set(c.suit,(countS.get(c.suit)||0)+1);});
+    const groups=[...countR.values()].sort((a,b)=>b-a); const straight=(n===5)&&isStraight([...new Set(ranks)]); const flush=(n===5)&&[...countS.values()].some(v=>v===5);
+    if(n===5){
+      if(straight&&flush) return {name:'Straight Flush',chips:100,mult:8};
+      if(groups[0]===4) return {name:'Four of a Kind',chips:60,mult:7};
+      if(groups[0]===3&&groups[1]===2) return {name:'Full House',chips:40,mult:4};
+      if(flush) return {name:'Flush',chips:35,mult:4};
+      if(straight) return {name:'Straight',chips:30,mult:4};
+      if(groups[0]===3) return {name:'Three of a Kind',chips:30,mult:3};
+      if(groups[0]===2&&groups[1]===2) return {name:'Two Pair',chips:20,mult:2};
+      if(groups[0]===2) return {name:'Pair',chips:10,mult:2};
+      return {name:'High Card',chips:5,mult:1};
+    }
+    if(groups[0]===3) return {name:'Three of a Kind',chips:16,mult:3};
+    if(groups[0]===2&&groups[1]===2) return {name:'Two Pair',chips:10,mult:2};
+    if(groups[0]===2) return {name:'Pair',chips:6,mult:2};
+    return {name:'High Card',chips:Math.max(1,n),mult:1};
+  }
+
+  function drawToHand(){
+    while(game.hand.length<8){
+      if(!game.deck.length){
+        if(!game.discardPile.length) break;
+        game.deck=rng.shuffle(game.discardPile.splice(0));
+      }
+      game.hand.push(game.deck.pop());
+    }
+  }
+
+  function selectedCards(){ const ids=[...game.sel]; return game.hand.filter(c=>ids.includes(c.id)); }
+  function currentTarget(){ return game.targets[game.round-1]||0; }
+
+  function renderHand(){
+    $('hand').innerHTML='';
+    for(const c of game.hand){
+      const el=document.createElement('button');
+      el.className='card'+(c.red?' red':'')+(game.sel.has(c.id)?' sel':'');
+      el.innerHTML=`<div><span class="rank">${c.rank}</span> <span class="suit">${c.suitSym}</span></div><div class="chips"><span>chips</span><b>${c.chip}</b></div>`;
+      el.onclick=()=>{ if(game.ended) return; game.sel.has(c.id)?game.sel.delete(c.id):game.sel.add(c.id); if(game.sel.size>5) game.sel.delete(c.id); renderHand(); };
+      $('hand').appendChild(el);
+    }
+  }
+
+  function render(){
+    $('round').textContent=String(game.round);
+    $('diffLabel').textContent=game.difficulty[0].toUpperCase()+game.difficulty.slice(1);
+    $('target').textContent=fmt(currentTarget());
+    $('score').textContent=fmt(game.score);
+    $('total').textContent=fmt(game.total);
+    $('hands').textContent=String(game.hands);
+    $('discards').textContent=String(game.discards);
+    const pct = currentTarget() ? clamp((game.score/currentTarget())*100,0,100) : 0;
+    $('targetBar').querySelector('i').style.width=`${pct}%`;
+    $('targetsText').textContent=`Easy: ${BASE_TARGETS.join(' / ')} | Medium: ${BASE_TARGETS.map(v=>Math.round(v*1.2)).join(' / ')} | Hard: ${BASE_TARGETS.map(v=>Math.round(v*1.5)).join(' / ')}`;
+    renderHand();
+  }
+
+  function setupRound(){
+    game.score=0; game.hands=4; game.discards=3; game.deck=makeDeck(); game.discardPile=[]; game.hand=[]; game.sel.clear(); drawToHand();
+    $('lastHand').textContent='—'; $('lastMath').textContent='Select 1-5 cards and press Play Selected.';
+    $('status').textContent=`Reach ${fmt(currentTarget())} points to clear Round ${game.round}.`;
+    render();
+  }
+
+  function newRun(){
+    game.difficulty=$('difficulty').value;
+    game.targets=BASE_TARGETS.map(v=>Math.round(v*DIFF[game.difficulty]));
+    game.round=1; game.total=0; game.ended=false;
+    setupRound();
+    toast('New run started. No timers—play at your pace.');
+  }
+
+  function playSelected(){
+    if(game.ended) return;
+    if(game.hands<=0){ toast('No hands left.'); return; }
+    const cards=selectedCards(); if(!cards.length){ toast('Select 1-5 cards.'); return; }
+    const h=evalHand(cards); const cardChips=cards.reduce((a,c)=>a+c.chip,0); const chips=h.chips+cardChips; const gained=chips*h.mult;
+    game.score+=gained; game.hands-=1;
+    const set=new Set(cards.map(c=>c.id)); game.hand=game.hand.filter(c=>!set.has(c.id)); cards.forEach(c=>game.discardPile.push(c)); game.sel.clear(); drawToHand();
+    $('lastHand').textContent=h.name;
+    $('lastMath').textContent=`(${h.chips} base + ${cardChips} cards) × ${h.mult} = +${fmt(gained)}`;
+    if(game.score>=currentTarget()) $('status').textContent='Target met! Press Finish Round to advance, or keep scoring.';
+    if(game.hands<=0 && game.score<currentTarget()) { toast('Round failed. Start a new run to try again.'); game.ended=true; $('status').textContent='Run ended. You did not meet the target.'; }
+    render();
+  }
+
+  function discardSelected(){
+    if(game.ended) return;
+    if(game.discards<=0){ toast('No discards left.'); return; }
+    const cards=selectedCards(); if(!cards.length){ toast('Select cards to discard.'); return; }
+    const set=new Set(cards.map(c=>c.id)); game.hand=game.hand.filter(c=>!set.has(c.id)); cards.forEach(c=>game.discardPile.push(c)); game.sel.clear(); game.discards-=1; drawToHand();
+    render();
+  }
+
+  function finishRound(){
+    if(game.ended) return;
+    if(game.score<currentTarget()){ toast('Target not met yet.'); return; }
+    game.total += game.score;
+    if(game.round>=5){ game.ended=true; $('status').textContent=`🏆 Run complete! Final total: ${fmt(game.total)}.`; toast('Run complete!'); render(); return; }
+    game.round += 1;
+    setupRound();
+    toast(`Round ${game.round} started.`);
+  }
+
+  $('newRun').onclick=newRun;
+  $('play').onclick=playSelected;
+  $('discard').onclick=discardSelected;
+  $('finish').onclick=finishRound;
+  $('difficulty').onchange=()=>{ if(!game.total && game.round===1 && game.score===0) newRun(); };
+
+  newRun();
+})();
+</script>
+</body>
+</html>
