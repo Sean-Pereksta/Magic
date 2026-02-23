@@ -351,6 +351,7 @@
               <div class="bar" id="targetBar"><i></i></div>
               <div class="small tight" id="bossRuleLine"></div>
               <div class="small tight" id="tagLine"></div>
+              <div class="small tight" id="nextGoalLine"></div>
             </div>
             <div class="scoreBox">
               <div class="label">Your score (this round)</div>
@@ -1528,6 +1529,14 @@
 
     $("tagLine").textContent = "";
 
+    const nextRound = game.round + 1;
+    const nextCfg = (Array.isArray(match?.rounds) ? match.rounds[nextRound-1] : null);
+    if(nextCfg){
+      $("nextGoalLine").textContent = `Next Goal: Round ${nextRound} target ${fmt(nextCfg.target||0)} (${nextCfg.type||"Blind"})`;
+    } else {
+      $("nextGoalLine").textContent = "Next Goal: Final round in progress";
+    }
+
     // finish hint + button state
     const canFinish = (game.mode==="play" && !me.eliminated && !me.finished && game.blindScore >= game.target);
     $("btnFinish").disabled = !canFinish;
@@ -1891,6 +1900,8 @@
 
     const winnerName = match?.winnerName || null;
 
+    const now = nowMs();
+
     for(const p of playersArr){
       const row = document.createElement("div");
       row.className = "mpRow" +
@@ -1926,7 +1937,16 @@
       sc.textContent = fmt(liveScore(p));
       const st = document.createElement("div");
       st.className = "mpStatus";
-      st.textContent = statusLabel(p);
+      const status = statusLabel(p);
+      let timerTxt = "";
+      if(p.status === "play"){
+        const remain = Number(match?.roundDeadlineAt || 0) - now;
+        timerTxt = `⏳${fmtClock(remain)}`;
+      } else if(p.status === "buy"){
+        const remain = Number(p.buyDeadlineAt || 0) - now;
+        timerTxt = `⏳${fmtClock(remain)}`;
+      }
+      st.textContent = timerTxt ? `${status} • ${timerTxt}` : status;
 
       right.appendChild(sc);
       right.appendChild(st);
@@ -2194,6 +2214,7 @@
     }
 
     renderTop();
+    renderScoreboard();
   }
 
   // ---------------------------
