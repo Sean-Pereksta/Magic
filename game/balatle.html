@@ -1,14 +1,2171 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>⚔️ Balatle</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>🃏 Balatle — Multiplayer (Firebase Live Scores)</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:rgba(255,255,255,.08);
+      --panel2:rgba(255,255,255,.06);
+      --line:rgba(255,255,255,.12);
+      --ink:#eaf2ff;
+      --muted:rgba(234,242,255,.75);
+      --good:#31d07f;
+      --warn:#f4c84a;
+      --bad:#ff5b6b;
+      --accent:#57b2ff;
+      --shadow:0 16px 46px rgba(0,0,0,.55);
+      --r:16px;
+    }
+    *{ box-sizing:border-box; }
+    html,body{
+      height:100%; margin:0;
+      background:radial-gradient(1200px 900px at 20% 10%, #1a2a55 0%, #0b1020 60%, #050713 100%);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    }
+    button{ font:inherit; cursor:pointer; }
+    .wrap{ max-width:1180px; margin:0 auto; padding:14px; }
+    .top{
+      display:grid; gap:12px;
+      grid-template-columns: 1.2fr 1fr;
+      align-items:stretch;
+    }
+    @media (max-width: 980px){ .top{ grid-template-columns: 1fr; } }
+
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.06));
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .ph{
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+    .ph h2{
+      margin:0;
+      font-size:14px;
+      letter-spacing:.4px;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+    .pillRow{ display:flex; gap:8px; flex-wrap:wrap; }
+    .pill{
+      padding:7px 10px; border-radius:999px; border:1px solid var(--line);
+      background:rgba(0,0,0,.22); color:var(--ink);
+      display:inline-flex; gap:8px; align-items:center; white-space:nowrap;
+    }
+    .pill b{ font-weight:900; }
+    .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.22); }
+    .dot.good{ background:var(--good); box-shadow:0 0 0 2px rgba(49,208,127,.22); }
+    .dot.warn{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.22); }
+    .dot.bad{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.22); }
+
+    .content{ padding:12px 14px; }
+    .grid2{ display:grid; gap:12px; grid-template-columns: 1.5fr 1fr; }
+    @media (max-width: 980px){ .grid2{ grid-template-columns:1fr; } }
+
+    .bigScore{ display:flex; gap:12px; align-items:stretch; flex-wrap:wrap; }
+    .scoreBox{
+      flex:1; min-width:220px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      border-radius:14px;
+      padding:12px;
+    }
+    .scoreBox .label{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
+    .scoreBox .val{ font-size:24px; font-weight:1000; margin-top:4px; }
+    .bar{
+      height:10px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.06);
+      overflow:hidden;
+      margin-top:10px;
+    }
+    .bar > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent), rgba(87,178,255,.25)); }
+    .bar.good > i{ background:linear-gradient(90deg, var(--good), rgba(49,208,127,.25)); }
+    .bar.bad > i{ background:linear-gradient(90deg, var(--bad), rgba(255,91,107,.25)); }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .btn{
+      border-radius:12px; padding:10px 12px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.22); color:var(--ink);
+      transition:transform .05s ease, filter .12s ease;
+    }
+    .btn:hover{ filter:brightness(1.08); }
+    .btn:active{ transform:translateY(1px); }
+    .btn.primary{ background:linear-gradient(180deg, rgba(87,178,255,.30), rgba(87,178,255,.12)); border-color:rgba(87,178,255,.45); }
+    .btn.good{ background:linear-gradient(180deg, rgba(49,208,127,.30), rgba(49,208,127,.12)); border-color:rgba(49,208,127,.45); }
+    .btn.warn{ background:linear-gradient(180deg, rgba(244,200,74,.30), rgba(244,200,74,.12)); border-color:rgba(244,200,74,.45); }
+    .btn.bad{ background:linear-gradient(180deg, rgba(255,91,107,.30), rgba(255,91,107,.12)); border-color:rgba(255,91,107,.45); }
+    .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+    .hand{
+      display:flex; gap:10px; flex-wrap:wrap;
+      padding:10px;
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius:14px;
+      background:rgba(0,0,0,.12);
+      min-height:116px;
+      align-content:flex-start;
+    }
+    .card{
+      width:84px; height:112px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.18);
+      background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
+      box-shadow:0 10px 24px rgba(0,0,0,.35);
+      position:relative;
+      padding:10px;
+      user-select:none;
+      transition:transform .08s ease, filter .12s ease, outline .12s ease;
+      outline:2px solid transparent;
+    }
+    .card:hover{ filter:brightness(1.08); }
+    .card.sel{ outline:2px solid rgba(87,178,255,.8); transform:translateY(-3px); }
+    .card.red .suit, .card.red .rank{ color:#ff6b6b; }
+    .card .rank{ font-weight:1000; font-size:20px; }
+    .card .suit{ font-size:20px; margin-left:2px; }
+    .card .chips{
+      position:absolute; bottom:8px; left:10px; right:10px;
+      display:flex; justify-content:space-between; align-items:center;
+      color:rgba(234,242,255,.8);
+      font-size:12px;
+    }
+    .tag{
+      display:inline-flex; gap:8px; align-items:center;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(244,200,74,.35);
+      background:rgba(244,200,74,.10);
+      color:rgba(255,255,255,.92);
+      font-size:12px;
+    }
+    .list{ display:flex; flex-direction:column; gap:8px; }
+    .item{
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      border-radius:14px;
+      padding:10px;
+    }
+    .itemTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+    .itemName{ font-weight:1000; }
+    .itemMeta{ color:var(--muted); font-size:12px; margin-top:4px; line-height:1.35; }
+    .itemBtns{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .mini{ font-size:12px; padding:7px 9px; border-radius:10px; }
+    .sep{ height:1px; background:var(--line); margin:10px 0; }
+
+    .toast{
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+      background:rgba(0,0,0,.72); border:1px solid rgba(255,255,255,.16);
+      color:var(--ink); padding:10px 12px; border-radius:14px;
+      box-shadow:0 18px 46px rgba(0,0,0,.6);
+      max-width:min(760px, calc(100vw - 24px));
+      opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
+      z-index:50;
+    }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(-2px); }
+
+    .modalBack{
+      position:fixed; inset:0; display:none; place-items:center;
+      background:rgba(0,0,0,.55); padding:14px;
+      z-index:60;
+    }
+    .modalBack.show{ display:grid; }
+    .modal{
+      width:min(980px, 100%);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.16);
+      background:linear-gradient(180deg, rgba(20,28,54,.94), rgba(10,14,32,.94));
+      box-shadow:0 22px 70px rgba(0,0,0,.65);
+      overflow:hidden;
+    }
+    .modal .ph{ background:rgba(0,0,0,.18); }
+    .kbd{ padding:2px 7px; border-radius:8px; border:1px solid var(--line); background:rgba(0,0,0,.24); font-size:12px; color:rgba(255,255,255,.85); }
+    .note{ color:var(--muted); font-size:12px; line-height:1.45; }
+    .tight{ margin:6px 0 0 0; }
+    .small{ font-size:12px; color:var(--muted); }
+    .rightAlign{ text-align:right; }
+
+    /* Multiplayer scoreboard */
+    .mpBox{
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      border-radius:14px;
+      padding:10px;
+      margin-bottom:10px;
+    }
+    .mpHead{
+      display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+      margin-bottom:8px;
+    }
+    .mpTitle{ font-weight:1000; display:flex; gap:8px; align-items:center; }
+    .mpTitle .badge{
+      font-size:11px;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid rgba(87,178,255,.35);
+      background:rgba(87,178,255,.10);
+      color:rgba(234,242,255,.92);
+    }
+    .mpList{ display:flex; flex-direction:column; gap:8px; }
+    .mpRow{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding:9px 10px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      align-items:center;
+    }
+    .mpLeft{ display:flex; align-items:center; gap:10px; min-width:0; }
+    .mpName{
+      font-weight:1000;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      max-width:180px;
+    }
+    .mpSub{ font-size:11px; color:var(--muted); margin-top:2px; }
+    .mpMeta{ display:flex; flex-direction:column; min-width:0; }
+    .mpScore{ font-weight:1000; text-align:right; }
+    .mpStatus{
+      font-size:11px;
+      color:var(--muted);
+      text-align:right;
+      margin-top:2px;
+    }
+    .mpRow.me{
+      border-color: rgba(87,178,255,.35);
+      box-shadow: 0 0 0 2px rgba(87,178,255,.12);
+      background: rgba(87,178,255,.06);
+    }
+    .mpRow.elim{
+      opacity:.70;
+      border-color: rgba(255,91,107,.28);
+      background: rgba(255,91,107,.06);
+    }
+    .mpRow.winner{
+      border-color: rgba(49,208,127,.35);
+      box-shadow: 0 0 0 2px rgba(49,208,127,.10);
+      background: rgba(49,208,127,.06);
+    }
+    .mpDot{
+      width:10px; height:10px; border-radius:50%;
+      background:var(--accent);
+      box-shadow: 0 0 0 2px rgba(87,178,255,.18);
+      flex:0 0 auto;
+    }
+    .mpDot.play{ background:var(--good); box-shadow:0 0 0 2px rgba(49,208,127,.16); }
+    .mpDot.buy{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.16); }
+    .mpDot.ready{ background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.16); }
+    .mpDot.elim{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.16); }
+  </style>
 </head>
+
 <body>
-  <script>
-    const query = window.location.search || "";
-    window.location.replace(`/game/battle.html${query}`);
-  </script>
+  <div class="wrap">
+    <div class="top">
+      <!-- LEFT: Gameplay -->
+      <div class="panel">
+        <div class="ph">
+          <h2>Round</h2>
+          <div class="pillRow">
+            <div class="pill"><span class="dot" id="blindDot"></span> <span id="blindName">—</span></div>
+            <div class="pill">Round <b id="roundNum">—</b>/5</div>
+            <div class="pill">⏳ <b id="roundTimer">—</b></div>
+            <div class="pill">Phase <b id="phasePill">—</b></div>
+            <div class="pill">Conn <b id="connPill">—</b></div>
+            <div class="pill">👤 <b id="youName">—</b></div>
+          </div>
+        </div>
+
+        <div class="content">
+          <div class="bigScore">
+            <div class="scoreBox">
+              <div class="label">Target (survive this round)</div>
+              <div class="val" id="target">—</div>
+              <div class="bar" id="targetBar"><i></i></div>
+              <div class="small tight" id="bossRuleLine"></div>
+              <div class="small tight" id="tagLine"></div>
+            </div>
+            <div class="scoreBox">
+              <div class="label">Your score (this round)</div>
+              <div class="val" id="blindScore">0</div>
+              <div class="small tight" id="blindProgressText"></div>
+              <div class="small tight" id="finishHint"></div>
+            </div>
+            <div class="scoreBox">
+              <div class="label">Last played hand</div>
+              <div class="val" id="lastHand">—</div>
+              <div class="small tight" id="lastMath">—</div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="row">
+            <button class="btn primary" id="btnPlay">Play Selected</button>
+            <button class="btn" id="btnDiscard">Discard Selected</button>
+            <button class="btn" id="btnClear">Clear Selection</button>
+            <button class="btn" id="btnSortRank">Sort: Rank</button>
+            <button class="btn" id="btnSortSuit">Sort: Suit</button>
+            <button class="btn good" id="btnFinish" title="Enabled once you reach the target">Finish Round</button>
+            <button class="btn mini" id="btnHow">How this works</button>
+            <span class="note">Select 1–5 cards, then <span class="kbd">Play</span>. Beat the target to survive.</span>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="row" style="justify-content:space-between; align-items:flex-end;">
+            <div style="flex:1">
+              <div class="small">Your hand (click cards to select):</div>
+              <div class="hand" id="hand"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Multiplayer + Jokers + Shop -->
+      <div class="panel">
+        <div class="ph">
+          <h2>Multiplayer / Shop</h2>
+          <div class="pillRow">
+            <button class="btn mini bad" id="btnReset" title="Local reset only (does not affect match)">Reset (local)</button>
+          </div>
+        </div>
+
+        <div class="content">
+          <div class="mpBox">
+            <div class="mpHead">
+              <div class="mpTitle">👥 Players <span class="badge" id="matchBadge">—</span></div>
+              <div class="pill" title="Your total score across completed rounds">
+                🧮 Total <b id="yourTotal">0</b>
+              </div>
+            </div>
+            <div class="mpList" id="mpList"></div>
+            <div class="small tight" id="mpFooter"></div>
+          </div>
+
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <div class="pill">Jokers <b id="jokerCount">0</b>/5</div>
+            <div class="pill">Consumables <b id="consCount">0</b>/2</div>
+            <div class="pill" style="margin-left:auto">💰 <b id="money">—</b></div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid2">
+            <div>
+              <div class="small">Active jokers (apply every hand):</div>
+              <div class="list" id="jokerList"></div>
+              <div class="small tight">Tip: ×Mult jokers scale fast.</div>
+            </div>
+            <div>
+              <div class="small">Consumables (one-time uses):</div>
+              <div class="list" id="consList"></div>
+              <div class="small tight">Use only during Play phase.</div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div id="shopBlock" style="display:none;">
+            <div class="row" style="justify-content:space-between; align-items:center;">
+              <div class="pill"><span class="dot warn"></span> Buy Phase <b id="buyTimer">—</b></div>
+              <div class="row">
+                <button class="btn mini" id="btnReroll">Reroll ($2)</button>
+                <button class="btn mini good" id="btnReady">Ready</button>
+              </div>
+            </div>
+            <div class="small tight">Buys are local-only (they help your run, not others). Next round starts when all survivors are Ready.</div>
+            <div class="sep"></div>
+            <div class="list" id="shopList"></div>
+          </div>
+
+          <div id="waitBlock" style="display:none;">
+            <div class="item">
+              <div class="itemName" id="waitTitle">—</div>
+              <div class="itemMeta" id="waitText">—</div>
+            </div>
+          </div>
+
+          <div id="runEndBlock" style="display:none;">
+            <div class="item">
+              <div class="itemName" id="runEndTitle">—</div>
+              <div class="itemMeta" id="runEndText">—</div>
+            </div>
+          </div>
+
+          <div class="item">
+            <div class="itemName">Scoring (demo)</div>
+            <div class="itemMeta">
+              Score per play = <b>(Chips)</b> × <b>(Mult)</b><br/>
+              Chips = base hand chips + sum of selected card chip values + joker chip bonuses<br/>
+              Mult = (base hand mult + joker +mult) × joker ×mult effects
+              <div class="small tight">Inspired by Balatro, simplified for learning. Multiplayer syncs scores only.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- HOW-TO MODAL -->
+  <div class="modalBack" id="howBack" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="ph">
+        <h2>How this multiplayer demo works</h2>
+        <button class="btn mini" id="btnCloseHow">Close</button>
+      </div>
+      <div class="content" id="howContent">
+        <div class="item">
+          <div class="itemName">Match rules</div>
+          <div class="itemMeta">
+            <ol style="margin:8px 0 0 18px; padding:0; line-height:1.5;">
+              <li>There are <b>5 rounds</b>. Rounds <b>4</b> and <b>5</b> are <b>Boss</b> rounds.</li>
+              <li>Each round has a <b>2:00</b> play timer. If time expires and you’re below target, you’re <b>eliminated</b>.</li>
+              <li>Once you reach target, you can keep scoring for a bigger total, or click <b>Finish Round</b> to enter Buy.</li>
+              <li>Buy Phase lasts <b>0:30</b> (or less if the match advances early). Buys only affect <b>your</b> run.</li>
+              <li>Next round starts when all surviving players are <b>Ready</b> (or timeouts force it).</li>
+              <li>End of Round 5: highest <b>Total</b> among survivors wins. If only one player remains, they win immediately.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="item">
+          <div class="itemName">Keyboard</div>
+          <div class="itemMeta">Press <span class="kbd">Esc</span> to close this window.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore,
+    doc, collection,
+    setDoc, getDoc,
+    onSnapshot,
+    runTransaction,
+    serverTimestamp,
+    arrayUnion
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import {
+    getAuth,
+    signInAnonymously,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+  // ---------------------------
+  // Firebase config (same project as lobby + stoney)
+  // ---------------------------
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.appspot.com",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // ---------------------------
+  // Query params from lobby redirect: ?gameId=...&username=...
+  // ---------------------------
+  const qs = new URLSearchParams(location.search);
+  const gameId = (qs.get("gameId") || "").trim();
+  const usernameRaw = (qs.get("username") || "").trim();
+  const username = (usernameRaw.length ? usernameRaw : "Player").slice(0, 22);
+
+  const $ = (id)=>document.getElementById(id);
+  $("youName").textContent = username;
+
+  // ---------------------------
+  // Match constants
+  // ---------------------------
+  const ROUND_COUNT = 5;
+  const PLAY_MS = 120000; // 2 minutes
+  const BUY_MS  = 30000;  // 30 seconds
+  const ONLINE_GRACE_MS = 45000; // treat stale players as disconnected
+
+  // Boss rules (shared & stored in match doc)
+  const BOSS_RULES = [
+    { key:"noDiscards", name:"Boss Rule: No Discards", desc:"Discards are disabled during this boss round.",
+      apply(game){ game.boss.noDiscards = true; }
+    },
+    { key:"exactFive", name:"Boss Rule: Exactly 5 Cards", desc:"You must play exactly 5 cards each hand.",
+      apply(game){ game.boss.exactFive = true; }
+    },
+    { key:"noPairs", name:"Boss Rule: No Pairs", desc:"Pairs and Two Pairs count as High Card.",
+      apply(game){ game.boss.noPairs = true; }
+    }
+  ];
+  const bossByKey = new Map(BOSS_RULES.map(x=>[x.key,x]));
+
+  // Default targets (tune here if you want)
+  const DEFAULT_ROUND_TARGETS = [500, 950, 1500, 2300, 3300];
+  const DEFAULT_ROUND_TYPES   = ["Small","Big","Big","Boss","Boss"];
+
+  // ---------------------------
+  // Robust anonymous auth (pattern from your DM file)
+  // ---------------------------
+  let authUser = null;
+
+  async function ensureAuthed(){
+    if(auth.currentUser){
+      try{ await auth.currentUser.getIdToken(); }catch(e){}
+      return auth.currentUser;
+    }
+    await signInAnonymously(auth).catch(()=>{});
+    return await new Promise((resolve, reject)=>{
+      let unsub=null;
+      const timeout=setTimeout(()=>{
+        unsub?.(); reject(new Error("Anonymous auth timed out."));
+      }, 12000);
+      unsub = onAuthStateChanged(auth, async (user)=>{
+        if(!user) return;
+        clearTimeout(timeout);
+        unsub();
+        try{
+          await user.getIdToken();
+          resolve(user);
+        }catch(e){ reject(e); }
+      });
+    });
+  }
+
+  // ---------------------------
+  // Server time offset (best-effort)
+  // ---------------------------
+  let serverOffsetMs = 0;
+  function nowMs(){ return Date.now() + serverOffsetMs; }
+
+  async function syncServerTime(){
+    if(!gameId) return;
+    const clockRef = doc(db, "lobbies", gameId, "_meta", "clock");
+    // write a server timestamp, then listen for resolved value
+    await setDoc(clockRef, { ts: serverTimestamp() }, { merge:true }).catch(()=>{});
+    return await new Promise((resolve)=>{
+      const unsub = onSnapshot(clockRef, (snap)=>{
+        const d = snap.data();
+        const ts = d?.ts;
+        if(ts && typeof ts.toMillis === "function"){
+          const serverNow = ts.toMillis();
+          serverOffsetMs = serverNow - Date.now();
+          unsub();
+          resolve(serverOffsetMs);
+        }
+      }, ()=> resolve(0));
+      setTimeout(()=>{ try{unsub();}catch(e){} resolve(0); }, 4000);
+    });
+  }
+
+  // ---------------------------
+  // Firestore refs
+  // ---------------------------
+  if(!gameId){
+    $("connPill").textContent = "NO gameId";
+    $("runEndBlock").style.display = "block";
+    $("runEndTitle").textContent = "Missing gameId";
+    $("runEndText").textContent = "Launch from the lobby so the URL includes ?gameId=...&username=...";
+    throw new Error("Missing gameId");
+  }
+
+  const lobbyRef  = doc(db, "lobbies", gameId);
+  const stateRef  = doc(db, "lobbies", gameId, "balatro", "state");
+  const playersCol= collection(db, "lobbies", gameId, "balatroPlayers");
+  const meRef     = doc(db, "lobbies", gameId, "balatroPlayers", username);
+
+  // ---------------------------
+  // Match + player mirrors (live)
+  // ---------------------------
+  let match = null;
+  let allPlayers = new Map(); // name -> data
+  let matchUnsub = null;
+  let playersUnsub = null;
+
+  // ---------------------------
+  // Toast
+  // ---------------------------
+  let toastT=null;
+  function toast(msg){
+    const t=$("toast");
+    t.textContent=msg;
+    t.classList.add("show");
+    clearTimeout(toastT);
+    toastT=setTimeout(()=>t.classList.remove("show"), 1600);
+  }
+
+  // ---------------------------
+  // Deterministic RNG for match setup (boss rules)
+  // ---------------------------
+  function xorshift32(seed){
+    let x = (seed|0) || 123456789;
+    return ()=> {
+      x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+      return ((x>>>0) / 4294967296);
+    };
+  }
+
+  function buildRounds(seed){
+    const rnd = xorshift32(seed);
+    const rounds = [];
+    // pick 2 (possibly different) boss rules deterministically
+    const bossKeys = BOSS_RULES.map(b=>b.key);
+    const boss1 = bossKeys[Math.floor(rnd()*bossKeys.length)];
+    let boss2 = bossKeys[Math.floor(rnd()*bossKeys.length)];
+    if(boss2 === boss1 && bossKeys.length>1){
+      boss2 = bossKeys[(bossKeys.indexOf(boss1)+1) % bossKeys.length];
+    }
+
+    for(let i=1;i<=ROUND_COUNT;i++){
+      const type = DEFAULT_ROUND_TYPES[i-1];
+      const target = DEFAULT_ROUND_TARGETS[i-1];
+      let bossRuleKey = null;
+      if(i===4) bossRuleKey = boss1;
+      if(i===5) bossRuleKey = boss2;
+
+      const br = bossRuleKey ? bossByKey.get(bossRuleKey) : null;
+      rounds.push({
+        idx:i,
+        type,
+        target,
+        bossRuleKey: bossRuleKey || null,
+        bossRuleName: br?.name || null,
+        bossRuleDesc: br?.desc || null
+      });
+    }
+    return rounds;
+  }
+
+  // ---------------------------
+  // Ensure match exists + join
+  // ---------------------------
+  async function joinOrCreateMatch(){
+    await runTransaction(db, async (tx)=>{
+      const lobbySnap = await tx.get(lobbyRef);
+      const stateSnap = await tx.get(stateRef);
+
+      const now = nowMs();
+      const lobby = lobbySnap.exists() ? (lobbySnap.data() || {}) : {};
+      const lobbyPlayers = Array.isArray(lobby.players) ? lobby.players.slice(0) : [username];
+      const host = (lobby.host || lobbyPlayers[0] || username);
+
+      if(!stateSnap.exists()){
+        const seed = Math.floor(Math.random()*2_000_000_000);
+        const rounds = buildRounds(seed);
+        const r1 = rounds[0];
+
+        tx.set(stateRef, {
+          gameType: "balatle",
+          createdAt: now,
+          seed,
+          host,
+          players: lobbyPlayers,
+          state: "running", // running | ended
+          round: 1,
+          roundStartAt: now,
+          roundDeadlineAt: now + PLAY_MS,
+          playMs: PLAY_MS,
+          buyMs: BUY_MS,
+          rounds,
+          winnerName: null,
+          winnerScore: null,
+          endedAt: null
+        }, { merge:true });
+      } else {
+        const st = stateSnap.data() || {};
+        const stPlayers = Array.isArray(st.players) ? st.players : [];
+        if(!stPlayers.includes(username)){
+          tx.update(stateRef, { players: arrayUnion(username) });
+        }
+      }
+
+      // Ensure my player doc exists (do NOT wipe if rejoining)
+      tx.set(meRef, {
+        name: username,
+        joinedAt: serverTimestamp(),
+        status: "play",          // play | buy | ready | eliminated | finished | spectator
+        round: 1,
+        totalScore: 0,
+        roundScore: 0,
+        roundScoreFinal: 0,
+        passedRound: 0,
+        finishAt: 0,
+        buyStartAt: 0,
+        buyDeadlineAt: 0,
+        buyReady: false,
+        eliminatedAt: 0,
+        eliminatedRound: 0,
+        reason: "",
+        lastSeenAt: now
+      }, { merge:true });
+    });
+  }
+
+  // ---------------------------
+  // Local game logic (your original demo, adapted to 5-round match)
+  // ---------------------------
+
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const fmt = (n)=>Math.floor(n).toLocaleString();
+
+  const rng = {
+    int(min,max){ return Math.floor(Math.random()*(max-min+1))+min; },
+    pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; },
+    shuffle(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+      }
+      return arr;
+    }
+  };
+
+  // Card / deck
+  const SUITS = [
+    {k:"S", sym:"♠", red:false, order:1},
+    {k:"H", sym:"♥", red:true,  order:2},
+    {k:"D", sym:"♦", red:true,  order:3},
+    {k:"C", sym:"♣", red:false, order:4},
+  ];
+  const RANKS = [
+    {k:"2", v:2, chip:2},{k:"3", v:3, chip:3},{k:"4", v:4, chip:4},{k:"5", v:5, chip:5},
+    {k:"6", v:6, chip:6},{k:"7", v:7, chip:7},{k:"8", v:8, chip:8},{k:"9", v:9, chip:9},
+    {k:"10",v:10,chip:10},{k:"J",v:11,chip:10},{k:"Q",v:12,chip:10},{k:"K",v:13,chip:10},{k:"A",v:14,chip:11},
+  ];
+
+  function makeDeck(){
+    const d=[];
+    for(const s of SUITS){
+      for(const r of RANKS){
+        d.push({
+          id: `${r.k}${s.k}_${Math.random().toString(16).slice(2)}`,
+          rank:r.k, rv:r.v, suit:s.k, suitSym:s.sym, red:s.red,
+          baseChip:r.chip,
+          bonusChip:0,
+        });
+      }
+    }
+    return rng.shuffle(d);
+  }
+
+  // Hand evaluation
+  function isStraight(values){
+    if(values.length !== 5) return false;
+    let ok=true;
+    for(let i=1;i<5;i++){
+      if(values[i] !== values[0]+i) { ok=false; break; }
+    }
+    if(ok) return true;
+    const wheel = [2,3,4,5,14];
+    for(let i=0;i<5;i++) if(values[i]!==wheel[i]) return false;
+    return true;
+  }
+
+  function evalHand(cards){
+    const n = cards.length;
+    const ranks = cards.map(c=>c.rv).sort((a,b)=>a-b);
+    const suits = cards.map(c=>c.suit);
+    const countR = new Map();
+    const countS = new Map();
+    for(const c of cards){
+      countR.set(c.rv, (countR.get(c.rv)||0)+1);
+      countS.set(c.suit, (countS.get(c.suit)||0)+1);
+    }
+    const groups = [...countR.entries()].map(([rv,ct])=>({rv,ct})).sort((a,b)=>b.ct-a.ct || b.rv-a.rv);
+    const isFlush = (n===5) && ([...countS.values()].some(v=>v===5));
+    const uniq = [...new Set(ranks)];
+    const straight = (n===5) && isStraight(uniq);
+
+    if(n===5){
+      if(straight && isFlush) return {name:"Straight Flush", tier:9, baseChips:100, baseMult:8, detail:"(5 cards)"};
+      if(groups[0].ct===4)     return {name:"Four of a Kind", tier:8, baseChips:60,  baseMult:7, detail:"(4 same rank)"};
+      if(groups[0].ct===3 && groups[1]?.ct===2) return {name:"Full House", tier:7, baseChips:40, baseMult:4, detail:"(3+2)"};
+      if(isFlush)              return {name:"Flush", tier:6, baseChips:35, baseMult:4, detail:"(same suit)"};
+      if(straight)             return {name:"Straight", tier:5, baseChips:30, baseMult:4, detail:"(5 in a row)"};
+      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:30, baseMult:3, detail:"(3 same rank)"};
+      if(groups[0].ct===2 && groups[1]?.ct===2) return {name:"Two Pair", tier:3, baseChips:20, baseMult:2, detail:"(2+2)"};
+      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:10, baseMult:2, detail:"(2 same rank)"};
+      return {name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(no combo)"};
+    }
+
+    if(n===4){
+      if(groups[0].ct===4)     return {name:"Four of a Kind", tier:8, baseChips:45, baseMult:6, detail:"(4 cards)"};
+      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:22, baseMult:3, detail:"(4 cards)"};
+      if(groups[0].ct===2 && groups[1]?.ct===2) return {name:"Two Pair", tier:3, baseChips:16, baseMult:2, detail:"(4 cards)"};
+      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:8, baseMult:2, detail:"(4 cards)"};
+      return {name:"High Card", tier:1, baseChips:4, baseMult:1, detail:"(4 cards)"};
+    }
+
+    if(n===3){
+      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:16, baseMult:3, detail:"(3 cards)"};
+      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:6, baseMult:2, detail:"(3 cards)"};
+      return {name:"High Card", tier:1, baseChips:3, baseMult:1, detail:"(3 cards)"};
+    }
+
+    if(n===2){
+      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:5, baseMult:2, detail:"(2 cards)"};
+      return {name:"High Card", tier:1, baseChips:2, baseMult:1, detail:"(2 cards)"};
+    }
+
+    return {name:"High Card", tier:1, baseChips:1, baseMult:1, detail:"(1 card)"};
+  }
+
+  // Demo-specific: base hand upgrades
+  const HAND_KEYS = ["High Card","Pair","Two Pair","Three of a Kind","Straight","Flush","Full House","Four of a Kind","Straight Flush"];
+  const handUp = {};
+  for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
+
+  // Jokers / Vouchers / Consumables
+  let nextJokerId = 1;
+  function mkJoker(def){
+    return { ...def, jid: "J"+(nextJokerId++), state: def.initState ? def.initState() : {} };
+  }
+
+  const JOKER_POOL = [
+    { kind:"joker", name:"Chip Booster", cost:6, desc:"+15 Chips on every hand.",
+      apply(ctx){ ctx.addChips += 15; ctx.log.push("Chip Booster: +15 Chips"); } },
+    { kind:"joker", name:"Pair Enthusiast", cost:7, desc:"+2 Mult when you play Pair or Two Pair.",
+      apply(ctx){ if(ctx.handName==="Pair" || ctx.handName==="Two Pair"){ ctx.addMult += 2; ctx.log.push("Pair Enthusiast: +2 Mult"); } } },
+    { kind:"joker", name:"Arcane Lens", cost:8, desc:"×1.5 Mult if your hand includes any face card (J/Q/K).",
+      apply(ctx){ const hasFace = ctx.cards.some(c=>c.rank==="J"||c.rank==="Q"||c.rank==="K"); if(hasFace){ ctx.mulMult *= 1.5; ctx.log.push("Arcane Lens: ×1.5 Mult"); } } },
+    { kind:"joker", name:"Suit Strategist", cost:9, desc:"+25 Chips when you play a Flush.",
+      apply(ctx){ if(ctx.handName==="Flush"){ ctx.addChips += 25; ctx.log.push("Suit Strategist: +25 Chips"); } } },
+    { kind:"joker", name:"Straight Shooter", cost:10, desc:"×2 Mult when you play a Straight.",
+      apply(ctx){ if(ctx.handName==="Straight"){ ctx.mulMult *= 2; ctx.log.push("Straight Shooter: ×2 Mult"); } } },
+    { kind:"joker", name:"Lucky Coin", cost:6, desc:"+$1 whenever you play exactly 5 cards.",
+      apply(ctx){ if(ctx.cards.length===5){ ctx.onPayout.push(()=>{ game.money += 1; toast("Lucky Coin: +$1"); }); ctx.log.push("Lucky Coin: +$1 (after scoring)"); } } },
+    { kind:"joker", name:"Growing Grin", cost:11, desc:"Starts at +0 Mult. Gains +1 Mult permanently each time you play a hand.",
+      initState(){ return {bonus:0}; },
+      apply(ctx){
+        ctx.addMult += (this.state.bonus||0);
+        ctx.onAfter.push(()=>{ this.state.bonus = (this.state.bonus||0) + 1; toast(`Growing Grin: now +${this.state.bonus} Mult`); renderRight(); });
+        ctx.log.push(`Growing Grin: +${this.state.bonus||0} Mult, then grows`);
+      } },
+    { kind:"joker", name:"Clean Cuts", cost:9, desc:"+8 Chips per card played (stacks).",
+      apply(ctx){ const add = 8 * ctx.cards.length; ctx.addChips += add; ctx.log.push(`Clean Cuts: +${add} Chips`); } },
+    { kind:"joker", name:"Boss Breaker", cost:12, desc:"During Boss: ×1.75 Mult.",
+      apply(ctx){ if(game.blindType==="Boss"){ ctx.mulMult *= 1.75; ctx.log.push("Boss Breaker: ×1.75 Mult"); } } },
+  ];
+
+  const VOUCHER_POOL = [
+    { kind:"voucher", name:"Extra Discard", cost:8, desc:"+1 Discard each round (permanent).", buy(){ game.perma.discards += 1; } },
+    { kind:"voucher", name:"Extra Hand", cost:10, desc:"+1 Hand each round (permanent).", buy(){ game.perma.hands += 1; } },
+    { kind:"voucher", name:"Bigger Hand", cost:9, desc:"+1 hand size (permanent).", buy(){ game.perma.handSize += 1; } },
+  ];
+
+  const CONSUME_POOL = [
+    { kind:"cons", name:"Tarot: Chip Paint", cost:5,
+      desc:"One-time: Click a card in your hand to give it +5 chip value permanently (this run).",
+      use(){
+        if(game.mode!=="play"){ toast("Use consumables during Play."); return; }
+        game.pendingUse = { type:"chipPaint" };
+        toast("Click a card to apply +5 chips.");
+      } },
+    { kind:"cons", name:"Planet: Train Hand", cost:6,
+      desc:"One-time: Choose a hand type; it gains +0.5 base Mult (this run).",
+      use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(); } },
+    { kind:"cons", name:"Tarot: Cash Burst", cost:4,
+      desc:"One-time: Gain +$5 immediately.",
+      use(){ game.money += 5; toast("Cash Burst: +$5"); renderTop(); renderRight(); } }
+  ];
+
+  // Game state (local only)
+  const game = {
+    mode:"play", // play | shop | wait | end
+    deck:[],
+    discard:[],
+    hand:[],
+    sel:new Set(),
+
+    round:1,
+    blindType:"Small",
+    target:0,
+    blindScore:0,
+
+    money:10,
+
+    perma:{ hands:0, discards:0, handSize:0 },
+
+    handsLeft:0,
+    discardsLeft:0,
+
+    jokers:[],
+    cons:[],
+
+    boss:{},
+    bossRule:null, // local copy (from match)
+
+    pendingUse:null,
+
+    last:{ hand:"—", math:"—" }
+  };
+
+  // Multiplayer-local status
+  const me = {
+    status:"play",
+    eliminated:false,
+    finished:false,
+    totalScore:0,
+    roundScoreFinal:0,
+    passedRound:0,
+    buyStartAt:0,
+    buyDeadlineAt:0,
+    lastRoundApplied:0
+  };
+
+  // Shop
+  let shopOffers = [];
+
+  function rollShopOffers(){
+    shopOffers = [];
+    const a = rng.pick(JOKER_POOL);
+    const b = rng.pick(JOKER_POOL);
+    const cPool = [rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL), rng.pick(JOKER_POOL)];
+    const c = rng.pick(cPool);
+
+    shopOffers.push({ ...a, _id:"o1", _kind:a.kind, _obj: (a.kind==="joker") ? mkJoker(a) : a });
+    shopOffers.push({ ...b, _id:"o2", _kind:b.kind, _obj: (b.kind==="joker") ? mkJoker(b) : b });
+    shopOffers.push({ ...c, _id:"o3", _kind:c.kind, _obj: (c.kind==="joker") ? mkJoker(c) : c });
+
+    renderShop();
+  }
+
+  function buyOffer(offerId){
+    if(game.mode!=="shop"){ toast("Not in buy phase."); return; }
+    const idx = shopOffers.findIndex(o=>o._id===offerId);
+    if(idx<0) return;
+    const o = shopOffers[idx];
+    const cost = o.cost||0;
+    if(game.money < cost){ toast("Not enough money."); return; }
+
+    if(o._kind==="joker"){
+      if(game.jokers.length>=5){ toast("Joker slots full (5)."); return; }
+      game.money -= cost;
+      game.jokers.push(o._obj);
+      toast(`Bought joker: ${o.name}`);
+      shopOffers.splice(idx,1);
+      renderAll();
+      return;
+    }
+    if(o._kind==="voucher"){
+      game.money -= cost;
+      o.buy();
+      toast(`Bought voucher: ${o.name}`);
+      shopOffers.splice(idx,1);
+      renderAll();
+      return;
+    }
+    if(o._kind==="cons"){
+      if(game.cons.length>=2){ toast("Consumable slots full (2)."); return; }
+      game.money -= cost;
+      game.cons.push({ ...o, use:o.use });
+      toast(`Bought consumable: ${o.name}`);
+      shopOffers.splice(idx,1);
+      renderAll();
+      return;
+    }
+  }
+
+  function sellJoker(jid){
+    if(game.mode==="end") return;
+    const i = game.jokers.findIndex(j=>j.jid===jid);
+    if(i<0) return;
+    const j = game.jokers[i];
+    const val = Math.max(1, Math.floor((j.cost||6) * 0.5));
+    game.money += val;
+    game.jokers.splice(i,1);
+    toast(`Sold ${j.name} (+$${val})`);
+    renderAll();
+  }
+
+  function useConsumable(index){
+    if(game.mode!=="play"){ toast("Use only during Play."); return; }
+    const c = game.cons[index];
+    if(!c) return;
+    game.cons.splice(index,1);
+    renderRight();
+    c.use();
+  }
+
+  // Boss restrictions
+  function applyBossOverrides(handEval){
+    if(game.blindType!=="Boss") return handEval;
+    if(game.boss.noPairs){
+      if(handEval.name==="Pair" || handEval.name==="Two Pair"){
+        return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: pairs nullified)" };
+      }
+    }
+    return handEval;
+  }
+
+  // Round setup
+  function drawToHand(){
+    const size = 8 + game.perma.handSize;
+    while(game.hand.length < size){
+      if(game.deck.length===0){
+        if(game.discard.length===0) break;
+        game.deck = rng.shuffle(game.discard.splice(0));
+      }
+      game.hand.push(game.deck.pop());
+    }
+  }
+
+  function startNewRunLocal(){
+    game.mode="play";
+    game.deck = makeDeck();
+    game.discard = [];
+    game.hand = [];
+    game.sel = new Set();
+
+    game.money = 10;
+    game.perma = {hands:0, discards:0, handSize:0};
+    game.jokers = [];
+    game.cons = [];
+
+    game.boss = {};
+    game.bossRule = null;
+
+    for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
+
+    game.last.hand="—";
+    game.last.math="—";
+
+    game.blindScore = 0;
+    game.target = 0;
+    game.handsLeft = 0;
+    game.discardsLeft = 0;
+
+    renderAll();
+  }
+
+  function applyRoundConfig(roundIdx, cfg){
+    game.round = roundIdx;
+    game.blindType = cfg.type;
+    game.target = cfg.target;
+
+    game.mode = "play";
+    game.sel.clear();
+    game.blindScore = 0;
+    game.boss = {};
+    game.bossRule = null;
+
+    // resources per round
+    game.handsLeft = 4 + game.perma.hands;
+    game.discardsLeft = 3 + game.perma.discards;
+
+    // boss rule
+    if(cfg.type==="Boss" && cfg.bossRuleKey){
+      const br = bossByKey.get(cfg.bossRuleKey);
+      if(br){
+        game.bossRule = br;
+        br.apply(game);
+        if(game.boss.noDiscards) game.discardsLeft = 0;
+      }
+    }
+
+    // draw initial hand
+    drawToHand();
+
+    // UI
+    $("shopBlock").style.display="none";
+    $("waitBlock").style.display="none";
+    $("runEndBlock").style.display="none";
+
+    renderAll();
+    toast(`Round ${roundIdx} started: ${cfg.type}`);
+  }
+
+  // Selection utils
+  function selectedCards(){
+    const ids = [...game.sel];
+    return game.hand.filter(c=>ids.includes(c.id));
+  }
+  function clearSelection(){
+    game.sel.clear();
+    renderHand();
+  }
+
+  function discardSelected(){
+    if(game.mode!=="play"){ toast("Not during buy."); return; }
+    if(me.eliminated || me.finished){ return; }
+    if(game.discardsLeft<=0){ toast("No discards left."); return; }
+    if(game.boss.noDiscards){ toast("Boss: no discards."); return; }
+
+    const cards = selectedCards();
+    if(cards.length===0){ toast("Select cards to discard."); return; }
+
+    const set = new Set(cards.map(c=>c.id));
+    game.hand = game.hand.filter(c=>!set.has(c.id));
+    for(const c of cards) game.discard.push(c);
+    game.discardsLeft -= 1;
+    game.sel.clear();
+    drawToHand();
+
+    renderAll();
+    scheduleScoreSync(true);
+  }
+
+  // Play selected
+  function playSelected(){
+    if(game.mode!=="play"){ toast("Not during buy."); return; }
+    if(me.eliminated || me.finished){ return; }
+    if(game.handsLeft<=0){ toast("No hands left."); return; }
+
+    const cards = selectedCards();
+    if(cards.length===0){ toast("Select 1–5 cards to play."); return; }
+    if(cards.length>5){ toast("Max 5 cards."); return; }
+    if(game.boss.exactFive && cards.length!==5){ toast("Boss: play exactly 5 cards."); return; }
+
+    let h = evalHand(cards);
+    h = applyBossOverrides(h);
+
+    const up = handUp[h.name] || {chips:0,mult:0};
+    const baseChips = h.baseChips + up.chips;
+    const baseMult  = h.baseMult  + up.mult;
+
+    const cardChips = cards.reduce((a,c)=>a + (c.baseChip + c.bonusChip), 0);
+
+    const ctx = { handName:h.name, cards, addChips:0, addMult:0, mulMult:1, log:[], onAfter:[], onPayout:[] };
+
+    for(const j of game.jokers){
+      try{ j.apply.call(j, ctx); }catch(e){ console.warn("Joker error", j, e); }
+    }
+
+    const chips = Math.max(0, baseChips + cardChips + ctx.addChips);
+    const multAdd = Math.max(0, baseMult + ctx.addMult);
+    const mult = multAdd * ctx.mulMult;
+    const gained = chips * mult;
+
+    game.blindScore += gained;
+    game.handsLeft -= 1;
+
+    const set = new Set(cards.map(c=>c.id));
+    game.hand = game.hand.filter(c=>!set.has(c.id));
+    for(const c of cards) game.discard.push(c);
+    game.sel.clear();
+    drawToHand();
+
+    for(const fn of ctx.onAfter) fn();
+    for(const fn of ctx.onPayout) fn();
+
+    game.last.hand = `${h.name} ${h.detail}`;
+    game.last.math = `(${fmt(baseChips)} base + ${fmt(cardChips)} cards + ${fmt(ctx.addChips)} jokers) = ${fmt(chips)} chips; ` +
+                     `(${baseMult.toFixed(2)} base + ${ctx.addMult.toFixed(2)} jokers) × ${ctx.mulMult.toFixed(2)} = ${mult.toFixed(2)}; ` +
+                     `Score +${fmt(gained)}`;
+    $("lastHand").textContent = game.last.hand;
+    $("lastMath").textContent = game.last.math;
+
+    // If you're out of hands: resolve immediately
+    if(game.handsLeft<=0){
+      if(game.blindScore >= game.target){
+        toast("Target met and no hands left — auto-finishing.");
+        finishRound(false);
+      } else {
+        eliminate("out_of_hands");
+      }
+    } else if(game.blindScore >= game.target){
+      // just a hint; player can keep scoring or finish
+      toast("Target met! You can Finish Round (or keep scoring).");
+    }
+
+    renderAll();
+    scheduleScoreSync(true);
+  }
+
+  // Buy phase enter (local)
+  function enterBuyPhase(reward){
+    game.mode="shop";
+    $("waitBlock").style.display="none";
+    $("shopBlock").style.display="block";
+    $("runEndBlock").style.display="none";
+
+    // payout model (local)
+    game.money += reward;
+    game.money += Math.floor(game.money/10); // interest
+    rollShopOffers();
+    renderAll();
+  }
+
+  // Finish the round (player-triggered or forced)
+  async function finishRound(forced){
+    if(me.eliminated || me.finished) return;
+    if(me.status !== "play") return;
+
+    const cfg = (match?.rounds && match.rounds[game.round-1]) ? match.rounds[game.round-1] : null;
+    const target = cfg?.target ?? game.target;
+
+    const passed = (game.blindScore >= target);
+    const now = nowMs();
+
+    if(!passed){
+      eliminate(forced ? "timeout" : "finish_below_target");
+      return;
+    }
+
+    // lock score for this round
+    const roundScoreFinal = Math.floor(game.blindScore);
+    me.totalScore = Math.floor(me.totalScore + roundScoreFinal);
+    me.roundScoreFinal = roundScoreFinal;
+    me.passedRound = game.round;
+
+    $("yourTotal").textContent = fmt(me.totalScore);
+
+    // Persist to Firestore immediately
+    const baseUpdate = {
+      status: (game.round >= ROUND_COUNT) ? "finished" : "buy",
+      round: game.round,
+      roundScoreFinal: roundScoreFinal,
+      roundScore: roundScoreFinal, // freeze display for this round
+      totalScore: me.totalScore,
+      passedRound: me.passedRound,
+      finishAt: now,
+      lastSeenAt: now
+    };
+
+    if(game.round >= ROUND_COUNT){
+      me.status = "finished";
+      me.finished = true;
+
+      game.mode = "wait";
+      $("shopBlock").style.display="none";
+      $("waitBlock").style.display="block";
+      $("waitTitle").textContent = "✅ Finished Round 5";
+      $("waitText").textContent = "Waiting for other players…";
+      renderAll();
+
+      await setDoc(meRef, baseUpdate, { merge:true }).catch(()=>{});
+      scheduleAdvanceCheck();
+      return;
+    }
+
+    me.status = "buy";
+    me.buyStartAt = now;
+    me.buyDeadlineAt = now + BUY_MS;
+
+    await setDoc(meRef, {
+      ...baseUpdate,
+      buyStartAt: me.buyStartAt,
+      buyDeadlineAt: me.buyDeadlineAt,
+      buyReady: false
+    }, { merge:true }).catch(()=>{});
+
+    // Local buy
+    const reward = (game.blindType==="Small") ? 6 : (game.blindType==="Big") ? 8 : 11;
+    enterBuyPhase(reward);
+
+    scheduleAdvanceCheck();
+  }
+
+  async function markReady(){
+    if(me.eliminated || me.finished) return;
+    if(me.status !== "buy") return;
+
+    const now = nowMs();
+    me.status = "ready";
+    $("shopBlock").style.display="none";
+    $("waitBlock").style.display="block";
+    $("waitTitle").textContent = "🕒 Ready";
+    $("waitText").textContent = "Waiting for other survivors to be Ready…";
+    renderAll();
+
+    await setDoc(meRef, {
+      status:"ready",
+      round: game.round,
+      buyReady:true,
+      readyAt: now,
+      lastSeenAt: now
+    }, { merge:true }).catch(()=>{});
+
+    scheduleAdvanceCheck();
+  }
+
+  async function eliminate(reason){
+    if(me.eliminated || me.finished) return;
+    me.eliminated = true;
+    me.status = "eliminated";
+    const now = nowMs();
+
+    game.mode = "end";
+    $("shopBlock").style.display="none";
+    $("waitBlock").style.display="none";
+    $("runEndBlock").style.display="block";
+    $("runEndTitle").textContent = "❌ Eliminated";
+    $("runEndText").innerHTML = `You did not meet the target for <b>Round ${game.round}</b>.<br/><span class="small">You can still watch the live scoreboard.</span>`;
+    renderAll();
+    toast("Eliminated — observing.");
+
+    await setDoc(meRef, {
+      status:"eliminated",
+      round: game.round,
+      roundScore: Math.floor(game.blindScore),
+      roundScoreFinal: Math.floor(game.blindScore),
+      totalScore: Math.floor(me.totalScore),
+      eliminatedAt: now,
+      eliminatedRound: game.round,
+      reason: String(reason||""),
+      lastSeenAt: now
+    }, { merge:true }).catch(()=>{});
+
+    scheduleAdvanceCheck();
+  }
+
+  // Rendering
+  function renderTop(){
+    $("roundNum").textContent = game.round;
+    $("blindName").textContent = game.blindType;
+    $("money").textContent = fmt(game.money);
+
+    $("target").textContent = fmt(game.target);
+    $("blindScore").textContent = fmt(game.blindScore);
+    $("lastHand").textContent = game.last.hand;
+    $("lastMath").textContent = game.last.math;
+
+    const pct = clamp(game.blindScore / Math.max(1, game.target), 0, 1);
+    $("targetBar").classList.toggle("good", pct>=1);
+    $("targetBar").classList.toggle("bad", pct<.35);
+    $("targetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
+    $("blindProgressText").textContent = `${(pct*100).toFixed(1)}% of target`;
+
+    const dot = $("blindDot");
+    dot.className = "dot";
+    if(game.blindType==="Boss") dot.classList.add("bad");
+    else if(game.blindType==="Big") dot.classList.add("warn");
+    else dot.classList.add("good");
+
+    // boss rule line
+    if(game.bossRule){
+      $("bossRuleLine").innerHTML = `<span class="tag">⚠ ${game.bossRule.name}</span> <span class="small">${game.bossRule.desc}</span>`;
+    } else {
+      $("bossRuleLine").textContent = "";
+    }
+
+    $("tagLine").textContent = "";
+
+    // finish hint + button state
+    const canFinish = (game.mode==="play" && !me.eliminated && !me.finished && game.blindScore >= game.target);
+    $("btnFinish").disabled = !canFinish;
+    $("finishHint").innerHTML = canFinish
+      ? `<span class="tag">✅ Target met</span> <span class="small">Finish now for Buy, or keep scoring.</span>`
+      : (game.mode==="play" ? `<span class="small">Beat target to unlock Finish.</span>` : "");
+
+    // gameplay buttons
+    const playEnabled = (game.mode==="play" && !me.eliminated && !me.finished);
+    $("btnPlay").disabled = !playEnabled;
+    $("btnDiscard").disabled = !(playEnabled && game.discardsLeft>0 && !game.boss.noDiscards);
+    $("btnClear").disabled = !playEnabled;
+    $("btnSortRank").disabled = !playEnabled;
+    $("btnSortSuit").disabled = !playEnabled;
+
+    $("phasePill").textContent =
+      me.eliminated ? "OBSERVE" :
+      me.finished ? "DONE" :
+      (me.status==="buy") ? "BUY" :
+      (me.status==="ready") ? "WAIT" :
+      (game.mode==="play") ? "PLAY" :
+      (game.mode==="shop") ? "BUY" :
+      (game.mode==="wait") ? "WAIT" : "—";
+  }
+
+  function renderHand(){
+    const el = $("hand");
+    el.innerHTML = "";
+    for(const c of game.hand){
+      const d = document.createElement("div");
+      d.className = "card" + (c.red ? " red":"") + (game.sel.has(c.id) ? " sel":"");
+      d.innerHTML = `
+        <div><span class="rank">${c.rank}</span><span class="suit">${c.suitSym}</span></div>
+        <div class="chips">
+          <span>🟦 ${c.baseChip + c.bonusChip}</span>
+          <span style="opacity:.85">${c.suit}</span>
+        </div>
+      `;
+      d.addEventListener("click", ()=>{
+        if(game.mode!=="play") return;
+        if(me.eliminated || me.finished) return;
+
+        if(game.pendingUse?.type==="chipPaint"){
+          c.bonusChip += 5;
+          game.pendingUse = null;
+          toast(`Chip Paint: ${c.rank}${c.suitSym} now ${c.baseChip+c.bonusChip} chips`);
+          renderHand();
+          return;
+        }
+
+        if(game.sel.has(c.id)){
+          game.sel.delete(c.id);
+        } else {
+          if(game.sel.size>=5){ toast("Max 5 selected."); return; }
+          game.sel.add(c.id);
+        }
+        renderHand();
+      });
+      el.appendChild(d);
+    }
+  }
+
+  function renderRight(){
+    $("jokerCount").textContent = game.jokers.length;
+    $("consCount").textContent = game.cons.length;
+
+    const jl = $("jokerList");
+    jl.innerHTML = "";
+    if(game.jokers.length===0){
+      jl.innerHTML = `<div class="item"><div class="itemMeta">No jokers yet. Buy them in the Buy Phase.</div></div>`;
+    } else {
+      for(const j of game.jokers){
+        const stateLine = (j.name==="Growing Grin")
+          ? `<div class="small tight">Current: +${(j.state.bonus||0)} Mult</div>` : "";
+        const it = document.createElement("div");
+        it.className = "item";
+        it.innerHTML = `
+          <div class="itemTop">
+            <div>
+              <div class="itemName">${j.name}</div>
+              <div class="itemMeta">${j.desc}</div>
+              ${stateLine}
+            </div>
+            <div class="itemBtns">
+              <button class="btn mini bad" data-sell="${j.jid}">Sell</button>
+            </div>
+          </div>
+        `;
+        it.querySelector("[data-sell]").addEventListener("click", ()=>sellJoker(j.jid));
+        jl.appendChild(it);
+      }
+    }
+
+    const cl = $("consList");
+    cl.innerHTML = "";
+    if(game.cons.length===0){
+      cl.innerHTML = `<div class="item"><div class="itemMeta">No consumables.</div></div>`;
+    } else {
+      game.cons.forEach((c, idx)=>{
+        const it = document.createElement("div");
+        it.className = "item";
+        it.innerHTML = `
+          <div class="itemTop">
+            <div>
+              <div class="itemName">${c.name}</div>
+              <div class="itemMeta">${c.desc}</div>
+            </div>
+            <div class="itemBtns">
+              <button class="btn mini good" data-use="${idx}">Use</button>
+            </div>
+          </div>
+        `;
+        it.querySelector("[data-use]").addEventListener("click", ()=>useConsumable(idx));
+        cl.appendChild(it);
+      });
+    }
+
+    if(game.mode==="shop"){
+      $("shopBlock").style.display="block";
+      renderShop();
+    }
+  }
+
+  function renderShop(){
+    if(game.mode!=="shop") return;
+    const sl = $("shopList");
+    sl.innerHTML = "";
+
+    if(shopOffers.length===0){
+      sl.innerHTML = `<div class="item"><div class="itemMeta">Shop is empty. Ready up.</div></div>`;
+      return;
+    }
+
+    for(const o of shopOffers){
+      const typeLabel = (o._kind==="joker") ? "Joker" : (o._kind==="voucher") ? "Voucher" : "Consumable";
+      const it = document.createElement("div");
+      it.className = "item";
+      it.innerHTML = `
+        <div class="itemTop">
+          <div>
+            <div class="itemName">${o.name} <span class="small">(${typeLabel})</span></div>
+            <div class="itemMeta">${o.desc}</div>
+          </div>
+          <div class="rightAlign">
+            <div class="pill">Cost <b>$${o.cost}</b></div>
+            <div style="height:8px"></div>
+            <div class="itemBtns">
+              <button class="btn mini primary" data-buy="${o._id}">Buy</button>
+            </div>
+          </div>
+        </div>
+      `;
+      it.querySelector("[data-buy]").addEventListener("click", ()=>buyOffer(o._id));
+      sl.appendChild(it);
+    }
+  }
+
+  function renderAll(){
+    renderTop();
+    renderHand();
+    renderRight();
+  }
+
+  // Sorting
+  function suitOrder(s){ return SUITS.find(x=>x.k===s)?.order || 9; }
+  function sortHandByRank(){ game.hand.sort((a,b)=>a.rv-b.rv || suitOrder(a.suit)-suitOrder(b.suit)); renderHand(); }
+  function sortHandBySuit(){ game.hand.sort((a,b)=>suitOrder(a.suit)-suitOrder(b.suit) || a.rv-b.rv); renderHand(); }
+
+  // Consumable picker (planet)
+  function showHow(){ $("howBack").classList.add("show"); $("howBack").setAttribute("aria-hidden","false"); }
+  function hideHow(){ $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true"); }
+
+  function openHandTypePicker(){
+    const back = $("howBack");
+    const modal = back.querySelector(".modal");
+    const ph = modal.querySelector(".ph h2");
+    const oldTitle = ph.textContent;
+    ph.textContent = "Pick a hand type to upgrade (+0.5 base Mult)";
+
+    const content = $("howContent");
+    const original = content.innerHTML;
+
+    const items = HAND_KEYS.map(k => {
+      const v = handUp[k]?.mult || 0;
+      return `<button class="btn mini primary" data-hand="${k}" style="width:100%; text-align:left; margin-bottom:8px;">
+        ${k} <span class="small"> (current +${v.toFixed(1)} mult)</span>
+      </button>`;
+    }).join("");
+
+    content.innerHTML = `
+      <div class="item">
+        <div class="itemName">Choose one</div>
+        <div class="itemMeta">This increases the base Mult for that hand type for the rest of the run.</div>
+        <div class="sep"></div>
+        ${items}
+        <div class="row">
+          <button class="btn mini" id="btnCancelPick">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    function cleanup(){
+      content.innerHTML = original;
+      ph.textContent = oldTitle;
+      hideHow();
+    }
+
+    content.querySelectorAll("button[data-hand]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const k = btn.getAttribute("data-hand");
+        handUp[k].mult += 0.5;
+        toast(`Upgraded ${k}: +0.5 base Mult`);
+        renderAll();
+        cleanup();
+      });
+    });
+    content.querySelector("#btnCancelPick").addEventListener("click", ()=>{
+      toast("Cancelled.");
+      cleanup();
+    });
+
+    showHow();
+  }
+
+  // ---------------------------
+  // Live multiplayer UI + syncing
+  // ---------------------------
+  let scoreSyncT = null;
+  let scoreDirty = false;
+  let forceSync = false;
+
+  function scheduleScoreSync(force){
+    if(me.eliminated || me.finished) return;
+    scoreDirty = true;
+    forceSync = forceSync || !!force;
+    if(scoreSyncT) return;
+    scoreSyncT = setTimeout(async ()=>{
+      scoreSyncT = null;
+      if(!scoreDirty) return;
+      scoreDirty = false;
+
+      const now = nowMs();
+      const payload = {
+        round: game.round,
+        roundScore: Math.floor(game.blindScore),
+        totalScore: Math.floor(me.totalScore),
+        status: me.status,
+        lastSeenAt: now
+      };
+      // write less aggressively unless forced
+      await setDoc(meRef, payload, { merge:true }).catch(()=>{});
+      forceSync = false;
+    }, force ? 180 : 480);
+  }
+
+  // Heartbeat
+  async function heartbeat(){
+    const now = nowMs();
+    await setDoc(meRef, { lastSeenAt: now }, { merge:true }).catch(()=>{});
+  }
+
+  // Scoreboard render
+  function statusLabel(p){
+    const st = String(p.status||"");
+    if(st==="eliminated") return "ELIM";
+    if(st==="finished") return "DONE";
+    if(st==="buy") return "BUY";
+    if(st==="ready") return "READY";
+    if(st==="play") return "PLAY";
+    return st.toUpperCase() || "—";
+  }
+  function statusDotClass(p){
+    const st = String(p.status||"");
+    if(st==="play") return "play";
+    if(st==="buy") return "buy";
+    if(st==="ready") return "ready";
+    if(st==="finished") return "ready";
+    if(st==="eliminated") return "elim";
+    return "ready";
+  }
+  function liveScore(p){
+    const total = Number(p.totalScore||0);
+    const round = Number(p.roundScore||0);
+    // if they're still playing current round, show total + current progress
+    if(p.status==="play" && Number(p.round)===Number(match?.round||0)) return total + round;
+    // if they're in buy/ready for current round, their totalScore already includes the round score
+    return total;
+  }
+
+  function renderScoreboard(){
+    const box = $("mpList");
+    box.innerHTML = "";
+
+    const playersArr = [...allPlayers.entries()].map(([name, d])=>({ name, ...d }));
+    // sort: non-elim first, then score desc
+    playersArr.sort((a,b)=>{
+      const ae = (a.status==="eliminated") ? 1 : 0;
+      const be = (b.status==="eliminated") ? 1 : 0;
+      if(ae!==be) return ae-be;
+      return (liveScore(b) - liveScore(a)) || (String(a.name).localeCompare(String(b.name)));
+    });
+
+    const winnerName = match?.winnerName || null;
+
+    for(const p of playersArr){
+      const row = document.createElement("div");
+      row.className = "mpRow" +
+        (p.name===username ? " me":"") +
+        (p.status==="eliminated" ? " elim":"") +
+        ((winnerName && p.name===winnerName) ? " winner":"");
+
+      const dot = document.createElement("div");
+      dot.className = "mpDot " + statusDotClass(p);
+
+      const left = document.createElement("div");
+      left.className = "mpLeft";
+
+      const meta = document.createElement("div");
+      meta.className = "mpMeta";
+      const nm = document.createElement("div");
+      nm.className = "mpName";
+      nm.textContent = p.name;
+      const sub = document.createElement("div");
+      sub.className = "mpSub";
+      const r = Number(p.round || 0);
+      sub.textContent = `R${r}${p.status==="eliminated" ? ` • out@R${p.eliminatedRound||"?"}` : ""}`;
+
+      meta.appendChild(nm);
+      meta.appendChild(sub);
+
+      left.appendChild(dot);
+      left.appendChild(meta);
+
+      const right = document.createElement("div");
+      const sc = document.createElement("div");
+      sc.className = "mpScore";
+      sc.textContent = fmt(liveScore(p));
+      const st = document.createElement("div");
+      st.className = "mpStatus";
+      st.textContent = statusLabel(p);
+
+      right.appendChild(sc);
+      right.appendChild(st);
+
+      row.appendChild(left);
+      row.appendChild(right);
+      box.appendChild(row);
+    }
+
+    // footer
+    if(match){
+      const r = Number(match.round||1);
+      const phase = (match.state==="ended") ? "ENDED" : `ROUND ${r}/5`;
+      $("matchBadge").textContent = phase;
+    } else {
+      $("matchBadge").textContent = "—";
+    }
+  }
+
+  // ---------------------------
+  // Match advancement coordinator (transactional, any client can run)
+  // ---------------------------
+  let advanceQueued = false;
+  function scheduleAdvanceCheck(){
+    if(advanceQueued) return;
+    advanceQueued = true;
+    setTimeout(async ()=>{
+      advanceQueued = false;
+      await tryAdvanceMatch().catch(()=>{});
+    }, 250);
+  }
+
+  async function tryAdvanceMatch(){
+    if(!match) return;
+    if(match.state==="ended") return;
+
+    await runTransaction(db, async (tx)=>{
+      const stSnap = await tx.get(stateRef);
+      if(!stSnap.exists()) return;
+      const st = stSnap.data() || {};
+      if(st.state==="ended") return;
+
+      const now = nowMs();
+      const curRound = Number(st.round||1);
+      const playMs = Number(st.playMs||PLAY_MS);
+      const buyMs  = Number(st.buyMs||BUY_MS);
+      const deadline = Number(st.roundDeadlineAt||0);
+
+      const rounds = Array.isArray(st.rounds) ? st.rounds : [];
+      const cfg = rounds[curRound-1] || { target: 999999, type:"Small" };
+
+      const names = Array.isArray(st.players) ? st.players : [];
+      const alive = [];
+      const reads = [];
+
+      // Read all player docs referenced in state.players (small lobbies -> safe)
+      for(const n of names){
+        const pref = doc(db, "lobbies", gameId, "balatroPlayers", String(n));
+        const ps = await tx.get(pref);
+        const pd = ps.exists() ? (ps.data() || {}) : null;
+
+        // If a player doc doesn't exist yet, treat as disconnected; create a minimal stub (so scoreboard can show them)
+        if(!pd){
+          tx.set(pref, {
+            name: String(n).slice(0,22),
+            status:"play",
+            round: curRound,
+            totalScore: 0,
+            roundScore: 0,
+            lastSeenAt: 0
+          }, { merge:true });
+        }
+
+        const status = String(pd?.status || "play");
+        const eliminated = (status==="eliminated");
+        const finished = (status==="finished");
+        const lastSeenAt = Number(pd?.lastSeenAt || 0);
+
+        const stale = lastSeenAt > 0 ? (now - lastSeenAt > ONLINE_GRACE_MS) : false;
+
+        reads.push({ name:String(n), ref:pref, data:pd, status, eliminated, finished, stale });
+
+        if(!eliminated) alive.push(String(n));
+      }
+
+      // Early win if only 1 survivor remains (and match not ended)
+      const aliveNow = reads.filter(x=>!x.eliminated);
+      if(aliveNow.length <= 1){
+        if(aliveNow.length === 1){
+          const w = aliveNow[0];
+          const wScore = Number(w.data?.totalScore || 0);
+          tx.update(stateRef, { state:"ended", endedAt: now, winnerName: w.name, winnerScore: wScore });
+        } else {
+          tx.update(stateRef, { state:"ended", endedAt: now, winnerName: null, winnerScore: null });
+        }
+        return;
+      }
+
+      // Time-based forced resolution for anyone still playing at/after deadline or stale
+      const timeUp = (deadline > 0 && now >= deadline);
+
+      for(const p of reads){
+        if(p.eliminated) continue;
+
+        // stale players are treated as eliminated once the play timer is over
+        // (also if they're stale during buy, they'll be forced ready)
+        if(p.status==="play" && (timeUp || p.stale)){
+          const score = Number(p.data?.roundScore || 0);
+          if(score >= Number(cfg.target||0)){
+            const newTotal = Number(p.data?.totalScore||0) + score;
+            if(curRound >= ROUND_COUNT){
+              tx.set(p.ref, {
+                status:"finished",
+                round: curRound,
+                roundScoreFinal: score,
+                totalScore: newTotal,
+                passedRound: curRound,
+                finishAt: now,
+                lastSeenAt: now
+              }, { merge:true });
+            } else {
+              tx.set(p.ref, {
+                status:"buy",
+                round: curRound,
+                roundScoreFinal: score,
+                totalScore: newTotal,
+                passedRound: curRound,
+                finishAt: now,
+                buyStartAt: now,
+                buyDeadlineAt: now + buyMs,
+                buyReady: false,
+                lastSeenAt: now
+              }, { merge:true });
+            }
+          } else {
+            tx.set(p.ref, {
+              status:"eliminated",
+              round: curRound,
+              roundScoreFinal: score,
+              eliminatedAt: now,
+              eliminatedRound: curRound,
+              reason: p.stale ? "disconnect" : "timeout",
+              lastSeenAt: now
+            }, { merge:true });
+          }
+        }
+
+        // Buy timeout => force ready
+        if(p.status==="buy"){
+          const bd = Number(p.data?.buyDeadlineAt || 0);
+          const staleBuy = p.stale;
+          if((bd > 0 && now >= bd) || staleBuy){
+            tx.set(p.ref, {
+              status:"ready",
+              round: curRound,
+              buyReady:true,
+              readyAt: now,
+              lastSeenAt: now
+            }, { merge:true });
+          }
+        }
+      }
+
+      // After forced resolutions, re-check "can advance?"
+      // We require: for current round
+      // - if curRound < 5: all non-eliminated are status READY (or eliminated)
+      // - if curRound == 5: all non-eliminated are FINISHED (or eliminated) then end + pick best totalScore
+      // NOTE: we do a conservative check based on the snapshots we read (and any forced sets above)
+      // If a player just changed status, the next transaction tick will catch it. This is fine.
+
+      // Build a conservative view using pre-transaction reads (ok for best-effort); to be safer, gate advancing
+      // only when timeUp OR there are no PLAY/BUY statuses among non-eliminated in reads.
+      const nonElim = reads.filter(x=>!x.eliminated);
+
+      // If anyone is still "play" and time isn't up, don't advance.
+      const someoneStillPlaying = nonElim.some(p=>p.status==="play");
+      if(someoneStillPlaying && !timeUp) return;
+
+      if(curRound >= ROUND_COUNT){
+        // End when all non-eliminated are finished (or timeUp forcing will convert them)
+        const allFinishedOrElim = reads.every(p => p.eliminated || p.status==="finished");
+        if(!allFinishedOrElim) return;
+
+        // Choose winner: max totalScore among non-eliminated
+        let bestName = null;
+        let bestScore = -Infinity;
+        for(const p of reads){
+          if(p.eliminated) continue;
+          const s = Number(p.data?.totalScore || 0);
+          if(s > bestScore){
+            bestScore = s;
+            bestName = p.name;
+          }
+        }
+        tx.update(stateRef, { state:"ended", endedAt: now, winnerName: bestName, winnerScore: bestScore });
+        return;
+      }
+
+      // For curRound < 5: need all non-eliminated to be READY
+      const allReadyOrElim = reads.every(p => p.eliminated || p.status==="ready");
+      if(!allReadyOrElim) return;
+
+      // Advance to next round
+      const nextRound = curRound + 1;
+      const nextCfg = (Array.isArray(st.rounds) ? st.rounds[nextRound-1] : null);
+      tx.update(stateRef, {
+        round: nextRound,
+        roundStartAt: now,
+        roundDeadlineAt: now + playMs
+      });
+    });
+  }
+
+  // ---------------------------
+  // Timers (UI + local auto actions)
+  // ---------------------------
+  let tickT = null;
+  let lastTimerRound = 0;
+  let lastForcedFinishKey = "";
+
+  function fmtClock(ms){
+    const s = Math.max(0, Math.ceil(ms/1000));
+    const mm = Math.floor(s/60);
+    const ss = s%60;
+    return `${mm}:${String(ss).padStart(2,"0")}`;
+  }
+
+  function tickTimers(){
+    if(!match){
+      $("roundTimer").textContent = "—";
+      return;
+    }
+
+    // connection pill
+    $("connPill").textContent = authUser ? "OK" : "…";
+
+    // round play timer
+    const now = nowMs();
+    const deadline = Number(match.roundDeadlineAt || 0);
+    const remain = deadline ? (deadline - now) : 0;
+    $("roundTimer").textContent = fmtClock(remain);
+
+    // local forced finish at deadline (best-effort, coordinator also enforces)
+    if(!me.eliminated && !me.finished && me.status==="play" && game.mode==="play"){
+      const key = `r${game.round}`;
+      if(remain <= 0 && lastForcedFinishKey !== key){
+        lastForcedFinishKey = key;
+        // decide pass/fail based on current score
+        finishRound(true);
+      }
+    }
+
+    // buy timer (if in buy)
+    if(me.status==="buy"){
+      const bd = Number(me.buyDeadlineAt || 0);
+      const br = bd ? (bd - now) : 0;
+      $("buyTimer").textContent = fmtClock(br);
+      if(br <= 0){
+        // auto ready locally (coordinator also enforces)
+        markReady();
+      }
+    } else {
+      $("buyTimer").textContent = "—";
+    }
+
+    renderTop();
+  }
+
+  // ---------------------------
+  // Snapshots: match state + players
+  // ---------------------------
+  function attachListeners(){
+    if(matchUnsub) matchUnsub();
+    if(playersUnsub) playersUnsub();
+
+    matchUnsub = onSnapshot(stateRef, (snap)=>{
+      if(!snap.exists()) return;
+      match = snap.data() || null;
+
+      // When round changes, apply round config locally (if you're still in)
+      if(match && match.state==="running"){
+        const r = Number(match.round||1);
+        const cfg = (Array.isArray(match.rounds) ? match.rounds[r-1] : null);
+
+        if(!cfg) return;
+
+        // show boss info etc
+        // If I'm eliminated/finished, do not restart local play
+        if(!me.eliminated && !me.finished){
+          if(me.lastRoundApplied !== r){
+            me.lastRoundApplied = r;
+            // Reset local per-round fields
+            me.status = "play";
+            me.buyStartAt = 0;
+            me.buyDeadlineAt = 0;
+            $("shopBlock").style.display="none";
+            $("waitBlock").style.display="none";
+
+            applyRoundConfig(r, cfg);
+
+            // sync me doc (new round)
+            const now = nowMs();
+            setDoc(meRef, {
+              status:"play",
+              round:r,
+              roundScore:0,
+              buyReady:false,
+              buyStartAt:0,
+              buyDeadlineAt:0,
+              lastSeenAt: now
+            }, { merge:true }).catch(()=>{});
+          }
+        }
+
+        scheduleAdvanceCheck();
+      }
+
+      if(match && match.state==="ended"){
+        // show end state (winner)
+        const w = match.winnerName;
+        const ws = match.winnerScore;
+
+        $("shopBlock").style.display="none";
+        $("waitBlock").style.display="none";
+        $("runEndBlock").style.display="block";
+
+        if(w){
+          $("runEndTitle").textContent = `🏆 Winner: ${w}`;
+          $("runEndText").innerHTML = `Final winner score: <b>${fmt(ws||0)}</b><br/><span class="small">You can still view the full scoreboard.</span>`;
+        } else {
+          $("runEndTitle").textContent = "Match ended";
+          $("runEndText").textContent = "No winner recorded.";
+        }
+        renderScoreboard();
+      }
+
+      renderScoreboard();
+    });
+
+    playersUnsub = onSnapshot(playersCol, (snap)=>{
+      allPlayers.clear();
+      snap.forEach(d=>{
+        const v = d.data() || {};
+        allPlayers.set(d.id, v);
+      });
+
+      // update local mirror from my doc if present (important if coordinator forced transitions)
+      const mine = allPlayers.get(username);
+      if(mine){
+        me.status = String(mine.status||me.status);
+        me.totalScore = Number(mine.totalScore||me.totalScore||0);
+        me.buyStartAt = Number(mine.buyStartAt||me.buyStartAt||0);
+        me.buyDeadlineAt = Number(mine.buyDeadlineAt||me.buyDeadlineAt||0);
+
+        $("yourTotal").textContent = fmt(me.totalScore);
+
+        if(me.status==="eliminated" && !me.eliminated){
+          me.eliminated = true;
+          game.mode = "end";
+          $("shopBlock").style.display="none";
+          $("waitBlock").style.display="none";
+          $("runEndBlock").style.display="block";
+          $("runEndTitle").textContent = "❌ Eliminated";
+          $("runEndText").innerHTML = `You were eliminated in <b>Round ${mine.eliminatedRound||"?"}</b>.<br/><span class="small">Observing scoreboard…</span>`;
+          renderAll();
+        }
+
+        if(me.status==="buy" && game.mode!=="shop" && !me.eliminated && !me.finished){
+          // coordinator forced you into buy
+          const reward = (game.blindType==="Small") ? 6 : (game.blindType==="Big") ? 8 : 11;
+          enterBuyPhase(reward);
+        }
+
+        if(me.status==="ready" && game.mode!=="wait" && !me.eliminated && !me.finished){
+          game.mode = "wait";
+          $("shopBlock").style.display="none";
+          $("waitBlock").style.display="block";
+          $("waitTitle").textContent = "🕒 Ready";
+          $("waitText").textContent = "Waiting for other survivors to be Ready…";
+          renderAll();
+        }
+
+        if(me.status==="finished" && !me.finished){
+          me.finished = true;
+          game.mode = "wait";
+          $("shopBlock").style.display="none";
+          $("waitBlock").style.display="block";
+          $("waitTitle").textContent = "✅ Finished";
+          $("waitText").textContent = "Waiting for match end…";
+          renderAll();
+        }
+      }
+
+      renderScoreboard();
+      scheduleAdvanceCheck();
+    });
+  }
+
+  // ---------------------------
+  // Events
+  // ---------------------------
+  $("btnPlay").addEventListener("click", playSelected);
+  $("btnDiscard").addEventListener("click", discardSelected);
+  $("btnClear").addEventListener("click", clearSelection);
+  $("btnSortRank").addEventListener("click", sortHandByRank);
+  $("btnSortSuit").addEventListener("click", sortHandBySuit);
+  $("btnFinish").addEventListener("click", ()=>finishRound(false));
+
+  $("btnReroll").addEventListener("click", ()=>{
+    if(game.mode!=="shop"){ toast("Not in buy."); return; }
+    if(game.money < 2){ toast("Need $2 to reroll."); return; }
+    game.money -= 2;
+    rollShopOffers();
+    renderAll();
+    toast("Shop rerolled.");
+  });
+
+  $("btnReady").addEventListener("click", markReady);
+
+  $("btnHow").addEventListener("click", showHow);
+  $("btnCloseHow").addEventListener("click", hideHow);
+  $("howBack").addEventListener("click", (e)=>{ if(e.target === $("howBack")) hideHow(); });
+
+  $("btnReset").addEventListener("click", ()=>{
+    // Local reset only; does not change multiplayer state
+    startNewRunLocal();
+    toast("Local run reset.");
+  });
+
+  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") hideHow(); });
+
+  // ---------------------------
+  // Boot
+  // ---------------------------
+  async function boot(){
+    $("connPill").textContent = "…";
+    try{
+      authUser = await ensureAuthed();
+      $("connPill").textContent = "OK";
+    }catch(e){
+      $("connPill").textContent = "AUTH FAIL";
+      $("runEndBlock").style.display = "block";
+      $("runEndTitle").textContent = "Auth failed";
+      $("runEndText").textContent = "Enable anonymous sign-in in Firebase Authentication.";
+      return;
+    }
+
+    await syncServerTime();
+
+    // Create local baseline run immediately
+    startNewRunLocal();
+
+    // Ensure match exists, join, attach listeners
+    await joinOrCreateMatch();
+    attachListeners();
+
+    // Heartbeat + coordinator tick
+    setInterval(()=> heartbeat().catch(()=>{}), 7000);
+    setInterval(()=> tryAdvanceMatch().catch(()=>{}), 1400);
+
+    // Timer UI tick
+    if(tickT) clearInterval(tickT);
+    tickT = setInterval(tickTimers, 120);
+
+    toast("Connected. Good luck!");
+  }
+
+  boot();
+</script>
 </body>
 </html>
