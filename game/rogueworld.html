@@ -530,9 +530,9 @@
     const WORLD_RADIUS = 1680;
     const SAFE_MARGIN  = 60;
     const DANGER_BANDS = [
-      { id:"inner", min:0, max:520, hpMul:1.25, dmgMul:1.18, terrainMul:1.08, dropChance:0.48, xpMul:1.2, label:"I" },
-      { id:"mid", min:520, max:1120, hpMul:2.15, dmgMul:1.72, terrainMul:1.45, dropChance:0.72, xpMul:1.85, label:"II" },
-      { id:"outer", min:1120, max:WORLD_RADIUS, hpMul:3.6, dmgMul:2.55, terrainMul:1.95, dropChance:0.95, xpMul:2.8, label:"III" },
+      { id:"inner", min:0, max:520, hpMul:1.25, dmgMul:1.18, spdMul:1.00, terrainMul:1.08, dropChance:0.48, xpMul:1.2, label:"I" },
+      { id:"mid", min:520, max:1120, hpMul:2.15, dmgMul:1.72, spdMul:1.08, terrainMul:1.45, dropChance:0.72, xpMul:1.85, label:"II" },
+      { id:"outer", min:1120, max:WORLD_RADIUS, hpMul:3.6, dmgMul:2.55, spdMul:1.16, terrainMul:1.95, dropChance:0.95, xpMul:2.8, label:"III" },
     ];
 
     function dangerBandAt(x,z){
@@ -2038,11 +2038,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       r.req = scaledReq;
 
       const cost = recipeCost(r.req);
-      const costPower = 1 + Math.pow(cost/80, 1.2);
-      const effectPower = 1 + Math.pow(cost/120, 1.08);
+      const costPower = 1 + Math.pow(cost/70, 1.38);
+      const effectPower = 1 + Math.pow(cost/110, 1.16);
       if(w){
-        if(w.dmg!=null) w.dmg = Math.max(2, Math.round(w.dmg * costPower));
-        if(w.dps!=null) w.dps = Math.round((w.dps * (0.55 + costPower*0.52))*10)/10;
+        if(w.dmg!=null) w.dmg = Math.max(2, Math.round(w.dmg * (0.72 + costPower*0.5)));
+        if(w.dps!=null) w.dps = Math.round((w.dps * (0.5 + costPower*0.62))*10)/10;
         if(w.aoe!=null) w.aoe = Math.round(w.aoe * (0.9 + effectPower*0.24) * 10) / 10;
         if(w.poison!=null) w.poison = Math.round(w.poison * (0.92 + effectPower*0.28) * 10) / 10;
         if(w.burn){
@@ -3976,9 +3976,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; modelLift=0.62; }
 
       const band = dangerBandAt(x,z);
-      const hp = Math.round(baseHp * band.hpMul * (1 + 0.22*(level-1) + 0.0035*Math.max(0, level-1)*(level-1)));
-      const dmg = Math.round(baseDmg * band.dmgMul * (1 + 0.09*(level-1)));
-      return { hp, dmg, spd: spd*(1+0.02*(level-1)), range, flying, yOff, kind, modelLift, band:band.id, bandMul:band };
+      const levelDelta = Math.max(0, level-1);
+      const hp = Math.round(baseHp * band.hpMul * (1 + 0.24*levelDelta + 0.0045*levelDelta*levelDelta));
+      const dmg = Math.round(baseDmg * band.dmgMul * (1 + 0.11*levelDelta + 0.0018*levelDelta*levelDelta));
+      const speedScale = (1 + 0.015*levelDelta + 0.00025*levelDelta*levelDelta) * (band.spdMul||1);
+      return { hp, dmg, spd: spd*speedScale, range, flying, yOff, kind, modelLift, band:band.id, bandMul:band };
     }
 
     function spawnEnemy(type, x, z, regId){
