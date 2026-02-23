@@ -3396,24 +3396,11 @@
   function applyTacticsPreset(b){
     if(!b) return;
     const ex = b.enemies.filter(u=>u.alive);
-    const inf = ex.filter(u=>u.role==='inf');
-    const arc = ex.filter(u=>u.role==='arc');
-    const cav = ex.filter(u=>u.role==='cav');
-    const sup = ex.filter(u=>u.role==='sup');
     if(!ex.length) return;
-    let cx=0,cy=0; for(const u of ex){cx+=u.x;cy+=u.y;} cx/=ex.length; cy/=ex.length;
-    let tx=b.playerEnt.x-cx, ty=b.playerEnt.y-cy; const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
-    if(b.type==='field'){
-      if(b.enemyKind==='bandit'){ for(const u of ex) u.order='charge'; }
-      else {
-        assignHoldLine(inf, cx, cy, tx, ty, b.enemyKind==='army'?'shieldwall':'line');
-        assignHoldLine(arc, cx-tx*1.6, cy-ty*1.6, tx, ty, 'archerline');
-        assignHoldLine(sup, cx-tx*1.8, cy-ty*1.8, tx, ty, 'line');
-        for(const c of cav){ c.order='hold'; c.holdPos={x:cx+(-ty)*(Math.random()<0.5?-3:3), y:cy+(tx)*(Math.random()<0.5?-3:3)}; c._flankTimer=2.0; }
-      }
-    } else {
-      assignHoldLine(inf, cx, cy, tx, ty, 'wedge');
-      assignHoldLine(arc, cx-tx*2.1, cy-ty*2.1, tx, ty, 'archerline');
+    for(const u of ex){
+      u.order='charge';
+      u.holdPos = null;
+      delete u._flankTimer;
     }
   }
 
