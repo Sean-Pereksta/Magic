@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Iso M&B-Lite v5 — Ownership + Village Volunteers + Banners + Crossbows/Pikes</title>
+  <title>Iso M&B-Lite v5 — Kingdom Cultures & Regional Warfare</title>
   <style>
     :root{
       --bg:#0b1220;
@@ -187,8 +187,13 @@
     #mobileBattlePanel .row.scrollRow .btn{flex:0 0 auto;}
     #mobileBattlePanel.collapsed{transform:translateX(calc(-100% + 46px));opacity:.92;}
     #mbToggle{width:34px;min-width:34px;text-align:center;padding:8px 0;}
+    #desktopBattleHud{position:absolute;left:14px;top:64px;z-index:24;width:min(360px,44vw);display:none;pointer-events:auto;background:rgba(15,27,51,.86);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 18px 46px rgba(0,0,0,.4);}
+    #desktopBattleHud .row{margin-bottom:6px;}
+    #desktopBattleHud .row:last-child{margin-bottom:0;}
+    #desktopBattleHud .btn.active{background:rgba(96,165,250,.24);border-color:rgba(191,219,254,.55);}
     @media (max-width: 920px), (pointer: coarse){
       #mobileHud{display:block;}
+      #desktopBattleHud{display:none !important;}
       #topbar{right:8px;left:8px;top:8px;}
       #topStats{max-width:64%;}
       #topbar .chipRow:last-child{gap:6px;}
@@ -243,6 +248,7 @@
       <div id="joyWrap"><div id="joyKnob"></div></div>
       <div id="mobileBattlePanel"></div>
     </div>
+    <div id="desktopBattleHud"></div>
 
     <div id="startMenu">
       <div class="card">
@@ -309,6 +315,7 @@
     joyWrap: document.getElementById('joyWrap'),
     joyKnob: document.getElementById('joyKnob'),
     mobileBattlePanel: document.getElementById('mobileBattlePanel'),
+    desktopBattleHud: document.getElementById('desktopBattleHud'),
   };
 
   function resize() {
@@ -355,7 +362,7 @@
   // Gameplay tuning
   // =========================
   const SAVE_KEY = 'iso_mnb_save_v5';
-  const SAVE_VERSION = 9;
+  const SAVE_VERSION = 10;
   const DAY_LEN = 180;
   const DAY_TICK = 1;
   const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
@@ -377,9 +384,9 @@
   // Factions / items / units
   // =========================
   const FACTIONS = [
-    { id:'red',   name:'Crimson League', color:'#fb7185' },
-    { id:'blue',  name:'Azure Dominion', color:'#60a5fa' },
-    { id:'green', name:'Verdant Pact',   color:'#34d399' },
+    { id:'knights', name:'Lioncrown Chivalry', color:'#fbbf24' },
+    { id:'nords', name:'Frostfjord Clans', color:'#93c5fd' },
+    { id:'nomads', name:'Skyhoof Steppe', color:'#f59e0b' },
   ];
 
   function hslToHex(h,s,l){
@@ -435,141 +442,71 @@
     armor_plate:     { id:'armor_plate',     name:'Plate Armor',  type:'armor', armor:6, maxHp:60, price:260 },
   };
 
-  // Troops (their weapon differences are baked into windup/cooldown/range)
+  // Troops
   const UNIT_DB = {
-    // Infantry branch
-    inf_recruit: {
-      key:'inf_recruit', name:'Recruit', role:'inf', tier:0,
-      hp:78, dmg:11, range:1.05, spd:2.60, windup:0.32, cooldown:0.56,
-      shield:false, blockArrow:0.00, blockMelee:0.02,
-      cost:15, volunteersTier:0,
-      upgrades:[
-        { to:'inf_swordsman', cost:80, label:'Train → Swordsman' },
-        { to:'inf_spearman',  cost:80, label:'Train → Spearman' },
-      ]
-    },
-    inf_swordsman: {
-      key:'inf_swordsman', name:'Swordsman', role:'inf', tier:1,
-      hp:105, dmg:15, range:1.18, spd:2.45, windup:0.28, cooldown:0.53,
-      shield:false, blockArrow:0.00, blockMelee:0.04,
-      cost:0, volunteersTier:1,
-      upgrades:[
-        { to:'inf_knight_gs', cost:160, label:'Elite → Greatsword Knight' },
-        { to:'inf_shield_guard', cost:150, label:'Elite → Shield Guard' },
-      ]
-    },
-    inf_spearman: {
-      key:'inf_spearman', name:'Spearman', role:'inf', tier:1,
-      hp:98, dmg:13, range:1.90, spd:2.35, windup:0.34, cooldown:0.60,
-      shield:false, blockArrow:0.00, blockMelee:0.05,
-      cost:0, volunteersTier:1,
-      upgrades:[
-        { to:'inf_shield_spear', cost:160, label:'Elite → Shield Spearman' },
-        { to:'inf_pikeman', cost:170, label:'Elite → Pikeman' },
-      ]
-    },
-    inf_shield_guard: {
-      key:'inf_shield_guard', name:'Shield Guard', role:'inf', tier:2,
-      hp:160, dmg:18, range:1.15, spd:2.15, windup:0.26, cooldown:0.52,
-      shield:true, blockArrow:0.55, blockMelee:0.18,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    inf_shield_spear: {
-      key:'inf_shield_spear', name:'Shield Spearman', role:'inf', tier:2,
-      hp:150, dmg:16, range:1.70, spd:2.15, windup:0.30, cooldown:0.58,
-      shield:true, blockArrow:0.62, blockMelee:0.14,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    inf_pikeman: {
-      key:'inf_pikeman', name:'Pikeman', role:'inf', tier:2,
-      hp:132, dmg:17, range:2.55, spd:2.00, windup:0.44, cooldown:0.80,
-      shield:false, blockArrow:0.00, blockMelee:0.06,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    inf_knight_gs: {
-      key:'inf_knight_gs', name:'Greatsword Knight', role:'inf', tier:2,
-      hp:170, dmg:26, range:1.45, spd:2.20, windup:0.25, cooldown:0.55,
-      shield:false, blockArrow:0.08, blockMelee:0.08,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
+    kn_nobleman:{ key:'kn_nobleman', name:'Nobleman', faction:'knights', role:'inf', tier:0, hp:102, dmg:15, range:1.15, spd:2.35, windup:0.34, cooldown:0.72, shield:true, blockArrow:0.2, blockMelee:0.08, cost:12, volunteersTier:0, upgrades:[{to:'kn_knight',label:'Train → Knight'}], armorStyle:'heavy' },
+    kn_knight:{ key:'kn_knight', name:'Knight', faction:'knights', role:'inf', tier:1, hp:138, dmg:24, range:1.25, spd:2.1, windup:0.42, cooldown:0.85, shield:true, blockArrow:0.35, blockMelee:0.14, cost:56, volunteersTier:1, upgrades:[{to:'kn_champion',label:'Train → Champion'}], armorStyle:'heavy' },
+    kn_champion:{ key:'kn_champion', name:'Champion', faction:'knights', role:'inf', tier:2, hp:184, dmg:33, range:1.28, spd:1.9, windup:0.52, cooldown:1.0, shield:true, blockArrow:0.45, blockMelee:0.2, cost:118, volunteersTier:2, upgrades:[], armorStyle:'heavy' },
 
-    // Archer branch
-    arc_recruit: {
-      key:'arc_recruit', name:'Recruit Archer', role:'arc', tier:0,
-      hp:64, dmg:11, range:7.2, spd:2.50, windup:0.60, cooldown:0.72,
-      shield:false, blockArrow:0.00, blockMelee:0.02,
-      projKind:'arrow', projSpeed:9.6,
-      cost:25, volunteersTier:0,
-      upgrades:[
-        { to:'arc_archer', cost:90, label:'Train → Archer' },
-      ]
-    },
-    arc_archer: {
-      key:'arc_archer', name:'Archer', role:'arc', tier:1,
-      hp:76, dmg:14, range:8.1, spd:2.40, windup:0.56, cooldown:0.70,
-      shield:false, blockArrow:0.00, blockMelee:0.03,
-      projKind:'arrow', projSpeed:9.9,
-      cost:0, volunteersTier:1,
-      upgrades:[
-        { to:'arc_marksman', cost:170, label:'Elite → Marksman' },
-        { to:'arc_crossbowman', cost:185, label:'Elite → Crossbowman' },
-      ]
-    },
-    arc_marksman: {
-      key:'arc_marksman', name:'Marksman', role:'arc', tier:2,
-      hp:90, dmg:18, range:9.0, spd:2.30, windup:0.52, cooldown:0.68,
-      shield:false, blockArrow:0.00, blockMelee:0.04,
-      projKind:'arrow', projSpeed:10.2,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    arc_crossbowman: {
-      key:'arc_crossbowman', name:'Crossbowman', role:'arc', tier:2,
-      hp:92, dmg:26, range:8.4, spd:2.18, windup:0.72, cooldown:1.08,
-      shield:false, blockArrow:0.00, blockMelee:0.05,
-      projKind:'bolt', projSpeed:12.2,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    cav_scout: {
-      key:'cav_scout', name:'Cavalry Scout', role:'cav', tier:1,
-      hp:95, dmg:14, range:1.25, spd:3.35, windup:0.28, cooldown:0.62,
-      shield:false, blockArrow:0.05, blockMelee:0.05,
-      chargeMul:1.35, chargeMinSpeed:2.4,
-      cost:0, volunteersTier:1,
-      upgrades:[{ to:'cav_lancer', cost:190, label:'Elite → Lancer' }]
-    },
-    cav_lancer: {
-      key:'cav_lancer', name:'Cavalry Lancer', role:'cav', tier:2,
-      hp:130, dmg:22, range:1.35, spd:3.15, windup:0.26, cooldown:0.78,
-      shield:false, blockArrow:0.08, blockMelee:0.08,
-      chargeMul:1.70, chargeMinSpeed:2.3,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
-    sup_banner: {
-      key:'sup_banner', name:'Banner Guard', role:'sup', tier:2,
-      hp:110, dmg:10, range:1.05, spd:2.35, windup:0.36, cooldown:0.70,
-      shield:true, blockArrow:0.25, blockMelee:0.08,
-      auraRadius:3.2,
-      cost:0, volunteersTier:2,
-      upgrades:[]
-    },
+    no_raider:{ key:'no_raider', name:'Raider', faction:'nords', role:'arc', tier:0, hp:86, dmg:17, range:7.2, spd:2.35, windup:0.68, cooldown:0.95, projKind:'spearArc', projSpeed:8.4, cost:10, volunteersTier:0, upgrades:[{to:'no_skirmisher',label:'Train → Skirmisher'}] },
+    no_skirmisher:{ key:'no_skirmisher', name:'Skirmisher', faction:'nords', role:'arc', tier:1, hp:100, dmg:21, range:7.7, spd:2.45, windup:0.64, cooldown:0.9, projKind:'spearArc', projSpeed:8.8, cost:62, volunteersTier:1, upgrades:[{to:'no_wildman',label:'Train → Wildman'}] },
+    no_wildman:{ key:'no_wildman', name:'Wildman', faction:'nords', role:'arc', tier:2, hp:118, dmg:27, range:8.1, spd:2.5, windup:0.6, cooldown:0.86, projKind:'spearArc', projSpeed:9.0, cost:124, volunteersTier:2, upgrades:[] },
+
+    st_steppe_archer:{ key:'st_steppe_archer', name:'Steppe Archer', faction:'nomads', role:'cav', tier:0, hp:84, dmg:13, range:7.8, spd:3.45, windup:0.52, cooldown:0.72, projKind:'arrow', projSpeed:10.3, kiteCircle:true, cost:14, volunteersTier:0, upgrades:[{to:'st_veteran_mounted_archer',label:'Train → Veteran Mounted Archer'}] },
+    st_veteran_mounted_archer:{ key:'st_veteran_mounted_archer', name:'Veteran Mounted Archer', faction:'nomads', role:'cav', tier:1, hp:100, dmg:16, range:8.3, spd:3.6, windup:0.5, cooldown:0.69, projKind:'arrow', projSpeed:10.8, kiteCircle:true, cost:66, volunteersTier:1, upgrades:[{to:'st_companion_guard',label:'Train → Companion Guard'}] },
+    st_companion_guard:{ key:'st_companion_guard', name:'Companion Guard', faction:'nomads', role:'cav', tier:2, hp:126, dmg:20, range:8.7, spd:3.75, windup:0.47, cooldown:0.65, projKind:'arrow', projSpeed:11.2, kiteCircle:true, cost:128, volunteersTier:2, upgrades:[] },
+
+    sup_banner:{ key:'sup_banner', name:'Banner Guard', role:'sup', tier:2, hp:112, dmg:10, range:1.1, spd:2.3, windup:0.34, cooldown:0.72, shield:true, blockArrow:0.25, blockMelee:0.1, auraRadius:3.2, cost:92, volunteersTier:2, upgrades:[] },
+
+    e_looter:{ key:'e_looter', name:'Looter', role:'inf', tier:0, hp:62, dmg:9, range:1.0, spd:2.45, windup:0.34, cooldown:0.62, cost:0, upgrades:[], recruitable:false },
+    e_rockthrower:{ key:'e_rockthrower', name:'Rockthrower', role:'arc', tier:0, hp:54, dmg:11, range:5.2, spd:2.35, windup:0.6, cooldown:0.82, projKind:'rock', projSpeed:7.8, cost:0, upgrades:[], recruitable:false },
+    e_bandit_cutthroat:{ key:'e_bandit_cutthroat', name:'Bandit Cutthroat', role:'inf', tier:1, hp:78, dmg:14, range:1.1, spd:2.8, windup:0.25, cooldown:0.54, cost:0, upgrades:[], recruitable:false },
+    e_bandit_bowman:{ key:'e_bandit_bowman', name:'Bandit Bowman', role:'arc', tier:1, hp:72, dmg:12, range:7.1, spd:2.5, windup:0.54, cooldown:0.74, projKind:'arrow', projSpeed:9.7, cost:0, upgrades:[], recruitable:false },
+    e_bandit_brute:{ key:'e_bandit_brute', name:'Bandit Brute', role:'inf', tier:2, hp:132, dmg:23, range:1.2, spd:2.0, windup:0.42, cooldown:0.86, cost:0, upgrades:[], recruitable:false },
+    e_sea_raider:{ key:'e_sea_raider', name:'Sea Raider', role:'inf', tier:1, hp:108, dmg:18, range:1.2, spd:2.25, windup:0.3, cooldown:0.64, cost:0, upgrades:[], recruitable:false },
+    e_sea_spearhurler:{ key:'e_sea_spearhurler', name:'Sea Spearhurler', role:'arc', tier:1, hp:88, dmg:22, range:7.9, spd:2.3, windup:0.66, cooldown:0.95, projKind:'spearArc', projSpeed:8.6, cost:0, upgrades:[], recruitable:false },
+    e_sea_reaver:{ key:'e_sea_reaver', name:'Sea Reaver', role:'inf', tier:2, hp:156, dmg:29, range:1.25, spd:2.0, windup:0.45, cooldown:0.92, cost:0, upgrades:[], recruitable:false },
+    e_steppe_raider:{ key:'e_steppe_raider', name:'Steppe Raider', role:'cav', tier:1, hp:96, dmg:17, range:1.2, spd:3.45, windup:0.3, cooldown:0.68, chargeMul:1.45, chargeMinSpeed:2.2, cost:0, upgrades:[], recruitable:false },
+    e_steppe_horse_archer:{ key:'e_steppe_horse_archer', name:'Steppe Horse Archer', role:'cav', tier:1, hp:90, dmg:14, range:8.0, spd:3.55, windup:0.5, cooldown:0.72, projKind:'arrow', projSpeed:10.6, kiteCircle:true, cost:0, upgrades:[], recruitable:false },
+    e_steppe_lancer:{ key:'e_steppe_lancer', name:'Steppe Lancer', role:'cav', tier:2, hp:128, dmg:24, range:1.3, spd:3.7, windup:0.34, cooldown:0.76, chargeMul:1.75, chargeMinSpeed:2.4, cost:0, upgrades:[], recruitable:false },
   };
+
 
   // =========================
   // Iso + map sizes
   // =========================
   const TILE_W = 64;
   const TILE_H = 32;
-  const MAP_W = 52;
-  const MAP_H = 52;
+  const MAP_W = 96;
+  const MAP_H = 96;
   const BATTLE_W = 70;
   const BATTLE_H = 70;
+
+  const BIOME = { NORDIC:'nordic', STEPPE:'steppe', PLAINS:'plains', FOREST:'forest' };
+  const BIOME_COLOR = {
+    nordic:{ fill:'rgba(220,235,255,.14)', stroke:'rgba(255,255,255,.06)' },
+    forest:{ fill:'rgba(40,140,86,.14)', stroke:'rgba(255,255,255,.05)' },
+    steppe:{ fill:'rgba(180,140,86,.15)', stroke:'rgba(255,255,255,.05)' },
+    plains:{ fill:'rgba(74,222,128,.10)', stroke:'rgba(255,255,255,.05)' },
+  };
+  function biomeAt(x,y){
+    const nx = x/MAP_W, ny=y/MAP_H;
+    if(ny < 0.26) return BIOME.NORDIC;
+    if(nx > 0.64 || (nx>0.56 && ny>0.58)) return BIOME.STEPPE;
+    if(nx < 0.34 || (nx<0.46 && ny>0.58)) return BIOME.FOREST;
+    return BIOME.PLAINS;
+  }
+  function biomeForFaction(fid){
+    if(fid==='nords') return BIOME.NORDIC;
+    if(fid==='nomads') return BIOME.STEPPE;
+    return BIOME.PLAINS;
+  }
+  function partyKindForBiome(b){
+    if(b===BIOME.NORDIC) return 'sea_raiders';
+    if(b===BIOME.STEPPE) return 'steppe_bandits';
+    if(b===BIOME.FOREST) return 'bandits';
+    return 'looters';
+  }
 
   function worldToScreen(x, y, camX, camY){
     const dx = x - camX;
@@ -636,7 +573,7 @@
   // =========================
   function makeNewDiplomacy(){
     const mk = ()=>({ standing:0, hostility:0, treaties:{ napUntil:0, tradeUntil:0, accessUntil:0 } });
-    return { red:mk(), blue:mk(), green:mk() };
+    return { knights:mk(), nords:mk(), nomads:mk() };
   }
 
   function makeNewPlayer(){
@@ -649,7 +586,7 @@
       food: 30,
 
       // faction membership
-      faction: null,            // 'red' | 'blue' | 'green' | null
+      faction: null,            // 'knights' | 'nords' | 'nomads' | null
       bannerColor: pickUniqueBannerColor(), // unique independent banner color
 
       // leveling
@@ -693,9 +630,9 @@
         activeSlot: 1,
       },
       armyUnits: [
-        makeUnitInstance('inf_recruit'),
-        makeUnitInstance('inf_recruit'),
-        makeUnitInstance('arc_recruit'),
+        makeUnitInstance('kn_nobleman'),
+        makeUnitInstance('kn_nobleman'),
+        makeUnitInstance('no_raider'),
       ],
       squads: [],
 
@@ -734,7 +671,8 @@
     p.armyUnits = (p.armyUnits||[]).map(u=>{
       if(u && u.baseUnit) return { id:u.id||('u_'+Math.random().toString(36).slice(2,10)), baseUnit:u.baseUnit, xp:u.xp||0, rank:clamp(u.rank||0,0,2), squadId:u.squadId||null, name:u.name||null };
       const k = u?.unit;
-      return makeUnitInstance(k||'inf_recruit');
+      const mapOld={inf_recruit:'kn_nobleman',inf_swordsman:'kn_knight',inf_knight_gs:'kn_champion',arc_recruit:'no_raider',arc_archer:'no_skirmisher',arc_marksman:'no_wildman',cav_scout:'st_steppe_archer',cav_lancer:'st_veteran_mounted_archer'};
+      return makeUnitInstance(mapOld[k]||k||'kn_nobleman');
     });
     p.squads = p.squads||[];
   }
@@ -767,28 +705,22 @@
   function makeCastleStock(factionId){
     const weapons = ['weapon_sword','weapon_axe','weapon_spear','weapon_pike','weapon_bow','weapon_crossbow','weapon_dagger'];
     const armors  = ['armor_leather','armor_chain','armor_scale','armor_plate'];
-    const markup = (factionId==='red') ? 1.05 : (factionId==='blue') ? 0.98 : 1.0;
+    const markup = (factionId==='knights') ? 1.06 : (factionId==='nords') ? 0.98 : (factionId==='nomads'?0.94:1.0);
     return { markup, items: [...weapons, ...armors] };
   }
 
-  function seedGarrison(){
+  function seedGarrison(factionId='knights'){
+    const tree = factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_knight','kn_champion']);
     const g = {};
-    const add = (k,n)=> g[k]=(g[k]||0)+n;
-    add('inf_swordsman', randi(4,8));
-    add('inf_spearman', randi(3,7));
-    add('arc_archer', randi(3,6));
-    if(Math.random()<0.30) add('inf_shield_guard', randi(1,3));
-    if(Math.random()<0.20) add('arc_crossbowman', randi(1,2));
+    const add=(k,n)=>g[k]=(g[k]||0)+n;
+    add(tree[0], randi(5,9));
+    add(tree[1], randi(3,7));
+    if(Math.random()<0.35) add(tree[2], randi(1,3));
+    if(Math.random()<0.22) add('sup_banner',1);
     return g;
   }
   function seedCapturedMilitia(){
-    const g = {};
-    const add = (k,n)=> g[k]=(g[k]||0)+n;
-    add('inf_recruit', randi(4,7));
-    add('arc_recruit', randi(2,5));
-    if(Math.random()<0.35) add('inf_spearman', randi(1,3));
-    if(Math.random()<0.25) add('arc_archer', randi(1,2));
-    return g;
+    return { kn_nobleman:randi(4,7), no_raider:randi(2,4), st_steppe_archer:randi(1,3) };
   }
 
   function garrisonCount(g){
@@ -802,30 +734,20 @@
     }
   }
 
-  function makeVillageVolunteers(){
-    // limited pool + caps
+  function makeVillageVolunteers(factionId='knights'){
+    const poolByFaction = {
+      knights:['kn_nobleman','kn_knight','kn_champion'],
+      nords:['no_raider','no_skirmisher','no_wildman'],
+      nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
+    };
+    const pool = poolByFaction[factionId] || poolByFaction.knights;
     const volunteers = {
-      inf_recruit: randi(6, 14),
-      arc_recruit: randi(4, 10),
-      inf_swordsman: randi(0, 3),
-      inf_spearman: randi(0, 3),
-      arc_archer: randi(0, 2),
-      arc_crossbowman: (Math.random()<0.18 ? 1 : 0),
-      inf_pikeman: (Math.random()<0.15 ? 1 : 0),
-      cav_scout: (Math.random()<0.05 ? 1 : 0),
-      sup_banner: (Math.random()<0.03 ? 1 : 0),
+      [pool[0]]: randi(8, 16),
+      [pool[1]]: randi(1, 4),
+      [pool[2]]: (Math.random()<0.35 ? 1 : 0),
+      sup_banner: (Math.random()<0.12 ? 1 : 0),
     };
-    const caps = {
-      inf_recruit: 18,
-      arc_recruit: 14,
-      inf_swordsman: 4,
-      inf_spearman: 4,
-      arc_archer: 3,
-      arc_crossbowman: 2,
-      inf_pikeman: 2,
-      cav_scout: 1,
-      sup_banner: 1,
-    };
+    const caps = { [pool[0]]:18, [pool[1]]:5, [pool[2]]:2, sup_banner:1 };
     return { volunteers, caps, regenClock: rand(0, VILLAGE_REGEN_INTERVAL) };
   }
 
@@ -834,133 +756,119 @@
   }
 
   function makePartyComp(kind, size, opts={}){
-    const threat = opts.threat ?? state.map?.threat ?? 0;
-    const day = opts.day ?? state.map?.day ?? 1;
     const comp = [];
-    const t0 = clamp(1.0 - (threat*0.08 + day*0.02), 0.10, 1.0);
-    const t1 = clamp(0.25 + (threat*0.05 + day*0.015), 0.20, 0.75);
-    const t2 = clamp(-0.05 + (threat*0.06 + day*0.02), 0.00, 0.70);
-    const tierPick = ()=>{ const r=Math.random()*(t0+t1+t2); return r<t0?0:(r<t0+t1?1:2); };
-    const pools = {
-      inf:{0:['inf_recruit'],1:['inf_swordsman','inf_spearman'],2:['inf_shield_guard','inf_shield_spear','inf_pikeman','inf_knight_gs']},
-      arc:{0:['arc_recruit'],1:['arc_archer'],2:['arc_marksman','arc_crossbowman']},
-      cav:{1:['cav_scout'],2:['cav_lancer']},
-      sup:{2:['sup_banner']}
-    };
-    const roleCfg = {
-      bandit:{inf:0.70,arc:0.30,cav:(day>=6?0.06:0),sup:0},
-      patrol:{inf:0.60,arc:0.35,cav:(day>=8?0.05:0),sup:0},
-      army:{inf:0.55,arc:0.30,cav:0.10,sup:((day>=10||threat>=6)?0.05:0)},
-      vassal:{inf:0.55,arc:0.30,cav:0.10,sup:0.05},
-      neutral:{inf:1,arc:0,cav:0,sup:0}
-    }[kind] || {inf:0.62,arc:0.33,cav:0.05,sup:0};
-    let infCount=Math.round(size*roleCfg.inf), arcCount=Math.round(size*roleCfg.arc), cavCount=Math.round(size*roleCfg.cav), supCount=Math.round(size*roleCfg.sup);
-    while(infCount+arcCount+cavCount+supCount<size) infCount++;
-    const addRole=(role,n)=>{
-      for(let i=0;i<n;i++){
-        let t=tierPick();
-        if(role==='cav') t = (t>=2 && Math.random()<0.6)?2:1;
-        if(role==='sup') t=2;
-        const pool = pools[role][t] || pools[role][1] || pools[role][0];
-        comp.push({ unit: pool[randi(0,pool.length-1)] });
-      }
-    };
-    addRole('inf', infCount); addRole('arc', arcCount); addRole('cav', cavCount); addRole('sup', supCount);
-    if(size>=24 && (day>=10||threat>=6) && (kind==='army' || kind==='vassal') && !comp.some(u=>u.unit==='sup_banner')) comp.push({unit:'sup_banner'});
-    if(size>=30 && (day>=12||threat>=7) && (kind==='army' || kind==='vassal')){
-      const cavN = comp.filter(u=>UNIT_DB[u.unit]?.role==='cav').length;
-      for(let i=cavN;i<2;i++) comp.push({unit:'cav_scout'});
+    const push=(k,n)=>{ for(let i=0;i<n;i++) comp.push({unit:k}); };
+    const pick=(arr)=>arr[randi(0,arr.length-1)];
+
+    if(kind==='looters'){
+      for(let i=0;i<size;i++) comp.push({unit: Math.random()<0.72?'e_looter':'e_rockthrower'});
+      return comp;
     }
-    return comp.slice(0, Math.max(size, comp.length));
+    if(kind==='bandits'){
+      for(let i=0;i<size;i++){
+        const r=Math.random();
+        comp.push({unit: r<0.58?'e_bandit_cutthroat':(r<0.9?'e_bandit_bowman':'e_bandit_brute')});
+      }
+      return comp;
+    }
+    if(kind==='sea_raiders'){
+      for(let i=0;i<size;i++){
+        const r=Math.random();
+        comp.push({unit: r<0.56?'e_sea_raider':(r<0.86?'e_sea_spearhurler':'e_sea_reaver')});
+      }
+      return comp;
+    }
+    if(kind==='steppe_bandits'){
+      for(let i=0;i<size;i++){
+        const r=Math.random();
+        comp.push({unit: r<0.48?'e_steppe_raider':(r<0.84?'e_steppe_horse_archer':'e_steppe_lancer')});
+      }
+      return comp;
+    }
+
+    const faction = opts.factionId || 'knights';
+    const trees = {
+      knights:['kn_nobleman','kn_knight','kn_champion'],
+      nords:['no_raider','no_skirmisher','no_wildman'],
+      nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
+    };
+    const tree = trees[faction] || trees.knights;
+    for(let i=0;i<size;i++){
+      const r=Math.random();
+      const t = r<0.60?0:(r<0.90?1:2);
+      comp.push({unit:tree[t]});
+    }
+    if((kind==='army'||kind==='vassal') && size>=24 && Math.random()<0.5) push('sup_banner',1);
+    return comp;
   }
 
   function makeMap(){
     const settlements = [];
+    const pois = [];
     const taken = new Set();
-    function take(x,y){ taken.add(x+','+y); }
-
-    function pickSpot(){
-      for(let tries=0; tries<5000; tries++){
-        const x = randi(6, MAP_W-7);
-        const y = randi(6, MAP_H-7);
-        if(taken.has(x+','+y)) continue;
-        let ok = true;
-        for(const s of settlements){
-          if(dist2(x,y,s.x,s.y) < 64) { ok=false; break; }
-        }
-        if(ok){ take(x,y); return {x,y}; }
+    const region = {
+      knights:{x0:10,x1:44,y0:28,y1:82},
+      nords:{x0:10,x1:86,y0:5,y1:28},
+      nomads:{x0:56,x1:90,y0:34,y1:90},
+    };
+    function pickSpotFor(fid){
+      const r = region[fid] || {x0:8,x1:MAP_W-8,y0:8,y1:MAP_H-8};
+      const wantBiome = biomeForFaction(fid);
+      for(let tries=0; tries<6000; tries++){
+        const x = randi(r.x0,r.x1), y=randi(r.y0,r.y1);
+        const k=x+','+y;
+        if(taken.has(k)) continue;
+        if(biomeAt(x,y)!==wantBiome && Math.random()<0.82) continue;
+        let ok=true;
+        for(const s of settlements){ if(dist2(x,y,s.x,s.y)<44){ ok=false; break; } }
+        if(ok){ taken.add(k); return {x,y}; }
       }
-      return {x:randi(6,MAP_W-7), y:randi(6,MAP_H-7)};
+      return {x:randi(r.x0,r.x1),y:randi(r.y0,r.y1)};
+    }
+    function addSettlement(kind,fid,name,x,y,parentCastleId=null){
+      const out={ id:'s_'+Math.random().toString(36).slice(2,9), kind, factionId:fid, name, x,y, contracts:[], parentCastleId };
+      if(kind==='castle'){
+        out.stock=makeCastleStock(fid);
+        out.garrison=seedGarrison(fid);
+        out.defense={walls:1,towers:0,traps:0};
+        out.storage={gold:0,food:0,goods:{}};
+        out.lastSackedT=-999;
+      } else if(kind==='village') out.stock=makeVillageStock(), out.village=makeVillageVolunteers(fid);
+      else out.stock={foodPrice:6,foodBundle:8};
+      settlements.push(out);
+      return out;
     }
 
     for(const f of FACTIONS){
-      const c = pickSpot();
-      const castleId = 's_'+Math.random().toString(36).slice(2,9);
-      settlements.push({
-        id: castleId,
-        kind:'castle', factionId:f.id, name:f.name+' Castle',
-        x:c.x, y:c.y,
-        stock: makeCastleStock(f.id),
-        garrison: seedGarrison(),
-        defense: { walls:1, towers:0, traps:0 },
-        storage: { gold:0, food:0, goods:{} },
-        contracts: [],
-        lastSackedT: -999,
-        parentCastleId: null,
-      });
-      for(let i=0;i<3;i++){
-        const v = pickSpot();
-        const vv = makeVillageVolunteers();
-        settlements.push({
-          id: 's_'+Math.random().toString(36).slice(2,9),
-          kind:'village', factionId:f.id,
-          name:f.name.split(' ')[0]+' Village '+(i+1),
-          x:v.x, y:v.y,
-          stock: makeVillageStock(),
-          parentCastleId: castleId,
-          village: vv,
-          contracts: [],
-        });
+      for(let c=1;c<=2;c++){
+        const pos=pickSpotFor(f.id);
+        const castle=addSettlement('castle', f.id, `${f.name.split(' ')[0]} Castle ${c}`, pos.x, pos.y);
+        for(let i=1;i<=3;i++){
+          const v=pickSpotFor(f.id);
+          addSettlement('village', f.id, `${f.name.split(' ')[0]} Village ${((c-1)*3)+i}`, v.x, v.y, castle.id);
+        }
       }
     }
 
-    const parties = [];
-    function addParty(kind, factionId, x, y, size){
-      parties.push({
-        id: 'p_' + Math.random().toString(36).slice(2,9),
-        kind, factionId,
-        x, y,
-        roamTx: x, roamTy: y,
-        aggro: (kind==='bandit') ? 5.2 : (kind==='army'? 3.8 : 4.2),
-        baseSpeed: (kind==='bandit') ? 2.25 : (kind==='army'? 1.75 : 2.0),
-        size,
-        comp: (kind==='neutral') ? [] : makePartyComp(kind, size, { threat:0, day:1, factionId }),
-        alive: true,
-        targetSettlementId: null,
-      });
+    for(let i=1;i<=4;i++){
+      const x=randi(16,MAP_W-16), y=randi(16,MAP_H-16);
+      addSettlement('town', null, `Free Outpost ${i}`, x, y, null);
     }
 
-    for(let i=0;i<11;i++) addParty('bandit', null, randi(4,MAP_W-5), randi(4,MAP_H-5), randi(7,20));
-    for(const f of FACTIONS) for(let i=0;i<3;i++) addParty('patrol', f.id, randi(4,MAP_W-5), randi(4,MAP_H-5), randi(8,20));
-    for(let i=0;i<6;i++) addParty('neutral', null, randi(4,MAP_W-5), randi(4,MAP_H-5), 1);
+    const poiNames=['Old Ruins','Moon Shrine','Watchtower','Hidden Grotto','Broken Keep','Sun Pillar','Stone Circle','Hunter Camp','Ancient Well','Nomad Cairn','Frost Altar','Bandit Hideout'];
+    for(let i=0;i<12;i++) pois.push({ id:'poi_'+i, x:randi(5,MAP_W-6), y:randi(5,MAP_H-6), name:poiNames[i], kind:'poi' });
 
-    return {
-      w: MAP_W, h: MAP_H,
-      settlements, parties,
-      dayFoodRate: 0.02,
-      invasion: {}, // partyId -> {settlementId, t}
-      day: 1,
-      totalDays: 1,
-      time: 0,
-      dayLen: DAY_LEN,
-      dayClock: 0,
-      threat: 0,
-      strategicClock: 0,
-      nextArmySpawn: 18 + Math.random()*12,
-      caravans: [],
-      contractsClock: 0,
-      activeContract: null,
-    };
+    const parties=[];
+    function addParty(kind, factionId, x, y, size, isCamp=false){
+      parties.push({ id:'p_'+Math.random().toString(36).slice(2,9), kind,factionId,x,y,roamTx:x,roamTy:y,aggro:(kind==='neutral'?0:5.2),baseSpeed:(kind.includes('steppe')?2.6:2.15),size,comp:(kind==='neutral')?[]:makePartyComp(kind,size,{factionId}),alive:true,targetSettlementId:null,isCamp });
+    }
+
+    for(let i=0;i<10;i++){ const x=randi(8,MAP_W-8),y=randi(8,MAP_H-8); addParty('looters',null,x,y,randi(3,10)); }
+    for(let i=0;i<12;i++){ const x=randi(8,MAP_W-8),y=randi(8,MAP_H-8); const b=biomeAt(x,y); addParty(partyKindForBiome(b),null,x,y,randi(b===BIOME.PLAINS?3:10,b===BIOME.FOREST?15:20)); }
+    for(const f of FACTIONS) for(let i=0;i<6;i++){ const p=pickSpotFor(f.id); addParty('patrol',f.id,p.x,p.y,randi(9,18)); }
+    for(let i=0;i<5;i++) addParty('neutral',null,randi(6,MAP_W-7),randi(6,MAP_H-7),1);
+
+    return { w:MAP_W,h:MAP_H, settlements, parties, pois, dayFoodRate:0.02, invasion:{}, day:1,totalDays:1,time:0,dayLen:DAY_LEN,dayClock:0,threat:0,strategicClock:0,nextArmySpawn:18+Math.random()*12,caravans:[],contractsClock:0,activeContract:null };
   }
 
   // =========================
@@ -1061,11 +969,11 @@
       s.defense = s.defense || {walls:1,towers:0,traps:0};
       s.garrison = s.garrison || {};
       const add=(k,n)=>s.garrison[k]=(s.garrison[k]||0)+n;
-      add('inf_recruit', randi(1,3));
-      if(Math.random()<clamp(0.20+state.map.day*0.01+state.map.threat*0.03,0.2,0.75)) add('inf_swordsman',1);
-      if(Math.random()<clamp(0.16+state.map.day*0.01+state.map.threat*0.02,0.1,0.65)) add('arc_archer',1);
-      if((state.map.day>=12 || state.map.threat>=7) && Math.random()<0.22) add('inf_shield_guard',1);
-      if((state.map.day>=12 || state.map.threat>=7) && Math.random()<0.18) add('cav_scout',1);
+      const tree = s.factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (s.factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_knight','kn_champion']);
+      add(tree[0], randi(1,3));
+      if(Math.random()<clamp(0.20+state.map.day*0.01+state.map.threat*0.03,0.2,0.75)) add(tree[1],1);
+      if(Math.random()<clamp(0.16+state.map.day*0.01+state.map.threat*0.02,0.1,0.65)) add(tree[2],1);
+      if((state.map.day>=12 || state.map.threat>=7) && Math.random()<0.18) add('sup_banner',1);
       const upChance = clamp(0.08 + 0.01*state.map.day + 0.015*state.map.threat,0.08,0.35);
       if(Math.random()<upChance){
         const later = state.map.day>12 || state.map.threat>7;
@@ -1114,6 +1022,13 @@
       state.player = data.player;
       state.diplomacy = data.diplomacy || makeNewDiplomacy();
       // migrations
+      if(state.diplomacy.red || state.diplomacy.blue || state.diplomacy.green){
+        const old=state.diplomacy;
+        state.diplomacy = makeNewDiplomacy();
+        state.diplomacy.knights = old.red || state.diplomacy.knights;
+        state.diplomacy.nords = old.blue || state.diplomacy.nords;
+        state.diplomacy.nomads = old.green || state.diplomacy.nomads;
+      }
       if(typeof state.diplomacy.red === 'number'){
         const old = state.diplomacy;
         state.diplomacy = makeNewDiplomacy();
@@ -1133,6 +1048,8 @@
       state.player.daysUnpaid = state.player.daysUnpaid ?? 0;
       state.player.vassals = state.player.vassals || [];
       normalizeArmyUnits(state.player);
+      const fmap={red:'knights',blue:'nords',green:'nomads'};
+      if(state.player.faction && fmap[state.player.faction]) state.player.faction=fmap[state.player.faction];
       state.player.restedToday = state.player.restedToday || false;
       state.map.day = state.map.day || 1;
       state.map.totalDays = state.map.totalDays || state.map.day;
@@ -1157,7 +1074,11 @@
         ensureSettlementSystems(s);
       }
       state.map.caravans = state.map.caravans || [];
+      state.map.pois = state.map.pois || [];
       state.map.activeContract = state.map.activeContract || null;
+      for(const s of state.map.settlements){
+        if(s.kind==='village' && (!s.factionId || !FACTIONS.find(f=>f.id===s.factionId))) s.factionId='knights';
+      }
       closeAllPanels();
       toast('Loaded ✅');
       syncHUD();
@@ -1342,9 +1263,9 @@
           <div class="item">
             <div class="meta">
               <b>${up.label}</b>
-              <div class="tag">${def.name} → ${toDef.name} • Cost: 💰 ${up.cost}</div>
+              <div class="tag">${def.name} → ${toDef.name} • Cost: 💰 ${upgradeCost(fromKey, up.to)}</div>
             </div>
-            <button class="btn" data-upfrom="${fromKey}" data-upto="${up.to}" data-upcost="${up.cost}" ${have<=0?'disabled':''}>Upgrade 1</button>
+            <button class="btn" data-upfrom="${fromKey}" data-upto="${up.to}" data-upcost="${upgradeCost(fromKey, up.to)}" ${have<=0?'disabled':''}>Upgrade 1</button>
           </div>
         `);
       }
@@ -1708,7 +1629,7 @@
 
   function isPartyHostileToPlayer(party){
     if(!party || !party.alive) return false;
-    if(party.kind==='bandit') return true;
+    if(['bandit','looters','bandits','sea_raiders','steppe_bandits'].includes(party.kind)) return true;
     if(party.kind==='neutral' || party.kind==='vassal') return false;
     const p = state.player;
     if(party.factionId && p.faction && party.factionId===p.faction) return false;
@@ -1724,7 +1645,7 @@
     if(!party.alive) return false;
     if(settlement.kind!=='castle') return false;
     if(party.kind==='neutral') return false;
-    if(party.kind==='bandit') return true;
+    if(['bandit','looters','bandits','sea_raiders','steppe_bandits'].includes(party.kind)) return true;
     if(!party.factionId) return false;
     if(party.factionId === settlement.factionId) return false;
     return true;
@@ -1736,9 +1657,7 @@
     const id='ct_'+Math.random().toString(36).slice(2,9);
     const expiresDay = (state.map?.day||1)+randi(4,7);
     if(type==='clear_camp'){
-      const camp={ id:'p_'+Math.random().toString(36).slice(2,9), kind:'bandit', factionId:null, x:clamp(settlement.x+rand(-4,4),2,MAP_W-3), y:clamp(settlement.y+rand(-4,4),2,MAP_H-3), roamTx:settlement.x, roamTy:settlement.y, aggro:5.4, baseSpeed:1.6, size:randi(10,18), comp:makePartyComp('bandit', randi(10,18), {day:state.map.day,threat:state.map.threat}), alive:true, targetSettlementId:null, isCamp:true };
-      state.map.parties.push(camp);
-      return { id,type,title:'Clear Bandit Camp',desc:'Destroy the nearby camp raiders.',reward:{gold:120,relation:6,volunteers:2},expiresDay,state:'available',targetId:camp.id,settlementId:settlement.id };
+      return { id,type,title:'Clear Bandit Camp',desc:'Destroy a nearby enemy camp.',reward:{gold:120,relation:6,volunteers:2},expiresDay,state:'available',targetId:null,settlementId:settlement.id,spawnKind:partyKindForBiome(biomeAt(settlement.x, settlement.y)) };
     }
     if(type==='escort_caravan') return { id,type,title:'Escort Caravan',desc:'Stay near the caravan until it arrives.',reward:{gold:90,relation:4,volunteers:1},expiresDay,state:'available',targetId:settlement.parentCastleId||settlement.id,progress:0,settlementId:settlement.id };
     if(type==='defend_siege') return { id,type,title:'Defend Siege',desc:'Help defend a linked castle under threat.',reward:{gold:150,relation:8,volunteers:2},expiresDay,state:'available',targetId:settlement.parentCastleId||settlement.id,settlementId:settlement.id };
@@ -1833,6 +1752,7 @@
     const rel = (fid==='player') ? 0 : effectiveRelation(fid);
     const relTag = (fid==='player') ? '—' : `${rel} • ${relationLabel(rel)}`;
     const atWar = (fid==='player') ? false : (rel <= -60);
+    const hostileRecruit = (fid && fid!=='player') ? (rel<=-20) : false;
 
     const header = `${s.kind==='village'?'Village':'Castle'} • <span style="color:${col}">${factionName(fid)}</span>`;
     const isOwnFaction = (p.faction && fid===p.faction);
@@ -1856,6 +1776,7 @@
           <div class="small" style="color:#ffd2d2">They refuse to trade because you are <b>AT WAR</b>.</div>
           <div class="hr"></div>
         ` : ``}
+        ${hostileRecruit ? `<div class="small" style="color:#ffd2d2">Recruitment blocked: HOSTILE with ${factionName(fid)}.</div><div class="hr"></div>`:''}
 
         <div class="item">
           <div class="meta">
@@ -1882,7 +1803,7 @@
                 <b>${u.name}</b>
                 <div class="tag">Tier ${u.tier} • Cost: 💰 ${cost} • Available: <span class="mono">${qty}</span></div>
               </div>
-              <button class="btn" data-hire="${k}" ${atWar || qty<=0 ? 'disabled':''}>Hire 1</button>
+              <button class="btn" data-hire="${k}" ${atWar || hostileRecruit || qty<=0 ? 'disabled':''}>Hire 1</button>
             </div>`;
           }).join('')}
         </div>
@@ -1924,6 +1845,7 @@
       for(const b of ui.panelSettlement.querySelectorAll('button[data-hire]')){
         b.onclick = () => {
           if(atWar) return;
+          if(hostileRecruit){ toast(`Recruitment blocked: HOSTILE with ${factionName(fid)}`); return; }
           const key = b.getAttribute('data-hire');
           const qty = s.village.volunteers[key]||0;
           if(qty<=0){ toast('No volunteers available'); return; }
@@ -1939,6 +1861,14 @@
           syncHUD();
         };
       }
+      return;
+    }
+
+    if(s.kind==='town'){
+      ui.panelSettlement.classList.remove('left','wide');
+      ui.panelSettlement.innerHTML = `<h2>${header}</h2><div class="small">Neutral trade outpost. No faction recruitment available.</div><div class="hr"></div><div class="item"><div class="meta"><b>Buy Food</b><div class="tag">${s.stock.foodBundle} 🍖 for 💰 ${s.stock.foodPrice}</div></div><button class="btn" id="buyFood">Buy</button></div><div class="hr"></div><div class="row"><button class="btn" id="closeSet">Close</button></div>`;
+      ui.panelSettlement.querySelector('#closeSet').onclick = () => { closeAllPanels(); currentSettlement=null; };
+      ui.panelSettlement.querySelector('#buyFood').onclick = () => { if(p.gold < s.stock.foodPrice){ toast('Not enough gold'); return; } p.gold -= s.stock.foodPrice; p.food += s.stock.foodBundle; syncHUD(); toast('Food purchased'); };
       return;
     }
 
@@ -2120,7 +2050,7 @@
 
     for(const b of ui.panelSettlement.querySelectorAll('button[data-sgold]')) b.onclick=()=>{ const d=b.getAttribute('data-sgold'); s.storage=s.storage||{gold:0,food:0,goods:{}}; if(d==='d'){ if(p.gold<50){toast('Not enough gold');return;} p.gold-=50; s.storage.gold+=50; } else { if((s.storage.gold||0)<50){toast('Not enough storage gold');return;} s.storage.gold-=50; p.gold+=50; } renderSettlementPanel(); syncHUD(); };
     for(const b of ui.panelSettlement.querySelectorAll('button[data-sfood]')) b.onclick=()=>{ const d=b.getAttribute('data-sfood'); s.storage=s.storage||{gold:0,food:0,goods:{}}; if(d==='d'){ if(p.food<50){toast('Not enough food');return;} p.food-=50; s.storage.food+=50; } else { if((s.storage.food||0)<50){toast('Not enough storage food');return;} s.storage.food-=50; p.food+=50; } renderSettlementPanel(); syncHUD(); };
-    for(const b of ui.panelSettlement.querySelectorAll('button[data-contract]')) b.onclick=()=>{ const c=(s.contracts||[]).find(x=>x.id===b.getAttribute('data-contract')); if(!c) return; c.state='active'; state.map.activeContract={...c}; if(c.type==='escort_caravan'){ const from=s; const to=settlementById(c.targetId)||s; state.map.activeContract.escort={x:from.x,y:from.y,progress:0,fromId:from.id,toId:to.id}; } toast('Contract accepted'); renderSettlementPanel(); };
+    for(const b of ui.panelSettlement.querySelectorAll('button[data-contract]')) b.onclick=()=>{ const c=(s.contracts||[]).find(x=>x.id===b.getAttribute('data-contract')); if(!c) return; c.state='active'; state.map.activeContract={...c}; if(c.type==='clear_camp'){ const ang=rand(0,Math.PI*2), rr=rand(3,6); const x=clamp(s.x+Math.cos(ang)*rr,2,MAP_W-3), y=clamp(s.y+Math.sin(ang)*rr,2,MAP_H-3); const kind=c.spawnKind||partyKindForBiome(biomeAt(x,y)); const size=(kind==='looters')?randi(4,9):(kind==='bandits'?randi(8,15):randi(10,20)); const camp={ id:'p_'+Math.random().toString(36).slice(2,9), kind, factionId:null, x,y,roamTx:x,roamTy:y,aggro:5.6,baseSpeed:1.6,size,comp:makePartyComp(kind,size,{day:state.map.day,threat:state.map.threat}),alive:true,targetSettlementId:null,isCamp:true }; state.map.parties.push(camp); state.map.activeContract.targetId=camp.id; c.targetId=camp.id; } if(c.type==='escort_caravan'){ const from=s; const to=settlementById(c.targetId)||s; state.map.activeContract.escort={x:from.x,y:from.y,progress:0,fromId:from.id,toId:to.id}; } if(c.type==='defend_siege' && !findInvaderOnSettlement(settlementById(c.targetId)||s)){ const cs=settlementById(c.targetId)||s; const px=clamp(cs.x+rand(-8,8),3,MAP_W-4), py=clamp(cs.y+rand(-8,8),3,MAP_H-4); state.map.parties.push({id:'p_'+Math.random().toString(36).slice(2,9),kind:partyKindForBiome(biomeAt(px,py)),factionId:null,x:px,y:py,roamTx:cs.x,roamTy:cs.y,aggro:5.3,baseSpeed:2.0,size:randi(12,20),comp:makePartyComp(partyKindForBiome(biomeAt(px,py)),randi(12,20),{}),alive:true,targetSettlementId:cs.id}); } toast('Contract accepted'); renderSettlementPanel(); };
     // siege buttons
     const siegeBtn = ui.panelSettlement.querySelector('#btnSiege');
     if(siegeBtn){
@@ -2143,13 +2073,19 @@
     }
   }
 
+  function upgradeCost(fromKey,toKey){
+    const from = UNIT_DB[fromKey], to = UNIT_DB[toKey];
+    if(!from || !to) return 0;
+    const c = Math.round((to.cost - from.cost)*0.65 + 8);
+    return clamp(c, 8, 220);
+  }
+
   function computeHireCostForVillage(unitDef, village){
     // base cost by tier + mild faction friendliness effect (if village is faction-owned)
     const p = state.player;
-    let base = 18 + unitDef.tier*26;
-    if(unitDef.role==='arc') base += 6;
-    if(unitDef.key==='arc_crossbowman') base += 18;
-    if(unitDef.key==='inf_pikeman') base += 10;
+    let base = 10 + unitDef.tier*34;
+    if(unitDef.role==='cav') base += 4;
+    if(unitDef.role==='sup') base += 8;
 
     // if village belongs to a faction, make it cheaper when friendly, pricier when hostile
     if(village.factionId && village.factionId!=='player'){
@@ -2342,6 +2278,8 @@
       if(k==='4') setSelection('all');
       if(k==='5') setSelection('inf');
       if(k==='6') setSelection('arc');
+      if(k==='7') setSelection('cav');
+      if(k==='8') setSelection('sup');
       if(k==='t') cycleFormation();
       if(k==='g') tryPlaceRam();
     }
@@ -2377,6 +2315,8 @@
         <button class="btn" data-sel="all">All</button>
         <button class="btn" data-sel="inf">Inf</button>
         <button class="btn" data-sel="arc">Arc</button>
+        <button class="btn" data-sel="cav">Cav</button>
+        <button class="btn" data-sel="sup">Sup</button>
       </div>
       <div class="row scrollRow">
         <button class="btn" id="mbForm">Formation: ${form}</button>
@@ -2394,6 +2334,21 @@
     };
   }
 
+
+  function renderDesktopBattleHud(){
+    const isDesktop = window.matchMedia('(pointer:fine)').matches && window.innerWidth>920 && !window.matchMedia('(pointer:coarse)').matches;
+    if(state.mode!=='battle' || !state.battle || !isDesktop){ ui.desktopBattleHud.style.display='none'; return; }
+    const b=state.battle;
+    const sel=b.selection||'all';
+    const form=b.formations[sel]?.mode||'line';
+    const cmd=(b.lastCmdByGroup||{})[sel]||'charge';
+    const mk=(key,label,type,val)=>`<button class="btn ${val===key?'active':''}" data-${type}="${key}">${label}</button>`;
+    ui.desktopBattleHud.style.display='block';
+    ui.desktopBattleHud.innerHTML=`<div class="small">Battle Command HUD</div><div class="row">${mk('all','All','sel',sel)} ${mk('inf','Inf','sel',sel)} ${mk('arc','Arc','sel',sel)} ${mk('cav','Cav','sel',sel)} ${mk('sup','Sup','sel',sel)}</div><div class="row">${mk('charge','Charge','cmd',cmd)} ${mk('hold','Hold','cmd',cmd)} ${mk('rally','Rally','cmd',cmd)}</div><div class="row"><button class="btn" id="dbForm">Formation: ${form}</button></div>`;
+    for(const bt of ui.desktopBattleHud.querySelectorAll('[data-cmd]')) bt.onclick=()=>applyCommandToSelected(bt.dataset.cmd);
+    for(const bt of ui.desktopBattleHud.querySelectorAll('[data-sel]')) bt.onclick=()=>setSelection(bt.dataset.sel);
+    ui.desktopBattleHud.querySelector('#dbForm').onclick=cycleFormation;
+  }
   // =========================
   // Map tick: heal + wounded recovery + village regen + invasions
   // =========================
@@ -2555,15 +2510,11 @@
       v.volunteers[k] = v.volunteers[k]||0;
       if(v.volunteers[k] < cap) v.volunteers[k] += 1;
     };
-    add1('inf_recruit', 0.95);
-    add1('arc_recruit', 0.80);
-    add1('inf_swordsman', 0.22);
-    add1('inf_spearman', 0.22);
-    add1('arc_archer', 0.16);
-    add1('inf_pikeman', 0.10);
-    add1('arc_crossbowman', 0.08);
-    add1('cav_scout', 0.05);
-    add1('sup_banner', 0.03);
+    for(const k of Object.keys(v.caps||{})){
+      const cap=v.caps[k]||0;
+      const chance = cap<=1?0.06:(cap<=3?0.18:0.82);
+      add1(k, chance);
+    }
   }
 
 
@@ -2615,7 +2566,7 @@
       if(party.kind==='neutral') continue;
 
       const isLarge = (party.size >= 28);
-      const canRaid = (party.kind==='bandit' && party.size >= 22);
+      const canRaid = (['bandit','looters','bandits','sea_raiders','steppe_bandits'].includes(party.kind) && party.size >= 14);
       if(!isLarge && !canRaid) continue;
 
       let best=null, bd=1e9;
@@ -2675,22 +2626,22 @@
 
     const ratio = atk / Math.max(1, def);
     let chance = clamp(0.20 + (ratio-1)*0.22, 0.10, 0.85);
-    if(party.kind==='bandit') chance *= 0.88;
+    if(['bandit','looters','bandits'].includes(party.kind)) chance *= 0.88;
 
     const win = (Math.random() < chance);
 
     const lossFrac = win ? rand(0.45,0.70) : rand(0.25,0.55);
     const newSize = Math.max(3, Math.floor(atk * (1-lossFrac)));
     party.size = newSize;
-    party.comp = makePartyComp(party.kind==='bandit'?'bandit':'army', newSize, { threat:state.map.threat, day:state.map.day, factionId:party.factionId });
+    party.comp = makePartyComp(party.kind, newSize, { threat:state.map.threat, day:state.map.day, factionId:party.factionId });
 
     const defLoss = win ? rand(0.50,0.82) : rand(0.10,0.30);
     applyGarrisonLosses(g, defLoss);
 
     if(win){
-      if(party.kind==='bandit'){
+      if(['bandit','looters','bandits','sea_raiders','steppe_bandits'].includes(party.kind)){
         castle.lastSackedT = state.t;
-        toast(`⚠️ Bandits sacked ${castle.name}! Garrisons reduced.`, 1800);
+        toast(`⚠️ Raiders sacked ${castle.name}! Garrisons reduced.`, 1800);
       } else {
         castle.factionId = party.factionId;
         castle.stock = makeCastleStock(castle.factionId);
@@ -2841,14 +2792,17 @@
 
   function setSelection(sel){
     state.battle.selection = sel;
-    toast(`Selected: ${sel==='all'?'All troops':sel==='inf'?'Infantry':'Archers'}`);
+    const labels={all:'All troops',inf:'Infantry',arc:'Archers',cav:'Cavalry',sup:'Support'};
+    toast(`Selected: ${labels[sel]||'All troops'}`);
   }
 
   function selectedAllies(){
     const b = state.battle;
     if(b.selection==='all') return b.allies.filter(u=>u.alive);
     if(b.selection==='inf') return b.allies.filter(u=>u.alive && u.role==='inf');
-    return b.allies.filter(u=>u.alive && u.role==='arc');
+    if(b.selection==='arc') return b.allies.filter(u=>u.alive && u.role==='arc');
+    if(b.selection==='cav') return b.allies.filter(u=>u.alive && u.role==='cav');
+    return b.allies.filter(u=>u.alive && u.role==='sup');
   }
 
   function cycleFormation(){
@@ -2908,6 +2862,8 @@
       }
     }
 
+    b.lastCmdByGroup = b.lastCmdByGroup || { all:'charge', inf:'charge', arc:'charge', cav:'charge', sup:'charge' };
+    b.lastCmdByGroup[b.selection] = cmd;
     toast(`Command: ${cmd.toUpperCase()} (${b.selection.toUpperCase()})`);
   }
 
@@ -2930,9 +2886,11 @@
       x, y,
       vx: (dirx/l)*speed,
       vy: (diry/l)*speed,
-      r: (kind==='bolt') ? 0.14 : 0.12,
+      r: (kind==='bolt') ? 0.14 : (kind==='spearArc'?0.16:0.12),
       dmg,
-      ttl: 2.3
+      ttl: 2.3,
+      life:2.3,
+      arcH:(kind==='spearArc'?0.85:(kind==='rock'?0.55:0))
     });
   }
 
@@ -3105,6 +3063,7 @@
 
     state.mode='battle';
     state.battle = makeBattleState({
+      biome: biomeAt(Math.floor(party.x), Math.floor(party.y)),
       type:'field',
       partyId: party.id,
       partyRef: party,
@@ -3213,6 +3172,7 @@
 
     state.mode = 'battle';
     state.battle = makeBattleState({
+      biome: biomeAt(Math.floor(castle.x), Math.floor(castle.y)),
       type:'siege',
       castleRef: castle,
       invaderPartyRef: invaderParty || null,
@@ -3267,9 +3227,10 @@
     }
   }
 
-  function makeBattleState({ type, partyId=null, partyRef=null, castleRef=null, invaderPartyRef=null, playerEnt, allies, enemies, siege=null, attackerSide=null }){
+  function makeBattleState({ type, biome=BIOME.PLAINS, partyId=null, partyRef=null, castleRef=null, invaderPartyRef=null, playerEnt, allies, enemies, siege=null, attackerSide=null }){
     return {
       type,
+      biome,
       partyId,
       partyRef,
       castleRef,
@@ -3290,7 +3251,10 @@
         all:{ mode:'loose' },
         inf:{ mode:'shieldwall' },
         arc:{ mode:'archerline' },
+        cav:{ mode:'line' },
+        sup:{ mode:'line' },
       },
+      lastCmdByGroup:{ all:'charge', inf:'charge', arc:'charge', cav:'charge', sup:'charge' },
       siege,
       defenderTeam: (type==='siege')
         ? (attackerSide==='player' ? 'enemy' : 'ally')
@@ -3447,6 +3411,7 @@
       pr.ttl -= dt;
       const nx2 = pr.x + pr.vx * dt;
       const ny2 = pr.y + pr.vy * dt;
+      pr.progress = 1 - (pr.ttl/Math.max(0.001,pr.life||2.3));
       if(b.siege && b.siege.isBlocked(nx2, ny2)){
         pr.ttl = 0;
         continue;
@@ -3598,8 +3563,8 @@
     const l = Math.hypot(vx,vy)||1;
     u.facingX = vx/l; u.facingY = vy/l;
 
-    // archers: keep distance
-    if(u.role==='arc'){
+    // archers + horse archers: keep distance
+    if(u.role==='arc' || (u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle)){
       const wb = archerWallBonus(u);
       const rng = u.range + wb.rangeAdd;
 
@@ -3612,12 +3577,22 @@
       if(u.atk.state==='idle' && d <= rng){
         u.atk.state='windup';
         u.atk.t = u.windup * wb.rateMul;
-        u.vx=0; u.vy=0;
       }
 
-      const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown');
+      const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown' || (u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle));
       if(canMove){
-        if(u.order==='hold' || u.order==='rally'){
+        if(u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle && tgt){
+          const desired = 5.4 + ((u._circleBias=u._circleBias||rand(-0.8,0.8))||0);
+          if(!u._circleDir) u._circleDir = Math.random()<0.5 ? -1 : 1;
+          if(Math.random()<0.004) u._circleDir *= -1;
+          const radialX = (u.x - tgt.x)/(d||1), radialY=(u.y - tgt.y)/(d||1);
+          const tanX = -radialY*u._circleDir, tanY = radialX*u._circleDir;
+          const radiusErr = clamp((d-desired)*0.55,-1.2,1.2);
+          const mx = tanX - radialX*radiusErr;
+          const my = tanY - radialY*radiusErr;
+          const ll = Math.hypot(mx,my)||1;
+          u.vx = (mx/ll)*u.spd; u.vy=(my/ll)*u.spd;
+        } else if(u.order==='hold' || u.order==='rally'){
           const hp = u.holdPos;
           if(hp){
             const mx = hp.x - u.x, my = hp.y - u.y;
@@ -3974,7 +3949,8 @@
         if(y<minY || y>maxY) continue;
         if(x<0 || y<0 || x>=state.map.w || y>=state.map.h) continue;
         const p = worldToScreen(x,y, camX,camY);
-        drawIsoTile(p.x, p.y, 'rgba(74, 222, 128, .08)', 'rgba(255,255,255,.05)');
+        const bc = BIOME_COLOR[biomeAt(x,y)] || BIOME_COLOR.plains;
+        drawIsoTile(p.x, p.y, bc.fill, bc.stroke);
       }
     }
 
@@ -3982,6 +3958,7 @@
     for(const s of state.map.settlements) things.push({ z:s.x+s.y+0.1, kind:'settlement', s });
     for(const party of state.map.parties) if(party.alive) things.push({ z:party.x+party.y+0.2, kind:'party', party });
     for(const cv of (state.map.caravans||[])) things.push({ z:cv.x+cv.y+0.15, kind:'caravan', cv });
+    for(const poi of (state.map.pois||[])) things.push({ z:poi.x+poi.y+0.16, kind:'poi', poi });
     things.push({ z:state.player.x+state.player.y+0.3, kind:'player', p:state.player });
     things.sort((a,b)=>a.z-b.z);
 
@@ -4044,19 +4021,28 @@
         ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText('🛒',sp.x,sp.y-18);
       }
 
+
+      if(t.kind==='poi'){
+        const e=t.poi; const sp=worldToScreen(e.x,e.y,camX,camY);
+        ctx.fillStyle='rgba(196,181,253,.95)';
+        ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText('✦',sp.x,sp.y-18);
+        ctx.fillStyle='rgba(234,242,255,.78)'; ctx.font='11px system-ui'; ctx.fillText(e.name,sp.x,sp.y-34);
+      }
+
       if(t.kind==='party'){
         const e = t.party;
         const sp = worldToScreen(e.x,e.y, camX,camY);
         drawEntityShadow(sp.x,sp.y,0.48);
 
-        const col = e.kind==='bandit' ? '#f59e0b' : (e.kind==='neutral' ? 'rgba(220,220,255,.65)' : factionColor(e.factionId));
+        const col = (['looters','bandits','sea_raiders','steppe_bandits','bandit'].includes(e.kind)) ? '#f59e0b' : (e.kind==='neutral' ? 'rgba(220,220,255,.65)' : factionColor(e.factionId));
         ctx.fillStyle = col;
         ctx.beginPath(); ctx.arc(sp.x, sp.y-14, 10, 0, Math.PI*2); ctx.fill();
 
         ctx.fillStyle = 'rgba(255,255,255,.95)';
         ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(e.kind==='bandit'?'☠':(e.kind==='neutral'?'🧳':(e.kind==='army'?'🗡':'⚔')), sp.x, sp.y-14);
+        const iconByKind={looters:'🪓',bandits:'☠',sea_raiders:'⚓',steppe_bandits:'🐎',bandit:'☠',neutral:'🧳',army:'🗡'};
+        ctx.fillText(iconByKind[e.kind] || '⚔', sp.x, sp.y-14);
 
         if(e.kind!=='neutral'){
           ctx.fillStyle = 'rgba(234,242,255,.92)';
@@ -4144,7 +4130,8 @@
         if(y<minY || y>maxY) continue;
         if(x<0 || y<0 || x>=BATTLE_W || y>=BATTLE_H) continue;
         const p = worldToScreen(x,y, camX,camY);
-        drawIsoTile(p.x, p.y, 'rgba(74, 222, 128, .10)', 'rgba(255,255,255,.04)');
+        const bc = BIOME_COLOR[b.biome||BIOME.PLAINS] || BIOME_COLOR.plains;
+        drawIsoTile(p.x, p.y, bc.fill, bc.stroke);
       }
     }
 
@@ -4270,7 +4257,8 @@
         drawHpBar(sp.x, sp.y-52, pe.hp/pe.maxHp, '#a7f3d0');
       } else {
         const def = UNIT_DB[e.unitKey];
-        const col = (e.team==='ally') ? 'rgba(96,165,250,.95)' : 'rgba(251,113,133,.95)';
+        const isHeavy = !!def.armorStyle;
+        const col = isHeavy ? (e.team==='ally' ? 'rgba(180,190,220,.95)' : 'rgba(210,180,180,.95)') : ((e.team==='ally') ? 'rgba(96,165,250,.95)' : 'rgba(251,113,133,.95)');
         ctx.fillStyle = col;
         ctx.strokeStyle = 'rgba(0,0,0,.25)';
         ctx.lineWidth = 2;
@@ -4283,7 +4271,9 @@
         ctx.fillStyle = 'rgba(255,255,255,.92)';
         ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(e.role==='arc' ? (def.projKind==='bolt'?'⛓':'🏹') : '🛡', sp.x, sp.y-15);
+        ctx.fillText(e.role==='arc' ? (def.projKind==='bolt'?'⛓':(def.projKind==='spearArc'?'🔱':'🏹')) : (e.role==='cav'?'🐎':'🛡'), sp.x, sp.y-15);
+
+        if(isHeavy){ ctx.fillStyle='rgba(255,230,140,.9)'; ctx.fillRect(sp.x-2, sp.y-34, 4, 7); }
 
         if(def.shield){
           ctx.fillStyle = 'rgba(255,255,255,.20)';
@@ -4329,9 +4319,10 @@
     for(const pr of b.projectiles){
       const sp = worldToScreen(pr.x,pr.y, camX,camY);
       const ang = Math.atan2(pr.vy, pr.vx);
+      const arcLift = (pr.arcH||0)>0 ? Math.sin((pr.progress||0)*Math.PI)*(pr.arcH||0)*42 : 0;
       const size = pr.kind==='bolt' ? 7.2 : 6.2;
       ctx.save();
-      ctx.translate(sp.x, sp.y-18);
+      ctx.translate(sp.x, sp.y-18-arcLift);
       ctx.rotate(ang);
       ctx.fillStyle = pr.team==='ally'
         ? (pr.kind==='bolt'?'rgba(240,248,255,.95)':'rgba(234,242,255,.92)')
@@ -4342,6 +4333,14 @@
       ctx.lineTo(-size*0.6,  size*0.45);
       ctx.closePath();
       ctx.fill();
+      if(pr.kind==='spearArc'){
+        ctx.strokeStyle='rgba(255,255,255,.35)';
+        ctx.lineWidth=1.2;
+        ctx.beginPath();
+        ctx.moveTo(-size*0.8,0);
+        ctx.lineTo(-size*2.2,0);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -4394,6 +4393,7 @@
     else battleTick(dt);
     syncHUD();
     renderMobileBattlePanel();
+    renderDesktopBattleHud();
     render();
   }
 
