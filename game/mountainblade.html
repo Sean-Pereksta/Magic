@@ -362,7 +362,7 @@
   // Gameplay tuning
   // =========================
   const SAVE_KEY = 'iso_mnb_save_v5';
-  const SAVE_VERSION = 10;
+  const SAVE_VERSION = 11;
   const DAY_LEN = 180;
   const DAY_TICK = 1;
   const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
@@ -389,6 +389,24 @@
     { id:'nomads', name:'Skyhoof Steppe', color:'#f59e0b' },
   ];
 
+  const FACTION_TEMPLATES = {
+    knights:[
+      { name:'Lioncrown Chivalry', color:'#fbbf24', sigil:'lion' },
+      { name:'Ironrose Order', color:'#ef4444', sigil:'rose' },
+      { name:'Sunforged Banner', color:'#f97316', sigil:'sun' },
+    ],
+    nords:[
+      { name:'Frostfjord Clans', color:'#93c5fd', sigil:'snowflake' },
+      { name:'Ravenwatch Jarls', color:'#64748b', sigil:'raven' },
+      { name:'Stormpike Hold', color:'#14b8a6', sigil:'lightning' },
+    ],
+    nomads:[
+      { name:'Skyhoof Steppe', color:'#f59e0b', sigil:'horse' },
+      { name:'Sandwind Khans', color:'#d6b98a', sigil:'crescent' },
+      { name:'Starweave Riders', color:'#a855f7', sigil:'star' },
+    ]
+  };
+
   function hslToHex(h,s,l){
     h = (h%360+360)%360;
     s/=100; l/=100;
@@ -406,6 +424,17 @@
     const G = Math.round((g+m)*255);
     const B = Math.round((b+m)*255);
     return '#' + [R,G,B].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+
+
+  function shade(hex, amt){
+    const h = (hex||'').replace('#','');
+    if(h.length!==6) return hex;
+    const n = parseInt(h,16);
+    const r = clamp(((n>>16)&255)+amt,0,255);
+    const g = clamp(((n>>8)&255)+amt,0,255);
+    const b = clamp((n&255)+amt,0,255);
+    return '#'+[r,g,b].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
   }
 
   function pickUniqueBannerColor(){
@@ -444,15 +473,19 @@
 
   // Troops
   const UNIT_DB = {
-    kn_nobleman:{ key:'kn_nobleman', name:'Nobleman', faction:'knights', role:'inf', tier:0, hp:102, dmg:15, range:1.15, spd:2.35, windup:0.34, cooldown:0.72, shield:true, blockArrow:0.2, blockMelee:0.08, cost:12, volunteersTier:0, upgrades:[{to:'kn_knight',label:'Train → Knight'}], armorStyle:'heavy' },
-    kn_knight:{ key:'kn_knight', name:'Knight', faction:'knights', role:'inf', tier:1, hp:138, dmg:24, range:1.25, spd:2.1, windup:0.42, cooldown:0.85, shield:true, blockArrow:0.35, blockMelee:0.14, cost:56, volunteersTier:1, upgrades:[{to:'kn_champion',label:'Train → Champion'}], armorStyle:'heavy' },
-    kn_champion:{ key:'kn_champion', name:'Champion', faction:'knights', role:'inf', tier:2, hp:184, dmg:33, range:1.28, spd:1.9, windup:0.52, cooldown:1.0, shield:true, blockArrow:0.45, blockMelee:0.2, cost:118, volunteersTier:2, upgrades:[], armorStyle:'heavy' },
+    kn_nobleman:{ key:'kn_nobleman', name:'Nobleman', faction:'knights', role:'inf', tier:0, hp:102, dmg:15, range:1.15, spd:2.35, windup:0.34, cooldown:0.72, shield:true, blockArrow:0.2, blockMelee:0.08, cost:12, volunteersTier:0, upgrades:[{to:'kn_knight',label:'Train → Knight'},{to:'kn_pikeman',label:'Train → Pikeman'}], armorStyle:'heavy', visual:{helm:'nasal',chest:'chain',cape:false,trim:false,shieldShape:'kite',weaponShape:'sword',accent:'cloth'} },
+    kn_knight:{ key:'kn_knight', name:'Knight', faction:'knights', role:'inf', tier:1, hp:138, dmg:24, range:1.25, spd:2.1, windup:0.42, cooldown:0.85, shield:true, blockArrow:0.35, blockMelee:0.14, cost:56, volunteersTier:1, upgrades:[{to:'kn_champion',label:'Train → Champion'}], armorStyle:'heavy', visual:{helm:'greathelm',chest:'plate',cape:false,trim:true,shieldShape:'kite',weaponShape:'sword',accent:'gold'} },
+    kn_champion:{ key:'kn_champion', name:'Champion', faction:'knights', role:'inf', tier:2, hp:184, dmg:33, range:1.28, spd:1.9, windup:0.52, cooldown:1.0, shield:true, blockArrow:0.45, blockMelee:0.2, cost:118, volunteersTier:2, upgrades:[], armorStyle:'heavy', visual:{helm:'greathelm',chest:'plate',cape:true,trim:true,shieldShape:'kite',weaponShape:'sword',accent:'gold'} },
 
-    no_raider:{ key:'no_raider', name:'Raider', faction:'nords', role:'arc', tier:0, hp:86, dmg:17, range:7.2, spd:2.35, windup:0.68, cooldown:0.95, projKind:'spearArc', projSpeed:8.4, cost:10, volunteersTier:0, upgrades:[{to:'no_skirmisher',label:'Train → Skirmisher'}] },
+
+    kn_pikeman:{ key:'kn_pikeman', name:'Pikeman', faction:'knights', role:'inf', tier:0, hp:96, dmg:15, range:2.05, spd:2.1, windup:0.38, cooldown:0.84, shield:false, blockArrow:0.08, blockMelee:0.06, cost:16, volunteersTier:0, upgrades:[{to:'kn_pikeman_vet',label:'Train → Veteran Pikeman'}], armorStyle:'heavy', visual:{helm:'nasal',chest:'chain',cape:false,trim:false,shieldShape:'none',weaponShape:'pike',accent:'cloth'} },
+    kn_pikeman_vet:{ key:'kn_pikeman_vet', name:'Veteran Pikeman', faction:'knights', role:'inf', tier:1, hp:126, dmg:21, range:2.25, spd:2.0, windup:0.42, cooldown:0.9, shield:false, blockArrow:0.12, blockMelee:0.14, cost:64, volunteersTier:1, upgrades:[{to:'kn_hoplite',label:'Train → Hoplite'}], armorStyle:'heavy', visual:{helm:'nasal',chest:'plate',cape:false,trim:true,shieldShape:'none',weaponShape:'pike',accent:'gold'} },
+    kn_hoplite:{ key:'kn_hoplite', name:'Hoplite', faction:'knights', role:'inf', tier:2, hp:174, dmg:26, range:2.0, spd:1.85, windup:0.46, cooldown:0.95, shield:true, blockArrow:0.6, blockMelee:0.26, cost:122, volunteersTier:2, upgrades:[], armorStyle:'heavy', visual:{helm:'greathelm',chest:'plate',cape:true,trim:true,shieldShape:'round',weaponShape:'spear',accent:'gold'} },
+    no_raider:{ key:'no_raider', name:'Raider', faction:'nords', role:'arc', tier:0, hp:86, dmg:17, range:7.2, spd:2.35, windup:0.68, cooldown:0.95, projKind:'spearArc', projSpeed:8.4, cost:10, volunteersTier:0, upgrades:[{to:'no_skirmisher',label:'Train → Skirmisher'}], visual:{helm:'horned',chest:'leather',cape:false,trim:false,shieldShape:'none',weaponShape:'spear',accent:'fur'} },
     no_skirmisher:{ key:'no_skirmisher', name:'Skirmisher', faction:'nords', role:'arc', tier:1, hp:100, dmg:21, range:7.7, spd:2.45, windup:0.64, cooldown:0.9, projKind:'spearArc', projSpeed:8.8, cost:62, volunteersTier:1, upgrades:[{to:'no_wildman',label:'Train → Wildman'}] },
     no_wildman:{ key:'no_wildman', name:'Wildman', faction:'nords', role:'arc', tier:2, hp:118, dmg:27, range:8.1, spd:2.5, windup:0.6, cooldown:0.86, projKind:'spearArc', projSpeed:9.0, cost:124, volunteersTier:2, upgrades:[] },
 
-    st_steppe_archer:{ key:'st_steppe_archer', name:'Steppe Archer', faction:'nomads', role:'cav', tier:0, hp:84, dmg:13, range:7.8, spd:3.45, windup:0.52, cooldown:0.72, projKind:'arrow', projSpeed:10.3, kiteCircle:true, cost:14, volunteersTier:0, upgrades:[{to:'st_veteran_mounted_archer',label:'Train → Veteran Mounted Archer'}] },
+    st_steppe_archer:{ key:'st_steppe_archer', name:'Steppe Archer', faction:'nomads', role:'cav', tier:0, hp:84, dmg:13, range:7.8, spd:3.45, windup:0.52, cooldown:0.72, projKind:'arrow', projSpeed:10.3, kiteCircle:true, cost:14, volunteersTier:0, upgrades:[{to:'st_veteran_mounted_archer',label:'Train → Veteran Mounted Archer'}], visual:{helm:'scarf',chest:'lamellar',cape:false,trim:false,shieldShape:'none',weaponShape:'bow',accent:'cloth'} },
     st_veteran_mounted_archer:{ key:'st_veteran_mounted_archer', name:'Veteran Mounted Archer', faction:'nomads', role:'cav', tier:1, hp:100, dmg:16, range:8.3, spd:3.6, windup:0.5, cooldown:0.69, projKind:'arrow', projSpeed:10.8, kiteCircle:true, cost:66, volunteersTier:1, upgrades:[{to:'st_companion_guard',label:'Train → Companion Guard'}] },
     st_companion_guard:{ key:'st_companion_guard', name:'Companion Guard', faction:'nomads', role:'cav', tier:2, hp:126, dmg:20, range:8.7, spd:3.75, windup:0.47, cooldown:0.65, projKind:'arrow', projSpeed:11.2, kiteCircle:true, cost:128, volunteersTier:2, upgrades:[] },
 
@@ -536,15 +569,54 @@
     armyUpgradeFocus: null,
   };
 
+  function factionTemplate(fid, idx=0){
+    const arr = FACTION_TEMPLATES[fid] || [{ name:fid, color:'rgba(220,220,255,.8)', sigil:'ring' }];
+    const i = ((idx%arr.length)+arr.length)%arr.length;
+    return arr[i];
+  }
+
+  function ensureFactionState(){
+    if(!state.map) return;
+    state.map.factionState = state.map.factionState || {};
+    for(const f of FACTIONS){
+      const cur = state.map.factionState[f.id] || {};
+      const tpl = factionTemplate(f.id, cur.variantIndex||0);
+      state.map.factionState[f.id] = {
+        baseId: f.id,
+        variantIndex: cur.variantIndex||0,
+        name: cur.name || tpl.name || f.name,
+        color: cur.color || tpl.color || f.color,
+        sigil: cur.sigil || tpl.sigil || 'ring',
+        kingPartyId: cur.kingPartyId || null,
+        lordPartyIds: Array.isArray(cur.lordPartyIds) ? cur.lordPartyIds : [],
+        nextLordSpawnDay: cur.nextLordSpawnDay || 7,
+      };
+    }
+  }
+
+  function factionStateOf(id){
+    if(!state.map) return null;
+    ensureFactionState();
+    return state.map.factionState?.[id] || null;
+  }
+
   function factionColor(id){
     if(id==='player') return state.player?.bannerColor || 'rgba(220,220,255,.85)';
+    const fs = factionStateOf(id);
+    if(fs?.color) return fs.color;
     const f = FACTIONS.find(x=>x.id===id);
     return f ? f.color : 'rgba(220,220,255,.8)';
   }
   function factionName(id){
     if(id==='player') return 'Your Domain';
+    const fs = factionStateOf(id);
+    if(fs?.name) return fs.name;
     const f = FACTIONS.find(x=>x.id===id);
     return f ? f.name : 'Neutral';
+  }
+  function factionSigil(id){
+    if(id==='player') return state.player?.faction ? (factionStateOf(state.player.faction)?.sigil || 'star') : 'star';
+    return factionStateOf(id)?.sigil || 'ring';
   }
 
   function effectiveRelation(fid){
@@ -587,6 +659,7 @@
 
       // faction membership
       faction: null,            // 'knights' | 'nords' | 'nomads' | null
+      isKingOf: null,
       bannerColor: pickUniqueBannerColor(), // unique independent banner color
 
       // leveling
@@ -710,7 +783,7 @@
   }
 
   function seedGarrison(factionId='knights'){
-    const tree = factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_knight','kn_champion']);
+    const tree = factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_pikeman','kn_hoplite']);
     const g = {};
     const add=(k,n)=>g[k]=(g[k]||0)+n;
     add(tree[0], randi(5,9));
@@ -736,7 +809,7 @@
 
   function makeVillageVolunteers(factionId='knights'){
     const poolByFaction = {
-      knights:['kn_nobleman','kn_knight','kn_champion'],
+      knights:['kn_nobleman','kn_pikeman','kn_hoplite'],
       nords:['no_raider','no_skirmisher','no_wildman'],
       nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
     };
@@ -788,17 +861,18 @@
 
     const faction = opts.factionId || 'knights';
     const trees = {
-      knights:['kn_nobleman','kn_knight','kn_champion'],
+      knights:['kn_nobleman','kn_pikeman','kn_hoplite'],
       nords:['no_raider','no_skirmisher','no_wildman'],
       nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
     };
     const tree = trees[faction] || trees.knights;
+    const eliteBias = opts.eliteBias||0;
     for(let i=0;i<size;i++){
       const r=Math.random();
-      const t = r<0.60?0:(r<0.90?1:2);
+      const t = r<(0.62-eliteBias)?0:(r<(0.90-eliteBias*0.45)?1:2);
       comp.push({unit:tree[t]});
     }
-    if((kind==='army'||kind==='vassal') && size>=24 && Math.random()<0.5) push('sup_banner',1);
+    if((kind==='army'||kind==='vassal') && size>=24 && Math.random()<(0.5 + (opts.eliteBias||0)*0.9)) push('sup_banner',1 + ((opts.eliteBias||0)>0.28 && Math.random()<0.55 ? 1 : 0));
     return comp;
   }
 
@@ -839,13 +913,27 @@
       return out;
     }
 
+    const factionState = {};
     for(const f of FACTIONS){
+      const variantIndex = randi(0,(FACTION_TEMPLATES[f.id]||[{ }]).length-1);
+      const tpl = factionTemplate(f.id, variantIndex);
+      factionState[f.id] = {
+        baseId: f.id,
+        variantIndex,
+        name: tpl.name,
+        color: tpl.color,
+        sigil: tpl.sigil,
+        kingPartyId: null,
+        lordPartyIds: [],
+        nextLordSpawnDay: 7,
+      };
+      const stem = (tpl.name||f.name).split(' ')[0];
       for(let c=1;c<=2;c++){
         const pos=pickSpotFor(f.id);
-        const castle=addSettlement('castle', f.id, `${f.name.split(' ')[0]} Castle ${c}`, pos.x, pos.y);
+        const castle=addSettlement('castle', f.id, `${stem} Castle ${c}`, pos.x, pos.y);
         for(let i=1;i<=3;i++){
           const v=pickSpotFor(f.id);
-          addSettlement('village', f.id, `${f.name.split(' ')[0]} Village ${((c-1)*3)+i}`, v.x, v.y, castle.id);
+          addSettlement('village', f.id, `${stem} Village ${((c-1)*3)+i}`, v.x, v.y, castle.id);
         }
       }
     }
@@ -859,8 +947,18 @@
     for(let i=0;i<12;i++) pois.push({ id:'poi_'+i, x:randi(5,MAP_W-6), y:randi(5,MAP_H-6), name:poiNames[i], kind:'poi' });
 
     const parties=[];
-    function addParty(kind, factionId, x, y, size, isCamp=false){
-      parties.push({ id:'p_'+Math.random().toString(36).slice(2,9), kind,factionId,x,y,roamTx:x,roamTy:y,aggro:(kind==='neutral'?0:5.2),baseSpeed:(kind.includes('steppe')?2.6:2.15),size,comp:(kind==='neutral')?[]:makePartyComp(kind,size,{factionId}),alive:true,targetSettlementId:null,isCamp });
+    function addParty(kind, factionId, x, y, size, isCamp=false, extra={}){
+      const id = 'p_'+Math.random().toString(36).slice(2,9);
+      const out = { id, kind,factionId,x,y,roamTx:x,roamTy:y,aggro:(kind==='neutral'?0:5.2),baseSpeed:(kind.includes('steppe')?2.6:2.15),size,comp:(kind==='neutral')?[]:makePartyComp(kind,size,{factionId, eliteBias:extra.eliteBias||0}),alive:true,targetSettlementId:null,isCamp,
+        isLord: !!extra.isLord,
+        isKing: !!extra.isKing,
+        lordName: extra.lordName||null,
+        realmFactionId: extra.realmFactionId||factionId,
+        crownFx: extra.crownFx||0,
+        eliteBias: extra.eliteBias||0,
+      };
+      parties.push(out);
+      return out;
     }
 
     for(let i=0;i<10;i++){ const x=randi(8,MAP_W-8),y=randi(8,MAP_H-8); addParty('looters',null,x,y,randi(3,10)); }
@@ -868,7 +966,23 @@
     for(const f of FACTIONS) for(let i=0;i<6;i++){ const p=pickSpotFor(f.id); addParty('patrol',f.id,p.x,p.y,randi(9,18)); }
     for(let i=0;i<5;i++) addParty('neutral',null,randi(6,MAP_W-7),randi(6,MAP_H-7),1);
 
-    return { w:MAP_W,h:MAP_H, settlements, parties, pois, dayFoodRate:0.02, invasion:{}, day:1,totalDays:1,time:0,dayLen:DAY_LEN,dayClock:0,threat:0,strategicClock:0,nextArmySpawn:18+Math.random()*12,caravans:[],contractsClock:0,activeContract:null };
+    const LORD_NAMES = ['Lord Alric','Lady Ysolda','Lord Edrin','Lady Freya','Lord Kael','Lady Sera'];
+    for(const f of FACTIONS){
+      const kp = pickSpotFor(f.id);
+      const kingSize = clamp(Math.round(randi(36,54) * rand(1.8,2.3)), 62, 98);
+      const king = addParty('army', f.id, kp.x, kp.y, kingSize, false, { isLord:true, isKing:true, lordName:`King of ${factionState[f.id].name}`, realmFactionId:f.id, eliteBias:0.34 });
+      factionState[f.id].kingPartyId = king.id;
+      const lordN = randi(2,4);
+      for(let i=0;i<lordN;i++){
+        const lp = pickSpotFor(f.id);
+        const lsize = clamp(Math.round(randi(12,20)*rand(1.25,1.55)), 16, 34);
+        const lord = addParty('army', f.id, lp.x, lp.y, lsize, false, { isLord:true, isKing:false, lordName:LORD_NAMES[randi(0,LORD_NAMES.length-1)], realmFactionId:f.id, eliteBias:0.2 });
+        factionState[f.id].lordPartyIds.push(lord.id);
+      }
+      factionState[f.id].nextLordSpawnDay = 7;
+    }
+
+    return { w:MAP_W,h:MAP_H, settlements, parties, pois, factionState, dayFoodRate:0.02, invasion:{}, day:1,totalDays:1,time:0,dayLen:DAY_LEN,dayClock:0,threat:0,strategicClock:0,nextArmySpawn:18+Math.random()*12,caravans:[],contractsClock:0,activeContract:null };
   }
 
   // =========================
@@ -963,13 +1077,33 @@
     p.morale = clamp(p.morale,0,100);
     p.influence += Math.floor((p.renown||0)/25);
     for(const f of FACTIONS){ const d=state.diplomacy[f.id]; d.hostility = Math.max(0,(d.hostility||0)-6); }
+    ensureFactionState();
+    if(state.map.day % 7 === 0){
+      for(const f of FACTIONS){
+        const fs = factionStateOf(f.id);
+        const targetLords = 3;
+        const liveLords = state.map.parties.filter(pp=>pp.alive && pp.factionId===f.id && pp.isLord && !pp.isKing).length;
+        if(liveLords < targetLords) spawnFactionLord(f.id,false);
+        fs.nextLordSpawnDay = state.map.day + 7;
+      }
+    }
+    for(const f of FACTIONS){
+      const leaders = livingFactionLeaders(f.id);
+      if(leaders.length===0){
+        if(state.player.faction===f.id){
+          if(state.player.isKingOf!==f.id){ state.player.isKingOf=f.id; state.player.renown=(state.player.renown||0)+20; state.player.influence=(state.player.influence||0)+10; toast(`👑 You are now sovereign of ${factionName(f.id)}!`,1800); }
+        } else {
+          spawnFactionLord(f.id,true);
+        }
+      }
+    }
     for(const s of state.map.settlements){
       if(s.kind!=='castle') continue;
       s.garrisonRegenDay = state.map.day;
       s.defense = s.defense || {walls:1,towers:0,traps:0};
       s.garrison = s.garrison || {};
       const add=(k,n)=>s.garrison[k]=(s.garrison[k]||0)+n;
-      const tree = s.factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (s.factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_knight','kn_champion']);
+      const tree = s.factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (s.factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_pikeman','kn_hoplite']);
       add(tree[0], randi(1,3));
       if(Math.random()<clamp(0.20+state.map.day*0.01+state.map.threat*0.03,0.2,0.75)) add(tree[1],1);
       if(Math.random()<clamp(0.16+state.map.day*0.01+state.map.threat*0.02,0.1,0.65)) add(tree[2],1);
@@ -1047,6 +1181,8 @@
       state.player.daysStarving = state.player.daysStarving ?? 0;
       state.player.daysUnpaid = state.player.daysUnpaid ?? 0;
       state.player.vassals = state.player.vassals || [];
+      state.player.isKingOf = state.player.isKingOf || null;
+      ensureFactionState();
       normalizeArmyUnits(state.player);
       const fmap={red:'knights',blue:'nords',green:'nomads'};
       if(state.player.faction && fmap[state.player.faction]) state.player.faction=fmap[state.player.faction];
@@ -1074,6 +1210,8 @@
         ensureSettlementSystems(s);
       }
       state.map.caravans = state.map.caravans || [];
+      ensureFactionState();
+      for(const pp of (state.map.parties||[])){ pp.isLord=!!pp.isLord; pp.isKing=!!pp.isKing; pp.realmFactionId=pp.realmFactionId||pp.factionId||null; pp.eliteBias=pp.eliteBias||0; }
       state.map.pois = state.map.pois || [];
       state.map.activeContract = state.map.activeContract || null;
       for(const s of state.map.settlements){
@@ -1427,6 +1565,17 @@
     }
   }
 
+
+  function spawnBloodSpray(x,y,intensity=1){
+    if(!state.battle) return;
+    const cnt = Math.round(5 + 5*intensity);
+    for(let i=0;i<cnt;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = rand(1.2,4.4)*intensity;
+      state.battle.particles.push({ x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, ttl:rand(0.18,0.36), life:rand(0.18,0.36), size:rand(0.05,0.12), team:'blood' });
+    }
+  }
+
   function spawnBloodAt(x, y){
     if(!state.battle) return;
     state.battle.blood.push({
@@ -1570,6 +1719,38 @@
     const p = state.player;
     return p.faction ? factionColor(p.faction) : p.bannerColor;
   }
+  function playerBannerSigil(){
+    const p = state.player;
+    return p.faction ? factionSigil(p.faction) : 'star';
+  }
+  function livingFactionLeaders(fid){
+    return state.map.parties.filter(pp=>pp.alive && pp.factionId===fid && (pp.isLord||pp.isKing));
+  }
+  function spawnFactionLord(fid, isKing=false){
+    const homes = state.map.settlements.filter(s=>s.factionId===fid && s.kind==='castle');
+    const home = homes.length ? homes[randi(0,homes.length-1)] : {x:randi(6,MAP_W-6),y:randi(6,MAP_H-6)};
+    const size = isKing ? clamp(Math.round(randi(34,52)*rand(1.85,2.25)),62,98) : clamp(Math.round(randi(12,20)*rand(1.25,1.55)),16,34);
+    const id = 'p_'+Math.random().toString(36).slice(2,9);
+    const party = { id, kind:'army', factionId:fid, x:home.x+rand(-1,1), y:home.y+rand(-1,1), roamTx:home.x, roamTy:home.y, aggro:4.2, baseSpeed:1.72, size,
+      comp:makePartyComp('army', size, { factionId:fid, eliteBias:isKing?0.34:0.2 }), alive:true, targetSettlementId:null,
+      isLord:true, isKing:!!isKing, lordName:isKing?`King of ${factionName(fid)}`:['Lord Alric','Lady Ysolda','Lord Edrin','Lady Freya'][randi(0,3)], realmFactionId:fid, crownFx:0, eliteBias:isKing?0.34:0.2 };
+    state.map.parties.push(party);
+    const fs = factionStateOf(fid);
+    if(fs){
+      if(isKing) fs.kingPartyId = party.id;
+      else if(!fs.lordPartyIds.includes(party.id)) fs.lordPartyIds.push(party.id);
+    }
+    return party;
+  }
+  function onKingDefeated(fid){
+    const fs = factionStateOf(fid); if(!fs) return;
+    const arr = FACTION_TEMPLATES[fid] || [];
+    fs.variantIndex = arr.length ? (fs.variantIndex + 1) % arr.length : 0;
+    const tpl = factionTemplate(fid, fs.variantIndex);
+    fs.name = tpl.name; fs.color = tpl.color; fs.sigil = tpl.sigil;
+    spawnFactionLord(fid, true);
+    toast(`👑 ${fs.name} rises with a new banner!`, 1800);
+  }
 
   function convertPlayerHoldingsToFaction(fid){
     // any "player" settlements become the pledged faction (so castles/villages match kingdom color)
@@ -1598,7 +1779,16 @@
         Troop orders and formations can be managed from battle controls (mobile panel or hotkeys).<br/><br/>
 
         <b>Sieges</b><br/>
-        Walls block movement except at ladders (gaps). <b>Archers behind walls fire faster and hit harder.</b>
+        Walls block movement except at ladders (gaps). <b>Archers behind walls fire faster and hit harder.</b><br/><br/>
+
+        <b>Kingdom hierarchy</b><br/>
+        Each faction has a crowned King and several Lords with larger armies. Kings/Lords show crown/banner markers.<br/>
+        Killing a King triggers a faction reformation (new name, color, sigil) and a new king rises.<br/>
+        Every 7 days, factions with too few lords spawn new lords.<br/>
+        If a pledged faction has no living lords/kings left, you become its King and gain a renown/influence bonus.<br/><br/>
+
+        <b>Troop paths</b><br/>
+        Knights can train into Pikeman → Veteran Pikeman → Hoplite. Hoplites carry huge round shields and have very high block chance.
       </div>
       <div class="hr"></div>
       <div class="row"><button class="btn" id="btnCloseHelp">Close</button></div>
@@ -3228,6 +3418,10 @@
   }
 
   function makeBattleState({ type, biome=BIOME.PLAINS, partyId=null, partyRef=null, castleRef=null, invaderPartyRef=null, playerEnt, allies, enemies, siege=null, attackerSide=null }){
+    const grassTufts=[];
+    const tN = randi(120,220);
+    for(let i=0;i<tN;i++) grassTufts.push({ x:rand(1,BATTLE_W-1), y:rand(1,BATTLE_H-1), len:rand(2,5), a:rand(0.08,0.20) });
+    const commander = (partyRef && (partyRef.isKing||partyRef.isLord)) ? { side:'enemy', partyId:partyRef.id } : null;
     return {
       type,
       biome,
@@ -3243,6 +3437,8 @@
       effects: [],
       particles: [],
       blood: [],
+      grassTufts,
+      commander,
       selection: 'all',
       shake: 0,
       lootPending: null,
@@ -3431,6 +3627,7 @@
             const wasAlive = e.alive;
             applyDamage(e, pr.dmg, null);
             spawnCombatBurst(e.x, e.y, pr.team);
+            spawnBloodSpray(e.x,e.y, wasAlive&&!e.alive ? 1.2 : 0.7);
             if(wasAlive && !e.alive) spawnBloodAt(e.x, e.y);
             if(wasAlive && !e.alive) b.killCountThisBattle++;
             pr.ttl = 0;
@@ -3453,6 +3650,7 @@
               const wasAlive = a.alive;
               applyDamage(a, pr.dmg, null);
               spawnCombatBurst(a.x, a.y, pr.team);
+              spawnBloodSpray(a.x,a.y, wasAlive&&!a.alive ? 1.2 : 0.7);
               if(wasAlive && !a.alive) spawnBloodAt(a.x, a.y);
               pr.ttl=0;
               break;
@@ -3519,14 +3717,16 @@
                 const preHp = t.hp;
                 t.hp -= u.dmg;
                 spawnCombatBurst(t.x, t.y, u.team);
+                spawnBloodSpray(t.x,t.y, preHp>0&&t.hp<=0 ? 1.2 : 0.6);
                 if(preHp>0 && t.hp<=0) spawnBloodAt(t.x, t.y);
                 if(t.hp<=0){ t.hp=0; t.alive=false; }
               } else {
                 const wasAlive = t.alive;
                 const cm = (u.role==='cav' && (u._chargeTime||0)>=0.6) ? (UNIT_DB[u.unitKey]?.chargeMul||1.35) : 1;
                 applyDamage(t, u.dmg*cm, u);
-                if(cm>1){ u._retreatT=0.8; }
+                if(cm>1){ u._retreatT=0.8; for(let di=0;di<5;di++) state.battle.particles.push({x:t.x,y:t.y,vx:rand(-1.6,1.6),vy:rand(-1.2,1.2),ttl:rand(0.25,0.4),life:rand(0.25,0.4),size:rand(0.06,0.13),team:'dust'}); }
                 spawnCombatBurst(t.x, t.y, u.team);
+                spawnBloodSpray(t.x,t.y, wasAlive&&!t.alive ? 1.3 : 0.65);
                 if(wasAlive && !t.alive) spawnBloodAt(t.x, t.y);
                 if(wasAlive && !t.alive && u.team==='ally') b.killCountThisBattle++;
               }
@@ -3696,6 +3896,14 @@
     if(b.type==='field'){
       const party = state.map.parties.find(pp => pp.id===b.partyId);
       if(party) party.alive=false;
+      if(party && party.factionId){
+        const fs = factionStateOf(party.factionId);
+        if(fs){
+          fs.lordPartyIds = (fs.lordPartyIds||[]).filter(id=>id!==party.id);
+          if(fs.kingPartyId===party.id) fs.kingPartyId = null;
+        }
+        if(party.isKing) onKingDefeated(party.factionId);
+      }
 
       finalizePlayerArmyFromBattle();
 
@@ -3913,24 +4121,78 @@
     }
   }
 
-  function renderBannerAt(spx, spy, color){
-    // little pole + flag
-    ctx.strokeStyle = 'rgba(0,0,0,.25)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(spx+14, spy-40);
-    ctx.lineTo(spx+14, spy-16);
-    ctx.stroke();
+  function drawSigil(ctx2, x, y, sigilId, mainColor='rgba(255,255,255,.92)', size=8){
+    ctx2.save();
+    ctx2.translate(x,y);
+    ctx2.strokeStyle = mainColor;
+    ctx2.fillStyle = mainColor;
+    ctx2.lineWidth = Math.max(1.4, size*0.18);
+    if(sigilId==='lion'){
+      ctx2.beginPath(); ctx2.arc(0,0,size*0.35,0,Math.PI*2); ctx2.stroke();
+      ctx2.beginPath(); ctx2.moveTo(-size*0.55,size*0.15); ctx2.lineTo(size*0.55,size*0.15); ctx2.stroke();
+    }else if(sigilId==='snowflake'){
+      for(let i=0;i<3;i++){ const a=i*Math.PI/3; ctx2.beginPath(); ctx2.moveTo(Math.cos(a)*size*0.65,Math.sin(a)*size*0.65); ctx2.lineTo(-Math.cos(a)*size*0.65,-Math.sin(a)*size*0.65); ctx2.stroke(); }
+    }else if(sigilId==='horse'){
+      ctx2.beginPath(); ctx2.moveTo(-size*0.6,size*0.2); ctx2.lineTo(-size*0.1,-size*0.55); ctx2.lineTo(size*0.5,-size*0.2); ctx2.lineTo(size*0.2,size*0.55); ctx2.closePath(); ctx2.stroke();
+    }else if(sigilId==='rose'){
+      ctx2.beginPath(); ctx2.arc(0,0,size*0.22,0,Math.PI*2); ctx2.fill();
+      for(let i=0;i<6;i++){ const a=i*Math.PI/3; ctx2.beginPath(); ctx2.arc(Math.cos(a)*size*0.34,Math.sin(a)*size*0.34,size*0.18,0,Math.PI*2); ctx2.stroke(); }
+    }else if(sigilId==='sun'){
+      ctx2.beginPath(); ctx2.arc(0,0,size*0.25,0,Math.PI*2); ctx2.fill();
+      for(let i=0;i<8;i++){ const a=i*Math.PI/4; ctx2.beginPath(); ctx2.moveTo(Math.cos(a)*size*0.42,Math.sin(a)*size*0.42); ctx2.lineTo(Math.cos(a)*size*0.72,Math.sin(a)*size*0.72); ctx2.stroke(); }
+    }else if(sigilId==='raven'){
+      ctx2.beginPath(); ctx2.moveTo(-size*0.65,0); ctx2.lineTo(0,-size*0.48); ctx2.lineTo(size*0.64,0); ctx2.lineTo(0,size*0.2); ctx2.closePath(); ctx2.stroke();
+    }else if(sigilId==='lightning'){
+      ctx2.beginPath(); ctx2.moveTo(-size*0.25,-size*0.6); ctx2.lineTo(size*0.05,-size*0.1); ctx2.lineTo(-size*0.05,-size*0.1); ctx2.lineTo(size*0.25,size*0.6); ctx2.stroke();
+    }else if(sigilId==='crescent'){
+      ctx2.beginPath(); ctx2.arc(0,0,size*0.42,-Math.PI/2,Math.PI/2); ctx2.stroke();
+      ctx2.beginPath(); ctx2.arc(size*0.14,0,size*0.35,-Math.PI/2,Math.PI/2,true); ctx2.stroke();
+    }else if(sigilId==='star'){
+      ctx2.beginPath(); for(let i=0;i<5;i++){ const a=-Math.PI/2+i*Math.PI*2/5; const r=(i%2===0)?size*0.62:size*0.24; const px=Math.cos(a)*r, py=Math.sin(a)*r; if(i===0) ctx2.moveTo(px,py); else ctx2.lineTo(px,py);} ctx2.closePath(); ctx2.stroke();
+    }else{
+      ctx2.beginPath(); ctx2.arc(0,0,size*0.52,0,Math.PI*2); ctx2.stroke();
+    }
+    ctx2.restore();
+  }
 
+  function renderBannerAt(spx, spy, color, sigilId='star', scale=1){
+    const poleH = 26*scale;
+    const flagW = 16*scale;
+    const flagH = 11*scale;
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.lineWidth = Math.max(1.8, 3*scale);
+    ctx.beginPath();
+    ctx.moveTo(spx+14*scale, spy-(14*scale+poleH));
+    ctx.lineTo(spx+14*scale, spy-14*scale);
+    ctx.stroke();
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.roundRect(spx+14, spy-40, 14, 10, 3);
+    ctx.roundRect(spx+14*scale, spy-(14*scale+poleH), flagW, flagH, 3*scale);
     ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(spx+14*scale, spy-(14*scale+poleH), flagW*0.24, flagH);
+    drawSigil(ctx, spx+14*scale+flagW*0.55, spy-(14*scale+poleH)+flagH*0.56, sigilId, 'rgba(255,255,255,.95)', 3.4*scale);
+  }
 
-    ctx.fillStyle = 'rgba(255,255,255,.35)';
-    ctx.beginPath();
-    ctx.roundRect(spx+14, spy-40, 14, 10, 3);
-    ctx.fill();
+  function renderMiniBannerAt(spx, spy, factionId, scale=0.72){
+    renderBannerAt(spx, spy, factionColor(factionId), factionSigil(factionId), scale);
+  }
+
+  function drawCrownAt(x,y,size=8,col='rgba(250,204,21,.95)'){
+    ctx.fillStyle=col; ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x-size*0.7,y); ctx.lineTo(x-size*0.45,y-size*0.8); ctx.lineTo(x,y-size*0.28); ctx.lineTo(x+size*0.45,y-size*0.8); ctx.lineTo(x+size*0.7,y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  function drawWeaponGlyph(kind, x,y,fx,fy,len=20,col='rgba(255,255,255,.92)'){
+    const ang = Math.atan2(fy||0.01,fx||1);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=2;
+    if(kind==='axe'){ ctx.beginPath(); ctx.moveTo(-len*0.4,0); ctx.lineTo(len*0.35,0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(len*0.1,-5); ctx.lineTo(len*0.45,-2); ctx.lineTo(len*0.32,2); ctx.closePath(); ctx.fill(); }
+    else if(kind==='spear' || kind==='pike'){ const L = kind==='pike'?len*1.35:len; ctx.beginPath(); ctx.moveTo(-L*0.5,0); ctx.lineTo(L*0.55,0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(L*0.55,0); ctx.lineTo(L*0.38,-3); ctx.lineTo(L*0.38,3); ctx.closePath(); ctx.fill(); }
+    else if(kind==='dagger'){ ctx.beginPath(); ctx.moveTo(-len*0.2,0); ctx.lineTo(len*0.25,0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(len*0.25,0); ctx.lineTo(len*0.12,-3); ctx.lineTo(len*0.12,3); ctx.closePath(); ctx.fill(); }
+    else if(kind==='bow'){ ctx.beginPath(); ctx.arc(0,0,len*0.35,-1.0,1.0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(len*0.18,-len*0.28); ctx.lineTo(len*0.18,len*0.28); ctx.stroke(); }
+    else if(kind==='crossbow'){ ctx.beginPath(); ctx.moveTo(-len*0.34,0); ctx.lineTo(len*0.36,0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(len*0.05,-len*0.22); ctx.lineTo(len*0.05,len*0.22); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-len*0.1,-len*0.18); ctx.lineTo(len*0.2,0); ctx.lineTo(-len*0.1,len*0.18); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo(-len*0.35,0); ctx.lineTo(len*0.45,0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(len*0.45,0); ctx.lineTo(len*0.28,-3); ctx.lineTo(len*0.28,3); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(-len*0.1,-3); ctx.lineTo(-len*0.1,3); ctx.stroke(); }
+    ctx.restore();
   }
 
   function renderMap(){
@@ -3978,6 +4240,7 @@
         ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(s.kind==='castle'?'🏰':'🏠', sp.x, sp.y-16);
+        if(s.factionId) renderMiniBannerAt(sp.x+10, sp.y-5, s.factionId, 0.58);
 
         if(state.map.activeContract && state.map.activeContract.targetId===s.id){
           ctx.strokeStyle='rgba(250,204,21,.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sp.x, sp.y-18, 24, 0, Math.PI*2); ctx.stroke();
@@ -4049,6 +4312,9 @@
           ctx.font = '12px system-ui, Arial';
           ctx.textAlign='center'; ctx.textBaseline='bottom';
           ctx.fillText(String(e.size), sp.x, sp.y-28);
+          const bannerFaction = (e.kind==='vassal') ? (state.player.faction||'player') : e.factionId;
+          if(bannerFaction) renderMiniBannerAt(sp.x+8, sp.y-5, bannerFaction, (e.isKing||e.isLord)?0.74:0.56);
+          if(e.isKing) drawCrownAt(sp.x, sp.y-36, 7.5);
         }
       }
 
@@ -4073,18 +4339,16 @@
         drawLegs(sp.x, sp.y-2, moving, state.t*12);
 
         // banner
-        renderBannerAt(sp.x, sp.y, playerBannerColor());
+        renderBannerAt(sp.x, sp.y, playerBannerColor(), playerBannerSigil());
+        if(state.player.isKingOf) drawCrownAt(sp.x, sp.y-38, 8.2);
 
-        // weapon glyph
         const fx = p.facing.x, fy = p.facing.y;
         const side = (fx - fy);
-        const wx = sp.x + (side>=0 ? 12 : -18);
+        const wx = sp.x + (side>=0 ? 14 : -12);
         const wy = sp.y - 26;
         const w = equippedWeapon(p);
-        ctx.fillStyle = (w && w.weaponKind==='crossbow') ? 'rgba(255,255,255,.86)' :
-                        (w && w.weaponKind==='bow') ? 'rgba(255,255,255,.78)' :
-                        'rgba(255,255,255,.92)';
-        ctx.beginPath(); ctx.roundRect(wx, wy, 6, 22, 3); ctx.fill();
+        const shape = w ? (w.id.replace('weapon_','')) : 'sword';
+        drawWeaponGlyph(shape, wx, wy, fx, fy, 18);
 
         const near = nearestSettlement(p.x,p.y, 1.25);
         if(near && !anyPanelOpen()){
@@ -4133,6 +4397,17 @@
         const bc = BIOME_COLOR[b.biome||BIOME.PLAINS] || BIOME_COLOR.plains;
         drawIsoTile(p.x, p.y, bc.fill, bc.stroke);
       }
+    }
+
+    for(const tuft of (b.grassTufts||[])){
+      const gp = worldToScreen(tuft.x, tuft.y, camX, camY);
+      ctx.strokeStyle = `rgba(74,140,78,${tuft.a})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gp.x-1, gp.y-8);
+      ctx.lineTo(gp.x, gp.y-8-tuft.len);
+      ctx.lineTo(gp.x+1, gp.y-8);
+      ctx.stroke();
     }
 
     if(b.siege){
@@ -4192,6 +4467,7 @@
       else if(fx.type==='shotFlash') drawShotFlash(fx, camX, camY);
     }
 
+    if(state.battle.commander) state.battle.commander._drawn=false;
     const ents = [];
     const pe = b.playerEnt;
     ents.push({ z: pe.x+pe.y+0.3, e:pe });
@@ -4221,7 +4497,8 @@
         const moving = (Math.abs(mv.dx)+Math.abs(mv.dy))>0.01;
         drawLegs(sp.x, sp.y-4, moving, state.t*14);
 
-        renderBannerAt(sp.x, sp.y, playerBannerColor());
+        renderBannerAt(sp.x, sp.y, playerBannerColor(), playerBannerSigil());
+        if(state.player.isKingOf) drawCrownAt(sp.x, sp.y-40, 8.2);
 
         const w = equippedWeapon(p);
         if(pe.swingFx && pe.swingFx.type==='swing'){
@@ -4229,20 +4506,14 @@
           const side = (dx - dy);
           const baseX = sp.x + (side>=0 ? 10 : -10);
           const baseY = sp.y - 26;
-          ctx.strokeStyle = 'rgba(255,255,255,.92)';
-          ctx.lineWidth = (w && w.range>=2.2) ? 5 : 4;
-          ctx.beginPath();
-          ctx.moveTo(baseX, baseY);
-          ctx.lineTo(baseX + dx*26, baseY + dy*18);
-          ctx.stroke();
+          const shape = w ? w.id.replace('weapon_','') : 'sword';
+          drawWeaponGlyph(shape, baseX, baseY, dx, dy, (w&&w.id==='weapon_pike')?26:20);
         } else {
           const side = (pe.facingX - pe.facingY);
-          const wx = sp.x + (side>=0 ? 12 : -18);
+          const wx = sp.x + (side>=0 ? 14 : -10);
           const wy = sp.y - 30;
-          ctx.fillStyle = (w && w.weaponKind==='crossbow') ? 'rgba(255,255,255,.86)' :
-                          (w && w.weaponKind==='bow') ? 'rgba(255,255,255,.75)' :
-                          'rgba(255,255,255,.92)';
-          ctx.beginPath(); ctx.roundRect(wx, wy, 6, 24, 3); ctx.fill();
+          const shape = w ? w.id.replace('weapon_','') : 'sword';
+          drawWeaponGlyph(shape, wx, wy, pe.facingX, pe.facingY, (w&&w.id==='weapon_pike')?24:18);
         }
 
         if(pe.swingFx && (pe.swingFx.type==='bow' || pe.swingFx.type==='crossbow')){
@@ -4258,31 +4529,34 @@
       } else {
         const def = UNIT_DB[e.unitKey];
         const isHeavy = !!def.armorStyle;
-        const col = isHeavy ? (e.team==='ally' ? 'rgba(180,190,220,.95)' : 'rgba(210,180,180,.95)') : ((e.team==='ally') ? 'rgba(96,165,250,.95)' : 'rgba(251,113,133,.95)');
+        const tier = def.tier||0;
+        const factionCol = def.faction ? factionColor(def.faction) : (e.team==='ally'?'#93c5fd':'#fca5a5');
+        const col = (tier>=2) ? shade(factionCol, 18) : (tier===1 ? shade(factionCol, -2) : shade(factionCol, -18));
         ctx.fillStyle = col;
         ctx.strokeStyle = 'rgba(0,0,0,.25)';
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.roundRect(sp.x-8, sp.y-28, 16, 26, 6); ctx.fill(); ctx.stroke();
+        const vis = def.visual || {};
+        ctx.fillStyle = vis.chest==='plate' ? 'rgba(230,230,240,.32)' : (vis.chest==='lamellar' ? 'rgba(220,185,120,.28)' : (vis.chest==='chain'?'rgba(200,220,230,.22)':'rgba(210,180,130,.2)'));
+        ctx.fillRect(sp.x-6, sp.y-24, 12, 12);
+        if(vis.helm){ ctx.fillStyle = vis.helm==='scarf' ? 'rgba(240,200,160,.4)' : 'rgba(230,230,240,.45)'; ctx.beginPath(); ctx.arc(sp.x, sp.y-30, 5.5, 0, Math.PI*2); ctx.fill(); }
 
         const speed = Math.hypot(e.vx||0, e.vy||0);
         const moving = speed > 0.12 && (e.atk.state!=='windup');
         drawLegs(sp.x, sp.y-2, moving, state.t*12 + (e.x+e.y));
 
-        ctx.fillStyle = 'rgba(255,255,255,.92)';
-        ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(e.role==='arc' ? (def.projKind==='bolt'?'⛓':(def.projKind==='spearArc'?'🔱':'🏹')) : (e.role==='cav'?'🐎':'🛡'), sp.x, sp.y-15);
-
         if(isHeavy){ ctx.fillStyle='rgba(255,230,140,.9)'; ctx.fillRect(sp.x-2, sp.y-34, 4, 7); }
-
         if(def.shield){
-          ctx.fillStyle = 'rgba(255,255,255,.20)';
-          ctx.strokeStyle = 'rgba(255,255,255,.35)';
+          ctx.fillStyle = 'rgba(255,255,255,.18)';
+          ctx.strokeStyle = 'rgba(255,255,255,.42)';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.roundRect(sp.x-16, sp.y-22, 8, 14, 3);
+          if(vis.shieldShape==='round' || e.unitKey==='kn_hoplite') ctx.arc(sp.x-14, sp.y-16, e.unitKey==='kn_hoplite'?8:6, 0, Math.PI*2);
+          else ctx.roundRect(sp.x-18, sp.y-23, 10, 16, 3);
           ctx.fill(); ctx.stroke();
         }
+        const wk = vis.weaponShape || (e.role==='arc' ? (def.projKind==='bolt'?'crossbow':(def.projKind==='spearArc'?'spear':'bow')) : (e.role==='cav'?'spear':'sword'));
+        drawWeaponGlyph(wk, sp.x+8, sp.y-18, e.facingX, e.facingY, wk==='pike'?19:15, 'rgba(255,255,255,.86)');
 
         if(e.aim){
           const tp = worldToScreen(e.aim.x, e.aim.y, camX, camY);
@@ -4312,6 +4586,7 @@
         ctx.textAlign='center'; ctx.textBaseline='bottom';
         ctx.fillText(def.name+' • '+unitRankName(e.rank||0), sp.x, sp.y-40);
         if(e.squadId){ const sq=state.player.squads?.find(x=>x.id===e.squadId); if(sq){ ctx.fillStyle=sq.color||'rgba(255,255,255,.7)'; ctx.fillRect(sp.x-10, sp.y-33, 20, 3); } }
+        if(state.battle.commander && state.battle.commander.side==='enemy' && e.team==='enemy' && (e.role==='inf'||e.role==='sup') && !state.battle.commander._drawn){ drawCrownAt(sp.x, sp.y-54, 7.2); state.battle.commander._drawn=true; }
       }
     }
 
@@ -4320,7 +4595,7 @@
       const sp = worldToScreen(pr.x,pr.y, camX,camY);
       const ang = Math.atan2(pr.vy, pr.vx);
       const arcLift = (pr.arcH||0)>0 ? Math.sin((pr.progress||0)*Math.PI)*(pr.arcH||0)*42 : 0;
-      const size = pr.kind==='bolt' ? 7.2 : 6.2;
+      const size = pr.kind==='bolt' ? 8.0 : (pr.kind==='spearArc'?8.6:6.4);
       ctx.save();
       ctx.translate(sp.x, sp.y-18-arcLift);
       ctx.rotate(ang);
@@ -4329,10 +4604,12 @@
         : (pr.kind==='bolt'?'rgba(255,235,235,.95)':'rgba(255,220,220,.92)');
       ctx.beginPath();
       ctx.moveTo(size, 0);
-      ctx.lineTo(-size*0.6, -size*0.45);
-      ctx.lineTo(-size*0.6,  size*0.45);
+      ctx.lineTo(-size*0.65, -size*0.42);
+      ctx.lineTo(-size*0.65,  size*0.42);
       ctx.closePath();
       ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-size*0.65,0); ctx.lineTo(-size*1.1,-size*0.12); ctx.lineTo(-size*1.1,size*0.12); ctx.closePath(); ctx.fill();
+      if(pr.kind==='bolt'){ ctx.strokeStyle='rgba(230,230,255,.35)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(-size*1.4,0); ctx.lineTo(-size*2.7,0); ctx.stroke(); }
       if(pr.kind==='spearArc'){
         ctx.strokeStyle='rgba(255,255,255,.35)';
         ctx.lineWidth=1.2;
@@ -4347,7 +4624,7 @@
     for(const pt of b.particles){
       const sp = worldToScreen(pt.x,pt.y, camX,camY);
       const life = Math.max(0, pt.ttl / (pt.life||0.3));
-      const col = pt.team==='ally' ? `rgba(191,219,254,${0.18 + life*0.65})` : `rgba(255,179,179,${0.18 + life*0.65})`;
+      const col = pt.team==='ally' ? `rgba(191,219,254,${0.18 + life*0.65})` : (pt.team==='blood' ? `rgba(150,24,28,${0.18 + life*0.75})` : (pt.team==='dust' ? `rgba(180,140,86,${0.12 + life*0.5})` : `rgba(255,179,179,${0.18 + life*0.65})`));
       ctx.fillStyle = col;
       ctx.beginPath();
       ctx.arc(sp.x, sp.y-22, pt.size*22*life, 0, Math.PI*2);
