@@ -2032,7 +2032,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const scaledReq = {};
       for(const k of MAT_KEYS){
         if(r.req[k]){
-          scaledReq[k] = Math.max(1, Math.round(r.req[k] * growth));
+          scaledReq[k] = Math.max(1, Math.round(r.req[k] * growth * 0.5));
         }
       }
       r.req = scaledReq;
@@ -2072,6 +2072,33 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const diff = recipeCost(a.req) - recipeCost(b.req);
       return diff!==0 ? diff : a.name.localeCompare(b.name);
     });
+
+    const weaponPowerScore = (w)=>{
+      if(!w) return 0;
+      if(w.kind==="beam") return w.dps||0;
+      const shotPower = (w.dmg||0) * (w.fireRate||1) * (w.pellets||1);
+      const dotPower = (w.poison||0) + (w.burn?.dps||0) + (w.irradiate?.dps||0);
+      return shotPower + dotPower;
+    };
+
+    let previousWeaponPower = 0;
+    for(const r of WEAPON_RECIPES){
+      const w = WEAPONS[r.name];
+      if(!w) continue;
+      const currentPower = weaponPowerScore(w);
+      const minRequiredPower = previousWeaponPower > 0
+        ? Math.round(previousWeaponPower * 1.03 * 10) / 10
+        : currentPower;
+      if(currentPower < minRequiredPower){
+        const ratio = minRequiredPower / Math.max(0.1, currentPower);
+        if(w.kind==="beam" && w.dps!=null){
+          w.dps = Math.round(w.dps * ratio * 10) / 10;
+        }else if(w.dmg!=null){
+          w.dmg = Math.max(1, Math.round(w.dmg * ratio));
+        }
+      }
+      previousWeaponPower = weaponPowerScore(w);
+    }
 
     const RECIPES = [
       ...WEAPON_RECIPES.map((w)=>({ type:"weapon", name:w.name, req:w.req, equip:true })),
