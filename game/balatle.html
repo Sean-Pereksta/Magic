@@ -302,8 +302,9 @@
       .card .rank,.card .suit{ font-size:16px; }
       .card .chips{ font-size:10px; left:6px; right:6px; }
 
-      #sidePanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); }
-      body.drawerOpen #sidePanel{ transform:translateX(0); }
+      #statsPanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); }
+      body.drawerOpen #statsPanel{ transform:translateX(0); }
+      body.drawerOpen{ overflow:hidden; }
       .mobileDrawerHandle{ display:block; position:fixed; right:0; top:40%; z-index:73; border-radius:14px 0 0 14px; border:1px solid var(--line); border-right:0; background:rgba(8,12,28,.95); color:var(--ink); padding:10px 8px; }
       .drawerBack{ position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:71; }
       body.drawerOpen .drawerBack{ display:block; }
@@ -396,7 +397,7 @@
       </div>
 
       <!-- RIGHT: Multiplayer + Jokers + Shop -->
-      <div class="panel">
+      <div class="panel" id="statsPanel">
         <div class="ph">
           <h2>Multiplayer / Shop</h2>
           <div class="pillRow">
@@ -480,7 +481,7 @@
     </div>
   </div>
 
-  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Open sidebar">☰ Stats</button>
+  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Toggle scores and stats" aria-expanded="false">☰ Scores</button>
   <div class="drawerBack" id="drawerBack"></div>
 
   <div class="modalBack" id="shopBack" aria-hidden="true">
@@ -704,7 +705,15 @@
     back.setAttribute("aria-hidden", open?"false":"true");
   }
 
-  function setDrawer(open){ document.body.classList.toggle("drawerOpen", !!open); }
+  function setDrawer(open){
+    const next = !!open;
+    document.body.classList.toggle("drawerOpen", next);
+    const drawerBtn = $("btnDrawer");
+    if(drawerBtn){
+      drawerBtn.setAttribute("aria-expanded", next ? "true" : "false");
+      drawerBtn.textContent = next ? "✕ Close" : "☰ Scores";
+    }
+  }
 
   function toast(msg){
     const t=$("toast");
@@ -2334,7 +2343,7 @@
   $("btnDiscardM").addEventListener("click", discardSelected);
   $("btnClearM").addEventListener("click", clearSelection);
   $("btnMore").addEventListener("click", ()=> $("moreRow").classList.toggle("show"));
-  $("btnDrawer").addEventListener("click", ()=>setDrawer(true));
+  $("btnDrawer").addEventListener("click", ()=>setDrawer(!document.body.classList.contains("drawerOpen")));
   $("drawerBack").addEventListener("click", ()=>setDrawer(false));
   $("btnFullscreen").addEventListener("click", async ()=>{
     try{
