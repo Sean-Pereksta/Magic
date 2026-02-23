@@ -1070,6 +1070,7 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       { id:"poison", name:"Toxic Capsule", rarity:"epic", extra:{ poison:1.9 } }
     ];
 
+    let worldSeed = (Math.random()*1e9)|0;
     const REGION_PATCH_SIZE = 130;
     function regionHash(ix, iz, seed=0){
       let n = (ix*374761393 + iz*668265263 + seed*1442695041 + (worldSeed|0))|0;
@@ -1138,7 +1139,6 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     // ============================================================
     // Height function (deterministic)
     // ============================================================
-    let worldSeed = (Math.random()*1e9)|0;
     function heightAt(x,z, regId){
       // Always derive terrain region from world position so neighboring chunks
       // sample identical edge vertices and stay stitched together.
